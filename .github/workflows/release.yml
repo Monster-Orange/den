@@ -101,7 +101,10 @@ jobs:
         id: pack
         run: |
           mkdir -p release
-          tarball=$(npm pack --ignore-scripts --pack-destination release --json | node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0,"utf8"))[0].filename)')
+          # Never parse npm pack's stdout: lifecycle scripts can print into it.
+          npm pack --ignore-scripts --pack-destination release >/dev/null
+          tarball=$(cd release && ls -1 -- *.tgz)
+          [ "$(printf '%s\n' "$tarball" | wc -l)" -eq 1 ] || { echo "::error::expected one tarball, got: $tarball"; exit 1; }
           (cd release && sha256sum "$tarball" > SHA256SUMS && cat SHA256SUMS)
           echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
