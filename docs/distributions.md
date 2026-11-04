@@ -300,6 +300,12 @@ and the guide to making your own
   plugin kind; other kinds share the same lock and directory. Commit both: a fresh clone has the
   theme offline, and theme changes show up as reviewable diffs.
 - `list` checks every theme against its lock and fails if one has changed.
+- A distribution can also keep its own theme in the repo: `<cli> theme new
+<id>` copies the built-in theme into `plugins/<id>/` to edit (or put one
+  there by hand), and committing it gives everyone on the repo the theme.
+  Publishing it to a themes repo is only for sharing it with other teams. `list`
+  shows it as `local` and `validate` with no argument checks it along with
+  the added ones; `add` never replaces it.
 - Contrast: every text token (`text`, `muted`, `faint`, `accent-text`, and
   the status colors) at 4.5:1 on every ground (`bg`, `surface`, `raised`,
   `sunken`); `accent` and `border-strong` at 3:1; `on-accent` on

@@ -174,6 +174,25 @@ function validationSummary(v: ThemeValidation): string {
   ].join("; ");
 }
 
+/**
+ * Every plugins/<id>/ that holds a theme (a den-theme.json), locked or local,
+ * sorted. Other local plugins (no den-theme.json) are not themes.
+ */
+function installedThemeIds(distRoot: string): string[] {
+  const root = path.join(distRoot, PLUGINS_DIR);
+  if (!fs.existsSync(root)) return [];
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter(
+      (e) =>
+        e.isDirectory() &&
+        /^[a-z][a-z0-9-]{1,39}$/.test(e.name) &&
+        fs.existsSync(path.join(root, e.name, THEME_FILE)),
+    )
+    .map((e) => e.name)
+    .sort();
+}
+
 /** The lock's theme entries (the lock is shared with other plugin kinds). */
 function themesIn(lock: Record<string, LockEntry>): LockEntry[] {
   return Object.values(lock).filter((e) => e.kinds?.includes("theme"));
@@ -250,8 +269,27 @@ export async function cmdTheme(
 
   switch (sub) {
     case "validate": {
-      // A theme dir, or a repo of themes (themes/<id>/ each, plus starter/).
-      const dir = path.resolve(rest[0] ?? ".");
+      // No argument: this distribution's themes (plugins/<id>/, locked and
+      // local). A dir: one theme, or a repo of themes (themes/<id>/ each,
+      // plus starter/).
+      if (!rest[0]) {
+        const ids = installedThemeIds(distRoot);
+        if (ids.length === 0) {
+          log(
+            `  no themes in ${path.join(distRoot, PLUGINS_DIR)} (den is built in)`,
+          );
+          return 0;
+        }
+        let ok = true;
+        for (const id of ids) {
+          const d = themeDirFor(distRoot, id);
+          const v = validateThemeDir(d, { expectId: id });
+          printValidation(`${id} (${d})`, v, log);
+          ok &&= v.ok;
+        }
+        return ok ? 0 : 1;
+      }
+      const dir = path.resolve(rest[0]);
       const dirs = fs.existsSync(path.join(dir, THEME_FILE))
         ? [dir]
         : [
@@ -432,10 +470,70 @@ export async function cmdTheme(
             : now !== e.sha256
               ? chalk.red("changed since it was added")
               : chalk.gray(`${e.source}@${e.ref}`);
-        if (!v || now !== e.sha256) ok = false;
+        if (!v || !v.ok || now !== e.sha256) ok = false;
         log(`  ${e.id.padEnd(14)} ${e.version.padEnd(8)} ${state}`);
       }
+      // Local themes: the distribution's own, in plugins/<id>/ with no lock
+      // entry. Nothing to verify a hash against; they must still validate.
+      for (const id of installedThemeIds(distRoot)) {
+        if (lock[id]) continue;
+        const dir = themeDirFor(distRoot, id);
+        const v = validateThemeDir(dir, { expectId: id });
+        const version = v.theme?.version ?? "?";
+        const state = v.ok
+          ? chalk.gray(`local (${PLUGINS_DIR}/${id})`)
+          : chalk.red(
+              `local (${PLUGINS_DIR}/${id}), not valid under this ${cli}: ${validationSummary(v)}`,
+            );
+        if (!v.ok) ok = false;
+        log(`  ${id.padEnd(14)} ${version.padEnd(8)} ${state}`);
+      }
       return ok ? 0 : 1;
+    }
+
+    case "new": {
+      // A local theme to edit: a copy of the built-in one, in plugins/<id>/,
+      // committed with the distribution so the whole team gets it.
+      const id = rest[0];
+      if (!id || !/^[a-z][a-z0-9-]{1,39}$/.test(id) || id === "den") {
+        log(
+          chalk.red(
+            `Usage: ${cli} theme new <id>  (lowercase letters, digits and dashes; not "den")`,
+          ),
+        );
+        return 1;
+      }
+      const dest = themeDirFor(distRoot, id);
+      if (fs.existsSync(dest)) {
+        log(
+          chalk.red(`✗ ${PLUGINS_DIR}/${id}/ already exists; nothing changed`),
+        );
+        return 1;
+      }
+      const from = path.join(
+        deps.engineRoot ?? getEngineRoot(),
+        "themes",
+        "den",
+      );
+      fs.cpSync(from, dest, { recursive: true });
+      const file = path.join(dest, THEME_FILE);
+      const m = JSON.parse(fs.readFileSync(file, "utf-8")) as Record<
+        string,
+        unknown
+      >;
+      const name = id
+        .split("-")
+        .map((w) => w[0].toUpperCase() + w.slice(1))
+        .join(" ");
+      Object.assign(m, { id, name, version: "0.1.0" });
+      delete m.homepage;
+      delete m.author;
+      fs.writeFileSync(file, `${JSON.stringify(m, null, 2)}\n`);
+      log(
+        `  ${id} → ${PLUGINS_DIR}/${id}/ (a copy of den: edit ${THEME_FILE} and mark.svg)`,
+      );
+      log(`  ${cli} theme validate checks it; commit it and your team has it.`);
+      return 0;
     }
 
     case "remove": {
@@ -454,7 +552,7 @@ export async function cmdTheme(
 
     default:
       log(
-        `Usage: ${cli} theme [list] | validate [dir] | add <repo>[/<subpath>]@<ref> | remove <id>`,
+        `Usage: ${cli} theme [list] | validate [dir] | new <id> | add <repo>[/<subpath>]@<ref> | remove <id>`,
       );
       return 1;
   }

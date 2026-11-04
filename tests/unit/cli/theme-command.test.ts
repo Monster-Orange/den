@@ -281,6 +281,70 @@ describe("theme add, list, remove", () => {
     fs.writeFileSync(file, JSON.stringify(raw));
   });
 
+  it("list and validate include local themes (plugins/<id>/, no lock entry)", async () => {
+    const plugins = path.join(dist, "plugins");
+    fs.cpSync(path.join(repo, "themes", "sample"), path.join(plugins, "mine"), {
+      recursive: true,
+    });
+    const m = path.join(plugins, "mine", "den-theme.json");
+    fs.writeFileSync(
+      m,
+      JSON.stringify({
+        ...(JSON.parse(fs.readFileSync(m, "utf-8")) as object),
+        id: "mine",
+      }),
+    );
+    // A local plugin that is not a theme is not listed.
+    fs.mkdirSync(path.join(plugins, "edges"), { recursive: true });
+    fs.writeFileSync(path.join(plugins, "edges", "page.html"), "x");
+    lines.length = 0;
+    expect(await cmdTheme(["list"], { distRoot: dist, log })).toBe(0);
+    let out = lines.join("\n");
+    expect(out).toMatch(/mine\s+1\.0\.0\s+local \(plugins\/mine\)/);
+    expect(out).not.toMatch(/edges/);
+    lines.length = 0;
+    expect(await cmdTheme(["validate"], { distRoot: dist, log })).toBe(0);
+    expect(lines.join("\n")).toMatch(/mine \(/);
+
+    fs.cpSync(path.join(repo, "themes", "bad"), path.join(plugins, "bad"), {
+      recursive: true,
+    });
+    lines.length = 0;
+    expect(await cmdTheme(["list"], { distRoot: dist, log })).toBe(1);
+    out = lines.join("\n");
+    expect(out).toMatch(/bad .*local \(plugins\/bad\), not valid .*muted on/);
+    lines.length = 0;
+    expect(await cmdTheme(["validate"], { distRoot: dist, log })).toBe(1);
+    for (const d of ["mine", "bad", "edges"])
+      fs.rmSync(path.join(plugins, d), { recursive: true, force: true });
+  });
+
+  it("new makes a local theme from the built-in one, which validates", async () => {
+    lines.length = 0;
+    expect(await cmdTheme(["new", "team-blue"], { distRoot: dist, log })).toBe(
+      0,
+    );
+    const dir = path.join(dist, "plugins", "team-blue");
+    const m = JSON.parse(
+      fs.readFileSync(path.join(dir, "den-theme.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(m).toMatchObject({
+      id: "team-blue",
+      name: "Team Blue",
+      version: "0.1.0",
+    });
+    expect(fs.existsSync(path.join(dir, "mark.svg"))).toBe(true);
+    lines.length = 0;
+    expect(await cmdTheme(["list"], { distRoot: dist, log })).toBe(0);
+    expect(lines.join("\n")).toMatch(/team-blue\s+0\.1\.0\s+local/);
+    expect(await cmdTheme(["new", "team-blue"], { distRoot: dist, log })).toBe(
+      1,
+    );
+    expect(await cmdTheme(["new", "den"], { distRoot: dist, log })).toBe(1);
+    expect(await cmdTheme(["new", "Bad_Id"], { distRoot: dist, log })).toBe(1);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("never replaces a local (unlocked) plugin dir or another kind's", async () => {
     const local = path.join(dist, "plugins", "sample");
     fs.mkdirSync(local, { recursive: true });
