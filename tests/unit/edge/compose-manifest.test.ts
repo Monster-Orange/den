@@ -106,7 +106,15 @@ describe("compose commands", () => {
     expect(eff.up).toBe("make up");
     expect(eff.setup).toBe("make setup");
     expect(eff.down).toEqual(expect.objectContaining({ detachable: false }));
-    expect(composeCommands(declared, "worker", "demo-api", "demo")).toEqual({});
+    // A non-entry service restarts on its own; up and down are the stack's.
+    expect(composeCommands(declared, "worker", "demo-api", "demo")).toEqual({
+      restart: {
+        cmd: expect.stringMatching(
+          /stack restart demo-api -w demo --service "worker"$/,
+        ),
+        detachable: false,
+      },
+    });
     // A non-entry service is a compose service with its own health check.
     expect(composeHealthCmd(declared, "worker", "demo-api", "demo")).toMatch(
       /stack health demo-api -w demo --service "worker"$/,

@@ -39,7 +39,7 @@ beforeAll(() => {
   fs.mkdirSync(marks);
   const distRoot = path.join(tmp, "den");
   repos = path.join(tmp, "repos");
-  const names = ["voiceapp", "kb", "docs", "store"];
+  const names = ["voiceapp", "kb", "docs", "store", "core", "front"];
 
   write(path.join(distRoot, "den.yml"), "product:\n  name: den\n");
   write(path.join(distRoot, "config", "den.yml"), "repos_root: ../repos\n");
@@ -75,13 +75,24 @@ beforeAll(() => {
   write(
     path.join(repos, "kb", ".den.yml"),
     m(
-      `name: kb\napplication: studio\nentrypoint: api\ncompose:\n  name: search\nservices:\n  api:\n${cmds("kb-api")}`,
+      `name: kb\napplication: studio\nentrypoint: api\ncompose:\n  name: search\nservices:\n  api:\n${cmds("kb-api")}  worker:\n    port: 7100\n`,
     ),
   );
   // A dependency that other running services may share.
   write(
     path.join(repos, "store", ".den.yml"),
     m(`name: store\nservices:\n  db:\n${cmds("store-db")}`),
+  );
+  // A remote service, and a local one that depends on it.
+  write(
+    path.join(repos, "core", ".den.yml"),
+    "name: core\nservices:\n  api:\n    runs:\n      local: remote\n    target:\n      env: dev\n      url: https://core.example/\n",
+  );
+  write(
+    path.join(repos, "front", ".den.yml"),
+    m(
+      `name: front\nservices:\n  web:\n    depends_on: [core]\n${cmds("front-web")}`,
+    ),
   );
   // A service key that is not the repo name.
   write(
@@ -181,7 +192,10 @@ describe("a dry run says what a real run does", () => {
   it("down stops only what was named, never its dependencies", async () => {
     const r = await cli(["down", "voiceapp/voice", "-n"]);
     expect(r.out).not.toMatch(/store/);
-    expect(r.out).toMatch(/nothing to stop/);
+    expect(r.out).toMatch(
+      /voiceapp\/voice has no down of its own; it is stopped by voiceapp's down\. Run `den down voiceapp`/,
+    );
+    expect(r.status).toBe(0);
     const own = await cli(["down", "kb/api", "-n"]);
     expect(own.out).toMatch(/Would down: kb\/api\n/);
   }, 60_000);
@@ -198,6 +212,35 @@ describe("a dry run says what a real run does", () => {
   it("a repo's derived down names its targets", async () => {
     const r = await cli(["down", "voiceapp", "-n"]);
     expect(r.out).toMatch(/Would down: .*voiceapp/);
+  }, 60_000);
+
+  it("down <repo> stops only that repo unless --with-deps", async () => {
+    const r = await cli(["down", "voiceapp", "-n"]);
+    expect(r.out).toMatch(/Would down: voiceapp\n/);
+    expect(r.out).not.toMatch(/\+ dependencies/);
+    // The closure itself is deriveStartTargets' (tested with the graph).
+    const deps = await cli(["down", "voiceapp", "--with-deps", "-n"]);
+    expect(deps.out).toMatch(/Derived down for voiceapp \(\+ dependencies\)/);
+    expect(deps.status).toBe(0);
+  }, 60_000);
+
+  it("a remote dependency is skipped in the plan, saying why", async () => {
+    const r = await cli(["up", "front/web", "-n"]);
+    expect(r.out).toMatch(/Would up: front\/web\n/);
+    expect(r.out).toMatch(/core \(remote, skipped\): core runs in dev/);
+    expect(r.status).toBe(0);
+  }, 60_000);
+
+  it("a named remote target fails with the real run's reason", async () => {
+    const r = await cli(["restart", "core", "-n"]);
+    expect(r.out).toMatch(/✗ core runs in dev; nothing to restart here/);
+    expect(r.status).toBe(1);
+  }, 60_000);
+
+  it("a compose sub-service restarts on its own", async () => {
+    const r = await cli(["restart", "kb/worker", "-n"]);
+    expect(r.out).toMatch(/Would restart: kb\/worker\n/);
+    expect(r.status).toBe(0);
   }, 60_000);
 });
 

@@ -133,7 +133,7 @@ provider in `src/shared/auth/token-providers/`.
 
 ```bash
 den up [repo]          # start the repo's derived dependency closure (-x deps only, -n dry run)
-den down [repo]        # stop it cleanly
+den down [repo]        # stop it cleanly (--with-deps: and what it sits on)
 den status             # service health for the active workspace
 den apps               # Org > Application > Repo > Services
 den graph [repo]       # the derived dependency graph

@@ -266,6 +266,26 @@ export function stackDown(ctx: StackContext, s: StackConfig): void {
   }
 }
 
+/**
+ * Restart one compose service of a running stack in place (`docker compose
+ * restart`): the same container, so the same env; nothing is recreated.
+ */
+export function stackRestartService(
+  ctx: StackContext,
+  s: StackConfig,
+  service: string,
+): void {
+  const override = path.join(stackDir(ctx, s), "override.yml");
+  const args = fs.existsSync(override)
+    ? overrideArgs(ctx, s)
+    : baseArgs(ctx, s);
+  must("docker", [...args, "restart", service], {
+    cwd: repoDir(s),
+    env: composeEnv(ctx, s),
+    inherit: true,
+  });
+}
+
 export function stackPs(ctx: StackContext, s: StackConfig): string {
   return run(
     "docker",

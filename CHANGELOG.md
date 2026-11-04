@@ -56,6 +56,20 @@ config and manifest changes a distribution must make to move to it under
   ones other running services still use. `up` still starts dependencies;
   `down <repo>` still stops the repo's closure, naming what else depends on
   it.
+- **`down <repo>` stops that repo only.** It stopped the repo's whole
+  derived closure, so `down api` took down stacks it sits on that other
+  running systems use. `--with-deps` keeps the old behaviour (naming what
+  else uses them); `down -a` still stops everything.
+- **Plans show remote services as skipped, with the reason**
+  (`core (remote, skipped): core runs in dev; …`), and a named remote target
+  fails with the real run's reason.
+- **A compose sub-service restarts on its own**: `restart <repo>/<svc>` runs
+  `docker compose restart <svc>` in its stack (`<cli> stack restart <stack>
+  --service <svc>`): the same container and env, nothing recreated. Up and
+  down stay the stack's.
+- **A service its repo starts**: `down` on it says it is stopped by the
+  repo's down and names the command (exit 0, so a workspace Down that sends
+  every service stays clean); `restart` fails the same way, exit 1.
 - **A failed or unknown target exits 1.** `up`, `down` and `restart` exited 0
   when a named service failed or did not exist.
 - **A service with no commands of its own** (its repo's up starts it): `up`
@@ -69,6 +83,8 @@ config and manifest changes a distribution must make to move to it under
 - None required.
 - `down <repo/service>` and `restart <repo/service>` no longer touch the
   service's dependencies; stop or restart those by name.
+- `down <repo>` (and a bare `down` in a repo) stops only that repo; add
+  `--with-deps` for its closure.
 - A Makefile target that runs `service/install.sh` with `DEN_SERVICE_LABEL`
   and `DEN_SERVICE_LOGS` can become `<cli> service install`; put a non-default
   label or log directory in `web.service` first, since the CLI reads the

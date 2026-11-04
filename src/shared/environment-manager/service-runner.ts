@@ -1097,14 +1097,15 @@ export interface RunCommandResult {
  * A service with no commands of its own is started by its repo's up
  * (placement's repo-level rule). For `up` that is the repo's up (`address`
  * set); any other command would reach the repo's other services too, so it
- * is refused, pointing at the repo. Null when the rule does not apply.
+ * points at the repo instead: a refusal, except that down succeeds (nothing
+ * of the service's own runs, and a workspace Down sends every service).
+ * Null when the rule does not apply.
  */
 function repoStartedFallback(
   resolved: ResolvedService,
   command: string,
   workspace: string | undefined,
 ): { address?: string; note: string } | null {
-  if (command === "down") return null;
   const repoEntry = resolveService(resolved.repoName, workspace);
   if (!repoEntry || repoEntry.subsystem === resolved.subsystem) return null;
   const manifest = readManifest(resolved.repoPath);
@@ -1116,10 +1117,16 @@ function repoStartedFallback(
     workspace ?? "default",
   );
   if (!repoCommands["up"]) return null;
-  return command === "up"
+  if (command === "up")
+    return {
+      address: resolved.repoName,
+      note: `${resolved.address} has no up of its own; running ${resolved.repoName}'s up, which starts it`,
+    };
+  return command === "down"
     ? {
-        address: resolved.repoName,
-        note: `${resolved.address} has no up of its own; running ${resolved.repoName}'s up, which starts it`,
+        note:
+          `${resolved.address} has no down of its own; it is stopped by ${resolved.repoName}'s down. ` +
+          `Run \`${product().cli} down ${resolved.repoName}\` (that stops every service it starts).`,
       }
     : {
         note:
@@ -1172,7 +1179,10 @@ export function previewServiceCommand(
   const viaRepo = repoStartedFallback(resolved, command, workspace);
   if (viaRepo?.address)
     return { kind: "via-repo", address: viaRepo.address, note: viaRepo.note };
-  if (viaRepo) return { kind: "error", address, note: viaRepo.note };
+  if (viaRepo)
+    return command === "down"
+      ? { kind: "nothing", address, note: viaRepo.note }
+      : { kind: "error", address, note: viaRepo.note };
   if (command === "down")
     return {
       kind: "nothing",
@@ -1473,6 +1483,16 @@ export function runServiceCommand(
   }
 
   if (!cmdDef) {
+    const viaRepo = repoStartedFallback(resolved, command, workspace);
+    if (viaRepo?.address) {
+      onLine(viaRepo.note);
+      return runServiceCommand({ ...options, address: viaRepo.address });
+    }
+    if (viaRepo) {
+      onLine(command === "down" ? viaRepo.note : `Error: ${viaRepo.note}`);
+      closeAsync(command === "down" ? 0 : 1);
+      return dummy();
+    }
     // Down is opctl-conventional: when no container is running AND the manifest
     // declares no down command, there is simply nothing to stop — that's a
     // successful down, not an error (keeps the ⋮ menu / workspace Down safe to
@@ -1480,16 +1500,6 @@ export function runServiceCommand(
     if (command === "down") {
       onLine("nothing to stop (no running opctl containers, no down command)");
       closeAsync(0);
-      return dummy();
-    }
-    const viaRepo = repoStartedFallback(resolved, command, workspace);
-    if (viaRepo?.address) {
-      onLine(viaRepo.note);
-      return runServiceCommand({ ...options, address: viaRepo.address });
-    }
-    if (viaRepo) {
-      onLine(`Error: ${viaRepo.note}`);
-      closeAsync(1);
       return dummy();
     }
     onLine(

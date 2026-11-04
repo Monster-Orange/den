@@ -14,6 +14,7 @@ import {
   stackHealth,
   stackLogs,
   stackPs,
+  stackRestartService,
   stackUp,
 } from "../../shared/stacks/runtime.js";
 import { loadStackContext, stackStatuses } from "../../shared/stacks/status.js";
@@ -71,6 +72,14 @@ export async function cmdStack(argv: string[]): Promise<void> {
       return;
     }
     case "restart":
+      if (service) {
+        // One compose service, in place: no edge re-render, no recreate.
+        for (const n of pick()) {
+          console.log(chalk.cyan(`↻ ${n} ${service}`));
+          stackRestartService(ctx, stacks[n], service);
+        }
+        return;
+      }
       await edgeUp(edge);
       for (const n of pick()) {
         console.log(chalk.cyan(`↻ ${n}`));

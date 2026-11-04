@@ -100,6 +100,7 @@ import {
   canonicalServiceAddress,
   previewServiceCommand,
   resolveService,
+  type ServiceCommandPreview,
 } from "../../shared/environment-manager/service-runner.js";
 import { getGitHubCoords } from "../../shared/smoke/git-remote.js";
 import {
@@ -196,10 +197,11 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   down: {
     usage: "down [repo] [flags]",
     lines: [
-      "Stop the cwd (or named) repo's derived dependency closure, in reverse order.",
+      "Stop the cwd (or named) repo; --with-deps also stops what it sits on (its",
+      "derived closure, in reverse order), naming anything else that uses it.",
       "-a/--all stops EVERY workspace system (reverse derived order, cwd-agnostic;",
       "every down script runs — no already-stopped skip).",
-      "Flags: -a/--all · -A/--app <app> · -n/--dry-run (print order, stop nothing) · --manifest (legacy depends_on)",
+      "Flags: -a/--all · -A/--app <app> · --with-deps · -n/--dry-run (print order, stop nothing) · --manifest (legacy depends_on)",
     ],
   },
   restart: {
@@ -1365,6 +1367,22 @@ class DenCLI {
       getFocusedWorkspaceName() ??
       undefined;
     const force = opts?.force ?? false;
+    // R13: why a remote service is not run here, or null.
+    const remoteRefusal = (address: string): string | null => {
+      const placed = resolveService(address, workspace);
+      return placed
+        ? placementRefusal(
+            address,
+            servicePlacement(
+              readManifest(placed.repoPath),
+              placed.subsystem,
+              "local",
+            ),
+            (e) => isProductionEnv(e),
+            command,
+          )
+        : null;
+    };
 
     // Resolve dependency order. Derived mode supplies the order directly;
     // otherwise topo-sort manifest depends_on (`down` → reverse).
@@ -1406,9 +1424,19 @@ class DenCLI {
 
     if (opts?.dryRun) {
       // The same lookup a real run makes, so the dry run says what it does.
-      const previews = ordered.map((a) =>
-        previewServiceCommand(a, command, workspace),
-      );
+      const previews = ordered.map((a): ServiceCommandPreview => {
+        const remote = remoteRefusal(a);
+        if (!remote) return previewServiceCommand(a, command, workspace);
+        // As the loop below: a named remote target fails, any other is
+        // said and skipped.
+        return isNamedTarget(a, opts?.named ?? [])
+          ? { kind: "error", address: a, note: remote }
+          : {
+              kind: "nothing",
+              address: a,
+              note: `${a} (remote, skipped): ${remote}`,
+            };
+      });
       const doing =
         { up: "starting", down: "stopping", restart: "restarting" }[command] ??
         `running "${command}" on`;
@@ -1470,19 +1498,7 @@ class DenCLI {
       }
       // R13: a remote service is never started or stopped from here. Said,
       // not failed, so a workspace or app up/down carries on past it.
-      const placed = resolveService(address, workspace);
-      const remote = placed
-        ? placementRefusal(
-            address,
-            servicePlacement(
-              readManifest(placed.repoPath),
-              placed.subsystem,
-              "local",
-            ),
-            (e) => isProductionEnv(e),
-            command,
-          )
-        : null;
+      const remote = remoteRefusal(address);
       if (remote) {
         if (isNamedTarget(address, opts?.named ?? [])) {
           console.log(chalk.red(`  ✗ ${remote}`));
@@ -1892,8 +1908,12 @@ class DenCLI {
       return;
     }
     if (dryRun) {
-      console.log(chalk.cyan(`  Would up: ${order.join(" → ")}`));
-      console.log(chalk.gray("  (--dry-run: not starting anything)\n"));
+      await this.runServicesCommand(
+        order,
+        "up",
+        { order },
+        { named, dryRun: true },
+      );
       return;
     }
     // Check the secrets backend first so any first-clone `make setup` (and the up
@@ -1938,10 +1958,13 @@ class DenCLI {
     seed: string,
     dryRun: boolean,
     force = false,
+    withDeps = false,
   ): Promise<void> {
     const full = deriveGraph({ scope: "all" });
+    // Only the named repo, unless --with-deps: what it sits on may be
+    // serving other running systems (the same rule as a named service).
     const upOrder = this.runtimeOnly(
-      deriveStartTargets(full, seed).order,
+      withDeps ? deriveStartTargets(full, seed).order : [seed],
       "stopped",
     );
     if (upOrder.length === 0) return;
@@ -1966,7 +1989,9 @@ class DenCLI {
       ),
     ].sort();
     console.log(
-      chalk.cyan(`\n  Derived down for ${chalk.bold(seed)} (+ dependencies)`),
+      chalk.cyan(
+        `\n  Derived down for ${chalk.bold(seed)}${withDeps ? " (+ dependencies)" : ""}`,
+      ),
     );
     console.log(chalk.gray(`  Order: ${order.join(" → ")}\n`));
     if (atRisk.length > 0) {
@@ -1978,8 +2003,12 @@ class DenCLI {
       );
     }
     if (dryRun) {
-      console.log(chalk.cyan(`  Would down: ${order.join(" → ")}`));
-      console.log(chalk.gray("  (--dry-run: not stopping anything)\n"));
+      await this.runServicesCommand(
+        order,
+        "down",
+        { order },
+        { force, named: [seed], dryRun: true },
+      );
       return;
     }
     await this.runServicesCommand(
@@ -2568,7 +2597,12 @@ class DenCLI {
     const seed = forceManifest ? undefined : this.derivedSeed(seedArg);
 
     if (seed) {
-      await this.runDerivedDown(seed, dryRun, force);
+      await this.runDerivedDown(
+        seed,
+        dryRun,
+        force,
+        ownArgs.includes("--with-deps"),
+      );
       return;
     }
     const addresses = ownArgs.filter((a) => !a.startsWith("-"));

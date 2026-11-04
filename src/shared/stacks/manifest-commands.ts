@@ -31,13 +31,23 @@ export function composeCommands(
   repoName: string,
   workspace: string,
 ): Record<string, CommandDef> {
-  if (!manifest.compose || !isPrimary(manifest, subsystem)) return {};
+  if (!manifest.compose) return {};
   // `docker compose up -d` returns once the containers are started, so these
   // finish on their own: never daemonize them.
   const stack = (sub: string) => ({
     cmd: `${denBin()} stack ${sub} ${manifestStackName(manifest, repoName)} -w ${workspace}`,
     detachable: false,
   });
+  // Any other manifest service names a compose service: it restarts on its
+  // own (`docker compose restart`, same container and env). Up and down stay
+  // the stack's, through the primary service.
+  if (!isPrimary(manifest, subsystem))
+    return {
+      restart: {
+        ...stack("restart"),
+        cmd: `${stack("restart").cmd} --service ${JSON.stringify(subsystem)}`,
+      },
+    };
   return {
     up: stack("up"),
     down: stack("down"),
