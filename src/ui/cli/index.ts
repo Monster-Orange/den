@@ -164,6 +164,7 @@ import { cmdConfig } from "./config-command.js";
 import { cmdEdge } from "./edge-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
+import { cmdTheme } from "./theme-command.js";
 import { cmdWeb, displayWebHelp } from "./web-command.js";
 import { cmdGraph } from "./graph-command.js";
 import { resolveLogsTarget, tailServiceLogs } from "./logs-command.js";
@@ -307,6 +308,15 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "This org's HTTPS edge: own CA + cert, routes at <name>.<edge.domain>.",
     ],
   },
+  theme: {
+    usage:
+      "theme [list] | validate [dir] | add <repo>[/<subpath>]@<ref> | remove <id>",
+    lines: [
+      "Web UI themes (den.theme/v1). add fetches one at an exact ref, validates it",
+      "(schema, contrast in both modes, files) and vendors it into themes/<id>/",
+      "with a themes.lock.json entry; commit both. list checks them against the lock.",
+    ],
+  },
   mcp: {
     usage: "mcp [--port <web port>] [--list | --call <tool> ['<json args>']]",
     lines: [
@@ -379,6 +389,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "applications",
   "mcp",
   "service",
+  "theme",
 ]);
 
 /** Map a raw command token to a PII-safe, registered telemetry command name. */
@@ -721,6 +732,10 @@ class DenCLI {
 
         case "stack":
           await cmdStack(args.slice(1));
+          break;
+
+        case "theme":
+          process.exitCode = await cmdTheme(args.slice(1));
           break;
 
         case "apps":
@@ -3837,6 +3852,9 @@ class DenCLI {
     );
     console.log(
       "  service install      Run the web UI as a launchd service (status, print, uninstall)",
+    );
+    console.log(
+      "  theme add <repo>@<ref> Install a web UI theme (list, validate, remove)",
     );
     console.log();
     console.log("  workspace list       List workspaces");

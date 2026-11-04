@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Monster-Orange/den/main/schemas/den.theme.v1.json",
+  "title": "Den theme (den.theme/v1)",
+  "description": "A look and feel for Den's web UI: color tokens for dark and light, type, shape and a mark. Published in a git repo as den-theme.json and installed by `<cli> theme add <git url>[/<subpath>]@<ref>`. v1 only ever gains optional fields; a rename or removal is v2.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "name", "version", "license", "modes"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema": { "const": "den.theme/v1" },
+    "id": {
+      "description": "Stable identifier, unique within its repo: lowercase letters, digits and dashes.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,39}$"
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+    "version": {
+      "description": "The theme's own semver. Tag the repo with it (v1.2.0, or <id>/v1.2.0 in a repo of several themes).",
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?$"
+    },
+    "description": { "type": "string", "maxLength": 280 },
+    "author": { "type": "string", "maxLength": 120 },
+    "license": {
+      "description": "SPDX identifier for the theme (tokens, logo). Fonts carry their own.",
+      "type": "string",
+      "minLength": 1
+    },
+    "homepage": { "type": "string", "format": "uri" },
+    "den": {
+      "description": "Den versions this theme supports, as a semver range (\">=0.3.0 <0.4.0\"). Omitted: any Den that reads den.theme/v1.",
+      "type": "string"
+    },
+    "default_mode": {
+      "description": "The mode to use when the user's preference is 'system' and the system gives none.",
+      "enum": ["dark", "light"]
+    },
+    "type": { "$ref": "#/$defs/type" },
+    "shape": { "$ref": "#/$defs/shape" },
+    "mark": { "$ref": "#/$defs/mark" },
+    "fonts": {
+      "description": "Font files shipped in the theme (no CDN): Den serves them itself, so the theme works offline.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/font" }
+    },
+    "modes": {
+      "description": "Color tokens for both modes. Both are required: every theme has a dark and a light.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dark", "light"],
+      "properties": {
+        "dark": { "$ref": "#/$defs/colors" },
+        "light": { "$ref": "#/$defs/colors" }
+      }
+    }
+  },
+  "$defs": {
+    "hex": {
+      "description": "#rrggbb. One format, so contrast can be checked exactly.",
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    },
+    "cssValue": {
+      "description": "A CSS value without declarations, blocks, markup or url(): Den writes it into a custom property.",
+      "type": "string",
+      "maxLength": 200,
+      "not": { "pattern": "[;{}<>\\\\]|url\\s*\\(|@import|expression\\s*\\(" }
+    },
+    "colors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "surface",
+        "raised",
+        "sunken",
+        "text",
+        "muted",
+        "faint",
+        "border",
+        "border-strong",
+        "accent",
+        "accent-text",
+        "accent-fill",
+        "on-accent",
+        "ok",
+        "warn",
+        "bad",
+        "remote"
+      ],
+      "properties": {
+        "bg": { "$ref": "#/$defs/hex", "description": "Page ground." },
+        "surface": {
+          "$ref": "#/$defs/hex",
+          "description": "Cards, bars, panels."
+        },
+        "raised": { "$ref": "#/$defs/hex", "description": "Menus, popovers." },
+        "sunken": {
+          "$ref": "#/$defs/hex",
+          "description": "Wells, hover fills, code."
+        },
+        "text": { "$ref": "#/$defs/hex" },
+        "muted": { "$ref": "#/$defs/hex", "description": "Secondary text." },
+        "faint": {
+          "$ref": "#/$defs/hex",
+          "description": "Tertiary text: captions, labels, placeholders. Text, so 4.5:1 on every ground."
+        },
+        "border": { "$ref": "#/$defs/hex" },
+        "border-strong": {
+          "$ref": "#/$defs/hex",
+          "description": "Input and control borders."
+        },
+        "accent": {
+          "$ref": "#/$defs/hex",
+          "description": "Focus rings, selection, active rail item. Never text: links and accent text use accent-text. Checked at 3:1 on every ground."
+        },
+        "accent-text": {
+          "$ref": "#/$defs/hex",
+          "description": "Links and accent text on bg/surface."
+        },
+        "accent-fill": {
+          "$ref": "#/$defs/hex",
+          "description": "Primary button fill."
+        },
+        "on-accent": {
+          "$ref": "#/$defs/hex",
+          "description": "Text on accent-fill."
+        },
+        "ok": { "$ref": "#/$defs/hex" },
+        "warn": { "$ref": "#/$defs/hex" },
+        "bad": { "$ref": "#/$defs/hex" },
+        "remote": {
+          "$ref": "#/$defs/hex",
+          "description": "Remote (cloud) services."
+        },
+        "shadow": {
+          "$ref": "#/$defs/cssValue",
+          "description": "box-shadow for popovers."
+        },
+        "bar": {
+          "$ref": "#/$defs/cssValue",
+          "description": "Top bar accent stripe: a color or a linear-gradient(), or none."
+        }
+      }
+    },
+    "type": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sans": {
+          "$ref": "#/$defs/cssValue",
+          "description": "Body font stack."
+        },
+        "mono": { "$ref": "#/$defs/cssValue" },
+        "display": {
+          "$ref": "#/$defs/cssValue",
+          "description": "Headings and the product name; defaults to sans."
+        },
+        "ja": {
+          "$ref": "#/$defs/cssValue",
+          "description": "Fallback stack for Japanese text."
+        }
+      }
+    },
+    "shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "radius": {
+          "type": "string",
+          "pattern": "^(0|\\d{1,2}(\\.\\d+)?(px|rem))$"
+        },
+        "radius-button": {
+          "type": "string",
+          "pattern": "^(0|\\d{1,2}(\\.\\d+)?(px|rem)|50%)$"
+        },
+        "density": { "enum": ["compact", "comfortable"] }
+      }
+    },
+    "mark": {
+      "description": "The brand mark in the top bar: an SVG file in the theme (shown as an image, never inlined), or text drawn by Den.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "svg": { "$ref": "#/$defs/path" },
+        "svg_dark": {
+          "$ref": "#/$defs/path",
+          "description": "A dark-mode variant, if the mark needs one."
+        },
+        "text": { "type": "string", "maxLength": 3 },
+        "shape": { "enum": ["square", "rounded", "circle"] }
+      }
+    },
+    "font": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "license", "files"],
+      "properties": {
+        "family": { "type": "string", "pattern": "^[A-Za-z0-9 ._-]{1,60}$" },
+        "license": {
+          "type": "string",
+          "description": "SPDX identifier, e.g. OFL-1.1."
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path"],
+            "properties": {
+              "path": { "$ref": "#/$defs/fontPath" },
+              "weight": {
+                "type": "string",
+                "pattern": "^([1-9]00)( [1-9]00)?$"
+              },
+              "style": { "enum": ["normal", "italic"] }
+            }
+          }
+        }
+      }
+    },
+    "path": {
+      "description": "A file inside the theme's directory: relative, no '..'.",
+      "type": "string",
+      "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.svg$"
+    },
+    "fontPath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.woff2$"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den",
-  "version": "0.2.2",
+  "version": "0.3.0-dev.0",
   "description": "Den: a local multi-repo dev orchestrator, HTTPS edge and E2E harness",
   "type": "module",
   "bin": {
@@ -12,6 +12,8 @@
     "!src/**/*.test.ts",
     "make/",
     "service/",
+    "schemas/",
+    "themes/",
     "scripts/auth-configure.ts",
     "scripts/heal-config.ts",
     "scripts/jsonl-playwright-reporter.js",

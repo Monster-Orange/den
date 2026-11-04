@@ -1,0 +1,71 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Monster-Orange/den/main/schemas/den.theme.v1.json",
+  "schema": "den.theme/v1",
+  "id": "den",
+  "name": "Den",
+  "version": "2.0.0",
+  "description": "Den's default: a sheltered workspace in walnut and umber neutrals with a moss-green accent. System fonts.",
+  "author": "Monster Orange",
+  "license": "MIT",
+  "homepage": "https://github.com/Monster-Orange/den-themes/tree/main/themes/den",
+  "default_mode": "dark",
+  "type": {
+    "sans": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+    "mono": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, monospace",
+    "display": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+    "ja": "\"Hiragino Sans\", \"Hiragino Kaku Gothic ProN\", \"Noto Sans JP\", \"Yu Gothic\", Meiryo, sans-serif"
+  },
+  "shape": {
+    "radius": "8px",
+    "radius-button": "6px",
+    "density": "comfortable"
+  },
+  "mark": {
+    "svg": "mark.svg",
+    "shape": "rounded"
+  },
+  "modes": {
+    "light": {
+      "bg": "#f2eee8",
+      "surface": "#fbf9f6",
+      "raised": "#ffffff",
+      "sunken": "#e8e2d9",
+      "text": "#241e18",
+      "muted": "#5c5247",
+      "faint": "#6d6358",
+      "border": "#dcd3c7",
+      "border-strong": "#8d7f6d",
+      "accent": "#557a2a",
+      "accent-text": "#4a6b23",
+      "accent-fill": "#4a6b23",
+      "on-accent": "#ffffff",
+      "ok": "#2e7246",
+      "warn": "#8c5a10",
+      "bad": "#b0392a",
+      "remote": "#23677a",
+      "shadow": "0 8px 24px rgb(48 36 24 / 0.14)",
+      "bar": "linear-gradient(90deg, #557a2a 0%, #8a6a48 100%)"
+    },
+    "dark": {
+      "bg": "#1a1612",
+      "surface": "#221d18",
+      "raised": "#2b251f",
+      "sunken": "#14110e",
+      "text": "#ede6dc",
+      "muted": "#b5aa9b",
+      "faint": "#978b7e",
+      "border": "#3a322a",
+      "border-strong": "#7a6d5d",
+      "accent": "#9bbb63",
+      "accent-text": "#a8c672",
+      "accent-fill": "#9bbb63",
+      "on-accent": "#1a1612",
+      "ok": "#6fc28f",
+      "warn": "#e0a84e",
+      "bad": "#ef7f6a",
+      "remote": "#74b8c8",
+      "shadow": "0 12px 30px rgb(0 0 0 / 0.5)",
+      "bar": "linear-gradient(90deg, #9bbb63 0%, #a07c55 100%)"
+    }
+  }
+}

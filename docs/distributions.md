@@ -276,6 +276,38 @@ brand:
 Runtime names (env vars, files, directories) always come from `den.yml`,
 never from the brand.
 
+## Themes
+
+A theme is the web UI's look and feel: color tokens for dark and light, type,
+shape and a mark, in a `den-theme.json` that follows the
+[`den.theme/v1` schema](../schemas/den.theme.v1.json). Den ships its own theme
+(`den`). Others live in git repos; Monster-Orange/den-themes is the public set
+and the guide to making your own
+(<https://github.com/Monster-Orange/den-themes>).
+
+```sh
+<cli> theme add github.com/Monster-Orange/den-themes/themes/paper@paper/v1.0.0
+<cli> theme list
+<cli> theme validate path/to/my-theme
+<cli> theme remove paper
+```
+
+- `add` takes an exact ref: a tag or a full commit SHA. A branch is refused
+  unless `--track` (for theme authors), which the lock records as tracking.
+- It validates the theme (schema, contrast in both modes, files) and copies it
+  into the distribution's `themes/<id>/`, with an entry in `themes.lock.json`
+  (source, ref, commit, content hash). Commit both: a fresh clone has the
+  theme offline, and theme changes show up as reviewable diffs.
+- `list` checks every theme against its lock and fails if one has changed.
+- Contrast: every text token (`text`, `muted`, `faint`, `accent-text`, and
+  the status colors) at 4.5:1 on every ground (`bg`, `surface`, `raised`,
+  `sunken`); `accent` and `border-strong` at 3:1; `on-accent` on
+  `accent-fill` at 4.5:1. `accent` is never text: Den draws links and accent
+  text in `accent-text`.
+
+Choosing the active theme, and the web UI applying it, come with the 0.3.0
+shell.
+
 ## The bin shim
 
 `bin/<cli>` is three lines of sh: it names the distribution root and runs
