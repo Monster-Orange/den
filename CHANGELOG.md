@@ -11,7 +11,7 @@ config and manifest changes a distribution must make to move to it under
 - **Themes (`den.theme/v1`).** The contract is `schemas/den.theme.v1.json`:
   color tokens for dark and light, type, shape, a mark and self-hosted fonts.
   `<cli> theme add <repo>[/<subpath>]@<tag|commit>` validates a theme and
-  vendors it into the distribution (`plugins/<id>/`, `plugins.lock.json`, shared with future plugin kinds). `theme add` never replaces a plugin dir it did not vendor (a local, unlocked plugin) or another kind's lock entry; `theme list` fails on a leftover 0.3.0-dev.0 `themes.lock.json`, naming it; `theme add` warns that a `file://` source is a local path. A theme's and a font's `license` follow one rule: an SPDX expression, never UNLICENSED/NONE;
+  vendors it into the distribution (`plugins/<id>/`, `plugins.lock.json`, shared with future plugin kinds). `theme add` never replaces a plugin dir it did not vendor (a local, unlocked plugin) or another kind's lock entry; `theme list` fails on a leftover 0.3.0-dev.0 `themes.lock.json`, naming it; `theme add` warns that a `file://` source is a local path. A theme's and a font's `license` follow one rule: an SPDX expression, never UNLICENSED/NONE. `theme list` reports a theme that fails this Den's rules as "no longer valid" with the reasons, apart from "changed since it was added"; validate explains the license and CSS-value rules instead of printing "must NOT be valid";
   `theme list` checks themes against the lock; `theme validate` and `theme
   remove`. Contrast is checked per pair in both modes. A branch ref needs
   `--track`. Den bundles its own theme, `den` 2.0.0. The public set and the

@@ -222,6 +222,26 @@ describe("theme add, list, remove", () => {
     expect(lines.join("\n")).toMatch(/changed since it was added/);
   });
 
+  it("list says a theme fails this Den's rules, not that it changed", async () => {
+    const f = path.join(dist, "plugins", "sample", "den-theme.json");
+    const before = fs.readFileSync(f, "utf-8");
+    fs.writeFileSync(
+      f,
+      JSON.stringify({
+        ...(JSON.parse(before) as object),
+        license: "UNLICENSED",
+      }),
+    );
+    lines.length = 0;
+    expect(await cmdTheme(["list"], { distRoot: dist, log })).toBe(1);
+    const out = lines.join("\n");
+    expect(out).toMatch(
+      /no longer valid under this .*: \/license: license must be an SPDX/,
+    );
+    expect(out).not.toMatch(/changed since it was added/);
+    fs.writeFileSync(f, before);
+  });
+
   it("remove deletes the theme and its lock entry", async () => {
     expect(await cmdTheme(["remove", "sample"], { distRoot: dist, log })).toBe(
       0,

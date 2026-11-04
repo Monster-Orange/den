@@ -198,6 +198,26 @@ export function themeFiles(theme: ThemeManifest): string[] {
   ].filter((p): p is string => !!p);
 }
 
+const SPDX_MESSAGE =
+  "license must be an SPDX expression (e.g. MIT, OFL-1.1, LicenseRef-x); UNLICENSED, NONE and NOASSERTION are refused";
+const CSS_MESSAGE =
+  "must be a plain CSS value: no ; { } < > or backslash, url(), @import or expression()";
+
+/**
+ * Say what a rule means where the schema error would not: a `not` clause
+ * reports only "must NOT be valid", and the SPDX pattern is unreadable.
+ */
+function friendlyMessage(e: {
+  instancePath: string;
+  keyword: string;
+}): string | null {
+  const license = /\/license$/.test(e.instancePath);
+  if (license && (e.keyword === "not" || e.keyword === "pattern"))
+    return SPDX_MESSAGE;
+  if (e.keyword === "not") return CSS_MESSAGE;
+  return null;
+}
+
 /**
  * Validate the theme in `dir`. With `expectId`, the manifest's id must match
  * (a repo of several themes keeps each under themes/<id>/).
@@ -228,11 +248,13 @@ export function validateThemeDir(
       ok: false,
       issues: (validate.errors ?? []).map((e) => ({
         at: e.instancePath,
-        message: `${e.message ?? "invalid"}${
-          e.params && "additionalProperty" in e.params
-            ? ` (${String(e.params.additionalProperty)})`
-            : ""
-        }`,
+        message:
+          friendlyMessage(e) ??
+          `${e.message ?? "invalid"}${
+            e.params && "additionalProperty" in e.params
+              ? ` (${String(e.params.additionalProperty)})`
+              : ""
+          }`,
       })),
       contrast: [],
     };

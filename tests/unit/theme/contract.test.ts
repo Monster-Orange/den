@@ -147,7 +147,11 @@ describe("validateThemeDir", () => {
     ]) {
       const m = base();
       m.modes.dark.shadow = shadow;
-      expect(validateThemeDir(theme(m)).ok).toBe(false);
+      const r = validateThemeDir(theme(m));
+      expect(r.ok).toBe(false);
+      expect(r.issues.map((i) => i.message).join()).not.toMatch(
+        /must NOT be valid/,
+      );
     }
   });
 
@@ -232,6 +236,16 @@ describe("validateThemeDir", () => {
         "/fonts/0/license",
       );
     }
+    const u = base();
+    u.license = "UNLICENSED";
+    expect(validateThemeDir(theme(u)).issues).toEqual([
+      {
+        at: "/license",
+        message: expect.stringMatching(
+          /SPDX expression .*UNLICENSED, NONE and NOASSERTION are refused/,
+        ),
+      },
+    ]);
     const m = base();
     m.license = "MIT OR Apache-2.0";
     expect(validateThemeDir(theme(m)).ok).toBe(true);

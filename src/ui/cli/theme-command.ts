@@ -164,6 +164,16 @@ function licenseFiles(dir: string): string[] {
   return out;
 }
 
+/** One line naming what a failed validation found. */
+function validationSummary(v: ThemeValidation): string {
+  return [
+    ...v.issues.map((i) => (i.at ? `${i.at}: ${i.message}` : i.message)),
+    ...v.contrast.map(
+      (c) => `${c.mode}: ${c.fg} on ${c.bg} is ${c.ratio}, needs ${c.min}`,
+    ),
+  ].join("; ");
+}
+
 /** The lock's theme entries (the lock is shared with other plugin kinds). */
 function themesIn(lock: Record<string, LockEntry>): LockEntry[] {
   return Object.values(lock).filter((e) => e.kinds?.includes("theme"));
@@ -412,11 +422,16 @@ export async function cmdTheme(
         const dir = themeDirFor(distRoot, e.id);
         const v = fs.existsSync(dir) ? validateThemeDir(dir) : null;
         const now = v?.ok ? hashTheme(dir, themeContent(dir, v)) : null;
+        // Invalid is not the same as changed: a theme added under an older
+        // Den can be byte-identical and still fail this Den's rules.
+        const problems = v && !v.ok ? validationSummary(v) : "";
         const state = !v
           ? chalk.red("missing: run theme add again")
-          : now !== e.sha256
-            ? chalk.red("changed since it was added")
-            : chalk.gray(`${e.source}@${e.ref}`);
+          : !v.ok
+            ? chalk.red(`no longer valid under this ${cli}: ${problems}`)
+            : now !== e.sha256
+              ? chalk.red("changed since it was added")
+              : chalk.gray(`${e.source}@${e.ref}`);
         if (!v || now !== e.sha256) ok = false;
         log(`  ${e.id.padEnd(14)} ${e.version.padEnd(8)} ${state}`);
       }
