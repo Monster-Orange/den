@@ -1,0 +1,10 @@
+{
+  "name": "@den/test",
+  "version": "1.0.0",
+  "description": "den synthetic test fixtures",
+  "main": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "type": "module"
+}

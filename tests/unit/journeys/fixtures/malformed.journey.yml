@@ -1,0 +1,5 @@
+name: malformed
+persona:
+  role: user
+  brief: [unclosed
+surface: api

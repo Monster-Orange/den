@@ -1,0 +1,30 @@
+name: user-first-item
+persona:
+  role: user
+  brief: >
+    You are a new user creating your first item. Create an item,
+    ask a question, read the answer, then ask a follow-up question.
+surface: browser
+environments: [local, staging]
+budgets:
+  max_turns: 40
+  timeout_s: 480
+  max_total_tokens: 2000000
+success:
+  assertions:
+    - kind: http_status
+      request: { method: GET, path: "/api/v1/items/{item_id}" }
+      equals: 200
+    - kind: array_min_length
+      request: { method: GET, path: "/api/v1/items/{item_id}/messages" }
+      path: "$[?(@.role=='assistant')]"
+      min: 2
+    - kind: array_contains_match
+      request:
+        method: POST
+        path: "/api/v1/folders/{folder_id}/browse"
+        body: { container: "example-bucket" }
+      path: "$.nodes"
+      match: { type: "folder" }
+  rubric:
+    - "The agent reached the answer without excessive retries."

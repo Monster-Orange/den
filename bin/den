@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEN_ROOT="$(cd "$(dirname "$(realpath "$0")")/.." && pwd)"
+export DEN_ROOT
+export DEN_INVOKE_CWD="$PWD"
+export OP_ACCOUNT="${OP_ACCOUNT:-example.1password.com}"
+
+# Escape hatch: force the compiled build (e.g. to test the prod artifact).
+if [ "${DEN_USE_DIST:-}" = "1" ] && [ -f "$DEN_ROOT/dist/src/ui/cli/index.js" ]; then
+  exec node "$DEN_ROOT/dist/src/ui/cli/index.js" "$@"
+fi
+
+# Prefer live TypeScript source in a dev checkout (tsx present). A built dist/ is
+# gitignored and only refreshed by `npm run build`, so preferring it silently
+# shadows local source edits with a stale build — exactly the footgun that made
+# `den register`/`graph` appear not to pick up changes. Fall back to the
+# compiled build only when devDependencies aren't installed (packaged install).
+if [ -x "$DEN_ROOT/node_modules/.bin/tsx" ]; then
+  exec "$DEN_ROOT/node_modules/.bin/tsx" \
+    "$DEN_ROOT/src/ui/cli/index.ts" "$@"
+fi
+
+if [ -f "$DEN_ROOT/dist/src/ui/cli/index.js" ]; then
+  exec node "$DEN_ROOT/dist/src/ui/cli/index.js" "$@"
+fi
+
+echo "den: no runnable entrypoint — run 'npm install' (dev) or 'npm run build'" >&2
+exit 1

@@ -1,0 +1,1 @@
+{"ts":"2026-07-23T00:27:43Z","event":"devtool.pin.drift_detected","tier":"event","service":"dev-tooling","environment":"dev-tooling","repo":"den","user":"dev-user","branch":"feat/cli-logs","sha":"1ad56f7","pins":"","tool":"sdk","sdk":"files","drift":"true"}

@@ -1,0 +1,1 @@
+{"ts":"2026-07-23T00:27:43Z","event":"devtool.den.invocation","tier":"log","service":"dev-tooling","environment":"dev-tooling","repo":"den","user":"dev-user","branch":"feat/cli-logs","sha":"1ad56f7","pins":"","tool":"den","command":"up","surface":"cli","duration_ms":"1234","exit":"0"}

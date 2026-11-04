@@ -1,0 +1,20 @@
+{
+  "name": "production",
+  "baseUrls": {
+    "web": "https://app.example.com",
+    "api": "https://api.example.com",
+    "services": {}
+  },
+  "auth": {
+    "provider": "cognito",
+    "cognito": {
+      "region": "us-east-1",
+      "clientId": "REPLACE_WITH_APP_CLIENT_ID"
+    }
+  },
+  "timeouts": {
+    "api": 30000,
+    "pageLoad": 60000
+  },
+  "notes": "Example environment. Replace the URLs and auth with your own. Run read-only probes only."
+}

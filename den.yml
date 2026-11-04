@@ -1,0 +1,4 @@
+# Den's own checkout runs as Den. A distribution sets its own product here
+# (see src/shared/profile.ts for every field and its default).
+product:
+  name: den

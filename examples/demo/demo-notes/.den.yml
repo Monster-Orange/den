@@ -1,0 +1,13 @@
+# demo-notes: unrelated to the other two; proves a standalone repo.
+version: 1
+name: demo-notes
+compose:
+  files: [docker-compose.yml]
+  routes:
+    app: notes:8080        # https://app.demo-notes.<edge domain>
+services:
+  demo-notes:
+    commands:
+      local:
+        setup: make setup
+        preflight: make test

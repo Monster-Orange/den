@@ -1,0 +1,589 @@
+/**
+ * Shared health-check primitives.
+ *
+ * Single source of truth for HTTP and shell pings — used by both the web
+ * server's /api/health endpoint and the CLI's status command.
+ */
+
+import { hasRuntime, repoKind } from "../repo-kind.js";
+import * as https from "https";
+import * as tls from "tls";
+import { readEdgeConfig } from "../edge/config.js";
+import { composeHealthCmd } from "../stacks/manifest-commands.js";
+import * as fs from "fs";
+import * as path from "path";
+import * as dns from "dns";
+import { spawn } from "child_process";
+import { HEALTH_CHECK_TIMEOUT_MS, CLI_SPAWN_TIMEOUT_MS } from "../constants.js";
+import { readManifest } from "../manifest/read-manifest.js";
+import { readCatalog } from "./catalog.js";
+import {
+  getActiveWorkspace,
+  getFocusedWorkspaceName,
+  listWorkspaceServices,
+  readManifestAnyBranch,
+} from "./workspaces.js";
+import type { ResolvedService, ServiceCatalog } from "../types/index.js";
+import type { Environment } from "../types/index.js";
+
+import { product } from "../product.js";
+export interface PingResult {
+  ok: boolean;
+  status?: number;
+  error?: string;
+}
+
+export interface ServiceHealthResult {
+  address: string;
+  repoName: string;
+  subsystem: string;
+  repoPath: string;
+  mode: "dev-managed" | "managed";
+  branch: string | null;
+  health: "ok" | "error" | "unknown";
+  healthDetail?: string;
+}
+
+// ── Name resolution ───────────────────────────────────────────────────────────
+// Health checks resolve names with c-ares and connect by IP instead of letting
+// fetch() call getaddrinfo.
+//
+// getaddrinfo runs on the 4-thread libuv pool and its requests are
+// UNCANCELLABLE — aborting the fetch does not cancel the lookup. One slow
+// resolver episode strands a lookup on every pool thread, and every later
+// lookup in the process then queues behind them forever while each poll adds
+// ~21 more. Observed in the long-lived web server: 84k pending
+// GetAddrInfoReqWrap, ~1 GB RSS, and every HTTP check reporting a false
+// "timeout" while the very same service answered by IP in 11ms. Only a restart
+// cleared it, and it re-wedged within 16 minutes. c-ares runs on the event
+// loop, honours its own timeout, and cannot wedge the pool.
+//
+// Bare names (shop-api) resolve through opctl's per-service /etc/resolver
+// files. c-ares must be pointed at that resolver explicitly because, unlike
+// getaddrinfo, it does not read /etc/resolver. Aiming there also skips those
+// files' `nameserver 8.8.8.8` fallback, so a missed lookup can no longer hang
+// on Google trying to resolve a private name.
+//
+// Deliberately NOT cached: opctl containers take dynamic IPs (no IPAMConfig),
+// so a restarted service can move. Resolution costs ~0ms, so every check
+// re-resolves and DNS stays authoritative — strictly fresher than getaddrinfo,
+// whose answers the OS caches for the record TTL (60s here).
+const DNS_TIMEOUT_MS = 1_500;
+const LOCAL_RESOLVER = "127.0.0.1";
+
+function isIpLiteral(host: string): boolean {
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":");
+}
+
+let _bareResolver: dns.Resolver | null = null;
+let _systemResolver: dns.Resolver | null = null;
+
+function resolverFor(hostname: string): dns.Resolver {
+  // Bare names are opctl's and live on the local resolver; dotted names are
+  // real domains and use the system's configured servers.
+  if (!hostname.includes(".")) {
+    if (!_bareResolver) {
+      _bareResolver = new dns.Resolver({ timeout: DNS_TIMEOUT_MS, tries: 1 });
+      _bareResolver.setServers([LOCAL_RESOLVER]);
+    }
+    return _bareResolver;
+  }
+  if (!_systemResolver) {
+    _systemResolver = new dns.Resolver({ timeout: DNS_TIMEOUT_MS, tries: 1 });
+  }
+  return _systemResolver;
+}
+
+/**
+ * Test seam. Unit tests mock `fetch` and assert on the URL it receives; without
+ * this they would perform real DNS and assert against whatever IP this machine
+ * happens to hand out. Inject an identity resolver to keep them hermetic.
+ */
+let _resolveHost: (hostname: string) => Promise<string | null> =
+  resolveHostViaCares;
+export function __setResolveHostForTests(
+  fn: ((hostname: string) => Promise<string | null>) | null,
+): void {
+  _resolveHost = fn ?? resolveHostViaCares;
+}
+
+/** Resolve to an IPv4 address via c-ares. null = could not resolve. */
+function resolveHostViaCares(hostname: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v: string | null): void => {
+      if (settled) return;
+      settled = true;
+      resolve(v);
+    };
+    // Backstop: c-ares' own timeout should fire first, but a health check must
+    // never wait on resolution longer than its own budget.
+    const guard = setTimeout(() => done(null), DNS_TIMEOUT_MS + 250);
+    try {
+      resolverFor(hostname).resolve4(hostname, (err, addrs) => {
+        clearTimeout(guard);
+        done(err || !addrs || addrs.length === 0 ? null : addrs[0]);
+      });
+    } catch {
+      clearTimeout(guard);
+      done(null);
+    }
+  });
+}
+
+/** `localhost` and `*.localhost` are this machine (RFC 6761); else c-ares. */
+async function resolveName(host: string): Promise<string | null> {
+  if (host === "localhost" || host.endsWith(".localhost")) return "127.0.0.1";
+  return _resolveHost(host);
+}
+
+/**
+ * Extra CAs trusted by HTTPS checks: the edge's own CA (its routes are signed
+ * by it), read once. Test seam: __setExtraCaForTests.
+ */
+let _extraCa: string[] | null = null;
+function extraCa(): string[] {
+  if (_extraCa) return _extraCa;
+  _extraCa = [];
+  try {
+    // The edge's own CA, and the CA it was pointed at (`edge.caroot`, e.g. the
+    // laptop's mkcert CA that signs the projects' certificates).
+    const cfg = readEdgeConfig();
+    const pems = [path.join(cfg.stateDir, "ca", "rootCA.pem")];
+    if (cfg.caroot) pems.push(path.join(cfg.caroot, "rootCA.pem"));
+    for (const pem of pems)
+      if (fs.existsSync(pem)) _extraCa.push(fs.readFileSync(pem, "utf-8"));
+  } catch {
+    /* no edge config — public roots only */
+  }
+  return _extraCa;
+}
+export function __setExtraCaForTests(pems: string[] | null): void {
+  _extraCa = pems;
+}
+
+/**
+ * HTTPS check. Connects to the c-ares-resolved IP (see above) but keeps the
+ * hostname for SNI and certificate verification; rewriting the URL to the IP,
+ * as plain HTTP does, makes every TLS check fail.
+ */
+async function pingHttps(parsed: URL, timeoutMs: number): Promise<PingResult> {
+  const host = parsed.hostname;
+  let ip = host;
+  if (!isIpLiteral(host)) {
+    const r = await resolveName(host);
+    if (!r) return { ok: false, error: "dns" };
+    ip = r;
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v: PingResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(v);
+    };
+    const req = https.request(
+      parsed,
+      {
+        method: "GET",
+        servername: isIpLiteral(host) ? undefined : host,
+        ca: [...tls.rootCertificates, ...extraCa()],
+        lookup: (_h, opts, cb) => {
+          // Node may ask for all addresses (autoSelectFamily).
+          if ((opts as { all?: boolean }).all)
+            (
+              cb as unknown as (
+                e: null,
+                a: { address: string; family: number }[],
+              ) => void
+            )(null, [{ address: ip, family: ip.includes(":") ? 6 : 4 }]);
+          else cb(null, ip, ip.includes(":") ? 6 : 4);
+        },
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        res.resume(); // discard the body
+        done({
+          ok: status < 300 || (status >= 400 && status < 500),
+          status,
+        });
+      },
+    );
+    const timer = setTimeout(() => {
+      req.destroy();
+      done({ ok: false, error: "timeout" });
+    }, timeoutMs);
+    req.on("error", (e) =>
+      done({ ok: false, error: e.message || "unreachable" }),
+    );
+    req.end();
+  });
+}
+
+// ── Ping primitives ───────────────────────────────────────────────────────────
+
+async function pingOnce(
+  url: string,
+  timeoutMs: number = HEALTH_CHECK_TIMEOUT_MS,
+): Promise<PingResult> {
+  let target = url;
+  let hostHeader: string | undefined;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+    if (parsed.protocol === "https:") return await pingHttps(parsed, timeoutMs);
+    if (host !== "localhost" && !isIpLiteral(host)) {
+      const ip = await resolveName(host);
+      // A name that will not resolve is down — say so in 1ms instead of
+      // burning the full timeout and calling it "timeout", which read as a
+      // slow service when it was really a missing DNS record.
+      if (!ip) return { ok: false, error: "dns" };
+      hostHeader = parsed.host; // name[:port] — preserves vhost routing
+      parsed.hostname = ip;
+      target = parsed.toString();
+    }
+  } catch {
+    /* unparseable URL — leave it alone and let fetch report the failure */
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(target, {
+      signal: controller.signal,
+      redirect: "manual",
+      ...(hostHeader ? { headers: { Host: hostHeader } } : {}),
+    });
+    clearTimeout(timer);
+    // 2xx = healthy. 4xx = healthy (service is up; auth/route 4xx still proves it's responding).
+    // 3xx = unhealthy: with redirect:"manual", a redirect means "go verify somewhere else"
+    // and we haven't confirmed anything. Guards against hostname-to-AWS-ALB resolution
+    // (e.g. VPN / /etc/hosts) returning 301 on port 80 for services that actually run
+    // on a different port — the previous `< 500` check showed those as green.
+    // 5xx = unhealthy (service errored).
+    const ok = res.status < 300 || (res.status >= 400 && res.status < 500);
+    // Discard the body: only the status matters, and unconsumed bodies pin
+    // sockets in the long-lived web server (one leak per poll adds up).
+    void res.body?.cancel().catch(() => {});
+    return { ok, status: res.status };
+  } catch (e: unknown) {
+    clearTimeout(timer);
+    const err = e as Error;
+    return {
+      ok: false,
+      error:
+        err.name === "AbortError" ? "timeout" : err.message || "unreachable",
+    };
+  }
+}
+
+/**
+ * Ping an HTTP/HTTPS URL. For Docker-style hostnames (no dots, not localhost)
+ * automatically retries against localhost on the same port as a fallback —
+ * these hostnames only resolve inside Docker itself.
+ */
+/** Fast timeout for the localhost fallback ping — localhost should respond in ms. */
+const LOCALHOST_FALLBACK_TIMEOUT_MS = 1_500;
+
+export async function pingHttp(
+  url: string,
+  timeoutMs: number = HEALTH_CHECK_TIMEOUT_MS,
+): Promise<PingResult> {
+  const result = await pingOnce(url, timeoutMs);
+  if (!result.ok) {
+    // Fall back to localhost for Docker-style hostnames regardless of how the
+    // first ping failed. Timeouts on the primary are legitimate candidates for
+    // retry: on macOS, VPN/`/etc/hosts` can resolve a Docker hostname to an
+    // AWS ALB on the wrong port, which hangs until abort — skipping the retry
+    // showed the service red even when the local container was up. We use a
+    // short timeout for the fallback since localhost should respond in ms.
+    try {
+      const parsed = new URL(url);
+      // NO fallback for default-port-80 URLs: opctl DNS resolves bare names
+      // (http://<repo>/healthz) on the host directly, so a network failure
+      // there means the service is genuinely down — and localhost:80 belongs
+      // to whichever OTHER container happens to publish host port 80 (e.g.
+      // shop-web), which both spams that service's logs with foreign
+      // /healthz probes every poll and risks reporting the wrong service.
+      const explicitPort = parsed.port !== "" && parsed.port !== "80";
+      if (
+        explicitPort &&
+        parsed.hostname !== "localhost" &&
+        !parsed.hostname.includes(".")
+      ) {
+        // Rewrite only the hostname so the port, path and query are preserved
+        // (string-concatenating protocol+port dropped /healthz and emitted a
+        // stray trailing colon for default-port URLs like http://shop-api/healthz).
+        parsed.hostname = "localhost";
+        const fb = await pingOnce(
+          parsed.toString(),
+          LOCALHOST_FALLBACK_TIMEOUT_MS,
+        );
+        // On the fallback, only 2xx proves the service is up: localhost:<port>
+        // may be a DIFFERENT service, and a 4xx from a stranger (which counts
+        // as "up" on a direct ping) must not green-light this one.
+        if (fb.ok && fb.status !== undefined && fb.status >= 400) {
+          return {
+            ok: false,
+            status: fb.status,
+            error: "fallback got non-2xx",
+          };
+        }
+        return fb;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return result;
+}
+
+/**
+ * Run a shell command health check. Exit code 0 = ok.
+ * Pass extraEnv for AWS profile vars etc.
+ *
+ * `cwd` must be the service's repo path: health commands in .den.yml are
+ * repo-relative (e.g. `./scripts/orchestration/health.sh ddb`). Without it the
+ * relative path resolves against den's own directory and the shell exits 127
+ * (command not found) — which is exactly how a service whose local resources
+ * moved to infra-stack shows up red even when it's healthy.
+ */
+export async function pingShell(
+  cmd: string,
+  extraEnv: Record<string, string> = {},
+  cwd?: string,
+): Promise<PingResult> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (r: PingResult): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(guard);
+      resolve(r);
+    };
+    const proc = spawn(cmd, [], {
+      shell: true,
+      timeout: CLI_SPAWN_TIMEOUT_MS,
+      env: { ...process.env, ...extraEnv },
+      cwd,
+      // Output is never read: piped stdio would block a chatty script once the
+      // 64KB buffer fills, and 'close' would wait on grandchildren holding the
+      // pipes open. Nothing consumes it — don't create it.
+      stdio: "ignore",
+    });
+    // 'exit', NOT 'close': close waits for stdio to drain, which a killed
+    // shell's surviving grandchildren can hold open forever — one wedged
+    // health check then hangs every /api/health poll for good. The guard
+    // timer backstops even a spawn timeout that never fires.
+    const guard = setTimeout(
+      () => settle({ ok: false, error: "health check timed out" }),
+      CLI_SPAWN_TIMEOUT_MS + 1_000,
+    );
+    proc.on("exit", (code) =>
+      settle(code === 0 ? { ok: true } : { ok: false, error: `exit ${code}` }),
+    );
+    proc.on("error", (err) => settle({ ok: false, error: err.message }));
+  });
+}
+
+// ── Per-service health check ──────────────────────────────────────────────────
+
+/**
+ * Check health for a single resolved service (reads its manifest).
+ * `env` defaults to "local".
+ */
+export async function checkServiceHealth(
+  resolved: ResolvedService,
+  env: Environment = "local",
+): Promise<ServiceHealthResult> {
+  const base: ServiceHealthResult = {
+    address: resolved.address,
+    repoName: resolved.repoName,
+    subsystem: resolved.subsystem,
+    repoPath: resolved.repoPath,
+    mode: resolved.mode,
+    branch: resolved.branch,
+    health: "unknown",
+  };
+
+  if (!fs.existsSync(resolved.repoPath)) {
+    return {
+      ...base,
+      health: "error",
+      healthDetail: `repo path does not exist — run ${product().cli} setup`,
+    };
+  }
+
+  const manifest = readManifest(resolved.repoPath);
+  if (!manifest) {
+    return {
+      ...base,
+      health: "unknown",
+      healthDetail: `no ${product().manifestYml}`,
+    };
+  }
+
+  const composeHealth =
+    env === "local"
+      ? composeHealthCmd(
+          manifest,
+          resolved.subsystem,
+          resolved.repoName,
+          getFocusedWorkspaceName() ?? "default",
+        )
+      : null;
+  const healthCfg =
+    manifest.services?.[resolved.subsystem]?.health?.[env] ??
+    (composeHealth
+      ? { type: "shell" as const, cmd: composeHealth }
+      : undefined);
+  if (!healthCfg) {
+    // Conventional local discovery: opctl exposes each system on the host at
+    // http://<repo> (port 80), and stack services serve /healthz. When the
+    // PRIMARY service (entrypoint, or a repo's only service) declares no local
+    // health check, probe the convention — a repo like jobs-runtime serves
+    // /healthz without listing it in the manifest. Success → "ok"; failure
+    // stays "unknown" (we can't distinguish "down" from "no endpoint").
+    const serviceKeys = Object.keys(manifest.services ?? {});
+    const isPrimary = manifest.entrypoint
+      ? resolved.subsystem === manifest.entrypoint
+      : serviceKeys.length === 1;
+    if (env === "local" && isPrimary) {
+      const conventional = `http://${resolved.repoName}/healthz`;
+      const probe = await pingHttp(conventional);
+      // Convention-GUESSED endpoint: only 2xx proves this service answered.
+      // pingHttp counts 4xx as ok (right for DECLARED endpoints, where 401/403
+      // still prove the service is up) — but on the bare port-80 convention,
+      // host DNS may hand the request to a different container or an ALB, and
+      // a stranger's 404 must not report "ok" (it would feed up's skip-healthy
+      // decision and skip starting a genuinely-down service).
+      if (probe.ok && probe.status !== undefined && probe.status < 300) {
+        return {
+          ...base,
+          health: "ok",
+          healthDetail: `conventional ${conventional}`,
+        };
+      }
+    }
+    return {
+      ...base,
+      health: "unknown",
+      healthDetail: "no health check configured",
+    };
+  }
+
+  const result =
+    healthCfg.type === "shell"
+      ? await pingShell(healthCfg.cmd, {}, resolved.repoPath)
+      : await pingHttp(healthCfg.url);
+
+  return {
+    ...base,
+    health: result.ok ? "ok" : "error",
+    healthDetail:
+      result.error ??
+      (!result.ok && result.status !== undefined
+        ? `http ${result.status}`
+        : undefined),
+  };
+}
+
+// ── Catalog-wide health scan ──────────────────────────────────────────────────
+
+/**
+ * Check health for every service visible in the active workspace.
+ * Uses listWorkspaceServices (which expands mono-repo entries and resolves
+ * paths from workspace entries) so CLI and server stay consistent.
+ *
+ * Falls back to iterating the catalog directly when no workspace is active
+ * (e.g. first-run before any workspace is configured).
+ */
+export async function checkCatalogHealth(
+  catalog: ServiceCatalog = readCatalog(),
+  env: Environment = "local",
+): Promise<ServiceHealthResult[]> {
+  const ws = getActiveWorkspace();
+
+  if (!ws) return [];
+  // Modules and libraries have no runtime, so no health of their own.
+  const resolved = listWorkspaceServices(ws.config, catalog, ws.name).filter(
+    (r) => hasRuntime(repoKind(r.repoPath)),
+  );
+
+  return Promise.all(resolved.map((r) => checkServiceHealth(r, env)));
+}
+
+/**
+ * Collapse a multi-service repo's per-subsystem health rows into a single
+ * repo-level row keyed on the manifest `entrypoint` (the front-door app).
+ *
+ * Stack app-repos declare their shared-infra sidecars (pg/redis/sqs/ddb/s3) as
+ * manifest `services:`, and those sidecars health-check the shared infra-stack
+ * stack — so they read "ok" whenever infra-stack is up, making a down app look
+ * partially running. Rolling up to the entrypoint answers the real question
+ * ("is this repo's service up?") instead.
+ *
+ * A repo is collapsed only when it has multiple rows AND its manifest declares an
+ * `entrypoint` present among them. Repos with no entrypoint (e.g. the
+ * infra-stack infra provider, whose subsystems ARE the meaningful services)
+ * keep their subsystem breakdown. Single-row repos pass through unchanged.
+ */
+export function rollupRepoHealth(
+  results: ServiceHealthResult[],
+  getEntrypoint: (repoName: string, repoPath: string) => string | undefined = (
+    repoName,
+    repoPath,
+  ) => readManifestAnyBranch(repoName, repoPath)?.entrypoint ?? undefined,
+): ServiceHealthResult[] {
+  // Group by repo, preserving first-seen order.
+  const groups = new Map<string, ServiceHealthResult[]>();
+  for (const r of results) {
+    const g = groups.get(r.repoName);
+    if (g) g.push(r);
+    else groups.set(r.repoName, [r]);
+  }
+
+  const out: ServiceHealthResult[] = [];
+  for (const [repoName, rows] of groups) {
+    if (rows.length <= 1) {
+      out.push(...rows);
+      continue;
+    }
+    const entrypoint = getEntrypoint(repoName, rows[0].repoPath);
+    const epRow = entrypoint
+      ? rows.find((r) => r.subsystem === entrypoint)
+      : undefined;
+    if (epRow) {
+      // Show the entrypoint's health under the clean repo-name address.
+      out.push({ ...epRow, address: repoName });
+    } else {
+      // No entrypoint → infra provider; keep the subsystem breakdown.
+      out.push(...rows);
+    }
+  }
+  return out;
+}
+
+/**
+ * Order health rows to match the derived graph's top-down flow — entry repo
+ * first, foundation last (e.g. shop-web … infra-stack), the same direction the
+ * web graph uses. Pass the repo-name order (typically `orderForDown(graph)`).
+ *
+ * Stable within a repo, so a multi-service repo's subsystems stay grouped in
+ * their original sub-order. Rows whose repo isn't in the graph sort to the end,
+ * preserving their relative order.
+ */
+export function sortByRepoOrder(
+  results: ServiceHealthResult[],
+  order: string[],
+): ServiceHealthResult[] {
+  const rank = new Map(order.map((repo, i) => [repo, i]));
+  return results
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => {
+      const ra = rank.get(a.r.repoName) ?? Number.POSITIVE_INFINITY;
+      const rb = rank.get(b.r.repoName) ?? Number.POSITIVE_INFINITY;
+      return ra - rb || a.i - b.i;
+    })
+    .map((x) => x.r);
+}

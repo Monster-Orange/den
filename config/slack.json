@@ -1,0 +1,13 @@
+{
+  "webhookUrl": "REPLACE_WITH_SLACK_WEBHOOK_URL",
+  "enabled": false,
+  "notifyOn": {
+    "testComplete": true,
+    "testFailure": true,
+    "thresholdExceeded": true
+  },
+  "thresholds": {
+    "failurePercentage": 10
+  },
+  "channel": "#e2e"
+}

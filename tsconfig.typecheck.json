@@ -1,0 +1,47 @@
+{
+  // Baselined `tsc --noEmit` gate config (wired into `make preflight`).
+  //
+  // The repo never had a compile gate, so a pre-existing error backlog exists.
+  // Every file listed under the "baseline exclusions" section below fails
+  // type-checking today for reasons that predate the gate. The goal is to
+  // shrink this list to zero: when you fix a file, DELETE its entry here so
+  // the gate starts protecting it. Never add new entries.
+  "extends": "./tsconfig.json",
+  "exclude": [
+    // Mirrors tsconfig.json's own excludes (exclude is replaced, not merged).
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "reports",
+    "results",
+    "credentials",
+
+    // ── Baseline exclusions (pre-existing type errors, tracked to fix) ──
+    // Playwright config option drift after @playwright/test 1.61 bump
+    // (unknown `timeout` in `use`, unused reporter locals):
+    "src/pillars/api/playwright.config.ts",
+    "src/pillars/browser/playwright.config.ts",
+    "src/pillars/smoke/playwright.config.ts",
+    // page.evaluate callbacks touching DOM globals (window/localStorage) that
+    // the ES-only lib config can't see; a per-file fix (typed evaluate args or
+    // scoped DOM declarations) is needed — a `/// <reference lib="dom" />`
+    // would leak the DOM lib into the whole program:
+    "src/shared/auth/token-injection.ts",
+    "src/pillars/browser/fixtures/index.ts",
+    // Zod v4 API drift (`required_error`, `$ZodIssue` field renames) — these
+    // files are being rewritten by the journeys manifest packet.
+    // migrate-manifest.ts itself is clean but imports schema.ts, which would
+    // pull the drifted file back into the checked program:
+    "src/shared/manifest/schema.ts",
+    "src/shared/manifest/validate-manifest.ts",
+    "src/shared/manifest/migrate-manifest.ts",
+    // The CLI entry + web-UI server are themselves type-clean (fixed by the
+    // CLI-registration packet), but including them as program roots pulls
+    // the zod-drifted manifest files above back into the checked program
+    // via their read-manifest imports. Delete these two entries together
+    // with the schema.ts/validate-manifest.ts entries once the zod v4
+    // drift is fixed:
+    "src/ui/cli/index.ts",
+    "src/ui/server/index.ts"
+  ]
+}

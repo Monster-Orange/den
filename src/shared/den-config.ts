@@ -1,0 +1,566 @@
+/**
+ * Den deployment configuration reader.
+ *
+ * Two-layer config system:
+ *   config/den.yml       — committed, shared deployment config
+ *   config/local/user.yml   — gitignored, per-engineer overrides
+ *
+ * The user file can toggle local_dev on/off without touching the shared config.
+ */
+
+import * as fs from "fs";
+import * as path from "path";
+import * as yaml from "yaml";
+import type { Environment, ReleaseSourceConfig } from "./types/index.js";
+import { getDistRoot } from "./paths.js";
+import type { SecretsConfig } from "./secrets/index.js";
+import type { OrgConfig } from "./org.js";
+import type { TestAccountsConfig } from "./auth/test-accounts.js";
+
+import { product } from "./product.js";
+const ROOT = getDistRoot();
+const DEN_CONFIG_PATH = path.join(ROOT, product().configFile);
+const USER_CONFIG_PATH = path.join(ROOT, "config", "local", "user.yml");
+
+/**
+ * Configuration for the derived dependency graph (`den graph` / derived
+ * `den up`). Lets the team tune discovery centrally without touching the
+ * target repos. Both fields merge over the built-in defaults in
+ * environment-manager/derivation/alias.ts.
+ */
+export interface GraphConfig {
+  /**
+   * Canonical repo-system name → alias tokens that appear in env-var URLs, SDK
+   * package names, and EventBridge `source` values. The keys also define the
+   * universe of known repo-systems for the graph.
+   * e.g. shop: [shop-api, shop-backend, backend, shop.backend]
+   */
+  aliases?: Record<string, string[]>;
+  /**
+   * A shared local-infra repo (databases, cloud emulators, …) that backends
+   * must wait for. Optional: with none set, no infra edges are derived. Any
+   * `signals` regex found in a repo's manifest, stack.yml, Makefile or env
+   * files means "this repo uses it"; a bare mention of the repo name is a
+   * weaker signal.
+   */
+  infra?: { repo: string; signals?: string[] };
+  /** GitHub orgs whose Go modules (`github.com/<org>/<repo>`) count as SDK imports. */
+  sdk_orgs?: string[];
+  /** npm scopes (`@scope/<repo>-sdk`) whose packages count as SDK imports. */
+  npm_scopes?: string[];
+  /**
+   * Per-edge overrides keyed "from->to":
+   *   hard   — functional-hard; gates startup (waited on). Injected if discovery missed it.
+   *   soft   — started, not gated.
+   *   ignore — keep in the graph + start set, but exclude from start ORDER
+   *            (for tolerant edges discovery can't classify, e.g. a redirect URL).
+   * e.g. "files-api->links-api": hard ; "billing-api->shop-web": ignore
+   */
+  edges?: Record<string, "hard" | "soft" | "ignore">;
+}
+
+export interface ApplicationConfig {
+  title?: string;
+  description?: string;
+  /** Who builds it (a team, vendor or person). */
+  owner?: string;
+  repos?: string[];
+}
+
+/**
+ * A single deployable repo in the release graph: which CD workflow to dispatch,
+ * which wave it belongs to (lower waves deploy first and gate later waves), and
+ * the ref it deploys by default.
+ */
+export interface ReleaseRepo {
+  /** Repo-system name (matches the graph node / catalog key). */
+  name: string;
+  /** GitHub Actions workflow file to dispatch (e.g. "cd.yml", "fullstack-cd.yml"). */
+  workflow: string;
+  /**
+   * Wave index — every repo in wave N dispatches together (staggered); wave N+1
+   * is gated on wave N concluding success. Ports release-all.sh's backend→app
+   * wave model, generalised to any number of waves.
+   */
+  wave: number;
+  /** Default ref to deploy (default "main"). */
+  ref?: string;
+  /** Participate in "Deploy all" by default (default true). */
+  enabled?: boolean;
+  /** Full GitHub slug when the repo is not in `org` ("Initech/initech-web"). */
+  gh?: string;
+  /** Per Den environment, where the deployed commit is read (manifest `release:`). */
+  sources?: Partial<Record<string, ReleaseSourceConfig>>;
+  /** Named entry in `release.profiles` giving this repo's per-env targets. */
+  profile?: string;
+  /** Per-environment overrides, merged over the profile's. */
+  targets?: Record<string, ReleaseTarget>;
+}
+
+/**
+ * How one den environment maps onto a repo's real CD. Every field is
+ * optional; the defaults are the den env name, the repo's `workflow`,
+ * and the repo's `ref` (or main).
+ */
+export interface ReleaseTarget {
+  /** GitHub Environment(s) the CD records deployments under. Several (one per tenant) give one row each. */
+  environment?: string | string[];
+  /** Workflow file(s) whose deployments count. The first is the one dispatched. */
+  workflow?: string | string[];
+  /** Branch this environment ships from (what "behind" is measured against). */
+  branch?: string;
+  /** workflow_dispatch inputs. Unset: `environment=<env>`, as before targets existed. */
+  inputs?: Record<string, string>;
+}
+
+/** A target with its defaults filled in. */
+export interface ResolvedReleaseTarget {
+  environments: string[];
+  workflows: string[];
+  branch: string;
+  inputs: Record<string, string>;
+}
+
+const asList = (v: string | string[] | undefined): string[] =>
+  v === undefined ? [] : Array.isArray(v) ? v : [v];
+
+/** Resolve repo × env to the GitHub environments, workflows and branch to check. */
+export function resolveReleaseTarget(
+  repo: ReleaseRepo,
+  env: string,
+  cfg: Pick<ReleaseConfig, "profiles">,
+): ResolvedReleaseTarget {
+  const fromProfile = repo.profile
+    ? cfg.profiles?.[repo.profile]?.[env]
+    : undefined;
+  const t: ReleaseTarget = { ...fromProfile, ...repo.targets?.[env] };
+  const environments = asList(t.environment);
+  const workflows = asList(t.workflow);
+  return {
+    environments: environments.length ? environments : [env],
+    workflows: workflows.length ? workflows : [repo.workflow],
+    branch: t.branch ?? repo.ref ?? "main",
+    inputs:
+      t.inputs ??
+      (fromProfile || repo.targets?.[env] ? {} : { environment: env }),
+  };
+}
+
+/**
+ * Release/deploy configuration for the web Release tab. Ports the wave model of
+ * infra-scripts/release-all.sh into den, made editable via the UX. Layered:
+ * committed config/den.yml `release:` is the team base, config/local/user.yml
+ * `release:` is a personal override (see readReleaseConfig).
+ */
+export interface ReleaseConfig {
+  /**
+   * Allow dispatching deploys from den. Off unless the team config
+   * (config/den.yml) sets `deploy: true`; user.yml and the web page can't
+   * turn it on. Off, the Release page is read-only and deploys are refused.
+   */
+  deploy: boolean;
+  /** GitHub org owning the repos. Falls back to `github_org` when omitted. */
+  org?: string;
+  /** Deployable GitHub environments, in display order (e.g. dev/sandbox/staging/prod). */
+  environments: string[];
+  /** Seconds to wait between dispatches within a wave (release-all.sh default: 20). */
+  staggerSeconds: number;
+  /** Seconds between monitor polls while waiting on runs (release-all.sh default: 15). */
+  pollSeconds: number;
+  /** Deployable repos and their wave assignment. */
+  repos: ReleaseRepo[];
+  /** Shared per-env targets, by name; a repo opts in with `profile:`. */
+  profiles?: Record<string, Record<string, ReleaseTarget>>;
+}
+
+export interface DenConfig {
+  /** Secrets backend strategy — see src/shared/secrets. */
+  secrets?: SecretsConfig;
+  /** Environments enabled for this deployment. */
+  environments: Environment[];
+  /**
+   * Root directory for local repo discovery, relative to the den directory.
+   * Defaults to ".." (the parent of den), which covers the common layout where
+   * den and all managed repos are siblings under a shared project root.
+   */
+  repos_root?: string;
+  /** GitHub org slug used to list org repos in the web UI (e.g. "Globex-Corp"). */
+  github_org?: string;
+  /**
+   * Display names (and an optional colour) for the GitHub orgs repos belong
+   * to, keyed by GitHub owner. Orgs are worked out from the catalog; this
+   * only names them.
+   */
+  orgs?: Record<string, { label?: string; color?: string }>;
+  /** Derived-dependency-graph tuning (aliases + edge overrides). */
+  graph?: GraphConfig;
+  /**
+   * The org this instance serves (Org > Application > Repo > Services).
+   * `id` defaults to `edge.org`, `title` to the id. See src/shared/org.ts.
+   */
+  org?: OrgConfig;
+  /**
+   * Applications: named sets of repos that ship together. A repo can also
+   * name its application in its own `.den.yml` (`application:`). A repo
+   * in no application is its own, named after the repo.
+   */
+  applications?: Record<string, ApplicationConfig>;
+  /** Release/deploy configuration for the web Release tab (team base). */
+  release?: ReleaseConfig;
+  /**
+   * Extra environment variables injected into every service command (up/down/
+   * restart/setup), so consumer repos receive den-resolved locations
+   * regardless of where their checkout lives. Values are templates; the only
+   * placeholder today is `{repo:<name>}` → the absolute path den resolves
+   * `<name>` to. A value already set in the caller's environment is never
+   * overridden; an empty string disables a built-in default. See `service-env.ts`.
+   */
+  service_env?: Record<string, string>;
+  /**
+   * Non-local health-URL templates `den init` scaffolds per environment,
+   * with `{repo}` substituted (e.g. dev: "https://{repo}.internal.dev.example.dev/
+   * healthz", production: "https://{repo}.internal.example.dev/healthz"). These
+   * feed the TEST scope — smoke/perf base-URL resolution reads the manifest's
+   * `health.<env>.url`. Defaults only: hand-edited URLs in an existing manifest
+   * are preserved on re-init.
+   */
+  env_health_urls?: Record<string, string>;
+  /** Security pillar (OWASP ZAP) policy — see readSecurityOwnedHosts. */
+  security?: SecurityConfig;
+  /**
+   * Shared test accounts (email + secrets-backend item per role) the test
+   * pillars log in as — see src/shared/auth/test-accounts.ts.
+   */
+  test_accounts?: TestAccountsConfig;
+  /**
+   * Out-of-the-box default workspace blueprint. On a fresh clone, den offers
+   * to seed the `default` workspace with these repos, all managed. See
+   * `default-workspace.ts`.
+   */
+  defaults?: {
+    workspace?: {
+      /** Branch managed clones track (default "main"). */
+      branch?: string;
+      /** Repo-system names to seed, all as managed clones. */
+      repos?: string[];
+      /** The entry repo the seed's dependency walk starts from (listed first). */
+      entry?: string;
+      /**
+       * Seeded repos that get `autostart: false` stamped on their workspace
+       * entry — the team default for systems a fresh clone should not start
+       * with workspace up (e.g. billing-api's `make up` opens an interactive
+       * Stripe tab). Personal thereafter: toggle per system in the web ⋮ menu.
+       */
+      autostart_off?: string[];
+    };
+  };
+}
+
+/**
+ * Per-engineer preferences stored in config/local/user.yml (gitignored).
+ * Only affects settings that should differ between engineers on the same team.
+ */
+export interface UserConfig {
+  /** Per-engineer secrets override (e.g. provider: env). */
+  secrets?: SecretsConfig;
+  /**
+   * Whether the local dev experience is enabled for this engineer.
+   * When false, the Local Dev tab is hidden and all workspace/service APIs
+   * are disabled. Defaults to true (local dev on by default).
+   */
+  local_dev?: boolean;
+  /** Whether `den up` / `den restart` should default to terminal tab mode. */
+  cli_tabs?: boolean;
+  /**
+   * Max lines a /logs pane keeps loaded (live tail + paged history).
+   * Default 20000. Raise via `den config log_window_lines=50000` when
+   * deeper in-pane digs are needed; full-history search is unaffected.
+   */
+  log_window_lines?: number;
+  /**
+   * Key of the preferred editor for "open in editor" actions (e.g. "vscode", "cursor").
+   * Stored as a key; the server resolves the actual executable path at open time.
+   */
+  editor?: string;
+  /**
+   * Key of the preferred terminal app for "open in terminal" actions (e.g. "ghostty", "iterm2").
+   * Stored as a key; the server resolves the app name at open time.
+   */
+  terminal?: string;
+  /**
+   * Per-language IDE overrides. Key = language slug (e.g. "go"), value = editor key (e.g. "idea").
+   * When opening a repo whose stack.yml declares a matching language, den uses this
+   * editor instead of the default.
+   */
+  editor_overrides?: Record<string, string>;
+  /**
+   * Personal override of the team release config (config/den.yml `release:`).
+   * Wave-assignment edits made in the Release tab are saved here so they stay
+   * local and never get committed. Merged field-wise over the team base.
+   */
+  release?: Partial<ReleaseConfig>;
+}
+
+const ALL_ENVIRONMENTS: Environment[] = [
+  "local",
+  "dev",
+  "sandbox",
+  "staging",
+  "beta",
+  "prod",
+  "production",
+];
+
+const DEFAULT_CONFIG: DenConfig = {
+  environments: ALL_ENVIRONMENTS,
+};
+
+/** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
+export function readUserConfig(): UserConfig {
+  try {
+    const raw = fs.readFileSync(USER_CONFIG_PATH, "utf-8");
+    const parsed = yaml.parse(raw) as UserConfig | null;
+    return parsed ?? {};
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw err;
+  }
+}
+
+/** Write the per-engineer user config to config/local/user.yml. */
+export function writeUserConfig(cfg: UserConfig): void {
+  fs.mkdirSync(path.dirname(USER_CONFIG_PATH), { recursive: true });
+  const lines = [
+    "# Per-engineer preferences — gitignored, never committed",
+    yaml.stringify(cfg).trimEnd(),
+  ];
+  fs.writeFileSync(USER_CONFIG_PATH, lines.join("\n") + "\n", "utf-8");
+}
+
+/** Merge a partial patch into config/local/user.yml without clobbering fields. */
+export function mergeUserConfig(patch: Partial<UserConfig>): UserConfig {
+  const current = readUserConfig();
+  const next: UserConfig = { ...current };
+
+  for (const [key, value] of Object.entries(patch) as Array<
+    [keyof UserConfig, UserConfig[keyof UserConfig] | undefined]
+  >) {
+    if (value === undefined) {
+      delete next[key];
+    } else {
+      next[key] = value as never;
+    }
+  }
+
+  writeUserConfig(next);
+  return next;
+}
+
+/**
+ * The GitHub org managed repos clone from. Den has no default: an org that
+ * needs one sets `github_org` in its config.
+ */
+export function requireGithubOrg(config: DenConfig = readDenConfig()): string {
+  const org = config.github_org?.trim();
+  if (!org)
+    throw new Error(
+      `github_org is not set: add \`github_org: <your-org>\` to ${DEN_CONFIG_PATH}`,
+    );
+  return org;
+}
+
+/**
+ * Read the effective den config, merging the shared deployment config with
+ * per-engineer overrides from config/local/user.yml.
+ */
+export function readDenConfig(): DenConfig {
+  // Read shared base config
+  let base: DenConfig;
+  try {
+    const raw = fs.readFileSync(DEN_CONFIG_PATH, "utf-8");
+    const parsed = yaml.parse(raw) as Partial<DenConfig> | null;
+    // `environments` may be malformed (scalar/object) in a hand-edited file —
+    // fall back to the default set rather than throwing on .filter below.
+    const envs = Array.isArray(parsed?.environments)
+      ? parsed.environments
+      : ALL_ENVIRONMENTS;
+    base = {
+      environments: envs.filter((e): e is Environment =>
+        ALL_ENVIRONMENTS.includes(e as Environment),
+      ),
+      repos_root: parsed?.repos_root,
+      github_org: parsed?.github_org,
+      orgs: parsed?.orgs,
+      graph: parsed?.graph,
+      org: parsed?.org,
+      applications: parsed?.applications,
+      release: parsed?.release,
+      service_env: parsed?.service_env,
+      env_health_urls: parsed?.env_health_urls,
+      security: parsed?.security,
+      test_accounts: parsed?.test_accounts,
+      defaults: parsed?.defaults,
+      secrets: parsed?.secrets,
+    };
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      base = { ...DEFAULT_CONFIG };
+    } else {
+      throw err;
+    }
+  }
+
+  // Apply per-engineer override: local_dev: false → strip "local" from environments
+  const user = readUserConfig();
+  if (user.local_dev === false) {
+    base.environments = base.environments.filter((e) => e !== "local");
+  }
+
+  return base;
+}
+
+/**
+ * Absolute path to the root directory where local repos are discovered.
+ * Defaults to the parent of the den root directory.
+ */
+export function getReposRoot(): string {
+  const config = readDenConfig();
+  return path.resolve(ROOT, config.repos_root ?? "..");
+}
+
+/** True when the `local` environment is enabled for this engineer. */
+export function isLocalEnabled(): boolean {
+  return readDenConfig().environments.includes("local");
+}
+
+// ── Security config (security pillar) ─────────────────────────────────────────
+
+/** `security:` in config/den.yml. */
+export interface SecurityConfig {
+  /**
+   * Hostnames the security pillar may point ZAP at. An entry matches that exact
+   * host or any subdomain of it (a leading "." is ignored). Extend per shell with
+   * DEN_SECURITY_EXTRA_HOSTS (comma-separated).
+   */
+  owned_hosts?: string[];
+  /**
+   * Also scan, unlisted, every locally run service with an HTTP health URL
+   * (unless its manifest says `security.skip`). Default false: only the
+   * targets manifests declare under `security:` are scanned.
+   */
+  auto_targets?: boolean;
+}
+
+/**
+ * Owned hosts when config/den.yml has no `security.owned_hosts`: none.
+ * Scanning is a deliberate per-org choice, so nothing is owned by default.
+ */
+export const DEFAULT_SECURITY_OWNED_HOSTS: readonly string[] = [];
+
+/**
+ * The configured owned-host allowlist (config/den.yml
+ * `security.owned_hosts`), lowercased. A missing or malformed value falls back
+ * to DEFAULT_SECURITY_OWNED_HOSTS; an explicit empty list means "nothing owned".
+ */
+export function readSecurityOwnedHosts(
+  config: DenConfig = readDenConfig(),
+): string[] {
+  const hosts = config.security?.owned_hosts;
+  const list = Array.isArray(hosts) ? hosts : DEFAULT_SECURITY_OWNED_HOSTS;
+  return list
+    .filter((h): h is string => typeof h === "string")
+    .map((h) => h.trim().toLowerCase())
+    .filter((h) => h.length > 0);
+}
+
+/** Whether `security.auto_targets` is on (only an explicit `true` counts). */
+export function readSecurityAutoTargets(
+  config: DenConfig = readDenConfig(),
+): boolean {
+  return config.security?.auto_targets === true;
+}
+
+// ── Release config (Release tab) ──────────────────────────────────────────────
+
+/**
+ * Built-in release defaults — Globex' deploy workflows, all disabled
+ * until their dispatch inputs are verified. Team edits layer over this via
+ * config/den.yml `release:`, personal edits via config/local/user.yml.
+ */
+export const DEFAULT_RELEASE_CONFIG: ReleaseConfig = {
+  deploy: false,
+  // No built-in environments or repos: each instance lists its own.
+  environments: [],
+  staggerSeconds: 20,
+  pollSeconds: 15,
+  repos: [],
+};
+
+/** Merge one override layer (den.yml or user.yml) over a base release config. */
+function mergeReleaseLayer(
+  base: ReleaseConfig,
+  layer?: Partial<ReleaseConfig> | null,
+): ReleaseConfig {
+  const merged: ReleaseConfig = {
+    deploy: base.deploy,
+    org: layer?.org ?? base.org,
+    environments:
+      Array.isArray(layer?.environments) && layer.environments.length
+        ? layer.environments
+        : base.environments,
+    staggerSeconds:
+      typeof layer?.staggerSeconds === "number"
+        ? layer.staggerSeconds
+        : base.staggerSeconds,
+    pollSeconds:
+      typeof layer?.pollSeconds === "number"
+        ? layer.pollSeconds
+        : base.pollSeconds,
+    repos: base.repos.map((r) => ({ ...r })),
+    ...(base.profiles || layer?.profiles
+      ? { profiles: { ...base.profiles, ...layer?.profiles } }
+      : {}),
+  };
+
+  if (Array.isArray(layer?.repos)) {
+    // A layer may add repos with only a subset of fields (e.g. a hand-edited
+    // user.yml with just name+wave), so treat entries as partial at runtime.
+    const patches = layer.repos as Array<
+      Partial<ReleaseRepo> & { name: string }
+    >;
+    const byName = new Map(merged.repos.map((r) => [r.name, r]));
+    for (const patch of patches) {
+      if (!patch?.name) continue;
+      const existing = byName.get(patch.name);
+      if (existing) Object.assign(existing, patch);
+      else byName.set(patch.name, { workflow: "cd.yml", wave: 0, ...patch });
+    }
+    merged.repos = [...byName.values()];
+  }
+  return merged;
+}
+
+/**
+ * Read the effective release config: built-in defaults ← config/den.yml
+ * `release:` (team base) ← config/local/user.yml `release:` (personal override).
+ * `org` falls back to the den `github_org` when unset at every layer.
+ */
+export function readReleaseConfig(): ReleaseConfig {
+  const den = readDenConfig();
+  let cfg = mergeReleaseLayer(DEFAULT_RELEASE_CONFIG, den.release);
+  // Only the team layer may enable deploys; user.yml can't.
+  cfg.deploy = den.release?.deploy === true;
+  cfg = mergeReleaseLayer(cfg, readUserConfig().release);
+  if (!cfg.org) cfg.org = den.github_org;
+  return cfg;
+}
+
+/**
+ * Persist a personal release override to config/local/user.yml (gitignored).
+ * Used by the Release tab's wave editor — team defaults stay in den.yml.
+ */
+export function writeUserReleaseConfig(release: Partial<ReleaseConfig>): void {
+  const { deploy: _ignored, ...rest } = release;
+  void _ignored;
+  mergeUserConfig({ release: rest });
+}

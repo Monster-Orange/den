@@ -1,0 +1,16 @@
+{
+  "name": "beta",
+  "baseUrls": {
+    "web": "https://beta.beta.example.com",
+    "api": "https://beta.beta.example.com",
+    "services": {}
+  },
+  "auth": {
+    "provider": "none"
+  },
+  "timeouts": {
+    "api": 30000,
+    "pageLoad": 60000
+  },
+  "notes": "Example environment. Replace the URLs and auth with your own."
+}

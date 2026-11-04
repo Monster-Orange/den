@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>__DEN_TITLE__ · Environments</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --border: #30363d;
+        --text: #c9d1d9;
+        --muted: #8b949e;
+        --accent: #58a6ff;
+        --green: #3fb950;
+        --red: #f85149;
+        --yellow: #d29922;
+        --mono: "SF Mono", "Cascadia Code", "Fira Code", "Menlo", monospace;
+      }
+      html,
+      body {
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 13px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-wrap: wrap;
+      }
+      header h1 {
+        font-family: var(--mono);
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .h-spacer {
+        flex: 1;
+      }
+      nav {
+        display: flex;
+        gap: 2px;
+        flex-wrap: wrap;
+      }
+      nav a {
+        color: var(--muted);
+        text-decoration: none;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+      }
+      nav a:hover {
+        color: var(--text);
+        background: var(--border);
+      }
+      nav a.active {
+        color: var(--text);
+        background: var(--bg);
+      }
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-wrap: wrap;
+      }
+      .controls .note {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      button {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 3px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      main {
+        padding: 12px 14px;
+        overflow-x: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        min-width: 560px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: middle;
+      }
+      th {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      tr.repo td {
+        background: var(--surface);
+        font-weight: 600;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      td.svc {
+        font-family: var(--mono);
+        font-size: 12px;
+        padding-left: 22px;
+      }
+      .cell {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      .cell a {
+        color: var(--text);
+        text-decoration: none;
+      }
+      .cell a:hover {
+        color: var(--accent);
+        text-decoration: underline;
+      }
+      .cell .ms {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .none {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+        flex-shrink: 0;
+        display: inline-block;
+      }
+      .dot.ok {
+        background: var(--green);
+      }
+      .dot.err {
+        background: var(--red);
+      }
+      .dot.slow {
+        background: var(--yellow);
+      }
+      .empty {
+        color: var(--muted);
+        padding: 24px 0;
+      }
+      tr.org td {
+        background: var(--bg);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        padding-top: 14px;
+        border-bottom: 2px solid var(--org, var(--border));
+      }
+      tr.org td .swatch {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        background: var(--org, var(--muted));
+        margin-right: 6px;
+      }
+      tr.repo td.rel {
+        font-weight: 400;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .rel .ok {
+        color: var(--green);
+      }
+      .rel .warn {
+        color: var(--yellow);
+      }
+      .rel .bad {
+        color: var(--red);
+      }
+      a.open {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 12px;
+        padding: 0 3px;
+        border-radius: 3px;
+      }
+      a.open:hover,
+      a.open:focus-visible {
+        color: var(--accent);
+        background: var(--border);
+      }
+      select {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 2px 6px;
+        border-radius: 6px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img
+        src="/favicon.ico"
+        width="16"
+        height="16"
+        alt=""
+        style="flex-shrink: 0"
+      />
+      <h1>__DEN_TITLE__</h1>
+      <div class="h-spacer"></div>
+      <nav>
+        <a href="/">Local Dev</a>
+        <a href="/services">Services</a>
+        <a href="/environments" class="active">Environments</a>
+        <a href="/release">Releases</a>
+        <a href="/logs">Logs</a>
+        <a href="/tests">Tests</a>
+      </nav>
+    </header>
+
+    <div class="controls">
+      <button id="refresh">Re-check</button>
+      <label class="note"
+        >org
+        <select id="org-filter">
+          <option value="">all</option>
+        </select></label
+      >
+      <span class="note" id="status">checking…</span>
+      <span class="note"
+        >Each repo's <code>__DEN_MANIFEST_YML__</code> health checks, run
+        against every environment. ↗ opens the service in a new tab. beta and
+        prod are check-only.</span
+      >
+    </div>
+
+    <main>
+      <table>
+        <thead id="head"></thead>
+        <tbody id="body">
+          <tr>
+            <td class="empty">Loading…</td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+
+    <script type="module">
+      const SLOW_MS = 1500;
+      const POLL_MS = 60_000;
+      const esc = (s) =>
+        String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c],
+        );
+
+      const openLink = (url, what) =>
+        url && /^https?:/.test(url)
+          ? ` <a class="open" href="${esc(url)}" target="_blank" rel="noopener" title="Open ${esc(what)} in a new tab: ${esc(url)}" aria-label="Open ${esc(what)} in a new tab">↗</a>`
+          : "";
+
+      function relCell(row) {
+        if (!row) return "";
+        const k = row.status?.kind;
+        const cls =
+          k === "up-to-date"
+            ? "ok"
+            : k === "behind" || k === "conflict" || k === "error"
+              ? "bad"
+              : "warn";
+        const sha = row.deployedShort
+          ? `<code>${esc(row.deployedShort)}</code> `
+          : "";
+        const link = row.runUrl
+          ? ` <a class="open" href="${esc(row.runUrl)}" target="_blank" rel="noopener" title="The deploy run on GitHub">run</a>`
+          : "";
+        return `<span class="${cls}" title="${esc((row.source ? row.source + ": " : "") + (row.status?.text ?? ""))}">${sha}${esc(row.status?.text ?? "")}</span>${link}`;
+      }
+
+      function cell(r) {
+        if (!r || (!r.url && r.ok == null))
+          return r?.openUrl
+            ? `<span class="cell"><span class="none">—</span>${openLink(r.openUrl, r.service)}</span>`
+            : '<span class="none">—</span>';
+        const cls =
+          r.ok === true
+            ? r.ms > SLOW_MS
+              ? "slow"
+              : "ok"
+            : r.ok === false
+              ? "err"
+              : "";
+        const what = r.status
+          ? String(r.status)
+          : r.ok
+            ? "up"
+            : r.error || "down";
+        const title = [r.label, r.url, r.error].filter(Boolean).join(" — ");
+        const link =
+          r.url && /^https?:/.test(r.url)
+            ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(title)}">${esc(what)}</a>`
+            : `<span title="${esc(title)}">${esc(what)}</span>`;
+        const ms = r.ms != null ? `<span class="ms">${r.ms} ms</span>` : "";
+        return `<span class="cell"><span class="dot ${cls}"></span>${link}${ms}${openLink(r.openUrl, `${r.repo}/${r.service}`)}</span>`;
+      }
+
+      async function load(refresh = false) {
+        const status = document.getElementById("status");
+        status.textContent = "checking…";
+        const envs = await fetch("/api/environments")
+          .then((r) => r.json())
+          .catch(() => ["local"]);
+        const [results, orgs, relCfg] = await Promise.all([
+          Promise.all(
+            envs.map((env) =>
+              fetch(
+                `/api/health?env=${encodeURIComponent(env)}${refresh ? "&refresh=1" : ""}`,
+              )
+                .then((r) => r.json())
+                .catch(() => []),
+            ),
+          ),
+          fetch("/api/orgs")
+            .then((r) => r.json())
+            .catch(() => []),
+          fetch("/api/release/config")
+            .then((r) => r.json())
+            .catch(() => ({ environments: [] })),
+        ]);
+        // Deployed commit per repo for the release environments (beta, prod).
+        const relEnvs = envs.filter((e) =>
+          (relCfg.environments || []).includes(e),
+        );
+        const release = {};
+        await Promise.all(
+          relEnvs.map(async (e) => {
+            const r = await fetch(
+              `/api/release/status?env=${encodeURIComponent(e)}${refresh ? "&refresh=1" : ""}`,
+            )
+              .then((x) => (x.ok ? x.json() : null))
+              .catch(() => null);
+            for (const row of r?.rows || [])
+              (release[row.repo] ??= {})[e] = row;
+          }),
+        );
+        const orgInfo = Object.fromEntries(
+          (Array.isArray(orgs) ? orgs : []).map((o) => [o.id, o]),
+        );
+        const filterSel = document.getElementById("org-filter");
+        const saved = (() => {
+          try {
+            return localStorage.getItem("__DEN_CLI__-env-org") || "";
+          } catch {
+            return "";
+          }
+        })();
+        filterSel.innerHTML =
+          '<option value="">all</option>' +
+          Object.values(orgInfo)
+            .map((o) => `<option value="${esc(o.id)}">${esc(o.label)}</option>`)
+            .join("");
+        filterSel.value = orgInfo[filterSel.dataset.value ?? saved]
+          ? (filterSel.dataset.value ?? saved)
+          : "";
+        const orgFilter = filterSel.value;
+
+        // One row per service, in the dependency-graph order the server ranks
+        // (idx); grouped under its repo.
+        const rows = new Map();
+        results.forEach((list, i) => {
+          for (const r of Array.isArray(list) ? list : []) {
+            const key = `${r.repo}/${r.service}`;
+            const row = rows.get(key) ?? {
+              repo: r.repo,
+              service: r.service,
+              label: r.label,
+              org: r.org || "",
+              isEntrypoint: r.isEntrypoint,
+              idx: r.idx ?? 1e9,
+              byEnv: {},
+            };
+            row.idx = Math.min(row.idx, r.idx ?? 1e9);
+            row.byEnv[envs[i]] = r;
+            rows.set(key, row);
+          }
+        });
+        // Org first (configured order), then the graph order within it.
+        const orgRank = (o) => {
+          const i = Object.keys(orgInfo).indexOf(o);
+          return i < 0 ? 1e6 : i;
+        };
+        const sorted = [...rows.values()]
+          .filter((r) => !orgFilter || r.org === orgFilter)
+          .sort(
+            (a, b) =>
+              orgRank(a.org) - orgRank(b.org) ||
+              a.idx - b.idx ||
+              a.service.localeCompare(b.service),
+          );
+
+        document.getElementById("head").innerHTML =
+          `<tr><th>Service</th>${envs.map((e) => `<th>${esc(e)}</th>`).join("")}</tr>`;
+        const body = document.getElementById("body");
+        if (!sorted.length) {
+          body.innerHTML = `<tr><td class="empty" colspan="${envs.length + 1}">No services in the active workspace have a __DEN_MANIFEST_YML__ yet.</td></tr>`;
+        } else {
+          let html = "",
+            lastRepo = null,
+            lastOrg = null;
+          for (const row of sorted) {
+            if (row.org !== lastOrg) {
+              const o = orgInfo[row.org];
+              html += `<tr class="org" style="${o?.color ? `--org:${esc(o.color)}` : ""}"><td colspan="${envs.length + 1}"><span class="swatch"></span>${esc(o?.label || row.org || "no org")}</td></tr>`;
+              lastOrg = row.org;
+            }
+            if (row.repo !== lastRepo) {
+              const entry =
+                sorted.find((r) => r.repo === row.repo && r.isEntrypoint) ||
+                row;
+              html += `<tr class="repo"><td>${esc(row.repo)}</td>${envs
+                .map(
+                  (e) =>
+                    `<td class="rel">${relCell(release[row.repo]?.[e])}${openLink(entry.byEnv[e]?.openUrl, `${row.repo} on ${e}`)}</td>`,
+                )
+                .join("")}</tr>`;
+              lastRepo = row.repo;
+            }
+            html += `<tr><td class="svc">${esc(row.service)}</td>${envs.map((e) => `<td>${cell(row.byEnv[e])}</td>`).join("")}</tr>`;
+          }
+          body.innerHTML = html;
+        }
+        const down = sorted
+          .flatMap((r) => Object.values(r.byEnv))
+          .filter((r) => r.ok === false).length;
+        status.textContent = `checked ${new Date().toLocaleTimeString()} · ${down ? down + " failing" : "nothing failing"}`;
+      }
+
+      document
+        .getElementById("refresh")
+        .addEventListener("click", () => load(true));
+      document.getElementById("org-filter").addEventListener("change", (e) => {
+        e.target.dataset.value = e.target.value;
+        try {
+          localStorage.setItem("__DEN_CLI__-env-org", e.target.value);
+        } catch {
+          /* private window */
+        }
+        load();
+      });
+      load();
+      setInterval(() => {
+        if (!document.hidden) load();
+      }, POLL_MS);
+    </script>
+  </body>
+</html>

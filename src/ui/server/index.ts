@@ -1,0 +1,3242 @@
+/**
+ * den Web UI Server
+ *
+ * Serves a browser-based test runner at http://localhost:7777
+ * Endpoints:
+ *   GET /                        — UI (index.html)
+ *   GET /report/*                — Playwright HTML report (playwright-report/)
+ *   GET /api/environments        — Available environments
+ *   GET /api/modules?pillar=X    — Modules for a pillar (via moduleScanner)
+ *   GET /api/run?pillar=X&...    — SSE stream: runs tests, emits output line-by-line
+ */
+
+import { composeHealthCmd } from "../../shared/stacks/manifest-commands.js";
+import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
+import * as http from "http";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { execSync, spawn, spawnSync } from "child_process";
+import { fileURLToPath } from "url";
+import { envSelector } from "../../shared/environment/env-selector.js";
+import { moduleScanner } from "../../shared/test-discovery/module-scanner.js";
+import { resolveFieldEnv } from "../../shared/perf/optional-fields.js";
+import { testRunner } from "../cli/test-runner.js";
+import { discoverRepos } from "../../pillars/smoke/discover.js";
+import {
+  awsProfileEnv,
+  loadAwsProfiles,
+} from "../../shared/environment/aws-profiles.js";
+import { loadCurrentPerfRunReport } from "../../shared/perf/report-store.js";
+import type {
+  Pillar,
+  Environment,
+  LogSource,
+  ResolvedService,
+  WorkspaceConfig,
+} from "../../shared/types/index.js";
+import { getRunDonePayload } from "./perf-report.js";
+import { readCatalog } from "../../shared/environment-manager/catalog.js";
+import {
+  readWorkspacesFile,
+  getActiveWorkspace,
+  getActiveWorkspaces,
+  getFocusedWorkspaceName,
+  getWorkspaceByName,
+  isWorkspaceActive,
+  listWorkspaceServices,
+  resolveDepAddress,
+  parseAddress,
+  readManifestAnyBranch,
+  noAutostartRepos,
+} from "../../shared/environment-manager/workspaces.js";
+import { deriveGraph } from "../../shared/environment-manager/derivation/derive-graph.js";
+import { orderForDown } from "../../shared/environment-manager/derivation/derived-up.js";
+import { findConventionalContainer } from "../../shared/environment-manager/opctl.js";
+import {
+  resolveHistorySource,
+  ensureSnapshot,
+  readPageBefore,
+  searchSystemHistory,
+  pruneDeadSnapshots,
+  isSafeServiceName,
+} from "./log-history.js";
+import {
+  pingHttp,
+  pingShell,
+} from "../../shared/environment-manager/health.js";
+import {
+  runServiceCommand,
+  resolveService,
+  listDaemons,
+  unregisterDaemon,
+  checkServiceHealth,
+  loadDaemonsFromFile,
+  pruneDeadDaemons,
+  isInteractiveServiceCommand,
+  rewriteLegacyOpctlKillCommandForContainer,
+  shouldDetachServiceCommand,
+} from "../../shared/environment-manager/service-runner.js";
+import { reapDeadDaemons } from "./daemon-reaper.js";
+import { readManifest } from "../../shared/manifest/read-manifest.js";
+import {
+  getServiceLogRoot,
+  spawnStreaming,
+  getServiceLogPath,
+} from "../../shared/process/spawn-streaming.js";
+import {
+  readDenConfig,
+  isLocalEnabled,
+  readUserConfig,
+  writeUserConfig,
+  readReleaseConfig,
+  resolveReleaseTarget,
+  writeUserReleaseConfig,
+  type ReleaseConfig,
+} from "../../shared/den-config.js";
+import { readOrg } from "../../shared/org.js";
+import { getDistRoot } from "../../shared/paths.js";
+import {
+  releaseService,
+  DEPLOYS_OFF_MESSAGE,
+  type DeployPlanEntry,
+  type ReleaseEvent,
+} from "./release-service.js";
+import { deploySessions } from "./release-deploy-session.js";
+import { spawnDetachedWebRestart } from "../cli/web-command.js";
+import { recordInvocation } from "../../shared/dev-metrics/emit.js";
+import { validateManifest } from "../../shared/manifest/validate-manifest.js";
+import { depService } from "../../shared/manifest/deps.js";
+import {
+  isOpSignedIn,
+  hasSudoInVault,
+  readSudoFromVault,
+  saveSudoToVault,
+} from "../../shared/auth/sudo-vault.js";
+import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const ROOT = getDistRoot();
+const DIST_PUBLIC_DIR = path.join(__dirname, "public");
+const SOURCE_PUBLIC_DIR = path.join(ROOT, "src/ui/server/public");
+const PUBLIC_DIR = fs.existsSync(path.join(DIST_PUBLIC_DIR, "index.html"))
+  ? DIST_PUBLIC_DIR
+  : SOURCE_PUBLIC_DIR;
+const REPORT_DIR = path.join(ROOT, "playwright-report");
+
+/** One service's health, as returned by /api/health and its stream. */
+interface HealthResult {
+  repo: string;
+  service: string;
+  label: string;
+  url: string | null;
+  repoPath: string;
+  mode: "dev-managed" | "managed";
+  isEntrypoint: boolean;
+  ok: boolean | null;
+  status?: number;
+  error?: string;
+  /** Where the app opens for this env (open-in-new-tab), or null. */
+  openUrl?: string | null;
+  /** Extra named links for this env. */
+  links?: OpenLink[];
+}
+
+/**
+ * Health is cached briefly so switching pages doesn't re-run every check. Short
+ * enough that a service going down still shows up within one poll interval.
+ */
+/**
+ * Health results are cached host-agnostic; open links are rewritten per
+ * request so a viewer on an edge alias (e.g. *.internal) gets links that
+ * resolve from where they are.
+ */
+function viewerRewrite(
+  host: string | undefined,
+): (r: HealthResult) => HealthResult {
+  let edge: { domain: string; aliases: string[] } | null = null;
+  try {
+    const cfg = readEdgeConfig();
+    edge = { domain: cfg.domain, aliases: cfg.aliases ?? [] };
+  } catch {
+    /* no edge configured */
+  }
+  if (!edge || !edge.aliases.length) return (r) => r;
+  const { domain, aliases } = edge;
+  const fix = (u: string) => rehost(u, domain, host, aliases);
+  return (r) => ({
+    ...r,
+    openUrl: r.openUrl ? fix(r.openUrl) : r.openUrl,
+    links: r.links?.map((l) => ({ ...l, url: fix(l.url) })),
+  });
+}
+
+const HEALTH_CACHE_TTL_MS = 8_000;
+const healthCache = new Map<string, { results: HealthResult[]; at: number }>();
+/** A workspace-scoped run covers a different service set than the default one. */
+function healthCacheKey(env: Environment, workspace: string | null): string {
+  return `${env}|${workspace ?? "*"}`;
+}
+import {
+  LOG_SWEEP_INTERVAL_MS,
+  DEFAULT_PORT,
+  CLI_SPAWN_TIMEOUT_MS,
+  GIT_REMOTE_TIMEOUT_MS,
+  DAEMON_QUICK_EXIT_MS,
+  DAEMON_RETRY_DELAY_MS,
+  DAEMON_SHUTDOWN_GRACE_MS,
+  LIVE_TAIL_LINES,
+  HEALTH_CHECK_TIMEOUT_MS,
+  HOSTED_HEALTH_CHECK_TIMEOUT_MS,
+} from "../../shared/constants.js";
+
+const PORT = parseInt(process.env.PORT ?? String(readWebPortSafe()), 10);
+
+// When this server process started. Used to detect a "stale" server — one whose
+// loaded TypeScript is older than the on-disk source (the footgun where `make
+// web`/`den web` keeps running old code after an edit). See computeStale().
+const SERVER_STARTED_AT = Date.now();
+const STALE_CACHE_TTL_MS = 2_000;
+let _staleCache: { at: number; stale: boolean; scanned: number } | null = null;
+
+/** Newest mtime (ms) among *.ts under `dir`, skipping node_modules + public/. */
+function scanNewestTs(dir: string): { newest: number; count: number } {
+  let newest = 0;
+  let count = 0;
+  const stack = [dir];
+  while (stack.length) {
+    const d = stack.pop() as string;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        // public/* is served fresh from disk per request (never stale); the
+        // server-side code that IS loaded at startup is the *.ts graph.
+        if (e.name === "node_modules" || e.name === "public") continue;
+        stack.push(path.join(d, e.name));
+      } else if (e.name.endsWith(".ts")) {
+        try {
+          const m = fs.statSync(path.join(d, e.name)).mtimeMs;
+          if (m > newest) newest = m;
+          count++;
+        } catch {
+          /* file vanished mid-scan — ignore */
+        }
+      }
+    }
+  }
+  return { newest, count };
+}
+
+/** True when any server-side *.ts is newer than this process's start. Cached. */
+function computeStale(): { stale: boolean; scanned: number } {
+  const now = Date.now();
+  if (_staleCache && now - _staleCache.at < STALE_CACHE_TTL_MS) {
+    return { stale: _staleCache.stale, scanned: _staleCache.scanned };
+  }
+  const { newest, count } = scanNewestTs(path.join(ROOT, "src"));
+  const stale = newest > SERVER_STARTED_AT;
+  _staleCache = { at: now, stale, scanned: count };
+  return { stale, scanned: count };
+}
+const SILENT = process.argv.includes("--silent");
+/**
+ * Verbose mode — adds lifecycle detail to stdout + mirrors SSE `line` events
+ * from /api/run to stdout so the server terminal doubles as a live test
+ * console. Opt-in via `--verbose` flag or `DEN_LOG=verbose`. Default is
+ * unchanged: request lines only. The in-memory log ring populates either way
+ * so the /logs page's "den/server" stream works without the flag.
+ */
+const VERBOSE =
+  process.argv.includes("--verbose") || process.env.DEN_LOG === "verbose";
+
+// ── In-memory log ring ────────────────────────────────────────────────────────
+// Every message written via serverLog() lands here in plain-text form (ANSI
+// stripped) and fans out to any subscribers — primarily the /api/server-log
+// SSE stream surfaced on the /logs page. Fixed-size ring so an idle server
+// doesn't grow without bound; restart drops history (not persisted to disk).
+
+interface LogEntry {
+  ts: string;
+  kind: string;
+  text: string;
+}
+
+const LOG_RING_MAX = 500;
+const logRing: LogEntry[] = [];
+const logSubscribers = new Set<(e: LogEntry) => void>();
+
+// ANSI SGR escape sequences — stripping these requires a control-character
+// literal (ESC = 0x1b), which triggers no-control-regex. Intentional.
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+function stripAnsi(s: string): string {
+  return s.replace(ANSI_RE, "");
+}
+
+function pushLog(kind: string, text: string): void {
+  const entry: LogEntry = {
+    ts: new Date().toISOString(),
+    kind,
+    text: stripAnsi(text),
+  };
+  logRing.push(entry);
+  if (logRing.length > LOG_RING_MAX) logRing.shift();
+  for (const sub of logSubscribers) {
+    try {
+      sub(entry);
+    } catch {
+      /* subscriber broke — don't let it take the server down */
+    }
+  }
+}
+
+/**
+ * Log to stdout unless --silent was passed, AND fan out to the log ring so the
+ * /logs page and any connected SSE subscribers see the same stream.
+ */
+function serverLog(msg: string, kind: string = "info"): void {
+  pushLog(kind, msg);
+  if (!SILENT) process.stdout.write(msg + "\n");
+}
+
+/** ANSI helpers (no chalk dependency in the server) */
+const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
+const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
+const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
+
+function logTimestamp(): string {
+  return dim(new Date().toLocaleTimeString("en-US", { hour12: false }));
+}
+
+function logStatus(code: number): string {
+  if (code < 300) return green(String(code));
+  if (code < 400) return yellow(String(code));
+  return red(String(code));
+}
+
+/** Static extensions we skip logging (too noisy). */
+const STATIC_EXTS = new Set([
+  ".html",
+  ".js",
+  ".css",
+  ".ico",
+  ".map",
+  ".png",
+  ".svg",
+  ".woff",
+  ".woff2",
+]);
+
+// ── Sudo password store ───────────────────────────────────────────────────────
+import {
+  setSudoPassword,
+  clearSudoPassword,
+  getSudoEnv,
+  prewarmSudo,
+  hasSudoPassword,
+  hasPasswordlessSudo,
+} from "./sudo-store.js";
+
+// ── HTTP helpers ─────────────────────────────────────────────────────────────
+import { sweepLogs } from "../../shared/process/log-rotation.js";
+import {
+  readBody,
+  sendJson,
+  serveFile,
+  send400,
+  send404,
+} from "./http-helpers.js";
+import { orgOf, listOrgs } from "../../shared/manifest/service-links.js";
+import {
+  readLatestSummary,
+  securityReportsDir,
+} from "../../pillars/security/findings.js";
+
+// ── Changelog parser ──────────────────────────────────────────────────────────
+import { parseChangelog } from "./changelog-parser.js";
+
+// ── Extracted services ───────────────────────────────────────────────────────
+import { GitHubService } from "./github-service.js";
+import { EditorManager, SUPPORTED_LANGUAGES } from "./editor-manager.js";
+import { handleWorkspaceRoutes } from "./workspace-routes.js";
+import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
+import {
+  linksFor,
+  openUrlFor,
+  rehost,
+  type OpenLink,
+} from "../../shared/open-url.js";
+
+import { product } from "../../shared/product.js";
+/** config `web.port` (user > team), falling back to the built-in default. */
+function readWebPortSafe(): number {
+  try {
+    return readWebPort();
+  } catch {
+    return DEFAULT_PORT;
+  }
+}
+const github = new GitHubService();
+const editors = new EditorManager();
+
+// ── Health check ─────────────────────────────────────────────────────────────
+// pingHttp / pingShell are imported from shared health module above.
+
+// ── Test source resolution ───────────────────────────────────────────────────
+// Returns, for each repo contributing tests to a pillar, the resolved repo path
+// plus its current git branch + short SHA. Used to surface the source of truth
+// in the Tests UI and the run log so workspace/registry drift is visible.
+
+interface TestSource {
+  repoName: string;
+  repoPath: string;
+  branch: string | null;
+  shortSha: string | null;
+  workspace: string | null;
+}
+
+function readGitField(gitArgs: string[], cwd: string): string | null {
+  const r = spawnSync("git", gitArgs, {
+    cwd,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: GIT_REMOTE_TIMEOUT_MS,
+  });
+  if (r.status !== 0 || !r.stdout) return null;
+  return r.stdout.trim() || null;
+}
+
+function collectTestSources(
+  pillar: "synthetic" | "smoke" | "journeys" | "security",
+): TestSource[] {
+  const workspace = getActiveWorkspace()?.name ?? null;
+  const sources: TestSource[] = [];
+  for (const repo of discoverRepos()) {
+    const manifest = repo.manifest as {
+      synthetics?: unknown;
+      smoke?: Record<string, unknown>;
+      journeys?: unknown;
+      security?: Record<string, unknown>;
+    } | null;
+    const matches =
+      pillar === "synthetic"
+        ? !!manifest?.synthetics
+        : pillar === "journeys"
+          ? !!manifest?.journeys
+          : pillar === "security"
+            ? Object.keys(manifest?.security ?? {}).length > 0
+            : Object.keys(manifest?.smoke ?? {}).length > 0;
+    if (!matches) continue;
+    sources.push({
+      repoName: repo.repoName,
+      repoPath: repo.repoPath,
+      branch: readGitField(
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        repo.repoPath,
+      ),
+      shortSha: readGitField(["rev-parse", "--short", "HEAD"], repo.repoPath),
+      workspace,
+    });
+  }
+  return sources;
+}
+
+function formatSourceLine(src: TestSource): string {
+  const wsTag = src.workspace ? ` @ ${src.workspace}` : "";
+  const branch = src.branch ?? "(no branch)";
+  const sha = src.shortSha ? ` (${src.shortSha})` : "";
+  return `${src.repoName}${wsTag} · ${branch}${sha} — ${src.repoPath}`;
+}
+
+// ── Lifecycle helpers ─────────────────────────────────────────────────────────
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const m = Math.floor(s / 60);
+  const rs = Math.round(s - m * 60);
+  return `${m}m${rs}s`;
+}
+
+function shortRunId(): string {
+  return Math.random().toString(36).slice(2, 8);
+}
+
+/**
+ * When VERBOSE, mirror SSE `line` events to stdout prefixed with a run id so
+ * the server terminal doubles as a live test console. Off by default — this
+ * is the firehose mode, not for everyday use.
+ */
+function mirrorLine(runId: string, text: string): void {
+  if (!VERBOSE) return;
+  process.stdout.write(`  ${dim(`[${runId}]`)} ${stripAnsi(text)}\n`);
+}
+
+// ── Server ────────────────────────────────────────────────────────────────────
+
+async function handleRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
+  const pathname = url.pathname;
+
+  // ── Request logging ────────────────────────────────────────────────────────
+  // /api/health fires on the UI's 5s polling interval forever — it dominates
+  // the request log and crowds out anything useful. Always filtered, from both
+  // stdout and the in-memory ring. Static assets are skipped for the same
+  // reason. Real errors on those paths still surface via send400/throw.
+  {
+    const ext = path.extname(pathname);
+    const isStatic = STATIC_EXTS.has(ext) || pathname === "/";
+    const isHealthPoll = pathname === "/api/health";
+    if (!isStatic && !isHealthPoll) {
+      const start = Date.now();
+      const method = bold((req.method ?? "GET").padEnd(4));
+      res.on("finish", () => {
+        const ms = dim(`${Date.now() - start}ms`);
+        serverLog(
+          `  ${logTimestamp()}  ${method}  ${pathname}  →  ${logStatus(res.statusCode)}  ${ms}`,
+          "request",
+        );
+      });
+    }
+  }
+
+  // ── Static UI ──────────────────────────────────────────────────────────────
+  // Local Dev is the default page when local environment is enabled.
+  if (
+    pathname === "/" ||
+    pathname === "/local-dev" ||
+    pathname === "/local-dev.html"
+  ) {
+    if (!isLocalEnabled()) {
+      res.writeHead(302, { Location: "/tests" });
+      res.end();
+      return;
+    }
+    return serveFile(res, path.join(PUBLIC_DIR, "local-dev.html"));
+  }
+
+  if (pathname === "/tests" || pathname === "/index.html") {
+    return serveFile(res, path.join(PUBLIC_DIR, "index.html"));
+  }
+
+  if (pathname === "/services" || pathname === "/services.html") {
+    return serveFile(res, path.join(PUBLIC_DIR, "services.html"));
+  }
+  if (pathname === "/environments" || pathname === "/environments.html") {
+    return serveFile(res, path.join(PUBLIC_DIR, "environments.html"));
+  }
+
+  if (pathname === "/release" || pathname === "/release.html") {
+    return serveFile(res, path.join(PUBLIC_DIR, "release.html"));
+  }
+
+  if (pathname === "/logs") {
+    return serveFile(res, path.join(PUBLIC_DIR, "logs.html"));
+  }
+
+  if (pathname === "/header.js") {
+    return serveFile(res, path.join(PUBLIC_DIR, "header.js"));
+  }
+
+  if (pathname === "/perf-report.js") {
+    return serveFile(res, path.join(PUBLIC_DIR, "perf-report.js"));
+  }
+
+  // Imported by header.js (the workspace pill's picker models).
+  if (pathname === "/workspace-picker.js") {
+    return serveFile(res, path.join(PUBLIC_DIR, "workspace-picker.js"));
+  }
+
+  if (pathname === "/favicon.ico") {
+    return serveFile(res, path.join(PUBLIC_DIR, "favicon.ico"));
+  }
+
+  // ── Playwright report ──────────────────────────────────────────────────────
+  if (pathname.startsWith("/report")) {
+    const relPath = pathname.slice("/report".length) || "/index.html";
+    const filePath = path.resolve(path.join(REPORT_DIR, relPath));
+
+    // Path traversal guard — require a separator boundary so a sibling dir
+    // sharing the REPORT_DIR prefix (e.g. "playwright-report-evil") can't pass.
+    if (
+      filePath !== REPORT_DIR &&
+      !filePath.startsWith(REPORT_DIR + path.sep)
+    ) {
+      res.writeHead(403);
+      res.end("Forbidden");
+      return;
+    }
+
+    // Serve index.html for directories
+    const target =
+      fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()
+        ? path.join(filePath, "index.html")
+        : filePath;
+
+    return serveFile(res, target);
+  }
+
+  // ── API: environments ──────────────────────────────────────────────────────
+  // Orgs the catalog's repos belong to, with config/den.yml display names.
+  if (pathname === "/api/orgs") {
+    const catalog = readCatalog();
+    const orgs = listOrgs(catalog, readDenConfig().orgs ?? {});
+    if (url.searchParams.get("repos") !== "1") return sendJson(res, orgs);
+    const repos = Object.fromEntries(
+      Object.keys(catalog).map((r) => [r, orgOf(r, catalog)]),
+    );
+    return sendJson(res, { orgs, repos });
+  }
+
+  if (pathname === "/api/environments") {
+    try {
+      const allEnvs = await envSelector.getAvailableEnvironments();
+      const { environments: enabledEnvs } = readDenConfig();
+      const envs = allEnvs.filter((e) => enabledEnvs.includes(e));
+      return sendJson(res, envs);
+    } catch (err) {
+      serverLog(`  ⚠ /api/environments: ${(err as Error).message}`);
+      return sendJson(res, ["local"]);
+    }
+  }
+
+  // ── API: app URL for current env ──────────────────────────────────────────
+  if (pathname === "/api/app-url") {
+    const env = url.searchParams.get("env") ?? "local";
+    try {
+      const cfgPath = path.join(ROOT, "config", "environments", `${env}.json`);
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf-8")) as {
+        baseUrls?: { web?: string };
+      };
+      return sendJson(res, { url: cfg.baseUrls?.web ?? null });
+    } catch (err) {
+      serverLog(`  ⚠ /api/app-url: ${(err as Error).message}`);
+      return sendJson(res, { url: null });
+    }
+  }
+
+  // ── API: modules ───────────────────────────────────────────────────────────
+  if (pathname === "/api/modules") {
+    const pillar = url.searchParams.get("pillar") as Pillar | null;
+    if (!pillar) return send400(res, "pillar required");
+    try {
+      const modules = await moduleScanner.scanModules(pillar);
+      return sendJson(
+        res,
+        modules.map((m) => ({
+          name: m.name,
+          displayName: m.displayName,
+          icon: m.icon,
+          testCount: m.testCount,
+          // Declarative launch-time options the web UI renders generically.
+          optionalFields: m.optionalFields ?? [],
+        })),
+      );
+    } catch (err) {
+      serverLog(`  ⚠ /api/modules: ${(err as Error).message}`);
+      return sendJson(res, []);
+    }
+  }
+
+  // ── API: security scans ─────────────────────────────────────────────────────
+  // The newest ZAP run per env + mode (what the Tests page lists), and its
+  // HTML reports, served from reports/security/ only.
+  if (pathname === "/api/security/latest") {
+    const env = url.searchParams.get("env") ?? "local";
+    const modes = ["baseline", "api", "full"];
+    return sendJson(
+      res,
+      modes
+        .map((m) => readLatestSummary(env, m))
+        .filter((x): x is NonNullable<typeof x> => x !== null),
+    );
+  }
+  if (pathname.startsWith("/reports/security/")) {
+    const root = securityReportsDir();
+    const rel = decodeURIComponent(pathname.slice("/reports/security/".length));
+    const file = path.resolve(root, rel);
+    if (!file.startsWith(root + path.sep) || !/\.(html|json)$/.test(file))
+      return send404(res);
+    try {
+      const body = fs.readFileSync(file);
+      res.writeHead(200, {
+        "Content-Type": file.endsWith(".html")
+          ? "text/html; charset=utf-8"
+          : "application/json",
+        "Cache-Control": "no-store",
+        // ZAP's report pulls its own scripts; keep it away from Den's origin data.
+        "Content-Security-Policy": "sandbox allow-scripts",
+      });
+      return res.end(body);
+    } catch {
+      return send404(res);
+    }
+  }
+
+  // ── API: test sources ─────────────────────────────────────────────────────
+  // Returns the repos that contribute tests for a given pillar, with their
+  // current branch + short SHA. Lets the Tests UI show "you are testing
+  // against X" so workspace vs registered-repo drift is visible.
+  if (pathname === "/api/test-sources") {
+    const pillar = url.searchParams.get("pillar");
+    if (
+      pillar !== "synthetic" &&
+      pillar !== "smoke" &&
+      pillar !== "journeys" &&
+      pillar !== "security"
+    ) {
+      return sendJson(res, []);
+    }
+    try {
+      return sendJson(res, collectTestSources(pillar));
+    } catch (err) {
+      serverLog(`  ⚠ /api/test-sources: ${(err as Error).message}`);
+      return sendJson(res, []);
+    }
+  }
+
+  // ── API: den server log (SSE) ──────────────────────────────────────────
+  // Tails this server's own stdout-equivalent log stream. The /logs page opens
+  // it as "den/server" alongside service log panes so engineers can watch
+  // den's lifecycle events without leaving the browser. The ring replays
+  // recent history on connect; new entries stream as they happen.
+  //
+  // Events emitted:
+  //   { type: "history", entries: LogEntry[] }  — once, on open
+  //   { type: "log", entry: LogEntry }          — per new entry
+  if (pathname === "/api/server-log") {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    const emit = (obj: unknown): void => {
+      try {
+        res.write(`data: ${JSON.stringify(obj)}\n\n`);
+      } catch {
+        /* client disconnected mid-write; cleanup runs on `close` */
+      }
+    };
+    emit({ type: "history", entries: logRing.slice() });
+    const subscriber = (entry: LogEntry): void => {
+      emit({ type: "log", entry });
+    };
+    logSubscribers.add(subscriber);
+    req.on("close", () => {
+      logSubscribers.delete(subscriber);
+    });
+    return;
+  }
+
+  // ── API: latest perf report ────────────────────────────────────────────────
+  if (pathname === "/api/perf-report/current") {
+    const report = loadCurrentPerfRunReport(ROOT);
+    if (!report) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "No perf report available" }));
+      return;
+    }
+
+    return sendJson(res, report);
+  }
+
+  // ── API: health check ─────────────────────────────────────────────────────
+  /**
+   * Workspaces a health run covers: one named workspace, else EVERY active one
+   * (focus first). Health is machine-level — a service running under a
+   * non-focused active workspace is still up, and its card must say so.
+   */
+  function healthWorkspaces(
+    workspaceName: string | null,
+  ): Array<{ name: string; config: WorkspaceConfig }> {
+    if (workspaceName) {
+      const named = getWorkspaceByName(workspaceName);
+      return named ? [named] : [];
+    }
+    const focus = getFocusedWorkspaceName();
+    const names = [
+      ...(focus ? [focus] : []),
+      ...getActiveWorkspaces().filter((n) => n !== focus),
+    ];
+    return names.flatMap((n) => getWorkspaceByName(n) ?? []);
+  }
+
+  /**
+   * Run every health check for `env` (or one service via `addressFilter`).
+   * `onResult` fires per check as it lands, so a caller can stream instead of
+   * waiting on the slowest.
+   */
+  async function computeHealth(
+    env: Environment,
+    addressFilter: string | null,
+    onResult?: (r: HealthResult) => void,
+    workspaceName: string | null = null,
+  ): Promise<HealthResult[]> {
+    // Use workspace-aware service lists so repos added via the catalog/workspace
+    // (e.g. files-api) are included, not just .den/ symlinks.
+    const workspaces = healthWorkspaces(workspaceName);
+    if (workspaces.length === 0) return [];
+    const catalog = readCatalog();
+    // One entry per address across active workspaces; focus wins a duplicate,
+    // and only one checkout of a shared address can be running anyway. The
+    // owning workspace travels with the service — dep addresses resolve against
+    // the workspace the service came from.
+    const byAddress = new Map<
+      string,
+      { svc: ResolvedService; ws: { name: string; config: WorkspaceConfig } }
+    >();
+    for (const ws of workspaces)
+      for (const svc of listWorkspaceServices(ws.config, catalog, ws.name))
+        // Modules and libraries have no runtime, so no health dot.
+        if (!byAddress.has(svc.address) && hasRuntime(repoKind(svc.repoPath)))
+          byAddress.set(svc.address, { svc, ws });
+    let services = [...byAddress.values()];
+    if (addressFilter) {
+      services = services.filter((s) => s.svc.address === addressFilter);
+    }
+
+    const entries: Array<{
+      address: string;
+      deps: string[];
+      repo: string;
+      service: string;
+      label: string;
+      checkType: "http" | "shell" | "none";
+      target: string;
+      repoPath: string;
+      mode: "dev-managed" | "managed";
+      isEntrypoint: boolean;
+      /** Conventional http://<repo>/healthz probe for no-health-check primaries. */
+      conventional: string | null;
+      openUrl: string | null;
+      links: OpenLink[];
+      /** The GitHub org that owns the repo. */
+      org: string;
+    }> = [];
+    let edgeDomain: string | null = null;
+    try {
+      edgeDomain = readEdgeConfig().domain;
+    } catch {
+      /* no edge configured: local links come from manifests only */
+    }
+    for (const { svc: resolved, ws } of services) {
+      const manifest = readManifestAnyBranch(
+        resolved.repoName,
+        resolved.repoPath,
+      );
+      if (!manifest) {
+        // Keep the row (as "unknown"/muted) instead of dropping it: a service
+        // vanishing from the payload reads as "everything else is fine" and a
+        // merge-by-key client would freeze its last dot.
+        entries.push({
+          address: resolved.address,
+          deps: [],
+          repo: resolved.repoName,
+          service: resolved.subsystem,
+          label: resolved.subsystem,
+          checkType: "none",
+          target: "",
+          repoPath: resolved.repoPath,
+          mode: resolved.mode,
+          isEntrypoint: false,
+          conventional: null,
+          openUrl: null,
+          links: [],
+          org: orgOf(resolved.repoName, catalog),
+        });
+        continue;
+      }
+      const svcCfg = manifest.services?.[resolved.subsystem];
+      // A compose-run repo with no declared check gets the stack's own health
+      // (container state + Docker healthchecks), as `den status` does.
+      const composeHealth =
+        env === "local"
+          ? composeHealthCmd(
+              manifest,
+              resolved.subsystem,
+              resolved.repoName,
+              ws.name,
+            )
+          : null;
+      const healthCfg =
+        svcCfg?.health?.[env] ??
+        (composeHealth
+          ? { type: "shell" as const, cmd: composeHealth }
+          : undefined);
+      // Keep services with no health check (checkType "none") so systems like
+      // jobs-runtime still appear — as an "unknown" (muted) dot, matching
+      // `den status`, rather than vanishing from the health row.
+      const deps = (svcCfg?.depends_on ?? []).map((rawDep) => {
+        const d = depService(rawDep);
+        const { repoName } = parseAddress(
+          resolveDepAddress(d, catalog, ws.config, ws.name),
+          catalog,
+        );
+        return repoName === resolved.repoName
+          ? resolveDepAddress(d, catalog, ws.config, ws.name)
+          : repoName;
+      });
+      entries.push({
+        address: resolved.address,
+        deps,
+        repo: resolved.repoName,
+        service: resolved.subsystem,
+        label: healthCfg?.label ?? resolved.subsystem,
+        checkType: healthCfg
+          ? healthCfg.type === "shell"
+            ? "shell"
+            : "http"
+          : "none",
+        target: healthCfg
+          ? healthCfg.type === "shell"
+            ? healthCfg.cmd
+            : healthCfg.url
+          : "",
+        repoPath: resolved.repoPath,
+        mode: resolved.mode,
+        isEntrypoint: manifest.entrypoint === resolved.subsystem,
+        // Conventional local discovery (mirrors checkServiceHealth): a PRIMARY
+        // service with no declared local health check may still serve the stack
+        // convention at http://<repo>/healthz via opctl DNS.
+        conventional: (() => {
+          if (healthCfg || env !== "local") return null;
+          const keys = Object.keys(manifest.services ?? {});
+          const isPrimary = manifest.entrypoint
+            ? resolved.subsystem === manifest.entrypoint
+            : keys.length === 1;
+          return isPrimary ? `http://${resolved.repoName}/healthz` : null;
+        })(),
+        openUrl: openUrlFor({
+          manifest,
+          subsystem: resolved.subsystem,
+          repoName: resolved.repoName,
+          env,
+          healthUrl:
+            healthCfg && healthCfg.type !== "shell" ? healthCfg.url : null,
+          edgeDomain,
+        }),
+        links: linksFor(manifest, resolved.subsystem, env),
+        org: orgOf(resolved.repoName, catalog),
+      });
+    }
+
+    // Order systems top-down like the dependency graph — entry repo first
+    // (shop-web) … infra-stack last — so the health row reads the same
+    // direction as the graph (and `den status`). orderForDown is the reverse
+    // of the deps-first startup order.
+    const rank = new Map(
+      orderForDown(
+        deriveGraph({ scope: "all", workspace: workspaces[0]?.name }),
+      ).map((repo, i) => [repo, i]),
+    );
+    const sortedEntries = [...entries].sort((a, b) => {
+      const ra = rank.get(a.repo) ?? Number.MAX_SAFE_INTEGER;
+      const rb = rank.get(b.repo) ?? Number.MAX_SAFE_INTEGER;
+      return ra - rb || a.address.localeCompare(b.address);
+    });
+
+    const checkEntry = async ({
+      repo,
+      service,
+      label,
+      checkType,
+      target,
+      repoPath,
+      mode,
+      isEntrypoint,
+      conventional,
+      meta,
+    }) => {
+      if (checkType !== "none") {
+        const started = Date.now();
+        const ping =
+          checkType === "shell"
+            ? await pingShell(target, awsProfileEnv(env), repoPath)
+            : await pingHttp(
+                target,
+                env === "local"
+                  ? HEALTH_CHECK_TIMEOUT_MS
+                  : HOSTED_HEALTH_CHECK_TIMEOUT_MS,
+              );
+        return {
+          repo,
+          service,
+          label,
+          url: target,
+          repoPath,
+          mode,
+          isEntrypoint,
+          ...meta,
+          ms: Date.now() - started,
+          ...ping,
+        };
+      }
+      // No declared health check: try the conventional probe when eligible.
+      // Success → real "ok"; failure stays "unknown" (ok:null renders muted,
+      // not red — we can't distinguish "down" from "no endpoint").
+      if (conventional) {
+        const probe = await pingHttp(conventional);
+        if (probe.ok) {
+          return {
+            repo,
+            service,
+            label,
+            url: conventional,
+            repoPath,
+            mode,
+            isEntrypoint,
+            ...meta,
+            ...probe,
+          };
+        }
+      }
+      return {
+        repo,
+        service,
+        label,
+        url: null,
+        repoPath,
+        mode,
+        isEntrypoint,
+        ...meta,
+        ok: null,
+      };
+    };
+    // Stream each result the moment it lands. The checks run concurrently but
+    // the slowest (shell probes that shell out to the aws CLI, ~0.45s) used to
+    // gate ALL of them, so every dot waited on the worst one.
+    // `idx` carries the graph-ranked position above into each STREAMED result.
+    // Streaming emits in completion order, which varies per poll (shell probes
+    // finish at wildly different speeds), so without a stable key the client
+    // repaints the dots in a different order every 5s.
+    const results = await Promise.all(
+      sortedEntries.map((e, idx) =>
+        checkEntry(e).then((r) => {
+          const ranked = { ...r, openUrl: e.openUrl, links: e.links, idx };
+          onResult?.(ranked);
+          return ranked;
+        }),
+      ),
+    );
+    return results;
+  }
+
+  // Full-env health, cached. Every page navigation used to re-run all 30 checks
+  // from scratch — and the slowest are shell probes that shell out to the aws
+  // CLI (~0.45s each) — so the dots took ~0.6s to resolve on EVERY switch. A
+  // single-service `?address=` probe always runs live: it exists to re-check one
+  // node on demand, where staleness is the whole thing being avoided.
+  if (pathname === "/api/health") {
+    const forViewer = viewerRewrite(req.headers.host);
+    const env = (url.searchParams.get("env") ?? "local") as Environment;
+    const addressFilter = url.searchParams.get("address");
+    const wsParam = url.searchParams.get("workspace");
+    if (wsParam && !getWorkspaceByName(wsParam))
+      return send400(res, `unknown workspace "${wsParam}"`);
+    if (addressFilter) {
+      return sendJson(
+        res,
+        (await computeHealth(env, addressFilter, undefined, wsParam)).map(
+          forViewer,
+        ),
+      );
+    }
+    const refresh = url.searchParams.get("refresh") === "1";
+    const cacheKey = healthCacheKey(env, wsParam);
+    const hit = refresh ? null : healthCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < HEALTH_CACHE_TTL_MS) {
+      return sendJson(res, hit.results.map(forViewer));
+    }
+    const results = await computeHealth(env, null, undefined, wsParam);
+    healthCache.set(cacheKey, { results, at: Date.now() });
+    return sendJson(res, results.map(forViewer));
+  }
+
+  // Same checks, streamed: each result is sent the moment it lands so the fast
+  // ones paint immediately instead of every dot waiting on the slowest.
+  if (pathname === "/api/health/stream") {
+    const forViewer = viewerRewrite(req.headers.host);
+    const env = (url.searchParams.get("env") ?? "local") as Environment;
+    const wsParam = url.searchParams.get("workspace");
+    if (wsParam && !getWorkspaceByName(wsParam))
+      return send400(res, `unknown workspace "${wsParam}"`);
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+    const send = (o: unknown): void => {
+      res.write(`data: ${JSON.stringify(o)}\n\n`);
+    };
+
+    const refresh = url.searchParams.get("refresh") === "1";
+    const cacheKey = healthCacheKey(env, wsParam);
+    const hit = refresh ? null : healthCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < HEALTH_CACHE_TTL_MS) {
+      // Cached: replay in one go. Nothing to stagger — it's already known.
+      for (const r of hit.results)
+        send({ type: "result", result: forViewer(r) });
+      send({ type: "done", cached: true });
+      return res.end();
+    }
+
+    try {
+      const results = await computeHealth(
+        env,
+        null,
+        (r) => send({ type: "result", result: forViewer(r) }),
+        wsParam,
+      );
+      healthCache.set(cacheKey, { results, at: Date.now() });
+      send({ type: "done", cached: false });
+    } catch (e) {
+      send({ type: "error", error: (e as Error).message });
+    }
+    return res.end();
+  }
+
+  // ── API: services list (catalog-aware) ───────────────────────────────────
+  if (pathname === "/api/services") {
+    const env = (url.searchParams.get("env") ?? "local") as Environment;
+    // Optional: caller may request services for a specific (non-active) workspace.
+    const wsOverride = url.searchParams.get("workspace") ?? null;
+
+    // Conventional lifecycle locally: `down` is opctl-conventional (stops
+    // running containers with no declared command, no-ops gracefully), and
+    // `restart` is orchestrated by the exec runner as down → verify → up — so
+    // every service with an `up` can offer both even when the manifest doesn't
+    // declare them.
+    const withDown = (cmds: string[]): string[] => {
+      if (env !== "local") return cmds;
+      const out = [...cmds];
+      if (!out.includes("down")) out.push("down");
+      if (!out.includes("restart") && out.includes("up")) out.push("restart");
+      return out;
+    };
+
+    // Legacy: discovered repos from .den/ symlinks / registered-repos.json
+    const legacyRepos = discoverRepos();
+    const legacyEntries = legacyRepos.flatMap((repo) =>
+      Object.entries(repo.manifest.services ?? {}).map(([svcName, svc]) => ({
+        repo: repo.repoName,
+        service: svcName,
+        address: `${repo.repoName}/${svcName}`,
+        repoPath: repo.repoPath,
+        commands: withDown(Object.keys(svc.commands?.[env] ?? {})),
+        logs: svc.logs?.[env] ?? null,
+        mode: "dev-managed" as const,
+        branch: null as string | null,
+        fromCatalog: false,
+        isEntrypoint: repo.manifest.entrypoint === svcName,
+        autostart: true, // legacy discovery has no workspace entry to toggle
+        deps: (svc.depends_on ?? []).map(depService),
+        cloned: true, // legacy discovery only ever finds on-disk repos
+      })),
+    );
+
+    // Catalog entries (workspace-aware)
+    const catalog = readCatalog();
+    const wsFile = wsOverride ? readWorkspacesFile() : null;
+    const ws = wsOverride
+      ? wsFile?.workspaces[wsOverride]
+        ? { name: wsOverride, config: wsFile!.workspaces[wsOverride] }
+        : null
+      : getActiveWorkspace();
+    const getCurrentBranch = (repoPath: string): string | null => {
+      try {
+        return execSync("git rev-parse --abbrev-ref HEAD", {
+          cwd: repoPath,
+          encoding: "utf-8",
+          stdio: ["ignore", "pipe", "ignore"],
+          timeout: GIT_REMOTE_TIMEOUT_MS,
+        }).trim();
+      } catch {
+        return null;
+      }
+    };
+
+    const noAutostart = ws
+      ? noAutostartRepos(ws.config, catalog)
+      : new Set<string>();
+    const daemonOwners = new Map(
+      listDaemons().map((d) => [d.address, d.workspaces ?? []] as const),
+    );
+    // Modules and libraries have no runtime: no card, health or commands.
+    // They show as contributors on the Applications tab instead.
+    const catalogEntries = ws
+      ? listWorkspaceServices(ws.config, catalog, ws.name)
+          .filter((r) => hasRuntime(repoKind(r.repoPath)))
+          .flatMap((resolved) => {
+            const manifest = readManifest(resolved.repoPath);
+            const svc = manifest?.services?.[resolved.subsystem];
+            if (!manifest || !svc) {
+              // Workspace membership is config-driven: a managed entry
+              // whose clone isn't on disk yet (or a checkout without a usable
+              // manifest) must still render everywhere — flagged `cloned:false`
+              // so the UI can offer Sync/clone instead of dropping the system.
+              // `branch` comes from the workspace entry; never probe git on a
+              // path that may not exist.
+              return [
+                {
+                  repo: resolved.repoName,
+                  service: resolved.subsystem,
+                  address: resolved.address,
+                  repoPath: resolved.repoPath,
+                  commands: [] as string[],
+                  logs: null,
+                  mode: resolved.mode,
+                  branch: resolved.branch,
+                  fromCatalog: true,
+                  isEntrypoint: false,
+                  autostart: !noAutostart.has(resolved.repoName),
+                  owners: daemonOwners.get(resolved.address) ?? [],
+                  deps: [] as string[],
+                  cloned: fs.existsSync(resolved.repoPath),
+                },
+              ];
+            }
+            return [
+              {
+                repo: resolved.repoName,
+                service: resolved.subsystem,
+                address: resolved.address,
+                repoPath: resolved.repoPath,
+                commands: withDown(Object.keys(svc.commands?.[env] ?? {})),
+                logs: svc.logs?.[env] ?? null,
+                mode: resolved.mode,
+                branch: resolved.branch ?? getCurrentBranch(resolved.repoPath),
+                fromCatalog: true,
+                isEntrypoint: manifest.entrypoint === resolved.subsystem,
+                autostart: !noAutostart.has(resolved.repoName),
+                owners: daemonOwners.get(resolved.address) ?? [],
+                deps: (svc.depends_on ?? []).map((d) =>
+                  resolveDepAddress(depService(d), catalog, ws.config, ws.name),
+                ),
+                cloned: true,
+              },
+            ];
+          })
+      : [];
+
+    // Merge: catalog entries take precedence over legacy for same repo.
+    // When a workspace filter is active, also exclude legacy entries not in
+    // the workspace (legacy discovery is not workspace-scoped).
+    const catalogRepos = new Set(Object.keys(catalog));
+    const wsServiceKeys = ws ? new Set(Object.keys(ws.config.services)) : null;
+    const merged = [
+      ...legacyEntries.filter((e) => {
+        if (catalogRepos.has(e.repo)) return false;
+        if (wsServiceKeys && !wsServiceKeys.has(e.repo)) return false;
+        return true;
+      }),
+      ...catalogEntries,
+    ];
+
+    // Attach the dependency-graph position so consumers can present systems
+    // top-down (entry repo first, infra-stack last) — the same order the
+    // health row and `den status` use. Added as a FIELD rather than by
+    // re-sorting the array, because four pages consume this payload and some
+    // rely on the current order.
+    const graphRank = new Map(
+      orderForDown(deriveGraph({ scope: "all", workspace: ws?.name })).map(
+        (repo, i) => [repo, i],
+      ),
+    );
+    const infraRepo = readDenConfig()?.graph?.infra?.repo ?? null;
+    return sendJson(
+      res,
+      merged.map((e) => ({
+        ...e,
+        graphRank: graphRank.get(e.repo) ?? Number.MAX_SAFE_INTEGER,
+        infra: infraRepo !== null && e.repo === infraRepo,
+      })),
+    );
+  }
+
+  // ── API: service exec (SSE) — catalog-aware ────────────────────────────────
+  if (pathname === "/api/service/exec") {
+    const repoName = url.searchParams.get("repo");
+    const svcName = url.searchParams.get("service");
+    const cmdName = url.searchParams.get("cmd");
+    const env = (url.searchParams.get("env") ?? "local") as Environment;
+
+    if (!repoName || !svcName || !cmdName)
+      return send400(res, "repo, service, and cmd are required");
+
+    // Open the SSE stream immediately so any resolution errors are visible
+    // in the output pane rather than triggering onerror ("Connection closed").
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    const emit = (obj: unknown): void => {
+      res.write(`data: ${JSON.stringify(obj)}\n\n`);
+    };
+    const fail = (msg: string): void => {
+      emit({ type: "error", text: msg });
+      emit({ type: "done", exitCode: 1, duration: 0 });
+      res.end();
+    };
+
+    const wsParam = url.searchParams.get("workspace");
+    if (wsParam && !isWorkspaceActive(wsParam)) {
+      return fail(`Workspace "${wsParam}" is not active — activate it first`);
+    }
+
+    // Resolve repo path via resolveService (handles single-service repos where
+    // the manifest key differs from the repo name, e.g. tasks-runner →
+    // tool-runner). Try bare repo name first so single-service repos
+    // don't need an explicit "repo/svc" address in the workspace config.
+    let repoPath: string | undefined;
+    let cmdDef:
+      | string
+      | { cmd: string; detachable?: boolean; interactive?: boolean }
+      | undefined;
+
+    const resolved =
+      resolveService(`${repoName}/${svcName}`, wsParam ?? undefined) ??
+      resolveService(repoName, wsParam ?? undefined);
+    if (resolved) {
+      repoPath = resolved.repoPath;
+      const manifest = readManifest(repoPath);
+      if (manifest) {
+        cmdDef =
+          manifest.services?.[resolved.subsystem]?.commands?.[env]?.[cmdName];
+      }
+    }
+
+    if (!cmdDef) {
+      // Legacy fallback: repos registered via .den/ symlinks / registered-repos.json
+      const repos = discoverRepos();
+      const repo = repos.find((r) => r.repoName === repoName);
+      repoPath = repo?.repoPath;
+      cmdDef = repo?.manifest.services?.[svcName]?.commands?.[env]?.[cmdName];
+    }
+
+    if (!cmdDef || !repoPath) {
+      // An un-cloned managed repo has no manifest to read commands from.
+      // Report THAT, not "command not found" — the command may well exist; the
+      // repo just isn't on disk yet.
+      if (
+        resolved &&
+        resolved.mode === "managed" &&
+        !fs.existsSync(resolved.repoPath)
+      ) {
+        return fail(
+          `${repoName} is not cloned yet — run Sync (or ⋮ → clone now) to clone it into ` +
+            `${product().servicesDir}/, then retry "${cmdName}".`,
+        );
+      }
+      const ws = getActiveWorkspace();
+      return fail(
+        `Command "${cmdName}" not found for ${repoName}/${svcName} in env "${env}".` +
+          (!ws ? " No active workspace." : ` Active workspace: ${ws.name}.`) +
+          ` resolved=${JSON.stringify(resolved ?? null)}`,
+      );
+    }
+
+    const cmdString = rewriteLegacyOpctlKillCommandForContainer(
+      cmdName,
+      typeof cmdDef === "string" ? cmdDef : cmdDef.cmd,
+      repoName,
+      (line) => emit({ type: "line", text: line }),
+    );
+    const detached = shouldDetachServiceCommand(cmdName, cmdDef);
+    const interactive = isInteractiveServiceCommand(cmdDef);
+
+    if (interactive) {
+      return fail(
+        `"${cmdName}" requires an interactive terminal (HITL).\n` +
+          `Run in your terminal:\n  cd ${repoPath}\n  ${cmdString}`,
+      );
+    }
+
+    const startTime = Date.now();
+    emit({ type: "cmd", text: `$ ${cmdString}`, detached });
+
+    const execId = shortRunId();
+    const execDesc = `${repoName}/${svcName} ${cmdName} (${env})`;
+    serverLog(`▶ exec ${execDesc} [${execId}]`, "lifecycle");
+
+    // For detachable commands (up/restart), the service is spawned as a daemon
+    // writing to a log file so it survives den restarts.  The tail proc
+    // streams that log back to the SSE and keeps the connection open
+    // indefinitely — the client stays attached until it closes the tab.
+    const logPath = detached ? getServiceLogPath(repoName, svcName) : undefined;
+    if (logPath) emit({ type: "line", text: `→ log: ${logPath}` });
+
+    let active = true; // false once client disconnects
+
+    prewarmSudo();
+    const svcProc = spawnStreaming(
+      cmdString,
+      [],
+      { ...process.env, E2E_ENVIRONMENT: env, ...getSudoEnv() },
+      (line) => {
+        mirrorLine(execId, line);
+        emit({ type: "line", text: line });
+      },
+      (exitCode) => {
+        if (!active) return; // client already closed — don't write to dead response
+        const duration = Date.now() - startTime;
+        serverLog(
+          `■ exec ${execDesc} · exit=${exitCode} · ${formatDuration(duration)} [${execId}]`,
+          "lifecycle",
+        );
+        // Dev-tooling telemetry: one invocation per service command run. The
+        // action is whitelisted to common lifecycle verbs (low cardinality);
+        // repo/service identifiers are internal and omitted.
+        recordInvocation({
+          command: "service.exec",
+          surface: "ux",
+          durationMs: duration,
+          exit: exitCode,
+          extra: {
+            action: [
+              "up",
+              "down",
+              "restart",
+              "setup",
+              "build",
+              "logs",
+            ].includes(cmdName)
+              ? cmdName
+              : "other",
+            env,
+          },
+        });
+        if (cmdName === "down" && exitCode === 0) {
+          unregisterDaemon(resolved?.address ?? `${repoName}/${svcName}`);
+        }
+        if (exitCode !== 0)
+          emit({ type: "error", text: `Command failed (exit ${exitCode})` });
+        emit({ type: "done", exitCode, duration });
+        res.end();
+      },
+      repoPath,
+      detached,
+      logPath,
+      // For detachable commands (up): fire when the launch script itself exits.
+      // This happens when `make up` hands off to a container runtime and exits.
+      // The client uses this to transition from startup output to ongoing logs.
+      detached
+        ? (exitCode) => {
+            if (!active) return;
+            emit({
+              type: "service-exited",
+              exitCode,
+              repoName,
+              subsystem: svcName,
+            });
+          }
+        : undefined,
+    );
+
+    if (detached) {
+      // Tell the client the daemon is up; keep the tail proc (svcProc) alive
+      // so startup output keeps streaming until `make up` finishes.
+      // Kill the tail proc only when the client disconnects (tab closed).
+      emit({ type: "started", detached: true });
+      res.on("close", () => {
+        active = false;
+        try {
+          svcProc.kill();
+        } catch {
+          /* already exited */
+        }
+      });
+    }
+    return;
+  }
+
+  // ── API: service logs (SSE) ───────────────────────────────────────────────
+  if (pathname === "/api/service/logs") {
+    const repoName = url.searchParams.get("repo");
+    const svcName = url.searchParams.get("service");
+    const env = (url.searchParams.get("env") ?? "local") as Environment;
+
+    if (!repoName || !svcName)
+      return send400(res, "repo and service are required");
+
+    const repos = discoverRepos();
+    const repo = repos.find((r) => r.repoName === repoName);
+    const logSource = repo?.manifest.services?.[svcName]?.logs?.[env] as
+      | LogSource
+      | undefined;
+
+    if (!logSource) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end(
+        `No log source configured for ${repoName}/${svcName} in env "${env}"`,
+      );
+      return;
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    const emit = (obj: unknown): void => {
+      res.write(`data: ${JSON.stringify(obj)}\n\n`);
+    };
+
+    if (logSource.type === "process") {
+      emit({
+        type: "error",
+        text: "process logs: attach to a running process is not yet supported",
+      });
+      res.end();
+      return;
+    }
+
+    if (logSource.type === "shell") {
+      emit({ type: "cmd", text: `$ ${logSource.cmd}` });
+
+      let active = true;
+      const lineBuffer: string[] = [];
+      let confirmed = false;
+      let quickTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        quickTimer = null;
+        confirmed = true;
+        for (const line of lineBuffer) emit({ type: "line", text: line });
+        lineBuffer.length = 0;
+      }, DAEMON_QUICK_EXIT_MS);
+
+      const proc = testRunner.spawnStreaming(
+        logSource.cmd,
+        [],
+        { ...process.env },
+        (line) => {
+          if (confirmed) {
+            emit({ type: "line", text: line });
+          } else {
+            lineBuffer.push(line);
+          }
+        },
+        (exitCode) => {
+          if (!active) return;
+          if (quickTimer !== null) {
+            clearTimeout(quickTimer);
+            quickTimer = null;
+            lineBuffer.length = 0;
+            emit({
+              type: "line",
+              text: `No running log stream for ${repoName}/${svcName}; the service may be down.`,
+            });
+          } else if (exitCode !== 0) {
+            emit({
+              type: "line",
+              text: `── log stream exited (${exitCode}) ──`,
+            });
+          }
+          emit({ type: "done", exitCode, duration: 0 });
+          res.end();
+        },
+        repo?.repoPath,
+        true, // detached — own process group
+      );
+
+      res.on("close", () => {
+        active = false;
+        if (quickTimer !== null) {
+          clearTimeout(quickTimer);
+          quickTimer = null;
+        }
+        try {
+          proc.kill("SIGTERM");
+        } catch {
+          /* already exited */
+        }
+      });
+      return;
+    }
+
+    if (logSource.type === "cloudwatch") {
+      const region =
+        logSource.region ?? process.env.AWS_DEFAULT_REGION ?? "us-east-1";
+      const profile = loadAwsProfiles()[env];
+      const args = [
+        "logs",
+        "tail",
+        logSource.logGroup,
+        "--follow",
+        "--region",
+        region,
+      ];
+      if (logSource.logStream)
+        args.push("--log-stream-name-prefix", logSource.logStream);
+      if (profile) args.push("--profile", profile);
+
+      emit({ type: "cmd", text: `$ aws ${args.join(" ")}` });
+
+      // Track output lines to detect AWS auth errors
+      const AUTH_KEYWORDS = [
+        "session has expired",
+        "reauthenticate",
+        "aws login",
+        "aws sso login",
+        "not authorized",
+        "invalid token",
+        "ExpiredToken",
+        "NoCredentialsError",
+      ];
+      let authRequired = false;
+
+      // Strip static credential env vars so --profile takes effect.
+      // AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY have higher precedence than
+      // --profile and will silently override it if left in the environment.
+      const awsEnv = { ...process.env };
+      if (profile) {
+        delete awsEnv.AWS_ACCESS_KEY_ID;
+        delete awsEnv.AWS_SECRET_ACCESS_KEY;
+        delete awsEnv.AWS_SESSION_TOKEN;
+        delete awsEnv.AWS_SECURITY_TOKEN;
+        delete awsEnv.AWS_PROFILE;
+        delete awsEnv.AWS_DEFAULT_PROFILE;
+      }
+
+      const proc = testRunner.spawnStreaming(
+        "aws",
+        args,
+        awsEnv,
+        (line) => {
+          const lower = line.toLowerCase();
+          if (AUTH_KEYWORDS.some((k) => lower.includes(k.toLowerCase())))
+            authRequired = true;
+          emit({ type: "line", text: line });
+        },
+        (exitCode) => {
+          emit({
+            type: "done",
+            exitCode,
+            duration: 0,
+            authRequired: authRequired && exitCode !== 0,
+          });
+          res.end();
+        },
+        undefined,
+        true, // detached — own process group
+      );
+
+      res.on("close", () => {
+        try {
+          proc.kill("SIGTERM");
+        } catch {
+          /* already exited */
+        }
+      });
+      return;
+    }
+
+    emit({
+      type: "error",
+      text: `Unsupported log source type: ${(logSource as LogSource).type}`,
+    });
+    res.end();
+    return;
+  }
+
+  // ── API: running daemons list ──────────────────────────────────────────────
+  if (pathname === "/api/service/daemons") {
+    const daemons = listDaemons().map((d) => ({
+      address: d.address,
+      repoName: d.repoName,
+      subsystem: d.subsystem,
+      repoPath: d.repoPath,
+      branch: d.branch ?? null,
+      workspaces: d.workspaces ?? [],
+      logPath: d.logPath,
+      startedAt: d.startedAt.toISOString(),
+    }));
+    return sendJson(res, daemons);
+  }
+
+  // ── API: service taillog (SSE) — live log stream for a running service ───────
+  //
+  // Source resolution, in order:
+  //   1. The service's manifest `logs.local` shell command (e.g. `docker logs -f`)
+  //   2. Conventional container derivation: a running `opctl_<base>_<hash>`
+  //      container matched from the repo's op manifest / repo name →
+  //      `docker logs -f` — real runtime logs with zero manifest config
+  //   3. The den daemon startup log (~/.den/logs/<repo>/<service>.log) —
+  //      last resort, covers host-run processes with no container
+  // A manifest command that exits within the quick-exit window (container not
+  // found, stale filter) drops to tier 2/3, retrying tier 1 in between.
+  // ── API: service log HISTORY — paged backwards to container startup ────────
+  //
+  // Docker retains the full log of the current container instance; this pages
+  // it backwards with opaque cursors (byte offsets into an immutable snapshot
+  // — see log-history.ts). env=local only in v1; other envs return
+  // { unsupported: true } so the client renders a friendly notice.
+  if (pathname === "/api/service/history") {
+    // This handler sits ABOVE the blanket /api/service* local-dev guard
+    // (later in this function), so it must enforce the guard itself.
+    if (!isLocalEnabled()) {
+      res.writeHead(403);
+      res.end("local-dev is disabled");
+      return;
+    }
+    const repoName = url.searchParams.get("repo");
+    const svcName = url.searchParams.get("service");
+    const env = url.searchParams.get("env") ?? "local";
+    const cursor = url.searchParams.get("cursor") || null;
+    const limit = Math.min(
+      Math.max(
+        parseInt(url.searchParams.get("limit") ?? "2000", 10) || 2000,
+        1,
+      ),
+      10_000,
+    );
+    if (!repoName || !svcName)
+      return send400(res, "repo and service are required");
+    if (!isSafeServiceName(repoName) || !isSafeServiceName(svcName))
+      return send400(res, "invalid repo/service name");
+    try {
+      const source = resolveHistorySource(repoName, svcName, env);
+      if (source.kind === "unsupported")
+        return sendJson(res, { unsupported: true, reason: source.reason });
+      const snapshot = ensureSnapshot(source);
+      if (!snapshot)
+        return sendJson(res, {
+          unsupported: true,
+          reason: "could not snapshot the container log",
+        });
+      return sendJson(res, readPageBefore(snapshot, cursor, limit));
+    } catch (e) {
+      return send400(res, (e as Error).message);
+    }
+  }
+
+  // ── API: cross-system history search ───────────────────────────────────────
+  //
+  // Greps the FULL history of each requested system (targets = the /logs
+  // toolbar's list, computed client-side so scoping lives in one place).
+  if (pathname === "/api/logs/search") {
+    // /api/logs is not covered by the downstream /api/service* local-dev
+    // guard — enforce it here.
+    if (!isLocalEnabled()) {
+      res.writeHead(403);
+      res.end("local-dev is disabled");
+      return;
+    }
+    const q = url.searchParams.get("q") ?? "";
+    const env = url.searchParams.get("env") ?? "local";
+    const targets = (url.searchParams.get("targets") ?? "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, 40)
+      .map((t) => {
+        const slash = t.lastIndexOf("/");
+        return { repo: t.slice(0, slash), service: t.slice(slash + 1) };
+      })
+      .filter(
+        (t) =>
+          t.repo &&
+          t.service &&
+          isSafeServiceName(t.repo) &&
+          isSafeServiceName(t.service),
+      );
+    if (q.trim().length < 2) return send400(res, "q must be at least 2 chars");
+    if (targets.length === 0) return send400(res, "targets required");
+    void Promise.all(targets.map((t) => searchSystemHistory(t, q, env))).then(
+      (results) => sendJson(res, { q, results }),
+    );
+    return;
+  }
+
+  if (pathname === "/api/service/taillog") {
+    const repoName = url.searchParams.get("repo");
+    const svcName = url.searchParams.get("service");
+    if (!repoName || !svcName)
+      return send400(res, "repo and service are required");
+
+    // Resolve manifest log source. The client names an exact service, so
+    // when the manifest has that key, use it directly — resolveService's
+    // bare-repo correction rewrites the subsystem to the ENTRYPOINT (a
+    // shop/db request would otherwise read api's log source).
+    const tailResolved =
+      resolveService(repoName) ?? resolveService(`${repoName}/${svcName}`);
+    const tailManifest = tailResolved
+      ? readManifest(tailResolved.repoPath)
+      : null;
+    const tailSubsystem = tailManifest?.services?.[svcName]
+      ? svcName
+      : (tailResolved?.subsystem ?? svcName);
+    const logSource = tailManifest?.services?.[tailSubsystem]?.logs?.[
+      "local"
+    ] as LogSource | undefined;
+
+    const daemonLogPath = getServiceLogPath(repoName, svcName);
+    const fallbackCmd = `tail -F -n ${LIVE_TAIL_LINES} "${daemonLogPath}"`;
+
+    const manifestCmd =
+      logSource?.type === "shell" && logSource.cmd ? logSource.cmd : null;
+    const manifestCwd = manifestCmd ? tailResolved?.repoPath : undefined;
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    let active = true;
+    const emit = (obj: unknown): void => {
+      if (!active) return;
+      res.write(`data: ${JSON.stringify(obj)}\n\n`);
+    };
+
+    // If the manifest log command exits within QUICK_EXIT_MS, we consider it a
+    // transient failure (e.g. container not yet running) and retry.  After
+    // MAX_RETRIES quick exits we give up and fall back to the daemon log.
+    const QUICK_EXIT_MS = DAEMON_QUICK_EXIT_MS;
+    const RETRY_DELAY_MS = DAEMON_RETRY_DELAY_MS;
+    const MAX_RETRIES = 12; // up to ~60s of retries before giving up
+
+    let currentProc: ReturnType<typeof spawnStreaming> | null = null;
+    let retryCount = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Fallback tier 1: resolve the service's running container by opctl
+    // naming convention (`opctl_<base>_<hash>`) and stream `docker logs -f`.
+    // This gives REAL runtime logs for services with no (or broken)
+    // manifest `logs.local` — no den daemon file needed. Returns false
+    // when no conventional container is running.
+    const startDockerFallback = (): boolean => {
+      const container = findConventionalContainer(
+        repoName,
+        tailResolved?.repoPath,
+        tailSubsystem,
+      );
+      if (!container) return false;
+      emit({
+        type: "line",
+        text: `── streaming container logs: ${container} ──`,
+      });
+      currentProc = spawnStreaming(
+        `docker logs -f --tail ${LIVE_TAIL_LINES} ${container}`,
+        [],
+        { ...process.env },
+        (line) => emit({ type: "line", text: line }),
+        (exitCode) => {
+          if (!active) return;
+          // Container stopped/removed — end the stream; the client's
+          // auto-reattach re-resolves against whatever is running next.
+          emit({
+            type: "line",
+            text: `── container log stream ended (${exitCode}) ──`,
+          });
+          res.end();
+        },
+        undefined,
+        true,
+      );
+      return true;
+    };
+
+    // Fallback tier 2 (last resort): tail the den daemon startup log —
+    // covers host-run processes (no container to derive logs from).
+    const startDaemonFileFallback = (): void => {
+      emit({
+        type: "line",
+        text: "── container log unavailable — watching startup log ──",
+      });
+      currentProc = spawnStreaming(
+        fallbackCmd,
+        [],
+        { ...process.env },
+        (line) => emit({ type: "line", text: line }),
+        () => {
+          if (active) res.end();
+        },
+        undefined,
+        true,
+      );
+    };
+
+    const startFallback = (): void => {
+      if (startDockerFallback()) return;
+      startDaemonFileFallback();
+    };
+
+    const tryManifestCmd = (): void => {
+      // Buffer lines during the quick-exit window — only flush them to the
+      // client once we know the command has been alive long enough to be real.
+      // This prevents docker error messages from cluttering the tab on retries.
+      const lineBuffer: string[] = [];
+      let confirmed = false; // true once QUICK_EXIT_MS has passed without exit
+
+      let quickTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        quickTimer = null;
+        confirmed = true;
+        // Flush any buffered lines now that we know the command is alive.
+        for (const line of lineBuffer) emit({ type: "line", text: line });
+        lineBuffer.length = 0;
+      }, QUICK_EXIT_MS);
+
+      currentProc = spawnStreaming(
+        manifestCmd!,
+        [],
+        { ...process.env },
+        (line) => {
+          if (confirmed) {
+            emit({ type: "line", text: line });
+          } else {
+            lineBuffer.push(line);
+          }
+        },
+        (exitCode) => {
+          if (!active) return;
+          if (quickTimer !== null) {
+            // Exited before QUICK_EXIT_MS — the manifest log command is broken
+            // or the container isn't ready. When den's own daemon log exists
+            // (den spawned this service), fall back to it IMMEDIATELY instead
+            // of retrying a dead command for ~60s of silent tab (the exact
+            // failure mode of stale `docker ps --filter name=…` log commands).
+            clearTimeout(quickTimer);
+            quickTimer = null;
+            lineBuffer.length = 0; // discard noisy error output
+            if (startDockerFallback()) {
+              // streaming the conventional container's logs
+            } else if (fs.existsSync(daemonLogPath)) {
+              startDaemonFileFallback();
+            } else if (retryCount < MAX_RETRIES) {
+              retryCount++;
+              retryTimer = setTimeout(() => {
+                retryTimer = null;
+                if (active) tryManifestCmd();
+              }, RETRY_DELAY_MS);
+            } else {
+              startFallback();
+            }
+          } else if (exitCode !== 0) {
+            // Ran for a while then exited with error.
+            emit({
+              type: "line",
+              text: `── log stream exited (${exitCode}) ──`,
+            });
+            res.end();
+          } else {
+            res.end();
+          }
+        },
+        manifestCwd,
+        true,
+      );
+    };
+
+    if (manifestCmd) {
+      tryManifestCmd();
+    } else {
+      // No manifest log source (e.g. shop-web, control-plane): conventional
+      // container logs first, daemon startup log as last resort.
+      startFallback();
+    }
+
+    res.on("close", () => {
+      active = false;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      try {
+        currentProc?.kill("SIGTERM");
+      } catch {
+        /* already exited */
+      }
+    });
+    return;
+  }
+
+  // ── API: run tests (SSE) ───────────────────────────────────────────────────
+  if (pathname === "/api/run") {
+    const pillar = url.searchParams.get("pillar") as Pillar | null;
+    const modules = url.searchParams.getAll("module").filter(Boolean);
+    const env = (url.searchParams.get("env") ?? "local") as Environment;
+    const baseApiUrl = url.searchParams.get("baseApiUrl") ?? undefined;
+    const useLocalCheckout = url.searchParams.get("useLocalCheckout") === "1";
+    const modeParam = url.searchParams.get("mode");
+    const securityMode =
+      modeParam === "api" || modeParam === "full" ? modeParam : "baseline";
+    // Per-perf-test declarative optional-field values, as URL-encoded JSON:
+    //   { [moduleName]: { [fieldName]: value } }
+    // Each module's declared `optionalFields` are resolved to env vars below and
+    // routed ONLY to that module's k6 process (never globally).
+    const optsRaw = url.searchParams.get("opts");
+    let opts: Record<string, Record<string, unknown>> = {};
+    if (optsRaw) {
+      try {
+        const parsed = JSON.parse(optsRaw);
+        if (parsed && typeof parsed === "object") {
+          opts = parsed as Record<string, Record<string, unknown>>;
+        }
+      } catch {
+        // Malformed opts → ignore; fall back to per-field defaults.
+      }
+    }
+
+    if (!pillar) return send400(res, "pillar required");
+
+    // Resolve declarative optional fields → per-module env. Only the perf pillar
+    // declares optionalFields; for every other pillar this is an empty map.
+    let moduleEnv: Record<string, Record<string, string>> | undefined;
+    if (pillar === "performance") {
+      moduleEnv = {};
+      try {
+        const perfModules = await moduleScanner.scanModules("performance");
+        // When "All modules" is selected the client sends no `module` params;
+        // resolve fields for every perf module so its defaults still apply.
+        const targetNames =
+          modules.length > 0 ? modules : perfModules.map((m) => m.name);
+        for (const m of perfModules) {
+          if (!targetNames.includes(m.name)) continue;
+          const fields = m.optionalFields ?? [];
+          if (fields.length === 0) continue;
+          const values = (opts[m.name] ?? {}) as Record<
+            string,
+            string | number | boolean | undefined
+          >;
+          const env = resolveFieldEnv(fields, values);
+          if (Object.keys(env).length > 0) moduleEnv[m.name] = env;
+        }
+      } catch (err) {
+        serverLog(`  ⚠ /api/run optionalFields: ${(err as Error).message}`);
+      }
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    const emit = (obj: unknown): void => {
+      res.write(`data: ${JSON.stringify(obj)}\n\n`);
+    };
+
+    const steps = testRunner.buildCommand({
+      pillar,
+      environment: env,
+      modules,
+      baseApiUrl,
+      useLocalCheckout,
+      moduleEnv,
+      securityMode,
+    });
+
+    if (steps.length === 0) {
+      emit({
+        type: "error",
+        text: `No command configured for pillar: ${pillar}`,
+      });
+      res.end();
+      return;
+    }
+
+    // Log the source(s) of truth before the first step so run output captures
+    // which repo/branch/SHA was actually tested. Silent for pillars that don't
+    // read tests from repos (integration, perf are den-owned).
+    if (
+      pillar === "synthetic" ||
+      pillar === "smoke" ||
+      pillar === "journeys" ||
+      pillar === "security"
+    ) {
+      try {
+        const sources = collectTestSources(pillar);
+        if (sources.length === 0) {
+          emit({ type: "line", text: `→ source: (no repos discovered)` });
+        } else {
+          for (const s of sources) {
+            emit({ type: "line", text: `→ source: ${formatSourceLine(s)}` });
+          }
+        }
+      } catch (err) {
+        emit({
+          type: "line",
+          text: `→ source: (resolution failed: ${(err as Error).message})`,
+        });
+      }
+    }
+
+    const runId = shortRunId();
+    const modDesc = modules.length ? modules.join(",") : "all";
+    const runDesc = `${pillar}/${env} · modules=${modDesc}`;
+    serverLog(`▶ run ${runDesc} [${runId}]`, "lifecycle");
+    if (
+      pillar === "synthetic" ||
+      pillar === "smoke" ||
+      pillar === "journeys" ||
+      pillar === "security"
+    ) {
+      try {
+        const sources = collectTestSources(pillar);
+        for (const s of sources) {
+          serverLog(`  source: ${formatSourceLine(s)} [${runId}]`, "lifecycle");
+        }
+      } catch {
+        /* already emitted above as an SSE line */
+      }
+    }
+
+    const startTime = Date.now();
+    let overallExit = 0;
+
+    const finishLifecycle = (exitCode: number, note?: string): void => {
+      const dur = formatDuration(Date.now() - startTime);
+      const extra = note ? ` · ${note}` : "";
+      serverLog(
+        `■ run ${runDesc} · exit=${exitCode} · ${dur}${extra} [${runId}]`,
+        "lifecycle",
+      );
+      // Dev-tooling telemetry: one invocation per test run (pillar/env are
+      // low-cardinality enums; module count only — never module names/args).
+      recordInvocation({
+        command: "test.run",
+        surface: "ux",
+        durationMs: Date.now() - startTime,
+        exit: exitCode,
+        extra: {
+          pillar: String(pillar),
+          env: String(env),
+          modules: modules.length,
+        },
+      });
+    };
+
+    const runStep = (i: number): void => {
+      if (i >= steps.length) {
+        finishLifecycle(overallExit);
+        emit(
+          getRunDonePayload({
+            pillar,
+            exitCode: overallExit,
+            duration: Date.now() - startTime,
+            rootDir: ROOT,
+          }),
+        );
+        res.end();
+        return;
+      }
+
+      const step = steps[i];
+      emit({ type: "cmd", text: `$ ${step.command} ${step.args.join(" ")}` });
+
+      testRunner.spawnStreaming(
+        step.command,
+        step.args,
+        step.env,
+        (line) => {
+          mirrorLine(runId, line);
+          emit({ type: "line", text: line });
+        },
+        (exitCode) => {
+          if (exitCode !== 0) {
+            if (overallExit === 0) {
+              overallExit = exitCode;
+            }
+            if (!step.continueOnFailure) {
+              emit({
+                type: "error",
+                text: `Step "${step.label}" failed (exit ${exitCode}) — aborting`,
+              });
+              finishLifecycle(exitCode, `step "${step.label}" failed`);
+              emit(
+                getRunDonePayload({
+                  pillar,
+                  exitCode,
+                  duration: Date.now() - startTime,
+                  rootDir: ROOT,
+                }),
+              );
+              res.end();
+              return;
+            }
+          }
+          runStep(i + 1);
+        },
+      );
+    };
+
+    runStep(0);
+    return;
+  }
+
+  // ── API: AWS re-authenticate (SSE) ───────────────────────────────────────
+  if (pathname === "/api/aws/login") {
+    const env = (url.searchParams.get("env") ?? "local") as Environment;
+    const profiles = loadAwsProfiles();
+    const profile = profiles[env];
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    const emit = (obj: unknown): void => {
+      res.write(`data: ${JSON.stringify(obj)}\n\n`);
+    };
+
+    if (!profile) {
+      emit({
+        type: "error",
+        text: `No AWS profile configured for env "${env}". Run: make aws-configure`,
+      });
+      emit({ type: "done", exitCode: 1, duration: 0 });
+      res.end();
+      return;
+    }
+
+    const args = ["sso", "login", "--profile", profile];
+    emit({ type: "cmd", text: `$ aws ${args.join(" ")}` });
+
+    const proc = testRunner.spawnStreaming(
+      "aws",
+      args,
+      { ...process.env },
+      (line) => emit({ type: "line", text: line }),
+      (exitCode) => {
+        emit({ type: "done", exitCode, duration: 0 });
+        res.end();
+      },
+      undefined,
+      false, // not detached — we want signals to reach it
+    );
+
+    res.on("close", () => {
+      try {
+        proc.kill("SIGTERM");
+      } catch {
+        /* already exited */
+      }
+    });
+    return;
+  }
+
+  // ── API: service catalog ──────────────────────────────────────────────────
+  if (pathname === "/api/catalog") {
+    return sendJson(res, readCatalog());
+  }
+
+  // ── API: den config ────────────────────────────────────────────────────
+  if (pathname === `/api/${product().cli}/config` && req.method === "GET") {
+    // `org` resolved (id defaults to edge.org) for the header's org label.
+    return sendJson(res, { ...readDenConfig(), org: readOrg() });
+  }
+
+  // ── API: server info + staleness (drives the header "stale server" pill) ────
+  if (pathname === "/api/server-info" && req.method === "GET") {
+    const { stale, scanned } = computeStale();
+    return sendJson(res, {
+      pid: process.pid,
+      port: PORT,
+      startedAt: new Date(SERVER_STARTED_AT).toISOString(),
+      uptimeMs: Date.now() - SERVER_STARTED_AT,
+      stale,
+      scanned,
+    });
+  }
+
+  // ── API: restart the web server (from the "stale server" UI) ────────────────
+  // Spawns a detached `den web restart` that stops THIS process and starts a
+  // fresh daemon on the same port. Respond first, then spawn on the next tick so
+  // the response flushes before the driver child arrives to stop us.
+  if (pathname === "/api/web/restart" && req.method === "POST") {
+    serverLog("↻ web restart requested from the UI", "lifecycle");
+    sendJson(res, { restarting: true, pid: process.pid });
+    setImmediate(() => {
+      try {
+        spawnDetachedWebRestart(PORT);
+      } catch (e) {
+        serverLog(`  ⚠ web restart failed to spawn: ${(e as Error).message}`);
+      }
+    });
+    return;
+  }
+
+  // ── API: release config (GET effective / PUT personal override) ────────────
+  // Deliberately placed before the local-dev guard: the Release tab is for
+  // hosted deploys and must work when `local` is disabled.
+  if (pathname === "/api/release/config") {
+    if (req.method === "GET") return sendJson(res, releaseService.config());
+    if (req.method === "PUT") {
+      try {
+        const patch = JSON.parse(await readBody(req)) as Partial<ReleaseConfig>;
+        if (typeof patch !== "object" || patch === null || Array.isArray(patch))
+          return send400(res, "expected a release config object");
+        if (patch.repos !== undefined) {
+          if (!Array.isArray(patch.repos))
+            return send400(res, "repos must be an array");
+          for (const r of patch.repos) {
+            if (!r || typeof r.name !== "string" || typeof r.wave !== "number")
+              return send400(
+                res,
+                "each repo needs a string name and numeric wave",
+              );
+          }
+        }
+        // Whether the page may deploy is config/den.yml's call, never the page's.
+        delete (patch as { deploy?: boolean }).deploy;
+        writeUserReleaseConfig(patch);
+        return sendJson(res, releaseService.config());
+      } catch (e) {
+        return send400(res, `Invalid request: ${(e as Error).message}`);
+      }
+    }
+    res.writeHead(405);
+    res.end("Method not allowed");
+    return;
+  }
+
+  // ── API: release status (verify table) ─────────────────────────────────────
+  if (pathname === "/api/release/status" && req.method === "GET") {
+    const env = url.searchParams.get("env") ?? "";
+    const refresh = url.searchParams.get("refresh") === "1";
+    const cfg = releaseService.config();
+    if (!cfg.environments.includes(env))
+      return send400(res, `Unknown env: ${env}`);
+    try {
+      const rows = await releaseService.verifyEnv(env, refresh);
+      return sendJson(res, { env, rows, fetchedAt: new Date().toISOString() });
+    } catch (e) {
+      serverLog(`  ⚠ /api/release/status: ${(e as Error).message}`);
+      return sendJson(res, { env, rows: [], error: (e as Error).message });
+    }
+  }
+
+  // ── API: live CD runs (Release page poll) ──────────────────────────────────
+  // Deliberately not env-scoped — see RepoRunState: a run object does not carry
+  // the environment it targets, so a run in flight blocks that repo outright.
+  if (pathname === "/api/release/runs" && req.method === "GET") {
+    const refresh = url.searchParams.get("refresh") === "1";
+    try {
+      return sendJson(res, {
+        runs: await releaseService.listRepoRuns(refresh),
+      });
+    } catch (e) {
+      serverLog(`  ⚠ /api/release/runs: ${(e as Error).message}`);
+      return sendJson(res, { runs: [], error: (e as Error).message });
+    }
+  }
+
+  // ── API: release branches (deploy-time branch selector) ────────────────────
+  if (pathname === "/api/release/branches" && req.method === "GET") {
+    const repo = url.searchParams.get("repo") ?? "";
+    const cfg = releaseService.config();
+    if (!cfg.repos.some((r) => r.name === repo))
+      return send400(res, `Unknown repo: ${repo}`);
+    try {
+      return sendJson(res, await releaseService.listBranches(repo));
+    } catch {
+      return sendJson(res, ["main"]);
+    }
+  }
+
+  // ── API: release deploy (session-backed) ───────────────────────────────────
+  // Decoupled from the browser so the log survives page navigation and den
+  // keeps monitoring even with no client attached: POST starts a background
+  // deploy SESSION, GET ?session= attaches an SSE stream that REPLAYS the log so
+  // far then streams live events, DELETE dismisses (closes) it.
+  // Policy: prod requires confirm==="prod"; deploy-all→prod is enforced
+  // main-only; a single non-main→prod deploy is an allowed "hotfix".
+  if (pathname === "/api/release/deploy/active" && req.method === "GET") {
+    return sendJson(res, deploySessions.active());
+  }
+
+  if (pathname === "/api/release/deploy") {
+    // ── Start (POST) → { id, label, status, ... } | 4xx ──
+    if (req.method === "POST") {
+      if (!readReleaseConfig().deploy) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: DEPLOYS_OFF_MESSAGE }));
+        return;
+      }
+      let body: {
+        env?: string;
+        mode?: string;
+        repo?: string;
+        ref?: string;
+        confirm?: string;
+      };
+      try {
+        body = JSON.parse((await readBody(req)) || "{}");
+      } catch {
+        return send400(res, "invalid JSON body");
+      }
+      const env = body.env ?? "";
+      const mode = body.mode ?? "all";
+      const repoParam = body.repo ?? null;
+      const refParam = body.ref || "";
+      const confirm = body.confirm ?? "";
+
+      const cfg = releaseService.config();
+      if (!cfg.environments.includes(env))
+        return send400(res, `Unknown env: ${env}`);
+      const isProd = env === "prod";
+      if (isProd && confirm !== "prod")
+        return send400(res, "Production deploy requires typed confirmation.");
+
+      const notices: ReleaseEvent[] = [];
+      let plan: DeployPlanEntry[];
+      let label: string;
+      if (mode === "single") {
+        if (!repoParam)
+          return send400(res, "repo required for a single deploy.");
+        const r = cfg.repos.find((x) => x.name === repoParam);
+        if (!r) return send400(res, `Unknown repo: ${repoParam}`);
+        const target = resolveReleaseTarget(r, env, cfg);
+        if (target.environments.length > 1)
+          return send400(
+            res,
+            `${r.name} has ${target.environments.length} ${env} environments (${target.environments.join(", ")}); deploy each one from GitHub.`,
+          );
+        const ref = refParam || target.branch;
+        if (ref !== target.branch) {
+          const branches = await releaseService.listBranches(repoParam);
+          if (!branches.includes(ref))
+            return send400(res, `Unknown branch "${ref}" for ${repoParam}.`);
+        }
+        if (isProd && ref !== target.branch)
+          notices.push({
+            type: "log",
+            level: "warn",
+            text: `⚠ HOTFIX: dispatching "${ref}" (not ${target.branch}) to PRODUCTION.`,
+          });
+        plan = [
+          {
+            repo: r.name,
+            workflow: target.workflows[0],
+            ref,
+            wave: r.wave,
+            inputs: target.inputs,
+          },
+        ];
+        label = `${r.name} @ ${ref} → ${env}`;
+      } else {
+        const enabled = cfg.repos.filter((r) => r.enabled !== false);
+        if (!enabled.length)
+          return send400(res, "No repos enabled for deploy.");
+        const targets = new Map(
+          enabled.map((r) => [r.name, resolveReleaseTarget(r, env, cfg)]),
+        );
+        // A repo with several environments here (one per tenant) is never
+        // part of deploy-all: each tenant is its own decision.
+        const multi = enabled.filter(
+          (r) => targets.get(r.name)!.environments.length > 1,
+        );
+        for (const r of multi)
+          notices.push({
+            type: "log",
+            level: "warn",
+            text: `Skipping ${r.name}: ${targets.get(r.name)!.environments.length} ${env} environments; deploy each from GitHub.`,
+          });
+        plan = enabled
+          .filter((r) => !multi.includes(r))
+          .map((r) => {
+            const t = targets.get(r.name)!;
+            return {
+              repo: r.name,
+              workflow: t.workflows[0],
+              ref: t.branch,
+              wave: r.wave,
+              inputs: t.inputs,
+            };
+          });
+        if (isProd) {
+          const nonMain = plan.filter((p) => p.ref !== "main");
+          if (nonMain.length)
+            return send400(
+              res,
+              `Deploy-all to prod is main-only. Off-main: ${nonMain
+                .map((p) => `${p.repo}@${p.ref}`)
+                .join(", ")}. Use a per-repo Hotfix instead.`,
+            );
+        }
+        label = `all → ${env}`;
+      }
+
+      notices.unshift({
+        type: "log",
+        text: `▶ deploy ${mode} → ${env} · ${plan.length} repo(s)`,
+      });
+
+      // Concurrent deploys of different systems are fine — only the same
+      // repo+env twice would race two runs against one GitHub concurrency
+      // group.
+      const clashing = deploySessions.conflicts(env, plan);
+      if (clashing.length > 0) {
+        res.writeHead(409, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: `Already deploying to ${env}: ${clashing.join(", ")}. Wait for it to finish or dismiss its log.`,
+            repos: clashing,
+          }),
+        );
+        return;
+      }
+      const session = deploySessions.start({ env, mode, label, plan, notices });
+      serverLog(
+        `▶ release deploy ${mode} → ${env} (${plan.length} repos) [${session.id}]`,
+        "lifecycle",
+      );
+      return sendJson(res, session);
+    }
+
+    // ── Attach (GET, SSE): replay buffered log, then stream live ──
+    if (req.method === "GET") {
+      const id = url.searchParams.get("session") ?? "";
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      const emit = (ev: unknown): void => {
+        try {
+          res.write(`data: ${JSON.stringify(ev)}\n\n`);
+        } catch {
+          /* client gone */
+        }
+      };
+      const unsub = deploySessions.attach(id, emit);
+      if (!unsub) {
+        emit({
+          type: "log",
+          level: "error",
+          text: "Deploy session not found (it may have finished long ago or been closed).",
+        });
+        emit({ type: "done", ok: false, summary: "Session unavailable." });
+        res.end();
+        return;
+      }
+      req.on("close", unsub);
+      return;
+    }
+
+    // ── Dismiss (DELETE): user closed the log ──
+    if (req.method === "DELETE") {
+      const id = url.searchParams.get("session") ?? "";
+      return sendJson(res, { ok: deploySessions.dismiss(id) });
+    }
+
+    res.writeHead(405);
+    res.end("Method not allowed");
+    return;
+  }
+
+  // ── Local-dev API guard ───────────────────────────────────────────────────
+  // All workspace / service management APIs require local environment to be enabled.
+  if (
+    (pathname.startsWith("/api/workspaces") ||
+      pathname.startsWith("/api/workspace/") ||
+      pathname.startsWith("/api/service")) &&
+    !isLocalEnabled()
+  ) {
+    res.writeHead(403);
+    res.end("Local environment is not enabled for this deployment");
+    return;
+  }
+
+  // ── Workspace routes (extracted to workspace-routes.ts) ──────────────────
+  await handleWorkspaceRoutes(req, res, pathname, url, editors, github);
+  if (res.headersSent) return;
+
+  // ── API: manifest validation ──────────────────────────────────────────────
+  // POST /api/manifest/validate   body: { content: string }  (raw YAML string)
+  // GET  /api/manifest/validate?path=<absolute-path>
+  if (pathname === "/api/manifest/validate") {
+    if (req.method === "POST") {
+      try {
+        const body = await readBody(req);
+        const { content } = JSON.parse(body) as { content?: string };
+        if (typeof content !== "string")
+          return send400(res, '"content" string required');
+        return sendJson(res, validateManifest(content));
+      } catch (e) {
+        return send400(res, `Invalid request: ${(e as Error).message}`);
+      }
+    }
+    if (req.method === "GET") {
+      const filePath = url.searchParams.get("path");
+      if (!filePath) return send400(res, '"path" query param required');
+      try {
+        const denYml = fs.existsSync(filePath)
+          ? fs.lstatSync(filePath).isDirectory()
+            ? path.join(filePath, `${product().manifestYml}`)
+            : filePath
+          : filePath;
+        const content = fs.readFileSync(denYml, "utf-8");
+        return sendJson(res, validateManifest(content));
+      } catch (e) {
+        return sendJson(res, {
+          valid: false,
+          version: 1,
+          errors: [{ path: "", message: (e as Error).message }],
+          warnings: [],
+        });
+      }
+    }
+  }
+
+  // ── API: changelog ────────────────────────────────────────────────────────
+  // GET /api/changelog  — parses CHANGELOG.md and returns structured entries
+  if (pathname === "/api/changelog" && req.method === "GET") {
+    const changelogPath = path.join(ROOT, "CHANGELOG.md");
+    try {
+      const raw = fs.readFileSync(changelogPath, "utf-8");
+      const entries = parseChangelog(raw);
+      return sendJson(res, entries);
+    } catch {
+      return sendJson(res, []);
+    }
+  }
+
+  // ── API: local-dev toggle ─────────────────────────────────────────────────
+  // POST /api/local-dev  body: { enabled: boolean }
+  if (pathname === "/api/local-dev" && req.method === "POST") {
+    try {
+      const body = await readBody(req);
+      const { enabled } = JSON.parse(body) as { enabled?: boolean };
+      if (typeof enabled !== "boolean")
+        return send400(res, '"enabled" boolean required');
+      const user = readUserConfig();
+      writeUserConfig({ ...user, local_dev: enabled });
+      return sendJson(res, { ok: true, local_dev: enabled });
+    } catch (e) {
+      return send400(res, `Invalid request: ${(e as Error).message}`);
+    }
+  }
+
+  // ── API: sudo password ────────────────────────────────────────────────────
+  // POST /api/sudo-password  body: { password: string, saveToVault?: boolean }
+  // GET  /api/sudo-password/status         → { set: boolean }
+  // GET  /api/sudo-password/vault-status   → { opAvailable, hasStored }
+  // POST /api/sudo-password/load-from-vault → { ok, reason? }
+  if (pathname === "/api/sudo-password") {
+    if (req.method !== "POST") {
+      res.writeHead(405);
+      res.end();
+      return;
+    }
+    try {
+      const body = await readBody(req);
+      const { password, saveToVault } = JSON.parse(body) as {
+        password?: string;
+        saveToVault?: boolean;
+      };
+      if (typeof password !== "string" || !password)
+        return send400(res, '"password" string required');
+      // Validate the password before storing it.
+      try {
+        // -k: ignore cached credentials for this check (don't permanently invalidate)
+        execSync("sudo -k -S -v", {
+          input: password + "\n",
+          stdio: ["pipe", "pipe", "pipe"],
+          timeout: CLI_SPAWN_TIMEOUT_MS,
+        });
+      } catch {
+        return sendJson(res, { ok: false, error: "Incorrect password" }, 401);
+      }
+      setSudoPassword(password);
+      let savedToVault = false;
+      let vaultError: string | undefined;
+      if (saveToVault) {
+        try {
+          await saveSudoToVault(password);
+          savedToVault = true;
+        } catch (err) {
+          vaultError = (err as Error).message;
+        }
+      }
+      return sendJson(res, { ok: true, savedToVault, vaultError });
+    } catch (e) {
+      return send400(res, `Invalid request: ${(e as Error).message}`);
+    }
+  }
+
+  if (pathname === "/api/sudo-password/status") {
+    // passwordless: NOPASSWD sudoer (or warm cache) — no admin login needed.
+    return sendJson(res, {
+      set: hasSudoPassword(),
+      passwordless: hasPasswordlessSudo(),
+    });
+  }
+
+  // Advertises vault capability to the UI so it knows whether to show the
+  // "Save to 1Password" checkbox and whether auto-load is worth trying.
+  if (pathname === "/api/sudo-password/vault-status") {
+    const opAvailable = await isOpSignedIn();
+    const hasStored = opAvailable ? await hasSudoInVault() : false;
+    return sendJson(res, { opAvailable, hasStored });
+  }
+
+  // Auto-unlock path: UI calls this when status.set is false. We read from
+  // vault, validate via sudo -k -S -v, and set the in-memory store on success.
+  // Returns a reason code on failure so the UI can fall through to manual
+  // entry without surfacing op CLI noise.
+  if (pathname === "/api/sudo-password/load-from-vault") {
+    if (req.method !== "POST") {
+      res.writeHead(405);
+      res.end();
+      return;
+    }
+    const password = await readSudoFromVault();
+    if (!password) {
+      return sendJson(res, { ok: false, reason: "not-found" });
+    }
+    try {
+      execSync("sudo -k -S -v", {
+        input: password + "\n",
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: CLI_SPAWN_TIMEOUT_MS,
+      });
+    } catch {
+      // Stored password no longer matches the system — likely the user
+      // changed their admin password. Leave it in the vault; UI will prompt
+      // and they can choose to overwrite on save.
+      return sendJson(res, { ok: false, reason: "stale" });
+    }
+    setSudoPassword(password);
+    return sendJson(res, { ok: true });
+  }
+
+  // ── API: user settings ────────────────────────────────────────────────────
+  // GET  /api/settings  → { editor, editors, terminal, terminals, editor_overrides, languages }
+  // POST /api/settings  body: { editor?, terminal?, editor_overrides? }
+  if (pathname === "/api/settings") {
+    if (req.method === "GET") {
+      const user = readUserConfig();
+      const editorList = editors.listEditors();
+      const terminalList = editors.listTerminals();
+      return sendJson(res, {
+        editor: user.editor ?? null,
+        editors: editorList,
+        terminal: user.terminal ?? null,
+        terminals: terminalList,
+        editor_overrides: user.editor_overrides ?? {},
+        languages: SUPPORTED_LANGUAGES,
+        log_window_lines: user.log_window_lines ?? 20_000,
+      });
+    }
+    if (req.method === "POST") {
+      try {
+        const body = JSON.parse(await readBody(req)) as {
+          editor?: string | null;
+          terminal?: string | null;
+          editor_overrides?: Record<string, string> | null;
+        };
+        const user = readUserConfig();
+        if (body.editor === null || body.editor === "") {
+          delete user.editor;
+        } else if (body.editor !== undefined) {
+          if (!editors.isKnownEditor(body.editor))
+            return send400(res, `Unknown editor "${body.editor}"`);
+          user.editor = body.editor;
+        }
+        if (body.terminal === null || body.terminal === "") {
+          delete user.terminal;
+        } else if (body.terminal !== undefined) {
+          if (!editors.isKnownTerminal(body.terminal))
+            return send400(res, `Unknown terminal "${body.terminal}"`);
+          user.terminal = body.terminal;
+        }
+        if (body.editor_overrides === null) {
+          delete user.editor_overrides;
+        } else if (body.editor_overrides !== undefined) {
+          const langKeys = new Set<string>(
+            SUPPORTED_LANGUAGES.map((l) => l.key),
+          );
+          const cleaned: Record<string, string> = {};
+          for (const [lang, editorKey] of Object.entries(
+            body.editor_overrides,
+          )) {
+            if (!langKeys.has(lang))
+              return send400(res, `Unknown language "${lang}"`);
+            if (!editorKey) continue; // empty = use default
+            if (!editors.isKnownEditor(editorKey))
+              return send400(res, `Unknown editor "${editorKey}"`);
+            cleaned[lang] = editorKey;
+          }
+          if (Object.keys(cleaned).length > 0) {
+            user.editor_overrides = cleaned;
+          } else {
+            delete user.editor_overrides;
+          }
+        }
+        writeUserConfig(user);
+        return sendJson(res, {
+          ok: true,
+          editor: user.editor ?? null,
+          terminal: user.terminal ?? null,
+          editor_overrides: user.editor_overrides ?? {},
+        });
+      } catch (e) {
+        return send400(res, `Invalid request: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  // ── API: open repo in editor ──────────────────────────────────────────────
+  // POST /api/editor/open  body: { path: string }
+  if (pathname === "/api/editor/open" && req.method === "POST") {
+    try {
+      const body = JSON.parse(await readBody(req)) as { path?: string };
+      if (!body.path) return send400(res, '"path" is required');
+
+      // Walk up to the nearest existing ancestor if the path doesn't exist.
+      let openPath = body.path;
+      while (openPath && !fs.existsSync(openPath)) {
+        const parent = path.dirname(openPath);
+        if (parent === openPath) break; // reached filesystem root
+        openPath = parent;
+      }
+
+      const user = readUserConfig();
+      // Resolve editor: per-language > workspace > global default
+      const ws = getActiveWorkspace();
+      const effectiveEditor = editors.resolveEditorForRepo(
+        openPath,
+        user.editor,
+        user.editor_overrides,
+        ws?.config.editor,
+      );
+      if (!effectiveEditor)
+        return sendJson(
+          res,
+          { ok: false, error: "No editor configured. Set one in Settings." },
+          400,
+        );
+      const cmd = editors.resolveEditorCmd(effectiveEditor);
+      if (!cmd)
+        return sendJson(
+          res,
+          {
+            ok: false,
+            error: `Editor "${effectiveEditor}" not found on this machine.`,
+          },
+          400,
+        );
+      const safePath = openPath.replace(/'/g, "'\\''");
+      if (editors.isTerminalEditor(effectiveEditor)) {
+        // Write a temporary .command file (Terminal.app executes these on open,
+        // no Automation permission required — unlike osascript do script).
+        const tmp = path.join(
+          os.tmpdir(),
+          `${product().cli}-open-${Date.now()}.command`,
+        );
+        fs.writeFileSync(tmp, `#!/bin/bash\ncd '${safePath}' && '${cmd}' .\n`, {
+          mode: 0o755,
+        });
+        const result = spawnSync("open", [tmp], {
+          timeout: CLI_SPAWN_TIMEOUT_MS,
+        });
+        // Give Terminal a moment to read the file before we remove it.
+        setTimeout(() => {
+          try {
+            fs.unlinkSync(tmp);
+          } catch {
+            /* ignore */
+          }
+        }, 3_000);
+        if (result.status !== 0) {
+          const stderr = result.stderr?.toString().trim() ?? "";
+          return sendJson(
+            res,
+            {
+              ok: false,
+              error: stderr || "Failed to open Terminal.app.",
+              runCmd: `${cmd} ${openPath}`,
+            },
+            500,
+          );
+        }
+      } else {
+        spawn(cmd, [openPath], { detached: true, stdio: "ignore" }).unref();
+      }
+      return sendJson(res, { ok: true });
+    } catch (e) {
+      return send400(res, `Invalid request: ${(e as Error).message}`);
+    }
+  }
+
+  // ── API: open directory in terminal app ──────────────────────────────────
+  // POST /api/terminal/open  body: { path: string }
+  if (pathname === "/api/terminal/open" && req.method === "POST") {
+    try {
+      const body = JSON.parse(await readBody(req)) as { path?: string };
+      if (!body.path) return send400(res, '"path" is required');
+
+      // Walk up to the nearest existing ancestor.
+      let openPath = body.path;
+      while (openPath && !fs.existsSync(openPath)) {
+        const parent = path.dirname(openPath);
+        if (parent === openPath) break;
+        openPath = parent;
+      }
+
+      const user = readUserConfig();
+      if (!user.terminal)
+        return sendJson(
+          res,
+          {
+            ok: false,
+            error: "No terminal app configured. Set one in Settings.",
+          },
+          400,
+        );
+
+      const appName = editors.resolveTerminalApp(user.terminal);
+      if (!appName)
+        return sendJson(
+          res,
+          {
+            ok: false,
+            error: `Terminal "${user.terminal}" not found on this machine.`,
+          },
+          400,
+        );
+
+      // Write a temporary .command script that cd's into the directory and
+      // starts an interactive shell. Most macOS terminal apps execute .command
+      // files when opened via `open -a`.
+      const safePath = openPath.replace(/'/g, "'\\''");
+      const tmp = path.join(
+        os.tmpdir(),
+        `${product().cli}-term-${Date.now()}.command`,
+      );
+      fs.writeFileSync(tmp, `#!/bin/bash\ncd '${safePath}' && exec $SHELL\n`, {
+        mode: 0o755,
+      });
+      const result = spawnSync("open", ["-a", appName, tmp], {
+        timeout: 5_000,
+      });
+      setTimeout(() => {
+        try {
+          fs.unlinkSync(tmp);
+        } catch {
+          /* ignore */
+        }
+      }, 3_000);
+
+      if (result.status !== 0) {
+        const stderr = result.stderr?.toString().trim() ?? "";
+        return sendJson(
+          res,
+          {
+            ok: false,
+            error: stderr || `Failed to open ${appName}.`,
+            runCmd: `cd '${safePath}'`,
+          },
+          500,
+        );
+      }
+      return sendJson(res, { ok: true });
+    } catch (e) {
+      return send400(res, `Invalid request: ${(e as Error).message}`);
+    }
+  }
+
+  // ── 404 ────────────────────────────────────────────────────────────────────
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.end("Not found");
+}
+
+const server = http.createServer((req, res) => {
+  // An async handler with no catch turns any route throw into an unhandled
+  // rejection — which CRASHES the whole server on modern Node (freezing every
+  // health dot) and leaves the request hanging. Fail the one request instead.
+  handleRequest(req, res).catch((err) => {
+    console.error(`[server] ${req.method} ${req.url} failed:`, err);
+    try {
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+      }
+      res.end("internal server error");
+    } catch {
+      /* socket already gone */
+    }
+  });
+});
+
+server.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(
+      `\n  ✗ Port ${PORT} is already in use.\n` +
+        `\n  Another ${product().cli} instance may be running. To fix:\n` +
+        `\n    lsof -ti :${PORT} | xargs kill   # kill whatever is on the port` +
+        `\n    make web                          # then restart\n`,
+    );
+    process.exit(1);
+  }
+  throw err;
+});
+
+// Restore daemon registry from the previous session, then drop any whose opctl
+// containers are no longer running. Stale entries — from a prior session, or a
+// service stopped outside den — otherwise reopen as tabs in the web UI and
+// clutter the shutdown prompt. Container liveness (not health) is the signal: a
+// service's shared-infra health check stays green even when the service is down.
+// Runs synchronously at startup so /api/service/daemons never hands the UI a
+// stale entry on its first load.
+loadDaemonsFromFile();
+const prunedDaemons = pruneDeadDaemons();
+if (prunedDaemons.length > 0) {
+  console.error(
+    `Cleared ${prunedDaemons.length} stale daemon(s): ${prunedDaemons.join(", ")}`,
+  );
+}
+
+// Background recovery: after a short delay (long enough for services to be
+// responding), health-check each loaded daemon. Removal requires strong
+// evidence — a missing service, or two consecutive "error" health checks
+// (a single transient timeout/5xx never unregisters a possibly-running
+// daemon). See daemon-reaper.ts; behavior pinned by its unit tests.
+void (async () => {
+  await new Promise<void>((resolve) =>
+    setTimeout(resolve, DAEMON_SHUTDOWN_GRACE_MS),
+  );
+  await reapDeadDaemons({
+    listDaemons,
+    resolveService,
+    getActiveWorkspaces,
+    checkServiceHealth: (service) => checkServiceHealth(service),
+    unregisterDaemon,
+    delay: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    retryDelayMs: DAEMON_RETRY_DELAY_MS,
+  });
+})();
+
+const prunedSnapshots = pruneDeadSnapshots();
+if (prunedSnapshots > 0) {
+  serverLog(`Pruned ${prunedSnapshots} orphaned log-history snapshot(s)`);
+}
+
+// Cap service logs. Long-lived daemons never respawn (a localstack tail reached
+// 8.6 GB), so the spawn-time check alone is not enough — sweep on startup and
+// periodically. unref'd so it never holds the process open.
+function sweepServiceLogs(): void {
+  try {
+    const rotated = sweepLogs(getServiceLogRoot());
+    if (rotated.length > 0) {
+      serverLog(
+        `Rotated ${rotated.length} oversized log(s): ${rotated
+          .map((p) => path.basename(path.dirname(p)) + "/" + path.basename(p))
+          .join(", ")}`,
+      );
+    }
+  } catch (e) {
+    serverLog(`Log sweep failed: ${(e as Error).message}`);
+  }
+}
+sweepServiceLogs();
+setInterval(sweepServiceLogs, LOG_SWEEP_INTERVAL_MS).unref();
+
+// Last-resort guards: an uncaught throw in an async callback (spawn handlers,
+// timers — code the per-request catch can't see) would kill the whole
+// dashboard; a TDZ bug in a down-flow callback did exactly that. For a local
+// dev server, staying alive degraded beats dying — log loudly and continue.
+process.on("uncaughtException", (err) => {
+  console.error("[server] uncaught exception (continuing):", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[server] unhandled rejection (continuing):", reason);
+});
+
+// Bind loopback only — this UI runs privileged local actions (sudo-backed
+// service commands), so it must not be reachable from the LAN. Opt out with
+// DEN_BIND_HOST=0.0.0.0 for deliberate exposure.
+const BIND_HOST = process.env.DEN_BIND_HOST ?? "127.0.0.1";
+server.listen(PORT, BIND_HOST, () => {
+  const hosts = fs.existsSync("/etc/hosts")
+    ? fs.readFileSync("/etc/hosts", "utf-8")
+    : "";
+  const host = hosts.includes(`127.0.0.1 ${product().cli}`)
+    ? `${product().cli}`
+    : "localhost";
+
+  let pkgVersion = "?";
+  try {
+    const changelogRaw = fs.readFileSync(
+      path.join(ROOT, "CHANGELOG.md"),
+      "utf-8",
+    );
+    const firstEntry = parseChangelog(changelogRaw)[0];
+    if (firstEntry?.version) pkgVersion = firstEntry.version;
+  } catch (_e) {
+    /* CHANGELOG.md unreadable — version stays "?" */
+  }
+
+  const localEnabled = isLocalEnabled();
+
+  console.log();
+  for (const line of DEN_BANNER_LINES) {
+    console.log(`\x1b[36m${line}\x1b[0m`); // cyan without chalk dependency
+  }
+  console.log();
+  console.log(`  ${DEN_SUBTITLE.trim()}`);
+  if (localEnabled) {
+    console.log(`  Shop Local-Dev Manager`);
+  }
+  console.log(`  v${pkgVersion}`);
+  console.log();
+  console.log(`  Web UI  →  http://${host}:${PORT}`);
+  console.log();
+});
+
+// ── Graceful shutdown ─────────────────────────────────────────────────────────
+
+async function stopDaemons(): Promise<void> {
+  const daemons = listDaemons();
+  if (daemons.length === 0) return;
+
+  console.log("\nStopping services…");
+
+  const isTTY = process.stdout.isTTY;
+  const total = daemons.length;
+
+  if (isTTY) {
+    // Print every service line up front, then update in-place using ANSI cursor movement.
+    for (const d of daemons) {
+      process.stdout.write(`  ⏳ ${d.address}\n`);
+    }
+    // Cursor is now one row below the last service line.
+
+    const updateLine = (idx: number, mark: string, suffix: string): void => {
+      const movesUp = total - idx; // rows to climb to reach this service line
+      process.stdout.write(
+        `\x1b[${movesUp}A` + // move cursor up to the service's line
+          `\r\x1b[2K` + // clear the line
+          `  ${mark} ${daemons[idx].address}${suffix}` +
+          `\x1b[${movesUp}E`, // move cursor back to beginning of original row
+      );
+    };
+
+    await Promise.allSettled(
+      daemons.map(
+        (d, i) =>
+          new Promise<void>((resolve) => {
+            runServiceCommand({
+              address: d.address,
+              command: "down",
+              onLine: () => {},
+              onClose: (exitCode) => {
+                updateLine(
+                  i,
+                  exitCode === 0 ? "✓" : "✗",
+                  exitCode !== 0 ? ` (exit ${exitCode})` : "",
+                );
+                resolve();
+              },
+            });
+          }),
+      ),
+    );
+    process.stdout.write("\n");
+  } else {
+    // Non-TTY: simple line-per-service output, no cursor tricks.
+    await Promise.allSettled(
+      daemons.map(
+        (d) =>
+          new Promise<void>((resolve) => {
+            process.stdout.write(`  ↓ ${d.address}\n`);
+            runServiceCommand({
+              address: d.address,
+              command: "down",
+              onLine: () => {},
+              onClose: (exitCode) => {
+                process.stdout.write(
+                  `  ${exitCode === 0 ? "✓" : "✗"} ${d.address}\n`,
+                );
+                resolve();
+              },
+            });
+          }),
+      ),
+    );
+  }
+
+  console.log("Services stopped.");
+}
+
+async function handleShutdown(signal: string): Promise<void> {
+  clearSudoPassword();
+  const daemons = listDaemons();
+  if (daemons.length === 0) {
+    process.exit(0);
+  }
+
+  const isTTY = process.stdin.isTTY;
+
+  if (!isTTY) {
+    // Non-interactive shutdown usually means `den web` is being restarted.
+    // Do not tear down service daemons just because the UI process is cycling.
+    console.log(
+      `\n${product().title} web received ${signal}; leaving ${daemons.length} running service${daemons.length === 1 ? "" : "s"} alive.`,
+    );
+    process.exit(0);
+  }
+
+  // Interactive terminal: ask the user.
+  console.log(`\nRunning services (started by ${product().cli}):`);
+  for (const d of daemons) {
+    const age = Math.round((Date.now() - d.startedAt.getTime()) / 1000);
+    console.log(`  • ${d.address}  (up ${age}s)`);
+  }
+
+  process.stdout.write("\nStop these services before exiting? [Y/n] ");
+
+  // Restore normal terminal input for readline.
+  if (process.stdin.setRawMode) process.stdin.setRawMode(false);
+  process.stdin.resume();
+
+  await new Promise<void>((resolve) => {
+    process.stdin.once("data", async (chunk) => {
+      const answer = chunk.toString().trim().toLowerCase();
+      if (answer === "" || answer === "y" || answer === "yes") {
+        await stopDaemons();
+      } else {
+        console.log("Leaving services running.");
+      }
+      resolve();
+    });
+  });
+
+  process.exit(0);
+}
+
+let _shuttingDown = false;
+process.on("SIGINT", () => {
+  if (_shuttingDown) return;
+  _shuttingDown = true;
+  console.log(""); // newline after ^C
+  void handleShutdown("SIGINT");
+});
+
+process.on("SIGTERM", () => {
+  if (_shuttingDown) return;
+  _shuttingDown = true;
+  void handleShutdown("SIGTERM");
+});

@@ -1,0 +1,2595 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shop | __DEN_TITLE__</title>
+    <link rel="icon" href="/favicon.ico?v=2" />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --border: #30363d;
+        --text: #c9d1d9;
+        --muted: #8b949e;
+        --accent: #58a6ff;
+        --green: #3fb950;
+        --red: #f85149;
+        --yellow: #d29922;
+        --mono: "SF Mono", "Cascadia Code", "Fira Code", "Menlo", monospace;
+      }
+
+      html,
+      body {
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 13px;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── Bar 1: top navbar ─────────────────────────────────────────────────── */
+      .topbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+        z-index: 10;
+      }
+      .topbar h1 {
+        font-family: var(--mono);
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        margin-right: 4px;
+      }
+
+      /* ── Env badge (subbar selector pill) ────────────────────────────────── */
+      .env-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 8px 2px 6px;
+        border-radius: 999px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      .env-badge::before {
+        content: "env";
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        opacity: 0.6;
+        text-transform: uppercase;
+      }
+      .env-badge select {
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--text);
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 0;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+      .env-badge select option {
+        background: var(--surface);
+      }
+
+      /* ── Topbar env pill ──────────────────────────────────────────────────── */
+      #topbar-env-badge {
+        display: none;
+        align-items: center;
+        padding: 2px 7px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      /* ── Bar 2: sub-navbar ─────────────────────────────────────────────────── */
+      .subbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+
+      /* ── Shared ────────────────────────────────────────────────────────────── */
+      .spacer {
+        flex: 1;
+      }
+
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted);
+        flex-shrink: 0;
+        display: inline-block;
+      }
+      .dot.ok {
+        background: var(--green);
+      }
+      .dot.err {
+        background: var(--red);
+      }
+      .dot.running {
+        background: var(--yellow);
+        animation: pulse 1s ease-in-out infinite;
+      }
+      .dot.passed {
+        background: var(--green);
+      }
+      .dot.failed {
+        background: var(--red);
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+
+      .seg {
+        display: flex;
+        gap: 2px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 2px;
+      }
+      .seg button {
+        background: none;
+        border: none;
+        color: var(--muted);
+        padding: 3px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 500;
+        transition: color 0.1s;
+        white-space: nowrap;
+      }
+      .seg button:hover {
+        color: var(--text);
+      }
+      .seg button.active {
+        background: var(--border);
+        color: var(--text);
+      }
+
+      nav {
+        display: flex;
+        gap: 2px;
+      }
+      nav a {
+        color: var(--muted);
+        text-decoration: none;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        transition: color 0.1s;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      nav a:hover {
+        color: var(--text);
+        background: var(--border);
+      }
+      nav a.active {
+        color: var(--text);
+      }
+
+      .badge {
+        background: var(--yellow);
+        color: #0d1117;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 8px;
+        line-height: 1.4;
+        display: none;
+      }
+      .badge.visible {
+        display: inline;
+      }
+
+      select {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        outline: none;
+        max-width: 220px;
+      }
+      select:focus {
+        border-color: var(--accent);
+      }
+      .text-input {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        outline: none;
+        min-width: 240px;
+      }
+      .text-input:focus {
+        border-color: var(--accent);
+      }
+      .sec-run {
+        padding: 10px 12px;
+      }
+      .sec-run h3 {
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .sec-table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 12px;
+      }
+      .sec-table th,
+      .sec-table td {
+        text-align: left;
+        padding: 4px 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      .sec-table td a {
+        color: var(--accent, #58a6ff);
+      }
+      .sec-finding td {
+        color: var(--muted);
+        padding-left: 22px;
+        font-size: 11px;
+      }
+      .sec-hit.sec-high,
+      span.sec-high {
+        color: #f85149;
+        font-weight: 600;
+      }
+      .sec-hit.sec-medium,
+      span.sec-medium {
+        color: #d29922;
+        font-weight: 600;
+      }
+      .sec-hit.sec-low,
+      span.sec-low {
+        color: #8b949e;
+      }
+      .sec-err {
+        color: #f85149;
+      }
+      .smoke-override {
+        display: none;
+        align-items: center;
+        gap: 6px;
+      }
+      .smoke-override.active {
+        display: flex;
+      }
+      .smoke-override-label {
+        font-size: 11px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .toggle-input {
+        accent-color: var(--accent);
+        cursor: pointer;
+      }
+      /* Per-perf-test optional launch fields (generic, declarative) */
+      #perf-opt-fields {
+        display: contents;
+      }
+      .perf-opt-section {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .perf-opt-section-head {
+        font-weight: 600;
+      }
+      .perf-opt-disabled {
+        opacity: 0.45;
+      }
+
+      /* ── Multi-check module picker ─────────────────────────────────────────── */
+      .module-picker {
+        position: relative;
+      }
+      .module-picker-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        outline: none;
+        white-space: nowrap;
+        min-width: 120px;
+        max-width: 240px;
+      }
+      .module-picker-btn:focus,
+      .module-picker-btn.open {
+        border-color: var(--accent);
+      }
+      #module-picker-label {
+        flex: 1;
+        text-align: left;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .module-picker-arrow {
+        font-size: 10px;
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+      .module-picker-dropdown {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        z-index: 100;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        min-width: 180px;
+        max-height: 260px;
+        overflow-y: auto;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      }
+      .module-picker-dropdown.open {
+        display: block;
+      }
+      .module-check-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        cursor: pointer;
+        font-size: 12px;
+        color: var(--text);
+        white-space: nowrap;
+      }
+      .module-check-item:hover {
+        background: var(--border);
+      }
+      .module-check-item.module-check-all {
+        font-weight: 600;
+      }
+      .module-check-item input[type="checkbox"] {
+        accent-color: var(--accent);
+        cursor: pointer;
+      }
+      .module-check-divider {
+        height: 1px;
+        background: var(--border);
+        margin: 2px 0;
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      /* ── Health indicators ─────────────────────────────────────────────────── */
+      .health {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 4px;
+      }
+      .health-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .health-group {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .health-group-label {
+        color: var(--muted);
+        margin-right: 1px;
+      }
+      .health-group-dots {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+      }
+
+      /* ── Buttons ───────────────────────────────────────────────────────────── */
+      .run-btn {
+        background: var(--accent);
+        color: #0d1117;
+        border: none;
+        padding: 5px 18px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: opacity 0.1s;
+        white-space: nowrap;
+      }
+      .run-btn:hover:not(:disabled) {
+        opacity: 0.85;
+      }
+      .run-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      /* ── Bar 2 context slots ───────────────────────────────────────────────── */
+      .bar2-slot {
+        display: none;
+        align-items: center;
+        gap: 8px;
+      }
+      .bar2-slot.active {
+        display: flex;
+        flex: 1;
+      }
+
+      /* ── Views ─────────────────────────────────────────────────────────────── */
+      .view {
+        flex: 1;
+        display: none;
+        overflow: hidden;
+        min-height: 0;
+        flex-direction: column;
+      }
+      .view.active {
+        display: flex;
+      }
+
+      /* ── Pane bar ──────────────────────────────────────────────────────────── */
+      .pane-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 3px 12px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .pane-bar span {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+      }
+      .pane-bar button {
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 11px;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 3px;
+      }
+      .pane-bar button:hover {
+        color: var(--text);
+        background: var(--border);
+      }
+      .pane-bar-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .report-tabs {
+        display: none;
+      }
+      .report-tabs.active {
+        display: flex;
+      }
+
+      /* ── TESTS VIEW ────────────────────────────────────────────────────────── */
+      #view-tests {
+        flex-direction: column;
+      }
+
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 6px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+
+      /* ── Source-of-truth bar (which repo/branch is being tested) ───────────── */
+      .test-sources-bar {
+        display: none;
+        flex-direction: column;
+        gap: 2px;
+        padding: 4px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        font-size: 11px;
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+      .test-sources-bar.visible {
+        display: flex;
+      }
+      .test-source {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .test-source-label {
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+      .test-source-repo {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .test-source-ws {
+        color: var(--accent);
+      }
+      .test-source-branch {
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 10.5px;
+      }
+      .test-source-sha {
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 10.5px;
+      }
+      .test-source-path {
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .test-source-empty {
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      .tests-main {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+        min-height: 0;
+      }
+
+      .left-panel {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .tests-main.layout-top {
+        flex-direction: column;
+      }
+      .tests-main.layout-top .left-panel {
+        flex: 0 0 42%;
+        border-bottom: 1px solid var(--border);
+      }
+      .tests-main.layout-top .report-pane {
+        flex: 1;
+      }
+
+      .tests-main.layout-side {
+        flex-direction: row;
+      }
+      .tests-main.layout-side .left-panel {
+        flex: 0 0 340px;
+        border-right: 1px solid var(--border);
+      }
+      .tests-main.layout-side .report-pane {
+        flex: 1;
+      }
+      .tests-main.layout-side .controls {
+        padding: 6px 10px;
+        flex-wrap: wrap;
+      }
+      .tests-main.layout-side .pillars {
+        flex-wrap: wrap;
+      }
+
+      .output-pane {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      #test-output {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px 14px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.65;
+        white-space: pre-wrap;
+        word-break: break-all;
+        min-height: 0;
+      }
+      #test-output .cmd {
+        color: var(--accent);
+      }
+      #test-output .err {
+        color: var(--red);
+      }
+      #test-output .done-ok {
+        color: var(--green);
+      }
+      #test-output .done-fail {
+        color: var(--red);
+      }
+
+      .divider {
+        flex-shrink: 0;
+        background: var(--border);
+        transition: background 0.15s;
+        z-index: 1;
+      }
+      .tests-main.layout-side .divider {
+        width: 5px;
+        cursor: col-resize;
+      }
+      .tests-main.layout-top .divider {
+        height: 5px;
+        cursor: row-resize;
+      }
+      .divider:hover,
+      .divider.active {
+        background: var(--accent);
+      }
+      body.dragging {
+        user-select: none;
+        cursor: col-resize;
+      }
+      body.dragging-v {
+        user-select: none;
+        cursor: row-resize;
+      }
+
+      .report-pane {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      #report-frame {
+        flex: 1;
+        border: none;
+        width: 100%;
+        background: #fff;
+        display: none;
+      }
+      #report-placeholder {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      #perf-report-container,
+      #report-raw-output {
+        flex: 1;
+        overflow: auto;
+        display: none;
+        min-height: 0;
+      }
+      #report-raw-output {
+        padding: 10px 14px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.65;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .perf-report {
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .perf-run-header,
+      .perf-module {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface);
+      }
+      .perf-run-header {
+        padding: 14px;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .perf-run-header h2,
+      .perf-module-header h3,
+      .perf-section h4 {
+        margin: 0;
+      }
+      .perf-run-header p {
+        margin-top: 6px;
+        color: var(--muted);
+      }
+      .perf-run-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 11px;
+        justify-content: flex-end;
+      }
+      .perf-module-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border);
+        cursor: pointer;
+        list-style: none;
+      }
+      .perf-module-header::-webkit-details-marker {
+        display: none;
+      }
+      .perf-module-title-wrap {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .perf-module-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        background: rgba(13, 17, 23, 0.75);
+        border: 1px solid rgba(48, 54, 61, 0.8);
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1;
+        transition:
+          transform 0.15s ease,
+          color 0.15s ease,
+          border-color 0.15s ease;
+        flex-shrink: 0;
+      }
+      .perf-module-header:hover .perf-module-toggle {
+        color: var(--text);
+        border-color: var(--accent);
+      }
+      .perf-module[open] .perf-module-toggle {
+        transform: rotate(90deg);
+      }
+      .perf-module-title {
+        font-weight: 600;
+      }
+      .perf-badge {
+        text-transform: uppercase;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        border-radius: 999px;
+        padding: 4px 8px;
+      }
+      .perf-ok {
+        background: rgba(63, 185, 80, 0.15);
+        color: var(--green);
+      }
+      .perf-fail {
+        background: rgba(248, 81, 73, 0.15);
+        color: var(--red);
+      }
+      .perf-section {
+        padding: 12px 14px;
+        border-top: 1px solid rgba(48, 54, 61, 0.5);
+      }
+      .perf-section:first-of-type {
+        border-top: none;
+      }
+      .perf-stat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .perf-stat {
+        border: 1px solid rgba(48, 54, 61, 0.7);
+        border-radius: 8px;
+        padding: 10px;
+        background: rgba(13, 17, 23, 0.55);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .perf-stat-label {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .perf-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+        font-size: 12px;
+      }
+      .perf-table th,
+      .perf-table td {
+        border-top: 1px solid rgba(48, 54, 61, 0.7);
+        padding: 8px 6px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .perf-table th {
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        border-top: none;
+      }
+      .perf-empty {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .perf-muted {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .perf-value-chip {
+        display: inline-flex;
+        gap: 4px;
+        margin: 0 8px 6px 0;
+        padding: 3px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(48, 54, 61, 0.7);
+        background: rgba(13, 17, 23, 0.55);
+        font-size: 11px;
+        white-space: nowrap;
+      }
+
+      /* ── SERVICES VIEW ─────────────────────────────────────────────────────── */
+      #view-services {
+        flex-direction: column;
+      }
+
+      .services-pane {
+        padding: 12px 14px;
+        flex-shrink: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .service-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px 14px;
+        min-width: 220px;
+      }
+      .service-card-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .service-card-header .dot {
+        width: 8px;
+        height: 8px;
+      }
+      .service-name {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .service-repo {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .cmd-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .cmd-btn {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 4px 10px;
+        border-radius: 5px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition:
+          border-color 0.1s,
+          color 0.1s;
+      }
+      .cmd-btn:hover:not(:disabled) {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .cmd-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .logs-btn {
+        border-color: var(--muted);
+      }
+      .logs-btn:hover:not(:disabled) {
+        border-color: var(--yellow) !important;
+        color: var(--yellow) !important;
+      }
+      .logs-btn.streaming {
+        border-color: var(--yellow);
+        color: var(--yellow);
+      }
+
+      .empty-state {
+        padding: 40px 14px;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+      }
+
+      /* exec output strip */
+      .cmd-strip {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        border-top: 1px solid var(--border);
+      }
+      .cmd-strip.hidden {
+        display: none;
+      }
+      #cmd-output {
+        flex: 1;
+        overflow-y: auto;
+        padding: 6px 14px;
+        font-family: var(--mono);
+        font-size: 11px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      #cmd-output .cmd {
+        color: var(--accent);
+      }
+      #cmd-output .err {
+        color: var(--red);
+      }
+      #cmd-output .done-ok {
+        color: var(--green);
+      }
+      #cmd-output .done-fail {
+        color: var(--red);
+      }
+
+      /* ── LOGS VIEW ─────────────────────────────────────────────────────────── */
+      #view-logs {
+        flex-direction: column;
+      }
+
+      .logs-area {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+        min-height: 0;
+      }
+      .logs-area.dir-cols {
+        flex-direction: row;
+      }
+      .logs-area.dir-rows {
+        flex-direction: column;
+      }
+
+      .log-pane {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+        overflow: hidden;
+        border-right: 1px solid var(--border);
+      }
+      .log-pane:last-child {
+        border-right: none;
+      }
+      .logs-area.dir-rows .log-pane {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .logs-area.dir-rows .log-pane:last-child {
+        border-bottom: none;
+      }
+
+      .log-pane-title {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text);
+        letter-spacing: 0;
+      }
+
+      .log-output {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px 12px;
+        font-family: var(--mono);
+        font-size: 11px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        word-break: break-all;
+        min-height: 0;
+      }
+      .log-output .log-cmd {
+        color: var(--accent);
+      }
+      .log-output .log-err {
+        color: var(--red);
+      }
+      .log-output .log-done {
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      .aws-auth-banner {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background: color-mix(in srgb, var(--yellow, #d97706) 12%, var(--bg));
+        border-top: 1px solid
+          color-mix(in srgb, var(--yellow, #d97706) 40%, transparent);
+      }
+      .aws-auth-msg {
+        font-size: 12px;
+        color: var(--yellow, #d97706);
+        flex: 1;
+      }
+      .aws-auth-btn {
+        font-size: 11px;
+        padding: 3px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        background: var(--yellow, #d97706);
+        color: #000;
+        border: none;
+        font-weight: 600;
+      }
+      .aws-auth-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .aws-auth-output {
+        width: 100%;
+        margin: 0;
+        padding: 6px 8px;
+        font-family: var(--mono);
+        font-size: 11px;
+        line-height: 1.5;
+        background: var(--bg2);
+        border-radius: 4px;
+        white-space: pre-wrap;
+        max-height: 120px;
+        overflow-y: auto;
+      }
+
+      .logs-empty {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      /* ── Logs toolbar ──────────────────────────────────────────────────────── */
+      .logs-toolbar {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        padding: 5px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+      }
+      .logs-toolbar .logs-label {
+        font-size: 11px;
+        color: var(--muted);
+        margin-right: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ── Bar 1: __DEN_CLI__ + health + nav ──────────────────────────────────────── -->
+    <div class="topbar">
+      <img
+        src="/favicon.ico"
+        width="16"
+        height="16"
+        alt=""
+        style="flex-shrink: 0"
+      />
+      <h1>__DEN_CLI__</h1>
+      <button
+        class="v-pill"
+        id="version-pill"
+        onclick="openChangelog()"
+        title="View changelog"
+      >
+        <span class="v-pip" id="v-pip"></span><span class="v-txt">v…</span>
+      </button>
+      <a
+        id="app-link"
+        href="#"
+        target="_blank"
+        rel="noopener"
+        title="Open app"
+        style="
+          font-size: 11px;
+          color: var(--muted);
+          text-decoration: none;
+          display: none;
+        "
+        >↗ open app</a
+      >
+      <span id="topbar-env-badge"></span>
+      <span
+        id="ws-pill"
+        style="
+          font-size: 11px;
+          font-family: var(--mono);
+          padding: 2px 8px;
+          border-radius: 10px;
+          border: 1px solid #388bfd44;
+          color: #58a6ff;
+          background: #58a6ff10;
+          display: none;
+        "
+      ></span>
+      <div class="health" id="health" title="Service health"></div>
+      <div class="spacer"></div>
+      <nav>
+        <a href="/">Local Dev</a>
+        <a href="/services">Services</a>
+        <a href="/environments">Environments</a>
+        <a href="/release">Releases</a>
+        <a href="/logs">Logs <span class="badge" id="log-badge"></span></a>
+        <a href="/tests" id="nav-tests" class="active">Tests</a>
+      </nav>
+    </div>
+
+    <!-- ── Bar 2: env selector (universal) + context actions (right) ──────────── -->
+    <div class="subbar">
+      <div class="env-badge">
+        <select id="env-sel" title="Environment">
+          <option value="local">local</option>
+        </select>
+      </div>
+
+      <!-- Tests context: run status + layout toggle + run button -->
+      <div class="bar2-slot active" id="bar2-tests">
+        <div class="status">
+          <span class="dot" id="run-dot"></span>
+          <span id="run-status">idle</span>
+        </div>
+        <div class="spacer"></div>
+        <div class="seg" id="layout-seg">
+          <button data-layout="top" class="active" title="Controls on top">
+            top
+          </button>
+          <button data-layout="side" title="Controls on left">side</button>
+        </div>
+        <button class="run-btn" id="run-btn">&#9654; Run</button>
+      </div>
+
+      <!-- Services context: exec status -->
+      <div class="bar2-slot" id="bar2-services">
+        <div class="spacer"></div>
+        <span id="svc-status" style="font-size: 11px; color: var(--muted)"
+          >idle</span
+        >
+      </div>
+    </div>
+
+    <!-- ── TESTS VIEW ─────────────────────────────────────────────────────────── -->
+    <div class="view active" id="view-tests">
+      <div class="tests-main layout-top" id="tests-main">
+        <div class="left-panel">
+          <div class="controls">
+            <div class="seg pillars" id="pillars">
+              <button class="active" data-pillar="synthetic">
+                &#127760; browser
+              </button>
+              <button data-pillar="integration">&#128279; api</button>
+              <button data-pillar="smoke">&#128168; smoke</button>
+              <button data-pillar="performance">&#9889; perf</button>
+              <button data-pillar="journeys">&#129517; journeys</button>
+              <button data-pillar="security">&#128737;&#65039; security</button>
+              <button data-pillar="suites">&#129514; suites</button>
+            </div>
+            <div class="module-picker" id="module-picker">
+              <button
+                class="module-picker-btn"
+                id="module-picker-btn"
+                type="button"
+              >
+                <span id="module-picker-label">All modules</span>
+                <span class="module-picker-arrow">▾</span>
+              </button>
+              <div class="module-picker-dropdown" id="module-picker-dropdown">
+                <label class="module-check-item module-check-all">
+                  <input type="checkbox" id="module-check-all" checked />
+                  <span>All modules</span>
+                </label>
+                <div class="module-check-divider"></div>
+                <div id="module-check-list"></div>
+              </div>
+            </div>
+            <div class="smoke-override" id="smoke-api-url-wrap">
+              <span class="smoke-override-label">api url</span>
+              <input
+                id="smoke-api-url"
+                class="text-input"
+                type="text"
+                placeholder="Optional override; blank uses repo/env default"
+                spellcheck="false"
+              />
+            </div>
+            <label class="smoke-override" id="local-checkout-wrap">
+              <input
+                id="use-local-checkout"
+                class="toggle-input"
+                type="checkbox"
+              />
+              <span class="smoke-override-label">use local checkout</span>
+            </label>
+            <label class="smoke-override" id="security-mode-wrap">
+              <span class="smoke-override-label">scan</span>
+              <select id="security-mode" class="text-input">
+                <option value="baseline">
+                  baseline: passive, local + beta
+                </option>
+                <option value="api">api: OpenAPI, active, local only</option>
+                <option value="full">full: active attacks, local only</option>
+              </select>
+            </label>
+            <!-- Per-perf-test optional launch fields, rendered generically from
+               each selected module's declared `optionalFields` (manifest.yml). -->
+            <div id="perf-opt-fields"></div>
+          </div>
+
+          <div class="test-sources-bar" id="test-sources-bar"></div>
+
+          <div class="output-pane">
+            <div class="pane-bar">
+              <span>Output</span>
+              <button id="clear-test-output">Clear</button>
+              <button
+                id="copy-test-output"
+                title="Copy to clipboard"
+                style="padding: 2px 5px; line-height: 1"
+              >
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 13 13"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="4" y="0.5" width="8.5" height="8.5" rx="1.5" />
+                  <path
+                    d="M8.5 9v2.5a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h2.5"
+                  />
+                </svg>
+              </button>
+            </div>
+            <pre id="test-output"></pre>
+          </div>
+        </div>
+
+        <div class="divider" id="divider"></div>
+
+        <div class="report-pane">
+          <div class="pane-bar">
+            <div class="pane-bar-left">
+              <span id="report-pane-title">Playwright Report</span>
+              <div class="seg report-tabs" id="report-view-tabs">
+                <button
+                  data-report-view="rendered"
+                  class="active"
+                  type="button"
+                >
+                  Rendered Report
+                </button>
+                <button data-report-view="raw" type="button">Raw Output</button>
+              </div>
+            </div>
+            <button id="open-report-tab">Open in new tab &#8599;</button>
+          </div>
+          <div id="report-placeholder">
+            Run tests to see the Playwright report
+          </div>
+          <div id="perf-report-container"></div>
+          <pre id="report-raw-output"></pre>
+          <iframe id="report-frame" title="Playwright Report"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SERVICES VIEW ──────────────────────────────────────────────────────── -->
+    <div class="view" id="view-services">
+      <div class="services-pane" id="services-pane">
+        <div class="empty-state">Loading services&#8230;</div>
+      </div>
+
+      <!-- Command output strip — shown when an exec command is running -->
+      <div class="cmd-strip hidden" id="cmd-strip">
+        <div class="pane-bar">
+          <span id="cmd-strip-title">Command Output</span>
+          <button id="stop-cmd" style="display: none">Stop</button>
+          <button id="clear-cmd-output">Clear</button>
+        </div>
+        <pre id="cmd-output"></pre>
+      </div>
+    </div>
+
+    <script type="module">
+      import {
+        initHealth,
+        refreshHealth,
+        initWorkspacePill,
+        applyDenConfig,
+        initLogBadge,
+        storeOpenLog,
+        initChangelog,
+        copyToClipboard,
+      } from "/header.js";
+      import {
+        buildReportPaneModel,
+        getNextReportViewOnPillarChange,
+        renderPerfReportHtml,
+      } from "/perf-report.js";
+
+      // ── Module-level state ────────────────────────────────────────────────────
+      let currentView = "tests";
+      let pillar = "synthetic";
+      let testEs = null;
+      let reportView = "playwright";
+      let latestPerfReportUrl = null;
+
+      let execEs = null;
+
+      // Release any open SSE socket on reload / navigation / bfcache-enter so the
+      // reloaded page isn't starved of a connection by a lingering stream.
+      window.addEventListener("pagehide", () => {
+        try {
+          testEs?.close();
+        } catch {}
+        testEs = null;
+        try {
+          execEs?.close();
+        } catch {}
+        execEs = null;
+      });
+
+      // ── Init ──────────────────────────────────────────────────────────────────
+      async function init() {
+        // Populate env selector
+        const envs = await fetch("/api/environments")
+          .then((r) => r.json())
+          .catch(() => ["local"]);
+        const envSel = document.getElementById("env-sel");
+        envSel.innerHTML = envs
+          .map((e) => `<option value="${e}">${e}</option>`)
+          .join("");
+        const savedEnv = localStorage.getItem("__DEN_CLI__-env");
+        if (savedEnv && envs.includes(savedEnv)) envSel.value = savedEnv;
+        updateAppLink(envSel.value);
+
+        // Restore pillar
+        const savedPillar =
+          localStorage.getItem("__DEN_CLI__-pillar") || "synthetic";
+        pillar = savedPillar;
+        document
+          .querySelectorAll("[data-pillar]")
+          .forEach((b) =>
+            b.classList.toggle("active", b.dataset.pillar === pillar),
+          );
+        document.getElementById("smoke-api-url").value =
+          localStorage.getItem("__DEN_CLI__-smoke-api-url") || "";
+        document.getElementById("use-local-checkout").checked =
+          localStorage.getItem("__DEN_CLI__-use-local-checkout") === "1";
+        syncTargetingControls();
+        resetReportPane();
+        if (pillar === "security") renderSecurityFindings();
+
+        // Restore layout
+        const savedLayout = localStorage.getItem("__DEN_CLI__-layout") || "top";
+        applyLayout(savedLayout);
+
+        // Load data
+        await Promise.all([
+          loadModules(pillar),
+          initHealth(),
+          initWorkspacePill("env-sel", { onSwitch: onWorkspaceSwitch }),
+          applyDenConfig(),
+          initChangelog(),
+        ]);
+        initLogBadge();
+
+        // Route to the correct view
+        routeFromHash();
+      }
+
+      // ── Workspace ─────────────────────────────────────────────────────────────
+      // Module discovery, test sources and the run itself all resolve repos from
+      // the FOCUSED workspace server-side (discoverRepos → getActiveWorkspace), so
+      // switching focus has to re-pull everything this page derives from it.
+      async function onWorkspaceSwitch() {
+        await loadModules(pillar);
+        refreshHealth(document.getElementById("env-sel").value, {
+          force: true,
+        });
+        if (currentView === "services") loadServices();
+      }
+
+      // ── Routing ───────────────────────────────────────────────────────────────
+      window.addEventListener("hashchange", routeFromHash);
+
+      function routeFromHash() {
+        const hash = location.hash.replace("#", "") || "tests";
+        showView(["tests", "services"].includes(hash) ? hash : "tests");
+      }
+
+      function showView(view) {
+        currentView = view;
+
+        document
+          .querySelectorAll(".view")
+          .forEach((el) =>
+            el.classList.toggle("active", el.id === `view-${view}`),
+          );
+        document
+          .querySelectorAll(".bar2-slot")
+          .forEach((el) =>
+            el.classList.toggle("active", el.id === `bar2-${view}`),
+          );
+
+        if (view === "services") loadServices();
+      }
+
+      // ── App link ─────────────────────────────────────────────────────────────
+      async function updateAppLink(env) {
+        const link = document.getElementById("app-link");
+        const badge = document.getElementById("topbar-env-badge");
+        if (!link) return;
+        try {
+          const { url } = await fetch(`/api/app-url?env=${env}`).then((r) =>
+            r.json(),
+          );
+          if (url) {
+            link.href = url;
+            link.style.display = "";
+            link.title = url;
+            if (badge) {
+              badge.textContent = env;
+              badge.style.display = "inline-flex";
+            }
+          } else {
+            link.style.display = "none";
+            if (badge) badge.style.display = "none";
+          }
+        } catch {
+          link.style.display = "none";
+          if (badge) badge.style.display = "none";
+        }
+      }
+
+      // ── Env ───────────────────────────────────────────────────────────────────
+      document.getElementById("env-sel").addEventListener("change", () => {
+        const env = document.getElementById("env-sel").value;
+        localStorage.setItem("__DEN_CLI__-env", env);
+        updateAppLink(env);
+
+        // Update health dots for the new env immediately
+        refreshHealth(env);
+
+        // Reload context-sensitive views
+        if (currentView === "services") loadServices();
+        if (pillar === "security") renderSecurityFindings();
+      });
+
+      // ── Layout (tests view) ───────────────────────────────────────────────────
+      document.getElementById("layout-seg").addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-layout]");
+        if (!btn) return;
+        applyLayout(btn.dataset.layout);
+        localStorage.setItem("__DEN_CLI__-layout", btn.dataset.layout);
+      });
+
+      function applyLayout(layout) {
+        const main = document.getElementById("tests-main");
+        main.className = `tests-main layout-${layout}`;
+        document
+          .querySelectorAll("#layout-seg [data-layout]")
+          .forEach((b) =>
+            b.classList.toggle("active", b.dataset.layout === layout),
+          );
+        const savedSize = localStorage.getItem(`__DEN_CLI__-size-${layout}`);
+        document.querySelector(".left-panel").style.flex = savedSize
+          ? `0 0 ${savedSize}px`
+          : "";
+      }
+
+      // ── Draggable divider ─────────────────────────────────────────────────────
+      document.getElementById("divider").addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        const main = document.getElementById("tests-main");
+        const leftPanel = document.querySelector(".left-panel");
+        const isHoriz = main.classList.contains("layout-side");
+        const startPos = isHoriz ? e.clientX : e.clientY;
+        const startSize = isHoriz
+          ? leftPanel.getBoundingClientRect().width
+          : leftPanel.getBoundingClientRect().height;
+        const MIN = 160;
+
+        document.getElementById("divider").classList.add("active");
+        document.body.classList.add(isHoriz ? "dragging" : "dragging-v");
+
+        function onMove(ev) {
+          const delta = (isHoriz ? ev.clientX : ev.clientY) - startPos;
+          const mainSize = isHoriz
+            ? main.getBoundingClientRect().width
+            : main.getBoundingClientRect().height;
+          leftPanel.style.flex = `0 0 ${Math.min(Math.max(MIN, startSize + delta), mainSize - MIN)}px`;
+        }
+
+        function onUp() {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          document.getElementById("divider").classList.remove("active");
+          document.body.classList.remove("dragging", "dragging-v");
+          const sz = isHoriz
+            ? leftPanel.getBoundingClientRect().width
+            : leftPanel.getBoundingClientRect().height;
+          localStorage.setItem(
+            `__DEN_CLI__-size-${isHoriz ? "side" : "top"}`,
+            Math.round(sz),
+          );
+        }
+
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+
+      // ── Pillar / module ───────────────────────────────────────────────────────
+      document
+        .getElementById("pillars")
+        .addEventListener("click", async (e) => {
+          const btn = e.target.closest("[data-pillar]");
+          if (!btn) return;
+          const nextPillar = btn.dataset.pillar;
+          document
+            .querySelectorAll("[data-pillar]")
+            .forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          reportView = getNextReportViewOnPillarChange({
+            currentPillar: pillar,
+            nextPillar,
+            currentReportView: reportView,
+          });
+          const leavingSecurity = pillar === "security";
+          pillar = nextPillar;
+          localStorage.setItem("__DEN_CLI__-pillar", pillar);
+          syncTargetingControls();
+          // The findings table shares the perf container: clear it on the way in
+          // or out of security; other pillar switches keep their report.
+          if (leavingSecurity || pillar === "security") resetReportPane();
+          else syncReportPane();
+          if (pillar === "security") renderSecurityFindings();
+          await loadModules(pillar);
+        });
+
+      function syncTargetingControls() {
+        document
+          .getElementById("smoke-api-url-wrap")
+          .classList.toggle("active", pillar === "smoke");
+        document
+          .getElementById("local-checkout-wrap")
+          .classList.toggle(
+            "active",
+            pillar === "smoke" || pillar === "performance",
+          );
+        document
+          .getElementById("security-mode-wrap")
+          .classList.toggle("active", pillar === "security");
+        // Perf optional fields render only for the performance pillar; clear them
+        // for every other pillar so stale controls never linger.
+        if (pillar !== "performance") {
+          document.getElementById("perf-opt-fields").replaceChildren();
+        } else {
+          renderPerfOptionalFields();
+        }
+      }
+
+      function appendSpan(parent, cls, text) {
+        const el = document.createElement("span");
+        if (cls) el.className = cls;
+        el.textContent = text;
+        parent.appendChild(el);
+      }
+
+      async function loadTestSources(p) {
+        const bar = document.getElementById("test-sources-bar");
+        bar.replaceChildren();
+        if (p !== "synthetic" && p !== "smoke") {
+          bar.classList.remove("visible");
+          return;
+        }
+        let sources = [];
+        try {
+          sources = await fetch(`/api/test-sources?pillar=${p}`).then((r) =>
+            r.json(),
+          );
+        } catch {
+          sources = [];
+        }
+        bar.classList.add("visible");
+        if (!Array.isArray(sources) || sources.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "test-source test-source-empty";
+          empty.textContent =
+            "No source repo detected for this pillar — add one to your workspace or register-repos.";
+          bar.appendChild(empty);
+          return;
+        }
+        for (const s of sources) {
+          const row = document.createElement("div");
+          row.className = "test-source";
+          if (s.repoPath) row.title = s.repoPath;
+          appendSpan(row, "test-source-label", "source:");
+          appendSpan(row, "test-source-repo", s.repoName ?? "(unknown)");
+          if (s.workspace)
+            appendSpan(row, "test-source-ws", `@ ${s.workspace}`);
+          appendSpan(row, "test-source-label", "·");
+          appendSpan(row, "test-source-branch", s.branch ?? "(no branch)");
+          if (s.shortSha) appendSpan(row, "test-source-sha", `(${s.shortSha})`);
+          if (s.repoPath)
+            appendSpan(row, "test-source-path", `— ${s.repoPath}`);
+          bar.appendChild(row);
+        }
+      }
+
+      // Most-recent /api/modules payload for the current pillar, keyed by name.
+      // Used by the generic perf optional-field renderer to look up each selected
+      // module's declared `optionalFields`.
+      let currentModulesByName = {};
+
+      async function loadModules(p) {
+        loadTestSources(p);
+        const modules = await fetch(`/api/modules?pillar=${p}`)
+          .then((r) => r.json())
+          .catch(() => []);
+        currentModulesByName = {};
+        for (const m of modules) currentModulesByName[m.name] = m;
+        const list = document.getElementById("module-check-list");
+        list.innerHTML = modules
+          .map(
+            (m) =>
+              `<label class="module-check-item">
+          <input type="checkbox" value="${m.name}" checked>
+          <span>${m.icon} ${m.displayName}${m.testCount ? ` <span style="color:var(--muted)">(${m.testCount})</span>` : ""}</span>
+        </label>`,
+          )
+          .join("");
+
+        // Restore saved selection. Ignore it when it names none of the modules
+        // now on offer — after a workspace switch the saved names belong to the
+        // previous workspace's repos, and applying them would silently uncheck
+        // everything (which then runs the whole suite).
+        const saved = localStorage.getItem(`__DEN_CLI__-modules-${p}`);
+        if (saved) {
+          try {
+            const sel = JSON.parse(saved);
+            const boxes = [...list.querySelectorAll("input[type=checkbox]")];
+            if (
+              Array.isArray(sel) &&
+              sel.length > 0 &&
+              boxes.some((cb) => sel.includes(cb.value))
+            ) {
+              boxes.forEach((cb) => {
+                cb.checked = sel.includes(cb.value);
+              });
+            }
+          } catch {}
+        }
+        syncAllCheckbox();
+        updatePickerLabel();
+        if (p === "performance") renderPerfOptionalFields();
+      }
+
+      function getSelectedModules() {
+        return [
+          ...document.querySelectorAll(
+            "#module-check-list input[type=checkbox]:checked",
+          ),
+        ].map((cb) => cb.value);
+      }
+
+      function syncAllCheckbox() {
+        const all = document.querySelectorAll(
+          "#module-check-list input[type=checkbox]",
+        );
+        const chk = document.querySelectorAll(
+          "#module-check-list input[type=checkbox]:checked",
+        );
+        document.getElementById("module-check-all").checked =
+          all.length === chk.length;
+      }
+
+      function updatePickerLabel() {
+        const sel = getSelectedModules();
+        const all = document.querySelectorAll(
+          "#module-check-list input[type=checkbox]",
+        ).length;
+        const label = document.getElementById("module-picker-label");
+        if (sel.length === 0 || sel.length === all) {
+          label.textContent = "All modules";
+        } else if (sel.length === 1) {
+          label.textContent = sel[0];
+        } else {
+          label.textContent = `${sel.length} modules`;
+        }
+        localStorage.setItem(
+          `__DEN_CLI__-modules-${pillar}`,
+          JSON.stringify(sel.length === all ? [] : sel),
+        );
+      }
+
+      // "All" checkbox toggles every item
+      document
+        .getElementById("module-check-all")
+        .addEventListener("change", (e) => {
+          document
+            .querySelectorAll("#module-check-list input[type=checkbox]")
+            .forEach((cb) => {
+              cb.checked = e.target.checked;
+            });
+          updatePickerLabel();
+          if (pillar === "performance") renderPerfOptionalFields();
+        });
+
+      // Individual checkbox → sync "All" + label
+      document
+        .getElementById("module-check-list")
+        .addEventListener("change", () => {
+          syncAllCheckbox();
+          updatePickerLabel();
+          if (pillar === "performance") renderPerfOptionalFields();
+        });
+
+      // Toggle dropdown open/close
+      const pickerBtn = document.getElementById("module-picker-btn");
+      const pickerDropdown = document.getElementById("module-picker-dropdown");
+      pickerBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = pickerDropdown.classList.toggle("open");
+        pickerBtn.classList.toggle("open", open);
+      });
+      document.addEventListener("click", () => {
+        pickerDropdown.classList.remove("open");
+        pickerBtn.classList.remove("open");
+      });
+      pickerDropdown.addEventListener("click", (e) => e.stopPropagation());
+      document
+        .getElementById("smoke-api-url")
+        .addEventListener("input", (e) => {
+          localStorage.setItem("__DEN_CLI__-smoke-api-url", e.target.value);
+        });
+      document
+        .getElementById("use-local-checkout")
+        .addEventListener("change", (e) => {
+          localStorage.setItem(
+            "__DEN_CLI__-use-local-checkout",
+            e.target.checked ? "1" : "0",
+          );
+        });
+
+      // ── Per-perf-test optional launch fields (declarative) ────────────────────
+      // Each perf module declares `optionalFields` in its manifest.yml. We render
+      // one section per SELECTED module that has fields, scoped per test so two
+      // modules can both declare e.g. a `smoke` field without colliding. Values
+      // persist in localStorage keyed by module+field and serialize into `opts`.
+
+      const perfOptKey = (mod, field) => `__DEN_CLI__-perf-opt:${mod}:${field}`;
+
+      // Effective current value for a field (stored override, else its default).
+      function perfFieldValue(mod, f) {
+        const stored = localStorage.getItem(perfOptKey(mod, f.name));
+        if (stored !== null) {
+          if (f.type === "boolean") return stored === "1" || stored === "true";
+          if (f.type === "number") return stored === "" ? "" : Number(stored);
+          return stored;
+        }
+        return f.default !== undefined
+          ? f.default
+          : f.type === "boolean"
+            ? false
+            : "";
+      }
+
+      function perfFieldIsDisabled(mod, f, fields) {
+        if (!f.disabledWhen) return false;
+        const ctrl = fields.find((x) => x.name === f.disabledWhen.field);
+        if (!ctrl) return false;
+        const v = perfFieldValue(mod, ctrl);
+        if (typeof f.disabledWhen.equals === "boolean") {
+          const truthy = v === true || v === 1 || v === "1" || v === "true";
+          return truthy === f.disabledWhen.equals;
+        }
+        return String(v) === String(f.disabledWhen.equals);
+      }
+
+      function renderPerfOptionalFields() {
+        const container = document.getElementById("perf-opt-fields");
+        container.replaceChildren();
+        if (pillar !== "performance") return;
+
+        const selected = getSelectedModules();
+        const allMods = document.querySelectorAll(
+          "#module-check-list input[type=checkbox]",
+        ).length;
+        const isAll = selected.length === 0 || selected.length === allMods;
+        // "All modules" → every perf module; otherwise just the selected ones.
+        const names = isAll ? Object.keys(currentModulesByName) : selected;
+        const withFields = names
+          .map((n) => currentModulesByName[n])
+          .filter(
+            (m) =>
+              m &&
+              Array.isArray(m.optionalFields) &&
+              m.optionalFields.length > 0,
+          );
+
+        const multi = withFields.length > 1;
+        for (const m of withFields) {
+          const section = document.createElement("div");
+          section.className = "perf-opt-section";
+          if (multi) {
+            const head = document.createElement("div");
+            head.className = "smoke-override-label perf-opt-section-head";
+            head.textContent = `${m.icon || ""} ${m.displayName}`.trim();
+            section.appendChild(head);
+          }
+          for (const f of m.optionalFields) {
+            section.appendChild(renderPerfField(m.name, f, m.optionalFields));
+          }
+          container.appendChild(section);
+        }
+      }
+
+      function renderPerfField(mod, f, fields) {
+        const disabled = perfFieldIsDisabled(mod, f, fields);
+        const val = perfFieldValue(mod, f);
+
+        const wrap = document.createElement("label");
+        wrap.className = "smoke-override active perf-opt-field";
+        if (f.description) wrap.title = f.description;
+        wrap.classList.toggle("perf-opt-disabled", disabled);
+
+        const onChange = () => {
+          renderPerfOptionalFields();
+        };
+
+        if (f.type === "boolean") {
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.className = "toggle-input";
+          input.checked =
+            val === true || val === 1 || val === "1" || val === "true";
+          input.disabled = disabled;
+          input.addEventListener("change", () => {
+            localStorage.setItem(
+              perfOptKey(mod, f.name),
+              input.checked ? "1" : "0",
+            );
+            onChange();
+          });
+          wrap.appendChild(input);
+          const span = document.createElement("span");
+          span.className = "smoke-override-label";
+          span.textContent = f.label;
+          wrap.appendChild(span);
+          return wrap;
+        }
+
+        // Non-boolean → label text then control
+        const span = document.createElement("span");
+        span.className = "smoke-override-label";
+        span.textContent = f.label;
+        wrap.appendChild(span);
+
+        if (f.type === "select") {
+          const sel = document.createElement("select");
+          sel.className = "text-input";
+          sel.disabled = disabled;
+          for (const opt of f.options || []) {
+            const o = document.createElement("option");
+            o.value = opt.value;
+            o.textContent = opt.label;
+            if (String(opt.value) === String(val)) o.selected = true;
+            sel.appendChild(o);
+          }
+          sel.addEventListener("change", () => {
+            localStorage.setItem(perfOptKey(mod, f.name), sel.value);
+            onChange();
+          });
+          wrap.appendChild(sel);
+        } else {
+          const input = document.createElement("input");
+          input.className = "text-input";
+          input.type = f.type === "number" ? "number" : "text";
+          input.value = val === undefined || val === null ? "" : String(val);
+          input.disabled = disabled;
+          input.addEventListener("input", () => {
+            localStorage.setItem(perfOptKey(mod, f.name), input.value);
+          });
+          input.addEventListener("change", onChange);
+          wrap.appendChild(input);
+        }
+        return wrap;
+      }
+
+      // Build the `opts` payload: { [module]: { [field]: value } } for selected
+      // perf modules. Disabled fields are omitted (server also skips them).
+      function buildPerfOpts() {
+        const selected = getSelectedModules();
+        const allMods = document.querySelectorAll(
+          "#module-check-list input[type=checkbox]",
+        ).length;
+        const isAll = selected.length === 0 || selected.length === allMods;
+        const names = isAll ? Object.keys(currentModulesByName) : selected;
+        const opts = {};
+        for (const n of names) {
+          const m = currentModulesByName[n];
+          if (
+            !m ||
+            !Array.isArray(m.optionalFields) ||
+            m.optionalFields.length === 0
+          )
+            continue;
+          const fieldVals = {};
+          for (const f of m.optionalFields) {
+            if (perfFieldIsDisabled(n, f, m.optionalFields)) continue;
+            fieldVals[f.name] = perfFieldValue(n, f);
+          }
+          if (Object.keys(fieldVals).length > 0) opts[n] = fieldVals;
+        }
+        return opts;
+      }
+
+      // ── Run tests ─────────────────────────────────────────────────────────────
+      document.getElementById("run-btn").addEventListener("click", startRun);
+
+      function startRun() {
+        if (testEs) {
+          testEs.close();
+          testEs = null;
+        }
+
+        const selected = getSelectedModules();
+        const allMods = document.querySelectorAll(
+          "#module-check-list input[type=checkbox]",
+        ).length;
+        const isAll = selected.length === 0 || selected.length === allMods;
+        const env = document.getElementById("env-sel").value;
+        const params = new URLSearchParams({ pillar, env });
+        if (!isAll) selected.forEach((m) => params.append("module", m));
+        const smokeApiUrl = document
+          .getElementById("smoke-api-url")
+          .value.trim();
+        if (pillar === "smoke" && smokeApiUrl)
+          params.set("baseApiUrl", smokeApiUrl);
+        if (
+          (pillar === "smoke" || pillar === "performance") &&
+          document.getElementById("use-local-checkout").checked
+        ) {
+          params.set("useLocalCheckout", "1");
+        }
+        if (pillar === "security")
+          params.set("mode", document.getElementById("security-mode").value);
+        // Per-perf-test declarative optional fields → opts={module:{field:value}}.
+        let optLabel = "";
+        if (pillar === "performance") {
+          const opts = buildPerfOpts();
+          if (Object.keys(opts).length > 0) {
+            params.set("opts", JSON.stringify(opts));
+            // Compact summary of the fields set across selected tests.
+            const fieldNames = [
+              ...new Set(Object.values(opts).flatMap((o) => Object.keys(o))),
+            ];
+            if (fieldNames.length > 0) optLabel = ` (${fieldNames.join(", ")})`;
+          }
+        }
+
+        const label =
+          (isAll
+            ? ""
+            : selected.length === 1
+              ? selected[0]
+              : `${selected.length} modules`) + optLabel;
+        setRunStatus("running", "running\u2026");
+        document.getElementById("run-btn").disabled = true;
+        resetReportPane();
+        testAppendLine(
+          `\n\u25b6 ${pillar}${label ? " / " + label : ""} \u00b7 ${env}\n`,
+          "cmd",
+        );
+
+        testEs = new EventSource(`/api/run?${params}`);
+        testEs.onmessage = (e) => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "cmd") {
+            testAppendLine(msg.text, "cmd");
+          } else if (msg.type === "line") {
+            testAppendLine(msg.text, "");
+          } else if (msg.type === "error") {
+            testAppendLine(msg.text, "err");
+          } else if (msg.type === "done") {
+            const ok = msg.exitCode === 0;
+            const dur = fmtDuration(msg.duration);
+            testAppendLine(
+              `\n${ok ? "\u2713 Passed" : "\u2717 Failed"} in ${dur}\n`,
+              ok ? "done-ok" : "done-fail",
+            );
+            setRunStatus(
+              ok ? "passed" : "failed",
+              ok ? `passed (${dur})` : `failed (${dur})`,
+            );
+            document.getElementById("run-btn").disabled = false;
+            testEs.close();
+            testEs = null;
+            if (pillar === "performance") {
+              if (msg.perfReport?.available && msg.perfReport.url) {
+                showPerfReport(msg.perfReport.url);
+              } else {
+                latestPerfReportUrl = null;
+                reportView = "raw";
+                syncReportPane(
+                  "Structured perf report unavailable. Showing raw output instead.",
+                );
+              }
+            } else if (
+              pillar !== "journeys" &&
+              pillar !== "security" &&
+              pillar !== "suites"
+            ) {
+              // Journeys, security (ZAP) and suites have no Playwright report — the raw-output pane
+              // (already live during the run) stays in place.
+              showPlaywrightReport();
+            }
+          }
+        };
+        testEs.onerror = () => {
+          testAppendLine("Connection closed", "err");
+          setRunStatus("failed", "error");
+          document.getElementById("run-btn").disabled = false;
+          testEs?.close();
+          testEs = null;
+        };
+      }
+
+      const _progressSpans = {};
+      const _k6ProgressRe = /^(\S+)\s+[\[✓✗]/;
+      const _k6RunningRe = /^running \(\d+m[\d.]+s\), \d+\/\d+ VUs,/;
+
+      function testAppendLine(text, cls) {
+        const out = document.getElementById("test-output");
+        const raw = document.getElementById("report-raw-output");
+
+        // k6 "running (...)" status lines are redundant with the progress bar;
+        // suppress them entirely in the web UI (still in raw output).
+        if (!cls && _k6RunningRe.test(text)) {
+          raw.textContent += text + "\n";
+          return;
+        }
+
+        // k6 progress/result lines: update a single DOM element per scenario
+        // so the UI shows a compact live-updating progress bar.
+        const pm = !cls && text.match(_k6ProgressRe);
+        if (pm) {
+          const key = pm[1];
+          if (_progressSpans[key]) {
+            _progressSpans[key].textContent = text + "\n";
+            out.scrollTop = out.scrollHeight;
+            return;
+          }
+          const span = document.createElement("span");
+          span.className = "k6-progress";
+          span.textContent = text + "\n";
+          _progressSpans[key] = span;
+          out.appendChild(span);
+          out.scrollTop = out.scrollHeight;
+          return;
+        }
+
+        const span = document.createElement("span");
+        if (cls) span.className = cls;
+        span.textContent = text + "\n";
+        out.appendChild(span);
+        out.scrollTop = out.scrollHeight;
+        raw.textContent += text + "\n";
+        raw.scrollTop = raw.scrollHeight;
+      }
+
+      document
+        .getElementById("copy-test-output")
+        .addEventListener("click", () => {
+          const text = document.getElementById("test-output").innerText;
+          const btn = document.getElementById("copy-test-output");
+          const icon =
+            '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="0.5" width="8.5" height="8.5" rx="1.5"/><path d="M8.5 9v2.5a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h2.5"/></svg>';
+          const check =
+            '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7l3 3 6-7"/></svg>';
+          copyToClipboard(text)
+            .then(() => {
+              btn.innerHTML = check;
+              setTimeout(() => {
+                btn.innerHTML = icon;
+              }, 1500);
+            })
+            .catch(() => {});
+        });
+
+      document
+        .getElementById("clear-test-output")
+        .addEventListener("click", () => {
+          document.getElementById("test-output").innerHTML = "";
+          document.getElementById("report-raw-output").textContent = "";
+          Object.keys(_progressSpans).forEach((k) => delete _progressSpans[k]);
+        });
+
+      function setRunStatus(state, text) {
+        document.getElementById("run-dot").className = `dot ${state}`;
+        document.getElementById("run-status").textContent = text;
+      }
+
+      function showPlaywrightReport() {
+        const frame = document.getElementById("report-frame");
+        reportView = "playwright";
+        frame.dataset.ready = "1";
+        frame.src = "/report/";
+        syncReportPane();
+      }
+
+      document
+        .getElementById("open-report-tab")
+        .addEventListener("click", () => {
+          const model = buildReportPaneModel({
+            pillar,
+            selectedView: reportView,
+            perfReportUrl: latestPerfReportUrl,
+          });
+          if (model.openUrl) {
+            window.open(model.openUrl, "_blank");
+          }
+        });
+
+      document
+        .getElementById("report-view-tabs")
+        .addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-report-view]");
+          if (!btn || pillar !== "performance") return;
+          reportView = btn.dataset.reportView;
+          syncReportPane();
+        });
+
+      function resetReportPane() {
+        reportView = pillar === "performance" ? "rendered" : "playwright";
+        latestPerfReportUrl = null;
+        document.getElementById("report-frame").removeAttribute("src");
+        document.getElementById("report-frame").dataset.ready = "0";
+        document.getElementById("perf-report-container").innerHTML = "";
+        document.getElementById("report-raw-output").textContent = "";
+        syncReportPane();
+      }
+
+      function syncReportPane(overrideMessage) {
+        const model = buildReportPaneModel({
+          pillar,
+          selectedView: reportView,
+          perfReportUrl: latestPerfReportUrl,
+        });
+        const frame = document.getElementById("report-frame");
+        const placeholder = document.getElementById("report-placeholder");
+        const perfContainer = document.getElementById("perf-report-container");
+        const rawOutput = document.getElementById("report-raw-output");
+        const tabs = document.getElementById("report-view-tabs");
+        const title = document.getElementById("report-pane-title");
+        const openBtn = document.getElementById("open-report-tab");
+
+        title.textContent = model.title;
+        tabs.classList.toggle("active", model.tabsVisible);
+        tabs.querySelectorAll("[data-report-view]").forEach((btn) => {
+          btn.classList.toggle(
+            "active",
+            btn.dataset.reportView === model.activeView,
+          );
+        });
+        openBtn.style.display = model.openUrl ? "" : "none";
+
+        frame.style.display = "none";
+        perfContainer.style.display = "none";
+        rawOutput.style.display = "none";
+        placeholder.style.display = "none";
+
+        if (model.activeView === "playwright") {
+          if (frame.dataset.ready === "1") {
+            frame.style.display = "block";
+          } else {
+            placeholder.textContent = overrideMessage || model.emptyMessage;
+            placeholder.style.display = "flex";
+          }
+          return;
+        }
+
+        if (model.activeView === "raw") {
+          rawOutput.style.display = "block";
+          if (!rawOutput.textContent.trim()) {
+            rawOutput.textContent =
+              overrideMessage || "Raw performance output will appear here.";
+          }
+          return;
+        }
+
+        if (perfContainer.innerHTML.trim()) {
+          perfContainer.style.display = "block";
+        } else {
+          placeholder.textContent = overrideMessage || model.emptyMessage;
+          placeholder.style.display = "flex";
+        }
+      }
+
+      // ── Security findings (newest ZAP run per scan mode, this env) ───────────
+      async function renderSecurityFindings() {
+        const env = document.getElementById("env-sel").value;
+        const box = document.getElementById("perf-report-container");
+        const esc = (v) =>
+          String(v ?? "").replace(
+            /[&<>"']/g,
+            (c) =>
+              ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;",
+              })[c],
+          );
+        let runs = [];
+        try {
+          runs = await fetch(
+            `/api/security/latest?env=${encodeURIComponent(env)}`,
+          ).then((r) => r.json());
+        } catch {
+          runs = [];
+        }
+        if (pillar !== "security") return;
+        if (!Array.isArray(runs) || runs.length === 0) {
+          box.innerHTML = "";
+          syncReportPane();
+          return;
+        }
+        const RISKS = ["High", "Medium", "Low", "Informational"];
+        const count = (fs, r) => (fs || []).filter((f) => f.risk === r).length;
+        box.innerHTML = runs
+          .map(
+            (run) => `
+        <section class="sec-run">
+          <h3>${esc(run.mode)} scan · ${esc(run.env)} · ${esc(new Date(run.finishedAt).toLocaleString())}</h3>
+          <table class="sec-table">
+            <thead><tr><th>Service</th>${RISKS.map((r) => `<th>${r === "Informational" ? "Info" : r}</th>`).join("")}<th>New</th><th></th></tr></thead>
+            <tbody>${run.results
+              .map((t) =>
+                t.findings === null
+                  ? `<tr><td>${esc(t.id)}</td><td colspan="5" class="sec-err">scan failed: ${esc(t.error)}</td><td></td></tr>`
+                  : `<tr>
+                  <td title="${esc(t.url)}">${esc(t.id)}</td>
+                  ${RISKS.map((r) => {
+                    const n = count(t.findings, r);
+                    return `<td class="sec-${r.toLowerCase()}${n ? " sec-hit" : ""}">${n}</td>`;
+                  }).join("")}
+                  <td>${t.newSince?.length || ""}</td>
+                  <td>${t.report ? `<a href="/reports/security/${t.report.split("/").map(encodeURIComponent).join("/")}" target="_blank" rel="noopener">report &#8599;</a>` : ""}</td>
+                </tr>
+                ${t.findings
+                  .filter((f) => f.risk !== "Informational")
+                  .map(
+                    (f) => `
+                <tr class="sec-finding"><td colspan="7"><span class="sec-${f.risk.toLowerCase()}">${esc(f.risk)}</span> ${esc(f.name)} (&times;${f.count})${t.newSince?.includes(f.pluginId) ? " <b>new</b>" : ""}</td></tr>`,
+                  )
+                  .join("")}`,
+              )
+              .join("")}
+            </tbody>
+          </table>
+        </section>`,
+          )
+          .join("");
+        syncReportPane();
+      }
+
+      async function showPerfReport(url) {
+        try {
+          const report = await fetch(url).then((r) => {
+            if (!r.ok)
+              throw new Error(`Failed to load perf report (${r.status})`);
+            return r.json();
+          });
+          latestPerfReportUrl = url;
+          reportView = "rendered";
+          document.getElementById("perf-report-container").innerHTML =
+            renderPerfReportHtml(report);
+          syncReportPane();
+        } catch {
+          latestPerfReportUrl = null;
+          reportView = "raw";
+          syncReportPane(
+            "Structured perf report unavailable. Showing raw output instead.",
+          );
+        }
+      }
+
+      // ── Services view ─────────────────────────────────────────────────────────
+      async function loadServices() {
+        const env = document.getElementById("env-sel").value;
+        const pane = document.getElementById("services-pane");
+        pane.innerHTML = '<div class="empty-state">Loading\u2026</div>';
+
+        let services;
+        try {
+          services = await fetch(`/api/services?env=${env}`).then((r) =>
+            r.json(),
+          );
+        } catch {
+          pane.innerHTML =
+            '<div class="empty-state">Failed to load services</div>';
+          return;
+        }
+
+        if (!services.length) {
+          pane.innerHTML = `<div class="empty-state">No services registered for <strong>${env}</strong>.<br>Add a <code>services</code> block to <code>__DEN_MANIFEST_YML__</code>.</div>`;
+          return;
+        }
+
+        pane.innerHTML = services
+          .map((s) => {
+            const cmdBtns = s.commands
+              .map(
+                (cmd) =>
+                  `<button class="cmd-btn" data-repo="${s.repo}" data-service="${s.service}" data-cmd="${cmd}" data-type="exec">${cmd}</button>`,
+              )
+              .join("");
+            const logsBtn = s.logs
+              ? `<button class="cmd-btn logs-btn" data-repo="${s.repo}" data-service="${s.service}" data-type="logs">logs ↗</button>`
+              : "";
+            const hasCaps = s.commands.length > 0 || s.logs;
+            return `
+          <div class="service-card">
+            <div class="service-card-header">
+              <span class="dot" id="svc-dot-${s.repo}-${s.service}"></span>
+              <div>
+                <div class="service-name">${s.service}</div>
+                <div class="service-repo">${s.repo}</div>
+              </div>
+            </div>
+            <div class="cmd-row">
+              ${hasCaps ? cmdBtns + logsBtn : '<span style="color:var(--muted);font-size:11px">no capabilities for this env</span>'}
+            </div>
+          </div>`;
+          })
+          .join("");
+
+        pane.querySelectorAll(".cmd-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const { repo, service, cmd, type } = btn.dataset;
+            if (type === "exec") runExec(repo, service, cmd);
+            else {
+              const env = document.getElementById("env-sel").value;
+              storeOpenLog(repo, service, env);
+              window.location.href = "/logs";
+            }
+          });
+        });
+      }
+
+      function setSvcDot(repo, service, state) {
+        const el = document.getElementById(`svc-dot-${repo}-${service}`);
+        if (el) el.className = `dot ${state}`;
+      }
+
+      document.getElementById("stop-cmd").addEventListener("click", () => {
+        const sb = document.getElementById("stop-cmd");
+        const detachable = sb.dataset.detachable !== "0";
+        execEs?.close();
+        execEs = null;
+        sb.style.display = "none";
+        document
+          .querySelectorAll('.cmd-btn[data-type="exec"]')
+          .forEach((b) => (b.disabled = false));
+        document.getElementById("svc-status").textContent = "idle";
+        cmdAppendLine(
+          detachable ? "--- Detached ---" : "--- Stopped ---",
+          "err",
+        );
+      });
+
+      // ── Service exec ──────────────────────────────────────────────────────────
+      function runExec(repo, service, cmd) {
+        if (execEs) {
+          execEs.close();
+          execEs = null;
+        }
+        const env = document.getElementById("env-sel").value;
+
+        // Disable exec buttons while running, keep logs buttons intact
+        document
+          .querySelectorAll('.cmd-btn[data-type="exec"]')
+          .forEach((b) => (b.disabled = true));
+        const stopBtn = document.getElementById("stop-cmd");
+        stopBtn.style.display = "";
+        stopBtn.textContent = "Stop";
+        setSvcDot(repo, service, "running");
+
+        const strip = document.getElementById("cmd-strip");
+        strip.classList.remove("hidden");
+        document.getElementById("cmd-strip-title").textContent =
+          `${repo} / ${service} \u00b7 ${cmd}`;
+        document.getElementById("svc-status").textContent =
+          `running ${service}:${cmd}\u2026`;
+
+        cmdAppendLine(
+          `\n\u25b6 ${repo}/${service} \u00b7 ${cmd} \u00b7 ${env}\n`,
+          "cmd",
+        );
+
+        const params = new URLSearchParams({ repo, service, cmd, env });
+        execEs = new EventSource(`/api/service/exec?${params}`);
+        execEs.onmessage = (e) => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "cmd") {
+            cmdAppendLine(msg.text, "cmd");
+            const sb = document.getElementById("stop-cmd");
+            sb.textContent = msg.detached ? "Detach" : "Stop";
+            sb.dataset.detachable = msg.detached ? "1" : "0";
+          } else if (msg.type === "line") {
+            cmdAppendLine(msg.text, "");
+          } else if (msg.type === "error") {
+            cmdAppendLine(msg.text, "err");
+          } else if (msg.type === "done") {
+            const ok = msg.exitCode === 0;
+            const dur = fmtDuration(msg.duration);
+            cmdAppendLine(
+              `\n${ok ? "\u2713 Done" : "\u2717 Failed"} in ${dur}\n`,
+              ok ? "done-ok" : "done-fail",
+            );
+            setSvcDot(repo, service, ok ? "ok" : "err");
+            document.getElementById("svc-status").textContent = "idle";
+            document.getElementById("stop-cmd").style.display = "none";
+            document
+              .querySelectorAll('.cmd-btn[data-type="exec"]')
+              .forEach((b) => (b.disabled = false));
+            execEs?.close();
+            execEs = null;
+          }
+        };
+        execEs.onerror = () => {
+          cmdAppendLine("Connection closed", "err");
+          setSvcDot(repo, service, "err");
+          document.getElementById("svc-status").textContent = "idle";
+          document.getElementById("stop-cmd").style.display = "none";
+          document
+            .querySelectorAll('.cmd-btn[data-type="exec"]')
+            .forEach((b) => (b.disabled = false));
+          execEs?.close();
+          execEs = null;
+        };
+      }
+
+      function cmdAppendLine(text, cls) {
+        const out = document.getElementById("cmd-output");
+        const span = document.createElement("span");
+        if (cls) span.className = cls;
+        span.textContent = text + "\n";
+        out.appendChild(span);
+        out.scrollTop = out.scrollHeight;
+      }
+
+      document
+        .getElementById("clear-cmd-output")
+        .addEventListener("click", () => {
+          document.getElementById("cmd-output").innerHTML = "";
+          document.getElementById("cmd-strip").classList.add("hidden");
+        });
+
+      // ── Helpers ───────────────────────────────────────────────────────────────
+      function fmtDuration(ms) {
+        if (ms < 1000) return `${ms}ms`;
+        const s = Math.floor(ms / 1000),
+          m = Math.floor(s / 60);
+        return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+      }
+
+      init();
+    </script>
+  </body>
+</html>

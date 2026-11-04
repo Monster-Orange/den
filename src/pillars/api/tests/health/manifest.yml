@@ -1,0 +1,6 @@
+name: API Health
+description: Health check endpoints
+icon: 🏥
+tags:
+  - smoke
+  - health

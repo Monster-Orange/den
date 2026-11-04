@@ -1,0 +1,1101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>__DEN_CLI__ · Services</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --border: #30363d;
+        --text: #c9d1d9;
+        --muted: #8b949e;
+        --accent: #58a6ff;
+        --green: #3fb950;
+        --red: #f85149;
+        --yellow: #d29922;
+        --mono: "SF Mono", "Cascadia Code", "Fira Code", "Menlo", monospace;
+      }
+
+      html,
+      body {
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 13px;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── Header ───────────────────────────────────────────────────────────── */
+      header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      header h1 {
+        font-family: var(--mono);
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .h-spacer {
+        flex: 1;
+      }
+
+      /* ── Health indicators ────────────────────────────────────────────────── */
+      .health {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 4px;
+      }
+      .health-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .health-group {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .health-group-label {
+        color: var(--muted);
+        margin-right: 1px;
+      }
+      .health-group-dots {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+      }
+
+      /* ── Nav ──────────────────────────────────────────────────────────────── */
+      nav {
+        display: flex;
+        gap: 2px;
+      }
+      nav a {
+        color: var(--muted);
+        text-decoration: none;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        transition: color 0.1s;
+      }
+      nav a:hover {
+        color: var(--text);
+        background: var(--border);
+      }
+      nav a.active {
+        color: var(--text);
+        background: var(--surface);
+      }
+
+      /* ── Shared: dot ──────────────────────────────────────────────────────── */
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted);
+        flex-shrink: 0;
+        display: inline-block;
+      }
+      .dot.ok {
+        background: var(--green);
+      }
+      .dot.err {
+        background: var(--red);
+      }
+      .dot.running {
+        background: var(--yellow);
+        animation: pulse 1s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+
+      /* ── Controls bar ─────────────────────────────────────────────────────── */
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      select {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        outline: none;
+      }
+      select:focus {
+        border-color: var(--accent);
+      }
+
+      /* ── Main ─────────────────────────────────────────────────────────────── */
+      main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-height: 0;
+      }
+
+      /* ── Service cards ────────────────────────────────────────────────────── */
+      .services-pane {
+        padding: 12px 14px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      /* One section per application (Org > Application > Repo > Services). */
+      .app-section-head {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid var(--border);
+      }
+      .app-section-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .app-section-owner {
+        font-size: 11px;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 0 8px;
+      }
+      .app-section-desc {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .app-cards {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      /* Systems and sub-services share one shape — solid vs dashed with a
+       coloured left rule — so the grid reads as one hierarchy rather than two
+       unrelated card styles. Systems take the app's accent blue; sub-services
+       are muted and dashed, so a scan lands on systems first. */
+      .service-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--accent);
+        border-radius: 8px;
+        padding: 12px 14px;
+        min-width: 220px;
+      }
+      .service-card.subservice {
+        border-style: dashed;
+        border-color: #3d444d;
+        /* Left rule stays solid on both — a 3px dashed vertical rule renders as
+         scattered dots. The dashed outer border carries the distinction. */
+        border-left: 3px solid var(--muted);
+      }
+      .service-card.subservice .service-name {
+        color: var(--muted);
+      }
+      .service-card-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .service-card-header .dot {
+        width: 8px;
+        height: 8px;
+      }
+      .service-name {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .service-repo {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      /* Site link: the service's URL for the selected env, from the health
+       broadcast (openUrl). Hidden until health supplies one. */
+      .site-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 3px;
+        font-size: 11px;
+        font-family: var(--mono);
+        color: var(--accent);
+        text-decoration: none;
+        word-break: break-all;
+      }
+      .site-link:hover,
+      .site-link:focus-visible {
+        text-decoration: underline;
+      }
+      .site-link[hidden] {
+        display: none;
+      }
+      .service-meta {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+        flex-wrap: wrap;
+      }
+      .badge {
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+      }
+      .badge.dev-managed {
+        border-color: #388bfd44;
+        color: #58a6ff;
+      }
+      .badge.managed {
+        border-color: #a371f744;
+        color: #a371f7;
+      }
+      .badge.always-on {
+        border-color: #3fb95044;
+        color: #3fb950;
+      }
+      .badge.branch {
+        border-color: var(--border);
+        font-family: var(--mono);
+      }
+      .cmd-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .cmd-btn {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 4px 10px;
+        border-radius: 5px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition:
+          border-color 0.1s,
+          color 0.1s;
+      }
+      .cmd-btn:hover:not(:disabled) {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .cmd-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .cmd-btn.logs-btn {
+        border-color: var(--muted);
+      }
+      .cmd-btn.logs-btn:hover:not(:disabled) {
+        border-color: var(--yellow);
+        color: var(--yellow);
+      }
+
+      .empty-state {
+        padding: 40px 14px;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+      }
+
+      /* ── Pane bar ─────────────────────────────────────────────────────────── */
+      .pane-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 3px 12px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .pane-bar span {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+      }
+      .pane-bar button {
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 11px;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 3px;
+      }
+      .pane-bar button:hover {
+        color: var(--text);
+        background: var(--border);
+      }
+
+      /* ── Output pane ──────────────────────────────────────────────────────── */
+      .output-pane {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      #output {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px 14px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.65;
+        white-space: pre-wrap;
+        word-break: break-all;
+        min-height: 0;
+      }
+      #output .cmd {
+        color: var(--accent);
+      }
+      #output .err {
+        color: var(--red);
+      }
+      #output .done-ok {
+        color: var(--green);
+      }
+      #output .done-fail {
+        color: var(--red);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img
+        src="/favicon.ico"
+        width="16"
+        height="16"
+        alt=""
+        style="flex-shrink: 0"
+      />
+      <h1>__DEN_CLI__</h1>
+      <button
+        class="v-pill"
+        id="version-pill"
+        onclick="openChangelog()"
+        title="View changelog"
+      >
+        <span class="v-pip" id="v-pip"></span><span class="v-txt">v…</span>
+      </button>
+      <div class="health" id="health" title="Service health"></div>
+      <span
+        id="ws-pill"
+        style="
+          font-size: 11px;
+          font-family: var(--mono);
+          padding: 2px 8px;
+          border-radius: 10px;
+          border: 1px solid #388bfd44;
+          color: #58a6ff;
+          background: #58a6ff10;
+          display: none;
+        "
+      ></span>
+      <div class="h-spacer"></div>
+      <nav>
+        <a href="/">Local Dev</a>
+        <a href="/services" class="active">Services</a>
+        <a href="/environments">Environments</a>
+        <a href="/release">Releases</a>
+        <a href="/logs"
+          >Logs
+          <span
+            id="log-badge"
+            style="
+              background: var(--yellow);
+              color: #0d1117;
+              font-size: 10px;
+              font-weight: 700;
+              padding: 1px 5px;
+              border-radius: 8px;
+              line-height: 1.4;
+              display: none;
+            "
+          ></span
+        ></a>
+        <a href="/tests">Tests</a>
+      </nav>
+    </header>
+
+    <div class="controls">
+      <select id="env-sel" title="Environment">
+        <option value="local">local</option>
+      </select>
+      <span style="font-size: 11px; color: var(--muted)">workspace:</span>
+      <select
+        id="workspace-sel"
+        title="Active workspace"
+        style="font-family: var(--mono)"
+      >
+        <option value="default">default</option>
+      </select>
+      <span id="status-text" style="font-size: 11px; color: var(--muted)"
+        >idle</span
+      >
+    </div>
+
+    <main>
+      <div class="services-pane" id="services-pane">
+        <div class="empty-state">Loading services…</div>
+      </div>
+
+      <div class="pane-bar">
+        <span>Output</span>
+        <button onclick="clearOutput()">Clear</button>
+      </div>
+
+      <div class="output-pane">
+        <pre id="output"></pre>
+      </div>
+    </main>
+
+    <script type="module">
+      import {
+        initHealth,
+        refreshHealth,
+        initWorkspacePill,
+        applyDenConfig,
+        initLogBadge,
+        initChangelog,
+        computePrimaryByRepo,
+      } from "/header.js";
+
+      let es = null;
+
+      // Release any open SSE socket on reload / navigation / bfcache-enter so the
+      // reloaded page isn't starved of a connection by a lingering stream.
+      window.addEventListener("pagehide", () => {
+        try {
+          es?.close();
+        } catch {}
+        es = null;
+      });
+
+      // ── Init ──────────────────────────────────────────────────────────────────
+      async function init() {
+        const envs = await fetch("/api/environments")
+          .then((r) => r.json())
+          .catch(() => ["local"]);
+        const envSel = document.getElementById("env-sel");
+        envSel.innerHTML = envs
+          .map((e) => `<option value="${e}">${e}</option>`)
+          .join("");
+        // '__DEN_CLI__-env' matches index.html/logs.html (this page used to save under
+        // 'shop-env', so it kept loading a DIFFERENT env than the rest of the UI).
+        const savedEnv =
+          localStorage.getItem("__DEN_CLI__-env") ??
+          localStorage.getItem("shop-env");
+        if (savedEnv && envs.includes(savedEnv)) envSel.value = savedEnv;
+
+        await Promise.all([
+          loadWorkspaces(),
+          loadServices(),
+          initHealth(),
+          initWorkspacePill("env-sel"),
+          applyDenConfig(),
+          initChangelog(),
+        ]);
+        initLogBadge();
+      }
+
+      document.getElementById("env-sel").addEventListener("change", () => {
+        const env = document.getElementById("env-sel").value;
+        localStorage.setItem("__DEN_CLI__-env", env);
+        loadServices();
+        // Restart the header health poll for the new env — without this the dots
+        // kept polling the page-load env forever (index.html/logs.html do this too).
+        refreshHealth(env);
+      });
+
+      document
+        .getElementById("workspace-sel")
+        .addEventListener("change", async () => {
+          const name = document.getElementById("workspace-sel").value;
+          await fetch("/api/workspaces", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name }),
+          });
+          await loadServices();
+        });
+
+      // ── Load workspaces ───────────────────────────────────────────────────────
+      async function loadWorkspaces() {
+        try {
+          const data = await fetch("/api/workspaces").then((r) => r.json());
+          const sel = document.getElementById("workspace-sel");
+          const names = Object.keys(data.workspaces ?? {});
+          const focus = Array.isArray(data.active)
+            ? (data.focus ?? data.active[0])
+            : data.active;
+          sel.innerHTML = names
+            .map(
+              (n) =>
+                `<option value="${n}" ${n === focus ? "selected" : ""}>${n}</option>`,
+            )
+            .join("");
+        } catch {
+          /* ignore — default workspace shown */
+        }
+      }
+
+      // ── Workspace panel ───────────────────────────────────────────────────────
+      window.toggleWsPanel = function () {
+        const panel = document.getElementById("ws-panel");
+        const open = panel.classList.toggle("open");
+        if (open) refreshWsPanel();
+      };
+
+      async function refreshWsPanel() {
+        const data = await fetch("/api/workspaces")
+          .then((r) => r.json())
+          .catch(() => null);
+        if (!data) return;
+
+        const focus = Array.isArray(data.active)
+          ? (data.focus ?? data.active[0])
+          : data.active;
+        // Update active label
+        document.getElementById("ws-active-label").textContent = Array.isArray(
+          data.active,
+        )
+          ? data.active.join(", ")
+          : (data.active ?? "");
+
+        // Current services list
+        const services = Object.entries(
+          data.workspaces?.[focus]?.services ?? {},
+        );
+        const listEl = document.getElementById("ws-service-list");
+        if (services.length === 0) {
+          listEl.innerHTML = '<span class="ws-msg">No services yet.</span>';
+        } else {
+          listEl.innerHTML = services
+            .map(([addr, entry]) => {
+              const meta =
+                entry.mode === "dev-managed"
+                  ? `<span style="color:var(--muted);font-size:11px">dev-managed · ${entry.path ?? ""}</span>`
+                  : `<span style="color:var(--muted);font-size:11px">managed · ${entry.branch ?? "main"}</span>`;
+              return `<div class="ws-service-row">
+            <span>${addr}</span>${meta}
+            <button title="Remove" onclick="removeService('${addr}')">×</button>
+          </div>`;
+            })
+            .join("");
+        }
+
+        // Available repos dropdown
+        const repos = await fetch("/api/workspaces/available-repos")
+          .then((r) => r.json())
+          .catch(() => []);
+        const repoSel = document.getElementById("ws-repo-sel");
+        repoSel.innerHTML =
+          '<option value="">Select repo…</option>' +
+          repos
+            .map((r) => {
+              const label = r.hasManifest ? `${r.name} ✓` : r.name;
+              const disabled = r.alreadyAdded ? " disabled" : "";
+              const suffix = r.alreadyAdded ? " (added)" : "";
+              return `<option value="${r.name}" data-path="${r.absPath}"${disabled}>${label}${suffix}</option>`;
+            })
+            .join("");
+      }
+
+      window.createWorkspace = async function () {
+        const name = document.getElementById("ws-name-input").value.trim();
+        const msg = document.getElementById("ws-create-msg");
+        if (!name) {
+          msg.textContent = "Name required";
+          msg.className = "ws-msg err";
+          return;
+        }
+        const res = await fetch("/api/workspaces/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        if (res.ok) {
+          msg.textContent = `✓ Created "${name}"`;
+          msg.className = "ws-msg ok";
+          document.getElementById("ws-name-input").value = "";
+          await loadWorkspaces();
+          await refreshWsPanel();
+        } else {
+          msg.textContent = await res.text();
+          msg.className = "ws-msg err";
+        }
+      };
+
+      window.deleteWorkspace = async function () {
+        const name = document.getElementById("workspace-sel").value;
+        const msg = document.getElementById("ws-delete-msg");
+        if (name === "default") {
+          msg.textContent = "Cannot delete default";
+          msg.className = "ws-msg err";
+          return;
+        }
+        if (!confirm(`Delete workspace "${name}"?`)) return;
+        const res = await fetch("/api/workspaces", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        if (res.ok) {
+          msg.textContent = `✓ Deleted "${name}"`;
+          msg.className = "ws-msg ok";
+          await loadWorkspaces();
+          await Promise.all([loadServices(), refreshWsPanel()]);
+        } else {
+          msg.textContent = await res.text();
+          msg.className = "ws-msg err";
+        }
+      };
+
+      window.addService = async function () {
+        const repoSel = document.getElementById("ws-repo-sel");
+        const mode = document.getElementById("ws-mode-sel").value;
+        const msg = document.getElementById("ws-add-msg");
+        const repoName = repoSel.value;
+        if (!repoName) {
+          msg.textContent = "Select a repo";
+          msg.className = "ws-msg err";
+          return;
+        }
+        const opt = repoSel.options[repoSel.selectedIndex];
+        const linkedPath = opt.dataset.path;
+        const res = await fetch("/api/workspaces/services", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: repoName, mode, linkedPath }),
+        });
+        if (res.ok) {
+          msg.textContent = `✓ Added ${repoName}`;
+          msg.className = "ws-msg ok";
+          await Promise.all([loadServices(), refreshWsPanel()]);
+        } else {
+          msg.textContent = await res.text();
+          msg.className = "ws-msg err";
+        }
+      };
+
+      window.removeService = async function (address) {
+        const msg = document.getElementById("ws-add-msg");
+        const res = await fetch("/api/workspaces/services", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address }),
+        });
+        if (res.ok) {
+          await Promise.all([loadServices(), refreshWsPanel()]);
+        } else {
+          msg.textContent = await res.text();
+          msg.className = "ws-msg err";
+        }
+      };
+
+      // ── Load services ─────────────────────────────────────────────────────────
+      async function loadServices() {
+        const env = document.getElementById("env-sel").value;
+        const pane = document.getElementById("services-pane");
+        pane.innerHTML = '<div class="empty-state">Loading…</div>';
+
+        let services;
+        let apps = [];
+        try {
+          const [svcRes, appRes] = await Promise.all([
+            fetch(`/api/services?env=${env}`),
+            fetch("/api/applications").catch(() => null),
+          ]);
+          services = await svcRes.json();
+          if (appRes?.ok) apps = (await appRes.json()).applications ?? [];
+        } catch {
+          pane.innerHTML =
+            '<div class="empty-state">Failed to load services</div>';
+          return;
+        }
+
+        if (!services.length) {
+          pane.innerHTML = `<div class="empty-state">No services registered.<br><code>__DEN_CLI__ register &lt;path&gt;</code> to add a repo.</div>`;
+          return;
+        }
+
+        // A "system" is a repo's primary service (entrypoint > root-named >
+        // first seen) — the same rollup the health dots, log tabs and logs
+        // toolbar use, so "one thing per system" means the same thing here.
+        // Everything else is a sub-service.
+        const primaryByRepo = computePrimaryByRepo(services);
+
+        // The shared-infra repo's own sub-services (`graph.infra.repo`; the
+        // server marks them `infra`) are the shared infra that repo IS. They
+        // carry no usable actions of their own — their only command was a
+        // lifecycle one, already dropped for sub-services — so the cards were
+        // pure noise beside the system card that already represents them.
+        // Sub-services of OTHER repos are kept: several own real work
+        // (shop/db's migrate, notes-api/db's lint) that exists nowhere else.
+        const visible = services.filter(
+          (s) =>
+            !s.infra ||
+            primaryByRepo.get(s.repo) ===
+              (s.address ?? `${s.repo}/${s.service}`),
+        );
+
+        // Top-down dependency order — entry repo (shop-web) first, infra-stack
+        // last — matching the health row, the dep graph and `__DEN_CLI__ status`.
+        // graphRank comes from the server, which owns deriveGraph. Sub-services
+        // sort under their own system rather than floating to the end.
+        visible.sort(
+          (a, b) =>
+            (a.graphRank ?? Number.MAX_SAFE_INTEGER) -
+              (b.graphRank ?? Number.MAX_SAFE_INTEGER) ||
+            a.repo.localeCompare(b.repo) ||
+            (primaryByRepo.get(a.repo) ===
+            (a.address ?? `${a.repo}/${a.service}`)
+              ? -1
+              : 0) -
+              (primaryByRepo.get(b.repo) ===
+              (b.address ?? `${b.repo}/${b.service}`)
+                ? -1
+                : 0) ||
+            a.service.localeCompare(b.service),
+        );
+
+        // Lifecycle commands on a sub-service are a lie: the resource is owned by
+        // its system or by shared infra-stack infra (files-api/db, for one,
+        // is a handle onto shared localstack — `up` there does nothing useful).
+        // Domain commands are NOT hidden: shop/db's migrate/seed/rollback and
+        // notes-api/db's migrate/lint are real work you can only do here.
+        const LIFECYCLE_CMDS = new Set(["up", "down", "restart"]);
+
+        const cardHtml = (s) => {
+          const addr = s.address ?? `${s.repo}/${s.service}`;
+          const isSub = primaryByRepo.get(s.repo) !== addr;
+          const usableCmds = isSub
+            ? s.commands.filter((cmd) => !LIFECYCLE_CMDS.has(cmd))
+            : s.commands;
+          const cmdButtons = usableCmds
+            .map(
+              (cmd) =>
+                `<button class="cmd-btn" data-repo="${s.repo}" data-service="${s.service}" data-cmd="${cmd}" data-type="exec">${cmd}</button>`,
+            )
+            .join("");
+          const logsButton = s.logs
+            ? `<button class="cmd-btn logs-btn" data-repo="${s.repo}" data-service="${s.service}" data-type="logs">logs</button>`
+            : "";
+          const hasCaps = usableCmds.length > 0 || s.logs;
+          const emptyNote =
+            s.cloned === false
+              ? "not cloned yet — run Sync in Local Dev"
+              : isSub
+                ? "managed by its system"
+                : "no commands for this env";
+          const modeBadge = s.mode
+            ? `<span class="badge ${s.mode}">${s.mode}</span>`
+            : "";
+          const unclonedBadge =
+            s.cloned === false
+              ? `<span class="badge" style="border-color:var(--yellow);color:var(--yellow)" title="Not cloned yet">⬇ not cloned</span>`
+              : "";
+          const branchBadge = s.branch
+            ? `<span class="badge branch">${s.branch}</span>`
+            : "";
+          return `
+          <div class="service-card${isSub ? " subservice" : ""}">
+            <div class="service-card-header">
+              <span class="dot" id="dot-${s.repo}-${s.service}"></span>
+              <div>
+                <div class="service-name">${addr}</div>
+                <div class="service-repo">${s.repo}</div>
+                <a class="site-link" id="site-${s.repo}-${s.service}" target="_blank" rel="noopener" hidden></a>
+              </div>
+            </div>
+            <div class="service-meta">${modeBadge}${branchBadge}${unclonedBadge}</div>
+            <div class="cmd-row">
+              ${hasCaps ? cmdButtons + logsButton : `<span style="color:var(--muted);font-size:11px">${emptyNote}</span>`}
+            </div>
+          </div>`;
+        };
+
+        // Section the cards by application, keeping the order above within
+        // each. Repos that are their own application share one section; any
+        // card no application claims goes last.
+        const esc = (t) =>
+          String(t ?? "").replace(
+            /[&<>"]/g,
+            (c) =>
+              ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+          );
+        const appOf = new Map();
+        for (const a of apps) for (const r of a.repos) appOf.set(r, a);
+        const sections = [];
+        for (const a of apps.filter((x) => x.source === "declared")) {
+          const cards = visible.filter((s) => appOf.get(s.repo) === a);
+          if (cards.length) sections.push({ app: a, cards });
+        }
+        const standalone = visible.filter(
+          (s) => appOf.get(s.repo)?.source === "repo",
+        );
+        if (standalone.length)
+          sections.push({
+            app: {
+              title: "Single-repo applications",
+              description: "Each repo is its own application.",
+            },
+            cards: standalone,
+          });
+        const rest = visible.filter((s) => !appOf.has(s.repo));
+        if (rest.length)
+          sections.push({
+            app: apps.length
+              ? {
+                  title: "Not in an application",
+                  description: "Registered, but not in this workspace.",
+                }
+              : null,
+            cards: rest,
+          });
+        pane.innerHTML = sections
+          .map(
+            ({ app, cards }) => `
+        <section class="app-section"${app?.name ? ` data-app="${esc(app.name)}"` : ""}>
+          ${
+            app
+              ? `<div class="app-section-head">
+            <span class="app-section-title">${esc(app.title)}</span>
+            ${app.owner ? `<span class="app-section-owner" title="Owner">${esc(app.owner)}</span>` : ""}
+            ${app.description ? `<span class="app-section-desc">${esc(app.description)}</span>` : ""}
+          </div>`
+              : ""
+          }
+          <div class="app-cards">${cards.map(cardHtml).join("")}</div>
+        </section>`,
+          )
+          .join("");
+
+        // Attach click handlers
+        pane.querySelectorAll(".cmd-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const { repo, service, cmd, type } = btn.dataset;
+            if (type === "exec") runExec(repo, service, cmd, btn);
+            else runLogs(repo, service, btn);
+          });
+        });
+
+        // Re-render destroys the dot elements, and the poll may have already
+        // fired before this ran — repaint from the last broadcast so the cards
+        // aren't blank until the next tick.
+        applyHealthToCards(_lastHealth);
+      }
+
+      // ── Run command ───────────────────────────────────────────────────────────
+      function runExec(repo, service, cmd, btn) {
+        if (es) {
+          es.close();
+          es = null;
+        }
+        const env = document.getElementById("env-sel").value;
+
+        disableAllButtons();
+        setDot(repo, service, "running");
+        setStatus(`running ${service}:${cmd}…`);
+        appendLine(`\n▶ ${repo}/${service} · ${cmd} · ${env}\n`, "cmd");
+
+        const params = new URLSearchParams({ repo, service, cmd, env });
+        es = new EventSource(`/api/service/exec?${params}`);
+        handleSSE(es, repo, service);
+      }
+
+      function runLogs(repo, service, btn) {
+        if (es) {
+          es.close();
+          es = null;
+        }
+        const env = document.getElementById("env-sel").value;
+
+        // A log tail is a continuous stream, not a command. It never emits
+        // `done`, so disabling the buttons here left every button on the page
+        // dead — cursor and all — until a manual reload. Tailing also says
+        // nothing about health, so the dot is left to the health poll rather
+        // than being forced to "running". Starting any other action closes this
+        // stream (both runners close `es` first).
+        setStatus(`streaming ${service} logs — start any command to stop`);
+        appendLine(`\n▶ ${repo}/${service} logs · ${env}\n`, "cmd");
+
+        const params = new URLSearchParams({ repo, service, env });
+        es = new EventSource(`/api/service/logs?${params}`);
+        handleSSE(es, repo, service, { stream: true });
+      }
+
+      function handleSSE(evtSrc, repo, service, opts = {}) {
+        // Streams (log tails) never disabled the buttons and never own the dot,
+        // so they must not re-enable or repaint either.
+        const isStream = opts.stream === true;
+        evtSrc.onmessage = (e) => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "cmd") {
+            appendLine(msg.text, "cmd");
+          } else if (msg.type === "line") {
+            appendLine(msg.text, "");
+          } else if (msg.type === "error") {
+            appendLine(msg.text, "err");
+          } else if (msg.type === "done") {
+            const ok = msg.exitCode === 0;
+            if (msg.duration > 0) {
+              appendLine(
+                `\n${ok ? "✓ Done" : "✗ Failed"} in ${fmtDuration(msg.duration)}\n`,
+                ok ? "done-ok" : "done-fail",
+              );
+            }
+            if (!isStream) {
+              setDot(repo, service, ok ? "ok" : "err");
+              enableAllButtons();
+            }
+            setStatus("idle");
+            evtSrc.close();
+            es = null;
+          }
+        };
+        evtSrc.onerror = () => {
+          appendLine("Connection closed", "err");
+          // A tail ending is not a health signal — leave the dot to the poll.
+          if (!isStream) {
+            setDot(repo, service, "err");
+            enableAllButtons();
+          }
+          setStatus("idle");
+          evtSrc?.close();
+          es = null;
+        };
+      }
+
+      // ── Output ────────────────────────────────────────────────────────────────
+      function appendLine(text, cls) {
+        const out = document.getElementById("output");
+        const span = document.createElement("span");
+        if (cls) span.className = cls;
+        span.textContent = text + "\n";
+        out.appendChild(span);
+        out.scrollTop = out.scrollHeight;
+      }
+      function clearOutput() {
+        document.getElementById("output").innerHTML = "";
+      }
+
+      // ── Status / dots ─────────────────────────────────────────────────────────
+      function setStatus(text) {
+        document.getElementById("status-text").textContent = text;
+      }
+      function setDot(repo, service, state) {
+        const el = document.getElementById(`dot-${repo}-${service}`);
+        if (el) el.className = `dot ${state}`;
+      }
+
+      // ── Card health ───────────────────────────────────────────────────────────
+      // Card dots follow the header's existing poll instead of running their own:
+      // header.js broadcasts every poll and manual refresh as
+      // `__DEN_CLI__:health-update`, the same feed local-dev's graph subscribes to.
+      // Nothing had ever subscribed here, so a card dot was only written by a
+      // command's outcome — meaning it showed a stale exit status, or stayed
+      // muted forever on a page where you'd run nothing. That looked like the
+      // header and the cards disagreeing about health.
+      let _lastHealth = [];
+      function applyHealthToCards(results) {
+        for (const h of results || []) {
+          // ok === null means "no health check declared". Leave it muted rather
+          // than painting it red, which would claim the service is down.
+          const state = h.ok === true ? "ok" : h.ok === false ? "err" : "";
+          const el = document.getElementById(`dot-${h.repo}-${h.service}`);
+          if (el) el.className = `dot${state ? " " + state : ""}`;
+          const link = document.getElementById(`site-${h.repo}-${h.service}`);
+          if (link) {
+            if (h.openUrl) {
+              link.href = h.openUrl;
+              link.textContent = `${h.openUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")} ↗`;
+              link.title = `Open ${h.openUrl} in a new tab`;
+              link.hidden = false;
+            } else {
+              link.hidden = true;
+            }
+          }
+        }
+      }
+      document.addEventListener("__DEN_CLI__:health-update", (e) => {
+        _lastHealth = e.detail || [];
+        applyHealthToCards(_lastHealth);
+      });
+
+      // ── Button helpers ────────────────────────────────────────────────────────
+      function disableAllButtons() {
+        document
+          .querySelectorAll(".cmd-btn")
+          .forEach((b) => (b.disabled = true));
+      }
+      function enableAllButtons() {
+        document
+          .querySelectorAll(".cmd-btn")
+          .forEach((b) => (b.disabled = false));
+      }
+
+      // ── Helpers ───────────────────────────────────────────────────────────────
+      function fmtDuration(ms) {
+        if (ms < 1000) return `${ms}ms`;
+        const s = Math.floor(ms / 1000),
+          m = Math.floor(s / 60);
+        return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+      }
+
+      init();
+    </script>
+  </body>
+</html>

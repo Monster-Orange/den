@@ -1,0 +1,16 @@
+name: unknown-key
+persona:
+  role: admin
+  brief: A spec carrying a key the strict schema does not know.
+surface: api
+environments: [local]
+judge_model: some-model
+budgets:
+  max_turns: 10
+  timeout_s: 120
+  max_total_tokens: 100000
+success:
+  assertions:
+    - kind: http_status
+      request: { method: GET, path: "/healthz" }
+      equals: 200

@@ -1,0 +1,16 @@
+# Files prettier must not rewrite.
+#
+# `make preflight` runs `prettier --write`, so anything listed here would
+# otherwise be reformatted on every run — showing up as an unrelated diff in
+# whatever branch happens to be checked out, which nobody then commits, so it
+# comes back on the next run.
+
+# Hand-authored release prose. Entries are written by whoever ships the change
+# and prettier normalises their emphasis markers (*focused* -> _focused_),
+# producing a phantom diff on every preflight. The formatting of a changelog
+# carries no engineering value; leave it as written.
+CHANGELOG.md
+
+# npm owns this file's formatting. Prettier's output happens to match today, but
+# any divergence would turn every `npm install` into a formatting conflict.
+package-lock.json

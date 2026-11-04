@@ -1,0 +1,229 @@
+/**
+ * Reads `edge:` (and `web:`) from config/den.yml, with per-engineer
+ * overrides from config/local/user.yml.
+ *
+ *   edge:
+ *     org: acme
+ *     domain: acme.localhost
+ *     aliases: [acme.internal]
+ *     image: traefik:v3.7.17
+ *     workspaces: [main]
+ *     routes: { <name>: <upstream url> }
+ *     publish: true          # false: another proxy fronts the edge
+ *     http_port: 80
+ *     https_port: 443
+ *     # opt-ins (all off by default):
+ *     caroot: ~/path/to/mkcert-ca   # use an existing CA; never mint one
+ *     issue_cert: false             # included config holds the certs
+ *     https_redirect: false         # included config redirects per name
+ *     docker_labels: { network: apps-network }
+ *     include: edge/dynamic         # dynamic-config files, repo-relative
+ *     mounts: { <host path>: <container path> }   # read-only
+ *     networks: [<external network>]
+ *     args: [--accesslog=true]
+ *   web:
+ *     port: 7777             # the web UI; routed as `<brand name>`
+ */
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import * as yaml from "yaml";
+import { brandSlug, defaultBrand } from "../brand.js";
+import { DEFAULT_PORT } from "../constants.js";
+import { getDistRoot } from "../paths.js";
+import { readManifestStacks } from "../stacks/config.js";
+import { getActiveWorkspaces } from "../environment-manager/workspaces.js";
+import { assertDomain } from "./render.js";
+import type { EdgeConfig } from "./types.js";
+
+import { product } from "../product.js";
+export const DEFAULT_TRAEFIK_IMAGE = "traefik:v3.7.17";
+
+interface RawEdge {
+  org?: string;
+  domain?: string;
+  aliases?: string[];
+  image?: string;
+  workspaces?: string[];
+  routes?: Record<string, string>;
+  state_dir?: string;
+  publish?: boolean;
+  http_port?: number;
+  https_port?: number;
+  caroot?: string;
+  issue_cert?: boolean;
+  https_redirect?: boolean;
+  docker_labels?: { network?: string } | boolean;
+  include?: string;
+  mounts?: Record<string, string>;
+  networks?: string[];
+  args?: string[];
+}
+
+function readYaml(file: string): Record<string, unknown> {
+  try {
+    return (
+      (yaml.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown>) ??
+      {}
+    );
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw err;
+  }
+}
+
+function layers(root: string) {
+  return {
+    team: readYaml(path.join(root, product().configFile)),
+    user: readYaml(path.join(root, "config", "local", "user.yml")),
+  };
+}
+
+function expandHome(p: string): string {
+  return p.startsWith("~/") ? path.join(os.homedir(), p.slice(2)) : p;
+}
+
+/** `~/x` → home; a relative path → under the repo root. */
+function resolvePath(p: string, root: string): string {
+  const e = expandHome(p);
+  return path.isAbsolute(e) ? e : path.join(root, e);
+}
+
+function list(v: unknown, name: string): string[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.some((x) => typeof x !== "string"))
+    throw new Error(`edge.${name} must be a list of strings`);
+  return v as string[];
+}
+
+function dockerLabels(v: RawEdge["docker_labels"]): { network: string } | null {
+  if (v === undefined || v === false) return null;
+  const network = typeof v === "object" ? v.network : undefined;
+  if (!network || !/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(network))
+    throw new Error(
+      "edge.docker_labels needs docker_labels.network: the Docker network " +
+        "the edge reaches labelled containers on, e.g. { network: apps-network }",
+    );
+  return { network };
+}
+
+function mounts(v: RawEdge["mounts"], root: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [host, target] of Object.entries(v ?? {})) {
+    if (typeof target !== "string" || !path.posix.isAbsolute(target))
+      throw new Error(
+        `edge.mounts: "${host}" must map to an absolute container path, got "${String(target)}"`,
+      );
+    out[resolvePath(host, root)] = target;
+  }
+  return out;
+}
+
+/** The web UI's route name: the brand name as a slug ("Den" → "den"). */
+function webRouteName(team: Record<string, unknown>): string {
+  const name = (team.brand as { name?: string } | undefined)?.name?.trim();
+  return brandSlug({ ...defaultBrand(), name: name || defaultBrand().name });
+}
+
+function port(v: unknown, name: string): number {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 65535)
+    throw new Error(`${name} must be a port number, got "${String(v)}"`);
+  return n;
+}
+
+/** The den web UI port: user `web.port` > team `web.port` > 7777. */
+export function readWebPort(root: string = getDistRoot()): number {
+  const { team, user } = layers(root);
+  const v =
+    (user.web as { port?: number } | undefined)?.port ??
+    (team.web as { port?: number } | undefined)?.port ??
+    DEFAULT_PORT;
+  return port(v, "web.port");
+}
+
+/** Stacks declared in repo manifests across the active workspaces. */
+function manifestStackNames(): string[] {
+  try {
+    return getActiveWorkspaces().flatMap((ws) =>
+      Object.keys(readManifestStacks(ws)),
+    );
+  } catch {
+    return []; // a broken manifest must not stop the edge
+  }
+}
+
+export function readEdgeConfig(root: string = getDistRoot()): EdgeConfig {
+  const { team: t, user: u } = layers(root);
+  const team = (t.edge ?? {}) as RawEdge;
+  const user = (u.edge ?? {}) as RawEdge;
+  if (!team.org || !team.domain)
+    throw new Error(
+      `${product().configFile} has no \`edge:\` block with \`org\` and \`domain\` — ` +
+        "add one to give this instance its own HTTPS edge.",
+    );
+  if (!/^[a-z0-9-]+$/.test(team.org))
+    throw new Error(
+      `edge.org "${team.org}" must be lowercase letters, digits and dashes`,
+    );
+  assertDomain(team.domain);
+  const aliases = user.aliases ?? team.aliases ?? [];
+  if (!Array.isArray(aliases))
+    throw new Error("edge.aliases must be a list of domains");
+  aliases.forEach(assertDomain);
+  const publish = user.publish ?? team.publish ?? true;
+  return {
+    org: team.org,
+    domain: team.domain,
+    aliases,
+    image: user.image ?? team.image ?? DEFAULT_TRAEFIK_IMAGE,
+    workspaces: user.workspaces ?? team.workspaces ?? ["main"],
+    subzones: [
+      ...new Set([
+        ...Object.keys((t.stacks as Record<string, unknown>) ?? {}),
+        ...manifestStackNames(),
+      ]),
+    ].sort(),
+    routes: {
+      [webRouteName(t)]: `http://host.docker.internal:${readWebPort(root)}`,
+      ...(team.routes ?? {}),
+      ...(user.routes ?? {}),
+    },
+    ports: publish
+      ? {
+          http: port(user.http_port ?? team.http_port ?? 80, "edge.http_port"),
+          https: port(
+            user.https_port ?? team.https_port ?? 443,
+            "edge.https_port",
+          ),
+        }
+      : null,
+    stateDir: expandHome(
+      process.env.DEN_EDGE_DIR ??
+        user.state_dir ??
+        team.state_dir ??
+        path.join(
+          process.env.XDG_DATA_HOME ||
+            path.join(os.homedir(), ".local", "share"),
+          team.org,
+          "edge",
+        ),
+    ),
+    caroot:
+      (user.caroot ?? team.caroot)
+        ? resolvePath((user.caroot ?? team.caroot)!, root)
+        : null,
+    issueCert: (user.issue_cert ?? team.issue_cert) !== false,
+    httpsRedirect: (user.https_redirect ?? team.https_redirect) !== false,
+    dockerLabels: dockerLabels(user.docker_labels ?? team.docker_labels),
+    include: team.include ? resolvePath(team.include, root) : null,
+    mounts: mounts({ ...(team.mounts ?? {}), ...(user.mounts ?? {}) }, root),
+    networks: [
+      ...new Set([
+        ...list(team.networks, "networks"),
+        ...list(user.networks, "networks"),
+      ]),
+    ],
+    args: [...list(team.args, "args"), ...list(user.args, "args")],
+  };
+}

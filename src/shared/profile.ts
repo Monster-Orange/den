@@ -1,0 +1,141 @@
+/**
+ * The product profile: who this distribution is.
+ *
+ * Den is one engine; each distribution runs it under its own name. Everything product-named comes from here: the CLI, the env-var
+ * prefix, the config and manifest file names, and the state, services and
+ * workspaces directories. The profile lives in `den.yml` at the
+ * distribution root:
+ *
+ *   product:
+ *     name: acme              # everything below derives from it by default
+ *     # cli: acme
+ *     # env_prefix: ACME
+ *     # config: config/acme.yml
+ *     # manifest: .acme.yml   (.json is also read)
+ *     # state_dir: ~/.acme
+ *     # services_dir: .acme-services
+ *     # workspaces_dir: acme-workspaces
+ *
+ * `DEN_PROFILE` may point at another profile file (tests use this). With no
+ * profile at all, Den runs under its own name.
+ */
+
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { parse as parseYaml } from "yaml";
+
+export const PROFILE_FILE = "den.yml";
+
+export interface ProductProfile {
+  /** Display and slug name ("acme"). */
+  name: string;
+  /** The command a person types. */
+  cli: string;
+  /** Upper-case env-var prefix, without the trailing "_" ("ACME"). */
+  envPrefix: string;
+  /** Org config, relative to the distribution root. */
+  configFile: string;
+  /** Manifest file names probed in a repo, first match wins. */
+  manifestFiles: string[];
+  /** Per-user state directory (absolute, `~` expanded). */
+  stateDir: string;
+  /** Managed clones, relative to the distribution root. */
+  servicesDir: string;
+  /** Workspace checkouts, relative to the distribution root. */
+  workspacesDir: string;
+}
+
+interface RawProduct {
+  name?: unknown;
+  cli?: unknown;
+  env_prefix?: unknown;
+  config?: unknown;
+  manifest?: unknown;
+  state_dir?: unknown;
+  services_dir?: unknown;
+  workspaces_dir?: unknown;
+}
+
+const SLUG = /^[a-z][a-z0-9-]*$/;
+const PREFIX = /^[A-Z][A-Z0-9_]*$/;
+
+const str = (v: unknown): string | undefined =>
+  typeof v === "string" && v.trim() ? v.trim() : undefined;
+
+const expandHome = (p: string): string =>
+  p === "~"
+    ? os.homedir()
+    : p.startsWith("~/")
+      ? path.join(os.homedir(), p.slice(2))
+      : p;
+
+/** A profile from a `product:` block; unset fields derive from the name. */
+export function profileFrom(raw: RawProduct = {}): ProductProfile {
+  const name = str(raw.name) ?? "den";
+  if (!SLUG.test(name))
+    throw new Error(
+      `den.yml: product.name "${name}" must be lower-case letters, digits and "-"`,
+    );
+  const envPrefix =
+    str(raw.env_prefix) ?? name.toUpperCase().replace(/-/g, "_");
+  if (!PREFIX.test(envPrefix))
+    throw new Error(
+      `den.yml: product.env_prefix "${envPrefix}" must be upper-case letters, digits and "_"`,
+    );
+  const manifest = str(raw.manifest) ?? `.${name}.yml`;
+  const json = manifest.replace(/\.ya?ml$/, ".json");
+  return {
+    name,
+    cli: str(raw.cli) ?? name,
+    envPrefix,
+    configFile: str(raw.config) ?? `config/${name}.yml`,
+    manifestFiles: json === manifest ? [manifest] : [manifest, json],
+    stateDir: path.resolve(expandHome(str(raw.state_dir) ?? `~/.${name}`)),
+    servicesDir: str(raw.services_dir) ?? `.${name}-services`,
+    workspacesDir: str(raw.workspaces_dir) ?? `${name}-workspaces`,
+  };
+}
+
+/** Read a profile file; a missing file is Den's own profile. */
+export function readProfileFile(file: string): ProductProfile {
+  let raw: { product?: RawProduct } | null;
+  try {
+    raw = parseYaml(fs.readFileSync(file, "utf-8")) as typeof raw;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return profileFrom();
+    throw new Error(`${file}: ${(e as Error).message}`);
+  }
+  return profileFrom(raw?.product ?? {});
+}
+
+let cached: { key: string; profile: ProductProfile } | null = null;
+
+/**
+ * The profile for a distribution root: `DEN_PROFILE` if set, else
+ * `<root>/den.yml`, else Den's own. Cached per file.
+ */
+export function loadProfile(root: string): ProductProfile {
+  const file = process.env.DEN_PROFILE?.trim() || path.join(root, PROFILE_FILE);
+  if (cached?.key !== file)
+    cached = { key: file, profile: readProfileFile(file) };
+  return cached.profile;
+}
+
+export function resetProfileCache(): void {
+  cached = null;
+}
+
+/** `${PREFIX}_${key}`: the env-var name this distribution uses for `key`. */
+export function envName(profile: ProductProfile, key: string): string {
+  return `${profile.envPrefix}_${key}`;
+}
+
+/** The value of `${PREFIX}_${key}`, or undefined. */
+export function readEnv(
+  profile: ProductProfile,
+  key: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  return env[envName(profile, key)];
+}

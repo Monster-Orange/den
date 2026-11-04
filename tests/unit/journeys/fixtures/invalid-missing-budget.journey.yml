@@ -1,0 +1,14 @@
+name: missing-budget
+persona:
+  role: user
+  brief: A spec whose budgets block is missing max_total_tokens.
+surface: api
+environments: [local]
+budgets:
+  max_turns: 10
+  timeout_s: 120
+success:
+  assertions:
+    - kind: http_status
+      request: { method: GET, path: "/healthz" }
+      equals: 200

@@ -1,0 +1,1489 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>__DEN_CLI__ · Logs</title>
+    <link rel="icon" href="/favicon.ico?v=2" />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --border: #30363d;
+        --text: #c9d1d9;
+        --muted: #8b949e;
+        --accent: #58a6ff;
+        --green: #3fb950;
+        --red: #f85149;
+        --yellow: #d29922;
+        --mono: "SF Mono", "Cascadia Code", "Fira Code", "Menlo", monospace;
+      }
+
+      html,
+      body {
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 13px;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── Header ───────────────────────────────────────────────────────────── */
+      header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      header h1 {
+        font-family: var(--mono);
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .h-spacer {
+        flex: 1;
+      }
+      nav {
+        display: flex;
+        gap: 2px;
+      }
+      nav a {
+        color: var(--muted);
+        text-decoration: none;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        transition: color 0.1s;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      nav a:hover {
+        color: var(--text);
+        background: var(--border);
+      }
+      nav a.active {
+        color: var(--text);
+      }
+
+      .badge {
+        background: var(--yellow);
+        color: #0d1117;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 8px;
+        line-height: 1.4;
+        display: none;
+      }
+      .badge.visible {
+        display: inline;
+      }
+
+      /* ── Health dots ──────────────────────────────────────────────────────── */
+      .health {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 4px;
+      }
+      .health-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .health-group {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .health-group-label {
+        color: var(--muted);
+        margin-right: 1px;
+      }
+      .health-group-dots {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted);
+        flex-shrink: 0;
+        display: inline-block;
+      }
+      .dot.ok {
+        background: var(--green);
+      }
+      .dot.err {
+        background: var(--red);
+      }
+      .dot.running {
+        background: var(--yellow);
+        animation: pulse 1s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+
+      /* ── Sub-bar ──────────────────────────────────────────────────────────── */
+      .subbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .spacer {
+        flex: 1;
+      }
+
+      .env-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 8px 2px 6px;
+        border-radius: 999px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      .env-badge::before {
+        content: "env";
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        opacity: 0.6;
+        text-transform: uppercase;
+      }
+      .env-badge select {
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--text);
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 0;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+      .env-badge select option {
+        background: var(--surface);
+      }
+
+      .seg {
+        display: flex;
+        gap: 2px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 2px;
+      }
+      .seg button {
+        background: none;
+        border: none;
+        color: var(--muted);
+        padding: 3px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 500;
+        transition: color 0.1s;
+        white-space: nowrap;
+      }
+      .seg button:hover {
+        color: var(--text);
+      }
+      .seg button.active {
+        background: var(--border);
+        color: var(--text);
+      }
+
+      /* ── Logs toolbar ─────────────────────────────────────────────────────── */
+      .logs-toolbar {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        padding: 5px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+      }
+      /* Cross-system history search — pinned to the toolbar's right edge
+       (buttons are appended later in DOM order; flex `order` keeps this last). */
+      .hist-search-wrap {
+        order: 99;
+        margin-left: auto;
+        display: flex;
+        gap: 4px;
+        align-items: center;
+      }
+      .hist-search-wrap input {
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 3px 8px;
+        width: 200px;
+      }
+      .hist-search-wrap input:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .hist-search-wrap button {
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .hist-search-wrap button:hover {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .hist-btn {
+        white-space: nowrap;
+      }
+      .search-hd {
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      .logs-toolbar .logs-label {
+        font-size: 11px;
+        color: var(--muted);
+        margin-right: 2px;
+      }
+      .cmd-btn {
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+        cursor: pointer;
+        font-family: var(--mono);
+        white-space: nowrap;
+        transition:
+          border-color 0.1s,
+          color 0.1s;
+      }
+      .cmd-btn:hover:not(:disabled) {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .logs-btn {
+        border-color: var(--muted);
+      }
+      .logs-btn:hover:not(:disabled) {
+        border-color: var(--yellow) !important;
+        color: var(--yellow) !important;
+      }
+      .logs-btn.streaming {
+        border-color: var(--yellow);
+        color: var(--yellow);
+      }
+
+      /* ── Logs area ────────────────────────────────────────────────────────── */
+      .logs-area {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+        min-height: 0;
+      }
+      .logs-area.dir-cols {
+        flex-direction: row;
+      }
+      .logs-area.dir-rows {
+        flex-direction: column;
+      }
+
+      .log-pane {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+        overflow: hidden;
+        border-right: 1px solid var(--border);
+      }
+      .log-pane:last-child {
+        border-right: none;
+      }
+      .logs-area.dir-rows .log-pane {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .logs-area.dir-rows .log-pane:last-child {
+        border-bottom: none;
+      }
+
+      .pane-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 3px 12px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .pane-bar span {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+      }
+      .pane-bar button {
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 11px;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 3px;
+      }
+      .pane-bar button:hover {
+        color: var(--text);
+        background: var(--border);
+      }
+
+      .log-pane-title {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text);
+        letter-spacing: 0;
+        text-transform: none;
+      }
+
+      /* ── Per-pane filter ──────────────────────────────────────────────────────── */
+      .log-filter-wrap {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .log-filter {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        outline: none;
+        width: 140px;
+        font-family: var(--mono);
+      }
+      .log-filter:focus {
+        border-color: var(--accent);
+      }
+      .log-filter-count {
+        font-size: 10px;
+        color: var(--muted);
+        white-space: nowrap;
+        font-family: var(--mono);
+      }
+      .log-filter-clear {
+        background: none;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 12px;
+        padding: 0 2px;
+        line-height: 1;
+      }
+      .log-filter-clear:hover {
+        color: var(--text);
+      }
+      .log-line-hidden {
+        display: none !important;
+      }
+      .log-line-match mark {
+        background: color-mix(in srgb, var(--yellow) 30%, transparent);
+        color: inherit;
+        border-radius: 2px;
+      }
+      /* Search-all results need real contrast — the filter's 30% wash is
+       invisible in a dense results pane on the dark background. */
+      .search-hit mark {
+        background: var(--yellow);
+        color: #0d1117;
+        border-radius: 2px;
+        font-weight: 600;
+        padding: 0 1px;
+      }
+
+      .log-output {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px 12px;
+        font-family: var(--mono);
+        font-size: 11px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        word-break: break-all;
+        min-height: 0;
+      }
+      .log-output .log-cmd {
+        color: var(--accent);
+      }
+      .log-output .log-err {
+        color: var(--red);
+      }
+      .log-output .log-done {
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      .aws-auth-banner {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background: color-mix(in srgb, var(--yellow) 12%, var(--bg));
+        border-top: 1px solid color-mix(in srgb, var(--yellow) 40%, transparent);
+      }
+      .aws-auth-msg {
+        font-size: 12px;
+        color: var(--yellow);
+        flex: 1;
+      }
+      .aws-auth-btn {
+        font-size: 11px;
+        padding: 3px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        background: var(--yellow);
+        color: #000;
+        border: none;
+        font-weight: 600;
+      }
+      .aws-auth-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .aws-auth-output {
+        width: 100%;
+        margin: 0;
+        padding: 6px 8px;
+        font-family: var(--mono);
+        font-size: 11px;
+        line-height: 1.5;
+        background: var(--bg);
+        border-radius: 4px;
+        white-space: pre-wrap;
+        max-height: 120px;
+        overflow-y: auto;
+      }
+
+      .logs-empty {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img
+        src="/favicon.ico"
+        width="16"
+        height="16"
+        alt=""
+        style="flex-shrink: 0"
+      />
+      <h1>__DEN_CLI__</h1>
+      <button
+        class="v-pill"
+        id="version-pill"
+        onclick="openChangelog()"
+        title="View changelog"
+      >
+        <span class="v-pip" id="v-pip"></span><span class="v-txt">v…</span>
+      </button>
+      <div class="health" id="health" title="Service health"></div>
+      <div class="h-spacer"></div>
+      <nav>
+        <a href="/">Local Dev</a>
+        <a href="/services">Services</a>
+        <a href="/environments">Environments</a>
+        <a href="/release">Releases</a>
+        <a href="/logs" class="active"
+          >Logs <span class="badge visible" id="log-badge"></span
+        ></a>
+        <a href="/tests">Tests</a>
+      </nav>
+    </header>
+
+    <div class="subbar">
+      <div class="env-badge">
+        <select id="env-sel" title="Environment">
+          <option value="local">local</option>
+        </select>
+      </div>
+      <div class="spacer"></div>
+      <div class="seg" id="log-dir-seg">
+        <button data-dir="cols" class="active" title="Side by side">
+          &#9134; cols
+        </button>
+        <button data-dir="rows" title="Stacked">&#9135; rows</button>
+      </div>
+    </div>
+
+    <div class="logs-toolbar" id="logs-toolbar">
+      <span class="logs-label">streams</span>
+      <span class="hist-search-wrap">
+        <input
+          id="hist-search"
+          type="text"
+          placeholder="Search across all logs…"
+          spellcheck="false"
+        />
+        <button
+          id="hist-search-btn"
+          title="Search the FULL log history of every running system (back to container startup)"
+        >
+          search
+        </button>
+      </span>
+    </div>
+
+    <div class="logs-area dir-cols" id="logs-area">
+      <div class="logs-empty">
+        No active log streams. Open a log from a service card or the toolbar
+        above.
+      </div>
+    </div>
+
+    <script type="module">
+      import {
+        initHealth,
+        refreshHealth,
+        applyDenConfig,
+        initChangelog,
+        computePrimaryByRepo,
+      } from "/header.js";
+
+      // ── Safe highlight rendering ──────────────────────────────────────────────
+      // Log lines are UNTRUSTED (any service can log attacker-influenced text,
+      // and this UI runs privileged actions). Every innerHTML sink that renders
+      // log content MUST go through markSafe: HTML-escape first, then wrap
+      // matches in <mark>. The term is escaped with the SAME transform so
+      // queries containing & < > still match.
+      function escHtmlText(s) {
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+      function markSafe(text, term) {
+        const pattern = escHtmlText(term).replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&",
+        );
+        return escHtmlText(text).replace(
+          new RegExp(pattern, "gi"),
+          (m) => `<mark>${m}</mark>`,
+        );
+      }
+
+      // ── Pane line window (user-configurable via `__DEN_CLI__ config log_window_lines=N`)
+      let LOG_WINDOW = 20000;
+      async function loadLogSettings() {
+        try {
+          const s = await fetch("/api/settings").then((r) => r.json());
+          if (Number.isFinite(s.log_window_lines) && s.log_window_lines > 0) {
+            LOG_WINDOW = s.log_window_lines;
+          }
+        } catch {
+          /* defaults are fine */
+        }
+      }
+
+      // ── LocalStorage persistence ──────────────────────────────────────────────
+      const LS_KEY = "__DEN_CLI__-open-logs";
+
+      function getStoredLogs() {
+        try {
+          return JSON.parse(localStorage.getItem(LS_KEY) || "[]");
+        } catch {
+          return [];
+        }
+      }
+
+      function setStoredLogs(logs) {
+        localStorage.setItem(LS_KEY, JSON.stringify(logs));
+        renderBadge(logs.length);
+      }
+
+      function addStoredLog(repo, service, env) {
+        const logs = getStoredLogs().filter(
+          (l) => !(l.repo === repo && l.service === service),
+        );
+        logs.push({ repo, service, env });
+        setStoredLogs(logs);
+      }
+
+      function removeStoredLog(repo, service) {
+        setStoredLogs(
+          getStoredLogs().filter(
+            (l) => !(l.repo === repo && l.service === service),
+          ),
+        );
+      }
+
+      // ── State ─────────────────────────────────────────────────────────────────
+      // Map<`${repo}/${service}`, { es: EventSource, paneEl, outputEl }>
+      const logStreams = new Map();
+
+      // "__DEN_CLI__/server" is a pseudo-service that taps the server's own log ring
+      // via /api/server-log instead of /api/service/logs. Everything else in the
+      // page treats it like a normal log stream.
+      function isServerLog(repo, service) {
+        return repo === "__DEN_CLI__" && service === "server";
+      }
+      function formatServerLogEntry(entry) {
+        // "14:07:41  [lifecycle]  ▶ run synthetic/local · modules=all [abcxyz]"
+        const t = (entry.ts ?? "").slice(11, 19);
+        const kind = (entry.kind ?? "info").padEnd(9);
+        return `${t}  [${kind}]  ${entry.text ?? ""}`;
+      }
+      function serverLogClass(kind) {
+        if (kind === "error") return "log-err";
+        if (kind === "warn") return "log-err";
+        if (kind === "lifecycle") return "log-cmd";
+        return "";
+      }
+
+      // ── Init ──────────────────────────────────────────────────────────────────
+      async function init() {
+        const envs = await fetch("/api/environments")
+          .then((r) => r.json())
+          .catch(() => ["local"]);
+        const envSel = document.getElementById("env-sel");
+        envSel.innerHTML = envs
+          .map((e) => `<option value="${e}">${e}</option>`)
+          .join("");
+        const savedEnv = localStorage.getItem("__DEN_CLI__-env");
+        if (savedEnv && envs.includes(savedEnv)) envSel.value = savedEnv;
+
+        const savedDir = localStorage.getItem("__DEN_CLI__-log-dir") || "cols";
+        applyLogDir(savedDir);
+
+        await Promise.all([
+          loadLogToolbar(),
+          loadLogSettings(),
+          initHealth(),
+          applyDenConfig(),
+          initChangelog(),
+        ]);
+
+        // Re-open streams from localStorage. __DEN_CLI__/server is env-agnostic so
+        // it reopens regardless of the stored env value.
+        //
+        // Cap auto-restored streams to the per-host socket budget: each open log is
+        // a persistent SSE, and the browser allows only ~6 connections per host.
+        // Restoring all stored logs at once exhausts the pool and wedges the page
+        // (the document/API requests can't get a socket). Extra streams stay listed
+        // in the toolbar and can be opened manually.
+        const RESTORE_BUDGET = 4;
+        const currentEnv = envSel.value;
+        let restored = 0;
+
+        // A card's "logs" action (graph ⋮ menu) navigates here with
+        // ?open=repo/service — open and persist that stream FIRST so it's
+        // guaranteed enabled even when the restore budget is already full of other
+        // stored logs.
+        const openParam = new URLSearchParams(location.search).get("open");
+        let focus = null;
+        const slash = openParam ? openParam.lastIndexOf("/") : -1;
+        if (openParam && slash > 0) {
+          focus = {
+            repo: openParam.slice(0, slash),
+            service: openParam.slice(slash + 1),
+          };
+          addStoredLog(focus.repo, focus.service, currentEnv);
+          openLog(focus.repo, focus.service);
+          restored++;
+        }
+
+        for (const { repo, service, env } of getStoredLogs()) {
+          if (focus && repo === focus.repo && service === focus.service)
+            continue;
+          if (!(isServerLog(repo, service) || env === currentEnv)) continue;
+          if (restored >= RESTORE_BUDGET) break;
+          openLog(repo, service);
+          restored++;
+        }
+
+        renderBadge(getStoredLogs().length);
+      }
+
+      // Release SSE sockets on reload / navigation / bfcache-enter so the reloaded
+      // page can immediately get a connection instead of queuing behind held tails.
+      window.addEventListener("pagehide", () => {
+        for (const { es } of logStreams.values()) {
+          try {
+            es.close();
+          } catch {}
+        }
+      });
+
+      // ── Env ───────────────────────────────────────────────────────────────────
+      document.getElementById("env-sel").addEventListener("change", () => {
+        const env = document.getElementById("env-sel").value;
+        localStorage.setItem("__DEN_CLI__-env", env);
+        // Close all open streams (they're env-specific) — except __DEN_CLI__/server
+        // which is env-agnostic and should persist across env switches.
+        for (const [key] of [...logStreams]) {
+          const [repo, service] = key.split("/");
+          if (isServerLog(repo, service)) continue;
+          closeLog(repo, service, false); // don't remove from localStorage
+        }
+        refreshHealth(env);
+        loadLogToolbar();
+        // Re-open streams for the new env; __DEN_CLI__/server already stays open.
+        for (const { repo, service, env: storedEnv } of getStoredLogs()) {
+          if (isServerLog(repo, service)) continue;
+          if (storedEnv === env) openLog(repo, service);
+        }
+      });
+
+      // ── Log direction ─────────────────────────────────────────────────────────
+      document.getElementById("log-dir-seg").addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-dir]");
+        if (!btn) return;
+        applyLogDir(btn.dataset.dir);
+        localStorage.setItem("__DEN_CLI__-log-dir", btn.dataset.dir);
+      });
+
+      function applyLogDir(dir) {
+        const area = document.getElementById("logs-area");
+        area.className = `logs-area dir-${dir}`;
+        document
+          .querySelectorAll("#log-dir-seg [data-dir]")
+          .forEach((b) => b.classList.toggle("active", b.dataset.dir === dir));
+      }
+
+      // ── Toolbar ───────────────────────────────────────────────────────────────
+      async function loadLogToolbar() {
+        const env = document.getElementById("env-sel").value;
+        const toolbar = document.getElementById("logs-toolbar");
+        let services;
+        try {
+          services = await fetch(`/api/services?env=${env}`).then((r) =>
+            r.json(),
+          );
+        } catch {
+          services = [];
+        }
+
+        toolbar.querySelectorAll(".cmd-btn").forEach((b) => b.remove());
+
+        // Pinned: __DEN_CLI__ server log (env-agnostic pseudo-service).
+        const serverKey = "__DEN_CLI__/server";
+        const serverBtn = document.createElement("button");
+        serverBtn.className = `cmd-btn logs-btn server-log-btn${logStreams.has(serverKey) ? " streaming" : ""}`;
+        serverBtn.textContent = `__DEN_CLI__/server${logStreams.has(serverKey) ? " \u25a0" : ""}`;
+        serverBtn.title = "__DEN_TITLE__ web-server log (lifecycle + requests)";
+        serverBtn.dataset.repo = "__DEN_CLI__";
+        serverBtn.dataset.service = "server";
+        serverBtn.addEventListener("click", () =>
+          toggleLog("__DEN_CLI__", "server"),
+        );
+        toolbar.appendChild(serverBtn);
+
+        // Main-system logs only: one button per system (its primary service),
+        // even if it declares no logs (the server falls back to a conventional
+        // container / daemon-file source). Exceptions:
+        //  - infra providers (no entrypoint, multiple services \u2014 infra-stack):
+        //    their subsystems ARE the systems \u2014 list the subsystems, skip the
+        //    root service (its log is just an aggregate of the sidecars)
+        //  - a logs entry marked `distinct: true` (e.g. shop/db \u2014 shop runs its
+        //    OWN postgres, not infra-stack's shared instance)
+        const primary = computePrimaryByRepo(services);
+        const epRepos = new Set(
+          services.filter((s) => s.isEntrypoint).map((s) => s.repo),
+        );
+        const svcCount = new Map();
+        services.forEach((s) =>
+          svcCount.set(s.repo, (svcCount.get(s.repo) ?? 0) + 1),
+        );
+
+        const shown = services.filter((s) => {
+          if (!epRepos.has(s.repo) && svcCount.get(s.repo) > 1)
+            return s.service !== s.repo;
+          return (
+            primary.get(s.repo) === s.address || (s.logs && s.logs.distinct)
+          );
+        });
+
+        // Evict remembered streams that no longer earn toolbar placement for
+        // this env — otherwise stale entries (e.g. a subsystem opened before
+        // the main-systems-only scoping) silently re-open on every page load.
+        // Runs before the restore loop (init awaits this). Entries stored for
+        // OTHER envs are judged when their env's toolbar is built; the pinned
+        // __DEN_CLI__/server pseudo-service is always kept. Skipped entirely when
+        // the services fetch failed/came back empty — a transient API error
+        // must not wipe the remembered set.
+        if (services.length) {
+          const eligible = new Set(shown.map((s) => `${s.repo}/${s.service}`));
+          const stored = getStoredLogs();
+          const kept = stored.filter(
+            (l) =>
+              isServerLog(l.repo, l.service) ||
+              l.env !== env ||
+              eligible.has(`${l.repo}/${l.service}`),
+          );
+          if (kept.length !== stored.length) setStoredLogs(kept);
+        }
+
+        shown.forEach((s) => {
+          const key = `${s.repo}/${s.service}`;
+          const btn = document.createElement("button");
+          btn.className = `cmd-btn logs-btn${logStreams.has(key) ? " streaming" : ""}`;
+          btn.textContent = `${s.repo}/${s.service}${logStreams.has(key) ? " \u25a0" : ""}`;
+          btn.dataset.repo = s.repo;
+          btn.dataset.service = s.service;
+          btn.addEventListener("click", () => toggleLog(s.repo, s.service));
+          toolbar.appendChild(btn);
+        });
+      }
+
+      // ── Log stream management ─────────────────────────────────────────────────
+      function toggleLog(repo, service) {
+        if (logStreams.has(`${repo}/${service}`)) {
+          closeLog(repo, service, true);
+        } else {
+          const env = document.getElementById("env-sel").value;
+          addStoredLog(repo, service, env);
+          openLog(repo, service);
+        }
+      }
+
+      function openLog(repo, service) {
+        const key = `${repo}/${service}`;
+        if (logStreams.has(key)) return;
+
+        const env = document.getElementById("env-sel").value;
+
+        const paneEl = document.createElement("div");
+        paneEl.className = "log-pane";
+
+        const bar = document.createElement("div");
+        bar.className = "pane-bar";
+
+        const title = document.createElement("span");
+        title.className = "log-pane-title";
+        title.textContent = `${repo} / ${service}`;
+        bar.appendChild(title);
+
+        // History pager — page backwards to container startup (__DEN_CLI__/server is
+        // an in-memory ring with its own history event; no pager there).
+        const histBtn = document.createElement("button");
+        histBtn.className = "hist-btn";
+        histBtn.textContent = "⟰ earlier";
+        histBtn.title = "Load earlier log history (back to container startup)";
+        if (!isServerLog(repo, service)) bar.appendChild(histBtn);
+
+        // Filter input
+        const filterWrap = document.createElement("div");
+        filterWrap.className = "log-filter-wrap";
+
+        const filterInput = document.createElement("input");
+        filterInput.type = "text";
+        filterInput.className = "log-filter";
+        filterInput.placeholder = "filter…";
+        filterInput.setAttribute("spellcheck", "false");
+
+        const filterCount = document.createElement("span");
+        filterCount.className = "log-filter-count";
+
+        const filterClear = document.createElement("button");
+        filterClear.className = "log-filter-clear";
+        filterClear.textContent = "×";
+        filterClear.title = "Clear filter";
+        filterClear.style.display = "none";
+
+        filterWrap.appendChild(filterInput);
+        filterWrap.appendChild(filterCount);
+        filterWrap.appendChild(filterClear);
+        bar.appendChild(filterWrap);
+
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "\u2715 Close";
+        closeBtn.addEventListener("click", () => closeLog(repo, service, true));
+        bar.appendChild(closeBtn);
+
+        const outputEl = document.createElement("pre");
+        outputEl.className = "log-output";
+        paneEl.appendChild(bar);
+        paneEl.appendChild(outputEl);
+
+        // rAF-batched, line-capped append. Window size is user-configurable:
+        // `__DEN_CLI__ config log_window_lines=50000` (default 20000).
+        let pending = [],
+          rafId = null;
+        let filterTerm = "";
+
+        function makeLineNode(text, cls, ts) {
+          const span = document.createElement("span");
+          if (cls) span.className = cls;
+          span.dataset.raw = text;
+          if (ts) {
+            span.dataset.ts = ts;
+            span.title = ts;
+          }
+          if (filterTerm && text.toLowerCase().includes(filterTerm)) {
+            span.classList.add("log-line-match");
+            span.innerHTML = markSafe(text, filterTerm) + "\n";
+          } else if (filterTerm) {
+            span.classList.add("log-line-hidden");
+            span.textContent = text + "\n";
+          } else {
+            span.textContent = text + "\n";
+          }
+          return span;
+        }
+
+        // "Tailing" = user is at (or near) the bottom. Only then do we trim old
+        // lines and auto-scroll — never while they're reading loaded history.
+        const nearBottom = () =>
+          outputEl.scrollTop + outputEl.clientHeight >=
+          outputEl.scrollHeight - 60;
+
+        let droppedNotice = false;
+        function flush() {
+          rafId = null;
+          if (!pending.length) return;
+          const tailing = nearBottom();
+          const items = pending.splice(0);
+          // Reading history during a live flood: don't grow the DOM without
+          // bound and don't evict what the user is reading — drop the incoming
+          // lines from VIEW (they remain in the source; scroll to bottom and
+          // they resume, or reload the stream for the tail).
+          if (
+            !tailing &&
+            outputEl.childNodes.length + items.length > LOG_WINDOW * 2
+          ) {
+            if (!droppedNotice) {
+              droppedNotice = true;
+              outputEl.appendChild(
+                makeLineNode(
+                  "── live lines paused in this view (window full while browsing history) ──",
+                  "log-done",
+                ),
+              );
+            }
+            return;
+          }
+          const frag = document.createDocumentFragment();
+          for (const { text, cls } of items)
+            frag.appendChild(makeLineNode(text, cls));
+          outputEl.appendChild(frag);
+          if (tailing) {
+            droppedNotice = false;
+            while (outputEl.childNodes.length > LOG_WINDOW)
+              outputEl.removeChild(outputEl.firstChild);
+          }
+          // Auto-scroll only while tailing and unfiltered (filter or history
+          // browsing implies "looking for something").
+          if (!filterTerm && tailing)
+            outputEl.scrollTop = outputEl.scrollHeight;
+          // Update match count
+          if (filterTerm) {
+            const matched = outputEl.querySelectorAll(".log-line-match").length;
+            const total = outputEl.childNodes.length;
+            filterCount.textContent = `${matched}/${total}`;
+          }
+        }
+
+        function append(text, cls) {
+          pending.push({ text, cls });
+          if (!rafId) rafId = requestAnimationFrame(flush);
+        }
+
+        // ── History paging (backwards, opaque cursor) ─────────────────────────
+        const HIST_PAGE = Math.max(
+          500,
+          Math.min(2000, Math.floor(LOG_WINDOW / 4)),
+        );
+        const TS_RE = /^(\d{4}-\d{2}-\d{2}T\S+Z)\s?/;
+        let histCursor = null; // opaque server cursor; null = start from the end
+        let histDone = false; // container start reached, unsupported, or window full
+        let histLoading = false;
+        let histFirstLoad = true;
+
+        function prependNotice(text, cls) {
+          const span = makeLineNode(text, cls);
+          outputEl.insertBefore(span, outputEl.firstChild);
+        }
+
+        // Drop returned lines that overlap the live tail's initial backlog
+        // (both read the same source, so the seam is an exact suffix/prefix match).
+        function dedupeSeam(entries) {
+          const displayed = [...outputEl.childNodes]
+            .slice(0, 600)
+            .map((n) => n.dataset?.raw ?? "");
+          for (let k = Math.min(entries.length, displayed.length); k > 0; k--) {
+            let match = true;
+            for (let j = 0; j < k; j++) {
+              if (entries[entries.length - k + j].text !== displayed[j]) {
+                match = false;
+                break;
+              }
+            }
+            if (match) return entries.slice(0, entries.length - k);
+          }
+          return entries;
+        }
+
+        async function loadEarlier() {
+          if (histLoading || histDone || isServerLog(repo, service)) return;
+          histLoading = true;
+          histBtn.textContent = "… loading";
+          try {
+            const params = new URLSearchParams({
+              repo,
+              service,
+              env,
+              limit: String(HIST_PAGE),
+            });
+            if (histCursor) params.set("cursor", histCursor);
+            const data = await fetch(`/api/service/history?${params}`).then(
+              (r) => r.json(),
+            );
+            if (data.unsupported) {
+              histDone = true;
+              histBtn.style.display = "none";
+              prependNotice(
+                `── history unavailable: ${data.reason} ──`,
+                "log-done",
+              );
+              return;
+            }
+            histCursor = data.cursor;
+            let entries = data.lines.map((raw) => {
+              const m = raw.match(TS_RE);
+              return m
+                ? { ts: m[1], text: raw.slice(m[0].length) }
+                : { ts: null, text: raw };
+            });
+            if (histFirstLoad) {
+              entries = dedupeSeam(entries);
+              histFirstLoad = false;
+            }
+
+            const frag = document.createDocumentFragment();
+            for (const { ts, text } of entries)
+              frag.appendChild(makeLineNode(text, "", ts));
+            const prevHeight = outputEl.scrollHeight;
+            outputEl.insertBefore(frag, outputEl.firstChild);
+            if (data.atStart) {
+              histDone = true;
+              histBtn.style.display = "none";
+              prependNotice("── container start ──", "log-cmd");
+            } else if (outputEl.childNodes.length >= LOG_WINDOW) {
+              histDone = true;
+              histBtn.style.display = "none";
+              prependNotice(
+                `── history window full (${outputEl.childNodes.length.toLocaleString()} lines) — raise log_window_lines or use search ──`,
+                "log-done",
+              );
+            }
+            // Keep the viewport anchored on the line the user was looking at.
+            outputEl.scrollTop += outputEl.scrollHeight - prevHeight;
+            if (filterTerm) applyFilter();
+          } catch (e) {
+            prependNotice(
+              `── history fetch failed: ${e.message} ──`,
+              "log-err",
+            );
+          } finally {
+            histLoading = false;
+            histBtn.textContent = "⟰ earlier";
+          }
+        }
+        histBtn.addEventListener("click", loadEarlier);
+        // Scrolling to the very top also pages further back.
+        outputEl.addEventListener("scroll", () => {
+          if (
+            outputEl.scrollTop === 0 &&
+            !histDone &&
+            !histLoading &&
+            !histFirstLoad
+          )
+            loadEarlier();
+        });
+
+        // ── Filter logic ──────────────────────────────────────────────────────
+        function applyFilter() {
+          filterTerm = filterInput.value.trim().toLowerCase();
+          filterClear.style.display = filterTerm ? "" : "none";
+          let matched = 0,
+            total = 0;
+          for (const node of outputEl.childNodes) {
+            if (!(node instanceof HTMLElement)) continue;
+            total++;
+            if (!filterTerm) {
+              node.classList.remove("log-line-hidden", "log-line-match");
+              node.innerHTML = "";
+              node.textContent = (node.dataset.raw ?? "") + "\n";
+            } else {
+              const raw = node.dataset.raw ?? node.textContent ?? "";
+              if (raw.toLowerCase().includes(filterTerm)) {
+                node.classList.remove("log-line-hidden");
+                node.classList.add("log-line-match");
+                node.innerHTML = markSafe(raw, filterTerm) + "\n";
+                matched++;
+              } else {
+                node.classList.add("log-line-hidden");
+                node.classList.remove("log-line-match");
+              }
+            }
+          }
+          filterCount.textContent = filterTerm ? `${matched}/${total}` : "";
+        }
+
+        // Debounced — applyFilter walks every loaded node, and the window can
+        // hold tens of thousands of history lines.
+        let filterDebounce = null;
+        filterInput.addEventListener("input", () => {
+          if (filterDebounce) clearTimeout(filterDebounce);
+          filterDebounce = setTimeout(applyFilter, 150);
+        });
+        filterClear.addEventListener("click", () => {
+          filterInput.value = "";
+          applyFilter();
+          filterInput.focus();
+        });
+        // ─────────────────────────────────────────────────────────────────────
+
+        const serverLog = isServerLog(repo, service);
+        // Local streams go through taillog — the same endpoint the workspace
+        // page's tabs use. It has the full source-resolution chain (manifest
+        // cmd → conventional opctl container → daemon startup log), whereas
+        // /api/service/logs 404s for services with no logs block (shop-web,
+        // control-plane). Non-local envs keep /api/service/logs for
+        // cloudwatch sources + the AWS reauth flow.
+        const es = serverLog
+          ? new EventSource("/api/server-log")
+          : env === "local"
+            ? new EventSource(
+                `/api/service/taillog?${new URLSearchParams({ repo, service })}`,
+              )
+            : new EventSource(
+                `/api/service/logs?${new URLSearchParams({ repo, service, env })}`,
+              );
+
+        es.onmessage = (e) => {
+          const msg = JSON.parse(e.data);
+          if (serverLog) {
+            if (msg.type === "history" && Array.isArray(msg.entries)) {
+              for (const entry of msg.entries) {
+                append(formatServerLogEntry(entry), serverLogClass(entry.kind));
+              }
+            } else if (msg.type === "log" && msg.entry) {
+              append(
+                formatServerLogEntry(msg.entry),
+                serverLogClass(msg.entry.kind),
+              );
+            }
+            return;
+          }
+          if (msg.type === "cmd") append(msg.text, "log-cmd");
+          else if (msg.type === "line") append(msg.text, "");
+          else if (msg.type === "error") append(msg.text, "log-err");
+          else if (msg.type === "done") {
+            es.close();
+            if (msg.authRequired) {
+              showAwsReauthPrompt(paneEl, outputEl, repo, service, env);
+            } else {
+              append("--- stream ended ---", "log-done");
+            }
+          }
+        };
+        es.onerror = () => {
+          append("--- connection closed ---", "log-done");
+          es.close();
+        };
+
+        logStreams.set(key, { es, paneEl, outputEl });
+        updateToolbarButton(repo, service, true);
+        renderLogPanes();
+      }
+
+      function closeLog(repo, service, persist = true) {
+        const key = `${repo}/${service}`;
+        const stream = logStreams.get(key);
+        if (!stream) return;
+        stream.es.close();
+        logStreams.delete(key);
+        if (persist) removeStoredLog(repo, service);
+        updateToolbarButton(repo, service, false);
+        renderLogPanes();
+      }
+
+      function renderLogPanes() {
+        const area = document.getElementById("logs-area");
+        const dirClass =
+          [...area.classList].find((c) => c.startsWith("dir-")) || "dir-cols";
+        area.innerHTML = "";
+        area.className = `logs-area ${dirClass}`;
+
+        if (logStreams.size === 0) {
+          const empty = document.createElement("div");
+          empty.className = "logs-empty";
+          empty.textContent =
+            "No active log streams. Click a service name above to open one.";
+          area.appendChild(empty);
+          return;
+        }
+
+        for (const { paneEl, outputEl } of logStreams.values()) {
+          area.appendChild(paneEl);
+          outputEl.scrollTop = outputEl.scrollHeight;
+        }
+      }
+
+      function renderBadge(count) {
+        const badge = document.getElementById("log-badge");
+        if (!badge) return;
+        badge.textContent = count;
+        badge.classList.toggle("visible", count > 0);
+      }
+
+      function updateToolbarButton(repo, service, streaming) {
+        const key = `${repo}/${service}`;
+        document
+          .querySelectorAll(
+            `.logs-btn[data-repo="${repo}"][data-service="${service}"]`,
+          )
+          .forEach((btn) => {
+            btn.classList.toggle("streaming", streaming);
+            btn.textContent = `${key}${streaming ? " \u25a0" : ""}`;
+          });
+      }
+
+      // ── Cross-system history search ───────────────────────────────────────────
+      //
+      // Greps the FULL history (back to container startup) of every system the
+      // toolbar lists, server-side, and renders grouped results in a pane.
+      // The results pane lives in logStreams under a pseudo key (stub `es`) so
+      // rendering/closing reuse the normal pane machinery; it is never persisted
+      // (addStoredLog only runs through toggleLog).
+      const SEARCH_KEY = "search/results";
+
+      async function runHistorySearch() {
+        const input = document.getElementById("hist-search");
+        const btn = document.getElementById("hist-search-btn");
+        const q = input.value.trim();
+        if (q.length < 2) {
+          input.focus();
+          return;
+        }
+        const env = document.getElementById("env-sel").value;
+        const targets = [
+          ...document.querySelectorAll("#logs-toolbar .logs-btn"),
+        ]
+          .filter((b) => !b.classList.contains("server-log-btn"))
+          .map((b) => `${b.dataset.repo}/${b.dataset.service}`);
+        if (targets.length === 0) return;
+
+        // (Re)create the results pane.
+        let pane = logStreams.get(SEARCH_KEY);
+        if (!pane) {
+          const paneEl = document.createElement("div");
+          paneEl.className = "log-pane";
+          const bar = document.createElement("div");
+          bar.className = "pane-bar";
+          const title = document.createElement("span");
+          title.className = "log-pane-title";
+          bar.appendChild(title);
+          const closeBtn = document.createElement("button");
+          closeBtn.textContent = "✕ Close";
+          closeBtn.addEventListener("click", () =>
+            closeLog("search", "results", false),
+          );
+          bar.appendChild(closeBtn);
+          const outputEl = document.createElement("pre");
+          outputEl.className = "log-output";
+          paneEl.appendChild(bar);
+          paneEl.appendChild(outputEl);
+          pane = { es: { close() {} }, paneEl, outputEl };
+          logStreams.set(SEARCH_KEY, pane);
+        }
+        pane.paneEl.querySelector(".log-pane-title").textContent =
+          `search: "${q}"`;
+        pane.outputEl.textContent = "";
+        renderLogPanes();
+
+        const line = (text, cls, onClick, highlight) => {
+          const span = document.createElement("span");
+          if (cls) span.className = cls;
+          if (highlight) {
+            span.innerHTML = markSafe(text, q) + "\n"; // escape-then-mark, shared helper
+          } else {
+            span.textContent = text + "\n";
+          }
+          if (onClick) {
+            span.classList.add("search-hd");
+            span.addEventListener("click", onClick);
+          }
+          pane.outputEl.appendChild(span);
+        };
+
+        btn.textContent = "…";
+        btn.disabled = true;
+        try {
+          const params = new URLSearchParams({
+            q,
+            env,
+            targets: targets.join(","),
+          });
+          const data = await fetch(`/api/logs/search?${params}`).then((r) => {
+            if (!r.ok) throw new Error(`search failed (${r.status})`);
+            return r.json();
+          });
+          let total = 0;
+          for (const result of data.results) {
+            if (result.error) {
+              line(`── ${result.system}: ${result.error} ──`, "log-done");
+              continue;
+            }
+            if (result.matches.length === 0) continue;
+            total += result.matches.length;
+            const [sysRepo, sysService] = result.system.split("/");
+            line(
+              `── ${result.system} — ${result.matches.length}${result.truncated ? "+" : ""} match${result.matches.length === 1 ? "" : "es"} (click to open stream) ──`,
+              "log-cmd",
+              () => toggleLog(sysRepo, sysService),
+            );
+            for (const m of result.matches) {
+              line(
+                `${m.ts ? m.ts + "  " : ""}${m.line}`,
+                "log-line-match search-hit",
+                null,
+                true,
+              );
+              for (const c of m.context) line(`    ${c}`, "log-done");
+            }
+            line("", "");
+          }
+          if (total === 0)
+            line(`no matches for "${q}" in any system's history`, "log-done");
+          pane.outputEl.scrollTop = 0;
+        } catch (e) {
+          line(`── ${e.message} ──`, "log-err");
+        } finally {
+          btn.textContent = "search";
+          btn.disabled = false;
+        }
+      }
+
+      document
+        .getElementById("hist-search-btn")
+        .addEventListener("click", runHistorySearch);
+      document
+        .getElementById("hist-search")
+        .addEventListener("keydown", (e) => {
+          if (e.key === "Enter") runHistorySearch();
+        });
+
+      function showAwsReauthPrompt(paneEl, outputEl, repo, service, env) {
+        paneEl.querySelector(".aws-auth-banner")?.remove();
+        const banner = document.createElement("div");
+        banner.className = "aws-auth-banner";
+        banner.innerHTML = `
+        <span class="aws-auth-msg">⚠ AWS session expired</span>
+        <button class="aws-auth-btn">Re-authenticate</button>
+        <pre class="aws-auth-output" style="display:none"></pre>`;
+        paneEl.appendChild(banner);
+
+        const btn = banner.querySelector(".aws-auth-btn");
+        const authOut = banner.querySelector(".aws-auth-output");
+        let loginEs = null;
+
+        btn.addEventListener("click", () => {
+          btn.disabled = true;
+          btn.textContent = "Authenticating…";
+          authOut.style.display = "block";
+          authOut.textContent = "";
+          loginEs = new EventSource(
+            `/api/aws/login?env=${encodeURIComponent(env)}`,
+          );
+          loginEs.onmessage = (ev) => {
+            const msg = JSON.parse(ev.data);
+            if (msg.type === "line" || msg.type === "cmd") {
+              authOut.textContent += msg.text + "\n";
+              authOut.scrollTop = authOut.scrollHeight;
+            } else if (msg.type === "done") {
+              loginEs.close();
+              if (msg.exitCode === 0) {
+                banner.remove();
+                const key = `${repo}/${service}`;
+                logStreams.delete(key);
+                openLog(repo, service);
+              } else {
+                btn.disabled = false;
+                btn.textContent = "Retry";
+                authOut.textContent += "--- login failed ---\n";
+              }
+            }
+          };
+          loginEs.onerror = () => {
+            loginEs.close();
+            btn.disabled = false;
+            btn.textContent = "Retry";
+            authOut.textContent += "--- connection error ---\n";
+          };
+        });
+      }
+
+      init();
+    </script>
+  </body>
+</html>

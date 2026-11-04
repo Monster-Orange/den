@@ -1,0 +1,16 @@
+services:
+  api:
+    image: node:22-alpine
+    working_dir: /app
+    command: ["node", "server.mjs"]
+    volumes: ["./server.mjs:/app/server.mjs:ro"]
+    environment:
+      SERVICE: demo-api
+      PORT: "8080"
+    # Only for running this repo on its own (`make up`). Under den the
+    # stack has no host ports and is served at https://api.demo-api.<domain>.
+    ports: ["127.0.0.1:18081:8080"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 2s
+      retries: 15

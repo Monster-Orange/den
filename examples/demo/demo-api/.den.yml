@@ -1,0 +1,19 @@
+# demo-api: a self-contained service. Nothing it calls, so it starts alone.
+version: 1
+name: demo-api
+application: shop # the application this repo belongs to (den apps)
+compose:
+  files: [docker-compose.yml]
+  routes:
+    api: api:8080 # https://api.demo-api.<edge domain>
+services:
+  demo-api:
+    commands:
+      local:
+        setup: make setup
+        preflight: make test
+# OWASP ZAP target for the security pillar (`make test-sec-api env=local`).
+security:
+  api:
+    hosts:
+      local: ["https://api.demo-api.globex.localhost"]

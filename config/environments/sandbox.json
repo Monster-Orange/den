@@ -1,0 +1,16 @@
+{
+  "name": "sandbox",
+  "baseUrls": {
+    "web": "http://localhost:3000",
+    "api": "http://localhost:3001",
+    "services": {}
+  },
+  "auth": {
+    "provider": "none"
+  },
+  "timeouts": {
+    "api": 30000,
+    "pageLoad": 60000
+  },
+  "notes": "Example environment. Replace the URLs and auth with your own."
+}

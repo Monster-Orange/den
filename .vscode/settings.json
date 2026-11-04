@@ -1,0 +1,109 @@
+{
+  // ---------------------------------------------------------------------------
+  // Why this file exists
+  // ---------------------------------------------------------------------------
+  // Den generates large, local-only trees INSIDE the workspace:
+  //   .den-services/   ~6 GB / 227k files: full branch-tracking clones of
+  //                       every SOA service, each with Python .venvs, compiled
+  //                       Go/Rust binaries, and a bundled ~370 MB Chromium.
+  //   .den-workspaces/ feature workspace clones (same shape, when present)
+  //   .stack/ .den/    vendored deps + repo-mount symlinks (nested .git dirs)
+  //
+  // These are all in .gitignore, but VS Code's file watcher, Git repository
+  // detection, and search do NOT read .gitignore. With no excludes, VS Code
+  // recursively watches/indexes/git-scans ~227k files across 16 nested repos,
+  // which saturates macOS FSEvents and freezes the IDE a few minutes after open.
+  //
+  // The excludes below scope the editor to actual source (src/, tests/, config/,
+  // scripts/, docs/, make/, bin/) and leave the generated trees alone.
+  // Reload the window after editing (Cmd+Shift+P -> "Developer: Reload Window").
+  // ---------------------------------------------------------------------------
+
+  // Stop the file watcher from tracking generated / local-only trees.
+  // This is the primary fix for the lockup.
+  "files.watcherExclude": {
+    "**/.den-services/**": true,
+    "**/.den-workspaces/**": true,
+    "**/.den/**": true,
+    "**/.stack/**": true,
+    "**/.opspec/**": true,
+    "**/.venv/**": true,
+    "**/venv/**": true,
+    "**/node_modules/**": true,
+    "**/.smoke-run/**": true,
+    "**/.smoke-clones/**": true,
+    "**/.synth-run/**": true,
+    "**/.perf-run/**": true,
+    "**/.perf-report/**": true,
+    "**/.dev-metrics/**": true,
+    "**/graphify-out/**": true,
+    "**/coverage/**": true,
+    "**/.nyc_output/**": true,
+    "**/dist/**": true,
+    "**/build/**": true,
+    "**/test-results/**": true,
+    "**/playwright-report/**": true,
+    "**/playwright-reports/**": true,
+    "**/blob-report/**": true,
+    "**/.playwright/**": true,
+    "**/results/**": true,
+    "**/reports/**": true
+  },
+
+  // Hide the purely-generated trees from the Explorer so they aren't expanded
+  // (expansion re-triggers per-file watchers + decorations). They are hidden,
+  // not deleted — comment a line out to reveal one. Open a service repo in its
+  // own window when you need to edit it directly.
+  "files.exclude": {
+    "**/.den-services": true,
+    "**/.den-workspaces": true,
+    "**/.den": true,
+    "**/.smoke-run": true,
+    "**/.smoke-clones": true,
+    "**/.synth-run": true,
+    "**/.perf-run": true,
+    "**/.perf-report": true,
+    "**/graphify-out": true,
+    "**/.dev-metrics": true
+  },
+
+  // Keep search (Cmd+Shift+F, Cmd+P) fast and free of generated-tree noise.
+  "search.exclude": {
+    "**/.den-services/**": true,
+    "**/.den-workspaces/**": true,
+    "**/.den/**": true,
+    "**/.stack/**": true,
+    "**/node_modules/**": true,
+    "**/coverage/**": true,
+    "**/dist/**": true,
+    "**/graphify-out/**": true,
+    "**/.smoke-run/**": true,
+    "**/.smoke-clones/**": true,
+    "**/playwright-report/**": true,
+    "**/reports/**": true,
+    "**/results/**": true
+  },
+  "search.followSymlinks": false,
+
+  // Don't let the Git extension adopt the 16 nested service repos as additional
+  // source-control providers. The den repo itself (the workspace root) still
+  // works normally. Flip to true if you want nested-repo SCM back.
+  "git.autoRepositoryDetection": false,
+  "git.scanRepositories": [],
+
+  // Trim the TypeScript server's directory watchers. The tsconfig already scopes
+  // the project to src/tests/config, this just keeps tsserver from watching the
+  // generated trees for ambient JS files (allowJs is on).
+  "typescript.tsserver.watchOptions": {
+    "watchFile": "useFsEvents",
+    "watchDirectory": "useFsEvents",
+    "excludeDirectories": [
+      "**/.den-services",
+      "**/.den-workspaces",
+      "**/.stack",
+      "**/node_modules",
+      "**/dist",
+      "**/coverage"
+    ]
+  }
+}

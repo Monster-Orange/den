@@ -1,0 +1,2111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>__DEN_CLI__ · Releases</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --border: #30363d;
+        --text: #c9d1d9;
+        --muted: #8b949e;
+        --accent: #58a6ff;
+        --green: #3fb950;
+        --red: #f85149;
+        --yellow: #d29922;
+        --mono: "SF Mono", "Cascadia Code", "Fira Code", "Menlo", monospace;
+      }
+
+      html,
+      body {
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 13px;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── Header ───────────────────────────────────────────────────────────── */
+      header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      header h1 {
+        font-family: var(--mono);
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .h-spacer {
+        flex: 1;
+      }
+
+      .v-pill {
+        font-family: var(--mono);
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        background: none;
+        cursor: pointer;
+        user-select: none;
+        position: relative;
+      }
+      .v-pill:hover {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .v-pip {
+        position: absolute;
+        top: -3px;
+        right: -3px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: 1.5px solid var(--bg);
+        display: none;
+      }
+
+      /* ── Health dots ──────────────────────────────────────────────────────── */
+      .health {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 4px;
+        flex-wrap: wrap;
+      }
+      .health-item,
+      .health-group {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted);
+        flex-shrink: 0;
+        display: inline-block;
+      }
+      .dot.ok {
+        background: var(--green);
+      }
+      .dot.err {
+        background: var(--red);
+      }
+      .dot.running {
+        background: var(--yellow);
+        animation: pulse 1s ease-in-out infinite;
+      }
+
+      /* ── Nav ──────────────────────────────────────────────────────────────── */
+      nav {
+        display: flex;
+        gap: 2px;
+      }
+      nav a {
+        color: var(--muted);
+        text-decoration: none;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        transition: color 0.1s;
+      }
+      nav a:hover {
+        color: var(--text);
+        background: var(--border);
+      }
+      nav a.active {
+        color: var(--text);
+        background: var(--surface);
+      }
+
+      /* ── Controls bar ─────────────────────────────────────────────────────── */
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      select,
+      .btn {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        outline: none;
+      }
+      select:focus {
+        border-color: var(--accent);
+      }
+      .btn {
+        font-weight: 500;
+        transition:
+          border-color 0.1s,
+          color 0.1s,
+          background 0.1s;
+      }
+      .btn:hover:not(:disabled) {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .btn.primary {
+        background: var(--accent);
+        color: #04101f;
+        border-color: var(--accent);
+        font-weight: 600;
+      }
+      .btn.primary:hover:not(:disabled) {
+        opacity: 0.88;
+        color: #04101f;
+      }
+      .btn.danger:hover:not(:disabled) {
+        border-color: var(--red);
+        color: var(--red);
+      }
+      .env-label {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      #status-text {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      /* ── Main ─────────────────────────────────────────────────────────────── */
+      main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-height: 0;
+      }
+      .table-pane {
+        flex: 1;
+        overflow: auto;
+        min-height: 0;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        padding: 8px 12px;
+        white-space: nowrap;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        cursor: pointer;
+        user-select: none;
+      }
+      thead th.no-sort {
+        cursor: default;
+      }
+      thead th:hover:not(.no-sort) {
+        color: var(--text);
+      }
+      th .arrow {
+        color: var(--accent);
+        font-size: 9px;
+        margin-left: 3px;
+      }
+      tbody td {
+        padding: 7px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: middle;
+      }
+      /* Row hover. The previous #ffffff06 is white at 2.4%, resolving to about
+         #13171c against the #0d1117 background — 1.05:1, effectively invisible.
+         An accent tint at 20% lands on #1c2f45 (1.39:1), and the 3px accent
+         rule carries the rest of the signal. For scale, --surface itself is
+         only 1.09:1 against the background, so this is a deliberate step past
+         the page's usual contrast rather than a mistake.
+         Applied to the cells, not the row: the table is border-collapse:
+         collapse, where box-shadow on a <tr> is unreliable across browsers. */
+      tbody tr:hover td {
+        background: rgba(88, 166, 255, 0.2);
+      }
+      tbody tr:hover td:first-child {
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+      .session-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+      }
+      .session-chip {
+        font-size: 11px;
+        font-family: var(--mono);
+        padding: 2px 8px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .session-chip:hover {
+        color: var(--text);
+      }
+      .session-chip.active {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .session-chip.running {
+        border-style: dashed;
+      }
+      .session-chip.fail {
+        border-color: var(--red);
+      }
+      .repo-cell {
+        font-weight: 600;
+      }
+      /* Inherits the cell's weight/colour so the column still reads as a label,
+         not a wall of links; the underline appears on hover. */
+      .repo-link {
+        color: inherit;
+        text-decoration: none;
+      }
+      .repo-link:hover {
+        color: var(--accent);
+        text-decoration: underline;
+      }
+      .wave-tag {
+        font-size: 9px;
+        color: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0 5px;
+        margin-left: 6px;
+        font-family: var(--mono);
+      }
+      .sha {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .branch {
+        font-family: var(--mono);
+        font-size: 11px;
+        max-width: 240px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: inline-block;
+        vertical-align: bottom;
+      }
+      .deployer {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--accent);
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      a.deployer:hover {
+        text-decoration: underline;
+      }
+      .deployer.bot {
+        color: var(--muted);
+      }
+      .when {
+        white-space: nowrap;
+      }
+      .when .rel {
+        color: var(--text);
+      }
+      .when .abs {
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .st {
+        font-weight: 500;
+      }
+      .st-up {
+        color: var(--green);
+      }
+      .st-warn {
+        color: var(--yellow);
+      }
+      .st-bad {
+        color: var(--red);
+      }
+      .st-none {
+        color: var(--muted);
+      }
+      .st-note {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        margin-top: 2px;
+      }
+
+      .deploy-cell {
+        white-space: nowrap;
+        text-align: right;
+      }
+      /* release.deploy off: nothing on the page can dispatch a deploy. */
+      body.read-only .deploy-cell,
+      body.read-only #deploy-all-btn,
+      body.read-only #waves-btn {
+        display: none;
+      }
+      #read-only-tag {
+        display: none;
+        font-size: 12px;
+        color: var(--muted, #888);
+        border: 1px solid currentColor;
+        border-radius: 4px;
+        padding: 1px 6px;
+      }
+      body.read-only #read-only-tag {
+        display: inline-block;
+      }
+      .dep-btn {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 3px 10px;
+        border-radius: 5px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition:
+          border-color 0.1s,
+          color 0.1s;
+      }
+      .dep-btn:hover:not(:disabled) {
+        border-color: var(--green);
+        color: var(--green);
+      }
+      .dep-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      /* run status pill (live during a deploy) */
+      .run-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 10px;
+        font-family: var(--mono);
+        padding: 2px 8px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        text-decoration: none;
+      }
+      .run-pill .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted);
+        flex-shrink: 0;
+      }
+      .run-pill.busy .dot {
+        background: var(--yellow);
+        animation: pulse 1s ease-in-out infinite;
+      }
+      .run-pill.ok {
+        color: var(--green);
+        border-color: #3fb95044;
+      }
+      .run-pill.ok .dot {
+        background: var(--green);
+      }
+      .run-pill.err {
+        color: var(--red);
+        border-color: #f8514944;
+      }
+      .run-pill.err .dot {
+        background: var(--red);
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+
+      .empty-state {
+        padding: 40px 14px;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+      }
+
+      /* Loading state. Verifying an env fans out ~100s of GitHub API calls and
+         routinely takes 30-60s, so the table shows the SHAPE of the answer
+         while it waits instead of one static line — a blank-looking table for a
+         minute reads as broken. */
+      .loading-note {
+        padding: 14px;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+      }
+      .loading-note .sub {
+        display: block;
+        margin-top: 4px;
+        opacity: 0.75;
+        font-size: 11px;
+      }
+      .loading-dots::after {
+        content: "";
+        animation: rel-dots 1.4s steps(4, end) infinite;
+      }
+      @keyframes rel-dots {
+        0% {
+          content: "";
+        }
+        25% {
+          content: ".";
+        }
+        50% {
+          content: "..";
+        }
+        75% {
+          content: "...";
+        }
+      }
+      .skel {
+        display: block;
+        height: 9px;
+        border-radius: 3px;
+        background: linear-gradient(
+          90deg,
+          #ffffff0d 25%,
+          #ffffff1f 50%,
+          #ffffff0d 75%
+        );
+        background-size: 600px 100%;
+        animation: rel-shimmer 1.5s linear infinite;
+      }
+      @keyframes rel-shimmer {
+        0% {
+          background-position: -300px 0;
+        }
+        100% {
+          background-position: 300px 0;
+        }
+      }
+      /* Stagger the rows so the sweep reads as one wave down the table. */
+      .skel-row:nth-child(2) .skel {
+        animation-delay: 0.1s;
+      }
+      .skel-row:nth-child(3) .skel {
+        animation-delay: 0.2s;
+      }
+      .skel-row:nth-child(4) .skel {
+        animation-delay: 0.3s;
+      }
+      .skel-row:nth-child(5) .skel {
+        animation-delay: 0.4s;
+      }
+      .skel-row:nth-child(6) .skel {
+        animation-delay: 0.5s;
+      }
+      .skel-row:nth-child(7) .skel {
+        animation-delay: 0.6s;
+      }
+      .skel-row:nth-child(8) .skel {
+        animation-delay: 0.7s;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .skel,
+        .loading-dots::after {
+          animation: none;
+        }
+        .skel {
+          background: #ffffff14;
+        }
+      }
+
+      /* ── Output pane ──────────────────────────────────────────────────────── */
+      .pane-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 3px 12px;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .pane-bar span {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+      }
+      .pane-bar button {
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 11px;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 3px;
+      }
+      .pane-bar button:hover {
+        color: var(--text);
+        background: var(--border);
+      }
+      .output-pane {
+        height: 34%;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .output-pane.hidden {
+        display: none;
+      }
+      #output {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px 14px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-all;
+        min-height: 0;
+      }
+      #output .cmd {
+        color: var(--accent);
+      }
+      #output .phase {
+        color: var(--text);
+        font-weight: 600;
+      }
+      #output .warn {
+        color: var(--yellow);
+      }
+      #output .err {
+        color: var(--red);
+      }
+      #output .ok {
+        color: var(--green);
+      }
+
+      /* ── Modal ────────────────────────────────────────────────────────────── */
+      .overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.65);
+        display: none;
+        align-items: center;
+        justify-content: center;
+      }
+      .overlay.open {
+        display: flex;
+      }
+      .modal {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        width: min(560px, 94vw);
+        max-height: 86vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.65);
+      }
+      .modal-hdr {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 13px 18px;
+        border-bottom: 1px solid var(--border);
+      }
+      .modal-hdr h3 {
+        font-family: var(--mono);
+        font-size: 13px;
+        font-weight: 600;
+        flex: 1;
+      }
+      .modal-close {
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 18px;
+        cursor: pointer;
+        line-height: 1;
+      }
+      .modal-close:hover {
+        color: var(--text);
+      }
+      .modal-body {
+        overflow-y: auto;
+        padding: 16px 18px;
+      }
+      .modal-body label {
+        display: block;
+        font-size: 11px;
+        color: var(--muted);
+        margin: 12px 0 4px;
+      }
+      .modal-body label:first-child {
+        margin-top: 0;
+      }
+      .modal-body select,
+      .modal-body input[type="text"] {
+        width: 100%;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 7px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-family: var(--mono);
+      }
+      .modal-ftr {
+        padding: 12px 18px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      .banner {
+        border-radius: 6px;
+        padding: 9px 12px;
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+      .banner.hotfix {
+        border: 1px solid var(--yellow);
+        background: #d2992215;
+        color: var(--yellow);
+      }
+      .banner.prod {
+        border: 1px solid var(--red);
+        background: #f8514915;
+        color: #ffb3ae;
+      }
+      .plan-wave {
+        margin: 8px 0;
+      }
+      .plan-wave h4 {
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 4px;
+      }
+      .plan-repo {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text);
+        padding: 2px 0 2px 12px;
+      }
+      .plan-repo .off {
+        color: var(--yellow);
+      }
+
+      /* wave editor */
+      .wave-row {
+        display: grid;
+        grid-template-columns: 1fr 90px 130px 60px;
+        gap: 8px;
+        align-items: center;
+        padding: 5px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 12px;
+      }
+      .wave-row.head {
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 6px;
+      }
+      .wave-row input[type="number"] {
+        width: 100%;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 4px 6px;
+        border-radius: 5px;
+        font-family: var(--mono);
+      }
+      .wave-row .rname {
+        font-family: var(--mono);
+      }
+      .wave-row .wf {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .hint {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 10px;
+        line-height: 1.5;
+      }
+      .err-text {
+        color: var(--red);
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img
+        src="/favicon.ico"
+        width="16"
+        height="16"
+        alt=""
+        style="flex-shrink: 0"
+      />
+      <h1>__DEN_CLI__</h1>
+      <button
+        class="v-pill"
+        id="version-pill"
+        onclick="openChangelog()"
+        title="View changelog"
+      >
+        <span class="v-pip" id="v-pip"></span><span class="v-txt">v…</span>
+      </button>
+      <div class="health" id="health" title="Local service health"></div>
+      <!-- header.js polls /api/health with whatever #env-sel holds. This page's
+           VISIBLE env picker is the deploy target, so it must not use that id —
+           the header would then ask "are my local services healthy in sandbox?"
+           and light up entirely red.
+
+           This pinned-to-local select is what header.js reads. Deployed-env
+           health is not shown here because it is not observable from a laptop:
+           those checks target *.internal.<env>.example.dev (private, VPN-only) and
+           `aws rds describe-db-instances` (needs credentials), so off-VPN every
+           one fails and the row is a wall of red that means nothing. The
+           deployed-env signal this page actually needs is the Status column,
+           which compares main vs deployed SHA over the GitHub API and needs no
+           network path to the services. -->
+      <select
+        id="env-sel"
+        style="display: none"
+        aria-hidden="true"
+        tabindex="-1"
+      >
+        <option value="local" selected>local</option>
+      </select>
+      <div class="h-spacer"></div>
+      <nav>
+        <a href="/">Local Dev</a>
+        <a href="/services">Services</a>
+        <a href="/environments">Environments</a>
+        <a href="/release" class="active">Releases</a>
+        <a href="/logs"
+          >Logs
+          <span
+            id="log-badge"
+            style="
+              background: var(--yellow);
+              color: #0d1117;
+              font-size: 10px;
+              font-weight: 700;
+              padding: 1px 5px;
+              border-radius: 8px;
+              line-height: 1.4;
+              display: none;
+            "
+          ></span
+        ></a>
+        <a href="/tests">Tests</a>
+      </nav>
+    </header>
+
+    <div class="controls">
+      <span class="env-label">env:</span>
+      <select id="rel-env" title="Environment"></select>
+      <button class="btn" id="refresh-btn" title="Re-check deployed state">
+        ⟳ Refresh
+      </button>
+      <span id="status-text">idle</span>
+      <div class="h-spacer" style="flex: 1"></div>
+      <button class="btn" id="waves-btn" title="Edit wave assignment">
+        Waves…
+      </button>
+      <button class="btn primary" id="deploy-all-btn">Deploy all →</button>
+      <span
+        id="read-only-tag"
+        title="Deploys are off. Set release.deploy: true in __DEN_CONFIG_FILE__ to enable them."
+        >read-only</span
+      >
+    </div>
+
+    <main>
+      <div class="table-pane">
+        <table id="rel-table">
+          <thead>
+            <tr id="rel-head"></tr>
+          </thead>
+          <tbody id="rel-body">
+            <tr>
+              <td class="loading-note" colspan="8">
+                Loading deployed state<span class="loading-dots"></span>
+                <span class="sub"
+                  >Checking every repo against GitHub — this can take a
+                  minute.</span
+                >
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pane-bar" id="output-bar" style="display: none">
+        <span id="output-title">Deploy output</span>
+        <span>
+          <button onclick="window.__rel.clearOutput()">Clear</button>
+          <button
+            onclick="window.__rel.closeDeployLog()"
+            title="Close the deploy log"
+          >
+            ✕ Close
+          </button>
+        </span>
+      </div>
+      <!-- Only shown when more than one deploy session exists; switches which
+           one the single log pane below is attached to. -->
+      <div id="session-chips" class="session-chips" style="display: none"></div>
+      <div class="output-pane hidden" id="output-pane">
+        <pre id="output"></pre>
+      </div>
+    </main>
+
+    <!-- Generic modal -->
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-hdr">
+          <h3 id="modal-title">…</h3>
+          <button class="modal-close" id="modal-x" title="Close">×</button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-ftr" id="modal-ftr"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import {
+        applyDenConfig,
+        initChangelog,
+        initLogBadge,
+        initHealth,
+        refreshHealth,
+      } from "/header.js";
+
+      // The header's dots report LOCAL service health on every page, this one
+      // included; #env-sel is pinned to "local" in the markup above. Changing
+      // the deploy target must NOT re-point them — that was the bug where
+      // selecting sandbox made the header ask /api/health?env=sandbox and show
+      // every system red while docker was perfectly healthy.
+      const HEADER_HEALTH_ENV = "local";
+
+      const LS_ENV = "__DEN_CLI__-release-env";
+      // Remembers the active/last deploy session so its log survives navigation.
+      const LS_DEPLOY = "__DEN_CLI__-release-deploy";
+      const COLS = [
+        { key: "repo", label: "Repo" },
+        { key: "deployedAt", label: "Deployed At" },
+        { key: "deployer", label: "Deployer" },
+        { key: "main", label: "Source" },
+        { key: "deployed", label: "Deployed" },
+        { key: "branch", label: "Branch" },
+        { key: "status", label: "Status" },
+        { key: "deploy", label: "Deploy", noSort: true },
+      ];
+      const ST_RANK = {
+        "up-to-date": 0,
+        ahead: 1,
+        "off-main": 2,
+        behind: 3,
+        "no-deploy": 4,
+        conflict: 5,
+        error: 6,
+      };
+      const ST_CLASS = {
+        "up-to-date": "st-up",
+        ahead: "st-warn",
+        "off-main": "st-warn",
+        behind: "st-bad",
+        "no-deploy": "st-none",
+        conflict: "st-bad",
+        error: "st-bad",
+      };
+
+      const state = {
+        config: null,
+        env: null,
+        rows: [],
+        sort: { key: "status", dir: "desc" }, // worst first by default
+        deploying: false, // is the ATTACHED session still running?
+        deploySession: null, // id of the server-side deploy session we're attached to
+        // Deploys run concurrently server-side; only one log is shown at a
+        // time. `sessions` is every restorable session (newest first) so the
+        // chip bar can switch between them, and `deployingRepos` is the set
+        // with a live deploy — only those repos' buttons are disabled.
+        // null | "initial" | "refresh" — a status fetch is in flight, so the
+        // table shows a loading row rather than the "no repos" empty state.
+        loading: null,
+        sessions: [],
+        deployingRepos: new Set(),
+        // Repos with a CD run in flight that WE didn't start — another
+        // engineer's dispatch, a push to main, a re-run from the Actions tab.
+        // Kept separate from deployingRepos so the two sources never fight.
+        externalRuns: new Set(),
+        runs: new Map(), // repo -> { status, conclusion, url, createdAt, external }
+      };
+
+      /** A repo is un-deployable while any CD run is in flight, ours or not. */
+      const isRepoBusy = (repo) =>
+        state.deployingRepos.has(repo) || state.externalRuns.has(repo);
+
+      let es = null;
+      window.addEventListener("pagehide", () => {
+        try {
+          es?.close();
+        } catch {}
+        es = null;
+      });
+
+      const $ = (id) => document.getElementById(id);
+      const esc = (s) =>
+        String(s ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+
+      // ── Init ──────────────────────────────────────────────────────────────────
+      async function init() {
+        try {
+          state.config = await fetch("/api/release/config").then((r) =>
+            r.json(),
+          );
+        } catch {
+          state.config = {
+            environments: ["dev", "sandbox", "staging", "prod"],
+            repos: [],
+          };
+        }
+        document.body.classList.toggle(
+          "read-only",
+          state.config.deploy !== true,
+        );
+
+        // Read-only unless __DEN_CONFIG_FILE__ sets release.deploy: true. The page
+        // then only checks what is deployed; every deploy control is hidden.
+        state.canDeploy = state.config.deploy === true;
+        if (!state.canDeploy) {
+          $("deploy-all-btn").hidden = true;
+          $("waves-btn").hidden = true;
+          document.body.classList.add("read-only");
+          COLS.find((c) => c.key === "deploy").label = "Deploy run";
+        }
+
+        const envSel = $("rel-env");
+        envSel.innerHTML = state.config.environments
+          .map((e) => `<option value="${esc(e)}">${esc(e)}</option>`)
+          .join("");
+        const saved = localStorage.getItem(LS_ENV);
+        state.env =
+          saved && state.config.environments.includes(saved)
+            ? saved
+            : state.config.environments.includes("sandbox")
+              ? "sandbox"
+              : state.config.environments[0];
+        envSel.value = state.env;
+
+        envSel.addEventListener("change", () => {
+          state.env = envSel.value;
+          localStorage.setItem(LS_ENV, state.env);
+          state.runs.clear();
+          // Local health is unaffected by the deploy target; re-ping the same
+          // env so the dots stay live without following the selector.
+          refreshHealth(HEADER_HEALTH_ENV);
+          loadStatus();
+        });
+        $("refresh-btn").addEventListener("click", () => loadStatus(true));
+        $("deploy-all-btn").addEventListener("click", openDeployAllModal);
+        $("waves-btn").addEventListener("click", openWaveEditor);
+        $("modal-x").addEventListener("click", closeModal);
+        $("overlay").addEventListener("click", (e) => {
+          if (e.target === $("overlay")) closeModal();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") closeModal();
+        });
+
+        renderHead();
+        await Promise.all([applyDenConfig(), initChangelog()]);
+        initLogBadge();
+        initHealth();
+        loadStatus();
+        restoreDeploy(); // reattach to an in-flight/last deploy log if any
+        startRunsPoll(); // keep "is this system deploying" fresh
+      }
+
+      // ── Load status ─────────────────────────────────────────────────────────────
+      async function loadStatus(refresh = false) {
+        state.loading = refresh ? "refresh" : "initial";
+        setStatus(refresh ? "refreshing…" : "checking deployed state…");
+        renderTable(); // shows the loading row; see renderTable
+        try {
+          const data = await fetch(
+            `/api/release/status?env=${encodeURIComponent(state.env)}&refresh=${refresh ? 1 : 0}`,
+          ).then((r) => r.json());
+          state.rows = data.rows || [];
+          setStatus(
+            data.error
+              ? `error: ${data.error}`
+              : `${state.rows.length} repo(s) · updated ${fmtClock(data.fetchedAt)}`,
+          );
+        } catch (e) {
+          state.rows = [];
+          setStatus("failed to load status");
+        } finally {
+          // Clear before the final render, or the table would stay on the
+          // loading row forever if the fetch threw.
+          state.loading = null;
+        }
+        renderTable();
+      }
+
+      // ── Rendering ───────────────────────────────────────────────────────────────
+      function renderHead() {
+        $("rel-head").innerHTML = COLS.map((c) => {
+          if (c.noSort)
+            return `<th class="no-sort${c.key === "deploy" ? " deploy-cell" : ""}">${c.label}</th>`;
+          const active = state.sort.key === c.key;
+          const arrow = active
+            ? `<span class="arrow">${state.sort.dir === "asc" ? "▲" : "▼"}</span>`
+            : "";
+          return `<th data-key="${c.key}">${c.label}${arrow}</th>`;
+        }).join("");
+        $("rel-head")
+          .querySelectorAll("th[data-key]")
+          .forEach((th) => {
+            th.addEventListener("click", () => toggleSort(th.dataset.key));
+          });
+      }
+
+      function toggleSort(key) {
+        if (state.sort.key === key)
+          state.sort.dir = state.sort.dir === "asc" ? "desc" : "asc";
+        else state.sort = { key, dir: key === "repo" ? "asc" : "desc" };
+        renderHead();
+        renderTable();
+      }
+
+      function sortVal(row, key) {
+        switch (key) {
+          case "repo":
+            return row.repo;
+          case "deployedAt":
+            return row.deployedAt ? Date.parse(row.deployedAt) : -Infinity;
+          case "deployer":
+            return (row.deployer || "").toLowerCase();
+          case "main":
+            return row.mainShort || "";
+          case "deployed":
+            return row.deployedShort || "";
+          case "branch":
+            return row.branch || "";
+          case "status":
+            return ST_RANK[row.status?.kind] ?? 99;
+          default:
+            return 0;
+        }
+      }
+
+      /**
+       * Placeholder rows shown while an env is being verified.
+       *
+       * `verifyEnv` fans out per repo (branch + deployments + a compare per
+       * deployment scanned), so a cold check regularly runs 30-60s. A single
+       * static line for that long reads as a hung page, so render the SHAPE of
+       * the table — one shimmering row per repo we already know about — plus
+       * copy that sets the expectation.
+       */
+      function loadingRowsHtml() {
+        // Prefer the real repo count so the skeleton matches what's coming;
+        // fall back to a sensible block on the very first load.
+        const n = Math.min(Math.max(state.rows.length || 8, 3), 8);
+        const verb = state.loading === "refresh" ? "Re-checking" : "Checking";
+        const widths = ["55%", "70%", "45%", "60%", "60%", "50%", "40%", "35%"];
+        const skelRows = Array.from(
+          { length: n },
+          (_, i) =>
+            `<tr class="skel-row">${widths
+              .map(
+                (w) =>
+                  `<td><span class="skel" style="width:${w};opacity:${(1 - i * 0.07).toFixed(2)}"></span></td>`,
+              )
+              .join("")}</tr>`,
+        ).join("");
+        return (
+          `<tr><td class="loading-note" colspan="8">` +
+          `${verb} <strong>${esc(state.env)}</strong><span class="loading-dots"></span>` +
+          `<span class="sub">Comparing every repo against GitHub — this may take a minute.</span>` +
+          `</td></tr>${skelRows}`
+        );
+      }
+
+      function renderTable() {
+        // Loading wins over the empty state. loadStatus() awaits a slow verify,
+        // and anything that re-renders in that window (the CD-run poll, a deploy
+        // event) would otherwise replace "Re-checking…" with "No repos
+        // configured" — which reads as a broken config rather than a pending
+        // fetch. Checked here so every caller gets it, not just loadStatus.
+        if (state.loading) {
+          $("rel-body").innerHTML = loadingRowsHtml();
+          return;
+        }
+        if (!state.rows.length) {
+          $("rel-body").innerHTML =
+            `<tr><td class="empty-state" colspan="8">No repos to check. Give a repo's <code>__DEN_MANIFEST_YML__</code> a <code>release:</code> block saying where each environment's deployed commit is read.</td></tr>`;
+          return;
+        }
+        const rows = [...state.rows].sort((a, b) => {
+          const av = sortVal(a, state.sort.key),
+            bv = sortVal(b, state.sort.key);
+          const cmp = av < bv ? -1 : av > bv ? 1 : a.repo < b.repo ? -1 : 1;
+          return state.sort.dir === "asc" ? cmp : -cmp;
+        });
+        $("rel-body").innerHTML = rows.map(rowHtml).join("");
+        $("rel-body")
+          .querySelectorAll(".dep-btn")
+          .forEach((btn) => {
+            btn.addEventListener("click", () =>
+              openDeployModal(btn.dataset.repo),
+            );
+          });
+      }
+
+      function rowHtml(r) {
+        const stClass = ST_CLASS[r.status?.kind] || "st-none";
+        const note =
+          (r.status?.warn
+            ? `<span class="st-note">${esc(r.status.warn)}</span>`
+            : "") +
+          (r.source ? `<span class="st-note">via ${esc(r.source)}</span>` : "");
+        const run = state.runs.get(r.repo);
+        const deployCell = run ? runPillHtml(run) : "";
+        const btnDisabled = isRepoBusy(r.repo) ? "disabled" : "";
+        const srcTag = `<span class="branch" title="branch this environment ships from">${esc(r.sourceBranch || "main")}</span> `;
+        const mainCell = r.mainShort
+          ? r.deployedShort && r.deployedShort !== r.mainShort
+            ? `${srcTag}<span class="sha">${esc(r.mainShort)}</span>`
+            : `${srcTag}<span class="sha" style="color:var(--green)">${esc(r.mainShort)}</span>`
+          : '<span class="sha">—</span>';
+        // The GitHub Environment checked, when it isn't the env's own name
+        // (mapped CD environments, one row per tenant cell).
+        const envTag =
+          r.environment && r.environment !== state.env
+            ? `<span class="sha" title="GitHub Environment" style="display:block">${esc(r.environment)}</span>`
+            : "";
+        const dep = r.deployer;
+        const depIsBot =
+          !!dep && (dep.endsWith("[bot]") || dep === "github-actions");
+        const deployerCell = !dep
+          ? '<span class="sha">—</span>'
+          : depIsBot
+            ? `<span class="deployer bot" title="automated">${esc(dep)}</span>`
+            : `<a class="deployer" href="https://github.com/${encodeURIComponent(dep)}" target="_blank" rel="noopener" title="View ${esc(dep)} on GitHub">@${esc(dep)}</a>`;
+        return `<tr>
+        <td class="repo-cell">${
+          r.gh && r.workflow
+            ? `<a class="repo-link" href="https://github.com/${esc(r.gh)}/actions/workflows/${encodeURIComponent(r.workflow)}" target="_blank" rel="noopener" title="Open ${esc(r.workflow)} for ${esc(r.gh)} on GitHub">${esc(r.repo)}</a>`
+            : esc(r.repo)
+        }${state.canDeploy ? `<span class="wave-tag" title="wave">w${r.wave}</span>` : ""}${envTag}</td>
+        <td class="when">${whenHtml(r.deployedAt, !!r.deployedSha)}</td>
+        <td>${deployerCell}</td>
+        <td>${mainCell}</td>
+        <td><span class="sha">${esc(r.deployedShort || "—")}</span></td>
+        <td>${r.branch ? `<span class="branch" title="${esc(r.branch)}">${esc(r.branch)}</span>` : '<span class="sha">—</span>'}</td>
+        <td><span class="st ${stClass}">${esc(r.status?.text || "—")}</span>${note}</td>
+        <td class="deploy-cell">
+          ${deployCell}
+          ${state.canDeploy ? `<button class="dep-btn" data-repo="${esc(r.repo)}" ${btnDisabled}>Deploy →</button>` : ""}
+        </td>
+      </tr>`;
+      }
+
+      function runPillHtml(run) {
+        const s = run.status,
+          c = run.conclusion;
+        let cls = "busy",
+          label = s;
+        if (s === "completed") {
+          if (c === "success") {
+            cls = "ok";
+            label = "✓ success";
+          } else {
+            cls = "err";
+            label = `✗ ${c || "failed"}`;
+          }
+        } else if (s === "skipped") {
+          cls = "";
+          label = "skipped";
+        } else if (s === "dispatching") {
+          cls = "busy";
+          label = "dispatching…";
+        } else if (s === "in_progress" || s === "queued") {
+          cls = "busy";
+          // Name the environment when we know it. Without this, a run targeting
+          // another env reads as "this row is deploying" while its Deploy button
+          // stays enabled — which looks like a bug rather than the point.
+          label =
+            (s === "queued" ? "queued" : "running") +
+            (run.envHint ? ` → ${run.envHint}` : "");
+        } else {
+          cls = "busy";
+          label = s;
+        }
+        const inner = `<span class="dot"></span>${esc(label)}`;
+        return run.url
+          ? `<a class="run-pill ${cls}" href="${esc(run.url)}" target="_blank" rel="noopener" style="margin-right:6px">${inner}</a>`
+          : `<span class="run-pill ${cls}" style="margin-right:6px">${inner}</span>`;
+      }
+
+      function whenHtml(iso, known) {
+        // A commit read from a version endpoint has no date: unknown, not never.
+        if (!iso)
+          return known
+            ? '<span class="sha" title="the service reports its commit, not when it shipped">—</span>'
+            : '<span class="sha">never</span>';
+        const d = new Date(iso);
+        const abs = d.toISOString().slice(0, 16).replace("T", " ");
+        return `<span class="rel" title="${esc(iso)}">${esc(relTime(d))}</span> <span class="abs">${esc(abs)}Z</span>`;
+      }
+
+      function relTime(d) {
+        const s = Math.floor((Date.now() - d.getTime()) / 1000);
+        if (s < 60) return "just now";
+        const m = Math.floor(s / 60);
+        if (m < 60) return `${m}m ago`;
+        const h = Math.floor(m / 60);
+        if (h < 24) return `${h}h ago`;
+        const days = Math.floor(h / 24);
+        if (days < 30) return `${days}d ago`;
+        return `${Math.floor(days / 30)}mo ago`;
+      }
+
+      function fmtClock(iso) {
+        try {
+          return new Date(iso).toLocaleTimeString();
+        } catch {
+          return "";
+        }
+      }
+      function setStatus(t) {
+        $("status-text").textContent = t;
+      }
+
+      // ── Deploy modals ───────────────────────────────────────────────────────────
+      let modalKeyHandler = null;
+
+      function openModal(title, bodyHtml, footerHtml) {
+        $("modal-title").textContent = title;
+        $("modal-body").innerHTML = bodyHtml;
+        $("modal-ftr").innerHTML = footerHtml;
+        $("overlay").classList.add("open");
+
+        // Enter submits the primary action. Typing the confirmation word and
+        // pressing Enter is the natural flow, and doing nothing reads as the
+        // modal being stuck. Bound on the overlay so it also covers inputs
+        // rendered later (the prod confirm box appears after branch load).
+        modalKeyHandler = (e) => {
+          if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+          // A focused button or textarea handles Enter itself — don't
+          // double-fire, and don't hijack multi-line input.
+          const el = e.target;
+          if (
+            el instanceof HTMLButtonElement ||
+            el instanceof HTMLTextAreaElement
+          )
+            return;
+          const primary = $("modal-ftr").querySelector(
+            ".btn.primary:not([disabled])",
+          );
+          if (!primary) return; // still incomplete — leave the modal open
+          e.preventDefault();
+          primary.click();
+        };
+        $("overlay").addEventListener("keydown", modalKeyHandler);
+      }
+      function closeModal() {
+        if (modalKeyHandler) {
+          $("overlay").removeEventListener("keydown", modalKeyHandler);
+          modalKeyHandler = null;
+        }
+        $("overlay").classList.remove("open");
+      }
+
+      async function openDeployModal(repo) {
+        const isProd = state.env === "prod";
+        openModal(
+          `Deploy ${repo} → ${state.env}`,
+          `<label>Branch / ref</label>
+         <select id="dep-branch"><option value="main">main</option></select>
+         <div id="dep-hotfix"></div>
+         <div id="dep-confirm-wrap"></div>
+         <div id="dep-err" class="err-text"></div>`,
+          `<button class="btn" id="dep-cancel">Cancel</button>
+         <button class="btn primary" id="dep-go" disabled>Deploy</button>`,
+        );
+
+        const branchSel = $("dep-branch");
+        // Load branches lazily
+        fetch(`/api/release/branches?repo=${encodeURIComponent(repo)}`)
+          .then((r) => r.json())
+          .then((branches) => {
+            if (Array.isArray(branches) && branches.length) {
+              branchSel.innerHTML = branches
+                .map((b) => `<option value="${esc(b)}">${esc(b)}</option>`)
+                .join("");
+              branchSel.value = branches.includes("main")
+                ? "main"
+                : branches[0];
+              updateDeployModal(repo, isProd);
+            }
+          })
+          .catch(() => {});
+
+        branchSel.addEventListener("change", () =>
+          updateDeployModal(repo, isProd),
+        );
+        $("dep-cancel").addEventListener("click", closeModal);
+        updateDeployModal(repo, isProd);
+      }
+
+      function updateDeployModal(repo, isProd) {
+        const branch = $("dep-branch").value;
+        const isHotfix = isProd && branch !== "main";
+        const go = $("dep-go");
+        const row = state.rows.find((r) => r.repo === repo);
+
+        // Hotfix banner
+        let hot = "";
+        if (isHotfix) {
+          const drift =
+            row?.status?.kind === "off-main"
+              ? ` (deployed is ${esc(row.status.text)})`
+              : "";
+          hot = `<div class="banner hotfix">⚠ <b>HOTFIX</b>: deploying non-main branch <code>${esc(branch)}</code> to <b>PRODUCTION</b>${drift}. This bypasses the main-only prod policy — proceed only for an urgent fix.</div>`;
+        }
+        $("dep-hotfix").innerHTML = hot;
+
+        // Confirmation input(s)
+        let confirmHtml = "";
+        if (isProd) {
+          confirmHtml += `<div class="banner prod">Producing a <b>production</b> deploy.</div>`;
+          confirmHtml += `<label>Type <code>prod</code> to confirm</label><input type="text" id="dep-confirm" autocomplete="off" placeholder="prod">`;
+          if (isHotfix)
+            confirmHtml += `<label>Type the branch name <code>${esc(branch)}</code> to confirm the hotfix</label><input type="text" id="dep-confirm-branch" autocomplete="off" placeholder="${esc(branch)}">`;
+        }
+        $("dep-confirm-wrap").innerHTML = confirmHtml;
+
+        const validate = () => {
+          let ok = true;
+          if (isProd) {
+            ok = $("dep-confirm")?.value.trim() === "prod";
+            if (isHotfix)
+              ok = ok && $("dep-confirm-branch")?.value.trim() === branch;
+          }
+          // Only THIS repo being mid-deploy blocks it; other systems deploying
+          // concurrently are irrelevant.
+          go.disabled = !ok || isRepoBusy(repo);
+        };
+        $("dep-confirm")?.addEventListener("input", validate);
+        $("dep-confirm-branch")?.addEventListener("input", validate);
+        go.textContent = isHotfix ? "Deploy hotfix →" : "Deploy →";
+        go.className = "btn primary" + (isHotfix ? " danger" : "");
+        go.onclick = () => {
+          closeModal();
+          startDeploy({
+            mode: "single",
+            repo,
+            ref: branch,
+            confirm: isProd ? "prod" : "",
+          });
+        };
+        validate();
+      }
+
+      function openDeployAllModal() {
+        const cfg = state.config;
+        const enabled = (cfg.repos || []).filter((r) => r.enabled !== false);
+        const waves = [...new Set(enabled.map((r) => r.wave))].sort(
+          (a, b) => a - b,
+        );
+        const isProd = state.env === "prod";
+
+        const planHtml = waves
+          .map((w) => {
+            const repos = enabled.filter((r) => r.wave === w);
+            return (
+              `<div class="plan-wave"><h4>Wave ${w} · ${repos.length} repo(s)</h4>` +
+              repos
+                .map((r) => {
+                  const ref = r.ref || "main";
+                  const off =
+                    ref !== "main"
+                      ? ` <span class="off">@${esc(ref)}</span>`
+                      : "";
+                  return `<div class="plan-repo">${esc(r.name)} <span class="wf" style="color:var(--muted)">${esc(r.workflow)}</span>${off}</div>`;
+                })
+                .join("") +
+              `</div>`
+            );
+          })
+          .join("");
+
+        const nonMain = enabled.filter((r) => (r.ref || "main") !== "main");
+        let policy = "";
+        if (isProd && nonMain.length) {
+          policy = `<div class="banner prod">✗ Deploy-all to <b>prod</b> is <b>main-only</b>. These are configured off-main: ${nonMain.map((r) => `<code>${esc(r.name)}@${esc(r.ref)}</code>`).join(", ")}. Fix the config or use a per-repo <b>Hotfix</b>.</div>`;
+        } else if (isProd) {
+          policy = `<div class="banner prod">Deploying <b>main</b> of ${enabled.length} repo(s) to <b>PRODUCTION</b> across ${waves.length} wave(s). Each wave must succeed before the next.</div>
+                  <label>Type <code>prod</code> to confirm</label><input type="text" id="all-confirm" autocomplete="off" placeholder="prod">`;
+        }
+
+        const blocked = isProd && nonMain.length > 0;
+        openModal(
+          `Deploy all → ${state.env}`,
+          `${policy}<div style="margin-top:6px">${planHtml || '<div class="empty-state">No repos enabled.</div>'}</div>
+         <div class="hint">Backends (lower waves) deploy first; the next wave only starts once the previous concludes success (20s stagger between dispatches).</div>`,
+          `<button class="btn" id="all-cancel">Cancel</button>
+         <button class="btn primary" id="all-go" ${blocked ? "disabled" : ""}>Deploy all →</button>`,
+        );
+
+        $("all-cancel").addEventListener("click", closeModal);
+        const go = $("all-go");
+        const validate = () => {
+          // "Deploy all" overlaps anything already in flight, so any live
+          // deploy blocks it (the server would 409 on the overlap anyway).
+          go.disabled =
+            blocked ||
+            (isProd && $("all-confirm")?.value.trim() !== "prod") ||
+            state.deployingRepos.size > 0;
+        };
+        $("all-confirm")?.addEventListener("input", validate);
+        go.onclick = () => {
+          closeModal();
+          startDeploy({ mode: "all", confirm: isProd ? "prod" : "" });
+        };
+        validate();
+      }
+
+      // ── Wave editor ─────────────────────────────────────────────────────────────
+      function openWaveEditor() {
+        const repos = state.config.repos || [];
+        const rowsHtml = repos
+          .map(
+            (r, i) => `
+        <div class="wave-row" data-i="${i}">
+          <span class="rname">${esc(r.name)}</span>
+          <input type="number" min="0" max="20" value="${r.wave}" data-field="wave">
+          <span class="wf">${esc(r.workflow)}</span>
+          <label style="display:flex;align-items:center;gap:5px;margin:0;color:var(--text)"><input type="checkbox" data-field="enabled" ${r.enabled === false ? "" : "checked"}> on</label>
+        </div>`,
+          )
+          .join("");
+        openModal(
+          "Wave assignment",
+          `<div class="wave-row head"><span>Repo</span><span>Wave</span><span>Workflow</span><span>Enabled</span></div>
+         ${rowsHtml}
+         <div id="wave-err" class="err-text"></div>
+         <div class="hint">Saved to your personal <code>config/local/user.yml</code> (gitignored) — the committed team default in <code>__DEN_CONFIG_FILE__</code> is unchanged. Lower wave numbers deploy first.</div>`,
+          `<button class="btn" id="wave-cancel">Cancel</button>
+         <button class="btn primary" id="wave-save">Save (personal)</button>`,
+        );
+        $("wave-cancel").addEventListener("click", closeModal);
+        $("wave-save").addEventListener("click", saveWaves);
+      }
+
+      async function saveWaves() {
+        const repos = [];
+        document.querySelectorAll(".wave-row[data-i]").forEach((el) => {
+          const i = Number(el.dataset.i);
+          const base = state.config.repos[i];
+          const wave = Number(el.querySelector("input[data-field=wave]").value);
+          const enabled = el.querySelector("input[data-field=enabled]").checked;
+          repos.push({
+            name: base.name,
+            workflow: base.workflow,
+            wave,
+            enabled,
+            ...(base.ref ? { ref: base.ref } : {}),
+          });
+        });
+        try {
+          const updated = await fetch("/api/release/config", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ repos }),
+          }).then((r) => {
+            if (!r.ok) throw new Error("save failed");
+            return r.json();
+          });
+          state.config = updated;
+          closeModal();
+          renderTable();
+        } catch (e) {
+          $("wave-err").textContent = "Save failed: " + e.message;
+        }
+      }
+
+      // ── Deploy stream (SSE) ─────────────────────────────────────────────────────
+      // Kick off a deploy: POST creates a server-side session (which runs the
+      // deploy decoupled from this page), then we attach to stream its log. The
+      // session id is remembered so the log survives navigation / reload.
+      async function startDeploy(params) {
+        showOutput(true);
+        clearOutput();
+        const label =
+          params.mode === "all"
+            ? `all → ${state.env}`
+            : `${params.repo} → ${state.env}`;
+        $("output-title").textContent = `Starting ${label}…`;
+        appendLine(`▶ requesting deploy ${label}`, "cmd");
+        setStatus(`starting ${label}…`);
+
+        let session;
+        try {
+          const res = await fetch("/api/release/deploy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              env: state.env,
+              mode: params.mode,
+              repo: params.repo,
+              ref: params.ref,
+              confirm: params.confirm,
+            }),
+          });
+          if (!res.ok) {
+            // 409 carries a JSON body naming the repos already in flight.
+            let text = await res.text().catch(() => "deploy request failed");
+            try {
+              const j = JSON.parse(text);
+              if (j?.error) text = j.error;
+            } catch {
+              /* not JSON — show as-is */
+            }
+            appendLine(text, "err");
+            setStatus("deploy not started");
+            await refreshSessions();
+            return;
+          }
+          session = await res.json();
+        } catch (e) {
+          appendLine("Failed to start deploy: " + e.message, "err");
+          setStatus("deploy not started");
+          await refreshSessions();
+          return;
+        }
+
+        localStorage.setItem(
+          LS_DEPLOY,
+          JSON.stringify({ sessionId: session.id }),
+        );
+        // Show the new session immediately, then reconcile against the server.
+        state.sessions = [
+          session,
+          ...state.sessions.filter((s) => s.id !== session.id),
+        ];
+        attachDeploy(session.id, {
+          status: session.status,
+          label: session.label,
+        });
+        refreshSessions();
+      }
+
+      // Attach an SSE stream to a deploy session: the server replays the full
+      // log so far, then streams live events. Used both for a fresh deploy and
+      // to restore a running/finished deploy after navigating back to Release.
+      function attachDeploy(sessionId, { status, label }) {
+        if (es) {
+          es.close();
+          es = null;
+        }
+        const running = status !== "done";
+        // Drop the OUTGOING session's rows before switching; the replay below
+        // rebuilds the incoming one. Other sessions' repos keep their
+        // poll-derived status.
+        clearRunsForSession(state.deploySession);
+        state.deploySession = sessionId;
+        state.deploying = running;
+        clearRunsForSession(sessionId);
+        showOutput(true);
+        clearOutput(); // replay rebuilds the full log from scratch
+        $("output-title").textContent =
+          (running ? "Deploying " : "Deploy log — ") + (label || sessionId);
+        setStatus(running ? "attaching to deploy…" : "deploy finished");
+        // Button state comes from the full session list, not from whichever log
+        // happens to be on screen — switching logs must not free a busy repo.
+        recomputeDeployingRepos();
+        renderTable();
+
+        es = new EventSource(
+          `/api/release/deploy?session=${encodeURIComponent(sessionId)}`,
+        );
+        es.onmessage = (e) => {
+          let msg;
+          try {
+            msg = JSON.parse(e.data);
+          } catch {
+            return;
+          }
+          if (msg.type === "log")
+            appendLine(
+              msg.text,
+              msg.level === "error"
+                ? "err"
+                : msg.level === "warn"
+                  ? "warn"
+                  : "",
+            );
+          else if (msg.type === "phase")
+            appendLine(`\n— ${msg.name} —`, "phase");
+          else if (msg.type === "run") {
+            state.runs.set(msg.repo, {
+              status: msg.status,
+              conclusion: msg.conclusion,
+              url: msg.url,
+            });
+            updateRowRun(msg.repo);
+          } else if (msg.type === "done") {
+            appendLine(
+              `\n${msg.ok ? "✓" : "✗"} ${msg.summary}`,
+              msg.ok ? "ok" : "err",
+            );
+            finishDeploy();
+          }
+        };
+        es.onerror = () => {
+          // The stream dropped (navigation / reload / network). The deploy
+          // itself lives on server-side — do NOT mark it finished; just stop
+          // this attachment. Reopening Release reattaches and replays.
+          if (es) {
+            es.close();
+            es = null;
+          }
+          if (state.deploying)
+            setStatus("stream disconnected — reopen Releases to reattach");
+        };
+      }
+
+      // Deploy reached a terminal state. Keep the log pane + session open so it
+      // survives navigation; the user closes it explicitly via ✕ Close.
+      function finishDeploy() {
+        if (es) {
+          es.close();
+          es = null;
+        }
+        state.deploying = false;
+        // This session finished, but others may still be running — ask the
+        // server rather than assuming everything is now free.
+        refreshSessions();
+        setStatus("deploy finished — re-checking…");
+        const t = $("output-title");
+        if (t && t.textContent.startsWith("Deploying "))
+          t.textContent =
+            "Deploy log — " + t.textContent.slice("Deploying ".length);
+        renderTable();
+        setTimeout(() => loadStatus(true), 2500);
+      }
+
+      function readSavedDeploy() {
+        try {
+          return JSON.parse(localStorage.getItem(LS_DEPLOY) || "null");
+        } catch {
+          return null;
+        }
+      }
+
+      // On load, pull every live session (deploys outlive the page and run
+      // concurrently) and reattach to the one we were last watching. If that
+      // one is gone, fall back to the newest still-running deploy rather than
+      // showing nothing while a deploy is in flight.
+      async function restoreDeploy() {
+        await refreshSessions();
+        if (state.sessions.length === 0) {
+          localStorage.removeItem(LS_DEPLOY);
+          return;
+        }
+        const saved = readSavedDeploy();
+        const target =
+          state.sessions.find((s) => s.id === saved?.sessionId) ??
+          state.sessions.find((s) => s.status === "running");
+        if (!target) {
+          localStorage.removeItem(LS_DEPLOY);
+          return;
+        }
+        localStorage.setItem(
+          LS_DEPLOY,
+          JSON.stringify({ sessionId: target.id }),
+        );
+        attachDeploy(target.id, {
+          status: target.status,
+          label: target.label,
+        });
+      }
+
+      // User closed the log: dismiss ONLY the session on screen. Other deploys
+      // keep running, so if one is left, switch the pane to it instead of
+      // hiding the log entirely.
+      async function closeDeployLog() {
+        const closing = state.deploySession;
+        if (closing) {
+          fetch(`/api/release/deploy?session=${encodeURIComponent(closing)}`, {
+            method: "DELETE",
+          }).catch(() => {});
+          state.sessions = state.sessions.filter((s) => s.id !== closing);
+        }
+        if (es) {
+          es.close();
+          es = null;
+        }
+        state.deploying = false;
+        clearRunsForSession(state.deploySession);
+        state.deploySession = null;
+
+        const next =
+          state.sessions.find((s) => s.status === "running") ??
+          state.sessions[0];
+        if (next) {
+          localStorage.setItem(
+            LS_DEPLOY,
+            JSON.stringify({ sessionId: next.id }),
+          );
+          attachDeploy(next.id, { status: next.status, label: next.label });
+          return;
+        }
+
+        localStorage.removeItem(LS_DEPLOY);
+        recomputeDeployingRepos();
+        showOutput(false);
+        clearOutput();
+        setStatus("idle");
+        renderTable();
+      }
+
+      function updateRowRun(repo) {
+        // Re-render just the affected row's deploy cell if present.
+        const btn = $("rel-body").querySelector(
+          `.dep-btn[data-repo="${cssEsc(repo)}"]`,
+        );
+        const cell = btn?.closest(".deploy-cell");
+        if (!cell) {
+          renderTable();
+          return;
+        }
+        const run = state.runs.get(repo);
+        cell.innerHTML =
+          (run ? runPillHtml(run) : "") +
+          `<button class="dep-btn" data-repo="${esc(repo)}" ${isRepoBusy(repo) ? "disabled" : ""}>Deploy →</button>`;
+        cell
+          .querySelector(".dep-btn")
+          .addEventListener("click", (ev) =>
+            openDeployModal(ev.target.dataset.repo),
+          );
+      }
+
+      function cssEsc(s) {
+        return window.CSS && CSS.escape
+          ? CSS.escape(s)
+          : String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+      }
+
+      // Only a repo with a live deploy is blocked — a global lock stopped
+      // deploys that never collided. "Deploy all" is disabled while anything
+      // runs, since its plan would overlap whatever is already in flight (the
+      // server 409s on that). Refresh is never blocked.
+      function syncButtons() {
+        const anyRunning =
+          state.deployingRepos.size > 0 || state.externalRuns.size > 0;
+        const allBtn = $("deploy-all-btn");
+        if (allBtn) {
+          allBtn.disabled = anyRunning;
+          allBtn.title = anyRunning
+            ? "A CD run is in flight — wait for it to finish"
+            : "";
+        }
+        const refresh = $("refresh-btn");
+        if (refresh) refresh.disabled = false;
+        document.querySelectorAll(".dep-btn").forEach((b) => {
+          const repo = b.dataset.repo;
+          b.disabled = isRepoBusy(repo);
+          const ext = state.runs.get(repo);
+          b.title = state.deployingRepos.has(repo)
+            ? "Already deploying this system"
+            : state.externalRuns.has(repo)
+              ? ext?.envHint
+                ? `A CD run for ${repo} → ${ext.envHint} is already in flight`
+                : `A CD run for ${repo} is in flight; its target environment can't be determined, so redeploy is blocked`
+              : "";
+        });
+      }
+
+      /**
+       * Forget run state for one session's repos only.
+       *
+       * Clearing the whole map would also discard poll-derived status for repos
+       * in OTHER concurrent sessions — which nothing would rebuild, since the
+       * replay only covers the session being attached.
+       */
+      function clearRunsForSession(sessionId) {
+        const s = state.sessions.find((x) => x.id === sessionId);
+        for (const repo of s?.repos ?? []) state.runs.delete(repo);
+      }
+
+      /** Recompute which repos are mid-deploy from the session list. */
+      function recomputeDeployingRepos() {
+        const live = new Set();
+        for (const s of state.sessions) {
+          if (s.status !== "running") continue;
+          for (const r of s.repos || []) live.add(r);
+        }
+        state.deployingRepos = live;
+        syncButtons();
+        renderSessionChips();
+      }
+
+      // ── Live CD run poll ──────────────────────────────────────────────────────
+      // Deploys start in places this page can't see — another engineer, a push
+      // to main, a re-run from the Actions tab — so poll GitHub for in-flight CD
+      // runs rather than only knowing about deploys we started. Runs only while
+      // the tab is visible; a hidden tab polling GitHub burns rate limit for a
+      // table nobody is looking at.
+      const RUNS_POLL_MS = 15_000;
+      let runsTimer = null;
+      let lastRunsSig = "";
+
+      async function pollRuns() {
+        let runs = [];
+        try {
+          const j = await fetch("/api/release/runs").then((r) => r.json());
+          runs = j.runs || [];
+        } catch {
+          return; // transient — keep the last known state
+        }
+
+        const external = new Set();
+        // Carve out only the repos of the session whose SSE we are ATTACHED to.
+        //
+        // Deploys run concurrently server-side but only one log is attached at
+        // a time, so `deployingRepos` (every running session) is the wrong set
+        // to skip: repos in the other sessions get no `run` events — nothing is
+        // listening to them — AND were skipped here, so their Status cell
+        // stayed empty for the whole deploy. Deploying four systems showed one
+        // "running" and three blanks.
+        const attached = state.sessions.find(
+          (s) => s.id === state.deploySession,
+        );
+        const attachedRepos = new Set(attached?.repos ?? []);
+        for (const r of runs) {
+          // The attached session's SSE is finer-grained than this poll, so let
+          // it own those repos. Every other repo — including ones we started in
+          // another session — is this poll's job.
+          if (attachedRepos.has(r.repo)) continue;
+
+          if (r.running) {
+            // Block only when the run actually targets the env on screen.
+            // envHint is null when the run's title carries no environment (see
+            // CdRun.envHint) — unknown must stay conservative, since dispatching
+            // a second run into the same env would collide. A run we KNOW is
+            // for another env does not block: the workflows use
+            // `concurrency: <repo>-cd-<env>`, so prod and sandbox are separate
+            // groups that GitHub runs in parallel by design.
+            const hint = r.running.envHint;
+            const blocks = hint === null || hint === state.env;
+            if (blocks) external.add(r.repo);
+            state.runs.set(r.repo, {
+              status: r.running.status, // queued | in_progress
+              conclusion: null,
+              url: r.running.url,
+              createdAt: r.running.createdAt,
+              title: r.running.title,
+              envHint: hint,
+              otherEnv: !blocks,
+              external: true,
+            });
+          } else if (r.last) {
+            // The newest FINISHED run is the truth for a repo we're not
+            // deploying. This is what retires a stale ✗ pill: once a later run
+            // has succeeded, the older failure is simply older and gets
+            // replaced.
+            const prev = state.runs.get(r.repo);
+            if (!prev?.createdAt || prev.createdAt <= r.last.createdAt) {
+              state.runs.set(r.repo, {
+                status: "completed",
+                conclusion: r.last.conclusion,
+                url: r.last.url,
+                createdAt: r.last.createdAt,
+                title: r.last.title,
+                external: true,
+              });
+            }
+          }
+        }
+        state.externalRuns = external;
+
+        // Only touch the DOM when something actually changed — a 15s re-render
+        // would otherwise drop the row you're hovering.
+        const sig = JSON.stringify(
+          runs.map((r) => [
+            r.repo,
+            r.running?.id ?? "",
+            r.last?.id ?? "",
+            r.last?.conclusion ?? "",
+          ]),
+        );
+        syncButtons();
+        if (sig !== lastRunsSig) {
+          lastRunsSig = sig;
+          renderTable();
+        }
+      }
+
+      function startRunsPoll() {
+        stopRunsPoll();
+        void pollRuns();
+        runsTimer = setInterval(pollRuns, RUNS_POLL_MS);
+      }
+      function stopRunsPoll() {
+        if (runsTimer) clearInterval(runsTimer);
+        runsTimer = null;
+      }
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) stopRunsPoll();
+        else startRunsPoll(); // refresh immediately on return, then resume
+      });
+      window.addEventListener("pagehide", stopRunsPoll);
+
+      /** Pull the authoritative session list from the server. */
+      async function refreshSessions() {
+        try {
+          const list = await fetch("/api/release/deploy/active").then((r) =>
+            r.json(),
+          );
+          state.sessions = Array.isArray(list) ? list : [];
+        } catch {
+          /* server unreachable — keep what we have */
+        }
+        recomputeDeployingRepos();
+      }
+
+      // One log pane, N sessions: chips name each one and switch the pane.
+      function renderSessionChips() {
+        const bar = $("session-chips");
+        if (!bar) return;
+        if (state.sessions.length <= 1) {
+          bar.style.display = "none";
+          bar.innerHTML = "";
+          return;
+        }
+        bar.style.display = "";
+        bar.innerHTML = state.sessions
+          .map((s) => {
+            const cls = [
+              "session-chip",
+              s.id === state.deploySession ? "active" : "",
+              s.status === "running" ? "running" : s.ok ? "ok" : "fail",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            return `<button class="${cls}" data-session="${esc(s.id)}" title="${esc(s.label)}">${
+              s.status === "running" ? "● " : ""
+            }${esc(s.label)}</button>`;
+          })
+          .join("");
+        bar.querySelectorAll(".session-chip").forEach((c) =>
+          c.addEventListener("click", () => {
+            const s = state.sessions.find((x) => x.id === c.dataset.session);
+            if (s && s.id !== state.deploySession) {
+              attachDeploy(s.id, { status: s.status, label: s.label });
+            }
+          }),
+        );
+      }
+
+      // ── Output helpers ──────────────────────────────────────────────────────────
+      function showOutput(show) {
+        $("output-bar").style.display = show ? "" : "none";
+        $("output-pane").classList.toggle("hidden", !show);
+      }
+      function appendLine(text, cls) {
+        const out = $("output");
+        const span = document.createElement("span");
+        if (cls) span.className = cls;
+        span.textContent = text + "\n";
+        out.appendChild(span);
+        out.scrollTop = out.scrollHeight;
+      }
+      function clearOutput() {
+        $("output").innerHTML = "";
+      }
+
+      window.__rel = { clearOutput, closeDeployLog };
+
+      init();
+    </script>
+  </body>
+</html>

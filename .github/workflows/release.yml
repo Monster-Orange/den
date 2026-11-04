@@ -1,0 +1,181 @@
+# Releases @monster-orange/den (CONTRIBUTING › Releasing). npm's trusted publishing only: no token anywhere, in CI or out. npm
+# trusts this file by its name: never rename it.
+# - A push to main whose package.json version isn't on npm yet IS the release: the gates, the tarball and SHA256SUMS,
+#   the tag v<version> (made here, unless it already tags this commit or one before it), `npm publish` over OIDC with
+#   provenance, and a GitHub release with the tarball and SHA256SUMS. A version already on npm: nothing runs past the
+#   check. No human step, after the package's first publish (by hand, once: until then the check stops here too).
+# - By hand (workflow_dispatch): a dry run. The same gates and the same tarball, kept with SHA256SUMS as an artifact:
+#   the one-time first publish of a package (which trusted publishing can't do) is that tarball, from a maintainer's machine.
+# A prerelease version (0.1.0-dev.0) never publishes: main can carry work toward a
+# version without releasing it.
+# There is no tag trigger: a version is released from main, once (npm refuses to publish a version twice).
+# Only the npm tarball ships: no raw binaries.
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# one run at a time, in order: a run that starts after a release finds its version on npm and stops
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.14.0
+      - name: Is this version on npm yet?
+        id: check
+        env:
+          NPM_SCOPE: ${{ vars.NPM_SCOPE }}
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          name=$(node -p 'require("./package.json").name')
+          case "$name" in "$NPM_SCOPE"/*) ;; *) echo "::error::$name isn't under the repository variable NPM_SCOPE ($NPM_SCOPE)"; exit 1;; esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # on npm: it prints the version. Not on npm: nothing, or E404. Any other error (the registry down) fails the
+          # run rather than guess.
+          if found=$(npm view "$name@$version" version 2> npm-view.err); then
+            if [ "$found" = "$version" ]; then release=false; else release=true; fi
+          elif grep -q E404 npm-view.err; then
+            release=true
+          else
+            cat npm-view.err; exit 1
+          fi
+          # trusted publishing can't create a package: until a maintainer's first publish (README), nothing to do here
+          if [ "$release" = true ] && ! npm view "$name" name > /dev/null 2> npm-view.err; then
+            if grep -q E404 npm-view.err; then
+              echo "::warning::$name isn't on npm yet: its first publish is by hand (CONTRIBUTING › Releasing)"; release=false
+            else
+              cat npm-view.err; exit 1
+            fi
+          fi
+          case "$version" in *-*) echo "$version is a prerelease: not published"; release=false;; esac
+          if [ "$GITHUB_EVENT_NAME" != push ]; then release=false; fi
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "$name@$version: release=$release ($GITHUB_EVENT_NAME)"
+
+  pack:
+    needs: check
+    if: needs.check.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tarball: ${{ steps.pack.outputs.tarball }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.14.0
+          cache: npm
+      - run: npm ci
+      - name: The gates
+        run: |
+          npm run lint
+          npm run typecheck
+          npm test
+          node scripts/org-name-gate.mjs
+        env:
+          DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
+      - name: Every dependency from npm (no git or file dependency ships)
+        run: |
+          node -e '
+            const deps = require("./package.json").dependencies ?? {};
+            const bad = Object.entries(deps).filter(([, v]) => /^(github:|git[+:]|file:|https?:)/.test(v));
+            if (bad.length) { console.error("::error::not from npm: " + bad.map(([k, v]) => k + "@" + v).join(", ")); process.exit(1); }
+          '
+      - name: Pack, and the checksums
+        id: pack
+        run: |
+          mkdir -p release
+          tarball=$(npm pack --pack-destination release --json | node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0,"utf8"))[0].filename)')
+          (cd release && sha256sum "$tarball" > SHA256SUMS && cat SHA256SUMS)
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: release/
+          if-no-files-found: error
+
+  tag:
+    needs: [check, pack]
+    if: needs.check.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # the tag (a tag pushed with GITHUB_TOKEN starts no workflow)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the history to place a tag in
+          fetch-tags: true
+      - name: The tag v<version>
+        env:
+          TAG: v${{ needs.check.outputs.version }}
+        run: |
+          # A tag already on this commit or one before it (a re-run, or a tag pushed by hand): keep it. A tag on a
+          # commit that isn't this one's ancestor: stop. A tag is never moved.
+          if git rev-parse -q --verify "refs/tags/$TAG" > /dev/null; then
+            if git merge-base --is-ancestor "$TAG^{commit}" "$GITHUB_SHA"; then
+              echo "$TAG already tags $(git rev-parse --short "$TAG^{commit}"), an ancestor of $GITHUB_SHA: kept"
+            else
+              echo "::error::$TAG tags $(git rev-parse --short "$TAG^{commit}"), which isn't on main before this commit"; exit 1
+            fi
+          else
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+          fi
+
+  publish:
+    needs: [check, pack, tag]
+    runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # the OIDC token npm trusts, instead of any npm token
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.14.0
+          registry-url: https://registry.npmjs.org
+      - name: npm 11.21 (trusted publishing needs 11.5.1 or later)
+        run: npm install -g npm@11.21.0 && npm --version
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: release
+      - name: Check the tarball against its checksum
+        run: cd release && sha256sum -c SHA256SUMS
+      # "./": without it, npm reads `release/<file>` as a GitHub repository (owner/name) and tries git over ssh
+      - name: Publish it on npm
+        run: npm publish "./release/${{ needs.pack.outputs.tarball }}" --access public
+
+  github-release:
+    needs: [check, pack, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # the GitHub release
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: release
+      - name: The GitHub release, with the tarball and SHA256SUMS
+        run: gh release create "$TAG" "release/${{ needs.pack.outputs.tarball }}" release/SHA256SUMS --repo "$GITHUB_REPOSITORY" --title "@monster-orange/den $TAG" --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.check.outputs.version }}

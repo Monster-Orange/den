@@ -1,0 +1,16 @@
+{
+  "name": "prod",
+  "baseUrls": {
+    "web": "https://app.prod.example.com",
+    "api": "https://api.prod.example.com",
+    "services": {}
+  },
+  "auth": {
+    "provider": "none"
+  },
+  "timeouts": {
+    "api": 30000,
+    "pageLoad": 60000
+  },
+  "notes": "Example environment. Replace the URLs and auth with your own. Run read-only probes only."
+}

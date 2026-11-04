@@ -1,0 +1,25 @@
+{
+  "name": "local",
+  "baseUrls": {
+    "web": "http://localhost:3000",
+    "api": "http://localhost:3001",
+    "services": {}
+  },
+  "auth": {
+    "provider": "local-jwt",
+    "localJwt": {
+      "secretKey": "SECRET_KEY",
+      "ttlSeconds": 900,
+      "claims": {
+        "type": "access",
+        "role": "admin",
+        "roles": ["admin"]
+      }
+    }
+  },
+  "timeouts": {
+    "api": 30000,
+    "pageLoad": 60000
+  },
+  "notes": "Example local environment: local-jwt signs with the app's SECRET_KEY; pass the user's id as the username or set claims.sub."
+}

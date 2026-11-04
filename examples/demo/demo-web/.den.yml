@@ -1,0 +1,18 @@
+# demo-web: calls demo-api, so `den up demo-web` starts demo-api first and
+# links the two over a private network.
+version: 1
+name: demo-web
+application: shop       # the application this repo belongs to (den apps)
+compose:
+  files: [docker-compose.yml]
+  routes:
+    app: web:8080          # https://app.demo-web.<edge domain>
+  uses: [demo-api]
+  env:
+    DEMO_API_URL: "http://{demo-api.api}:8080/"
+services:
+  demo-web:
+    commands:
+      local:
+        setup: make setup
+        preflight: make test
