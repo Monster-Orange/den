@@ -119,6 +119,8 @@ export const MCP_USAGE = (cli: string): string =>
     `An MCP server over stdio for agents, a client of the running web server`,
     `(\`${cli} web up\`; default port: config web.port). Read tools always;`,
     "actions only as named in the org config's mcp.actions. See docs/distributions.md.",
+    "",
+    `Register it with your agents: ${cli} mcp clients, then ${cli} mcp connect <client> (or --all).`,
   ].join("\n");
 
 /** Run `<cli> mcp` until stdin closes. */

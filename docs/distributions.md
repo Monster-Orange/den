@@ -367,17 +367,45 @@ answers 404, the MCP server reads the web server's version from
 `web server is Den 0.1.0; stacks needs >= 0.2.0: run acme web restart`. Any
 other 404 is reported as it is.
 
-Register it with a client as a stdio server, for example:
+### Connecting your agents
 
-```json
-{
-  "mcpServers": {
-    "acme": { "command": "/path/to/acme/bin/acme", "args": ["mcp"] }
-  }
-}
+`<cli> mcp connect` registers the server with the agents you use, so nobody
+edits an MCP config by hand:
+
+```sh
+./bin/acme mcp clients                 # which agents are installed, which are connected
+./bin/acme mcp connect --all           # every installed agent, user scope
+./bin/acme mcp connect claude-code     # one (or several) by id
+./bin/acme mcp connect cursor --project ../shop   # a project's config instead
+./bin/acme mcp connect --all --dry-run # show what it would write or run
+./bin/acme mcp disconnect cursor
+./bin/acme mcp config                  # JSON for any other MCP client
 ```
 
-`--port <n>` points it at a web server on another port.
+| Client           | User scope                            | Project scope (`--project [dir]`) |
+| ---------------- | ------------------------------------- | --------------------------------- |
+| `claude-code`    | `claude mcp add --scope user`         | `<dir>/.mcp.json`                 |
+| `codex`          | `codex mcp add`                       | –                                 |
+| `cursor`         | `~/.cursor/mcp.json`                  | `<dir>/.cursor/mcp.json`          |
+| `vscode`         | `code --add-mcp`                      | `<dir>/.vscode/mcp.json`          |
+| `claude-desktop` | its `claude_desktop_config.json`      | –                                 |
+| `windsurf`       | `~/.codeium/windsurf/mcp_config.json` | –                                 |
+| `gemini`         | `~/.gemini/settings.json`             | `<dir>/.gemini/settings.json`     |
+
+The server is registered under the CLI's name (`acme`) as the distribution's
+`bin/<cli>` by absolute path, with `PATH` set to the directory of the `node`
+that ran `connect` plus the system dirs. GUI agents start without your login
+shell's PATH (so without nvm's node) and would otherwise fail to launch it.
+After upgrading or switching node, run `connect` again. For a JSON config,
+`connect` changes only its own entry, keeps the previous file as `.bak`, and
+refuses to rewrite a file it cannot parse. Connecting again replaces the entry.
+Restart the agent, or start a new session, to load it.
+
+Project-scope files hold absolute paths on your machine: commit them only if
+everyone's checkout is in the same place.
+
+`--port <n>` (on `mcp` or `mcp connect`) points it at a web server on another
+port.
 
 ### Config
 

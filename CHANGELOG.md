@@ -30,6 +30,16 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **`<cli> mcp connect`: register the MCP server with your agents.**
+  `mcp clients` lists the agents installed here (Claude Code, Codex, Cursor,
+  VS Code, Claude Desktop, Windsurf, Gemini CLI) and whether each is
+  connected. `mcp connect <client>...|--all` registers the distribution's
+  server at user scope through each client's own CLI or config file, and
+  `--project [dir]` writes a project's config instead. `--dry-run` shows the
+  change, `mcp disconnect` removes it, and `mcp config` prints JSON for any
+  other client. The registration pins `PATH` to the running node so GUI
+  agents can launch it. See "Connecting your agents" in
+  `docs/distributions.md`.
 - **Refused attempts are in the activity trail.** `/api/activity` entries may
   carry `outcome: "refused"` and a `reason`: a refused or unresolvable
   `/api/service/exec`, and any MCP action a guard refused before it reached

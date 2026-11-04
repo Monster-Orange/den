@@ -696,6 +696,17 @@ class DenCLI {
           break;
 
         case "mcp": {
+          // Setup subcommands: register the server with agents.
+          const { MCP_CONNECT_SUBCOMMANDS, runMcpConnect } =
+            await import("./mcp-connect.js");
+          if (
+            (MCP_CONNECT_SUBCOMMANDS as readonly string[]).includes(
+              args[1] ?? "",
+            )
+          ) {
+            process.exitCode = await runMcpConnect(args.slice(1));
+            break;
+          }
           // bin/den routes `mcp` to its own entry (stdout is the protocol);
           // this covers the CLI run directly from a checkout.
           await import("./mcp-stdout-guard.js");

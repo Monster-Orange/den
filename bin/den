@@ -41,8 +41,9 @@ if [ "${1:-}" = "create" ]; then
   built="dist/src/ui/cli/create-main.js"
 fi
 # `mcp` speaks the MCP protocol on stdout: its own entry point, so nothing
-# the full CLI prints can reach the protocol stream.
-if [ "${1:-}" = "mcp" ]; then
+# the full CLI prints can reach the protocol stream. Its setup subcommands
+# (connect, disconnect, clients, config) are ordinary CLI commands.
+if [ "${1:-}" = "mcp" ] && ! case "${2:-}" in connect|disconnect|clients|config) true ;; *) false ;; esac; then
   shift
   entry="src/ui/cli/mcp-main.ts"
   built="dist/src/ui/cli/mcp-main.js"
