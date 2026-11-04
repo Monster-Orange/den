@@ -6,8 +6,6 @@
  * stdout carries the protocol only: diagnostics go to stderr.
  */
 import { randomUUID } from "crypto";
-import * as fs from "fs";
-import * as path from "path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { agentAuditHeaders } from "../../shared/agent-actor.js";
@@ -16,22 +14,11 @@ import {
   type ResolvedMcpConfig,
 } from "../../shared/den-config.js";
 import { readWebPort } from "../../shared/edge/config.js";
-import { getEngineRoot } from "../../shared/paths.js";
+import { engineVersion } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { createDenApi, type DenApi } from "./api.js";
 import { callTool, toolsFor, type ToolContext } from "./tools.js";
-
-function engineVersion(): string {
-  try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(getEngineRoot(), "package.json"), "utf-8"),
-    ) as { version?: string };
-    return pkg.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}
 
 export interface DenMcpOptions {
   cfg: ResolvedMcpConfig;
@@ -51,7 +38,7 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
   const log = opts.log ?? ((l: string) => process.stderr.write(`${l}\n`));
   const tools = toolsFor(opts.cfg);
   const server = new McpServer(
-    { name: p.name, version: engineVersion() },
+    { name: p.name, version: engineVersion() ?? "0.0.0" },
     {
       instructions:
         `${p.title}: local services, workspaces, logs and tests for this org, ` +

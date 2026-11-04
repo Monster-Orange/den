@@ -273,6 +273,13 @@ set of guards. It never starts the web server; if it is not running, every
 tool answers with the command that starts it (`./bin/acme web up`). stdout
 carries only the protocol; diagnostics go to stderr.
 
+The web server keeps running the Den it started with until it is restarted,
+so after an upgrade it can be older than the MCP server. When a tool's route
+answers 404, the MCP server reads the web server's version from
+`/api/server-info` and, if it predates the route, says so:
+`web server is Den 0.1.0; stacks needs >= 0.2.0: run acme web restart`. Any
+other 404 is reported as it is.
+
 Register it with a client as a stdio server, for example:
 
 ```json
@@ -309,7 +316,7 @@ Read tools (always registered):
 
 | Tool                | Web API                                    | What                                                       |
 | ------------------- | ------------------------------------------ | ---------------------------------------------------------- |
-| `status`            | `/api/health`                              | Service health for the workspace                           |
+| `status`            | `/api/health`                              | Service health; `url` (HTTP check) or `check` (shell)      |
 | `services`          | `/api/services`                            | Services, their mode (managed or dev-managed) and commands |
 | `applications`      | `/api/applications`                        | Org > Application > Repo > Services                        |
 | `graph`             | `/api/graph`                               | The derived dependency graph and startup order             |

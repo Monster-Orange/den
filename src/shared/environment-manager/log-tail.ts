@@ -2,8 +2,9 @@
  * Live log tailing for a local service — the CLI-side counterpart of the web
  * /api/service/taillog SSE endpoint. Source resolution, in order:
  *   1. The service's manifest `logs.local` shell command (e.g. `docker logs -f`)
- *   2. Conventional container derivation: a running `opctl_<base>_<hash>`
- *      container → `docker logs -f` — real runtime logs with zero manifest config
+ *   2. The service's running container → `docker logs -f`: a compose stack's
+ *      `<stack>-<workspace>-<service>-1`, else an `opctl_<base>_<hash>` one —
+ *      real runtime logs with zero manifest config
  *   3. The den daemon startup log (~/.den/logs/<repo>/<subsystem>.log) —
  *      last resort, covers host-run processes with no container
  * A source whose command exits within the quick-exit window (container not
@@ -13,7 +14,7 @@
 import * as fs from "fs";
 import { DAEMON_QUICK_EXIT_MS, LIVE_TAIL_LINES } from "../constants.js";
 import { readManifest } from "../manifest/read-manifest.js";
-import { findConventionalContainer } from "./opctl.js";
+import { findServiceContainer } from "./service-container.js";
 import {
   getServiceLogPath,
   spawnStreaming,
@@ -85,7 +86,7 @@ export function tailSourceCandidates(
 export function resolveTailSources(resolved: ResolvedService): TailSource[] {
   const manifest = readManifest(resolved.repoPath);
   const logSource = manifest?.services?.[resolved.subsystem]?.logs?.local;
-  const container = findConventionalContainer(
+  const container = findServiceContainer(
     resolved.repoName,
     resolved.repoPath,
     resolved.subsystem,

@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as http from "http";
 import type { AddressInfo } from "net";
 import {
+  DenHttpError,
   DenWebDown,
   assertAllowedRequest,
   createDenApi,
@@ -35,6 +36,11 @@ beforeAll(async () => {
       res.write(`data: ${JSON.stringify({ type: "cmd", text: "$ run" })}\n\n`);
       res.write(`data: ${JSON.stringify({ type: "done", exitCode: 3 })}\n\n`);
       res.end();
+      return;
+    }
+    if (url.pathname === "/api/stacks") {
+      res.writeHead(404);
+      res.end("Not found");
       return;
     }
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -173,6 +179,25 @@ describe("createDenApi", () => {
     const err = await api.get("/api/health").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(DenWebDown);
     expect((err as Error).message).toMatch(/`acme web up`/);
+  });
+
+  it("an HTTP error is a DenHttpError with its status", async () => {
+    const api = createDenApi({ baseUrl: base, cli: "acme", headers });
+    const err = await api.get("/api/stacks").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DenHttpError);
+    expect(err).toMatchObject({
+      status: 404,
+      method: "GET",
+      path: "/api/stacks",
+      body: "Not found",
+      message: "GET /api/stacks → 404: Not found",
+    });
+  });
+
+  it("can read /api/server-info (the version check)", () => {
+    expect(() =>
+      assertAllowedRequest("GET", "/api/server-info", {}),
+    ).not.toThrow();
   });
 
   it("refuses a disallowed route before any request is made", async () => {

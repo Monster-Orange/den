@@ -11,6 +11,7 @@ jest.mock("fs");
 jest.mock("child_process");
 jest.mock("../../../src/shared/environment-manager/opctl.js", () => ({
   findConventionalContainer: jest.fn(),
+  runningDockerNames: jest.fn(),
 }));
 jest.mock("../../../src/shared/environment-manager/service-runner.js", () => ({
   resolveService: jest.fn(),
@@ -25,10 +26,17 @@ jest.mock("../../../src/shared/process/spawn-streaming.js", () => ({
 jest.mock("../../../src/shared/manifest/read-manifest.js", () => ({
   readManifest: jest.fn(),
 }));
+// No focused workspace: stacks run under the default one (`main`).
+jest.mock("../../../src/shared/environment-manager/workspaces.js", () => ({
+  getFocusedWorkspaceName: () => null,
+}));
 
 import * as fs from "fs";
 import { spawnSync } from "child_process";
-import { findConventionalContainer } from "../../../src/shared/environment-manager/opctl.js";
+import {
+  findConventionalContainer,
+  runningDockerNames,
+} from "../../../src/shared/environment-manager/opctl.js";
 import {
   resolveService,
   hasRunningOpctlContainers,
@@ -46,6 +54,9 @@ import {
 
 const mockFind = findConventionalContainer as jest.MockedFunction<
   typeof findConventionalContainer
+>;
+const mockDockerNames = runningDockerNames as jest.MockedFunction<
+  typeof runningDockerNames
 >;
 const mockResolve = resolveService as jest.MockedFunction<
   typeof resolveService
@@ -126,6 +137,30 @@ describe("resolveHistorySource", () => {
     expect(r).toEqual({
       kind: "docker",
       container: "opctl_shop-postgres_abc123",
+    });
+  });
+
+  it("a compose-stack service resolves to its stack's container", () => {
+    mockResolve.mockReturnValue({
+      repoName: "webapp",
+      subsystem: "backend",
+      repoPath: "/repos/webapp",
+      mode: "dev-managed",
+    } as never);
+    mockFind.mockReturnValue(null);
+    mockManifest.mockReturnValue({
+      name: "webapp",
+      entrypoint: "webapp",
+      services: { webapp: {}, backend: {} },
+      compose: { routes: { app: "frontend:80" } },
+    } as never);
+    mockDockerNames.mockReturnValue([
+      "webapp-main-frontend-1",
+      "webapp-main-backend-1",
+    ]);
+    expect(resolveHistorySource("webapp", "backend", "local")).toEqual({
+      kind: "docker",
+      container: "webapp-main-backend-1",
     });
   });
 

@@ -8,6 +8,7 @@ import { getDistRoot } from "../paths.js";
 import { readManifest } from "../manifest/read-manifest.js";
 import type { RawManifest } from "../types/index.js";
 import { manifestStackName } from "./config.js";
+import { containerName, parseTarget, projectName } from "./render.js";
 
 import { product } from "../product.js";
 type CommandDef = string | { cmd: string; detachable?: boolean };
@@ -61,6 +62,35 @@ export function composeHealthCmd(
   return isPrimary(manifest, subsystem)
     ? base
     : `${base} --service ${JSON.stringify(subsystem)}`;
+}
+
+/**
+ * The containers a compose-stack service runs as, best match first ([] when
+ * the repo isn't a compose stack). Any other manifest service names a compose
+ * service; the primary one also falls back to its routes' target services.
+ * `stackWorkspace` is the Compose project suffix (see resolveStackWorkspaces).
+ */
+export function composeServiceContainers(
+  manifest: RawManifest,
+  subsystem: string,
+  repoName: string,
+  stackWorkspace: string,
+): string[] {
+  if (!manifest.compose) return [];
+  const project = projectName(
+    manifestStackName(manifest, repoName),
+    stackWorkspace,
+  );
+  const services = [subsystem];
+  if (isPrimary(manifest, subsystem))
+    for (const target of Object.values(manifest.compose.routes ?? {})) {
+      try {
+        services.push(parseTarget(target).service);
+      } catch {
+        /* a malformed route is reported by the stack commands */
+      }
+    }
+  return [...new Set(services)].map((svc) => containerName(project, svc));
 }
 
 /** Declared local commands layered over the synthesized compose ones. */

@@ -1037,14 +1037,16 @@ function _repoHealthItem(repo, items, escAttr) {
 
   const isSingle = items.length === 1 && items[0].service === repo;
   if (isSingle) {
-    const { service, url, ok, status, error } = items[0];
+    const { service, ok, status, error } = items[0];
+    // What was checked: the URL, or a shell check's command.
+    const what = items[0].url ?? items[0].check;
     const state = ok === true ? "ok" : ok === false ? "err" : "";
     const tip =
       ok == null
         ? "no health check"
         : error
-          ? `${url} — ${error}`
-          : `${url} → ${status}`;
+          ? `${what} — ${error}`
+          : `${what} → ${status}`;
     return `<div class="health-item" title="${escAttr(tip)}">
       <span class="dot ${state}" id="h-${repo}-${service}"></span>
       <span>${repo}</span>
@@ -1063,8 +1065,8 @@ function _repoHealthItem(repo, items, escAttr) {
       entry.ok == null
         ? "no health check"
         : entry.error
-          ? `${entry.url} — ${entry.error}`
-          : `${entry.url} → ${entry.status}`;
+          ? `${entry.url ?? entry.check} — ${entry.error}`
+          : `${entry.url ?? entry.check} → ${entry.status}`;
   } else {
     const allOk = items.every((i) => i.ok === true);
     const anyOk = items.some((i) => i.ok === true);

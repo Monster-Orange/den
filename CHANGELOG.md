@@ -43,8 +43,27 @@ config and manifest changes a distribution must make to move to it under
 - **One secret redactor** (`src/shared/redact.ts`), shared by the journeys and
   security pillars and the MCP server.
 
+### Changed
+
+- **`/api/health` rows: `url` is only ever a URL.** A shell health check's
+  command (a compose stack's `<cli> stack health …`, or any declared shell
+  check) is now in a new `check` field and `url` is null; the UI shows the
+  same tooltips as before. Clients that read the command from `url` should
+  read `check`.
+- `/api/server-info` returns Den's `version`.
+
 ### Fixed
 
+- **Logs of compose-stack services.** The live tail (`/api/service/taillog`,
+  so the UI's log view and `logs_tail`), log history and search
+  (`logs_search`) and `<cli> logs` now find a stack service's container,
+  `<stack>-<workspace>-<service>-1`, through the stacks naming helpers. They
+  looked only for opctl containers, so they fell back to the startup log
+  ("container log unavailable") or found nothing.
+- **`<cli> mcp` against an older web server.** A tool whose route the web
+  server predates (`stacks`, `edge_status`, a security `run_tests`) now says
+  `web server is Den <x>; <tool> needs >= <y>: run <cli> web restart`
+  instead of a bare 404; other 404s name the tool and the route.
 - Sync never touches a dev-managed checkout: a managed entry whose path is,
   holds or sits inside one is refused with the reason, and naming a
   dev-managed repo says so instead of doing nothing.

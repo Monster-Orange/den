@@ -11,6 +11,7 @@
  */
 
 import { composeHealthCmd } from "../../shared/stacks/manifest-commands.js";
+import { healthCheckFields } from "./health-row.js";
 import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
 import * as http from "http";
 import * as fs from "fs";
@@ -52,7 +53,7 @@ import {
 } from "../../shared/environment-manager/workspaces.js";
 import { deriveGraph } from "../../shared/environment-manager/derivation/derive-graph.js";
 import { orderForDown } from "../../shared/environment-manager/derivation/derived-up.js";
-import { findConventionalContainer } from "../../shared/environment-manager/opctl.js";
+import { findServiceContainer } from "../../shared/environment-manager/service-container.js";
 import {
   resolveHistorySource,
   ensureSnapshot,
@@ -98,7 +99,7 @@ import {
   type ReleaseConfig,
 } from "../../shared/den-config.js";
 import { readOrg } from "../../shared/org.js";
-import { getDistRoot } from "../../shared/paths.js";
+import { engineVersion, getDistRoot } from "../../shared/paths.js";
 import { enginePath } from "../../shared/engine.js";
 import {
   releaseService,
@@ -146,7 +147,10 @@ interface HealthResult {
   repo: string;
   service: string;
   label: string;
+  /** The HTTP check's URL, or null (never a command: see `check`). */
   url: string | null;
+  /** A shell check's command (e.g. a compose stack's `stack health`). */
+  check?: string;
   repoPath: string;
   mode: "dev-managed" | "managed";
   isEntrypoint: boolean;
@@ -1003,7 +1007,7 @@ async function handleRequest(
           repo,
           service,
           label,
-          url: target,
+          ...healthCheckFields(checkType, target),
           repoPath,
           mode,
           isEntrypoint,
@@ -1716,9 +1720,10 @@ async function handleRequest(
   //
   // Source resolution, in order:
   //   1. The service's manifest `logs.local` shell command (e.g. `docker logs -f`)
-  //   2. Conventional container derivation: a running `opctl_<base>_<hash>`
-  //      container matched from the repo's op manifest / repo name →
-  //      `docker logs -f` — real runtime logs with zero manifest config
+  //   2. The service's running container → `docker logs -f`: a compose
+  //      stack's `<stack>-<workspace>-<service>-1`, else an
+  //      `opctl_<base>_<hash>` one matched from the repo's op manifest / repo
+  //      name — real runtime logs with zero manifest config
   //   3. The den daemon startup log (~/.den/logs/<repo>/<service>.log) —
   //      last resort, covers host-run processes with no container
   // A manifest command that exits within the quick-exit window (container not
@@ -1859,13 +1864,13 @@ async function handleRequest(
     let retryCount = 0;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    // Fallback tier 1: resolve the service's running container by opctl
-    // naming convention (`opctl_<base>_<hash>`) and stream `docker logs -f`.
-    // This gives REAL runtime logs for services with no (or broken)
-    // manifest `logs.local` — no den daemon file needed. Returns false
-    // when no conventional container is running.
+    // Fallback tier 1: resolve the service's running container (its compose
+    // stack's, else opctl's `opctl_<base>_<hash>`) and stream
+    // `docker logs -f`. This gives REAL runtime logs for services with no (or
+    // broken) manifest `logs.local` — no den daemon file needed. Returns
+    // false when no such container is running.
     const startDockerFallback = (): boolean => {
-      const container = findConventionalContainer(
+      const container = findServiceContainer(
         repoName,
         tailResolved?.repoPath,
         tailSubsystem,
@@ -2297,6 +2302,8 @@ async function handleRequest(
     return sendJson(res, {
       pid: process.pid,
       port: PORT,
+      // Den's version: the MCP server compares it with the routes it needs.
+      version: engineVersion() ?? null,
       startedAt: new Date(SERVER_STARTED_AT).toISOString(),
       uptimeMs: Date.now() - SERVER_STARTED_AT,
       stale,
@@ -3135,15 +3142,7 @@ server.listen(PORT, BIND_HOST, () => {
     ? `${product().cli}`
     : "localhost";
 
-  let pkgVersion = "?";
-  try {
-    const pkg = JSON.parse(
-      fs.readFileSync(enginePath("package.json"), "utf-8"),
-    ) as { version?: string };
-    if (pkg.version) pkgVersion = pkg.version;
-  } catch (_e) {
-    /* package.json unreadable — version stays "?" */
-  }
+  const pkgVersion = engineVersion() ?? "?";
 
   console.log();
   for (const line of DEN_BANNER_LINES) {

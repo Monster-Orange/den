@@ -100,7 +100,8 @@ export function isOpctlContainerFor(name: string, base: string): boolean {
   return suffix.length > 0 && !suffix.includes("_");
 }
 
-function runningDockerNames(): string[] {
+/** Names of the running docker containers (throws when docker is unavailable). */
+export function runningDockerNames(): string[] {
   return execSync('docker ps --format "{{.Names}}"', {
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "ignore"],

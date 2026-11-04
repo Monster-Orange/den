@@ -12,6 +12,7 @@ import {
 } from "../../shared/den-config.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
+  DenHttpError,
   DenWebDown,
   type DenApi,
   type Query,
@@ -107,7 +108,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "status",
     "Service health",
-    "Health of every service in the workspace (what `status` shows): up/down, URL, mode.",
+    "Health of every service in the workspace (what `status` shows): up/down, mode, and what was checked: `url` for an HTTP check, `check` for a shell command.",
     { env: envArg, workspace: workspaceArg },
     (a, { api }) =>
       api.get("/api/health", { env: envOf(a), workspace: str(a.workspace) }),
@@ -471,8 +472,65 @@ export function toolsFor(cfg: ResolvedMcpConfig): DenTool[] {
 }
 
 /**
+ * The Den version that added each web route a tool reads. The web server keeps
+ * running its old code until it is restarted, so an MCP server can be newer
+ * than the web server it talks to.
+ */
+export const ROUTE_SINCE: Readonly<Record<string, string>> = {
+  "/api/stacks": "0.2.0",
+  "/api/edge": "0.2.0",
+  "/api/security/plan": "0.2.0",
+};
+
+/** `a` is older than `b`, by major.minor.patch (a pre-release counts as its release). */
+export function versionBefore(a: string, b: string): boolean {
+  const core = (v: string) =>
+    v
+      .split("-")[0]
+      .split(".")
+      .map((n) => parseInt(n, 10) || 0);
+  const [x, y] = [core(a), core(b)];
+  for (let i = 0; i < 3; i++)
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0);
+  return false;
+}
+
+/** The running web server's version, or undefined when it reports none. */
+async function webServerVersion(api: DenApi): Promise<string | undefined> {
+  try {
+    const info = (await api.get("/api/server-info")) as { version?: unknown };
+    return typeof info?.version === "string" ? info.version : undefined;
+  } catch (e) {
+    if (e instanceof DenHttpError) return undefined;
+    throw e;
+  }
+}
+
+/**
+ * What a 404 means for `tool`. For a route newer than the web server (read
+ * from /api/server-info only now, once a call has 404'd), the restart that
+ * fixes it; otherwise the plain error.
+ */
+async function notFoundMessage(
+  e: DenHttpError,
+  tool: string,
+  ctx: ToolContext,
+): Promise<string> {
+  const plain = `Error: ${tool}: the web server answered 404 for ${e.method} ${e.path}: ${e.body}`;
+  const since = ROUTE_SINCE[e.path];
+  if (!since) return plain;
+  const version = await webServerVersion(ctx.api);
+  if (version !== undefined && !versionBefore(version, since)) return plain;
+  return (
+    `web server is Den ${version ?? `< ${since}`}; ` +
+    `${tool} needs >= ${since}: run ${ctx.cli} web restart`
+  );
+}
+
+/**
  * Run one tool: its result as (redacted) text, or an error naming the guard
- * that refused, or how to start the web server.
+ * that refused, how to start the web server, or (when it runs an older Den
+ * than the tool needs) how to restart it.
  */
 export async function callTool(
   name: string,
@@ -490,6 +548,12 @@ export async function callTool(
     const text = typeof out === "string" ? out : JSON.stringify(out, null, 2);
     return { text: redactSecrets(text), isError: false };
   } catch (e) {
+    if (e instanceof DenHttpError && e.status === 404) {
+      const text = await notFoundMessage(e, name, ctx).catch(
+        (inner: Error) => `Error: ${inner.message}`,
+      );
+      return { text: redactSecrets(text), isError: true };
+    }
     const msg =
       e instanceof Refusal
         ? `Refused: ${e.message}`

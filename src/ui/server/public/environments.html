@@ -316,7 +316,9 @@
       }
 
       function cell(r) {
-        if (!r || (!r.url && r.ok == null))
+        // What was checked: the URL, or a shell check's command.
+        const checked = r && (r.url ?? r.check);
+        if (!r || (!checked && r.ok == null))
           return r?.openUrl
             ? `<span class="cell"><span class="none">—</span>${openLink(r.openUrl, r.service)}</span>`
             : '<span class="none">—</span>';
@@ -333,7 +335,7 @@
           : r.ok
             ? "up"
             : r.error || "down";
-        const title = [r.label, r.url, r.error].filter(Boolean).join(" — ");
+        const title = [r.label, checked, r.error].filter(Boolean).join(" — ");
         const link =
           r.url && /^https?:/.test(r.url)
             ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(title)}">${esc(what)}</a>`

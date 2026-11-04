@@ -147,6 +147,18 @@ export function getEngineRoot(): string {
   );
 }
 
+/** Den's own version (its package.json), or undefined when unreadable. */
+export function engineVersion(): string | undefined {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(getEngineRoot(), "package.json"), "utf-8"),
+    ) as { version?: unknown };
+    return typeof pkg.version === "string" ? pkg.version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** This distribution's profile. */
 export function getProfile(): ProductProfile {
   return loadProfile(getDistRoot());

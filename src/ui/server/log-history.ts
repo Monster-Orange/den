@@ -20,7 +20,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFile, spawnSync } from "child_process";
 
-import { findConventionalContainer } from "../../shared/environment-manager/opctl.js";
+import { findServiceContainer } from "../../shared/environment-manager/service-container.js";
 import {
   resolveService,
   hasRunningOpctlContainers,
@@ -90,8 +90,9 @@ export function resolveHistorySource(
     resolveService(`${repoName}/${svcName}`) ?? resolveService(repoName);
   const repoPath = resolved?.repoPath;
 
-  // 1. Conventional opctl container (opctl_<base>_<hash>).
-  const conventional = findConventionalContainer(repoName, repoPath, svcName);
+  // 1. The service's container: its compose stack's, else opctl's
+  //    conventional one (opctl_<base>_<hash>).
+  const conventional = findServiceContainer(repoName, repoPath, svcName);
   if (conventional) return { kind: "docker", container: conventional };
 
   // 2. Container named by the manifest log command's docker ps filter.

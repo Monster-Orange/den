@@ -17,6 +17,7 @@ import {
   runsLocally,
 } from "../../../src/ui/mcp/guards.js";
 import {
+  DenHttpError,
   DenWebDown,
   type DenApi,
   type Query,
@@ -350,5 +351,71 @@ describe("web server down", () => {
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/not running at http:\/\/localhost:7777/);
     expect(r.text).toMatch(/`acme web up`/);
+  });
+});
+
+describe("a web server older than the MCP server", () => {
+  /** A web server that has no /api/stacks or /api/edge yet. */
+  function olderServer(info: unknown): { api: DenApi; calls: Call[] } {
+    return fakeApi({
+      get: (path) => {
+        if (path === "/api/server-info") {
+          if (info === 404)
+            throw new DenHttpError("GET", path, 404, "Not found");
+          return info;
+        }
+        throw new DenHttpError("GET", path, 404, "Not found");
+      },
+    });
+  }
+
+  it("names its version, the version the tool needs and the restart", async () => {
+    const { api, calls } = olderServer({ pid: 1, version: "0.1.0" });
+    const r = await callTool("stacks", {}, ctx(api));
+    expect(r.isError).toBe(true);
+    expect(r.text).toBe(
+      "web server is Den 0.1.0; stacks needs >= 0.2.0: run acme web restart",
+    );
+    // server-info is read lazily: only once a call has 404'd.
+    expect(calls.map((c) => c.path)).toEqual([
+      "/api/stacks",
+      "/api/server-info",
+    ]);
+    const e = await callTool("edge_status", {}, ctx(api));
+    expect(e.text).toBe(
+      "web server is Den 0.1.0; edge_status needs >= 0.2.0: run acme web restart",
+    );
+  });
+
+  it("a server-info with no version is from before 0.2.0", async () => {
+    for (const info of [{ pid: 1, stale: false }, 404]) {
+      const { api } = olderServer(info);
+      const r = await callTool("stacks", {}, ctx(api));
+      expect(r.text).toBe(
+        "web server is Den < 0.2.0; stacks needs >= 0.2.0: run acme web restart",
+      );
+    }
+  });
+
+  it("a 404 from a server new enough stays a plain, clear error", async () => {
+    const { api } = olderServer({ pid: 1, version: "0.2.0-dev.0" });
+    const r = await callTool("stacks", {}, ctx(api));
+    expect(r.isError).toBe(true);
+    expect(r.text).toBe(
+      "Error: stacks: the web server answered 404 for GET /api/stacks: Not found",
+    );
+  });
+
+  it("other 404s never read server-info", async () => {
+    const { api, calls } = fakeApi({
+      get: (path) => {
+        throw new DenHttpError("GET", path, 404, "no such repo");
+      },
+    });
+    const r = await callTool("graph", { seed: "shop" }, ctx(api));
+    expect(r.text).toBe(
+      "Error: graph: the web server answered 404 for GET /api/graph: no such repo",
+    );
+    expect(calls.map((c) => c.path)).toEqual(["/api/graph"]);
   });
 });

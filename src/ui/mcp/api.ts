@@ -20,6 +20,19 @@ export class DenWebDown extends Error {
   }
 }
 
+/** The web server answered with an error status. */
+export class DenHttpError extends Error {
+  constructor(
+    readonly method: string,
+    readonly path: string,
+    readonly status: number,
+    readonly body: string,
+  ) {
+    super(`${method} ${path} → ${status}: ${body}`);
+    this.name = "DenHttpError";
+  }
+}
+
 /** Read routes: GET only. */
 const READ_ROUTES = new Set([
   "/api/health",
@@ -40,6 +53,7 @@ const READ_ROUTES = new Set([
   "/api/manifest/validate",
   "/api/stacks",
   "/api/edge",
+  "/api/server-info",
 ]);
 
 /** Action routes and their method. Anything else is never reached. */
@@ -164,7 +178,7 @@ export function createDenApi(opts: {
       });
       if (!res.ok) {
         const text = (await res.text()).slice(0, 2000);
-        throw new Error(`${method} ${path} → ${res.status}: ${text}`);
+        throw new DenHttpError(method, path, res.status, text);
       }
       return res;
     } catch (e) {

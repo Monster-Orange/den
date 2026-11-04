@@ -162,6 +162,8 @@ if curl -fsS "http://localhost:$PORT/" -o "$WORK/page.html"; then
 else bad "GET / failed"; fi
 if curl -fsS "http://localhost:$PORT/api/server-info" -o "$WORK/api.json"; then
   expect_in "GET /api/server-info" "$WORK/api.json" '"pid"'
+  # The MCP server reads it to tell an older web server from a missing route.
+  expect_in "GET /api/server-info has Den's version" "$WORK/api.json" "\"version\":\"$DEN_VERSION\""
 else bad "GET /api/server-info failed"; fi
 # Den's CHANGELOG is an engine file: served from node_modules, not the dist.
 if curl -fsS "http://localhost:$PORT/api/changelog" -o "$WORK/changelog.json"; then
