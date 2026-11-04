@@ -49,18 +49,65 @@ make help
 
 ## Layout
 
-| Path                      | What                                                         |
-| ------------------------- | ------------------------------------------------------------ |
-| `den.yml`                 | The product profile ([below](#denyml-the-product-profile))   |
-| `package.json`            | Pins an exact `@monster-orange/den` version                  |
-| `bin/<cli>`               | The shim people run ([below](#the-bin-shim))                 |
-| `Makefile`                | Includes Den's targets ([below](#make-denmk))                |
-| `config/<name>.yml`       | Org config: brand, `github_org`, `secrets`, `edge`, …        |
-| `config/environments/`    | One `<env>.json` per environment (base URLs, auth, timeouts) |
-| `config/local/`           | Per-engineer overrides (`user.yml`); gitignored              |
-| `manifests/`              | Manifests for repos that do not carry their own              |
-| `tests/pillars/<pillar>/` | Your own suites, e.g. `tests/pillars/perf/<module>/test.js`  |
-| `reports/`, `results/`    | Test output; gitignored                                      |
+| Path                      | What                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------ |
+| `den.yml`                 | The product profile ([below](#denyml-the-product-profile))                                       |
+| `package.json`            | Pins an exact `@monster-orange/den` version                                                      |
+| `bin/<cli>`               | The shim people run ([below](#the-bin-shim))                                                     |
+| `Makefile`                | Includes Den's targets ([below](#make-denmk))                                                    |
+| `config/<name>.yml`       | Org config: brand, `github_org`, `secrets`, `edge`, …                                            |
+| `config/environments/`    | One `<env>.json` per environment (base URLs, auth, timeouts)                                     |
+| `config/local/`           | Per-engineer overrides (`user.yml`); gitignored                                                  |
+| `manifests/`              | Manifests for repos that do not carry their own, and overrides ([below](#overriding-a-manifest)) |
+| `tests/pillars/<pillar>/` | Your own suites, e.g. `tests/pillars/perf/<module>/test.js`                                      |
+| `reports/`, `results/`    | Test output; gitignored                                                                          |
+
+## Overriding a manifest
+
+A repo's manifest comes from one base: the repo's own file (`.acme.yml`, or
+its `.json` twin) or, when the repo has none, the one the distribution holds
+at `manifests/<repo>.acme.yml`. On top of that base, an optional
+`manifests/<repo>.override.yml` changes what this distribution needs to
+differ, without a commit to the repo. The override file is named with
+`.override` plus the manifest's extension, and `<repo>` is matched exactly as
+for a held manifest: the checkout's `origin` repo name, then the managed-clone
+name, then the folder name.
+
+```yaml
+# manifests/shop.override.yml, merged onto shop's own .acme.yml
+services:
+  web:
+    commands:
+      local:
+        up: make up-fast # replaces up; the base's other commands stay
+    depends_on: [] # lists replace whole: web no longer waits on api
+    urls: null # null deletes the key
+```
+
+Merge rules:
+
+- Maps merge by key, recursively.
+- Lists and scalars replace the base value whole.
+- An explicit `null` deletes the key from the result.
+
+An override only changes or deletes what the base has. A service or key the
+base lacks is an error, even inside a map whose keys are free-form (a new
+command, a new environment): put new entries in the base. An override with no
+base is an error, never a manifest on its own.
+
+`<cli> validate <repo-dir>` checks each layer against the schema on its own,
+naming the file each error is in, then checks the merged result:
+
+```
+  ✓  /src/shop/.acme.yml  (repo, v1, no issues)
+  ✗  /dist/manifests/shop.override.yml  (override, v1, 1 error)
+  ERROR   services.api.commands.local.down  unknown key "down": not in the base manifest
+```
+
+The web UI's Services cards show the layers each manifest was built from
+(`manifest: repo + override`), and `/api/services` returns them per service as
+`manifestLayers`, e.g. `["held", "override"]`. `DEN_MANIFESTS_DIR` points the
+held and override lookup at another directory (tests use it).
 
 ## den.yml: the product profile
 
@@ -214,6 +261,107 @@ node_modules/@monster-orange/den/service/install.sh print       # the plist only
 The service runs the engine's server with the `node` on your `PATH` at install
 time, from the distribution root; re-run `install` after changing node versions
 or upgrading Den. Keep the label stable: it is how launchd knows the service.
+
+## MCP server
+
+`./bin/acme mcp` runs an [MCP](https://modelcontextprotocol.io) server over
+stdio, so an agent (an MCP client such as an editor or a coding agent) can
+read and, where the org allows it, act on the same local environment the web
+UI shows. It is a thin client of the running web server
+(`http://localhost:<web.port>`): agents and the UI share one state and one
+set of guards. It never starts the web server; if it is not running, every
+tool answers with the command that starts it (`./bin/acme web up`). stdout
+carries only the protocol; diagnostics go to stderr.
+
+Register it with a client as a stdio server, for example:
+
+```json
+{
+  "mcpServers": {
+    "acme": { "command": "/path/to/acme/bin/acme", "args": ["mcp"] }
+  }
+}
+```
+
+`--port <n>` points it at a web server on another port.
+
+### Config
+
+Without an `mcp:` block in the org config (`config/<name>.yml`) only the read
+tools are registered. Actions are opt-in, by name:
+
+```yaml
+mcp:
+  actions:
+    [service_up, service_down, service_restart, workspace_sync, run_tests]
+  run_tests:
+    envs: [local] # the default; production is refused even if listed
+  logs:
+    remote: false # the default; true lets the log tools read non-local sources
+```
+
+An unknown action or environment name is an error, so a typo never turns a
+guard off.
+
+### Tools
+
+Read tools (always registered):
+
+| Tool                | Web API                                    | What                                                       |
+| ------------------- | ------------------------------------------ | ---------------------------------------------------------- |
+| `status`            | `/api/health`                              | Service health for the workspace                           |
+| `services`          | `/api/services`                            | Services, their mode (managed or dev-managed) and commands |
+| `applications`      | `/api/applications`                        | Org > Application > Repo > Services                        |
+| `graph`             | `/api/graph`                               | The derived dependency graph and startup order             |
+| `workspaces`        | `/api/workspaces`                          | Workspaces, active and focused                             |
+| `environments`      | `/api/environments`                        | The enabled environment names (never their values)         |
+| `logs_search`       | `/api/logs/search`                         | Search services' full log history                          |
+| `logs_tail`         | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)     |
+| `tests_available`   | `/api/modules`, `/api/test-sources`        | A pillar's modules and the repos they come from            |
+| `security_latest`   | `/api/security/latest`                     | The newest security scan per mode                          |
+| `release_status`    | `/api/release/runs`, `/api/release/status` | Recent CD runs, and an env's deployed-version table        |
+| `manifest_validate` | `/api/manifest/validate`                   | Validate a manifest by path or content                     |
+| `stacks`            | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health    |
+| `edge_status`       | `/api/edge`                                | The edge: up or down, its routes and cert names            |
+
+Action tools (only those named in `mcp.actions`): `service_up`,
+`service_down`, `service_restart` (through `/api/service/exec`),
+`workspace_sync` (`/api/workspace/sync`) and `run_tests` (`/api/run`). There
+is no deploy tool.
+
+### Guards
+
+- **Lifecycle only, local only.** The service tools run a manifest's `up`,
+  `down` or `restart` and nothing else, with `env=local`, and only for a
+  service run locally (today: its manifest has a local `up` command).
+- **Sync touches managed clones only.** It never pulls, resets or switches
+  branches in a dev-managed checkout (your own). The web server enforces
+  this for the UI's Sync too: a managed entry whose path is, holds or sits
+  inside a dev-managed checkout is refused, out loud.
+- **Tests:** `run_tests` targets only `mcp.run_tests.envs` (default
+  `[local]`) and never production. A security run must first pass the
+  security CLI's own plan (`/api/security/plan`, a dry run): every target
+  host in `security.owned_hosts` and the mode within the env's ceiling.
+  `full` (active attacks) is local only.
+- **Logs** read local sources only, unless `mcp.logs.remote: true`. All text
+  the tools return is scrubbed of secret-shaped values: bearer tokens, JWTs,
+  AWS keys, credentials in URLs and DSNs, `key=value` secrets, private-key
+  blocks.
+- **Never exposed:** sudo passwords, AWS login, opening a terminal or editor,
+  workspace-wide exec, any other service command, settings writes, workspace
+  create, rename or mode changes, the server log, and anything that returns
+  environment values. The MCP server's HTTP client cannot reach any other
+  route.
+
+### Audit
+
+Every action is recorded with actor `agent`, the MCP client's name and
+version (as the client reports them at initialize: a label, never used to
+authorise anything), and the MCP server's pid and session id. They travel as
+`x-den-*` headers on each web API call. The web server writes each action
+(and each UI one) as a lifecycle line in its log; on the Logs page, the
+`acme/server` stream shows an agent's actions as `[agent]`, ending
+`· by agent <client> <version> (mcp pid <pid>, session <id>)`.
 
 ## Pinning and upgrading
 

@@ -120,7 +120,7 @@ import {
 } from "./applications-command.js";
 import { loadApplications } from "../../shared/environment-manager/load-applications.js";
 import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
-import type { RepoKind } from "../../shared/types/index.js";
+import type { RepoKind, ValidationResult } from "../../shared/types/index.js";
 import { localCommandsFor } from "../../shared/stacks/manifest-commands.js";
 import {
   buildUpPlan,
@@ -131,7 +131,10 @@ import * as fs from "fs";
 import { readManifest } from "../../shared/manifest/read-manifest.js";
 import * as nodePath from "path";
 import { runInit } from "./init.js";
-import { validateManifest } from "../../shared/manifest/validate-manifest.js";
+import {
+  validateManifest,
+  validateManifestLayers,
+} from "../../shared/manifest/validate-manifest.js";
 import {
   getDistRoot,
   getEngineRoot,
@@ -290,6 +293,13 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "This org's HTTPS edge: own CA + cert, routes at <name>.<edge.domain>.",
     ],
   },
+  mcp: {
+    usage: "mcp [--port <web port>]",
+    lines: [
+      "An MCP server over stdio for agents: a client of the running web server",
+      `(\`${product().cli} web up\`). Read tools always; actions only as named in mcp.actions.`,
+    ],
+  },
   "local-dev": {
     usage: "local-dev [on|off]",
     lines: [
@@ -345,6 +355,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "stack",
   "apps",
   "applications",
+  "mcp",
 ]);
 
 /** Map a raw command token to a PII-safe, registered telemetry command name. */
@@ -360,6 +371,52 @@ function telemetryReason(error: unknown): string {
   const name = (error as { constructor?: { name?: string } })?.constructor
     ?.name;
   return name && name !== "Object" ? name : "Error";
+}
+
+/** Print one manifest's validation: a status line, then each issue. */
+function printValidation(
+  label: string,
+  result: ValidationResult,
+  layer?: string,
+): void {
+  const tag = layer ? `${layer}, ` : "";
+  const plural = (n: number, word: string): string =>
+    `${n} ${word}${n === 1 ? "" : "s"}`;
+  if (result.valid && result.warnings.length === 0) {
+    console.log(
+      chalk.green(`  ✓  ${label}`) +
+        chalk.gray(`  (${tag}v${result.version}, no issues)`),
+    );
+  } else if (result.valid) {
+    console.log(
+      chalk.yellow(`  ⚠  ${label}`) +
+        chalk.gray(
+          `  (${tag}v${result.version}, ${plural(result.warnings.length, "warning")})`,
+        ),
+    );
+  } else {
+    console.log(
+      chalk.red(`  ✗  ${label}`) +
+        chalk.gray(
+          `  (${tag}v${result.version}, ${plural(result.errors.length, "error")}${result.warnings.length > 0 ? `, ${plural(result.warnings.length, "warning")}` : ""})`,
+        ),
+    );
+  }
+
+  for (const err of result.errors) {
+    const path = err.path ? chalk.gray(err.path) + "  " : "";
+    console.log(`  ${chalk.red("ERROR")}   ${path}${err.message}`);
+    if (err.suggestion) {
+      console.log(`            ${chalk.gray("→ " + err.suggestion)}`);
+    }
+  }
+  for (const warn of result.warnings) {
+    const path = warn.path ? chalk.gray(warn.path) + "  " : "";
+    console.log(`  ${chalk.yellow("WARNING")} ${path}${warn.message}`);
+    if (warn.suggestion) {
+      console.log(`            ${chalk.gray("→ " + warn.suggestion)}`);
+    }
+  }
 }
 
 class DenCLI {
@@ -630,6 +687,15 @@ class DenCLI {
           await this.ensureWorkspaceSeeded();
           cmdApps(args.slice(1));
           break;
+
+        case "mcp": {
+          // bin/den routes `mcp` to its own entry (stdout is the protocol);
+          // this covers the CLI run directly from a checkout.
+          await import("./mcp-stdout-guard.js");
+          const { runMcp } = await import("../mcp/server.js");
+          await runMcp(args.slice(1));
+          break;
+        }
 
         case "--help":
         case "-h":
@@ -3415,10 +3481,26 @@ class DenCLI {
         req.on("error", reject);
       });
     } else {
-      const filePath = fs.existsSync(target)
-        ? fs.lstatSync(target).isDirectory()
-          ? nodePath.join(target, `${product().manifestYml}`)
-          : target
+      const isDir = fs.existsSync(target) && fs.lstatSync(target).isDirectory();
+      // A repo folder: validate each layer that applies to it (its own or the
+      // held manifest, then manifests/<repo>.override.yml, then the merge).
+      if (isDir) {
+        const layered = validateManifestLayers(nodePath.resolve(target));
+        if (layered.layers.length > 0) {
+          console.log();
+          for (const l of layered.layers)
+            printValidation(
+              chalk.bold(l.file ?? "merged"),
+              l.result,
+              l.layer === "merged" ? "merged" : l.layer,
+            );
+          console.log();
+          if (!layered.valid) process.exit(1);
+          return;
+        }
+      }
+      const filePath = isDir
+        ? nodePath.join(target, `${product().manifestYml}`)
         : target;
 
       if (!fs.existsSync(filePath)) {
@@ -3434,42 +3516,7 @@ class DenCLI {
     );
 
     console.log();
-    if (result.valid && result.warnings.length === 0) {
-      console.log(
-        chalk.green(`  ✓  ${label}`) +
-          chalk.gray(`  (v${result.version}, no issues)`),
-      );
-    } else if (result.valid) {
-      console.log(
-        chalk.yellow(`  ⚠  ${label}`) +
-          chalk.gray(
-            `  (v${result.version}, ${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"})`,
-          ),
-      );
-    } else {
-      console.log(
-        chalk.red(`  ✗  ${label}`) +
-          chalk.gray(
-            `  (v${result.version}, ${result.errors.length} error${result.errors.length === 1 ? "" : "s"}${result.warnings.length > 0 ? `, ${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"}` : ""})`,
-          ),
-      );
-    }
-
-    for (const err of result.errors) {
-      const path = err.path ? chalk.gray(err.path) + "  " : "";
-      console.log(`  ${chalk.red("ERROR")}   ${path}${err.message}`);
-      if (err.suggestion) {
-        console.log(`            ${chalk.gray("→ " + err.suggestion)}`);
-      }
-    }
-    for (const warn of result.warnings) {
-      const path = warn.path ? chalk.gray(warn.path) + "  " : "";
-      console.log(`  ${chalk.yellow("WARNING")} ${path}${warn.message}`);
-      if (warn.suggestion) {
-        console.log(`            ${chalk.gray("→ " + warn.suggestion)}`);
-      }
-    }
-
+    printValidation(label, result);
     console.log();
     if (!result.valid) process.exit(1);
   }
@@ -3558,6 +3605,9 @@ class DenCLI {
     console.log("  sync [service...]    Check for updates and offer to pull");
     console.log(
       "  create <name> [dir]  Scaffold a new distribution of your own (--title, --cli, --env-prefix)",
+    );
+    console.log(
+      "  mcp [--port <n>]     MCP server (stdio) for agents, over the running web server",
     );
     console.log();
     console.log("  workspace list       List workspaces");

@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den",
-  "version": "0.1.0",
+  "version": "0.2.0-dev.0",
   "description": "Den: a local multi-repo dev orchestrator, HTTPS edge and E2E harness",
   "type": "module",
   "bin": {
@@ -54,6 +54,7 @@
   "license": "MIT",
   "dependencies": {
     "@cursor/sdk": "1.0.23",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@playwright/test": "^1.61.1",
     "@slack/webhook": "^7.0.2",
     "ajv": "^8.12.0",

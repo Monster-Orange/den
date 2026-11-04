@@ -4,20 +4,18 @@
  * This org's HTTPS edge: own CA + cert, routes at `<name>.<edge.domain>`.
  */
 import chalk from "chalk";
-import * as fs from "fs";
-import * as path from "path";
 import { readBrand } from "../../shared/brand.js";
 import { readEdgeConfig } from "../../shared/edge/config.js";
 import { edgeDomains, edgeNames, routeUrl } from "../../shared/edge/render.js";
 import {
   caDir,
   caTrusted,
-  containerState,
   edgeDown,
   edgeUp,
   trustCa,
   untrustCa,
 } from "../../shared/edge/runtime.js";
+import { edgeStatus } from "../../shared/edge/status.js";
 
 export async function cmdEdge(args: string[]): Promise<void> {
   const sub = args[0] ?? "status";
@@ -60,27 +58,19 @@ export async function cmdEdge(args: string[]): Promise<void> {
       process.exitCode = untrustCa(cfg);
       return;
     case "routes":
-      for (const [name, url] of Object.entries(cfg.routes))
-        console.log(`${routeUrl(name, cfg).padEnd(52)} → ${url}`);
+      for (const r of edgeStatus(cfg).routes)
+        console.log(`${r.url.padEnd(52)} → ${r.upstream}`);
       return;
     case "status": {
-      console.log(chalk.bold(`${readBrand().name} edge — ${cfg.org}`));
-      console.log(
-        `  container  ${n.container}: ${containerState(n.container)}`,
-      );
+      const st = edgeStatus(cfg);
+      console.log(chalk.bold(`${readBrand().name} edge — ${st.org}`));
+      console.log(`  container  ${st.container}: ${st.state}`);
       console.log(`  ports      ${published}`);
+      console.log(`  domains    ${st.domains.join(", ")} (+ every subdomain)`);
       console.log(
-        `  domains    ${edgeDomains(cfg).join(", ")} (+ every subdomain)`,
+        `  CA         ${caDir(cfg)} — ${st.caTrusted === null ? "unknown" : st.caTrusted ? "trusted" : "NOT trusted"}`,
       );
-      const trusted = caTrusted(cfg);
-      console.log(
-        `  CA         ${caDir(cfg)} — ${trusted === null ? "unknown" : trusted ? "trusted" : "NOT trusted"}`,
-      );
-      const stamp = path.join(cfg.stateDir, "certs", "names.txt");
-      if (fs.existsSync(stamp))
-        console.log(
-          `  cert       ${fs.readFileSync(stamp, "utf-8").split("\n").join(", ")}`,
-        );
+      if (st.certIssued) console.log(`  cert       ${st.certNames.join(", ")}`);
       return;
     }
     default:

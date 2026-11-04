@@ -2,9 +2,13 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import {
   MANIFEST_DISPLAY_NAME,
+  loadManifest,
+  manifestLayers,
+  manifestLayersLabel,
+  overrideManifestPath,
   readManifest,
   readManifestAsync,
   resolveManifestPath,
@@ -138,5 +142,111 @@ describe("Den-side manifests", () => {
       "widget.den.yml": "name: widget-from-den\n",
     });
     expect(resolveManifestPath(createTempRoot())).toBeNull();
+  });
+});
+
+describe("manifest overrides", () => {
+  let held: string;
+  beforeEach(() => {
+    held = createTempRoot();
+    process.env.DEN_MANIFESTS_DIR = held;
+  });
+  afterEach(() => {
+    delete process.env.DEN_MANIFESTS_DIR;
+  });
+  /** A checkout whose origin is …/shop.git, in a folder named otherwise. */
+  function shopCheckout(): string {
+    const dir = path.join(createTempRoot(), "checkout");
+    fs.mkdirSync(dir);
+    execFileSync("git", ["init", "-q", dir]);
+    execFileSync("git", [
+      "-C",
+      dir,
+      "remote",
+      "add",
+      "origin",
+      "git@github.com:acme/shop.git",
+    ]);
+    return dir;
+  }
+  const OVERRIDE = [
+    "services:",
+    "  web:",
+    "    commands:",
+    "      local:",
+    "        up: make up-fast",
+    "",
+  ].join("\n");
+  const BASE = (name: string): string =>
+    [
+      `name: ${name}`,
+      "services:",
+      "  web:",
+      "    commands:",
+      "      local:",
+      "        up: make up",
+      "        down: make down",
+      "",
+    ].join("\n");
+
+  it("merges manifests/<repo>.override.yml onto the repo's own manifest", async () => {
+    const repo = shopCheckout();
+    fs.writeFileSync(path.join(repo, ".den.yml"), BASE("shop-own"));
+    fs.writeFileSync(path.join(held, "shop.override.yml"), OVERRIDE);
+    const want = {
+      name: "shop-own",
+      services: {
+        web: { commands: { local: { up: "make up-fast", down: "make down" } } },
+      },
+    };
+    expect(readManifest(repo)).toEqual(want);
+    await expect(readManifestAsync(repo)).resolves.toEqual(want);
+    expect(manifestLayers(repo)).toEqual(["repo", "override"]);
+    expect(overrideManifestPath(repo)).toBe(
+      path.join(held, "shop.override.yml"),
+    );
+  });
+
+  it("merges the override onto a held manifest", () => {
+    const repo = shopCheckout();
+    fs.writeFileSync(path.join(held, "shop.den.yml"), BASE("shop-held"));
+    fs.writeFileSync(path.join(held, "shop.override.yml"), OVERRIDE);
+    expect(readManifest(repo)?.services?.web?.commands?.local).toEqual({
+      up: "make up-fast",
+      down: "make down",
+    });
+    expect(manifestLayers(repo)).toEqual(["held", "override"]);
+  });
+
+  it("matches the repo name exactly", () => {
+    const repo = shopCheckout();
+    fs.writeFileSync(path.join(repo, ".den.yml"), BASE("shop-own"));
+    fs.writeFileSync(path.join(held, "shop-web.override.yml"), OVERRIDE);
+    expect(overrideManifestPath(repo)).toBeNull();
+    expect(manifestLayers(repo)).toEqual(["repo"]);
+    expect(readManifest(repo)?.services?.web?.commands?.local?.up).toBe(
+      "make up",
+    );
+  });
+
+  it("never treats an override with no base as a manifest", async () => {
+    const repo = shopCheckout();
+    fs.writeFileSync(path.join(held, "shop.override.yml"), "name: shop\n");
+    const load = loadManifest(repo);
+    expect(load.manifest).toBeNull();
+    expect(load.error).toMatch(/no base manifest/);
+    expect(readManifest(repo)).toBeNull();
+    await expect(readManifestAsync(repo)).resolves.toBeNull();
+    expect(manifestLayers(repo)).toEqual([]);
+  });
+
+  it("labels the layers that applied", () => {
+    const repo = shopCheckout();
+    expect(manifestLayers(repo)).toEqual([]);
+    expect(manifestLayersLabel([])).toBe("none");
+    fs.writeFileSync(path.join(held, "shop.den.yml"), BASE("shop-held"));
+    expect(manifestLayers(repo)).toEqual(["held"]);
+    expect(manifestLayersLabel(["held"])).toBe("held");
+    expect(manifestLayersLabel(["repo", "override"])).toBe("repo + override");
   });
 });

@@ -13,6 +13,11 @@ import {
   schemaByVersion,
 } from "./schema.js";
 import type { ValidationError, ValidationResult } from "../types/index.js";
+import {
+  validateLayers,
+  type LayeredValidation,
+  type SchemaTools,
+} from "./validate-layers.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +59,17 @@ function suggestionFor(issue: z.ZodIssue): string | undefined {
   }
 
   return undefined;
+}
+
+/** Map Zod issues to ValidationErrors. */
+export function issuesToErrors(
+  issues: readonly z.ZodIssue[],
+): ValidationError[] {
+  return issues.map((issue) => ({
+    path: zodPathToString(issue.path as (string | number)[]),
+    message: zodIssueMessage(issue),
+    suggestion: suggestionFor(issue),
+  }));
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -125,11 +141,7 @@ export function validateManifest(input: unknown): ValidationResult {
   }
 
   // 6. Map Zod issues → ValidationError[]
-  const errors: ValidationError[] = result.error.issues.map((issue) => ({
-    path: zodPathToString(issue.path),
-    message: zodIssueMessage(issue),
-    suggestion: suggestionFor(issue),
-  }));
+  const errors = issuesToErrors(result.error.issues);
 
   return {
     valid: false,
@@ -137,4 +149,22 @@ export function validateManifest(input: unknown): ValidationResult {
     errors,
     warnings,
   };
+}
+
+// ── Layers ────────────────────────────────────────────────────────────────────
+
+const schemaTools: SchemaTools = {
+  version: CURRENT_SCHEMA_VERSION,
+  schema: schemaByVersion[CURRENT_SCHEMA_VERSION],
+  validate: validateManifest,
+  issuesToErrors: (issues) => issuesToErrors(issues as z.ZodIssue[]),
+};
+
+/**
+ * Validate each manifest layer of the repo at `repoPath` (its own or the
+ * held manifest, then manifests/<repo>.override.yml), then the merge.
+ * See validate-layers.ts.
+ */
+export function validateManifestLayers(repoPath: string): LayeredValidation {
+  return validateLayers(schemaTools, repoPath);
 }

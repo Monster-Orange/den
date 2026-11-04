@@ -469,6 +469,10 @@
       .log-output .log-err {
         color: var(--red);
       }
+      /* An action an agent asked for (via the MCP server). */
+      .log-output .log-agent {
+        color: var(--yellow);
+      }
       .log-output .log-done {
         color: var(--muted);
         font-style: italic;
@@ -687,11 +691,14 @@
       }
       function formatServerLogEntry(entry) {
         // "14:07:41  [lifecycle]  ▶ run synthetic/local · modules=all [abcxyz]"
+        // An agent's action reads "[agent]" and ends "· by agent <client> …".
         const t = (entry.ts ?? "").slice(11, 19);
-        const kind = (entry.kind ?? "info").padEnd(9);
+        const kind = (entry.actor ? "agent" : (entry.kind ?? "info")).padEnd(9);
         return `${t}  [${kind}]  ${entry.text ?? ""}`;
       }
-      function serverLogClass(kind) {
+      function serverLogClass(entry) {
+        const kind = entry.kind;
+        if (entry.actor) return "log-agent";
         if (kind === "error") return "log-err";
         if (kind === "warn") return "log-err";
         if (kind === "lifecycle") return "log-cmd";
@@ -1224,12 +1231,12 @@
           if (serverLog) {
             if (msg.type === "history" && Array.isArray(msg.entries)) {
               for (const entry of msg.entries) {
-                append(formatServerLogEntry(entry), serverLogClass(entry.kind));
+                append(formatServerLogEntry(entry), serverLogClass(entry));
               }
             } else if (msg.type === "log" && msg.entry) {
               append(
                 formatServerLogEntry(msg.entry),
-                serverLogClass(msg.entry.kind),
+                serverLogClass(msg.entry),
               );
             }
             return;

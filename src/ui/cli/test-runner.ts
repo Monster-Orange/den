@@ -447,10 +447,16 @@ export class TestRunner {
   ): CommandStep[] {
     const names = options.modules ?? [];
     const script = "src/pillars/security/run.ts";
+    // An explicitly chosen stronger mode is passed on; the entrypoint's
+    // per-env ceiling refuses it where it isn't allowed.
+    const mode =
+      options.securityMode && options.securityMode !== "baseline"
+        ? [`--mode=${options.securityMode}`]
+        : [];
     if (names.length === 0) {
       return [
         {
-          ...tsxCommand(script, `--env=${options.environment}`),
+          ...tsxCommand(script, `--env=${options.environment}`, ...mode),
           env: baseEnv,
           label: "Run all security scans",
         },
@@ -461,6 +467,7 @@ export class TestRunner {
         script,
         `--env=${options.environment}`,
         `--service=${name}`,
+        ...mode,
       ),
       env: baseEnv,
       label: `Run security scan ${name}`,

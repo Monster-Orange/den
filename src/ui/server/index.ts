@@ -78,7 +78,10 @@ import {
   shouldDetachServiceCommand,
 } from "../../shared/environment-manager/service-runner.js";
 import { reapDeadDaemons } from "./daemon-reaper.js";
-import { readManifest } from "../../shared/manifest/read-manifest.js";
+import {
+  loadManifest,
+  readManifest,
+} from "../../shared/manifest/read-manifest.js";
 import {
   getServiceLogRoot,
   spawnStreaming,
@@ -106,7 +109,10 @@ import {
 import { deploySessions } from "./release-deploy-session.js";
 import { spawnDetachedWebRestart } from "../cli/web-command.js";
 import { recordInvocation } from "../../shared/dev-metrics/emit.js";
-import { validateManifest } from "../../shared/manifest/validate-manifest.js";
+import {
+  validateManifest,
+  validateManifestLayers,
+} from "../../shared/manifest/validate-manifest.js";
 import { depService } from "../../shared/manifest/deps.js";
 import {
   isOpSignedIn,
@@ -115,6 +121,14 @@ import {
   saveSudoToVault,
 } from "../../shared/auth/sudo-vault.js";
 import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
+import { actorLabel } from "../../shared/agent-actor.js";
+import {
+  actorFromHeaders,
+  actorSuffix,
+  recordAction,
+  setAuditSink,
+} from "./audit.js";
+import { handleReadonlyRoutes } from "./readonly-routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -267,6 +281,8 @@ interface LogEntry {
   ts: string;
   kind: string;
   text: string;
+  /** Set when an agent (via `<cli> mcp`) asked for this action: its label. */
+  actor?: string;
 }
 
 const LOG_RING_MAX = 500;
@@ -281,11 +297,12 @@ function stripAnsi(s: string): string {
   return s.replace(ANSI_RE, "");
 }
 
-function pushLog(kind: string, text: string): void {
+function pushLog(kind: string, text: string, actor?: string): void {
   const entry: LogEntry = {
     ts: new Date().toISOString(),
     kind,
     text: stripAnsi(text),
+    ...(actor ? { actor } : {}),
   };
   logRing.push(entry);
   if (logRing.length > LOG_RING_MAX) logRing.shift();
@@ -302,10 +319,16 @@ function pushLog(kind: string, text: string): void {
  * Log to stdout unless --silent was passed, AND fan out to the log ring so the
  * /logs page and any connected SSE subscribers see the same stream.
  */
-function serverLog(msg: string, kind: string = "info"): void {
-  pushLog(kind, msg);
+function serverLog(msg: string, kind: string = "info", actor?: string): void {
+  pushLog(kind, msg, actor);
   if (!SILENT) process.stdout.write(msg + "\n");
 }
+
+// Every audited action (exec, run, sync) lands in the log as a lifecycle
+// line; an agent's carries its label so the /logs page can mark it.
+setAuditSink((line, actor) =>
+  serverLog(line, "lifecycle", actor ? actorLabel(actor) : undefined),
+);
 
 /** ANSI helpers (no chalk dependency in the server) */
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
@@ -686,6 +709,9 @@ async function handleRequest(
       return send404(res);
     }
   }
+
+  // ── API: stacks, edge, security plan (read-only; see readonly-routes.ts) ──
+  if (await handleReadonlyRoutes(req, res, pathname, url)) return;
 
   // ── API: test sources ─────────────────────────────────────────────────────
   // Returns the repos that contribute tests for a given pillar, with their
@@ -1131,23 +1157,27 @@ async function handleRequest(
 
     // Legacy: discovered repos from .den/ symlinks / registered-repos.json
     const legacyRepos = discoverRepos();
-    const legacyEntries = legacyRepos.flatMap((repo) =>
-      Object.entries(repo.manifest.services ?? {}).map(([svcName, svc]) => ({
-        repo: repo.repoName,
-        service: svcName,
-        address: `${repo.repoName}/${svcName}`,
-        repoPath: repo.repoPath,
-        commands: withDown(Object.keys(svc.commands?.[env] ?? {})),
-        logs: svc.logs?.[env] ?? null,
-        mode: "dev-managed" as const,
-        branch: null as string | null,
-        fromCatalog: false,
-        isEntrypoint: repo.manifest.entrypoint === svcName,
-        autostart: true, // legacy discovery has no workspace entry to toggle
-        deps: (svc.depends_on ?? []).map(depService),
-        cloned: true, // legacy discovery only ever finds on-disk repos
-      })),
-    );
+    const legacyEntries = legacyRepos.flatMap((repo) => {
+      const manifestLayers = loadManifest(repo.repoPath).layers;
+      return Object.entries(repo.manifest.services ?? {}).map(
+        ([svcName, svc]) => ({
+          repo: repo.repoName,
+          service: svcName,
+          address: `${repo.repoName}/${svcName}`,
+          repoPath: repo.repoPath,
+          commands: withDown(Object.keys(svc.commands?.[env] ?? {})),
+          logs: svc.logs?.[env] ?? null,
+          mode: "dev-managed" as const,
+          branch: null as string | null,
+          fromCatalog: false,
+          isEntrypoint: repo.manifest.entrypoint === svcName,
+          autostart: true, // legacy discovery has no workspace entry to toggle
+          deps: (svc.depends_on ?? []).map(depService),
+          cloned: true, // legacy discovery only ever finds on-disk repos
+          manifestLayers,
+        }),
+      );
+    });
 
     // Catalog entries (workspace-aware)
     const catalog = readCatalog();
@@ -1182,7 +1212,11 @@ async function handleRequest(
       ? listWorkspaceServices(ws.config, catalog, ws.name)
           .filter((r) => hasRuntime(repoKind(r.repoPath)))
           .flatMap((resolved) => {
-            const manifest = readManifest(resolved.repoPath);
+            // The manifest and the layers it was built from: repo or held,
+            // plus override when manifests/<repo>.override.yml applied.
+            const { manifest, layers: manifestLayers } = loadManifest(
+              resolved.repoPath,
+            );
             const svc = manifest?.services?.[resolved.subsystem];
             if (!manifest || !svc) {
               // Workspace membership is config-driven: a managed entry
@@ -1207,6 +1241,7 @@ async function handleRequest(
                   owners: daemonOwners.get(resolved.address) ?? [],
                   deps: [] as string[],
                   cloned: fs.existsSync(resolved.repoPath),
+                  manifestLayers,
                 },
               ];
             }
@@ -1228,6 +1263,7 @@ async function handleRequest(
                   resolveDepAddress(depService(d), catalog, ws.config, ws.name),
                 ),
                 cloned: true,
+                manifestLayers,
               },
             ];
           })
@@ -1373,7 +1409,11 @@ async function handleRequest(
 
     const execId = shortRunId();
     const execDesc = `${repoName}/${svcName} ${cmdName} (${env})`;
-    serverLog(`▶ exec ${execDesc} [${execId}]`, "lifecycle");
+    const execActor = actorFromHeaders(req.headers);
+    recordAction(execActor, {
+      verb: "exec",
+      detail: `${execDesc} [${execId}]`,
+    });
 
     // For detachable commands (up/restart), the service is spawned as a daemon
     // writing to a log file so it survives den restarts.  The tail proc
@@ -1397,8 +1437,9 @@ async function handleRequest(
         if (!active) return; // client already closed — don't write to dead response
         const duration = Date.now() - startTime;
         serverLog(
-          `■ exec ${execDesc} · exit=${exitCode} · ${formatDuration(duration)} [${execId}]`,
+          `■ exec ${execDesc} · exit=${exitCode} · ${formatDuration(duration)} [${execId}]${actorSuffix(execActor)}`,
           "lifecycle",
+          execActor ? actorLabel(execActor) : undefined,
         );
         // Dev-tooling telemetry: one invocation per service command run. The
         // action is whitelisted to common lifecycle verbs (low cardinality);
@@ -2084,7 +2125,8 @@ async function handleRequest(
     const runId = shortRunId();
     const modDesc = modules.length ? modules.join(",") : "all";
     const runDesc = `${pillar}/${env} · modules=${modDesc}`;
-    serverLog(`▶ run ${runDesc} [${runId}]`, "lifecycle");
+    const runActor = actorFromHeaders(req.headers);
+    recordAction(runActor, { verb: "run", detail: `${runDesc} [${runId}]` });
     if (
       pillar === "synthetic" ||
       pillar === "smoke" ||
@@ -2108,8 +2150,9 @@ async function handleRequest(
       const dur = formatDuration(Date.now() - startTime);
       const extra = note ? ` · ${note}` : "";
       serverLog(
-        `■ run ${runDesc} · exit=${exitCode} · ${dur}${extra} [${runId}]`,
+        `■ run ${runDesc} · exit=${exitCode} · ${dur}${extra} [${runId}]${actorSuffix(runActor)}`,
         "lifecycle",
+        runActor ? actorLabel(runActor) : undefined,
       );
       // Dev-tooling telemetry: one invocation per test run (pillar/env are
       // low-cardinality enums; module count only — never module names/args).
@@ -2584,10 +2627,24 @@ async function handleRequest(
       const filePath = url.searchParams.get("path");
       if (!filePath) return send400(res, '"path" query param required');
       try {
-        const denYml = fs.existsSync(filePath)
-          ? fs.lstatSync(filePath).isDirectory()
-            ? path.join(filePath, `${product().manifestYml}`)
-            : filePath
+        const isDir =
+          fs.existsSync(filePath) && fs.lstatSync(filePath).isDirectory();
+        // A repo folder: every layer that applies (repo or held, override,
+        // merged), flattened into the usual shape; each error names its file.
+        if (isDir) {
+          const layered = validateManifestLayers(filePath);
+          if (layered.layers.length > 0)
+            return sendJson(res, {
+              valid: layered.valid,
+              version: layered.layers[0].result.version,
+              errors: layered.layers.flatMap((l) => l.result.errors),
+              warnings: layered.layers.flatMap((l) => l.result.warnings),
+              manifestLayers: loadManifest(filePath).layers,
+              layers: layered.layers,
+            });
+        }
+        const denYml = isDir
+          ? path.join(filePath, `${product().manifestYml}`)
           : filePath;
         const content = fs.readFileSync(denYml, "utf-8");
         return sendJson(res, validateManifest(content));

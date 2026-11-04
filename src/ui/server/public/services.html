@@ -847,6 +847,11 @@
           const branchBadge = s.branch
             ? `<span class="badge branch">${s.branch}</span>`
             : "";
+          // Which manifest layers built this card: repo or held, + override.
+          const layersBadge =
+            Array.isArray(s.manifestLayers) && s.manifestLayers.length > 0
+              ? `<span class="badge layers" title="Manifest layers applied">manifest: ${s.manifestLayers.join(" + ")}</span>`
+              : "";
           return `
           <div class="service-card${isSub ? " subservice" : ""}">
             <div class="service-card-header">
@@ -857,7 +862,7 @@
                 <a class="site-link" id="site-${s.repo}-${s.service}" target="_blank" rel="noopener" hidden></a>
               </div>
             </div>
-            <div class="service-meta">${modeBadge}${branchBadge}${unclonedBadge}</div>
+            <div class="service-meta">${modeBadge}${branchBadge}${layersBadge}${unclonedBadge}</div>
             <div class="cmd-row">
               ${hasCaps ? cmdButtons + logsButton : `<span style="color:var(--muted);font-size:11px">${emptyNote}</span>`}
             </div>

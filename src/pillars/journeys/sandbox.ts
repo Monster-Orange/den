@@ -48,6 +48,7 @@ import type { JourneyPersonaRole } from "./spec/schema.js";
 import { product } from "../../shared/product.js";
 import { enginePath } from "../../shared/engine.js";
 import { getDistRoot } from "../../shared/paths.js";
+import { containsValue } from "../../shared/redact.js";
 // ── Layer 1: captureSecrets ──────────────────────────────────────────────────
 
 /** 1Password field label holding the Cursor API key (= env var name). */
@@ -375,11 +376,7 @@ export class TranscriptScrubber {
 
   /** Throws SecretLeakError when `text` contains any live secret value. */
   assertClean(text: string): void {
-    for (const secret of this.secrets) {
-      if (text.includes(secret)) {
-        throw new SecretLeakError();
-      }
-    }
+    if (containsValue(text, this.secrets)) throw new SecretLeakError();
   }
 }
 

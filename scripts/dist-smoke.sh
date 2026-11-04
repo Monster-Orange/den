@@ -116,6 +116,18 @@ run version ./bin/acme --version
 DEN_VERSION="$(node -p "require('$ENGINE/package.json').version")"
 expect_in "version is Den's ($DEN_VERSION)" "$WORK/version.out" "v$DEN_VERSION"
 
+say "MCP server (stdio)"
+# initialize + tools/list need no web server; every stdout line must be
+# protocol. stderr carries the server's one startup line, so it isn't checked.
+if (cd "$DIST" && node "$DEN/scripts/mcp-smoke.mjs" ./bin/acme) >"$WORK/mcp.out" 2>"$WORK/mcp.err"; then
+  ok "acme mcp answers initialize and tools/list"
+  expect_in "mcp serves the acme profile" "$WORK/mcp.out" "server acme:"
+  expect_in "mcp lists the read tools" "$WORK/mcp.out" "edge_status"
+else
+  bad "acme mcp failed:"
+  sed 's/^/       /' "$WORK/mcp.err" "$WORK/mcp.out" | head -20
+fi
+
 say "make (dry run) from the distribution root"
 run make-help make help
 run make-status make -n acme-status

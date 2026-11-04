@@ -6,15 +6,8 @@
  * https://<route>.<stack>.<edge.domain>.
  */
 import chalk from "chalk";
-import { readEdgeConfig } from "../../shared/edge/config.js";
 import { routeUrl } from "../../shared/edge/render.js";
 import { edgeUp } from "../../shared/edge/runtime.js";
-import { readStacks } from "../../shared/stacks/config.js";
-import {
-  getFocusedWorkspaceName,
-  getWorkspaceByName,
-} from "../../shared/environment-manager/workspaces.js";
-import { stackWorkspace } from "../../shared/stacks/render.js";
 import { projectName, startOrder } from "../../shared/stacks/render.js";
 import {
   stackDown,
@@ -22,44 +15,26 @@ import {
   stackLogs,
   stackPs,
   stackUp,
-  type StackContext,
 } from "../../shared/stacks/runtime.js";
+import { loadStackContext, stackStatuses } from "../../shared/stacks/status.js";
 
-function workspaceFlag(args: string[]): {
-  fkWs: string;
-  ws: string;
-  service?: string;
-  rest: string[];
-} {
+function serviceFlag(args: string[]): { service?: string; rest: string[] } {
   const rest: string[] = [];
-  // The global -w/--workspace is parsed (and checked) before we run and
-  // arrives as DEN_WORKSPACE_OVERRIDE.
-  const fkWs =
-    process.env.DEN_WORKSPACE_OVERRIDE ||
-    getFocusedWorkspaceName() ||
-    "default";
   let service: string | undefined;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--service") service = args[++i];
     else rest.push(args[i]);
   }
-  const ws = process.env.DEN_STACK_WORKSPACE || stackWorkspace(fkWs);
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(ws))
-    throw new Error(
-      `workspace "${ws}" must be lowercase letters, digits and dashes`,
-    );
-  return { fkWs, ws, service, rest };
+  return { service, rest };
 }
 
 export async function cmdStack(argv: string[]): Promise<void> {
-  const { fkWs, ws, service, rest } = workspaceFlag(argv);
+  const { service, rest } = serviceFlag(argv);
   const [sub = "ls", ...args] = rest;
-  const edge = readEdgeConfig();
-  // Repo manifests come from that den workspace's checkouts.
-  const stacks = readStacks(undefined, {
-    workspace: getWorkspaceByName(fkWs) ? fkWs : undefined,
-  });
-  const ctx: StackContext = { edge, stacks, workspace: ws };
+  // The global -w/--workspace is parsed (and checked) before we run and
+  // arrives as DEN_WORKSPACE_OVERRIDE; loadStackContext reads it.
+  const ctx = loadStackContext();
+  const { edge, stacks } = ctx;
   const names = args.filter((a) => !a.startsWith("-"));
   const pick = () => {
     if (!names.length)
@@ -71,17 +46,15 @@ export async function cmdStack(argv: string[]): Promise<void> {
 
   switch (sub) {
     case "ls":
-      for (const s of Object.values(stacks)) {
+      for (const s of stackStatuses(ctx)) {
         console.log(
           chalk.bold(`${s.name}`) +
             chalk.gray(
-              `  ${s.repo}${s.dir ? `/${s.dir}` : ""}  project ${projectName(s.name, ws)}`,
+              `  ${s.repo}${s.dir ? `/${s.dir}` : ""}  project ${s.project}`,
             ),
         );
-        for (const route of Object.keys(s.routes))
-          console.log(
-            `  ${routeUrl(`${route}.${s.name}`, edge)}  → ${s.routes[route]}`,
-          );
+        for (const route of s.routes)
+          console.log(`  ${route.url}  → ${route.target}`);
         if (s.uses.length)
           console.log(chalk.gray(`  uses ${s.uses.join(", ")}`));
       }
@@ -90,7 +63,7 @@ export async function cmdStack(argv: string[]): Promise<void> {
       // Re-render the edge so its cert covers every stack, then start the stacks.
       await edgeUp(edge);
       for (const n of startOrder(pick(), stacks)) {
-        console.log(chalk.cyan(`\n▶ ${n} (${projectName(n, ws)})`));
+        console.log(chalk.cyan(`\n▶ ${n} (${projectName(n, ctx.workspace)})`));
         stackUp(ctx, stacks[n], { build: args.includes("--build") });
         for (const route of Object.keys(stacks[n].routes))
           console.log(chalk.green(`  ✓ ${routeUrl(`${route}.${n}`, edge)}`));

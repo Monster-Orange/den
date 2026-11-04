@@ -4,6 +4,59 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.2.0] - unreleased
+
+### Added
+
+- **Manifest overrides.** An optional `manifests/<repo>.override.yml` in the
+  distribution is deep-merged onto the repo's base manifest (its own, or the
+  held one): maps merge by key, lists and scalars replace, and an explicit
+  `null` deletes a key. An override may only name services and keys the base
+  has, and an override with no base is an error. See "Overriding a manifest"
+  in `docs/distributions.md`.
+- **Manifest layers are visible.** `/api/services` returns `manifestLayers`
+  per service (`["repo"]`, `["held", "override"]`, …) and the Services cards
+  show them; `GET /api/manifest/validate?path=<repo dir>` returns each layer's
+  result.
+- **`validate` checks each layer.** For a repo folder it validates the base
+  and the override separately, each error naming its file, then the merged
+  result.
+- **`<cli> mcp`: an MCP server over stdio** for agents, a thin client of the
+  running web server (it never starts it, and says how when it is down). Read
+  tools are always on, including the new `stacks` and `edge_status`; the
+  actions `service_up`, `service_down`, `service_restart`, `workspace_sync`
+  and `run_tests` are opt-in per org with `mcp.actions`. Guards: lifecycle
+  commands and env=local only, locally run services only, `run_tests` limited
+  to `mcp.run_tests.envs` (default `[local]`, never production), security runs
+  must pass the owned-host plan and `full` is local only, log tools read
+  local sources unless `mcp.logs.remote: true`, and all text returned is
+  secret-redacted. No deploy tool. Pinned `@modelcontextprotocol/sdk` 1.32.1.
+  See "MCP server" in `docs/distributions.md`.
+- **Agent audit trail.** Every service exec, test run and sync is recorded
+  with who asked: an agent's actions carry actor `agent`, the MCP client's
+  self-reported name and version, and the MCP pid and session id, and show as
+  `[agent]` lines in the web server log on the Logs page.
+- **Read-only status endpoints:** `/api/stacks` (what `stack ls/health` show),
+  `/api/edge` (what `edge status` shows) and `/api/security/plan` (the
+  security CLI's own dry run). `stack ls` and `edge status` now print from the
+  same code.
+- **One secret redactor** (`src/shared/redact.ts`), shared by the journeys and
+  security pillars and the MCP server.
+
+### Fixed
+
+- Sync never touches a dev-managed checkout: a managed entry whose path is,
+  holds or sits inside one is refused with the reason, and naming a
+  dev-managed repo says so instead of doing nothing.
+- A security run's mode chosen on the Tests page (`api`, `full`) now reaches
+  the scan; it always ran `baseline` before.
+
+### Migrations
+
+- None required: with no override files, manifests resolve as in 0.1.0.
+- To let agents act through `<cli> mcp`, add `mcp.actions` to the org config.
+
+
 ## [0.1.0] - 2026-11-04
 
 The first Den release: one engine for local development, tests and releases

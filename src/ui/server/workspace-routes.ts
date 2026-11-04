@@ -86,6 +86,11 @@ import { getReposRoot, readUserConfig } from "../../shared/den-config.js";
 import { getDistRoot } from "../../shared/paths.js";
 import { getSudoEnv, prewarmSudo } from "./sudo-store.js";
 import {
+  devManagedPaths,
+  selectSyncTargets,
+} from "../../shared/environment-manager/sync-targets.js";
+import { actorFromHeaders, recordAction } from "./audit.js";
+import {
   GIT_REMOTE_TIMEOUT_MS,
   DETACH_WINDOW_MS,
 } from "../../shared/constants.js";
@@ -1906,14 +1911,20 @@ export async function handleWorkspaceRoutes(
     // Optional ?repo=<name> syncs a single system (the card's ⟳ sync action);
     // omitted syncs the whole workspace (the master ⟳ Sync button).
     const onlyRepo = url.searchParams.get("repo");
-    // Only sync managed services. Deduplicate by repoPath.
-    const seen = new Set<string>();
-    const targets = services.filter((s) => {
-      if (s.mode !== "managed") return false;
-      if (onlyRepo && s.repoName !== onlyRepo) return false;
-      if (seen.has(s.repoPath)) return false;
-      seen.add(s.repoPath);
-      return true;
+    // Only managed clones, deduplicated by path; never a dev-managed checkout
+    // (see sync-targets.ts), and a refusal is said out loud.
+    const { targets, refused } = selectSyncTargets(services, {
+      onlyRepo,
+      devManaged: devManagedPaths(readWorkspacesFile()),
+    });
+    for (const r of refused)
+      emit({
+        type: "line",
+        text: `  ${r.repoName}: not synced — ${r.reason}`,
+      });
+    recordAction(actorFromHeaders(req.headers), {
+      verb: "sync",
+      detail: `${ws.name}${onlyRepo ? ` · repo=${onlyRepo}` : ""} · ${targets.length} managed repo(s)`,
     });
 
     if (targets.length === 0) {

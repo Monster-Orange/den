@@ -40,6 +40,13 @@ if [ "${1:-}" = "create" ]; then
   entry="src/ui/cli/create-main.ts"
   built="dist/src/ui/cli/create-main.js"
 fi
+# `mcp` speaks the MCP protocol on stdout: its own entry point, so nothing
+# the full CLI prints can reach the protocol stream.
+if [ "${1:-}" = "mcp" ]; then
+  shift
+  entry="src/ui/cli/mcp-main.ts"
+  built="dist/src/ui/cli/mcp-main.js"
+fi
 
 # Escape hatch: force the compiled build (e.g. to test the prod artifact).
 if [ "${DEN_USE_DIST:-}" = "1" ] && [ -f "$DEN_ENGINE_ROOT/$built" ]; then

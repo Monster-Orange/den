@@ -67,6 +67,7 @@ import {
 } from "./plan.js";
 
 import { envKey, product } from "../../shared/product.js";
+import { containsValue, redactValues } from "../../shared/redact.js";
 // ── Exit codes ───────────────────────────────────────────────────────────────
 
 export const EXIT_CLEAN = 0;
@@ -291,8 +292,8 @@ function redactFile(
 ): void {
   if (secret === undefined || secret.length === 0) return;
   const contents = deps.readFileIfExists(filePath);
-  if (contents !== undefined && contents.includes(secret)) {
-    deps.writeFile(filePath, contents.split(secret).join("[REDACTED]"));
+  if (contents !== undefined && containsValue(contents, [secret])) {
+    deps.writeFile(filePath, redactValues(contents, [secret]));
   }
 }
 

@@ -164,6 +164,8 @@ export interface ValidationError {
   message: string;
   /** Optional remediation hint, e.g. "Did you mean X?" */
   suggestion?: string;
+  /** The manifest layer file the error is in, when validating by layer. */
+  file?: string;
 }
 
 export interface ValidationResult {

@@ -558,4 +558,25 @@ describe("buildCommand – security pillar", () => {
     ]);
     expect(steps.flatMap((s) => s.args).join(" ")).not.toMatch(/--mode/);
   });
+
+  it("passes an explicitly chosen stronger mode on to the entrypoint (its ceiling decides)", () => {
+    const steps = runner.buildCommand({
+      pillar: "security",
+      environment: "local",
+      modules: ["shop/api"],
+      securityMode: "full",
+    });
+    expect(steps[0].args).toEqual([
+      ENG("src/pillars/security/run.ts"),
+      "--env=local",
+      "--service=shop/api",
+      "--mode=full",
+    ]);
+    const baseline = runner.buildCommand({
+      pillar: "security",
+      environment: "local",
+      securityMode: "baseline",
+    });
+    expect(baseline[0].args.join(" ")).not.toMatch(/--mode/);
+  });
 });

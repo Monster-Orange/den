@@ -228,6 +228,11 @@ export interface DenConfig {
   /** Security pillar (OWASP ZAP) policy — see readSecurityOwnedHosts. */
   security?: SecurityConfig;
   /**
+   * The MCP server (`<cli> mcp`). Without this block agents get read tools
+   * only; `actions` opts in to named actions. See readMcpConfig.
+   */
+  mcp?: McpConfig;
+  /**
    * Shared test accounts (email + secrets-backend item per role) the test
    * pillars log in as — see src/shared/auth/test-accounts.ts.
    */
@@ -398,6 +403,7 @@ export function readDenConfig(): DenConfig {
       service_env: parsed?.service_env,
       env_health_urls: parsed?.env_health_urls,
       security: parsed?.security,
+      mcp: parsed?.mcp,
       test_accounts: parsed?.test_accounts,
       defaults: parsed?.defaults,
       secrets: parsed?.secrets,
@@ -478,6 +484,67 @@ export function readSecurityAutoTargets(
   config: DenConfig = readDenConfig(),
 ): boolean {
   return config.security?.auto_targets === true;
+}
+
+// ── MCP config (`<cli> mcp`) ───────────────────────────────────────────────────
+
+/** The action tools an org can opt in to. Read tools are always on. */
+export const MCP_ACTIONS = [
+  "service_up",
+  "service_down",
+  "service_restart",
+  "workspace_sync",
+  "run_tests",
+] as const;
+export type McpAction = (typeof MCP_ACTIONS)[number];
+
+/** `mcp:` in the org config. */
+export interface McpConfig {
+  /** Action tools to register; none when absent. */
+  actions?: string[];
+  /** Environments `run_tests` may target (default [local]; production never). */
+  run_tests?: { envs?: string[] };
+  /** `remote: true` lets the log tools read non-local sources (e.g. CloudWatch). */
+  logs?: { remote?: boolean };
+}
+
+/** `mcp:` with its defaults applied. */
+export interface ResolvedMcpConfig {
+  actions: McpAction[];
+  runTestsEnvs: Environment[];
+  logsRemote: boolean;
+}
+
+/**
+ * The effective MCP config. An unknown action or environment name throws:
+ * a typo must not silently turn a guard off (or an action on).
+ */
+export function readMcpConfig(
+  config: DenConfig = readDenConfig(),
+): ResolvedMcpConfig {
+  const raw = config.mcp ?? {};
+  const actions = (Array.isArray(raw.actions) ? raw.actions : []).map((a) => {
+    if (!(MCP_ACTIONS as readonly string[]).includes(String(a)))
+      throw new Error(
+        `mcp.actions: unknown action "${String(a)}" (known: ${MCP_ACTIONS.join(", ")})`,
+      );
+    return a as McpAction;
+  });
+  const envList = raw.run_tests?.envs;
+  const runTestsEnvs = (Array.isArray(envList) ? envList : ["local"]).map(
+    (e) => {
+      if (!ALL_ENVIRONMENTS.includes(e as Environment))
+        throw new Error(
+          `mcp.run_tests.envs: unknown environment "${String(e)}" (known: ${ALL_ENVIRONMENTS.join(", ")})`,
+        );
+      return e as Environment;
+    },
+  );
+  return {
+    actions: [...new Set(actions)],
+    runTestsEnvs: [...new Set(runTestsEnvs)],
+    logsRemote: raw.logs?.remote === true,
+  };
 }
 
 // ── Release config (Release tab) ──────────────────────────────────────────────
