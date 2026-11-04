@@ -9,6 +9,7 @@
  */
 
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
 import type { Environment, ReleaseSourceConfig } from "./types/index.js";
@@ -239,6 +240,11 @@ export interface DenConfig {
    */
   mcp?: McpConfig;
   /**
+   * The web UI: `port` (read by edge/config.ts readWebPort) and `service`,
+   * the launchd service `<cli> service` installs. See readWebServiceConfig.
+   */
+  web?: WebConfig;
+  /**
    * Shared test accounts (email + secrets-backend item per role) the test
    * pillars log in as — see src/shared/auth/test-accounts.ts.
    */
@@ -426,6 +432,7 @@ export function readDenConfig(): DenConfig {
       env_health_urls: parsed?.env_health_urls,
       security: parsed?.security,
       mcp: parsed?.mcp,
+      web: parsed?.web,
       test_accounts: parsed?.test_accounts,
       defaults: parsed?.defaults,
       secrets: parsed?.secrets,
@@ -599,6 +606,68 @@ export function readMcpConfig(
     actions: [...new Set(actions)],
     runTestsEnvs: [...new Set(runTestsEnvs)],
     logsRemote: raw.logs?.remote === true,
+  };
+}
+
+// ── Web UI service (`<cli> service`) ──────────────────────────────────────────
+
+/** `web:` in the org config. */
+export interface WebConfig {
+  port?: number;
+  /** The launchd service that runs the web UI (`<cli> service install`). */
+  service?: { label?: string; logs?: string };
+}
+
+/** `web.service` with its defaults applied. */
+export interface ResolvedWebService {
+  /** launchd label; also the plist's name in ~/Library/LaunchAgents. */
+  label: string;
+  /** Directory the service's web.log goes to. */
+  logs: string;
+}
+
+const WEB_SERVICE_KEYS = ["label", "logs"];
+
+/**
+ * The web UI's launchd service. The defaults are service/install.sh's own
+ * (`local.<distribution dir name>.web`, `~/Library/Logs/<dir name>`), so an
+ * install made with the script keeps its label. `logs` may start with `~/`;
+ * a relative path is under the distribution root. A bad value throws.
+ */
+export function readWebServiceConfig(
+  config: DenConfig = readDenConfig(),
+  distRoot: string = ROOT,
+  home: string = os.homedir(),
+): ResolvedWebService {
+  const name = path.basename(distRoot);
+  const raw: unknown = config.web?.service;
+  if (
+    raw !== undefined &&
+    (raw === null || typeof raw !== "object" || Array.isArray(raw))
+  )
+    throw new Error("web.service must be a map: { label, logs }");
+  const svc = (raw ?? {}) as Record<string, unknown>;
+  for (const key of Object.keys(svc))
+    if (!WEB_SERVICE_KEYS.includes(key))
+      throw new Error(
+        `web.service: unknown key "${key}" (known: ${WEB_SERVICE_KEYS.join(", ")})`,
+      );
+  const label = svc.label ?? `local.${name}.web`;
+  if (typeof label !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(label))
+    throw new Error(
+      `web.service.label must be letters, digits, dots, dashes and underscores, got "${String(label)}"`,
+    );
+  const logs = svc.logs ?? path.join(home, "Library", "Logs", name);
+  if (typeof logs !== "string" || !logs.trim())
+    throw new Error(
+      `web.service.logs must be a directory path, got "${String(logs)}"`,
+    );
+  const expanded = logs.startsWith("~/")
+    ? path.join(home, logs.slice(2))
+    : logs;
+  return {
+    label,
+    logs: path.isAbsolute(expanded) ? expanded : path.join(distRoot, expanded),
   };
 }
 

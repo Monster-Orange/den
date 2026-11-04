@@ -15,6 +15,9 @@
 #
 #   DEN_SERVICE_LABEL  launchd label (default local.<dist dir name>.web)
 #   DEN_SERVICE_LOGS   log directory (default ~/Library/Logs/<dist dir name>)
+#   DEN_SERVICE_READY_CHECK=external  install does not print "running": the
+#                      caller (`<cli> service install`) checks the server
+#                      answers first.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -95,7 +98,11 @@ case "${1:-install}" in
     done
     [ "$loaded" = 1 ] || { echo "✗ launchctl bootstrap failed for $LABEL (plist: $PLIST)" >&2; exit 1; }
     launchctl kickstart -k "$DOMAIN/$LABEL"
-    echo "✓ $LABEL running (logs: $LOGS/web.log)"
+    if [ "${DEN_SERVICE_READY_CHECK:-}" = external ]; then
+      echo "… $LABEL started; waiting for it to answer"
+    else
+      echo "✓ $LABEL running (logs: $LOGS/web.log)"
+    fi
     ;;
   uninstall)
     launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true

@@ -8,6 +8,7 @@
 
 import { hasRuntime, repoKind } from "../repo-kind.js";
 import { effectiveLocalCommands } from "../stacks/manifest-commands.js";
+import { manifestStackName } from "../stacks/config.js";
 import fs from "fs";
 import path from "path";
 import { readManifest } from "../manifest/read-manifest.js";
@@ -40,6 +41,7 @@ import {
   getActiveWorkspaces,
   getFocusedWorkspaceName,
   getWorkspaceByName,
+  parseAddress,
   resolveServiceSource,
   listWorkspaceServices,
 } from "./workspaces.js";
@@ -49,7 +51,12 @@ import {
   type ServiceHealthResult,
 } from "./health.js";
 import { EventEmitter } from "events";
-import type { CommandDef, ResolvedService } from "../types/index.js";
+import type {
+  CommandDef,
+  ResolvedService,
+  ServiceCatalog,
+  WorkspaceConfig,
+} from "../types/index.js";
 import type { ChildProcess } from "child_process";
 import { getStateDir } from "../paths.js";
 
@@ -658,7 +665,95 @@ export function resolveService(
     : getActiveWorkspace();
   if (!ws) return null;
   const catalog = readCatalog();
+  const listed = resolveListedService(address, ws, catalog);
+  if (listed || address.includes("/")) return listed;
+  // Not a repo or a listed address: a service key or a stack name, when it
+  // names exactly one service in the workspace.
+  const candidates = aliasCandidates(address, ws, catalog);
+  return candidates.length === 1
+    ? resolveListedService(candidates[0], ws, catalog)
+    : null;
+}
 
+type NamedWorkspace = { name: string; config: WorkspaceConfig };
+
+/**
+ * The addresses `alias` could mean in `ws`: every service whose manifest key
+ * is `alias`, and the repo of every compose stack named `alias` (a stack
+ * stands for its repo; when that repo also has a service named `alias`, the
+ * service is the one match). Sorted; empty for a `repo/service` address and
+ * for a catalog repo's name.
+ */
+function aliasCandidates(
+  alias: string,
+  ws: NamedWorkspace,
+  catalog: ServiceCatalog,
+): string[] {
+  // A repo name is never an alias, in the workspace or not.
+  if (alias.includes("/") || catalog[alias]) return [];
+  const services = new Set<string>();
+  const stackRepos = new Set<string>();
+  for (const s of listWorkspaceServices(ws.config, catalog, ws.name)) {
+    if (s.subsystem === alias) services.add(s.address);
+    const manifest = readManifest(s.repoPath);
+    if (manifest?.compose && manifestStackName(manifest, s.repoName) === alias)
+      stackRepos.add(s.repoName);
+  }
+  const withService = new Set(
+    [...services].map((a) => parseAddress(a, catalog).repoName),
+  );
+  return [
+    ...services,
+    ...[...stackRepos].filter((r) => !withService.has(r)),
+  ].sort();
+}
+
+function namedWorkspace(workspaceName?: string): NamedWorkspace | null {
+  return workspaceName
+    ? getWorkspaceByName(workspaceName)
+    : getActiveWorkspace();
+}
+
+/**
+ * What `alias` could address in the workspace (the focused one by default)
+ * when it is not a repo or a listed address: see resolveService.
+ */
+export function serviceAliasCandidates(
+  alias: string,
+  workspaceName?: string,
+): string[] {
+  const ws = namedWorkspace(workspaceName);
+  if (!ws) return [];
+  const catalog = readCatalog();
+  if (resolveListedService(alias, ws, catalog)) return [];
+  return aliasCandidates(alias, ws, catalog);
+}
+
+/**
+ * The address to use for what someone typed: an unambiguous alias becomes
+ * the service's own address; anything else is returned as is. An ambiguous
+ * alias throws, naming the candidates.
+ */
+export function canonicalServiceAddress(
+  address: string,
+  workspaceName?: string,
+): string {
+  const candidates = serviceAliasCandidates(address, workspaceName);
+  if (candidates.length > 1) {
+    const ws = namedWorkspace(workspaceName)?.name ?? "default";
+    throw new Error(
+      `"${address}" is ambiguous in workspace "${ws}": ${candidates.join(", ")}; name one of them`,
+    );
+  }
+  return candidates[0] ?? address;
+}
+
+/** resolveService for a repo name or a listed address (no aliases). */
+function resolveListedService(
+  address: string,
+  ws: NamedWorkspace,
+  catalog: ServiceCatalog,
+): ResolvedService | null {
   let resolved = resolveServiceSource(address, ws.name, ws.config, catalog);
 
   // Bare multi-service repo registered ONLY by subsystem (e.g. "shop/db" +
@@ -1048,8 +1143,12 @@ export function runServiceCommand(
 
   const resolved = resolveService(address, workspace);
   if (!resolved) {
+    const candidates = serviceAliasCandidates(address, workspace);
     onLine(
-      `Error: service "${address}" not found in catalog or workspace "${workspace}"`,
+      `Error: service "${address}" not found in catalog or workspace "${workspace}"` +
+        (candidates.length > 1
+          ? `; it is ambiguous: ${candidates.join(", ")}`
+          : ""),
     );
     closeAsync(1);
     return dummy();

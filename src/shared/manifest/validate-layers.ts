@@ -15,6 +15,7 @@
  */
 
 import * as fs from "fs";
+import * as path from "path";
 import { z } from "zod";
 import type { ValidationError, ValidationResult } from "../types/index.js";
 import {
@@ -24,11 +25,14 @@ import {
   type ManifestMap,
 } from "./merge-override.js";
 import {
+  heldManifestPath,
   loadManifest,
   orphanOverrideMessage,
+  overrideSuffix,
   parseManifestText,
   type ManifestLayer,
 } from "./read-manifest.js";
+import { product } from "../product.js";
 
 /** What layered validation needs from the schema module. */
 export interface SchemaTools {
@@ -170,6 +174,31 @@ function readLayer(file: string): { value: unknown } | { error: string } {
   }
 }
 
+/**
+ * A warning for a held manifest the repo's own manifest has made redundant:
+ * the repo's file always wins, so the held one is never read.
+ */
+function redundantHeldWarning(
+  heldFile: string,
+  overrideFile: string | null,
+): ValidationError {
+  const yml = product().manifestYml;
+  const name = path.basename(heldFile);
+  const key = name.endsWith(yml) ? name.slice(0, -yml.length) : name;
+  const asOverride = path.join(
+    path.dirname(heldFile),
+    `${key}${overrideSuffix()}`,
+  );
+  return {
+    path: "",
+    file: heldFile,
+    message: `${heldFile} is not used: the repo now carries its own manifest, which always wins`,
+    suggestion: overrideFile
+      ? `delete it; ${overrideFile} already layers onto the repo's manifest`
+      : `delete it, or turn it into an override (${asOverride}) that keeps only what this distribution changes`,
+  };
+}
+
 /** Validate every manifest layer of `repoPath`, then the merged result. */
 export function validateLayers(
   tools: SchemaTools,
@@ -189,10 +218,20 @@ export function validateLayers(
   }
 
   const base = readLayer(baseFile);
-  const baseResult =
+  let baseResult =
     "error" in base
       ? failure(tools.version, baseFile, base.error)
       : withFile(tools.validate(base.value), baseFile);
+  const redundantHeld =
+    baseLayer === "repo" ? heldManifestPath(repoPath) : null;
+  if (redundantHeld)
+    baseResult = {
+      ...baseResult,
+      warnings: [
+        ...baseResult.warnings,
+        redundantHeldWarning(redundantHeld, overrideFile),
+      ],
+    };
   layers.push({ layer: baseLayer, file: baseFile, result: baseResult });
 
   if (overrideFile) {

@@ -96,7 +96,10 @@ import {
   getWaitDeps,
 } from "../../shared/environment-manager/dag.js";
 import { waitForReady } from "../../shared/environment-manager/readiness.js";
-import { resolveService } from "../../shared/environment-manager/service-runner.js";
+import {
+  canonicalServiceAddress,
+  resolveService,
+} from "../../shared/environment-manager/service-runner.js";
 import { getGitHubCoords } from "../../shared/smoke/git-remote.js";
 import {
   getReposRoot,
@@ -157,6 +160,7 @@ import {
 import { cleanupStaleTabs } from "../../shared/cli-tabs.js";
 import { cmdConfig } from "./config-command.js";
 import { cmdEdge } from "./edge-command.js";
+import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
 import { cmdWeb, displayWebHelp } from "./web-command.js";
 import { cmdGraph } from "./graph-command.js";
@@ -301,10 +305,18 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   mcp: {
-    usage: "mcp [--port <web port>]",
+    usage: "mcp [--port <web port>] [--list | --call <tool> ['<json args>']]",
     lines: [
       "An MCP server over stdio for agents: a client of the running web server",
       `(\`${product().cli} web up\`). Read tools always; actions only as named in mcp.actions.`,
+      "--list prints the tool names; --call runs one tool and prints its result.",
+    ],
+  },
+  service: {
+    usage: "service [install|status|print|uninstall]",
+    lines: [
+      "The web UI as a macOS launchd service, started at login. Label and logs:",
+      "config web.service { label, logs }.",
     ],
   },
   "local-dev": {
@@ -363,6 +375,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "apps",
   "applications",
   "mcp",
+  "service",
 ]);
 
 /** Map a raw command token to a PII-safe, registered telemetry command name. */
@@ -378,6 +391,20 @@ function telemetryReason(error: unknown): string {
   const name = (error as { constructor?: { name?: string } })?.constructor
     ?.name;
   return name && name !== "Object" ? name : "Error";
+}
+
+/**
+ * What was typed, with each service alias (a manifest service key or a
+ * compose stack name) mapped to its service's address, so the derived graph,
+ * ownership and the daemon registry all see one name. Flags pass through; an
+ * ambiguous alias throws, naming the candidates. `limit` maps only the first
+ * n positional args.
+ */
+function canonicalTargets(args: string[], limit = Infinity): string[] {
+  let seen = 0;
+  return args.map((a) =>
+    a.startsWith("-") || seen++ >= limit ? a : canonicalServiceAddress(a),
+  );
 }
 
 /** Print one manifest's validation: a status line, then each issue. */
@@ -683,6 +710,10 @@ class DenCLI {
 
         case "edge":
           await cmdEdge(args.slice(1));
+          break;
+
+        case "service":
+          process.exitCode = await cmdService(args.slice(1));
           break;
 
         case "stack":
@@ -2337,9 +2368,10 @@ class DenCLI {
     // Tokens after a `--` terminator belong to a child command — they must
     // never be read as up's own flags (`den up -- -a` is NOT `up -a`).
     const terminator = args.indexOf("--");
-    const { app, rest: ownArgs } = takeAppFlag(
+    const { app, rest } = takeAppFlag(
       terminator === -1 ? args : args.slice(0, terminator),
     );
+    const ownArgs = canonicalTargets(rest);
     const dryRun = ownArgs.includes("--dry-run") || ownArgs.includes("-n");
     const plan = ownArgs.includes("--plan");
     const pull = ownArgs.includes("--pull");
@@ -2438,9 +2470,10 @@ class DenCLI {
     // never be read as down's own flags (`den down -- -a` must NOT tear
     // down the whole workspace).
     const terminator = args.indexOf("--");
-    const { app, rest: ownArgs } = takeAppFlag(
+    const { app, rest } = takeAppFlag(
       terminator === -1 ? args : args.slice(0, terminator),
     );
+    const ownArgs = canonicalTargets(rest);
     const dryRun = ownArgs.includes("--dry-run") || ownArgs.includes("-n");
     const force = ownArgs.includes("--force") || ownArgs.includes("-f");
     if (app) {
@@ -2507,7 +2540,7 @@ class DenCLI {
     }
     // Drop flag tokens so a bare `den restart --foo` doesn't treat the flag
     // as a service address (matches cmdServiceUp/cmdServiceDown).
-    const filtered = args.filter((a) => !a.startsWith("-"));
+    const filtered = canonicalTargets(args.filter((a) => !a.startsWith("-")));
     const addresses =
       filtered.length > 0
         ? filtered
@@ -2622,7 +2655,7 @@ class DenCLI {
   private async cmdLogs(args: string[]): Promise<void> {
     await this.ensureWorkspaceSeeded();
     const alias = loadAliasResolver();
-    const target = resolveLogsTarget(args, alias);
+    const target = resolveLogsTarget(canonicalTargets(args, 1), alias);
     if (target.kind === "unknown-repo") {
       console.log(chalk.red(`\n  Unknown repo: ${target.arg}\n`));
       process.exit(1);
@@ -3687,6 +3720,12 @@ class DenCLI {
     );
     console.log(
       "  mcp [--port <n>]     MCP server (stdio) for agents, over the running web server",
+    );
+    console.log(
+      "  mcp --call <tool>    Call one MCP tool and print its result (--list: tool names)",
+    );
+    console.log(
+      "  service install      Run the web UI as a launchd service (status, print, uninstall)",
     );
     console.log();
     console.log("  workspace list       List workspaces");

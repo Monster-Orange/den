@@ -4,6 +4,50 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.2.2] - unreleased
+
+### Added
+
+- **`<cli> service install | status | print | uninstall`**: the web UI's
+  launchd service, over `service/install.sh`, so a distribution no longer
+  wraps the script in its Makefile. The label and log directory are
+  `web.service: { label, logs }` in the org config; the defaults are the
+  script's own (`local.<distribution dir name>.web`,
+  `~/Library/Logs/<distribution dir name>`), so an existing install keeps its
+  label. A bad label, a non-path `logs` or an unknown key under `web.service`
+  is an error. `install` (which also restarts) says `running` only once
+  `/api/server-info` answers with JSON, and after 30s without an answer says
+  `installed but not answering yet: check <logs dir>` and exits 1. `print`
+  writes the plist only, on any OS. See "Running the web UI as a service" in
+  `docs/distributions.md`.
+- **`<cli> mcp --call <tool> ['<json args>']` and `<cli> mcp --list`.** One
+  tool call from a shell, through the same tool layer as the MCP server
+  (registered tools only, so actions only as named in `mcp.actions`; every
+  guard; redaction; audit headers), against the running web server. Prints
+  the tool's text to stdout and exits 1 when the tool reports an error.
+  `--list` prints the tool names.
+- **Service aliases.** `up`, `down`, `restart` and `logs` (and every caller
+  of the service resolver, so `/api/service/exec` too) accept a service's
+  manifest key or a compose stack's name, when it names exactly one service
+  in the workspace: `<cli> restart indexer` restarts the repo whose service
+  or stack is `indexer`. Repo names and listed addresses win over an alias.
+  An ambiguous alias is an error naming the candidates (`"worker" is
+  ambiguous in workspace "default": one/worker, two/worker`). See "Naming a
+  service" in `docs/distributions.md`.
+- **`validate` flags a redundant held manifest.** When a repo carries its own
+  manifest and the distribution still holds `manifests/<repo>.<name>.yml`,
+  `validate` warns (never an error) that the held file is not used and can be
+  deleted, or turned into `manifests/<repo>.override.yml`.
+
+### Migrations
+
+- None required.
+- A Makefile target that runs `service/install.sh` with `DEN_SERVICE_LABEL`
+  and `DEN_SERVICE_LOGS` can become `<cli> service install`; put a non-default
+  label or log directory in `web.service` first, since the CLI reads the
+  config, not those env vars.
+- Delete held manifests `validate` now reports as unused.
+
 ## [0.2.1] - 2026-11-04
 
 ### Fixed

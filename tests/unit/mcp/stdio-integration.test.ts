@@ -174,3 +174,60 @@ describe("bin/den mcp over stdio", () => {
       expect(JSON.parse(line)).toMatchObject({ jsonrpc: "2.0" });
   }, 30_000);
 });
+
+describe("bin/den mcp --call / --list (one shot)", () => {
+  // Async: the stub web server runs in this process, so a sync spawn would
+  // block it from answering.
+  const run = (
+    ...args: string[]
+  ): Promise<{ status: number | null; stdout: string }> =>
+    new Promise((resolve) => {
+      const p = spawn(
+        path.join(ENGINE, "bin", "den"),
+        ["mcp", "--port", String(port), ...args],
+        {
+          cwd: root,
+          env: {
+            ...process.env,
+            DEN_ROOT: root,
+            DEN_HOME: path.join(root, "home"),
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      let stdout = "";
+      p.stdout!.on("data", (d: Buffer) => (stdout += d.toString()));
+      p.on("close", (status) => resolve({ status, stdout }));
+    });
+
+  it("--list prints the enabled tool names", async () => {
+    const r = await run("--list");
+    expect(r.status).toBe(0);
+    const names = r.stdout.trim().split("\n");
+    expect(names).toEqual(
+      expect.arrayContaining(["status", "service_up", "run_tests"]),
+    );
+    expect(names).not.toContain("service_down");
+  }, 30_000);
+
+  it("--call runs one read tool over HTTP and prints its result", async () => {
+    const before = requests.length;
+    const r = await run("--call", "status", "{}");
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual([
+      { repo: "shop", service: "api", ok: true },
+    ]);
+    const health = requests.slice(before).find((q) => q.path === "/api/health");
+    expect(health?.headers["x-den-actor"]).toBe("agent");
+  }, 30_000);
+
+  it("--call exits 1 on a refused action", async () => {
+    const r = await run(
+      "--call",
+      "run_tests",
+      JSON.stringify({ pillar: "smoke", env: "production" }),
+    );
+    expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/^Refused: .*production/);
+  }, 30_000);
+});

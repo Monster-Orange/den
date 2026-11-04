@@ -151,6 +151,15 @@ expect_in "service keeps the given label" "$WORK/service-print.out" \
   "<string>local.acme.web</string>"
 loader="$(sed -n 's#.*<string>\(.*/tsx/dist/loader.mjs\)</string>.*#\1#p' "$WORK/service-print.out" | head -1)"
 if [ -n "$loader" ] && [ -f "$loader" ]; then ok "service's tsx loader exists"; else bad "service's tsx loader missing: '$loader'"; fi
+# The CLI over the same script: with no web.service in the config, the label
+# and logs are the script's own defaults, so existing installs keep theirs.
+run service-cli-print ./bin/acme service print
+expect_in "acme service print runs the engine's server" "$WORK/service-cli-print.out" \
+  "node_modules/@monster-orange/den/src/ui/server/index.ts"
+expect_in "acme service print keeps the script's default label" "$WORK/service-cli-print.out" \
+  "<string>local.acme.web</string>"
+expect_in "acme service print keeps the script's default logs" "$WORK/service-cli-print.out" \
+  "Library/Logs/acme/web.log</string>"
 
 say "web server"
 PORT="$(node -e 'const s=require("net").createServer();s.listen(0,"localhost",()=>{console.log(s.address().port);s.close()})')"

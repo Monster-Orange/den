@@ -109,6 +109,23 @@ The web UI's Services cards show the layers each manifest was built from
 `manifestLayers`, e.g. `["held", "override"]`. `DEN_MANIFESTS_DIR` points the
 held and override lookup at another directory (tests use it).
 
+Once a repo carries its own manifest, a held `manifests/<repo>.acme.yml` is
+never read. `validate` says so, as a warning (not an error), naming the held
+file: delete it, or keep only what this distribution changes as
+`manifests/<repo>.override.yml`.
+
+## Naming a service
+
+`up`, `down`, `restart` and `logs` take a repo name (`shop`) or a
+`repo/service` address (`shop/api`). A service's manifest key (`api`) or a
+compose stack's name (`compose.name`, else the manifest's `name`) works too,
+when it names exactly one service in the workspace: a stack stands for its
+repo, so `<cli> restart search` restarts the repo whose stack is `search`.
+Repo names and listed addresses always win over an alias, so a catalog repo
+is never mistaken for another repo's service. An alias that names more than
+one service is an error that lists them (`"worker" is ambiguous in workspace
+"default": one/worker, two/worker`); name one of them.
+
 ## Placement
 
 Each service says where it runs, per environment: `local` (on this machine,
@@ -329,7 +346,40 @@ are the same directory.
 ## Running the web UI as a service (macOS)
 
 Den ships a launchd installer that runs the web UI at login and restarts it if
-it exits. From the distribution root:
+it exits:
+
+```bash
+./bin/acme service install     # install (or refresh) and start it
+./bin/acme service status      # launchd's view: state, pid, last exit code
+./bin/acme service print       # the LaunchAgent plist it would install; installs nothing
+./bin/acme service uninstall   # stop it and remove the LaunchAgent
+```
+
+The label and log directory come from the org config:
+
+```yaml
+web:
+  port: 7777
+  service:
+    label: local.acme.web # default: local.<distribution dir name>.web
+    logs: ~/Library/Logs/acme # default: ~/Library/Logs/<distribution dir name>
+```
+
+The defaults are the installer's own, so an install made by the script keeps
+its label. `logs` may start with `~/`; a relative path is under the
+distribution root. A label other than letters, digits, `.`, `-` and `_`, a
+`logs` that is not a path, or any other key under `web.service` is an error.
+`print` works on any OS; the rest are macOS only.
+
+`install` also restarts a service that is already installed. It says the
+service is running only once the web server answers
+`http://localhost:<web.port>/api/server-info` with JSON (a fresh server
+answers empty for a few seconds while it starts). If it has not answered
+within 30s, it says `installed but not answering yet: check <logs dir>` and
+exits 1.
+
+`<cli> service` runs the installer script below, which you can also run
+yourself, from the distribution root:
 
 ```bash
 DEN_ROOT="$PWD" DEN_SERVICE_LABEL=local.acme.web \
@@ -406,6 +456,20 @@ everyone's checkout is in the same place.
 
 `--port <n>` (on `mcp` or `mcp connect`) points it at a web server on another
 port.
+
+### One call from a shell
+
+```sh
+./bin/acme mcp --list                                  # the tool names this org registers
+./bin/acme mcp --call status                           # one tool; prints its text result
+./bin/acme mcp --call logs_tail '{"service":"shop/api","lines":50}'
+```
+
+`--call <tool> ['<json args>']` runs one tool through the same tool layer as
+the server: only registered tools (so actions only as named in
+`mcp.actions`), every guard, the same redaction and audit headers. It prints
+the tool's text to stdout and exits 1 when the tool reports an error (a
+refusal, a failed action, the web server down).
 
 ### Config
 

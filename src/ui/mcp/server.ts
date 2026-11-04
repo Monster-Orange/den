@@ -115,15 +115,78 @@ function parsePort(argv: string[]): number | undefined {
 export const MCP_USAGE = (cli: string): string =>
   [
     `Usage: ${cli} mcp [--port <web port>]`,
+    `       ${cli} mcp --list`,
+    `       ${cli} mcp --call <tool> ['<json args>']`,
     "",
     `An MCP server over stdio for agents, a client of the running web server`,
     `(\`${cli} web up\`; default port: config web.port). Read tools always;`,
     "actions only as named in the org config's mcp.actions. See docs/distributions.md.",
     "",
+    "--list prints the tool names; --call runs one tool through the same guards,",
+    "prints its text result and exits 1 if the tool reports an error.",
+    "",
     `Register it with your agents: ${cli} mcp clients, then ${cli} mcp connect <client> (or --all).`,
   ].join("\n");
 
-/** Run `<cli> mcp` until stdin closes. */
+/** A one-shot invocation: `--list`, or `--call <tool> [json]`. */
+export type OneShot =
+  | { kind: "list" }
+  | { kind: "call"; tool: string; args: Record<string, unknown> };
+
+/** The one-shot `argv` asks for, or null for the stdio server. */
+export function parseOneShot(argv: string[]): OneShot | null {
+  const i = argv.indexOf("--call");
+  if (i !== -1) {
+    const tool = argv[i + 1];
+    if (!tool || tool.startsWith("-"))
+      throw new Error("--call needs a tool name: --call <tool> ['<json>']");
+    const raw = argv[i + 2];
+    if (raw === undefined || raw.startsWith("--"))
+      return { kind: "call", tool, args: {} };
+    let args: unknown;
+    try {
+      args = JSON.parse(raw);
+    } catch (e) {
+      throw new Error(
+        `--call ${tool}: arguments are not JSON (${(e as Error).message})`,
+      );
+    }
+    if (args === null || typeof args !== "object" || Array.isArray(args))
+      throw new Error(`--call ${tool}: arguments must be a JSON object`);
+    return { kind: "call", tool, args: args as Record<string, unknown> };
+  }
+  return argv.includes("--list") ? { kind: "list" } : null;
+}
+
+export interface OneShotOptions {
+  cfg: ResolvedMcpConfig;
+  cli: string;
+  api: DenApi;
+  out?: (text: string) => void;
+  err?: (text: string) => void;
+}
+
+/**
+ * Run a one-shot through the tool layer the stdio server uses (callTool:
+ * mcp.actions, every guard, redaction). Returns the exit code.
+ */
+export async function runOneShot(
+  shot: OneShot,
+  opts: OneShotOptions,
+): Promise<number> {
+  const out = opts.out ?? ((t: string) => process.stdout.write(t));
+  if (shot.kind === "list") {
+    const names = toolsFor(opts.cfg).map((t) => t.name);
+    out(names.length ? `${names.join("\n")}\n` : "");
+    return 0;
+  }
+  const ctx: ToolContext = { api: opts.api, cfg: opts.cfg, cli: opts.cli };
+  const r = await callTool(shot.tool, shot.args, ctx);
+  out(r.text.endsWith("\n") ? r.text : `${r.text}\n`);
+  return r.isError ? 1 : 0;
+}
+
+/** Run `<cli> mcp` until stdin closes (or one `--call` / `--list`). */
 export async function runMcp(argv: string[]): Promise<void> {
   const cli = product().cli;
   if (argv.includes("-h") || argv.includes("--help")) {
@@ -140,6 +203,24 @@ export async function runMcp(argv: string[]): Promise<void> {
   }
   const cfg = readMcpConfig();
   const baseUrl = `http://localhost:${port}`;
+  const shot = parseOneShot(argv);
+  if (shot) {
+    // Recorded like any MCP action: actor agent, this process, one session.
+    const session = randomUUID();
+    const api = createDenApi({
+      baseUrl,
+      cli,
+      headers: () =>
+        agentAuditHeaders({
+          client: `${cli} mcp --call`,
+          clientVersion: engineVersion() ?? "unknown",
+          mcpPid: process.pid,
+          session,
+        }),
+    });
+    process.exitCode = await runOneShot(shot, { cfg, cli, api });
+    return;
+  }
   const server = createDenMcpServer({ cfg, baseUrl, cli });
   await server.connect(new StdioServerTransport());
   process.stderr.write(

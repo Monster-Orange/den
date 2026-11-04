@@ -131,6 +131,36 @@ describe("validateManifestLayers", () => {
     ]);
   });
 
+  it("warns that a held manifest is redundant once the repo has its own", () => {
+    const heldPath = path.join(held, "shop.den.yml");
+    fs.writeFileSync(heldPath, "name: shop\nservices:\n  web: {}\n");
+    const v = validateManifestLayers(repo);
+    // A warning, never an error: the repo's own manifest wins either way.
+    expect(v.valid).toBe(true);
+    expect(errorsOf(v)).toEqual([]);
+    const base = v.layers.find((l) => l.layer === "repo");
+    expect(base?.result.warnings).toEqual([
+      expect.objectContaining({
+        file: heldPath,
+        message: expect.stringMatching(/not used.*own manifest/),
+        suggestion: expect.stringMatching(
+          /delete it, or turn it into an override \(.*shop\.override\.yml\)/,
+        ),
+      }),
+    ]);
+  });
+
+  it("does not warn about a held manifest that is the base", () => {
+    fs.rmSync(path.join(repo, ".den.yml"));
+    fs.writeFileSync(
+      path.join(held, "shop.den.yml"),
+      "name: shop\nservices:\n  web: {}\n",
+    );
+    const v = validateManifestLayers(repo);
+    expect(v.layers.map((l) => l.layer)).toEqual(["held"]);
+    expect(v.layers[0].result.warnings).toEqual([]);
+  });
+
   it("reports an override with no base as an error", () => {
     fs.rmSync(path.join(repo, ".den.yml"));
     fs.writeFileSync(overridePath, "name: shop\n");
