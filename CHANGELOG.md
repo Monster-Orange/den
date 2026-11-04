@@ -47,6 +47,15 @@ config and manifest changes a distribution must make to move to it under
   they would run and stop. `restart` accepts `-n`/`--dry-run` too. Tested
   for each way to name a target: the cwd repo, a repo, an address, an alias,
   a compose stack name and an app.
+- **A dry run says what the real run does**, per target: the same command
+  lookup (own command, restart as down + up, a repo-started service's
+  repo up, nothing to stop, not found), so a dry run fails where the real
+  run would. Every dry run names its targets (`Would down: …`).
+- **`down` and `restart` on named services act on those services only.**
+  They took the services' dependencies down (or restarted them) too, even
+  ones other running services still use. `up` still starts dependencies;
+  `down <repo>` still stops the repo's closure, naming what else depends on
+  it.
 - **A failed or unknown target exits 1.** `up`, `down` and `restart` exited 0
   when a named service failed or did not exist.
 - **A service with no commands of its own** (its repo's up starts it): `up`
@@ -58,6 +67,8 @@ config and manifest changes a distribution must make to move to it under
 ### Migrations
 
 - None required.
+- `down <repo/service>` and `restart <repo/service>` no longer touch the
+  service's dependencies; stop or restart those by name.
 - A Makefile target that runs `service/install.sh` with `DEN_SERVICE_LABEL`
   and `DEN_SERVICE_LOGS` can become `<cli> service install`; put a non-default
   label or log directory in `web.service` first, since the CLI reads the

@@ -98,6 +98,7 @@ import {
 import { waitForReady } from "../../shared/environment-manager/readiness.js";
 import {
   canonicalServiceAddress,
+  previewServiceCommand,
   resolveService,
 } from "../../shared/environment-manager/service-runner.js";
 import { getGitHubCoords } from "../../shared/smoke/git-remote.js";
@@ -1377,8 +1378,17 @@ class DenCLI {
         const startupOrder = ws
           ? resolveStartupOrder(addresses, catalog, ws.config, ws.name)
           : addresses;
+        // Only up pulls in dependencies (a service needs them to start).
+        // Down and restart act on what was named: its dependencies may be
+        // serving other running services.
+        const namedOnly = (): string[] => {
+          const kept = startupOrder.filter((a) => addresses.includes(a));
+          return [...kept, ...addresses.filter((a) => !kept.includes(a))];
+        };
         if (command === "down") {
-          ordered = [...startupOrder].reverse();
+          ordered = namedOnly().reverse();
+        } else if (command !== "up") {
+          ordered = namedOnly();
         } else {
           ordered = startupOrder;
           if (ordered.length > addresses.length) {
@@ -1395,25 +1405,27 @@ class DenCLI {
     }
 
     if (opts?.dryRun) {
-      const unknown = ordered.filter((a) => !resolveService(a, workspace));
-      if (unknown.length > 0) {
-        for (const a of unknown)
-          console.log(
-            chalk.red(
-              `\n  Unknown service "${a}" in workspace "${workspace ?? "default"}".`,
-            ),
-          );
-        process.exitCode = 1;
-        return;
-      }
+      // The same lookup a real run makes, so the dry run says what it does.
+      const previews = ordered.map((a) =>
+        previewServiceCommand(a, command, workspace),
+      );
       const doing =
         { up: "starting", down: "stopping", restart: "restarting" }[command] ??
         `running "${command}" on`;
+      const runs = previews
+        .filter((p) => p.kind === "run" || p.kind === "via-repo")
+        .map((p) => p.address);
       console.log(
         chalk.cyan(
-          `\n  Would ${command}: ${ordered.join(" → ") || "(nothing)"}`,
+          `\n  Would ${command}: ${[...new Set(runs)].join(" → ") || "(nothing)"}`,
         ),
       );
+      for (const p of previews) {
+        if (p.kind === "via-repo" || p.kind === "nothing")
+          console.log(chalk.gray(`  ${p.note}`));
+        if (p.kind === "error") console.log(chalk.red(`  ✗ ${p.note}`));
+      }
+      if (previews.some((p) => p.kind === "error")) process.exitCode = 1;
       console.log(chalk.gray(`  (--dry-run: not ${doing} anything)\n`));
       return;
     }
@@ -1880,6 +1892,7 @@ class DenCLI {
       return;
     }
     if (dryRun) {
+      console.log(chalk.cyan(`  Would up: ${order.join(" → ")}`));
       console.log(chalk.gray("  (--dry-run: not starting anything)\n"));
       return;
     }
@@ -1965,6 +1978,7 @@ class DenCLI {
       );
     }
     if (dryRun) {
+      console.log(chalk.cyan(`  Would down: ${order.join(" → ")}`));
       console.log(chalk.gray("  (--dry-run: not stopping anything)\n"));
       return;
     }

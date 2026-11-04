@@ -39,7 +39,7 @@ beforeAll(() => {
   fs.mkdirSync(marks);
   const distRoot = path.join(tmp, "den");
   repos = path.join(tmp, "repos");
-  const names = ["voiceapp", "kb", "docs"];
+  const names = ["voiceapp", "kb", "docs", "store"];
 
   write(path.join(distRoot, "den.yml"), "product:\n  name: den\n");
   write(path.join(distRoot, "config", "den.yml"), "repos_root: ../repos\n");
@@ -67,7 +67,7 @@ beforeAll(() => {
   write(
     path.join(repos, "voiceapp", ".den.yml"),
     m(
-      `name: voiceapp\napplication: studio\nentrypoint: api\nservices:\n  api:\n${cmds("voiceapp-api")}  voice:\n    port: 7000\n`,
+      `name: voiceapp\napplication: studio\nentrypoint: api\nservices:\n  api:\n${cmds("voiceapp-api")}  voice:\n    port: 7000\n    depends_on: [store]\n`,
     ),
   );
   // A compose stack named apart from its repo; its service's own commands
@@ -77,6 +77,11 @@ beforeAll(() => {
     m(
       `name: kb\napplication: studio\nentrypoint: api\ncompose:\n  name: search\nservices:\n  api:\n${cmds("kb-api")}`,
     ),
+  );
+  // A dependency that other running services may share.
+  write(
+    path.join(repos, "store", ".den.yml"),
+    m(`name: store\nservices:\n  db:\n${cmds("store-db")}`),
   );
   // A service key that is not the repo name.
   write(
@@ -146,7 +151,11 @@ describe("dry-run and plan are read-only on every path", () => {
       expect(touched()).toEqual([]);
       expect(r.out).not.toMatch(/not found/);
       // The output rides along, so a failure says why.
-      expect({ status: r.status, out: r.out }).toMatchObject({ status: 0 });
+      // Restart of a repo-started service fails, as its real run does.
+      const fails = args[0] === "restart" && args.includes("voiceapp/voice");
+      expect({ status: r.status, out: r.out }).toMatchObject({
+        status: fails ? 1 : 0,
+      });
     },
     60_000,
   );
@@ -154,10 +163,41 @@ describe("dry-run and plan are read-only on every path", () => {
   it("an unknown name fails with exit 1, dry run or not", async () => {
     const dry = await cli(["up", "nowhere", "-n"]);
     expect(dry.status).toBe(1);
-    expect(dry.out).toMatch(/Unknown service "nowhere"/);
+    expect(dry.out).toMatch(/service "nowhere" not found/);
     const real = await cli(["up", "nowhere"]);
     expect(real.status).toBe(1);
     expect(touched()).toEqual([]);
+  }, 60_000);
+});
+
+describe("a dry run says what a real run does", () => {
+  it("up includes dependencies and runs the repo's up for a repo-started service", async () => {
+    const r = await cli(["up", "voiceapp/voice", "-n"]);
+    expect(r.out).toMatch(/Would up: store → voiceapp\b/);
+    expect(r.out).toMatch(/has no up of its own; running voiceapp's up/);
+    expect(r.status).toBe(0);
+  }, 60_000);
+
+  it("down stops only what was named, never its dependencies", async () => {
+    const r = await cli(["down", "voiceapp/voice", "-n"]);
+    expect(r.out).not.toMatch(/store/);
+    expect(r.out).toMatch(/nothing to stop/);
+    const own = await cli(["down", "kb/api", "-n"]);
+    expect(own.out).toMatch(/Would down: kb\/api\n/);
+  }, 60_000);
+
+  it("restart of a repo-started service is the real run's error, exit 1", async () => {
+    const r = await cli(["restart", "voiceapp/voice", "--dry-run"]);
+    expect(r.out).not.toMatch(/store/);
+    expect(r.out).toMatch(
+      /has no restart of its own; it is started by voiceapp's up/,
+    );
+    expect(r.status).toBe(1);
+  }, 60_000);
+
+  it("a repo's derived down names its targets", async () => {
+    const r = await cli(["down", "voiceapp", "-n"]);
+    expect(r.out).toMatch(/Would down: .*voiceapp/);
   }, 60_000);
 });
 

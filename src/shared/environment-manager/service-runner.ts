@@ -1094,6 +1094,99 @@ export interface RunCommandResult {
 }
 
 /**
+ * A service with no commands of its own is started by its repo's up
+ * (placement's repo-level rule). For `up` that is the repo's up (`address`
+ * set); any other command would reach the repo's other services too, so it
+ * is refused, pointing at the repo. Null when the rule does not apply.
+ */
+function repoStartedFallback(
+  resolved: ResolvedService,
+  command: string,
+  workspace: string | undefined,
+): { address?: string; note: string } | null {
+  if (command === "down") return null;
+  const repoEntry = resolveService(resolved.repoName, workspace);
+  if (!repoEntry || repoEntry.subsystem === resolved.subsystem) return null;
+  const manifest = readManifest(resolved.repoPath);
+  if (!manifest) return null;
+  const repoCommands = effectiveLocalCommands(
+    manifest,
+    repoEntry.subsystem,
+    resolved.repoName,
+    workspace ?? "default",
+  );
+  if (!repoCommands["up"]) return null;
+  return command === "up"
+    ? {
+        address: resolved.repoName,
+        note: `${resolved.address} has no up of its own; running ${resolved.repoName}'s up, which starts it`,
+      }
+    : {
+        note:
+          `${resolved.address} has no ${command} of its own; it is started by ${resolved.repoName}'s up. ` +
+          `Run \`${product().cli} ${command} ${resolved.repoName}\` (that reaches every service it starts).`,
+      };
+}
+
+/** What a run of `command` on `address` would do, without running it. */
+export type ServiceCommandPreview =
+  | { kind: "run"; address: string }
+  | { kind: "via-repo"; address: string; note: string }
+  | { kind: "nothing"; address: string; note: string }
+  | { kind: "error"; address: string; note: string };
+
+/**
+ * The dry-run twin of runServiceCommand's command lookup: the same
+ * resolution, own-command, restart-synthesis and repo-started rules, so a
+ * dry run says what a real run does.
+ */
+export function previewServiceCommand(
+  address: string,
+  command: string,
+  workspace?: string,
+): ServiceCommandPreview {
+  const resolved = resolveService(address, workspace);
+  if (!resolved) {
+    const candidates = serviceAliasCandidates(address, workspace);
+    return {
+      kind: "error",
+      address,
+      note:
+        `service "${address}" not found in workspace "${workspace ?? "default"}"` +
+        (candidates.length > 1
+          ? `; it is ambiguous: ${candidates.join(", ")}`
+          : ""),
+    };
+  }
+  const manifest = readManifest(resolved.repoPath);
+  const own = manifest
+    ? effectiveLocalCommands(
+        manifest,
+        resolved.subsystem,
+        resolved.repoName,
+        workspace ?? "default",
+      )
+    : {};
+  if (own[command] || (command === "restart" && own["down"] && own["up"]))
+    return { kind: "run", address };
+  const viaRepo = repoStartedFallback(resolved, command, workspace);
+  if (viaRepo?.address)
+    return { kind: "via-repo", address: viaRepo.address, note: viaRepo.note };
+  if (viaRepo) return { kind: "error", address, note: viaRepo.note };
+  if (command === "down")
+    return {
+      kind: "nothing",
+      address,
+      note: "no down command: nothing to stop",
+    };
+  return {
+    kind: "error",
+    address,
+    note: `command "${command}" not found for service "${address}"`,
+  };
+}
+
+/**
  * Resolve and execute a service command.
  * Returns the spawned child process and whether it is a long-running (detachable) command.
  * Detachable procs have already been unref()'d — the caller should not await their exit.
@@ -1389,30 +1482,13 @@ export function runServiceCommand(
       closeAsync(0);
       return dummy();
     }
-    // A service with no commands of its own is started by its repo's up
-    // (placement's repo-level rule). Up runs that; anything else would
-    // reach the repo's other services too, so it says so instead.
-    const repoEntry = resolveService(resolved.repoName, workspace);
-    const repoCommands =
-      repoEntry && repoEntry.subsystem !== subsystem
-        ? effectiveLocalCommands(
-            manifest,
-            repoEntry.subsystem,
-            resolved.repoName,
-            workspace,
-          )
-        : {};
-    if (repoEntry && repoCommands["up"]) {
-      if (command === "up") {
-        onLine(
-          `${resolved.address} has no up of its own; running ${resolved.repoName}'s up, which starts it`,
-        );
-        return runServiceCommand({ ...options, address: resolved.repoName });
-      }
-      onLine(
-        `Error: ${resolved.address} has no ${command} of its own; it is started by ${resolved.repoName}'s up. ` +
-          `Run \`${product().cli} ${command} ${resolved.repoName}\` (that reaches every service it starts).`,
-      );
+    const viaRepo = repoStartedFallback(resolved, command, workspace);
+    if (viaRepo?.address) {
+      onLine(viaRepo.note);
+      return runServiceCommand({ ...options, address: viaRepo.address });
+    }
+    if (viaRepo) {
+      onLine(`Error: ${viaRepo.note}`);
       closeAsync(1);
       return dummy();
     }
