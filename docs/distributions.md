@@ -150,8 +150,14 @@ runs a compiled `dist/` build when one exists.
 A distribution's `Makefile` includes Den's targets from the package:
 
 ```make
+DEN_TARGET_PREFIX := acme
 include node_modules/@monster-orange/den/make/den.mk
 ```
+
+`DEN_TARGET_PREFIX` names the service and setup targets: `make acme-up`,
+`acme-down`, `acme-status`, `acme-logs`, `acme-graph`, `acme-workspace`,
+`acme-setup` and the rest (default `den`). `den create` sets it to the CLI
+name.
 
 `den.mk` defines:
 
@@ -164,7 +170,7 @@ include node_modules/@monster-orange/den/make/den.mk
 | `DEN_ROOT`       | Exported: the directory make runs in (`$(CURDIR)`)                    |
 
 and includes `make/test.mk`, `local_dev.mk`, `journeys.mk`, `security.mk` and
-`demo.mk`: `make test`, `make web`, `make den-up`, `make test-syn-all
+`demo.mk`: `make test`, `make web`, `make <prefix>-up`, `make test-syn-all
 repo=<repo>`, `make test-smk-all repo=<repo>`, `make test-perf
 module=<module>`, `make test-jrn-all`, `make test-sec-all` and the rest.
 Recipes run from the distribution root (reports and staged tests land there)

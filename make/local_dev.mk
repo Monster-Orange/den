@@ -3,102 +3,102 @@
 # Manages the Local Dev experience: service clones, workspaces, web UI,
 # secrets setup, repo registration, auth configuration, and AWS profiles.
 
-.PHONY: down den-up den-down den-restart den-status den-services \
-        den-graph den-logs \
-        den-register den-setup den-sync den-workspace \
-        den-init den-validate den-local-dev den-setup-secrets den-setup-1password \
+.PHONY: down $(DEN_TARGET_PREFIX)-up $(DEN_TARGET_PREFIX)-down $(DEN_TARGET_PREFIX)-restart $(DEN_TARGET_PREFIX)-status $(DEN_TARGET_PREFIX)-services \
+        $(DEN_TARGET_PREFIX)-graph $(DEN_TARGET_PREFIX)-logs \
+        $(DEN_TARGET_PREFIX)-register $(DEN_TARGET_PREFIX)-setup $(DEN_TARGET_PREFIX)-sync $(DEN_TARGET_PREFIX)-workspace \
+        $(DEN_TARGET_PREFIX)-init $(DEN_TARGET_PREFIX)-validate $(DEN_TARGET_PREFIX)-local-dev $(DEN_TARGET_PREFIX)-setup-secrets $(DEN_TARGET_PREFIX)-setup-1password \
         register-repos aws-configure auth-configure \
         web dev-dns
 
 # ── Service management ────────────────────────────────────────────────────────
 
 # Start always_on services in the active workspace.
-# Usage: make den-up  OR  make den-up args="shop/api tasks-runner"
-den-up:
+# Usage: make $(DEN_TARGET_PREFIX)-up  OR  make $(DEN_TARGET_PREFIX)-up args="shop/api tasks-runner"
+$(DEN_TARGET_PREFIX)-up:
 	@if ! $(DEN_TSX) $(DEN_ENGINE)/scripts/setup-secrets.ts --gate; then \
 		echo ""; \
 		echo "🔑  secrets.required is set and the secrets backend is not ready."; \
 		echo ""; \
-		$(MAKE) den-setup-secrets || exit 1; \
+		$(MAKE) $(DEN_TARGET_PREFIX)-setup-secrets || exit 1; \
 	fi
 	@$(DEN_BIN) up $(args)
 
 # Stop services in the active workspace. `make down` is the short form most
 # people reach for, so it stops SERVICES; use `make test-down` for Playwright/k6.
 # Usage: make down  OR  make down args="files-api -w files-api"
-down den-down:
+down $(DEN_TARGET_PREFIX)-down:
 	@$(DEN_BIN) down $(args)
 
-den-restart:
+$(DEN_TARGET_PREFIX)-restart:
 	@$(DEN_BIN) restart $(args)
 
-den-status:
+$(DEN_TARGET_PREFIX)-status:
 	@$(DEN_BIN) status
 
 # Tail live local logs for a repo's service (offers to start it when down).
-# Usage: make den-logs  OR  make den-logs args="shop"
-den-logs:
+# Usage: make $(DEN_TARGET_PREFIX)-logs  OR  make $(DEN_TARGET_PREFIX)-logs args="shop"
+$(DEN_TARGET_PREFIX)-logs:
 	@$(DEN_BIN) logs $(args)
 
-den-services:
+$(DEN_TARGET_PREFIX)-services:
 	@$(DEN_BIN) services
 
 # Derive and show the system dependency graph.
-# Usage: make den-graph  OR  make den-graph args="--all --diff"
-den-graph:
+# Usage: make $(DEN_TARGET_PREFIX)-graph  OR  make $(DEN_TARGET_PREFIX)-graph args="--all --diff"
+$(DEN_TARGET_PREFIX)-graph:
 	@$(DEN_BIN) graph $(args)
 
 # Check for updates and pull managed repos.
-den-sync:
+$(DEN_TARGET_PREFIX)-sync:
 	@$(DEN_BIN) sync $(args)
 
 # ── Workspaces ────────────────────────────────────────────────────────────────
 
-# Usage: make den-workspace args="list"
-#        make den-workspace args="use feat-streaming"
-#        make den-workspace args="create feat-streaming"
-den-workspace:
+# Usage: make $(DEN_TARGET_PREFIX)-workspace args="list"
+#        make $(DEN_TARGET_PREFIX)-workspace args="use feat-streaming"
+#        make $(DEN_TARGET_PREFIX)-workspace args="create feat-streaming"
+$(DEN_TARGET_PREFIX)-workspace:
 	@$(DEN_BIN) workspace $(args)
 
 # ── Catalog & repo setup ──────────────────────────────────────────────────────
 
 # Register a repo in the service catalog (interactive).
-# Usage: make den-register  OR  make den-register args=/path/to/repo
-den-register:
+# Usage: make $(DEN_TARGET_PREFIX)-register  OR  make $(DEN_TARGET_PREFIX)-register args=/path/to/repo
+$(DEN_TARGET_PREFIX)-register:
 	@$(DEN_BIN) register $(args)
 
 # Run setup for registered services.
-# Usage: make den-setup  OR  make den-setup args="shop tasks-runner"
-den-setup:
+# Usage: make $(DEN_TARGET_PREFIX)-setup  OR  make $(DEN_TARGET_PREFIX)-setup args="shop tasks-runner"
+$(DEN_TARGET_PREFIX)-setup:
 	@$(DEN_BIN) setup $(args)
 
 # Scaffold a new .den.yml in a target directory (interactive).
-# Usage: make den-init  OR  make den-init args=/path/to/repo
-den-init:
+# Usage: make $(DEN_TARGET_PREFIX)-init  OR  make $(DEN_TARGET_PREFIX)-init args=/path/to/repo
+$(DEN_TARGET_PREFIX)-init:
 	@$(DEN_BIN) init $(args)
 
 # Heal config/den.yml — fills missing required keys (currently github_org).
 # Idempotent. Safe for existing users whose den.yml pre-dates github_org.
-den-heal-config:
+$(DEN_TARGET_PREFIX)-heal-config:
 	@$(DEN_TSX) $(DEN_ENGINE)/scripts/heal-config.ts
 
 # Validate a .den.yml file or URL.
-# Usage: make den-validate args=/path/to/repo
-#        make den-validate args=/path/to/repo/.den.yml
-den-validate:
+# Usage: make $(DEN_TARGET_PREFIX)-validate args=/path/to/repo
+#        make $(DEN_TARGET_PREFIX)-validate args=/path/to/repo/.den.yml
+$(DEN_TARGET_PREFIX)-validate:
 	@$(DEN_BIN) validate $(args)
 
 # Toggle the local dev experience on or off (per-engineer, gitignored).
-# Usage: make den-local-dev args=on|off
-den-local-dev:
+# Usage: make $(DEN_TARGET_PREFIX)-local-dev args=on|off
+$(DEN_TARGET_PREFIX)-local-dev:
 	@$(DEN_BIN) local-dev $(args)
 
 # Set up developer secrets with the configured backend (secrets.provider).
-den-setup-secrets:
+$(DEN_TARGET_PREFIX)-setup-secrets:
 	@$(DEN_TSX) $(DEN_ENGINE)/scripts/setup-secrets.ts
 
 # 1Password strategy only: populate the "Developer API Keys" item.
-den-setup-1password:
+$(DEN_TARGET_PREFIX)-setup-1password:
 	@$(DEN_TSX) $(DEN_ENGINE)/scripts/setup-1password.ts
 
 # Show where test discovery gets its repos. With Local Dev enabled (default)
@@ -131,7 +131,7 @@ web:
 		echo ""; \
 		echo "🔑  secrets.required is set and the secrets backend is not ready."; \
 		echo ""; \
-		$(MAKE) den-setup-secrets || exit 1; \
+		$(MAKE) $(DEN_TARGET_PREFIX)-setup-secrets || exit 1; \
 	fi
 	@echo "🌐 Starting the web UI..."
 	@_PORT=$${PORT:-$$($(DEN_TSX) -e 'import("$(DEN_ENGINE)/src/shared/edge/config.ts").then(m=>console.log(m.readWebPort()))' 2>/dev/null || echo 7777)}; \

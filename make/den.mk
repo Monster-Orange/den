@@ -9,6 +9,10 @@
 # reports/ and results/ live there) and reach Den's own files through
 # $(DEN_ENGINE). In Den's checkout the two are the same directory.
 
+# Prefix of the service and setup targets (`make <prefix>-up`, -status, …):
+# the distribution's own name. Set it before the include; Den's own is "den".
+DEN_TARGET_PREFIX ?= den
+
 # Den's package root: the directory above this file.
 DEN_ENGINE ?= $(patsubst %/,%,$(abspath $(dir $(lastword $(MAKEFILE_LIST)))/..))
 
@@ -55,13 +59,13 @@ include $(DEN_ENGINE)/make/demo.mk
 # ── Help ──────────────────────────────────────────────────────────────────────
 # A distribution gets `make help` from here; Den's own Makefile has a longer
 # one and sets DEN_OWN_HELP before including this file.
-.PHONY: den-help
-den-help:
+.PHONY: $(DEN_TARGET_PREFIX)-help
+$(DEN_TARGET_PREFIX)-help:
 	@printf '\nDen targets (run from this directory)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n'
 	@printf '  make test                  interactive test runner\n'
 	@printf '  make web                   the web UI\n'
-	@printf '  make den-up / down         start / stop services\n'
-	@printf '  make den-status            service status\n'
+	@printf '  make $(DEN_TARGET_PREFIX)-up / down         start / stop services\n'
+	@printf '  make $(DEN_TARGET_PREFIX)-status            service status\n'
 	@printf '  make test-syn-all repo=R   browser tests\n'
 	@printf '  make test-int-all          API tests\n'
 	@printf '  make test-smk-all repo=R   smoke tests\n'
@@ -71,6 +75,6 @@ den-help:
 
 ifndef DEN_OWN_HELP
 .PHONY: help
-help: den-help
+help: $(DEN_TARGET_PREFIX)-help
 .DEFAULT_GOAL := help
 endif

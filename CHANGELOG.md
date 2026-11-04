@@ -59,8 +59,9 @@ From the engine this release was generalised from:
   entry repo is `defaults.workspace.entry`.
 - Perf suites come from the distribution (`tests/pillars/perf/<module>/test.js`)
   or from repo manifests; Den ships none.
-- Make targets are `den-*` in Den's own Makefile; a distribution keeps its
-  own target names in its Makefile.
+- Service and setup make targets are `<prefix>-up`, `-status`, … where the
+  prefix is `DEN_TARGET_PREFIX` (set before including `make/den.mk`; `den
+  create` sets it to the CLI name, so `make <name>-up` keeps working).
 - `service_env` has no built-in entries: a shared-infra secrets file is
   configured as `service_env: { <KEY>: "{repo:<infra repo>}/<path>" }`.
 - The smoke and browser make targets have no default repo: pass `repo=<repo>`.

@@ -110,6 +110,9 @@ expect_in "version is Den's ($DEN_VERSION)" "$WORK/version.out" "v$DEN_VERSION"
 
 say "make (dry run) from the distribution root"
 run make-help make help
+run make-status make -n acme-status
+expect_in "service targets take the distribution's name" "$WORK/make-status.out" \
+  "node_modules/@monster-orange/den/bin/den status"
 run make-smoke make -n test-smk-all repo=shop
 expect_in "smoke target runs Den's playwright config" "$WORK/make-smoke.out" \
   "node_modules/@monster-orange/den/src/pillars/smoke/playwright-all.config.ts"
