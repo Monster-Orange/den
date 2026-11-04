@@ -70,6 +70,14 @@ config and manifest changes a distribution must make to move to it under
 - A security run's mode chosen on the Tests page (`api`, `full`) now reaches
   the scan; it always ran `baseline` before.
 
+### Security
+
+- Dependency advisories: `npm audit fix` plus `@cursor/sdk` 1.0.23 → 1.0.40
+  (drops its `undici` 5 / `zod` 3 tree) clear every critical and high
+  advisory. Left: a `minimatch` ReDoS under `openapi-typescript` (only fix is
+  a downgrade to 6.x; it matches local config globs only) and dev-only
+  tooling (jest, eslint) moderates.
+
 ### Migrations
 
 - None required: with no override files, manifests resolve as in 0.1.0.
