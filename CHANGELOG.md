@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.2.0] - unreleased
+## [0.2.0] - 2026-11-04
 
 ### Added
 
@@ -40,6 +40,21 @@ config and manifest changes a distribution must make to move to it under
   `/api/edge` (what `edge status` shows) and `/api/security/plan` (the
   security CLI's own dry run). `stack ls` and `edge status` now print from the
   same code.
+- **Graph: cards and a details panel.** The Local Dev graph is laid out by
+  ELK (layered, compound org or application › repo › service, orthogonal
+  edges; elkjs vendored and served by Den, so it works offline). Cards are
+  full size (detailed or compact) on a canvas you pan and zoom; Fit zooms out
+  to 35%. A card shows status, name, repo, placement and health, and its main
+  actions on hover. Clicking a card or a repo opens a side panel: one primary
+  action (Start when down, Open when up, else Logs), two common ones, and More
+  (manifest commands, tools, and careful actions that confirm on a second
+  click); tabs Overview, Logs (live tail), Config and Activity (the audit
+  trail, yours and agents'). ⤢ pops the panel out as a dialog. Layout
+  direction, grouping, card density and panel width are remembered per user
+  (`/api/settings` `graph`). Find highlights and centres on matches. The
+  panel is built from registries (actions, tabs, sections) a distribution or
+  later release can add to.
+- `GET /api/activity`: the audit trail, filtered by service or repo.
 - **One secret redactor** (`src/shared/redact.ts`), shared by the journeys and
   security pillars and the MCP server.
 - **Placement (R13): what runs here and what runs in the cloud.** A
@@ -100,6 +115,9 @@ config and manifest changes a distribution must make to move to it under
 - Sync never touches a dev-managed checkout: a managed entry whose path is,
   holds or sits inside one is refused with the reason, and naming a
   dev-managed repo says so instead of doing nothing.
+- The What's new dialog showed every changelog bullet cut off mid-sentence.
+- With nothing run yet, the empty output pane no longer takes 200px from the
+  Local Dev page.
 - A security run's mode chosen on the Tests page (`api`, `full`) now reaches
   the scan; it always ran `baseline` before.
 
@@ -116,8 +134,9 @@ config and manifest changes a distribution must make to move to it under
 - None required: with no override files, manifests resolve as in 0.1.0.
 - To let agents act through `<cli> mcp`, add `mcp.actions` to the org config.
 - Placement needs no change: without `runs`, services keep working as
-  before. A service that has an HTTP health URL and no commands now shows as
-  remote; add `runs: { local: local }` if it is really on this machine. To
+  before. A service with an HTTP health URL, no commands, and nothing else
+  in its repo that runs here now shows as remote; add `runs: { local: local }`
+  if it is really on this machine. To
   mark more envs as production than `prod` and `production`, set
   `production_envs`.
 

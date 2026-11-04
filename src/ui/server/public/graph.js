@@ -223,11 +223,7 @@ export function graphHealth(results) {
   legend();
   applyFocus();
   // The Logs tab holds a live stream; leave it alone.
-  if (
-    st.sel &&
-    st.tab !== "logs" &&
-    !host.querySelector(".dg-menu:not([hidden])")
-  )
+  if (st.sel && st.tab !== "logs" && !openMenus().length)
     openDetail(st.sel, true);
 }
 
@@ -534,6 +530,7 @@ function focusOn(sel) {
 
 // ── panel ────────────────────────────────────────────────────────────────
 function openDetail(sel, keepTab) {
+  closeMenus(); // the panel re-renders: its menu's button goes away
   if (!keepTab && (!st.sel || nodeKey(st.sel) !== nodeKey(sel))) st.tab = null;
   st.sel = sel;
   applyFocus();
@@ -587,6 +584,7 @@ function keepVisible(sel) {
   applyView();
 }
 function closeDetail() {
+  closeMenus();
   disposePanel();
   st.sel = null;
   const side = $(".dg-panel");
@@ -653,12 +651,56 @@ async function recheck(services) {
     `Checked ${services.length === 1 ? services[0].id : services.length + " services"}`,
   );
 }
+// An open More menu moves to a layer on <body>: inside the panel, WebKit
+// clips even a fixed menu to the panel's scroll box once the panel scrolls
+// (the Logs tab). It goes back beside its button when it closes.
+const menuOwner = new WeakMap(); // menu -> its More button
+const ownMenu = new WeakMap(); // More button -> its menu, while in the layer
+function menuLayer() {
+  let l = document.querySelector("body > .dg-layer");
+  if (!l) {
+    l = document.createElement("div");
+    l.className = "dg-layer";
+    l.addEventListener("click", onClick);
+    document.body.appendChild(l);
+  }
+  return l;
+}
+function menuOf(more) {
+  return ownMenu.get(more) ?? more.nextElementSibling;
+}
+function openMenus() {
+  return [...document.querySelectorAll(".dg-menu")].filter((m) => !m.hidden);
+}
 function closeMenus(except) {
   for (const m of document.querySelectorAll(".dg-menu")) {
     if (m === except) continue;
     m.hidden = true;
-    m.previousElementSibling?.setAttribute("aria-expanded", "false");
+    const more = menuOwner.get(m) ?? m.previousElementSibling;
+    more?.setAttribute("aria-expanded", "false");
+    if (m.parentElement?.classList.contains("dg-layer")) {
+      menuOwner.delete(m);
+      if (more) ownMenu.delete(more);
+      if (more?.isConnected) more.after(m);
+      else m.remove();
+    }
   }
+}
+function placeMenu(more, m) {
+  menuOwner.set(m, more);
+  ownMenu.set(more, m);
+  menuLayer().appendChild(m);
+  const r = more.getBoundingClientRect();
+  const below = window.innerHeight - r.bottom - 12,
+    above = r.top - 12;
+  const up = below < 260 && above > below;
+  Object.assign(m.style, {
+    right: Math.max(8, window.innerWidth - r.right) + "px",
+    left: "auto",
+    top: up ? "auto" : r.bottom + 4 + "px",
+    bottom: up ? window.innerHeight - r.top + 4 + "px" : "auto",
+    maxHeight: (up ? above : below) + "px",
+  });
 }
 function arm(btn) {
   if (btn.dataset.armed) return true;
@@ -672,28 +714,19 @@ function onClick(e) {
   const t = e.target;
   const more = t.closest("[data-more]");
   if (more) {
-    const m = more.nextElementSibling;
-    closeMenus(m);
-    m.hidden = !m.hidden;
-    more.setAttribute("aria-expanded", String(!m.hidden));
-    // Fixed to the viewport so the panel's scroll box never clips it.
+    const m = menuOf(more);
     if (!m.hidden) {
-      const r = more.getBoundingClientRect();
-      const below = window.innerHeight - r.bottom - 12,
-        above = r.top - 12;
-      const up = below < 260 && above > below;
-      Object.assign(m.style, {
-        right: Math.max(8, window.innerWidth - r.right) + "px",
-        left: "auto",
-        top: up ? "auto" : r.bottom + 4 + "px",
-        bottom: up ? window.innerHeight - r.top + 4 + "px" : "auto",
-        maxHeight: (up ? above : below) + "px",
-      });
+      closeMenus();
+      return;
     }
-    if (!m.hidden) m.querySelector("button:not(:disabled)")?.focus();
+    closeMenus();
+    m.hidden = false;
+    more.setAttribute("aria-expanded", "true");
+    placeMenu(more, m);
+    m.querySelector("button:not(:disabled)")?.focus();
     return;
   }
-  if (!t.closest(".dg-more")) closeMenus();
+  if (!t.closest(".dg-more, .dg-layer")) closeMenus();
   const act = t.closest("[data-action]");
   if (act) {
     if (act.disabled) return;
@@ -705,7 +738,7 @@ function onClick(e) {
       return;
     }
     runAction(act.dataset.action, act.dataset.key);
-    act.closest(".dg-menu")?.setAttribute("hidden", "");
+    if (act.closest(".dg-menu")) closeMenus();
     return;
   }
   const runb = t.closest("[data-run]");
@@ -918,10 +951,11 @@ function wire() {
 document.addEventListener("keydown", (e) => {
   if (!host?.isConnected) return;
   if (e.key === "Escape") {
-    const m = [...document.querySelectorAll(".dg-menu")].find((x) => !x.hidden);
+    const m = openMenus()[0];
     if (m) {
+      const more = menuOwner.get(m) ?? m.previousElementSibling;
       closeMenus();
-      m.previousElementSibling?.focus();
+      more?.focus();
       return;
     }
     if (st.sel) closeDetail();
@@ -936,5 +970,17 @@ document.addEventListener("keydown", (e) => {
   }
 });
 document.addEventListener("click", (e) => {
-  if (!e.target.closest?.(".dg-more")) closeMenus();
+  if (!e.target.closest?.(".dg-more, .dg-layer")) closeMenus();
 });
+// The menu is placed once, against its button: a scroll that moves the
+// button (not the log view following new lines) or a resize closes it.
+document.addEventListener(
+  "scroll",
+  (e) => {
+    const t = e.target === document ? document.documentElement : e.target;
+    if (openMenus().some((m) => t.contains?.(menuOwner.get(m) ?? m)))
+      closeMenus();
+  },
+  true,
+);
+window.addEventListener("resize", () => openMenus().length && closeMenus());
