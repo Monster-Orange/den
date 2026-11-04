@@ -61,8 +61,10 @@ trusted publishing (no token anywhere):
 - A push to `main` whose `package.json` version is not on npm yet is the
   release: the gates, the tarball and its SHA256SUMS, the tag `v<version>`,
   `npm publish` with provenance, and a GitHub release.
-- A prerelease version (`0.1.0-dev.0`) never publishes, so `main` can carry
+- A prerelease version (`0.1.0-dev.N`) never publishes, so `main` can carry
   work toward a version.
+- Bump the prerelease number (`-dev.N`) for every tarball handed to a
+  distribution, so npm never serves a cached older copy.
 - Bump the version in `package.json`, `package-lock.json` and
   `CHANGELOG.md` together; the changelog entry lists the **Migrations** a
   distribution must make.

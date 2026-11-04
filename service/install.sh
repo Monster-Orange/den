@@ -80,8 +80,20 @@ case "${1:-install}" in
     write_plist "$PLIST.new"
     plutil -lint "$PLIST.new" >/dev/null
     launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+    # bootout returns before launchd has let go of the label; a bootstrap
+    # straight after fails ("Bootstrap failed: 5") and leaves NO service.
+    # Wait for it to go, then retry bootstrap a few times.
+    for _ in $(seq 1 50); do
+      launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 || break
+      sleep 0.2
+    done
     mv "$PLIST.new" "$PLIST"
-    launchctl bootstrap "$DOMAIN" "$PLIST"
+    loaded=0
+    for _ in 1 2 3 4 5; do
+      if launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null; then loaded=1; break; fi
+      sleep 1
+    done
+    [ "$loaded" = 1 ] || { echo "✗ launchctl bootstrap failed for $LABEL (plist: $PLIST)" >&2; exit 1; }
     launchctl kickstart -k "$DOMAIN/$LABEL"
     echo "✓ $LABEL running (logs: $LOGS/web.log)"
     ;;

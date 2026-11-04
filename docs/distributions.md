@@ -227,6 +227,13 @@ npm install @monster-orange/den@<version> --save-exact
 ./bin/acme --version
 ```
 
+Installing from a tarball (`npm pack` of a Den checkout, before a version is
+on npm): every tarball Den hands out has its own prerelease number
+(`0.1.0-dev.1`, `-dev.2`, …). npm caches a tarball by version and
+integrity, so a repacked tarball with an unchanged version reinstalls the
+old copy; if you ever repack one yourself without bumping, remove
+`node_modules/@monster-orange/den` and its `package-lock.json` entry first.
+
 ## Developing Den against a distribution
 
 To try a Den change in a distribution, install your checkout instead of the
