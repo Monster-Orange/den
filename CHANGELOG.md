@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.2.1] - unreleased
+## [0.2.1] - 2026-11-04
 
 ### Fixed
 
@@ -26,7 +26,9 @@ config and manifest changes a distribution must make to move to it under
   launcher that runs in the foreground (a dev server) to exit, which ran
   into the 180s timeout and reported a false failure. A restart of a running
   shared instance now says `restarting the running instance`, not
-  `already running`, and the log path is printed once.
+  `already running`, and the log path is printed once. An MCP action's
+  `ended` reads `ready` or `handed-off` for a detached start, never
+  `stopped`.
 - **MCP actions report failure.** `service_up|down|restart`, `run_tests` and
   `workspace_sync` return `isError` with `"failed": true` in the result when
   the command exits non-zero, a detached service's launcher exits non-zero,

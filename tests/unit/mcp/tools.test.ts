@@ -257,9 +257,24 @@ describe("lifecycle guards", () => {
     const r = await callTool("service_restart", { repo: "shop" }, ctx(api));
     expect(r.isError).toBe(false);
     expect(r.text).toMatch(/"ready": true/);
+    // "stopped" is the stream's bookkeeping; an agent reads it as the service.
+    expect(r.text).toMatch(/"ended": "ready"/);
+    expect(r.text).not.toMatch(/"stopped"/);
     expect(stopOn?.({ type: "ready" })).toBe(true);
     expect(stopOn?.({ type: "service-exited", exitCode: 0 })).toBe(true);
     expect(stopOn?.({ type: "line", text: "x" })).toBe(false);
+  });
+
+  it("a launcher hand-off reads as handed-off, not stopped", async () => {
+    const { api } = fakeApi({
+      stream: () => ({
+        events: [{ type: "started" }, { type: "service-exited", exitCode: 0 }],
+        lines: [],
+        ended: "stopped",
+      }),
+    });
+    const r = await callTool("service_up", { repo: "shop" }, ctx(api));
+    expect(r.text).toMatch(/"ended": "handed-off"/);
   });
 
   it("a detached up whose launcher exited 0 is ok", async () => {

@@ -108,9 +108,21 @@ export class ActionFailed extends Error {
   }
 }
 
+/**
+ * How the call ended, in words an agent reads about the service: a stream
+ * stopped at `ready` is "ready", at a launcher's exit "handed-off".
+ */
+function endedLabel(r: StreamResult): string {
+  if (r.ended !== "stopped") return r.ended;
+  const last = r.events.at(-1)?.type;
+  if (last === "ready") return "ready";
+  if (last === "service-exited") return "handed-off";
+  return r.ended;
+}
+
 function streamSummary(r: StreamResult, keep: number) {
   return {
-    ended: r.ended,
+    ended: endedLabel(r),
     ...(r.exitCode !== undefined ? { exitCode: r.exitCode } : {}),
     lines: r.lines.length,
     output: tail(r, keep),
