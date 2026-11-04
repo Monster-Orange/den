@@ -1975,6 +1975,9 @@ class DenCLI {
     // still running on them. Name them rather than letting them fall over
     // silently.
     const inClosure = new Set(order);
+    // Only what really stops here puts dependents at risk: a remote service
+    // is refused (R13), so it stops nothing.
+    const stopsHere = new Set(order.filter((a) => !this.isRemote(a, "down")));
     const atRisk = [
       ...new Set(
         full.edges
@@ -1982,7 +1985,7 @@ class DenCLI {
             (e) =>
               e.kind !== "jwks" &&
               e.ordering !== false &&
-              inClosure.has(e.to) &&
+              stopsHere.has(e.to) &&
               !inClosure.has(e.from),
           )
           .map((e) => e.from),
@@ -2016,6 +2019,24 @@ class DenCLI {
       "down",
       { order },
       { force, named: [seed] },
+    );
+  }
+
+  /** Whether `address` runs remotely, so `command` is refused here (R13). */
+  private isRemote(address: string, command: string): boolean {
+    const placed = resolveService(address);
+    return (
+      !!placed &&
+      placementRefusal(
+        address,
+        servicePlacement(
+          readManifest(placed.repoPath),
+          placed.subsystem,
+          "local",
+        ),
+        (e) => isProductionEnv(e),
+        command,
+      ) !== null
     );
   }
 

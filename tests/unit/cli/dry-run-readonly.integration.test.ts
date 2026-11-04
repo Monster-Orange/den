@@ -42,7 +42,12 @@ beforeAll(() => {
   const names = ["voiceapp", "kb", "docs", "store", "core", "front"];
 
   write(path.join(distRoot, "den.yml"), "product:\n  name: den\n");
-  write(path.join(distRoot, "config", "den.yml"), "repos_root: ../repos\n");
+  // Derived edges the fixtures can't expose: front uses core (remote),
+  // voiceapp sits on store.
+  write(
+    path.join(distRoot, "config", "den.yml"),
+    "repos_root: ../repos\ngraph:\n  edges:\n    front->core: hard\n    voiceapp->store: hard\n",
+  );
   write(
     path.join(distRoot, "config", "local", "service-catalog.yml"),
     names.map((n) => `${n}:\n  gh: x/${n}\n`).join(""),
@@ -218,9 +223,9 @@ describe("a dry run says what a real run does", () => {
     const r = await cli(["down", "voiceapp", "-n"]);
     expect(r.out).toMatch(/Would down: voiceapp\n/);
     expect(r.out).not.toMatch(/\+ dependencies/);
-    // The closure itself is deriveStartTargets' (tested with the graph).
     const deps = await cli(["down", "voiceapp", "--with-deps", "-n"]);
     expect(deps.out).toMatch(/Derived down for voiceapp \(\+ dependencies\)/);
+    expect(deps.out).toMatch(/Would down: voiceapp → store\n/);
     expect(deps.status).toBe(0);
   }, 60_000);
 
@@ -229,6 +234,12 @@ describe("a dry run says what a real run does", () => {
     expect(r.out).toMatch(/Would up: front\/web\n/);
     expect(r.out).toMatch(/core \(remote, skipped\): core runs in dev/);
     expect(r.status).toBe(0);
+  }, 60_000);
+
+  it("down of a remote repo warns about no dependents: it stops nothing", async () => {
+    const r = await cli(["down", "core", "-n"]);
+    expect(r.out).toMatch(/✗ core runs in dev; nothing to stop here/);
+    expect(r.out).not.toMatch(/also depends on what this stops/);
   }, 60_000);
 
   it("a named remote target fails with the real run's reason", async () => {

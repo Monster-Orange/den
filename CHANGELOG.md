@@ -70,6 +70,8 @@ config and manifest changes a distribution must make to move to it under
 - **A service its repo starts**: `down` on it says it is stopped by the
   repo's down and names the command (exit 0, so a workspace Down that sends
   every service stays clean); `restart` fails the same way, exit 1.
+- **`down` of a remote repo no longer warns about its dependents**: it stops
+  nothing, so nothing is at risk. Only targets that really stop here count.
 - **A failed or unknown target exits 1.** `up`, `down` and `restart` exited 0
   when a named service failed or did not exist.
 - **A service with no commands of its own** (its repo's up starts it): `up`
