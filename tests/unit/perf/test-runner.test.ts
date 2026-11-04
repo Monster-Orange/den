@@ -11,6 +11,7 @@ import { TestRunner } from "../../../src/ui/cli/test-runner.js";
 import * as path from "path";
 import { getDistRoot } from "../../../src/shared/paths.js";
 import { getPerfSummaryArtifactPath } from "../../../src/shared/perf/report-paths.js";
+import { enginePath as ENG, tsxBin } from "../../../src/shared/engine.js";
 
 describe("TestRunner performance execution", () => {
   afterEach(() => {
@@ -31,10 +32,9 @@ describe("TestRunner performance execution", () => {
 
     expect(steps).toHaveLength(2);
     expect(steps[0]).toMatchObject({
-      command: "npx",
+      command: tsxBin(),
       args: [
-        "tsx",
-        "src/pillars/smoke/setup-env.ts",
+        ENG("src/pillars/smoke/setup-env.ts"),
         "--env",
         "staging",
         "--repo",
@@ -43,10 +43,9 @@ describe("TestRunner performance execution", () => {
       label: "Resolve deployed branch (staging)",
     });
     expect(steps[1]).toMatchObject({
-      command: "npx",
+      command: tsxBin(),
       args: [
-        "tsx",
-        "src/pillars/perf/run.ts",
+        ENG("src/pillars/perf/run.ts"),
         "--env",
         "staging",
         "--repo",
@@ -78,10 +77,9 @@ describe("TestRunner performance execution", () => {
     expect(checkK6Installed).toHaveBeenCalled();
     expect(spawnProcess).toHaveBeenNthCalledWith(
       1,
-      "npx",
+      tsxBin(),
       [
-        "tsx",
-        "src/pillars/smoke/setup-env.ts",
+        ENG("src/pillars/smoke/setup-env.ts"),
         "--env",
         "staging",
         "--repo",
@@ -93,10 +91,9 @@ describe("TestRunner performance execution", () => {
     );
     expect(spawnProcess).toHaveBeenNthCalledWith(
       2,
-      "npx",
+      tsxBin(),
       [
-        "tsx",
-        "src/pillars/perf/run.ts",
+        ENG("src/pillars/perf/run.ts"),
         "--env",
         "staging",
         "--repo",
@@ -145,8 +142,8 @@ describe("TestRunner performance execution", () => {
       );
       expect(spawnProcess).toHaveBeenNthCalledWith(
         2,
-        "npx",
-        ["tsx", "src/pillars/perf/build-report.ts"],
+        tsxBin(),
+        [ENG("src/pillars/perf/build-report.ts")],
         expect.objectContaining({
           PERF_ENVIRONMENT: "local",
           PERF_MODULES: "api-health",

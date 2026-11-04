@@ -15,6 +15,7 @@ import {
 } from "../../pillars/security/discover.js";
 import { TEST_FILE_EXTENSIONS, SKIP_TEST_DIRS } from "../constants.js";
 import { getDistRoot } from "../paths.js";
+import { enginePath } from "../engine.js";
 import { getPerfTestsRoot } from "../perf/test-paths.js";
 import type {
   PerformanceModuleConfig,
@@ -75,7 +76,7 @@ export class ModuleScanner {
       return this.scanRepoSuites();
     }
     return this.scanFilesystemModules(
-      path.join(this.rootDir, "src", "pillars", "api", "tests"),
+      enginePath("src", "pillars", "api", "tests"),
       pillar,
     );
   }
@@ -278,6 +279,7 @@ export class ModuleScanner {
 
     // Fall back to synthetic/tests/ if no discovered repos provide synthetics config
     if (!foundAny) {
+      // Distribution-owned (Den ships no browser tests of its own).
       const testsDir = path.join(
         this.rootDir,
         "src",

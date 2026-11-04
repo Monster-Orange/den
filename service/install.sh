@@ -1,49 +1,83 @@
 #!/usr/bin/env bash
-# Run Den's web UI as a long-lived macOS service (a launchd LaunchAgent):
+# Run the web UI as a long-lived macOS service (a launchd LaunchAgent):
 # started at login, restarted if it exits, not tied to any terminal.
 #
 #   service/install.sh            install (or refresh) and start it
 #   service/install.sh uninstall  stop it and remove the LaunchAgent
 #   service/install.sh status     launchd's view of it
+#   service/install.sh print      write the LaunchAgent plist to stdout only
 #
-# The agent runs `node --import tsx src/ui/server/index.ts` from this checkout
-# with the node found on PATH now; re-run install after changing node versions.
-# The UI listens on web.port (config/den.yml) and the edge routes
-# https://den.<edge.domain> to it.
+# Works from Den's checkout and from a distribution, where it lives in
+# node_modules/@monster-orange/den/service/. The distribution root is
+# DEN_ROOT, else this checkout when it holds den.yml. The agent runs the
+# engine's server with the node found on PATH now, from the distribution
+# root; re-run install after changing node versions.
+#
+#   DEN_SERVICE_LABEL  launchd label (default local.<dist dir name>.web)
+#   DEN_SERVICE_LOGS   log directory (default ~/Library/Logs/<dist dir name>)
 set -euo pipefail
 
-# launchd label; a distribution sets its own.
-LABEL="${DEN_SERVICE_LABEL:-local.den.web}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-REPO="$(cd "$HERE/.." && pwd)"
+ENGINE="$(cd "$HERE/.." && pwd)"
+if [ -n "${DEN_ROOT:-}" ]; then
+  DIST="$(cd "$DEN_ROOT" && pwd)"
+elif [ -f "$ENGINE/den.yml" ]; then
+  DIST="$ENGINE"
+else
+  echo "✗ set DEN_ROOT to your distribution's root (the directory with den.yml)" >&2
+  exit 1
+fi
+[ -f "$DIST/den.yml" ] || { echo "✗ $DIST has no den.yml" >&2; exit 1; }
+NAME="$(basename "$DIST")"
+LABEL="${DEN_SERVICE_LABEL:-local.$NAME.web}"
+LOGS="${DEN_SERVICE_LOGS:-$HOME/Library/Logs/$NAME}"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-LOGS="$HOME/Library/Logs/Den"
 DOMAIN="gui/$(id -u)"
+
+# tsx: the nearest node_modules/tsx at or above the engine (hoisted installs).
+find_tsx() {
+  local d="$ENGINE"
+  while :; do
+    if [ -f "$d/node_modules/tsx/package.json" ]; then echo "$d/node_modules/tsx"; return 0; fi
+    [ "$d" = "/" ] && return 1
+    d="$(dirname "$d")"
+  done
+}
+
+write_plist() { # $1 = output file
+  NODE="$(command -v node)" || { echo "✗ node is not on PATH" >&2; exit 1; }
+  TSX="$(find_tsx)" || { echo "✗ tsx not installed: run npm ci in $DIST" >&2; exit 1; }
+  DOCKER_DIR="$(dirname "$(command -v docker || echo /usr/local/bin/docker)")"
+  SVC_PATH="$(dirname "$NODE"):$DOCKER_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  python3 -I - "$1" "$LABEL" "$NODE" "$TSX" "$ENGINE" "$DIST" "$SVC_PATH" "$HOME" "$LOGS" <<'PY'
+import plistlib, sys
+out, label, node, tsx, engine, dist, path, home, logs = sys.argv[1:]
+data = {
+    "Label": label,
+    "ProgramArguments": [node, "--import", f"{tsx}/dist/loader.mjs",
+                         f"{engine}/src/ui/server/index.ts", "--silent"],
+    "WorkingDirectory": dist,
+    "EnvironmentVariables": {"PATH": path, "HOME": home,
+                             "DEN_ROOT": dist, "DEN_ENGINE_ROOT": engine},
+    "RunAtLoad": True,
+    "KeepAlive": True,
+    "ThrottleInterval": 10,
+    "ProcessType": "Background",
+    "StandardOutPath": f"{logs}/web.log",
+    "StandardErrorPath": f"{logs}/web.log",
+}
+if out == "-":
+    sys.stdout.buffer.write(plistlib.dumps(data))
+else:
+    with open(out, "wb") as f:
+        plistlib.dump(data, f)
+PY
+}
 
 case "${1:-install}" in
   install)
-    NODE="$(command -v node)" || { echo "✗ node is not on PATH" >&2; exit 1; }
-    [ -x "$REPO/node_modules/.bin/tsx" ] || { echo "✗ run npm ci in $REPO first" >&2; exit 1; }
-    DOCKER_DIR="$(dirname "$(command -v docker || echo /usr/local/bin/docker)")"
-    SVC_PATH="$(dirname "$NODE"):$DOCKER_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     mkdir -p "$LOGS" "$(dirname "$PLIST")"
-    python3 -I - "$PLIST.new" "$LABEL" "$NODE" "$REPO" "$SVC_PATH" "$HOME" "$LOGS" <<'PY'
-import plistlib, sys
-out, label, node, repo, path, home, logs = sys.argv[1:]
-with open(out, "wb") as f:
-    plistlib.dump({
-        "Label": label,
-        "ProgramArguments": [node, "--import", "tsx", "src/ui/server/index.ts", "--silent"],
-        "WorkingDirectory": repo,
-        "EnvironmentVariables": {"PATH": path, "HOME": home},
-        "RunAtLoad": True,
-        "KeepAlive": True,
-        "ThrottleInterval": 10,
-        "ProcessType": "Background",
-        "StandardOutPath": f"{logs}/web.log",
-        "StandardErrorPath": f"{logs}/web.log",
-    }, f)
-PY
+    write_plist "$PLIST.new"
     plutil -lint "$PLIST.new" >/dev/null
     launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
     mv "$PLIST.new" "$PLIST"
@@ -56,8 +90,11 @@ PY
     rm -f "$PLIST"
     echo "✓ $LABEL removed"
     ;;
+  print)
+    write_plist -
+    ;;
   status)
     launchctl print "$DOMAIN/$LABEL" | grep -E '^\s*(state|pid|last exit code|runs)' || echo "$LABEL is not loaded"
     ;;
-  *) echo "usage: $0 [install|uninstall|status]" >&2; exit 2 ;;
+  *) echo "usage: $0 [install|uninstall|status|print]" >&2; exit 2 ;;
 esac

@@ -1,0 +1,25 @@
+# Acme: org config. Den reads it from config/acme.yml (den.yml product.config).
+
+# Shown to people: CLI banner, help header and web page titles.
+brand:
+  name: Acme
+  tagline: Acme local dev and E2E harness
+  banner:
+    - "  ┌───────────┐"
+    - "  │  A C M E  │"
+    - "  └───────────┘"
+
+# The GitHub org (or user) that owns the repos Den clones and lists.
+github_org: your-github-org
+
+# Secrets backend: env reads plain environment variables; doppler and
+# 1password are the others.
+secrets:
+  provider: env
+
+# This instance's HTTPS edge: https://<service>.<domain>.
+edge:
+  org: acme
+  domain: acme.localhost
+
+environments: [local]

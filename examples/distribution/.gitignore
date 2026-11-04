@@ -1,0 +1,13 @@
+node_modules/
+config/local/
+.acme-services/
+acme-workspaces/
+.smoke-run/
+.smoke-clones/
+.synth-run/
+.journeys-run/
+reports/
+results/
+test-results/
+playwright-report/
+.env

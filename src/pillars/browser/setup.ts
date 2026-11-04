@@ -33,16 +33,14 @@ import type { Environment } from "../../shared/types/index.js";
 import { getDistRoot } from "../../shared/paths.js";
 
 import { product } from "../../shared/product.js";
+import { enginePath } from "../../shared/engine.js";
 // Den-root anchored, NOT process.cwd(): stages (rm -rf + mkdir + symlink
 // + copy) .synth-run, and CLI-spawned runs inherit the user's cwd.
 const PROJECT_ROOT = getDistRoot();
 
 const SYNTH_RUN_DIR = path.resolve(PROJECT_ROOT, ".synth-run");
 const ENGINE_MODULES = path.resolve(PROJECT_ROOT, "node_modules");
-const SYNTHETIC_FIXTURES = path.resolve(
-  PROJECT_ROOT,
-  "src/pillars/browser/fixtures",
-);
+const SYNTHETIC_FIXTURES = enginePath("src/pillars/browser/fixtures");
 interface SyntheticsManifest {
   testDir: string;
   testMatch: string;

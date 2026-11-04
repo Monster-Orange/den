@@ -16,6 +16,7 @@ import { describe, it, expect } from "@jest/globals";
 import { TestRunner } from "../../src/ui/cli/test-runner.js";
 import { getDistRoot } from "../../src/shared/paths.js";
 import * as path from "path";
+import { enginePath as ENG, tsxBin } from "../../src/shared/engine.js";
 
 // k6 paths are den-root anchored (absolute) so children with an arbitrary
 // inherited cwd write/read the right place.
@@ -88,7 +89,7 @@ describe("buildCommand – integration pillar", () => {
     });
     expect(steps).toHaveLength(1);
     const args = steps[0].args;
-    expect(args.some((a) => a.startsWith("src/pillars/api/tests/"))).toBe(
+    expect(args.some((a) => a.startsWith(ENG("src/pillars/api/tests/")))).toBe(
       false,
     );
   });
@@ -99,7 +100,7 @@ describe("buildCommand – integration pillar", () => {
       environment: "local",
       modules: ["items"],
     });
-    expect(steps[0].args).toContain("src/pillars/api/tests/items/");
+    expect(steps[0].args).toContain(ENG("src/pillars/api/tests/items/"));
   });
 
   it("multiple modules: adds one path arg per module", () => {
@@ -109,8 +110,8 @@ describe("buildCommand – integration pillar", () => {
       modules: ["items", "users"],
     });
     const args = steps[0].args;
-    expect(args).toContain("src/pillars/api/tests/items/");
-    expect(args).toContain("src/pillars/api/tests/users/");
+    expect(args).toContain(ENG("src/pillars/api/tests/items/"));
+    expect(args).toContain(ENG("src/pillars/api/tests/users/"));
   });
 });
 
@@ -125,7 +126,7 @@ describe("buildCommand – smoke pillar", () => {
     expect(steps).toHaveLength(3);
     expect(steps[0].label).toBe("Stage all smoke tests");
     expect(steps[1].args).toContain(
-      "--config=src/pillars/smoke/playwright-global.config.ts",
+      `--config=${ENG("src/pillars/smoke/playwright-global.config.ts")}`,
     );
     expect(steps[2].label).toBe("Verify smoke storage teardown");
   });
@@ -144,7 +145,7 @@ describe("buildCommand – smoke pillar", () => {
       SMOKE_SERVICES: "api",
     });
     expect(steps[1].args).toContain(
-      "--config=src/pillars/smoke/playwright-all.config.ts",
+      `--config=${ENG("src/pillars/smoke/playwright-all.config.ts")}`,
     );
     expect(steps[1].env).toMatchObject({
       SMOKE_REPO: "shop",
@@ -164,7 +165,7 @@ describe("buildCommand – smoke pillar", () => {
     expect(steps[0].label).toBe("Stage api smoke tests");
     expect(steps[1].args).toContain(".smoke-run/shop-api/items");
     expect(steps[1].args).toContain(
-      "--config=src/pillars/smoke/playwright.config.ts",
+      `--config=${ENG("src/pillars/smoke/playwright.config.ts")}`,
     );
     expect(steps[2].label).toBe("Verify smoke storage teardown");
   });
@@ -179,7 +180,7 @@ describe("buildCommand – smoke pillar", () => {
     expect(steps[0].label).toBe("Stage api smoke tests");
     expect(steps[1].label).toBe("Stage worker smoke tests");
     expect(steps[2].args).toContain(
-      "--config=src/pillars/smoke/playwright-all.config.ts",
+      `--config=${ENG("src/pillars/smoke/playwright-all.config.ts")}`,
     );
     expect(steps[2].env).toMatchObject({
       SMOKE_REPO: "shop",
@@ -219,10 +220,9 @@ describe("buildCommand – smoke pillar", () => {
 
     expect(steps).toHaveLength(4);
     expect(steps[0]).toMatchObject({
-      command: "npx",
+      command: tsxBin(),
       args: [
-        "tsx",
-        "src/pillars/smoke/setup-env.ts",
+        ENG("src/pillars/smoke/setup-env.ts"),
         "--env",
         "sandbox",
         "--repo",
@@ -286,8 +286,8 @@ describe("buildCommand – journeys pillar", () => {
     });
     expect(steps).toHaveLength(1);
     expect(steps[0]).toMatchObject({
-      command: "npx",
-      args: ["tsx", "src/pillars/journeys/run.ts", "--env=local"],
+      command: tsxBin(),
+      args: [ENG("src/pillars/journeys/run.ts"), "--env=local"],
       label: "Run all journeys",
     });
     expect(steps[0].env.E2E_ENVIRONMENT).toBe("local");
@@ -301,8 +301,7 @@ describe("buildCommand – journeys pillar", () => {
     });
     expect(steps).toHaveLength(1);
     expect(steps[0].args).toEqual([
-      "tsx",
-      "src/pillars/journeys/run.ts",
+      ENG("src/pillars/journeys/run.ts"),
       "--env=local",
       "--journey=shop-web/user-first-item",
     ]);
@@ -372,8 +371,8 @@ describe("buildCommand – performance pillar", () => {
       anchored("tests/pillars/perf/api-health/test.js"),
     );
     expect(steps[1]).toMatchObject({
-      command: "npx",
-      args: ["tsx", "src/pillars/perf/build-report.ts"],
+      command: tsxBin(),
+      args: [ENG("src/pillars/perf/build-report.ts")],
       env: {
         PERF_ENVIRONMENT: "local",
         PERF_MODULES: "api-health",
@@ -401,8 +400,8 @@ describe("buildCommand – performance pillar", () => {
       anchored("tests/pillars/perf/api-load/test.js"),
     );
     expect(steps[2]).toMatchObject({
-      command: "npx",
-      args: ["tsx", "src/pillars/perf/build-report.ts"],
+      command: tsxBin(),
+      args: [ENG("src/pillars/perf/build-report.ts")],
       env: {
         PERF_ENVIRONMENT: "local",
         PERF_MODULES: "api-health,api-load",
@@ -417,10 +416,9 @@ describe("buildCommand – performance pillar", () => {
       modules: ["files-api/ingest"],
     });
     expect(steps).toHaveLength(1);
-    expect(steps[0].command).toBe("npx");
+    expect(steps[0].command).toBe(tsxBin());
     expect(steps[0].args).toEqual([
-      "tsx",
-      "src/pillars/perf/run.ts",
+      ENG("src/pillars/perf/run.ts"),
       "--env",
       "local",
       "--repo",
@@ -440,8 +438,7 @@ describe("buildCommand – performance pillar", () => {
     });
     expect(steps).toHaveLength(1);
     expect(steps[0].args).toEqual([
-      "tsx",
-      "src/pillars/perf/run.ts",
+      ENG("src/pillars/perf/run.ts"),
       "--env",
       "local",
       "--repo",
@@ -463,14 +460,13 @@ describe("buildCommand – performance pillar", () => {
     });
     expect(steps).toHaveLength(2);
     expect(steps[0].args).toEqual([
-      "tsx",
-      "src/pillars/smoke/setup-env.ts",
+      ENG("src/pillars/smoke/setup-env.ts"),
       "--env",
       "sandbox",
       "--repo",
       "files-api",
     ]);
-    expect(steps[1].args).toContain("src/pillars/perf/run.ts");
+    expect(steps[1].args).toContain(ENG("src/pillars/perf/run.ts"));
   });
 
   it("targets the selected cloud API URL for perf runs", () => {
@@ -535,8 +531,8 @@ describe("buildCommand – security pillar", () => {
     });
     expect(steps).toHaveLength(1);
     expect(steps[0]).toMatchObject({
-      command: "npx",
-      args: ["tsx", "src/pillars/security/run.ts", "--env=staging"],
+      command: tsxBin(),
+      args: [ENG("src/pillars/security/run.ts"), "--env=staging"],
       label: "Run all security scans",
     });
     expect(steps[0].env.E2E_ENVIRONMENT).toBe("staging");
@@ -550,14 +546,12 @@ describe("buildCommand – security pillar", () => {
     });
     expect(steps.map((s) => s.args)).toEqual([
       [
-        "tsx",
-        "src/pillars/security/run.ts",
+        ENG("src/pillars/security/run.ts"),
         "--env=local",
         "--service=sample-webapp/api",
       ],
       [
-        "tsx",
-        "src/pillars/security/run.ts",
+        ENG("src/pillars/security/run.ts"),
         "--env=local",
         "--service=rag-server/app",
       ],

@@ -17,6 +17,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { findManifest, resolveService } from "./discover.js";
 import { getDistRoot } from "../../shared/paths.js";
+import { distPath, enginePath } from "../../shared/engine.js";
 import {
   resolveManifestSmokeBaseUrl,
   resolveSmokeBaseUrl,
@@ -119,11 +120,8 @@ export default defineConfig({
   testDir: svc.testDir,
   testMatch: svc.testMatch,
 
-  globalSetup: path.resolve(PROJECT_ROOT, "src/pillars/smoke/global-setup.ts"),
-  globalTeardown: path.resolve(
-    PROJECT_ROOT,
-    "src/pillars/smoke/global-teardown.ts",
-  ),
+  globalSetup: enginePath("src/pillars/smoke/global-setup.ts"),
+  globalTeardown: enginePath("src/pillars/smoke/global-teardown.ts"),
 
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -135,12 +133,12 @@ export default defineConfig({
       "html",
       {
         outputFolder:
-          process.env.PLAYWRIGHT_HTML_REPORT || "../../../playwright-report",
+          process.env.PLAYWRIGHT_HTML_REPORT || distPath("playwright-report"),
         open: "never",
       },
     ],
     ["list"],
-    ["junit", { outputFile: "../../reports/junit-smoke-results.xml" }],
+    ["junit", { outputFile: distPath("reports", "junit-smoke-results.xml") }],
   ],
 
   use: {

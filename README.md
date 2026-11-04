@@ -11,6 +11,29 @@ accounts — lives in **your distribution**, not in Den.
 
 > **Status: pre-release (`0.1.0-dev`).** The first release on npm is 0.1.0.
 
+## Make it your own
+
+1. **Create** a distribution named after your product:
+
+   ```sh
+   npx @monster-orange/den create acme      # → ./acme
+   cd acme && npm install
+   ```
+
+2. **Name** it: `den.yml` holds `product: { name: acme }`, so the CLI is
+   `./bin/acme`, env vars are `ACME_*`, state lives in `~/.acme`. Pass
+   `--cli`, `--env-prefix` or `--title` to `create`, or edit `den.yml`.
+3. **Brand** it: `brand:` in `config/acme.yml` sets the name, tagline and
+   banner people see in the CLI and web UI.
+4. **Point it at your repos**: set `github_org` in `config/acme.yml`, then
+   `./bin/acme register ../shop-api` (or add a manifest per repo under
+   `manifests/`).
+5. **Run** it: `./bin/acme up`, `./bin/acme web`, `make test`.
+
+Every field, the bin shim, the make fragment and upgrading are in
+[docs/distributions.md](docs/distributions.md);
+[examples/distribution/](examples/distribution) is what `create acme` writes.
+
 ## Distributions
 
 You run Den through a small repo of your own (a _distribution_):
@@ -22,7 +45,9 @@ my-dev/
 ├── config/<name>.yml     # your org config
 ├── config/environments/  # one <env>.json per environment
 ├── manifests/            # manifests for repos that don't carry their own
-└── tests/pillars/<pillar>/   # your own suites (e.g. tests/pillars/perf/<module>/test.js)
+├── tests/pillars/<pillar>/   # your own suites (e.g. tests/pillars/perf/<module>/test.js)
+├── bin/<cli>             # shim: DEN_ROOT=<this dir> exec node_modules/@monster-orange/den/bin/den
+└── Makefile              # include node_modules/@monster-orange/den/make/den.mk
 ```
 
 `den.yml` names the product. Every runtime name derives from it:

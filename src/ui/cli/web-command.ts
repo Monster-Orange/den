@@ -8,7 +8,8 @@ import {
   DEFAULT_PORT,
   OP_ACCOUNT_DEFAULT,
 } from "../../shared/constants.js";
-import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import { getDistRoot, getEngineRoot, getStateDir } from "../../shared/paths.js";
+import { engineBin } from "../../shared/engine.js";
 import { readWebPort } from "../../shared/edge/config.js";
 
 import { product } from "../../shared/product.js";
@@ -292,11 +293,12 @@ async function waitForDenWeb(port: number): Promise<boolean> {
   return false;
 }
 
-function resolveServerEntrypoint(root: string): {
+/** How to run the web server: Den's own files, from the engine root. */
+function resolveServerEntrypoint(engine: string = getEngineRoot()): {
   cmd: string;
   args: string[];
 } {
-  const builtServer = path.join(root, "dist/src/ui/server/index.js");
+  const builtServer = path.join(engine, "dist/src/ui/server/index.js");
 
   // Escape hatch: force the compiled build (e.g. to test the prod artifact).
   if (process.env.DEN_USE_DIST === "1" && fs.existsSync(builtServer)) {
@@ -310,12 +312,8 @@ function resolveServerEntrypoint(root: string): {
   // take effect. The server resolves PUBLIC_DIR relative to its own module, so
   // running from src/ serves src/ui/server/public directly. Fall back to the
   // compiled build only when devDependencies (tsx) aren't installed.
-  const tsxBin = path.join(
-    root,
-    "node_modules/.bin",
-    process.platform === "win32" ? "tsx.cmd" : "tsx",
-  );
-  const srcServer = path.join(root, "src/ui/server/index.ts");
+  const tsxBin = engineBin(process.platform === "win32" ? "tsx.cmd" : "tsx");
+  const srcServer = path.join(engine, "src/ui/server/index.ts");
   if (fs.existsSync(tsxBin) && fs.existsSync(srcServer)) {
     return { cmd: tsxBin, args: [srcServer] };
   }
@@ -329,7 +327,7 @@ function resolveServerEntrypoint(root: string): {
 
 function startDenWebServer(options: WebCommandOptions): StartedServer {
   const root = getDistRoot();
-  const entrypoint = resolveServerEntrypoint(root);
+  const entrypoint = resolveServerEntrypoint();
   const logDir = path.join(getStateDir(), "logs", `${product().cli}`);
   fs.mkdirSync(logDir, { recursive: true });
   const logPath = path.join(logDir, "web.log");
@@ -381,13 +379,10 @@ function startDenWebServer(options: WebCommandOptions): StartedServer {
  */
 export function spawnDetachedWebRestart(port: number): number | undefined {
   const root = getDistRoot();
-  const tsxBin = path.join(
-    root,
-    "node_modules/.bin",
-    process.platform === "win32" ? "tsx.cmd" : "tsx",
-  );
-  const srcCli = path.join(root, "src/ui/cli/index.ts");
-  const builtCli = path.join(root, "dist/src/ui/cli/index.js");
+  const engine = getEngineRoot();
+  const tsxBin = engineBin(process.platform === "win32" ? "tsx.cmd" : "tsx");
+  const srcCli = path.join(engine, "src/ui/cli/index.ts");
+  const builtCli = path.join(engine, "dist/src/ui/cli/index.js");
 
   let cmd: string;
   let baseArgs: string[];

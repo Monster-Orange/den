@@ -1,0 +1,12 @@
+{
+  "name": "local",
+  "baseUrls": {
+    "web": "http://localhost:3000",
+    "api": "http://localhost:3001",
+    "services": {}
+  },
+  "timeouts": {
+    "api": 30000,
+    "pageLoad": 60000
+  }
+}

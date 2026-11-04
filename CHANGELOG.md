@@ -12,6 +12,17 @@ through thin distributions that pin an exact version.
 
 ### Added
 
+- **`den create <name> [dir]`** (also `npx @monster-orange/den create`)
+  scaffolds a distribution: `den.yml`, a `package.json` pinning this exact
+  Den, a `bin/<cli>` shim, a Makefile including `make/den.mk`, an org config
+  with a brand, and empty `manifests/` and `tests/pillars/`.
+  `examples/distribution/` is its output for `acme`. See
+  `docs/distributions.md`.
+- **Den runs as an installed package.** Den's own files resolve from the
+  engine root (`node_modules/@monster-orange/den`), the distribution's from
+  its root; scripts run with Den's tsx, never through `npx` or the current
+  directory. The package ships `src/` and runs it with tsx (a dependency
+  now); CI proves it with `scripts/dist-smoke.sh`.
 - **Org > Application > Repo > Services.** Declared applications (config
   `applications:` or a manifest's `application:`) group repos; the Local Dev
   graph boxes each one inside its org's frame, next to the connected groups of
@@ -23,10 +34,18 @@ through thin distributions that pin an exact version.
 - **Edge opt-ins**: a project CA and route certificates are opt-in; with none
   set, the rendered edge is unchanged.
 
+- **launchd service from a distribution.** `service/install.sh` ships in the
+  package and runs from `DEN_ROOT`; `DEN_SERVICE_LABEL` and `DEN_SERVICE_LOGS`
+  keep an existing label and log folder; `print` shows the plist.
+
 ### Migrations
 
 From the engine this release was generalised from:
 
+- Run Den from the package: a `bin/<cli>` shim that sets `DEN_ROOT` to the
+  distribution and execs `node_modules/@monster-orange/den/bin/den`, and a
+  Makefile that does `include node_modules/@monster-orange/den/make/den.mk`
+  (`den create` writes both; `docs/distributions.md` shows them).
 - Add `den.yml` at the distribution root with `product: { name: <your name> }`.
   Env vars, the config and manifest file names, the state, managed-clone and
   workspace directories all derive from that name, so an existing install

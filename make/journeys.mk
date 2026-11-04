@@ -45,7 +45,7 @@ test-jrn-all: .journeys-check-env .check-auth
 	@echo "🧭 Running ALL journeys..."
 	@echo "🌍 Environment: $(env)"
 	@echo ""
-	@npx tsx src/pillars/journeys/run.ts --env=$(env)
+	@$(DEN_TSX) $(DEN_ENGINE)/src/pillars/journeys/run.ts --env=$(env)
 
 # make test-jrn-<journey-name> env=<env>
 test-jrn-%: .journeys-check-env .check-auth
@@ -54,4 +54,4 @@ test-jrn-%: .journeys-check-env .check-auth
 	echo "🧭 Running journey $$JOURNEY_NAME..."; \
 	echo "🌍 Environment: $(env)"; \
 	echo ""; \
-	npx tsx src/pillars/journeys/run.ts --env=$(env) --journey=$$JOURNEY_NAME
+	$(DEN_TSX) $(DEN_ENGINE)/src/pillars/journeys/run.ts --env=$(env) --journey=$$JOURNEY_NAME

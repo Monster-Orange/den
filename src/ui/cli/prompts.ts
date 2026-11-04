@@ -16,14 +16,11 @@ import * as yaml from "yaml";
 import { readManifestAsync } from "../../shared/manifest/read-manifest.js";
 
 import { product } from "../../shared/product.js";
-// Resolved from the working directory — the CLI is always launched from the
-// den repo root (make/npm), the same assumption moduleScanner makes.
-// No import.meta here: ts-jest compiles this module to CJS for the unit
-// tests, where import.meta is a syntax error (same constraint as
-// src/pillars/journeys/run.ts). The previous fileURLToPath(import.meta.url)
-// resolution pointed at the same directories when run from the root.
-const DEN_ROOT = process.cwd();
-const E2E_ROOT = path.join(DEN_ROOT, "src");
+import { getDistRoot } from "../../shared/paths.js";
+// Linked repos (.<name>/<repo>) live at the distribution root, wherever the
+// CLI was launched from.
+const linkedRepo = (...parts: string[]): string =>
+  path.join(getDistRoot(), `.${product().name}`, ...parts);
 
 export class CLIPrompts {
   /**
@@ -202,9 +199,7 @@ export class CLIPrompts {
 
     let testDir = "";
     try {
-      const manifest = await readManifestAsync(
-        path.join(E2E_ROOT, `.${product().name}`, repo),
-      );
+      const manifest = await readManifestAsync(linkedRepo(repo));
       testDir = (manifest as Record<string, unknown> | null)
         ? ((manifest as { smoke?: Record<string, { testDir?: string }> })
             .smoke?.[service]?.testDir ?? "")
@@ -213,12 +208,7 @@ export class CLIPrompts {
       // manifest unreadable — fall through with empty testDir
     }
 
-    const collectionsDir = path.join(
-      E2E_ROOT,
-      `.${product().name}`,
-      repo,
-      testDir,
-    );
+    const collectionsDir = linkedRepo(repo, testDir);
 
     // Discover collection subdirectories
     const collections: Array<{
@@ -580,7 +570,7 @@ export class CLIPrompts {
           if (!e.isDirectory() && !e.isSymbolicLink()) return;
           if (e.name.startsWith(".")) return;
           const absPath = path.join(dir, e.name);
-          if (absPath === DEN_ROOT) return; // skip den itself
+          if (absPath === getDistRoot()) return; // skip this distribution itself
           const relPath = relPrefix ? `${relPrefix}/${e.name}` : e.name;
           const hasManifest = await fs
             .access(path.join(absPath, `${product().manifestYml}`))

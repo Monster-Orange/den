@@ -1,185 +1,117 @@
 /**
  * Pillar Config Path Resolution Tests
  *
- * Reads the actual string literals from each playwright config and verifies
- * they resolve to the correct project-root directories.
- *
- * These tests catch the class of bug we hit during the src/ restructure:
- *   - outputFolder: "../../playwright-report"  →  wrote to src/playwright-report  (depth -1)
- *   - storageState: "../../playwright/.auth/…" →  looked in src/playwright/.auth  (depth -1)
- *   - CLI building testPath = "integration/"   →  directory no longer exists
- *
- * If any config's depth is wrong, the resolved path won't equal the expected
- * root-level path and the test will fail with a clear diff.
+ * Reads the playwright configs and the CLI test runner and checks how each
+ * path is anchored. Two roots (src/shared/engine.ts):
+ *   - Den's own files (global setup, configs, pillar scripts) resolve from the
+ *     engine root via enginePath() — node_modules/@monster-orange/den in a
+ *     distribution.
+ *   - Outputs (playwright-report, test-results, reports/, .synth-run, auth)
+ *     resolve from the distribution root via distPath()/getDistRoot().
+ * A relative path ("../../../playwright-report") resolves against the config
+ * file, i.e. inside the engine: in a distribution that is node_modules.
  */
 
 import { describe, it, expect } from "@jest/globals";
 import { readFileSync, existsSync } from "fs";
-import { resolve, join, dirname } from "path";
+import { join } from "path";
 
 const ROOT = process.cwd();
+const read = (rel: string): string => readFileSync(join(ROOT, rel), "utf-8");
 
-/** Resolve a relative path as if it came from inside the given config file */
-function fromConfig(configRelPath: string, relTarget: string): string {
-  return resolve(join(ROOT, dirname(configRelPath)), relTarget);
-}
+const CONFIGS = [
+  "src/pillars/api/playwright.config.ts",
+  "src/pillars/browser/playwright.config.ts",
+  "src/pillars/smoke/playwright.config.ts",
+  "src/pillars/smoke/playwright-all.config.ts",
+  "src/pillars/smoke/playwright-global.config.ts",
+];
 
-/** Extract first capture group from a regex applied to a config file's source */
-function extract(configRelPath: string, pattern: RegExp): string {
-  const src = readFileSync(join(ROOT, configRelPath), "utf-8");
-  const m = src.match(pattern);
-  if (!m) throw new Error(`Pattern ${pattern} not found in ${configRelPath}`);
-  return m[1];
-}
-
-// ─── Expected root-level paths ───────────────────────────────────────────────
-const REPORT_DIR = join(ROOT, "playwright-report");
-const RESULTS_DIR = join(ROOT, "test-results");
-const AUTH_DIR = join(ROOT, "playwright", ".auth");
-
-// ─── outputFolder / outputDir ─────────────────────────────────────────────────
-describe("pillar configs: output paths resolve to project root", () => {
-  it("browser outputFolder → <root>/playwright-report", () => {
-    const rel = extract(
-      "src/pillars/browser/playwright.config.ts",
-      /outputFolder:\s*["']([^"']+)["']/,
-    );
-    expect(fromConfig("src/pillars/browser/playwright.config.ts", rel)).toBe(
-      REPORT_DIR,
+// ─── outputs: the distribution root ──────────────────────────────────────────
+describe("pillar configs: outputs resolve from the distribution root", () => {
+  it.each(CONFIGS)("%s has no config-relative output path", (cfg) => {
+    expect(read(cfg)).not.toMatch(
+      /["']\.\.\/(\.\.\/)*(playwright-report|test-results|reports)/,
     );
   });
 
-  it("browser outputDir → <root>/test-results", () => {
-    const rel = extract(
-      "src/pillars/browser/playwright.config.ts",
-      /outputDir:\s*["']([^"']+)["']/,
-    );
-    expect(fromConfig("src/pillars/browser/playwright.config.ts", rel)).toBe(
-      RESULTS_DIR,
+  it.each(CONFIGS)("%s writes its HTML report via distPath", (cfg) => {
+    expect(read(cfg)).toMatch(
+      /outputFolder:[\s\S]{0,80}distPath\("playwright-report"\)/,
     );
   });
 
-  it("api outputFolder → <root>/playwright-report", () => {
-    const rel = extract(
-      "src/pillars/api/playwright.config.ts",
-      /PLAYWRIGHT_HTML_REPORT\s*\|\|\s*["']([^"']+)["']/,
-    );
-    expect(fromConfig("src/pillars/api/playwright.config.ts", rel)).toBe(
-      REPORT_DIR,
+  it("browser outputDir is the distribution's test-results", () => {
+    expect(read("src/pillars/browser/playwright.config.ts")).toMatch(
+      /outputDir:\s*distPath\("test-results"\)/,
     );
   });
 
-  it("smoke outputFolder → <root>/playwright-report", () => {
-    const rel = extract(
-      "src/pillars/smoke/playwright.config.ts",
-      /PLAYWRIGHT_HTML_REPORT\s*\|\|\s*["']([^"']+)["']/,
-    );
-    expect(fromConfig("src/pillars/smoke/playwright.config.ts", rel)).toBe(
-      REPORT_DIR,
-    );
-  });
-
-  it("smoke-all outputFolder → <root>/playwright-report", () => {
-    const rel = extract(
-      "src/pillars/smoke/playwright-all.config.ts",
-      /PLAYWRIGHT_HTML_REPORT\s*\|\|\s*["']([^"']+)["']/,
-    );
-    expect(fromConfig("src/pillars/smoke/playwright-all.config.ts", rel)).toBe(
-      REPORT_DIR,
-    );
-  });
-});
-
-// ─── staging dir ─────────────────────────────────────────────────────────────
-describe("pillar configs: staging dir resolves to project root", () => {
-  it("browser stagingDir is anchored at the repo root, never process.cwd()", () => {
-    const src = readFileSync(
-      join(ROOT, "src/pillars/browser/playwright.config.ts"),
-      "utf-8",
-    );
-    // Must use the repoRoot anchor (cwd audit): setup.ts writes .synth-run at
-    // the den root, so the reader must resolve the same place from any cwd.
+  it("browser stagingDir is anchored at the distribution root, never cwd or __dirname", () => {
+    const src = read("src/pillars/browser/playwright.config.ts");
+    // setup.ts writes .synth-run at the distribution root; the reader must
+    // resolve the same place from any cwd and from inside node_modules.
+    expect(src).toMatch(/repoRoot\s*=\s*getDistRoot\(\)/);
     expect(src).toMatch(/stagingDir\s*=\s*path\.resolve\(repoRoot/);
-    expect(src).toMatch(
-      /repoRoot\s*=\s*path\.resolve\(__dirname,\s*["']\.\.\/\.\.\/\.\.["']\)/,
+    expect(src).not.toMatch(
+      /path\.resolve\(__dirname,\s*["']\.\.\/\.\.\/\.\.["']/,
     );
     expect(src).not.toMatch(/stagingDir\s*=\s*path\.resolve\(process\.cwd\(\)/);
   });
-});
 
-// ─── storageState / auth paths ────────────────────────────────────────────────
-describe("pillar configs: auth paths resolve to project root", () => {
-  it("browser storageState base → <root>/playwright/.auth", () => {
-    // The auth path moved out of playwright.config.ts into the shared
-    // resolveAuthPath() helper (commit b60dea3, "extract playwright-env
-    // helper"): resolve(repoRoot, `playwright/.auth/${role}-${env}.json`).
-    // Assert that repoRoot-relative base resolves to <root>/playwright/.auth.
-    const rel = extract(
-      "src/shared/environment/playwright-env.ts",
-      /resolve\(repoRoot,\s*`(playwright\/\.auth)\//,
+  it("auth files resolve from the repo root handed in", () => {
+    expect(read("src/shared/environment/playwright-env.ts")).toMatch(
+      /resolve\(repoRoot,\s*`playwright\/\.auth\//,
     );
-    expect(resolve(ROOT, rel)).toBe(AUTH_DIR);
   });
 });
 
-// ─── globalSetup paths point to existing files ───────────────────────────────
-describe("pillar configs: globalSetup files exist", () => {
-  it("api globalSetup exists", () => {
-    const rel = extract(
-      "src/pillars/api/playwright.config.ts",
-      /globalSetup:\s*path\.resolve\(\s*getDistRoot\(\),\s*["']([^"']+)["'],?\s*\)/s,
-    );
-    expect(existsSync(join(ROOT, rel))).toBe(true);
-  });
+// ─── Den's own files: the engine root ────────────────────────────────────────
+const engineLiterals = (rel: string): string[] =>
+  [...read(rel).matchAll(/(?:enginePath|tsxCommand)\(\s*"(src\/[^"$]+)"/g)].map(
+    (m) => m[1],
+  );
 
-  it("smoke globalSetup exists", () => {
-    const rel = extract(
-      "src/pillars/smoke/playwright.config.ts",
-      /globalSetup:\s*path\.resolve\(PROJECT_ROOT,\s*["']([^"']+)["']\)/,
-    );
-    expect(existsSync(join(ROOT, rel))).toBe(true);
-  });
-
-  it("smoke-all globalSetup exists", () => {
-    const rel = extract(
-      "src/pillars/smoke/playwright-all.config.ts",
-      /globalSetup:\s*path\.resolve\(\s*PROJECT_ROOT,\s*["']([^"']+)["'],?\s*\)/s,
-    );
-    expect(existsSync(join(ROOT, rel))).toBe(true);
+describe("pillar configs: global setup files are engine files that exist", () => {
+  it.each([
+    "src/pillars/api/playwright.config.ts",
+    "src/pillars/smoke/playwright.config.ts",
+    "src/pillars/smoke/playwright-all.config.ts",
+    "src/pillars/smoke/playwright-global.config.ts",
+  ])("%s", (cfg) => {
+    const src = read(cfg);
+    expect(src).toMatch(/globalSetup:\s*enginePath\(/);
+    const files = engineLiterals(cfg);
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) expect(existsSync(join(ROOT, f))).toBe(true);
   });
 });
 
-// ─── CLI hard-coded paths exist ───────────────────────────────────────────────
-describe("CLI test-runner: hard-coded paths exist", () => {
+describe("CLI test-runner: engine scripts", () => {
   const TEST_RUNNER = "src/ui/cli/test-runner.ts";
 
-  it("browser setup.ts path exists", () => {
-    const rel = extract(
-      TEST_RUNNER,
-      /["'](src\/pillars\/browser\/setup\.ts)["']/,
-    );
-    expect(existsSync(join(ROOT, rel))).toBe(true);
+  it("never runs through npx or a cwd-relative src/ path", () => {
+    const src = read(TEST_RUNNER);
+    expect(src).not.toMatch(/"npx"/);
+    expect(src).not.toMatch(/\["tsx",/);
+    expect(src).not.toMatch(/"--config=src\//);
   });
 
-  it("browser playwright.config.ts path exists", () => {
-    // Appears as --config=src/pillars/browser/playwright.config.ts
-    const rel = extract(
-      TEST_RUNNER,
-      /--config=?(src\/pillars\/browser\/playwright\.config\.ts)/,
+  it("every engine path it names exists", () => {
+    const files = engineLiterals(TEST_RUNNER);
+    expect(files).toEqual(
+      expect.arrayContaining([
+        "src/pillars/browser/setup.ts",
+        "src/pillars/api/playwright.config.ts",
+        "src/pillars/smoke/setup.ts",
+        "src/pillars/perf/run.ts",
+      ]),
     );
-    expect(existsSync(join(ROOT, rel))).toBe(true);
-  });
-
-  it("api playwright.config.ts path exists", () => {
-    const rel = extract(
-      TEST_RUNNER,
-      /["'](src\/pillars\/api\/playwright\.config\.ts)["']/,
-    );
-    expect(existsSync(join(ROOT, rel))).toBe(true);
+    for (const f of files) expect(existsSync(join(ROOT, f))).toBe(true);
   });
 
   it("perf suites resolve under the distribution, not an engine path", () => {
-    const src = readFileSync(join(ROOT, TEST_RUNNER), "utf-8");
+    const src = read(TEST_RUNNER);
     expect(src).toMatch(/getPerfTestFile\(/);
     expect(src).not.toMatch(/src\/pillars\/perf\/tests/);
   });

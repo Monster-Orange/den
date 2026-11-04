@@ -22,10 +22,10 @@
 
 DEMO_WS     := demo
 DEMO_REPOS  := demo-api demo-web demo-notes
-DEMO_DIR    := $(CURDIR)/examples/demo
+DEMO_DIR    := $(DEN_ENGINE)/examples/demo
 DEMO_PREV   := $(HOME)/.den/demo-prev-focus
-DEMO_DOMAIN := $(shell npx tsx -e 'import("./src/shared/edge/config.ts").then(m=>console.log(m.readEdgeConfig().domain))' 2>/dev/null)
-DEN_CLI     := ./bin/den
+DEMO_DOMAIN  = $(shell $(DEN_TSX) -e 'import("$(DEN_ENGINE)/src/shared/edge/config.ts").then(m=>console.log(m.readEdgeConfig().domain))' 2>/dev/null)
+DEN_CLI     := $(DEN_BIN)
 
 # Steps run in sequence (a prerequisite list would run demo-check only once).
 demo:
@@ -36,7 +36,7 @@ demo:
 
 demo-register:
 	@mkdir -p $(dir $(DEMO_PREV))
-	@[ -f $(DEMO_PREV) ] || npx tsx -e 'import("./src/shared/environment-manager/workspaces.ts").then(m=>console.log(m.getFocusedWorkspaceName()??"default"))' > $(DEMO_PREV)
+	@[ -f $(DEMO_PREV) ] || $(DEN_TSX) -e 'import("$(DEN_ENGINE)/src/shared/environment-manager/workspaces.ts").then(m=>console.log(m.getFocusedWorkspaceName()??"default"))' > $(DEMO_PREV)
 	@$(DEN_CLI) workspace create $(DEMO_WS) >/dev/null
 	@$(DEN_CLI) workspace use $(DEMO_WS) >/dev/null
 	@for r in $(DEMO_REPOS); do $(DEN_CLI) register $(DEMO_DIR)/$$r; done
@@ -77,6 +77,6 @@ demo-down:
 demo-clean: demo-down
 	@$(DEN_CLI) workspace use $$(cat $(DEMO_PREV) 2>/dev/null || echo default) >/dev/null
 	@$(DEN_CLI) workspace delete $(DEMO_WS) --yes >/dev/null
-	@npx tsx -e 'import("./src/shared/environment-manager/catalog.ts").then(m=>{for(const r of process.argv.slice(1))m.removeCatalogEntry(r)})' $(DEMO_REPOS)
+	@$(DEN_TSX) -e 'import("$(DEN_ENGINE)/src/shared/environment-manager/catalog.ts").then(m=>{for(const r of process.argv.slice(1))m.removeCatalogEntry(r)})' $(DEMO_REPOS)
 	@echo "✓ demo workspace removed; focus back on $$(cat $(DEMO_PREV) 2>/dev/null || echo default)"
 	@rm -f $(DEMO_PREV)

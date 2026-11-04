@@ -18,12 +18,17 @@ import {
 import { resetCurrentPerfRunReport } from "../../shared/perf/report-store.js";
 import { getPerfTestFile } from "../../shared/perf/test-paths.js";
 import { getDistRoot } from "../../shared/paths.js";
+import {
+  enginePath,
+  playwrightCommand,
+  tsxCommand,
+  type EngineCommand,
+} from "../../shared/engine.js";
 
 /** After Playwright smoke runs: fail if storage fixture handoff was left behind. */
 function smokePostRunTeardownVerifyStep(env: NodeJS.ProcessEnv): CommandStep {
   return {
-    command: "npx",
-    args: ["tsx", "src/pillars/smoke/ensure-smoke-teardown.ts"],
+    ...tsxCommand("src/pillars/smoke/ensure-smoke-teardown.ts"),
     env,
     label: "Verify smoke storage teardown",
   };
@@ -171,11 +176,13 @@ export class TestRunner {
     }
 
     // integration is the only pillar reaching this point (synthetic exits early above)
-    const config = "src/pillars/api/playwright.config.ts";
-    const args = ["playwright", "test", "--config", config];
+    const config = enginePath("src/pillars/api/playwright.config.ts");
+    const args = ["test", "--config", config];
     const integrationMods = options.modules ?? [];
     if (integrationMods.length > 0) {
-      integrationMods.forEach((m) => args.push(`src/pillars/api/tests/${m}/`));
+      integrationMods.forEach((m) =>
+        args.push(enginePath(`src/pillars/api/tests/${m}`) + "/"),
+      );
       console.log(
         chalk.cyan(`📦 Running module(s): ${integrationMods.join(", ")}\n`),
       );
@@ -217,7 +224,7 @@ export class TestRunner {
     console.log(chalk.gray(`Environment: ${options.environment}`));
     console.log(chalk.gray(`E2E_ENVIRONMENT set to: ${env.E2E_ENVIRONMENT}\n`));
 
-    return await this.spawnProcess("npx", args, env);
+    return await this.spawnCommand(playwrightCommand(...args), env);
   }
 
   /**
@@ -226,15 +233,16 @@ export class TestRunner {
    * and then runs synth/playwright.config.ts.
    */
   /**
-   * Build the playwright args for a synthetic test run.
+   * Build the playwright command for a synthetic test run.
    * Single source of truth used by both runStagedSyntheticTests (CLI)
    * and buildCommand (web server) so they can never drift.
    */
-  private buildSyntheticPlaywrightArgs(options: TestRunOptions): string[] {
+  private buildSyntheticPlaywrightCommand(
+    options: TestRunOptions,
+  ): EngineCommand {
     const args = [
-      "playwright",
       "test",
-      "--config=src/pillars/browser/playwright.config.ts",
+      `--config=${enginePath("src/pillars/browser/playwright.config.ts")}`,
     ];
 
     const modules = options.modules ?? [];
@@ -262,7 +270,7 @@ export class TestRunner {
     if (options.debug) args.push("--debug");
     if (options.grep) args.push("--grep", options.grep);
 
-    return args;
+    return playwrightCommand(...args);
   }
 
   private async runStagedSyntheticTests(
@@ -274,16 +282,15 @@ export class TestRunner {
     };
 
     console.log(chalk.cyan(`📦 Staging synthetic tests...\n`));
-    const stageResult = await this.spawnProcess(
-      "npx",
-      ["tsx", "src/pillars/browser/setup.ts"],
+    const stageResult = await this.spawnCommand(
+      tsxCommand("src/pillars/browser/setup.ts"),
       stageEnv,
     );
     if (!stageResult.success) {
       return stageResult;
     }
 
-    const args = this.buildSyntheticPlaywrightArgs(options);
+    const run = this.buildSyntheticPlaywrightCommand(options);
 
     const modules = options.modules ?? [];
     if (modules.length > 0) {
@@ -309,7 +316,7 @@ export class TestRunner {
     console.log(chalk.gray(`Environment: ${options.environment}`));
     console.log(chalk.gray(`E2E_ENVIRONMENT set to: ${env.E2E_ENVIRONMENT}\n`));
 
-    return await this.spawnProcess("npx", args, env);
+    return await this.spawnCommand(run, env);
   }
 
   /**
@@ -381,12 +388,10 @@ export class TestRunner {
     if (journeyNames.length === 0) {
       return [
         {
-          command: "npx",
-          args: [
-            "tsx",
+          ...tsxCommand(
             "src/pillars/journeys/run.ts",
             `--env=${options.environment}`,
-          ],
+          ),
           env: baseEnv,
           label: "Run all journeys",
         },
@@ -394,13 +399,11 @@ export class TestRunner {
     }
 
     return journeyNames.map((name) => ({
-      command: "npx",
-      args: [
-        "tsx",
+      ...tsxCommand(
         "src/pillars/journeys/run.ts",
         `--env=${options.environment}`,
         `--journey=${name}`,
-      ],
+      ),
       env: baseEnv,
       label: `Run journey ${name}`,
     }));
@@ -443,20 +446,22 @@ export class TestRunner {
     baseEnv: NodeJS.ProcessEnv,
   ): CommandStep[] {
     const names = options.modules ?? [];
-    const base = ["tsx", "src/pillars/security/run.ts"];
+    const script = "src/pillars/security/run.ts";
     if (names.length === 0) {
       return [
         {
-          command: "npx",
-          args: [...base, `--env=${options.environment}`],
+          ...tsxCommand(script, `--env=${options.environment}`),
           env: baseEnv,
           label: "Run all security scans",
         },
       ];
     }
     return names.map((name) => ({
-      command: "npx",
-      args: [...base, `--env=${options.environment}`, `--service=${name}`],
+      ...tsxCommand(
+        script,
+        `--env=${options.environment}`,
+        `--service=${name}`,
+      ),
       env: baseEnv,
       label: `Run security scan ${name}`,
     }));
@@ -523,16 +528,14 @@ export class TestRunner {
 
     for (const [repoName, moduleNames] of repoModules.entries()) {
       if (options.environment !== "local" && !options.useLocalCheckout) {
-        const setupEnvResult = await this.spawnProcess(
-          "npx",
-          [
-            "tsx",
+        const setupEnvResult = await this.spawnCommand(
+          tsxCommand(
             "src/pillars/smoke/setup-env.ts",
             "--env",
             options.environment,
             "--repo",
             repoName,
-          ],
+          ),
           baseEnv,
         );
         if (!setupEnvResult.success) {
@@ -540,8 +543,7 @@ export class TestRunner {
         }
       }
 
-      const repoRunArgs = [
-        "tsx",
+      const repoRun = tsxCommand(
         "src/pillars/perf/run.ts",
         "--env",
         options.environment,
@@ -553,12 +555,8 @@ export class TestRunner {
           "--module",
           moduleName,
         ]),
-      ];
-      const repoRunResult = await this.spawnProcess(
-        "npx",
-        repoRunArgs,
-        baseEnv,
       );
+      const repoRunResult = await this.spawnCommand(repoRun, baseEnv);
       if (!repoRunResult.success) {
         return repoRunResult;
       }
@@ -596,9 +594,8 @@ export class TestRunner {
     }
 
     if (internalModules.length > 0) {
-      const reportResult = await this.spawnProcess(
-        "npx",
-        ["tsx", "src/pillars/perf/build-report.ts"],
+      const reportResult = await this.spawnCommand(
+        tsxCommand("src/pillars/perf/build-report.ts"),
         {
           ...baseEnv,
           PERF_ENVIRONMENT: options.environment,
@@ -658,6 +655,13 @@ export class TestRunner {
   /**
    * Spawn a child process and stream output
    */
+  private spawnCommand(
+    cmd: EngineCommand,
+    env: NodeJS.ProcessEnv,
+  ): Promise<{ success: boolean; exitCode: number }> {
+    return this.spawnProcess(cmd.command, cmd.args, env);
+  }
+
   private async spawnProcess(
     command: string,
     args: string[],
@@ -667,6 +671,9 @@ export class TestRunner {
       console.log(chalk.gray(`$ ${command} ${args.join(" ")}\n`));
 
       const proc = spawn(command, args, {
+        // The distribution root: reports, results and staged tests land there,
+        // wherever the CLI was invoked from.
+        cwd: getDistRoot(),
         env,
         stdio: "inherit", // Stream output directly to console
       });
@@ -849,7 +856,7 @@ export class TestRunner {
   private async checkAndRefreshAuth(
     environment: Environment,
   ): Promise<boolean> {
-    const authDir = path.resolve("./playwright/.auth");
+    const authDir = path.resolve(getDistRoot(), "playwright/.auth");
     const adminAuthFile = path.join(authDir, "admin.json");
     const userAuthFile = path.join(authDir, "user.json");
 
@@ -937,7 +944,8 @@ export class TestRunner {
   private async getBaseUrl(environment: Environment): Promise<string> {
     try {
       const configPath = path.resolve(
-        `./config/environments/${environment}.json`,
+        getDistRoot(),
+        `config/environments/${environment}.json`,
       );
       const configFile = fs.readFileSync(configPath, "utf-8");
       const config = JSON.parse(configFile);
@@ -988,31 +996,31 @@ export class TestRunner {
   > = {
     synthetic: (options, baseEnv) => {
       const env = { ...baseEnv };
-      const runArgs = this.buildSyntheticPlaywrightArgs(options);
+      const run = this.buildSyntheticPlaywrightCommand(options);
       return [
         {
-          command: "npx",
-          args: ["tsx", "src/pillars/browser/setup.ts"],
+          ...tsxCommand("src/pillars/browser/setup.ts"),
           env,
           label: "Stage tests",
         },
-        { command: "npx", args: runArgs, env, label: "Run Playwright" },
+        { ...run, env, label: "Run Playwright" },
       ];
     },
 
     integration: (options, baseEnv) => {
       const args = [
-        "playwright",
         "test",
         "--config",
-        "src/pillars/api/playwright.config.ts",
+        enginePath("src/pillars/api/playwright.config.ts"),
       ];
       for (const mod of options.modules ?? [])
-        args.push(`src/pillars/api/tests/${mod}/`);
+        args.push(enginePath(`src/pillars/api/tests/${mod}`) + "/");
       if (options.headed) args.push("--headed");
       if (options.debug) args.push("--debug");
       if (options.grep) args.push("--grep", options.grep);
-      return [{ command: "npx", args, env: baseEnv, label: "Run API tests" }];
+      return [
+        { ...playwrightCommand(...args), env: baseEnv, label: "Run API tests" },
+      ];
     },
 
     smoke: (options, baseEnv) => {
@@ -1026,16 +1034,14 @@ export class TestRunner {
         !isLocal && !useLocalCheckout
           ? [
               {
-                command: "npx",
-                args: [
-                  "tsx",
+                ...tsxCommand(
                   "src/pillars/smoke/setup-env.ts",
                   "--env",
                   options.environment,
                   // Pass --repo for each selected module so we only clone
                   // what we need; omit when running all (setup-env handles all)
                   ...mods.flatMap((m) => ["--repo", m.split("/")[0]]),
-                ],
+                ),
                 env: baseEnv,
                 label: `Resolve deployed branch (${options.environment})`,
               },
@@ -1047,18 +1053,15 @@ export class TestRunner {
         return [
           ...envSetupStep,
           {
-            command: "npx",
-            args: ["tsx", "src/pillars/smoke/setup-global.ts"],
+            ...tsxCommand("src/pillars/smoke/setup-global.ts"),
             env: baseEnv,
             label: "Stage all smoke tests",
           },
           {
-            command: "npx",
-            args: [
-              "playwright",
+            ...playwrightCommand(
               "test",
-              "--config=src/pillars/smoke/playwright-global.config.ts",
-            ],
+              `--config=${enginePath("src/pillars/smoke/playwright-global.config.ts")}`,
+            ),
             env: baseEnv,
             label: "Run all smoke tests",
           },
@@ -1076,8 +1079,7 @@ export class TestRunner {
       };
 
       const setupSteps = services.map((svc) => ({
-        command: "npx",
-        args: ["tsx", "src/pillars/smoke/setup.ts"],
+        ...tsxCommand("src/pillars/smoke/setup.ts"),
         env: { ...smokeEnv, SMOKE_SERVICE: svc },
         label: `Stage ${svc} smoke tests`,
       }));
@@ -1090,13 +1092,11 @@ export class TestRunner {
           ...envSetupStep,
           setupSteps[0],
           {
-            command: "npx",
-            args: [
-              "playwright",
+            ...playwrightCommand(
               "test",
-              "--config=src/pillars/smoke/playwright.config.ts",
+              `--config=${enginePath("src/pillars/smoke/playwright.config.ts")}`,
               suiteDir,
-            ],
+            ),
             env: runEnv,
             label: `Run ${firstService}/${options.smokeCollection}`,
           },
@@ -1109,12 +1109,10 @@ export class TestRunner {
         ...envSetupStep,
         ...setupSteps,
         {
-          command: "npx",
-          args: [
-            "playwright",
+          ...playwrightCommand(
             "test",
-            "--config=src/pillars/smoke/playwright-all.config.ts",
-          ],
+            `--config=${enginePath("src/pillars/smoke/playwright-all.config.ts")}`,
+          ),
           env: smokeEnv,
           label: `Run smoke tests (${services.join(", ")})`,
         },
@@ -1138,24 +1136,20 @@ export class TestRunner {
         const isLocal = options.environment === "local";
         if (!isLocal && !options.useLocalCheckout) {
           steps.push({
-            command: "npx",
-            args: [
-              "tsx",
+            ...tsxCommand(
               "src/pillars/smoke/setup-env.ts",
               "--env",
               options.environment,
               "--repo",
               repoName,
-            ],
+            ),
             env: baseEnv,
             label: `Resolve deployed branch (${options.environment})`,
           });
         }
 
         steps.push({
-          command: "npx",
-          args: [
-            "tsx",
+          ...tsxCommand(
             "src/pillars/perf/run.ts",
             "--env",
             options.environment,
@@ -1169,7 +1163,7 @@ export class TestRunner {
               "--module",
               moduleName,
             ]),
-          ],
+          ),
           env: {
             ...baseEnv,
             ...(explicitBaseUrlForCmd
@@ -1227,8 +1221,7 @@ export class TestRunner {
 
       if (internalModules.length > 0) {
         steps.push({
-          command: "npx",
-          args: ["tsx", "src/pillars/perf/build-report.ts"],
+          ...tsxCommand("src/pillars/perf/build-report.ts"),
           env: {
             ...baseEnv,
             PERF_ENVIRONMENT: options.environment,
@@ -1247,14 +1240,12 @@ export class TestRunner {
 
     suites: (options, baseEnv) => [
       {
-        command: "npx",
-        args: [
-          "tsx",
+        ...tsxCommand(
           "src/pillars/suites/run.ts",
           "--env",
           options.environment,
           ...(options.modules ?? []).flatMap((m) => ["--suite", m]),
-        ],
+        ),
         env: baseEnv,
         label: "Run repo suites",
       },
@@ -1292,7 +1283,8 @@ export class TestRunner {
   private async getApiUrl(environment: Environment): Promise<string> {
     try {
       const configPath = path.resolve(
-        `./config/environments/${environment}.json`,
+        getDistRoot(),
+        `config/environments/${environment}.json`,
       );
       const configFile = fs.readFileSync(configPath, "utf-8");
       const config = JSON.parse(configFile);
@@ -1305,7 +1297,8 @@ export class TestRunner {
   private getApiUrlSync(environment: Environment): string {
     try {
       const configPath = path.resolve(
-        `./config/environments/${environment}.json`,
+        getDistRoot(),
+        `config/environments/${environment}.json`,
       );
       const configFile = fs.readFileSync(configPath, "utf-8");
       const config = JSON.parse(configFile);

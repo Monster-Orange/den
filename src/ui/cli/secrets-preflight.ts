@@ -12,7 +12,8 @@ import {
   type SpawnSyncReturns,
 } from "child_process";
 import * as path from "path";
-import { getDistRoot } from "../../shared/paths.js";
+import { getDistRoot, getEngineRoot } from "../../shared/paths.js";
+import { engineBin } from "../../shared/engine.js";
 
 import { product } from "../../shared/product.js";
 type SpawnSyncLike = (
@@ -43,19 +44,18 @@ export function shouldSkipSecretsPreflight(
   return truthy(env.DEN_SKIP_SECRETS);
 }
 
+/**
+ * The gate runs Den's own script (engine root) against the distribution
+ * (cwd = its root, where the org config lives).
+ */
 export function buildSecretsPreflightInvocation(
   root = getDistRoot(),
   platform: NodeJS.Platform = process.platform,
+  engine = getEngineRoot(),
 ): SecretsPreflightInvocation {
-  const tsx = path.join(
-    root,
-    "node_modules",
-    ".bin",
-    platform === "win32" ? "tsx.cmd" : "tsx",
-  );
   return {
-    command: tsx,
-    args: [path.join(root, "scripts", "setup-secrets.ts"), "--gate"],
+    command: engineBin(platform === "win32" ? "tsx.cmd" : "tsx", engine),
+    args: [path.join(engine, "scripts", "setup-secrets.ts"), "--gate"],
     cwd: root,
   };
 }

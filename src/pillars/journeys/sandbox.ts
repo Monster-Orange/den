@@ -46,6 +46,8 @@ import type { Environment } from "../../shared/types/index.js";
 import type { JourneyPersonaRole } from "./spec/schema.js";
 
 import { product } from "../../shared/product.js";
+import { enginePath } from "../../shared/engine.js";
+import { getDistRoot } from "../../shared/paths.js";
 // ── Layer 1: captureSecrets ──────────────────────────────────────────────────
 
 /** 1Password field label holding the Cursor API key (= env var name). */
@@ -256,8 +258,7 @@ export function sanitizeEnvironment(
 // ── Layer 2: staged sandbox cwd + fail-closed deny hook ─────────────────────
 
 /** Checked-in deny-hook script (copied into every staged sandbox). */
-const DENY_SCRIPT_SOURCE = path.resolve(
-  process.cwd(),
+const DENY_SCRIPT_SOURCE = enginePath(
   "src/pillars/journeys/hooks/deny-shell.cjs",
 );
 
@@ -309,7 +310,7 @@ export function prepareSandbox(
   options: PrepareSandboxOptions = {},
 ): StagedSandbox {
   const baseDir =
-    options.baseDir ?? path.resolve(process.cwd(), ".journeys-run");
+    options.baseDir ?? path.resolve(getDistRoot(), ".journeys-run");
   const slug = journeyName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const dir = path.join(baseDir, `${slug}-${timestamp}`);

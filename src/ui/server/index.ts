@@ -96,6 +96,7 @@ import {
 } from "../../shared/den-config.js";
 import { readOrg } from "../../shared/org.js";
 import { getDistRoot } from "../../shared/paths.js";
+import { enginePath } from "../../shared/engine.js";
 import {
   releaseService,
   DEPLOYS_OFF_MESSAGE,
@@ -120,7 +121,7 @@ const __dirname = path.dirname(__filename);
 
 const ROOT = getDistRoot();
 const DIST_PUBLIC_DIR = path.join(__dirname, "public");
-const SOURCE_PUBLIC_DIR = path.join(ROOT, "src/ui/server/public");
+const SOURCE_PUBLIC_DIR = enginePath("src/ui/server/public");
 const PUBLIC_DIR = fs.existsSync(path.join(DIST_PUBLIC_DIR, "index.html"))
   ? DIST_PUBLIC_DIR
   : SOURCE_PUBLIC_DIR;
@@ -240,7 +241,7 @@ function computeStale(): { stale: boolean; scanned: number } {
   if (_staleCache && now - _staleCache.at < STALE_CACHE_TTL_MS) {
     return { stale: _staleCache.stale, scanned: _staleCache.scanned };
   }
-  const { newest, count } = scanNewestTs(path.join(ROOT, "src"));
+  const { newest, count } = scanNewestTs(enginePath("src"));
   const stale = newest > SERVER_STARTED_AT;
   _staleCache = { at: now, stale, scanned: count };
   return { stale, scanned: count };
@@ -2604,7 +2605,7 @@ async function handleRequest(
   // ── API: changelog ────────────────────────────────────────────────────────
   // GET /api/changelog  — parses CHANGELOG.md and returns structured entries
   if (pathname === "/api/changelog" && req.method === "GET") {
-    const changelogPath = path.join(ROOT, "CHANGELOG.md");
+    const changelogPath = enginePath("CHANGELOG.md");
     try {
       const raw = fs.readFileSync(changelogPath, "utf-8");
       const entries = parseChangelog(raw);
@@ -3079,10 +3080,7 @@ server.listen(PORT, BIND_HOST, () => {
 
   let pkgVersion = "?";
   try {
-    const changelogRaw = fs.readFileSync(
-      path.join(ROOT, "CHANGELOG.md"),
-      "utf-8",
-    );
+    const changelogRaw = fs.readFileSync(enginePath("CHANGELOG.md"), "utf-8");
     const firstEntry = parseChangelog(changelogRaw)[0];
     if (firstEntry?.version) pkgVersion = firstEntry.version;
   } catch (_e) {

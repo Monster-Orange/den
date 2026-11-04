@@ -34,6 +34,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { getDistRoot } from "../../shared/paths.js";
 import { CursorAgentError, type SDKMessage } from "@cursor/sdk";
 import { envSelector } from "../../shared/environment/env-selector.js";
 import type { Environment } from "../../shared/types/index.js";
@@ -299,7 +300,7 @@ export function defaultRunnerDeps(): RunnerDeps {
           ? (line) => process.stdout.write(`${line}\n`)
           : undefined,
       }),
-    reportRoot: path.resolve(process.cwd(), "reports/journeys"),
+    reportRoot: path.resolve(getDistRoot(), "reports/journeys"),
     env: process.env,
     timers: { setTimeout, clearTimeout },
   };

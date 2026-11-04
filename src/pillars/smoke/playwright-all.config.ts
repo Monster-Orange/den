@@ -24,6 +24,7 @@ import {
 } from "./base-url.js";
 import type { Environment } from "../../shared/types/index.js";
 import { getDistRoot } from "../../shared/paths.js";
+import { distPath, enginePath } from "../../shared/engine.js";
 import { smokeRepoName } from "./smoke-repo.js";
 
 import { product } from "../../shared/product.js";
@@ -118,14 +119,8 @@ const projects = Object.entries(discovered.manifest.smoke ?? {})
   });
 
 export default defineConfig({
-  globalSetup: path.resolve(
-    PROJECT_ROOT,
-    "src/pillars/smoke/global-setup-all.ts",
-  ),
-  globalTeardown: path.resolve(
-    PROJECT_ROOT,
-    "src/pillars/smoke/global-teardown-all.ts",
-  ),
+  globalSetup: enginePath("src/pillars/smoke/global-setup-all.ts"),
+  globalTeardown: enginePath("src/pillars/smoke/global-teardown-all.ts"),
 
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -137,12 +132,12 @@ export default defineConfig({
       "html",
       {
         outputFolder:
-          process.env.PLAYWRIGHT_HTML_REPORT || "../../../playwright-report",
+          process.env.PLAYWRIGHT_HTML_REPORT || distPath("playwright-report"),
         open: "never",
       },
     ],
     ["list"],
-    ["junit", { outputFile: "../../reports/junit-smoke-results.xml" }],
+    ["junit", { outputFile: distPath("reports", "junit-smoke-results.xml") }],
   ],
 
   projects,

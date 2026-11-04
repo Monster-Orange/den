@@ -1,4 +1,6 @@
 import { describe, it, expect, jest } from "@jest/globals";
+import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import {
   buildSecretsPreflightInvocation,
@@ -14,16 +16,29 @@ describe("secrets preflight", () => {
     expect(shouldSkipSecretsPreflight({})).toBe(false);
   });
 
-  it("invokes the backend-agnostic setup-secrets gate via local tsx", () => {
-    const inv = buildSecretsPreflightInvocation("/den", "darwin");
-    expect(inv.command).toBe(path.join("/den", "node_modules", ".bin", "tsx"));
-    expect(inv.args).toEqual([
-      path.join("/den", "scripts", "setup-secrets.ts"),
-      "--gate",
-    ]);
-    expect(buildSecretsPreflightInvocation("/den", "win32").command).toMatch(
-      /tsx\.cmd$/,
-    );
+  it("runs the engine's setup-secrets gate with tsx, from the distribution root", () => {
+    // A distribution: Den installed under node_modules, tsx hoisted beside it.
+    const dist = fs.mkdtempSync(path.join(os.tmpdir(), "den-preflight-"));
+    const engine = path.join(dist, "node_modules", "@monster-orange", "den");
+    const bin = path.join(dist, "node_modules", ".bin");
+    fs.mkdirSync(engine, { recursive: true });
+    fs.mkdirSync(bin, { recursive: true });
+    fs.writeFileSync(path.join(bin, "tsx"), "");
+    fs.writeFileSync(path.join(bin, "tsx.cmd"), "");
+    try {
+      const inv = buildSecretsPreflightInvocation(dist, "darwin", engine);
+      expect(inv.command).toBe(path.join(bin, "tsx"));
+      expect(inv.args).toEqual([
+        path.join(engine, "scripts", "setup-secrets.ts"),
+        "--gate",
+      ]);
+      expect(inv.cwd).toBe(dist);
+      expect(
+        buildSecretsPreflightInvocation(dist, "win32", engine).command,
+      ).toMatch(/tsx\.cmd$/);
+    } finally {
+      fs.rmSync(dist, { recursive: true, force: true });
+    }
   });
 
   it("returns on status 0 and throws a remediation on failure", () => {

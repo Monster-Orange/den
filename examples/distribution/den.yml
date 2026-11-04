@@ -1,0 +1,11 @@
+# Acme: a Den distribution. Every name below derives from product.name;
+# uncomment a line to override it. See docs/distributions.md in Den.
+product:
+  name: acme
+  # cli: acme
+  # env_prefix: ACME
+  # config: config/acme.yml
+  # manifest: .acme.yml
+  # state_dir: ~/.acme
+  # services_dir: .acme-services
+  # workspaces_dir: acme-workspaces

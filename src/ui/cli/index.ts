@@ -6,7 +6,18 @@
  */
 
 import chalk from "chalk";
-import ora from "ora";
+import oraSpinner from "ora";
+
+/**
+ * Spinners are progress, not diagnostics: on a terminal they animate on
+ * stderr as usual; piped (CI, scripts) their lines go to stdout so stderr
+ * carries only real warnings and errors.
+ */
+const ora = (text: string) =>
+  oraSpinner({
+    text,
+    stream: process.stderr.isTTY ? process.stderr : process.stdout,
+  });
 import Table from "cli-table3";
 import { cliPrompts } from "./prompts.js";
 import { resultsViewer } from "./results-viewer.js";
@@ -121,7 +132,13 @@ import { readManifest } from "../../shared/manifest/read-manifest.js";
 import * as nodePath from "path";
 import { runInit } from "./init.js";
 import { validateManifest } from "../../shared/manifest/validate-manifest.js";
-import { getDistRoot, getInvokeCwd } from "../../shared/paths.js";
+import {
+  getDistRoot,
+  getEngineRoot,
+  getInvokeCwd,
+} from "../../shared/paths.js";
+import { engineBin } from "../../shared/engine.js";
+import { runCreate } from "./create.js";
 import {
   confirmWithTimeout,
   recoverStalledSetup,
@@ -227,6 +244,14 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     usage: "view-results",
     lines: ["Browse recent test results."],
   },
+  create: {
+    usage:
+      "create <name> [dir] [--title <title>] [--cli <cli>] [--env-prefix <PREFIX>]",
+    lines: [
+      "Scaffold a new distribution (den.yml, config, bin shim, Makefile) in [dir].",
+      "Also: npx @monster-orange/den create <name>. See docs/distributions.md.",
+    ],
+  },
   validate: {
     usage: "validate [path|url]",
     lines: [
@@ -313,6 +338,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "sync",
   "init",
   "validate",
+  "create",
   "local-dev",
   "config",
   "edge",
@@ -575,6 +601,14 @@ class DenCLI {
           await this.cmdValidate(args.slice(1));
           break;
 
+        case "create": {
+          // bin/den routes `create` to its own entry (it needs no den.yml);
+          // this covers the CLI run directly from a checkout.
+          const code = runCreate(args.slice(1), getInvokeCwd());
+          if (code !== 0) process.exit(code);
+          break;
+        }
+
         case "local-dev":
           await this.cmdLocalDev(args[1]);
           break;
@@ -791,9 +825,10 @@ class DenCLI {
     const { spawn } = await import("child_process");
 
     const reportProcess = spawn(
-      "npx",
-      ["playwright", "show-report", "playwright-report"],
+      engineBin("playwright"),
+      ["show-report", "playwright-report"],
       {
+        cwd: getDistRoot(),
         stdio: "inherit",
       },
     );
@@ -3521,6 +3556,9 @@ class DenCLI {
     console.log();
     console.log("  setup [service...]   Run make setup for services");
     console.log("  sync [service...]    Check for updates and offer to pull");
+    console.log(
+      "  create <name> [dir]  Scaffold a new distribution of your own (--title, --cli, --env-prefix)",
+    );
     console.log();
     console.log("  workspace list       List workspaces");
     console.log(
@@ -3580,7 +3618,8 @@ class DenCLI {
    * Display version
    */
   private displayVersion(): void {
-    const root = getDistRoot();
+    // Den's own version: the engine's package.json, not the distribution's.
+    const root = getEngineRoot();
     let packageVersion = "?";
     try {
       const pkg = JSON.parse(
@@ -3593,6 +3632,9 @@ class DenCLI {
 
     let gitVersion = `v${packageVersion}`;
     try {
+      // Only in a Den checkout: an installed package has no .git of its own,
+      // and git would describe the distribution's repo instead.
+      if (!fs.existsSync(nodePath.join(root, ".git"))) throw new Error();
       gitVersion = execSync("git describe --tags --dirty --always", {
         cwd: root,
         stdio: ["ignore", "pipe", "ignore"],

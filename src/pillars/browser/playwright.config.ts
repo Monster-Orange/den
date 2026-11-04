@@ -19,6 +19,8 @@ import type {
 } from "@playwright/test/reporter";
 import * as fs from "fs";
 import * as path from "path";
+import { getDistRoot } from "../../shared/paths.js";
+import { distPath } from "../../shared/engine.js";
 import { fileURLToPath } from "url";
 import { resultWriter } from "../../shared/results/result-writer.js";
 import {
@@ -33,7 +35,7 @@ const __dirname = path.dirname(__filename);
 // Auto-detect: SYNTH_REPO env, or the first directory in .synth-run/
 const repoName = (() => {
   if (process.env.SYNTH_REPO) return process.env.SYNTH_REPO;
-  const synthRunDir = path.resolve(__dirname, "../../..", ".synth-run");
+  const synthRunDir = distPath(".synth-run");
   try {
     const entries = fs.readdirSync(synthRunDir, { withFileTypes: true });
     const dir = entries.find((e) => e.isDirectory());
@@ -47,7 +49,8 @@ const repoName = (() => {
   );
 })();
 const env = resolveEnv("local");
-const repoRoot = path.resolve(__dirname, "../../..");
+// The distribution root: setup.ts stages .synth-run there; auth lives there.
+const repoRoot = getDistRoot();
 
 const adminAuthPath = resolveAuthPath("admin", env, repoRoot);
 const userAuthPath = resolveAuthPath("user", env, repoRoot);
@@ -119,7 +122,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
 
   reporter: [
-    ["html", { outputFolder: "../../../playwright-report" }],
+    ["html", { outputFolder: distPath("playwright-report") }],
     ["list"],
   ],
 
@@ -205,5 +208,5 @@ export default defineConfig({
 
   timeout: 60000,
   expect: { timeout: 10000 },
-  outputDir: "../../../test-results",
+  outputDir: distPath("test-results"),
 });

@@ -51,6 +51,8 @@ jest.mock("../../src/shared/auth/token-refresh.js", () => ({
 import { EventEmitter } from "events";
 import { spawn } from "child_process";
 import { TestRunner } from "../../src/ui/cli/test-runner.js";
+import { enginePath as ENG, engineBin } from "../../src/shared/engine.js";
+const playwrightBin = () => engineBin("playwright");
 
 const mockSpawn = spawn as jest.Mock;
 const runner = new TestRunner();
@@ -460,7 +462,7 @@ describe("TestRunner.buildCommand — all pillars", () => {
     // stage + playwright run + teardown verify
     expect(steps.length).toBeGreaterThanOrEqual(2);
     expect(steps.some((s) => s.label?.includes("Stage"))).toBe(true);
-    expect(steps.some((s) => s.args.includes("playwright"))).toBe(true);
+    expect(steps.some((s) => s.command === playwrightBin())).toBe(true);
   });
 
   it("smoke: stages all and runs global config when no modules", () => {
@@ -469,12 +471,14 @@ describe("TestRunner.buildCommand — all pillars", () => {
       environment: "local",
     });
     expect(
-      steps.some((s) => s.args.includes("src/pillars/smoke/setup-global.ts")),
+      steps.some((s) =>
+        s.args.includes(ENG("src/pillars/smoke/setup-global.ts")),
+      ),
     ).toBe(true);
     expect(
       steps.some((s) =>
         s.args.includes(
-          "--config=src/pillars/smoke/playwright-global.config.ts",
+          `--config=${ENG("src/pillars/smoke/playwright-global.config.ts")}`,
         ),
       ),
     ).toBe(true);
@@ -492,14 +496,14 @@ describe("TestRunner.buildCommand — all pillars", () => {
     ).toBe(true);
   });
 
-  it("integration: produces one npx playwright step", () => {
+  it("integration: produces one playwright step", () => {
     const steps = runner.buildCommand({
       pillar: "integration",
       environment: "local",
     });
     expect(steps).toHaveLength(1);
-    expect(steps[0].command).toBe("npx");
-    expect(steps[0].args).toContain("playwright");
+    expect(steps[0].command).toBe(playwrightBin());
+    expect(steps[0].args[0]).toBe("test");
   });
 
   it("integration: adds module path when modules specified", () => {
@@ -508,7 +512,7 @@ describe("TestRunner.buildCommand — all pillars", () => {
       environment: "local",
       modules: ["items"],
     });
-    expect(steps[0].args).toContain("src/pillars/api/tests/items/");
+    expect(steps[0].args).toContain(ENG("src/pillars/api/tests/items/"));
   });
 
   it("synthetic: produces two steps (stage + run)", () => {

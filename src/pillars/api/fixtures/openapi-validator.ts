@@ -7,7 +7,7 @@ import Ajv from "ajv";
 import addFormats from "ajv-formats";
 import { readFile } from "fs/promises";
 import { resolve } from "path";
-import { getDistRoot } from "../../../shared/paths.js";
+import { enginePath } from "../../../shared/engine.js";
 
 export class OpenAPIValidator {
   private ajv: Ajv;
@@ -26,12 +26,8 @@ export class OpenAPIValidator {
    * Load OpenAPI spec from file
    */
   async loadSpec(specPath: string): Promise<void> {
-    // read-only schema load, den-root anchored so worker cwd is irrelevant
-    const fullPath = resolve(
-      getDistRoot(),
-      "src/pillars/api/schemas",
-      specPath,
-    );
+    // read-only schema load from Den's own files, so worker cwd is irrelevant
+    const fullPath = resolve(enginePath("src/pillars/api/schemas"), specPath);
 
     try {
       const content = await readFile(fullPath, "utf-8");

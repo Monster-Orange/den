@@ -19,6 +19,7 @@ export type CommandName =
   | "sync"
   | "init"
   | "validate"
+  | "create"
   | "local-dev"
   | "config"
   | "--help"

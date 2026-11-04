@@ -1,0 +1,4 @@
+#!/bin/sh
+# acme: runs Den from node_modules as this distribution.
+DEN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+export DEN_ROOT; exec "$DEN_ROOT/node_modules/@monster-orange/den/bin/den" "$@"

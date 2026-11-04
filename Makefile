@@ -8,23 +8,11 @@
 
 .DEFAULT_GOAL := help
 
-# ── Globals ───────────────────────────────────────────────────────────────────
-
-# Environment selection — defaults to local.
-# Usage: make test-syn-all env=staging
-env ?= local
-export E2E_ENVIRONMENT=$(env)
-OPEN_REPORT ?= 0
-
-# Secrets backend is a strategy chosen in config/den.yml (secrets.provider:
-# doppler | 1password | env). Override per shell:
-#   DEN_SECRETS_PROVIDER=env make up
-# OP_ACCOUNT is only consulted when the 1password strategy is selected.
-OP_ACCOUNT ?= example.1password.com
-export OP_ACCOUNT
-
-# Repo for the smoke and browser pillars — no default: make test-smk-all repo=<repo>
-repo ?=
+# ── Den targets ───────────────────────────────────────────────────────────────
+# Globals (env, repo, OP_ACCOUNT, …), DEN_ENGINE/DEN_TSX/DEN_PLAYWRIGHT and every
+# fragment under make/ come from make/den.mk, the file a distribution includes.
+DEN_OWN_HELP := 1
+include make/den.mk
 
 # ── Setup display helpers ─────────────────────────────────────────────────────
 # Usage: $(call SETUP_STEP,1,Dependencies)  /  $(call SETUP_SUBSECTION)
@@ -34,13 +22,6 @@ endef
 define SETUP_SUBSECTION
 @printf '\n  ──────────────────────────────────────────\n\n'
 endef
-
-# ── Sub-makefiles ─────────────────────────────────────────────────────────────
-include make/test.mk
-include make/local_dev.mk
-include make/journeys.mk
-include make/security.mk
-include make/demo.mk
 
 # ── Default goal ──────────────────────────────────────────────────────────────
 .DEFAULT_GOAL := help
@@ -300,10 +281,10 @@ setup:
 	@npm install
 	@echo ""
 	@echo "🎭 Installing Playwright browsers..."
-	@npx playwright install chromium firefox webkit
+	@$(DEN_PLAYWRIGHT) install chromium firefox webkit
 	@echo ""
 	@echo "🔑 Checking secrets backend CLI (config/den.yml → secrets.provider)..."
-	@set -- $$(npx tsx scripts/setup-secrets.ts --cli 2>/dev/null); \
+	@set -- $$($(DEN_TSX) $(DEN_ENGINE)/scripts/setup-secrets.ts --cli 2>/dev/null); \
 	provider="$${1:-doppler}"; bin="$${2:--}"; formula="$${3:--}"; \
 	if [ "$$bin" = "-" ]; then \
 		echo "  ✓ backend '$$provider' needs no CLI."; \
@@ -352,7 +333,7 @@ setup:
 	@echo "⚙️  den config (config/den.yml)"
 	@echo "  Ensures required keys are populated. Idempotent — no-op if already"
 	@echo "  healthy. Fills in github_org from this den checkout's origin."
-	@npx tsx scripts/heal-config.ts
+	@$(DEN_TSX) $(DEN_ENGINE)/scripts/heal-config.ts
 	$(call SETUP_SUBSECTION)
 	@echo "🌐 Web UI address"
 	@echo "  'make web' serves the UI at http://localhost:7777 — no setup needed."
@@ -368,7 +349,7 @@ setup:
 	@echo "  env vars are drop-in — see secrets.provider in config/den.yml)."
 	@echo "  Each repo's own 'make up' manages its own secrets; this is only den's."
 	@echo ""
-	@if npx tsx scripts/setup-secrets.ts --check 2>/dev/null; then \
+	@if $(DEN_TSX) $(DEN_ENGINE)/scripts/setup-secrets.ts --check 2>/dev/null; then \
 		echo "  ✓ secrets backend ready."; \
 	else \
 		read -p "  Set up developer secrets now? (Y/n): " answer; \
@@ -473,7 +454,7 @@ setup:
 		if [ "$$answer" != "y" ] && [ "$$answer" != "Y" ]; then \
 			echo "  Skipping. Run 'make den-local-dev args=off' to disable."; \
 		else \
-			npx tsx src/ui/cli/index.ts local-dev on; \
+			$(DEN_TSX) $(DEN_ENGINE)/src/ui/cli/index.ts local-dev on; \
 			printf '\n  ──────────────────────────────────────────\n\n'; \
 			echo "🗂️  Default workspace"; \
 			echo "  den will add every standard system repo to your default"; \
@@ -483,15 +464,15 @@ setup:
 			echo ""; \
 			read -p "  Set up default workspace now? (Y/n): " answer2; \
 			if [ -z "$$answer2" ] || [ "$$answer2" = "y" ] || [ "$$answer2" = "Y" ]; then \
-				npx tsx src/scripts/setup-default-workspace.ts; \
+				$(DEN_TSX) $(DEN_ENGINE)/src/scripts/setup-default-workspace.ts; \
 			else \
-				echo "  Skipping. Run 'npx tsx src/scripts/setup-default-workspace.ts' when ready."; \
+				echo "  Skipping. Run '$(DEN_TSX) $(DEN_ENGINE)/src/scripts/setup-default-workspace.ts' when ready."; \
 			fi; \
 		fi; \
 	else \
 		read -p "  Enable Local Dev? (Y/n): " answer; \
 		if [ -z "$$answer" ] || [ "$$answer" = "y" ] || [ "$$answer" = "Y" ]; then \
-			npx tsx src/ui/cli/index.ts local-dev on; \
+			$(DEN_TSX) $(DEN_ENGINE)/src/ui/cli/index.ts local-dev on; \
 			printf '\n  ──────────────────────────────────────────\n\n'; \
 			echo "🗂️  Default workspace"; \
 			echo "  den will add every standard system repo to your default"; \
@@ -501,12 +482,12 @@ setup:
 			echo ""; \
 			read -p "  Set up default workspace now? (Y/n): " answer2; \
 			if [ -z "$$answer2" ] || [ "$$answer2" = "y" ] || [ "$$answer2" = "Y" ]; then \
-				npx tsx src/scripts/setup-default-workspace.ts; \
+				$(DEN_TSX) $(DEN_ENGINE)/src/scripts/setup-default-workspace.ts; \
 			else \
-				echo "  Skipping. Run 'npx tsx src/scripts/setup-default-workspace.ts' when ready."; \
+				echo "  Skipping. Run '$(DEN_TSX) $(DEN_ENGINE)/src/scripts/setup-default-workspace.ts' when ready."; \
 			fi; \
 		else \
-			npx tsx src/ui/cli/index.ts local-dev off; \
+			$(DEN_TSX) $(DEN_ENGINE)/src/ui/cli/index.ts local-dev off; \
 			echo "  Local Dev disabled. Run 'make den-local-dev args=on' to enable later."; \
 		fi; \
 	fi
@@ -529,7 +510,7 @@ setup:
 install:
 	@echo "📦 Installing dependencies..."
 	@npm install
-	@npx playwright install
+	@$(DEN_PLAYWRIGHT) install
 
 compile:
 	@echo "🔨 Building den CLI distro..."
@@ -607,7 +588,7 @@ preflight:
 	@echo ""
 	@echo "5️⃣  Validating Playwright pillar configs (dry-run)..."
 	@for cfg in src/pillars/api/playwright.config.ts src/pillars/browser/playwright.config.ts src/pillars/smoke/playwright.config.ts; do \
-	  out=$$(npx playwright test --config=$$cfg --list 2>&1 || true); \
+	  out=$$($(DEN_PLAYWRIGHT) test --config=$(DEN_ENGINE)/$$cfg --list 2>&1 || true); \
 	  if echo "$$out" | grep -qiE "first argument must use|^.*error.*cannot find module.*pillars"; then \
 	    echo "$$out"; \
 	    echo ""; \

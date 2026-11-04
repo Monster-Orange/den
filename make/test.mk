@@ -19,7 +19,7 @@
 # Interactive test runner
 test: .check-auth
 	@echo "Starting interactive test runner..."
-	@npm run cli
+	@$(DEN_CLI_TS) menu
 
 # ── Synthetic tests (browser, Playwright) ────────────────────────────────────
 
@@ -27,8 +27,8 @@ test-syn-all: .check-auth
 	@echo "🧪 Running ALL synthetic tests (headless)..."
 	@echo "🌍 Environment: $(env)"
 	@echo ""
-	@SYNTH_REPO=$(repo) npx tsx src/pillars/browser/setup.ts && \
-	SYNTH_REPO=$(repo) npx playwright test --config=src/pillars/browser/playwright.config.ts
+	@SYNTH_REPO=$(repo) $(DEN_TSX) $(DEN_ENGINE)/src/pillars/browser/setup.ts && \
+	SYNTH_REPO=$(repo) $(DEN_PLAYWRIGHT) test --config=$(DEN_ENGINE)/src/pillars/browser/playwright.config.ts
 	@[ ! "$$CI" = "true" ] && [ -d "playwright-report" ] && $(MAKE) --no-print-directory _open-report || true
 
 # make test-syn-<module>
@@ -36,12 +36,12 @@ test-syn-%: .check-auth
 	@MODULE_NAME=$(subst test-syn-,,$@); \
 	STAGING_DIR=".synth-run/$(repo)/$$MODULE_NAME"; \
 	echo "🧪 Staging synthetic tests for repo=$(repo)..."; \
-	SYNTH_REPO=$(repo) npx tsx src/pillars/browser/setup.ts || exit 1; \
+	SYNTH_REPO=$(repo) $(DEN_TSX) $(DEN_ENGINE)/src/pillars/browser/setup.ts || exit 1; \
 	if [ -d "$$STAGING_DIR" ]; then \
 		echo "🧪 Running synthetic/$$MODULE_NAME tests..."; \
 		echo "🌍 Environment: $(env)"; \
 		echo ""; \
-		SYNTH_REPO=$(repo) npx playwright test --config=src/pillars/browser/playwright.config.ts "$$STAGING_DIR/"; \
+		SYNTH_REPO=$(repo) $(DEN_PLAYWRIGHT) test --config=$(DEN_ENGINE)/src/pillars/browser/playwright.config.ts "$$STAGING_DIR/"; \
 	else \
 		echo "❌ Module '$$MODULE_NAME' not found in .synth-run/$(repo)/"; \
 		echo ""; \
@@ -57,22 +57,22 @@ test-int-all: .check-auth
 	@echo "🧪 Running ALL integration tests (headless)..."
 	@echo "🌍 Environment: $(env)"
 	@echo ""
-	@npx playwright test --config=src/pillars/api/playwright.config.ts
+	@$(DEN_PLAYWRIGHT) test --config=$(DEN_ENGINE)/src/pillars/api/playwright.config.ts
 	@[ ! "$$CI" = "true" ] && [ -d "playwright-report" ] && $(MAKE) --no-print-directory _open-report || true
 
 # make test-int-<module>
 test-int-%: .check-auth
 	@MODULE_NAME=$(subst test-int-,,$@); \
-	if [ -d "src/pillars/api/tests/$$MODULE_NAME" ]; then \
+	if [ -d "$(DEN_ENGINE)/src/pillars/api/tests/$$MODULE_NAME" ]; then \
 		echo "🧪 Running integration/$$MODULE_NAME API tests..."; \
 		echo "🌍 Environment: $(env)"; \
 		echo ""; \
-		npx playwright test --config=src/pillars/api/playwright.config.ts src/pillars/api/tests/$$MODULE_NAME/; \
+		$(DEN_PLAYWRIGHT) test --config=$(DEN_ENGINE)/src/pillars/api/playwright.config.ts $(DEN_ENGINE)/src/pillars/api/tests/$$MODULE_NAME/; \
 	else \
 		echo "❌ Module 'src/pillars/api/tests/$$MODULE_NAME' not found"; \
 		echo ""; \
 		echo "Available modules:"; \
-		find src/pillars/api/tests/ -maxdepth 1 -type d ! -name "tests" ! -name "_*" -exec basename {} \; | sort | sed 's/^/  - test-int-/'; \
+		find $(DEN_ENGINE)/src/pillars/api/tests/ -maxdepth 1 -type d ! -name "tests" ! -name "_*" -exec basename {} \; | sort | sed 's/^/  - test-int-/'; \
 		exit 1; \
 	fi
 	@[ ! "$$CI" = "true" ] && [ -d "playwright-report" ] && $(MAKE) --no-print-directory _open-report || true
@@ -84,7 +84,7 @@ test-perf-all: .check-auth
 	@echo "🌍 Environment: $(env)"
 	@echo ""
 	@if ! which k6 > /dev/null 2>&1; then echo "❌ k6 not installed. Run: brew install k6"; exit 1; fi
-	@npx tsx src/ui/cli/index.ts run --pillar=performance --environment=$(env) $(if $(repo),--repo=$(repo),)
+	@$(DEN_TSX) $(DEN_ENGINE)/src/ui/cli/index.ts run --pillar=performance --environment=$(env) $(if $(repo),--repo=$(repo),)
 
 # make test-perf module=<name> env=<env>
 test-perf: .check-auth
@@ -93,7 +93,7 @@ test-perf: .check-auth
 	@echo "🌍 Environment: $(env)"
 	@echo ""
 	@if ! which k6 > /dev/null 2>&1; then echo "❌ k6 not installed. Run: brew install k6"; exit 1; fi
-	@npx tsx src/ui/cli/index.ts run --pillar=performance --environment=$(env) --module=$(module)
+	@$(DEN_TSX) $(DEN_ENGINE)/src/ui/cli/index.ts run --pillar=performance --environment=$(env) --module=$(module)
 
 # make test-perf-<module> — shorthand for `make test-perf module=<module>`.
 # Suites come from the distribution (<dist root>/tests/pillars/perf/<module>/
@@ -105,7 +105,7 @@ test-perf-%: .check-auth
 	echo "🌍 Environment: $(env)"; \
 	echo ""; \
 	if ! which k6 > /dev/null 2>&1; then echo "❌ k6 not installed. Run: brew install k6"; exit 1; fi; \
-	npx tsx src/ui/cli/index.ts run --pillar=performance --environment=$(env) --module=$$MODULE_NAME
+	$(DEN_TSX) $(DEN_ENGINE)/src/ui/cli/index.ts run --pillar=performance --environment=$(env) --module=$$MODULE_NAME
 
 # ── Smoke tests ───────────────────────────────────────────────────────────────
 # Test files live in service repos (e.g. ../<repo>/). den provides the harness.
@@ -129,7 +129,7 @@ synth-status:
 		for entry in .den/*/; do \
 			name=$$(basename "$$entry"); \
 			if [ -f "$$entry/.den.yml" ] || [ -f "$$entry/.den.json" ]; then \
-				synth=$$(node scripts/manifest-read.cjs "$$entry" synth-testdir 2>/dev/null || echo "?"); \
+				synth=$$(node $(DEN_ENGINE)/scripts/manifest-read.cjs "$$entry" synth-testdir 2>/dev/null || echo "?"); \
 				echo "  ✅ $$name  (synthetics.testDir: $$synth)"; \
 			else \
 				echo "  ⚠  $$name  (no .den.yml)"; \
@@ -147,7 +147,7 @@ smoke-link:
 		echo "✅ Linked .den/$(repo) → ../$(repo)"; \
 		if [ -f ".den/$(repo)/.den.yml" ] || [ -f ".den/$(repo)/.den.json" ]; then \
 			echo "   Manifest found — services available:"; \
-			node scripts/manifest-read.cjs ".den/$(repo)" smoke-keys 2>/dev/null | tr ' ' '\n' | sed "s/^/     • /" || true; \
+			node $(DEN_ENGINE)/scripts/manifest-read.cjs ".den/$(repo)" smoke-keys 2>/dev/null | tr ' ' '\n' | sed "s/^/     • /" || true; \
 		else \
 			echo "   ⚠  No .den.yml found in $(repo) root"; \
 		fi; \
@@ -164,9 +164,9 @@ smoke-clone:
 	else \
 		echo "📦 Cloning repos at deployed SHA for env=$(env)..."; \
 		if [ -n "$(repo)" ]; then \
-			npx tsx src/pillars/smoke/setup-env.ts --env $(env) --repo $(repo); \
+			$(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/setup-env.ts --env $(env) --repo $(repo); \
 		else \
-			npx tsx src/pillars/smoke/setup-env.ts --env $(env); \
+			$(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/setup-env.ts --env $(env); \
 		fi; \
 	fi
 
@@ -203,7 +203,7 @@ smoke-status:
 		for entry in .den/*/; do \
 			name=$$(basename "$$entry"); \
 			if [ -f "$$entry/.den.yml" ] || [ -f "$$entry/.den.json" ]; then \
-				services=$$(node scripts/manifest-read.cjs "$$entry" smoke-keys 2>/dev/null | tr ' ' ', ' || echo "?"); \
+				services=$$(node $(DEN_ENGINE)/scripts/manifest-read.cjs "$$entry" smoke-keys 2>/dev/null | tr ' ' ', ' || echo "?"); \
 				echo "  ✅ $$name  (services: $$services)"; \
 			else \
 				echo "  ⚠  $$name  (no .den.yml)"; \
@@ -217,7 +217,7 @@ test-smk test-smk-:
 	@echo "💨 Smoke Tests (repo=$(repo))"
 	@echo ""
 	@echo "Available services:"
-	@node scripts/manifest-read.cjs ".den/$(repo)" smoke-keys 2>/dev/null \
+	@node $(DEN_ENGINE)/scripts/manifest-read.cjs ".den/$(repo)" smoke-keys 2>/dev/null \
 		| tr ' ' '\n' | grep . | sed "s/.*/  make test-smk-&-<suite>  (dev iteration — partial)/" \
 		|| echo "  (none — run: make smoke-link repo=$(repo))"
 	@echo ""
@@ -232,16 +232,16 @@ test-smk-all:
 	@echo "💨 Running ALL smoke tests (repo=$(repo), env=$(env))..."
 	@echo ""
 	@if [ "$(env)" != "local" ] && [ "$${USE_LOCAL_CHECKOUT:-0}" != "1" ]; then \
-		npx tsx src/pillars/smoke/setup-env.ts --env $(env) --repo $(repo) || exit 1; \
+		$(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/setup-env.ts --env $(env) --repo $(repo) || exit 1; \
 	fi
-	@SERVICES=$$(node scripts/manifest-read.cjs ".den/$(repo)" smoke-keys 2>/dev/null) \
+	@SERVICES=$$(node $(DEN_ENGINE)/scripts/manifest-read.cjs ".den/$(repo)" smoke-keys 2>/dev/null) \
 	|| (echo "❌ Cannot read manifest for repo=$(repo). Run: make smoke-link repo=$(repo)"; exit 1); \
 	for svc in $$SERVICES; do \
-		SMOKE_SERVICE=$$svc SMOKE_REPO=$(repo) npx tsx src/pillars/smoke/setup.ts || exit 1; \
+		SMOKE_SERVICE=$$svc SMOKE_REPO=$(repo) $(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/setup.ts || exit 1; \
 	done && \
 	SMOKE_REPO=$(repo) \
-		npx playwright test --config=src/pillars/smoke/playwright-all.config.ts && \
-	npx tsx src/pillars/smoke/ensure-smoke-teardown.ts
+		$(DEN_PLAYWRIGHT) test --config=$(DEN_ENGINE)/src/pillars/smoke/playwright-all.config.ts && \
+	$(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/ensure-smoke-teardown.ts
 	@[ ! "$$CI" = "true" ] && [ "$$OPEN_REPORT" = "1" ] && [ -d "playwright-report" ] && $(MAKE) --no-print-directory _open-report || true
 
 # All smoke tests across ALL registered repos — one combined report (use in CI)
@@ -249,11 +249,11 @@ test-smk-global:
 	@echo "💨 Running ALL smoke tests across ALL registered repos (env=$(env))..."
 	@echo ""
 	@if [ "$(env)" != "local" ] && [ "$${USE_LOCAL_CHECKOUT:-0}" != "1" ]; then \
-		npx tsx src/pillars/smoke/setup-env.ts --env $(env) || exit 1; \
+		$(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/setup-env.ts --env $(env) || exit 1; \
 	fi
-	@npx tsx src/pillars/smoke/setup-global.ts && \
-	npx playwright test --config=src/pillars/smoke/playwright-global.config.ts && \
-	npx tsx src/pillars/smoke/ensure-smoke-teardown.ts
+	@$(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/setup-global.ts && \
+	$(DEN_PLAYWRIGHT) test --config=$(DEN_ENGINE)/src/pillars/smoke/playwright-global.config.ts && \
+	$(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/ensure-smoke-teardown.ts
 	@[ ! "$$CI" = "true" ] && [ "$$OPEN_REPORT" = "1" ] && [ -d "playwright-report" ] && $(MAKE) --no-print-directory _open-report || true
 
 # All suites for a specific service — make test-smk-api-all
@@ -262,12 +262,12 @@ test-smk-%-all:
 	echo "💨 Running ALL $$SERVICE smoke tests (repo=$(repo), env=$(env))..."; \
 	echo ""; \
 	if [ "$(env)" != "local" ] && [ "$${USE_LOCAL_CHECKOUT:-0}" != "1" ]; then \
-		npx tsx src/pillars/smoke/setup-env.ts --env $(env) --repo $(repo) || exit 1; \
+		$(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/setup-env.ts --env $(env) --repo $(repo) || exit 1; \
 	fi; \
-	SMOKE_SERVICE=$$SERVICE SMOKE_REPO=$(repo) npx tsx src/pillars/smoke/setup.ts && \
+	SMOKE_SERVICE=$$SERVICE SMOKE_REPO=$(repo) $(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/setup.ts && \
 	SMOKE_SERVICE=$$SERVICE SMOKE_REPO=$(repo) \
-		npx playwright test --config=src/pillars/smoke/playwright.config.ts && \
-	npx tsx src/pillars/smoke/ensure-smoke-teardown.ts
+		$(DEN_PLAYWRIGHT) test --config=$(DEN_ENGINE)/src/pillars/smoke/playwright.config.ts && \
+	$(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/ensure-smoke-teardown.ts
 	@[ ! "$$CI" = "true" ] && [ "$$OPEN_REPORT" = "1" ] && [ -d "playwright-report" ] && $(MAKE) --no-print-directory _open-report || true
 
 # Specific suite — make test-smk-api-items
@@ -279,7 +279,7 @@ test-smk-%:
 		echo "❌ No suite specified for service '$$SERVICE'"; \
 		echo ""; \
 		echo "Available suites:"; \
-		TEST_DIR=$$(node scripts/manifest-read.cjs ".den/$(repo)" smoke-testdir "$$SERVICE" 2>/dev/null); \
+		TEST_DIR=$$(node $(DEN_ENGINE)/scripts/manifest-read.cjs ".den/$(repo)" smoke-testdir "$$SERVICE" 2>/dev/null); \
 		if [ -n "$$TEST_DIR" ]; then \
 			find ".den/$(repo)/$$TEST_DIR" -maxdepth 1 -type d \
 				! -path ".den/$(repo)/$$TEST_DIR" \
@@ -294,9 +294,9 @@ test-smk-%:
 	echo "💨 Running $$SERVICE/$$SUITE smoke tests (repo=$(repo), env=$(env))..."; \
 	echo ""; \
 	if [ "$(env)" != "local" ] && [ "$${USE_LOCAL_CHECKOUT:-0}" != "1" ]; then \
-		npx tsx src/pillars/smoke/setup-env.ts --env $(env) --repo $(repo) || exit 1; \
+		$(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/setup-env.ts --env $(env) --repo $(repo) || exit 1; \
 	fi; \
-	SMOKE_SERVICE=$$SERVICE SMOKE_REPO=$(repo) npx tsx src/pillars/smoke/setup.ts && \
+	SMOKE_SERVICE=$$SERVICE SMOKE_REPO=$(repo) $(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/setup.ts && \
 	if [ ! -d "$$SUITE_DIR" ]; then \
 		echo "❌ Suite '$$SUITE' not found: $$SUITE_DIR"; \
 		echo ""; \
@@ -307,8 +307,8 @@ test-smk-%:
 		exit 1; \
 	fi; \
 	SMOKE_SERVICE=$$SERVICE SMOKE_REPO=$(repo) \
-		npx playwright test --config=src/pillars/smoke/playwright.config.ts "$$SUITE_DIR" && \
-	npx tsx src/pillars/smoke/ensure-smoke-teardown.ts
+		$(DEN_PLAYWRIGHT) test --config=$(DEN_ENGINE)/src/pillars/smoke/playwright.config.ts "$$SUITE_DIR" && \
+	$(DEN_TSX) $(DEN_ENGINE)/src/pillars/smoke/ensure-smoke-teardown.ts
 	@[ ! "$$CI" = "true" ] && [ "$$OPEN_REPORT" = "1" ] && [ -d "playwright-report" ] && $(MAKE) --no-print-directory _open-report || true
 
 # ── JWT token cache ───────────────────────────────────────────────────────────
@@ -343,16 +343,16 @@ int-jwt-status:
 # ── Results & reports ─────────────────────────────────────────────────────────
 
 results:
-	@node scripts/view-results.js summary synthetic local
+	@node $(DEN_ENGINE)/scripts/view-results.js summary synthetic local
 
 results-flaky:
-	@node scripts/view-results.js flaky synthetic local
+	@node $(DEN_ENGINE)/scripts/view-results.js flaky synthetic local
 
 results-api:
-	@node scripts/view-results.js summary integration local
+	@node $(DEN_ENGINE)/scripts/view-results.js summary integration local
 
 results-perf:
-	@node scripts/view-results.js summary performance local
+	@node $(DEN_ENGINE)/scripts/view-results.js summary performance local
 
 # Internal: open playwright-report, handling port conflicts gracefully.
 # Skipped when PLAYWRIGHT_HTML_OPEN=never (set by the web UI server).
@@ -373,7 +373,7 @@ _open-report:
 		fi; \
 	fi; \
 	echo "📊 Opening test report..."; \
-	npx playwright show-report playwright-report
+	$(DEN_PLAYWRIGHT) show-report playwright-report
 
 report:
 	@if [ ! -d "playwright-report" ]; then \

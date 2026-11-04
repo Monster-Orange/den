@@ -14,6 +14,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { getDistRoot } from "../../../shared/paths.js";
 import {
   getCredentials,
   headlessLogin,
@@ -40,7 +41,7 @@ export async function provisionBrowserSession(
 ): Promise<string> {
   const envConfig = await envSelector.loadEnvironment(env);
   const webBaseUrl = envConfig.baseUrls.web;
-  const authFile = resolveAuthPath(role, env, process.cwd());
+  const authFile = resolveAuthPath(role, env, getDistRoot());
 
   const credentials = await getCredentials(role, env);
   if (!credentials) {

@@ -7,6 +7,7 @@ import { defineConfig } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 import { getDistRoot } from "../../shared/paths.js";
+import { distPath, enginePath } from "../../shared/engine.js";
 
 /**
  * Resolve the API base URL from:
@@ -41,7 +42,7 @@ export default defineConfig({
   testDir: "./tests",
 
   // Fail fast: check API reachability + VPN before any tests run
-  globalSetup: path.resolve(getDistRoot(), "src/pillars/api/global-setup.ts"),
+  globalSetup: enginePath("src/pillars/api/global-setup.ts"),
 
   // Run tests in files in parallel
   fullyParallel: true,
@@ -61,12 +62,12 @@ export default defineConfig({
       "html",
       {
         outputFolder:
-          process.env.PLAYWRIGHT_HTML_REPORT || "../../../playwright-report",
+          process.env.PLAYWRIGHT_HTML_REPORT || distPath("playwright-report"),
         open: "never",
       },
     ],
     ["list"],
-    ["junit", { outputFile: "../../reports/junit-api-results.xml" }],
+    ["junit", { outputFile: distPath("reports", "junit-api-results.xml") }],
     // Note: JSONL reporter not working via config - use manual recording
     // ["../scripts/jsonl-playwright-reporter.js"],
   ],

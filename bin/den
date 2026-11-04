@@ -1,29 +1,61 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DEN_ROOT="$(cd "$(dirname "$(realpath "$0")")/.." && pwd)"
-export DEN_ROOT
+# Two roots (see src/shared/paths.ts):
+#   DEN_ENGINE_ROOT  Den's own package: this script's parent directory, which
+#                    in a distribution is node_modules/@monster-orange/den.
+#   DEN_ROOT         the distribution: the directory holding den.yml. A
+#                    distribution's bin/<cli> shim sets it; in Den's own
+#                    checkout (where the engine dir holds den.yml) it is set
+#                    here. Otherwise it is left unset and Den walks up from
+#                    the entry script to find den.yml.
+DEN_ENGINE_ROOT="$(cd "$(dirname "$(realpath "$0")")/.." && pwd)"
+export DEN_ENGINE_ROOT
+if [ -z "${DEN_ROOT:-}" ] && [ -f "$DEN_ENGINE_ROOT/den.yml" ]; then
+  DEN_ROOT="$DEN_ENGINE_ROOT"
+  export DEN_ROOT
+fi
 export DEN_INVOKE_CWD="$PWD"
 export OP_ACCOUNT="${OP_ACCOUNT:-example.1password.com}"
 
+# tsx: Den's own (a checkout) or hoisted into the distribution's node_modules.
+find_tsx() {
+  local dir="$DEN_ENGINE_ROOT"
+  while :; do
+    if [ -x "$dir/node_modules/.bin/tsx" ]; then
+      printf '%s\n' "$dir/node_modules/.bin/tsx"
+      return 0
+    fi
+    [ "$dir" = "/" ] && return 1
+    dir="$(dirname "$dir")"
+  done
+}
+
+# `create` scaffolds a new distribution: it needs no den.yml, so it runs on
+# its own entry point rather than the full CLI.
+entry="src/ui/cli/index.ts"
+built="dist/src/ui/cli/index.js"
+if [ "${1:-}" = "create" ]; then
+  shift
+  entry="src/ui/cli/create-main.ts"
+  built="dist/src/ui/cli/create-main.js"
+fi
+
 # Escape hatch: force the compiled build (e.g. to test the prod artifact).
-if [ "${DEN_USE_DIST:-}" = "1" ] && [ -f "$DEN_ROOT/dist/src/ui/cli/index.js" ]; then
-  exec node "$DEN_ROOT/dist/src/ui/cli/index.js" "$@"
+if [ "${DEN_USE_DIST:-}" = "1" ] && [ -f "$DEN_ENGINE_ROOT/$built" ]; then
+  exec node "$DEN_ENGINE_ROOT/$built" "$@"
 fi
 
-# Prefer live TypeScript source in a dev checkout (tsx present). A built dist/ is
-# gitignored and only refreshed by `npm run build`, so preferring it silently
-# shadows local source edits with a stale build — exactly the footgun that made
-# `den register`/`graph` appear not to pick up changes. Fall back to the
-# compiled build only when devDependencies aren't installed (packaged install).
-if [ -x "$DEN_ROOT/node_modules/.bin/tsx" ]; then
-  exec "$DEN_ROOT/node_modules/.bin/tsx" \
-    "$DEN_ROOT/src/ui/cli/index.ts" "$@"
+# Prefer live TypeScript source (the package ships src/ and runs it with tsx).
+# A built dist/ is gitignored and only refreshed by `npm run build`, so
+# preferring it would silently shadow local source edits with a stale build.
+if tsx="$(find_tsx)"; then
+  exec "$tsx" "$DEN_ENGINE_ROOT/$entry" "$@"
 fi
 
-if [ -f "$DEN_ROOT/dist/src/ui/cli/index.js" ]; then
-  exec node "$DEN_ROOT/dist/src/ui/cli/index.js" "$@"
+if [ -f "$DEN_ENGINE_ROOT/$built" ]; then
+  exec node "$DEN_ENGINE_ROOT/$built" "$@"
 fi
 
-echo "den: no runnable entrypoint — run 'npm install' (dev) or 'npm run build'" >&2
+echo "den: no runnable entrypoint: run 'npm install'" >&2
 exit 1

@@ -47,7 +47,7 @@ test-sec-all: .security-check-env
 	@echo "🛡️  Running ALL security scans..."
 	@echo "🌍 Environment: $(env)"
 	@echo ""
-	@npx tsx src/pillars/security/run.ts --env=$(env) $(SEC_FLAGS)
+	@$(DEN_TSX) $(DEN_ENGINE)/src/pillars/security/run.ts --env=$(env) $(SEC_FLAGS)
 
 # make test-sec-<service> env=<env> [repo=<repo>]
 test-sec-%: .security-check-env
@@ -56,4 +56,4 @@ test-sec-%: .security-check-env
 	echo "🛡️  Running security scan for $$SERVICE_NAME..."; \
 	echo "🌍 Environment: $(env)"; \
 	echo ""; \
-	npx tsx src/pillars/security/run.ts --env=$(env) --service=$$SERVICE_NAME $(SEC_FLAGS)
+	$(DEN_TSX) $(DEN_ENGINE)/src/pillars/security/run.ts --env=$(env) --service=$$SERVICE_NAME $(SEC_FLAGS)

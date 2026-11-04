@@ -514,8 +514,17 @@ describe("ModuleScanner performance discovery", () => {
 
   it("returns an empty list and warns when filesystem module scanning fails", async () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    // API tests ship with the engine: point it at a dir that has none.
+    const savedEngine = process.env.DEN_ENGINE_ROOT;
+    process.env.DEN_ENGINE_ROOT = tempDir;
 
-    const modules = await new ModuleScanner().scanModules("integration");
+    let modules: unknown[];
+    try {
+      modules = await new ModuleScanner().scanModules("integration");
+    } finally {
+      if (savedEngine === undefined) delete process.env.DEN_ENGINE_ROOT;
+      else process.env.DEN_ENGINE_ROOT = savedEngine;
+    }
 
     expect(modules).toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
