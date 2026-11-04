@@ -164,7 +164,7 @@ jobs:
         run: cd release && sha256sum -c SHA256SUMS
       # "./": without it, npm reads `release/<file>` as a GitHub repository (owner/name) and tries git over ssh
       - name: Publish it on npm
-        run: npm publish "./release/${{ needs.pack.outputs.tarball }}" --access public
+        run: npm publish "./release/${{ needs.pack.outputs.tarball }}" --access public --loglevel verbose
 
   github-release:
     needs: [check, pack, publish]
