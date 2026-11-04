@@ -25,6 +25,13 @@ describe("version sync", () => {
     if (!unreleased) expect(pkg.version).not.toMatch(/-/);
   });
 
+  it("a released version is publishable (npm refuses a private package)", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(ROOT, "package.json"), "utf-8"),
+    ) as { version: string; private?: boolean };
+    if (!/-/.test(pkg.version)) expect(pkg.private).not.toBe(true);
+  });
+
   it("package-lock.json version matches package.json version", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(ROOT, "package.json"), "utf-8"),

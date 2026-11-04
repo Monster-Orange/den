@@ -9,7 +9,7 @@ Den knows nothing about any particular organisation. Everything specific to
 yours — product name, repos, environments, hosts, secrets backend, test
 accounts — lives in **your distribution**, not in Den.
 
-> **Status: pre-release (`0.1.0-dev`).** The first release on npm is 0.1.0.
+> **Status: 0.1.0**, the first release: `npm install @monster-orange/den`. Den is pre-1.0; each release lists the changes a distribution makes under **Migrations** in [CHANGELOG.md](CHANGELOG.md).
 
 ## Make it your own
 

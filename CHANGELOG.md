@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.1.0] - unreleased
+## [0.1.0] - 2026-11-04
 
 The first Den release: one engine for local development, tests and releases
 across an organisation's repos, shipped as `@monster-orange/den` and used
