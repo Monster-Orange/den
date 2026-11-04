@@ -58,10 +58,20 @@ function hasCommands(
   svc: ServiceManagementConfig,
   env: string,
 ): boolean {
+  if (ownCommands(svc, env)) return true;
+  if (env !== LOCAL) return false;
+  // Every service of a compose repo runs in the local stack, and so does
+  // every service of a repo whose own up runs here: one repo-level up starts
+  // services that declare no commands of their own.
+  return (
+    !!manifest.compose ||
+    Object.values(manifest.services ?? {}).some((s) => ownCommands(s, env))
+  );
+}
+
+function ownCommands(svc: ServiceManagementConfig, env: string): boolean {
   const cmds = svc.commands?.[env as keyof typeof svc.commands];
-  if (cmds && Object.keys(cmds).length > 0) return true;
-  // Every service of a compose repo runs in the local stack.
-  return env === LOCAL && !!manifest.compose;
+  return !!cmds && Object.keys(cmds).length > 0;
 }
 
 function targetFor(svc: ServiceManagementConfig, env: string): PlacementTarget {

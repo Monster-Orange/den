@@ -45,8 +45,10 @@ config and manifest changes a distribution must make to move to it under
 - **Placement (R13): what runs here and what runs in the cloud.** A
   manifest's service may say `runs: { local: remote, dev: remote }` (per env,
   `local` or `remote`) and `target: { env, account?, url?, expect? }`.
-  Without `runs`, a service with commands is local, one with only an HTTP
-  health URL is remote, and anything else has no placement. `/api/services`
+  Without `runs`, a service is local when it or any service of its repo has
+  local commands (or the repo is a compose stack), remote when it has only an
+  HTTP health URL and nothing in its repo runs here, and otherwise has no
+  placement. `/api/services`
   and `/api/health` rows carry `runs` and `target`; `/api/applications`
   carries `placements` per service address, and per application `placement`
   (`local | remote | hybrid | none`) and a `summary`

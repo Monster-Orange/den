@@ -169,6 +169,14 @@ else bad "GET /api/server-info failed"; fi
 if curl -fsS "http://localhost:$PORT/api/changelog" -o "$WORK/changelog.json"; then
   expect_in "GET /api/changelog reads Den's CHANGELOG" "$WORK/changelog.json" '"version"'
 else bad "GET /api/changelog failed"; fi
+# The graph's layout library is vendored from node_modules (no CDN), and the
+# graph's own modules ship in the package.
+if curl -fsS "http://localhost:$PORT/vendor/elk.bundled.js" -o "$WORK/elk.js"; then
+  expect_in "GET /vendor/elk.bundled.js serves elkjs from the install" "$WORK/elk.js" "ELK"
+else bad "GET /vendor/elk.bundled.js failed"; fi
+for m in graph.js graph-model.js panel.js graph.css; do
+  curl -fsS "http://localhost:$PORT/$m" -o /dev/null && ok "GET /$m" || bad "GET /$m failed"
+done
 WEB_LOG="$ACME_HOME/logs/acme/web.log"
 if [ -f "$WEB_LOG" ]; then
   ok "ACME_HOME holds the state dir ($WEB_LOG)"

@@ -84,6 +84,17 @@ export function parseChangelog(raw: string): ChangelogEntry[] {
           line.replace(/^ {2}- /, "").trim(),
         );
       }
+    } else if (currentSection && /^ {2,}\S/.test(line)) {
+      // A wrapped continuation line: it belongs to the bullet (or sub-bullet)
+      // above it. Dropping it cut every multi-line bullet mid-sentence.
+      const bullets = current.sections[currentSection];
+      const last = bullets[bullets.length - 1];
+      if (last) {
+        const text = line.trim();
+        if (/^ {4,}/.test(line) && last.sub.length > 0)
+          last.sub[last.sub.length - 1] += " " + text;
+        else last.text += " " + text;
+      }
     }
   }
   if (current) {

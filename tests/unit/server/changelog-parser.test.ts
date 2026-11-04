@@ -146,4 +146,24 @@ Special thanks to someone for their help.
     expect(entries).toHaveLength(1);
     expect(entries[0].sections.Added[0].text).toBe("Feature");
   });
+  it("keeps a bullet's wrapped continuation lines (What's new showed only the first line)", () => {
+    const raw = `## [1.0.0] - unreleased
+
+### Added
+
+- **Overrides.** An optional file in the
+  distribution is deep-merged onto the base
+  manifest.
+- Second bullet
+  - Sub item that wraps
+    onto a second line
+`;
+    const added = parseChangelog(raw)[0].sections.Added;
+    expect(added).toHaveLength(2);
+    expect(added[0].text).toBe(
+      "**Overrides.** An optional file in the distribution is deep-merged onto the base manifest.",
+    );
+    expect(added[1].text).toBe("Second bullet");
+    expect(added[1].sub).toEqual(["Sub item that wraps onto a second line"]);
+  });
 });

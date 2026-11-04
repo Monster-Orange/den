@@ -93,6 +93,17 @@ describe("server smoke", () => {
     const data = JSON.parse(res.body);
     expect(data).toHaveProperty("editors");
     expect(data).toHaveProperty("terminals");
+    expect(data.graph).toEqual(
+      expect.objectContaining({ direction: expect.any(String) }),
+    );
+  });
+
+  it("serves the graph's modules and the vendored ELK layout", async () => {
+    for (const p of ["/graph.js", "/panel.js", "/graph.css"])
+      expect((await fetch(p)).status).toBe(200);
+    const elk = await fetch("/vendor/elk.bundled.js");
+    expect(elk.status).toBe(200);
+    expect(elk.body).toMatch(/ELK/);
   });
 
   it("GET /api/workspaces returns workspace data", async () => {

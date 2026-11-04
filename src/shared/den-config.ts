@@ -310,6 +310,16 @@ export interface UserConfig {
    * local and never get committed. Merged field-wise over the team base.
    */
   release?: Partial<ReleaseConfig>;
+  /**
+   * Graph layout preferences (direction, grouping, card density, panel
+   * width), set from the Local Dev graph. See src/ui/server/graph-prefs.ts.
+   */
+  graph?: {
+    direction?: string;
+    group?: string;
+    density?: string;
+    panelWidth?: number;
+  };
 }
 
 const ALL_ENVIRONMENTS: Environment[] = [

@@ -37,6 +37,13 @@ const hybrid: RawManifest = {
       runs: { local: "remote" },
       target: { env: "dev", url: "https://edge.dev.acme.example/" },
     },
+  },
+};
+
+// A repo nothing here starts: no local commands and no compose.
+const standalone: RawManifest = {
+  name: "ops",
+  services: {
     worker: {},
     cloud: {
       health: { local: { url: "https://cloud.acme.example/health" } },
@@ -53,6 +60,32 @@ describe("servicePlacement", () => {
       runs: "local",
       target: null,
     });
+  });
+
+  it("is local for every service of a repo whose up runs locally", () => {
+    // One repo-level up starts the whole stack: the other services declare
+    // no commands of their own, some only a health URL on the local edge.
+    const repo: RawManifest = {
+      name: "shop",
+      services: {
+        web: {
+          commands: { local: { up: "make up", down: "make down" } },
+          health: { local: { url: "https://shop.acme.localhost/healthz" } },
+        },
+        mailpit: { health: { local: { url: "https://mail.acme.localhost/" } } },
+        db: { health: { local: { type: "shell", cmd: "true" } } },
+      },
+    } as RawManifest;
+    expect(servicePlacement(repo, "mailpit", "local")).toEqual({
+      runs: "local",
+      target: null,
+    });
+    expect(servicePlacement(repo, "db", "local")).toEqual({
+      runs: "local",
+      target: null,
+    });
+    // Another env still stands for itself.
+    expect(servicePlacement(repo, "mailpit", "dev").runs).toBe("none");
   });
 
   it("is local for any service of a compose repo", () => {
@@ -80,20 +113,20 @@ describe("servicePlacement", () => {
   });
 
   it("is remote by default with a health URL and no commands", () => {
-    expect(servicePlacement(hybrid, "cloud", "local")).toEqual({
+    expect(servicePlacement(standalone, "cloud", "local")).toEqual({
       runs: "remote",
       target: { env: "local", url: "https://cloud.acme.example/health" },
     });
   });
 
   it("is none with no commands, compose or health URL", () => {
-    expect(servicePlacement(hybrid, "worker", "local")).toEqual({
+    expect(servicePlacement(standalone, "worker", "local")).toEqual({
       runs: "none",
       target: null,
     });
     // A shell check is not a health URL.
-    expect(servicePlacement(hybrid, "db", "local").runs).toBe("none");
-    expect(servicePlacement(hybrid, "missing", "local").runs).toBe("none");
+    expect(servicePlacement(standalone, "db", "local").runs).toBe("none");
+    expect(servicePlacement(standalone, "missing", "local").runs).toBe("none");
     expect(servicePlacement(null, "web", "local").runs).toBe("none");
   });
 
@@ -324,7 +357,7 @@ describe("repoPlacement", () => {
   it("rolls a repo's services up", () => {
     expect(repoPlacement(hybrid, "local")).toEqual({
       placement: "hybrid",
-      envs: ["dev", "local"],
+      envs: ["dev"],
     });
     expect(
       repoPlacement(

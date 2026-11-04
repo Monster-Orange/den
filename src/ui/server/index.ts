@@ -138,6 +138,8 @@ import {
   setAuditSink,
 } from "./audit.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
+import { serveUiAsset } from "./ui-assets.js";
+import { graphPrefs, mergeGraphPrefs } from "./graph-prefs.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -589,6 +591,9 @@ async function handleRequest(
   if (pathname === "/header.js") {
     return serveFile(res, path.join(PUBLIC_DIR, "header.js"));
   }
+
+  // The graph's modules (graph.js, panel.js, …) and vendored libraries (ELK).
+  if (serveUiAsset(res, pathname, PUBLIC_DIR)) return;
 
   if (pathname === "/perf-report.js") {
     return serveFile(res, path.join(PUBLIC_DIR, "perf-report.js"));
@@ -2834,7 +2839,8 @@ async function handleRequest(
 
   // ── API: user settings ────────────────────────────────────────────────────
   // GET  /api/settings  → { editor, editors, terminal, terminals, editor_overrides, languages }
-  // POST /api/settings  body: { editor?, terminal?, editor_overrides? }
+  // POST /api/settings  body: { editor?, terminal?, editor_overrides?, graph? }
+  //   graph: { direction, group, density, panelWidth } (see graph-prefs.ts)
   if (pathname === "/api/settings") {
     if (req.method === "GET") {
       const user = readUserConfig();
@@ -2848,6 +2854,7 @@ async function handleRequest(
         editor_overrides: user.editor_overrides ?? {},
         languages: SUPPORTED_LANGUAGES,
         log_window_lines: user.log_window_lines ?? 20_000,
+        graph: graphPrefs(user.graph),
       });
     }
     if (req.method === "POST") {
@@ -2856,8 +2863,14 @@ async function handleRequest(
           editor?: string | null;
           terminal?: string | null;
           editor_overrides?: Record<string, string> | null;
+          graph?: unknown;
         };
         const user = readUserConfig();
+        if (body.graph !== undefined) {
+          const g = mergeGraphPrefs(graphPrefs(user.graph), body.graph);
+          if (!g.ok) return send400(res, g.error);
+          user.graph = g.value;
+        }
         if (body.editor === null || body.editor === "") {
           delete user.editor;
         } else if (body.editor !== undefined) {
@@ -2901,6 +2914,7 @@ async function handleRequest(
           editor: user.editor ?? null,
           terminal: user.terminal ?? null,
           editor_overrides: user.editor_overrides ?? {},
+          graph: graphPrefs(user.graph),
         });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);

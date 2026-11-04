@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>__DEN_TITLE__ · Local Dev</title>
+    <link rel="stylesheet" href="/graph.css" />
     <style>
       *,
       *::before,
@@ -136,57 +137,6 @@
           opacity: 0.35;
         }
       }
-      /* SVG health dots in the dependency graph — mirror .dot states */
-      .health-dot {
-        fill: var(--muted);
-      }
-      .health-dot.ok {
-        fill: var(--green);
-        animation: none;
-      }
-      .health-dot.err {
-        fill: var(--red);
-        animation: none;
-      }
-      .health-dot.running {
-        fill: var(--yellow);
-        animation: pulse 1s ease-in-out infinite;
-      }
-      .health-refresh-icon {
-        opacity: 0;
-        pointer-events: none;
-      }
-      .health-dot-wrap:hover .health-dot {
-        opacity: 0;
-      }
-      .health-dot-wrap:hover .health-refresh-icon {
-        opacity: 1;
-      }
-      .open-link-hit {
-        fill: transparent;
-        cursor: pointer;
-      }
-      .open-link:hover .open-link-hit,
-      .open-link:focus .open-link-hit {
-        fill: #8b949e30;
-      }
-      .open-link:focus {
-        outline: none;
-      }
-      .open-link:focus-visible .open-link-hit {
-        stroke: var(--accent, #58a6ff);
-        stroke-width: 1.5;
-      }
-      .open-link-icon {
-        fill: none;
-        stroke: var(--accent, #58a6ff);
-        stroke-width: 1.4;
-        pointer-events: none;
-      }
-      .open-link:hover .open-link-icon {
-        stroke: var(--text);
-      }
-
       /* ── Layout ───────────────────────────────────────────────────────────── */
       main {
         flex: 1;
@@ -194,6 +144,29 @@
         grid-template-columns: 260px 1fr;
         overflow: hidden;
         min-height: 0;
+      }
+
+      /* A phone gets the workspace content only (the header's workspace pill
+         still switches workspaces), so the graph has the width it needs. */
+      @media (max-width: 760px) {
+        main {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        main > .sidebar {
+          display: none;
+        }
+        .content-body {
+          padding: 10px 8px;
+        }
+        /* The page scrolls instead of squeezing the graph to a strip. */
+        #ctab-graph.active {
+          overflow: visible;
+          flex: none;
+        }
+        #ctab-graph #dep-graph-wrap {
+          flex: none;
+          height: 70vh;
+        }
       }
 
       /* ── Sidebar ──────────────────────────────────────────────────────────── */
@@ -1285,6 +1258,11 @@
         background: var(--border);
       }
 
+      /* With nothing run yet, only the tab bar shows: the graph gets the room. */
+      #output-panel:has(.tab-empty) #output,
+      #output-panel:has(.tab-empty) .output-actions {
+        display: none;
+      }
       #output {
         height: 200px;
         overflow-y: auto;
@@ -1492,10 +1470,6 @@
         flex: 1;
         min-height: 0;
         position: relative;
-        cursor: grab;
-      }
-      #dep-graph-wrap:active {
-        cursor: grabbing;
       }
 
       /* ── Applications tab ─────────────────────────────────────────────────── */
@@ -1551,6 +1525,21 @@
         color: var(--muted);
         font-weight: 400;
         font-size: 12px;
+      }
+      .app-place {
+        font-size: 11px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 0 8px;
+        color: var(--muted);
+      }
+      .app-place.remote {
+        color: #39c5cf;
+        border-color: #39c5cf88;
+      }
+      .app-place.hybrid {
+        color: var(--yellow);
+        border-color: #d2992288;
       }
       .app-source {
         font-size: 11px;
@@ -1617,84 +1606,6 @@
       }
       .app-into {
         opacity: 0.8;
-      }
-      #dep-graph {
-        display: block;
-        width: 100%;
-        height: 100%;
-      }
-      .gnode rect {
-        stroke-width: 1;
-      }
-      .gnode rect:hover {
-        cursor: pointer;
-      }
-
-      /* ── Node actions popup ────────────────────────────────────────────────── */
-      #node-actions-popup {
-        position: fixed;
-        z-index: 9999;
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 4px;
-        min-width: 130px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-      }
-      #node-actions-popup .popup-hdr {
-        font-size: 10px;
-        font-weight: 600;
-        color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        padding: 3px 8px 5px;
-        border-bottom: 1px solid var(--border);
-        margin-bottom: 3px;
-        font-family: var(--mono);
-      }
-      #node-actions-popup .popup-empty {
-        font-size: 11px;
-        color: var(--muted);
-        padding: 4px 8px;
-      }
-      #node-actions-popup .popup-cmd-btn {
-        display: block;
-        width: 100%;
-        background: none;
-        border: none;
-        text-align: left;
-        color: var(--text);
-        font-size: 11px;
-        font-family: var(--mono);
-        padding: 4px 8px;
-        border-radius: 4px;
-        cursor: pointer;
-        white-space: nowrap;
-      }
-      #node-actions-popup .popup-cmd-btn:hover {
-        background: var(--border);
-      }
-      #node-actions-popup .popup-divider {
-        border-top: 1px solid var(--border);
-        margin: 4px 0;
-      }
-      .gnode text {
-        fill: var(--text);
-        font-size: 11px;
-        font-family: var(--mono);
-        pointer-events: none;
-      }
-      .gnode .gnode-mode {
-        fill: var(--muted);
-        font-size: 9px;
-      }
-      .gnode .gnode-dot {
-      }
-      .gedge {
-        stroke: var(--border);
-        stroke-width: 1.5;
-        fill: none;
-        marker-end: url(#arrow);
       }
       .graph-empty {
         padding: 40px;
@@ -1986,6 +1897,7 @@
         copyToClipboard,
         computePrimaryByRepo,
       } from "/header.js";
+      import { mountGraph, graphHealth } from "/graph.js";
 
       // Re-ping all health dots (top nav + cards) NOW — used after lifecycle
       // commands so status doesn't wait out the 30s poll interval.
@@ -4509,11 +4421,7 @@
         setTabStatus(tabName, { live: false, errored: !data.valid });
       }
 
-      // ── Dependency graph (SVG DAG) ────────────────────────────────────────────
-      // Multi-service repos show every service by default; repos in this Set were
-      // collapsed by hand (the ▾ strip) into one node.
-      const collapsedRepos = new Set();
-      const expandedRepos = { has: (repo) => !collapsedRepos.has(repo) };
+      // ── Service ordering (cards, config table) ───────────────────────────────
       // Sort by service name (leaf): e.g. "api", "db", "worker" — ignores repo path.
       function _sortByName(services) {
         return [...services].sort((a, b) => {
@@ -4638,224 +4546,6 @@
         _graphApps = []; // /api/applications for the viewed workspace
       let _lastHealthResults = []; // cache of most recent __DEN_CLI__:health-update payload
 
-      // ── Graph selection highlight ─────────────────────────────────────────────
-      // Clicking a card selects it: its border lights up and the arrows to/from it
-      // stay bright while every other edge dims. Collected per render (elements are
-      // rebuilt each renderDepGraph) so we can toggle styles in place without a
-      // re-render (which would reset the user's zoom/pan). Selecting a card also
-      // opens that system's logs below — see openSystemLogs.
-      let _selectedNode = null;
-      let _graphEdgeEls = []; // { el, from, to }
-      let _graphNodeEls = []; // { g, rect, address }
-      function clearGraphSelection() {
-        _selectedNode = null;
-        for (const e of _graphEdgeEls) e.el.style.opacity = "";
-        for (const n of _graphNodeEls) {
-          if (!n.rect) continue;
-          n.rect.style.stroke = "";
-          n.rect.style.strokeWidth = "";
-        }
-      }
-      function selectGraphNode(address) {
-        if (_selectedNode === address) {
-          clearGraphSelection();
-          return;
-        }
-        _selectedNode = address;
-        for (const e of _graphEdgeEls) {
-          const connected = e.from === address || e.to === address;
-          e.el.style.opacity = connected ? "1" : "0.08";
-        }
-        for (const n of _graphNodeEls) {
-          if (!n.rect) continue;
-          const isSel = n.address === address;
-          n.rect.style.stroke = isSel ? "#f0f6fc" : "";
-          n.rect.style.strokeWidth = isSel ? "3" : "";
-        }
-      }
-
-      function healthState(keys, healthMap) {
-        // Only true/false are "known"; null (no health check) / undefined (not
-        // polled) are unknown → excluded, leaving the dot muted.
-        const known = keys
-          .map((k) => healthMap[k])
-          .filter((v) => v === true || v === false);
-        if (known.length === 0) return ""; // no health data — leave as muted default
-        const allOk = known.every((v) => v === true);
-        const anyOk = known.some((v) => v === true);
-        return allOk ? "ok" : anyOk ? "running" : "err";
-      }
-
-      // The health key(s) a system's SINGLE dot reflects: the entrypoint only for an
-      // app-repo (so a down app isn't masked green by shared-infra sidecars that
-      // read ok off infra-stack — mirrors the CLI's rollupRepoHealth), else every
-      // subsystem for an entrypoint-less infra provider like infra-stack (its
-      // subsystems ARE the system, so their aggregate is the meaningful signal).
-      function groupDotKeys(services) {
-        const list = services || [];
-        const entry = list.find((s) => s.isEntrypoint);
-        return (entry ? [entry] : list).map((s) => `${s.repo}/${s.service}`);
-      }
-
-      function applyHealthToGraph(results) {
-        const healthMap = {};
-        const openMap = {};
-        for (const h of results || []) {
-          healthMap[`${h.repo}/${h.service}`] = h.ok;
-          if (h.openUrl) openMap[`${h.repo}/${h.service}`] = h.openUrl;
-        }
-        document.querySelectorAll("#dep-graph .gnode").forEach((g) => {
-          const keys = g.dataset.healthKeys
-            ? g.dataset.healthKeys.split(",")
-            : [];
-          // A collapsed card's keys are its entrypoint, so it opens the app.
-          const openUrl =
-            keys.map((k) => openMap[k]).find(Boolean) ||
-            openMap[`${g.dataset.repo}/${g.dataset.service}`] ||
-            null;
-          setOpenLink(g, openUrl);
-          const dot = g.querySelector(".health-dot");
-          if (!dot) return;
-          if (keys.length === 0) return;
-          const state = healthState(keys, healthMap);
-          dot.setAttribute("class", `health-dot${state ? " " + state : ""}`);
-        });
-        // Open-in-browser links follow the env the results were checked for.
-        const openUrls = {};
-        for (const h of results || [])
-          if (h.openUrl) openUrls[`${h.repo}/${h.service}`] = h.openUrl;
-        document.querySelectorAll("#dep-graph a.open-browser").forEach((a) => {
-          const url = openUrls[a.dataset.openKey];
-          if (url && /^https?:/.test(url)) {
-            a.setAttribute("href", url);
-            a.setAttribute(
-              "aria-label",
-              `Open ${a.dataset.openKey} in a new tab`,
-            );
-            const tip = a.querySelector("title");
-            if (tip)
-              tip.textContent = `Open in a new tab: ${url} (shift-click copies)`;
-            a.style.display = "";
-          } else {
-            a.removeAttribute("href");
-            a.style.display = "none";
-          }
-        });
-      }
-
-      // Globe at a card's lower right: opens the app for the selected env in a new
-      // tab (Shift-click copies the URL). Hidden until health supplies a URL.
-      // An SVG <a>, so it's focusable and Enter opens it.
-      function setOpenLink(g, url) {
-        const ns = "http://www.w3.org/2000/svg";
-        let a = g.querySelector("a.open-link");
-        if (!url) {
-          if (a) a.remove();
-          return;
-        }
-        if (!a) {
-          const card = g.querySelector("rect");
-          if (!card) return;
-          const x =
-            Number(card.getAttribute("x")) +
-            Number(card.getAttribute("width")) -
-            34;
-          const y =
-            Number(card.getAttribute("y")) +
-            Number(card.getAttribute("height")) -
-            17;
-          a = document.createElementNS(ns, "a");
-          a.setAttribute("class", "open-link");
-          a.setAttribute("target", "_blank");
-          a.setAttribute("rel", "noopener");
-          const title = document.createElementNS(ns, "title");
-          a.appendChild(title);
-          const hit = document.createElementNS(ns, "rect");
-          hit.setAttribute("x", x - 2);
-          hit.setAttribute("y", y - 2);
-          hit.setAttribute("width", 16);
-          hit.setAttribute("height", 16);
-          hit.setAttribute("rx", 3);
-          hit.setAttribute("class", "open-link-hit");
-          a.appendChild(hit);
-          const globe = document.createElementNS(ns, "g");
-          globe.setAttribute("transform", `translate(${x},${y})`);
-          globe.setAttribute("class", "open-link-icon");
-          globe.innerHTML =
-            '<circle cx="6" cy="6" r="5.25"/><ellipse cx="6" cy="6" rx="2.3" ry="5.25"/><path d="M0.75 6h10.5"/>';
-          a.appendChild(globe);
-          a.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (e.shiftKey) {
-              e.preventDefault();
-              const t = a.querySelector("title");
-              navigator.clipboard?.writeText(a.getAttribute("href")).then(
-                () => {
-                  t.textContent = "Copied " + a.getAttribute("href");
-                },
-                () => {},
-              );
-            }
-          });
-          a.addEventListener("keydown", (e) => e.stopPropagation());
-          g.appendChild(a);
-        }
-        if (a.getAttribute("href") !== url) {
-          a.setAttribute("href", url);
-          a.querySelector("title").textContent =
-            `Open ${url} (Shift-click copies)`;
-        }
-      }
-
-      async function reloadNodeHealth(address) {
-        const env = document.getElementById("env-select")?.value || "local";
-        // Pulse the dot while checking
-        document.querySelectorAll("#dep-graph .gnode").forEach((g) => {
-          if (g.dataset.address !== address) return;
-          const dot = g.querySelector(".health-dot");
-          if (dot) dot.setAttribute("class", "health-dot running");
-        });
-        try {
-          const res = await fetch(
-            `/api/health?env=${env}&address=${encodeURIComponent(address)}`,
-          );
-          const results = await res.json();
-          if (!results.length) return;
-          const healthMap = {};
-          for (const h of results) healthMap[`${h.repo}/${h.service}`] = h.ok;
-          document.querySelectorAll("#dep-graph .gnode").forEach((g) => {
-            if (g.dataset.address !== address) return;
-            const dot = g.querySelector(".health-dot");
-            if (!dot) return;
-            const keys = g.dataset.healthKeys
-              ? g.dataset.healthKeys.split(",")
-              : [];
-            const state = healthState(keys, healthMap);
-            dot.setAttribute("class", `health-dot${state ? " " + state : ""}`);
-          });
-        } catch {
-          /* ignore */
-        }
-      }
-
-      // Repo colour palette: assigned by stable hash of repo name.
-      const REPO_PALETTE = [
-        { accent: "#58a6ff", bg: "#141b26", stroke: "#1d3a5e" },
-        { accent: "#3fb950", bg: "#131d16", stroke: "#1a3d22" },
-        { accent: "#a371f7", bg: "#1a1428", stroke: "#3d2066" },
-        { accent: "#d29922", bg: "#1d1a13", stroke: "#3d3216" },
-        { accent: "#f0883e", bg: "#1d1814", stroke: "#3d2a18" },
-        { accent: "#56d364", bg: "#131d16", stroke: "#1a3d22" },
-        { accent: "#ff7b72", bg: "#1d1414", stroke: "#3d1a1a" },
-        { accent: "#79c0ff", bg: "#141b26", stroke: "#1d3a5e" },
-      ];
-      function repoColor(name) {
-        let h = 5381;
-        for (let i = 0; i < name.length; i++)
-          h = (Math.imul(h, 31) + name.charCodeAt(i)) | 0;
-        return REPO_PALETTE[Math.abs(h) % REPO_PALETTE.length];
-      }
-
       // ── Applications tab ───────────────────────────────────────────────────
       // Same as `__DEN_CLI__ apps`: Org > Application > Repo > Services. Declared
       // applications (config `applications:` / manifest `application:`), then
@@ -4884,11 +4574,40 @@
             '<div class="graph-empty">No applications in this workspace</div>';
           return;
         }
+        // Service entries are addresses; placement (R13) sits beside them in
+        // `placements[address]`. A remote service gets ☁ after its name.
+        const svcLabel = (a, addr, r) => {
+          const name = addr.includes("/") ? addr.split("/")[1] : addr;
+          const p = a.placements?.[addr] ?? tree.placements?.[addr];
+          return { name, remote: p?.runs === "remote", root: name === r };
+        };
         const repoChip = (a, r) => {
-          const subs = (a.services?.[r] || [])
-            .map((addr) => (addr.includes("/") ? addr.split("/")[1] : addr))
-            .filter((x) => x !== r);
-          return `<span class="app-repo" data-repo="${escHtml(r)}"><span class="app-dot"></span>${escHtml(r)}${subs.length ? ` <span class="app-subs">${escHtml(subs.join(", "))}</span>` : ""}</span>`;
+          const all = (a.services?.[r] || []).map((addr) =>
+            svcLabel(a, addr, r),
+          );
+          const subs = all
+            .filter((x) => !x.root)
+            .map((x) => x.name + (x.remote ? " ☁" : ""));
+          const rootRemote = all.some((x) => x.root && x.remote);
+          return `<span class="app-repo" data-repo="${escHtml(r)}"><span class="app-dot"></span>${escHtml(r)}${rootRemote ? " ☁" : ""}${subs.length ? ` <span class="app-subs">${escHtml(subs.join(", "))}</span>` : ""}</span>`;
+        };
+        const PLACE = {
+          remote: "☁ remote",
+          hybrid: "⇄ hybrid",
+          none: "no runtime",
+        };
+        const placeBadge = (a) =>
+          PLACE[a.placement]
+            ? `<span class="app-place ${escHtml(a.placement)}" title="${escHtml(a.summary ?? "")}">${PLACE[a.placement]}</span>`
+            : "";
+        const placeSummary = (a) => {
+          const t = a.summary;
+          return a.placement &&
+            a.placement !== "local" &&
+            typeof t === "string" &&
+            t
+            ? `<div class="app-desc">${escHtml(t)}</div>`
+            : "";
         };
         wrap.innerHTML =
           (tree.org
@@ -4903,6 +4622,7 @@
             ${a.title !== a.name ? `<code class="app-name">${escHtml(a.name)}</code>` : ""}
             ${a.owner ? `<span class="app-owner">${escHtml(a.owner)}</span>` : ""}
             ${a.source === "repo" ? '<span class="app-source">repo is the application</span>' : ""}
+            ${placeBadge(a)}
             <span class="cmd-bar-spacer"></span>
             ${
               a.repos.length
@@ -4914,6 +4634,7 @@
             }
           </div>
           ${a.description ? `<div class="app-desc">${escHtml(a.description)}</div>` : ""}
+          ${placeSummary(a)}
           <div class="app-repos">${a.repos.map((r) => repoChip(a, r)).join("")}</div>
           ${
             a.contributors.length
@@ -4967,19 +4688,52 @@
           if (
             _orgData &&
             _graphServices &&
-            document.getElementById("dep-graph")
+            document.getElementById("dep-graph-wrap")
           )
             renderDepGraph(_graphServices, _graphDepsMap);
         })
         .catch(() => {});
+
+      // ── Dependency graph ─────────────────────────────────────────────────────
+      // ELK-laid-out cards and the details panel live in graph.js / panel.js
+      // (registries: ACTIONS, TABS, SECTIONS). The page hands them the data it
+      // already loads and its own action functions, so every action runs the
+      // same calls as before (runCmd, up/down with deps, sync, editor, …).
+      const GRAPH_HOOKS = {
+        env: () => document.getElementById("env-sel")?.value ?? "local",
+        runCmd: (s, cmd) => window.runCmd(s.id, s.repo, s.name, cmd),
+        upWithDeps: (repo) => window.runUpWithDeps(repo),
+        downWithDeps: (repo) => window.runDownWithDeps(repo),
+        sync: (repo) => window.runRepoSync(repo),
+        toggleAutostart: (repo, turnOn) => window.toggleAutostart(repo, turnOn),
+        switchMode: (repo, mode) => window.switchMode(repo, mode),
+        openEditor: (p) => openInEditor(p),
+        openTerminal: (p) => openInTerminal(p),
+        showOutput: (s) => openSystemLogs(s.id, s.repo, s.name),
+        openLogsPage: (s) => {
+          storeOpenLog(s.repo, s.name, "local");
+          window.location.href =
+            "/logs?open=" + encodeURIComponent(s.repo + "/" + s.name);
+        },
+        addMissing: (dep) => {
+          if (!activeWs) return;
+          openAddSvcModal(activeWs);
+          // Pre-fill the search with the missing dep so it is easy to find.
+          setTimeout(() => {
+            const input = document.getElementById("add-svc-global-search");
+            if (input) {
+              input.value = dep;
+              input.dispatchEvent(new Event("input"));
+            }
+          }, 0);
+        },
+      };
 
       function renderDepGraph(services, depsMap, derivedGraph) {
         _graphServices = services;
         _graphDepsMap = depsMap;
         _graphDerived = derivedGraph ??
           _graphDerived ?? { nodes: [], edges: [] };
-        derivedGraph = _graphDerived;
-
         const wrap = document.getElementById("dep-graph-wrap");
         if (!wrap) return;
         if (!services || services.length === 0) {
@@ -4987,1833 +4741,19 @@
             '<div class="graph-empty">No services in workspace</div>';
           return;
         }
-
-        // ── Group services by repo ──────────────────────────────────────────────
-        const repoGroups = new Map(); // repoName → service[]
-        for (const s of services) {
-          if (!repoGroups.has(s.repo)) repoGroups.set(s.repo, []);
-          repoGroups.get(s.repo).push(s);
-        }
-
-        // ── Build display nodes ─────────────────────────────────────────────────
-        // Multi-service repos expanded by default; collapsedRepos tracks explicit collapses.
-        const displayNodes = []; // { address, repo, service, type:'group'|'service', services?, mode, color }
-        const addrToDisplay = new Map(); // original addr → display node addr
-
-        for (const [repo, svcs] of repoGroups) {
-          const color = repoColor(repo);
-          const isMulti = svcs.length > 1;
-          const isExpanded = expandedRepos.has(repo);
-
-          if (isMulti && !isExpanded) {
-            // Collapsed: one group node for the whole repo
-            displayNodes.push({
-              type: "group",
-              address: repo,
-              repo,
-              service: repo,
-              services: svcs,
-              mode: svcs[0].mode,
-              repoPath: svcs[0].repoPath,
-              cloned: !svcs.some((x) => x.cloned === false),
-              color,
-            });
-            for (const s of svcs) addrToDisplay.set(s.address, repo);
-          } else {
-            // Expanded (or single-service): individual nodes
-            for (const s of svcs) {
-              displayNodes.push({ ...s, type: "service", color });
-              addrToDisplay.set(s.address, s.address);
-            }
-          }
-        }
-
-        // A repo's display-node address — the collapsed group node ("shop"), or,
-        // when expanded, its representative subsystem node. Cross-repo edges attach
-        // here, so they always resolve to a node that exists (collapsed or
-        // expanded) — fixing the dangling-arrow/orphan bug on expand.
-        const repoDisplayAddr = new Map();
-        for (const n of displayNodes) {
-          if (n.type === "group") repoDisplayAddr.set(n.repo, n.address);
-          else if (!repoDisplayAddr.has(n.repo))
-            repoDisplayAddr.set(n.repo, n.address);
-        }
-        const repoToDisplay = (repo) => repoDisplayAddr.get(repo) ?? null;
-        const repoOf = (addr) =>
-          addr.includes("/") ? addr.slice(0, addr.indexOf("/")) : addr;
-
-        // ── Build display edges ─────────────────────────────────────────────────
-        const edgeKey = new Set();
-        const displayEdges = [];
-        const ghostAddrs = new Set(); // missing-dep ghost addresses still needed after remapping
-
-        // 1. CROSS-REPO edges come from the DERIVED graph (same as `__DEN_CLI__ graph` /
-        //    `__DEN_CLI__ up`), carrying kind (infra/http/jwks/event) + blocking
-        //    (hard/soft) so we can style soft vs hard distinctly.
-        for (const e of derivedGraph.edges || []) {
-          const fromD = repoToDisplay(e.from),
-            toD = repoToDisplay(e.to);
-          if (!fromD || !toD || fromD === toD) continue; // both must be workspace repos
-          const key = fromD + "→" + toD + ":x";
-          if (edgeKey.has(key)) continue;
-          edgeKey.add(key);
-          displayEdges.push({
-            from: fromD,
-            to: toD,
-            kind: e.kind,
-            blocking: e.blocking,
-          });
-        }
-
-        // 2. INTRA-REPO edges (only visible when a repo is expanded) come from the
-        //    manifest deps within the same repo. Cross-repo manifest deps are
-        //    ignored — the derived graph above is the source of truth for those.
-        for (const s of services) {
-          for (const dep of s.deps || []) {
-            if (repoOf(dep) !== s.repo) continue; // not intra-repo
-            const fromD = addrToDisplay.get(s.address) ?? s.address;
-            const toD = addrToDisplay.get(dep) ?? dep;
-            if (fromD === toD) continue; // collapsed → same group node
-            const key = fromD + "→" + toD + ":i";
-            if (edgeKey.has(key)) continue;
-            edgeKey.add(key);
-            displayEdges.push({ from: fromD, to: toD, isIntra: true });
-          }
-        }
-
-        // 3. MISSING deps (declared but not in the workspace) → yellow ghost nodes.
-        for (const [addr, missing] of Object.entries(depsMap || {})) {
-          const fromD = addrToDisplay.get(addr) ?? repoToDisplay(addr) ?? addr;
-          for (const dep of missing || []) {
-            if (
-              addrToDisplay.has(dep) ||
-              repoDisplayAddr.has(dep) ||
-              repoDisplayAddr.has(repoOf(dep))
-            )
-              continue;
-            ghostAddrs.add(dep);
-            const key = fromD + "→" + dep + ":m";
-            if (edgeKey.has(key)) continue;
-            edgeKey.add(key);
-            displayEdges.push({ from: fromD, to: dep, isMissing: true });
-          }
-        }
-
-        // Build the graph synchronously using the last cached health results.
-        // The __DEN_CLI__:health-update event keeps dots in sync; using the cache here
-        // prevents a race where the event fires before the SVG exists.
-        {
-          const healthList = _lastHealthResults;
-          const healthMap = {};
-          for (const h of healthList) {
-            healthMap[`${h.repo}/${h.service}`] = h.ok;
-          }
-
-          // Layer the graph along the canonical startup order (derivedGraph.order:
-          // infra-stack first … entry repo last). The entry repo (e.g. shop-web)
-          // goes to the top, foundations to the bottom. The derived graph has real
-          // 2-cycles — shop ⇄ shop-web (BFF callback), shop ⇄ control-plane /
-          // jobs-runtime / billing-api (a request one way, an event/JWKS call
-          // back). We break them deterministically by only following edges that go
-          // FORWARD in the start order (from a later-started repo to an
-          // earlier-started one), which is exactly how `__DEN_CLI__ up` resolves order —
-          // so the layout matches the real dependency flow instead of an arbitrary
-          // cycle break.
-          const order =
-            derivedGraph.order && derivedGraph.order.length
-              ? derivedGraph.order
-              : [...new Set(displayNodes.map((n) => n.repo))];
-          const upRank = new Map(order.map((r, i) => [r, i])); // infra=0 … entry=last
-          const rankOf = (repo) => (upRank.has(repo) ? upRank.get(repo) : -1);
-
-          const repoIn = new Map(); // repo → forward predecessor repos (start-later → start-earlier)
-          for (const e of derivedGraph.edges || []) {
-            if (rankOf(e.from) > rankOf(e.to)) {
-              if (!repoIn.has(e.to)) repoIn.set(e.to, []);
-              repoIn.get(e.to).push(e.from);
-            }
-          }
-          const repoLayer = new Map();
-          const _rs = new Map();
-          const computeRepoLayer = (r) => {
-            if (_rs.get(r) === 2) return repoLayer.get(r);
-            if (_rs.get(r) === 1) return 0; // (forward subgraph is acyclic; guard anyway)
-            _rs.set(r, 1);
-            let best = 0;
-            for (const p of repoIn.get(r) || [])
-              best = Math.max(best, computeRepoLayer(p) + 1);
-            _rs.set(r, 2);
-            repoLayer.set(r, best);
-            return best;
-          };
-          for (const r of order) computeRepoLayer(r);
-
-          // A repo NOTHING depends on is a "root" by the dependent-distance
-          // measure above, so it lands in the top row even when its only
-          // relationship is a dependency on the bottom-most infra — tasks-api
-          // (edge: tasks-api → infra-stack, no dependents) sat next to
-          // shop-web, a full canvas away from the one thing it connects to.
-          // Pull sink-only consumers down to just above their shallowest
-          // dependency: the row their edges actually justify. The entry repo is
-          // unaffected (min(dep)-1 is already its row), and true islands keep
-          // row 0 — there is nothing to be near.
-          for (const r of order) {
-            if ((repoIn.get(r) || []).length > 0) continue; // placed by dependents
-            let minDep = Infinity;
-            for (const e of derivedGraph.edges || []) {
-              if (e.from === r && repoLayer.has(e.to)) {
-                minDep = Math.min(minDep, repoLayer.get(e.to));
-              }
-            }
-            if (minDep !== Infinity) {
-              repoLayer.set(r, Math.max(repoLayer.get(r) ?? 0, minDep - 1));
-            }
-          }
-
-          // Every display node sits at its repo's layer; an expanded repo's
-          // subsystems share that row (the bounding box spans them). Ghosts sit
-          // just below the deepest dependent that references them.
-          const layerOf = new Map();
-          for (const n of displayNodes)
-            layerOf.set(n.address, repoLayer.get(n.repo) ?? 0);
-          for (const dep of ghostAddrs) {
-            let lo = 0;
-            for (const e of displayEdges)
-              if (e.to === dep)
-                lo = Math.max(lo, (layerOf.get(e.from) ?? 0) + 1);
-            layerOf.set(dep, lo);
-          }
-
-          // Compact layer numbers to consecutive 0..k so empty layers don't leave
-          // gaps (and svgH/fit stay correct).
-          const usedLayers = [...new Set([...layerOf.values()])].sort(
-            (a, b) => a - b,
-          );
-          const layerRemap = new Map(usedLayers.map((v, i) => [v, i]));
-          for (const [addr, v] of layerOf) layerOf.set(addr, layerRemap.get(v));
-
-          // Group by layer
-          const layers = new Map();
-          for (const [addr, layer] of layerOf) {
-            if (!layers.has(layer)) layers.set(layer, []);
-            layers.get(layer).push(addr);
-          }
-          const numLayers = layers.size || 1;
-
-          // Layout — TOP-DOWN (vertical): dependency layers stack as ROWS (roots at
-          // top, dependencies flowing down), nodes within a layer spread across
-          // COLUMNS. A dependency graph is mostly a deep chain, so laying layers
-          // left-to-right made it short-and-wide; stacking them top-to-bottom gives
-          // a far more balanced shape.
-          const NW = 160,
-            NH = 52,
-            HGAP = 36,
-            VGAP = 46,
-            PAD = 24;
-          const STRIP_H = 18,
-            STRIP_GAP = 3,
-            CPAD = 10; // collapse strip + container padding
-
-          const hasExpandedGroups = [...repoGroups.entries()].some(
-            ([repo, svcs]) => svcs.length > 1 && expandedRepos.has(repo),
-          );
-          const isExpandedRepo = (repo) =>
-            (repoGroups.get(repo)?.length ?? 0) > 1 && expandedRepos.has(repo);
-          // Room above an expanded group's top row for its collapse strip.
-          const extraTopPad = hasExpandedGroups
-            ? STRIP_H + STRIP_GAP + CPAD + 4
-            : 0;
-
-          // ── Blocks: Org > Application > Repo > Services ───────────────────────
-          // Each declared application's repos form one block, boxed and titled
-          // with name + owner. The rest only belong together when an edge says
-          // so: each connected set of nodes (any edge kind, plus a repo's own
-          // subsystems) is its own block, side by side; repos with no edges at
-          // all share an "independent" block per org. A repo that is its own
-          // application needs no box: its card is the boundary.
-          const nodeByAddrEarly = new Map(
-            displayNodes.map((n) => [n.address, n]),
-          );
-          const repoNameOf = (a) => nodeByAddrEarly.get(a)?.repo ?? repoOf(a);
-          const appOfRepo = new Map();
-          for (const a of _graphApps || [])
-            if (a.source === "declared")
-              for (const r of a.repos || [])
-                if (!appOfRepo.has(r)) appOfRepo.set(r, a);
-          // Ghost nodes are never part of an application.
-          const appOfAddr = (a) =>
-            nodeByAddrEarly.has(a) ? appOfRepo.get(repoNameOf(a)) : undefined;
-
-          const parent = new Map(
-            [...layerOf.keys()].filter((a) => !appOfAddr(a)).map((a) => [a, a]),
-          );
-          const find = (a) => {
-            while (parent.get(a) !== a) a = parent.get(a);
-            return a;
-          };
-          const join = (a, b) => {
-            if (!parent.has(a) || !parent.has(b)) return;
-            const ra = find(a),
-              rb = find(b);
-            if (ra !== rb) parent.set(ra, rb);
-          };
-          for (const e of displayEdges) join(e.from, e.to);
-          const firstOfRepo = new Map();
-          for (const n of displayNodes) {
-            if (firstOfRepo.has(n.repo))
-              join(n.address, firstOfRepo.get(n.repo));
-            else firstOfRepo.set(n.repo, n.address);
-          }
-          const comps = new Map();
-          for (const a of parent.keys()) {
-            const r = find(a);
-            if (!comps.has(r)) comps.set(r, []);
-            comps.get(r).push(a);
-          }
-          const isLoner = (c) =>
-            new Set(c.map(repoNameOf)).size === 1 &&
-            !displayEdges.some((e) => c.includes(e.from) || c.includes(e.to));
-          const linked = [...comps.values()]
-            .filter((c) => !isLoner(c))
-            .sort((a, b) => b.length - a.length);
-          const loners = [...comps.values()].filter(isLoner).flat();
-          // Blocks sit together by org (the GitHub owner), in the configured
-          // order, so each org's blocks fall inside one org frame; within an
-          // org, declared applications come first, in config order. A block
-          // whose repos span orgs gets no org.
-          const orgOfRepo = (r) => _orgData?.repos?.[r] || "";
-          const orgIds = _orgData ? _orgData.orgs.map((o) => o.id) : [];
-          const blockOrg = (addrs) => {
-            const os = new Set(
-              addrs
-                .filter((a) => nodeByAddrEarly.has(a))
-                .map((a) => orgOfRepo(repoNameOf(a))),
-            );
-            return os.size === 1 ? [...os][0] : "";
-          };
-          const lonersByOrg = new Map();
-          for (const a of loners) {
-            const o = orgOfRepo(repoNameOf(a));
-            if (!lonersByOrg.has(o)) lonersByOrg.set(o, []);
-            lonersByOrg.get(o).push(a);
-          }
-          const orgRank = (o) => {
-            const i = orgIds.indexOf(o);
-            return o === "" ? 1e6 : i < 0 ? 1e5 : i;
-          };
-          const appBlocks = [];
-          for (const a of _graphApps || []) {
-            if (a.source !== "declared") continue;
-            const addrs = [...layerOf.keys()].filter((x) => appOfAddr(x) === a);
-            if (addrs.length)
-              appBlocks.push({
-                addrs,
-                flat: false,
-                app: a,
-                org: blockOrg(addrs),
-                label: a.title || a.name,
-              });
-          }
-          const blocks = [
-            ...appBlocks,
-            ...linked.map((addrs) => ({
-              addrs,
-              flat: false,
-              org: blockOrg(addrs),
-              label: [
-                ...new Set(
-                  addrs.filter((a) => nodeByAddrEarly.has(a)).map(repoNameOf),
-                ),
-              ].join(" · "),
-            })),
-            ...[...lonersByOrg].map(([org, addrs]) => ({
-              addrs,
-              flat: true,
-              org,
-              label: "independent",
-            })),
-          ]
-            .map((b, i) => ({ ...b, i }))
-            .sort((a, b) => orgRank(a.org) - orgRank(b.org) || a.i - b.i);
-          const orgsShown = new Set(blocks.map((b) => b.org).filter(Boolean));
-          const ORG_H = orgsShown.size > 0 ? 22 : 0; // org frame title band
-
-          const BGAP = 56,
-            // An application box has two title rows (name, owner); a group one.
-            LABEL_H = blocks.some((b) => b.app)
-              ? 32
-              : blocks.length > 1
-                ? 20
-                : 0;
-          const labelW = (b) =>
-            blocks.length > 1 || b.app
-              ? Math.min(
-                  Math.max(b.label.length, b.app?.owner?.length ?? 0),
-                  60,
-                ) *
-                  6.8 +
-                20 -
-                CPAD * 3
-              : 0;
-          const pos = new Map();
-          const blockBoxes = [];
-          let xCursor = PAD,
-            maxBlockH = 0;
-          const top = PAD + extraTopPad + LABEL_H + ORG_H;
-          // Between repo layers, room for an expanded repo's collapse strip.
-          const LAYER_GAP = VGAP + STRIP_H + STRIP_GAP + CPAD;
-          const RGAP = 40; // between repos side by side
-          const nodeRepo = (a) => nodeByAddrEarly.get(a)?.repo ?? a; // ghosts: themselves
-          for (const b of blocks) {
-            if (b.flat) {
-              const cols = Math.max(
-                1,
-                Math.min(b.addrs.length, Math.ceil(Math.sqrt(b.addrs.length))),
-              );
-              const rows = [];
-              b.addrs.forEach((a, i) => {
-                (rows[Math.floor(i / cols)] ??= []).push(a);
-              });
-              const per = Math.max(...rows.map((r) => r.length));
-              const bw = Math.max(per * NW + (per - 1) * HGAP, labelW(b));
-              rows.forEach((r, li) => {
-                const tw = r.length * NW + (r.length - 1) * HGAP;
-                const sx = xCursor + (bw - tw) / 2;
-                r.forEach((a, i) =>
-                  pos.set(a, {
-                    x: sx + i * (NW + HGAP),
-                    y: top + li * (NH + VGAP),
-                  }),
-                );
-              });
-              const bh = rows.length * NH + (rows.length - 1) * VGAP;
-              blockBoxes.push({
-                x: xCursor - CPAD * 1.5,
-                y: PAD / 2 + ORG_H,
-                w: bw + CPAD * 3,
-                h: top + bh + CPAD - PAD / 2 - ORG_H,
-                label: b.label,
-                org: b.org,
-              });
-              maxBlockH = Math.max(maxBlockH, bh);
-              xCursor += bw + BGAP;
-              continue;
-            }
-
-            // Each repo stacks its own services by depends_on (a service sits
-            // above what it depends on: web over db); repos stack by the
-            // cross-repo layer, side by side within a layer.
-            const byRepo = new Map();
-            for (const a of b.addrs) {
-              const r = nodeRepo(a);
-              if (!byRepo.has(r)) byRepo.set(r, []);
-              byRepo.get(r).push(a);
-            }
-            const repoRows = new Map(); // repo → rows of addrs
-            for (const [r, addrs] of byRepo) {
-              const inRepo = new Set(addrs);
-              const sub = new Map(addrs.map((a) => [a, 0]));
-              const intra = displayEdges.filter(
-                (e) => inRepo.has(e.from) && inRepo.has(e.to),
-              );
-              for (let i = 0; i < addrs.length; i++) {
-                let moved = false;
-                for (const e of intra) {
-                  const want = sub.get(e.from) + 1;
-                  if (want > sub.get(e.to) && want < addrs.length) {
-                    sub.set(e.to, want);
-                    moved = true;
-                  }
-                }
-                if (!moved) break;
-              }
-              const rows = [];
-              for (const a of [...addrs].sort((x, y) => x.localeCompare(y)))
-                (rows[sub.get(a)] ??= []).push(a);
-              repoRows.set(r, rows.filter(Boolean));
-            }
-            const repoW = (r) => {
-              const per = Math.max(...repoRows.get(r).map((x) => x.length));
-              return per * NW + (per - 1) * HGAP;
-            };
-            const repoH = (r) => repoRows.get(r).length;
-            const layerOfRepo = (r) => layerOf.get(byRepo.get(r)[0]) ?? 0;
-            const repoLayers = [
-              ...new Set([...byRepo.keys()].map(layerOfRepo)),
-            ].sort((x, y) => x - y);
-            const layerRepos = repoLayers.map((L) =>
-              [...byRepo.keys()].filter((r) => layerOfRepo(r) === L).sort(),
-            );
-            const layerW = layerRepos.map(
-              (rs) =>
-                rs.reduce((w, r) => w + repoW(r), 0) + (rs.length - 1) * RGAP,
-            );
-            const bw = Math.max(...layerW, labelW(b));
-            let y = top;
-            layerRepos.forEach((rs, li) => {
-              let x = xCursor + (bw - layerW[li]) / 2;
-              for (const r of rs) {
-                const w = repoW(r);
-                repoRows.get(r).forEach((row, ri) => {
-                  const tw = row.length * NW + (row.length - 1) * HGAP;
-                  const sx = x + (w - tw) / 2;
-                  row.forEach((a, i) =>
-                    pos.set(a, {
-                      x: sx + i * (NW + HGAP),
-                      y: y + ri * (NH + VGAP),
-                    }),
-                  );
-                });
-                x += w + RGAP;
-              }
-              const rowsHere = Math.max(...rs.map(repoH));
-              y +=
-                rowsHere * (NH + VGAP) -
-                VGAP +
-                (li < layerRepos.length - 1 ? LAYER_GAP : 0);
-            });
-            const bh = y - top;
-            // A group of one repo needs no frame of its own: the repo's box is
-            // it. A declared application is always boxed.
-            blockBoxes.push({
-              x: xCursor - CPAD * 1.5,
-              y: PAD / 2 + ORG_H,
-              w: bw + CPAD * 3,
-              h: top + bh + CPAD - PAD / 2 - ORG_H,
-              label: b.label,
-              solo: byRepo.size === 1,
-              org: b.org,
-              app: b.app,
-            });
-            maxBlockH = Math.max(maxBlockH, bh);
-            xCursor += bw + BGAP;
-          }
-          const svgW = xCursor - BGAP + PAD;
-          const svgH = top + maxBlockH + PAD;
-
-          // SVG root — no fixed size; CSS makes it fill the container.
-          const ns = "http://www.w3.org/2000/svg";
-          const svg = document.createElementNS(ns, "svg");
-          svg.setAttribute("id", "dep-graph");
-
-          // Arrow markers
-          const defs = document.createElementNS(ns, "defs");
-          defs.innerHTML =
-            '<marker id="arrow"       viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#4d9ee8"/></marker>' +
-            '<marker id="arrow-soft"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/></marker>' +
-            '<marker id="arrow-event" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#d2a8ff"/></marker>' +
-            '<marker id="arrow-intra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6e7681"/></marker>' +
-            '<marker id="arrow-warn"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#d29922"/></marker>';
-          svg.appendChild(defs);
-
-          // All content lives inside this group — pan/zoom is applied via transform.
-          const viewport = document.createElementNS(ns, "g");
-          viewport.setAttribute("id", "graph-viewport");
-          svg.appendChild(viewport);
-
-          // ── Org frames: one around each org's consecutive blocks ─────────────
-          if (orgsShown.size > 0) {
-            const runs = [];
-            for (const bb of blockBoxes) {
-              const last = runs[runs.length - 1];
-              if (last && last.org === bb.org) last.boxes.push(bb);
-              else runs.push({ org: bb.org, boxes: [bb] });
-            }
-            for (const run of runs) {
-              if (!run.org) continue;
-              const info = _orgData.orgs.find((o) => o.id === run.org) || {
-                label: run.org,
-              };
-              const x0 = Math.min(...run.boxes.map((b) => b.x)) - 8;
-              const x1 = Math.max(...run.boxes.map((b) => b.x + b.w)) + 8;
-              const y0 = PAD / 2 - 6;
-              const y1 = Math.max(...run.boxes.map((b) => b.y + b.h)) + 8;
-              const stroke = info.color || "#6e7681";
-              const fr = document.createElementNS(ns, "rect");
-              fr.setAttribute("x", x0);
-              fr.setAttribute("y", y0);
-              fr.setAttribute("width", x1 - x0);
-              fr.setAttribute("height", y1 - y0);
-              fr.setAttribute("rx", "12");
-              fr.setAttribute("fill", stroke + "0d");
-              fr.setAttribute("stroke", stroke + "88");
-              fr.setAttribute("stroke-width", "1.5");
-              fr.setAttribute("pointer-events", "none");
-              viewport.appendChild(fr);
-              const ft = document.createElementNS(ns, "text");
-              ft.setAttribute("x", x0 + 12);
-              ft.setAttribute("y", y0 + 16);
-              ft.setAttribute("fill", stroke);
-              ft.setAttribute("font-size", "12");
-              ft.setAttribute("font-weight", "600");
-              ft.setAttribute("pointer-events", "none");
-              ft.textContent = info.label;
-              viewport.appendChild(ft);
-            }
-          }
-
-          // ── Block boxes ──────────────────────────────────────────────────────
-          // A declared application: a solid box titled with name + owner. Any
-          // other group: a dashed box, only when there is more than one block.
-          for (const bb of blockBoxes) {
-            if (bb.app) {
-              const ag = document.createElementNS(ns, "g");
-              ag.setAttribute("class", "app-box");
-              ag.setAttribute("data-app", bb.app.name);
-              const ar = document.createElementNS(ns, "rect");
-              ar.setAttribute("x", bb.x);
-              ar.setAttribute("y", bb.y);
-              ar.setAttribute("width", bb.w);
-              ar.setAttribute("height", bb.h);
-              ar.setAttribute("rx", "12");
-              ar.setAttribute("fill", "rgba(139,148,158,0.04)");
-              ar.setAttribute("stroke", "#3d444d");
-              ar.setAttribute("stroke-width", "1");
-              ar.setAttribute("pointer-events", "none"); // pan/drag passes through
-              ag.appendChild(ar);
-              // Title, then owner on a second line, each truncated to the box.
-              const maxChars = Math.floor((bb.w - 24) / 6.6);
-              const clip = (t) =>
-                t.length > maxChars
-                  ? t.slice(0, Math.max(1, maxChars - 1)) + "…"
-                  : t;
-              const at = document.createElementNS(ns, "text");
-              at.setAttribute("x", bb.x + 12);
-              at.setAttribute("y", bb.y + 15);
-              at.setAttribute("font-size", "11");
-              at.setAttribute("font-family", "var(--mono)");
-              at.setAttribute("font-weight", "600");
-              at.setAttribute("fill", "var(--text)");
-              at.setAttribute("pointer-events", "none");
-              at.textContent = clip(bb.label);
-              if (bb.app.owner) {
-                const ot = document.createElementNS(ns, "text");
-                ot.setAttribute("x", bb.x + 12);
-                ot.setAttribute("y", bb.y + 29);
-                ot.setAttribute("font-size", "10");
-                ot.setAttribute("font-family", "var(--mono)");
-                ot.setAttribute("fill", "var(--muted)");
-                ot.setAttribute("pointer-events", "none");
-                ot.textContent = clip(bb.app.owner);
-                ag.appendChild(ot);
-              }
-              const tip = document.createElementNS(ns, "title");
-              tip.textContent = [bb.label, bb.app.owner, bb.app.description]
-                .filter(Boolean)
-                .join(" · ");
-              ag.appendChild(tip);
-              ag.appendChild(at);
-              viewport.appendChild(ag);
-              continue;
-            }
-            if (blockBoxes.length < 2 || bb.solo) continue;
-            const r = document.createElementNS(ns, "rect");
-            r.setAttribute("x", bb.x);
-            r.setAttribute("y", bb.y);
-            r.setAttribute("width", bb.w);
-            r.setAttribute("height", bb.h);
-            r.setAttribute("rx", "10");
-            r.setAttribute("fill", "none");
-            r.setAttribute("stroke", "#30363d");
-            r.setAttribute("stroke-width", "1");
-            r.setAttribute("stroke-dasharray", "5 4");
-            r.setAttribute("pointer-events", "none");
-            viewport.appendChild(r);
-            const t = document.createElementNS(ns, "text");
-            t.setAttribute("x", bb.x + 10);
-            t.setAttribute("y", bb.y + 14);
-            t.setAttribute("fill", "#8b949e");
-            t.setAttribute("font-size", "11");
-            t.setAttribute("font-family", "var(--mono)");
-            t.setAttribute("pointer-events", "none");
-            t.textContent =
-              bb.label.length > 60 ? bb.label.slice(0, 57) + "…" : bb.label;
-            viewport.appendChild(t);
-          }
-
-          // ── Group container backgrounds (expanded repos) ──────────────────────
-          // Drawn first so edges and nodes render on top. One bounding box around
-          // all of an expanded repo's subsystem nodes (orientation-agnostic).
-          const repoBox = new Map(); // repo → {x,y,w,h} (used by edges to attach to the box)
-          for (const [repo, svcs] of repoGroups) {
-            if (svcs.length <= 1 || !expandedRepos.has(repo)) continue;
-            const color = repoColor(repo);
-            const ps = displayNodes
-              .filter((n) => n.repo === repo && n.type === "service")
-              .map((n) => pos.get(n.address))
-              .filter(Boolean);
-            if (!ps.length) continue;
-            const minX = Math.min(...ps.map((p) => p.x));
-            const minY = Math.min(...ps.map((p) => p.y));
-            const maxX = Math.max(...ps.map((p) => p.x));
-            const maxY = Math.max(...ps.map((p) => p.y));
-            const box = {
-              x: minX - CPAD,
-              y: minY - CPAD,
-              w: maxX - minX + NW + 2 * CPAD,
-              h: maxY - minY + NH + 2 * CPAD,
-            };
-            repoBox.set(repo, box);
-            const crect = document.createElementNS(ns, "rect");
-            crect.setAttribute("x", box.x);
-            crect.setAttribute("y", box.y);
-            crect.setAttribute("width", box.w);
-            crect.setAttribute("height", box.h);
-            crect.setAttribute("rx", "8");
-            crect.setAttribute("fill", color.bg);
-            crect.setAttribute("stroke", color.stroke);
-            crect.setAttribute("stroke-width", "1.5");
-            crect.setAttribute("pointer-events", "none");
-            viewport.appendChild(crect);
-          }
-
-          // ── Edges ─────────────────────────────────────────────────────────────
-          // Cross-repo edges attach to the whole repo box (collapsed node, or the
-          // expanded repo's bounding box) so they always meet a visible node;
-          // intra-repo edges attach to the individual subsystem nodes.
-          const nodeByAddr = new Map(displayNodes.map((n) => [n.address, n]));
-          const nodeRect = (addr) => {
-            const p = pos.get(addr);
-            return p ? { x: p.x, y: p.y, w: NW, h: NH } : null;
-          };
-          const endpointRect = (addr) => {
-            const n = nodeByAddr.get(addr);
-            if (n && repoBox.has(n.repo)) return repoBox.get(n.repo);
-            return nodeRect(addr);
-          };
-          // Reset selection collections — elements below are rebuilt this render.
-          _graphEdgeEls = [];
-          _graphNodeEls = [];
-          _selectedNode = null;
-          for (const e of displayEdges) {
-            const sR = e.isIntra ? nodeRect(e.from) : endpointRect(e.from);
-            const dR = e.isIntra ? nodeRect(e.to) : endpointRect(e.to);
-            if (!sR || !dR) continue;
-            // Top-down: exit the bottom of the source, enter the top of the target.
-            const x1 = sR.x + sR.w / 2,
-              y1 = sR.y + sR.h;
-            const x2 = dR.x + dR.w / 2,
-              y2 = dR.y;
-            const my = (y1 + y2) / 2;
-            const path = document.createElementNS(ns, "path");
-            if (e.isMissing) {
-              path.setAttribute("stroke", "var(--yellow)");
-              path.setAttribute("stroke-width", "1.5");
-              path.setAttribute("stroke-dasharray", "4 3");
-              path.setAttribute("marker-end", "url(#arrow-warn)");
-            } else if (e.isIntra) {
-              path.setAttribute("stroke", "#6e7681");
-              path.setAttribute("stroke-width", "1");
-              path.setAttribute("stroke-dasharray", "3 3");
-              path.setAttribute("marker-end", "url(#arrow-intra)");
-            } else if (e.kind === "event") {
-              // event flow — dotted, distinct color; never gates startup.
-              path.setAttribute("stroke", "#d2a8ff");
-              path.setAttribute("stroke-width", "1.6");
-              path.setAttribute("stroke-dasharray", "2 4");
-              path.setAttribute("marker-end", "url(#arrow-event)");
-            } else if (e.blocking === "soft") {
-              // soft dependency — dashed + muted, visibly weaker than a hard edge.
-              path.setAttribute("stroke", "#8b949e");
-              path.setAttribute("stroke-width", "1.4");
-              path.setAttribute("stroke-dasharray", "6 4");
-              path.setAttribute("marker-end", "url(#arrow-soft)");
-            } else {
-              // hard dependency — solid + bold; gates startup order.
-              path.setAttribute("stroke", "#4d9ee8");
-              path.setAttribute("stroke-width", "2.4");
-              path.setAttribute("marker-end", "url(#arrow)");
-            }
-            path.setAttribute("fill", "none");
-            path.setAttribute(
-              "d",
-              "M " +
-                x1 +
-                " " +
-                y1 +
-                " C " +
-                x1 +
-                " " +
-                my +
-                " " +
-                x2 +
-                " " +
-                my +
-                " " +
-                x2 +
-                " " +
-                y2,
-            );
-            _graphEdgeEls.push({ el: path, from: e.from, to: e.to });
-            viewport.appendChild(path);
-          }
-
-          // ── Service / group nodes ──────────────────────────────────────────────
-          for (const n of displayNodes) {
-            const p = pos.get(n.address);
-            if (!p) continue;
-            const { color } = n;
-
-            const g = document.createElementNS(ns, "g");
-            g.setAttribute("class", "gnode");
-            g.setAttribute("data-address", n.address);
-            g.setAttribute("data-repo", n.repo);
-            g.setAttribute("data-service", n.service);
-            // health-keys: comma-separated "repo/service" keys used by applyHealthToGraph.
-            // A collapsed group's dot reflects its main component (entrypoint), not
-            // an all-subsystem aggregate.
-            const healthKeys =
-              n.type === "group"
-                ? groupDotKeys(n.services).join(",")
-                : `${n.repo}/${n.service}`;
-            if (healthKeys) g.setAttribute("data-health-keys", healthKeys);
-
-            // Nodes inside an expanded group get a more saturated tinted rect so
-            // they visually read as "children" of the container behind them.
-            const isGrouped =
-              n.type === "service" && (repoGroups.get(n.repo)?.length ?? 0) > 1;
-            const rect = document.createElementNS(ns, "rect");
-            rect.setAttribute("x", p.x);
-            rect.setAttribute("y", p.y);
-            rect.setAttribute("width", NW);
-            rect.setAttribute("height", NH);
-            rect.setAttribute("rx", "6");
-            // Collapsed group node matches the container (color.bg + color.stroke, stroke-width 1.5).
-            // Expanded grouped nodes are more saturated: accent-tinted fill + full accent border.
-            // Standalone service nodes use the base palette.
-            const isCollapsedGroup = n.type === "group";
-            rect.setAttribute(
-              "fill",
-              isGrouped ? color.accent + "2e" : color.bg,
-            );
-            rect.setAttribute(
-              "stroke",
-              isGrouped ? color.accent : color.stroke,
-            );
-            rect.setAttribute(
-              "stroke-width",
-              isGrouped || isCollapsedGroup ? "1.5" : "1",
-            );
-            // Card rect first — decorations (⏸ pill etc.) paint on top of it.
-            g.appendChild(rect);
-            _graphNodeEls.push({ g, rect, address: n.address });
-
-            // Auto-start off: dashed border + a compact ⏸ glyph beside the health
-            // dot (a full pill didn't fit on the card and overlaid other info) +
-            // tooltip so it's clear the master Up/Restart won't start it (Down
-            // still stops it).
-            if (_noAutostartRepos.has(n.repo)) {
-              rect.setAttribute("stroke-dasharray", "4 3");
-              g.setAttribute("data-autostart-off", "1");
-              const title = document.createElementNS(ns, "title");
-              title.textContent = `${n.repo} — auto-start off: start / don't start with workspace (toggle in ⋮)`;
-              g.appendChild(title);
-              const offGlyph = document.createElementNS(ns, "text");
-              offGlyph.setAttribute("x", p.x + NW - 26);
-              offGlyph.setAttribute("y", p.y + 18);
-              offGlyph.setAttribute("font-size", "10");
-              offGlyph.setAttribute("fill", "var(--yellow)");
-              offGlyph.setAttribute("text-anchor", "end");
-              offGlyph.setAttribute("pointer-events", "none");
-              offGlyph.textContent = "⏸";
-              g.appendChild(offGlyph);
-            }
-
-            // Not cloned yet: dim the card and mark it with ⬇ so it reads as
-            // "configured but not on disk" rather than as a healthy system.
-            // Deliberately NOT dashed — dashes already mean auto-start off.
-            if (n.cloned === false) {
-              g.setAttribute("data-uncloned", "1");
-              rect.setAttribute("opacity", "0.55");
-              const title = document.createElementNS(ns, "title");
-              title.textContent = `${n.repo} — not cloned yet: run Sync (or ⋮ → clone now)`;
-              g.appendChild(title);
-              const dlGlyph = document.createElementNS(ns, "text");
-              dlGlyph.setAttribute("x", p.x + NW - 26);
-              dlGlyph.setAttribute("y", p.y + 18);
-              dlGlyph.setAttribute("font-size", "10");
-              dlGlyph.setAttribute("fill", "var(--yellow)");
-              dlGlyph.setAttribute("text-anchor", "end");
-              dlGlyph.setAttribute("pointer-events", "none");
-              dlGlyph.textContent = "⬇";
-              g.appendChild(dlGlyph);
-            }
-
-            if (n.type === "group") {
-              // ── Collapsed group node ─────────────────────────────────────────
-              const isDevGroup = n.mode === "dev-managed" && n.repoPath;
-              const groupLabelX = isDevGroup ? p.x + 47 : p.x + 10;
-              const groupMaxChars = isDevGroup ? 10 : 15;
-              const label = document.createElementNS(ns, "text");
-              label.setAttribute("x", groupLabelX);
-              label.setAttribute("y", p.y + 19);
-              label.setAttribute("font-size", "11");
-              label.setAttribute("fill", color.accent);
-              label.setAttribute("font-family", "var(--mono)");
-              label.setAttribute("font-weight", "600");
-              label.setAttribute("pointer-events", "none");
-              label.textContent =
-                n.repo.length > groupMaxChars
-                  ? n.repo.slice(0, groupMaxChars - 1) + "…"
-                  : n.repo;
-              g.appendChild(label);
-
-              // Mode pill (__DEN_CLI__/dev) — same element leaf cards render, so
-              // multi-service systems show their management mode too.
-              const gIsDen = n.mode === "managed";
-              const gPillColor = gIsDen ? "#a371f7" : color.accent;
-              const gPillW = gIsDen ? 44 : 30;
-              const gPillX = p.x + 10,
-                gPillY = p.y + 30;
-              const gPillRect = document.createElementNS(ns, "rect");
-              gPillRect.setAttribute("x", gPillX);
-              gPillRect.setAttribute("y", gPillY);
-              gPillRect.setAttribute("width", gPillW);
-              gPillRect.setAttribute("height", 14);
-              gPillRect.setAttribute("rx", "7");
-              gPillRect.setAttribute(
-                "fill",
-                gIsDen ? "#a371f720" : color.bg + "aa",
-              );
-              gPillRect.setAttribute("stroke", gPillColor);
-              gPillRect.setAttribute("stroke-width", "1");
-              gPillRect.setAttribute("pointer-events", "none");
-              g.appendChild(gPillRect);
-              const gPillText = document.createElementNS(ns, "text");
-              gPillText.setAttribute("x", gPillX + gPillW / 2);
-              gPillText.setAttribute("y", gPillY + 10);
-              gPillText.setAttribute("font-size", "9");
-              gPillText.setAttribute("fill", gPillColor);
-              gPillText.setAttribute("font-family", "var(--mono)");
-              gPillText.setAttribute("text-anchor", "middle");
-              gPillText.setAttribute("pointer-events", "none");
-              gPillText.textContent = gIsDen ? "__DEN_CLI__" : "dev";
-              g.appendChild(gPillText);
-
-              // "▶ N svcs" expand affordance, right of the mode pill. The TEXT is
-              // pointer-events:none by CSS (.gnode text), so a transparent hit RECT
-              // carries the click — the text-glyph hit area was ~5px tall and the
-              // CSS rule silently disabled it entirely (the expand-regression bug).
-              const subX = gPillX + gPillW + 6;
-              const sub = document.createElementNS(ns, "text");
-              sub.setAttribute("x", subX);
-              sub.setAttribute("y", p.y + 40);
-              sub.setAttribute("font-size", "9");
-              sub.setAttribute("fill", color.accent);
-              sub.setAttribute("font-family", "var(--mono)");
-              sub.setAttribute("opacity", "0.6");
-              sub.setAttribute("pointer-events", "none");
-              sub.textContent = "▶ " + n.services.length + " svcs";
-              g.appendChild(sub);
-              const subHit = document.createElementNS(ns, "rect");
-              subHit.setAttribute("x", subX - 3);
-              subHit.setAttribute("y", p.y + 28);
-              subHit.setAttribute("width", 56);
-              subHit.setAttribute("height", 18);
-              subHit.setAttribute("fill", "transparent");
-              subHit.setAttribute("pointer-events", "all");
-              subHit.setAttribute("cursor", "pointer");
-              const subTitle = document.createElementNS(ns, "title");
-              subTitle.textContent =
-                "expand " + n.services.length + " services";
-              subHit.appendChild(subTitle);
-              subHit.addEventListener("click", (e) => {
-                e.stopPropagation();
-                collapsedRepos.delete(n.repo);
-                renderDepGraph(_graphServices, _graphDepsMap);
-              });
-              g.appendChild(subHit);
-
-              // System health dot (top-right): the main component (entrypoint), not
-              // an all-subsystem aggregate — so a down app doesn't read green/yellow
-              // just because its shared-infra sidecars are up.
-              const groupHealthKeys = groupDotKeys(n.services);
-              const groupState = healthState(groupHealthKeys, healthMap);
-              // Health dot — hover swaps to refresh icon, click reloads
-              const grpDotG = document.createElementNS(ns, "g");
-              grpDotG.setAttribute("class", "health-dot-wrap");
-              const groupDot = document.createElementNS(ns, "circle");
-              groupDot.setAttribute("cx", p.x + NW - 12);
-              groupDot.setAttribute("cy", p.y + 14);
-              groupDot.setAttribute("r", 4);
-              groupDot.setAttribute(
-                "class",
-                `health-dot${groupState ? " " + groupState : ""}`,
-              );
-              grpDotG.appendChild(groupDot);
-              const grpRefresh = document.createElementNS(ns, "path");
-              grpRefresh.setAttribute(
-                "d",
-                "M3 1.5A4.5 4.5 0 0 1 7.5 6H6l2.5 2.5L11 6H9A6 6 0 1 0 3 12",
-              );
-              grpRefresh.setAttribute(
-                "transform",
-                `translate(${p.x + NW - 16},${p.y + 10}) scale(0.65)`,
-              );
-              grpRefresh.setAttribute("fill", "none");
-              grpRefresh.setAttribute("stroke", "var(--text)");
-              grpRefresh.setAttribute("stroke-width", "2");
-              grpRefresh.setAttribute("stroke-linecap", "round");
-              grpRefresh.setAttribute("stroke-linejoin", "round");
-              grpRefresh.setAttribute("class", "health-refresh-icon");
-              grpDotG.appendChild(grpRefresh);
-              const grpHit = document.createElementNS(ns, "rect");
-              grpHit.setAttribute("x", p.x + NW - 20);
-              grpHit.setAttribute("y", p.y + 6);
-              grpHit.setAttribute("width", 16);
-              grpHit.setAttribute("height", 16);
-              grpHit.setAttribute("fill", "transparent");
-              grpHit.setAttribute("cursor", "pointer");
-              grpHit.addEventListener("click", (e) => {
-                e.stopPropagation();
-                for (const s of n.services || []) reloadNodeHealth(s.address);
-              });
-              grpDotG.appendChild(grpHit);
-              g.appendChild(grpDotG);
-
-              // ⋮ Actions — system-level lifecycle for the whole repo, run against
-              // its entrypoint (up/restart seed the repo closure; down/setup hit the
-              // app). The ▶ expand affordance lives in the label + whole-card click.
-              const epSvc =
-                n.services.find((s) => s.isEntrypoint) ||
-                n.services.find((s) => s.service === n.repo) ||
-                n.services[0];
-              // up/restart target ONLY the entrypoint's address, so just the main
-              // system's `up` runs (its `make up` orchestrates its own subsystems —
-              // we don't invoke each subsystem's up). down/setup use repo+service.
-              const sysSvc = {
-                address: epSvc ? epSvc.address : n.repo,
-                repo: n.repo,
-                service: epSvc ? epSvc.service : n.repo,
-                commands: epSvc ? epSvc.commands : [],
-                mode: n.mode,
-                repoPath: n.repoPath,
-              };
-              const grpAct = document.createElementNS(ns, "rect");
-              grpAct.setAttribute("x", p.x + NW - 21);
-              grpAct.setAttribute("y", p.y + 28);
-              grpAct.setAttribute("width", 15);
-              grpAct.setAttribute("height", 16);
-              grpAct.setAttribute("rx", "3");
-              grpAct.setAttribute("fill", "transparent");
-              grpAct.setAttribute("pointer-events", "all");
-              grpAct.setAttribute("cursor", "pointer");
-              for (let i = 0; i < 3; i++) {
-                const dc = document.createElementNS(ns, "circle");
-                dc.setAttribute("cx", p.x + NW - 14);
-                dc.setAttribute("cy", p.y + 32 + i * 5);
-                dc.setAttribute("r", "1.5");
-                dc.setAttribute("fill", "var(--muted)");
-                dc.setAttribute("pointer-events", "none");
-                g.appendChild(dc);
-              }
-              grpAct.addEventListener("mouseenter", () =>
-                grpAct.setAttribute("fill", "#8b949e30"),
-              );
-              grpAct.addEventListener("mouseleave", () =>
-                grpAct.setAttribute("fill", "transparent"),
-              );
-              grpAct.addEventListener("click", (e) => {
-                e.stopPropagation();
-                showActionsPopup(sysSvc, grpAct);
-              });
-              g.appendChild(grpAct);
-
-              g.style.cursor = "pointer";
-              g.addEventListener("mouseenter", () =>
-                rect.setAttribute("stroke", color.accent),
-              );
-              g.addEventListener("mouseleave", () =>
-                rect.setAttribute("stroke", color.stroke),
-              );
-              // Selecting opens this system's logs below; deselecting leaves them
-              // up, so a second click only drops the highlight. sysSvc.address is
-              // the entrypoint — n.address is the bare repo on a group card.
-              g.addEventListener("click", (e) => {
-                e.stopPropagation();
-                const wasSelected = _selectedNode === n.address;
-                selectGraphNode(n.address);
-                if (!wasSelected)
-                  openSystemLogs(sysSvc.address, sysSvc.repo, sysSvc.service);
-              });
-            } else {
-              // ── Individual service node ──────────────────────────────────────
-              // Every service gets its own dot: each one declares its own check
-              // in __DEN_MANIFEST_YML__ (web over HTTP, db/jobs by container state), so a
-              // red db shows on the db, not hidden behind a green web.
-              {
-                // Health dot — hover swaps to refresh icon, click reloads
-                const dotG = document.createElementNS(ns, "g");
-                dotG.setAttribute("class", "health-dot-wrap");
-                const dot = document.createElementNS(ns, "circle");
-                dot.setAttribute("cx", p.x + NW - 12);
-                dot.setAttribute("cy", p.y + 14);
-                dot.setAttribute("r", 4);
-                dot.setAttribute("fill", "var(--muted)");
-                dot.setAttribute("class", "health-dot");
-                dotG.appendChild(dot);
-                const refreshIcon = document.createElementNS(ns, "path");
-                refreshIcon.setAttribute(
-                  "d",
-                  "M3 1.5A4.5 4.5 0 0 1 7.5 6H6l2.5 2.5L11 6H9A6 6 0 1 0 3 12",
-                );
-                refreshIcon.setAttribute(
-                  "transform",
-                  `translate(${p.x + NW - 16},${p.y + 10}) scale(0.65)`,
-                );
-                refreshIcon.setAttribute("fill", "none");
-                refreshIcon.setAttribute("stroke", "var(--text)");
-                refreshIcon.setAttribute("stroke-width", "2");
-                refreshIcon.setAttribute("stroke-linecap", "round");
-                refreshIcon.setAttribute("stroke-linejoin", "round");
-                refreshIcon.setAttribute("class", "health-refresh-icon");
-                dotG.appendChild(refreshIcon);
-                const dotHit = document.createElementNS(ns, "rect");
-                dotHit.setAttribute("x", p.x + NW - 20);
-                dotHit.setAttribute("y", p.y + 6);
-                dotHit.setAttribute("width", 16);
-                dotHit.setAttribute("height", 16);
-                dotHit.setAttribute("fill", "transparent");
-                dotHit.setAttribute("cursor", "pointer");
-                dotHit.addEventListener("click", (e) => {
-                  e.stopPropagation();
-                  reloadNodeHealth(n.address);
-                });
-                dotG.appendChild(dotHit);
-                g.appendChild(dotG);
-              }
-
-              // Address label (shifted right for dev-managed to make room for ↗ and >_ icon overlays)
-              const isDev = n.mode === "dev-managed" && n.repoPath;
-              const labelX = isDev ? p.x + 47 : p.x + 10;
-              const maxChars = isDev ? 11 : 16;
-              const label = document.createElementNS(ns, "text");
-              label.setAttribute("x", labelX);
-              label.setAttribute("y", p.y + 20);
-              label.setAttribute("font-size", "11");
-              label.setAttribute("fill", color.accent);
-              label.setAttribute("font-family", "var(--mono)");
-              label.setAttribute("pointer-events", "none");
-              // Inside a multi-service repo's box the box names the repo, so the
-              // node shows its service alone (web, db), not repo/service.
-              const shown =
-                (repoGroups.get(n.repo)?.length ?? 1) > 1
-                  ? n.service
-                  : n.address;
-              label.textContent =
-                shown.length > maxChars
-                  ? shown.slice(0, maxChars - 1) + "…"
-                  : shown;
-              const full = document.createElementNS(ns, "title");
-              full.textContent = n.address;
-              label.appendChild(full);
-              g.appendChild(label);
-
-              // Mode badge
-              const isDen = n.mode === "managed";
-              const pillColor = isDen ? "#a371f7" : color.accent;
-              const pillLabel = isDen ? "__DEN_CLI__" : "dev";
-              const pillW = isDen ? 44 : 30;
-              const pillX = p.x + 10,
-                pillY = p.y + 30;
-              const pillRect = document.createElementNS(ns, "rect");
-              pillRect.setAttribute("x", pillX);
-              pillRect.setAttribute("y", pillY);
-              pillRect.setAttribute("width", pillW);
-              pillRect.setAttribute("height", 14);
-              pillRect.setAttribute("rx", "7");
-              pillRect.setAttribute(
-                "fill",
-                isDen ? "#a371f720" : color.bg + "aa",
-              );
-              pillRect.setAttribute("stroke", pillColor);
-              pillRect.setAttribute("stroke-width", "1");
-              pillRect.setAttribute("pointer-events", "none");
-              g.appendChild(pillRect);
-              const pillText = document.createElementNS(ns, "text");
-              pillText.setAttribute("x", pillX + pillW / 2);
-              pillText.setAttribute("y", pillY + 10);
-              pillText.setAttribute("font-size", "9");
-              pillText.setAttribute("fill", pillColor);
-              pillText.setAttribute("font-family", "var(--mono)");
-              pillText.setAttribute("text-anchor", "middle");
-              pillText.setAttribute("pointer-events", "none");
-              pillText.textContent = pillLabel;
-              g.appendChild(pillText);
-
-              // ⋮ Actions button (logs + commands). Standalone repo cards get it;
-              // grouped subsystem cards do NOT — the collapsed repo card owns the
-              // system-level menu, so subsystems stay action-free.
-              if (!isGrouped) {
-                const actBg = document.createElementNS(ns, "rect");
-                actBg.setAttribute("x", p.x + NW - 21);
-                actBg.setAttribute("y", p.y + 28);
-                actBg.setAttribute("width", 15);
-                actBg.setAttribute("height", 16);
-                actBg.setAttribute("rx", "3");
-                actBg.setAttribute("fill", "transparent");
-                actBg.setAttribute("pointer-events", "all");
-                actBg.setAttribute("cursor", "pointer");
-                for (let i = 0; i < 3; i++) {
-                  const dc = document.createElementNS(ns, "circle");
-                  dc.setAttribute("cx", p.x + NW - 14);
-                  dc.setAttribute("cy", p.y + 32 + i * 5);
-                  dc.setAttribute("r", "1.5");
-                  dc.setAttribute("fill", "var(--muted)");
-                  dc.setAttribute("pointer-events", "none");
-                  g.appendChild(dc);
-                }
-                actBg.addEventListener("mouseenter", () =>
-                  actBg.setAttribute("fill", "#8b949e30"),
-                );
-                actBg.addEventListener("mouseleave", () =>
-                  actBg.setAttribute("fill", "transparent"),
-                );
-                actBg.addEventListener("click", (e) => {
-                  e.stopPropagation();
-                  showActionsPopup(n, actBg);
-                });
-                g.appendChild(actBg);
-              }
-
-              g.style.cursor = "pointer";
-              g.addEventListener("mouseenter", () => {
-                rect.setAttribute("stroke", color.accent);
-                if (isGrouped) rect.setAttribute("fill", color.accent + "50");
-              });
-              g.addEventListener("mouseleave", () => {
-                rect.setAttribute(
-                  "stroke",
-                  isGrouped ? color.accent : color.stroke,
-                );
-                if (isGrouped) rect.setAttribute("fill", color.accent + "2e");
-              });
-
-              // Click selects the card (highlight border + its edges) and opens its
-              // logs in the output panel below. Deselecting leaves the logs up.
-              g.addEventListener("click", (e) => {
-                e.stopPropagation();
-                const wasSelected = _selectedNode === n.address;
-                selectGraphNode(n.address);
-                if (!wasSelected) openSystemLogs(n.address, n.repo, n.service);
-              });
-            }
-
-            viewport.appendChild(g);
-          }
-
-          // ── Collapse strips for expanded groups ────────────────────────────────
-          // Rendered along the top of each expanded repo's bounding box; click collapses.
-          for (const [repo, svcs] of repoGroups) {
-            if (svcs.length <= 1 || !expandedRepos.has(repo)) continue;
-            const color = repoColor(repo);
-            const box = repoBox.get(repo);
-            if (!box) continue;
-
-            const stripX = box.x;
-            const stripW = Math.min(box.w, NW + 2 * CPAD); // cap label strip width
-            const sy = box.y - STRIP_H - STRIP_GAP;
-            const sg = document.createElementNS(ns, "g");
-            sg.style.cursor = "pointer";
-
-            // Transparent fill so it acts as a hit area without covering the container border.
-            const srect = document.createElementNS(ns, "rect");
-            srect.setAttribute("x", stripX);
-            srect.setAttribute("y", sy);
-            srect.setAttribute("width", stripW);
-            srect.setAttribute("height", STRIP_H);
-            srect.setAttribute("rx", "4");
-            srect.setAttribute("fill", "transparent");
-            srect.setAttribute("stroke", "none");
-            sg.appendChild(srect);
-
-            const stext = document.createElementNS(ns, "text");
-            stext.setAttribute("x", stripX + 8);
-            stext.setAttribute("y", sy + STRIP_H - 4);
-            stext.setAttribute("font-size", "10");
-            stext.setAttribute("fill", color.accent);
-            stext.setAttribute("font-family", "var(--mono)");
-            stext.setAttribute("font-weight", "600");
-            stext.setAttribute("pointer-events", "none");
-            stext.textContent =
-              "▾ " + (repo.length > 18 ? repo.slice(0, 17) + "…" : repo);
-            sg.appendChild(stext);
-
-            sg.addEventListener("mouseenter", () =>
-              stext.setAttribute("opacity", "0.75"),
-            );
-            sg.addEventListener("mouseleave", () =>
-              stext.setAttribute("opacity", "1"),
-            );
-            sg.addEventListener("click", () => {
-              collapsedRepos.add(repo);
-              renderDepGraph(_graphServices, _graphDepsMap);
-            });
-
-            viewport.appendChild(sg);
-          }
-
-          // ── Ghost nodes (missing deps) ─────────────────────────────────────────
-          for (const dep of ghostAddrs) {
-            const p = pos.get(dep);
-            if (!p) continue;
-            const g = document.createElementNS(ns, "g");
-            const rect = document.createElementNS(ns, "rect");
-            rect.setAttribute("x", p.x);
-            rect.setAttribute("y", p.y);
-            rect.setAttribute("width", NW);
-            rect.setAttribute("height", NH);
-            rect.setAttribute("rx", "6");
-            rect.setAttribute("fill", "#1a1200");
-            rect.setAttribute("stroke", "var(--yellow)");
-            rect.setAttribute("stroke-width", "1.5");
-            rect.setAttribute("stroke-dasharray", "5 3");
-            g.appendChild(rect);
-            const warn = document.createElementNS(ns, "text");
-            warn.setAttribute("x", p.x + NW - 14);
-            warn.setAttribute("y", p.y + 16);
-            warn.setAttribute("font-size", "12");
-            warn.setAttribute("fill", "var(--yellow)");
-            warn.setAttribute("text-anchor", "middle");
-            warn.textContent = "⚠";
-            g.appendChild(warn);
-            const label = document.createElementNS(ns, "text");
-            label.setAttribute("x", p.x + 10);
-            label.setAttribute("y", p.y + 20);
-            label.setAttribute("font-size", "11");
-            label.setAttribute("fill", "#d29922");
-            label.setAttribute("font-family", "var(--mono)");
-            label.textContent = dep.length > 16 ? dep.slice(0, 15) + "…" : dep;
-            g.appendChild(label);
-            const pr = document.createElementNS(ns, "rect");
-            pr.setAttribute("x", p.x + 10);
-            pr.setAttribute("y", p.y + 30);
-            pr.setAttribute("width", 42);
-            pr.setAttribute("height", 14);
-            pr.setAttribute("rx", "7");
-            pr.setAttribute("fill", "#d2992220");
-            pr.setAttribute("stroke", "var(--yellow)");
-            pr.setAttribute("stroke-width", "1");
-            g.appendChild(pr);
-            const pt = document.createElementNS(ns, "text");
-            pt.setAttribute("x", p.x + 31);
-            pt.setAttribute("y", p.y + 40);
-            pt.setAttribute("font-size", "9");
-            pt.setAttribute("fill", "var(--yellow)");
-            pt.setAttribute("font-family", "var(--mono)");
-            pt.setAttribute("text-anchor", "middle");
-            pt.textContent = "missing";
-            g.appendChild(pt);
-            g.style.cursor = "pointer";
-            g.addEventListener("mouseenter", () => {
-              rect.setAttribute("stroke-width", "2.5");
-            });
-            g.addEventListener("mouseleave", () => {
-              rect.setAttribute("stroke-width", "1.5");
-            });
-            g.addEventListener("click", () => {
-              if (activeWs) {
-                openAddSvcModal(activeWs);
-                // Pre-fill the search with the missing dep name so it's easy to find
-                setTimeout(() => {
-                  const input = document.getElementById(
-                    "add-svc-global-search",
-                  );
-                  if (input) {
-                    input.value = dep;
-                    input.dispatchEvent(new Event("input"));
-                  }
-                }, 50);
-              }
-            });
-            viewport.appendChild(g);
-          }
-
-          // ── Open-in-editor + open-in-terminal icon overlays (above all nodes) ──
-          // Rendered last so SVG z-order puts them on top; not inside node g elements
-          // so clicks never bubble to the node's "open logs" handler.
-          const openIconOverlay = document.createElementNS(ns, "g");
-          for (const n of displayNodes) {
-            if (n.type !== "service" && n.type !== "group") continue;
-            if (!(n.mode === "dev-managed" && n.repoPath)) continue;
-            const p = pos.get(n.address);
-            if (!p) continue;
-            const color = repoColor(n.repo);
-
-            // ── Terminal icon (>_) at p.x+5 — left, consistent with sidebar/config order ──
-            const tg = document.createElementNS(ns, "g");
-            tg.setAttribute("cursor", "pointer");
-            const tHitRect = document.createElementNS(ns, "rect");
-            tHitRect.setAttribute("x", p.x + 5);
-            tHitRect.setAttribute("y", p.y + 6);
-            tHitRect.setAttribute("width", 18);
-            tHitRect.setAttribute("height", 18);
-            tHitRect.setAttribute("rx", "3");
-            tHitRect.setAttribute("fill", "transparent");
-            tHitRect.setAttribute("stroke", "none");
-            tg.appendChild(tHitRect);
-            const tx = p.x + 14,
-              ty = p.y + 15; // center of terminal hit rect
-            // Draw >_ as two SVG paths: chevron + underline bar
-            const chevron = document.createElementNS(ns, "path");
-            chevron.setAttribute(
-              "d",
-              `M ${tx - 5} ${ty - 2.5} L ${tx - 1.5} ${ty} L ${tx - 5} ${ty + 2.5}`,
-            );
-            chevron.setAttribute("stroke", "var(--muted)");
-            chevron.setAttribute("stroke-width", "1.5");
-            chevron.setAttribute("stroke-linecap", "round");
-            chevron.setAttribute("stroke-linejoin", "round");
-            chevron.setAttribute("fill", "none");
-            chevron.setAttribute("pointer-events", "none");
-            tg.appendChild(chevron);
-            const underline = document.createElementNS(ns, "line");
-            underline.setAttribute("x1", tx - 0.5);
-            underline.setAttribute("y1", ty + 3.5);
-            underline.setAttribute("x2", tx + 4.5);
-            underline.setAttribute("y2", ty + 3.5);
-            underline.setAttribute("stroke", "var(--muted)");
-            underline.setAttribute("stroke-width", "1.5");
-            underline.setAttribute("stroke-linecap", "round");
-            underline.setAttribute("pointer-events", "none");
-            tg.appendChild(underline);
-            const termAccent = "#3fb950"; // green — consistent with .ws-term-btn
-            tg.addEventListener("mouseenter", () => {
-              chevron.setAttribute("stroke", termAccent);
-              underline.setAttribute("stroke", termAccent);
-              tHitRect.setAttribute("stroke", termAccent + "44");
-              tHitRect.setAttribute("fill", termAccent + "15");
-            });
-            tg.addEventListener("mouseleave", () => {
-              chevron.setAttribute("stroke", "var(--muted)");
-              underline.setAttribute("stroke", "var(--muted)");
-              tHitRect.setAttribute("stroke", "none");
-              tHitRect.setAttribute("fill", "transparent");
-            });
-            tg.addEventListener("click", (e) => {
-              e.stopPropagation();
-              openInTerminal(n.repoPath);
-            });
-            openIconOverlay.appendChild(tg);
-
-            // ── Editor icon (↗) at p.x+25 — right, after terminal ─────────────
-            const ig = document.createElementNS(ns, "g");
-            ig.setAttribute("cursor", "pointer");
-            const hitRect = document.createElementNS(ns, "rect");
-            hitRect.setAttribute("x", p.x + 25);
-            hitRect.setAttribute("y", p.y + 6);
-            hitRect.setAttribute("width", 18);
-            hitRect.setAttribute("height", 18);
-            hitRect.setAttribute("rx", "3");
-            hitRect.setAttribute("fill", "transparent");
-            hitRect.setAttribute("stroke", "none");
-            ig.appendChild(hitRect);
-            // Draw arrow as a path so it's pixel-perfectly centered — text glyphs
-            // have uneven metrics across fonts and can't be reliably centered.
-            const bx = p.x + 34,
-              by = p.y + 15; // center of hitRect
-            const arrow = document.createElementNS(ns, "path");
-            arrow.setAttribute(
-              "d",
-              `M ${bx - 3.5} ${by + 3.5} L ${bx + 3.5} ${by - 3.5} M ${bx + 0} ${by - 3.5} L ${bx + 3.5} ${by - 3.5} L ${bx + 3.5} ${by + 0}`,
-            );
-            arrow.setAttribute("stroke", "var(--muted)");
-            arrow.setAttribute("stroke-width", "1.5");
-            arrow.setAttribute("stroke-linecap", "round");
-            arrow.setAttribute("stroke-linejoin", "round");
-            arrow.setAttribute("fill", "none");
-            arrow.setAttribute("pointer-events", "none");
-            ig.appendChild(arrow);
-            ig.addEventListener("mouseenter", () => {
-              arrow.setAttribute("stroke", color.accent);
-              hitRect.setAttribute("stroke", color.accent + "44");
-              hitRect.setAttribute("fill", color.accent + "15");
-            });
-            ig.addEventListener("mouseleave", () => {
-              arrow.setAttribute("stroke", "var(--muted)");
-              hitRect.setAttribute("stroke", "none");
-              hitRect.setAttribute("fill", "transparent");
-            });
-            ig.addEventListener("click", (e) => {
-              e.stopPropagation();
-              openInEditor(n.repoPath);
-            });
-            openIconOverlay.appendChild(ig);
-          }
-          viewport.appendChild(openIconOverlay);
-
-          // ── Open-in-browser (globe) at the card's lower right ───────────────
-          // One per card, hidden until health results carry an openUrl for the
-          // selected env (applyHealthToGraph fills href). A collapsed repo card
-          // opens its entrypoint. Shift-click copies the URL instead.
-          const browserOverlay = document.createElementNS(ns, "g");
-          for (const n of displayNodes) {
-            if (n.type !== "service" && n.type !== "group") continue;
-            const p = pos.get(n.address);
-            if (!p) continue;
-            const key =
-              n.type === "group"
-                ? groupDotKeys(n.services)[0] || ""
-                : `${n.repo}/${n.service}`;
-            if (!key) continue;
-            const color = repoColor(n.repo);
-            const a = document.createElementNS(ns, "a");
-            a.setAttribute("class", "open-browser");
-            a.setAttribute("data-open-key", key);
-            a.setAttribute("target", "_blank");
-            a.setAttribute("rel", "noopener");
-            a.style.display = "none";
-            const hit = document.createElementNS(ns, "rect");
-            hit.setAttribute("x", p.x + NW - 42);
-            hit.setAttribute("y", p.y + 29);
-            hit.setAttribute("width", 16);
-            hit.setAttribute("height", 16);
-            hit.setAttribute("rx", "3");
-            hit.setAttribute("fill", "transparent");
-            a.appendChild(hit);
-            const cx = p.x + NW - 34,
-              cy = p.y + 37;
-            const globe = document.createElementNS(ns, "path");
-            globe.setAttribute(
-              "d",
-              `M ${cx - 5} ${cy} a 5 5 0 1 0 10 0 a 5 5 0 1 0 -10 0 ` +
-                `M ${cx} ${cy - 5} a 2.2 5 0 1 0 0 10 a 2.2 5 0 1 0 0 -10 ` +
-                `M ${cx - 5} ${cy} L ${cx + 5} ${cy}`,
-            );
-            globe.setAttribute("stroke", "var(--muted)");
-            globe.setAttribute("stroke-width", "1.2");
-            globe.setAttribute("fill", "none");
-            globe.setAttribute("pointer-events", "none");
-            a.appendChild(globe);
-            const tip = document.createElementNS(ns, "title");
-            a.appendChild(tip);
-            a.addEventListener("mouseenter", () => {
-              globe.setAttribute("stroke", color.accent);
-              hit.setAttribute("fill", color.accent + "15");
-            });
-            a.addEventListener("mouseleave", () => {
-              globe.setAttribute("stroke", "var(--muted)");
-              hit.setAttribute("fill", "transparent");
-            });
-            a.addEventListener("focus", () => {
-              globe.setAttribute("stroke", color.accent);
-            });
-            a.addEventListener("blur", () => {
-              globe.setAttribute("stroke", "var(--muted)");
-            });
-            a.addEventListener("click", (e) => {
-              e.stopPropagation();
-              if (e.shiftKey) {
-                e.preventDefault();
-                navigator.clipboard
-                  ?.writeText(a.getAttribute("href") || "")
-                  .catch(() => {});
-              }
-            });
-            browserOverlay.appendChild(a);
-          }
-          viewport.appendChild(browserOverlay);
-
-          wrap.innerHTML = "";
-          wrap.appendChild(svg);
-          // Re-apply cached health after SVG is in DOM (handles race where
-          // __DEN_CLI__:health-update fired while SVG was being constructed)
-          applyHealthToGraph(_lastHealthResults);
-
-          // ── Fit-to-view + pan/zoom ──────────────────────────────────────────
-          const cW = wrap.clientWidth || 800;
-          const cH = wrap.clientHeight || 600;
-          const scaleToFit = Math.min(
-            1,
-            (cW - 32) / Math.max(svgW, 1),
-            (cH - 32) / Math.max(svgH, 1),
-          );
-          let vx = Math.max(8, (cW - svgW * scaleToFit) / 2);
-          let vy = Math.max(8, (cH - svgH * scaleToFit) / 2);
-          let vscale = scaleToFit;
-
-          function applyTransform() {
-            viewport.setAttribute(
-              "transform",
-              `translate(${vx},${vy}) scale(${vscale})`,
-            );
-          }
-          applyTransform();
-
-          // Clean up any pan handlers from previous render.
-          if (wrap._panCleanup) wrap._panCleanup();
-
-          let isDragging = false,
-            _didPan = false;
-          let dragStartX = 0,
-            dragStartY = 0,
-            dragVX = 0,
-            dragVY = 0;
-
-          const onWheel = (e) => {
-            e.preventDefault();
-            const rect = svg.getBoundingClientRect();
-            // Gentle, magnitude-aware zoom: scale by the wheel delta so a trackpad's
-            // many tiny events and a mouse's big notches both stay controllable
-            // (the old fixed 1.12/0.9 per event compounded into runaway zoom).
-            const target = Math.max(
-              0.12,
-              Math.min(4, vscale * Math.exp(-e.deltaY * 0.0008)),
-            );
-            const factor = target / vscale; // actual factor after clamping (keeps cursor anchored)
-            const mx = e.clientX - rect.left,
-              my = e.clientY - rect.top;
-            vx = mx + (vx - mx) * factor;
-            vy = my + (vy - my) * factor;
-            vscale = target;
-            applyTransform();
-          };
-          const onMouseDown = (e) => {
-            if (e.button !== 0) return;
-            isDragging = true;
-            _didPan = false;
-            dragStartX = e.clientX;
-            dragStartY = e.clientY;
-            dragVX = vx;
-            dragVY = vy;
-            e.preventDefault();
-          };
-          const onMouseMove = (e) => {
-            if (!isDragging) return;
-            const dx = e.clientX - dragStartX,
-              dy = e.clientY - dragStartY;
-            if (Math.abs(dx) + Math.abs(dy) > 4) _didPan = true;
-            vx = dragVX + dx;
-            vy = dragVY + dy;
-            applyTransform();
-          };
-          const onMouseUp = () => {
-            isDragging = false;
-          };
-          const onClickCapture = (e) => {
-            if (_didPan) {
-              e.stopPropagation();
-              _didPan = false;
-            }
-          };
-          // Click on empty graph background clears the selection. Node clicks call
-          // stopPropagation so they never bubble here; a real pan is swallowed by
-          // onClickCapture above, so this only fires on a genuine background click.
-          const onBgClick = () => clearGraphSelection();
-
-          svg.addEventListener("wheel", onWheel, { passive: false });
-          svg.addEventListener("mousedown", onMouseDown);
-          window.addEventListener("mousemove", onMouseMove);
-          window.addEventListener("mouseup", onMouseUp);
-          svg.addEventListener("click", onClickCapture, true);
-          svg.addEventListener("click", onBgClick);
-
-          wrap._panCleanup = () => {
-            svg.removeEventListener("wheel", onWheel);
-            svg.removeEventListener("mousedown", onMouseDown);
-            window.removeEventListener("mousemove", onMouseMove);
-            window.removeEventListener("mouseup", onMouseUp);
-            svg.removeEventListener("click", onClickCapture, true);
-            svg.removeEventListener("click", onBgClick);
-          };
-
-          // Fit button — resets zoom/pan to initial fit-to-view.
-          const fitBtn = document.createElement("button");
-          fitBtn.title = "Fit to view";
-          fitBtn.textContent = "⊞";
-          fitBtn.style.cssText =
-            "position:absolute;bottom:10px;right:10px;z-index:10;" +
-            "background:var(--surface);border:1px solid var(--border);color:var(--muted);" +
-            "cursor:pointer;font-size:14px;padding:2px 6px;border-radius:4px;line-height:1;";
-          fitBtn.addEventListener(
-            "mouseenter",
-            () => (fitBtn.style.color = "var(--text)"),
-          );
-          fitBtn.addEventListener(
-            "mouseleave",
-            () => (fitBtn.style.color = "var(--muted)"),
-          );
-          fitBtn.addEventListener("click", () => {
-            vx = Math.max(8, (wrap.clientWidth - svgW * scaleToFit) / 2);
-            vy = Math.max(8, (wrap.clientHeight - svgH * scaleToFit) / 2);
-            vscale = scaleToFit;
-            applyTransform();
-          });
-          wrap.appendChild(fitBtn);
-
-          // Edge legend — mirrors the CLI: hard (solid) vs soft (dashed) vs event
-          // (dotted) vs missing. Makes the derived edge semantics self-explanatory.
-          const legend = document.createElement("div");
-          legend.style.cssText =
-            "position:absolute;top:8px;left:8px;z-index:10;" +
-            "background:var(--surface);border:1px solid var(--border);border-radius:6px;" +
-            "padding:6px 9px;font-size:10px;font-family:var(--mono);color:var(--muted);" +
-            "line-height:1.7;pointer-events:none;";
-          const legRow = (color, dash, label) =>
-            `<div><span style="display:inline-block;width:20px;border-top:2px ${dash} ${color};vertical-align:middle"></span> ${label}</div>`;
-          legend.innerHTML =
-            legRow("#4d9ee8", "solid", "hard") +
-            legRow("#8b949e", "dashed", "soft") +
-            legRow("#d2a8ff", "dotted", "event") +
-            legRow("var(--yellow)", "dashed", "missing");
-          wrap.appendChild(legend);
-        }
-      }
-
-      // ── Node actions popup ────────────────────────────────────────────────────
-      function showActionsPopup(svc, anchorEl) {
-        const existing = document.getElementById("node-actions-popup");
-        if (existing) {
-          const sameNode = existing.dataset.address === svc.address;
-          existing.remove();
-          if (sameNode) return;
-        }
-
-        const popup = document.createElement("div");
-        popup.id = "node-actions-popup";
-        popup.dataset.address = svc.address;
-
-        const hdr = document.createElement("div");
-        hdr.className = "popup-hdr";
-        hdr.textContent = svc.address;
-        popup.appendChild(hdr);
-
-        const addRow = (label, title, onClick) => {
-          const btn = document.createElement("button");
-          btn.className = "popup-cmd-btn";
-          btn.textContent = label;
-          if (title) btn.title = title;
-          btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            popup.remove();
-            onClick();
-          });
-          popup.appendChild(btn);
-          return btn;
-        };
-        const addDivider = () => {
-          const d = document.createElement("div");
-          d.className = "popup-divider";
-          popup.appendChild(d);
-        };
-
-        // ── Toggles (top) ──────────────────────────────────────────────────────
-        // Auto-start — shows the CURRENT state; click flips it (with a
-        // hard-dependency confirm when turning off a system others need).
-        const isOff = _noAutostartRepos.has(svc.repo);
-        const uncloned = svc.cloned === false;
-        addRow(
-          isOff ? "⏸️ auto-start: off" : "✅ auto-start: on",
-          "start / don't start with workspace",
-          () => toggleAutostart(svc.repo, isOff /* off→turn on, on→turn off */),
+        mountGraph(
+          wrap,
+          {
+            services,
+            health: _lastHealthResults,
+            graph: _graphDerived,
+            apps: _graphApps,
+            orgs: _orgData,
+            depsMap,
+            workspace: document.getElementById("content")?.dataset.ws || "",
+          },
+          GRAPH_HOOKS,
         );
-        // Mode switch — action-labelled: shows the mode you'd switch TO.
-        const toLocal = svc.mode === "managed";
-        addRow(
-          toLocal ? "💻 use: local" : "🪐 use: __DEN_CLI__",
-          toLocal
-            ? "switch to your own local checkout (dev-managed)"
-            : "switch to a managed clone",
-          () => switchMode(svc.repo, toLocal ? "dev-managed" : "managed"),
-        );
-
-        addDivider();
-
-        // ── Commands (canonical lifecycle order first, then the rest) ─────────
-        // Full-color emoji throughout — text dingbats (▶ ⏹ ⚙) render small and
-        // monochrome next to emoji rows.
-        const CMD_ICONS = {
-          up: "🚀",
-          restart: "🔄",
-          down: "🛑",
-          setup: "🔧",
-          preflight: "🧪",
-          seed: "🌱",
-          smoke: "💨",
-        };
-        const CANONICAL = ["up", "restart", "down", "setup"];
-        const cmds = [...(svc.commands || [])].sort((a, b) => {
-          const ia = CANONICAL.indexOf(a),
-            ib = CANONICAL.indexOf(b);
-          return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-        });
-        for (const cmd of cmds) {
-          addRow(`${CMD_ICONS[cmd] ?? "⚡"} ${cmd}`, null, () =>
-            runCmd(svc.address, svc.repo, svc.service, cmd),
-          );
-          // Plain `up` starts ONLY this system. Offer the closure alongside it:
-          // the server derives what this system needs, skips anything already
-          // healthy, and honours auto-start-off for everything but the seed.
-          if (cmd === "up") {
-            addRow(
-              "🚀 up with deps",
-              "Start this system and everything it depends on (already-healthy systems are left alone)",
-              () => runUpWithDeps(svc.repo),
-            );
-          }
-          // Symmetric with "up with deps" — the same closure, torn down in
-          // reverse. Systems outside it that share those foundations are named
-          // in the output rather than being knocked over silently.
-          if (cmd === "down") {
-            addRow(
-              "🛑 down with deps",
-              "Stop this system and the dependencies it was started with, seed first (other systems still using them are called out)",
-              () => runDownWithDeps(svc.repo),
-            );
-          }
-        }
-        if (cmds.length === 0) {
-          const em = document.createElement("div");
-          em.className = "popup-empty";
-          em.textContent = "no commands";
-          popup.appendChild(em);
-        }
-
-        // Logs — pivots to the Logs view with this system's stream opened.
-        // Skipped for an uncloned repo: there is no service to tail, so the row
-        // would open a permanently empty log tab.
-        if (!uncloned) {
-          addRow("📜 logs", null, () => {
-            storeOpenLog(svc.repo, svc.service, "local");
-            window.location.href =
-              "/logs?open=" + encodeURIComponent(svc.repo + "/" + svc.service);
-          });
-        }
-
-        // Sync — managed repos ONLY. These are __DEN_CLI__'s own clones under
-        // __DEN_SERVICES_DIR__/, so pulling them is safe. Deliberately absent (not
-        // disabled) for dev-managed repos: those are the user's own checkouts and
-        // a pull could clobber in-progress work, so offering it at all would be
-        // the wrong affordance.
-        if (svc.mode === "managed") {
-          addDivider();
-          addRow(
-            uncloned ? "⬇ clone" : "⟳ sync",
-            uncloned
-              ? "Clone this repo into __DEN_SERVICES_DIR__/ and run setup. Does NOT start it — use ▶ up"
-              : 'Down, pull latest main, run setup (prompts auto-answered "n"). Does NOT start it — use ▶ up',
-            () => runRepoSync(svc.repo),
-          );
-        }
-
-        // Open in editor — bottom, set off by a divider (dev-managed repos).
-        if (svc.mode === "dev-managed" && svc.repoPath) {
-          addDivider();
-          addRow("📂 open in editor", null, () => openInEditor(svc.repoPath));
-        }
-
-        document.body.appendChild(popup);
-
-        // Position to the right of the anchor; flip left if overflow
-        const r = anchorEl.getBoundingClientRect();
-        popup.style.left = r.right + 6 + "px";
-        popup.style.top = r.top - 4 + "px";
-        requestAnimationFrame(() => {
-          const pr = popup.getBoundingClientRect();
-          if (pr.right > window.innerWidth - 8) {
-            popup.style.left = r.left - pr.width - 6 + "px";
-          }
-        });
       }
 
       // ── Auto-start toggle ─────────────────────────────────────────────────────
@@ -6917,7 +4857,6 @@
 
       // Close popup on any outside click
       document.addEventListener("click", (e) => {
-        document.getElementById("node-actions-popup")?.remove();
         // Close service action dropdowns unless the click was inside one
         if (!e.target.closest(".action-menu-wrap")) {
           document
@@ -6929,7 +4868,7 @@
       // Keep graph health dots in sync with the header's poll / manual refresh
       document.addEventListener("__DEN_CLI__:health-update", (e) => {
         _lastHealthResults = e.detail || [];
-        applyHealthToGraph(_lastHealthResults);
+        graphHealth(_lastHealthResults);
         applyHealthToApps(_lastHealthResults);
       });
 

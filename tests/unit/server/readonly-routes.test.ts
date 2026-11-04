@@ -54,6 +54,39 @@ const deps: ReadonlyRouteDeps = {
     certIssued: true,
     caTrusted: null,
   }),
+  actions: () => [
+    {
+      ts: "2026-11-04T09:00:00.000Z",
+      actor: "user",
+      verb: "exec",
+      detail: "shop/api up (local) [a1]",
+    },
+    {
+      ts: "2026-11-04T09:01:00.000Z",
+      actor: "agent",
+      client: "acme-client",
+      verb: "exec",
+      detail: "shop/worker restart (local) [a2]",
+    },
+    {
+      ts: "2026-11-04T09:02:00.000Z",
+      actor: "user",
+      verb: "exec",
+      detail: "shop-web/web down (local) [a3]",
+    },
+    {
+      ts: "2026-11-04T09:03:00.000Z",
+      actor: "user",
+      verb: "sync",
+      detail: "default · repo=shop · 1 managed repo(s)",
+    },
+    {
+      ts: "2026-11-04T09:04:00.000Z",
+      actor: "user",
+      verb: "run",
+      detail: "smoke/local · modules=all [a4]",
+    },
+  ],
   securityPlan: async (args) => {
     calls.plan.push(args);
     return args.service === "shop/evil"
@@ -203,5 +236,40 @@ describe("/api/security/plan", () => {
     expect((await get("/api/security/plan?env=local&mode=nuke")).status).toBe(
       400,
     );
+  });
+});
+
+describe("/api/activity", () => {
+  it("lists a service's actions, newest first, yours and agents'", async () => {
+    const r = await get("/api/activity?address=shop/worker");
+    expect(r.status).toBe(200);
+    expect(r.json).toEqual({
+      entries: [
+        {
+          ts: "2026-11-04T09:01:00.000Z",
+          actor: "agent",
+          client: "acme-client",
+          verb: "exec",
+          detail: "shop/worker restart (local) [a2]",
+        },
+      ],
+    });
+  });
+
+  it("a repo's activity covers its services and its syncs, not a prefix-named repo", async () => {
+    const r = await get("/api/activity?repo=shop");
+    const details = (r.json as { entries: { detail: string }[] }).entries.map(
+      (e) => e.detail,
+    );
+    expect(details).toEqual([
+      "default · repo=shop · 1 managed repo(s)",
+      "shop/worker restart (local) [a2]",
+      "shop/api up (local) [a1]",
+    ]);
+  });
+
+  it("needs an address or a repo", async () => {
+    expect((await get("/api/activity")).status).toBe(400);
+    expect((await get("/api/activity?repo=a%20b")).status).toBe(400);
   });
 });

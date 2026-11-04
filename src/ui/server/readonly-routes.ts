@@ -6,6 +6,9 @@
  *   /api/edge            what `edge status` shows: up/down, routes, cert names
  *   /api/security/plan   the security CLI's own dry run for ?env&mode&service:
  *                        target discovery and the owned-host check, nothing run
+ *   /api/activity        the audit trail for one service (?address=repo/svc) or
+ *                        repo (?repo=): execs and syncs, yours and agents',
+ *                        newest first (the graph panel's Activity tab)
  *
  * The MCP server's `stacks`, `edge_status` and `run_tests` (its security
  * pre-flight) read these. Collaborators are injectable for tests.
@@ -21,6 +24,7 @@ import {
   type StackStatus,
 } from "../../shared/stacks/status.js";
 import { send400, sendJson } from "./http-helpers.js";
+import { recentActions, type AuditEntry } from "./audit.js";
 
 export interface SecurityPlanArgs {
   env: string;
@@ -42,6 +46,7 @@ export interface ReadonlyRouteDeps {
     stacks: StackStatus[];
   };
   edge: () => EdgeStatus;
+  actions: () => AuditEntry[];
   securityPlan: (args: SecurityPlanArgs) => Promise<SecurityPlanResult>;
 }
 
@@ -57,6 +62,7 @@ export const defaultReadonlyRouteDeps: ReadonlyRouteDeps = {
     };
   },
   edge: () => edgeStatus(readEdgeConfig()),
+  actions: recentActions,
   securityPlan: async ({ env, mode, service }) => {
     // The CLI's own entrypoint in --dry-run: the same discovery, mode
     // ceiling and owned-host check, with no token minted and nothing run.
@@ -76,6 +82,25 @@ export const defaultReadonlyRouteDeps: ReadonlyRouteDeps = {
 };
 
 const SAFE_NAME = /^[A-Za-z0-9._/-]{1,128}$/;
+
+/**
+ * The entries about one service or repo. An exec's detail starts with the
+ * address ("shop/api up (local) [id]"); a sync names its repo ("· repo=shop").
+ */
+export function activityFor(
+  entries: AuditEntry[],
+  target: { address?: string; repo?: string },
+): AuditEntry[] {
+  const matches = (e: AuditEntry): boolean => {
+    if (target.address)
+      return e.verb === "exec" && e.detail.startsWith(target.address + " ");
+    const repo = target.repo ?? "";
+    if (e.verb === "exec") return e.detail.startsWith(repo + "/");
+    if (e.verb === "sync") return e.detail.split(" ").includes(`repo=${repo}`);
+    return false;
+  };
+  return entries.filter(matches).reverse();
+}
 const MODES = ["baseline", "api", "full", "all"];
 
 /** Handles the routes above; false when `pathname` is not one of them. */
@@ -89,6 +114,7 @@ export async function handleReadonlyRoutes(
   if (
     pathname !== "/api/stacks" &&
     pathname !== "/api/edge" &&
+    pathname !== "/api/activity" &&
     pathname !== "/api/security/plan"
   )
     return false;
@@ -125,6 +151,18 @@ export async function handleReadonlyRoutes(
       // No edge configured is a state, not a server error.
       sendJson(res, { configured: false, error: (e as Error).message });
     }
+    return true;
+  }
+
+  if (pathname === "/api/activity") {
+    const address = url.searchParams.get("address") ?? undefined;
+    const repo = url.searchParams.get("repo") ?? undefined;
+    const name = address ?? repo;
+    if (!name || !SAFE_NAME.test(name)) {
+      send400(res, "address or repo is required");
+      return true;
+    }
+    sendJson(res, { entries: activityFor(deps.actions(), { address, repo }) });
     return true;
   }
 

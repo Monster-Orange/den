@@ -1,0 +1,970 @@
+/* Local Dev graph: toolbar, pannable canvas of HTML cards over an SVG edge
+   layer, and the details panel (side panel, pop-up, or a bottom sheet on a
+   phone). Every class is dg-prefixed so the page's own styles never collide. */
+.dg {
+  --dg-raised: #1c2330;
+  --dg-border-strong: #484f58;
+  --dg-faint: #6e7681;
+  --dg-remote: #39c5cf;
+  --dg-event: #bc8cff;
+  --dg-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  min-height: 0;
+  cursor: default;
+  font-family: var(--dg-sans);
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+:where(.dg) button {
+  font: inherit;
+  color: inherit;
+}
+.dg :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* toolbar */
+.dg-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.dg-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dg-ctl > span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.dg-seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.dg-seg button {
+  background: transparent;
+  border: 0;
+  padding: 4px 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.dg-seg button + button {
+  border-left: 1px solid var(--border);
+}
+.dg-seg button[aria-pressed="true"] {
+  background: var(--dg-raised);
+  color: var(--text);
+}
+.dg-seg button:hover {
+  color: var(--text);
+}
+.dg input[type="search"] {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+.dg-bar input[type="search"] {
+  width: 190px;
+}
+.dg-spacer {
+  flex: 1;
+}
+
+/* canvas */
+/* overflow: clip, not hidden: a focused or scrolled-into-view card must never
+   scroll the stage itself (that slid the legend and zoom off their corners). */
+.dg-stage {
+  position: relative;
+  overflow: clip;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+.dg-vp {
+  position: relative;
+  overflow: clip;
+  cursor: grab;
+  min-width: 0;
+  touch-action: none;
+}
+.dg-vp.dragging {
+  cursor: grabbing;
+}
+.dg-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+.dg-world > svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.dg-zoom {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+  z-index: 5;
+}
+.dg-zoom button {
+  background: transparent;
+  border: 0;
+  padding: 5px 10px;
+  cursor: pointer;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+.dg-zoom button + button {
+  border-left: 1px solid var(--border);
+}
+.dg-zoom button:hover {
+  color: var(--text);
+  background: var(--dg-raised);
+}
+.dg-legend {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  font-size: 11.5px;
+  color: var(--muted);
+  z-index: 5;
+  max-width: calc(100% - 210px);
+  pointer-events: none;
+}
+.dg-legend i {
+  display: inline-block;
+  width: 22px;
+  height: 0;
+  border-top: 2px solid;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.dg-msg {
+  padding: 40px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* groups */
+.dg-grp {
+  position: absolute;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+.dg-grp.dg-org {
+  background: color-mix(in srgb, var(--oc) 4%, transparent);
+  border-color: color-mix(in srgb, var(--oc) 45%, var(--border));
+}
+.dg-grp.dg-repo {
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+.dg-grp.dg-repo.has-remote {
+  border-style: dashed;
+}
+.dg-grp.dg-repo.sel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.dg-ghead {
+  position: absolute;
+  left: 14px;
+  right: 10px;
+  top: 9px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.dg-org > .dg-ghead b {
+  color: var(--oc);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dg-ghead .meta {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.dg-ghead .roll {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.dg-lnk {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.dg-lnk:hover {
+  text-decoration: underline;
+}
+.dg-gname {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.dg-gname:hover {
+  text-decoration: underline;
+}
+
+/* cards */
+.dg-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  background: var(--dg-raised);
+  border: 1px solid var(--dg-border-strong);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    opacity 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.dg-card:hover {
+  border-color: var(--accent);
+}
+.dg-card.sel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.dg-card.remote {
+  background: color-mix(in srgb, var(--dg-remote) 6%, var(--bg));
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--dg-remote) 60%, var(--border));
+}
+.dg-card.down {
+  border-color: color-mix(in srgb, var(--red) 70%, var(--border));
+}
+.dg-card .r1 {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.dg-card .r1 .dg-dot {
+  margin-top: 5px;
+}
+.dg-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--dg-faint);
+}
+.dg-dot.ok {
+  background: var(--green);
+}
+.dg-dot.bad {
+  background: var(--red);
+}
+.dg-card .nm {
+  font-weight: 600;
+  font-size: 14.5px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.dg-badge {
+  margin-left: auto;
+  flex: none;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.dg-badge.remote {
+  color: var(--dg-remote);
+  border-color: color-mix(in srgb, var(--dg-remote) 55%, transparent);
+}
+.dg-badge.hybrid {
+  color: var(--yellow);
+  border-color: color-mix(in srgb, var(--yellow) 55%, transparent);
+}
+.dg-card .r2 {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dg-card .r3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 0;
+}
+.dg-card .r3 .h {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.dg-card .r3 .h.bad {
+  color: var(--red);
+}
+.dg-tag {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--muted);
+  flex: none;
+}
+.dg-tag.entry {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+.dg-tag.warn {
+  background: color-mix(in srgb, var(--yellow) 16%, transparent);
+  color: var(--yellow);
+}
+.dg-acts {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.dg-card:hover .dg-acts,
+.dg-card:focus-within .dg-acts,
+.dg-card.sel .dg-acts {
+  opacity: 1;
+}
+.dg-btn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+  text-decoration: none;
+  display: inline-block;
+  white-space: nowrap;
+}
+.dg-btn:hover {
+  border-color: var(--accent);
+}
+.dg-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dg-btn.sm {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.dg-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0d1117;
+  font-weight: 600;
+}
+.dg-btn.primary:hover {
+  filter: brightness(1.1);
+}
+.dg-btn.armed {
+  border-color: var(--red);
+  color: var(--red);
+  font-weight: 600;
+}
+.dg-card.compact {
+  gap: 3px;
+  padding: 8px 10px;
+}
+.dg-card.compact .r1 .dg-dot {
+  margin-top: 4px;
+}
+.dg-card.compact .nm {
+  font-size: 13.5px;
+  -webkit-line-clamp: 1;
+}
+.dg-card.compact .r3,
+.dg-card.compact .dg-acts {
+  display: none;
+}
+.dg-card .sum {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.dg-card .sum .dg-dot {
+  width: 8px;
+  height: 8px;
+}
+.dg .dim {
+  opacity: 0.22;
+}
+.dg-card.hit {
+  box-shadow: 0 0 0 2px var(--yellow);
+}
+
+/* edges */
+path.dg-e {
+  fill: none;
+  stroke: #6e7681;
+  stroke-width: 1.4;
+  transition: opacity 0.15s;
+}
+path.dg-e.hard {
+  stroke: var(--accent);
+  stroke-width: 1.8;
+}
+path.dg-e.soft {
+  stroke: #8b949e;
+  stroke-dasharray: 6 4;
+}
+path.dg-e.event {
+  stroke: var(--dg-event);
+  stroke-dasharray: 2 4;
+}
+path.dg-e.cross {
+  stroke: var(--dg-remote);
+  stroke-width: 2;
+  stroke-dasharray: 9 4;
+}
+path.dg-e.intra {
+  stroke: #8b949e;
+  stroke-width: 1.5;
+}
+path.dg-e.hl {
+  stroke-width: 2.6;
+}
+path.dg-e.dim {
+  opacity: 0.12;
+}
+
+/* panel */
+.dg-panel {
+  position: relative;
+  width: 440px;
+  max-width: 100%;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+  min-height: 0;
+  font-size: 14px;
+}
+.dg-panel[hidden] {
+  display: none !important;
+}
+.dg.dg-modal-back {
+  position: fixed;
+  inset: 0;
+  height: auto;
+  grid-template-rows: none;
+  background: rgb(1 4 9 / 0.6);
+  z-index: 900;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.dg-modal-back .dg-panel {
+  width: min(720px, 100%);
+  max-height: min(86vh, 900px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.5);
+}
+.dg-resize {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 3;
+}
+.dg-resize:hover {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.dg-dh {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border);
+  z-index: 2;
+}
+.dg-crumbs {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.dg-crumbs button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+}
+.dg-crumbs button:hover {
+  text-decoration: underline;
+}
+.dg-dh .t {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.dg-dh h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.dg-dh .dg-badge {
+  margin-left: 0;
+}
+.dg-hbtns {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+}
+.dg-ib {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+.dg-ib:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+.dg-dh .sub {
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.dg-pill {
+  display: inline-block;
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.dg-pill.ok {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 50%, transparent);
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+}
+.dg-pill.bad {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 55%, transparent);
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+}
+.dg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  align-items: center;
+}
+.dg-more {
+  position: relative;
+}
+.dg-menu {
+  position: fixed;
+  overflow-y: auto;
+  min-width: 230px;
+  background: var(--dg-raised);
+  border: 1px solid var(--dg-border-strong);
+  border-radius: 10px;
+  padding: 6px;
+  z-index: 30;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.45);
+}
+.dg-menu[hidden] {
+  display: none;
+}
+.dg-mg + .dg-mg {
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  padding-top: 6px;
+}
+.dg-ml {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--dg-faint);
+  padding: 2px 8px 4px;
+}
+.dg-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.dg-menu button:hover:not(:disabled),
+.dg-menu button:focus-visible {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+.dg-menu button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dg-mg.danger button {
+  color: var(--red);
+}
+.dg-menu button.armed {
+  background: color-mix(in srgb, var(--red) 18%, transparent);
+  font-weight: 600;
+}
+.dg-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 14px -18px -12px;
+  padding: 0 12px;
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+.dg-tabs button {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 9px 10px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.dg-tabs button[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.dg-tabs button:hover {
+  color: var(--text);
+}
+.dg-sec {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.dg-sec h3 {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.dg-sec a {
+  color: var(--accent);
+}
+.dg dl.kv {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 7px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.dg dl.kv dt {
+  color: var(--muted);
+}
+.dg dl.kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dg code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+  overflow-wrap: anywhere;
+}
+.dg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+  font-family: var(--mono);
+  color: var(--text);
+}
+.dg-chip:hover {
+  border-color: var(--accent);
+}
+.dg-chip .dg-dot {
+  width: 7px;
+  height: 7px;
+}
+.dg-none {
+  color: var(--dg-faint);
+  font-size: 13px;
+}
+.dg-muted {
+  color: var(--muted);
+}
+.dg-callout {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed color-mix(in srgb, var(--dg-remote) 60%, transparent);
+  border-radius: 8px;
+  font-size: 13px;
+  background: color-mix(in srgb, var(--dg-remote) 7%, transparent);
+}
+.dg-conn {
+  display: grid;
+  gap: 14px;
+}
+.dg-conn h4 {
+  margin: 0 0 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.dg table.svc {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.dg table.svc td {
+  padding: 7px 4px;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+.dg table.svc td:first-child {
+  width: 14px;
+}
+.dg table.svc .h {
+  color: var(--muted);
+  font-size: 12px;
+}
+.dg table.svc td.a {
+  text-align: right;
+  white-space: nowrap;
+}
+.dg table.svc button.nm {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text);
+}
+.dg table.svc button.nm:hover {
+  color: var(--accent);
+}
+.dg-logbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.dg-logbar input {
+  flex: 1;
+  min-width: 120px;
+}
+.dg pre.dg-log {
+  margin: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre;
+  overflow: auto;
+  min-height: 160px;
+  max-height: 55vh;
+}
+.dg pre.dg-log.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.dg ul.cmds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.dg ul.cmds li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.dg ol.act {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+.dg ol.act li {
+  display: grid;
+  grid-template-columns: 48px auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+}
+.dg ol.act time {
+  color: var(--dg-faint);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.dg ol.act span:last-child {
+  overflow-wrap: anywhere;
+}
+.dg-who {
+  font-size: 11.5px;
+  padding: 0 7px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.dg-who.agent {
+  color: var(--yellow);
+  border-color: color-mix(in srgb, var(--yellow) 55%, transparent);
+}
+.dg-layers span {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  margin-right: 4px;
+}
+.dg-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  background: var(--dg-raised);
+  border: 1px solid var(--dg-border-strong);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  z-index: 950;
+  max-width: calc(100vw - 32px);
+  color: var(--text);
+}
+
+@media (max-width: 760px) {
+  .dg-stage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dg-stage > .dg-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto !important;
+    max-height: 70vh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 14px 14px 0 0;
+    z-index: 800;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -12px 30px rgb(0 0 0 / 0.45);
+  }
+  .dg-stage > .dg-panel .dg-resize {
+    display: none;
+  }
+  .dg-bar input[type="search"] {
+    width: 140px;
+  }
+  .dg-legend {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dg * {
+    transition: none !important;
+  }
+}

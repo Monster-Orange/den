@@ -132,9 +132,12 @@ services:
 
 When `runs` says nothing for the env being viewed:
 
-- `local` if the service has commands there (locally: `commands.local`, or
-  the repo is a compose stack);
-- `remote` if it has an HTTP health URL there and no commands;
+- `local` if the service has commands there. Locally that also covers every
+  service of a repo that runs here: a compose stack, or a repo where any
+  service has `commands.local` (one repo-level `up` starts the others). A
+  remote service inside such a repo says `runs: { local: remote }`;
+- `remote` if it has an HTTP health URL there and nothing in its repo runs
+  there;
 - otherwise `none`: Den knows no runtime for it, and shows no placement.
 
 `target` names where a remote service runs: `env`, an optional `account`
