@@ -1094,7 +1094,9 @@ export function runServiceCommand(
         workspace,
       ];
       onLine(
-        `already running (shared) — owners: [${owners.join(", ")}] at ${resolved.repoPath}`,
+        command === "restart"
+          ? `restarting the running instance (shared) — owners: [${owners.join(", ")}] at ${resolved.repoPath}`
+          : `already running (shared) — owners: [${owners.join(", ")}] at ${resolved.repoPath}`,
       );
       // restart still needs to bounce; only short-circuit pure `up`.
       if (command === "up") {

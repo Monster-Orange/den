@@ -10,7 +10,11 @@
  *   - down honours workspace ownership (refcounted).
  *
  * Events are the route's existing SSE shapes: line, started, service-exited,
- * error, done.
+ * error, done; plus `ready` once a detached start is up: its health check
+ * passes (`checked: true`), or, with no health check, its launcher is still
+ * running after a settle window (`checked: false`). A launcher that keeps
+ * running in the foreground (a dev server) never sends `service-exited`, so
+ * `ready` is how a caller knows the start worked.
  */
 import type { ChildProcess } from "child_process";
 import type { ResolvedService } from "../../shared/types/index.js";
@@ -30,6 +34,17 @@ export function isLifecycleExecCmd(c: string): c is LifecycleExecCmd {
 export interface LifecycleExecDeps {
   run: (o: RunCommandOptions) => RunCommandResult;
   health: (r: ResolvedService) => Promise<ServiceHealthResult>;
+  /** Health poll interval after a detached start (default 1s). */
+  pollMs?: number;
+  /** Stop polling after this long (default 120s). */
+  readyTimeoutMs?: number;
+  /** With no health check: ready after this long still running (default 5s). */
+  settleMs?: number;
+  /**
+   * Restart: a green check counts only after the check went red (the old
+   * instance stopped) or this long has passed (default 5s).
+   */
+  restartMinMs?: number;
 }
 
 export interface LifecycleExecOptions {
@@ -67,6 +82,7 @@ export async function streamLifecycleExec(
   };
 
   let proc: ChildProcess | null = null;
+  let onServiceExitHook: (() => void) | undefined;
   o.onClientClose(() => {
     clientGone = true;
     try {
@@ -101,6 +117,7 @@ export async function streamLifecycleExec(
     },
     onClose: finish,
     onServiceExit: (exitCode) => {
+      onServiceExitHook?.();
       if (clientGone) return;
       emit({
         type: "service-exited",
@@ -128,8 +145,44 @@ export async function streamLifecycleExec(
     return;
   }
   if (result.detachable) {
-    if (result.logPath)
-      emit({ type: "line", text: `→ log: ${result.logPath}` });
+    // The runner has already said where the log is.
     emit({ type: "started", detached: true });
+    watchReady();
+  }
+
+  function watchReady(): void {
+    const pollMs = deps.pollMs ?? 1000;
+    const timeoutMs = deps.readyTimeoutMs ?? 120_000;
+    const settleMs = deps.settleMs ?? 5000;
+    const restartMinMs = deps.restartMinMs ?? 5000;
+    const t0 = Date.now();
+    let exited = false;
+    let sawDown = false;
+    const prevExit = onServiceExitHook;
+    onServiceExitHook = () => {
+      exited = true;
+      prevExit?.();
+    };
+    const tick = async (): Promise<void> => {
+      if (finished || clientGone || exited) return;
+      const elapsed = Date.now() - t0;
+      if (elapsed > timeoutMs) return;
+      const h = await deps.health(resolved).catch(() => null);
+      if (finished || clientGone || exited) return;
+      if (h?.health === "ok") {
+        if (cmd !== "restart" || sawDown || elapsed >= restartMinMs) {
+          emit({ type: "ready", checked: true });
+          return;
+        }
+      } else if (h?.health === "error") {
+        sawDown = true;
+      } else if (elapsed >= settleMs) {
+        // No health check to wait for: still running after the settle window.
+        emit({ type: "ready", checked: false });
+        return;
+      }
+      setTimeout(() => void tick(), pollMs);
+    };
+    setTimeout(() => void tick(), pollMs);
   }
 }

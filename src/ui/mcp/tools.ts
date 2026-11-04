@@ -402,14 +402,19 @@ function lifecycleTool(cmd: LifecycleCmd): DenTool {
           method: "GET",
           maxLines: 2000,
           timeoutMs: 180_000,
-          // A detached `up` keeps streaming the service's log; its launch
-          // script exiting is the hand-off.
-          stopOn: (e) => e.type === "service-exited",
+          // A detached start keeps streaming the service's log. It is done
+          // when the server says it is ready (health green, or still running
+          // with no check), or when its launch script exits (the hand-off).
+          stopOn: (e) => e.type === "ready" || e.type === "service-exited",
         },
       );
+      const ready = r.events.find((e) => e.type === "ready");
       return actionResult(r, 200, {
         service: `${entry.repo}/${entry.service}`,
         cmd,
+        ...(ready
+          ? { ready: true, healthChecked: ready.checked === true }
+          : {}),
       });
     },
   };

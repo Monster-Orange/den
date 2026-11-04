@@ -141,3 +141,100 @@ describe("streamLifecycleExec", () => {
     expect(h.ended()).toBe(1);
   });
 });
+
+describe("ready after a detached start (B1 follow-up)", () => {
+  const timing = {
+    pollMs: 5,
+    readyTimeoutMs: 400,
+    settleMs: 30,
+    restartMinMs: 40,
+  };
+
+  function detached(
+    healthSeq: ("ok" | "error" | "unknown")[],
+    opts: { exit?: number } = {},
+  ) {
+    const events: Record<string, unknown>[] = [];
+    let i = 0;
+    const deps: LifecycleExecDeps = {
+      ...timing,
+      health: async () => {
+        const h = healthSeq[Math.min(i++, healthSeq.length - 1)];
+        return {
+          address: resolved.address,
+          repoName: "shop",
+          subsystem: "web",
+          repoPath: resolved.repoPath,
+          mode: resolved.mode,
+          branch: null,
+          health: h,
+        };
+      },
+      run: (o) => {
+        if (opts.exit !== undefined)
+          setTimeout(() => o.onServiceExit?.(opts.exit!), 10);
+        return {
+          proc: new EventEmitter() as unknown as ChildProcess,
+          detachable: true,
+          interactive: false,
+        };
+      },
+    };
+    return { events, deps };
+  }
+
+  const go = (cmd: "up" | "restart", h: ReturnType<typeof detached>) =>
+    streamLifecycleExec(
+      {
+        resolved,
+        cmd,
+        env: {},
+        emit: (e) => h.events.push(e),
+        end: () => {},
+        onClientClose: () => {},
+      },
+      h.deps,
+    );
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const types = (h: ReturnType<typeof detached>) => h.events.map((e) => e.type);
+
+  it("up: ready once health turns green", async () => {
+    // First reading is the pre-start check (not healthy), then the polls.
+    const h = detached(["error", "error", "error", "ok"]);
+    await go("up", h);
+    await wait(100);
+    expect(types(h)).toEqual(["started", "ready"]);
+    expect(h.events.at(-1)).toMatchObject({ checked: true });
+  });
+
+  it("restart: the old instance's green does not count", async () => {
+    // ok (old) … error (down) … ok (new).
+    const h = detached(["ok", "ok", "error", "ok"]);
+    await go("restart", h);
+    await wait(100);
+    expect(types(h)).toEqual(["started", "ready"]);
+  });
+
+  it("restart: green throughout counts once the restart has had time to bounce", async () => {
+    const h = detached(["ok"]);
+    await go("restart", h);
+    await wait(15);
+    expect(types(h)).toEqual(["started"]);
+    await wait(100);
+    expect(types(h)).toEqual(["started", "ready"]);
+  });
+
+  it("no health check: ready, unchecked, after the settle window", async () => {
+    const h = detached(["unknown"]);
+    await go("up", h);
+    await wait(100);
+    expect(h.events.at(-1)).toMatchObject({ type: "ready", checked: false });
+  });
+
+  it("a launcher that dies first is not ready", async () => {
+    const h = detached(["error"], { exit: 1 });
+    await go("up", h);
+    await wait(100);
+    expect(types(h)).toEqual(["started", "service-exited"]);
+  });
+});

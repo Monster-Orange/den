@@ -17,6 +17,16 @@ config and manifest changes a distribution must make to move to it under
   `already up (healthy)`; `up` attaches to a running shared instance; `down`
   honours workspace ownership. The panel offers Restart whenever a service has
   `up` and `down`.
+- **A detached start says when it is ready.** `/api/service/exec` sends a
+  `ready` event once a detached `up` or `restart` is up: its health check
+  passes (`checked: true`; for a restart, only after the old instance went
+  down or 5s passed), or, with no health check, its launcher is still running
+  after 5s (`checked: false`). MCP `service_up` and `service_restart` return
+  at `ready` (`"ready": true` in the result) instead of waiting for a
+  launcher that runs in the foreground (a dev server) to exit, which ran
+  into the 180s timeout and reported a false failure. A restart of a running
+  shared instance now says `restarting the running instance`, not
+  `already running`, and the log path is printed once.
 - **MCP actions report failure.** `service_up|down|restart`, `run_tests` and
   `workspace_sync` return `isError` with `"failed": true` in the result when
   the command exits non-zero, a detached service's launcher exits non-zero,
@@ -45,7 +55,8 @@ config and manifest changes a distribution must make to move to it under
   `/api/service/exec`, and any MCP action a guard refused before it reached
   the web server. Agents report the latter to `POST /api/activity` (agent
   audit header required; it appends one sanitised entry and nothing else).
-  The panel's Activity tab shows them as refused.
+  The panel's Activity tab shows them as refused. An attempt that named only
+  the repo shows for the repo and for each of its services.
 - **`target.expect` in placement.** `/api/services` and `/api/health` rows'
   `target` now carry `expect` (as declared) when the manifest's target has its
   own `url`.

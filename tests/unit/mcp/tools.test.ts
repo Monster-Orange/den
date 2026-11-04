@@ -240,6 +240,28 @@ describe("lifecycle guards", () => {
     }
   });
 
+  it("a detached restart ends at ready, ok, and the stream stops there", async () => {
+    let stopOn: StreamOpts["stopOn"];
+    const api: DenApi = {
+      baseUrl: "http://localhost:7777",
+      get: async () => SERVICES,
+      stream: async (_p, _q, opts) => {
+        stopOn = opts.stopOn;
+        return {
+          events: [{ type: "started" }, { type: "ready", checked: true }],
+          lines: ["VITE ready"],
+          ended: "stopped",
+        };
+      },
+    };
+    const r = await callTool("service_restart", { repo: "shop" }, ctx(api));
+    expect(r.isError).toBe(false);
+    expect(r.text).toMatch(/"ready": true/);
+    expect(stopOn?.({ type: "ready" })).toBe(true);
+    expect(stopOn?.({ type: "service-exited", exitCode: 0 })).toBe(true);
+    expect(stopOn?.({ type: "line", text: "x" })).toBe(false);
+  });
+
   it("a detached up whose launcher exited 0 is ok", async () => {
     const { api } = fakeApi({
       stream: () => ({

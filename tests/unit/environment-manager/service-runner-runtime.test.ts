@@ -847,6 +847,27 @@ describe("up against a stale daemon record", () => {
     );
   });
 
+  it("restart of a running shared instance says it is restarting it", async () => {
+    registerDaemon(staleRecord);
+    mockListRunningOpctlContainers.mockReturnValue([
+      { name: "repo-abc12345", base: "repo" },
+    ]);
+    const onLine = jest.fn();
+    runServiceCommand({
+      address: "repo/api",
+      command: "restart",
+      onLine,
+      onClose: jest.fn(),
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(onLine).toHaveBeenCalledWith(
+      expect.stringContaining("restarting the running instance"),
+    );
+    expect(onLine).not.toHaveBeenCalledWith(
+      expect.stringContaining("already running"),
+    );
+  });
+
   it("still attaches and short-circuits when the daemon's containers are running", async () => {
     // Second workspace sharing the same checkout — must attach, not respawn.
     mockGetWorkspaceByName.mockImplementation((name: string) => ({

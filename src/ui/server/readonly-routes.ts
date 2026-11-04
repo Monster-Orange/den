@@ -91,11 +91,20 @@ export function activityFor(
   entries: AuditEntry[],
   target: { address?: string; repo?: string },
 ): AuditEntry[] {
+  // A repo-level entry ("core down (local)") is an attempt on the repo
+  // without naming a service, as agents usually do: it shows for the repo
+  // and for each of its services.
+  const repoLevel = (e: AuditEntry, repo: string): boolean =>
+    e.verb === "exec" && e.detail.startsWith(repo + " ");
   const matches = (e: AuditEntry): boolean => {
     if (target.address)
-      return e.verb === "exec" && e.detail.startsWith(target.address + " ");
+      return (
+        (e.verb === "exec" && e.detail.startsWith(target.address + " ")) ||
+        repoLevel(e, target.address.split("/")[0])
+      );
     const repo = target.repo ?? "";
-    if (e.verb === "exec") return e.detail.startsWith(repo + "/");
+    if (e.verb === "exec")
+      return e.detail.startsWith(repo + "/") || repoLevel(e, repo);
     if (e.verb === "sync") return e.detail.split(" ").includes(`repo=${repo}`);
     return false;
   };
