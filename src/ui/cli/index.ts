@@ -202,7 +202,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   restart: {
-    usage: "restart [service...] [-A <app>]",
+    usage: "restart [service...] [-A <app>] [-n|--dry-run]",
     lines: [
       `Restart the given services, or every repo in an application (\`${product().cli} apps\`).`,
     ],
@@ -1349,6 +1349,11 @@ class DenCLI {
        * as part of a workspace or app run is said and skipped.
        */
       named?: readonly string[];
+      /**
+       * `-n`/`--dry-run` (and `--plan` on this path): print what would run,
+       * in order, and run nothing. Read-only on every path.
+       */
+      dryRun?: boolean;
     },
   ): Promise<void> {
     // How long to show startup output before handing control back to the menu
@@ -1387,6 +1392,30 @@ class DenCLI {
         console.log(chalk.red(`\n  ⚠ ${(e as Error).message}\n`));
         return;
       }
+    }
+
+    if (opts?.dryRun) {
+      const unknown = ordered.filter((a) => !resolveService(a, workspace));
+      if (unknown.length > 0) {
+        for (const a of unknown)
+          console.log(
+            chalk.red(
+              `\n  Unknown service "${a}" in workspace "${workspace ?? "default"}".`,
+            ),
+          );
+        process.exitCode = 1;
+        return;
+      }
+      const doing =
+        { up: "starting", down: "stopping", restart: "restarting" }[command] ??
+        `running "${command}" on`;
+      console.log(
+        chalk.cyan(
+          `\n  Would ${command}: ${ordered.join(" → ") || "(nothing)"}`,
+        ),
+      );
+      console.log(chalk.gray(`  (--dry-run: not ${doing} anything)\n`));
+      return;
     }
 
     // Build a catalog + workspace reference once per run for readiness lookups.
@@ -1660,6 +1689,9 @@ class DenCLI {
         }
       });
 
+      // Any target that failed makes the whole command fail (scripts and
+      // agents read the exit code).
+      if (!started) process.exitCode = 1;
       if (plan?.failFast && !started) {
         console.log(
           chalk.red(
@@ -2428,11 +2460,17 @@ class DenCLI {
       await this.runDerivedUp(seed, include, dryRun, plan, pull);
       return;
     }
-    await this.cmdServiceUpManifest(ownArgs.filter((a) => !a.startsWith("-")));
+    await this.cmdServiceUpManifest(
+      ownArgs.filter((a) => !a.startsWith("-")),
+      dryRun || plan,
+    );
   }
 
   /** Legacy: start the given services via manifest depends_on. */
-  private async cmdServiceUpManifest(addresses: string[]): Promise<void> {
+  private async cmdServiceUpManifest(
+    addresses: string[],
+    dryRun = false,
+  ): Promise<void> {
     // Resolve targets BEFORE the secrets preflight — otherwise running
     // `den up` from a non-service dir (e.g. the den repo root) triggers
     // an interactive sign-in just to print "nothing to do".
@@ -2459,9 +2497,10 @@ class DenCLI {
       }
       return;
     }
-    preflightSecrets();
+    if (!dryRun) preflightSecrets();
     await this.runServicesCommand(targets, "up", undefined, {
       named: addresses,
+      dryRun,
     });
   }
 
@@ -2526,16 +2565,18 @@ class DenCLI {
     await this.runServicesCommand(targets, "down", undefined, {
       force,
       named: addresses,
+      dryRun,
     });
   }
 
   private async cmdServiceRestart(argv: string[]): Promise<void> {
     const { app, rest: args } = takeAppFlag(argv);
-    preflightSecrets();
+    const dryRun = args.includes("--dry-run") || args.includes("-n");
+    if (!dryRun) preflightSecrets();
     if (app) {
       const order =
         this.allWorkspaceOrder(focusedAppRepos(app))?.rawOrder ?? [];
-      await this.runServicesCommand(order, "restart");
+      await this.runServicesCommand(order, "restart", undefined, { dryRun });
       return;
     }
     // Drop flag tokens so a bare `den restart --foo` doesn't treat the flag
@@ -2547,6 +2588,7 @@ class DenCLI {
         : this.resolveNoArgServiceTargets("restart");
     await this.runServicesCommand(addresses, "restart", undefined, {
       named: filtered,
+      dryRun,
     });
   }
 

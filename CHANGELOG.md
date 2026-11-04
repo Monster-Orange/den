@@ -39,6 +39,22 @@ config and manifest changes a distribution must make to move to it under
   `validate` warns (never an error) that the held file is not used and can be
   deleted, or turned into `manifests/<repo>.override.yml`.
 
+### Fixed
+
+- **`-n`/`--dry-run` and `--plan` run nothing on every path.** Given a
+  `repo/service` address or an alias, `up` and `down` ignored them and
+  really ran the service (and its dependencies); they now print the order
+  they would run and stop. `restart` accepts `-n`/`--dry-run` too. Tested
+  for each way to name a target: the cwd repo, a repo, an address, an alias,
+  a compose stack name and an app.
+- **A failed or unknown target exits 1.** `up`, `down` and `restart` exited 0
+  when a named service failed or did not exist.
+- **A service with no commands of its own** (its repo's up starts it): `up`
+  runs the repo's up and says so, instead of `command "up" not found`; other
+  commands point at the repo, since they would reach its other services.
+- **`service status`** no longer prints launchctl's errors when the service
+  is not loaded.
+
 ### Migrations
 
 - None required.

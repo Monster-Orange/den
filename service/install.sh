@@ -113,7 +113,12 @@ case "${1:-install}" in
     write_plist -
     ;;
   status)
-    launchctl print "$DOMAIN/$LABEL" | grep -E '^\s*(state|pid|last exit code|runs)' || echo "$LABEL is not loaded"
+    # launchctl's own "Could not find service" is noise when it isn't loaded.
+    if out="$(launchctl print "$DOMAIN/$LABEL" 2>/dev/null)"; then
+      printf '%s\n' "$out" | grep -E '^\s*(state|pid|last exit code|runs)'
+    else
+      echo "$LABEL is not loaded"
+    fi
     ;;
   *) echo "usage: $0 [install|uninstall|status|print]" >&2; exit 2 ;;
 esac

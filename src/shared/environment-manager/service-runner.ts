@@ -1389,6 +1389,33 @@ export function runServiceCommand(
       closeAsync(0);
       return dummy();
     }
+    // A service with no commands of its own is started by its repo's up
+    // (placement's repo-level rule). Up runs that; anything else would
+    // reach the repo's other services too, so it says so instead.
+    const repoEntry = resolveService(resolved.repoName, workspace);
+    const repoCommands =
+      repoEntry && repoEntry.subsystem !== subsystem
+        ? effectiveLocalCommands(
+            manifest,
+            repoEntry.subsystem,
+            resolved.repoName,
+            workspace,
+          )
+        : {};
+    if (repoEntry && repoCommands["up"]) {
+      if (command === "up") {
+        onLine(
+          `${resolved.address} has no up of its own; running ${resolved.repoName}'s up, which starts it`,
+        );
+        return runServiceCommand({ ...options, address: resolved.repoName });
+      }
+      onLine(
+        `Error: ${resolved.address} has no ${command} of its own; it is started by ${resolved.repoName}'s up. ` +
+          `Run \`${product().cli} ${command} ${resolved.repoName}\` (that reaches every service it starts).`,
+      );
+      closeAsync(1);
+      return dummy();
+    }
     onLine(
       `Error: command "${command}" not found for service "${address}" (subsystem "${subsystem}") in local environment`,
     );
