@@ -7,6 +7,7 @@ import {
   caDir,
   includeFiles,
   sharedCa,
+  syncIncluded,
 } from "../../../src/shared/edge/runtime.js";
 import type { EdgeConfig } from "../../../src/shared/edge/types.js";
 
@@ -75,5 +76,66 @@ describe("include", () => {
   });
   it("is empty when nothing is included", () => {
     expect(includeFiles(null)).toEqual([]);
+  });
+});
+
+describe("syncIncluded", () => {
+  const dynOf = (state: string) => path.join(state, "dynamic");
+  const names = (dir: string) => fs.readdirSync(dir).sort();
+  function stateWithRoutes(): string {
+    const state = tmp();
+    fs.mkdirSync(dynOf(state), { recursive: true });
+    for (const f of ["edge.yml", "stack-shop-main.yml", "stack-web-main.yml"])
+      fs.writeFileSync(path.join(dynOf(state), f), "routes");
+    return state;
+  }
+
+  it("never removes running stacks' route files when include is unset", () => {
+    const state = stateWithRoutes();
+    expect(syncIncluded({ ...base, stateDir: state, include: null })).toEqual(
+      [],
+    );
+    expect(names(dynOf(state))).toEqual([
+      "edge.yml",
+      "stack-shop-main.yml",
+      "stack-web-main.yml",
+    ]);
+  });
+
+  it("prunes only files a previous sync copied in", () => {
+    const state = stateWithRoutes();
+    const inc = tmp();
+    fs.writeFileSync(path.join(inc, "tls.yml"), "tls");
+    fs.writeFileSync(path.join(inc, "redirect.yml"), "r");
+    syncIncluded({ ...base, stateDir: state, include: inc });
+    expect(fs.existsSync(path.join(dynOf(state), "redirect.yml"))).toBe(true);
+
+    fs.rmSync(path.join(inc, "redirect.yml"));
+    syncIncluded({ ...base, stateDir: state, include: inc });
+    const left = names(dynOf(state));
+    expect(left).toEqual([
+      "edge.yml",
+      "stack-shop-main.yml",
+      "stack-web-main.yml",
+      "tls.yml",
+    ]);
+
+    // Dropping include entirely removes the copies, still never the stacks'.
+    syncIncluded({ ...base, stateDir: state, include: null });
+    expect(names(dynOf(state))).toEqual([
+      "edge.yml",
+      "stack-shop-main.yml",
+      "stack-web-main.yml",
+    ]);
+  });
+
+  it("never copies or prunes an included file named like a stack route", () => {
+    const state = stateWithRoutes();
+    const inc = tmp();
+    fs.writeFileSync(path.join(inc, "stack-shop-main.yml"), "included");
+    syncIncluded({ ...base, stateDir: state, include: inc });
+    expect(
+      fs.readFileSync(path.join(dynOf(state), "stack-shop-main.yml"), "utf-8"),
+    ).toBe("routes");
   });
 });

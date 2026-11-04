@@ -532,11 +532,8 @@
         envSel.innerHTML = envs
           .map((e) => `<option value="${e}">${e}</option>`)
           .join("");
-        // '__DEN_CLI__-env' matches index.html/logs.html (this page used to save under
-        // 'shop-env', so it kept loading a DIFFERENT env than the rest of the UI).
-        const savedEnv =
-          localStorage.getItem("__DEN_CLI__-env") ??
-          localStorage.getItem("shop-env");
+        // '__DEN_CLI__-env' matches index.html/logs.html.
+        const savedEnv = localStorage.getItem("__DEN_CLI__-env");
         if (savedEnv && envs.includes(savedEnv)) envSel.value = savedEnv;
 
         await Promise.all([

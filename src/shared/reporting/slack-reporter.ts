@@ -3,6 +3,7 @@
  * Sends test results to Slack via webhook
  */
 
+import { readBrand } from "../brand.js";
 import { IncomingWebhook, IncomingWebhookSendArguments } from "@slack/webhook";
 import { readFile } from "fs/promises";
 import { resolve } from "path";
@@ -174,7 +175,7 @@ export class SlackReporter {
     const color = summary.failed === 0 ? "#36a64f" : "#ff9800";
 
     return {
-      username: "Shop E2E Bot",
+      username: `${readBrand().name} E2E`,
       icon_emoji: ":robot_face:",
       channel: this.config?.channel,
       attachments: [
@@ -226,7 +227,7 @@ export class SlackReporter {
               short: true,
             },
           ],
-          footer: "Shop E2E Testing Framework",
+          footer: `${readBrand().name} E2E`,
           ts: Math.floor(Date.now() / 1000).toString(),
         },
       ],
@@ -247,7 +248,7 @@ export class SlackReporter {
     reportUrl?: string,
   ): IncomingWebhookSendArguments {
     return {
-      username: "Shop E2E Bot",
+      username: `${readBrand().name} E2E`,
       icon_emoji: ":robot_face:",
       channel: this.config?.channel,
       attachments: [
@@ -271,7 +272,7 @@ export class SlackReporter {
               short: false,
             },
           ],
-          footer: "Shop E2E Testing Framework",
+          footer: `${readBrand().name} E2E`,
           ts: Math.floor(Date.now() / 1000).toString(),
         },
       ],

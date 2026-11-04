@@ -8,11 +8,16 @@ import {
   buildDenWebUrl,
   denWebUrlAliases,
   hasDenHostsEntry,
+  isDenWebCommand,
   isDenWebTabUrl,
   killWebProcess,
   parseWebCommandArgs,
   resolveDenWebHost,
 } from "../../../src/ui/cli/web-command.js";
+import {
+  addDenUiMarker,
+  hasDenUiMarker,
+} from "../../../src/shared/ui-marker.js";
 
 describe("killWebProcess", () => {
   afterEach(() => jest.restoreAllMocks());
@@ -139,5 +144,38 @@ describe("web command helpers", () => {
       true,
     );
     expect(isDenWebTabUrl("http://localhost:8080/logs.html", 7777)).toBe(false);
+  });
+});
+
+describe("isDenWebCommand", () => {
+  const server = "node --import tsx /code/den/src/ui/server/index.ts --silent";
+  it("matches a server run from the distribution root", () => {
+    expect(
+      isDenWebCommand(
+        "node /dist/acme/node_modules/@monster-orange/den/src/ui/server/index.ts",
+        ["/dist/acme"],
+      ),
+    ).toBe(true);
+  });
+  it("matches a server run from a linked engine checkout (npm i ../den)", () => {
+    expect(isDenWebCommand(server, ["/dist/acme", "/code/den"])).toBe(true);
+  });
+  it("never matches another program", () => {
+    expect(isDenWebCommand("node /code/den/other.js", ["/code/den"])).toBe(
+      false,
+    );
+    expect(isDenWebCommand(server, ["/elsewhere"])).toBe(false);
+  });
+});
+
+describe("the UI page marker", () => {
+  it("is added to served HTML and recognised regardless of the brand's case", () => {
+    const html = addDenUiMarker(
+      "<!doctype html><html><head><title>acme</title></head></html>",
+    );
+    expect(hasDenUiMarker(html)).toBe(true);
+    expect(
+      hasDenUiMarker("<html><head><title>Acme</title></head></html>"),
+    ).toBe(false);
   });
 });

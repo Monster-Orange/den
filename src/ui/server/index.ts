@@ -3080,14 +3080,13 @@ server.listen(PORT, BIND_HOST, () => {
 
   let pkgVersion = "?";
   try {
-    const changelogRaw = fs.readFileSync(enginePath("CHANGELOG.md"), "utf-8");
-    const firstEntry = parseChangelog(changelogRaw)[0];
-    if (firstEntry?.version) pkgVersion = firstEntry.version;
+    const pkg = JSON.parse(
+      fs.readFileSync(enginePath("package.json"), "utf-8"),
+    ) as { version?: string };
+    if (pkg.version) pkgVersion = pkg.version;
   } catch (_e) {
-    /* CHANGELOG.md unreadable — version stays "?" */
+    /* package.json unreadable — version stays "?" */
   }
-
-  const localEnabled = isLocalEnabled();
 
   console.log();
   for (const line of DEN_BANNER_LINES) {
@@ -3095,9 +3094,6 @@ server.listen(PORT, BIND_HOST, () => {
   }
   console.log();
   console.log(`  ${DEN_SUBTITLE.trim()}`);
-  if (localEnabled) {
-    console.log(`  Shop Local-Dev Manager`);
-  }
   console.log(`  v${pkgVersion}`);
   console.log();
   console.log(`  Web UI  →  http://${host}:${PORT}`);

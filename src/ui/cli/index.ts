@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Den — Shop E2E Testing Framework CLI
+ * Den CLI
  * Main entry point for the interactive CLI
  */
 

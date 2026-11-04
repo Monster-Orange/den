@@ -9,6 +9,7 @@ import {
   OP_ACCOUNT_DEFAULT,
 } from "../../shared/constants.js";
 import { getDistRoot, getEngineRoot, getStateDir } from "../../shared/paths.js";
+import { hasDenUiMarker } from "../../shared/ui-marker.js";
 import { engineBin } from "../../shared/engine.js";
 import { readWebPort } from "../../shared/edge/config.js";
 
@@ -276,7 +277,7 @@ async function isDenWebUiReady(port: number): Promise<boolean> {
   return (
     response?.statusCode === 200 &&
     /<html[\s>]/i.test(response.body) &&
-    response.body.includes(product().title)
+    hasDenUiMarker(response.body)
   );
 }
 
@@ -498,12 +499,30 @@ function commandForPid(pid: number): string {
   return result.status === 0 ? result.stdout.trim() : "";
 }
 
-function isDenWebCommand(command: string, root = getDistRoot()): boolean {
+/**
+ * Whether `command` is this Den web server: its entry point, run from one of
+ * `roots` — the distribution root (an npm install lives under it) or the
+ * engine root (a linked checkout, `npm i ../den`, lives outside it).
+ */
+export function isDenWebCommand(
+  command: string,
+  roots: string[] = webRoots(),
+): boolean {
   const hasServerEntrypoint =
     command.includes("src/ui/server/index.ts") ||
     command.includes("dist/src/ui/server/index.js");
   if (!hasServerEntrypoint) return false;
-  return command.includes(path.resolve(root));
+  return roots.some((r) => command.includes(path.resolve(r)));
+}
+
+function webRoots(root: string = getDistRoot()): string[] {
+  const roots = [root];
+  try {
+    roots.push(getEngineRoot());
+  } catch {
+    /* no engine root found: the distribution root alone */
+  }
+  return roots;
 }
 
 async function waitForPortRelease(port: number): Promise<boolean> {
@@ -538,13 +557,13 @@ function findDenWebPids(port: number): number[] {
   const state = readWebServerState();
   if (state?.port === port && state.pid) {
     const command = commandForPid(state.pid);
-    if (command && isDenWebCommand(command, state.root || root)) {
+    if (command && isDenWebCommand(command, webRoots(state.root || root))) {
       pids.add(state.pid);
     }
   }
 
   for (const pid of listListeningPids(port)) {
-    if (isDenWebCommand(commandForPid(pid), root)) {
+    if (isDenWebCommand(commandForPid(pid), webRoots(root))) {
       pids.add(pid);
     }
   }
@@ -608,11 +627,12 @@ function recordRunningDenWebServer(port: number): void {
   const state = readWebServerState();
   if (state?.port === port && state.pid) {
     const command = commandForPid(state.pid);
-    if (command && isDenWebCommand(command, state.root || root)) return;
+    if (command && isDenWebCommand(command, webRoots(state.root || root)))
+      return;
   }
 
   const pids = listListeningPids(port).filter((pid) =>
-    isDenWebCommand(commandForPid(pid), root),
+    isDenWebCommand(commandForPid(pid), webRoots(root)),
   );
   const pid = pids[0];
   if (!pid) return;

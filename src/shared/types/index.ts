@@ -1,5 +1,5 @@
 /**
- * Shared TypeScript types for the Shop E2E Testing Framework
+ * Shared TypeScript types for Den
  */
 
 export interface EnvironmentConfig {

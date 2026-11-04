@@ -183,18 +183,46 @@ export function includeFiles(dir: string | null): string[] {
 }
 
 /**
+ * Names the last sync copied in. Kept in the state dir, outside dynamic/,
+ * so the watching Traefik never reads it.
+ */
+const INCLUDED_LEDGER = "included.json";
+
+/** Files other writers own in the dynamic directory: never copied over or pruned. */
+const isOwnedElsewhere = (f: string): boolean =>
+  f === GENERATED || /^stack-.*\.ya?ml$/.test(f);
+
+function readLedger(stateDir: string): string[] {
+  try {
+    const v: unknown = JSON.parse(
+      fs.readFileSync(path.join(stateDir, INCLUDED_LEDGER), "utf-8"),
+    );
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return []; // no ledger yet: nothing is known to be ours, so prune nothing
+  }
+}
+
+/**
  * Copy the included files beside the generated one, then drop copies whose
- * source is gone. New files land before stale ones go, so the watching
- * Traefik never sees a gap.
+ * source is gone. Only files a previous sync copied in (its ledger) are ever
+ * removed: stacks write their own route files (stack-*.yml) into the same
+ * directory, and those belong to the running stacks. New files land before
+ * stale ones go, so the watching Traefik never sees a gap.
  */
 export function syncIncluded(cfg: EdgeConfig): string[] {
   const dyn = path.join(cfg.stateDir, "dynamic");
   fs.mkdirSync(dyn, { recursive: true });
-  const files = includeFiles(cfg.include);
+  const files = includeFiles(cfg.include).filter((f) => !isOwnedElsewhere(f));
   for (const f of files)
     fs.copyFileSync(path.join(cfg.include!, f), path.join(dyn, f));
-  for (const f of includeFiles(dyn))
-    if (!files.includes(f)) fs.rmSync(path.join(dyn, f), { force: true });
+  for (const f of readLedger(cfg.stateDir))
+    if (!files.includes(f) && !isOwnedElsewhere(f) && !f.includes("/"))
+      fs.rmSync(path.join(dyn, f), { force: true });
+  fs.writeFileSync(
+    path.join(cfg.stateDir, INCLUDED_LEDGER),
+    JSON.stringify(files, null, 2) + "\n",
+  );
   return files;
 }
 

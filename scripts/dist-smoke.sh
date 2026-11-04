@@ -14,7 +14,7 @@ set -euo pipefail
 
 DEN="$(cd "$(dirname "$0")/.." && pwd)"
 BASE="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
-WORK="$(mktemp -d "${BASE%/}/den-dist-smoke.XXXXXX")"
+WORK="$(cd "$(mktemp -d "${BASE%/}/den-dist-smoke.XXXXXX")" && pwd -P)"
 DIST="$WORK/acme"
 export ACME_HOME="$WORK/acme-home"
 PORT=""
@@ -30,6 +30,14 @@ bad() {
 stop_web() {
   if [ -n "$PORT" ] && [ -x "$DIST/bin/acme" ]; then
     (cd "$DIST" && ./bin/acme web down --port "$PORT" >/dev/null 2>&1) || true
+  fi
+  # Fallback: a server this run started (cwd under $WORK) still on the port.
+  if [ -n "$PORT" ]; then
+    for pid in $(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null); do
+      case "$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')" in
+        "$WORK"/*) kill "$pid" 2>/dev/null || true ;;
+      esac
+    done
   fi
 }
 trap stop_web EXIT
@@ -155,7 +163,40 @@ if [ -f "$WEB_LOG" ]; then
     head -20 "$WORK/web-warn.txt" | sed 's/^/       /'
   else ok "web server log is clean"; fi
 else bad "no web log under ACME_HOME"; fi
+expect_in "page carries the UI marker" "$WORK/page.html" '<meta name="den-ui" content="1">'
+expect_in "web log shows Den's version" "$WEB_LOG" "v$(node -p "require('$DEN/package.json').version")"
+expect_not_in "web log shows no example name" "$WEB_LOG" "Shop"
+run web-restart ./bin/acme web restart --no-open --port "$PORT"
 run web-down ./bin/acme web down --port "$PORT"
+port_free() { ! (lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1); }
+if port_free "$PORT"; then
+  ok "web down frees the port"
+  PORT=""
+else bad "web down left port $PORT listening"; fi
+stop_web # anything still on the port (a failed down) is stopped here
+PORT=""
+
+say "linked engine checkout (npm i <den checkout>)"
+LINKED="$WORK/linked"
+cp -R "$DEN/examples/distribution" "$LINKED"
+(cd "$LINKED" && npm install --no-audit --no-fund --silent "$DEN") >"$WORK/linked-install.out" 2>&1 ||
+  {
+    cat "$WORK/linked-install.out"
+    exit 1
+  }
+[ -L "$LINKED/node_modules/@monster-orange/den" ] && ok "engine is a link to the checkout" ||
+  bad "engine is not linked"
+PORT="$(node -e 'const s=require("net").createServer();s.listen(0,"localhost",()=>{console.log(s.address().port);s.close()})')"
+DIST_SAVED="$DIST"
+DIST="$LINKED"
+run linked-web-up ./bin/acme web up --no-open --port "$PORT"
+run linked-web-down ./bin/acme web down --port "$PORT"
+if port_free "$PORT"; then
+  ok "linked: web down frees the port"
+  PORT=""
+else bad "linked: web down left port $PORT listening"; fi
+stop_web
+DIST="$DIST_SAVED"
 PORT=""
 
 echo

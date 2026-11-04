@@ -483,9 +483,9 @@ export function readSecurityAutoTargets(
 // ── Release config (Release tab) ──────────────────────────────────────────────
 
 /**
- * Built-in release defaults — Globex' deploy workflows, all disabled
- * until their dispatch inputs are verified. Team edits layer over this via
- * config/den.yml `release:`, personal edits via config/local/user.yml.
+ * Built-in release defaults: no environments or repos, deploys off. The org
+ * config's `release:` layers over this, personal edits via
+ * config/local/user.yml.
  */
 export const DEFAULT_RELEASE_CONFIG: ReleaseConfig = {
   deploy: false,

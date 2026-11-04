@@ -10,6 +10,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { brandHtmlTitle, readBrand } from "../../shared/brand.js";
 import { fillProductTokens } from "../../shared/product.js";
+import { addDenUiMarker } from "../../shared/ui-marker.js";
 
 // ── MIME types ────────────────────────────────────────────────────────────────
 
@@ -72,7 +73,7 @@ export function serveFile(res: http.ServerResponse, filePath: string): void {
     if (filePath.endsWith(".html") || filePath.endsWith(".js"))
       data = fillProductTokens(data.toString("utf-8"));
     if (filePath.endsWith(".html"))
-      data = brandHtmlTitle(String(data), readBrand());
+      data = addDenUiMarker(brandHtmlTitle(String(data), readBrand()));
     const headers: Record<string, string> = { "Content-Type": mime(filePath) };
     // App code must never be stale (no ETag/Last-Modified validators are sent,
     // so any heuristic caching would have no way to revalidate).
