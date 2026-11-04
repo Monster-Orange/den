@@ -20,9 +20,13 @@ export interface AuditEntry {
   clientVersion?: string;
   mcpPid?: number | null;
   session?: string;
-  /** exec | run | sync */
+  /** exec | run | sync, or the MCP tool name for a refused non-lifecycle call */
   verb: string;
   detail: string;
+  /** Set when the action never ran: a guard or the server refused it. */
+  outcome?: "refused";
+  /** Why it was refused (first line). */
+  reason?: string;
 }
 
 type Sink = (line: string, actor: AgentActor | null) => void;
@@ -43,7 +47,12 @@ export function actorSuffix(actor: Actor): string {
 
 export function recordAction(
   actor: Actor,
-  action: { verb: string; detail: string },
+  action: {
+    verb: string;
+    detail: string;
+    outcome?: "refused";
+    reason?: string;
+  },
 ): AuditEntry {
   const entry: AuditEntry = {
     ts: new Date().toISOString(),
@@ -58,11 +67,68 @@ export function recordAction(
       : {}),
     verb: action.verb,
     detail: action.detail,
+    ...(action.outcome ? { outcome: action.outcome } : {}),
+    ...(action.reason ? { reason: clean(action.reason, 300) } : {}),
   };
   ring.push(entry);
   if (ring.length > RING_MAX) ring.shift();
-  sink?.(`▶ ${action.verb} ${action.detail}${actorSuffix(actor)}`, actor);
+  const mark = entry.outcome === "refused" ? "✗" : "▶";
+  const why = entry.reason ? ` — refused: ${entry.reason}` : "";
+  sink?.(
+    `${mark} ${action.verb} ${action.detail}${why}${actorSuffix(actor)}`,
+    actor,
+  );
   return entry;
+}
+
+/** One line, printable characters only, at most `max` long. */
+function clean(v: unknown, max: number): string {
+  const line = String(v ?? "").split(/[\r\n]/)[0];
+  return [...line]
+    .filter((c) => c.charCodeAt(0) >= 0x20 && c.charCodeAt(0) !== 0x7f)
+    .join("")
+    .slice(0, max);
+}
+
+const SAFE_PART = /^[A-Za-z0-9._-]{1,128}$/;
+const LIFECYCLE_TOOL = /^service_(up|down|restart)$/;
+
+/**
+ * An MCP guard refused an agent's call before it reached an action route.
+ * The agent's own report, so every field is sanitised: a lifecycle tool with
+ * a valid repo becomes an "exec" entry for that service (what the panel's
+ * activity list shows); anything else is recorded under the tool's name.
+ */
+export function recordAgentRefusal(
+  actor: Actor,
+  report: {
+    tool?: unknown;
+    repo?: unknown;
+    service?: unknown;
+    reason?: unknown;
+  },
+): AuditEntry {
+  const tool = clean(report.tool, 64).replace(/[^A-Za-z0-9_]/g, "") || "tool";
+  const repo = typeof report.repo === "string" ? report.repo : "";
+  const service = typeof report.service === "string" ? report.service : "";
+  const lifecycle = LIFECYCLE_TOOL.exec(tool);
+  const reason = clean(report.reason, 300) || "refused";
+  if (lifecycle && SAFE_PART.test(repo)) {
+    const address =
+      service && SAFE_PART.test(service) ? `${repo}/${service}` : repo;
+    return recordAction(actor, {
+      verb: "exec",
+      detail: `${address} ${lifecycle[1]} (local)`,
+      outcome: "refused",
+      reason,
+    });
+  }
+  return recordAction(actor, {
+    verb: tool,
+    detail: "",
+    outcome: "refused",
+    reason,
+  });
 }
 
 /** The most recent actions, oldest first. */

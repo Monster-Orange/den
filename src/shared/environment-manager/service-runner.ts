@@ -1063,7 +1063,7 @@ export function runServiceCommand(
     resolved.address,
     servicePlacement(readManifest(repoPath), subsystem, "local"),
     (e) => isProductionEnv(e) === true,
-    command === "down" ? "stop" : "start",
+    command,
   );
   if (refusal) {
     onLine(refusal);

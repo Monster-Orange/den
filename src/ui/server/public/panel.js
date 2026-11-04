@@ -54,6 +54,9 @@ const repoEntry = (r) => entryOf(C.model(), r.repo);
 const anyHere = (r) => r.services.some(runsHere);
 const LIFECYCLE = ["up", "down", "restart"];
 
+/** Restart is the declared command, or down + up when both exist (as the CLI). */
+const canRestart = (s) => has(s, "restart") || (has(s, "up") && has(s, "down"));
+
 export const ACTIONS = [
   // ── service ──
   {
@@ -97,7 +100,7 @@ export const ACTIONS = [
     label: "Restart",
     for: ["service"],
     tier: "common",
-    when: (s) => runsHere(s) && has(s, "restart"),
+    when: (s) => runsHere(s) && canRestart(s),
     run: (s) => C.hooks.runCmd(s, "restart"),
   },
   {
@@ -133,7 +136,7 @@ export const ACTIONS = [
     label: "Restart",
     for: ["repo"],
     tier: "common",
-    when: (r) => runsHere(repoEntry(r)) && has(repoEntry(r), "restart"),
+    when: (r) => runsHere(repoEntry(r)) && canRestart(repoEntry(r)),
     run: (r) => C.hooks.runCmd(repoEntry(r), "restart"),
   },
   {
@@ -778,7 +781,7 @@ function activityList(x) {
     .then(({ entries = [] }) => {
       if (!live) return;
       el.innerHTML = entries.length
-        ? `<ol class="act">${entries.map((a) => `<li><time datetime="${esc(a.ts)}">${esc(hhmm(a.ts))}</time><span class="dg-who ${a.actor === "agent" ? "agent" : ""}">${esc(a.actor === "agent" ? "[agent]" + (a.client ? " " + a.client : "") : "you")}</span><span>${esc(a.verb)} ${esc(a.detail)}</span></li>`).join("")}</ol>`
+        ? `<ol class="act">${entries.map((a) => `<li><time datetime="${esc(a.ts)}">${esc(hhmm(a.ts))}</time><span class="dg-who ${a.actor === "agent" ? "agent" : ""}">${esc(a.actor === "agent" ? "[agent]" + (a.client ? " " + a.client : "") : "you")}</span><span>${esc(a.verb)} ${esc(a.detail)}${a.outcome === "refused" ? ` <em class="refused">refused: ${esc(a.reason || "")}</em>` : ""}</span></li>`).join("")}</ol>`
         : none(
             "No actions yet. Starts, restarts and syncs, yours and agents', show here.",
           );

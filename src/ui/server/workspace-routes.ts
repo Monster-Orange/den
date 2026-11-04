@@ -1490,7 +1490,7 @@ export async function handleWorkspaceRoutes(
             "local",
           ),
           () => false,
-          cmd === "down" ? "stop" : "start",
+          cmd,
         );
         if (remote) {
           emit({ type: "line", text: `  ${remote}` });

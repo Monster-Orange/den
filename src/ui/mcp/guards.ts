@@ -61,7 +61,10 @@ export function runsLocally(entry: ServiceEntryLike): boolean {
   return entry.commands.includes("up");
 }
 
-export function assertRunsLocally(entry: ServiceEntryLike): void {
+export function assertRunsLocally(
+  entry: ServiceEntryLike,
+  command: string = "up",
+): void {
   const address = `${entry.repo ?? "?"}/${entry.service ?? "?"}`;
   if (entry.runs === "remote")
     throw new Refusal(
@@ -69,7 +72,8 @@ export function assertRunsLocally(entry: ServiceEntryLike): void {
         address,
         { runs: "remote", target: entry.target ?? null },
         (e) => isProductionEnv(e),
-      ) ?? `${address} runs remotely; nothing to start here`,
+        command,
+      ) ?? `${address} runs remotely; nothing to ${command} here`,
     );
   if (!runsLocally(entry))
     throw new Refusal(

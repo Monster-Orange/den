@@ -30,6 +30,7 @@ interface Call {
   method?: string;
   path: string;
   query?: Query;
+  body?: unknown;
 }
 
 const SERVICES = [
@@ -63,13 +64,20 @@ function fakeApi(
   over: {
     get?: (path: string, query?: Query) => unknown;
     lines?: string[];
+    stream?: () => Awaited<ReturnType<DenApi["stream"]>>;
   } = {},
 ): { api: DenApi; calls: Call[] } {
   const calls: Call[] = [];
   const api: DenApi = {
     baseUrl: "http://localhost:7777",
-    async get(path, query, method) {
-      calls.push({ kind: "get", path, query, method });
+    async get(path, query, method, body) {
+      calls.push({
+        kind: "get",
+        path,
+        query,
+        method,
+        ...(body !== undefined ? { body } : {}),
+      });
       if (over.get) return over.get(path, query);
       if (path === "/api/services") return SERVICES;
       if (path === "/api/security/plan")
@@ -78,6 +86,7 @@ function fakeApi(
     },
     async stream(path, query, opts: StreamOpts) {
       calls.push({ kind: "stream", path, query, method: opts.method });
+      if (over.stream) return over.stream();
       return {
         events: [{ type: "done", exitCode: 0 }],
         lines: over.lines ?? ["ok"],
@@ -101,6 +110,9 @@ function ctx(api: DenApi, c: ResolvedMcpConfig = cfg()): ToolContext {
 }
 
 const streams = (calls: Call[]) => calls.filter((c) => c.kind === "stream");
+/** Every call except the refusal report to POST /api/activity. */
+const beyondReport = (calls: Call[]) =>
+  calls.filter((c) => c.path !== "/api/activity");
 
 describe("tool registration", () => {
   it("with no mcp: block, only the read tools", () => {
@@ -143,7 +155,7 @@ describe("lifecycle guards", () => {
     );
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/local only/i);
-    expect(calls).toEqual([]);
+    expect(beyondReport(calls)).toEqual([]);
   });
 
   it("refuses a service with no local up command", async () => {
@@ -189,8 +201,71 @@ describe("lifecycle guards", () => {
       const { api, calls } = fakeApi({ get: () => remote });
       const r = await callTool(tool, { repo: "core" }, ctx(api));
       expect(r.isError).toBe(true);
-      expect(r.text).toMatch(/runs in dev \(AWS\); nothing to st/);
+      const verb = {
+        service_up: "start",
+        service_down: "stop",
+        service_restart: "restart",
+      }[tool];
+      expect(r.text).toMatch(`runs in dev (AWS); nothing to ${verb} here`);
       expect(streams(calls)).toEqual([]);
+    }
+  });
+
+  // B2: a failed command must not come back ok.
+  it.each([
+    [
+      "a non-zero exit",
+      {
+        events: [{ type: "done", exitCode: 1 }],
+        lines: ["boom"],
+        ended: "done" as const,
+        exitCode: 1,
+      },
+    ],
+    [
+      "a service that died after detaching",
+      {
+        events: [{ type: "started" }, { type: "service-exited", exitCode: 1 }],
+        lines: ["EADDRINUSE"],
+        ended: "stopped" as const,
+      },
+    ],
+    ["a timeout", { events: [], lines: [], ended: "timeout" as const }],
+  ])("reports %s as an error", async (_why, result) => {
+    for (const tool of ["service_up", "service_down", "service_restart"]) {
+      const { api } = fakeApi({ stream: () => result });
+      const r = await callTool(tool, { repo: "shop" }, ctx(api));
+      expect(r.isError).toBe(true);
+      expect(r.text).toMatch(/"failed": true/);
+    }
+  });
+
+  it("a detached up whose launcher exited 0 is ok", async () => {
+    const { api } = fakeApi({
+      stream: () => ({
+        events: [{ type: "started" }, { type: "service-exited", exitCode: 0 }],
+        lines: ["ready"],
+        ended: "stopped",
+      }),
+    });
+    const r = await callTool("service_up", { repo: "shop" }, ctx(api));
+    expect(r.isError).toBe(false);
+  });
+
+  it("run_tests and workspace_sync report a non-zero exit as an error", async () => {
+    const failed = () => ({
+      events: [{ type: "done", exitCode: 2 }],
+      lines: ["1 failed"],
+      ended: "done" as const,
+      exitCode: 2,
+    });
+    for (const [tool, args] of [
+      ["run_tests", { pillar: "smoke", env: "local" }],
+      ["workspace_sync", {}],
+    ] as const) {
+      const { api } = fakeApi({ stream: failed });
+      const r = await callTool(tool, args, ctx(api));
+      expect(r.isError).toBe(true);
     }
   });
 
@@ -209,6 +284,52 @@ describe("lifecycle guards", () => {
   });
 });
 
+describe("refusals reach the activity trail (F2)", () => {
+  it("an action refused by a guard is reported to POST /api/activity", async () => {
+    const { api, calls } = fakeApi();
+    const r = await callTool(
+      "service_restart",
+      { repo: "shop", service: "worker" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(true);
+    const report = calls.find((c) => c.path === "/api/activity");
+    expect(report).toMatchObject({ kind: "get", method: "POST" });
+    expect(report?.body).toMatchObject({
+      tool: "service_restart",
+      repo: "shop",
+      service: "worker",
+      reason: expect.stringMatching(/not run locally/),
+    });
+  });
+
+  it("a read tool's error is not reported", async () => {
+    const { api, calls } = fakeApi({
+      get: () => {
+        throw new Refusal("nope");
+      },
+    });
+    await callTool("status", {}, ctx(api));
+    expect(calls.find((c) => c.path === "/api/activity")).toBeUndefined();
+  });
+
+  it("a failed report never changes the tool's answer", async () => {
+    const { api } = fakeApi({
+      get: (path) => {
+        if (path === "/api/activity") throw new Error("server gone");
+        return SERVICES;
+      },
+    });
+    const r = await callTool(
+      "service_up",
+      { repo: "shop", env: "dev" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/local only/i);
+  });
+});
+
 describe("run_tests guards", () => {
   it("refuses production, even when listed in run_tests.envs", async () => {
     const { api, calls } = fakeApi();
@@ -222,7 +343,7 @@ describe("run_tests guards", () => {
       expect(r.isError).toBe(true);
       expect(r.text).toMatch(/production/i);
     }
-    expect(calls).toEqual([]);
+    expect(beyondReport(calls)).toEqual([]);
   });
 
   it("refuses an env not in mcp.run_tests.envs", async () => {
@@ -234,7 +355,7 @@ describe("run_tests guards", () => {
     );
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/run_tests\.envs/);
-    expect(calls).toEqual([]);
+    expect(beyondReport(calls)).toEqual([]);
   });
 
   it("refuses security mode full off local", async () => {
@@ -247,7 +368,7 @@ describe("run_tests guards", () => {
     );
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/full.*local only/i);
-    expect(calls).toEqual([]);
+    expect(beyondReport(calls)).toEqual([]);
   });
 
   it("refuses a security run whose target is not in security.owned_hosts", async () => {
@@ -271,7 +392,9 @@ describe("run_tests guards", () => {
     );
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/not an owned host/);
-    expect(calls.map((c) => c.path)).toEqual(["/api/security/plan"]);
+    expect(beyondReport(calls).map((c) => c.path)).toEqual([
+      "/api/security/plan",
+    ]);
     expect(calls[0].query).toEqual({
       env: "local",
       mode: "baseline",
@@ -337,7 +460,7 @@ describe("logs", () => {
     );
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/mcp\.logs\.remote/);
-    expect(calls).toEqual([]);
+    expect(beyondReport(calls)).toEqual([]);
     const s = await callTool(
       "logs_search",
       { q: "error", targets: ["shop/api"], env: "dev" },

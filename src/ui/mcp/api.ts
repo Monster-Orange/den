@@ -58,6 +58,8 @@ const READ_ROUTES = new Set([
 
 /** Action routes and their method. Anything else is never reached. */
 const ACTION_ROUTES: Record<string, string> = {
+  // A refusal report: appends one entry to the activity trail, nothing more.
+  "/api/activity": "POST",
   "/api/service/exec": "GET",
   "/api/run": "GET",
   "/api/workspace/sync": "POST",

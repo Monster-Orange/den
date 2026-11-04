@@ -13,6 +13,7 @@ import {
 import {
   recentActions,
   recordAction,
+  recordAgentRefusal,
   setAuditSink,
 } from "../../../src/ui/server/audit.js";
 
@@ -93,5 +94,55 @@ describe("recordAction", () => {
     const entry = recordAction(null, { verb: "run", detail: "smoke/local" });
     expect(entry.actor).toBe("user");
     expect(lines).toEqual(["▶ run smoke/local"]);
+  });
+});
+
+describe("refusals are recorded too (F2)", () => {
+  it("a refused action is an entry with outcome refused", () => {
+    const e = recordAction(null, {
+      verb: "exec",
+      detail: "shop/api restart (local)",
+      outcome: "refused",
+      reason: 'command "restart" not found',
+    });
+    expect(e).toMatchObject({ outcome: "refused", reason: expect.any(String) });
+    expect(recentActions().at(-1)).toEqual(e);
+  });
+
+  it("an agent-reported refusal is sanitised and capped", () => {
+    const e = recordAgentRefusal(
+      { kind: "agent", ...info },
+      {
+        tool: "service_up",
+        repo: "shop",
+        service: "api",
+        reason: "env=dev\nrefused" + "x".repeat(1000),
+      },
+    );
+    expect(e.verb).toBe("exec");
+    expect(e.detail).toBe("shop/api up (local)");
+    expect(e.outcome).toBe("refused");
+    expect([...(e.reason ?? "")].every((c) => c.charCodeAt(0) >= 0x20)).toBe(
+      true,
+    );
+    expect((e.reason ?? "").length).toBeLessThanOrEqual(300);
+  });
+
+  it("a tool name that is not exactly a lifecycle tool is not one", () => {
+    const e = recordAgentRefusal(
+      { kind: "agent", ...info },
+      { tool: "service_up\u001b[31m", repo: "shop", reason: "no" },
+    );
+    expect(e.verb).toBe("service_up31m");
+    expect(e.detail).toBe("");
+  });
+
+  it("a non-lifecycle tool's refusal is recorded under its own name", () => {
+    const e = recordAgentRefusal(
+      { kind: "agent", ...info },
+      { tool: "run_tests", reason: "production is never a run_tests env" },
+    );
+    expect(e.verb).toBe("run_tests");
+    expect(e.detail).toBe("");
   });
 });

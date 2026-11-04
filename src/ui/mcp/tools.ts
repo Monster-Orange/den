@@ -85,6 +85,29 @@ function tail(r: StreamResult, n: number): string[] {
 }
 
 /** One line per stream: how it ended and its exit code. */
+/**
+ * Whether a streamed action failed: a non-zero exit, a detached service whose
+ * launcher exited non-zero, or a run that never finished (timeout).
+ */
+export function streamFailed(r: StreamResult): boolean {
+  if (r.ended === "timeout") return true;
+  if (r.exitCode !== undefined && r.exitCode !== 0) return true;
+  return r.events.some(
+    (e) =>
+      e.type === "service-exited" &&
+      typeof e.exitCode === "number" &&
+      e.exitCode !== 0,
+  );
+}
+
+/** An action that ran and failed: its output goes back with isError set. */
+export class ActionFailed extends Error {
+  constructor(readonly out: Record<string, unknown>) {
+    super("action failed");
+    this.name = "ActionFailed";
+  }
+}
+
 function streamSummary(r: StreamResult, keep: number) {
   return {
     ended: r.ended,
@@ -92,6 +115,17 @@ function streamSummary(r: StreamResult, keep: number) {
     lines: r.lines.length,
     output: tail(r, keep),
   };
+}
+
+/** The action's result; thrown as ActionFailed when the stream failed. */
+function actionResult(
+  r: StreamResult,
+  keep: number,
+  head: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const out = { ...head, ...streamSummary(r, keep) };
+  if (streamFailed(r)) throw new ActionFailed({ failed: true, ...out });
+  return out;
 }
 
 // ── Read tools ──────────────────────────────────────────────────────────────
@@ -354,7 +388,7 @@ function lifecycleTool(cmd: LifecycleCmd): DenTool {
         str(a.service),
         workspace,
       );
-      assertRunsLocally(entry);
+      assertRunsLocally(entry, cmd);
       const r = await api.stream(
         "/api/service/exec",
         {
@@ -373,11 +407,10 @@ function lifecycleTool(cmd: LifecycleCmd): DenTool {
           stopOn: (e) => e.type === "service-exited",
         },
       );
-      return {
+      return actionResult(r, 200, {
         service: `${entry.repo}/${entry.service}`,
         cmd,
-        ...streamSummary(r, 200),
-      };
+      });
     },
   };
 }
@@ -408,7 +441,7 @@ const ACTION_TOOLS: Record<McpAction, DenTool> = {
         maxLines: 5000,
         timeoutMs: 15 * 60_000,
       });
-      return streamSummary(r, 300);
+      return actionResult(r, 300);
     },
   },
   run_tests: {
@@ -453,7 +486,7 @@ const ACTION_TOOLS: Record<McpAction, DenTool> = {
         },
         { method: "GET", maxLines: 20_000, timeoutMs: 60 * 60_000 },
       );
-      return { pillar, env, ...streamSummary(r, 300) };
+      return actionResult(r, 300, { pillar, env });
     },
   },
 };
@@ -532,6 +565,28 @@ async function notFoundMessage(
  * that refused, how to start the web server, or (when it runs an older Den
  * than the tool needs) how to restart it.
  */
+/**
+ * Tell the web server a guard refused an action, so the activity trail shows
+ * the attempt (F2). Best effort: a report that fails changes nothing.
+ */
+async function reportRefusal(
+  ctx: ToolContext,
+  tool: string,
+  args: Args,
+  reason: string,
+): Promise<void> {
+  try {
+    await ctx.api.get("/api/activity", {}, "POST", {
+      tool,
+      ...(typeof args.repo === "string" ? { repo: args.repo } : {}),
+      ...(typeof args.service === "string" ? { service: args.service } : {}),
+      reason,
+    });
+  } catch {
+    /* the refusal is still returned to the agent */
+  }
+}
+
 export async function callTool(
   name: string,
   args: Args,
@@ -548,12 +603,19 @@ export async function callTool(
     const text = typeof out === "string" ? out : JSON.stringify(out, null, 2);
     return { text: redactSecrets(text), isError: false };
   } catch (e) {
+    if (e instanceof ActionFailed)
+      return {
+        text: redactSecrets(JSON.stringify(e.out, null, 2)),
+        isError: true,
+      };
     if (e instanceof DenHttpError && e.status === 404) {
       const text = await notFoundMessage(e, name, ctx).catch(
         (inner: Error) => `Error: ${inner.message}`,
       );
       return { text: redactSecrets(text), isError: true };
     }
+    if (e instanceof Refusal && tool.action)
+      await reportRefusal(ctx, name, args, e.message);
     const msg =
       e instanceof Refusal
         ? `Refused: ${e.message}`

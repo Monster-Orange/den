@@ -135,6 +135,7 @@ import {
   actorFromHeaders,
   actorSuffix,
   recordAction,
+  recordAgentRefusal,
   setAuditSink,
 } from "./audit.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
@@ -409,6 +410,7 @@ import { parseChangelog } from "./changelog-parser.js";
 import { GitHubService } from "./github-service.js";
 import { EditorManager, SUPPORTED_LANGUAGES } from "./editor-manager.js";
 import { handleWorkspaceRoutes } from "./workspace-routes.js";
+import { isLifecycleExecCmd, streamLifecycleExec } from "./lifecycle-exec.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import {
   linksFor,
@@ -728,6 +730,25 @@ async function handleRequest(
     } catch {
       return send404(res);
     }
+  }
+
+  // ── API: an agent's refused call (F2) ─────────────────────────────────────
+  // The MCP server's guards refuse some calls before they reach an action
+  // route; it reports them here so the activity trail shows failed attempts.
+  // Agents only (the audit header), and the entry is all it can write.
+  if (pathname === "/api/activity" && req.method === "POST") {
+    const actor = actorFromHeaders(req.headers);
+    if (!actor) return sendJson(res, { error: "agents only" }, 403);
+    const raw = await readBody(req).catch(() => "");
+    if (raw.length > 4096) return send400(res, "report too large");
+    let report: Record<string, unknown> = {};
+    try {
+      report = JSON.parse(raw || "{}") as Record<string, unknown>;
+    } catch {
+      return send400(res, "invalid JSON");
+    }
+    const entry = recordAgentRefusal(actor, report);
+    return sendJson(res, { recorded: true, ts: entry.ts });
   }
 
   // ── API: stacks, edge, security plan (read-only; see readonly-routes.ts) ──
@@ -1361,7 +1382,15 @@ async function handleRequest(
     const emit = (obj: unknown): void => {
       res.write(`data: ${JSON.stringify(obj)}\n\n`);
     };
+    // Every fail here is before anything ran: a refusal or a lookup miss.
+    // Recorded, so failed attempts show in the activity trail (F2).
     const fail = (msg: string): void => {
+      recordAction(actorFromHeaders(req.headers), {
+        verb: "exec",
+        detail: `${repoName}/${svcName} ${cmdName} (${env})`,
+        outcome: "refused",
+        reason: msg,
+      });
       emit({ type: "error", text: msg });
       emit({ type: "done", exitCode: 1, duration: 0 });
       res.end();
@@ -1393,12 +1422,64 @@ async function handleRequest(
         `${repoName}/${svcName}`,
         servicePlacement(manifest, resolved.subsystem, env),
         (e) => isProductionEnv(e),
-        cmdName === "down" ? "stop" : "start",
+        cmdName,
       );
       if (refusal) return fail(refusal);
       if (manifest) {
         cmdDef =
           manifest.services?.[resolved.subsystem]?.commands?.[env]?.[cmdName];
+      }
+      // Lifecycle commands run through the service runner, as the CLI's do:
+      // restart without a declared restart is down + up, up on a healthy
+      // service starts nothing, down honours workspace ownership.
+      if (env === "local" && isLifecycleExecCmd(cmdName)) {
+        if (cmdDef && isInteractiveServiceCommand(cmdDef))
+          return fail(
+            `"${cmdName}" requires an interactive terminal (HITL).\n` +
+              `Run in your terminal:\n  ${product().cli} ${cmdName} ${resolved.address}`,
+          );
+        const execId = shortRunId();
+        const execDesc = `${repoName}/${svcName} ${cmdName} (${env})`;
+        const execActor = actorFromHeaders(req.headers);
+        recordAction(execActor, {
+          verb: "exec",
+          detail: `${execDesc} [${execId}]`,
+        });
+        prewarmSudo();
+        void streamLifecycleExec(
+          {
+            resolved,
+            cmd: cmdName,
+            workspace: wsParam ?? undefined,
+            env: { E2E_ENVIRONMENT: env, ...getSudoEnv() },
+            emit: (e) => {
+              if (e.type === "line" && typeof e.text === "string")
+                mirrorLine(execId, e.text);
+              emit(e);
+            },
+            end: () => res.end(),
+            onClientClose: (fn) => res.on("close", fn),
+            onExit: (exitCode, duration) => {
+              serverLog(
+                `■ exec ${execDesc} · exit=${exitCode} · ${formatDuration(duration)} [${execId}]${actorSuffix(execActor)}`,
+                "lifecycle",
+                execActor ? actorLabel(execActor) : undefined,
+              );
+              recordInvocation({
+                command: "service.exec",
+                surface: "ux",
+                durationMs: duration,
+                exit: exitCode,
+                extra: { action: cmdName, env },
+              });
+            },
+          },
+          {
+            run: runServiceCommand,
+            health: (r) => checkServiceHealth(r, "local"),
+          },
+        );
+        return;
       }
     }
 
@@ -1412,7 +1493,7 @@ async function handleRequest(
             `${repoName}/${svcName}`,
             servicePlacement(repo.manifest, svcName, env),
             (e) => isProductionEnv(e),
-            cmdName === "down" ? "stop" : "start",
+            cmdName,
           )
         : null;
       if (refusal) return fail(refusal);

@@ -597,6 +597,7 @@ describe("checkServiceHealth — remote services (R13)", () => {
           env: "dev",
           account: "AWS",
           url: "http://api.dev.acme.example/admin",
+          expect: 401,
         },
       }),
     );

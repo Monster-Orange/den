@@ -164,7 +164,10 @@ describe("bin/den mcp over stdio", () => {
     };
     expect(rr.isError).toBe(true);
     expect(rr.content[0].text).toMatch(/^Refused: .*production/);
-    expect(requests.length).toBe(before);
+    // Nothing reached an action route; only the refusal was reported (F2).
+    expect(requests.slice(before).map((r) => r.path)).toEqual([
+      "/api/activity",
+    ]);
 
     // stdout carried the protocol and nothing else.
     for (const line of stdoutLines)

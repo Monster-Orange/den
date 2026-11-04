@@ -4,6 +4,50 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.2.1] - unreleased
+
+### Fixed
+
+- **MCP `service_restart` on a service with only `up` and `down`.**
+  `/api/service/exec` now runs `up`, `down` and `restart` (env local) through
+  the service runner, as `<cli> up|down|restart` do, instead of looking up
+  and executing the manifest's command itself. So, for the web UI's panel and
+  for MCP alike: `restart` with no declared `restart` is `down` then `up`;
+  `up` on a service that is already healthy starts nothing and says
+  `already up (healthy)`; `up` attaches to a running shared instance; `down`
+  honours workspace ownership. The panel offers Restart whenever a service has
+  `up` and `down`.
+- **MCP actions report failure.** `service_up|down|restart`, `run_tests` and
+  `workspace_sync` return `isError` with `"failed": true` in the result when
+  the command exits non-zero, a detached service's launcher exits non-zero,
+  or the call times out. They used to come back ok with `exitCode: 1` inside.
+- **`<cli> up|down|restart <remote service>` exits 1.** Naming a remote
+  service (or its repo) directly is a refused command. A remote service
+  reached through a workspace, `-a` or `-A <app>` run is still said and
+  skipped, exit 0.
+- **Refusals name the command.** `runs in dev (AWS); nothing to restart here`
+  (and `stop`, `start`, `run "<cmd>" on`), not `start` for everything.
+
+### Added
+
+- **Refused attempts are in the activity trail.** `/api/activity` entries may
+  carry `outcome: "refused"` and a `reason`: a refused or unresolvable
+  `/api/service/exec`, and any MCP action a guard refused before it reached
+  the web server. Agents report the latter to `POST /api/activity` (agent
+  audit header required; it appends one sanitised entry and nothing else).
+  The panel's Activity tab shows them as refused.
+- **`target.expect` in placement.** `/api/services` and `/api/health` rows'
+  `target` now carry `expect` (as declared) when the manifest's target has its
+  own `url`.
+
+### Migrations
+
+- None required. Two additive API changes a contract probe may see:
+  `target.expect` on `/api/services` and `/api/health` rows, and
+  `outcome`/`reason` on `/api/activity` entries.
+- Scripts that relied on `<cli> restart|down <remote service>` exiting 0
+  should expect 1.
+
 ## [0.2.0] - 2026-11-04
 
 ### Added

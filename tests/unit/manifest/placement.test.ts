@@ -104,7 +104,15 @@ describe("servicePlacement", () => {
         env: "dev",
         account: "AWS",
         url: "https://api.dev.acme.example/admin/manifest",
+        expect: 401,
       },
+    });
+  });
+
+  it("carries expect only with the target's own url (F4)", () => {
+    expect(servicePlacement(hybrid, "edge", "local").target).toEqual({
+      env: "dev",
+      url: "https://edge.dev.acme.example/",
     });
   });
 
@@ -137,6 +145,7 @@ describe("servicePlacement", () => {
         env: "dev",
         account: "AWS",
         url: "https://api.dev.acme.example/admin/manifest",
+        expect: 401,
       },
     });
   });
@@ -272,6 +281,26 @@ describe("placementRefusal", () => {
         "stop",
       ),
     ).toBe("shop/core runs in dev (AWS); nothing to stop here");
+  });
+
+  it("names the command that was refused (B4)", () => {
+    const at = servicePlacement(hybrid, "core", "local");
+    const say = (c: string) => placementRefusal("shop/core", at, prod, c);
+    expect(say("up")).toBe(
+      "shop/core runs in dev (AWS); nothing to start here",
+    );
+    expect(say("down")).toBe(
+      "shop/core runs in dev (AWS); nothing to stop here",
+    );
+    expect(say("restart")).toBe(
+      "shop/core runs in dev (AWS); nothing to restart here",
+    );
+    expect(say("exec")).toBe(
+      'shop/core runs in dev (AWS); nothing to run "exec" on here',
+    );
+    expect(say("seed")).toBe(
+      'shop/core runs in dev (AWS); nothing to run "seed" on here',
+    );
   });
 
   it("says so when the target counts as production", () => {

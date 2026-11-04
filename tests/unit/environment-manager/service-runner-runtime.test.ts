@@ -1376,16 +1376,20 @@ describe("runServiceCommand — remote services (R13)", () => {
     },
   };
 
-  it.each(["up", "restart", "seed"])(
+  it.each([
+    ["up", "nothing to start here"],
+    ["restart", "nothing to restart here"],
+    ["seed", 'nothing to run "seed" on here'],
+  ])(
     "refuses %s on a remote service and runs nothing",
-    async (command) => {
+    async (command, says) => {
       mockReadManifest.mockReturnValue(remoteManifest);
       const onLine = jest.fn();
       const onClose = jest.fn();
       runServiceCommand({ address: "repo/api", command, onLine, onClose });
       await new Promise((r) => setImmediate(r));
       expect(onLine).toHaveBeenCalledWith(
-        "repo/api runs in dev (AWS); nothing to start here",
+        `repo/api runs in dev (AWS); ${says}`,
       );
       expect(onClose).toHaveBeenCalledWith(1);
       expect(mockSpawnStreaming).not.toHaveBeenCalled();

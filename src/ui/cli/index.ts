@@ -5,6 +5,7 @@
  * Main entry point for the interactive CLI
  */
 
+import { isNamedTarget } from "./named-target.js";
 import chalk from "chalk";
 import oraSpinner from "ora";
 
@@ -1298,7 +1299,15 @@ class DenCLI {
       /** Skip ANY already-healthy node (derived `up` starts only what's down). */
       skipHealthyAll?: boolean;
     },
-    opts?: { force?: boolean },
+    opts?: {
+      force?: boolean;
+      /**
+       * What the user named on the command line (repo or address). A remote
+       * service among them is refused with a non-zero exit; one reached only
+       * as part of a workspace or app run is said and skipped.
+       */
+      named?: readonly string[];
+    },
   ): Promise<void> {
     // How long to show startup output before handing control back to the menu
     // for detachable (long-running) commands like `up`.
@@ -1388,11 +1397,16 @@ class DenCLI {
               "local",
             ),
             (e) => isProductionEnv(e),
-            command === "down" ? "stop" : "start",
+            command,
           )
         : null;
       if (remote) {
-        console.log(chalk.gray(`  • ${remote}`));
+        if (isNamedTarget(address, opts?.named ?? [])) {
+          console.log(chalk.red(`  ✗ ${remote}`));
+          process.exitCode = 1;
+        } else {
+          console.log(chalk.gray(`  • ${remote}`));
+        }
         continue;
       }
       if (command === "up" && !seedAddresses.has(address)) {
@@ -1732,6 +1746,7 @@ class DenCLI {
     plan = false,
     pull = false,
   ): Promise<void> {
+    const named = [seed];
     const full = deriveGraph({ scope: "all" });
     // Same positional closure the web "up with deps" uses: everything the seed
     // sits ON TOP OF, never anything above it. Keeps the two entry points from
@@ -1813,12 +1828,17 @@ class DenCLI {
       );
       return;
     }
-    await this.runServicesCommand(order, "up", {
+    await this.runServicesCommand(
       order,
-      waitDepsFor: (address) => hardDepsOf(graph, address),
-      failFast: true,
-      skipHealthyAll: true,
-    });
+      "up",
+      {
+        order,
+        waitDepsFor: (address) => hardDepsOf(graph, address),
+        failFast: true,
+        skipHealthyAll: true,
+      },
+      { named },
+    );
   }
 
   /**
@@ -1874,7 +1894,12 @@ class DenCLI {
       console.log(chalk.gray("  (--dry-run: not stopping anything)\n"));
       return;
     }
-    await this.runServicesCommand(order, "down", { order }, { force });
+    await this.runServicesCommand(
+      order,
+      "down",
+      { order },
+      { force, named: [seed] },
+    );
   }
 
   /** Workspace repos with no runtime (modules, libraries) → their kind. */
@@ -2392,7 +2417,9 @@ class DenCLI {
       return;
     }
     preflightSecrets();
-    await this.runServicesCommand(targets, "up");
+    await this.runServicesCommand(targets, "up", undefined, {
+      named: addresses,
+    });
   }
 
   private async cmdServiceDown(args: string[]): Promise<void> {
@@ -2452,7 +2479,10 @@ class DenCLI {
       addresses.length > 0
         ? addresses
         : this.resolveNoArgServiceTargets("down");
-    await this.runServicesCommand(targets, "down", undefined, { force });
+    await this.runServicesCommand(targets, "down", undefined, {
+      force,
+      named: addresses,
+    });
   }
 
   private async cmdServiceRestart(argv: string[]): Promise<void> {
@@ -2471,7 +2501,9 @@ class DenCLI {
       filtered.length > 0
         ? filtered
         : this.resolveNoArgServiceTargets("restart");
-    await this.runServicesCommand(addresses, "restart");
+    await this.runServicesCommand(addresses, "restart", undefined, {
+      named: filtered,
+    });
   }
 
   /** Service address with a ⏸ marker when the repo is auto-start off. */

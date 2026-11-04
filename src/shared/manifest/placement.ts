@@ -34,6 +34,8 @@ export interface PlacementTarget {
   env: string;
   account?: string;
   url?: string;
+  /** The status codes that count as up for `url`, as declared. */
+  expect?: number | number[];
 }
 
 export interface Placement {
@@ -84,6 +86,7 @@ function targetFor(svc: ServiceManagementConfig, env: string): PlacementTarget {
     env: tEnv,
     ...(own?.account ? { account: own.account } : {}),
     ...(url ? { url } : {}),
+    ...(own?.url && own.expect !== undefined ? { expect: own.expect } : {}),
   };
 }
 
@@ -186,16 +189,25 @@ export function isProtectedRemote(p: Placement, isProduction: IsProduction) {
   return p.runs === "remote" && !!p.target && isProduction(p.target.env);
 }
 
+/** How a refusal names the command: up → "start", exec → `run "exec" on`. */
+function refusedVerb(command: string): string {
+  if (command === "up" || command === "start") return "start";
+  if (command === "down" || command === "stop") return "stop";
+  if (command === "restart") return "restart";
+  return `run "${command}" on`;
+}
+
 /**
- * Why Den must not run a command on `address`, or null. Every command on a
- * remote service is refused ("runs in dev (AWS); nothing to start here").
+ * Why Den must not run `command` on `address`, or null. Every command on a
+ * remote service is refused ("runs in dev (AWS); nothing to restart here").
  */
 export function placementRefusal(
   address: string,
   p: Placement,
   isProduction: IsProduction,
-  verb: "start" | "stop" = "start",
+  command = "up",
 ): string | null {
+  const verb = refusedVerb(command);
   if (p.runs !== "remote") return null;
   const where = p.target
     ? `${p.target.env}${p.target.account ? ` (${p.target.account})` : ""}`

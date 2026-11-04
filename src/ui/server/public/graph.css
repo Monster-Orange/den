@@ -906,6 +906,10 @@ path.dg-e.dim {
 .dg ol.act span:last-child {
   overflow-wrap: anywhere;
 }
+.dg ol.act .refused {
+  color: var(--red);
+  font-style: normal;
+}
 .dg-who {
   font-size: 11.5px;
   padding: 0 7px;
