@@ -313,8 +313,8 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "theme [list] | validate [dir] | add <repo>[/<subpath>]@<ref> | remove <id>",
     lines: [
       "Web UI themes (den.theme/v1). add fetches one at an exact ref, validates it",
-      "(schema, contrast in both modes, files) and vendors it into themes/<id>/",
-      "with a themes.lock.json entry; commit both. list checks them against the lock.",
+      "(schema, contrast in both modes, files) and vendors it into plugins/<id>/",
+      "with a plugins.lock.json entry; commit both. list checks them against the lock.",
     ],
   },
   mcp: {

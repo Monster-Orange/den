@@ -164,7 +164,7 @@ describe("theme add, list, remove", () => {
 
   it("vendors the theme's files only, and locks source, ref, commit and hash", async () => {
     expect(await add(spec())).toBe(0);
-    const out = path.join(dist, "themes", "sample");
+    const out = path.join(dist, "plugins", "sample");
     expect(fs.readdirSync(out, { recursive: true }).map(String).sort()).toEqual(
       [
         "den-theme.json",
@@ -181,7 +181,17 @@ describe("theme add, list, remove", () => {
       source: `file://${repo}//themes/sample`,
       ref: "sample/v1.0.0",
       commit: git("rev-parse", "HEAD"),
+      kinds: ["theme"],
+      approved_capabilities: [],
     });
+    expect(
+      Object.keys(
+        JSON.parse(
+          fs.readFileSync(path.join(dist, "plugins.lock.json"), "utf-8"),
+        ) as object,
+      ),
+    ).toEqual(["plugins"]);
+    expect(fs.existsSync(path.join(dist, "themes.lock.json"))).toBe(false);
     expect(lock.sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -189,7 +199,7 @@ describe("theme add, list, remove", () => {
     lines.length = 0;
     expect(await cmdTheme(["list"], { distRoot: dist, log })).toBe(0);
     expect(lines.join("\n")).toMatch(/sample\s+1\.0\.0/);
-    fs.appendFileSync(path.join(dist, "themes", "sample", "mark.svg"), " ");
+    fs.appendFileSync(path.join(dist, "plugins", "sample", "mark.svg"), " ");
     lines.length = 0;
     expect(await cmdTheme(["list"], { distRoot: dist, log })).toBe(1);
     expect(lines.join("\n")).toMatch(/changed since it was added/);
@@ -199,11 +209,39 @@ describe("theme add, list, remove", () => {
     expect(await cmdTheme(["remove", "sample"], { distRoot: dist, log })).toBe(
       0,
     );
-    expect(fs.existsSync(path.join(dist, "themes", "sample"))).toBe(false);
+    expect(fs.existsSync(path.join(dist, "plugins", "sample"))).toBe(false);
     expect(readLock(dist).sample).toBeUndefined();
     expect(await cmdTheme(["remove", "sample"], { distRoot: dist, log })).toBe(
       1,
     );
+  });
+
+  it("list and remove leave other plugin kinds in the lock alone", async () => {
+    const file = path.join(dist, "plugins.lock.json");
+    const raw = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+      plugins: Record<string, unknown>;
+    };
+    raw.plugins.tracker = {
+      id: "tracker",
+      name: "Tracker",
+      version: "1.0.0",
+      source: "file:///nowhere",
+      ref: "v1.0.0",
+      commit: "0".repeat(40),
+      sha256: "0".repeat(64),
+      kinds: ["page"],
+      approved_capabilities: ["net"],
+    };
+    fs.writeFileSync(file, JSON.stringify(raw));
+    lines.length = 0;
+    expect(await cmdTheme(["list"], { distRoot: dist, log })).toBe(0);
+    expect(lines.join("\n")).not.toMatch(/tracker/);
+    expect(await cmdTheme(["remove", "tracker"], { distRoot: dist, log })).toBe(
+      1,
+    );
+    expect(readLock(dist).tracker).toBeDefined();
+    delete raw.plugins.tracker;
+    fs.writeFileSync(file, JSON.stringify(raw));
   });
 
   it("refuses a theme that fails validation, naming the pair", async () => {
@@ -211,7 +249,7 @@ describe("theme add, list, remove", () => {
     lines.length = 0;
     expect(await add(`file://${repo}//themes/bad@bad/v1.0.0`)).toBe(1);
     expect(lines.join("\n")).toMatch(/light: muted on (bg|surface) is/);
-    expect(fs.existsSync(path.join(dist, "themes", "bad"))).toBe(false);
+    expect(fs.existsSync(path.join(dist, "plugins", "bad"))).toBe(false);
   });
 
   it("refuses the built-in id", async () => {
@@ -225,7 +263,7 @@ describe("theme add, list, remove", () => {
     lines.length = 0;
     expect(await add(`file://${repo}//themes/sample@sample/v9.9.9`)).toBe(1);
     expect(lines.join("\n")).toMatch(/no tag or branch "sample\/v9.9.9"/);
-    expect(fs.existsSync(path.join(dist, "themes", "sample"))).toBe(false);
+    expect(fs.existsSync(path.join(dist, "plugins", "sample"))).toBe(false);
   });
 
   it("refuses a branch unless --track, which the lock records", async () => {

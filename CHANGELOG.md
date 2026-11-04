@@ -11,7 +11,7 @@ config and manifest changes a distribution must make to move to it under
 - **Themes (`den.theme/v1`).** The contract is `schemas/den.theme.v1.json`:
   color tokens for dark and light, type, shape, a mark and self-hosted fonts.
   `<cli> theme add <repo>[/<subpath>]@<tag|commit>` validates a theme and
-  vendors it into the distribution (`themes/<id>/`, `themes.lock.json`);
+  vendors it into the distribution (`plugins/<id>/`, `plugins.lock.json`, shared with future plugin kinds);
   `theme list` checks themes against the lock; `theme validate` and `theme
   remove`. Contrast is checked per pair in both modes. A branch ref needs
   `--track`. Den bundles its own theme, `den` 2.0.0. The public set and the

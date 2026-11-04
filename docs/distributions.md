@@ -295,8 +295,9 @@ and the guide to making your own
 - `add` takes an exact ref: a tag or a full commit SHA. A branch is refused
   unless `--track` (for theme authors), which the lock records as tracking.
 - It validates the theme (schema, contrast in both modes, files) and copies it
-  into the distribution's `themes/<id>/`, with an entry in `themes.lock.json`
-  (source, ref, commit, content hash). Commit both: a fresh clone has the
+  into the distribution's `plugins/<id>/`, with an entry in `plugins.lock.json`
+  (kinds `["theme"]`, source, ref, commit, content hash). Themes are the first
+  plugin kind; other kinds share the same lock and directory. Commit both: a fresh clone has the
   theme offline, and theme changes show up as reviewable diffs.
 - `list` checks every theme against its lock and fails if one has changed.
 - Contrast: every text token (`text`, `muted`, `faint`, `accent-text`, and

@@ -3,8 +3,8 @@
  *
  * A theme is a den-theme.json (den.theme/v1) with its files, in any git repo.
  * `add` fetches one at an exact ref, validates it, and vendors it into the
- * distribution (`themes/<id>/`) with a lock entry (`themes.lock.json`: source,
- * ref, commit, content hash), so it is pinned the way Den is, works offline,
+ * distribution (`plugins/<id>/`) with a lock entry (`plugins.lock.json`: kinds,
+ * source, ref, commit, content hash), so it is pinned the way Den is, works offline,
  * and the whole team gets the same files from the distribution's own repo.
  * Den's default theme ships inside Den (themes/den in the package).
  */
@@ -23,7 +23,9 @@ import {
   type ThemeValidation,
 } from "../../shared/theme/contract.js";
 
-export const LOCK_FILE = "themes.lock.json";
+export const LOCK_FILE = "plugins.lock.json";
+/** Where installed plugins are vendored in the distribution. */
+export const PLUGINS_DIR = "plugins";
 
 export interface ThemeSource {
   /** What `git clone` takes. */
@@ -89,6 +91,10 @@ export interface LockEntry {
   commit: string;
   /** sha256 over the theme's manifest and files, in path order. */
   sha256: string;
+  /** What the plugin provides; a theme is ["theme"]. */
+  kinds: string[];
+  /** Capabilities approved at install (PL admission). A theme requests none. */
+  approved_capabilities: string[];
   /** Added with --track: `ref` is a branch, so a re-add may differ. */
   tracking?: boolean;
 }
@@ -119,18 +125,18 @@ export function readLock(distRoot: string): Record<string, LockEntry> {
   const file = path.join(distRoot, LOCK_FILE);
   if (!fs.existsSync(file)) return {};
   const raw = JSON.parse(fs.readFileSync(file, "utf-8")) as {
-    themes?: Record<string, LockEntry>;
+    plugins?: Record<string, LockEntry>;
   };
-  return raw.themes ?? {};
+  return raw.plugins ?? {};
 }
 
-function writeLock(distRoot: string, themes: Record<string, LockEntry>): void {
+function writeLock(distRoot: string, plugins: Record<string, LockEntry>): void {
   const sorted = Object.fromEntries(
-    Object.entries(themes).sort(([a], [b]) => a.localeCompare(b)),
+    Object.entries(plugins).sort(([a], [b]) => a.localeCompare(b)),
   );
   const file = path.join(distRoot, LOCK_FILE);
   const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify({ themes: sorted }, null, 2)}\n`);
+  fs.writeFileSync(tmp, `${JSON.stringify({ plugins: sorted }, null, 2)}\n`);
   fs.renameSync(tmp, file);
 }
 
@@ -158,6 +164,11 @@ function licenseFiles(dir: string): string[] {
   return out;
 }
 
+/** The lock's theme entries (the lock is shared with other plugin kinds). */
+function themesIn(lock: Record<string, LockEntry>): LockEntry[] {
+  return Object.values(lock).filter((e) => e.kinds?.includes("theme"));
+}
+
 export function hashTheme(dir: string, files: string[]): string {
   const h = createHash("sha256");
   for (const f of files) {
@@ -169,13 +180,13 @@ export function hashTheme(dir: string, files: string[]): string {
 }
 
 /**
- * themes/<id>/ in the distribution. The id is checked again here (the lock
+ * plugins/<id>/ in the distribution. The id is checked again here (the lock
  * file is editable), so a delete can only ever reach that directory.
  */
 function themeDirFor(distRoot: string, id: string): string {
   if (!/^[a-z][a-z0-9-]{1,39}$/.test(id))
-    throw new Error(`"${id}" is not a theme id`);
-  return path.join(distRoot, "themes", id);
+    throw new Error(`"${id}" is not a plugin id`);
+  return path.join(distRoot, PLUGINS_DIR, id);
 }
 
 /** Runs git; returns stdout, throws with stderr on failure. */
@@ -348,11 +359,13 @@ export async function cmdTheme(
           ref: src.ref,
           commit,
           sha256: hashTheme(dest, files),
+          kinds: ["theme"],
+          approved_capabilities: [],
           ...(kind === "branch" ? { tracking: true } : {}),
         };
         writeLock(distRoot, lock);
         log(
-          `  ${theme.id} ${theme.version} at ${commit.slice(0, 12)} → themes/${theme.id}/ (${LOCK_FILE}); commit both`,
+          `  ${theme.id} ${theme.version} at ${commit.slice(0, 12)} → ${PLUGINS_DIR}/${theme.id}/ (${LOCK_FILE}); commit both`,
         );
         return 0;
       } finally {
@@ -369,8 +382,8 @@ export async function cmdTheme(
       if (bundled.theme)
         log(`  den            ${bundled.theme.version.padEnd(8)} built in`);
       let ok = true;
-      for (const e of Object.values(lock)) {
-        const dir = path.join(distRoot, "themes", e.id);
+      for (const e of themesIn(lock)) {
+        const dir = themeDirFor(distRoot, e.id);
         const v = fs.existsSync(dir) ? validateThemeDir(dir) : null;
         const now = v?.ok ? hashTheme(dir, themeContent(dir, v)) : null;
         const state = !v
@@ -387,7 +400,7 @@ export async function cmdTheme(
     case "remove": {
       const id = rest[0];
       const lock = readLock(distRoot);
-      if (!id || !lock[id]) {
+      if (!id || !lock[id]?.kinds?.includes("theme")) {
         log(chalk.red(`✗ no installed theme "${id ?? ""}"`));
         return 1;
       }
