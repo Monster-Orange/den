@@ -8,6 +8,12 @@ import { deriveGraph } from "./derivation/derive-graph.js";
 import type { DerivedGraph } from "./derivation/types.js";
 import { getWorkspaceServices } from "./service-runner.js";
 import { readOrg, type Org } from "../org.js";
+import {
+  rollupPlacement,
+  servicePlacement,
+  type Placement,
+  type RollupPlacement,
+} from "../manifest/placement.js";
 
 export function loadApplications(workspace?: string): Application[] {
   const services = getWorkspaceServices(workspace);
@@ -47,6 +53,12 @@ export interface ApplicationView extends Application {
   addresses: string[];
   /** Repos the team config lists for it that are not in this workspace. */
   absent: string[];
+  /** address → where that service runs locally, and where a remote one is. */
+  placements: Record<string, Placement>;
+  /** local | remote | hybrid | none, over its services (R13). */
+  placement: RollupPlacement;
+  /** "shop-frontend local · shop-core remote (dev)" */
+  summary: string;
 }
 
 /** Org > Application > Repo > Services for a workspace (CLI `apps`, web UI). */
@@ -55,9 +67,18 @@ export function loadApplicationTree(workspace?: string): {
   applications: ApplicationView[];
 } {
   const byRepo = new Map<string, string[]>();
+  const placed = new Map<
+    string,
+    Placement & { repo: string; service: string }
+  >();
   for (const s of getWorkspaceServices(workspace)) {
     if (!byRepo.has(s.repoName)) byRepo.set(s.repoName, []);
     byRepo.get(s.repoName)!.push(s.address);
+    placed.set(s.address, {
+      repo: s.repoName,
+      service: s.subsystem,
+      ...servicePlacement(readManifest(s.repoPath), s.subsystem, "local"),
+    });
   }
   const config = readDenConfig().applications ?? {};
   const org = readOrg();
@@ -67,11 +88,20 @@ export function loadApplicationTree(workspace?: string): {
       const services = Object.fromEntries(
         a.repos.map((r) => [r, byRepo.get(r) ?? []]),
       );
+      const addresses = Object.values(services).flat();
+      const rows = addresses.flatMap((addr) => placed.get(addr) ?? []);
       return {
         ...a,
         services,
-        addresses: Object.values(services).flat(),
+        addresses,
         absent: (config[a.name]?.repos ?? []).filter((r) => !byRepo.has(r)),
+        placements: Object.fromEntries(
+          addresses.flatMap((addr) => {
+            const p = placed.get(addr);
+            return p ? [[addr, { runs: p.runs, target: p.target }]] : [];
+          }),
+        ),
+        ...rollupPlacement(rows),
       };
     }),
   };

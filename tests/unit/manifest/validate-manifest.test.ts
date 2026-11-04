@@ -486,3 +486,120 @@ describe("validateManifest — security block", () => {
     expect(result.errors[0].path).toContain("modes.production");
   });
 });
+
+describe("validateManifest — placement (runs, target)", () => {
+  const withCore = (core: Record<string, unknown>) => ({
+    name: "shop",
+    services: { core },
+  });
+  const envs = { environments: ["local", "dev", "prod"] };
+
+  it("accepts runs per env and a target", () => {
+    const r = validateManifest(
+      withCore({
+        runs: { local: "remote", dev: "remote" },
+        target: {
+          env: "dev",
+          account: "AWS",
+          url: "https://api.dev.acme.example/admin/manifest",
+          expect: 401,
+        },
+      }),
+      envs,
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.valid).toBe(true);
+  });
+
+  it("accepts a list of expected codes", () => {
+    expect(
+      validateManifest(
+        withCore({
+          runs: { local: "remote" },
+          target: { env: "dev", expect: [200, 401] },
+        }),
+        envs,
+      ).valid,
+    ).toBe(true);
+  });
+
+  it("rejects a runs value other than local or remote", () => {
+    const r = validateManifest(withCore({ runs: { local: "cloud" } }), envs);
+    expect(r.valid).toBe(false);
+    expect(r.errors[0].path).toBe("services.core.runs.local");
+  });
+
+  it("rejects an unknown env name in runs", () => {
+    const r = validateManifest(
+      withCore({
+        runs: { local: "remote", qa: "remote" },
+        target: { env: "dev" },
+      }),
+      envs,
+    );
+    expect(r.valid).toBe(false);
+    expect(r.errors).toEqual([
+      expect.objectContaining({ path: "services.core.runs.qa" }),
+    ]);
+  });
+
+  it("rejects a target.env the org does not have", () => {
+    const r = validateManifest(
+      withCore({ runs: { local: "remote" }, target: { env: "staging" } }),
+      envs,
+    );
+    expect(r.valid).toBe(false);
+    expect(r.errors[0].path).toBe("services.core.target.env");
+  });
+
+  it("uses the org config's environments by default", () => {
+    // No org config in tests: Den's built-in environment list applies.
+    expect(
+      validateManifest(
+        withCore({
+          runs: { local: "remote", qa: "remote" },
+          target: { env: "dev" },
+        }),
+      ).valid,
+    ).toBe(false);
+    expect(
+      validateManifest(
+        withCore({ runs: { local: "remote" }, target: { env: "staging" } }),
+      ).valid,
+    ).toBe(true);
+  });
+
+  it("rejects expect codes outside 100-599, non-integers and a bad url", () => {
+    for (const expect_ of [99, 600, 200.5, "401", []])
+      expect(
+        validateManifest(
+          withCore({
+            runs: { local: "remote" },
+            target: { env: "dev", expect: expect_ },
+          }),
+          envs,
+        ).valid,
+      ).toBe(false);
+    expect(
+      validateManifest(
+        withCore({
+          runs: { local: "remote" },
+          target: { env: "dev", url: "ftp://x" },
+        }),
+        envs,
+      ).valid,
+    ).toBe(false);
+  });
+
+  it("rejects an unknown key in target", () => {
+    expect(
+      validateManifest(
+        withCore({
+          runs: { local: "remote" },
+          target: { env: "dev", expected: 401 },
+        }),
+        envs,
+      ).valid,
+    ).toBe(false);
+  });
+});

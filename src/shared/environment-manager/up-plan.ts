@@ -29,11 +29,12 @@ import { resolveService } from "./service-runner.js";
 import { readManifest } from "../manifest/read-manifest.js";
 import { effectiveLocalCommands } from "../stacks/manifest-commands.js";
 import { getFocusedWorkspaceName } from "./workspaces.js";
+import { placementRefusal, servicePlacement } from "../manifest/placement.js";
 import { listMakeTargets } from "./make-targets.js";
 import { devOpContainerNames } from "./opctl.js";
 
 import { product } from "../product.js";
-export type UpFlag = "auto-start off" | "interactive" | "no-command";
+export type UpFlag = "auto-start off" | "interactive" | "no-command" | "remote";
 
 export interface NodePlan {
   repo: string;
@@ -261,6 +262,29 @@ export function buildUpPlan(
         defaultAction: "skip",
         flags: ["no-command"],
         notes: ["not resolvable in the active workspace"],
+      };
+    }
+
+    // R13: a remote service is never started, whatever its Makefile says.
+    const remote = placementRefusal(
+      svc.address,
+      servicePlacement(readManifest(svc.repoPath), svc.subsystem, "local"),
+      () => false,
+    );
+    if (remote) {
+      return {
+        repo,
+        upCommand: null,
+        upSource: "none",
+        containerNames: [],
+        healthUrl: null,
+        noAutostart: noAutostartSet.has(repo),
+        interactive: false,
+        interactiveReason: "",
+        interactiveKind: "",
+        defaultAction: "skip",
+        flags: ["remote"],
+        notes: [remote],
       };
     }
 

@@ -42,6 +42,24 @@ config and manifest changes a distribution must make to move to it under
   same code.
 - **One secret redactor** (`src/shared/redact.ts`), shared by the journeys and
   security pillars and the MCP server.
+- **Placement (R13): what runs here and what runs in the cloud.** A
+  manifest's service may say `runs: { local: remote, dev: remote }` (per env,
+  `local` or `remote`) and `target: { env, account?, url?, expect? }`.
+  Without `runs`, a service with commands is local, one with only an HTTP
+  health URL is remote, and anything else has no placement. `/api/services`
+  and `/api/health` rows carry `runs` and `target`; `/api/applications`
+  carries `placements` per service address, and per application `placement`
+  (`local | remote | hybrid | none`) and a `summary`
+  (`shop-frontend local · shop-core remote (dev)`). `<cli> status`,
+  `services` and `apps` suffix remote services `☁ remote (dev)`, and
+  `<cli> graph` marks remote and hybrid nodes. See "Placement" in
+  `docs/distributions.md`.
+- **Remote health.** A remote service is checked by the health declared for
+  its `target.env`; only when there is none does Den GET `target.url`, up when
+  the status is one of `target.expect` (a code or a list, 100–599; default
+  any 2xx). Its health row's label names the target (`dev · AWS`).
+- **`production_envs`** in the org config: the envs that count as production
+  (default `[prod, production]`).
 
 ### Changed
 
@@ -51,6 +69,19 @@ config and manifest changes a distribution must make to move to it under
   same tooltips as before. Clients that read the command from `url` should
   read `check`.
 - `/api/server-info` returns Den's `version`.
+- **Nothing runs a command on a remote service.** `/api/service/exec`,
+  `<cli> up|down|restart`, workspace up and down, and `<cli> up`'s plan refuse
+  it (`runs in dev (AWS); nothing to start here`; a `down` succeeds with
+  nothing to stop). The MCP guard `runsLocally()` reads `runs`. Security
+  `auto_targets` excludes remote services explicitly, a remote service is
+  never scanned as if it were local, and one whose `target.env` counts as
+  production is never scanned at all.
+- **Overrides may add placement.** `runs` and `target` are the one thing a
+  `manifests/<repo>.override.yml` may add to a service its base has.
+- `validate` checks env names: a `runs` key or `target.env` that is not one of
+  the org's `environments` is an error.
+- `<cli> status` keeps a hybrid repo's remote service as its own row instead
+  of rolling it into the entrypoint.
 
 ### Fixed
 
@@ -82,6 +113,11 @@ config and manifest changes a distribution must make to move to it under
 
 - None required: with no override files, manifests resolve as in 0.1.0.
 - To let agents act through `<cli> mcp`, add `mcp.actions` to the org config.
+- Placement needs no change: without `runs`, services keep working as
+  before. A service that has an HTTP health URL and no commands now shows as
+  remote; add `runs: { local: local }` if it is really on this machine. To
+  mark more envs as production than `prod` and `production`, set
+  `production_envs`.
 
 
 ## [0.1.0] - 2026-11-04

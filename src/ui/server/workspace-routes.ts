@@ -70,6 +70,10 @@ import {
 } from "../../shared/environment-manager/derivation/derived-up.js";
 import { readManifest } from "../../shared/manifest/read-manifest.js";
 import {
+  placementRefusal,
+  servicePlacement,
+} from "../../shared/manifest/placement.js";
+import {
   checkRepoSecrets,
   describeSecretsCheck,
   seedSecretsFromSibling,
@@ -1476,6 +1480,22 @@ export async function handleWorkspaceRoutes(
             runNext(i + 1);
             return;
           }
+        }
+        // R13: a remote service is part of the app but never run from here.
+        const remote = placementRefusal(
+          address,
+          servicePlacement(
+            readManifest(resolved.repoPath),
+            resolved.subsystem,
+            "local",
+          ),
+          () => false,
+          cmd === "down" ? "stop" : "start",
+        );
+        if (remote) {
+          emit({ type: "line", text: `  ${remote}` });
+          runNext(i + 1);
+          return;
         }
         const svcCmds = localCommandsFor(resolved, ws.name);
         const hasCmd =

@@ -90,7 +90,21 @@ const httpUrlString = z
   .string()
   .regex(/^https?:\/\/\S+$/, "must be an http(s) URL");
 
+// Placement (R13): where a service runs per env, and where a remote one is.
+// Env names are checked against the org's environments in placement.ts.
+const statusCode = z.number().int().min(100).max(599);
+const serviceTarget = z
+  .object({
+    env: z.string().min(1),
+    account: z.string().min(1).optional(),
+    url: httpUrlString.optional(),
+    expect: z.union([statusCode, z.array(statusCode).min(1)]).optional(),
+  })
+  .strict();
+
 const serviceManagementConfig = z.object({
+  runs: z.record(z.string(), z.enum(["local", "remote"])).optional(),
+  target: serviceTarget.optional(),
   depends_on: z.array(dependsOnEntry).optional(),
   commands: z.record(z.string(), z.record(z.string(), commandDef)).optional(),
   logs: z.record(z.string(), logSource).optional(),

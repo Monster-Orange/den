@@ -23,6 +23,10 @@ import {
 } from "../../shared/environment-manager/workspaces.js";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import { readManifest } from "../../shared/manifest/read-manifest.js";
+import {
+  repoPlacement,
+  type RollupPlacement,
+} from "../../shared/manifest/placement.js";
 import type { AliasResolver } from "../../shared/environment-manager/derivation/alias.js";
 import { loadAliasResolver } from "../../shared/environment-manager/derivation/load-alias.js";
 import {
@@ -170,6 +174,8 @@ export function renderText(
     annotations?: Map<string, string>;
     /** Node for the repo the command was run from — marked with a leading `*`. */
     currentRepo?: string;
+    /** repo → placement (R13): remote and hybrid nodes are marked. */
+    placements?: Map<string, NodePlacement>;
   } = {},
 ): string {
   const showEvidence = opts.showEvidence ?? true;
@@ -197,7 +203,10 @@ export function renderText(
     // green — both bold so they stand out from the plain-white edge bullets.
     const isOff = !!ann && ann.includes("auto-start off");
     const paint = isOff ? chalk.yellow : chalk.greenBright;
-    const styledAnn = ann ? "  " + paint(ann) : "";
+    const placed = placementMark(opts.placements?.get(node));
+    const styledAnn =
+      (placed ? "  " + chalk.cyan(placed) : "") +
+      (ann ? "  " + paint(ann) : "");
     // The repo the command was run from gets a leading `▸`; others a 2-space
     // gutter so node names stay aligned. A single-width glyph (not an emoji,
     // which is double-width + terminal-dependent) keeps the column stable.
@@ -229,9 +238,45 @@ export function renderText(
   return lines.join("\n");
 }
 
-export function renderDot(graph: DerivedGraph): string {
+/** A repo's placement on the graph: local, remote (with envs), or hybrid. */
+export interface NodePlacement {
+  placement: RollupPlacement;
+  envs: string[];
+}
+
+/** "☁ remote (dev)", "⇄ hybrid", or "" for a local (or runtime-less) node. */
+export function placementMark(p: NodePlacement | undefined): string {
+  if (!p) return "";
+  if (p.placement === "remote") return `☁ remote (${p.envs.join(", ")})`;
+  if (p.placement === "hybrid") return "⇄ hybrid";
+  return "";
+}
+
+/** Each node's placement from its manifest, viewed locally. */
+export function nodePlacements(nodes: string[]): Map<string, NodePlacement> {
+  const ctx = buildContext();
+  const out = new Map<string, NodePlacement>();
+  for (const node of nodes) {
+    const src = repoSource(node, ctx);
+    if (!src?.exists) continue;
+    out.set(node, repoPlacement(readManifest(src.path), "local"));
+  }
+  return out;
+}
+
+export function renderDot(
+  graph: DerivedGraph,
+  placements?: Map<string, NodePlacement>,
+): string {
   const lines = [`digraph ${product().cli} {`, "  rankdir=LR;"];
-  for (const node of graph.nodes) lines.push(`  "${node}";`);
+  for (const node of graph.nodes) {
+    const p = placements?.get(node);
+    lines.push(
+      p?.placement === "remote"
+        ? `  "${node}" [style=dashed, label="${node} ☁ ${p.envs.join(", ")}"];`
+        : `  "${node}";`,
+    );
+  }
   for (const e of graph.edges) {
     const style = e.kind === "event" ? "dashed" : "solid";
     const color = e.blocking === "hard" ? "red" : "black";
@@ -442,7 +487,7 @@ export async function cmdGraph(args: string[]): Promise<void> {
     return;
   }
   if (flags.format === "dot") {
-    console.log(renderDot(filtered));
+    console.log(renderDot(filtered, nodePlacements(filtered.nodes)));
     return;
   }
 
@@ -458,6 +503,7 @@ export async function cmdGraph(args: string[]): Promise<void> {
     renderText(filtered, {
       annotations: bootAnnotations(graph.nodes),
       currentRepo,
+      placements: nodePlacements(graph.nodes),
     }),
   );
   console.log("\n" + renderTargetWarnings(graph.nodes));

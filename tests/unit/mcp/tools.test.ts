@@ -158,12 +158,40 @@ describe("lifecycle guards", () => {
     expect(streams(calls)).toEqual([]);
   });
 
-  it("runsLocally: an up command today; an explicit runs.local:false wins (R13 hook)", () => {
+  it("runsLocally: an up command, unless the served runs says otherwise (R13)", () => {
     expect(runsLocally({ commands: ["up", "down"] })).toBe(true);
     expect(runsLocally({ commands: ["down"] })).toBe(false);
-    expect(runsLocally({ commands: ["up"], runs: { local: false } })).toBe(
-      false,
-    );
+    expect(runsLocally({ commands: ["up"], runs: "local" })).toBe(true);
+    expect(
+      runsLocally({
+        commands: ["up"],
+        runs: "remote",
+        target: { env: "dev" },
+      }),
+    ).toBe(false);
+    expect(runsLocally({ commands: ["up"], runs: "none" })).toBe(false);
+  });
+
+  it("refuses a remote service, naming where it runs", async () => {
+    const remote = [
+      {
+        repo: "core",
+        service: "api",
+        address: "core",
+        commands: ["up", "down", "restart"],
+        mode: "managed",
+        isEntrypoint: true,
+        runs: "remote",
+        target: { env: "dev", account: "AWS" },
+      },
+    ];
+    for (const tool of ["service_up", "service_down", "service_restart"]) {
+      const { api, calls } = fakeApi({ get: () => remote });
+      const r = await callTool(tool, { repo: "core" }, ctx(api));
+      expect(r.isError).toBe(true);
+      expect(r.text).toMatch(/runs in dev \(AWS\); nothing to st/);
+      expect(streams(calls)).toEqual([]);
+    }
   });
 
   it("runs up through /api/service/exec, cmd=up, env=local", async () => {

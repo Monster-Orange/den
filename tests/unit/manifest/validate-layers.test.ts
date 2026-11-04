@@ -3,6 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { validateManifestLayers } from "../../../src/shared/manifest/validate-manifest.js";
+import { readManifest } from "../../../src/shared/manifest/read-manifest.js";
 
 const tmpDirs: string[] = [];
 function tempDir(): string {
@@ -141,5 +142,68 @@ describe("validateManifestLayers", () => {
         message: expect.stringMatching(/no base manifest/),
       }),
     ]);
+  });
+
+  // R13: placement is what a distribution most often needs to differ, so an
+  // override may add `runs` and `target` to a service the base has.
+  it("lets an override place a service remote (runs + target)", () => {
+    fs.writeFileSync(
+      overridePath,
+      [
+        "services:",
+        "  api:",
+        "    runs: { local: remote }",
+        "    target: { env: dev, account: AWS, url: https://api.dev.acme.example/health, expect: 401 }",
+        "",
+      ].join("\n"),
+    );
+    const v = validateManifestLayers(repo);
+    expect(errorsOf(v)).toEqual([]);
+    expect(v.valid).toBe(true);
+    expect(readManifest(repo)?.services?.api).toEqual(
+      expect.objectContaining({
+        runs: { local: "remote" },
+        target: expect.objectContaining({ env: "dev", expect: 401 }),
+      }),
+    );
+  });
+
+  it("still rejects a placement key on a service the base lacks", () => {
+    fs.writeFileSync(
+      overridePath,
+      "services:\n  worker:\n    runs: { local: remote }\n",
+    );
+    const v = validateManifestLayers(repo);
+    expect(v.valid).toBe(false);
+    expect(errorsOf(v)).toEqual([
+      expect.objectContaining({ path: "services.worker" }),
+    ]);
+  });
+
+  it("checks an override's placement values and env names", () => {
+    fs.writeFileSync(
+      overridePath,
+      "services:\n  api:\n    runs: { local: cloud }\n",
+    );
+    const bad = validateManifestLayers(repo);
+    expect(bad.valid).toBe(false);
+    expect(
+      bad.layers.find((l) => l.layer === "override")?.result.errors,
+    ).toEqual([expect.objectContaining({ path: "services.api.runs.local" })]);
+
+    fs.writeFileSync(
+      overridePath,
+      "services:\n  api:\n    runs: { local: remote, qa: remote }\n    target: { env: dev }\n",
+    );
+    const env = validateManifestLayers(repo);
+    expect(env.valid).toBe(false);
+    expect(env.layers.find((l) => l.layer === "merged")?.result.errors).toEqual(
+      [
+        expect.objectContaining({
+          path: "services.api.runs.qa",
+          message: expect.stringMatching(/unknown environment "qa"/),
+        }),
+      ],
+    );
   });
 });

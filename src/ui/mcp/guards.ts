@@ -4,7 +4,14 @@
  * top of the web server's own checks, which still apply.
  */
 import type { Environment } from "../../shared/types/index.js";
-import type { ResolvedMcpConfig } from "../../shared/den-config.js";
+import {
+  isProductionEnv,
+  type ResolvedMcpConfig,
+} from "../../shared/den-config.js";
+import {
+  placementRefusal,
+  type Placement,
+} from "../../shared/manifest/placement.js";
 
 /** A guard said no. The message says which rule and how to change it. */
 export class Refusal extends Error {
@@ -39,25 +46,34 @@ export interface ServiceEntryLike {
   service?: string;
   commands: string[];
   mode?: string;
-  /** R13: the manifest's `runs:` (not served yet). */
-  runs?: { local?: boolean };
+  /** R13: where the service runs (absent from an older web server). */
+  runs?: Placement["runs"];
+  target?: Placement["target"];
 }
 
 /**
- * Whether Den runs this service on this machine. Today: its manifest has a
- * local `up` command. R13 adds `runs.local` to the manifest; once /api/services
- * serves it, an explicit `runs.local: false` refuses here even with an `up`,
- * and `runs.local: true` is the signal to read instead of `up`.
+ * Whether Den runs this service on this machine: the served `runs` is
+ * "local" and it has a local `up` command. A web server that does not serve
+ * `runs` yet is judged by the `up` command alone.
  */
 export function runsLocally(entry: ServiceEntryLike): boolean {
-  if (entry.runs?.local === false) return false;
+  if (entry.runs !== undefined && entry.runs !== "local") return false;
   return entry.commands.includes("up");
 }
 
 export function assertRunsLocally(entry: ServiceEntryLike): void {
+  const address = `${entry.repo ?? "?"}/${entry.service ?? "?"}`;
+  if (entry.runs === "remote")
+    throw new Refusal(
+      placementRefusal(
+        address,
+        { runs: "remote", target: entry.target ?? null },
+        (e) => isProductionEnv(e),
+      ) ?? `${address} runs remotely; nothing to start here`,
+    );
   if (!runsLocally(entry))
     throw new Refusal(
-      `${entry.repo ?? "?"}/${entry.service ?? "?"} is not run locally (its manifest has no local "up" command), so agents may not start, stop or restart it.`,
+      `${address} is not run locally (its manifest has no local "up" command), so agents may not start, stop or restart it.`,
     );
 }
 

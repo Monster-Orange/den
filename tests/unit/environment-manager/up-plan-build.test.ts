@@ -74,9 +74,33 @@ beforeAll(async () => {
     ].join("\n"),
   );
 
+  // remote: has `make up`, but its manifest places it in dev (R13).
+  write(
+    path.join(repos, "remote", "Makefile"),
+    ["up:", "\t@opctl run dev", ""].join("\n"),
+  );
+  write(
+    path.join(repos, "remote", ".den.yml"),
+    [
+      "name: remote",
+      "services:",
+      "  remote:",
+      "    runs: { local: remote }",
+      "    target: { env: dev, account: AWS }",
+      "",
+    ].join("\n"),
+  );
+
   const catalog: Record<string, { gh: string }> = {};
   const services: Record<string, { mode: string; path: string }> = {};
-  for (const r of ["clean", "opt", "billing", "nocmd", "withoverride"]) {
+  for (const r of [
+    "clean",
+    "opt",
+    "billing",
+    "nocmd",
+    "withoverride",
+    "remote",
+  ]) {
     catalog[r] = { gh: `Org/${r}` };
     services[r] = { mode: "dev-managed", path: path.join(repos, r) };
   }
@@ -161,5 +185,19 @@ describe("buildUpPlan", () => {
     const plans = buildUpPlan(graph, ["clean"]);
     expect(plans[0].noAutostart).toBe(false);
     expect(plans[0].flags).not.toContain("auto-start off");
+  });
+
+  it("never starts a remote service, even with a make up", () => {
+    const graph = { nodes: [], edges: [] } as unknown as DerivedGraph;
+    const [plan] = buildUpPlan(graph, ["remote"]);
+    expect(plan).toMatchObject({
+      upCommand: null,
+      upSource: "none",
+      defaultAction: "skip",
+    });
+    expect(plan.flags).toContain("remote");
+    expect(plan.notes.join(" ")).toMatch(
+      /runs in dev \(AWS\); nothing to start/,
+    );
   });
 });

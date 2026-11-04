@@ -268,6 +268,27 @@ export interface ServiceManagementConfig {
   depends_on?: DependsOnEntry[];
   /** OWASP ZAP options: `openapi` per env turns on the API scan; `skip` leaves it out. */
   security?: { openapi?: Partial<Record<Environment, string>>; skip?: boolean };
+  /**
+   * Where the service runs, per env (R13): `local` (on this machine) or
+   * `remote` (deployed elsewhere; Den never starts, stops, scans or execs
+   * it). Unset envs fall back to the defaults in manifest/placement.ts.
+   */
+  runs?: Partial<Record<Environment, ServiceRunsValue>>;
+  /** Where a remote service runs: the env, an account label, a URL to probe. */
+  target?: ServiceTargetConfig;
+}
+
+export type ServiceRunsValue = "local" | "remote";
+
+export interface ServiceTargetConfig {
+  /** One of the org's environments. */
+  env: string;
+  /** A label for where it is deployed (e.g. a cloud account). */
+  account?: string;
+  /** Probed for health when target.env declares no health check. */
+  url?: string;
+  /** Status codes that count as up when probing `url` (default any 2xx). */
+  expect?: number | number[];
 }
 
 export interface ServiceLink {

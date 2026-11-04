@@ -9,7 +9,8 @@
  *
  * An override only changes what the base already has: a key (or service)
  * the base lacks is an error (see overrideKeyErrors), so a typo can never
- * add a silent dead key.
+ * add a silent dead key. The one exception is a service's placement (`runs`,
+ * `target`), which an override may add to a service the base has.
  */
 
 import type { ValidationError } from "../types/index.js";
@@ -40,14 +41,22 @@ export function mergeOverride(
  * Every key in `override` the base lacks, by its dotted path. A whole
  * service the base lacks is reported as one error at `services.<name>`.
  */
+/**
+ * Keys an override may add to a service the base has: placement (R13) is
+ * what a distribution most often needs to differ, and is never a dead key.
+ */
+const ADDABLE_SERVICE_KEYS = new Set(["runs", "target"]);
+
 export function overrideKeyErrors(
   base: ManifestMap,
   override: ManifestMap,
   at: string[] = [],
 ): ValidationError[] {
   const errors: ValidationError[] = [];
+  const inService = at.length === 2 && at[0] === "services";
   for (const [key, value] of Object.entries(override)) {
     const here = [...at, key];
+    if (!(key in base) && inService && ADDABLE_SERVICE_KEYS.has(key)) continue;
     if (!(key in base)) {
       const isService = at.length === 1 && at[0] === "services";
       errors.push({

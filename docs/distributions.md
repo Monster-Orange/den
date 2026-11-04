@@ -109,6 +109,90 @@ The web UI's Services cards show the layers each manifest was built from
 `manifestLayers`, e.g. `["held", "override"]`. `DEN_MANIFESTS_DIR` points the
 held and override lookup at another directory (tests use it).
 
+## Placement
+
+Each service says where it runs, per environment: `local` (on this machine,
+started by Den) or `remote` (deployed elsewhere). A remote service still
+shows in the graph, the health row and the applications, marked ☁, but Den
+never starts, stops, scans or execs it. The common case is a hybrid
+application: its frontend runs here and calls the team's dev deployment of
+its backend.
+
+```yaml
+# .acme.yml of shop-core
+services:
+  core:
+    runs: { local: remote, dev: remote } # per env: local | remote
+    target:
+      env: dev # one of the org's environments
+      account: AWS # a label for where it is deployed
+      url: https://api.dev.acme.example/admin/manifest
+      expect: 401 # the API answers 401 when it is up (behind a JWT authorizer)
+```
+
+When `runs` says nothing for the env being viewed:
+
+- `local` if the service has commands there (locally: `commands.local`, or
+  the repo is a compose stack);
+- `remote` if it has an HTTP health URL there and no commands;
+- otherwise `none`: Den knows no runtime for it, and shows no placement.
+
+`target` names where a remote service runs: `env`, an optional `account`
+label, an optional `url`, and `expect`, a status code or a list of codes that
+count as up when Den probes `url` (default: any 2xx). Codes are integers
+100–599. A service with `runs.local: remote` must have a `target`.
+
+**Health.** A remote service is checked by the health declared for its
+`target.env` (`health.dev` above), the same check Den runs when you view that
+env. Only when there is none does Den GET `target.url` and compare the status
+with `expect`. The health row's label names the target, `dev · AWS`, followed
+by the status or response time.
+
+**Validation.** `<cli> validate` rejects an env name in `runs`, or a
+`target.env`, that is not one of the org's `environments`, an unknown key in
+`target`, and `expect` codes outside 100–599. Placement is the one thing an
+[override](#overriding-a-manifest) may add to a service its base has, so a
+distribution can place a repo's service remote without a commit to the repo:
+
+```yaml
+# manifests/shop-core.override.yml
+services:
+  core:
+    runs: { local: remote }
+    target: { env: dev, account: AWS, url: https://api.dev.acme.example/health }
+```
+
+**Where it shows.** `/api/services` and `/api/health` rows carry `runs`
+(`local`, `remote` or `none`, for the env asked about) and `target`
+(`{ env, account?, url? }`, or null unless remote). `/api/applications`
+carries each service's placement in `placements` (keyed by address), and per
+application `placement` (`local`, `remote`, `hybrid` or `none`) with a
+`summary` such as `shop-frontend local · shop-core remote (dev)`.
+`<cli> status` and `<cli> services` suffix remote services with
+`☁ remote (dev)`; `<cli> apps` marks hybrid and remote applications and
+repos; `<cli> graph` marks remote nodes (dashed in `--format dot`) and hybrid
+ones (`⇄ hybrid`).
+
+**Guards.**
+
+- Service exec (`/api/service/exec`, `<cli> up|down|restart`, workspace-wide
+  up and down, `<cli> up`'s plan) refuses every command on a remote service:
+  `shop/core runs in dev (AWS); nothing to start here`. A `down` stops
+  nothing and succeeds, so a workspace down is not failed by it.
+- MCP: `runsLocally()` reads the served `runs`, so agents cannot start, stop
+  or restart a remote service.
+- Security: `auto_targets` never adds a remote service, even one with local
+  commands. A declared target of a remote service is not scanned in `local`,
+  only in other envs.
+- **Production.** A remote service whose `target.env` counts as production is
+  never scanned, in any env, and never acted on. Production is an attribute of
+  an env in the org config, never a name check:
+
+  ```yaml
+  # config/acme.yml
+  production_envs: [prod] # default: [prod, production]
+  ```
+
 ## den.yml: the product profile
 
 Every runtime name derives from `product.name`. Set only what you want to
@@ -340,7 +424,8 @@ is no deploy tool.
 
 - **Lifecycle only, local only.** The service tools run a manifest's `up`,
   `down` or `restart` and nothing else, with `env=local`, and only for a
-  service run locally (today: its manifest has a local `up` command).
+  service run locally: its placement is `local` and it has a local `up`
+  command (see [Placement](#placement)).
 - **Sync touches managed clones only.** It never pulls, resets or switches
   branches in a dev-managed checkout (your own). The web server enforces
   this for the UI's Sync too: a managed entry whose path is, holds or sits

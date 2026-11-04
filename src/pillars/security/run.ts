@@ -35,7 +35,11 @@ import type {
   TestResult,
 } from "../../shared/types/index.js";
 import { getDistRoot } from "../../shared/paths.js";
-import { readSecurityAutoTargets } from "../../shared/den-config.js";
+import {
+  isProductionEnv,
+  readSecurityAutoTargets,
+} from "../../shared/den-config.js";
+import { isProtectedRemote } from "../../shared/manifest/placement.js";
 import { listServicesWithManifests } from "../../shared/manifest/workspace-manifests.js";
 import {
   autoSecurityTargets,
@@ -190,6 +194,8 @@ export interface EntrypointDeps {
   now: () => Date;
   log: (message: string) => void;
   logError: (message: string) => void;
+  /** Whether the org counts an env as production (default: org config). */
+  isProduction?: (env: string) => boolean;
 }
 
 /** Production wiring: real docker, real token minting, real result writer. */
@@ -575,7 +581,28 @@ export async function runSecurityCli(
   const units: ScanUnit[] = [];
   try {
     const suffixes = deps.ownedHosts();
+    const isProduction =
+      deps.isProduction ?? ((e: string) => isProductionEnv(e));
     for (const target of targets) {
+      // R13: a remote service whose target env counts as production is never
+      // scanned; any other remote one is scanned only in its own env, never
+      // as if it ran locally.
+      const placed = target.placement;
+      if (placed?.runs === "remote" && placed.target) {
+        const where = placed.target.env;
+        if (isProtectedRemote(placed, isProduction)) {
+          deps.log(
+            `↷ skipping ${securityTargetId(target)}: runs in ${where}, which counts as production`,
+          );
+          continue;
+        }
+        if (args.env === "local") {
+          deps.log(
+            `↷ skipping ${securityTargetId(target)}: runs in ${where}, not on this machine`,
+          );
+          continue;
+        }
+      }
       // A target that declares no host for THIS env (e.g. only staging/prod)
       // is simply not in scope here — skip it, never abort the batch.
       const inEnv =

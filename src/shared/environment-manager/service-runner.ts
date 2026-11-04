@@ -16,7 +16,8 @@ import {
   spawnInteractive,
   getServiceLogPath,
 } from "../process/spawn-streaming.js";
-import { readUserConfig } from "../den-config.js";
+import { isProductionEnv, readUserConfig } from "../den-config.js";
+import { placementRefusal, servicePlacement } from "../manifest/placement.js";
 import { lookupTab, recordTab, forgetTab } from "../cli-tabs.js";
 import {
   closeTab,
@@ -1055,6 +1056,20 @@ export function runServiceCommand(
   }
 
   const { repoPath, subsystem } = resolved;
+
+  // R13: Den never runs a command on a remote service. A down stops nothing
+  // here, which is a success; anything else is refused.
+  const refusal = placementRefusal(
+    resolved.address,
+    servicePlacement(readManifest(repoPath), subsystem, "local"),
+    (e) => isProductionEnv(e) === true,
+    command === "down" ? "stop" : "start",
+  );
+  if (refusal) {
+    onLine(refusal);
+    closeAsync(command === "down" ? 0 : 1);
+    return dummy();
+  }
 
   // ── Up: share-if-identical / hard-block on conflict ─────────────────────────
   if (command === "up" || command === "restart") {

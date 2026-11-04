@@ -1363,3 +1363,55 @@ describe("runServiceCommand never invokes onClose synchronously (zalgo guard)", 
     expect(closes).toEqual([1]);
   });
 });
+
+describe("runServiceCommand — remote services (R13)", () => {
+  const remoteManifest = {
+    name: "repo",
+    services: {
+      api: {
+        runs: { local: "remote" as const },
+        target: { env: "dev", account: "AWS" },
+        commands: { local: { up: "make up", down: "make down" } },
+      },
+    },
+  };
+
+  it.each(["up", "restart", "seed"])(
+    "refuses %s on a remote service and runs nothing",
+    async (command) => {
+      mockReadManifest.mockReturnValue(remoteManifest);
+      const onLine = jest.fn();
+      const onClose = jest.fn();
+      runServiceCommand({ address: "repo/api", command, onLine, onClose });
+      await new Promise((r) => setImmediate(r));
+      expect(onLine).toHaveBeenCalledWith(
+        "repo/api runs in dev (AWS); nothing to start here",
+      );
+      expect(onClose).toHaveBeenCalledWith(1);
+      expect(mockSpawnStreaming).not.toHaveBeenCalled();
+      expect(mockOpenTab).not.toHaveBeenCalled();
+    },
+  );
+
+  it("down on a remote service stops nothing and succeeds", async () => {
+    mockReadManifest.mockReturnValue(remoteManifest);
+    mockIsOpctlAvailable.mockReturnValue(true);
+    mockListRunningOpctlContainers.mockReturnValue([
+      { name: "opctl_repo_1", base: "repo" },
+    ] as never);
+    const onLine = jest.fn();
+    const onClose = jest.fn();
+    runServiceCommand({
+      address: "repo/api",
+      command: "down",
+      onLine,
+      onClose,
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(onLine).toHaveBeenCalledWith(
+      "repo/api runs in dev (AWS); nothing to stop here",
+    );
+    expect(onClose).toHaveBeenCalledWith(0);
+    expect(mockSpawnStreaming).not.toHaveBeenCalled();
+  });
+});

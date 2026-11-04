@@ -13,6 +13,8 @@ import {
   schemaByVersion,
 } from "./schema.js";
 import type { ValidationError, ValidationResult } from "../types/index.js";
+import { placementErrors } from "./placement.js";
+import { builtinEnvironments, orgEnvironments } from "../den-config.js";
 import {
   validateLayers,
   type LayeredValidation,
@@ -80,7 +82,26 @@ export function issuesToErrors(
  * @param input - A parsed object or a raw YAML string.
  * @returns A ValidationResult with errors, warnings, and the detected version.
  */
-export function validateManifest(input: unknown): ValidationResult {
+export interface ValidateOptions {
+  /** The org's environments; default: the org config's (see orgEnvironments). */
+  environments?: readonly string[];
+}
+
+function environmentsFor(opts: ValidateOptions): readonly string[] {
+  if (opts.environments) return opts.environments;
+  try {
+    return orgEnvironments();
+  } catch {
+    // An unreadable org config is reported where it is read; validate the
+    // manifest against Den's built-in environment list meanwhile.
+    return builtinEnvironments();
+  }
+}
+
+export function validateManifest(
+  input: unknown,
+  opts: ValidateOptions = {},
+): ValidationResult {
   // 1. Parse YAML string if needed
   let parsed: unknown = input;
   if (typeof input === "string") {
@@ -132,6 +153,15 @@ export function validateManifest(input: unknown): ValidationResult {
   const result = schema.safeParse(parsed);
 
   if (result.success) {
+    // Env names in `runs` / `target.env` must be the org's (R13).
+    const placement = placementErrors(parsed, environmentsFor(opts));
+    if (placement.length > 0)
+      return {
+        valid: false,
+        version: detectedVersion,
+        errors: placement,
+        warnings,
+      };
     return {
       valid: true,
       version: detectedVersion,
@@ -156,7 +186,7 @@ export function validateManifest(input: unknown): ValidationResult {
 const schemaTools: SchemaTools = {
   version: CURRENT_SCHEMA_VERSION,
   schema: schemaByVersion[CURRENT_SCHEMA_VERSION],
-  validate: validateManifest,
+  validate: (input) => validateManifest(input),
   issuesToErrors: (issues) => issuesToErrors(issues as z.ZodIssue[]),
 };
 

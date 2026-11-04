@@ -14,6 +14,31 @@ import type {
 } from "../../shared/applications.js";
 
 import { product } from "../../shared/product.js";
+import type {
+  Placement,
+  RollupPlacement,
+} from "../../shared/manifest/placement.js";
+
+/** An application's placement line: "⇄ hybrid: <summary>", "☁ remote", or "". */
+export function describeAppPlacement(a: {
+  placement: RollupPlacement;
+  summary: string;
+}): string {
+  if (a.placement === "hybrid") return `⇄ hybrid: ${a.summary}`;
+  if (a.placement === "remote") return "☁ remote";
+  return "";
+}
+
+/** A repo's suffix over its services: "☁ remote (dev)", "⇄ hybrid", or "". */
+export function describeRepoPlacement(services: Placement[]): string {
+  const runs = new Set(services.map((s) => s.runs).filter((r) => r !== "none"));
+  if (runs.size > 1) return "⇄ hybrid";
+  if (!runs.has("remote")) return "";
+  const envs = [
+    ...new Set(services.flatMap((s) => (s.target ? [s.target.env] : []))),
+  ].sort();
+  return `☁ remote (${envs.join(", ")})`;
+}
 /** "feature-items (module) → ships in core-api" */
 export function describeContributor(c: ApplicationContributor): string {
   return `${c.repo} (${c.kind}) → ${c.contributesTo.length ? `ships in ${c.contributesTo.join(", ")}` : "no consumer known"}`;
@@ -92,15 +117,22 @@ export function cmdApps(args: string[]): void {
     const owner = a.owner ? chalk.gray(`  · ${a.owner}`) : "";
     const kind =
       a.source === "repo" ? chalk.gray("  (repo is the application)") : "";
-    console.log(`    ${chalk.bold.cyan(a.name)}${title}${owner}${kind}`);
+    const placed = describeAppPlacement(a);
+    console.log(
+      `    ${chalk.bold.cyan(a.name)}${title}${owner}${kind}${placed ? chalk.cyan(`  ${placed}`) : ""}`,
+    );
     if (a.description) console.log(chalk.gray(`      ${a.description}`));
     const width = Math.max(0, ...a.repos.map((r) => r.length));
     for (const repo of a.repos) {
       const subs = a.services[repo]
         .map((addr) => (addr.includes("/") ? addr.split("/")[1] : addr))
         .filter((s) => s !== repo);
+      const where = describeRepoPlacement(
+        a.services[repo].flatMap((addr) => a.placements[addr] ?? []),
+      );
+      const suffix = where ? chalk.cyan(`  ${where}`) : "";
       console.log(
-        `      ${subs.length ? `${repo.padEnd(width)}${chalk.gray(`  ${subs.join(", ")}`)}` : repo}`,
+        `      ${subs.length ? `${repo.padEnd(width)}${chalk.gray(`  ${subs.join(", ")}`)}` : repo}${suffix}`,
       );
     }
     for (const c of a.contributors)

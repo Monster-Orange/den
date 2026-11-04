@@ -101,6 +101,7 @@ import {
   getReposRoot,
   mergeUserConfig,
   readDenConfig,
+  isProductionEnv,
   readUserConfig,
 } from "../../shared/den-config.js";
 import { deriveGraph } from "../../shared/environment-manager/derivation/derive-graph.js";
@@ -135,6 +136,11 @@ import {
   validateManifest,
   validateManifestLayers,
 } from "../../shared/manifest/validate-manifest.js";
+import {
+  placementRefusal,
+  placementSuffix,
+  servicePlacement,
+} from "../../shared/manifest/placement.js";
 import {
   getDistRoot,
   getEngineRoot,
@@ -1370,6 +1376,25 @@ class DenCLI {
         printPartialState();
         return;
       }
+      // R13: a remote service is never started or stopped from here. Said,
+      // not failed, so a workspace or app up/down carries on past it.
+      const placed = resolveService(address, workspace);
+      const remote = placed
+        ? placementRefusal(
+            address,
+            servicePlacement(
+              readManifest(placed.repoPath),
+              placed.subsystem,
+              "local",
+            ),
+            (e) => isProductionEnv(e),
+            command === "down" ? "stop" : "start",
+          )
+        : null;
+      if (remote) {
+        console.log(chalk.gray(`  • ${remote}`));
+        continue;
+      }
       if (command === "up" && !seedAddresses.has(address)) {
         const resolved = resolveService(address, workspace);
         if (resolved) {
@@ -2508,9 +2533,14 @@ class DenCLI {
     for (const r of results) {
       const healthStr = formatHealthLabel(r.health);
       const reasonStr = formatHealthReason(r);
+      const placed = placementSuffix({
+        runs: r.runs ?? "none",
+        target: r.target ?? null,
+      });
 
       table.push([
-        this.labelWithAutostart(r.address, noAutostart),
+        this.labelWithAutostart(r.address, noAutostart) +
+          (placed ? chalk.cyan(`  ${placed}`) : ""),
         r.mode === "dev-managed"
           ? chalk.blue("dev-managed")
           : chalk.magenta("managed"),
@@ -2672,13 +2702,19 @@ class DenCLI {
         /* ignore */
       }
 
+      const placed = placementSuffix({
+        runs: r.runs ?? "none",
+        target: r.target ?? null,
+      });
       table.push([
-        this.labelWithAutostart(r.address, noAutostart),
+        this.labelWithAutostart(r.address, noAutostart) +
+          (placed ? chalk.cyan(`  ${placed}`) : ""),
         r.mode === "dev-managed"
           ? chalk.blue("dev-managed")
           : chalk.magenta("managed"),
         healthStr,
-        cmds.join(", "),
+        // A remote service's commands are never run from here.
+        placed ? chalk.gray("—") : cmds.join(", "),
       ]);
     }
 

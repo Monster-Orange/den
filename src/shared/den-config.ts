@@ -179,6 +179,12 @@ export interface DenConfig {
   /** Environments enabled for this deployment. */
   environments: Environment[];
   /**
+   * The environments that count as production (default: prod, production).
+   * Production is an attribute of an env, never a name check: Den refuses to
+   * start, stop, scan or exec a remote service whose target env is listed.
+   */
+  production_envs?: string[];
+  /**
    * Root directory for local repo discovery, relative to the den directory.
    * Defaults to ".." (the parent of den), which covers the common layout where
    * den and all managed repos are siblings under a shared project root.
@@ -316,6 +322,11 @@ const ALL_ENVIRONMENTS: Environment[] = [
   "production",
 ];
 
+/** Den's built-in environment names (used when the org config lists none). */
+export function builtinEnvironments(): Environment[] {
+  return [...ALL_ENVIRONMENTS];
+}
+
 const DEFAULT_CONFIG: DenConfig = {
   environments: ALL_ENVIRONMENTS,
 };
@@ -393,6 +404,7 @@ export function readDenConfig(): DenConfig {
       environments: envs.filter((e): e is Environment =>
         ALL_ENVIRONMENTS.includes(e as Environment),
       ),
+      production_envs: parsed?.production_envs,
       repos_root: parsed?.repos_root,
       github_org: parsed?.github_org,
       orgs: parsed?.orgs,
@@ -432,6 +444,39 @@ export function readDenConfig(): DenConfig {
 export function getReposRoot(): string {
   const config = readDenConfig();
   return path.resolve(ROOT, config.repos_root ?? "..");
+}
+
+const DEFAULT_PRODUCTION_ENVS = ["prod", "production"];
+
+/** The envs the org counts as production (`production_envs`). */
+export function productionEnvs(config: DenConfig = readDenConfig()): string[] {
+  const listed = config.production_envs;
+  return Array.isArray(listed) &&
+    listed.every((e): e is string => typeof e === "string")
+    ? listed
+    : DEFAULT_PRODUCTION_ENVS;
+}
+
+/**
+ * Whether the org counts `env` as production. An unreadable org config falls
+ * back to the default list rather than letting a guard throw.
+ */
+export function isProductionEnv(env: string, config?: DenConfig): boolean {
+  let listed: string[];
+  try {
+    listed = productionEnvs(config ?? readDenConfig());
+  } catch {
+    listed = DEFAULT_PRODUCTION_ENVS;
+  }
+  return listed.includes(env);
+}
+
+/**
+ * The org's environment names, for validating manifests: the config's
+ * `environments` (Den's built-in list when unset), always with `local`.
+ */
+export function orgEnvironments(config: DenConfig = readDenConfig()): string[] {
+  return [...new Set<string>(["local", ...config.environments])];
 }
 
 /** True when the `local` environment is enabled for this engineer. */

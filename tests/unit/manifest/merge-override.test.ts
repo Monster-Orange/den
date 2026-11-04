@@ -91,3 +91,28 @@ describe("overrideKeyErrors", () => {
     ]);
   });
 });
+
+describe("overrideKeyErrors — placement", () => {
+  it("lets an override add runs and target to a service the base has", () => {
+    expect(
+      overrideKeyErrors(base, {
+        services: {
+          api: { runs: { local: "remote" }, target: { env: "dev" } },
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  it("only directly under a service", () => {
+    expect(overrideKeyErrors(base, { runs: { local: "remote" } })).toEqual([
+      expect.objectContaining({ path: "runs" }),
+    ]);
+    expect(
+      overrideKeyErrors(base, {
+        services: { api: { commands: { runs: {} } } },
+      }),
+    ).toEqual([
+      expect.objectContaining({ path: "services.api.commands.runs" }),
+    ]);
+  });
+});

@@ -19,7 +19,10 @@ import {
   isLocalEnabled,
   readReleaseConfig,
   writeUserReleaseConfig,
+  isProductionEnv,
+  productionEnvs,
 } from "../../src/shared/den-config.js";
+import type { DenConfig } from "../../src/shared/den-config.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -290,5 +293,32 @@ describe("release.deploy", () => {
     const [, data] = mockWriteFileSync.mock.calls[0];
     expect(String(data)).toContain("staggerSeconds: 5");
     expect(String(data)).not.toContain("deploy");
+  });
+});
+
+describe("production is an env attribute (production_envs)", () => {
+  it("defaults to prod and production", () => {
+    const cfg = { environments: [] } as DenConfig;
+    expect(productionEnvs(cfg)).toEqual(["prod", "production"]);
+    expect(isProductionEnv("prod", cfg)).toBe(true);
+    expect(isProductionEnv("production", cfg)).toBe(true);
+    expect(isProductionEnv("dev", cfg)).toBe(false);
+  });
+
+  it("follows the org config when it lists them", () => {
+    const cfg = {
+      environments: [],
+      production_envs: ["staging", "beta"],
+    } as unknown as DenConfig;
+    expect(isProductionEnv("beta", cfg)).toBe(true);
+    expect(isProductionEnv("prod", cfg)).toBe(false);
+  });
+
+  it("ignores a malformed value", () => {
+    const cfg = {
+      environments: [],
+      production_envs: "prod",
+    } as unknown as DenConfig;
+    expect(productionEnvs(cfg)).toEqual(["prod", "production"]);
   });
 });

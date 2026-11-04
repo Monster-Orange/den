@@ -11,6 +11,10 @@
 import { discoverRepos } from "../smoke/discover.js";
 import { effectiveLocalCommands } from "../../shared/stacks/manifest-commands.js";
 import type { WorkspaceService } from "../../shared/manifest/workspace-manifests.js";
+import {
+  servicePlacement,
+  type Placement,
+} from "../../shared/manifest/placement.js";
 import type {
   DiscoveredRepo,
   SecurityServiceConfig,
@@ -27,6 +31,12 @@ export interface DiscoveredSecurityTarget {
   config: SecurityServiceConfig;
   /** Derived by `security.auto_targets` from a health URL, not declared. */
   auto?: true;
+  /**
+   * Where the service runs from this machine (R13). A remote one is never
+   * scanned as if it were local, and never at all when its target env counts
+   * as production (see run.ts).
+   */
+  placement?: Placement;
 }
 
 /** Repo-qualified name used by --service and the module picker. */
@@ -61,6 +71,7 @@ export function discoverSecurityTargets(
         repoPath: repo.repoPath,
         serviceName,
         config,
+        placement: servicePlacement(repo.manifest, serviceName, "local"),
       });
     }
   }
@@ -73,7 +84,8 @@ export function discoverSecurityTargets(
  * local commands or compose) with an HTTP health URL, scanned at that URL's
  * origin in each env that has one. Never a service its manifest marks
  * `security.skip`, one already declared under `security:`, or one with no
- * local runtime (a remote or shell-checked service). Host policy is applied
+ * local runtime (a remote or shell-checked service). A service whose
+ * placement is remote is excluded explicitly, whatever commands it has. Host policy is applied
  * later as for any target: every URL must be on the owned-host allowlist.
  */
 export function autoSecurityTargets(
@@ -85,6 +97,10 @@ export function autoSecurityTargets(
   for (const s of services) {
     const id = securityTargetId({ repoName: s.repo, serviceName: s.service });
     if (taken.has(id) || s.config?.security?.skip) continue;
+    // Explicitly: a service placed remote (R13) is never an automatic
+    // target, even when it also has local commands.
+    if (servicePlacement(s.manifest, s.service, "local").runs !== "local")
+      continue;
     const runsLocally =
       Object.keys(effectiveLocalCommands(s.manifest, s.service, s.repo, "auto"))
         .length > 0;

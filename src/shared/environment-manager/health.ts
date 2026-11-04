@@ -14,8 +14,18 @@ import * as fs from "fs";
 import * as path from "path";
 import * as dns from "dns";
 import { spawn } from "child_process";
-import { HEALTH_CHECK_TIMEOUT_MS, CLI_SPAWN_TIMEOUT_MS } from "../constants.js";
+import {
+  HEALTH_CHECK_TIMEOUT_MS,
+  HOSTED_HEALTH_CHECK_TIMEOUT_MS,
+  CLI_SPAWN_TIMEOUT_MS,
+} from "../constants.js";
 import { readManifest } from "../manifest/read-manifest.js";
+import {
+  expectMatches,
+  resolveHealthCheck,
+  type Expect,
+  type Placement,
+} from "../manifest/placement.js";
 import { readCatalog } from "./catalog.js";
 import {
   getActiveWorkspace,
@@ -42,6 +52,9 @@ export interface ServiceHealthResult {
   branch: string | null;
   health: "ok" | "error" | "unknown";
   healthDetail?: string;
+  /** Where the service runs for the env checked (R13). */
+  runs?: Placement["runs"];
+  target?: Placement["target"];
 }
 
 // ── Name resolution ───────────────────────────────────────────────────────────
@@ -288,7 +301,16 @@ const LOCALHOST_FALLBACK_TIMEOUT_MS = 1_500;
 export async function pingHttp(
   url: string,
   timeoutMs: number = HEALTH_CHECK_TIMEOUT_MS,
+  expect?: Expect,
 ): Promise<PingResult> {
+  // A remote target's probe (target.url): up only on the expected codes, and
+  // never a localhost fallback (it is not on this machine).
+  if (expect !== undefined) {
+    const r = await pingOnce(url, timeoutMs);
+    return r.status === undefined
+      ? r
+      : { ok: expectMatches(r.status, expect), status: r.status };
+  }
   const result = await pingOnce(url, timeoutMs);
   if (!result.ok) {
     // Fall back to localhost for Docker-style hostnames regardless of how the
@@ -432,12 +454,25 @@ export async function checkServiceHealth(
           getFocusedWorkspaceName() ?? "default",
         )
       : null;
-  const healthCfg =
-    manifest.services?.[resolved.subsystem]?.health?.[env] ??
-    (composeHealth
-      ? { type: "shell" as const, cmd: composeHealth }
-      : undefined);
+  const plan = resolveHealthCheck(
+    manifest,
+    resolved.subsystem,
+    env,
+    composeHealth,
+  );
+  const placed: Pick<ServiceHealthResult, "runs" | "target"> = {
+    runs: plan.placement.runs,
+    target: plan.placement.target,
+  };
+  const healthCfg = plan.check;
   if (!healthCfg) {
+    if (plan.placement.runs === "remote")
+      return {
+        ...base,
+        ...placed,
+        health: "unknown",
+        healthDetail: "no health check configured",
+      };
     // Conventional local discovery: opctl exposes each system on the host at
     // http://<repo> (port 80), and stack services serve /healthz. When the
     // PRIMARY service (entrypoint, or a repo's only service) declares no local
@@ -460,6 +495,7 @@ export async function checkServiceHealth(
       if (probe.ok && probe.status !== undefined && probe.status < 300) {
         return {
           ...base,
+          ...placed,
           health: "ok",
           healthDetail: `conventional ${conventional}`,
         };
@@ -467,6 +503,7 @@ export async function checkServiceHealth(
     }
     return {
       ...base,
+      ...placed,
       health: "unknown",
       healthDetail: "no health check configured",
     };
@@ -475,10 +512,17 @@ export async function checkServiceHealth(
   const result =
     healthCfg.type === "shell"
       ? await pingShell(healthCfg.cmd, {}, resolved.repoPath)
-      : await pingHttp(healthCfg.url);
+      : await pingHttp(
+          healthCfg.url,
+          env === "local" && plan.placement.runs !== "remote"
+            ? HEALTH_CHECK_TIMEOUT_MS
+            : HOSTED_HEALTH_CHECK_TIMEOUT_MS,
+          plan.expect,
+        );
 
   return {
     ...base,
+    ...placed,
     health: result.ok ? "ok" : "error",
     healthDetail:
       result.error ??
@@ -554,8 +598,10 @@ export function rollupRepoHealth(
       ? rows.find((r) => r.subsystem === entrypoint)
       : undefined;
     if (epRow) {
-      // Show the entrypoint's health under the clean repo-name address.
+      // Show the entrypoint's health under the clean repo-name address. A
+      // remote service is not a sidecar: it keeps its own row (R13).
       out.push({ ...epRow, address: repoName });
+      out.push(...rows.filter((r) => r !== epRow && r.runs === "remote"));
     } else {
       // No entrypoint → infra provider; keep the subsystem breakdown.
       out.push(...rows);

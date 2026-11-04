@@ -432,6 +432,20 @@ describe("rollupRepoHealth", () => {
     expect(out[0].health).toBe("error");
   });
 
+  it("keeps a hybrid repo's remote service as its own row (R13)", () => {
+    const results = [
+      row("shop", "web", "ok"),
+      {
+        ...row("shop", "core", "ok"),
+        runs: "remote" as const,
+        target: { env: "dev" },
+      },
+      row("shop", "db", "ok"),
+    ];
+    const out = rollupRepoHealth(results, () => "web");
+    expect(out.map((r) => r.address)).toEqual(["shop", "shop/core"]);
+  });
+
   it("keeps a no-entrypoint repo (infra provider) fully expanded", () => {
     const results = [
       row("infra-stack", "infra-stack", "ok"),
@@ -521,5 +535,106 @@ describe("sortByRepoOrder", () => {
       "mystery-b",
       "mystery-a",
     ]);
+  });
+});
+
+describe("pingHttp — expected status codes (target.expect)", () => {
+  it("counts only the expected codes as up", async () => {
+    mockFetch.mockResolvedValueOnce(mockResponse(401));
+    expect(
+      (await pingHttp("http://api.dev.acme.example/", 1000, [401])).ok,
+    ).toBe(true);
+    mockFetch.mockResolvedValueOnce(mockResponse(200));
+    expect(
+      (await pingHttp("http://api.dev.acme.example/", 1000, [401])).ok,
+    ).toBe(false);
+  });
+
+  it("2xx only, never a 4xx, under the default", async () => {
+    mockFetch.mockResolvedValueOnce(mockResponse(404));
+    const r = await pingHttp("http://api.dev.acme.example/", 1000, "2xx");
+    expect(r.ok).toBe(false);
+    expect(r.status).toBe(404);
+  });
+});
+
+describe("checkServiceHealth — remote services (R13)", () => {
+  const remoteRepo = (svc: string[]): string => {
+    const repoRoot = createTempRoot();
+    fs.writeFileSync(
+      path.join(repoRoot, ".den.yml"),
+      ["name: core", "services:", "  api:", ...svc].join("\n"),
+      "utf-8",
+    );
+    return repoRoot;
+  };
+  const resolvedAt = (repoPath: string) => ({
+    address: "core/api",
+    repoName: "core",
+    subsystem: "api",
+    repoPath,
+    mode: "managed" as const,
+    branch: "main",
+  });
+
+  it("uses the health declared for target.env, and carries placement", async () => {
+    const repo = remoteRepo([
+      "    runs: { local: remote }",
+      "    target: { env: dev, account: AWS, url: http://api.dev.acme.example/admin, expect: 401 }",
+      "    health:",
+      "      dev: { url: http://api.dev.acme.example/health }",
+    ]);
+    mockFetch.mockResolvedValueOnce(mockResponse(200));
+    const r = await checkServiceHealth(resolvedAt(repo));
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "http://api.dev.acme.example/health",
+    );
+    expect(r).toEqual(
+      expect.objectContaining({
+        health: "ok",
+        runs: "remote",
+        target: {
+          env: "dev",
+          account: "AWS",
+          url: "http://api.dev.acme.example/admin",
+        },
+      }),
+    );
+  });
+
+  it("probes target.url with target.expect when target.env has no check", async () => {
+    const repo = remoteRepo([
+      "    runs: { local: remote }",
+      "    target: { env: dev, url: http://api.dev.acme.example/admin, expect: 401 }",
+    ]);
+    mockFetch.mockResolvedValueOnce(mockResponse(401));
+    const r = await checkServiceHealth(resolvedAt(repo));
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "http://api.dev.acme.example/admin",
+    );
+    expect(r.health).toBe("ok");
+  });
+
+  it("target.url without expect wants a 2xx", async () => {
+    const repo = remoteRepo([
+      "    runs: { local: remote }",
+      "    target: { env: dev, url: http://api.dev.acme.example/admin }",
+    ]);
+    mockFetch.mockResolvedValueOnce(mockResponse(401));
+    const r = await checkServiceHealth(resolvedAt(repo));
+    expect(r.health).toBe("error");
+    expect(r.healthDetail).toBe("http 401");
+  });
+
+  it("a local service reports runs local and no target", async () => {
+    const repo = remoteRepo([
+      "    commands: { local: { up: make up } }",
+      "    health:",
+      "      local: { type: shell, cmd: 'true' }",
+    ]);
+    const r = await checkServiceHealth(resolvedAt(repo));
+    expect(r).toEqual(
+      expect.objectContaining({ runs: "local", target: null, health: "ok" }),
+    );
   });
 });

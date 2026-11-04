@@ -90,6 +90,7 @@ import {
 } from "../../shared/process/spawn-streaming.js";
 import {
   readDenConfig,
+  isProductionEnv,
   isLocalEnabled,
   readUserConfig,
   writeUserConfig,
@@ -115,6 +116,13 @@ import {
   validateManifestLayers,
 } from "../../shared/manifest/validate-manifest.js";
 import { depService } from "../../shared/manifest/deps.js";
+import {
+  placementRefusal,
+  resolveHealthCheck,
+  servicePlacement,
+  type Expect,
+  type Placement,
+} from "../../shared/manifest/placement.js";
 import {
   isOpSignedIn,
   hasSudoInVault,
@@ -161,6 +169,9 @@ interface HealthResult {
   openUrl?: string | null;
   /** Extra named links for this env. */
   links?: OpenLink[];
+  /** Where it runs for this env, and where a remote one is (R13). */
+  runs: Placement["runs"];
+  target: Placement["target"];
 }
 
 /**
@@ -857,6 +868,9 @@ async function handleRequest(
       links: OpenLink[];
       /** The GitHub org that owns the repo. */
       org: string;
+      /** Codes that count as up for a remote target.url probe. */
+      expect?: Expect;
+      meta: Pick<HealthResult, "runs" | "target">;
     }> = [];
     let edgeDomain: string | null = null;
     try {
@@ -888,6 +902,7 @@ async function handleRequest(
           openUrl: null,
           links: [],
           org: orgOf(resolved.repoName, catalog),
+          meta: { runs: "none", target: null },
         });
         continue;
       }
@@ -903,11 +918,16 @@ async function handleRequest(
               ws.name,
             )
           : null;
-      const healthCfg =
-        svcCfg?.health?.[env] ??
-        (composeHealth
-          ? { type: "shell" as const, cmd: composeHealth }
-          : undefined);
+      // One resolution path with `<cli> status` (placement.ts): a remote
+      // service is checked by target.env's declaration, else target.url.
+      const plan = resolveHealthCheck(
+        manifest,
+        resolved.subsystem,
+        env,
+        composeHealth,
+      );
+      const healthCfg = plan.check;
+      const remote = plan.placement.runs === "remote";
       // Keep services with no health check (checkType "none") so systems like
       // jobs-runtime still appear — as an "unknown" (muted) dot, matching
       // `den status`, rather than vanishing from the health row.
@@ -926,7 +946,7 @@ async function handleRequest(
         deps,
         repo: resolved.repoName,
         service: resolved.subsystem,
-        label: healthCfg?.label ?? resolved.subsystem,
+        label: plan.label ?? healthCfg?.label ?? resolved.subsystem,
         checkType: healthCfg
           ? healthCfg.type === "shell"
             ? "shell"
@@ -944,7 +964,7 @@ async function handleRequest(
         // service with no declared local health check may still serve the stack
         // convention at http://<repo>/healthz via opctl DNS.
         conventional: (() => {
-          if (healthCfg || env !== "local") return null;
+          if (healthCfg || env !== "local" || remote) return null;
           const keys = Object.keys(manifest.services ?? {});
           const isPrimary = manifest.entrypoint
             ? resolved.subsystem === manifest.entrypoint
@@ -962,6 +982,8 @@ async function handleRequest(
         }),
         links: linksFor(manifest, resolved.subsystem, env),
         org: orgOf(resolved.repoName, catalog),
+        ...(plan.expect ? { expect: plan.expect } : {}),
+        meta: { runs: plan.placement.runs, target: plan.placement.target },
       });
     }
 
@@ -991,6 +1013,7 @@ async function handleRequest(
       isEntrypoint,
       conventional,
       meta,
+      expect,
     }) => {
       if (checkType !== "none") {
         const started = Date.now();
@@ -999,9 +1022,10 @@ async function handleRequest(
             ? await pingShell(target, awsProfileEnv(env), repoPath)
             : await pingHttp(
                 target,
-                env === "local"
+                env === "local" && meta.runs !== "remote"
                   ? HEALTH_CHECK_TIMEOUT_MS
                   : HOSTED_HEALTH_CHECK_TIMEOUT_MS,
+                expect,
               );
         return {
           repo,
@@ -1179,6 +1203,7 @@ async function handleRequest(
           deps: (svc.depends_on ?? []).map(depService),
           cloned: true, // legacy discovery only ever finds on-disk repos
           manifestLayers,
+          ...servicePlacement(repo.manifest, svcName, env),
         }),
       );
     });
@@ -1246,6 +1271,7 @@ async function handleRequest(
                   deps: [] as string[],
                   cloned: fs.existsSync(resolved.repoPath),
                   manifestLayers,
+                  ...servicePlacement(null, resolved.subsystem, env),
                 },
               ];
             }
@@ -1268,6 +1294,7 @@ async function handleRequest(
                 ),
                 cloned: true,
                 manifestLayers,
+                ...servicePlacement(manifest, resolved.subsystem, env),
               },
             ];
           })
@@ -1356,6 +1383,14 @@ async function handleRequest(
     if (resolved) {
       repoPath = resolved.repoPath;
       const manifest = readManifest(repoPath);
+      // R13: nothing runs a command on a remote service.
+      const refusal = placementRefusal(
+        `${repoName}/${svcName}`,
+        servicePlacement(manifest, resolved.subsystem, env),
+        (e) => isProductionEnv(e),
+        cmdName === "down" ? "stop" : "start",
+      );
+      if (refusal) return fail(refusal);
       if (manifest) {
         cmdDef =
           manifest.services?.[resolved.subsystem]?.commands?.[env]?.[cmdName];
@@ -1367,6 +1402,15 @@ async function handleRequest(
       const repos = discoverRepos();
       const repo = repos.find((r) => r.repoName === repoName);
       repoPath = repo?.repoPath;
+      const refusal = repo
+        ? placementRefusal(
+            `${repoName}/${svcName}`,
+            servicePlacement(repo.manifest, svcName, env),
+            (e) => isProductionEnv(e),
+            cmdName === "down" ? "stop" : "start",
+          )
+        : null;
+      if (refusal) return fail(refusal);
       cmdDef = repo?.manifest.services?.[svcName]?.commands?.[env]?.[cmdName];
     }
 
