@@ -195,6 +195,23 @@ describe("theme add, list, remove", () => {
     expect(lock.sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it("warns that a file:// source cannot be re-added elsewhere", async () => {
+    lines.length = 0;
+    expect(await add(spec())).toBe(0);
+    expect(lines.join("\n")).toMatch(/is a path on this machine/);
+  });
+
+  it("list fails on a leftover 0.3.0-dev.0 themes.lock.json, naming it", async () => {
+    const old = path.join(dist, "themes.lock.json");
+    fs.writeFileSync(old, '{"themes":{}}');
+    lines.length = 0;
+    expect(await cmdTheme(["list"], { distRoot: dist, log })).toBe(1);
+    expect(lines.join("\n")).toMatch(
+      /themes\.lock\.json is from .* 0\.3\.0-dev\.0/,
+    );
+    fs.rmSync(old);
+  });
+
   it("list checks each theme against its lock", async () => {
     lines.length = 0;
     expect(await cmdTheme(["list"], { distRoot: dist, log })).toBe(0);
@@ -242,6 +259,30 @@ describe("theme add, list, remove", () => {
     expect(readLock(dist).tracker).toBeDefined();
     delete raw.plugins.tracker;
     fs.writeFileSync(file, JSON.stringify(raw));
+  });
+
+  it("never replaces a local (unlocked) plugin dir or another kind's", async () => {
+    const local = path.join(dist, "plugins", "sample");
+    fs.mkdirSync(local, { recursive: true });
+    fs.writeFileSync(path.join(local, "page.html"), "mine");
+    lines.length = 0;
+    expect(await add(spec())).toBe(1);
+    expect(lines.join("\n")).toMatch(/local plugin/);
+    expect(fs.readFileSync(path.join(local, "page.html"), "utf-8")).toBe(
+      "mine",
+    );
+    expect(readLock(dist).sample).toBeUndefined();
+    fs.rmSync(local, { recursive: true, force: true });
+
+    const file = path.join(dist, "plugins.lock.json");
+    const before = fs.readFileSync(file, "utf-8");
+    const raw = JSON.parse(before) as { plugins: Record<string, unknown> };
+    raw.plugins.sample = { id: "sample", kinds: ["page"] };
+    fs.writeFileSync(file, JSON.stringify(raw));
+    lines.length = 0;
+    expect(await add(spec())).toBe(1);
+    expect(lines.join("\n")).toMatch(/already a page plugin/);
+    fs.writeFileSync(file, before);
   });
 
   it("refuses a theme that fails validation, naming the pair", async () => {

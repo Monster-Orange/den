@@ -219,6 +219,24 @@ describe("validateThemeDir", () => {
     }
   });
 
+  it("takes the theme's and each font's license as one SPDX rule", () => {
+    for (const license of ["UNLICENSED", "NONE", "", "see LICENSE"]) {
+      const m = base();
+      m.license = license;
+      expect(validateThemeDir(theme(m)).issues[0]).toMatchObject({
+        at: "/license",
+      });
+      const f = base();
+      f.fonts = [{ family: "X", license, files: [{ path: "x.woff2" }] }];
+      expect(validateThemeDir(theme(f)).issues.map((i) => i.at)).toContain(
+        "/fonts/0/license",
+      );
+    }
+    const m = base();
+    m.license = "MIT OR Apache-2.0";
+    expect(validateThemeDir(theme(m)).ok).toBe(true);
+  });
+
   it("checks the id against its directory when asked", () => {
     const r = validateThemeDir(theme(base()), { expectId: "other" });
     expect(r.issues[0]).toMatchObject({ at: "/id" });

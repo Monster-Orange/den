@@ -23,9 +23,8 @@
     "description": { "type": "string", "maxLength": 280 },
     "author": { "type": "string", "maxLength": 120 },
     "license": {
-      "description": "SPDX identifier for the theme (tokens, logo). Fonts carry their own.",
-      "type": "string",
-      "minLength": 1
+      "description": "SPDX license expression for the theme (tokens, logo), e.g. MIT. Fonts carry their own.",
+      "$ref": "#/$defs/spdx"
     },
     "homepage": { "type": "string", "format": "uri" },
     "den": {
@@ -56,6 +55,13 @@
     }
   },
   "$defs": {
+    "spdx": {
+      "description": "An SPDX license expression: identifiers (MIT, OFL-1.1, LicenseRef-x) joined by AND, OR or WITH. Not UNLICENSED or NONE: a published theme and its fonts must be redistributable.",
+      "type": "string",
+      "maxLength": 120,
+      "pattern": "^\\(?[A-Za-z0-9][A-Za-z0-9.+-]*\\)?( (AND|OR|WITH) \\(?[A-Za-z0-9][A-Za-z0-9.+-]*\\)?)*$",
+      "not": { "pattern": "^(UNLICENSED|NONE|NOASSERTION)$" }
+    },
     "hex": {
       "description": "#rrggbb. One format, so contrast can be checked exactly.",
       "type": "string",
@@ -199,8 +205,8 @@
       "properties": {
         "family": { "type": "string", "pattern": "^[A-Za-z0-9 ._-]{1,60}$" },
         "license": {
-          "type": "string",
-          "description": "SPDX identifier, e.g. OFL-1.1."
+          "description": "SPDX license expression for the font, e.g. OFL-1.1.",
+          "$ref": "#/$defs/spdx"
         },
         "files": {
           "type": "array",

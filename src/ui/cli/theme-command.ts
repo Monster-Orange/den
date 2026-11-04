@@ -280,6 +280,12 @@ export async function cmdTheme(
         return 1;
       }
       const src = parseThemeSource(spec);
+      if (src.repo.startsWith("file://"))
+        log(
+          chalk.yellow(
+            `  ${src.repo} is a path on this machine: the lock records it, so others cannot re-add from it. Publish the repo and add from its URL before committing.`,
+          ),
+        );
       const git = deps.git ?? defaultGit;
       const kind = refKind(git, src);
       if (kind === "branch" && !track) {
@@ -339,6 +345,17 @@ export async function cmdTheme(
         }
         const files = themeContent(themeDir, v);
         const dest = themeDirFor(distRoot, theme.id);
+        const held = readLock(distRoot)[theme.id];
+        // Only ever replace what an earlier add vendored: an unlocked dir is
+        // the distribution's own plugin, and another kind is not ours.
+        if (held ? !held.kinds?.includes("theme") : fs.existsSync(dest)) {
+          log(
+            chalk.red(
+              `✗ ${PLUGINS_DIR}/${theme.id}/ is already ${held ? `a ${held.kinds.join("/")} plugin` : "a local plugin (not in " + LOCK_FILE + ")"}; nothing changed`,
+            ),
+          );
+          return 1;
+        }
         const staging = path.join(work, "out");
         for (const f of files) {
           fs.mkdirSync(path.dirname(path.join(staging, f)), {
@@ -382,6 +399,15 @@ export async function cmdTheme(
       if (bundled.theme)
         log(`  den            ${bundled.theme.version.padEnd(8)} built in`);
       let ok = true;
+      // 0.3.0-dev.0 vendored into themes/<id>/ with themes.lock.json.
+      if (fs.existsSync(path.join(distRoot, "themes.lock.json"))) {
+        ok = false;
+        log(
+          chalk.red(
+            `  themes.lock.json is from ${cli} 0.3.0-dev.0 and is no longer read: delete it and themes/<id>/, then run theme add again (now ${PLUGINS_DIR}/<id>/, ${LOCK_FILE})`,
+          ),
+        );
+      }
       for (const e of themesIn(lock)) {
         const dir = themeDirFor(distRoot, e.id);
         const v = fs.existsSync(dir) ? validateThemeDir(dir) : null;
