@@ -28,8 +28,17 @@ describe("newTable", () => {
     expect(out).not.toContain(ESC);
   });
 
+  // Whether @colors/colors then emits ANSI depends on the terminal (none in
+  // CI), so the check is that the styles reach cli-table3 untouched.
   it("colour on: keeps cli-table3's colours", () => {
-    expect(draw(true)).toContain(ESC);
+    const t = newTable(
+      { head: ["Service", "Health"], style: { head: ["cyan"] } },
+      true,
+    ) as unknown as {
+      options: { style: { head: string[]; border: string[] } };
+    };
+    expect(t.options.style.head).toEqual(["cyan"]);
+    expect(t.options.style.border).toEqual(["grey"]);
   });
 });
 
