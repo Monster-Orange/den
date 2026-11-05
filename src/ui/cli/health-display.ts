@@ -13,6 +13,7 @@ export function healthLabelText(health: HealthState): string {
 export function formatHealthLabel(health: HealthState): string {
   if (health === "ok") return chalk.green("● ok");
   if (health === "error") return chalk.red("● down");
+  if (health === "pending") return chalk.gray("● pending");
   return chalk.gray("● unknown");
 }
 

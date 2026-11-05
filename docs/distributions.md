@@ -592,22 +592,22 @@ guard off.
 
 Read tools (always registered):
 
-| Tool                | Web API                                    | What                                                       |
-| ------------------- | ------------------------------------------ | ---------------------------------------------------------- |
-| `status`            | `/api/health`                              | Service health; `url` (HTTP check) or `check` (shell)      |
-| `services`          | `/api/services`                            | Services, their mode (managed or dev-managed) and commands |
-| `applications`      | `/api/applications`                        | Org > Application > Repo > Services                        |
-| `graph`             | `/api/graph`                               | The derived dependency graph and startup order             |
-| `workspaces`        | `/api/workspaces`                          | Workspaces, active and focused                             |
-| `environments`      | `/api/environments`                        | The enabled environment names (never their values)         |
-| `logs_search`       | `/api/logs/search`                         | Search services' full log history                          |
-| `logs_tail`         | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)     |
-| `tests_available`   | `/api/modules`, `/api/test-sources`        | A pillar's modules and the repos they come from            |
-| `security_latest`   | `/api/security/latest`                     | The newest security scan per mode                          |
-| `release_status`    | `/api/release/runs`, `/api/release/status` | Recent CD runs, and an env's deployed-version table        |
-| `manifest_validate` | `/api/manifest/validate`                   | Validate a manifest by path or content                     |
-| `stacks`            | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health    |
-| `edge_status`       | `/api/edge`                                | The edge: up or down, its routes and cert names            |
+| Tool                | Web API                                    | What                                                                                                                                            |
+| ------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`            | `/api/health`                              | Service health; `url` (HTTP check) or `check` (shell); `ok` true up, false down, null not known (`pending: true` when a check has not answered) |
+| `services`          | `/api/services`                            | Services, their mode (managed or dev-managed) and commands                                                                                      |
+| `applications`      | `/api/applications`                        | Org > Application > Repo > Services                                                                                                             |
+| `graph`             | `/api/graph`                               | The derived dependency graph and startup order                                                                                                  |
+| `workspaces`        | `/api/workspaces`                          | Workspaces, active and focused                                                                                                                  |
+| `environments`      | `/api/environments`                        | The enabled environment names (never their values)                                                                                              |
+| `logs_search`       | `/api/logs/search`                         | Search services' full log history                                                                                                               |
+| `logs_tail`         | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)                                                                                          |
+| `tests_available`   | `/api/modules`, `/api/test-sources`        | A pillar's modules and the repos they come from                                                                                                 |
+| `security_latest`   | `/api/security/latest`                     | The newest security scan per mode                                                                                                               |
+| `release_status`    | `/api/release/runs`, `/api/release/status` | Recent CD runs, and an env's deployed-version table                                                                                             |
+| `manifest_validate` | `/api/manifest/validate`                   | Validate a manifest by path or content                                                                                                          |
+| `stacks`            | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health                                                                                         |
+| `edge_status`       | `/api/edge`                                | The edge: up or down, its routes and cert names                                                                                                 |
 
 Action tools (only those named in `mcp.actions`): `service_up`,
 `service_down`, `service_restart` (through `/api/service/exec`),

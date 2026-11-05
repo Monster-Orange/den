@@ -8,6 +8,33 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **The health row no longer shows healthy repos down on a cold poll.** A
+  check that got no answer within its budget was sent as a finished
+  `ok: false`: a compose stack's check (`<cli> stack health`, a full CLI
+  start per service, 15-20 of them at once) past its 5s budget on a loaded
+  machine, or an HTTP check past its 3s timeout. The row painted it red
+  and the 8s health cache replayed that to the next page load, until the
+  next poll corrected it. Now a check that has not answered is **pending**
+  (`ok: null`, `pending: true`, the reason in `error`), never down. Only a
+  check that completed and failed is `ok: false`. A timeout is down only
+  when it repeats on the next cycle (`timeout (twice in a row)`), so a hung
+  service still shows. `<cli> status` agrees: on a timeout it probes once
+  more, and is down only when both probes time out. Health results have a
+  new `pending` state (`health: "pending"`), which readiness waits on
+  rather than skipping.
+- **"Docker state unknown" is not "not running".** `<cli> stack health`
+  exits 3 when it could not tell (docker did not answer, the stack config
+  could not be read), and the health row reads that as unknown (`ok:
+  null`), not down. `/api/stacks` reports such a stack's health as `ok:
+  null`.
+- **A health stream and a poll at once run each check once.** A stream
+  started its own full run next to an in-flight `/api/health` (or another
+  stream), doubling the shell checks' processes. It now joins the run in
+  flight, replaying what has landed and then following it.
+- The web header's dot for a multi-service repo without an entrypoint
+  turned red when none of its checks were up yet, even with none down. It
+  is red now only when a check completed and failed.
+
 - **The default workspace is seeded only on a genuine fresh setup.** Any
   command that reads workspaces (`status`, `up`, `graph`, `logs`, …) seeded
   `default` from `defaults.workspace.repos` whenever `default` was empty,

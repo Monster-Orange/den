@@ -1043,7 +1043,9 @@ function _repoHealthItem(repo, items, escAttr) {
     const state = ok === true ? "ok" : ok === false ? "err" : "";
     const tip =
       ok == null
-        ? "no health check"
+        ? error
+          ? `${what} — ${error}`
+          : "no health check"
         : error
           ? `${what} — ${error}`
           : `${what} → ${status}`;
@@ -1063,14 +1065,19 @@ function _repoHealthItem(repo, items, escAttr) {
     overallState = entry.ok === true ? "ok" : entry.ok === false ? "err" : "";
     tip =
       entry.ok == null
-        ? "no health check"
+        ? entry.error
+          ? `${entry.url ?? entry.check} — ${entry.error}`
+          : "no health check"
         : entry.error
           ? `${entry.url ?? entry.check} — ${entry.error}`
           : `${entry.url ?? entry.check} → ${entry.status}`;
   } else {
+    // Only a completed, failed check (ok false) is down; ok null (no check,
+    // or no answer yet) is unknown and never turns the dot red.
     const allOk = items.every((i) => i.ok === true);
     const anyOk = items.some((i) => i.ok === true);
-    overallState = allOk ? "ok" : anyOk ? "running" : "err";
+    const anyDown = items.some((i) => i.ok === false);
+    overallState = allOk ? "ok" : anyOk ? "running" : anyDown ? "err" : "";
     tip = `${items.length} services`;
   }
   return `<div class="health-item" title="${escAttr(tip)}">

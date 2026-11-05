@@ -22,6 +22,7 @@ import {
 } from "../../shared/stacks/runtime.js";
 import { loadStackContext, stackStatuses } from "../../shared/stacks/status.js";
 import type { StackConfig } from "../../shared/stacks/types.js";
+import { STACK_HEALTH_UNKNOWN_EXIT } from "../../shared/constants.js";
 
 function serviceFlag(args: string[]): { service?: string; rest: string[] } {
   const rest: string[] = [];
@@ -56,9 +57,48 @@ export async function resolveStacksSecretEnv(
   return out;
 }
 
+/**
+ * `stack health <name…>`: exit 0 when every stack is healthy, 1 when one is
+ * not, and STACK_HEALTH_UNKNOWN_EXIT when none failed but one could not be
+ * told (docker did not answer, the config could not be read). The web
+ * server's health row reads that as unknown, never as down.
+ */
+function stackHealthCommand(args: string[], service?: string): void {
+  let failed = false;
+  let unknown = false;
+  try {
+    const ctx = loadStackContext();
+    const names = args.filter((a) => !a.startsWith("-"));
+    if (!names.length)
+      throw new Error(
+        `Usage: stack health <name…>  (known: ${Object.keys(ctx.stacks).join(", ")})`,
+      );
+    for (const n of names) {
+      const s = ctx.stacks[n];
+      const h = s
+        ? stackHealth(ctx, s, service)
+        : { ok: false, detail: `unknown stack "${n}"` };
+      if (h.ok === false) failed = true;
+      if (h.ok === null) unknown = true;
+      const mark =
+        h.ok === true
+          ? chalk.green("✓")
+          : h.ok === false
+            ? chalk.red("✗")
+            : chalk.gray("?");
+      console.log(`${mark} ${n}  ${h.detail}`);
+    }
+  } catch (e) {
+    console.error(chalk.gray(`? ${(e as Error).message}`));
+    unknown = true;
+  }
+  process.exitCode = failed ? 1 : unknown ? STACK_HEALTH_UNKNOWN_EXIT : 0;
+}
+
 export async function cmdStack(argv: string[]): Promise<void> {
   const { service, rest } = serviceFlag(argv);
   const [sub = "ls", ...args] = rest;
+  if (sub === "health") return stackHealthCommand(args, service);
   // The global -w/--workspace is parsed (and checked) before we run and
   // arrives as DEN_WORKSPACE_OVERRIDE; loadStackContext reads it.
   const ctx = loadStackContext();
@@ -127,18 +167,6 @@ export async function cmdStack(argv: string[]): Promise<void> {
           secretEnv: secrets.get(n),
         });
       }
-      return;
-    }
-    case "health": {
-      let ok = true;
-      for (const n of pick()) {
-        const h = stackHealth(ctx, stacks[n], service);
-        ok &&= h.ok;
-        console.log(
-          `${h.ok ? chalk.green("✓") : chalk.red("✗")} ${n}  ${h.detail}`,
-        );
-      }
-      process.exitCode = ok ? 0 : 1;
       return;
     }
     case "down":

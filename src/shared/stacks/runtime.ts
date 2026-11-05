@@ -364,26 +364,39 @@ export function stackLogs(
 
 /**
  * Health of a running stack: ok when it has containers, all are running, and
- * none reports a failing or pending Docker healthcheck.
+ * none reports a failing or pending Docker healthcheck. `ok: null` when
+ * docker could not be asked: container state unknown is not "not running".
  */
 export function stackHealth(
   ctx: StackContext,
   s: StackConfig,
   service?: string,
-): { ok: boolean; detail: string } {
+): { ok: boolean | null; detail: string } {
   const project = projectName(s.name, ctx.workspace);
-  const r = run("docker", [
-    "ps",
-    "-a",
-    "--filter",
-    `label=com.docker.compose.project=${project}`,
-    ...(service
-      ? ["--filter", `label=com.docker.compose.service=${service}`]
-      : []),
-    "--format",
-    '{{.Label "com.docker.compose.service"}}\t{{.State}}\t{{.Status}}',
-  ]);
-  if (r.code !== 0) return { ok: false, detail: r.err || "docker ps failed" };
+  let r: ReturnType<typeof run>;
+  try {
+    r = run("docker", [
+      "ps",
+      "-a",
+      "--filter",
+      `label=com.docker.compose.project=${project}`,
+      ...(service
+        ? ["--filter", `label=com.docker.compose.service=${service}`]
+        : []),
+      "--format",
+      '{{.Label "com.docker.compose.service"}}\t{{.State}}\t{{.Status}}',
+    ]);
+  } catch (e) {
+    return {
+      ok: null,
+      detail: `container state unknown: ${(e as Error).message}`,
+    };
+  }
+  if (r.code !== 0)
+    return {
+      ok: null,
+      detail: `container state unknown: ${r.err.trim() || "docker ps failed"}`,
+    };
   const rows = r.out.split("\n").filter(Boolean);
   if (!rows.length)
     return {

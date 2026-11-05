@@ -104,14 +104,14 @@ describe("stackStatuses", () => {
     ]);
   });
 
-  it("a health check that throws reads as not ok, never as a crash", () => {
+  it("a health check that throws reads as unknown (ok null), never as a crash", () => {
     const out = stackStatuses(ctx, {
       health: true,
       healthOf: () => {
         throw new Error("docker: not found");
       },
     });
-    expect(out[0].health).toEqual({ ok: false, detail: "docker: not found" });
+    expect(out[0].health).toEqual({ ok: null, detail: "docker: not found" });
   });
 });
 
