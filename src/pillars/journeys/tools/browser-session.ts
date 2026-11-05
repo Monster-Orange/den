@@ -32,7 +32,7 @@ import { product } from "../../../shared/product.js";
  * Mint a fresh authenticated browser session for `role` against `env`'s
  * web surface and return the storageState auth-file path (and nothing
  * else). Throws a loud, actionable error when credentials cannot be
- * sourced — naming both the 1Password path (local) and the E2E_* env-var
+ * sourced — naming both the secrets-backend path (local) and the E2E_* env-var
  * path (CI), mirroring browser/global-setup.ts.
  */
 export async function provisionBrowserSession(
@@ -47,7 +47,7 @@ export async function provisionBrowserSession(
   if (!credentials) {
     const localHint =
       role === "admin"
-        ? `  Local: make auth-configure env=${env}  (handles 1Password sign-in automatically)\n`
+        ? `  Local: with secrets.provider: 1password, make auth-configure env=${env}\n`
         : `  Local: sign in to the secrets backend (make ${product().cli}-setup-secrets); the ${role} account comes from test_accounts in the org config\n`;
     throw new Error(
       `No credentials for ${role}.\n` +

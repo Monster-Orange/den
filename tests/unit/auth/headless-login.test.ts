@@ -45,6 +45,13 @@ jest.mock("@playwright/test", () => ({
   chromium: { launch: jest.fn() },
 }));
 
+// The 1password strategy's detect(): `op` is "on PATH" (its calls are the
+// mocked execFile above). fs is mocked here, so the real PATH check can't run.
+jest.mock("../../../src/shared/strategies/registry.js", () => ({
+  ...jest.requireActual<object>("../../../src/shared/strategies/registry.js"),
+  onPath: () => true,
+}));
+
 // The shared accounts come from `test_accounts` in the org config.
 const TEST_ACCOUNTS = {
   vault: "QA Vault",

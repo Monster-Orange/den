@@ -86,7 +86,7 @@ async function globalSetup(_config: FullConfig) {
           `  ⚠  No credentials for ${role} — authenticated ${role} tests will fail`,
         );
         console.warn(
-          `     eval $(op signin) && make auth-configure (admin) or verify 1Password vault`,
+          `     set E2E_${role.toUpperCase()}_EMAIL / _PASSWORD, or set up the secrets backend (secrets.provider)`,
         );
       } else {
         // Token mint failure, IdP misconfiguration, etc. — fail fast

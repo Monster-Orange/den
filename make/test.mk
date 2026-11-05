@@ -338,7 +338,7 @@ int-jwt-status:
 	done
 	@echo ""
 	@echo "  Run: make int-jwt-clear [env=<env>]  to force re-fetch"
-	@echo "  Credentials: 1Password (eval \$$(op signin)) or CI ENV vars"
+	@echo "  Credentials: the selected secrets backend (secrets.provider) or CI ENV vars"
 
 # ── Results & reports ─────────────────────────────────────────────────────────
 

@@ -1,17 +1,21 @@
 /**
  * Backend-agnostic developer-secrets setup.
  *
- * Dispatches to the strategy selected by `secrets.provider` in
- * config/den.yml (override: DEN_SECRETS_PROVIDER or
- * config/local/user.yml). See src/shared/secrets.
+ * Dispatches to the `setup` capability of the strategy selected by
+ * `secrets.provider` in the org config (override: DEN_SECRETS_PROVIDER or
+ * config/local/user.yml). See src/shared/secrets/strategies.ts.
  *
  * Usage:
  *   make den-setup-secrets                 — interactive setup
  *   npx tsx scripts/setup-secrets.ts --check    — non-interactive; exit 0 when ready
  *   npx tsx scripts/setup-secrets.ts --cli      — print "<provider> <binary> <formula>"
- *   npx tsx scripts/setup-secrets.ts --gate     — like --check, but a backend that
- *                                                 is not ready only warns unless
- *                                                 secrets.required is true
+ *   npx tsx scripts/setup-secrets.ts --provider — print the selected strategy id
+ *   npx tsx scripts/setup-secrets.ts --gate     — the up / web gate: passes
+ *                                                 silently unless secrets.required
+ *                                                 is true, then like --check
+ *
+ * With `secrets.provider: none` there is nothing to set up: it says so and
+ * exits 0.
  */
 import { spawnSync } from "child_process";
 import * as path from "path";
@@ -20,6 +24,8 @@ import chalk from "chalk";
 import {
   getSecretsProvider,
   readSecretsConfig,
+  resolveProvider,
+  strategyFor,
 } from "../src/shared/secrets/index.js";
 
 import { envKey, product } from "../src/shared/product.js";
@@ -31,126 +37,86 @@ function run(cmd: string, args: string[]): number {
   return spawnSync(cmd, args, { stdio: "inherit", cwd: ROOT }).status ?? 1;
 }
 
-function installed(cmd: string): boolean {
-  return !spawnSync(cmd, ["--version"], { stdio: "ignore" }).error;
-}
-
-const INSTALL: Record<string, string> = {
-  doppler: "brew install dopplerhq/cli/doppler",
-  op: "brew install 1password-cli",
-};
-
-function otherBackends(current: string): string {
-  return (
-    "Or pick another backend for just you (config/local/user.yml):\n" +
-    "    secrets:\n" +
-    `      provider: env        # or 1password / doppler (team default: ${current})\n` +
-    `  or for one shell: ${envKey("SECRETS_PROVIDER")}=env make web`
-  );
-}
+const NONE_MESSAGE =
+  "No secrets backend is configured (secrets.provider: none), so there is nothing to set up.\n" +
+  `To use one, set secrets.provider (doppler | 1password | env) and secrets.refs.<name> in ${product().configFile}.`;
 
 async function main(): Promise<number> {
-  const provider = getSecretsProvider();
   const cfg = readSecretsConfig();
-  const label = `secrets backend: ${provider.name}`;
+  const resolved = resolveProvider(cfg);
+  const strategy = strategyFor(resolved.name);
+  const label = `secrets backend: ${resolved.name}`;
 
-  // `--cli`: print "<provider> <binary> <brew formula>" for make setup's
-  // install step ("env -" when the backend needs no CLI).
-  if (process.argv.includes("--cli")) {
-    const bin =
-      provider.name === "doppler"
-        ? "doppler"
-        : provider.name === "1password"
-          ? "op"
-          : "";
-    const formula = bin ? INSTALL[bin].replace(/^brew install /, "") : "";
-    console.log(`${provider.name} ${bin || "-"} ${formula || "-"}`);
+  // `--provider`: print the selected strategy id (make reads it to offer
+  // backend-specific targets). Never probes the backend.
+  if (process.argv.includes("--provider")) {
+    console.log(resolved.name);
     return 0;
   }
 
+  // `--cli`: print "<provider> <binary> <brew formula>" for make setup's
+  // install step ("<provider> - -" when the backend needs no CLI). An unset
+  // provider needs nothing installed until something asks for a secret.
+  if (process.argv.includes("--cli")) {
+    const cli = resolved.implicit ? undefined : strategy.capabilities.cli;
+    console.log(`${resolved.name} ${cli?.bin ?? "-"} ${cli?.formula ?? "-"}`);
+    return 0;
+  }
+
+  // The up / web gate: only a distribution that requires its backend
+  // (secrets.required) is checked. Nothing required: pass, silently, whatever
+  // the provider; a feature that needs a secret reports it when it asks.
+  if (gate && !cfg.required) return 0;
+
   if (check || gate) {
-    const r = await provider.preflight();
-    if (r.ok) return 0;
-    if (gate && !cfg.required) {
-      // Signed in but no default scope: secret_env refs name their own
-      // (<project>/<config>/<key>), so only the engine's own secrets lack one.
-      if (await provider.isReady()) {
-        console.error(
-          chalk.gray(
-            `   ${label}: signed in, no default scope set (secret_env refs still resolve;` +
-              ` test logins and the saved sudo password need one: \`make ${product().cli}-setup-secrets\`).`,
-          ),
-        );
-        return 0;
-      }
-      console.error(
-        chalk.yellow(
-          `⚠️  ${label} is not ready — continuing.\n` +
-            "   Test logins and the saved sudo password need it; run " +
-            `\`make ${product().cli}-setup-secrets\` when you want them.`,
-        ),
-      );
+    if (resolved.name === "none" || (resolved.implicit && !cfg.required)) {
+      if (resolved.name === "none")
+        console.log(`  ✓ ${NONE_MESSAGE.split("\n")[0]}`);
       return 0;
     }
+    const r = await getSecretsProvider().preflight();
+    if (r.ok) return 0;
     console.error(chalk.red(`✗ ${label}\n${r.message ?? ""}`));
     return 1;
   }
 
+  const setup = strategy.capabilities.setup;
+  if (resolved.name === "none" || !setup) {
+    console.log(NONE_MESSAGE);
+    return 0;
+  }
+  if (resolved.implicit && !cfg.required) {
+    // Nothing chose a backend and nothing requires one: no store to set up.
+    console.log(
+      "secrets.provider is not set, so there is nothing to set up.\n" +
+        `To use a backend, set secrets.provider (doppler | 1password | env | none) in ${product().configFile}.`,
+    );
+    return 0;
+  }
   console.log(
     chalk.bold(`\n${product().title} developer secrets (${label})\n`),
   );
-  switch (provider.name) {
-    case "doppler": {
-      if (!installed("doppler")) {
-        console.error(
-          chalk.red("✗ The Doppler CLI is not installed.\n") +
-            `  Install it:  ${INSTALL.doppler}\n  then re-run: make ${product().cli}-setup-secrets\n\n  ` +
-            otherBackends(provider.name),
-        );
-        return 1;
-      }
-      if (!(await provider.isReady())) {
-        console.log("→ doppler login");
-        if (run("doppler", ["login"]) !== 0) return 1;
-      }
-      const scope: string[] = [];
-      if (cfg.doppler?.project) scope.push("--project", cfg.doppler.project);
-      if (cfg.doppler?.config) scope.push("--config", cfg.doppler.config);
-      console.log(`→ doppler setup ${scope.join(" ")}`.trim());
-      if (
-        run("doppler", ["setup", "--no-interactive", ...scope]) !== 0 &&
-        scope.length === 0
-      ) {
-        run("doppler", ["setup"]);
-      }
-      break;
-    }
-    case "1password":
-      if (!installed("op")) {
-        console.error(
-          chalk.red("✗ The 1Password CLI (op) is not installed.\n") +
-            `  Install it:  ${INSTALL.op}\n\n  ` +
-            otherBackends(provider.name),
-        );
-        return 1;
-      }
-      return run(path.join(ROOT, "node_modules", ".bin", "tsx"), [
-        path.join(ROOT, "scripts", "setup-1password.ts"),
-      ]);
-    case "env":
-      console.log(
-        "The env backend reads secrets from the process environment.\n" +
-          `Export them yourself (direnv, CI secrets, \`doppler run -- ${product().cli} up\`).`,
-      );
-      break;
-  }
+  const provider = getSecretsProvider();
+  const code = await setup({
+    cfg,
+    provider,
+    engineRoot: ROOT,
+    cli: product().cli,
+    run,
+    log: (l) => console.log(l),
+    error: (l) => console.error(chalk.red(l)),
+  });
+  if (code !== 0) return code;
   const r = await provider.preflight();
   console.log(
     r.ok ? chalk.green(`✓ ${label} ready`) : chalk.red(`✗ ${r.message}`),
   );
+  if (!r.ok)
+    console.log(
+      `  Or for one shell: ${envKey("SECRETS_PROVIDER")}=none make web`,
+    );
   return r.ok ? 0 : 1;
 }
-
 main().then(
   (code) => process.exit(code),
   (err: unknown) => {

@@ -5,17 +5,7 @@
  * If it's specific to one module (e.g. a Playwright config timeout), keep it local.
  */
 
-import { envKey } from "./product.js";
-// ── 1Password strategy (only used when secrets.provider: 1password) ──────────────────────────────────────────────────────────────
-
-/**
- * Default 1Password account domain used by every `op` invocation across den.
- * Kept in sync with the `OP_ACCOUNT ?= …` default in the Makefile. Scripts that
- * may run outside `make` (setup-1password, auth-configure)
- * set `process.env.OP_ACCOUNT ||= OP_ACCOUNT_DEFAULT` at entry so op picks up
- * the right account even when invoked directly via `npx tsx`.
- */
-export const OP_ACCOUNT_DEFAULT = "example.1password.com";
+// ── Test accounts ─────────────────────────────────────────────────────────────
 
 /**
  * Default vault for shared test accounts. Deprecated: the vault is org data —
@@ -24,19 +14,8 @@ export const OP_ACCOUNT_DEFAULT = "example.1password.com";
  */
 export const OP_TEST_VAULT = "test-accounts";
 
-/** Vault containing per-engineer API keys (1Password's built-in personal vault). */
-export const OP_API_KEYS_VAULT = "Employee";
-
-/** Item within OP_API_KEYS_VAULT holding the developer's API keys. */
-export const OP_DEV_KEYS_ITEM = "Developer API Keys";
-
-/**
- * Field within OP_DEV_KEYS_ITEM where the user's local admin (sudo) password
- * is optionally stored. Populated when the user checks "Save to 1Password" on
- * the den local-dev unlock banner; read on server startup so subsequent
- * sessions unlock without prompting.
- */
-export const OP_DEN_SUDO_FIELD = `${envKey("LOCAL_ADMIN_PWD")}`;
+// No 1Password account, vault, item or field is built in: a distribution
+// names its own in `secrets` (src/shared/secrets).
 
 // ── Timeouts ─────────────────────────────────────────────────────────────────
 

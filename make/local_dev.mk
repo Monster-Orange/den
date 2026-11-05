@@ -6,8 +6,8 @@
 .PHONY: down $(DEN_TARGET_PREFIX)-up $(DEN_TARGET_PREFIX)-down $(DEN_TARGET_PREFIX)-restart $(DEN_TARGET_PREFIX)-status $(DEN_TARGET_PREFIX)-services \
         $(DEN_TARGET_PREFIX)-graph $(DEN_TARGET_PREFIX)-logs \
         $(DEN_TARGET_PREFIX)-register $(DEN_TARGET_PREFIX)-setup $(DEN_TARGET_PREFIX)-sync $(DEN_TARGET_PREFIX)-workspace \
-        $(DEN_TARGET_PREFIX)-init $(DEN_TARGET_PREFIX)-validate $(DEN_TARGET_PREFIX)-local-dev $(DEN_TARGET_PREFIX)-setup-secrets $(DEN_TARGET_PREFIX)-setup-1password \
-        register-repos aws-configure auth-configure \
+        $(DEN_TARGET_PREFIX)-init $(DEN_TARGET_PREFIX)-validate $(DEN_TARGET_PREFIX)-local-dev $(DEN_TARGET_PREFIX)-setup-secrets \
+        register-repos aws-configure \
         web dev-dns
 
 # ── Service management ────────────────────────────────────────────────────────
@@ -93,13 +93,12 @@ $(DEN_TARGET_PREFIX)-validate:
 $(DEN_TARGET_PREFIX)-local-dev:
 	@$(DEN_BIN) local-dev $(args)
 
-# Set up developer secrets with the configured backend (secrets.provider).
+# Set up developer secrets with the selected backend (secrets.provider):
+# dispatches to that strategy's setup; with none it says there is nothing to
+# set up. Backend-only targets (e.g. -setup-1password) live in
+# make/secrets-<provider>.mk and exist only when that backend is selected.
 $(DEN_TARGET_PREFIX)-setup-secrets:
 	@$(DEN_TSX) $(DEN_ENGINE)/scripts/setup-secrets.ts
-
-# 1Password strategy only: populate the "Developer API Keys" item.
-$(DEN_TARGET_PREFIX)-setup-1password:
-	@$(DEN_TSX) $(DEN_ENGINE)/scripts/setup-1password.ts
 
 # Show where test discovery gets its repos. With Local Dev enabled (default)
 # it follows the workspace — nothing to register. Hosted / no-local setups get
@@ -112,12 +111,6 @@ register-repos:
 # Writes to config/local/aws-profiles.json (gitignored).
 aws-configure:
 	@$(DEN_TSX) $(DEN_ENGINE)/src/scripts/configure-aws-profiles.ts
-
-# Per-engineer admin 1Password setup — staging/production only.
-# Saves config/local/admin-auth-{env}.json (gitignored, no password stored).
-auth-configure:
-	@E2E_ENVIRONMENT=$(env) $(DEN_TSX) $(DEN_ENGINE)/scripts/auth-configure.ts
-	@$(MAKE) int-jwt-clear env=$(env)
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
 

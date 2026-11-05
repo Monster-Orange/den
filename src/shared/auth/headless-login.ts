@@ -34,7 +34,7 @@ const PROJECT_ROOT = getDistRoot();
 const AUTH_DIR = path.resolve(PROJECT_ROOT, "playwright/.auth");
 
 // Per-engineer admin config — stores email + secret reference (no password)
-// Created by: make auth-configure [env=<env>]
+// Created by: make auth-configure [env=<env>] (secrets.provider: 1password)
 // Lookup order: config/local/admin-auth-{env}.json → config/local/admin-auth.json
 const LOCAL_CONFIG_DIR = path.resolve(PROJECT_ROOT, "config/local");
 

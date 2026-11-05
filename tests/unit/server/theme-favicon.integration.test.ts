@@ -282,6 +282,7 @@ describe("a raster mark in the top bar (0.3.0-dev.22)", () => {
           img: ib ? [ib.width, ib.height] : null,
           radius: getComputedStyle(host).borderRadius,
           overflow: getComputedStyle(host).overflow,
+          fit: img ? getComputedStyle(img).objectFit : null,
         };
       });
     await p.waitForFunction(() =>
@@ -299,6 +300,8 @@ describe("a raster mark in the top bar (0.3.0-dev.22)", () => {
       img: [22, 22],
       radius: "50%",
       overflow: "hidden",
+      // Scaled, never cropped (a non-square mark keeps its edges).
+      fit: "contain",
     });
     await pick(p, "Dark");
     await p.waitForFunction(() =>

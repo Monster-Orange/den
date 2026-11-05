@@ -16,12 +16,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFileSync } from "child_process";
 
-import { OP_ACCOUNT_DEFAULT } from "../src/shared/constants.js";
-
 import { product } from "../src/shared/product.js";
-// Ensure op (if used later) hits the right account when this script runs
-// standalone via npx tsx, matching the pattern in setup-1password.ts et al.
-process.env.OP_ACCOUNT ||= OP_ACCOUNT_DEFAULT;
 
 const ROOT = process.cwd();
 const CONFIG_PATH = path.join(ROOT, product().configFile);

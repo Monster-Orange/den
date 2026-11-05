@@ -12,6 +12,7 @@
  */
 
 import { execSync } from "child_process";
+import * as fs from "fs";
 
 export interface GitHubCoords {
   owner: string;
@@ -67,4 +68,39 @@ export function getGitHubCoords(repoPath: string): GitHubCoords | null {
   const origin = getGitRemoteOrigin(repoPath);
   if (!origin) return null;
   return parseGitHubOwnerRepo(origin);
+}
+
+/**
+ * The GitHub owner of the distribution's OWN checkout: `distRoot`'s origin,
+ * and only when `distRoot` is the top of its own git repo. A distribution
+ * with no repo of its own (one nested in another checkout, such as Den's)
+ * has no owner here: the engine's (or any parent's) remote is never used to
+ * pick the org whose repos Den lists. Null when there is none.
+ */
+export function distributionGitHubOwner(distRoot: string): string | null {
+  try {
+    const top = execSync("git rev-parse --show-toplevel", {
+      cwd: distRoot,
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf-8",
+    }).trim();
+    if (!top || fs.realpathSync(top) !== fs.realpathSync(distRoot)) return null;
+  } catch {
+    return null;
+  }
+  return getGitHubCoords(distRoot)?.owner ?? null;
+}
+
+/**
+ * The GitHub org whose repos Den lists for "register a managed repo": the
+ * org config's `github_org`, else the distribution's own checkout's owner.
+ * Never the engine's. Null (the caller asks for github_org) when neither
+ * names a valid owner.
+ */
+export function managedReposOrg(
+  githubOrg: string | undefined,
+  distRoot: string,
+): string | null {
+  const org = githubOrg?.trim() || distributionGitHubOwner(distRoot);
+  return org && /^[A-Za-z0-9][A-Za-z0-9-]*$/.test(org) ? org : null;
 }

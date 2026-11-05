@@ -997,7 +997,12 @@ const lock = {
   known: false,
   unlocked: false,
   passwordless: false,
-  vault: { opAvailable: false, hasStored: false },
+  vault: {
+    backend: "none",
+    label: "",
+    backendAvailable: false,
+    hasStored: false,
+  },
   subs: new Set(),
 };
 
@@ -1066,11 +1071,17 @@ async function getJson(url, fallback, init) {
  * when locked, the vault's stored password in the background (op can be
  * slow: Touch ID, a cold session) so nothing waits on it.
  */
-/** What 1Password can do here: asked once a page, then kept. */
+/**
+ * What the secrets backend can do here (`backend`, `backendAvailable`,
+ * `reason`): asked once a page, then kept. Not configured or unavailable
+ * means no save option and no auto-load.
+ */
 let vaultAsked = null;
 function checkVault() {
   vaultAsked ??= getJson("/api/sudo-password/vault-status", {
-    opAvailable: false,
+    backend: "none",
+    label: "",
+    backendAvailable: false,
     hasStored: false,
   }).then((v) => {
     lock.vault = v;
@@ -1107,7 +1118,8 @@ async function initLock() {
   // other page asks when the popover opens, so a page view never wakes op.
   if (location.pathname !== "/local-dev") return;
   await checkVault();
-  if (!lock.vault.opAvailable || !lock.vault.hasStored || lock.unlocked) return;
+  if (!lock.vault.backendAvailable || !lock.vault.hasStored || lock.unlocked)
+    return;
   const loaded = await getJson(
     "/api/sudo-password/load-from-vault",
     { ok: false },
@@ -1117,8 +1129,10 @@ async function initLock() {
 }
 
 function saveLabel() {
-  if (!lock.vault.opAvailable) return null;
-  return lock.vault.hasStored ? "Update stored password" : "Save to 1Password";
+  if (!lock.vault.backendAvailable) return null;
+  return lock.vault.hasStored
+    ? "Update stored password"
+    : `Save to ${lock.vault.label || lock.vault.backend}`;
 }
 
 function lockFormHtml() {
@@ -1176,7 +1190,7 @@ function openLock() {
     btn.textContent = "Checking…";
     btn.disabled = true;
     err.hidden = true;
-    const saveToVault = !!(lock.vault.opAvailable && saveCb?.checked);
+    const saveToVault = !!(lock.vault.backendAvailable && saveCb?.checked);
     try {
       const r = await fetch("/api/sudo-password", {
         method: "POST",
@@ -1192,7 +1206,7 @@ function openLock() {
         closeOverlay(true);
         toast(
           saveToVault && data.vaultError
-            ? `Unlocked, but 1Password save failed: ${data.vaultError}`
+            ? `Unlocked, but saving to ${lock.vault.label || lock.vault.backend} failed: ${data.vaultError}`
             : "Unlocked for this session",
         );
         return;

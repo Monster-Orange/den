@@ -141,11 +141,16 @@ import {
   type Placement,
 } from "../../shared/manifest/placement.js";
 import {
-  isOpSignedIn,
-  hasSudoInVault,
   readSudoFromVault,
   saveSudoToVault,
+  sudoRef,
+  sudoVaultStatus,
+  SUDO_REF_NAME,
 } from "../../shared/auth/sudo-vault.js";
+import {
+  notConfiguredMessage,
+  secretsConfigWarnings,
+} from "../../shared/secrets/index.js";
 import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
 import { actorLabel } from "../../shared/agent-actor.js";
 import {
@@ -2880,8 +2885,9 @@ async function handleRequest(
   // ── API: sudo password ────────────────────────────────────────────────────
   // POST /api/sudo-password  body: { password: string, saveToVault?: boolean }
   // GET  /api/sudo-password/status         → { set: boolean }
-  // GET  /api/sudo-password/vault-status   → { opAvailable, hasStored }
-  // POST /api/sudo-password/load-from-vault → { ok, reason? }
+  // GET  /api/sudo-password/vault-status   → { backend, label, configured,
+  //        backendAvailable, reason?, hasStored, opAvailable (deprecated) }
+  // POST /api/sudo-password/load-from-vault → { ok, reason?, message? }
   if (pathname === "/api/sudo-password") {
     if (req.method !== "POST") {
       res.writeHead(405);
@@ -2933,11 +2939,10 @@ async function handleRequest(
   }
 
   // Advertises vault capability to the UI so it knows whether to show the
-  // "Save to 1Password" checkbox and whether auto-load is worth trying.
+  // "Save to <backend>" checkbox and whether auto-load is worth trying. With
+  // no secrets.refs.sudo it says "not configured" and spawns nothing.
   if (pathname === "/api/sudo-password/vault-status") {
-    const opAvailable = await isOpSignedIn();
-    const hasStored = opAvailable ? await hasSudoInVault() : false;
-    return sendJson(res, { opAvailable, hasStored });
+    return sendJson(res, await sudoVaultStatus());
   }
 
   // Auto-unlock path: UI calls this when status.set is false. We read from
@@ -2949,6 +2954,13 @@ async function handleRequest(
       res.writeHead(405);
       res.end();
       return;
+    }
+    if (!sudoRef()) {
+      return sendJson(res, {
+        ok: false,
+        reason: "not-configured",
+        message: notConfiguredMessage(SUDO_REF_NAME),
+      });
     }
     const password = await readSudoFromVault();
     if (!password) {
@@ -3422,6 +3434,8 @@ server.listen(PORT, BIND_HOST, () => {
   console.log();
   console.log(`  Web UI  →  http://${host}:${PORT}`);
   console.log();
+  // Once per start: a secrets config that leaves Den's own features off.
+  for (const w of secretsConfigWarnings()) serverLog(`  ⚠ ${w}`);
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────

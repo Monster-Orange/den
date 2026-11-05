@@ -20,19 +20,27 @@ import { promisify } from "util";
 import * as readline from "readline";
 import * as path from "path";
 import * as fs from "fs";
-import { fileURLToPath } from "url";
-import { OP_ACCOUNT_DEFAULT } from "../src/shared/constants.js";
+import { getDistRoot } from "../src/shared/paths.js";
+import {
+  readSecretsConfig,
+  secretsStrategy,
+} from "../src/shared/secrets/index.js";
 import {
   readTestAccountsConfig,
   testAccountsVault,
 } from "../src/shared/auth/test-accounts.js";
 
-// Ensure op invocations hit the den-owned account even when this script is
-// run directly via `npx tsx` (not through make, which already exports OP_ACCOUNT).
-process.env.OP_ACCOUNT ||= OP_ACCOUNT_DEFAULT;
+// op uses the distribution's account (secrets.onepassword.account) or the
+// engineer's own OP_ACCOUNT; Den has none of its own.
+Object.assign(
+  process.env,
+  secretsStrategy("1password")?.capabilities.env?.(
+    readSecretsConfig(),
+    process.env,
+  ),
+);
 
 const execFileAsync = promisify(execFile);
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ─── 1Password types ──────────────────────────────────────────────────────────
 
@@ -229,7 +237,7 @@ async function main() {
             if (passwordField && emailField?.value) {
               const opRef = `op://${defaultVault.name}/${defaultItem.title}/${passwordField.label}`;
               const email = emailField.value;
-              const configDir = path.resolve(__dirname, "../config/local");
+              const configDir = path.join(getDistRoot(), "config", "local");
               fs.mkdirSync(configDir, { recursive: true });
               fs.writeFileSync(
                 path.join(configDir, configFilename),
@@ -376,7 +384,7 @@ async function main() {
     // Store item ID + field label alongside opRef.
     // headless-login.ts uses the IDs (via `op item get`) which is robust against
     // special characters in vault/item names that can break `op read op://...`.
-    const configDir = path.resolve(__dirname, "../config/local");
+    const configDir = path.join(getDistRoot(), "config", "local");
     const configFile = path.join(configDir, configFilename);
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(

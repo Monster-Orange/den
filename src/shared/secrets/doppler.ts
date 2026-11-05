@@ -1,6 +1,6 @@
 /**
  * Doppler strategy — reads/writes flat keys with the `doppler` CLI.
- * Selected with `secrets.provider: doppler` (the default).
+ * Selected with `secrets.provider: doppler`.
  *
  * Project/config come from `secrets.doppler.{project,config}` in
  * config/den.yml, else from the directory's `doppler setup` scope,

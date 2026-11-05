@@ -176,7 +176,15 @@ async function mount(o: Opts = {}): Promise<{
       case "/api/sudo-password/status":
         return json({ set: unlocked, passwordless: false });
       case "/api/sudo-password/vault-status":
-        return json({ opAvailable: true, hasStored: !!o.vaultStored });
+        // The neutral payload (0.3.0-dev.23): the UI reads backend /
+        // backendAvailable / label, never the deprecated opAvailable alias.
+        return json({
+          backend: "1password",
+          label: "1Password",
+          configured: true,
+          backendAvailable: true,
+          hasStored: !!o.vaultStored,
+        });
       case "/api/sudo-password/load-from-vault":
         if (o.vaultStored) unlocked = true;
         return json({ ok: !!o.vaultStored });

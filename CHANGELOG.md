@@ -348,9 +348,82 @@ config and manifest changes a distribution must make to move to it under
   so a switch is never answered from cache. The built-in `den` theme names
   Den's icon as its `favicon`; `theme new` leaves it out, so a new theme's
   tab shows its own mark.
+- **Secrets backends are registered strategies, and `none` is one**
+  (0.3.0-dev.23). Each built-in (`none`, `env`, `doppler`, `1password`)
+  registers through one registry (`src/shared/strategies/registry.ts`, kind
+  `secrets`) as `{ id, kind, detect(), capabilities }`: a factory, a label,
+  its CLI, which ref parts it needs, and optional `setup` and env
+  injection. `detect()` is a PATH check that never prompts or prints; a
+  backend whose CLI is missing reports "not available: The Doppler CLI
+  (doppler) is not on PATH" instead of failing a spawn. `secrets.provider:
+  none` resolves nothing and never runs a CLI. `den create` now scaffolds
+  `secrets: { provider: none }`, with the choices in a comment, so a new
+  distribution depends on no store. See "Secrets" in
+  `docs/distributions.md`.
+
+### Changed
+
+- **No built-in secret locations** (0.3.0-dev.23). Den no longer assumes a
+  vault, item, field, key or account of its own: the default 1Password
+  vault, developer-keys item and sudo field, the default account domain, and
+  the flat `<PREFIX>_LOCAL_ADMIN_PWD` key that doppler and env used for the
+  saved sudo password are gone. The saved sudo password and the journeys
+  agent key come only from `secrets.refs.sudo` and
+  `secrets.refs.journeys_agent_key`; without them each says "not configured:
+  set secrets.provider and secrets.refs.<name> in config/<cli>.yml" and
+  runs no CLI (the interactive unlock still works). A `1password`
+  distribution with no refs gets one warning in the web server's startup
+  log and in `validate`. The 1Password developer-keys setup writes to
+  `secrets.developer_keys: { vault, item }` (else the vault and item of
+  `refs.sudo`). See Migrations.
+- **`make up` / `make web` check secrets only when `secrets.required` is
+  set** (0.3.0-dev.23). Otherwise the gate passes silently, whatever the
+  provider, and never asks the backend. `make <cli>-setup-secrets` runs the
+  selected strategy's setup; with `none`, or no provider set, it says there
+  is nothing to set up and exits 0.
+- **`/api/sudo-password/vault-status` is backend-neutral** (0.3.0-dev.23):
+  `{ backend, label, configured, backendAvailable, reason?, hasStored }`,
+  and the unlock form says "Save to <backend>". `load-from-vault` answers
+  `{ ok: false, reason: "not-configured", message }` with no `refs.sudo`.
+- **A local-jwt signing key that is not found names its provider**
+  (0.3.0-dev.23): "... not found in env or the doppler secrets backend
+  (secrets.provider)". Its resolution is unchanged.
+
+### Deprecated
+
+- **The implicit doppler default (set `secrets.provider`)** (0.3.0-dev.23).
+  An unset `secrets.provider` still means `doppler`, but only when something
+  actually resolves a secret; the first time it does, Den warns once:
+  "secrets.provider is not set; the implicit doppler default is deprecated
+  and will be removed in a later minor. Set it explicitly: doppler,
+  1password, env or none." A distribution that resolves no secret never
+  runs `doppler` and never sees the warning.
+- **`opAvailable` in `/api/sudo-password/vault-status`** (0.3.0-dev.23):
+  an alias of `backendAvailable`, removed in a later minor. Read
+  `backendAvailable` (and `backend`, `reason`).
 
 ### Fixed
 
+- **Raster marks are scaled to fit, never cropped** (0.3.0-dev.23).
+- **Den adds no 1Password account to anything it starts** (0.3.0-dev.23).
+  The web server daemon (`web up`, `web restart`) was always given
+  `OP_ACCOUNT`, with a built-in domain when unset, and `den.mk` exported
+  one to every recipe. Now only the `1password` strategy gives one, from
+  `secrets.onepassword.account` or your own `OP_ACCOUNT`; no other backend
+  gives any, and `den.mk` sets none.
+- **1Password make targets exist only when 1Password is selected**
+  (0.3.0-dev.23). `make <cli>-setup-1password` and `make auth-configure`
+  moved to `make/secrets-1password.mk`, which `den.mk` includes only when
+  `secrets.provider` (or `<PREFIX>_SECRETS_PROVIDER`) is `1password`; every
+  other distribution no longer has them.
+- **"Register a managed repo" never lists the engine's owner's repos**
+  (0.3.0-dev.23). With no `github_org`, the org fell back to the git remote
+  of the engine's own checkout, so a linked or git-installed engine listed
+  its owner's repos for an unrelated project. The fallback is now the
+  distribution's own checkout (only when it is the top of its own repo),
+  else the "set github_org" error. The 1Password setup scripts likewise
+  read `developer_keys.env_file` and write `admin-auth-<env>.json` under the
+  distribution root, not the engine's.
 - **Settings keeps your pick marked while it scrolls** (0.3.0-dev.22, SA's
   dev.21 run): a click or Enter on a category no longer walks
   `aria-current` through every category the smooth scroll passes. Your
@@ -634,6 +707,43 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
+- 0.3.0-dev.23, secrets. Nothing is required of a distribution that uses
+  no secrets; the YAML below goes in the org config (`config/<cli>.yml`).
+  - **Relied on the old 1Password defaults** (the saved sudo password or
+    the journeys key in the developer-keys item): add the old layout as
+    your own refs. These are the exact former defaults; `<PREFIX>` is your
+    env prefix (`ACME` for `acme`, `DEN` for Den's own checkout).
+
+    ```yaml
+    secrets:
+      provider: 1password
+      onepassword:
+        account: example.1password.com # your account; Den injects none now
+      refs:
+        sudo:
+          { vault: Employee, item: Developer API Keys, field: <PREFIX>_LOCAL_ADMIN_PWD }
+        journeys_agent_key:
+          { vault: Employee, item: Developer API Keys, field: CURSOR_API_KEY }
+      developer_keys: { vault: Employee, item: Developer API Keys }
+    ```
+  - **Relied on doppler or env for the saved sudo password** (the flat
+    `<PREFIX>_LOCAL_ADMIN_PWD` key):
+
+    ```yaml
+    secrets:
+      provider: doppler # or env
+      refs:
+        sudo: { key: <PREFIX>_LOCAL_ADMIN_PWD }
+    ```
+
+  - **Relied on the implicit doppler default**: it still works. To silence
+    the deprecation warning, say so: `secrets: { provider: doppler }`. A
+    distribution that uses no secrets store can set `secrets: { provider:
+    none }`.
+  - A page or script that read `opAvailable` from
+    `/api/sudo-password/vault-status` reads `backendAvailable`.
+  - A `make auth-configure` or `make <cli>-setup-1password` in your own
+    scripts needs `secrets.provider: 1password`.
 - None. Optional: set `brand.theme: <id>` in the org config to give the
   distribution's web UI its own default theme.
 - A `plugins/<id>/` with no `den-plugin.json` or `den-theme.json` now fails

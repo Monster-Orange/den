@@ -113,7 +113,10 @@ import {
   resolveService,
   type ServiceCommandPreview,
 } from "../../shared/environment-manager/service-runner.js";
-import { getGitHubCoords } from "../../shared/smoke/git-remote.js";
+import {
+  getGitHubCoords,
+  managedReposOrg,
+} from "../../shared/smoke/git-remote.js";
 import {
   getReposRoot,
   mergeUserConfig,
@@ -3279,18 +3282,11 @@ class DenCLI {
     name: string;
     config: import("../../shared/types/index.js").WorkspaceConfig;
   }): Promise<void> {
-    // Derive org from den's own git remote
-    const { fileURLToPath: ftu } = await import("url");
-    const { default: pathMod } = await import("path");
-    const distRoot = pathMod.resolve(
-      pathMod.dirname(ftu(import.meta.url)),
-      "../../..",
-    );
-    const denCoords = getGitHubCoords(distRoot);
-    // The instance's config names its org; the checkout's own remote is only a
-    // fallback (inside a package it would name the engine's repo, not the org's).
-    const org = readDenConfig().github_org ?? denCoords?.owner;
-    if (!org || !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(org)) {
+    // The org config names the org; the distribution's own checkout's
+    // remote is the only fallback. Never the engine's remote: with a linked
+    // or installed engine it names the engine's owner, not this project's.
+    const org = managedReposOrg(readDenConfig().github_org, getDistRoot());
+    if (!org) {
       console.log(
         chalk.red(
           `\n  ❌ No GitHub org to list: set github_org in ${product().configFile}\n`,
@@ -3949,6 +3945,16 @@ class DenCLI {
   // ── den validate ────────────────────────────────────────────────────────
 
   private async cmdValidate(args: string[]): Promise<void> {
+    // The distribution's secrets config, once: a 1password backend with no
+    // refs leaves the vault-backed features off (no built-in vault/item).
+    try {
+      const { secretsConfigWarnings } =
+        await import("../../shared/secrets/index.js");
+      for (const w of secretsConfigWarnings())
+        console.warn(chalk.yellow(`\n  ⚠  ${w.replace(/\n/g, "\n     ")}`));
+    } catch {
+      /* an unreadable config is reported elsewhere */
+    }
     const target = args[0] ?? getInvokeCwd();
     const fs = await import("fs");
     const nodePath = await import("path");

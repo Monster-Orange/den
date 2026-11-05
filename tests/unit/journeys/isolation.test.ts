@@ -29,7 +29,6 @@ import * as path from "path";
 import { describe, expect, it, jest, afterEach } from "@jest/globals";
 import {
   captureSecrets,
-  JOURNEYS_AGENT_KEY_DEFAULT,
   prepareSandbox,
   sanitizeEnvironment,
   SecretLeakError,
@@ -155,6 +154,13 @@ afterEach(() => {
 
 // ── (a) captureSecrets ───────────────────────────────────────────────────────
 
+/** A distribution's configured agent-key ref (Den has no built-in one). */
+const AGENT_KEY_REF = {
+  vault: "Team Vault",
+  item: "Agent Keys",
+  field: "CURSOR_API_KEY",
+};
+
 describe("captureSecrets", () => {
   it("uses the CURSOR_API_KEY env var when set (CI path) — op never invoked", async () => {
     const opReadField = jest.fn<() => Promise<string>>();
@@ -168,19 +174,33 @@ describe("captureSecrets", () => {
     expect(opReadField).not.toHaveBeenCalled();
   });
 
-  it("falls back to the secrets backend at the default agent-key ref (local path)", async () => {
+  it("with no secrets.refs.journeys_agent_key: says not configured, asks no backend", async () => {
+    const opReadField = jest.fn(async () => "should-not-be-read");
+    await expect(
+      captureSecrets("user", "local", {
+        env: {},
+        opReadField: opReadField as never,
+        agentKeyRef: null,
+      }),
+    ).rejects.toThrow(
+      /not configured: set secrets\.provider and secrets\.refs\.journeys_agent_key in config\//,
+    );
+    expect(opReadField).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the secrets backend at the configured agent-key ref (local path)", async () => {
     const opReadField = jest.fn(async () => "op-sourced-key");
 
     const secrets = await captureSecrets("user", "local", {
       env: {},
       opReadField: opReadField as never,
-      agentKeyRef: JOURNEYS_AGENT_KEY_DEFAULT,
+      agentKeyRef: AGENT_KEY_REF,
     });
 
     expect(secrets.cursorApiKey).toBe("op-sourced-key");
     expect(opReadField).toHaveBeenCalledWith({
-      item: JOURNEYS_AGENT_KEY_DEFAULT.item,
-      vault: JOURNEYS_AGENT_KEY_DEFAULT.vault,
+      item: AGENT_KEY_REF.item,
+      vault: AGENT_KEY_REF.vault,
       field: "CURSOR_API_KEY",
     });
   });
@@ -224,7 +244,7 @@ describe("captureSecrets", () => {
     const attempt = captureSecrets("user", "local", {
       env: {},
       opReadField: opReadField as never,
-      agentKeyRef: JOURNEYS_AGENT_KEY_DEFAULT,
+      agentKeyRef: AGENT_KEY_REF,
     });
 
     await expect(attempt).rejects.toThrow(/CURSOR_API_KEY/);
@@ -232,9 +252,9 @@ describe("captureSecrets", () => {
       captureSecrets("user", "local", {
         env: {},
         opReadField: opReadField as never,
-        agentKeyRef: JOURNEYS_AGENT_KEY_DEFAULT,
+        agentKeyRef: AGENT_KEY_REF,
       }),
-    ).rejects.toThrow(new RegExp(JOURNEYS_AGENT_KEY_DEFAULT.item));
+    ).rejects.toThrow(new RegExp(AGENT_KEY_REF.item));
   });
 
   it("writes nothing to disk (auth/config dirs untouched)", async () => {

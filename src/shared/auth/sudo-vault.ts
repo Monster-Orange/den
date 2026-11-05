@@ -1,51 +1,55 @@
 /**
  * Secrets-backed persistence for the local-dev sudo password.
  *
- * Goes through the configured secrets strategy (Doppler, 1Password or env —
- * see src/shared/secrets), addressing the named ref `sudo` (default
- * OP_API_KEYS_VAULT / OP_DEV_KEYS_ITEM / OP_DEN_SUDO_FIELD; an org
- * moves it with `secrets.refs.sudo` in its config) — flat key
- * DEN_LOCAL_ADMIN_PWD for key/value backends.
+ * Goes through the configured secrets strategy (see src/shared/secrets),
+ * addressing the named ref `sudo`. There is no built-in location: a
+ * distribution that wants the saved password sets `secrets.refs.sudo` in its
+ * config. Without it, the vault path is "not configured" and only the
+ * interactive unlock is offered; nothing is spawned.
  *
  * All read helpers fail *soft*: if the backend isn't installed, the user isn't
- * signed in, or the value is missing, they return null/false so the server can
- * fall back to the manual unlock banner without surfacing CLI noise.
+ * signed in, the ref is not configured or the value is missing, they return
+ * null/false so the server can fall back to the manual unlock without
+ * surfacing CLI noise.
  */
 
 import {
-  OP_API_KEYS_VAULT,
-  OP_DEV_KEYS_ITEM,
-  OP_DEN_SUDO_FIELD,
-} from "../constants.js";
-import {
   getSecretsProvider,
   namedSecretRef,
+  notConfiguredMessage,
+  readSecretsConfig,
+  secretsStatus,
+  SecretsNotConfiguredError,
   type SecretRef,
+  type SecretsProviderName,
 } from "../secrets/index.js";
 
-/** The built-in default for the `sudo` named ref. */
-export const SUDO_SECRET_REF: SecretRef = {
-  vault: OP_API_KEYS_VAULT,
-  item: OP_DEV_KEYS_ITEM,
-  field: OP_DEN_SUDO_FIELD,
-};
+/** Name of the sudo ref under `secrets.refs`. */
+export const SUDO_REF_NAME = "sudo";
 
-/** The effective sudo ref (`secrets.refs.sudo` over the default). */
-function sudoRef(): SecretRef {
-  return namedSecretRef("sudo", SUDO_SECRET_REF);
+/** The configured sudo ref, or null when `secrets.refs.sudo` is not set. */
+export function sudoRef(): SecretRef | null {
+  try {
+    return namedSecretRef(SUDO_REF_NAME, readSecretsConfig());
+  } catch {
+    return null;
+  }
 }
 
-/** True when the secrets backend is installed AND authenticated. */
+/** True when the sudo ref is configured AND its backend is ready. */
 export async function isSecretsBackendReady(): Promise<boolean> {
+  if (!sudoRef()) return false;
   return getSecretsProvider().isReady();
 }
 
 /** @deprecated use isSecretsBackendReady */
 export const isOpSignedIn = isSecretsBackendReady;
 
-/** Read the stored sudo password. Null when unavailable or empty. */
+/** Read the stored sudo password. Null when unavailable, unconfigured or empty. */
 export async function readSudoFromVault(): Promise<string | null> {
-  return getSecretsProvider().tryGet(sudoRef());
+  const ref = sudoRef();
+  if (!ref) return null;
+  return getSecretsProvider().tryGet(ref);
 }
 
 /** Whether a non-empty sudo password is stored (without returning it). */
@@ -55,15 +59,55 @@ export async function hasSudoInVault(): Promise<boolean> {
 
 /** Save (or overwrite) the sudo password. Throws on backend errors. */
 export async function saveSudoToVault(password: string): Promise<void> {
-  await getSecretsProvider().set(sudoRef(), password);
+  const ref = sudoRef();
+  if (!ref)
+    throw new SecretsNotConfiguredError(notConfiguredMessage(SUDO_REF_NAME));
+  await getSecretsProvider().set(ref, password);
+}
+
+/** What the UI's unlock form may offer: `/api/sudo-password/vault-status`. */
+export interface SudoVaultStatus {
+  /** The selected strategy id. */
+  backend: SecretsProviderName;
+  /** Name people see ("1Password"), for "Save to <label>". */
+  label: string;
+  /** `secrets.refs.sudo` is set for this backend. */
+  configured: boolean;
+  /** Configured, and detect() says the backend can work here and it is ready. */
+  backendAvailable: boolean;
+  /** Why it is not available (not configured, CLI not on PATH, signed out). */
+  reason?: string;
+  hasStored: boolean;
+  /** @deprecated alias of backendAvailable; removed in a later minor. */
+  opAvailable: boolean;
+}
+
+export async function sudoVaultStatus(): Promise<SudoVaultStatus> {
+  const cfg = readSecretsConfig();
+  const ref = sudoRef();
+  const st = secretsStatus(cfg, process.env, { detect: !!ref });
+  const out = (
+    backendAvailable: boolean,
+    hasStored: boolean,
+    reason?: string,
+  ): SudoVaultStatus => ({
+    backend: st.backend,
+    label: st.label,
+    configured: !!ref,
+    backendAvailable,
+    ...(reason ? { reason } : {}),
+    hasStored,
+    opAvailable: backendAvailable,
+  });
+  if (!ref) return out(false, false, notConfiguredMessage(SUDO_REF_NAME));
+  if (!st.detect.available)
+    return out(false, false, `not available: ${st.detect.reason ?? ""}`.trim());
+  if (!(await getSecretsProvider().isReady()))
+    return out(false, false, `${st.label} is not signed in`);
+  return out(true, await hasSudoInVault());
 }
 
 /** Name of the active backend, for UI copy ("Save to Doppler"). */
 export function secretsBackendLabel(): string {
-  const n = getSecretsProvider().name;
-  return n === "1password"
-    ? "1Password"
-    : n === "doppler"
-      ? "Doppler"
-      : "environment";
+  return secretsStatus().label;
 }

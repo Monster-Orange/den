@@ -36,10 +36,10 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { OP_API_KEYS_VAULT, OP_DEV_KEYS_ITEM } from "../../shared/constants.js";
 import {
   getSecretsProvider,
   namedSecretRef,
+  notConfiguredMessage,
   type SecretRef,
 } from "../../shared/secrets/index.js";
 import type { Environment } from "../../shared/types/index.js";
@@ -51,21 +51,11 @@ import { getDistRoot } from "../../shared/paths.js";
 import { containsValue } from "../../shared/redact.js";
 // ── Layer 1: captureSecrets ──────────────────────────────────────────────────
 
-/** 1Password field label holding the Cursor API key (= env var name). */
+/** The Cursor API key's env var name (and the usual field label). */
 export const CURSOR_API_KEY_FIELD = "CURSOR_API_KEY";
 
 /** Name of the agent-key ref under `secrets.refs` in the org config. */
 export const JOURNEYS_AGENT_KEY_REF = "journeys_agent_key";
-
-/**
- * Where the agent key lives when `secrets.refs.journeys_agent_key` is not
- * configured: the engineer's own developer-keys item (neutral default).
- */
-export const JOURNEYS_AGENT_KEY_DEFAULT: SecretRef = {
-  vault: OP_API_KEYS_VAULT,
-  item: OP_DEV_KEYS_ITEM,
-  field: CURSOR_API_KEY_FIELD,
-};
 
 /**
  * Secrets captured into memory before environment sanitization.
@@ -84,6 +74,7 @@ export interface OpFieldRequest {
   item: string;
   vault: string;
   field: string;
+  key?: string;
 }
 
 export interface CaptureSecretsDeps {
@@ -91,8 +82,11 @@ export interface CaptureSecretsDeps {
   opReadField?: (request: OpFieldRequest) => Promise<string>;
   /** Env-var source; defaults to process.env. */
   env?: NodeJS.ProcessEnv;
-  /** Where the key lives; defaults to the configured `journeys_agent_key` ref. */
-  agentKeyRef?: SecretRef;
+  /**
+   * Where the key lives; defaults to the configured `journeys_agent_key`
+   * ref. null: not configured (there is no built-in location).
+   */
+  agentKeyRef?: SecretRef | null;
 }
 
 /** Default reader: the configured secrets strategy. */
@@ -118,14 +112,25 @@ export async function captureSecrets(
   if (cursorApiKey.length === 0) {
     let opError = "";
     const ref =
-      deps.agentKeyRef ??
-      namedSecretRef(JOURNEYS_AGENT_KEY_REF, JOURNEYS_AGENT_KEY_DEFAULT);
+      deps.agentKeyRef !== undefined
+        ? deps.agentKeyRef
+        : namedSecretRef(JOURNEYS_AGENT_KEY_REF);
+    if (!ref) {
+      // No configured place for the key: say so, without asking a backend.
+      throw new Error(
+        `No Cursor API key available for journey agents.\n` +
+          `  Options:\n` +
+          `    • set the ${CURSOR_API_KEY_FIELD} env var\n` +
+          `    • secrets backend: ${notConfiguredMessage(JOURNEYS_AGENT_KEY_REF)}\n`,
+      );
+    }
     try {
       cursorApiKey = (
         await opReadField({
           item: ref.item,
           vault: ref.vault,
           field: ref.field,
+          ...(ref.key ? { key: ref.key } : {}),
         })
       ).trim();
     } catch (error) {
@@ -137,8 +142,8 @@ export async function captureSecrets(
           `  Options:\n` +
           `    • CI: set the ${CURSOR_API_KEY_FIELD} env var\n` +
           `    • Local: sign in to the secrets backend (make ${product().cli}-setup-secrets) and\n` +
-          `      make sure the "${ref.item}" item in the "${ref.vault}" vault has a\n` +
-          `      ${ref.field} field (move it with secrets.refs.${JOURNEYS_AGENT_KEY_REF})\n` +
+          `      make sure secrets.refs.${JOURNEYS_AGENT_KEY_REF} (item "${ref.item}", vault "${ref.vault}",\n` +
+          `      field ${ref.field}) holds the key\n` +
           (opError ? `  Secrets backend error: ${opError}\n` : ""),
       );
     }

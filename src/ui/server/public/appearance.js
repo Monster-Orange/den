@@ -292,7 +292,8 @@ function injectStyles() {
       width: 18px; height: 18px; flex-shrink: 0; overflow: hidden;
     }
     .den-mark img { display: block; width: 18px; height: 18px; }
-    .den-mark-raster img { object-fit: cover; }
+    /* Scaled, never cropped: non-square art keeps its edges. */
+    .den-mark-raster img { object-fit: contain; }
     .den-mark-text {
       font: 700 11px/1 var(--display); letter-spacing: -0.02em;
       background: var(--accent-fill); color: var(--on-accent);

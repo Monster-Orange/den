@@ -88,7 +88,7 @@ help-test:
 	printf 'JOURNEYS  (agent-driven E2E, explicit env= REQUIRED)\n'; \
 	printf '  make test-jrn-all env=<e>            All journeys allowing <e>\n'; \
 	printf '  make test-jrn-<name> env=<e>         Single journey by spec name\n'; \
-	printf '  JOURNEYS_MODEL=<id> required; CURSOR_API_KEY auto-read from 1Password\n\n'; \
+	printf '  JOURNEYS_MODEL=<id> required; CURSOR_API_KEY or secrets.refs.journeys_agent_key\n\n'; \
 	printf 'SECURITY  (OWASP ZAP of our own services, explicit env= REQUIRED)\n'; \
 	printf '  make test-sec-all env=<e>            All targets (baseline mode)\n'; \
 	printf '  make test-sec-<svc> env=<e>          One service  [repo=<r>]\n'; \
@@ -136,10 +136,13 @@ help-localdev:
 	printf '  make den-heal-config                Backfill config/den.yml defaults\n'; \
 	printf '  make den-validate                   Validate a .den.yml\n'; \
 	printf '  make den-local-dev args=on|off      Toggle local dev mode\n'; \
-	printf '  make den-setup-secrets              Set up developer secrets (Doppler/1Password/env)\n'; \
+	printf '  make den-setup-secrets              Set up developer secrets (the selected secrets.provider)\n'; \
 	printf '  make register-repos                    Show test repo sources (legacy scan: args=--legacy)\n'; \
+	if [ "$(DEN_SECRETS_STRATEGY)" = "1password" ]; then \
+	printf '  make den-setup-1password            Fill your developer-keys item (1password)\n'; \
 	printf '  make auth-configure env=staging        Link your admin secret → staging\n'; \
 	printf '  make auth-configure env=production     Link your admin secret → production\n'; \
+	fi; \
 	printf '  make aws-configure                     Map environments → AWS CLI profiles\n\n'; \
 	printf 'WEB UI\n'; \
 	printf '  make web                               Launch at http://localhost:7777\n'; \
@@ -178,8 +181,8 @@ help-full:
 	echo "    (the items each environment's auth block names)."; \
 	echo ""; \
 	echo "  staging / production   — personal account required:"; \
+	echo "    E2E_ADMIN_* env vars, or with secrets.provider: 1password"; \
 	echo "    make auth-configure env=staging     # one-time per engineer"; \
-	echo "    make auth-configure env=production"; \
 	echo ""; \
 	echo "  CI (all envs)          — ENV vars override everything:"; \
 	echo "    E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD"; \
@@ -285,7 +288,7 @@ setup:
 	@echo ""
 	@echo "🔑 Checking secrets backend CLI (config/den.yml → secrets.provider)..."
 	@set -- $$($(DEN_TSX) $(DEN_ENGINE)/scripts/setup-secrets.ts --cli 2>/dev/null); \
-	provider="$${1:-doppler}"; bin="$${2:--}"; formula="$${3:--}"; \
+	provider="$${1:-none}"; bin="$${2:--}"; formula="$${3:--}"; \
 	if [ "$$bin" = "-" ]; then \
 		echo "  ✓ backend '$$provider' needs no CLI."; \
 	elif which "$$bin" > /dev/null 2>&1; then \
@@ -302,7 +305,7 @@ setup:
 			fi; \
 		else \
 			echo "  Skipping. Install later with: brew install $$formula"; \
-			echo "  Or use another backend: set secrets.provider in config/local/user.yml (env | 1password | doppler)."; \
+			echo "  Or use another backend: set secrets.provider in config/local/user.yml (none | env | 1password | doppler)."; \
 		fi; \
 	fi
 	@echo ""
@@ -345,12 +348,12 @@ setup:
 	$(call SETUP_SUBSECTION)
 	@echo "🔑 Developer secrets"
 	@echo "  den reads test-account passwords and your saved sudo password from"
-	@echo "  the configured secrets backend (Doppler by default; 1Password or plain"
-	@echo "  env vars are drop-in — see secrets.provider in config/den.yml)."
+	@echo "  the secrets backend the distribution selects (secrets.provider: none,"
+	@echo "  doppler, 1password or env; with none, those features are off)."
 	@echo "  Each repo's own 'make up' manages its own secrets; this is only den's."
 	@echo ""
-	@if $(DEN_TSX) $(DEN_ENGINE)/scripts/setup-secrets.ts --check 2>/dev/null; then \
-		echo "  ✓ secrets backend ready."; \
+	@if out=$$($(DEN_TSX) $(DEN_ENGINE)/scripts/setup-secrets.ts --check 2>/dev/null); then \
+		echo "$${out:-  ✓ secrets backend ready.}"; \
 	else \
 		read -p "  Set up developer secrets now? (Y/n): " answer; \
 		if [ -z "$$answer" ] || [ "$$answer" = "y" ] || [ "$$answer" = "Y" ]; then \
@@ -373,6 +376,7 @@ setup:
 	@echo "  staging and production require a personal admin account (one-time"
 	@echo "  per environment, stored in config/local/ and never committed)."
 	@echo ""
+ifeq ($(DEN_SECRETS_STRATEGY),1password)
 	@if [ -f config/local/admin-auth-staging.json ]; then \
 		echo "  ✓ Staging admin account already configured."; \
 		echo ""; \
@@ -408,6 +412,10 @@ setup:
 			echo "  Skipping. Run 'make auth-configure env=production' when ready."; \
 		fi; \
 	fi
+else
+	@echo "  Per-engineer admin setup (make auth-configure) needs secrets.provider: 1password;"
+	@echo "  otherwise use the E2E_ADMIN_* env vars. Skipping."
+endif
 	$(call SETUP_SUBSECTION)
 	@echo "🔭 Test repo sources"
 	@echo "  Smoke, performance, and synthetics discovery follows your Local Dev"

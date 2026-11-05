@@ -4,11 +4,12 @@ import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import { pathToFileURL } from "url";
+import { CLI_SPAWN_TIMEOUT_MS, DEFAULT_PORT } from "../../shared/constants.js";
 import {
-  CLI_SPAWN_TIMEOUT_MS,
-  DEFAULT_PORT,
-  OP_ACCOUNT_DEFAULT,
-} from "../../shared/constants.js";
+  readSecretsConfig,
+  secretsProcessEnv,
+  type SecretsConfig,
+} from "../../shared/secrets/index.js";
 import { getDistRoot, getEngineRoot, getStateDir } from "../../shared/paths.js";
 import { hasDenUiMarker } from "../../shared/ui-marker.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
@@ -350,6 +351,20 @@ export function resolveServerEntrypoint(engine: string = getEngineRoot()): {
   };
 }
 
+/**
+ * The env the web server daemon starts with: the caller's, its port, and
+ * whatever the selected secrets strategy gives (only 1password gives one,
+ * OP_ACCOUNT, from the distribution's `secrets.onepassword.account` or the
+ * caller's own OP_ACCOUNT). Den adds no account of its own.
+ */
+export function webServerEnv(
+  port: number,
+  base: NodeJS.ProcessEnv = process.env,
+  cfg: SecretsConfig = readSecretsConfig(),
+): NodeJS.ProcessEnv {
+  return { ...base, PORT: String(port), ...secretsProcessEnv(cfg, base) };
+}
+
 function startDenWebServer(options: WebCommandOptions): StartedServer {
   const root = getDistRoot();
   const entrypoint = resolveServerEntrypoint();
@@ -369,11 +384,7 @@ function startDenWebServer(options: WebCommandOptions): StartedServer {
       {
         cwd: root,
         detached: true,
-        env: {
-          ...process.env,
-          PORT: String(options.port),
-          OP_ACCOUNT: process.env.OP_ACCOUNT ?? OP_ACCOUNT_DEFAULT,
-        },
+        env: webServerEnv(options.port),
         stdio: ["ignore", logFd, logFd],
       },
     );
@@ -435,11 +446,7 @@ export function spawnDetachedWebRestart(port: number): number | undefined {
       {
         cwd: root,
         detached: true,
-        env: {
-          ...process.env,
-          PORT: String(port),
-          OP_ACCOUNT: process.env.OP_ACCOUNT ?? OP_ACCOUNT_DEFAULT,
-        },
+        env: webServerEnv(port),
         stdio: ["ignore", logFd, logFd],
       },
     );

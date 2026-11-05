@@ -115,9 +115,13 @@ const localJwtProvider: TokenProvider = {
     const l = cfg.auth?.localJwt;
     if (!l) throw new Error(`auth.localJwt is not set for ${cfg.name}`);
     const env = o.env ?? process.env;
+    // An explicit key the environment file names: not a default ref, so it
+    // resolves as it always has (env first, then the selected backend).
+    const fromEnv = env[l.secretKey];
+    const backend = fromEnv ? null : getSecretsProvider();
     const secret =
-      env[l.secretKey] ??
-      (await getSecretsProvider().tryGet({
+      fromEnv ??
+      (await backend!.tryGet({
         vault: "",
         item: "",
         field: l.secretKey,
@@ -125,7 +129,7 @@ const localJwtProvider: TokenProvider = {
       }));
     if (!secret) {
       throw new Error(
-        `local-jwt signing secret ${l.secretKey} not found in env or the secrets backend`,
+        `local-jwt signing secret ${l.secretKey} not found in env or the ${backend?.name ?? "configured"} secrets backend (secrets.provider)`,
       );
     }
     const ttl = l.ttlSeconds ?? 3600;

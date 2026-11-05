@@ -24,6 +24,12 @@ import {
   tsxCommand,
   type EngineCommand,
 } from "../../shared/engine.js";
+import { product } from "../../shared/product.js";
+
+/** Remediation when test sessions cannot be created (no vendor assumed). */
+const SETUP_SECRETS_HINT = `  make ${product().cli}-setup-secrets  - Set up the selected secrets.provider`;
+const CI_CREDENTIALS_HINT =
+  "  CI: E2E_<ROLE>_EMAIL / E2E_<ROLE>_PASSWORD env vars";
 
 /** After Playwright smoke runs: fail if storage fixture handoff was left behind. */
 function smokePostRunTeardownVerifyStep(env: NodeJS.ProcessEnv): CommandStep {
@@ -913,13 +919,11 @@ export class TestRunner {
       if (shouldSetup) {
         console.log(
           chalk.cyan(
-            "\n📝 Sessions are created automatically — ensure 1Password is signed in:\n",
+            "\n📝 Sessions are created automatically — ensure the secrets backend is ready:\n",
           ),
         );
-        console.log(chalk.cyan("  eval $(op signin)   - Sign in to 1Password"));
-        console.log(
-          chalk.cyan("  make auth-configure  - One-time admin setup\n"),
-        );
+        console.log(chalk.cyan(SETUP_SECRETS_HINT));
+        console.log(chalk.cyan(`${CI_CREDENTIALS_HINT}\n`));
         return false;
       } else {
         console.log(chalk.red("Cannot run tests without authentication\n"));
@@ -934,10 +938,8 @@ export class TestRunner {
           "\n⚠️  Authentication failed — sessions are created fresh each run\n",
         ),
       );
-      console.log(chalk.cyan("  eval $(op signin)   - Sign in to 1Password"));
-      console.log(
-        chalk.cyan("  make auth-configure  - One-time admin setup\n"),
-      );
+      console.log(chalk.cyan(SETUP_SECRETS_HINT));
+      console.log(chalk.cyan(`${CI_CREDENTIALS_HINT}\n`));
       return false;
     }
 

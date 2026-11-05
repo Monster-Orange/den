@@ -122,11 +122,13 @@ Concerns that vary by org are strategies selected in config, never hard-wired:
 
 | Concern          | Built-in choices                        | Chosen in                                                                                                            |
 | ---------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Secrets backend  | `env`, `doppler`, `1password`           | `secrets.provider` in the org config; per engineer in `config/local/user.yml`; per shell `<PREFIX>_SECRETS_PROVIDER` |
+| Secrets backend  | `none`, `env`, `doppler`, `1password`   | `secrets.provider` in the org config; per engineer in `config/local/user.yml`; per shell `<PREFIX>_SECRETS_PROVIDER` |
 | Test-user tokens | `local-jwt`, `cognito`, `auth0`, `none` | `auth.provider` in `config/environments/<env>.json`                                                                  |
 
 A new secrets backend implements `SecretsProvider`
-(`src/shared/secrets/types.ts`); a new identity provider implements a token
+(`src/shared/secrets/types.ts`) and registers as a strategy
+(`src/shared/secrets/strategies.ts`); a distribution needs no store at all
+(`none`, see "Secrets" in `docs/distributions.md`). A new identity provider implements a token
 provider in `src/shared/auth/token-providers/`.
 
 ## CLI

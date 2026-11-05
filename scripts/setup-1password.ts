@@ -1,9 +1,12 @@
 /**
  * 1Password Developer API Keys setup.
  *
- * Creates and populates the developer-keys item (OP_DEV_KEYS_ITEM) inside the
- * personal vault (OP_API_KEYS_VAULT), which services can use to inject
- * secrets at `make up` time via `op run --env-file=.env.op`.
+ * Creates and populates the developer-keys item inside a vault, which
+ * services can use to inject secrets at `make up` time via
+ * `op run --env-file=.env.op`. Where it lives is the distribution's choice:
+ * `secrets.developer_keys.{vault,item}` in the org config, else the vault
+ * and item of `secrets.refs.sudo`. Den has no default; with neither set the
+ * script says "not configured" and exits 0 (1 with --check).
  *
  * Which keys to collect is org data: `secrets.developer_keys.fields` in the
  * org config (default: only the keys the engine itself uses), and
@@ -11,7 +14,8 @@
  * offered as defaults.
  *
  * Usage:
- *   make den-setup-1password          — full interactive setup
+ *   make <cli>-setup-1password        — full interactive setup (only when
+ *                                       secrets.provider is 1password)
  *   npx tsx scripts/setup-1password.ts --check   — non-interactive vault check
  *                                                   exits 0 if ready, 1 if not
  */
@@ -20,22 +24,23 @@ import { execFile, spawnSync } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs";
 import * as path from "path";
-import { fileURLToPath } from "url";
 import chalk from "chalk";
 import {
-  OP_ACCOUNT_DEFAULT,
-  OP_API_KEYS_VAULT,
-  OP_DEV_KEYS_ITEM,
-} from "../src/shared/constants.js";
-import {
+  notConfiguredMessage,
   readSecretsConfig,
+  secretsStrategy,
   type DeveloperKeyDef,
 } from "../src/shared/secrets/index.js";
 
 import { product } from "../src/shared/product.js";
-// Ensure op invocations hit the den-owned account even when this script is
-// run directly via `npx tsx` (not through make, which already exports OP_ACCOUNT).
-process.env.OP_ACCOUNT ||= OP_ACCOUNT_DEFAULT;
+import { getDistRoot } from "../src/shared/paths.js";
+const SECRETS_CFG = readSecretsConfig();
+// op uses the distribution's account (secrets.onepassword.account) or the
+// engineer's own OP_ACCOUNT; Den has none of its own.
+Object.assign(
+  process.env,
+  secretsStrategy("1password")?.capabilities.env?.(SECRETS_CFG, process.env),
+);
 
 const execFileAsync = promisify(execFile);
 
@@ -46,11 +51,19 @@ async function opJson<T>(args: string[]): Promise<T> {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEN_ROOT = path.resolve(__dirname, "..");
+// dotenv paths are relative to the distribution root, never the engine.
+const DEN_ROOT = getDistRoot();
 
-const VAULT_NAME = OP_API_KEYS_VAULT;
-const ITEM_NAME = OP_DEV_KEYS_ITEM;
+const pick = (...v: Array<string | undefined>): string =>
+  v.map((x) => (typeof x === "string" ? x.trim() : "")).find(Boolean) ?? "";
+const VAULT_NAME = pick(
+  SECRETS_CFG.developer_keys?.vault,
+  SECRETS_CFG.refs?.sudo?.vault,
+);
+const ITEM_NAME = pick(
+  SECRETS_CFG.developer_keys?.item,
+  SECRETS_CFG.refs?.sudo?.item,
+);
 
 // ─── .env reader ─────────────────────────────────────────────────────────────
 
@@ -89,7 +102,7 @@ function parseEnvFile(filePath: string): Record<string, string> {
   return result;
 }
 
-const DEVELOPER_KEYS = readSecretsConfig().developer_keys ?? {};
+const DEVELOPER_KEYS = SECRETS_CFG.developer_keys ?? {};
 
 /**
  * The dotenv file `secrets.developer_keys.env_file` names (relative to the
@@ -560,7 +573,16 @@ async function setupMode(): Promise<void> {
 
 const isCheck = process.argv.includes("--check");
 
-if (isCheck) {
+if (!VAULT_NAME || !ITEM_NAME) {
+  // No place for the developer keys: nothing to set up, and no op call.
+  console.log(
+    `Developer keys item ${notConfiguredMessage("sudo").replace(
+      /secrets\.refs\.sudo/,
+      "secrets.developer_keys.vault + .item (or secrets.refs.sudo)",
+    )}`,
+  );
+  process.exit(isCheck ? 1 : 0);
+} else if (isCheck) {
   checkMode().catch(() => process.exit(1));
 } else {
   setupMode().catch((err: Error) => {

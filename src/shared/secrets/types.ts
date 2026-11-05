@@ -34,7 +34,7 @@ export interface SecretRef {
   scoped?: true;
 }
 
-export type SecretsProviderName = "doppler" | "1password" | "env";
+export type SecretsProviderName = "none" | "doppler" | "1password" | "env";
 
 export interface PreflightResult {
   ok: boolean;

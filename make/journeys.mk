@@ -26,7 +26,8 @@
 # the JOURNEYS_MODEL env var, when set, overrides every spec (operator
 # control, e.g. CI cost pinning). A journey with neither is refused by the
 # runner — no default model is ever invented. CURSOR_API_KEY needs no
-# export — the runner falls back to a 1Password `op read` when unset.
+# export — when unset, the runner reads secrets.refs.journeys_agent_key from
+# the selected secrets backend (not configured: the run says so).
 
 .PHONY: test-jrn-all .journeys-check-env
 

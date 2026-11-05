@@ -40,11 +40,23 @@ export E2E_ENVIRONMENT=$(env)
 OPEN_REPORT ?= 0
 
 # Secrets backend is a strategy chosen in the org config (secrets.provider:
-# doppler | 1password | env). Override per shell:
+# none | doppler | 1password | env). Override per shell:
 #   DEN_SECRETS_PROVIDER=env make up
-# OP_ACCOUNT is only consulted when the 1password strategy is selected.
-OP_ACCOUNT ?= example.1password.com
-export OP_ACCOUNT
+# Den sets no backend account of its own (no OP_ACCOUNT here): the 1password
+# strategy reads secrets.onepassword.account, or your own OP_ACCOUNT.
+#
+# Backend-specific targets come from make/secrets-<provider>.mk, included
+# only when the distribution selects that backend. The selection is read
+# (with tsx) only when a config or the shell could name 1password, so a
+# distribution that does not use it pays nothing.
+ifeq ($(origin DEN_SECRETS_STRATEGY),undefined)
+ifneq ($(DEN_SECRETS_PROVIDER)$(shell grep -lsE 'provider: *.?1password' $(CURDIR)/config/*.yml $(CURDIR)/config/local/user.yml 2>/dev/null),)
+DEN_SECRETS_STRATEGY := $(shell $(DEN_TSX) $(DEN_ENGINE)/scripts/setup-secrets.ts --provider 2>/dev/null)
+else
+DEN_SECRETS_STRATEGY :=
+endif
+endif
+export DEN_SECRETS_STRATEGY
 
 # Repo for the smoke and browser pillars — no default: make test-smk-all repo=<repo>
 repo ?=
@@ -55,6 +67,9 @@ include $(DEN_ENGINE)/make/local_dev.mk
 include $(DEN_ENGINE)/make/journeys.mk
 include $(DEN_ENGINE)/make/security.mk
 include $(DEN_ENGINE)/make/demo.mk
+ifneq ($(DEN_SECRETS_STRATEGY),)
+-include $(DEN_ENGINE)/make/secrets-$(DEN_SECRETS_STRATEGY).mk
+endif
 
 # ── Help ──────────────────────────────────────────────────────────────────────
 # A distribution gets `make help` from here; Den's own Makefile has a longer

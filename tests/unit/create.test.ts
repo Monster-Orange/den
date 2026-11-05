@@ -77,7 +77,7 @@ describe("renderDistribution", () => {
     };
     expect(cfg.brand.name).toBe("Acme");
     expect(cfg.brand.banner.join("\n")).toContain("A C M E");
-    expect(cfg.secrets.provider).toBe("env");
+    expect(cfg.secrets.provider).toBe("none");
     expect(cfg.edge).toEqual({ org: "acme", domain: "acme.localhost" });
     expect(cfg.github_org).toBeTruthy();
     expect(files["config/environments/local.json"]).toContain(

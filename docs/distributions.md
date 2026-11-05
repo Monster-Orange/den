@@ -290,6 +290,102 @@ ones (`⇄ hybrid`).
   production_envs: [prod] # default: [prod, production]
   ```
 
+## Secrets
+
+A distribution needs no secrets store. Den has no store, vault, item,
+field, key or account of its own that a distribution is assumed to share.
+Where a distribution keeps its secrets, if anywhere, is its own config.
+
+### Choosing a backend
+
+The backend is a strategy, chosen with `secrets.provider` in the org config
+(per engineer in `config/local/user.yml`, per shell with
+`<PREFIX>_SECRETS_PROVIDER`):
+
+| `secrets.provider` | What it is                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------------- |
+| `none`             | No store. Nothing is resolved, no CLI is run; `den create` scaffolds this                |
+| `env`              | Plain environment variables of the process running Den                                   |
+| `doppler`          | The `doppler` CLI (`secrets.doppler: { project, config }` for a default scope)           |
+| `1password`        | The `op` CLI (`secrets.onepassword.account` for the account, else your own `OP_ACCOUNT`) |
+
+```yaml
+# config/acme.yml
+secrets:
+  provider: none # or env | doppler | 1password
+```
+
+When `secrets.provider` is not set at all, Den falls back to `doppler`,
+but only at the moment something actually resolves a secret: a
+distribution with no refs, no `secret_env` and no `required` never runs
+`doppler` and never sees a warning. The first time an unset provider does
+resolve a secret, Den prints, once, that the implicit default is deprecated.
+Set the provider explicitly to silence it.
+
+Each backend is registered as a strategy (`src/shared/secrets/strategies.ts`,
+through the generic registry in `src/shared/strategies/registry.ts`) with a
+`detect()`: a file check that never prompts. A backend whose CLI is not on
+PATH reports "not available: The Doppler CLI (doppler) is not on PATH"
+instead of failing a spawn.
+
+### Refs: where Den's own features find their secrets
+
+Two Den features can use a secret, and only when the distribution says
+where it is, under `secrets.refs`:
+
+| Ref                  | Feature                                                      |
+| -------------------- | ------------------------------------------------------------ |
+| `sudo`               | The saved local-dev sudo password (auto-unlock, "Save to …") |
+| `journeys_agent_key` | The journeys agent's API key, when `CURSOR_API_KEY` is unset |
+
+```yaml
+secrets:
+  provider: 1password
+  onepassword: { account: example.1password.com }
+  refs:
+    sudo: { vault: Private, item: Dev Keys, field: ACME_LOCAL_ADMIN_PWD }
+    journeys_agent_key:
+      { vault: Private, item: Dev Keys, field: CURSOR_API_KEY }
+```
+
+```yaml
+secrets:
+  provider: doppler # or env
+  refs:
+    sudo: { key: ACME_LOCAL_ADMIN_PWD }
+    journeys_agent_key: { key: CURSOR_API_KEY }
+```
+
+`1password` needs an `item` and a `field` (`vault` is optional); `doppler`
+and `env` need a `key` (or an env-shaped `field`). There are no defaults:
+a ref that is not set is **not configured**, and its feature says so
+("not configured: set secrets.provider and secrets.refs.sudo in
+config/acme.yml") instead of running a CLI. The interactive unlock always
+works; only the saved password needs `refs.sudo`.
+`/api/sudo-password/vault-status` reports `backend`, `label`,
+`configured`, `backendAvailable`, `reason` and `hasStored` (`opAvailable`
+is a deprecated alias of `backendAvailable`, kept for one minor).
+
+A `1password` distribution with no refs gets one warning, in the web
+server's startup log and in `<cli> validate`, with the YAML to add.
+
+### Setup targets
+
+`make <cli>-setup-secrets` runs the selected backend's setup: `doppler
+login` and `doppler setup`, the 1Password developer-keys setup, or a note
+for `env`. With `none`, or no provider set, it says there is nothing to set
+up and exits 0.
+
+Backend-only make targets come from `make/secrets-<provider>.mk` and exist
+only when that backend is selected: with `secrets.provider: 1password`,
+`make <cli>-setup-1password` (the developer-keys item at
+`secrets.developer_keys: { vault, item }`, else the vault and item of
+`refs.sudo`) and `make auth-configure env=<env>` (your own admin account
+for staging and production). Any other distribution has neither.
+
+`make up` and `make web` check the backend only when `secrets.required:
+true`; otherwise the check passes silently, whatever the provider.
+
 ## Secrets in a target's env
 
 `secret_env` puts secrets from the configured secrets provider
