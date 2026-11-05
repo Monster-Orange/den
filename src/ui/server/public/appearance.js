@@ -212,6 +212,11 @@ function injectStyles() {
     }
     header > .health, .topbar > .health { flex-wrap: nowrap; }
     header > .health > *, .topbar > .health > * { flex-shrink: 0; white-space: nowrap; }
+    /* ⟳ is a control and is never clipped: when even the compact chip
+       doesn't fit, the chip's text gives way, not the button after it. */
+    header > .health > .health-more, .topbar > .health > .health-more {
+      flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    }
     .den-mark {
       display: inline-flex; align-items: center; justify-content: center;
       width: 18px; height: 18px; flex-shrink: 0; overflow: hidden;

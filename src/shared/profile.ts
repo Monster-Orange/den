@@ -122,8 +122,16 @@ export function loadProfile(root: string): ProductProfile {
   return cached.profile;
 }
 
+const resetHooks: (() => void)[] = [];
+
+/** Run `hook` whenever resetProfileCache runs (caches derived from it). */
+export function onProfileCacheReset(hook: () => void): void {
+  resetHooks.push(hook);
+}
+
 export function resetProfileCache(): void {
   cached = null;
+  for (const hook of resetHooks) hook();
 }
 
 /** `${PREFIX}_${key}`: the env-var name this distribution uses for `key`. */

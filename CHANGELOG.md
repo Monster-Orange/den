@@ -224,7 +224,8 @@ config and manifest changes a distribution must make to move to it under
   With only room for the chip, a hidden degraded repo read "+11" with an
   amber ring, and "1 degraded" was only in its accessible name. The ladder
   is now "+11 · 1 down, 1 degraded", then the worst one alone ("+11 · 1
-  down"), down and degraded named the same way. Bare "+N" only when no
+  down"), then compact ("+11 · ⚠2", 0.3.0-dev.13), down and degraded named
+  the same way. Bare "+N" only when no
   hidden repo has a problem. The fit keeps room for that text
   (`fitPlan`'s `chipWidthOf`).
 - **Escape from the chip's list returns focus to the chip, even after a
@@ -233,6 +234,19 @@ config and manifest changes a distribution must make to move to it under
   page (the breadcrumb). The chip is now one node across re-fits, keeps its
   focus, and stays the list's anchor; when a re-fit drops the chip, focus
   moves to the row's refresh button.
+- **The health row settles once on a fresh load** (0.3.0-dev.13). It
+  reshuffled three or four times between 0.6s and 3.6s as streamed results
+  arrived. Now a first cycle (a page load, an environment switch) keeps the
+  "…" placeholder until the whole cycle is in (or 8s pass with a slow probe
+  still out), then fits once. Later data repaints are debounced by 300ms;
+  resize and font re-fits stay immediate (`paintGate` in
+  `public/health-fit.js`).
+- **The refresh button is never clipped** (0.3.0-dev.13). At 124px,
+  "+11 · 1 degraded" pushed ⟳ out of the row. The chip's ladder ends in a
+  compact form, "+11 · ⚠1" (every hidden problem counted), used before the
+  problem would be dropped; its name and tooltip keep the full text. If
+  even that doesn't fit, the chip's text gives way, not ⟳. The chip is
+  measured at its natural width.
 - **The Theme menu says when your theme isn't in use** (0.3.0-dev.10). A
   stored theme that fails validation selects nothing, instead of looking
   like "Org default". One line explains: "Your theme <id> isn't valid
@@ -251,6 +265,117 @@ config and manifest changes a distribution must make to move to it under
   (`theme new` sets one). A plugin's `den` range is now enforced: write
   `>=0.3.0-0 <0.4.0` to admit Den's 0.3.0 prereleases, because `>=0.3.0`
   excludes them.
+
+## [0.2.4] - 2026-11-04
+
+### Fixed
+
+- **`GET /api/services` no longer blocks the web server.** It looked up
+  each workspace checkout's branch with a synchronous `git rev-parse`, one
+  after another (~40ms each), so with a dozen repos every request held the
+  event loop for 0.5-1.5s and everything else waited behind it: the UI,
+  the MCP server's reads, and `/api/server-info`, which `<cli> mcp connect`
+  probes with a 1.5s timeout. The lookups now run as async child processes
+  in parallel; concurrent requests (one per open tab) share one build, and
+  a settled build is reused for 2s (`?refresh=1` forces a new one; any
+  mutating request clears it). Concurrent `/api/health` polls also share
+  one run instead of each starting its own.
+- **`<cli> mcp connect` / `mcp clients` tell a slow web server from a
+  stopped one.** A server that accepts the connection but does not answer
+  within 1.5s is reported as "not answering within 1.5s", not "not
+  running". When the org config sets `web.service` (the web UI runs as a
+  launchd service), the advice is `<cli> service status` instead of
+  `<cli> web up`.
+- **Web server shutdown no longer leaks an unhandled rejection, or hangs.**
+  On SIGTERM/SIGINT the server reads the running-services registry, whose
+  path resolves the distribution root again; if that walk fails (the dist's
+  den.yml moved or removed while the server ran), the async shutdown
+  rejected unhandled ("unhandled rejection (continuing): Error: cannot
+  locate the distribution root: walked up from
+  <dist>/node_modules/@monster-orange/den/src/ui/server") and, its signal
+  guard already set, the process never exited, so a service manager had to
+  wait out its timeout and kill it. The shutdown now logs the failure and
+  exits.
+- **Deactivating a workspace no longer stops a service that moved to
+  another workspace.** A daemon's owners were the workspaces recorded when
+  it started, so a repo moved from `default` into `ws-b` while its daemon
+  ran was still "owned" only by `default`, and `workspace deactivate
+  default` stopped it. Release now re-derives the owners from the current
+  workspaces.yml membership: a daemon is stopped only when no active
+  workspace still lists its repo, and otherwise its recorded owners become
+  the active workspaces that do.
+- **`<cli> workspace --help` lists every subcommand**: activate,
+  deactivate and focus were missing (and `workspace focus <name>` now
+  exists in the CLI, as it did in the web UI). Deactivate's help and output
+  say that it releases only the services Den tracks: compose stacks of the
+  workspace's repos keep running, and the output names the running ones
+  with `<cli> down <repo>` for each (from one `docker ps`; a generic line
+  when docker can't be asked).
+- **The first `/api/health/stream` (and `/api/health`) cycle no longer
+  blocks the web server for a second.** Resolving the manifest of a repo
+  without its own (a held manifest under `manifests/`) looked up the
+  checkout's origin with a synchronous `git config --get
+  remote.origin.url`, one repo after another (~40-100ms each), so a
+  server's first health run held the event loop for 1-1.5s. The origin is
+  now read from the checkout's git config file (worktrees and
+  subdirectories included), never by spawning git. Parsed manifests are
+  also reused while the file is unchanged: one request read the same
+  manifests several times, and parsing them held the loop ~100-200ms per
+  health run.
+- **`GET /api/workspaces/available-repos` no longer blocks the web
+  server.** It ran `git remote get-url origin` (and, for managed clones,
+  `git rev-parse`) synchronously per checkout; the lookups are now async
+  and in parallel, and concurrent requests share one walk (reused for 2s;
+  `?refresh=1` forces a new one, any mutating request clears it).
+- **`workspace deactivate` names the compose stacks a repo runs itself.**
+  It only knew Den stacks (a manifest's `compose:` section, project
+  `<stack>-<workspace>`), so a distribution whose repos start their own
+  compose projects (`make up`) got no line at all. A running project now
+  counts when Compose started it from inside one of the workspace's
+  checkouts (its `com.docker.compose.project.working_dir` label), as well
+  as when it is a Den stack's project.
+- **`<cli> workspace <sub> --help`** prints that subcommand's help, not the
+  whole `workspace` help.
+- **No synchronous directory walks or spawns on the web server's hot
+  request paths** (`/api/workspaces/available-repos`, the `/api/health`
+  stream). On a loaded machine (load average ~50) the dev.1 fixes still
+  left stalls of 1-5s; a CPU profile showed why:
+  - available-repos recursed into every directory without a manifest file
+    of its own, so in a distribution whose repos use held manifests it
+    walked each repo's whole tree (to depth 4) with `readdirSync` /
+    `existsSync`: seconds per call. It now never descends into a git
+    checkout or `node_modules`, and the walk is `fs.promises`.
+  - The distribution root (and so `product()`) was re-resolved on every
+    call, a den.yml `existsSync` per `*_ROOT` variable each time, hundreds
+    of times per request. It is now resolved once per set of inputs (the
+    env vars and entry script it reads); the engine root likewise.
+  - Manifests, the edge config and the derived graph order are reused
+    across a request and the polls after it (5s; any mutating request
+    clears them), and the graph order is recomputed after a request, never
+    inside one.
+  - HTTPS health checks built a TLS context from ~150 root certificates on
+    every check; one context is built once, at startup.
+  - The startup sweep of stale daemon records ran `docker ps` / `opctl
+    container ls` synchronously; it is async now (concurrent callers share
+    one call), and `/api/service/daemons` waits for it.
+  A new test runs the server with a spy on every synchronous fs and
+  child_process call and fails if either route makes a sync spawn or
+  directory walk, or any sync call outside a short allowlist of single
+  config-file reads.
+- **The web UI service no longer runs at background priority.**
+  `service install` wrote `ProcessType: Background` into the LaunchAgent,
+  so macOS ran the UI server on efficiency cores with throttled I/O: on a
+  busy machine its first requests stalled for 5-11s. It is now
+  `Interactive`, and `service status` shows launchd's spawn type.
+- **`workspace deactivate` never suggests stopping a stack another active
+  workspace still holds.** Such a stack is listed as "in use by another
+  workspace: <project> (still in <ws>)" instead of with a `down <repo>`
+  command, and a repo with a stack still in use gets no `down` suggestion.
+
+### Migrations
+
+- Re-run `<cli> service install` to pick up the new LaunchAgent priority
+  (`<cli> service status` should show `spawn type = interactive`).
 
 ## [0.2.3] - 2026-11-04
 

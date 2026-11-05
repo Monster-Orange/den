@@ -15,6 +15,8 @@
  *                           retry) before the row has real widths
  *   moreChip(hidden)        the chip's text and accessible name
  *   mountMoreChip(doc, …)   the chip, and the list it opens
+ *   paintGate(…)            when health data repaints the row: once per
+ *                           first cycle, then debounced
  *
  * The pure parts take plain data, so tests need no browser.
  */
@@ -187,10 +189,11 @@ export function fitPlan(row, measured) {
  * `hidden` is the hidden repos, each `{ state }`.
  *
  * `forms` is the visible-text ladder, richest first: every hidden problem
- * ("+11 · 1 down, 1 degraded"), then the worst one ("+11 · 1 down"). Down
- * and degraded are named the same way, never by colour alone, so the
- * shortest form still names the worst hidden problem; bare "+N" only when
- * no problem is hidden (0.3.0-dev.12). `short` is that shortest form.
+ * ("+11 · 1 down, 1 degraded"), then the worst one ("+11 · 1 down"), then
+ * compact ("+11 · ⚠2", every hidden problem counted). Down and degraded
+ * are named the same way, never by colour alone; bare "+N" only when no
+ * problem is hidden (0.3.0-dev.12, compact 0.3.0-dev.13). `short` is the
+ * shortest form. The name and tooltip (`label`) always say it in full.
  */
 export function moreChip(hidden) {
   const repos = hidden.length;
@@ -205,6 +208,9 @@ export function moreChip(hidden) {
         ...new Set([
           `+${repos} · ${problems.join(", ")}`,
           `+${repos} · ${problems[0]}`,
+          // Compact, for a row with room for little more than "+N" and the
+          // refresh button: still never colour alone (0.3.0-dev.13).
+          `+${repos} · ⚠${down + degraded}`,
         ]),
       ]
     : [`+${repos}`];
@@ -310,4 +316,68 @@ export function closeMoreList(doc) {
     doc.removeEventListener?.("click", _onClick);
     _onKey = _onClick = null;
   }
+}
+
+/**
+ * When the header repaints the row from health data (0.3.0-dev.13). A
+ * fresh load streamed results in batches and the row reshuffled with each
+ * one, three or four times in as many seconds. Now:
+ * - `hold()` starts a first cycle (a page load, an environment switch):
+ *   data paints nothing (the row keeps its placeholder) until `done()`
+ *   ends the cycle, or `cap` ms pass with a slow probe still out;
+ * - after that, data paints at most once per `delay` ms of quiet (a
+ *   trailing debounce), and so does the end of a later cycle.
+ * Each call hands in the latest paint; only the last one runs. Resize and
+ * font re-fits don't come through here: they lay the row out at once.
+ * `timers` is `{ setTimeout, clearTimeout }`, globalThis by default, so
+ * tests can use a fake clock.
+ */
+export function paintGate({
+  delay = 300,
+  cap = 8000,
+  timers = globalThis,
+} = {}) {
+  let ready = true;
+  let pending = null;
+  let timer = null;
+  let capTimer = null;
+  const stop = (t) => t !== null && timers.clearTimeout(t);
+  const fire = () => {
+    stop(timer);
+    timer = null;
+    const paint = pending;
+    pending = null;
+    paint?.();
+  };
+  const settle = () => {
+    stop(capTimer);
+    capTimer = null;
+    ready = true;
+    fire();
+  };
+  return {
+    get ready() {
+      return ready;
+    },
+    hold() {
+      ready = false;
+      stop(timer);
+      timer = null;
+      stop(capTimer);
+      capTimer = timers.setTimeout(settle, cap);
+    },
+    data(paint) {
+      pending = paint;
+      if (!ready) return;
+      stop(timer);
+      timer = timers.setTimeout(fire, delay);
+    },
+    done(paint) {
+      if (paint) pending = paint;
+      if (!ready) return settle();
+      if (!pending) return;
+      stop(timer);
+      timer = timers.setTimeout(fire, delay);
+    },
+  };
 }

@@ -179,6 +179,36 @@ export function __setExtraCaForTests(pems: string[] | null): void {
 }
 
 /**
+ * One TLS context with the public roots plus extraCa(), built once. Passing
+ * `ca` per request made Node parse ~150 root certificates on every HTTPS
+ * health check, synchronously: tens of ms per check, per poll.
+ */
+/** Build the HTTPS checks' trust context now (web server startup). */
+export function prewarmHealthTls(): void {
+  trustContext();
+}
+
+let _trust: {
+  ca: string[];
+  context: tls.SecureContext;
+  agent: https.Agent;
+} | null = null;
+function trustContext(): { context: tls.SecureContext; agent: https.Agent } {
+  const extra = extraCa();
+  if (_trust?.ca !== extra) {
+    _trust?.agent.destroy();
+    _trust = {
+      ca: extra,
+      context: tls.createSecureContext({
+        ca: [...tls.rootCertificates, ...extra],
+      }),
+      agent: new https.Agent({ keepAlive: false }),
+    };
+  }
+  return _trust;
+}
+
+/**
  * HTTPS check. Connects to the c-ares-resolved IP (see above) but keeps the
  * hostname for SNI and certificate verification; rewriting the URL to the IP,
  * as plain HTTP does, makes every TLS check fail.
@@ -204,7 +234,12 @@ async function pingHttps(parsed: URL, timeoutMs: number): Promise<PingResult> {
       {
         method: "GET",
         servername: isIpLiteral(host) ? undefined : host,
-        ca: [...tls.rootCertificates, ...extraCa()],
+        // tls.connect's option, passed through by the agent (not in the
+        // https.RequestOptions type).
+        ...({ secureContext: trustContext().context } as https.RequestOptions),
+        // Its own agent: a socket kept alive under one trust set must never
+        // be reused for a check under another.
+        agent: trustContext().agent,
         lookup: (_h, opts, cb) => {
           // Node may ask for all addresses (autoSelectFamily).
           if ((opts as { all?: boolean }).all)

@@ -5,6 +5,11 @@
  * Main entry point for the interactive CLI
  */
 
+import { composeStacksNotice } from "./workspace-notes.js";
+import {
+  runningComposeProjects,
+  runningWorkspaceStacks,
+} from "../../shared/stacks/status.js";
 import { isNamedTarget } from "./named-target.js";
 import chalk from "chalk";
 import oraSpinner from "ora";
@@ -46,7 +51,9 @@ import {
   isWorkspaceActive,
   activateWorkspace,
   deactivateWorkspace,
+  getActiveWorkspaces,
   setActiveWorkspace,
+  setFocusedWorkspace,
   createWorkspace,
   deleteWorkspaceConfig,
   parseAddress,
@@ -200,6 +207,58 @@ const DEN_HELP_DESCRIPTION = `  ${product().title} - local-first test, service, 
  * Concise `<command> -h` help for commands without a dedicated help renderer.
  * Flag-heavy commands (up, graph, use-local, use-managed) have richer handlers.
  */
+/** `workspace` subcommands, for `workspace --help` and `workspace <sub> --help`. */
+const WORKSPACE_SUBCOMMANDS: {
+  name: string;
+  usage: string;
+  lines: string[];
+}[] = [
+  {
+    name: "list",
+    usage: "list",
+    lines: ["every workspace, the active set and the focus"],
+  },
+  {
+    name: "activate",
+    usage: "activate <n>",
+    lines: ["add a workspace to the active set"],
+  },
+  {
+    name: "deactivate",
+    usage: "deactivate <n>",
+    lines: [
+      "remove it from the active set and stop the services",
+      "only it owns. Only services {cli} tracks: compose",
+      "stacks keep running; stop them with `{cli} down <repo>`",
+    ],
+  },
+  {
+    name: "focus",
+    usage: "focus <n>",
+    lines: ["make an active workspace the default for commands"],
+  },
+  {
+    name: "use",
+    usage: "use <n>",
+    lines: ["activate and focus a workspace"],
+  },
+  {
+    name: "create",
+    usage: "create [n]",
+    lines: ["create an empty workspace"],
+  },
+  {
+    name: "delete",
+    usage: "delete <n>",
+    lines: ["delete a workspace (and its directory)"],
+  },
+  {
+    name: "code",
+    usage: "code [n]",
+    lines: ["open it in your editor (VS Code: a .code-workspace)"],
+  },
+];
+
 const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   down: {
     usage: "down [repo] [flags]",
@@ -257,8 +316,16 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     lines: ["Check managed repos for upstream updates and offer to pull."],
   },
   workspace: {
-    usage: "workspace <list|use|create|delete|code> [name]",
-    lines: ["Manage workspaces (named sets of services + their modes)."],
+    usage: `workspace <${WORKSPACE_SUBCOMMANDS.map((c) => c.name).join("|")}> [name]`,
+    lines: [
+      "Manage workspaces (named sets of services + their modes).",
+      "",
+      ...WORKSPACE_SUBCOMMANDS.flatMap((c) =>
+        c.lines.map(
+          (line, i) => `  ${(i === 0 ? c.usage : "").padEnd(16)}  ${line}`,
+        ),
+      ),
+    ],
   },
   run: {
     usage: "run [options]",
@@ -608,7 +675,7 @@ class DenCLI {
       !["-h", "--help", "-v", "--version"].includes(command) &&
       (ownArgs.includes("-h") || ownArgs.includes("--help"))
     ) {
-      this.printCommandHelp(command);
+      this.printCommandHelp(command, ownArgs[1]);
       return;
     }
 
@@ -2408,7 +2475,19 @@ class DenCLI {
   }
 
   /** Help for `<command> -h`: dedicated renderer for flag-heavy commands, else the table. */
-  private printCommandHelp(command: string): void {
+  private printCommandHelp(command: string, sub?: string): void {
+    // `workspace <sub> --help`: that subcommand only.
+    const wsSub =
+      command === "workspace"
+        ? WORKSPACE_SUBCOMMANDS.find((c) => c.name === sub)
+        : undefined;
+    if (wsSub) {
+      console.log(`\n  ${product().cli} workspace ${wsSub.usage}\n`);
+      for (const line of wsSub.lines)
+        console.log(`  ${line.replaceAll("{cli}", product().cli)}`);
+      console.log();
+      return;
+    }
     switch (command) {
       case "up":
         return this.printUpHelp();
@@ -2431,7 +2510,8 @@ class DenCLI {
       return;
     }
     console.log(`\n  ${product().cli} ${entry.usage}\n`);
-    for (const line of entry.lines) console.log(`  ${line}`);
+    for (const line of entry.lines)
+      console.log(`  ${line.replaceAll("{cli}", product().cli)}`.trimEnd());
     console.log();
   }
 
@@ -3547,7 +3627,34 @@ class DenCLI {
             }
           }
         }
+        // Deactivate releases tracked daemons only; say what it left up.
+        // One docker ps for this workspace and every other active one.
+        let up: ReturnType<typeof runningComposeProjects> | undefined;
+        const running = () =>
+          up === undefined ? (up = runningComposeProjects()) : up;
+        const stacks = runningWorkspaceStacks(name, running);
+        const heldBy = new Map<string, string[]>();
+        if (stacks?.length)
+          for (const other of getActiveWorkspaces())
+            for (const s of runningWorkspaceStacks(other, running) ?? [])
+              heldBy.set(s.project, [...(heldBy.get(s.project) ?? []), other]);
+        const stacksNote = composeStacksNotice(product().cli, stacks, heldBy);
+        if (stacksNote) console.log(chalk.yellow(`    ${stacksNote}`));
         console.log("");
+        break;
+      }
+      case "focus": {
+        const name = args[1];
+        if (!name) {
+          console.log(
+            chalk.red(`Usage: ${product().cli} workspace focus <name>`),
+          );
+          return;
+        }
+        setFocusedWorkspace(name);
+        console.log(
+          chalk.green(`\n  ✓ Focused workspace: ${chalk.bold(name)}\n`),
+        );
         break;
       }
       case "use": {
@@ -3657,7 +3764,7 @@ class DenCLI {
       default:
         console.log(
           chalk.gray(
-            `Usage: ${product().cli} workspace <list|activate|deactivate|use|create|delete|code> [name]`,
+            `Usage: ${product().cli} workspace <list|activate|deactivate|focus|use|create|delete|code> [name]`,
           ),
         );
     }
@@ -3923,7 +4030,6 @@ class DenCLI {
       "  plugin list          Local and added plugins, checked (validate, add, update, remove)",
     );
     console.log();
-    console.log("  workspace list       List workspaces");
     console.log(
       "  workspace list           List workspaces (active set + focus)",
     );
@@ -3931,11 +4037,14 @@ class DenCLI {
     console.log(
       "  workspace deactivate <n> Remove workspace from the active set",
     );
-    console.log("  workspace use <n>        Activate and focus a workspace");
-    console.log("  workspace create [n] Create a new workspace");
-    console.log("  workspace delete <n> Delete a workspace");
     console.log(
-      "  workspace code [n]   Open workspace in VS Code (generates .code-workspace)",
+      "  workspace focus <n>      Focus an active workspace (the default)",
+    );
+    console.log("  workspace use <n>        Activate and focus a workspace");
+    console.log("  workspace create [n]     Create a new workspace");
+    console.log("  workspace delete <n>     Delete a workspace");
+    console.log(
+      "  workspace code [n]       Open workspace in VS Code (generates .code-workspace)",
     );
     console.log("\nTest commands:");
     console.log(

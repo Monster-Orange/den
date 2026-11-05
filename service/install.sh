@@ -65,7 +65,9 @@ data = {
     "RunAtLoad": True,
     "KeepAlive": True,
     "ThrottleInterval": 10,
-    "ProcessType": "Background",
+    # Interactive, not Background: macOS gives Background agents efficiency
+    # cores and throttled I/O, and the UI stalled for seconds under load.
+    "ProcessType": "Interactive",
     "StandardOutPath": f"{logs}/web.log",
     "StandardErrorPath": f"{logs}/web.log",
 }
@@ -115,7 +117,7 @@ case "${1:-install}" in
   status)
     # launchctl's own "Could not find service" is noise when it isn't loaded.
     if out="$(launchctl print "$DOMAIN/$LABEL" 2>/dev/null)"; then
-      printf '%s\n' "$out" | grep -E '^\s*(state|pid|last exit code|runs)'
+      printf '%s\n' "$out" | grep -E '^\s*(state|pid|last exit code|runs|spawn type)'
     else
       echo "$LABEL is not loaded"
     fi

@@ -22,6 +22,7 @@ import {
   closeMoreList,
   fitPlan,
   mountMoreChip,
+  paintGate,
 } from "./health-fit.js";
 import { describeRollup } from "./health-rollup.js";
 
@@ -958,27 +959,25 @@ async function renderHealthDots(env, gen = pollGen, force = false) {
   // updates dot COLOURS in place instead of rebuilding the row.
   const acc = new Map(gen === _healthAccGen ? _healthAcc : []);
   _healthAccGen = gen;
+  // A first cycle (page load, env switch: nothing seeded) paints once, when
+  // it ends; later polls repaint debounced (paintGate, 0.3.0-dev.13), so the
+  // row doesn't reshuffle with every streamed batch.
+  if (acc.size === 0) _healthGate.hold();
   const keyOf = (r) => `${r.repo}/${r.service}`;
-  let scheduled = false;
-  const paint = () => {
-    scheduled = false;
+  const paintFrom = (m) => () => {
     if (gen !== pollGen) return; // a newer poll owns the DOM now
-    _healthAcc = acc;
-    _paintHealthDots(container, env, _sortHealth([...acc.values()]));
-  };
-  const schedule = () => {
-    if (scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(paint);
+    _healthAcc = m;
+    _paintHealthDots(container, env, _sortHealth([...m.values()]));
   };
 
   const fresh = new Map();
   const streamed = await _streamHealth(env, force, (r) => {
     acc.set(keyOf(r), r);
     fresh.set(keyOf(r), r);
-    schedule();
+    _healthGate.data(paintFrom(acc));
   });
 
+  let answered = streamed;
   if (!streamed) {
     // Stream unavailable (older server, proxy that buffers SSE) — fall back to
     // the plain endpoint so the dots still resolve.
@@ -991,18 +990,20 @@ async function renderHealthDots(env, gen = pollGen, force = false) {
       ).then((r) => r.json());
       fresh.clear();
       for (const r of rs) fresh.set(keyOf(r), r);
+      answered = true;
     } catch {
       /* server unreachable */
     }
   }
   if (gen !== pollGen) return;
   // Settle on exactly what THIS poll returned, so a service removed from the
-  // workspace disappears instead of lingering from the seeded set.
-  if (fresh.size > 0) {
-    _healthAcc = fresh;
-    _paintHealthDots(container, env, _sortHealth([...fresh.values()]));
-  }
+  // workspace disappears instead of lingering from the seeded set. A first
+  // cycle that answered with nothing says "no services".
+  if (fresh.size > 0 || (answered && !_healthGate.ready))
+    _healthGate.done(paintFrom(fresh));
+  else _healthGate.done();
 }
+const _healthGate = paintGate();
 
 /**
  * Stable display order. `idx` is the server's graph-ranked position (entry repo
@@ -1255,6 +1256,9 @@ function _layoutHealthRow(container) {
   // hidden problem, its detail only if it still fits (fitPlan).
   const probe = document.createElement("button");
   probe.className = "health-more problem";
+  // Its natural width: the live chip may shrink (so ⟳ is never clipped),
+  // the probe must not, or every text would seem to fit.
+  probe.style.flexShrink = "0";
   const widthOf = (text) => {
     probe.textContent = text;
     return probe.offsetWidth + gap;

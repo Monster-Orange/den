@@ -6,7 +6,14 @@
  * everything), always places problems first, and gives the row the free
  * header width.
  */
-import { describe, expect, it } from "@jest/globals";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -15,6 +22,7 @@ import {
   fitPlan,
   moreChip,
   mountMoreChip,
+  paintGate,
   planRow,
 } from "../../../src/ui/server/public/health-fit.js";
 
@@ -425,6 +433,115 @@ describe("fitPlan: room for a chip that names the hidden problem", () => {
   });
 });
 
+describe("fitPlan: a 124px row keeps the refresh button in view", () => {
+  // Tests at 1024: the row is 124px, 4px padding a side, the ⟳ button 17px
+  // and one 10px gap, so 85px for items and the chip. Chip widths as the
+  // browser measured them: ~6.6px a character plus 16px of padding/border.
+  const GAP = 10;
+  const avail = 124 - 8 - 17 - GAP;
+  const chipWidthOf = (t: string) => Math.ceil(t.length * 6.6) + 16 + GAP;
+  const rows = [
+    ...["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"].map((r) =>
+      one(r, true),
+    ),
+    { repo: "arbor-workbench", service: "mail", ok: false } as Row,
+    { repo: "arbor-workbench", service: "arbor-workbench", ok: true } as Row,
+  ];
+  const row = buildRow(rows, null);
+  it("degraded hidden: the compact form, and it fits beside ⟳", () => {
+    expect(chipWidthOf("+11 · 1 degraded")).toBeGreaterThan(avail);
+    const plan = fitPlan(row, {
+      avail,
+      boxed: 5000,
+      widths: row.flat.map((r: { repo: string }) =>
+        r.repo === "arbor-workbench" ? 120 : 60,
+      ),
+      gap: GAP,
+      chipWidthOf,
+    });
+    const text = moreChip(plan.hidden).forms[plan.form];
+    expect(text).toBe("+11 · ⚠1");
+    // Everything the row shows, chip text included, ends before ⟳.
+    expect(
+      plan.used - chipWidthOf(moreChip(plan.hidden).short) + chipWidthOf(text),
+    ).toBeLessThanOrEqual(avail);
+    expect(moreChip(plan.hidden).label).toBe("11 more repos, 1 degraded");
+  });
+});
+
+describe("paintGate: the first fit waits for the first full cycle", () => {
+  // A fake clock: the stream lands batches at 0.6s, 1.2s, 2.4s and 3.6s.
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+  const at = (ms: number, now: { t: number }) => {
+    jest.advanceTimersByTime(ms - now.t);
+    now.t = ms;
+  };
+
+  it("paints once, when the first cycle ends, not per batch", () => {
+    const gate = paintGate();
+    const paints: string[] = [];
+    const now = { t: 0 };
+    gate.hold();
+    for (const t of [600, 1200, 2400, 3600]) {
+      at(t, now);
+      gate.data(() => paints.push(`batch ${t}`));
+    }
+    at(3650, now);
+    expect(paints).toEqual([]);
+    gate.done(() => paints.push("full"));
+    expect(paints).toEqual(["full"]);
+    at(10000, now);
+    expect(paints).toEqual(["full"]);
+  });
+
+  it("after that, data changes repaint debounced ~300ms; a burst is one paint", () => {
+    const gate = paintGate();
+    const paints: number[] = [];
+    const now = { t: 0 };
+    gate.hold();
+    gate.done(() => paints.push(0));
+    for (const t of [5000, 5100, 5200, 5250]) {
+      at(t, now);
+      gate.data(() => paints.push(t));
+    }
+    at(5549, now);
+    expect(paints).toEqual([0]);
+    at(5550, now);
+    expect(paints).toEqual([0, 5250]);
+    // The end of a later cycle is a data change too.
+    gate.done(() => paints.push(6000));
+    expect(paints).toEqual([0, 5250]);
+    at(5850, now);
+    expect(paints).toEqual([0, 5250, 6000]);
+  });
+
+  it("a slow probe never keeps the placeholder past the cap", () => {
+    const gate = paintGate({ cap: 8000 });
+    const paints: string[] = [];
+    gate.hold();
+    gate.data(() => paints.push("partial"));
+    jest.advanceTimersByTime(7999);
+    expect(paints).toEqual([]);
+    jest.advanceTimersByTime(1);
+    expect(paints).toEqual(["partial"]);
+    expect(gate.ready).toBe(true);
+  });
+
+  it("an environment switch holds again", () => {
+    const gate = paintGate();
+    const paints: string[] = [];
+    gate.hold();
+    gate.done(() => paints.push("local"));
+    gate.hold();
+    gate.data(() => paints.push("staging batch"));
+    jest.advanceTimersByTime(1000);
+    expect(paints).toEqual(["local"]);
+    gate.done(() => paints.push("staging"));
+    expect(paints).toEqual(["local", "staging"]);
+  });
+});
+
 describe("moreChip", () => {
   it("says what the hidden repos hold", () => {
     expect(
@@ -436,8 +553,8 @@ describe("moreChip", () => {
       ]),
     ).toEqual({
       text: "+4 · 1 down, 1 degraded",
-      forms: ["+4 · 1 down, 1 degraded", "+4 · 1 down"],
-      short: "+4 · 1 down",
+      forms: ["+4 · 1 down, 1 degraded", "+4 · 1 down", "+4 · ⚠2"],
+      short: "+4 · ⚠2",
       label: "4 more repos, 1 down, 1 degraded",
       problem: true,
     });
@@ -447,22 +564,37 @@ describe("moreChip", () => {
   it("names a hidden problem in text, down and degraded alike; bare +N only without one", () => {
     const n = (states: string[]) => states.map((state) => ({ state }));
     const ok10 = Array(10).fill("ok");
-    // Degraded is named like down, never by an amber ring alone.
+    // Degraded is named like down, never by an amber ring alone; the
+    // compact form last, before the problem would be dropped.
     expect(moreChip(n([...ok10, "degraded"])).forms).toEqual([
       "+11 · 1 degraded",
+      "+11 · ⚠1",
     ]);
-    expect(moreChip(n([...ok10, "down"])).forms).toEqual(["+11 · 1 down"]);
-    // Every problem, then the worst: "+11 · 1 down" beats "+11".
+    expect(moreChip(n([...ok10, "down"])).forms).toEqual([
+      "+11 · 1 down",
+      "+11 · ⚠1",
+    ]);
+    // Every problem, then the worst ("+11 · 1 down" beats "+11"), then
+    // compact, counting every hidden problem.
     const both = moreChip(n([...Array(9).fill("ok"), "down", "degraded"]));
-    expect(both.forms).toEqual(["+11 · 1 down, 1 degraded", "+11 · 1 down"]);
-    expect(both.short).toBe("+11 · 1 down");
+    expect(both.forms).toEqual([
+      "+11 · 1 down, 1 degraded",
+      "+11 · 1 down",
+      "+11 · ⚠2",
+    ]);
+    expect(both.short).toBe("+11 · ⚠2");
+    expect(both.label).toBe("11 more repos, 1 down, 1 degraded");
     const worst = moreChip(n(["degraded", "degraded", "down", "unknown"]));
-    expect(worst.short).toBe("+4 · 1 down");
-    expect(worst.text).toBe("+4 · 1 down, 2 degraded");
+    expect(worst.forms).toEqual([
+      "+4 · 1 down, 2 degraded",
+      "+4 · 1 down",
+      "+4 · ⚠3",
+    ]);
     // No hidden problem: bare.
     expect(moreChip(n([...ok10, "unknown"])).forms).toEqual(["+11"]);
     for (const c of [both, worst])
-      for (const f of c.forms) expect(f).toMatch(/ · \d+ (down|degraded)/);
+      for (const f of c.forms)
+        expect(f).toMatch(/ · (\d+ (down|degraded)|⚠\d+)/);
   });
 });
 
@@ -554,7 +686,7 @@ describe("the +N chip", () => {
     const chip = mountMoreChip(doc, hidden, () => {}, {
       form: 2,
     }) as unknown as El;
-    expect(chip.textContent).toBe("+3 · 1 down");
+    expect(chip.textContent).toBe("+3 · ⚠1");
     expect(chip.attrs["aria-label"]).toBe("3 more repos, 1 down");
     expect((chip as unknown as { title: string }).title).toBe(
       "3 more repos, 1 down",
@@ -666,6 +798,34 @@ describe("the header uses it", () => {
       body.indexOf("await Promise.all([_loadEditorKey(), _loadApps()])"),
     );
     expect(header).toMatch(/document\.fonts\?\.ready\?\.then\(_queueFit\)/);
+  });
+  it("calls no private helper it doesn't define", () => {
+    // header.js runs only in the browser; a helper lost in an edit would
+    // throw there and leave the row on its placeholder for good.
+    const called = new Set(
+      [...header.matchAll(/\b(_[A-Za-z]\w*)\s*\(/g)].map((m) => m[1]),
+    );
+    const defined = new Set(
+      [...header.matchAll(/(?:function|const|let)\s+(_[A-Za-z]\w*)/g)].map(
+        (m) => m[1],
+      ),
+    );
+    expect([...called].filter((f) => !defined.has(f))).toEqual([]);
+  });
+  it("paints health data through the gate, not per streamed batch", () => {
+    expect(header).toMatch(/_healthGate\.hold\(\)/);
+    expect(header).toMatch(/_healthGate\.data\(paintFrom\(acc\)\)/);
+    expect(header).toMatch(/_healthGate\.done\(paintFrom\(fresh\)\)/);
+    expect(header).not.toMatch(/requestAnimationFrame\(paint\)/);
+  });
+  it("measures the chip at its natural width, though the live chip may shrink", () => {
+    expect(header).toMatch(/probe\.style\.flexShrink = "0";/);
+  });
+  it("never clips ⟳: the chip's text gives way", () => {
+    const css = fs.readFileSync(path.join(PUBLIC, "appearance.js"), "utf-8");
+    expect(css).toMatch(
+      /header > \.health > \.health-more, \.topbar > \.health > \.health-more \{\s*flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;/,
+    );
   });
   it("keeps the chip node and its focus across a re-fit", () => {
     expect(header).toMatch(/reuse: chip/);

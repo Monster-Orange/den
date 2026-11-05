@@ -31,6 +31,7 @@ import * as yaml from "yaml";
 import { brandSlug, defaultBrand } from "../brand.js";
 import { DEFAULT_PORT } from "../constants.js";
 import { getDistRoot } from "../paths.js";
+import { cachedRead } from "../read-cache.js";
 import { readManifestStacks } from "../stacks/config.js";
 import { getActiveWorkspaces } from "../environment-manager/workspaces.js";
 import { assertDomain } from "./render.js";
@@ -154,6 +155,21 @@ function manifestStackNames(): string[] {
 }
 
 export function readEdgeConfig(root: string = getDistRoot()): EdgeConfig {
+  // The web server reads this on every request (open links, health rows);
+  // reused for the read cache's TTL there, read fresh everywhere else. An
+  // error is cached as such: most instances have no edge block at all.
+  const r = cachedRead(`edge-config:${root}`, () => {
+    try {
+      return { config: computeEdgeConfig(root) };
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
+  });
+  if ("error" in r) throw new Error(r.error);
+  return r.config;
+}
+
+function computeEdgeConfig(root: string): EdgeConfig {
   const { team: t, user: u } = layers(root);
   const team = (t.edge ?? {}) as RawEdge;
   const user = (u.edge ?? {}) as RawEdge;

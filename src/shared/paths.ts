@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   loadProfile,
+  onProfileCacheReset,
   PROFILE_FILE,
   readEnv,
   type ProductProfile,
@@ -74,6 +75,34 @@ function rootFromEnv(): string | null {
  * anchor fails loudly.
  */
 export function getDistRoot(): string {
+  // Resolved once per set of inputs: the walk and its den.yml checks used to
+  // run on every call (hundreds per web request, via product()). The inputs
+  // are the env vars it reads and the entry script; change any and it
+  // re-resolves. A failure is never cached.
+  const key = distRootKey();
+  if (distRootMemo?.key === key) return distRootMemo.root;
+  const root = resolveDistRoot();
+  distRootMemo = { key, root };
+  return root;
+}
+
+let distRootMemo: { key: string; root: string } | null = null;
+
+/** Everything getDistRoot's answer depends on, as one string. */
+function distRootKey(): string {
+  let key = `${process.argv[1] ?? ""}\0${process.env.DEN_PROFILE ?? ""}`;
+  for (const name in process.env)
+    if (name.endsWith("_ROOT")) key += `\0${name}=${process.env[name]}`;
+  return key;
+}
+
+/** Forget the resolved root (tests that rebuild a root in place). */
+export function resetDistRootCache(): void {
+  distRootMemo = null;
+}
+onProfileCacheReset(resetDistRootCache);
+
+function resolveDistRoot(): string {
   const fromEnv = rootFromEnv();
   if (fromEnv) return fromEnv;
   const start = entryDir();
@@ -128,6 +157,19 @@ function isProductRootVar(dir: string, key: string): boolean {
  * node_modules/@monster-orange/den; in Den's own checkout, its root.
  */
 export function getEngineRoot(): string {
+  const key = `${process.env.DEN_ENGINE_ROOT ?? ""}\0${process.argv[1] ?? ""}\0${process.cwd()}`;
+  if (engineRootMemo?.key === key) return engineRootMemo.root;
+  const root = resolveEngineRoot();
+  engineRootMemo = { key, root };
+  return root;
+}
+
+let engineRootMemo: { key: string; root: string } | null = null;
+onProfileCacheReset(() => {
+  engineRootMemo = null;
+});
+
+function resolveEngineRoot(): string {
   const env = process.env.DEN_ENGINE_ROOT?.trim();
   if (env) return path.resolve(env);
   for (const start of [entryDir(), process.cwd()]) {

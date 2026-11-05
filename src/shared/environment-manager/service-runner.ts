@@ -44,6 +44,8 @@ import {
   inspectOpctlContainer,
   isOpctlAvailable,
   listRunningOpctlContainers,
+  listRunningOpctlContainersAsync,
+  isOpctlAvailableAsync,
 } from "./opctl.js";
 import {
   getActiveWorkspace,
@@ -357,6 +359,24 @@ export function activeDaemonOwners(
   return (record?.workspaces ?? []).filter((w) => active.has(w));
 }
 
+/** Whether workspace `name`'s current config lists `daemon`'s service. */
+function workspaceContainsDaemon(
+  name: string,
+  daemon: Pick<DaemonRecord, "address" | "repoName">,
+): boolean {
+  const services = getWorkspaceByName(name)?.config.services ?? {};
+  return daemon.address in services || daemon.repoName in services;
+}
+
+/** Replace a running daemon's owners (re-derived from membership). */
+function setDaemonOwners(address: string, workspaces: string[]): void {
+  loadDaemonsFromFile();
+  const existing = _daemonRegistry.get(address);
+  if (!existing) return;
+  _daemonRegistry.set(address, { ...existing, workspaces });
+  saveDaemonsFile(getDaemonsFile());
+}
+
 /** Outcome of releasing one daemon during a workspace deactivation. */
 export interface DaemonRelease {
   address: string;
@@ -382,15 +402,19 @@ export async function releaseWorkspaceDaemons(
   const owned = listDaemons().filter((d) =>
     (d.workspaces ?? []).includes(workspace),
   );
-  const active = new Set(getActiveWorkspaces());
+  const active = getActiveWorkspaces();
   const releases: DaemonRelease[] = [];
 
   for (const daemon of owned) {
-    const remaining = activeDaemonOwners(daemon, active).filter(
-      (w) => w !== workspace,
+    // Owners re-derived from the CURRENT membership, not the ones recorded at
+    // start: a repo moved into another workspace while its daemon ran belongs
+    // to that workspace now, and one moved out no longer belongs to this one.
+    // Stopped only when no active workspace still contains it.
+    const remaining = active.filter(
+      (w) => w !== workspace && workspaceContainsDaemon(w, daemon),
     );
     if (remaining.length > 0) {
-      detachDaemonOwner(daemon.address, workspace);
+      setDaemonOwners(daemon.address, remaining);
       onLine(
         `detached "${workspace}" from ${daemon.address} — still running for [${remaining.join(", ")}]`,
       );
@@ -639,6 +663,27 @@ export function pruneDeadDaemons(): string[] {
   const running = isOpctlAvailable()
     ? new Set(listRunningOpctlContainers().map((c) => c.base))
     : null;
+  return pruneAgainst(daemons, running);
+}
+
+/**
+ * pruneDeadDaemons without blocking: the container listing runs as async
+ * child processes (the web server's startup, which used to hold the event
+ * loop for the `docker ps`).
+ */
+export async function pruneDeadDaemonsAsync(): Promise<string[]> {
+  const daemons = listDaemons();
+  if (daemons.length === 0) return [];
+  const running = (await isOpctlAvailableAsync())
+    ? new Set((await listRunningOpctlContainersAsync()).map((c) => c.base))
+    : null;
+  return pruneAgainst(daemons, running);
+}
+
+function pruneAgainst(
+  daemons: DaemonRecord[],
+  running: Set<string> | null,
+): string[] {
   const pruned: string[] = [];
   for (const d of daemons) {
     try {
