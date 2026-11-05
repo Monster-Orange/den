@@ -19,6 +19,7 @@ export const UI_MODULES: readonly string[] = [
   "/graph-model.js",
   "/panel.js",
   "/graph.css",
+  "/changelog-view.js",
 ];
 
 /** URL path → file inside node_modules. */

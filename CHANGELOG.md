@@ -8,6 +8,25 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **`<cli> web down` (any SIGTERM) shuts the web server down cleanly
+  under load.** `<cli> web up` ran the server under the `tsx` CLI, a
+  parent process that relays a signal to the server and, if the server has
+  not acknowledged it within about 60ms, SIGKILLs it and exits 143. On a
+  loaded machine the server missed that window, so it was killed without
+  its shutdown. The server now runs as `node --import <tsx loader>`, one
+  process that gets the signal itself, as the launchd service already did.
+- **Compose-stack health no longer starts a CLI per check.** Den's own
+  check for a compose repo was a `<cli> stack health <stack> --service X`
+  process per manifest service, each a full CLI start running its own
+  `docker ps`: 17-19 processes per health cycle for three stacks. On a
+  loaded machine (load 35-55) they ran past their budget, and two such
+  cycles in a row read every stack down. These checks are now answered
+  in the web server and in `<cli> status` from one `docker ps` per cycle,
+  shared by every check in it (17 checks: 17 CLI starts and 17 docker
+  calls per cycle before, 0 and 1 now). The verdict is the one `stack
+  health` gives. A distribution's own shell checks still run as shell
+  commands, at most max(2, cpus/2) at a time; a queued check's budget
+  starts when it starts.
 - **The health row no longer shows healthy repos down on a cold poll.** A
   check that got no answer within its budget was sent as a finished
   `ok: false`: a compose stack's check (`<cli> stack health`, a full CLI
@@ -22,11 +41,11 @@ config and manifest changes a distribution must make to move to it under
   more, and is down only when both probes time out. Health results have a
   new `pending` state (`health: "pending"`), which readiness waits on
   rather than skipping.
-- **"Docker state unknown" is not "not running".** `<cli> stack health`
-  exits 3 when it could not tell (docker did not answer, the stack config
-  could not be read), and the health row reads that as unknown (`ok:
-  null`), not down. `/api/stacks` reports such a stack's health as `ok:
-  null`.
+- **"Docker state unknown" is not "not running".** When docker does not
+  answer, the health row and `<cli> status` report a compose stack as
+  unknown (`ok: null`), not down, and so does `/api/stacks`. `<cli> stack
+  health` exits 3 when it could not tell (docker did not answer, the stack
+  config could not be read), 1 only when a stack is not healthy.
 - **A health stream and a poll at once run each check once.** A stream
   started its own full run next to an in-flight `/api/health` (or another
   stream), doubling the shell checks' processes. It now joins the run in
@@ -57,6 +76,16 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **The "What's new" pop-up shows the newest release only** (from
+  0.3.0-dev.16). A "Show all versions (N earlier)" button in its footer
+  lists every earlier version in the same pop-up, and "Show latest only"
+  collapses it again. It always opens collapsed, at the top: the scroll is
+  reset once the pop-up is shown (a reset made while it was hidden did not
+  stick, so a reopened pop-up kept its old scroll position). It is an
+  accessible modal dialog (`role="dialog"`, `aria-modal`, labelled by its
+  title). Opening moves focus into it, to the toggle or else "Got it",
+  Tab stays inside, and closing returns focus to what had it, which is the
+  version pill after the first-visit auto-open.
 - **Multi-workspace blueprint: `defaults.workspaces`.** `{ <name>: {
   repos, branch?, autostart_off?, focus? } }` in the org config. A fresh
   setup creates each workspace with its repos (managed), activates them

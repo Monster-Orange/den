@@ -154,7 +154,7 @@ const lateDocker = (delayS: number) =>
   [
     "#!/bin/sh",
     `sleep ${delayS}`,
-    "printf 'api\\trunning\\tUp 2 hours (healthy)\\n'",
+    "printf 'shopdb-main\\tapi\\trunning\\tUp 2 hours (healthy)\\n'",
     "",
   ].join("\n");
 

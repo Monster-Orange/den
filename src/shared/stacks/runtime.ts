@@ -397,19 +397,53 @@ export function stackHealth(
       ok: null,
       detail: `container state unknown: ${r.err.trim() || "docker ps failed"}`,
     };
-  const rows = r.out.split("\n").filter(Boolean);
-  if (!rows.length)
+  const rows = r.out
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [svc = "", state = "", status = ""] = line.split("\t");
+      return { project, service: svc, state, status };
+    });
+  return judgeStackRows(rows, project, service);
+}
+
+/** One compose container, as a `docker ps` listing reports it. */
+export interface ComposeRow {
+  project: string;
+  service: string;
+  state: string;
+  status: string;
+}
+
+/**
+ * The verdict `stack health` gives for `project` (and `service`): ok when it
+ * has containers, all running, none with a failing or starting Docker
+ * healthcheck. Shared by the CLI and the in-process check (compose-health).
+ */
+export function judgeStackRows(
+  rows: ComposeRow[],
+  project: string,
+  service?: string,
+): { ok: boolean; detail: string } {
+  const mine = rows.filter(
+    (r) => r.project === project && (!service || r.service === service),
+  );
+  if (!mine.length)
     return {
       ok: false,
       detail: `${project}${service ? `/${service}` : ""}: not running`,
     };
-  const bad = rows.filter((row) => {
-    const [, state, status] = row.split("\t");
-    return (
-      state !== "running" || /\((unhealthy|health: starting)\)/.test(status)
-    );
-  });
+  const bad = mine.filter(
+    (r) =>
+      r.state !== "running" ||
+      /\((unhealthy|health: starting)\)/.test(r.status),
+  );
   return bad.length
-    ? { ok: false, detail: bad.join("; ") }
-    : { ok: true, detail: `${rows.length} container(s) running` };
+    ? {
+        ok: false,
+        detail: bad
+          .map((r) => `${r.service}\t${r.state}\t${r.status}`)
+          .join("; "),
+      }
+    : { ok: true, detail: `${mine.length} container(s) running` };
 }

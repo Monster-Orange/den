@@ -1,17 +1,18 @@
 /**
  * pingShell: only a check that completed and failed is ok:false. No answer
- * within the budget is pending (ok null), and `stack health`'s unknown exit
- * is ok null: neither is down.
+ * within the budget is pending (ok null), not down.
  */
 import { describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import {
   healthState,
   pingShell,
   pingTwiceOnTimeout,
-  shellCheckOpts,
+  SHELL_CHECK_CONCURRENCY,
   TimeoutStreaks,
 } from "../../../src/shared/environment-manager/health.js";
-import { STACK_HEALTH_UNKNOWN_EXIT } from "../../../src/shared/constants.js";
 
 describe("pingShell verdicts", () => {
   it("exit 0 is up; another exit code is a completed failure", async () => {
@@ -25,26 +26,6 @@ describe("pingShell verdicts", () => {
     expect(Date.now() - started).toBeLessThan(2_000);
     expect(r).toEqual(expect.objectContaining({ ok: null, pending: true }));
     expect(healthState(r)).toBe("pending");
-  });
-
-  it("the unknown exit is unknown only for the check that declares it", async () => {
-    const cmd = `exit ${STACK_HEALTH_UNKNOWN_EXIT}`;
-    expect(
-      await pingShell(cmd, {}, undefined, {
-        unknownExit: STACK_HEALTH_UNKNOWN_EXIT,
-      }),
-    ).toEqual({ ok: null, error: "state unknown" });
-    // A distribution's own script exiting 3 is still a failure.
-    expect((await pingShell(cmd)).ok).toBe(false);
-  });
-
-  it("shellCheckOpts declares the unknown exit for Den's stack health only", () => {
-    const stack = '"/d/bin/den" stack health shopdb -w default';
-    expect(shellCheckOpts(stack, stack)).toEqual({
-      unknownExit: STACK_HEALTH_UNKNOWN_EXIT,
-    });
-    expect(shellCheckOpts("./health.sh", stack)).toEqual({});
-    expect(shellCheckOpts("./health.sh", null)).toEqual({});
   });
 });
 
@@ -86,4 +67,32 @@ describe("timeouts: pending once, down when repeated", () => {
       await pingTwiceOnTimeout(seq({ ok: false, error: "exit 1" })),
     ).toEqual({ ok: false, error: "exit 1" });
   });
+});
+
+describe("shell checks run with bounded concurrency", () => {
+  it("never more than max(2, cpus/2) at once, and each gets its full budget", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-shell-slots-"));
+    try {
+      const k = SHELL_CHECK_CONCURRENCY;
+      expect(k).toBe(Math.max(2, Math.floor(os.cpus().length / 2)));
+      // Each check records how many checks are running as it starts.
+      const cmd = `touch ${dir}/run.$$; ls ${dir} | grep -c '^run' >> ${dir}/seen; sleep 0.3; rm ${dir}/run.$$`;
+      // A 1s budget: queued checks must not spend it while they wait.
+      const results = await Promise.all(
+        Array.from({ length: k * 3 }, () =>
+          pingShell(cmd, {}, undefined, { timeoutMs: 1_000 }),
+        ),
+      );
+      expect(results.every((r) => r.ok === true)).toBe(true);
+      const seen = fs
+        .readFileSync(path.join(dir, "seen"), "utf-8")
+        .split("\n")
+        .filter(Boolean)
+        .map(Number);
+      expect(seen).toHaveLength(k * 3);
+      expect(Math.max(...seen)).toBeLessThanOrEqual(k);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

@@ -10,7 +10,10 @@
  *   GET /api/run?pillar=X&...    — SSE stream: runs tests, emits output line-by-line
  */
 
-import { composeHealthCmd } from "../../shared/stacks/manifest-commands.js";
+import {
+  composeHealthTarget,
+  type ComposeHealthTarget,
+} from "../../shared/stacks/compose-health.js";
 import { healthCheckFields } from "./health-row.js";
 import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
 import * as http from "http";
@@ -60,8 +63,7 @@ import {
 } from "./log-history.js";
 import {
   pingHttp,
-  pingShell,
-  shellCheckOpts,
+  pingShellCheck,
   TimeoutStreaks,
   prewarmHealthTls,
 } from "../../shared/environment-manager/health.js";
@@ -938,7 +940,7 @@ async function handleRequest(
       /** Codes that count as up for a remote target.url probe. */
       expect?: Expect;
       /** pingShell options (Den's own `stack health` can report unknown). */
-      shellOpts: { unknownExit?: number };
+      compose: ComposeHealthTarget | null;
       meta: Pick<HealthResult, "runs" | "target">;
     }> = [];
     let edgeDomain: string | null = null;
@@ -971,7 +973,7 @@ async function handleRequest(
           openUrl: null,
           links: [],
           org: orgOf(resolved.repoName, catalog),
-          shellOpts: {},
+          compose: null,
           meta: { runs: "none", target: null },
         });
         continue;
@@ -979,9 +981,9 @@ async function handleRequest(
       const svcCfg = manifest.services?.[resolved.subsystem];
       // A compose-run repo with no declared check gets the stack's own health
       // (container state + Docker healthchecks), as `den status` does.
-      const composeHealth =
+      const compose =
         env === "local"
-          ? composeHealthCmd(
+          ? composeHealthTarget(
               manifest,
               resolved.subsystem,
               resolved.repoName,
@@ -994,7 +996,7 @@ async function handleRequest(
         manifest,
         resolved.subsystem,
         env,
-        composeHealth,
+        compose?.cmd ?? null,
       );
       const healthCfg = plan.check;
       const remote = plan.placement.runs === "remote";
@@ -1053,10 +1055,7 @@ async function handleRequest(
         links: linksFor(manifest, resolved.subsystem, env),
         org: orgOf(resolved.repoName, catalog),
         ...(plan.expect ? { expect: plan.expect } : {}),
-        shellOpts:
-          healthCfg?.type === "shell"
-            ? shellCheckOpts(healthCfg.cmd, composeHealth)
-            : {},
+        compose,
         meta: { runs: plan.placement.runs, target: plan.placement.target },
       });
     }
@@ -1086,13 +1085,18 @@ async function handleRequest(
       conventional,
       meta,
       expect,
-      shellOpts,
+      compose,
     }) => {
       if (checkType !== "none") {
         const started = Date.now();
         const ping =
           checkType === "shell"
-            ? await pingShell(target, awsProfileEnv(env), repoPath, shellOpts)
+            ? await pingShellCheck(
+                target,
+                awsProfileEnv(env),
+                repoPath,
+                compose,
+              )
             : await pingHttp(
                 target,
                 env === "local" && meta.runs !== "remote"

@@ -24,6 +24,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      # A few integration tests drive the web UI in a real browser.
+      - run: npx playwright install --with-deps chromium
       - run: npm test
       - name: Org-name gate
         env:

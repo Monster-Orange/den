@@ -9,8 +9,13 @@ import { hasRuntime, repoKind } from "../repo-kind.js";
 import * as https from "https";
 import * as tls from "tls";
 import { readEdgeConfig } from "../edge/config.js";
-import { composeHealthCmd } from "../stacks/manifest-commands.js";
+import {
+  composeHealth,
+  composeHealthTarget,
+  type ComposeHealthTarget,
+} from "../stacks/compose-health.js";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as dns from "dns";
 import { spawn } from "child_process";
@@ -18,7 +23,6 @@ import {
   HEALTH_CHECK_TIMEOUT_MS,
   HOSTED_HEALTH_CHECK_TIMEOUT_MS,
   CLI_SPAWN_TIMEOUT_MS,
-  STACK_HEALTH_UNKNOWN_EXIT,
 } from "../constants.js";
 import { readManifest } from "../manifest/read-manifest.js";
 import {
@@ -424,11 +428,54 @@ export async function pingShell(
   extraEnv: Record<string, string> = {},
   cwd?: string,
   opts: {
-    /** An exit code meaning "could not tell" (ok null), e.g. `stack health`'s. */
-    unknownExit?: number;
     /** The answer budget (default CLI_SPAWN_TIMEOUT_MS). */
     timeoutMs?: number;
   } = {},
+): Promise<PingResult> {
+  // Bounded concurrency: a health cycle starts every check at once, and a
+  // distribution's shell checks are processes. Queued checks start their
+  // budget when they start, not while they wait.
+  const release = await shellSlots.acquire();
+  try {
+    return await runShellCheck(cmd, extraEnv, cwd, opts);
+  } finally {
+    release();
+  }
+}
+
+/** A counting semaphore. */
+class Slots {
+  private free: number;
+  private waiting: (() => void)[] = [];
+  constructor(readonly size: number) {
+    this.free = size;
+  }
+  async acquire(): Promise<() => void> {
+    if (this.free > 0) this.free--;
+    else await new Promise<void>((r) => this.waiting.push(r));
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const next = this.waiting.shift();
+      if (next) next();
+      else this.free++;
+    };
+  }
+}
+
+/** Shell checks running at once: max(2, cpus/2). */
+export const SHELL_CHECK_CONCURRENCY = Math.max(
+  2,
+  Math.floor(os.cpus().length / 2),
+);
+const shellSlots = new Slots(SHELL_CHECK_CONCURRENCY);
+
+function runShellCheck(
+  cmd: string,
+  extraEnv: Record<string, string>,
+  cwd: string | undefined,
+  opts: { timeoutMs?: number },
 ): Promise<PingResult> {
   const budget = opts.timeoutMs ?? CLI_SPAWN_TIMEOUT_MS;
   return new Promise((resolve) => {
@@ -479,8 +526,6 @@ export async function pingShell(
       // Killed (by the budget above, or from outside): it never answered.
       if (code === null)
         return settle({ ...noAnswer(), error: `killed (${signal})` });
-      if (opts.unknownExit !== undefined && code === opts.unknownExit)
-        return settle({ ok: null, error: "state unknown" });
       settle({ ok: false, error: `exit ${code}` });
     });
     // The check could not be started (e.g. EAGAIN under load): no verdict.
@@ -537,14 +582,23 @@ export async function pingTwiceOnTimeout(
   return timedOut(second) ? timeoutVerdict(second, true) : second;
 }
 
-/** pingShell's options for a shell check: `stack health` reports unknown. */
-export function shellCheckOpts(
+/**
+ * Run a shell health check. Den's own compose check (the `<cli> stack
+ * health` command it generates, `compose.cmd`) is answered in-process from
+ * the shared docker listing: no CLI process per check. Any other command
+ * (a distribution's own) runs as a shell command.
+ */
+export async function pingShellCheck(
   cmd: string,
-  composeHealth: string | null,
-): { unknownExit?: number } {
-  return composeHealth !== null && cmd === composeHealth
-    ? { unknownExit: STACK_HEALTH_UNKNOWN_EXIT }
-    : {};
+  extraEnv: Record<string, string>,
+  cwd: string | undefined,
+  compose: ComposeHealthTarget | null,
+): Promise<PingResult> {
+  if (!compose || cmd !== compose.cmd) return pingShell(cmd, extraEnv, cwd);
+  const v = await composeHealth(compose);
+  if (v.ok === true) return { ok: true };
+  if (v.ok === false) return { ok: false, error: v.detail };
+  return { ok: null, error: v.detail, ...(v.pending ? { pending: true } : {}) };
 }
 
 /** A ping result as a ServiceHealthResult health state. */
@@ -589,9 +643,9 @@ export async function checkServiceHealth(
     };
   }
 
-  const composeHealth =
+  const compose =
     env === "local"
-      ? composeHealthCmd(
+      ? composeHealthTarget(
           manifest,
           resolved.subsystem,
           resolved.repoName,
@@ -602,7 +656,7 @@ export async function checkServiceHealth(
     manifest,
     resolved.subsystem,
     env,
-    composeHealth,
+    compose?.cmd ?? null,
   );
   const placed: Pick<ServiceHealthResult, "runs" | "target"> = {
     runs: plan.placement.runs,
@@ -655,12 +709,7 @@ export async function checkServiceHealth(
 
   const result = await pingTwiceOnTimeout(() =>
     healthCfg.type === "shell"
-      ? pingShell(
-          healthCfg.cmd,
-          {},
-          resolved.repoPath,
-          shellCheckOpts(healthCfg.cmd, composeHealth),
-        )
+      ? pingShellCheck(healthCfg.cmd, {}, resolved.repoPath, compose)
       : pingHttp(
           healthCfg.url,
           env === "local" && plan.placement.runs !== "remote"

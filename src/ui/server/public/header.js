@@ -15,6 +15,7 @@ import {
   buildWorkspaceMenuModel,
   buildWorkspacePillModel,
 } from "./workspace-picker.js";
+import { changelogView } from "./changelog-view.js";
 
 // 5s between polls — measured from each poll's COMPLETION (schedulePoll
 // re-arms after renderHealthDots resolves), so slow probes can't overlap.
@@ -80,6 +81,8 @@ function _injectNavStyles() {
 const LS_CHANGELOG_SEEN = "__DEN_CLI__-changelog-seen";
 let _changelogEntries = [];
 let _changelogInjected = false;
+/** The pop-up lists every version only after the reader asks. */
+let _clShowAll = false;
 
 function _injectChangelogStyles() {
   if (_changelogInjected) return;
@@ -166,6 +169,13 @@ function _injectChangelogStyles() {
       display: inline-flex; align-items: center; justify-content: center;
       transition: color .1s, border-color .1s;
     }
+    .cl-more-btn {
+      margin-right: auto; padding: 4px 12px;
+      font: inherit; font-size: 11px; color: var(--muted, #8b949e);
+      background: none; border: 1px solid var(--border, #30363d); border-radius: 6px;
+      cursor: pointer;
+    }
+    .cl-more-btn:hover { color: var(--accent, #58a6ff); border-color: var(--accent, #58a6ff); }
     .cl-copy-btn:hover { color: var(--accent, #58a6ff); border-color: var(--accent, #58a6ff); }
     .cl-copy-btn.copied { color: #3fb950; border-color: #3fb950; }
     .cl-slack-btn:hover { color: #e01e5a; border-color: #e01e5a; }
@@ -189,12 +199,18 @@ function _injectChangelogStyles() {
   overlay.id = "cl-overlay";
   overlay.className = "cl-overlay";
   overlay.innerHTML =
-    '<div class="cl-box">' +
-    '<div class="cl-hdr"><h3>What\'s new</h3><button class="cl-close" id="cl-close-btn" title="Close">×</button></div>' +
+    '<div class="cl-box" role="dialog" aria-modal="true" aria-labelledby="cl-title">' +
+    '<div class="cl-hdr"><h3 id="cl-title">What\'s new</h3><button class="cl-close" id="cl-close-btn" title="Close">×</button></div>' +
     '<div class="cl-body" id="cl-body"></div>' +
-    '<div class="cl-footer"><button class="cl-got-it" id="cl-got-it-btn">Got it</button></div>' +
+    '<div class="cl-footer"><button type="button" class="cl-more-btn" id="cl-more" aria-controls="cl-body" aria-expanded="false" hidden></button><button class="cl-got-it" id="cl-got-it-btn">Got it</button></div>' +
     "</div>";
   document.body.appendChild(overlay);
+  document.getElementById("cl-more")?.addEventListener("click", () => {
+    _clShowAll = !_clShowAll;
+    _renderChangelogBody(_changelogEntries);
+    const body = document.getElementById("cl-body");
+    if (body) body.scrollTop = 0;
+  });
 
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) window.closeChangelog();
@@ -207,9 +223,43 @@ function _injectChangelogStyles() {
     ?.addEventListener("click", () => window.closeChangelog());
 
   document.addEventListener("keydown", (e) => {
+    if (!_changelogIsOpen()) return;
     if (e.key === "Escape") window.closeChangelog();
+    else if (e.key === "Tab") _trapChangelogTab(e);
   });
 }
+
+function _changelogIsOpen() {
+  return !!document.getElementById("cl-overlay")?.classList.contains("open");
+}
+
+/** The dialog's focusable controls, in order (hidden ones excluded). */
+function _changelogFocusables() {
+  const box = document.querySelector("#cl-overlay .cl-box");
+  if (!box) return [];
+  return [...box.querySelectorAll("button, a[href], [tabindex]")].filter(
+    (el) => !el.hidden && el.getAttribute("tabindex") !== "-1",
+  );
+}
+
+/** Keep Tab inside the open dialog (aria-modal). */
+function _trapChangelogTab(e) {
+  const els = _changelogFocusables();
+  if (!els.length) return;
+  const first = els[0];
+  const last = els[els.length - 1];
+  const inside = els.includes(document.activeElement);
+  if (e.shiftKey && (document.activeElement === first || !inside)) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+/** What had focus before the dialog opened; it gets it back on close. */
+let _clReturnFocus = null;
 
 function _renderChangelogBody(entries) {
   const body = document.getElementById("cl-body");
@@ -228,7 +278,8 @@ function _renderChangelogBody(entries) {
     escHtml(s)
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/`([^`]+)`/g, "<code>$1</code>");
-  body.innerHTML = entries
+  const view = changelogView(entries, _clShowAll);
+  body.innerHTML = view.shown
     .map(
       (entry, i) =>
         (i > 0 ? '<hr class="cl-divider">' : "") +
@@ -289,6 +340,17 @@ function _renderChangelogBody(entries) {
         "</div>",
     )
     .join("");
+
+  // The toggle lives in the footer, so it is in view however long the
+  // newest entry is.
+  const more = document.getElementById("cl-more");
+  if (more) {
+    more.hidden = !view.toggle;
+    if (view.toggle) {
+      more.textContent = view.toggle.label;
+      more.setAttribute("aria-expanded", String(view.toggle.expanded));
+    }
+  }
 
   const _slackIcon =
     '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -455,15 +517,42 @@ function _buildMarkdown(entry) {
 }
 
 window.openChangelog = function () {
+  _clShowAll = false;
   _injectChangelogStyles();
   _renderChangelogBody(_changelogEntries);
   const overlay = document.getElementById("cl-overlay");
-  if (overlay) overlay.classList.add("open");
+  if (!overlay) return;
+  if (!overlay.classList.contains("open")) {
+    // A first-visit auto-open has nothing focused: return to the pill.
+    const active = document.activeElement;
+    _clReturnFocus =
+      active && active !== document.body
+        ? active
+        : document.getElementById("version-pill");
+  }
+  overlay.classList.add("open");
+  // After .open: while the overlay is display:none the body cannot scroll,
+  // and a reset made then does not stick. Always open at the newest release.
+  const body = document.getElementById("cl-body");
+  if (body) body.scrollTop = 0;
+  const more = document.getElementById("cl-more");
+  (more && !more.hidden
+    ? more
+    : document.getElementById("cl-got-it-btn")
+  )?.focus();
 };
 
 window.closeChangelog = function () {
   const overlay = document.getElementById("cl-overlay");
+  const wasOpen = !!overlay?.classList.contains("open");
   if (overlay) overlay.classList.remove("open");
+  if (wasOpen) {
+    const back = _clReturnFocus?.isConnected
+      ? _clReturnFocus
+      : document.getElementById("version-pill");
+    _clReturnFocus = null;
+    back?.focus();
+  }
   if (_changelogEntries[0]?.version) {
     try {
       localStorage.setItem(LS_CHANGELOG_SEEN, _changelogEntries[0].version);
