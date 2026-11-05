@@ -815,9 +815,22 @@ class DenCLI {
         case "init": {
           // In the den root, `init` seeds/resets the default workspace; pointed
           // at a service repo it scaffolds that repo's .den.yml (manifest init).
-          const initTarget = args[1] ?? getInvokeCwd();
-          if (nodePath.resolve(initTarget) === getDistRoot()) {
-            await this.seedDefaultWorkspaceFlow("init");
+          const initTarget =
+            args.slice(1).find((a) => !a.startsWith("-")) ?? getInvokeCwd();
+          // Compare real paths: a symlinked tmp or home (/var → /private/var)
+          // must not turn a seed into a manifest scaffold.
+          const real = (p: string) => {
+            try {
+              return fs.realpathSync(nodePath.resolve(p));
+            } catch {
+              return nodePath.resolve(p);
+            }
+          };
+          if (real(initTarget) === real(getDistRoot())) {
+            await this.seedDefaultWorkspaceFlow(
+              "init",
+              args.slice(1).includes("--reset"),
+            );
           } else {
             await runInit(initTarget);
           }
@@ -2569,6 +2582,7 @@ class DenCLI {
    */
   private async seedDefaultWorkspaceFlow(
     reason: "auto" | "init",
+    reset = false,
   ): Promise<boolean> {
     const bps = blueprintWorkspaces();
     if (bps.length === 0) {
@@ -2595,6 +2609,23 @@ class DenCLI {
     }
     const willReset = defaultWorkspaceHasServices();
     const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
+    // A reset replaces every entry, dev-managed checkouts included. On a TTY
+    // the user is asked (default No); without one there is nobody to ask, so
+    // only an explicit --reset may do it (SEED-0).
+    if (willReset && !interactive && !reset) {
+      const what = multi
+        ? "the blueprint's workspaces"
+        : "the default workspace";
+      console.error(
+        chalk.red(
+          `\n  ❌ Not resetting ${what}: it has entries, and a reset replaces them all\n` +
+            `     (your own dev-managed checkouts included) with managed clones.\n` +
+            `     Nothing changed. To reset anyway: ${product().cli} workspace seed --reset\n`,
+        ),
+      );
+      process.exitCode = 1;
+      return false;
+    }
 
     for (const bp of bps) {
       const label = multi ? `Workspace ${bp.name}` : "Default workspace";
@@ -3944,7 +3975,7 @@ class DenCLI {
         break;
       }
       case "seed": {
-        await this.seedDefaultWorkspaceFlow("init");
+        await this.seedDefaultWorkspaceFlow("init", args.includes("--reset"));
         break;
       }
       case "create": {

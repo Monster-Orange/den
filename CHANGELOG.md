@@ -459,6 +459,18 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **A seed without a terminal no longer resets a workspace that has
+  entries** (SEED-0, 0.3.0-dev.29; also 0.2.7). `<cli> init` and
+  `<cli> workspace seed` from a script or `make` replaced every entry of the
+  default (or blueprint) workspaces with managed clones, dev-managed
+  checkouts included, without asking. Without a TTY they now refuse (exit 1,
+  nothing written) and name `--reset`; on a TTY they still ask, default No.
+  `init --reset` and `workspace seed --reset` reset as before. A script that
+  relied on the silent reset must pass `--reset`.
+- **`<cli> init` in the distribution root seeds through a symlinked path**
+  (0.3.0-dev.29): it compared paths without resolving links and ran the
+  manifest scaffolder instead.
+
 - **`create`'s "Next:" hint names an absolute path** (0.3.0-dev.26) when the
   new directory is not under the cwd, instead of `cd ../../../..`.
 
