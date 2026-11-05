@@ -16,7 +16,8 @@ import { noun, plural } from "../../shared/plural.js";
 // Spinners: progress on stderr (a terminal) or stdout (piped); plain lines
 // where they cannot animate. See spinner.ts.
 import { spinner as ora } from "./spinner.js";
-import Table from "cli-table3";
+import { newTable } from "./table.js";
+import { validateAll, validateAllFailed } from "./validate-all.js";
 import { cliPrompts } from "./prompts.js";
 import { resultsViewer } from "./results-viewer.js";
 import { testRunner } from "./test-runner.js";
@@ -139,7 +140,10 @@ import {
 } from "../../shared/environment-manager/up-plan.js";
 import { execSync } from "child_process";
 import * as fs from "fs";
-import { readManifest } from "../../shared/manifest/read-manifest.js";
+import {
+  heldManifestsDir,
+  readManifest,
+} from "../../shared/manifest/read-manifest.js";
 import * as nodePath from "path";
 import { runInit } from "./init.js";
 import {
@@ -767,6 +771,7 @@ class DenCLI {
             await this.seedDefaultWorkspaceFlow(
               "init",
               args.slice(1).includes("--reset"),
+              "init",
             );
           } else {
             await runInit(initTarget);
@@ -2508,6 +2513,7 @@ class DenCLI {
   private async seedDefaultWorkspaceFlow(
     reason: "auto" | "init",
     reset = false,
+    via: "init" | "workspace seed" = "workspace seed",
   ): Promise<boolean> {
     const bps = blueprintWorkspaces();
     if (bps.length === 0) {
@@ -2545,7 +2551,7 @@ class DenCLI {
         chalk.red(
           `\n  ❌ Not resetting ${what}: it has entries, and a reset replaces them all\n` +
             `     (your own dev-managed checkouts included) with managed clones.\n` +
-            `     Nothing changed. To reset anyway: ${product().cli} workspace seed --reset\n`,
+            `     Nothing changed. To reset anyway: ${product().cli} ${via} --reset\n`,
         ),
       );
       process.exitCode = 1;
@@ -2896,7 +2902,7 @@ class DenCLI {
       chalk.cyan(`\n  Workspace: ${chalk.bold(ws?.name ?? "none")}\n`),
     );
 
-    const table = new Table({
+    const table = newTable({
       head: ["Service", "Mode", "Branch", "Health", "Reason"],
       style: { head: ["cyan"] },
     });
@@ -3058,7 +3064,7 @@ class DenCLI {
       return;
     }
 
-    const table = new Table({
+    const table = newTable({
       head: ["Service", "Mode", "Health", "Commands"],
       style: { head: ["cyan"] },
     });
@@ -3581,7 +3587,7 @@ class DenCLI {
 
     switch (sub) {
       case "list": {
-        const table = new Table({
+        const table = newTable({
           head: ["Workspace", "Active", "Focus", "Services", "Type"],
           style: { head: ["cyan"] },
         });
@@ -3893,7 +3899,15 @@ class DenCLI {
   // ── den validate ────────────────────────────────────────────────────────
 
   private async cmdValidate(args: string[]): Promise<void> {
-    const target = args[0] ?? getInvokeCwd();
+    const positional = args.filter((a) => !a.startsWith("-"));
+    const held = args.includes("--held");
+    // Bare `validate` in the distribution root (which has no manifest of its
+    // own), or `--held`: every manifest the distribution uses.
+    if (held || (positional.length === 0 && this.invokedInDistRoot())) {
+      this.validateEverything(held);
+      return;
+    }
+    const target = positional[0] ?? getInvokeCwd();
     const fs = await import("fs");
     const nodePath = await import("path");
 
@@ -3957,6 +3971,78 @@ class DenCLI {
     printValidation(label, result);
     console.log();
     if (!result.valid) process.exit(1);
+  }
+
+  /** Whether the CLI was run from the distribution root (real paths). */
+  private invokedInDistRoot(): boolean {
+    const real = (p: string) => {
+      try {
+        return fs.realpathSync(nodePath.resolve(p));
+      } catch {
+        return nodePath.resolve(p);
+      }
+    };
+    return (
+      real(getInvokeCwd()) === real(getDistRoot()) &&
+      !fs.existsSync(nodePath.join(getDistRoot(), product().manifestYml))
+    );
+  }
+
+  /** `validate` (bare, in the root) / `validate --held`: see validate-all.ts. */
+  private validateEverything(held: boolean): void {
+    const results = validateAll({ held, validate: validateManifestLayers });
+    console.log();
+    if (results.length === 0) {
+      console.log(
+        chalk.yellow(
+          held
+            ? `  No manifests in ${heldManifestsDir()}.`
+            : "  No repos in any workspace and no held manifests.",
+        ),
+      );
+      console.log();
+      return;
+    }
+    const width = Math.max(...results.map((r) => r.repo.length));
+    for (const r of results) {
+      const where = r.checkout ?? "manifests/";
+      const ws = r.workspaces.length ? `  [${r.workspaces.join(", ")}]` : "";
+      const note = r.note ? `  (${r.note})` : "";
+      const head = `${r.repo.padEnd(width)}  ${r.source.padEnd(15)} ${where}${ws}${note}`;
+      if (r.missing) {
+        console.log(chalk.yellow(`  ⚠  ${head}`));
+        continue;
+      }
+      const warnings = r.result.layers.reduce(
+        (n, l) => n + l.result.warnings.length,
+        0,
+      );
+      if (r.result.valid && warnings === 0) {
+        console.log(chalk.green(`  ✓  ${head}`));
+        continue;
+      }
+      console.log(
+        r.result.valid
+          ? chalk.yellow(`  ⚠  ${head}`)
+          : chalk.red(`  ✗  ${head}`),
+      );
+      for (const l of r.result.layers)
+        if (!l.result.valid || l.result.warnings.length)
+          printValidation(
+            `    ${l.file ?? "merged"}`,
+            l.result,
+            l.layer === "merged" ? "merged" : l.layer,
+          );
+    }
+    const failed = results.filter((r) => !r.missing && !r.result.valid).length;
+    const missing = results.filter((r) => r.missing).length;
+    console.log();
+    console.log(
+      `  ${plural(results.length, held ? "manifest" : "repo")}: ${failed ? chalk.red(`${failed} failed`) : chalk.green("all valid")}` +
+        (missing ? chalk.yellow(`, ${missing} with no manifest to check`) : ""),
+    );
+    console.log();
+    if (validateAllFailed(results)) process.exitCode = 1;
   }
 
   // ── den local-dev ───────────────────────────────────────────────────────

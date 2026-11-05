@@ -5,6 +5,7 @@
  *
  * stdout carries the protocol only: diagnostics go to stderr.
  */
+import { z } from "zod";
 import { randomUUID } from "crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -185,7 +186,29 @@ export async function runOneShot(
     return 0;
   }
   const ctx: ToolContext = { api: opts.api, cfg: opts.cfg, cli: opts.cli };
-  const r = await callTool(shot.tool, shot.args, ctx);
+  // The stdio server validates arguments against each tool's schema (the
+  // SDK does it); a one-shot must too, and strictly: it is typed by hand, so
+  // an unknown or misspelt key is an error, not silently dropped.
+  let args = shot.args;
+  const tool = toolsFor(opts.cfg).find((t) => t.name === shot.tool);
+  if (tool) {
+    const parsed = z.object(tool.shape).strict().safeParse(args);
+    if (!parsed.success) {
+      const err = opts.err ?? ((t: string) => process.stderr.write(t));
+      const lines = parsed.error.issues.map((i) => {
+        const at = i.path.length ? i.path.join(".") : "(arguments)";
+        return `  ${at}: ${i.message}`;
+      });
+      const keys = Object.keys(tool.shape);
+      err(
+        `--call ${shot.tool}: invalid arguments\n${lines.join("\n")}\n` +
+          `  takes: ${keys.length ? keys.join(", ") : "no arguments"}\n`,
+      );
+      return 2;
+    }
+    args = parsed.data as Record<string, unknown>;
+  }
+  const r = await callTool(shot.tool, args, ctx);
   out(r.text.endsWith("\n") ? r.text : `${r.text}\n`);
   return r.isError ? 1 : 0;
 }

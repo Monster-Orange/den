@@ -104,6 +104,23 @@ naming the file each error is in, then checks the merged result:
   ERROR   services.api.commands.local.down  unknown key "down": not in the base manifest
 ```
 
+Run with no argument in the distribution root, `<cli> validate` checks every
+manifest the distribution uses, and never clones:
+
+- each repo of every workspace, once per checkout path, with the
+  workspaces that use it and where its base comes from (`own`, `held`,
+  `+ override`);
+- a repo with no checkout on disk falls back to its held manifest, marked
+  `held only, no checkout`. With no held manifest either it is a warning, not
+  a failure;
+- each held manifest in `manifests/` that no workspace uses.
+
+It prints one line per repo, details only for a layer with errors or
+warnings, and exits 1 if any fails. `<cli> validate --held` checks only
+`manifests/`, as if nothing were checked out, so the result does not depend on
+the machine (use it in a CI or upgrade gate). An override whose base is the
+repo's own manifest is noted there, not checked.
+
 The web UI's Services cards show the layers each manifest was built from
 (`manifest: repo + override`), and `/api/services` returns them per service as
 `manifestLayers`, e.g. `["held", "override"]`. `DEN_MANIFESTS_DIR` points the
@@ -580,10 +597,17 @@ node_modules/@monster-orange/den/service/install.sh print       # the plist only
 | `DEN_ROOT`          | required in a distribution               |
 | `DEN_SERVICE_LABEL` | `local.<distribution dir name>.web`      |
 | `DEN_SERVICE_LOGS`  | `~/Library/Logs/<distribution dir name>` |
+| `DEN_SERVICE_NODE`  | see below                                |
 
-The service runs the engine's server with the `node` on your `PATH` at install
-time, from the distribution root; re-run `install` after changing node versions
-or upgrading Den. Keep the label stable: it is how launchd knows the service.
+The service runs the engine's server, from the distribution root, with the
+`node` on your `PATH` at install time. A version manager's node (nvm, fnm,
+volta, asdf, mise) lives under a versioned path that disappears when that
+version is removed, so install prefers `/opt/homebrew/bin/node` or
+`/usr/local/bin/node` when one has the same major version, and otherwise
+keeps the version manager's and warns. `DEN_SERVICE_NODE` names the node
+outright. `service status` exits 1 when the installed node no longer exists.
+Re-run `install` after changing node versions or upgrading Den. Keep the
+label stable: it is how launchd knows the service.
 
 ## MCP server
 

@@ -360,7 +360,8 @@ describe("a repeat seed", () => {
       const { out, status } = den(argv);
       expect(status).toBe(1);
       expect(out).toMatch(/Not resetting the default workspace/);
-      expect(out).toMatch(/workspace seed --reset/);
+      // It names the command that was run.
+      expect(out).toMatch(new RegExp(`den ${argv.join(" ")} --reset`));
       expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
     }
   }, 60_000);
@@ -380,6 +381,25 @@ describe("a repeat seed", () => {
     expect(out).toMatch(/Default workspace reset to the blueprint — 3 repos/);
     expect(out).not.toMatch(/already seeded/);
     expect(readWs().workspaces.default.services.beta).toEqual(managed);
+  }, 60_000);
+
+  it("--reset with no github_org fails before writing anything", () => {
+    config(SINGLE);
+    den(["workspace", "seed"]);
+    const ws = readWs();
+    ws.workspaces.default.services.beta = { mode: "dev-managed" };
+    workspaces(ws);
+    // A catalog entry with no clone URL needs the org; drop the org.
+    write(path.join(root, "config", "local", "service-catalog.yml"), "{}\n");
+    write(
+      path.join(root, "config", "den.yml"),
+      ["environments: [local]", "defaults:", ...SINGLE, ""].join("\n"),
+    );
+    const before = fs.readFileSync(wsPath(), "utf-8");
+    const { out, status } = den(["workspace", "seed", "--reset"]);
+    expect(status).not.toBe(0);
+    expect(out).toMatch(/github_org/);
+    expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
   }, 60_000);
 
   it("one repo reads '1 repo', never '1 repos'", () => {

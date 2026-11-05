@@ -132,6 +132,27 @@ describe("bin/den: engine root and distribution root", () => {
     expect(out.DEN_ROOT).toBe(dist);
   });
 
+  it("a DEN_ROOT with no den.yml is a one-line usage error (exit 2), not a stack trace", () => {
+    const bogus = path.join(tmp, "not-a-dist");
+    fs.mkdirSync(bogus);
+    const r = spawnSync(path.join(engine, "bin", "den"), ["status"], {
+      env: cleanEnv({ DEN_ROOT: bogus }),
+      encoding: "utf-8",
+    });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(
+      /DEN_ROOT is set to ".*not-a-dist" but that directory has no den\.yml/,
+    );
+    expect(r.stdout).toBe(""); // the CLI (fake tsx) never ran
+    // create needs no distribution: it still runs.
+    const c = run(
+      path.join(engine, "bin", "den"),
+      ["create", "x"],
+      cleanEnv({ DEN_ROOT: bogus }),
+    );
+    expect(c.ENTRY).toBe(path.join(engine, "src/ui/cli/create-main.ts"));
+  });
+
   it("routes `create` to its own entry point, without the word create", () => {
     const out = run(
       path.join(engine, "bin", "den"),

@@ -6,6 +6,16 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.2.7] - unreleased
 
+### Added
+
+- **Bare `<cli> validate` checks every manifest** (0.2.7-dev.1, from a
+  consumer). In the distribution root, with no argument: each workspace repo
+  once per checkout (own or held, plus any override, then the merge), the
+  held manifest when there is no checkout, and held manifests no workspace
+  uses. One line per repo, details on failure, exit 1 if any fails, nothing
+  cloned. `--held` checks `manifests/` alone, independent of the machine. A
+  path argument works as before.
+
 ### Fixed
 
 - **A seed without a terminal no longer resets a workspace that has
@@ -15,6 +25,26 @@ config and manifest changes a distribution must make to move to it under
   Without a TTY they now refuse (exit 1, nothing written) and name
   `--reset`; on a TTY they still ask, default No. `init --reset` and
   `workspace seed --reset` reset as before.
+- **A failed seed leaves the workspaces as they were** (0.2.7-dev.1, from a
+  consumer). Seeding wrote workspaces.yml, then filled the catalog, which
+  fails with no `github_org`: the workspace was reset and nothing could be
+  cloned. The catalog comes first now, and the org is needed only for a repo
+  with no clone URL in the catalog.
+- **A seed refusal names the command that was run** (`init --reset` or
+  `workspace seed --reset`).
+- **A `DEN_ROOT` with no den.yml is a one-line error** (exit 2), not a stack
+  trace from deep in module loading.
+- **Piped output carries no ANSI from tables** (`status`, `services`, test
+  results). cli-table3 coloured borders and head cells itself, ignoring
+  NO_COLOR and a pipe.
+- **`<cli> mcp --call` validates its arguments** against the tool's schema,
+  strictly: an unknown or misspelt key, or a bad value, exits 2 with the
+  problem and the keys the tool takes, and calls nothing.
+- **The web UI service survives a removed nvm version.** Install prefers a
+  stable node of the same major version over a version manager's (or uses
+  `DEN_SERVICE_NODE`), and warns when it must keep one. `service status`
+  exits 1, naming it, when the installed node no longer exists.
+
 - **`<cli> init` in the distribution root seeds even through a symlinked
   path** (`/var` → `/private/var`, a symlinked home). It compared paths
   without resolving links and ran the manifest scaffolder instead.

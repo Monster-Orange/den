@@ -74,10 +74,11 @@ function fillCatalog(
   repos: string[],
   catalog: ServiceCatalog = readCatalog(),
 ): void {
+  // The org is needed only for a repo the catalog has no clone URL for.
+  const missing = repos.filter((repo) => !catalog[repo]?.gh);
+  if (missing.length === 0) return;
   const o = org();
-  for (const repo of repos) {
-    if (!catalog[repo]?.gh) catalog[repo] = { gh: `${o}/${repo}` };
-  }
+  for (const repo of missing) catalog[repo] = { gh: `${o}/${repo}` };
   writeCatalog(catalog);
 }
 
@@ -178,6 +179,9 @@ export function seedDefaultWorkspace(): string[] {
   if (!bp) return [];
   const repos = bp.repos;
 
+  // The catalog first: it is what can fail (no github_org), and a failure
+  // must leave the workspaces as they were, not reset and uncloneable.
+  fillCatalog(repos);
   const file = readWorkspacesFile();
   file.workspaces.default = {
     ...(file.workspaces.default ?? {}),
@@ -189,7 +193,6 @@ export function seedDefaultWorkspace(): string[] {
     file.focus = "default";
   }
   writeWorkspacesFile(file);
-  fillCatalog(repos);
   return repos;
 }
 
@@ -202,6 +205,7 @@ export function seedDefaultWorkspace(): string[] {
 export function seedBlueprintWorkspaces(): { name: string; repos: string[] }[] {
   const bps = blueprintWorkspaces();
   if (bps.length === 0) return [];
+  fillCatalog([...new Set(bps.flatMap((b) => b.repos))]);
   const file = readWorkspacesFile();
   for (const bp of bps) {
     const prev: WorkspaceConfig | undefined = file.workspaces[bp.name];
@@ -223,7 +227,6 @@ export function seedBlueprintWorkspaces(): { name: string; repos: string[] }[] {
   file.active = [...names, ...kept.filter((n) => !names.includes(n))];
   file.focus = (bps.find((b) => b.focus) ?? bps[0]).name;
   writeWorkspacesFile(file);
-  fillCatalog([...new Set(bps.flatMap((b) => b.repos))]);
   return bps.map((b) => ({ name: b.name, repos: [...b.repos] }));
 }
 
