@@ -149,7 +149,94 @@ config and manifest changes a distribution must make to move to it under
   prototype at 1440 and 1024 (1px, 0.5px for type) and lists any allowed
   difference with its reason.
 
+- **The scope breadcrumb is three menus** (0.3.0-dev.18, R4): `/ ORG
+  <org> ▾ / WORKSPACE <ws> ▾ / ENV <env> ▾`, each the prototype's `.ib`
+  button with a `.pop` menu (✓ on the current entry). The menus are ARIA
+  menus: ↓ or Enter opens one, ↑/↓, Home and End move, Enter picks,
+  Escape (or Tab) closes it and gives focus back to its button, and a
+  click outside closes it. They replace the workspace pill and its menu,
+  the env select, the interim View select and Services' own workspace
+  select. Below 860px the keys, separators and the org hide; below 720px
+  the scope does (the narrow layout, R11b, comes later).
+  - **Org:** one org is a static label with no ▾, as before (ORG-SPEC
+    C4). `denShell.setOrgs([{ id, title, workspaces? }], current,
+    onSelect?)` turns two or more into an Org ▾ menu; a pick calls
+    `onSelect(id)` and fires `den:org` on window. Nothing feeds it a list
+    yet: ORG-1b plugs `/api/orgs` in.
+  - **Workspace:** the view scope. "All active (N)" (with two or more
+    active) and each active workspace, the focused one tagged `focus`.
+    Picking one stores the view (user.yml `view`, `POST /api/scope`) and
+    reloads the page; it never moves the focus. A separate "Set <ws> as
+    focus" item (when the workspace in view isn't the focus) does Local
+    Dev's focus action, and "Manage workspaces…" opens Local Dev.
+  - **Env:** the same envs, value and browser storage as the select it
+    replaces; `#env-sel` stays (hidden) as the value pages read and the
+    `change` event they listen for.
+- **A view scope: all active workspaces, or one** (0.3.0-dev.18). The
+  health row covered every active workspace while Services, Tests, Logs
+  and `status` showed only the focused one, so the row above a page listed
+  repos the page didn't. One source now says which repos are in view
+  (`src/shared/environment-manager/scope.ts`), and the health row,
+  `/api/services` (every page's list) and `<cli> status` all read it.
+  - "All active" is the default: it is what the health row already showed,
+    and with one active workspace it is the same view. A scope that is no
+    longer active falls back to all, never to an empty page.
+  - **The view is not the focus.** The focus stays the default target for
+    commands; the view only filters what pages show. Switching it writes
+    user.yml `view` and nothing else: no edge route, container, daemon or
+    workspaces.yml change, and the server doesn't restart (the
+    theme-switch isolation test covers it). `GET`/`POST /api/scope`.
+  - **A shared service is listed once, with its owners**: a repo that two
+    workspaces in view define shows one card (`shop · ws-a, ws-b`) and one
+    health dot, its deps and auto-start from the first (focus first).
+    `/api/services` rows carry `inWorkspaces`, `/api/health` rows carry
+    `workspaces`.
+  - **`<cli> status`** shows the same view and says so ("Scope: all active
+    (a, b, c) · focus: a"). Use `--scope <workspace>` for one (`--all`
+    already means `--verbose` there); `-w <workspace>` still checks that
+    one workspace.
+  - Local Dev edits one workspace at a time: it opens on the view's
+    workspace when that is one, else the focus.
+- **A ready path for distribution scripts** (0.3.0-dev.18). A script that
+  loads before shell.js pushes functions onto `window.denShellQueue` (an
+  array); each runs with `denShell` once the shell exists, and a later push
+  runs at once. `den-shell:ready` fires on window when the shell is up.
+- **`den:pins`** (0.3.0-dev.18): any pin change fires it on window
+  (`detail.pins`), and every pin toggle on the page repaints from it.
+- **`org.title_source`** in `/api/<cli>/config` (0.3.0-dev.18; added beside
+  the existing fields, ORG-SPEC C3): `org.title`, `orgs`, or `id`.
+
 ### Fixed
+
+- **The ORG label is the org's name, not its id** (0.3.0-dev.18). With no
+  `org.title` in the org config, the label was the id (`edge.org`). It is
+  now `org.title`, then the `orgs:` label of `github_org` (the name the
+  Environments page shows), then the id.
+- **A pin toggle follows the rail** (0.3.0-dev.18). Unpinning from the rail
+  (× or Delete) left the Services card's ☆ and the graph panel's reading
+  "Unpin X" (`aria-pressed=true`) until a reload.
+- **Delete on a pinned row keeps focus in the rail** (0.3.0-dev.18): on the
+  next pinned row, else the previous one, else the first item (it fell to
+  the top of the document).
+- **A pinned row is named by its id** (0.3.0-dev.18), not "shop-web×":
+  the × is its own control, out of the tab order, named "Unpin
+  shop-web", its glyph hidden from screen readers; the row has
+  `aria-keyshortcuts="Delete"`.
+- **One main landmark per page** (0.3.0-dev.18). Every page's content is in
+  `<main id="den-content">` (the skip link's target); the four pages that
+  had a `<main>` of their own around part of it, and the two that had
+  none, now have exactly one.
+- **A distribution group is named once** (0.3.0-dev.18): its tag is hidden
+  from screen readers and read as the group's description ("from globex"),
+  not "Globex globex".
+- **Registration mistakes warn** (0.3.0-dev.18): a non-number `order`, or
+  a `registerNav` into a group not registered yet, logs a `console.warn`
+  naming the field. The page waits for its group instead of being lost.
+- **Local Dev's output panel no longer covers graph cards** (0.3.0-dev.18).
+  When the panel opened (a run's tab), the graph's viewport shrank but the
+  graph kept its fit, so the lower cards sat under the panel and couldn't
+  be clicked. A viewport that changes size re-fits the graph unless you
+  have panned or zoomed it yourself.
 
 - **An app is never painted down before its checks have answered**
   (0.3.0-dev.17). One cold load in twenty painted an app red for ~100ms:
@@ -174,6 +261,9 @@ config and manifest changes a distribution must make to move to it under
   collapsed and expanded; CI installs Playwright's chromium for it.
 - **One bar on Logs** (0.3.0-dev.17). The cols/rows toggle moved into the
   Logs toolbar from a band of its own.
+- **One workspace control on Services** (0.3.0-dev.18). Services' own
+  workspace select (beside the top bar's) is gone: the top bar's Workspace
+  ▾ says what the page lists; its status moved to the Output bar.
 - The appearance control (◐) sits at the header's far right on every page
   and never leaves the screen: the nav shrinks and scrolls and the health
   dots give way first (the Tests page's top bar overflowed at 1440 and 1024).

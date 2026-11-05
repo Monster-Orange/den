@@ -71,7 +71,7 @@
       button:hover {
         border-color: var(--accent);
       }
-      main {
+      .page-main {
         padding: 12px 14px;
         overflow-x: auto;
       }
@@ -208,6 +208,8 @@
     <div id="den-shell" data-page="environments"></div>
     <script src="/shell.js"></script>
 
+    <!-- The page's one main landmark: everything after the shell. -->
+    <main id="den-content">
     <div class="controls">
       <button id="refresh">Re-check</button>
       <label class="note"
@@ -224,7 +226,7 @@
       >
     </div>
 
-    <main>
+    <div class="page-main">
       <table>
         <thead id="head"></thead>
         <tbody id="body">
@@ -233,7 +235,7 @@
           </tr>
         </tbody>
       </table>
-    </main>
+    </div>
 
     <script type="module">
       // The shell's behaviour, as on every page (header.js also mounts the
@@ -247,7 +249,7 @@
       } from "/header.js";
       void Promise.all([
         initHealth(),
-        initWorkspacePill("env-sel"),
+        initWorkspacePill(),
         applyDenConfig(),
         initChangelog(),
       ]).then(initLogBadge);
@@ -470,5 +472,6 @@
         if (!document.hidden) load();
       }, POLL_MS);
     </script>
+      </main>
   </body>
 </html>

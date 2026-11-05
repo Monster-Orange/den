@@ -89,16 +89,6 @@
         }
       }
 
-      /* ── Controls bar ─────────────────────────────────────────────────────── */
-      .controls {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 14px;
-        background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-      }
       select {
         background: var(--bg);
         border: 1px solid var(--border);
@@ -114,7 +104,7 @@
       }
 
       /* ── Main ─────────────────────────────────────────────────────────────── */
-      main {
+      .page-main {
         flex: 1;
         display: flex;
         flex-direction: column;
@@ -217,6 +207,9 @@
         font-size: 12px;
         font-weight: 600;
         color: var(--text);
+      }
+      .service-repo .owners {
+        color: var(--accent-text);
       }
       .service-repo {
         font-size: 11px;
@@ -328,6 +321,12 @@
         letter-spacing: 0.07em;
         color: var(--muted);
       }
+      .pane-bar .pane-status {
+        font-weight: 400;
+        text-transform: none;
+        letter-spacing: 0;
+        margin: 0 auto 0 8px;
+      }
       .pane-bar button {
         background: none;
         border: none;
@@ -379,34 +378,25 @@
     <div id="den-shell" data-page="services"></div>
     <script src="/shell.js"></script>
 
-    <div class="controls">
-      <span style="font-size: 11px; color: var(--muted)">workspace:</span>
-      <select
-        id="workspace-sel"
-        title="Active workspace"
-        style="font-family: var(--mono)"
-      >
-        <option value="default">default</option>
-      </select>
-      <span id="status-text" style="font-size: 11px; color: var(--muted)"
-        >idle</span
-      >
-    </div>
-
-    <main>
+    <!-- The page's one main landmark: everything after the shell. -->
+    <main id="den-content">
+    <!-- One workspace control: the shell's View (what this page lists) and
+         Focus (where commands go), not a select of its own. -->
+    <div class="page-main">
       <div class="services-pane" id="services-pane">
         <div class="empty-state">Loading services…</div>
       </div>
 
       <div class="pane-bar">
         <span>Output</span>
+        <span id="status-text" class="pane-status">idle</span>
         <button onclick="clearOutput()">Clear</button>
       </div>
 
       <div class="output-pane">
         <pre id="output"></pre>
       </div>
-    </main>
+    </div>
 
     <script type="module">
       import {
@@ -419,6 +409,7 @@
         computePrimaryByRepo,
         envReady,
       } from "/header.js";
+      import { ownersLabel } from "/workspace-picker.js";
 
       let es = null;
 
@@ -437,10 +428,9 @@
         await envReady();
 
         await Promise.all([
-          loadWorkspaces(),
           loadServices(),
           initHealth(),
-          initWorkspacePill("env-sel"),
+          initWorkspacePill(),
           applyDenConfig(),
           initChangelog(),
         ]);
@@ -454,38 +444,6 @@
         // kept polling the page-load env forever (index.html/logs.html do this too).
         refreshHealth(env);
       });
-
-      document
-        .getElementById("workspace-sel")
-        .addEventListener("change", async () => {
-          const name = document.getElementById("workspace-sel").value;
-          await fetch("/api/workspaces", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name }),
-          });
-          await loadServices();
-        });
-
-      // ── Load workspaces ───────────────────────────────────────────────────────
-      async function loadWorkspaces() {
-        try {
-          const data = await fetch("/api/workspaces").then((r) => r.json());
-          const sel = document.getElementById("workspace-sel");
-          const names = Object.keys(data.workspaces ?? {});
-          const focus = Array.isArray(data.active)
-            ? (data.focus ?? data.active[0])
-            : data.active;
-          sel.innerHTML = names
-            .map(
-              (n) =>
-                `<option value="${n}" ${n === focus ? "selected" : ""}>${n}</option>`,
-            )
-            .join("");
-        } catch {
-          /* ignore — default workspace shown */
-        }
-      }
 
       // ── Workspace panel ───────────────────────────────────────────────────────
       window.toggleWsPanel = function () {
@@ -566,7 +524,6 @@
           msg.textContent = `✓ Created "${name}"`;
           msg.className = "ws-msg ok";
           document.getElementById("ws-name-input").value = "";
-          await loadWorkspaces();
           await refreshWsPanel();
         } else {
           msg.textContent = await res.text();
@@ -575,7 +532,10 @@
       };
 
       window.deleteWorkspace = async function () {
-        const name = document.getElementById("workspace-sel").value;
+        const data = await fetch("/api/workspaces")
+          .then((r) => r.json())
+          .catch(() => ({}));
+        const name = data.focus ?? data.active?.[0] ?? "default";
         const msg = document.getElementById("ws-delete-msg");
         if (name === "default") {
           msg.textContent = "Cannot delete default";
@@ -591,7 +551,6 @@
         if (res.ok) {
           msg.textContent = `✓ Deleted "${name}"`;
           msg.className = "ws-msg ok";
-          await loadWorkspaces();
           await Promise.all([loadServices(), refreshWsPanel()]);
         } else {
           msg.textContent = await res.text();
@@ -763,7 +722,11 @@
               <span class="dot" id="dot-${s.repo}-${s.service}"></span>
               <div class="service-card-title">
                 <div class="service-name">${addr}</div>
-                <div class="service-repo">${s.repo}</div>
+                <div class="service-repo">${s.repo}${
+                  ownersLabel(s.inWorkspaces)
+                    ? `<span class="owners" title="Shared: listed once for every workspace in view that defines it">${esc(ownersLabel(s.inWorkspaces))}</span>`
+                    : ""
+                }</div>
                 <a class="site-link" id="site-${s.repo}-${s.service}" target="_blank" rel="noopener" hidden></a>
               </div>
               ${pinBtn(isSub ? addr : s.repo)}
@@ -808,7 +771,7 @@
             app: apps.length
               ? {
                   title: "Not in an application",
-                  description: "Registered, but not in this workspace.",
+                  description: "In view, but in no application.",
                 }
               : null,
             cards: rest,
@@ -831,7 +794,9 @@
           )
           .join("");
 
-        // Pin / unpin (a preference only), then repaint the star.
+        // Pin / unpin (a preference only). The star repaints from the
+        // shell's den:pins event, whoever changed the pin (this button,
+        // the rail's × or Delete, the graph's panel).
         pane.querySelectorAll("[data-pin-toggle]").forEach((btn) => {
           btn.addEventListener("click", () => {
             const id = btn.dataset.pinToggle;
@@ -839,12 +804,6 @@
             if (!sh) return;
             if (sh.isPinned(id)) sh.unpin(id);
             else sh.pin(id);
-            const on = sh.isPinned(id);
-            btn.textContent = on ? "★" : "☆";
-            btn.setAttribute("aria-pressed", String(on));
-            const label = `${on ? "Unpin" : "Pin"} ${id}`;
-            btn.title = label;
-            btn.setAttribute("aria-label", label);
           });
         });
         // A pinned row in the rail links here (#repo-<name>).
@@ -1027,5 +986,6 @@
 
       init();
     </script>
+      </main>
   </body>
 </html>

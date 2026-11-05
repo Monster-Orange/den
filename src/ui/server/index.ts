@@ -52,6 +52,13 @@ import {
   parseAddress,
   readManifestAnyBranch,
 } from "../../shared/environment-manager/workspaces.js";
+import {
+  parseScope,
+  scopeKey,
+  scopePayload,
+  scopeView,
+  storedView,
+} from "../../shared/environment-manager/scope.js";
 import { findServiceContainer } from "../../shared/environment-manager/service-container.js";
 import {
   resolveHistorySource,
@@ -101,7 +108,7 @@ import {
   writeUserReleaseConfig,
   type ReleaseConfig,
 } from "../../shared/den-config.js";
-import { readOrg } from "../../shared/org.js";
+import { readOrgView } from "../../shared/org.js";
 import {
   engineVersion,
   getDistRoot,
@@ -202,6 +209,11 @@ interface HealthResult {
   target: Placement["target"];
   /** From the focused workspace: the header sorts these first. */
   focused?: boolean;
+  /**
+   * The workspaces in view that define this service (focus first). More
+   * than one means a shared service: it is listed once, with its owners.
+   */
+  workspaces?: string[];
 }
 
 /**
@@ -260,9 +272,12 @@ const SERVICES_CACHE_TTL_MS = 2_000;
 const READ_CACHE_TTL_MS = 5_000;
 enableReadCache(READ_CACHE_TTL_MS);
 const servicesCache = singleFlight<ServicesList>(SERVICES_CACHE_TTL_MS);
-/** A workspace-scoped run covers a different service set than the default one. */
+/**
+ * A workspace-scoped run covers a different service set than the default
+ * one, and the default one covers whatever the view scope has in view.
+ */
 function healthCacheKey(env: Environment, workspace: string | null): string {
-  return `${env}|${workspace ?? "*"}`;
+  return `${env}|${workspace ?? `*:${scopeKey(scopeView())}`}`;
 }
 import {
   LOG_SWEEP_INTERVAL_MS,
@@ -918,9 +933,11 @@ async function handleRequest(
 
   // ── API: health check ─────────────────────────────────────────────────────
   /**
-   * Workspaces a health run covers: one named workspace, else EVERY active one
-   * (focus first). Health is machine-level — a service running under a
-   * non-focused active workspace is still up, and its card must say so.
+   * Workspaces a health run covers: one named workspace, else the view
+   * scope's (every active one by default, focus first). Health is
+   * machine-level: a service running under a non-focused active workspace
+   * is still up, and its card must say so. The pages and `status` read the
+   * same scope (src/shared/environment-manager/scope.ts).
    */
   function healthWorkspaces(
     workspaceName: string | null,
@@ -929,12 +946,7 @@ async function handleRequest(
       const named = getWorkspaceByName(workspaceName);
       return named ? [named] : [];
     }
-    const focus = getFocusedWorkspaceName();
-    const names = [
-      ...(focus ? [focus] : []),
-      ...getActiveWorkspaces().filter((n) => n !== focus),
-    ];
-    return names.flatMap((n) => getWorkspaceByName(n) ?? []);
+    return scopeView().workspaces.filter((w) => w.config);
   }
 
   /**
@@ -961,11 +973,16 @@ async function handleRequest(
       string,
       { svc: ResolvedService; ws: { name: string; config: WorkspaceConfig } }
     >();
+    const owners = new Map<string, string[]>();
     for (const ws of workspaces)
-      for (const svc of listWorkspaceServices(ws.config, catalog, ws.name))
+      for (const svc of listWorkspaceServices(ws.config, catalog, ws.name)) {
         // Modules and libraries have no runtime, so no health dot.
-        if (!byAddress.has(svc.address) && hasRuntime(repoKind(svc.repoPath)))
+        if (!hasRuntime(repoKind(svc.repoPath))) continue;
+        if (!byAddress.has(svc.address))
           byAddress.set(svc.address, { svc, ws });
+        const o = owners.get(svc.address) ?? [];
+        if (!o.includes(ws.name)) owners.set(svc.address, [...o, ws.name]);
+      }
     let services = [...byAddress.values()];
     if (addressFilter) {
       services = services.filter((s) => s.svc.address === addressFilter);
@@ -992,7 +1009,7 @@ async function handleRequest(
       expect?: Expect;
       /** pingShell options (Den's own `stack health` can report unknown). */
       compose: ComposeHealthTarget | null;
-      meta: Pick<HealthResult, "runs" | "target" | "focused">;
+      meta: Pick<HealthResult, "runs" | "target" | "focused" | "workspaces">;
     }> = [];
     const focusName = getFocusedWorkspaceName();
     let edgeDomain: string | null = null;
@@ -1026,7 +1043,12 @@ async function handleRequest(
           links: [],
           org: orgOf(resolved.repoName, catalog),
           compose: null,
-          meta: { runs: "none", target: null, focused: ws.name === focusName },
+          meta: {
+            runs: "none",
+            target: null,
+            focused: ws.name === focusName,
+            workspaces: owners.get(resolved.address) ?? [ws.name],
+          },
         });
         continue;
       }
@@ -1112,6 +1134,7 @@ async function handleRequest(
           runs: plan.placement.runs,
           target: plan.placement.target,
           focused: ws.name === focusName,
+          workspaces: owners.get(resolved.address) ?? [ws.name],
         },
       });
     }
@@ -1346,7 +1369,8 @@ async function handleRequest(
     return sendJson(
       res,
       await servicesCache.get(
-        `${env}|${wsOverride ?? ""}`,
+        // No workspace named: what the view scope has in view.
+        `${env}|${wsOverride ?? `*:${scopeKey(scopeView())}`}`,
         () => buildServicesList(env, wsOverride),
         url.searchParams.get("refresh") === "1",
       ),
@@ -2418,7 +2442,7 @@ async function handleRequest(
   // ── API: den config ────────────────────────────────────────────────────
   if (pathname === `/api/${product().cli}/config` && req.method === "GET") {
     // `org` resolved (id defaults to edge.org) for the header's org label.
-    return sendJson(res, { ...readDenConfig(), org: readOrg() });
+    return sendJson(res, { ...readDenConfig(), org: readOrgView() });
   }
 
   // ── API: server info + staleness (drives the header "stale server" pill) ────
@@ -2918,6 +2942,29 @@ async function handleRequest(
   // POST /api/settings  body: { editor?, terminal?, editor_overrides?, graph?, appearance? }
   //   graph: { direction, group, density, panelWidth } (see graph-prefs.ts)
   //   appearance: { theme: id | null, mode: system|dark|light } (appearance-prefs.ts)
+  // The view scope: which active workspaces the pages, the health row and
+  // `status` show. A view preference only (user.yml `view`): it changes no
+  // edge route, container or service, and never the focus.
+  if (pathname === "/api/scope") {
+    if (req.method === "GET") return sendJson(res, scopePayload(scopeView()));
+    if (req.method === "POST") {
+      let body: { scope?: unknown };
+      try {
+        body = JSON.parse(await readBody(req)) as { scope?: unknown };
+      } catch {
+        return send400(res, "invalid JSON");
+      }
+      const parsed = parseScope(body.scope, getActiveWorkspaces());
+      if (!parsed.ok) return send400(res, parsed.error);
+      const user = readUserConfig();
+      const view = storedView(parsed.value);
+      if (view) user.view = view;
+      else delete user.view;
+      writeUserConfig(user);
+      return sendJson(res, scopePayload(scopeView(parsed.value)));
+    }
+  }
+
   if (pathname === "/api/settings") {
     if (req.method === "GET") {
       const user = readUserConfig();

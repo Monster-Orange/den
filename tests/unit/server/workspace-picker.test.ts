@@ -1,73 +1,94 @@
+/**
+ * The Workspace ▾ menu's model (R4, 0.3.0-dev.18): the view scope, with
+ * the focus marked and a separate "Set <ws> as focus".
+ */
 import { describe, expect, it } from "@jest/globals";
 import {
-  buildWorkspaceMenuModel,
-  buildWorkspacePillModel,
+  buildScopeMenuModel,
+  ownersLabel,
 } from "../../../src/ui/server/public/workspace-picker.js";
 
 const payload = {
-  workspaces: {
-    "files-api": {},
-    "tasks-api": {},
-    default: {},
-  },
+  workspaces: { "files-api": {}, "tasks-api": {}, default: {} },
   active: ["files-api", "tasks-api"],
   focus: "files-api",
 };
 
-describe("buildWorkspacePillModel", () => {
-  it("labels the pill with the focused workspace", () => {
-    expect(buildWorkspacePillModel(payload)).toEqual({
-      label: "files-api",
-      title: "Active: files-api, tasks-api · Focus: files-api",
-    });
-  });
-
-  it("falls back to the first active workspace when no focus is set", () => {
-    expect(
-      buildWorkspacePillModel({ workspaces: {}, active: ["tasks-api"] }),
-    ).toEqual({ label: "tasks-api", title: "Switch workspace" });
-  });
-
-  it("accepts the legacy single-active payload", () => {
-    expect(buildWorkspacePillModel({ active: "default" }).label).toBe(
-      "default",
+describe("buildScopeMenuModel", () => {
+  it("lists All active and each active workspace, the focus marked", () => {
+    const m = buildScopeMenuModel(
+      {
+        scope: "all",
+        inView: ["files-api", "tasks-api"],
+        focus: "files-api",
+      },
+      payload,
+    );
+    expect(m.label).toBe("All active");
+    expect(m.focusable).toBeNull();
+    expect(m.items).toEqual([
+      {
+        value: "all",
+        label: "All active (2)",
+        checked: true,
+        focused: false,
+        title:
+          "Every active workspace; a service several define is listed once",
+      },
+      { value: "files-api", label: "files-api", checked: false, focused: true },
+      {
+        value: "tasks-api",
+        label: "tasks-api",
+        checked: false,
+        focused: false,
+      },
+    ]);
+    expect(m.title).toBe(
+      "View: what every page shows (files-api, tasks-api). A view filter only: it starts, stops and routes nothing, and focus (files-api) stays the target for commands.",
     );
   });
 
-  it("never renders empty", () => {
-    expect(buildWorkspacePillModel({}).label).toBe("default");
-    expect(buildWorkspacePillModel(null).label).toBe("default");
+  it("one workspace in view: checked, and offered as the focus when it isn't", () => {
+    const m = buildScopeMenuModel(
+      { scope: "tasks-api", inView: ["tasks-api"], focus: "files-api" },
+      payload,
+    );
+    expect(m.label).toBe("tasks-api");
+    expect(m.focusable).toBe("tasks-api");
+    expect(m.items.filter((i) => i.checked).map((i) => i.value)).toEqual([
+      "tasks-api",
+    ]);
+    // The focused workspace in view: nothing to offer.
+    expect(
+      buildScopeMenuModel({ scope: "files-api", focus: "files-api" }, payload)
+        .focusable,
+    ).toBeNull();
   });
-});
 
-describe("buildWorkspaceMenuModel", () => {
-  it("lists active workspaces first, alphabetical within each group", () => {
-    expect(buildWorkspaceMenuModel(payload)).toEqual({
-      focus: "files-api",
-      items: [
-        { name: "files-api", active: true, focused: true },
-        { name: "tasks-api", active: true, focused: false },
-        { name: "default", active: false, focused: false },
-      ],
-    });
+  it("a scope that is no longer active falls back to All active", () => {
+    const m = buildScopeMenuModel({ scope: "gone" }, payload);
+    expect(m.label).toBe("All active");
+    expect(m.items[0]).toMatchObject({ value: "all", checked: true });
   });
 
-  it("keeps an active workspace missing from the catalog selectable", () => {
-    const model = buildWorkspaceMenuModel({
-      workspaces: { default: {} },
-      active: ["ghost"],
-      focus: "ghost",
-    });
-    expect(model.items).toEqual([
-      { name: "ghost", active: true, focused: true },
-      { name: "default", active: false, focused: false },
+  it("one active workspace: no All active (the same view), that workspace checked", () => {
+    const m = buildScopeMenuModel(null, { active: "default" });
+    expect(m.label).toBe("default");
+    expect(m.items).toEqual([
+      { value: "default", label: "default", checked: true, focused: true },
     ]);
   });
 
-  it("returns an empty list when no workspaces exist", () => {
-    expect(buildWorkspaceMenuModel({ workspaces: {}, active: [] })).toEqual({
-      focus: null,
-      items: [],
-    });
+  it("none active: an empty menu labelled none", () => {
+    const m = buildScopeMenuModel(null, { workspaces: {}, active: [] });
+    expect([m.label, m.items, m.focusable]).toEqual(["none", [], null]);
+  });
+});
+
+describe("ownersLabel", () => {
+  it("names the workspaces that share a service, else nothing", () => {
+    expect(ownersLabel(["a", "b"])).toBe(" · a, b");
+    expect(ownersLabel(["a"])).toBe("");
+    expect(ownersLabel(undefined)).toBe("");
   });
 });

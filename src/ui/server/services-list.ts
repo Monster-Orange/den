@@ -1,7 +1,9 @@
 /**
  * The /api/services payload: every service of the legacy-discovered repos and
- * of the requested (or active) workspace, with commands, branch, deps and
- * graph rank.
+ * of the requested workspace (or, with none named, of every workspace the
+ * view scope has in view), with commands, branch, deps and graph rank. A
+ * service two workspaces in view share is listed once, with `inWorkspaces`
+ * naming both (focus first); its deps and autostart come from the first.
  *
  * Built off the request path's critical section: the per-repo branch lookups
  * (`git rev-parse`, ~40ms each) run as async child processes in parallel
@@ -15,13 +17,14 @@ import type { Environment } from "../../shared/types/index.js";
 import { discoverRepos } from "../../pillars/smoke/discover.js";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import {
-  getActiveWorkspace,
   listWorkspaceServices,
   noAutostartRepos,
   readWorkspacesFile,
   resolveDepAddress,
 } from "../../shared/environment-manager/workspaces.js";
 import { graphOrder } from "./graph-order.js";
+import { scopeView } from "../../shared/environment-manager/scope.js";
+import type { WorkspaceConfig } from "../../shared/types/index.js";
 import { listDaemons } from "../../shared/environment-manager/service-runner.js";
 import { loadManifest } from "../../shared/manifest/read-manifest.js";
 import { servicePlacement } from "../../shared/manifest/placement.js";
@@ -87,11 +90,19 @@ export async function buildServicesList(
   // Catalog entries (workspace-aware)
   const catalog = readCatalog();
   const wsFile = wsOverride ? readWorkspacesFile() : null;
-  const ws = wsOverride
+  const inView: { name: string; config: WorkspaceConfig }[] = wsOverride
     ? wsFile?.workspaces[wsOverride]
-      ? { name: wsOverride, config: wsFile.workspaces[wsOverride] }
-      : null
-    : getActiveWorkspace();
+      ? [{ name: wsOverride, config: wsFile.workspaces[wsOverride] }]
+      : []
+    : scopeView().workspaces.filter((w) => w.config);
+  // Every workspace in view that defines an address, focus first.
+  const ownersOf = new Map<string, string[]>();
+  for (const w of inView)
+    for (const r of listWorkspaceServices(w.config, catalog, w.name)) {
+      const o = ownersOf.get(r.address) ?? [];
+      if (!o.includes(w.name)) ownersOf.set(r.address, [...o, w.name]);
+    }
+  const seen = new Set<string>();
 
   // One lookup per checkout, all in flight at once; filled in below.
   const branches = new Map<string, Promise<string | null>>();
@@ -101,19 +112,25 @@ export async function buildServicesList(
     return p;
   };
 
-  const noAutostart = ws
-    ? noAutostartRepos(ws.config, catalog)
-    : new Set<string>();
+  const noAutostartBy = new Map(
+    inView.map((w) => [w.name, noAutostartRepos(w.config, catalog)] as const),
+  );
   const daemonOwners = new Map(
     listDaemons().map((d) => [d.address, d.workspaces ?? []] as const),
   );
   // Modules and libraries have no runtime: no card, health or commands.
   // They show as contributors on the Applications tab instead.
   const pendingBranches: Promise<void>[] = [];
-  const catalogEntries = ws
-    ? listWorkspaceServices(ws.config, catalog, ws.name)
+  const catalogEntries = inView.flatMap((ws) => {
+    const noAutostart = noAutostartBy.get(ws.name) ?? new Set<string>();
+    return (
+      listWorkspaceServices(ws.config, catalog, ws.name)
         .filter((r) => hasRuntime(repoKind(r.repoPath)))
+        // A shared service is listed once: the first workspace in view
+        // (focus first) owns its entry.
+        .filter((r) => !seen.has(r.address) && !!seen.add(r.address))
         .flatMap((resolved) => {
+          const inWorkspaces = ownersOf.get(resolved.address) ?? [ws.name];
           // The manifest and the layers it was built from: repo or held,
           // plus override when manifests/<repo>.override.yml applied.
           const { manifest, layers: manifestLayers } = loadManifest(
@@ -141,6 +158,7 @@ export async function buildServicesList(
                 isEntrypoint: false,
                 autostart: !noAutostart.has(resolved.repoName),
                 owners: daemonOwners.get(resolved.address) ?? [],
+                inWorkspaces,
                 deps: [] as string[],
                 cloned: fs.existsSync(resolved.repoPath),
                 manifestLayers,
@@ -161,6 +179,7 @@ export async function buildServicesList(
             isEntrypoint: manifest.entrypoint === resolved.subsystem,
             autostart: !noAutostart.has(resolved.repoName),
             owners: daemonOwners.get(resolved.address) ?? [],
+            inWorkspaces,
             deps: (svc.depends_on ?? []).map((d) =>
               resolveDepAddress(depService(d), catalog, ws.config, ws.name),
             ),
@@ -176,13 +195,16 @@ export async function buildServicesList(
             );
           return [entry];
         })
-    : [];
+    );
+  });
 
   // Merge: catalog entries take precedence over legacy for same repo.
   // When a workspace filter is active, also exclude legacy entries not in
   // the workspace (legacy discovery is not workspace-scoped).
   const catalogRepos = new Set(Object.keys(catalog));
-  const wsServiceKeys = ws ? new Set(Object.keys(ws.config.services)) : null;
+  const wsServiceKeys = inView.length
+    ? new Set(inView.flatMap((w) => Object.keys(w.config.services)))
+    : null;
   const merged = [
     ...legacyEntries.filter((e) => {
       if (catalogRepos.has(e.repo)) return false;
@@ -197,7 +219,13 @@ export async function buildServicesList(
   // health row and `den status` use. Added as a FIELD rather than by
   // re-sorting the array, because four pages consume this payload and some
   // rely on the current order.
-  const graphRank = new Map(graphOrder(ws?.name).map((repo, i) => [repo, i]));
+  // With several workspaces in view: the focus's order, then repos only the
+  // others define, in their own order.
+  const order: string[] = [];
+  for (const w of inView.length ? inView : [null])
+    for (const repo of graphOrder(w?.name))
+      if (!order.includes(repo)) order.push(repo);
+  const graphRank = new Map(order.map((repo, i) => [repo, i]));
   const infraRepo = readDenConfig()?.graph?.infra?.repo ?? null;
   await Promise.all(pendingBranches);
   return merged.map((e) => ({

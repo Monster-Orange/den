@@ -93,6 +93,12 @@ let edges = [];
 let elk = null;
 let renderSeq = 0;
 let prefsLoaded = false;
+// The floor of the last fit while the view is still the automatic one; null
+// once the user pans or zooms. A viewport that changes size (Local Dev's
+// output panel opening below it) re-fits an automatic view, so cards never
+// sit under the panel; a view the user moved is left where they put it.
+let autoFit = null;
+let vpObserver = null;
 
 const $ = (s, el = host) => el?.querySelector(s);
 const zoomFloor = 0.35;
@@ -613,6 +619,7 @@ function zoomAt(f, cx, cy) {
   const vp = $(".dg-vp").getBoundingClientRect();
   cx ??= vp.width / 2;
   cy ??= vp.height / 2;
+  autoFit = null;
   const nz = Math.min(2, Math.max(zoomFloor, st.z * f));
   st.tx = cx - ((cx - st.tx) * nz) / st.z;
   st.ty = cy - ((cy - st.ty) * nz) / st.z;
@@ -631,6 +638,7 @@ function fit(floor = zoomFloor) {
   );
   st.tx = Math.max(16, (vp.width - w * st.z) / 2);
   st.ty = 16;
+  autoFit = floor;
   applyView();
 }
 
@@ -883,6 +891,16 @@ function wire() {
   });
   // pan: drag the background; scroll moves; Ctrl/⌘ + scroll zooms
   const vp = $(".dg-vp");
+  vpObserver?.disconnect();
+  if (typeof ResizeObserver === "function") {
+    let size = null;
+    vpObserver = new ResizeObserver(([e]) => {
+      const next = `${Math.round(e.contentRect.width)}x${Math.round(e.contentRect.height)}`;
+      if (size && next !== size && autoFit != null) fit(autoFit);
+      size = next;
+    });
+    vpObserver.observe(vp);
+  }
   let drag = null;
   vp.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 || e.target.closest(".dg-card,button,.dg-zoom")) return;
@@ -894,7 +912,10 @@ function wire() {
     if (!drag) return;
     const dx = e.clientX - drag.x,
       dy = e.clientY - drag.y;
-    if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+    if (Math.abs(dx) + Math.abs(dy) > 3) {
+      drag.moved = true;
+      autoFit = null;
+    }
     st.tx = drag.tx + dx;
     st.ty = drag.ty + dy;
     applyView();
@@ -922,6 +943,7 @@ function wire() {
           e.clientY - r.top,
         );
       else {
+        autoFit = null;
         st.tx -= e.deltaX;
         st.ty -= e.deltaY;
         applyView();
@@ -934,6 +956,7 @@ function wire() {
     if (z === "in") zoomAt(1.2);
     if (z === "out") zoomAt(1 / 1.2);
     if (z === "100") {
+      autoFit = null;
       st.z = 1;
       st.tx = 24;
       st.ty = 24;

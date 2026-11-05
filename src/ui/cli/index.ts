@@ -64,6 +64,13 @@ import {
   DEN_WORKSPACES_DIR,
 } from "../../shared/environment-manager/workspaces.js";
 import {
+  ownersSuffix,
+  parseScope,
+  scopeLine,
+  scopeView,
+  takeScopeFlag,
+} from "../../shared/environment-manager/scope.js";
+import {
   deleteWorkspaceDirectory,
   checkBehindCount,
   pullRepo,
@@ -287,9 +294,12 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   status: {
-    usage: "status [-A <app>]",
+    usage: "status [-A <app>] [--scope <all|workspace>] [--verbose]",
     lines: [
-      "Show service health for the active workspace (or one application).",
+      "Show service health for what is in view: every active workspace by",
+      "default (the web UI's scope), or --scope <workspace> for one. A",
+      "service several workspaces share is listed once, with its owners.",
+      "--verbose (or --all) shows one row per service instead of per repo.",
     ],
   },
   logs: {
@@ -2863,13 +2873,46 @@ class DenCLI {
 
   private async cmdServiceStatus(argv: string[] = []): Promise<void> {
     await this.ensureWorkspaceSeeded();
-    const { app, rest: args } = takeAppFlag(argv);
+    const { app, rest: appRest } = takeAppFlag(argv);
+    // The view scope (as the web UI's): every active workspace by default,
+    // or `--scope <workspace>` for one. A view only: focus is unchanged.
+    const scoped = takeScopeFlag(appRest);
+    const args = scoped.rest;
+    const scopeArg =
+      scoped.scope === null
+        ? null
+        : parseScope(scoped.scope, getActiveWorkspaces());
+    if (scoped.error || (scopeArg && !scopeArg.ok)) {
+      console.log(
+        chalk.red(
+          `\n  ${scoped.error ?? (scopeArg && !scopeArg.ok ? scopeArg.error : "")}\n`,
+        ),
+      );
+      process.exit(1);
+    }
+    // `-w <workspace>` still means that workspace only (active or not).
+    const named = process.env.DEN_WORKSPACE_OVERRIDE
+      ? getActiveWorkspace()
+      : null;
+    const view =
+      named && !scopeArg
+        ? {
+            scope: named.name,
+            fellBack: false,
+            workspaces: [named],
+            focus: named.name,
+          }
+        : scopeView(scopeArg?.ok ? scopeArg.value : undefined);
     const only = app ? focusedAppRepos(app) : null;
     const verbose = args.includes("--verbose") || args.includes("--all");
     const spinner = ora("Checking service health...").start();
-    const raw = (await checkCatalogHealth()).filter(
-      (h) => !only || only.has(h.repoName),
-    );
+    const raw = (
+      await checkCatalogHealth(
+        undefined,
+        "local",
+        view.workspaces.filter((w) => w.config),
+      )
+    ).filter((h) => !only || only.has(h.repoName));
     // One row per repo, rolled up from every checked service by the rule the
     // web UI's header and graph use: entry down → down, another checked
     // service down → degraded; unchecked services never count.
@@ -2890,10 +2933,7 @@ class DenCLI {
       return;
     }
 
-    const ws = getActiveWorkspace();
-    console.log(
-      chalk.cyan(`\n  Workspace: ${chalk.bold(ws?.name ?? "none")}\n`),
-    );
+    console.log(chalk.cyan(`\n  ${scopeLine(view)}\n`));
 
     const table = new Table({
       head: ["Service", "Mode", "Branch", "Health", "Reason"],
@@ -2922,6 +2962,7 @@ class DenCLI {
 
       table.push([
         this.labelWithAutostart(r.address, noAutostart) +
+          chalk.gray(ownersSuffix(r.workspaces)) +
           (placed ? chalk.cyan(`  ${placed}`) : ""),
         r.mode === "dev-managed"
           ? chalk.blue("dev-managed")
@@ -4028,7 +4069,7 @@ class DenCLI {
       "  restart [service...] Restart services (-A <app> for a whole application)",
     );
     console.log(
-      "  status               Show service health for active workspace (-A <app>)",
+      "  status               Show service health for the view scope (-A <app>, --scope <ws>)",
     );
     console.log(
       "  apps                 Org > Application > Repo > Services (--json)",

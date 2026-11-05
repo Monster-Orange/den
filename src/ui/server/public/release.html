@@ -140,7 +140,7 @@
       }
 
       /* ── Main ─────────────────────────────────────────────────────────────── */
-      main {
+      .page-main {
         flex: 1;
         display: flex;
         flex-direction: column;
@@ -738,6 +738,8 @@
     <div id="den-shell" data-page="release" data-health-env="local"></div>
     <script src="/shell.js"></script>
 
+    <!-- The page's one main landmark: everything after the shell. -->
+    <main id="den-content">
     <div class="controls">
       <label class="env-label" for="rel-env">deploy to:</label>
       <select id="rel-env" title="Deploy target"></select>
@@ -757,7 +759,7 @@
       >
     </div>
 
-    <main>
+    <div class="page-main">
       <div class="table-pane">
         <table id="rel-table">
           <thead>
@@ -795,7 +797,7 @@
       <div class="output-pane hidden" id="output-pane">
         <pre id="output"></pre>
       </div>
-    </main>
+    </div>
 
     <!-- Generic modal -->
     <div class="overlay" id="overlay">
@@ -1982,5 +1984,6 @@
 
       init();
     </script>
+      </main>
   </body>
 </html>

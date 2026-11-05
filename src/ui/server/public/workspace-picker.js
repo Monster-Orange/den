@@ -1,8 +1,8 @@
 /**
- * Workspace pill / picker models.
+ * The Workspace ▾ menu's model.
  *
  * Pure and DOM-free (like perf-report.js) so the shape of the header's
- * workspace menu is unit-testable under Jest's node environment; header.js
+ * Workspace menu is unit-testable under Jest's node environment; header.js
  * owns everything that touches the DOM.
  *
  * Input is always the `/api/workspaces` payload:
@@ -26,44 +26,63 @@ function focusName(data) {
 }
 
 /**
- * Label + tooltip for the header pill.
- * Falls back to "default" so the pill never renders empty.
+ * The top bar's Workspace ▾ menu (R4, 0.3.0-dev.18), from the `/api/scope`
+ * and `/api/workspaces` payloads. It is the view scope: what every page,
+ * the health row and `status` show. Choosing an entry never moves the
+ * focus (the default target for commands); the focused workspace is
+ * marked, and `focusable` names the workspace in view when it is not the
+ * focus, for the menu's separate "Set <ws> as focus" item.
+ *
+ * "All active" is offered with two or more active workspaces; with one,
+ * it and that workspace are the same view.
  */
-export function buildWorkspacePillModel(data) {
+export function buildScopeMenuModel(scope, data) {
   const active = activeNames(data);
-  const label = focusName(data) ?? "default";
+  const focus = scope?.focus ?? focusName(data);
+  const multi = active.length > 1;
+  const selected =
+    scope?.scope && scope.scope !== "all" && active.includes(scope.scope)
+      ? scope.scope
+      : "all";
+  const inView = Array.isArray(scope?.inView) ? scope.inView : active;
+  const one = multi ? (selected === "all" ? null : selected) : active[0];
+  const items = [
+    ...(multi
+      ? [
+          {
+            value: "all",
+            label: `All active (${active.length})`,
+            checked: selected === "all",
+            focused: false,
+            title:
+              "Every active workspace; a service several define is listed once",
+          },
+        ]
+      : []),
+    ...active.map((n) => ({
+      value: n,
+      label: n,
+      checked: n === one,
+      focused: n === focus,
+    })),
+  ];
   return {
-    label,
-    // Only worth spelling out when more than one workspace is active —
-    // otherwise the pill text already says everything.
+    label: active.length === 0 ? "none" : (one ?? "All active"),
+    items,
+    focusable: one && one !== focus ? one : null,
     title:
-      active.length > 1
-        ? `Active: ${active.join(", ")} · Focus: ${label}`
-        : "Switch workspace",
+      `View: what every page shows (${inView.join(", ") || "none"}). ` +
+      "A view filter only: it starts, stops and routes nothing" +
+      (focus ? `, and focus (${focus}) stays the target for commands.` : "."),
   };
 }
 
 /**
- * Menu model for the pill's dropdown: every known workspace, active ones
- * first (they are the likely targets), each side alphabetical so the list
- * order is stable across polls.
+ * " · a, b" after a service that several workspaces in view define (it is
+ * listed once); "" when one does.
  */
-export function buildWorkspaceMenuModel(data) {
-  const active = new Set(activeNames(data));
-  const focus = focusName(data);
-  // Union of the catalog and the active set: a workspace listed as active but
-  // missing from `workspaces` still has to be selectable (and visible).
-  const names = new Set([...Object.keys(data?.workspaces ?? {}), ...active]);
-
-  const items = [...names].map((name) => ({
-    name,
-    active: active.has(name),
-    focused: name === focus,
-  }));
-  items.sort(
-    (a, b) =>
-      Number(b.active) - Number(a.active) || a.name.localeCompare(b.name),
-  );
-
-  return { focus, items };
+export function ownersLabel(owners) {
+  return Array.isArray(owners) && owners.length > 1
+    ? ` · ${owners.join(", ")}`
+    : "";
 }

@@ -17,24 +17,44 @@
  * --radius-button, --bar-grad is --bar). scripts/shell-fidelity.mjs
  * measures the two side by side.
  *
- *   top bar  ☰ (narrow) · brand mark and title · / Workspace / Env (one
- *            env for the whole shell) · health row (in the status chip's
- *            slot, as a chip, until dev.20) · lock (Local Dev) · What's
- *            new · ◐ ▾
+ *   top bar  ☰ (narrow) · brand mark and title · the scope breadcrumb
+ *            (R4, dev.18): / ORG <org> ▾ / WORKSPACE <ws> ▾ / ENV <env> ▾,
+ *            each part an .ib button with a .pop menu (an ARIA menu: ↑/↓,
+ *            Home, End, Enter; Escape and a click outside close it) ·
+ *            health row (in the status chip's slot, as a chip, until
+ *            dev.20) · lock (Local Dev) · What's new · ◐ ▾
  *   rail     Pinned, then the NAV registry by GROUPS (Develop, Verify,
  *            Ship, a distribution's own), then Settings and the collapse
  *            toggle. One tab stop (the current page); ↑/↓, Home and End
- *            move within it. Collapsed: icons only, the headings kept for
- *            screen readers. Below 720px it is a drawer behind ☰.
+ *            move within it, Delete unpins a pinned row. Collapsed: icons
+ *            only, the headings kept for screen readers. Below 720px it is
+ *            a drawer behind ☰.
  *
- * The registries (window.denShell, the spec's NAV and GROUPS):
+ * The registries and the scope (window.denShell, the spec's NAV and GROUPS):
  *   registerGroup({ id, label, order, from? })
  *   registerNav({ id, label, icon, group, order, href, badge?(state),
- *                 when?(state) })
+ *                 when?(state) })   a non-number order, or a group not
+ *                 registered yet, warns (console.warn); the page waits for
+ *                 its group instead of being dropped
  *   addMessages(lang, { key: text }), t(key, vars)
  *   setState(partial): health { repo|address: state }, openLogs, …
  *   pin(id), unpin(id), isPinned(id): pins are user prefs (/api/settings
- *   `shell.pins`), nothing else.
+ *   `shell.pins`), nothing else. Any change fires `den:pins` on window
+ *   (detail { pins }), and every [data-pin-toggle] repaints from it.
+ *   setOrg({ id, title })            one org: a static label, no menu (C4)
+ *   setOrgs([{ id, title, workspaces? }], currentId, onSelect?)
+ *                                    two or more: the Org ▾ menu; a pick
+ *                                    calls onSelect(id), fires `den:org`
+ *   setWorkspaces({ label, title, items, focusable, onSelect, onFocus })
+ *                                    the Workspace ▾ menu (header.js)
+ *   syncEnv()                        repaint Env ▾ from #env-sel
+ *
+ * Loading before shell.js: push functions onto window.denShellQueue (an
+ * array); each runs with denShell once it exists, and a later push runs at
+ * once. `den-shell:ready` fires on window when the shell is up.
+ *
+ * Every page wraps its content in <main id="den-content">, its one main
+ * landmark (the skip link's target).
  *
  * data-health-env pins the health row's env on pages that are local by
  * nature (Local Dev, Releases), whatever the env picker says.
@@ -63,6 +83,17 @@
       "n.releases": "Releases",
       "n.settings": "Settings",
       "k.org": "Org",
+      "k.ws": "Workspace",
+      "k.env": "Env",
+      "ws.all": "All active",
+      "ws.focus": "focus",
+      "ws.none": "No active workspaces",
+      "ws.manage": "Manage workspaces…",
+      "ws.setFocus": "Set {ws} as focus",
+      "ws.setFocusTip":
+        "Make it the default target for commands (writes workspaces.yml)",
+      "org.n": "{n} workspaces",
+      from: "from {d}",
       "b.logs": "{n} open",
       "b.down": "{n} down",
       "act.unpin": "Unpin",
@@ -124,12 +155,35 @@
     return (a.order || 0) - (b.order || 0) || (a.id < b.id ? -1 : 1);
   }
   var ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+  /** A registration's `order`: a finite number, else 100 with a warning. */
+  function orderOf(kind, x) {
+    if (x.order === undefined) return 100;
+    if (typeof x.order === "number" && isFinite(x.order)) return x.order;
+    warn(
+      kind +
+        ' "' +
+        x.id +
+        '": order must be a number (got ' +
+        JSON.stringify(x.order) +
+        "); using 100",
+    );
+    return 100;
+  }
+  function warn(msg) {
+    if (typeof console !== "undefined" && console.warn)
+      console.warn("denShell: " + msg);
+  }
+  function hasGroup(id) {
+    for (var i = 0; i < GROUPS.length; i++)
+      if (GROUPS[i].id === id) return true;
+    return false;
+  }
   function registerGroup(g) {
     if (!g || !ID.test(g.id || "")) throw new Error("group needs an id");
     upsert(GROUPS, {
       id: g.id,
       label: g.label || g.id,
-      order: typeof g.order === "number" ? g.order : 100,
+      order: orderOf("group", g),
       from: g.from || null,
     });
     renderRail();
@@ -137,12 +191,22 @@
   function registerNav(n) {
     if (!n || !ID.test(n.id || "") || !n.href || !n.group)
       throw new Error("a page needs an id, an href and a group");
+    // A page whose group isn't registered yet is kept, and shows when the
+    // group arrives (registerGroup re-renders): a warning, not a drop.
+    if (!hasGroup(n.group))
+      warn(
+        'nav "' +
+          n.id +
+          '": group "' +
+          n.group +
+          '" is not registered (yet); the page shows once it is',
+      );
     upsert(NAV, {
       id: n.id,
       label: n.label || n.id,
       icon: n.icon || "page",
       group: n.group,
-      order: typeof n.order === "number" ? n.order : 100,
+      order: orderOf("nav", n),
       href: n.href,
       badge: typeof n.badge === "function" ? n.badge : null,
       when: typeof n.when === "function" ? n.when : null,
@@ -172,11 +236,48 @@
     }
   }
   function setState(partial) {
+    var before = state.pins.join("\n");
     for (var k in partial)
       if (Object.prototype.hasOwnProperty.call(partial, k))
         state[k] = partial[k];
     applyCollapsed();
     renderRail();
+    if (state.pins.join("\n") !== before) pinsChanged();
+  }
+  /**
+   * Any pin change (the rail's ×, Delete, a page's toggle, the server's
+   * prefs arriving) is one event, `den:pins` on window, and every pin
+   * toggle on the page ([data-pin-toggle]) repaints from it.
+   */
+  function pinsChanged() {
+    if (typeof window.dispatchEvent !== "function") return;
+    var detail = { pins: state.pins.slice() };
+    var ev;
+    try {
+      ev = new CustomEvent("den:pins", { detail: detail });
+    } catch (e) {
+      return;
+    }
+    window.dispatchEvent(ev);
+  }
+  if (typeof window.addEventListener === "function")
+    window.addEventListener("den:pins", function () {
+      syncPinToggles(document);
+    });
+  /** A pin toggle's look for its id: ★ "Unpin x" pressed, or ☆ "Pin x". */
+  function syncPinToggles(root) {
+    if (!root || !root.querySelectorAll) return;
+    var btns = root.querySelectorAll("[data-pin-toggle]");
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      var id = b.getAttribute("data-pin-toggle");
+      var on = isPinned(id);
+      var label = (on ? "Unpin" : "Pin") + " " + id;
+      b.textContent = on ? "★" : "☆";
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      b.setAttribute("aria-label", label);
+      b.title = label;
+    }
   }
   function saveShell(patch) {
     remember();
@@ -220,6 +321,154 @@
     toastTimer = setTimeout(function () {
       if (el.remove) el.remove();
     }, 2200);
+  }
+
+  // ── menus (.pop, R18): the scope parts' popovers ─────────────────────
+  // A menu is { label, items: [{ heading } | { hr: true } | { label, tag?,
+  // checked?, href?, onSelect? }] }. Rows with `checked` are radios (✓ when
+  // checked). Keyboard: ↑/↓ (wrapping), Home and End move; Enter or Space
+  // picks; Escape and Tab close and give focus back to the button; a click
+  // outside closes.
+  var openPop = null;
+  function closeMenu(refocus) {
+    if (!openPop) return;
+    var o = openPop;
+    openPop = null;
+    if (o.el.remove) o.el.remove();
+    o.anchor.setAttribute("aria-expanded", "false");
+    if (refocus && o.anchor.focus) o.anchor.focus();
+  }
+  function menuRows(pop) {
+    return Array.prototype.slice.call(pop.querySelectorAll(".den-mi"));
+  }
+  function openMenu(anchor, menu) {
+    var again = openPop && openPop.anchor === anchor;
+    closeMenu(false);
+    if (again || !menu) return;
+    var pop = document.createElement("div");
+    pop.className = "den-pop";
+    pop.tabIndex = -1;
+    pop.id = "den-pop-" + (anchor.dataset.scope || "menu");
+    pop.setAttribute("role", "menu");
+    pop.setAttribute("aria-label", menu.label);
+    var html = "";
+    var acts = [];
+    (menu.items || []).forEach(function (it) {
+      if (it.heading != null)
+        html +=
+          '<div class="den-ml" aria-hidden="true">' +
+          esc(it.heading) +
+          "</div>";
+      else if (it.hr) html += '<div class="den-hr" role="separator"></div>';
+      else {
+        var radio = it.checked != null;
+        var tag = it.href ? "a" : "button";
+        html +=
+          "<" +
+          tag +
+          ' class="den-mi" tabindex="-1" data-i="' +
+          acts.length +
+          '" role="' +
+          (radio ? "menuitemradio" : "menuitem") +
+          '"' +
+          (radio
+            ? ' aria-checked="' + (it.checked ? "true" : "false") + '"'
+            : "") +
+          (it.href ? ' href="' + esc(it.href) + '"' : ' type="button"') +
+          (it.title ? ' title="' + esc(it.title) + '"' : "") +
+          '><span class="den-mi-l">' +
+          esc(it.label) +
+          "</span>" +
+          (it.tag ? '<span class="den-mtag">' + esc(it.tag) + "</span>" : "") +
+          "</" +
+          tag +
+          ">";
+        acts.push(it);
+      }
+    });
+    pop.innerHTML = html;
+    document.body.appendChild(pop);
+    openPop = { el: pop, anchor: anchor };
+    anchor.setAttribute("aria-expanded", "true");
+    anchor.setAttribute("aria-controls", pop.id);
+    var r = anchor.getBoundingClientRect();
+    var w = pop.offsetWidth;
+    pop.style.top = r.bottom + 6 + "px";
+    pop.style.left =
+      Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + "px";
+    pop.addEventListener("click", function (e) {
+      var row = e.target.closest ? e.target.closest(".den-mi") : null;
+      if (!row) return;
+      var it = acts[+row.getAttribute("data-i")];
+      if (!it.href) e.preventDefault();
+      closeMenu(true);
+      if (it.onSelect) it.onSelect(it);
+    });
+    pop.addEventListener("keydown", function (e) {
+      var rows = menuRows(pop);
+      var i = rows.indexOf(document.activeElement);
+      var next =
+        e.key === "ArrowDown"
+          ? (i + 1) % rows.length
+          : e.key === "ArrowUp"
+            ? (i - 1 + rows.length) % rows.length
+            : e.key === "Home"
+              ? 0
+              : e.key === "End"
+                ? rows.length - 1
+                : -1;
+      if (next >= 0 && rows.length) {
+        e.preventDefault();
+        rows[next].focus();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        closeMenu(true);
+      } else if (e.key === "Tab") closeMenu(true);
+      else if (e.key === " " && rows[i] && rows[i].tagName === "A") {
+        e.preventDefault();
+        rows[i].click();
+      }
+    });
+    var rows = menuRows(pop);
+    var first = pop.querySelector('.den-mi[aria-checked="true"]') || rows[0];
+    if (first) first.focus();
+    else pop.focus();
+  }
+  document.addEventListener("mousedown", function (e) {
+    if (!openPop) return;
+    var tg = e.target;
+    if (openPop.el.contains(tg) || openPop.anchor.contains(tg)) return;
+    closeMenu(false);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && openPop) closeMenu(true);
+  });
+  window.addEventListener("resize", function () {
+    closeMenu(false);
+  });
+
+  /** A page's href from the NAV registry (Local Dev manages workspaces). */
+  function navHref(id) {
+    for (var i = 0; i < NAV.length; i++)
+      if (NAV[i].id === id) return NAV[i].href;
+    return "/";
+  }
+  /** A scope part: <button class="den-ib"><k>Key</k> value ▾</button>. */
+  function scopeButton(id, scope, key, value, hidden) {
+    return (
+      '<button type="button" id="' +
+      id +
+      '" class="den-ib den-scope-btn" data-scope="' +
+      scope +
+      '" aria-haspopup="menu" aria-expanded="false"' +
+      (hidden ? " hidden" : "") +
+      '><span class="den-k">' +
+      esc(key) +
+      '</span> <span class="den-v"><span class="den-vn">' +
+      esc(value) +
+      '</span> <span aria-hidden="true">▾</span></span></button>'
+    );
   }
 
   // ── Den's own groups and pages ─────────────────────────────────────────
@@ -331,22 +580,22 @@
     '<a class="den-brand" href="/" title="__DEN_TITLE__">' +
     '<span class="den-mark" id="den-mark" aria-hidden="true"></span>' +
     '<h1 class="den-title">__DEN_CLI__</h1></a>' +
-    // The prototype's scope breadcrumb: / Workspace / Env (R4 makes each
-    // part a menu in dev.18). The pill is hidden until header.js knows the
-    // workspace (it clears the inline display).
-    '<div class="den-scope" aria-label="Scope">' +
+    // The prototype's scope breadcrumb (R4): / ORG <org> ▾ / WORKSPACE
+    // <ws> ▾ / ENV <env> ▾. Each part is an .ib button with a .pop menu.
+    // The org is a static label while there is one org (ORG-SPEC C4) and
+    // hidden until header.js knows it; the workspace part is hidden until
+    // header.js knows the workspaces. #env-sel stays as the env's value
+    // (pages read it and listen for its change): the Env menu drives it.
+    '<div class="den-scope" role="group" aria-label="Scope">' +
     '<span class="den-sep" aria-hidden="true">/</span>' +
-    // The org (setOrg, from header.js): hidden until it is known.
-    '<span id="org-crumb" class="den-ib den-org" hidden><span class="den-k">' +
+    '<span id="org-crumb" class="den-ib den-org den-opt" hidden><span class="den-k">' +
     esc(t("k.org")) +
-    '</span><span class="den-org-name"></span></span>' +
+    '</span> <span class="den-org-name"></span></span>' +
     '<span class="den-sep den-org-sep" aria-hidden="true" hidden>/</span>' +
-    '<span id="ws-pill" class="den-ib den-ws-pill" style="display: none" title="Focused workspace"></span>' +
-    '<span class="den-sep" aria-hidden="true">/</span>' +
-    '<label class="den-ib den-env" title="Environment, for every page">' +
-    '<span class="den-k">Env</span>' +
-    '<select id="env-sel" aria-label="Environment"><option value="local">local</option></select>' +
-    "</label>" +
+    scopeButton("ws-pill", "ws", t("k.ws"), "", true) +
+    '<span class="den-sep den-ws-sep" aria-hidden="true" hidden>/</span>' +
+    scopeButton("env-btn", "env", t("k.env"), "local", false) +
+    '<select id="env-sel" hidden aria-hidden="true" tabindex="-1"><option value="local">local</option></select>' +
     "</div>" +
     '<div class="health" id="health" title="' +
     (host.dataset.healthEnv ? "Local service health" : "Service health") +
@@ -360,6 +609,202 @@
     '"></nav>';
 
   var nav = host.querySelector(".den-rail");
+
+  // ── the scope parts (R4) ───────────────────────────────────────────────
+  // Each part's menu comes from its model, set by header.js: setOrgs (the
+  // org menu, only with two or more orgs), setWorkspaces (the view scope),
+  // and the env from #env-sel's options. Choosing never starts, stops or
+  // routes anything: the callbacks only store a preference.
+  var scopeMenus = {
+    org: null,
+    ws: null,
+    env: function () {
+      var sel = document.getElementById("env-sel");
+      if (!sel) return null;
+      var items = [{ heading: t("k.env") }];
+      Array.prototype.forEach.call(sel.options, function (o) {
+        items.push({
+          label: o.textContent,
+          checked: o.value === sel.value,
+          onSelect: function () {
+            if (sel.value === o.value) return;
+            sel.value = o.value;
+            syncEnv();
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+          },
+        });
+      });
+      return { label: t("k.env"), items: items };
+    },
+  };
+  function scopeMenu(kind) {
+    var m = scopeMenus[kind];
+    return typeof m === "function" ? m() : m;
+  }
+  host.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("[data-scope]") : null;
+    if (!b || b.tagName !== "BUTTON") return;
+    openMenu(b, scopeMenu(b.dataset.scope));
+  });
+  host.addEventListener("keydown", function (e) {
+    var b = e.target.closest ? e.target.closest("[data-scope]") : null;
+    if (!b || b.tagName !== "BUTTON") return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!openPop || openPop.anchor !== b)
+        openMenu(b, scopeMenu(b.dataset.scope));
+      if (e.key === "ArrowUp" && openPop) {
+        var rows = menuRows(openPop.el);
+        if (rows.length) rows[rows.length - 1].focus();
+      }
+    }
+  });
+  function setValue(btn, value, title) {
+    if (!btn) return;
+    btn.querySelector(".den-vn").textContent = value;
+    if (title != null) btn.title = title;
+  }
+  /** The Env part's value: what #env-sel holds now. */
+  function syncEnv() {
+    var sel = document.getElementById("env-sel");
+    if (sel) setValue(document.getElementById("env-btn"), sel.value);
+  }
+  var envSel = document.getElementById("env-sel");
+  if (envSel) envSel.addEventListener("change", syncEnv);
+
+  /** One org: "/ ORG <title>" as a static label, no ▾ (C4). */
+  function setOrg(org) {
+    var el = document.getElementById("org-crumb");
+    if (!el || !org || !org.title) return false;
+    if (el.tagName === "BUTTON") {
+      var span = document.createElement("span");
+      span.id = "org-crumb";
+      span.className = "den-ib den-org den-opt";
+      span.innerHTML =
+        '<span class="den-k">' +
+        esc(t("k.org")) +
+        '</span> <span class="den-org-name"></span>';
+      el.replaceWith(span);
+      el = span;
+    }
+    scopeMenus.org = null;
+    el.querySelector(".den-org-name").textContent = org.title;
+    el.title = "Org: " + org.title + (org.id ? " (" + org.id + ")" : "");
+    el.hidden = false;
+    var sep = el.nextElementSibling;
+    if (sep && sep.classList.contains("den-org-sep")) sep.hidden = false;
+    return true;
+  }
+  /**
+   * The orgs that own workspaces (ORG-1b plugs /api/orgs in here). Fewer
+   * than two: the static label (C4). Two or more: an Org ▾ menu; picking
+   * one calls onSelect(id) and fires `den:org` on window. No backend.
+   */
+  function setOrgs(orgs, current, onSelect) {
+    var list = (Array.isArray(orgs) ? orgs : []).filter(function (o) {
+      return o && o.id;
+    });
+    var cur = null;
+    for (var i = 0; i < list.length; i++)
+      if (list[i].id === current) cur = list[i];
+    cur = cur || list[0];
+    var title = function (o) {
+      return o.title || o.label || o.id;
+    };
+    if (list.length < 2)
+      return cur ? setOrg({ id: cur.id, title: title(cur) }) : false;
+    var el = document.getElementById("org-crumb");
+    if (!el) return false;
+    if (el.tagName !== "BUTTON") {
+      var tmp = document.createElement("span");
+      tmp.innerHTML = scopeButton("org-crumb", "org", t("k.org"), "", false);
+      var btn = tmp.firstChild;
+      btn.className += " den-org den-opt";
+      btn.querySelector(".den-vn").className += " den-org-name";
+      el.replaceWith(btn);
+      el = btn;
+    }
+    el.hidden = false;
+    setValue(el, title(cur), "Org: " + title(cur) + " (" + cur.id + ")");
+    var sep = el.nextElementSibling;
+    if (sep && sep.classList.contains("den-org-sep")) sep.hidden = false;
+    scopeMenus.org = {
+      label: t("k.org"),
+      items: [{ heading: t("k.org") }].concat(
+        list.map(function (o) {
+          return {
+            label: title(o),
+            checked: o.id === cur.id,
+            tag:
+              typeof o.workspaces === "number"
+                ? t("org.n", { n: o.workspaces })
+                : null,
+            onSelect: function () {
+              if (o.id === cur.id) return;
+              setOrgs(list, o.id, onSelect);
+              if (typeof onSelect === "function") onSelect(o.id);
+              try {
+                window.dispatchEvent(
+                  new CustomEvent("den:org", { detail: { id: o.id } }),
+                );
+              } catch (e) {
+                /* no CustomEvent: the callback has it */
+              }
+            },
+          };
+        }),
+      ),
+    };
+    return true;
+  }
+  /**
+   * The Workspace part: { label, title, items: [{ value, label, checked,
+   * focused, title? }], onSelect(value) }. "All active" and the active
+   * workspaces, the focused one marked; then, apart, "Set <ws> as focus"
+   * (model.focusable, model.onFocus(name)) and a link to manage them.
+   */
+  function setWorkspaces(model) {
+    var btn = document.getElementById("ws-pill");
+    if (!btn) return;
+    var sep = btn.nextElementSibling;
+    if (!model) {
+      btn.hidden = true;
+      if (sep) sep.hidden = true;
+      scopeMenus.ws = null;
+      return;
+    }
+    setValue(btn, model.label, model.title || null);
+    btn.hidden = false;
+    if (sep) sep.hidden = false;
+    var items = [{ heading: t("k.ws") }];
+    if (!model.items || !model.items.length)
+      items.push({ label: t("ws.none"), href: navHref("local-dev") });
+    (model.items || []).forEach(function (it) {
+      items.push({
+        label: it.label,
+        checked: !!it.checked,
+        tag: it.focused ? t("ws.focus") : null,
+        title: it.title || null,
+        onSelect: function () {
+          if (!it.checked && typeof model.onSelect === "function")
+            model.onSelect(it.value);
+        },
+      });
+    });
+    items.push({ hr: true });
+    // Focus is a separate action (it writes workspaces.yml and retargets
+    // the CLI); picking a view above never moves it.
+    if (model.focusable && typeof model.onFocus === "function")
+      items.push({
+        label: t("ws.setFocus", { ws: model.focusable }),
+        title: t("ws.setFocusTip"),
+        onSelect: function () {
+          model.onFocus(model.focusable);
+        },
+      });
+    items.push({ label: t("ws.manage"), href: navHref("local-dev") });
+    scopeMenus.ws = { label: t("k.ws"), items: items };
+  }
 
   function healthDot(id) {
     var s = state.health[id];
@@ -403,13 +848,28 @@
     return (
       '<div class="den-rail-group" role="group" aria-labelledby="den-gh-' +
       esc(id) +
-      '"><div class="den-gh" id="den-gh-' +
+      '"' +
+      (from ? ' aria-describedby="den-gd-' + esc(id) + '"' : "") +
+      '><div class="den-gh" id="den-gh-' +
       esc(id) +
       '"><span>' +
       esc(label) +
       "</span>" +
-      (from ? '<span class="den-tagx">' + esc(from) + "</span>" : "") +
+      (from
+        ? '<span class="den-tagx" aria-hidden="true" title="' +
+          esc(t("from", { d: from })) +
+          '">' +
+          esc(from) +
+          "</span>"
+        : "") +
       "</div>" +
+      (from
+        ? '<span class="den-sr" id="den-gd-' +
+          esc(id) +
+          '">' +
+          esc(t("from", { d: from })) +
+          "</span>"
+        : "") +
       body +
       "</div>"
     );
@@ -424,23 +884,31 @@
         null,
         state.pins
           .map(function (p) {
-            return item(
-              {
-                id: "pin-" + p,
-                href: pinHref(p),
-                title: p,
-                lead: healthDot(p),
-                mono: true,
-              },
-              false,
-              '<span class="den-pin-x" data-unpin="' +
-                esc(p) +
-                '" role="button" aria-label="' +
-                esc(t("act.unpin") + " " + p) +
-                '" title="' +
-                esc(t("act.unpin")) +
-                '">×</span>',
-              ' data-pin="' + esc(p) + '"',
+            // The row is the link (named by the id alone, Delete unpins
+            // it); the × beside it is its own control, out of the tab
+            // order, named "Unpin <id>", its glyph hidden from readers.
+            return (
+              '<div class="den-pin-row">' +
+              item(
+                {
+                  id: "pin-" + p,
+                  href: pinHref(p),
+                  title: p,
+                  lead: healthDot(p),
+                  mono: true,
+                },
+                false,
+                // Holds the ×'s place in the row, as in the prototype.
+                '<span class="den-pin-sp" aria-hidden="true">×</span>',
+                ' data-pin="' + esc(p) + '" aria-keyshortcuts="Delete"',
+              ) +
+              '<button type="button" class="den-pin-x" tabindex="-1" data-unpin="' +
+              esc(p) +
+              '" aria-label="' +
+              esc(t("act.unpin") + " " + p) +
+              '" title="' +
+              esc(t("act.unpin")) +
+              '"><span aria-hidden="true">×</span></button></div>'
             );
           })
           .join(""),
@@ -548,7 +1016,27 @@
       links[i].dataset && links[i].dataset.pin ? links[i].dataset.pin : null;
     if (pinId && (e.key === "Delete" || e.key === "Backspace")) {
       e.preventDefault();
+      // Focus stays in the rail: the next pinned row, else the previous
+      // one, else the first item.
+      var pins = links.filter(function (a) {
+        return a.dataset && a.dataset.pin;
+      });
+      var at = pins.indexOf(links[i]);
+      var to = pins[at + 1] || pins[at - 1] || null;
+      var toNav = to ? to.dataset.nav : null;
       unpin(pinId);
+      var dest =
+        (toNav && nav.querySelector('[data-nav="' + toNav + '"]')) ||
+        nav.querySelector(".den-ni");
+      if (dest) {
+        Array.prototype.forEach.call(
+          nav.querySelectorAll(".den-ni"),
+          function (a) {
+            a.tabIndex = a === dest ? 0 : -1;
+          },
+        );
+        dest.focus();
+      }
       return;
     }
     var next =
@@ -596,15 +1084,14 @@
       menu.setAttribute("aria-expanded", open ? "true" : "false");
     });
 
-  // Skip to content: the page's first element after the shell.
+  // Skip to content: the page's <main id="den-content">, its one main
+  // landmark (each page wraps its content in it).
   var skip = host.querySelector(".den-skip");
   if (skip)
     skip.addEventListener("click", function (e) {
-      var el = host.nextElementSibling;
-      while (el && el.tagName === "SCRIPT") el = el.nextElementSibling;
+      var el = document.getElementById("den-content");
       if (!el) return;
       e.preventDefault();
-      if (!el.id) el.id = "den-content";
       if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
       el.focus();
     });
@@ -630,16 +1117,15 @@
     unpin: unpin,
     isPinned: isPinned,
     toast: toast,
-    /** The org part of the scope: "/ ORG <title> /", before the workspace. */
-    setOrg: function (org) {
-      var el = document.getElementById("org-crumb");
-      if (!el || !org || !org.title) return false;
-      el.querySelector(".den-org-name").textContent = org.title;
-      el.title = "Org: " + org.title + (org.id ? " (" + org.id + ")" : "");
-      el.hidden = false;
-      var sep = el.nextElementSibling;
-      if (sep && sep.classList.contains("den-org-sep")) sep.hidden = false;
-      return true;
+    /** The org part of the scope: "/ ORG <title>", static (one org). */
+    setOrg: setOrg,
+    setOrgs: setOrgs,
+    setWorkspaces: setWorkspaces,
+    /** Repaint the Env part from #env-sel (after setting its value). */
+    syncEnv: syncEnv,
+    syncPinToggles: syncPinToggles,
+    closeMenu: function () {
+      closeMenu(false);
     },
     groups: function () {
       return GROUPS.slice().sort(byOrder);
@@ -648,6 +1134,35 @@
       return NAV.slice();
     },
   };
+
+  // The ready path for a script that loads before shell.js:
+  // window.denShellQueue is an array of functions, each called with
+  // denShell once it exists (now); a later push runs at once. Then
+  // `den-shell:ready` fires on window.
+  var queued = Array.isArray(window.denShellQueue) ? window.denShellQueue : [];
+  function runQueued(fn) {
+    if (typeof fn !== "function") return;
+    try {
+      fn(window.denShell);
+    } catch (err) {
+      warn("a denShellQueue function threw: " + (err && err.message));
+    }
+  }
+  window.denShellQueue = {
+    push: function () {
+      for (var i = 0; i < arguments.length; i++) runQueued(arguments[i]);
+      return 0;
+    },
+    length: 0,
+  };
+  queued.forEach(runQueued);
+  try {
+    window.dispatchEvent(
+      new CustomEvent("den-shell:ready", { detail: window.denShell }),
+    );
+  } catch (e) {
+    /* no CustomEvent: the queue still ran */
+  }
 
   // The server's prefs win over the local copy.
   if (typeof fetch === "function")
@@ -703,26 +1218,39 @@
     "  align-items: center; gap: 6px; white-space: nowrap; font: inherit; }",
     ".den-ib:hover { background: var(--sunken); color: var(--text); }",
     ".den-menu-btn { display: none; }",
-    // Scope (.scope, .sep, .k): View / Focus / Env
+    // Scope (.scope, .sep, .k): / Org ▾ / Workspace ▾ / Env ▾ (R4)
     ".den-scope { display: flex; align-items: center; gap: 2px; min-width: 0; flex-shrink: 1; }",
     ".den-sep { color: var(--faint); }",
     ".den-scope [hidden] { display: none; }",
     ".den-scope .den-ib { color: var(--text); font-size: 13px; }",
-    ".den-k, .den-ws-pill .ws-pill-key { font: 11px var(--mono); color: var(--faint);",
-    "  text-transform: uppercase; letter-spacing: .06em; }",
-    ".den-env select { font: inherit; color: inherit; background: transparent; border: none;",
-    "  outline: none; cursor: pointer; padding: 0; appearance: none; -webkit-appearance: none; }",
-    ".den-env select option { background: var(--surface); color: var(--text); }",
-    ".den-env::after { content: '▾'; }",
-    ".den-env:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }",
-    // Focus pill: a scope button too
-    ".den-ws-pill { min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }",
-    ".den-ws-pill .ws-pill-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }",
-    "#den-shell .den-top .den-scope > #ws-pill, #den-shell .den-top .den-scope > .ws-pill-wrap {",
-    "  flex-shrink: 1; min-width: 60px; max-width: 220px; }",
-    "#den-shell .ws-pill-wrap > #ws-pill { max-width: 100%; }",
-    "#den-shell #ws-pill.ws-pill-btn { color: var(--text); font-size: 13px; }",
-    "#den-shell .ws-pill-caret { font-size: inherit; opacity: 1; }",
+    ".den-k { font: 11px var(--mono); color: var(--faint); text-transform: uppercase; letter-spacing: .06em; }",
+    ".den-scope .den-ib[aria-expanded='true'] { background: var(--sunken); }",
+    // A long name ends in an ellipsis; the whole name is in the menu.
+    ".den-scope .den-ib { min-width: 0; }",
+    "#ws-pill .den-vn, #org-crumb .den-vn { display: inline-block; max-width: 200px; overflow: hidden;",
+    "  text-overflow: ellipsis; vertical-align: top; }",
+    // Menus (.pop, .ml, .mi, .hr: R18)
+    ".den-pop { position: fixed; z-index: 45; background: var(--raised); border: 1px solid var(--border-strong);",
+    "  border-radius: 10px; box-shadow: var(--shadow); padding: 6px; min-width: 220px;",
+    "  max-height: calc(100vh - 72px); overflow-y: auto; box-sizing: border-box;",
+    "  font: 14px/1.45 var(--sans); color: var(--text); }",
+    ".den-pop:focus { outline: none; }",
+    ".den-pop :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
+    ".den-pop .den-ml { font: 11px var(--mono); color: var(--faint); text-transform: uppercase;",
+    "  letter-spacing: .07em; padding: 6px 8px 2px; }",
+    ".den-pop .den-mi { display: flex; width: 100%; align-items: center; gap: 8px; background: none;",
+    "  border: 0; padding: 6px 8px; border-radius: 6px; cursor: pointer; text-align: left;",
+    "  font: inherit; color: inherit; text-decoration: none; box-sizing: border-box; }",
+    ".den-pop .den-mi:hover, .den-pop .den-mi:focus { background: var(--sunken); }",
+    ".den-pop .den-mi[aria-checked='true']::after { content: '✓'; margin-left: auto; color: var(--accent-text); }",
+    ".den-pop .den-mi-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+    ".den-pop .den-mtag { font: 11px var(--mono); color: var(--muted); }",
+    ".den-pop .den-hr { height: 1px; background: var(--border); margin: 6px 0; }",
+    // The page's one main landmark (#den-content) holds all its content
+    // and lays it out as the body did (a column), so pages keep their look.
+    "body.den-has-shell > #den-content { display: flex; flex-direction: column; flex: 1 1 auto;",
+    "  min-height: 0; min-width: 0; }",
+    "body.den-has-shell > #den-content:focus { outline: none; }",
     // Chips (.chip): the lock
     ".den-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);",
     "  border-radius: 999px; padding: 3px 10px; background: var(--surface); cursor: pointer;",
@@ -769,17 +1297,25 @@
     "  color: var(--muted); font-variant-numeric: tabular-nums; }",
     ".den-bdg.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }",
     ".den-rail-grow { flex: 1; }",
+    ".den-sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;",
+    "  clip: rect(0 0 0 0); white-space: nowrap; border: 0; }",
     // Pinned row: the dot in place of the icon (.dot, margin 0 5px)
     ".den-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none;",
     "  display: inline-block; margin: 0 5px; }",
     ".den-dot.bad { background: var(--bad); } .den-dot.warn { background: var(--warn); }",
     ".den-dot.off { background: var(--faint); }",
-    ".den-pin-x { opacity: 0; font-size: 12px; color: var(--faint); }",
-    ".den-ni:hover .den-pin-x, .den-ni:focus-visible .den-pin-x { opacity: 1; }",
+    ".den-pin-row { position: relative; }",
+    ".den-pin-sp { visibility: hidden; font-size: 12px; }",
+    ".den-pin-x { position: absolute; top: 0; bottom: 0; right: 10px; display: flex; align-items: center;",
+    "  padding: 0; border: 0; background: none; cursor: pointer; font: 12px var(--sans);",
+    "  opacity: 0; color: var(--faint); }",
+    ".den-pin-x:hover { color: var(--text); }",
+    ".den-pin-row:hover .den-pin-x, .den-pin-row:focus-within .den-pin-x { opacity: 1; }",
     // Collapsed: icons only. The prototype hides headings and labels; they
     // stay here for screen readers (visually hidden, no space taken).
     "body.den-rail-collapsed .den-rail .den-lbl, body.den-rail-collapsed .den-rail .den-gh,",
-    "body.den-rail-collapsed .den-rail .den-bdg, body.den-rail-collapsed .den-rail .den-pin-x {",
+    "body.den-rail-collapsed .den-rail .den-bdg, body.den-rail-collapsed .den-rail .den-pin-x,",
+    "body.den-rail-collapsed .den-rail .den-pin-sp {",
     "  position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;",
     "  clip: rect(0 0 0 0); white-space: nowrap; border: 0; }",
     // Toast (.toast)
@@ -788,7 +1324,7 @@
     "  padding: 8px 14px; box-shadow: var(--shadow); z-index: 60; font: 14px/1.45 var(--sans);",
     "  color: var(--text); }",
     // Narrow (the prototype's 860 and 720px steps)
-    "@media (max-width: 860px) { .den-k, .den-sep { display: none; } }",
+    "@media (max-width: 860px) { .den-scope .den-k, .den-scope .den-sep, .den-scope .den-opt { display: none; } }",
     "@media (max-width: 720px) {",
     "  body.den-has-shell, body.den-has-shell.den-rail-collapsed { --den-rail-w: 0px; --den-rail-cw: 244px; }",
     "  .den-menu-btn { display: inline-flex; }",
@@ -799,11 +1335,12 @@
     "  body.den-rail-collapsed .den-rail .den-bdg { position: static; width: auto; height: auto;",
     "    clip: auto; overflow: hidden; }",
     "  .den-collapse-btn { display: none; }",
+    "  .den-scope { display: none; }",
     "}",
     "@media (prefers-reduced-motion: reduce) { .den-rail { transition: none; } }",
     // Names in the bar never wrap mid-word: they end in an ellipsis and
     // keep the whole name in their title.
-    ".den-top .health-item, .den-top .health-app-label, .den-ws-pill { white-space: nowrap; }",
+    ".den-top .health-item, .den-top .health-app-label { white-space: nowrap; }",
     // The health row sits in the status chip's slot, as a chip (R6 replaces
     // it with the real chip and drawer in dev.20).
     ".health { display: flex; align-items: center; gap: 10px; }",

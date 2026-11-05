@@ -344,6 +344,13 @@ export interface UserConfig {
   appearance?: { theme?: string; mode?: string };
   /** The rail's pins and collapse (src/ui/server/shell-prefs.ts). */
   shell?: { pins?: string[]; collapsed?: boolean };
+  /**
+   * What the web UI and `<cli> status` show: `scope` is "all" (every active
+   * workspace, the default) or one active workspace's name. A view filter
+   * only: the focused workspace stays the default target for commands. See
+   * src/shared/environment-manager/scope.ts.
+   */
+  view?: { scope?: string };
 }
 
 const ALL_ENVIRONMENTS: Environment[] = [

@@ -11,10 +11,7 @@
  * the current env gets a dot.
  */
 
-import {
-  buildWorkspaceMenuModel,
-  buildWorkspacePillModel,
-} from "./workspace-picker.js";
+import { buildScopeMenuModel, ownersLabel } from "./workspace-picker.js";
 import { initAppearance } from "./appearance.js";
 import { versionLabel } from "./version-label.js";
 import { changelogView } from "./changelog-view.js";
@@ -80,6 +77,8 @@ export function envReady() {
       saved = localStorage.getItem(LS_ENV);
     } catch {}
     if (saved && envs.includes(saved)) sel.value = saved;
+    // The Env ▾ menu (shell.js) shows and sets this select's value.
+    window.denShell?.syncEnv?.();
     sel.addEventListener("change", () => {
       try {
         localStorage.setItem(LS_ENV, sel.value);
@@ -796,248 +795,85 @@ export function groupReposByApplication(repos, apps) {
   return out;
 }
 
-// ── Workspace pill ────────────────────────────────────────────────────────────
-
-// Set when a page opts into switching (initWorkspacePill's `onSwitch`): the
-// pill becomes a dropdown of every known workspace instead of a static label.
-let _wsOnSwitch = null;
-let _wsMenuOpen = false;
+// ── Workspace: the scope breadcrumb's Workspace ▾ menu (R4) ─────────────────
 
 /**
- * Render the active workspace name into <span id="ws-pill">.
- * Pass the id of the env <select> to show the pill only when env is "local".
- * Omit envSelId (or pass null) to always show it (e.g. Local Dev page).
+ * Feed the shell's Workspace part (shell.js #ws-pill, a menu): "All active"
+ * and each active workspace, the focused one marked. Choosing one sets the
+ * view scope (POST /api/scope, a preference) for every page. It replaces
+ * dev.17's workspace pill and its focus menu (one control, not two): the
+ * focus moves only through the menu's separate "Set <ws> as focus".
  *
- * Pass `onSwitch` to make the pill a workspace picker: choosing an entry POSTs
- * `use` (activate + focus, same as `__DEN_CLI__ workspace use`) and then calls
- * onSwitch(name) so the page can reload whatever it derives from the focused
- * workspace. Pages with their own workspace UI (Local Dev) omit it.
+ * The arguments are dev.17's (an env select, an onSwitch callback) and are
+ * no longer used: the view applies to every env.
  */
-export async function initWorkspacePill(envSelId = null, { onSwitch } = {}) {
-  const envSel = envSelId ? document.getElementById(envSelId) : null;
-  _wsOnSwitch = onSwitch ?? null;
-  await _renderPill(envSel);
-  if (envSel) {
-    envSel.addEventListener("change", () => _renderPill(envSel));
-  }
+export async function initWorkspacePill() {
+  await _renderScopeMenu();
 }
 
-/** Re-fetch and re-render the workspace pill (call after switching workspaces). */
+/** Re-fetch and repaint the Workspace part (after a workspace change). */
 export async function refreshWorkspacePill() {
-  const envSel = document.getElementById("env-sel");
-  await _renderPill(envSel);
+  await _renderScopeMenu();
 }
 
-async function _renderPill(envSel) {
-  const el = document.getElementById("ws-pill");
-  if (!el) return;
-  const isLocal = !envSel || envSel.value === "local";
-  if (!isLocal) {
-    _closeWorkspaceMenu();
-    _pillHost(el).style.display = "none";
-    return;
-  }
+async function _renderScopeMenu() {
+  const sh = window.denShell;
+  if (!sh?.setWorkspaces) return;
   try {
-    const data = await fetch("/api/workspaces").then((r) => r.json());
-    const { label, title } = buildWorkspacePillModel(data);
-    if (_wsOnSwitch) {
-      _renderPickerPill(el, data, label, title);
-    } else {
-      el.replaceChildren(..._pillLabel(label));
-      el.title = data.active?.length > 1 ? title : label;
-    }
-    // The pill starts as inline display:none in every page's markup; clear it
-    // on the pill AND its picker wrapper, or the wrapper shows an empty box.
-    el.style.display = "";
-    _pillHost(el).style.display = "";
-  } catch {
-    _closeWorkspaceMenu();
-    _pillHost(el).style.display = "none";
-  }
-}
-
-/**
- * "Workspace <name>": the prototype's scope part, a key and a value (R4
- * makes it a menu in dev.18). A long name ends in an ellipsis (shell.js);
- * the whole name is in its title.
- */
-function _pillLabel(label) {
-  const key = document.createElement("span");
-  key.className = "ws-pill-key";
-  key.textContent = "Workspace";
-  const name = document.createElement("span");
-  name.className = "ws-pill-name";
-  name.textContent = label;
-  name.title = label;
-  return [key, name];
-}
-
-/**
- * The element whose visibility tracks the pill's: the wrapper once the picker
- * has been built (so the menu is hidden with it), the pill itself before that.
- */
-function _pillHost(el) {
-  return el.parentElement?.classList.contains("ws-pill-wrap")
-    ? el.parentElement
-    : el;
-}
-
-function _injectWorkspacePickerStyles() {
-  if (document.getElementById("__DEN_CLI__-ws-picker-styles")) return;
-  const s = document.createElement("style");
-  s.id = "__DEN_CLI__-ws-picker-styles";
-  s.textContent = `
-    .ws-pill-wrap { position: relative; display: inline-flex; flex-shrink: 0; }
-    #ws-pill.ws-pill-btn { cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 5px; }
-    #ws-pill.ws-pill-btn:hover, #ws-pill.ws-pill-btn.open { border-color: var(--accent); }
-    .ws-pill-caret { font-size: 8px; opacity: .7; }
-    .ws-menu {
-      display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 200;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 6px; min-width: 190px; max-height: 280px; overflow-y: auto;
-      box-shadow: var(--shadow); padding: 3px 0;
-    }
-    .ws-menu.open { display: block; }
-    .ws-menu-item {
-      display: flex; align-items: center; gap: 8px; width: 100%;
-      background: none; border: none; text-align: left;
-      padding: 6px 12px; cursor: pointer; font-size: 12px;
-      font-family: var(--mono); color: var(--text); white-space: nowrap;
-    }
-    .ws-menu-item:hover { background: var(--border); }
-    .ws-menu-item[disabled] { cursor: default; }
-    .ws-menu-mark { width: 10px; flex-shrink: 0; color: var(--accent-text); }
-    .ws-menu-tag { margin-left: auto; font-size: 10px; color: var(--muted); }
-  `;
-  document.head.appendChild(s);
-}
-
-/** Turn the static pill into a button + dropdown (idempotent). */
-function _renderPickerPill(el, data, label, title) {
-  _injectWorkspacePickerStyles();
-
-  let wrap = el.parentElement;
-  if (!wrap?.classList.contains("ws-pill-wrap")) {
-    wrap = document.createElement("span");
-    wrap.className = "ws-pill-wrap";
-    el.replaceWith(wrap);
-    wrap.appendChild(el);
-    el.classList.add("ws-pill-btn");
-    el.setAttribute("role", "button");
-    el.setAttribute("tabindex", "0");
-    el.addEventListener("click", () => _toggleWorkspaceMenu());
-    el.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        _toggleWorkspaceMenu();
-      }
+    const [data, scope] = await Promise.all([
+      fetch("/api/workspaces").then((r) => r.json()),
+      fetch("/api/scope")
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ]);
+    sh.setWorkspaces({
+      ...buildScopeMenuModel(scope, data),
+      onSelect: _switchScope,
+      onFocus: _setFocus,
     });
+  } catch {
+    sh.setWorkspaces(null);
   }
-
-  el.replaceChildren(..._pillLabel(label));
-  const caret = document.createElement("span");
-  caret.className = "ws-pill-caret";
-  caret.textContent = "▾";
-  el.append(caret);
-  el.title = title;
-
-  let menu = wrap.querySelector(".ws-menu");
-  if (!menu) {
-    menu = document.createElement("div");
-    menu.className = "ws-menu";
-    wrap.appendChild(menu);
-  }
-  _paintWorkspaceMenu(menu, data);
 }
 
-function _paintWorkspaceMenu(menu, data) {
-  const { items } = buildWorkspaceMenuModel(data);
-  menu.replaceChildren();
-  if (items.length === 0) {
-    const empty = document.createElement("button");
-    empty.className = "ws-menu-item";
-    empty.disabled = true;
-    empty.textContent = "No workspaces";
-    menu.appendChild(empty);
+/**
+ * A view filter only: POST /api/scope stores the preference (user.yml
+ * `view`), then the page reloads to show the new view whole. No service,
+ * container, daemon or route changes, and the focus stays where it is.
+ */
+async function _switchScope(value) {
+  try {
+    const res = await fetch("/api/scope", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope: value }),
+    });
+    if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+  } catch (err) {
+    window.denShell?.toast?.(`Could not change the view: ${err.message}`);
     return;
   }
-  for (const item of items) {
-    const btn = document.createElement("button");
-    btn.className = "ws-menu-item";
-    btn.type = "button";
-    // Selecting an inactive workspace activates it (POST `use`), which only
-    // rewrites workspaces.json — no services are started.
-    btn.title = item.focused
-      ? "Current workspace"
-      : item.active
-        ? "Focus this workspace"
-        : "Activate and focus this workspace";
-
-    const mark = document.createElement("span");
-    mark.className = "ws-menu-mark";
-    mark.textContent = item.focused ? "●" : "";
-    const name = document.createElement("span");
-    name.textContent = item.name;
-    btn.append(mark, name);
-
-    if (!item.active) {
-      const tag = document.createElement("span");
-      tag.className = "ws-menu-tag";
-      tag.textContent = "not active";
-      btn.appendChild(tag);
-    }
-
-    btn.addEventListener("click", () => _switchWorkspace(item));
-    menu.appendChild(btn);
-  }
+  location.reload();
 }
 
-function _toggleWorkspaceMenu(force = null) {
-  const menu = document.querySelector(".ws-pill-wrap .ws-menu");
-  const pill = document.getElementById("ws-pill");
-  if (!menu) return;
-  _wsMenuOpen = force ?? !_wsMenuOpen;
-  menu.classList.toggle("open", _wsMenuOpen);
-  pill?.classList.toggle("open", _wsMenuOpen);
-}
-
-function _closeWorkspaceMenu() {
-  if (_wsMenuOpen) _toggleWorkspaceMenu(false);
-}
-
-document.addEventListener("click", (e) => {
-  if (_wsMenuOpen && !e.target.closest(".ws-pill-wrap")) _closeWorkspaceMenu();
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") _closeWorkspaceMenu();
-});
-
-async function _switchWorkspace(item) {
-  _closeWorkspaceMenu();
-  if (item.focused) return;
-  const onSwitch = _wsOnSwitch;
+/**
+ * "Set <ws> as focus": Local Dev's focus action (POST /api/workspaces
+ * `focus`, which writes workspaces.yml and retargets the CLI). Separate
+ * from the view: it is the only thing in the menu that moves the focus.
+ */
+async function _setFocus(name) {
   try {
     const res = await fetch("/api/workspaces", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // `use` = activate + focus, matching `__DEN_CLI__ workspace use`. Focus alone
-      // is rejected by the server for a workspace that is not active yet.
-      body: JSON.stringify({ name: item.name, action: "use" }),
+      body: JSON.stringify({ name, action: "focus" }),
     });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(text || `HTTP ${res.status}`);
-    }
+    if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
   } catch (err) {
-    alert(`Could not switch to workspace "${item.name}": ${err.message}`);
+    window.denShell?.toast?.(`Could not set the focus: ${err.message}`);
     return;
   }
-  await refreshWorkspacePill();
-  try {
-    await onSwitch?.(item.name);
-  } catch {
-    /* the page's own refresh failing must not break the switch */
-  }
+  location.reload();
 }
 
 // ── Health dots ───────────────────────────────────────────────────────────────
@@ -1242,7 +1078,11 @@ function _repoHealthItem(r, escAttr) {
         ? ` · ${what} — ${entry.error}`
         : ` · ${what} → ${entry.status}`
       : "";
-  return `<div class="health-item" data-repo="${escAttr(repo)}" title="${escAttr(describeRollup(rollup) + detail)}">
+  // A repo several workspaces in view share is one dot; the tip names them.
+  const shared = ownersLabel([
+    ...new Set(items.flatMap((i) => i.workspaces ?? [])),
+  ]);
+  return `<div class="health-item" data-repo="${escAttr(repo)}" title="${escAttr(describeRollup(rollup) + detail + shared)}">
       <span class="dot ${DOT[rollup.state]}"></span>
       <span>${repo}</span>
       ${openIcon}

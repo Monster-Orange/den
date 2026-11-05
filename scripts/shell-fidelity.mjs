@@ -10,7 +10,9 @@
  *
  * Loads the prototype (file) and the real page (a running Den, demo data)
  * at the same viewport, finds matched element pairs (the top bar, brand,
- * scope parts, What's new, the user menu, the chip, the rail, its group
+ * scope parts (org, workspace, env, a part's hover) and the open
+ * Workspace menu (.pop, its .ml label, an .mi row, the ✓), What's new,
+ * the user menu, the chip, the rail, its group
  * headings, items in their default, hover and current states, the icon,
  * the current bar, a pinned row and its dot, a badge, and the collapsed
  * rail) and compares their computed font-size, font-weight, line-height,
@@ -22,7 +24,8 @@
  *
  * --theme sets the real page's theme for the run (through /api/settings,
  * restored after); --brand picks the prototype's (den or mo).
- * --shots writes each pair of full-page screenshots side by side. The
+ * --shots writes each pair of full-page screenshots side by side, and a
+ * second pair with the Workspace menu open (-menu). The
  * prototype's web fonts are blocked (both sides use the fallbacks) unless
  * --proto-fonts 1: fonts are a theme's assets, not the shell's CSS.
  * Exit code 1 on any failure. Needs Playwright's chromium.
@@ -109,24 +112,74 @@ const PAIRS = [
   ["brand gap", ".brand", ".den-brand", ["columnGap"]],
   ["brand mark", ".mark", ".den-mark", ["width", "height"]],
   [
+    "scope part (org)",
+    '.scope [data-pop="org"]',
+    "#org-crumb",
+    [...TYPE, ...BOX, "columnGap"],
+  ],
+  ["scope key (org)", '.scope [data-pop="org"] .k', "#org-crumb .den-k", TYPE],
+  [
     "scope part (workspace)",
     '.scope [data-pop="ws"]',
     "#ws-pill",
-    [...TYPE, ...BOX, "columnGap"],
+    [...TYPE, ...BOX, "columnGap", "borderTopLeftRadius"],
   ],
+  ["scope key (workspace)", '.scope [data-pop="ws"] .k', "#ws-pill .den-k", TYPE],
   [
-    "scope key (workspace)",
-    '.scope [data-pop="ws"] .k',
-    "#ws-pill .ws-pill-key",
-    TYPE,
+    "scope part (hover)",
+    '.scope [data-pop="ws"]',
+    "#ws-pill",
+    ["height", "@bg=--sunken", "@color=--text"],
+    { state: "hover" },
   ],
   [
     "scope part (env)",
     '.scope [data-pop="env"]',
-    ".den-env",
+    "#env-btn",
     [...TYPE, ...BOX, "columnGap"],
   ],
-  ["scope key (env)", '.scope [data-pop="env"] .k', ".den-env .den-k", TYPE],
+  ["scope key (env)", '.scope [data-pop="env"] .k', "#env-btn .den-k", TYPE],
+  // The Workspace menu, open (R18 .pop, .ml, .mi and the ✓).
+  [
+    "popover",
+    ".pop",
+    ".den-pop",
+    [
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft",
+      "borderTopLeftRadius",
+      "borderTopWidth",
+      "minWidth",
+      "fontSize",
+      "lineHeight",
+      "@bg=--raised",
+    ],
+    { state: "menu" },
+  ],
+  ["popover offset", ".pop", ".den-pop", ["@below=6"], { state: "menu" }],
+  [
+    "menu label",
+    ".pop .ml",
+    ".den-pop .den-ml",
+    [...TYPE, ...BOX],
+    { state: "menu" },
+  ],
+  [
+    "menu item",
+    ".pop .mi",
+    ".den-pop .den-mi",
+    [...TYPE, ...BOX, "columnGap", "borderTopLeftRadius", "@color=--text"],
+    { state: "menu" },
+  ],
+  [
+    "menu item (checked ✓)",
+    '.pop .mi[aria-checked="true"]',
+    '.den-pop .den-mi[aria-checked="true"]',
+    ["content", "@color=--accent-text"],
+    { state: "menu", pseudo: "::after" },
+  ],
   [
     "scope separator",
     ".scope .sep",
@@ -304,7 +357,12 @@ async function measure(p, sel, props, pseudo) {
       };
       const out = {};
       for (const prop of props) {
-        if (prop.startsWith("@")) {
+        if (prop.startsWith("@below")) {
+          // The gap between the menu and the button that opened it.
+          const btn = document.querySelector('[aria-expanded="true"], [data-pop="ws"]');
+          const gap = btn ? Math.round(r.top - btn.getBoundingClientRect().bottom) : null;
+          out[prop] = gap === 6 ? "6px below" : `${gap}px below`;
+        } else if (prop.startsWith("@")) {
           const [what, tok] = prop.slice(1).split("=");
           const got = what === "bg" ? cs.backgroundColor : cs.color;
           out[prop] = got === token(tok) ? "matches " + tok : `${got} ≠ ${tok}`;
@@ -382,6 +440,8 @@ async function openReal(browser, width) {
   await p.waitForTimeout(1800);
   await p.evaluate(() => window.closeChangelog?.());
   await p.evaluate(() => document.activeElement?.blur());
+  // The Workspace part shows once header.js has the workspaces.
+  await p.waitForSelector("#ws-pill:not([hidden])").catch(() => {});
   // The prototype always shows the unread dot; show ours to measure it.
   await p.evaluate(() => {
     const pip = document.getElementById("v-pip");
@@ -409,7 +469,12 @@ async function main() {
     for (const width of WIDTHS) {
       const proto = await openProto(browser, width);
       const real = await openReal(browser, width);
-      if (args.shots) await sideBySide(browser, proto.p, real.p, width);
+      if (args.shots) {
+        await sideBySide(browser, proto.p, real.p, width);
+        await openMenus(proto.p, real.p);
+        await sideBySide(browser, proto.p, real.p, width, "-menu");
+        await closeMenus(proto.p, real.p);
+      }
       for (const [name, ps, rs, props, opts = {}] of PAIRS) {
         if (opts.state === "collapsed") {
           await proto.p.click('[data-act="collapse"]');
@@ -421,12 +486,14 @@ async function main() {
           await proto.p.hover(ps);
           await real.p.hover(rs);
         }
+        if (opts.state === "menu") await openMenus(proto.p, real.p);
         const a = await measure(proto.p, ps, props, opts.pseudo);
         const b = await measure(real.p, rs, props, opts.pseudo);
         if (opts.state === "hover") {
           await proto.p.mouse.move(0, 0);
           await real.p.mouse.move(0, 0);
         }
+        if (opts.state === "menu") await closeMenus(proto.p, real.p);
         if (opts.state === "collapsed") {
           await proto.p.click('[data-act="collapse"]');
           await real.p.click('.den-rail [data-act="collapse"]');
@@ -488,8 +555,25 @@ async function main() {
   process.exit(failed ? 1 : 0);
 }
 
+/** Open the Workspace menu on both sides (the prototype's and Den's). */
+async function openMenus(protoPage, realPage) {
+  await protoPage.click('.scope [data-pop="ws"]');
+  await realPage.click("#ws-pill");
+  await protoPage.waitForSelector(".pop");
+  await realPage.waitForSelector(".den-pop");
+  // Measure rest states: no row hovered or focused-tinted.
+  await protoPage.mouse.move(0, 0);
+  await realPage.mouse.move(0, 0);
+  await realPage.evaluate(() => document.querySelector(".den-pop")?.focus());
+}
+async function closeMenus(protoPage, realPage) {
+  await protoPage.keyboard.press("Escape");
+  await realPage.keyboard.press("Escape");
+  await protoPage.waitForTimeout(50);
+}
+
 /** One PNG: the prototype on the left, the real page on the right. */
-async function sideBySide(browser, protoPage, realPage, width) {
+async function sideBySide(browser, protoPage, realPage, width, suffix = "") {
   fs.mkdirSync(args.shots, { recursive: true });
   const a = (await protoPage.screenshot()).toString("base64");
   const b = (await realPage.screenshot()).toString("base64");
@@ -502,7 +586,7 @@ async function sideBySide(browser, protoPage, realPage, width) {
       `<figure style="margin:0"><figcaption style="padding:4px">prototype (${BRAND})</figcaption><img src="data:image/png;base64,${a}"></figure>` +
       `<figure style="margin:0"><figcaption style="padding:4px">Den (${args.theme ?? "theme"})</figcaption><img src="data:image/png;base64,${b}"></figure></body>`,
   );
-  const name = `${PAGE.replace(/\W+/g, "") || "home"}-${width}-${BRAND}-${MODE}.png`;
+  const name = `${PAGE.replace(/\W+/g, "") || "home"}-${width}-${BRAND}-${MODE}${suffix}.png`;
   await p.screenshot({ path: path.join(args.shots, name), fullPage: true });
   await ctx.close();
 }

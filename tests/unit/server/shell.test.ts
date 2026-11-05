@@ -88,6 +88,21 @@ describe("the shell's source", () => {
   it("uses no color literal (theme tokens only, R2)", () => {
     expect(SHELL).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
   });
+  it("draws the scope as the prototype's .ib menus, one Workspace control (R4)", () => {
+    // / ORG / WORKSPACE ▾ / ENV ▾: no View select, no Focus pill, no menu
+    // of header.js's own (the old pill and its .ws-menu are gone).
+    expect(SHELL).toMatch(
+      /<span id="org-crumb"[\s\S]*?scopeButton\("ws-pill", "ws"[\s\S]*?scopeButton\("env-btn", "env"/,
+    );
+    expect(SHELL).not.toMatch(/scope-sel|scope-wrap|den-ws-pill/);
+    const header = read("header.js");
+    expect(header).not.toMatch(
+      /ws-menu|_renderPickerPill|key\.textContent = "Focus"/,
+    );
+    expect(read("workspace-picker.js")).not.toMatch(
+      /buildWorkspacePillModel|buildWorkspaceMenuModel/,
+    );
+  });
   it("lists pages only in its NAV registry (R11a)", () => {
     // Every page href in shell.js is one registry entry's `href:`, and the
     // pages themselves draw no rail links.
@@ -108,6 +123,28 @@ describe("the shell's source", () => {
     );
     for (const f of Object.keys(PAGES))
       expect(read(f)).not.toMatch(/class="den-(ni|rail-link)"/);
+  });
+});
+
+describe("one main landmark per page (SA's dev.17 run)", () => {
+  it.each(Object.keys(PAGES))(
+    '%s wraps its content in <main id="den-content">, its only main',
+    (file) => {
+      const html = read(file);
+      expect(html.match(/<main[\s>][^>]*>/g)).toEqual([
+        '<main id="den-content">',
+      ]);
+      expect(html).not.toMatch(/role="main"/);
+      // It opens right after the shell and closes at the end of the body.
+      expect(html).toMatch(
+        /<script src="\/shell\.js"><\/script>\s*(<!--[^\n]*-->\s*)?<main id="den-content">/,
+      );
+      expect(html).toMatch(/<\/main>\s*<\/body>/);
+    },
+  );
+  it("the skip link goes to it", () => {
+    expect(SHELL).toContain('href="#den-content"');
+    expect(SHELL).toMatch(/getElementById\("den-content"\)/);
   });
 });
 

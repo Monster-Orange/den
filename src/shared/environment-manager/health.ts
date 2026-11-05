@@ -39,7 +39,11 @@ import {
   listWorkspaceServices,
   readManifestAnyBranch,
 } from "./workspaces.js";
-import type { ResolvedService, ServiceCatalog } from "../types/index.js";
+import type {
+  ResolvedService,
+  ServiceCatalog,
+  WorkspaceConfig,
+} from "../types/index.js";
 import type { Environment } from "../types/index.js";
 
 import { product } from "../product.js";
@@ -76,6 +80,11 @@ export interface ServiceHealthResult {
   target?: Placement["target"];
   /** A repo row's rollup of every service (rollupRepoHealth). */
   rollup?: RepoRollup;
+  /**
+   * The workspaces checked that define this service, when more than one
+   * was (checkCatalogHealth's `workspaces`): a shared service, listed once.
+   */
+  workspaces?: string[];
 }
 
 // ── Name resolution ───────────────────────────────────────────────────────────
@@ -747,16 +756,32 @@ export async function checkServiceHealth(
 export async function checkCatalogHealth(
   catalog: ServiceCatalog = readCatalog(),
   env: Environment = "local",
+  /**
+   * The workspaces to check (focus first), e.g. the view scope's. Default:
+   * the focused one. A service several define is checked once, from the
+   * first, with `workspaces` naming every one.
+   */
+  workspaces?: { name: string; config: WorkspaceConfig }[],
 ): Promise<ServiceHealthResult[]> {
   const ws = getActiveWorkspace();
+  const list = workspaces ?? (ws ? [ws] : []);
+  const byAddress = new Map<string, ResolvedService>();
+  const owners = new Map<string, string[]>();
+  for (const w of list)
+    for (const r of listWorkspaceServices(w.config, catalog, w.name)) {
+      // Modules and libraries have no runtime, so no health of their own.
+      if (!hasRuntime(repoKind(r.repoPath))) continue;
+      if (!byAddress.has(r.address)) byAddress.set(r.address, r);
+      const o = owners.get(r.address) ?? [];
+      if (!o.includes(w.name)) owners.set(r.address, [...o, w.name]);
+    }
 
-  if (!ws) return [];
-  // Modules and libraries have no runtime, so no health of their own.
-  const resolved = listWorkspaceServices(ws.config, catalog, ws.name).filter(
-    (r) => hasRuntime(repoKind(r.repoPath)),
+  return Promise.all(
+    [...byAddress.values()].map(async (r) => {
+      const h = await checkServiceHealth(r, env);
+      return workspaces ? { ...h, workspaces: owners.get(r.address) } : h;
+    }),
   );
-
-  return Promise.all(resolved.map((r) => checkServiceHealth(r, env)));
 }
 
 /**

@@ -1061,6 +1061,8 @@
     <div id="den-shell" data-page="tests"></div>
     <script src="/shell.js"></script>
 
+    <!-- The page's one main landmark: everything after the shell. -->
+    <main id="den-content">
     <!-- ── Bar 2: context actions (the env picker is the shell's) ───────────── -->
     <div class="subbar">
       <a
@@ -1260,6 +1262,7 @@
         copyToClipboard,
         envReady,
       } from "/header.js";
+      import { ownersLabel } from "/workspace-picker.js";
       import {
         buildReportPaneModel,
         getNextReportViewOnPillarChange,
@@ -1321,7 +1324,7 @@
         await Promise.all([
           loadModules(pillar),
           initHealth(),
-          initWorkspacePill("env-sel", { onSwitch: onWorkspaceSwitch }),
+          initWorkspacePill(),
           applyDenConfig(),
           initChangelog(),
         ]);
@@ -1329,18 +1332,6 @@
 
         // Route to the correct view
         routeFromHash();
-      }
-
-      // ── Workspace ─────────────────────────────────────────────────────────────
-      // Module discovery, test sources and the run itself all resolve repos from
-      // the FOCUSED workspace server-side (discoverRepos → getActiveWorkspace), so
-      // switching focus has to re-pull everything this page derives from it.
-      async function onWorkspaceSwitch() {
-        await loadModules(pillar);
-        refreshHealth(document.getElementById("env-sel").value, {
-          force: true,
-        });
-        if (currentView === "services") loadServices();
       }
 
       // ── Routing ───────────────────────────────────────────────────────────────
@@ -2282,7 +2273,7 @@
               <span class="dot" id="svc-dot-${s.repo}-${s.service}"></span>
               <div>
                 <div class="service-name">${s.service}</div>
-                <div class="service-repo">${s.repo}</div>
+                <div class="service-repo">${s.repo}${ownersLabel(s.inWorkspaces)}</div>
               </div>
             </div>
             <div class="cmd-row">
@@ -2424,5 +2415,6 @@
 
       init();
     </script>
+      </main>
   </body>
 </html>

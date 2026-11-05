@@ -84,7 +84,7 @@
         }
       }
       /* ── Layout ───────────────────────────────────────────────────────────── */
-      main {
+      .page-main {
         flex: 1;
         display: grid;
         grid-template-columns: 260px 1fr;
@@ -95,10 +95,10 @@
       /* A phone gets the workspace content only (the header's workspace pill
          still switches workspaces), so the graph has the width it needs. */
       @media (max-width: 760px) {
-        main {
+        .page-main {
           grid-template-columns: minmax(0, 1fr);
         }
-        main > .sidebar {
+        .page-main > .sidebar {
           display: none;
         }
         .content-body {
@@ -1683,6 +1683,8 @@
     <div id="den-shell" data-page="local-dev" data-health-env="local"></div>
     <script src="/shell.js"></script>
 
+    <!-- The page's one main landmark: everything after the shell. -->
+    <main id="den-content">
     <!-- Sudo password banner — hidden only once password is confirmed cached -->
     <!-- display:none at load; JS decides whether to show after checking status + vault. -->
     <div id="sudo-banner" style="display: none">
@@ -1718,7 +1720,7 @@
       </form>
     </div>
 
-    <main>
+    <div class="page-main">
       <!-- Sidebar: workspace list -->
       <aside class="sidebar">
         <div class="sidebar-header">
@@ -1750,7 +1752,7 @@
       <div class="content" id="content">
         <div class="empty-state">Select a workspace</div>
       </div>
-    </main>
+    </div>
 
     <!-- Output panel — lives outside renderContent so it persists across workspace switches -->
     <div id="output-panel">
@@ -2046,11 +2048,22 @@
           })
           .join("");
 
-        // On first load, prefer URL ?ws= param, then fall back to focus.
+        // On first load, prefer URL ?ws= param, then the view scope when it
+        // is one workspace (the top bar's View), then focus. This page edits
+        // one workspace at a time; the logs and health cover the whole view.
         if (!activeWs) {
           const urlWs = new URLSearchParams(location.search).get("ws");
+          const view = await fetch("/api/scope")
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null);
+          const scoped =
+            view && view.scope !== "all" && wsData.workspaces?.[view.scope]
+              ? view.scope
+              : null;
           const target =
-            urlWs && wsData.workspaces?.[urlWs] ? urlWs : focusName();
+            urlWs && wsData.workspaces?.[urlWs]
+              ? urlWs
+              : (scoped ?? focusName());
           if (target) selectWorkspace(target);
         }
       }
@@ -5239,5 +5252,6 @@
         </div>
       </div>
     </div>
+      </main>
   </body>
 </html>
