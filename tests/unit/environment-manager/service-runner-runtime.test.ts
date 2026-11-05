@@ -627,6 +627,55 @@ describe("pruneDeadDaemons", () => {
     expect(listDaemons().map((d) => d.address)).toEqual(["web/app"]);
   });
 
+  // Every root of a product shares one daemons file (the state dir is per
+  // product). A second root's server must not prune the first's records
+  // because they don't resolve in its own workspaces.
+  const writeRecords = (records: object[]) =>
+    fs.writeFileSync(
+      testDaemonsFile,
+      JSON.stringify({ denPid: 1, daemons: records }),
+    );
+  const json = (address: string, extra: object = {}) => ({
+    ...rec(address),
+    startedAt: "2026-05-01T00:00:00.000Z",
+    ...extra,
+  });
+
+  it("stamps a registered daemon with this root", () => {
+    mockResolveServiceSource.mockReturnValue(resolved);
+    registerDaemon(rec("repo/api"));
+    const file = JSON.parse(fs.readFileSync(testDaemonsFile, "utf-8"));
+    expect(typeof file.daemons[0].root).toBe("string");
+  });
+
+  it("keeps another root's daemons, resolvable here or not", () => {
+    mockIsOpctlAvailable.mockReturnValue(true);
+    mockDevOpContainerNames.mockReturnValue([]);
+    mockResolveServiceSource.mockReturnValue(null); // not in this root
+    mockListRunningOpctlContainers.mockReturnValue([]);
+    writeRecords([
+      json("web/frontend", { root: "/elsewhere/other-root" }),
+      json("dead/api", { root: "/elsewhere/other-root", containers: ["dead"] }),
+    ]);
+
+    expect(pruneDeadDaemons()).toEqual([]);
+    expect(listDaemons().map((d) => d.address)).toEqual([
+      "web/frontend",
+      "dead/api",
+    ]);
+  });
+
+  it("prunes an unstamped (legacy) record only when verifiably dead", () => {
+    mockIsOpctlAvailable.mockReturnValue(true);
+    mockDevOpContainerNames.mockReturnValue([]);
+    mockResolveServiceSource.mockReturnValue(null);
+    mockListRunningOpctlContainers.mockReturnValue([]);
+    writeRecords([json("web/app"), json("dead/api", { containers: ["dead"] })]);
+
+    expect(pruneDeadDaemons()).toEqual(["dead/api"]);
+    expect(listDaemons().map((d) => d.address)).toEqual(["web/app"]);
+  });
+
   it("keeps all daemons when opctl is unavailable (can't verify)", () => {
     mockIsOpctlAvailable.mockReturnValue(false);
     mockResolveServiceSource.mockReturnValue(resolved);

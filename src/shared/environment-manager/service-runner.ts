@@ -69,7 +69,7 @@ import type {
   WorkspaceConfig,
 } from "../types/index.js";
 import type { ChildProcess } from "child_process";
-import { getStateDir } from "../paths.js";
+import { getDistRoot, getStateDir } from "../paths.js";
 
 import { product } from "../product.js";
 // Re-export so existing callers don't need to change their import path.
@@ -101,6 +101,22 @@ export interface DaemonRecord {
    * command. Optional for backward-compat with records written before this.
    */
   containers?: string[];
+  /**
+   * The distribution root (realpath) whose server or CLI registered this
+   * daemon. Every root of a product shares one daemons file, so startup
+   * pruning skips records stamped by another root. Missing on records
+   * written before 0.2.7.
+   */
+  root?: string;
+}
+
+/** This process's distribution root, as stamped on its daemon records. */
+function daemonRoot(): string | null {
+  try {
+    return fs.realpathSync(getDistRoot());
+  } catch {
+    return null;
+  }
 }
 
 export type ServiceConflictReason = "identity_mismatch" | "orphan_containers";
@@ -263,8 +279,10 @@ export function registerDaemon(record: DaemonRecord): void {
     ? (existing?.workspaces ?? [])
     : [];
   const workspaces = [...new Set([...inherited, ...(record.workspaces ?? [])])];
+  const root = daemonRoot() ?? record.root;
   _daemonRegistry.set(record.address, {
     ...record,
+    ...(root ? { root } : {}),
     workspaces,
     branch: normalizeBranch(record.branch),
   });
@@ -646,8 +664,11 @@ export function isDaemonVerifiablyDead(
  * clear stale entries from previous sessions. Otherwise they reopen as tabs in
  * the web UI and clutter the shutdown prompt.
  *
- * A daemon is dropped when:
- *  - its address no longer resolves to a workspace/catalog service, OR
+ * A daemon stamped by another root (all roots of a product share the file)
+ * is never touched. Otherwise it is dropped when:
+ *  - it was stamped by this root and its address no longer resolves to a
+ *    workspace/catalog service (an unstamped legacy record might belong to
+ *    another root, so this alone never drops one), OR
  *  - it is opctl-based (has captured containers or a discoverable dev-op) and
  *    NONE of its candidate containers are currently running.
  *
@@ -685,9 +706,15 @@ function pruneAgainst(
   running: Set<string> | null,
 ): string[] {
   const pruned: string[] = [];
+  const here = daemonRoot();
   for (const d of daemons) {
     try {
-      if (!canResolveDaemonAddress(d)) {
+      // Another root's daemon: its services resolve in its workspaces, not
+      // ours, and its liveness is its own server's call.
+      if (d.root && d.root !== here) continue;
+      // An unresolvable address is only proof of staleness for a record
+      // this root wrote; an unstamped one may belong to another root.
+      if (d.root && !canResolveDaemonAddress(d)) {
         unregisterDaemon(d.address);
         pruned.push(d.address);
         continue;

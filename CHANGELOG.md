@@ -57,6 +57,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **A second root's server no longer forgets the first's running services**
+  (0.2.7-dev.3). Every root of a product shares one daemons
+  file, and a server's startup sweep dropped any record whose address did
+  not resolve in its own workspaces: starting a scratch root's server
+  cleared another root's running dev server from the list. Records are now
+  stamped with the root that started them; the sweep skips other roots'
+  records, and drops an older unstamped record only when its containers
+  are verifiably gone.
 - **A service the edge has no route for is no longer healthy** (0.2.7-dev.2).
   A health URL served through the edge answered the edge's own
   `404 page not found` when the service had no route, and Den counted any
