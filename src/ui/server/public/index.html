@@ -35,7 +35,7 @@
         height: 100%;
         background: var(--bg);
         color: var(--text);
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family: var(--sans);
         font-size: 13px;
       }
       body {
@@ -1171,13 +1171,13 @@
   <body>
     <!-- ── Bar 1: __DEN_CLI__ + health + nav ──────────────────────────────────────── -->
     <div class="topbar">
-      <img
-        src="/favicon.ico"
-        width="16"
-        height="16"
-        alt=""
-        style="flex-shrink: 0"
-      />
+      <!-- The active theme's mark (appearance.js draws it from /api/themes). -->
+      <span
+        class="den-mark"
+        id="den-mark"
+        aria-hidden="true"
+        style="display: inline-block; width: 18px; height: 18px; flex-shrink: 0"
+      ></span>
       <h1>__DEN_CLI__</h1>
       <button
         class="v-pill"

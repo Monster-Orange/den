@@ -5,7 +5,8 @@
  *                         modes (see theme-runtime.ts renderThemeCss)
  *   /theme/<id>/<file>    a file the theme's validated manifest names (its
  *                         mark .svg, its .woff2 fonts), nothing else
- *   /api/themes           the installed themes and the active one
+ *   /api/themes           the installed themes, the active one and the org
+ *                         default (what appearance.theme null draws)
  *
  * Collaborators are injectable for tests.
  */
@@ -49,6 +50,24 @@ export function activeTheme(deps: ThemeRouteDeps): ActiveTheme | null {
   return resolveActiveTheme(
     deps.roots(),
     { user: prefs.theme, distribution: typeof dist === "string" ? dist : null },
+    deps.warn,
+  );
+}
+
+/**
+ * The org default: the theme drawn when you have chosen none (the org
+ * config's `brand.theme` if it is installed and valid, else den).
+ */
+export function orgDefaultTheme(deps: ThemeRouteDeps): ActiveTheme | null {
+  let dist: string | null | undefined = null;
+  try {
+    dist = deps.distributionTheme();
+  } catch {
+    /* warned by activeTheme */
+  }
+  return resolveActiveTheme(
+    deps.roots(),
+    { user: null, distribution: typeof dist === "string" ? dist : null },
     deps.warn,
   );
 }
@@ -98,7 +117,10 @@ export function handleThemeRoutes(
     } catch {
       /* warned by activeTheme */
     }
+    const org = orgDefaultTheme(deps);
     sendJson(res, {
+      // What "Org default" in the Theme menu means: appearance.theme null.
+      org_default: org ? { id: org.id, name: org.theme.name } : null,
       active: a
         ? {
             id: a.id,

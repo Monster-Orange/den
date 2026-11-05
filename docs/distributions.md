@@ -393,6 +393,12 @@ appearance:
   mode: light # system (default) | dark | light
 ```
 
+The Theme menu's first entry is "Org default (<name>)": it stores no theme
+(`appearance.theme` null, the same as omitting it), so you follow
+`brand.theme`. Picking the theme that is the org default by name stores null
+too: you never pin yourself to today's org default, and a later
+`brand.theme` change reaches you.
+
 `system` follows the OS (`prefers-color-scheme`), and the theme's
 `default_mode` when the OS gives none. The header's Mode and Theme menus save
 here and apply at once, without a reload. Changing either writes only that
@@ -408,11 +414,19 @@ What the server serves:
 - `/theme/<id>/<file>`: only the files the manifest names (the mark's `.svg`,
   the `.woff2` fonts), from that theme's directory.
 - `/api/themes`: every installed theme (id, name, version, `built-in` |
-  `locked` | `local`, ok) and the active one.
+  `locked` | `local`, ok), the active one (with its `mark`) and
+  `org_default` (the theme no choice draws: `brand.theme`, else den).
 
 Each page sets `data-mode` on `<html>` before first paint, and its styles use
 only the tokens: a page or plugin that draws in the UI uses `var(--token)`,
-never a color literal (`accent` is never text: `accent-text` is).
+never a color literal (`accent` is never text: `accent-text` is), and only
+`var(--sans)`, `var(--mono)` or `var(--display)` for a font (the fallbacks
+are in `/theme.css`: a stack with no generic family gets Den's after it).
+The header shows the active theme's mark: its SVG (`svg_dark` in dark mode,
+if it has one), or its `text` drawn by Den in `shape` on `accent-fill`.
+A color from the org config (`orgs.<id>.color`) is only ever a swatch,
+border or dot, never text or a ground: labels are `--text` or `--muted`.
+Links in body content are underlined, so a link never reads by color alone.
 
 ## The bin shim
 

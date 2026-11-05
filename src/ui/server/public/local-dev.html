@@ -35,7 +35,7 @@
         height: 100%;
         background: var(--bg);
         color: var(--text);
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family: var(--sans);
         font-size: 13px;
       }
       body {
@@ -213,10 +213,13 @@
       .ws-item:hover {
         background: var(--surface);
       }
+      /* A calm, neutral ground in both modes under any theme: the accent
+         is the edge, not the fill. */
       .ws-item.active {
         border-left-color: var(--accent);
-        color: var(--accent-text);
-        background: color-mix(in srgb, var(--accent) 6%, transparent);
+        color: var(--text);
+        font-weight: 600;
+        background: color-mix(in srgb, var(--accent) 4%, var(--surface));
       }
       .ws-item-right {
         display: flex;
@@ -1734,13 +1737,13 @@
   </head>
   <body>
     <header>
-      <img
-        src="/favicon.ico"
-        width="16"
-        height="16"
-        alt=""
-        style="flex-shrink: 0"
-      />
+      <!-- The active theme's mark (appearance.js draws it from /api/themes). -->
+      <span
+        class="den-mark"
+        id="den-mark"
+        aria-hidden="true"
+        style="display: inline-block; width: 18px; height: 18px; flex-shrink: 0"
+      ></span>
       <h1>__DEN_CLI__</h1>
       <button
         class="v-pill"

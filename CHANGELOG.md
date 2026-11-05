@@ -27,6 +27,32 @@ config and manifest changes a distribution must make to move to it under
   stylesheet or UI script hard-codes a color any more (a test holds that).
   The header's version pill shows the running build, prerelease suffix
   included (`v0.3.0-dev.5`, not the changelog's `v0.3.0`).
+- **The theme reaches the type, the mark and links.** Every page draws text
+  in `var(--sans)` / `var(--mono)` / `var(--display)` (no page names a font
+  any more; a test holds that, like the color rule), so a theme's fonts
+  apply; `/theme.css` ends a theme's stack with Den's when it has no generic
+  family. The header shows the active theme's mark (SVG, `svg_dark` in dark
+  mode, or text in its `shape`) and redraws it on a live switch; favicon.ico
+  stays the favicon. Links in body content are underlined (subtly, in a tint
+  of their own color), so a red accent never makes a link read as an error.
+- **Back to the org default.** The Theme menu starts with "Org default
+  (<name>)", which stores `appearance.theme: null`; picking the theme that
+  is the org default stores null too, so you keep following `brand.theme`.
+  `/api/themes` gives `org_default`. The popover's controls are named
+  (Mode, Theme; the button is "Appearance" with `aria-expanded` and
+  `aria-controls`); Escape closes it and returns focus to the button.
+
+### Fixed
+
+- The appearance control (◐) sits at the header's far right on every page
+  and never leaves the screen: the nav shrinks and scrolls and the health
+  dots give way first (the Tests page's top bar overflowed at 1440 and 1024).
+- Org colors from the config are no longer text: the graph's org frames and
+  the panel's breadcrumb label in `--text` with the color as a dot (they read
+  at 2.5:1 on a light ground), and the frame's ground is neutral. A test
+  bans a config color as `color:`.
+- The active workspace row in the Local Dev sidebar is a calm neutral tint
+  in both modes (it was a loud accent tint in light mode).
 
 ### Migrations
 
