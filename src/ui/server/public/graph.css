@@ -5,11 +5,12 @@
    (a scrolling side panel, the pop-up) can clip it. */
 .dg,
 .dg-layer {
-  --dg-raised: #1c2330;
-  --dg-border-strong: #484f58;
-  --dg-faint: #6e7681;
-  --dg-remote: #39c5cf;
-  --dg-event: #bc8cff;
+  --dg-raised: var(--raised);
+  --dg-border-strong: var(--border-strong);
+  --dg-faint: var(--faint);
+  --dg-remote: var(--remote);
+  /* No event token: a hue between remote and bad, in any theme. */
+  --dg-event: color-mix(in oklab, var(--remote) 50%, var(--bad));
   --dg-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-family: var(--dg-sans);
   font-size: 14px;
@@ -240,7 +241,7 @@
   background: none;
   border: 0;
   padding: 0;
-  color: var(--accent);
+  color: var(--accent-text);
   cursor: pointer;
   font-size: 12px;
   white-space: nowrap;
@@ -294,7 +295,7 @@
   border-color: color-mix(in srgb, var(--dg-remote) 60%, var(--border));
 }
 .dg-card.down {
-  border-color: color-mix(in srgb, var(--red) 70%, var(--border));
+  border-color: color-mix(in srgb, var(--bad) 70%, var(--border));
 }
 .dg-card .r1 {
   display: flex;
@@ -314,10 +315,10 @@
   background: var(--dg-faint);
 }
 .dg-dot.ok {
-  background: var(--green);
+  background: var(--ok);
 }
 .dg-dot.bad {
-  background: var(--red);
+  background: var(--bad);
 }
 .dg-card .nm {
   font-weight: 600;
@@ -345,8 +346,8 @@
   border-color: color-mix(in srgb, var(--dg-remote) 55%, transparent);
 }
 .dg-badge.hybrid {
-  color: var(--yellow);
-  border-color: color-mix(in srgb, var(--yellow) 55%, transparent);
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
 }
 .dg-card .r2 {
   font-family: var(--mono);
@@ -371,7 +372,7 @@
   min-width: 0;
 }
 .dg-card .r3 .h.bad {
-  color: var(--red);
+  color: var(--bad);
 }
 .dg-tag {
   font-size: 11px;
@@ -383,11 +384,11 @@
 }
 .dg-tag.entry {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .dg-tag.warn {
-  background: color-mix(in srgb, var(--yellow) 16%, transparent);
-  color: var(--yellow);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
 }
 .dg-acts {
   display: flex;
@@ -425,17 +426,17 @@
   font-size: 12px;
 }
 .dg-btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #0d1117;
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--on-accent);
   font-weight: 600;
 }
 .dg-btn.primary:hover {
   filter: brightness(1.1);
 }
 .dg-btn.armed {
-  border-color: var(--red);
-  color: var(--red);
+  border-color: var(--bad);
+  color: var(--bad);
   font-weight: 600;
 }
 .dg-card.compact {
@@ -466,13 +467,13 @@
   opacity: 0.22;
 }
 .dg-card.hit {
-  box-shadow: 0 0 0 2px var(--yellow);
+  box-shadow: 0 0 0 2px var(--warn);
 }
 
 /* edges */
 path.dg-e {
   fill: none;
-  stroke: #6e7681;
+  stroke: var(--faint);
   stroke-width: 1.4;
   transition: opacity 0.15s;
 }
@@ -481,7 +482,7 @@ path.dg-e.hard {
   stroke-width: 1.8;
 }
 path.dg-e.soft {
-  stroke: #8b949e;
+  stroke: var(--muted);
   stroke-dasharray: 6 4;
 }
 path.dg-e.event {
@@ -494,7 +495,7 @@ path.dg-e.cross {
   stroke-dasharray: 9 4;
 }
 path.dg-e.intra {
-  stroke: #8b949e;
+  stroke: var(--muted);
   stroke-width: 1.5;
 }
 path.dg-e.hl {
@@ -523,7 +524,7 @@ path.dg-e.dim {
   inset: 0;
   height: auto;
   grid-template-rows: none;
-  background: rgb(1 4 9 / 0.6);
+  background: rgb(0 0 0 / 0.6);
   z-index: 900;
   display: grid;
   place-items: center;
@@ -534,7 +535,7 @@ path.dg-e.dim {
   max-height: min(86vh, 900px);
   border: 1px solid var(--border);
   border-radius: 14px;
-  box-shadow: 0 24px 60px rgb(0 0 0 / 0.5);
+  box-shadow: var(--shadow);
 }
 .dg-resize {
   position: absolute;
@@ -569,7 +570,7 @@ path.dg-e.dim {
   background: none;
   border: 0;
   padding: 0;
-  color: var(--accent);
+  color: var(--accent-text);
   cursor: pointer;
   font: inherit;
 }
@@ -627,14 +628,14 @@ path.dg-e.dim {
   white-space: nowrap;
 }
 .dg-pill.ok {
-  color: var(--green);
-  border-color: color-mix(in srgb, var(--green) 50%, transparent);
-  background: color-mix(in srgb, var(--green) 10%, transparent);
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
 }
 .dg-pill.bad {
-  color: var(--red);
-  border-color: color-mix(in srgb, var(--red) 55%, transparent);
-  background: color-mix(in srgb, var(--red) 10%, transparent);
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 55%, transparent);
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
 }
 .dg-actions {
   display: flex;
@@ -655,7 +656,7 @@ path.dg-e.dim {
   border-radius: 10px;
   padding: 6px;
   z-index: 1000; /* above the pop-up (900) */
-  box-shadow: 0 12px 30px rgb(0 0 0 / 0.45);
+  box-shadow: var(--shadow);
 }
 .dg-menu[hidden] {
   display: none;
@@ -692,10 +693,10 @@ path.dg-e.dim {
   cursor: not-allowed;
 }
 .dg-mg.danger button {
-  color: var(--red);
+  color: var(--bad);
 }
 .dg-menu button.armed {
-  background: color-mix(in srgb, var(--red) 18%, transparent);
+  background: color-mix(in srgb, var(--bad) 18%, transparent);
   font-weight: 600;
 }
 .dg-tabs {
@@ -736,7 +737,7 @@ path.dg-e.dim {
   font-weight: 600;
 }
 .dg-sec a {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .dg dl.kv {
   display: grid;
@@ -842,7 +843,7 @@ path.dg-e.dim {
   color: var(--text);
 }
 .dg table.svc button.nm:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .dg-logbar {
   display: flex;
@@ -907,7 +908,7 @@ path.dg-e.dim {
   overflow-wrap: anywhere;
 }
 .dg ol.act .refused {
-  color: var(--red);
+  color: var(--bad);
   font-style: normal;
 }
 .dg-who {
@@ -919,8 +920,8 @@ path.dg-e.dim {
   white-space: nowrap;
 }
 .dg-who.agent {
-  color: var(--yellow);
-  border-color: color-mix(in srgb, var(--yellow) 55%, transparent);
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
 }
 .dg-layers span {
   font-family: var(--mono);
@@ -961,7 +962,7 @@ path.dg-e.dim {
     border-radius: 14px 14px 0 0;
     z-index: 800;
     padding-bottom: env(safe-area-inset-bottom, 0px);
-    box-shadow: 0 -12px 30px rgb(0 0 0 / 0.45);
+    box-shadow: var(--shadow);
   }
   .dg-stage > .dg-panel .dg-resize {
     display: none;

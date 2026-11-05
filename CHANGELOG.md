@@ -17,10 +17,21 @@ config and manifest changes a distribution must make to move to it under
   `--track`. Den bundles its own theme, `den` 2.0.0. The public set and the
   authoring guide: https://github.com/Monster-Orange/den-themes. See "Themes"
   in `docs/distributions.md`.
+- **The web UI is themed (0.3.0-dev.5).** Every page draws its colors from
+  the active theme, in dark or light: the engineer's choice (user.yml
+  `appearance: { theme, mode }`, from the header's new Mode and Theme menus),
+  else the org config's `theme:`, else `den`; an unknown or invalid id falls
+  back with one server-log warning. The server serves `/theme.css`,
+  `/theme/<id>/<file>` (only the files the manifest names) and `/api/themes`.
+  Switching writes user.yml only (no edge, services or restart). No page,
+  stylesheet or UI script hard-codes a color any more (a test holds that).
+  The header's version pill shows the running build, prerelease suffix
+  included (`v0.3.0-dev.5`, not the changelog's `v0.3.0`).
 
 ### Migrations
 
-- None. The web UI applies themes from the 0.3.0 shell on.
+- None. Optional: set `theme: <id>` in the org config to give the
+  distribution's web UI its own default theme.
 
 ## [0.2.2] - 2026-11-04
 

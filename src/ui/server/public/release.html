@@ -3,6 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Mode before first paint: yours (the server fills it in below),
+      // else the system's, else the theme's default, else dark.
+      (function () {
+        var m = "@@DEN_MODE@@";
+        if (m !== "dark" && m !== "light") {
+          var q = function (s) {
+            return window.matchMedia && matchMedia("(prefers-color-scheme: " + s + ")").matches;
+          };
+          m = q("light") ? "light" : q("dark") ? "dark" : "@@DEN_DEFAULT_MODE@@";
+        }
+        document.documentElement.dataset.mode = m === "light" ? "light" : "dark";
+      })();
+    </script>
+    <link rel="stylesheet" href="/theme.css" id="theme-css" />
     <title>__DEN_TITLE__ · Releases</title>
     <style>
       *,
@@ -13,18 +28,6 @@
         padding: 0;
       }
 
-      :root {
-        --bg: #0d1117;
-        --surface: #161b22;
-        --border: #30363d;
-        --text: #c9d1d9;
-        --muted: #8b949e;
-        --accent: #58a6ff;
-        --green: #3fb950;
-        --red: #f85149;
-        --yellow: #d29922;
-        --mono: "SF Mono", "Cascadia Code", "Fira Code", "Menlo", monospace;
-      }
 
       html,
       body {
@@ -73,7 +76,7 @@
         position: relative;
       }
       .v-pill:hover {
-        color: var(--accent);
+        color: var(--accent-text);
         border-color: var(--accent);
       }
       .v-pip {
@@ -113,13 +116,13 @@
         display: inline-block;
       }
       .dot.ok {
-        background: var(--green);
+        background: var(--ok);
       }
       .dot.err {
-        background: var(--red);
+        background: var(--bad);
       }
       .dot.running {
-        background: var(--yellow);
+        background: var(--warn);
         animation: pulse 1s ease-in-out infinite;
       }
 
@@ -179,25 +182,25 @@
       }
       .btn:hover:not(:disabled) {
         border-color: var(--accent);
-        color: var(--accent);
+        color: var(--accent-text);
       }
       .btn:disabled {
         opacity: 0.45;
         cursor: not-allowed;
       }
       .btn.primary {
-        background: var(--accent);
-        color: #04101f;
-        border-color: var(--accent);
+        background: var(--accent-fill);
+        color: var(--on-accent);
+        border-color: var(--accent-fill);
         font-weight: 600;
       }
       .btn.primary:hover:not(:disabled) {
         opacity: 0.88;
-        color: #04101f;
+        color: var(--on-accent);
       }
       .btn.danger:hover:not(:disabled) {
-        border-color: var(--red);
-        color: var(--red);
+        border-color: var(--bad);
+        color: var(--bad);
       }
       .env-label {
         font-size: 11px;
@@ -251,7 +254,7 @@
         color: var(--text);
       }
       th .arrow {
-        color: var(--accent);
+        color: var(--accent-text);
         font-size: 9px;
         margin-left: 3px;
       }
@@ -260,16 +263,16 @@
         border-bottom: 1px solid var(--border);
         vertical-align: middle;
       }
-      /* Row hover. The previous #ffffff06 is white at 2.4%, resolving to about
-         #13171c against the #0d1117 background — 1.05:1, effectively invisible.
-         An accent tint at 20% lands on #1c2f45 (1.39:1), and the 3px accent
+      /* Row hover. The previous white wash at 2.4% resolved to about 1.05:1
+         against the background, effectively invisible. An accent tint at 20%
+         lands near 1.39:1 (in the original dark palette), and the 3px accent
          rule carries the rest of the signal. For scale, --surface itself is
          only 1.09:1 against the background, so this is a deliberate step past
          the page's usual contrast rather than a mistake.
          Applied to the cells, not the row: the table is border-collapse:
          collapse, where box-shadow on a <tr> is unreliable across browsers. */
       tbody tr:hover td {
-        background: rgba(88, 166, 255, 0.2);
+        background: color-mix(in srgb, var(--accent) 20%, transparent);
       }
       tbody tr:hover td:first-child {
         box-shadow: inset 3px 0 0 var(--accent);
@@ -297,13 +300,13 @@
       }
       .session-chip.active {
         border-color: var(--accent);
-        color: var(--accent);
+        color: var(--accent-text);
       }
       .session-chip.running {
         border-style: dashed;
       }
       .session-chip.fail {
-        border-color: var(--red);
+        border-color: var(--bad);
       }
       .repo-cell {
         font-weight: 600;
@@ -315,7 +318,7 @@
         text-decoration: none;
       }
       .repo-link:hover {
-        color: var(--accent);
+        color: var(--accent-text);
         text-decoration: underline;
       }
       .wave-tag {
@@ -345,7 +348,7 @@
       .deployer {
         font-family: var(--mono);
         font-size: 11px;
-        color: var(--accent);
+        color: var(--accent-text);
         text-decoration: none;
         white-space: nowrap;
       }
@@ -370,13 +373,13 @@
         font-weight: 500;
       }
       .st-up {
-        color: var(--green);
+        color: var(--ok);
       }
       .st-warn {
-        color: var(--yellow);
+        color: var(--warn);
       }
       .st-bad {
-        color: var(--red);
+        color: var(--bad);
       }
       .st-none {
         color: var(--muted);
@@ -401,7 +404,7 @@
       #read-only-tag {
         display: none;
         font-size: 12px;
-        color: var(--muted, #888);
+        color: var(--muted);
         border: 1px solid currentColor;
         border-radius: 4px;
         padding: 1px 6px;
@@ -423,8 +426,8 @@
           color 0.1s;
       }
       .dep-btn:hover:not(:disabled) {
-        border-color: var(--green);
-        color: var(--green);
+        border-color: var(--ok);
+        color: var(--ok);
       }
       .dep-btn:disabled {
         opacity: 0.4;
@@ -452,22 +455,22 @@
         flex-shrink: 0;
       }
       .run-pill.busy .dot {
-        background: var(--yellow);
+        background: var(--warn);
         animation: pulse 1s ease-in-out infinite;
       }
       .run-pill.ok {
-        color: var(--green);
-        border-color: #3fb95044;
+        color: var(--ok);
+        border-color: color-mix(in srgb, var(--ok) 27%, transparent);
       }
       .run-pill.ok .dot {
-        background: var(--green);
+        background: var(--ok);
       }
       .run-pill.err {
-        color: var(--red);
-        border-color: #f8514944;
+        color: var(--bad);
+        border-color: color-mix(in srgb, var(--bad) 27%, transparent);
       }
       .run-pill.err .dot {
-        background: var(--red);
+        background: var(--bad);
       }
       @keyframes pulse {
         0%,
@@ -526,9 +529,9 @@
         border-radius: 3px;
         background: linear-gradient(
           90deg,
-          #ffffff0d 25%,
-          #ffffff1f 50%,
-          #ffffff0d 75%
+          color-mix(in srgb, var(--text) 5%, transparent) 25%,
+          color-mix(in srgb, var(--text) 12%, transparent) 50%,
+          color-mix(in srgb, var(--text) 5%, transparent) 75%
         );
         background-size: 600px 100%;
         animation: rel-shimmer 1.5s linear infinite;
@@ -569,7 +572,7 @@
           animation: none;
         }
         .skel {
-          background: #ffffff14;
+          background: color-mix(in srgb, var(--text) 8%, transparent);
         }
       }
 
@@ -625,20 +628,20 @@
         min-height: 0;
       }
       #output .cmd {
-        color: var(--accent);
+        color: var(--accent-text);
       }
       #output .phase {
         color: var(--text);
         font-weight: 600;
       }
       #output .warn {
-        color: var(--yellow);
+        color: var(--warn);
       }
       #output .err {
-        color: var(--red);
+        color: var(--bad);
       }
       #output .ok {
-        color: var(--green);
+        color: var(--ok);
       }
 
       /* ── Modal ────────────────────────────────────────────────────────────── */
@@ -663,7 +666,7 @@
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.65);
+        box-shadow: var(--shadow);
       }
       .modal-hdr {
         display: flex;
@@ -727,14 +730,14 @@
         margin-bottom: 6px;
       }
       .banner.hotfix {
-        border: 1px solid var(--yellow);
-        background: #d2992215;
-        color: var(--yellow);
+        border: 1px solid var(--warn);
+        background: color-mix(in srgb, var(--warn) 8%, transparent);
+        color: var(--warn);
       }
       .banner.prod {
-        border: 1px solid var(--red);
-        background: #f8514915;
-        color: #ffb3ae;
+        border: 1px solid var(--bad);
+        background: color-mix(in srgb, var(--bad) 8%, transparent);
+        color: var(--bad);
       }
       .plan-wave {
         margin: 8px 0;
@@ -753,7 +756,7 @@
         padding: 2px 0 2px 12px;
       }
       .plan-repo .off {
-        color: var(--yellow);
+        color: var(--warn);
       }
 
       /* wave editor */
@@ -798,7 +801,7 @@
         line-height: 1.5;
       }
       .err-text {
-        color: var(--red);
+        color: var(--bad);
         font-size: 11px;
       }
     </style>
@@ -854,8 +857,8 @@
           <span
             id="log-badge"
             style="
-              background: var(--yellow);
-              color: #0d1117;
+              background: var(--warn);
+              color: var(--bg);
               font-size: 10px;
               font-weight: 700;
               padding: 1px 5px;
@@ -1251,7 +1254,7 @@
         const mainCell = r.mainShort
           ? r.deployedShort && r.deployedShort !== r.mainShort
             ? `${srcTag}<span class="sha">${esc(r.mainShort)}</span>`
-            : `${srcTag}<span class="sha" style="color:var(--green)">${esc(r.mainShort)}</span>`
+            : `${srcTag}<span class="sha" style="color:var(--ok)">${esc(r.mainShort)}</span>`
           : '<span class="sha">—</span>';
         // The GitHub Environment checked, when it isn't the env's own name
         // (mapped CD environments, one row per tenant cell).

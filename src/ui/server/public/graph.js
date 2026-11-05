@@ -303,17 +303,17 @@ async function render() {
   svg.setAttribute("width", maxX + 20);
   svg.setAttribute("height", maxY + 20);
   const MK = {
-    intra: "#8b949e",
-    hard: "#58a6ff",
-    soft: "#8b949e",
-    event: "#bc8cff",
-    cross: "#39c5cf",
+    intra: "var(--muted)",
+    hard: "var(--accent)",
+    soft: "var(--muted)",
+    event: "var(--dg-event)",
+    cross: "var(--remote)",
   };
   svg.innerHTML =
     `<defs>${Object.entries(MK)
       .map(
         ([k, c]) =>
-          `<marker id="dg-ah-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`,
+          `<marker id="dg-ah-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:${c}"/></marker>`,
       )
       .join("")}</defs>` +
     paths
@@ -448,9 +448,9 @@ function legend() {
   const kinds = new Set(edges.map((e) => (e.cross ? "cross" : e.kind)));
   const items = [
     ["hard", "var(--accent)", "solid", "hard dependency"],
-    ["soft", "#8b949e", "dashed", "soft"],
-    ["event", "#bc8cff", "dotted", "event"],
-    ["intra", "#8b949e", "solid", "within a repo"],
+    ["soft", "var(--muted)", "dashed", "soft"],
+    ["event", "var(--dg-event)", "dotted", "event"],
+    ["intra", "var(--muted)", "solid", "within a repo"],
     ["cross", "var(--dg-remote)", "dashed", "local → remote"],
   ].filter(([k]) => kinds.has(k));
   $(".dg-legend").innerHTML =

@@ -31,15 +31,17 @@ export function placementOf(r) {
   return { runs, target };
 }
 
+// An org's color when the org config names none. Org labels are text, so
+// only text tokens (each 4.5:1 on every ground) and mixes of two of them.
 const PALETTE = [
-  "#58a6ff",
-  "#3fb950",
-  "#a371f7",
-  "#d29922",
-  "#f0883e",
-  "#ff7b72",
-  "#79c0ff",
-  "#56d364",
+  "var(--accent-text)",
+  "var(--ok)",
+  "color-mix(in oklab, var(--remote) 50%, var(--bad))",
+  "var(--warn)",
+  "var(--remote)",
+  "color-mix(in oklab, var(--warn) 50%, var(--bad))",
+  "color-mix(in oklab, var(--accent-text) 50%, var(--remote))",
+  "var(--muted)",
 ];
 function colorFor(name) {
   let h = 5381;
@@ -162,7 +164,7 @@ export const orgOf = (m, id) =>
   m.orgs.get(id) || {
     id,
     label: id || m.workspace || "Workspace",
-    color: "#8b949e",
+    color: "var(--muted)",
   };
 export const isLocal = (s) => s.runs !== "remote";
 export const status = (s) =>

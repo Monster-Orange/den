@@ -312,8 +312,55 @@ and the guide to making your own
   `accent-fill` at 4.5:1. `accent` is never text: Den draws links and accent
   text in `accent-text`.
 
-Choosing the active theme, and the web UI applying it, come with the 0.3.0
-shell.
+### The active theme
+
+The web UI draws every color, font and radius from the active theme. Which
+one is active:
+
+1. the engineer's own choice (`appearance.theme` in `config/local/user.yml`,
+   set from the header's theme menu);
+2. else the distribution's default, `theme:` in the org config;
+3. else `den`.
+
+```yaml
+# config/<name>.yml
+theme: paper # an id in plugins/<id>/ (locked or local), or den
+```
+
+An id that is not installed, or no longer validates under this Den, is
+skipped for the next choice, ending at `den`, with one warning in the server
+log; the UI never fails over a theme.
+
+Appearance is a per-engineer preference, stored with the other settings
+(`/api/settings`, `appearance`):
+
+```yaml
+# config/local/user.yml (gitignored)
+appearance:
+  theme: paper # omit to follow the distribution
+  mode: light # system (default) | dark | light
+```
+
+`system` follows the OS (`prefers-color-scheme`), and the theme's
+`default_mode` when the OS gives none. The header's Mode and Theme menus save
+here and apply at once, without a reload. Changing either writes only that
+block: no edge route, edge config, service or the web service process is
+touched.
+
+What the server serves:
+
+- `/theme.css`: the active theme as CSS custom properties
+  (`:root[data-mode="dark"] { --bg: …; }` and the light block, plus `--sans`,
+  `--mono`, `--display`, `--ja`, `--radius`, `--radius-button` and
+  `@font-face` for the theme's fonts). Only a validated manifest is rendered.
+- `/theme/<id>/<file>`: only the files the manifest names (the mark's `.svg`,
+  the `.woff2` fonts), from that theme's directory.
+- `/api/themes`: every installed theme (id, name, version, `built-in` |
+  `locked` | `local`, ok) and the active one.
+
+Each page sets `data-mode` on `<html>` before first paint, and its styles use
+only the tokens: a page or plugin that draws in the UI uses `var(--token)`,
+never a color literal (`accent` is never text: `accent-text` is).
 
 ## The bin shim
 

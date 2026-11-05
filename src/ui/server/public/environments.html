@@ -3,6 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Mode before first paint: yours (the server fills it in below),
+      // else the system's, else the theme's default, else dark.
+      (function () {
+        var m = "@@DEN_MODE@@";
+        if (m !== "dark" && m !== "light") {
+          var q = function (s) {
+            return window.matchMedia && matchMedia("(prefers-color-scheme: " + s + ")").matches;
+          };
+          m = q("light") ? "light" : q("dark") ? "dark" : "@@DEN_DEFAULT_MODE@@";
+        }
+        document.documentElement.dataset.mode = m === "light" ? "light" : "dark";
+      })();
+    </script>
+    <link rel="stylesheet" href="/theme.css" id="theme-css" />
     <title>__DEN_TITLE__ · Environments</title>
     <style>
       *,
@@ -11,18 +26,6 @@
         box-sizing: border-box;
         margin: 0;
         padding: 0;
-      }
-      :root {
-        --bg: #0d1117;
-        --surface: #161b22;
-        --border: #30363d;
-        --text: #c9d1d9;
-        --muted: #8b949e;
-        --accent: #58a6ff;
-        --green: #3fb950;
-        --red: #f85149;
-        --yellow: #d29922;
-        --mono: "SF Mono", "Cascadia Code", "Fira Code", "Menlo", monospace;
       }
       html,
       body {
@@ -142,7 +145,7 @@
         text-decoration: none;
       }
       .cell a:hover {
-        color: var(--accent);
+        color: var(--accent-text);
         text-decoration: underline;
       }
       .cell .ms {
@@ -162,13 +165,13 @@
         display: inline-block;
       }
       .dot.ok {
-        background: var(--green);
+        background: var(--ok);
       }
       .dot.err {
-        background: var(--red);
+        background: var(--bad);
       }
       .dot.slow {
-        background: var(--yellow);
+        background: var(--warn);
       }
       .empty {
         color: var(--muted);
@@ -198,13 +201,13 @@
         color: var(--muted);
       }
       .rel .ok {
-        color: var(--green);
+        color: var(--ok);
       }
       .rel .warn {
-        color: var(--yellow);
+        color: var(--warn);
       }
       .rel .bad {
-        color: var(--red);
+        color: var(--bad);
       }
       a.open {
         color: var(--muted);
@@ -215,7 +218,7 @@
       }
       a.open:hover,
       a.open:focus-visible {
-        color: var(--accent);
+        color: var(--accent-text);
         background: var(--border);
       }
       select {
@@ -277,6 +280,9 @@
     </main>
 
     <script type="module">
+      // No header.js on this page: the appearance controls come on their own.
+      import { initAppearance } from "/appearance.js";
+      void initAppearance();
       const SLOW_MS = 1500;
       const POLL_MS = 60_000;
       const esc = (s) =>

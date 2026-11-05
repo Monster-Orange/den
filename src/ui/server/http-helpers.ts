@@ -65,6 +65,15 @@ export function sendJson(
   res.end(body);
 }
 
+/**
+ * A last fill for every served page, set by the server: the appearance
+ * placeholders the pre-paint script reads (@@DEN_MODE@@, @@DEN_DEFAULT_MODE@@).
+ */
+let htmlFill: ((html: string) => string) | null = null;
+export function setHtmlFill(fn: ((html: string) => string) | null): void {
+  htmlFill = fn;
+}
+
 export function serveFile(res: http.ServerResponse, filePath: string): void {
   try {
     let data: Buffer | string = fs.readFileSync(filePath);
@@ -72,8 +81,10 @@ export function serveFile(res: http.ServerResponse, filePath: string): void {
     // placeholders (__DEN_CLI__, …) filled from the running profile.
     if (filePath.endsWith(".html") || filePath.endsWith(".js"))
       data = fillProductTokens(data.toString("utf-8"));
-    if (filePath.endsWith(".html"))
+    if (filePath.endsWith(".html")) {
       data = addDenUiMarker(brandHtmlTitle(String(data), readBrand()));
+      if (htmlFill) data = htmlFill(data);
+    }
     const headers: Record<string, string> = { "Content-Type": mime(filePath) };
     // App code must never be stale (no ETag/Last-Modified validators are sent,
     // so any heuristic caching would have no way to revalidate).

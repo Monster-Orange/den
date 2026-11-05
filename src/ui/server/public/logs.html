@@ -3,6 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Mode before first paint: yours (the server fills it in below),
+      // else the system's, else the theme's default, else dark.
+      (function () {
+        var m = "@@DEN_MODE@@";
+        if (m !== "dark" && m !== "light") {
+          var q = function (s) {
+            return window.matchMedia && matchMedia("(prefers-color-scheme: " + s + ")").matches;
+          };
+          m = q("light") ? "light" : q("dark") ? "dark" : "@@DEN_DEFAULT_MODE@@";
+        }
+        document.documentElement.dataset.mode = m === "light" ? "light" : "dark";
+      })();
+    </script>
+    <link rel="stylesheet" href="/theme.css" id="theme-css" />
     <title>__DEN_TITLE__ · Logs</title>
     <link rel="icon" href="/favicon.ico?v=2" />
     <style>
@@ -14,18 +29,6 @@
         padding: 0;
       }
 
-      :root {
-        --bg: #0d1117;
-        --surface: #161b22;
-        --border: #30363d;
-        --text: #c9d1d9;
-        --muted: #8b949e;
-        --accent: #58a6ff;
-        --green: #3fb950;
-        --red: #f85149;
-        --yellow: #d29922;
-        --mono: "SF Mono", "Cascadia Code", "Fira Code", "Menlo", monospace;
-      }
 
       html,
       body {
@@ -85,8 +88,8 @@
       }
 
       .badge {
-        background: var(--yellow);
-        color: #0d1117;
+        background: var(--warn);
+        color: var(--bg);
         font-size: 10px;
         font-weight: 700;
         padding: 1px 5px;
@@ -137,13 +140,13 @@
         display: inline-block;
       }
       .dot.ok {
-        background: var(--green);
+        background: var(--ok);
       }
       .dot.err {
-        background: var(--red);
+        background: var(--bad);
       }
       .dot.running {
-        background: var(--yellow);
+        background: var(--warn);
         animation: pulse 1s ease-in-out infinite;
       }
       @keyframes pulse {
@@ -279,7 +282,7 @@
         cursor: pointer;
       }
       .hist-search-wrap button:hover {
-        color: var(--accent);
+        color: var(--accent-text);
         border-color: var(--accent);
       }
       .hist-btn {
@@ -310,18 +313,18 @@
       }
       .cmd-btn:hover:not(:disabled) {
         border-color: var(--accent);
-        color: var(--accent);
+        color: var(--accent-text);
       }
       .logs-btn {
         border-color: var(--muted);
       }
       .logs-btn:hover:not(:disabled) {
-        border-color: var(--yellow) !important;
-        color: var(--yellow) !important;
+        border-color: var(--warn) !important;
+        color: var(--warn) !important;
       }
       .logs-btn.streaming {
-        border-color: var(--yellow);
-        color: var(--yellow);
+        border-color: var(--warn);
+        color: var(--warn);
       }
 
       /* ── Logs area ────────────────────────────────────────────────────────── */
@@ -438,15 +441,15 @@
         display: none !important;
       }
       .log-line-match mark {
-        background: color-mix(in srgb, var(--yellow) 30%, transparent);
+        background: color-mix(in srgb, var(--warn) 30%, transparent);
         color: inherit;
         border-radius: 2px;
       }
       /* Search-all results need real contrast — the filter's 30% wash is
        invisible in a dense results pane on the dark background. */
       .search-hit mark {
-        background: var(--yellow);
-        color: #0d1117;
+        background: var(--warn);
+        color: var(--bg);
         border-radius: 2px;
         font-weight: 600;
         padding: 0 1px;
@@ -464,14 +467,14 @@
         min-height: 0;
       }
       .log-output .log-cmd {
-        color: var(--accent);
+        color: var(--accent-text);
       }
       .log-output .log-err {
-        color: var(--red);
+        color: var(--bad);
       }
       /* An action an agent asked for (via the MCP server). */
       .log-output .log-agent {
-        color: var(--yellow);
+        color: var(--warn);
       }
       .log-output .log-done {
         color: var(--muted);
@@ -484,12 +487,12 @@
         align-items: center;
         gap: 8px;
         padding: 8px 12px;
-        background: color-mix(in srgb, var(--yellow) 12%, var(--bg));
-        border-top: 1px solid color-mix(in srgb, var(--yellow) 40%, transparent);
+        background: color-mix(in srgb, var(--warn) 12%, var(--bg));
+        border-top: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
       }
       .aws-auth-msg {
         font-size: 12px;
-        color: var(--yellow);
+        color: var(--warn);
         flex: 1;
       }
       .aws-auth-btn {
@@ -497,8 +500,8 @@
         padding: 3px 10px;
         border-radius: 4px;
         cursor: pointer;
-        background: var(--yellow);
-        color: #000;
+        background: var(--warn);
+        color: var(--bg);
         border: none;
         font-weight: 600;
       }

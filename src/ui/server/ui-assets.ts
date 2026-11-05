@@ -1,6 +1,7 @@
 /**
  * Static assets the graph needs beyond the pages themselves:
- *   - the graph's own modules in public/ (UI_MODULES), served like header.js;
+ *   - the UI's own modules in public/ (UI_MODULES: the graph, the appearance
+ *     controls, the version label), served like header.js;
  *   - browser libraries the UI loads, served by Den's own server from
  * node_modules (never a CDN), so the UI works offline. Each is a pinned
  * dependency in package.json. npm hoists Den's dependencies into a
@@ -19,6 +20,8 @@ export const UI_MODULES: readonly string[] = [
   "/graph-model.js",
   "/panel.js",
   "/graph.css",
+  "/appearance.js",
+  "/version-label.js",
 ];
 
 /** URL path → file inside node_modules. */

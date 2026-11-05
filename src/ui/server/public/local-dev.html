@@ -3,6 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Mode before first paint: yours (the server fills it in below),
+      // else the system's, else the theme's default, else dark.
+      (function () {
+        var m = "@@DEN_MODE@@";
+        if (m !== "dark" && m !== "light") {
+          var q = function (s) {
+            return window.matchMedia && matchMedia("(prefers-color-scheme: " + s + ")").matches;
+          };
+          m = q("light") ? "light" : q("dark") ? "dark" : "@@DEN_DEFAULT_MODE@@";
+        }
+        document.documentElement.dataset.mode = m === "light" ? "light" : "dark";
+      })();
+    </script>
+    <link rel="stylesheet" href="/theme.css" id="theme-css" />
     <title>__DEN_TITLE__ · Local Dev</title>
     <link rel="stylesheet" href="/graph.css" />
     <style>
@@ -14,18 +29,6 @@
         padding: 0;
       }
 
-      :root {
-        --bg: #0d1117;
-        --surface: #161b22;
-        --border: #30363d;
-        --text: #c9d1d9;
-        --muted: #8b949e;
-        --accent: #58a6ff;
-        --green: #3fb950;
-        --red: #f85149;
-        --yellow: #d29922;
-        --mono: "SF Mono", "Cascadia Code", "Fira Code", "Menlo", monospace;
-      }
 
       html,
       body {
@@ -119,13 +122,13 @@
         flex-shrink: 0;
       }
       .dot.ok {
-        background: var(--green);
+        background: var(--ok);
       }
       .dot.err {
-        background: var(--red);
+        background: var(--bad);
       }
       .dot.running {
-        background: var(--yellow);
+        background: var(--warn);
         animation: pulse 1s ease-in-out infinite;
       }
       @keyframes pulse {
@@ -212,8 +215,8 @@
       }
       .ws-item.active {
         border-left-color: var(--accent);
-        color: var(--accent);
-        background: #58a6ff10;
+        color: var(--accent-text);
+        background: color-mix(in srgb, var(--accent) 6%, transparent);
       }
       .ws-item-right {
         display: flex;
@@ -232,8 +235,8 @@
         line-height: 1;
       }
       .ws-open-btn:hover {
-        color: var(--accent);
-        background: #58a6ff20;
+        color: var(--accent-text);
+        background: color-mix(in srgb, var(--accent) 13%, transparent);
       }
       .ws-term-btn {
         background: none;
@@ -247,8 +250,8 @@
         line-height: 1;
       }
       .ws-term-btn:hover {
-        color: var(--green);
-        background: #3fb95020;
+        color: var(--ok);
+        background: color-mix(in srgb, var(--ok) 13%, transparent);
       }
       .ws-menu-wrap {
         position: relative;
@@ -281,7 +284,7 @@
         border: 1px solid var(--border);
         border-radius: 6px;
         min-width: 100px;
-        box-shadow: 0 4px 12px #0006;
+        box-shadow: var(--shadow);
         padding: 4px 0;
         display: none;
       }
@@ -303,7 +306,7 @@
         background: var(--bg);
       }
       .ws-menu-dropdown button.danger:hover {
-        color: var(--red);
+        color: var(--bad);
       }
       .new-ws-form {
         padding: 8px 14px;
@@ -327,9 +330,9 @@
         border-color: var(--accent);
       }
       .new-ws-form button {
-        background: var(--accent);
+        background: var(--accent-fill);
         border: none;
-        color: #000;
+        color: var(--on-accent);
         padding: 4px 10px;
         border-radius: 5px;
         font-size: 13px;
@@ -365,8 +368,8 @@
         background: var(--surface);
       }
       .sidebar-settings-btn.active {
-        color: var(--accent);
-        background: #58a6ff10;
+        color: var(--accent-text);
+        background: color-mix(in srgb, var(--accent) 6%, transparent);
         border-left: 3px solid var(--accent);
         padding-left: 11px;
       }
@@ -402,7 +405,7 @@
       }
       .switch-btn:hover {
         border-color: var(--accent);
-        color: var(--accent);
+        color: var(--accent-text);
       }
 
       /* ── Master command bar ───────────────────────────────────────────────── */
@@ -436,23 +439,23 @@
       }
       .master-btn:hover:not(:disabled) {
         border-color: var(--accent);
-        color: var(--accent);
-        background: #58a6ff0d;
+        color: var(--accent-text);
+        background: color-mix(in srgb, var(--accent) 5%, transparent);
       }
       .master-btn.up:hover:not(:disabled) {
-        border-color: var(--green);
-        color: var(--green);
-        background: #3fb9500d;
+        border-color: var(--ok);
+        color: var(--ok);
+        background: color-mix(in srgb, var(--ok) 5%, transparent);
       }
       .master-btn.down:hover:not(:disabled) {
-        border-color: var(--red);
-        color: var(--red);
-        background: #f851490d;
+        border-color: var(--bad);
+        color: var(--bad);
+        background: color-mix(in srgb, var(--bad) 5%, transparent);
       }
       .master-btn.restart:hover:not(:disabled) {
-        border-color: var(--yellow);
-        color: var(--yellow);
-        background: #d299220d;
+        border-color: var(--warn);
+        color: var(--warn);
+        background: color-mix(in srgb, var(--warn) 5%, transparent);
       }
       .master-btn:disabled {
         opacity: 0.35;
@@ -506,7 +509,7 @@
       td {
         padding: 7px 10px 7px 0;
         font-size: 12px;
-        border-bottom: 1px solid #21262d;
+        border-bottom: 1px solid var(--border);
         vertical-align: middle;
       }
       td:last-child {
@@ -527,20 +530,20 @@
         color: var(--muted);
       }
       .badge.dev-managed {
-        border-color: #388bfd44;
-        color: #58a6ff;
+        border-color: color-mix(in srgb, var(--accent) 27%, transparent);
+        color: var(--accent-text);
       }
       .badge.managed {
-        border-color: #a371f744;
-        color: #a371f7;
+        border-color: var(--border-strong);
+        color: var(--text);
       }
       .badge.active-ws {
-        border-color: #3fb95044;
-        color: #3fb950;
+        border-color: color-mix(in srgb, var(--ok) 27%, transparent);
+        color: var(--ok);
       }
       .badge.uncloned {
-        border-color: var(--yellow);
-        color: var(--yellow);
+        border-color: var(--warn);
+        color: var(--warn);
       }
 
       /* command buttons */
@@ -566,11 +569,11 @@
       }
       .cmd-btn:hover:not(:disabled) {
         border-color: var(--accent);
-        color: var(--accent);
+        color: var(--accent-text);
       }
       .cmd-btn.danger:hover:not(:disabled) {
-        border-color: var(--red);
-        color: var(--red);
+        border-color: var(--bad);
+        color: var(--bad);
       }
       .cmd-btn:disabled {
         opacity: 0.4;
@@ -603,9 +606,9 @@
         font-family: var(--mono);
       }
       .add-btn {
-        background: var(--accent);
+        background: var(--accent-fill);
         border: none;
-        color: #000;
+        color: var(--on-accent);
         padding: 5px 14px;
         border-radius: 5px;
         font-size: 12px;
@@ -619,13 +622,13 @@
         font-size: 11px;
       }
       .form-msg.ok {
-        color: var(--green);
+        color: var(--ok);
       }
       .form-msg.err {
-        color: var(--red);
+        color: var(--bad);
       }
       .form-msg.warn {
-        color: var(--yellow);
+        color: var(--warn);
       }
       .add-svc-open-btn {
         background: none;
@@ -638,7 +641,7 @@
       }
       .add-svc-open-btn:hover {
         border-color: var(--accent);
-        color: var(--accent);
+        color: var(--accent-text);
       }
       /* ── Add Service modal ────────────────────────────────────────────────── */
       .add-svc-backdrop {
@@ -660,7 +663,7 @@
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        box-shadow: var(--shadow);
       }
       .add-svc-header {
         display: flex;
@@ -744,10 +747,10 @@
         cursor: pointer;
       }
       .add-svc-row.selectable:hover {
-        background: #ffffff0d;
+        background: color-mix(in srgb, var(--text) 5%, transparent);
       }
       .add-svc-row.selected {
-        background: #58a6ff18;
+        background: color-mix(in srgb, var(--accent) 9%, transparent);
       }
       .add-svc-row.already {
         opacity: 0.4;
@@ -776,9 +779,9 @@
         font-weight: 500;
         white-space: nowrap;
         flex-shrink: 0;
-        background: #58a6ff14;
-        color: var(--accent);
-        border: 1px solid #58a6ff33;
+        background: color-mix(in srgb, var(--accent) 8%, transparent);
+        color: var(--accent-text);
+        border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
       }
       .add-svc-pill {
         font-size: 10px;
@@ -789,19 +792,19 @@
         white-space: nowrap;
       }
       .add-svc-pill.supported {
-        background: #3fb95022;
-        color: var(--green);
-        border: 1px solid #3fb95044;
+        background: color-mix(in srgb, var(--ok) 13%, transparent);
+        color: var(--ok);
+        border: 1px solid color-mix(in srgb, var(--ok) 27%, transparent);
       }
       .add-svc-pill.no-manifest {
-        background: #8b949e14;
+        background: color-mix(in srgb, var(--muted) 8%, transparent);
         color: var(--muted);
         border: 1px solid var(--border);
       }
       .add-svc-pill.added {
-        background: #58a6ff14;
-        color: var(--accent);
-        border: 1px solid #58a6ff33;
+        background: color-mix(in srgb, var(--accent) 8%, transparent);
+        color: var(--accent-text);
+        border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
       }
       .add-svc-row-btn {
         background: none;
@@ -815,7 +818,7 @@
       }
       .add-svc-row-btn:hover {
         border-color: var(--accent);
-        color: var(--accent);
+        color: var(--accent-text);
       }
       .add-svc-search {
         width: 100%;
@@ -890,9 +893,9 @@
         gap: 10px;
       }
       .add-svc-submit {
-        background: var(--accent);
+        background: var(--accent-fill);
         border: none;
-        color: #000;
+        color: var(--on-accent);
         padding: 6px 20px;
         border-radius: 5px;
         font-size: 13px;
@@ -910,13 +913,13 @@
         font-size: 11px;
       }
       .add-svc-msg.ok {
-        color: var(--green);
+        color: var(--ok);
       }
       .add-svc-msg.err {
-        color: var(--red);
+        color: var(--bad);
       }
       .add-svc-msg.warn {
-        color: var(--yellow);
+        color: var(--warn);
       }
       .add-svc-empty {
         font-size: 12px;
@@ -951,8 +954,8 @@
         line-height: 1;
       }
       .add-svc-refresh-btn:hover {
-        color: var(--accent);
-        background: #58a6ff15;
+        color: var(--accent-text);
+        background: color-mix(in srgb, var(--accent) 8%, transparent);
       }
       .svc-sort-btns {
         display: flex;
@@ -985,18 +988,18 @@
       .dep-warn {
         display: inline;
         font-size: 11px;
-        color: var(--yellow);
+        color: var(--warn);
         margin-left: 6px;
       }
       .dep-missing-row td {
-        background: #2a1f0033;
+        background: color-mix(in srgb, var(--warn) 20%, transparent);
         border-top: none;
         padding-top: 2px;
         padding-bottom: 6px;
       }
       .dep-missing-row .dep-label {
         font-size: 11px;
-        color: var(--yellow);
+        color: var(--warn);
         padding-left: 20px;
       }
       .dep-missing-row .dep-label strong {
@@ -1031,7 +1034,7 @@
         border: 1px solid var(--border);
         border-radius: 6px;
         min-width: 110px;
-        box-shadow: 0 4px 12px #0006;
+        box-shadow: var(--shadow);
         padding: 4px 0;
       }
       .action-dropdown button {
@@ -1049,7 +1052,7 @@
         background: var(--bg);
       }
       .action-dropdown button.danger:hover {
-        color: var(--red);
+        color: var(--bad);
       }
 
       /* ── Manifest validation ──────────────────────────────────────────────── */
@@ -1082,13 +1085,13 @@
         line-height: 1.6;
       }
       .validate-result .v-ok {
-        color: var(--green);
+        color: var(--ok);
       }
       .validate-result .v-err {
-        color: var(--red);
+        color: var(--bad);
       }
       .validate-result .v-warn {
-        color: var(--yellow);
+        color: var(--warn);
       }
       .validate-result .v-path {
         color: var(--muted);
@@ -1105,13 +1108,13 @@
         vertical-align: middle;
       }
       .validate-inline.ok {
-        color: var(--green);
+        color: var(--ok);
       }
       .validate-inline.err {
-        color: var(--red);
+        color: var(--bad);
       }
       .validate-inline.warn {
-        color: var(--yellow);
+        color: var(--warn);
       }
       .validate-inline.checking {
         color: var(--muted);
@@ -1186,7 +1189,7 @@
         flex-shrink: 0;
       }
       .tab .tab-dot.err {
-        background: var(--red);
+        background: var(--bad);
       }
       .tab .tab-close {
         background: none;
@@ -1206,7 +1209,7 @@
         opacity: 1;
       }
       .tab .tab-close:hover {
-        color: var(--red);
+        color: var(--bad);
       }
 
       /* Output actions bar */
@@ -1275,19 +1278,19 @@
         flex-shrink: 0;
       }
       #output .cmd {
-        color: var(--accent);
+        color: var(--accent-text);
       }
       #output .err {
-        color: var(--red);
+        color: var(--bad);
       }
       #output .warn {
-        color: var(--yellow);
+        color: var(--warn);
       }
       #output .done-ok {
-        color: var(--green);
+        color: var(--ok);
       }
       #output .done-fail {
-        color: var(--red);
+        color: var(--bad);
       }
 
       /* ── Settings panel ──────────────────────────────────────────────────── */
@@ -1336,7 +1339,7 @@
       }
       .settings-save-msg {
         font-size: 12px;
-        color: var(--green);
+        color: var(--ok);
         margin-left: 10px;
       }
 
@@ -1379,9 +1382,9 @@
         background: var(--surface);
       }
       .settings-nav-item.active {
-        color: var(--accent);
+        color: var(--accent-text);
         border-left-color: var(--accent);
-        background: #58a6ff10;
+        background: color-mix(in srgb, var(--accent) 6%, transparent);
       }
       .settings-pane {
         padding: 16px 24px;
@@ -1534,12 +1537,12 @@
         color: var(--muted);
       }
       .app-place.remote {
-        color: #39c5cf;
-        border-color: #39c5cf88;
+        color: var(--remote);
+        border-color: color-mix(in srgb, var(--remote) 53%, transparent);
       }
       .app-place.hybrid {
-        color: var(--yellow);
-        border-color: #d2992288;
+        color: var(--warn);
+        border-color: color-mix(in srgb, var(--warn) 53%, transparent);
       }
       .app-source {
         font-size: 11px;
@@ -1573,11 +1576,11 @@
         opacity: 0.5;
       }
       .app-repo.ok .app-dot {
-        background: #2ea043;
+        background: var(--ok);
         opacity: 1;
       }
       .app-repo.down .app-dot {
-        background: #d1242f;
+        background: var(--bad);
         opacity: 1;
       }
       .app-contrib-label {
@@ -1648,8 +1651,8 @@
         gap: 10px;
         padding: 6px 14px;
         flex-shrink: 0;
-        background: #161b22;
-        border-bottom: 1px solid #30363d;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
         font-size: 12px;
       }
       #sudo-banner form {
@@ -1667,8 +1670,8 @@
         width: 180px;
       }
       #sudo-banner .btn-unlock {
-        background: #238636;
-        color: #fff;
+        background: var(--accent-fill);
+        color: var(--on-accent);
         border: none;
         padding: 3px 10px;
         border-radius: 4px;
@@ -1755,9 +1758,9 @@
           font-family: var(--mono);
           padding: 2px 8px;
           border-radius: 10px;
-          border: 1px solid #388bfd44;
-          color: #58a6ff;
-          background: #58a6ff10;
+          border: 1px solid color-mix(in srgb, var(--accent) 27%, transparent);
+          color: var(--accent-text);
+          background: color-mix(in srgb, var(--accent) 6%, transparent);
           display: none;
         "
       ></span>
@@ -1774,8 +1777,8 @@
           <span
             id="log-badge"
             style="
-              background: var(--yellow);
-              color: #0d1117;
+              background: var(--warn);
+              color: var(--bg);
               font-size: 10px;
               font-weight: 700;
               padding: 1px 5px;
@@ -1817,7 +1820,7 @@
           <input id="sudo-save-vault" type="checkbox" />
           <span id="sudo-save-label">Save to 1Password</span>
         </label>
-        <span id="sudo-error" style="color: var(--red); display: none"></span>
+        <span id="sudo-error" style="color: var(--bad); display: none"></span>
         <button id="sudo-submit" type="submit" class="btn-unlock">
           Unlock Local Dev
         </button>
@@ -2126,7 +2129,7 @@
                 ? `<button class="danger" data-action="delete">Delete</button>`
                 : "";
             return `<div class="ws-item ${n === activeWs ? "active" : ""}" data-name="${escHtml(n)}" data-action="select">
-          <span>${escHtml(n)}${isWsActive(n) ? ' <span style="font-size:10px;color:var(--muted)">(active)</span>' : ""}${n === focusName() ? ' <span style="font-size:10px;color:var(--accent)">●</span>' : ""}</span>
+          <span>${escHtml(n)}${isWsActive(n) ? ' <span style="font-size:10px;color:var(--muted)">(active)</span>' : ""}${n === focusName() ? ' <span style="font-size:10px;color:var(--accent-text)">●</span>' : ""}</span>
           <span class="ws-item-right">
             <button class="ws-term-btn" title="Open in terminal" data-open-term="${escHtml(dirPath)}">&#62;_</button>
             <button class="ws-open-btn" title="Open in editor" data-open-path="${escHtml(wsData.codeWorkspacePaths?.[n] || dirPath)}">↗</button>
@@ -2483,7 +2486,7 @@
               </div>
             </div>`;
                   const offBadge = isAutoOff
-                    ? ` <span class="badge" title="start / don't start with workspace" style="border-color:var(--yellow);color:var(--yellow)">⏸ off</span>`
+                    ? ` <span class="badge" title="start / don't start with workspace" style="border-color:var(--warn);color:var(--warn)">⏸ off</span>`
                     : "";
                   const unclonedBadge = isUncloned
                     ? ` <span class="badge uncloned" title="Not cloned yet — run Sync to clone it">⬇ not cloned</span>`
@@ -4839,7 +4842,7 @@
           `Their workspace Up may fail readiness while it's off.</div>` +
           `<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">` +
           `<button id="as-cancel" class="cmd-btn">Cancel</button>` +
-          `<button id="as-confirm" class="cmd-btn" style="border-color:var(--yellow);color:var(--yellow)">Turn off</button>` +
+          `<button id="as-confirm" class="cmd-btn" style="border-color:var(--warn);color:var(--warn)">Turn off</button>` +
           `</div>`;
         overlay.appendChild(box);
         document.body.appendChild(overlay);
@@ -5054,14 +5057,14 @@
           if (result.editor_overrides !== undefined)
             _settingsData.editor_overrides = result.editor_overrides;
           if (msg && msg.isConnected) {
-            msg.style.color = "var(--green)";
+            msg.style.color = "var(--ok)";
             msg.textContent = "✓ Saved";
             setTimeout(() => {
               if (msg.isConnected) msg.textContent = "";
             }, 2000);
           }
         } else if (msg && msg.isConnected) {
-          msg.style.color = "var(--red)";
+          msg.style.color = "var(--bad)";
           msg.textContent = "✗ Save failed";
         }
       }

@@ -100,7 +100,11 @@ import {
   type ReleaseConfig,
 } from "../../shared/den-config.js";
 import { readOrg } from "../../shared/org.js";
-import { engineVersion, getDistRoot } from "../../shared/paths.js";
+import {
+  engineVersion,
+  getDistRoot,
+  getEngineRoot,
+} from "../../shared/paths.js";
 import { enginePath } from "../../shared/engine.js";
 import {
   releaseService,
@@ -141,6 +145,17 @@ import {
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import { serveUiAsset } from "./ui-assets.js";
 import { graphPrefs, mergeGraphPrefs } from "./graph-prefs.js";
+import {
+  appearancePrefs,
+  mergeAppearancePrefs,
+  storedAppearance,
+} from "./appearance-prefs.js";
+import {
+  activeTheme,
+  handleThemeRoutes,
+  type ThemeRouteDeps,
+} from "./theme-routes.js";
+import { findTheme } from "./theme-runtime.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -342,6 +357,34 @@ function serverLog(msg: string, kind: string = "info", actor?: string): void {
   if (!SILENT) process.stdout.write(msg + "\n");
 }
 
+// ── Theme ────────────────────────────────────────────────────────────────────
+// The active theme (user's, else the org config's `theme:`, else den). A
+// theme switch is a write of user.yml `appearance:` and a new /theme.css:
+// nothing else (no edge, no services, no restart).
+const themeDeps: ThemeRouteDeps = {
+  roots: () => ({ distRoot: getDistRoot(), engineRoot: getEngineRoot() }),
+  prefs: () => appearancePrefs(readUserConfig().appearance),
+  distributionTheme: () => readDenConfig().theme,
+  warn: (line) => serverLog(line, "warn"),
+};
+// The pre-paint script in each page reads the user's mode and the theme's
+// default mode from these placeholders, so the first paint is right.
+setHtmlFill((html) => {
+  let mode = "system";
+  let def = "dark";
+  try {
+    mode = appearancePrefs(readUserConfig().appearance).mode;
+    def = activeTheme(themeDeps)?.theme.default_mode ?? "dark";
+  } catch {
+    /* defaults */
+  }
+  return html
+    .split("@@DEN_MODE@@")
+    .join(mode)
+    .split("@@DEN_DEFAULT_MODE@@")
+    .join(def);
+});
+
 // Every audited action (exec, run, sync) lands in the log as a lifecycle
 // line; an agent's carries its label so the /logs page can mark it.
 setAuditSink((line, actor) =>
@@ -396,6 +439,7 @@ import {
   serveFile,
   send400,
   send404,
+  setHtmlFill,
 } from "./http-helpers.js";
 import { orgOf, listOrgs } from "../../shared/manifest/service-links.js";
 import {
@@ -593,6 +637,9 @@ async function handleRequest(
   if (pathname === "/header.js") {
     return serveFile(res, path.join(PUBLIC_DIR, "header.js"));
   }
+
+  // The active theme as CSS, its mark and fonts, and the theme list.
+  if (handleThemeRoutes(req, res, pathname, themeDeps)) return;
 
   // The graph's modules (graph.js, panel.js, …) and vendored libraries (ELK).
   if (serveUiAsset(res, pathname, PUBLIC_DIR)) return;
@@ -2920,8 +2967,9 @@ async function handleRequest(
 
   // ── API: user settings ────────────────────────────────────────────────────
   // GET  /api/settings  → { editor, editors, terminal, terminals, editor_overrides, languages }
-  // POST /api/settings  body: { editor?, terminal?, editor_overrides?, graph? }
+  // POST /api/settings  body: { editor?, terminal?, editor_overrides?, graph?, appearance? }
   //   graph: { direction, group, density, panelWidth } (see graph-prefs.ts)
+  //   appearance: { theme: id | null, mode: system|dark|light } (appearance-prefs.ts)
   if (pathname === "/api/settings") {
     if (req.method === "GET") {
       const user = readUserConfig();
@@ -2936,6 +2984,7 @@ async function handleRequest(
         languages: SUPPORTED_LANGUAGES,
         log_window_lines: user.log_window_lines ?? 20_000,
         graph: graphPrefs(user.graph),
+        appearance: appearancePrefs(user.appearance),
       });
     }
     if (req.method === "POST") {
@@ -2945,12 +2994,25 @@ async function handleRequest(
           terminal?: string | null;
           editor_overrides?: Record<string, string> | null;
           graph?: unknown;
+          appearance?: unknown;
         };
         const user = readUserConfig();
         if (body.graph !== undefined) {
           const g = mergeGraphPrefs(graphPrefs(user.graph), body.graph);
           if (!g.ok) return send400(res, g.error);
           user.graph = g.value;
+        }
+        // A UI preference only: the page swaps /theme.css and data-mode.
+        if (body.appearance !== undefined) {
+          const a = mergeAppearancePrefs(
+            appearancePrefs(user.appearance),
+            body.appearance,
+            (id) => !!findTheme(themeDeps.roots(), id)?.ok,
+          );
+          if (!a.ok) return send400(res, a.error);
+          const stored = storedAppearance(a.value);
+          if (stored) user.appearance = stored;
+          else delete user.appearance;
         }
         if (body.editor === null || body.editor === "") {
           delete user.editor;
@@ -2996,6 +3058,7 @@ async function handleRequest(
           terminal: user.terminal ?? null,
           editor_overrides: user.editor_overrides ?? {},
           graph: graphPrefs(user.graph),
+          appearance: appearancePrefs(user.appearance),
         });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);

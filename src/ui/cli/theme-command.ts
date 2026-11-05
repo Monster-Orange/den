@@ -165,7 +165,7 @@ function licenseFiles(dir: string): string[] {
 }
 
 /** One line naming what a failed validation found. */
-function validationSummary(v: ThemeValidation): string {
+export function validationSummary(v: ThemeValidation): string {
   return [
     ...v.issues.map((i) => (i.at ? `${i.at}: ${i.message}` : i.message)),
     ...v.contrast.map(
@@ -178,7 +178,7 @@ function validationSummary(v: ThemeValidation): string {
  * Every plugins/<id>/ that holds a theme (a den-theme.json), locked or local,
  * sorted. Other local plugins (no den-theme.json) are not themes.
  */
-function installedThemeIds(distRoot: string): string[] {
+export function installedThemeIds(distRoot: string): string[] {
   const root = path.join(distRoot, PLUGINS_DIR);
   if (!fs.existsSync(root)) return [];
   return fs
@@ -194,7 +194,7 @@ function installedThemeIds(distRoot: string): string[] {
 }
 
 /** The lock's theme entries (the lock is shared with other plugin kinds). */
-function themesIn(lock: Record<string, LockEntry>): LockEntry[] {
+export function themesIn(lock: Record<string, LockEntry>): LockEntry[] {
   return Object.values(lock).filter((e) => e.kinds?.includes("theme"));
 }
 
@@ -212,7 +212,7 @@ export function hashTheme(dir: string, files: string[]): string {
  * plugins/<id>/ in the distribution. The id is checked again here (the lock
  * file is editable), so a delete can only ever reach that directory.
  */
-function themeDirFor(distRoot: string, id: string): string {
+export function themeDirFor(distRoot: string, id: string): string {
   if (!/^[a-z][a-z0-9-]{1,39}$/.test(id))
     throw new Error(`"${id}" is not a plugin id`);
   return path.join(distRoot, PLUGINS_DIR, id);

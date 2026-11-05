@@ -3,6 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Mode before first paint: yours (the server fills it in below),
+      // else the system's, else the theme's default, else dark.
+      (function () {
+        var m = "@@DEN_MODE@@";
+        if (m !== "dark" && m !== "light") {
+          var q = function (s) {
+            return window.matchMedia && matchMedia("(prefers-color-scheme: " + s + ")").matches;
+          };
+          m = q("light") ? "light" : q("dark") ? "dark" : "@@DEN_DEFAULT_MODE@@";
+        }
+        document.documentElement.dataset.mode = m === "light" ? "light" : "dark";
+      })();
+    </script>
+    <link rel="stylesheet" href="/theme.css" id="theme-css" />
     <title>__DEN_TITLE__ · Services</title>
     <style>
       *,
@@ -13,18 +28,6 @@
         padding: 0;
       }
 
-      :root {
-        --bg: #0d1117;
-        --surface: #161b22;
-        --border: #30363d;
-        --text: #c9d1d9;
-        --muted: #8b949e;
-        --accent: #58a6ff;
-        --green: #3fb950;
-        --red: #f85149;
-        --yellow: #d29922;
-        --mono: "SF Mono", "Cascadia Code", "Fira Code", "Menlo", monospace;
-      }
 
       html,
       body {
@@ -125,13 +128,13 @@
         display: inline-block;
       }
       .dot.ok {
-        background: var(--green);
+        background: var(--ok);
       }
       .dot.err {
-        background: var(--red);
+        background: var(--bad);
       }
       .dot.running {
-        background: var(--yellow);
+        background: var(--warn);
         animation: pulse 1s ease-in-out infinite;
       }
       @keyframes pulse {
@@ -231,7 +234,7 @@
       }
       .service-card.subservice {
         border-style: dashed;
-        border-color: #3d444d;
+        border-color: var(--border-strong);
         /* Left rule stays solid on both — a 3px dashed vertical rule renders as
          scattered dots. The dashed outer border carries the distinction. */
         border-left: 3px solid var(--muted);
@@ -267,7 +270,7 @@
         margin-top: 3px;
         font-size: 11px;
         font-family: var(--mono);
-        color: var(--accent);
+        color: var(--accent-text);
         text-decoration: none;
         word-break: break-all;
       }
@@ -292,16 +295,16 @@
         color: var(--muted);
       }
       .badge.dev-managed {
-        border-color: #388bfd44;
-        color: #58a6ff;
+        border-color: color-mix(in srgb, var(--accent) 27%, transparent);
+        color: var(--accent-text);
       }
       .badge.managed {
-        border-color: #a371f744;
-        color: #a371f7;
+        border-color: var(--border-strong);
+        color: var(--text);
       }
       .badge.always-on {
-        border-color: #3fb95044;
-        color: #3fb950;
+        border-color: color-mix(in srgb, var(--ok) 27%, transparent);
+        color: var(--ok);
       }
       .badge.branch {
         border-color: var(--border);
@@ -327,7 +330,7 @@
       }
       .cmd-btn:hover:not(:disabled) {
         border-color: var(--accent);
-        color: var(--accent);
+        color: var(--accent-text);
       }
       .cmd-btn:disabled {
         opacity: 0.45;
@@ -337,8 +340,8 @@
         border-color: var(--muted);
       }
       .cmd-btn.logs-btn:hover:not(:disabled) {
-        border-color: var(--yellow);
-        color: var(--yellow);
+        border-color: var(--warn);
+        color: var(--warn);
       }
 
       .empty-state {
@@ -398,16 +401,16 @@
         min-height: 0;
       }
       #output .cmd {
-        color: var(--accent);
+        color: var(--accent-text);
       }
       #output .err {
-        color: var(--red);
+        color: var(--bad);
       }
       #output .done-ok {
-        color: var(--green);
+        color: var(--ok);
       }
       #output .done-fail {
-        color: var(--red);
+        color: var(--bad);
       }
     </style>
   </head>
@@ -437,9 +440,9 @@
           font-family: var(--mono);
           padding: 2px 8px;
           border-radius: 10px;
-          border: 1px solid #388bfd44;
-          color: #58a6ff;
-          background: #58a6ff10;
+          border: 1px solid color-mix(in srgb, var(--accent) 27%, transparent);
+          color: var(--accent-text);
+          background: color-mix(in srgb, var(--accent) 6%, transparent);
           display: none;
         "
       ></span>
@@ -454,8 +457,8 @@
           <span
             id="log-badge"
             style="
-              background: var(--yellow);
-              color: #0d1117;
+              background: var(--warn);
+              color: var(--bg);
               font-size: 10px;
               font-weight: 700;
               padding: 1px 5px;
@@ -842,7 +845,7 @@
             : "";
           const unclonedBadge =
             s.cloned === false
-              ? `<span class="badge" style="border-color:var(--yellow);color:var(--yellow)" title="Not cloned yet">⬇ not cloned</span>`
+              ? `<span class="badge" style="border-color:var(--warn);color:var(--warn)" title="Not cloned yet">⬇ not cloned</span>`
               : "";
           const branchBadge = s.branch
             ? `<span class="badge branch">${s.branch}</span>`
