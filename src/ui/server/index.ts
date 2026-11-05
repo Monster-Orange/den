@@ -49,8 +49,6 @@ import {
   parseAddress,
   readManifestAnyBranch,
 } from "../../shared/environment-manager/workspaces.js";
-import { deriveGraph } from "../../shared/environment-manager/derivation/derive-graph.js";
-import { orderForDown } from "../../shared/environment-manager/derivation/derived-up.js";
 import { findServiceContainer } from "../../shared/environment-manager/service-container.js";
 import {
   resolveHistorySource,
@@ -63,6 +61,7 @@ import {
 import {
   pingHttp,
   pingShell,
+  prewarmHealthTls,
 } from "../../shared/environment-manager/health.js";
 import {
   runServiceCommand,
@@ -72,7 +71,7 @@ import {
   unregisterDaemon,
   checkServiceHealth,
   loadDaemonsFromFile,
-  pruneDeadDaemons,
+  pruneDeadDaemonsAsync,
   isInteractiveServiceCommand,
   rewriteLegacyOpctlKillCommandForContainer,
   shouldDetachServiceCommand,
@@ -141,6 +140,8 @@ import { handleReadonlyRoutes } from "./readonly-routes.js";
 import { serveUiAsset } from "./ui-assets.js";
 import { graphPrefs, mergeGraphPrefs } from "./graph-prefs.js";
 import { singleFlight } from "./single-flight.js";
+import { graphOrder } from "./graph-order.js";
+import { clearReadCache, enableReadCache } from "../../shared/read-cache.js";
 import { buildServicesList, type ServicesList } from "./services-list.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -212,7 +213,13 @@ const healthCache = new Map<string, { results: HealthResult[]; at: number }>();
 /** The full-env health run in flight per cache key: concurrent polls join it. */
 const healthInFlight = new Map<string, Promise<HealthResult[]>>();
 /** /api/services builds, shared by concurrent polls and reused briefly. */
+/** The startup sweep of stale daemon records (see below the routes). */
+let startupPrune: Promise<void> = Promise.resolve();
 const SERVICES_CACHE_TTL_MS = 2_000;
+// Manifests, the edge config and the derived graph order are reused across
+// a request and the polls after it (cleared by any mutating request).
+const READ_CACHE_TTL_MS = 5_000;
+enableReadCache(READ_CACHE_TTL_MS);
 const servicesCache = singleFlight<ServicesList>(SERVICES_CACHE_TTL_MS);
 /** A workspace-scoped run covers a different service set than the default one. */
 function healthCacheKey(env: Environment, workspace: string | null): string {
@@ -544,8 +551,10 @@ async function handleRequest(
   if (
     (req.method !== "GET" && req.method !== "HEAD") ||
     /\/(exec|sync)$/.test(pathname)
-  )
+  ) {
     servicesCache.clear();
+    clearReadCache();
+  }
 
   // ── Request logging ────────────────────────────────────────────────────────
   // /api/health fires on the UI's 5s polling interval forever — it dominates
@@ -1031,9 +1040,7 @@ async function handleRequest(
     // direction as the graph (and `den status`). orderForDown is the reverse
     // of the deps-first startup order.
     const rank = new Map(
-      orderForDown(
-        deriveGraph({ scope: "all", workspace: workspaces[0]?.name }),
-      ).map((repo, i) => [repo, i]),
+      graphOrder(workspaces[0]?.name).map((repo, i) => [repo, i]),
     );
     const sortedEntries = [...entries].sort((a, b) => {
       const ra = rank.get(a.repo) ?? Number.MAX_SAFE_INTEGER;
@@ -1702,6 +1709,7 @@ async function handleRequest(
 
   // ── API: running daemons list ──────────────────────────────────────────────
   if (pathname === "/api/service/daemons") {
+    await startupPrune;
     const daemons = listDaemons().map((d) => ({
       address: d.address,
       repoName: d.repoName,
@@ -3072,15 +3080,20 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 // service stopped outside den — otherwise reopen as tabs in the web UI and
 // clutter the shutdown prompt. Container liveness (not health) is the signal: a
 // service's shared-infra health check stays green even when the service is down.
-// Runs synchronously at startup so /api/service/daemons never hands the UI a
-// stale entry on its first load.
+// The container listing runs as async child processes (a sync `docker ps`
+// here held the event loop at startup); /api/service/daemons waits for it,
+// so the UI never gets a stale entry on its first load.
 loadDaemonsFromFile();
-const prunedDaemons = pruneDeadDaemons();
-if (prunedDaemons.length > 0) {
-  console.error(
-    `Cleared ${prunedDaemons.length} stale daemon(s): ${prunedDaemons.join(", ")}`,
-  );
-}
+startupPrune = pruneDeadDaemonsAsync()
+  .then((pruned) => {
+    if (pruned.length > 0)
+      console.error(
+        `Cleared ${pruned.length} stale daemon(s): ${pruned.join(", ")}`,
+      );
+  })
+  .catch((e: unknown) => {
+    console.error(`[server] stale-daemon sweep failed: ${String(e)}`);
+  });
 
 // Background recovery: after a short delay (long enough for services to be
 // responding), health-check each loaded daemon. Removal requires strong
@@ -3137,6 +3150,16 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason) => {
   console.error("[server] unhandled rejection (continuing):", reason);
 });
+
+// Build, before serving, what the first health poll and /api/services would
+// otherwise build inside a request: the dependency-graph order and the HTTPS
+// checks' trust context (both synchronous).
+try {
+  for (const ws of getActiveWorkspaces()) graphOrder(ws);
+  prewarmHealthTls();
+} catch (e) {
+  serverLog(`  ⚠ cache warm-up failed: ${(e as Error).message}`);
+}
 
 // Bind loopback only — this UI runs privileged local actions (sudo-backed
 // service commands), so it must not be reachable from the LAN. Opt out with

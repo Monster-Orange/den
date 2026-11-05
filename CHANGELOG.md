@@ -74,6 +74,32 @@ config and manifest changes a distribution must make to move to it under
   as when it is a Den stack's project.
 - **`<cli> workspace <sub> --help`** prints that subcommand's help, not the
   whole `workspace` help.
+- **No synchronous directory walks or spawns on the web server's hot
+  request paths** (`/api/workspaces/available-repos`, the `/api/health`
+  stream). On a loaded machine (load average ~50) the dev.1 fixes still
+  left stalls of 1-5s; a CPU profile showed why:
+  - available-repos recursed into every directory without a manifest file
+    of its own, so in a distribution whose repos use held manifests it
+    walked each repo's whole tree (to depth 4) with `readdirSync` /
+    `existsSync`: seconds per call. It now never descends into a git
+    checkout or `node_modules`, and the walk is `fs.promises`.
+  - The distribution root (and so `product()`) was re-resolved on every
+    call, a den.yml `existsSync` per `*_ROOT` variable each time, hundreds
+    of times per request. It is now resolved once per set of inputs (the
+    env vars and entry script it reads); the engine root likewise.
+  - Manifests, the edge config and the derived graph order are reused
+    across a request and the polls after it (5s; any mutating request
+    clears them), and the graph order is recomputed after a request, never
+    inside one.
+  - HTTPS health checks built a TLS context from ~150 root certificates on
+    every check; one context is built once, at startup.
+  - The startup sweep of stale daemon records ran `docker ps` / `opctl
+    container ls` synchronously; it is async now (concurrent callers share
+    one call), and `/api/service/daemons` waits for it.
+  A new test runs the server with a spy on every synchronous fs and
+  child_process call and fails if either route makes a sync spawn or
+  directory walk, or any sync call outside a short allowlist of single
+  config-file reads.
 
 ### Migrations
 

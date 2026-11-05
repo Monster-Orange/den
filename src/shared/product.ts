@@ -35,10 +35,16 @@ function withDerived(p: ProductProfile): Product {
   };
 }
 
+let derived: { profile: ProductProfile; product: Product } | null = null;
+
 /** The running product. Never throws. */
 export function product(): Product {
   try {
-    return withDerived(loadProfile(getDistRoot()));
+    const profile = loadProfile(getDistRoot());
+    // Same profile object (loadProfile caches it): same derived names.
+    if (derived?.profile !== profile)
+      derived = { profile, product: withDerived(profile) };
+    return derived.product;
   } catch {
     const pinned = process.env.DEN_PROFILE?.trim();
     try {

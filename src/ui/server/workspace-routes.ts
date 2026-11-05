@@ -172,26 +172,50 @@ async function buildAvailableRepos(wsOverride: string | null) {
   const entries: RepoEntry[] = [];
   const seenRelPaths = new Set<string>();
 
-  // Recursively walk repos_root, stopping at directories that have .den.yml.
-  // We don't recurse into repo directories themselves.
-  const walkDir = (dir: string, relPrefix: string, depth: number): void => {
+  // Walk repos_root for checkouts with their own manifest. A git checkout is
+  // never descended into, manifest or not: the walk used to recurse into
+  // every directory without the manifest file, so a distribution whose
+  // repos use held manifests (manifests/<repo>.yml) had each repo's whole
+  // tree walked to depth 4 — seconds of readdirSync on every call. All of it
+  // is async now: the event loop serves other requests meanwhile.
+  const exists = (p: string): Promise<boolean> =>
+    fs.promises.access(p).then(
+      () => true,
+      () => false,
+    );
+  const walkDir = async (
+    dir: string,
+    relPrefix: string,
+    depth: number,
+  ): Promise<void> => {
     if (depth > 4) return; // safety limit
     let dirents: fs.Dirent[];
     try {
-      dirents = fs.readdirSync(dir, { withFileTypes: true });
+      dirents = await fs.promises.readdir(dir, { withFileTypes: true });
     } catch {
       return;
     }
-
-    for (const d of dirents) {
-      if (!d.isDirectory() && !d.isSymbolicLink()) continue;
-      if (d.name.startsWith(".")) continue; // skip .git, .github, .DS_Store, etc.
-      const absPath = path.join(dir, d.name);
-      if (absPath === ROOT) continue; // skip den itself
+    const children = dirents.filter(
+      (d) =>
+        (d.isDirectory() || d.isSymbolicLink()) &&
+        !d.name.startsWith(".") && // .git, .github, .DS_Store, …
+        d.name !== "node_modules" &&
+        path.join(dir, d.name) !== ROOT, // den itself
+    );
+    // One directory's children are checked together; the descent stays
+    // depth-first in readdir order, so the list keeps its old order.
+    const checked = await Promise.all(
+      children.map(async (d) => {
+        const absPath = path.join(dir, d.name);
+        const [hasManifest, isCheckout] = await Promise.all([
+          exists(path.join(absPath, `${product().manifestYml}`)),
+          exists(path.join(absPath, ".git")),
+        ]);
+        return { d, absPath, hasManifest, isCheckout };
+      }),
+    );
+    for (const { d, absPath, hasManifest, isCheckout } of checked) {
       const relPath = relPrefix ? `${relPrefix}/${d.name}` : d.name;
-      const hasManifest = fs.existsSync(
-        path.join(absPath, `${product().manifestYml}`),
-      );
       if (hasManifest) {
         const known = catalog[relPath]?.gh ?? null;
         // Already added if the exact address is in the workspace, OR if
@@ -214,71 +238,68 @@ async function buildAvailableRepos(wsOverride: string | null) {
             }),
           );
         seenRelPaths.add(relPath);
-        // Don't recurse into repo directories.
-      } else {
-        // Not a repo — recurse to find repos in subdirectories.
-        walkDir(absPath, relPath, depth + 1);
+      } else if (!isCheckout) {
+        // Not a repo: look for repos in its subdirectories.
+        await walkDir(absPath, relPath, depth + 1);
       }
     }
   };
-  walkDir(reposRoot, "", 0);
+  await walkDir(reposRoot, "", 0);
 
   // Managed clones live at .den-services/<repo>/<branch>/
   // Walk two levels: repo dir → branch dir (each branch dir is a full clone).
   // Multiple workspaces pointing to the same repo+branch share the same clone.
-  try {
-    const repoDirs = fs.readdirSync(DEN_SERVICES_DIR, {
-      withFileTypes: true,
-    });
-    for (const repoDir of repoDirs) {
-      if (!repoDir.isDirectory()) continue;
-      const repoName = repoDir.name;
-      const repoDirPath = path.join(DEN_SERVICES_DIR, repoName);
-      let branchDirs: fs.Dirent[];
-      try {
-        branchDirs = fs.readdirSync(repoDirPath, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      for (const branchDir of branchDirs) {
-        if (!branchDir.isDirectory()) continue;
-        const branchName = branchDir.name;
-        const absPath = path.join(repoDirPath, branchName);
-        // Only treat as a branch clone if it's actually a git repo
-        if (!fs.existsSync(path.join(absPath, ".git"))) continue;
-        const key = `${repoName}::${branchName}`; // unique per repo+branch
-        if (seenRelPaths.has(key)) continue;
-        const hasManifest = fs.existsSync(
-          path.join(absPath, `${product().manifestYml}`),
-        );
-        const known = catalog[repoName]?.gh ?? null;
-        const entry: RepoEntry = {
-          name: repoName,
-          relPath: repoName, // catalog key used as workspace address
-          absPath,
-          hasManifest,
-          alreadyAdded: isAdded(repoName, known),
-          source: "managed",
-          gh: known,
-          currentBranch: branchName,
-        };
-        entries.push(entry);
-        pending.push(
-          Promise.all([
-            known ? known : getRemoteGh(absPath),
-            gitOut(absPath, ["rev-parse", "--abbrev-ref", "HEAD"]),
-          ]).then(([gh, branch]) => {
-            entry.gh = gh;
-            entry.alreadyAdded = isAdded(repoName, gh);
-            entry.currentBranch = branch ?? branchName;
-          }),
-        );
-        seenRelPaths.add(key);
-        seenRelPaths.add(repoName); // prevent catalog fallback from duplicating
-      }
+  const readDirs = async (dir: string): Promise<string[]> => {
+    try {
+      return (await fs.promises.readdir(dir, { withFileTypes: true }))
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name);
+    } catch {
+      return []; // the managed-clones dir does not exist yet
     }
-  } catch {
-    /* the managed-clones dir does not exist yet */
+  };
+  for (const repoName of await readDirs(DEN_SERVICES_DIR)) {
+    const repoDirPath = path.join(DEN_SERVICES_DIR, repoName);
+    const clones = await Promise.all(
+      (await readDirs(repoDirPath)).map(async (branchName) => {
+        const absPath = path.join(repoDirPath, branchName);
+        const [isGit, hasManifest] = await Promise.all([
+          exists(path.join(absPath, ".git")),
+          exists(path.join(absPath, `${product().manifestYml}`)),
+        ]);
+        return { branchName, absPath, isGit, hasManifest };
+      }),
+    );
+    for (const { branchName, absPath, isGit, hasManifest } of clones) {
+      // Only treat as a branch clone if it's actually a git repo
+      if (!isGit) continue;
+      const key = `${repoName}::${branchName}`; // unique per repo+branch
+      if (seenRelPaths.has(key)) continue;
+      const known = catalog[repoName]?.gh ?? null;
+      const entry: RepoEntry = {
+        name: repoName,
+        relPath: repoName, // catalog key used as workspace address
+        absPath,
+        hasManifest,
+        alreadyAdded: isAdded(repoName, known),
+        source: "managed",
+        gh: known,
+        currentBranch: branchName,
+      };
+      entries.push(entry);
+      pending.push(
+        Promise.all([
+          known ? known : getRemoteGh(absPath),
+          gitOut(absPath, ["rev-parse", "--abbrev-ref", "HEAD"]),
+        ]).then(([gh, branch]) => {
+          entry.gh = gh;
+          entry.alreadyAdded = isAdded(repoName, gh);
+          entry.currentBranch = branch ?? branchName;
+        }),
+      );
+      seenRelPaths.add(key);
+      seenRelPaths.add(repoName); // prevent catalog fallback from duplicating
+    }
   }
 
   // Catalog-only entries — repos den knows about but not found locally.

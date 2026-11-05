@@ -16,6 +16,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { readOriginUrl } from "../git/origin-url.js";
+import { cachedRead } from "../read-cache.js";
 import { getDistRoot } from "../paths.js";
 import { parse as parseYaml } from "yaml";
 import type { RawManifest } from "../types/index.js";
@@ -241,6 +242,12 @@ function combine(
 
 /** Resolve, read and merge `repoPath`'s manifest layers. Never throws. */
 export function loadManifest(repoPath: string): ManifestLoad {
+  // The web server resolves the same manifests many times per request; it
+  // reuses them for the read cache's TTL (see read-cache.ts).
+  return cachedRead(`manifest:${repoPath}`, () => loadManifestFresh(repoPath));
+}
+
+function loadManifestFresh(repoPath: string): ManifestLoad {
   const at = locate(repoPath);
   try {
     return combine(

@@ -10,7 +10,7 @@
  *     repo's dev/up op, captured at spawn time and/or parsed on demand.
  */
 
-import { execFileSync, execSync } from "child_process";
+import { execFile, execFileSync, execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { parse as parseYaml } from "yaml";
@@ -333,3 +333,85 @@ export function diffSpawnedContainers(
   for (const c of after) if (!had.has(c.base)) fresh.add(c.base);
   return [...fresh];
 }
+
+// ── Async variants (the web server) ──────────────────────────────────────────
+// The sync calls above block the event loop for the whole `docker ps` /
+// `opctl container ls` (hundreds of ms on a loaded machine). The server uses
+// these instead; concurrent callers share one in-flight call.
+
+function execOut(cmd: string, args: string[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile(
+      cmd,
+      args,
+      { encoding: "utf-8", timeout: 5_000, maxBuffer: 16 * 1024 * 1024 },
+      (err, stdout) => resolve(err ? null : stdout),
+    );
+  });
+}
+
+function shared<T>(run: () => Promise<T>): () => Promise<T> {
+  let inFlight: Promise<T> | null = null;
+  return () =>
+    (inFlight ??= run().finally(() => {
+      inFlight = null;
+    }));
+}
+
+/** Whether `opctl` is on PATH, without spawning a shell. Cached. */
+export async function isOpctlAvailableAsync(): Promise<boolean> {
+  if (opctlAvailableCache !== null) return opctlAvailableCache;
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) continue;
+    try {
+      await fs.promises.access(path.join(dir, "opctl"), fs.constants.X_OK);
+      return (opctlAvailableCache = true);
+    } catch {
+      /* next */
+    }
+  }
+  return (opctlAvailableCache = false);
+}
+
+/** runningDockerNames, async; null when docker is unavailable. */
+export const runningDockerNamesAsync = shared(
+  async (): Promise<string[] | null> => {
+    const out = await execOut("docker", ["ps", "--format", "{{.Names}}"]);
+    return out === null
+      ? null
+      : out
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean);
+  },
+);
+
+/** listRunningOpctlContainers, async. */
+export const listRunningOpctlContainersAsync = shared(
+  async (): Promise<{ name: string; base: string }[]> => {
+    const byBase = new Map<string, { name: string; base: string }>();
+    const [opctlOut, dockerNames] = await Promise.all([
+      isOpctlAvailableAsync().then((ok) =>
+        ok ? execOut("opctl", ["container", "ls"]) : null,
+      ),
+      runningDockerNamesAsync(),
+    ]);
+    if (opctlOut !== null) {
+      const lines = opctlOut.split("\n");
+      const firstToken = lines[0]?.trim().split(/\s+/)[0];
+      const body =
+        firstToken === "NAME" || firstToken === "ID" ? lines.slice(1) : lines;
+      for (const line of body) {
+        const name = line.trim().split(/\s+/)[0];
+        if (!name) continue;
+        const base = name.replace(/-[0-9a-f]{8}$/i, "");
+        byBase.set(base, { name, base });
+      }
+    }
+    for (const name of dockerNames ?? []) {
+      const m = name.match(DOCKER_OPCTL_NAME);
+      if (m && !byBase.has(m[1])) byBase.set(m[1], { name, base: m[1] });
+    }
+    return [...byBase.values()];
+  },
+);

@@ -10,6 +10,7 @@ import * as http from "http";
 import * as net from "net";
 import type { AddressInfo } from "net";
 import * as path from "path";
+import { pathToFileURL } from "url";
 
 const ENGINE = path.resolve(__dirname, "../../../..");
 
@@ -33,7 +34,10 @@ export function gitRepo(dir: string, origin: string): void {
 export interface SlowGitServer {
   port: number;
   /** GET `p`; how long the full response took. */
-  timed(p: string): Promise<{ ms: number; status: number; body: string }>;
+  timed(
+    p: string,
+    headers?: Record<string, string>,
+  ): Promise<{ ms: number; status: number; body: string }>;
   /** Lines the shim logged: one per slow command it served. */
   slowCalls(): number;
   stop(): Promise<void>;
@@ -49,6 +53,8 @@ export async function startSlowGitServer(opts: {
   root: string;
   slow: string[];
   delayS: number;
+  /** Modules to --import before the server (e.g. ./sync-spy.mjs). */
+  preload?: string[];
 }): Promise<SlowGitServer> {
   const realGit = fs.existsSync("/usr/bin/git") ? "/usr/bin/git" : "git";
   const shimDir = path.join(opts.tmp, "shim");
@@ -74,31 +80,53 @@ export async function startSlowGitServer(opts: {
   await new Promise<void>((r) => s.close(() => r()));
 
   let out = "";
-  const server: ChildProcess = spawn(
-    path.join(ENGINE, "node_modules", ".bin", "tsx"),
-    [path.join(ENGINE, "src", "ui", "server", "index.ts")],
-    {
-      cwd: opts.root,
-      env: {
-        ...process.env,
-        PATH: `${shimDir}:${process.env.PATH ?? ""}`,
-        DEN_ROOT: opts.root,
-        DEN_HOME: path.join(opts.tmp, "home"),
-        DEN_DAEMONS_FILE: path.join(opts.tmp, "daemons.json"),
-        PORT: String(port),
-        DEN_NO_OPEN: "1",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    },
+  const entry = path.join(ENGINE, "src", "ui", "server", "index.ts");
+  const tsxLoader = path.join(
+    ENGINE,
+    "node_modules",
+    "tsx",
+    "dist",
+    "loader.mjs",
   );
+  const [cmd, args] = opts.preload?.length
+    ? [
+        process.execPath,
+        [
+          ...opts.preload.flatMap((m) => ["--import", pathToFileURL(m).href]),
+          "--import",
+          pathToFileURL(tsxLoader).href,
+          entry,
+        ],
+      ]
+    : [path.join(ENGINE, "node_modules", ".bin", "tsx"), [entry]];
+  const server: ChildProcess = spawn(cmd, args, {
+    cwd: opts.root,
+    env: {
+      ...process.env,
+      PATH: `${shimDir}:${process.env.PATH ?? ""}`,
+      DEN_ROOT: opts.root,
+      DEN_HOME: path.join(opts.tmp, "home"),
+      DEN_DAEMONS_FILE: path.join(opts.tmp, "daemons.json"),
+      PORT: String(port),
+      DEN_NO_OPEN: "1",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   server.stdout!.on("data", (d: Buffer) => (out += d.toString()));
   server.stderr!.on("data", (d: Buffer) => (out += d.toString()));
 
-  const timed: SlowGitServer["timed"] = (p) => {
+  const timed: SlowGitServer["timed"] = (p, headers = {}) => {
     const started = Date.now();
     return new Promise((resolve, reject) => {
       const req = http.get(
-        { host: "127.0.0.1", port, path: p, timeout: 30_000, agent: false },
+        {
+          host: "127.0.0.1",
+          port,
+          path: p,
+          headers,
+          timeout: 30_000,
+          agent: false,
+        },
         (res) => {
           let body = "";
           res.on("data", (d: Buffer) => (body += d.toString()));

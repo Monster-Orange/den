@@ -6,6 +6,10 @@
  * dist's den.yml is gone), the shutdown used to reject unhandled: the server
  * logged "unhandled rejection (continuing): ... cannot locate the
  * distribution root" and, its signal guard already set, never exited.
+ *
+ * Since 0.2.4 the root is resolved once per process (paths.ts), so the
+ * registry no longer re-walks at shutdown at all; the shutdown also catches
+ * a failure and still exits. Either way: a clean exit, no rejection.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawn, type ChildProcess } from "child_process";
@@ -115,10 +119,6 @@ describe("web server shutdown in an installed distribution", () => {
 
     expect(out).not.toMatch(/unhandled rejection/);
     expect(code).not.toBe("still running");
-    expect(out).toMatch(/cannot read the running-services registry/);
-    // The walk that failed is the installed one, from inside node_modules.
-    expect(out).toMatch(
-      /walked up from "[^"]*acme\/node_modules\/@monster-orange\/den\/src\/ui\/server"/,
-    );
+    expect(code).toBe(0);
   }, 20_000);
 });

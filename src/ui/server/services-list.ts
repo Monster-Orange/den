@@ -21,8 +21,7 @@ import {
   readWorkspacesFile,
   resolveDepAddress,
 } from "../../shared/environment-manager/workspaces.js";
-import { deriveGraph } from "../../shared/environment-manager/derivation/derive-graph.js";
-import { orderForDown } from "../../shared/environment-manager/derivation/derived-up.js";
+import { graphOrder } from "./graph-order.js";
 import { listDaemons } from "../../shared/environment-manager/service-runner.js";
 import { loadManifest } from "../../shared/manifest/read-manifest.js";
 import { servicePlacement } from "../../shared/manifest/placement.js";
@@ -198,11 +197,7 @@ export async function buildServicesList(
   // health row and `den status` use. Added as a FIELD rather than by
   // re-sorting the array, because four pages consume this payload and some
   // rely on the current order.
-  const graphRank = new Map(
-    orderForDown(deriveGraph({ scope: "all", workspace: ws?.name })).map(
-      (repo, i) => [repo, i],
-    ),
-  );
+  const graphRank = new Map(graphOrder(ws?.name).map((repo, i) => [repo, i]));
   const infraRepo = readDenConfig()?.graph?.infra?.repo ?? null;
   await Promise.all(pendingBranches);
   return merged.map((e) => ({

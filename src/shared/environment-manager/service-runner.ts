@@ -44,6 +44,8 @@ import {
   inspectOpctlContainer,
   isOpctlAvailable,
   listRunningOpctlContainers,
+  listRunningOpctlContainersAsync,
+  isOpctlAvailableAsync,
 } from "./opctl.js";
 import {
   getActiveWorkspace,
@@ -661,6 +663,27 @@ export function pruneDeadDaemons(): string[] {
   const running = isOpctlAvailable()
     ? new Set(listRunningOpctlContainers().map((c) => c.base))
     : null;
+  return pruneAgainst(daemons, running);
+}
+
+/**
+ * pruneDeadDaemons without blocking: the container listing runs as async
+ * child processes (the web server's startup, which used to hold the event
+ * loop for the `docker ps`).
+ */
+export async function pruneDeadDaemonsAsync(): Promise<string[]> {
+  const daemons = listDaemons();
+  if (daemons.length === 0) return [];
+  const running = (await isOpctlAvailableAsync())
+    ? new Set((await listRunningOpctlContainersAsync()).map((c) => c.base))
+    : null;
+  return pruneAgainst(daemons, running);
+}
+
+function pruneAgainst(
+  daemons: DaemonRecord[],
+  running: Set<string> | null,
+): string[] {
   const pruned: string[] = [];
   for (const d of daemons) {
     try {
