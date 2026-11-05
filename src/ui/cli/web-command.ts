@@ -13,6 +13,11 @@ import { getDistRoot, getEngineRoot, getStateDir } from "../../shared/paths.js";
 import { hasDenUiMarker } from "../../shared/ui-marker.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readWebPort } from "../../shared/edge/config.js";
+import {
+  ownServer,
+  processCwd,
+  refuseForeignServer,
+} from "./server-identity.js";
 
 import { product } from "../../shared/product.js";
 interface WebCommandOptions {
@@ -569,21 +574,49 @@ async function waitForPidsExit(pids: number[]): Promise<boolean> {
   return false;
 }
 
+/**
+ * Whether `pid` may be this distribution's server by where it runs: a web
+ * server runs from its distribution root, so one whose working directory
+ * is another root is never ours, even when its command line matches (two
+ * distributions on one linked engine run the same entry point). An
+ * unreadable directory does not decide.
+ */
+function runsFromRoot(pid: number, root: string): boolean {
+  const cwd = processCwd(pid);
+  if (!cwd) return true;
+  try {
+    return fs.realpathSync(cwd) === fs.realpathSync(root);
+  } catch {
+    return path.resolve(cwd) === path.resolve(root);
+  }
+}
+
+function isOurWebPid(pid: number, root: string): boolean {
+  const command = commandForPid(pid);
+  return (
+    !!command &&
+    isDenWebCommand(command, webRoots(root)) &&
+    runsFromRoot(pid, root)
+  );
+}
+
 function findDenWebPids(port: number): number[] {
   const root = getDistRoot();
   const pids = new Set<number>();
   const state = readWebServerState();
-  if (state?.port === port && state.pid) {
-    const command = commandForPid(state.pid);
-    if (command && isDenWebCommand(command, webRoots(state.root || root))) {
-      pids.add(state.pid);
-    }
+  // The state file may be shared by distributions of one product name: a
+  // record of another root's server is not ours to stop.
+  if (
+    state?.port === port &&
+    state.pid &&
+    path.resolve(state.root || root) === path.resolve(root) &&
+    isOurWebPid(state.pid, root)
+  ) {
+    pids.add(state.pid);
   }
 
   for (const pid of listListeningPids(port)) {
-    if (isDenWebCommand(commandForPid(pid), webRoots(root))) {
-      pids.add(pid);
-    }
+    if (isOurWebPid(pid, root)) pids.add(pid);
   }
 
   return Array.from(pids);
@@ -643,15 +676,15 @@ async function stopBrokenDenWebServer(port: number): Promise<boolean> {
 function recordRunningDenWebServer(port: number): void {
   const root = getDistRoot();
   const state = readWebServerState();
-  if (state?.port === port && state.pid) {
-    const command = commandForPid(state.pid);
-    if (command && isDenWebCommand(command, webRoots(state.root || root)))
-      return;
-  }
+  if (
+    state?.port === port &&
+    state.pid &&
+    path.resolve(state.root || root) === path.resolve(root) &&
+    isOurWebPid(state.pid, root)
+  )
+    return;
 
-  const pids = listListeningPids(port).filter((pid) =>
-    isDenWebCommand(commandForPid(pid), webRoots(root)),
-  );
+  const pids = listListeningPids(port).filter((pid) => isOurWebPid(pid, root));
   const pid = pids[0];
   if (!pid) return;
 
@@ -964,6 +997,10 @@ export async function cmdWeb(args: string[]): Promise<void> {
   }
 
   const url = buildDenWebUrl(options.port);
+
+  // Never act on another distribution's server: not "already running", and
+  // never a signal to it (down, restart).
+  await refuseForeignServer(options.port, ownServer());
 
   if (options.action === "down") {
     const stopped = await stopDenWebServer(options.port);

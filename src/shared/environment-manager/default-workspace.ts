@@ -117,6 +117,53 @@ export function defaultWorkspaceHasServices(): boolean {
   );
 }
 
+function sameEntry(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || !a || !b) return false;
+  const ka = Object.keys(a).sort();
+  const kb = Object.keys(b).sort();
+  return (
+    ka.length === kb.length &&
+    ka.every(
+      (k, i) =>
+        k === kb[i] &&
+        sameEntry(
+          (a as Record<string, unknown>)[k],
+          (b as Record<string, unknown>)[k],
+        ),
+    )
+  );
+}
+
+/**
+ * Whether seeding now would change nothing: every workspace the blueprint
+ * seeds holds exactly what seeding writes (same repos, all managed on the
+ * blueprint's branch, same autostart defaults), records the blueprint as
+ * applied, and (multi blueprint) is active. A workspace the user changed
+ * since (a repo switched to a local checkout, one added or removed) is not
+ * "already seeded": seeding would reset it.
+ */
+export function blueprintAlreadySeeded(
+  file: WorkspacesFile = readWorkspacesFile(),
+): boolean {
+  const bps = blueprintWorkspaces();
+  if (bps.length === 0) return false;
+  const multi = isMultiBlueprint();
+  return bps.every((bp) => {
+    const name = multi ? bp.name : "default";
+    const ws = file.workspaces[name];
+    if (!ws) return false;
+    if (multi && !(file.active ?? []).includes(name)) return false;
+    const applied = ws.seeded_repos ?? [];
+    if (
+      applied.length !== bp.repos.length ||
+      bp.repos.some((r, i) => applied[i] !== r)
+    )
+      return false;
+    return sameEntry(ws.services ?? {}, blueprintServices(bp));
+  });
+}
+
 /**
  * Seed (or reset) the `default` workspace from the blueprint — every repo as a
  * bare, first-class managed entry on `branch` — and ensure the catalog has

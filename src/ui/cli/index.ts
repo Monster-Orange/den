@@ -12,18 +12,10 @@ import {
 } from "../../shared/stacks/status.js";
 import { isNamedTarget } from "./named-target.js";
 import chalk from "chalk";
-import oraSpinner from "ora";
-
-/**
- * Spinners are progress, not diagnostics: on a terminal they animate on
- * stderr as usual; piped (CI, scripts) their lines go to stdout so stderr
- * carries only real warnings and errors.
- */
-const ora = (text: string) =>
-  oraSpinner({
-    text,
-    stream: process.stderr.isTTY ? process.stderr : process.stdout,
-  });
+import { noun, plural } from "../../shared/plural.js";
+// Spinners: progress on stderr (a terminal) or stdout (piped); plain lines
+// where they cannot animate. See spinner.ts.
+import { spinner as ora } from "./spinner.js";
 import Table from "cli-table3";
 import { cliPrompts } from "./prompts.js";
 import { resultsViewer } from "./results-viewer.js";
@@ -87,6 +79,7 @@ import {
 import {
   blueprintWorkspaces,
   defaultWorkspaceNeedsSeeding,
+  blueprintAlreadySeeded,
   defaultWorkspaceHasServices,
   isMultiBlueprint,
   seedBlueprintWorkspaces,
@@ -496,8 +489,6 @@ function printValidation(
   layer?: string,
 ): void {
   const tag = layer ? `${layer}, ` : "";
-  const plural = (n: number, word: string): string =>
-    `${n} ${word}${n === 1 ? "" : "s"}`;
   if (result.valid && result.warnings.length === 0) {
     console.log(
       chalk.green(`  ✓  ${label}`) +
@@ -2284,7 +2275,7 @@ class DenCLI {
     }
     console.log(
       chalk.cyan(
-        `\n  ${only ? "Application" : "Workspace-wide"} up — ${chalk.bold(String(order.length))} systems`,
+        `\n  ${only ? "Application" : "Workspace-wide"} up — ${chalk.bold(String(order.length))} ${noun(order.length, "system")}`,
       ),
     );
     console.log(chalk.gray(`  Order: ${order.join(" → ")}\n`));
@@ -2345,7 +2336,7 @@ class DenCLI {
     const order = [...target.rawOrder].reverse();
     console.log(
       chalk.cyan(
-        `\n  ${only ? "Application" : "Workspace-wide"} down — ${chalk.bold(String(order.length))} systems`,
+        `\n  ${only ? "Application" : "Workspace-wide"} down — ${chalk.bold(String(order.length))} ${noun(order.length, "system")}`,
       ),
     );
     console.log(chalk.gray(`  Order: ${order.join(" → ")}\n`));
@@ -2516,13 +2507,26 @@ class DenCLI {
       return false;
     }
     const multi = isMultiBlueprint();
+    // A repeat seed: say so, and touch nothing.
+    if (blueprintAlreadySeeded()) {
+      console.log(
+        chalk.green(
+          multi
+            ? `\n  ✓ ${plural(bps.length, "workspace")} already seeded (${bps.map((b) => b.name).join(", ")}): nothing changed.\n`
+            : `\n  ✓ Default workspace already seeded — ${plural(bps[0].repos.length, "repo")} (managed): nothing changed.\n`,
+        ),
+      );
+      return false;
+    }
     const willReset = defaultWorkspaceHasServices();
     const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
 
     for (const bp of bps) {
       const label = multi ? `Workspace ${bp.name}` : "Default workspace";
       console.log(
-        chalk.cyan(`\n  ${label} — ${bp.repos.length} repos, all managed:`),
+        chalk.cyan(
+          `\n  ${label} — ${plural(bp.repos.length, "repo")}, all managed:`,
+        ),
       );
       console.log(chalk.gray(`    ${bp.repos.join(", ")}`));
     }
@@ -2563,7 +2567,7 @@ class DenCLI {
       const focus = readWorkspacesFile().focus;
       console.log(
         chalk.green(
-          `  ✓ ${seeded.length} workspaces ready (${seeded.map((w) => w.name).join(", ")}), all active; focus: ${focus}. ` +
+          `  ✓ ${plural(seeded.length, "workspace")} ${willReset ? "reset to the blueprint" : "ready"} (${seeded.map((w) => w.name).join(", ")}), all active; focus: ${focus}. ` +
             `Run \`${product().cli} up <repo>\` to bring up its closure.\n`,
         ),
       );
@@ -2572,7 +2576,7 @@ class DenCLI {
     const seeded = seedDefaultWorkspace();
     console.log(
       chalk.green(
-        `  ✓ Default workspace ready — ${seeded.length} repos (managed). ` +
+        `  ✓ Default workspace ${willReset ? "reset to the blueprint" : "ready"} — ${plural(seeded.length, "repo")} (managed). ` +
           `Run \`${product().cli} up <repo>\` to bring up its closure.\n`,
       ),
     );
@@ -2602,7 +2606,7 @@ class DenCLI {
     if (added.length > 0) {
       console.log(
         chalk.gray(
-          `  default workspace: added standard repo(s) ${added.join(", ")} (managed)`,
+          `  default workspace: added standard ${noun(added.length, "repo")} ${added.join(", ")} (managed)`,
         ),
       );
     }
@@ -3802,7 +3806,7 @@ class DenCLI {
     if (missing.length > 0) {
       console.log(
         chalk.cyan(
-          `\n  Cloning ${missing.length} managed repo(s) not on disk yet: ${missing.join(", ")}`,
+          `\n  Cloning ${plural(missing.length, "managed repo")} not on disk yet: ${missing.join(", ")}`,
         ),
       );
       await this.ensureManagedClonesFor(missing);

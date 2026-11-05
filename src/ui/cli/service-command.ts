@@ -20,6 +20,15 @@ import {
 } from "../../shared/den-config.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import { getDistRoot, getEngineRoot } from "../../shared/paths.js";
+import { product } from "../../shared/product.js";
+import {
+  classifyServerInfo,
+  ForeignServerError,
+  foreignServerMessage,
+  ownServer,
+  pickAnotherPortHint,
+  type OwnServer,
+} from "./server-identity.js";
 
 /** Runs a command with extra env vars; returns its exit code. */
 export type ServiceRunner = (
@@ -39,12 +48,15 @@ export const READY_TIMEOUT_MS = 30_000;
 
 /**
  * Poll `url` until it answers 2xx with a JSON object, or `timeoutMs` passes.
- * Each attempt is bounded too, so a hung connection cannot outlast it.
+ * Each attempt is bounded too, so a hung connection cannot outlast it. A
+ * server that is not `own`'s (another distribution's, on the same port) is
+ * never "running": that throws ForeignServerError at once.
  */
 export async function waitForServerInfo(
   url: string,
   timeoutMs: number = READY_TIMEOUT_MS,
   intervalMs = 500,
+  own: OwnServer = ownServer(),
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -56,9 +68,15 @@ export async function waitForServerInfo(
       });
       if (res.ok) {
         const body: unknown = JSON.parse(await res.text());
-        if (body !== null && typeof body === "object") return true;
+        if (body !== null && typeof body === "object") {
+          const id = classifyServerInfo(body, own);
+          if (id.kind === "foreign")
+            throw new ForeignServerError(Number(new URL(url).port), id.who);
+          return true;
+        }
       }
-    } catch {
+    } catch (e) {
+      if (e instanceof ForeignServerError) throw e;
       /* not up yet: refused, empty or partial body */
     }
     await new Promise((r) => setTimeout(r, intervalMs));
@@ -74,8 +92,15 @@ export interface ServiceDeps {
   platform?: NodeJS.Platform;
   /** The web UI port (default: config web.port). */
   webPort?: number;
-  /** Readiness poller (default: waitForServerInfo). */
-  waitReady?: (url: string, timeoutMs: number) => Promise<boolean>;
+  /**
+   * Readiness poller (default: waitForServerInfo). Throws
+   * ForeignServerError when another distribution's server answers.
+   */
+  waitReady?: (
+    url: string,
+    timeoutMs: number,
+    own: OwnServer,
+  ) => Promise<boolean>;
   log?: (line: string) => void;
 }
 
@@ -117,7 +142,22 @@ export async function cmdService(
   const log = deps.log ?? ((l: string) => console.log(l));
   const port = deps.webPort ?? readWebPort(distRoot);
   const url = `http://localhost:${port}/api/server-info`;
-  if (await (deps.waitReady ?? waitForServerInfo)(url, READY_TIMEOUT_MS)) {
+  const own: OwnServer = { root: distRoot, product: product().name };
+  const waitReady =
+    deps.waitReady ??
+    ((u: string, t: number, o: OwnServer) => waitForServerInfo(u, t, 500, o));
+  let ready: boolean;
+  try {
+    ready = await waitReady(url, READY_TIMEOUT_MS, own);
+  } catch (e) {
+    if (!(e instanceof ForeignServerError)) throw e;
+    log(
+      `✗ ${label} installed, but ${foreignServerMessage(e.port, e.who)}, ` +
+        `so it cannot serve there: ${pickAnotherPortHint()}`,
+    );
+    return 1;
+  }
+  if (ready) {
     log(
       `✓ ${label} running at http://localhost:${port} (logs: ${path.join(logs, "web.log")})`,
     );

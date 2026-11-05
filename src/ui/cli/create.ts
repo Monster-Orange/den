@@ -15,6 +15,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { ENGINE_PACKAGE, getEngineRoot } from "../../shared/paths.js";
 import { profileFrom } from "../../shared/profile.js";
+import { plural } from "../../shared/plural.js";
 
 export interface CreateOptions {
   /** Product name: lower-case `[a-z][a-z0-9-]*`. */
@@ -345,7 +346,7 @@ export function runCreate(argv: string[], cwd: string): number {
     const cli = args.cli ?? args.name;
     const rel = path.relative(cwd, args.dir) || ".";
     console.log(
-      `Created ${args.name} in ${args.dir} (${written.length} files).`,
+      `Created ${args.name} in ${args.dir} (${plural(written.length, "file")}).`,
     );
     console.log("");
     console.log("Next:");

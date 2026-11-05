@@ -2373,6 +2373,11 @@ async function handleRequest(
       port: PORT,
       // Den's version: the MCP server compares it with the routes it needs.
       version: engineVersion() ?? null,
+      // Whose server this is: `<cli> web up|down`, `mcp connect` and
+      // `service install` compare both with their own and never act on
+      // another distribution's server (see cli/server-identity.ts).
+      root: ROOT,
+      product: product().name,
       startedAt: new Date(SERVER_STARTED_AT).toISOString(),
       uptimeMs: Date.now() - SERVER_STARTED_AT,
       stale,

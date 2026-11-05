@@ -4,6 +4,44 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.2.6] - unreleased
+
+### Fixed
+
+- **`<cli> web up` no longer trusts whatever answers on its port.** With
+  `web.port` set to a port where another distribution's Den server ran
+  (another root, an older Den), `web up` printed "OK ... web is already
+  running" and stopped, and `web down` or `web restart` could SIGTERM that
+  server: with a linked engine its command line looks like ours.
+  `/api/server-info` now also returns `root` (the distribution root the
+  server serves) and `product`. `web up`, `web down` and `web restart`
+  compare both with their own, and on another distribution's server exit 1
+  with `port <N> is in use by <product> at <root>` and a hint to pick
+  another port (`--port`, or `web.port`). A server from before 0.2.6 has
+  no `root`: it is ours when it runs from our root (its working
+  directory), otherwise `port <N> is in use by another server (Den
+  <version>)`; anything else is "a non-Den server". `web down` also no
+  longer signals a process running from another root, even when the
+  server does not answer. `<cli> mcp connect` refuses to point an agent at
+  another distribution's server (and `mcp clients` names it), and `<cli>
+  service install` no longer reports "running" when another
+  distribution's server answers on the port.
+- **A repeat `<cli> workspace seed` says "already seeded".** Seeding a
+  workspace that already holds exactly the blueprint printed "Default
+  workspace ready" as if it had seeded again; it now prints `✓ Default
+  workspace already seeded — N repos (managed): nothing changed.` and
+  writes nothing (multi blueprint: `✓ N workspaces already seeded (a, b)`).
+  A seed over a workspace the user changed says it was "reset to the
+  blueprint".
+- **Counts read "1 repo", not "1 repos".** CLI output that counts repos,
+  workspaces, systems, files, profiles and tools uses one plural helper
+  (`src/shared/plural.ts`), also in place of "repo(s)".
+- **Spinners no longer loop forever on a 0-column terminal.** On a pty that
+  reports 0 columns (one nobody sized, as agent shells give), ora computed
+  an infinite number of lines to clear and never finished. A spinner now
+  animates only on a TTY with a known, non-zero width; otherwise it prints
+  plain lines (its text on start, then the result).
+
 ## [0.2.5] - 2026-11-04
 
 ### Fixed

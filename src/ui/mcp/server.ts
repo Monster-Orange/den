@@ -19,6 +19,7 @@ import { product } from "../../shared/product.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { createDenApi, type DenApi } from "./api.js";
 import { callTool, toolsFor, type ToolContext } from "./tools.js";
+import { plural } from "../../shared/plural.js";
 
 export interface DenMcpOptions {
   cfg: ResolvedMcpConfig;
@@ -224,7 +225,7 @@ export async function runMcp(argv: string[]): Promise<void> {
   const server = createDenMcpServer({ cfg, baseUrl, cli });
   await server.connect(new StdioServerTransport());
   process.stderr.write(
-    `${cli} mcp: ${toolsFor(cfg).length} tools ` +
+    `${cli} mcp: ${plural(toolsFor(cfg).length, "tool")} ` +
       `(${cfg.actions.length ? `actions: ${cfg.actions.join(", ")}` : "read only"}) → ${baseUrl}\n`,
   );
 }

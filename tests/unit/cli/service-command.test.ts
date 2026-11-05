@@ -16,6 +16,7 @@ import {
   readWebServiceConfig,
   type DenConfig,
 } from "../../../src/shared/den-config.js";
+import { ForeignServerError } from "../../../src/ui/cli/server-identity.js";
 
 const DIST = "/src/acme-dev";
 const HOME = "/home/someone";
@@ -70,6 +71,8 @@ function harness(
     code?: number;
     web?: unknown;
     ready?: boolean;
+    /** The poller finds another distribution's server: who it is. */
+    foreign?: string;
   } = {},
 ) {
   const polls: { url: string; timeoutMs: number }[] = [];
@@ -91,6 +94,7 @@ function harness(
     webPort: 7001,
     waitReady: async (url: string, timeoutMs: number) => {
       polls.push({ url, timeoutMs });
+      if (over.foreign) throw new ForeignServerError(7001, over.foreign);
       return over.ready ?? true;
     },
   };
@@ -165,6 +169,17 @@ describe("cmdService", () => {
     expect(h.lines.join("\n")).not.toMatch(/ running/);
   });
 
+  it("install that finds another distribution's server on the port: exit 1, never 'running'", async () => {
+    const h = harness({ foreign: "acme-ops at /srv/acme-other" });
+    expect(await cmdService(["install"], h.deps)).toBe(1);
+    const out = h.lines.join("\n");
+    expect(out).toMatch(
+      /installed, but port 7001 is in use by acme-ops at \/srv\/acme-other/,
+    );
+    expect(out).toMatch(/pick another port/);
+    expect(out).not.toMatch(/ running at/);
+  });
+
   it.each(["status", "print", "uninstall"])("%s polls nothing", async (sub) => {
     const h = harness();
     await cmdService([sub], h.deps);
@@ -198,12 +213,22 @@ describe("waitForServerInfo", () => {
     server = undefined;
   });
 
+  const OWN = { root: DIST, product: "den" };
+
   /** A web server that answers with an empty body `empty` times first. */
-  async function stub(empty: number): Promise<string> {
+  async function stub(
+    empty: number,
+    root: string = DIST,
+    prod = "den",
+  ): Promise<string> {
     let n = 0;
     server = http.createServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(n++ < empty ? "" : JSON.stringify({ pid: 1, version: "0.0.0" }));
+      res.end(
+        n++ < empty
+          ? ""
+          : JSON.stringify({ pid: 1, version: "0.0.0", root, product: prod }),
+      );
     });
     await new Promise<void>((r) => server!.listen(0, "localhost", r));
     return `http://localhost:${(server.address() as AddressInfo).port}/api/server-info`;
@@ -211,11 +236,18 @@ describe("waitForServerInfo", () => {
 
   it("waits through empty bodies until valid JSON", async () => {
     const url = await stub(2);
-    expect(await waitForServerInfo(url, 5_000, 20)).toBe(true);
+    expect(await waitForServerInfo(url, 5_000, 20, OWN)).toBe(true);
   });
 
   it("gives up after the timeout", async () => {
     const url = await stub(Infinity);
-    expect(await waitForServerInfo(url, 300, 20)).toBe(false);
+    expect(await waitForServerInfo(url, 300, 20, OWN)).toBe(false);
+  });
+
+  it("another distribution's server answering is never 'running'", async () => {
+    const url = await stub(0, "/srv/acme-other", "acme-ops");
+    await expect(waitForServerInfo(url, 2_000, 20, OWN)).rejects.toThrow(
+      /port \d+ is in use by acme-ops at \/srv\/acme-other/,
+    );
   });
 });
