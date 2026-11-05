@@ -6,7 +6,6 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import * as vm from "vm";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const read = (f: string) => fs.readFileSync(path.join(PUBLIC, f), "utf-8");
@@ -21,81 +20,12 @@ const PAGES: Record<string, { page: string; healthEnv?: string }> = {
   "logs.html": { page: "logs" },
   "index.html": { page: "tests" },
 };
-const RAIL = [
-  "local-dev",
-  "services",
-  "environments",
-  "release",
-  "logs",
-  "tests",
-];
-
-type Link = { attrs: Record<string, string>; focus(): void };
-
-/** Run shell.js against a fake document for one page. */
-function mountShell(page: string) {
-  const links: Link[] = [];
-  let onKey: ((e: { key: string; preventDefault(): void }) => void) | null =
-    null;
-  const doc: {
-    activeElement: unknown;
-    getElementById(id: string): unknown;
-    body: unknown;
-    head: unknown;
-    createElement(): unknown;
-  } = {
-    activeElement: null,
-    getElementById: (id: string) => (id === "den-shell" ? host : null),
-    body: { classList: { add() {} } },
-    head: { appendChild() {} },
-    createElement: () => ({}),
-  };
-  const nav = {
-    addEventListener: (t: string, f: typeof onKey) => {
-      if (t === "keydown") onKey = f;
-    },
-    querySelectorAll: () => links,
-  };
-  let html = "";
-  const host = {
-    dataset: { page } as Record<string, string>,
-    className: "",
-    set innerHTML(h: string) {
-      html = h;
-      links.length = 0;
-      for (const m of h.matchAll(/<a ([^>]*)>/g)) {
-        const attrs = Object.fromEntries(
-          [...m[1].matchAll(/([\w-]+)="([^"]*)"/g)].map((a) => [a[1], a[2]]),
-        );
-        const el: Link = {
-          attrs,
-          focus() {
-            doc.activeElement = el;
-          },
-        };
-        if (attrs.class === "den-rail-link") links.push(el);
-      }
-    },
-    get innerHTML() {
-      return html;
-    },
-    querySelector: (sel: string) => (sel === ".den-rail" ? nav : null),
-  };
-  vm.runInNewContext(SHELL, { document: doc });
-  const key = (k: string) => {
-    let prevented = false;
-    onKey?.({
-      key: k,
-      preventDefault() {
-        prevented = true;
-      },
-    });
-    return prevented;
-  };
-  return { html: () => html, links, key, doc };
-}
 
 describe("every page mounts the shell", () => {
+  it.each(Object.keys(PAGES))("%s names its page in the title", (file) => {
+    expect(read(file)).toMatch(/<title>__DEN_TITLE__ · [A-Z][\w ]+<\/title>/);
+  });
+
   it("covers every page in public/", () => {
     expect(
       fs
@@ -151,70 +81,45 @@ describe("every page mounts the shell", () => {
   });
 });
 
-describe("the top bar", () => {
-  const { html } = mountShell("services");
-  it("has the mark, the title, version, health, workspace, env", () => {
-    const top = html().slice(0, html().indexOf("</header>"));
-    const order = [
-      'class="den-mark" id="den-mark"',
-      'class="den-title"',
-      'id="version-pill"',
-      'id="health"',
-      'id="ws-pill"',
-      'id="env-sel"',
-    ].map((s) => top.indexOf(s));
-    expect(order.every((i) => i >= 0)).toBe(true);
-    expect([...order].sort((a, b) => a - b)).toEqual(order);
-  });
-  it("one env picker for the whole shell", () => {
-    expect(html().match(/<select/g)).toHaveLength(1);
-    expect(html().match(/id="env-sel"/g)).toHaveLength(1);
-  });
+describe("the shell's source", () => {
   it("draws the title in the theme's display face", () => {
-    expect(SHELL).toMatch(/\.den-title \{ font-family: var\(--display\);/);
+    expect(SHELL).toMatch(/\.den-title \{ font: 600 15px var\(--display\);/);
   });
-  it("the sudo lock only on Local Dev", () => {
-    expect(mountShell("local-dev").html()).toContain('id="sudo-lock"');
-    expect(html()).not.toContain('id="sudo-lock"');
-  });
-  it("uses no color literal (theme tokens only)", () => {
+  it("uses no color literal (theme tokens only, R2)", () => {
     expect(SHELL).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
+  });
+  it("lists pages only in its NAV registry (R11a)", () => {
+    // Every page href in shell.js is one registry entry's `href:`, and the
+    // pages themselves draw no rail links.
+    const hrefs = [...SHELL.matchAll(/href: "(\/[^"]*)"/g)].map((m) => m[1]);
+    expect(hrefs.sort()).toEqual(
+      [
+        "/environments",
+        "/local-dev",
+        "/local-dev?settings=1",
+        "/logs",
+        "/release",
+        "/services",
+        "/tests",
+      ].sort(),
+    );
+    expect(SHELL).not.toMatch(
+      /href="\/(local-dev|services|logs|tests|environments|release)"/,
+    );
+    for (const f of Object.keys(PAGES))
+      expect(read(f)).not.toMatch(/class="den-(ni|rail-link)"/);
   });
 });
 
-describe("the rail", () => {
-  it.each(RAIL)("on %s: every page in order, that one aria-current", (page) => {
-    const { links } = mountShell(page);
-    expect(links.map((l) => l.attrs["data-page"])).toEqual(RAIL);
-    const current = links.filter((l) => l.attrs["aria-current"] === "page");
-    expect(current.map((l) => l.attrs["data-page"])).toEqual([page]);
-    for (const l of links) expect(l.attrs.title).toBeTruthy();
-  });
-
-  it("↑/↓ move along it and wrap; Home and End jump; other keys pass", () => {
-    const { links, key, doc } = mountShell("logs");
-    links[4].focus();
-    expect(key("ArrowDown")).toBe(true);
-    expect(doc.activeElement).toBe(links[5]);
-    key("ArrowDown");
-    expect(doc.activeElement).toBe(links[0]);
-    key("ArrowUp");
-    expect(doc.activeElement).toBe(links[5]);
-    key("Home");
-    expect(doc.activeElement).toBe(links[0]);
-    key("End");
-    expect(doc.activeElement).toBe(links[5]);
-    expect(key("Tab")).toBe(false);
-    expect(key("a")).toBe(false);
-  });
-
-  it("collapses to icons below 1100px, labels kept for assistive tech", () => {
-    expect(SHELL).toMatch(
-      /@media \(max-width: 1100px\) \{ body\.den-has-shell \{ --den-rail-w: 52px; \} \}/,
+describe("frame leftovers are gone", () => {
+  it("Logs' layout toggle is in its toolbar, not a band of its own", () => {
+    const html = read("logs.html");
+    expect(html).not.toContain('class="subbar"');
+    const bar = html.slice(
+      html.indexOf('<div class="logs-toolbar" id="logs-toolbar">'),
+      html.indexOf('<div class="logs-area'),
     );
-    expect(SHELL).toMatch(
-      /\.den-rail-label \{ position: absolute; width: 1px;/,
-    );
+    expect(bar).toContain('id="log-dir-seg"');
   });
 });
 

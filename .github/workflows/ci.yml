@@ -24,6 +24,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      # The browser tests (tests/unit/server/*.browser.test.ts) need a real
+      # chromium; this installs the one the pinned Playwright expects.
+      - run: npx playwright install --with-deps chromium
       - run: npm test
       - name: Org-name gate
         env:

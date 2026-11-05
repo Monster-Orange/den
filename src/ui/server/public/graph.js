@@ -768,6 +768,14 @@ function onClick(e) {
     openDetail(st.sel, true);
     return;
   }
+  const pinT = t.closest("[data-pin-toggle]");
+  if (pinT && window.denShell) {
+    const id = pinT.dataset.pinToggle;
+    if (window.denShell.isPinned(id)) window.denShell.unpin(id);
+    else window.denShell.pin(id);
+    openDetail(st.sel, true);
+    return;
+  }
   if (t.closest("[data-popout]")) {
     st.popped = !st.popped;
     openDetail(st.sel, true);

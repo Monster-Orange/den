@@ -11,7 +11,10 @@
  *   down      the entry service (the repo's own health URL) is down
  *   degraded  another checked service is down
  *   ok        at least one signal is checked and none fails
- *   unknown   nothing about the repo is checked (neutral, never green)
+ *   unknown   nothing about the repo is checked (neutral, never green), or
+ *             a check hasn't answered yet (`awaiting`, 0.3.0-dev.17): until
+ *             every check has answered (a pending one has), one answered
+ *             down service never paints the repo down or degraded
  *
  * The entry service is the one marked `isEntrypoint` (the manifest's
  * `entrypoint`), else the service named like the repo, else the only one.
@@ -24,9 +27,9 @@
 export const STATE_RANK = { down: 0, degraded: 1, ok: 2, unknown: 3 };
 
 /**
- * @typedef {{ service: string, ok: boolean | null | undefined, isEntrypoint?: boolean }} HealthSignal
+ * @typedef {{ service: string, ok: boolean | null | undefined, isEntrypoint?: boolean, awaiting?: boolean }} HealthSignal
  * @typedef {"down" | "degraded" | "ok" | "unknown"} RepoState
- * @typedef {{ state: RepoState, entry: string | null, down: string[], checked: number, unchecked: number }} RepoRollup
+ * @typedef {{ state: RepoState, entry: string | null, down: string[], checked: number, unchecked: number, awaiting: number }} RepoRollup
  */
 
 /**
@@ -50,11 +53,19 @@ export function entrySignal(repo, signals) {
  * @returns {RepoRollup}
  */
 export function rollupRepo(repo, signals) {
-  const entry = entrySignal(repo, signals);
-  const checked = signals.filter((s) => s.ok === true || s.ok === false);
-  const down = checked.filter((s) => s.ok === false).map((s) => s.service);
-  const state =
-    entry && entry.ok === false
+  // A check that hasn't answered yet (`awaiting`) holds the whole repo at
+  // unknown: with only some answers in, the one that did can't be judged
+  // (a lone down sidecar would even read as the entry service).
+  const awaiting = signals.filter((s) => s.awaiting).length;
+  const answered = signals.filter((s) => !s.awaiting);
+  const entry = entrySignal(repo, answered);
+  const checked = answered.filter((s) => s.ok === true || s.ok === false);
+  const down = awaiting
+    ? []
+    : checked.filter((s) => s.ok === false).map((s) => s.service);
+  const state = awaiting
+    ? "unknown"
+    : entry && entry.ok === false
       ? "down"
       : down.length > 0
         ? "degraded"
@@ -66,7 +77,8 @@ export function rollupRepo(repo, signals) {
     entry: entry ? entry.service : null,
     down,
     checked: checked.length,
-    unchecked: signals.length - checked.length,
+    unchecked: answered.length - checked.length,
+    awaiting,
   };
 }
 
@@ -93,6 +105,7 @@ export function rollupRows(rows) {
  */
 export function describeRollup(r) {
   const notChecked = r.unchecked > 0 ? `${r.unchecked} not checked` : "";
+  if (r.awaiting) return "unknown (still checking)";
   if (r.state === "unknown") return "unknown (not checked)";
   if (r.state === "ok")
     return notChecked ? `healthy, ${notChecked}` : "healthy";

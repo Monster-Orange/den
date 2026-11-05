@@ -188,3 +188,28 @@ describe("the header, the chip, the graph and status agree (one service down)", 
     expect(describeRollup(row.rollup!)).toBe("degraded (mailpit down)");
   });
 });
+
+describe("a repo whose checks haven't all answered (0.3.0-dev.17)", () => {
+  // One cold load in twenty painted an app red for ~100ms: only its one
+  // down service (mailpit) had answered, so it read as the entry service.
+  it("one answered-down service and the others unanswered → unknown", () => {
+    const r = rollupRepo("mail", [
+      sig("mailpit", false),
+      { service: "web", ok: null, awaiting: true },
+    ]);
+    expect(r).toMatchObject({ state: "unknown", down: [], awaiting: 1 });
+    expect(describeRollup(r)).toBe("unknown (still checking)");
+  });
+  it("every check answered (pending counts as answered) → the usual rule", () => {
+    const r = rollupRepo("mail", [sig("mailpit", false), sig("web", null)]);
+    expect(r).toMatchObject({ state: "degraded", awaiting: 0 });
+    const row = buildRow(
+      [
+        { repo: "mail", service: "mailpit", ok: false },
+        { repo: "mail", service: "web", ok: null, awaiting: true },
+      ],
+      null,
+    );
+    expect(row.flat[0].state).toBe("unknown");
+  });
+});

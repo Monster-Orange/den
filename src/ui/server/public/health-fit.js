@@ -19,6 +19,7 @@
  *                           first cycle, then debounced
  *   healthCycle(…)          one poll: the stream, completed by /api/health
  *                           when it breaks, painted through the gate
+ *   shellHealth(row)        the rail's Services badge and pinned dots
  *
  * The pure parts take plain data, so tests need no browser.
  */
@@ -403,6 +404,7 @@ export function paintGate({
  */
 export async function healthCycle({
   seed = [],
+  last = null,
   gate,
   stream,
   fetchAll,
@@ -415,11 +417,37 @@ export async function healthCycle({
   const paintOf = (m) => () => {
     if (current()) paint(m);
   };
+  // A paint before the cycle completes (0.3.0-dev.17). The rows that last
+  // painted (`last()`, read at paint time: a poll that overlapped the first
+  // started with nothing seeded) stand for checks not answered yet; a repo
+  // they don't describe gets an `awaiting` row, so health-rollup.js holds it
+  // at unknown: one answered down service must not paint its app down
+  // while the app's other checks are still out.
+  const partialOf = (m) => () => {
+    if (!current()) return;
+    const known = (last ? last() : null) ?? new Map();
+    const out = new Map(known);
+    for (const [k, r] of m) out.set(k, r);
+    const described = new Set([...known.values()].map((r) => r.repo));
+    for (const r of [...out.values()])
+      if (!described.has(r.repo)) {
+        described.add(r.repo);
+        out.set(`${r.repo}/…`, {
+          repo: r.repo,
+          service: "…",
+          ok: null,
+          awaiting: true,
+          idx: r.idx,
+          focused: r.focused,
+        });
+      }
+    paint(out);
+  };
   const fresh = new Map();
   const end = await stream((r) => {
     acc.set(keyOf(r), r);
     fresh.set(keyOf(r), r);
-    gate.data(paintOf(acc));
+    gate.data(partialOf(acc));
   });
   let complete = end === "done";
   if (!complete) {
@@ -437,4 +465,32 @@ export async function healthCycle({
   if (fresh.size > 0 || !gate.ready) gate.done(paintOf(fresh));
   else gate.done();
   return fresh;
+}
+
+/**
+ * The rail's share of the health row (R13, R14): `down` for the Services
+ * badge and `health` for the pinned rows' dots (`repo` and `repo/service`
+ * → down | degraded | ok | unknown). Both read the rollup: a down service
+ * counts only once every check of its repo has answered, so a cold load
+ * never badges a service the row still shows as unknown. `row` is
+ * buildRow's.
+ */
+export function shellHealth(row) {
+  let down = 0;
+  const health = {};
+  for (const r of row.flat) {
+    health[r.repo] = r.state;
+    down += r.rollup.down.length;
+    for (const i of r.items) {
+      if (i.awaiting) continue;
+      health[`${r.repo}/${i.service}`] = r.rollup.awaiting
+        ? "unknown"
+        : i.ok === true
+          ? "ok"
+          : i.ok === false
+            ? "down"
+            : "unknown";
+    }
+  }
+  return { down, health };
 }

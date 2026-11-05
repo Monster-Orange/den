@@ -246,6 +246,11 @@ function injectStyles() {
       padding: 3px 4px; cursor: pointer; min-width: 120px;
     }
     .appearance :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .appearance-all {
+      grid-column: 1 / -1; color: var(--accent-text); text-decoration: none;
+      border-top: 1px solid var(--border); padding-top: 8px;
+    }
+    .appearance-all:hover { text-decoration: underline; }
     .appearance-notice {
       grid-column: 1 / -1; margin: 0; max-width: 260px; white-space: normal;
       color: var(--text); font-size: 11.5px; line-height: 1.35;
@@ -291,7 +296,8 @@ function render(host) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "appearance-btn";
-  btn.textContent = "◐";
+  // The prototype's user menu (R10): ◐ ▾.
+  btn.textContent = "◐ ▾";
   btn.title = "Appearance: mode and theme";
   btn.setAttribute("aria-label", "Appearance");
   btn.setAttribute("aria-haspopup", "true");
@@ -369,7 +375,19 @@ function render(host) {
     }
     fillThemeSelect(theme);
   });
-  pop.append(label("Mode", mode), mode, label("Theme", theme), theme, notice);
+  // "All settings": today's settings panel (R10; the Settings page is R21).
+  const all = document.createElement("a");
+  all.className = "appearance-all";
+  all.href = "/local-dev?settings=1";
+  all.textContent = "All settings";
+  pop.append(
+    label("Mode", mode),
+    mode,
+    label("Theme", theme),
+    theme,
+    notice,
+    all,
+  );
   box.append(btn, pop);
   fillThemeSelect(theme);
 }

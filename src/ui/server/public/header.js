@@ -25,6 +25,7 @@ import {
   healthCycle,
   mountMoreChip,
   paintGate,
+  shellHealth,
 } from "./health-fit.js";
 import { describeRollup } from "./health-rollup.js";
 
@@ -40,6 +41,8 @@ const POLL_INTERVAL_MS = 5_000;
 // regrowing it (which shifted the whole page below — see renderHealthDots).
 let _healthAcc = new Map();
 let _healthAccGen = -1;
+// The poll generation that last painted _healthAcc (healthCycle's `last`).
+let _healthPaintGen = -1;
 let pollTimer = null;
 // Generation token: every (re)start of polling bumps this. A stale tick (an
 // env the user already switched away from, or a slow fetch resolving late)
@@ -292,8 +295,8 @@ function _injectChangelogStyles() {
   overlay.id = "cl-overlay";
   overlay.className = "cl-overlay";
   overlay.innerHTML =
-    '<div class="cl-box">' +
-    '<div class="cl-hdr"><h3>What\'s new</h3><button class="cl-close" id="cl-close-btn" title="Close">×</button></div>' +
+    '<div class="cl-box" role="dialog" aria-modal="true" aria-labelledby="cl-title">' +
+    '<div class="cl-hdr"><h3 id="cl-title">What\'s new</h3><button class="cl-close" id="cl-close-btn" title="Close">×</button></div>' +
     '<div class="cl-body" id="cl-body"></div>' +
     '<div class="cl-footer"><button type="button" class="cl-more-btn" id="cl-more" aria-controls="cl-body" aria-expanded="false" hidden></button><button class="cl-got-it" id="cl-got-it-btn">Got it</button></div>' +
     "</div>";
@@ -316,8 +319,31 @@ function _injectChangelogStyles() {
     ?.addEventListener("click", () => window.closeChangelog());
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") window.closeChangelog();
+    if (!overlay.classList.contains("open")) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      window.closeChangelog();
+    } else if (e.key === "Tab") _trapChangelogTab(e, overlay);
   });
+}
+
+/** Tab and Shift+Tab stay inside the open dialog (aria-modal). */
+function _trapChangelogTab(e, overlay) {
+  const box = overlay.querySelector(".cl-box");
+  const stops = [
+    ...box.querySelectorAll("button, a[href], [tabindex]:not([tabindex='-1'])"),
+  ].filter((el) => !el.hidden && !el.disabled && el.getClientRects().length);
+  if (!stops.length) return;
+  const first = stops[0];
+  const last = stops[stops.length - 1];
+  const at = document.activeElement;
+  if (e.shiftKey ? at === first || !box.contains(at) : at === last) {
+    e.preventDefault();
+    (e.shiftKey ? last : first).focus();
+  } else if (!box.contains(at)) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 function _renderChangelogBody(entries) {
@@ -575,19 +601,47 @@ function _buildMarkdown(entry) {
   return lines.join("\n");
 }
 
+// Where focus goes back to when the dialog closes.
+let _clReturnFocus = null;
+
 window.openChangelog = function () {
   _clShowAll = false;
   _injectChangelogStyles();
   _renderChangelogBody(_changelogEntries);
-  const body = document.getElementById("cl-body");
-  if (body) body.scrollTop = 0; // always opens at the newest release
   const overlay = document.getElementById("cl-overlay");
-  if (overlay) overlay.classList.add("open");
+  if (!overlay) return;
+  const wasOpen = overlay.classList.contains("open");
+  if (!wasOpen) {
+    const at = document.activeElement;
+    // Nothing focused (a first-visit auto-open): the version pill.
+    _clReturnFocus =
+      at && at !== document.body && !overlay.contains(at)
+        ? at
+        : document.getElementById("version-pill");
+  }
+  overlay.classList.add("open");
+  // Always opens at the newest release. After `.open`: while the overlay is
+  // display:none the body has no scroll box, so a reset there doesn't stick.
+  const body = document.getElementById("cl-body");
+  if (body) body.scrollTop = 0;
+  const more = document.getElementById("cl-more");
+  (more && !more.hidden
+    ? more
+    : document.getElementById("cl-got-it-btn")
+  )?.focus();
 };
 
 window.closeChangelog = function () {
   const overlay = document.getElementById("cl-overlay");
+  const wasOpen = !!overlay?.classList.contains("open");
   if (overlay) overlay.classList.remove("open");
+  if (wasOpen) {
+    const back = _clReturnFocus?.isConnected
+      ? _clReturnFocus
+      : document.getElementById("version-pill");
+    _clReturnFocus = null;
+    back?.focus();
+  }
   if (_changelogEntries[0]?.version) {
     try {
       localStorage.setItem(LS_CHANGELOG_SEEN, _changelogEntries[0].version);
@@ -675,6 +729,8 @@ export async function applyDenConfig() {
  * before the product name: "Globex › __DEN_CLI__".
  */
 function _renderOrgCrumb(org) {
+  // The shell's scope has an org part (the prototype's "/ ORG name").
+  if (window.denShell?.setOrg?.(org)) return;
   const h1 = document.querySelector(".den-top h1, header h1");
   if (!h1 || !org?.title || document.getElementById("org-crumb")) return;
   const crumb = document.createElement("span");
@@ -782,7 +838,7 @@ async function _renderPill(envSel) {
     if (_wsOnSwitch) {
       _renderPickerPill(el, data, label, title);
     } else {
-      el.textContent = label;
+      el.replaceChildren(..._pillLabel(label));
       el.title = data.active?.length > 1 ? title : label;
     }
     // The pill starts as inline display:none in every page's markup; clear it
@@ -793,6 +849,22 @@ async function _renderPill(envSel) {
     _closeWorkspaceMenu();
     _pillHost(el).style.display = "none";
   }
+}
+
+/**
+ * "Workspace <name>": the prototype's scope part, a key and a value (R4
+ * makes it a menu in dev.18). A long name ends in an ellipsis (shell.js);
+ * the whole name is in its title.
+ */
+function _pillLabel(label) {
+  const key = document.createElement("span");
+  key.className = "ws-pill-key";
+  key.textContent = "Workspace";
+  const name = document.createElement("span");
+  name.className = "ws-pill-name";
+  name.textContent = label;
+  name.title = label;
+  return [key, name];
 }
 
 /**
@@ -857,15 +929,11 @@ function _renderPickerPill(el, data, label, title) {
     });
   }
 
-  el.replaceChildren();
-  const name = document.createElement("span");
-  name.textContent = label;
-  // A long name ends in an ellipsis (shell.js): the whole name is here.
-  name.title = label;
+  el.replaceChildren(..._pillLabel(label));
   const caret = document.createElement("span");
   caret.className = "ws-pill-caret";
   caret.textContent = "▾";
-  el.append(name, caret);
+  el.append(caret);
   el.title = title;
 
   let menu = wrap.querySelector(".ws-menu");
@@ -1063,8 +1131,11 @@ async function renderHealthDots(env, gen = pollGen, force = false) {
       })
         .then((r) => r.json())
         .catch(() => null),
+    // What the row shows now, for a paint before this cycle completes.
+    last: () => (_healthPaintGen === gen ? _healthAcc : null),
     paint: (m) => {
       _healthAcc = m;
+      _healthPaintGen = gen;
       _paintHealthDots(container, env, _sortHealth([...m.values()]));
     },
     current: () => gen === pollGen,
@@ -1186,6 +1257,11 @@ function _paintHealthDots(container, env, results) {
   } else {
     const repos = [...new Set(results.map((r) => r.repo))];
     const row = buildRow(results, groupReposByApplication(repos, _apps));
+    // The rail's pinned rows and the Services badge (R13, R14) read the
+    // same rollup: `down` counts services whose check failed (unchecked
+    // and pending ones never count, nor any while its repo's checks are
+    // still answering).
+    window.denShell?.setState(shellHealth(row));
     const itemHtml = new Map(
       row.flat.map((r) => [r.repo, _repoHealthItem(r, escAttr)]),
     );
@@ -1406,16 +1482,14 @@ export function initLogBadge() {
   });
 }
 
+/** The Logs page's NAV badge (shell.js) reads `openLogs`. */
 function _updateBadgeFromStorage() {
-  const el = document.getElementById("log-badge");
-  if (!el) return;
   try {
     const logs = JSON.parse(localStorage.getItem(LS_OPEN_LOGS) || "[]");
     const count = Array.isArray(logs) ? logs.length : 0;
-    el.textContent = count;
-    el.style.display = count > 0 ? "inline" : "none";
+    window.denShell?.setState({ openLogs: count });
   } catch {
-    el.style.display = "none";
+    window.denShell?.setState({ openLogs: 0 });
   }
 }
 

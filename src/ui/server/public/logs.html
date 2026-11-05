@@ -99,18 +99,9 @@
         }
       }
 
-      /* ── Sub-bar ──────────────────────────────────────────────────────────── */
-      .subbar {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 5px 14px;
-        background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-      }
-      .spacer {
-        flex: 1;
+      /* The layout toggle sits last in the toolbar, after the search. */
+      #log-dir-seg {
+        order: 100;
       }
 
       .seg {
@@ -441,18 +432,16 @@
     <div id="den-shell" data-page="logs"></div>
     <script src="/shell.js"></script>
 
-    <div class="subbar">
-      <div class="spacer"></div>
+    <!-- One bar: the streams, the history search and the layout toggle
+         (which had a near-empty band of its own). -->
+    <div class="logs-toolbar" id="logs-toolbar">
+      <span class="logs-label">streams</span>
       <div class="seg" id="log-dir-seg">
         <button data-dir="cols" class="active" title="Side by side">
           &#9134; cols
         </button>
         <button data-dir="rows" title="Stacked">&#9135; rows</button>
       </div>
-    </div>
-
-    <div class="logs-toolbar" id="logs-toolbar">
-      <span class="logs-label">streams</span>
       <span class="hist-search-wrap">
         <input
           id="hist-search"

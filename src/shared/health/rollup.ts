@@ -15,6 +15,8 @@ export interface HealthSignal {
   /** true up, false down or failing, null not checked (or not yet). */
   ok: boolean | null | undefined;
   isEntrypoint?: boolean;
+  /** Not answered yet this cycle: the repo stays unknown until it has. */
+  awaiting?: boolean;
 }
 
 export interface RepoRollup {
@@ -25,6 +27,8 @@ export interface RepoRollup {
   down: string[];
   checked: number;
   unchecked: number;
+  /** Checks that haven't answered yet; any holds the state at unknown. */
+  awaiting: number;
 }
 
 export const STATE_RANK: Record<RepoState, number> = rollup.STATE_RANK;

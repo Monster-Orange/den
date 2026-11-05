@@ -190,6 +190,25 @@
         gap: 8px;
         margin-bottom: 10px;
       }
+      .service-card-title {
+        flex: 1;
+        min-width: 0;
+      }
+      .pin-btn {
+        background: none;
+        border: 1px solid transparent;
+        border-radius: var(--radius-button);
+        color: var(--faint);
+        cursor: pointer;
+        font-size: 14px;
+        padding: 0 4px;
+        line-height: 1.4;
+      }
+      .pin-btn:hover,
+      .pin-btn[aria-pressed="true"] {
+        color: var(--accent-text);
+        background: var(--sunken);
+      }
       .service-card-header .dot {
         width: 8px;
         height: 8px;
@@ -695,6 +714,12 @@
         // notes-api/db's migrate/lint are real work you can only do here.
         const LIFECYCLE_CMDS = new Set(["up", "down", "restart"]);
 
+        // Pin a system (or a sub-service) to the rail (R14).
+        const pinBtn = (id) => {
+          const on = window.denShell?.isPinned(id);
+          if (!window.denShell) return "";
+          return `<button class="pin-btn" data-pin-toggle="${esc(id)}" aria-pressed="${on ? "true" : "false"}" title="${on ? "Unpin" : "Pin"} ${esc(id)}" aria-label="${on ? "Unpin" : "Pin"} ${esc(id)}">${on ? "★" : "☆"}</button>`;
+        };
         const cardHtml = (s) => {
           const addr = s.address ?? `${s.repo}/${s.service}`;
           const isSub = primaryByRepo.get(s.repo) !== addr;
@@ -733,14 +758,15 @@
               ? `<span class="badge layers" title="Manifest layers applied">manifest: ${s.manifestLayers.join(" + ")}</span>`
               : "";
           return `
-          <div class="service-card${isSub ? " subservice" : ""}">
+          <div class="service-card${isSub ? " subservice" : ""}"${isSub ? "" : ` id="repo-${esc(s.repo)}"`}>
             <div class="service-card-header">
               <span class="dot" id="dot-${s.repo}-${s.service}"></span>
-              <div>
+              <div class="service-card-title">
                 <div class="service-name">${addr}</div>
                 <div class="service-repo">${s.repo}</div>
                 <a class="site-link" id="site-${s.repo}-${s.service}" target="_blank" rel="noopener" hidden></a>
               </div>
+              ${pinBtn(isSub ? addr : s.repo)}
             </div>
             <div class="service-meta">${modeBadge}${branchBadge}${layersBadge}${unclonedBadge}</div>
             <div class="cmd-row">
@@ -804,6 +830,28 @@
         </section>`,
           )
           .join("");
+
+        // Pin / unpin (a preference only), then repaint the star.
+        pane.querySelectorAll("[data-pin-toggle]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const id = btn.dataset.pinToggle;
+            const sh = window.denShell;
+            if (!sh) return;
+            if (sh.isPinned(id)) sh.unpin(id);
+            else sh.pin(id);
+            const on = sh.isPinned(id);
+            btn.textContent = on ? "★" : "☆";
+            btn.setAttribute("aria-pressed", String(on));
+            const label = `${on ? "Unpin" : "Pin"} ${id}`;
+            btn.title = label;
+            btn.setAttribute("aria-label", label);
+          });
+        });
+        // A pinned row in the rail links here (#repo-<name>).
+        if (location.hash.startsWith("#repo-"))
+          document
+            .getElementById(decodeURIComponent(location.hash.slice(1)))
+            ?.scrollIntoView({ block: "center" });
 
         // Attach click handlers
         pane.querySelectorAll(".cmd-btn").forEach((btn) => {

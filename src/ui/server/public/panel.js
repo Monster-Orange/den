@@ -294,6 +294,18 @@ export const ACTIONS = [
   },
 ];
 
+/**
+ * Pin or unpin to the rail (R14): the shell's Pinned group. A preference
+ * only (/api/settings `shell.pins`). Absent outside the shell.
+ */
+function pinButton(id) {
+  const sh = typeof window !== "undefined" ? window.denShell : null;
+  if (!sh) return "";
+  const on = sh.isPinned(id);
+  const label = `${on ? "Unpin" : "Pin"} ${id}`;
+  return `<button class="dg-ib" data-pin-toggle="${esc(id)}" aria-pressed="${on}" title="${esc(label)}" aria-label="${esc(label)}">${on ? "★" : "☆"}</button>`;
+}
+
 /** The manifest's own commands (setup, seed, reset-db, …) become actions too. */
 function commandActions(s) {
   if (!runsHere(s)) return [];
@@ -662,7 +674,7 @@ export function renderPanel(el, sel) {
   el.innerHTML = `${st.popped ? "" : '<div class="dg-resize" data-resize title="Drag to resize"></div>'}<div class="dg-dh">
     <nav class="dg-crumbs" aria-label="Location"><span class="dg-crumb-org"><i style="background:${esc(org.color)}"></i>${esc(org.label)}</span> › <span>${esc(s0.app)}</span>${kind === "service" && m.byRepo.get(x.repo).length > 1 ? ` › <button data-goto-repo-panel="${esc(x.repo)}">${esc(x.repo)}</button>` : ""}</nav>
     <div class="t"><h2>${esc(kind === "repo" ? x.repo : x.name)}</h2><span class="dg-pill ${pillCls}">${esc(word)}</span>${place !== "local" || m.mixed ? `<span class="dg-badge ${place}">${esc(placeLabel)}</span>` : ""}
-      <span class="dg-hbtns"><button class="dg-ib" data-popout title="${st.popped ? "Dock as side panel" : "Expand to pop-up"}" aria-label="${st.popped ? "Dock as side panel" : "Expand to pop-up"}">${st.popped ? "⇲" : "⤢"}</button><button class="dg-ib" data-close aria-label="Close details">×</button></span></div>
+      <span class="dg-hbtns">${pinButton(kind === "repo" ? x.repo : x.id)}<button class="dg-ib" data-popout title="${st.popped ? "Dock as side panel" : "Expand to pop-up"}" aria-label="${st.popped ? "Dock as side panel" : "Expand to pop-up"}">${st.popped ? "⇲" : "⤢"}</button><button class="dg-ib" data-close aria-label="Close details">×</button></span></div>
     <div class="sub">${esc(kind === "repo" ? `${x.services.length} services · ${s0.path}` : x.id)}</div>
     ${actionBar(x)}
     <div class="dg-tabs" role="tablist">${tabs.map((t) => `<button role="tab" aria-selected="${t.id === st.tab}" data-tab="${t.id}">${esc(t.label)}</button>`).join("")}</div>

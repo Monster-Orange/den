@@ -2002,6 +2002,10 @@
           checkSudoStatus(),
         ]);
         initLogBadge();
+        // The rail's Settings item and ◐'s "All settings" open the
+        // settings panel (the Settings page is R21, dev.19).
+        if (new URLSearchParams(location.search).has("settings"))
+          showSettingsPanel();
       }
 
       // ── Workspace list ────────────────────────────────────────────────────────

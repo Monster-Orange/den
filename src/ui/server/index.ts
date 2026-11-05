@@ -143,6 +143,7 @@ import {
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import { serveUiAsset } from "./ui-assets.js";
 import { graphPrefs, mergeGraphPrefs } from "./graph-prefs.js";
+import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
 import {
   appearancePrefs,
   mergeAppearancePrefs,
@@ -2870,6 +2871,7 @@ async function handleRequest(
         log_window_lines: user.log_window_lines ?? 20_000,
         graph: graphPrefs(user.graph),
         appearance: appearancePrefs(user.appearance),
+        shell: shellPrefs(user.shell),
       });
     }
     if (req.method === "POST") {
@@ -2880,8 +2882,17 @@ async function handleRequest(
           editor_overrides?: Record<string, string> | null;
           graph?: unknown;
           appearance?: unknown;
+          shell?: unknown;
         };
         const user = readUserConfig();
+        // The rail's pins and collapse (R14): a view preference only.
+        if (body.shell !== undefined) {
+          const sh = mergeShellPrefs(shellPrefs(user.shell), body.shell);
+          if (!sh.ok) return send400(res, sh.error);
+          const stored = storedShell(sh.value);
+          if (stored) user.shell = stored;
+          else delete user.shell;
+        }
         if (body.graph !== undefined) {
           const g = mergeGraphPrefs(graphPrefs(user.graph), body.graph);
           if (!g.ok) return send400(res, g.error);
@@ -2944,6 +2955,7 @@ async function handleRequest(
           editor_overrides: user.editor_overrides ?? {},
           graph: graphPrefs(user.graph),
           appearance: appearancePrefs(user.appearance),
+          shell: shellPrefs(user.shell),
         });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);

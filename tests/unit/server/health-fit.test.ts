@@ -25,6 +25,7 @@ import {
   mountMoreChip,
   paintGate,
   planRow,
+  shellHealth,
 } from "../../../src/ui/server/public/health-fit.js";
 
 type Row = {
@@ -641,8 +642,97 @@ describe("healthCycle: the first paint waits for every check", () => {
     await jest.advanceTimersByTimeAsync(1);
     expect(paints).toHaveLength(1);
     expect(paints[0].at).toBe(8000);
-    expect(paints[0].rows.map((x) => x.repo).sort()).toEqual(["api", "web"]);
+    // What landed is drawn, but a repo no complete cycle has described is
+    // unknown until one does: the cycle may still hold its other checks.
+    const row = buildRow(paints[0].rows, null);
+    expect(row.flat.map((x) => [x.repo, x.state]).sort()).toEqual([
+      ["api", "unknown"],
+      ["web", "unknown"],
+    ]);
     expect(downAt(paints, "remote")).toBe(false);
+  });
+
+  // 0.3.0-dev.17: one cold load in twenty painted an app red for ~100ms,
+  // its one down service (mailpit) the only one answered so far.
+  const m = (service: string, ok: boolean | null) => ({
+    repo: "mail",
+    service,
+    ok,
+  });
+  const states = (rows: R[]) =>
+    buildRow(rows, null).flat.map((x) => [x.repo, x.state]);
+
+  it("a partial paint never shows an app down before its other checks answer", async () => {
+    // Nothing seeded, and the gate opened by an overlapping poll that
+    // completed first (its done() ends the hold this cycle asked for).
+    const gate = paintGate({ delay: 0 });
+    const paints: R[][] = [];
+    setTimeout(() => gate.done(), 50);
+    void healthCycle({
+      seed: [],
+      gate,
+      stream: (on: (x: R) => void) =>
+        schedule(
+          [
+            [100, m("mailpit", false)],
+            [300, m("web", true)],
+            [300, "done"],
+          ],
+          on,
+        ),
+      fetchAll: async () => null,
+      paint: (rows: Map<string, R>) => paints.push([...rows.values()]),
+    });
+    await jest.advanceTimersByTimeAsync(200);
+    expect(paints.length).toBeGreaterThan(0);
+    for (const p of paints) expect(states(p)).toEqual([["mail", "unknown"]]);
+    await jest.advanceTimersByTimeAsync(200);
+    expect(states(paints[paints.length - 1])).toEqual([["mail", "degraded"]]);
+  });
+
+  it("a repo a complete cycle described keeps its other answers meanwhile", async () => {
+    const gate = paintGate({ delay: 0 });
+    const paints: R[][] = [];
+    const last = new Map([
+      ["mail/web", { ...m("web", true), isEntrypoint: true }],
+      ["mail/mailpit", m("mailpit", true)],
+    ]);
+    setTimeout(() => gate.done(), 50);
+    void healthCycle({
+      seed: [],
+      last: () => last,
+      gate,
+      stream: (on: (x: R) => void) =>
+        schedule([[100, m("mailpit", false)]], on),
+      fetchAll: async () => null,
+      paint: (rows: Map<string, R>) => paints.push([...rows.values()]),
+    });
+    await jest.advanceTimersByTimeAsync(200);
+    expect(states(paints[paints.length - 1])).toEqual([["mail", "degraded"]]);
+  });
+});
+
+describe("shellHealth: the rail's badge and pinned dots", () => {
+  it("counts only answered downs, in repos whose checks have all answered", () => {
+    const row = buildRow(
+      [
+        { repo: "mail", service: "mailpit", ok: false },
+        { repo: "mail", service: "…", ok: null, awaiting: true },
+        { repo: "shop", service: "web", ok: false },
+        { repo: "shop", service: "db", ok: true },
+      ],
+      null,
+    );
+    expect(shellHealth(row)).toEqual({
+      down: 1,
+      health: {
+        mail: "unknown",
+        "mail/mailpit": "unknown",
+        shop: "degraded",
+        "shop/web": "down",
+        "shop/db": "ok",
+      },
+    });
   });
 });
 

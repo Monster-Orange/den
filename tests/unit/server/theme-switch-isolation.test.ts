@@ -3,7 +3,9 @@
  * acceptance criterion 5): through the real server's API, it writes the
  * `appearance` block of config/local/user.yml and changes no other file,
  * not the edge config, not the routes, not services, and not the web
- * service process (same pid, no restart).
+ * service process (same pid, no restart). Pinning to the rail and
+ * collapsing it (0.3.0-dev.17, R14) are held to the same rule: only
+ * user.yml's `shell` block changes.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawn, type ChildProcess } from "child_process";
@@ -275,4 +277,63 @@ describe("switching theme or mode (criterion 5)", () => {
     expect(r.status).toBe(400);
     expect(snapshot()).toEqual(before);
   });
+});
+
+describe("pinning and collapsing the rail (R14)", () => {
+  it("changes nothing but the shell block of the settings file", async () => {
+    const info = JSON.parse(
+      (await request("GET", "/api/server-info")).body,
+    ) as { pid: number; startedAt: string };
+    const edgeBefore = (await request("GET", "/api/edge")).body;
+    const daemonsBefore = (await request("GET", "/api/service/daemons")).body;
+    const userBefore = yaml.parse(
+      fs.readFileSync(path.join(tmp, USER_YML), "utf-8"),
+    ) as Record<string, unknown>;
+    await new Promise((r) => setTimeout(r, 500));
+    const before = snapshot();
+
+    for (const shell of [
+      { pins: ["shop"] },
+      { pins: ["shop", "billing/api"] },
+      { collapsed: true },
+      { pins: ["billing/api"], collapsed: false },
+    ]) {
+      const r = await request("POST", "/api/settings", { shell });
+      expect([shell, r.status]).toEqual([shell, 200]);
+    }
+    const got = JSON.parse((await request("GET", "/api/settings")).body) as {
+      shell: unknown;
+    };
+    expect(got.shell).toEqual({ pins: ["billing/api"], collapsed: false });
+    // A bad pin is refused and writes nothing.
+    const bad = await request("POST", "/api/settings", {
+      shell: { pins: ["../etc"] },
+    });
+    expect(bad.status).toBe(400);
+
+    await new Promise((r) => setTimeout(r, 500));
+    const after = snapshot();
+    const changed = Object.keys({ ...before, ...after }).filter(
+      (f) => before[f] !== after[f],
+    );
+    expect(changed).toEqual([USER_YML]);
+    const { shell, ...rest } = yaml.parse(
+      fs.readFileSync(path.join(tmp, USER_YML), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(shell).toEqual({ pins: ["billing/api"] });
+    expect(rest).toEqual(userBefore);
+
+    expect((await request("GET", "/api/edge")).body).toBe(edgeBefore);
+    expect((await request("GET", "/api/service/daemons")).body).toBe(
+      daemonsBefore,
+    );
+    const infoAfter = JSON.parse(
+      (await request("GET", "/api/server-info")).body,
+    ) as typeof info;
+    expect([infoAfter.pid, infoAfter.startedAt]).toEqual([
+      info.pid,
+      info.startedAt,
+    ]);
+    await request("POST", "/api/settings", { shell: { pins: [] } });
+  }, 30_000);
 });

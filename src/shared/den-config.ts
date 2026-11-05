@@ -342,6 +342,8 @@ export interface UserConfig {
    * the header. See src/ui/server/appearance-prefs.ts.
    */
   appearance?: { theme?: string; mode?: string };
+  /** The rail's pins and collapse (src/ui/server/shell-prefs.ts). */
+  shell?: { pins?: string[]; collapsed?: boolean };
 }
 
 const ALL_ENVIRONMENTS: Environment[] = [

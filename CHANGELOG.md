@@ -123,9 +123,57 @@ config and manifest changes a distribution must make to move to it under
   the running Den is a prerelease and only that keeps the range from
   matching, the refusal adds "prerelease builds need a -0 range, e.g.
   >=0.3.0-0", built from the range's own lower bound.
+- **The left rail: grouped, pinnable, collapsible** (0.3.0-dev.17, R11,
+  R11a, R12, R13, R14). Pages sit under Develop (Local Dev, Services, Logs),
+  Verify (Tests) and Ship (Environments, Releases), with Settings at the
+  foot. Groups and items come from one registry in `shell.js`;
+  a distribution adds its own with `denShell.registerGroup({id, label,
+  order, tag})` and `denShell.registerNav({group, id, label, href, icon,
+  order, badge})`, and its labels with `denShell.addMessages(lang, {...})`.
+  - **Pinned**: ☆ on a Services card or in the graph's details pins a repo
+    or service to the top of the rail with its health dot ("Pinned shop");
+    × or Delete on the pinned row unpins it.
+  - **Badges**: Services shows how many services are down, live from the
+    health row; Logs how many log streams are open.
+  - **Collapse** (« at the foot) narrows the rail to its icons, 216 to 56px;
+    the headings and labels stay for screen readers. Under 720px the rail is
+    a drawer behind ☰.
+  - Pins and collapse are stored in user.yml `shell` (`GET`/`POST
+    /api/settings` `shell: {pins, collapsed}`); setting them changes nothing
+    else (the theme-switch isolation test covers it).
+- **The shell matches the prototype's sizes** (0.3.0-dev.17, R1, R2, R3,
+  R9, R10): one 48px top bar with the brand, the workspace pill and Env as
+  key + value buttons, the health row as a chip, "What's new" and the ◐ ▾
+  menu (now with "All settings"); the rail's type, spacing and current-page
+  bar. `scripts/shell-fidelity.mjs` measures the real pages against the
+  prototype at 1440 and 1024 (1px, 0.5px for type) and lists any allowed
+  difference with its reason.
 
 ### Fixed
 
+- **An app is never painted down before its checks have answered**
+  (0.3.0-dev.17). One cold load in twenty painted an app red for ~100ms:
+  only its one down service had answered, and as the only row it read as
+  the entry service. A poll that overlapped the first one started from
+  nothing and drew what had landed. Until every check of a repo has
+  answered (a pending check has), the repo is unknown (neutral, "still
+  checking"); a repo the last complete cycle described keeps its earlier
+  answers meanwhile. The rail's Services badge and pinned dots read the same
+  rollup, so they count only completed downs.
+- **Shell accessibility** (0.3.0-dev.17): a "Skip to content" link comes
+  first on every page; the rail is one tab stop (the current page) with
+  ↑/↓, Home and End moving within it; the Logs link's name is "Logs" or
+  "Logs, 2 open", not "Logs0"; the Tests page's title is "<title> · Tests".
+- **"What's new" is a modal dialog, and reopens at the top** (0.3.0-dev.17).
+  A reopen after scrolling kept the old position: the scroll was reset
+  while the overlay was still hidden, where it doesn't stick; it is reset
+  once the dialog shows. The box is `role="dialog"` with `aria-modal` and
+  its heading as the label; it takes focus (the versions toggle, else Got
+  it), keeps Tab inside, and gives focus back on close (to the version pill
+  after a first-visit open). A browser test covers Escape, × and Got it,
+  collapsed and expanded; CI installs Playwright's chromium for it.
+- **One bar on Logs** (0.3.0-dev.17). The cols/rows toggle moved into the
+  Logs toolbar from a band of its own.
 - The appearance control (◐) sits at the header's far right on every page
   and never leaves the screen: the nav shrinks and scrolls and the health
   dots give way first (the Tests page's top bar overflowed at 1440 and 1024).
