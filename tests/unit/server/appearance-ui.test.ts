@@ -266,6 +266,12 @@ describe("themeOptions", () => {
       themeOptions(themes, "den", null).find((o) => o.selected)?.value,
     ).toBe("den");
   });
+  it("never offers a theme that fails validate, even your stored choice", () => {
+    const opts = themeOptions(themes, "bad", { id: "paper", name: "Paper" });
+    expect(opts.map((o) => o.value)).toEqual(["", "den", "paper"]);
+    // It falls through to the org default, so that is what is selected.
+    expect(opts.find((o) => o.selected)?.value).toBe("");
+  });
 });
 
 describe("the header (initAppearance)", () => {

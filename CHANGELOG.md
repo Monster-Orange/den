@@ -105,6 +105,19 @@ config and manifest changes a distribution must make to move to it under
   (Mode, Theme; the button is "Appearance" with `aria-expanded` and
   `aria-controls`); Escape closes it and returns focus to the button.
 
+- **What fails `validate` never loads (0.3.0-dev.9).** The theme runtime's
+  verdict is now `plugin validate`'s for the whole plugin. That covers a bare
+  `den-theme.json`'s `author`, a `den-plugin.json`'s `maintainer`, README,
+  capabilities and `den` range, and the theme contract. A theme that fails
+  is left out of the Theme menu (even when it is your stored choice: you then
+  follow the org default) and is skipped at load with one server-log notice.
+  The fallback is the same as for the range: yours, then `brand.theme`, then
+  `den`. `/api/themes` still lists it, with `ok: false` and the problem.
+- **A prerelease Den explains a range without `-0` (0.3.0-dev.9).** When
+  the running Den is a prerelease and only that keeps the range from
+  matching, the refusal adds "prerelease builds need a -0 range, e.g.
+  >=0.3.0-0", built from the range's own lower bound.
+
 ### Fixed
 
 - The appearance control (◐) sits at the header's far right on every page
@@ -132,6 +145,31 @@ config and manifest changes a distribution must make to move to it under
 - `theme list` still shows themes only, and still exits 0 when other plugin
   dirs are broken. It now adds one line, "N plugin dir(s) have errors: run
   `<cli> plugin list`" (0.3.0-dev.8).
+
+- `theme list`'s footer counts every broken plugin dir, whether or not it
+  is a row above, and gets the plural right: "1 plugin dir has errors" /
+  "4 plugin dirs have errors: run `<cli> plugin list`" (0.3.0-dev.9; it
+  counted only the hidden ones, as "N plugin dir(s)").
+- `plugin validate` says the same as `plugin list` for a dir with no
+  manifest: "no den-plugin.json or den-theme.json, so it isn't a plugin",
+  from one constant. `plugin list`'s and `theme list`'s id column fits the
+  longest id, so rows stay aligned with ids up to 40 characters
+  (0.3.0-dev.9).
+- **The header's health row no longer cuts repos off** (0.3.0-dev.9, a
+  regression from the one-line header earlier in 0.3.0). The row was clipped
+  silently: whole repos were hidden, a name could be cut mid-word, and a
+  hidden repo that was down didn't show. It now:
+  - orders problems first: down, then degraded, then unknown, then healthy,
+    within and across application boxes;
+  - shows only items that fit whole;
+  - ends with a "+N" chip for the rest, named "N more repos" and saying
+    "+N, 1 down" when a hidden repo has a problem. The chip opens the full
+    list; Escape closes it and returns focus to the chip.
+  - fits again on resize, when fonts load, and when the rest of the header
+    squeezes it.
+
+  An interim fix until the slice-3 status chip. The new module is
+  `public/health-fit.js`.
 
 ### Migrations
 

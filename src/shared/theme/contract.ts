@@ -251,7 +251,8 @@ export function schemaIssues(
 /**
  * Why a manifest's `den` range excludes the running Den, or null. A range
  * that is not valid semver is an error too. Prereleases count: 0.3.0-dev.7
- * satisfies ">=0.3.0-0 <0.4.0" (PL-SPEC d4: validate fails, load skips).
+ * satisfies ">=0.3.0-0 <0.4.0" but not ">=0.3.0", which gets a hint
+ * (PL-SPEC d4: validate fails, load skips).
  */
 export function denRangeIssue(
   range: string | undefined,
@@ -261,9 +262,18 @@ export function denRangeIssue(
   if (!semver.validRange(range))
     return `den range "${range}" is not a semver range`;
   if (!version) return null;
-  return semver.satisfies(version, range, { includePrerelease: true })
-    ? null
-    : `needs Den ${range}; this is ${version}`;
+  if (semver.satisfies(version, range, { includePrerelease: true }))
+    return null;
+  // A prerelease Den that misses only for being a prerelease (>=0.3.0 on
+  // 0.3.0-dev.9): say how to write the range, from its own lower bound.
+  const release = semver.prerelease(version)
+    ? `${semver.major(version)}.${semver.minor(version)}.${semver.patch(version)}`
+    : null;
+  const hint =
+    release && semver.satisfies(release, range)
+      ? ` (prerelease builds need a -0 range, e.g. >=${semver.minVersion(range)?.version ?? release}-0)`
+      : "";
+  return `needs Den ${range}; this is ${version}${hint}`;
 }
 
 /**

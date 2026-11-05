@@ -153,7 +153,9 @@ describe("PL-1a: local plugins of any kind list and validate", () => {
     lines.length = 0;
     expect(await cmdPlugin(["validate"], { distRoot: d, log })).toBe(1);
     expect(out()).toMatch(/✗ stray/);
-    expect(out()).toMatch(/a plugin needs a manifest/);
+    expect(out()).toMatch(
+      /^ {4}no den-plugin\.json or den-theme\.json, so it isn't a plugin$/m,
+    );
   });
 
   it("theme list and validate still skip a local plugin that is not a theme", async () => {

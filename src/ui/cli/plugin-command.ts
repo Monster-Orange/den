@@ -23,6 +23,7 @@ import {
   PLUGIN_FILE,
   PLUGIN_ID,
   PLUGIN_ID_RULE,
+  PLUGIN_NOT_A_PLUGIN,
   actingCapabilities,
   validatePluginDir,
   type PluginValidation,
@@ -141,7 +142,7 @@ interface Row {
 
 /** Why a plugins/<name>/ is not a plugin, for list and validate. */
 const NOT_AN_ID = `not a plugin id, which is ${PLUGIN_ID_RULE}`;
-const NOT_A_PLUGIN = `no ${PLUGIN_FILE} or ${THEME_FILE}, so it isn't a plugin`;
+const NOT_A_PLUGIN = PLUGIN_NOT_A_PLUGIN;
 const SYMLINK = `a symlink, not a directory: a plugin's files live in ${PLUGINS_DIR}/<id>/ itself (copy them in, or plugin add it)`;
 
 const hasManifest = (dir: string) =>
@@ -760,10 +761,15 @@ export async function runPluginCommand(
         engineRoot,
         scope,
       );
+      // The id column fits the longest id (up to 40), never less than 14.
+      const idWidth = Math.max(
+        14,
+        ...[builtin, ...rows].map((r) => r?.id.length ?? 0),
+      );
       const line = (r: Row) =>
         scope === "theme"
-          ? `  ${r.id.padEnd(14)} ${r.version.padEnd(8)} ${r.state}`
-          : `  ${r.id.padEnd(14)} ${r.version.padEnd(8)} ${(r.kinds.join(",") || "?").padEnd(10)} ${r.state}`;
+          ? `  ${r.id.padEnd(idWidth)} ${r.version.padEnd(8)} ${r.state}`
+          : `  ${r.id.padEnd(idWidth)} ${r.version.padEnd(8)} ${(r.kinds.join(",") || "?").padEnd(10)} ${r.state}`;
       // The built-in line, any problem with the lock itself, then each plugin.
       if (builtin) log(line(builtin));
       for (const p of problems) log(chalk.red(`  ${p}`));
@@ -780,17 +786,16 @@ export async function runPluginCommand(
               `  ⚠ ${e.id} was added from ${e.source}, a path on one machine: re-add it from a remote, or make it a local plugin (keep ${rel(e.id)}/ and drop its ${LOCK_FILE} entry)`,
             ),
           );
-      // A filtered view: plugin dirs it hides never fail it, but they are
-      // counted, so a broken plugins/<id>/ is never silent.
+      // A filtered view: plugin dirs it hides never fail it, but every broken
+      // one is counted, shown as a row above or not, so none is ever silent.
       if (scope === "theme") {
-        const shown = new Set(rows.map((r) => r.id));
-        const hidden = listRows(distRoot, engineRoot, "plugin").rows.filter(
-          (r) => !r.ok && !shown.has(r.id),
+        const broken = listRows(distRoot, engineRoot, "plugin").rows.filter(
+          (r) => !r.ok,
         ).length;
-        if (hidden > 0)
+        if (broken > 0)
           log(
             chalk.yellow(
-              `  ${hidden} plugin dir(s) have errors: run \`${cli} plugin list\``,
+              `  ${broken} plugin ${broken === 1 ? "dir has" : "dirs have"} errors: run \`${cli} plugin list\``,
             ),
           );
       }

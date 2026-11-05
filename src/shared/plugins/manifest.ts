@@ -34,6 +34,8 @@ export const PLUGIN_SCHEMA_ID = "den.plugin/v1";
 export const PLUGIN_FILE = "den-plugin.json";
 /** A plugin id, and so its directory's name. */
 export const PLUGIN_ID = /^[a-z][a-z0-9-]{1,39}$/;
+/** What list and validate say about a plugins/<name>/ with no manifest. */
+export const PLUGIN_NOT_A_PLUGIN = `no ${PLUGIN_FILE} or ${THEME_FILE}, so it isn't a plugin`;
 /** PLUGIN_ID in words, for messages that refuse a name. */
 export const PLUGIN_ID_RULE =
   "2–40 characters: lowercase letters, digits or dashes, starting with a letter";
@@ -242,7 +244,7 @@ export function validatePluginDir(
         issues: [
           {
             at: "",
-            message: `no ${PLUGIN_FILE} or ${THEME_FILE}: a plugin needs a manifest`,
+            message: PLUGIN_NOT_A_PLUGIN,
           },
         ],
         contrast: [],
@@ -373,23 +375,6 @@ export function validatePluginDir(
     issues,
     contrast,
   };
-}
-
-/**
- * Why a plugin's den-plugin.json `den` range excludes the running Den, or
- * null (no den-plugin.json, no range, or a range this Den satisfies). The
- * runtime asks this at load: such a plugin is skipped with a notice, never
- * a crash (PL-SPEC d4). An unreadable manifest is not this check's concern.
- */
-export function pluginDenRangeIssue(pluginDir: string): string | null {
-  const file = path.join(pluginDir, PLUGIN_FILE);
-  if (!fs.existsSync(file)) return null;
-  try {
-    const m = JSON.parse(fs.readFileSync(file, "utf-8")) as { den?: unknown };
-    return typeof m.den === "string" ? denRangeIssue(m.den) : null;
-  } catch {
-    return null;
-  }
 }
 
 /**

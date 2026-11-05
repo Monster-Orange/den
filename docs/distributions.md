@@ -391,9 +391,13 @@ one of two ways:
   range. Prereleases count, so a range meant to include Den's dev builds
   starts at `-0`: `>=0.3.0-0 <0.4.0` admits 0.3.0-dev.8, while `>=0.3.0`
   does not. `validate` fails a plugin whose range excludes the running Den
-  and names both. At load, the web UI skips such a theme with one server-log
-  notice and draws with the next choice (yours, then `brand.theme`, then
-  `den`); it never fails to start.
+  and names both, and on a prerelease Den says when only the `-0` is
+  missing.
+- **Load agrees with `validate`.** A theme that fails `validate` for any
+  reason (its range, a missing `author` or `maintainer`, a README, a
+  capability, contrast) is never offered in the Theme menu and never loads.
+  The web UI skips it with one server-log notice and draws with the next
+  choice (yours, then `brand.theme`, then `den`); it never fails to start.
 - **What `validate` checks:** the schema; each kind with its own validator
   (a theme as `theme validate` does, a page's entry module on disk); and the
   admission rules: a `maintainer` (for a bare `den-theme.json`, its

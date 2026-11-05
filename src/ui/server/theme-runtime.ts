@@ -23,8 +23,8 @@ import {
   validationSummary,
 } from "../cli/theme-command.js";
 import {
-  pluginDenRangeIssue,
   themeDirIn,
+  validatePluginDir,
 } from "../../shared/plugins/manifest.js";
 import {
   themeFiles,
@@ -87,24 +87,22 @@ function inspect(
   expectId?: string,
   pluginDir?: string,
 ): InstalledTheme {
+  // The theme itself, to render; the verdict is `validate`'s for the whole
+  // plugin (author/maintainer, `den` range, README, capabilities), so what
+  // fails validate never loads and is never offered (PL-SPEC d4).
   const v = validateThemeDir(dir, expectId ? { expectId } : {});
-  // A den-plugin.json theme's `den` range is the plugin's, not the theme's:
-  // one that excludes this Den is skipped like an invalid theme (PL-SPEC d4).
-  const range = pluginDir ? pluginDenRangeIssue(pluginDir) : null;
-  const ok = v.ok && !range;
+  const verdict = validatePluginDir(
+    pluginDir ?? dir,
+    expectId ? { expectId } : {},
+  );
+  const ok = v.ok && verdict.ok;
   return {
     id,
     name: v.theme?.name ?? id,
     version: v.theme?.version ?? "?",
     source,
     ok,
-    ...(ok
-      ? {}
-      : {
-          problem: [range, v.ok ? null : validationSummary(v)]
-            .filter(Boolean)
-            .join("; "),
-        }),
+    ...(ok ? {} : { problem: validationSummary(verdict.ok ? v : verdict) }),
     dir,
     ...(v.theme ? { theme: v.theme } : {}),
   };

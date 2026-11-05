@@ -47,22 +47,26 @@ export function markView(mark, mode, themeName) {
 
 /**
  * The Theme menu: "Org default (<name>)" first (value "", stored as null),
- * then every usable theme. Selected: the org default when you have no
- * choice of your own, else your theme. Pure, for tests.
+ * then every theme that passes validate. Selected: the org default when you
+ * have no usable choice of your own, else your theme. Pure, for tests.
  */
-export function themeOptions(themes, prefsTheme, orgDefault, activeId) {
-  const chosen = prefsTheme || null;
-  const out = [
+export function themeOptions(themes, prefsTheme, orgDefault) {
+  // Only what passes validate is offered, even a stored choice: one that no
+  // longer passes falls through to the org default, so that is selected.
+  const usable = (themes || []).filter((t) => t.ok);
+  const chosen = usable.some((t) => t.id === prefsTheme) ? prefsTheme : null;
+  return [
     {
       value: "",
       label: `Org default (${orgDefault?.name || "Den"})`,
       selected: !chosen,
     },
+    ...usable.map((t) => ({
+      value: t.id,
+      label: t.name,
+      selected: t.id === chosen,
+    })),
   ];
-  for (const t of themes || [])
-    if (t.ok || t.id === activeId || t.id === chosen)
-      out.push({ value: t.id, label: t.name, selected: t.id === chosen });
-  return out;
 }
 
 const st = {
@@ -220,8 +224,8 @@ function option(value, label, selected) {
 
 function fillThemeSelect(theme) {
   theme.replaceChildren(
-    ...themeOptions(st.themes, st.prefsTheme, st.orgDefault, st.active?.id).map(
-      (o) => option(o.value, o.label, o.selected),
+    ...themeOptions(st.themes, st.prefsTheme, st.orgDefault).map((o) =>
+      option(o.value, o.label, o.selected),
     ),
   );
 }

@@ -17,6 +17,13 @@ import {
 } from "./workspace-picker.js";
 import { initAppearance } from "./appearance.js";
 import { versionLabel } from "./version-label.js";
+import {
+  closeMoreList,
+  fitUnits,
+  moreChip,
+  mountMoreChip,
+  orderByProblem,
+} from "./health-fit.js";
 
 // Every page with this header gets the appearance controls (mode, theme).
 void initAppearance();
@@ -76,6 +83,24 @@ function _injectNavStyles() {
       font-size: 10px; font-weight: 600; letter-spacing: .03em;
       color: var(--text); opacity: .7; white-space: nowrap;
     }
+    /* "+N": the repos the row has no room for (health-fit.js). */
+    .health-more {
+      flex-shrink: 0; font: inherit; font-size: 11px; line-height: 1.4;
+      padding: 1px 7px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--raised); color: var(--text); cursor: pointer;
+      white-space: nowrap;
+    }
+    .health-more.problem { border-color: var(--bad); }
+    .health-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .health-more-list {
+      position: fixed; z-index: 1000; max-height: 60vh; overflow: auto;
+      display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+      padding: 8px 10px; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border-strong); border-radius: 8px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); font-size: 12px;
+    }
+    .health-more-list .health-item { display: flex; align-items: center; gap: 5px; }
+    .health-more-list .health-app { flex-wrap: wrap; }
   `;
   document.head.appendChild(s);
 }
@@ -1038,6 +1063,22 @@ function _streamHealth(env, force, onResult) {
   });
 }
 
+/**
+ * One repo's state in the health row: "ok", "err" (down), "running"
+ * (degraded: some services up) or "" (no health check). Multi-service repo:
+ * its entrypoint's, so a down app isn't masked green by its shared-infra
+ * sidecars; an entrypoint-less infra provider aggregates its subsystems.
+ */
+function _repoState(repo, items) {
+  const one =
+    items.length === 1 && items[0].service === repo
+      ? items[0]
+      : items.find((i) => i.isEntrypoint);
+  if (one) return one.ok === true ? "ok" : one.ok === false ? "err" : "";
+  if (items.every((i) => i.ok === true)) return "ok";
+  return items.some((i) => i.ok === true) ? "running" : "err";
+}
+
 /** One repo's dot + label in the health row. */
 function _repoHealthItem(repo, items, escAttr) {
   // Show open-in-editor icon if editor is configured and any item is dev-managed
@@ -1098,7 +1139,9 @@ function _paintHealthDots(container, env, results) {
       .replace(/&/g, "&amp;")
       .replace(/"/g, "&quot;");
 
+  container._units = null;
   if (!results.length) {
+    closeMoreList(document);
     container.innerHTML = `<div class="health-item" style="color:var(--muted);font-size:11px">${env}: no services</div>`;
   } else {
     // Group by repo so multi-service repos don't produce duplicate labels.
@@ -1113,35 +1156,50 @@ function _paintHealthDots(container, env, results) {
         _repoHealthItem(repo, items, escAttr),
       ]),
     );
-    container.innerHTML = groupReposByApplication([...byRepo.keys()], _apps)
-      .map(({ app, repos }) => {
-        const inner = repos.map((r) => repoHtml.get(r)).join("");
-        if (!app) return inner;
-        const tip = [app.title, app.owner, app.description]
-          .filter(Boolean)
-          .join(" · ");
-        return `<div class="health-app" title="${escAttr(tip)}"><span class="health-app-label">${escAttr(app.name)}</span>${inner}</div>`;
-      })
-      .join("");
-
-    // Wire open-in-editor click handlers (data-open-path avoids inline onclick escaping)
-    container
-      .querySelectorAll(".nav-open-btn[data-open-path]")
-      .forEach((btn) => {
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          fetch("/api/editor/open", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: btn.dataset.openPath }),
-          }).then((r) => {
-            if (!r.ok)
-              r.json().then((d) =>
-                console.warn("[__DEN_CLI__] open-in-editor:", d.error),
-              );
+    const stateOf = new Map(
+      [...byRepo.entries()].map(([repo, items]) => [
+        repo,
+        _repoState(repo, items),
+      ]),
+    );
+    // Units: a repo, or an application's box of repos. Problems first
+    // (down, degraded, unknown, then healthy), in and across boxes, so the
+    // row never hides a problem behind a healthy repo.
+    const units = [];
+    for (const { app, repos } of groupReposByApplication(
+      [...byRepo.keys()],
+      _apps,
+    )) {
+      const ordered = orderByProblem(
+        repos.map((r) => ({ repo: r, state: stateOf.get(r) })),
+      );
+      const count = (st) => ordered.filter((u) => u.state === st).length;
+      if (!app) {
+        for (const u of ordered)
+          units.push({
+            ...u,
+            repos: 1,
+            down: u.state === "err" ? 1 : 0,
+            degraded: u.state === "running" ? 1 : 0,
+            html: repoHtml.get(u.repo),
           });
-        });
+        continue;
+      }
+      const tip = [app.title, app.owner, app.description]
+        .filter(Boolean)
+        .join(" · ");
+      units.push({
+        state: orderByProblem(ordered)[0]?.state ?? "",
+        repos: ordered.length,
+        down: count("err"),
+        degraded: count("running"),
+        html: `<div class="health-app" title="${escAttr(tip)}"><span class="health-app-label">${escAttr(app.name)}</span>${ordered.map((u) => repoHtml.get(u.repo)).join("")}</div>`,
       });
+    }
+    container._units = orderByProblem(units);
+    container.innerHTML = container._units.map((u) => u.html).join("");
+    [...container.children].forEach((el, i) => (el.dataset.unit = String(i)));
+    _wireOpenButtons(container);
   }
 
   // Broadcast results so other components (e.g. dep graph) can stay in sync
@@ -1163,8 +1221,100 @@ function _paintHealthDots(container, env, results) {
     const currentEnv = document.getElementById("env-sel")?.value ?? env;
     refreshHealth(currentEnv); // pulses dots yellow while re-pinging
   });
+  btn.className = "health-refresh";
   container.appendChild(btn);
+  _fitHealthRow(container);
 }
+
+/** Open-in-editor buttons (data-open-path avoids inline onclick escaping). */
+function _wireOpenButtons(root) {
+  root.querySelectorAll(".nav-open-btn[data-open-path]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      fetch("/api/editor/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: btn.dataset.openPath }),
+      }).then((r) => {
+        if (!r.ok)
+          r.json().then((d) =>
+            console.warn("[__DEN_CLI__] open-in-editor:", d.error),
+          );
+      });
+    });
+  });
+}
+
+/**
+ * Fit the health row on one line: whole units only, in problem-first order,
+ * and a "+N" chip that opens the rest. Never a cut word. Runs after every
+ * paint and on resize (an interim until the slice-3 status chip).
+ */
+function _fitHealthRow(container) {
+  // Another header item can grow after a fit (a pill, a label) and squeeze
+  // the row with no resize: re-fit whenever it overflows. A fit never
+  // overflows, so this can't loop.
+  if (!container._fitObserver && typeof ResizeObserver === "function") {
+    container._fitObserver = new ResizeObserver(() => {
+      if (container.scrollWidth > container.clientWidth + 1) _queueFit();
+    });
+    container._fitObserver.observe(container);
+  }
+  const units = container._units;
+  container.querySelector("#health-more")?.remove();
+  if (!units) return;
+  const els = [...container.querySelectorAll(":scope > [data-unit]")];
+  for (const el of els) el.style.display = "";
+  const avail = container.clientWidth;
+  if (container.scrollWidth <= avail + 1) {
+    closeMoreList(document);
+    return;
+  }
+  const gap = parseFloat(getComputedStyle(container).columnGap) || 0;
+  const refresh = container.querySelector(":scope > .health-refresh");
+  const reserve = refresh ? refresh.offsetWidth + gap : 0;
+  // The chip's widest form, measured in place, so the fit is exact.
+  const probe = document.createElement("button");
+  probe.className = "health-more problem";
+  probe.textContent = moreChip(units).text;
+  container.insertBefore(probe, refresh);
+  const chipWidth = probe.offsetWidth + gap;
+  probe.remove();
+  const n = fitUnits(
+    els.map((el) => el.offsetWidth),
+    avail - reserve,
+    { gap, chipWidth },
+  );
+  for (const el of els.slice(n)) el.style.display = "none";
+  const hidden = units.slice(n);
+  if (!hidden.length) {
+    closeMoreList(document);
+    return;
+  }
+  container.insertBefore(
+    mountMoreChip(document, hidden, (list) => {
+      list.innerHTML = hidden.map((u) => u.html).join("");
+      _wireOpenButtons(list);
+    }),
+    refresh,
+  );
+}
+
+let _fitQueued = false;
+/** Re-fit on the next frame: on resize, and when web fonts land (they
+ * change every item's width after the first fit). */
+function _queueFit() {
+  if (_fitQueued) return;
+  _fitQueued = true;
+  requestAnimationFrame(() => {
+    _fitQueued = false;
+    const c = document.getElementById("health");
+    if (c) _fitHealthRow(c);
+  });
+}
+window.addEventListener("resize", _queueFit);
+document.fonts?.addEventListener?.("loadingdone", _queueFit);
+document.fonts?.ready?.then(_queueFit);
 
 // ── Log badge (shared across pages) ───────────────────────────────────────────
 

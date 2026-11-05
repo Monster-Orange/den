@@ -100,6 +100,11 @@ beforeAll(() => {
       },
     }),
   );
+  // Invalid only under `validate`'s plugin rules: no author (rule 1). It
+  // passes the theme contract alone, which is what used to let it load.
+  plugin("noauthor", (m) => {
+    delete m.author;
+  });
   // Invalid: unreadable text (contrast fails).
   plugin("broken", (m) => {
     const modes = m.modes as Record<string, Record<string, string>>;
@@ -147,6 +152,12 @@ describe("resolveActiveTheme", () => {
     expect(b).toMatchObject({ id: "den" });
     expect(b.warnings).toHaveLength(2);
     expect(b.warnings[0]).toMatch(/"broken".*not valid/);
+    // A theme that fails only a plugin rule (no author) never loads either.
+    const n = pick("noauthor", "paper");
+    expect(n).toMatchObject({ id: "paper", by: "distribution" });
+    expect(n.warnings).toEqual([
+      expect.stringMatching(/"noauthor".*not valid.*\/author: no author/),
+    ]);
     // A bad user choice falls through to the distribution's.
     expect(pick("broken", "paper")).toMatchObject({
       id: "paper",
@@ -486,6 +497,7 @@ describe("theme routes", () => {
       ["den", "built-in", true],
       ["broken", "local", false],
       ["ink", "locked", true],
+      ["noauthor", "local", false],
       ["paper", "local", true],
     ]);
   });

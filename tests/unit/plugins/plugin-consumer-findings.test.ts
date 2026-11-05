@@ -196,11 +196,13 @@ describe("E: theme list points at plugin dirs with errors", () => {
     lines.length = 0;
     expect(await cmdTheme(["list"], { distRoot: d, log })).toBe(0);
     expect(out()).toMatch(/signal\s+1\.0\.1\s+local/);
-    expect(lines.filter((l) => /plugin dir\(s\) have errors/.test(l))).toEqual([
-      expect.stringMatching(
-        /^ {2}2 plugin dir\(s\) have errors: run `\S+ plugin list`$/,
-      ),
-    ]);
+    expect(lines.filter((l) => /plugin dirs? ha(s|ve) errors/.test(l))).toEqual(
+      [
+        expect.stringMatching(
+          /^ {2}2 plugin dirs have errors: run `\S+ plugin list`$/,
+        ),
+      ],
+    );
   });
 
   it("says nothing when every plugin dir is fine", async () => {
