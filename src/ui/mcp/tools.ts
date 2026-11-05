@@ -14,6 +14,8 @@ import { redactSecrets } from "../../shared/redact.js";
 import {
   DenHttpError,
   DenWebDown,
+  ForeignWebServer,
+  UnidentifiedWebServer,
   type DenApi,
   type Query,
   type StreamResult,
@@ -154,7 +156,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "status",
     "Service health",
-    "Health of every service in the workspace (what `status` shows): up/down, mode, and what was checked: `url` for an HTTP check, `check` for a shell command.",
+    "Health of every service in the workspace (what `status` shows): up/down, mode, and what was checked: `url` for an HTTP check, `check` for a shell command or a container check (`container <project>/<service>`).",
     { env: envArg, workspace: workspaceArg },
     (a, { api }) =>
       api.get("/api/health", { env: envOf(a), workspace: str(a.workspace) }),
@@ -636,7 +638,9 @@ export async function callTool(
     const msg =
       e instanceof Refusal
         ? `Refused: ${e.message}`
-        : e instanceof DenWebDown
+        : e instanceof DenWebDown ||
+            e instanceof ForeignWebServer ||
+            e instanceof UnidentifiedWebServer
           ? e.message
           : `Error: ${(e as Error).message}`;
     return { text: redactSecrets(msg), isError: true };

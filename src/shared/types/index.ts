@@ -210,10 +210,22 @@ export type LogSource =
  *   type: shell
  *   cmd: "docker exec $(docker ps --filter ancestor=postgres:16 --format '{{.ID}}' | head -1) pg_isready -U postgres"
  *   label: "postgres"   # optional — shown in UI instead of cmd
+ *
+ * Container (answered from the one `docker ps` a health cycle shares):
+ *   type: container
+ *   project: shop-main     # com.docker.compose.project label
+ *   service: db            # com.docker.compose.service label
+ *   -- or, for a container not run by compose --
+ *   type: container
+ *   container_name: shop-db
  */
 export type ServiceHealthConfig =
   | { type?: "http"; url: string; label?: string }
-  | { type: "shell"; cmd: string; label?: string };
+  | { type: "shell"; cmd: string; label?: string }
+  | ({ type: "container"; label?: string } & (
+      | { project: string; service: string; container_name?: undefined }
+      | { container_name: string; project?: undefined; service?: undefined }
+    ));
 
 /**
  * A command can be a plain shell string (detached by default) or an object

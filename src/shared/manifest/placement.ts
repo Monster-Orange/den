@@ -52,7 +52,7 @@ export type IsProduction = (env: string) => boolean;
 const LOCAL = "local";
 
 function isHttp(h: ServiceHealthConfig | undefined): h is { url: string } {
-  return !!h && h.type !== "shell" && typeof h.url === "string";
+  return !!h && "url" in h && typeof h.url === "string";
 }
 
 function hasCommands(

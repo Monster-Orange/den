@@ -413,6 +413,8 @@ export interface ComposeRow {
   service: string;
   state: string;
   status: string;
+  /** The container's name(s), comma-separated as docker lists them. */
+  name?: string;
 }
 
 /**

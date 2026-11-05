@@ -126,6 +126,83 @@ is never mistaken for another repo's service. An alias that names more than
 one service is an error that lists them (`"worker" is ambiguous in workspace
 "default": one/worker, two/worker`); name one of them.
 
+## Health checks
+
+A service declares its health per environment under `health`, in one of
+three types:
+
+```yaml
+services:
+  api:
+    health:
+      local: { url: http://shop-api/healthz } # http (the default type)
+  db:
+    health:
+      local: { type: shell, cmd: pg_isready -h localhost } # exit 0 is up
+  cache:
+    health:
+      local: { type: container, project: shop-main, service: cache }
+```
+
+`label` (optional, any type) is shown in the UI instead of the URL or the
+command. A compose repo with no declared check gets Den's own stack check
+(`<cli> stack health`), answered in-process.
+
+**`type: container`** asks whether a container is up, from the one
+`docker ps` listing a health cycle already makes for the compose checks: it
+adds no docker call however many container checks there are, in the web
+health row and in `<cli> status`. It matches a compose container by its
+`com.docker.compose.project` and `com.docker.compose.service` labels
+(`project` + `service`), or any container by name (`container_name`, for one
+compose does not run). One or the other, never both:
+
+| What the listing shows                    | Verdict                                                 |
+| ----------------------------------------- | ------------------------------------------------------- |
+| running, healthcheck `healthy`            | up                                                      |
+| running, healthcheck `unhealthy`          | down                                                    |
+| running, healthcheck `starting`           | pending                                                 |
+| running, no healthcheck                   | up                                                      |
+| not running (exited, created, restarting) | down                                                    |
+| no matching container                     | down (`<project>/<service>: no container`)              |
+| `docker ps` fails (daemon down)           | unknown (`ok: null`, the reason in `error`), never down |
+| `docker ps` past its 5s budget            | pending (`ok: null`, `pending: true`)                   |
+| more than one match                       | the best one: healthy, then running                     |
+
+When docker gives no listing, a container check says what a compose check
+says, through the same code: docker state unknown is not "not running", so
+a failed `docker ps` is `ok: null` however many cycles it lasts, in the
+health row and in `<cli> status`. Only a listing that runs past its budget
+is `pending`, and like any check with no answer it is down when that
+repeats on the next cycle. A container whose healthcheck is still starting
+stays pending. In
+`/api/health` the row's `check` reads `container <project>/<service>` (or
+`container <name>`).
+
+Before, a container check was a shell check that ran docker itself, one
+process and one docker call per check per cycle:
+
+```yaml
+health:
+  local:
+    type: shell
+    cmd: test -n "$(docker ps -q --filter label=com.docker.compose.project=shop-main --filter label=com.docker.compose.service=cache)"
+```
+
+After:
+
+```yaml
+health:
+  local: { type: container, project: shop-main, service: cache }
+```
+
+which also reads the container's own healthcheck (the shell form only saw
+that a container existed, running or not).
+
+**Validation.** `<cli> validate` rejects a container check with neither
+`project` + `service` nor `container_name`, with only one of `project` and
+`service`, with both forms at once, or with a key of another type (`cmd`,
+`url`), and says which.
+
 ## Placement
 
 Each service says where it runs, per environment: `local` (on this machine,
@@ -449,6 +526,7 @@ it exits:
 
 ```bash
 ./bin/acme service install     # install (or refresh) and start it
+./bin/acme service install --plan  # what install would do; writes and loads nothing
 ./bin/acme service status      # launchd's view: state, pid, last exit code
 ./bin/acme service print       # the LaunchAgent plist it would install; installs nothing
 ./bin/acme service uninstall   # stop it and remove the LaunchAgent
@@ -476,6 +554,15 @@ service is running only once the web server answers
 answers empty for a few seconds while it starts). If it has not answered
 within 30s, it says `installed but not answering yet: check <logs dir>` and
 exits 1.
+
+`install --plan` is read-only: it prints the label, the plist path
+(`~/Library/LaunchAgents/<label>.plist`), the log file, the distribution and
+engine roots, whose server answers on `web.port` (this distribution's, free,
+or `port <N> is in use by <product> at <root>; not this distribution's
+server`), and the plist install would write. It writes nothing, never calls
+launchctl, and exits 1 when the port is another distribution's. Any other
+argument to a `service` subcommand is an error, so a mistyped `--plan` never
+installs. `status` also names another distribution's server on the port.
 
 `<cli> service` runs the installer script below, which you can also run
 yourself, from the distribution root:
@@ -508,6 +595,13 @@ UI shows. It is a thin client of the running web server
 set of guards. It never starts the web server; if it is not running, every
 tool answers with the command that starts it (`./bin/acme web up`). stdout
 carries only the protocol; diagnostics go to stderr.
+
+It reads only from this distribution's server. Before serving a tool it
+checks `/api/server-info` (root and product, or for a server from before
+0.2.6 its working directory), trusts a positive answer for 30s, and checks
+again after a connection error. When another distribution's server answers
+on the port, every tool says `port <N> is in use by <product> at <root>; not
+this distribution's server` and returns none of its data.
 
 The web server keeps running the Den it started with until it is restarted,
 so after an upgrade it can be older than the MCP server. When a tool's route
@@ -592,22 +686,22 @@ guard off.
 
 Read tools (always registered):
 
-| Tool                | Web API                                    | What                                                                                                                                            |
-| ------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `status`            | `/api/health`                              | Service health; `url` (HTTP check) or `check` (shell); `ok` true up, false down, null not known (`pending: true` when a check has not answered) |
-| `services`          | `/api/services`                            | Services, their mode (managed or dev-managed) and commands                                                                                      |
-| `applications`      | `/api/applications`                        | Org > Application > Repo > Services                                                                                                             |
-| `graph`             | `/api/graph`                               | The derived dependency graph and startup order                                                                                                  |
-| `workspaces`        | `/api/workspaces`                          | Workspaces, active and focused                                                                                                                  |
-| `environments`      | `/api/environments`                        | The enabled environment names (never their values)                                                                                              |
-| `logs_search`       | `/api/logs/search`                         | Search services' full log history                                                                                                               |
-| `logs_tail`         | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)                                                                                          |
-| `tests_available`   | `/api/modules`, `/api/test-sources`        | A pillar's modules and the repos they come from                                                                                                 |
-| `security_latest`   | `/api/security/latest`                     | The newest security scan per mode                                                                                                               |
-| `release_status`    | `/api/release/runs`, `/api/release/status` | Recent CD runs, and an env's deployed-version table                                                                                             |
-| `manifest_validate` | `/api/manifest/validate`                   | Validate a manifest by path or content                                                                                                          |
-| `stacks`            | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health                                                                                         |
-| `edge_status`       | `/api/edge`                                | The edge: up or down, its routes and cert names                                                                                                 |
+| Tool                | Web API                                    | What                                                                                                                                                                                |
+| ------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`            | `/api/health`                              | Service health; `url` (HTTP check) or `check` (shell, or `container <project>/<service>`); `ok` true up, false down, null not known (`pending: true` when a check has not answered) |
+| `services`          | `/api/services`                            | Services, their mode (managed or dev-managed) and commands                                                                                                                          |
+| `applications`      | `/api/applications`                        | Org > Application > Repo > Services                                                                                                                                                 |
+| `graph`             | `/api/graph`                               | The derived dependency graph and startup order                                                                                                                                      |
+| `workspaces`        | `/api/workspaces`                          | Workspaces, active and focused                                                                                                                                                      |
+| `environments`      | `/api/environments`                        | The enabled environment names (never their values)                                                                                                                                  |
+| `logs_search`       | `/api/logs/search`                         | Search services' full log history                                                                                                                                                   |
+| `logs_tail`         | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)                                                                                                                              |
+| `tests_available`   | `/api/modules`, `/api/test-sources`        | A pillar's modules and the repos they come from                                                                                                                                     |
+| `security_latest`   | `/api/security/latest`                     | The newest security scan per mode                                                                                                                                                   |
+| `release_status`    | `/api/release/runs`, `/api/release/status` | Recent CD runs, and an env's deployed-version table                                                                                                                                 |
+| `manifest_validate` | `/api/manifest/validate`                   | Validate a manifest by path or content                                                                                                                                              |
+| `stacks`            | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health                                                                                                                             |
+| `edge_status`       | `/api/edge`                                | The edge: up or down, its routes and cert names                                                                                                                                     |
 
 Action tools (only those named in `mcp.actions`): `service_up`,
 `service_down`, `service_restart` (through `/api/service/exec`),

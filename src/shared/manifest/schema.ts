@@ -32,7 +32,54 @@ const commandDef = z.union([
 //   { url: "http://..." }                         — implicit HTTP
 //   { type: "http", url: "http://..." }           — explicit HTTP
 //   { type: "shell", cmd: "pg_isready ..." }      — shell
+//   { type: "container", project, service }       — a compose container
+//   { type: "container", container_name }         — a container by name
+const CONTAINER_HEALTH_KEYS = new Set([
+  "type",
+  "project",
+  "service",
+  "container_name",
+  "label",
+]);
+export const CONTAINER_HEALTH_SHAPE =
+  'container checks need "project" and "service" (compose labels), or "container_name"';
+const containerHealth = z
+  .object({
+    type: z.literal("container"),
+    project: z.string().min(1).optional(),
+    service: z.string().min(1).optional(),
+    container_name: z.string().min(1).optional(),
+    label: z.string().optional(),
+  })
+  .passthrough()
+  .superRefine((h, ctx) => {
+    const unknown = Object.keys(h).filter((k) => !CONTAINER_HEALTH_KEYS.has(k));
+    if (unknown.length)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `unknown key${unknown.length > 1 ? "s" : ""} ${unknown.map((k) => `"${k}"`).join(", ")} in a container check: ${CONTAINER_HEALTH_SHAPE}`,
+      });
+    const byLabels = h.project !== undefined || h.service !== undefined;
+    const byName = h.container_name !== undefined;
+    if (byLabels && byName)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `a container check matches by "project"/"service" or by "container_name", not both`,
+      });
+    else if (byLabels && (h.project === undefined || h.service === undefined))
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `a container check by compose labels needs both "project" and "service"`,
+      });
+    else if (!byLabels && !byName)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: CONTAINER_HEALTH_SHAPE,
+      });
+  });
+
 const healthConfig = z.union([
+  containerHealth,
   // Shell health check — must have cmd
   z.object({
     type: z.literal("shell"),

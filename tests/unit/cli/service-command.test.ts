@@ -16,7 +16,10 @@ import {
   readWebServiceConfig,
   type DenConfig,
 } from "../../../src/shared/den-config.js";
-import { ForeignServerError } from "../../../src/ui/cli/server-identity.js";
+import {
+  ForeignServerError,
+  type ServerIdentity,
+} from "../../../src/ui/cli/server-identity.js";
 
 const DIST = "/src/acme-dev";
 const HOME = "/home/someone";
@@ -73,8 +76,11 @@ function harness(
     ready?: boolean;
     /** The poller finds another distribution's server: who it is. */
     foreign?: string;
+    /** What answers on the port, for --plan and status. */
+    identity?: ServerIdentity;
   } = {},
 ) {
+  const identified: number[] = [];
   const polls: { url: string; timeoutMs: number }[] = [];
   const calls: { cmd: string; args: string[]; env: Record<string, string> }[] =
     [];
@@ -97,8 +103,12 @@ function harness(
       if (over.foreign) throw new ForeignServerError(7001, over.foreign);
       return over.ready ?? true;
     },
+    identify: async (port: number): Promise<ServerIdentity> => {
+      identified.push(port);
+      return over.identity ?? { kind: "none" };
+    },
   };
-  return { deps, calls, lines, polls };
+  return { deps, calls, lines, polls, identified };
 }
 
 describe("cmdService", () => {
@@ -249,5 +259,89 @@ describe("waitForServerInfo", () => {
     await expect(waitForServerInfo(url, 2_000, 20, OWN)).rejects.toThrow(
       /port \d+ is in use by acme-ops at \/srv\/acme-other/,
     );
+  });
+});
+
+describe("service install --plan", () => {
+  it("prints the label, paths and the plist, running only install.sh print", async () => {
+    const h = harness({
+      web: { service: { label: "com.acme.den", logs: "/var/log/acme" } },
+      identity: { kind: "ours", version: "0.2.6", pid: 41 },
+    });
+    expect(await cmdService(["install", "--plan"], h.deps)).toBe(0);
+    // Only the read-only print: no install, so no launchctl, no plist file.
+    expect(h.calls.map((c) => c.args[1])).toEqual(["print"]);
+    expect(h.calls[0].env.DEN_SERVICE_READY_CHECK).toBeUndefined();
+    expect(h.polls).toEqual([]);
+    expect(h.identified).toEqual([7001]);
+    const out = h.lines.join("\n");
+    expect(out).toMatch(/read-only: nothing is written or loaded/);
+    expect(out).toMatch(/label: +com\.acme\.den/);
+    expect(out).toMatch(
+      /plist: +\/home\/someone\/Library\/LaunchAgents\/com\.acme\.den\.plist/,
+    );
+    expect(out).toMatch(/logs: +\/var\/log\/acme\/web\.log/);
+    expect(out).toMatch(/root: +\/src\/acme-dev/);
+    expect(out).toMatch(
+      /server: +port 7001: this distribution's server \(Den 0\.2\.6\), pid 41/,
+    );
+  });
+
+  it("a free port: exit 0, says so", async () => {
+    const h = harness({ identity: { kind: "none" } });
+    expect(await cmdService(["install", "--plan"], h.deps)).toBe(0);
+    expect(h.lines.join("\n")).toMatch(/port 7001: free/);
+  });
+
+  it("a foreign server on the port: exit 1, naming it", async () => {
+    const h = harness({
+      identity: { kind: "foreign", who: "acme-ops at /srv/acme-other" },
+    });
+    expect(await cmdService(["install", "--plan"], h.deps)).toBe(1);
+    const out = h.lines.join("\n");
+    expect(out).toMatch(
+      /port 7001 is in use by acme-ops at \/srv\/acme-other; not this distribution's server/,
+    );
+    expect(out).toMatch(/install would refuse this port/);
+    expect(h.calls.map((c) => c.args[1])).toEqual(["print"]);
+  });
+
+  it("works off macOS too (it loads nothing)", async () => {
+    const h = harness({ platform: "linux" });
+    expect(await cmdService(["install", "--plan"], h.deps)).toBe(0);
+  });
+
+  it("refuses an unknown flag before running anything (a typo must not install)", async () => {
+    const h = harness();
+    await expect(cmdService(["install", "--paln"], h.deps)).rejects.toThrow(
+      /service install: unknown argument --paln \(takes --plan\)/,
+    );
+    await expect(cmdService(["status", "--plan"], h.deps)).rejects.toThrow(
+      /service status: unknown argument --plan/,
+    );
+    expect(h.calls).toEqual([]);
+  });
+});
+
+describe("service status", () => {
+  it("names a foreign server on the port", async () => {
+    const h = harness({
+      identity: { kind: "foreign", who: "acme-ops at /srv/acme-other" },
+    });
+    expect(await cmdService(["status"], h.deps)).toBe(0);
+    expect(h.lines.join("\n")).toMatch(
+      /port 7001 is in use by acme-ops at \/srv\/acme-other; not this distribution's server/,
+    );
+  });
+
+  it("says nothing more for our server or a free port", async () => {
+    for (const identity of [
+      { kind: "none" },
+      { kind: "ours", version: "0.2.6" },
+    ] as ServerIdentity[]) {
+      const h = harness({ identity });
+      await cmdService(["status"], h.deps);
+      expect(h.lines).toEqual([]);
+    }
   });
 });

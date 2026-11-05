@@ -33,7 +33,13 @@ export type ServerIdentity =
   | { kind: "none" }
   /** Something accepted the connection but sent no answer in time. */
   | { kind: "unresponsive" }
-  | { kind: "ours"; version?: string }
+  /**
+   * `pid`: the server's own pid (server-info reports it). Identity is what
+   * makes it ours, so a stop signals this pid even when its command line
+   * names no entry point we recognise (an older Den installed elsewhere, a
+   * hand-started server).
+   */
+  | { kind: "ours"; version?: string; pid?: number }
   /** Someone else's server. `who` reads "acme-ops at /srv/acme-ops". */
   | { kind: "foreign"; who: string };
 
@@ -53,7 +59,7 @@ function canonical(p: string): string {
   }
 }
 
-function samePath(a: string, b: string): boolean {
+export function samePath(a: string, b: string): boolean {
   return canonical(a) === canonical(b);
 }
 
@@ -82,25 +88,33 @@ export function classifyServerInfo(
   const info = body as Record<string, unknown>;
   const version = typeof info.version === "string" ? info.version : undefined;
   const prod = typeof info.product === "string" ? info.product : undefined;
+  const pid =
+    typeof info.pid === "number" && Number.isInteger(info.pid) && info.pid > 0
+      ? info.pid
+      : undefined;
+  const ours = (): ServerIdentity => ({
+    kind: "ours",
+    ...(version !== undefined ? { version } : {}),
+    ...(pid !== undefined ? { pid } : {}),
+  });
 
   if (typeof info.root === "string" && info.root) {
     if (
       samePath(info.root, own.root) &&
       (prod === undefined || prod === own.product)
     )
-      return { kind: "ours", version };
+      return ours();
     return {
       kind: "foreign",
       who: `${prod ?? "another server"} at ${info.root}`,
     };
   }
 
-  const pid = info.pid;
-  if (typeof pid === "number" && Number.isInteger(pid) && pid > 0) {
+  if (pid !== undefined) {
     const cwd = cwdOf(pid);
-    if (cwd && samePath(cwd, own.root)) return { kind: "ours", version };
+    if (cwd && samePath(cwd, own.root)) return ours();
   }
-  if (version === undefined && pid === undefined)
+  if (version === undefined && info.pid === undefined)
     return { kind: "foreign", who: "a non-Den server" };
   return {
     kind: "foreign",
@@ -129,11 +143,15 @@ export function classifyServerInfoResponse(
   return classifyServerInfo(body, own, cwdOf);
 }
 
-/** GET /api/server-info on `port` and say whose server answered. */
+/**
+ * GET /api/server-info on `port` and say whose server answered. `host`: the
+ * name the caller itself connects to (the MCP server's `localhost`).
+ */
 export function identifyServer(
   port: number,
   own: OwnServer = ownServer(),
   timeoutMs: number = SERVER_INFO_TIMEOUT_MS,
+  host: string = "127.0.0.1",
 ): Promise<ServerIdentity> {
   return new Promise((resolve) => {
     let settled = false;
@@ -144,7 +162,7 @@ export function identifyServer(
     };
     const req = http.get(
       {
-        host: "127.0.0.1",
+        host,
         port,
         path: "/api/server-info",
         timeout: timeoutMs,

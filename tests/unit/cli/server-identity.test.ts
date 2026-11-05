@@ -20,7 +20,7 @@ describe("classifyServerInfo", () => {
         OWN,
         noCwd,
       ),
-    ).toEqual({ kind: "ours", version: "0.2.6" });
+    ).toEqual({ kind: "ours", version: "0.2.6", pid: 9 });
   });
 
   it("another root, or our root under another product: foreign, named", () => {
@@ -42,9 +42,11 @@ describe("classifyServerInfo", () => {
 
   it("an older server with no root: ours only when it runs from our root", () => {
     const old = { pid: 42, version: "0.2.3" };
+    // Its pid travels with the verdict: a stop signals it (web down/restart).
     expect(classifyServerInfo(old, OWN, () => "/srv/acme")).toEqual({
       kind: "ours",
       version: "0.2.3",
+      pid: 42,
     });
     expect(classifyServerInfo(old, OWN, () => "/srv/other")).toEqual({
       kind: "foreign",

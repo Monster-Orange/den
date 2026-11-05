@@ -9,6 +9,11 @@
  * `install` (which also restarts a running service) says the service is
  * running only once the web server answers /api/server-info with JSON: a
  * fresh server takes a few seconds to start, and answers empty until then.
+ *
+ * `install --plan` is read-only: it prints the plist install would write
+ * (install.sh print), the label, the paths and whose server answers on the
+ * port, and writes and loads nothing; exit 1 when that server is foreign.
+ * `status` also names a foreign server on the port.
  */
 import { spawnSync } from "child_process";
 import * as os from "os";
@@ -25,9 +30,11 @@ import {
   classifyServerInfo,
   ForeignServerError,
   foreignServerMessage,
+  identifyServer,
   ownServer,
   pickAnotherPortHint,
   type OwnServer,
+  type ServerIdentity,
 } from "./server-identity.js";
 
 /** Runs a command with extra env vars; returns its exit code. */
@@ -38,6 +45,14 @@ export type ServiceRunner = (
 ) => number;
 
 const SUBCOMMANDS = ["install", "status", "print", "uninstall"] as const;
+
+/** The flags each subcommand takes; any other is refused before acting. */
+const SUBCOMMAND_FLAGS: Record<(typeof SUBCOMMANDS)[number], string[]> = {
+  install: ["--plan"],
+  status: [],
+  print: [],
+  uninstall: [],
+};
 
 const defaultRunner: ServiceRunner = (cmd, args, env) =>
   spawnSync(cmd, args, { stdio: "inherit", env: { ...process.env, ...env } })
@@ -102,6 +117,22 @@ export interface ServiceDeps {
     own: OwnServer,
   ) => Promise<boolean>;
   log?: (line: string) => void;
+  /** Whose server answers on a port (default: identifyServer). */
+  identify?: (port: number, own: OwnServer) => Promise<ServerIdentity>;
+}
+
+/** One line on whose server answers on `port`. */
+export function identityLine(port: number, id: ServerIdentity): string {
+  switch (id.kind) {
+    case "none":
+      return `port ${port}: free (nothing listening)`;
+    case "unresponsive":
+      return `port ${port}: something accepted the connection but did not answer`;
+    case "ours":
+      return `port ${port}: this distribution's server${id.version ? ` (Den ${id.version})` : ""}${id.pid ? `, pid ${id.pid}` : ""}`;
+    case "foreign":
+      return `${foreignServerMessage(port, id.who)}; not this distribution's server`;
+  }
 }
 
 /** Run `service <sub>`; returns the exit code. */
@@ -109,13 +140,30 @@ export async function cmdService(
   args: string[],
   deps: ServiceDeps = {},
 ): Promise<number> {
-  const sub = args[0];
+  const sub = args[0] as (typeof SUBCOMMANDS)[number] | undefined;
   if (!(SUBCOMMANDS as readonly string[]).includes(sub ?? ""))
     throw new Error(
       `${sub ? `Unknown service command "${sub}". ` : ""}Use: ${SUBCOMMANDS.join(" | ")}`,
     );
-  // print only writes the plist; the rest talk to launchd.
-  if (sub !== "print" && (deps.platform ?? process.platform) !== "darwin")
+  // A typo'd --plan must not install for real.
+  const extra = args
+    .slice(1)
+    .filter((a) => !SUBCOMMAND_FLAGS[sub!].includes(a));
+  if (extra.length)
+    throw new Error(
+      `service ${sub}: unknown argument${extra.length > 1 ? "s" : ""} ${extra.join(" ")}` +
+        (SUBCOMMAND_FLAGS[sub!].length
+          ? ` (takes ${SUBCOMMAND_FLAGS[sub!].join(", ")})`
+          : ""),
+    );
+  const plan = sub === "install" && args.includes("--plan");
+  // print (and install --plan) only write the plist to stdout; the rest
+  // talk to launchd.
+  if (
+    sub !== "print" &&
+    !plan &&
+    (deps.platform ?? process.platform) !== "darwin"
+  )
     throw new Error(
       "the web UI service is a launchd LaunchAgent: macOS only (print works anywhere)",
     );
@@ -130,19 +178,55 @@ export async function cmdService(
     "service",
     "install.sh",
   );
-  const code = (deps.run ?? defaultRunner)("bash", [script, sub!], {
+  const env = {
     DEN_ROOT: distRoot,
     DEN_SERVICE_LABEL: label,
     DEN_SERVICE_LOGS: logs,
+  };
+  const run = deps.run ?? defaultRunner;
+  const log = deps.log ?? ((l: string) => console.log(l));
+  const port = deps.webPort ?? readWebPort(distRoot);
+  const own: OwnServer = { root: distRoot, product: product().name };
+  const identify =
+    deps.identify ?? ((p: number, o: OwnServer) => identifyServer(p, o));
+
+  if (plan) {
+    const home = deps.home ?? os.homedir();
+    log(`service install --plan (read-only: nothing is written or loaded)`);
+    log(`  label:   ${label}`);
+    log(
+      `  plist:   ${path.join(home, "Library", "LaunchAgents", `${label}.plist`)}`,
+    );
+    log(`  logs:    ${path.join(logs, "web.log")}`);
+    log(`  root:    ${distRoot}`);
+    log(`  engine:  ${path.dirname(path.dirname(script))}`);
+    log(`  url:     http://localhost:${port}`);
+    const id = await identify(port, own);
+    log(`  server:  ${identityLine(port, id)}`);
+    log(`  plist it would write:`);
+    // install.sh print writes the plist to stdout only.
+    const code = run("bash", [script, "print"], env);
+    if (code !== 0) return code;
+    if (id.kind === "foreign") {
+      log(`✗ install would refuse this port: ${pickAnotherPortHint()}`);
+      return 1;
+    }
+    return 0;
+  }
+
+  const code = run("bash", [script, sub!], {
+    ...env,
     // The script then leaves saying "running" to us (after the poll below).
     ...(sub === "install" ? { DEN_SERVICE_READY_CHECK: "external" } : {}),
   });
+  if (sub === "status") {
+    const id = await identify(port, own);
+    if (id.kind === "foreign") log(`✗ ${identityLine(port, id)}`);
+    return code;
+  }
   if (sub !== "install" || code !== 0) return code;
 
-  const log = deps.log ?? ((l: string) => console.log(l));
-  const port = deps.webPort ?? readWebPort(distRoot);
   const url = `http://localhost:${port}/api/server-info`;
-  const own: OwnServer = { root: distRoot, product: product().name };
   const waitReady =
     deps.waitReady ??
     ((u: string, t: number, o: OwnServer) => waitForServerInfo(u, t, 500, o));

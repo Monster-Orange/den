@@ -12,9 +12,11 @@
 
 import {
   composeHealthTarget,
+  containerCheckLabel,
   type ComposeHealthTarget,
+  type ContainerHealthTarget,
 } from "../../shared/stacks/compose-health.js";
-import { healthCheckFields } from "./health-row.js";
+import { healthCheckFields, type HealthCheckType } from "./health-row.js";
 import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
 import * as http from "http";
 import * as fs from "fs";
@@ -62,6 +64,8 @@ import {
   isSafeServiceName,
 } from "./log-history.js";
 import {
+  containerTarget,
+  pingContainerCheck,
   pingHttp,
   pingShellCheck,
   TimeoutStreaks,
@@ -926,7 +930,7 @@ async function handleRequest(
       repo: string;
       service: string;
       label: string;
-      checkType: "http" | "shell" | "none";
+      checkType: HealthCheckType;
       target: string;
       repoPath: string;
       mode: "dev-managed" | "managed";
@@ -941,6 +945,8 @@ async function handleRequest(
       expect?: Expect;
       /** pingShell options (Den's own `stack health` can report unknown). */
       compose: ComposeHealthTarget | null;
+      /** A `type: container` check: answered from the shared listing. */
+      container: ContainerHealthTarget | null;
       meta: Pick<HealthResult, "runs" | "target">;
     }> = [];
     let edgeDomain: string | null = null;
@@ -974,6 +980,7 @@ async function handleRequest(
           links: [],
           org: orgOf(resolved.repoName, catalog),
           compose: null,
+          container: null,
           meta: { runs: "none", target: null },
         });
         continue;
@@ -1020,14 +1027,16 @@ async function handleRequest(
         service: resolved.subsystem,
         label: plan.label ?? healthCfg?.label ?? resolved.subsystem,
         checkType: healthCfg
-          ? healthCfg.type === "shell"
-            ? "shell"
+          ? healthCfg.type === "shell" || healthCfg.type === "container"
+            ? healthCfg.type
             : "http"
           : "none",
         target: healthCfg
           ? healthCfg.type === "shell"
             ? healthCfg.cmd
-            : healthCfg.url
+            : healthCfg.type === "container"
+              ? containerCheckLabel(containerTarget(healthCfg))
+              : healthCfg.url
           : "",
         repoPath: resolved.repoPath,
         mode: resolved.mode,
@@ -1048,14 +1057,15 @@ async function handleRequest(
           subsystem: resolved.subsystem,
           repoName: resolved.repoName,
           env,
-          healthUrl:
-            healthCfg && healthCfg.type !== "shell" ? healthCfg.url : null,
+          healthUrl: healthCfg && "url" in healthCfg ? healthCfg.url : null,
           edgeDomain,
         }),
         links: linksFor(manifest, resolved.subsystem, env),
         org: orgOf(resolved.repoName, catalog),
         ...(plan.expect ? { expect: plan.expect } : {}),
         compose,
+        container:
+          healthCfg?.type === "container" ? containerTarget(healthCfg) : null,
         meta: { runs: plan.placement.runs, target: plan.placement.target },
       });
     }
@@ -1086,6 +1096,7 @@ async function handleRequest(
       meta,
       expect,
       compose,
+      container,
     }) => {
       if (checkType !== "none") {
         const started = Date.now();
@@ -1097,13 +1108,15 @@ async function handleRequest(
                 repoPath,
                 compose,
               )
-            : await pingHttp(
-                target,
-                env === "local" && meta.runs !== "remote"
-                  ? HEALTH_CHECK_TIMEOUT_MS
-                  : HOSTED_HEALTH_CHECK_TIMEOUT_MS,
-                expect,
-              );
+            : checkType === "container" && container
+              ? await pingContainerCheck(container)
+              : await pingHttp(
+                  target,
+                  env === "local" && meta.runs !== "remote"
+                    ? HEALTH_CHECK_TIMEOUT_MS
+                    : HOSTED_HEALTH_CHECK_TIMEOUT_MS,
+                  expect,
+                );
         return {
           repo,
           service,
