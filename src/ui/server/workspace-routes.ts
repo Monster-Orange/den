@@ -65,6 +65,7 @@ import {
   getWaitDeps,
 } from "../../shared/environment-manager/dag.js";
 import { deriveGraph } from "../../shared/environment-manager/derivation/derive-graph.js";
+import { githubOrgFor } from "../../shared/environment-manager/workspace-org.js";
 import {
   deriveStartTargets,
   filterClosureForStart,
@@ -2158,7 +2159,9 @@ export async function handleWorkspaceRoutes(
         // flow writes one), which used to read as "not in the catalog" and
         // skip the clone entirely. Derive the conventional slug instead, and
         // persist it so every other flow (CLI up/setup) stops hitting this.
-        const ghSlug = resolveRepoGhSlug(svc.repoName);
+        const ghSlug = resolveRepoGhSlug(svc.repoName, readCatalog(), () =>
+          githubOrgFor(ws.name),
+        );
         if (!readCatalog()[svc.repoName]?.gh) {
           upsertCatalogEntry(svc.repoName, { gh: ghSlug });
         }

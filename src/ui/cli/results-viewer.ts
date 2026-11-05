@@ -3,7 +3,7 @@
  * Display test results in CLI
  */
 
-import Table from "cli-table3";
+import { newTable } from "./table.js";
 import chalk from "chalk";
 import { resultReader } from "../../shared/results/result-reader.js";
 import type {
@@ -40,7 +40,7 @@ export class ResultsViewer {
     for (const pillar of pillars) {
       console.log(chalk.bold(`\n${this.formatPillarName(pillar)}:`));
 
-      const table = new Table({
+      const table = newTable({
         head: [
           chalk.cyan("Environment"),
           chalk.cyan("Total"),
@@ -115,7 +115,7 @@ export class ResultsViewer {
       return;
     }
 
-    const table = new Table({
+    const table = newTable({
       head: [
         chalk.cyan("Test"),
         chalk.cyan("Status"),
@@ -191,7 +191,7 @@ export class ResultsViewer {
       return;
     }
 
-    const table = new Table({
+    const table = newTable({
       head: [
         chalk.cyan("Journey"),
         chalk.cyan("Verdict"),
@@ -281,7 +281,7 @@ export class ResultsViewer {
       return;
     }
 
-    const table = new Table({
+    const table = newTable({
       head: [
         chalk.cyan("Test"),
         chalk.cyan("Runs"),

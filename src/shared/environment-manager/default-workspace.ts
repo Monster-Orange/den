@@ -5,7 +5,8 @@
  * all managed. On a fresh clone (no local workspace) den offers — once —
  * to seed the `default` workspace from it so `den graph` / `den up` show the
  * full system graph immediately; `den init` (run in the den root) re-seeds.
- * Catalog clone URLs derive as `<github_org>/<repo>`. Switch any repo to a local
+ * Catalog clone URLs derive as `<org>/<repo>`, with the workspace's resolved org
+ * (workspace-org.ts; `github_org` unless the blueprint or catalog says otherwise). Switch any repo to a local
  * checkout with `den use-local <repo>`.
  */
 import {
@@ -16,9 +17,13 @@ import {
 import { readCatalog, writeCatalog } from "./catalog.js";
 import {
   readWorkspaceBlueprints,
-  requireGithubOrg,
   type ResolvedWorkspaceBlueprint,
 } from "../den-config.js";
+import {
+  githubOrgFor,
+  readOrgContext,
+  type OrgContext,
+} from "./workspace-org.js";
 import type {
   ServiceCatalog,
   WorkspaceConfig,
@@ -47,10 +52,6 @@ export function defaultWorkspaceRepos(): string[] {
   return singleBlueprint()?.repos ?? [];
 }
 
-function org(): string {
-  return requireGithubOrg();
-}
-
 function blueprintServices(
   bp: ResolvedWorkspaceBlueprint,
   repos: string[] = bp.repos,
@@ -70,14 +71,41 @@ function blueprintServices(
   return services;
 }
 
+/**
+ * The clone slug seeding would give each repo the catalog has no `gh` for:
+ * `<org>/<repo>` with its workspace's resolved org. A repo in several
+ * workspaces takes the first one's. Reads only; throws when a repo needs an
+ * org and none resolves (no org anywhere and no `github_org`).
+ */
+export function catalogFill(
+  workspaces: { name: string; repos: string[] }[],
+  catalog: ServiceCatalog = readCatalog(),
+  ctx: OrgContext = readOrgContext(),
+): Map<string, string> {
+  const fill = new Map<string, string>();
+  for (const ws of workspaces)
+    for (const repo of ws.repos) {
+      if (catalog[repo]?.gh || fill.has(repo)) continue;
+      fill.set(repo, `${githubOrgFor(ws.name, ctx)}/${repo}`);
+    }
+  return fill;
+}
+
+/**
+ * Give each blueprint repo with no clone URL `<org>/<repo>`, where `<org>` is
+ * its workspace's resolved org (ORG-1a: the blueprint's `org:`, else the
+ * catalog owners, else `github_org`), so a client workspace never clones
+ * from the default org on a fresh machine. The org is resolved only for a
+ * repo that needs one, and before anything is written: an unresolvable org
+ * throws with the catalog untouched.
+ */
 function fillCatalog(
-  repos: string[],
+  workspaces: { name: string; repos: string[] }[],
   catalog: ServiceCatalog = readCatalog(),
 ): void {
-  const o = org();
-  for (const repo of repos) {
-    if (!catalog[repo]?.gh) catalog[repo] = { gh: `${o}/${repo}` };
-  }
+  const fill = catalogFill(workspaces, catalog);
+  if (fill.size === 0) return;
+  for (const [repo, gh] of fill) catalog[repo] = { gh };
   writeCatalog(catalog);
 }
 
@@ -178,6 +206,9 @@ export function seedDefaultWorkspace(): string[] {
   if (!bp) return [];
   const repos = bp.repos;
 
+  // The catalog first: it is what can fail (no github_org), and a failure
+  // must leave the workspaces as they were, not reset and uncloneable.
+  fillCatalog([{ name: "default", repos }]);
   const file = readWorkspacesFile();
   file.workspaces.default = {
     ...(file.workspaces.default ?? {}),
@@ -189,7 +220,6 @@ export function seedDefaultWorkspace(): string[] {
     file.focus = "default";
   }
   writeWorkspacesFile(file);
-  fillCatalog(repos);
   return repos;
 }
 
@@ -202,6 +232,7 @@ export function seedDefaultWorkspace(): string[] {
 export function seedBlueprintWorkspaces(): { name: string; repos: string[] }[] {
   const bps = blueprintWorkspaces();
   if (bps.length === 0) return [];
+  fillCatalog(bps);
   const file = readWorkspacesFile();
   for (const bp of bps) {
     const prev: WorkspaceConfig | undefined = file.workspaces[bp.name];
@@ -223,7 +254,6 @@ export function seedBlueprintWorkspaces(): { name: string; repos: string[] }[] {
   file.active = [...names, ...kept.filter((n) => !names.includes(n))];
   file.focus = (bps.find((b) => b.focus) ?? bps[0]).name;
   writeWorkspacesFile(file);
-  fillCatalog([...new Set(bps.flatMap((b) => b.repos))]);
   return bps.map((b) => ({ name: b.name, repos: [...b.repos] }));
 }
 
@@ -277,7 +307,8 @@ export function topUpDefaultWorkspace(): string[] {
 
   def.seeded_repos = [...repos];
   writeWorkspacesFile(file);
-  if (missing.length > 0) fillCatalog(missing, catalog);
+  if (missing.length > 0)
+    fillCatalog([{ name: "default", repos: missing }], catalog);
   return missing;
 }
 

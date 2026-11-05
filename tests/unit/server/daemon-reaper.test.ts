@@ -65,6 +65,7 @@ function makeDeps(
     unregisterDaemon: unregister as DaemonReaperDeps["unregisterDaemon"],
     delay: async () => undefined,
     retryDelayMs: 5_000,
+    rootOf: () => "here",
     ...overrides,
   };
   return { deps, unregister, healthCalls };
@@ -183,6 +184,46 @@ describe("reapDeadDaemons", () => {
 
     expect(unregister).not.toHaveBeenCalled();
     expect(result.kept).toEqual([ADDRESS]);
+  });
+
+  // All roots of a product share one daemons file: another root's records
+  // are its server's to sweep, never ours.
+  it("never touches another root's daemon, resolvable or not", async () => {
+    for (const resolve of [() => null, () => SERVICE]) {
+      const { deps, unregister, healthCalls } = makeDeps(["error", "error"], {
+        rootOf: () => "other",
+        resolveService: resolve,
+      });
+
+      const result = await reapDeadDaemons(deps);
+
+      expect(unregister).not.toHaveBeenCalled();
+      expect(healthCalls).toHaveLength(0);
+      expect(result.kept).toEqual([ADDRESS]);
+    }
+  });
+
+  it("keeps an unstamped (legacy) record that does not resolve here", async () => {
+    const { deps, unregister } = makeDeps(["ok"], {
+      rootOf: () => "unstamped",
+      resolveService: () => null,
+    });
+
+    const result = await reapDeadDaemons(deps);
+
+    expect(unregister).not.toHaveBeenCalled();
+    expect(result.kept).toEqual([ADDRESS]);
+  });
+
+  it("still reaps an unstamped record on two consecutive errors", async () => {
+    const { deps, unregister } = makeDeps(["error", "error"], {
+      rootOf: () => "unstamped",
+    });
+
+    const result = await reapDeadDaemons(deps);
+
+    expect(unregister).toHaveBeenCalledWith(ADDRESS);
+    expect(result.removed).toEqual([ADDRESS]);
   });
 
   it("unregisters when no owning workspace resolves the service either", async () => {

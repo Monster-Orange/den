@@ -15,6 +15,7 @@
 #
 #   DEN_SERVICE_LABEL  launchd label (default local.<dist dir name>.web)
 #   DEN_SERVICE_LOGS   log directory (default ~/Library/Logs/<dist dir name>)
+#   DEN_SERVICE_NODE   the node the agent runs (default: see pick_node)
 #   DEN_SERVICE_READY_CHECK=external  install does not print "running": the
 #                      caller (`<cli> service install`) checks the server
 #                      answers first.
@@ -47,8 +48,36 @@ find_tsx() {
   done
 }
 
+# A version manager's node (nvm, fnm, volta, asdf, mise) lives under a
+# versioned path that disappears when that version is removed, and the agent
+# then fails to start with no clear reason. Prefer a stable install of the
+# same major version; otherwise keep it and say so.
+STABLE_NODES="${DEN_SERVICE_STABLE_NODES:-/opt/homebrew/bin/node /usr/local/bin/node}"
+node_major() { "$1" -p "process.versions.node.split('.')[0]" 2>/dev/null; }
+pick_node() {
+  if [ -n "${DEN_SERVICE_NODE:-}" ]; then
+    [ -x "$DEN_SERVICE_NODE" ] || { echo "✗ DEN_SERVICE_NODE ($DEN_SERVICE_NODE) is not executable" >&2; exit 1; }
+    echo "$DEN_SERVICE_NODE"; return
+  fi
+  local node; node="$(command -v node)" || { echo "✗ node is not on PATH" >&2; exit 1; }
+  case "$node" in
+    */.nvm/*|*/fnm/*|*/.fnm/*|*/.volta/*|*/.asdf/*|*/mise/*) ;;
+    *) echo "$node"; return ;;
+  esac
+  local want c; want="$(node_major "$node")"
+  for c in $STABLE_NODES; do
+    if [ -x "$c" ] && [ "$(node_major "$c")" = "$want" ]; then echo "$c"; return; fi
+  done
+  # Warn when installing; `print` writes the plist and nothing else.
+  if [ "${1:-}" = install ]; then
+    echo "⚠ the service will run $node, a version manager's node: it stops starting" >&2
+    echo "  when that version is removed. Re-run install after switching, or set DEN_SERVICE_NODE." >&2
+  fi
+  echo "$node"
+}
+
 write_plist() { # $1 = output file
-  NODE="$(command -v node)" || { echo "✗ node is not on PATH" >&2; exit 1; }
+  NODE="$(pick_node "$MODE")"
   TSX="$(find_tsx)" || { echo "✗ tsx not installed: run npm ci in $DIST" >&2; exit 1; }
   DOCKER_DIR="$(dirname "$(command -v docker || echo /usr/local/bin/docker)")"
   SVC_PATH="$(dirname "$NODE"):$DOCKER_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
@@ -79,7 +108,8 @@ else:
 PY
 }
 
-case "${1:-install}" in
+MODE="${1:-install}"
+case "$MODE" in
   install)
     mkdir -p "$LOGS" "$(dirname "$PLIST")"
     write_plist "$PLIST.new"
@@ -115,6 +145,15 @@ case "${1:-install}" in
     write_plist -
     ;;
   status)
+    # The node the agent was installed with may be gone (a removed nvm
+    # version): launchd then restarts it forever with no useful message.
+    if [ -f "$PLIST" ] && command -v plutil >/dev/null 2>&1; then
+      svc_node="$(plutil -extract ProgramArguments.0 raw -o - "$PLIST" 2>/dev/null || true)"
+      if [ -n "$svc_node" ] && [ ! -x "$svc_node" ]; then
+        echo "✗ $LABEL runs $svc_node, which no longer exists: re-run service install" >&2
+        exit 1
+      fi
+    fi
     # launchctl's own "Could not find service" is noise when it isn't loaded.
     if out="$(launchctl print "$DOMAIN/$LABEL" 2>/dev/null)"; then
       printf '%s\n' "$out" | grep -E '^\s*(state|pid|last exit code|runs|spawn type)'

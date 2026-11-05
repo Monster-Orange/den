@@ -6,6 +6,8 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.3.0] - unreleased
 
+0.3.0-dev.31 includes all of 0.2.7 (below).
+
 ### Added
 
 - **The runs dock** (0.3.0-dev.30, R16). One output dock for every page, at
@@ -956,6 +958,123 @@ config and manifest changes a distribution must make to move to it under
   (`theme new` sets one). A plugin's `den` range is now enforced: write
   `>=0.3.0-0 <0.4.0` to admit Den's 0.3.0 prereleases, because `>=0.3.0`
   excludes them.
+
+## [0.2.7] - 2026-11-05
+
+### Added
+
+- **A workspace belongs to an org** (0.2.7-dev.2, ORG-1a). Its org is
+  `org:` on the workspace in workspaces.yml, else `org:` on the blueprint
+  workspace (`defaults.workspaces.<n>.org`, the one new blueprint key), else
+  the one catalog owner of its repos (case-insensitive; `gh: ""` ignored),
+  else `github_org`, the default org. It is computed on read, never written
+  to workspaces.yml. A config with no `org:` resolves to `github_org` as
+  before, unless all of a workspace's repos have one other owner in the
+  catalog.
+- **`<cli> org list`** (0.2.7-dev.2, ORG-1a): each org's label, its
+  workspaces on this machine, which is the default, and the org warnings.
+  `<cli> workspace list` gains an Org column; `--org <id>` filters it.
+- **Org warnings, never errors** (0.2.7-dev.2, ORG-1a, C1): a workspace
+  whose repos span several owners, an `org:` naming an owner Den does not
+  know, a repo in another owner than its workspace's org, a workspaces.yml
+  `org:` that overrides the blueprint's. Shown by `org list` and
+  `workspace list`.
+- **`<cli> setup --plan`** (0.2.7-dev.2, ORG-1a): each repo's org and clone
+  URL, and whether it is cloned, then stop. On a fresh machine it plans the
+  blueprint's workspaces; once seeded, the focused workspace. `<cli> up
+  --plan` prints the same lines for its repos. Nothing is cloned, seeded or
+  written.
+- **`GET /api/orgs` entries gain `default` and `workspaces`**, and
+  `/api/<cli>/config` gains `default_org` (0.2.7-dev.2, ORG-1a). Every
+  existing field, entry and order is unchanged; `?repos=1` still maps each
+  repo to its owner string.
+- **`<cli> register --org <id>`** (0.2.7-dev.2, ORG-1a) lists another org's
+  repos for a managed clone.
+
+- **Bare `<cli> validate` checks every manifest** (0.2.7-dev.1, from a
+  consumer). In the distribution root, with no argument: each workspace repo
+  once per checkout (own or held, plus any override, then the merge), the
+  held manifest when there is no checkout, and held manifests no workspace
+  uses. One line per repo, details on failure, exit 1 if any fails, nothing
+  cloned. `--held` checks `manifests/` alone, independent of the machine. A
+  path argument works as before.
+
+### Changed
+
+- **A repo is released from its own org** (0.2.7-dev.2, REL-1). With no
+  `release.org`, a repo with no `gh:` in `release.repos` released from
+  `github_org`, so a client org's repo targeted the wrong owner. Its owner
+  is now an explicit `release.org` (unchanged: it still wins for every
+  repo), else the repo's non-empty catalog owner, else `github_org`.
+- **`register` lists the focused workspace's org** (0.2.7-dev.2, ORG-1a),
+  not `github_org` alone, and no longer falls back to the owner of Den's own
+  git remote (SEC-0): with no org it says how to set one.
+
+### Fixed
+
+- **A second root's server leaves the first root's services alone**
+  (0.2.7-dev.3, dev.4). Every root of a product shares one daemons file.
+  A server's two startup sweeps (the stale-daemon prune and the health
+  reaper) dropped any record whose address did not resolve in its own
+  workspaces, so starting a scratch root's server silently forgot another
+  root's running dev server; an interactive Ctrl-C stopped every service in
+  the file, and deactivating a workspace released any record with the same
+  workspace name. Records are now stamped with the root that started them
+  and a server lists, stops, releases and sweeps only its own (other roots'
+  records stay in the file untouched). An older unstamped record is never
+  dropped just for not resolving; it still goes when its containers are
+  verifiably gone or two health checks fail. The reaper now logs what it
+  removes.
+- **A service the edge has no route for is no longer healthy** (0.2.7-dev.2).
+  A health URL served through the edge answered the edge's own
+  `404 page not found` when the service had no route, and Den counted any
+  404 as up. That exact 404 is now down with "no route (edge 404)", over
+  HTTP and HTTPS; a 404 from the service itself is still up.
+- **A client workspace no longer clones from the default org** (0.2.7-dev.2,
+  ORG-1a). Seeding, `up` and the web sync gave a repo with no clone URL
+  `<github_org>/<repo>`; it is now `<org>/<repo>` with its workspace's org.
+- **`<cli> setup` clones a catalog entry with `gh: ""`** from its
+  workspace's org (0.2.7-dev.2), as `up` does, instead of failing on an
+  empty slug.
+- **A seed without a terminal no longer resets a workspace that has
+  entries** (SEED-0). `<cli> init` and `<cli> workspace seed` from a script
+  or `make` replaced every entry of the default (or blueprint) workspaces with
+  managed clones, your own dev-managed checkouts included, without asking.
+  Without a TTY they now refuse (exit 1, nothing written) and name
+  `--reset`; on a TTY they still ask, default No. `init --reset` and
+  `workspace seed --reset` reset as before.
+- **A failed seed leaves the workspaces as they were** (0.2.7-dev.1, from a
+  consumer). Seeding wrote workspaces.yml, then filled the catalog, which
+  fails with no `github_org`: the workspace was reset and nothing could be
+  cloned. The catalog comes first now, and the org is needed only for a repo
+  with no clone URL in the catalog.
+- **A seed refusal names the command that was run** (`init --reset` or
+  `workspace seed --reset`).
+- **A `DEN_ROOT` with no den.yml is a one-line error** (exit 2), not a stack
+  trace from deep in module loading.
+- **Piped output carries no ANSI from tables** (`status`, `services`, test
+  results). cli-table3 coloured borders and head cells itself, ignoring
+  NO_COLOR and a pipe.
+- **`<cli> mcp --call` validates its arguments** against the tool's schema,
+  strictly: an unknown or misspelt key, or a bad value, exits 2 with the
+  problem and the keys the tool takes, and calls nothing.
+- **The web UI service survives a removed nvm version.** Install prefers a
+  stable node of the same major version over a version manager's (or uses
+  `DEN_SERVICE_NODE`), and warns when it must keep one. `service status`
+  exits 1, naming it, when the installed node no longer exists.
+
+- **`<cli> init` in the distribution root seeds even through a symlinked
+  path** (`/var` → `/private/var`, a symlinked home). It compared paths
+  without resolving links and ran the manifest scaffolder instead.
+
+### Migrations
+
+- A script that relied on a non-interactive seed resetting a changed
+  workspace must pass `--reset`.
+- Optional (ORG-1a): to put a blueprint workspace in an org other than the
+  one its catalog owners give, add `org: <id>` to it under
+  `defaults.workspaces`. Pin Den 0.2.7 or later first: an older Den rejects
+  the key. Nothing else needs changing.
 
 ## [0.2.6] - 2026-11-04
 

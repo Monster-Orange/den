@@ -50,6 +50,15 @@ if [ "${1:-}" = "mcp" ] && ! case "${2:-}" in connect|disconnect|clients|config)
   built="dist/src/ui/cli/mcp-main.js"
 fi
 
+# A DEN_ROOT that names no distribution is a usage error, not a crash: say
+# so here, before any module resolves paths from it at import time.
+# (`create` needs no distribution.)
+if [ -n "${DEN_ROOT:-}" ] && [ "$entry" != "src/ui/cli/create-main.ts" ] && [ ! -f "$DEN_ROOT/den.yml" ]; then
+  echo "den: DEN_ROOT is set to \"$DEN_ROOT\" but that directory has no den.yml." >&2
+  echo "     Point it at your distribution's checkout, or unset it." >&2
+  exit 2
+fi
+
 # Escape hatch: force the compiled build (e.g. to test the prod artifact).
 if [ "${DEN_USE_DIST:-}" = "1" ] && [ -f "$DEN_ENGINE_ROOT/$built" ]; then
   exec node "$DEN_ENGINE_ROOT/$built" "$@"

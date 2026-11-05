@@ -54,7 +54,48 @@ describe("readWorkspaceBlueprints", () => {
     ]);
   });
 
+  // ORG-1a: `org` is the one new blueprint key; it is kept as given (trimmed).
+  it("accepts org: on a named workspace, and leaves it off when unset", () => {
+    const bp = readWorkspaceBlueprints(
+      cfg({
+        workspaces: {
+          web: { repos: ["a"] },
+          client: { org: " globex ", repos: ["b"], branch: "main" },
+        },
+      }),
+    );
+    expect(bp.workspaces).toEqual([
+      {
+        name: "web",
+        repos: ["a"],
+        branch: "main",
+        autostartOff: [],
+        focus: false,
+      },
+      {
+        name: "client",
+        repos: ["b"],
+        branch: "main",
+        autostartOff: [],
+        focus: false,
+        org: "globex",
+      },
+    ]);
+  });
+
+  it("accepts org: on the single default workspace", () => {
+    expect(
+      readWorkspaceBlueprints(cfg({ workspace: { repos: ["a"], org: "acme" } }))
+        .workspaces[0].org,
+    ).toBe("acme");
+  });
+
   it.each([
+    [
+      "an org that is not a name",
+      { workspaces: { web: { repos: ["a"], org: 3 } } },
+      /defaults\.workspaces\.web\.org must be an org id/,
+    ],
     [
       "both shapes",
       { workspace: { repos: ["a"] }, workspaces: { web: { repos: ["a"] } } },

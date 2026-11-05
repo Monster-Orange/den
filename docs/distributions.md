@@ -104,6 +104,23 @@ naming the file each error is in, then checks the merged result:
   ERROR   services.api.commands.local.down  unknown key "down": not in the base manifest
 ```
 
+Run with no argument in the distribution root, `<cli> validate` checks every
+manifest the distribution uses, and never clones:
+
+- each repo of every workspace, once per checkout path, with the
+  workspaces that use it and where its base comes from (`own`, `held`,
+  `+ override`);
+- a repo with no checkout on disk falls back to its held manifest, marked
+  `held only, no checkout`. With no held manifest either it is a warning, not
+  a failure;
+- each held manifest in `manifests/` that no workspace uses.
+
+It prints one line per repo, details only for a layer with errors or
+warnings, and exits 1 if any fails. `<cli> validate --held` checks only
+`manifests/`, as if nothing were checked out, so the result does not depend on
+the machine (use it in a CI or upgrade gate). An override whose base is the
+repo's own manifest is noted there, not checked.
+
 The web UI's Services cards show the layers each manifest was built from
 (`manifest: repo + override`), and `/api/services` returns them per service as
 `manifestLayers`, e.g. `["held", "override"]`. `DEN_MANIFESTS_DIR` points the
@@ -852,8 +869,8 @@ defaults:
       focus: true
 ```
 
-Each entry takes `repos`, `branch` and `autostart_off`, the same fields as
-`defaults.workspace`, plus `focus`. Seeding creates every named workspace
+Each entry takes `repos`, `branch`, `autostart_off` and `org`, the same
+fields as `defaults.workspace`, plus `focus`. Seeding creates every named workspace
 with its repos, activates them all, and focuses the one with `focus: true`
 (else the first). Set `defaults.workspace` or `defaults.workspaces`, not both:
 both at once is an error, as is more than one `focus: true`.
@@ -868,6 +885,68 @@ Once seeded, a repo that later joins `defaults.workspace.repos` is added to
 `default`, but only while `default` is your only workspace, and never a repo
 you removed from it or that another workspace holds. With
 `defaults.workspaces` nothing is topped up.
+
+To see what a setup would clone before it clones anything, run
+`acme setup --plan`: each repo with its org and clone URL, and whether it
+is cloned yet. On a fresh machine it plans the blueprint (every workspace
+`acme workspace seed` would create); once seeded, the focused workspace.
+`acme up --plan` lists the same lines for the repos it would start. Both
+are read-only: nothing is cloned, seeded or written.
+
+## Orgs
+
+A distribution can hold work for more than one org: each workspace belongs
+to one. An org's id is a key of `orgs:` or a GitHub owner, and today an org
+is the GitHub owner of the same name. `github_org` is the default org. A
+distribution that never mentions orgs has one org, the default, and every
+workspace is in it.
+
+```yaml
+github_org: acme
+orgs:
+  acme: { label: Acme }
+  globex: { label: Globex, color: "#0af" }
+defaults:
+  workspaces:
+    storefront:
+      repos: [shop-web, shop]
+    client:
+      org: globex # optional: the workspace's org
+      repos: [globex-web, globex-api]
+```
+
+A workspace's org is the first of:
+
+1. `org:` on the workspace in `config/local/workspaces.yml` (this machine)
+2. `org:` on the blueprint workspace of the same name (committed)
+3. the one owner of its repos in the catalog (`gh: <owner>/<repo>`; owners
+   compare case-insensitively, and a `gh: ""` counts as unknown)
+4. `github_org`
+
+It is worked out each time it is read and never written back. A repo with
+no clone URL is cloned from `<org>/<repo>` with its workspace's org: seeding
+the blueprint above gives `globex-web` `gh: globex/globex-web`, not
+`acme/...`. `acme register` picks a managed clone from the focused
+workspace's org, or from `--org <id>`.
+
+`acme org list` shows each org's label, its workspaces and which is the
+default. `acme workspace list` has an Org column, and `--org <id>` lists one
+org's workspaces. A workspace whose repos belong to several owners, an
+`org:` naming an owner Den does not know, or a repo in another owner than
+its workspace's org is a warning in both lists, never an error.
+`GET /api/orgs` adds `default` and `workspaces` to each entry, and
+`/api/<cli>/config` adds `default_org`.
+
+`org:` in the blueprint needs Den 0.2.7 or later: an older Den rejects the
+unknown key. Pin 0.2.7 before you commit it.
+
+## Releases
+
+The Release page dispatches each repo's CD workflow on GitHub. A repo's
+owner there is its own `gh: owner/repo` in `release.repos`, else
+`release.org` when it is set, else the repo's owner in the catalog, else
+`github_org`. Leave `release.org` unset when the repos belong to different
+orgs: each then releases from its own.
 
 ## The bin shim
 
@@ -997,10 +1076,17 @@ node_modules/@monster-orange/den/service/install.sh print       # the plist only
 | `DEN_ROOT`          | required in a distribution               |
 | `DEN_SERVICE_LABEL` | `local.<distribution dir name>.web`      |
 | `DEN_SERVICE_LOGS`  | `~/Library/Logs/<distribution dir name>` |
+| `DEN_SERVICE_NODE`  | see below                                |
 
-The service runs the engine's server with the `node` on your `PATH` at install
-time, from the distribution root; re-run `install` after changing node versions
-or upgrading Den. Keep the label stable: it is how launchd knows the service.
+The service runs the engine's server, from the distribution root, with the
+`node` on your `PATH` at install time. A version manager's node (nvm, fnm,
+volta, asdf, mise) lives under a versioned path that disappears when that
+version is removed, so install prefers `/opt/homebrew/bin/node` or
+`/usr/local/bin/node` when one has the same major version, and otherwise
+keeps the version manager's and warns. `DEN_SERVICE_NODE` names the node
+outright. `service status` exits 1 when the installed node no longer exists.
+Re-run `install` after changing node versions or upgrading Den. Keep the
+label stable: it is how launchd knows the service.
 
 ## MCP server
 

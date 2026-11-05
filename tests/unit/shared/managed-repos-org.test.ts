@@ -70,7 +70,10 @@ describe("the org whose repos Den lists", () => {
       src.indexOf("private async registerManaged("),
       src.indexOf("gh repo list"),
     );
-    expect(body).toContain("managedReposOrg(");
+    // Since 0.2.7 (ORG-1a) the org is the workspace's resolved org or
+    // --org; no git remote is consulted at all (SEC-0).
+    expect(body).toContain("registerOrg(");
+    expect(body).not.toContain("managedReposOrg(");
     expect(body).not.toContain("import.meta.url");
   });
 });

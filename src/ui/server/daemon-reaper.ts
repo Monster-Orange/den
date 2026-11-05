@@ -11,9 +11,11 @@
  * so an "error" health result is only acted on after a SECOND
  * consecutive "error" check separated by a retry delay. "unknown"
  * results and thrown checks always keep the entry (err on the side of
- * keeping). A daemon whose address no longer resolves to any
- * workspace/catalog service is process-death-equivalent evidence and is
- * removed directly.
+ * keeping). A daemon this root registered whose address no longer resolves
+ * to any workspace/catalog service is process-death-equivalent evidence and
+ * is removed directly. Records another root registered (all roots of a
+ * product share the file) are never touched, and an unstamped legacy record
+ * is not removed for being unresolvable.
  */
 
 import type { ServiceHealthResult } from "../../shared/environment-manager/health.js";
@@ -41,6 +43,12 @@ export interface DaemonReaperDeps {
   delay: (ms: number) => Promise<void>;
   /** Gap between the first "error" result and the confirming re-check. */
   retryDelayMs: number;
+  /**
+   * Which root wrote the record (`daemonRootOf`). Every root of a product
+   * shares one daemons file: another root's records are never swept here,
+   * and an unstamped (pre-0.2.7) one is not dropped for being unresolvable.
+   */
+  rootOf: (daemon: DaemonRecord) => "here" | "other" | "unstamped";
 }
 
 export interface DaemonReapResult {
@@ -92,9 +100,19 @@ export async function reapDeadDaemons(
   await Promise.allSettled(
     deps.listDaemons().map(async (daemon) => {
       try {
+        const root = deps.rootOf(daemon);
+        if (root === "other") {
+          kept.push(daemon.address);
+          return;
+        }
         const service = resolveForDaemon(deps, daemon);
         if (!service) {
-          // No longer in any owning workspace/catalog — nothing could restart it.
+          // No longer in any owning workspace/catalog — nothing could restart
+          // it. An unstamped record may be another root's, so it stays.
+          if (root === "unstamped") {
+            kept.push(daemon.address);
+            return;
+          }
           deps.unregisterDaemon(daemon.address);
           removed.push(daemon.address);
           return;

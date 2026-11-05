@@ -16,7 +16,8 @@ import { noun, plural } from "../../shared/plural.js";
 // Spinners: progress on stderr (a terminal) or stdout (piped); plain lines
 // where they cannot animate. See spinner.ts.
 import { spinner as ora } from "./spinner.js";
-import Table from "cli-table3";
+import { newTable } from "./table.js";
+import { validateAll, validateAllFailed } from "./validate-all.js";
 import { cliPrompts } from "./prompts.js";
 import { resultsViewer } from "./results-viewer.js";
 import { testRunner } from "./test-runner.js";
@@ -113,10 +114,7 @@ import {
   resolveService,
   type ServiceCommandPreview,
 } from "../../shared/environment-manager/service-runner.js";
-import {
-  getGitHubCoords,
-  managedReposOrg,
-} from "../../shared/smoke/git-remote.js";
+import { getGitHubCoords } from "../../shared/smoke/git-remote.js";
 import {
   getReposRoot,
   mergeUserConfig,
@@ -149,7 +147,10 @@ import {
 } from "../../shared/environment-manager/up-plan.js";
 import { execSync } from "child_process";
 import * as fs from "fs";
-import { readManifest } from "../../shared/manifest/read-manifest.js";
+import {
+  heldManifestsDir,
+  readManifest,
+} from "../../shared/manifest/read-manifest.js";
 import * as nodePath from "path";
 import { runInit } from "./init.js";
 import {
@@ -181,6 +182,20 @@ import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
 import { cmdTheme } from "./theme-command.js";
 import { cmdPlugin } from "./plugin-command.js";
+import {
+  cmdOrg,
+  orgFlag,
+  orgListRows,
+  printOrgWarnings,
+  registerOrg,
+  sameOrg,
+} from "./org-command.js";
+import {
+  buildSetupPlan,
+  renderClonePlan,
+  workspaceClonePlan,
+} from "./clone-plan.js";
+import { githubOrgFor } from "../../shared/environment-manager/workspace-org.js";
 import { cmdWeb, displayWebHelp } from "./web-command.js";
 import { cmdGraph } from "./graph-command.js";
 import { resolveLogsTarget, tailServiceLogs } from "./logs-command.js";
@@ -221,8 +236,11 @@ const WORKSPACE_SUBCOMMANDS: {
 }[] = [
   {
     name: "list",
-    usage: "list",
-    lines: ["every workspace, the active set and the focus"],
+    usage: "list [--org <id>]",
+    lines: [
+      "every workspace, the active set, the focus and its org;",
+      "--org <id> lists one org's workspaces",
+    ],
   },
   {
     name: "activate",
@@ -313,10 +331,11 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     lines: ["List all registered services in the catalog."],
   },
   register: {
-    usage: "register [path] [-w <workspace>]",
+    usage: "register [path] [-w <workspace>] [--org <id>]",
     lines: [
       "With a path: add that checkout (dev-managed) under its manifest name.",
-      "Without one: pick the repo interactively.",
+      "Without one: pick the repo interactively. A managed clone is picked",
+      "from the focused workspace's org; --org <id> picks from another.",
       "-w writes that workspace (active or not) and leaves focus alone.",
     ],
   },
@@ -330,12 +349,23 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   setup: {
-    usage: "setup [service...] [--force|-f]",
+    usage: "setup [service...] [--force|-f] [--plan]",
     lines: [
       "Run 'make setup' once per system (clones missing managed repos first).",
       "Default targets MANAGED clones only — setup's codegen/installs",
       "shouldn't touch your own dev-managed checkouts uninvited.",
       "--force (-f) includes dev-managed repos; naming a service always works.",
+      "--plan prints each repo's org and clone URL and stops: nothing is",
+      "cloned, seeded or written (on a fresh machine: the blueprint's plan).",
+    ],
+  },
+  org: {
+    usage: "org list [--org <id>]",
+    lines: [
+      "Every org: its label, its workspaces, whether it is the default",
+      "(github_org), and any org warnings. A workspace's org is its own org:,",
+      "then the blueprint's org:, then its repos' one catalog owner, then",
+      "github_org.",
     ],
   },
   sync: {
@@ -495,6 +525,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   `use-managed`,
   "setup",
   "workspace",
+  "org",
   "sync",
   "init",
   "validate",
@@ -808,6 +839,10 @@ class DenCLI {
           await this.cmdWorkspace(args.slice(1));
           break;
 
+        case "org":
+          cmdOrg(args.slice(1));
+          break;
+
         case "sync":
           await this.cmdSync(args.slice(1));
           break;
@@ -830,6 +865,7 @@ class DenCLI {
             await this.seedDefaultWorkspaceFlow(
               "init",
               args.slice(1).includes("--reset"),
+              "init",
             );
           } else {
             await runInit(initTarget);
@@ -1176,7 +1212,14 @@ class DenCLI {
       if (!catalogEntry) continue;
       const branch = wsEntry.branch ?? "main";
       try {
-        ensureManagedServiceClone(repoName, catalogEntry.gh, branch);
+        // An entry with `gh: ""` clones from the workspace's org, as `up`
+        // does (and `setup --plan` says), instead of failing on an empty slug.
+        const ghSlug = resolveRepoGhSlug(repoName, catalog, () =>
+          githubOrgFor(ws.name),
+        );
+        if (!catalogEntry.gh?.trim())
+          upsertCatalogEntry(repoName, { ...catalogEntry, gh: ghSlug });
+        ensureManagedServiceClone(repoName, ghSlug, branch);
       } catch (err) {
         console.log(
           chalk.red(
@@ -1277,7 +1320,9 @@ class DenCLI {
       // Catalog entries written by the dev-managed add flow carry `gh: ""`, so
       // an entry can exist yet be unclonable. Derive the conventional slug and
       // persist the repair rather than cloning from an empty URL.
-      const ghSlug = resolveRepoGhSlug(repoName, catalog);
+      const ghSlug = resolveRepoGhSlug(repoName, catalog, () =>
+        githubOrgFor(ws.name),
+      );
       if (!catalog[repoName]?.gh) upsertCatalogEntry(repoName, { gh: ghSlug });
       try {
         // runSetup=false: clone only — setup is run below, hidden + non-interactive.
@@ -1980,6 +2025,25 @@ class DenCLI {
     return seed && knownRepos.has(seed) ? seed : undefined;
   }
 
+  /**
+   * `up --plan`'s clone half (ORG-1a): each repo's org and the URL a missing
+   * managed clone would come from. Read-only, like the rest of the plan.
+   */
+  private renderUpClonePlan(repos: readonly string[]): void {
+    const ws = getActiveWorkspace();
+    if (!ws) return;
+    const lines = renderClonePlan(
+      {
+        fromBlueprint: false,
+        workspaces: [workspaceClonePlan(ws.name, repos)],
+      },
+      product().cli,
+    );
+    console.log(chalk.bold("  Repos and clone URLs:\n"));
+    for (const line of lines) console.log(chalk.gray(`  ${line}`.trimEnd()));
+    console.log();
+  }
+
   /** Render the read-only `den up --plan` view: per-node command + flags. */
   private renderUpPlan(nodes: NodePlan[]): void {
     const tag = (n: NodePlan): string => {
@@ -2093,6 +2157,7 @@ class DenCLI {
       this.renderUpPlan(
         buildUpPlan(graph, rawOrder, { noAutostart: noAutostartSet }),
       );
+      this.renderUpClonePlan(rawOrder);
       return;
     }
     if (dryRun) {
@@ -2304,6 +2369,7 @@ class DenCLI {
       this.renderUpPlan(
         buildUpPlan(graph, rawOrder, { noAutostart: noAutostartSet }),
       );
+      this.renderUpClonePlan(rawOrder);
       return;
     }
     if (dryRun) {
@@ -2583,6 +2649,7 @@ class DenCLI {
   private async seedDefaultWorkspaceFlow(
     reason: "auto" | "init",
     reset = false,
+    via: "init" | "workspace seed" = "workspace seed",
   ): Promise<boolean> {
     const bps = blueprintWorkspaces();
     if (bps.length === 0) {
@@ -2620,7 +2687,7 @@ class DenCLI {
         chalk.red(
           `\n  ❌ Not resetting ${what}: it has entries, and a reset replaces them all\n` +
             `     (your own dev-managed checkouts included) with managed clones.\n` +
-            `     Nothing changed. To reset anyway: ${product().cli} workspace seed --reset\n`,
+            `     Nothing changed. To reset anyway: ${product().cli} ${via} --reset\n`,
         ),
       );
       process.exitCode = 1;
@@ -3002,7 +3069,7 @@ class DenCLI {
 
     console.log(chalk.cyan(`\n  ${scopeLine(view)}\n`));
 
-    const table = new Table({
+    const table = newTable({
       head: ["Service", "Mode", "Branch", "Health", "Reason"],
       style: { head: ["cyan"] },
     });
@@ -3177,7 +3244,7 @@ class DenCLI {
       return;
     }
 
-    const table = new Table({
+    const table = newTable({
       head: ["Service", "Mode", "Health", "Commands"],
       style: { head: ["cyan"] },
     });
@@ -3222,13 +3289,14 @@ class DenCLI {
   private async cmdRegister(args: string[]): Promise<void> {
     if (args.includes("-h") || args.includes("--help")) {
       console.log(
-        `\n  ${product().cli} register [path] [--name <repo>] [--gh <owner/repo>] [-w <workspace>]\n\n` +
+        `\n  ${product().cli} register [path] [--name <repo>] [--gh <owner/repo>] [-w <workspace>] [--org <id>]\n\n` +
           "  With a path: add that checkout to the catalog and the focused\n" +
           "  workspace as your own (dev-managed) copy, without prompts. The name\n" +
           "  defaults to the manifest's name, then the folder name; the GitHub\n" +
           "  slug to the git remote. -w writes that workspace (active or not)\n" +
           "  and leaves focus alone.\n" +
-          "  Without a path: choose a local checkout or a managed clone interactively.\n",
+          "  Without a path: choose a local checkout or a managed clone interactively;\n" +
+          "  a managed clone comes from the workspace's org, or --org <id>.\n",
       );
       return;
     }
@@ -3243,7 +3311,8 @@ class DenCLI {
     }
 
     const repoPathArg = args.find(
-      (a, i) => !a.startsWith("-") && !/^--(name|gh)$/.test(args[i - 1] ?? ""),
+      (a, i) =>
+        !a.startsWith("-") && !/^--(name|gh|org)$/.test(args[i - 1] ?? ""),
     );
     if (repoPathArg) {
       const flag = (n: string) => {
@@ -3271,7 +3340,7 @@ class DenCLI {
     if (source === "local") {
       await this.registerLinked(ws);
     } else {
-      await this.registerManaged(ws);
+      await this.registerManaged(ws, orgFlag(args));
     }
   }
 
@@ -3500,19 +3569,24 @@ class DenCLI {
     );
   }
 
-  /** List org repos via `gh`, let user pick one + branch → managed service. */
-  private async registerManaged(ws: {
-    name: string;
-    config: import("../../shared/types/index.js").WorkspaceConfig;
-  }): Promise<void> {
-    // The org config names the org; the distribution's own checkout's
-    // remote is the only fallback. Never the engine's remote: with a linked
-    // or installed engine it names the engine's owner, not this project's.
-    const org = managedReposOrg(readDenConfig().github_org, getDistRoot());
+  /**
+   * List an org's repos via `gh`, let the user pick one + branch → managed
+   * service. The org is `--org <id>`, else the focused workspace's resolved
+   * org (ORG-1a). Never Den's own checkout or remote (SEC-0).
+   */
+  private async registerManaged(
+    ws: {
+      name: string;
+      config: import("../../shared/types/index.js").WorkspaceConfig;
+    },
+    orgArg?: string,
+  ): Promise<void> {
+    const org = registerOrg(ws.name, orgArg);
     if (!org) {
       console.log(
         chalk.red(
-          `\n  ❌ No GitHub org to list: set github_org in ${product().configFile}\n`,
+          `\n  ❌ No GitHub org to list: set github_org in ${product().configFile}, ` +
+            `org: on workspace ${ws.name}, or pass --org <id>\n`,
         ),
       );
       return;
@@ -3769,6 +3843,15 @@ class DenCLI {
     const force = args.includes("--force") || args.includes("-f");
     const names = args.filter((a) => !a.startsWith("-"));
 
+    // `--plan`: each repo's org and clone URL, then stop. Read-only.
+    if (args.includes("--plan")) {
+      console.log(chalk.bold("\n  Setup plan (no changes will be made):\n"));
+      for (const line of renderClonePlan(buildSetupPlan(names), product().cli))
+        console.log(`  ${line}`.trimEnd());
+      console.log();
+      return;
+    }
+
     // Clone any managed repos that aren't on disk yet before reading manifests.
     this.cloneMissingManagedRepos();
 
@@ -3856,13 +3939,20 @@ class DenCLI {
 
     switch (sub) {
       case "list": {
-        const table = new Table({
-          head: ["Workspace", "Active", "Focus", "Services", "Type"],
+        const only = orgFlag(args.slice(1));
+        const { resolved, warnings } = orgListRows();
+        const orgOfWs = new Map(resolved.map((w) => [w.workspace, w.org]));
+        const table = newTable({
+          head: ["Workspace", "Org", "Active", "Focus", "Services", "Type"],
           style: { head: ["cyan"] },
         });
-        for (const [name, cfg] of Object.entries(file.workspaces)) {
+        const shown = Object.entries(file.workspaces).filter(
+          ([name]) => !only || sameOrg(orgOfWs.get(name) ?? null, only),
+        );
+        for (const [name, cfg] of shown) {
           table.push([
             chalk.bold(name),
+            orgOfWs.get(name) ?? chalk.gray("none"),
             activeSet.has(name) ? chalk.green("✓") : "",
             name === focus ? chalk.cyan("●") : "",
             Object.keys(cfg.services).join(", ") || chalk.gray("none"),
@@ -3870,6 +3960,14 @@ class DenCLI {
           ]);
         }
         console.log(table.toString());
+        if (only && shown.length === 0)
+          console.log(chalk.yellow(`  No workspace in org ${only}.`));
+        const names = new Set(shown.map(([n]) => n));
+        printOrgWarnings(
+          warnings.filter((w) =>
+            [...names].some((n) => w.startsWith(`workspace ${n}:`)),
+          ),
+        );
         break;
       }
       case "activate": {
@@ -4201,7 +4299,15 @@ class DenCLI {
         if (!d.available) warn(`edge.tls ${edge.tls.strategy}: ${d.reason}`);
       }
     }
-    const target = args[0] ?? getInvokeCwd();
+    const positional = args.filter((a) => !a.startsWith("-"));
+    const held = args.includes("--held");
+    // Bare `validate` in the distribution root (which has no manifest of its
+    // own), or `--held`: every manifest the distribution uses.
+    if (held || (positional.length === 0 && this.invokedInDistRoot())) {
+      this.validateEverything(held);
+      return;
+    }
+    const target = positional[0] ?? getInvokeCwd();
     const fs = await import("fs");
     const nodePath = await import("path");
 
@@ -4265,6 +4371,78 @@ class DenCLI {
     printValidation(label, result);
     console.log();
     if (!result.valid) process.exit(1);
+  }
+
+  /** Whether the CLI was run from the distribution root (real paths). */
+  private invokedInDistRoot(): boolean {
+    const real = (p: string) => {
+      try {
+        return fs.realpathSync(nodePath.resolve(p));
+      } catch {
+        return nodePath.resolve(p);
+      }
+    };
+    return (
+      real(getInvokeCwd()) === real(getDistRoot()) &&
+      !fs.existsSync(nodePath.join(getDistRoot(), product().manifestYml))
+    );
+  }
+
+  /** `validate` (bare, in the root) / `validate --held`: see validate-all.ts. */
+  private validateEverything(held: boolean): void {
+    const results = validateAll({ held, validate: validateManifestLayers });
+    console.log();
+    if (results.length === 0) {
+      console.log(
+        chalk.yellow(
+          held
+            ? `  No manifests in ${heldManifestsDir()}.`
+            : "  No repos in any workspace and no held manifests.",
+        ),
+      );
+      console.log();
+      return;
+    }
+    const width = Math.max(...results.map((r) => r.repo.length));
+    for (const r of results) {
+      const where = r.checkout ?? "manifests/";
+      const ws = r.workspaces.length ? `  [${r.workspaces.join(", ")}]` : "";
+      const note = r.note ? `  (${r.note})` : "";
+      const head = `${r.repo.padEnd(width)}  ${r.source.padEnd(15)} ${where}${ws}${note}`;
+      if (r.missing) {
+        console.log(chalk.yellow(`  ⚠  ${head}`));
+        continue;
+      }
+      const warnings = r.result.layers.reduce(
+        (n, l) => n + l.result.warnings.length,
+        0,
+      );
+      if (r.result.valid && warnings === 0) {
+        console.log(chalk.green(`  ✓  ${head}`));
+        continue;
+      }
+      console.log(
+        r.result.valid
+          ? chalk.yellow(`  ⚠  ${head}`)
+          : chalk.red(`  ✗  ${head}`),
+      );
+      for (const l of r.result.layers)
+        if (!l.result.valid || l.result.warnings.length)
+          printValidation(
+            `    ${l.file ?? "merged"}`,
+            l.result,
+            l.layer === "merged" ? "merged" : l.layer,
+          );
+    }
+    const failed = results.filter((r) => !r.missing && !r.result.valid).length;
+    const missing = results.filter((r) => r.missing).length;
+    console.log();
+    console.log(
+      `  ${plural(results.length, held ? "manifest" : "repo")}: ${failed ? chalk.red(`${failed} failed`) : chalk.green("all valid")}` +
+        (missing ? chalk.yellow(`, ${missing} with no manifest to check`) : ""),
+    );
+    console.log();
+    if (validateAllFailed(results)) process.exitCode = 1;
   }
 
   // ── den local-dev ───────────────────────────────────────────────────────
@@ -4350,7 +4528,9 @@ class DenCLI {
       "  relocate <repo> <path>  Point a moved checkout's workspace entries at its new path",
     );
     console.log();
-    console.log("  setup [service...]   Run make setup for services");
+    console.log(
+      "  setup [service...]   Run make setup for services (--plan: orgs + clone URLs, no changes)",
+    );
     console.log("  sync [service...]    Check for updates and offer to pull");
     console.log(
       "  create <name> [dir]  Scaffold a new distribution of your own (--title, --cli, --env-prefix)",
@@ -4386,6 +4566,9 @@ class DenCLI {
     console.log("  workspace delete <n>     Delete a workspace");
     console.log(
       "  workspace code [n]       Open workspace in VS Code (generates .code-workspace)",
+    );
+    console.log(
+      "  org list [--org <id>]    List orgs: label, workspaces, default, warnings",
     );
     console.log("\nTest commands:");
     console.log(

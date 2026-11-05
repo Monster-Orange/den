@@ -189,7 +189,7 @@ const COMMAND_FLAGS: Record<string, readonly string[]> = {
   ],
   restart: ["-A", "--app", "-n", "--dry-run"],
   logs: [],
-  setup: ["-f", "--force"],
+  setup: ["-f", "--force", "--plan"],
   sync: [],
 };
 

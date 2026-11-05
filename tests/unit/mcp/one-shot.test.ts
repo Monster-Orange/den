@@ -134,4 +134,24 @@ describe("runOneShot", () => {
     // Only the refusal report; nothing reached an action route.
     expect(h.calls.map((c) => c.path)).toEqual(["/api/activity"]);
   });
+
+  it("--call validates arguments against the tool's schema, strictly (exit 2, nothing called)", async () => {
+    const h = harness(cfg(["run_tests"]));
+    const typo = await runOneShot(
+      { kind: "call", tool: "status", args: { wrkspace: "x" } },
+      h.opts,
+    );
+    expect(typo).toBe(2);
+    expect(h.err.join("")).toMatch(/--call status: invalid arguments/);
+    expect(h.err.join("")).toMatch(/wrkspace/);
+    expect(h.err.join("")).toMatch(/takes: /);
+    const badEnum = await runOneShot(
+      { kind: "call", tool: "run_tests", args: { pillar: "nope" } },
+      h.opts,
+    );
+    expect(badEnum).toBe(2);
+    expect(h.err.join("")).toMatch(/pillar: /);
+    expect(h.out).toEqual([]);
+    expect(h.calls).toEqual([]);
+  });
 });
