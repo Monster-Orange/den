@@ -91,7 +91,8 @@ function gitCapture(cmd: string, cwd?: string): string {
   }).trim();
 }
 
-function ghCloneUrl(ghSlug: string): string {
+/** The HTTPS URL a managed clone of `ghSlug` is made from. */
+export function ghCloneUrl(ghSlug: string): string {
   return `https://github.com/${ghSlug}.git`;
 }
 

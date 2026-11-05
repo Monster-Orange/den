@@ -18,6 +18,7 @@ import {
   mergeUserConfig,
   isLocalEnabled,
   readReleaseConfig,
+  readExplicitReleaseOrg,
   writeUserReleaseConfig,
   isProductionEnv,
   productionEnvs,
@@ -293,6 +294,27 @@ describe("release.deploy", () => {
     const [, data] = mockWriteFileSync.mock.calls[0];
     expect(String(data)).toContain("staggerSeconds: 5");
     expect(String(data)).not.toContain("deploy");
+  });
+});
+
+// REL-1: an explicit release.org is told apart from the github_org fallback.
+describe("readExplicitReleaseOrg", () => {
+  it("is unset when only github_org is, though readReleaseConfig still falls back", () => {
+    mockFiles({ "config/den.yml": "github_org: acme\n" });
+    expect(readExplicitReleaseOrg()).toBeUndefined();
+    expect(readReleaseConfig().org).toBe("acme");
+  });
+
+  it("is the team release.org, and user.yml's over it", () => {
+    mockFiles({
+      "config/den.yml": "github_org: acme\nrelease:\n  org: globex\n",
+    });
+    expect(readExplicitReleaseOrg()).toBe("globex");
+    mockFiles({
+      "config/den.yml": "github_org: acme\nrelease:\n  org: globex\n",
+      "config/local/user.yml": "release:\n  org: initech\n",
+    });
+    expect(readExplicitReleaseOrg()).toBe("initech");
   });
 });
 

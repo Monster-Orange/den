@@ -104,6 +104,24 @@ describe("pingHttp — ok mapping by status", () => {
     expect(r.ok).toBe(true);
   });
 
+  it("returns ok=false for the edge's own 404 (no route: a stopped service behind Traefik)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      status: 404,
+      text: async () => "404 page not found\n",
+    } as unknown as Response);
+    const r = await pingHttp("http://app.example.test/healthz");
+    expect(r).toEqual({ ok: false, status: 404, error: "no route (edge 404)" });
+  });
+
+  it("returns ok=true for a service's own 404 body", async () => {
+    mockFetch.mockResolvedValueOnce({
+      status: 404,
+      text: async () => '{"error":"not found"}',
+    } as unknown as Response);
+    const r = await pingHttp("http://app.example.test/healthz");
+    expect(r).toEqual({ ok: true, status: 404 });
+  });
+
   it("returns ok=false for 500", async () => {
     mockFetch.mockResolvedValueOnce(mockResponse(500));
     const r = await pingHttp("http://localhost:8080/healthz");

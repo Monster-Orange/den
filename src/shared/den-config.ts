@@ -636,6 +636,8 @@ export interface ResolvedWorkspaceBlueprint {
   branch: string;
   autostartOff: string[];
   focus: boolean;
+  /** `org:` (ORG-1a): the org this workspace belongs to, when the blueprint names one. */
+  org?: string;
 }
 
 /** Which blueprint shape the distribution uses, and its workspaces. */
@@ -644,7 +646,7 @@ export interface WorkspaceBlueprints {
   workspaces: ResolvedWorkspaceBlueprint[];
 }
 
-const BLUEPRINT_KEYS = ["branch", "repos", "autostart_off"];
+const BLUEPRINT_KEYS = ["branch", "repos", "autostart_off", "org"];
 
 function blueprintStrings(where: string, key: string, v: unknown): string[] {
   if (v === undefined) return [];
@@ -674,12 +676,15 @@ function resolveBlueprint(
     throw new Error(`${where}.branch must be a branch name`);
   if (bp.focus !== undefined && typeof bp.focus !== "boolean")
     throw new Error(`${where}.focus must be true or false`);
+  if (bp.org !== undefined && (typeof bp.org !== "string" || !bp.org.trim()))
+    throw new Error(`${where}.org must be an org id (a key of orgs:)`);
   return {
     name,
     repos: blueprintStrings(where, "repos", bp.repos),
     branch,
     autostartOff: blueprintStrings(where, "autostart_off", bp.autostart_off),
     focus: bp.focus === true,
+    ...(typeof bp.org === "string" ? { org: bp.org.trim() } : {}),
   };
 }
 
@@ -862,6 +867,38 @@ export function readReleaseConfig(): ReleaseConfig {
   cfg = mergeReleaseLayer(cfg, readUserConfig().release);
   if (!cfg.org) cfg.org = den.github_org;
   return cfg;
+}
+
+/**
+ * `release.org` as configured (den.yml, then user.yml), without the
+ * `github_org` fallback readReleaseConfig fills in. An explicit value is the
+ * release owner of every repo (REL-1); unset, each repo's own catalog owner is.
+ */
+export function readExplicitReleaseOrg(): string | undefined {
+  const den = mergeReleaseLayer(
+    DEFAULT_RELEASE_CONFIG,
+    readDenConfig().release,
+  );
+  const org = mergeReleaseLayer(den, readUserConfig().release).org;
+  return typeof org === "string" && org.trim() ? org.trim() : undefined;
+}
+
+/**
+ * The GitHub owner a repo is released from (REL-1): an explicit
+ * `release.org` wins, then the repo's non-empty catalog owner, then
+ * `github_org`. "" when none is known.
+ */
+export function releaseOwnerFor(opts: {
+  explicitOrg?: string;
+  catalogOwner?: string;
+  githubOrg?: string;
+}): string {
+  return (
+    opts.explicitOrg?.trim() ||
+    opts.catalogOwner?.trim() ||
+    opts.githubOrg?.trim() ||
+    ""
+  );
 }
 
 /**

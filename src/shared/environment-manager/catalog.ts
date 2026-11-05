@@ -55,7 +55,8 @@ export function upsertCatalogEntry(
 /**
  * GitHub slug to clone `repoName` from.
  *
- * The catalog's `gh` when set, else the conventional `<github_org>/<repo>` —
+ * The catalog's `gh` when set, else the conventional `<org>/<repo>`, where
+ * `<org>` is the workspace's resolved org (`github_org` when none is given) —
  * the same rule `seedDefaultWorkspace` uses. Entries written by the
  * dev-managed add flow carry `gh: ""`, so a repo can be IN the catalog and
  * still have no slug; deriving it (rather than refusing to clone) is what lets
@@ -64,10 +65,16 @@ export function upsertCatalogEntry(
 export function resolveRepoGhSlug(
   repoName: string,
   catalog: ServiceCatalog = readCatalog(),
+  /**
+   * The owner for a repo with no `gh`: the workspace's resolved org
+   * (`() => githubOrgFor(ws)`, ORG-1a). Called only when needed, so a repo
+   * with a slug never needs an org. Defaults to `github_org`.
+   */
+  owner: () => string = () => requireGithubOrg(),
 ): string {
   const gh = catalog[repoName]?.gh?.trim();
   if (gh) return gh;
-  return `${requireGithubOrg()}/${repoName}`;
+  return `${owner()}/${repoName}`;
 }
 
 export function removeCatalogEntry(repoName: string): void {

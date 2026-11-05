@@ -45,7 +45,15 @@ beforeAll(async () => {
   cert = fs.readFileSync(path.join(dir, "cert.pem"), "utf-8");
   server = https.createServer(
     { key: fs.readFileSync(path.join(dir, "key.pem")), cert },
-    (_req, res) => res.writeHead(200).end("ok"),
+    (req, res) => {
+      if (req.url === "/edge-404")
+        res
+          .writeHead(404, { "content-type": "text/plain; charset=utf-8" })
+          .end("404 page not found\n");
+      else if (req.url === "/own-404")
+        res.writeHead(404).end('{"error":"not found"}');
+      else res.writeHead(200).end("ok");
+    },
   );
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   port = (server.address() as AddressInfo).port;
@@ -71,5 +79,16 @@ describe("https health checks", () => {
     const r = await pingHttp(`https://${NAME}:${port}/healthz`);
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/certificate|self.signed/i);
+  });
+
+  it("the edge's own 404 (no route) is down; the service's own 404 is up", async () => {
+    __setExtraCaForTests([cert]);
+    await expect(pingHttp(`https://${NAME}:${port}/edge-404`)).resolves.toEqual(
+      { ok: false, status: 404, error: "no route (edge 404)" },
+    );
+    await expect(pingHttp(`https://${NAME}:${port}/own-404`)).resolves.toEqual({
+      ok: true,
+      status: 404,
+    });
   });
 });

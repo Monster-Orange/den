@@ -19,13 +19,16 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { GH_API_TIMEOUT_MS } from "../../shared/constants.js";
 import {
+  readExplicitReleaseOrg,
   readReleaseConfig,
+  releaseOwnerFor,
   type ReleaseConfig,
   type ReleaseRepo,
   type ResolvedReleaseTarget,
   resolveReleaseTarget,
 } from "../../shared/den-config.js";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
+import { orgOf } from "../../shared/manifest/service-links.js";
 import { listReposWithManifests } from "../../shared/manifest/workspace-manifests.js";
 
 import { product } from "../../shared/product.js";
@@ -262,13 +265,23 @@ export class ReleaseService {
     };
   }
 
-  private org(cfg = this.config()): string {
-    return cfg.org ?? "";
+  /**
+   * The owner a repo is released from (REL-1): an explicit `release.org`
+   * (den.yml or user.yml) wins; otherwise the repo's own non-empty catalog
+   * owner, so a client org's repo releases from its own org; `github_org`
+   * (readReleaseConfig's fallback for `cfg.org`) last.
+   */
+  private ownerFor(repo: string, cfg: ReleaseConfig): string {
+    return releaseOwnerFor({
+      explicitOrg: readExplicitReleaseOrg(),
+      catalogOwner: orgOf(repo, readCatalog()),
+      githubOrg: cfg.org,
+    });
   }
 
   slug(repo: string, cfg = this.config()): string {
     const gh = cfg.repos.find((r) => r.name === repo)?.gh;
-    return gh && gh.includes("/") ? gh : `${this.org(cfg)}/${repo}`;
+    return gh && gh.includes("/") ? gh : `${this.ownerFor(repo, cfg)}/${repo}`;
   }
 
   /**

@@ -437,6 +437,11 @@ import {
 } from "./http-helpers.js";
 import { orgOf, listOrgs } from "../../shared/manifest/service-links.js";
 import {
+  readOrgContext,
+  resolveAllWorkspaceOrgs,
+  withOrgMembership,
+} from "../../shared/environment-manager/workspace-org.js";
+import {
   readLatestSummary,
   securityReportsDir,
 } from "../../pillars/security/findings.js";
@@ -684,9 +689,18 @@ async function handleRequest(
 
   // ── API: environments ──────────────────────────────────────────────────────
   // Orgs the catalog's repos belong to, with config/den.yml display names.
+  // Each entry also says whether it is the default org (`github_org`) and
+  // which workspaces on this machine belong to it (ORG-1a). Nothing else
+  // changes: same entries, order and fields (ORG-SPEC C3).
   if (pathname === "/api/orgs") {
-    const catalog = readCatalog();
-    const orgs = listOrgs(catalog, readDenConfig().orgs ?? {});
+    const ctx = readOrgContext();
+    const catalog = ctx.catalog;
+    const orgs = withOrgMembership(
+      listOrgs(catalog, ctx.config.orgs ?? {}),
+      resolveAllWorkspaceOrgs(),
+      ctx.file,
+      ctx.config,
+    );
     if (url.searchParams.get("repos") !== "1") return sendJson(res, orgs);
     const repos = Object.fromEntries(
       Object.keys(catalog).map((r) => [r, orgOf(r, catalog)]),
@@ -2375,7 +2389,14 @@ async function handleRequest(
   // ── API: den config ────────────────────────────────────────────────────
   if (pathname === `/api/${product().cli}/config` && req.method === "GET") {
     // `org` resolved (id defaults to edge.org) for the header's org label.
-    return sendJson(res, { ...readDenConfig(), org: readOrg() });
+    const config = readDenConfig();
+    // `default_org` (ORG-1a) is the default work org, `github_org`; `org`
+    // stays the instance org (readOrg).
+    return sendJson(res, {
+      ...config,
+      org: readOrg(),
+      default_org: config.github_org?.trim() || null,
+    });
   }
 
   // ── API: server info + staleness (drives the header "stale server" pill) ────

@@ -686,6 +686,13 @@ export interface WorkspaceConfig {
    * newly JOIN the blueprint are added.
    */
   seeded_repos?: string[];
+  /**
+   * The org this workspace belongs to (ORG-1a), set per machine. Wins over
+   * the blueprint's `org:`; when neither is set the org is inferred from the
+   * repos' catalog owners, then `github_org`. Never written by Den: the
+   * resolved org is computed on read (see workspace-org.ts).
+   */
+  org?: string;
 }
 
 export interface WorkspacesFile {

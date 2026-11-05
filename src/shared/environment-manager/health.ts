@@ -231,6 +231,28 @@ function trustContext(): { context: tls.SecureContext; agent: https.Agent } {
 }
 
 /**
+ * The body a reverse proxy sends for a host it has no route for: Traefik's
+ * default 404 (Go's http.NotFound). Behind a shared edge a stopped service
+ * answers with this instead of refusing the connection, so a 4xx-means-up
+ * rule would show it healthy. A service's own 404 carries its own body.
+ */
+const EDGE_NO_ROUTE_BODY = "404 page not found";
+
+/** Up: 2xx, or a 4xx from the service itself (auth/route proves it answers). */
+function statusOk(status: number, body404?: string): boolean {
+  if (status === 404 && body404?.trim() === EDGE_NO_ROUTE_BODY) return false;
+  return status < 300 || (status >= 400 && status < 500);
+}
+
+/** The PingResult for `status`, naming an edge 404 as "no route". */
+function statusResult(status: number, body404?: string): PingResult {
+  const ok = statusOk(status, body404);
+  return ok || status !== 404
+    ? { ok, status }
+    : { ok, status, error: "no route (edge 404)" };
+}
+
+/**
  * HTTPS check. Connects to the c-ares-resolved IP (see above) but keeps the
  * hostname for SNI and certificate verification; rewriting the URL to the IP,
  * as plain HTTP does, makes every TLS check fail.
@@ -276,11 +298,23 @@ async function pingHttps(parsed: URL, timeoutMs: number): Promise<PingResult> {
       },
       (res) => {
         const status = res.statusCode ?? 0;
-        res.resume(); // discard the body
-        done({
-          ok: status < 300 || (status >= 400 && status < 500),
-          status,
+        if (status !== 404) {
+          res.resume(); // discard the body
+          done({ ok: statusOk(status), status });
+          return;
+        }
+        // A 404: read a little of the body to tell the edge's own "no
+        // route" from the service's 404.
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (c: string) => {
+          if (body.length < 64) body += c;
+          if (body.length >= 64) res.destroy();
         });
+        const finish = () => done(statusResult(status, body));
+        res.on("end", finish);
+        res.on("close", finish);
+        res.on("error", finish);
       },
     );
     const timer = setTimeout(() => {
@@ -334,11 +368,20 @@ async function pingOnce(
     // (e.g. VPN / /etc/hosts) returning 301 on port 80 for services that actually run
     // on a different port — the previous `< 500` check showed those as green.
     // 5xx = unhealthy (service errored).
-    const ok = res.status < 300 || (res.status >= 400 && res.status < 500);
-    // Discard the body: only the status matters, and unconsumed bodies pin
-    // sockets in the long-lived web server (one leak per poll adds up).
+    // A 404 may be the edge's own "no route" (see EDGE_NO_ROUTE_BODY): read
+    // a little of it. Otherwise discard the body: only the status matters,
+    // and unconsumed bodies pin sockets in the long-lived web server.
+    if (res.status === 404) {
+      let body = "";
+      try {
+        body = (await res.text()).slice(0, 64);
+      } catch {
+        /* unreadable body: judge by the status alone */
+      }
+      return statusResult(res.status, body);
+    }
     void res.body?.cancel().catch(() => {});
-    return { ok, status: res.status };
+    return { ok: statusOk(res.status), status: res.status };
   } catch (e: unknown) {
     clearTimeout(timer);
     const err = e as Error;

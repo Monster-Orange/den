@@ -8,6 +8,34 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **A workspace belongs to an org** (0.2.7-dev.2, ORG-1a). Its org is
+  `org:` on the workspace in workspaces.yml, else `org:` on the blueprint
+  workspace (`defaults.workspaces.<n>.org`, the one new blueprint key), else
+  the one catalog owner of its repos (case-insensitive; `gh: ""` ignored),
+  else `github_org`, the default org. It is computed on read, never written
+  to workspaces.yml. A config with no `org:` resolves to `github_org` as
+  before, unless all of a workspace's repos have one other owner in the
+  catalog.
+- **`<cli> org list`** (0.2.7-dev.2, ORG-1a): each org's label, its
+  workspaces on this machine, which is the default, and the org warnings.
+  `<cli> workspace list` gains an Org column; `--org <id>` filters it.
+- **Org warnings, never errors** (0.2.7-dev.2, ORG-1a, C1): a workspace
+  whose repos span several owners, an `org:` naming an owner Den does not
+  know, a repo in another owner than its workspace's org, a workspaces.yml
+  `org:` that overrides the blueprint's. Shown by `org list` and
+  `workspace list`.
+- **`<cli> setup --plan`** (0.2.7-dev.2, ORG-1a): each repo's org and clone
+  URL, and whether it is cloned, then stop. On a fresh machine it plans the
+  blueprint's workspaces; once seeded, the focused workspace. `<cli> up
+  --plan` prints the same lines for its repos. Nothing is cloned, seeded or
+  written.
+- **`GET /api/orgs` entries gain `default` and `workspaces`**, and
+  `/api/<cli>/config` gains `default_org` (0.2.7-dev.2, ORG-1a). Every
+  existing field, entry and order is unchanged; `?repos=1` still maps each
+  repo to its owner string.
+- **`<cli> register --org <id>`** (0.2.7-dev.2, ORG-1a) lists another org's
+  repos for a managed clone.
+
 - **Bare `<cli> validate` checks every manifest** (0.2.7-dev.1, from a
   consumer). In the distribution root, with no argument: each workspace repo
   once per checkout (own or held, plus any override, then the merge), the
@@ -16,8 +44,30 @@ config and manifest changes a distribution must make to move to it under
   cloned. `--held` checks `manifests/` alone, independent of the machine. A
   path argument works as before.
 
+### Changed
+
+- **A repo is released from its own org** (0.2.7-dev.2, REL-1). With no
+  `release.org`, a repo with no `gh:` in `release.repos` released from
+  `github_org`, so a client org's repo targeted the wrong owner. Its owner
+  is now an explicit `release.org` (unchanged: it still wins for every
+  repo), else the repo's non-empty catalog owner, else `github_org`.
+- **`register` lists the focused workspace's org** (0.2.7-dev.2, ORG-1a),
+  not `github_org` alone, and no longer falls back to the owner of Den's own
+  git remote (SEC-0): with no org it says how to set one.
+
 ### Fixed
 
+- **A service the edge has no route for is no longer healthy** (0.2.7-dev.2).
+  A health URL served through the edge answered the edge's own
+  `404 page not found` when the service had no route, and Den counted any
+  404 as up. That exact 404 is now down with "no route (edge 404)", over
+  HTTP and HTTPS; a 404 from the service itself is still up.
+- **A client workspace no longer clones from the default org** (0.2.7-dev.2,
+  ORG-1a). Seeding, `up` and the web sync gave a repo with no clone URL
+  `<github_org>/<repo>`; it is now `<org>/<repo>` with its workspace's org.
+- **`<cli> setup` clones a catalog entry with `gh: ""`** from its
+  workspace's org (0.2.7-dev.2), as `up` does, instead of failing on an
+  empty slug.
 - **A seed without a terminal no longer resets a workspace that has
   entries** (SEED-0). `<cli> init` and `<cli> workspace seed` from a script
   or `make` replaced every entry of the default (or blueprint) workspaces with
@@ -53,6 +103,10 @@ config and manifest changes a distribution must make to move to it under
 
 - A script that relied on a non-interactive seed resetting a changed
   workspace must pass `--reset`.
+- Optional (ORG-1a): to put a blueprint workspace in an org other than the
+  one its catalog owners give, add `org: <id>` to it under
+  `defaults.workspaces`. Pin Den 0.2.7 or later first: an older Den rejects
+  the key. Nothing else needs changing.
 
 ## [0.2.6] - 2026-11-04
 
