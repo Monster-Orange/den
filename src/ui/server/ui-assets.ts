@@ -1,7 +1,8 @@
 /**
  * Static assets the graph needs beyond the pages themselves:
  *   - the UI's own modules in public/ (UI_MODULES: the graph, the appearance
- *     controls, the version label), served like header.js;
+ *     controls, the version label, the top bar's chips and overlays),
+ *     served like header.js;
  *   - browser libraries the UI loads, served by Den's own server from
  * node_modules (never a CDN), so the UI works offline. Each is a pinned
  * dependency in package.json. npm hoists Den's dependencies into a
@@ -26,6 +27,9 @@ export const UI_MODULES: readonly string[] = [
   "/health-fit.js",
   "/health-rollup.js",
   "/shell.js",
+  "/settings-registry.js",
+  "/settings-page.js",
+  "/topbar.js",
 ];
 
 /** URL path → file inside node_modules. */

@@ -102,6 +102,16 @@ let vpObserver = null;
 
 const $ = (s, el = host) => el?.querySelector(s);
 const zoomFloor = 0.35;
+/**
+ * The automatic fit (first draw, a layout change, the viewport resizing):
+ * the whole graph whenever it fits at the Fit button's floor or more, else
+ * the top of it at a readable 0.6. A fixed 0.6 floor left a graph that
+ * fitted above an empty output panel clipped once a run's output opened
+ * the panel: the viewport shrank, the re-fit stopped at 0.6, and the lower
+ * cards sat past the viewport's bottom edge, where the panel begins
+ * (a consumer's dev.18 run).
+ */
+const AUTO_FIT = "auto";
 
 bindPanel({
   model: () => M,
@@ -151,7 +161,7 @@ function loadServerPrefs() {
       store.set("prefs", prefs());
       if (JSON.stringify(prefs()) !== before && host?.isConnected) {
         syncControls();
-        render().then(() => fit(0.6));
+        render().then(() => fit(AUTO_FIT));
       }
     })
     .catch(() => {});
@@ -210,7 +220,7 @@ export function mountGraph(el, data, pageHooks) {
   loadServerPrefs();
   render().then(() => {
     if (!st.fitted) {
-      fit(0.6);
+      fit(AUTO_FIT);
       st.fitted = true;
     } else applyView();
     if (st.sel) openDetail(st.sel, true);
@@ -626,16 +636,19 @@ function zoomAt(f, cx, cy) {
   st.z = nz;
   applyView();
 }
-/** Fit the graph; automatic fits pass floor 0.6, the Fit button 0.35. */
+/** Fit the graph; automatic fits pass AUTO_FIT, the Fit button 0.35. */
 function fit(floor = zoomFloor) {
   const vp = $(".dg-vp")?.getBoundingClientRect();
   if (!vp) return;
   const w = parseFloat($(".dg-world").style.width) || 1,
     h = parseFloat($(".dg-world").style.height) || 1;
-  st.z = Math.max(
-    floor,
-    Math.min(1, (vp.width - 32) / w, (vp.height - 70) / h),
-  );
+  const need = Math.min(1, (vp.width - 32) / w, (vp.height - 70) / h);
+  st.z =
+    floor === AUTO_FIT
+      ? need >= zoomFloor
+        ? need
+        : 0.6
+      : Math.max(floor, need);
   st.tx = Math.max(16, (vp.width - w * st.z) / 2);
   st.ty = 16;
   autoFit = floor;
@@ -856,7 +869,7 @@ function wire() {
       syncControls();
       savePrefs();
       render().then(() => {
-        if (el.dataset.seg !== "density") fit(0.6);
+        if (el.dataset.seg !== "density") fit(AUTO_FIT);
         if (st.sel) keepVisible(st.sel);
       });
     }),
@@ -872,7 +885,7 @@ function wire() {
             [...M.byRepo.keys()].filter((r) => M.byRepo.get(r).length > 1),
           );
     store.set("collapsed", [...st.collapsed]);
-    render().then(() => fit(0.6));
+    render().then(() => fit(AUTO_FIT));
   });
   const find = $("[data-find]");
   find.addEventListener("input", () => {

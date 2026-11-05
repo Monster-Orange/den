@@ -205,9 +205,167 @@ config and manifest changes a distribution must make to move to it under
   (`detail.pins`), and every pin toggle on the page repaints from it.
 - **`org.title_source`** in `/api/<cli>/config` (0.3.0-dev.18; added beside
   the existing fields, ORG-SPEC C3): `org.title`, `orgs`, or `id`.
+- **A Settings page** (0.3.0-dev.19, R21): `/settings`, in the shell,
+  with the prototype's page header, sections, rows, segmented buttons,
+  swatches and navigation list, applied to every setting Den has.
+  - **Categories** on the left (a nav; the current one `aria-current`),
+    their rows on the right: Appearance, Editor & terminal, Navigation,
+    Graph, Workspace, Command line, Distribution, then any a distribution
+    or plugin registers (tagged with its `from`).
+  - **Search** (`/` focuses it) filters rows by label, description and
+    keywords; a match stays under its category's heading, empty
+    categories hide, "No settings match" shows when nothing does, and the
+    count is announced. The URL keeps `#<category>` and `?q=`, so a
+    setting can be linked to; reload and back/forward work.
+  - **Every row shows its scope**: User (config/local/user.yml),
+    Workspace (that workspace in config/local/workspaces.yml) or
+    Distribution (read-only). The Workspace rows follow the Workspace you
+    view; with All active, the section asks which workspace.
+  - **Writes go only to per-user, gitignored state**, as before:
+    `POST /api/settings` (user.yml) and `POST /api/workspaces/settings`
+    (workspaces.yml), with the same keys. Nothing writes except an
+    explicit change: a control writes on its change (the per-workspace
+    editor on Save, as before) and says "✓ Saved". Loading, searching,
+    moving between categories and changing the hash or query write
+    nothing. The page never writes the distribution's config.
+  - **Distribution rows are read-only**: the product name, GitHub org, org
+    labels, web port, environments, edge domain and the org default theme,
+    each with "Set by the distribution in config/<file>.yml". Your own
+    override of the same thing (your theme) is a separate User row.
+    `GET /api/settings` gains `distribution` (read from the org config
+    only), `user_web_port`, `local_dev` and `cli_tabs` (read-only).
+  - **Today's settings moved in, unchanged in storage**: Default IDE,
+    Per-language IDE and Default terminal (Local Dev's ⚙ panel); mode and
+    theme (◐ ▾ stays as a shortcut, and both drive the same prefs and
+    repaint each other); the graph prefs; the per-workspace editor (Local
+    Dev's workspace Settings tab). `log_window_lines`, `local_dev`,
+    `cli_tabs` and your `web.port` show read-only with the command that
+    sets them.
+  - **Navigation** (new): hide or show each rail page and move it within
+    its group; reorder and unpin pins; collapse the rail. Stored in
+    user.yml `shell` as `hidden` and `order` (page ids), beside `pins` and
+    `collapsed`. A view preference only: no edge route, container, daemon,
+    pid or restart changes (the theme-switch isolation test covers it).
+  - **The old entry points land on the matching category**: Local Dev's
+    ⚙ (`#editor`), its workspace Settings tab (`#workspace`, that
+    workspace), `/local-dev?settings=1` (redirected to `#editor`), the
+    rail's Settings item and "All settings" in ◐ ▾ (`#appearance`). The
+    old panel is gone. Arriving at a category (a link, the hash,
+    back/forward) marks it current and puts focus on its heading.
+- **The SETTINGS registry** (0.3.0-dev.19, R21), beside NAV and GROUPS on
+  `window.denShell` (and through `window.denShellQueue`):
+  `registerSettingsCategory({ id, label, order, description?, from? })`
+  and `registerSetting({ id, category, label, description, keywords,
+  scope: user|workspace|distribution, control, read(ctx), write?(value,
+  ctx), keys? })`; `settings()`, `settingsCategories()`; `den:settings`
+  fires on any change. A distribution row with a `write` is refused.
+  Controls: `seg`, `radio`, `select`, `number`, `toggle`, `text`,
+  `readonly` and `custom` (`render(el, ctx, { value, save })`). Den's own
+  rows are in `public/settings-registry.js`; a test fails if a key
+  `POST /api/settings` accepts has no row.
+- **`denShell.setNavPrefs({ hidden?, order? })`, `setPins(ids)`,
+  `setCollapsed(bool)` and `orderedNav()`** (0.3.0-dev.19): the rail's
+  Navigation prefs, saved to `/api/settings` `shell`.
+- **The top bar's search, status, runs and lock** (0.3.0-dev.20, R5, R6,
+  R7, R8, R10, R15, R17, R18). It ships together with the Settings page
+  (dev.19, never released on its own): the palette finds every setting,
+  and the user menu's "All settings" opens it. The bar now reads ☰, brand, scope, search,
+  then the Status, Runs and lock chips, "What's new" and the ◐ ▾ menu, at
+  the prototype's sizes (`scripts/shell-fidelity.mjs` measures it). The
+  search field gives way first, so the scope's parts never run into each
+  other; below 960px the scope's keys hide (860px in the prototype, whose
+  chips are narrower), below 860px the chips keep only their dots and
+  icons, and below 720px the scope hides and the search field is an icon.
+  - **Search and the ⌘K palette.** "Search pages, services, actions…"
+    (⌘K or Ctrl+K anywhere, or a click) opens a palette: pages, apps,
+    services with their health dot, Restart and Logs for each service,
+    Appearance (System, Dark, Light) and every installed theme. It ranks a
+    label's prefix, then a word in it, then anywhere, then keywords and
+    the kind, then the letters in order; every word must match. ↑/↓ move,
+    Enter runs, Escape closes and gives focus back. It is a modal dialog
+    with a combobox and a listbox (`aria-activedescendant`).
+  - **`denShell.registerCommand({id, label, keywords, kind, run})`**
+    (also from `window.denShellQueue`) adds a palette row; `kind` is
+    `page`, `app`, `service`, `action` or `setting`. Every row of the
+    SETTINGS registry (Den's, a distribution's or a plugin's) is a
+    `setting` row on every page: "terminal" finds Default terminal, and
+    Enter opens `/settings?q=<label>#<category>`.
+    `unregisterCommand(id)` and `commands()` too. `denShell.openMenu(btn,
+    items)` opens a `.pop` menu any script can use.
+  - **The status chip** replaces the health dot row and its "+N" chip:
+    "All N healthy", or "ok/N healthy · k down" with a bad border, from the
+    same rollup as the rail's Services badge. It shows "Checking…" until
+    the first cycle is in and paints once: no partial red on a cold load.
+    A pending check is pending, never down.
+  - **The status drawer** (the chip opens it): a right-hand modal panel,
+    focus on ✕, Escape back to the chip. "Needs attention" has one card
+    per down service, with what was checked, the error and when, and
+    Start, Logs and Pin; "Everything" lists each application ok/N, each
+    service with its time in ms. What the row's tooltips said is in each
+    row's title.
+  - **The Runs chip** counts the runs this page started (service and
+    workspace commands, syncs, test runs, deploys; not log tails), with a
+    pulse while one runs. Until the output dock (dev.21) it shows the
+    page's own output pane (marked `data-den-output`), else links to the
+    page of the last run.
+  - **The lock chip** (🔒 Locked / 🔓 Unlocked) holds the admin-password
+    form that was Local Dev's sudo banner, with Save to 1Password, in a
+    popover: "Den asks once per session. Agents can't unlock." It is the
+    one unlock on every page; the banner is gone. Local Dev still asks
+    1Password for a stored password on load; other pages ask only when
+    the popover opens. Start and Restart from the drawer or the palette
+    follow the same lock rule, then run on Local Dev (which runs them on
+    arrival when you are on another page).
+  - **The user menu** (◐ ▾) is the prototype's `.pop`: Appearance, Theme
+    and "All settings" (`/settings#appearance`), and a hidden slot for
+    Language. Its ◐ ▾ glyphs are hidden from screen readers; its name is
+    "Appearance". Opening any of these overlays writes
+    nothing; switching appearance or theme from the menu or the palette
+    writes user.yml `appearance` only (the theme-switch isolation test
+    covers it).
+  - `header.js` exports `requireUnlock`, `isUnlocked`, `onLockChange`,
+    `setServiceRunner` and `takePendingAction` for pages.
+  - **One h1 per page**: the brand title in the bar is a span now, not an
+    h1, so a page's own heading is its one. A page with none (Services,
+    Logs, …) gets a visually hidden h1 named from its title.
 
 ### Fixed
 
+- **The rail's Settings item opens Settings** (0.3.0-dev.19): in dev.18 it
+  went to `/local-dev?settings=1`, which nothing read, so it landed on
+  Local Dev. It now goes to `/settings`, and the old URL redirects there.
+  Plain `/settings` opens at the top, on the title and the search box; a
+  link that names a category (`/settings#editor`) scrolls to it and puts
+  focus on its heading.
+- **The rail's × keeps focus in the rail** (0.3.0-dev.19, SA's dev.18
+  run), as Delete does: the next pinned row, else the previous one, else
+  the first item (Enter on "Unpin <id>" dropped focus to the top of the
+  document). One function for both.
+- **The narrow rail is a modal drawer** (0.3.0-dev.19, SA's dev.18 run).
+  Below 720px, ☰ moves focus into the rail (the current page), makes the
+  top bar and the page `inert` behind a scrim, and keeps Tab inside;
+  Escape or a click on the scrim closes it, sets `aria-expanded` back and
+  returns focus to ☰ (Escape did nothing before).
+- **Names screen readers read** (0.3.0-dev.19, SA's dev.18 run): a rail
+  group is named by its label alone (`aria-labelledby` points at the label,
+  not the heading with its tag; Chrome read "XGlobex"); a tagged menu
+  row reads "default, focus", not "defaultfocus"; the ✓ on a checked menu
+  row is drawn with no alt text (`aria-checked` says it); ◐ ▾'s glyphs are
+  hidden from readers. A scope button's `aria-controls` names its menu
+  only while the menu is open.
+- **A page registered before its group no longer warns** (0.3.0-dev.19,
+  a consumer's dev.18 run). Queuing a page before its group is a legitimate
+  order; the warning now waits until the queue has drained and a tick has
+  passed after `den-shell:ready`, and fires only for a group that is still
+  missing (the same for a setting and its category).
+- **Opening a run's output no longer hides the lowest graph cards**
+  (0.3.0-dev.19, a consumer's dev.18 run). Automatic fits (first draw, layout
+  changes, and the re-fit as the output panel opens) now show the whole
+  graph whenever it fits at 35% zoom, the Fit button's limit; only a graph
+  too big for that starts at its top at 60%. The panel already had its
+  own room below the graph: stopping the fit at 60% cut the lowest cards
+  off at the graph's bottom edge, where the panel begins, so a click
+  landed on the panel.
 - **The ORG label is the org's name, not its id** (0.3.0-dev.18). With no
   `org.title` in the org config, the label was the id (`edge.org`). It is
   now `org.title`, then the `orgs:` label of `github_org` (the name the
@@ -438,6 +596,12 @@ config and manifest changes a distribution must make to move to it under
   `plugin list` and `plugin validate`: give it a manifest or move it out of
   `plugins/`. A theme added from a `file://` path (0.3.0-dev.2 warned) stays
   listed, but re-add it from its published URL before committing the lock.
+- 0.3.0-dev.20: the header's health row (`#health`) and Local Dev's
+  `#sudo-banner` are gone, and so are `planRow`, `fitPlan`, `moreChip`,
+  `mountMoreChip`, `openMoreList` and `closeMoreList` in
+  `public/health-fit.js`. A distribution page that read them reads the
+  `<cli>:health-update` event (unchanged) or the status chip (`#den-status`)
+  instead, and unlocks with `requireUnlock()` from `/header.js`.
 - 0.3.0-dev.8: a `den-theme.json` used as a plugin needs an `author`
   (`theme new` sets one). A plugin's `den` range is now enforced: write
   `>=0.3.0-0 <0.4.0` to admit Den's 0.3.0 prereleases, because `>=0.3.0`

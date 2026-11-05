@@ -1,6 +1,9 @@
 /**
- * Appearance: the header's mode (System / Dark / Light) and theme controls,
- * and the active theme's mark at the start of the header.
+ * Appearance: the user menu (R10, ◐ ▾ at the end of the top bar: a .pop
+ * menu with Appearance (System / Dark / Light), Theme (the installed
+ * themes), a hidden Language slot (dev.23) and All settings), the same
+ * choices as ⌘K palette commands (R17), and the active theme's mark at the
+ * start of the header.
  *
  * A choice is saved to /api/settings (`appearance`, user.yml) and applied
  * without a reload: data-mode on <html>, /theme.css swapped for a fresh
@@ -13,6 +16,9 @@
  * own (appearance.theme null), so you follow the org config's brand.theme.
  * Picking the theme that is the org default stores null too (the server
  * does that), so you keep following it.
+ *
+ * The Settings page (R21) drives the same prefs through setAppearance; any
+ * change, from either, fires `den:appearance` on window and both repaint.
  */
 
 /** The mode to draw in: yours, else the system's, else the theme's, else dark. */
@@ -152,6 +158,8 @@ function reloadThemeCss() {
   const done = () => {
     old?.remove();
     next.id = "theme-css";
+    // The new tokens are in: swatches and the like re-read them.
+    changed("css");
   };
   next.onload = done;
   next.onerror = done;
@@ -172,6 +180,73 @@ async function loadThemes() {
   return data;
 }
 
+/** A copy of what this module knows: themes, your prefs, the org default. */
+export function appearanceState() {
+  return {
+    mode: st.mode,
+    defaultMode: st.defaultMode,
+    themes: st.themes.slice(),
+    active: st.active,
+    prefsTheme: st.prefsTheme,
+    orgDefault: st.orgDefault,
+    effectiveMode: currentMode(),
+  };
+}
+
+function changed(what) {
+  try {
+    window.dispatchEvent(
+      new CustomEvent("den:appearance", { detail: { what } }),
+    );
+  } catch {
+    /* no CustomEvent */
+  }
+}
+
+/** Load the themes and prefs if nothing has yet (the Settings page). */
+export async function ensureAppearance() {
+  if (!st.themes.length) await loadThemes();
+  return appearanceState();
+}
+
+/**
+ * Change mode and/or theme ({ mode?, theme? }; theme "" or null is the org
+ * default), as the ◐ menu does: save to /api/settings `appearance`, apply
+ * without a reload, repaint the menu, fire `den:appearance`. Throws when
+ * the server refuses (nothing changes then).
+ */
+export async function setAppearance(patch) {
+  const prev = st.mode;
+  if (patch.mode !== undefined) {
+    st.mode = patch.mode;
+    applyMode();
+  }
+  try {
+    await save(patch);
+  } catch (err) {
+    st.mode = prev;
+    applyMode();
+    syncMenu();
+    changed("prefs");
+    throw err;
+  }
+  if (patch.theme !== undefined) {
+    await loadThemes();
+    applyMode();
+    reloadThemeCss();
+  }
+  syncMenu();
+  changed("prefs");
+}
+
+/**
+ * Repaint after a change elsewhere: the user menu is drawn from the state
+ * each time it opens, so only the palette's Theme rows need redoing.
+ */
+function syncMenu() {
+  registerCommands();
+}
+
 async function save(patch) {
   const r = await fetch("/api/settings", {
     method: "POST",
@@ -186,31 +261,6 @@ function injectStyles() {
   const s = document.createElement("style");
   s.id = "appearance-styles";
   s.textContent = `
-    /* The top bar never pushes the appearance control off-screen: it sits
-       at the far right and never shrinks; the health dots give way first
-       (the pages are in the shell's rail, shell.js). */
-    header, .topbar { min-width: 0; }
-    /* The health row takes the header's free space (never its content's
-       width, so laying it out can't resize it); nav and ◐ keep theirs. */
-    header > .health, .topbar > .health { min-width: 0; flex: 1 1 0; overflow: hidden; }
-    /* A page's own spacer would split that free space with the row. */
-    header:has(> .health) > .h-spacer, header:has(> .health) > .spacer,
-    .topbar:has(> .health) > .h-spacer, .topbar:has(> .health) > .spacer {
-      flex: 0 0 0 !important; min-width: 0;
-    }
-    /* The row never squeezes the brand, the version badge or the pills
-       beside it: only the row (and the scrolling nav) gives way. */
-    header:has(> .health) > :not(.health):not(nav):not(.h-spacer):not(.spacer),
-    .topbar:has(> .health) > :not(.health):not(nav):not(.h-spacer):not(.spacer) {
-      flex-shrink: 0; min-width: max-content;
-    }
-    header > .health, .topbar > .health { flex-wrap: nowrap; }
-    header > .health > *, .topbar > .health > * { flex-shrink: 0; white-space: nowrap; }
-    /* ⟳ is a control and is never clipped: when even the compact chip
-       doesn't fit, the chip's text gives way, not the button after it. */
-    header > .health > .health-more, .topbar > .health > .health-more {
-      flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-    }
     .den-mark {
       display: inline-flex; align-items: center; justify-content: center;
       width: 18px; height: 18px; flex-shrink: 0; overflow: hidden;
@@ -225,176 +275,140 @@ function injectStyles() {
     .den-mark-square { border-radius: 2px; }
     .den-mark-rounded { border-radius: 5px; }
     .den-mark-circle { border-radius: 50%; }
-    .appearance { position: relative; flex-shrink: 0; margin-left: 8px; }
-    .appearance-btn {
-      font: 13px var(--mono); line-height: 1; color: var(--muted); background: none;
-      border: 1px solid var(--border); border-radius: var(--radius-button, 4px);
-      padding: 3px 6px; cursor: pointer;
-    }
-    .appearance-btn:hover, .appearance-btn[aria-expanded="true"] { color: var(--text); border-color: var(--border-strong); }
-    .appearance-pop {
-      position: absolute; right: 0; top: calc(100% + 6px); z-index: 1500; width: max-content;
-      display: grid; grid-template-columns: auto auto; gap: 8px 10px; align-items: center;
-      padding: 10px 12px; background: var(--raised); border: 1px solid var(--border-strong);
-      border-radius: var(--radius, 8px); box-shadow: var(--shadow);
-      font-size: 12px; color: var(--muted); white-space: nowrap;
-    }
-    .appearance-pop[hidden] { display: none; }
-    .appearance-pop select {
-      font: 12px var(--sans); color: var(--text); background: var(--surface);
-      border: 1px solid var(--border-strong); border-radius: var(--radius-button, 4px);
-      padding: 3px 4px; cursor: pointer; min-width: 120px;
-    }
-    .appearance :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-    .appearance-all {
-      grid-column: 1 / -1; color: var(--accent-text); text-decoration: none;
-      border-top: 1px solid var(--border); padding-top: 8px;
-    }
-    .appearance-all:hover { text-decoration: underline; }
-    .appearance-notice {
-      grid-column: 1 / -1; margin: 0; max-width: 260px; white-space: normal;
-      color: var(--text); font-size: 11.5px; line-height: 1.35;
-    }
-    .appearance-notice[hidden] { display: none; }
   `;
   document.head.appendChild(s);
 }
 
-function option(value, label, selected) {
-  const o = document.createElement("option");
-  o.value = value;
-  o.textContent = label;
-  o.selected = selected;
-  return o;
+/** Switch the mode: drawn at once, then saved (reverted if the save fails). */
+export async function setMode(mode) {
+  const prev = st.mode;
+  st.mode = mode;
+  applyMode();
+  registerCommands();
+  try {
+    await save({ mode });
+  } catch {
+    st.mode = prev;
+    applyMode();
+    registerCommands();
+  }
+  changed("prefs");
 }
 
-function fillThemeSelect(theme) {
-  const opts = themeOptions(st.themes, st.prefsTheme, st.orgDefault);
-  theme.replaceChildren(
-    ...opts.map((o) => option(o.value, o.label, o.selected)),
-  );
-  // A stored choice that isn't usable: select nothing, and say why.
-  if (!opts.some((o) => o.selected)) theme.selectedIndex = -1;
-  const notice = document.getElementById("appearance-theme-notice");
-  if (notice) {
-    const text = themeNotice(st.themes, st.prefsTheme, st.active);
-    notice.textContent = text || "";
-    notice.hidden = !text;
+/** Switch the theme ("" or null: follow the org default), live. */
+export async function setTheme(value) {
+  try {
+    await save({ theme: value || null });
+    await loadThemes();
+    applyMode();
+    reloadThemeCss();
+  } catch {
+    /* keep what was there */
   }
+  registerCommands();
+  changed("prefs");
+}
+
+/** The user menu's model (shell.js openMenu's items). */
+export function userMenu() {
+  const opts = themeOptions(st.themes, st.prefsTheme, st.orgDefault);
+  const notice = themeNotice(st.themes, st.prefsTheme, st.active);
+  // "All settings": the Settings page, at Appearance (R10, R21).
+  const settings = "/settings#appearance";
+  return {
+    label: "Appearance",
+    items: [
+      { heading: "Appearance" },
+      ...MODES.map(([v, l]) => ({
+        label: l,
+        checked: st.mode === v,
+        onSelect: () => setMode(v),
+      })),
+      { hr: true },
+      { heading: "Theme" },
+      ...opts.map((o) => ({
+        label: o.label,
+        checked: o.selected,
+        onSelect: () => (o.selected ? null : setTheme(o.value)),
+      })),
+      ...(notice ? [{ note: notice }] : []),
+      // Language (R19) comes in dev.23: its slot, hidden until then.
+      { slot: "lang", hidden: true },
+      { hr: true },
+      { label: "All settings", href: settings },
+    ],
+  };
+}
+
+const MODES = [
+  ["system", "System"],
+  ["dark", "Dark"],
+  ["light", "Light"],
+];
+
+/**
+ * The palette's Appearance and Theme rows (R17), registered with the
+ * shell's COMMANDS (again after each change: the theme list can change).
+ */
+function registerCommands() {
+  const sh = window.denShell;
+  if (!sh?.registerCommand) return;
+  for (const [v, l] of MODES)
+    sh.registerCommand({
+      id: `appearance-${v}`,
+      label: `Appearance: ${l}`,
+      keywords: ["mode", "appearance", "theme", v],
+      kind: "action",
+      run: () => setMode(v),
+    });
+  for (const c of sh.commands?.() ?? [])
+    if (c.id.startsWith("theme-")) sh.unregisterCommand(c.id);
+  for (const o of themeOptions(st.themes, st.prefsTheme, st.orgDefault))
+    sh.registerCommand({
+      id: `theme-${o.value || "org-default"}`,
+      label: `Theme: ${o.label}`,
+      keywords: ["theme", "brand", "colors", o.value],
+      kind: "action",
+      run: () => setTheme(o.value),
+    });
 }
 
 function render(host) {
-  let box = document.getElementById("appearance");
-  if (!box) {
-    box = document.createElement("span");
-    box.id = "appearance";
-    box.className = "appearance";
-    host.appendChild(box);
+  let btn = document.getElementById("appearance-btn");
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.id = "appearance-btn";
+    btn.type = "button";
+    host.appendChild(btn);
   }
-  box.replaceChildren();
-  // One small button at the header's far right; the two menus open below it.
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "appearance-btn";
-  // The prototype's user menu (R10): ◐ ▾.
-  btn.textContent = "◐ ▾";
-  btn.title = "Appearance: mode and theme";
+  // The prototype's user menu (R10): ◐ ▾, an .ib with a .pop menu. Its
+  // name is "Appearance"; the glyphs are hidden from readers.
+  btn.className = "den-ib appearance-btn";
+  const glyph = document.createElement("span");
+  glyph.setAttribute("aria-hidden", "true");
+  glyph.textContent = "◐ ▾";
+  btn.replaceChildren(glyph);
+  btn.title = "Appearance and theme";
   btn.setAttribute("aria-label", "Appearance");
-  btn.setAttribute("aria-haspopup", "true");
+  btn.setAttribute("aria-haspopup", "menu");
   btn.setAttribute("aria-expanded", "false");
-  btn.setAttribute("aria-controls", "appearance-pop");
-  const pop = document.createElement("div");
-  pop.id = "appearance-pop";
-  pop.className = "appearance-pop";
-  pop.setAttribute("role", "group");
-  pop.setAttribute("aria-label", "Appearance");
-  pop.hidden = true;
-  const toggle = (open) => {
-    pop.hidden = !open;
-    btn.setAttribute("aria-expanded", String(open));
-  };
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    toggle(pop.hidden);
-  });
-  document.addEventListener("click", (e) => {
-    if (!box.contains(e.target)) toggle(false);
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !pop.hidden) {
-      toggle(false);
-      btn.focus();
-    }
-  });
-  // Each select is named by its own label (and aria-label, for readers that
-  // do not follow <label for> into a popover).
-  const label = (text, control) => {
-    const l = document.createElement("label");
-    l.textContent = text;
-    l.htmlFor = control.id;
-    control.setAttribute("aria-label", text);
-    return l;
-  };
-  const mode = document.createElement("select");
-  mode.id = "appearance-mode";
-  for (const [v, l] of [
-    ["system", "System"],
-    ["dark", "Dark"],
-    ["light", "Light"],
-  ])
-    mode.appendChild(option(v, l, st.mode === v));
-  mode.addEventListener("change", async () => {
-    const prev = st.mode;
-    st.mode = mode.value;
-    applyMode();
-    try {
-      await save({ mode: st.mode });
-    } catch {
-      st.mode = prev;
-      mode.value = prev;
-      applyMode();
-    }
-  });
-  const theme = document.createElement("select");
-  theme.id = "appearance-theme";
-  // Says when your stored theme isn't in use, and why (themeNotice).
-  const notice = document.createElement("p");
-  notice.id = "appearance-theme-notice";
-  notice.className = "appearance-notice";
-  notice.setAttribute("role", "status");
-  theme.setAttribute("aria-describedby", notice.id);
-  theme.addEventListener("change", async () => {
-    try {
-      // "" is the org default: no choice of your own.
-      await save({ theme: theme.value || null });
-      await loadThemes();
-      applyMode();
-      reloadThemeCss();
-    } catch {
-      /* keep what was there */
-    }
-    fillThemeSelect(theme);
-  });
-  // "All settings": today's settings panel (R10; the Settings page is R21).
-  const all = document.createElement("a");
-  all.className = "appearance-all";
-  all.href = "/local-dev?settings=1";
-  all.textContent = "All settings";
-  pop.append(
-    label("Mode", mode),
-    mode,
-    label("Theme", theme),
-    theme,
-    notice,
-    all,
+  if (btn.dataset.wired) return;
+  btn.dataset.wired = "1";
+  btn.addEventListener("click", () =>
+    window.denShell?.openMenu?.(btn, userMenu()),
   );
-  box.append(btn, pop);
-  fillThemeSelect(theme);
+  btn.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    if (btn.getAttribute("aria-expanded") !== "true")
+      window.denShell?.openMenu?.(btn, userMenu());
+  });
 }
 
-/** The bar the control goes in: the shell's top bar (shell.js). */
+/** The bar the control goes in: the shell's user-menu slot (shell.js). */
 function headerHost() {
   return (
+    document.getElementById("den-user") ||
     document.querySelector(".den-top") ||
     document.querySelector("header") ||
     document.querySelector(".topbar")
@@ -417,6 +431,7 @@ export async function initAppearance() {
   }
   injectStyles();
   applyMode();
+  registerCommands();
   const host = headerHost();
   if (!host) return;
   render(host);

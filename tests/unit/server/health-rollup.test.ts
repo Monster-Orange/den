@@ -1,5 +1,5 @@
 /**
- * One repo health rollup for the header row, its chip, the graph and
+ * One repo health rollup for the status chip and drawer, the graph and
  * `<cli> status` (0.3.0-dev.10). Before, the header and status read only the
  * entry service, so a repo whose web answered but whose mailpit was down
  * read healthy while the graph showed the down service.
@@ -17,10 +17,11 @@ import {
   rollupRepoHealth,
   type ServiceHealthResult,
 } from "../../../src/shared/environment-manager/health.js";
+import { buildRow } from "../../../src/ui/server/public/health-fit.js";
 import {
-  buildRow,
-  moreChip,
-} from "../../../src/ui/server/public/health-fit.js";
+  problemCards,
+  statusSummary,
+} from "../../../src/ui/server/public/topbar.js";
 import { repoRollup } from "../../../src/ui/server/public/graph-model.js";
 
 const sig = (service: string, ok: boolean | null, isEntrypoint = false) => ({
@@ -155,12 +156,16 @@ describe("the header, the chip, the graph and status agree (one service down)", 
     const arbor = flat.find((r: { repo: string }) => r.repo === "arbor");
     expect(arbor.state).toBe("degraded");
     expect(arbor.rollup.down).toEqual(["mailpit"]);
-    // It sorts ahead of the healthy repo, and a hidden one counts in the chip.
+    // It sorts ahead of the healthy repo, and the status chip (dev.20)
+    // counts it down, its drawer card naming mailpit.
     expect(flat.map((r: { repo: string }) => r.repo)).toEqual([
       "arbor",
       "calm",
     ]);
-    expect(moreChip(flat).text).toBe("+2 · 1 degraded");
+    expect(statusSummary({ flat })).toMatchObject({ state: "bad", down: 1 });
+    expect(problemCards({ flat }).map((c: { id: string }) => c.id)).toEqual([
+      "arbor/mailpit",
+    ]);
     // The graph's repo card.
     const m = {
       byRepo: new Map([

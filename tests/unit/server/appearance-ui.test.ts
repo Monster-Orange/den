@@ -1,8 +1,9 @@
 /**
  * The header's appearance UI (public/appearance.js), on a small fake DOM:
- * the theme's mark (and that a live switch redraws it), the Theme menu's
- * "Org default" entry, and the popover's accessibility (named controls,
- * aria-expanded/aria-controls, Escape closes and returns focus).
+ * the theme's mark (and that a live switch redraws it), the user menu's
+ * model (R10, dev.20: Appearance, Theme with "Org default", a hidden
+ * Language slot, All settings) opened through the shell's .pop menu, and
+ * the same choices as ⌘K palette commands (R17).
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -12,6 +13,7 @@ import {
   markView,
   themeNotice,
   themeOptions,
+  userMenu,
 } from "../../../src/ui/server/public/appearance.js";
 
 // ── A fake DOM: just what appearance.js touches ──────────────────────────────
@@ -208,6 +210,35 @@ const saved = { document: g.document, window: g.window, fetch: g.fetch };
 let header: El;
 let mark: El;
 
+/** The shell's side (shell.js): openMenu and the COMMANDS registry. */
+interface MenuItem {
+  heading?: string;
+  hr?: boolean;
+  note?: string;
+  slot?: string;
+  hidden?: boolean;
+  label?: string;
+  checked?: boolean;
+  href?: string;
+  onSelect?: () => unknown;
+}
+interface Cmd {
+  id: string;
+  label: string;
+  keywords: string[];
+  kind: string;
+  run: () => unknown;
+}
+const opened: { anchor: El; menu: { label: string; items: MenuItem[] } }[] = [];
+const cmds = new Map<string, Cmd>();
+const denShell = {
+  openMenu: (anchor: El, menu: { label: string; items: MenuItem[] }) =>
+    opened.push({ anchor, menu }),
+  registerCommand: (c: Cmd) => cmds.set(c.id, c),
+  unregisterCommand: (id: string) => cmds.delete(id),
+  commands: () => [...cmds.values()],
+};
+
 beforeAll(async () => {
   const link = head.appendChild(new El("link"));
   link.id = "theme-css";
@@ -216,13 +247,15 @@ beforeAll(async () => {
   mark.id = "den-mark";
   header.appendChild(new El("nav"));
   g.document = doc;
-  g.window = { matchMedia: () => ({ matches: false, addEventListener() {} }) };
+  g.window = {
+    matchMedia: () => ({ matches: false, addEventListener() {} }),
+    denShell,
+  };
   g.fetch = fakeFetch;
   await initAppearance();
 });
 afterAll(() => Object.assign(g, saved));
 
-const el = (id: string) => doc.getElementById(id)!;
 const img = () => mark.children.find((c) => c.tagName === "IMG");
 
 describe("markView", () => {
@@ -319,128 +352,141 @@ describe("themeOptions", () => {
   });
 });
 
-describe("the header (initAppearance)", () => {
+const items = () => userMenu().items as MenuItem[];
+const row = (label: string) => items().find((i) => i.label === label)!;
+const checked = (from: string) => {
+  const all = items();
+  const start = all.findIndex((i) => i.heading === from);
+  const end = all.findIndex((i, n) => n > start && (i.hr || i.heading));
+  return all
+    .slice(start + 1, end < 0 ? undefined : end)
+    .filter((i) => i.checked)
+    .map((i) => i.label);
+};
+
+describe("the user menu (initAppearance, R10)", () => {
   it("draws the active theme's mark, not the favicon", () => {
     expect(img()?.src).toBe("/theme/sun/mark-dark.svg"); // dark mode
     expect(img()?.alt).toBe("");
   });
 
+  it("is ◐ ▾ at the bar's far right, a menu button opening the shell's .pop", async () => {
+    const btn = header.children.at(-1)!;
+    expect(btn.id).toBe("appearance-btn");
+    expect(btn.textContent).toBe("◐ ▾");
+    // The glyphs are drawn, not read: the name is "Appearance".
+    expect(btn.children).toHaveLength(1);
+    expect(btn.children[0].getAttribute("aria-hidden")).toBe("true");
+    expect(btn.className).toBe("den-ib appearance-btn");
+    expect(btn.getAttribute("aria-label")).toBe("Appearance");
+    expect(btn.getAttribute("aria-haspopup")).toBe("menu");
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    await btn.fire("click");
+    expect(opened.at(-1)?.anchor).toBe(btn);
+    const menu = opened.at(-1)!.menu;
+    expect(menu.label).toBe("Appearance");
+    expect(
+      menu.items.map((i) =>
+        i.heading
+          ? `# ${i.heading}`
+          : i.hr
+            ? "--"
+            : i.slot
+              ? `[${i.slot}${i.hidden ? " hidden" : ""}]`
+              : `${i.label}${i.checked ? " ✓" : ""}${i.href ? ` → ${i.href}` : ""}`,
+      ),
+    ).toEqual([
+      "# Appearance",
+      "System",
+      "Dark ✓",
+      "Light",
+      "--",
+      "# Theme",
+      "Org default (Sun) ✓",
+      "Den",
+      "Ink",
+      "Sun",
+      // Language (R19) lands in dev.23: its slot is there, hidden.
+      "[lang hidden]",
+      "--",
+      // The Settings page (R21), at Appearance.
+      "All settings → /settings#appearance",
+    ]);
+  });
+
   it("redraws the mark on a mode switch and a live theme switch", async () => {
-    const mode = el("appearance-mode");
-    mode.value = "light";
-    await mode.fire("change");
+    await row("Light").onSelect!();
     expect(html.dataset.mode).toBe("light");
+    expect(server.posts.at(-1)).toEqual({ mode: "light" });
+    expect(checked("Appearance")).toEqual(["Light"]);
     expect(img()?.src).toBe("/theme/sun/mark.svg");
 
-    const theme = el("appearance-theme");
-    theme.value = "ink";
-    await theme.fire("change");
+    await row("Ink").onSelect!();
     expect(server.posts.at(-1)).toEqual({ theme: "ink" });
     expect(img()).toBeUndefined();
     expect(mark.textContent).toBe("Ik");
     expect(mark.className).toContain("den-mark-circle");
     // The stylesheet is swapped for the new theme's.
     expect(head.children.filter((c) => c.tagName === "LINK")).toHaveLength(2);
+    expect(checked("Theme")).toEqual(["Ink"]);
   });
 
-  it("an invalid stored theme selects nothing and says what is in use", async () => {
-    const theme = el("appearance-theme");
-    const notice = el("appearance-theme-notice");
-    expect(notice.hidden).toBe(true);
+  it("an invalid stored theme checks nothing and says what is in use", async () => {
+    expect(items().some((i) => i.note)).toBe(false);
     server.stored = "bad";
-    theme.value = "ink";
-    await theme.fire("change");
-    expect(theme.children.some((o) => o.selected)).toBe(false);
-    expect(theme.children.map((o) => o.value)).not.toContain("bad");
-    expect(notice.hidden).toBe(false);
-    expect(notice.textContent).toBe(
+    await row("Den").onSelect!();
+    expect(checked("Theme")).toEqual([]);
+    expect(items().map((i) => i.label)).not.toContain("Bad");
+    expect(items().find((i) => i.note)?.note).toBe(
       "Your theme bad isn't valid (/author: no author), so Ink is in use",
     );
-    expect(theme.getAttribute("aria-describedby")).toBe(notice.id);
-    // Picking any option replaces the stored choice, as usual.
+    // Picking any theme replaces the stored choice, as usual.
     server.stored = null;
-    theme.value = "ink";
-    await theme.fire("change");
+    await row("Ink").onSelect!();
     expect(server.posts.at(-1)).toEqual({ theme: "ink" });
-    expect(notice.hidden).toBe(true);
-    expect(theme.value).toBe("ink");
+    expect(items().some((i) => i.note)).toBe(false);
+    expect(checked("Theme")).toEqual(["Ink"]);
   });
 
   it("Org default writes theme null; the org's theme by name is a pin", async () => {
-    const theme = el("appearance-theme");
-    expect(theme.children[0].textContent).toBe("Org default (Sun)");
-    expect(theme.value).toBe("ink");
-    theme.value = "";
-    await theme.fire("change");
+    await row("Org default (Sun)").onSelect!();
     expect(server.posts.at(-1)).toEqual({ theme: null });
-    expect(theme.value).toBe("");
+    expect(checked("Theme")).toEqual(["Org default (Sun)"]);
     expect(img()?.src).toBe("/theme/sun/mark.svg");
-    expect(theme.children.map((o) => o.textContent)).toEqual([
-      "Org default (Sun)",
-      "Den",
-      "Ink",
-      "Sun",
-    ]);
-    // Picking the org's own theme by name pins it: that theme is selected,
+    // Picking the org's own theme by name pins it: that theme is checked,
     // not Org default, and it says so.
-    theme.value = "sun";
-    await theme.fire("change");
+    await row("Sun").onSelect!();
     expect(server.posts.at(-1)).toEqual({ theme: "sun" });
-    expect(theme.value).toBe("sun");
-    expect(theme.children.map((o) => o.value)).toEqual([
-      "",
-      "den",
-      "ink",
-      "sun",
-    ]);
-    expect(theme.children.map((o) => o.textContent)).toEqual([
-      "Org default (Sun)",
-      "Den",
-      "Ink",
-      "Sun (pinned)",
-    ]);
+    expect(checked("Theme")).toEqual(["Sun (pinned)"]);
     // Back to following the org.
-    theme.value = "";
-    await theme.fire("change");
-    expect(theme.value).toBe("");
-    expect(theme.children.at(-1)?.textContent).toBe("Sun");
+    await row("Org default (Sun)").onSelect!();
+    expect(checked("Theme")).toEqual(["Org default (Sun)"]);
+    expect(items().find((i) => i.label?.startsWith("Sun"))?.label).toBe("Sun");
   });
 
-  it("names every control and wires the popover for assistive tech", () => {
-    const btn = header.children
-      .find((c) => c.id === "appearance")!
-      .children.find((c) => c.tagName === "BUTTON")!;
-    expect(btn.getAttribute("aria-label")).toBe("Appearance");
-    expect(btn.getAttribute("aria-haspopup")).toBe("true");
-    const pop = el(btn.getAttribute("aria-controls")!);
-    expect(pop.className).toBe("appearance-pop");
-    expect(pop.hidden).toBe(true);
-    expect(btn.getAttribute("aria-expanded")).toBe("false");
-    const labels = [...pop.walk()].filter((e) => e.tagName === "LABEL");
-    expect(labels.map((l) => [l.textContent, l.htmlFor])).toEqual([
-      ["Mode", "appearance-mode"],
-      ["Theme", "appearance-theme"],
+  it("offers the same choices as ⌘K palette commands, which switch live", async () => {
+    expect([...cmds.values()].map((c) => [c.id, c.label, c.kind])).toEqual([
+      ["appearance-system", "Appearance: System", "action"],
+      ["appearance-dark", "Appearance: Dark", "action"],
+      ["appearance-light", "Appearance: Light", "action"],
+      ["theme-org-default", "Theme: Org default (Sun)", "action"],
+      ["theme-den", "Theme: Den", "action"],
+      ["theme-ink", "Theme: Ink", "action"],
+      ["theme-sun", "Theme: Sun", "action"],
     ]);
-    expect(el("appearance-mode").getAttribute("aria-label")).toBe("Mode");
-    expect(el("appearance-theme").getAttribute("aria-label")).toBe("Theme");
-  });
-
-  it("opens on click; Escape closes it and returns focus to the button", async () => {
-    const box = el("appearance");
-    const btn = box.children[0];
-    const pop = el("appearance-pop");
-    await btn.fire("click");
-    expect(pop.hidden).toBe(false);
-    expect(btn.getAttribute("aria-expanded")).toBe("true");
-    el("appearance-theme").focus();
-    await doc.fire("keydown", { key: "Escape" });
-    expect(pop.hidden).toBe(true);
-    expect(btn.getAttribute("aria-expanded")).toBe("false");
-    expect(doc.activeElement).toBe(btn);
-  });
-
-  it("sits at the header's far right, after the nav", () => {
-    expect(header.children.at(-1)?.id).toBe("appearance");
+    expect(cmds.get("appearance-dark")!.keywords).toContain("mode");
+    await cmds.get("appearance-dark")!.run();
+    expect(server.posts.at(-1)).toEqual({ mode: "dark" });
+    expect(html.dataset.mode).toBe("dark");
+    await cmds.get("theme-ink")!.run();
+    expect(server.posts.at(-1)).toEqual({ theme: "ink" });
+    expect(mark.textContent).toBe("Ik");
+    // Only appearance writes: nothing else was posted.
+    expect(
+      server.posts.every((p) =>
+        Object.keys(p as object).every((k) => k === "mode" || k === "theme"),
+      ),
+    ).toBe(true);
   });
 });
 

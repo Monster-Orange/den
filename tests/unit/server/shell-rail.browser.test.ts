@@ -121,7 +121,7 @@ describe("the rail", () => {
       "page",
     );
     expect(await p.getAttribute('[data-nav="settings"]', "href")).toBe(
-      "/local-dev?settings=1",
+      "/settings",
     );
     await p.context().close();
   });
@@ -293,7 +293,9 @@ describe("the rail", () => {
         document.body.classList.contains("den-rail-collapsed"),
       ),
     ).toBe(true);
-    const gh = await p.$eval("#den-gh-develop", (e) => {
+    // The heading (its label span names the group).
+    const gh = await p.$eval("#den-gh-develop", (label) => {
+      const e = label.closest(".den-gh") as HTMLElement;
       const cs = getComputedStyle(e);
       return {
         display: cs.display,
@@ -535,7 +537,7 @@ describe("the scope breadcrumb (R4)", () => {
         '.den-pop [aria-checked="true"]',
         (e) => getComputedStyle(e, "::after").content,
       ),
-    ).toBe('"✓"');
+    ).toBe('"✓" / ""'); // drawn, with no alt text: aria-checked says it
     expect(await focusedText(p)).toBe("ws-b");
     // ↑/↓ move (wrapping), Home and End.
     await p.keyboard.press("ArrowDown");
@@ -819,12 +821,230 @@ describe("registration (a consumer's dev.17 run)", () => {
       href: "/p/early",
     });
     expect(await p.$$('[data-nav="early"]')).toHaveLength(0);
+    // A group still missing a tick after the queue has drained warns.
+    await p.waitForTimeout(50);
     await shell(p, "registerGroup", { id: "later", label: "Later", order: 50 });
     expect(await p.$$('[data-nav="early"]')).toHaveLength(1);
     expect(warnings.join("\n")).toMatch(/nav "early": order must be a number/);
     expect(warnings.join("\n")).toMatch(
       /nav "early": group "later" is not registered/,
     );
+    await p.context().close();
+  });
+});
+
+/** Chrome's own accessible names for a role (its accessibility tree). */
+async function axNames(p: Page, role: string): Promise<string[]> {
+  const cdp = await p.context().newCDPSession(p);
+  const { nodes } = (await cdp.send("Accessibility.getFullAXTree")) as {
+    nodes: {
+      ignored?: boolean;
+      role?: { value?: string };
+      name?: { value?: string };
+    }[];
+  };
+  await cdp.detach();
+  return nodes
+    .filter((n) => !n.ignored && n.role?.value === role)
+    .map((n) => String(n.name?.value ?? ""));
+}
+
+describe("a consumer's dev.18 run (two consumers)", () => {
+  it("a page queued before its group warns nothing; a truly unknown group warns a tick after ready", async () => {
+    if (!browser) return;
+    // A consumer's order: the page, then (another script) its group, both queued
+    // before shell.js. Legitimate: no warning.
+    const { p, warnings } = await mount("services", undefined, {
+      before:
+        "<script>(window.denShellQueue = window.denShellQueue || []).push(function (sh) {" +
+        "sh.registerNav({ id: 'edge', label: 'Edge', group: 'acme', order: 1, href: '/p/edge' }); });" +
+        "window.denShellQueue.push(function (sh) {" +
+        "sh.registerGroup({ id: 'acme', label: 'Acme', order: 40, from: 'acme' }); });" +
+        "window.denShellQueue.push(function (sh) {" +
+        "sh.registerNav({ id: 'lost', label: 'Lost', group: 'nowhere', href: '/p/lost' }); });</script>",
+    });
+    await p.waitForTimeout(100);
+    expect(await p.$$('[data-nav="edge"]')).toHaveLength(1);
+    const all = warnings.join("\n");
+    expect(all).not.toMatch(/group "acme"/);
+    expect(all).toMatch(/nav "lost": group "nowhere" is not registered/);
+    await p.context().close();
+  });
+
+  it("the rail's × moves focus as Delete does: next pin, else previous, else the first item", async () => {
+    if (!browser) return;
+    const { p } = await mount("services", {
+      shell: { pins: ["a", "b", "c"], collapsed: false },
+    });
+    await p.waitForSelector('[data-pin="c"]');
+    const active = () =>
+      p.evaluate(() => (document.activeElement as HTMLElement).dataset.nav);
+    // Keyboard: focus the × of a pin (as a screen reader user reaches it)
+    // and press Enter.
+    for (const [x, next] of [
+      ["b", "pin-c"],
+      ["c", "pin-a"],
+      ["a", "local-dev"],
+    ]) {
+      await p.focus(`[data-unpin="${x}"]`);
+      await p.keyboard.press("Enter");
+      expect([x, await active()]).toEqual([x, next]);
+    }
+    await p.context().close();
+  });
+
+  it("≤720px: the drawer is a modal; focus moves in, the rest is inert, Escape or the scrim closes it", async () => {
+    if (!browser) return;
+    const { p } = await mount("services");
+    await p.setViewportSize({ width: 700, height: 700 });
+    await p.click("#den-menu-btn");
+    expect(await p.getAttribute("#den-menu-btn", "aria-expanded")).toBe("true");
+    const activeNav = () =>
+      p.evaluate(() => (document.activeElement as HTMLElement).dataset?.nav);
+    expect(await activeNav()).toBe("services");
+    expect(
+      await p.evaluate(() => [
+        document.querySelector(".den-top")!.hasAttribute("inert"),
+        document.getElementById("den-content")!.hasAttribute("inert"),
+      ]),
+    ).toEqual([true, true]);
+    // Tab stays inside.
+    await p.keyboard.press("Tab");
+    expect(
+      await p.evaluate(() =>
+        document.getElementById("den-rail")!.contains(document.activeElement),
+      ),
+    ).toBe(true);
+    await p.keyboard.press("Escape");
+    expect(await p.getAttribute("#den-menu-btn", "aria-expanded")).toBe(
+      "false",
+    );
+    expect(await p.evaluate(() => document.activeElement?.id)).toBe(
+      "den-menu-btn",
+    );
+    expect(
+      await p.evaluate(() =>
+        document.getElementById("den-content")!.hasAttribute("inert"),
+      ),
+    ).toBe(false);
+    // The scrim closes it too.
+    await p.click("#den-menu-btn");
+    await p.mouse.click(690, 400);
+    expect(await p.getAttribute("#den-menu-btn", "aria-expanded")).toBe(
+      "false",
+    );
+    expect(await p.evaluate(() => document.activeElement?.id)).toBe(
+      "den-menu-btn",
+    );
+    await p.context().close();
+  });
+
+  it("names: a group by its label, a workspace row 'default, focus', scope buttons without ▾", async () => {
+    if (!browser) return;
+    const { p } = await mount("services");
+    await shell(p, "registerGroup", {
+      id: "globex",
+      label: "Globex",
+      order: 40,
+      from: "globex",
+    });
+    await shell(p, "registerNav", {
+      id: "edge",
+      label: "Edge",
+      group: "globex",
+      href: "/p/edge",
+    });
+    await shell(p, "setOrg", { id: "acme", title: "Acme" });
+    await stubWorkspaces(p, [
+      { value: "all", label: "All active (2)", checked: false },
+      { value: "default", label: "default", checked: true, focused: true },
+      { value: "ws-b", label: "ws-b", checked: false },
+    ]);
+    const groups = await axNames(p, "group");
+    // (Chrome names it as drawn: uppercase.) Not "Globexglobex".
+    expect(
+      groups.filter((g) => /globex/i.test(g)).map((g) => g.toLowerCase()),
+    ).toEqual(["globex"]);
+    const buttons = await axNames(p, "button");
+    expect(buttons.filter((b) => b.includes("▾"))).toEqual([]);
+    await p.click("#ws-pill");
+    await p.waitForSelector(".den-pop");
+    const items = await axNames(p, "menuitemradio");
+    expect(items).toContain("default, focus");
+    await p.context().close();
+  });
+
+  it("a scope button's aria-controls names its menu only while the menu is open", async () => {
+    if (!browser) return;
+    const { p } = await mount("services");
+    await stubWorkspaces(p, [
+      { value: "default", label: "default", checked: true },
+    ]);
+    expect(await p.getAttribute("#ws-pill", "aria-controls")).toBeNull();
+    await p.click("#ws-pill");
+    const id = await p.getAttribute("#ws-pill", "aria-controls");
+    expect(id).toBeTruthy();
+    expect(await p.$$(`#${id}.den-pop`)).toHaveLength(1);
+    await p.keyboard.press("Escape");
+    expect(await p.getAttribute("#ws-pill", "aria-controls")).toBeNull();
+    await p.click("#env-btn");
+    expect(await p.getAttribute("#env-btn", "aria-controls")).toBe(
+      "den-pop-env",
+    );
+    await p.keyboard.press("Escape");
+    expect(await p.getAttribute("#env-btn", "aria-controls")).toBeNull();
+    await p.context().close();
+  });
+});
+
+describe("Navigation prefs (R21)", () => {
+  it("the rail leaves out hidden pages and follows your order within each group", async () => {
+    if (!browser) return;
+    const { p } = await mount("settings", {
+      shell: {
+        pins: [],
+        collapsed: false,
+        hidden: ["tests"],
+        order: ["logs", "local-dev"],
+      },
+    });
+    await p.waitForFunction(
+      () => !document.querySelector('.den-rail [data-nav="tests"]'),
+    );
+    expect(await rail(p)).toEqual([
+      {
+        heading: "Develop",
+        tag: null,
+        items: ["logs", "local-dev", "services"],
+      },
+      { heading: "Ship", tag: null, items: ["environments", "release"] },
+      "den-rail-grow",
+      "settings",
+      "collapse",
+    ]);
+    // The Settings page is current on /settings.
+    expect(await p.getAttribute('[data-nav="settings"]', "aria-current")).toBe(
+      "page",
+    );
+    await p.context().close();
+  });
+
+  it("setNavPrefs repaints the rail and saves shell.hidden / shell.order", async () => {
+    if (!browser) return;
+    const { p, posts } = await mount("services");
+    await shell(p, "setNavPrefs", { hidden: ["release"] });
+    expect(await p.$$('.den-rail [data-nav="release"]')).toHaveLength(0);
+    await shell(p, "setNavPrefs", { hidden: [], order: ["environments"] });
+    await shell(p, "setPins", ["shop", "billing/api"]);
+    await p.waitForTimeout(50);
+    expect(posts).toEqual(
+      expect.arrayContaining([
+        { shell: { hidden: ["release"] } },
+        { shell: { hidden: [], order: ["environments"] } },
+        { shell: { pins: ["shop", "billing/api"] } },
+      ]),
+    );
+    expect(await p.$$('.den-rail [data-nav="release"]')).toHaveLength(1);
     await p.context().close();
   });
 });

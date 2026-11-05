@@ -155,6 +155,7 @@ import { handleReadonlyRoutes } from "./readonly-routes.js";
 import { serveUiAsset } from "./ui-assets.js";
 import { graphPrefs, mergeGraphPrefs } from "./graph-prefs.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
+import { distributionSettings, userWebPort } from "./settings-distribution.js";
 import {
   appearancePrefs,
   mergeAppearancePrefs,
@@ -663,6 +664,19 @@ async function handleRequest(
   }
 
   // ── Static UI ──────────────────────────────────────────────────────────────
+  // The Settings page (R21). Local Dev's old settings panel link
+  // (/local-dev?settings=1) lands on its category there.
+  if (pathname === "/settings" || pathname === "/settings.html") {
+    return serveFile(res, path.join(PUBLIC_DIR, "settings.html"));
+  }
+  if (
+    (pathname === "/local-dev" || pathname === "/local-dev.html") &&
+    url.searchParams.has("settings")
+  ) {
+    res.writeHead(302, { Location: "/settings#editor" });
+    res.end();
+    return;
+  }
   // Local Dev is the default page when local environment is enabled.
   if (
     pathname === "/" ||
@@ -2938,10 +2952,17 @@ async function handleRequest(
   }
 
   // ── API: user settings ────────────────────────────────────────────────────
-  // GET  /api/settings  → { editor, editors, terminal, terminals, editor_overrides, languages }
-  // POST /api/settings  body: { editor?, terminal?, editor_overrides?, graph?, appearance? }
+  // GET  /api/settings  → { editor, editors, terminal, terminals, editor_overrides, languages,
+  //                         log_window_lines, graph, appearance, shell, distribution,
+  //                         user_web_port, local_dev, cli_tabs }
+  // POST /api/settings  body: { editor?, terminal?, editor_overrides?, graph?, appearance?, shell? }
   //   graph: { direction, group, density, panelWidth } (see graph-prefs.ts)
   //   appearance: { theme: id | null, mode: system|dark|light } (appearance-prefs.ts)
+  //   shell: { pins, collapsed, hidden, order } (shell-prefs.ts)
+  // It writes config/local/user.yml only. `distribution` is read-only: what
+  // the org config (tracked) sets, for the Settings page's Distribution rows.
+  // Every key POST accepts has a row in the Settings page's registry
+  // (settings-registry.js; settings-inventory.test.ts checks).
   // The view scope: which active workspaces the pages, the health row and
   // `status` show. A view preference only (user.yml `view`): it changes no
   // edge route, container or service, and never the focus.
@@ -2981,6 +3002,11 @@ async function handleRequest(
         graph: graphPrefs(user.graph),
         appearance: appearancePrefs(user.appearance),
         shell: shellPrefs(user.shell),
+        distribution: distributionSettings(getDistRoot()),
+        // Set from the command line (`<cli> config`), shown read-only.
+        user_web_port: userWebPort(user as Record<string, unknown>),
+        local_dev: user.local_dev !== false,
+        cli_tabs: user.cli_tabs === true,
       });
     }
     if (req.method === "POST") {

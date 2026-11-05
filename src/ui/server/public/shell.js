@@ -21,8 +21,11 @@
  *            (R4, dev.18): / ORG <org> ▾ / WORKSPACE <ws> ▾ / ENV <env> ▾,
  *            each part an .ib button with a .pop menu (an ARIA menu: ↑/↓,
  *            Home, End, Enter; Escape and a click outside close it) ·
- *            health row (in the status chip's slot, as a chip, until
- *            dev.20) · lock (Local Dev) · What's new · ◐ ▾
+ *            the ⌘K search field (R5) · the status chip (R6) · the Runs
+ *            chip (R7) · the lock chip (R8) · What's new · ◐ ▾ (R10).
+ *            shell.js draws them; topbar.js (through header.js) drives the
+ *            chips, the command palette (R17), the status drawer (R15) and
+ *            the lock popover; appearance.js the user menu (dev.20).
  *   rail     Pinned, then the NAV registry by GROUPS (Develop, Verify,
  *            Ship, a distribution's own), then Settings and the collapse
  *            toggle. One tab stop (the current page); ↑/↓, Home and End
@@ -33,9 +36,23 @@
  * The registries and the scope (window.denShell, the spec's NAV and GROUPS):
  *   registerGroup({ id, label, order, from? })
  *   registerNav({ id, label, icon, group, order, href, badge?(state),
- *                 when?(state) })   a non-number order, or a group not
- *                 registered yet, warns (console.warn); the page waits for
- *                 its group instead of being dropped
+ *                 when?(state) })   a non-number order warns
+ *                 (console.warn); a page whose group isn't registered
+ *                 waits for it, and warns only if the group is still
+ *                 missing a tick after the queue has drained
+ *   registerSettingsCategory({ id, label, order, description?, from? })
+ *   registerSetting({ id, category, label, description, keywords, scope,
+ *                 control, read, write?, keys? })   the SETTINGS registry
+ *                 (R21): the Settings page (/settings) draws every row
+ *                 from it. scope is "user", "workspace" or "distribution";
+ *                 a distribution row is read-only (no write). Any change
+ *                 fires `den:settings` on window. Each row is also a ⌘K
+ *                 palette command (kind "setting", id "setting:<id>"):
+ *                 Enter opens /settings?q=<label>#<category>.
+ *   settings(), settingsCategories()  the registry, categories by order
+ *   setNavPrefs({ hidden?, order? }), setPins(ids), setCollapsed(bool)
+ *                 Navigation (R21): the rail pages hidden, their order,
+ *                 the pins; saved to /api/settings `shell`
  *   addMessages(lang, { key: text }), t(key, vars)
  *   setState(partial): health { repo|address: state }, openLogs, …
  *   pin(id), unpin(id), isPinned(id): pins are user prefs (/api/settings
@@ -48,13 +65,27 @@
  *   setWorkspaces({ label, title, items, focusable, onSelect, onFocus })
  *                                    the Workspace ▾ menu (header.js)
  *   syncEnv()                        repaint Env ▾ from #env-sel
+ *   registerCommand({ id, label, keywords?, kind?, run })
+ *                                    a ⌘K palette row (R17, dev.20). label
+ *                                    is a string or a function returning
+ *                                    one; keywords a string or an array;
+ *                                    kind "action" (the default), "setting"
+ *                                    (the Settings registry's rows, dev.19)
+ *                                    or any word, shown as the row's kind
+ *                                    label. Pages, services and apps are
+ *                                    added by the palette itself.
+ *   unregisterCommand(id), commands()
+ *   openMenu(anchor, menu)           a .pop menu below anchor (the scope
+ *                                    parts' and the user menu's)
  *
  * Loading before shell.js: push functions onto window.denShellQueue (an
  * array); each runs with denShell once it exists, and a later push runs at
  * once. `den-shell:ready` fires on window when the shell is up.
  *
  * Every page wraps its content in <main id="den-content">, its one main
- * landmark (the skip link's target).
+ * landmark (the skip link's target). Its one h1 is the page's own (the
+ * brand title is a span); a page without one gets a visually hidden h1
+ * named from its <title>.
  *
  * data-health-env pins the health row's env on pages that are local by
  * nature (Local Dev, Releases), whatever the env picker says.
@@ -104,6 +135,19 @@
       menu: "Menu",
       skip: "Skip to content",
       pages: "Pages",
+      // The top bar (dev.20): the prototype's strings.
+      "search.ph": "Search pages, services, actions…",
+      "status.checking": "Checking…",
+      "status.none": "No services",
+      "status.unchecked": "{n} not checked",
+      "status.all": "All {n} healthy",
+      "status.some": "{ok}/{n} healthy",
+      "status.down": "{n} down",
+      "runs.title": "Runs",
+      "runs.n": "{n} running",
+      "lock.locked": "Locked",
+      "lock.unlocked": "Unlocked",
+      "lock.title": "Unlock to start, stop and restart services",
     },
   };
   var lang = "en";
@@ -192,15 +236,9 @@
     if (!n || !ID.test(n.id || "") || !n.href || !n.group)
       throw new Error("a page needs an id, an href and a group");
     // A page whose group isn't registered yet is kept, and shows when the
-    // group arrives (registerGroup re-renders): a warning, not a drop.
-    if (!hasGroup(n.group))
-      warn(
-        'nav "' +
-          n.id +
-          '": group "' +
-          n.group +
-          '" is not registered (yet); the page shows once it is',
-      );
+    // group arrives (registerGroup re-renders). Registering a page before
+    // its group is a legitimate order (a queue, two scripts), so the
+    // warning waits until the queue has drained and a tick has passed.
     upsert(NAV, {
       id: n.id,
       label: n.label || n.id,
@@ -212,16 +250,213 @@
       when: typeof n.when === "function" ? n.when : null,
       from: n.from || null,
     });
+    checkOrphansSoon();
     renderRail();
+  }
+
+  // ── orphans: a page or setting whose group or category never came ────
+  var settled = false;
+  var orphanTimer = null;
+  var warnedOrphan = {};
+  function checkOrphansSoon() {
+    if (!settled || orphanTimer) return;
+    orphanTimer = setTimeout(function () {
+      orphanTimer = null;
+      checkOrphans();
+    }, 0);
+  }
+  function checkOrphans() {
+    NAV.forEach(function (n) {
+      var key = "nav:" + n.id + ":" + n.group;
+      if (hasGroup(n.group) || warnedOrphan[key]) return;
+      warnedOrphan[key] = true;
+      warn(
+        'nav "' +
+          n.id +
+          '": group "' +
+          n.group +
+          '" is not registered; the page shows once it is',
+      );
+    });
+    SETTING_ROWS.forEach(function (r) {
+      var key = "setting:" + r.id + ":" + r.category;
+      if (hasCategory(r.category) || warnedOrphan[key]) return;
+      warnedOrphan[key] = true;
+      warn(
+        'setting "' +
+          r.id +
+          '": category "' +
+          r.category +
+          '" is not registered; the row shows once it is',
+      );
+    });
+  }
+
+  // ── SETTINGS (R21): what the Settings page draws, row by row ──────────
+  // A category: { id, label, order, description?, from? }. A row: { id,
+  // category, label, description, keywords, scope: user|workspace|
+  // distribution, control: { type, … }, read(ctx), write?(value, ctx),
+  // keys? } (keys: the /api/settings keys it stores, for the inventory).
+  var SETTING_CATS = [];
+  var SETTING_ROWS = [];
+  var SETTING_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+  var SCOPES = ["user", "workspace", "distribution"];
+  function hasCategory(id) {
+    for (var i = 0; i < SETTING_CATS.length; i++)
+      if (SETTING_CATS[i].id === id) return true;
+    return false;
+  }
+  function settingsChanged() {
+    try {
+      window.dispatchEvent(new CustomEvent("den:settings"));
+    } catch (e) {
+      /* no CustomEvent: the page re-reads on its own */
+    }
+  }
+  function registerSettingsCategory(c) {
+    if (!c || !ID.test(c.id || ""))
+      throw new Error("a settings category needs an id");
+    upsert(SETTING_CATS, {
+      id: c.id,
+      label: c.label || c.id,
+      order: orderOf("settings category", c),
+      description: c.description || "",
+      from: c.from || null,
+    });
+    settingsChanged();
+  }
+  function registerSetting(r) {
+    if (!r || !SETTING_ID.test(r.id || "") || !r.category || !r.label)
+      throw new Error(
+        'setting "' +
+          (r && r.id) +
+          '": a setting needs an id ([A-Za-z0-9._-]), a category and a label',
+      );
+    var scope = r.scope || "user";
+    if (SCOPES.indexOf(scope) < 0)
+      throw new Error(
+        'setting "' + r.id + '": scope must be user, workspace or distribution',
+      );
+    if (typeof r.read !== "function")
+      throw new Error('setting "' + r.id + '" needs read(ctx)');
+    // The distribution's own config is tracked: shown, never written.
+    if (scope === "distribution" && r.write)
+      throw new Error(
+        'setting "' +
+          r.id +
+          '": a distribution setting is read-only (no write)',
+      );
+    upsert(SETTING_ROWS, {
+      id: r.id,
+      category: r.category,
+      label: r.label,
+      description: r.description || "",
+      keywords: Array.isArray(r.keywords) ? r.keywords.slice() : [],
+      scope: scope,
+      control: r.control || { type: "readonly" },
+      read: r.read,
+      write: typeof r.write === "function" ? r.write : null,
+      keys: Array.isArray(r.keys) ? r.keys.slice() : [],
+      order: orderOf("setting", r),
+      from: r.from || null,
+    });
+    settingCommand(r);
+    checkOrphansSoon();
+    settingsChanged();
+  }
+
+  // ── the ⌘K palette's commands (R17, dev.20) ────────────────────────────
+  // Pages, services and apps are the palette's own (topbar.js); this holds
+  // what a page, a distribution or a plugin adds: actions, and the
+  // Settings registry's rows (kind "setting", dev.19).
+  var COMMANDS = [];
+  function registerCommand(c) {
+    if (!c || typeof c.id !== "string" || !c.id || typeof c.run !== "function")
+      throw new Error("a command needs an id and a run()");
+    if (c.label == null)
+      throw new Error('command "' + c.id + '" needs a label');
+    upsert(COMMANDS, {
+      id: c.id,
+      label: c.label,
+      keywords: Array.isArray(c.keywords)
+        ? c.keywords.slice()
+        : c.keywords
+          ? [String(c.keywords)]
+          : [],
+      kind: typeof c.kind === "string" && c.kind ? c.kind : "action",
+      run: c.run,
+      from: c.from || null,
+    });
+  }
+  function unregisterCommand(id) {
+    for (var i = COMMANDS.length - 1; i >= 0; i--)
+      if (COMMANDS[i].id === id) COMMANDS.splice(i, 1);
+  }
+  /**
+   * Every SETTINGS row is a palette row too (kind "setting"): Enter opens
+   * the Settings page searched for it, at its category
+   * (/settings?q=<label>#<category>).
+   */
+  function settingCommand(r) {
+    var cat = r.category;
+    registerCommand({
+      id: "setting:" + r.id,
+      label: r.label,
+      keywords: (Array.isArray(r.keywords) ? r.keywords : []).concat([
+        cat,
+        "settings",
+      ]),
+      kind: "setting",
+      run: function () {
+        location.assign(
+          "/settings?q=" +
+            encodeURIComponent(r.label) +
+            "#" +
+            encodeURIComponent(cat),
+        );
+      },
+      from: r.from || null,
+    });
+  }
+  /** The registered commands, labels resolved (a label may be a function). */
+  function commands() {
+    return COMMANDS.map(function (c) {
+      var label = c.label;
+      if (typeof label === "function") {
+        try {
+          label = label();
+        } catch (e) {
+          label = c.id;
+        }
+      }
+      return {
+        id: c.id,
+        label: String(label),
+        keywords: c.keywords.slice(),
+        kind: c.kind,
+        run: c.run,
+        from: c.from,
+      };
+    });
   }
 
   // ── state: what badges, when() and the pinned dots read ───────────────
   var LS = "__DEN_CLI__-shell";
-  var state = { health: {}, down: 0, openLogs: 0, pins: [], collapsed: false };
+  var state = {
+    health: {},
+    down: 0,
+    openLogs: 0,
+    pins: [],
+    collapsed: false,
+    hidden: [],
+    order: [],
+  };
   try {
     var cached = JSON.parse(localStorage.getItem(LS) || "{}");
     if (Array.isArray(cached.pins)) state.pins = cached.pins;
     state.collapsed = cached.collapsed === true;
+    if (Array.isArray(cached.hidden)) state.hidden = cached.hidden;
+    if (Array.isArray(cached.order)) state.order = cached.order;
   } catch (e) {
     /* no storage: the server's copy arrives below */
   }
@@ -229,7 +464,12 @@
     try {
       localStorage.setItem(
         LS,
-        JSON.stringify({ pins: state.pins, collapsed: state.collapsed }),
+        JSON.stringify({
+          pins: state.pins,
+          collapsed: state.collapsed,
+          hidden: state.hidden,
+          order: state.order,
+        }),
       );
     } catch (e) {
       /* a convenience only */
@@ -286,7 +526,13 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ shell: patch }),
-    }).catch(function () {});
+    })
+      .then(function (r) {
+        return r && r.ok !== false;
+      })
+      .catch(function () {
+        return false;
+      });
   }
   function isPinned(id) {
     return state.pins.indexOf(id) >= 0;
@@ -306,6 +552,49 @@
     });
     saveShell({ pins: state.pins });
     toast(t("toast.unpinned", { s: id }));
+  }
+  function ids(list) {
+    return (Array.isArray(list) ? list : []).filter(function (x, i, all) {
+      return typeof x === "string" && all.indexOf(x) === i;
+    });
+  }
+  /** Navigation (R21): the pages the rail hides and their order. */
+  function setNavPrefs(prefs) {
+    var patch = {};
+    if (prefs && prefs.hidden !== undefined) patch.hidden = ids(prefs.hidden);
+    if (prefs && prefs.order !== undefined) patch.order = ids(prefs.order);
+    setState(patch);
+    return saveShell(patch);
+  }
+  /** The pins, in this order (the Settings page's Pinned row). */
+  function setPins(list) {
+    setState({ pins: ids(list) });
+    return saveShell({ pins: state.pins });
+  }
+  function setCollapsed(on) {
+    setState({ collapsed: !!on });
+    return saveShell({ collapsed: state.collapsed });
+  }
+  /** NAV pages in the rail's order: groups by order, then yours, then theirs. */
+  function orderedNav() {
+    var rank = function (id) {
+      var i = state.order.indexOf(id);
+      return i < 0 ? Infinity : i;
+    };
+    var gs = GROUPS.slice().sort(byOrder);
+    var out = [];
+    gs.forEach(function (g) {
+      NAV.filter(function (n) {
+        return n.group === g.id;
+      })
+        .sort(function (a, b) {
+          return rank(a.id) - rank(b.id) || byOrder(a, b);
+        })
+        .forEach(function (n) {
+          out.push(n);
+        });
+    });
+    return out;
   }
   var toastTimer = null;
   function toast(msg) {
@@ -336,6 +625,8 @@
     openPop = null;
     if (o.el.remove) o.el.remove();
     o.anchor.setAttribute("aria-expanded", "false");
+    // aria-controls names the menu only while it exists.
+    o.anchor.removeAttribute("aria-controls");
     if (refocus && o.anchor.focus) o.anchor.focus();
   }
   function menuRows(pop) {
@@ -360,6 +651,17 @@
           esc(it.heading) +
           "</div>";
       else if (it.hr) html += '<div class="den-hr" role="separator"></div>';
+      // A line of text (a notice), and an empty slot a later build fills
+      // (the user menu's Language, dev.23).
+      else if (it.note != null)
+        html += '<p class="den-mnote" role="status">' + esc(it.note) + "</p>";
+      else if (it.slot != null)
+        html +=
+          '<div class="den-mslot" data-slot="' +
+          esc(it.slot) +
+          '"' +
+          (it.hidden ? " hidden" : "") +
+          "></div>";
       else {
         var radio = it.checked != null;
         var tag = it.href ? "a" : "button";
@@ -376,10 +678,19 @@
             : "") +
           (it.href ? ' href="' + esc(it.href) + '"' : ' type="button"') +
           (it.title ? ' title="' + esc(it.title) + '"' : "") +
+          // With a tag, the name is "default, focus" (the tag's text would
+          // run into the label: "defaultfocus").
+          (it.tag
+            ? ' aria-label="' + esc(it.label + ", " + it.tag) + '"'
+            : "") +
           '><span class="den-mi-l">' +
           esc(it.label) +
           "</span>" +
-          (it.tag ? '<span class="den-mtag">' + esc(it.tag) + "</span>" : "") +
+          (it.tag
+            ? '<span class="den-mtag" aria-hidden="true">' +
+              esc(it.tag) +
+              "</span>"
+            : "") +
           "</" +
           tag +
           ">";
@@ -555,19 +866,44 @@
       from: null,
     });
   });
-  // The settings surface that exists: Local Dev's settings panel.
+  // The Settings page (R21): every setting, from the SETTINGS registry.
   var SETTINGS = {
     id: "settings",
     label: "n.settings",
     icon: "settings",
-    href: "/local-dev?settings=1",
+    href: "/settings",
   };
 
   // ── the frame ──────────────────────────────────────────────────────────
-  var lock =
-    page === "local-dev"
-      ? '<button id="sudo-lock" class="den-chip den-top-lock" title="Sudo password">🔓</button>'
-      : "";
+  // The top bar after the scope, in the prototype's order (dev.20): the ⌘K
+  // search field (R5), then .chips: status (R6), Runs (R7), the lock (R8),
+  // What's new (R9) and ◐ ▾ (R10, appearance.js fills #den-user). The
+  // chips start neutral ("Checking…", "Runs", "Locked") and topbar.js
+  // paints them: a cold load never shows a partial red.
+  var chips =
+    '<button type="button" class="den-search" id="den-search" aria-haspopup="dialog" aria-keyshortcuts="Meta+K Control+K" aria-label="' +
+    esc(t("search.ph")) +
+    '"><span class="den-search-ph">' +
+    esc(t("search.ph")) +
+    '</span><kbd aria-hidden="true">⌘K</kbd><span class="den-search-ic" aria-hidden="true">⌕</span></button>' +
+    '<div class="den-chips">' +
+    '<button type="button" class="den-chip" id="den-status" aria-haspopup="dialog" aria-expanded="false" aria-busy="true">' +
+    '<span class="den-dot off" aria-hidden="true"></span><span class="den-n">' +
+    esc(t("status.checking")) +
+    "</span></button>" +
+    '<button type="button" class="den-chip" id="den-runs">' +
+    '<span class="den-dot off" aria-hidden="true"></span><span class="den-n den-lbl-l">' +
+    esc(t("runs.title")) +
+    "</span></button>" +
+    '<button type="button" class="den-chip" id="den-lock" aria-haspopup="dialog" aria-expanded="false" title="' +
+    esc(t("lock.title")) +
+    '"><span class="den-lock-ic" aria-hidden="true">🔒</span><span class="den-lbl-l">' +
+    esc(t("lock.locked")) +
+    "</span></button>" +
+    '<button class="den-ib v-pill" id="version-pill" onclick="openChangelog()" title="View changelog">' +
+    '<span class="v-txt">v…</span><span class="v-pip" id="v-pip"></span></button>' +
+    '<span class="den-user" id="den-user"></span>' +
+    "</div>";
   host.className = "den-shell";
   host.innerHTML =
     '<a class="den-skip" href="#den-content">' +
@@ -579,7 +915,8 @@
     '" aria-expanded="false" aria-controls="den-rail">☰</button>' +
     '<a class="den-brand" href="/" title="__DEN_TITLE__">' +
     '<span class="den-mark" id="den-mark" aria-hidden="true"></span>' +
-    '<h1 class="den-title">__DEN_CLI__</h1></a>' +
+    // The brand is a name, not a heading: the page's own h1 is its one.
+    '<span class="den-title">__DEN_CLI__</span></a>' +
     // The prototype's scope breadcrumb (R4): / ORG <org> ▾ / WORKSPACE
     // <ws> ▾ / ENV <env> ▾. Each part is an .ib button with a .pop menu.
     // The org is a static label while there is one org (ORG-SPEC C4) and
@@ -597,12 +934,7 @@
     scopeButton("env-btn", "env", t("k.env"), "local", false) +
     '<select id="env-sel" hidden aria-hidden="true" tabindex="-1"><option value="local">local</option></select>' +
     "</div>" +
-    '<div class="health" id="health" title="' +
-    (host.dataset.healthEnv ? "Local service health" : "Service health") +
-    '"></div>' +
-    lock +
-    '<button class="den-ib v-pill" id="version-pill" onclick="openChangelog()" title="View changelog">' +
-    '<span class="v-txt">v…</span><span class="v-pip" id="v-pip"></span></button>' +
+    chips +
     "</header>" +
     '<nav class="den-rail" id="den-rail" aria-label="' +
     esc(t("pages")) +
@@ -850,9 +1182,11 @@
       esc(id) +
       '"' +
       (from ? ' aria-describedby="den-gd-' + esc(id) + '"' : "") +
-      '><div class="den-gh" id="den-gh-' +
+      // The name is the label alone ("Acme", not "Acmeacme"): the tag is
+      // in the description ("from acme").
+      '><div class="den-gh"><span id="den-gh-' +
       esc(id) +
-      '"><span>' +
+      '">' +
       esc(label) +
       "</span>" +
       (from
@@ -913,12 +1247,17 @@
           })
           .join(""),
       );
+    var ordered = orderedNav();
     GROUPS.slice()
       .sort(byOrder)
       .forEach(function (g) {
-        var items = NAV.filter(function (n) {
-          return n.group === g.id && (!n.when || n.when(state));
-        }).sort(byOrder);
+        var items = ordered.filter(function (n) {
+          return (
+            n.group === g.id &&
+            state.hidden.indexOf(n.id) < 0 &&
+            (!n.when || n.when(state))
+          );
+        });
         if (!items.length) return;
         html += group(
           g.id,
@@ -954,7 +1293,7 @@
         title: t(SETTINGS.label),
         icon: SETTINGS.icon,
       },
-      false,
+      page === SETTINGS.id,
     );
     html +=
       '<button class="den-ni den-collapse-btn" type="button" data-act="collapse" aria-expanded="' +
@@ -1007,8 +1346,38 @@
     }
   }
 
-  // ↑/↓, Home and End move along the rail; Tab still leaves it.
+  /**
+   * Unpin from the rail (Delete on a pinned row, or its ×) and keep focus
+   * in the rail: the next pinned row, else the previous one, else the
+   * first item. One rule for both paths.
+   */
+  function unpinFromRail(pinId) {
+    var pins = Array.prototype.slice.call(
+      nav.querySelectorAll(".den-ni[data-pin]"),
+    );
+    var at = -1;
+    for (var k = 0; k < pins.length; k++)
+      if (pins[k].dataset.pin === pinId) at = k;
+    var to = at < 0 ? null : pins[at + 1] || pins[at - 1] || null;
+    var toNav = to ? to.dataset.nav : null;
+    unpin(pinId);
+    var dest =
+      (toNav && nav.querySelector('[data-nav="' + toNav + '"]')) ||
+      nav.querySelector(".den-ni");
+    if (!dest) return;
+    Array.prototype.forEach.call(nav.querySelectorAll(".den-ni"), function (a) {
+      a.tabIndex = a === dest ? 0 : -1;
+    });
+    dest.focus();
+  }
+
+  // ↑/↓, Home and End move along the rail; Tab still leaves it (except
+  // in the narrow drawer, a modal: Tab stays inside).
   nav.addEventListener("keydown", function (e) {
+    if (e.key === "Tab" && drawerOpen()) {
+      e.preventDefault();
+      return;
+    }
     var links = Array.prototype.slice.call(nav.querySelectorAll(".den-ni"));
     var i = links.indexOf(document.activeElement);
     if (i < 0) return;
@@ -1016,27 +1385,7 @@
       links[i].dataset && links[i].dataset.pin ? links[i].dataset.pin : null;
     if (pinId && (e.key === "Delete" || e.key === "Backspace")) {
       e.preventDefault();
-      // Focus stays in the rail: the next pinned row, else the previous
-      // one, else the first item.
-      var pins = links.filter(function (a) {
-        return a.dataset && a.dataset.pin;
-      });
-      var at = pins.indexOf(links[i]);
-      var to = pins[at + 1] || pins[at - 1] || null;
-      var toNav = to ? to.dataset.nav : null;
-      unpin(pinId);
-      var dest =
-        (toNav && nav.querySelector('[data-nav="' + toNav + '"]')) ||
-        nav.querySelector(".den-ni");
-      if (dest) {
-        Array.prototype.forEach.call(
-          nav.querySelectorAll(".den-ni"),
-          function (a) {
-            a.tabIndex = a === dest ? 0 : -1;
-          },
-        );
-        dest.focus();
-      }
+      unpinFromRail(pinId);
       return;
     }
     var next =
@@ -1060,7 +1409,7 @@
     var x = tgt && tgt.closest ? tgt.closest("[data-unpin]") : null;
     if (x) {
       e.preventDefault();
-      unpin(x.getAttribute("data-unpin"));
+      unpinFromRail(x.getAttribute("data-unpin"));
       return;
     }
     var c = tgt && tgt.closest ? tgt.closest('[data-act="collapse"]') : null;
@@ -1075,14 +1424,93 @@
       document.body.classList.toggle("den-rail-collapsed", !!state.collapsed);
   }
 
-  // ☰ opens the rail as a drawer below 720px.
+  // ☰ opens the rail as a drawer below 720px: a modal overlay. Focus
+  // moves into the rail (the current item); the top bar and the page are
+  // inert behind a scrim; Escape or the scrim closes it and focus goes back
+  // to ☰; Tab stays inside.
   var menu = host.querySelector(".den-menu-btn");
+  var scrim = null;
+  function drawerOpen() {
+    return document.body.classList.contains("den-rail-open");
+  }
+  function setInert(on) {
+    var els = [
+      host.querySelector(".den-top"),
+      document.getElementById("den-content"),
+    ];
+    els.forEach(function (el) {
+      if (!el) return;
+      if (on) el.setAttribute("inert", "");
+      else el.removeAttribute("inert");
+    });
+  }
+  function openDrawer() {
+    document.body.classList.add("den-rail-open");
+    if (menu) menu.setAttribute("aria-expanded", "true");
+    nav.setAttribute("role", "dialog");
+    nav.setAttribute("aria-modal", "true");
+    if (!scrim) {
+      scrim = document.createElement("div");
+      scrim.className = "den-scrim";
+      scrim.addEventListener("click", function () {
+        closeDrawer(true);
+      });
+    }
+    document.body.appendChild(scrim);
+    setInert(true);
+    var stop =
+      nav.querySelector('.den-ni[aria-current="page"]') ||
+      nav.querySelector('.den-ni[tabindex="0"]') ||
+      nav.querySelector(".den-ni");
+    if (stop) stop.focus();
+  }
+  function closeDrawer(refocus) {
+    if (!drawerOpen()) return;
+    document.body.classList.remove("den-rail-open");
+    if (menu) menu.setAttribute("aria-expanded", "false");
+    nav.removeAttribute("role");
+    nav.removeAttribute("aria-modal");
+    if (scrim && scrim.remove) scrim.remove();
+    setInert(false);
+    if (refocus && menu) menu.focus();
+  }
   if (menu)
     menu.addEventListener("click", function () {
-      var open = !document.body.classList.contains("den-rail-open");
-      document.body.classList.toggle("den-rail-open", open);
-      menu.setAttribute("aria-expanded", open ? "true" : "false");
+      if (drawerOpen()) closeDrawer(true);
+      else openDrawer();
     });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && drawerOpen() && !openPop) {
+      e.preventDefault();
+      closeDrawer(true);
+    }
+  });
+  // Wider than the drawer's step: the rail is a rail again.
+  window.addEventListener("resize", function () {
+    if (drawerOpen() && window.innerWidth > 720) closeDrawer(false);
+  });
+
+  // One h1 per page, the page's own (the brand is not a heading). A page
+  // whose content has none gets a visually hidden one, named from its
+  // <title> ("__DEN_TITLE__ · Services" → Services) or its rail entry.
+  function ensurePageHeading() {
+    var main = document.getElementById("den-content");
+    if (!main || main.querySelector("h1")) return;
+    var title = String(document.title || "");
+    var label = title.indexOf(" · ") >= 0 ? title.split(" · ").pop() : "";
+    if (!label)
+      NAV.forEach(function (n) {
+        if (n.id === page) label = t(n.label);
+      });
+    if (!label) return;
+    var h = document.createElement("h1");
+    h.className = "den-sr den-page-h";
+    h.textContent = label;
+    main.insertBefore(h, main.firstChild);
+  }
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", ensurePageHeading);
+  else ensurePageHeading();
 
   // Skip to content: the page's <main id="den-content">, its one main
   // landmark (each page wraps its content in it).
@@ -1124,6 +1552,11 @@
     /** Repaint the Env part from #env-sel (after setting its value). */
     syncEnv: syncEnv,
     syncPinToggles: syncPinToggles,
+    registerCommand: registerCommand,
+    unregisterCommand: unregisterCommand,
+    commands: commands,
+    /** A .pop menu below `anchor` (the model as the scope menus'). */
+    openMenu: openMenu,
     closeMenu: function () {
       closeMenu(false);
     },
@@ -1132,6 +1565,19 @@
     },
     nav: function () {
       return NAV.slice();
+    },
+    /** NAV in the rail's order (groups, then your order), hidden included. */
+    orderedNav: orderedNav,
+    setNavPrefs: setNavPrefs,
+    setPins: setPins,
+    setCollapsed: setCollapsed,
+    registerSettingsCategory: registerSettingsCategory,
+    registerSetting: registerSetting,
+    settings: function () {
+      return SETTING_ROWS.slice();
+    },
+    settingsCategories: function () {
+      return SETTING_CATS.slice().sort(byOrder);
     },
   };
 
@@ -1163,6 +1609,10 @@
   } catch (e) {
     /* no CustomEvent: the queue still ran */
   }
+  // The queue has drained and ready has fired: a page still without its
+  // group (or a setting without its category) a tick from now warns.
+  settled = true;
+  checkOrphansSoon();
 
   // The server's prefs win over the local copy.
   if (typeof fetch === "function")
@@ -1175,6 +1625,8 @@
         setState({
           pins: Array.isArray(s.shell.pins) ? s.shell.pins : [],
           collapsed: s.shell.collapsed === true,
+          hidden: Array.isArray(s.shell.hidden) ? s.shell.hidden : [],
+          order: Array.isArray(s.shell.order) ? s.shell.order : [],
         });
         remember();
       })
@@ -1219,7 +1671,9 @@
     ".den-ib:hover { background: var(--sunken); color: var(--text); }",
     ".den-menu-btn { display: none; }",
     // Scope (.scope, .sep, .k): / Org ▾ / Workspace ▾ / Env ▾ (R4)
-    ".den-scope { display: flex; align-items: center; gap: 2px; min-width: 0; flex-shrink: 1; }",
+    // The search gives way first (dev.20): the scope keeps its parts whole
+    // (each name is capped below), so they never run into one another.
+    ".den-scope { display: flex; align-items: center; gap: 2px; min-width: 0; flex-shrink: 0; }",
     ".den-sep { color: var(--faint); }",
     ".den-scope [hidden] { display: none; }",
     ".den-scope .den-ib { color: var(--text); font-size: 13px; }",
@@ -1242,7 +1696,8 @@
     "  border: 0; padding: 6px 8px; border-radius: 6px; cursor: pointer; text-align: left;",
     "  font: inherit; color: inherit; text-decoration: none; box-sizing: border-box; }",
     ".den-pop .den-mi:hover, .den-pop .den-mi:focus { background: var(--sunken); }",
-    ".den-pop .den-mi[aria-checked='true']::after { content: '✓'; margin-left: auto; color: var(--accent-text); }",
+    // The ✓ is drawn, not read (aria-checked says it): alt text "".
+    ".den-pop .den-mi[aria-checked='true']::after { content: '✓' / ''; margin-left: auto; color: var(--accent-text); }",
     ".den-pop .den-mi-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
     ".den-pop .den-mtag { font: 11px var(--mono); color: var(--muted); }",
     ".den-pop .den-hr { height: 1px; background: var(--border); margin: 6px 0; }",
@@ -1251,23 +1706,107 @@
     "body.den-has-shell > #den-content { display: flex; flex-direction: column; flex: 1 1 auto;",
     "  min-height: 0; min-width: 0; }",
     "body.den-has-shell > #den-content:focus { outline: none; }",
-    // Chips (.chip): the lock
+    // Search (.search, kbd: R5). The prototype's sizes are content-box
+    // (the pages reset everything to border-box).
+    ".den-search { flex: 1 1 260px; max-width: 420px; margin: 0 auto; display: flex; align-items: center;",
+    "  gap: 8px; background: var(--sunken); border: 1px solid var(--border); border-radius: var(--radius-button);",
+    "  padding: 5px 10px; color: var(--faint); cursor: text; min-width: 0; font: inherit; box-sizing: content-box; }",
+    ".den-search-ph { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }",
+    ".den-search-ic { flex: none; }",
+    ".den-top kbd, .den-pal kbd { font: 11px var(--mono); border: 1px solid var(--border); border-bottom-width: 2px;",
+    "  border-radius: 4px; padding: 0 5px; color: var(--muted); background: var(--surface); }",
+    // Chips (.chips, .chip, .dot: R6, R7, R8)
+    ".den-chips { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }",
     ".den-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);",
-    "  border-radius: 999px; padding: 3px 10px; background: var(--surface); cursor: pointer;",
+    "  border-radius: 999px; padding: 3px 10px; background: var(--surface); cursor: pointer; font: inherit;",
     "  font-size: 13px; white-space: nowrap; flex-shrink: 0; color: var(--text); }",
     ".den-chip:hover { border-color: var(--border-strong); }",
+    ".den-chip.bad { border-color: color-mix(in srgb, var(--bad) 50%, var(--border)); }",
+    ".den-chip .den-n { font-variant-numeric: tabular-nums; }",
+    ".den-chip .den-dot, .den-drawer .den-dot, .den-pal .den-dot { margin: 0; }",
+    ".den-chip[aria-expanded='true'] { border-color: var(--border-strong); }",
+    ".den-dot.run { background: var(--accent); animation: den-pulse 1.2s infinite; }",
+    ".den-dot.pending { background: var(--faint); animation: den-pulse 1.2s infinite; }",
+    "@keyframes den-pulse { 50% { opacity: .35; } }",
+    "@media (prefers-reduced-motion: reduce) { .den-dot.run, .den-dot.pending { animation: none; } }",
+    ".den-user { display: contents; }",
+    // Buttons in overlays (.btn, .btn.sm, .btn.primary)
+    ".den-btn { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-button);",
+    "  padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text); }",
+    ".den-btn:hover { border-color: var(--border-strong); }",
+    ".den-btn.primary { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }",
+    ".den-btn.sm { padding: 2px 9px; font-size: 12.5px; }",
+    ".den-btn:disabled { opacity: .6; cursor: default; }",
+    // Status drawer (.scrim, .drawer, .prob-card, .grp, .svl: R15)
+    ".den-scrim { position: fixed; inset: 0; background: rgb(0 0 0 / 0.35); z-index: 40; }",
+    ".den-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); z-index: 41;",
+    "  box-sizing: content-box; background: var(--surface); border-left: 1px solid var(--border);",
+    "  box-shadow: var(--shadow); display: flex; flex-direction: column; font: 14px/1.45 var(--sans);",
+    "  color: var(--text); }",
+    ".den-drawer :focus-visible, .den-pal :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
+    ".den-drawer .den-dh { display: flex; align-items: center; gap: 10px; padding: 14px 16px;",
+    "  border-bottom: 1px solid var(--border); }",
+    ".den-drawer .den-dh h2 { margin: 0; font: 600 16px var(--display); flex: 1; }",
+    ".den-drawer .den-db { overflow-y: auto; padding: 12px 16px 24px; display: grid; gap: 16px; align-content: start; }",
+    ".den-drawer .den-none { margin: 0; color: var(--muted); }",
+    ".den-sec { font: 600 13px var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted);",
+    "  margin: 0 0 10px; }",
+    ".den-cards, .den-grps { display: grid; gap: 14px; }",
+    ".den-cards { gap: 8px; }",
+    ".den-prob-card { border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--border));",
+    "  background: color-mix(in srgb, var(--bad) 7%, var(--surface)); border-radius: var(--radius);",
+    "  padding: 10px 12px; display: grid; gap: 6px; }",
+    ".den-prob-card .den-t { display: flex; gap: 8px; align-items: center; font-weight: 600; }",
+    ".den-prob-card .den-t .den-mono { font-weight: 400; color: var(--muted); }",
+    ".den-prob-card .den-s { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }",
+    ".den-prob-card .den-a { display: flex; gap: 6px; flex-wrap: wrap; }",
+    ".den-grp h3 { margin: 0 0 6px; font: 600 12px var(--mono); color: var(--muted); display: flex;",
+    "  justify-content: space-between; text-transform: uppercase; letter-spacing: .06em; }",
+    ".den-svl { display: grid; gap: 2px; }",
+    ".den-svl button { display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 4px 6px;",
+    "  border-radius: 5px; cursor: pointer; text-align: left; font: inherit; color: inherit; min-width: 0; }",
+    ".den-svl button:hover { background: var(--sunken); }",
+    ".den-svl .den-mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+    ".den-svl .den-ms { margin-left: auto; font: 12px var(--mono); color: var(--faint);",
+    "  font-variant-numeric: tabular-nums; white-space: nowrap; }",
+    // Command palette (.pal-wrap, .pal: R17)
+    ".den-pal-wrap { position: fixed; inset: 0; z-index: 50; display: grid; justify-items: center;",
+    "  align-items: start; padding: 12vh 16px 0; background: rgb(0 0 0 / 0.35); font: 14px/1.45 var(--sans);",
+    "  color: var(--text); }",
+    ".den-pal { width: min(620px, 100%); box-sizing: content-box; background: var(--raised);",
+    "  border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }",
+    ".den-pal input { width: 100%; box-sizing: border-box; border: 0; border-bottom: 1px solid var(--border);",
+    "  background: transparent; padding: 14px 16px; font-family: var(--sans); font-size: 16px; color: var(--text);",
+    // line-height too: a page's `input { font: inherit }` (Settings) must not reach it.
+    "  line-height: normal; outline: none; margin: 0; }",
+    ".den-pal ul { list-style: none; margin: 0; padding: 6px; max-height: 50vh; overflow-y: auto; }",
+    ".den-pal li { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 7px; cursor: pointer; }",
+    ".den-pal li[aria-selected='true'] { background: color-mix(in srgb, var(--accent) 16%, transparent); }",
+    ".den-pal li .den-pal-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+    ".den-pal li .den-kind { margin-left: auto; font: 11px var(--mono); color: var(--faint); text-transform: uppercase;",
+    "  letter-spacing: .05em; white-space: nowrap; }",
+    ".den-pal li .den-sub { color: var(--faint); font: 12px var(--mono); white-space: nowrap; }",
+    ".den-pal li.den-pal-empty { cursor: default; color: var(--muted); }",
+    ".den-pal .den-foot { display: flex; gap: 14px; padding: 8px 14px; border-top: 1px solid var(--border);",
+    "  color: var(--faint); font-size: 12px; flex-wrap: wrap; }",
+    // The lock popover (.pop form, .pop input, .note: R8)
+    ".den-pop form { display: grid; gap: 8px; padding: 6px 8px 8px; width: 260px; box-sizing: content-box; margin: 0; }",
+    ".den-pop input:not([type='checkbox']) { border: 1px solid var(--border); background: var(--bg); color: var(--text);",
+    "  border-radius: var(--radius-button); padding: 6px 8px; font: inherit; font-size: 13.3333px; line-height: normal; }",
+    ".den-pop .den-note, .den-pop .den-mnote { color: var(--muted); font-size: 12.5px; margin: 0; }",
+    ".den-pop .den-mnote { padding: 4px 8px; max-width: 260px; }",
+    ".den-pop .den-lock-save { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; }",
+    ".den-pop .den-lock-save[hidden], .den-pop .den-lock-err[hidden], .den-mslot[hidden] { display: none; }",
+    ".den-pop .den-lock-err { color: var(--bad); font-size: 12.5px; }",
+    ".den-pop .den-lock-desc { padding: 2px 8px 6px; color: var(--muted); font-size: 12.5px; max-width: 260px; }",
     // What's new (.ib.whatsnew + .badge-dot)
     "#den-shell .v-pill { font: inherit; padding: 4px 8px; border: 1px solid transparent;",
     "  border-radius: var(--radius-button); color: var(--muted); flex-shrink: 0; }",
     "#den-shell .v-pill:hover { background: var(--sunken); color: var(--text); border-color: transparent; }",
     "#den-shell .v-pip { position: static; width: 7px; height: 7px; border: 0; border-radius: 50%;",
     "  background: var(--accent); }",
-    // ◐ (the prototype's user menu, an .ib)
-    "#den-shell .den-top .appearance { margin-left: 0; }",
-    "#den-shell .den-top .appearance-btn { font: inherit; line-height: inherit; padding: 4px 8px;",
-    "  border: 1px solid transparent; border-radius: var(--radius-button); color: var(--muted); }",
-    "#den-shell .den-top .appearance-btn:hover, #den-shell .den-top .appearance-btn[aria-expanded='true'] {",
-    "  background: var(--sunken); color: var(--text); border-color: transparent; }",
+    // ◐ ▾ (the prototype's user menu, an .ib: appearance.js)
+    ".den-top .den-ib[aria-expanded='true'] { background: var(--sunken); color: var(--text); }",
     // Rail (.rail)
     ".den-rail { position: fixed; left: 0; top: var(--den-top-h); bottom: 0; width: var(--den-rail-cw);",
     "  box-sizing: content-box; display: flex; flex-direction: column; padding: 10px 8px;",
@@ -1323,37 +1862,31 @@
     "  background: var(--raised); border: 1px solid var(--border-strong); border-radius: 8px;",
     "  padding: 8px 14px; box-shadow: var(--shadow); z-index: 60; font: 14px/1.45 var(--sans);",
     "  color: var(--text); }",
-    // Narrow (the prototype's 860 and 720px steps)
-    "@media (max-width: 860px) { .den-scope .den-k, .den-scope .den-sep, .den-scope .den-opt { display: none; } }",
+    // Narrow (the prototype's 860 and 720px steps): chip labels hide, the
+    // dots stay; then the scope hides and the search is its icon.
+    // Den's chips are wider than the prototype's (the full version, real
+    // counts): the scope's keys give way from 960px, not 860, so the bar
+    // fits without the scope shrinking.
+    "@media (max-width: 960px) { .den-scope .den-k { display: none; } }",
+    "@media (max-width: 860px) { .den-scope .den-k, .den-scope .den-sep, .den-scope .den-opt { display: none; }",
+    "  .den-chip .den-lbl-l { display: none; } }",
     "@media (max-width: 720px) {",
     "  body.den-has-shell, body.den-has-shell.den-rail-collapsed { --den-rail-w: 0px; --den-rail-cw: 244px; }",
     "  .den-menu-btn { display: inline-flex; }",
     "  .den-rail { transform: translateX(-105%); transition: transform .18s;",
     "    box-shadow: var(--shadow); z-index: 42; }",
     "  body.den-rail-open .den-rail { transform: none; }",
+    "  .den-scrim { position: fixed; inset: 0; z-index: 41; background: color-mix(in srgb, var(--bg) 60%, transparent); }",
     "  body.den-rail-collapsed .den-rail .den-lbl, body.den-rail-collapsed .den-rail .den-gh,",
     "  body.den-rail-collapsed .den-rail .den-bdg { position: static; width: auto; height: auto;",
     "    clip: auto; overflow: hidden; }",
     "  .den-collapse-btn { display: none; }",
     "  .den-scope { display: none; }",
+    "  .den-search { flex: 0 0 auto; margin: 0 0 0 auto; }",
+    "  .den-search-ph, .den-search kbd { display: none; }",
+    "  .den-top .v-pill { display: none; }",
     "}",
     "@media (prefers-reduced-motion: reduce) { .den-rail { transition: none; } }",
-    // Names in the bar never wrap mid-word: they end in an ellipsis and
-    // keep the whole name in their title.
-    ".den-top .health-item, .den-top .health-app-label { white-space: nowrap; }",
-    // The health row sits in the status chip's slot, as a chip (R6 replaces
-    // it with the real chip and drawer in dev.20).
-    ".health { display: flex; align-items: center; gap: 10px; }",
-    "#den-shell .den-top > .health { border: 1px solid var(--border); border-radius: 999px;",
-    "  padding: 3px 10px; background: var(--surface); font-size: 13px; margin-left: auto; }",
-    "#den-shell .den-top > .health:empty { display: none; }",
-    ".health-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }",
-    ".den-top .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted);",
-    "  flex-shrink: 0; display: inline-block; }",
-    ".den-top .dot.ok { background: var(--ok); }",
-    ".den-top .dot.err { background: var(--bad); }",
-    ".den-top .dot.warn { background: var(--warn); }",
-    ".den-top .dot.running { background: var(--warn); }",
   ].join("\n");
   document.head.appendChild(style);
 })();

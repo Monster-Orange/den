@@ -18,6 +18,7 @@ const PAGES: Record<string, { page: string; healthEnv?: string }> = {
   "environments.html": { page: "environments" },
   "release.html": { page: "release", healthEnv: "local" },
   "logs.html": { page: "logs" },
+  "settings.html": { page: "settings" },
   "index.html": { page: "tests" },
 };
 
@@ -56,9 +57,18 @@ describe("every page mounts the shell", () => {
       const html = read(file);
       expect(html).not.toMatch(/<header[\s>]/);
       expect(html).not.toMatch(/class="topbar"/);
-      // Content may have its own nav (Local Dev's settings); not the pages.
-      expect(html.match(/<nav[\s>][^>]*/g) ?? []).toEqual(
-        file === "local-dev.html" ? ['<nav class="settings-nav"'] : [],
+      // Content may have its own nav (the Settings page's categories); not
+      // the pages. Local Dev's old settings panel and its nav are gone (R21).
+      expect(
+        (html.match(/<nav[\s>][^>]*/g) ?? []).map((n) =>
+          n.replace(/\s+/g, " ").trim(),
+        ),
+      ).toEqual(
+        file === "settings.html"
+          ? [
+              '<nav class="set-nav" id="set-nav" aria-label="Settings categories"',
+            ]
+          : [],
       );
       for (const id of [
         "env-sel",
@@ -86,7 +96,10 @@ describe("the shell's source", () => {
     expect(SHELL).toMatch(/\.den-title \{ font: 600 15px var\(--display\);/);
   });
   it("uses no color literal (theme tokens only, R2)", () => {
-    expect(SHELL).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
+    // Black alone is allowed, for a modal scrim (as ui-color-tokens says).
+    const scrim = /rgb\(0 0 0 \/ 0?\.\d+\)/g;
+    expect(SHELL.replace(scrim, "")).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
+    expect(SHELL.replace(scrim, "")).not.toMatch(/rgb\(0 0 0/);
   });
   it("draws the scope as the prototype's .ib menus, one Workspace control (R4)", () => {
     // / ORG / WORKSPACE ▾ / ENV ▾: no View select, no Focus pill, no menu
@@ -111,8 +124,8 @@ describe("the shell's source", () => {
       [
         "/environments",
         "/local-dev",
-        "/local-dev?settings=1",
         "/logs",
+        "/settings",
         "/release",
         "/services",
         "/tests",
@@ -201,5 +214,50 @@ describe("Environments groups services by their repo's org", () => {
   });
   it("loads the shell's behaviour like every other page", () => {
     expect(env).toMatch(/from "\/header\.js"/);
+  });
+});
+
+describe("the old settings entry points go to the Settings page (R21)", () => {
+  const local = read("local-dev.html");
+  it("Local Dev's ⚙ links to Editor & terminal; its workspace Settings tab to Workspace", () => {
+    expect(local).toMatch(
+      /<a\s+class="sidebar-settings-btn"\s+id="sidebar-settings-btn"\s+href="\/settings#editor"/,
+    );
+    expect(local).toContain(
+      'href="/settings?ws=${encodeURIComponent(wsName)}#workspace"',
+    );
+    // No editor or terminal set: the open actions send you there too.
+    expect(local.match(/location\.href = "\/settings#editor"/g)).toHaveLength(
+      2,
+    );
+  });
+  it("the old panel is gone, not left as a second UI", () => {
+    for (const gone of [
+      "showSettingsPanel",
+      "renderSettingsCategory",
+      "loadWsEditorSettings",
+      "settings-nav",
+      "data-settings-cat",
+      "ctab-ws-settings",
+      "lang-override",
+      "postSettings",
+    ])
+      expect([gone, local.includes(gone)]).toEqual([gone, false]);
+  });
+  it("the rail's Settings item and the user menu's All settings", () => {
+    expect(SHELL).toMatch(/href: "\/settings",/);
+    expect(read("appearance.js")).toContain(
+      'const settings = "/settings#appearance";',
+    );
+  });
+  it("Den's rows live only in the registry (settings-registry.js)", () => {
+    // The page draws rows from denShell.settings(); no other page or
+    // module defines a setting row.
+    const page = read("settings-page.js");
+    expect(page).toMatch(/shell\.settings\(\)/);
+    expect(page).not.toMatch(/registerSetting\(/);
+    for (const f of fs.readdirSync(PUBLIC))
+      if (!["settings-registry.js", "shell.js"].includes(f))
+        expect([f, /registerSetting\(/.test(read(f))]).toEqual([f, false]);
   });
 });

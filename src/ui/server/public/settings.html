@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Mode before first paint: yours (the server fills it in below),
+      // else the system's, else the theme's default, else dark.
+      (function () {
+        var m = "@@DEN_MODE@@";
+        if (m !== "dark" && m !== "light") {
+          var q = function (s) {
+            return (
+              window.matchMedia &&
+              matchMedia("(prefers-color-scheme: " + s + ")").matches
+            );
+          };
+          m = q("light")
+            ? "light"
+            : q("dark")
+              ? "dark"
+              : "@@DEN_DEFAULT_MODE@@";
+        }
+        document.documentElement.dataset.mode =
+          m === "light" ? "light" : "dark";
+      })();
+    </script>
+    <link rel="stylesheet" href="/theme.css" id="theme-css" />
+    <title>__DEN_TITLE__ · Settings</title>
+    <style>
+      /* The Settings page (R21): the prototype's (den-shell.html) page
+         header, sections, rows, segmented buttons, swatches and navigation
+         list, ported as they are; --r is --radius, --r-btn is
+         --radius-button. The category list on the left has no prototype
+         counterpart: it is drawn like the rail's items (.ni). */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+        color: inherit;
+      }
+      /* .main */
+      html body.den-has-shell > #den-content {
+        overflow: auto;
+        min-width: 0;
+        padding: 20px 24px 32px 24px;
+        font: 14px/1.45 var(--sans);
+        color: var(--text);
+        display: block;
+      }
+      #den-content :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      /* .ph: the page header */
+      .ph {
+        display: flex;
+        align-items: flex-end;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      .ph h1 {
+        font: 600 22px/1.2 var(--display);
+        margin: 0;
+        text-wrap: balance;
+      }
+      .ph .sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 4px;
+      }
+      .ph .act {
+        margin-left: auto;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .ph input[type="search"] {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: var(--radius-button);
+        padding: 6px 10px;
+        min-width: 0;
+        width: 220px;
+        color: var(--text);
+      }
+      .set-count {
+        margin: -8px 0 12px;
+        min-height: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .set-count:empty {
+        display: none;
+      }
+      .den-sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      kbd {
+        font: 11px var(--mono);
+        border: 1px solid var(--border);
+        border-bottom-width: 2px;
+        border-radius: 4px;
+        padding: 0 5px;
+        color: var(--muted);
+        background: var(--surface);
+      }
+      /* Categories | rows */
+      .set-layout {
+        display: grid;
+        grid-template-columns: 180px minmax(0, 760px);
+        gap: 24px;
+        align-items: start;
+      }
+      .set-nav {
+        position: sticky;
+        top: 0;
+        display: grid;
+        gap: 2px;
+      }
+      /* drawn like the rail's .ni */
+      .set-ni {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: var(--radius-button);
+        color: var(--muted);
+        text-decoration: none;
+        position: relative;
+      }
+      .set-ni:hover {
+        background: var(--sunken);
+        color: var(--text);
+      }
+      .set-ni[aria-current="true"] {
+        background: color-mix(in srgb, var(--accent) 13%, transparent);
+        color: var(--text);
+        font-weight: 500;
+      }
+      .set-ni-l {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .den-bdg {
+        font: 11px var(--mono);
+        padding: 0 6px;
+        border-radius: 999px;
+        background: var(--sunken);
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      .den-tagx {
+        font: 10px var(--mono);
+        color: var(--faint);
+        border: 1px dashed var(--border-strong);
+        border-radius: 4px;
+        padding: 0 4px;
+        font-weight: 400;
+        vertical-align: middle;
+      }
+      /* .set: sections */
+      .set {
+        display: grid;
+        gap: 22px;
+        max-width: 760px;
+        min-width: 0;
+      }
+      .set section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+        scroll-margin-top: 8px;
+      }
+      .set h3 {
+        margin: 0 0 4px;
+        font: 600 15px var(--display);
+      }
+      .set h3:focus {
+        outline: none;
+      }
+      .set p {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      /* .seg: segmented buttons */
+      .seg {
+        display: inline-flex;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button);
+        overflow: hidden;
+        flex-wrap: wrap;
+      }
+      .seg button {
+        background: none;
+        border: 0;
+        padding: 6px 12px;
+        cursor: pointer;
+        color: var(--muted);
+      }
+      .seg button[aria-pressed="true"] {
+        background: color-mix(in srgb, var(--accent) 16%, transparent);
+        color: var(--text);
+        font-weight: 500;
+      }
+      /* .row: label | control */
+      .set-row + .set-row {
+        border-top: 1px solid var(--border);
+        margin-top: 6px;
+        padding-top: 6px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 6px 0;
+      }
+      .row .l {
+        width: 120px;
+        color: var(--muted);
+        font-size: 13px;
+        align-self: flex-start;
+        padding-top: 6px;
+      }
+      .row .ctl {
+        flex: 1 1 300px;
+        min-width: 0;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+      .set-scope {
+        font: 10px var(--mono);
+        color: var(--faint);
+        border: 1px dashed var(--border-strong);
+        border-radius: 4px;
+        padding: 0 4px;
+        align-self: flex-start;
+        margin-top: 8px;
+        white-space: nowrap;
+      }
+      .set-scope[data-scope="workspace"] {
+        color: var(--accent-text);
+        border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+      }
+      .set-row .d {
+        color: var(--muted);
+        font-size: 12.5px;
+        padding: 0 0 4px 132px;
+      }
+      .set-note {
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      .set-warn {
+        flex-basis: 100%;
+        margin: 4px 0 0 !important;
+        color: var(--warn) !important;
+      }
+      .set-saved {
+        display: block;
+        padding-left: 132px;
+        font-size: 12.5px;
+      }
+      .set-saved:empty {
+        display: none;
+      }
+      .set-saved.ok {
+        color: var(--ok);
+      }
+      .set-saved.bad {
+        color: var(--bad);
+      }
+      .set-ro {
+        color: var(--text);
+        padding: 6px 0;
+        overflow-wrap: anywhere;
+      }
+      .set-radios {
+        display: grid;
+        gap: 2px;
+        flex: 1;
+      }
+      .set-radio {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 8px;
+        border-radius: var(--radius-button);
+        cursor: pointer;
+      }
+      .set-radio:hover {
+        background: var(--sunken);
+      }
+      .set-radio.off {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .set-radio input {
+        accent-color: var(--accent);
+        margin: 0;
+      }
+      .set-tag {
+        font: 11px var(--mono);
+        color: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 0 6px;
+      }
+      .set-langs {
+        display: grid;
+        gap: 4px;
+        flex: 1;
+      }
+      .set-lang {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .set-lang label {
+        width: 110px;
+        font-size: 13px;
+      }
+      select,
+      input[type="number"],
+      input[type="text"] {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: var(--radius-button);
+        padding: 5px 8px;
+        color: var(--text);
+      }
+      input[type="number"] {
+        width: 100px;
+      }
+      .set-check {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--accent);
+        margin: 6px 0;
+      }
+      .set-unit {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      /* .btn */
+      .btn {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: var(--radius-button);
+        padding: 6px 12px;
+        cursor: pointer;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .btn:hover {
+        border-color: var(--border-strong);
+      }
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .btn.primary {
+        background: var(--accent-fill);
+        border-color: var(--accent-fill);
+        color: var(--on-accent);
+      }
+      .btn.sm {
+        padding: 2px 9px;
+        font-size: 12.5px;
+      }
+      .set-save {
+        margin-top: 6px;
+      }
+      /* .navlist: Navigation's pages and pins */
+      .navlist {
+        display: grid;
+        gap: 4px;
+        flex: 1;
+      }
+      .navlist .it {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 8px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button);
+        background: var(--bg);
+      }
+      .navlist .it .nm {
+        flex: 1;
+        min-width: 0;
+      }
+      .navlist .it.off .nm {
+        color: var(--faint);
+        text-decoration: line-through;
+      }
+      .set-grp {
+        color: var(--faint);
+        font-size: 12px;
+      }
+      .den-mono {
+        font-family: var(--mono);
+        font-size: 12.5px;
+      }
+      /* .swatches */
+      .swatches {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+        padding-bottom: 14px;
+        flex-basis: 100%;
+      }
+      .sw {
+        /* The prototype's swatch is content-box: 34px plus its border. */
+        box-sizing: content-box;
+        width: 34px;
+        height: 34px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        position: relative;
+      }
+      .sw span {
+        position: absolute;
+        top: 38px;
+        left: 0;
+        font: 9px var(--mono);
+        color: var(--faint);
+        white-space: nowrap;
+      }
+      /* .empty */
+      .empty {
+        border: 1px dashed var(--border-strong);
+        border-radius: var(--radius);
+        padding: 28px;
+        color: var(--muted);
+        max-width: 640px;
+      }
+      .empty b {
+        color: var(--text);
+      }
+      @media (max-width: 860px) {
+        .set-layout {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .set-nav {
+          position: static;
+          display: flex;
+          overflow-x: auto;
+        }
+        .set-row .d,
+        .set-saved {
+          padding-left: 0;
+        }
+      }
+      @media (max-width: 720px) {
+        html body.den-has-shell > #den-content {
+          padding: 16px;
+        }
+        .ph input[type="search"] {
+          width: 100%;
+        }
+        .ph .act {
+          margin-left: 0;
+          flex: 1 1 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The shell: top bar and rail, the same on every page (shell.js). -->
+    <div id="den-shell" data-page="settings"></div>
+    <script src="/shell.js"></script>
+
+    <!-- The page's one main landmark: everything after the shell. -->
+    <main id="den-content">
+      <div class="ph">
+        <div>
+          <h1>Settings</h1>
+          <div class="sub">
+            Saved to your __DEN_TITLE__ preferences and remembered on every page
+          </div>
+        </div>
+        <div class="act" role="search">
+          <label class="den-sr" for="set-q">Search settings</label>
+          <input
+            type="search"
+            id="set-q"
+            placeholder="Search settings"
+            autocomplete="off"
+            aria-keyshortcuts="/"
+          />
+          <kbd aria-hidden="true" title="Press / to search">/</kbd>
+        </div>
+      </div>
+      <p class="set-count" id="set-count" aria-live="polite"></p>
+      <div class="set-layout">
+        <nav
+          class="set-nav"
+          id="set-nav"
+          aria-label="Settings categories"
+        ></nav>
+        <div class="set" id="set-body"></div>
+      </div>
+
+      <script type="module">
+        import {
+          applyDenConfig,
+          initChangelog,
+          initHealth,
+          initLogBadge,
+          initWorkspacePill,
+        } from "/header.js";
+        import {
+          appearanceState,
+          ensureAppearance,
+          setAppearance,
+        } from "/appearance.js";
+        import { registerDenSettings } from "/settings-registry.js";
+        import { mountSettings } from "/settings-page.js";
+        void Promise.all([
+          initHealth(),
+          initWorkspacePill(),
+          applyDenConfig(),
+          initChangelog(),
+        ]).then(initLogBadge);
+        registerDenSettings(window.denShell);
+        void mountSettings({
+          shell: window.denShell,
+          appearance: { appearanceState, ensureAppearance, setAppearance },
+        });
+      </script>
+    </main>
+  </body>
+</html>

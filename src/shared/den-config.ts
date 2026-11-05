@@ -342,8 +342,16 @@ export interface UserConfig {
    * the header. See src/ui/server/appearance-prefs.ts.
    */
   appearance?: { theme?: string; mode?: string };
-  /** The rail's pins and collapse (src/ui/server/shell-prefs.ts). */
-  shell?: { pins?: string[]; collapsed?: boolean };
+  /**
+   * The rail's pins and collapse, and (R21 Navigation) the pages it hides
+   * and their order (src/ui/server/shell-prefs.ts).
+   */
+  shell?: {
+    pins?: string[];
+    collapsed?: boolean;
+    hidden?: string[];
+    order?: string[];
+  };
   /**
    * What the web UI and `<cli> status` show: `scope` is "all" (every active
    * workspace, the default) or one active workspace's name. A view filter

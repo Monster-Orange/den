@@ -1,41 +1,54 @@
 /**
  * The shell's behaviour (shell.js draws the frame: top bar and rail):
- * the health row, the version pill and changelog, the workspace pill, the
- * env picker (one for the whole shell) and the log badge. Every page
- * imports it. It expects:
- *   - a <div id="health"> in the header to render dots into
- *   - a <select id="env-sel"> whose change event triggers a re-ping
+ * the health poll that feeds the status chip and drawer (topbar.js), the
+ * version pill and changelog, the workspace menu, the env picker (one for
+ * the whole shell) and the log badge. Every page imports it. It expects
+ * a <select id="env-sel"> (shell.js) whose change event triggers a re-ping.
  *
  * Health data is driven entirely by __DEN_CLI__.json manifests — no hardcoded
  * service names. Each registered service that declares a health.url for
- * the current env gets a dot.
+ * the current env is counted.
  */
 
-import { buildScopeMenuModel, ownersLabel } from "./workspace-picker.js";
+import { buildScopeMenuModel } from "./workspace-picker.js";
 import { initAppearance } from "./appearance.js";
 import { versionLabel } from "./version-label.js";
 import { changelogView } from "./changelog-view.js";
-import {
-  buildRow,
-  closeMoreList,
-  fitPlan,
-  healthCycle,
-  mountMoreChip,
-  paintGate,
-  shellHealth,
-} from "./health-fit.js";
-import { describeRollup } from "./health-rollup.js";
+import { buildRow, healthCycle, paintGate, shellHealth } from "./health-fit.js";
+import { initTopbar, paintChecking, paintStatus } from "./topbar.js";
+import { registerDenSettings } from "./settings-registry.js";
 
-// Every page with this header gets the appearance controls (mode, theme).
+export {
+  isUnlocked,
+  onLockChange,
+  requireUnlock,
+  setServiceRunner,
+  takePendingAction,
+} from "./topbar.js";
+
+// Every page with this header gets the appearance controls (mode, theme)
+// and the top bar's chips, palette and drawer (topbar.js).
 void initAppearance();
+// Den's SETTINGS rows on every page, not only /settings: each is a ⌘K
+// palette row (kind "setting"), so "terminal" finds Default terminal.
+if (typeof window !== "undefined")
+  (window.denShellQueue = window.denShellQueue || []).push((sh) => {
+    if (sh?.registerSetting) registerDenSettings(sh);
+  });
+if (typeof document !== "undefined")
+  initTopbar({
+    refreshHealth: (env, opts) => refreshHealth(env, opts),
+    healthEnv: () => healthEnv(),
+    storeOpenLog: (repo, service, env) => storeOpenLog(repo, service, env),
+  });
 
 // 5s between polls — measured from each poll's COMPLETION (schedulePoll
-// re-arms after renderHealthDots resolves), so slow probes can't overlap.
+// re-arms after renderHealth resolves), so slow probes can't overlap.
 const POLL_INTERVAL_MS = 5_000;
 
 // Last painted health results, keyed `repo/service`, so a new poll can seed
 // from them and update dots in place instead of collapsing the strip and
-// regrowing it (which shifted the whole page below — see renderHealthDots).
+// regrowing it (see renderHealth).
 let _healthAcc = new Map();
 let _healthAccGen = -1;
 // The poll generation that last painted _healthAcc (healthCycle's `last`).
@@ -104,71 +117,6 @@ export function healthEnv() {
   return (
     document.getElementById("den-shell")?.dataset?.healthEnv || currentEnv()
   );
-}
-
-// ── Editor preference (cached) ─────────────────────────────────────────────────
-let _editorKey = null;
-let _editorKeyFetched = false;
-async function _loadEditorKey() {
-  if (_editorKeyFetched) return;
-  _editorKeyFetched = true;
-  try {
-    const data = await fetch("/api/settings").then((r) => r.json());
-    _editorKey = data.editor ?? null;
-  } catch {
-    /* settings unavailable */
-  }
-}
-
-function _injectNavStyles() {
-  if (document.getElementById("__DEN_CLI__-nav-styles")) return;
-  const s = document.createElement("style");
-  s.id = "__DEN_CLI__-nav-styles";
-  s.textContent = `
-    .nav-open-btn {
-      background: none; border: none; color: var(--muted);
-      cursor: pointer; font-size: 11px; padding: 0 3px; line-height: 1;
-      opacity: 0; transition: opacity .15s, color .1s;
-      flex-shrink: 0;
-    }
-    .health-item:hover .nav-open-btn,
-    .health-group:hover .nav-open-btn { opacity: 1; }
-    .nav-open-btn:hover { color: var(--accent-text) !important; }
-    /* Repo dots boxed by application (Org > Application > Repo). */
-    .health-app {
-      display: flex; align-items: center; gap: 8px;
-      padding: 1px 8px 1px 6px; border: 1px solid var(--border);
-      border-radius: 10px;
-    }
-    /* Before the first result: a neutral "…", never an empty row. */
-    .health-pending { color: var(--muted); font-size: 11px; padding: 0 4px; }
-    .health-app-label {
-      font-size: 10px; font-weight: 600; letter-spacing: .03em;
-      color: var(--text); opacity: .7; white-space: nowrap;
-    }
-    /* Degraded (health-rollup.js): a checked service other than the entry
-       is down. The pages define .dot.ok/.err; this one is the row's. */
-    .health .dot.warn, .health-more-list .dot.warn { background: var(--warn); }
-    /* "+N": the repos the row has no room for (health-fit.js). */
-    .health-more {
-      flex-shrink: 0; font: inherit; font-size: 11px; line-height: 1.4;
-      padding: 1px 7px; border: 1px solid var(--border); border-radius: 10px;
-      background: var(--raised); color: var(--text); cursor: pointer;
-      white-space: nowrap;
-    }
-    .health-more.problem { border-color: var(--bad); }
-    .health-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-    .health-more-list {
-      position: fixed; z-index: 1000; max-height: 60vh; overflow: auto;
-      display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
-      padding: 8px 10px; background: var(--surface); color: var(--text);
-      border: 1px solid var(--border-strong); border-radius: 8px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); font-size: 12px;
-    }
-    .health-more-list .health-item { display: flex; align-items: center; gap: 5px; }
-    .health-more-list .health-app { flex-wrap: wrap; }
-  `;
-  document.head.appendChild(s);
 }
 
 // ── Changelog modal ────────────────────────────────────────────────────────────
@@ -735,7 +683,7 @@ export async function applyDenConfig() {
 function _renderOrgCrumb(org) {
   // The shell's scope has an org part (the prototype's "/ ORG name").
   if (window.denShell?.setOrg?.(org)) return;
-  const h1 = document.querySelector(".den-top h1, header h1");
+  const h1 = document.querySelector(".den-top .den-title, header h1");
   if (!h1 || !org?.title || document.getElementById("org-crumb")) return;
   const crumb = document.createElement("span");
   crumb.id = "org-crumb";
@@ -876,14 +824,14 @@ async function _setFocus(name) {
   location.reload();
 }
 
-// ── Health dots ───────────────────────────────────────────────────────────────
+// ── Health: the status chip and drawer (topbar.js, R6 and R15) ─────────────
 
 /** Call once on page load. Does NOT manage env changes — caller handles that. */
 export async function initHealth() {
   await envReady();
   const env = healthEnv();
   const gen = ++pollGen;
-  await renderHealthDots(env, gen);
+  await renderHealth(env, gen);
   schedulePoll(env, gen);
 }
 
@@ -891,13 +839,15 @@ export async function initHealth() {
 export async function refreshHealth(env, { force = false } = {}) {
   const gen = ++pollGen;
   clearTimeout(pollTimer);
-  setCheckingState(env);
-  await renderHealthDots(env, gen, force);
+  // The chip goes neutral while the new env is checked: never red from
+  // the old env's answers, never a partial count.
+  if (env !== _healthEnvPainted) paintChecking();
+  await renderHealth(env, gen, force);
   schedulePoll(env, gen);
 }
 
 // Background tabs throttle chained timers (Chrome clamps to ~1/min after a few
-// hidden minutes), so the dots freeze while hidden — refresh immediately on
+// hidden minutes), so the chip freezes while hidden — refresh immediately on
 // return instead of showing pre-hide state for up to another minute.
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && pollGen > 0) {
@@ -905,59 +855,28 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-/** Immediately show all dots as "checking" so the user can see the env changed. */
-function setCheckingState(env) {
-  const container = document.getElementById("health");
-  if (!container) return;
-  // Pulse all dots yellow while we re-ping
-  container.querySelectorAll(".dot").forEach((d) => {
-    d.className = "dot running";
-  });
-}
-
 function schedulePoll(env, gen) {
   if (gen !== pollGen) return; // superseded by an env switch/re-init
   clearTimeout(pollTimer);
   pollTimer = setTimeout(async () => {
     try {
-      await renderHealthDots(env, gen);
+      await renderHealth(env, gen);
     } finally {
       // ALWAYS re-arm: a thrown/aborted tick must not silently kill polling
-      // (that froze the dots at their last state until a page reload).
+      // (that froze the chip at its last state until a page reload).
       schedulePoll(env, gen);
     }
   }, POLL_INTERVAL_MS);
 }
 
 /**
- * Stream health results, painting each batch as it lands.
- *
- * The checks run concurrently but the slowest are shell probes that shell out
- * to the aws CLI (~0.45s each), so waiting for the whole set made every dot
- * resolve at the pace of the worst one. Streaming paints ~75% of them inside
- * 200ms. Batched through requestAnimationFrame so 30 results cause a handful of
- * repaints, not 30.
+ * Stream health results and paint them through the gate (health-fit.js):
+ * a first cycle (a page load, an env switch) paints once, complete, so a
+ * cold load never shows a partial count or a flash of red; later polls
+ * seed from the last one and repaint debounced.
  */
-async function renderHealthDots(env, gen = pollGen, force = false) {
-  const container = document.getElementById("health");
-  if (!container) return;
-
-  // A cold load: the placeholder and refresh button now, before the
-  // application and editor lookups and the first result land.
-  _injectNavStyles();
-  if (!container._row && !container.children.length)
-    _layoutHealthRow(container);
-  await Promise.all([_loadEditorKey(), _loadApps()]);
-
-  // Merge into the PREVIOUS poll's results rather than starting empty.
-  //
-  // Each poll streams results as checks complete. Painting only what has
-  // landed so far made the strip collapse (13 items → 2) and regrow on every
-  // 5s poll; because the strip sits above the content, the whole page below
-  // it — the dependency graph especially — visibly jumped ~30px each time.
-  // Seeding from the last known set keeps the item count stable, so a poll
-  // updates dot COLOURS in place instead of rebuilding the row. A first cycle
-  // (nothing seeded) paints once, when complete (healthCycle, paintGate).
+async function renderHealth(env, gen = pollGen, force = false) {
+  await _loadApps();
   const seed = gen === _healthAccGen ? [..._healthAcc] : [];
   _healthAccGen = gen;
   await healthCycle({
@@ -972,22 +891,23 @@ async function renderHealthDots(env, gen = pollGen, force = false) {
       })
         .then((r) => r.json())
         .catch(() => null),
-    // What the row shows now, for a paint before this cycle completes.
+    // What the chip shows now, for a paint before this cycle completes.
     last: () => (_healthPaintGen === gen ? _healthAcc : null),
     paint: (m) => {
       _healthAcc = m;
       _healthPaintGen = gen;
-      _paintHealthDots(container, env, _sortHealth([...m.values()]));
+      _paintHealth(env, _sortHealth([...m.values()]));
     },
     current: () => gen === pollGen,
   });
 }
 const _healthGate = paintGate();
+let _healthEnvPainted = null;
 
 /**
  * Stable display order. `idx` is the server's graph-ranked position (entry repo
  * first … infra-stack last); results arrive in completion order, which differs
- * every poll, so sorting by it is what keeps the dots from reshuffling. Falls
+ * every poll, so sorting by it is what keeps the drawer from reshuffling. Falls
  * back to repo name when the server doesn't send `idx`.
  */
 function _sortHealth(results) {
@@ -1056,260 +976,26 @@ function _streamHealth(env, force, onResult) {
   });
 }
 
-/** health-rollup.js's state → the pages' .dot classes. */
-const DOT = { down: "err", degraded: "warn", ok: "ok", unknown: "" };
-
-/** One repo's dot + label in the health row (`r` from buildRow). */
-function _repoHealthItem(r, escAttr) {
-  const { repo, items, rollup } = r;
-  // Show open-in-editor icon if editor is configured and any item is dev-managed
-  const devItem = items.find((i) => i.mode === "dev-managed" && i.repoPath);
-  const openIcon =
-    _editorKey && devItem
-      ? `<button class="nav-open-btn" data-open-path="${escAttr(devItem.repoPath)}" title="Open in editor">↗</button>`
-      : "";
-  // The tip: the rollup in words (shared with the graph and `<cli> status`),
-  // then what the entry service's check said.
-  const entry = items.find((i) => i.service === rollup.entry);
-  const what = entry ? (entry.url ?? entry.check) : null;
-  const detail =
-    entry && what && entry.ok != null
-      ? entry.error
-        ? ` · ${what} — ${entry.error}`
-        : ` · ${what} → ${entry.status}`
-      : "";
-  // A repo several workspaces in view share is one dot; the tip names them.
-  const shared = ownersLabel([
-    ...new Set(items.flatMap((i) => i.workspaces ?? [])),
-  ]);
-  return `<div class="health-item" data-repo="${escAttr(repo)}" title="${escAttr(describeRollup(rollup) + detail + shared)}">
-      <span class="dot ${DOT[rollup.state]}"></span>
-      <span>${repo}</span>
-      ${openIcon}
-    </div>`;
-}
-
-function _paintHealthDots(container, env, results) {
-  const escAttr = (s) =>
-    String(s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/"/g, "&quot;");
-
-  container._row = null;
-  if (!results.length) {
-    closeMoreList(document);
-    container.innerHTML = `<div class="health-item" style="color:var(--muted);font-size:11px">${env}: no services</div>`;
-  } else {
-    const repos = [...new Set(results.map((r) => r.repo))];
-    const row = buildRow(results, groupReposByApplication(repos, _apps));
-    // The rail's pinned rows and the Services badge (R13, R14) read the
-    // same rollup: `down` counts services whose check failed (unchecked
-    // and pending ones never count, nor any while its repo's checks are
-    // still answering).
-    window.denShell?.setState(shellHealth(row));
-    const itemHtml = new Map(
-      row.flat.map((r) => [r.repo, _repoHealthItem(r, escAttr)]),
-    );
-    const unitHtml = row.units.map((u) => {
-      const inner = u.repos.map((r) => itemHtml.get(r.repo)).join("");
-      if (!u.app) return inner;
-      const tip = [u.app.title, u.app.owner, u.app.description]
-        .filter(Boolean)
-        .join(" · ");
-      return `<div class="health-app" title="${escAttr(tip)}"><span class="health-app-label">${escAttr(u.app.name)}</span>${inner}</div>`;
-    });
-    container._row = { ...row, itemHtml, unitHtml };
-  }
-  container._env = env;
-  _layoutHealthRow(container);
+/**
+ * One painted cycle: the shared rollup (buildRow, health-rollup.js) feeds
+ * the rail (the Services badge and pinned dots) and the status chip and
+ * drawer alike, so they never disagree (R6, R13): a down service counts
+ * only once its repo's checks have all answered, pending and unchecked
+ * ones never do.
+ */
+function _paintHealth(env, results) {
+  const repos = [...new Set(results.map((r) => r.repo))];
+  const groups = groupReposByApplication(repos, _apps);
+  const row = buildRow(results, groups);
+  window.denShell?.setState(shellHealth(row));
+  _healthEnvPainted = env;
+  paintStatus({ row, groups, env });
 
   // Broadcast results so other components (e.g. dep graph) can stay in sync
   document.dispatchEvent(
     new CustomEvent("__DEN_CLI__:health-update", { detail: results }),
   );
 }
-
-/** Refresh button — shown on every page, no per-page HTML changes needed. */
-function _refreshButton(container) {
-  const btn = document.createElement("button");
-  btn.title = "Refresh service health";
-  btn.textContent = "⟳";
-  btn.style.cssText =
-    "background:none;border:none;color:var(--muted);cursor:pointer;" +
-    "font-size:13px;padding:1px 4px;border-radius:3px;line-height:1;margin-left:4px;" +
-    "transition:color .1s;flex-shrink:0;";
-  btn.addEventListener("mouseenter", () => (btn.style.color = "var(--text)"));
-  btn.addEventListener("mouseleave", () => (btn.style.color = "var(--muted)"));
-  btn.addEventListener("click", () => {
-    const currentEnv = healthEnv() ?? container._env;
-    refreshHealth(currentEnv); // pulses dots yellow while re-pinging
-  });
-  btn.className = "health-refresh";
-  return btn;
-}
-
-/** Open-in-editor buttons (data-open-path avoids inline onclick escaping). */
-function _wireOpenButtons(root) {
-  root.querySelectorAll(".nav-open-btn[data-open-path]").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      fetch("/api/editor/open", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: btn.dataset.openPath }),
-      }).then((r) => {
-        if (!r.ok)
-          r.json().then((d) =>
-            console.warn("[__DEN_CLI__] open-in-editor:", d.error),
-          );
-      });
-    });
-  });
-}
-
-/**
- * Lay the health row out on one line in the width the header gives it
- * (the row takes the free space: appearance.js). Application boxes when
- * everything fits; otherwise repos flat, problems placed first, whole items
- * only, and a "+N" chip that opens the rest (health-fit.js). Never a cut
- * word. Runs after every paint, on resize, when fonts load, and when the
- * row's own width changes (an interim until the slice-3 status chip).
- */
-function _layoutHealthRow(container) {
-  if (!container._fitObserver && typeof ResizeObserver === "function") {
-    // The row's width is the header's free space, never its content, so
-    // laying it out can't change it: no loop.
-    let last = -1;
-    container._fitObserver = new ResizeObserver(() => {
-      if (container.clientWidth !== last) {
-        last = container.clientWidth;
-        _queueFit();
-      }
-    });
-    container._fitObserver.observe(container);
-  }
-  const row = container._row;
-  const refresh = _refreshButton(container);
-  // The chip survives the re-fit as the same node, focus included
-  // (0.3.0-dev.12): Escape from its list must land on it, not on whatever
-  // follows a node that was replaced.
-  const chip = container.querySelector("#health-more");
-  const chipFocused = !!chip && document.activeElement === chip;
-  const chipGone = () => {
-    closeMoreList(document);
-    if (chipFocused) refresh.focus({ preventScroll: true });
-  };
-  if (!row) {
-    // No data yet (a cold load): a neutral placeholder and the refresh
-    // button, never an empty box. "no services" paints its own message.
-    if (container._env !== undefined) return;
-    closeMoreList(document);
-    container.innerHTML =
-      '<span class="health-pending" role="status" aria-label="Checking service health">…</span>';
-    container.appendChild(refresh);
-    return;
-  }
-  container.innerHTML = row.unitHtml.join("");
-  container.appendChild(refresh);
-  const cs = getComputedStyle(container);
-  const gap = parseFloat(cs.columnGap) || 0;
-  const avail =
-    container.clientWidth -
-    (parseFloat(cs.paddingLeft) || 0) -
-    (parseFloat(cs.paddingRight) || 0) -
-    refresh.offsetWidth -
-    gap;
-  const kids = [...container.children].filter((el) => el !== refresh);
-  const boxed =
-    kids.reduce((a, el) => a + el.offsetWidth, 0) +
-    gap * Math.max(0, kids.length - 1);
-  // Before the row has a width (laid out before the header, or hidden), or
-  // before its items do: keep everything boxed and lay out again next
-  // frame, never an empty row (fitPlan).
-  const notYet = () => {
-    _wireOpenButtons(container);
-    chipGone();
-    _retryFit(container);
-  };
-  if (!(avail > 0) || !(boxed > 0)) return notYet();
-  container._fitRetries = 0;
-  if (boxed <= avail) {
-    _wireOpenButtons(container);
-    chipGone();
-    return;
-  }
-  // Flat: every repo as its own item, in problem-first order.
-  container.innerHTML = row.flat.map((r) => row.itemHtml.get(r.repo)).join("");
-  container.appendChild(refresh);
-  const items = [...container.querySelectorAll(":scope > [data-repo]")];
-  // The chip measured in place with each text it might show, so the plan
-  // is exact: problems first, then room for a chip that names the worst
-  // hidden problem, its detail only if it still fits (fitPlan).
-  const probe = document.createElement("button");
-  probe.className = "health-more problem";
-  // Its natural width: the live chip may shrink (so ⟳ is never clipped),
-  // the probe must not, or every text would seem to fit.
-  probe.style.flexShrink = "0";
-  const widthOf = (text) => {
-    probe.textContent = text;
-    return probe.offsetWidth + gap;
-  };
-  container.insertBefore(probe, refresh);
-  const plan = fitPlan(row, {
-    boxed,
-    widths: items.map((el) => el.offsetWidth),
-    avail,
-    gap,
-    chipWidthOf: widthOf,
-  });
-  probe.remove();
-  if (plan.retry) {
-    container.innerHTML = row.unitHtml.join("");
-    container.appendChild(refresh);
-    return notYet();
-  }
-  items.forEach((el, i) => {
-    if (!plan.show.has(row.flat[i].repo)) el.style.display = "none";
-  });
-  _wireOpenButtons(container);
-  const hidden = plan.hidden;
-  if (!hidden.length) return chipGone();
-  const live = mountMoreChip(
-    document,
-    hidden,
-    (list) => {
-      list.innerHTML = hidden.map((r) => row.itemHtml.get(r.repo)).join("");
-      _wireOpenButtons(list);
-    },
-    { form: plan.form, reuse: chip },
-  );
-  container.insertBefore(live, refresh);
-  if (chipFocused && document.activeElement !== live)
-    live.focus({ preventScroll: true });
-}
-
-/** Lay out again next frame while the row has no real widths yet; a few
- * frames at most, then the ResizeObserver and font events take over. */
-function _retryFit(container) {
-  container._fitRetries = (container._fitRetries || 0) + 1;
-  if (container._fitRetries <= 10) _queueFit();
-}
-
-let _fitQueued = false;
-/** Lay out again on the next frame: on resize, when web fonts land (they
- * change every item's width), and when the row's width changes. */
-function _queueFit() {
-  if (_fitQueued) return;
-  _fitQueued = true;
-  requestAnimationFrame(() => {
-    _fitQueued = false;
-    const c = document.getElementById("health");
-    if (c) _layoutHealthRow(c);
-  });
-}
-window.addEventListener("resize", _queueFit);
-document.fonts?.addEventListener?.("loadingdone", _queueFit);
-document.fonts?.ready?.then(_queueFit);
 
 // ── Log badge (shared across pages) ───────────────────────────────────────────
 
