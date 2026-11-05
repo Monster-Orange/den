@@ -13,6 +13,8 @@
  */
 
 /** Real card sizes; there is no shrink-to-fit. */
+import { describeRollup, rollupRepo } from "./health-rollup.js";
+
 export const SIZE = {
   detailed: { w: 236, h: 104 },
   compact: { w: 176, h: 52 },
@@ -207,6 +209,27 @@ export function healthLine(s) {
   if (s.health.ok == null) return "no health check";
   return (s.health.ok ? "healthy" : "down") + ms;
 }
+
+/**
+ * A repo's health from its services: health-rollup.js's rule, the one the
+ * header row and `<cli> status` use, so a repo card never disagrees with
+ * them. Unchecked services don't count.
+ */
+export function repoRollup(m, repo) {
+  return rollupRepo(
+    repo,
+    (m.byRepo.get(repo) || []).map((s) => ({
+      service: s.name,
+      ok: s.health.ok,
+      isEntrypoint: s.entry,
+    })),
+  );
+}
+
+/** The rollup as a .dg-dot class, and in words. */
+export const repoStatus = (r) =>
+  ({ down: "bad", degraded: "warn", ok: "ok", unknown: "unk" })[r.state];
+export const repoStatusWord = (r) => describeRollup(r);
 
 /** A repo's representative service: entrypoint, root-named, else first. */
 export function entryOf(m, repo) {

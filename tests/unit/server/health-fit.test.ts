@@ -1,105 +1,199 @@
 /**
- * The header's health row on one line (0.3.0-dev.9, a slice-1b regression:
- * the 36–42px header cut the row off mid-word with no sign of what it hid).
- * Problems first, whole items only, and a "+N" chip that names what it hides
- * and opens the full list.
+ * The header's health row on one line: problems first, whole items only,
+ * and a "+N" chip that names what it hides and opens the full list.
+ * 0.3.0-dev.9 fixed the silent cut-off; 0.3.0-dev.10 fits repos one by one
+ * when application boxes don't fit (a 7-repo box no longer hides
+ * everything), always places problems first, and gives the row the free
+ * header width.
  */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import {
+  buildRow,
   closeMoreList,
-  fitUnits,
   moreChip,
   mountMoreChip,
-  orderByProblem,
+  planRow,
 } from "../../../src/ui/server/public/health-fit.js";
 
-type U = { repo: string; state: string; repos?: number; down?: number };
-const u = (repo: string, state: string): U => ({
+type Row = {
+  repo: string;
+  service: string;
+  ok: boolean | null;
+  isEntrypoint?: boolean;
+  focused?: boolean;
+};
+const one = (repo: string, ok: boolean | null, focused = false): Row => ({
   repo,
-  state,
-  repos: 1,
-  ...(state === "err" ? { down: 1 } : {}),
+  service: repo,
+  ok,
+  focused,
 });
 
-/** What the row shows for these units, widths and room. */
-function row(units: U[], widths: Record<string, number>, avail: number) {
-  const ordered = orderByProblem(units) as U[];
-  const n = fitUnits(
-    ordered.map((x) => widths[x.repo]),
+/** What the row shows, given widths per repo and per box. */
+function show(
+  rows: Row[],
+  groups: { app: { name: string } | null; repos: string[] }[],
+  widths: Record<string, number>,
+  avail: number,
+  boxPad = 40,
+) {
+  const { units, flat } = buildRow(rows, groups);
+  const gap = 8;
+  const unitW = (u: (typeof units)[number]) =>
+    u.repos.reduce(
+      (a: number, r: { repo: string }) => a + widths[r.repo] + gap,
+      0,
+    ) -
+    gap +
+    (u.app ? boxPad : 0);
+  const boxed =
+    units.reduce((a: number, u: (typeof units)[number]) => a + unitW(u), 0) +
+    gap * (units.length - 1);
+  const plan = planRow({
+    boxed,
+    flat: flat.map((r: { repo: string; state: string }) => ({
+      key: r.repo,
+      state: r.state,
+      width: widths[r.repo],
+    })),
     avail,
-    { gap: 8, chipWidth: 60 },
-  );
-  const hidden = ordered.slice(n);
+    gap,
+    chipWidth: 70,
+  });
+  const hidden = flat.filter((r: { repo: string }) => !plan.show.has(r.repo));
   return {
-    shown: ordered.slice(0, n).map((x) => x.repo),
-    chip: hidden.length ? moreChip(hidden) : null,
+    mode: plan.mode,
+    shown: flat
+      .filter((r: { repo: string }) => plan.show.has(r.repo))
+      .map((r: { repo: string }) => r.repo),
+    chip: hidden.length ? moreChip(hidden).text : null,
   };
 }
 
-describe("orderByProblem", () => {
-  it("down, degraded, unknown, then healthy; otherwise as given", () => {
-    const order = orderByProblem([
-      u("a", "ok"),
-      u("b", ""),
-      u("c", "err"),
-      u("d", "running"),
-      u("e", "ok"),
-      u("f", "err"),
-    ]) as U[];
-    expect(order.map((x) => x.repo)).toEqual(["c", "f", "d", "b", "a", "e"]);
+describe("buildRow", () => {
+  it("orders problems, then unknown, then healthy; focused first, then by name", () => {
+    const { flat } = buildRow(
+      [
+        one("zeta", true, true),
+        one("alpha", true),
+        one("beta", true, true),
+        one("down-b", false),
+        one("down-a", false),
+        one("quiet", null),
+        { repo: "multi", service: "web", ok: true, isEntrypoint: true },
+        { repo: "multi", service: "mailpit", ok: false },
+      ],
+      null,
+    );
+    expect(
+      flat.map((r: { repo: string; state: string }) => [r.repo, r.state]),
+    ).toEqual([
+      ["down-a", "down"],
+      ["down-b", "down"],
+      ["multi", "degraded"],
+      ["quiet", "unknown"],
+      ["beta", "ok"],
+      ["zeta", "ok"],
+      ["alpha", "ok"],
+    ]);
+  });
+
+  it("a box sorts by its worst repo, and keeps problems first inside", () => {
+    const { units } = buildRow(
+      [one("a", true), one("b", false), one("c", true)],
+      [
+        { app: { name: "fine" }, repos: ["a"] },
+        { app: { name: "hurt" }, repos: ["c", "b"] },
+      ],
+    );
+    expect(
+      units.map((u: { app: { name: string }; repos: { repo: string }[] }) => [
+        u.app.name,
+        u.repos.map((r) => r.repo),
+      ]),
+    ).toEqual([
+      ["hurt", ["b", "c"]],
+      ["fine", ["a"]],
+    ]);
   });
 });
 
-describe("fitUnits and the chip", () => {
-  const ten = Array.from({ length: 10 }, (_, i) => u(`repo-${i}`, "ok"));
-  const w = Object.fromEntries(ten.map((x) => [x.repo, 90]));
+describe("planRow", () => {
+  // SA's shape: a 7-repo box and a 3-repo box, 2 down.
+  const big = ["b1", "b2", "b3", "b4", "b5", "b6", "b7"];
+  const small = ["s1", "s2", "s3"];
+  const rows = [
+    ...big.map((r, i) => one(r, i === 5 ? false : true)),
+    ...small.map((r, i) => one(r, i === 2 ? false : true)),
+  ];
+  const groups = [
+    { app: { name: "smb" }, repos: big },
+    { app: { name: "core" }, repos: small },
+  ];
+  const widths = Object.fromEntries([...big, ...small].map((r) => [r, 90]));
 
-  it("shows everything, with no chip, when it all fits", () => {
-    expect(row(ten.slice(0, 3), w, 300)).toEqual({
-      shown: ["repo-0", "repo-1", "repo-2"],
+  it("everything boxed when it all fits", () => {
+    expect(show(rows, groups, widths, 2000)).toMatchObject({
+      mode: "boxed",
       chip: null,
     });
   });
 
-  it("fits whole items only, keeping room for the chip", () => {
-    // 3 × (90 + 8) + 60 = 354 ≤ 400; a 4th would need 452.
-    expect(row(ten, w, 400)).toEqual({
-      shown: ["repo-0", "repo-1", "repo-2"],
-      chip: { text: "+7", label: "7 more repos", problem: false },
-    });
+  it("a box too big for the row never hides everything: repos fit one by one", () => {
+    // 500px: room for 4 items and the chip, though neither box fits whole.
+    const r = show(rows, groups, widths, 500);
+    expect(r.mode).toBe("flat");
+    expect(r.shown.length).toBe(4);
+    expect(r.chip).toBe("+6");
   });
 
-  it("never hides a problem behind a healthy repo", () => {
-    const units = [...ten, u("late-down", "err"), u("late-slow", "running")];
-    const widths = { ...w, "late-down": 90, "late-slow": 90 };
-    const r = row(units, widths, 400);
-    expect(r.shown.slice(0, 2)).toEqual(["late-down", "late-slow"]);
-    // Narrower: the problems are still what stays.
-    expect(row(units, widths, 170).shown).toEqual(["late-down"]);
+  it("problems are always items before the chip, healthy only after them", () => {
+    const r = show(rows, groups, widths, 500);
+    expect(r.shown.slice(0, 2).sort()).toEqual(["b6", "s3"]);
+    // Room for one item only: a problem, and the chip names the other.
+    const tight = show(rows, groups, widths, 170);
+    expect(tight.shown).toHaveLength(1);
+    expect(["b6", "s3"]).toContain(tight.shown[0]);
+    expect(tight.chip).toBe("+9, 1 down");
   });
 
-  it("a later, smaller item never jumps ahead of one that didn't fit", () => {
-    const units = [u("down-long-name", "err"), u("ok", "ok")];
-    const r = row(units, { "down-long-name": 300, ok: 20 }, 200);
-    expect(r.shown).toEqual([]);
-    expect(r.chip).toEqual({
-      text: "+2, 1 down",
-      label: "2 more repos, 1 down",
-      problem: true,
-    });
+  it("a problem too wide to fit never blocks a later one", () => {
+    const r = show(
+      [one("long-down", false), one("short-down", false), one("ok", true)],
+      null as never,
+      { "long-down": 400, "short-down": 60, ok: 40 },
+      200,
+    );
+    expect(r.shown).toEqual(["short-down"]);
+    expect(r.chip).toBe("+2, 1 down");
   });
 
-  it("says what the hidden repos hold: counts across app boxes", () => {
+  it("all flat when that fits, even if the boxes don't", () => {
+    const r = show(rows, groups, widths, 1000, 200);
+    expect(r).toMatchObject({ mode: "flat", chip: null });
+    expect(r.shown).toHaveLength(10);
+  });
+});
+
+describe("moreChip", () => {
+  it("says what the hidden repos hold", () => {
     expect(
-      moreChip([{ repos: 3, down: 1, degraded: 1 }, { repos: 1 }]),
+      moreChip([
+        { state: "down" },
+        { state: "degraded" },
+        { state: "unknown" },
+        { state: "ok" },
+      ]),
     ).toEqual({
       text: "+4, 1 down, 1 degraded",
+      forms: ["+4, 1 down, 1 degraded", "+4, 1 down", "+4"],
+      short: "+4",
       label: "4 more repos, 1 down, 1 degraded",
       problem: true,
     });
-    expect(moreChip([{ repos: 1 }]).label).toBe("1 more repo");
+    expect(moreChip([{ state: "unknown" }]).label).toBe("1 more repo");
   });
 });
 
@@ -178,7 +272,7 @@ const doc = {
 };
 
 describe("the +N chip", () => {
-  const hidden = [{ repos: 1, down: 1 }, { repos: 2 }];
+  const hidden = [{ state: "down" }, { state: "ok" }, { state: "unknown" }];
   const mount = () => {
     const chip = mountMoreChip(doc, hidden, (list: El) => {
       list.innerHTML = "<div>the hidden repos</div>";
@@ -186,6 +280,17 @@ describe("the +N chip", () => {
     header.appendChild(chip);
     return chip;
   };
+
+  it("is short when the row has no room for the detail, never in its name", () => {
+    const chip = mountMoreChip(doc, hidden, () => {}, {
+      form: 2,
+    }) as unknown as El;
+    expect(chip.textContent).toBe("+3");
+    expect(chip.attrs["aria-label"]).toBe("3 more repos, 1 down");
+    expect((chip as unknown as { title: string }).title).toBe(
+      "3 more repos, 1 down",
+    );
+  });
 
   it("is a button named for what it hides, controlling a list", () => {
     const chip = mount();
@@ -242,13 +347,22 @@ describe("the +N chip", () => {
 describe("the header uses it", () => {
   const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
   const header = fs.readFileSync(path.join(PUBLIC, "header.js"), "utf-8");
-  it("fits the row after every paint and on resize", () => {
+  it("lays the row out after every paint, on resize and on its own resize", () => {
     expect(header).toMatch(/from "\.\/health-fit\.js"/);
-    expect(header).toMatch(/_fitHealthRow\(container\);\n\}/);
+    expect(header).toMatch(/_layoutHealthRow\(container\);/);
     expect(header).toMatch(/addEventListener\("resize"/);
+    expect(header).toMatch(/new ResizeObserver/);
+  });
+  it("takes the header's free space, not its content's width", () => {
+    const css = fs.readFileSync(path.join(PUBLIC, "appearance.js"), "utf-8");
+    expect(css).toMatch(
+      /header > \.health, \.topbar > \.health \{ min-width: 0; flex: 1 1 0; overflow: hidden; \}/,
+    );
   });
   it("is served", async () => {
     const { UI_MODULES } = await import("../../../src/ui/server/ui-assets.js");
-    expect(UI_MODULES).toContain("/health-fit.js");
+    expect(UI_MODULES).toEqual(
+      expect.arrayContaining(["/health-fit.js", "/health-rollup.js"]),
+    );
   });
 });

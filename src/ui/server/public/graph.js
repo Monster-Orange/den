@@ -28,6 +28,9 @@ import {
   orgOf,
   placementText,
   repoPlacement,
+  repoRollup,
+  repoStatus,
+  repoStatusWord,
   status,
   statusWord,
 } from "/graph-model.js";
@@ -215,8 +218,12 @@ export function graphHealth(results) {
   for (const c of host.querySelectorAll(".dg-card")) {
     if (c.dataset.id && M.byId.has(c.dataset.id))
       c.innerHTML = cardInner(M.byId.get(c.dataset.id));
-    else if (c.dataset.repo && M.byRepo.has(c.dataset.repo))
+    else if (c.dataset.repo && M.byRepo.has(c.dataset.repo)) {
       c.innerHTML = repoCardInner(c.dataset.repo);
+      const s = repoRollup(M, c.dataset.repo).state;
+      c.classList.toggle("down", s === "down");
+      c.classList.toggle("degraded", s === "degraded");
+    }
   }
   for (const g of host.querySelectorAll(".dg-grp.dg-org"))
     g.querySelector(".roll").textContent = rollup(groupServices(g.dataset.key));
@@ -423,8 +430,9 @@ function card(s, x, y, w, h) {
 function repoCardInner(r) {
   const svcs = M.byRepo.get(r),
     ok = svcs.filter((s) => s.health.ok).length,
-    pl = repoPlacement(M, r);
-  return `<div class="r1"><span class="dg-dot ${ok === svcs.length ? "ok" : svcs.some((s) => s.health.ok === false) ? "bad" : ""}"></span><span class="nm">${esc(r)}</span>${pl !== "local" || M.mixed ? `<span class="dg-badge ${pl}">${pl === "hybrid" ? "⇄ hybrid" : pl === "remote" ? "☁ remote" : "⌂ local"}</span>` : ""}</div>
+    pl = repoPlacement(M, r),
+    roll = repoRollup(M, r);
+  return `<div class="r1"><span class="dg-dot ${repoStatus(roll)}" title="${esc(repoStatusWord(roll))}"></span><span class="nm">${esc(r)}</span>${pl !== "local" || M.mixed ? `<span class="dg-badge ${pl}">${pl === "hybrid" ? "⇄ hybrid" : pl === "remote" ? "☁ remote" : "⌂ local"}</span>` : ""}</div>
     <div class="r2">${svcs.length} services · ${ok}/${svcs.length} healthy</div>
     <div class="r3 sum">${svcs.map((s) => `<span class="dg-dot ${status(s)}" title="${esc(s.name)}: ${statusWord(s)}"></span>`).join("")}</div>
     <div class="dg-acts"><button class="dg-btn sm" data-expand="${esc(r)}">Expand</button></div>`;
@@ -432,13 +440,14 @@ function repoCardInner(r) {
 function repoCard(r, x, y, w, h) {
   const svcs = M.byRepo.get(r);
   const el = document.createElement("div");
-  el.className = `dg-card ${st.density === "compact" ? "compact" : ""} ${repoPlacement(M, r) === "remote" ? "remote" : ""} ${svcs.some((s) => s.health.ok === false) ? "down" : ""}`;
+  const roll = repoRollup(M, r);
+  el.className = `dg-card ${st.density === "compact" ? "compact" : ""} ${repoPlacement(M, r) === "remote" ? "remote" : ""} ${roll.state === "down" ? "down" : roll.state === "degraded" ? "degraded" : ""}`;
   el.dataset.repo = r;
   el.tabIndex = 0;
   el.setAttribute("role", "button");
   el.setAttribute(
     "aria-label",
-    `${r}, ${svcs.length} services, ${svcs.filter((s) => s.health.ok).length} healthy. Open details.`,
+    `${r}, ${repoStatusWord(roll)}, ${svcs.length} services, ${svcs.filter((s) => s.health.ok).length} healthy. Open details.`,
   );
   el.innerHTML = repoCardInner(r);
   return place(el, x, y, w, h);

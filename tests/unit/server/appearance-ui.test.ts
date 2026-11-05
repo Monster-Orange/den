@@ -10,6 +10,7 @@ import * as path from "path";
 import {
   initAppearance,
   markView,
+  themeNotice,
   themeOptions,
 } from "../../../src/ui/server/public/appearance.js";
 
@@ -156,6 +157,8 @@ const MARKS = {
   ink: { text: "Ik", shape: "circle" },
 };
 const server = {
+  /** When set, /api/themes reports this as the stored choice (an invalid one). */
+  stored: null as string | null,
   theme: null as string | null,
   mode: "dark",
   posts: [] as unknown[],
@@ -170,12 +173,17 @@ const themesPayload = () => {
       default_mode: "dark",
       mark: MARKS[id as keyof typeof MARKS],
     },
-    prefs: { theme: server.theme, mode: server.mode },
+    prefs: { theme: server.stored ?? server.theme, mode: server.mode },
     themes: [
       { id: "den", name: "Den", ok: true },
       { id: "ink", name: "Ink", ok: true },
       { id: "sun", name: "Sun", ok: true },
-      { id: "bad", name: "Bad", ok: false },
+      {
+        id: "bad",
+        name: "Bad",
+        ok: false,
+        problem: "/author: no author; dark: a on b is 2, needs 4.5",
+      },
     ],
   };
 };
@@ -269,8 +277,30 @@ describe("themeOptions", () => {
   it("never offers a theme that fails validate, even your stored choice", () => {
     const opts = themeOptions(themes, "bad", { id: "paper", name: "Paper" });
     expect(opts.map((o) => o.value)).toEqual(["", "den", "paper"]);
-    // It falls through to the org default, so that is what is selected.
-    expect(opts.find((o) => o.selected)?.value).toBe("");
+    // Nothing is selected: an invalid choice must not read as Org default.
+    expect(opts.some((o) => o.selected)).toBe(false);
+  });
+
+  it("says why your stored theme isn't in use, and what is", () => {
+    const withProblem = [
+      ...themes.filter((t) => t.id !== "bad"),
+      {
+        id: "bad",
+        name: "Bad",
+        ok: false,
+        problem: "/author: no author; light: x on y is 2.1, needs 4.5",
+      },
+    ];
+    expect(
+      themeNotice(withProblem, "bad", { id: "paper", name: "Paper" }),
+    ).toBe(
+      "Your theme bad isn't valid (/author: no author), so Paper is in use",
+    );
+    expect(themeNotice(withProblem, "gone", { id: "den", name: "Den" })).toBe(
+      "Your theme gone isn't installed, so Den is in use",
+    );
+    expect(themeNotice(withProblem, "paper", null)).toBeNull();
+    expect(themeNotice(withProblem, null, null)).toBeNull();
   });
 });
 
@@ -296,6 +326,29 @@ describe("the header (initAppearance)", () => {
     expect(mark.className).toContain("den-mark-circle");
     // The stylesheet is swapped for the new theme's.
     expect(head.children.filter((c) => c.tagName === "LINK")).toHaveLength(2);
+  });
+
+  it("an invalid stored theme selects nothing and says what is in use", async () => {
+    const theme = el("appearance-theme");
+    const notice = el("appearance-theme-notice");
+    expect(notice.hidden).toBe(true);
+    server.stored = "bad";
+    theme.value = "ink";
+    await theme.fire("change");
+    expect(theme.children.some((o) => o.selected)).toBe(false);
+    expect(theme.children.map((o) => o.value)).not.toContain("bad");
+    expect(notice.hidden).toBe(false);
+    expect(notice.textContent).toBe(
+      "Your theme bad isn't valid (/author: no author), so Ink is in use",
+    );
+    expect(theme.getAttribute("aria-describedby")).toBe(notice.id);
+    // Picking any option replaces the stored choice, as usual.
+    server.stored = null;
+    theme.value = "ink";
+    await theme.fire("change");
+    expect(server.posts.at(-1)).toEqual({ theme: "ink" });
+    expect(notice.hidden).toBe(true);
+    expect(theme.value).toBe("ink");
   });
 
   it("Org default writes theme null and is selected again", async () => {

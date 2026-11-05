@@ -187,6 +187,9 @@ import {
   formatHealthDot,
   formatHealthLabel,
   formatHealthReason,
+  formatRollupLabel,
+  healthReasonText,
+  rollupReasonText,
 } from "./health-display.js";
 import { DEN_BANNER_LINES, DEN_DIVIDER } from "../../shared/banner.js";
 
@@ -2750,8 +2753,9 @@ class DenCLI {
     const raw = (await checkCatalogHealth()).filter(
       (h) => !only || only.has(h.repoName),
     );
-    // Roll multi-service repos up to their entrypoint so shared-infra sidecars
-    // (which read healthy off infra-stack) don't make a down app look up.
+    // One row per repo, rolled up from every checked service by the rule the
+    // web UI's header and graph use: entry down → down, another checked
+    // service down → degraded; unchecked services never count.
     const rolled = verbose ? raw : rollupRepoHealth(raw);
     // Order top-down like the graph: entry repo first (shop-web) … foundation
     // last (infra-stack), subsystems grouped under their repo.
@@ -2780,8 +2784,20 @@ class DenCLI {
     });
 
     for (const r of results) {
-      const healthStr = formatHealthLabel(r.health);
-      const reasonStr = formatHealthReason(r);
+      const healthStr = r.rollup
+        ? formatRollupLabel(r.rollup)
+        : formatHealthLabel(r.health);
+      const rolledWhy = r.rollup ? rollupReasonText(r.rollup) : "";
+      const reasonStr =
+        r.rollup && r.rollup.state !== "unknown"
+          ? chalk.gray(
+              [r.rollup.state === "down" ? healthReasonText(r) : "", rolledWhy]
+                .filter(Boolean)
+                .join("; ")
+                .slice(0, 60),
+            )
+          : formatHealthReason(r) ||
+            (rolledWhy ? chalk.gray(rolledWhy.slice(0, 60)) : "");
       const placed = placementSuffix({
         runs: r.runs ?? "none",
         target: r.target ?? null,
@@ -2810,7 +2826,7 @@ class DenCLI {
     if (!verbose && raw.length !== results.length) {
       console.log(
         chalk.gray(
-          `  ▪ multi-service repos show entrypoint health — \`${product().cli} status --verbose\` for all subsystems`,
+          `  ▪ one row per repo, rolled up from its checked services — \`${product().cli} status --verbose\` for each`,
         ),
       );
     }

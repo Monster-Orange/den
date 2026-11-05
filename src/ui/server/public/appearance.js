@@ -48,18 +48,18 @@ export function markView(mark, mode, themeName) {
 /**
  * The Theme menu: "Org default (<name>)" first (value "", stored as null),
  * then every theme that passes validate. Selected: the org default when you
- * have no usable choice of your own, else your theme. Pure, for tests.
+ * have no choice of your own, else your theme. A stored choice that is no
+ * longer usable is never offered, and nothing is selected: themeNotice says
+ * what happened instead, so it never reads as "Org default". Pure, for tests.
  */
 export function themeOptions(themes, prefsTheme, orgDefault) {
-  // Only what passes validate is offered, even a stored choice: one that no
-  // longer passes falls through to the org default, so that is selected.
   const usable = (themes || []).filter((t) => t.ok);
   const chosen = usable.some((t) => t.id === prefsTheme) ? prefsTheme : null;
   return [
     {
       value: "",
       label: `Org default (${orgDefault?.name || "Den"})`,
-      selected: !chosen,
+      selected: !prefsTheme,
     },
     ...usable.map((t) => ({
       value: t.id,
@@ -67,6 +67,25 @@ export function themeOptions(themes, prefsTheme, orgDefault) {
       selected: t.id === chosen,
     })),
   ];
+}
+
+/**
+ * One line for the menu when your stored theme isn't usable: "Your theme
+ * <id> isn't valid (<first problem>), so <name> is in use", from
+ * /api/themes' ok:false entry; null when your choice is fine or you have
+ * none. Pure, for tests.
+ */
+export function themeNotice(themes, prefsTheme, active) {
+  if (!prefsTheme) return null;
+  const t = (themes || []).find((x) => x.id === prefsTheme);
+  if (t?.ok) return null;
+  const inUse = active?.name || active?.id || "Den";
+  if (!t)
+    return `Your theme ${prefsTheme} isn't installed, so ${inUse} is in use`;
+  const first = String(t.problem || "")
+    .split("; ")[0]
+    .trim();
+  return `Your theme ${prefsTheme} isn't valid${first ? ` (${first})` : ""}, so ${inUse} is in use`;
 }
 
 const st = {
@@ -172,7 +191,14 @@ function injectStyles() {
     }
     header > nav::-webkit-scrollbar, .topbar > nav::-webkit-scrollbar { display: none; }
     header > nav a, .topbar > nav a { white-space: nowrap; flex-shrink: 0; }
-    header > .health, .topbar > .health { min-width: 0; flex: 0 100 auto; overflow: hidden; }
+    /* The health row takes the header's free space (never its content's
+       width, so laying it out can't resize it); nav and ◐ keep theirs. */
+    header > .health, .topbar > .health { min-width: 0; flex: 1 1 0; overflow: hidden; }
+    /* A page's own spacer would split that free space with the row. */
+    header:has(> .health) > .h-spacer, header:has(> .health) > .spacer,
+    .topbar:has(> .health) > .h-spacer, .topbar:has(> .health) > .spacer {
+      flex: 0 0 0 !important; min-width: 0;
+    }
     header > .health, .topbar > .health { flex-wrap: nowrap; }
     header > .health > *, .topbar > .health > * { flex-shrink: 0; white-space: nowrap; }
     .den-mark {
@@ -210,6 +236,11 @@ function injectStyles() {
       padding: 3px 4px; cursor: pointer; min-width: 120px;
     }
     .appearance :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .appearance-notice {
+      grid-column: 1 / -1; margin: 0; max-width: 260px; white-space: normal;
+      color: var(--text); font-size: 11.5px; line-height: 1.35;
+    }
+    .appearance-notice[hidden] { display: none; }
   `;
   document.head.appendChild(s);
 }
@@ -223,11 +254,18 @@ function option(value, label, selected) {
 }
 
 function fillThemeSelect(theme) {
+  const opts = themeOptions(st.themes, st.prefsTheme, st.orgDefault);
   theme.replaceChildren(
-    ...themeOptions(st.themes, st.prefsTheme, st.orgDefault).map((o) =>
-      option(o.value, o.label, o.selected),
-    ),
+    ...opts.map((o) => option(o.value, o.label, o.selected)),
   );
+  // A stored choice that isn't usable: select nothing, and say why.
+  if (!opts.some((o) => o.selected)) theme.selectedIndex = -1;
+  const notice = document.getElementById("appearance-theme-notice");
+  if (notice) {
+    const text = themeNotice(st.themes, st.prefsTheme, st.active);
+    notice.textContent = text || "";
+    notice.hidden = !text;
+  }
 }
 
 function render(host) {
@@ -303,7 +341,12 @@ function render(host) {
   });
   const theme = document.createElement("select");
   theme.id = "appearance-theme";
-  fillThemeSelect(theme);
+  // Says when your stored theme isn't in use, and why (themeNotice).
+  const notice = document.createElement("p");
+  notice.id = "appearance-theme-notice";
+  notice.className = "appearance-notice";
+  notice.setAttribute("role", "status");
+  theme.setAttribute("aria-describedby", notice.id);
   theme.addEventListener("change", async () => {
     try {
       // "" is the org default: no choice of your own.
@@ -316,8 +359,9 @@ function render(host) {
     }
     fillThemeSelect(theme);
   });
-  pop.append(label("Mode", mode), mode, label("Theme", theme), theme);
+  pop.append(label("Mode", mode), mode, label("Theme", theme), theme, notice);
   box.append(btn, pop);
+  fillThemeSelect(theme);
 }
 
 /** The header the control goes in: <header>, or the Tests page's top bar. */

@@ -8,6 +8,7 @@
  * guards against.
  */
 
+import { rollupReasonText } from "../../../src/ui/cli/health-display.js";
 import {
   describe,
   it,
@@ -446,31 +447,64 @@ describe("rollupRepoHealth", () => {
     expect(out.map((r) => r.address)).toEqual(["shop", "shop/core"]);
   });
 
-  it("keeps a no-entrypoint repo (infra provider) fully expanded", () => {
+  it("rolls a no-entrypoint repo (infra provider) up to one row too", () => {
     const results = [
       row("infra-stack", "infra-stack", "ok"),
-      row("infra-stack", "localstack", "ok"),
+      row("infra-stack", "localstack", "error"),
       row("infra-stack", "postgres", "ok"),
     ];
     const out = rollupRepoHealth(results, () => undefined);
-    expect(out).toHaveLength(3);
-    expect(out.map((r) => r.address)).toEqual([
-      "infra-stack",
-      "infra-stack/localstack",
-      "infra-stack/postgres",
+    expect(out.map((r) => r.address)).toEqual(["infra-stack"]);
+    // The service named like the repo is its entry: up, so degraded.
+    expect(out[0].rollup).toMatchObject({
+      state: "degraded",
+      down: ["localstack"],
+    });
+  });
+
+  it("a sidecar that is down makes the repo degraded, not ok (0.3.0-dev.10)", () => {
+    const results = [
+      row("arbor", "web", "ok"),
+      row("arbor", "mailpit", "error"),
+    ];
+    const [r] = rollupRepoHealth(results, () => "web");
+    expect(r.health).toBe("error");
+    expect(r.rollup).toMatchObject({ state: "degraded", down: ["mailpit"] });
+    expect(rollupReasonText(r.rollup!)).toBe("mailpit down");
+  });
+
+  it("unchecked services never count; status can say how many", () => {
+    const results = [
+      row("platform", "gateway", "ok"),
+      ...Array.from({ length: 25 }, (_, i) =>
+        row("platform", `svc-${i}`, "unknown"),
+      ),
+    ];
+    const [r] = rollupRepoHealth(results, () => undefined);
+    expect(r.health).toBe("ok");
+    expect(r.rollup).toMatchObject({ state: "ok", unchecked: 25 });
+    expect(rollupReasonText(r.rollup!)).toBe("25 not checked");
+    const [none] = rollupRepoHealth(
+      [row("quiet", "a", "unknown"), row("quiet", "b", "unknown")],
+      () => undefined,
+    );
+    expect(none.health).toBe("unknown");
+    expect(none.rollup!.state).toBe("unknown");
+  });
+
+  it("keeps a single-row repo's row, with its rollup", () => {
+    const results = [row("control-plane", "api", "error")];
+    const out = rollupRepoHealth(results, () => "api");
+    expect(out).toEqual([
+      { ...results[0], rollup: expect.objectContaining({ state: "down" }) },
     ]);
   });
 
-  it("passes single-row repos through unchanged", () => {
-    const results = [row("control-plane", "api", "error")];
-    const out = rollupRepoHealth(results, () => "api");
-    expect(out).toEqual(results);
-  });
-
-  it("keeps rows expanded when the declared entrypoint is not among them", () => {
+  it("one row even when the declared entrypoint is not among them", () => {
     const results = [row("weird", "pg", "ok"), row("weird", "redis", "ok")];
     const out = rollupRepoHealth(results, () => "api"); // entrypoint absent
-    expect(out).toHaveLength(2);
+    expect(out).toHaveLength(1);
+    expect(out[0].rollup!.state).toBe("ok");
   });
 
   it("rolls up multiple repos independently and preserves first-seen order", () => {

@@ -314,6 +314,9 @@
 .dg-card.down {
   border-color: color-mix(in srgb, var(--bad) 70%, var(--border));
 }
+.dg-card.degraded {
+  border-color: color-mix(in srgb, var(--warn) 70%, var(--border));
+}
 .dg-card .r1 {
   display: flex;
   align-items: flex-start;
@@ -336,6 +339,10 @@
 }
 .dg-dot.bad {
   background: var(--bad);
+}
+/* A repo with a checked service down that isn't its entry (health-rollup.js). */
+.dg-dot.warn {
+  background: var(--warn);
 }
 .dg-card .nm {
   font-weight: 600;

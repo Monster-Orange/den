@@ -2,66 +2,143 @@
  * The header's health row on one line (an interim until the slice-3 status
  * chip): problems first, only whole items, and a "+N" chip for the rest.
  *
- * A unit is one top-level item of the row: a repo, or an application's box
- * of repos. Its state is its worst repo's: "err" (down), "running"
- * (degraded), "" (unknown, no health check) or "ok".
+ * Each repo's state comes from health-rollup.js, the rule the graph and
+ * `<cli> status` use too: "down", "degraded", "unknown" (nothing checked)
+ * or "ok".
  *
- *   orderByProblem(units)   down, degraded, unknown, then healthy; stable
- *   fitUnits(widths, avail, { gap, chipWidth })
- *                           how many units (in order) fit whole
+ *   buildRow(rows, groups)  the row's model: application boxes, and every
+ *                           repo flat, each in problem-first order
+ *   planRow(…)              boxes when everything fits; otherwise repos flat,
+ *                           problems placed first, as many as fit
  *   moreChip(hidden)        the chip's text and accessible name
  *   mountMoreChip(doc, …)   the chip, and the list it opens
  *
  * The pure parts take plain data, so tests need no browser.
  */
+import { compareRepos, rollupRepo } from "./health-rollup.js";
 
-const RANK = { err: 0, running: 1, "": 2, ok: 3 };
+const PROBLEM = new Set(["down", "degraded"]);
 
-/** Problems first; equal states keep their order (the server's graph rank). */
-export function orderByProblem(units) {
-  return units
-    .map((u, i) => ({ u, i }))
-    .sort(
-      (a, b) =>
-        (RANK[a.u.state ?? ""] ?? 2) - (RANK[b.u.state ?? ""] ?? 2) ||
-        a.i - b.i,
-    )
-    .map((x) => x.u);
+/**
+ * The row's model from /api/health rows and the application grouping
+ * (`[{ app, repos }]`, app null for repos with no box of their own).
+ * Repos sort problems first, then unknown, then healthy; within a state the
+ * focused workspace's first, then by name. A box sorts by its worst repo.
+ */
+export function buildRow(rows, groups) {
+  const byRepo = new Map();
+  for (const r of rows || []) {
+    if (!byRepo.has(r.repo)) byRepo.set(r.repo, []);
+    byRepo.get(r.repo).push(r);
+  }
+  const repoOf = new Map(
+    [...byRepo].map(([repo, signals]) => {
+      const rollup = rollupRepo(repo, signals);
+      return [
+        repo,
+        {
+          repo,
+          state: rollup.state,
+          rollup,
+          focused: signals.some((s) => s.focused),
+          items: signals,
+        },
+      ];
+    }),
+  );
+  const flat = [...repoOf.values()].sort(compareRepos);
+  const units = [];
+  for (const { app, repos } of groups || [
+    { app: null, repos: [...repoOf.keys()] },
+  ]) {
+    const members = repos
+      .map((r) => repoOf.get(r))
+      .filter(Boolean)
+      .sort(compareRepos);
+    if (!members.length) continue;
+    if (!app)
+      for (const m of members) units.push({ app: null, repos: [m], ...key(m) });
+    else
+      units.push({
+        app,
+        repos: members,
+        ...key({
+          state: members[0].state,
+          focused: members.some((m) => m.focused),
+          repo: app.name,
+        }),
+      });
+  }
+  units.sort(compareRepos);
+  return { units, flat };
+}
+
+const key = (x) => ({ state: x.state, focused: x.focused, repo: x.repo });
+
+/**
+ * What the row shows in `avail` px.
+ * - `boxed` (the width of every unit, boxes and all) fits: everything, boxed.
+ * - Otherwise repos flat (`flat`: `{ key, state, width }` in row order). When
+ *   they all fit, all of them; else, with room kept for the chip, first every
+ *   down or degraded repo that fits (one too wide never blocks a later
+ *   problem), and only then the rest in order, up to the first that doesn't
+ *   fit. So a problem is never hidden while a healthy repo shows.
+ * `chipWidth` is the chip's short form ("+N"): problems outrank the chip's
+ * detail, which the header adds only if what's left has room for it.
+ * Returns `{ mode: "boxed" | "flat", show: Set<key>, used }` (px taken,
+ * chip included).
+ */
+export function planRow({ boxed, flat, avail, gap = 0, chipWidth = 0 }) {
+  const all = new Set(flat.map((f) => f.key));
+  if (boxed <= avail) return { mode: "boxed", show: all, used: boxed };
+  const total =
+    flat.reduce((a, f) => a + f.width, 0) + gap * Math.max(0, flat.length - 1);
+  if (total <= avail) return { mode: "flat", show: all, used: total };
+  const show = new Set();
+  let used = chipWidth;
+  const fits = (f) => used + f.width + gap <= avail;
+  const problems = flat.filter((f) => PROBLEM.has(f.state));
+  for (const f of problems)
+    if (fits(f)) {
+      show.add(f.key);
+      used += f.width + gap;
+    }
+  if (show.size === problems.length)
+    for (const f of flat) {
+      if (PROBLEM.has(f.state)) continue;
+      if (!fits(f)) break;
+      show.add(f.key);
+      used += f.width + gap;
+    }
+  return { mode: "flat", show, used };
 }
 
 /**
- * How many units, taken in order, fit whole in `avail` px. When all of them
- * fit, all show and there is no chip. Otherwise room is kept for the chip
- * and the first unit that doesn't fit ends the row: a later, smaller unit
- * never jumps ahead of it, so a problem is never hidden behind a healthy
- * repo.
+ * "+3, 1 down" / "3 more repos, 1 down": what the hidden repos hold.
+ * `hidden` is the hidden repos, each `{ state }`.
  */
-export function fitUnits(widths, avail, { gap = 0, chipWidth = 0 } = {}) {
-  const total =
-    widths.reduce((a, w) => a + w, 0) + gap * Math.max(0, widths.length - 1);
-  if (total <= avail) return widths.length;
-  let used = chipWidth;
-  let n = 0;
-  for (const w of widths) {
-    if (used + w + gap > avail) break;
-    used += w + gap;
-    n++;
-  }
-  return n;
-}
-
-/** "+3, 1 down" / "3 more repos, 1 down": what the hidden repos hold. */
 export function moreChip(hidden) {
-  const repos = hidden.reduce((a, u) => a + (u.repos ?? 1), 0);
-  const down = hidden.reduce((a, u) => a + (u.down ?? 0), 0);
-  const degraded = hidden.reduce((a, u) => a + (u.degraded ?? 0), 0);
+  const repos = hidden.length;
+  const down = hidden.filter((h) => h.state === "down").length;
+  const degraded = hidden.filter((h) => h.state === "degraded").length;
   const problems = [
     down ? `${down} down` : "",
     degraded ? `${degraded} degraded` : "",
   ].filter(Boolean);
   const tail = problems.length ? `, ${problems.join(", ")}` : "";
+  // Richest first: every problem, the worst one, none. The header shows the
+  // richest that fits; the name always has it all.
+  const forms = [
+    ...new Set([
+      `+${repos}${tail}`,
+      problems.length ? `+${repos}, ${problems[0]}` : `+${repos}`,
+      `+${repos}`,
+    ]),
+  ];
   return {
-    text: `+${repos}${tail}`,
+    text: forms[0],
+    forms,
+    short: `+${repos}`,
     label: `${repos} more ${repos === 1 ? "repo" : "repos"}${tail}`,
     problem: problems.length > 0,
   };
@@ -70,17 +147,21 @@ export function moreChip(hidden) {
 const LIST_ID = "health-more-list";
 
 /**
- * The "+N" chip: a button that opens the hidden units in a list. Escape or
+ * The "+N" chip: a button that opens the hidden repos in a list. Escape or
  * a click elsewhere closes it, and Escape returns focus to the chip. The list
  * lives in <body> so the row's overflow never clips it.
  */
-export function mountMoreChip(doc, hidden, renderList) {
+export function mountMoreChip(doc, hidden, renderList, { form = 0 } = {}) {
   const { text, label, problem } = moreChip(hidden);
   const chip = doc.createElement("button");
   chip.id = "health-more";
   chip.type = "button";
   chip.className = `health-more${problem ? " problem" : ""}`;
-  chip.textContent = text;
+  // A shorter form when the row has no room for all the detail; the name
+  // and tooltip always carry it.
+  const { forms } = moreChip(hidden);
+  chip.textContent = forms[Math.min(form, forms.length - 1)] ?? text;
+  chip.title = label;
   chip.setAttribute("aria-label", label);
   chip.setAttribute("aria-haspopup", "true");
   chip.setAttribute("aria-controls", LIST_ID);

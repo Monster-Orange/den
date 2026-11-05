@@ -192,6 +192,8 @@ interface HealthResult {
   /** Where it runs for this env, and where a remote one is (R13). */
   runs: Placement["runs"];
   target: Placement["target"];
+  /** From the focused workspace: the header sorts these first. */
+  focused?: boolean;
 }
 
 /**
@@ -946,8 +948,9 @@ async function handleRequest(
       org: string;
       /** Codes that count as up for a remote target.url probe. */
       expect?: Expect;
-      meta: Pick<HealthResult, "runs" | "target">;
+      meta: Pick<HealthResult, "runs" | "target" | "focused">;
     }> = [];
+    const focusName = getFocusedWorkspaceName();
     let edgeDomain: string | null = null;
     try {
       edgeDomain = readEdgeConfig().domain;
@@ -978,7 +981,7 @@ async function handleRequest(
           openUrl: null,
           links: [],
           org: orgOf(resolved.repoName, catalog),
-          meta: { runs: "none", target: null },
+          meta: { runs: "none", target: null, focused: ws.name === focusName },
         });
         continue;
       }
@@ -1059,7 +1062,11 @@ async function handleRequest(
         links: linksFor(manifest, resolved.subsystem, env),
         org: orgOf(resolved.repoName, catalog),
         ...(plan.expect ? { expect: plan.expect } : {}),
-        meta: { runs: plan.placement.runs, target: plan.placement.target },
+        meta: {
+          runs: plan.placement.runs,
+          target: plan.placement.target,
+          focused: ws.name === focusName,
+        },
       });
     }
 

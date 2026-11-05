@@ -171,6 +171,44 @@ config and manifest changes a distribution must make to move to it under
   An interim fix until the slice-3 status chip. The new module is
   `public/health-fit.js`.
 
+- **One repo health rule for the header, the chip, the graph and
+  `<cli> status`** (0.3.0-dev.10). The header row and `status` read only
+  the entry service, so a repo whose web answered but whose mailpit
+  container was gone read healthy. It sorted with the healthy repos and
+  never reached the chip's count, while the graph showed the down service.
+  All four now use one function, `public/health-rollup.js`, typed for
+  TypeScript in `src/shared/health/rollup.ts`. Only checked signals count:
+  - **down**: the entry service (the manifest `entrypoint`, else the
+    service named like the repo, else the only one) is down;
+  - **degraded**: another checked service is down;
+  - **ok**: at least one signal is checked and none fails;
+  - **unknown**: nothing is checked. It is neutral, never green, and sorts
+    after problems and before healthy. A service not yet probed is
+    unknown.
+
+  A repo of 26 services with one probe is judged by that probe.
+  - `status` prints one row per repo with its rolled-up state and names
+    what is down, e.g. "degraded" with "mailpit down". It says "N not
+    checked" when services aren't probed. An entrypoint-less repo is
+    rolled up too, and `--verbose` still lists every service.
+  - The graph's repo card shows degraded in `--warn`.
+  - In the row, same-state repos sort the focused workspace's first, then
+    by name. `/api/health` rows carry `focused`.
+- **The health row no longer hides everything behind one big application
+  box** (0.3.0-dev.10).
+  - When the boxes don't all fit, the row shows repos one by one. It places
+    every down or degraded repo that fits first, and a problem that is too
+    wide never blocks a later one. Then it adds the rest, in order.
+  - The chip shows the richest text that fits ("+9, 1 down, 1 degraded",
+    "+9, 1 down", "+9"). Its name and tooltip always carry the full count.
+  - The row now takes the header's free space. Before, it shrank to its
+    content, and the page's own spacer took half of what was left.
+- **The Theme menu says when your theme isn't in use** (0.3.0-dev.10). A
+  stored theme that fails validation selects nothing, instead of looking
+  like "Org default". One line explains: "Your theme <id> isn't valid
+  (<first problem>), so <name> is in use", or "isn't installed". Picking
+  any option replaces the stored choice.
+
 ### Migrations
 
 - None. Optional: set `brand.theme: <id>` in the org config to give the

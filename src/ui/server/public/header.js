@@ -18,12 +18,13 @@ import {
 import { initAppearance } from "./appearance.js";
 import { versionLabel } from "./version-label.js";
 import {
+  buildRow,
   closeMoreList,
-  fitUnits,
   moreChip,
   mountMoreChip,
-  orderByProblem,
+  planRow,
 } from "./health-fit.js";
+import { describeRollup } from "./health-rollup.js";
 
 // Every page with this header gets the appearance controls (mode, theme).
 void initAppearance();
@@ -83,6 +84,9 @@ function _injectNavStyles() {
       font-size: 10px; font-weight: 600; letter-spacing: .03em;
       color: var(--text); opacity: .7; white-space: nowrap;
     }
+    /* Degraded (health-rollup.js): a checked service other than the entry
+       is down. The pages define .dot.ok/.err; this one is the row's. */
+    .health .dot.warn, .health-more-list .dot.warn { background: var(--warn); }
     /* "+N": the repos the row has no room for (health-fit.js). */
     .health-more {
       flex-shrink: 0; font: inherit; font-size: 11px; line-height: 1.4;
@@ -1063,71 +1067,30 @@ function _streamHealth(env, force, onResult) {
   });
 }
 
-/**
- * One repo's state in the health row: "ok", "err" (down), "running"
- * (degraded: some services up) or "" (no health check). Multi-service repo:
- * its entrypoint's, so a down app isn't masked green by its shared-infra
- * sidecars; an entrypoint-less infra provider aggregates its subsystems.
- */
-function _repoState(repo, items) {
-  const one =
-    items.length === 1 && items[0].service === repo
-      ? items[0]
-      : items.find((i) => i.isEntrypoint);
-  if (one) return one.ok === true ? "ok" : one.ok === false ? "err" : "";
-  if (items.every((i) => i.ok === true)) return "ok";
-  return items.some((i) => i.ok === true) ? "running" : "err";
-}
+/** health-rollup.js's state → the pages' .dot classes. */
+const DOT = { down: "err", degraded: "warn", ok: "ok", unknown: "" };
 
-/** One repo's dot + label in the health row. */
-function _repoHealthItem(repo, items, escAttr) {
+/** One repo's dot + label in the health row (`r` from buildRow). */
+function _repoHealthItem(r, escAttr) {
+  const { repo, items, rollup } = r;
   // Show open-in-editor icon if editor is configured and any item is dev-managed
   const devItem = items.find((i) => i.mode === "dev-managed" && i.repoPath);
   const openIcon =
     _editorKey && devItem
       ? `<button class="nav-open-btn" data-open-path="${escAttr(devItem.repoPath)}" title="Open in editor">↗</button>`
       : "";
-
-  const isSingle = items.length === 1 && items[0].service === repo;
-  if (isSingle) {
-    const { service, ok, status, error } = items[0];
-    // What was checked: the URL, or a shell check's command.
-    const what = items[0].url ?? items[0].check;
-    const state = ok === true ? "ok" : ok === false ? "err" : "";
-    const tip =
-      ok == null
-        ? "no health check"
-        : error
-          ? `${what} — ${error}`
-          : `${what} → ${status}`;
-    return `<div class="health-item" title="${escAttr(tip)}">
-      <span class="dot ${state}" id="h-${repo}-${service}"></span>
-      <span>${repo}</span>
-      ${openIcon}
-    </div>`;
-  }
-  // Multi-service repo: ONE dot for the system's main component (the
-  // entrypoint), so a down app isn't masked green by its shared-infra
-  // sidecars. An entrypoint-less infra provider (infra-stack) falls back
-  // to an aggregate across its subsystems.
-  const entry = items.find((i) => i.isEntrypoint);
-  let overallState, tip;
-  if (entry) {
-    overallState = entry.ok === true ? "ok" : entry.ok === false ? "err" : "";
-    tip =
-      entry.ok == null
-        ? "no health check"
-        : entry.error
-          ? `${entry.url ?? entry.check} — ${entry.error}`
-          : `${entry.url ?? entry.check} → ${entry.status}`;
-  } else {
-    const allOk = items.every((i) => i.ok === true);
-    const anyOk = items.some((i) => i.ok === true);
-    overallState = allOk ? "ok" : anyOk ? "running" : "err";
-    tip = `${items.length} services`;
-  }
-  return `<div class="health-item" title="${escAttr(tip)}">
-      <span class="dot ${overallState}"></span>
+  // The tip: the rollup in words (shared with the graph and `<cli> status`),
+  // then what the entry service's check said.
+  const entry = items.find((i) => i.service === rollup.entry);
+  const what = entry ? (entry.url ?? entry.check) : null;
+  const detail =
+    entry && what && entry.ok != null
+      ? entry.error
+        ? ` · ${what} — ${entry.error}`
+        : ` · ${what} → ${entry.status}`
+      : "";
+  return `<div class="health-item" data-repo="${escAttr(repo)}" title="${escAttr(describeRollup(rollup) + detail)}">
+      <span class="dot ${DOT[rollup.state]}"></span>
       <span>${repo}</span>
       ${openIcon}
     </div>`;
@@ -1139,91 +1102,53 @@ function _paintHealthDots(container, env, results) {
       .replace(/&/g, "&amp;")
       .replace(/"/g, "&quot;");
 
-  container._units = null;
+  container._row = null;
   if (!results.length) {
     closeMoreList(document);
     container.innerHTML = `<div class="health-item" style="color:var(--muted);font-size:11px">${env}: no services</div>`;
   } else {
-    // Group by repo so multi-service repos don't produce duplicate labels.
-    const byRepo = new Map();
-    for (const item of results) {
-      if (!byRepo.has(item.repo)) byRepo.set(item.repo, []);
-      byRepo.get(item.repo).push(item);
-    }
-    const repoHtml = new Map(
-      [...byRepo.entries()].map(([repo, items]) => [
-        repo,
-        _repoHealthItem(repo, items, escAttr),
-      ]),
+    const repos = [...new Set(results.map((r) => r.repo))];
+    const row = buildRow(results, groupReposByApplication(repos, _apps));
+    const itemHtml = new Map(
+      row.flat.map((r) => [r.repo, _repoHealthItem(r, escAttr)]),
     );
-    const stateOf = new Map(
-      [...byRepo.entries()].map(([repo, items]) => [
-        repo,
-        _repoState(repo, items),
-      ]),
-    );
-    // Units: a repo, or an application's box of repos. Problems first
-    // (down, degraded, unknown, then healthy), in and across boxes, so the
-    // row never hides a problem behind a healthy repo.
-    const units = [];
-    for (const { app, repos } of groupReposByApplication(
-      [...byRepo.keys()],
-      _apps,
-    )) {
-      const ordered = orderByProblem(
-        repos.map((r) => ({ repo: r, state: stateOf.get(r) })),
-      );
-      const count = (st) => ordered.filter((u) => u.state === st).length;
-      if (!app) {
-        for (const u of ordered)
-          units.push({
-            ...u,
-            repos: 1,
-            down: u.state === "err" ? 1 : 0,
-            degraded: u.state === "running" ? 1 : 0,
-            html: repoHtml.get(u.repo),
-          });
-        continue;
-      }
-      const tip = [app.title, app.owner, app.description]
+    const unitHtml = row.units.map((u) => {
+      const inner = u.repos.map((r) => itemHtml.get(r.repo)).join("");
+      if (!u.app) return inner;
+      const tip = [u.app.title, u.app.owner, u.app.description]
         .filter(Boolean)
         .join(" · ");
-      units.push({
-        state: orderByProblem(ordered)[0]?.state ?? "",
-        repos: ordered.length,
-        down: count("err"),
-        degraded: count("running"),
-        html: `<div class="health-app" title="${escAttr(tip)}"><span class="health-app-label">${escAttr(app.name)}</span>${ordered.map((u) => repoHtml.get(u.repo)).join("")}</div>`,
-      });
-    }
-    container._units = orderByProblem(units);
-    container.innerHTML = container._units.map((u) => u.html).join("");
-    [...container.children].forEach((el, i) => (el.dataset.unit = String(i)));
-    _wireOpenButtons(container);
+      return `<div class="health-app" title="${escAttr(tip)}"><span class="health-app-label">${escAttr(u.app.name)}</span>${inner}</div>`;
+    });
+    container._row = { ...row, itemHtml, unitHtml };
   }
+  container._env = env;
+  _layoutHealthRow(container);
 
   // Broadcast results so other components (e.g. dep graph) can stay in sync
   document.dispatchEvent(
     new CustomEvent("__DEN_CLI__:health-update", { detail: results }),
   );
+}
 
-  // Refresh button — shown on every page, no per-page HTML changes needed
+/** Refresh button — shown on every page, no per-page HTML changes needed. */
+function _refreshButton(container) {
   const btn = document.createElement("button");
   btn.title = "Refresh service health";
   btn.textContent = "⟳";
   btn.style.cssText =
     "background:none;border:none;color:var(--muted);cursor:pointer;" +
     "font-size:13px;padding:1px 4px;border-radius:3px;line-height:1;margin-left:4px;" +
-    "transition:color .1s;";
+    "transition:color .1s;flex-shrink:0;";
   btn.addEventListener("mouseenter", () => (btn.style.color = "var(--text)"));
   btn.addEventListener("mouseleave", () => (btn.style.color = "var(--muted)"));
   btn.addEventListener("click", () => {
-    const currentEnv = document.getElementById("env-sel")?.value ?? env;
+    const currentEnv =
+      document.getElementById("env-sel")?.value ?? container._env;
     refreshHealth(currentEnv); // pulses dots yellow while re-pinging
   });
   btn.className = "health-refresh";
-  container.appendChild(btn);
-  _fitHealthRow(container);
+  return btn;
 }
 
 /** Open-in-editor buttons (data-open-path avoids inline onclick escaping). */
@@ -1246,70 +1171,115 @@ function _wireOpenButtons(root) {
 }
 
 /**
- * Fit the health row on one line: whole units only, in problem-first order,
- * and a "+N" chip that opens the rest. Never a cut word. Runs after every
- * paint and on resize (an interim until the slice-3 status chip).
+ * Lay the health row out on one line in the width the header gives it
+ * (the row takes the free space: appearance.js). Application boxes when
+ * everything fits; otherwise repos flat, problems placed first, whole items
+ * only, and a "+N" chip that opens the rest (health-fit.js). Never a cut
+ * word. Runs after every paint, on resize, when fonts load, and when the
+ * row's own width changes (an interim until the slice-3 status chip).
  */
-function _fitHealthRow(container) {
-  // Another header item can grow after a fit (a pill, a label) and squeeze
-  // the row with no resize: re-fit whenever it overflows. A fit never
-  // overflows, so this can't loop.
+function _layoutHealthRow(container) {
   if (!container._fitObserver && typeof ResizeObserver === "function") {
+    // The row's width is the header's free space, never its content, so
+    // laying it out can't change it: no loop.
+    let last = -1;
     container._fitObserver = new ResizeObserver(() => {
-      if (container.scrollWidth > container.clientWidth + 1) _queueFit();
+      if (container.clientWidth !== last) {
+        last = container.clientWidth;
+        _queueFit();
+      }
     });
     container._fitObserver.observe(container);
   }
-  const units = container._units;
-  container.querySelector("#health-more")?.remove();
-  if (!units) return;
-  const els = [...container.querySelectorAll(":scope > [data-unit]")];
-  for (const el of els) el.style.display = "";
-  const avail = container.clientWidth;
-  if (container.scrollWidth <= avail + 1) {
+  const row = container._row;
+  if (!row) return;
+  const refresh = _refreshButton(container);
+  container.innerHTML = row.unitHtml.join("");
+  container.appendChild(refresh);
+  const cs = getComputedStyle(container);
+  const gap = parseFloat(cs.columnGap) || 0;
+  const avail =
+    container.clientWidth -
+    (parseFloat(cs.paddingLeft) || 0) -
+    (parseFloat(cs.paddingRight) || 0) -
+    refresh.offsetWidth -
+    gap;
+  const kids = [...container.children].filter((el) => el !== refresh);
+  const boxed =
+    kids.reduce((a, el) => a + el.offsetWidth, 0) +
+    gap * Math.max(0, kids.length - 1);
+  if (boxed <= avail) {
+    _wireOpenButtons(container);
     closeMoreList(document);
     return;
   }
-  const gap = parseFloat(getComputedStyle(container).columnGap) || 0;
-  const refresh = container.querySelector(":scope > .health-refresh");
-  const reserve = refresh ? refresh.offsetWidth + gap : 0;
-  // The chip's widest form, measured in place, so the fit is exact.
+  // Flat: every repo as its own item, in problem-first order.
+  container.innerHTML = row.flat.map((r) => row.itemHtml.get(r.repo)).join("");
+  container.appendChild(refresh);
+  const items = [...container.querySelectorAll(":scope > [data-repo]")];
+  // The chip measured in place, short ("+N") and in full, so the plan is
+  // exact: problems first, the chip's detail only if it still fits.
   const probe = document.createElement("button");
   probe.className = "health-more problem";
-  probe.textContent = moreChip(units).text;
   container.insertBefore(probe, refresh);
-  const chipWidth = probe.offsetWidth + gap;
+  const widthOf = (text) => {
+    probe.textContent = text;
+    return probe.offsetWidth + gap;
+  };
+  const chipWidth = widthOf(moreChip(row.flat).short);
   probe.remove();
-  const n = fitUnits(
-    els.map((el) => el.offsetWidth),
-    avail - reserve,
-    { gap, chipWidth },
-  );
-  for (const el of els.slice(n)) el.style.display = "none";
-  const hidden = units.slice(n);
+  const plan = planRow({
+    boxed,
+    flat: row.flat.map((r, i) => ({
+      key: r.repo,
+      state: r.state,
+      width: items[i].offsetWidth,
+    })),
+    avail,
+    gap,
+    chipWidth,
+  });
+  items.forEach((el, i) => {
+    if (!plan.show.has(row.flat[i].repo)) el.style.display = "none";
+  });
+  _wireOpenButtons(container);
+  const hidden = row.flat.filter((r) => !plan.show.has(r.repo));
   if (!hidden.length) {
     closeMoreList(document);
     return;
   }
+  // The richest chip text that fits what the plan left.
+  container.insertBefore(probe, refresh);
+  const forms = moreChip(hidden).forms;
+  let form = forms.findIndex(
+    (t) => plan.used - chipWidth + widthOf(t) <= avail,
+  );
+  if (form < 0) form = forms.length - 1;
+  probe.remove();
   container.insertBefore(
-    mountMoreChip(document, hidden, (list) => {
-      list.innerHTML = hidden.map((u) => u.html).join("");
-      _wireOpenButtons(list);
-    }),
+    mountMoreChip(
+      document,
+      hidden,
+      (list) => {
+        list.innerHTML = hidden.map((r) => row.itemHtml.get(r.repo)).join("");
+        _wireOpenButtons(list);
+      },
+      { form },
+    ),
     refresh,
   );
 }
 
 let _fitQueued = false;
-/** Re-fit on the next frame: on resize, and when web fonts land (they
- * change every item's width after the first fit). */
+/** Lay out again on the next frame: on resize, when web fonts land (they
+ * change every item's width), and when the row's width changes. */
 function _queueFit() {
   if (_fitQueued) return;
   _fitQueued = true;
   requestAnimationFrame(() => {
     _fitQueued = false;
     const c = document.getElementById("health");
-    if (c) _fitHealthRow(c);
+    if (c) _layoutHealthRow(c);
   });
 }
 window.addEventListener("resize", _queueFit);

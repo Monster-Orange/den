@@ -5,6 +5,7 @@
  * server's /api/health endpoint and the CLI's status command.
  */
 
+import { rollupRepo, type RepoRollup } from "../health/rollup.js";
 import { hasRuntime, repoKind } from "../repo-kind.js";
 import * as https from "https";
 import * as tls from "tls";
@@ -55,6 +56,8 @@ export interface ServiceHealthResult {
   /** Where the service runs for the env checked (R13). */
   runs?: Placement["runs"];
   target?: Placement["target"];
+  /** A repo row's rollup of every service (rollupRepoHealth). */
+  rollup?: RepoRollup;
 }
 
 // ── Name resolution ───────────────────────────────────────────────────────────
@@ -558,19 +561,16 @@ export async function checkCatalogHealth(
 }
 
 /**
- * Collapse a multi-service repo's per-subsystem health rows into a single
- * repo-level row keyed on the manifest `entrypoint` (the front-door app).
+ * One row per repo, its health rolled up from every service's check by the
+ * rule the web UI's header row and graph use (src/shared/health/rollup.ts):
+ * down when the entry service (the manifest `entrypoint`) is down, degraded
+ * when another checked service is, healthy when something is checked and
+ * nothing fails, unknown when nothing is checked. Unchecked services never
+ * count (0.3.0-dev.10).
  *
- * Stack app-repos declare their shared-infra sidecars (pg/redis/sqs/ddb/s3) as
- * manifest `services:`, and those sidecars health-check the shared infra-stack
- * stack — so they read "ok" whenever infra-stack is up, making a down app look
- * partially running. Rolling up to the entrypoint answers the real question
- * ("is this repo's service up?") instead.
- *
- * A repo is collapsed only when it has multiple rows AND its manifest declares an
- * `entrypoint` present among them. Repos with no entrypoint (e.g. the
- * infra-stack infra provider, whose subsystems ARE the meaningful services)
- * keep their subsystem breakdown. Single-row repos pass through unchanged.
+ * The repo row is the entry service's row under the repo name, with
+ * `rollup` set; its `health` is "error" for down or degraded. A remote
+ * service keeps its own row too (R13). Single-service repos keep their row.
  */
 export function rollupRepoHealth(
   results: ServiceHealthResult[],
@@ -589,23 +589,34 @@ export function rollupRepoHealth(
 
   const out: ServiceHealthResult[] = [];
   for (const [repoName, rows] of groups) {
-    if (rows.length <= 1) {
-      out.push(...rows);
-      continue;
-    }
-    const entrypoint = getEntrypoint(repoName, rows[0].repoPath);
-    const epRow = entrypoint
-      ? rows.find((r) => r.subsystem === entrypoint)
-      : undefined;
-    if (epRow) {
-      // Show the entrypoint's health under the clean repo-name address. A
-      // remote service is not a sidecar: it keeps its own row (R13).
-      out.push({ ...epRow, address: repoName });
-      out.push(...rows.filter((r) => r !== epRow && r.runs === "remote"));
-    } else {
-      // No entrypoint → infra provider; keep the subsystem breakdown.
-      out.push(...rows);
-    }
+    const entrypoint =
+      rows.length > 1 ? getEntrypoint(repoName, rows[0].repoPath) : undefined;
+    const rollup = rollupRepo(
+      repoName,
+      rows.map((r) => ({
+        service: r.subsystem,
+        ok: r.health === "ok" ? true : r.health === "error" ? false : null,
+        isEntrypoint: !!entrypoint && r.subsystem === entrypoint,
+      })),
+    );
+    const lead =
+      rows.find((r) => r.subsystem === rollup.entry) ??
+      rows.find((r) => r.health === "error") ??
+      rows[0];
+    out.push({
+      ...lead,
+      address: rows.length > 1 ? repoName : lead.address,
+      health:
+        rollup.state === "ok"
+          ? "ok"
+          : rollup.state === "unknown"
+            ? "unknown"
+            : "error",
+      rollup,
+    });
+    // A remote service is not a sidecar: it keeps its own row (R13).
+    if (rows.length > 1)
+      out.push(...rows.filter((r) => r !== lead && r.runs === "remote"));
   }
   return out;
 }
