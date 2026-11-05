@@ -20,8 +20,8 @@
  * and the server and CLI import it from TypeScript.
  */
 
-/** Sort rank: problems first, then unknown, then healthy. */
-export const STATE_RANK = { down: 0, degraded: 1, unknown: 2, ok: 3 };
+/** Sort rank: problems first, then healthy, then unknown (nothing checked). */
+export const STATE_RANK = { down: 0, degraded: 1, ok: 2, unknown: 3 };
 
 /**
  * @typedef {{ service: string, ok: boolean | null | undefined, isEntrypoint?: boolean }} HealthSignal
@@ -100,7 +100,7 @@ export function describeRollup(r) {
 }
 
 /**
- * Order repos: problems first, then unknown, then healthy; within a state
+ * Order repos: down, degraded, ok, then unknown; within a state
  * the focused workspace's repos first, then by name.
  * @param {{ state: RepoState, repo: string, focused?: boolean }} a
  * @param {{ state: RepoState, repo: string, focused?: boolean }} b
@@ -108,7 +108,7 @@ export function describeRollup(r) {
  */
 export function compareRepos(a, b) {
   return (
-    (STATE_RANK[a.state] ?? 2) - (STATE_RANK[b.state] ?? 2) ||
+    (STATE_RANK[a.state] ?? 3) - (STATE_RANK[b.state] ?? 3) ||
     Number(!!b.focused) - Number(!!a.focused) ||
     String(a.repo).localeCompare(String(b.repo))
   );

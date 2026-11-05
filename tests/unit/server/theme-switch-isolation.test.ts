@@ -219,7 +219,7 @@ describe("switching theme or mode (criterion 5)", () => {
     expect(infoAfter.startedAt).toBe(info.startedAt);
   }, 30_000);
 
-  it("goes back to the org default: null, or picking the org's theme", async () => {
+  it("Org default stores null; the org's theme by name is pinned", async () => {
     const settings = async () =>
       (
         JSON.parse((await request("GET", "/api/settings")).body) as {
@@ -231,9 +231,18 @@ describe("switching theme or mode (criterion 5)", () => {
         org_default: { id: string; name: string };
         active: { id: string; chosen_by: string };
       };
+    const stored = () =>
+      (
+        yaml.parse(fs.readFileSync(path.join(tmp, USER_YML), "utf-8")) as {
+          appearance?: { theme?: string };
+        }
+      ).appearance?.theme;
     // The org config's brand.theme is den: the menu's "Org default (Den)".
     expect((await themes()).org_default).toEqual({ id: "den", name: "Den" });
-    for (const theme of [null, "den"]) {
+    for (const [theme, kept, chosenBy] of [
+      [null, null, "distribution"],
+      ["den", "den", "user"],
+    ] as const) {
       expect(
         (
           await request("POST", "/api/settings", {
@@ -242,21 +251,20 @@ describe("switching theme or mode (criterion 5)", () => {
         ).status,
       ).toBe(200);
       expect(await settings()).toBe("paper");
-      // Org default (null), or the org's own theme picked by name: both
-      // store no choice, so a later brand.theme change is followed.
       expect(
         (await request("POST", "/api/settings", { appearance: { theme } }))
           .status,
       ).toBe(200);
-      expect([theme, await settings()]).toEqual([theme, null]);
+      // Org default (null) follows a later brand.theme change; den picked
+      // by name is a pin that keeps den.
+      expect(await settings()).toBe(kept);
       expect((await themes()).active).toEqual(
-        expect.objectContaining({ id: "den", chosen_by: "distribution" }),
+        expect.objectContaining({ id: "den", chosen_by: chosenBy }),
       );
-      const user = yaml.parse(
-        fs.readFileSync(path.join(tmp, USER_YML), "utf-8"),
-      ) as { appearance?: { theme?: string } };
-      expect(user.appearance?.theme).toBeUndefined();
+      expect(stored()).toBe(kept ?? undefined);
     }
+    // Leave no pin for the tests after this one.
+    await request("POST", "/api/settings", { appearance: { theme: null } });
   });
 
   it("refuses a theme that is not installed, writing nothing", async () => {

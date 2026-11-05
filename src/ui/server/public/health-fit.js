@@ -10,6 +10,9 @@
  *                           repo flat, each in problem-first order
  *   planRow(…)              boxes when everything fits; otherwise repos flat,
  *                           problems placed first, as many as fit
+ *   fitPlan(row, measured)  planRow guarded for the first frames: a
+ *                           placeholder before data, everything (and a
+ *                           retry) before the row has real widths
  *   moreChip(hidden)        the chip's text and accessible name
  *   mountMoreChip(doc, …)   the chip, and the list it opens
  *
@@ -22,7 +25,7 @@ const PROBLEM = new Set(["down", "degraded"]);
 /**
  * The row's model from /api/health rows and the application grouping
  * (`[{ app, repos }]`, app null for repos with no box of their own).
- * Repos sort problems first, then unknown, then healthy; within a state the
+ * Repos sort down, degraded, ok, then unknown; within a state the
  * focused workspace's first, then by name. A box sorts by its worst repo.
  */
 export function buildRow(rows, groups) {
@@ -111,6 +114,46 @@ export function planRow({ boxed, flat, avail, gap = 0, chipWidth = 0 }) {
       used += f.width + gap;
     }
   return { mode: "flat", show, used };
+}
+
+/**
+ * What the row shows given what the header measured, guarded for the first
+ * frames of a cold load, so the row is never an empty box:
+ * - no data yet (`row` null): `{ mode: "placeholder" }`, a neutral "…"
+ *   beside the refresh button;
+ * - nothing measured yet (no width for the row, or any repo 0px wide:
+ *   not laid out yet): everything boxed, and `retry` so the header lays
+ *   out again on the next frame;
+ * - otherwise planRow, whose "flat" result always shows items or hides
+ *   some behind the chip.
+ * `measured` is `{ avail, boxed, widths, gap, chipWidth }`, `widths` in
+ * `row.flat` order.
+ */
+export function fitPlan(row, measured) {
+  if (!row || !row.flat || !row.flat.length)
+    return { mode: "placeholder", show: new Set(), used: 0, retry: false };
+  const { avail, boxed, widths = [], gap = 0, chipWidth = 0 } = measured;
+  const all = new Set(row.flat.map((r) => r.repo));
+  const unmeasured =
+    !(avail > 0) ||
+    !(boxed > 0) ||
+    widths.length !== row.flat.length ||
+    widths.some((w) => !(w > 0));
+  if (unmeasured) return { mode: "boxed", show: all, used: 0, retry: true };
+  return {
+    ...planRow({
+      boxed,
+      flat: row.flat.map((r, i) => ({
+        key: r.repo,
+        state: r.state,
+        width: widths[i],
+      })),
+      avail,
+      gap,
+      chipWidth,
+    }),
+    retry: false,
+  };
 }
 
 /**

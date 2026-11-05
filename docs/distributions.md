@@ -515,9 +515,10 @@ appearance:
 
 The Theme menu's first entry is "Org default (<name>)": it stores no theme
 (`appearance.theme` null, the same as omitting it), so you follow
-`brand.theme`. Picking the theme that is the org default by name stores null
-too: you never pin yourself to today's org default, and a later
-`brand.theme` change reaches you.
+`brand.theme`, and a later `brand.theme` change reaches you. Picking a theme
+by name stores its id, even the theme that is the org default today: that
+pins it, and the menu shows it as "<name> (pinned)" rather than "Org
+default".
 
 `system` follows the OS (`prefers-color-scheme`), and the theme's
 `default_mode` when the OS gives none. The header's Mode and Theme menus save

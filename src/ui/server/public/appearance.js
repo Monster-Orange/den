@@ -48,7 +48,9 @@ export function markView(mark, mode, themeName) {
 /**
  * The Theme menu: "Org default (<name>)" first (value "", stored as null),
  * then every theme that passes validate. Selected: the org default when you
- * have no choice of your own, else your theme. A stored choice that is no
+ * have no choice of your own, else your theme, even when it is the org's
+ * theme: picking it by name pins it, and it reads "<name> (pinned)" so the
+ * menu tells a pin from following the org. A stored choice that is no
  * longer usable is never offered, and nothing is selected: themeNotice says
  * what happened instead, so it never reads as "Org default". Pure, for tests.
  */
@@ -63,7 +65,10 @@ export function themeOptions(themes, prefsTheme, orgDefault) {
     },
     ...usable.map((t) => ({
       value: t.id,
-      label: t.name,
+      label:
+        t.id === chosen && t.id === orgDefault?.id
+          ? `${t.name} (pinned)`
+          : t.name,
       selected: t.id === chosen,
     })),
   ];
@@ -198,6 +203,12 @@ function injectStyles() {
     header:has(> .health) > .h-spacer, header:has(> .health) > .spacer,
     .topbar:has(> .health) > .h-spacer, .topbar:has(> .health) > .spacer {
       flex: 0 0 0 !important; min-width: 0;
+    }
+    /* The row never squeezes the brand, the version badge or the pills
+       beside it: only the row (and the scrolling nav) gives way. */
+    header:has(> .health) > :not(.health):not(nav):not(.h-spacer):not(.spacer),
+    .topbar:has(> .health) > :not(.health):not(nav):not(.h-spacer):not(.spacer) {
+      flex-shrink: 0; min-width: max-content;
     }
     header > .health, .topbar > .health { flex-wrap: nowrap; }
     header > .health > *, .topbar > .health > * { flex-shrink: 0; white-space: nowrap; }

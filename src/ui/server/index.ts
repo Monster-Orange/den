@@ -153,7 +153,6 @@ import {
 } from "./appearance-prefs.js";
 import {
   activeTheme,
-  orgDefaultTheme,
   handleThemeRoutes,
   type ThemeRouteDeps,
 } from "./theme-routes.js";
@@ -3020,7 +3019,6 @@ async function handleRequest(
             appearancePrefs(user.appearance),
             body.appearance,
             (id) => !!findTheme(themeDeps.roots(), id)?.ok,
-            orgDefaultTheme(themeDeps)?.id ?? null,
           );
           if (!a.ok) return send400(res, a.error);
           const stored = storedAppearance(a.value);

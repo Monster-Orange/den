@@ -99,8 +99,10 @@ config and manifest changes a distribution must make to move to it under
   stays the favicon. Links in body content are underlined (subtly, in a tint
   of their own color), so a red accent never makes a link read as an error.
 - **Back to the org default.** The Theme menu starts with "Org default
-  (<name>)", which stores `appearance.theme: null`; picking the theme that
-  is the org default stores null too, so you keep following `brand.theme`.
+  (<name>)", which stores `appearance.theme: null`, so you keep following
+  `brand.theme`. Picking a theme by name stores its id, even the theme that
+  is the org default today (0.3.0-dev.11; dev.8 stored null for it): that
+  is a pin, selected as itself and labelled "<name> (pinned)".
   `/api/themes` gives `org_default`. The popover's controls are named
   (Mode, Theme; the button is "Appearance" with `aria-expanded` and
   `aria-controls`); Escape closes it and returns focus to the button.
@@ -159,8 +161,9 @@ config and manifest changes a distribution must make to move to it under
   regression from the one-line header earlier in 0.3.0). The row was clipped
   silently: whole repos were hidden, a name could be cut mid-word, and a
   hidden repo that was down didn't show. It now:
-  - orders problems first: down, then degraded, then unknown, then healthy,
-    within and across application boxes;
+  - orders problems first: down, then degraded, then healthy, then unknown
+    (0.3.0-dev.11; dev.9 put unknown before healthy), within and across
+    application boxes;
   - shows only items that fit whole;
   - ends with a "+N" chip for the rest, named "N more repos" and saying
     "+N, 1 down" when a hidden repo has a problem. The chip opens the full
@@ -183,8 +186,8 @@ config and manifest changes a distribution must make to move to it under
   - **degraded**: another checked service is down;
   - **ok**: at least one signal is checked and none fails;
   - **unknown**: nothing is checked. It is neutral, never green, and sorts
-    after problems and before healthy. A service not yet probed is
-    unknown.
+    last, after healthy (0.3.0-dev.11). A service not yet probed is
+    unknown. `status` keeps the graph's order.
 
   A repo of 26 services with one probe is judged by that probe.
   - `status` prints one row per repo with its rolled-up state and names
@@ -203,6 +206,20 @@ config and manifest changes a distribution must make to move to it under
     "+9, 1 down", "+9"). Its name and tooltip always carry the full count.
   - The row now takes the header's free space. Before, it shrank to its
     content, and the page's own spacer took half of what was left.
+- **The health row is never an empty box on a cold load** (0.3.0-dev.11).
+  Before the first health result (the application and editor lookups and
+  the stream come first) the row painted nothing, and since dev.10 it takes
+  the header's free space, so it read as a wide empty box with no refresh
+  button. It now shows a neutral "…" and the refresh button at once. A fit
+  that runs before the row or its items have a width keeps everything
+  boxed and runs again next frame (`fitPlan` in `public/health-fit.js`).
+  It fits again on the first data and when fonts load. The brand, version
+  badge and pills beside the row never shrink for it.
+- **The health row's fit, checked against a real 6+3 workspace**
+  (0.3.0-dev.11). Measured names of 71 to 182px: all nine flat need about
+  1070px, so a 1002px row shows 7 and "+2", and a 1282px row shows both
+  boxes whole. The fit was right; these numbers are now a test, with an
+  11-repo 7+3+1 case for the flat fallback.
 - **The Theme menu says when your theme isn't in use** (0.3.0-dev.10). A
   stored theme that fails validation selects nothing, instead of looking
   like "Org default". One line explains: "Your theme <id> isn't valid

@@ -194,8 +194,9 @@ const fakeFetch = async (url: string, init?: { body?: string }) => {
     const a = (JSON.parse(init?.body ?? "{}") as { appearance: never })
       .appearance as { theme?: string | null; mode?: string };
     server.posts.push(a);
-    // The server stores null for the org default (sun).
-    if ("theme" in a) server.theme = a.theme === "sun" ? null : a.theme!;
+    // The server stores what you picked: null for Org default, else the id
+    // (the org's own theme too: a pin).
+    if ("theme" in a) server.theme = a.theme || null;
     if (a.mode) server.mode = a.mode;
     return { ok: true, json: async () => ({ ok: true }), text: async () => "" };
   }
@@ -274,6 +275,20 @@ describe("themeOptions", () => {
       themeOptions(themes, "den", null).find((o) => o.selected)?.value,
     ).toBe("den");
   });
+  it("a named theme equal to the org default is selected and reads (pinned)", () => {
+    const org = { id: "paper", name: "Paper" };
+    expect(themeOptions(themes, "paper", org)).toEqual([
+      { value: "", label: "Org default (Paper)", selected: false },
+      { value: "den", label: "Den", selected: false },
+      { value: "paper", label: "Paper (pinned)", selected: true },
+    ]);
+    // Pinned only when it is both your choice and the org's default.
+    expect(themeOptions(themes, "den", org).map((o) => o.label)).toEqual([
+      "Org default (Paper)",
+      "Den",
+      "Paper",
+    ]);
+  });
   it("never offers a theme that fails validate, even your stored choice", () => {
     const opts = themeOptions(themes, "bad", { id: "paper", name: "Paper" });
     expect(opts.map((o) => o.value)).toEqual(["", "den", "paper"]);
@@ -351,7 +366,7 @@ describe("the header (initAppearance)", () => {
     expect(theme.value).toBe("ink");
   });
 
-  it("Org default writes theme null and is selected again", async () => {
+  it("Org default writes theme null; the org's theme by name is a pin", async () => {
     const theme = el("appearance-theme");
     expect(theme.children[0].textContent).toBe("Org default (Sun)");
     expect(theme.value).toBe("ink");
@@ -360,17 +375,35 @@ describe("the header (initAppearance)", () => {
     expect(server.posts.at(-1)).toEqual({ theme: null });
     expect(theme.value).toBe("");
     expect(img()?.src).toBe("/theme/sun/mark.svg");
-    // Picking the org's own theme by name lands on Org default too.
+    expect(theme.children.map((o) => o.textContent)).toEqual([
+      "Org default (Sun)",
+      "Den",
+      "Ink",
+      "Sun",
+    ]);
+    // Picking the org's own theme by name pins it: that theme is selected,
+    // not Org default, and it says so.
     theme.value = "sun";
     await theme.fire("change");
     expect(server.posts.at(-1)).toEqual({ theme: "sun" });
-    expect(theme.value).toBe("");
+    expect(theme.value).toBe("sun");
     expect(theme.children.map((o) => o.value)).toEqual([
       "",
       "den",
       "ink",
       "sun",
     ]);
+    expect(theme.children.map((o) => o.textContent)).toEqual([
+      "Org default (Sun)",
+      "Den",
+      "Ink",
+      "Sun (pinned)",
+    ]);
+    // Back to following the org.
+    theme.value = "";
+    await theme.fire("change");
+    expect(theme.value).toBe("");
+    expect(theme.children.at(-1)?.textContent).toBe("Sun");
   });
 
   it("names every control and wires the popover for assistive tech", () => {

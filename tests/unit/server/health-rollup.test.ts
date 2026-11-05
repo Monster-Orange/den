@@ -111,7 +111,7 @@ describe("rollupRepo", () => {
 });
 
 describe("compareRepos", () => {
-  it("problems first; within a state the focused workspace's, then by name", () => {
+  it("down, degraded, ok, then unknown; within a state the focused workspace's, then by name", () => {
     const repos = [
       { repo: "b", state: "ok" as const },
       { repo: "z", state: "ok" as const, focused: true },
@@ -123,10 +123,10 @@ describe("compareRepos", () => {
     expect(repos.sort(compareRepos).map((r) => r.repo)).toEqual([
       "d",
       "m",
-      "q",
       "z",
       "a",
       "b",
+      "q",
     ]);
   });
 });

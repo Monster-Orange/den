@@ -354,22 +354,23 @@ describe("appearance prefs", () => {
     expect(mergeAppearancePrefs(cur, { edge: 1 }, usable).ok).toBe(false);
     expect(storedAppearance({ theme: null, mode: "system" })).toBeUndefined();
   });
-  it("stores null for the org default, so you follow it when it changes", () => {
+  it("stores a theme picked by name, even the org default's: a pin", () => {
     const cur: AppearancePrefs = { theme: "paper", mode: "dark" };
-    // Choosing the theme that is the org default is no choice of your own.
-    expect(mergeAppearancePrefs(cur, { theme: "den" }, usable, "den")).toEqual({
-      ok: true,
-      value: { theme: null, mode: "dark" },
+    // Picking den by name pins den, though den is what no choice draws;
+    // a caller that still passes the org default (dev.8's argument) changes
+    // nothing.
+    const merge = mergeAppearancePrefs as (...a: unknown[]) => unknown;
+    for (const args of [[], ["den"]])
+      expect(merge(cur, { theme: "den" }, usable, ...args)).toEqual({
+        ok: true,
+        value: { theme: "den", mode: "dark" },
+      });
+    expect(storedAppearance({ theme: "den", mode: "system" })).toEqual({
+      theme: "den",
     });
-    expect(
-      mergeAppearancePrefs(cur, { theme: "paper" }, usable, "paper"),
-    ).toEqual({ ok: true, value: { theme: null, mode: "dark" } });
-    // Another theme is kept; null and "" clear, the same as the org default.
-    expect(
-      mergeAppearancePrefs(cur, { theme: "paper" }, usable, "den"),
-    ).toEqual({ ok: true, value: { theme: "paper", mode: "dark" } });
+    // Only null and "" (Org default) store no choice, so you follow the org.
     for (const theme of [null, ""])
-      expect(mergeAppearancePrefs(cur, { theme }, usable, "den")).toEqual({
+      expect(mergeAppearancePrefs(cur, { theme }, usable)).toEqual({
         ok: true,
         value: { theme: null, mode: "dark" },
       });

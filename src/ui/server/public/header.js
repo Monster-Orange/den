@@ -21,8 +21,8 @@ import {
   buildRow,
   closeMoreList,
   moreChip,
+  fitPlan,
   mountMoreChip,
-  planRow,
 } from "./health-fit.js";
 import { describeRollup } from "./health-rollup.js";
 
@@ -80,6 +80,8 @@ function _injectNavStyles() {
       padding: 1px 8px 1px 6px; border: 1px solid var(--border);
       border-radius: 10px;
     }
+    /* Before the first result: a neutral "…", never an empty row. */
+    .health-pending { color: var(--muted); font-size: 11px; padding: 0 4px; }
     .health-app-label {
       font-size: 10px; font-weight: 600; letter-spacing: .03em;
       color: var(--text); opacity: .7; white-space: nowrap;
@@ -940,8 +942,12 @@ async function renderHealthDots(env, gen = pollGen, force = false) {
   const container = document.getElementById("health");
   if (!container) return;
 
-  await Promise.all([_loadEditorKey(), _loadApps()]);
+  // A cold load: the placeholder and refresh button now, before the
+  // application and editor lookups and the first result land.
   _injectNavStyles();
+  if (!container._row && !container.children.length)
+    _layoutHealthRow(container);
+  await Promise.all([_loadEditorKey(), _loadApps()]);
 
   // Merge into the PREVIOUS poll's results rather than starting empty.
   //
@@ -1192,8 +1198,17 @@ function _layoutHealthRow(container) {
     container._fitObserver.observe(container);
   }
   const row = container._row;
-  if (!row) return;
   const refresh = _refreshButton(container);
+  if (!row) {
+    // No data yet (a cold load): a neutral placeholder and the refresh
+    // button, never an empty box. "no services" paints its own message.
+    if (container._env !== undefined) return;
+    closeMoreList(document);
+    container.innerHTML =
+      '<span class="health-pending" role="status" aria-label="Checking service health">…</span>';
+    container.appendChild(refresh);
+    return;
+  }
   container.innerHTML = row.unitHtml.join("");
   container.appendChild(refresh);
   const cs = getComputedStyle(container);
@@ -1208,6 +1223,16 @@ function _layoutHealthRow(container) {
   const boxed =
     kids.reduce((a, el) => a + el.offsetWidth, 0) +
     gap * Math.max(0, kids.length - 1);
+  // Before the row has a width (laid out before the header, or hidden), or
+  // before its items do: keep everything boxed and lay out again next
+  // frame, never an empty row (fitPlan).
+  const notYet = () => {
+    _wireOpenButtons(container);
+    closeMoreList(document);
+    _retryFit(container);
+  };
+  if (!(avail > 0) || !(boxed > 0)) return notYet();
+  container._fitRetries = 0;
   if (boxed <= avail) {
     _wireOpenButtons(container);
     closeMoreList(document);
@@ -1228,17 +1253,18 @@ function _layoutHealthRow(container) {
   };
   const chipWidth = widthOf(moreChip(row.flat).short);
   probe.remove();
-  const plan = planRow({
+  const plan = fitPlan(row, {
     boxed,
-    flat: row.flat.map((r, i) => ({
-      key: r.repo,
-      state: r.state,
-      width: items[i].offsetWidth,
-    })),
+    widths: items.map((el) => el.offsetWidth),
     avail,
     gap,
     chipWidth,
   });
+  if (plan.retry) {
+    container.innerHTML = row.unitHtml.join("");
+    container.appendChild(refresh);
+    return notYet();
+  }
   items.forEach((el, i) => {
     if (!plan.show.has(row.flat[i].repo)) el.style.display = "none";
   });
@@ -1268,6 +1294,13 @@ function _layoutHealthRow(container) {
     ),
     refresh,
   );
+}
+
+/** Lay out again next frame while the row has no real widths yet; a few
+ * frames at most, then the ResizeObserver and font events take over. */
+function _retryFit(container) {
+  container._fitRetries = (container._fitRetries || 0) + 1;
+  if (container._fitRetries <= 10) _queueFit();
 }
 
 let _fitQueued = false;
