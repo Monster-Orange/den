@@ -160,7 +160,7 @@ describe("the header, the chip, the graph and status agree (one service down)", 
       "arbor",
       "calm",
     ]);
-    expect(moreChip(flat).text).toBe("+2, 1 degraded");
+    expect(moreChip(flat).text).toBe("+2 · 1 degraded");
     // The graph's repo card.
     const m = {
       byRepo: new Map([

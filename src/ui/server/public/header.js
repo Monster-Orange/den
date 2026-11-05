@@ -20,7 +20,6 @@ import { versionLabel } from "./version-label.js";
 import {
   buildRow,
   closeMoreList,
-  moreChip,
   fitPlan,
   mountMoreChip,
 } from "./health-fit.js";
@@ -1199,6 +1198,15 @@ function _layoutHealthRow(container) {
   }
   const row = container._row;
   const refresh = _refreshButton(container);
+  // The chip survives the re-fit as the same node, focus included
+  // (0.3.0-dev.12): Escape from its list must land on it, not on whatever
+  // follows a node that was replaced.
+  const chip = container.querySelector("#health-more");
+  const chipFocused = !!chip && document.activeElement === chip;
+  const chipGone = () => {
+    closeMoreList(document);
+    if (chipFocused) refresh.focus({ preventScroll: true });
+  };
   if (!row) {
     // No data yet (a cold load): a neutral placeholder and the refresh
     // button, never an empty box. "no services" paints its own message.
@@ -1228,38 +1236,38 @@ function _layoutHealthRow(container) {
   // frame, never an empty row (fitPlan).
   const notYet = () => {
     _wireOpenButtons(container);
-    closeMoreList(document);
+    chipGone();
     _retryFit(container);
   };
   if (!(avail > 0) || !(boxed > 0)) return notYet();
   container._fitRetries = 0;
   if (boxed <= avail) {
     _wireOpenButtons(container);
-    closeMoreList(document);
+    chipGone();
     return;
   }
   // Flat: every repo as its own item, in problem-first order.
   container.innerHTML = row.flat.map((r) => row.itemHtml.get(r.repo)).join("");
   container.appendChild(refresh);
   const items = [...container.querySelectorAll(":scope > [data-repo]")];
-  // The chip measured in place, short ("+N") and in full, so the plan is
-  // exact: problems first, the chip's detail only if it still fits.
+  // The chip measured in place with each text it might show, so the plan
+  // is exact: problems first, then room for a chip that names the worst
+  // hidden problem, its detail only if it still fits (fitPlan).
   const probe = document.createElement("button");
   probe.className = "health-more problem";
-  container.insertBefore(probe, refresh);
   const widthOf = (text) => {
     probe.textContent = text;
     return probe.offsetWidth + gap;
   };
-  const chipWidth = widthOf(moreChip(row.flat).short);
-  probe.remove();
+  container.insertBefore(probe, refresh);
   const plan = fitPlan(row, {
     boxed,
     widths: items.map((el) => el.offsetWidth),
     avail,
     gap,
-    chipWidth,
+    chipWidthOf: widthOf,
   });
+  probe.remove();
   if (plan.retry) {
     container.innerHTML = row.unitHtml.join("");
     container.appendChild(refresh);
@@ -1269,31 +1277,20 @@ function _layoutHealthRow(container) {
     if (!plan.show.has(row.flat[i].repo)) el.style.display = "none";
   });
   _wireOpenButtons(container);
-  const hidden = row.flat.filter((r) => !plan.show.has(r.repo));
-  if (!hidden.length) {
-    closeMoreList(document);
-    return;
-  }
-  // The richest chip text that fits what the plan left.
-  container.insertBefore(probe, refresh);
-  const forms = moreChip(hidden).forms;
-  let form = forms.findIndex(
-    (t) => plan.used - chipWidth + widthOf(t) <= avail,
+  const hidden = plan.hidden;
+  if (!hidden.length) return chipGone();
+  const live = mountMoreChip(
+    document,
+    hidden,
+    (list) => {
+      list.innerHTML = hidden.map((r) => row.itemHtml.get(r.repo)).join("");
+      _wireOpenButtons(list);
+    },
+    { form: plan.form, reuse: chip },
   );
-  if (form < 0) form = forms.length - 1;
-  probe.remove();
-  container.insertBefore(
-    mountMoreChip(
-      document,
-      hidden,
-      (list) => {
-        list.innerHTML = hidden.map((r) => row.itemHtml.get(r.repo)).join("");
-        _wireOpenButtons(list);
-      },
-      { form },
-    ),
-    refresh,
-  );
+  container.insertBefore(live, refresh);
+  if (chipFocused && document.activeElement !== live)
+    live.focus({ preventScroll: true });
 }
 
 /** Lay out again next frame while the row has no real widths yet; a few

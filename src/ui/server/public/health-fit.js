@@ -127,7 +127,10 @@ export function planRow({ boxed, flat, avail, gap = 0, chipWidth = 0 }) {
  * - otherwise planRow, whose "flat" result always shows items or hides
  *   some behind the chip.
  * `measured` is `{ avail, boxed, widths, gap, chipWidth }`, `widths` in
- * `row.flat` order.
+ * `row.flat` order. With `chipWidthOf(text)` (the chip's width with that
+ * text, gap included) instead of `chipWidth`, the plan sizes the chip
+ * itself and also returns `hidden` and `form`, the richest chip text that
+ * fits (an index into moreChip(hidden).forms; -1 when nothing is hidden).
  */
 export function fitPlan(row, measured) {
   if (!row || !row.flat || !row.flat.length)
@@ -140,8 +143,8 @@ export function fitPlan(row, measured) {
     widths.length !== row.flat.length ||
     widths.some((w) => !(w > 0));
   if (unmeasured) return { mode: "boxed", show: all, used: 0, retry: true };
-  return {
-    ...planRow({
+  const plan = (cw) =>
+    planRow({
       boxed,
       flat: row.flat.map((r, i) => ({
         key: r.repo,
@@ -150,15 +153,44 @@ export function fitPlan(row, measured) {
       })),
       avail,
       gap,
-      chipWidth,
-    }),
-    retry: false,
-  };
+      chipWidth: cw,
+    });
+  const { chipWidthOf } = measured;
+  if (typeof chipWidthOf !== "function")
+    return { ...plan(chipWidth), retry: false };
+  // The chip's room: bare "+N" first; when what that hides includes a
+  // problem, plan again with room for the form that names it, so the chip
+  // never hides a problem behind colour alone.
+  const hiddenOf = (p) => row.flat.filter((r) => !p.show.has(r.repo));
+  let cw = chipWidthOf(`+${row.flat.length}`);
+  let p = plan(cw);
+  for (let i = 0; i < 4; i++) {
+    const hidden = hiddenOf(p);
+    if (!hidden.length) break;
+    const need = chipWidthOf(moreChip(hidden).short);
+    if (need <= cw) break;
+    cw = need;
+    p = plan(cw);
+  }
+  const hidden = hiddenOf(p);
+  let form = -1;
+  if (hidden.length) {
+    const { forms } = moreChip(hidden);
+    form = forms.findIndex((t) => p.used - cw + chipWidthOf(t) <= avail);
+    if (form < 0) form = forms.length - 1;
+  }
+  return { ...p, retry: false, hidden, form };
 }
 
 /**
- * "+3, 1 down" / "3 more repos, 1 down": what the hidden repos hold.
+ * "+3 · 1 down" / "3 more repos, 1 down": what the hidden repos hold.
  * `hidden` is the hidden repos, each `{ state }`.
+ *
+ * `forms` is the visible-text ladder, richest first: every hidden problem
+ * ("+11 · 1 down, 1 degraded"), then the worst one ("+11 · 1 down"). Down
+ * and degraded are named the same way, never by colour alone, so the
+ * shortest form still names the worst hidden problem; bare "+N" only when
+ * no problem is hidden (0.3.0-dev.12). `short` is that shortest form.
  */
 export function moreChip(hidden) {
   const repos = hidden.length;
@@ -168,20 +200,19 @@ export function moreChip(hidden) {
     down ? `${down} down` : "",
     degraded ? `${degraded} degraded` : "",
   ].filter(Boolean);
+  const forms = problems.length
+    ? [
+        ...new Set([
+          `+${repos} · ${problems.join(", ")}`,
+          `+${repos} · ${problems[0]}`,
+        ]),
+      ]
+    : [`+${repos}`];
   const tail = problems.length ? `, ${problems.join(", ")}` : "";
-  // Richest first: every problem, the worst one, none. The header shows the
-  // richest that fits; the name always has it all.
-  const forms = [
-    ...new Set([
-      `+${repos}${tail}`,
-      problems.length ? `+${repos}, ${problems[0]}` : `+${repos}`,
-      `+${repos}`,
-    ]),
-  ];
   return {
     text: forms[0],
     forms,
-    short: `+${repos}`,
+    short: forms[forms.length - 1],
     label: `${repos} more ${repos === 1 ? "repo" : "repos"}${tail}`,
     problem: problems.length > 0,
   };
@@ -194,27 +225,40 @@ const LIST_ID = "health-more-list";
  * a click elsewhere closes it, and Escape returns focus to the chip. The list
  * lives in <body> so the row's overflow never clips it.
  */
-export function mountMoreChip(doc, hidden, renderList, { form = 0 } = {}) {
-  const { text, label, problem } = moreChip(hidden);
-  const chip = doc.createElement("button");
+export function mountMoreChip(
+  doc,
+  hidden,
+  renderList,
+  { form = 0, reuse = null } = {},
+) {
+  const { text, forms, label, problem } = moreChip(hidden);
+  // One chip node across re-fits (0.3.0-dev.12): a health tick or a font
+  // load lays the row out again, and a new node would drop the focus and
+  // the open list's anchor. The header hands back the chip it had.
+  const chip =
+    reuse ?? doc.getElementById("health-more") ?? doc.createElement("button");
   chip.id = "health-more";
   chip.type = "button";
   chip.className = `health-more${problem ? " problem" : ""}`;
   // A shorter form when the row has no room for all the detail; the name
   // and tooltip always carry it.
-  const { forms } = moreChip(hidden);
-  chip.textContent = forms[Math.min(form, forms.length - 1)] ?? text;
+  chip.textContent =
+    forms[Math.min(Math.max(form, 0), forms.length - 1)] ?? text;
   chip.title = label;
   chip.setAttribute("aria-label", label);
   chip.setAttribute("aria-haspopup", "true");
   chip.setAttribute("aria-controls", LIST_ID);
   const open = !!doc.getElementById(LIST_ID);
   chip.setAttribute("aria-expanded", String(open));
-  chip.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (doc.getElementById(LIST_ID)) closeMoreList(doc);
-    else openMoreList(doc, chip, renderList);
-  });
+  chip._renderList = renderList;
+  if (!chip._wired) {
+    chip._wired = true;
+    chip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (doc.getElementById(LIST_ID)) closeMoreList(doc);
+      else openMoreList(doc, chip, chip._renderList);
+    });
+  }
   // A repaint while the list is open keeps it open, with the new contents.
   if (open) openMoreList(doc, chip, renderList);
   return chip;

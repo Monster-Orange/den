@@ -157,7 +157,7 @@ describe("planRow", () => {
     const tight = show(rows, groups, widths, 170);
     expect(tight.shown).toHaveLength(1);
     expect(["b6", "s3"]).toContain(tight.shown[0]);
-    expect(tight.chip).toBe("+9, 1 down");
+    expect(tight.chip).toBe("+9 · 1 down");
   });
 
   it("a problem too wide to fit never blocks a later one", () => {
@@ -168,7 +168,7 @@ describe("planRow", () => {
       200,
     );
     expect(r.shown).toEqual(["short-down"]);
-    expect(r.chip).toBe("+2, 1 down");
+    expect(r.chip).toBe("+2 · 1 down");
   });
 
   it("all flat when that fits, even if the boxes don't", () => {
@@ -349,6 +349,82 @@ describe("fitPlan: the first frames of a cold load", () => {
   });
 });
 
+describe("fitPlan: room for a chip that names the hidden problem", () => {
+  // Tests at 1024: no box fits, one repo degraded among eleven.
+  const names = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+  const rows = [
+    ...names.map((r) => one(r, true)),
+    {
+      repo: "k",
+      service: "mail",
+      ok: false,
+    } as Row,
+    { repo: "k", service: "k", ok: true } as Row,
+  ];
+  const row = buildRow(rows, null);
+  const GAP = 8;
+  // 7px a character, 16px of padding: "+11 · 1 degraded" is wider than "+11".
+  const chipWidthOf = (t: string) => t.length * 7 + 16 + GAP;
+  // kWidth: the degraded repo's item (wide for a long name).
+  const fit = (avail: number, kWidth = 60) => {
+    const plan = fitPlan(row, {
+      avail,
+      boxed: 5000,
+      widths: row.flat.map((r: { repo: string }) =>
+        r.repo === "k" ? kWidth : 60,
+      ),
+      gap: GAP,
+      chipWidthOf,
+    });
+    return {
+      ...plan,
+      text: plan.form < 0 ? null : moreChip(plan.hidden).forms[plan.form],
+    };
+  };
+
+  it("chip only: '+11 · 1 degraded', not a bare +11", () => {
+    // Room for the chip alone: the degraded repo can't show as an item.
+    const r = fit(chipWidthOf("+11 · 1 degraded") + 10, 200);
+    expect(r.show.size).toBe(0);
+    expect(r.text).toBe("+11 · 1 degraded");
+  });
+
+  it("with the problem shown, the healthy rest is a bare +N", () => {
+    const r = fit(400);
+    expect([...r.show][0]).toBe("k");
+    expect(r.text).toMatch(/^\+\d+$/);
+  });
+
+  it("re-plans when the bare chip would hide a problem: the name wins", () => {
+    // A wide down repo can't show; a degraded one fits beside a bare "+10",
+    // but "+10" would hide the down one behind colour. With room for
+    // "+11 · 1 down" the degraded item no longer fits either.
+    const rows2 = [
+      ...names.slice(0, 9).map((r) => one(r, true)),
+      one("x", false),
+      { repo: "y", service: "mail", ok: false } as Row,
+      { repo: "y", service: "y", ok: true } as Row,
+    ];
+    const row2 = buildRow(rows2, null);
+    const avail = chipWidthOf("+10 · 1 down") + 30;
+    const plan = fitPlan(row2, {
+      avail,
+      boxed: 5000,
+      widths: row2.flat.map((r: { repo: string }) =>
+        r.repo === "x" ? 400 : 60,
+      ),
+      gap: GAP,
+      chipWidthOf,
+    });
+    const text = moreChip(plan.hidden).forms[plan.form];
+    expect(plan.show.size).toBe(0);
+    expect(text).toBe("+11 · 1 down");
+    expect(
+      plan.used - chipWidthOf("+11 · 1 down") + chipWidthOf(text),
+    ).toBeLessThanOrEqual(avail);
+  });
+});
+
 describe("moreChip", () => {
   it("says what the hidden repos hold", () => {
     expect(
@@ -359,13 +435,34 @@ describe("moreChip", () => {
         { state: "ok" },
       ]),
     ).toEqual({
-      text: "+4, 1 down, 1 degraded",
-      forms: ["+4, 1 down, 1 degraded", "+4, 1 down", "+4"],
-      short: "+4",
+      text: "+4 · 1 down, 1 degraded",
+      forms: ["+4 · 1 down, 1 degraded", "+4 · 1 down"],
+      short: "+4 · 1 down",
       label: "4 more repos, 1 down, 1 degraded",
       problem: true,
     });
     expect(moreChip([{ state: "unknown" }]).label).toBe("1 more repo");
+  });
+
+  it("names a hidden problem in text, down and degraded alike; bare +N only without one", () => {
+    const n = (states: string[]) => states.map((state) => ({ state }));
+    const ok10 = Array(10).fill("ok");
+    // Degraded is named like down, never by an amber ring alone.
+    expect(moreChip(n([...ok10, "degraded"])).forms).toEqual([
+      "+11 · 1 degraded",
+    ]);
+    expect(moreChip(n([...ok10, "down"])).forms).toEqual(["+11 · 1 down"]);
+    // Every problem, then the worst: "+11 · 1 down" beats "+11".
+    const both = moreChip(n([...Array(9).fill("ok"), "down", "degraded"]));
+    expect(both.forms).toEqual(["+11 · 1 down, 1 degraded", "+11 · 1 down"]);
+    expect(both.short).toBe("+11 · 1 down");
+    const worst = moreChip(n(["degraded", "degraded", "down", "unknown"]));
+    expect(worst.short).toBe("+4 · 1 down");
+    expect(worst.text).toBe("+4 · 1 down, 2 degraded");
+    // No hidden problem: bare.
+    expect(moreChip(n([...ok10, "unknown"])).forms).toEqual(["+11"]);
+    for (const c of [both, worst])
+      for (const f of c.forms) expect(f).toMatch(/ · \d+ (down|degraded)/);
   });
 });
 
@@ -453,11 +550,11 @@ describe("the +N chip", () => {
     return chip;
   };
 
-  it("is short when the row has no room for the detail, never in its name", () => {
+  it("is short when the row has no room for the detail, but names the problem", () => {
     const chip = mountMoreChip(doc, hidden, () => {}, {
       form: 2,
     }) as unknown as El;
-    expect(chip.textContent).toBe("+3");
+    expect(chip.textContent).toBe("+3 · 1 down");
     expect(chip.attrs["aria-label"]).toBe("3 more repos, 1 down");
     expect((chip as unknown as { title: string }).title).toBe(
       "3 more repos, 1 down",
@@ -466,7 +563,7 @@ describe("the +N chip", () => {
 
   it("is a button named for what it hides, controlling a list", () => {
     const chip = mount();
-    expect(chip.textContent).toBe("+3, 1 down");
+    expect(chip.textContent).toBe("+3 · 1 down");
     expect(chip.attrs).toMatchObject({
       "aria-label": "3 more repos, 1 down",
       "aria-haspopup": "true",
@@ -504,6 +601,38 @@ describe("the +N chip", () => {
     chip.remove();
   });
 
+  it("Escape after a re-fit with the list open lands on the chip", () => {
+    const chip = mount();
+    chip.fire("click");
+    chip.focus();
+    // A health tick or a font load lays the row out again: the header takes
+    // the chip out with the row's contents and mounts it again.
+    chip.remove();
+    const again = mountMoreChip(
+      doc,
+      [...hidden, { state: "degraded" }],
+      (list: El) => {
+        list.innerHTML = "<div>new contents</div>";
+      },
+      { reuse: chip } as never,
+    ) as unknown as El;
+    header.appendChild(again);
+    // Compared as booleans: a failing El diff can't be serialised.
+    expect(again === chip).toBe(true);
+    expect(again.textContent).toBe("+4 · 1 down, 1 degraded");
+    expect(doc.getElementById("health-more-list")?.innerHTML).toContain(
+      "new contents",
+    );
+    doc.activeElement = null;
+    doc.fire("keydown", { key: "Escape" });
+    expect(doc.activeElement === chip).toBe(true);
+    expect(chip.parent === header).toBe(true);
+    expect(chip.attrs["aria-expanded"]).toBe("false");
+    // One click handler, however often it was mounted.
+    expect(chip.listeners.click).toHaveLength(1);
+    chip.remove();
+  });
+
   it("stays open, with the new contents, across a repaint", () => {
     const first = mount();
     first.fire("click");
@@ -537,6 +666,11 @@ describe("the header uses it", () => {
       body.indexOf("await Promise.all([_loadEditorKey(), _loadApps()])"),
     );
     expect(header).toMatch(/document\.fonts\?\.ready\?\.then\(_queueFit\)/);
+  });
+  it("keeps the chip node and its focus across a re-fit", () => {
+    expect(header).toMatch(/reuse: chip/);
+    expect(header).toMatch(/live\.focus\(\{ preventScroll: true \}\)/);
+    expect(header).toMatch(/chipWidthOf: widthOf/);
   });
   it("never squeezes the brand or the version badge", () => {
     const css = fs.readFileSync(path.join(PUBLIC, "appearance.js"), "utf-8");

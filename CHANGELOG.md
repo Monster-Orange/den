@@ -166,7 +166,7 @@ config and manifest changes a distribution must make to move to it under
     application boxes;
   - shows only items that fit whole;
   - ends with a "+N" chip for the rest, named "N more repos" and saying
-    "+N, 1 down" when a hidden repo has a problem. The chip opens the full
+    "+N · 1 down" when a hidden repo has a problem. The chip opens the full
     list; Escape closes it and returns focus to the chip.
   - fits again on resize, when fonts load, and when the rest of the header
     squeezes it.
@@ -202,8 +202,8 @@ config and manifest changes a distribution must make to move to it under
   - When the boxes don't all fit, the row shows repos one by one. It places
     every down or degraded repo that fits first, and a problem that is too
     wide never blocks a later one. Then it adds the rest, in order.
-  - The chip shows the richest text that fits ("+9, 1 down, 1 degraded",
-    "+9, 1 down", "+9"). Its name and tooltip always carry the full count.
+  - The chip shows the richest text that fits ("+9 · 1 down, 1 degraded",
+    then "+9 · 1 down"). Its name and tooltip always carry the full count.
   - The row now takes the header's free space. Before, it shrank to its
     content, and the page's own spacer took half of what was left.
 - **The health row is never an empty box on a cold load** (0.3.0-dev.11).
@@ -220,6 +220,19 @@ config and manifest changes a distribution must make to move to it under
   1070px, so a 1002px row shows 7 and "+2", and a 1282px row shows both
   boxes whole. The fit was right; these numbers are now a test, with an
   11-repo 7+3+1 case for the flat fallback.
+- **The "+N" chip names a hidden problem in its text** (0.3.0-dev.12).
+  With only room for the chip, a hidden degraded repo read "+11" with an
+  amber ring, and "1 degraded" was only in its accessible name. The ladder
+  is now "+11 · 1 down, 1 degraded", then the worst one alone ("+11 · 1
+  down"), down and degraded named the same way. Bare "+N" only when no
+  hidden repo has a problem. The fit keeps room for that text
+  (`fitPlan`'s `chipWidthOf`).
+- **Escape from the chip's list returns focus to the chip, even after a
+  re-fit** (0.3.0-dev.12). A health tick or a font load while the list was
+  open laid the row out again with a new chip node, so focus fell to the
+  page (the breadcrumb). The chip is now one node across re-fits, keeps its
+  focus, and stays the list's anchor; when a re-fit drops the chip, focus
+  moves to the row's refresh button.
 - **The Theme menu says when your theme isn't in use** (0.3.0-dev.10). A
   stored theme that fails validation selects nothing, instead of looking
   like "Org default". One line explains: "Your theme <id> isn't valid
