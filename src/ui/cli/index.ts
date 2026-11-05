@@ -198,6 +198,58 @@ const DEN_HELP_DESCRIPTION = `  ${product().title} - local-first test, service, 
  * Concise `<command> -h` help for commands without a dedicated help renderer.
  * Flag-heavy commands (up, graph, use-local, use-managed) have richer handlers.
  */
+/** `workspace` subcommands, for `workspace --help` and `workspace <sub> --help`. */
+const WORKSPACE_SUBCOMMANDS: {
+  name: string;
+  usage: string;
+  lines: string[];
+}[] = [
+  {
+    name: "list",
+    usage: "list",
+    lines: ["every workspace, the active set and the focus"],
+  },
+  {
+    name: "activate",
+    usage: "activate <n>",
+    lines: ["add a workspace to the active set"],
+  },
+  {
+    name: "deactivate",
+    usage: "deactivate <n>",
+    lines: [
+      "remove it from the active set and stop the services",
+      "only it owns. Only services {cli} tracks: compose",
+      "stacks keep running; stop them with `{cli} down <repo>`",
+    ],
+  },
+  {
+    name: "focus",
+    usage: "focus <n>",
+    lines: ["make an active workspace the default for commands"],
+  },
+  {
+    name: "use",
+    usage: "use <n>",
+    lines: ["activate and focus a workspace"],
+  },
+  {
+    name: "create",
+    usage: "create [n]",
+    lines: ["create an empty workspace"],
+  },
+  {
+    name: "delete",
+    usage: "delete <n>",
+    lines: ["delete a workspace (and its directory)"],
+  },
+  {
+    name: "code",
+    usage: "code [n]",
+    lines: ["open it in your editor (VS Code: a .code-workspace)"],
+  },
+];
+
 const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   down: {
     usage: "down [repo] [flags]",
@@ -255,21 +307,15 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     lines: ["Check managed repos for upstream updates and offer to pull."],
   },
   workspace: {
-    usage:
-      "workspace <list|activate|deactivate|focus|use|create|delete|code> [name]",
+    usage: `workspace <${WORKSPACE_SUBCOMMANDS.map((c) => c.name).join("|")}> [name]`,
     lines: [
       "Manage workspaces (named sets of services + their modes).",
       "",
-      "  list              every workspace, the active set and the focus",
-      "  activate <n>      add a workspace to the active set",
-      "  deactivate <n>    remove it from the active set and stop the services",
-      "                    only it owns. Only services {cli} tracks: compose",
-      "                    stacks keep running; stop them with `{cli} down <repo>`",
-      "  focus <n>         make an active workspace the default for commands",
-      "  use <n>           activate and focus a workspace",
-      "  create [n]        create an empty workspace",
-      "  delete <n>        delete a workspace (and its directory)",
-      "  code [n]          open it in your editor (VS Code: a .code-workspace)",
+      ...WORKSPACE_SUBCOMMANDS.flatMap((c) =>
+        c.lines.map(
+          (line, i) => `  ${(i === 0 ? c.usage : "").padEnd(16)}  ${line}`,
+        ),
+      ),
     ],
   },
   run: {
@@ -600,7 +646,7 @@ class DenCLI {
       !["-h", "--help", "-v", "--version"].includes(command) &&
       (ownArgs.includes("-h") || ownArgs.includes("--help"))
     ) {
-      this.printCommandHelp(command);
+      this.printCommandHelp(command, ownArgs[1]);
       return;
     }
 
@@ -2392,7 +2438,19 @@ class DenCLI {
   }
 
   /** Help for `<command> -h`: dedicated renderer for flag-heavy commands, else the table. */
-  private printCommandHelp(command: string): void {
+  private printCommandHelp(command: string, sub?: string): void {
+    // `workspace <sub> --help`: that subcommand only.
+    const wsSub =
+      command === "workspace"
+        ? WORKSPACE_SUBCOMMANDS.find((c) => c.name === sub)
+        : undefined;
+    if (wsSub) {
+      console.log(`\n  ${product().cli} workspace ${wsSub.usage}\n`);
+      for (const line of wsSub.lines)
+        console.log(`  ${line.replaceAll("{cli}", product().cli)}`);
+      console.log();
+      return;
+    }
     switch (command) {
       case "up":
         return this.printUpHelp();

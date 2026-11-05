@@ -49,6 +49,31 @@ config and manifest changes a distribution must make to move to it under
   workspace's repos keep running, and the output names the running ones
   with `<cli> down <repo>` for each (from one `docker ps`; a generic line
   when docker can't be asked).
+- **The first `/api/health/stream` (and `/api/health`) cycle no longer
+  blocks the web server for a second.** Resolving the manifest of a repo
+  without its own (a held manifest under `manifests/`) looked up the
+  checkout's origin with a synchronous `git config --get
+  remote.origin.url`, one repo after another (~40-100ms each), so a
+  server's first health run held the event loop for 1-1.5s. The origin is
+  now read from the checkout's git config file (worktrees and
+  subdirectories included), never by spawning git. Parsed manifests are
+  also reused while the file is unchanged: one request read the same
+  manifests several times, and parsing them held the loop ~100-200ms per
+  health run.
+- **`GET /api/workspaces/available-repos` no longer blocks the web
+  server.** It ran `git remote get-url origin` (and, for managed clones,
+  `git rev-parse`) synchronously per checkout; the lookups are now async
+  and in parallel, and concurrent requests share one walk (reused for 2s;
+  `?refresh=1` forces a new one, any mutating request clears it).
+- **`workspace deactivate` names the compose stacks a repo runs itself.**
+  It only knew Den stacks (a manifest's `compose:` section, project
+  `<stack>-<workspace>`), so a distribution whose repos start their own
+  compose projects (`make up`) got no line at all. A running project now
+  counts when Compose started it from inside one of the workspace's
+  checkouts (its `com.docker.compose.project.working_dir` label), as well
+  as when it is a Den stack's project.
+- **`<cli> workspace <sub> --help`** prints that subcommand's help, not the
+  whole `workspace` help.
 
 ### Migrations
 

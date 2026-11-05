@@ -11,6 +11,10 @@ import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import {
+  projectName,
+  stackWorkspace,
+} from "../../../src/shared/stacks/render.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -22,14 +26,19 @@ function write(file: string, content: string, mode?: number): void {
   fs.writeFileSync(file, content, mode ? { mode } : undefined);
 }
 
-/** A docker that reports `projects` as running (or fails when null). */
-function dockerShim(projects: string[] | null): string {
+/** A running Compose project as `docker ps` labels it. */
+type Row = { project: string; workingDir: string };
+
+/** A docker whose `ps` reports `rows` (or that fails, when null). */
+function dockerShim(rows: Row[] | null): string {
   const dir = fs.mkdtempSync(path.join(tmp, "shim-"));
   write(
     path.join(dir, "docker"),
-    projects === null
+    rows === null
       ? "#!/bin/sh\necho 'Cannot connect to the Docker daemon' >&2\nexit 1\n"
-      : `#!/bin/sh\nprintf '%s\\n' ${projects.map((p) => `'${p}'`).join(" ")}\n`,
+      : `#!/bin/sh\nprintf '%s\\t%s\\n' ${rows
+          .map((r) => `'${r.project}' '${r.workingDir}'`)
+          .join(" ")}\n`,
     0o755,
   );
   return dir;
@@ -53,7 +62,10 @@ function den(args: string[], shim?: string): string {
   return `${r.stdout}${r.stderr}`;
 }
 
-/** Two active workspaces; ws-a holds `shop`, whose stack is `shopdb`. */
+/**
+ * Two active workspaces. default holds `shop`, a Den stack (`compose:` named
+ * shopdb), and `site`, which runs its own compose project from `make up`.
+ */
 function resetWorkspaces(): void {
   write(
     path.join(root, "config", "local", "workspaces.yml"),
@@ -62,16 +74,21 @@ function resetWorkspaces(): void {
       "focus: default",
       "workspaces:",
       "  default:",
-      "    services: {}",
-      "  ws-a:",
       "    services:",
-      "      shop:",
-      "        mode: dev-managed",
-      `        path: ${path.join(repos, "shop")}`,
+      ...["shop", "site"].flatMap((r) => [
+        `      ${r}:`,
+        "        mode: dev-managed",
+        `        path: ${path.join(repos, r)}`,
+      ]),
+      "  ws-a:",
+      "    services: {}",
       "",
     ].join("\n"),
   );
 }
+
+/** The project Den runs `shop`'s stack as in `default`. */
+const SHOP_PROJECT = projectName("shopdb", stackWorkspace("default"));
 
 beforeAll(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "den-ws-deactivate-"));
@@ -81,7 +98,11 @@ beforeAll(() => {
   write(path.join(root, "config", "den.yml"), "environments: [local]\n");
   write(
     path.join(root, "config", "local", "service-catalog.yml"),
-    "shop:\n  gh: acme/shop\n",
+    "shop:\n  gh: acme/shop\nsite:\n  gh: acme/site\n",
+  );
+  write(
+    path.join(repos, "site", ".den.yml"),
+    'name: site\nservices:\n  web:\n    commands:\n      local:\n        up: "make up"\n',
   );
   write(
     path.join(repos, "shop", ".den.yml"),
@@ -119,23 +140,38 @@ describe("workspace --help", () => {
   });
 });
 
+describe("workspace <sub> --help", () => {
+  it("prints that subcommand's help only", () => {
+    const out = den(["workspace", "focus", "--help"]);
+    expect(out).toMatch(/den workspace focus <n>/);
+    expect(out).toMatch(/default for commands/);
+    expect(out).not.toMatch(/activate <n>|create \[n\]/);
+  });
+});
+
 describe("workspace deactivate", () => {
   it("names the running compose stacks it left up, and how to stop them", () => {
     resetWorkspaces();
     const out = den(
-      ["workspace", "deactivate", "ws-a"],
-      dockerShim(["shopdb-ws-a", "unrelated-default"]),
+      ["workspace", "deactivate", "default"],
+      dockerShim([
+        { project: SHOP_PROJECT, workingDir: path.join(repos, "shop") },
+        // Started by the repo itself, from a subdirectory of its checkout.
+        { project: "site", workingDir: path.join(repos, "site", "deploy") },
+        { project: "unrelated", workingDir: path.join(tmp, "elsewhere") },
+      ]),
     );
-    expect(out).toMatch(/Deactivated workspace: ws-a/);
+    expect(SHOP_PROJECT).toBe("shopdb-main");
+    expect(out).toMatch(/Deactivated workspace: default/);
     expect(out).toMatch(
-      /compose stacks keep running \(shopdb-ws-a\): stop them with `den down shop`/,
+      /compose stacks keep running \(shopdb-main, site\): stop them with `den down shop`, `den down site`/,
     );
     expect(out).not.toMatch(/unrelated/);
   }, 60_000);
 
   it("says it generically when docker can't be asked", () => {
     resetWorkspaces();
-    const out = den(["workspace", "deactivate", "ws-a"], dockerShim(null));
+    const out = den(["workspace", "deactivate", "default"], dockerShim(null));
     expect(out).toMatch(
       /compose stacks keep running: stop them with `den down <repo>`/,
     );
@@ -144,10 +180,12 @@ describe("workspace deactivate", () => {
   it("says nothing about stacks when none of the workspace's is running", () => {
     resetWorkspaces();
     const out = den(
-      ["workspace", "deactivate", "ws-a"],
-      dockerShim(["unrelated-default"]),
+      ["workspace", "deactivate", "default"],
+      dockerShim([
+        { project: "unrelated", workingDir: path.join(tmp, "elsewhere") },
+      ]),
     );
-    expect(out).toMatch(/Deactivated workspace: ws-a/);
+    expect(out).toMatch(/Deactivated workspace: default/);
     expect(out).not.toMatch(/compose stacks/);
   }, 60_000);
 });

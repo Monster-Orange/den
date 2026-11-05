@@ -4,11 +4,15 @@
  * the MCP `stacks` tool).
  */
 import { spawnSync } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
+import { readCatalog } from "../environment-manager/catalog.js";
 import { readEdgeConfig } from "../edge/config.js";
 import { routeUrl } from "../edge/render.js";
 import {
   getFocusedWorkspaceName,
   getWorkspaceByName,
+  listWorkspaceServices,
 } from "../environment-manager/workspaces.js";
 import { readManifestStacks, readStacks } from "./config.js";
 import { projectName, stackWorkspace } from "./render.js";
@@ -99,56 +103,105 @@ export function stackStatuses(
   });
 }
 
-/** A compose stack a workspace's repo declares, by its Compose project. */
+/** A running Compose project started from one of a workspace's repos. */
 export interface WorkspaceStack {
+  /** The Den stack name, or the project name for a stack the repo runs. */
   name: string;
   repo: string;
   project: string;
+}
+
+/** A running Compose project and the directory it was started from. */
+export interface RunningProject {
+  project: string;
+  /** `com.docker.compose.project.working_dir`; "" when unlabelled. */
+  workingDir: string;
 }
 
 /**
  * The Compose projects with running containers, from one `docker ps`; null
  * when docker can't be asked (not installed, daemon down, too slow).
  */
-export function runningComposeProjects(): Set<string> | null {
+export function runningComposeProjects(): RunningProject[] | null {
   const r = spawnSync(
     "docker",
-    ["ps", "--format", '{{.Label "com.docker.compose.project"}}'],
+    [
+      "ps",
+      "--format",
+      '{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}',
+    ],
     { encoding: "utf-8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] },
   );
   if (r.error || r.status !== 0) return null;
-  return new Set(
-    (r.stdout ?? "")
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean),
-  );
+  const seen = new Map<string, RunningProject>();
+  for (const line of (r.stdout ?? "").split("\n")) {
+    const [project = "", workingDir = ""] = line.trim().split("\t");
+    if (project && !seen.has(project))
+      seen.set(project, { project, workingDir: workingDir.trim() });
+  }
+  return [...seen.values()];
+}
+
+/** `p` and its realpath (compose may record either form). */
+function pathForms(p: string): string[] {
+  try {
+    const real = fs.realpathSync(p);
+    return real === p ? [p] : [p, real];
+  } catch {
+    return [p];
+  }
 }
 
 /**
- * `workspace`'s compose stacks (declared by its repos' manifests) that are
- * running: what `workspace deactivate` leaves up, since it releases only the
- * daemons Den tracks. Null when docker could not be asked.
+ * `workspace`'s running compose stacks: what `workspace deactivate` leaves
+ * up, since it releases only the daemons Den tracks. A project counts when
+ * it is a Den stack one of the workspace's repos declares (`compose:`, named
+ * by projectName), or when Compose started it from inside one of the
+ * workspace's checkouts (its working_dir label): the stacks a repo runs
+ * itself, e.g. from `make up`. Null when docker could not be asked.
  */
 export function runningWorkspaceStacks(
   workspace: string,
-  running: () => Set<string> | null = runningComposeProjects,
+  running: () => RunningProject[] | null = runningComposeProjects,
 ): WorkspaceStack[] | null {
   const ws = getWorkspaceByName(workspace);
   if (!ws) return [];
-  let stacks: WorkspaceStack[];
+  const denStacks = new Map<string, { name: string; repo: string }>();
+  const checkouts: { repo: string; forms: string[] }[] = [];
   try {
     const { stackWorkspace: suffix } = resolveStackWorkspaces(workspace);
-    stacks = Object.values(readManifestStacks(workspace)).map((s) => ({
-      name: s.name,
-      repo: s.repo,
-      project: projectName(s.name, suffix),
-    }));
+    for (const s of Object.values(readManifestStacks(workspace)))
+      denStacks.set(projectName(s.name, suffix), {
+        name: s.name,
+        repo: s.repo,
+      });
+    const seen = new Set<string>();
+    for (const svc of listWorkspaceServices(ws.config, readCatalog(), ws.name))
+      if (svc.repoPath && !seen.has(svc.repoPath)) {
+        seen.add(svc.repoPath);
+        checkouts.push({ repo: svc.repoName, forms: pathForms(svc.repoPath) });
+      }
   } catch {
     return null; // an unreadable manifest or workspace name: can't tell
   }
-  if (stacks.length === 0) return [];
+  if (denStacks.size === 0 && checkouts.length === 0) return [];
   const up = running();
   if (!up) return null;
-  return stacks.filter((s) => up.has(s.project));
+  const inside = (dir: string, root: string): boolean =>
+    dir === root || dir.startsWith(`${root}${path.sep}`);
+  const out: WorkspaceStack[] = [];
+  for (const { project, workingDir } of up) {
+    const den = denStacks.get(project);
+    if (den) {
+      out.push({ ...den, project });
+      continue;
+    }
+    if (!workingDir) continue;
+    const dirs = pathForms(workingDir);
+    const owner = checkouts.find((c) =>
+      c.forms.some((root) => dirs.some((d) => inside(d, root))),
+    );
+    if (owner) out.push({ name: project, repo: owner.repo, project });
+  }
+  return out;
 }

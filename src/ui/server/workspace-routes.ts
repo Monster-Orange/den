@@ -12,7 +12,8 @@ import { localCommandsFor } from "../../shared/stacks/manifest-commands.js";
 import * as http from "http";
 import * as fs from "fs";
 import * as path from "path";
-import { execSync } from "child_process";
+import { execFile, execSync } from "child_process";
+import { singleFlight } from "./single-flight.js";
 import { readBody, sendJson, send400 } from "./http-helpers.js";
 import type { ResolvedService } from "../../shared/types/index.js";
 import type { EditorManager } from "./editor-manager.js";
@@ -106,6 +107,208 @@ import { product } from "../../shared/product.js";
 // cwd-started-elsewhere server would resolve and persist garbage paths.
 const ROOT = getDistRoot();
 
+/** `git <args>` in `cwd`, trimmed stdout; null on any failure. Never blocks. */
+function gitOut(cwd: string, args: string[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      args,
+      { cwd, encoding: "utf-8", timeout: GIT_REMOTE_TIMEOUT_MS },
+      (err, stdout) => resolve(err ? null : stdout.trim()),
+    );
+  });
+}
+
+/**
+ * The repos Local Dev's "add" picker offers: local checkouts under
+ * repos_root with a manifest, managed clones, and catalog-only entries.
+ */
+async function buildAvailableRepos(wsOverride: string | null) {
+  const reposRoot = getReposRoot();
+  const wsFile = wsOverride ? readWorkspacesFile() : null;
+  const ws =
+    wsOverride && wsFile?.workspaces[wsOverride]
+      ? { config: wsFile.workspaces[wsOverride] }
+      : getActiveWorkspace();
+  const catalog = readCatalog();
+  const existingAddresses = new Set(Object.keys(ws?.config.services ?? {}));
+
+  // Build a set of gh slugs already represented in the workspace, so that
+  // alternate local paths for the same repo (e.g. TestWorkspace/shop) are
+  // correctly flagged as already-added.
+  const existingGhSlugs = new Set<string>();
+  for (const addr of existingAddresses) {
+    const { repoName } = parseAddress(addr, catalog);
+    const gh = catalog[repoName]?.gh;
+    if (gh) existingGhSlugs.add(gh.toLowerCase());
+  }
+
+  // Git remote origin for a local path, as "owner/repo" (null on failure).
+  // Async and in parallel: one execSync per repo here used to hold the
+  // event loop for the whole walk.
+  const getRemoteGh = async (absPath: string): Promise<string | null> => {
+    const remote = await gitOut(absPath, ["remote", "get-url", "origin"]);
+    // Normalise SSH and HTTPS GitHub URLs → "owner/repo"
+    const m =
+      remote?.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/) ?? null;
+    return m ? m[1].toLowerCase() : null;
+  };
+  /** Lookups still in flight; each fills in its entry when it lands. */
+  const pending: Promise<void>[] = [];
+  const isAdded = (relPath: string, gh: string | null): boolean =>
+    existingAddresses.has(relPath) ||
+    (!!gh && existingGhSlugs.has(gh.toLowerCase()));
+
+  type RepoEntry = {
+    name: string;
+    relPath: string;
+    absPath: string | null;
+    hasManifest: boolean;
+    alreadyAdded: boolean;
+    source: "local" | "catalog" | "managed";
+    gh: string | null;
+    currentBranch?: string | null;
+  };
+  const entries: RepoEntry[] = [];
+  const seenRelPaths = new Set<string>();
+
+  // Recursively walk repos_root, stopping at directories that have .den.yml.
+  // We don't recurse into repo directories themselves.
+  const walkDir = (dir: string, relPrefix: string, depth: number): void => {
+    if (depth > 4) return; // safety limit
+    let dirents: fs.Dirent[];
+    try {
+      dirents = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const d of dirents) {
+      if (!d.isDirectory() && !d.isSymbolicLink()) continue;
+      if (d.name.startsWith(".")) continue; // skip .git, .github, .DS_Store, etc.
+      const absPath = path.join(dir, d.name);
+      if (absPath === ROOT) continue; // skip den itself
+      const relPath = relPrefix ? `${relPrefix}/${d.name}` : d.name;
+      const hasManifest = fs.existsSync(
+        path.join(absPath, `${product().manifestYml}`),
+      );
+      if (hasManifest) {
+        const known = catalog[relPath]?.gh ?? null;
+        // Already added if the exact address is in the workspace, OR if
+        // a repo with the same GitHub remote is already present.
+        const entry: RepoEntry = {
+          name: d.name,
+          relPath,
+          absPath,
+          hasManifest: true,
+          alreadyAdded: isAdded(relPath, known),
+          source: "local",
+          gh: known,
+        };
+        entries.push(entry);
+        if (!known)
+          pending.push(
+            getRemoteGh(absPath).then((gh) => {
+              entry.gh = gh;
+              entry.alreadyAdded = isAdded(relPath, gh);
+            }),
+          );
+        seenRelPaths.add(relPath);
+        // Don't recurse into repo directories.
+      } else {
+        // Not a repo — recurse to find repos in subdirectories.
+        walkDir(absPath, relPath, depth + 1);
+      }
+    }
+  };
+  walkDir(reposRoot, "", 0);
+
+  // Managed clones live at .den-services/<repo>/<branch>/
+  // Walk two levels: repo dir → branch dir (each branch dir is a full clone).
+  // Multiple workspaces pointing to the same repo+branch share the same clone.
+  try {
+    const repoDirs = fs.readdirSync(DEN_SERVICES_DIR, {
+      withFileTypes: true,
+    });
+    for (const repoDir of repoDirs) {
+      if (!repoDir.isDirectory()) continue;
+      const repoName = repoDir.name;
+      const repoDirPath = path.join(DEN_SERVICES_DIR, repoName);
+      let branchDirs: fs.Dirent[];
+      try {
+        branchDirs = fs.readdirSync(repoDirPath, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const branchDir of branchDirs) {
+        if (!branchDir.isDirectory()) continue;
+        const branchName = branchDir.name;
+        const absPath = path.join(repoDirPath, branchName);
+        // Only treat as a branch clone if it's actually a git repo
+        if (!fs.existsSync(path.join(absPath, ".git"))) continue;
+        const key = `${repoName}::${branchName}`; // unique per repo+branch
+        if (seenRelPaths.has(key)) continue;
+        const hasManifest = fs.existsSync(
+          path.join(absPath, `${product().manifestYml}`),
+        );
+        const known = catalog[repoName]?.gh ?? null;
+        const entry: RepoEntry = {
+          name: repoName,
+          relPath: repoName, // catalog key used as workspace address
+          absPath,
+          hasManifest,
+          alreadyAdded: isAdded(repoName, known),
+          source: "managed",
+          gh: known,
+          currentBranch: branchName,
+        };
+        entries.push(entry);
+        pending.push(
+          Promise.all([
+            known ? known : getRemoteGh(absPath),
+            gitOut(absPath, ["rev-parse", "--abbrev-ref", "HEAD"]),
+          ]).then(([gh, branch]) => {
+            entry.gh = gh;
+            entry.alreadyAdded = isAdded(repoName, gh);
+            entry.currentBranch = branch ?? branchName;
+          }),
+        );
+        seenRelPaths.add(key);
+        seenRelPaths.add(repoName); // prevent catalog fallback from duplicating
+      }
+    }
+  } catch {
+    /* the managed-clones dir does not exist yet */
+  }
+
+  // Catalog-only entries — repos den knows about but not found locally.
+  for (const [relPath, entry] of Object.entries(catalog)) {
+    if (seenRelPaths.has(relPath)) continue;
+    const name = relPath.includes("/")
+      ? relPath.slice(relPath.lastIndexOf("/") + 1)
+      : relPath;
+    const alreadyAdded =
+      existingAddresses.has(relPath) ||
+      (!!entry.gh && existingGhSlugs.has(entry.gh.toLowerCase()));
+    entries.push({
+      name,
+      relPath,
+      absPath: null,
+      hasManifest: false,
+      alreadyAdded,
+      source: "catalog",
+      gh: entry.gh,
+    });
+  }
+
+  await Promise.all(pending);
+  return entries;
+}
+
+type AvailableRepos = Awaited<ReturnType<typeof buildAvailableRepos>>;
+/** Shared by concurrent requests, reused briefly; cleared by any mutation. */
+const availableReposCache = singleFlight<AvailableRepos>(2_000);
+
 /**
  * Handle all /api/workspaces/* and /api/workspace/* routes.
  *
@@ -120,6 +323,12 @@ export async function handleWorkspaceRoutes(
   editors: EditorManager,
   github: GitHubService,
 ): Promise<void> {
+  // A mutation may change what available-repos would list.
+  if (
+    (req.method !== "GET" && req.method !== "HEAD") ||
+    /\/(exec|sync)$/.test(pathname)
+  )
+    availableReposCache.clear();
   // ── Workspace cleanup helpers ─────────────────────────────────────────────
   /**
    * Compute which clones can be deleted when removing `wsName`.
@@ -439,187 +648,16 @@ export async function handleWorkspaceRoutes(
   //   name     — leaf directory name (display label)
   //   absPath  — absolute filesystem path (stored as linkedPath for dev-managed repos)
   if (pathname === "/api/workspaces/available-repos" && req.method === "GET") {
-    const reposRoot = getReposRoot();
     const wsOverride = url.searchParams.get("workspace");
-    const wsFile = wsOverride ? readWorkspacesFile() : null;
-    const ws =
-      wsOverride && wsFile?.workspaces[wsOverride]
-        ? { config: wsFile.workspaces[wsOverride] }
-        : getActiveWorkspace();
-    const catalog = readCatalog();
-    const existingAddresses = new Set(Object.keys(ws?.config.services ?? {}));
-
-    // Build a set of gh slugs already represented in the workspace, so that
-    // alternate local paths for the same repo (e.g. TestWorkspace/shop) are
-    // correctly flagged as already-added.
-    const existingGhSlugs = new Set<string>();
-    for (const addr of existingAddresses) {
-      const { repoName } = parseAddress(addr, catalog);
-      const gh = catalog[repoName]?.gh;
-      if (gh) existingGhSlugs.add(gh.toLowerCase());
-    }
-
-    // Get git remote origin for a local path (fast, silent on failure).
-    const getRemoteGh = (absPath: string): string | null => {
-      try {
-        const remote = execSync("git remote get-url origin", {
-          cwd: absPath,
-          encoding: "utf-8",
-          stdio: ["ignore", "pipe", "ignore"],
-          timeout: GIT_REMOTE_TIMEOUT_MS,
-        }).trim();
-        // Normalise SSH and HTTPS GitHub URLs → "owner/repo"
-        const m =
-          remote.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/) ?? null;
-        return m ? m[1].toLowerCase() : null;
-      } catch {
-        return null;
-      }
-    };
-
-    type RepoEntry = {
-      name: string;
-      relPath: string;
-      absPath: string | null;
-      hasManifest: boolean;
-      alreadyAdded: boolean;
-      source: "local" | "catalog" | "managed";
-      gh: string | null;
-      currentBranch?: string | null;
-    };
-    const entries: RepoEntry[] = [];
-    const seenRelPaths = new Set<string>();
-
-    // Recursively walk repos_root, stopping at directories that have .den.yml.
-    // We don't recurse into repo directories themselves.
-    const walkDir = (dir: string, relPrefix: string, depth: number): void => {
-      if (depth > 4) return; // safety limit
-      let dirents: fs.Dirent[];
-      try {
-        dirents = fs.readdirSync(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-
-      for (const d of dirents) {
-        if (!d.isDirectory() && !d.isSymbolicLink()) continue;
-        if (d.name.startsWith(".")) continue; // skip .git, .github, .DS_Store, etc.
-        const absPath = path.join(dir, d.name);
-        if (absPath === ROOT) continue; // skip den itself
-        const relPath = relPrefix ? `${relPrefix}/${d.name}` : d.name;
-        const hasManifest = fs.existsSync(
-          path.join(absPath, `${product().manifestYml}`),
-        );
-        if (hasManifest) {
-          const gh = catalog[relPath]?.gh ?? getRemoteGh(absPath);
-          // Already added if the exact address is in the workspace, OR if
-          // a repo with the same GitHub remote is already present.
-          const alreadyAdded =
-            existingAddresses.has(relPath) ||
-            (!!gh && existingGhSlugs.has(gh.toLowerCase()));
-          entries.push({
-            name: d.name,
-            relPath,
-            absPath,
-            hasManifest: true,
-            alreadyAdded,
-            source: "local",
-            gh: gh ?? null,
-          });
-          seenRelPaths.add(relPath);
-          // Don't recurse into repo directories.
-        } else {
-          // Not a repo — recurse to find repos in subdirectories.
-          walkDir(absPath, relPath, depth + 1);
-        }
-      }
-    };
-    walkDir(reposRoot, "", 0);
-
-    // Managed clones live at .den-services/<repo>/<branch>/
-    // Walk two levels: repo dir → branch dir (each branch dir is a full clone).
-    // Multiple workspaces pointing to the same repo+branch share the same clone.
-    const getCurrentBranch = (absPath: string): string | null => {
-      try {
-        return execSync("git rev-parse --abbrev-ref HEAD", {
-          cwd: absPath,
-          encoding: "utf-8",
-          stdio: ["ignore", "pipe", "ignore"],
-          timeout: GIT_REMOTE_TIMEOUT_MS,
-        }).trim();
-      } catch {
-        return null;
-      }
-    };
-    try {
-      const repoDirs = fs.readdirSync(DEN_SERVICES_DIR, {
-        withFileTypes: true,
-      });
-      for (const repoDir of repoDirs) {
-        if (!repoDir.isDirectory()) continue;
-        const repoName = repoDir.name;
-        const repoDirPath = path.join(DEN_SERVICES_DIR, repoName);
-        let branchDirs: fs.Dirent[];
-        try {
-          branchDirs = fs.readdirSync(repoDirPath, { withFileTypes: true });
-        } catch {
-          continue;
-        }
-        for (const branchDir of branchDirs) {
-          if (!branchDir.isDirectory()) continue;
-          const branchName = branchDir.name;
-          const absPath = path.join(repoDirPath, branchName);
-          // Only treat as a branch clone if it's actually a git repo
-          if (!fs.existsSync(path.join(absPath, ".git"))) continue;
-          const key = `${repoName}::${branchName}`; // unique per repo+branch
-          if (seenRelPaths.has(key)) continue;
-          const hasManifest = fs.existsSync(
-            path.join(absPath, `${product().manifestYml}`),
-          );
-          const gh = catalog[repoName]?.gh ?? getRemoteGh(absPath);
-          const alreadyAdded =
-            existingAddresses.has(repoName) ||
-            (!!gh && existingGhSlugs.has(gh.toLowerCase()));
-          const currentBranch = getCurrentBranch(absPath) ?? branchName;
-          entries.push({
-            name: repoName,
-            relPath: repoName, // catalog key used as workspace address
-            absPath,
-            hasManifest,
-            alreadyAdded,
-            source: "managed",
-            gh: gh ?? null,
-            currentBranch,
-          });
-          seenRelPaths.add(key);
-          seenRelPaths.add(repoName); // prevent catalog fallback from duplicating
-        }
-      }
-    } catch {
-      /* the managed-clones dir does not exist yet */
-    }
-
-    // Catalog-only entries — repos den knows about but not found locally.
-    for (const [relPath, entry] of Object.entries(catalog)) {
-      if (seenRelPaths.has(relPath)) continue;
-      const name = relPath.includes("/")
-        ? relPath.slice(relPath.lastIndexOf("/") + 1)
-        : relPath;
-      const alreadyAdded =
-        existingAddresses.has(relPath) ||
-        (!!entry.gh && existingGhSlugs.has(entry.gh.toLowerCase()));
-      entries.push({
-        name,
-        relPath,
-        absPath: null,
-        hasManifest: false,
-        alreadyAdded,
-        source: "catalog",
-        gh: entry.gh,
-      });
-    }
-
-    return sendJson(res, entries);
+    // Local Dev calls this on load: concurrent loads share one walk.
+    return sendJson(
+      res,
+      await availableReposCache.get(
+        wsOverride ?? "",
+        () => buildAvailableRepos(wsOverride),
+        url.searchParams.get("refresh") === "1",
+      ),
+    );
   }
 
   // ── API: per-system auto-start toggle ─────────────────────────────────────

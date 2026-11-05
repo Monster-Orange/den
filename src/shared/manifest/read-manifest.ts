@@ -15,7 +15,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { execFileSync } from "child_process";
+import { readOriginUrl } from "../git/origin-url.js";
 import { getDistRoot } from "../paths.js";
 import { parse as parseYaml } from "yaml";
 import type { RawManifest } from "../types/index.js";
@@ -48,21 +48,15 @@ const originCache = new Map<string, string | null>();
 /** Repo name of `repoPath`'s git origin (`…/<name>.git`), cached. */
 export function originRepoName(repoPath: string): string | null {
   if (originCache.has(repoPath)) return originCache.get(repoPath)!;
-  let name: string | null = null;
-  try {
-    const url = execFileSync(
-      "git",
-      ["-C", repoPath, "config", "--get", "remote.origin.url"],
-      { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], timeout: 2000 },
-    ).trim();
-    name =
-      url
+  // Read from the git config file, never by spawning git: this runs on the
+  // web server's request path for every repo without its own manifest.
+  const url = readOriginUrl(repoPath);
+  const name = url
+    ? url
         .replace(/\.git$/, "")
         .split(/[/:]/)
-        .pop() || null;
-  } catch {
-    /* not a git checkout, or no origin */
-  }
+        .pop() || null
+    : null;
   originCache.set(repoPath, name);
   return name;
 }
@@ -169,6 +163,29 @@ export function parseManifestText(
   return parsed as Record<string, unknown>;
 }
 
+/**
+ * Parsed manifests by file, reused while the file's text is unchanged. A
+ * single web request reads the same manifests several times (kind, health
+ * plan, stack names, edge links), and parsing YAML is the expensive part:
+ * it held the event loop ~100-200ms per /api/health run. Callers get their
+ * own copy, so mutating a result never leaks into the cache.
+ */
+const parsedCache = new Map<
+  string,
+  { raw: string; parsed: Record<string, unknown> | null }
+>();
+
+function parseCached(
+  file: string,
+  raw: string,
+): Record<string, unknown> | null {
+  const hit = parsedCache.get(file);
+  if (hit && hit.raw === raw) return hit.parsed && structuredClone(hit.parsed);
+  const parsed = parseManifestText(file, raw);
+  parsedCache.set(file, { raw, parsed });
+  return parsed && structuredClone(parsed);
+}
+
 /** The message for an override that has no base to apply to. */
 export function orphanOverrideMessage(): string {
   return `an override with no base manifest is not a manifest: add a ${product().manifestYml} to the repo, or to manifests/`;
@@ -198,7 +215,7 @@ function combine(
 ): ManifestLoad {
   const out: ManifestLoad = { manifest: null, layers: [], ...at };
   const parse = (file: string, raw: string): Record<string, unknown> => {
-    const parsed = parseManifestText(file, raw);
+    const parsed = parseCached(file, raw);
     if (!parsed) throw new Error(`${file}: not a map`);
     return parsed;
   };
