@@ -270,6 +270,63 @@ describe("default workspace top-up (blueprint grows after seeding)", () => {
     ]);
   });
 
+  it("never tops up next to other workspaces, nor adds a repo another holds", () => {
+    writeBlueprint(["alpha", "beta", "gamma"]);
+    fs.writeFileSync(
+      wsPath(),
+      [
+        "active:",
+        "  - default",
+        "focus: default",
+        "workspaces:",
+        "  default:",
+        "    services:",
+        "      alpha:",
+        "        mode: managed",
+        "        branch: main",
+        "  proj:",
+        "    services:",
+        "      beta:",
+        "        mode: managed",
+        "        branch: main",
+        "",
+      ].join("\n"),
+    );
+    const before = fs.readFileSync(wsPath(), "utf-8");
+    expect(mod.topUpDefaultWorkspace()).toEqual([]);
+    expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
+  });
+
+  it("records a blueprint repo removed from default so top-up never re-adds it", () => {
+    writeBlueprint(["alpha", "beta"]);
+    writeWorkspace(["alpha", "beta"]); // predates seeded_repos
+    const file = readWorkspacesFile();
+    mod.recordRemovedFromWorkspace(file, "default", "beta");
+    mod.recordRemovedFromWorkspace(file, "default", "not-in-blueprint");
+    mod.recordRemovedFromWorkspace(file, "other", "alpha");
+    delete file.workspaces.default.services["beta"];
+    expect(file.workspaces.default.seeded_repos).toEqual(["beta"]);
+    fs.writeFileSync(wsPath(), JSON.stringify(file));
+    expect(mod.topUpDefaultWorkspace()).toEqual([]);
+    expect(
+      Object.keys(readWorkspacesFile().workspaces.default.services),
+    ).toEqual(["alpha"]);
+  });
+
+  it("a declined offer is not a fresh setup, so it is not asked again", () => {
+    writeBlueprint(["alpha"]);
+    fs.rmSync(wsPath(), { force: true });
+    expect(mod.defaultWorkspaceNeedsSeeding()).toBe(true);
+    mod.markDefaultWorkspaceDeclined();
+    expect(mod.defaultWorkspaceNeedsSeeding()).toBe(false);
+  });
+
+  it("an emptied, once-seeded default is not a fresh setup", () => {
+    writeBlueprint(["alpha"]);
+    writeWorkspace([], ["alpha"]);
+    expect(mod.defaultWorkspaceNeedsSeeding()).toBe(false);
+  });
+
   it("leaves an empty (declined) default workspace to the seeding flow", () => {
     writeBlueprint(["alpha"]);
     fs.writeFileSync(

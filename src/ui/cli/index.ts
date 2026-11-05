@@ -85,9 +85,11 @@ import {
   resolveServiceRuntime,
 } from "../../shared/environment-manager/service-runner.js";
 import {
-  defaultWorkspaceRepos,
+  blueprintWorkspaces,
   defaultWorkspaceNeedsSeeding,
   defaultWorkspaceHasServices,
+  isMultiBlueprint,
+  seedBlueprintWorkspaces,
   seedDefaultWorkspace,
   topUpDefaultWorkspace,
   markDefaultWorkspaceDeclined,
@@ -251,6 +253,14 @@ const WORKSPACE_SUBCOMMANDS: {
     name: "code",
     usage: "code [n]",
     lines: ["open it in your editor (VS Code: a .code-workspace)"],
+  },
+  {
+    name: "seed",
+    usage: "seed",
+    lines: [
+      "fill workspaces from the distribution's blueprint",
+      "(defaults.workspace / defaults.workspaces), all managed",
+    ],
   },
 ];
 
@@ -2483,36 +2493,42 @@ class DenCLI {
   }
 
   /**
-   * Seed (or reset) the default workspace from the committed blueprint
-   * (config/den.yml `defaults.workspace`), all repos managed. Prints
-   * clear guidance and, on a TTY, asks first. `reason: "auto"` is the one-time
-   * offer on a fresh clone; `reason: "init"` is the explicit `den init`.
-   * Returns true if the workspace was seeded.
+   * Seed (or reset) the blueprint's workspaces from the committed config:
+   * `defaults.workspace` fills `default`; `defaults.workspaces` creates each
+   * named workspace, activates them all and focuses the marked one. All
+   * repos managed. Prints clear guidance and, on a TTY, asks first.
+   * `reason: "auto"` is the one-time offer on a genuine fresh setup (TTY
+   * only: see ensureWorkspaceSeeded); `reason: "init"` is the explicit
+   * `<cli> workspace seed` / `<cli> init` in the root. Returns true if seeded.
    */
   private async seedDefaultWorkspaceFlow(
     reason: "auto" | "init",
   ): Promise<boolean> {
-    const repos = defaultWorkspaceRepos();
-    if (repos.length === 0) {
+    const bps = blueprintWorkspaces();
+    if (bps.length === 0) {
       if (reason === "init") {
         console.log(
           chalk.yellow(
-            `\n  No defaults.workspace.repos in ${product().configFile} — nothing to seed.\n`,
+            `\n  No defaults.workspace.repos or defaults.workspaces in ${product().configFile} — nothing to seed.\n`,
           ),
         );
       }
       return false;
     }
+    const multi = isMultiBlueprint();
     const willReset = defaultWorkspaceHasServices();
     const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
 
-    console.log(
-      chalk.cyan(`\n  Default workspace — ${repos.length} repos, all managed:`),
-    );
-    console.log(chalk.gray(`    ${repos.join(", ")}`));
+    for (const bp of bps) {
+      const label = multi ? `Workspace ${bp.name}` : "Default workspace";
+      console.log(
+        chalk.cyan(`\n  ${label} — ${bp.repos.length} repos, all managed:`),
+      );
+      console.log(chalk.gray(`    ${bp.repos.join(", ")}`));
+    }
     console.log(
       chalk.gray(
-        `  ${product().title} clones + tracks them on main under ${product().servicesDir}/. Switch any`,
+        `  ${product().title} clones + tracks them on their branch under ${product().servicesDir}/. Switch any`,
       ),
     );
     console.log(
@@ -2522,16 +2538,17 @@ class DenCLI {
     );
 
     if (interactive) {
+      const what = multi ? "these workspaces" : "the default workspace";
       const question = willReset
-        ? "  Reset the default workspace to this shipped set?"
-        : "  Seed the default workspace now?";
+        ? `  Reset ${what} to this shipped set?`
+        : `  Seed ${what} now?`;
       const ok = await cliPrompts.confirm(question, !willReset);
       if (!ok) {
         if (reason === "auto") {
           markDefaultWorkspaceDeclined(); // don't ask again
           console.log(
             chalk.gray(
-              `  Skipped — run \`${product().cli} init\` to set it up later.\n`,
+              `  Skipped — run \`${product().cli} workspace seed\` to set it up later.\n`,
             ),
           );
         } else {
@@ -2541,6 +2558,17 @@ class DenCLI {
       }
     }
 
+    if (multi) {
+      const seeded = seedBlueprintWorkspaces();
+      const focus = readWorkspacesFile().focus;
+      console.log(
+        chalk.green(
+          `  ✓ ${seeded.length} workspaces ready (${seeded.map((w) => w.name).join(", ")}), all active; focus: ${focus}. ` +
+            `Run \`${product().cli} up <repo>\` to bring up its closure.\n`,
+        ),
+      );
+      return true;
+    }
     const seeded = seedDefaultWorkspace();
     console.log(
       chalk.green(
@@ -2552,13 +2580,22 @@ class DenCLI {
   }
 
   /**
-   * One-time offer to seed the default workspace on a fresh clone; afterwards
-   * keep it converged on the blueprint (repos added to defaults later — e.g.
-   * tasks-api — join the existing workspace managed).
+   * On a genuine fresh setup (nothing but an empty, never-seeded `default`),
+   * offer to seed from the blueprint: on a TTY, ask; otherwise print a
+   * one-line hint and change nothing. Afterwards keep a lone `default`
+   * converged on the blueprint (repos added to defaults later join it
+   * managed); never once the user has other workspaces.
    */
   private async ensureWorkspaceSeeded(): Promise<void> {
     if (defaultWorkspaceNeedsSeeding()) {
-      await this.seedDefaultWorkspaceFlow("auto");
+      if (process.stdin.isTTY && process.stdout.isTTY) {
+        await this.seedDefaultWorkspaceFlow("auto");
+      } else {
+        const hint = isMultiBlueprint()
+          ? "no workspaces yet: run `{cli} workspace seed` to create them from the blueprint"
+          : "default workspace is empty: run `{cli} workspace seed` to fill it from the blueprint";
+        console.error(chalk.gray(`  ${hint.replace("{cli}", product().cli)}`));
+      }
       return;
     }
     const added = topUpDefaultWorkspace();
@@ -3627,6 +3664,10 @@ class DenCLI {
         );
         break;
       }
+      case "seed": {
+        await this.seedDefaultWorkspaceFlow("init");
+        break;
+      }
       case "create": {
         const name =
           args[1] ??
@@ -3718,7 +3759,7 @@ class DenCLI {
       default:
         console.log(
           chalk.gray(
-            `Usage: ${product().cli} workspace <list|activate|deactivate|focus|use|create|delete|code> [name]`,
+            `Usage: ${product().cli} workspace <${WORKSPACE_SUBCOMMANDS.map((c) => c.name).join("|")}> [name]`,
           ),
         );
     }

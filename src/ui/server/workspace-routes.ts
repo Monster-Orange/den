@@ -90,6 +90,7 @@ import {
 } from "../../shared/environment-manager/catalog.js";
 import { getReposRoot, readUserConfig } from "../../shared/den-config.js";
 import { getDistRoot } from "../../shared/paths.js";
+import { recordRemovedFromWorkspace } from "../../shared/environment-manager/default-workspace.js";
 import { getSudoEnv, prewarmSudo } from "./sudo-store.js";
 import {
   devManagedPaths,
@@ -994,6 +995,12 @@ export async function handleWorkspaceRoutes(
         // Delete exact match, or all subsystem entries for the repo
         // (handles both bare-key workspaces like "shop" and
         //  explicit-subsystem workspaces like "shop/api", "shop/db").
+        // Removal is deliberate: top-up must never bring the repo back.
+        recordRemovedFromWorkspace(
+          file,
+          wsName,
+          parseAddress(address, catalog).repoName,
+        );
         if (services[address] !== undefined) {
           delete services[address];
         } else {
