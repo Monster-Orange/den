@@ -71,8 +71,10 @@ function harness(
         deps,
       );
     });
-  return { events, runs, go, ended: () => ended };
+  return { events, runs, go, ended: () => ended, deps };
 }
+
+const depsOf = (h: { deps: LifecycleExecDeps }): LifecycleExecDeps => h.deps;
 
 describe("streamLifecycleExec", () => {
   it("restart goes to the runner as restart (its down+up fallback), not a manifest lookup (B1)", async () => {
@@ -236,5 +238,63 @@ describe("ready after a detached start (B1 follow-up)", () => {
     await go("up", h);
     await wait(100);
     expect(types(h)).toEqual(["started", "service-exited"]);
+  });
+});
+
+describe("secret_env (R16)", () => {
+  const FAKE = "sk-test-123";
+
+  it("passes the resolved secret_env to the runner, and emits no value", async () => {
+    const h = harness("error");
+    const secretEnv = jest.fn(async () => ({
+      ok: true as const,
+      secretEnv: { SOME_KEY: FAKE },
+    }));
+    await new Promise<void>((done) => {
+      void streamLifecycleExec(
+        {
+          resolved,
+          cmd: "restart",
+          env: {},
+          emit: (e) => h.events.push(e),
+          end: done,
+          onClientClose: () => {},
+        },
+        {
+          ...depsOf(h),
+          secretEnv,
+        },
+      );
+    });
+    expect(secretEnv).toHaveBeenCalledWith("shop/web", "restart", undefined);
+    expect(h.runs[0].secretEnv).toEqual({ SOME_KEY: FAKE });
+    expect(JSON.stringify(h.events)).not.toContain(FAKE);
+  });
+
+  it("a missing key fails the command before the runner is called", async () => {
+    const h = harness("error");
+    const message =
+      "shop/web: 1 secret_env key(s) could not be resolved; not starting it:\n  SOME_KEY (ref proj/dev/SOME_KEY, provider env): not resolved";
+    await new Promise<void>((done) => {
+      void streamLifecycleExec(
+        {
+          resolved,
+          cmd: "up",
+          env: {},
+          emit: (e) => h.events.push(e),
+          end: done,
+          onClientClose: () => {},
+        },
+        {
+          ...depsOf(h),
+          secretEnv: async () => ({ ok: false as const, message }),
+        },
+      );
+    });
+    expect(h.runs).toEqual([]);
+    expect(h.events).toEqual([
+      { type: "error", text: message },
+      expect.objectContaining({ type: "done", exitCode: 1 }),
+    ]);
   });
 });

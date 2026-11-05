@@ -44,6 +44,7 @@ import {
   checkServiceHealth,
   claimHealthyService,
   runServiceCommand,
+  prepareServiceSecretEnv,
   resolveService,
   hasRunningOpctlContainers,
   releaseWorkspaceDaemons,
@@ -1411,6 +1412,10 @@ export async function handleWorkspaceRoutes(
     const startTime = Date.now();
     let overallExit = 0;
     let ranCount = 0;
+    // R16: each started service's resolved secret_env, by position in
+    // `ordered`. Resolved before a restart's down, so a missing key leaves
+    // the service running; the values only go into the runner's spawn env.
+    const preparedSecrets = new Map<number, Record<string, string>>();
 
     // Run services sequentially in dependency order
     const runNext = (i: number): void => {
@@ -1508,6 +1513,32 @@ export async function handleWorkspaceRoutes(
         }
       }
 
+      if ((cmd === "up" || cmd === "restart") && !preparedSecrets.has(i)) {
+        void (async () => {
+          // Phase 2 of a restart is a true `up`, so resolve for that.
+          const r = await prepareServiceSecretEnv(address, "up", ws.name);
+          if (cancelled) return;
+          if (!r.ok) {
+            ranCount++;
+            overallExit = 1;
+            emit({ type: "label", text: address });
+            emit({ type: "error", text: r.message });
+            emit({
+              type: "svc-done",
+              address,
+              exitCode: 1,
+              repoName: svcRepoName,
+              subsystem: svcSubsystem,
+            });
+            runNext(i + 1);
+            return;
+          }
+          preparedSecrets.set(i, r.secretEnv);
+          runNext(i);
+        })();
+        return;
+      }
+
       ranCount++;
 
       emit({ type: "label", text: address });
@@ -1540,6 +1571,7 @@ export async function handleWorkspaceRoutes(
           // the UI just hides the command they came here to watch.
           runtime: "daemon",
           env: getSudoEnv(),
+          secretEnv: preparedSecrets.get(i),
           onLine: (line) => emit({ type: "line", text: line }),
           onClose: (exitCode) => {
             // Release outer-scope refs so the disconnect handler no longer

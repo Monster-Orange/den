@@ -27,6 +27,15 @@ import {
   shellQuote,
 } from "../terminal/tabs.js";
 import { readCatalog } from "./catalog.js";
+import { getSecretsProvider } from "../secrets/index.js";
+import {
+  assertSecretEnvSpec,
+  resolveSecretEnv,
+  secretEnvKeys,
+  type SecretEnvSpec,
+} from "../secrets/secret-env.js";
+import type { SecretsProvider } from "../secrets/types.js";
+import { composeCommands } from "../stacks/manifest-commands.js";
 import { buildServiceEnv } from "./service-env.js";
 import {
   devOpContainerNames,
@@ -1069,6 +1078,12 @@ export interface RunCommandOptions {
    * the detach window is invisible to fail-fast callers.
    */
   onServiceExit?: (exitCode: number) => void;
+  /**
+   * R16: the service's resolved `secret_env` (see prepareServiceSecretEnv),
+   * set only in the spawned process's env. An up/restart of a service that
+   * declares secret_env is refused unless every key is here.
+   */
+  secretEnv?: Record<string, string>;
 }
 
 export interface RunCommandResult {
@@ -1133,6 +1148,108 @@ function repoStartedFallback(
           `${resolved.address} has no ${command} of its own; it is started by ${resolved.repoName}'s up. ` +
           `Run \`${product().cli} ${command} ${resolved.repoName}\` (that reaches every service it starts).`,
       };
+}
+
+// ── secret_env (R16) ─────────────────────────────────────────────────────────
+
+/** Commands that start a service process, and so get its secret_env. */
+function startsService(command: string): boolean {
+  return command === "up" || command === "restart";
+}
+
+/** A service's declared `services.<svc>.secret_env` (validated), or undefined. */
+function serviceSecretEnvSpec(
+  resolved: ResolvedService,
+): SecretEnvSpec | undefined {
+  const raw = readManifest(resolved.repoPath)?.services?.[resolved.subsystem]
+    ?.secret_env;
+  return assertSecretEnvSpec(
+    raw,
+    `${resolved.address}: services.${resolved.subsystem}.secret_env`,
+  );
+}
+
+/**
+ * The address whose command a run of `command` on `address` actually spawns
+ * (a service with no up of its own runs its repo's up), or null when none.
+ */
+function spawningAddress(
+  address: string,
+  command: string,
+  workspace?: string,
+): string | null {
+  const p = previewServiceCommand(address, command, workspace);
+  return p.kind === "run" || p.kind === "via-repo" ? p.address : null;
+}
+
+/**
+ * The secret_env key NAMES a run of `command` on `address` would inject,
+ * for a dry run or status: never a value, and the provider is never asked.
+ * `service` is the service's own secret_env (set in its command's env);
+ * `compose` is the repo's compose.secret_env, which Den's synthesized stack
+ * command resolves for the docker compose process.
+ */
+export function previewServiceSecretEnv(
+  address: string,
+  command: string,
+  workspace?: string,
+): { address: string; service: string[]; compose: string[] } | null {
+  if (!startsService(command)) return null;
+  const target = spawningAddress(address, command, workspace);
+  const resolved = target ? resolveService(target, workspace) : null;
+  if (!resolved) return null;
+  const manifest = readManifest(resolved.repoPath);
+  const service = Object.keys(
+    manifest?.services?.[resolved.subsystem]?.secret_env ?? {},
+  ).sort();
+  const declared = manifest?.services?.[resolved.subsystem]?.commands?.local;
+  const synthesized =
+    manifest?.compose && !declared?.[command]
+      ? composeCommands(
+          manifest,
+          resolved.subsystem,
+          resolved.repoName,
+          workspace ?? "default",
+        )[command]
+      : undefined;
+  const compose = synthesized
+    ? Object.keys(manifest?.compose?.secret_env ?? {}).sort()
+    : [];
+  if (!service.length && !compose.length) return null;
+  return { address: resolved.address, service, compose };
+}
+
+export type ServiceSecretEnvResult =
+  | { ok: true; secretEnv: Record<string, string> }
+  | { ok: false; message: string };
+
+/**
+ * Resolve the `secret_env` of the service a run of `command` on `address`
+ * spawns, for runServiceCommand's `secretEnv`. All or nothing; the provider
+ * is only asked when the service declares secret_env, and only for up and
+ * restart. Messages name keys, refs and the provider, never values.
+ */
+export async function prepareServiceSecretEnv(
+  address: string,
+  command: string,
+  workspace?: string,
+  provider: () => SecretsProvider = getSecretsProvider,
+): Promise<ServiceSecretEnvResult> {
+  if (!startsService(command)) return { ok: true, secretEnv: {} };
+  const target = spawningAddress(address, command, workspace);
+  const resolved = target ? resolveService(target, workspace) : null;
+  if (!resolved) return { ok: true, secretEnv: {} };
+  let spec: SecretEnvSpec | undefined;
+  try {
+    spec = serviceSecretEnvSpec(resolved);
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
+  if (!secretEnvKeys(spec).length) return { ok: true, secretEnv: {} };
+  const r = await resolveSecretEnv(spec, provider(), resolved.address);
+  return r.ok
+    ? { ok: true, secretEnv: r.env }
+    : { ok: false, message: r.message };
 }
 
 /** What a run of `command` on `address` would do, without running it. */
@@ -1516,6 +1633,41 @@ export function runServiceCommand(
     onLine,
   );
 
+  // R16: a service that declares secret_env never starts without every key
+  // (a caller that did not resolve them is refused, not run without them).
+  let secretEnv: Record<string, string> = {};
+  if (startsService(command)) {
+    let declared: string[];
+    try {
+      declared = secretEnvKeys(serviceSecretEnvSpec(resolved));
+    } catch (e) {
+      onLine(`Error: ${(e as Error).message}`);
+      closeAsync(1);
+      return dummy();
+    }
+    const missing = declared.filter((k) => !options.secretEnv?.[k]);
+    if (missing.length) {
+      onLine(
+        `Error: ${resolved.address} declares secret_env ${missing.join(", ")}, which were not resolved; not starting it`,
+      );
+      closeAsync(1);
+      return dummy();
+    }
+    secretEnv = Object.fromEntries(
+      declared.map((k) => [k, options.secretEnv?.[k] as string]),
+    );
+  }
+  const hasSecrets = Object.keys(secretEnv).length > 0;
+  // Secrets go only in the spawned process's env. A tab would need them in
+  // its command line (and so its shell history), so such a start runs as a
+  // daemon instead.
+  const runEnv: NodeJS.ProcessEnv = { ...env, ...secretEnv };
+  if (hasSecrets && runtime === "tab" && startsService(command))
+    onLine(
+      `${resolved.address} has secret_env: running as a daemon, not in a tab, to keep the values out of the tab's shell`,
+    );
+  const useTab = runtime === "tab" && !hasSecrets;
+
   // Manifest downs that are just `opctl container down <name>` must not be
   // spawned raw: opctl re-elevates with `sudo -E` and fails on sudoers without
   // SETENV even when there is nothing to stop — which is why files-api/api
@@ -1571,7 +1723,7 @@ export function runServiceCommand(
     // HITL command — inherit the full TTY; onLine is not called.
     const proc = spawnInteractive(
       cmdString,
-      { ...process.env, ...env },
+      { ...process.env, ...runEnv },
       onClose,
       repoPath,
     );
@@ -1621,11 +1773,11 @@ export function runServiceCommand(
     }
   };
 
-  if (runtime === "tab" && command === "up") {
+  if (useTab && command === "up") {
     return openCommandInTab(cmdString);
   }
 
-  if (runtime === "tab" && command === "restart") {
+  if (useTab && command === "restart") {
     closeExistingTab();
     if (requestedCmdDef) return openCommandInTab(cmdString);
 
@@ -1743,7 +1895,7 @@ export function runServiceCommand(
   const proc = spawnStreaming(
     cmdString,
     [],
-    { ...process.env, ...env },
+    { ...process.env, ...runEnv },
     onLine,
     wrappedOnClose,
     repoPath,

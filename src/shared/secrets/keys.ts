@@ -16,6 +16,7 @@ export function refPath(ref: SecretRef): string {
 
 /**
  * Resolve the flat key a key/value backend should use for `ref`:
+ *   0. a scoped ref's field, as is (it is fully qualified: no overrides);
  *   1. `ref.key` when the caller pinned one;
  *   2. the `secrets.keys` override map (`"vault/item/field": KEY`);
  *   3. the field itself when it already looks like an env var (API keys);
@@ -25,6 +26,7 @@ export function flatKeyFor(
   ref: SecretRef,
   overrides: Record<string, string> = {},
 ): string {
+  if (ref.scoped) return ref.field;
   if (ref.key) return ref.key;
   const mapped = overrides[refPath(ref)];
   if (mapped) return mapped;

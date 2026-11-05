@@ -26,6 +26,7 @@ export { flatKeyFor, toEnvName, refPath } from "./keys.js";
 export { DopplerProvider } from "./doppler.js";
 export { EnvProvider } from "./env.js";
 export { OnePasswordProvider } from "./onepassword.js";
+export * from "./secret-env.js";
 
 export interface SecretsConfig {
   provider?: SecretsProviderName;

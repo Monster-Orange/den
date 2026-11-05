@@ -68,6 +68,7 @@ import {
 } from "../../shared/environment-manager/health.js";
 import {
   runServiceCommand,
+  prepareServiceSecretEnv,
   resolveService,
   listDaemons,
   unregisterDaemon,
@@ -1477,6 +1478,8 @@ async function handleRequest(
           {
             run: runServiceCommand,
             health: (r) => checkServiceHealth(r, "local"),
+            secretEnv: (address, cmd, workspace) =>
+              prepareServiceSecretEnv(address, cmd, workspace),
           },
         );
         return;

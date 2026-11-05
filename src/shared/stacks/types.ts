@@ -10,6 +10,8 @@
  *       uses: [ragstack]                    # start first + private link network
  *       env:                                 # compose ${VAR} substitution
  *         RAG_PROXY_TARGET: "http://{ragstack.ragstack-server}:80"
+ *       secret_env:                          # from the secrets provider, at up/restart
+ *         OPENAI_API_KEY: proj/dev/OPENAI_API_KEY
  *
  * `{stack.service}` expands to that service's container name.
  */
@@ -36,6 +38,12 @@ export interface StackConfig {
    * `${VAR}` substitution) cannot change.
    */
   serviceEnv?: Record<string, Record<string, string>>;
+  /**
+   * `secret_env` (R16): env var → `<vault>/<item>/<field>` ref. Resolved
+   * through the secrets provider by `stack up` / `stack restart` and passed
+   * only in the docker compose process's env, never in the override file.
+   */
+  secretEnv?: Record<string, string>;
 }
 
 /** What `docker compose config --format json` tells us about a service. */
