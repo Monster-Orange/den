@@ -57,14 +57,19 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
-- **A second root's server no longer forgets the first's running services**
-  (0.2.7-dev.3). Every root of a product shares one daemons
-  file, and a server's startup sweep dropped any record whose address did
-  not resolve in its own workspaces: starting a scratch root's server
-  cleared another root's running dev server from the list. Records are now
-  stamped with the root that started them; the sweep skips other roots'
-  records, and drops an older unstamped record only when its containers
-  are verifiably gone.
+- **A second root's server leaves the first root's services alone**
+  (0.2.7-dev.3, dev.4). Every root of a product shares one daemons file.
+  A server's two startup sweeps (the stale-daemon prune and the health
+  reaper) dropped any record whose address did not resolve in its own
+  workspaces, so starting a scratch root's server silently forgot another
+  root's running dev server; an interactive Ctrl-C stopped every service in
+  the file, and deactivating a workspace released any record with the same
+  workspace name. Records are now stamped with the root that started them
+  and a server lists, stops, releases and sweeps only its own (other roots'
+  records stay in the file untouched). An older unstamped record is never
+  dropped just for not resolving; it still goes when its containers are
+  verifiably gone or two health checks fail. The reaper now logs what it
+  removes.
 - **A service the edge has no route for is no longer healthy** (0.2.7-dev.2).
   A health URL served through the edge answered the edge's own
   `404 page not found` when the service had no route, and Den counted any

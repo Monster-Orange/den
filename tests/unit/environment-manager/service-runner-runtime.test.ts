@@ -63,7 +63,10 @@ import {
   pruneDeadDaemons,
   releaseWorkspaceDaemons,
   resolveServiceRuntime,
+  unregisterDaemon,
+  daemonRootOf,
 } from "../../../src/shared/environment-manager/service-runner.js";
+import { reapDeadDaemons } from "../../../src/ui/server/daemon-reaper.js";
 
 const mockIsOpctlAvailable = isOpctlAvailable as jest.MockedFunction<
   typeof isOpctlAvailable
@@ -659,10 +662,13 @@ describe("pruneDeadDaemons", () => {
     ]);
 
     expect(pruneDeadDaemons()).toEqual([]);
-    expect(listDaemons().map((d) => d.address)).toEqual([
+    // Still in the shared file, but not this root's to list.
+    const file = JSON.parse(fs.readFileSync(testDaemonsFile, "utf-8"));
+    expect(file.daemons.map((d: { address: string }) => d.address)).toEqual([
       "web/frontend",
       "dead/api",
     ]);
+    expect(listDaemons()).toEqual([]);
   });
 
   it("prunes an unstamped (legacy) record only when verifiably dead", () => {
@@ -674,6 +680,59 @@ describe("pruneDeadDaemons", () => {
 
     expect(pruneDeadDaemons()).toEqual(["dead/api"]);
     expect(listDaemons().map((d) => d.address)).toEqual(["web/app"]);
+  });
+
+  it("both startup sweeps leave another root's and legacy records in the file", async () => {
+    // A second root's server: the prune sweep, then the health reaper, over
+    // a file shared with root A. Nothing of A's resolves here.
+    mockIsOpctlAvailable.mockReturnValue(true);
+    mockDevOpContainerNames.mockReturnValue([]);
+    mockResolveServiceSource.mockReturnValue(null);
+    mockListRunningOpctlContainers.mockReturnValue([]);
+    registerDaemon(rec("ghost/svc")); // this root's, unresolvable: goes
+    const mine = JSON.parse(fs.readFileSync(testDaemonsFile, "utf-8"))
+      .daemons as object[];
+    writeRecords([
+      ...mine,
+      json("web/frontend", { root: "/elsewhere/root-a" }),
+      json("legacy/svc"),
+    ]);
+
+    expect(pruneDeadDaemons()).toEqual(["ghost/svc"]);
+    const reaped = await reapDeadDaemons({
+      listDaemons,
+      resolveService: () => null,
+      getActiveWorkspaces: () => [],
+      checkServiceHealth: async () => {
+        throw new Error("no health check expected");
+      },
+      unregisterDaemon,
+      delay: async () => undefined,
+      retryDelayMs: 0,
+      rootOf: daemonRootOf,
+    });
+
+    expect(reaped.removed).toEqual([]);
+    const file = JSON.parse(fs.readFileSync(testDaemonsFile, "utf-8"));
+    expect(file.daemons.map((d: { address: string }) => d.address)).toEqual([
+      "web/frontend",
+      "legacy/svc",
+    ]);
+  });
+
+  it("deactivating a workspace never releases another root's daemon of the same name", async () => {
+    // Both roots can have a workspace called "default".
+    mockGetActiveWorkspaces.mockReturnValue([]);
+    writeRecords([
+      json("web/frontend", {
+        root: "/elsewhere/root-a",
+        workspaces: ["default"],
+      }),
+    ]);
+
+    expect(await releaseWorkspaceDaemons("default")).toEqual([]);
+    const file = JSON.parse(fs.readFileSync(testDaemonsFile, "utf-8"));
+    expect(file.daemons).toHaveLength(1);
   });
 
   it("keeps all daemons when opctl is unavailable (can't verify)", () => {

@@ -119,6 +119,17 @@ function daemonRoot(): string | null {
   }
 }
 
+/**
+ * Whose a daemon record is: this root's, another root's (all roots of a
+ * product share one daemons file), or unstamped (written before 0.2.7).
+ */
+export function daemonRootOf(
+  d: Pick<DaemonRecord, "root">,
+): "here" | "other" | "unstamped" {
+  if (!d.root) return "unstamped";
+  return d.root === daemonRoot() ? "here" : "other";
+}
+
 export type ServiceConflictReason = "identity_mismatch" | "orphan_containers";
 
 export class ServiceConflictError extends Error {
@@ -314,9 +325,17 @@ export function updateDaemonContainers(
   saveDaemonsFile(getDaemonsFile());
 }
 
+/**
+ * This root's daemons (and unstamped legacy ones). Every root of a product
+ * shares one daemons file; another root's records stay in it untouched but
+ * are not listed, so this server never shows, stops, releases or sweeps
+ * them. Lookups by address (findDaemonByAddress) still see every record.
+ */
 export function listDaemons(): DaemonRecord[] {
   loadDaemonsFromFile();
-  return Array.from(_daemonRegistry.values());
+  return Array.from(_daemonRegistry.values()).filter(
+    (d) => daemonRootOf(d) !== "other",
+  );
 }
 
 export function findDaemonByAddress(address: string): DaemonRecord | undefined {
@@ -706,15 +725,15 @@ function pruneAgainst(
   running: Set<string> | null,
 ): string[] {
   const pruned: string[] = [];
-  const here = daemonRoot();
   for (const d of daemons) {
     try {
+      const root = daemonRootOf(d);
       // Another root's daemon: its services resolve in its workspaces, not
       // ours, and its liveness is its own server's call.
-      if (d.root && d.root !== here) continue;
+      if (root === "other") continue;
       // An unresolvable address is only proof of staleness for a record
       // this root wrote; an unstamped one may belong to another root.
-      if (d.root && !canResolveDaemonAddress(d)) {
+      if (root === "here" && !canResolveDaemonAddress(d)) {
         unregisterDaemon(d.address);
         pruned.push(d.address);
         continue;

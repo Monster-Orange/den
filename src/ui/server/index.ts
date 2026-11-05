@@ -80,6 +80,7 @@ import {
   checkServiceHealth,
   loadDaemonsFromFile,
   pruneDeadDaemonsAsync,
+  daemonRootOf,
   isInteractiveServiceCommand,
   rewriteLegacyOpctlKillCommandForContainer,
   shouldDetachServiceCommand,
@@ -3205,7 +3206,7 @@ void (async () => {
   await new Promise<void>((resolve) =>
     setTimeout(resolve, DAEMON_SHUTDOWN_GRACE_MS),
   );
-  await reapDeadDaemons({
+  const reaped = await reapDeadDaemons({
     listDaemons,
     resolveService,
     getActiveWorkspaces,
@@ -3213,7 +3214,12 @@ void (async () => {
     unregisterDaemon,
     delay: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
     retryDelayMs: DAEMON_RETRY_DELAY_MS,
+    rootOf: daemonRootOf,
   });
+  if (reaped.removed.length > 0)
+    console.error(
+      `Reaped ${reaped.removed.length} stopped daemon(s): ${reaped.removed.join(", ")}`,
+    );
 })();
 
 const prunedSnapshots = pruneDeadSnapshots();
