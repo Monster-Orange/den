@@ -29,6 +29,13 @@ config and manifest changes a distribution must make to move to it under
   is not exactly three non-empty parts, and a key that is not an env var
   name. See "Secrets in a target's env" in `docs/distributions.md`.
 
+### Fixed
+
+- **`<cli> mcp connect` for Claude Code failed whenever the server has env**
+  ("Invalid environment variable format: <name>"): `claude mcp add`'s `-e`
+  takes several values, so the server name after the env pairs was read as
+  one more. The name now comes right after `add`.
+
 ### Migrations
 
 - None required.
