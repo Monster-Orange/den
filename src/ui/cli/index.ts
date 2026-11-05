@@ -6,7 +6,10 @@
  */
 
 import { composeStacksNotice } from "./workspace-notes.js";
-import { runningWorkspaceStacks } from "../../shared/stacks/status.js";
+import {
+  runningComposeProjects,
+  runningWorkspaceStacks,
+} from "../../shared/stacks/status.js";
 import { isNamedTarget } from "./named-target.js";
 import chalk from "chalk";
 import oraSpinner from "ora";
@@ -48,6 +51,7 @@ import {
   isWorkspaceActive,
   activateWorkspace,
   deactivateWorkspace,
+  getActiveWorkspaces,
   setActiveWorkspace,
   setFocusedWorkspace,
   createWorkspace,
@@ -3578,10 +3582,17 @@ class DenCLI {
           }
         }
         // Deactivate releases tracked daemons only; say what it left up.
-        const stacksNote = composeStacksNotice(
-          product().cli,
-          runningWorkspaceStacks(name),
-        );
+        // One docker ps for this workspace and every other active one.
+        let up: ReturnType<typeof runningComposeProjects> | undefined;
+        const running = () =>
+          up === undefined ? (up = runningComposeProjects()) : up;
+        const stacks = runningWorkspaceStacks(name, running);
+        const heldBy = new Map<string, string[]>();
+        if (stacks?.length)
+          for (const other of getActiveWorkspaces())
+            for (const s of runningWorkspaceStacks(other, running) ?? [])
+              heldBy.set(s.project, [...(heldBy.get(s.project) ?? []), other]);
+        const stacksNote = composeStacksNotice(product().cli, stacks, heldBy);
         if (stacksNote) console.log(chalk.yellow(`    ${stacksNote}`));
         console.log("");
         break;

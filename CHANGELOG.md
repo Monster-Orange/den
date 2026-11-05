@@ -100,10 +100,20 @@ config and manifest changes a distribution must make to move to it under
   child_process call and fails if either route makes a sync spawn or
   directory walk, or any sync call outside a short allowlist of single
   config-file reads.
+- **The web UI service no longer runs at background priority.**
+  `service install` wrote `ProcessType: Background` into the LaunchAgent,
+  so macOS ran the UI server on efficiency cores with throttled I/O: on a
+  busy machine its first requests stalled for 5-11s. It is now
+  `Interactive`, and `service status` shows launchd's spawn type.
+- **`workspace deactivate` never suggests stopping a stack another active
+  workspace still holds.** Such a stack is listed as "in use by another
+  workspace: <project> (still in <ws>)" instead of with a `down <repo>`
+  command, and a repo with a stack still in use gets no `down` suggestion.
 
 ### Migrations
 
-- None required.
+- Re-run `<cli> service install` to pick up the new LaunchAgent priority
+  (`<cli> service status` should show `spawn type = interactive`).
 
 ## [0.2.3] - 2026-11-04
 

@@ -169,6 +169,43 @@ describe("workspace deactivate", () => {
     expect(out).not.toMatch(/unrelated/);
   }, 60_000);
 
+  it("never tells you to stop a stack another active workspace still holds", () => {
+    // ws-a also holds site (same checkout): its stack is still in use.
+    write(
+      path.join(root, "config", "local", "workspaces.yml"),
+      [
+        "active: [default, ws-a]",
+        "focus: default",
+        "workspaces:",
+        "  default:",
+        "    services:",
+        ...["shop", "site"].flatMap((r) => [
+          `      ${r}:`,
+          "        mode: dev-managed",
+          `        path: ${path.join(repos, r)}`,
+        ]),
+        "  ws-a:",
+        "    services:",
+        "      site:",
+        "        mode: dev-managed",
+        `        path: ${path.join(repos, "site")}`,
+        "",
+      ].join("\n"),
+    );
+    const out = den(
+      ["workspace", "deactivate", "default"],
+      dockerShim([
+        { project: SHOP_PROJECT, workingDir: path.join(repos, "shop") },
+        { project: "site", workingDir: path.join(repos, "site", "deploy") },
+      ]),
+    );
+    expect(out).toMatch(
+      /compose stacks keep running \(shopdb-main\): stop them with `den down shop`/,
+    );
+    expect(out).toMatch(/site \(still in ws-a\)/);
+    expect(out).not.toMatch(/`den down site`/);
+  }, 60_000);
+
   it("says it generically when docker can't be asked", () => {
     resetWorkspaces();
     const out = den(["workspace", "deactivate", "default"], dockerShim(null));
