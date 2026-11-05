@@ -17,6 +17,7 @@ import {
 } from "./workspace-picker.js";
 import { initAppearance } from "./appearance.js";
 import { versionLabel } from "./version-label.js";
+import { changelogView } from "./changelog-view.js";
 import {
   buildRow,
   closeMoreList,
@@ -173,6 +174,8 @@ function _injectNavStyles() {
 const LS_CHANGELOG_SEEN = "__DEN_CLI__-changelog-seen";
 let _changelogEntries = [];
 let _changelogInjected = false;
+/** The pop-up lists every version only after the reader asks. */
+let _clShowAll = false;
 
 function _injectChangelogStyles() {
   if (_changelogInjected) return;
@@ -259,6 +262,13 @@ function _injectChangelogStyles() {
       display: inline-flex; align-items: center; justify-content: center;
       transition: color .1s, border-color .1s;
     }
+    .cl-more-btn {
+      margin-right: auto; padding: 4px 12px;
+      font: inherit; font-size: 11px; color: var(--muted);
+      background: none; border: 1px solid var(--border); border-radius: 6px;
+      cursor: pointer;
+    }
+    .cl-more-btn:hover { color: var(--accent-text); border-color: var(--accent); }
     .cl-copy-btn:hover { color: var(--accent-text); border-color: var(--accent); }
     .cl-copy-btn.copied { color: var(--ok); border-color: var(--ok); }
     .cl-slack-btn:hover { color: var(--accent-text); border-color: var(--accent); }
@@ -285,9 +295,15 @@ function _injectChangelogStyles() {
     '<div class="cl-box">' +
     '<div class="cl-hdr"><h3>What\'s new</h3><button class="cl-close" id="cl-close-btn" title="Close">×</button></div>' +
     '<div class="cl-body" id="cl-body"></div>' +
-    '<div class="cl-footer"><button class="cl-got-it" id="cl-got-it-btn">Got it</button></div>' +
+    '<div class="cl-footer"><button type="button" class="cl-more-btn" id="cl-more" aria-controls="cl-body" aria-expanded="false" hidden></button><button class="cl-got-it" id="cl-got-it-btn">Got it</button></div>' +
     "</div>";
   document.body.appendChild(overlay);
+  document.getElementById("cl-more")?.addEventListener("click", () => {
+    _clShowAll = !_clShowAll;
+    _renderChangelogBody(_changelogEntries);
+    const body = document.getElementById("cl-body");
+    if (body) body.scrollTop = 0;
+  });
 
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) window.closeChangelog();
@@ -321,7 +337,8 @@ function _renderChangelogBody(entries) {
     escHtml(s)
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/`([^`]+)`/g, "<code>$1</code>");
-  body.innerHTML = entries
+  const view = changelogView(entries, _clShowAll);
+  body.innerHTML = view.shown
     .map(
       (entry, i) =>
         (i > 0 ? '<hr class="cl-divider">' : "") +
@@ -382,6 +399,17 @@ function _renderChangelogBody(entries) {
         "</div>",
     )
     .join("");
+
+  // The toggle lives in the footer, so it is in view however long the
+  // newest entry is.
+  const more = document.getElementById("cl-more");
+  if (more) {
+    more.hidden = !view.toggle;
+    if (view.toggle) {
+      more.textContent = view.toggle.label;
+      more.setAttribute("aria-expanded", String(view.toggle.expanded));
+    }
+  }
 
   const _slackIcon =
     '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -548,8 +576,11 @@ function _buildMarkdown(entry) {
 }
 
 window.openChangelog = function () {
+  _clShowAll = false;
   _injectChangelogStyles();
   _renderChangelogBody(_changelogEntries);
+  const body = document.getElementById("cl-body");
+  if (body) body.scrollTop = 0; // always opens at the newest release
   const overlay = document.getElementById("cl-overlay");
   if (overlay) overlay.classList.add("open");
 };

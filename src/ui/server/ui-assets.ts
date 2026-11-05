@@ -22,6 +22,7 @@ export const UI_MODULES: readonly string[] = [
   "/graph.css",
   "/appearance.js",
   "/version-label.js",
+  "/changelog-view.js",
   "/health-fit.js",
   "/health-rollup.js",
   "/shell.js",

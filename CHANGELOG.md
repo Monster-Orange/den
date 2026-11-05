@@ -8,6 +8,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **The "What's new" pop-up shows the newest release only** (0.3.0-dev.16).
+  A "Show all versions (N earlier)" button in its footer lists every
+  earlier version in the same pop-up, and "Show latest only" collapses it
+  again. It always opens collapsed, at the top.
 - **Themes (`den.theme/v1`).** The contract is `schemas/den.theme.v1.json`:
   color tokens for dark and light, type, shape, a mark and self-hosted fonts.
   `<cli> theme add <repo>[/<subpath>]@<tag|commit>` validates a theme and
