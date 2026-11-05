@@ -346,13 +346,37 @@ describe("a repeat seed", () => {
     expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
   }, 60_000);
 
-  it("after the user changed the workspace, a seed says it reset it", () => {
+  it("after the user changed the workspace, no TTY: refuses and writes nothing (SEED-0)", () => {
+    config(SINGLE);
+    den(["workspace", "seed"]);
+    const ws = readWs();
+    ws.workspaces.default.services.beta = {
+      mode: "dev-managed",
+      path: "/somewhere/beta",
+    };
+    workspaces(ws);
+    const before = fs.readFileSync(wsPath(), "utf-8");
+    for (const argv of [["workspace", "seed"], ["init"]]) {
+      const { out, status } = den(argv);
+      expect(status).toBe(1);
+      expect(out).toMatch(/Not resetting the default workspace/);
+      expect(out).toMatch(/workspace seed --reset/);
+      expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
+    }
+  }, 60_000);
+
+  it("--reset resets it, and says so", () => {
     config(SINGLE);
     den(["workspace", "seed"]);
     const ws = readWs();
     ws.workspaces.default.services.beta = { mode: "dev-managed" };
     workspaces(ws);
-    const { out } = den(["workspace", "seed"]);
+    const viaInit = den(["init", "--reset"]);
+    expect(viaInit.status).toBe(0);
+    expect(viaInit.out).toMatch(/Default workspace reset to the blueprint/);
+    workspaces(ws);
+    const { out, status } = den(["workspace", "seed", "--reset"]);
+    expect(status).toBe(0);
     expect(out).toMatch(/Default workspace reset to the blueprint — 3 repos/);
     expect(out).not.toMatch(/already seeded/);
     expect(readWs().workspaces.default.services.beta).toEqual(managed);

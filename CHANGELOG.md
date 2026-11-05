@@ -4,6 +4,26 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.2.7] - unreleased
+
+### Fixed
+
+- **A seed without a terminal no longer resets a workspace that has
+  entries** (SEED-0). `<cli> init` and `<cli> workspace seed` from a script
+  or `make` replaced every entry of the default (or blueprint) workspaces with
+  managed clones, your own dev-managed checkouts included, without asking.
+  Without a TTY they now refuse (exit 1, nothing written) and name
+  `--reset`; on a TTY they still ask, default No. `init --reset` and
+  `workspace seed --reset` reset as before.
+- **`<cli> init` in the distribution root seeds even through a symlinked
+  path** (`/var` → `/private/var`, a symlinked home). It compared paths
+  without resolving links and ran the manifest scaffolder instead.
+
+### Migrations
+
+- A script that relied on a non-interactive seed resetting a changed
+  workspace must pass `--reset`.
+
 ## [0.2.6] - 2026-11-04
 
 ### Fixed
