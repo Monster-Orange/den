@@ -18,7 +18,8 @@ config and manifest changes a distribution must make to move to it under
   refuses a folder where nothing names the repo (an empty or unrelated
   folder): the manifest name, or the GitHub remote against the catalog's
   `gh` (or the repo name when the catalog has none), must match.
-  `--force` accepts such a folder. `--dry-run` shows the changes without writing; `-w` limits it
+  `--force` accepts such a folder. The refusal's `--force` hint keeps
+  `--dry-run` and `-w` when given (0.3.0-dev.28). `--dry-run` shows the changes without writing; `-w` limits it
   to one workspace.
 - **`<cli> register <path> -w <workspace>`** (0.3.0-dev.26). `-w` writes that
   workspace, active or not, and leaves focus alone. It used to fail with

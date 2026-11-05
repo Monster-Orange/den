@@ -191,7 +191,10 @@ describe("relocate needs something that names the repo", () => {
     const r = den("relocate", "shop", empty, "--dry-run");
     expect(r.code).toBe(1);
     expect(r.out).toMatch(/Nothing at .*empty-dir says it is "shop"/);
-    expect(r.out).toMatch(/relocate shop .* --force/);
+    // The hint keeps the preview a preview, and the workspace.
+    expect(r.out).toMatch(/relocate shop \S+ --force --dry-run\n/);
+    const ws = den("relocate", "shop", empty, "-n", "-w", "ws-b");
+    expect(ws.out).toMatch(/relocate shop \S+ --force --dry-run -w ws-b\n/);
     const forced = den("relocate", "shop", empty, "--force");
     expect(forced.code).toBe(0);
     expect(workspaces().workspaces.default.services.shop.path).toBe(empty);
@@ -213,6 +216,48 @@ describe("relocate needs something that names the repo", () => {
     const r = den("relocate", "shop", clone, "--dry-run");
     expect(r.code).toBe(0);
     expect(r.out).toMatch(/Would point at .*bare-clone/);
+  });
+});
+
+describe("relocate with no gh in the catalog", () => {
+  it("the remote's repo name must match the repo; another name is refused", () => {
+    const cat = path.join(root, "config", "local", "service-catalog.yml");
+    const catBefore = fs.readFileSync(cat, "utf-8");
+    fs.writeFileSync(cat, 'shop:\n  gh: ""\nsite:\n  gh: acme/site\n');
+    const clone = (dir: string, slug: string): string => {
+      const p = path.join(repos, dir);
+      fs.mkdirSync(p, { recursive: true });
+      spawnSync("git", ["init", "-q", p]);
+      spawnSync("git", [
+        "-C",
+        p,
+        "remote",
+        "add",
+        "origin",
+        `https://github.com/${slug}.git`,
+      ]);
+      return p;
+    };
+    try {
+      const ok = den(
+        "relocate",
+        "shop",
+        clone("nogh-shop", "anyone/shop"),
+        "-n",
+      );
+      expect(ok.code).toBe(0);
+      expect(ok.out).toMatch(/Would point at .*nogh-shop/);
+      const bad = den(
+        "relocate",
+        "shop",
+        clone("nogh-blog", "anyone/blog"),
+        "-n",
+      );
+      expect(bad.code).toBe(1);
+      expect(bad.out).toMatch(/Nothing at .*nogh-blog says it is "shop"/);
+    } finally {
+      fs.writeFileSync(cat, catBefore);
+    }
   });
 });
 

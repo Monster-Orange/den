@@ -3346,7 +3346,7 @@ class DenCLI {
       fail(
         `Nothing at ${newPath} says it is "${repoName}": no manifest named ` +
           `"${leaf}" and no GitHub remote ${catalogGh || `…/${leaf}`}.\n` +
-          `     If it is, say so: ${product().cli} relocate ${repoName} ${rawPath} --force`,
+          `     If it is, say so: ${product().cli} relocate ${repoName} ${rawPath} --force${dryRun ? " --dry-run" : ""}${only ? ` -w ${only}` : ""}`,
       );
       return;
     }
