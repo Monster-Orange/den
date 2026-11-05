@@ -193,15 +193,21 @@ describe("service install --plan", () => {
     expect(snapshot(home)).toEqual({});
   }, 60_000);
 
-  it("status names a foreign server on the port", async () => {
-    const root = makeRoot("status-foreign", foreignPort);
-    const home = path.join(tmp, "home-status");
-    fs.mkdirSync(home);
-    const { out } = await den(root, home, ["service", "status"]);
-    expect(out).toContain(
-      `port ${foreignPort} is in use by acme-ops at ${OTHER_ROOT}; not this distribution's server`,
-    );
-  }, 60_000);
+  // status talks to launchd, so it refuses off macOS (install --plan and
+  // print don't): this one runs on darwin only.
+  (process.platform === "darwin" ? it : it.skip)(
+    "status names a foreign server on the port",
+    async () => {
+      const root = makeRoot("status-foreign", foreignPort);
+      const home = path.join(tmp, "home-status");
+      fs.mkdirSync(home);
+      const { out } = await den(root, home, ["service", "status"]);
+      expect(out).toContain(
+        `port ${foreignPort} is in use by acme-ops at ${OTHER_ROOT}; not this distribution's server`,
+      );
+    },
+    60_000,
+  );
 });
 
 describe("mcp connect --dry-run", () => {
