@@ -17,6 +17,14 @@ export interface ShellPrefs {
   hidden: string[];
   /** NAV page ids in the engineer's order; pages not listed keep theirs. */
   order: string[];
+  /**
+   * The runs dock is open (R16a, 0.3.0-dev.30, Ward QA 2026-11-05): it
+   * starts collapsed to its bar; opening it is the engineer's choice and
+   * remembered, never forced by a run starting.
+   */
+  dock: boolean;
+  /** The open dock's output height in px; 0 is the default (170px). */
+  dockHeight: number;
 }
 
 export const SHELL_DEFAULTS: ShellPrefs = {
@@ -24,7 +32,27 @@ export const SHELL_DEFAULTS: ShellPrefs = {
   collapsed: false,
   hidden: [],
   order: [],
+  dock: false,
+  dockHeight: 0,
 };
+
+/** The dock height's bounds (the page also caps it at half the window). */
+export const DOCK_MIN = 60;
+export const DOCK_MAX = 2000;
+
+function checkDockHeight(
+  v: unknown,
+): { ok: true; value: number } | { ok: false; error: string } {
+  if (typeof v !== "number" || !Number.isFinite(v))
+    return { ok: false, error: dockHeightError() };
+  const h = Math.round(v);
+  if (h !== 0 && (h < DOCK_MIN || h > DOCK_MAX))
+    return { ok: false, error: dockHeightError() };
+  return { ok: true, value: h };
+}
+function dockHeightError(): string {
+  return `shell.dockHeight must be 0 (the default) or a number from ${DOCK_MIN} to ${DOCK_MAX}`;
+}
 
 /** How many page ids `hidden` and `order` keep. */
 export const MAX_NAV_IDS = 64;
@@ -85,8 +113,15 @@ export function shellPrefs(stored: unknown): ShellPrefs {
     collapsed: false,
     hidden: [],
     order: [],
+    dock: false,
+    dockHeight: 0,
   };
   if (!isObject(stored)) return out;
+  if (typeof stored.dock === "boolean") out.dock = stored.dock;
+  if (stored.dockHeight !== undefined) {
+    const h = checkDockHeight(stored.dockHeight);
+    if (h.ok) out.dockHeight = h.value;
+  }
   const pins = checkPins(stored.pins);
   if (pins.ok) out.pins = pins.value;
   if (typeof stored.collapsed === "boolean") out.collapsed = stored.collapsed;
@@ -118,6 +153,14 @@ export function mergeShellPrefs(
       if (typeof patch.collapsed !== "boolean")
         return { ok: false, error: "shell.collapsed must be true or false" };
       out.collapsed = patch.collapsed;
+    } else if (key === "dock") {
+      if (typeof patch.dock !== "boolean")
+        return { ok: false, error: "shell.dock must be true or false" };
+      out.dock = patch.dock;
+    } else if (key === "dockHeight") {
+      const h = checkDockHeight(patch.dockHeight);
+      if (!h.ok) return h;
+      out.dockHeight = h.value;
     } else if (key === "hidden" || key === "order") {
       const ids = checkNavIds(key, patch[key]);
       if (!ids.ok) return ids;
@@ -134,5 +177,7 @@ export function storedShell(p: ShellPrefs): Partial<ShellPrefs> | undefined {
   if (p.collapsed) out.collapsed = true;
   if (p.hidden.length) out.hidden = p.hidden;
   if (p.order.length) out.order = p.order;
+  if (p.dock) out.dock = true;
+  if (p.dockHeight) out.dockHeight = p.dockHeight;
   return Object.keys(out).length ? out : undefined;
 }

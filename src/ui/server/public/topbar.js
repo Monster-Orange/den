@@ -7,10 +7,10 @@
  *                     from the same rollup as the rail's Services badge; it
  *                     opens the status drawer (R15)
  *   Runs (R7)         #den-runs: a pulsing dot and "N running" while a run
- *                     streams. Until the runs dock (dev.21) it shows the
- *                     page's own output pane (an element marked
- *                     `data-den-output`); a page with none links to the page
- *                     that ran the last run
+ *                     streams. It shows and hides the runs dock (R16,
+ *                     shell.js's denShell.runs, dev.30), where every page's
+ *                     output lands; an empty dock links to the page that ran
+ *                     the last run
  *   lock (R8)         #den-lock: 🔒 Locked / 🔓 Unlocked, the admin-password
  *                     form in a popover (Local Dev's sudo banner, moved)
  *
@@ -912,13 +912,23 @@ function runEnded(id) {
   if (running.delete(id)) paintRuns();
 }
 
+/**
+ * The chip's count: the runs dock's running tabs (R16) or the run streams
+ * open on the page, whichever is more (a page registers each run in the dock;
+ * a workspace-wide command is one stream feeding several tabs).
+ */
 function paintRuns() {
   const chip = $("den-runs");
   if (!chip) return;
-  const n = running.size;
+  const dock = (sh()?.runs?.list?.() ?? []).filter((r) => r.running);
+  const labels =
+    dock.length >= running.size
+      ? dock.map((r) => r.label)
+      : [...running.values()];
+  const n = labels.length;
   const last = lastRun();
   chip.title = n
-    ? [...running.values()].join(", ")
+    ? labels.join(", ")
     : last
       ? `Last run: ${last.label}`
       : "Runs";
@@ -929,27 +939,12 @@ function paintRuns() {
 }
 
 /**
- * Until the runs dock (dev.21): the page's own output pane (the first
- * visible `[data-den-output]`, which gets `den:show-output` first so a page
- * can open it), else the page that ran the last run, else a toast.
+ * The Runs chip shows and hides the runs dock (R16); returns whether it is
+ * open now. Without the dock (no shell), a toast says where output goes.
  */
 export function showRuns() {
-  const panes = [...document.querySelectorAll("[data-den-output]")];
-  for (const p of panes)
-    p.dispatchEvent(new CustomEvent("den:show-output", { bubbles: true }));
-  const pane = panes.find((p) => p.getClientRects().length > 0);
-  if (pane) {
-    if (!pane.hasAttribute("tabindex")) pane.tabIndex = -1;
-    pane.scrollIntoView?.({ block: "nearest" });
-    pane.focus({ preventScroll: true });
-    return "pane";
-  }
-  const last = lastRun();
-  const here = location.pathname + location.search;
-  if (last?.page && last.page !== here) {
-    go(last.page);
-    return "link";
-  }
+  const runs = sh()?.runs;
+  if (runs?.toggle) return runs.toggle() ? "open" : "closed";
   toast("Nothing has run yet. A page's output shows here.");
   return "none";
 }
@@ -1294,6 +1289,7 @@ export function initTopbar(opts = {}) {
   trackRuns();
   paintChip();
   paintRuns();
+  sh()?.runs?.onChange?.(paintRuns);
   paintLock();
   $("den-search")?.addEventListener("click", openPalette);
   $("den-status")?.addEventListener("click", () =>

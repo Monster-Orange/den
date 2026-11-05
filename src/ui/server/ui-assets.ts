@@ -30,6 +30,7 @@ export const UI_MODULES: readonly string[] = [
   "/settings-registry.js",
   "/settings-page.js",
   "/topbar.js",
+  "/edge-page.js",
 ];
 
 /** URL path → file inside node_modules. */

@@ -1,10 +1,11 @@
 /**
- * Local Dev's output panel takes its own room below the graph; it never
- * covers a card (a consumer's dev.18 run). The repro: a workspace with enough
- * cards to fill the height, a run's output open in the panel (~253px), the
- * graph fitted; the lowest cards' centres hit #output-panel and a real
- * click on one timed out. dev.18's check used three cards and an empty
- * panel, so every card fitted above it anyway.
+ * Local Dev's output (since 0.3.0-dev.30 the shell's runs dock, R16) takes
+ * its own room below the graph; it never covers a card (a consumer's dev.18
+ * run). The repro: a workspace with enough cards to fill the height, a run's
+ * output open in the dock (~233px: the bar and the 170px pre), the graph
+ * fitted; the lowest cards' centres hit the output and a real click on one
+ * timed out. dev.18's check used three cards and an empty panel, so every
+ * card fitted above it anyway.
  *
  * The real web server in a throwaway distribution (one workspace, two
  * repos with two services each, laid out left to right: a column of cards
@@ -153,7 +154,7 @@ afterAll(async () => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-describe("Local Dev's output panel (a consumer's dev.18 run)", () => {
+describe("Local Dev's output, in the runs dock (a consumer's dev.18 run)", () => {
   it("with a run's output open, the lowest card is still the card under the pointer, and clicks", async () => {
     if (!browser) return;
     const ctx = await browser.newContext({
@@ -179,32 +180,42 @@ describe("Local Dev's output panel (a consumer's dev.18 run)", () => {
     );
     await p.waitForSelector(".dg-card");
     await p.waitForTimeout(600);
-    // A run's output tab, selected, with output in it: the panel opens to
-    // its usual ~253px (tab bar, actions, 200px of output).
+    // A run's output tab, selected, with output in it, the dock opened to
+    // its usual ~233px (the bar, 170px of output and its padding).
     await p.evaluate(() => {
-      document.getElementById("tab-bar")!.innerHTML =
-        '<div class="tab active" data-tab="main/shop/api">up shop/api</div>';
-      document.getElementById("output")!.textContent = Array.from(
-        { length: 40 },
-        (_, i) => `› step ${i + 1}… ok`,
-      ).join("\n");
+      const runs = (
+        window as unknown as {
+          denShell: {
+            runs: {
+              start: (id: string, l: string) => void;
+              append: (id: string, t: string) => void;
+              show: () => void;
+            };
+          };
+        }
+      ).denShell.runs;
+      runs.start("main/shop/api", "up shop/api");
+      // A run leaves the dock collapsed (R16a); the engineer opens it.
+      runs.show();
+      for (let i = 0; i < 40; i++)
+        runs.append("main/shop/api", `› step ${i + 1}… ok`);
     });
     await p.waitForTimeout(600);
     const panelH = await p.$eval(
-      "#output-panel",
+      "#den-dock",
       (el) => el.getBoundingClientRect().height,
     );
-    expect(panelH).toBeGreaterThan(240);
-    expect(panelH).toBeLessThan(270);
-    // The graph's viewport ends where the panel begins: they share the
-    // column, the panel never sits over it.
+    expect(panelH).toBeGreaterThan(220);
+    expect(panelH).toBeLessThan(250);
+    // The graph's viewport ends where the dock begins: they share the
+    // column, the dock never sits over it.
     const [vpBottom, panelTop] = await p.evaluate(() => [
       document.querySelector(".dg-vp")!.getBoundingClientRect().bottom,
-      document.getElementById("output-panel")!.getBoundingClientRect().top,
+      document.getElementById("den-dock")!.getBoundingClientRect().top,
     ]);
     expect(vpBottom).toBeLessThanOrEqual(panelTop + 0.5);
 
-    // Every card's centre is that card, not the panel.
+    // Every card's centre is that card, not the dock.
     const hits = await p.$$eval(".dg-card", (cards) =>
       cards.map((c) => {
         const r = c.getBoundingClientRect();
@@ -215,8 +226,8 @@ describe("Local Dev's output panel (a consumer's dev.18 run)", () => {
         return {
           id: (c as HTMLElement).dataset.id ?? c.textContent?.slice(0, 20),
           bottom: Math.round(r.bottom),
-          hit: hit?.closest("#output-panel")
-            ? "output panel"
+          hit: hit?.closest("#den-dock")
+            ? "runs dock"
             : hit?.closest(".dg-card") === c
               ? "card"
               : (hit?.id || hit?.className || "nothing").toString(),

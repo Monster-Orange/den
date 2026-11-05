@@ -397,6 +397,9 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       collapsed: false,
       hidden: ["tests"],
       order: ["logs", "services", "local-dev"],
+      // The runs dock's prefs (R16a): their defaults, unwritten.
+      dock: false,
+      dockHeight: 0,
     });
     // A bad pin or page id is refused and writes nothing.
     for (const shell of [

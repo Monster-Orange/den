@@ -3,6 +3,8 @@
  *
  * This org's edge: routes at `<name>.<edge.domain>`, TLS as `edge.tls` says
  * (none, mkcert or files). `trust` / `untrust` exist only under mkcert.
+ * `routes` lists Den's own routes, then the routers in the included
+ * dynamic files, each with its source file.
  */
 import chalk from "chalk";
 import { readBrand } from "../../shared/brand.js";
@@ -16,8 +18,18 @@ import {
   trustCa,
   untrustCa,
 } from "../../shared/edge/runtime.js";
-import { edgeStatus } from "../../shared/edge/status.js";
+import {
+  includedRouters,
+  type IncludedRouter,
+} from "../../shared/edge/included.js";
+import { edgeRoutes, edgeStatus } from "../../shared/edge/status.js";
 import { tlsYaml } from "../../shared/edge/tls.js";
+
+/** An included router's URLs (the hosts its rule names), else its name. */
+function includedUrl(r: IncludedRouter): string {
+  const scheme = r.tls ? "https://" : "http://";
+  return r.hosts.length ? r.hosts.map((h) => scheme + h).join(", ") : r.name;
+}
 
 export async function cmdEdge(args: string[]): Promise<void> {
   const sub = args[0] ?? "status";
@@ -61,10 +73,19 @@ export async function cmdEdge(args: string[]): Promise<void> {
     case "untrust":
       process.exitCode = untrustCa(cfg);
       return;
-    case "routes":
-      for (const r of edgeStatus(cfg).routes)
+    case "routes": {
+      for (const r of edgeRoutes(cfg))
         console.log(`${r.url.padEnd(52)} → ${r.upstream}`);
+      // Routers in the included dynamic files: Traefik serves them too.
+      const inc = includedRouters(cfg);
+      for (const r of inc.routers)
+        console.log(
+          `${includedUrl(r).padEnd(52)} → ${r.service || "?"}  (${r.file})`,
+        );
+      for (const e of inc.errors)
+        console.log(chalk.yellow(`${e.file}: not read (${e.error})`));
       return;
+    }
     case "status": {
       const st = edgeStatus(cfg);
       console.log(chalk.bold(`${readBrand().name} edge — ${st.org}`));

@@ -112,6 +112,7 @@
       "n.tests": "Tests",
       "n.environments": "Environments",
       "n.releases": "Releases",
+      "n.edge": "Edge",
       "n.settings": "Settings",
       "k.org": "Org",
       "k.ws": "Workspace",
@@ -145,6 +146,19 @@
       "status.down": "{n} down",
       "runs.title": "Runs",
       "runs.n": "{n} running",
+      "runs.none": "No runs",
+      "runs.empty": "Nothing has run yet. Output from any page lands here.",
+      "dock.done": "done in {s}s",
+      "dock.failed": "failed in {s}s",
+      "dock.close": "Hide runs",
+      "dock.show": "Show runs",
+      "dock.copy": "Copy",
+      "dock.copied": "Copied!",
+      "dock.clear": "Clear",
+      "dock.closeRun": "Close {s}",
+      "dock.err": "failed",
+      "dock.last": "Last run: {s} ↗",
+      "dock.resize": "Drag to resize",
       "lock.locked": "Locked",
       "lock.unlocked": "Unlocked",
       "lock.title": "Unlock to start, stop and restart services",
@@ -178,6 +192,7 @@
     settings:
       '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
     page: '<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 9h6M9 13h6"/>',
+    edge: '<path d="M12 3l8 4v5c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V7z"/><path d="M8 12h8M12 8v8"/>',
   };
   function icon(name) {
     var d = ICONS[name] || (/^</.test(name || "") ? name : ICONS.page);
@@ -450,13 +465,24 @@
     collapsed: false,
     hidden: [],
     order: [],
+    // The runs dock (R16a): open or collapsed to its bar, and its height
+    // (0: the prototype's 170px). User prefs, like the pins.
+    dock: false,
+    dockHeight: 0,
+    // Whether the edge is configured (the Edge page's when): null until
+    // known, the last answer cached so the rail doesn't jump.
+    edge: null,
   };
   try {
     var cached = JSON.parse(localStorage.getItem(LS) || "{}");
+    if (typeof cached.edge === "boolean") state.edge = cached.edge;
     if (Array.isArray(cached.pins)) state.pins = cached.pins;
     state.collapsed = cached.collapsed === true;
     if (Array.isArray(cached.hidden)) state.hidden = cached.hidden;
     if (Array.isArray(cached.order)) state.order = cached.order;
+    state.dock = cached.dock === true;
+    if (typeof cached.dockHeight === "number")
+      state.dockHeight = cached.dockHeight;
   } catch (e) {
     /* no storage: the server's copy arrives below */
   }
@@ -469,6 +495,9 @@
           collapsed: state.collapsed,
           hidden: state.hidden,
           order: state.order,
+          dock: state.dock,
+          dockHeight: state.dockHeight,
+          edge: state.edge,
         }),
       );
     } catch (e) {
@@ -574,6 +603,12 @@
   function setCollapsed(on) {
     setState({ collapsed: !!on });
     return saveShell({ collapsed: state.collapsed });
+  }
+  /** The runs dock open or collapsed to its bar (R16a), remembered. */
+  function setDock(on) {
+    dockOpen = !!on;
+    renderDock();
+    return rememberDock();
   }
   /** NAV pages in the rail's order: groups by order, then yours, then theirs. */
   function orderedNav() {
@@ -853,6 +888,19 @@
       order: 20,
       href: "/release",
     },
+    // The Edge page (PL-SPEC §10): only once /api/edge says the edge is
+    // configured (state.edge, from /api/edge?probe=1 below).
+    {
+      id: "edge",
+      label: "n.edge",
+      icon: "edge",
+      group: "ship",
+      order: 30,
+      href: "/edge",
+      when: function (s) {
+        return s.edge === true;
+      },
+    },
   ].forEach(function (n) {
     NAV.push({
       id: n.id,
@@ -862,7 +910,7 @@
       order: n.order,
       href: n.href,
       badge: n.badge || null,
-      when: null,
+      when: n.when || null,
       from: null,
     });
   });
@@ -1437,6 +1485,7 @@
     var els = [
       host.querySelector(".den-top"),
       document.getElementById("den-content"),
+      document.getElementById("den-dock"),
     ];
     els.forEach(function (el) {
       if (!el) return;
@@ -1551,6 +1600,697 @@
   applyCollapsed();
   renderRail();
 
+  // ── the runs dock (R16, 0.3.0-dev.30) ──────────────────────────────────
+  // One output dock for every page, at the foot of the content column
+  // (the prototype's grid area `dock`). A bar: "Runs", the run tabs (mono
+  // 12, a dot that pulses while running) and Show/Hide runs; open, a 170px
+  // <pre> with the selected run's output. It replaces the pages' own output
+  // panes: every run a page starts is a tab here, through denShell.runs.
+  //
+  //   runs.add(id, label, opts)     a tab (no change to its state if it
+  //                                 exists, beyond what opts set)
+  //   runs.start(id, label, opts)   add + running + selected; the dock
+  //                                 stays as it is unless opts.open: true
+  //                                 (R16a); opts.select: false keeps the
+  //                                 selection
+  //   runs.append(id, text, cls?, { key }?)  one line (cls: cmd, err, warn,
+  //                                 done-ok, done-fail, ok, phase); a `key`
+  //                                 replaces that line in place (progress)
+  //   runs.finish(id, { ok })       stops the pulse; ok false is an error.
+  //                                 A run with opts.doneLine (the default
+  //                                 for new callers) gets "✓ done in {s}s"
+  //   runs.set(id, { label, running, error, actions })
+  //   runs.select(id, { open }) (opens only with open: true),
+  //   runs.clear(id), runs.remove(id)
+  //   runs.show(), hide(), toggle(), isOpen(), has(id), list(), selected(),
+  //   runs.text(id), running(), onChange(fn)
+  //
+  // opts: closable (default true: a × on the tab), onClose(id) (the page
+  // decides; else the tab goes), onSelect(id), onClear(id), max (lines
+  // kept, 0 = all), actions [{ id, label, title?, run(id) }] (buttons in
+  // the bar for the selected run, e.g. Stop), doneLine.
+  //
+  // The bar carries Copy and Clear for the selected run (the panes had
+  // them). R16a (Ward QA 2026-11-05): the dock starts collapsed to its bar.
+  // Open/closed and its height are user prefs (/api/settings `shell.dock`,
+  // `shell.dockHeight`, mirrored with the rest of the shell's prefs for the
+  // first paint), so they survive navigation and reloads, per user. A run
+  // starting never opens it: its tab appears and the Runs chip pulses. Only
+  // the engineer opens it: Show runs, the Runs chip, a tab click, or a page
+  // action whose whole point is output (runs.start/select with open: true).
+  // Drag the dock's top edge to resize it, 60px to half the window.
+  var SS_LAST_RUN = "__DEN_CLI__-last-run";
+  var RUNS = [];
+  var runSel = null;
+  var DOCK_H = 170;
+  var dockOpen = state.dock === true;
+  var dockH = state.dockHeight >= 60 ? state.dockHeight : DOCK_H;
+  var runSeqId = 0;
+  var runListeners = [];
+  /** At most half the window (R16a); at least 60px. */
+  function dockCap(h) {
+    var max = Math.max(60, Math.floor((window.innerHeight || 800) * 0.5));
+    return Math.round(Math.max(60, Math.min(h, max)));
+  }
+  var dock = document.createElement("div");
+  dock.className = "den-dock";
+  dock.id = "den-dock";
+  if (dock.setAttribute) {
+    dock.setAttribute("role", "region");
+    dock.setAttribute("aria-label", t("runs.title"));
+  }
+  function placeDock() {
+    if (document.body && document.body.appendChild)
+      document.body.appendChild(dock);
+  }
+  placeDock();
+  // After the page's content (the foot of the column), once it's parsed.
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", placeDock);
+
+  function runById(id) {
+    for (var i = 0; i < RUNS.length; i++) if (RUNS[i].id === id) return RUNS[i];
+    return null;
+  }
+  function selectedRun() {
+    return runById(runSel) || RUNS[RUNS.length - 1] || null;
+  }
+  function runsChanged() {
+    runListeners.forEach(function (fn) {
+      try {
+        fn();
+      } catch (e) {
+        /* a listener's problem */
+      }
+    });
+    try {
+      window.dispatchEvent(new CustomEvent("den:runs"));
+    } catch (e) {
+      /* no CustomEvent */
+    }
+  }
+  /** Open/closed changed by the engineer: the pref follows. */
+  function rememberDock() {
+    if (state.dock === dockOpen) return Promise.resolve(true);
+    state.dock = dockOpen;
+    return saveShell({ dock: dockOpen });
+  }
+  /** The server's prefs arrived: the dock follows them. */
+  function dockFromPrefs() {
+    var h = state.dockHeight >= 60 ? state.dockHeight : DOCK_H;
+    if (dockOpen === (state.dock === true) && h === dockH) return;
+    dockOpen = state.dock === true;
+    dockH = h;
+    var out = outEl();
+    if (out) out.style.height = dockCap(dockH) + "px";
+    renderDock();
+  }
+  function secs(ms) {
+    return (Math.max(0, ms) / 1000).toFixed(1);
+  }
+  function dotClass(r) {
+    if (r.running) return "run";
+    if (r.error) return "bad";
+    if (r.done) return "";
+    return "off";
+  }
+  function runTitle(r) {
+    if (r.running) return r.label;
+    if (r.done && r.endedAt)
+      return (
+        r.label +
+        " · " +
+        t(r.error ? "dock.failed" : "dock.done", {
+          s: secs(r.endedAt - r.startedAt),
+        })
+      );
+    return r.label;
+  }
+  function lastRunHere() {
+    try {
+      var l = JSON.parse(sessionStorage.getItem(SS_LAST_RUN) || "null");
+      var here = location.pathname + location.search;
+      return l && l.page && l.page !== here ? l : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // The bar: redrawn on any run's state change (not on every line).
+  function barHtml() {
+    var sel = selectedRun();
+    var tabs = RUNS.length
+      ? RUNS.map(function (r) {
+          var on = sel && sel.id === r.id;
+          return (
+            '<span class="den-rtab-w">' +
+            '<button type="button" class="den-rtab' +
+            (r.closable ? " den-x" : "") +
+            '" role="tab" id="den-rtab-' +
+            r.n +
+            '" data-rsel="' +
+            r.n +
+            '" aria-selected="' +
+            (on ? "true" : "false") +
+            '" aria-controls="den-dock-out" tabindex="' +
+            (on ? "0" : "-1") +
+            '" title="' +
+            esc(runTitle(r)) +
+            '"' +
+            (r.closable ? ' aria-keyshortcuts="Delete"' : "") +
+            '><span class="den-dot ' +
+            dotClass(r) +
+            '" aria-hidden="true"></span>' +
+            esc(r.label) +
+            (r.running
+              ? '<span class="den-sr">, ' +
+                esc(t("runs.n", { n: 1 })) +
+                "</span>"
+              : r.error
+                ? '<span class="den-sr">, ' + esc(t("dock.err")) + "</span>"
+                : "") +
+            "</button>" +
+            (r.closable
+              ? '<button type="button" class="den-rtab-x" tabindex="-1" data-rclose="' +
+                r.n +
+                '" aria-label="' +
+                esc(t("dock.closeRun", { s: r.label })) +
+                '" title="' +
+                esc(t("dock.closeRun", { s: r.label })) +
+                '"><span aria-hidden="true">×</span></button>'
+              : "") +
+            "</span>"
+          );
+        }).join("")
+      : "<span>" + esc(t("runs.none")) + "</span>";
+    var acts = "";
+    if (dockOpen && sel) {
+      (sel.actions || []).forEach(function (a, i) {
+        acts +=
+          '<button type="button" class="den-ib" data-ract="' +
+          i +
+          '"' +
+          (a.title ? ' title="' + esc(a.title) + '"' : "") +
+          ">" +
+          esc(a.label) +
+          "</button>";
+      });
+      acts +=
+        '<button type="button" class="den-ib" data-dock="copy">' +
+        esc(t("dock.copy")) +
+        "</button>" +
+        '<button type="button" class="den-ib" data-dock="clear">' +
+        esc(t("dock.clear")) +
+        "</button>";
+    }
+    return (
+      "<b>" +
+      esc(t("runs.title")) +
+      "</b>" +
+      '<div class="den-runs-l" role="tablist" aria-label="' +
+      esc(t("runs.title")) +
+      '">' +
+      tabs +
+      "</div>" +
+      (acts ? '<span class="den-dock-acts">' + acts + "</span>" : "") +
+      '<button type="button" class="den-ib" data-act="dock" aria-expanded="' +
+      (dockOpen ? "true" : "false") +
+      '" aria-controls="den-dock-out">' +
+      esc(dockOpen ? t("dock.close") + " ▾" : t("dock.show") + " ▴") +
+      "</button>"
+    );
+  }
+  var shownRun = null;
+  var pending = [];
+  var rafId = null;
+  function lineSpan(l) {
+    var span = document.createElement("span");
+    if (l.cls) span.className = l.cls;
+    span.textContent = l.text + "\n";
+    l.el = span;
+    return span;
+  }
+  function outEl() {
+    return dock.querySelector ? dock.querySelector("#den-dock-out") : null;
+  }
+  function fillOut() {
+    var out = outEl();
+    if (!out) return;
+    pending = [];
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    var sel = selectedRun();
+    shownRun = sel;
+    out.innerHTML = "";
+    if (sel) out.setAttribute("aria-labelledby", "den-rtab-" + sel.n);
+    else out.removeAttribute("aria-labelledby");
+    if (!sel) {
+      out.textContent = t("runs.empty");
+      var last = lastRunHere();
+      if (last) {
+        out.appendChild(document.createTextNode(" "));
+        var a = document.createElement("a");
+        a.href = last.page;
+        a.textContent = t("dock.last", { s: last.label });
+        out.appendChild(a);
+      }
+      return;
+    }
+    var frag = document.createDocumentFragment();
+    sel.lines.forEach(function (l) {
+      frag.appendChild(lineSpan(l));
+    });
+    out.appendChild(frag);
+    if (sel.autoScroll) out.scrollTop = out.scrollHeight;
+  }
+  function flush() {
+    rafId = null;
+    var out = outEl();
+    var batch = pending;
+    pending = [];
+    if (!out || !shownRun || !batch.length) return;
+    var frag = document.createDocumentFragment();
+    batch.forEach(function (l) {
+      if (shownRun.lines.indexOf(l) >= 0) frag.appendChild(lineSpan(l));
+    });
+    out.appendChild(frag);
+    if (shownRun.max)
+      while (out.childElementCount > shownRun.max)
+        out.removeChild(out.firstChild);
+    if (shownRun.autoScroll) out.scrollTop = out.scrollHeight;
+  }
+  function renderDock() {
+    if (!dock.querySelector) return;
+    var bar = dock.querySelector(".den-bar");
+    if (!bar) {
+      dock.innerHTML =
+        '<div class="den-dock-grip" aria-hidden="true" title="' +
+        esc(t("dock.resize")) +
+        '"></div><div class="den-bar"></div>';
+      bar = dock.querySelector(".den-bar");
+    }
+    var focusSel =
+      document.activeElement && dock.contains(document.activeElement)
+        ? document.activeElement.getAttribute("data-rsel") ||
+          document.activeElement.getAttribute("data-act") ||
+          document.activeElement.getAttribute("data-dock")
+        : null;
+    bar.innerHTML = barHtml();
+    dock.classList.toggle("open", dockOpen);
+    var out = outEl();
+    if (dockOpen && !out) {
+      out = document.createElement("pre");
+      out.id = "den-dock-out";
+      out.setAttribute("role", "tabpanel");
+      out.tabIndex = 0;
+      out.style.height = dockCap(dockH) + "px";
+      out.addEventListener("scroll", function () {
+        if (!shownRun) return;
+        shownRun.autoScroll =
+          out.scrollHeight - out.scrollTop <= out.clientHeight + 20;
+      });
+      dock.appendChild(out);
+      fillOut();
+    } else if (!dockOpen && out) {
+      out.remove();
+      shownRun = null;
+    } else if (out && selectedRun() !== shownRun) fillOut();
+    // Keep focus on what had it (a redraw replaces the bar's buttons).
+    if (focusSel) {
+      var back =
+        bar.querySelector('[data-rsel="' + focusSel + '"]') ||
+        bar.querySelector('[data-act="' + focusSel + '"]') ||
+        bar.querySelector('[data-dock="' + focusSel + '"]');
+      if (back) back.focus();
+    }
+    var on = bar.querySelector('.den-rtab[aria-selected="true"]');
+    if (on && on.scrollIntoView)
+      on.scrollIntoView({ block: "nearest", inline: "nearest" });
+    var chip = document.getElementById("den-runs");
+    if (chip) {
+      chip.setAttribute("aria-expanded", dockOpen ? "true" : "false");
+      chip.setAttribute("aria-controls", "den-dock");
+    }
+  }
+
+  function addRun(id, label, opts) {
+    id = String(id);
+    opts = opts || {};
+    var r = runById(id);
+    if (!r) {
+      r = {
+        id: id,
+        n: ++runSeqId,
+        label: String(label == null ? id : label),
+        lines: [],
+        running: false,
+        done: false,
+        error: false,
+        startedAt: Date.now(),
+        endedAt: null,
+        autoScroll: true,
+        closable: true,
+        doneLine: true,
+        max: 0,
+        actions: [],
+        keyed: {},
+      };
+      RUNS.push(r);
+    } else if (label != null) r.label = String(label);
+    [
+      "closable",
+      "doneLine",
+      "max",
+      "onClose",
+      "onSelect",
+      "onClear",
+      "actions",
+    ].forEach(function (k) {
+      if (opts[k] !== undefined) r[k] = opts[k];
+    });
+    if (opts.running !== undefined) r.running = !!opts.running;
+    if (opts.error !== undefined) r.error = !!opts.error;
+    return r;
+  }
+  var runsApi = {
+    add: function (id, label, opts) {
+      var r = addRun(id, label, opts);
+      if (opts && opts.select) runSel = r.id;
+      if (opts && opts.open === true) {
+        dockOpen = true;
+        rememberDock();
+      }
+      renderDock();
+      runsChanged();
+      return r.id;
+    },
+    start: function (id, label, opts) {
+      opts = opts || {};
+      var r = addRun(id, label, opts);
+      r.running = opts.running !== false;
+      r.done = false;
+      r.error = false;
+      r.startedAt = Date.now();
+      r.endedAt = null;
+      if (opts.clear) {
+        r.lines = [];
+        r.keyed = {};
+        if (shownRun === r) shownRun = null;
+      }
+      if (opts.select !== false) runSel = r.id;
+      // R16a: a run starting never opens the dock; open: true is for an
+      // action whose whole point is output (e.g. a service's Logs).
+      if (opts.open === true) {
+        dockOpen = true;
+        rememberDock();
+      }
+      renderDock();
+      runsChanged();
+      return r.id;
+    },
+    append: function (id, text, cls, o) {
+      var r = runById(String(id));
+      if (!r) return;
+      var key = o && o.key;
+      if (key != null && r.keyed[key] && r.lines.indexOf(r.keyed[key]) >= 0) {
+        var l0 = r.keyed[key];
+        l0.text = String(text);
+        if (l0.el && shownRun === r) l0.el.textContent = l0.text + "\n";
+        if (shownRun === r && r.autoScroll) {
+          var o0 = outEl();
+          if (o0) o0.scrollTop = o0.scrollHeight;
+        }
+        return;
+      }
+      var l = { text: String(text), cls: cls || "" };
+      if (key != null) r.keyed[key] = l;
+      r.lines.push(l);
+      if (r.max && r.lines.length > r.max)
+        r.lines.splice(0, r.lines.length - r.max);
+      if (shownRun === r) {
+        pending.push(l);
+        if (rafId === null) rafId = requestAnimationFrame(flush);
+      }
+    },
+    finish: function (id, o) {
+      var r = runById(String(id));
+      if (!r) return;
+      var ok = !(o && o.ok === false);
+      r.running = false;
+      r.done = true;
+      r.error = !ok;
+      r.endedAt = Date.now();
+      if (r.doneLine)
+        runsApi.append(
+          r.id,
+          (ok ? "✓ " : "✗ ") +
+            t(ok ? "dock.done" : "dock.failed", {
+              s: secs(r.endedAt - r.startedAt),
+            }),
+          ok ? "done-ok" : "done-fail",
+        );
+      renderDock();
+      runsChanged();
+    },
+    set: function (id, o) {
+      var r = runById(String(id));
+      if (!r || !o) return;
+      if (o.label != null) r.label = String(o.label);
+      if (o.running !== undefined) r.running = !!o.running;
+      if (o.error !== undefined) r.error = !!o.error;
+      if (o.actions !== undefined) r.actions = o.actions || [];
+      renderDock();
+      runsChanged();
+    },
+    select: function (id, o) {
+      var r = runById(String(id));
+      if (!r) return;
+      runSel = r.id;
+      if (o && o.open === true) {
+        dockOpen = true;
+        rememberDock();
+      }
+      renderDock();
+    },
+    clear: function (id) {
+      var r = runById(String(id == null ? runSel : id));
+      if (!r) return;
+      r.lines = [];
+      r.keyed = {};
+      if (shownRun === r) fillOut();
+    },
+    remove: function (id) {
+      var r = runById(String(id));
+      if (!r) return;
+      RUNS.splice(RUNS.indexOf(r), 1);
+      if (runSel === r.id) {
+        var last = RUNS[RUNS.length - 1];
+        runSel = last ? last.id : null;
+      }
+      if (shownRun === r) shownRun = null;
+      renderDock();
+      runsChanged();
+    },
+    show: function () {
+      dockOpen = true;
+      rememberDock();
+      renderDock();
+    },
+    hide: function () {
+      dockOpen = false;
+      rememberDock();
+      renderDock();
+    },
+    toggle: function () {
+      dockOpen = !dockOpen;
+      rememberDock();
+      renderDock();
+      return dockOpen;
+    },
+    isOpen: function () {
+      return dockOpen;
+    },
+    has: function (id) {
+      return !!runById(String(id));
+    },
+    list: function () {
+      return RUNS.map(function (r) {
+        return {
+          id: r.id,
+          label: r.label,
+          running: r.running,
+          done: r.done,
+          error: r.error,
+          lines: r.lines.length,
+        };
+      });
+    },
+    selected: function () {
+      var r = selectedRun();
+      return r ? r.id : null;
+    },
+    text: function (id) {
+      var r = runById(String(id == null ? runSel : id)) || selectedRun();
+      return r
+        ? r.lines
+            .map(function (l) {
+              return l.text + "\n";
+            })
+            .join("")
+        : "";
+    },
+    running: function () {
+      return RUNS.filter(function (r) {
+        return r.running;
+      }).length;
+    },
+    onChange: function (fn) {
+      if (typeof fn === "function") runListeners.push(fn);
+    },
+  };
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      ta.remove();
+      if (ok) resolve();
+      else reject(new Error("copy failed"));
+    });
+  }
+  function runOfEl(el, attr) {
+    var n = Number(el.getAttribute(attr));
+    for (var i = 0; i < RUNS.length; i++) if (RUNS[i].n === n) return RUNS[i];
+    return null;
+  }
+  function closeRun(r) {
+    if (typeof r.onClose === "function") r.onClose(r.id);
+    else runsApi.remove(r.id);
+  }
+  if (dock.addEventListener) {
+    dock.addEventListener("click", function (e) {
+      var tgt = e.target && e.target.closest ? e.target : null;
+      if (!tgt) return;
+      var x = tgt.closest("[data-rclose]");
+      if (x) {
+        var rx = runOfEl(x, "data-rclose");
+        if (rx) closeRun(rx);
+        return;
+      }
+      var tab = tgt.closest("[data-rsel]");
+      if (tab) {
+        var rt = runOfEl(tab, "data-rsel");
+        if (!rt) return;
+        runsApi.select(rt.id, { open: true });
+        if (typeof rt.onSelect === "function") rt.onSelect(rt.id);
+        return;
+      }
+      if (tgt.closest('[data-act="dock"]')) {
+        runsApi.toggle();
+        return;
+      }
+      var act = tgt.closest("[data-ract]");
+      var sel = selectedRun();
+      if (act && sel) {
+        var a = (sel.actions || [])[Number(act.getAttribute("data-ract"))];
+        if (a && typeof a.run === "function") a.run(sel.id);
+        return;
+      }
+      var d = tgt.closest("[data-dock]");
+      if (!d || !sel) return;
+      if (d.getAttribute("data-dock") === "clear") {
+        runsApi.clear(sel.id);
+        if (typeof sel.onClear === "function") sel.onClear(sel.id);
+      } else {
+        var btn = d;
+        copyText(runsApi.text(sel.id))
+          .then(function () {
+            btn.textContent = t("dock.copied");
+            setTimeout(function () {
+              btn.textContent = t("dock.copy");
+            }, 1500);
+          })
+          .catch(function () {});
+      }
+    });
+    // The run tabs: one tab stop; ←/→, Home and End move (and select);
+    // Delete closes a closable run.
+    dock.addEventListener("keydown", function (e) {
+      var tab = e.target && e.target.closest && e.target.closest("[data-rsel]");
+      if (!tab) return;
+      var r = runOfEl(tab, "data-rsel");
+      var i = RUNS.indexOf(r);
+      var next =
+        e.key === "ArrowRight"
+          ? (i + 1) % RUNS.length
+          : e.key === "ArrowLeft"
+            ? (i - 1 + RUNS.length) % RUNS.length
+            : e.key === "Home"
+              ? 0
+              : e.key === "End"
+                ? RUNS.length - 1
+                : -1;
+      if (e.key === "Delete" && r && r.closable) {
+        e.preventDefault();
+        closeRun(r);
+        var stop = dock.querySelector('.den-rtab[tabindex="0"]');
+        if (stop) stop.focus();
+        return;
+      }
+      if (next < 0 || !RUNS[next]) return;
+      e.preventDefault();
+      runsApi.select(RUNS[next].id, { open: dockOpen });
+      if (typeof RUNS[next].onSelect === "function")
+        RUNS[next].onSelect(RUNS[next].id);
+      var to = dock.querySelector('[data-rsel="' + RUNS[next].n + '"]');
+      if (to) to.focus();
+    });
+    // Drag the top edge to resize (Local Dev's handle): 60px to half the
+    // window (R16a), remembered (shell.dockHeight).
+    var drag = null;
+    dock.addEventListener("mousedown", function (e) {
+      if (!e.target.closest || !e.target.closest(".den-dock-grip")) return;
+      var out = outEl();
+      if (!out) return;
+      drag = { y: e.clientY, h: out.offsetHeight };
+      document.body.style.cursor = "ns-resize";
+      document.body.style.userSelect = "none";
+      e.preventDefault();
+    });
+    document.addEventListener("mousemove", function (e) {
+      if (!drag) return;
+      var out = outEl();
+      if (!out) return;
+      dockH = dockCap(drag.h + drag.y - e.clientY);
+      out.style.height = dockH + "px";
+    });
+    document.addEventListener("mouseup", function () {
+      if (!drag) return;
+      drag = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      if (state.dockHeight !== dockH) {
+        state.dockHeight = dockH;
+        saveShell({ dockHeight: dockH });
+      }
+    });
+  }
+  renderDock();
+
   window.denShell = {
     registerGroup: registerGroup,
     registerNav: registerNav,
@@ -1596,6 +2336,9 @@
     setNavPrefs: setNavPrefs,
     setPins: setPins,
     setCollapsed: setCollapsed,
+    setDock: setDock,
+    /** The runs dock (R16): every page's output, one path. */
+    runs: runsApi,
     registerSettingsCategory: registerSettingsCategory,
     registerSetting: registerSetting,
     settings: function () {
@@ -1652,7 +2395,24 @@
           collapsed: s.shell.collapsed === true,
           hidden: Array.isArray(s.shell.hidden) ? s.shell.hidden : [],
           order: Array.isArray(s.shell.order) ? s.shell.order : [],
+          dock: s.shell.dock === true,
+          dockHeight:
+            typeof s.shell.dockHeight === "number" ? s.shell.dockHeight : 0,
         });
+        remember();
+        dockFromPrefs();
+      })
+      .catch(function () {});
+
+  // The Edge page shows once the edge is configured (no Docker asked).
+  if (typeof fetch === "function")
+    fetch("/api/edge?probe=1")
+      .then(function (r) {
+        return r.ok ? r.json() : null;
+      })
+      .then(function (e) {
+        if (!e) return;
+        setState({ edge: e.configured === true });
         remember();
       })
       .catch(function () {});
@@ -1667,6 +2427,9 @@
     "body.den-has-shell { --den-top-h: 48px; --den-rail-cw: 216px;",
     "  --den-rail-w: calc(var(--den-rail-cw) + 17px); padding-left: var(--den-rail-w); }",
     "body.den-has-shell.den-rail-collapsed { --den-rail-cw: 56px; }",
+    // A column on every page (most pages are one already), so the runs
+    // dock sits at the foot even when the content is short.
+    "body.den-has-shell { display: flex; flex-direction: column; min-height: 100vh; }",
     ".den-shell { display: contents; }",
     ".den-top, .den-rail { font: 14px/1.45 var(--sans); }",
     ".den-top :focus-visible, .den-rail :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
@@ -1887,6 +2650,42 @@
     "  background: var(--raised); border: 1px solid var(--border-strong); border-radius: 8px;",
     "  padding: 8px 14px; box-shadow: var(--shadow); z-index: 60; font: 14px/1.45 var(--sans);",
     "  color: var(--text); }",
+    // The runs dock (.dock, .bar, .runs, .rtab, pre: R16), at the foot of
+    // the content column; content-box as in the prototype.
+    ".den-dock { flex: none; order: 99; position: sticky; bottom: 0; z-index: 14; min-width: 0;",
+    "  border-top: 1px solid var(--border); background: var(--surface); font: 14px/1.45 var(--sans);",
+    "  color: var(--text); box-sizing: content-box; }",
+    ".den-dock :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
+    ".den-dock .den-bar { display: flex; align-items: center; gap: 10px; box-sizing: content-box;",
+    "  padding: 6px max(16px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) 16px;",
+    "  font-size: 13px; color: var(--muted); }",
+    ".den-dock .den-bar b { color: var(--text); font-weight: 500; }",
+    ".den-dock .den-runs-l { display: flex; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; }",
+    ".den-dock .den-rtab-w { position: relative; display: inline-flex; flex: none; }",
+    ".den-dock .den-rtab { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--border);",
+    "  border-radius: 6px; padding: 2px 8px; background: var(--bg); cursor: pointer; white-space: nowrap;",
+    "  font: 12px var(--mono); color: inherit; box-sizing: content-box; margin: 0; }",
+    ".den-dock .den-rtab[aria-selected='true'] { border-color: var(--accent); }",
+    ".den-dock .den-rtab .den-dot { margin: 0; }",
+    // A run closes from its tab (Local Dev's tabs did): room for the ×.
+    ".den-dock .den-rtab.den-x { padding-right: 22px; }",
+    ".den-dock .den-rtab-x { position: absolute; top: 0; bottom: 0; right: 4px; display: flex; align-items: center;",
+    "  padding: 0 3px; border: 0; background: none; cursor: pointer; font: 13px var(--sans); color: var(--faint); }",
+    ".den-dock .den-rtab-x:hover { color: var(--bad); }",
+    ".den-dock .den-dock-acts { display: flex; gap: 2px; flex: none; }",
+    ".den-dock pre { margin: 0; height: 170px; overflow: auto; max-height: 50vh; padding: 10px 16px; font: 12px/1.5 var(--mono);",
+    "  background: var(--sunken); border-top: 1px solid var(--border); color: var(--muted);",
+    "  box-sizing: content-box; white-space: pre-wrap; word-break: break-all; }",
+    ".den-dock pre a { color: var(--accent-text); }",
+    // The panes' line classes, kept.
+    ".den-dock pre .cmd { color: var(--accent-text); }",
+    ".den-dock pre .err, .den-dock pre .done-fail { color: var(--bad); }",
+    ".den-dock pre .warn { color: var(--warn); }",
+    ".den-dock pre .ok, .den-dock pre .done-ok { color: var(--ok); }",
+    ".den-dock pre .phase { color: var(--text); font-weight: 600; }",
+    ".den-dock-grip { display: none; position: absolute; left: 0; right: 0; top: -3px; height: 6px;",
+    "  cursor: ns-resize; z-index: 1; }",
+    ".den-dock.open .den-dock-grip { display: block; }",
     // Narrow (the prototype's 860 and 720px steps): chip labels hide, the
     // dots stay; then the scope hides and the search is its icon.
     // Den's chips are wider than the prototype's (the full version, real

@@ -11,7 +11,11 @@ import {
   type ReadonlyRouteDeps,
 } from "../../../src/ui/server/readonly-routes.js";
 
-const calls: { stacks: unknown[]; plan: unknown[] } = { stacks: [], plan: [] };
+const calls: { stacks: unknown[]; plan: unknown[]; edgeConfig: number } = {
+  stacks: [],
+  plan: [],
+  edgeConfig: 0,
+};
 
 const deps: ReadonlyRouteDeps = {
   workspaceExists: (name) => name === "default",
@@ -54,6 +58,9 @@ const deps: ReadonlyRouteDeps = {
     certIssued: true,
     caTrusted: null,
   }),
+  edgeConfig: () => {
+    calls.edgeConfig++;
+  },
   actions: () => [
     {
       ts: "2026-11-04T09:00:00.000Z",
@@ -175,6 +182,41 @@ describe("/api/edge", () => {
       up: true,
       certNames: ["acme.localhost", "*.acme.localhost"],
     });
+  });
+
+  it("?probe=1: only whether the edge is configured, Docker never asked (the rail's Edge page)", async () => {
+    const before = calls.edgeConfig;
+    const r = await get("/api/edge?probe=1");
+    expect(r.status).toBe(200);
+    expect(r.json).toEqual({ configured: true });
+    expect(calls.edgeConfig).toBe(before + 1);
+  });
+
+  it("?probe=1 with no edge block: configured false with the reason", async () => {
+    const r = await new Promise<{ status: number; json: unknown }>(
+      (resolve) => {
+        const s = http.createServer((req, res) => {
+          const url = new URL(req.url ?? "/", "http://localhost");
+          void handleReadonlyRoutes(req, res, url.pathname, url, {
+            ...deps,
+            edge: () => {
+              throw new Error("probe must not read the full status");
+            },
+            edgeConfig: () => {
+              throw new Error("no `edge:` block");
+            },
+          });
+        });
+        s.listen(0, "localhost", async () => {
+          const port = (s.address() as AddressInfo).port;
+          const res = await fetch(`http://localhost:${port}/api/edge?probe=1`);
+          const json = await res.json();
+          s.close();
+          resolve({ status: res.status, json });
+        });
+      },
+    );
+    expect(r.json).toEqual({ configured: false, error: "no `edge:` block" });
   });
 
   it("no edge configured: configured false with the reason, not a 500", async () => {

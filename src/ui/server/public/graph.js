@@ -184,6 +184,25 @@ function loadElk() {
   return elkLoading;
 }
 
+// ── maximize (R23, Ward QA 2026-11-05) ────────────────────────────────────
+// The page owns the layout: hooks.maximize = { isOn(), toggle() } gives the
+// zoom group a Maximize button (F on the page; Esc restores). Without it,
+// no button.
+function maxButton() {
+  const m = hooks.maximize;
+  if (!m) return "";
+  const on = !!m.isOn?.();
+  return `<button data-z="max" aria-pressed="${on}" aria-keyshortcuts="F" aria-label="Maximize graph" title="${on ? "Restore (Esc)" : "Maximize graph (F)"}">${on ? "⤡" : "⤢"}</button>`;
+}
+/** Repaint the Maximize button after the page changed the layout. */
+export function graphMaximized(on) {
+  const b = $('[data-z="max"]');
+  if (!b) return;
+  b.setAttribute("aria-pressed", String(!!on));
+  b.title = on ? "Restore (Esc)" : "Maximize graph (F)";
+  b.textContent = on ? "⤡" : "⤢";
+}
+
 // ── mount ────────────────────────────────────────────────────────────────
 export function mountGraph(el, data, pageHooks) {
   hooks = pageHooks || {};
@@ -210,7 +229,7 @@ export function mountGraph(el, data, pageHooks) {
       <div class="dg-vp" tabindex="0" aria-label="Service graph. Drag to pan, scroll to move, Ctrl or Cmd + scroll to zoom.">
         <div class="dg-world"><svg aria-hidden="true"></svg></div>
         <div class="dg-legend"></div>
-        <div class="dg-zoom" role="group" aria-label="Zoom"><button data-z="out" aria-label="Zoom out">−</button><button data-z="100" aria-label="Reset zoom to 100%">100%</button><button data-z="in" aria-label="Zoom in">+</button><button data-z="fit">Fit</button></div>
+        <div class="dg-zoom" role="group" aria-label="Zoom"><button data-z="out" aria-label="Zoom out">−</button><button data-z="100" aria-label="Reset zoom to 100%">100%</button><button data-z="in" aria-label="Zoom in">+</button><button data-z="fit">Fit</button>${maxButton()}</div>
       </div>
       <aside class="dg-panel" hidden aria-label="Details"></aside>
     </div>
@@ -976,6 +995,7 @@ function wire() {
       applyView();
     }
     if (z === "fit") fit(zoomFloor);
+    if (z === "max") hooks.maximize?.toggle?.();
   });
   // panel resize (360–760px, remembered)
   let rs = null;
@@ -1009,9 +1029,13 @@ document.addEventListener("keydown", (e) => {
       const more = menuOwner.get(m) ?? m.previousElementSibling;
       closeMenus();
       more?.focus();
+      e.preventDefault(); // handled: the page's Esc (restore) waits
       return;
     }
-    if (st.sel) closeDetail();
+    if (st.sel) {
+      closeDetail();
+      e.preventDefault();
+    }
     return;
   }
   if (

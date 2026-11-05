@@ -8,6 +8,42 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **The runs dock** (0.3.0-dev.30, R16). One output dock for every page, at
+  the foot of the content column, ported from the shell prototype: a bar
+  with "Runs", the run tabs (12px mono, a dot that pulses while running,
+  red when the run failed) and Show/Hide runs; open, a 170px output. The
+  Runs chip (R7) shows and hides it and counts the running tabs; an empty
+  dock links to the page that ran the last run. The bar carries Copy and
+  Clear for the selected run, a tab closes with its × (or Delete), ←/→ move
+  between tabs, and the dock's top edge drags to resize it. Pages and
+  plugins use one path, `denShell.runs` (`start`, `append`, `finish`, `set`,
+  `select`, `clear`, `remove`, `show`/`hide`/`toggle`, `list`, `onChange`);
+  a run started there gets "✓ done in {s}s" when it finishes. Since R16a
+  (below) the dock starts collapsed and open/closed is a user pref.
+- **The Edge page** (0.3.0-dev.30, PL-SPEC §10). A built-in page in the
+  rail's Ship group, shown once `/api/edge` reports the edge configured
+  (`/api/edge?probe=1`, which asks no Docker). Read-only: the container and
+  its ports, the TLS strategy (`edge.tls`: none, mkcert or files) with
+  where it came from (set, mapped from the legacy keys, or implicit), CA
+  trust and the CA's directory, the cert and its names, the domains, and
+  every route: Den's own, then the routers in the included dynamic files
+  (`edge include`), each marked by its source file.
+- **Room for Local Dev's graph** (0.3.0-dev.30, R23, Ward QA 2026-11-05).
+  The workspace list, the output and two toolbar rows left the graph at 40%
+  Fit. The workspace list now collapses to a 40px strip (« in its header;
+  » brings it back), remembered per user (`graph.workspaces`: `open` or
+  `collapsed`, on the Settings page under Graph). A Maximize button in the
+  graph's zoom group, or `F` with focus outside a field, hides the list,
+  the workspace header, the action row and the tabs; Esc restores. Fit
+  measures the whole area, so its zoom rises once maximized.
+- **Included routers in `edge routes` and `/api/edge`** (0.3.0-dev.30,
+  PL-SPEC §10, from a consumer review). Routers defined in the distribution's
+  included dynamic files are served by Traefik but were never listed. Den
+  now reads their `http.routers` (read-only) and lists them after its own
+  routes with their source file; `/api/edge` adds `included`,
+  `includedErrors` (a file that doesn't parse is named, never fatal) and
+  `tls.from` / `tls.ca`. The rendered edge config is unchanged.
+
 - **`<cli> relocate <repo> <path>`** (0.3.0-dev.26, from a consumer). A
   checkout moved on disk: every workspace's dev-managed entries for the repo
   (bare and `<repo>/<svc>`) now point at the new path, keeping each entry's
@@ -402,6 +438,31 @@ config and manifest changes a distribution must make to move to it under
   secret value. Exit 1 when a strategy that will be used cannot work.
 
 ### Changed
+
+- **The pages' output panes are gone; their runs are tabs in the runs
+  dock** (0.3.0-dev.30, R16). Local Dev's output panel (one tab per
+  system, log tails, the dismissed tabs per workspace), Services' output
+  pane, Tests' output pane and its service command strip (Stop / Detach is
+  now a button in the dock's bar while the command runs), and Releases'
+  deploy log (each deploy session is a tab: selecting one attaches its
+  log, its × closes the session; the session chips are gone) all write to
+  the dock. The output lines are the same text with the same line classes;
+  k6's progress lines still update in place, Local Dev still keeps its
+  last 1000 lines per tab. Auto-scroll now pauses on every page when you
+  scroll up (Local Dev's rule).
+- **The runs dock starts collapsed, and stays as you leave it** (0.3.0-dev.30,
+  R16a, Ward QA 2026-11-05). A run starting never opens it: its tab
+  appears and the Runs chip pulses, and you open it (Show runs, the chip or
+  a tab). Only an action whose whole point is output opens it: Logs on a
+  service (Services) and a card's output in Local Dev's graph. Open or
+  closed and its height are user prefs (`shell.dock`, `shell.dockHeight`
+  in `/api/settings`, the Settings page's Navigation row "Open the runs
+  dock"), so they hold across pages, reloads and browsers; nothing is kept
+  per browser tab any more. Dragging its top edge stops at half the window.
+- **Settings: the search and the category list stay put** (0.3.0-dev.30,
+  R21a, Ward QA 2026-11-05). The page header with its search box and the
+  category list on the left are sticky while the rows scroll; a category
+  click scrolls its section to just below the header.
 
 - **Existing edge configs render exactly as before** (0.3.0-dev.25). The
   legacy keys map to `edge.tls` (EXT-1 rule 6): `issue_cert: false` is

@@ -17,7 +17,9 @@
  * and ⌘K palette, the rail, its group
  * headings, items in their default, hover and current states, the icon,
  * the current bar, a pinned row and its dot, a badge, and the collapsed
- * rail; on --page /settings also the Settings page: page header, title
+ * rail; the runs dock open with one running run (0.3.0-dev.30, R16: the
+ * dock, its bar, title, run list, a run tab and its pulsing dot, Show/Hide
+ * runs and the 170px output); on --page /settings also the Settings page: page header, title
  * and sub line, the search box, sections and their headings and text, the
  * segmented buttons, a row and its label, the swatches and the navigation
  * list) and compares their computed font-size, font-weight, line-height,
@@ -32,7 +34,8 @@
  * --shots writes each pair of full-page screenshots side by side, and a
  * second pair with the Workspace menu open (-menu), and one each with the
  * user menu, the lock popover, the status drawer and the palette open
- * (-user, -lock, -drawer, -palette). The
+ * (-user, -lock, -drawer, -palette), and one with the runs dock open
+ * (-dock). The
  * prototype's web fonts are blocked (both sides use the fallbacks) unless
  * --proto-fonts 1: fonts are a theme's assets, not the shell's CSS.
  * Exit code 1 on any failure. Needs Playwright's chromium.
@@ -598,6 +601,81 @@ const PAIRS = [
     ".den-ni[data-pin] .den-lbl",
     ["fontSize", "lineHeight"],
   ],
+  // The runs dock, open, one run running (R16).
+  [
+    "dock",
+    ".dock",
+    ".den-dock",
+    ["borderTopWidth", "@bg=--surface"],
+    { state: "dock" },
+  ],
+  [
+    "dock bar",
+    ".dock .bar",
+    ".den-dock .den-bar",
+    [...BOX, "columnGap", "fontSize", "@color=--muted"],
+    { state: "dock" },
+  ],
+  [
+    "dock title",
+    ".dock .bar b",
+    ".den-dock .den-bar b",
+    ["fontWeight", "fontSize", "@color=--text"],
+    { state: "dock" },
+  ],
+  [
+    "dock runs",
+    ".dock .runs",
+    ".den-dock .den-runs-l",
+    ["columnGap"],
+    { state: "dock" },
+  ],
+  [
+    "run tab",
+    ".dock .rtab",
+    ".den-dock .den-rtab",
+    [
+      ...TYPE,
+      ...BOX,
+      "columnGap",
+      "borderTopLeftRadius",
+      "borderTopWidth",
+      "@bg=--bg",
+    ],
+    { state: "dock" },
+  ],
+  [
+    "run tab dot (running)",
+    ".dock .rtab .dot.run",
+    ".den-dock .den-rtab .den-dot.run",
+    ["width", "height", "@bg=--accent", "animationDuration"],
+    { state: "dock" },
+  ],
+  [
+    "dock toggle",
+    '.dock [data-act="dock"]',
+    '.den-dock [data-act="dock"]',
+    [...TYPE, ...BOX, "borderTopLeftRadius", "@color=--muted"],
+    { state: "dock" },
+  ],
+  [
+    "dock output",
+    ".dock pre",
+    ".den-dock pre",
+    [
+      "height",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft",
+      "fontSize",
+      "lineHeight",
+      "borderTopWidth",
+      "@bg=--sunken",
+      "@color=--muted",
+    ],
+    { state: "dock" },
+  ],
   ["collapsed rail", ".rail", ".den-rail", ["width"], { state: "collapsed" }],
   [
     "collapsed item",
@@ -784,6 +862,23 @@ const ALLOWLIST = {
   // a11y)". Checked at 1440 and 1024.
   "menu item (checked ✓)|content":
     'the ✓ has alt text "" (content: "✓" / ""): drawn, not read; aria-checked says it (SA dev.18)',
+  "run tab|paddingRight":
+    "22px, not 8px: room for the tab's × (a run closes from its tab, as Local Dev's tabs did; the prototype's runs can't close)",
+};
+
+/**
+ * Deliberate deviations with no pair to measure: what the real pages add
+ * that the prototype has no counterpart for. Listed with each run.
+ */
+const UNPAIRED = {
+  "R23 Local Dev graph Maximize (⤢ in the zoom group, F, Esc restores)":
+    "Ward QA 2026-11-05: the workspace list, the output and two toolbar rows left the graph at 40% Fit; the prototype has no maximize control",
+  "R23 Local Dev workspace list collapses to a 40px strip (« / »)":
+    "Ward QA 2026-11-05: room for the graph; the prototype's Local Dev list does not collapse",
+  "R16a runs dock starts collapsed; open/closed and height are user prefs":
+    "Ward QA 2026-11-05: a run starting never opens it (the chip pulses, its tab appears); measured open, as the prototype draws it",
+  "R21a Settings: the page header (search) and the category list are sticky":
+    "Ward QA 2026-11-05: they stay put while the rows scroll; sizes unchanged",
 };
 
 const num = (v) => {
@@ -970,6 +1065,9 @@ async function main() {
           await sideBySide(browser, proto.p, real.p, width, `-${state}`);
           await closeMenus(proto.p, real.p);
         }
+        await openDock(proto.p, real.p);
+        await sideBySide(browser, proto.p, real.p, width, "-dock");
+        await closeDock(proto.p, real.p);
       }
       for (const [name, ps, rs, props, opts = {}] of PAIRS) {
         if (opts.state === "collapsed") await toggleRail(proto.p, real.p);
@@ -978,6 +1076,7 @@ async function main() {
           await real.p.hover(rs);
         }
         if (opts.state === "menu") await openMenus(proto.p, real.p);
+        if (opts.state === "dock") await openDock(proto.p, real.p);
         if (OVERLAYS[opts.state])
           await openOverlay(proto.p, real.p, opts.state);
         if (opts.inject)
@@ -1011,6 +1110,7 @@ async function main() {
         }
         if (opts.state === "menu" || OVERLAYS[opts.state])
           await closeMenus(proto.p, real.p);
+        if (opts.state === "dock") await closeDock(proto.p, real.p);
         if (opts.state === "collapsed") await toggleRail(proto.p, real.p);
         for (const prop of props) {
           const pv = a ? a[prop] : "missing";
@@ -1062,6 +1162,9 @@ async function main() {
         w(r.real, 26) +
         r.result,
     );
+  console.log("deviations with no pair (each with its reason):");
+  for (const [what, why] of Object.entries(UNPAIRED))
+    console.log(`  ${what}: ${why}`);
   console.log(`${rows.length} checks, ${failed} failed`);
   if (args.json) fs.writeFileSync(args.json, JSON.stringify(rows, null, 2));
   process.exit(failed ? 1 : 0);
@@ -1124,6 +1227,55 @@ async function openOverlay(protoPage, realPage, state) {
   await protoPage.mouse.move(0, 0);
   await realPage.mouse.move(0, 0);
   await protoPage.waitForTimeout(50);
+}
+
+/**
+ * The runs dock open with one run running, on both sides: the prototype's
+ * state (S) set directly (its Restart asks to unlock first), Den's through
+ * denShell.runs. Closing removes the run again.
+ */
+async function openDock(protoPage, realPage) {
+  await protoPage.evaluate(() => {
+    /* global S, renderDock, renderTop */
+    S.runs = [
+      {
+        id: 1,
+        label: "restart shop/web",
+        done: false,
+        lines: ["$ den restart shop/web", "› resolving manifest… ok"],
+      },
+    ];
+    S.runSel = 1;
+    S.dockOpen = true;
+    renderDock();
+    renderTop();
+  });
+  await realPage.evaluate(() => {
+    const r = window.denShell.runs;
+    r.start("fid", "restart shop/web");
+    r.append("fid", "$ den restart shop/web");
+    r.append("fid", "› resolving manifest… ok");
+    // A run leaves the dock collapsed (R16a): open it, as the engineer would.
+    r.show();
+  });
+  await protoPage.waitForSelector(".dock pre");
+  await realPage.waitForSelector(".den-dock pre");
+  await protoPage.mouse.move(0, 0);
+  await realPage.mouse.move(0, 0);
+  await realPage.waitForTimeout(50);
+}
+async function closeDock(protoPage, realPage) {
+  await protoPage.evaluate(() => {
+    S.runs = [];
+    S.runSel = null;
+    S.dockOpen = false;
+    renderDock();
+    renderTop();
+  });
+  await realPage.evaluate(() => {
+    window.denShell.runs.remove("fid");
+    window.denShell.runs.hide();
+  });
 }
 
 /** One PNG: the prototype on the left, the real page on the right. */

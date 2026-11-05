@@ -716,6 +716,11 @@ async function handleRequest(
     return serveFile(res, path.join(PUBLIC_DIR, "release.html"));
   }
 
+  // The Edge page (PL-SPEC §10): read-only, from /api/edge.
+  if (pathname === "/edge" || pathname === "/edge.html") {
+    return serveFile(res, path.join(PUBLIC_DIR, "edge.html"));
+  }
+
   if (pathname === "/logs") {
     return serveFile(res, path.join(PUBLIC_DIR, "logs.html"));
   }
@@ -2989,7 +2994,7 @@ async function handleRequest(
   // POST /api/settings  body: { editor?, terminal?, editor_overrides?, graph?, appearance?, shell? }
   //   graph: { direction, group, density, panelWidth } (see graph-prefs.ts)
   //   appearance: { theme: id | null, mode: system|dark|light } (appearance-prefs.ts)
-  //   shell: { pins, collapsed, hidden, order } (shell-prefs.ts)
+  //   shell: { pins, collapsed, hidden, order, dock, dockHeight } (shell-prefs.ts)
   // It writes config/local/user.yml only. `distribution` is read-only: what
   // the org config (tracked) sets, for the Settings page's Distribution rows.
   // Every key POST accepts has a row in the Settings page's registry

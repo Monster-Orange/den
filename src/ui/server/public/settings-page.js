@@ -721,7 +721,11 @@ export async function mountSettings(deps) {
   });
   function spy() {
     const box = scroller.getBoundingClientRect();
-    const top = box.top + 24;
+    // Below the sticky header (R21a): a section is current once it reaches
+    // the header's foot, where a category click scrolls it to.
+    const under =
+      parseFloat(getComputedStyle(scroller).getPropertyValue("--set-top")) || 0;
+    const top = box.top + under + 24;
     const all = [...body.querySelectorAll("section[data-cat]")];
     let cur = null;
     all.forEach((s) => {

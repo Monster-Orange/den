@@ -17,6 +17,7 @@ describe("graphPrefs (what GET returns)", () => {
       group: "org",
       density: "detailed",
       panelWidth: 440,
+      workspaces: "open",
     });
   });
 
@@ -32,6 +33,21 @@ describe("graphPrefs (what GET returns)", () => {
     expect(
       graphPrefs({ direction: "sideways", density: 3, panelWidth: 99999 }),
     ).toEqual(GRAPH_DEFAULTS);
+  });
+});
+
+describe("Local Dev's workspace list (R23, Ward QA 2026-11-05)", () => {
+  it("open or collapsed; anything else is refused, a stored oddity is open", () => {
+    expect(
+      mergeGraphPrefs(GRAPH_DEFAULTS, { workspaces: "collapsed" }),
+    ).toEqual({
+      ok: true,
+      value: { ...GRAPH_DEFAULTS, workspaces: "collapsed" },
+    });
+    expect(mergeGraphPrefs(GRAPH_DEFAULTS, { workspaces: "hidden" }).ok).toBe(
+      false,
+    );
+    expect(graphPrefs({ workspaces: 40 }).workspaces).toBe("open");
   });
 });
 

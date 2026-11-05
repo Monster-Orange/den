@@ -517,8 +517,10 @@
       .tests-main.layout-top {
         flex-direction: column;
       }
+      /* The output is the shell's runs dock (R16): the controls take their
+         own height. */
       .tests-main.layout-top .left-panel {
-        flex: 0 0 42%;
+        flex: 0 0 auto;
         border-bottom: 1px solid var(--border);
       }
       .tests-main.layout-top .report-pane {
@@ -541,36 +543,6 @@
       }
       .tests-main.layout-side .pillars {
         flex-wrap: wrap;
-      }
-
-      .output-pane {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-      }
-      #test-output {
-        flex: 1;
-        overflow-y: auto;
-        padding: 10px 14px;
-        font-family: var(--mono);
-        font-size: 11.5px;
-        line-height: 1.65;
-        white-space: pre-wrap;
-        word-break: break-all;
-        min-height: 0;
-      }
-      #test-output .cmd {
-        color: var(--accent-text);
-      }
-      #test-output .err {
-        color: var(--bad);
-      }
-      #test-output .done-ok {
-        color: var(--ok);
-      }
-      #test-output .done-fail {
-        color: var(--bad);
       }
 
       .divider {
@@ -884,40 +856,6 @@
         text-align: center;
       }
 
-      /* exec output strip */
-      .cmd-strip {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        border-top: 1px solid var(--border);
-      }
-      .cmd-strip.hidden {
-        display: none;
-      }
-      #cmd-output {
-        flex: 1;
-        overflow-y: auto;
-        padding: 6px 14px;
-        font-family: var(--mono);
-        font-size: 11px;
-        line-height: 1.55;
-        white-space: pre-wrap;
-        word-break: break-all;
-      }
-      #cmd-output .cmd {
-        color: var(--accent-text);
-      }
-      #cmd-output .err {
-        color: var(--bad);
-      }
-      #cmd-output .done-ok {
-        color: var(--ok);
-      }
-      #cmd-output .done-fail {
-        color: var(--bad);
-      }
-
       /* ── LOGS VIEW ─────────────────────────────────────────────────────────── */
       #view-logs {
         flex-direction: column;
@@ -1172,35 +1110,6 @@
           </div>
 
           <div class="test-sources-bar" id="test-sources-bar"></div>
-
-          <div class="output-pane" data-den-output>
-            <div class="pane-bar">
-              <span>Output</span>
-              <button id="clear-test-output">Clear</button>
-              <button
-                id="copy-test-output"
-                title="Copy to clipboard"
-                style="padding: 2px 5px; line-height: 1"
-              >
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 13 13"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.3"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <rect x="4" y="0.5" width="8.5" height="8.5" rx="1.5" />
-                  <path
-                    d="M8.5 9v2.5a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h2.5"
-                  />
-                </svg>
-              </button>
-            </div>
-            <pre id="test-output"></pre>
-          </div>
         </div>
 
         <div class="divider" id="divider"></div>
@@ -1238,15 +1147,7 @@
         <div class="empty-state">Loading services&#8230;</div>
       </div>
 
-      <!-- Command output strip — shown when an exec command is running -->
-      <div class="cmd-strip hidden" id="cmd-strip" data-den-output>
-        <div class="pane-bar">
-          <span id="cmd-strip-title">Command Output</span>
-          <button id="stop-cmd" style="display: none">Stop</button>
-          <button id="clear-cmd-output">Clear</button>
-        </div>
-        <pre id="cmd-output"></pre>
-      </div>
+      <!-- A command's output is a tab in the shell's runs dock (R16). -->
     </div>
 
     <script type="module">
@@ -1258,7 +1159,6 @@
         initLogBadge,
         storeOpenLog,
         initChangelog,
-        copyToClipboard,
         envReady,
       } from "/header.js";
       import { ownersLabel } from "/workspace-picker.js";
@@ -1913,6 +1813,12 @@
         setRunStatus("running", "running\u2026");
         document.getElementById("run-btn").disabled = true;
         resetReportPane();
+        // The output is one tab in the shell's runs dock (R16), kept across
+        // runs as the pane was; Clear there also clears the raw report.
+        runs().start(TEST_RUN, `tests ${pillar}`, {
+          doneLine: false,
+          onClear: clearTestOutput,
+        });
         testAppendLine(
           `\n\u25b6 ${pillar}${label ? " / " + label : ""} \u00b7 ${env}\n`,
           "cmd",
@@ -1938,6 +1844,7 @@
               ok ? "passed" : "failed",
               ok ? `passed (${dur})` : `failed (${dur})`,
             );
+            runs().finish(TEST_RUN, { ok });
             document.getElementById("run-btn").disabled = false;
             testEs.close();
             testEs = null;
@@ -1964,6 +1871,7 @@
         };
         testEs.onerror = () => {
           testAppendLine("Connection closed", "err");
+          runs().finish(TEST_RUN, { ok: false });
           setRunStatus("failed", "error");
           document.getElementById("run-btn").disabled = false;
           testEs?.close();
@@ -1971,12 +1879,12 @@
         };
       }
 
-      const _progressSpans = {};
+      const TEST_RUN = "tests";
+      const runs = () => window.denShell.runs;
       const _k6ProgressRe = /^(\S+)\s+[\[✓✗]/;
       const _k6RunningRe = /^running \(\d+m[\d.]+s\), \d+\/\d+ VUs,/;
 
       function testAppendLine(text, cls) {
-        const out = document.getElementById("test-output");
         const raw = document.getElementById("report-raw-output");
 
         // k6 "running (...)" status lines are redundant with the progress bar;
@@ -1986,60 +1894,24 @@
           return;
         }
 
-        // k6 progress/result lines: update a single DOM element per scenario
-        // so the UI shows a compact live-updating progress bar.
+        // k6 progress/result lines: one line per scenario, updated in place
+        // (a keyed line in the dock), so the UI shows a compact live-updating
+        // progress bar.
         const pm = !cls && text.match(_k6ProgressRe);
         if (pm) {
-          const key = pm[1];
-          if (_progressSpans[key]) {
-            _progressSpans[key].textContent = text + "\n";
-            out.scrollTop = out.scrollHeight;
-            return;
-          }
-          const span = document.createElement("span");
-          span.className = "k6-progress";
-          span.textContent = text + "\n";
-          _progressSpans[key] = span;
-          out.appendChild(span);
-          out.scrollTop = out.scrollHeight;
+          runs().append(TEST_RUN, text, "k6-progress", { key: pm[1] });
           return;
         }
 
-        const span = document.createElement("span");
-        if (cls) span.className = cls;
-        span.textContent = text + "\n";
-        out.appendChild(span);
-        out.scrollTop = out.scrollHeight;
+        runs().append(TEST_RUN, text, cls);
         raw.textContent += text + "\n";
         raw.scrollTop = raw.scrollHeight;
       }
 
-      document
-        .getElementById("copy-test-output")
-        .addEventListener("click", () => {
-          const text = document.getElementById("test-output").innerText;
-          const btn = document.getElementById("copy-test-output");
-          const icon =
-            '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="0.5" width="8.5" height="8.5" rx="1.5"/><path d="M8.5 9v2.5a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h2.5"/></svg>';
-          const check =
-            '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="var(--ok)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7l3 3 6-7"/></svg>';
-          copyToClipboard(text)
-            .then(() => {
-              btn.innerHTML = check;
-              setTimeout(() => {
-                btn.innerHTML = icon;
-              }, 1500);
-            })
-            .catch(() => {});
-        });
-
-      document
-        .getElementById("clear-test-output")
-        .addEventListener("click", () => {
-          document.getElementById("test-output").innerHTML = "";
+      /** The dock's Clear on the tests tab: the raw report output too. */
+      function clearTestOutput() {
           document.getElementById("report-raw-output").textContent = "";
-          Object.keys(_progressSpans).forEach((k) => delete _progressSpans[k]);
-        });
+      }
 
       function setRunStatus(state, text) {
         document.getElementById("run-dot").className = `dot ${state}`;
@@ -2300,12 +2172,23 @@
         if (el) el.className = `dot ${state}`;
       }
 
-      document.getElementById("stop-cmd").addEventListener("click", () => {
-        const sb = document.getElementById("stop-cmd");
-        const detachable = sb.dataset.detachable !== "0";
+      // The running command's tab carries Stop (Detach for a daemon) in the
+      // dock's bar while it runs.
+      let execRun = null;
+      let execDetachable = true;
+      function stopAction() {
+        return [
+          {
+            id: "stop",
+            label: execDetachable ? "Detach" : "Stop",
+            run: stopCmd,
+          },
+        ];
+      }
+      function stopCmd() {
+        const detachable = execDetachable;
         execEs?.close();
         execEs = null;
-        sb.style.display = "none";
         document
           .querySelectorAll('.cmd-btn[data-type="exec"]')
           .forEach((b) => (b.disabled = false));
@@ -2314,7 +2197,8 @@
           detachable ? "--- Detached ---" : "--- Stopped ---",
           "err",
         );
-      });
+        if (execRun) runs().set(execRun, { running: false, actions: [] });
+      }
 
       // ── Service exec ──────────────────────────────────────────────────────────
       function runExec(repo, service, cmd) {
@@ -2328,15 +2212,19 @@
         document
           .querySelectorAll('.cmd-btn[data-type="exec"]')
           .forEach((b) => (b.disabled = true));
-        const stopBtn = document.getElementById("stop-cmd");
-        stopBtn.style.display = "";
-        stopBtn.textContent = "Stop";
         setSvcDot(repo, service, "running");
 
-        const strip = document.getElementById("cmd-strip");
-        strip.classList.remove("hidden");
-        document.getElementById("cmd-strip-title").textContent =
-          `${repo} / ${service} \u00b7 ${cmd}`;
+        // The run's tab in the dock: one per service, the latest command.
+        if (execRun) runs().set(execRun, { running: false, actions: [] });
+        execDetachable = false;
+        execRun = runs().start(
+          `${repo}/${service}`,
+          `${cmd} ${repo}/${service}`,
+          {
+            doneLine: false,
+            actions: [{ id: "stop", label: "Stop", run: stopCmd }],
+          },
+        );
         document.getElementById("svc-status").textContent =
           `running ${service}:${cmd}\u2026`;
 
@@ -2351,9 +2239,8 @@
           const msg = JSON.parse(e.data);
           if (msg.type === "cmd") {
             cmdAppendLine(msg.text, "cmd");
-            const sb = document.getElementById("stop-cmd");
-            sb.textContent = msg.detached ? "Detach" : "Stop";
-            sb.dataset.detachable = msg.detached ? "1" : "0";
+            execDetachable = !!msg.detached;
+            runs().set(execRun, { actions: stopAction() });
           } else if (msg.type === "line") {
             cmdAppendLine(msg.text, "");
           } else if (msg.type === "error") {
@@ -2367,7 +2254,8 @@
             );
             setSvcDot(repo, service, ok ? "ok" : "err");
             document.getElementById("svc-status").textContent = "idle";
-            document.getElementById("stop-cmd").style.display = "none";
+            runs().set(execRun, { actions: [] });
+            runs().finish(execRun, { ok });
             document
               .querySelectorAll('.cmd-btn[data-type="exec"]')
               .forEach((b) => (b.disabled = false));
@@ -2379,7 +2267,8 @@
           cmdAppendLine("Connection closed", "err");
           setSvcDot(repo, service, "err");
           document.getElementById("svc-status").textContent = "idle";
-          document.getElementById("stop-cmd").style.display = "none";
+          runs().set(execRun, { actions: [] });
+          runs().finish(execRun, { ok: false });
           document
             .querySelectorAll('.cmd-btn[data-type="exec"]')
             .forEach((b) => (b.disabled = false));
@@ -2389,20 +2278,8 @@
       }
 
       function cmdAppendLine(text, cls) {
-        const out = document.getElementById("cmd-output");
-        const span = document.createElement("span");
-        if (cls) span.className = cls;
-        span.textContent = text + "\n";
-        out.appendChild(span);
-        out.scrollTop = out.scrollHeight;
+        if (execRun) runs().append(execRun, text, cls);
       }
-
-      document
-        .getElementById("clear-cmd-output")
-        .addEventListener("click", () => {
-          document.getElementById("cmd-output").innerHTML = "";
-          document.getElementById("cmd-strip").classList.add("hidden");
-        });
 
       // ── Helpers ───────────────────────────────────────────────────────────────
       function fmtDuration(ms) {

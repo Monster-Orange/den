@@ -327,13 +327,22 @@ describe("the pages", () => {
   });
 
   it.each([
-    ["local-dev.html", '<div id="output-panel" data-den-output>'],
-    ["services.html", '<div class="output-pane" data-den-output>'],
-    ["index.html", '<div class="output-pane" data-den-output>'],
-    ["release.html", 'id="output-pane" data-den-output>'],
-  ])("%s marks its output pane for the Runs chip", (f, marker) => {
-    expect(read(f)).toContain(marker);
-  });
+    ["local-dev.html", "runs().append(address, text, cls)"],
+    ["services.html", "runs().append(runId, text, cls)"],
+    ["index.html", "runs().append(TEST_RUN, text, cls)"],
+    ["index.html", "runs().append(execRun, text, cls)"],
+    ["release.html", "runs().append(curRun, text, cls)"],
+  ])(
+    "%s keeps no output pane of its own: its runs go to the shell's dock (R16)",
+    (f, call) => {
+      const html = read(f);
+      expect(html).toContain(call);
+      expect(html).toContain("window.denShell.runs");
+      expect(html).not.toMatch(
+        /data-den-output|id="output-panel"|id="output-pane"|id="test-output"|id="cmd-output"|<pre id="output"/,
+      );
+    },
+  );
 
   it("is served", async () => {
     const { UI_MODULES } = await import("../../../src/ui/server/ui-assets.js");

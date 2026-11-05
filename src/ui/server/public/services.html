@@ -113,9 +113,12 @@
       }
 
       /* ── Service cards ────────────────────────────────────────────────────── */
+      /* The cards take the page; output is the shell's runs dock (R16). */
       .services-pane {
         padding: 12px 14px;
-        flex-shrink: 0;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
         display: flex;
         flex-direction: column;
         gap: 14px;
@@ -303,74 +306,6 @@
         font-size: 12px;
         text-align: center;
       }
-
-      /* ── Pane bar ─────────────────────────────────────────────────────────── */
-      .pane-bar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 3px 12px;
-        background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-      }
-      .pane-bar span {
-        font-size: 10px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        color: var(--muted);
-      }
-      .pane-bar .pane-status {
-        font-weight: 400;
-        text-transform: none;
-        letter-spacing: 0;
-        margin: 0 auto 0 8px;
-      }
-      .pane-bar button {
-        background: none;
-        border: none;
-        color: var(--muted);
-        font-size: 11px;
-        cursor: pointer;
-        padding: 2px 6px;
-        border-radius: 3px;
-      }
-      .pane-bar button:hover {
-        color: var(--text);
-        background: var(--border);
-      }
-
-      /* ── Output pane ──────────────────────────────────────────────────────── */
-      .output-pane {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-      }
-      #output {
-        flex: 1;
-        overflow-y: auto;
-        padding: 10px 14px;
-        font-family: var(--mono);
-        font-size: 11.5px;
-        line-height: 1.65;
-        white-space: pre-wrap;
-        word-break: break-all;
-        min-height: 0;
-      }
-      #output .cmd {
-        color: var(--accent-text);
-      }
-      #output .err {
-        color: var(--bad);
-      }
-      #output .done-ok {
-        color: var(--ok);
-      }
-      #output .done-fail {
-        color: var(--bad);
-      }
     </style>
   </head>
   <body>
@@ -385,16 +320,6 @@
     <div class="page-main">
       <div class="services-pane" id="services-pane">
         <div class="empty-state">Loading services…</div>
-      </div>
-
-      <div class="pane-bar">
-        <span>Output</span>
-        <span id="status-text" class="pane-status">idle</span>
-        <button onclick="clearOutput()">Clear</button>
-      </div>
-
-      <div class="output-pane" data-den-output>
-        <pre id="output"></pre>
       </div>
     </div>
 
@@ -412,6 +337,10 @@
       import { ownersLabel } from "/workspace-picker.js";
 
       let es = null;
+      // The run tab `es` feeds in the shell's runs dock (R16): one per
+      // service, its label the latest command ("restart shop/web").
+      let runId = null;
+      const runs = () => window.denShell.runs;
 
       // Release any open SSE socket on reload / navigation / bfcache-enter so the
       // reloaded page isn't starved of a connection by a lingering stream.
@@ -828,16 +757,28 @@
       }
 
       // ── Run command ───────────────────────────────────────────────────────────
-      function runExec(repo, service, cmd, btn) {
+      /** The previous stream's tab stops pulsing: a new action replaced it. */
+      function endStream() {
         if (es) {
           es.close();
           es = null;
+          if (runId) runs().set(runId, { running: false });
         }
+      }
+
+      function runExec(repo, service, cmd, btn) {
+        endStream();
         const env = document.getElementById("env-sel").value;
 
         disableAllButtons();
         setDot(repo, service, "running");
-        setStatus(`running ${service}:${cmd}…`);
+        runId = runs().start(
+          `${repo}/${service}`,
+          `${cmd} ${repo}/${service}`,
+          {
+            doneLine: false,
+          },
+        );
         appendLine(`\n▶ ${repo}/${service} · ${cmd} · ${env}\n`, "cmd");
 
         const params = new URLSearchParams({ repo, service, cmd, env });
@@ -846,10 +787,7 @@
       }
 
       function runLogs(repo, service, btn) {
-        if (es) {
-          es.close();
-          es = null;
-        }
+        endStream();
         const env = document.getElementById("env-sel").value;
 
         // A log tail is a continuous stream, not a command. It never emits
@@ -858,7 +796,17 @@
         // nothing about health, so the dot is left to the health poll rather
         // than being forced to "running". Starting any other action closes this
         // stream (both runners close `es` first).
-        setStatus(`streaming ${service} logs — start any command to stop`);
+        // A tail is a stream, not a run: its tab doesn't pulse.
+        runId = runs().start(
+          `${repo}/${service}`,
+          `logs ${repo}/${service}`,
+          {
+            running: false,
+            doneLine: false,
+            // Clicking Logs is for its output: the dock opens (R16a).
+            open: true,
+          },
+        );
         appendLine(`\n▶ ${repo}/${service} logs · ${env}\n`, "cmd");
 
         const params = new URLSearchParams({ repo, service, env });
@@ -870,6 +818,8 @@
         // Streams (log tails) never disabled the buttons and never own the dot,
         // so they must not re-enable or repaint either.
         const isStream = opts.stream === true;
+        const id = runId;
+        const appendLine = (text, cls) => runs().append(id, text, cls);
         evtSrc.onmessage = (e) => {
           const msg = JSON.parse(e.data);
           if (msg.type === "cmd") {
@@ -889,8 +839,8 @@
             if (!isStream) {
               setDot(repo, service, ok ? "ok" : "err");
               enableAllButtons();
-            }
-            setStatus("idle");
+              runs().finish(id, { ok });
+            } else runs().set(id, { running: false });
             evtSrc.close();
             es = null;
           }
@@ -901,30 +851,19 @@
           if (!isStream) {
             setDot(repo, service, "err");
             enableAllButtons();
-          }
-          setStatus("idle");
+            runs().finish(id, { ok: false });
+          } else runs().set(id, { running: false });
           evtSrc?.close();
           es = null;
         };
       }
 
-      // ── Output ────────────────────────────────────────────────────────────────
+      // ── Output: the run's tab in the shell's runs dock ─────────────────────────
       function appendLine(text, cls) {
-        const out = document.getElementById("output");
-        const span = document.createElement("span");
-        if (cls) span.className = cls;
-        span.textContent = text + "\n";
-        out.appendChild(span);
-        out.scrollTop = out.scrollHeight;
-      }
-      function clearOutput() {
-        document.getElementById("output").innerHTML = "";
+        if (runId) runs().append(runId, text, cls);
       }
 
-      // ── Status / dots ─────────────────────────────────────────────────────────
-      function setStatus(text) {
-        document.getElementById("status-text").textContent = text;
-      }
+      // ── Dots ──────────────────────────────────────────────────────────────────
       function setDot(repo, service, state) {
         const el = document.getElementById(`dot-${repo}-${service}`);
         if (el) el.className = `dot ${state}`;

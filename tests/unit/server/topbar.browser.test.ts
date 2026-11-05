@@ -698,11 +698,9 @@ describe("the user menu (R10) and Runs (R7)", () => {
     await p.context().close();
   }, 30_000);
 
-  it("Runs counts a run's stream until it ends, and shows the page's output", async () => {
+  it("Runs counts a run's stream until it ends, and toggles the runs dock (R16)", async () => {
     if (!browser) return;
-    const { p } = await mount({
-      after: '<div id="out" data-den-output style="height:40px">output</div>',
-    });
+    const { p } = await mount();
     expect(await text(p, "#den-runs")).toBe("Runs");
     await p.evaluate(() => {
       (window as unknown as { __es: EventSource }).__es = new EventSource(
@@ -729,20 +727,34 @@ describe("the user menu (R10) and Runs (R7)", () => {
         "Last run: done-now shop/web",
     );
     expect(await text(p, "#den-runs")).toBe("Runs");
+    // The chip opens the dock and closes it again (aria-expanded says so).
+    expect(await p.getAttribute("#den-runs", "aria-expanded")).toBe("false");
     await p.click("#den-runs");
-    expect(await focused(p)).toBe("out");
-    // A page without a pane links to the page that ran the last run.
-    await p.evaluate(() => document.getElementById("out")!.remove());
+    await p.waitForSelector("#den-dock #den-dock-out");
+    expect(await p.getAttribute("#den-runs", "aria-expanded")).toBe("true");
+    expect(await p.getAttribute("#den-runs", "aria-controls")).toBe("den-dock");
+    expect(await text(p, "#den-dock-out")).toMatch(
+      /^Nothing has run yet\. Output from any page lands here\./,
+    );
+    await p.click("#den-runs");
+    await p.waitForSelector("#den-dock-out", { state: "detached" });
+    // An empty dock links to the page that ran the last run; the link lands.
     await p.evaluate(() =>
       sessionStorage.setItem(
         "__DEN_CLI__-last-run",
-        JSON.stringify({ label: "up", page: "/local-dev", at: 1 }),
+        JSON.stringify({ label: "up shop", page: "/local-dev", at: 1 }),
       ),
     );
+    await p.click("#den-runs");
+    await p.waitForSelector('#den-dock-out a[href="/local-dev"]');
+    expect(await text(p, "#den-dock-out a")).toBe("Last run: up shop ↗");
     await Promise.all([
       p.waitForURL("http://den.test/local-dev"),
-      p.click("#den-runs"),
+      p.click("#den-dock-out a"),
     ]);
+    await p.waitForSelector(
+      '.den-ni[data-nav="local-dev"][aria-current="page"]',
+    );
     await p.context().close();
   }, 30_000);
 });
@@ -774,12 +786,19 @@ describe("criterion 5: the overlays only read", () => {
       { path: "/api/settings", body: { appearance: { mode: "light" } } },
       { path: "/api/settings", body: { appearance: { theme: "paper" } } },
     ]);
-    // Nothing reached a service, workspace, edge or restart route.
+    // Nothing reached a service, workspace, edge or restart route. The
+    // shell's one read of /api/edge (GET, the rail's Edge page asks whether
+    // an edge is configured, dev.30) is a page load's, and only reads.
+    expect(reqs.filter((r) => r.startsWith("GET /api/edge"))).toEqual([
+      "GET /api/edge",
+    ]);
     expect(
-      reqs.filter((r) =>
-        /\/api\/(service|workspace|workspaces|edge|web\/restart|run|release|local-dev)\b/.test(
-          r,
-        ),
+      reqs.filter(
+        (r) =>
+          r !== "GET /api/edge" &&
+          /\/api\/(service|workspace|workspaces|edge|web\/restart|run|release|local-dev)\b/.test(
+            r,
+          ),
       ),
     ).toEqual([]);
     await p.context().close();

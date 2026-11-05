@@ -296,8 +296,31 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.shell.getState().collapsed === true,
     write: (v, ctx) => ctx.shell.setCollapsed(v),
   },
+  {
+    id: "shell.dock",
+    category: "navigation",
+    label: "Open the runs dock",
+    description:
+      "The output of runs, at the foot of every page. Off, it is just its bar: a run's tab appears and the Runs chip pulses, and you open it. Drag its top edge to resize it, up to half the window.",
+    keywords: ["runs", "dock", "output", "log", "panel", "console", "height"],
+    scope: "user",
+    control: { type: "toggle" },
+    keys: ["shell.dock", "shell.dockHeight"],
+    read: (ctx) => ctx.shell.getState().dock === true,
+    write: (v, ctx) => ctx.shell.setDock(v),
+  },
 
   // ── Graph ──────────────────────────────────────────────────────────────
+  graphRow(
+    "workspaces",
+    "Workspace list",
+    "Local Dev's workspace list, open or collapsed to a strip so the graph gets the width.",
+    ["workspaces", "list", "sidebar", "collapse", "strip", "local dev"],
+    seg([
+      { value: "open", label: "Open" },
+      { value: "collapsed", label: "Collapsed" },
+    ]),
+  ),
   graphRow(
     "direction",
     "Direction",

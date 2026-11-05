@@ -333,16 +333,19 @@ describe("one main landmark (a consumer's dev.17 run)", () => {
 });
 
 describe("Local Dev (a consumer's dev.17 run)", () => {
-  it("the output panel never covers a graph card", async () => {
+  it("the runs dock (its output) never covers a graph card", async () => {
     if (!browser) return;
     const { p } = await open("/local-dev", { width: 1440, height: 640 });
     await p.waitForSelector(".dg-card");
     await p.waitForTimeout(500);
-    // A run opens the panel: its tab replaces the empty-state line.
-    await p.evaluate(() => {
-      const bar = document.getElementById("tab-bar")!;
-      bar.innerHTML = '<button class="tab active">up shop</button>';
-    });
+    // A run opens the dock (R16): its tab and its output.
+    await p.evaluate(() =>
+      (
+        window as unknown as {
+          denShell: { runs: { start: (id: string, l: string) => void } };
+        }
+      ).denShell.runs.start("shop", "up shop"),
+    );
     await p.waitForTimeout(500);
     const hits = await p.$$eval(".dg-card", (cards) =>
       cards.map((c) => {
@@ -351,8 +354,8 @@ describe("Local Dev (a consumer's dev.17 run)", () => {
           r.left + r.width / 2,
           r.top + r.height / 2,
         );
-        return hit?.closest("#output-panel")
-          ? "output panel"
+        return hit?.closest("#den-dock")
+          ? "runs dock"
           : hit?.closest(".dg-card") === c
             ? "card"
             : (hit?.className ?? "nothing");

@@ -14,6 +14,11 @@ export interface GraphPrefs {
   density: "detailed" | "compact";
   /** Details panel width in px. */
   panelWidth: number;
+  /**
+   * Local Dev's workspace list: open, or collapsed to a 40px strip (R23,
+   * 0.3.0-dev.30, Ward QA 2026-11-05), so the graph gets the width.
+   */
+  workspaces: "open" | "collapsed";
 }
 
 export const GRAPH_DEFAULTS: GraphPrefs = {
@@ -21,12 +26,14 @@ export const GRAPH_DEFAULTS: GraphPrefs = {
   group: "org",
   density: "detailed",
   panelWidth: 440,
+  workspaces: "open",
 };
 
 const CHOICES = {
   direction: ["down", "right"],
   group: ["org", "app"],
   density: ["detailed", "compact"],
+  workspaces: ["open", "collapsed"],
 } as const;
 
 const PANEL_MIN = 360;

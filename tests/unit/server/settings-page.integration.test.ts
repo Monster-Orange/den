@@ -641,6 +641,52 @@ describe("aria-current holds your pick while the page scrolls (SA's dev.21 run)"
   }, 30_000);
 });
 
+describe("R21a (Ward QA 2026-11-05): the search and the category list stay put", () => {
+  it("scrolled to the foot, the search box and the categories are still in view, below the bar, and the search still clicks", async () => {
+    if (!browser) return;
+    const { p } = await open("/settings");
+    const at = () =>
+      p.evaluate(() => {
+        const r = (id: string) =>
+          document.getElementById(id)!.getBoundingClientRect();
+        const box = r("den-content");
+        return {
+          scroll: document.getElementById("den-content")!.scrollTop,
+          top: Math.round(box.top),
+          q: Math.round(r("set-q").top),
+          qBottom: Math.round(r("set-q").bottom),
+          ph: Math.round(
+            document.querySelector(".ph")!.getBoundingClientRect().bottom,
+          ),
+          nav: Math.round(r("set-nav").top),
+          navBottom: Math.round(r("set-nav").bottom),
+        };
+      });
+    const t0 = await at();
+    await p.evaluate(() => {
+      const c = document.getElementById("den-content")!;
+      c.scrollTop = c.scrollHeight;
+    });
+    await p.waitForTimeout(300);
+    const t1 = await at();
+    expect(t1.scroll).toBeGreaterThan(300);
+    // The search: in view, below the top bar, where it was (within the
+    // content's 20px padding).
+    expect(t1.q).toBeGreaterThanOrEqual(t1.top);
+    expect(Math.abs(t1.q - t0.q)).toBeLessThanOrEqual(20);
+    // The categories: in view, below the header, not under it.
+    expect(t1.nav).toBeGreaterThanOrEqual(t1.ph);
+    expect(t1.navBottom).toBeLessThanOrEqual(900);
+    // Nothing covers the search: a real click types into it.
+    await p.click("#set-q");
+    await p.keyboard.type("dock");
+    await p.waitForFunction(
+      () => !!document.querySelector('#set-body [data-setting="shell.dock"]'),
+    );
+    await p.context().close();
+  }, 30_000);
+});
+
 describe("one h1 per page (the brand is not a heading)", () => {
   it("/settings and /services each have exactly one h1, the page's own, in main", async () => {
     if (!browser) return;

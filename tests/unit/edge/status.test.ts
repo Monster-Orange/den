@@ -140,7 +140,14 @@ describe("edgeStatus", () => {
       certNames: ["acme.localhost", "*.acme.localhost"],
       certIssued: true,
       caTrusted: true,
-      tls: { strategy: "mkcert", implicit: false },
+      tls: {
+        strategy: "mkcert",
+        implicit: false,
+        from: "explicit",
+        ca: "/nonexistent/edge-state/ca",
+      },
+      included: [],
+      includedErrors: [],
     });
   });
 
@@ -156,7 +163,12 @@ describe("edgeStatus", () => {
     expect(st.routes[0].url).toBe("http://web.acme.localhost");
     expect(st.certNames).toEqual([]);
     expect(st.caTrusted).toBeNull();
-    expect(st.tls).toEqual({ strategy: "none", implicit: false });
+    expect(st.tls).toEqual({
+      strategy: "none",
+      implicit: false,
+      from: "explicit",
+      ca: null,
+    });
   });
 
   it("down with no cert issued yet: the planned names, flagged not issued", () => {

@@ -90,7 +90,7 @@ export function includeFiles(dir: string | null): string[] {
 const INCLUDED_LEDGER = "included.json";
 
 /** Files other writers own in the dynamic directory: never copied over or pruned. */
-const isOwnedElsewhere = (f: string): boolean =>
+export const isOwnedElsewhere = (f: string): boolean =>
   f === GENERATED || /^stack-.*\.ya?ml$/.test(f);
 
 function readLedger(stateDir: string): string[] {

@@ -92,6 +92,48 @@
         min-height: 0;
       }
 
+      /* R23 (Ward QA 2026-11-05): the workspace list collapses to a 40px
+         strip (remembered: graph.workspaces), and Maximize (F; Esc restores)
+         gives the graph the whole content area: no list, no header, no
+         action row, no tabs. */
+      .page-main.ws-collapsed {
+        grid-template-columns: 40px minmax(0, 1fr);
+      }
+      .ws-collapsed .sidebar > :not(.sidebar-header),
+      .ws-collapsed .sidebar-title {
+        display: none;
+      }
+      .ws-collapsed .sidebar-header {
+        justify-content: center;
+        padding: 10px 0;
+      }
+      .ws-toggle {
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 5px;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 13px;
+        line-height: 1;
+        padding: 3px 6px;
+      }
+      .ws-toggle:hover {
+        color: var(--text);
+        border-color: var(--border);
+      }
+      .page-main.graph-max {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .graph-max > .sidebar,
+      .graph-max .content-header,
+      .graph-max .cmd-bar,
+      .graph-max .ctab-bar {
+        display: none;
+      }
+      .graph-max .content-body {
+        padding: 8px;
+      }
+
       /* A phone gets the workspace content only (the header's workspace pill
          still switches workspaces), so the graph has the width it needs. */
       @media (max-width: 760px) {
@@ -1062,179 +1104,6 @@
         color: var(--muted);
       }
 
-      /* ── Output panel ─────────────────────────────────────────────────────── */
-      #output-panel {
-        display: flex;
-        flex-direction: column;
-        flex-shrink: 0;
-        border-top: 1px solid var(--border);
-      }
-
-      /* Tab bar */
-      .tab-bar {
-        display: flex;
-        align-items: stretch;
-        background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        overflow-x: auto;
-        flex-shrink: 0;
-        scrollbar-width: thin;
-        min-height: 28px;
-      }
-      .tab-bar::-webkit-scrollbar {
-        height: 3px;
-      }
-      .tab-bar::-webkit-scrollbar-thumb {
-        background: var(--border);
-        border-radius: 2px;
-      }
-      .tab-empty {
-        display: flex;
-        align-items: center;
-        padding: 0 14px;
-        font-size: 11px;
-        color: var(--muted);
-        font-style: italic;
-      }
-      .tab {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 8px 4px 12px;
-        white-space: nowrap;
-        font-size: 11px;
-        font-family: var(--mono);
-        border-right: 1px solid var(--border);
-        cursor: pointer;
-        color: var(--muted);
-        user-select: none;
-        transition:
-          color 0.1s,
-          background 0.1s;
-        border-bottom: 2px solid transparent;
-      }
-      .tab:hover {
-        background: var(--bg);
-        color: var(--text);
-      }
-      .tab.active {
-        background: var(--bg);
-        color: var(--text);
-        border-bottom-color: var(--accent);
-      }
-      /* Tabs carry no stream-state dot (health lives on cards/top nav) — only a
-       red marker when the tab's last command/stream failed. */
-      .tab .tab-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        flex-shrink: 0;
-      }
-      .tab .tab-dot.err {
-        background: var(--bad);
-      }
-      .tab .tab-close {
-        background: none;
-        border: none;
-        color: var(--muted);
-        cursor: pointer;
-        padding: 0 2px;
-        line-height: 1;
-        font-size: 14px;
-        opacity: 0;
-        transition:
-          opacity 0.1s,
-          color 0.1s;
-      }
-      .tab:hover .tab-close,
-      .tab.active .tab-close {
-        opacity: 1;
-      }
-      .tab .tab-close:hover {
-        color: var(--bad);
-      }
-
-      /* Output actions bar */
-      .output-actions {
-        display: flex;
-        align-items: center;
-        padding: 2px 8px;
-        background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-        position: relative;
-        min-height: 24px;
-      }
-      .output-resize-handle {
-        position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        align-items: center;
-        cursor: ns-resize;
-        padding: 4px 12px;
-        border-radius: 4px;
-        user-select: none;
-        color: var(--border);
-      }
-      .output-resize-handle:hover {
-        color: var(--muted);
-        background: var(--border);
-      }
-      .output-resize-handle svg {
-        display: block;
-      }
-      .output-actions-right {
-        display: flex;
-        gap: 4px;
-        margin-left: auto;
-      }
-      .output-actions-right button {
-        background: none;
-        border: none;
-        color: var(--muted);
-        font-size: 11px;
-        cursor: pointer;
-        padding: 2px 6px;
-        border-radius: 3px;
-      }
-      .output-actions-right button:hover {
-        color: var(--text);
-        background: var(--border);
-      }
-
-      /* With nothing run yet, only the tab bar shows: the graph gets the room. */
-      #output-panel:has(.tab-empty) #output,
-      #output-panel:has(.tab-empty) .output-actions {
-        display: none;
-      }
-      #output {
-        height: 200px;
-        overflow-y: auto;
-        padding: 8px 18px;
-        font-family: var(--mono);
-        font-size: 11.5px;
-        line-height: 1.6;
-        white-space: pre-wrap;
-        word-break: break-all;
-        flex-shrink: 0;
-      }
-      #output .cmd {
-        color: var(--accent-text);
-      }
-      #output .err {
-        color: var(--bad);
-      }
-      #output .warn {
-        color: var(--warn);
-      }
-      #output .done-ok {
-        color: var(--ok);
-      }
-      #output .done-fail {
-        color: var(--bad);
-      }
-
       /* ── Content tabs (below cmd-bar) ────────────────────────────────────── */
       .ctab-bar {
         display: flex;
@@ -1470,7 +1339,18 @@
         <!-- Sidebar: workspace list -->
         <aside class="sidebar">
           <div class="sidebar-header">
-            <span class="sidebar-title">Workspaces</span>
+            <span class="sidebar-title" id="ws-title">Workspaces</span>
+            <button
+              type="button"
+              class="ws-toggle"
+              id="ws-toggle"
+              aria-controls="ws-list"
+              aria-expanded="true"
+              aria-label="Collapse the workspace list"
+              title="Collapse the workspace list"
+            >
+              «
+            </button>
           </div>
           <div class="ws-list" id="ws-list">
             <div style="padding: 14px; color: var(--muted); font-size: 12px">
@@ -1501,31 +1381,8 @@
         </div>
       </div>
 
-      <!-- Output panel — lives outside renderContent so it persists across workspace switches -->
-      <div id="output-panel" data-den-output>
-        <div id="tab-bar" class="tab-bar">
-          <span class="tab-empty">No output — run a command</span>
-        </div>
-        <div class="output-actions">
-          <div
-            class="output-resize-handle"
-            id="output-resize-handle"
-            title="Drag to resize"
-          >
-            <svg width="20" height="6" viewBox="0 0 20 6" fill="currentColor">
-              <rect x="0" y="0" width="20" height="1.5" rx="1" />
-              <rect x="0" y="4" width="20" height="1.5" rx="1" />
-            </svg>
-          </div>
-          <div class="output-actions-right">
-            <button id="copy-btn" onclick="copyOutput()" title="Copy output">
-              Copy
-            </button>
-            <button onclick="clearActiveTab()">Clear</button>
-          </div>
-        </div>
-        <pre id="output"></pre>
-      </div>
+      <!-- Output: the shell's runs dock (R16), one tab per system; it lives
+           outside renderContent, so it persists across workspace switches. -->
 
       <script type="module">
         import {
@@ -1544,7 +1401,7 @@
           setServiceRunner,
           takePendingAction,
         } from "/header.js";
-        import { mountGraph, graphHealth } from "/graph.js";
+        import { mountGraph, graphHealth, graphMaximized } from "/graph.js";
 
         // Re-ping all health dots (top nav + cards) NOW — used after lifecycle
         // commands so status doesn't wait out the 30s poll interval.
@@ -2198,8 +2055,36 @@
         // Running multiple commands on the same service reuses the same tab;
         // each command gets a section header inside the output.
 
-        const _tabs = new Map(); // address → { address, lines, es, live, errored, autoScroll }
+        //
+        // The tabs are drawn by the shell's runs dock (R16, denShell.runs):
+        // this map keeps what Local Dev needs to drive them (the stream, its
+        // kind, the tail to re-attach); the dock keeps the lines (the last
+        // MAX_TAB_LINES), batches the DOM, auto-scrolls, copies and clears.
+        // A tab pulses while a command runs in it (busy); a red dot marks a
+        // failed last command, as before.
+        const _tabs = new Map(); // address → { address, es, live, errored, busy }
         let _activeTabId = null;
+        const runs = () => window.denShell.runs;
+        const MAX_TAB_LINES = 1000;
+        /** The dock's tab for an address (no change of selection). */
+        function dockTab(address) {
+          const t = _tabs.get(address);
+          runs().add(address, address, {
+            max: MAX_TAB_LINES,
+            doneLine: false,
+            onClose: closeTab,
+            onSelect: (id) => activateTab(id),
+            running: !!t?.busy,
+            error: !!t?.errored,
+          });
+        }
+        /** A command runs (or ended) in this tab: its dot pulses while busy. */
+        function setBusy(address, on) {
+          const t = _tabs.get(address);
+          if (!t) return;
+          t.busy = on;
+          renderTabBar();
+        }
 
         // ── Primary-service tab routing ───────────────────────────────────────────
         // Log tabs exist per SYSTEM, keyed by the repo's primary service address
@@ -2251,7 +2136,8 @@
           const tab = _tabs.get(route);
           tab.tailMeta = { repo, service };
           tab.esKind = "tail";
-          ensureTab(route);
+          // Its whole point is output: the dock opens (R16a).
+          ensureTab(route, { open: true });
         }
 
         // ── Dismissed tabs (per workspace) ────────────────────────────────────────
@@ -2296,8 +2182,11 @@
           if (s.delete(address)) _writeDismissed(s);
         }
 
-        /** Create tab if absent, always activate. Returns the address. */
-        function ensureTab(address) {
+        /**
+         * Create tab if absent, always activate. The dock stays as it is
+         * (R16a: a run starting never opens it) unless open: true.
+         */
+        function ensureTab(address, opts = {}) {
           if (!_tabs.has(address)) {
             _tabs.set(address, {
               address,
@@ -2309,7 +2198,7 @@
             });
           }
           renderTabBar();
-          activateTab(address);
+          activateTab(address, { open: opts.open === true });
           return address;
         }
 
@@ -2324,20 +2213,21 @@
             tab.es = null;
           }
           _tabs.delete(address);
+          runs().remove(address);
           if (_activeTabId === address) {
             const ids = [..._tabs.keys()];
             _activeTabId = ids[ids.length - 1] ?? null;
           }
-          renderTabBar();
-          if (_activeTabId) renderTabOutput(_activeTabId);
-          else document.getElementById("output").innerHTML = "";
+          if (_activeTabId)
+            activateTab(_activeTabId, { open: runs().isOpen() });
+          else renderTabBar();
         }
 
-        function activateTab(address) {
+        /** Select a tab (its tail attaches); the dock opens only with open: true. */
+        function activateTab(address, opts = {}) {
           _activeTabId = address;
           ensureActiveTail();
-          renderTabBar();
-          renderTabOutput(address);
+          runs().select(address, { open: opts.open === true });
         }
 
         // Keep at most ONE live log (tail) stream open — the active tab's — so the
@@ -2367,71 +2257,14 @@
           renderTabBar();
         }
 
-        // A running daemon's tail stream can flood thousands of lines/sec (a service
-        // stuck in a log loop). Two guards keep that from locking the page:
-        //  1. Cap retained lines per tab (and the live #output DOM) so memory/DOM
-        //     don't grow without bound.
-        //  2. Batch DOM appends into one requestAnimationFrame flush, so a flood does
-        //     ~60 DOM updates/sec (one forced layout per frame) instead of one
-        //     synchronous append + scrollTop layout PER message — the per-message
-        //     path saturated the main thread and froze the tab. (logs.html batches
-        //     the same way.)
-        const MAX_TAB_LINES = 1000;
-        let _outPending = [];
-        let _outRaf = null;
-        function _flushOutput() {
-          _outRaf = null;
-          const out = document.getElementById("output");
-          const tab = _tabs.get(_activeTabId);
-          const pending = _outPending;
-          _outPending = [];
-          if (!out || !tab || pending.length === 0) return;
-          const frag = document.createDocumentFragment();
-          for (const { text, cls } of pending) {
-            const span = document.createElement("span");
-            if (cls) span.className = cls;
-            span.textContent = text + "\n";
-            frag.appendChild(span);
-          }
-          out.appendChild(frag);
-          while (out.childElementCount > MAX_TAB_LINES)
-            out.removeChild(out.firstChild);
-          if (tab.autoScroll) out.scrollTop = out.scrollHeight;
-        }
+        // A running daemon's tail stream can flood thousands of lines/sec (a
+        // service stuck in a log loop). The dock caps the lines kept per tab
+        // (max: MAX_TAB_LINES) and batches DOM appends into one
+        // requestAnimationFrame flush, so a flood can't lock the page.
         function appendToTab(address, text, cls) {
-          const tab = _tabs.get(address);
-          if (!tab) return;
-          tab.lines.push({ text, cls });
-          if (tab.lines.length > MAX_TAB_LINES) {
-            tab.lines.splice(0, tab.lines.length - MAX_TAB_LINES);
-          }
-          if (_activeTabId === address) {
-            _outPending.push({ text, cls });
-            if (_outRaf === null) _outRaf = requestAnimationFrame(_flushOutput);
-          }
-        }
-
-        function renderTabOutput(address) {
-          const out = document.getElementById("output");
-          if (!out) return;
-          // Drop any buffered appends for the previous tab — we rebuild from lines.
-          _outPending = [];
-          if (_outRaf !== null) {
-            cancelAnimationFrame(_outRaf);
-            _outRaf = null;
-          }
-          const tab = _tabs.get(address);
-          out.innerHTML = "";
-          if (!tab) return;
-          const frag = document.createDocumentFragment();
-          for (const { text, cls } of tab.lines) {
-            const span = document.createElement("span");
-            if (cls) span.className = cls;
-            span.textContent = text + "\n";
-            frag.appendChild(span);
-          }
-          out.appendChild(frag);
-          if (tab.autoScroll) out.scrollTop = out.scrollHeight;
+          if (!_tabs.has(address)) return;
+          if (!runs().has(address)) dockTab(address);
+          runs().append(address, text, cls);
         }
 
         function setTabStatus(address, opts) {
@@ -2450,42 +2283,10 @@
           renderTabBar();
         }
 
+        /** The dock's tabs from this map: their dots (busy, errored). */
         function renderTabBar() {
-          const bar = document.getElementById("tab-bar");
-          if (!bar) return;
-          if (_tabs.size === 0) {
-            bar.innerHTML =
-              '<span class="tab-empty">No output — run a command</span>';
-            return;
-          }
-          bar.innerHTML = [..._tabs.values()]
-            .map((t) => {
-              // No stream-state dot: it read like a service-health indicator but only
-              // tracked SSE attachment (and only the ACTIVE tab streams, so background
-              // tabs always looked "down"). Health lives on the cards/top nav; the tab
-              // only flags a real error (red dot) when its last command/stream failed.
-              const errDot = t.errored
-                ? `<span class="tab-dot err" title="last command in this tab failed"></span>`
-                : "";
-              return (
-                `<div class="tab ${t.address === _activeTabId ? "active" : ""}" onclick="_tabActivate('${t.address}')">` +
-                errDot +
-                `<span>${t.address}</span>` +
-                `<button class="tab-close" onclick="_tabClose(event,'${t.address}')" title="Close">×</button>` +
-                `</div>`
-              );
-            })
-            .join("");
-          const active = bar.querySelector(".tab.active");
-          if (active)
-            active.scrollIntoView({ block: "nearest", inline: "nearest" });
+          for (const address of _tabs.keys()) dockTab(address);
         }
-
-        window._tabActivate = (address) => activateTab(address);
-        window._tabClose = (e, address) => {
-          e.stopPropagation();
-          closeTab(address);
-        };
 
         // Release SSE sockets when the page is navigated away / reloaded / enters the
         // bfcache, and suspend passive log tails while the tab is hidden. Both keep
@@ -2524,15 +2325,8 @@
           }
         });
 
-        // Pause auto-scroll when user scrolls up; resume at bottom.
-        document.getElementById("output").addEventListener("scroll", (e) => {
-          if (!_activeTabId) return;
-          const tab = _tabs.get(_activeTabId);
-          if (!tab) return;
-          const out = e.target;
-          tab.autoScroll =
-            out.scrollHeight - out.scrollTop <= out.clientHeight + 20;
-        });
+        // (Auto-scroll pauses when you scroll up, and resumes at the bottom:
+        // the dock does it per tab.)
 
         // ── Tail-log attachment ───────────────────────────────────────────────────
         function startTailLog(address, repo, service) {
@@ -2636,7 +2430,9 @@
           const firstShown = daemons.find(
             (d) => isPrimaryAddr(d.address) && !isDismissed(d.address),
           );
-          if (firstShown && !_activeTabId) activateTab(firstShown.address);
+          // On load the dock keeps its open/closed state.
+          if (firstShown && !_activeTabId)
+            activateTab(firstShown.address, { open: false });
         }
 
         // Re-read the workspace + service list after a sync and re-render the
@@ -2665,8 +2461,9 @@
           const es = new EventSource("/api/workspace/sync");
           // Clear previous sync output then open/activate the tab (explicit action).
           clearDismissed("⟳ sync");
-          if (_tabs.has("⟳ sync")) _tabs.get("⟳ sync").lines = [];
+          if (_tabs.has("⟳ sync")) runs().clear("⟳ sync");
           ensureTab("⟳ sync");
+          setBusy("⟳ sync", true);
           es.onmessage = (e) => {
             const msg = JSON.parse(e.data);
             if (msg.type === "line") appendToTab("⟳ sync", msg.text);
@@ -2674,6 +2471,7 @@
               appendToTab("⟳ sync", "Error: " + msg.text, "err");
             if (msg.type === "done") {
               es.close();
+              setBusy("⟳ sync", false);
               setAllButtons(false);
               setWsStatus("sync complete");
               setTimeout(() => setWsStatus(""), 3000);
@@ -2683,6 +2481,7 @@
           };
           es.onerror = () => {
             es.close();
+            setBusy("⟳ sync", false);
             setAllButtons(false);
             setWsStatus("sync error");
           };
@@ -2722,8 +2521,10 @@
           );
           setWsStatus(`syncing ${repo}…`);
 
+          setBusy(route, true);
           const finish = (status) => {
             _syncing.delete(repo);
+            setBusy(route, false);
             setWsStatus(status);
             setTimeout(() => setWsStatus(""), 3000);
           };
@@ -2768,6 +2569,8 @@
           setWsStatus(`${cmd}…`);
           const startTime = Date.now();
           let currentAddress = null; // tracks which service's tab to route lines to
+          const busyRoutes = new Set(); // tabs this run made busy
+          const idle = () => busyRoutes.forEach((r) => setBusy(r, false));
 
           const esWs = new EventSource(
             `/api/workspace/exec?cmd=${encodeURIComponent(cmd)}&workspace=${encodeURIComponent(activeWs || focusName())}${only}`,
@@ -2788,6 +2591,8 @@
                     ? `\n─── ${cmd} ───`
                     : `\n─── ${cmd}: ${currentAddress} ───`;
                 appendToTab(route, hdr, "cmd");
+                busyRoutes.add(route);
+                setBusy(route, true);
               }
             } else if (msg.type === "line") {
               const dest = currentAddress
@@ -2805,6 +2610,7 @@
               const addr = msg.address;
               const route = tabRouteFor(addr);
               const ok = msg.exitCode === 0;
+              if (isPrimaryAddr(addr)) setBusy(route, false);
               if (msg.detached) {
                 if (isPrimaryAddr(addr)) {
                   // Primary daemon spawned — auto-attach its live log stream.
@@ -2834,11 +2640,13 @@
               setTimeout(() => setWsStatus(""), 3000);
               setAllButtons(false);
               esWs.close();
+              idle();
               // Lifecycle changed run-state — sync dots now, don't wait for the poll.
               syncHealthNow();
             }
           };
           esWs.onerror = () => {
+            idle();
             if (currentAddress)
               appendToTab(currentAddress, "Connection lost", "err");
             setWsStatus("");
@@ -2901,6 +2709,7 @@
             .querySelectorAll(".cmd-btn")
             .forEach((b) => (b.disabled = true));
           setTabStatus(address, { live: true, errored: false });
+          setBusy(address, true);
 
           const params = new URLSearchParams({
             repo,
@@ -2927,6 +2736,7 @@
               // runtime. Close the startup-output SSE and switch to the manifest log
               // source (docker logs -f, etc.) for ongoing live output.
               esCmd.close();
+              setBusy(address, false);
               if (msg.exitCode === 0) {
                 appendToTab(address, "── live log ──", "cmd");
                 startTailLog(
@@ -2959,11 +2769,13 @@
                   `${ok ? "✓ done" : "✗ failed"} in ${fmtMs(msg.duration)}`,
                   ok ? "done-ok" : "done-fail",
                 );
+              _tabs.get(address) && (_tabs.get(address).busy = false);
               setTabStatus(address, { live: false, errored: !ok, es: null });
             }
           };
           esCmd.onerror = () => {
             appendToTab(address, "Connection closed", "err");
+            _tabs.get(address) && (_tabs.get(address).busy = false);
             setTabStatus(address, { live: false, errored: true, es: null });
             document
               .querySelectorAll(".cmd-btn")
@@ -3437,6 +3249,8 @@
             setAllButtons(true);
             setWsStatus(`${cmd}…`);
             let currentAddress = null;
+            const busyRoutes = new Set(); // tabs this run made busy
+            const idle = () => busyRoutes.forEach((r) => setBusy(r, false));
             const params = new URLSearchParams({
               cmd,
               workspace: activeWs || focusName(),
@@ -3467,6 +3281,8 @@
                       ? `\n─── ${cmd} ───`
                       : `\n─── ${cmd}: ${currentAddress} ───`;
                   appendToTab(route, hdr, "cmd");
+                  busyRoutes.add(route);
+                  setBusy(route, true);
                 }
               } else if (msg.type === "line") {
                 const dest = currentAddress
@@ -3484,6 +3300,7 @@
                 const addr = msg.address;
                 const route = tabRouteFor(addr);
                 const ok = msg.exitCode === 0;
+                if (isPrimaryAddr(addr)) setBusy(route, false);
                 if (msg.detached) {
                   if (isPrimaryAddr(addr)) {
                     appendToTab(route, "── live log ──", "cmd");
@@ -3512,6 +3329,7 @@
                 setTimeout(() => setWsStatus(""), 3000);
                 setAllButtons(false);
                 es.close();
+                idle();
                 // Lifecycle changed run-state — sync dots now, don't wait for the poll.
                 syncHealthNow();
                 resolve(ok);
@@ -3519,6 +3337,7 @@
             };
             es.onerror = () => {
               es.close();
+              idle();
               setAllButtons(false);
               setWsStatus("");
               resolve(false);
@@ -3706,63 +3525,7 @@
           }
         }
 
-        // ── Output helpers ────────────────────────────────────────────────────────
-        window.copyOutput = function () {
-          const out = document.getElementById("output");
-          const btn = document.getElementById("copy-btn");
-          if (!out || !btn) return;
-          const flash = () => {
-            const o = btn.textContent;
-            btn.textContent = "Copied!";
-            setTimeout(() => {
-              btn.textContent = o;
-            }, 1500);
-          };
-          copyToClipboard(out.innerText)
-            .then(flash)
-            .catch(() => {});
-        };
-
-        window.clearActiveTab = function () {
-          if (!_activeTabId) return;
-          const tab = _tabs.get(_activeTabId);
-          if (tab) tab.lines = [];
-          const out = document.getElementById("output");
-          if (out) out.innerHTML = "";
-        };
-
-        // ── Output resize drag ────────────────────────────────────────────────────
-        let _resizeDragging = false,
-          _resizeStartY = 0,
-          _resizeStartH = 0;
-        document.addEventListener("mousedown", (e) => {
-          if (!e.target.closest("#output-resize-handle")) return;
-          const out = document.getElementById("output");
-          if (!out) return;
-          _resizeDragging = true;
-          _resizeStartY = e.clientY;
-          _resizeStartH = out.offsetHeight;
-          document.body.style.cursor = "ns-resize";
-          document.body.style.userSelect = "none";
-          e.preventDefault();
-        });
-        document.addEventListener("mousemove", (e) => {
-          if (!_resizeDragging) return;
-          const out = document.getElementById("output");
-          if (!out) return;
-          const delta = _resizeStartY - e.clientY;
-          out.style.height =
-            Math.max(
-              60,
-              Math.min(_resizeStartH + delta, window.innerHeight * 0.8),
-            ) + "px";
-        });
-        document.addEventListener("mouseup", () => {
-          if (!_resizeDragging) return;
-          _resizeDragging = false;
-          document.body.style.cursor = "";
-          document.body.style.userSelect = "";
-        });
+        // (Copy, Clear and the resize handle are the runs dock's.)
 
         // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -4223,7 +3986,95 @@
         // (registries: ACTIONS, TABS, SECTIONS). The page hands them the data it
         // already loads and its own action functions, so every action runs the
         // same calls as before (runCmd, up/down with deps, sync, editor, …).
+        // ── R23 (Ward QA 2026-11-05): room for the graph ──────────────────
+        // The workspace list collapses to a 40px strip, remembered per user
+        // (/api/settings graph.workspaces; mirrored locally for the first
+        // paint, the server's copy wins). Maximize (the graph's button, or
+        // F outside a field) hides the list, the header, the action row and
+        // the tabs; Esc restores. The graph re-fits to the larger area.
+        const LS_WS_LIST = "__DEN_CLI__-ws-list";
+        const pageMain = document.querySelector(".page-main");
+        function paintWsList(collapsed) {
+          pageMain.classList.toggle("ws-collapsed", collapsed);
+          const b = document.getElementById("ws-toggle");
+          b.setAttribute("aria-expanded", String(!collapsed));
+          const what = collapsed
+            ? "Expand the workspace list"
+            : "Collapse the workspace list";
+          b.setAttribute("aria-label", what);
+          b.title = what;
+          b.textContent = collapsed ? "»" : "«";
+        }
+        function setWsList(collapsed) {
+          paintWsList(collapsed);
+          try {
+            localStorage.setItem(LS_WS_LIST, collapsed ? "collapsed" : "open");
+          } catch {}
+          fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              graph: { workspaces: collapsed ? "collapsed" : "open" },
+            }),
+          }).catch(() => {});
+        }
+        try {
+          paintWsList(localStorage.getItem(LS_WS_LIST) === "collapsed");
+        } catch {}
+        fetch("/api/settings")
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            const w = d?.graph?.workspaces;
+            if (w !== "open" && w !== "collapsed") return;
+            paintWsList(w === "collapsed");
+            try {
+              localStorage.setItem(LS_WS_LIST, w);
+            } catch {}
+          })
+          .catch(() => {});
+        document.getElementById("ws-toggle").addEventListener("click", () => {
+          setWsList(!pageMain.classList.contains("ws-collapsed"));
+        });
+
+        function graphMax() {
+          return pageMain.classList.contains("graph-max");
+        }
+        function setGraphMax(on) {
+          pageMain.classList.toggle("graph-max", on);
+          graphMaximized(on);
+          if (!on) document.querySelector('[data-z="max"]')?.focus();
+        }
+        /** F: only with the graph showing and focus outside a field. */
+        function graphShowing() {
+          return !!document.querySelector("#ctab-graph.active .dg");
+        }
+        function inField(el) {
+          return !!el?.closest?.(
+            'input, textarea, select, [contenteditable=""], [contenteditable="true"]',
+          );
+        }
+        document.addEventListener("keydown", (e) => {
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+          if (e.key === "Escape" && graphMax() && !e.defaultPrevented) {
+            setGraphMax(false);
+            return;
+          }
+          if (
+            (e.key === "f" || e.key === "F") &&
+            !inField(e.target) &&
+            !document.querySelector("dialog[open], .modal.open") &&
+            graphShowing()
+          ) {
+            e.preventDefault();
+            setGraphMax(!graphMax());
+          }
+        });
+
         const GRAPH_HOOKS = {
+          maximize: {
+            isOn: () => graphMax(),
+            toggle: () => setGraphMax(!graphMax()),
+          },
           env: () => healthEnv(),
           runCmd: (s, cmd) => window.runCmd(s.id, s.repo, s.name, cmd),
           upWithDeps: (repo) => window.runUpWithDeps(repo),

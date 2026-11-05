@@ -205,37 +205,6 @@
       tbody tr:hover td:first-child {
         box-shadow: inset 3px 0 0 var(--accent);
       }
-      .session-chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        padding: 6px 10px;
-        border-bottom: 1px solid var(--border);
-        background: var(--surface);
-      }
-      .session-chip {
-        font-size: 11px;
-        font-family: var(--mono);
-        padding: 2px 8px;
-        border-radius: 10px;
-        border: 1px solid var(--border);
-        background: transparent;
-        color: var(--muted);
-        cursor: pointer;
-      }
-      .session-chip:hover {
-        color: var(--text);
-      }
-      .session-chip.active {
-        border-color: var(--accent);
-        color: var(--accent-text);
-      }
-      .session-chip.running {
-        border-style: dashed;
-      }
-      .session-chip.fail {
-        border-color: var(--bad);
-      }
       .repo-cell {
         font-weight: 600;
       }
@@ -534,43 +503,6 @@
         color: var(--text);
         background: var(--border);
       }
-      .output-pane {
-        height: 34%;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-      }
-      .output-pane.hidden {
-        display: none;
-      }
-      #output {
-        flex: 1;
-        overflow-y: auto;
-        padding: 10px 14px;
-        font-family: var(--mono);
-        font-size: 11.5px;
-        line-height: 1.6;
-        white-space: pre-wrap;
-        word-break: break-all;
-        min-height: 0;
-      }
-      #output .cmd {
-        color: var(--accent-text);
-      }
-      #output .phase {
-        color: var(--text);
-        font-weight: 600;
-      }
-      #output .warn {
-        color: var(--warn);
-      }
-      #output .err {
-        color: var(--bad);
-      }
-      #output .ok {
-        color: var(--ok);
-      }
-
       /* ── Modal ────────────────────────────────────────────────────────────── */
       .overlay {
         position: fixed;
@@ -779,24 +711,8 @@
         </table>
       </div>
 
-      <div class="pane-bar" id="output-bar" style="display: none">
-        <span id="output-title">Deploy output</span>
-        <span>
-          <button onclick="window.__rel.clearOutput()">Clear</button>
-          <button
-            onclick="window.__rel.closeDeployLog()"
-            title="Close the deploy log"
-          >
-            ✕ Close
-          </button>
-        </span>
-      </div>
-      <!-- Only shown when more than one deploy session exists; switches which
-           one the single log pane below is attached to. -->
-      <div id="session-chips" class="session-chips" style="display: none"></div>
-      <div class="output-pane hidden" id="output-pane" data-den-output>
-        <pre id="output"></pre>
-      </div>
+      <!-- Each deploy session is a tab in the shell's runs dock (R16):
+         selecting one attaches its log, its × closes the session. -->
     </div>
 
     <!-- Generic modal -->
@@ -1493,13 +1409,15 @@
       // deploy decoupled from this page), then we attach to stream its log. The
       // session id is remembered so the log survives navigation / reload.
       async function startDeploy(params) {
-        showOutput(true);
-        clearOutput();
         const label =
           params.mode === "all"
             ? `all → ${state.env}`
             : `${params.repo} → ${state.env}`;
-        $("output-title").textContent = `Starting ${label}…`;
+        // Until the server names the session, the request has its own tab.
+        curRun = runs().start(REQUEST_RUN, `deploy ${label}`, {
+          clear: true,
+          doneLine: false,
+        });
         appendLine(`▶ requesting deploy ${label}`, "cmd");
         setStatus(`starting ${label}…`);
 
@@ -1526,6 +1444,7 @@
               /* not JSON — show as-is */
             }
             appendLine(text, "err");
+            runs().finish(REQUEST_RUN, { ok: false });
             setStatus("deploy not started");
             await refreshSessions();
             return;
@@ -1533,6 +1452,7 @@
           session = await res.json();
         } catch (e) {
           appendLine("Failed to start deploy: " + e.message, "err");
+          runs().finish(REQUEST_RUN, { ok: false });
           setStatus("deploy not started");
           await refreshSessions();
           return;
@@ -1542,6 +1462,7 @@
           LS_DEPLOY,
           JSON.stringify({ sessionId: session.id }),
         );
+        runs().remove(REQUEST_RUN);
         // Show the new session immediately, then reconcile against the server.
         state.sessions = [
           session,
@@ -1570,10 +1491,12 @@
         state.deploySession = sessionId;
         state.deploying = running;
         clearRunsForSession(sessionId);
-        showOutput(true);
-        clearOutput(); // replay rebuilds the full log from scratch
-        $("output-title").textContent =
-          (running ? "Deploying " : "Deploy log — ") + (label || sessionId);
+        // Its tab, cleared: the replay rebuilds the full log from scratch.
+        curRun = runs().start(
+          runKey(sessionId),
+          `deploy ${label || sessionId}`,
+          { ...sessionTabOpts(sessionId), clear: true, running },
+        );
         setStatus(running ? "attaching to deploy…" : "deploy finished");
         // Button state comes from the full session list, not from whichever log
         // happens to be on screen — switching logs must not free a busy repo.
@@ -1613,6 +1536,7 @@
               `\n${msg.ok ? "✓" : "✗"} ${msg.summary}`,
               msg.ok ? "ok" : "err",
             );
+            runs().finish(runKey(sessionId), { ok: !!msg.ok });
             finishDeploy();
           }
         };
@@ -1641,10 +1565,6 @@
         // server rather than assuming everything is now free.
         refreshSessions();
         setStatus("deploy finished — re-checking…");
-        const t = $("output-title");
-        if (t && t.textContent.startsWith("Deploying "))
-          t.textContent =
-            "Deploy log — " + t.textContent.slice("Deploying ".length);
         renderTable();
         setTimeout(() => loadStatus(true), 2500);
       }
@@ -1685,11 +1605,21 @@
         });
       }
 
-      // User closed the log: dismiss ONLY the session on screen. Other deploys
-      // keep running, so if one is left, switch the pane to it instead of
-      // hiding the log entirely.
-      async function closeDeployLog() {
+      // User closed the log (its tab's ×): dismiss ONLY that session. Other
+      // deploys keep running, so if the one on screen closes and one is left,
+      // switch to it instead of hiding the log entirely.
+      async function closeDeployLog(id = state.deploySession) {
+        if (id && id !== state.deploySession) {
+          fetch(`/api/release/deploy?session=${encodeURIComponent(id)}`, {
+            method: "DELETE",
+          }).catch(() => {});
+          state.sessions = state.sessions.filter((s) => s.id !== id);
+          runs().remove(runKey(id));
+          recomputeDeployingRepos();
+          return;
+        }
         const closing = state.deploySession;
+        if (closing) runs().remove(runKey(closing));
         if (closing) {
           fetch(`/api/release/deploy?session=${encodeURIComponent(closing)}`, {
             method: "DELETE",
@@ -1718,8 +1648,6 @@
 
         localStorage.removeItem(LS_DEPLOY);
         recomputeDeployingRepos();
-        showOutput(false);
-        clearOutput();
         setStatus("idle");
         renderTable();
       }
@@ -1802,7 +1730,7 @@
         }
         state.deployingRepos = live;
         syncButtons();
-        renderSessionChips();
+        syncSessionTabs();
       }
 
       // ── Live CD run poll ──────────────────────────────────────────────────────
@@ -1929,58 +1857,48 @@
         recomputeDeployingRepos();
       }
 
-      // One log pane, N sessions: chips name each one and switch the pane.
-      function renderSessionChips() {
-        const bar = $("session-chips");
-        if (!bar) return;
-        if (state.sessions.length <= 1) {
-          bar.style.display = "none";
-          bar.innerHTML = "";
-          return;
-        }
-        bar.style.display = "";
-        bar.innerHTML = state.sessions
-          .map((s) => {
-            const cls = [
-              "session-chip",
-              s.id === state.deploySession ? "active" : "",
-              s.status === "running" ? "running" : s.ok ? "ok" : "fail",
-            ]
-              .filter(Boolean)
-              .join(" ");
-            return `<button class="${cls}" data-session="${esc(s.id)}" title="${esc(s.label)}">${
-              s.status === "running" ? "● " : ""
-            }${esc(s.label)}</button>`;
-          })
-          .join("");
-        bar.querySelectorAll(".session-chip").forEach((c) =>
-          c.addEventListener("click", () => {
-            const s = state.sessions.find((x) => x.id === c.dataset.session);
-            if (s && s.id !== state.deploySession) {
+      // ── The runs dock (R16): one tab per deploy session ──────────────────────
+      const runs = () => window.denShell.runs;
+      const runKey = (id) => `deploy:${id}`;
+      const REQUEST_RUN = "deploy:request";
+      let curRun = null; // the tab appendLine writes to
+      function sessionTabOpts(id) {
+        return {
+          doneLine: false,
+          onClose: () => closeDeployLog(id),
+          // Selecting a session's tab attaches its log (the server replays it).
+          onSelect: () => {
+            const s = state.sessions.find((x) => x.id === id);
+            if (s && s.id !== state.deploySession)
               attachDeploy(s.id, { status: s.status, label: s.label });
+          },
+        };
             }
-          }),
-        );
+      // N sessions, N tabs: each names its session and pulses while it runs.
+      function syncSessionTabs() {
+        const ids = new Set(state.sessions.map((s) => runKey(s.id)));
+        for (const s of state.sessions)
+          runs().add(runKey(s.id), `deploy ${s.label || s.id}`, {
+            ...sessionTabOpts(s.id),
+            running: s.status === "running",
+            ...(s.status === "running" ? {} : { error: s.ok === false }),
+          });
+        for (const r of runs().list())
+          if (
+            r.id.startsWith("deploy:") &&
+            r.id !== REQUEST_RUN &&
+            !ids.has(r.id) &&
+            r.id !== runKey(state.deploySession)
+          )
+            runs().remove(r.id);
       }
 
       // ── Output helpers ──────────────────────────────────────────────────────────
-      function showOutput(show) {
-        $("output-bar").style.display = show ? "" : "none";
-        $("output-pane").classList.toggle("hidden", !show);
-      }
       function appendLine(text, cls) {
-        const out = $("output");
-        const span = document.createElement("span");
-        if (cls) span.className = cls;
-        span.textContent = text + "\n";
-        out.appendChild(span);
-        out.scrollTop = out.scrollHeight;
-      }
-      function clearOutput() {
-        $("output").innerHTML = "";
+        if (curRun) runs().append(curRun, text, cls);
       }
 
-      window.__rel = { clearOutput, closeDeployLog };
+      window.__rel = { closeDeployLog };
 
       init();
     </script>

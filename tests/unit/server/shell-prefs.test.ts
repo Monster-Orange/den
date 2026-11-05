@@ -14,7 +14,7 @@ import {
 
 describe("shellPrefs", () => {
   it("defaults: no pins, not collapsed; a broken block falls back", () => {
-    const none = { hidden: [], order: [] };
+    const none = { hidden: [], order: [], dock: false, dockHeight: 0 };
     expect(shellPrefs(undefined)).toEqual({
       pins: [],
       collapsed: false,
@@ -35,12 +35,31 @@ describe("shellPrefs", () => {
       collapsed: true,
       hidden: ["tests"],
       order: ["logs", "services"],
+      dock: false,
+      dockHeight: 0,
+    });
+  });
+  it("the runs dock (R16a): collapsed and 170px by default; a stored height outside 60–2000 falls back", () => {
+    expect(shellPrefs({ dock: true, dockHeight: 320 })).toMatchObject({
+      dock: true,
+      dockHeight: 320,
+    });
+    expect(shellPrefs({ dock: "yes", dockHeight: 5 })).toMatchObject({
+      dock: false,
+      dockHeight: 0,
     });
   });
 });
 
 describe("mergeShellPrefs", () => {
-  const cur = { pins: ["shop"], collapsed: false, hidden: [], order: [] };
+  const cur = {
+    pins: ["shop"],
+    collapsed: false,
+    hidden: [],
+    order: [],
+    dock: false,
+    dockHeight: 0,
+  };
   it("replaces pins and sets collapsed, keeping the rest", () => {
     expect(mergeShellPrefs(cur, { collapsed: true })).toEqual({
       ok: true,
@@ -50,6 +69,23 @@ describe("mergeShellPrefs", () => {
       ok: true,
       value: { ...cur, pins: ["billing/api"] },
     });
+  });
+  it("sets the runs dock open and its height (R16a), rounded; 0 is the default", () => {
+    expect(mergeShellPrefs(cur, { dock: true, dockHeight: 240.4 })).toEqual({
+      ok: true,
+      value: { ...cur, dock: true, dockHeight: 240 },
+    });
+    expect(mergeShellPrefs(cur, { dockHeight: 0 })).toEqual({
+      ok: true,
+      value: cur,
+    });
+    for (const patch of [
+      { dock: "open" },
+      { dockHeight: 10 },
+      { dockHeight: 5000 },
+      { dockHeight: "200" },
+    ])
+      expect([patch, mergeShellPrefs(cur, patch).ok]).toEqual([patch, false]);
   });
   it("sets the hidden pages and their order (R21 Navigation)", () => {
     expect(
@@ -80,7 +116,7 @@ describe("mergeShellPrefs", () => {
       expect([patch, mergeShellPrefs(cur, patch).ok]).toEqual([patch, false]);
   });
   it("stores nothing for the defaults", () => {
-    const none = { hidden: [], order: [] };
+    const none = { hidden: [], order: [], dock: false, dockHeight: 0 };
     expect(
       storedShell({ pins: [], collapsed: false, ...none }),
     ).toBeUndefined();
@@ -93,7 +129,18 @@ describe("mergeShellPrefs", () => {
         collapsed: false,
         hidden: ["tests"],
         order: ["logs"],
+        dock: false,
+        dockHeight: 0,
       }),
     ).toEqual({ hidden: ["tests"], order: ["logs"] });
+    expect(
+      storedShell({
+        pins: [],
+        collapsed: false,
+        ...none,
+        dock: true,
+        dockHeight: 300,
+      }),
+    ).toEqual({ dock: true, dockHeight: 300 });
   });
 });

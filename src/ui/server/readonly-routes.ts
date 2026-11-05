@@ -3,7 +3,10 @@
  *
  *   /api/stacks          what `stack ls` + `stack health` show
  *                        ?workspace=<den workspace>  ?health=0 skips docker
- *   /api/edge            what `edge status` shows: up/down, routes, cert names
+ *   /api/edge            what `edge status` shows: up/down, routes, cert names,
+ *                        the included files' routers, the TLS strategy
+ *                        ?probe=1  only { configured } (the rail's Edge
+ *                        page asks on every load: no Docker, no keychain)
  *   /api/security/plan   the security CLI's own dry run for ?env&mode&service:
  *                        target discovery and the owned-host check, nothing run
  *   /api/activity        the audit trail for one service (?address=repo/svc) or
@@ -46,6 +49,8 @@ export interface ReadonlyRouteDeps {
     stacks: StackStatus[];
   };
   edge: () => EdgeStatus;
+  /** The edge block reads (no Docker asked); throws with the reason if not. */
+  edgeConfig: () => void;
   actions: () => AuditEntry[];
   securityPlan: (args: SecurityPlanArgs) => Promise<SecurityPlanResult>;
 }
@@ -62,6 +67,7 @@ export const defaultReadonlyRouteDeps: ReadonlyRouteDeps = {
     };
   },
   edge: () => edgeStatus(readEdgeConfig()),
+  edgeConfig: () => void readEdgeConfig(),
   actions: recentActions,
   securityPlan: async ({ env, mode, service }) => {
     // The CLI's own entrypoint in --dry-run: the same discovery, mode
@@ -155,6 +161,11 @@ export async function handleReadonlyRoutes(
 
   if (pathname === "/api/edge") {
     try {
+      if (url.searchParams.get("probe") === "1") {
+        deps.edgeConfig();
+        sendJson(res, { configured: true });
+        return true;
+      }
       sendJson(res, { configured: true, ...deps.edge() });
     } catch (e) {
       // No edge configured is a state, not a server error.

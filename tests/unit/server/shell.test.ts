@@ -20,6 +20,7 @@ const PAGES: Record<string, { page: string; healthEnv?: string }> = {
   "logs.html": { page: "logs" },
   "settings.html": { page: "settings" },
   "index.html": { page: "tests" },
+  "edge.html": { page: "edge" },
 };
 
 describe("every page mounts the shell", () => {
@@ -122,6 +123,7 @@ describe("the shell's source", () => {
     const hrefs = [...SHELL.matchAll(/href: "(\/[^"]*)"/g)].map((m) => m[1]);
     expect(hrefs.sort()).toEqual(
       [
+        "/edge",
         "/environments",
         "/local-dev",
         "/logs",

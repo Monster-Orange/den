@@ -87,6 +87,16 @@
         font-size: 13px;
         margin-top: 4px;
       }
+      /* R21a (Ward QA 2026-11-05): the header with its search stays put
+         while the rows scroll under it; so does the category list, below
+         it (--set-top: the header's height, set by the page). */
+      .ph {
+        position: sticky;
+        top: 0;
+        z-index: 4;
+        background: var(--bg);
+        box-shadow: 0 -20px 0 0 var(--bg), 0 12px 0 0 var(--bg);
+      }
       .ph .act {
         margin-left: auto;
         display: flex;
@@ -137,9 +147,12 @@
         gap: 24px;
         align-items: start;
       }
+      #set-body section[data-cat] {
+        scroll-margin-top: var(--set-top, 0px);
+      }
       .set-nav {
         position: sticky;
-        top: 0;
+        top: var(--set-top, 0px);
         display: grid;
         gap: 2px;
       }
@@ -557,6 +570,15 @@
           applyDenConfig(),
           initChangelog(),
         ]).then(initLogBadge);
+        // R21a: the category list sticks just below the sticky header.
+        const ph = document.querySelector("#den-content > .ph");
+        const setTop = () =>
+          document
+            .getElementById("den-content")
+            .style.setProperty("--set-top", `${ph.offsetHeight + 16}px`);
+        setTop();
+        if (typeof ResizeObserver === "function")
+          new ResizeObserver(setTop).observe(ph);
         registerDenSettings(window.denShell);
         void mountSettings({
           shell: window.denShell,

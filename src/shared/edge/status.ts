@@ -6,7 +6,9 @@
 import * as fs from "fs";
 import * as path from "path";
 import { certNames, edgeDomains, edgeNames, routeUrl } from "./render.js";
+import { includedRouters, type IncludedRouters } from "./included.js";
 import { caTrusted, containerState } from "./runtime.js";
+import { caDir } from "./tls.js";
 import type { EdgeConfig, EdgePorts } from "./types.js";
 
 export interface EdgeStatus {
@@ -25,8 +27,25 @@ export interface EdgeStatus {
   certIssued: boolean;
   /** Whether the CA is trusted on this machine (null: can't tell, or none). */
   caTrusted: boolean | null;
-  /** The edge.tls strategy, and whether nothing chose it (implicit mkcert). */
-  tls: { strategy: EdgeConfig["tls"]["strategy"]; implicit: boolean };
+  /**
+   * The edge.tls strategy; whether nothing chose it (implicit mkcert);
+   * where it came from (edge.tls, the legacy caroot/issue_cert keys, or
+   * neither); and the CA directory (mkcert: the one it issues from; files:
+   * `ca` when set; none: null).
+   */
+  tls: {
+    strategy: EdgeConfig["tls"]["strategy"];
+    implicit: boolean;
+    from: EdgeConfig["tlsFrom"];
+    ca: string | null;
+  };
+  /**
+   * Routers in the included dynamic files (`edge include`), each with its
+   * source file: Traefik serves them, Den doesn't generate them.
+   */
+  included: IncludedRouters["routers"];
+  /** Included files that could not be parsed (listed, never fatal). */
+  includedErrors: IncludedRouters["errors"];
 }
 
 export interface EdgeStatusDeps {
@@ -34,6 +53,8 @@ export interface EdgeStatusDeps {
   caTrusted: (cfg: EdgeConfig) => boolean | null;
   /** Names on the issued cert (its stamp file), or null when none is issued. */
   issuedNames: (cfg: EdgeConfig) => string[] | null;
+  /** The included files' routers (read from disk by default). */
+  included?: (cfg: EdgeConfig) => IncludedRouters;
 }
 
 /** The names stamp `ensureCerts` writes beside the cert. */
@@ -47,7 +68,17 @@ const defaultDeps: EdgeStatusDeps = {
   containerState,
   caTrusted,
   issuedNames: issuedCertNames,
+  included: includedRouters,
 };
+
+/** Den's own routes: `<name>.<domain>` → upstream (no Docker asked). */
+export function edgeRoutes(cfg: EdgeConfig): EdgeStatus["routes"] {
+  return Object.entries(cfg.routes).map(([name, upstream]) => ({
+    name,
+    url: routeUrl(name, cfg),
+    upstream,
+  }));
+}
 
 export function edgeStatus(
   cfg: EdgeConfig,
@@ -56,6 +87,7 @@ export function edgeStatus(
   const n = edgeNames(cfg.org);
   const state = deps.containerState(n.container);
   const issued = deps.issuedNames(cfg);
+  const inc = (deps.included ?? includedRouters)(cfg);
   return {
     org: cfg.org,
     container: n.container,
@@ -64,14 +96,22 @@ export function edgeStatus(
     ports: cfg.ports,
     network: n.network,
     domains: edgeDomains(cfg),
-    routes: Object.entries(cfg.routes).map(([name, upstream]) => ({
-      name,
-      url: routeUrl(name, cfg),
-      upstream,
-    })),
+    routes: edgeRoutes(cfg),
     certNames: issued ?? (cfg.tls.strategy === "none" ? [] : certNames(cfg)),
     certIssued: issued !== null,
     caTrusted: cfg.tls.strategy === "none" ? null : deps.caTrusted(cfg),
-    tls: { strategy: cfg.tls.strategy, implicit: cfg.tlsFrom === "implicit" },
+    tls: {
+      strategy: cfg.tls.strategy,
+      implicit: cfg.tlsFrom === "implicit",
+      from: cfg.tlsFrom,
+      ca:
+        cfg.tls.strategy === "mkcert"
+          ? caDir(cfg)
+          : cfg.tls.strategy === "files"
+            ? cfg.tls.ca
+            : null,
+    },
+    included: inc.routers,
+    includedErrors: inc.errors,
   };
 }
