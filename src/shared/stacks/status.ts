@@ -34,7 +34,8 @@ export interface StackStatus {
   routes: StackRoute[];
   uses: string[];
   /** Container health (only when asked for: it runs `docker ps`). */
-  health?: { ok: boolean; detail: string };
+  /** `ok: null`: docker could not be asked, so the state is unknown. */
+  health?: { ok: boolean | null; detail: string };
 }
 
 const WS_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
@@ -96,7 +97,7 @@ export function stackStatuses(
       try {
         status.health = healthOf(ctx, s);
       } catch (e) {
-        status.health = { ok: false, detail: (e as Error).message };
+        status.health = { ok: null, detail: (e as Error).message };
       }
     }
     return status;

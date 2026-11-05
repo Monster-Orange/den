@@ -10,7 +10,10 @@
  *   GET /api/run?pillar=X&...    — SSE stream: runs tests, emits output line-by-line
  */
 
-import { composeHealthCmd } from "../../shared/stacks/manifest-commands.js";
+import {
+  composeHealthTarget,
+  type ComposeHealthTarget,
+} from "../../shared/stacks/compose-health.js";
 import { healthCheckFields } from "./health-row.js";
 import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
 import * as http from "http";
@@ -60,7 +63,8 @@ import {
 } from "./log-history.js";
 import {
   pingHttp,
-  pingShell,
+  pingShellCheck,
+  TimeoutStreaks,
   prewarmHealthTls,
 } from "../../shared/environment-manager/health.js";
 import {
@@ -183,7 +187,10 @@ interface HealthResult {
   repoPath: string;
   mode: "dev-managed" | "managed";
   isEntrypoint: boolean;
+  /** true up; false a completed check failed (down); null not known. */
   ok: boolean | null;
+  /** With ok null: a check ran but has not answered (pending, not down). */
+  pending?: boolean;
   status?: number;
   error?: string;
   /** Where the app opens for this env (open-in-new-tab), or null. */
@@ -227,9 +234,23 @@ function viewerRewrite(
 }
 
 const HEALTH_CACHE_TTL_MS = 8_000;
+/** Consecutive timed-out health cycles per check (see TimeoutStreaks). */
+const healthTimeouts = new TimeoutStreaks();
 const healthCache = new Map<string, { results: HealthResult[]; at: number }>();
-/** The full-env health run in flight per cache key: concurrent polls join it. */
-const healthInFlight = new Map<string, Promise<HealthResult[]>>();
+/**
+ * The full-env health run in flight per cache key. Concurrent polls and
+ * streams join it (a stream replays what already landed, then follows), so
+ * each cycle runs every check once: a second concurrent run doubled the
+ * shell checks' processes and pushed them past their budget under load.
+ */
+const healthInFlight = new Map<
+  string,
+  {
+    run: Promise<HealthResult[]>;
+    landed: HealthResult[];
+    listeners: Set<(r: HealthResult) => void>;
+  }
+>();
 /** /api/services builds, shared by concurrent polls and reused briefly. */
 /** The startup sweep of stale daemon records (see below the routes). */
 let startupPrune: Promise<void> = Promise.resolve();
@@ -969,6 +990,8 @@ async function handleRequest(
       org: string;
       /** Codes that count as up for a remote target.url probe. */
       expect?: Expect;
+      /** pingShell options (Den's own `stack health` can report unknown). */
+      compose: ComposeHealthTarget | null;
       meta: Pick<HealthResult, "runs" | "target" | "focused">;
     }> = [];
     const focusName = getFocusedWorkspaceName();
@@ -1002,6 +1025,7 @@ async function handleRequest(
           openUrl: null,
           links: [],
           org: orgOf(resolved.repoName, catalog),
+          compose: null,
           meta: { runs: "none", target: null, focused: ws.name === focusName },
         });
         continue;
@@ -1009,9 +1033,9 @@ async function handleRequest(
       const svcCfg = manifest.services?.[resolved.subsystem];
       // A compose-run repo with no declared check gets the stack's own health
       // (container state + Docker healthchecks), as `den status` does.
-      const composeHealth =
+      const compose =
         env === "local"
-          ? composeHealthCmd(
+          ? composeHealthTarget(
               manifest,
               resolved.subsystem,
               resolved.repoName,
@@ -1024,7 +1048,7 @@ async function handleRequest(
         manifest,
         resolved.subsystem,
         env,
-        composeHealth,
+        compose?.cmd ?? null,
       );
       const healthCfg = plan.check;
       const remote = plan.placement.runs === "remote";
@@ -1083,6 +1107,7 @@ async function handleRequest(
         links: linksFor(manifest, resolved.subsystem, env),
         org: orgOf(resolved.repoName, catalog),
         ...(plan.expect ? { expect: plan.expect } : {}),
+        compose,
         meta: {
           runs: plan.placement.runs,
           target: plan.placement.target,
@@ -1116,12 +1141,18 @@ async function handleRequest(
       conventional,
       meta,
       expect,
+      compose,
     }) => {
       if (checkType !== "none") {
         const started = Date.now();
         const ping =
           checkType === "shell"
-            ? await pingShell(target, awsProfileEnv(env), repoPath)
+            ? await pingShellCheck(
+                target,
+                awsProfileEnv(env),
+                repoPath,
+                compose,
+              )
             : await pingHttp(
                 target,
                 env === "local" && meta.runs !== "remote"
@@ -1139,7 +1170,11 @@ async function handleRequest(
           isEntrypoint,
           ...meta,
           ms: Date.now() - started,
-          ...ping,
+          // A first timeout is pending; a repeat on the next cycle is down.
+          ...healthTimeouts.judge(
+            `${env}|${repo}|${service}|${checkType}|${target}`,
+            ping,
+          ),
         };
       }
       // No declared health check: try the conventional probe when eligible.
@@ -1192,6 +1227,37 @@ async function handleRequest(
     return results;
   }
 
+  /** Join the full-env health run in flight for (env, workspace), or start one. */
+  function sharedHealthRun(env: Environment, workspace: string | null) {
+    const key = healthCacheKey(env, workspace);
+    const inFlight = healthInFlight.get(key);
+    if (inFlight) return inFlight;
+    const landed: HealthResult[] = [];
+    const listeners = new Set<(r: HealthResult) => void>();
+    const run = computeHealth(
+      env,
+      null,
+      (r) => {
+        landed.push(r);
+        for (const l of listeners)
+          try {
+            l(r);
+          } catch {
+            /* a gone client must not stop the run */
+          }
+      },
+      workspace,
+    )
+      .then((results) => {
+        healthCache.set(key, { results, at: Date.now() });
+        return results;
+      })
+      .finally(() => healthInFlight.delete(key));
+    const shared = { run, landed, listeners };
+    healthInFlight.set(key, shared);
+    return shared;
+  }
+
   // Full-env health, cached. Every page navigation used to re-run all 30 checks
   // from scratch — and the slowest are shell probes that shell out to the aws
   // CLI (~0.45s each) — so the dots took ~0.6s to resolve on EVERY switch. A
@@ -1218,17 +1284,10 @@ async function handleRequest(
     if (hit && Date.now() - hit.at < HEALTH_CACHE_TTL_MS) {
       return sendJson(res, hit.results.map(forViewer));
     }
-    let run = healthInFlight.get(cacheKey);
-    if (!run) {
-      run = computeHealth(env, null, undefined, wsParam)
-        .then((results) => {
-          healthCache.set(cacheKey, { results, at: Date.now() });
-          return results;
-        })
-        .finally(() => healthInFlight.delete(cacheKey));
-      healthInFlight.set(cacheKey, run);
-    }
-    return sendJson(res, (await run).map(forViewer));
+    return sendJson(
+      res,
+      (await sharedHealthRun(env, wsParam).run).map(forViewer),
+    );
   }
 
   // Same checks, streamed: each result is sent the moment it lands so the fast
@@ -1260,13 +1319,16 @@ async function handleRequest(
     }
 
     try {
-      const results = await computeHealth(
-        env,
-        null,
-        (r) => send({ type: "result", result: forViewer(r) }),
-        wsParam,
-      );
-      healthCache.set(cacheKey, { results, at: Date.now() });
+      const shared = sharedHealthRun(env, wsParam);
+      const forward = (r: HealthResult): void =>
+        send({ type: "result", result: forViewer(r) });
+      for (const r of shared.landed) forward(r);
+      shared.listeners.add(forward);
+      try {
+        await shared.run;
+      } finally {
+        shared.listeners.delete(forward);
+      }
       send({ type: "done", cached: false });
     } catch (e) {
       send({ type: "error", error: (e as Error).message });

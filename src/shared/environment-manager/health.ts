@@ -10,8 +10,13 @@ import { hasRuntime, repoKind } from "../repo-kind.js";
 import * as https from "https";
 import * as tls from "tls";
 import { readEdgeConfig } from "../edge/config.js";
-import { composeHealthCmd } from "../stacks/manifest-commands.js";
+import {
+  composeHealth,
+  composeHealthTarget,
+  type ComposeHealthTarget,
+} from "../stacks/compose-health.js";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as dns from "dns";
 import { spawn } from "child_process";
@@ -39,7 +44,15 @@ import type { Environment } from "../types/index.js";
 
 import { product } from "../product.js";
 export interface PingResult {
-  ok: boolean;
+  /**
+   * true: the check answered healthy. false: it COMPLETED and failed. null:
+   * it did not complete or could not tell (no answer within its budget, its
+   * process could not start, or it reported its state unknown). Only false
+   * is down.
+   */
+  ok: boolean | null;
+  /** With ok null: the check gave no answer within its budget. */
+  pending?: boolean;
   status?: number;
   error?: string;
 }
@@ -51,7 +64,12 @@ export interface ServiceHealthResult {
   repoPath: string;
   mode: "dev-managed" | "managed";
   branch: string | null;
-  health: "ok" | "error" | "unknown";
+  /**
+   * "pending": a check ran but gave no verdict (no answer in time, or it
+   * could not tell). Unlike "unknown" (no check configured) it is not a
+   * reason to proceed; unlike "error" it is not down.
+   */
+  health: "ok" | "error" | "unknown" | "pending";
   healthDetail?: string;
   /** Where the service runs for the env checked (R13). */
   runs?: Placement["runs"];
@@ -412,38 +430,183 @@ export async function pingShell(
   cmd: string,
   extraEnv: Record<string, string> = {},
   cwd?: string,
+  opts: {
+    /** The answer budget (default CLI_SPAWN_TIMEOUT_MS). */
+    timeoutMs?: number;
+  } = {},
 ): Promise<PingResult> {
+  // Bounded concurrency: a health cycle starts every check at once, and a
+  // distribution's shell checks are processes. Queued checks start their
+  // budget when they start, not while they wait.
+  const release = await shellSlots.acquire();
+  try {
+    return await runShellCheck(cmd, extraEnv, cwd, opts);
+  } finally {
+    release();
+  }
+}
+
+/** A counting semaphore. */
+class Slots {
+  private free: number;
+  private waiting: (() => void)[] = [];
+  constructor(readonly size: number) {
+    this.free = size;
+  }
+  async acquire(): Promise<() => void> {
+    if (this.free > 0) this.free--;
+    else await new Promise<void>((r) => this.waiting.push(r));
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const next = this.waiting.shift();
+      if (next) next();
+      else this.free++;
+    };
+  }
+}
+
+/** Shell checks running at once: max(2, cpus/2). */
+export const SHELL_CHECK_CONCURRENCY = Math.max(
+  2,
+  Math.floor(os.cpus().length / 2),
+);
+const shellSlots = new Slots(SHELL_CHECK_CONCURRENCY);
+
+function runShellCheck(
+  cmd: string,
+  extraEnv: Record<string, string>,
+  cwd: string | undefined,
+  opts: { timeoutMs?: number },
+): Promise<PingResult> {
+  const budget = opts.timeoutMs ?? CLI_SPAWN_TIMEOUT_MS;
   return new Promise((resolve) => {
     let settled = false;
     const settle = (r: PingResult): void => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       clearTimeout(guard);
       resolve(r);
     };
-    const proc = spawn(cmd, [], {
-      shell: true,
-      timeout: CLI_SPAWN_TIMEOUT_MS,
-      env: { ...process.env, ...extraEnv },
-      cwd,
-      // Output is never read: piped stdio would block a chatty script once the
-      // 64KB buffer fills, and 'close' would wait on grandchildren holding the
-      // pipes open. Nothing consumes it — don't create it.
-      stdio: "ignore",
+    // A check that has not answered is not a failed check: past the budget
+    // it is pending (ok null), never down. Under load a CLI-based check
+    // (`<cli> stack health`, a full tsx start) can need longer than the
+    // budget on a cold poll, and calling that "down" painted healthy stacks
+    // red until the next poll.
+    const noAnswer = (): PingResult => ({
+      ok: null,
+      pending: true,
+      error: `no answer within ${Math.round(budget / 1000)}s`,
     });
+    let proc: ReturnType<typeof spawn>;
+    try {
+      proc = spawn(cmd, [], {
+        shell: true,
+        env: { ...process.env, ...extraEnv },
+        cwd,
+        // Output is never read: piped stdio would block a chatty script once
+        // the 64KB buffer fills, and 'close' would wait on grandchildren
+        // holding the pipes open. Nothing consumes it — don't create it.
+        stdio: "ignore",
+      });
+    } catch (err) {
+      resolve({ ok: null, error: (err as Error).message });
+      return;
+    }
+    const timer = setTimeout(() => {
+      settle(noAnswer());
+      proc.kill("SIGTERM");
+    }, budget);
     // 'exit', NOT 'close': close waits for stdio to drain, which a killed
     // shell's surviving grandchildren can hold open forever — one wedged
     // health check then hangs every /api/health poll for good. The guard
-    // timer backstops even a spawn timeout that never fires.
-    const guard = setTimeout(
-      () => settle({ ok: false, error: "health check timed out" }),
-      CLI_SPAWN_TIMEOUT_MS + 1_000,
-    );
-    proc.on("exit", (code) =>
-      settle(code === 0 ? { ok: true } : { ok: false, error: `exit ${code}` }),
-    );
-    proc.on("error", (err) => settle({ ok: false, error: err.message }));
+    // timer backstops even a kill that never lands.
+    const guard = setTimeout(() => settle(noAnswer()), budget + 1_000);
+    proc.on("exit", (code, signal) => {
+      if (code === 0) return settle({ ok: true });
+      // Killed (by the budget above, or from outside): it never answered.
+      if (code === null)
+        return settle({ ...noAnswer(), error: `killed (${signal})` });
+      settle({ ok: false, error: `exit ${code}` });
+    });
+    // The check could not be started (e.g. EAGAIN under load): no verdict.
+    proc.on("error", (err) => settle({ ok: null, error: err.message }));
   });
+}
+
+// ── Timeouts: pending first, down when repeated ─────────────────────────────
+// A check that gets no answer within its budget (an HTTP timeout, a shell
+// check past CLI_SPAWN_TIMEOUT_MS) has not completed: one such cycle is
+// pending, not down. A cold first probe on a loaded machine (cold docker, a
+// tsx-started `stack health`, cold TLS) can miss the budget while the service
+// is fine, and reporting that as down painted healthy repos red until the
+// next poll. Two consecutive timeouts are down: a hung service still shows.
+// The web health row counts cycles (TimeoutStreaks); a one-shot caller
+// (`<cli> status`, checkServiceHealth) re-probes once at once instead, so
+// both say the same thing about the same service.
+
+/** Whether a ping got no answer within its budget. */
+export function timedOut(r: PingResult): boolean {
+  return r.pending === true || (r.ok === false && r.error === "timeout");
+}
+
+/** A timeout's verdict: pending on its first cycle, down on a repeat. */
+function timeoutVerdict(r: PingResult, repeated: boolean): PingResult {
+  const error = r.error ?? "timeout";
+  return repeated
+    ? { ok: false, error: `${error} (twice in a row)` }
+    : { ok: null, pending: true, error };
+}
+
+/** Consecutive timed-out cycles per check, for a caller that polls. */
+export class TimeoutStreaks {
+  private streak = new Map<string, number>();
+  /** `r` as this cycle's verdict for check `key`. */
+  judge(key: string, r: PingResult): PingResult {
+    if (!timedOut(r)) {
+      this.streak.delete(key);
+      return r;
+    }
+    const n = (this.streak.get(key) ?? 0) + 1;
+    this.streak.set(key, n);
+    return timeoutVerdict(r, n >= 2);
+  }
+}
+
+/** Probe once; on a timeout, probe again at once: down only if it times out twice. */
+export async function pingTwiceOnTimeout(
+  probe: () => Promise<PingResult>,
+): Promise<PingResult> {
+  const first = await probe();
+  if (!timedOut(first)) return first;
+  const second = await probe();
+  return timedOut(second) ? timeoutVerdict(second, true) : second;
+}
+
+/**
+ * Run a shell health check. Den's own compose check (the `<cli> stack
+ * health` command it generates, `compose.cmd`) is answered in-process from
+ * the shared docker listing: no CLI process per check. Any other command
+ * (a distribution's own) runs as a shell command.
+ */
+export async function pingShellCheck(
+  cmd: string,
+  extraEnv: Record<string, string>,
+  cwd: string | undefined,
+  compose: ComposeHealthTarget | null,
+): Promise<PingResult> {
+  if (!compose || cmd !== compose.cmd) return pingShell(cmd, extraEnv, cwd);
+  const v = await composeHealth(compose);
+  if (v.ok === true) return { ok: true };
+  if (v.ok === false) return { ok: false, error: v.detail };
+  return { ok: null, error: v.detail, ...(v.pending ? { pending: true } : {}) };
+}
+
+/** A ping result as a ServiceHealthResult health state. */
+export function healthState(r: PingResult): ServiceHealthResult["health"] {
+  return r.ok === true ? "ok" : r.ok === false ? "error" : "pending";
 }
 
 // ── Per-service health check ──────────────────────────────────────────────────
@@ -483,9 +646,9 @@ export async function checkServiceHealth(
     };
   }
 
-  const composeHealth =
+  const compose =
     env === "local"
-      ? composeHealthCmd(
+      ? composeHealthTarget(
           manifest,
           resolved.subsystem,
           resolved.repoName,
@@ -496,7 +659,7 @@ export async function checkServiceHealth(
     manifest,
     resolved.subsystem,
     env,
-    composeHealth,
+    compose?.cmd ?? null,
   );
   const placed: Pick<ServiceHealthResult, "runs" | "target"> = {
     runs: plan.placement.runs,
@@ -547,21 +710,22 @@ export async function checkServiceHealth(
     };
   }
 
-  const result =
+  const result = await pingTwiceOnTimeout(() =>
     healthCfg.type === "shell"
-      ? await pingShell(healthCfg.cmd, {}, resolved.repoPath)
-      : await pingHttp(
+      ? pingShellCheck(healthCfg.cmd, {}, resolved.repoPath, compose)
+      : pingHttp(
           healthCfg.url,
           env === "local" && plan.placement.runs !== "remote"
             ? HEALTH_CHECK_TIMEOUT_MS
             : HOSTED_HEALTH_CHECK_TIMEOUT_MS,
           plan.expect,
-        );
+        ),
+  );
 
   return {
     ...base,
     ...placed,
-    health: result.ok ? "ok" : "error",
+    health: healthState(result),
     healthDetail:
       result.error ??
       (!result.ok && result.status !== undefined

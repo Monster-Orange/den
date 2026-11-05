@@ -37,6 +37,24 @@ export function engineBin(name: string, engineRoot = getEngineRoot()): string {
   }
 }
 
+/**
+ * A file inside a package Den depends on (e.g. "tsx/dist/loader.mjs"): the
+ * nearest node_modules/<rel> at or above the engine root, or null.
+ */
+export function engineModuleFile(
+  rel: string,
+  engineRoot = getEngineRoot(),
+): string | null {
+  let dir = path.resolve(engineRoot);
+  for (;;) {
+    const candidate = path.join(dir, "node_modules", rel);
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 /** The tsx binary that runs Den's TypeScript sources. */
 export function tsxBin(): string {
   return engineBin("tsx");

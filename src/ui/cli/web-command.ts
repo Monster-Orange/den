@@ -3,6 +3,7 @@ import { execFileSync, spawn, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
+import { pathToFileURL } from "url";
 import {
   CLI_SPAWN_TIMEOUT_MS,
   DEFAULT_PORT,
@@ -10,7 +11,7 @@ import {
 } from "../../shared/constants.js";
 import { getDistRoot, getEngineRoot, getStateDir } from "../../shared/paths.js";
 import { hasDenUiMarker } from "../../shared/ui-marker.js";
-import { engineBin } from "../../shared/engine.js";
+import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readWebPort } from "../../shared/edge/config.js";
 
 import { product } from "../../shared/product.js";
@@ -294,8 +295,19 @@ async function waitForDenWeb(port: number): Promise<boolean> {
   return false;
 }
 
-/** How to run the web server: Den's own files, from the engine root. */
-function resolveServerEntrypoint(engine: string = getEngineRoot()): {
+/**
+ * How to run the web server: Den's own files, from the engine root.
+ *
+ * The TypeScript source runs as `node --import <tsx loader> index.ts`, never
+ * through the `tsx` CLI. The CLI is a parent process that relays signals to
+ * the server and, if the server has not acknowledged a SIGTERM within about
+ * 60ms (two 30ms windows), SIGKILLs it and exits 143. Under load the server
+ * misses that window, so `<cli> web down` killed it without its shutdown.
+ * With the loader there is one process, and the signal reaches the
+ * server's own handler. (The launchd service, service/install.sh, already
+ * runs this way.)
+ */
+export function resolveServerEntrypoint(engine: string = getEngineRoot()): {
   cmd: string;
   args: string[];
 } {
@@ -313,17 +325,23 @@ function resolveServerEntrypoint(engine: string = getEngineRoot()): {
   // take effect. The server resolves PUBLIC_DIR relative to its own module, so
   // running from src/ serves src/ui/server/public directly. Fall back to the
   // compiled build only when devDependencies (tsx) aren't installed.
-  const tsxBin = engineBin(process.platform === "win32" ? "tsx.cmd" : "tsx");
+  const loader = engineModuleFile("tsx/dist/loader.mjs", engine);
   const srcServer = path.join(engine, "src/ui/server/index.ts");
-  if (fs.existsSync(tsxBin) && fs.existsSync(srcServer)) {
-    return { cmd: tsxBin, args: [srcServer] };
+  if (loader && fs.existsSync(srcServer)) {
+    return {
+      cmd: process.execPath,
+      args: ["--import", pathToFileURL(loader).href, srcServer],
+    };
   }
 
   if (fs.existsSync(builtServer)) {
     return { cmd: process.execPath, args: [builtServer] };
   }
 
-  return { cmd: tsxBin, args: [srcServer] };
+  return {
+    cmd: engineBin(process.platform === "win32" ? "tsx.cmd" : "tsx", engine),
+    args: [srcServer],
+  };
 }
 
 function startDenWebServer(options: WebCommandOptions): StartedServer {

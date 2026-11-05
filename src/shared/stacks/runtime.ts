@@ -364,39 +364,86 @@ export function stackLogs(
 
 /**
  * Health of a running stack: ok when it has containers, all are running, and
- * none reports a failing or pending Docker healthcheck.
+ * none reports a failing or pending Docker healthcheck. `ok: null` when
+ * docker could not be asked: container state unknown is not "not running".
  */
 export function stackHealth(
   ctx: StackContext,
   s: StackConfig,
   service?: string,
-): { ok: boolean; detail: string } {
+): { ok: boolean | null; detail: string } {
   const project = projectName(s.name, ctx.workspace);
-  const r = run("docker", [
-    "ps",
-    "-a",
-    "--filter",
-    `label=com.docker.compose.project=${project}`,
-    ...(service
-      ? ["--filter", `label=com.docker.compose.service=${service}`]
-      : []),
-    "--format",
-    '{{.Label "com.docker.compose.service"}}\t{{.State}}\t{{.Status}}',
-  ]);
-  if (r.code !== 0) return { ok: false, detail: r.err || "docker ps failed" };
-  const rows = r.out.split("\n").filter(Boolean);
-  if (!rows.length)
+  let r: ReturnType<typeof run>;
+  try {
+    r = run("docker", [
+      "ps",
+      "-a",
+      "--filter",
+      `label=com.docker.compose.project=${project}`,
+      ...(service
+        ? ["--filter", `label=com.docker.compose.service=${service}`]
+        : []),
+      "--format",
+      '{{.Label "com.docker.compose.service"}}\t{{.State}}\t{{.Status}}',
+    ]);
+  } catch (e) {
+    return {
+      ok: null,
+      detail: `container state unknown: ${(e as Error).message}`,
+    };
+  }
+  if (r.code !== 0)
+    return {
+      ok: null,
+      detail: `container state unknown: ${r.err.trim() || "docker ps failed"}`,
+    };
+  const rows = r.out
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [svc = "", state = "", status = ""] = line.split("\t");
+      return { project, service: svc, state, status };
+    });
+  return judgeStackRows(rows, project, service);
+}
+
+/** One compose container, as a `docker ps` listing reports it. */
+export interface ComposeRow {
+  project: string;
+  service: string;
+  state: string;
+  status: string;
+}
+
+/**
+ * The verdict `stack health` gives for `project` (and `service`): ok when it
+ * has containers, all running, none with a failing or starting Docker
+ * healthcheck. Shared by the CLI and the in-process check (compose-health).
+ */
+export function judgeStackRows(
+  rows: ComposeRow[],
+  project: string,
+  service?: string,
+): { ok: boolean; detail: string } {
+  const mine = rows.filter(
+    (r) => r.project === project && (!service || r.service === service),
+  );
+  if (!mine.length)
     return {
       ok: false,
       detail: `${project}${service ? `/${service}` : ""}: not running`,
     };
-  const bad = rows.filter((row) => {
-    const [, state, status] = row.split("\t");
-    return (
-      state !== "running" || /\((unhealthy|health: starting)\)/.test(status)
-    );
-  });
+  const bad = mine.filter(
+    (r) =>
+      r.state !== "running" ||
+      /\((unhealthy|health: starting)\)/.test(r.status),
+  );
   return bad.length
-    ? { ok: false, detail: bad.join("; ") }
-    : { ok: true, detail: `${rows.length} container(s) running` };
+    ? {
+        ok: false,
+        detail: bad
+          .map((r) => `${r.service}\t${r.state}\t${r.status}`)
+          .join("; "),
+      }
+    : { ok: true, detail: `${mine.length} container(s) running` };
 }

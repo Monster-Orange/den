@@ -48,6 +48,13 @@ export const HOSTED_HEALTH_CHECK_TIMEOUT_MS = 10_000;
 /** Timeout for spawning short-lived CLI subprocesses (open, sudo, git). */
 export const CLI_SPAWN_TIMEOUT_MS = 5_000;
 
+/**
+ * Exit code of `<cli> stack health` when it could not tell (docker did not
+ * answer, the stack config could not be read): the check is unknown, not
+ * down. Any other non-zero exit means the containers are not healthy.
+ */
+export const STACK_HEALTH_UNKNOWN_EXIT = 3;
+
 /** Timeout for `gh api` calls (branch listing, repo search). */
 export const GH_API_TIMEOUT_MS = 15_000;
 

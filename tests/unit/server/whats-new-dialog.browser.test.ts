@@ -157,9 +157,15 @@ describe("the What's new dialog", () => {
     expect(await box.getAttribute("aria-modal")).toBe("true");
     const labelledBy = await box.getAttribute("aria-labelledby");
     expect(await p.locator(`#${labelledBy}`).textContent()).toBe("What's new");
-    // Focus is on the toggle (there are earlier releases), inside the box.
+    // Focus is on the heading, so a screen reader starts at the latest notes.
     expect(await state(p)).toEqual(
-      expect.objectContaining({ focusInside: true, focus: "cl-more" }),
+      expect.objectContaining({ focusInside: true, focus: "cl-title" }),
+    );
+    // Shift+Tab from the heading (not a tab stop) wraps to the last control,
+    // never out to the page behind.
+    await p.keyboard.press("Shift+Tab");
+    expect(await state(p)).toEqual(
+      expect.objectContaining({ focusInside: true, focus: "cl-got-it-btn" }),
     );
     for (let i = 0; i < 6; i++) {
       await p.keyboard.press(i % 2 ? "Shift+Tab" : "Tab");
