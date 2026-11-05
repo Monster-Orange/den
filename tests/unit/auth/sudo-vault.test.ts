@@ -150,12 +150,13 @@ describe("with secrets.refs.sudo configured (1password)", () => {
 });
 
 describe.each([
-  ["1password", onePassword()],
-  ["doppler", { secrets: { provider: "doppler" } }],
-  ["env", { secrets: { provider: "env" } }],
-  ["none", { secrets: { provider: "none" } }],
-  ["unset (implicit doppler)", {}],
-])("%s with no secrets.refs.sudo", (_name, cfg) => {
+  // [name, config, backendAvailable with the CLI on PATH]
+  ["1password", onePassword(), true],
+  ["doppler", { secrets: { provider: "doppler" } }, true],
+  ["env", { secrets: { provider: "env" } }, true],
+  ["none", { secrets: { provider: "none" } }, false],
+  ["unset (implicit doppler)", {}, false],
+])("%s with no secrets.refs.sudo", (_name, cfg, available) => {
   beforeEach(() => {
     orgConfig = cfg;
     resetSecretsProviderCache();
@@ -164,8 +165,10 @@ describe.each([
   it("reports not configured, pointing at secrets.refs.sudo; spawns nothing", async () => {
     const st = await sudoVaultStatus();
     expect(st.configured).toBe(false);
-    expect(st.backendAvailable).toBe(false);
-    expect(st.opAvailable).toBe(false);
+    // An explicit backend whose CLI is installed is available (the alias
+    // keeps its 0.2.x meaning); not configured is `configured`'s job.
+    expect(st.backendAvailable).toBe(available);
+    expect(st.opAvailable).toBe(available);
     expect(st.hasStored).toBe(false);
     expect(st.reason).toMatch(
       /^not configured: set secrets\.provider and secrets\.refs\.sudo in config\//,
@@ -173,6 +176,16 @@ describe.each([
     await expect(isOpSignedIn()).resolves.toBe(false);
     await expect(readSudoFromVault()).resolves.toBeNull();
     await expect(saveSudoToVault("x")).rejects.toThrow(/not configured/);
+    expect(mockExecFileAsync).not.toHaveBeenCalled();
+  });
+
+  it("CLI not on PATH: not available either way; still spawns nothing", async () => {
+    cliOnPath = false;
+    const st = await sudoVaultStatus();
+    expect([st.configured, st.backendAvailable]).toEqual([
+      false,
+      _name === "env" ? available : false,
+    ]);
     expect(mockExecFileAsync).not.toHaveBeenCalled();
   });
 });

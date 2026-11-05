@@ -16,7 +16,8 @@ if [ -z "${DEN_ROOT:-}" ] && [ -f "$DEN_ENGINE_ROOT/den.yml" ]; then
   export DEN_ROOT
 fi
 export DEN_INVOKE_CWD="$PWD"
-export OP_ACCOUNT="${OP_ACCOUNT:-example.1password.com}"
+# No backend account of its own (SEC-0): the 1password strategy sets
+# OP_ACCOUNT from the distribution's config, or the caller's own is kept.
 
 # tsx: Den's own (a checkout) or hoisted into the distribution's node_modules.
 find_tsx() {

@@ -73,7 +73,13 @@ export interface SudoVaultStatus {
   label: string;
   /** `secrets.refs.sudo` is set for this backend. */
   configured: boolean;
-  /** Configured, and detect() says the backend can work here and it is ready. */
+  /**
+   * The backend can work here, whether or not a sudo ref is configured
+   * (`configured` says that). With no ref: detect() only (a PATH check,
+   * nothing spawned), and only for an explicitly chosen provider; an unset
+   * provider is never probed (it is not needed). With a ref: detect() and
+   * signed in.
+   */
   backendAvailable: boolean;
   /** Why it is not available (not configured, CLI not on PATH, signed out). */
   reason?: string;
@@ -85,7 +91,10 @@ export interface SudoVaultStatus {
 export async function sudoVaultStatus(): Promise<SudoVaultStatus> {
   const cfg = readSecretsConfig();
   const ref = sudoRef();
-  const st = secretsStatus(cfg, process.env, { detect: !!ref });
+  const pre = secretsStatus(cfg, process.env, { detect: false });
+  // Probe only what is needed or was chosen: a ref, or an explicit backend.
+  const probe = !!ref || (!pre.implicit && pre.backend !== "none");
+  const st = probe ? secretsStatus(cfg, process.env) : pre;
   const out = (
     backendAvailable: boolean,
     hasStored: boolean,
@@ -99,7 +108,12 @@ export async function sudoVaultStatus(): Promise<SudoVaultStatus> {
     hasStored,
     opAvailable: backendAvailable,
   });
-  if (!ref) return out(false, false, notConfiguredMessage(SUDO_REF_NAME));
+  if (!ref)
+    return out(
+      probe && st.detect.available,
+      false,
+      notConfiguredMessage(SUDO_REF_NAME),
+    );
   if (!st.detect.available)
     return out(false, false, `not available: ${st.detect.reason ?? ""}`.trim());
   if (!(await getSecretsProvider().isReady()))

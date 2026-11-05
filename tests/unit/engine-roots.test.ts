@@ -26,6 +26,7 @@ const REAL_BIN = path.resolve("bin/den");
 const FAKE_TSX = `#!/bin/sh
 echo "DEN_ROOT=\${DEN_ROOT:-}"
 echo "DEN_ENGINE_ROOT=\${DEN_ENGINE_ROOT:-}"
+echo "OP_ACCOUNT_SET=\${OP_ACCOUNT+yes}"
 echo "ENTRY=$1"
 shift
 echo "ARGS=$*"
@@ -58,6 +59,7 @@ function cleanEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   delete env.DEN_ROOT;
   delete env.DEN_ENGINE_ROOT;
   delete env.DEN_USE_DIST;
+  delete env.OP_ACCOUNT;
   return { ...env, ...extra };
 }
 
@@ -130,6 +132,17 @@ describe("bin/den: engine root and distribution root", () => {
       cleanEnv({ DEN_ROOT: dist }),
     );
     expect(out.DEN_ROOT).toBe(dist);
+  });
+
+  it("adds no backend account of its own (SEC-0): OP_ACCOUNT only if the caller set it", () => {
+    const bare = run(path.join(engine, "bin", "den"), ["status"], cleanEnv());
+    expect(bare.OP_ACCOUNT_SET).toBe("");
+    const own = run(
+      path.join(engine, "bin", "den"),
+      ["status"],
+      cleanEnv({ OP_ACCOUNT: "team.example" }),
+    );
+    expect(own.OP_ACCOUNT_SET).toBe("yes");
   });
 
   it("routes `create` to its own entry point, without the word create", () => {

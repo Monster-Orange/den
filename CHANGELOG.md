@@ -404,6 +404,18 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **`bin/den` sets no backend account** (0.3.0-dev.24, from a consumer's
+  dev.23 run): the launcher exported `OP_ACCOUNT` with a placeholder
+  domain for every command, whatever the secrets backend, so it reached
+  the web server even under doppler. It now adds nothing; the 1password
+  strategy sets it from `secrets.onepassword.account`, or the caller's own
+  is kept.
+- **`backendAvailable` is true for a usable backend even with no sudo ref**
+  (0.3.0-dev.24): dev.23 reported false whenever `secrets.refs.sudo` was
+  unset, so the deprecated `opAvailable` alias changed meaning. With no
+  ref it now reflects detect() (a PATH check, nothing spawned) for an
+  explicitly chosen backend; `configured: false` says the ref is missing.
+  An unset provider and `none` still report false and are never probed.
 - **Raster marks are scaled to fit, never cropped** (0.3.0-dev.23).
 - **Den adds no 1Password account to anything it starts** (0.3.0-dev.23).
   The web server daemon (`web up`, `web restart`) was always given
