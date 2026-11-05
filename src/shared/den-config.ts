@@ -255,22 +255,33 @@ export interface DenConfig {
    * `default-workspace.ts`.
    */
   defaults?: {
-    workspace?: {
-      /** Branch managed clones track (default "main"). */
-      branch?: string;
-      /** Repo-system names to seed, all as managed clones. */
-      repos?: string[];
+    workspace?: WorkspaceBlueprint & {
       /** The entry repo the seed's dependency walk starts from (listed first). */
       entry?: string;
-      /**
-       * Seeded repos that get `autostart: false` stamped on their workspace
-       * entry — the team default for systems a fresh clone should not start
-       * with workspace up (e.g. billing-api's `make up` opens an interactive
-       * Stripe tab). Personal thereafter: toggle per system in the web ⋮ menu.
-       */
-      autostart_off?: string[];
     };
+    /**
+     * Multi-workspace blueprint: `{ <name>: { repos, focus?, branch?,
+     * autostart_off? } }`. On a genuine fresh setup each workspace is created
+     * with its repos (managed), all are activated, and the one marked
+     * `focus: true` (else the first) is focused. Exclusive with `workspace`.
+     */
+    workspaces?: Record<string, WorkspaceBlueprint & { focus?: boolean }>;
   };
+}
+
+/** One workspace's blueprint: the repo entries a fresh setup seeds it with. */
+export interface WorkspaceBlueprint {
+  /** Branch managed clones track (default "main"). */
+  branch?: string;
+  /** Repo-system names to seed, all as managed clones. */
+  repos?: string[];
+  /**
+   * Seeded repos that get `autostart: false` stamped on their workspace
+   * entry — the team default for systems a fresh clone should not start
+   * with workspace up (e.g. billing-api's `make up` opens an interactive
+   * Stripe tab). Personal thereafter: toggle per system in the web ⋮ menu.
+   */
+  autostart_off?: string[];
 }
 
 /**
@@ -621,6 +632,113 @@ export interface WebConfig {
   port?: number;
   /** The launchd service that runs the web UI (`<cli> service install`). */
   service?: { label?: string; logs?: string };
+}
+
+/** A validated workspace blueprint with its defaults applied. */
+export interface ResolvedWorkspaceBlueprint {
+  name: string;
+  repos: string[];
+  branch: string;
+  autostartOff: string[];
+  focus: boolean;
+}
+
+/** Which blueprint shape the distribution uses, and its workspaces. */
+export interface WorkspaceBlueprints {
+  shape: "none" | "single" | "multi";
+  workspaces: ResolvedWorkspaceBlueprint[];
+}
+
+const BLUEPRINT_KEYS = ["branch", "repos", "autostart_off"];
+
+function blueprintStrings(where: string, key: string, v: unknown): string[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.some((r) => typeof r !== "string" || !r.trim()))
+    throw new Error(`${where}.${key} must be a list of repo names`);
+  return v as string[];
+}
+
+function resolveBlueprint(
+  where: string,
+  name: string,
+  raw: unknown,
+  /** Extra keys allowed; null skips the unknown-key check (legacy shape). */
+  extraKeys: string[] | null,
+): ResolvedWorkspaceBlueprint {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+    throw new Error(`${where} must be a map: { repos: [...] }`);
+  const bp = raw as Record<string, unknown>;
+  const known = [...BLUEPRINT_KEYS, ...(extraKeys ?? [])];
+  for (const key of Object.keys(bp))
+    if (extraKeys && !known.includes(key))
+      throw new Error(
+        `${where}: unknown key "${key}" (known: ${known.join(", ")})`,
+      );
+  const branch = bp.branch ?? "main";
+  if (typeof branch !== "string" || !branch.trim())
+    throw new Error(`${where}.branch must be a branch name`);
+  if (bp.focus !== undefined && typeof bp.focus !== "boolean")
+    throw new Error(`${where}.focus must be true or false`);
+  return {
+    name,
+    repos: blueprintStrings(where, "repos", bp.repos),
+    branch,
+    autostartOff: blueprintStrings(where, "autostart_off", bp.autostart_off),
+    focus: bp.focus === true,
+  };
+}
+
+/**
+ * The distribution's workspace blueprint, validated: `defaults.workspace`
+ * (one workspace, `default`) or `defaults.workspaces` (named workspaces).
+ * Empty when neither is set. Both at once, or a malformed value, throws.
+ */
+export function readWorkspaceBlueprints(
+  config: DenConfig = readDenConfig(),
+): WorkspaceBlueprints {
+  const none: WorkspaceBlueprints = { shape: "none", workspaces: [] };
+  const defaults: unknown = config.defaults;
+  if (defaults === undefined || defaults === null) return none;
+  if (typeof defaults !== "object" || Array.isArray(defaults))
+    throw new Error(`defaults in ${DEN_CONFIG_PATH} must be a map`);
+  const { workspace, workspaces } = defaults as Record<string, unknown>;
+  if (workspace != null && workspaces != null)
+    throw new Error(
+      `${DEN_CONFIG_PATH} sets both defaults.workspace and defaults.workspaces: ` +
+        "use defaults.workspaces alone (name the default workspace `default` in it), " +
+        "or defaults.workspace alone for a single default workspace",
+    );
+  if (workspaces != null) {
+    if (typeof workspaces !== "object" || Array.isArray(workspaces))
+      throw new Error(
+        "defaults.workspaces must be a map: { <name>: { repos: [...], focus?: true } }",
+      );
+    const resolved = Object.entries(workspaces as Record<string, unknown>).map(
+      ([name, raw]) => {
+        if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name))
+          throw new Error(
+            `defaults.workspaces: "${name}" is not a valid workspace name (letters, digits, dots, dashes, underscores)`,
+          );
+        return resolveBlueprint(`defaults.workspaces.${name}`, name, raw, [
+          "focus",
+        ]);
+      },
+    );
+    const focused = resolved.filter((b) => b.focus);
+    if (focused.length > 1)
+      throw new Error(
+        `defaults.workspaces: only one workspace may set focus: true (got ${focused.map((b) => b.name).join(", ")})`,
+      );
+    return { shape: "multi", workspaces: resolved };
+  }
+  if (workspace != null)
+    return {
+      shape: "single",
+      workspaces: [
+        resolveBlueprint("defaults.workspace", "default", workspace, null),
+      ],
+    };
+  return none;
 }
 
 /** `web.service` with its defaults applied. */

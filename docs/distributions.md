@@ -549,6 +549,54 @@ A color from the org config (`orgs.<id>.color`) is only ever a swatch,
 border or dot, never text or a ground: labels are `--text` or `--muted`.
 Links in body content are underlined, so a link never reads by color alone.
 
+## Workspace blueprint
+
+The workspaces a new machine starts with. Read from `defaults:` in the org
+config. Every repo is seeded as a managed clone (`mode: managed`) on the
+blueprint's branch; nothing is cloned until a command needs it. Switch a repo
+to a local checkout afterwards with `acme use-local <repo>`.
+
+One workspace, `default`:
+
+```yaml
+defaults:
+  workspace:
+    branch: main # default: main
+    repos: [shop-web, shop, infra-stack]
+    autostart_off: [shop] # seeded with autostart: false
+    entry: shop-web # where the setup script's dependency walk starts
+```
+
+Several named workspaces:
+
+```yaml
+defaults:
+  workspaces:
+    storefront:
+      repos: [shop-web, shop]
+    data:
+      repos: [warehouse, infra-stack]
+      branch: develop
+      focus: true
+```
+
+Each entry takes `repos`, `branch` and `autostart_off`, the same fields as
+`defaults.workspace`, plus `focus`. Seeding creates every named workspace
+with its repos, activates them all, and focuses the one with `focus: true`
+(else the first). Set `defaults.workspace` or `defaults.workspaces`, not both:
+both at once is an error, as is more than one `focus: true`.
+
+The blueprint applies only to a genuine fresh setup: no workspace except an
+empty `default` that was never seeded. On a TTY the first command that needs
+workspaces offers to seed. Without a TTY it prints a one-line hint and changes
+nothing. `acme workspace seed` (or `acme init` in the distribution root) seeds
+explicitly, and resets the blueprint's workspaces if they already hold repos.
+
+Once seeded, a repo that later joins `defaults.workspace.repos` is added to
+`default`, but only while `default` is your only workspace, and never a repo
+you removed from it or that another workspace holds. With
+`defaults.workspaces` nothing is topped up.
+
 ## The bin shim
 
 `bin/<cli>` is three lines of sh: it names the distribution root and runs

@@ -301,6 +301,43 @@ config and manifest changes a distribution must make to move to it under
   `>=0.3.0-0 <0.4.0` to admit Den's 0.3.0 prereleases, because `>=0.3.0`
   excludes them.
 
+## [0.2.5] - unreleased
+
+### Fixed
+
+- **The default workspace is seeded only on a genuine fresh setup.** Any
+  command that reads workspaces (`status`, `up`, `graph`, `logs`, …) seeded
+  `default` from `defaults.workspace.repos` whenever `default` was empty,
+  so moving every repo into per-project workspaces and deactivating
+  `default` got it refilled with managed entries on the next command, ready
+  to clone duplicates of repos you work on locally. Seeding now requires
+  that no workspace but `default` exists and that `default` was never
+  seeded (no `seeded_repos`). Declining the offer records that too, so it
+  is no longer asked again.
+- **No silent seeding without a TTY.** On a fresh setup a command without
+  a TTY now prints a one-line hint to run `<cli> workspace seed` and
+  changes nothing; on a TTY the offer stays. New: `<cli>
+  workspace seed` seeds explicitly (as `<cli> init` in the root does).
+- **Top-up no longer re-adds repos you moved or removed.** Top-up (adding
+  repos that joined the blueprint after seeding) never runs once you have
+  other workspaces, and skips a repo any workspace holds. Removing a
+  blueprint repo from `default` in the web UI records it, so a `default`
+  from before `seeded_repos` no longer gets it back on its one-time
+  migration.
+
+### Added
+
+- **Multi-workspace blueprint: `defaults.workspaces`.** `{ <name>: {
+  repos, branch?, autostart_off?, focus? } }` in the org config. A fresh
+  setup creates each workspace with its repos (managed), activates them
+  all and focuses the one with `focus: true` (else the first). Setting
+  both `defaults.workspace` and `defaults.workspaces` is an error, as is a
+  malformed entry. See docs/distributions.md, "Workspace blueprint".
+
+### Migrations
+
+- None required.
+
 ## [0.2.4] - 2026-11-04
 
 ### Fixed

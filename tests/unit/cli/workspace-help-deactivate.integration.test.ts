@@ -129,7 +129,7 @@ describe("workspace --help", () => {
   it("lists activate, deactivate and focus with a line each", () => {
     const out = den(["workspace", "--help"]);
     expect(out).toMatch(
-      /workspace <list\|activate\|deactivate\|focus\|use\|create\|delete\|code>/,
+      /workspace <list\|activate\|deactivate\|focus\|use\|create\|delete\|code\|seed>/,
     );
     expect(out).toMatch(/^\s+activate <n>\s+\S/m);
     expect(out).toMatch(/^\s+deactivate <n>\s+\S/m);
