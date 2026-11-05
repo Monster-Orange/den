@@ -24,6 +24,7 @@ export const UI_MODULES: readonly string[] = [
   "/version-label.js",
   "/health-fit.js",
   "/health-rollup.js",
+  "/shell.js",
 ];
 
 /** URL path → file inside node_modules. */

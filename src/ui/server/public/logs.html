@@ -10,11 +10,19 @@
         var m = "@@DEN_MODE@@";
         if (m !== "dark" && m !== "light") {
           var q = function (s) {
-            return window.matchMedia && matchMedia("(prefers-color-scheme: " + s + ")").matches;
+            return (
+              window.matchMedia &&
+              matchMedia("(prefers-color-scheme: " + s + ")").matches
+            );
           };
-          m = q("light") ? "light" : q("dark") ? "dark" : "@@DEN_DEFAULT_MODE@@";
+          m = q("light")
+            ? "light"
+            : q("dark")
+              ? "dark"
+              : "@@DEN_DEFAULT_MODE@@";
         }
-        document.documentElement.dataset.mode = m === "light" ? "light" : "dark";
+        document.documentElement.dataset.mode =
+          m === "light" ? "light" : "dark";
       })();
     </script>
     <link rel="stylesheet" href="/theme.css" id="theme-css" />
@@ -28,7 +36,6 @@
         margin: 0;
         padding: 0;
       }
-
 
       html,
       body {
@@ -45,46 +52,8 @@
       }
 
       /* ── Header ───────────────────────────────────────────────────────────── */
-      header {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 7px 14px;
-        background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-      }
-      header h1 {
-        font-family: var(--mono);
-        font-size: 14px;
-        font-weight: 600;
-        letter-spacing: -0.02em;
-      }
       .h-spacer {
         flex: 1;
-      }
-      nav {
-        display: flex;
-        gap: 2px;
-      }
-      nav a {
-        color: var(--muted);
-        text-decoration: none;
-        padding: 3px 10px;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: 500;
-        transition: color 0.1s;
-        display: flex;
-        align-items: center;
-        gap: 5px;
-      }
-      nav a:hover {
-        color: var(--text);
-        background: var(--border);
-      }
-      nav a.active {
-        color: var(--text);
       }
 
       .badge {
@@ -102,35 +71,6 @@
       }
 
       /* ── Health dots ──────────────────────────────────────────────────────── */
-      .health {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 0 4px;
-      }
-      .health-item {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 11px;
-        color: var(--muted);
-      }
-      .health-group {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 11px;
-        color: var(--muted);
-      }
-      .health-group-label {
-        color: var(--muted);
-        margin-right: 1px;
-      }
-      .health-group-dots {
-        display: flex;
-        align-items: center;
-        gap: 3px;
-      }
       .dot {
         width: 7px;
         height: 7px;
@@ -171,43 +111,6 @@
       }
       .spacer {
         flex: 1;
-      }
-
-      .env-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 2px 8px 2px 6px;
-        border-radius: 999px;
-        background: var(--surface);
-        border: 1px solid var(--border);
-        font-size: 11px;
-        font-weight: 500;
-        color: var(--muted);
-      }
-      .env-badge::before {
-        content: "env";
-        font-size: 9px;
-        font-weight: 600;
-        letter-spacing: 0.05em;
-        color: var(--muted);
-        opacity: 0.6;
-        text-transform: uppercase;
-      }
-      .env-badge select {
-        background: transparent;
-        border: none;
-        outline: none;
-        color: var(--text);
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-        padding: 0;
-        -webkit-appearance: none;
-        appearance: none;
-      }
-      .env-badge select option {
-        background: var(--surface);
       }
 
       .seg {
@@ -534,43 +437,11 @@
     </style>
   </head>
   <body>
-    <header>
-      <!-- The active theme's mark (appearance.js draws it from /api/themes). -->
-      <span
-        class="den-mark"
-        id="den-mark"
-        aria-hidden="true"
-        style="display: inline-block; width: 18px; height: 18px; flex-shrink: 0"
-      ></span>
-      <h1>__DEN_CLI__</h1>
-      <button
-        class="v-pill"
-        id="version-pill"
-        onclick="openChangelog()"
-        title="View changelog"
-      >
-        <span class="v-pip" id="v-pip"></span><span class="v-txt">v…</span>
-      </button>
-      <div class="health" id="health" title="Service health"></div>
-      <div class="h-spacer"></div>
-      <nav>
-        <a href="/">Local Dev</a>
-        <a href="/services">Services</a>
-        <a href="/environments">Environments</a>
-        <a href="/release">Releases</a>
-        <a href="/logs" class="active"
-          >Logs <span class="badge visible" id="log-badge"></span
-        ></a>
-        <a href="/tests">Tests</a>
-      </nav>
-    </header>
+    <!-- The shell: top bar and rail, the same on every page (shell.js). -->
+    <div id="den-shell" data-page="logs"></div>
+    <script src="/shell.js"></script>
 
     <div class="subbar">
-      <div class="env-badge">
-        <select id="env-sel" title="Environment">
-          <option value="local">local</option>
-        </select>
-      </div>
       <div class="spacer"></div>
       <div class="seg" id="log-dir-seg">
         <button data-dir="cols" class="active" title="Side by side">
@@ -612,6 +483,8 @@
         applyDenConfig,
         initChangelog,
         computePrimaryByRepo,
+        envReady,
+        initWorkspacePill,
       } from "/header.js";
 
       // ── Safe highlight rendering ──────────────────────────────────────────────
@@ -710,15 +583,9 @@
 
       // ── Init ──────────────────────────────────────────────────────────────────
       async function init() {
-        const envs = await fetch("/api/environments")
-          .then((r) => r.json())
-          .catch(() => ["local"]);
+        // The shell's env picker (header.js), one for every page.
+        await envReady();
         const envSel = document.getElementById("env-sel");
-        envSel.innerHTML = envs
-          .map((e) => `<option value="${e}">${e}</option>`)
-          .join("");
-        const savedEnv = localStorage.getItem("__DEN_CLI__-env");
-        if (savedEnv && envs.includes(savedEnv)) envSel.value = savedEnv;
 
         const savedDir = localStorage.getItem("__DEN_CLI__-log-dir") || "cols";
         applyLogDir(savedDir);
@@ -727,6 +594,7 @@
           loadLogToolbar(),
           loadLogSettings(),
           initHealth(),
+          initWorkspacePill("env-sel"),
           applyDenConfig(),
           initChangelog(),
         ]);
@@ -785,7 +653,6 @@
       // ── Env ───────────────────────────────────────────────────────────────────
       document.getElementById("env-sel").addEventListener("change", () => {
         const env = document.getElementById("env-sel").value;
-        localStorage.setItem("__DEN_CLI__-env", env);
         // Close all open streams (they're env-specific) — except __DEN_CLI__/server
         // which is env-agnostic and should persist across env switches.
         for (const [key] of [...logStreams]) {

@@ -1,8 +1,8 @@
 /**
- * Shared header logic — service health dots
- *
- * Both index.html and services.html include this script.
- * It expects:
+ * The shell's behaviour (shell.js draws the frame: top bar and rail):
+ * the health row, the version pill and changelog, the workspace pill, the
+ * env picker (one for the whole shell) and the log badge. Every page
+ * imports it. It expects:
  *   - a <div id="health"> in the header to render dots into
  *   - a <select id="env-sel"> whose change event triggers a re-ping
  *
@@ -21,6 +21,7 @@ import {
   buildRow,
   closeMoreList,
   fitPlan,
+  healthCycle,
   mountMoreChip,
   paintGate,
 } from "./health-fit.js";
@@ -45,6 +46,62 @@ let pollTimer = null;
 // without this, one in-flight poll during an env switch permanently hijacked
 // the dots back to the old env.
 let pollGen = 0;
+
+// ── The env picker: one for the whole shell (0.3.0-dev.14) ─────────────────────
+
+const LS_ENV = "__DEN_CLI__-env";
+let _envReady = null;
+
+/**
+ * Fill the shell's env picker from /api/environments and restore the last
+ * choice (one key for every page). Resolves with the env list once the
+ * picker holds the right value; pages await it before reading #env-sel.
+ * Started as soon as header.js loads.
+ */
+export function envReady() {
+  if (_envReady) return _envReady;
+  _envReady = (async () => {
+    const sel = document.getElementById("env-sel");
+    const envs = await fetch("/api/environments")
+      .then((r) => r.json())
+      .catch(() => ["local"]);
+    if (!sel) return envs;
+    const esc = (s) =>
+      String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+    sel.innerHTML = envs
+      .map((e) => `<option value="${esc(e)}">${esc(e)}</option>`)
+      .join("");
+    let saved = null;
+    try {
+      saved = localStorage.getItem(LS_ENV);
+    } catch {}
+    if (saved && envs.includes(saved)) sel.value = saved;
+    sel.addEventListener("change", () => {
+      try {
+        localStorage.setItem(LS_ENV, sel.value);
+      } catch {}
+    });
+    return envs;
+  })();
+  return _envReady;
+}
+if (typeof document !== "undefined" && document.getElementById?.("env-sel"))
+  void envReady();
+
+/** The env picker's value: what this page shows. */
+export function currentEnv() {
+  return document.getElementById("env-sel")?.value ?? "local";
+}
+
+/**
+ * The env the health row checks: the page's pin (Local Dev and Releases are
+ * local by nature: `data-health-env` on #den-shell), else the env picker.
+ */
+export function healthEnv() {
+  return (
+    document.getElementById("den-shell")?.dataset?.healthEnv || currentEnv()
+  );
+}
 
 // ── Editor preference (cached) ─────────────────────────────────────────────────
 let _editorKey = null;
@@ -574,7 +631,7 @@ export async function applyDenConfig() {
   const localEnabled = config.environments?.includes("local") ?? true;
   if (!localEnabled) {
     document
-      .querySelectorAll("nav a[href='/'], nav a[href='/local-dev']")
+      .querySelectorAll(".den-rail a[href='/local-dev']")
       .forEach((el) => {
         el.style.display = "none";
       });
@@ -587,7 +644,7 @@ export async function applyDenConfig() {
  * before the product name: "Globex › __DEN_CLI__".
  */
 function _renderOrgCrumb(org) {
-  const h1 = document.querySelector("header h1");
+  const h1 = document.querySelector(".den-top h1, header h1");
   if (!h1 || !org?.title || document.getElementById("org-crumb")) return;
   const crumb = document.createElement("span");
   crumb.id = "org-crumb";
@@ -695,7 +752,7 @@ async function _renderPill(envSel) {
       _renderPickerPill(el, data, label, title);
     } else {
       el.textContent = label;
-      el.title = data.active?.length > 1 ? title : "";
+      el.title = data.active?.length > 1 ? title : label;
     }
     // The pill starts as inline display:none in every page's markup; clear it
     // on the pill AND its picker wrapper, or the wrapper shows an empty box.
@@ -772,6 +829,8 @@ function _renderPickerPill(el, data, label, title) {
   el.replaceChildren();
   const name = document.createElement("span");
   name.textContent = label;
+  // A long name ends in an ellipsis (shell.js): the whole name is here.
+  name.title = label;
   const caret = document.createElement("span");
   caret.className = "ws-pill-caret";
   caret.textContent = "▾";
@@ -881,7 +940,8 @@ async function _switchWorkspace(item) {
 
 /** Call once on page load. Does NOT manage env changes — caller handles that. */
 export async function initHealth() {
-  const env = document.getElementById("env-sel")?.value ?? "local";
+  await envReady();
+  const env = healthEnv();
   const gen = ++pollGen;
   await renderHealthDots(env, gen);
   schedulePoll(env, gen);
@@ -901,7 +961,7 @@ export async function refreshHealth(env, { force = false } = {}) {
 // return instead of showing pre-hide state for up to another minute.
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && pollGen > 0) {
-    refreshHealth(document.getElementById("env-sel")?.value ?? "local");
+    refreshHealth(healthEnv());
   }
 });
 
@@ -951,57 +1011,33 @@ async function renderHealthDots(env, gen = pollGen, force = false) {
 
   // Merge into the PREVIOUS poll's results rather than starting empty.
   //
-  // Each poll streams results as checks complete, repainting per batch. Painting
-  // only what has landed so far made the strip collapse (13 items → 2) and
-  // regrow on every 5s poll; because the strip sits above the content, the whole
-  // page below it — the dependency graph especially — visibly jumped ~30px each
-  // time. Seeding from the last known set keeps the item count stable, so a poll
-  // updates dot COLOURS in place instead of rebuilding the row.
-  const acc = new Map(gen === _healthAccGen ? _healthAcc : []);
+  // Each poll streams results as checks complete. Painting only what has
+  // landed so far made the strip collapse (13 items → 2) and regrow on every
+  // 5s poll; because the strip sits above the content, the whole page below
+  // it — the dependency graph especially — visibly jumped ~30px each time.
+  // Seeding from the last known set keeps the item count stable, so a poll
+  // updates dot COLOURS in place instead of rebuilding the row. A first cycle
+  // (nothing seeded) paints once, when complete (healthCycle, paintGate).
+  const seed = gen === _healthAccGen ? [..._healthAcc] : [];
   _healthAccGen = gen;
-  // A first cycle (page load, env switch: nothing seeded) paints once, when
-  // it ends; later polls repaint debounced (paintGate, 0.3.0-dev.13), so the
-  // row doesn't reshuffle with every streamed batch.
-  if (acc.size === 0) _healthGate.hold();
-  const keyOf = (r) => `${r.repo}/${r.service}`;
-  const paintFrom = (m) => () => {
-    if (gen !== pollGen) return; // a newer poll owns the DOM now
-    _healthAcc = m;
-    _paintHealthDots(container, env, _sortHealth([...m.values()]));
-  };
-
-  const fresh = new Map();
-  const streamed = await _streamHealth(env, force, (r) => {
-    acc.set(keyOf(r), r);
-    fresh.set(keyOf(r), r);
-    _healthGate.data(paintFrom(acc));
+  await healthCycle({
+    seed,
+    gate: _healthGate,
+    stream: (onResult) => _streamHealth(env, force, onResult),
+    // Stream unavailable or broken (older server, a proxy that buffers SSE,
+    // a dropped connection): the plain endpoint completes the cycle.
+    fetchAll: () =>
+      fetch(`/api/health?env=${env}${force ? "&refresh=1" : ""}`, {
+        signal: AbortSignal.timeout(10_000),
+      })
+        .then((r) => r.json())
+        .catch(() => null),
+    paint: (m) => {
+      _healthAcc = m;
+      _paintHealthDots(container, env, _sortHealth([...m.values()]));
+    },
+    current: () => gen === pollGen,
   });
-
-  let answered = streamed;
-  if (!streamed) {
-    // Stream unavailable (older server, proxy that buffers SSE) — fall back to
-    // the plain endpoint so the dots still resolve.
-    try {
-      const rs = await fetch(
-        `/api/health?env=${env}${force ? "&refresh=1" : ""}`,
-        {
-          signal: AbortSignal.timeout(10_000),
-        },
-      ).then((r) => r.json());
-      fresh.clear();
-      for (const r of rs) fresh.set(keyOf(r), r);
-      answered = true;
-    } catch {
-      /* server unreachable */
-    }
-  }
-  if (gen !== pollGen) return;
-  // Settle on exactly what THIS poll returned, so a service removed from the
-  // workspace disappears instead of lingering from the seeded set. A first
-  // cycle that answered with nothing says "no services".
-  if (fresh.size > 0 || (answered && !_healthGate.ready))
-    _healthGate.done(paintFrom(fresh));
-  else _healthGate.done();
 }
 const _healthGate = paintGate();
 
@@ -1022,18 +1058,21 @@ function _sortHealth(results) {
 
 /**
  * Read /api/health/stream to completion, calling onResult per check.
- * Resolves true if the stream ran, false if the caller should fall back.
+ * Resolves "done" when the server ended the cycle (every check answered),
+ * "partial" when it broke after some results, "none" when it gave nothing:
+ * only "done" is a whole cycle (healthCycle).
  */
 function _streamHealth(env, force, onResult) {
   return new Promise((resolve) => {
     let es;
     let got = false;
     // Backstop: a hung stream must not stall the poll chain forever.
+    const broken = () => (got ? "partial" : "none");
     const guard = setTimeout(() => {
       try {
         es?.close();
       } catch {}
-      resolve(got);
+      resolve(broken());
     }, 15_000);
     const done = (ok) => {
       clearTimeout(guard);
@@ -1050,7 +1089,7 @@ function _streamHealth(env, force, onResult) {
       );
     } catch {
       clearTimeout(guard);
-      return resolve(false);
+      return resolve("none");
     }
     es.onmessage = (e) => {
       let msg;
@@ -1063,13 +1102,14 @@ function _streamHealth(env, force, onResult) {
         got = true;
         onResult(msg.result);
       } else if (msg.type === "done") {
-        done(true);
+        done("done");
       } else if (msg.type === "error") {
-        done(got);
+        done(broken());
       }
     };
-    // Errors before any result mean "fall back"; after results, keep what we got.
-    es.onerror = () => done(got);
+    // An error ends the stream: before any result, fall back; after some,
+    // the cycle is partial and /api/health completes it.
+    es.onerror = () => done(broken());
   });
 }
 
@@ -1149,8 +1189,7 @@ function _refreshButton(container) {
   btn.addEventListener("mouseenter", () => (btn.style.color = "var(--text)"));
   btn.addEventListener("mouseleave", () => (btn.style.color = "var(--muted)"));
   btn.addEventListener("click", () => {
-    const currentEnv =
-      document.getElementById("env-sel")?.value ?? container._env;
+    const currentEnv = healthEnv() ?? container._env;
     refreshHealth(currentEnv); // pulses dots yellow while re-pinging
   });
   btn.className = "health-refresh";
@@ -1442,7 +1481,8 @@ function _renderStalePill(info) {
   }
   _injectStaleStyles();
   if (!pill) {
-    const header = document.querySelector("header");
+    const header =
+      document.querySelector(".den-top") || document.querySelector("header");
     if (!header) return;
     pill = document.createElement("button");
     pill.id = "stale-pill";

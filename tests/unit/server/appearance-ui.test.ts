@@ -447,10 +447,14 @@ describe("the header (initAppearance)", () => {
 describe("pages", () => {
   const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
   it.each(fs.readdirSync(PUBLIC).filter((f) => f.endsWith(".html")))(
-    "%s has a mark slot and no favicon image in the header",
+    "%s has the shell's mark slot and no favicon image in the header",
     (f) => {
       const page = fs.readFileSync(path.join(PUBLIC, f), "utf-8");
-      expect(page).toMatch(/<span\s+class="den-mark"\s+id="den-mark"/);
+      // The mark slot is the shell's (shell.js), on every page.
+      expect(page).toContain('<script src="/shell.js"></script>');
+      expect(fs.readFileSync(path.join(PUBLIC, "shell.js"), "utf-8")).toMatch(
+        /<span class="den-mark" id="den-mark"/,
+      );
       expect(page).not.toMatch(/<img[^>]*src="\/favicon\.ico"/);
     },
   );

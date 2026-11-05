@@ -10,11 +10,19 @@
         var m = "@@DEN_MODE@@";
         if (m !== "dark" && m !== "light") {
           var q = function (s) {
-            return window.matchMedia && matchMedia("(prefers-color-scheme: " + s + ")").matches;
+            return (
+              window.matchMedia &&
+              matchMedia("(prefers-color-scheme: " + s + ")").matches
+            );
           };
-          m = q("light") ? "light" : q("dark") ? "dark" : "@@DEN_DEFAULT_MODE@@";
+          m = q("light")
+            ? "light"
+            : q("dark")
+              ? "dark"
+              : "@@DEN_DEFAULT_MODE@@";
         }
-        document.documentElement.dataset.mode = m === "light" ? "light" : "dark";
+        document.documentElement.dataset.mode =
+          m === "light" ? "light" : "dark";
       })();
     </script>
     <link rel="stylesheet" href="/theme.css" id="theme-css" />
@@ -27,7 +35,6 @@
         margin: 0;
         padding: 0;
       }
-
 
       html,
       body {
@@ -44,69 +51,11 @@
       }
 
       /* ── Header ───────────────────────────────────────────────────────────── */
-      header {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 7px 14px;
-        background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-      }
-      header h1 {
-        font-family: var(--mono);
-        font-size: 14px;
-        font-weight: 600;
-        letter-spacing: -0.02em;
-      }
       .h-spacer {
         flex: 1;
       }
 
-      .v-pill {
-        font-family: var(--mono);
-        font-size: 10px;
-        padding: 2px 8px;
-        border-radius: 10px;
-        border: 1px solid var(--border);
-        color: var(--muted);
-        background: none;
-        cursor: pointer;
-        user-select: none;
-        position: relative;
-      }
-      .v-pill:hover {
-        color: var(--accent-text);
-        border-color: var(--accent);
-      }
-      .v-pip {
-        position: absolute;
-        top: -3px;
-        right: -3px;
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: var(--accent);
-        border: 1.5px solid var(--bg);
-        display: none;
-      }
-
       /* ── Health dots ──────────────────────────────────────────────────────── */
-      .health {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 0 4px;
-        flex-wrap: wrap;
-      }
-      .health-item,
-      .health-group {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 11px;
-        color: var(--muted);
-      }
       .dot {
         width: 7px;
         height: 7px;
@@ -127,27 +76,6 @@
       }
 
       /* ── Nav ──────────────────────────────────────────────────────────────── */
-      nav {
-        display: flex;
-        gap: 2px;
-      }
-      nav a {
-        color: var(--muted);
-        text-decoration: none;
-        padding: 3px 10px;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: 500;
-        transition: color 0.1s;
-      }
-      nav a:hover {
-        color: var(--text);
-        background: var(--border);
-      }
-      nav a.active {
-        color: var(--text);
-        background: var(--surface);
-      }
 
       /* ── Controls bar ─────────────────────────────────────────────────────── */
       .controls {
@@ -806,74 +734,13 @@
     </style>
   </head>
   <body>
-    <header>
-      <!-- The active theme's mark (appearance.js draws it from /api/themes). -->
-      <span
-        class="den-mark"
-        id="den-mark"
-        aria-hidden="true"
-        style="display: inline-block; width: 18px; height: 18px; flex-shrink: 0"
-      ></span>
-      <h1>__DEN_CLI__</h1>
-      <button
-        class="v-pill"
-        id="version-pill"
-        onclick="openChangelog()"
-        title="View changelog"
-      >
-        <span class="v-pip" id="v-pip"></span><span class="v-txt">v…</span>
-      </button>
-      <div class="health" id="health" title="Local service health"></div>
-      <!-- header.js polls /api/health with whatever #env-sel holds. This page's
-           VISIBLE env picker is the deploy target, so it must not use that id —
-           the header would then ask "are my local services healthy in sandbox?"
-           and light up entirely red.
-
-           This pinned-to-local select is what header.js reads. Deployed-env
-           health is not shown here because it is not observable from a laptop:
-           those checks target *.internal.<env>.example.dev (private, VPN-only) and
-           `aws rds describe-db-instances` (needs credentials), so off-VPN every
-           one fails and the row is a wall of red that means nothing. The
-           deployed-env signal this page actually needs is the Status column,
-           which compares main vs deployed SHA over the GitHub API and needs no
-           network path to the services. -->
-      <select
-        id="env-sel"
-        style="display: none"
-        aria-hidden="true"
-        tabindex="-1"
-      >
-        <option value="local" selected>local</option>
-      </select>
-      <div class="h-spacer"></div>
-      <nav>
-        <a href="/">Local Dev</a>
-        <a href="/services">Services</a>
-        <a href="/environments">Environments</a>
-        <a href="/release" class="active">Releases</a>
-        <a href="/logs"
-          >Logs
-          <span
-            id="log-badge"
-            style="
-              background: var(--warn);
-              color: var(--bg);
-              font-size: 10px;
-              font-weight: 700;
-              padding: 1px 5px;
-              border-radius: 8px;
-              line-height: 1.4;
-              display: none;
-            "
-          ></span
-        ></a>
-        <a href="/tests">Tests</a>
-      </nav>
-    </header>
+    <!-- The shell: top bar and rail, the same on every page (shell.js). -->
+    <div id="den-shell" data-page="release" data-health-env="local"></div>
+    <script src="/shell.js"></script>
 
     <div class="controls">
-      <span class="env-label">env:</span>
-      <select id="rel-env" title="Environment"></select>
+      <label class="env-label" for="rel-env">deploy to:</label>
+      <select id="rel-env" title="Deploy target"></select>
       <button class="btn" id="refresh-btn" title="Re-check deployed state">
         ⟳ Refresh
       </button>
@@ -949,11 +816,13 @@
         initLogBadge,
         initHealth,
         refreshHealth,
+        initWorkspacePill,
       } from "/header.js";
 
-      // The header's dots report LOCAL service health on every page, this one
-      // included; #env-sel is pinned to "local" in the markup above. Changing
-      // the deploy target must NOT re-point them — that was the bug where
+      // The header's dots report LOCAL service health here: #den-shell pins
+      // data-health-env="local" (shell.js). The env picker is the shell's
+      // view; #rel-env below is the deploy target. Changing the deploy
+      // target must NOT re-point the dots — that was the bug where
       // selecting sandbox made the header ask /api/health?env=sandbox and show
       // every system red while docker was perfectly healthy.
       const HEADER_HEALTH_ENV = "local";
@@ -1094,7 +963,11 @@
         });
 
         renderHead();
-        await Promise.all([applyDenConfig(), initChangelog()]);
+        await Promise.all([
+          applyDenConfig(),
+          initChangelog(),
+          initWorkspacePill(),
+        ]);
         initLogBadge();
         initHealth();
         loadStatus();

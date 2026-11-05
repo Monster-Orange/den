@@ -17,6 +17,8 @@
  *   mountMoreChip(doc, …)   the chip, and the list it opens
  *   paintGate(…)            when health data repaints the row: once per
  *                           first cycle, then debounced
+ *   healthCycle(…)          one poll: the stream, completed by /api/health
+ *                           when it breaks, painted through the gate
  *
  * The pure parts take plain data, so tests need no browser.
  */
@@ -380,4 +382,59 @@ export function paintGate({
       timer = timers.setTimeout(fire, delay);
     },
   };
+}
+
+/**
+ * One health poll, painted through `gate` (0.3.0-dev.14).
+ *
+ * - `seed`: the last poll's rows (`[key, row]` pairs); empty on a first
+ *   cycle, which `hold()`s the gate so nothing paints until it completes.
+ * - `stream(onResult)`: /api/health/stream. Resolves "done" when the server
+ *   said so (every check answered), "partial" when it broke after some
+ *   results, "none" when it gave nothing.
+ * - `fetchAll()`: /api/health, every row or null. Only a "done" stream is a
+ *   complete cycle: a broken one is completed from here, never painted as
+ *   if it were whole (dev.13 painted a stream that broke after 0.6s).
+ * - `paint(map)`: draw these rows. `current()`: false once a newer poll
+ *   owns the row.
+ * A cycle that never completes paints only by the gate's cap, with the rows
+ * that did land; a check with no result has no row, so it is never shown
+ * as down. Resolves with the cycle's rows, or null when incomplete.
+ */
+export async function healthCycle({
+  seed = [],
+  gate,
+  stream,
+  fetchAll,
+  paint,
+  current = () => true,
+}) {
+  const keyOf = (r) => `${r.repo}/${r.service}`;
+  const acc = new Map(seed);
+  if (acc.size === 0) gate.hold();
+  const paintOf = (m) => () => {
+    if (current()) paint(m);
+  };
+  const fresh = new Map();
+  const end = await stream((r) => {
+    acc.set(keyOf(r), r);
+    fresh.set(keyOf(r), r);
+    gate.data(paintOf(acc));
+  });
+  let complete = end === "done";
+  if (!complete) {
+    const rows = await fetchAll();
+    if (Array.isArray(rows)) {
+      fresh.clear();
+      for (const r of rows) fresh.set(keyOf(r), r);
+      complete = true;
+    }
+  }
+  if (!current() || !complete) return null;
+  // Settle on exactly what this poll returned, so a service removed from
+  // the workspace disappears. A first cycle that answered with nothing
+  // paints too ("no services").
+  if (fresh.size > 0 || !gate.ready) gate.done(paintOf(fresh));
+  else gate.done();
+  return fresh;
 }

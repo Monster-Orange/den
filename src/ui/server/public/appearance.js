@@ -186,16 +186,10 @@ function injectStyles() {
   const s = document.createElement("style");
   s.id = "appearance-styles";
   s.textContent = `
-    /* The header never pushes the appearance control off-screen: it sits at
-       the far right and never shrinks; the nav shrinks and scrolls instead,
-       and the health dots give way first. */
+    /* The top bar never pushes the appearance control off-screen: it sits
+       at the far right and never shrinks; the health dots give way first
+       (the pages are in the shell's rail, shell.js). */
     header, .topbar { min-width: 0; }
-    header > nav, .topbar > nav {
-      min-width: 0; flex: 0 1 auto; flex-wrap: nowrap; overflow-x: auto;
-      scrollbar-width: none;
-    }
-    header > nav::-webkit-scrollbar, .topbar > nav::-webkit-scrollbar { display: none; }
-    header > nav a, .topbar > nav a { white-space: nowrap; flex-shrink: 0; }
     /* The health row takes the header's free space (never its content's
        width, so laying it out can't resize it); nav and ◐ keep theirs. */
     header > .health, .topbar > .health { min-width: 0; flex: 1 1 0; overflow: hidden; }
@@ -380,9 +374,13 @@ function render(host) {
   fillThemeSelect(theme);
 }
 
-/** The header the control goes in: <header>, or the Tests page's top bar. */
+/** The bar the control goes in: the shell's top bar (shell.js). */
 function headerHost() {
-  return document.querySelector("header") || document.querySelector(".topbar");
+  return (
+    document.querySelector(".den-top") ||
+    document.querySelector("header") ||
+    document.querySelector(".topbar")
+  );
 }
 
 let inited = false;

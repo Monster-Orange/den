@@ -10,11 +10,19 @@
         var m = "@@DEN_MODE@@";
         if (m !== "dark" && m !== "light") {
           var q = function (s) {
-            return window.matchMedia && matchMedia("(prefers-color-scheme: " + s + ")").matches;
+            return (
+              window.matchMedia &&
+              matchMedia("(prefers-color-scheme: " + s + ")").matches
+            );
           };
-          m = q("light") ? "light" : q("dark") ? "dark" : "@@DEN_DEFAULT_MODE@@";
+          m = q("light")
+            ? "light"
+            : q("dark")
+              ? "dark"
+              : "@@DEN_DEFAULT_MODE@@";
         }
-        document.documentElement.dataset.mode = m === "light" ? "light" : "dark";
+        document.documentElement.dataset.mode =
+          m === "light" ? "light" : "dark";
       })();
     </script>
     <link rel="stylesheet" href="/theme.css" id="theme-css" />
@@ -28,7 +36,6 @@
         margin: 0;
         padding: 0;
       }
-
 
       html,
       body {
@@ -45,75 +52,11 @@
       }
 
       /* ── Header ───────────────────────────────────────────────────────────── */
-      header {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 7px 14px;
-        background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-      }
-      header h1 {
-        font-family: var(--mono);
-        font-size: 14px;
-        font-weight: 600;
-        letter-spacing: -0.02em;
-      }
       .h-spacer {
         flex: 1;
       }
-      nav {
-        display: flex;
-        gap: 2px;
-      }
-      nav a {
-        color: var(--muted);
-        text-decoration: none;
-        padding: 3px 10px;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: 500;
-        transition: color 0.1s;
-      }
-      nav a:hover {
-        color: var(--text);
-        background: var(--border);
-      }
-      nav a.active {
-        color: var(--text);
-      }
 
       /* ── Health dots ──────────────────────────────────────────────────────── */
-      .health {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 0 4px;
-      }
-      .health-item {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 11px;
-        color: var(--muted);
-      }
-      .health-group {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 11px;
-        color: var(--muted);
-      }
-      .health-group-label {
-        color: var(--muted);
-        margin-right: 1px;
-      }
-      .health-group-dots {
-        display: flex;
-        align-items: center;
-        gap: 3px;
-      }
       .dot {
         width: 7px;
         height: 7px;
@@ -1736,64 +1679,9 @@
     </style>
   </head>
   <body>
-    <header>
-      <!-- The active theme's mark (appearance.js draws it from /api/themes). -->
-      <span
-        class="den-mark"
-        id="den-mark"
-        aria-hidden="true"
-        style="display: inline-block; width: 18px; height: 18px; flex-shrink: 0"
-      ></span>
-      <h1>__DEN_CLI__</h1>
-      <button
-        class="v-pill"
-        id="version-pill"
-        onclick="openChangelog()"
-        title="View changelog"
-      >
-        <span class="v-pip" id="v-pip"></span><span class="v-txt">v…</span>
-      </button>
-      <div class="health" id="health" title="Service health"></div>
-      <span
-        id="ws-pill"
-        style="
-          font-size: 11px;
-          font-family: var(--mono);
-          padding: 2px 8px;
-          border-radius: 10px;
-          border: 1px solid color-mix(in srgb, var(--accent) 27%, transparent);
-          color: var(--accent-text);
-          background: color-mix(in srgb, var(--accent) 6%, transparent);
-          display: none;
-        "
-      ></span>
-      <div class="h-spacer"></div>
-      <nav>
-        <a href="/local-dev" class="active"
-          >Local Dev <button id="sudo-lock" title="Sudo password">🔓</button></a
-        >
-        <a href="/services">Services</a>
-        <a href="/environments">Environments</a>
-        <a href="/release">Releases</a>
-        <a href="/logs"
-          >Logs
-          <span
-            id="log-badge"
-            style="
-              background: var(--warn);
-              color: var(--bg);
-              font-size: 10px;
-              font-weight: 700;
-              padding: 1px 5px;
-              border-radius: 8px;
-              line-height: 1.4;
-              display: none;
-            "
-          ></span
-        ></a>
-        <a href="/tests">Tests</a>
-      </nav>
-    </header>
+    <!-- The shell: top bar and rail, the same on every page (shell.js). -->
+    <div id="den-shell" data-page="local-dev" data-health-env="local"></div>
+    <script src="/shell.js"></script>
 
     <!-- Sudo password banner — hidden only once password is confirmed cached -->
     <!-- display:none at load; JS decides whether to show after checking status + vault. -->
@@ -1895,6 +1783,7 @@
         initHealth,
         refreshHealth,
         initWorkspacePill,
+        healthEnv,
         refreshWorkspacePill,
         applyDenConfig,
         initLogBadge,
@@ -1908,7 +1797,7 @@
       // Re-ping all health dots (top nav + cards) NOW — used after lifecycle
       // commands so status doesn't wait out the 30s poll interval.
       function syncHealthNow() {
-        const env = document.getElementById("env-sel")?.value ?? "local";
+        const env = healthEnv();
         void refreshHealth(env);
       }
 
@@ -3244,7 +3133,7 @@
             // A pull can replace this repo's health probes on disk. The health
             // response is cached ~8s, so force a fresh poll rather than leaving
             // dots that reflect the code we just replaced.
-            const env = document.getElementById("env-select")?.value || "local";
+            const env = healthEnv();
             refreshHealth(env, { force: true });
             // Sync can CHANGE what a service offers — a first clone turns an
             // uncloned card (no commands, no manifest) into a full one. Re-render
@@ -4706,7 +4595,7 @@
       // already loads and its own action functions, so every action runs the
       // same calls as before (runCmd, up/down with deps, sync, editor, …).
       const GRAPH_HOOKS = {
-        env: () => document.getElementById("env-sel")?.value ?? "local",
+        env: () => healthEnv(),
         runCmd: (s, cmd) => window.runCmd(s.id, s.repo, s.name, cmd),
         upWithDeps: (repo) => window.runUpWithDeps(repo),
         downWithDeps: (repo) => window.runDownWithDeps(repo),

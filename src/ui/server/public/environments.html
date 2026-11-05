@@ -10,11 +10,19 @@
         var m = "@@DEN_MODE@@";
         if (m !== "dark" && m !== "light") {
           var q = function (s) {
-            return window.matchMedia && matchMedia("(prefers-color-scheme: " + s + ")").matches;
+            return (
+              window.matchMedia &&
+              matchMedia("(prefers-color-scheme: " + s + ")").matches
+            );
           };
-          m = q("light") ? "light" : q("dark") ? "dark" : "@@DEN_DEFAULT_MODE@@";
+          m = q("light")
+            ? "light"
+            : q("dark")
+              ? "dark"
+              : "@@DEN_DEFAULT_MODE@@";
         }
-        document.documentElement.dataset.mode = m === "light" ? "light" : "dark";
+        document.documentElement.dataset.mode =
+          m === "light" ? "light" : "dark";
       })();
     </script>
     <link rel="stylesheet" href="/theme.css" id="theme-css" />
@@ -35,44 +43,8 @@
         font-family: var(--sans);
         font-size: 13px;
       }
-      header {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 7px 14px;
-        background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        flex-wrap: wrap;
-      }
-      header h1 {
-        font-family: var(--mono);
-        font-size: 14px;
-        font-weight: 600;
-        letter-spacing: -0.02em;
-      }
       .h-spacer {
         flex: 1;
-      }
-      nav {
-        display: flex;
-        gap: 2px;
-        flex-wrap: wrap;
-      }
-      nav a {
-        color: var(--muted);
-        text-decoration: none;
-        padding: 3px 10px;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: 500;
-      }
-      nav a:hover {
-        color: var(--text);
-        background: var(--border);
-      }
-      nav a.active {
-        color: var(--text);
-        background: var(--bg);
       }
       .controls {
         display: flex;
@@ -232,25 +204,9 @@
     </style>
   </head>
   <body>
-    <header>
-      <!-- The active theme's mark (appearance.js draws it from /api/themes). -->
-      <span
-        class="den-mark"
-        id="den-mark"
-        aria-hidden="true"
-        style="display: inline-block; width: 18px; height: 18px; flex-shrink: 0"
-      ></span>
-      <h1>__DEN_TITLE__</h1>
-      <div class="h-spacer"></div>
-      <nav>
-        <a href="/">Local Dev</a>
-        <a href="/services">Services</a>
-        <a href="/environments" class="active">Environments</a>
-        <a href="/release">Releases</a>
-        <a href="/logs">Logs</a>
-        <a href="/tests">Tests</a>
-      </nav>
-    </header>
+    <!-- The shell: top bar and rail, the same on every page (shell.js). -->
+    <div id="den-shell" data-page="environments"></div>
+    <script src="/shell.js"></script>
 
     <div class="controls">
       <button id="refresh">Re-check</button>
@@ -280,9 +236,21 @@
     </main>
 
     <script type="module">
-      // No header.js on this page: the appearance controls come on their own.
-      import { initAppearance } from "/appearance.js";
-      void initAppearance();
+      // The shell's behaviour, as on every page (header.js also mounts the
+      // appearance controls).
+      import {
+        applyDenConfig,
+        initChangelog,
+        initHealth,
+        initLogBadge,
+        initWorkspacePill,
+      } from "/header.js";
+      void Promise.all([
+        initHealth(),
+        initWorkspacePill("env-sel"),
+        applyDenConfig(),
+        initChangelog(),
+      ]).then(initLogBadge);
       const SLOW_MS = 1500;
       const POLL_MS = 60_000;
       const esc = (s) =>
@@ -366,9 +334,12 @@
                 .catch(() => []),
             ),
           ),
-          fetch("/api/orgs")
+          // The org of every repo comes from the catalog (/api/orgs?repos=1):
+          // /api/health rows never carry one, so reading r.org put every
+          // service under "no org" (0.3.0-dev.14).
+          fetch("/api/orgs?repos=1")
             .then((r) => r.json())
-            .catch(() => []),
+            .catch(() => ({ orgs: [], repos: {} })),
           fetch("/api/release/config")
             .then((r) => r.json())
             .catch(() => ({ environments: [] })),
@@ -390,8 +361,9 @@
           }),
         );
         const orgInfo = Object.fromEntries(
-          (Array.isArray(orgs) ? orgs : []).map((o) => [o.id, o]),
+          (Array.isArray(orgs?.orgs) ? orgs.orgs : []).map((o) => [o.id, o]),
         );
+        const orgOfRepo = orgs?.repos ?? {};
         const filterSel = document.getElementById("org-filter");
         const saved = (() => {
           try {
@@ -420,7 +392,7 @@
               repo: r.repo,
               service: r.service,
               label: r.label,
-              org: r.org || "",
+              org: orgOfRepo[r.repo] || "",
               isEntrypoint: r.isEntrypoint,
               idx: r.idx ?? 1e9,
               byEnv: {},

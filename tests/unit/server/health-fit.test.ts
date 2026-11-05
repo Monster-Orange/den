@@ -20,6 +20,7 @@ import {
   buildRow,
   closeMoreList,
   fitPlan,
+  healthCycle,
   moreChip,
   mountMoreChip,
   paintGate,
@@ -542,6 +543,109 @@ describe("paintGate: the first fit waits for the first full cycle", () => {
   });
 });
 
+describe("healthCycle: the first paint waits for every check", () => {
+  // A fake clock and a fake stream: api and web answer at 0.1s, a remote
+  // probe (remote/web) only at 5s.
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+  type R = { repo: string; service: string; ok: boolean | null };
+  const r = (repo: string, ok: boolean | null): R => ({
+    repo,
+    service: "web",
+    ok,
+  });
+  const schedule = (
+    events: [number, R | "done" | "break"][],
+    onResult: (x: R) => void,
+  ) =>
+    new Promise<string>((resolve) => {
+      let got = false;
+      for (const [t, e] of events)
+        setTimeout(() => {
+          if (e === "done") resolve("done");
+          else if (e === "break") resolve(got ? "partial" : "none");
+          else {
+            got = true;
+            onResult(e);
+          }
+        }, t);
+    });
+  const run = (
+    events: [number, R | "done" | "break"][],
+    fetchAll: () => Promise<R[] | null> = async () => null,
+  ) => {
+    const paints: { at: number; rows: R[] }[] = [];
+    const t0 = Date.now();
+    const gate = paintGate();
+    void healthCycle({
+      seed: [],
+      gate,
+      stream: (on: (x: R) => void) => schedule(events, on),
+      fetchAll,
+      paint: (m: Map<string, R>) =>
+        paints.push({ at: Date.now() - t0, rows: [...m.values()] }),
+    });
+    return paints;
+  };
+  const downAt = (paints: { rows: R[] }[], repo: string) =>
+    paints.some((p) => p.rows.some((x) => x.repo === repo && x.ok === false));
+
+  it("no paint before the slow check lands; then one, with it", async () => {
+    const paints = run([
+      [100, r("api", true)],
+      [100, r("web", true)],
+      [5000, r("remote", true)],
+      [5000, "done"],
+    ]);
+    await jest.advanceTimersByTimeAsync(4999);
+    expect(paints).toEqual([]);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(paints).toHaveLength(1);
+    expect(paints[0].at).toBe(5000);
+    expect(paints[0].rows.map((x) => x.repo).sort()).toEqual([
+      "api",
+      "remote",
+      "web",
+    ]);
+    expect(downAt(paints, "remote")).toBe(false);
+  });
+
+  it("a stream that breaks at 0.6s is not a cycle: /api/health completes it", async () => {
+    const full = [r("api", true), r("web", true), r("remote", true)];
+    const paints = run(
+      [
+        [100, r("api", true)],
+        [100, r("web", true)],
+        [600, "break"],
+      ],
+      () => new Promise((res) => setTimeout(() => res(full), 4400)),
+    );
+    await jest.advanceTimersByTimeAsync(4999);
+    expect(paints).toEqual([]);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(paints).toHaveLength(1);
+    expect(paints[0].rows).toHaveLength(3);
+  });
+
+  it("the 8s cap paints what landed; the missing check is absent, never down", async () => {
+    const paints = run(
+      [
+        [100, r("api", true)],
+        [100, r("web", true)],
+        [600, "break"],
+      ],
+      async () => null,
+    );
+    await jest.advanceTimersByTimeAsync(7999);
+    expect(paints).toEqual([]);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(paints).toHaveLength(1);
+    expect(paints[0].at).toBe(8000);
+    expect(paints[0].rows.map((x) => x.repo).sort()).toEqual(["api", "web"]);
+    expect(downAt(paints, "remote")).toBe(false);
+  });
+});
+
 describe("moreChip", () => {
   it("says what the hidden repos hold", () => {
     expect(
@@ -813,10 +917,14 @@ describe("the header uses it", () => {
     expect([...called].filter((f) => !defined.has(f))).toEqual([]);
   });
   it("paints health data through the gate, not per streamed batch", () => {
-    expect(header).toMatch(/_healthGate\.hold\(\)/);
-    expect(header).toMatch(/_healthGate\.data\(paintFrom\(acc\)\)/);
-    expect(header).toMatch(/_healthGate\.done\(paintFrom\(fresh\)\)/);
+    expect(header).toMatch(
+      /await healthCycle\(\{\s*seed,\s*gate: _healthGate,/,
+    );
     expect(header).not.toMatch(/requestAnimationFrame\(paint\)/);
+    // Only the server's "done" ends a cycle; a broken stream is "partial".
+    expect(header).toMatch(/done\("done"\)/);
+    expect(header).toMatch(/es\.onerror = \(\) => done\(broken\(\)\)/);
+    expect(header).not.toMatch(/done\(got\)|resolve\(got\)/);
   });
   it("measures the chip at its natural width, though the live chip may shrink", () => {
     expect(header).toMatch(/probe\.style\.flexShrink = "0";/);

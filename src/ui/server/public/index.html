@@ -10,11 +10,19 @@
         var m = "@@DEN_MODE@@";
         if (m !== "dark" && m !== "light") {
           var q = function (s) {
-            return window.matchMedia && matchMedia("(prefers-color-scheme: " + s + ")").matches;
+            return (
+              window.matchMedia &&
+              matchMedia("(prefers-color-scheme: " + s + ")").matches
+            );
           };
-          m = q("light") ? "light" : q("dark") ? "dark" : "@@DEN_DEFAULT_MODE@@";
+          m = q("light")
+            ? "light"
+            : q("dark")
+              ? "dark"
+              : "@@DEN_DEFAULT_MODE@@";
         }
-        document.documentElement.dataset.mode = m === "light" ? "light" : "dark";
+        document.documentElement.dataset.mode =
+          m === "light" ? "light" : "dark";
       })();
     </script>
     <link rel="stylesheet" href="/theme.css" id="theme-css" />
@@ -28,7 +36,6 @@
         margin: 0;
         padding: 0;
       }
-
 
       html,
       body {
@@ -45,75 +52,10 @@
       }
 
       /* ── Bar 1: top navbar ─────────────────────────────────────────────────── */
-      .topbar {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 7px 14px;
-        background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-        z-index: 10;
-      }
-      .topbar h1 {
-        font-family: var(--mono);
-        font-size: 14px;
-        font-weight: 600;
-        letter-spacing: -0.02em;
-        margin-right: 4px;
-      }
 
       /* ── Env badge (subbar selector pill) ────────────────────────────────── */
-      .env-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 2px 8px 2px 6px;
-        border-radius: 999px;
-        background: var(--surface);
-        border: 1px solid var(--border);
-        font-size: 11px;
-        font-weight: 500;
-        color: var(--muted);
-      }
-      .env-badge::before {
-        content: "env";
-        font-size: 9px;
-        font-weight: 600;
-        letter-spacing: 0.05em;
-        color: var(--muted);
-        opacity: 0.6;
-        text-transform: uppercase;
-      }
-      .env-badge select {
-        background: transparent;
-        border: none;
-        outline: none;
-        color: var(--text);
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-        padding: 0;
-        -webkit-appearance: none;
-        appearance: none;
-      }
-      .env-badge select option {
-        background: var(--surface);
-      }
 
       /* ── Topbar env pill ──────────────────────────────────────────────────── */
-      #topbar-env-badge {
-        display: none;
-        align-items: center;
-        padding: 2px 7px;
-        border-radius: 999px;
-        border: 1px solid var(--border);
-        font-size: 10px;
-        font-weight: 600;
-        letter-spacing: 0.03em;
-        color: var(--muted);
-        white-space: nowrap;
-      }
 
       /* ── Bar 2: sub-navbar ─────────────────────────────────────────────────── */
       .subbar {
@@ -190,30 +132,6 @@
       }
       .seg button.active {
         background: var(--border);
-        color: var(--text);
-      }
-
-      nav {
-        display: flex;
-        gap: 2px;
-      }
-      nav a {
-        color: var(--muted);
-        text-decoration: none;
-        padding: 3px 10px;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: 500;
-        transition: color 0.1s;
-        display: flex;
-        align-items: center;
-        gap: 5px;
-      }
-      nav a:hover {
-        color: var(--text);
-        background: var(--border);
-      }
-      nav a.active {
         color: var(--text);
       }
 
@@ -423,35 +341,6 @@
       }
 
       /* ── Health indicators ─────────────────────────────────────────────────── */
-      .health {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 0 4px;
-      }
-      .health-item {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 11px;
-        color: var(--muted);
-      }
-      .health-group {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 11px;
-        color: var(--muted);
-      }
-      .health-group-label {
-        color: var(--muted);
-        margin-right: 1px;
-      }
-      .health-group-dots {
-        display: flex;
-        align-items: center;
-        gap: 3px;
-      }
 
       /* ── Buttons ───────────────────────────────────────────────────────────── */
       .run-btn {
@@ -1105,8 +994,7 @@
         gap: 8px;
         padding: 8px 12px;
         background: color-mix(in srgb, var(--warn) 12%, var(--bg));
-        border-top: 1px solid
-          color-mix(in srgb, var(--warn) 40%, transparent);
+        border-top: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
       }
       .aws-auth-msg {
         font-size: 12px;
@@ -1169,24 +1057,12 @@
     </style>
   </head>
   <body>
-    <!-- ── Bar 1: __DEN_CLI__ + health + nav ──────────────────────────────────────── -->
-    <div class="topbar">
-      <!-- The active theme's mark (appearance.js draws it from /api/themes). -->
-      <span
-        class="den-mark"
-        id="den-mark"
-        aria-hidden="true"
-        style="display: inline-block; width: 18px; height: 18px; flex-shrink: 0"
-      ></span>
-      <h1>__DEN_CLI__</h1>
-      <button
-        class="v-pill"
-        id="version-pill"
-        onclick="openChangelog()"
-        title="View changelog"
-      >
-        <span class="v-pip" id="v-pip"></span><span class="v-txt">v…</span>
-      </button>
+    <!-- The shell: top bar and rail, the same on every page (shell.js). -->
+    <div id="den-shell" data-page="tests"></div>
+    <script src="/shell.js"></script>
+
+    <!-- ── Bar 2: context actions (the env picker is the shell's) ───────────── -->
+    <div class="subbar">
       <a
         id="app-link"
         href="#"
@@ -1201,39 +1077,6 @@
         "
         >↗ open app</a
       >
-      <span id="topbar-env-badge"></span>
-      <span
-        id="ws-pill"
-        style="
-          font-size: 11px;
-          font-family: var(--mono);
-          padding: 2px 8px;
-          border-radius: 10px;
-          border: 1px solid color-mix(in srgb, var(--accent) 27%, transparent);
-          color: var(--accent-text);
-          background: color-mix(in srgb, var(--accent) 6%, transparent);
-          display: none;
-        "
-      ></span>
-      <div class="health" id="health" title="Service health"></div>
-      <div class="spacer"></div>
-      <nav>
-        <a href="/">Local Dev</a>
-        <a href="/services">Services</a>
-        <a href="/environments">Environments</a>
-        <a href="/release">Releases</a>
-        <a href="/logs">Logs <span class="badge" id="log-badge"></span></a>
-        <a href="/tests" id="nav-tests" class="active">Tests</a>
-      </nav>
-    </div>
-
-    <!-- ── Bar 2: env selector (universal) + context actions (right) ──────────── -->
-    <div class="subbar">
-      <div class="env-badge">
-        <select id="env-sel" title="Environment">
-          <option value="local">local</option>
-        </select>
-      </div>
 
       <!-- Tests context: run status + layout toggle + run button -->
       <div class="bar2-slot active" id="bar2-tests">
@@ -1415,6 +1258,7 @@
         storeOpenLog,
         initChangelog,
         copyToClipboard,
+        envReady,
       } from "/header.js";
       import {
         buildReportPaneModel,
@@ -1447,15 +1291,9 @@
       // ── Init ──────────────────────────────────────────────────────────────────
       async function init() {
         // Populate env selector
-        const envs = await fetch("/api/environments")
-          .then((r) => r.json())
-          .catch(() => ["local"]);
+        // The shell's env picker (header.js), one for every page.
+        await envReady();
         const envSel = document.getElementById("env-sel");
-        envSel.innerHTML = envs
-          .map((e) => `<option value="${e}">${e}</option>`)
-          .join("");
-        const savedEnv = localStorage.getItem("__DEN_CLI__-env");
-        if (savedEnv && envs.includes(savedEnv)) envSel.value = savedEnv;
         updateAppLink(envSel.value);
 
         // Restore pillar
@@ -1533,7 +1371,6 @@
       // ── App link ─────────────────────────────────────────────────────────────
       async function updateAppLink(env) {
         const link = document.getElementById("app-link");
-        const badge = document.getElementById("topbar-env-badge");
         if (!link) return;
         try {
           const { url } = await fetch(`/api/app-url?env=${env}`).then((r) =>
@@ -1543,24 +1380,17 @@
             link.href = url;
             link.style.display = "";
             link.title = url;
-            if (badge) {
-              badge.textContent = env;
-              badge.style.display = "inline-flex";
-            }
           } else {
             link.style.display = "none";
-            if (badge) badge.style.display = "none";
           }
         } catch {
           link.style.display = "none";
-          if (badge) badge.style.display = "none";
         }
       }
 
       // ── Env ───────────────────────────────────────────────────────────────────
       document.getElementById("env-sel").addEventListener("change", () => {
         const env = document.getElementById("env-sel").value;
-        localStorage.setItem("__DEN_CLI__-env", env);
         updateAppLink(env);
 
         // Update health dots for the new env immediately

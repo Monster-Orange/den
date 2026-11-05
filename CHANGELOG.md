@@ -247,6 +247,41 @@ config and manifest changes a distribution must make to move to it under
   problem would be dropped; its name and tooltip keep the full text. If
   even that doesn't fit, the chip's text gives way, not ⟳. The chip is
   measured at its natural width.
+- **One shell for every page: a top bar and a left rail** (0.3.0-dev.14,
+  shell slice 2). Every page had its own copy of the header, nav and header
+  CSS (six copies; Environments loaded none of the header's behaviour).
+  `public/shell.js` now draws one frame on every page, and the pages keep
+  only their content:
+  - **Top bar** (48px): the theme's mark and the title in the theme's
+    display face (`var(--display)`; the pages had used the mono face), the
+    version pill, the health row and chip (unchanged), the workspace focus
+    pill, one env picker and ◐.
+  - **Rail**: Local Dev, Services, Environments, Releases, Logs, Tests, the
+    current page marked `aria-current="page"`. ↑/↓, Home and End move
+    between pages; it collapses to icons below 1100px (labels stay for
+    assistive tech). No horizontal page scroll at 1024.
+  - **One env picker for the whole shell.** Tests, Services and Logs each
+    had their own; the choice is now one control, remembered across pages.
+    Local Dev and Releases keep checking local health whatever it says
+    (`data-health-env`), and Releases' own selector is now labelled as the
+    deploy target it is.
+  - A page joins the shell with `<div id="den-shell" data-page="…">` and
+    `<script src="/shell.js">`; `header.js` drives it (`envReady()`,
+    `healthEnv()`).
+- **Header fixes** (0.3.0-dev.14): a long workspace name ends in an
+  ellipsis with the full name in its tooltip, and names in the bar never
+  wrap mid-word; the Tests page's "ENV" label no longer collides with its
+  select (the picker is the shell's).
+- **Environments groups services under their org again** (0.3.0-dev.14).
+  Every service showed under "no org": the page read each row's `org` from
+  `/api/health`, which never sends one. It now takes each repo's org from
+  `/api/orgs?repos=1`, like the graph.
+- **The first health paint waits for the whole cycle** (0.3.0-dev.14). A
+  stream that broke after its first results counted as a finished cycle,
+  so a cold load could paint a partial row. Only the server's `done` ends
+  a cycle now; a broken stream is completed from `/api/health` (or the 8s
+  cap paints what landed, and a check with no result is never shown as
+  down). `healthCycle` in `public/health-fit.js`.
 - **The Theme menu says when your theme isn't in use** (0.3.0-dev.10). A
   stored theme that fails validation selects nothing, instead of looking
   like "Org default". One line explains: "Your theme <id> isn't valid
