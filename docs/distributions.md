@@ -327,6 +327,106 @@ brand:
 Runtime names (env vars, files, directories) always come from `den.yml`,
 never from the brand.
 
+## Plugins
+
+A plugin adds to Den without changing it: a theme, a page in the web UI, and
+later other kinds. Its manifest is a `den-plugin.json` that follows the
+[`den.plugin/v1` schema](../schemas/den.plugin.v1.json); a theme can also be a
+bare `den-theme.json`, which Den reads as a plugin that provides one theme
+and asks for nothing.
+
+```jsonc
+{
+  "schema": "den.plugin/v1",
+  "id": "runbook",
+  "name": "Team runbook",
+  "version": "1.0.0",
+  "license": "MIT", // an SPDX expression, the same rule as a theme's
+  "den": ">=0.3.0", // required
+  "maintainer": "platform team",
+  "provides": [
+    {
+      "kind": "page",
+      "entry": "page/index.js",
+      "nav": { "group": "verify", "label": "nav.runbook" },
+    },
+  ],
+  "capabilities": ["ui.nav", "api.read"],
+}
+```
+
+Every plugin lives in `plugins/<id>/` in the distribution, and gets there in
+one of two ways:
+
+|              | Local                                                 | Added                                                     |
+| ------------ | ----------------------------------------------------- | --------------------------------------------------------- |
+| What it is   | the distribution's own (its theme, a team page)       | someone else's published plugin                           |
+| How          | put it in `plugins/<id>/` and commit it               | `<cli> plugin add <repo>[/<subpath>]@<tag\|commit>`       |
+| Lock entry   | none                                                  | `plugins.lock.json`: source, ref, commit, hash, approvals |
+| Integrity    | the distribution's own git history and review         | `plugin list` fails when its bytes differ from the lock   |
+| Capabilities | present is approved: what it declares is what it gets | approved at `add` (`--yes`), kept in the lock             |
+| Removing it  | delete it in git                                      | `<cli> plugin remove <id>`                                |
+
+```sh
+<cli> plugin list                 # every plugin: version, kinds, local or source@ref, lock check
+<cli> plugin validate             # every local and added plugin
+<cli> plugin validate path/to/dir # one plugin, a distribution, or a repo of them
+<cli> plugin add github.com/acme/den-plugins/runbook@runbook/v1.0.0 --yes
+<cli> plugin update runbook @runbook/v1.1.0
+<cli> plugin remove runbook
+```
+
+- **Every `plugins/<id>/` needs a manifest.** A directory with neither
+  `den-plugin.json` nor `den-theme.json` is an error in `list` and
+  `validate`, so an id can never collide unseen. So is a directory named
+  `den` (the built-in theme's id) or a name that is not an id (lowercase
+  letters, digits and dashes).
+- **What `validate` checks:** the schema; each kind with its own validator
+  (a theme as `theme validate` does, a page's entry module on disk); and the
+  admission rules: a `maintainer`; for a page or server plugin, a README
+  (`readme`, default `README.md`) that names its tier and says what it may
+  touch and what it must never do (themes are exempt); an SPDX `license`,
+  with every bundled font licensed.
+- **Capabilities** come from a closed list: `ui.nav`, `api.read`,
+  `api.actions:<id,...>`, `secrets:<ref,...>`, `net:<host,...>`,
+  `exec:<binary,...>` and `send:<channel>`. Anything else fails validation.
+- **Commit a local plugin before you trust it.** Den loads what is on disk,
+  so it can't tell committed from uncommitted. When a local plugin declares
+  `api.actions`, `secrets`, `exec`, `net` or `send` and has files git has not
+  committed, `validate` warns, so the change goes through the same review as
+  the rest of the distribution. Themes and read-only plugins never warn.
+- **`add`** takes an exact ref: a tag or a full commit SHA (a branch only
+  with `--track`, recorded as tracking). It validates the plugin, vendors it
+  into `plugins/<id>/` and writes its lock entry, with `kinds` and
+  `approved_capabilities` from the manifest. A plugin that asks for
+  capabilities needs `--yes`. `add` never replaces a local plugin, and a
+  plugin already added from another source must be removed first.
+- **`update <id> @<ref>`** fetches an added plugin again from its locked
+  source, and asks again (`--yes`) only when it wants more capabilities than
+  were approved. A tracking plugin can be updated without a ref.
+- **A `file://` source is refused.** A path on one machine must never reach
+  a committed lock: for your own plugin, put it in `plugins/<id>/` as a local
+  plugin; to try a published one before tagging, push a branch and use
+  `--track`.
+
+### Where plugins may come from
+
+`add` fetches from any git host unless `den.yml` (the product profile at the
+distribution root) lists the ones it allows:
+
+```yaml
+# den.yml
+product:
+  name: acme
+plugins:
+  allow:
+    - github.com/acme # <host>/<owner>
+    - git.acme.example # a bare host: every owner there
+```
+
+A source outside the list is refused before anything is fetched, and a value
+that is not a list of strings is an error rather than "allow everything".
+
 ## Themes
 
 A theme is the web UI's look and feel: color tokens for dark and light, type,
@@ -347,16 +447,18 @@ and the guide to making your own
   unless `--track` (for theme authors), which the lock records as tracking.
 - It validates the theme (schema, contrast in both modes, files) and copies it
   into the distribution's `plugins/<id>/`, with an entry in `plugins.lock.json`
-  (kinds `["theme"]`, source, ref, commit, content hash). Themes are the first
-  plugin kind; other kinds share the same lock and directory. Commit both: a fresh clone has the
+  (kinds `["theme"]`, source, ref, commit, content hash). A theme is a
+  plugin, so `theme add | list | validate | remove` are `plugin` filtered to
+  kind theme (see [Plugins](#plugins)): the same lock and directory, the
+  `file://` refusal and `plugins.allow`. Commit both: a fresh clone has the
   theme offline, and theme changes show up as reviewable diffs.
 - `list` checks every theme against its lock and fails if one has changed.
 - A distribution can also keep its own theme in the repo: `<cli> theme new
 <id>` copies the built-in theme into `plugins/<id>/` to edit (or put one
   there by hand), and committing it gives everyone on the repo the theme.
-  Publishing it to a themes repo is only for sharing it with other teams. `list`
-  shows it as `local` and `validate` with no argument checks it along with
-  the added ones; `add` never replaces it.
+  It is a local plugin: publishing it to a themes repo is only for sharing
+  it with other teams. `list` shows it as `local` and `validate` with no
+  argument checks it along with the added ones; `add` never replaces it.
 - Contrast: every text token (`text`, `muted`, `faint`, `accent-text`, and
   the status colors) at 4.5:1 on every ground (`bg`, `surface`, `raised`,
   `sunken`); `accent` and `border-strong` at 3:1; `on-accent` on

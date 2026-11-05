@@ -1,0 +1,80 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Monster-Orange/den/main/schemas/den.theme.v1.json",
+  "schema": "den.theme/v1",
+  "id": "signal",
+  "name": "Signal",
+  "version": "1.0.1",
+  "description": "A distribution's own look, kept local: ink and paper grounds, one amber accent, a bundled display font.",
+  "author": "Signal team",
+  "license": "LicenseRef-Signal-Proprietary",
+  "default_mode": "dark",
+  "type": {
+    "sans": "\"Signal Sans\", ui-sans-serif, system-ui, sans-serif",
+    "mono": "ui-monospace, Menlo, Consolas, monospace"
+  },
+  "shape": {
+    "radius": "6px",
+    "radius-button": "6px",
+    "density": "comfortable"
+  },
+  "mark": {
+    "svg": "mark.svg",
+    "shape": "rounded"
+  },
+  "fonts": [
+    {
+      "family": "Signal Sans",
+      "license": "OFL-1.1",
+      "files": [
+        {
+          "path": "fonts/signal-sans-400.woff2",
+          "weight": "400"
+        }
+      ]
+    }
+  ],
+  "modes": {
+    "light": {
+      "bg": "#f2eee8",
+      "surface": "#fbf9f6",
+      "raised": "#ffffff",
+      "sunken": "#e8e2d9",
+      "text": "#241e18",
+      "muted": "#5c5247",
+      "faint": "#6d6358",
+      "border": "#dcd3c7",
+      "border-strong": "#8d7f6d",
+      "accent": "#557a2a",
+      "accent-text": "#4a6b23",
+      "accent-fill": "#4a6b23",
+      "on-accent": "#ffffff",
+      "ok": "#2e7246",
+      "warn": "#8c5a10",
+      "bad": "#b0392a",
+      "remote": "#23677a",
+      "shadow": "0 8px 24px rgb(48 36 24 / 0.14)",
+      "bar": "linear-gradient(90deg, #557a2a 0%, #8a6a48 100%)"
+    },
+    "dark": {
+      "bg": "#1a1612",
+      "surface": "#221d18",
+      "raised": "#2b251f",
+      "sunken": "#14110e",
+      "text": "#ede6dc",
+      "muted": "#b5aa9b",
+      "faint": "#978b7e",
+      "border": "#3a322a",
+      "border-strong": "#7a6d5d",
+      "accent": "#9bbb63",
+      "accent-text": "#a8c672",
+      "accent-fill": "#9bbb63",
+      "on-accent": "#1a1612",
+      "ok": "#6fc28f",
+      "warn": "#e0a84e",
+      "bad": "#ef7f6a",
+      "remote": "#74b8c8",
+      "shadow": "0 12px 30px rgb(0 0 0 / 0.5)",
+      "bar": "linear-gradient(90deg, #9bbb63 0%, #a07c55 100%)"
+    }
+  }
+}

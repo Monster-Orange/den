@@ -72,6 +72,11 @@ const manifest = (id: string, version = "1.0.0") => ({
   modes: { dark: colors(true), light: colors(false) },
 });
 
+// `add` refuses file:// (PL-2a), so the test repo is reached at an https URL
+// that git rewrites to it (url.<base>.insteadOf).
+const REMOTE = "https://git.example/acme/den-themes.git";
+const savedEnv = { ...process.env };
+
 let tmp: string;
 let repo: string;
 let dist: string;
@@ -100,6 +105,9 @@ beforeAll(() => {
   fs.mkdirSync(dist);
   fs.mkdirSync(repo);
   git("init", "-q", "-b", "main");
+  process.env.GIT_CONFIG_COUNT = "1";
+  process.env.GIT_CONFIG_KEY_0 = `url.file://${repo}.insteadOf`;
+  process.env.GIT_CONFIG_VALUE_0 = REMOTE;
   git("config", "user.email", "t@example.com");
   git("config", "user.name", "t");
   git("config", "commit.gpgsign", "false");
@@ -113,7 +121,16 @@ beforeAll(() => {
   git("commit", "-q", "-m", "themes");
   git("tag", "sample/v1.0.0");
 });
-afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
+afterAll(() => {
+  for (const k of [
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_KEY_0",
+    "GIT_CONFIG_VALUE_0",
+  ])
+    if (savedEnv[k] === undefined) delete process.env[k];
+    else process.env[k] = savedEnv[k];
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
 
 const add = (spec: string) =>
   cmdTheme(["add", spec], { distRoot: dist, log, tmpDir: tmp });
@@ -160,7 +177,7 @@ describe("parseThemeSource", () => {
 });
 
 describe("theme add, list, remove", () => {
-  const spec = () => `file://${repo}//themes/sample@sample/v1.0.0`;
+  const spec = () => `${REMOTE}//themes/sample@sample/v1.0.0`;
 
   it("vendors the theme's files only, and locks source, ref, commit and hash", async () => {
     expect(await add(spec())).toBe(0);
@@ -178,7 +195,7 @@ describe("theme add, list, remove", () => {
     expect(lock).toMatchObject({
       id: "sample",
       version: "1.0.0",
-      source: `file://${repo}//themes/sample`,
+      source: `${REMOTE}//themes/sample`,
       ref: "sample/v1.0.0",
       commit: git("rev-parse", "HEAD"),
       kinds: ["theme"],
@@ -195,10 +212,16 @@ describe("theme add, list, remove", () => {
     expect(lock.sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("warns that a file:// source cannot be re-added elsewhere", async () => {
+  it("refuses a file:// source with the hint (PL-2a), changing nothing", async () => {
+    const lock = fs.readFileSync(path.join(dist, "plugins.lock.json"), "utf-8");
     lines.length = 0;
-    expect(await add(spec())).toBe(0);
-    expect(lines.join("\n")).toMatch(/is a path on this machine/);
+    expect(await add(`file://${repo}//themes/sample@sample/v1.0.0`)).toBe(1);
+    expect(lines.join("\n")).toMatch(
+      /is a path on this machine: for your own plugin, put it in plugins\/<id>\/ as a local plugin; to try a published one before tagging, push a branch and use --track/,
+    );
+    expect(fs.readFileSync(path.join(dist, "plugins.lock.json"), "utf-8")).toBe(
+      lock,
+    );
   });
 
   it("list fails on a leftover 0.3.0-dev.0 themes.lock.json, naming it", async () => {
@@ -372,7 +395,7 @@ describe("theme add, list, remove", () => {
   it("refuses a theme that fails validation, naming the pair", async () => {
     git("tag", "bad/v1.0.0");
     lines.length = 0;
-    expect(await add(`file://${repo}//themes/bad@bad/v1.0.0`)).toBe(1);
+    expect(await add(`${REMOTE}//themes/bad@bad/v1.0.0`)).toBe(1);
     expect(lines.join("\n")).toMatch(/light: muted on (bg|surface) is/);
     expect(fs.existsSync(path.join(dist, "plugins", "bad"))).toBe(false);
   });
@@ -380,25 +403,25 @@ describe("theme add, list, remove", () => {
   it("refuses the built-in id", async () => {
     git("tag", "den/v1.0.0");
     lines.length = 0;
-    expect(await add(`file://${repo}//themes/den@den/v1.0.0`)).toBe(1);
+    expect(await add(`${REMOTE}//themes/den@den/v1.0.0`)).toBe(1);
     expect(lines.join("\n")).toMatch(/built-in/);
   });
 
   it("a ref that does not exist fails without touching the distribution", async () => {
     lines.length = 0;
-    expect(await add(`file://${repo}//themes/sample@sample/v9.9.9`)).toBe(1);
+    expect(await add(`${REMOTE}//themes/sample@sample/v9.9.9`)).toBe(1);
     expect(lines.join("\n")).toMatch(/no tag or branch "sample\/v9.9.9"/);
     expect(fs.existsSync(path.join(dist, "plugins", "sample"))).toBe(false);
   });
 
   it("refuses a branch unless --track, which the lock records", async () => {
     lines.length = 0;
-    expect(await add(`file://${repo}//themes/sample@main`)).toBe(1);
+    expect(await add(`${REMOTE}//themes/sample@main`)).toBe(1);
     expect(lines.join("\n")).toMatch(
       /main is a branch: pin a tag or a full commit SHA/,
     );
     expect(
-      await cmdTheme(["add", `file://${repo}//themes/sample@main`, "--track"], {
+      await cmdTheme(["add", `${REMOTE}//themes/sample@main`, "--track"], {
         distRoot: dist,
         log,
         tmpDir: tmp,
@@ -412,13 +435,11 @@ describe("theme add, list, remove", () => {
 
   it("takes a full commit SHA, not a short one", async () => {
     const sha = git("rev-parse", "HEAD");
-    expect(await add(`file://${repo}//themes/sample@${sha}`)).toBe(0);
+    expect(await add(`${REMOTE}//themes/sample@${sha}`)).toBe(0);
     expect(readLock(dist).sample).toMatchObject({ ref: sha, commit: sha });
     expect(readLock(dist).sample.tracking).toBeUndefined();
     lines.length = 0;
-    expect(await add(`file://${repo}//themes/sample@${sha.slice(0, 7)}`)).toBe(
-      1,
-    );
+    expect(await add(`${REMOTE}//themes/sample@${sha.slice(0, 7)}`)).toBe(1);
     expect(lines.join("\n")).toMatch(/full 40-character SHA/);
   });
 });

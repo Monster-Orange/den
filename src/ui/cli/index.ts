@@ -167,6 +167,7 @@ import { cmdEdge } from "./edge-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
 import { cmdTheme } from "./theme-command.js";
+import { cmdPlugin } from "./plugin-command.js";
 import { cmdWeb, displayWebHelp } from "./web-command.js";
 import { cmdGraph } from "./graph-command.js";
 import { resolveLogsTarget, tailServiceLogs } from "./logs-command.js";
@@ -310,6 +311,15 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "This org's HTTPS edge: own CA + cert, routes at <name>.<edge.domain>.",
     ],
   },
+  plugin: {
+    usage:
+      "plugin [list] | validate [dir] | add <repo>[/<subpath>]@<ref> [--track] [--yes] | update <id> @<ref> | remove <id>",
+    lines: [
+      "Plugins (den.plugin/v1) in plugins/<id>/: local (the distribution's own, no lock entry)",
+      "or added (vendored at an exact ref, pinned in plugins.lock.json). list checks each",
+      "against the lock; validate checks every manifest. add refuses file:// sources.",
+    ],
+  },
   theme: {
     usage:
       "theme [list] | validate [dir] | new <id> | add <repo>[/<subpath>]@<ref> | remove <id>",
@@ -392,6 +402,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "mcp",
   "service",
   "theme",
+  "plugin",
 ]);
 
 /** Map a raw command token to a PII-safe, registered telemetry command name. */
@@ -738,6 +749,10 @@ class DenCLI {
 
         case "theme":
           process.exitCode = await cmdTheme(args.slice(1));
+          break;
+
+        case "plugin":
+          process.exitCode = await cmdPlugin(args.slice(1));
           break;
 
         case "apps":
@@ -3887,6 +3902,9 @@ class DenCLI {
     );
     console.log(
       "  theme add <repo>@<ref> Install a web UI theme (list, validate, remove)",
+    );
+    console.log(
+      "  plugin list          Local and added plugins, checked (validate, add, update, remove)",
     );
     console.log();
     console.log("  workspace list       List workspaces");

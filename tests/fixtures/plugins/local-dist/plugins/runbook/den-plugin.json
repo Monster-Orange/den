@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Monster-Orange/den/main/schemas/den.plugin.v1.json",
+  "schema": "den.plugin/v1",
+  "id": "runbook",
+  "name": "Team runbook",
+  "version": "1.0.0",
+  "license": "MIT",
+  "den": ">=0.3.0",
+  "maintainer": "platform team",
+  "readme": "README.md",
+  "provides": [
+    {
+      "kind": "page",
+      "entry": "page/index.js",
+      "nav": {
+        "group": "verify",
+        "label": "nav.runbook",
+        "icon": "book"
+      }
+    }
+  ],
+  "capabilities": ["ui.nav", "api.read"]
+}

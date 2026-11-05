@@ -11,7 +11,7 @@ config and manifest changes a distribution must make to move to it under
 - **Themes (`den.theme/v1`).** The contract is `schemas/den.theme.v1.json`:
   color tokens for dark and light, type, shape, a mark and self-hosted fonts.
   `<cli> theme add <repo>[/<subpath>]@<tag|commit>` validates a theme and
-  vendors it into the distribution (`plugins/<id>/`, `plugins.lock.json`, shared with future plugin kinds). `theme add` never replaces a plugin dir it did not vendor (a local, unlocked plugin) or another kind's lock entry; `theme list` fails on a leftover 0.3.0-dev.0 `themes.lock.json`, naming it; `theme add` warns that a `file://` source is a local path. A theme's and a font's `license` follow one rule: an SPDX expression, never UNLICENSED/NONE. `theme list` reports a theme that fails this Den's rules as "no longer valid" with the reasons, apart from "changed since it was added"; validate explains the license and CSS-value rules instead of printing "must NOT be valid". Local themes (the distribution's own, in `plugins/<id>/` with no lock entry) are listed as `local` and validated; `theme validate` with no argument checks every installed theme; `theme new <id>` starts a local theme from the built-in one;
+  vendors it into the distribution (`plugins/<id>/`, `plugins.lock.json`, shared with future plugin kinds). `theme add` never replaces a plugin dir it did not vendor (a local, unlocked plugin) or another kind's lock entry; `theme list` fails on a leftover 0.3.0-dev.0 `themes.lock.json`, naming it; `theme add` refuses a `file://` source (0.3.0-dev.7, below). A theme's and a font's `license` follow one rule: an SPDX expression, never UNLICENSED/NONE. `theme list` reports a theme that fails this Den's rules as "no longer valid" with the reasons, apart from "changed since it was added"; validate explains the license and CSS-value rules instead of printing "must NOT be valid". Local themes (the distribution's own, in `plugins/<id>/` with no lock entry) are listed as `local` and validated; `theme validate` with no argument checks every installed theme; `theme new <id>` starts a local theme from the built-in one;
   `theme list` checks themes against the lock; `theme validate` and `theme
   remove`. Contrast is checked per pair in both modes. A branch ref needs
   `--track`. Den bundles its own theme, `den` 2.0.0. The public set and the
@@ -27,11 +27,58 @@ config and manifest changes a distribution must make to move to it under
   stylesheet or UI script hard-codes a color any more (a test holds that).
   The header's version pill shows the running build, prerelease suffix
   included (`v0.3.0-dev.5`, not the changelog's `v0.3.0`).
+- **Plugins (`den.plugin/v1`, PL-1a and PL-2a, 0.3.0-dev.7).** The contract
+  is `schemas/den.plugin.v1.json`: `id`, `name`, `version`, `license` (the
+  theme schema's SPDX rule, by `$ref`), `den` (a version range, required),
+  `maintainer`, `readme`, `provides` (one entry per extension point: `theme`
+  with its `manifest`, `page` with its `entry` and `nav`, and the other kinds
+  by name) and `capabilities` (a closed vocabulary: `ui.nav`, `api.read`,
+  `api.actions:`, `secrets:`, `net:`, `exec:`, `send:`). A directory holding
+  only a `den-theme.json` is an implicit theme plugin, so every theme keeps
+  working. Every `plugins/<id>/` is a plugin: **local** when it has no lock
+  entry (the distribution's own, any kind; being present is its approval),
+  **added** when `plugin add` vendored it. A `plugins/<id>/` with neither
+  manifest is an error in `plugin list` and `plugin validate`, never
+  skipped, as are the id `den` and a directory name that is not an id.
+  - `<cli> plugin list`: every plugin with its version, kinds and `local`
+    or its source and ref; added ones are checked against the lock's hash
+    (as `theme list` does).
+  - `<cli> plugin validate [dir]`: every local and added plugin, or one dir
+    (a plugin, a distribution, or a repo of `themes/<id>/` and
+    `plugins/<id>/`). Admission rules: a `maintainer` (1); a browser- or
+    server-tier plugin's README names its tier and says what it must never
+    do (2; themes are exempt); an SPDX license and licensed fonts (3). A
+    local plugin that declares `api.actions`, `secrets`, `exec`, `net` or
+    `send` and has files git has not committed gets a warning (never an
+    error): committing it is its review.
+  - `<cli> plugin add <repo>[/<subpath>]@<tag|commit> [--track] [--yes]`,
+    `plugin update <id> @<ref>` and `plugin remove <id>`. The lock entry's
+    `kinds` and `approved_capabilities` come from the manifest; a plugin that
+    asks for capabilities needs `--yes`, and `update` asks again only when the
+    set grows. `remove` and `update` are for added plugins: a local one is
+    edited or deleted in git. A den-plugin.json plugin is vendored whole
+    (every file but dot-files); a theme still vendors only its named files,
+    so existing lock hashes still match.
+  - `add` and `update` refuse a `file://` source: "for your own plugin, put
+    it in plugins/<id>/ as a local plugin; to try a published one before
+    tagging, push a branch and use --track". This replaces 0.3.0-dev.2's
+    warning.
+  - `plugins.allow` in `den.yml` lists the `<host>/<owner>` pairs (or bare
+    hosts) `add` may fetch from. Absent: any host. A malformed value is an
+    error.
+  - `theme add | list | validate | remove` are `plugin` filtered to kind
+    theme, with the same output and exit codes; `theme new` is unchanged.
+    The web UI also finds a theme a `den-plugin.json` provides.
+  See "Plugins" in `docs/distributions.md`.
 
 ### Migrations
 
 - None. Optional: set `brand.theme: <id>` in the org config to give the
   distribution's web UI its own default theme.
+- A `plugins/<id>/` with no `den-plugin.json` or `den-theme.json` now fails
+  `plugin list` and `plugin validate`: give it a manifest or move it out of
+  `plugins/`. A theme added from a `file://` path (0.3.0-dev.2 warned) stays
+  listed, but re-add it from its published URL before committing the lock.
 
 ## [0.2.3] - 2026-11-04
 

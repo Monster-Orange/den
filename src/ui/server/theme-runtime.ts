@@ -22,6 +22,7 @@ import {
   themeDirFor,
   validationSummary,
 } from "../cli/theme-command.js";
+import { themeDirIn } from "../../shared/plugins/manifest.js";
 import {
   themeFiles,
   validateThemeDir,
@@ -95,6 +96,15 @@ function inspect(
   };
 }
 
+/**
+ * Where plugin `id`'s theme is: plugins/<id>/ for a den-theme.json plugin,
+ * else the directory its den-plugin.json theme entry names.
+ */
+function pluginThemeDir(distRoot: string, id: string): string {
+  const dir = themeDirFor(distRoot, id);
+  return themeDirIn(dir) ?? dir;
+}
+
 /** Every theme this distribution can use: den first, then plugins/<id>/ sorted. */
 export function listThemes(roots: ThemeRoots): InstalledTheme[] {
   let lock: ReturnType<typeof readLock> = {};
@@ -111,7 +121,7 @@ export function listThemes(roots: ThemeRoots): InstalledTheme[] {
     out.push(
       inspect(
         id,
-        themeDirFor(roots.distRoot, id),
+        pluginThemeDir(roots.distRoot, id),
         lock[id]?.kinds?.includes("theme") ? "locked" : "local",
         id,
       ),
@@ -137,7 +147,7 @@ export function findTheme(
   }
   return inspect(
     id,
-    themeDirFor(roots.distRoot, id),
+    pluginThemeDir(roots.distRoot, id),
     locked ? "locked" : "local",
     id,
   );

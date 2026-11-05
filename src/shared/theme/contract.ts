@@ -207,7 +207,7 @@ const CSS_MESSAGE =
  * Say what a rule means where the schema error would not: a `not` clause
  * reports only "must NOT be valid", and the SPDX pattern is unreadable.
  */
-function friendlyMessage(e: {
+export function friendlyMessage(e: {
   instancePath: string;
   keyword: string;
 }): string | null {
@@ -216,6 +216,35 @@ function friendlyMessage(e: {
     return SPDX_MESSAGE;
   if (e.keyword === "not") return CSS_MESSAGE;
   return null;
+}
+
+type SchemaError = {
+  instancePath: string;
+  keyword: string;
+  message?: string;
+  params?: Record<string, unknown>;
+};
+
+/**
+ * Schema errors as issues, with the friendly messages above. `extra` says
+ * what another schema's own rules mean (den.plugin/v1's capabilities); the
+ * plugin schema shares the SPDX rule, so it shares this too.
+ */
+export function schemaIssues(
+  errors: SchemaError[] | null | undefined,
+  extra: (e: SchemaError) => string | null = () => null,
+): ThemeIssue[] {
+  return (errors ?? []).map((e) => ({
+    at: e.instancePath,
+    message:
+      extra(e) ??
+      friendlyMessage(e) ??
+      `${e.message ?? "invalid"}${
+        e.params && "additionalProperty" in e.params
+          ? ` (${String(e.params.additionalProperty)})`
+          : ""
+      }`,
+  }));
 }
 
 /**
@@ -246,16 +275,7 @@ export function validateThemeDir(
   if (!validate(raw)) {
     return {
       ok: false,
-      issues: (validate.errors ?? []).map((e) => ({
-        at: e.instancePath,
-        message:
-          friendlyMessage(e) ??
-          `${e.message ?? "invalid"}${
-            e.params && "additionalProperty" in e.params
-              ? ` (${String(e.params.additionalProperty)})`
-              : ""
-          }`,
-      })),
+      issues: schemaIssues(validate.errors),
       contrast: [],
     };
   }
