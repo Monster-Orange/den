@@ -13,6 +13,7 @@ import { parse as parseYaml } from "yaml";
 import {
   parseCreateArgs,
   renderDistribution,
+  runCreate,
   runningDenVersion,
   titleFromName,
   writeDistribution,
@@ -229,5 +230,35 @@ describe("parseCreateArgs", () => {
       /needs a value/,
     );
     expect(() => parseCreateArgs([], "/w")).toThrow(/usage/);
+  });
+});
+
+describe("runCreate's Next: hint", () => {
+  let tmp = "";
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "den-create-next-"));
+  });
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function cdLine(argv: string[], cwd: string): string {
+    const lines: string[] = [];
+    const log = console.log;
+    console.log = (...a: unknown[]) => void lines.push(a.join(" "));
+    try {
+      expect(runCreate(argv, cwd)).toBe(0);
+    } finally {
+      console.log = log;
+    }
+    return lines.find((l) => l.startsWith("  cd ")) ?? "";
+  }
+
+  it("is relative under the cwd, absolute when the dir is elsewhere", () => {
+    const here = path.join(tmp, "here");
+    fs.mkdirSync(here);
+    expect(cdLine(["demo"], here)).toBe("  cd demo");
+    const elsewhere = path.join(tmp, "elsewhere", "demo2");
+    expect(cdLine(["demo2", elsewhere], here)).toBe(`  cd ${elsewhere}`);
   });
 });

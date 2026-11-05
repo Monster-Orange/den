@@ -353,13 +353,21 @@ export function runCreate(argv: string[], cwd: string): number {
       denVersion: runningDenVersion(),
     });
     const cli = args.cli ?? args.name;
-    const rel = path.relative(cwd, args.dir) || ".";
+    // Relative only when the new directory is under the caller's cwd; a
+    // path that climbs out (../../..) is harder to read than the absolute one.
+    const rel = path.relative(cwd, args.dir);
+    const cdPath =
+      rel === ""
+        ? "."
+        : rel.startsWith("..") || path.isAbsolute(rel)
+          ? args.dir
+          : rel;
     console.log(
       `Created ${args.name} in ${args.dir} (${plural(written.length, "file")}).`,
     );
     console.log("");
     console.log("Next:");
-    console.log(`  cd ${rel}`);
+    console.log(`  cd ${cdPath}`);
     console.log("  npm install");
     console.log(`  ./bin/${cli} --help`);
     return 0;

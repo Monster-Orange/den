@@ -313,10 +313,19 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     lines: ["List all registered services in the catalog."],
   },
   register: {
-    usage: "register [path]",
+    usage: "register [path] [-w <workspace>]",
     lines: [
       "With a path: add that checkout (dev-managed) under its manifest name.",
       "Without one: pick the repo interactively.",
+      "-w writes that workspace (active or not) and leaves focus alone.",
+    ],
+  },
+  relocate: {
+    usage: "relocate <repo> <path> [--dry-run] [-w <workspace>]",
+    lines: [
+      "Point every workspace's dev-managed entries for <repo> at <path>.",
+      "Refuses a path that is missing or holds a different repo.",
+      "-w limits it to that workspace; focus never changes.",
     ],
   },
   setup: {
@@ -480,6 +489,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "services",
   "graph",
   "register",
+  "relocate",
   "use-local",
   `use-managed`,
   "setup",
@@ -775,6 +785,10 @@ class DenCLI {
 
         case "register":
           await this.cmdRegister(args.slice(1));
+          break;
+
+        case "relocate":
+          await this.cmdRelocate(args.slice(1));
           break;
 
         case "use-local":
@@ -3176,11 +3190,12 @@ class DenCLI {
   private async cmdRegister(args: string[]): Promise<void> {
     if (args.includes("-h") || args.includes("--help")) {
       console.log(
-        `\n  ${product().cli} register [path] [--name <repo>] [--gh <owner/repo>]\n\n` +
+        `\n  ${product().cli} register [path] [--name <repo>] [--gh <owner/repo>] [-w <workspace>]\n\n` +
           "  With a path: add that checkout to the catalog and the focused\n" +
           "  workspace as your own (dev-managed) copy, without prompts. The name\n" +
           "  defaults to the manifest's name, then the folder name; the GitHub\n" +
-          "  slug to the git remote.\n" +
+          "  slug to the git remote. -w writes that workspace (active or not)\n" +
+          "  and leaves focus alone.\n" +
           "  Without a path: choose a local checkout or a managed clone interactively.\n",
       );
       return;
@@ -3228,7 +3243,138 @@ class DenCLI {
     }
   }
 
-  /** Non-interactive `register <path>`: a dev-managed entry in the focused workspace. */
+  /**
+   * `relocate <repo> <path>`: a checkout moved on disk. Rewrites the path of
+   * every dev-managed entry for <repo> (bare and `<repo>/<svc>` addresses) in
+   * every workspace, or only the `-w` one. Managed entries are Den's own
+   * clones and are left alone. Focus and the active set never change.
+   */
+  private async cmdRelocate(args: string[]): Promise<void> {
+    const usage = `${product().cli} relocate <repo> <path> [--dry-run] [-w <workspace>]`;
+    if (args.includes("-h") || args.includes("--help")) {
+      console.log(
+        `\n  ${usage}\n\n` +
+          "  A checkout moved: point every workspace's dev-managed entries for\n" +
+          "  <repo> at <path>. Refuses a missing path, or one whose manifest\n" +
+          "  name or GitHub remote names a different repo. --dry-run shows\n" +
+          "  the changes without writing. -w limits it to that workspace.\n" +
+          "  Focus and the active set never change.\n",
+      );
+      return;
+    }
+    const dryRun = args.includes("--dry-run") || args.includes("-n");
+    const unknown = args.find(
+      (a) => a.startsWith("-") && !["--dry-run", "-n"].includes(a),
+    );
+    const positional = args.filter((a) => !a.startsWith("-"));
+    if (unknown || positional.length !== 2) {
+      console.error(
+        chalk.red(
+          `\n  ❌ ${unknown ? `Unknown flag: ${unknown}` : "Need a repo and a path"}.\n     Usage: ${usage}\n`,
+        ),
+      );
+      process.exitCode = 1;
+      return;
+    }
+    const [repoName, rawPath] = positional;
+    const { existsSync, statSync } = await import("fs");
+    const newPath = nodePath.resolve(rawPath);
+    const fail = (msg: string) => {
+      console.error(chalk.red(`\n  ❌ ${msg}\n`));
+      process.exitCode = 1;
+    };
+    const file = readWorkspacesFile();
+    const only = process.env.DEN_WORKSPACE_OVERRIDE;
+    const names = only ? [only] : Object.keys(file.workspaces);
+    const belongs = (key: string) =>
+      key === repoName || key.startsWith(`${repoName}/`);
+    if (
+      !names.some((ws) =>
+        Object.keys(file.workspaces[ws]?.services ?? {}).some(belongs),
+      )
+    ) {
+      fail(
+        `"${repoName}" is not in ${only ? `workspace "${only}"` : "any workspace"}.`,
+      );
+      return;
+    }
+    if (!existsSync(newPath) || !statSync(newPath).isDirectory()) {
+      fail(`Path does not exist: ${newPath}`);
+      return;
+    }
+
+    // The new path must hold this repo: its manifest name and GitHub remote,
+    // when present, must agree with the repo and its catalog entry.
+    const manifest = readManifest(newPath);
+    const leaf = repoName.split("/").pop() ?? repoName;
+    if (
+      manifest?.name &&
+      manifest.name !== repoName &&
+      manifest.name !== leaf
+    ) {
+      fail(
+        `${newPath} holds "${manifest.name}", not "${repoName}" (its manifest name).`,
+      );
+      return;
+    }
+    const catalogGh = readCatalog()[repoName]?.gh?.trim();
+    const coords = getGitHubCoords(newPath);
+    const remote = coords ? `${coords.owner}/${coords.repo}` : undefined;
+    if (
+      catalogGh &&
+      remote &&
+      catalogGh.toLowerCase() !== remote.toLowerCase()
+    ) {
+      fail(
+        `${newPath} is a checkout of ${remote}; the catalog has "${repoName}" as ${catalogGh}.`,
+      );
+      return;
+    }
+
+    const changes: { ws: string; addr: string; from: string }[] = [];
+    const managed: { ws: string; addr: string }[] = [];
+    for (const ws of names) {
+      const entries = file.workspaces[ws]?.services ?? {};
+      for (const [addr, entry] of Object.entries(entries)) {
+        if (!belongs(addr)) continue;
+        if (entry.mode !== "dev-managed") {
+          managed.push({ ws, addr });
+          continue;
+        }
+        if (entry.path && nodePath.resolve(entry.path) === newPath) continue;
+        changes.push({ ws, addr, from: entry.path ?? "(default)" });
+        if (!dryRun) entry.path = newPath;
+      }
+    }
+
+    if (changes.length > 0 && !dryRun) writeWorkspacesFile(file);
+
+    const verb = dryRun ? "Would point" : "Pointed";
+    if (changes.length === 0) {
+      console.log(
+        chalk.gray(
+          `\n  Nothing to change: "${repoName}" is already at ${newPath}.`,
+        ),
+      );
+    } else {
+      console.log(chalk.green(`\n  ✓ ${verb} at ${newPath}:\n`));
+      for (const c of changes) {
+        console.log(
+          `    ${chalk.bold(c.addr)}  ${chalk.gray(`${c.ws}   was ${c.from}`)}`,
+        );
+      }
+    }
+    for (const m of managed) {
+      console.log(
+        chalk.gray(
+          `    ${m.addr}  ${m.ws}   managed (Den's clone): left alone`,
+        ),
+      );
+    }
+    console.log();
+  }
+
+  /** Non-interactive `register <path>`: a dev-managed entry in the focused (or -w) workspace. */
   private async registerPath(
     ws: {
       name: string;
@@ -4148,6 +4294,9 @@ class DenCLI {
     );
     console.log(
       "  register [path]      Register a repo in the service catalog",
+    );
+    console.log(
+      "  relocate <repo> <path>  Point a moved checkout's workspace entries at its new path",
     );
     console.log();
     console.log("  setup [service...]   Run make setup for services");

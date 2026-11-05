@@ -8,6 +8,18 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **`<cli> relocate <repo> <path>`** (0.3.0-dev.26, from a consumer). A
+  checkout moved on disk: every workspace's dev-managed entries for the repo
+  (bare and `<repo>/<svc>`) now point at the new path, keeping each entry's
+  other settings. Managed entries (Den's own clones) are left alone, and focus
+  and the active set never change. It refuses a missing path, one whose
+  manifest name or GitHub remote names a different repo, and a repo no
+  workspace has. `--dry-run` shows the changes without writing; `-w` limits it
+  to one workspace.
+- **`<cli> register <path> -w <workspace>`** (0.3.0-dev.26). `-w` writes that
+  workspace, active or not, and leaves focus alone. It used to fail with
+  "-w/--workspace is not valid with register".
+
 - **The "What's new" pop-up shows the newest release only** (0.3.0-dev.16).
   A "Show all versions (N earlier)" button in its footer lists every
   earlier version in the same pop-up, and "Show latest only" collapses it
@@ -440,6 +452,9 @@ config and manifest changes a distribution must make to move to it under
   `backendAvailable` (and `backend`, `reason`).
 
 ### Fixed
+
+- **`create`'s "Next:" hint names an absolute path** (0.3.0-dev.26) when the
+  new directory is not under the cwd, instead of `cd ../../../..`.
 
 - **A fresh distribution runs no gh for a placeholder org** (0.3.0-dev.25,
   from a consumer's dev.24 run): `den create` wrote `github_org:

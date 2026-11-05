@@ -12,6 +12,7 @@ export type CommandName =
   | "services"
   | "graph"
   | "register"
+  | "relocate"
   | "use-local"
   | "use-managed"
   | "setup"
@@ -61,9 +62,17 @@ const WORKSPACE_READ_COMMANDS = new Set([
   "stack",
 ]);
 
+/**
+ * Commands that edit one workspace's entries without changing what runs:
+ * `-w` picks the workspace to write, whether or not it is active, and leaves
+ * focus alone.
+ */
+const WORKSPACE_EDIT_COMMANDS = new Set(["register", "relocate"]);
+
 const WORKSPACE_COMMANDS = new Set([
   ...WORKSPACE_MUTATION_COMMANDS,
   ...WORKSPACE_READ_COMMANDS,
+  ...WORKSPACE_EDIT_COMMANDS,
 ]);
 
 /** Whether `-w <name>` on this command requires `<name>` to be active. */
