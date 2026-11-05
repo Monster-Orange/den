@@ -7,7 +7,7 @@
  *   local     <distRoot>/plugins/<id>/, no lock the distribution's own
  *
  * The active theme is the user's choice (user.yml `appearance.theme`), else
- * the distribution's (org config `theme:`), else den. A choice that is not
+ * the distribution's (org config `brand.theme`), else den. A choice that is not
  * installed or fails validation falls through to the next, ending at den,
  * with one warning in the server log per bad choice. Only a validated
  * manifest is ever rendered: its values passed the schema's CSS-value rule
@@ -146,7 +146,7 @@ export function findTheme(
 export interface ThemeChoice {
   /** user.yml `appearance.theme`. */
   user?: string | null;
-  /** The org config's `theme:`. */
+  /** The org config's `brand.theme`. */
   distribution?: string | null;
 }
 
@@ -181,7 +181,7 @@ export function resolveActiveTheme(
     candidates.push([
       choice.distribution,
       "distribution",
-      "the distribution's `theme:`",
+      "the distribution's `brand.theme`",
     ]);
   candidates.push([BUILTIN_THEME, "default", "the default"]);
   for (const [id, chosenBy, label] of candidates) {

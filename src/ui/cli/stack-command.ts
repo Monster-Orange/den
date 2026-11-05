@@ -8,8 +8,11 @@
 import chalk from "chalk";
 import { routeUrl } from "../../shared/edge/render.js";
 import { edgeUp } from "../../shared/edge/runtime.js";
+import { getSecretsProvider } from "../../shared/secrets/index.js";
+import type { SecretsProvider } from "../../shared/secrets/types.js";
 import { projectName, startOrder } from "../../shared/stacks/render.js";
 import {
+  resolveStackSecretEnv,
   stackDown,
   stackHealth,
   stackLogs,
@@ -18,6 +21,7 @@ import {
   stackUp,
 } from "../../shared/stacks/runtime.js";
 import { loadStackContext, stackStatuses } from "../../shared/stacks/status.js";
+import type { StackConfig } from "../../shared/stacks/types.js";
 
 function serviceFlag(args: string[]): { service?: string; rest: string[] } {
   const rest: string[] = [];
@@ -27,6 +31,29 @@ function serviceFlag(args: string[]): { service?: string; rest: string[] } {
     else rest.push(args[i]);
   }
   return { service, rest };
+}
+
+/**
+ * Every named stack's `secret_env`, resolved before anything starts or
+ * stops: one missing key fails the whole command with nothing changed.
+ * The provider is only asked when some stack declares secret_env.
+ */
+export async function resolveStacksSecretEnv(
+  targets: StackConfig[],
+  provider: () => SecretsProvider = getSecretsProvider,
+): Promise<Map<string, Record<string, string>>> {
+  const out = new Map<string, Record<string, string>>();
+  const needing = targets.filter((s) => Object.keys(s.secretEnv ?? {}).length);
+  if (!needing.length) return out;
+  const p = provider();
+  const failures: string[] = [];
+  for (const s of needing) {
+    const r = await resolveStackSecretEnv(s, p);
+    if (r.ok) out.set(s.name, r.env);
+    else failures.push(r.message);
+  }
+  if (failures.length) throw new Error(failures.join("\n"));
+  return out;
 }
 
 export async function cmdStack(argv: string[]): Promise<void> {
@@ -62,21 +89,32 @@ export async function cmdStack(argv: string[]): Promise<void> {
       return;
     case "up": {
       // Re-render the edge so its cert covers every stack, then start the stacks.
+      const order = startOrder(pick(), stacks);
+      const secrets = await resolveStacksSecretEnv(order.map((n) => stacks[n]));
       await edgeUp(edge);
-      for (const n of startOrder(pick(), stacks)) {
+      for (const n of order) {
         console.log(chalk.cyan(`\n▶ ${n} (${projectName(n, ctx.workspace)})`));
-        stackUp(ctx, stacks[n], { build: args.includes("--build") });
+        stackUp(ctx, stacks[n], {
+          build: args.includes("--build"),
+          secretEnv: secrets.get(n),
+        });
         for (const route of Object.keys(stacks[n].routes))
           console.log(chalk.green(`  ✓ ${routeUrl(`${route}.${n}`, edge)}`));
       }
       return;
     }
-    case "restart":
+    case "restart": {
+      // Resolved before the down: a missing secret leaves the stack running.
+      const secrets = await resolveStacksSecretEnv(
+        pick().map((n) => stacks[n]),
+      );
       if (service) {
         // One compose service, in place: no edge re-render, no recreate.
         for (const n of pick()) {
           console.log(chalk.cyan(`↻ ${n} ${service}`));
-          stackRestartService(ctx, stacks[n], service);
+          stackRestartService(ctx, stacks[n], service, {
+            secretEnv: secrets.get(n),
+          });
         }
         return;
       }
@@ -84,9 +122,13 @@ export async function cmdStack(argv: string[]): Promise<void> {
       for (const n of pick()) {
         console.log(chalk.cyan(`↻ ${n}`));
         stackDown(ctx, stacks[n]);
-        stackUp(ctx, stacks[n], { build: args.includes("--build") });
+        stackUp(ctx, stacks[n], {
+          build: args.includes("--build"),
+          secretEnv: secrets.get(n),
+        });
       }
       return;
+    }
     case "health": {
       let ok = true;
       for (const n of pick()) {

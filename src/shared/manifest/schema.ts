@@ -9,6 +9,7 @@
 
 import { z } from "zod";
 import { journeysAppSchema } from "../../pillars/journeys/app-config.js";
+import { SECRET_ENV_KEY_RE, secretEnvRefError } from "../secrets/secret-env.js";
 
 export const CURRENT_SCHEMA_VERSION = 1;
 export const KNOWN_VERSIONS = [1] as const;
@@ -69,6 +70,16 @@ const logSource = z.union([
   }),
 ]);
 
+// secret_env (R16): ENV_NAME → "<vault>/<item>/<field>", resolved through the
+// secrets provider at up/restart and passed only in the process env.
+const secretEnvConfig = z.record(
+  z.string().regex(SECRET_ENV_KEY_RE, "must be a valid env var name"),
+  z.string().superRefine((ref, ctx) => {
+    const err = secretEnvRefError(ref);
+    if (err) ctx.addIssue({ code: z.ZodIssueCode.custom, message: err });
+  }),
+);
+
 // ── Service management config ─────────────────────────────────────────────────
 //
 // Keys for commands/logs/health are environment names (local, dev, …).
@@ -105,6 +116,7 @@ const serviceTarget = z
 const serviceManagementConfig = z.object({
   runs: z.record(z.string(), z.enum(["local", "remote"])).optional(),
   target: serviceTarget.optional(),
+  secret_env: secretEnvConfig.optional(),
   depends_on: z.array(dependsOnEntry).optional(),
   commands: z.record(z.string(), z.record(z.string(), commandDef)).optional(),
   logs: z.record(z.string(), logSource).optional(),
@@ -280,6 +292,9 @@ const composeConfig = z.object({
       z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
     )
     .optional(),
+  // Env vars resolved from the secrets provider into the docker compose
+  // process's env at up/restart. Never written to the override.
+  secret_env: secretEnvConfig.optional(),
 });
 
 // ── v1 manifest schema ────────────────────────────────────────────────────────

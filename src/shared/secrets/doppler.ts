@@ -4,7 +4,8 @@
  *
  * Project/config come from `secrets.doppler.{project,config}` in
  * config/den.yml, else from the directory's `doppler setup` scope,
- * else from DOPPLER_PROJECT / DOPPLER_CONFIG / DOPPLER_TOKEN.
+ * else from DOPPLER_PROJECT / DOPPLER_CONFIG / DOPPLER_TOKEN. A scoped ref
+ * (a `secret_env` value, `<project>/<config>/<key>`) names its own.
  */
 import { execFile, spawn } from "child_process";
 import { promisify } from "util";
@@ -29,8 +30,12 @@ export class DopplerProvider implements SecretsProvider {
     this.timeout = opts.timeoutMs ?? 30_000;
   }
 
-  /** `--project/--config` flags when configured explicitly. */
-  scopeArgs(): string[] {
+  /**
+   * `--project/--config` flags: a scoped ref's own vault/item, else the
+   * configured ones (when set explicitly).
+   */
+  scopeArgs(ref?: SecretRef): string[] {
+    if (ref?.scoped) return ["--project", ref.vault, "--config", ref.item];
     const a: string[] = [];
     if (this.opts.project) a.push("--project", this.opts.project);
     if (this.opts.config) a.push("--config", this.opts.config);
@@ -56,7 +61,7 @@ export class DopplerProvider implements SecretsProvider {
     const key = this.keyFor(ref);
     const { stdout } = await execFileAsync(
       "doppler",
-      ["secrets", "get", key, "--plain", ...this.scopeArgs()],
+      ["secrets", "get", key, "--plain", ...this.scopeArgs(ref)],
       { timeout: this.timeout },
     );
     return String(stdout).trim();
@@ -77,7 +82,7 @@ export class DopplerProvider implements SecretsProvider {
     await new Promise<void>((resolve, reject) => {
       const child = spawn(
         "doppler",
-        ["secrets", "set", key, "--silent", ...this.scopeArgs()],
+        ["secrets", "set", key, "--silent", ...this.scopeArgs(ref)],
         { stdio: ["pipe", "ignore", "pipe"] },
       );
       let stderr = "";

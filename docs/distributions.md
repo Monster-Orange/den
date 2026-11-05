@@ -213,6 +213,57 @@ ones (`⇄ hybrid`).
   production_envs: [prod] # default: [prod, production]
   ```
 
+## Secrets in a target's env
+
+`secret_env` puts secrets from the configured secrets provider
+(`secrets.provider`: `doppler`, `1password` or `env`) into the env of what
+Den starts, instead of wrapping `<provider> run -- <cli> restart <repo>` by
+hand:
+
+```yaml
+# .acme.yml
+compose:
+  secret_env: # the docker compose process's env, at stack up / restart
+    OPENAI_API_KEY: shop/dev_personal/OPENAI_API_KEY
+services:
+  worker:
+    secret_env: # the env of this service's own up / restart command
+      STRIPE_KEY: Engineering/Stripe Test/secret key
+```
+
+Each value is a fully qualified ref, `<vault>/<item>/<field>`:
+
+| Provider    | `a/b/c` means                                                              |
+| ----------- | -------------------------------------------------------------------------- |
+| `doppler`   | `--project a --config b`, key `c` (`secrets.doppler` is not consulted)     |
+| `1password` | vault `a`, item `b`, field `c`                                             |
+| `env`       | the env var `c` of the process running Den (`secrets.keys` is not applied) |
+
+A `compose.secret_env` key reaches a container only through the compose
+file: `${OPENAI_API_KEY}` in it, or a pass-through `environment:
+[OPENAI_API_KEY]`.
+
+- **When.** `up` and `restart`, including `restart <repo>/<service>` of one
+  compose service (`stack up`, `stack restart`, `stack restart --service`),
+  from the CLI, the web UI and MCP. Every key is resolved before anything
+  stops or starts.
+- **Missing.** A key the provider cannot resolve (unset, empty, no access)
+  fails that target, exit 1, naming the key, the ref and the provider. The
+  rest of the set is not used: nothing starts with a partial set, and a
+  restart leaves the old instance running.
+- **Where values go.** Only into the spawned process's env (the docker
+  compose process, or the service's command). Never into the generated
+  compose override, logs, activity records, MCP output, dry runs or
+  messages. A CLI-tabs (`cli_tabs`) start of a service with `secret_env`
+  runs as a daemon, since a tab would put them in its shell history.
+- **Dry run.** `-n`/`--dry-run` never asks the provider. It lists the key
+  names it would inject: `shop: would inject secret_env compose:
+OPENAI_API_KEY (names only; not resolved in a dry run)`.
+- **Validation.** `<cli> validate` rejects a ref that is not exactly three
+  non-empty parts and a key that is not an env var name
+  (`[A-Za-z_][A-Za-z0-9_]*`). A `stacks:` entry in the org config takes
+  `secret_env` too.
+
 ## den.yml: the product profile
 
 Every runtime name derives from `product.name`. Set only what you want to
@@ -319,12 +370,13 @@ one is active:
 
 1. the engineer's own choice (`appearance.theme` in `config/local/user.yml`,
    set from the header's theme menu);
-2. else the distribution's default, `theme:` in the org config;
+2. else the distribution's default, `brand.theme` in the org config;
 3. else `den`.
 
 ```yaml
 # config/<name>.yml
-theme: paper # an id in plugins/<id>/ (locked or local), or den
+brand:
+  theme: paper # an id in plugins/<id>/ (locked or local), or den
 ```
 
 An id that is not installed, or no longer validates under this Den, is

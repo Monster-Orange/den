@@ -17,6 +17,7 @@ import {
 } from "../environment-manager/workspaces.js";
 import { readManifest } from "../manifest/read-manifest.js";
 import type { ManifestComposeConfig } from "../types/index.js";
+import { assertSecretEnvSpec } from "../secrets/secret-env.js";
 import { assertStackName, parseTarget } from "./render.js";
 import type { StackConfig } from "./types.js";
 
@@ -41,6 +42,10 @@ function toStack(
   const routes = raw.routes ?? {};
   Object.values(routes).forEach(parseTarget);
   const files = list(raw.files, `${where}.files`);
+  const secretEnv =
+    "secret_env" in raw
+      ? assertSecretEnvSpec(raw.secret_env, `${where}.secret_env`)
+      : undefined;
   return {
     name,
     repo,
@@ -69,6 +74,7 @@ function toStack(
           ),
         }
       : {}),
+    ...(secretEnv && Object.keys(secretEnv).length ? { secretEnv } : {}),
   };
 }
 

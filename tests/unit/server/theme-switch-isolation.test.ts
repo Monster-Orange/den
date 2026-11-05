@@ -84,7 +84,7 @@ beforeAll(async () => {
   fs.writeFileSync(path.join(dist, "den.yml"), "product:\n  name: den\n");
   fs.writeFileSync(
     path.join(dist, "config", "den.yml"),
-    "theme: den\nedge:\n  org: acme\n  domain: acme.test\n  routes:\n    web: 7777\n",
+    "brand:\n  theme: den\nedge:\n  org: acme\n  domain: acme.test\n  routes:\n    web: 7777\n",
   );
   fs.writeFileSync(
     path.join(dist, "config", "local", "user.yml"),

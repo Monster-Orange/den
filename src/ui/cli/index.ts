@@ -99,6 +99,8 @@ import { waitForReady } from "../../shared/environment-manager/readiness.js";
 import {
   canonicalServiceAddress,
   previewServiceCommand,
+  previewServiceSecretEnv,
+  prepareServiceSecretEnv,
   resolveService,
   type ServiceCommandPreview,
 } from "../../shared/environment-manager/service-runner.js";
@@ -1468,6 +1470,20 @@ class DenCLI {
           console.log(chalk.gray(`  ${p.note}`));
         if (p.kind === "error") console.log(chalk.red(`  ✗ ${p.note}`));
       }
+      // R16: key names only. A dry run never asks the secrets provider.
+      for (const a of new Set(runs)) {
+        const sec = previewServiceSecretEnv(a, command, workspace);
+        if (!sec) continue;
+        const parts = [
+          ...(sec.service.length ? [sec.service.join(", ")] : []),
+          ...(sec.compose.length ? [`compose: ${sec.compose.join(", ")}`] : []),
+        ];
+        console.log(
+          chalk.gray(
+            `  ${sec.address}: would inject secret_env ${parts.join("; ")} (names only; not resolved in a dry run)`,
+          ),
+        );
+      }
       if (previews.some((p) => p.kind === "error")) process.exitCode = 1;
       console.log(chalk.gray(`  (--dry-run: not ${doing} anything)\n`));
       return;
@@ -1605,7 +1621,22 @@ class DenCLI {
         }
       }
 
+      // R16: resolve the service's secret_env before anything spawns. A
+      // missing key fails this target; nothing starts with a partial set.
+      const secrets = await prepareServiceSecretEnv(
+        address,
+        command,
+        workspace,
+      );
+
       const started = await new Promise<boolean>((resolve) => {
+        if (!secrets.ok) {
+          console.log(chalk.red(`  ✗ ${command} ${chalk.bold(address)}`));
+          for (const l of secrets.message.split("\n"))
+            console.log(chalk.gray(`      ${l}`));
+          resolve(false);
+          return;
+        }
         const spinner = ora(`${command} ${chalk.bold(address)}...`).start();
         let detachTimer: ReturnType<typeof setTimeout> | null = null;
         let settled = false;
@@ -1687,6 +1718,7 @@ class DenCLI {
           runtime,
           workspace,
           force: command === "down" ? force : false,
+          secretEnv: secrets.secretEnv,
           onLine: (line) => {
             spinner.text = `${command} ${chalk.bold(address)}: ${chalk.gray(line.slice(0, 80))}`;
             const trimmed = line.trim();

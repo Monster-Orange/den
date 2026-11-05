@@ -64,17 +64,31 @@ describe("client plans", () => {
         "claude",
         "mcp",
         "add",
+        "acme",
         "--scope",
         "user",
         "-e",
         `PATH=${spec.env.PATH}`,
-        "acme",
         "--",
         "/work/acme/bin/acme",
         "mcp",
       ],
       check: ["claude", "mcp", "get", "acme"],
     });
+  });
+
+  it("Claude Code: no env pair is followed by a non-pair before --", () => {
+    // claude mcp add's -e is variadic: everything after it up to -- that is
+    // not another flag is taken as KEY=value, so the name must come first.
+    const add = (
+      findClient("claude-code")!.plan(spec, "user", env()) as { add: string[] }
+    ).add;
+    const firstE = add.indexOf("-e");
+    const dash = add.indexOf("--");
+    expect(firstE).toBeGreaterThan(0);
+    for (const a of add.slice(firstE, dash))
+      expect(a === "-e" || /^[A-Za-z_][A-Za-z0-9_]*=/.test(a)).toBe(true);
+    expect(add.indexOf("acme")).toBeLessThan(firstE);
   });
 
   it("Claude Code project scope writes .mcp.json in the project", () => {

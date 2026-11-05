@@ -16,6 +16,12 @@ import {
   renderStackRoutes,
   routedNetworks,
 } from "./render.js";
+import {
+  resolveSecretEnv,
+  secretEnvKeys,
+  type SecretEnvResolution,
+} from "../secrets/secret-env.js";
+import type { SecretsProvider } from "../secrets/types.js";
 import type { ResolvedProject, StackConfig } from "./types.js";
 
 function run(
@@ -117,6 +123,35 @@ function composeEnv(ctx: StackContext, s: StackConfig): NodeJS.ProcessEnv {
   };
 }
 
+/**
+ * Resolve a stack's `secret_env` through `provider` (all or nothing). Call
+ * it before anything starts or stops, and hand the env to stackUp /
+ * stackRestartService. Nothing in the result's message carries a value.
+ */
+export function resolveStackSecretEnv(
+  s: StackConfig,
+  provider: SecretsProvider,
+): Promise<SecretEnvResolution> {
+  return resolveSecretEnv(s.secretEnv, provider, `stack ${s.name}`);
+}
+
+/**
+ * The resolved secrets for a compose process that starts containers. Fails
+ * closed: a stack that declares `secret_env` is never started without every
+ * key (that is how a plain restart used to drop one).
+ */
+function secretComposeEnv(
+  s: StackConfig,
+  secretEnv: Record<string, string> | undefined,
+): Record<string, string> {
+  const missing = secretEnvKeys(s.secretEnv).filter((k) => !secretEnv?.[k]);
+  if (missing.length)
+    throw new Error(
+      `stack ${s.name}: secret_env ${missing.join(", ")} not resolved; not starting it`,
+    );
+  return secretEnv ?? {};
+}
+
 function baseArgs(ctx: StackContext, s: StackConfig): string[] {
   return [
     "compose",
@@ -168,8 +203,15 @@ function running(container: string): boolean {
 export function stackUp(
   ctx: StackContext,
   s: StackConfig,
-  opts: { build?: boolean } = {},
+  opts: {
+    build?: boolean;
+    /** The stack's resolved `secret_env` (see resolveStackSecretEnv). */
+    secretEnv?: Record<string, string>;
+  } = {},
 ) {
+  const secrets = secretComposeEnv(s, opts.secretEnv);
+  // `compose config` runs without them: its JSON (which feeds the override)
+  // must not carry a secret.
   const resolved = resolve(ctx, s);
   // Provider side of each link: its referenced services join a private network.
   const needs = providerServices(s);
@@ -200,7 +242,11 @@ export function stackUp(
       ...(opts.build ? ["--build"] : []),
       "--remove-orphans",
     ],
-    { cwd: repoDir(s), env: composeEnv(ctx, s), inherit: true },
+    {
+      cwd: repoDir(s),
+      env: { ...composeEnv(ctx, s), ...secrets },
+      inherit: true,
+    },
   );
   // This stack as a provider: consumers already running keep their link
   // network, but a restarted provider's new containers must rejoin it.
@@ -274,14 +320,16 @@ export function stackRestartService(
   ctx: StackContext,
   s: StackConfig,
   service: string,
+  opts: { secretEnv?: Record<string, string> } = {},
 ): void {
+  const secrets = secretComposeEnv(s, opts.secretEnv);
   const override = path.join(stackDir(ctx, s), "override.yml");
   const args = fs.existsSync(override)
     ? overrideArgs(ctx, s)
     : baseArgs(ctx, s);
   must("docker", [...args, "restart", service], {
     cwd: repoDir(s),
-    env: composeEnv(ctx, s),
+    env: { ...composeEnv(ctx, s), ...secrets },
     inherit: true,
   });
 }

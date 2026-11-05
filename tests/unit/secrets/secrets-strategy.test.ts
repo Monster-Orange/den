@@ -88,7 +88,7 @@ describe("provider selection is configuration, not code", () => {
 describe("DopplerProvider", () => {
   it("reads the flat key with --plain and the configured scope", async () => {
     mockExecFileAsync.mockResolvedValueOnce({ stdout: "s3cret\n", stderr: "" });
-    const p = new DopplerProvider({ project: "ent-compass", config: "dev" });
+    const p = new DopplerProvider({ project: "acme-app", config: "dev" });
     await expect(p.get(REF)).resolves.toBe("s3cret");
     const [bin, args] = mockExecFileAsync.mock.calls[0];
     expect(bin).toBe("doppler");
@@ -98,7 +98,7 @@ describe("DopplerProvider", () => {
       "SHOP_TEST_USER_AUTH0_PASSWORD",
       "--plain",
       "--project",
-      "ent-compass",
+      "acme-app",
       "--config",
       "dev",
     ]);

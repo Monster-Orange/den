@@ -68,6 +68,7 @@ import {
 } from "../../shared/environment-manager/health.js";
 import {
   runServiceCommand,
+  prepareServiceSecretEnv,
   resolveService,
   listDaemons,
   unregisterDaemon,
@@ -364,7 +365,7 @@ function serverLog(msg: string, kind: string = "info", actor?: string): void {
 const themeDeps: ThemeRouteDeps = {
   roots: () => ({ distRoot: getDistRoot(), engineRoot: getEngineRoot() }),
   prefs: () => appearancePrefs(readUserConfig().appearance),
-  distributionTheme: () => readDenConfig().theme,
+  distributionTheme: () => readBrand().theme,
   warn: (line) => serverLog(line, "warn"),
 };
 // The pre-paint script in each page reads the user's mode and the theme's
@@ -464,6 +465,7 @@ import {
 } from "../../shared/open-url.js";
 
 import { product } from "../../shared/product.js";
+import { readBrand } from "../../shared/brand.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -1524,6 +1526,8 @@ async function handleRequest(
           {
             run: runServiceCommand,
             health: (r) => checkServiceHealth(r, "local"),
+            secretEnv: (address, cmd, workspace) =>
+              prepareServiceSecretEnv(address, cmd, workspace),
           },
         );
         return;

@@ -72,6 +72,17 @@ async function main(): Promise<number> {
     const r = await provider.preflight();
     if (r.ok) return 0;
     if (gate && !cfg.required) {
+      // Signed in but no default scope: secret_env refs name their own
+      // (<project>/<config>/<key>), so only the engine's own secrets lack one.
+      if (await provider.isReady()) {
+        console.error(
+          chalk.gray(
+            `   ${label}: signed in, no default scope set (secret_env refs still resolve;` +
+              ` test logins and the saved sudo password need one: \`make ${product().cli}-setup-secrets\`).`,
+          ),
+        );
+        return 0;
+      }
       console.error(
         chalk.yellow(
           `⚠️  ${label} is not ready — continuing.\n` +

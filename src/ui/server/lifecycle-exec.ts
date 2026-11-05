@@ -21,6 +21,7 @@ import type { ResolvedService } from "../../shared/types/index.js";
 import type {
   RunCommandOptions,
   RunCommandResult,
+  ServiceSecretEnvResult,
 } from "../../shared/environment-manager/service-runner.js";
 import type { ServiceHealthResult } from "../../shared/environment-manager/health.js";
 
@@ -34,6 +35,16 @@ export function isLifecycleExecCmd(c: string): c is LifecycleExecCmd {
 export interface LifecycleExecDeps {
   run: (o: RunCommandOptions) => RunCommandResult;
   health: (r: ResolvedService) => Promise<ServiceHealthResult>;
+  /**
+   * R16: resolve the service's secret_env (prepareServiceSecretEnv). Unset,
+   * nothing is resolved, and the runner refuses to start a service that
+   * declares secret_env.
+   */
+  secretEnv?: (
+    address: string,
+    cmd: LifecycleExecCmd,
+    workspace?: string,
+  ) => Promise<ServiceSecretEnvResult>;
   /** Health poll interval after a detached start (default 1s). */
   pollMs?: number;
   /** Stop polling after this long (default 120s). */
@@ -106,12 +117,24 @@ export async function streamLifecycleExec(
     }
   }
 
+  // R16: all of the service's secret_env, or nothing starts. The message
+  // names keys, refs and the provider, never a value.
+  const secrets = deps.secretEnv
+    ? await deps.secretEnv(resolved.address, cmd, o.workspace)
+    : { ok: true as const, secretEnv: undefined };
+  if (!secrets.ok) {
+    if (!clientGone) emit({ type: "error", text: secrets.message });
+    finish(1, true);
+    return;
+  }
+
   const result = deps.run({
     address: resolved.address,
     command: cmd,
     workspace: o.workspace,
     runtime: "daemon",
     env: o.env,
+    secretEnv: secrets.secretEnv,
     onLine: (text) => {
       if (!clientGone) emit({ type: "line", text });
     },

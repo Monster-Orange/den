@@ -22,6 +22,16 @@ export interface SecretRef {
    * `flatKeyFor`.
    */
   key?: string;
+  /**
+   * Set on a fully qualified ref (a `secret_env` value, `a/b/c`): every part
+   * names a real location and no provider config fills it in.
+   *  - Doppler: vault = `--project`, item = `--config`, field = the key
+   *    (`secrets.doppler` and `secrets.keys` are not consulted).
+   *  - 1Password: vault / item / field as for any ref.
+   *  - env: field is the env var name (`secrets.keys` is not consulted).
+   * Unscoped refs (the default) keep the provider's configured scope.
+   */
+  scoped?: true;
 }
 
 export type SecretsProviderName = "doppler" | "1password" | "env";

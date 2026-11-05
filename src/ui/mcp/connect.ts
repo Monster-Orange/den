@@ -107,10 +107,12 @@ export const MCP_CLIENTS: readonly McpClient[] = [
               "claude",
               "mcp",
               "add",
+              // The name first: claude's -e takes several values, so a name
+              // after the env pairs is read as one more pair.
+              s.name,
               "--scope",
               "user",
               ...envFlags("-e", s.env),
-              s.name,
               "--",
               s.command,
               ...s.args,

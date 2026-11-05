@@ -215,12 +215,6 @@ export interface DenConfig {
   /** Release/deploy configuration for the web Release tab (team base). */
   release?: ReleaseConfig;
   /**
-   * The web UI's theme for this distribution: a theme id (`den`, or one in
-   * plugins/<id>/). An engineer's own choice (user.yml `appearance.theme`)
-   * wins; an unknown or invalid id falls back to den. Default "den".
-   */
-  theme?: string;
-  /**
    * Extra environment variables injected into every service command (up/down/
    * restart/setup), so consumer repos receive den-resolved locations
    * regardless of where their checkout lives. Values are templates; the only
@@ -439,7 +433,6 @@ export function readDenConfig(): DenConfig {
       org: parsed?.org,
       applications: parsed?.applications,
       release: parsed?.release,
-      theme: typeof parsed?.theme === "string" ? parsed.theme : undefined,
       service_env: parsed?.service_env,
       env_health_urls: parsed?.env_health_urls,
       security: parsed?.security,

@@ -8,6 +8,8 @@
  *     name: Acme Dev                 # shown in titles and the banner
  *     tagline: Acme local dev and E2E harness
  *     banner: [ "...", "..." ]       # optional ASCII art lines
+ *     theme: acme                    # the web UI's default theme (an id in
+ *                                    # plugins/<id>/, or den)
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -19,6 +21,8 @@ export interface BrandConfig {
   name: string;
   tagline: string;
   banner?: string[];
+  /** The web UI's default theme id; the user's appearance.theme wins. */
+  theme?: string;
 }
 
 export function defaultBrand(): BrandConfig {
@@ -43,6 +47,9 @@ export function readBrand(root: string = getDistRoot()): BrandConfig {
     name: raw.name?.trim() || fallback.name,
     tagline: raw.tagline?.trim() || fallback.tagline,
     banner: Array.isArray(raw.banner) ? raw.banner.map(String) : undefined,
+    ...(typeof raw.theme === "string" && raw.theme.trim()
+      ? { theme: raw.theme.trim() }
+      : {}),
   };
   return cached;
 }

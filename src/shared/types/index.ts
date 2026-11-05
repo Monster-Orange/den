@@ -276,6 +276,12 @@ export interface ServiceManagementConfig {
   runs?: Partial<Record<Environment, ServiceRunsValue>>;
   /** Where a remote service runs: the env, an account label, a URL to probe. */
   target?: ServiceTargetConfig;
+  /**
+   * R16: env var → `<vault>/<item>/<field>` ref, resolved through the
+   * secrets provider when this service's up/restart command runs, and set
+   * only in that process's env (see src/shared/secrets/secret-env.ts).
+   */
+  secret_env?: Record<string, string>;
 }
 
 export type ServiceRunsValue = "local" | "remote";
@@ -572,6 +578,15 @@ export interface ManifestComposeConfig {
   profiles?: string[];
   /** service → replacement healthcheck `test` (written to den's override, not the repo). */
   healthchecks?: Record<string, string[]>;
+  /** service → env vars set on that service in the override (wins by key). */
+  service_env?: Record<string, Record<string, string | number | boolean>>;
+  /**
+   * R16: env var → `<vault>/<item>/<field>` ref, resolved through the
+   * secrets provider at stack up/restart and set only in the docker compose
+   * process's env (for the compose file's `${VAR}` / pass-through
+   * `environment:` entries). Never written to the override.
+   */
+  secret_env?: Record<string, string>;
 }
 
 export interface MigrationResult {

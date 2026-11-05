@@ -20,7 +20,7 @@ config and manifest changes a distribution must make to move to it under
 - **The web UI is themed (0.3.0-dev.5).** Every page draws its colors from
   the active theme, in dark or light: the engineer's choice (user.yml
   `appearance: { theme, mode }`, from the header's new Mode and Theme menus),
-  else the org config's `theme:`, else `den`; an unknown or invalid id falls
+  else the org config's `brand.theme`, else `den`; an unknown or invalid id falls
   back with one server-log warning. The server serves `/theme.css`,
   `/theme/<id>/<file>` (only the files the manifest names) and `/api/themes`.
   Switching writes user.yml only (no edge, services or restart). No page,
@@ -30,8 +30,48 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
-- None. Optional: set `theme: <id>` in the org config to give the
+- None. Optional: set `brand.theme: <id>` in the org config to give the
   distribution's web UI its own default theme.
+
+## [0.2.3] - 2026-11-04
+
+### Added
+
+- **`secret_env`: secrets resolved by Den into a stack's or a service's env**
+  (R16), so a consumer no longer wraps `<provider> run -- <cli> restart
+  <repo>` by hand, and a plain restart no longer drops a key. In a manifest,
+  `compose.secret_env` (for the docker compose process: the compose file's
+  `${VAR}` or pass-through `environment:` entries) and
+  `services.<svc>.secret_env` (for that service's own up/restart command)
+  map an env var to a fully qualified ref, `<vault>/<item>/<field>`. For
+  Doppler that is `<project>/<config>/<key>`; for 1Password vault / item /
+  field; for `env` the field is the env var to read. Existing refs (the
+  engine's named secrets, test users) are unchanged. Resolved through the
+  configured `secrets.provider` at `up` and `restart` (also the in-place
+  restart of one compose service), all or nothing, before anything stops or
+  starts. A missing key fails that target, exit 1, naming the key, ref and
+  provider. Values go only into the spawned process's env: never into the
+  compose override, logs, activity records, MCP output or messages. A dry
+  run (`-n`) never asks the provider; it lists the key names it would
+  inject. A CLI-tabs start of a service with `secret_env` runs as a daemon,
+  so the values stay out of the tab's shell. `validate` rejects a ref that
+  is not exactly three non-empty parts, and a key that is not an env var
+  name. See "Secrets in a target's env" in `docs/distributions.md`.
+
+### Fixed
+
+- **`<cli> mcp connect` for Claude Code failed whenever the server has env**
+  ("Invalid environment variable format: <name>"): `claude mcp add`'s `-e`
+  takes several values, so the server name after the env pairs was read as
+  one more. The name now comes right after `add`.
+- **The up/restart secrets check said the backend was "not ready" when it
+  was signed in with no default scope.** `secret_env` refs name their own
+  scope, so they still resolve; it now says "signed in, no default scope
+  set" instead of warning.
+
+### Migrations
+
+- None required.
 
 ## [0.2.2] - 2026-11-04
 
