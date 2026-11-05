@@ -22,6 +22,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { getEngineRoot } from "../paths.js";
 import {
+  denRangeIssue,
   THEME_FILE,
   schemaIssues,
   validateThemeDir,
@@ -33,6 +34,9 @@ export const PLUGIN_SCHEMA_ID = "den.plugin/v1";
 export const PLUGIN_FILE = "den-plugin.json";
 /** A plugin id, and so its directory's name. */
 export const PLUGIN_ID = /^[a-z][a-z0-9-]{1,39}$/;
+/** PLUGIN_ID in words, for messages that refuse a name. */
+export const PLUGIN_ID_RULE =
+  "2–40 characters: lowercase letters, digits or dashes, starting with a letter";
 /** Den's own id: its built-in theme. A distribution plugin may not use it. */
 export const BUILTIN_ID = "den";
 
@@ -243,12 +247,20 @@ export function validatePluginDir(
         ],
         contrast: [],
       };
-    // An implicit theme plugin: the theme validator is the whole check.
+    // An implicit theme plugin: the theme validator is the whole check, plus
+    // rule 1: a den-theme.json's `author` is its maintainer (PL-SPEC d4).
     const v = validateThemeDir(dir, opts);
+    const issues = [...v.issues];
+    if (v.theme && !v.theme.author?.trim())
+      issues.push({
+        at: "/author",
+        message:
+          "no author: a theme's author is its maintainer, and a plugin needs one",
+      });
     return {
-      ok: v.ok,
+      ok: v.ok && issues.length === 0,
       manifestFile: THEME_FILE,
-      issues: v.issues,
+      issues,
       contrast: v.contrast,
       ...(v.theme
         ? {
@@ -335,6 +347,8 @@ export function validatePluginDir(
     }
   });
   issues.push(...readmeIssues(dir, m, tier));
+  const range = denRangeIssue((m as { den?: string }).den);
+  if (range) issues.push({ at: `${PLUGIN_FILE}#/den`, message: range });
   for (const link of symlinksIn(dir))
     issues.push({
       at: link,
@@ -359,6 +373,23 @@ export function validatePluginDir(
     issues,
     contrast,
   };
+}
+
+/**
+ * Why a plugin's den-plugin.json `den` range excludes the running Den, or
+ * null (no den-plugin.json, no range, or a range this Den satisfies). The
+ * runtime asks this at load: such a plugin is skipped with a notice, never
+ * a crash (PL-SPEC d4). An unreadable manifest is not this check's concern.
+ */
+export function pluginDenRangeIssue(pluginDir: string): string | null {
+  const file = path.join(pluginDir, PLUGIN_FILE);
+  if (!fs.existsSync(file)) return null;
+  try {
+    const m = JSON.parse(fs.readFileSync(file, "utf-8")) as { den?: unknown };
+    return typeof m.den === "string" ? denRangeIssue(m.den) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

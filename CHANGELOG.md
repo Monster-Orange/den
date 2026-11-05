@@ -70,6 +70,68 @@ config and manifest changes a distribution must make to move to it under
     theme, with the same output and exit codes; `theme new` is unchanged.
     The web UI also finds a theme a `den-plugin.json` provides.
   See "Plugins" in `docs/distributions.md`.
+- **PL-SPEC draft-4 rulings (0.3.0-dev.8).**
+  - Rule 1 covers themes: a bare `den-theme.json`'s `author` is its
+    maintainer, and a theme plugin without one fails `plugin validate`.
+    `theme new` sets the author to the brand's name.
+  - The `den` range is checked (semver, prereleases included).
+    `plugin validate` and `theme validate` fail a plugin whose range
+    excludes the running Den, naming the range and the version. At load,
+    the web UI skips such a theme, whether the range is in its
+    `den-theme.json` or in the `den-plugin.json` that provides it, with one
+    server-log notice, and draws with the next choice (yours, then
+    `brand.theme`, then `den`). It never crashes. Den now depends on
+    `semver` (pinned).
+  - `plugin list` and `theme list` warn, never fail, about a lock entry
+    with a `file://` source (from 0.3.0-dev.2), and say how to fix it.
+- **`plugin validate <id>` and `theme validate <id>` mean `plugins/<id>/`**
+  (0.3.0-dev.8). An id that names a dir in `plugins/` or a lock entry is
+  never read as a cwd-relative path. A bare name that isn't an id (such as
+  `x`) means `plugins/x/` when no such path exists. Anything else is a path,
+  as before. `theme validate den` checks the built-in theme. `theme
+  validate <id>` of a plugin that isn't a theme gives one ✗.
+- **The theme reaches the type, the mark and links.** Every page draws text
+  in `var(--sans)` / `var(--mono)` / `var(--display)` (no page names a font
+  any more; a test holds that, like the color rule), so a theme's fonts
+  apply; `/theme.css` ends a theme's stack with Den's when it has no generic
+  family. The header shows the active theme's mark (SVG, `svg_dark` in dark
+  mode, or text in its `shape`) and redraws it on a live switch; favicon.ico
+  stays the favicon. Links in body content are underlined (subtly, in a tint
+  of their own color), so a red accent never makes a link read as an error.
+- **Back to the org default.** The Theme menu starts with "Org default
+  (<name>)", which stores `appearance.theme: null`; picking the theme that
+  is the org default stores null too, so you keep following `brand.theme`.
+  `/api/themes` gives `org_default`. The popover's controls are named
+  (Mode, Theme; the button is "Appearance" with `aria-expanded` and
+  `aria-controls`); Escape closes it and returns focus to the button.
+
+### Fixed
+
+- The appearance control (◐) sits at the header's far right on every page
+  and never leaves the screen: the nav shrinks and scrolls and the health
+  dots give way first (the Tests page's top bar overflowed at 1440 and 1024).
+- Org colors from the config are no longer text: the graph's org frames and
+  the panel's breadcrumb label in `--text` with the color as a dot (they read
+  at 2.5:1 on a light ground), and the frame's ground is neutral. A test
+  bans a config color as `color:`.
+- The active workspace row in the Local Dev sidebar is a calm neutral tint
+  in both modes (it was a loud accent tint in light mode).
+- `plugin list` with broken dirs in `plugins/` (0.3.0-dev.8, reported by
+  consumers on dev.7) prints exactly one row for every directory there, every
+  time. Before, it crashed with no rows when `plugins.lock.json` couldn't be
+  parsed, skipped a symlink, and hid a dir whose lock entry named another
+  id. `plugin validate` reports each of these too. Nothing in a plugin dir
+  makes either command throw.
+- A dir name that isn't an id (such as `plugins/x/`) now gives the real
+  rule: "2–40 characters: lowercase letters, digits or dashes, starting with
+  a letter". A missing manifest is reported as well (0.3.0-dev.8).
+- A dir with no manifest reads "local (plugins/scratch): no den-plugin.json
+  or den-theme.json, so it isn't a plugin" in `plugin list`. "Not valid
+  under this <cli>: …" is now kept for a recognized plugin that fails
+  validation (0.3.0-dev.8).
+- `theme list` still shows themes only, and still exits 0 when other plugin
+  dirs are broken. It now adds one line, "N plugin dir(s) have errors: run
+  `<cli> plugin list`" (0.3.0-dev.8).
 
 ### Migrations
 
@@ -79,6 +141,10 @@ config and manifest changes a distribution must make to move to it under
   `plugin list` and `plugin validate`: give it a manifest or move it out of
   `plugins/`. A theme added from a `file://` path (0.3.0-dev.2 warned) stays
   listed, but re-add it from its published URL before committing the lock.
+- 0.3.0-dev.8: a `den-theme.json` used as a plugin needs an `author`
+  (`theme new` sets one). A plugin's `den` range is now enforced: write
+  `>=0.3.0-0 <0.4.0` to admit Den's 0.3.0 prereleases, because `>=0.3.0`
+  excludes them.
 
 ## [0.2.3] - 2026-11-04
 

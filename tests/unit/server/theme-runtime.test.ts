@@ -22,6 +22,7 @@ import {
 } from "../../../src/ui/server/theme-routes.js";
 import {
   COLOR_TOKENS,
+  fontStack,
   listThemes,
   renderThemeCss,
   resetThemeWarnings,
@@ -166,6 +167,72 @@ describe("resolveActiveTheme", () => {
   });
 });
 
+describe("a den range that excludes this Den (PL-SPEC d4)", () => {
+  /** plugins/<id>/ in its own distribution: den's theme, a range on it. */
+  function rangeRoots(): ThemeRoots {
+    const distRoot = path.join(tmp, "range-dist");
+    const theme = (dir: string, id: string, den?: string) => {
+      fs.cpSync(DEN_DIR, dir, { recursive: true });
+      const f = path.join(dir, "den-theme.json");
+      const m = JSON.parse(fs.readFileSync(f, "utf-8")) as Record<
+        string,
+        unknown
+      >;
+      Object.assign(m, { id, name: id }, den ? { den } : {});
+      fs.writeFileSync(f, JSON.stringify(m));
+    };
+    const plugins = path.join(distRoot, "plugins");
+    // A den-theme.json whose own range excludes this Den.
+    theme(path.join(plugins, "future"), "future", ">=99.0.0");
+    // A den-plugin.json theme: the range is on the plugin, not the theme.
+    const fp = path.join(plugins, "future-plugin");
+    theme(path.join(fp, "theme"), "future-plugin");
+    fs.writeFileSync(
+      path.join(fp, "den-plugin.json"),
+      JSON.stringify({
+        schema: "den.plugin/v1",
+        id: "future-plugin",
+        name: "Future plugin",
+        version: "1.0.0",
+        license: "MIT",
+        den: ">=99.0.0",
+        maintainer: "design",
+        provides: [{ kind: "theme", manifest: "theme/den-theme.json" }],
+      }),
+    );
+    theme(path.join(plugins, "today"), "today");
+    return { distRoot, engineRoot: ENGINE };
+  }
+
+  it("is skipped with a notice, falling through user → brand.theme → den", () => {
+    const r = rangeRoots();
+    for (const id of ["future", "future-plugin"]) {
+      resetThemeWarnings();
+      const w: string[] = [];
+      const pick = (user: string | null, distribution: string | null) =>
+        resolveActiveTheme(r, { user, distribution }, (l) => w.push(l));
+      expect(pick(id, "today")).toMatchObject({
+        id: "today",
+        chosenBy: "distribution",
+      });
+      expect(pick(null, id)).toMatchObject({ id: "den", chosenBy: "default" });
+      expect(pick(id, id)).toMatchObject({ id: "den", chosenBy: "default" });
+      expect(w).toHaveLength(1);
+      expect(w[0]).toMatch(
+        new RegExp(`"${id}".*not valid.*needs Den >=99\\.0\\.0`),
+      );
+    }
+    expect(
+      listThemes(r)
+        .filter((t) => t.id.startsWith("future"))
+        .map((t) => [t.id, t.ok]),
+    ).toEqual([
+      ["future", false],
+      ["future-plugin", false],
+    ]);
+  });
+});
+
 describe("renderThemeCss (den)", () => {
   let css = "";
   beforeAll(() => {
@@ -215,6 +282,40 @@ describe("renderThemeCss (den)", () => {
     );
     expect(p).toContain(':root,\n:root[data-mode="light"] {');
   });
+
+  it("keeps den's own stacks, and ends any theme's stack in a fallback", () => {
+    const d = listThemes(roots).find((t) => t.id === "den")!.theme!;
+    expect(css).toContain(`  --sans: ${d.type!.sans};`);
+    expect(css).toContain(`  --mono: ${d.type!.mono};`);
+    expect(css).toContain(`  --display: ${d.type!.display};`);
+    // A stack with no generic family gets Den's after it: never the
+    // browser's default serif because one webfont is missing.
+    expect(fontStack('"Brand Sans"', "Arial, sans-serif")).toBe(
+      '"Brand Sans", Arial, sans-serif',
+    );
+    expect(fontStack("Rubik, sans-serif", "Arial, sans-serif")).toBe(
+      "Rubik, sans-serif",
+    );
+    expect(fontStack(undefined, "Arial, sans-serif")).toBe("Arial, sans-serif");
+    const p = renderThemeCss("x", {
+      ...d,
+      type: { sans: '"Brand Sans"', mono: '"Brand Mono"' },
+    });
+    expect(p).toMatch(/--sans: "Brand Sans", [^;]*sans-serif;/);
+    expect(p).toMatch(/--mono: "Brand Mono", [^;]*monospace;/);
+    expect(p).toMatch(/--display: "Brand Sans", [^;]*sans-serif;/);
+  });
+
+  it("underlines links in body content, not nav, buttons or pills", () => {
+    const rule = css.slice(css.indexOf("/* Den base"));
+    expect(rule).toMatch(
+      /:where\(a\[href\]:not\(nav a, header a, \.topbar a,[^)]*\[class\*="btn"\], \[class\*="pill"\][^)]*\)\) \{\n {2}text-decoration-line: underline;/,
+    );
+    expect(rule).toContain("text-underline-offset:");
+    expect(rule).toContain(
+      "text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);",
+    );
+  });
 });
 
 describe("appearance prefs", () => {
@@ -242,6 +343,29 @@ describe("appearance prefs", () => {
     expect(mergeAppearancePrefs(cur, { edge: 1 }, usable).ok).toBe(false);
     expect(storedAppearance({ theme: null, mode: "system" })).toBeUndefined();
   });
+  it("stores null for the org default, so you follow it when it changes", () => {
+    const cur: AppearancePrefs = { theme: "paper", mode: "dark" };
+    // Choosing the theme that is the org default is no choice of your own.
+    expect(mergeAppearancePrefs(cur, { theme: "den" }, usable, "den")).toEqual({
+      ok: true,
+      value: { theme: null, mode: "dark" },
+    });
+    expect(
+      mergeAppearancePrefs(cur, { theme: "paper" }, usable, "paper"),
+    ).toEqual({ ok: true, value: { theme: null, mode: "dark" } });
+    // Another theme is kept; null and "" clear, the same as the org default.
+    expect(
+      mergeAppearancePrefs(cur, { theme: "paper" }, usable, "den"),
+    ).toEqual({ ok: true, value: { theme: "paper", mode: "dark" } });
+    for (const theme of [null, ""])
+      expect(mergeAppearancePrefs(cur, { theme }, usable, "den")).toEqual({
+        ok: true,
+        value: { theme: null, mode: "dark" },
+      });
+    expect(storedAppearance({ theme: null, mode: "dark" })).toEqual({
+      mode: "dark",
+    });
+  });
 });
 
 describe("theme routes", () => {
@@ -249,11 +373,12 @@ describe("theme routes", () => {
   let base: string;
   let port: number;
   let prefs: AppearancePrefs = { theme: null, mode: "system" };
+  let dist: string | null = null;
   const warnings: string[] = [];
   const deps: ThemeRouteDeps = {
     roots: () => roots,
     prefs: () => prefs,
-    distributionTheme: () => null,
+    distributionTheme: () => dist,
     warn: (l) => warnings.push(l),
   };
   const get = (p: string) =>
@@ -363,6 +488,29 @@ describe("theme routes", () => {
       ["ink", "locked", true],
       ["paper", "local", true],
     ]);
+  });
+
+  it("GET /api/themes names the org default (what no choice draws)", async () => {
+    type Themes = {
+      org_default: { id: string; name: string } | null;
+      active: { id: string; chosen_by: string };
+    };
+    const themes = async () =>
+      JSON.parse((await get("/api/themes")).body) as Themes;
+    prefs = { theme: "paper", mode: "system" };
+    dist = "ink";
+    expect((await themes()).org_default).toEqual({ id: "ink", name: "Ink" });
+    expect((await themes()).active).toMatchObject({ id: "paper" });
+    prefs = { theme: null, mode: "system" };
+    expect((await themes()).active).toMatchObject({
+      id: "ink",
+      chosen_by: "distribution",
+    });
+    // An org default that is not usable falls back to den, as drawing does.
+    dist = "broken";
+    expect((await themes()).org_default).toEqual({ id: "den", name: "Den" });
+    dist = null;
+    expect((await themes()).org_default).toEqual({ id: "den", name: "Den" });
   });
 
   it("is read-only", async () => {

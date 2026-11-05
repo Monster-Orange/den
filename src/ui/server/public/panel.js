@@ -660,7 +660,7 @@ export function renderPanel(el, sel) {
         ? "bad"
         : "";
   el.innerHTML = `${st.popped ? "" : '<div class="dg-resize" data-resize title="Drag to resize"></div>'}<div class="dg-dh">
-    <nav class="dg-crumbs" aria-label="Location"><span style="color:${esc(org.color)}">${esc(org.label)}</span> › <span>${esc(s0.app)}</span>${kind === "service" && m.byRepo.get(x.repo).length > 1 ? ` › <button data-goto-repo-panel="${esc(x.repo)}">${esc(x.repo)}</button>` : ""}</nav>
+    <nav class="dg-crumbs" aria-label="Location"><span class="dg-crumb-org"><i style="background:${esc(org.color)}"></i>${esc(org.label)}</span> › <span>${esc(s0.app)}</span>${kind === "service" && m.byRepo.get(x.repo).length > 1 ? ` › <button data-goto-repo-panel="${esc(x.repo)}">${esc(x.repo)}</button>` : ""}</nav>
     <div class="t"><h2>${esc(kind === "repo" ? x.repo : x.name)}</h2><span class="dg-pill ${pillCls}">${esc(word)}</span>${place !== "local" || m.mixed ? `<span class="dg-badge ${place}">${esc(placeLabel)}</span>` : ""}
       <span class="dg-hbtns"><button class="dg-ib" data-popout title="${st.popped ? "Dock as side panel" : "Expand to pop-up"}" aria-label="${st.popped ? "Dock as side panel" : "Expand to pop-up"}">${st.popped ? "⇲" : "⤢"}</button><button class="dg-ib" data-close aria-label="Close details">×</button></span></div>
     <div class="sub">${esc(kind === "repo" ? `${x.services.length} services · ${s0.path}` : x.id)}</div>

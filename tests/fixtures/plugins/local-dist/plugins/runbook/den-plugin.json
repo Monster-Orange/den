@@ -5,7 +5,7 @@
   "name": "Team runbook",
   "version": "1.0.0",
   "license": "MIT",
-  "den": ">=0.3.0",
+  "den": ">=0.3.0-0 <0.4.0",
   "maintainer": "platform team",
   "readme": "README.md",
   "provides": [

@@ -19,7 +19,7 @@
     "$schema": { "type": "string" },
     "schema": { "const": "den.plugin/v1" },
     "id": {
-      "description": "Stable identifier, the name of its plugins/<id>/ directory: lowercase letters, digits and dashes. Not \"den\".",
+      "description": "Stable identifier, the name of its plugins/<id>/ directory: 2–40 characters, lowercase letters, digits or dashes, starting with a letter. Not \"den\".",
       "$ref": "den.theme.v1.json#/properties/id"
     },
     "name": { "type": "string", "minLength": 1, "maxLength": 60 },

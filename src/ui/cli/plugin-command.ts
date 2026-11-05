@@ -22,6 +22,7 @@ import {
   BUILTIN_ID,
   PLUGIN_FILE,
   PLUGIN_ID,
+  PLUGIN_ID_RULE,
   actingCapabilities,
   validatePluginDir,
   type PluginValidation,
@@ -37,6 +38,7 @@ import {
   pluginContent,
   pluginDirFor,
   pluginDirNames,
+  pluginSymlinkNames,
   readLock,
   readPluginsAllow,
   refKind,
@@ -137,16 +139,53 @@ interface Row {
   state: string;
 }
 
+/** Why a plugins/<name>/ is not a plugin, for list and validate. */
+const NOT_AN_ID = `not a plugin id, which is ${PLUGIN_ID_RULE}`;
+const NOT_A_PLUGIN = `no ${PLUGIN_FILE} or ${THEME_FILE}, so it isn't a plugin`;
+const SYMLINK = `a symlink, not a directory: a plugin's files live in ${PLUGINS_DIR}/<id>/ itself (copy them in, or plugin add it)`;
+
+const hasManifest = (dir: string) =>
+  fs.existsSync(path.join(dir, PLUGIN_FILE)) ||
+  fs.existsSync(path.join(dir, THEME_FILE));
+
+/** The lock, or {} with a problem line when it cannot be read. */
+function lockOrProblem(
+  distRoot: string,
+  problems: string[],
+): Record<string, LockEntry> {
+  try {
+    return readLock(distRoot);
+  } catch (e) {
+    problems.push(
+      `${LOCK_FILE} could not be read (${(e as Error).message}): fix it, or delete it and add each plugin again`,
+    );
+    return {};
+  }
+}
+
+/** A lock key whose entry names another id: the dir and the lock disagree. */
+const misfiled = (key: string, e: LockEntry) =>
+  `in ${LOCK_FILE} as "${key}", but its id is "${String(e.id)}": fix the entry, or remove it and add the plugin again`;
+
+interface Listing {
+  builtin: Row | null;
+  problems: string[];
+  rows: Row[];
+  lock: Record<string, LockEntry>;
+}
+
 /**
  * Every plugin in the distribution with its check: the built-in theme, each
  * lock entry against its bytes, then each local plugin. Theme scope keeps
- * only themes, and skips local dirs that are not themes.
+ * only themes, and skips local dirs that are not themes. In plugin scope
+ * every directory (and symlink) in plugins/ gets exactly one row: nothing
+ * there throws or is skipped.
  */
 function listRows(
   distRoot: string,
   engineRoot: string,
   scope: PluginScope,
-): { builtin: Row | null; problems: string[]; rows: Row[] } {
+): Listing {
   const cli = product().cli;
   const rows: Row[] = [];
   const problems: string[] = [];
@@ -165,84 +204,106 @@ function listRows(
     problems.push(
       `themes.lock.json is from ${cli} 0.3.0-dev.0 and is no longer read: delete it and themes/<id>/, then run theme add again (now ${PLUGINS_DIR}/<id>/, ${LOCK_FILE})`,
     );
-  const lock = readLock(distRoot);
-  for (const e of Object.values(lock)) {
+  const lock = lockOrProblem(distRoot, problems);
+  const bad = (id: string, e: LockEntry | null, state: string): Row => ({
+    id,
+    version: e?.version ?? "?",
+    kinds: e?.kinds ?? [],
+    ok: false,
+    state: chalk.red(state),
+  });
+  for (const [key, e] of Object.entries(lock)) {
     if (scope === "theme" && !e.kinds?.includes("theme")) continue;
-    const version = e.version ?? "?";
-    const kinds = e.kinds ?? [];
-    if (!PLUGIN_ID.test(e.id ?? "")) {
-      rows.push({
-        id: String(e.id),
-        version,
-        kinds,
-        ok: false,
-        state: chalk.red(
-          `in ${LOCK_FILE} under a name that is not a plugin id`,
-        ),
-      });
+    if (!PLUGIN_ID.test(key)) {
+      rows.push(
+        bad(key, e, `in ${LOCK_FILE} under a name that is not a plugin id`),
+      );
       continue;
     }
-    const dir = pluginDirFor(distRoot, e.id);
-    const v = fs.existsSync(dir)
-      ? validatePluginDir(dir, { expectId: e.id })
-      : null;
-    const now = v?.ok ? hashFiles(dir, pluginContent(dir, v)) : null;
-    // Invalid is not the same as changed: a plugin added under an older
-    // Den can be byte-identical and still fail this Den's rules.
-    const state = !v
-      ? chalk.red(`missing: run ${scope} add again`)
-      : !v.ok
-        ? chalk.red(
-            `no longer valid under this ${cli}: ${validationSummary(v)}`,
-          )
-        : now !== e.sha256
-          ? chalk.red("changed since it was added")
-          : chalk.gray(`${e.source}@${e.ref}`);
-    rows.push({
-      id: e.id,
-      version,
-      kinds,
-      ok: !!v?.ok && now === e.sha256,
-      state,
-    });
+    if (e.id !== key) {
+      rows.push(bad(key, e, misfiled(key, e)));
+      continue;
+    }
+    const dir = pluginDirFor(distRoot, key);
+    try {
+      const v = fs.existsSync(dir)
+        ? validatePluginDir(dir, { expectId: key })
+        : null;
+      const now = v?.ok ? hashFiles(dir, pluginContent(dir, v)) : null;
+      // Invalid is not the same as changed: a plugin added under an older
+      // Den can be byte-identical and still fail this Den's rules.
+      const state = !v
+        ? chalk.red(`missing: run ${scope} add again`)
+        : !v.ok
+          ? chalk.red(
+              `no longer valid under this ${cli}: ${validationSummary(v)}`,
+            )
+          : now !== e.sha256
+            ? chalk.red("changed since it was added")
+            : chalk.gray(`${e.source}@${e.ref}`);
+      rows.push({
+        id: key,
+        version: e.version ?? "?",
+        kinds: e.kinds ?? [],
+        ok: !!v?.ok && now === e.sha256,
+        state,
+      });
+    } catch (err) {
+      rows.push(bad(key, e, `could not be read: ${(err as Error).message}`));
+    }
   }
   // Local plugins: plugins/<id>/ with no lock entry. Nothing to check a hash
   // against; they must still validate, and must have a manifest.
   const themes = new Set(installedThemeIds(distRoot));
   for (const name of pluginDirNames(distRoot)) {
-    if (lock[name]) continue;
+    if (Object.hasOwn(lock, name)) continue;
     if (scope === "theme" && !themes.has(name)) continue;
     const where = `local (${rel(name)})`;
+    const dir = path.join(distRoot, PLUGINS_DIR, name);
     if (!PLUGIN_ID.test(name)) {
-      rows.push({
-        id: name,
-        version: "?",
-        kinds: [],
-        ok: false,
-        state: chalk.red(
-          `${where}, not a plugin id: lowercase letters, digits and dashes`,
+      rows.push(
+        bad(
+          name,
+          null,
+          `${where}: ${NOT_AN_ID}${hasManifest(dir) ? "" : `; ${NOT_A_PLUGIN}`}`,
         ),
-      });
+      );
       continue;
     }
-    const v = validatePluginDir(pluginDirFor(distRoot, name), {
-      expectId: name,
-    });
-    const problem =
-      name === BUILTIN_ID
-        ? `"${BUILTIN_ID}" is the built-in theme's id; rename the plugin`
-        : v.ok
-          ? null
-          : `not valid under this ${cli}: ${validationSummary(v)}`;
-    rows.push({
-      id: name,
-      version: v.plugin?.version ?? "?",
-      kinds: v.plugin?.kinds ?? [],
-      ok: !problem,
-      state: problem ? chalk.red(`${where}, ${problem}`) : chalk.gray(where),
-    });
+    if (!hasManifest(dir)) {
+      rows.push(bad(name, null, `${where}: ${NOT_A_PLUGIN}`));
+      continue;
+    }
+    try {
+      const v = validatePluginDir(dir, { expectId: name });
+      const problem =
+        name === BUILTIN_ID
+          ? `"${BUILTIN_ID}" is the built-in theme's id; rename the plugin`
+          : v.ok
+            ? null
+            : `not valid under this ${cli}: ${validationSummary(v)}`;
+      rows.push({
+        id: name,
+        version: v.plugin?.version ?? "?",
+        kinds: v.plugin?.kinds ?? [],
+        ok: !problem,
+        state: problem ? chalk.red(`${where}, ${problem}`) : chalk.gray(where),
+      });
+    } catch (err) {
+      rows.push(
+        bad(
+          name,
+          null,
+          `${where}, could not be read: ${(err as Error).message}`,
+        ),
+      );
+    }
   }
-  return { builtin, problems, rows };
+  if (scope === "plugin")
+    for (const name of pluginSymlinkNames(distRoot))
+      if (!Object.hasOwn(lock, name))
+        rows.push(bad(name, null, `local (${rel(name)}): ${SYMLINK}`));
+  return { builtin, problems, rows, lock };
 }
 
 /** The ids `validate` checks, in order: every lock entry and every dir. */
@@ -253,8 +314,56 @@ function idsToValidate(
 ): string[] {
   if (scope === "theme") return installedThemeIds(distRoot);
   return [
-    ...new Set([...pluginDirNames(distRoot), ...Object.keys(lock)]),
+    ...new Set([
+      ...pluginDirNames(distRoot),
+      ...pluginSymlinkNames(distRoot),
+      ...Object.keys(lock),
+    ]),
   ].sort();
+}
+
+/** Validate plugins/<id>/ (an installed or listed id); true when it passes. */
+function validateInstalledId(
+  distRoot: string,
+  scope: PluginScope,
+  id: string,
+  lock: Record<string, LockEntry>,
+  log: (l: string) => void,
+): boolean {
+  const shown = path.join(distRoot, PLUGINS_DIR, id);
+  const fail = (...why: string[]) => {
+    log(chalk.red(`✗ ${id} (${shown})`));
+    for (const w of why) log(`    ${w}`);
+    return false;
+  };
+  if (!PLUGIN_ID.test(id))
+    return fail(NOT_AN_ID, ...(hasManifest(shown) ? [] : [NOT_A_PLUGIN]));
+  if (fs.lstatSync(shown, { throwIfNoEntry: false })?.isSymbolicLink())
+    return fail(SYMLINK);
+  const entry = Object.hasOwn(lock, id) ? lock[id] : undefined;
+  if (entry && entry.id !== id) return fail(misfiled(id, entry));
+  const d = pluginDirFor(distRoot, id);
+  if (!fs.existsSync(d))
+    return fail(
+      `missing: in ${LOCK_FILE} but not on disk; run ${scope} add again`,
+    );
+  if (id === BUILTIN_ID)
+    return fail(
+      `"${BUILTIN_ID}" is the built-in theme's id; a distribution plugin can't use it`,
+    );
+  let v: PluginValidation;
+  try {
+    v = validatePluginDir(d, { expectId: id });
+  } catch (err) {
+    return fail(`could not be read: ${(err as Error).message}`);
+  }
+  if (scope === "theme" && v.plugin && !v.plugin.kinds.includes("theme"))
+    return fail(
+      `provides ${v.plugin.kinds.join(", ")}, not a theme: use plugin validate ${id}`,
+    );
+  printValidation(`${id} (${d})`, v, log);
+  if (!entry) gitWarning(d, `${rel(id)}/`, v, log);
+  return v.ok;
 }
 
 /** Validate a distribution's plugins (`validate` with no dir). */
@@ -263,45 +372,45 @@ function validateInstalled(
   scope: PluginScope,
   log: (l: string) => void,
 ): number {
-  const lock = readLock(distRoot);
+  const problems: string[] = [];
+  const lock = lockOrProblem(distRoot, problems);
+  for (const p of problems) log(chalk.red(`✗ ${p}`));
   const ids = idsToValidate(distRoot, scope, lock);
   if (ids.length === 0) {
     log(
       `  no ${scope}s in ${path.join(distRoot, PLUGINS_DIR)} (den is built in)`,
     );
-    return 0;
+    return problems.length === 0 ? 0 : 1;
   }
-  let ok = true;
-  for (const id of ids) {
-    if (!PLUGIN_ID.test(id)) {
-      log(chalk.red(`✗ ${id} (${path.join(distRoot, PLUGINS_DIR, id)})`));
-      log(`    not a plugin id: lowercase letters, digits and dashes`);
-      ok = false;
-      continue;
-    }
-    const d = pluginDirFor(distRoot, id);
-    if (!fs.existsSync(d)) {
-      log(chalk.red(`✗ ${id} (${d})`));
-      log(
-        `    missing: in ${LOCK_FILE} but not on disk; run ${scope} add again`,
-      );
-      ok = false;
-      continue;
-    }
-    if (id === BUILTIN_ID) {
-      log(chalk.red(`✗ ${id} (${d})`));
-      log(
-        `    "${BUILTIN_ID}" is the built-in theme's id; a distribution plugin can't use it`,
-      );
-      ok = false;
-      continue;
-    }
-    const v = validatePluginDir(d, { expectId: id });
-    printValidation(`${id} (${d})`, v, log);
-    if (!lock[id]) gitWarning(d, `${rel(id)}/`, v, log);
-    ok &&= v.ok;
-  }
+  let ok = problems.length === 0;
+  for (const id of ids)
+    ok = validateInstalledId(distRoot, scope, id, lock, log) && ok;
   return ok ? 0 : 1;
+}
+
+/**
+ * The plugins/<id>/ a `validate <arg>` means, or null to treat `arg` as a
+ * path. An id that names a dir in plugins/ or a lock entry is never read as
+ * a cwd-relative path (consumers ran `plugin validate scratch` from the
+ * distribution root and got "no den-plugin.json in ./scratch"). A bare name
+ * that is not an id (plugins/x/) means that dir only when no such path
+ * exists, so its id error is the one reported.
+ */
+function installedIdArg(
+  distRoot: string,
+  arg: string,
+  problems: string[],
+): { id: string; lock: Record<string, LockEntry> } | null {
+  const bare = /^[^/\\]+$/.test(arg) && arg !== "." && arg !== "..";
+  if (!bare) return null;
+  const there =
+    fs.lstatSync(path.join(distRoot, PLUGINS_DIR, arg), {
+      throwIfNoEntry: false,
+    }) !== undefined;
+  if (!PLUGIN_ID.test(arg) && (!there || fs.existsSync(path.resolve(arg))))
+    return null;
+  const lock = lockOrProblem(distRoot, problems);
+  return there || Object.hasOwn(lock, arg) ? { id: arg, lock } : null;
 }
 
 /**
@@ -557,9 +666,32 @@ export async function runPluginCommand(
   }
 
   switch (sub) {
-    case "validate":
-      if (!positional[0]) return validateInstalled(distRoot, scope, log);
-      return validateDir(path.resolve(positional[0]), scope, log);
+    case "validate": {
+      const arg = positional[0];
+      if (!arg) return validateInstalled(distRoot, scope, log);
+      // An id means plugins/<id>/, before any cwd-relative path.
+      const problems: string[] = [];
+      const installed = installedIdArg(distRoot, arg, problems);
+      for (const p of problems) log(chalk.red(`✗ ${p}`));
+      if (installed) {
+        const ok = validateInstalledId(
+          distRoot,
+          scope,
+          installed.id,
+          installed.lock,
+          log,
+        );
+        return ok && problems.length === 0 ? 0 : 1;
+      }
+      // `validate den`: the built-in theme, unless a path of that name exists.
+      if (arg === BUILTIN_ID && !fs.existsSync(path.resolve(arg)))
+        return validateDir(
+          path.join(engineRoot, "themes", BUILTIN_ID),
+          scope,
+          log,
+        );
+      return validateDir(path.resolve(arg), scope, log);
+    }
 
     case "add": {
       const spec = positional[0];
@@ -623,7 +755,11 @@ export async function runPluginCommand(
 
     case "list":
     case undefined: {
-      const { builtin, problems, rows } = listRows(distRoot, engineRoot, scope);
+      const { builtin, problems, rows, lock } = listRows(
+        distRoot,
+        engineRoot,
+        scope,
+      );
       const line = (r: Row) =>
         scope === "theme"
           ? `  ${r.id.padEnd(14)} ${r.version.padEnd(8)} ${r.state}`
@@ -632,6 +768,32 @@ export async function runPluginCommand(
       if (builtin) log(line(builtin));
       for (const p of problems) log(chalk.red(`  ${p}`));
       for (const r of rows) log(line(r));
+      // Locks from 0.3.0-dev.2 may hold a file:// source, which nobody else
+      // can re-add from. A warning only (PL-SPEC d4): never fails the list.
+      for (const e of Object.values(lock))
+        if (
+          e.source?.startsWith("file://") &&
+          (scope === "plugin" || e.kinds?.includes("theme"))
+        )
+          log(
+            chalk.yellow(
+              `  ⚠ ${e.id} was added from ${e.source}, a path on one machine: re-add it from a remote, or make it a local plugin (keep ${rel(e.id)}/ and drop its ${LOCK_FILE} entry)`,
+            ),
+          );
+      // A filtered view: plugin dirs it hides never fail it, but they are
+      // counted, so a broken plugins/<id>/ is never silent.
+      if (scope === "theme") {
+        const shown = new Set(rows.map((r) => r.id));
+        const hidden = listRows(distRoot, engineRoot, "plugin").rows.filter(
+          (r) => !r.ok && !shown.has(r.id),
+        ).length;
+        if (hidden > 0)
+          log(
+            chalk.yellow(
+              `  ${hidden} plugin dir(s) have errors: run \`${cli} plugin list\``,
+            ),
+          );
+      }
       return problems.length === 0 && rows.every((r) => r.ok) ? 0 : 1;
     }
 

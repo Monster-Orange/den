@@ -246,6 +246,20 @@ export function pluginDirNames(distRoot: string): string[] {
 }
 
 /**
+ * Symlinks directly in plugins/ (not dot-names). Never a plugin: list and
+ * validate report each one, so no entry under plugins/ goes unmentioned.
+ */
+export function pluginSymlinkNames(distRoot: string): string[] {
+  const root = path.join(distRoot, PLUGINS_DIR);
+  if (!fs.existsSync(root)) return [];
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((e) => e.isSymbolicLink() && !e.name.startsWith("."))
+    .map((e) => e.name)
+    .sort();
+}
+
+/**
  * Every plugins/<id>/ that provides a theme (a den-theme.json, or a
  * den-plugin.json with a theme entry), locked or local, sorted.
  */

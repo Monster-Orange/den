@@ -22,7 +22,10 @@ import {
   themeDirFor,
   validationSummary,
 } from "../cli/theme-command.js";
-import { themeDirIn } from "../../shared/plugins/manifest.js";
+import {
+  pluginDenRangeIssue,
+  themeDirIn,
+} from "../../shared/plugins/manifest.js";
 import {
   themeFiles,
   validateThemeDir,
@@ -82,15 +85,26 @@ function inspect(
   dir: string,
   source: ThemeOrigin,
   expectId?: string,
+  pluginDir?: string,
 ): InstalledTheme {
   const v = validateThemeDir(dir, expectId ? { expectId } : {});
+  // A den-plugin.json theme's `den` range is the plugin's, not the theme's:
+  // one that excludes this Den is skipped like an invalid theme (PL-SPEC d4).
+  const range = pluginDir ? pluginDenRangeIssue(pluginDir) : null;
+  const ok = v.ok && !range;
   return {
     id,
     name: v.theme?.name ?? id,
     version: v.theme?.version ?? "?",
     source,
-    ok: v.ok,
-    ...(v.ok ? {} : { problem: validationSummary(v) }),
+    ok,
+    ...(ok
+      ? {}
+      : {
+          problem: [range, v.ok ? null : validationSummary(v)]
+            .filter(Boolean)
+            .join("; "),
+        }),
     dir,
     ...(v.theme ? { theme: v.theme } : {}),
   };
@@ -124,6 +138,7 @@ export function listThemes(roots: ThemeRoots): InstalledTheme[] {
         pluginThemeDir(roots.distRoot, id),
         lock[id]?.kinds?.includes("theme") ? "locked" : "local",
         id,
+        themeDirFor(roots.distRoot, id),
       ),
     );
   }
@@ -150,6 +165,7 @@ export function findTheme(
     pluginThemeDir(roots.distRoot, id),
     locked ? "locked" : "local",
     id,
+    themeDirFor(roots.distRoot, id),
   );
 }
 
@@ -254,10 +270,47 @@ const DEFAULT_TYPE = {
   ja: '"Hiragino Sans", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif',
 };
 
+/** A generic family ends a stack that can always resolve. */
+const GENERIC_FAMILY =
+  /(?:^|,)\s*(?:sans-serif|serif|monospace|cursive|fantasy|system-ui|ui-sans-serif|ui-serif|ui-monospace|ui-rounded|math|emoji)\s*$/i;
+
+/**
+ * A theme's font stack, made safe to use alone: one that does not end in a
+ * generic family gets Den's stack after it, so a missing font never drops
+ * the UI to the browser's default serif. The pages use only var(--sans),
+ * var(--mono), var(--display); the fallbacks live here, nowhere else.
+ */
+export function fontStack(stack: string | undefined, fallback: string): string {
+  if (!stack?.trim()) return fallback;
+  return GENERIC_FAMILY.test(stack) ? stack : `${stack}, ${fallback}`;
+}
+
+/**
+ * Den's base rules, the same under every theme. A link in body content is
+ * underlined (subtly, in a tint of its own color), so it never reads by
+ * color alone: a theme whose accent text is red would otherwise make links
+ * look like errors next to --bad. Nav links, buttons and pills are not
+ * body content. :where() keeps the rule at zero specificity, so any page
+ * style that draws a link differently wins.
+ */
+const BASE_CSS = [
+  "/* Den base (every theme) */",
+  ':where(a[href]:not(nav a, header a, .topbar a, [role="button"], [class*="btn"], [class*="pill"], [class*="tab"])) {',
+  "  text-decoration-line: underline;",
+  "  text-decoration-thickness: 1px;",
+  "  text-underline-offset: 0.2em;",
+  "  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);",
+  "}",
+  ':where(a[href]:not(nav a, header a, .topbar a, [role="button"], [class*="btn"], [class*="pill"], [class*="tab"])):hover {',
+  "  text-decoration-color: currentColor;",
+  "}",
+];
+
 /**
  * The theme as CSS: @font-face for its fonts, type and shape on :root, and
  * one block of color tokens per mode, selected by <html data-mode>. The
- * theme's default mode also applies when data-mode is unset.
+ * theme's default mode also applies when data-mode is unset. Then Den's
+ * base rules (BASE_CSS).
  */
 export function renderThemeCss(id: string, theme: ThemeManifest): string {
   const lines: string[] = [
@@ -272,13 +325,13 @@ export function renderThemeCss(id: string, theme: ThemeManifest): string {
     }
   const type = theme.type ?? {};
   const shape = theme.shape ?? {};
-  const sans = type.sans ?? DEFAULT_TYPE.sans;
+  const sans = fontStack(type.sans, DEFAULT_TYPE.sans);
   lines.push(
     ":root {",
     `  --sans: ${sans};`,
-    `  --mono: ${type.mono ?? DEFAULT_TYPE.mono};`,
-    `  --display: ${type.display ?? sans};`,
-    `  --ja: ${type.ja ?? DEFAULT_TYPE.ja};`,
+    `  --mono: ${fontStack(type.mono, DEFAULT_TYPE.mono)};`,
+    `  --display: ${fontStack(type.display, sans)};`,
+    `  --ja: ${fontStack(type.ja, DEFAULT_TYPE.ja)};`,
     `  --radius: ${shape.radius ?? "8px"};`,
     `  --radius-button: ${shape["radius-button"] ?? "6px"};`,
     `  --density: ${shape.density === "compact" ? "0.85" : "1"};`,
@@ -299,6 +352,7 @@ export function renderThemeCss(id: string, theme: ThemeManifest): string {
       "}",
     );
   }
+  lines.push(...BASE_CSS);
   return `${lines.join("\n")}\n`;
 }
 

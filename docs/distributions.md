@@ -342,7 +342,7 @@ and asks for nothing.
   "name": "Team runbook",
   "version": "1.0.0",
   "license": "MIT", // an SPDX expression, the same rule as a theme's
-  "den": ">=0.3.0", // required
+  "den": ">=0.3.0-0 <0.4.0", // required: the Den versions it runs on
   "maintainer": "platform team",
   "provides": [
     {
@@ -370,6 +370,7 @@ one of two ways:
 ```sh
 <cli> plugin list                 # every plugin: version, kinds, local or source@ref, lock check
 <cli> plugin validate             # every local and added plugin
+<cli> plugin validate runbook     # plugins/runbook/ (an id is never a cwd path)
 <cli> plugin validate path/to/dir # one plugin, a distribution, or a repo of them
 <cli> plugin add github.com/acme/den-plugins/runbook@runbook/v1.0.0 --yes
 <cli> plugin update runbook @runbook/v1.1.0
@@ -378,12 +379,25 @@ one of two ways:
 
 - **Every `plugins/<id>/` needs a manifest.** A directory with neither
   `den-plugin.json` nor `den-theme.json` is an error in `list` and
-  `validate`, so an id can never collide unseen. So is a directory named
-  `den` (the built-in theme's id) or a name that is not an id (lowercase
-  letters, digits and dashes).
+  `validate` ("no den-plugin.json or den-theme.json, so it isn't a
+  plugin"), so an id can never collide unseen. So is a directory named
+  `den` (the built-in theme's id), a name that is not an id (2–40
+  characters: lowercase letters, digits or dashes, starting with a letter),
+  and a symlink. `plugin list` prints exactly one row for every directory
+  in `plugins/`, even when `plugins.lock.json` can't be read. `theme list`
+  shows themes only and doesn't fail on other plugins, but counts the
+  plugin dirs with errors and points at `plugin list`.
+- **`den` is the range of Den versions the plugin runs on**, as a semver
+  range. Prereleases count, so a range meant to include Den's dev builds
+  starts at `-0`: `>=0.3.0-0 <0.4.0` admits 0.3.0-dev.8, while `>=0.3.0`
+  does not. `validate` fails a plugin whose range excludes the running Den
+  and names both. At load, the web UI skips such a theme with one server-log
+  notice and draws with the next choice (yours, then `brand.theme`, then
+  `den`); it never fails to start.
 - **What `validate` checks:** the schema; each kind with its own validator
   (a theme as `theme validate` does, a page's entry module on disk); and the
-  admission rules: a `maintainer`; for a page or server plugin, a README
+  admission rules: a `maintainer` (for a bare `den-theme.json`, its
+  `author`; `theme new` sets it to the brand's name); for a page or server plugin, a README
   (`readme`, default `README.md`) that names its tier and says what it may
   touch and what it must never do (themes are exempt); an SPDX `license`,
   with every bundled font licensed.
@@ -495,6 +509,12 @@ appearance:
   mode: light # system (default) | dark | light
 ```
 
+The Theme menu's first entry is "Org default (<name>)": it stores no theme
+(`appearance.theme` null, the same as omitting it), so you follow
+`brand.theme`. Picking the theme that is the org default by name stores null
+too: you never pin yourself to today's org default, and a later
+`brand.theme` change reaches you.
+
 `system` follows the OS (`prefers-color-scheme`), and the theme's
 `default_mode` when the OS gives none. The header's Mode and Theme menus save
 here and apply at once, without a reload. Changing either writes only that
@@ -510,11 +530,19 @@ What the server serves:
 - `/theme/<id>/<file>`: only the files the manifest names (the mark's `.svg`,
   the `.woff2` fonts), from that theme's directory.
 - `/api/themes`: every installed theme (id, name, version, `built-in` |
-  `locked` | `local`, ok) and the active one.
+  `locked` | `local`, ok), the active one (with its `mark`) and
+  `org_default` (the theme no choice draws: `brand.theme`, else den).
 
 Each page sets `data-mode` on `<html>` before first paint, and its styles use
 only the tokens: a page or plugin that draws in the UI uses `var(--token)`,
-never a color literal (`accent` is never text: `accent-text` is).
+never a color literal (`accent` is never text: `accent-text` is), and only
+`var(--sans)`, `var(--mono)` or `var(--display)` for a font (the fallbacks
+are in `/theme.css`: a stack with no generic family gets Den's after it).
+The header shows the active theme's mark: its SVG (`svg_dark` in dark mode,
+if it has one), or its `text` drawn by Den in `shape` on `accent-fill`.
+A color from the org config (`orgs.<id>.color`) is only ever a swatch,
+border or dot, never text or a ground: labels are `--text` or `--muted`.
+Links in body content are underlined, so a link never reads by color alone.
 
 ## The bin shim
 

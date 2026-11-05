@@ -10,7 +10,7 @@
     "$schema": { "type": "string" },
     "schema": { "const": "den.theme/v1" },
     "id": {
-      "description": "Stable identifier, unique within its repo: lowercase letters, digits and dashes.",
+      "description": "Stable identifier, unique within its repo: 2–40 characters, lowercase letters, digits or dashes, starting with a letter.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{1,39}$"
     },

@@ -61,6 +61,7 @@ const manifest = (id: string, version = "1.0.0") => ({
   name: id,
   version,
   license: "MIT",
+  author: "Acme",
   mark: { svg: "mark.svg" },
   fonts: [
     {

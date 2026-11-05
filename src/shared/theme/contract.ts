@@ -11,7 +11,8 @@ import * as fs from "fs";
 import * as path from "path";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import { getEngineRoot } from "../paths.js";
+import semver from "semver";
+import { engineVersion, getEngineRoot } from "../paths.js";
 
 export const THEME_SCHEMA_ID = "den.theme/v1";
 export const THEME_FILE = "den-theme.json";
@@ -248,12 +249,30 @@ export function schemaIssues(
 }
 
 /**
+ * Why a manifest's `den` range excludes the running Den, or null. A range
+ * that is not valid semver is an error too. Prereleases count: 0.3.0-dev.7
+ * satisfies ">=0.3.0-0 <0.4.0" (PL-SPEC d4: validate fails, load skips).
+ */
+export function denRangeIssue(
+  range: string | undefined,
+  version: string | undefined = engineVersion(),
+): string | null {
+  if (range === undefined) return null;
+  if (!semver.validRange(range))
+    return `den range "${range}" is not a semver range`;
+  if (!version) return null;
+  return semver.satisfies(version, range, { includePrerelease: true })
+    ? null
+    : `needs Den ${range}; this is ${version}`;
+}
+
+/**
  * Validate the theme in `dir`. With `expectId`, the manifest's id must match
  * (a repo of several themes keeps each under themes/<id>/).
  */
 export function validateThemeDir(
   dir: string,
-  opts: { expectId?: string } = {},
+  opts: { expectId?: string; denVersion?: string } = {},
 ): ThemeValidation {
   const file = path.join(dir, THEME_FILE);
   const fail = (message: string): ThemeValidation => ({
@@ -321,6 +340,8 @@ export function validateThemeDir(
   for (const f of theme.fonts ?? [])
     if (!f.license.trim())
       issues.push({ at: "/fonts", message: `${f.family}: no license` });
+  const range = denRangeIssue(theme.den, opts.denVersion);
+  if (range) issues.push({ at: "/den", message: range });
   const contrast = checkContrast(theme);
   return {
     ok: issues.length === 0 && contrast.length === 0,

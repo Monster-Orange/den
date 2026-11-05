@@ -148,7 +148,7 @@ describe("PL-1a: local plugins of any kind list and validate", () => {
     lines.length = 0;
     expect(await cmdPlugin(["list"], { distRoot: d, log })).toBe(1);
     expect(out()).toMatch(
-      /stray .*local \(plugins\/stray\), .*no den-plugin\.json or den-theme\.json/,
+      /stray .*local \(plugins\/stray\): no den-plugin\.json or den-theme\.json, so it isn't a plugin/,
     );
     lines.length = 0;
     expect(await cmdPlugin(["validate"], { distRoot: d, log })).toBe(1);
@@ -260,7 +260,7 @@ describe("PL-1a: den.plugin/v1 and admission rules 1-3", () => {
         name: "Theme plugin",
         version: "1.0.0",
         license: "MIT",
-        den: ">=0.3.0",
+        den: ">=0.3.0-0 <0.4.0",
         maintainer: "design",
         provides: [{ kind: "theme", manifest: "theme/den-theme.json" }],
       }),
@@ -640,7 +640,7 @@ describe("the theme runtime sees a den-plugin.json theme", () => {
         name: "Brand",
         version: "1.0.0",
         license: "MIT",
-        den: ">=0.3.0",
+        den: ">=0.3.0-0 <0.4.0",
         maintainer: "design",
         provides: [{ kind: "theme", manifest: "theme/den-theme.json" }],
       }),

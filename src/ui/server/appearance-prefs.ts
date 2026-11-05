@@ -8,7 +8,11 @@
 export type ModePref = "system" | "dark" | "light";
 
 export interface AppearancePrefs {
-  /** A theme id, or null to use the distribution's theme (else den). */
+  /**
+   * A theme id, or null to follow the org default (the org config's
+   * `brand.theme`, else den). Never the org default's own id: choosing it
+   * stores null (see mergeAppearancePrefs).
+   */
   theme: string | null;
   /** system follows prefers-color-scheme. */
   mode: ModePref;
@@ -43,11 +47,17 @@ export function appearancePrefs(stored: unknown): AppearancePrefs {
 /**
  * Merge a POSTed (partial) block. `theme` must name an installed theme that
  * validates (null clears it); any bad field fails the whole patch.
+ *
+ * Choosing the org default (`orgDefault`, the theme you get with no choice
+ * of your own: the org config's `brand.theme`, else den) stores null, the
+ * same as clearing it. So a choice that equals the org default never pins
+ * you to it: when the org later changes `brand.theme`, you follow.
  */
 export function mergeAppearancePrefs(
   current: AppearancePrefs,
   patch: unknown,
   isUsableTheme: (id: string) => boolean,
+  orgDefault: string | null = null,
 ): { ok: true; value: AppearancePrefs } | { ok: false; error: string } {
   if (!isObject(patch))
     return { ok: false, error: "appearance must be an object" };
@@ -67,7 +77,7 @@ export function mergeAppearancePrefs(
           ok: false,
           error: `appearance.theme: no valid installed theme "${String(v)}"`,
         };
-      else out.theme = v;
+      else out.theme = v === orgDefault ? null : v;
     } else return { ok: false, error: `unknown appearance setting "${key}"` };
   }
   return { ok: true, value: out };

@@ -16,7 +16,9 @@ import * as path from "path";
 import chalk from "chalk";
 import { getDistRoot, getEngineRoot } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
+import { readBrand } from "../../shared/brand.js";
 import { THEME_FILE } from "../../shared/theme/contract.js";
+import { PLUGIN_ID, PLUGIN_ID_RULE } from "../../shared/plugins/manifest.js";
 import {
   PLUGINS_DIR,
   hashFiles,
@@ -77,10 +79,10 @@ export async function cmdTheme(
       // A local theme to edit: a copy of the built-in one, in plugins/<id>/,
       // committed with the distribution so the whole team gets it.
       const id = rest[0];
-      if (!id || !/^[a-z][a-z0-9-]{1,39}$/.test(id) || id === "den") {
+      if (!id || !PLUGIN_ID.test(id) || id === "den") {
         log(
           chalk.red(
-            `Usage: ${cli} theme new <id>  (lowercase letters, digits and dashes; not "den")`,
+            `Usage: ${cli} theme new <id>  (${PLUGIN_ID_RULE}; not "den")`,
           ),
         );
         return 1;
@@ -109,7 +111,8 @@ export async function cmdTheme(
         .join(" ");
       Object.assign(m, { id, name, version: "0.1.0" });
       delete m.homepage;
-      delete m.author;
+      // The author is the theme's maintainer (plugin rule 1): the team.
+      m.author = readBrand().name;
       fs.writeFileSync(file, `${JSON.stringify(m, null, 2)}\n`);
       log(
         `  ${id} → ${PLUGINS_DIR}/${id}/ (a copy of den: edit ${THEME_FILE} and mark.svg)`,
