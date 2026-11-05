@@ -18,7 +18,9 @@ import { engineVersion } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { createDenApi, type DenApi } from "./api.js";
+import { ownServer } from "../cli/server-identity.js";
 import { callTool, toolsFor, type ToolContext } from "./tools.js";
+import { plural } from "../../shared/plural.js";
 
 export interface DenMcpOptions {
   cfg: ResolvedMcpConfig;
@@ -56,6 +58,8 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
     createDenApi({
       baseUrl: opts.baseUrl,
       cli: opts.cli,
+      // Serve nothing from another distribution's server on the port.
+      identity: { own: ownServer() },
       headers: () =>
         agentAuditHeaders({
           client: client()?.name ?? "unknown",
@@ -210,6 +214,7 @@ export async function runMcp(argv: string[]): Promise<void> {
     const api = createDenApi({
       baseUrl,
       cli,
+      identity: { own: ownServer() },
       headers: () =>
         agentAuditHeaders({
           client: `${cli} mcp --call`,
@@ -224,7 +229,7 @@ export async function runMcp(argv: string[]): Promise<void> {
   const server = createDenMcpServer({ cfg, baseUrl, cli });
   await server.connect(new StdioServerTransport());
   process.stderr.write(
-    `${cli} mcp: ${toolsFor(cfg).length} tools ` +
+    `${cli} mcp: ${plural(toolsFor(cfg).length, "tool")} ` +
       `(${cfg.actions.length ? `actions: ${cfg.actions.join(", ")}` : "read only"}) → ${baseUrl}\n`,
   );
 }

@@ -8,7 +8,7 @@
  * loading the page, searching, moving between categories, changing the
  * hash or the query, reload and back/forward write nothing at all (no
  * POST, no file). A user setting changes only user.yml; the workspace
- * editor (on Save) only workspaces.yml; the distribution's tracked config
+ * editor (on change) only workspaces.yml; the distribution's tracked config
  * never.
  *
  * Also: the search is labelled and / focuses it; the categories are a nav
@@ -354,8 +354,8 @@ describe("the Settings page writes only what you change (R21)", () => {
     expect(await p.$$('.den-rail [data-nav="tests"]')).toHaveLength(0);
     expect(changedSince(before)).toEqual([USER_YML]);
 
-    // The workspace editor: choose, then Save (as today), for the
-    // workspace the asker names (the focus, ws-a).
+    // The workspace editor saves on change, like every other row, for
+    // the workspace the asker names (the focus, ws-a). No Save button.
     before = snapshot();
     posts.length = 0;
     const ws = p.locator('[data-setting="workspace.editor"]');
@@ -363,9 +363,8 @@ describe("the Settings page writes only what you change (R21)", () => {
     expect(await ws.locator(".set-scope").textContent()).toBe(
       "Workspace · ws-a",
     );
+    expect(await ws.getByRole("button", { name: "Save" }).count()).toBe(0);
     await ws.getByRole("radio", { name: /^Default/ }).check();
-    expect(posts).toEqual([]); // choosing writes nothing
-    await ws.getByRole("button", { name: "Save" }).click();
     await ws.locator(".set-saved", { hasText: "✓ Saved" }).waitFor();
     expect(posts).toEqual([
       {
@@ -555,6 +554,31 @@ describe("the Settings page's rows (R21)", () => {
     );
     await p.context().close();
   }, 90_000);
+});
+
+describe("the current category (SA's dev.20 run)", () => {
+  it("#distribution, or a click on the last short section, marks it current after the scroll settles", async () => {
+    if (!browser) return;
+    const current = (p: Page) =>
+      p.evaluate(
+        () =>
+          document
+            .querySelector('#set-nav [aria-current="true"]')
+            ?.getAttribute("data-cat") ?? null,
+      );
+    const last = async (p: Page) => (await sectionIds(p)).at(-1)!;
+    const { p } = await open("/settings#distribution");
+    await p.waitForTimeout(600);
+    expect(await current(p)).toBe(await last(p));
+    // A click on the one before, then the last: each wins over the spy.
+    const ids = await sectionIds(p);
+    for (const id of [ids.at(-2)!, ids.at(-1)!]) {
+      await p.click(`#set-nav [data-cat="${id}"]`);
+      await p.waitForTimeout(900);
+      expect({ id, current: await current(p) }).toEqual({ id, current: id });
+    }
+    await p.context().close();
+  }, 30_000);
 });
 
 describe("one h1 per page (the brand is not a heading)", () => {

@@ -603,3 +603,72 @@ describe("validateManifest — placement (runs, target)", () => {
     ).toBe(false);
   });
 });
+
+// ── Container health checks ──────────────────────────────────────────────────
+
+describe("validateManifest — health type container", () => {
+  const withHealth = (local: Record<string, unknown>) =>
+    validateManifest(
+      { name: "svc", services: { db: { health: { local } } } },
+      { environments: ["local"] },
+    );
+
+  it("accepts project + service (compose labels)", () => {
+    const r = withHealth({
+      type: "container",
+      project: "acme-main",
+      service: "db",
+      label: "postgres",
+    });
+    expect(r.errors).toEqual([]);
+    expect(r.valid).toBe(true);
+  });
+
+  it("accepts container_name alone", () => {
+    expect(
+      withHealth({ type: "container", container_name: "acme-db" }).valid,
+    ).toBe(true);
+  });
+
+  it.each([
+    [
+      "nothing to match on",
+      { type: "container" },
+      'container checks need "project" and "service" (compose labels), or "container_name"',
+    ],
+    [
+      "project without service",
+      { type: "container", project: "acme-main" },
+      'a container check by compose labels needs both "project" and "service"',
+    ],
+    [
+      "service without project",
+      { type: "container", service: "db" },
+      'a container check by compose labels needs both "project" and "service"',
+    ],
+    [
+      "both ways at once",
+      {
+        type: "container",
+        project: "acme-main",
+        service: "db",
+        container_name: "acme-db",
+      },
+      'a container check matches by "project"/"service" or by "container_name", not both',
+    ],
+    [
+      "a key of another type",
+      { type: "container", container_name: "acme-db", cmd: "true" },
+      'unknown key "cmd" in a container check',
+    ],
+  ])("rejects %s with a clear error", (_what, local, message) => {
+    const r = withHealth(local);
+    expect(r.valid).toBe(false);
+    expect(r.errors).toEqual([
+      expect.objectContaining({
+        path: "services.db.health.local",
+        message: expect.stringContaining(message),
+      }),
+    ]);
+  });
+});

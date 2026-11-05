@@ -47,7 +47,7 @@ export function openUrlFor(
   const declared = httpUrl(svc.urls?.[env]);
   if (declared) return declared;
   const health = svc.health?.[env];
-  if (!health || ("type" in health && health.type === "shell")) return null;
+  if (!health || !("url" in health)) return null;
   return httpOrigin((health as { url?: string }).url);
 }
 

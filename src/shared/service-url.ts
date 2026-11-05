@@ -24,11 +24,8 @@ function healthUrlForConfig(healthConfig?: ServiceHealthConfig): string | null {
     return null;
   }
 
-  if ("type" in healthConfig && healthConfig.type === "shell") {
-    return null;
-  }
-
-  return healthConfig.url;
+  // Shell and container checks have no URL.
+  return "url" in healthConfig ? healthConfig.url : null;
 }
 
 function normalizeServiceBaseUrl(

@@ -463,8 +463,7 @@ export async function mountSettings(deps) {
         .filter((e) => e.available)
         .map((e) => radio(e.key, e.name, e.terminal ? "terminal" : null))
         .join("") +
-      "</div>" +
-      `<button type="button" class="btn primary sm set-save" data-ws-save data-focus-key="ws-save">Save</button>`
+      "</div>"
     );
   }
   function swatches() {
@@ -578,10 +577,11 @@ export async function mountSettings(deps) {
         }
       });
     else if (t === "workspace-editor")
-      // Today's Save button: the radios choose, Save writes.
-      row.querySelector("[data-ws-save]")?.addEventListener("click", () => {
-        const sel = row.querySelector('input[type="radio"]:checked');
-        save(r, sel ? sel.value : "");
+      // Saves on change, like every other row (SA's dev.20 run: a
+      // separate Save gave no sign that a choice was not saved yet).
+      row.addEventListener("change", (e) => {
+        if (e.target.type === "radio" && e.target.checked)
+          save(r, e.target.value);
       });
     else if (t === "custom" && typeof r.control.render === "function") {
       const host = row.querySelector(".set-custom");
@@ -689,11 +689,25 @@ export async function mountSettings(deps) {
   });
   // The section in view is the current one (the URL keeps your pick).
   scroller?.addEventListener("scroll", () => {
-    const top = scroller.getBoundingClientRect().top + 24;
+    const box = scroller.getBoundingClientRect();
+    const top = box.top + 24;
+    const all = [...body.querySelectorAll("section[data-cat]")];
     let cur = null;
-    body.querySelectorAll("section[data-cat]").forEach((s) => {
+    all.forEach((s) => {
       if (s.getBoundingClientRect().top <= top) cur = s.dataset.cat;
     });
+    // At the bottom, the last short sections can never reach the line:
+    // your pick (a click, the hash) wins if it is in view, else the last.
+    const atEnd =
+      scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2;
+    if (atEnd && all.length) {
+      const picked = all.find((s) => s.dataset.cat === state.category);
+      const r = picked?.getBoundingClientRect();
+      cur =
+        r && r.top < box.bottom && r.bottom > box.top
+          ? picked.dataset.cat
+          : all[all.length - 1].dataset.cat;
+    }
     if (cur) markCurrent(cur);
   });
   // The registry or the appearance changed (a plugin, the ◐ menu): repaint.

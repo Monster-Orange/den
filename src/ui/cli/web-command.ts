@@ -13,6 +13,12 @@ import { getDistRoot, getEngineRoot, getStateDir } from "../../shared/paths.js";
 import { hasDenUiMarker } from "../../shared/ui-marker.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readWebPort } from "../../shared/edge/config.js";
+import {
+  ownServer,
+  processCwd,
+  refuseForeignServer,
+  samePath,
+} from "./server-identity.js";
 
 import { product } from "../../shared/product.js";
 interface WebCommandOptions {
@@ -569,21 +575,55 @@ async function waitForPidsExit(pids: number[]): Promise<boolean> {
   return false;
 }
 
-function findDenWebPids(port: number): number[] {
+/**
+ * Whether `pid` may be this distribution's server by where it runs: a web
+ * server runs from its distribution root, so one whose working directory
+ * is another root is never ours, even when its command line matches (two
+ * distributions on one linked engine run the same entry point). An
+ * unreadable directory does not decide.
+ */
+function runsFromRoot(pid: number, root: string): boolean {
+  const cwd = processCwd(pid);
+  if (!cwd) return true;
+  return samePath(cwd, root);
+}
+
+function isOurWebPid(pid: number, root: string): boolean {
+  const command = commandForPid(pid);
+  return (
+    !!command &&
+    isDenWebCommand(command, webRoots(root)) &&
+    runsFromRoot(pid, root)
+  );
+}
+
+/**
+ * Our server's pids on `port`. `vouched` is the pid of a server the
+ * identity check (server-info: our root, or an older server run from our
+ * root) found ours: it is stopped when it listens on the port even if its
+ * command line names no entry point we recognise. Before, an older Den
+ * installed elsewhere, or a hand-started server, matched no command line,
+ * so `web down` said "not running" and `web restart` "already running".
+ */
+function findDenWebPids(port: number, vouched?: number): number[] {
   const root = getDistRoot();
   const pids = new Set<number>();
   const state = readWebServerState();
-  if (state?.port === port && state.pid) {
-    const command = commandForPid(state.pid);
-    if (command && isDenWebCommand(command, webRoots(state.root || root))) {
-      pids.add(state.pid);
-    }
+  const listeners = listListeningPids(port);
+  // The state file may be shared by distributions of one product name: a
+  // record of another root's server is not ours to stop.
+  if (
+    state?.port === port &&
+    state.pid &&
+    samePath(state.root || root, root) &&
+    (isOurWebPid(state.pid, root) ||
+      (state.pid === vouched && listeners.includes(state.pid)))
+  ) {
+    pids.add(state.pid);
   }
 
-  for (const pid of listListeningPids(port)) {
-    if (isDenWebCommand(commandForPid(pid), webRoots(root))) {
-      pids.add(pid);
-    }
+  for (const pid of listeners) {
+    if (pid === vouched || isOurWebPid(pid, root)) pids.add(pid);
   }
 
   return Array.from(pids);
@@ -611,8 +651,11 @@ export function killWebProcess(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
-async function stopDenWebServer(port: number): Promise<StopServerResult> {
-  const pids = findDenWebPids(port);
+async function stopDenWebServer(
+  port: number,
+  vouched?: number,
+): Promise<StopServerResult> {
+  const pids = findDenWebPids(port, vouched);
   if (pids.length === 0) {
     const state = readWebServerState();
     if (state?.port === port) removeWebServerState();
@@ -636,22 +679,25 @@ async function stopDenWebServer(port: number): Promise<StopServerResult> {
   return { stopped: forced, forced: true, pids };
 }
 
-async function stopBrokenDenWebServer(port: number): Promise<boolean> {
-  return (await stopDenWebServer(port)).stopped;
+async function stopBrokenDenWebServer(
+  port: number,
+  vouched?: number,
+): Promise<boolean> {
+  return (await stopDenWebServer(port, vouched)).stopped;
 }
 
 function recordRunningDenWebServer(port: number): void {
   const root = getDistRoot();
   const state = readWebServerState();
-  if (state?.port === port && state.pid) {
-    const command = commandForPid(state.pid);
-    if (command && isDenWebCommand(command, webRoots(state.root || root)))
-      return;
-  }
+  if (
+    state?.port === port &&
+    state.pid &&
+    samePath(state.root || root, root) &&
+    isOurWebPid(state.pid, root)
+  )
+    return;
 
-  const pids = listListeningPids(port).filter((pid) =>
-    isDenWebCommand(commandForPid(pid), webRoots(root)),
-  );
+  const pids = listListeningPids(port).filter((pid) => isOurWebPid(pid, root));
   const pid = pids[0];
   if (!pid) return;
 
@@ -965,8 +1011,13 @@ export async function cmdWeb(args: string[]): Promise<void> {
 
   const url = buildDenWebUrl(options.port);
 
+  // Never act on another distribution's server: not "already running", and
+  // never a signal to it (down, restart).
+  const identity = await refuseForeignServer(options.port, ownServer());
+  const vouched = identity.kind === "ours" ? identity.pid : undefined;
+
   if (options.action === "down") {
-    const stopped = await stopDenWebServer(options.port);
+    const stopped = await stopDenWebServer(options.port, vouched);
     if (stopped.stopped) {
       const mode = stopped.forced ? "force stopped" : "stopped";
       console.log(
@@ -988,7 +1039,7 @@ export async function cmdWeb(args: string[]): Promise<void> {
   }
 
   if (options.action === "restart") {
-    const stopped = await stopDenWebServer(options.port);
+    const stopped = await stopDenWebServer(options.port, vouched);
     if (stopped.pids.length > 0 && !stopped.stopped) {
       throw new Error(
         `Could not stop ${product().title} web on port ${options.port}.`,
@@ -1015,7 +1066,7 @@ export async function cmdWeb(args: string[]): Promise<void> {
       ),
     );
     console.log(chalk.gray(`  Restarting ${product().title} web...`));
-    const stopped = await stopBrokenDenWebServer(options.port);
+    const stopped = await stopBrokenDenWebServer(options.port, vouched);
     if (!stopped) {
       throw new Error(
         `Could not stop the broken ${product().title} web server on port ${options.port}.`,

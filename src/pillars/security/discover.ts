@@ -107,7 +107,7 @@ export function autoSecurityTargets(
     if (!runsLocally) continue;
     const hosts: SecurityServiceConfig["hosts"] = {};
     for (const [env, h] of Object.entries(s.config?.health ?? {})) {
-      if (!h || h.type === "shell" || !/^https?:\/\//.test(h.url)) continue;
+      if (!h || !("url" in h) || !/^https?:\/\//.test(h.url)) continue;
       hosts[env as keyof typeof hosts] = [new URL(h.url).origin + "/"];
     }
     if (Object.keys(hosts).length === 0) continue;

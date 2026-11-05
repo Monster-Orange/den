@@ -45,7 +45,10 @@ beforeAll(async () => {
       JSON.stringify(
         url.pathname === "/api/health"
           ? [{ repo: "shop", service: "api", ok: true }]
-          : {},
+          : url.pathname === "/api/server-info"
+            ? // This distribution's server: the MCP server checks first.
+              { pid: process.pid, version: "0.2.6", root, product: "den" }
+            : {},
       ),
     );
   });

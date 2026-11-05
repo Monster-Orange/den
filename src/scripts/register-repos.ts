@@ -29,6 +29,7 @@ import {
 } from "../shared/environment-manager/default-workspace.js";
 
 import { product } from "../shared/product.js";
+import { plural } from "../shared/plural.js";
 // Anchored to the den root, NOT process.cwd() — this script WRITES
 // config/local/* and a cwd-derived root once put den files in another repo.
 const ROOT = getDistRoot();
@@ -179,7 +180,7 @@ async function legacyScanAndSelect(): Promise<void> {
         fs.readFileSync(REGISTERED_FILE, "utf-8"),
       ) as string[];
       console.log(
-        `  Current: ${existing.length} repo(s) registered for testing\n`,
+        `  Current: ${plural(existing.length, "repo")} registered for testing\n`,
       );
     } catch {
       /* corrupt file — start fresh */
@@ -223,7 +224,7 @@ async function legacyScanAndSelect(): Promise<void> {
   fs.writeFileSync(REGISTERED_FILE, JSON.stringify(selected, null, 2) + "\n");
 
   console.log(
-    `\n  Registered ${selected.length} repo(s) → config/local/registered-repos.json`,
+    `\n  Registered ${plural(selected.length, "repo")} → config/local/registered-repos.json`,
   );
   console.log("  Run `make register-repos` again at any time to update.\n");
 }
@@ -282,7 +283,7 @@ async function main(): Promise<void> {
     console.log(
       "  Local Dev is enabled but no workspace exists yet. Your first" +
         ` \`${product().cli}\` command\n  seeds the default workspace with every standard` +
-        ` system repo, all managed\n  out of the box (${plan.repos.length} repos):\n`,
+        ` system repo, all managed\n  out of the box (${plural(plan.repos.length, "repo")}):\n`,
     );
     console.log(`    ${plan.repos.join(", ")}\n`);
     console.log(

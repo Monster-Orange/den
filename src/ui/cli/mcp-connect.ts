@@ -25,6 +25,13 @@ import { product } from "../../shared/product.js";
 import { getDistRoot } from "../../shared/paths.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
+import {
+  classifyServerInfo,
+  foreignServerMessage,
+  ownServer,
+  pickAnotherPortHint,
+  type OwnServer,
+} from "./server-identity.js";
 import { readDenConfig, readMcpConfig } from "../../shared/den-config.js";
 
 export const MCP_CONNECT_SUBCOMMANDS = [
@@ -205,6 +212,8 @@ export const WEB_PROBE_TIMEOUT_MS = 1500;
 /** What a probe of the web server's /api/server-info found. */
 export type WebProbe =
   | { kind: "up"; version?: string }
+  /** Another distribution's server (see server-identity.ts). */
+  | { kind: "foreign"; who: string }
   /** Something accepted the connection but sent no answer in time. */
   | { kind: "timeout" }
   /** Nothing answered: connection refused, or not the web server. */
@@ -214,13 +223,15 @@ export async function probeWebServer(
   url: string,
   timeoutMs: number = WEB_PROBE_TIMEOUT_MS,
   fetchImpl: typeof fetch = fetch,
+  own: OwnServer = ownServer(),
 ): Promise<WebProbe> {
   try {
     const r = await fetchImpl(`${url}/api/server-info`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
-    const info = (await r.json()) as { version?: string };
-    return { kind: "up", version: info.version };
+    const id = classifyServerInfo(await r.json(), own);
+    if (id.kind === "foreign") return { kind: "foreign", who: id.who };
+    return { kind: "up", version: id.kind === "ours" ? id.version : undefined };
   } catch (e) {
     return (e as Error).name === "TimeoutError"
       ? { kind: "timeout" }
@@ -252,6 +263,11 @@ export function webServerMessage(
       chalk.green(`web server up at ${url}`) +
       (probe.version ? chalk.gray(` (Den ${probe.version})`) : "")
     );
+  if (probe.kind === "foreign")
+    return chalk.yellow(
+      `${foreignServerMessage(Number(new URL(url).port), probe.who)}: ` +
+        `agents would read another distribution; ${pickAnotherPortHint(opts.cli)}`,
+    );
   const svc = `\`${opts.cli} service status\``;
   if (probe.kind === "timeout") {
     const secs = (opts.timeoutMs ?? WEB_PROBE_TIMEOUT_MS) / 1000;
@@ -271,7 +287,7 @@ export function webServerMessage(
   );
 }
 
-async function webServerLine(port?: number): Promise<string> {
+function webUrl(port?: number): string {
   let p = port;
   if (p === undefined) {
     try {
@@ -280,8 +296,12 @@ async function webServerLine(port?: number): Promise<string> {
       p = DEFAULT_PORT;
     }
   }
-  const url = `http://localhost:${p}`;
-  return webServerMessage(await probeWebServer(url), url, {
+  return `http://localhost:${p}`;
+}
+
+async function webServerLine(port?: number, probe?: WebProbe): Promise<string> {
+  const url = webUrl(port);
+  return webServerMessage(probe ?? (await probeWebServer(url)), url, {
     cli: product().cli,
     asService: webRunsAsService(),
   });
@@ -380,6 +400,17 @@ export async function runMcpConnect(argv: string[]): Promise<number> {
   if (targets.length === 0) {
     console.log(usage());
     return 1;
+  }
+
+  // Never point agents at another distribution's server.
+  if (!remove) {
+    const probe = await probeWebServer(webUrl(flags.port));
+    if (probe.kind === "foreign") {
+      console.error(
+        `  ${chalk.red("✗")} ${await webServerLine(flags.port, probe)}`,
+      );
+      return 1;
+    }
   }
 
   let failed = 0;

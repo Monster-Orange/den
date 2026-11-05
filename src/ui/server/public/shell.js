@@ -1885,6 +1885,12 @@
     "  .den-search { flex: 0 0 auto; margin: 0 0 0 auto; }",
     "  .den-search-ph, .den-search kbd { display: none; }",
     "  .den-top .v-pill { display: none; }",
+    // Never wider than the window (SA's dev.20 run: 429px at 400): a long
+    // product name gives way first, the stale-server pill keeps its ⚠.
+    "  .den-brand { min-width: 0; flex: 0 1 auto; }",
+    "  .den-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }",
+    "  .den-top .stale-lbl { display: none; }",
+    "  .den-chips { flex-shrink: 0; }",
     "}",
     "@media (prefers-reduced-motion: reduce) { .den-rail { transition: none; } }",
   ].join("\n");

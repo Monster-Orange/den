@@ -331,6 +331,22 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **0.2.6 is in the 0.3 line** (0.3.0-dev.21): `type: container` health
+  checks, the server identity check behind `web restart` and `web down`,
+  the MCP server's identity, and `service install --plan`. See 0.2.6 below.
+- **Settings marks the category you picked** (0.3.0-dev.21, SA's dev.20
+  run): `/settings#distribution`, or a click on the last short section,
+  marked the one before it as current, because the page could not scroll
+  far enough for the section to reach the top. At the end of the page,
+  your pick wins if it is in view.
+- **"IDE for this workspace" saves on change** (0.3.0-dev.21), like every
+  other row; its Save button is gone.
+- **The top bar fits at 400px** (0.3.0-dev.21): a long product name
+  truncates and the stale-server pill shows only its ⚠ (named "Stale
+  server: restart"), so the page no longer scrolls sideways.
+- **Status drawer rows are named by service, state and latency**
+  (0.3.0-dev.21), e.g. "shop/db, healthy, 9 ms". What the check ran is
+  the row's description and tooltip, not its name.
 - **The rail's Settings item opens Settings** (0.3.0-dev.19): in dev.18 it
   went to `/local-dev?settings=1`, which nothing read, so it landed on
   Local Dev. It now goes to `/settings`, and the old URL redirects there.
@@ -606,6 +622,104 @@ config and manifest changes a distribution must make to move to it under
   (`theme new` sets one). A plugin's `den` range is now enforced: write
   `>=0.3.0-0 <0.4.0` to admit Den's 0.3.0 prereleases, because `>=0.3.0`
   excludes them.
+
+## [0.2.6] - 2026-11-04
+
+### Fixed
+
+- **`<cli> web restart` and `web down` act on our server from an older
+  Den.** A server from before 0.2.6 (no `root` in `/api/server-info`) run
+  from our root is ours, and 0.2.6-dev.0 classified it so, but stopping it
+  then looked for our pids by command line only: the entry point of this
+  engine, or one under the root. An older Den installed elsewhere, or a
+  hand-started server, matched neither, so `web restart` printed "OK ... web
+  is already running" and restarted nothing, and `web down` printed "OK ...
+  web is not running" while the server stayed up and bound. A server the
+  identity check finds ours is now stopped by the pid it reports, when that
+  pid listens on the port: `restart` replaces it and `down` frees the port,
+  with or without a `web.json` for it. web.json's root is compared after
+  resolving symlinks (`/var` and `/private/var` are one root).
+- **The MCP server serves nothing from another distribution's server.**
+  It read from whatever answered on its port. Before a tool reads, it now
+  checks `/api/server-info` as `web up` does; on another distribution's
+  server every tool answers `port <N> is in use by <product> at <root>; not
+  this distribution's server` and returns none of its data. A positive
+  check is trusted for 30s and made again after a connection error, so a
+  server that took over the port is noticed. A server that does not say
+  whose it is within 5s is not read from either.
+- **A mistyped `service` flag no longer installs.** `<cli> service install
+  --anything` ignored the flag and installed; a `service` subcommand now
+  refuses an argument it does not take, before running anything.
+- **`<cli> web up` no longer trusts whatever answers on its port.** With
+  `web.port` set to a port where another distribution's Den server ran
+  (another root, an older Den), `web up` printed "OK ... web is already
+  running" and stopped, and `web down` or `web restart` could SIGTERM that
+  server: with a linked engine its command line looks like ours.
+  `/api/server-info` now also returns `root` (the distribution root the
+  server serves) and `product`. `web up`, `web down` and `web restart`
+  compare both with their own, and on another distribution's server exit 1
+  with `port <N> is in use by <product> at <root>` and a hint to pick
+  another port (`--port`, or `web.port`). A server from before 0.2.6 has
+  no `root`: it is ours when it runs from our root (its working
+  directory), otherwise `port <N> is in use by another server (Den
+  <version>)`; anything else is "a non-Den server". `web down` also no
+  longer signals a process running from another root, even when the
+  server does not answer. `<cli> mcp connect` refuses to point an agent at
+  another distribution's server (and `mcp clients` names it), and `<cli>
+  service install` no longer reports "running" when another
+  distribution's server answers on the port.
+- **A repeat `<cli> workspace seed` says "already seeded".** Seeding a
+  workspace that already holds exactly the blueprint printed "Default
+  workspace ready" as if it had seeded again; it now prints `✓ Default
+  workspace already seeded — N repos (managed): nothing changed.` and
+  writes nothing (multi blueprint: `✓ N workspaces already seeded (a, b)`).
+  A seed over a workspace the user changed says it was "reset to the
+  blueprint".
+- **Counts read "1 repo", not "1 repos".** CLI output that counts repos,
+  workspaces, systems, files, profiles and tools uses one plural helper
+  (`src/shared/plural.ts`), also in place of "repo(s)".
+- **Spinners no longer loop forever on a 0-column terminal.** On a pty that
+  reports 0 columns (one nobody sized, as agent shells give), ora computed
+  an infinite number of lines to clear and never finished. A spinner now
+  animates only on a TTY with a known, non-zero width; otherwise it prints
+  plain lines (its text on start, then the result).
+
+### Added
+
+- **Health type `container`.** `health: { type: container, project: <compose
+  project>, service: <compose service> }` checks a compose container by its
+  `com.docker.compose.project` / `com.docker.compose.service` labels, or
+  `{ type: container, container_name: <name> }` any container by name. It
+  is answered from the one `docker ps` per health cycle the compose checks
+  already share (its format gains `{{.Names}}`, and it no longer filters to
+  compose containers), so N container checks add no docker call, in the
+  web health row and in `<cli> status` (22 checks, 17 compose and 5
+  container: 1 docker call per cycle). A running container with a
+  healthcheck is its health (healthy up, unhealthy down, starting
+  pending), one without is up, and no matching container is down. When
+  docker gives no listing it says what a compose check says, through the
+  same code: a failed `docker ps` is unknown (`ok: null`, the reason in
+  `error`) on every cycle, never down; a listing past its budget is
+  pending (`pending: true`), down only when that repeats. Of several matches the best counts:
+  healthy, then running. `/api/health` rows show it as `check: "container
+  <project>/<service>"`. `<cli> validate` requires `project` + `service` or
+  `container_name` (not both, not one of the pair alone, no other type's
+  keys) and says which. See docs/distributions.md, "Health checks".
+- **`<cli> service install --plan`.** Read-only: prints the label, the
+  plist path, the log file, the roots, whose server answers on `web.port`
+  (ours, free, or `port <N> is in use by <product> at <root>`) and the
+  plist install would write; writes nothing and never calls launchctl.
+  Exits 1 when the port is another distribution's. `<cli> service status`
+  also names another distribution's server on the port.
+
+### Migrations
+
+- None required. Optional: a `type: shell` check that runs `docker ps` to
+  find a container (`test -n "$(docker ps -q --filter
+  label=com.docker.compose.project=X --filter
+  label=com.docker.compose.service=Y)"`) can become `{ type: container,
+  project: X, service: Y }`: no process or docker call of its own, and it
+  reads the container's healthcheck.
 
 ## [0.2.5] - 2026-11-04
 

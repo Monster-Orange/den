@@ -11,6 +11,7 @@ import { discoverRepos, resolveRepoPath, resolveService } from "./discover.js";
 import { stageSmokeTree } from "./staging.js";
 import type { Environment } from "../../shared/types/index.js";
 import { getDistRoot } from "../../shared/paths.js";
+import { plural } from "../../shared/plural.js";
 
 // Den-root anchored, NOT process.cwd() — bulk writer of .smoke-run (see setup.ts).
 const PROJECT_ROOT = getDistRoot();
@@ -116,7 +117,7 @@ async function main() {
   );
 
   console.log(
-    `\n  Total: ${total} smoke test file(s) staged across ${repos.length} repo(s)\n`,
+    `\n  Total: ${plural(total, "smoke test file")} staged across ${plural(repos.length, "repo")}\n`,
   );
 }
 

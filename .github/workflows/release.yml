@@ -82,6 +82,8 @@ jobs:
           node-version: 22.14.0
           cache: npm
       - run: npm ci
+      # the browser tests (the What's new dialog) need Chromium, as in ci.yml
+      - run: npx playwright install --with-deps chromium
       - name: The gates
         run: |
           npm run lint

@@ -57,7 +57,7 @@ function suggestionFor(issue: z.ZodIssue): string | undefined {
 
   // health with missing url/cmd
   if (pathStr.includes("health")) {
-    return 'HTTP checks need "url"; shell checks need "type: shell" and "cmd"';
+    return 'HTTP checks need "url"; shell checks need "type: shell" and "cmd"; container checks need "type: container" and "project" + "service", or "container_name"';
   }
 
   return undefined;

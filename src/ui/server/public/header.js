@@ -1127,7 +1127,9 @@ function _renderStalePill(info) {
       "This __DEN_CLI__ web server is running code older than your working tree — " +
       "click to restart and pick up your changes. Running deploys continue on " +
       "GitHub; an open deploy log reattaches after the reload.";
-    pill.innerHTML = "⚠ stale server · <b>Restart</b>";
+    pill.setAttribute("aria-label", "Stale server: restart");
+    pill.innerHTML =
+      '<span aria-hidden="true">⚠</span><span class="stale-lbl"> stale server · <b>Restart</b></span>';
     pill.addEventListener("click", _requestRestart);
     const vpill = document.getElementById("version-pill");
     if (vpill && vpill.parentNode)

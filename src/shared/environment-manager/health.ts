@@ -13,7 +13,10 @@ import { readEdgeConfig } from "../edge/config.js";
 import {
   composeHealth,
   composeHealthTarget,
+  containerHealth,
   type ComposeHealthTarget,
+  type ComposeVerdict,
+  type ContainerHealthTarget,
 } from "../stacks/compose-health.js";
 import * as fs from "fs";
 import * as os from "os";
@@ -42,6 +45,7 @@ import {
 import type {
   ResolvedService,
   ServiceCatalog,
+  ServiceHealthConfig,
   WorkspaceConfig,
 } from "../types/index.js";
 import type { Environment } from "../types/index.js";
@@ -607,10 +611,37 @@ export async function pingShellCheck(
   compose: ComposeHealthTarget | null,
 ): Promise<PingResult> {
   if (!compose || cmd !== compose.cmd) return pingShell(cmd, extraEnv, cwd);
-  const v = await composeHealth(compose);
+  return verdictPing(await composeHealth(compose));
+}
+
+/**
+ * A compose or container verdict as a ping. One conversion for both, so a
+ * docker that could not be asked reads the same: `ok: null`, pending (and so
+ * down on a repeat) only when the listing ran past its budget.
+ */
+function verdictPing(v: ComposeVerdict): PingResult {
   if (v.ok === true) return { ok: true };
   if (v.ok === false) return { ok: false, error: v.detail };
   return { ok: null, error: v.detail, ...(v.pending ? { pending: true } : {}) };
+}
+
+/**
+ * Run a `type: container` check: answered in-process from the shared docker
+ * listing (the one Den's compose checks use), never a docker call of its own.
+ */
+export async function pingContainerCheck(
+  target: ContainerHealthTarget,
+): Promise<PingResult> {
+  return verdictPing(await containerHealth(target));
+}
+
+/** The container a `type: container` health config names. */
+export function containerTarget(
+  h: Extract<ServiceHealthConfig, { type: "container" }>,
+): ContainerHealthTarget {
+  return h.container_name !== undefined
+    ? { container_name: h.container_name }
+    : { project: h.project, service: h.service };
 }
 
 /** A ping result as a ServiceHealthResult health state. */
@@ -722,13 +753,15 @@ export async function checkServiceHealth(
   const result = await pingTwiceOnTimeout(() =>
     healthCfg.type === "shell"
       ? pingShellCheck(healthCfg.cmd, {}, resolved.repoPath, compose)
-      : pingHttp(
-          healthCfg.url,
-          env === "local" && plan.placement.runs !== "remote"
-            ? HEALTH_CHECK_TIMEOUT_MS
-            : HOSTED_HEALTH_CHECK_TIMEOUT_MS,
-          plan.expect,
-        ),
+      : healthCfg.type === "container"
+        ? pingContainerCheck(containerTarget(healthCfg))
+        : pingHttp(
+            healthCfg.url,
+            env === "local" && plan.placement.runs !== "remote"
+              ? HEALTH_CHECK_TIMEOUT_MS
+              : HOSTED_HEALTH_CHECK_TIMEOUT_MS,
+            plan.expect,
+          ),
   );
 
   return {

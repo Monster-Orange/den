@@ -520,6 +520,18 @@ function msText(s) {
   return "not checked";
 }
 
+/**
+ * A drawer row's accessible name: service, state and latency. What the
+ * check ran (a URL, or a whole shell command) is its description, not its
+ * name (SA's dev.20 run).
+ */
+export function rowName(s) {
+  const word = s.state === "ok" ? "healthy" : msText(s);
+  return s.state === "ok" && s.ms != null
+    ? `${s.id}, ${word}, ${s.ms} ms`
+    : `${s.id}, ${word}`;
+}
+
 function renderDrawerBody() {
   const d = $("den-status-drawer");
   const db = d?.querySelector(".den-db");
@@ -571,7 +583,7 @@ function renderDrawerBody() {
             g.services
               .map(
                 (s) =>
-                  `<button type="button" data-k="svc:${esc(s.id)}" data-svc="${esc(s.repo)}" title="${esc(s.line)}" aria-label="${esc(`${s.id}, ${msText(s)}: ${s.line}`)}">` +
+                  `<button type="button" data-k="svc:${esc(s.id)}" data-svc="${esc(s.repo)}" title="${esc(s.line)}" aria-label="${esc(rowName(s))}" aria-description="${esc(s.line)}">` +
                   `<span class="den-dot ${dotClass(s.state)}" aria-hidden="true"></span>` +
                   `<span class="den-mono">${esc(s.id)}</span>` +
                   `<span class="den-ms">${esc(msText(s))}</span></button>`,

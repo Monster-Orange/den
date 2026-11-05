@@ -3,8 +3,19 @@
  * server holds no state of its own: agents and the web UI share the server's
  * state and its guards. This client can reach only the routes below, and it
  * sends the agent's audit headers (see shared/agent-actor.ts) on every call.
+ *
+ * With `identity`, it first makes sure the server on the port is this
+ * distribution's (server-identity.ts): another distribution's server (or an
+ * older Den from another root) on the configured port gets no request, and
+ * every tool says whose server it is instead of serving its data.
  */
 import { product } from "../../shared/product.js";
+import {
+  foreignServerMessage,
+  identifyServer,
+  type OwnServer,
+  type ServerIdentity,
+} from "../cli/server-identity.js";
 import { LIFECYCLE_CMDS, Refusal } from "./guards.js";
 
 export type Query = Record<string, string | string[] | undefined>;
@@ -18,6 +29,47 @@ export class DenWebDown extends Error {
     );
     this.name = "DenWebDown";
   }
+}
+
+/** Another distribution's server answers on the port: no data from it. */
+export class ForeignWebServer extends Error {
+  constructor(
+    readonly port: number,
+    readonly who: string,
+  ) {
+    super(
+      `${foreignServerMessage(port, who)}; not this distribution's server. ` +
+        `Nothing was read from it. Point web.port (or --port) at this distribution's server.`,
+    );
+    this.name = "ForeignWebServer";
+  }
+}
+
+/** Something answers on the port but would not say whose server it is. */
+export class UnidentifiedWebServer extends Error {
+  constructor(readonly port: number) {
+    super(
+      `the server on port ${port} did not answer /api/server-info in time, ` +
+        `so it is not known to be this distribution's; nothing was read from it. Try again.`,
+    );
+    this.name = "UnidentifiedWebServer";
+  }
+}
+
+/** How long a positive identity check is trusted. */
+export const IDENTITY_TTL_MS = 30_000;
+/** The identity probe's budget: longer than the CLI's, a busy server is ours too. */
+export const IDENTITY_TIMEOUT_MS = 5_000;
+
+export interface IdentityCheck {
+  /** This distribution: its root and product. */
+  own: OwnServer;
+  /** Default identifyServer. */
+  identify?: (port: number, own: OwnServer) => Promise<ServerIdentity>;
+  /** Default IDENTITY_TTL_MS. */
+  ttlMs?: number;
+  /** Default Date.now. */
+  now?: () => number;
 }
 
 /** The web server answered with an error status. */
@@ -157,8 +209,44 @@ export function createDenApi(opts: {
   baseUrl: string;
   cli: string;
   headers: () => Record<string, string>;
+  /** Check whose server it is before any request (the MCP server does). */
+  identity?: IdentityCheck;
 }): DenApi {
   const { baseUrl, cli } = opts;
+  const { hostname } = new URL(baseUrl);
+  const port = Number(new URL(baseUrl).port) || 80;
+  let vouchedAt: number | null = null;
+  let checking: Promise<void> | null = null;
+
+  /** Throws unless the server on the port is ours (cached briefly). */
+  async function ensureOurs(): Promise<void> {
+    const check = opts.identity;
+    if (!check) return;
+    const now = check.now ?? Date.now;
+    if (
+      vouchedAt !== null &&
+      now() - vouchedAt < (check.ttlMs ?? IDENTITY_TTL_MS)
+    )
+      return;
+    checking ??= (async () => {
+      const id = await (
+        check.identify ??
+        ((p: number, o: OwnServer) =>
+          identifyServer(p, o, IDENTITY_TIMEOUT_MS, hostname))
+      )(port, check.own);
+      if (id.kind === "ours") {
+        vouchedAt = now();
+        return;
+      }
+      vouchedAt = null;
+      if (id.kind === "foreign") throw new ForeignWebServer(port, id.who);
+      if (id.kind === "none") throw new DenWebDown(baseUrl, cli);
+      throw new UnidentifiedWebServer(port);
+    })().finally(() => {
+      checking = null;
+    });
+    return checking;
+  }
 
   async function request(
     method: string,
@@ -168,6 +256,7 @@ export function createDenApi(opts: {
     body?: unknown,
   ): Promise<Response> {
     assertAllowedRequest(method, path, query);
+    await ensureOurs();
     try {
       const res = await fetch(buildUrl(baseUrl, path, query), {
         method,
@@ -184,7 +273,11 @@ export function createDenApi(opts: {
       }
       return res;
     } catch (e) {
-      if (isConnectionError(e)) throw new DenWebDown(baseUrl, cli);
+      if (isConnectionError(e)) {
+        // Whatever answers next on the port is checked again.
+        vouchedAt = null;
+        throw new DenWebDown(baseUrl, cli);
+      }
       throw e;
     }
   }

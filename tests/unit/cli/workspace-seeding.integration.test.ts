@@ -313,3 +313,58 @@ describe("explicit seeding", () => {
     );
   }, 60_000);
 });
+
+describe("a repeat seed", () => {
+  it("single blueprint: says 'already seeded' and changes nothing", () => {
+    config(SINGLE);
+    expect(den(["workspace", "seed"]).status).toBe(0);
+    const before = fs.readFileSync(wsPath(), "utf-8");
+    const { out, status } = den(["workspace", "seed"]);
+    expect(status).toBe(0);
+    expect(out).toMatch(
+      /Default workspace already seeded — 3 repos \(managed\): nothing changed/,
+    );
+    expect(out).not.toMatch(/Default workspace ready/);
+    expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
+  }, 60_000);
+
+  it("multi blueprint: names the workspaces already seeded", () => {
+    config([
+      "  workspaces:",
+      "    web:",
+      "      repos: [alpha, beta]",
+      "    data:",
+      "      repos: [gamma]",
+    ]);
+    expect(den(["workspace", "seed"]).status).toBe(0);
+    const before = fs.readFileSync(wsPath(), "utf-8");
+    const { out } = den(["workspace", "seed"]);
+    expect(out).toMatch(
+      /2 workspaces already seeded \(web, data\): nothing changed/,
+    );
+    expect(out).not.toMatch(/workspaces ready/);
+    expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
+  }, 60_000);
+
+  it("after the user changed the workspace, a seed says it reset it", () => {
+    config(SINGLE);
+    den(["workspace", "seed"]);
+    const ws = readWs();
+    ws.workspaces.default.services.beta = { mode: "dev-managed" };
+    workspaces(ws);
+    const { out } = den(["workspace", "seed"]);
+    expect(out).toMatch(/Default workspace reset to the blueprint — 3 repos/);
+    expect(out).not.toMatch(/already seeded/);
+    expect(readWs().workspaces.default.services.beta).toEqual(managed);
+  }, 60_000);
+
+  it("one repo reads '1 repo', never '1 repos'", () => {
+    config(["  workspace:", "    branch: main", "    repos: [alpha]"]);
+    const first = den(["workspace", "seed"]);
+    expect(first.out).toMatch(/Default workspace — 1 repo, all managed/);
+    expect(first.out).toMatch(/Default workspace ready — 1 repo \(managed\)/);
+    const again = den(["workspace", "seed"]);
+    expect(again.out).toMatch(/already seeded — 1 repo \(managed\)/);
+    expect(`${first.out}${again.out}`).not.toMatch(/\b1 repos\b/);
+  }, 60_000);
+});

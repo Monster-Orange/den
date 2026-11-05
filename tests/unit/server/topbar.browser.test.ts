@@ -93,6 +93,8 @@ interface Opts {
   after?: string;
   width?: number;
   vaultStored?: boolean;
+  /** /api/server-info reports a stale server (the ⚠ pill shows). */
+  stale?: boolean;
 }
 
 /** A page on a stub origin; records every request. */
@@ -202,7 +204,7 @@ async function mount(o: Opts = {}): Promise<{
           version: "0.3.0-dev.20",
           pid: 1,
           startedAt: 1,
-          stale: false,
+          stale: o.stale ?? false,
         });
       case "/api/changelog":
         return json([]);
@@ -238,6 +240,41 @@ const focused = (p: Page) =>
     const a = document.activeElement as HTMLElement | null;
     return a ? a.id || a.getAttribute("aria-label") || a.tagName : null;
   });
+
+describe("narrow (SA's dev.20 run)", () => {
+  it("at 400px the bar never scrolls the page sideways: a long name truncates, the stale pill keeps its ⚠", async () => {
+    if (!browser) return;
+    const { p } = await mount({ width: 400, stale: true });
+    await p.waitForSelector("#stale-pill", { state: "visible" });
+    await p.$eval(
+      ".den-title",
+      (e) => (e.textContent = "A Rather Long Platform Name"),
+    );
+    await p.waitForTimeout(100);
+    const m = await p.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      right: Math.round(
+        Math.max(
+          ...[...document.querySelectorAll(".den-top *")].map(
+            (e) => e.getBoundingClientRect().right,
+          ),
+        ),
+      ),
+      pill: (
+        document.getElementById("stale-pill") as HTMLElement
+      ).innerText.trim(),
+      name: document.getElementById("stale-pill")!.getAttribute("aria-label"),
+    }));
+    expect(m).toEqual({
+      scroll: 400,
+      right: expect.any(Number),
+      pill: "⚠",
+      name: "Stale server: restart",
+    });
+    expect(m.right).toBeLessThanOrEqual(400);
+    await p.context().close();
+  }, 30_000);
+});
 
 describe("the status chip (R6)", () => {
   it("paints once, complete: Checking… then the count, never a partial red", async () => {
@@ -323,6 +360,17 @@ describe("the status drawer (R15)", () => {
     expect(
       await p.getAttribute('.den-svl [data-k="svc:shop/db"]', "title"),
     ).toBe("http://shop/db → 200");
+    // Named by service, state and latency; the check is the description.
+    const named = (id: string) =>
+      p.$eval(`.den-svl [data-k="svc:${id}"]`, (b) => [
+        b.getAttribute("aria-label"),
+        b.getAttribute("aria-description"),
+      ]);
+    expect(await named("shop/db")).toEqual([
+      "shop/db, healthy, 9 ms",
+      "http://shop/db → 200",
+    ]);
+    expect((await named("billing/billing"))[0]).toBe("billing/billing, down");
     for (let i = 0; i < 12; i++) await p.keyboard.press("Tab");
     expect(
       await p.evaluate(() => !!document.activeElement?.closest(".den-drawer")),

@@ -17,6 +17,7 @@ import type { Environment } from "../shared/types/index.js";
 import { getDistRoot } from "../shared/paths.js";
 
 import { product } from "../shared/product.js";
+import { plural } from "../shared/plural.js";
 // Den-root anchored: WRITES config/local/aws-profiles.json, and the reader
 // (shared/environment/aws-profiles.ts) already anchors at getDistRoot().
 const ROOT = getDistRoot();
@@ -54,7 +55,7 @@ async function main() {
     );
   } else {
     console.log(
-      `  Found ${profiles.length} profile(s): ${profiles.join(", ")}\n`,
+      `  Found ${plural(profiles.length, "profile")}: ${profiles.join(", ")}\n`,
     );
   }
 
