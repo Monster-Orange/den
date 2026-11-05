@@ -20,8 +20,8 @@ const base: EdgeConfig = {
   routes: {},
   ports: null,
   stateDir: "/tmp/acme-edge",
-  caroot: null,
-  issueCert: true,
+  tls: { strategy: "mkcert", ca: null },
+  tlsFrom: "explicit",
   httpsRedirect: true,
   dockerLabels: null,
   include: null,
@@ -40,11 +40,11 @@ describe("org CA", () => {
     expect(sharedCa(base)).toBe(false);
   });
 
-  it("uses an existing CA when caroot is set", () => {
+  it("uses an existing CA when tls.ca is set", () => {
     const ca = tmp();
     fs.writeFileSync(path.join(ca, "rootCA.pem"), "x");
     fs.writeFileSync(path.join(ca, "rootCA-key.pem"), "x");
-    const cfg = { ...base, caroot: ca };
+    const cfg = { ...base, tls: { strategy: "mkcert" as const, ca } };
     expect(caDir(cfg)).toBe(ca);
     expect(sharedCa(cfg)).toBe(true);
     expect(() => assertCaUsable(cfg)).not.toThrow();
@@ -53,11 +53,14 @@ describe("org CA", () => {
   it("refuses to run when the shared CA's key is missing, so mkcert never mints a new CA", () => {
     const ca = tmp();
     fs.writeFileSync(path.join(ca, "rootCA.pem"), "x");
-    expect(() => assertCaUsable({ ...base, caroot: ca })).toThrow(
-      /rootCA-key\.pem/,
-    );
     expect(() =>
-      assertCaUsable({ ...base, caroot: path.join(ca, "missing") }),
+      assertCaUsable({ ...base, tls: { strategy: "mkcert" as const, ca } }),
+    ).toThrow(/rootCA-key\.pem/);
+    expect(() =>
+      assertCaUsable({
+        ...base,
+        tls: { strategy: "mkcert", ca: path.join(ca, "missing") },
+      }),
     ).toThrow(/never creates/);
   });
 

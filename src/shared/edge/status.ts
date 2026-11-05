@@ -23,8 +23,10 @@ export interface EdgeStatus {
   /** Names on the issued cert, or the planned ones when none is issued yet. */
   certNames: string[];
   certIssued: boolean;
-  /** Whether the CA is trusted on this machine (null: can't tell). */
+  /** Whether the CA is trusted on this machine (null: can't tell, or none). */
   caTrusted: boolean | null;
+  /** The edge.tls strategy, and whether nothing chose it (implicit mkcert). */
+  tls: { strategy: EdgeConfig["tls"]["strategy"]; implicit: boolean };
 }
 
 export interface EdgeStatusDeps {
@@ -67,8 +69,9 @@ export function edgeStatus(
       url: routeUrl(name, cfg),
       upstream,
     })),
-    certNames: issued ?? certNames(cfg),
+    certNames: issued ?? (cfg.tls.strategy === "none" ? [] : certNames(cfg)),
     certIssued: issued !== null,
-    caTrusted: deps.caTrusted(cfg),
+    caTrusted: cfg.tls.strategy === "none" ? null : deps.caTrusted(cfg),
+    tls: { strategy: cfg.tls.strategy, implicit: cfg.tlsFrom === "implicit" },
   };
 }

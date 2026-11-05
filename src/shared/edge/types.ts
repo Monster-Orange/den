@@ -1,6 +1,6 @@
 /**
- * The org's HTTPS edge: one Traefik that terminates TLS with the org's own CA
- * (mkcert, separate CAROOT) and routes `<name>.<domain>` to local services.
+ * The org's edge: one Traefik that terminates TLS as `edge.tls` says (none,
+ * mkcert or files) and routes `<name>.<domain>` to local services.
  * File-provider routes, plus Docker labels when `docker_labels` opts in
  * (through a read-only socket proxy; the edge never mounts the socket).
  *
@@ -14,6 +14,11 @@ export interface EdgePorts {
   http: number;
   https: number;
 }
+
+export type EdgeTls =
+  | { strategy: "none" }
+  | { strategy: "mkcert"; ca: string | null }
+  | { strategy: "files"; ca: string | null };
 
 export interface EdgeConfig {
   /** Org slug — names the edge container and its Docker network. */
@@ -35,14 +40,20 @@ export interface EdgeConfig {
   /** Where the org's CA, certs and generated config live. */
   stateDir: string;
   /**
-   * An existing mkcert CA to use instead of the org's own under `stateDir`
-   * (e.g. a CA other devices already trust). The edge refuses to run if its
-   * key is missing, so mkcert can never mint a replacement, and it never
-   * uninstalls a shared CA.
+   * How the edge gets its certificates: the `edge.tls` strategy (see
+   * tls.ts). `none`: http only, no https entrypoint. `mkcert`: the edge
+   * issues its own wildcard cert from a local CA (its own under `stateDir`,
+   * or `ca`, an existing one it never mints or uninstalls). `files`: the
+   * included dynamic config and mounts hold the certs; `ca` is the CA that
+   * signed them, if Den should trust it for health checks.
    */
-  caroot: string | null;
-  /** Issue the edge's own wildcard cert. Off when included config holds the certs. */
-  issueCert: boolean;
+  tls: EdgeTls;
+  /**
+   * Where `tls` came from: `explicit` (edge.tls), `legacy` (edge.caroot /
+   * edge.issue_cert, mapped), or `implicit` (neither: mkcert with a local CA,
+   * deprecated, warned once per run).
+   */
+  tlsFrom: "explicit" | "legacy" | "implicit";
   /** Catch-all HTTP→HTTPS redirect. Off when included config decides per name. */
   httpsRedirect: boolean;
   /**

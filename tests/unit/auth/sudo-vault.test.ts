@@ -130,6 +130,8 @@ describe("with secrets.refs.sudo configured (1password)", () => {
       backendAvailable: true,
       hasStored: true,
       opAvailable: true,
+      // The real config file, for the UI's not-configured note.
+      configFile: "config/den.yml",
     });
   });
 

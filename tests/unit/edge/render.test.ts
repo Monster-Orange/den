@@ -25,8 +25,8 @@ const edge: EdgeConfig = {
   routes: {},
   ports: { http: 80, https: 443 },
   stateDir: "/tmp/x",
-  caroot: null,
-  issueCert: true,
+  tls: { strategy: "mkcert", ca: null },
+  tlsFrom: "explicit",
   httpsRedirect: true,
   dockerLabels: null,
   include: null,
@@ -119,7 +119,9 @@ describe("renderEdgeDynamic", () => {
     expect(doc.http.middlewares).toBeUndefined();
   });
   it("has no TLS store of its own when it issues no certificate", () => {
-    const doc = yaml.parse(renderEdgeDynamic({ ...edge, issueCert: false }));
+    const doc = yaml.parse(
+      renderEdgeDynamic({ ...edge, tls: { strategy: "files", ca: null } }),
+    );
     expect(doc.tls).toBeUndefined();
     expect(doc.http.routers.dashboard.tls).toEqual({});
   });
@@ -183,7 +185,7 @@ describe("renderEdgeCompose", () => {
     const doc = yaml.parse(
       renderEdgeCompose({
         ...edge,
-        issueCert: false,
+        tls: { strategy: "files", ca: null },
         mounts: { "/host/certs": "/etc/traefik/dynamic/certs" },
         networks: ["more-net"],
         args: ["--accesslog=true"],
@@ -228,8 +230,8 @@ describe("readEdgeConfig", () => {
     expect(cfg.ports).toEqual({ http: 80, https: 443 });
     expect(cfg.routes.den).toBe("http://host.docker.internal:7777");
     expect(cfg.dockerLabels).toBeNull();
-    expect(cfg.caroot).toBeNull();
-    expect(cfg.issueCert).toBe(true);
+    expect(cfg.tls).toEqual({ strategy: "mkcert", ca: null });
+    expect(cfg.tlsFrom).toBe("implicit");
     expect(cfg.httpsRedirect).toBe(true);
   });
   it("names the web UI route after the brand", () => {
@@ -266,8 +268,11 @@ describe("readEdgeConfig", () => {
         ].join("\n"),
     );
     const cfg = readEdgeConfig(r);
-    expect(cfg.caroot).toBe(path.join(os.homedir(), "ca"));
-    expect(cfg.issueCert).toBe(false);
+    expect(cfg.tls).toEqual({
+      strategy: "files",
+      ca: path.join(os.homedir(), "ca"),
+    });
+    expect(cfg.tlsFrom).toBe("legacy");
     expect(cfg.httpsRedirect).toBe(false);
     expect(cfg.dockerLabels).toEqual({ network: "apps-network" });
     expect(cfg.include).toBe(path.join(r, "edge", "dynamic"));

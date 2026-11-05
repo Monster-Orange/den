@@ -78,8 +78,17 @@ describe("renderDistribution", () => {
     expect(cfg.brand.name).toBe("Acme");
     expect(cfg.brand.banner.join("\n")).toContain("A C M E");
     expect(cfg.secrets.provider).toBe("none");
-    expect(cfg.edge).toEqual({ org: "acme", domain: "acme.localhost" });
-    expect(cfg.github_org).toBeTruthy();
+    expect(cfg.edge).toEqual({
+      org: "acme",
+      domain: "acme.localhost",
+      tls: "none",
+    });
+    // No placeholder org: github_org is left for the distribution to set.
+    expect(cfg.github_org).toBeUndefined();
+    expect(files["config/acme.yml"]).toContain("# github_org: example-org");
+    expect(files["config/acme.yml"]).toMatch(
+      /# +tls: \{ strategy: mkcert \}.*\n.*# +tls: \{ strategy: mkcert, ca: .*\n.*# +tls: \{ strategy: files, include: edge\/dynamic/,
+    );
     expect(files["config/environments/local.json"]).toContain(
       '"name": "local"',
     );

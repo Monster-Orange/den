@@ -1,47 +1,25 @@
 /**
- * Side effects for the edge: docker, mkcert, files. Thin on purpose — every
- * routing decision lives in render.ts.
+ * Side effects for the edge: docker, files, and the TLS strategy's (tls.ts).
+ * Thin on purpose — every routing decision lives in render.ts.
  */
-import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
+import { must, sh } from "./exec.js";
+import { edgeNames, renderEdgeCompose, renderEdgeDynamic } from "./render.js";
 import {
-  certNames,
-  edgeNames,
-  renderEdgeCompose,
-  renderEdgeDynamic,
-} from "./render.js";
+  assertCaUsable,
+  caDir,
+  caTrusted,
+  edgeTrust,
+  edgeUntrust,
+  sharedCa,
+  tlsStrategyFor,
+  warnImplicitTlsOnce,
+} from "./tls.js";
 import type { EdgeConfig } from "./types.js";
 
-function sh(
-  cmd: string,
-  args: string[],
-  opts: { env?: NodeJS.ProcessEnv; inherit?: boolean } = {},
-) {
-  const r = spawnSync(cmd, args, {
-    encoding: "utf-8",
-    env: { ...process.env, ...opts.env },
-    stdio: opts.inherit ? "inherit" : "pipe",
-  });
-  if (r.error) throw new Error(`${cmd} is not installed (${r.error.message})`);
-  return {
-    code: r.status ?? 1,
-    out: (r.stdout ?? "").trim(),
-    err: (r.stderr ?? "").trim(),
-  };
-}
-
-function must(
-  cmd: string,
-  args: string[],
-  opts: { env?: NodeJS.ProcessEnv } = {},
-): string {
-  const r = sh(cmd, args, opts);
-  if (r.code !== 0)
-    throw new Error(`${cmd} ${args.join(" ")} failed:\n${r.err || r.out}`);
-  return r.out;
-}
+export { assertCaUsable, caDir, caTrusted, sharedCa };
 
 function write(file: string, content: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -68,102 +46,25 @@ export function portInUse(port: number): Promise<boolean> {
   });
 }
 
-// ── Certificates (org-scoped CA) ─────────────────────────────────────────────
+// ── Certificates (the edge.tls strategy, see tls.ts) ────────────────────────
 
-export function caDir(cfg: EdgeConfig): string {
-  return cfg.caroot ?? path.join(cfg.stateDir, "ca");
-}
-
-/** True when the edge uses an existing CA (`caroot`) rather than its own. */
-export function sharedCa(cfg: EdgeConfig): boolean {
-  return cfg.caroot !== null;
-}
-
-/**
- * A shared CA must already exist with its key: mkcert silently creates a new
- * CA in an empty CAROOT, and devices that trust the shared one would not
- * trust that. The org's own CA may be created on first use.
- */
-export function assertCaUsable(cfg: EdgeConfig): void {
-  if (!sharedCa(cfg)) return;
-  const dir = caDir(cfg);
-  if (!fs.existsSync(dir))
-    throw new Error(
-      `edge.caroot ${dir} does not exist. The edge never creates a CA there; ` +
-        `point caroot at the existing CA (\`mkcert -CAROOT\`).`,
-    );
-  for (const f of ["rootCA.pem", "rootCA-key.pem"])
-    if (!fs.existsSync(path.join(dir, f)))
-      throw new Error(
-        `edge.caroot ${dir} has no ${f}. Refusing to run: mkcert would mint a ` +
-          `new CA that other devices don't trust.`,
-      );
-}
-
-function mkcertEnv(cfg: EdgeConfig): NodeJS.ProcessEnv {
-  return { CAROOT: caDir(cfg) };
-}
-
-/** Issue (or re-issue when names changed) the edge cert from the org's own CA. */
+/** Make sure the edge's cert exists, as its TLS strategy does it. */
 export function ensureCerts(cfg: EdgeConfig): {
   issued: boolean;
   names: string[];
 } {
-  const names = certNames(cfg);
-  if (!cfg.issueCert) return { issued: false, names: [] };
-  assertCaUsable(cfg);
-  const dir = path.join(cfg.stateDir, "certs");
-  const stamp = path.join(dir, "names.txt");
-  const want = names.join("\n");
-  if (
-    fs.existsSync(path.join(dir, "edge.pem")) &&
-    fs.existsSync(stamp) &&
-    fs.readFileSync(stamp, "utf-8") === want
-  )
-    return { issued: false, names };
-  fs.mkdirSync(dir, { recursive: true });
-  if (!sharedCa(cfg))
-    fs.mkdirSync(caDir(cfg), { recursive: true, mode: 0o700 });
-  must(
-    "mkcert",
-    [
-      "-cert-file",
-      path.join(dir, "edge.pem"),
-      "-key-file",
-      path.join(dir, "edge-key.pem"),
-      ...names,
-    ],
-    { env: mkcertEnv(cfg) },
-  );
-  write(stamp, want);
-  return { issued: true, names };
+  const r = tlsStrategyFor(cfg).capabilities.ensure(cfg);
+  return { issued: r.issued, names: r.names };
 }
 
-/** Install the org CA into the system + browser trust stores (prompts for a password). */
+/** `edge trust`: install the CA (mkcert only; prompts for a password). */
 export function trustCa(cfg: EdgeConfig): number {
-  assertCaUsable(cfg);
-  if (!sharedCa(cfg))
-    fs.mkdirSync(caDir(cfg), { recursive: true, mode: 0o700 });
-  return sh("mkcert", ["-install"], { env: mkcertEnv(cfg), inherit: true })
-    .code;
+  return edgeTrust(cfg);
 }
 
+/** `edge untrust` (mkcert only; never a shared CA). */
 export function untrustCa(cfg: EdgeConfig): number {
-  if (sharedCa(cfg))
-    throw new Error(
-      `edge.caroot is a shared CA (${caDir(cfg)}); other tools and devices ` +
-        `rely on it being trusted, so the edge never uninstalls it.`,
-    );
-  return sh("mkcert", ["-uninstall"], { env: mkcertEnv(cfg), inherit: true })
-    .code;
-}
-
-/** Whether the org CA is in the macOS system keychain (null: can't tell). */
-export function caTrusted(cfg: EdgeConfig): boolean | null {
-  const pem = path.join(caDir(cfg), "rootCA.pem");
-  if (!fs.existsSync(pem)) return false;
-  if (process.platform !== "darwin") return null;
-  return sh("security", ["verify-cert", "-c", pem]).code === 0;
+  return edgeUntrust(cfg);
 }
 
 // ── Included dynamic config ─────────────────────────────────────────────────
@@ -240,6 +141,7 @@ export async function edgeUp(cfg: EdgeConfig) {
         );
   }
   assertCaUsable(cfg);
+  warnImplicitTlsOnce(cfg);
   ensureNetwork(n.network);
   for (const net of [
     ...(cfg.dockerLabels ? [cfg.dockerLabels.network] : []),

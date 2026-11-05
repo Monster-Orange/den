@@ -23,6 +23,7 @@ import {
   type SecretRef,
   type SecretsProviderName,
 } from "../secrets/index.js";
+import { product } from "../product.js";
 
 /** Name of the sudo ref under `secrets.refs`. */
 export const SUDO_REF_NAME = "sudo";
@@ -83,6 +84,8 @@ export interface SudoVaultStatus {
   backendAvailable: boolean;
   /** Why it is not available (not configured, CLI not on PATH, signed out). */
   reason?: string;
+  /** The distribution's org config file (e.g. config/acme.yml), for UI copy. */
+  configFile: string;
   hasStored: boolean;
   /** @deprecated alias of backendAvailable; removed in a later minor. */
   opAvailable: boolean;
@@ -105,6 +108,7 @@ export async function sudoVaultStatus(): Promise<SudoVaultStatus> {
     configured: !!ref,
     backendAvailable,
     ...(reason ? { reason } : {}),
+    configFile: product().configFile,
     hasStored,
     opAvailable: backendAvailable,
   });

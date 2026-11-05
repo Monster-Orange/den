@@ -52,6 +52,11 @@ export function getStrategy<K extends string, C>(
   return registries.get(kind)?.get(id) as StrategyEntry<K, C> | undefined;
 }
 
+/** Every kind with a registered strategy, in registration order. */
+export function strategyKinds(): string[] {
+  return [...registries.keys()];
+}
+
 /** Every registered id of `kind`, in registration order. */
 export function strategyIds(kind: string): string[] {
   return [...(registries.get(kind)?.keys() ?? [])];

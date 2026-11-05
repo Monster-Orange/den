@@ -193,11 +193,13 @@ function extraCa(): string[] {
   if (_extraCa) return _extraCa;
   _extraCa = [];
   try {
-    // The edge's own CA, and the CA it was pointed at (`edge.caroot`, e.g. the
-    // laptop's mkcert CA that signs the projects' certificates).
+    // The edge's own CA, and the CA it was pointed at (`edge.tls.ca`, formerly
+    // `edge.caroot`, e.g. the laptop's mkcert CA that signs the projects'
+    // certificates).
     const cfg = readEdgeConfig();
     const pems = [path.join(cfg.stateDir, "ca", "rootCA.pem")];
-    if (cfg.caroot) pems.push(path.join(cfg.caroot, "rootCA.pem"));
+    const ca = cfg.tls.strategy === "none" ? null : cfg.tls.ca;
+    if (ca) pems.push(path.join(ca, "rootCA.pem"));
     for (const pem of pems)
       if (fs.existsSync(pem)) _extraCa.push(fs.readFileSync(pem, "utf-8"));
   } catch {

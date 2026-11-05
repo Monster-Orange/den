@@ -7,11 +7,14 @@
 
 import { execFileSync, execSync } from "child_process";
 import * as path from "path";
-import { readDenConfig } from "../../shared/den-config.js";
+import {
+  configuredGithubOrg,
+  isPlaceholderGithubOrg,
+  readDenConfig,
+} from "../../shared/den-config.js";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import {
   GH_API_TIMEOUT_MS,
-  GIT_REMOTE_TIMEOUT_MS,
   BRANCH_CACHE_TTL_MS,
   REPO_CACHE_TTL_MS,
 } from "../../shared/constants.js";
@@ -39,6 +42,7 @@ export class GitHubService {
     { names: string[]; fetchedAt: number }
   >();
   private reposCache: { data: GitHubRepo[]; fetchedAt: number } | null = null;
+  private warnedNotConfigured = false;
 
   /**
    * List branches for a GitHub repo slug ("owner/repo").
@@ -95,11 +99,13 @@ export class GitHubService {
 
     const orgs = this.resolveOrgs();
     if (orgs.length === 0) {
-      console.warn(
-        "[github-service] listOrgRepos: no GitHub org resolvable — " +
-          `add \`github_org: <slug>\` to ${product().configFile}, or register at least ` +
-          "one catalog entry with a slashed `gh:` field",
-      );
+      if (!this.warnedNotConfigured) {
+        this.warnedNotConfigured = true;
+        console.log(
+          "[github-service] GitHub repos not configured: set `github_org: <your-org>` in " +
+            `${product().configFile} to list them (no gh is run until then)`,
+        );
+      }
       return [];
     }
     const data = orgs.flatMap((org) => this.listOneOrg(org));
@@ -171,18 +177,16 @@ export class GitHubService {
 
   /**
    * Every GitHub org Den lists repos from: `github_org`, then the orgs in
-   * config/den.yml `orgs:`, then every owner in the catalog (several orgs'
-   * repos can sit side by side). With none of those, fall back to
-   * the den repo's own `origin` URL — makes upgraded installs Just
-   *      Work without anyone editing config/den.yml. Existing users
-   *      who pre-date `github_org` or had it commented out still get
-   *      the right value as long as den itself was cloned from the
-   *      same org as their services (the common case).
+   * the org config's `orgs:`, then every owner in the catalog (several
+   * orgs' repos can sit side by side). With `github_org` unset or still a
+   * placeholder (`your-github-org`), none: GitHub is not configured, and Den
+   * runs no gh for it.
    */
   private resolveOrgs(): string[] {
     const config = readDenConfig();
-    const orgs = new Set<string>();
-    if (config.github_org) orgs.add(config.github_org);
+    const primary = configuredGithubOrg(config);
+    if (!primary) return [];
+    const orgs = new Set<string>([primary]);
     for (const id of Object.keys(config.orgs ?? {})) orgs.add(id);
     for (const entry of Object.values(readCatalog() ?? {})) {
       if (entry?.gh && entry.gh.includes("/")) {
@@ -191,33 +195,8 @@ export class GitHubService {
     }
     // Org names reach a shell command: GitHub owners are letters, digits and
     // hyphens, so anything else is dropped.
-    const valid = [...orgs].filter((o) => /^[A-Za-z0-9][A-Za-z0-9-]*$/.test(o));
-    if (valid.length > 0) return valid;
-    const fallback = this.originOrg();
-    return fallback ? [fallback] : [];
-  }
-
-  private originOrg(): string | null {
-    // Fall back to the den repo's origin. Works for:
-    //   SSH:   git@github.com:ORG/den.git
-    //   HTTPS: https://github.com/ORG/den.git
-    //          https://github.com/ORG/den
-    try {
-      const url = execFileSync(
-        "git",
-        ["-C", ROOT, "config", "--get", "remote.origin.url"],
-        {
-          encoding: "utf-8",
-          timeout: GIT_REMOTE_TIMEOUT_MS,
-          stdio: ["ignore", "pipe", "ignore"],
-        },
-      ).trim();
-      const m = url.match(/[:/]([^/:]+)\/[^/]+?(?:\.git)?$/);
-      if (m) return m[1];
-    } catch {
-      /* no git remote available */
-    }
-
-    return null;
+    return [...orgs].filter(
+      (o) => /^[A-Za-z0-9][A-Za-z0-9-]*$/.test(o) && !isPlaceholderGithubOrg(o),
+    );
   }
 }

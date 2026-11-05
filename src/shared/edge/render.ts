@@ -38,12 +38,34 @@ function hostRule(name: string, cfg: EdgeConfig): string {
     .join(" || ");
 }
 
-/** Public URL for a route, including the port when it isn't 443. */
+/** True when the edge serves https: every edge.tls strategy but `none`. */
+export function edgeHttps(cfg: EdgeConfig): boolean {
+  return cfg.tls.strategy !== "none";
+}
+
+/** The entrypoint routes listen on: websecure, or web for `tls: none`. */
+export function routeEntryPoint(cfg: EdgeConfig): "web" | "websecure" {
+  return edgeHttps(cfg) ? "websecure" : "web";
+}
+
+/** A router's TLS block: `{ tls: {} }`, or nothing for `tls: none`. */
+export function routerTls(cfg: EdgeConfig): { tls?: Record<string, never> } {
+  return edgeHttps(cfg) ? { tls: {} } : {};
+}
+
+/**
+ * Public URL for a route, including the port when it isn't the default
+ * (443, or 80 for an http-only edge).
+ */
 export function routeUrl(
   name: string,
   cfg: EdgeConfig,
   domain = cfg.domain,
 ): string {
+  if (!edgeHttps(cfg)) {
+    const h = cfg.ports?.http ?? 80;
+    return `http://${routeHost(name, domain)}${h === 80 ? "" : `:${h}`}`;
+  }
   const p = cfg.ports?.https ?? 443;
   return `https://${routeHost(name, domain)}${p === 443 ? "" : `:${p}`}`;
 }
@@ -64,12 +86,20 @@ export function certNames(cfg: EdgeConfig): string[] {
   ]);
 }
 
-/** Dynamic config: TLS cert, HTTP→HTTPS redirect, dashboard, routes. */
+/**
+ * Dynamic config: TLS cert, HTTP→HTTPS redirect, dashboard, routes. With
+ * `tls: none` every router is on the http entrypoint, with no TLS and no
+ * redirect.
+ */
 export function renderEdgeDynamic(cfg: EdgeConfig): string {
   const httpsPort = cfg.ports?.https ?? 443;
   const redirectPort = httpsPort !== 443 ? { port: String(httpsPort) } : {};
+  const https = edgeHttps(cfg);
+  const redirect = https && cfg.httpsRedirect;
+  // Fresh objects per router: a shared one would render as a YAML anchor.
+  const entryPoints = () => [routeEntryPoint(cfg)];
   const routers: Record<string, unknown> = {
-    ...(cfg.httpsRedirect
+    ...(redirect
       ? {
           "to-https": {
             entryPoints: ["web"],
@@ -81,10 +111,10 @@ export function renderEdgeDynamic(cfg: EdgeConfig): string {
         }
       : {}),
     dashboard: {
-      entryPoints: ["websecure"],
+      entryPoints: entryPoints(),
       rule: hostRule("edge", cfg),
       service: "api@internal",
-      tls: {},
+      ...routerTls(cfg),
     },
   };
   const services: Record<string, unknown> = {};
@@ -97,10 +127,10 @@ export function renderEdgeDynamic(cfg: EdgeConfig): string {
       );
     const key = `route-${slug(name)}`;
     routers[key] = {
-      entryPoints: ["websecure"],
+      entryPoints: entryPoints(),
       rule: hostRule(name, cfg),
       service: key,
-      tls: {},
+      ...routerTls(cfg),
     };
     services[key] = { loadBalancer: { servers: [{ url }] } };
   }
@@ -113,7 +143,7 @@ export function renderEdgeDynamic(cfg: EdgeConfig): string {
     yaml.stringify({
       http: {
         routers,
-        ...(cfg.httpsRedirect
+        ...(redirect
           ? {
               middlewares: {
                 "to-https": {
@@ -128,7 +158,7 @@ export function renderEdgeDynamic(cfg: EdgeConfig): string {
           : {}),
         ...(Object.keys(services).length ? { services } : {}),
       },
-      ...(cfg.issueCert
+      ...(cfg.tls.strategy === "mkcert"
         ? {
             tls: {
               stores: { default: { defaultCertificate: cert } },
@@ -145,8 +175,12 @@ export function dockerProxyName(org: string): string {
   return `${edgeNames(org).container}-docker`;
 }
 
-/** Compose file for the edge; publishes host ports only when configured. */
+/**
+ * Compose file for the edge; publishes host ports only when configured.
+ * With `tls: none` there is no https entrypoint, port or cert volume.
+ */
 export function renderEdgeCompose(cfg: EdgeConfig): string {
+  const https = edgeHttps(cfg);
   const n = edgeNames(cfg.org);
   const proxy = dockerProxyName(cfg.org);
   const labels = cfg.dockerLabels;
@@ -162,7 +196,7 @@ export function renderEdgeCompose(cfg: EdgeConfig): string {
       ...(labels ? { depends_on: ["docker-proxy"] } : {}),
       command: [
         "--entrypoints.web.address=:80",
-        "--entrypoints.websecure.address=:443",
+        ...(https ? ["--entrypoints.websecure.address=:443"] : []),
         "--providers.file.directory=/etc/edge/dynamic",
         "--providers.file.watch=true",
         ...(labels
@@ -179,12 +213,19 @@ export function renderEdgeCompose(cfg: EdgeConfig): string {
         ...cfg.args,
       ],
       ...(cfg.ports
-        ? { ports: [`${cfg.ports.http}:80`, `${cfg.ports.https}:443`] }
+        ? {
+            ports: [
+              `${cfg.ports.http}:80`,
+              ...(https ? [`${cfg.ports.https}:443`] : []),
+            ],
+          }
         : {}),
       extra_hosts: ["host.docker.internal:host-gateway"],
       volumes: [
         "./dynamic:/etc/edge/dynamic:ro",
-        ...(cfg.issueCert ? ["./certs:/etc/edge/certs:ro"] : []),
+        ...(cfg.tls.strategy === "mkcert"
+          ? ["./certs:/etc/edge/certs:ro"]
+          : []),
         ...Object.entries(cfg.mounts)
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([host, target]) => `${host}:${target}:ro`),

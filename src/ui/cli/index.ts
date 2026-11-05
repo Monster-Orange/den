@@ -176,6 +176,7 @@ import {
 import { cleanupStaleTabs } from "../../shared/cli-tabs.js";
 import { cmdConfig } from "./config-command.js";
 import { cmdEdge } from "./edge-command.js";
+import { cmdDoctor } from "./doctor-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
 import { cmdTheme } from "./theme-command.js";
@@ -394,7 +395,15 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   edge: {
     usage: "edge [up|down|status|trust|untrust|routes]",
     lines: [
-      "This org's HTTPS edge: own CA + cert, routes at <name>.<edge.domain>.",
+      "This org's edge: routes at <name>.<edge.domain>, TLS as edge.tls says",
+      "(none | mkcert | files). trust/untrust exist only under mkcert.",
+    ],
+  },
+  doctor: {
+    usage: "doctor",
+    lines: [
+      "Each strategy kind (secrets, tls): the one selected, whether it was implicit,",
+      "and whether it can work here (a PATH check; nothing is run or prompted).",
     ],
   },
   plugin: {
@@ -482,6 +491,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "local-dev",
   "config",
   "edge",
+  "doctor",
   "stack",
   "apps",
   "applications",
@@ -821,6 +831,10 @@ class DenCLI {
 
         case "edge":
           await cmdEdge(args.slice(1));
+          break;
+
+        case "doctor":
+          process.exitCode = cmdDoctor(args.slice(1));
           break;
 
         case "service":
@@ -3193,6 +3207,18 @@ class DenCLI {
       return;
     }
 
+    // The pickers below need a terminal: with stdin closed or piped,
+    // readline would throw ERR_USE_AFTER_CLOSE mid-prompt.
+    if (!process.stdin.isTTY) {
+      console.error(
+        chalk.red(
+          "\n  ❌ register needs a terminal (stdin is not a TTY).\n" +
+            `     Without one, name the checkout: ${product().cli} register <path> [--name <repo>] [--gh <owner/repo>]\n`,
+        ),
+      );
+      process.exitCode = 1;
+      return;
+    }
     const source = await cliPrompts.promptForRegistrationSource();
 
     if (source === "local") {
@@ -3954,6 +3980,29 @@ class DenCLI {
         console.warn(chalk.yellow(`\n  ⚠  ${w.replace(/\n/g, "\n     ")}`));
     } catch {
       /* an unreadable config is reported elsewhere */
+    }
+    // The edge's TLS strategy, when there is an edge: its config, the
+    // implicit-mkcert warning (once), and detect() (mkcert on PATH).
+    {
+      const { hasEdgeBlock, readEdgeConfig } =
+        await import("../../shared/edge/config.js");
+      const { edgeTlsWarnings, tlsStrategyFor, warnImplicitTlsOnce } =
+        await import("../../shared/edge/tls.js");
+      let edge: ReturnType<typeof readEdgeConfig> | null = null;
+      try {
+        if (hasEdgeBlock()) edge = readEdgeConfig();
+      } catch (e) {
+        console.error(chalk.red(`\n  ✗  edge: ${(e as Error).message}`));
+        process.exitCode = 1;
+      }
+      if (edge) {
+        const warn = (w: string) => console.warn(chalk.yellow(`\n  ⚠  ${w}`));
+        warnImplicitTlsOnce(edge, warn);
+        for (const w of edgeTlsWarnings(edge))
+          if (edge.tlsFrom !== "implicit") warn(w);
+        const d = tlsStrategyFor(edge).detect();
+        if (!d.available) warn(`edge.tls ${edge.tls.strategy}: ${d.reason}`);
+      }
     }
     const target = args[0] ?? getInvokeCwd();
     const fs = await import("fs");

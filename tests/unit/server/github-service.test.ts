@@ -9,6 +9,7 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 
 jest.mock("child_process");
 jest.mock("../../../src/shared/den-config.js", () => ({
+  ...jest.requireActual<object>("../../../src/shared/den-config.js"),
   readDenConfig: jest.fn(() => ({
     environments: ["local"],
     github_org: "",
@@ -151,61 +152,28 @@ describe("GitHubService", () => {
         expect(String(cmd)).not.toContain("evil");
     });
 
-    it("detects org from catalog when github_org is not set", () => {
-      mockReadDenConfig.mockReturnValue({
-        environments: ["local"],
-      });
-      mockReadCatalog.mockReturnValue({
-        shop: { gh: "MyOrg/shop" },
-      });
-      mockExecSync.mockReturnValueOnce("[]").mockReturnValueOnce("[]");
-
-      svc.listOrgRepos();
-      expect(mockExecSync).toHaveBeenCalledWith(
-        expect.stringContaining("MyOrg"),
-        expect.anything(),
-      );
-    });
-
-    it("returns empty array when no org can be determined (all 3 fallbacks fail)", () => {
+    it("github_org unset: GitHub is not configured, and no gh runs (not even for catalog owners)", () => {
       mockReadDenConfig.mockReturnValue({ environments: ["local"] });
-      mockReadCatalog.mockReturnValue({});
-      // Git-remote fallback also fails (no origin configured or not a git dir).
-      mockExecFileSync.mockImplementation(() => {
-        throw new Error("fatal: not a git repository");
-      });
+      mockReadCatalog.mockReturnValue({ shop: { gh: "MyOrg/shop" } });
       expect(svc.listOrgRepos()).toEqual([]);
+      expect(mockExecSync).not.toHaveBeenCalled();
+      // No fallback to any checkout's git remote either.
+      expect(mockExecFileSync).not.toHaveBeenCalled();
     });
 
-    it("falls back to den repo's origin when config + catalog are empty (SSH url)", () => {
-      mockReadDenConfig.mockReturnValue({ environments: ["local"] });
-      mockReadCatalog.mockReturnValue({});
-      mockExecFileSync.mockReturnValueOnce(
-        "git@github.com:Globex-Corp/den.git\n",
-      );
-      mockExecSync.mockReturnValueOnce("[]").mockReturnValueOnce("[]");
-
-      svc.listOrgRepos();
-      expect(mockExecSync).toHaveBeenCalledWith(
-        expect.stringContaining("Globex-Corp"),
-        expect.anything(),
-      );
-    });
-
-    it("falls back to den repo's origin with HTTPS url", () => {
-      mockReadDenConfig.mockReturnValue({ environments: ["local"] });
-      mockReadCatalog.mockReturnValue({});
-      mockExecFileSync.mockReturnValueOnce(
-        "https://github.com/Globex-Corp/den.git\n",
-      );
-      mockExecSync.mockReturnValueOnce("[]").mockReturnValueOnce("[]");
-
-      svc.listOrgRepos();
-      expect(mockExecSync).toHaveBeenCalledWith(
-        expect.stringContaining("Globex-Corp"),
-        expect.anything(),
-      );
-    });
+    it.each(["your-github-org", "your-org", "<your-org>", "example-org"])(
+      "a placeholder github_org (%s) is not configured: no gh runs",
+      (org) => {
+        mockReadDenConfig.mockReturnValue({
+          environments: ["local"],
+          github_org: org,
+        });
+        mockReadCatalog.mockReturnValue({ shop: { gh: "MyOrg/shop" } });
+        expect(svc.listOrgRepos()).toEqual([]);
+        expect(mockExecSync).not.toHaveBeenCalled();
+        expect(mockExecFileSync).not.toHaveBeenCalled();
+      },
+    );
 
     it("caches results", () => {
       mockReadDenConfig.mockReturnValue({

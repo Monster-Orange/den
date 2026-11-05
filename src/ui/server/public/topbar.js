@@ -1092,6 +1092,12 @@ function checkVault() {
       label.hidden = !save;
       label.querySelector("span").textContent = save ?? "";
     }
+    const cfg = document.querySelector("#den-lock-pop .den-lock-cfg");
+    if (cfg) {
+      const note = notConfiguredNote();
+      cfg.hidden = !note;
+      cfg.textContent = note ?? "";
+    }
   });
   return vaultAsked;
 }
@@ -1128,6 +1134,17 @@ async function initLock() {
   if (loaded.ok && !lock.unlocked) setUnlocked(true);
 }
 
+/**
+ * Why there is no save option, when the sudo ref is not configured: the
+ * server's reason, which names the distribution's real config file
+ * (`configFile`, e.g. config/acme.yml), never a placeholder.
+ */
+function notConfiguredNote() {
+  const v = lock.vault;
+  if (!v || v.configured !== false || !v.configFile) return null;
+  return `Saving the password is off: set secrets.provider and secrets.refs.sudo in ${v.configFile}.`;
+}
+
 function saveLabel() {
   if (!lock.vault.backendAvailable) return null;
   return lock.vault.hasStored
@@ -1137,11 +1154,13 @@ function saveLabel() {
 
 function lockFormHtml() {
   const save = saveLabel();
+  const note = notConfiguredNote();
   return (
     `<form class="den-lock-form"><b id="den-lock-t">${esc(t("lock.title"))}</b>` +
     '<input type="password" id="den-lock-pw" placeholder="Admin password" aria-label="Admin password" autocomplete="current-password">' +
     `<label class="den-lock-save"${save ? "" : " hidden"}><input type="checkbox" id="den-lock-vault"> <span>${esc(save ?? "")}</span></label>` +
     '<span class="den-lock-err" id="den-lock-err" role="alert" hidden></span>' +
+    `<span class="den-note den-lock-cfg"${note ? "" : " hidden"}>${esc(note ?? "")}</span>` +
     '<button class="den-btn primary" type="submit" id="den-lock-go">Unlock</button>' +
     `<span class="den-note">Den asks once per session. Agents can't unlock.</span></form>`
   );

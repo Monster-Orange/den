@@ -88,6 +88,7 @@ beforeEach(() => {
       routes: {},
       workspaces: [],
       ports: null,
+      tls: { strategy: "mkcert", ca: null },
     } as unknown as EdgeConfig,
     stacks: { webapp: s },
     workspace: "main",

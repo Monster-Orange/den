@@ -3,7 +3,12 @@
  * override, the link networks and the edge routes. No I/O.
  */
 import * as yaml from "yaml";
-import { edgeDomains, routeHost } from "../edge/render.js";
+import {
+  edgeDomains,
+  routeEntryPoint,
+  routeHost,
+  routerTls,
+} from "../edge/render.js";
 import type { EdgeConfig } from "../edge/types.js";
 import type { ResolvedProject, StackConfig } from "./types.js";
 
@@ -220,12 +225,12 @@ export function renderStackRoutes(
     const { service, port } = parseTarget(target);
     const key = `stack-${stack.name}-${route}`;
     routers[key] = {
-      entryPoints: ["websecure"],
+      entryPoints: [routeEntryPoint(edge)],
       rule: edgeDomains(edge)
         .map((d) => `Host(\`${routeHost(`${route}.${stack.name}`, d)}\`)`)
         .join(" || "),
       service: key,
-      tls: {},
+      ...routerTls(edge),
     };
     services[key] = {
       loadBalancer: {

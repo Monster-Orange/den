@@ -12,9 +12,17 @@
  *     publish: true          # false: another proxy fronts the edge
  *     http_port: 80
  *     https_port: 443
+ *     tls: none              # http only; or (see tls.ts):
+ *     #   tls: { strategy: mkcert }                   # own local CA, per machine
+ *     #   tls: { strategy: mkcert, ca: ~/path/to/ca } # an existing CA; never minted
+ *     #   tls: { strategy: files, include: edge/dynamic, mounts: {...} }
+ *     #        # included config holds the certs; optional ca: the CA that
+ *     #        # signed them, trusted by health checks
+ *     # legacy (still read, mapped to tls, deprecated):
+ *     #   caroot: <ca>       → tls: { strategy: mkcert, ca: <ca> }
+ *     #   issue_cert: false  → tls: { strategy: files }
+ *     #   neither, no tls    → mkcert with a local CA, and a warning
  *     # opt-ins (all off by default):
- *     caroot: ~/path/to/mkcert-ca   # use an existing CA; never mint one
- *     issue_cert: false             # included config holds the certs
  *     https_redirect: false         # included config redirects per name
  *     docker_labels: { network: apps-network }
  *     include: edge/dynamic         # dynamic-config files, repo-relative
@@ -35,7 +43,8 @@ import { cachedRead } from "../read-cache.js";
 import { readManifestStacks } from "../stacks/config.js";
 import { getActiveWorkspaces } from "../environment-manager/workspaces.js";
 import { assertDomain } from "./render.js";
-import type { EdgeConfig } from "./types.js";
+import { tlsStrategyIds } from "./tls.js";
+import type { EdgeConfig, EdgeTls } from "./types.js";
 
 import { product } from "../product.js";
 export const DEFAULT_TRAEFIK_IMAGE = "traefik:v3.7.17";
@@ -51,6 +60,7 @@ interface RawEdge {
   publish?: boolean;
   http_port?: number;
   https_port?: number;
+  tls?: unknown;
   caroot?: string;
   issue_cert?: boolean;
   https_redirect?: boolean;
@@ -118,6 +128,108 @@ function mounts(v: RawEdge["mounts"], root: string): Record<string, string> {
     out[resolvePath(host, root)] = target;
   }
   return out;
+}
+
+const TLS_KEYS: Record<string, string[]> = {
+  none: ["strategy"],
+  mkcert: ["strategy", "ca"],
+  files: ["strategy", "ca", "include", "mounts"],
+};
+
+interface ResolvedTls {
+  tls: EdgeTls;
+  from: EdgeConfig["tlsFrom"];
+  /** `files`' own include and mounts (raw, resolved by the caller). */
+  include?: string;
+  mounts?: Record<string, string>;
+}
+
+/**
+ * `edge.tls` (user.yml's replaces the team's), or the legacy keys mapped to
+ * it (EXT-1 rule 6): `issue_cert: false` → files, `caroot` → mkcert with
+ * `ca`, neither → mkcert with a local CA (implicit, warned).
+ */
+function readTls(team: RawEdge, user: RawEdge, root: string): ResolvedTls {
+  const raw = user.tls ?? team.tls;
+  const caroot = user.caroot ?? team.caroot;
+  const issue = user.issue_cert ?? team.issue_cert;
+  const ids = tlsStrategyIds();
+  const builtIns = ids.join(", ");
+  if (raw === undefined) {
+    const ca = caroot ? resolvePath(caroot, root) : null;
+    return {
+      tls:
+        issue === false
+          ? { strategy: "files", ca }
+          : { strategy: "mkcert", ca },
+      from: caroot === undefined && issue === undefined ? "implicit" : "legacy",
+    };
+  }
+  const legacy = [
+    ...(caroot !== undefined ? ["caroot"] : []),
+    ...(issue !== undefined ? ["issue_cert"] : []),
+  ];
+  if (legacy.length)
+    throw new Error(
+      `edge.tls replaces edge.${legacy.join(" and edge.")}; remove ${legacy.length > 1 ? "them" : "it"} ` +
+        "(caroot is tls.ca, issue_cert: false is tls.strategy: files).",
+    );
+  const obj: Record<string, unknown> =
+    typeof raw === "string"
+      ? { strategy: raw }
+      : raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : {};
+  const id = obj.strategy;
+  if (typeof id !== "string" || !id)
+    throw new Error(
+      `edge.tls must be a strategy id or { strategy: <id>, ... }; the built-ins are ${builtIns}`,
+    );
+  if (!ids.includes(id))
+    throw new Error(
+      `edge.tls.strategy "${id}" is not a known TLS strategy; the built-ins are ${builtIns}`,
+    );
+  const allowed = TLS_KEYS[id] ?? ["strategy"];
+  for (const k of Object.keys(obj))
+    if (!allowed.includes(k))
+      throw new Error(
+        `edge.tls.${k} does not apply to strategy ${id} (it takes ${allowed.join(", ")})`,
+      );
+  let ca: string | null = null;
+  if (obj.ca !== undefined) {
+    if (typeof obj.ca !== "string" || !obj.ca.trim())
+      throw new Error(
+        "edge.tls.ca must be the path to an existing CA directory",
+      );
+    ca = resolvePath(obj.ca, root);
+  }
+  if (
+    obj.include !== undefined &&
+    (typeof obj.include !== "string" || !obj.include)
+  )
+    throw new Error(
+      "edge.tls.include must be a directory of dynamic-config files",
+    );
+  if (
+    obj.mounts !== undefined &&
+    (!obj.mounts || typeof obj.mounts !== "object" || Array.isArray(obj.mounts))
+  )
+    throw new Error("edge.tls.mounts must map host paths to container paths");
+  const tls: EdgeTls =
+    id === "none"
+      ? { strategy: "none" }
+      : { strategy: id as "mkcert" | "files", ca };
+  return {
+    tls,
+    from: "explicit",
+    include: obj.include as string | undefined,
+    mounts: obj.mounts as Record<string, string> | undefined,
+  };
+}
+
+/** True when the org config has an `edge:` block (an edge is configured). */
+export function hasEdgeBlock(root: string = getDistRoot()): boolean {
+  return layers(root).team.edge !== undefined;
 }
 
 /** The web UI's route name: the brand name as a slug ("Den" → "den"). */
@@ -188,6 +300,12 @@ function computeEdgeConfig(root: string): EdgeConfig {
     throw new Error("edge.aliases must be a list of domains");
   aliases.forEach(assertDomain);
   const publish = user.publish ?? team.publish ?? true;
+  const tls = readTls(team, user, root);
+  if (tls.include !== undefined && team.include !== undefined)
+    throw new Error(
+      "edge.include and edge.tls.include are both set; keep one (tls.include for files' certs)",
+    );
+  const include = tls.include ?? team.include;
   return {
     org: team.org,
     domain: team.domain,
@@ -225,15 +343,15 @@ function computeEdgeConfig(root: string): EdgeConfig {
           "edge",
         ),
     ),
-    caroot:
-      (user.caroot ?? team.caroot)
-        ? resolvePath((user.caroot ?? team.caroot)!, root)
-        : null,
-    issueCert: (user.issue_cert ?? team.issue_cert) !== false,
+    tls: tls.tls,
+    tlsFrom: tls.from,
     httpsRedirect: (user.https_redirect ?? team.https_redirect) !== false,
     dockerLabels: dockerLabels(user.docker_labels ?? team.docker_labels),
-    include: team.include ? resolvePath(team.include, root) : null,
-    mounts: mounts({ ...(team.mounts ?? {}), ...(user.mounts ?? {}) }, root),
+    include: include ? resolvePath(include, root) : null,
+    mounts: mounts(
+      { ...(team.mounts ?? {}), ...(user.mounts ?? {}), ...(tls.mounts ?? {}) },
+      root,
+    ),
     networks: [
       ...new Set([
         ...list(team.networks, "networks"),

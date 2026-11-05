@@ -360,9 +360,40 @@ config and manifest changes a distribution must make to move to it under
   `secrets: { provider: none }`, with the choices in a comment, so a new
   distribution depends on no store. See "Secrets" in
   `docs/distributions.md`.
+- **The edge's TLS is a registered strategy: `edge.tls`** (0.3.0-dev.25,
+  TLS-1a). `none`, `mkcert` and `files` register through the strategy
+  registry as kind `tls`, as the secrets backends do. `tls: none` serves
+  http only (no https entrypoint, no cert work, mkcert never run);
+  `{ strategy: mkcert }` issues the edge's wildcard cert from a local CA,
+  its own or `ca:` (an existing CA, never minted or uninstalled);
+  `{ strategy: files, include, mounts }` serves the certs your included
+  config holds (`ca:` optional, for health checks). An unknown strategy,
+  or a key a strategy does not take, is a validation error naming the
+  built-ins. mkcert's `detect()` is a PATH check: with it missing,
+  `validate`, `doctor`, `edge up` and `edge trust` say "mkcert is not
+  installed" instead of a spawn error. `edge trust` / `untrust` exist under
+  mkcert, and `edge trust` also under `files` with a `ca` (it installs that
+  existing CA, as `caroot` did); elsewhere they exit 1 ("edge trust needs
+  edge.tls.strategy: mkcert (or files with a ca)").
+  `den create` scaffolds `edge.tls: none`, with the mkcert and files forms
+  in a comment. `/api/edge` adds `tls: { strategy, implicit }`. See "The
+  edge and TLS" in `docs/distributions.md`.
+- **`<cli> doctor`** (0.3.0-dev.25): each strategy kind (secrets, tls),
+  the strategy selected, whether it was implicit, and its `detect()` with
+  the reason. Read-only: a PATH check, never a backend CLI, a prompt or a
+  secret value. Exit 1 when a strategy that will be used cannot work.
 
 ### Changed
 
+- **Existing edge configs render exactly as before** (0.3.0-dev.25). The
+  legacy keys map to `edge.tls` (EXT-1 rule 6): `issue_cert: false` is
+  `files`, `caroot` is `mkcert` with `ca`, and an `edge:` block with
+  neither is `mkcert` with the edge's own CA. A test renders each shape
+  (and its explicit `edge.tls` form) and compares the Traefik dynamic and
+  compose files, cert names and paths, route URLs and the mkcert call
+  byte for byte with 0.3.0-dev.24's own output. Under `files` with no `ca`,
+  `edge trust` now refuses (it minted a CA that signs nothing the edge
+  serves); with a `ca` it installs that CA, as before.
 - **No built-in secret locations** (0.3.0-dev.23). Den no longer assumes a
   vault, item, field, key or account of its own: the default 1Password
   vault, developer-keys item and sudo field, the default account domain, and
@@ -391,6 +422,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Deprecated
 
+- **The implicit mkcert default (set `edge.tls`)** (0.3.0-dev.25). An
+  `edge:` block with no `tls`, `caroot` or `issue_cert` still means mkcert
+  with a local CA, and warns once per run (`validate`, `doctor`, `edge up`,
+  `stack up`): "edge.tls is not set; defaulting to mkcert with a local CA.
+  Set edge.tls explicitly." `edge.caroot` and `edge.issue_cert` still work,
+  and `validate` and `doctor` name the `edge.tls` line that says the same.
 - **The implicit doppler default (set `secrets.provider`)** (0.3.0-dev.23).
   An unset `secrets.provider` still means `doppler`, but only when something
   actually resolves a secret; the first time it does, Den warns once:
@@ -404,6 +441,25 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **A fresh distribution runs no gh for a placeholder org** (0.3.0-dev.25,
+  from a consumer's dev.24 run): `den create` wrote `github_org:
+  your-github-org`, and Local Dev then ran `gh repo list your-github-org`
+  on every load. The scaffold now leaves `github_org` commented out, with
+  an example. With `github_org` unset or still a placeholder
+  (`your-github-org`, `your-org`, `<your-org>`, `example-org`) GitHub is
+  "not configured": `/api/github/repos` is empty and runs no gh (no
+  fallback to catalog owners or a git remote), and `register`'s GitHub
+  list ignores a placeholder.
+- **The lock's not-configured note names your config file** (0.3.0-dev.25):
+  with no `secrets.refs.sudo`, the admin-password popover says "Saving the
+  password is off: set secrets.provider and secrets.refs.sudo in
+  config/acme.yml.", the distribution's real file, from the new
+  `configFile` field of `/api/sudo-password/vault-status`.
+- **`register` with no terminal exits cleanly** (0.3.0-dev.25): with stdin
+  closed or piped, the interactive `register` crashed with
+  ERR_USE_AFTER_CLOSE. It now exits 1: "register needs a terminal (stdin
+  is not a TTY)", naming the non-interactive form, `register <path>
+  [--name <repo>] [--gh <owner/repo>]`.
 - **`bin/den` sets no backend account** (0.3.0-dev.24, from a consumer's
   dev.23 run): the launcher exported `OP_ACCOUNT` with a placeholder
   domain for every command, whatever the secrets backend, so it reached
@@ -719,6 +775,40 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
+- 0.3.0-dev.25, edge TLS. Nothing is required: every existing edge config
+  renders as before (only `edge trust` under `issue_cert: false` with no
+  `caroot` now refuses). To silence the warnings, say what your config already means,
+  in the org config (`config/<cli>.yml`):
+  - **No `tls`, `caroot` or `issue_cert`** (the implicit default):
+
+    ```yaml
+    edge:
+      tls: { strategy: mkcert }
+    ```
+
+    Or, if the edge needs no https, `tls: none`.
+  - **`caroot: <ca>`**: replace it with
+
+    ```yaml
+    edge:
+      tls: { strategy: mkcert, ca: <ca> }
+    ```
+
+  - **`issue_cert: false`** (with `include` and `mounts`): replace it with
+
+    ```yaml
+    edge:
+      tls:
+        strategy: files
+        include: edge/dynamic # was edge.include
+        mounts: { <host path>: <container path> } # was edge.mounts
+    ```
+
+    `include` and `mounts` may also stay where they were. With `caroot`
+    too, move it to `ca: <ca>` under `tls`.
+  - `edge.tls` beside `caroot` or `issue_cert` is an error: move them.
+  - `github_org: your-github-org` from an earlier `den create`: set your
+    real org, or delete the line.
 - 0.3.0-dev.23, secrets. Nothing is required of a distribution that uses
   no secrets; the YAML below goes in the org config (`config/<cli>.yml`).
   - **Relied on the old 1Password defaults** (the saved sudo password or

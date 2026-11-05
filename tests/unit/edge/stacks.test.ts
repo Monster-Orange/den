@@ -68,7 +68,8 @@ const edge: EdgeConfig = {
   routes: {},
   ports: null,
   stateDir: "/tmp/x",
-};
+  tls: { strategy: "mkcert", ca: null },
+} as EdgeConfig;
 
 describe("stack planning", () => {
   it("starts providers before the stacks that use them, and rejects cycles", () => {

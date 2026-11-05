@@ -13,6 +13,7 @@
 
 import { execSync } from "child_process";
 import * as fs from "fs";
+import { isPlaceholderGithubOrg } from "../den-config.js";
 
 export interface GitHubCoords {
   owner: string;
@@ -101,6 +102,9 @@ export function managedReposOrg(
   githubOrg: string | undefined,
   distRoot: string,
 ): string | null {
-  const org = githubOrg?.trim() || distributionGitHubOwner(distRoot);
+  const set = githubOrg?.trim();
+  // A placeholder (`your-github-org`) is not an org: never list it.
+  const configured = set && !isPlaceholderGithubOrg(set) ? set : "";
+  const org = configured || distributionGitHubOwner(distRoot);
   return org && /^[A-Za-z0-9][A-Za-z0-9-]*$/.test(org) ? org : null;
 }

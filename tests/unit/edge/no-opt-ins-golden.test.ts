@@ -23,8 +23,8 @@ const golden = JSON.parse(
 
 // The opt-ins at their defaults (what readEdgeConfig gives when none is set).
 const defaults = {
-  caroot: null,
-  issueCert: true,
+  tls: { strategy: "mkcert", ca: null },
+  tlsFrom: "explicit",
   httpsRedirect: true,
   dockerLabels: null,
   include: null,

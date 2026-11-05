@@ -437,6 +437,76 @@ OPENAI_API_KEY (names only; not resolved in a dry run)`.
   (`[A-Za-z_][A-Za-z0-9_]*`). A `stacks:` entry in the org config takes
   `secret_env` too.
 
+## The edge and TLS
+
+The edge is one Traefik per org that routes `<name>.<edge.domain>` (and
+every `edge.aliases` domain) to local services. It exists only when the
+org config has an `edge:` block, which needs `org` and `domain`; Den has
+no default domain. How it gets certificates is a strategy, `edge.tls`:
+
+```yaml
+# config/acme.yml
+edge:
+  org: acme
+  domain: acme.localhost
+  tls: none # http only: no https entrypoint, no cert work, no mkcert
+  # tls: { strategy: mkcert }                  # a local CA, minted per machine
+  # tls: { strategy: mkcert, ca: ~/path/to/ca } # an existing mkcert CA
+  # tls:                                       # your own certs
+  #   strategy: files
+  #   include: edge/dynamic                    # Traefik dynamic config holding them
+  #   mounts: { edge/certs: /etc/traefik/dynamic/certs }
+  #   ca: ~/path/to/ca                         # optional: the CA that signed them
+```
+
+| Strategy | What the edge does                                                                                                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `none`   | Serves http on `edge.http_port` (80) only. Route URLs are `http://`. No cert, no CA, mkcert is never run.                                                                                              |
+| `mkcert` | Issues its own wildcard cert for every domain, workspace and stack zone. Its CA is its own under the state dir (`~/.local/share/<org>/edge/ca`), or `ca`, an existing CA it never mints or uninstalls. |
+| `files`  | Issues nothing: the `include` directory (copied beside the generated config) and `mounts` hold the certs. `ca` only tells health checks which CA to trust.                                             |
+
+`tls: <id>` is short for `tls: { strategy: <id> }`. `config/local/user.yml`'s
+`edge.tls` replaces the team's whole. An unknown strategy, or a key the
+strategy does not take, is an error naming the built-ins (`none`, `mkcert`,
+`files`). `secret` (cert and key from the secrets strategy) and `acme` are
+later plugins.
+
+- **mkcert is checked before it is used.** It is run from PATH, never
+  bundled. With it missing, `validate`, `doctor`, `edge up` and `edge trust`
+  say "mkcert is not installed" instead of failing a spawn.
+- **`<cli> edge trust` and `untrust` exist under mkcert.** `edge trust` also
+  works under `files` with a `ca` (it installs that existing CA). Elsewhere
+  they exit 1: "edge trust needs edge.tls.strategy: mkcert (or files with a
+  ca)". `untrust` is
+  refused for a shared CA (`ca:`), whose trust other devices rely on.
+- **`<cli> create`** scaffolds `tls: none`, with the other forms in a
+  comment: one line opts into https.
+- **Legacy keys** still work, mapped to a strategy, with no change to what
+  the edge renders: `issue_cert: false` is `files`, `caroot: <ca>` is
+  `mkcert` with `ca`, and an `edge:` block with neither is `mkcert` with
+  its own CA, warned once per run ("edge.tls is not set; defaulting to
+  mkcert with a local CA. Set edge.tls explicitly.") by `validate`,
+  `doctor`, `edge up` and `stack up`. `edge.tls` beside a legacy key is an
+  error. See the 0.3.0 Migrations in the changelog.
+
+## doctor
+
+`<cli> doctor` lists every strategy kind in the registry (secrets, tls):
+the one this distribution selects, whether nothing chose it (implicit),
+and whether it can work on this machine, with the reason. It only checks
+PATH: it never runs a backend CLI, prompts, or prints a secret. It exits
+1 when a strategy that will be used cannot work (an implicit secrets
+default is used only when a secret is asked for, so it never fails
+doctor).
+
+```
+Acme doctor: strategies
+
+  secrets  none                 ✓ available: no secrets backend configured
+  tls      mkcert (implicit)    ✗ unavailable: mkcert is not installed
+    ⚠ edge.tls is not set; defaulting to mkcert with a local CA. Set edge.tls explicitly.
+```
+
 ## den.yml: the product profile
 
 Every runtime name derives from `product.name`. Set only what you want to

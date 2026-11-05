@@ -18,8 +18,8 @@ const edge: EdgeConfig = {
   routes: { web: "http://localhost:3000" },
   ports: { http: 80, https: 443 },
   stateDir: "/nonexistent/edge-state",
-  caroot: null,
-  issueCert: true,
+  tls: { strategy: "mkcert", ca: null },
+  tlsFrom: "explicit",
   httpsRedirect: true,
   dockerLabels: null,
   include: null,
@@ -140,7 +140,23 @@ describe("edgeStatus", () => {
       certNames: ["acme.localhost", "*.acme.localhost"],
       certIssued: true,
       caTrusted: true,
+      tls: { strategy: "mkcert", implicit: false },
     });
+  });
+
+  it("tls: none: http URLs, no cert names, no CA to trust", () => {
+    const st = edgeStatus(
+      { ...edge, tls: { strategy: "none" } },
+      {
+        containerState: () => "running",
+        caTrusted: () => false,
+        issuedNames: () => null,
+      },
+    );
+    expect(st.routes[0].url).toBe("http://web.acme.localhost");
+    expect(st.certNames).toEqual([]);
+    expect(st.caTrusted).toBeNull();
+    expect(st.tls).toEqual({ strategy: "none", implicit: false });
   });
 
   it("down with no cert issued yet: the planned names, flagged not issued", () => {

@@ -1,13 +1,16 @@
 /**
- * Den runs with no secrets store (0.3.0-dev.23).
+ * Den runs bare: no secrets store (0.3.0-dev.23), no TLS (0.3.0-dev.25).
  *
  * A distribution made by `den create` (which scaffolds `secrets.provider:
- * none`), and the same distribution with NO `secrets:` block at all (the
- * implicit doppler default, resolved lazily), each run through the real
- * CLI, make, the web server and a test run. `op` and `doppler` are taken
- * off PATH, and fakes that record every invocation are put on it instead:
- * neither is ever called, nothing warns, and every secret-backed endpoint
- * or command says "not configured" instead of failing.
+ * none` and `edge.tls: none`), and the same distribution with NO `secrets:`
+ * block at all (the implicit doppler default, resolved lazily), each run
+ * through the real CLI, make, the web server and a test run. `op`,
+ * `doppler`, `mkcert` and `gh` are taken off PATH, and fakes that record
+ * every invocation are put on it instead: none is ever called, nothing
+ * warns, and every secret-backed endpoint or command says "not configured"
+ * instead of failing. An edge block with no `tls` (the implicit mkcert
+ * default) reports "mkcert is not installed" instead of crashing, and warns
+ * once.
  *
  * The test run is a one-iteration performance test and needs k6; without
  * k6 on PATH that one step is skipped (the rest still runs).
@@ -25,7 +28,8 @@ import {
 } from "../../../src/ui/cli/create.js";
 
 const ENGINE = process.cwd();
-const SECRET_CLIS = ["op", "doppler"];
+/** External CLIs taken off PATH and replaced by recording fakes. */
+const SECRET_CLIS = ["op", "doppler", "mkcert", "gh"];
 
 interface Run {
   code: number | null;
@@ -63,7 +67,13 @@ const onRealPath = (bin: string): boolean =>
     .some((d) => d && fs.existsSync(path.join(d, bin)));
 
 /** One throwaway distribution, its fakes and its env. */
-function fixture(label: string, secretsBlock: "none" | "absent") {
+function fixture(
+  label: string,
+  secretsBlock: "none" | "absent",
+  tls: "none" | "absent" = "none",
+  /** CLIs with no recording fake: truly not on PATH. */
+  absent: string[] = [],
+) {
   const tmp = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), `den-nostore-${label}-`)),
   );
@@ -84,6 +94,16 @@ function fixture(label: string, secretsBlock: "none" | "absent") {
     expect(fs.readFileSync(cfgFile, "utf-8")).toMatch(
       /secrets:\n {2}provider: none\n/,
     );
+  }
+  // The scaffold's edge has `tls: none` and no github_org.
+  expect(fs.readFileSync(cfgFile, "utf-8")).toMatch(/\n {2}tls: none\n/);
+  expect(fs.readFileSync(cfgFile, "utf-8")).not.toMatch(/^github_org:/m);
+  if (tls === "absent") {
+    const cfg = fs
+      .readFileSync(cfgFile, "utf-8")
+      .replace(/ {2}# TLS:[\s\S]*? {2}tls: none\n/, "");
+    expect(cfg).not.toMatch(/tls/);
+    fs.writeFileSync(cfgFile, cfg);
   }
   // The engine, as `npm install` of a linked checkout would place it.
   fs.mkdirSync(path.join(dist, "node_modules", "@monster-orange"), {
@@ -139,18 +159,18 @@ function fixture(label: string, secretsBlock: "none" | "absent") {
     "export const options = { vus: 1, iterations: 1 };\nexport default function () {}\n",
   );
 
-  // Fakes that record any call; no real op or doppler on PATH.
+  // Fakes that record any call; no real op, doppler, mkcert or gh on PATH.
   const fakeBin = path.join(tmp, "fake-bin");
   const calls = path.join(tmp, "secret-cli-calls");
   fs.mkdirSync(fakeBin);
-  for (const bin of SECRET_CLIS) {
+  for (const bin of SECRET_CLIS.filter((b) => !absent.includes(b))) {
     fs.writeFileSync(
       path.join(fakeBin, bin),
       `#!/bin/sh\necho "${bin} $*" >> ${calls}\nexit 1\n`,
       { mode: 0o755 },
     );
   }
-  // PATH without op and doppler: a dir holding either is replaced by a
+  // PATH without those: a dir holding any of them is replaced by a
   // mirror of links to everything else in it (k6, git, node stay reachable).
   const realDirs = (process.env.PATH ?? "")
     .split(path.delimiter)
@@ -237,6 +257,33 @@ describe.each([
     expect(`${s.out}${v.out}`).not.toMatch(/warn|⚠|deprecated/i);
   }, 120_000);
 
+  it("doctor: every strategy, none needing a CLI", () => {
+    const d = f.acme("doctor");
+    expect(d.out).toMatch(/Acme doctor: strategies/);
+    expect(d.out).toMatch(
+      block === "none"
+        ? /secrets +none +✓ available: no secrets backend configured/
+        : /secrets +doppler \(implicit\) +✓ available/, // the recording fake
+    );
+    expect(d.out).toMatch(/tls +none +✓ available: http only/);
+    expect(d.out).not.toMatch(/⚠|deprecated/);
+    // The implicit doppler default is used only when a secret is asked for.
+    expect(d.code).toBe(0);
+  }, 120_000);
+
+  it("edge trust is refused without mkcert's strategy", () => {
+    const r = f.acme("edge", "trust");
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/edge trust needs edge.tls.strategy: mkcert/);
+  }, 120_000);
+
+  it("register with stdin closed exits 1 cleanly", () => {
+    const r = f.acme("register");
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/register needs a terminal \(stdin is not a TTY\)/);
+    expect(r.out).not.toMatch(/ERR_USE_AFTER_CLOSE|at .*\.ts:\d+/);
+  }, 120_000);
+
   it("up (dry run, then for real) and down", () => {
     const dry = f.acme("up", "shop", "-n");
     expect(dry.code).toBe(0);
@@ -281,6 +328,9 @@ describe.each([
     }
     const health = await get(port, "/api/health");
     expect(health.code).toBe(200);
+    // What Local Dev asks on load: no github_org, so no GitHub listing.
+    const repos = await get(port, "/api/github/repos");
+    expect([repos.code, JSON.parse(repos.out)]).toEqual([200, []]);
     for (const page of ["/", "/services", "/local-dev", "/settings"]) {
       const r = await get(port, page);
       expect([page, r.code]).toEqual([page, 200]);
@@ -296,6 +346,7 @@ describe.each([
       backendAvailable: false,
       opAvailable: false,
       hasStored: false,
+      configFile: "config/acme.yml",
     });
     expect(vs.reason).toBe(
       "not configured: set secrets.provider and secrets.refs.sudo in config/acme.yml",
@@ -320,7 +371,51 @@ describe.each([
     port = 0;
   }, 120_000);
 
-  it("op and doppler were never called", () => {
+  it("op, doppler, mkcert and gh were never called", () => {
+    expect(fs.existsSync(f.calls)).toBe(false);
+  });
+});
+
+describe("an edge block with no tls, and mkcert off PATH", () => {
+  let f: ReturnType<typeof fixture>;
+
+  beforeAll(() => {
+    // No fake mkcert: a call would fail to spawn, and the test sees that.
+    f = fixture("implicit-tls", "none", "absent", ["mkcert"]);
+  });
+  afterAll(() => {
+    fs.rmSync(f.tmp, { recursive: true, force: true });
+  });
+
+  const warning =
+    "edge.tls is not set; defaulting to mkcert with a local CA. Set edge.tls explicitly.";
+  const count = (out: string) => out.split(warning).length - 1;
+
+  it("validate reports 'mkcert is not installed' and warns once", () => {
+    const v = f.run(path.join(f.dist, "bin", "acme"), ["validate"], f.repo);
+    expect(v.code).toBe(0);
+    expect(v.out).toMatch(/edge.tls mkcert: mkcert is not installed/);
+    expect(count(v.out)).toBe(1);
+    expect(v.out).not.toMatch(/ENOENT|spawnSync|at .*\.ts:\d+/);
+  }, 120_000);
+
+  it("doctor reports it and warns once, exit 1", () => {
+    const d = f.acme("doctor");
+    expect(d.out).toMatch(
+      /tls +mkcert \(implicit\) +✗ unavailable: mkcert is not installed/,
+    );
+    expect(count(d.out)).toBe(1);
+    expect(d.code).toBe(1);
+  }, 120_000);
+
+  it("edge trust says mkcert is not installed (not a spawn error)", () => {
+    const r = f.acme("edge", "trust");
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/mkcert is not installed\. Install it/);
+    expect(r.out).not.toMatch(/ENOENT/);
+  }, 120_000);
+
+  it("nothing external was called", () => {
     expect(fs.existsSync(f.calls)).toBe(false);
   });
 });

@@ -422,11 +422,33 @@ export function mergeUserConfig(patch: Partial<UserConfig>): UserConfig {
 }
 
 /**
+ * A scaffold or docs placeholder rather than a real org: `your-github-org`,
+ * `your-org`, `<your-org>`, `<slug>`, `example-org`. Den treats it as unset.
+ */
+export function isPlaceholderGithubOrg(org: string): boolean {
+  return /^(your[-_]?(github[-_]?)?org|<.*>|example[-_]?org)$/i.test(
+    org.trim(),
+  );
+}
+
+/**
+ * The configured `github_org`, or null when it is unset or still a
+ * placeholder ("not configured": Den runs no gh for it).
+ */
+export function configuredGithubOrg(
+  config: DenConfig = readDenConfig(),
+): string | null {
+  const org =
+    typeof config.github_org === "string" ? config.github_org.trim() : "";
+  return org && !isPlaceholderGithubOrg(org) ? org : null;
+}
+
+/**
  * The GitHub org managed repos clone from. Den has no default: an org that
  * needs one sets `github_org` in its config.
  */
 export function requireGithubOrg(config: DenConfig = readDenConfig()): string {
-  const org = config.github_org?.trim();
+  const org = configuredGithubOrg(config);
   if (!org)
     throw new Error(
       `github_org is not set: add \`github_org: <your-org>\` to ${DEN_CONFIG_PATH}`,
