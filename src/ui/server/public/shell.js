@@ -1524,6 +1524,29 @@
       el.focus();
     });
 
+  // The browser-tab icon is the active theme's (dev.22), set here and
+  // nowhere else: no page links one. Until appearance.js knows the theme
+  // (it calls setFavicon with the versioned URL for the mode it draws in,
+  // again on every theme or mode change), the bare route serves the
+  // active theme's, never cached.
+  function setFavicon(href) {
+    var links = document.querySelectorAll('link[rel~="icon"]');
+    var link = document.getElementById("den-favicon");
+    for (var i = 0; i < links.length; i++)
+      if (links[i] !== link) links[i].remove();
+    if (!link) {
+      link = document.createElement("link");
+      link.id = "den-favicon";
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    if (link.getAttribute("href") !== href) link.setAttribute("href", href);
+  }
+  setFavicon(
+    "/theme-favicon?mode=" +
+      (document.documentElement.dataset.mode === "light" ? "light" : "dark"),
+  );
+
   document.body.classList.add("den-has-shell");
   applyCollapsed();
   renderRail();
@@ -1545,6 +1568,8 @@
     unpin: unpin,
     isPinned: isPinned,
     toast: toast,
+    /** The browser-tab icon (appearance.js: the active theme's, per mode). */
+    setFavicon: setFavicon,
     /** The org part of the scope: "/ ORG <title>", static (one org). */
     setOrg: setOrg,
     setOrgs: setOrgs,
@@ -1891,6 +1916,12 @@
     "  .den-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }",
     "  .den-top .stale-lbl { display: none; }",
     "  .den-chips { flex-shrink: 0; }",
+    "}",
+    // Below 480px only the mark shows: the title stays the link's name,
+    // visually hidden (SA's dev.21 run).
+    "@media (max-width: 479.98px) {",
+    "  .den-title { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;",
+    "    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }",
     "}",
     "@media (prefers-reduced-motion: reduce) { .den-rail { transition: none; } }",
   ].join("\n");

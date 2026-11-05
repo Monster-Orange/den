@@ -642,6 +642,7 @@ export async function mountSettings(deps) {
     e.preventDefault();
     go({ category: a.dataset.cat }, "push");
     markCurrent(a.dataset.cat);
+    lockCurrent(a.dataset.cat);
     scrollToCategory(a.dataset.cat, true);
     focusHeading(a.dataset.cat);
   });
@@ -687,8 +688,38 @@ export async function mountSettings(deps) {
     search.focus();
     search.select();
   });
+  // Your pick holds while the smooth scroll runs (SA's dev.21 run: the spy
+  // walked aria-current through every category it passed). It lets go on
+  // scrollend, or, where there is none, once the scroll has been still for
+  // a while, at most ~1s after the last move; then the spy looks again.
+  let locked = null;
+  let lockTimer = 0;
+  const hasScrollEnd = scroller && "onscrollend" in scroller;
+  function unlock() {
+    if (!locked) return;
+    locked = null;
+    clearTimeout(lockTimer);
+    spy();
+  }
+  function lockCurrent(id) {
+    locked = id;
+    clearTimeout(lockTimer);
+    // No scroll may come at all (already there): let go after ~1s.
+    lockTimer = setTimeout(unlock, 1000);
+  }
+  scroller?.addEventListener("scrollend", unlock);
   // The section in view is the current one (the URL keeps your pick).
   scroller?.addEventListener("scroll", () => {
+    if (locked) {
+      markCurrent(locked);
+      // Still moving: the fallback waits for the scroll to settle.
+      clearTimeout(lockTimer);
+      lockTimer = setTimeout(unlock, hasScrollEnd ? 1000 : 150);
+      return;
+    }
+    spy();
+  });
+  function spy() {
     const box = scroller.getBoundingClientRect();
     const top = box.top + 24;
     const all = [...body.querySelectorAll("section[data-cat]")];
@@ -709,7 +740,7 @@ export async function mountSettings(deps) {
           : all[all.length - 1].dataset.cat;
     }
     if (cur) markCurrent(cur);
-  });
+  }
   // The registry or the appearance changed (a plugin, the ◐ menu): repaint.
   window.addEventListener("den:settings", () => draw());
   window.addEventListener("den:appearance", () => {

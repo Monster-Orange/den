@@ -358,6 +358,9 @@ describe("theme add, list, remove", () => {
       version: "0.1.0",
     });
     expect(fs.existsSync(path.join(dir, "mark.svg"))).toBe(true);
+    // Not Den's tab icon: the new theme's tab shows its own mark (dev.22).
+    expect(m.favicon).toBeUndefined();
+    expect(fs.existsSync(path.join(dir, "favicon.ico"))).toBe(false);
     lines.length = 0;
     expect(await cmdTheme(["list"], { distRoot: dist, log })).toBe(0);
     expect(lines.join("\n")).toMatch(/team-blue\s+0\.1\.0\s+local/);

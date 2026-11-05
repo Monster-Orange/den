@@ -581,6 +581,66 @@ describe("the current category (SA's dev.20 run)", () => {
   }, 30_000);
 });
 
+describe("aria-current holds your pick while the page scrolls (SA's dev.21 run)", () => {
+  it("a click or Enter on a category marks only it during the smooth scroll, then the spy resumes", async () => {
+    if (!browser) return;
+    const { p } = await open("/settings");
+    const ids = await sectionIds(p);
+    // Record every category marked current from now on.
+    const watch = () =>
+      p.evaluate(() => {
+        const w = window as unknown as { marks: string[] };
+        w.marks = [];
+        const nav = document.getElementById("set-nav")!;
+        new MutationObserver(() => {
+          const cur = nav
+            .querySelector('[aria-current="true"]')
+            ?.getAttribute("data-cat");
+          if (cur && w.marks.at(-1) !== cur) w.marks.push(cur);
+        }).observe(nav, {
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["aria-current"],
+        });
+      });
+    const marks = () =>
+      p.evaluate(() => (window as unknown as { marks: string[] }).marks);
+    const settled = () =>
+      p.waitForFunction(
+        () => {
+          const w = window as unknown as { y?: number; still?: number };
+          const y = document.getElementById("den-content")!.scrollTop;
+          w.still = w.y === y ? (w.still ?? 0) + 1 : 0;
+          w.y = y;
+          return w.still > 6;
+        },
+        undefined,
+        { polling: 100, timeout: 5000 },
+      );
+    // From the top, a click on a category far down the page: the scroll
+    // passes every one between, and none of them is marked.
+    const far = ids.at(-2)!;
+    await watch();
+    await p.click(`#set-nav [data-cat="${far}"]`);
+    await settled();
+    expect(await marks()).toEqual([far]);
+    // Back up with Enter on the first: the same.
+    await watch();
+    await p.focus(`#set-nav [data-cat="${ids[0]}"]`);
+    await p.keyboard.press("Enter");
+    await settled();
+    expect(await marks()).toEqual([ids[0]]);
+    // Then the spy is back: a scroll of your own moves aria-current.
+    await watch();
+    await p.evaluate((id) => {
+      document.getElementById(`cat-${id}`)!.scrollIntoView({ block: "start" });
+    }, ids[2]);
+    await settled();
+    expect((await marks()).at(-1)).toBe(ids[2]);
+    await p.context().close();
+  }, 30_000);
+});
+
 describe("one h1 per page (the brand is not a heading)", () => {
   it("/settings and /services each have exactly one h1, the page's own, in main", async () => {
     if (!browser) return;

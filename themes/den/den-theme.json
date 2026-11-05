@@ -24,6 +24,7 @@
     "svg": "mark.svg",
     "shape": "rounded"
   },
+  "favicon": "favicon.ico",
   "modes": {
     "light": {
       "bg": "#f2eee8",

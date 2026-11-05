@@ -423,6 +423,7 @@ const themeDeps: ThemeRouteDeps = {
   prefs: () => appearancePrefs(readUserConfig().appearance),
   distributionTheme: () => readBrand().theme,
   warn: (line) => serverLog(line, "warn"),
+  denFavicon: path.join(PUBLIC_DIR, "favicon.ico"),
 };
 // The pre-paint script in each page reads the user's mode and the theme's
 // default mode from these placeholders, so the first paint is right.

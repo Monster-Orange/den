@@ -38,6 +38,10 @@
     "type": { "$ref": "#/$defs/type" },
     "shape": { "$ref": "#/$defs/shape" },
     "mark": { "$ref": "#/$defs/mark" },
+    "favicon": {
+      "description": "The browser-tab icon: a PNG, SVG or ICO file in the theme (at most 64 KB). Omitted: the mark's file (its dark variant in dark mode), else Den's own icon.",
+      "$ref": "#/$defs/faviconPath"
+    },
     "fonts": {
       "description": "Font files shipped in the theme (no CDN): Den serves them itself, so the theme works offline.",
       "type": "array",
@@ -185,7 +189,7 @@
       }
     },
     "mark": {
-      "description": "The brand mark in the top bar: an SVG file in the theme (shown as an image, never inlined), or text drawn by Den.",
+      "description": "The brand mark in the top bar: an SVG file in the theme (shown as an image, never inlined), a PNG or WebP file (for a mark that exists only as a raster: at least 44×44 px, at most 64 KB), or text drawn by Den. One image kind per mark: svg, png or webp.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -193,6 +197,16 @@
         "svg_dark": {
           "$ref": "#/$defs/path",
           "description": "A dark-mode variant, if the mark needs one."
+        },
+        "png": { "$ref": "#/$defs/pngPath" },
+        "png_dark": {
+          "$ref": "#/$defs/pngPath",
+          "description": "A dark-mode variant of the png mark."
+        },
+        "webp": { "$ref": "#/$defs/webpPath" },
+        "webp_dark": {
+          "$ref": "#/$defs/webpPath",
+          "description": "A dark-mode variant of the webp mark."
         },
         "text": { "type": "string", "maxLength": 3 },
         "shape": { "enum": ["square", "rounded", "circle"] }
@@ -231,6 +245,21 @@
       "description": "A file inside the theme's directory: relative, no '..'.",
       "type": "string",
       "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.svg$"
+    },
+    "pngPath": {
+      "description": "A PNG file inside the theme's directory: relative, no '..'.",
+      "type": "string",
+      "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.png$"
+    },
+    "webpPath": {
+      "description": "A WebP file inside the theme's directory: relative, no '..'.",
+      "type": "string",
+      "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.webp$"
+    },
+    "faviconPath": {
+      "description": "A PNG, SVG or ICO file inside the theme's directory: relative, no '..'.",
+      "type": "string",
+      "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.(png|svg|ico)$"
     },
     "fontPath": {
       "type": "string",

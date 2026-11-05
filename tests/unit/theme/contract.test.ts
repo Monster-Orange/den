@@ -12,6 +12,7 @@ import {
   validateThemeDir,
   type ThemeManifest,
 } from "../../../src/shared/theme/contract.js";
+import { ico, png, webp } from "../../fixtures/images.js";
 
 const light = {
   bg: "#f6f8fa",
@@ -74,7 +75,7 @@ afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 /** Write a theme dir; `files` are extra files (default: a clean mark.svg). */
 function theme(
   m: unknown,
-  files: Record<string, string> = {
+  files: Record<string, string | Buffer> = {
     "mark.svg": '<svg xmlns="http://www.w3.org/2000/svg"/>',
   },
 ): string {
@@ -307,5 +308,152 @@ describe("the contract", () => {
       fs.readFileSync(path.join(__dirname, "../../../package.json"), "utf-8"),
     ) as { files: string[] };
     expect(pkg.files).toContain("schemas/");
+  });
+});
+
+describe("raster marks and the favicon (0.3.0-dev.22)", () => {
+  const raster = (mark: ThemeManifest["mark"], favicon?: string) => {
+    const m = base();
+    m.mark = mark;
+    if (favicon) m.favicon = favicon;
+    return m;
+  };
+  const messages = (dir: string) =>
+    validateThemeDir(dir).issues.map((i) => i.message);
+
+  it("passes a PNG mark (and its dark variant) of 44×44 px or more", () => {
+    const dir = theme(raster({ png: "mark.png", png_dark: "mark-dark.png" }), {
+      "mark.png": png(44, 44),
+      "mark-dark.png": png(64, 48),
+    });
+    expect(validateThemeDir(dir).issues).toEqual([]);
+    expect(validateThemeDir(dir).ok).toBe(true);
+  });
+
+  it("passes a WebP mark in each header form (VP8L, VP8X, VP8)", () => {
+    for (const form of ["VP8L", "VP8X", "VP8 "] as const) {
+      const dir = theme(raster({ webp: "mark.webp", shape: "circle" }), {
+        "mark.webp": webp(96, 96, form),
+      });
+      expect({ form, issues: messages(dir) }).toEqual({ form, issues: [] });
+    }
+  });
+
+  it("fails a file whose first bytes are not its extension's format", () => {
+    const dir = theme(raster({ png: "mark.png" }), {
+      "mark.png": webp(64, 64),
+    });
+    expect(messages(dir)).toEqual([
+      "mark.png is not a PNG file (it does not start with the PNG signature 89 50 4E 47 0D 0A 1A 0A)",
+    ]);
+    const dir2 = theme(raster({ webp: "mark.webp" }), {
+      "mark.webp": png(64, 64),
+    });
+    expect(messages(dir2)).toEqual([
+      "mark.webp is not a WebP file (it does not start RIFF….WEBP with a VP8, VP8L or VP8X header)",
+    ]);
+  });
+
+  it("fails a file over 64 KB", () => {
+    const big = png(200, 200, { noise: true });
+    expect(big.length).toBeGreaterThan(64 * 1024);
+    const dir = theme(raster({ png: "mark.png" }), { "mark.png": big });
+    expect(messages(dir)).toEqual([
+      `mark.png is ${Math.ceil(big.length / 1024)} KB: a mark or favicon file is at most 64 KB`,
+    ]);
+  });
+
+  it("fails a raster mark under 44 px on either side", () => {
+    const dir = theme(raster({ png: "mark.png", png_dark: "d.png" }), {
+      "mark.png": png(22, 22),
+      "d.png": png(64, 43),
+    });
+    expect(messages(dir)).toEqual([
+      "mark.png is 22×22 px: a raster mark is at least 44×44 px (2× the 22px bar mark)",
+      "d.png is 64×43 px: a raster mark is at least 44×44 px (2× the 22px bar mark)",
+    ]);
+    const dir2 = theme(raster({ webp: "mark.webp" }), {
+      "mark.webp": webp(40, 100, "VP8X"),
+    });
+    expect(messages(dir2)).toEqual([
+      "mark.webp is 40×100 px: a raster mark is at least 44×44 px (2× the 22px bar mark)",
+    ]);
+  });
+
+  it("fails a mark that gives two image kinds, naming them", () => {
+    const dir = theme(raster({ svg: "mark.svg", png: "mark.png" }), {
+      "mark.svg": '<svg xmlns="http://www.w3.org/2000/svg"/>',
+      "mark.png": png(44, 44),
+    });
+    expect(validateThemeDir(dir).issues).toEqual([
+      {
+        at: "/mark",
+        message:
+          "mark gives svg and png: a mark is one image (svg, png or webp), or text",
+      },
+    ]);
+    const dir2 = theme(raster({ png: "mark.png", webp_dark: "d.webp" }), {
+      "mark.png": png(44, 44),
+      "d.webp": webp(44, 44),
+    });
+    expect(messages(dir2)).toEqual([
+      "mark gives png and webp: a mark is one image (svg, png or webp), or text",
+      "mark.webp_dark needs mark.webp (the base file, for light mode)",
+    ]);
+  });
+
+  it("keeps SVG and text marks as they were, and an SVG's no-external-resource rule", () => {
+    expect(
+      messages(theme(raster({ text: "Ab", shape: "circle" }), {})),
+    ).toEqual([]);
+    const dir = theme(raster({ svg: "mark.svg" }), {
+      "mark.svg":
+        '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://x.test/a.png"/></svg>',
+    });
+    expect(messages(dir)).toEqual([
+      "mark.svg references an external resource (href must start with #): a mark is an image only",
+    ]);
+  });
+
+  it("takes only .png or .webp paths for raster marks (the path rule)", () => {
+    for (const mark of [
+      { png: "mark.webp" },
+      { webp: "../mark.webp" },
+      { png: "/abs/mark.png" },
+    ]) {
+      const r = validateThemeDir(theme(raster(mark), {}));
+      expect(r.ok).toBe(false);
+      expect(r.issues[0].at).toMatch(/^\/mark\/(png|webp)$/);
+    }
+  });
+
+  it("checks a favicon: png, svg or ico by its first bytes, at most 64 KB, any size", () => {
+    const ok = theme(raster({ svg: "mark.svg" }, "favicon.ico"), {
+      "mark.svg": '<svg xmlns="http://www.w3.org/2000/svg"/>',
+      "favicon.ico": ico(),
+    });
+    expect(messages(ok)).toEqual([]);
+    const small = theme(raster({ svg: "mark.svg" }, "tab.png"), {
+      "mark.svg": '<svg xmlns="http://www.w3.org/2000/svg"/>',
+      "tab.png": png(16, 16),
+    });
+    expect(messages(small)).toEqual([]);
+    const bad = theme(raster({ svg: "mark.svg" }, "favicon.ico"), {
+      "mark.svg": '<svg xmlns="http://www.w3.org/2000/svg"/>',
+      "favicon.ico": png(32, 32),
+    });
+    expect(messages(bad)).toEqual([
+      "favicon.ico is not an ICO file (it does not start 00 00 01 00)",
+    ]);
+    const huge = png(200, 200, { noise: true });
+    const big = theme(raster({ svg: "mark.svg" }, "favicon.png"), {
+      "mark.svg": '<svg xmlns="http://www.w3.org/2000/svg"/>',
+      "favicon.png": huge,
+    });
+    expect(messages(big)).toEqual([
+      `favicon.png is ${Math.ceil(huge.length / 1024)} KB: a mark or favicon file is at most 64 KB`,
+    ]);
+    const missing = theme(raster({ svg: "mark.svg" }, "favicon.png"));
+    expect(messages(missing)).toEqual(["favicon.png is missing"]);
   });
 });

@@ -328,9 +328,37 @@ config and manifest changes a distribution must make to move to it under
   - **One h1 per page**: the brand title in the bar is a span now, not an
     h1, so a page's own heading is its one. A page with none (Services,
     Logs, …) gets a visually hidden h1 named from its title.
+- **Raster theme marks** (0.3.0-dev.22): a mark can be a PNG or a WebP
+  (`png` / `png_dark`, `webp` / `webp_dark`), for a mark that exists only
+  as a raster. One image kind per mark (svg, png or webp): two fail
+  validate, naming both. `theme validate` and `theme add` check each file's
+  first bytes against its extension, a 64 KB cap and at least 44×44 px
+  (twice the bar's 22px mark), reading the PNG or WebP header itself.
+  `/theme/<id>/<file>` serves them as `image/png` and `image/webp`, still
+  only the files the manifest names. The top bar draws one as an image at
+  22px, clipped to the mark's `shape`, the dark file in dark mode. SVG and
+  text marks are unchanged.
+- **The browser tab shows the theme's icon** (0.3.0-dev.22): the theme's
+  new optional `favicon` (`.png`, `.svg` or `.ico`, magic-byte checked, at
+  most 64 KB), else its mark's file (the dark variant in dark mode), else
+  Den's own icon. The shell sets it on every page (no page links
+  `/favicon.ico` any more) and changes it with the theme and the mode,
+  System following the OS included. Its URL,
+  `/theme-favicon/<id>?mode=<mode>&v=<version>-<hash>`, changes with each,
+  so a switch is never answered from cache. The built-in `den` theme names
+  Den's icon as its `favicon`; `theme new` leaves it out, so a new theme's
+  tab shows its own mark.
 
 ### Fixed
 
+- **Settings keeps your pick marked while it scrolls** (0.3.0-dev.22, SA's
+  dev.21 run): a click or Enter on a category no longer walks
+  `aria-current` through every category the smooth scroll passes. Your
+  pick holds until the scroll ends (`scrollend`, else once it is still,
+  within about a second); then the scroll-spy takes over again.
+- **Below 480px the top bar shows only the mark** (0.3.0-dev.22, SA's
+  dev.21 run): the product name is visually hidden there and stays the
+  brand link's accessible name; from 480px it truncates as in dev.21.
 - **0.2.6 is in the 0.3 line** (0.3.0-dev.21): `type: container` health
   checks, the server identity check behind `web restart` and `web down`,
   the MCP server's identity, and `service install --plan`. See 0.2.6 below.

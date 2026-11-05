@@ -57,9 +57,15 @@ export interface ThemeManifest {
   mark?: {
     svg?: string;
     svg_dark?: string;
+    png?: string;
+    png_dark?: string;
+    webp?: string;
+    webp_dark?: string;
     text?: string;
     shape?: "square" | "rounded" | "circle";
   };
+  /** The browser-tab icon (.png, .svg or .ico); else the mark's file. */
+  favicon?: string;
   fonts?: {
     family: string;
     license: string;
@@ -190,11 +196,147 @@ export function unsafeSvg(svg: string): string | null {
   return null;
 }
 
+/** The image kinds a mark can be drawn from: one per mark. */
+export const MARK_IMAGE_KINDS = ["svg", "png", "webp"] as const;
+export type MarkImageKind = (typeof MARK_IMAGE_KINDS)[number];
+
+/** The image kinds a mark names (svg, png, webp; a dark variant counts). */
+export function markImageKinds(
+  mark: ThemeManifest["mark"] | undefined,
+): MarkImageKind[] {
+  const m = mark ?? {};
+  return MARK_IMAGE_KINDS.filter((k) => m[k] || m[`${k}_dark`]);
+}
+
+/**
+ * The mark's image file for a mode: the dark variant in dark mode when the
+ * mark has one, else the base file; null for a text mark (or none).
+ */
+export function markImage(
+  mark: ThemeManifest["mark"] | undefined,
+  mode: ThemeMode,
+): { kind: MarkImageKind; file: string } | null {
+  const m = mark ?? {};
+  for (const kind of MARK_IMAGE_KINDS) {
+    const base = m[kind];
+    if (!base) continue;
+    const dark = m[`${kind}_dark`];
+    return { kind, file: mode === "dark" && dark ? dark : base };
+  }
+  return null;
+}
+
+/** The largest raster mark or favicon file, in bytes. */
+export const IMAGE_MAX_BYTES = 64 * 1024;
+/** A raster mark's smallest side: 2× the top bar's 22px mark. */
+export const RASTER_MIN_PX = 44;
+
+const PNG_SIGNATURE = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+
+/**
+ * A PNG's or a WebP's size in pixels, from its own header (PNG IHDR; WebP
+ * VP8, VP8L or VP8X), or null when `buf` is not that format.
+ */
+export function rasterSize(
+  buf: Buffer,
+  format: "png" | "webp",
+): { width: number; height: number } | null {
+  if (format === "png") {
+    if (buf.length < 24 || !buf.subarray(0, 8).equals(PNG_SIGNATURE))
+      return null;
+    if (buf.toString("latin1", 12, 16) !== "IHDR") return null;
+    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  }
+  if (
+    buf.length < 30 ||
+    buf.toString("latin1", 0, 4) !== "RIFF" ||
+    buf.toString("latin1", 8, 12) !== "WEBP"
+  )
+    return null;
+  const chunk = buf.toString("latin1", 12, 16);
+  if (chunk === "VP8X")
+    return {
+      width: buf.readUIntLE(24, 3) + 1,
+      height: buf.readUIntLE(27, 3) + 1,
+    };
+  if (chunk === "VP8L") {
+    if (buf[20] !== 0x2f) return null;
+    const b = buf.readUInt32LE(21);
+    return { width: (b & 0x3fff) + 1, height: ((b >>> 14) & 0x3fff) + 1 };
+  }
+  if (chunk === "VP8 ") {
+    if (buf[23] !== 0x9d || buf[24] !== 0x01 || buf[25] !== 0x2a) return null;
+    return {
+      width: buf.readUInt16LE(26) & 0x3fff,
+      height: buf.readUInt16LE(28) & 0x3fff,
+    };
+  }
+  return null;
+}
+
+/** Whether `buf` starts as an .ico file does (00 00 01 00). */
+function isIco(buf: Buffer): boolean {
+  return (
+    buf.length >= 6 &&
+    buf[0] === 0 &&
+    buf[1] === 0 &&
+    buf[2] === 1 &&
+    buf[3] === 0
+  );
+}
+
+/**
+ * What is wrong with a raster mark or favicon file, as messages (empty when
+ * nothing): its first bytes must be its extension's format, it is at most
+ * 64 KB, and a raster mark is at least 44×44 px.
+ */
+export function imageFileIssues(
+  rel: string,
+  buf: Buffer,
+  opts: { minPx?: number } = {},
+): string[] {
+  const ext = path.extname(rel).toLowerCase();
+  const out: string[] = [];
+  if (buf.length > IMAGE_MAX_BYTES)
+    out.push(
+      `${rel} is ${Math.ceil(buf.length / 1024)} KB: a mark or favicon file is at most ${IMAGE_MAX_BYTES / 1024} KB`,
+    );
+  if (ext === ".ico") {
+    if (!isIco(buf))
+      out.push(`${rel} is not an ICO file (it does not start 00 00 01 00)`);
+    return out;
+  }
+  const format = ext === ".png" ? "png" : ext === ".webp" ? "webp" : null;
+  if (!format) return out;
+  const size = rasterSize(buf, format);
+  if (!size) {
+    out.push(
+      format === "png"
+        ? `${rel} is not a PNG file (it does not start with the PNG signature 89 50 4E 47 0D 0A 1A 0A)`
+        : `${rel} is not a WebP file (it does not start RIFF….WEBP with a VP8, VP8L or VP8X header)`,
+    );
+    return out;
+  }
+  const min = opts.minPx ?? 0;
+  if (size.width < min || size.height < min)
+    out.push(
+      `${rel} is ${size.width}×${size.height} px: a raster mark is at least ${min}×${min} px (2× the 22px bar mark)`,
+    );
+  return out;
+}
+
 /** Every file the manifest references, relative to the theme's directory. */
 export function themeFiles(theme: ThemeManifest): string[] {
   return [
     theme.mark?.svg,
     theme.mark?.svg_dark,
+    theme.mark?.png,
+    theme.mark?.png_dark,
+    theme.mark?.webp,
+    theme.mark?.webp_dark,
+    theme.favicon,
     ...(theme.fonts ?? []).flatMap((f) => f.files.map((x) => x.path)),
   ].filter((p): p is string => !!p);
 }
@@ -315,6 +457,26 @@ export function validateThemeDir(
       at: "/id",
       message: `id "${theme.id}" does not match its directory "${opts.expectId}"`,
     });
+  const kinds = markImageKinds(theme.mark);
+  if (kinds.length > 1)
+    issues.push({
+      at: "/mark",
+      message: `mark gives ${kinds.join(" and ")}: a mark is one image (svg, png or webp), or text`,
+    });
+  for (const k of ["png", "webp"] as const)
+    if (theme.mark?.[`${k}_dark`] && !theme.mark[k])
+      issues.push({
+        at: `/mark/${k}_dark`,
+        message: `mark.${k}_dark needs mark.${k} (the base file, for light mode)`,
+      });
+  const rasterMarks = new Set(
+    [
+      theme.mark?.png,
+      theme.mark?.png_dark,
+      theme.mark?.webp,
+      theme.mark?.webp_dark,
+    ].filter(Boolean),
+  );
   const root = path.resolve(dir);
   for (const rel of themeFiles(theme)) {
     const abs = path.resolve(root, rel);
@@ -329,6 +491,20 @@ export function validateThemeDir(
           at: "",
           message: `${rel} ${bad}: a mark is an image only`,
         });
+      if (rel === theme.favicon && fs.statSync(abs).size > IMAGE_MAX_BYTES)
+        issues.push(
+          ...imageFileIssues(rel, fs.readFileSync(abs)).map((message) => ({
+            at: "",
+            message,
+          })),
+        );
+    } else if (/\.(png|webp|ico)$/.test(rel)) {
+      // A raster mark or favicon: its format by its first bytes, its size,
+      // and (a mark) its pixels, read from its own header.
+      for (const message of imageFileIssues(rel, fs.readFileSync(abs), {
+        minPx: rasterMarks.has(rel) ? RASTER_MIN_PX : 0,
+      }))
+        issues.push({ at: "", message });
     } else if (rel.endsWith(".woff2")) {
       const head = Buffer.alloc(4);
       const fd = fs.openSync(abs, "r");

@@ -27,6 +27,7 @@ import {
   validatePluginDir,
 } from "../../shared/plugins/manifest.js";
 import {
+  markImage,
   themeFiles,
   validateThemeDir,
   type ColorToken,
@@ -356,13 +357,29 @@ export function renderThemeCss(id: string, theme: ThemeManifest): string {
 
 const ASSET_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
   ".woff2": "font/woff2",
 };
 
 /**
+ * The theme's browser-tab icon in a mode, relative to its directory: its
+ * `favicon` (both modes), else its mark's image (the dark variant in dark
+ * mode, if it has one), else null (a text mark: Den's own icon).
+ */
+export function faviconFile(
+  theme: ThemeManifest,
+  mode: ThemeMode,
+): string | null {
+  return theme.favicon ?? markImage(theme.mark, mode)?.file ?? null;
+}
+
+/**
  * The file /theme/<id>/<rel> may serve, or null: only a file the validated
- * manifest names (its mark, its fonts), only .svg or .woff2, only inside
- * the theme's directory. `rel` is the decoded remainder of the URL path.
+ * manifest names (its mark, its favicon, its fonts), only .svg, .png,
+ * .webp, .ico or .woff2, only inside the theme's directory. `rel` is the
+ * decoded remainder of the URL path.
  */
 export function themeAsset(
   roots: ThemeRoots,

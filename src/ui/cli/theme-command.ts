@@ -99,12 +99,18 @@ export async function cmdTheme(
         "themes",
         "den",
       );
-      fs.cpSync(from, dest, { recursive: true });
+      // Not Den's tab icon: a new theme's tab shows its own mark.
+      const denIcon = path.join(from, "favicon.ico");
+      fs.cpSync(from, dest, {
+        recursive: true,
+        filter: (src) => src !== denIcon,
+      });
       const file = path.join(dest, THEME_FILE);
       const m = JSON.parse(fs.readFileSync(file, "utf-8")) as Record<
         string,
         unknown
       >;
+      delete m.favicon;
       const name = id
         .split("-")
         .map((w) => w[0].toUpperCase() + w.slice(1))

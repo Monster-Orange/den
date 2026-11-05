@@ -31,23 +31,31 @@ export function effectiveMode(mode, system, defaultMode) {
 /**
  * What the header's mark is, for the active theme's `mark` (from
  * /api/themes) in a mode: its SVG (the dark variant in dark mode, if it has
- * one), else text Den draws in the mark's shape, else the theme name's
+ * one), else its PNG or WebP the same way (a raster, drawn in the mark's
+ * shape), else text Den draws in the mark's shape, else the theme name's
  * first letter. Pure, for tests.
  */
 export function markView(mark, mode, themeName) {
   const m = mark || {};
+  const shape = ["square", "rounded", "circle"].includes(m.shape)
+    ? m.shape
+    : "rounded";
   if (m.svg)
     return {
       kind: "svg",
       src: mode === "dark" && m.svg_dark ? m.svg_dark : m.svg,
     };
+  for (const k of ["png", "webp"])
+    if (m[k])
+      return {
+        kind: "raster",
+        src: mode === "dark" && m[`${k}_dark`] ? m[`${k}_dark`] : m[k],
+        shape,
+      };
   const text = (m.text || (themeName || "").trim().charAt(0) || "·").slice(
     0,
     3,
   );
-  const shape = ["square", "rounded", "circle"].includes(m.shape)
-    ? m.shape
-    : "rounded";
   return { kind: "text", text, shape };
 }
 
@@ -120,9 +128,23 @@ function currentMode() {
   return effectiveMode(st.mode, systemMode(), st.defaultMode);
 }
 
+/**
+ * The browser-tab icon for the active theme in a mode: the URL the server
+ * gave for that mode (it carries the theme, its version, the mode and a
+ * hash of the file, so every switch is a new URL), else null. Pure, for
+ * tests.
+ */
+export function faviconHref(active, mode) {
+  const f = active?.favicon;
+  if (!f) return null;
+  return (mode === "dark" ? f.dark : f.light) || f.light || null;
+}
+
 function applyMode() {
   document.documentElement.dataset.mode = currentMode();
   renderMark();
+  const href = faviconHref(st.active, currentMode());
+  if (href) window.denShell?.setFavicon?.(href);
 }
 
 /** Draw the active theme's mark into #den-mark (each page has one). */
@@ -134,13 +156,17 @@ function renderMark() {
   if (host.dataset.mark === key) return;
   host.dataset.mark = key;
   host.title = st.active.name || "";
-  if (v.kind === "svg") {
+  if (v.kind === "svg" || v.kind === "raster") {
     const img = document.createElement("img");
     img.src = v.src;
     img.alt = "";
     img.width = 18;
     img.height = 18;
-    host.className = "den-mark den-mark-svg";
+    // A raster is a rectangle: the mark's shape clips it.
+    host.className =
+      v.kind === "svg"
+        ? "den-mark den-mark-svg"
+        : `den-mark den-mark-raster den-mark-${v.shape}`;
     host.replaceChildren(img);
   } else {
     host.className = `den-mark den-mark-text den-mark-${v.shape}`;
@@ -266,6 +292,7 @@ function injectStyles() {
       width: 18px; height: 18px; flex-shrink: 0; overflow: hidden;
     }
     .den-mark img { display: block; width: 18px; height: 18px; }
+    .den-mark-raster img { object-fit: cover; }
     .den-mark-text {
       font: 700 11px/1 var(--display); letter-spacing: -0.02em;
       background: var(--accent-fill); color: var(--on-accent);

@@ -559,6 +559,21 @@ and the guide to making your own
   `sunken`); `accent` and `border-strong` at 3:1; `on-accent` on
   `accent-fill` at 4.5:1. `accent` is never text: Den draws links and accent
   text in `accent-text`.
+- The mark is one image or text: `svg` (with `svg_dark`), `png` (with
+  `png_dark`) or `webp` (with `webp_dark`), or `text` (up to 3 characters).
+  A mark that gives two image kinds fails validate, naming both. Use a
+  raster only for a mark that exists only as one (one that must not be
+  vectorised): `validate` checks that the file is what its extension says
+  (the PNG signature, or `RIFF….WEBP`), is at most 64 KB, and is at least
+  44×44 px (twice the 22px mark in the top bar). An SVG mark may reference
+  nothing outside itself (every `href` and `url()` starts with `#`).
+- `favicon` (optional): the browser-tab icon, a `.png`, `.svg` or `.ico`
+  file in the theme, at most 64 KB, its format checked by its first bytes.
+
+```json
+"mark": { "png": "mark.png", "png_dark": "mark-dark.png", "shape": "circle" },
+"favicon": "favicon.png"
+```
 
 ### The active theme
 
@@ -609,19 +624,33 @@ What the server serves:
   (`:root[data-mode="dark"] { --bg: …; }` and the light block, plus `--sans`,
   `--mono`, `--display`, `--ja`, `--radius`, `--radius-button` and
   `@font-face` for the theme's fonts). Only a validated manifest is rendered.
-- `/theme/<id>/<file>`: only the files the manifest names (the mark's `.svg`,
-  the `.woff2` fonts), from that theme's directory.
+- `/theme/<id>/<file>`: only the files the manifest names (the mark's
+  `.svg`, `.png` or `.webp`, the favicon, the `.woff2` fonts), from that
+  theme's directory, each with its own type (`image/svg+xml`, `image/png`,
+  `image/webp`, `image/x-icon`, `font/woff2`).
+- `/theme-favicon/<id>?mode=light|dark&v=<version>-<hash>`: the theme's
+  browser-tab icon in that mode: its `favicon` in both modes, else its
+  mark's file (the dark variant in dark mode, if it has one, else the base
+  file), else (a text mark) Den's own icon. `/theme-favicon` with no id is
+  the active theme's, never cached.
 - `/api/themes`: every installed theme (id, name, version, `built-in` |
-  `locked` | `local`, ok), the active one (with its `mark`) and
-  `org_default` (the theme no choice draws: `brand.theme`, else den).
+  `locked` | `local`, ok), the active one (with its `mark` and its
+  `favicon` URL for each mode) and `org_default` (the theme no choice
+  draws: `brand.theme`, else den).
 
 Each page sets `data-mode` on `<html>` before first paint, and its styles use
 only the tokens: a page or plugin that draws in the UI uses `var(--token)`,
 never a color literal (`accent` is never text: `accent-text` is), and only
 `var(--sans)`, `var(--mono)` or `var(--display)` for a font (the fallbacks
 are in `/theme.css`: a stack with no generic family gets Den's after it).
-The header shows the active theme's mark: its SVG (`svg_dark` in dark mode,
-if it has one), or its `text` drawn by Den in `shape` on `accent-fill`.
+The header shows the active theme's mark: its SVG, PNG or WebP (the dark
+variant in dark mode, if it has one) as an image at 22px, a raster clipped
+to the mark's `shape`, or its `text` drawn by Den in `shape` on
+`accent-fill`. The browser tab shows the theme's icon for the mode the page
+draws in: the shell sets it (no page links one) and changes it with the
+theme or the mode, System following the OS included. Each URL carries the
+theme's id, version, mode and a hash of the file, so a switch is never
+answered from cache.
 A color from the org config (`orgs.<id>.color`) is only ever a swatch,
 border or dot, never text or a ground: labels are `--text` or `--muted`.
 Links in body content are underlined, so a link never reads by color alone.
