@@ -39,7 +39,6 @@ import type {
 import { getRunDonePayload } from "./perf-report.js";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import {
-  readWorkspacesFile,
   getActiveWorkspace,
   getActiveWorkspaces,
   getFocusedWorkspaceName,
@@ -49,7 +48,6 @@ import {
   resolveDepAddress,
   parseAddress,
   readManifestAnyBranch,
-  noAutostartRepos,
 } from "../../shared/environment-manager/workspaces.js";
 import { deriveGraph } from "../../shared/environment-manager/derivation/derive-graph.js";
 import { orderForDown } from "../../shared/environment-manager/derivation/derived-up.js";
@@ -142,6 +140,8 @@ import {
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import { serveUiAsset } from "./ui-assets.js";
 import { graphPrefs, mergeGraphPrefs } from "./graph-prefs.js";
+import { singleFlight } from "./single-flight.js";
+import { buildServicesList, type ServicesList } from "./services-list.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -209,6 +209,11 @@ function viewerRewrite(
 
 const HEALTH_CACHE_TTL_MS = 8_000;
 const healthCache = new Map<string, { results: HealthResult[]; at: number }>();
+/** The full-env health run in flight per cache key: concurrent polls join it. */
+const healthInFlight = new Map<string, Promise<HealthResult[]>>();
+/** /api/services builds, shared by concurrent polls and reused briefly. */
+const SERVICES_CACHE_TTL_MS = 2_000;
+const servicesCache = singleFlight<ServicesList>(SERVICES_CACHE_TTL_MS);
 /** A workspace-scoped run covers a different service set than the default one. */
 function healthCacheKey(env: Environment, workspace: string | null): string {
   return `${env}|${workspace ?? "*"}`;
@@ -534,6 +539,13 @@ async function handleRequest(
 ): Promise<void> {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const pathname = url.pathname;
+  // A mutating request may change what /api/services would list (exec and
+  // sync stream over GET, for EventSource).
+  if (
+    (req.method !== "GET" && req.method !== "HEAD") ||
+    /\/(exec|sync)$/.test(pathname)
+  )
+    servicesCache.clear();
 
   // ── Request logging ────────────────────────────────────────────────────────
   // /api/health fires on the UI's 5s polling interval forever — it dominates
@@ -1143,9 +1155,17 @@ async function handleRequest(
     if (hit && Date.now() - hit.at < HEALTH_CACHE_TTL_MS) {
       return sendJson(res, hit.results.map(forViewer));
     }
-    const results = await computeHealth(env, null, undefined, wsParam);
-    healthCache.set(cacheKey, { results, at: Date.now() });
-    return sendJson(res, results.map(forViewer));
+    let run = healthInFlight.get(cacheKey);
+    if (!run) {
+      run = computeHealth(env, null, undefined, wsParam)
+        .then((results) => {
+          healthCache.set(cacheKey, { results, at: Date.now() });
+          return results;
+        })
+        .finally(() => healthInFlight.delete(cacheKey));
+      healthInFlight.set(cacheKey, run);
+    }
+    return sendJson(res, (await run).map(forViewer));
   }
 
   // Same checks, streamed: each result is sent the moment it lands so the fast
@@ -1196,169 +1216,15 @@ async function handleRequest(
     const env = (url.searchParams.get("env") ?? "local") as Environment;
     // Optional: caller may request services for a specific (non-active) workspace.
     const wsOverride = url.searchParams.get("workspace") ?? null;
-
-    // Conventional lifecycle locally: `down` is opctl-conventional (stops
-    // running containers with no declared command, no-ops gracefully), and
-    // `restart` is orchestrated by the exec runner as down → verify → up — so
-    // every service with an `up` can offer both even when the manifest doesn't
-    // declare them.
-    const withDown = (cmds: string[]): string[] => {
-      if (env !== "local") return cmds;
-      const out = [...cmds];
-      if (!out.includes("down")) out.push("down");
-      if (!out.includes("restart") && out.includes("up")) out.push("restart");
-      return out;
-    };
-
-    // Legacy: discovered repos from .den/ symlinks / registered-repos.json
-    const legacyRepos = discoverRepos();
-    const legacyEntries = legacyRepos.flatMap((repo) => {
-      const manifestLayers = loadManifest(repo.repoPath).layers;
-      return Object.entries(repo.manifest.services ?? {}).map(
-        ([svcName, svc]) => ({
-          repo: repo.repoName,
-          service: svcName,
-          address: `${repo.repoName}/${svcName}`,
-          repoPath: repo.repoPath,
-          commands: withDown(Object.keys(svc.commands?.[env] ?? {})),
-          logs: svc.logs?.[env] ?? null,
-          mode: "dev-managed" as const,
-          branch: null as string | null,
-          fromCatalog: false,
-          isEntrypoint: repo.manifest.entrypoint === svcName,
-          autostart: true, // legacy discovery has no workspace entry to toggle
-          deps: (svc.depends_on ?? []).map(depService),
-          cloned: true, // legacy discovery only ever finds on-disk repos
-          manifestLayers,
-          ...servicePlacement(repo.manifest, svcName, env),
-        }),
-      );
-    });
-
-    // Catalog entries (workspace-aware)
-    const catalog = readCatalog();
-    const wsFile = wsOverride ? readWorkspacesFile() : null;
-    const ws = wsOverride
-      ? wsFile?.workspaces[wsOverride]
-        ? { name: wsOverride, config: wsFile!.workspaces[wsOverride] }
-        : null
-      : getActiveWorkspace();
-    const getCurrentBranch = (repoPath: string): string | null => {
-      try {
-        return execSync("git rev-parse --abbrev-ref HEAD", {
-          cwd: repoPath,
-          encoding: "utf-8",
-          stdio: ["ignore", "pipe", "ignore"],
-          timeout: GIT_REMOTE_TIMEOUT_MS,
-        }).trim();
-      } catch {
-        return null;
-      }
-    };
-
-    const noAutostart = ws
-      ? noAutostartRepos(ws.config, catalog)
-      : new Set<string>();
-    const daemonOwners = new Map(
-      listDaemons().map((d) => [d.address, d.workspaces ?? []] as const),
-    );
-    // Modules and libraries have no runtime: no card, health or commands.
-    // They show as contributors on the Applications tab instead.
-    const catalogEntries = ws
-      ? listWorkspaceServices(ws.config, catalog, ws.name)
-          .filter((r) => hasRuntime(repoKind(r.repoPath)))
-          .flatMap((resolved) => {
-            // The manifest and the layers it was built from: repo or held,
-            // plus override when manifests/<repo>.override.yml applied.
-            const { manifest, layers: manifestLayers } = loadManifest(
-              resolved.repoPath,
-            );
-            const svc = manifest?.services?.[resolved.subsystem];
-            if (!manifest || !svc) {
-              // Workspace membership is config-driven: a managed entry
-              // whose clone isn't on disk yet (or a checkout without a usable
-              // manifest) must still render everywhere — flagged `cloned:false`
-              // so the UI can offer Sync/clone instead of dropping the system.
-              // `branch` comes from the workspace entry; never probe git on a
-              // path that may not exist.
-              return [
-                {
-                  repo: resolved.repoName,
-                  service: resolved.subsystem,
-                  address: resolved.address,
-                  repoPath: resolved.repoPath,
-                  commands: [] as string[],
-                  logs: null,
-                  mode: resolved.mode,
-                  branch: resolved.branch,
-                  fromCatalog: true,
-                  isEntrypoint: false,
-                  autostart: !noAutostart.has(resolved.repoName),
-                  owners: daemonOwners.get(resolved.address) ?? [],
-                  deps: [] as string[],
-                  cloned: fs.existsSync(resolved.repoPath),
-                  manifestLayers,
-                  ...servicePlacement(null, resolved.subsystem, env),
-                },
-              ];
-            }
-            return [
-              {
-                repo: resolved.repoName,
-                service: resolved.subsystem,
-                address: resolved.address,
-                repoPath: resolved.repoPath,
-                commands: withDown(Object.keys(svc.commands?.[env] ?? {})),
-                logs: svc.logs?.[env] ?? null,
-                mode: resolved.mode,
-                branch: resolved.branch ?? getCurrentBranch(resolved.repoPath),
-                fromCatalog: true,
-                isEntrypoint: manifest.entrypoint === resolved.subsystem,
-                autostart: !noAutostart.has(resolved.repoName),
-                owners: daemonOwners.get(resolved.address) ?? [],
-                deps: (svc.depends_on ?? []).map((d) =>
-                  resolveDepAddress(depService(d), catalog, ws.config, ws.name),
-                ),
-                cloned: true,
-                manifestLayers,
-                ...servicePlacement(manifest, resolved.subsystem, env),
-              },
-            ];
-          })
-      : [];
-
-    // Merge: catalog entries take precedence over legacy for same repo.
-    // When a workspace filter is active, also exclude legacy entries not in
-    // the workspace (legacy discovery is not workspace-scoped).
-    const catalogRepos = new Set(Object.keys(catalog));
-    const wsServiceKeys = ws ? new Set(Object.keys(ws.config.services)) : null;
-    const merged = [
-      ...legacyEntries.filter((e) => {
-        if (catalogRepos.has(e.repo)) return false;
-        if (wsServiceKeys && !wsServiceKeys.has(e.repo)) return false;
-        return true;
-      }),
-      ...catalogEntries,
-    ];
-
-    // Attach the dependency-graph position so consumers can present systems
-    // top-down (entry repo first, infra-stack last) — the same order the
-    // health row and `den status` use. Added as a FIELD rather than by
-    // re-sorting the array, because four pages consume this payload and some
-    // rely on the current order.
-    const graphRank = new Map(
-      orderForDown(deriveGraph({ scope: "all", workspace: ws?.name })).map(
-        (repo, i) => [repo, i],
-      ),
-    );
-    const infraRepo = readDenConfig()?.graph?.infra?.repo ?? null;
+    // Every open tab polls this: concurrent requests share one build, and a
+    // settled one is reused briefly (any mutating request clears it).
     return sendJson(
       res,
-      merged.map((e) => ({
-        ...e,
-        graphRank: graphRank.get(e.repo) ?? Number.MAX_SAFE_INTEGER,
-        infra: infraRepo !== null && e.repo === infraRepo,
-      })),
+      await servicesCache.get(
+        `${env}|${wsOverride ?? ""}`,
+        () => buildServicesList(env, wsOverride),
+        url.searchParams.get("refresh") === "1",
+      ),
     );
   }
 
@@ -3375,7 +3241,20 @@ async function stopDaemons(): Promise<void> {
 
 async function handleShutdown(signal: string): Promise<void> {
   clearSudoPassword();
-  const daemons = listDaemons();
+  // The registry lives in the state dir, which is resolved from the
+  // distribution root on every call: if that can no longer be found (den.yml
+  // moved or removed while the server ran), still exit. Never product() here:
+  // it resolves the same root.
+  let daemons: ReturnType<typeof listDaemons>;
+  try {
+    daemons = listDaemons();
+  } catch (e) {
+    console.error(
+      `\n[server] ${signal}: cannot read the running-services registry ` +
+        `(${(e as Error).message}); exiting and leaving any services running.`,
+    );
+    process.exit(0);
+  }
   if (daemons.length === 0) {
     process.exit(0);
   }
@@ -3419,16 +3298,29 @@ async function handleShutdown(signal: string): Promise<void> {
   process.exit(0);
 }
 
+/**
+ * Run the shutdown for `signal`. A failure still ends the process: the guard
+ * below ignores every later signal, so a shutdown that rejected would leave
+ * the server running and deaf to SIGTERM (a service manager then waits out
+ * its timeout and SIGKILLs it).
+ */
+function shutdownOn(signal: string): void {
+  handleShutdown(signal).catch((e: unknown) => {
+    console.error(`[server] ${signal}: shutdown failed (exiting):`, e);
+    process.exit(1);
+  });
+}
+
 let _shuttingDown = false;
 process.on("SIGINT", () => {
   if (_shuttingDown) return;
   _shuttingDown = true;
   console.log(""); // newline after ^C
-  void handleShutdown("SIGINT");
+  shutdownOn("SIGINT");
 });
 
 process.on("SIGTERM", () => {
   if (_shuttingDown) return;
   _shuttingDown = true;
-  void handleShutdown("SIGTERM");
+  shutdownOn("SIGTERM");
 });

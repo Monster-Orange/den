@@ -3,13 +3,14 @@
  * The CLI prints it; the web server serves it at /api/stacks (and through it
  * the MCP `stacks` tool).
  */
+import { spawnSync } from "child_process";
 import { readEdgeConfig } from "../edge/config.js";
 import { routeUrl } from "../edge/render.js";
 import {
   getFocusedWorkspaceName,
   getWorkspaceByName,
 } from "../environment-manager/workspaces.js";
-import { readStacks } from "./config.js";
+import { readManifestStacks, readStacks } from "./config.js";
 import { projectName, stackWorkspace } from "./render.js";
 import { stackHealth, type StackContext } from "./runtime.js";
 
@@ -96,4 +97,58 @@ export function stackStatuses(
     }
     return status;
   });
+}
+
+/** A compose stack a workspace's repo declares, by its Compose project. */
+export interface WorkspaceStack {
+  name: string;
+  repo: string;
+  project: string;
+}
+
+/**
+ * The Compose projects with running containers, from one `docker ps`; null
+ * when docker can't be asked (not installed, daemon down, too slow).
+ */
+export function runningComposeProjects(): Set<string> | null {
+  const r = spawnSync(
+    "docker",
+    ["ps", "--format", '{{.Label "com.docker.compose.project"}}'],
+    { encoding: "utf-8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] },
+  );
+  if (r.error || r.status !== 0) return null;
+  return new Set(
+    (r.stdout ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean),
+  );
+}
+
+/**
+ * `workspace`'s compose stacks (declared by its repos' manifests) that are
+ * running: what `workspace deactivate` leaves up, since it releases only the
+ * daemons Den tracks. Null when docker could not be asked.
+ */
+export function runningWorkspaceStacks(
+  workspace: string,
+  running: () => Set<string> | null = runningComposeProjects,
+): WorkspaceStack[] | null {
+  const ws = getWorkspaceByName(workspace);
+  if (!ws) return [];
+  let stacks: WorkspaceStack[];
+  try {
+    const { stackWorkspace: suffix } = resolveStackWorkspaces(workspace);
+    stacks = Object.values(readManifestStacks(workspace)).map((s) => ({
+      name: s.name,
+      repo: s.repo,
+      project: projectName(s.name, suffix),
+    }));
+  } catch {
+    return null; // an unreadable manifest or workspace name: can't tell
+  }
+  if (stacks.length === 0) return [];
+  const up = running();
+  if (!up) return null;
+  return stacks.filter((s) => up.has(s.project));
 }

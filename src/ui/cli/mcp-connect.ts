@@ -25,7 +25,7 @@ import { product } from "../../shared/product.js";
 import { getDistRoot } from "../../shared/paths.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
-import { readMcpConfig } from "../../shared/den-config.js";
+import { readDenConfig, readMcpConfig } from "../../shared/den-config.js";
 
 export const MCP_CONNECT_SUBCOMMANDS = [
   "connect",
@@ -199,6 +199,78 @@ function status(
     : chalk.gray("not connected");
 }
 
+/** How long `mcp connect` waits for /api/server-info before giving up. */
+export const WEB_PROBE_TIMEOUT_MS = 1500;
+
+/** What a probe of the web server's /api/server-info found. */
+export type WebProbe =
+  | { kind: "up"; version?: string }
+  /** Something accepted the connection but sent no answer in time. */
+  | { kind: "timeout" }
+  /** Nothing answered: connection refused, or not the web server. */
+  | { kind: "down" };
+
+export async function probeWebServer(
+  url: string,
+  timeoutMs: number = WEB_PROBE_TIMEOUT_MS,
+  fetchImpl: typeof fetch = fetch,
+): Promise<WebProbe> {
+  try {
+    const r = await fetchImpl(`${url}/api/server-info`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const info = (await r.json()) as { version?: string };
+    return { kind: "up", version: info.version };
+  } catch (e) {
+    return (e as Error).name === "TimeoutError"
+      ? { kind: "timeout" }
+      : { kind: "down" };
+  }
+}
+
+/** Whether the org config runs the web UI as a service (`web.service`). */
+function webRunsAsService(): boolean {
+  try {
+    return readDenConfig().web?.service !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The status line for a probe. A server that is up but slow is "not
+ * answering", never "not running"; and when the web UI runs as a service
+ * (`web.service`), the advice is the service's status, not `web up`.
+ */
+export function webServerMessage(
+  probe: WebProbe,
+  url: string,
+  opts: { cli: string; asService: boolean; timeoutMs?: number },
+): string {
+  if (probe.kind === "up")
+    return (
+      chalk.green(`web server up at ${url}`) +
+      (probe.version ? chalk.gray(` (Den ${probe.version})`) : "")
+    );
+  const svc = `\`${opts.cli} service status\``;
+  if (probe.kind === "timeout") {
+    const secs = (opts.timeoutMs ?? WEB_PROBE_TIMEOUT_MS) / 1000;
+    return chalk.yellow(
+      `web server at ${url} is not answering within ${secs}s (busy or stuck): ` +
+        `agents' reads wait on it too; if it stays slow, ` +
+        (opts.asService
+          ? `check ${svc}`
+          : `restart it with \`${opts.cli} web restart\``),
+    );
+  }
+  return chalk.yellow(
+    `web server not running at ${url}: agents get read errors until ` +
+      (opts.asService
+        ? `the service is up (check ${svc})`
+        : `\`${opts.cli} web up\``),
+  );
+}
+
 async function webServerLine(port?: number): Promise<string> {
   let p = port;
   if (p === undefined) {
@@ -209,20 +281,10 @@ async function webServerLine(port?: number): Promise<string> {
     }
   }
   const url = `http://localhost:${p}`;
-  try {
-    const r = await fetch(`${url}/api/server-info`, {
-      signal: AbortSignal.timeout(1500),
-    });
-    const info = (await r.json()) as { version?: string };
-    return (
-      chalk.green(`web server up at ${url}`) +
-      (info.version ? chalk.gray(` (Den ${info.version})`) : "")
-    );
-  } catch {
-    return chalk.yellow(
-      `web server not running at ${url}: agents get read errors until \`${product().cli} web up\``,
-    );
-  }
+  return webServerMessage(await probeWebServer(url), url, {
+    cli: product().cli,
+    asService: webRunsAsService(),
+  });
 }
 
 function usage(): string {

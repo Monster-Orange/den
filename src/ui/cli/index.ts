@@ -5,6 +5,8 @@
  * Main entry point for the interactive CLI
  */
 
+import { composeStacksNotice } from "./workspace-notes.js";
+import { runningWorkspaceStacks } from "../../shared/stacks/status.js";
 import { isNamedTarget } from "./named-target.js";
 import chalk from "chalk";
 import oraSpinner from "ora";
@@ -47,6 +49,7 @@ import {
   activateWorkspace,
   deactivateWorkspace,
   setActiveWorkspace,
+  setFocusedWorkspace,
   createWorkspace,
   deleteWorkspaceConfig,
   parseAddress,
@@ -252,8 +255,22 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     lines: ["Check managed repos for upstream updates and offer to pull."],
   },
   workspace: {
-    usage: "workspace <list|use|create|delete|code> [name]",
-    lines: ["Manage workspaces (named sets of services + their modes)."],
+    usage:
+      "workspace <list|activate|deactivate|focus|use|create|delete|code> [name]",
+    lines: [
+      "Manage workspaces (named sets of services + their modes).",
+      "",
+      "  list              every workspace, the active set and the focus",
+      "  activate <n>      add a workspace to the active set",
+      "  deactivate <n>    remove it from the active set and stop the services",
+      "                    only it owns. Only services {cli} tracks: compose",
+      "                    stacks keep running; stop them with `{cli} down <repo>`",
+      "  focus <n>         make an active workspace the default for commands",
+      "  use <n>           activate and focus a workspace",
+      "  create [n]        create an empty workspace",
+      "  delete <n>        delete a workspace (and its directory)",
+      "  code [n]          open it in your editor (VS Code: a .code-workspace)",
+    ],
   },
   run: {
     usage: "run [options]",
@@ -2398,7 +2415,8 @@ class DenCLI {
       return;
     }
     console.log(`\n  ${product().cli} ${entry.usage}\n`);
-    for (const line of entry.lines) console.log(`  ${line}`);
+    for (const line of entry.lines)
+      console.log(`  ${line.replaceAll("{cli}", product().cli)}`.trimEnd());
     console.log();
   }
 
@@ -3501,7 +3519,27 @@ class DenCLI {
             }
           }
         }
+        // Deactivate releases tracked daemons only; say what it left up.
+        const stacksNote = composeStacksNotice(
+          product().cli,
+          runningWorkspaceStacks(name),
+        );
+        if (stacksNote) console.log(chalk.yellow(`    ${stacksNote}`));
         console.log("");
+        break;
+      }
+      case "focus": {
+        const name = args[1];
+        if (!name) {
+          console.log(
+            chalk.red(`Usage: ${product().cli} workspace focus <name>`),
+          );
+          return;
+        }
+        setFocusedWorkspace(name);
+        console.log(
+          chalk.green(`\n  ✓ Focused workspace: ${chalk.bold(name)}\n`),
+        );
         break;
       }
       case "use": {
@@ -3611,7 +3649,7 @@ class DenCLI {
       default:
         console.log(
           chalk.gray(
-            `Usage: ${product().cli} workspace <list|activate|deactivate|use|create|delete|code> [name]`,
+            `Usage: ${product().cli} workspace <list|activate|deactivate|focus|use|create|delete|code> [name]`,
           ),
         );
     }
@@ -3871,7 +3909,6 @@ class DenCLI {
       "  service install      Run the web UI as a launchd service (status, print, uninstall)",
     );
     console.log();
-    console.log("  workspace list       List workspaces");
     console.log(
       "  workspace list           List workspaces (active set + focus)",
     );
@@ -3879,11 +3916,14 @@ class DenCLI {
     console.log(
       "  workspace deactivate <n> Remove workspace from the active set",
     );
-    console.log("  workspace use <n>        Activate and focus a workspace");
-    console.log("  workspace create [n] Create a new workspace");
-    console.log("  workspace delete <n> Delete a workspace");
     console.log(
-      "  workspace code [n]   Open workspace in VS Code (generates .code-workspace)",
+      "  workspace focus <n>      Focus an active workspace (the default)",
+    );
+    console.log("  workspace use <n>        Activate and focus a workspace");
+    console.log("  workspace create [n]     Create a new workspace");
+    console.log("  workspace delete <n>     Delete a workspace");
+    console.log(
+      "  workspace code [n]       Open workspace in VS Code (generates .code-workspace)",
     );
     console.log("\nTest commands:");
     console.log(

@@ -4,6 +4,56 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.2.4] - unreleased
+
+### Fixed
+
+- **`GET /api/services` no longer blocks the web server.** It looked up
+  each workspace checkout's branch with a synchronous `git rev-parse`, one
+  after another (~40ms each), so with a dozen repos every request held the
+  event loop for 0.5-1.5s and everything else waited behind it: the UI,
+  the MCP server's reads, and `/api/server-info`, which `<cli> mcp connect`
+  probes with a 1.5s timeout. The lookups now run as async child processes
+  in parallel; concurrent requests (one per open tab) share one build, and
+  a settled build is reused for 2s (`?refresh=1` forces a new one; any
+  mutating request clears it). Concurrent `/api/health` polls also share
+  one run instead of each starting its own.
+- **`<cli> mcp connect` / `mcp clients` tell a slow web server from a
+  stopped one.** A server that accepts the connection but does not answer
+  within 1.5s is reported as "not answering within 1.5s", not "not
+  running". When the org config sets `web.service` (the web UI runs as a
+  launchd service), the advice is `<cli> service status` instead of
+  `<cli> web up`.
+- **Web server shutdown no longer leaks an unhandled rejection, or hangs.**
+  On SIGTERM/SIGINT the server reads the running-services registry, whose
+  path resolves the distribution root again; if that walk fails (the dist's
+  den.yml moved or removed while the server ran), the async shutdown
+  rejected unhandled ("unhandled rejection (continuing): Error: cannot
+  locate the distribution root: walked up from
+  <dist>/node_modules/@monster-orange/den/src/ui/server") and, its signal
+  guard already set, the process never exited, so a service manager had to
+  wait out its timeout and kill it. The shutdown now logs the failure and
+  exits.
+- **Deactivating a workspace no longer stops a service that moved to
+  another workspace.** A daemon's owners were the workspaces recorded when
+  it started, so a repo moved from `default` into `ws-b` while its daemon
+  ran was still "owned" only by `default`, and `workspace deactivate
+  default` stopped it. Release now re-derives the owners from the current
+  workspaces.yml membership: a daemon is stopped only when no active
+  workspace still lists its repo, and otherwise its recorded owners become
+  the active workspaces that do.
+- **`<cli> workspace --help` lists every subcommand**: activate,
+  deactivate and focus were missing (and `workspace focus <name>` now
+  exists in the CLI, as it did in the web UI). Deactivate's help and output
+  say that it releases only the services Den tracks: compose stacks of the
+  workspace's repos keep running, and the output names the running ones
+  with `<cli> down <repo>` for each (from one `docker ps`; a generic line
+  when docker can't be asked).
+
+### Migrations
+
+- None required.
+
 ## [0.2.3] - 2026-11-04
 
 ### Added

@@ -1267,16 +1267,29 @@ describe("releaseWorkspaceDaemons (deactivate)", () => {
     });
   }
 
+  /** Current workspaces.yml membership: workspace → its service keys. */
+  let members: Record<string, string[]>;
+
   beforeEach(() => {
     // Post-deactivation world: "gone" has already left the active set.
     mockGetActiveWorkspaces.mockReturnValue(["keeper"]);
-    mockGetWorkspaceByName.mockImplementation((name: string) => ({
-      name,
-      config: { services: { "repo/api": { mode: "dev-managed" as const } } },
-    }));
+    members = { gone: ["repo/api"], keeper: [] };
+    mockGetWorkspaceByName.mockImplementation((name: string) =>
+      name in members
+        ? {
+            name,
+            config: {
+              services: Object.fromEntries(
+                members[name].map((k) => [k, { mode: "dev-managed" as const }]),
+              ),
+            },
+          }
+        : null,
+    );
   });
 
   it("detaches from a service another active workspace still owns", async () => {
+    members.keeper = ["repo/api"];
     daemon("repo/api", ["gone", "keeper"]);
 
     const releases = await releaseWorkspaceDaemons("gone");
