@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.2.3] - unreleased
+## [0.2.3] - 2026-11-04
 
 ### Added
 
@@ -35,6 +35,10 @@ config and manifest changes a distribution must make to move to it under
   ("Invalid environment variable format: <name>"): `claude mcp add`'s `-e`
   takes several values, so the server name after the env pairs was read as
   one more. The name now comes right after `add`.
+- **The up/restart secrets check said the backend was "not ready" when it
+  was signed in with no default scope.** `secret_env` refs name their own
+  scope, so they still resolve; it now says "signed in, no default scope
+  set" instead of warning.
 
 ### Migrations
 
