@@ -137,6 +137,7 @@ function _injectChangelogStyles() {
     .cl-entry { margin-bottom: 18px; }
     .cl-ver-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
     .cl-ver {
+      margin: 0;
       font-family: var(--mono, monospace); font-size: 13px; font-weight: 700;
       color: var(--accent, #58a6ff);
     }
@@ -200,7 +201,7 @@ function _injectChangelogStyles() {
   overlay.className = "cl-overlay";
   overlay.innerHTML =
     '<div class="cl-box" role="dialog" aria-modal="true" aria-labelledby="cl-title">' +
-    '<div class="cl-hdr"><h3 id="cl-title">What\'s new</h3><button class="cl-close" id="cl-close-btn" title="Close">×</button></div>' +
+    '<div class="cl-hdr"><h3 id="cl-title" tabindex="-1">What\'s new</h3><button type="button" class="cl-close" id="cl-close-btn" title="Close" aria-label="Close">×</button></div>' +
     '<div class="cl-body" id="cl-body"></div>' +
     '<div class="cl-footer"><button type="button" class="cl-more-btn" id="cl-more" aria-controls="cl-body" aria-expanded="false" hidden></button><button class="cl-got-it" id="cl-got-it-btn">Got it</button></div>' +
     "</div>";
@@ -285,16 +286,18 @@ function _renderChangelogBody(entries) {
         (i > 0 ? '<hr class="cl-divider">' : "") +
         '<div class="cl-entry">' +
         '<div class="cl-ver-row">' +
-        '<span class="cl-ver">v' +
+        '<h4 class="cl-ver">v' +
         escHtml(entry.version) +
-        "</span>" +
+        "</h4>" +
         '<span class="cl-date">' +
         escHtml(entry.date) +
         "</span>" +
         '<div class="cl-copy-group">' +
         '<button class="cl-copy-btn" data-cl-version="' +
         escHtml(entry.version) +
-        '" title="Copy as Markdown">' +
+        '" title="Copy as Markdown" aria-label="Copy v' +
+        escHtml(entry.version) +
+        ' as Markdown">' +
         '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
         '<rect x="4" y="0.5" width="8.5" height="8.5" rx="1.5"/>' +
         '<path d="M8.5 9v2.5a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h2.5"/>' +
@@ -302,7 +305,9 @@ function _renderChangelogBody(entries) {
         "</button>" +
         '<button class="cl-slack-btn" data-cl-version="' +
         escHtml(entry.version) +
-        '" title="Copy for Slack">' +
+        '" title="Copy for Slack" aria-label="Copy v' +
+        escHtml(entry.version) +
+        ' for Slack">' +
         '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
         '<path d="M1 2a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7.5L5 12v-3H2a1 1 0 0 1-1-1V2z"/>' +
         "</svg>" +
@@ -535,11 +540,8 @@ window.openChangelog = function () {
   // and a reset made then does not stick. Always open at the newest release.
   const body = document.getElementById("cl-body");
   if (body) body.scrollTop = 0;
-  const more = document.getElementById("cl-more");
-  (more && !more.hidden
-    ? more
-    : document.getElementById("cl-got-it-btn")
-  )?.focus();
+  // The heading first, so a screen reader starts at the latest notes.
+  document.getElementById("cl-title")?.focus();
 };
 
 window.closeChangelog = function () {
@@ -579,6 +581,17 @@ export async function initChangelog() {
   if (pill && latest?.version) {
     pill.querySelector(".v-txt").textContent = "v" + latest.version;
   }
+  // The pill names the running build (0.2.5-dev.2, not the changelog's
+  // newest heading, 0.2.5), so a prerelease under test says what it is.
+  fetch("/api/server-info")
+    .then((r) => r.json())
+    .then((info) => {
+      const txt = pill?.querySelector(".v-txt");
+      if (txt && typeof info?.version === "string" && info.version) {
+        txt.textContent = "v" + info.version;
+      }
+    })
+    .catch(() => {});
 
   let lastSeen = null;
   try {

@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.2.5] - unreleased
+## [0.2.5] - 2026-11-04
 
 ### Fixed
 
@@ -83,9 +83,13 @@ config and manifest changes a distribution must make to move to it under
   reset once the pop-up is shown (a reset made while it was hidden did not
   stick, so a reopened pop-up kept its old scroll position). It is an
   accessible modal dialog (`role="dialog"`, `aria-modal`, labelled by its
-  title). Opening moves focus into it, to the toggle or else "Got it",
-  Tab stays inside, and closing returns focus to what had it, which is the
-  version pill after the first-visit auto-open.
+  title). Opening moves focus to its heading, so a screen reader starts at
+  the latest notes. Tab stays inside, and closing returns focus to what had
+  it, which is the version pill after the first-visit auto-open. Each
+  version is a heading (h4) for heading navigation, and the icon buttons
+  have spoken names ("Close", "Copy v0.2.5 as Markdown").
+- **The version pill names the running build** (`v0.2.5-dev.2`), not the
+  newest changelog heading, so a prerelease under test says what it is.
 - **Multi-workspace blueprint: `defaults.workspaces`.** `{ <name>: {
   repos, branch?, autostart_off?, focus? } }` in the org config. A fresh
   setup creates each workspace with its repos (managed), activates them

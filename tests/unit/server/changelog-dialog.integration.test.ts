@@ -71,8 +71,31 @@ describe("What's new dialog", () => {
     expect(
       await page.locator(`#${labelledBy}`).evaluate((el) => el.tagName),
     ).toBe("H3");
-    // Earlier versions exist, so the toggle is there and takes focus.
-    expect(await activeId()).toBe("cl-more");
+    // Focus starts on the heading, so a screen reader reads the latest
+    // notes first (not the toggle at the bottom).
+    expect(await activeId()).toBe(labelledBy);
+    // Icon buttons have spoken names, not glyphs or title-only names.
+    expect(await page.getAttribute("#cl-close-btn", "aria-label")).toBe(
+      "Close",
+    );
+    const copyNames = await page.$$eval(
+      "#cl-body .cl-copy-btn, #cl-body .cl-slack-btn",
+      (els) => els.map((e) => e.getAttribute("aria-label") ?? ""),
+    );
+    expect(copyNames.length).toBeGreaterThan(0);
+    for (const n of copyNames)
+      expect(n).toMatch(/^Copy v\S+ (as Markdown|for Slack)$/);
+    // Each version is a heading under the dialog's H3.
+    expect(
+      await page.$$eval("#cl-body .cl-ver", (els) => els.map((e) => e.tagName)),
+    ).toEqual(["H4"]);
+    // The pill names the running build, not the newest changelog entry.
+    const info = await page.evaluate(() =>
+      fetch("/api/server-info").then((r) => r.json()),
+    );
+    expect(await page.textContent("#version-pill .v-txt")).toBe(
+      `v${info.version}`,
+    );
     for (let i = 0; i < 8; i++) {
       await page.keyboard.press(i % 3 === 2 ? "Shift+Tab" : "Tab");
       expect(await focusInDialog()).toBe(true);
@@ -82,6 +105,8 @@ describe("What's new dialog", () => {
   it("scrolled and expanded, then closed: focus returns to the pill", async () => {
     await page.click("#cl-more");
     expect(await page.textContent("#cl-more")).toBe("Show latest only");
+    const heads = await page.$$eval("#cl-body h4.cl-ver", (els) => els.length);
+    expect(heads).toBeGreaterThan(1);
     await page.evaluate(() => {
       const b = document.getElementById("cl-body");
       if (b) b.scrollTop = b.scrollHeight;
@@ -100,7 +125,7 @@ describe("What's new dialog", () => {
     expect(await page.textContent("#cl-more")).toMatch(
       /^Show all versions \(\d+ earlier\)$/,
     );
-    expect(await activeId()).toBe("cl-more");
+    expect(await activeId()).toBe("cl-title");
     await page.click("#cl-got-it-btn");
     expect(await isOpen()).toBe(false);
     expect(await activeId()).toBe("version-pill");
