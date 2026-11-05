@@ -183,6 +183,39 @@ describe("relocate", () => {
   });
 });
 
+describe("relocate needs something that names the repo", () => {
+  it("refuses an empty folder; --force accepts it", () => {
+    const empty = path.join(repos, "empty-dir");
+    fs.mkdirSync(empty, { recursive: true });
+    const before = fs.readFileSync(WS_FILE(), "utf-8");
+    const r = den("relocate", "shop", empty, "--dry-run");
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/Nothing at .*empty-dir says it is "shop"/);
+    expect(r.out).toMatch(/relocate shop .* --force/);
+    const forced = den("relocate", "shop", empty, "--force");
+    expect(forced.code).toBe(0);
+    expect(workspaces().workspaces.default.services.shop.path).toBe(empty);
+    write(WS_FILE(), before);
+  });
+
+  it("a matching GitHub remote alone is enough", () => {
+    const clone = path.join(repos, "bare-clone");
+    fs.mkdirSync(clone, { recursive: true });
+    spawnSync("git", ["init", "-q", clone]);
+    spawnSync("git", [
+      "-C",
+      clone,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/acme/shop.git",
+    ]);
+    const r = den("relocate", "shop", clone, "--dry-run");
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/Would point at .*bare-clone/);
+  });
+});
+
 describe("register -w", () => {
   it("writes the named workspace (inactive) and leaves focus alone", () => {
     const dir = path.join(repos, "blog");

@@ -321,10 +321,11 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   relocate: {
-    usage: "relocate <repo> <path> [--dry-run] [-w <workspace>]",
+    usage: "relocate <repo> <path> [--dry-run] [--force] [-w <workspace>]",
     lines: [
       "Point every workspace's dev-managed entries for <repo> at <path>.",
-      "Refuses a path that is missing or holds a different repo.",
+      "Refuses a path that is missing, holds a different repo, or has",
+      "neither a manifest nor a remote naming this one (unless --force).",
       "-w limits it to that workspace; focus never changes.",
     ],
   },
@@ -3228,7 +3229,7 @@ class DenCLI {
       console.error(
         chalk.red(
           "\n  ❌ register needs a terminal (stdin is not a TTY).\n" +
-            `     Without one, name the checkout: ${product().cli} register <path> [--name <repo>] [--gh <owner/repo>]\n`,
+            `     Without one, name the checkout: ${product().cli} register <path> [--name <repo>] [--gh <owner/repo>] [-w <workspace>]\n`,
         ),
       );
       process.exitCode = 1;
@@ -3250,21 +3251,23 @@ class DenCLI {
    * clones and are left alone. Focus and the active set never change.
    */
   private async cmdRelocate(args: string[]): Promise<void> {
-    const usage = `${product().cli} relocate <repo> <path> [--dry-run] [-w <workspace>]`;
+    const usage = `${product().cli} relocate <repo> <path> [--dry-run] [--force] [-w <workspace>]`;
     if (args.includes("-h") || args.includes("--help")) {
       console.log(
         `\n  ${usage}\n\n` +
           "  A checkout moved: point every workspace's dev-managed entries for\n" +
-          "  <repo> at <path>. Refuses a missing path, or one whose manifest\n" +
-          "  name or GitHub remote names a different repo. --dry-run shows\n" +
+          "  <repo> at <path>. Refuses a missing path, one whose manifest\n" +
+          "  name or GitHub remote names a different repo, and one where\n" +
+          "  neither names this repo (--force accepts that last). --dry-run shows\n" +
           "  the changes without writing. -w limits it to that workspace.\n" +
           "  Focus and the active set never change.\n",
       );
       return;
     }
     const dryRun = args.includes("--dry-run") || args.includes("-n");
+    const force = args.includes("--force");
     const unknown = args.find(
-      (a) => a.startsWith("-") && !["--dry-run", "-n"].includes(a),
+      (a) => a.startsWith("-") && !["--dry-run", "-n", "--force"].includes(a),
     );
     const positional = args.filter((a) => !a.startsWith("-"));
     if (unknown || positional.length !== 2) {
@@ -3327,6 +3330,23 @@ class DenCLI {
     ) {
       fail(
         `${newPath} is a checkout of ${remote}; the catalog has "${repoName}" as ${catalogGh}.`,
+      );
+      return;
+    }
+    // Not contradicting is not enough: an empty or unrelated folder has no
+    // manifest and no remote. Something must say this is the repo.
+    const identified =
+      manifest?.name === repoName ||
+      manifest?.name === leaf ||
+      (!!catalogGh &&
+        !!remote &&
+        catalogGh.toLowerCase() === remote.toLowerCase()) ||
+      (!catalogGh && coords?.repo.toLowerCase() === leaf.toLowerCase());
+    if (!identified && !force) {
+      fail(
+        `Nothing at ${newPath} says it is "${repoName}": no manifest named ` +
+          `"${leaf}" and no GitHub remote ${catalogGh || `…/${leaf}`}.\n` +
+          `     If it is, say so: ${product().cli} relocate ${repoName} ${rawPath} --force`,
       );
       return;
     }

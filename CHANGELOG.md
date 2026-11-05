@@ -14,11 +14,16 @@ config and manifest changes a distribution must make to move to it under
   other settings. Managed entries (Den's own clones) are left alone, and focus
   and the active set never change. It refuses a missing path, one whose
   manifest name or GitHub remote names a different repo, and a repo no
-  workspace has. `--dry-run` shows the changes without writing; `-w` limits it
+  workspace has. Since 0.3.0-dev.27 (from a consumer's dev.26 run) it also
+  refuses a folder where nothing names the repo (an empty or unrelated
+  folder): the manifest name, or the GitHub remote against the catalog's
+  `gh` (or the repo name when the catalog has none), must match.
+  `--force` accepts such a folder. `--dry-run` shows the changes without writing; `-w` limits it
   to one workspace.
 - **`<cli> register <path> -w <workspace>`** (0.3.0-dev.26). `-w` writes that
   workspace, active or not, and leaves focus alone. It used to fail with
-  "-w/--workspace is not valid with register".
+  "-w/--workspace is not valid with register". The no-TTY usage line names `-w` too
+  (0.3.0-dev.27).
 
 - **The "What's new" pop-up shows the newest release only** (0.3.0-dev.16).
   A "Show all versions (N earlier)" button in its footer lists every
