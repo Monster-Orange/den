@@ -92,6 +92,7 @@ export function buildModel({
       cloned: r.cloned !== false,
       manifestLayers: r.manifestLayers || [],
       owners: r.owners || [],
+      inWorkspaces: r.inWorkspaces || [],
       missing: depsMap[r.address] || [],
       hasPlacement: "runs" in r,
     };
@@ -267,6 +268,19 @@ export function edgeModel(m, collapsed) {
 }
 
 /** The ELK graph: outer group (org or application) › repo › service. */
+/**
+ * A compound node's minimum size, as elk.nodeSize.minimum. ELK's layered
+ * layout with INCLUDE_CHILDREN reads a compound node's minimum in its own
+ * layout axes: top-down, the first value bounds the height and the second
+ * the width. Passed as (width, height) there, a repo box's minimum width
+ * (386px) became its height, and a box with one row of cards drew about
+ * twice the height it needs (a consumer's dev.32 finding). So top-down
+ * swaps the pair; left-right it is (width, height) as written.
+ */
+export function groupMinimum(w, h, direction = "down") {
+  return direction === "right" ? `(${w},${h})` : `(${h},${w})`;
+}
+
 export function buildElkGraph(
   m,
   {
@@ -304,7 +318,7 @@ export function buildElkGraph(
           layoutOptions: {
             "elk.padding": "[top=40,left=14,bottom=14,right=14]",
             "elk.nodeSize.constraints": "MINIMUM_SIZE",
-            "elk.nodeSize.minimum": "(" + (sz.w + 150) + ",40)",
+            "elk.nodeSize.minimum": groupMinimum(sz.w + 150, 40, direction),
           },
           children: svcs.map((s) => {
             parent[s.id] = rid;
@@ -438,4 +452,70 @@ export function connections(m, x) {
     deps: [...new Set([...intraDeps, ...repoOut])].map((id) => ({ id })),
     users: [...new Set([...usedBy, ...repoIn])].map((id) => ({ id })),
   };
+}
+
+/**
+ * The Graph page with the top bar's "All active" (0.3.0-dev.33): every
+ * workspace in view, as the Services page shows them (one /api/services
+ * list, a service several define listed once with `inWorkspaces`). The
+ * per-workspace /api/graph, /api/applications and deps-check payloads
+ * are merged here, in view order (focus first):
+ *
+ *   graph    nodes and `order` once each, in first-seen order; an edge
+ *            once per from → to and kind (the first workspace's)
+ *   apps     one per name, its repos the union
+ *   depsMap  an address's missing deps, the union
+ */
+export function mergeWorkspaceViews({
+  graphs = [],
+  apps = [],
+  deps = [],
+} = {}) {
+  const nodes = [];
+  const order = [];
+  const edges = [];
+  const seenEdge = new Set();
+  const once = (arr, v) => {
+    if (!arr.includes(v)) arr.push(v);
+  };
+  for (const g of graphs) {
+    for (const n of g?.nodes || []) once(nodes, n);
+    for (const n of g?.order || []) once(order, n);
+    for (const e of g?.edges || []) {
+      const k = `${e.from}\u0000${e.to}\u0000${e.kind}`;
+      if (seenEdge.has(k)) continue;
+      seenEdge.add(k);
+      edges.push(e);
+    }
+  }
+  const byName = new Map();
+  for (const list of apps)
+    for (const a of list || []) {
+      const had = byName.get(a.name);
+      if (!had) {
+        byName.set(a.name, { ...a, repos: [...(a.repos || [])] });
+        continue;
+      }
+      for (const r of a.repos || []) once(had.repos, r);
+    }
+  const depsMap = {};
+  for (const list of deps)
+    for (const { address, missingDeps } of list || []) {
+      const had = (depsMap[address] ||= []);
+      for (const d of missingDeps || []) once(had, d);
+    }
+  return {
+    graph: { nodes, edges, ...(order.length ? { order } : {}) },
+    apps: [...byName.values()],
+    depsMap,
+  };
+}
+
+/** Each repo's owning workspace (the first in view that defines it). */
+export function ownerOfRepos(services = []) {
+  const out = new Map();
+  for (const s of services)
+    if (!out.has(s.repo) && s.inWorkspaces?.length)
+      out.set(s.repo, s.inWorkspaces[0]);
+  return out;
 }

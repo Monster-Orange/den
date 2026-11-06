@@ -43,6 +43,7 @@ import {
   renderPanel,
   runAction,
 } from "/panel.js";
+import { ownersLabel } from "/workspace-picker.js";
 
 const LS = "__DEN_CLI__-graph:";
 const store = {
@@ -447,7 +448,7 @@ function cardInner(s) {
   const showPlace = s.runs === "remote" || M.mixed;
   const acts = actionsFor(s);
   return `<div class="r1"><span class="dg-dot ${status(s)}" title="${statusWord(s)}"></span><span class="nm" title="${esc(s.name)}">${esc(s.name)}</span>${showPlace ? `<span class="dg-badge ${s.runs}">${esc(placementText(s))}</span>` : ""}</div>
-    <div class="r2" title="${esc(s.id)}">${esc(s.repo)}</div>
+    <div class="r2" title="${esc(s.id)}${s.inWorkspaces.length > 1 ? `: in ${esc(s.inWorkspaces.join(", "))}` : ""}">${esc(s.repo + ownersLabel(s.inWorkspaces))}</div>
     <div class="r3">${s.entry ? '<span class="dg-tag entry">entry</span>' : ""}${s.infra ? '<span class="dg-tag">infra</span>' : ""}${s.missing.length ? `<span class="dg-tag warn" title="Missing: ${esc(s.missing.join(", "))}">⚠ missing</span>` : ""}${!s.cloned ? '<span class="dg-tag warn">not cloned</span>' : ""}<span class="h ${status(s)}">${esc(healthLine(s))}</span></div>
     <div class="dg-acts">${[acts.primary, ...acts.common]
       .filter(Boolean)
@@ -663,6 +664,24 @@ function zoomAt(f, cx, cy) {
   st.z = nz;
   applyView();
 }
+/** The fitted view's top inset (st.ty) and the gap kept above the overlays. */
+const FIT_TOP = 16;
+const FIT_GAP = 8;
+/**
+ * The height the overlays at the viewport's foot take (the legend and the
+ * zoom group, from the bottom edge to the higher one's top, plus a gap):
+ * Fit keeps the graph above them (0.3.0-dev.33, a consumer's finding: a
+ * legend on two lines covered the last group's bottom 10px). Measured,
+ * so a wrapped legend reserves its real height.
+ */
+function bottomReserve(vp) {
+  let top = vp.bottom;
+  for (const el of [$(".dg-legend"), $(".dg-zoom")]) {
+    const r = el?.getBoundingClientRect();
+    if (r && r.height > 0) top = Math.min(top, r.top);
+  }
+  return vp.bottom - top + FIT_GAP;
+}
 /** The zoom that shows the whole graph in the viewport now (≤ 1), or null. */
 function fitNeed() {
   const vp = $(".dg-vp")?.getBoundingClientRect();
@@ -670,7 +689,11 @@ function fitNeed() {
   if (!vp || !world) return null;
   const w = parseFloat(world.style.width) || 1,
     h = parseFloat(world.style.height) || 1;
-  return Math.min(1, (vp.width - 32) / w, (vp.height - 70) / h);
+  return Math.min(
+    1,
+    (vp.width - 32) / w,
+    (vp.height - FIT_TOP - bottomReserve(vp)) / h,
+  );
 }
 /**
  * Fit the graph; automatic fits pass AUTO_FIT, the Fit button FIT_MIN.
@@ -691,7 +714,7 @@ function fit(floor = FIT_MIN) {
         : 0.6
       : Math.max(floor, need);
   st.tx = Math.max(16, (vp.width - w * st.z) / 2);
-  st.ty = 16;
+  st.ty = FIT_TOP;
   autoFit = floor;
   applyView();
 }

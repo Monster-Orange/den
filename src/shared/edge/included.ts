@@ -30,6 +30,23 @@ export interface IncludedRouter {
   /** The hosts its rule names (`Host(...)`), for links. */
   hosts: string[];
   tls: boolean;
+  /**
+   * Served over https: the router has TLS or is on the websecure
+   * entrypoint (0.3.0-dev.33). Its URLs are https://, else http://.
+   */
+  secure: boolean;
+  /**
+   * Where it sends traffic: its service's loadBalancer server URL(s) when
+   * the same file defines that service, else the service's name
+   * (0.3.0-dev.33).
+   */
+  upstream: string;
+}
+
+/** A router's URLs: one per host, with its scheme; none without a Host(). */
+export function routerUrls(r: Pick<IncludedRouter, "hosts" | "secure">) {
+  const scheme = r.secure ? "https://" : "http://";
+  return r.hosts.map((h) => scheme + h);
 }
 
 export interface IncludedRouters {
@@ -51,25 +68,46 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
 /** The routers in one dynamic-config document's `http.routers`. */
 export function routersOf(doc: unknown, file: string): IncludedRouter[] {
-  const http = (doc as { http?: { routers?: unknown } } | null)?.http;
+  const http = (
+    doc as { http?: { routers?: unknown; services?: unknown } } | null
+  )?.http;
   const routers = http?.routers;
   if (!routers || typeof routers !== "object" || Array.isArray(routers))
     return [];
+  const services = obj(http?.services);
   return Object.entries(routers as Record<string, unknown>).map(([name, r]) => {
-    const o = (r && typeof r === "object" ? r : {}) as Record<string, unknown>;
+    const o = obj(r);
     const rule = str(o.rule);
+    const service = str(o.service);
+    const entryPoints = Array.isArray(o.entryPoints)
+      ? o.entryPoints.filter((e): e is string => typeof e === "string")
+      : [];
+    const tls = o.tls !== undefined && o.tls !== null && o.tls !== false;
     return {
       name,
       file,
       rule,
-      service: str(o.service),
-      entryPoints: Array.isArray(o.entryPoints)
-        ? o.entryPoints.filter((e): e is string => typeof e === "string")
-        : [],
+      service,
+      entryPoints,
       hosts: ruleHosts(rule),
-      tls: o.tls !== undefined && o.tls !== null && o.tls !== false,
+      tls,
+      secure: tls || entryPoints.includes("websecure"),
+      upstream: serverUrls(services[service]).join(", ") || service,
     };
   });
+}
+
+const obj = (v: unknown): Record<string, unknown> =>
+  v && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : {};
+
+/** A Traefik service's loadBalancer server URLs (none: not a load balancer). */
+function serverUrls(svc: unknown): string[] {
+  const servers = obj(obj(svc).loadBalancer).servers;
+  return Array.isArray(servers)
+    ? servers.map((x) => str(obj(x).url)).filter(Boolean)
+    : [];
 }
 
 /** Every router in the edge's included files, in file then key order. */

@@ -170,7 +170,8 @@ describe("the Edge page (PL-SPEC §10)", () => {
     expect(await p.textContent(".ph h1")).toBe("Edge");
     await p.waitForSelector("#edge-body:not([aria-busy])");
     expect(await p.textContent("#edge-sub")).toMatch(/^acme \/ acme-edge · /);
-    // Den's own route, then the included router with its source file.
+    // Den's own route, then the included router with its source file;
+    // its URL with its scheme, as Den's own rows (0.3.0-dev.33).
     const rows = await p.$$eval("#edge-body table.svc tbody tr", (trs) =>
       trs.map((tr) =>
         [...tr.querySelectorAll("td")].map((td) => td.textContent!.trim()),
@@ -178,7 +179,7 @@ describe("the Edge page (PL-SPEC §10)", () => {
     );
     expect(rows).toContainEqual([
       "vpn-web",
-      "web.acme.vpn.example",
+      "http://web.acme.vpn.example",
       "vpn-web",
       "vpn-routes.yml",
     ]);

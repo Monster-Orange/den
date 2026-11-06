@@ -12,6 +12,7 @@ import {
   includedRouters,
   ruleHosts,
   stackRouters,
+  routerUrls,
 } from "../../../src/shared/edge/included.js";
 import { edgeStatus } from "../../../src/shared/edge/status.js";
 import type { EdgeConfig } from "../../../src/shared/edge/types.js";
@@ -105,6 +106,8 @@ describe("includedRouters", () => {
         entryPoints: ["websecure"],
         hosts: ["web.acme.vpn.example", "app.acme.vpn.example"],
         tls: true,
+        secure: true,
+        upstream: "http://host.docker.internal:3000",
       },
       {
         name: "vpn-api",
@@ -114,6 +117,8 @@ describe("includedRouters", () => {
         entryPoints: [],
         hosts: ["api.acme.vpn.example"],
         tls: false,
+        secure: false,
+        upstream: "vpn-api@file",
       },
     ]);
   });
@@ -195,7 +200,8 @@ describe("the stacks' routers (a consumer's finding, 0.3.0-dev.32)", () => {
     fs.mkdirSync(d, { recursive: true });
     fs.writeFileSync(
       path.join(d, "stack-shop-main.yml"),
-      "http:\n  routers:\n    stack-shop-web:\n      rule: Host(`web.shop.acme.localhost`)\n      service: stack-shop-web\n      tls: {}\n",
+      "http:\n  routers:\n    stack-shop-web:\n      rule: Host(`web.shop.acme.localhost`)\n      service: stack-shop-web\n      tls: {}\n" +
+        "  services:\n    stack-shop-web:\n      loadBalancer:\n        servers: [{ url: http://shop-main-web-1:3000 }]\n",
     );
     fs.writeFileSync(path.join(d, "stack-bad.yml"), "http: [unclosed\n");
     // Den's own and a copied-in included file: not a stack's.
@@ -218,9 +224,58 @@ describe("the stacks' routers (a consumer's finding, 0.3.0-dev.32)", () => {
         entryPoints: [],
         hosts: ["web.shop.acme.localhost"],
         tls: true,
+        secure: true,
+        upstream: "http://shop-main-web-1:3000",
       },
     ]);
     expect(out.errors.map((e) => e.file)).toEqual(["stack-bad.yml"]);
+  });
+
+  // A consumer's dogfood finding (0.3.0-dev.33): the stack rows showed
+  // no scheme and the Traefik service's name, where Den's own rows show
+  // https://… and the upstream URL.
+  it("a router on websecure is secure without a tls block; the upstream is its service's loadBalancer URL", () => {
+    const stateDir = path.join(tmp, "stack-state-lb");
+    const d = path.join(stateDir, "dynamic");
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(
+      path.join(d, "stack-shop-main.yml"),
+      [
+        "http:",
+        "  routers:",
+        "    stack-shop-web:",
+        "      entryPoints: [websecure]",
+        "      rule: Host(`web.shop.acme.localhost`)",
+        "      service: stack-shop-web",
+        "    stack-shop-admin:",
+        "      entryPoints: [web]",
+        "      rule: Host(`admin.shop.acme.localhost`)",
+        "      service: shop-admin@docker",
+        "  services:",
+        "    stack-shop-web:",
+        "      loadBalancer:",
+        "        servers:",
+        "          - url: http://shop-main-web-1:3000",
+        "",
+      ].join("\n"),
+    );
+    const out = stackRouters(base({ stateDir }));
+    expect(
+      out.routers.map((r) => [r.name, r.secure, routerUrls(r), r.upstream]),
+    ).toEqual([
+      [
+        "stack-shop-web",
+        true,
+        ["https://web.shop.acme.localhost"],
+        "http://shop-main-web-1:3000",
+      ],
+      [
+        "stack-shop-admin",
+        false,
+        ["http://admin.shop.acme.localhost"],
+        "shop-admin@docker",
+      ],
+    ]);
   });
 
   it("no dynamic dir yet: none", () => {
@@ -263,7 +318,7 @@ describe("the stacks' routers (a consumer's finding, 0.3.0-dev.32)", () => {
     }
     const text = lines.join("\n");
     expect(text).toMatch(
-      /https:\/\/web\.shop\.acme\.localhost\s+→ stack-shop-web {2}\(stack: stack-shop-main\.yml\)/,
+      /https:\/\/web\.shop\.acme\.localhost\s+→ http:\/\/shop-main-web-1:3000 {2}\(stack: stack-shop-main\.yml\)/,
     );
     expect(text).toMatch(/stack-bad\.yml: not read/);
   });
@@ -299,7 +354,7 @@ describe("`edge routes`", () => {
     const text = lines.join("\n");
     expect(text).toMatch(/http:\/\/acme\.acme\.localhost\s+→ http:/);
     expect(text).toMatch(
-      /https:\/\/web\.acme\.vpn\.example, https:\/\/app\.acme\.vpn\.example\s+→ vpn-web {2}\(vpn-routes\.yml\)/,
+      /https:\/\/web\.acme\.vpn\.example, https:\/\/app\.acme\.vpn\.example\s+→ http:\/\/host\.docker\.internal:3000 {2}\(vpn-routes\.yml\)/,
     );
     expect(text).toMatch(
       /http:\/\/api\.acme\.vpn\.example\s+→ vpn-api@file {2}\(vpn-routes\.yml\)/,

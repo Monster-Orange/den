@@ -1607,18 +1607,13 @@
       '<div class="den-ph-h"><h1></h1><div class="sub"></div></div>' +
       '<div class="act" hidden></div>';
     el.querySelector("h1").textContent = label;
-    var tabs = document.createElement("div");
-    tabs.className = "ptabs den-ptabs";
-    tabs.setAttribute("role", "tablist");
-    tabs.hidden = true;
-    main.insertBefore(tabs, main.firstChild);
-    main.insertBefore(el, tabs);
+    main.insertBefore(el, main.firstChild);
     ph = {
       el: el,
       h1: el.querySelector("h1"),
       sub: el.querySelector(".sub"),
       act: el.querySelector(".act"),
-      tabs: tabs,
+      tabs: null,
       subFixed: false,
       over: null,
     };
@@ -1633,13 +1628,169 @@
         attributeFilter: ["hidden"],
       });
   }
+  // ── tabs: the WAI-ARIA tabs pattern, one helper (0.3.0-dev.33) ────────
+  // Every page tablist (Local Dev's workspace tabs, a page header's tabs)
+  // is wired here: one tab stop (the selected tab is tabindex 0, the rest
+  // -1); ←/→ move and wrap, Home and End go to the ends, and each selects
+  // as it moves (automatic activation); a click selects. Each tab has
+  // aria-controls naming its role=tabpanel, which has aria-labelledby back
+  // to the tab, and only the selected tab's panel shows.
+  var tabSeq = 0;
+  function tabIdOf(el, stem) {
+    if (!el.id) el.id = "den-" + stem + "-" + ++tabSeq;
+    return el.id;
+  }
+  /**
+   * Wire `list` (an element with role=tablist) as tabs. opts:
+   *   panelOf(tab)    its panel (default: the element its aria-controls
+   *                   names)
+   *   onSelect(tab)   after a tab is selected (by click or key)
+   *   selected        the tab (or its index) to select first (default:
+   *                   the one with aria-selected="true", else the first)
+   * Returns { select(tabOrIndex, focus?), selected(), tabs() }. Wiring the
+   * same list again replaces the old wiring.
+   */
+  function wireTabs(list, opts) {
+    opts = opts || {};
+    if (!list) return null;
+    if (list._denTabs) list._denTabs.off();
+    list.setAttribute("role", "tablist");
+    function tabs() {
+      return Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+    }
+    function panelOf(tab) {
+      if (typeof opts.panelOf === "function") return opts.panelOf(tab);
+      var id = tab.getAttribute("aria-controls");
+      return id ? document.getElementById(id) : null;
+    }
+    tabs().forEach(function (tab) {
+      var panel = panelOf(tab);
+      tabIdOf(tab, "tab");
+      if (!panel) return;
+      tab.setAttribute("aria-controls", tabIdOf(panel, "tabpanel"));
+      panel.setAttribute("role", "tabpanel");
+      panel.setAttribute("aria-labelledby", tab.id);
+    });
+    function indexOf(t) {
+      return typeof t === "number" ? t : tabs().indexOf(t);
+    }
+    function paint(i) {
+      tabs().forEach(function (tab, j) {
+        var on = j === i;
+        tab.setAttribute("aria-selected", on ? "true" : "false");
+        tab.setAttribute("tabindex", on ? "0" : "-1");
+        tab.classList.toggle("active", on);
+        var panel = panelOf(tab);
+        if (panel) {
+          panel.hidden = !on;
+          panel.classList.toggle("active", on);
+        }
+      });
+    }
+    function select(t, focus) {
+      var all = tabs();
+      var i = indexOf(t);
+      if (i < 0 || !all[i]) return;
+      paint(i);
+      if (focus) all[i].focus();
+      if (typeof opts.onSelect === "function") opts.onSelect(all[i]);
+    }
+    function current() {
+      var all = tabs();
+      for (var i = 0; i < all.length; i++)
+        if (all[i].getAttribute("aria-selected") === "true") return all[i];
+      return all[0] || null;
+    }
+    function onClick(e) {
+      var tab = e.target.closest && e.target.closest('[role="tab"]');
+      if (!tab || !list.contains(tab)) return;
+      e.preventDefault();
+      select(tab, false);
+    }
+    function onKey(e) {
+      var tab = e.target.closest && e.target.closest('[role="tab"]');
+      if (!tab || !list.contains(tab)) return;
+      var all = tabs();
+      var i = all.indexOf(tab);
+      var n = all.length;
+      var next =
+        e.key === "ArrowRight"
+          ? (i + 1) % n
+          : e.key === "ArrowLeft"
+            ? (i - 1 + n) % n
+            : e.key === "Home"
+              ? 0
+              : e.key === "End"
+                ? n - 1
+                : -1;
+      if (next < 0) return;
+      e.preventDefault();
+      select(next, true);
+    }
+    list.addEventListener("click", onClick);
+    list.addEventListener("keydown", onKey);
+    var first =
+      opts.selected != null ? indexOf(opts.selected) : indexOf(current());
+    paint(first < 0 ? 0 : first);
+    var api = {
+      select: select,
+      selected: current,
+      tabs: tabs,
+      off: function () {
+        list.removeEventListener("click", onClick);
+        list.removeEventListener("keydown", onKey);
+        list._denTabs = null;
+      },
+    };
+    list._denTabs = api;
+    return api;
+  }
+  /**
+   * The page header's tabs, made only when a page asks (no empty stub):
+   * spec { label, tabs: [{ id, label, panel }], selected?, onSelect? }.
+   * A .ptabs tablist below the header, wired by wireTabs; each panel is
+   * the page's own element. Asked again, the old tablist is replaced.
+   */
+  function pageTabs(spec) {
+    if (!ph || !spec || !Array.isArray(spec.tabs)) return null;
+    if (ph.tabs) ph.tabs.remove();
+    var list = document.createElement("div");
+    list.className = "ptabs den-ptabs";
+    list.setAttribute("role", "tablist");
+    if (spec.label) list.setAttribute("aria-label", String(spec.label));
+    var panels = [];
+    var sel = 0;
+    spec.tabs.forEach(function (d, i) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.setAttribute("role", "tab");
+      if (d.id) b.setAttribute("data-tab", String(d.id));
+      b.textContent = String(d.label || d.id || "");
+      list.appendChild(b);
+      panels.push(d.panel || null);
+      if (spec.selected != null && d.id === spec.selected) sel = i;
+    });
+    ph.el.parentNode.insertBefore(list, ph.el.nextSibling);
+    ph.tabs = list;
+    var all = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+    return wireTabs(list, {
+      panelOf: function (tab) {
+        return panels[all.indexOf(tab)] || null;
+      },
+      selected: sel,
+      onSelect: function (tab) {
+        if (typeof spec.onSelect === "function")
+          spec.onSelect(tab.getAttribute("data-tab"), tab);
+      },
+    });
+  }
   /**
    * The page header (R20): { el, h1, sub, act, tabs }, or null on a page
    * that draws its own. setSub(text) fixes the sub line (null: the scope
    * again); setScope({ ws?, env? }) keeps the scope line but names the
    * workspace or env the page shows (Local Dev and Graph show one
-   * workspace, locally); a page shows .act or .tabs by filling them and
-   * unhiding them.
+   * workspace, locally); a page shows .act by filling it and unhiding it,
+   * and tabs with tabs(spec) (pageTabs: made only then).
    */
   function pageHeader() {
     if (!ph) return null;
@@ -1648,7 +1799,7 @@
       h1: ph.h1,
       sub: ph.sub,
       act: ph.act,
-      tabs: ph.tabs,
+      tabs: pageTabs,
       setSub: function (text) {
         ph.subFixed = text != null;
         if (text != null) ph.sub.textContent = String(text);
@@ -2442,8 +2593,10 @@
     setDock: setDock,
     /** The runs dock (R16): every page's output, one path. */
     runs: runsApi,
-    /** The page header (R20): { el, h1, sub, act, tabs, setSub }, or null. */
+    /** The page header (R20): { el, h1, sub, act, tabs(spec), setSub }, or null. */
     pageHeader: pageHeader,
+    /** Wire a role=tablist as WAI-ARIA tabs (roving tabindex, keys, panels). */
+    wireTabs: wireTabs,
     registerSettingsCategory: registerSettingsCategory,
     registerSetting: registerSetting,
     settings: function () {
@@ -2607,7 +2760,10 @@
     ".den-ph h1 { font: 600 22px/1.2 var(--display); margin: 0; padding: 0; text-wrap: balance; color: var(--text); }",
     ".den-ph .sub { color: var(--muted); font-size: 13px; margin: 4px 0 0; padding: 0; min-height: 1.45em; }",
     ".den-ph .act { margin-left: auto; display: flex; gap: 8px; }",
-    ".den-ph [hidden], .den-ptabs[hidden] { display: none; }",
+    ".den-ph [hidden], .den-ptabs[hidden], [role='tabpanel'][hidden] { display: none !important; }",
+    // A tablist inside a .ptabs row beside a link (Local Dev's "Settings ↗")
+    // lays its tabs out as the row does.
+    ".ptabs > [role='tablist'] { display: flex; gap: 2px; flex: none; }",
     ".ptabs.den-ptabs { flex: none; margin: 0 24px 18px; }",
     ".ptabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto; }",
     // A link among the tabs (Local Dev's "Settings ↗") looks like one.

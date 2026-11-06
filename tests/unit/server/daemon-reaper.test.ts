@@ -12,7 +12,10 @@ import {
   type DaemonReaperDeps,
 } from "../../../src/ui/server/daemon-reaper.js";
 import type { ServiceHealthResult } from "../../../src/shared/environment-manager/health.js";
-import type { DaemonRecord } from "../../../src/shared/environment-manager/service-runner.js";
+import {
+  daemonStaleReason,
+  type DaemonRecord,
+} from "../../../src/shared/environment-manager/service-runner.js";
 import type { ResolvedService } from "../../../src/shared/types/index.js";
 
 const ADDRESS = "shop/api";
@@ -236,5 +239,96 @@ describe("reapDeadDaemons", () => {
 
     expect(unregister).toHaveBeenCalledWith(ADDRESS);
     expect(result.removed).toEqual([ADDRESS]);
+  });
+
+  // A consumer's dev.32 dogfood finding: a relocated repo's record (no pid,
+  // containers: []) whose service now runs as an unrelated compose
+  // container. Its address resolves and that container is healthy, so the
+  // health sweep kept it forever (a permanent Runs tab).
+  describe("stale records (0.3.0-dev.33)", () => {
+    const staleWith =
+      (deps: Parameters<typeof daemonStaleReason>[2]) =>
+      (d: DaemonRecord, running: Set<string> | null) =>
+        daemonStaleReason(d, running, deps);
+
+    it("removes a record whose checkout is gone, though the address resolves healthy", async () => {
+      const { deps, unregister, healthCalls } = makeDeps(["ok"], {
+        listDaemons: () => [{ ...makeDaemon(), containers: [] }],
+        staleReason: staleWith({ exists: () => false }),
+        runningContainers: async () => new Set(["shop"]),
+      });
+
+      const result = await reapDeadDaemons(deps);
+
+      expect(unregister).toHaveBeenCalledWith(ADDRESS);
+      expect(result.removed).toEqual([ADDRESS]);
+      expect(healthCalls).toHaveLength(0);
+    });
+
+    it("removes a relocated record when none of its containers run (the new checkout's own container does)", async () => {
+      const { deps, unregister } = makeDeps(["ok"], {
+        listDaemons: () => [{ ...makeDaemon(), containers: [] }],
+        staleReason: staleWith({
+          exists: () => true,
+          resolvedPaths: () => ["/repos/relocated/shop"],
+          devOpNames: () => [],
+        }),
+        runningContainers: async () => new Set(["shop"]),
+      });
+
+      const result = await reapDeadDaemons(deps);
+
+      expect(unregister).toHaveBeenCalledWith(ADDRESS);
+      expect(result.removed).toEqual([ADDRESS]);
+    });
+
+    it("keeps a relocated record while one of its containers runs", async () => {
+      const { deps, unregister } = makeDeps(["ok"], {
+        listDaemons: () => [{ ...makeDaemon(), containers: ["shop-api"] }],
+        staleReason: staleWith({
+          exists: () => true,
+          resolvedPaths: () => ["/repos/relocated/shop"],
+          devOpNames: () => [],
+        }),
+        runningContainers: async () => new Set(["shop-api"]),
+      });
+
+      const result = await reapDeadDaemons(deps);
+
+      expect(unregister).not.toHaveBeenCalled();
+      expect(result.kept).toEqual([ADDRESS]);
+    });
+
+    it("keeps a record that resolves to its own checkout with nothing verifiable", async () => {
+      const { deps, unregister } = makeDeps(["ok"], {
+        listDaemons: () => [{ ...makeDaemon(), containers: [] }],
+        staleReason: staleWith({
+          exists: () => true,
+          resolvedPaths: () => ["/repos/shop"],
+          devOpNames: () => [],
+        }),
+        runningContainers: async () => new Set(),
+      });
+
+      const result = await reapDeadDaemons(deps);
+
+      expect(unregister).not.toHaveBeenCalled();
+      expect(result.kept).toEqual([ADDRESS]);
+    });
+
+    it("never removes another root's record for it", async () => {
+      const { deps, unregister } = makeDeps(["ok"], {
+        listDaemons: () => [
+          { ...makeDaemon(), containers: [], root: "/elsewhere/root-a" },
+        ],
+        rootOf: () => "other",
+        staleReason: staleWith({ exists: () => false }),
+      });
+
+      const result = await reapDeadDaemons(deps);
+
+      expect(unregister).not.toHaveBeenCalled();
+      expect(result.kept).toEqual([ADDRESS]);
+    });
   });
 });

@@ -4,12 +4,15 @@
  * graph.js and panel.js own the DOM.
  */
 import { describe, expect, it } from "@jest/globals";
+import ELK from "elkjs/lib/elk.bundled.js";
 import {
   buildElkGraph,
   buildModel,
   commandTier,
   edgeModel,
   healthLine,
+  mergeWorkspaceViews,
+  ownerOfRepos,
   placementOf,
   repoPlacement,
   resolveActions,
@@ -263,6 +266,129 @@ describe("buildElkGraph", () => {
     ]);
     expect(find(root, "repo:shop")).toMatchObject({ width: 176, height: 52 });
     expect(find(root, "rg:shop")).toBeUndefined();
+  });
+});
+
+// A consumer's dev.32 finding: on /graph a repo box with one row of cards
+// drew about twice the height it needs. Laid out by the real ELK (the
+// vendored elkjs the page loads), measured: each box is its padding plus
+// its cards, top-down and left-right, and still at least its minimum
+// width for the header.
+describe("group boxes fit their content (0.3.0-dev.33)", () => {
+  type Box = {
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    children?: Box[];
+  };
+  const layout = async (
+    rows: ReturnType<typeof row>[],
+    direction: "down" | "right",
+  ): Promise<Box> =>
+    new ELK().layout(
+      buildElkGraph(buildModel({ services: rows }), {
+        direction,
+        group: "org",
+        density: "detailed",
+        collapsed: new Set(),
+      }),
+    );
+  const box = (n: Box, id: string): Box | undefined =>
+    n.id === id ? n : (n.children || []).map((c) => box(c, id)).find(Boolean);
+  /** How far a box reaches below its lowest child (its bottom padding). */
+  const slack = (b: Box) =>
+    b.height - Math.max(...(b.children || []).map((c) => c.y + c.height));
+
+  it("top-down: a repo box with one row of cards is its header, one card and its padding", async () => {
+    const res = await layout([row("shop/api"), row("shop/worker")], "down");
+    const rg = box(res, "rg:shop")!;
+    // Both cards in one row.
+    expect(new Set(rg.children!.map((c) => c.y)).size).toBe(1);
+    expect(rg.height).toBe(40 + 104 + 14);
+    expect(slack(rg)).toBe(14);
+    // The org box around it fits it too.
+    expect(slack(box(res, "grp:")!)).toBe(18);
+  });
+
+  it("top-down, cards stacked: the repo box keeps its minimum width (the header's room)", async () => {
+    const res = await layout(
+      [row("shop/api", { deps: ["shop/worker"] }), row("shop/worker")],
+      "down",
+    );
+    const rg = box(res, "rg:shop")!;
+    expect(rg.width).toBeGreaterThanOrEqual(236 + 150);
+    expect(slack(rg)).toBe(14);
+  });
+
+  it("left-right: the same, on the other axis", async () => {
+    const res = await layout([row("shop/api"), row("shop/worker")], "right");
+    const rg = box(res, "rg:shop")!;
+    expect(rg.width).toBeGreaterThanOrEqual(236 + 150);
+    expect(slack(rg)).toBe(14);
+  });
+});
+
+// The Graph page with "All active" (0.3.0-dev.33): every workspace in view
+// in one graph, its payloads merged in view order.
+describe("mergeWorkspaceViews", () => {
+  const edge = (from: string, to: string, kind = "http") => ({
+    from,
+    to,
+    kind,
+    blocking: "hard",
+  });
+  it("unions nodes, order and edges once each; apps by name; missing deps", () => {
+    const out = mergeWorkspaceViews({
+      graphs: [
+        {
+          nodes: ["shop-web", "shop"],
+          edges: [edge("shop-web", "shop")],
+          order: ["shop", "shop-web"],
+        },
+        {
+          nodes: ["shop", "billing"],
+          edges: [edge("shop-web", "shop"), edge("shop", "billing")],
+          order: ["billing", "shop"],
+        },
+      ],
+      apps: [
+        [{ name: "store", source: "declared", repos: ["shop-web", "shop"] }],
+        [
+          { name: "store", source: "declared", repos: ["shop", "billing"] },
+          { name: "initech", source: "repo", repos: ["initech"] },
+        ],
+      ],
+      deps: [
+        [{ address: "shop", missingDeps: ["globex"] }],
+        [{ address: "shop", missingDeps: ["globex", "initech"] }],
+      ],
+    });
+    expect(out.graph.nodes).toEqual(["shop-web", "shop", "billing"]);
+    expect(out.graph.order).toEqual(["shop", "shop-web", "billing"]);
+    expect(out.graph.edges.map((e) => `${e.from}>${e.to}`)).toEqual([
+      "shop-web>shop",
+      "shop>billing",
+    ]);
+    expect(out.apps.map((a) => [a.name, a.repos])).toEqual([
+      ["store", ["shop-web", "shop", "billing"]],
+      ["initech", ["initech"]],
+    ]);
+    expect(out.depsMap).toEqual({ shop: ["globex", "initech"] });
+  });
+
+  it("each repo's owner is the first workspace in view that defines it", () => {
+    const owners = ownerOfRepos([
+      row("shop/api", { inWorkspaces: ["main", "big"] }),
+      row("shop/worker", { inWorkspaces: ["big"] }),
+      row("billing/api", { inWorkspaces: ["big"] }),
+      row("legacy/api"),
+    ]);
+    expect([...owners]).toEqual([
+      ["shop", "main"],
+      ["billing", "big"],
+    ]);
   });
 });
 

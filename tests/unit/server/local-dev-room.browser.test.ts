@@ -190,11 +190,14 @@ async function open(
   return p;
 }
 
-const visible = (p: Page, sel: string) =>
-  p.$eval(sel, (e) => {
-    const r = e.getBoundingClientRect();
-    return r.width > 0 && r.height > 0;
-  });
+/** Drawn with a size; false when hidden or not on the page at all. */
+const visible = async (p: Page, sel: string) =>
+  (await p.$(sel))
+    ? p.$eval(sel, (e) => {
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      })
+    : false;
 const vpArea = (p: Page) =>
   p.$eval(".dg-vp", (e) => {
     const r = e.getBoundingClientRect();
@@ -520,4 +523,375 @@ describe("R22: the Graph page (Ward 2026-11-05)", () => {
     // The Graph page never shows another tab, whatever Local Dev had open.
     await p.context().close();
   }, 45_000);
+});
+
+/** A page at 1440×900, the changelog seen. */
+async function page(url: string, w = 1440, h = 900): Promise<Page> {
+  const ctx = await browser!.newContext({ viewport: { width: w, height: h } });
+  await ctx.addInitScript((v) => {
+    try {
+      localStorage.setItem("den-changelog-seen", v);
+    } catch {
+      /* none */
+    }
+  }, latest);
+  const p = await ctx.newPage();
+  await p.goto(api(url));
+  return p;
+}
+const setScope = (scope: string) =>
+  fetch(api("/api/scope"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scope }),
+  });
+
+// A consumer's dev.32 dogfood finding: ArrowRight, Home and End left focus
+// on Graph. The WAI-ARIA tabs pattern, from one shell helper.
+describe("Local Dev's workspace tabs: the WAI-ARIA tabs pattern (0.3.0-dev.33)", () => {
+  /** The tabs as the keyboard sees them, and which panel shows. */
+  const LIST = '[role="tablist"][aria-label="Workspace"]';
+  const state = (p: Page) =>
+    p.evaluate((LIST) => {
+      const list = document.querySelector(LIST)!;
+      const tabs = [...list.querySelectorAll<HTMLElement>('[role="tab"]')];
+      return {
+        focus: document.activeElement?.textContent ?? "",
+        selected: tabs
+          .filter((t) => t.getAttribute("aria-selected") === "true")
+          .map((t) => t.textContent),
+        stops: tabs
+          .filter((t) => t.getAttribute("tabindex") === "0")
+          .map((t) => t.textContent),
+        shown: [...document.querySelectorAll<HTMLElement>(".ctab-panel")]
+          .filter((pnl) => pnl.getBoundingClientRect().height > 0)
+          .map((pnl) => pnl.id),
+      };
+    }, LIST);
+
+  it("one tab stop; ←/→ wrap, Home and End, each selects its tab and shows its panel", async () => {
+    if (!browser) return;
+    const p = await open({ width: 1440, height: 900 });
+    expect(await state(p)).toEqual({
+      focus: expect.any(String),
+      selected: ["Graph"],
+      stops: ["Graph"],
+      shown: ["ctab-graph"],
+    });
+
+    await p.focus(`${LIST} [role="tab"][aria-selected="true"]`);
+    const steps: [string, string, string][] = [
+      ["ArrowRight", "Applications", "ctab-apps"],
+      ["ArrowRight", "Config", "ctab-config"],
+      ["ArrowRight", "Graph", "ctab-graph"], // wraps
+      ["ArrowLeft", "Config", "ctab-config"], // wraps
+      ["Home", "Graph", "ctab-graph"],
+      ["End", "Config", "ctab-config"],
+      ["ArrowLeft", "Applications", "ctab-apps"],
+    ];
+    for (const [key, tab, panel] of steps) {
+      await p.keyboard.press(key);
+      expect([key, await state(p)]).toEqual([
+        key,
+        { focus: tab, selected: [tab], stops: [tab], shown: [panel] },
+      ]);
+    }
+    // Each tab controls a role=tabpanel labelled by it; the list holds tabs
+    // only (the Settings link sits beside it).
+    const wiring = await p.evaluate((LIST) => {
+      const list = document.querySelector(LIST)!;
+      return {
+        label: list.getAttribute("aria-label"),
+        kids: [...list.children].map((c) => c.getAttribute("role")),
+        tabs: [...list.querySelectorAll('[role="tab"]')].map((t) => {
+          const pnl = document.getElementById(t.getAttribute("aria-controls")!);
+          return [
+            t.textContent,
+            pnl?.getAttribute("role"),
+            pnl?.getAttribute("aria-labelledby") === t.id && !!t.id,
+          ];
+        }),
+      };
+    }, LIST);
+    expect(wiring).toEqual({
+      label: "Workspace",
+      kids: ["tab", "tab", "tab"],
+      tabs: [
+        ["Graph", "tabpanel", true],
+        ["Applications", "tabpanel", true],
+        ["Config", "tabpanel", true],
+      ],
+    });
+    // Tab leaves the tablist (one stop), into the panel's content.
+    await p.keyboard.press("Tab");
+    expect(
+      await p.evaluate(
+        () => document.activeElement?.closest('[role="tablist"]') === null,
+      ),
+    ).toBe(true);
+    // A click still selects; the graph comes back.
+    await p.click('.ctab-bar [data-ctab="graph"]');
+    await p.waitForSelector("#ctab-graph .dg-card");
+    expect((await state(p)).shown).toEqual(["ctab-graph"]);
+    await p.context().close();
+  }, 45_000);
+
+  it("no empty tablist stub: the shell makes page tabs only when a page asks, wired the same way", async () => {
+    if (!browser) return;
+    const p = await page("/services");
+    await p.waitForSelector("#den-content > .ph h1");
+    // No .ptabs tablist (the old hidden, unlabelled, empty stub) until a
+    // page asks for tabs.
+    const lists = () =>
+      p.$$eval('[role="tablist"]', (els) =>
+        els.map((e) => ({
+          cls: e.className,
+          label:
+            !!e.getAttribute("aria-label") ||
+            !!e.getAttribute("aria-labelledby"),
+          tabs: e.querySelectorAll('[role="tab"]').length,
+        })),
+      );
+    expect((await lists()).filter((l) => /ptabs/.test(l.cls))).toEqual([]);
+    expect(await p.$(".den-ptabs")).toBeNull();
+
+    // A page asks for tabs: a .ptabs tablist below the header.
+    await p.evaluate(() => {
+      const main = document.getElementById("den-content")!;
+      for (const id of ["one", "two", "three"]) {
+        const d = document.createElement("div");
+        d.id = "demo-" + id;
+        d.textContent = id;
+        main.appendChild(d);
+      }
+      (
+        window as unknown as {
+          denShell: {
+            pageHeader(): { tabs(spec: unknown): unknown };
+          };
+        }
+      ).denShell
+        .pageHeader()
+        .tabs({
+          label: "Demo",
+          tabs: ["one", "two", "three"].map((id) => ({
+            id,
+            label: id,
+            panel: document.getElementById("demo-" + id),
+          })),
+          selected: "two",
+        });
+    });
+    const made = await p.evaluate(() => {
+      const list = document.querySelector<HTMLElement>(".ptabs.den-ptabs")!;
+      const tabs = [...list.querySelectorAll<HTMLElement>('[role="tab"]')];
+      return {
+        afterHeader: list.previousElementSibling?.classList.contains("ph"),
+        label: list.getAttribute("aria-label"),
+        tabs: tabs.map((t) => {
+          const pnl = document.getElementById(
+            t.getAttribute("aria-controls")!,
+          )!;
+          return [
+            t.textContent,
+            t.getAttribute("aria-selected"),
+            t.getAttribute("tabindex"),
+            pnl.getAttribute("role"),
+            pnl.getAttribute("aria-labelledby") === t.id,
+            pnl.hidden,
+          ];
+        }),
+      };
+    });
+    expect(made).toEqual({
+      afterHeader: true,
+      label: "Demo",
+      tabs: [
+        ["one", "false", "-1", "tabpanel", true, true],
+        ["two", "true", "0", "tabpanel", true, false],
+        ["three", "false", "-1", "tabpanel", true, true],
+      ],
+    });
+    await p.focus('.den-ptabs [aria-selected="true"]');
+    for (const [key, want] of [
+      ["End", "three"],
+      ["ArrowRight", "one"],
+      ["ArrowLeft", "three"],
+      ["Home", "one"],
+    ]) {
+      await p.keyboard.press(key);
+      expect([
+        key,
+        await p.evaluate(() => [
+          document.activeElement?.textContent,
+          document.querySelector('.den-ptabs [aria-selected="true"]')
+            ?.textContent,
+          [...document.querySelectorAll<HTMLElement>("[id^='demo-']")]
+            .filter((e) => !e.hidden)
+            .map((e) => e.id),
+        ]),
+      ]).toEqual([key, [want, want, ["demo-" + want]]]);
+    }
+    await p.context().close();
+  }, 30_000);
+});
+
+// A consumer's dev.32 dogfood finding: the top bar said "All active", but
+// /graph showed (and named) the focused workspace only.
+describe("the Graph page follows the top bar's workspace scope (0.3.0-dev.33)", () => {
+  const sub = (p: Page) =>
+    p.textContent("#den-content > .ph .sub").then((s) => s ?? "");
+  const repos = (p: Page) =>
+    p.$$eval(".dg-card", (els) => [
+      ...new Set(
+        els.map(
+          (e) =>
+            (e as HTMLElement).dataset.id?.split("/")[0] ??
+            (e as HTMLElement).dataset.repo,
+        ),
+      ),
+    ]);
+
+  it("All active: every active workspace, its line naming All active; one picked: that one; ?ws= still wins; Local Dev keeps its one", async () => {
+    if (!browser) return;
+    await setScope("all");
+    try {
+      let p = await page("/graph");
+      await p.waitForSelector(".dg-card");
+      await p.waitForFunction(() =>
+        /All active \/ local$/.test(
+          document.querySelector("#den-content > .ph .sub")?.textContent ?? "",
+        ),
+      );
+      expect(await sub(p)).toMatch(/(^|\/ )All active \/ local$/);
+      expect(await p.textContent("#ws-pill .den-vn")).toBe("All active");
+      expect((await repos(p)).sort()).toEqual([...REPOS, ...BIG].sort());
+      await p.context().close();
+
+      // ?ws= wins over the picker.
+      p = await page("/graph?ws=main");
+      await p.waitForSelector(".dg-card");
+      await p.waitForFunction(() =>
+        /(^|\/ )main \/ local$/.test(
+          document.querySelector("#den-content > .ph .sub")?.textContent ?? "",
+        ),
+      );
+      expect((await repos(p)).sort()).toEqual([...REPOS].sort());
+      await p.context().close();
+
+      // Local Dev keeps the list's one workspace (its actions and tabs are
+      // per workspace), and its line names it.
+      p = await page("/local-dev");
+      await p.waitForSelector(".dg-card");
+      await p.waitForFunction(() =>
+        /(^|\/ )main \/ local$/.test(
+          document.querySelector("#den-content > .ph .sub")?.textContent ?? "",
+        ),
+      );
+      expect((await repos(p)).sort()).toEqual([...REPOS].sort());
+      await p.context().close();
+
+      // One workspace picked in the top bar: that one.
+      await setScope("big");
+      p = await page("/graph");
+      await p.waitForSelector(".dg-card");
+      await p.waitForFunction(() =>
+        /(^|\/ )big \/ local$/.test(
+          document.querySelector("#den-content > .ph .sub")?.textContent ?? "",
+        ),
+      );
+      expect((await repos(p)).sort()).toEqual([...BIG].sort());
+      expect(await p.textContent("#ws-pill .den-vn")).toBe("big");
+      await p.context().close();
+    } finally {
+      await setScope("all");
+    }
+  }, 60_000);
+});
+
+// A consumer's dev.32 finding: on /graph a repo box with one row of cards
+// drew about twice the height it needs. Measured in the page.
+describe("group boxes fit their content (0.3.0-dev.33)", () => {
+  it("each repo box ends its padding below its lowest card; each org box likewise", async () => {
+    if (!browser) return;
+    const p = await page("/graph?ws=main");
+    await p.waitForSelector(".dg-grp.dg-repo");
+    await p.waitForTimeout(300);
+    // World coordinates (style), so the zoom doesn't matter.
+    const boxes = await p.evaluate(() => {
+      const px = (e: HTMLElement, k: "top" | "left" | "width" | "height") =>
+        parseFloat(e.style[k]);
+      const cards = [...document.querySelectorAll<HTMLElement>(".dg-card")];
+      return [...document.querySelectorAll<HTMLElement>(".dg-grp")].map((g) => {
+        const top = px(g, "top"),
+          left = px(g, "left"),
+          bottom = top + px(g, "height"),
+          right = left + px(g, "width");
+        const inside = cards.filter(
+          (c) =>
+            px(c, "top") >= top &&
+            px(c, "left") >= left &&
+            px(c, "top") + px(c, "height") <= bottom &&
+            px(c, "left") + px(c, "width") <= right,
+        );
+        const rows = new Set(inside.map((c) => px(c, "top")));
+        const lowest = Math.max(
+          ...inside.map((c) => px(c, "top") + px(c, "height")),
+        );
+        return {
+          kind: g.classList.contains("dg-repo") ? "repo" : "org",
+          rows: rows.size,
+          slack: Math.round(bottom - lowest),
+        };
+      });
+    });
+    const repo = boxes.filter((b) => b.kind === "repo");
+    expect(repo.length).toBe(REPOS.length);
+    for (const b of repo)
+      expect(b).toEqual({ kind: "repo", rows: 1, slack: 14 });
+    for (const b of boxes.filter((x) => x.kind === "org"))
+      expect(b.slack).toBe(14 + 18);
+    await p.context().close();
+  }, 30_000);
+});
+
+// A consumer's dev.32 finding: after Fit the legend covered the last
+// group's bottom ~10px. Fit keeps the graph above the legend and the zoom
+// group, measured (a legend on several lines reserves its real height).
+describe("Fit reserves the legend and the zoom group (0.3.0-dev.33)", () => {
+  it("a tall graph, a legend on several lines: after Fit no card or group sits under them", async () => {
+    if (!browser) return;
+    const p = await page("/graph?ws=big", 1280, 800);
+    await p.waitForSelector(".dg-card");
+    try {
+      // Left-right stacks the big workspace's repos: Fit is bound by height.
+      await p.click('[data-seg="dir"] [data-v="right"]');
+      await p.waitForTimeout(600);
+      await p.addStyleTag({ content: ".dg-legend { max-width: 64px; }" });
+      await p.click('[data-z="fit"]');
+      await p.waitForTimeout(200);
+      const r = await p.evaluate(() => {
+        const top = Math.min(
+          document.querySelector(".dg-legend")!.getBoundingClientRect().top,
+          document.querySelector(".dg-zoom")!.getBoundingClientRect().top,
+        );
+        const under = [
+          ...document.querySelectorAll<HTMLElement>(".dg-grp, .dg-card"),
+        ]
+          .map((e) => e.getBoundingClientRect().bottom)
+          .filter((b) => b > top - 0.5);
+        const legendH = document
+          .querySelector(".dg-legend")!
+          .getBoundingClientRect().height;
+        return { under: under.length, legendH };
+      });
+      // The legend wrapped (taller than one line).
+      expect(r.legendH).toBeGreaterThan(60);
+      expect(r.under).toBe(0);
+    } finally {
+      await p.click('[data-seg="dir"] [data-v="down"]');
+      await p.waitForTimeout(300);
+      await p.context().close();
+    }
+  }, 30_000);
 });

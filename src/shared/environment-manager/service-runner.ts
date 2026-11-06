@@ -644,14 +644,69 @@ export function findDaemonConflict(
 }
 
 function canResolveDaemonAddress(d: DaemonRecord): boolean {
-  if (resolveService(d.address)) return true;
-  for (const w of d.workspaces ?? []) {
-    if (resolveService(d.address, w)) return true;
-  }
-  for (const w of getActiveWorkspaces()) {
-    if (resolveService(d.address, w)) return true;
-  }
-  return false;
+  return resolvedRepoPathsOf(d).length > 0;
+}
+
+/**
+ * Every checkout a daemon's address resolves to now: through the focus,
+ * each workspace that owns it, then every other active workspace (the
+ * same order canResolveDaemonAddress and the reaper use). Empty when the
+ * address no longer resolves anywhere.
+ */
+function resolvedRepoPathsOf(d: DaemonRecord): string[] {
+  const paths = new Set<string>();
+  const add = (r: ResolvedService | null) => {
+    if (r) paths.add(r.repoPath);
+  };
+  add(resolveService(d.address));
+  for (const w of new Set([...(d.workspaces ?? []), ...getActiveWorkspaces()]))
+    add(resolveService(d.address, w));
+  return [...paths];
+}
+
+/** Why a daemon record is stale whatever its address resolves to, or null. */
+export type DaemonStaleReason = "repo-path-missing" | "relocated";
+
+/**
+ * A record that describes nothing that can be running (0.3.0-dev.33, a
+ * consumer's dogfood finding): a record whose repo was relocated kept its
+ * Runs tab forever, because its address still resolved and, with no
+ * containers captured, nothing could prove it dead.
+ *
+ *  - "repo-path-missing": its repoPath is not on disk. Nothing of it can
+ *    run from a checkout that does not exist, whichever root wrote it.
+ *  - "relocated": the address resolves now, but never to its repoPath, and
+ *    nothing of it is live: none of its candidate containers (captured, or
+ *    the dev-op's at its old path) is running. The repo name is not a
+ *    candidate here: the relocated checkout's own container carries it.
+ *    Records carry no pid, so there is no process to check. Needs the
+ *    container listing when it has candidates (null: unverifiable, kept).
+ *
+ * Another root's record is never this root's call (null). A record that
+ * resolves to its own repoPath is never stale here: it may be a live
+ * non-opctl process, and isDaemonVerifiablyDead keeps that rule.
+ */
+export function daemonStaleReason(
+  d: DaemonRecord,
+  running: Set<string> | null,
+  deps: {
+    exists?: (p: string) => boolean;
+    resolvedPaths?: (d: DaemonRecord) => string[];
+    devOpNames?: (repoPath: string) => string[];
+  } = {},
+): DaemonStaleReason | null {
+  if (daemonRootOf(d) === "other") return null;
+  const exists = deps.exists ?? fs.existsSync;
+  if (!d.repoPath || !exists(d.repoPath)) return "repo-path-missing";
+  const now = (deps.resolvedPaths ?? resolvedRepoPathsOf)(d);
+  if (now.length === 0 || now.includes(d.repoPath)) return null;
+  const candidates = [
+    ...(d.containers ?? []),
+    ...(deps.devOpNames ?? devOpContainerNames)(d.repoPath),
+  ].filter(Boolean);
+  if (candidates.length === 0) return "relocated";
+  if (!running) return null;
+  return candidates.some((c) => running.has(c)) ? null : "relocated";
 }
 
 /**
@@ -691,6 +746,9 @@ export function isDaemonVerifiablyDead(
  *  - it is opctl-based (has captured containers or a discoverable dev-op) and
  *    NONE of its candidate containers are currently running.
  *
+ *  - its checkout is gone, or the service now resolves to another checkout
+ *    and nothing of the record's is running (daemonStaleReason).
+ *
  * Daemons with no discoverable opctl containers are KEPT — we can't verify them
  * via `opctl container ls`, so we err toward keeping a possibly-live process
  * (e.g. a non-opctl dev server). Health is deliberately NOT used: a service's
@@ -714,10 +772,14 @@ export function pruneDeadDaemons(): string[] {
 export async function pruneDeadDaemonsAsync(): Promise<string[]> {
   const daemons = listDaemons();
   if (daemons.length === 0) return [];
-  const running = (await isOpctlAvailableAsync())
+  return pruneAgainst(daemons, await runningContainerBasesAsync());
+}
+
+/** The running opctl containers' base names, or null without opctl. */
+export async function runningContainerBasesAsync(): Promise<Set<string> | null> {
+  return (await isOpctlAvailableAsync())
     ? new Set((await listRunningOpctlContainersAsync()).map((c) => c.base))
     : null;
-  return pruneAgainst(daemons, running);
 }
 
 function pruneAgainst(
@@ -734,6 +796,13 @@ function pruneAgainst(
       // An unresolvable address is only proof of staleness for a record
       // this root wrote; an unstamped one may belong to another root.
       if (root === "here" && !canResolveDaemonAddress(d)) {
+        unregisterDaemon(d.address);
+        pruned.push(d.address);
+        continue;
+      }
+      // A checkout that is gone, or one the service has moved away from
+      // with nothing of it still running (here or unstamped).
+      if (daemonStaleReason(d, running)) {
         unregisterDaemon(d.address);
         pruned.push(d.address);
         continue;

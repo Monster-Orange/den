@@ -22,6 +22,7 @@ import {
 import {
   includedRouters,
   stackRouters,
+  routerUrls,
   type IncludedRouter,
 } from "../../shared/edge/included.js";
 import { edgeRoutes, edgeStatus } from "../../shared/edge/status.js";
@@ -29,8 +30,7 @@ import { tlsYaml } from "../../shared/edge/tls.js";
 
 /** An included router's URLs (the hosts its rule names), else its name. */
 function includedUrl(r: IncludedRouter): string {
-  const scheme = r.tls ? "https://" : "http://";
-  return r.hosts.length ? r.hosts.map((h) => scheme + h).join(", ") : r.name;
+  return r.hosts.length ? routerUrls(r).join(", ") : r.name;
 }
 
 export async function cmdEdge(args: string[]): Promise<void> {
@@ -82,13 +82,13 @@ export async function cmdEdge(args: string[]): Promise<void> {
       const inc = includedRouters(cfg);
       for (const r of inc.routers)
         console.log(
-          `${includedUrl(r).padEnd(52)} → ${r.service || "?"}  (${r.file})`,
+          `${includedUrl(r).padEnd(52)} → ${r.upstream || "?"}  (${r.file})`,
         );
       // Routers the stacks wrote (stack up): neither Den's nor included.
       const stk = stackRouters(cfg);
       for (const r of stk.routers)
         console.log(
-          `${includedUrl(r).padEnd(52)} → ${r.service || "?"}  (stack: ${r.file})`,
+          `${includedUrl(r).padEnd(52)} → ${r.upstream || "?"}  (stack: ${r.file})`,
         );
       for (const e of [...inc.errors, ...stk.errors])
         console.log(chalk.yellow(`${e.file}: not read (${e.error})`));

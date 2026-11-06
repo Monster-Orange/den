@@ -157,16 +157,21 @@ export function edgeView(st) {
     `<span class="mono">${esc(r.upstream)}</span>`,
     `<span class="src">den</span>`,
   ]);
-  const routerRow = (r, src) => [
-    `<span class="mono">${esc(r.name)}</span>`,
-    r.hosts?.length
-      ? r.hosts
-          .map((h) => link((r.tls ? "https://" : "http://") + h, h))
-          .join("<br>")
-      : `<span class="mono rule">${esc(r.rule)}</span>`,
-    `<span class="mono">${esc(r.service)}</span>`,
-    src,
-  ];
+  // Like Den's own rows: the URL with its scheme (https:// when the router
+  // has TLS or is on websecure), and the upstream URL when its file
+  // defines the service's loadBalancer, else the service's name
+  // (0.3.0-dev.33, a consumer's dogfood finding).
+  const routerRow = (r, src) => {
+    const scheme = (r.secure ?? r.tls) ? "https://" : "http://";
+    return [
+      `<span class="mono">${esc(r.name)}</span>`,
+      r.hosts?.length
+        ? r.hosts.map((h) => link(scheme + h)).join("<br>")
+        : `<span class="mono rule">${esc(r.rule)}</span>`,
+      `<span class="mono">${esc(r.upstream || r.service)}</span>`,
+      src,
+    ];
+  };
   const inc = included.map((r) =>
     routerRow(
       r,

@@ -85,7 +85,7 @@ describe("edgeView", () => {
 
   it("lists the included routers with their source file, links for their hosts", () => {
     expect(html).toContain(
-      '<a href="https://web.acme.vpn.example" target="_blank" rel="noopener noreferrer">web.acme.vpn.example</a>',
+      '<a href="https://web.acme.vpn.example" target="_blank" rel="noopener noreferrer">https://web.acme.vpn.example</a>',
     );
     expect(html).toContain(
       '<span class="src" title="included dynamic file">vpn-routes.yml</span>',
@@ -152,7 +152,7 @@ describe("the stacks' routes (a consumer's finding, 0.3.0-dev.32)", () => {
       stackErrors: [{ file: "stack-bad.yml", error: "bad indent" }],
     });
     expect(html).toContain(
-      '<a href="https://web.shop.acme.localhost" target="_blank" rel="noopener noreferrer">web.shop.acme.localhost</a>',
+      '<a href="https://web.shop.acme.localhost" target="_blank" rel="noopener noreferrer">https://web.shop.acme.localhost</a>',
     );
     expect(html).toMatch(
       /<td><span class="src" title="written by stack up">stack<\/span> <span class="mono sub">stack-shop-main\.yml<\/span><\/td>/,
@@ -162,6 +162,65 @@ describe("the stacks' routes (a consumer's finding, 0.3.0-dev.32)", () => {
       html.indexOf("vpn-web"),
     );
     expect(html).toMatch(/stack-bad\.yml<\/span>: not read \(bad indent\)/);
+  });
+});
+
+describe("stack routes: the scheme and the upstream (a consumer's dogfood finding, 0.3.0-dev.33)", () => {
+  const row = (html: string, name: string) =>
+    html
+      .split("<tr>")
+      .find((r) => r.includes(`<span class="mono">${name}</span>`)) ?? "";
+  const html = edgeView({
+    ...st,
+    stacks: [
+      // websecure, no tls block: https, like Den's own rows.
+      {
+        name: "stack-shop-web",
+        file: "stack-shop-main.yml",
+        rule: "Host(`web.shop.acme.localhost`)",
+        service: "stack-shop-web",
+        entryPoints: ["websecure"],
+        hosts: ["web.shop.acme.localhost"],
+        tls: false,
+        secure: true,
+        upstream: "http://shop-main-web-1:3000",
+      },
+      // web, no tls: http; no loadBalancer in its file: the name.
+      {
+        name: "stack-shop-admin",
+        file: "stack-shop-main.yml",
+        rule: "Host(`admin.shop.acme.localhost`)",
+        service: "shop-admin-svc",
+        entryPoints: ["web"],
+        hosts: ["admin.shop.acme.localhost"],
+        tls: false,
+        secure: false,
+        upstream: "shop-admin-svc",
+      },
+    ],
+  });
+
+  it("shows the URL with https:// when the router is secure, else http://", () => {
+    expect(row(html, "stack-shop-web")).toContain(
+      '<a href="https://web.shop.acme.localhost" target="_blank" rel="noopener noreferrer">https://web.shop.acme.localhost</a>',
+    );
+    expect(row(html, "stack-shop-admin")).toContain(
+      '<a href="http://admin.shop.acme.localhost" target="_blank" rel="noopener noreferrer">http://admin.shop.acme.localhost</a>',
+    );
+    // As Den's own rows do.
+    expect(row(html, "acme")).toContain(">https://acme.acme.localhost</a>");
+  });
+
+  it("shows the upstream URL when the file defines it, else the service name", () => {
+    expect(row(html, "stack-shop-web")).toContain(
+      '<span class="mono">http://shop-main-web-1:3000</span>',
+    );
+    expect(row(html, "stack-shop-web")).not.toContain(
+      '<span class="mono">stack-shop-web</span></td><td><span class="src"',
+    );
+    expect(row(html, "stack-shop-admin")).toContain(
+      '<span class="mono">shop-admin-svc</span>',
+    );
   });
 });
 

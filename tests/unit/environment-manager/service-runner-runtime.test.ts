@@ -1,5 +1,6 @@
 import {
   beforeEach,
+  afterAll,
   afterEach,
   describe,
   expect,
@@ -582,20 +583,37 @@ describe("runServiceCommand tab runtime", () => {
 });
 
 describe("pruneDeadDaemons", () => {
+  // Each record's checkout is on disk (a record whose checkout is gone is
+  // stale, 0.3.0-dev.33), and its address resolves to that checkout.
+  const repos = fs.mkdtempSync(path.join(os.tmpdir(), "den-prune-repos-"));
+  const repoDir = (address: string) => {
+    const dir = path.join(repos, address.split("/")[0]);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  };
   const rec = (address: string, containers?: string[]) => ({
     address,
     repoName: address.split("/")[0],
     subsystem: address.split("/")[1] ?? address,
-    repoPath: `/repos/${address.split("/")[0]}`,
+    repoPath: repoDir(address),
     logPath: `/logs/${address}.log`,
     startedAt: new Date("2026-05-01T00:00:00.000Z"),
     ...(containers ? { containers } : {}),
   });
+  /** Every address resolves, each to its own record's checkout. */
+  const resolveToOwnCheckout = () =>
+    mockResolveServiceSource.mockImplementation((address: string) => ({
+      ...resolved,
+      address,
+      repoName: address.split("/")[0],
+      repoPath: repoDir(address),
+    }));
+  afterAll(() => fs.rmSync(repos, { recursive: true, force: true }));
 
   it("prunes daemons whose containers aren't running and keeps live ones", () => {
     mockIsOpctlAvailable.mockReturnValue(true);
     mockDevOpContainerNames.mockReturnValue([]);
-    mockResolveServiceSource.mockReturnValue(resolved); // resolves (in workspace)
+    resolveToOwnCheckout(); // resolves (in workspace)
     registerDaemon(rec("live/api", ["live"]));
     registerDaemon(rec("dead/api", ["dead"]));
     mockListRunningOpctlContainers.mockReturnValue([
@@ -622,7 +640,7 @@ describe("pruneDeadDaemons", () => {
   it("keeps daemons with no discoverable opctl containers (unverifiable)", () => {
     mockIsOpctlAvailable.mockReturnValue(true);
     mockDevOpContainerNames.mockReturnValue([]); // non-opctl service
-    mockResolveServiceSource.mockReturnValue(resolved);
+    resolveToOwnCheckout();
     mockListRunningOpctlContainers.mockReturnValue([]);
     registerDaemon(rec("web/app")); // no containers captured
 
@@ -645,7 +663,7 @@ describe("pruneDeadDaemons", () => {
   });
 
   it("stamps a registered daemon with this root", () => {
-    mockResolveServiceSource.mockReturnValue(resolved);
+    resolveToOwnCheckout();
     registerDaemon(rec("repo/api"));
     const file = JSON.parse(fs.readFileSync(testDaemonsFile, "utf-8"));
     expect(typeof file.daemons[0].root).toBe("string");
@@ -735,9 +753,82 @@ describe("pruneDeadDaemons", () => {
     expect(file.daemons).toHaveLength(1);
   });
 
+  // A consumer's dev.32 dogfood finding: the repo was relocated, the record
+  // (no pid, containers: []) kept its old repoPath, and the service now runs
+  // as an unrelated compose container. Its address still resolved, so it was
+  // kept forever and the Runs dock showed a permanent tab.
+  it("drops a record whose checkout is gone, this root's or unstamped, though its address resolves (0.3.0-dev.33)", () => {
+    mockIsOpctlAvailable.mockReturnValue(true);
+    mockDevOpContainerNames.mockReturnValue([]);
+    resolveToOwnCheckout();
+    // The new checkout's compose container runs under the repo's name.
+    mockListRunningOpctlContainers.mockReturnValue([
+      { name: "shop", base: "shop" },
+    ]);
+    const gone = path.join(repos, "moved-away", "shop");
+    // This root's stamp, as registerDaemon writes it.
+    registerDaemon(rec("probe/api"));
+    const here = JSON.parse(fs.readFileSync(testDaemonsFile, "utf-8"))
+      .daemons[0].root as string;
+    writeRecords([
+      json("shop/api", { repoPath: gone, containers: [], root: here }),
+      json("shop/worker", { repoPath: gone, containers: [] }),
+      json("shop/db", {
+        repoPath: gone,
+        containers: [],
+        root: "/elsewhere/root-a",
+      }),
+    ]);
+    expect(daemonRootOf({ root: here })).toBe("here");
+
+    expect(pruneDeadDaemons()).toEqual(["shop/api", "shop/worker"]);
+    // Another root's record stays in the shared file.
+    const file = JSON.parse(fs.readFileSync(testDaemonsFile, "utf-8"));
+    expect(file.daemons.map((d: { address: string }) => d.address)).toEqual([
+      "shop/db",
+    ]);
+  });
+
+  it("drops a relocated record (its checkout still on disk, the service resolves elsewhere) when none of its containers run (0.3.0-dev.33)", () => {
+    mockIsOpctlAvailable.mockReturnValue(true);
+    mockDevOpContainerNames.mockImplementation((p: string) =>
+      p.endsWith("old-shop") ? ["old-shop-dev"] : [],
+    );
+    resolveToOwnCheckout(); // shop/* now resolves to <repos>/shop
+    mockListRunningOpctlContainers.mockReturnValue([
+      // The relocated checkout's container, named after the repo.
+      { name: "shop", base: "shop" },
+      // A live container of the second record's.
+      { name: "opctl_globex_1", base: "globex-api" },
+    ]);
+    const old = repoDir("old-shop");
+    writeRecords([
+      json("shop/api", { repoPath: old, containers: [] }),
+      json("shop/worker", { repoPath: old, containers: ["globex-api"] }),
+    ]);
+
+    expect(pruneDeadDaemons()).toEqual(["shop/api"]);
+    expect(listDaemons().map((d) => d.address)).toEqual(["shop/worker"]);
+  });
+
+  it("keeps a record that resolves to its own checkout with nothing verifiable (a possibly-live non-opctl process)", () => {
+    mockIsOpctlAvailable.mockReturnValue(true);
+    mockDevOpContainerNames.mockReturnValue([]);
+    resolveToOwnCheckout();
+    mockListRunningOpctlContainers.mockReturnValue([]);
+    writeRecords([json("web/app", { containers: [] })]);
+    registerDaemon(rec("initech/api"));
+
+    expect(pruneDeadDaemons()).toEqual([]);
+    expect(listDaemons().map((d) => d.address)).toEqual([
+      "web/app",
+      "initech/api",
+    ]);
+  });
+
   it("keeps all daemons when opctl is unavailable (can't verify)", () => {
     mockIsOpctlAvailable.mockReturnValue(false);
-    mockResolveServiceSource.mockReturnValue(resolved);
+    resolveToOwnCheckout();
     registerDaemon(rec("dead/api", ["dead"]));
 
     expect(pruneDeadDaemons()).toEqual([]);

@@ -1409,6 +1409,7 @@
           takePendingAction,
         } from "/header.js";
         import { mountGraph, graphHealth, graphMaximized } from "/graph.js";
+        import { mergeWorkspaceViews, ownerOfRepos } from "/graph-model.js";
 
         // Re-ping all health dots (top nav + cards) NOW — used after lifecycle
         // commands so status doesn't wait out the 30s poll interval.
@@ -1418,6 +1419,8 @@
         }
 
         let activeWs = null;
+        /** The Graph page showing every workspace in view, or null. */
+        let GRAPH_ALL = null;
         /**
          * The Graph page (R22): this page at /graph (the server swaps the
          * shell's page id; shell.js marks the body den-page-graph, so the
@@ -1525,7 +1528,7 @@
           // On first load, prefer URL ?ws= param, then the view scope when it
           // is one workspace (the top bar's View), then focus. This page edits
           // one workspace at a time; the logs and health cover the whole view.
-          if (!activeWs) {
+          if (!activeWs && !GRAPH_ALL) {
             const urlWs = new URLSearchParams(location.search).get("ws");
             const view = await fetch("/api/scope")
               .then((r) => (r.ok ? r.json() : null))
@@ -1534,12 +1537,112 @@
               view && view.scope !== "all" && wsData.workspaces?.[view.scope]
                 ? view.scope
                 : null;
+            const named = urlWs && wsData.workspaces?.[urlWs] ? urlWs : null;
+            // The Graph page follows the top bar's View (0.3.0-dev.33):
+            // "All active" draws every workspace in view, one picked draws
+            // that one, and ?ws= still wins. Local Dev keeps one workspace,
+            // the list's selection: its actions and tabs are per workspace.
+            const inView = Array.isArray(view?.inView) ? view.inView : [];
+            if (
+              GRAPH_PAGE &&
+              !named &&
+              view?.scope === "all" &&
+              inView.length > 1
+            ) {
+              await renderGraphAll(inView, view.focus ?? focusName());
+              return;
+            }
             const target =
-              urlWs && wsData.workspaces?.[urlWs]
-                ? urlWs
-                : (scoped ?? focusName());
+              named ??
+              scoped ??
+              (GRAPH_PAGE && inView.length === 1 ? inView[0] : focusName());
             if (target) selectWorkspace(target);
           }
+        }
+
+        /**
+         * The Graph page with "All active" (0.3.0-dev.33): every workspace
+         * in view in one graph, as the Services page lists them (one
+         * /api/services list for the view; a service several define is
+         * one card, its owners named). The page header's line names what
+         * is shown: org / All active / local. A card's actions run in the
+         * workspace that owns its repo (the first in view, focus first).
+         */
+        async function renderGraphAll(names, focus) {
+          const content = document.getElementById("content");
+          window.denShell?.pageHeader?.()?.setScope({ env: "local" });
+          const enc = encodeURIComponent;
+          const each = (u, empty) =>
+            Promise.all(
+              names.map((n) =>
+                fetch(u + enc(n))
+                  .then((r) => (r.ok ? r.json() : empty))
+                  .catch(() => empty),
+              ),
+            );
+          const [services, graphs, trees, deps] = await Promise.all([
+            fetch("/api/services?env=local")
+              .then((r) => (r.ok ? r.json() : []))
+              .catch(() => []),
+            each("/api/graph?workspace=", { nodes: [], edges: [] }),
+            each("/api/applications?workspace=", { applications: [] }),
+            each("/api/workspaces/deps-check?workspace=", []),
+          ]);
+          const merged = mergeWorkspaceViews({
+            graphs,
+            apps: trees.map((t) => t?.applications || []),
+            deps,
+          });
+          GRAPH_ALL = {
+            names,
+            focus,
+            ownerOf: ownerOfRepos(services),
+          };
+          _graphApps = merged.apps;
+          const svcList = topoSortServices(
+            services,
+            deriveRepoRank(merged.graph),
+          );
+          _noAutostartRepos = new Set(
+            svcList.filter((s) => s.autostart === false).map((s) => s.repo),
+          );
+          setPrimaryRouting(svcList);
+          content.dataset.ws = focus || names[0];
+          content.dataset.all = names.join(",");
+          content.innerHTML = `
+        <div class="content-body">
+          <div class="ctab-panel active" id="ctab-graph">
+            <div id="dep-graph-wrap"><div class="graph-empty graph-loading">Loading…</div></div>
+          </div>
+        </div>`;
+          renderDepGraph(svcList, merged.depsMap, merged.graph);
+        }
+        /** The workspace a repo's card acts in (All active: its owner's). */
+        function ownerWs(repo) {
+          return GRAPH_ALL
+            ? (GRAPH_ALL.ownerOf.get(repo) ?? GRAPH_ALL.focus)
+            : null;
+        }
+        /** Run `fn` as if the repo's owning workspace were the one viewed. */
+        function asOwner(repo, fn) {
+          const ws = ownerWs(repo);
+          if (!ws) return fn();
+          const content = document.getElementById("content");
+          const was = [activeWs, content?.dataset.ws];
+          activeWs = ws;
+          if (content) content.dataset.ws = ws;
+          try {
+            return fn();
+          } finally {
+            activeWs = was[0];
+            if (content) content.dataset.ws = was[1];
+          }
+        }
+        /** Re-render what is shown: every workspace in view, or the one. */
+        function refreshView(wsName) {
+          return GRAPH_ALL
+            ? renderGraphAll(GRAPH_ALL.names, GRAPH_ALL.focus)
+            : renderContent(wsName);
         }
 
         // Close workspace menus on outside click
@@ -1692,11 +1795,30 @@
         }
 
         // ── Content pane ──────────────────────────────────────────────────────────
-        /** The workspace pane's tabs: one selected (class and aria-selected). */
+        /**
+         * Wire the workspace pane's tablist with the shell's tabs helper
+         * (denShell.wireTabs); null without the shell.
+         */
+        function wireCtabs({ selected, onSelect }) {
+          const list = document.getElementById("ctab-list");
+          const wire = window.denShell?.wireTabs;
+          if (!list || !wire) return null;
+          const tabs = [...list.querySelectorAll('[role="tab"]')];
+          const i = tabs.findIndex((t) => t.dataset.ctab === selected);
+          return wire(list, { selected: i < 0 ? 0 : i, onSelect });
+        }
+        /** Without the shell: the tab named and its panel, selected. */
         function selectCtab(name) {
           document.querySelectorAll(".ctab[data-ctab]").forEach((t) => {
-            t.classList.toggle("active", t.dataset.ctab === name);
-            t.setAttribute("aria-selected", String(t.dataset.ctab === name));
+            const on = t.dataset.ctab === name;
+            t.classList.toggle("active", on);
+            t.setAttribute("aria-selected", String(on));
+            t.setAttribute("tabindex", on ? "0" : "-1");
+          });
+          document.querySelectorAll(".ctab-panel").forEach((p) => {
+            const on = p.id === "ctab-" + name;
+            p.hidden = !on;
+            p.classList.toggle("active", on);
           });
         }
         async function renderContent(wsName) {
@@ -1968,27 +2090,29 @@
         </div>
         `
             : `
-        <div class="ctab-bar ptabs" id="ctab-bar" role="tablist" aria-label="Workspace">
-          <button type="button" role="tab" class="ctab active" aria-selected="true" data-ctab="graph">Graph</button>
-          <button type="button" role="tab" class="ctab" aria-selected="false" data-ctab="apps">Applications</button>
-          <button type="button" role="tab" class="ctab" aria-selected="false" data-ctab="config">Config</button>
+        <div class="ctab-bar ptabs" id="ctab-bar">
+          <div role="tablist" aria-label="Workspace" id="ctab-list">
+            <button type="button" role="tab" class="ctab active" id="ctab-tab-graph" aria-selected="true" tabindex="0" aria-controls="ctab-graph" data-ctab="graph">Graph</button>
+            <button type="button" role="tab" class="ctab" id="ctab-tab-apps" aria-selected="false" tabindex="-1" aria-controls="ctab-apps" data-ctab="apps">Applications</button>
+            <button type="button" role="tab" class="ctab" id="ctab-tab-config" aria-selected="false" tabindex="-1" aria-controls="ctab-config" data-ctab="config">Config</button>
+          </div>
           <a class="ctab" href="/settings?ws=${encodeURIComponent(wsName)}#workspace" title="This workspace's settings, on the Settings page">Settings ↗</a>
         </div>
 
         <div class="content-body">
 
           <!-- Graph tab: dependency visualization -->
-          <div class="ctab-panel active" id="ctab-graph">
+          <div class="ctab-panel active" id="ctab-graph" role="tabpanel" aria-labelledby="ctab-tab-graph">
             <div id="dep-graph-wrap"><div class="graph-empty graph-loading">Loading…</div></div>
           </div>
 
           <!-- Applications tab: Org > Application > Repo > Services -->
-          <div class="ctab-panel" id="ctab-apps">
+          <div class="ctab-panel" id="ctab-apps" role="tabpanel" aria-labelledby="ctab-tab-apps" hidden>
             <div id="apps-wrap"><div class="graph-empty graph-loading">Loading…</div></div>
           </div>
 
           <!-- Config tab: workspace services + add form -->
-          <div class="ctab-panel" id="ctab-config">
+          <div class="ctab-panel" id="ctab-config" role="tabpanel" aria-labelledby="ctab-tab-config" hidden>
             <div>
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
                 <div class="section-label" style="margin-bottom:0">Workspace Services</div>
@@ -2029,36 +2153,21 @@
         }
 `;
 
-          // Wire content tab bar clicks
-          document
-            .getElementById("ctab-bar")
-            ?.addEventListener("click", (e) => {
-              const tab = e.target.closest(".ctab[data-ctab]");
-              if (!tab) return;
-              const name = tab.dataset.ctab;
-              selectCtab(name);
-              document
-                .querySelectorAll(".ctab-panel")
-                .forEach((p) =>
-                  p.classList.toggle("active", p.id === "ctab-" + name),
-                );
-              if (name === "graph")
-                renderDepGraph(svcList, depsMap, derivedGraph);
-              if (name === "apps") renderApplications(wsName);
-            });
-
-          // Restore the previously active tab (or default to graph on first load)
-          if (activeTab !== "graph") {
-            selectCtab(activeTab);
-            document
-              .querySelectorAll(".ctab-panel")
-              .forEach((p) =>
-                p.classList.toggle("active", p.id === "ctab-" + activeTab),
-              );
-            if (activeTab === "apps") renderApplications(wsName);
-          } else {
-            renderDepGraph(svcList, depsMap, derivedGraph);
-          }
+          // The workspace tabs: the shell's WAI-ARIA tabs (one tab stop,
+          // ←/→ wrap, Home/End, select on arrow; each tab controls its
+          // panel, only the selected one shows). Restores the previously
+          // active tab (graph on first load).
+          const showTab = (name) => {
+            if (name === "graph")
+              renderDepGraph(svcList, depsMap, derivedGraph);
+            if (name === "apps") renderApplications(wsName);
+          };
+          const ctabs = wireCtabs({
+            selected: activeTab,
+            onSelect: (tab) => showTab(tab.dataset.ctab),
+          });
+          if (!ctabs) selectCtab(activeTab);
+          showTab(activeTab);
 
           // Pre-fetch GitHub org repos so the Add Service modal loads instantly
           fetch("/api/github/repos")
@@ -2466,7 +2575,7 @@
           if (!ws) return;
           try {
             await loadWorkspaces();
-            await renderContent(ws);
+            await refreshView(ws);
           } catch {
             /* a failed refresh must never mask the sync's own result */
           }
@@ -4097,13 +4206,17 @@
             toggle: () => setGraphMax(!graphMax()),
           },
           env: () => healthEnv(),
-          runCmd: (s, cmd) => window.runCmd(s.id, s.repo, s.name, cmd),
-          upWithDeps: (repo) => window.runUpWithDeps(repo),
-          downWithDeps: (repo) => window.runDownWithDeps(repo),
-          sync: (repo) => window.runRepoSync(repo),
+          // With "All active" each acts in the workspace owning the repo.
+          runCmd: (s, cmd) =>
+            asOwner(s.repo, () => window.runCmd(s.id, s.repo, s.name, cmd)),
+          upWithDeps: (repo) => asOwner(repo, () => window.runUpWithDeps(repo)),
+          downWithDeps: (repo) =>
+            asOwner(repo, () => window.runDownWithDeps(repo)),
+          sync: (repo) => asOwner(repo, () => window.runRepoSync(repo)),
           toggleAutostart: (repo, turnOn) =>
-            window.toggleAutostart(repo, turnOn),
-          switchMode: (repo, mode) => window.switchMode(repo, mode),
+            asOwner(repo, () => window.toggleAutostart(repo, turnOn)),
+          switchMode: (repo, mode) =>
+            asOwner(repo, () => window.switchMode(repo, mode)),
           openEditor: (p) => openInEditor(p),
           openTerminal: (p) => openInTerminal(p),
           showOutput: (s) => openSystemLogs(s.id, s.repo, s.name),
@@ -4156,9 +4269,11 @@
         // ── Auto-start toggle ─────────────────────────────────────────────────────
         // Repo-level: skipped by workspace-wide Up/Restart when off; Down still
         // stops it; explicit card/CLI targeting always wins.
-        async function postAutostart(repo, autostart) {
-          const wsName =
-            document.getElementById("content")?.dataset.ws || activeWs;
+        async function postAutostart(
+          repo,
+          autostart,
+          wsName = document.getElementById("content")?.dataset.ws || activeWs,
+        ) {
           try {
             const res = await fetch("/api/workspaces/services/autostart", {
               method: "POST",
@@ -4170,7 +4285,7 @@
               alert(`auto-start toggle failed: ${d.error ?? res.status}`);
               return;
             }
-            await renderContent(wsName); // refetch services → re-render graph + tables
+            await refreshView(wsName); // refetch services → re-render graph + tables
           } catch (err) {
             alert("auto-start toggle failed: " + err.message);
           }
@@ -4193,15 +4308,17 @@
               alert(`mode switch failed: ${d.error ?? res.status}`);
               return;
             }
-            await renderContent(wsName);
+            await refreshView(wsName);
           } catch (err) {
             alert("mode switch failed: " + err.message);
           }
         };
 
         window.toggleAutostart = function (repo, turnOn) {
+          // The workspace now: the confirm below answers later.
+          const ws = document.getElementById("content")?.dataset.ws || activeWs;
           if (turnOn) {
-            void postAutostart(repo, true);
+            void postAutostart(repo, true, ws);
             return;
           }
           // Turning OFF: warn when other systems hard-depend on this one.
@@ -4216,7 +4333,7 @@
             ),
           ];
           if (dependents.length === 0) {
-            void postAutostart(repo, false);
+            void postAutostart(repo, false, ws);
             return;
           }
 
@@ -4248,7 +4365,7 @@
             .addEventListener("click", () => overlay.remove());
           box.querySelector("#as-confirm").addEventListener("click", () => {
             overlay.remove();
-            void postAutostart(repo, false);
+            void postAutostart(repo, false, ws);
           });
         };
 

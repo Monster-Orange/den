@@ -88,6 +88,8 @@ import {
   loadDaemonsFromFile,
   pruneDeadDaemonsAsync,
   daemonRootOf,
+  daemonStaleReason,
+  runningContainerBasesAsync,
   isInteractiveServiceCommand,
   rewriteLegacyOpctlKillCommandForContainer,
   shouldDetachServiceCommand,
@@ -3412,6 +3414,8 @@ void (async () => {
     delay: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
     retryDelayMs: DAEMON_RETRY_DELAY_MS,
     rootOf: daemonRootOf,
+    staleReason: daemonStaleReason,
+    runningContainers: runningContainerBasesAsync,
   });
   if (reaped.removed.length > 0)
     console.error(

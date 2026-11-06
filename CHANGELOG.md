@@ -467,6 +467,38 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- **The Graph page follows the top bar's workspace scope** (0.3.0-dev.33,
+  a consumer's dogfood finding). With the top bar's Workspace on "All
+  active", `/graph` used to show (and name) the focused workspace only. It
+  now shows every active workspace in one graph, as the Services page
+  lists them: one card per service, a service several workspaces define
+  listed once with its owners (`demo-api · main, notes`). One workspace
+  picked shows that one, and `?ws=` still wins. The page header's line
+  names what is shown (`acme / All active / local`). A card's actions run
+  in the workspace that owns its repo (the first in view, focus first).
+  Local Dev keeps one workspace, the list's selection: its actions, its
+  Applications and Config tabs and its Graph tab are per workspace.
+- **Stack routes on the Edge page and in `edge routes`: scheme and
+  upstream** (0.3.0-dev.33, a consumer's dogfood finding). A stack
+  router's URL is shown with its scheme like Den's own rows: `https://`
+  when the router has TLS or is on the `websecure` entrypoint, else
+  `http://`. UPSTREAM shows the service's `loadBalancer` server URL when
+  the router's file defines it, else the Traefik service's name. The
+  routers in `/api/edge` (`included`, `stacks`) carry `secure` and
+  `upstream`; included routers get the same.
+- **Page tabs are WAI-ARIA tabs** (0.3.0-dev.33, a consumer's dogfood
+  finding: ArrowRight, Home and End left focus on Graph). Local Dev's
+  workspace tabs and any tabs `denShell.pageHeader().tabs(spec)` makes
+  share one helper, `denShell.wireTabs(tablist, opts)`: one tab stop (the
+  selected tab is `tabindex=0`, the rest `-1`), ←/→ move and wrap, Home and
+  End go to the ends, and a tab is selected as focus moves to it
+  (automatic activation). Each tab's `aria-controls` names its
+  `role="tabpanel"`, whose `aria-labelledby` names the tab, and the other
+  panels are hidden. Local Dev's "Settings ↗" link now sits beside the
+  tablist rather than in it. `pageHeader().tabs` is a function now: the
+  shell no longer adds a hidden, unlabelled, empty `.ptabs` tablist to
+  every page, only the one a page asks for.
+
 - **POST /api/settings: null clears a pref** (0.3.0-dev.32, from a
   consumer). A key set to `null` (`{"graph":{"workspaces":null}}`, or in
   `shell` or `appearance`) is removed from config/local/user.yml instead of
@@ -558,6 +590,31 @@ config and manifest changes a distribution must make to move to it under
   `backendAvailable` (and `backend`, `reason`).
 
 ### Fixed
+
+- **Stale daemon records are dropped** (0.3.0-dev.33, a consumer's
+  dogfood finding). A record whose repo had been relocated (no pid,
+  `containers: []`) was kept forever because its address still resolved,
+  and the Runs dock showed a permanent tab. The startup sweep and the
+  health reaper now drop a record of this root's, or an unstamped one,
+  whose `repoPath` is not on disk, or whose `repoPath` is no longer where
+  the service resolves and none of its candidate containers (captured,
+  or the dev-op's at its old path) is running; the relocated checkout's
+  own container, which carries the repo's name, does not count.
+  Another root's records are never touched, and a record that resolves
+  to its own checkout with nothing to verify is still kept (it may be a
+  live non-opctl process). Removals are logged with the sweep's and the
+  reaper's lines.
+- **Graph group boxes fit their content** (0.3.0-dev.33, a consumer's
+  dogfood finding). On `/graph` a repo box with one row of cards drew
+  about twice the height it needs: top-down, ELK reads a compound node's
+  minimum size in its own layout axes, so the repo box's minimum width
+  (386px) became its height. The minimum is passed in that order now; the
+  boxes are their padding plus their cards, and keep the header's width.
+- **Fit keeps the graph above the legend and the zoom group**
+  (0.3.0-dev.33, a consumer's dogfood finding). After Fit, a legend on
+  two lines covered the last group's bottom ~10px. Fit's height now leaves
+  out the overlays' measured height (and a gap), so no card or group
+  border sits under them.
 
 - **CA trust on a fronted edge reads "not needed: fronted"** (0.3.0-dev.32,
   from a consumer). With `edge.publish: false` a proxy in front owns
