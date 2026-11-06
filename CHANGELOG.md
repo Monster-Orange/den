@@ -835,6 +835,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **`web up` under an invalid config reports the server ready**
+  (0.3.0-dev.42, a consumer's dev.41 finding). It waited for
+  `/api/health`, which answers 422 by design then, and exited 1 with
+  "web did not become ready" while the server ran. Readiness now asks
+  `/api/server-info` (answered under any config; `/api/health` for a
+  server too old for it), and the 422 "Config is invalid" page counts as
+  the shell serving.
 - **No page throws under an invalid config** (0.3.0-dev.41, a consumer's
   dev.40 finding: "envs.map is not a function" on every page).
   `/api/environments` is config-free (it already fell back to `local`),

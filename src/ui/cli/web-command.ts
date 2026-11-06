@@ -270,26 +270,43 @@ async function getHttpText(
   });
 }
 
+/**
+ * The API is up: /api/server-info answers whatever the config holds
+ * (0.3.0-dev.42: /api/health answers 422 under an invalid config, so
+ * `web up` reported a running server as not ready). A server too old for
+ * server-info is asked /api/health, as before.
+ */
 async function isDenWebApiRunning(port: number): Promise<boolean> {
-  const response = await getHttpText(port, "/api/health");
-  if (!response || response.statusCode !== 200) return false;
-  try {
-    return Array.isArray(JSON.parse(response.body));
-  } catch {
-    return false;
-  }
+  const json = async (p: string): Promise<unknown> => {
+    const response = await getHttpText(port, p);
+    if (!response || response.statusCode !== 200) return undefined;
+    try {
+      return JSON.parse(response.body) as unknown;
+    } catch {
+      return undefined;
+    }
+  };
+  const info = await json("/api/server-info");
+  if (
+    info &&
+    typeof info === "object" &&
+    typeof (info as { pid?: unknown }).pid === "number"
+  )
+    return true;
+  return Array.isArray(await json("/api/health"));
 }
 
 async function isDenWebUiReady(port: number): Promise<boolean> {
   const response = await getHttpText(port, "/index.html");
   return (
-    response?.statusCode === 200 &&
+    // 422: the "Config is invalid" page, the shell serving as it should.
+    (response?.statusCode === 200 || response?.statusCode === 422) &&
     /<html[\s>]/i.test(response.body) &&
     hasDenUiMarker(response.body)
   );
 }
 
-async function isDenWebRunning(port: number): Promise<boolean> {
+export async function isDenWebRunning(port: number): Promise<boolean> {
   return (await isDenWebApiRunning(port)) && (await isDenWebUiReady(port));
 }
 
