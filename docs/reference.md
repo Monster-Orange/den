@@ -22,8 +22,8 @@ The technical reference that used to be the README. It will be split into separa
 5. **Run** it: `./bin/acme up`, `./bin/acme web`, `make test`.
 
 Every field, the bin shim, the make fragment and upgrading are in
-[docs/distributions.md](docs/distributions.md);
-[examples/distribution/](examples/distribution) is what `create acme` writes.
+[docs/distributions.md](distributions.md);
+[examples/distribution/](../examples/distribution) is what `create acme` writes.
 
 ## Distributions
 
@@ -87,7 +87,7 @@ security:
 ```
 
 That is `examples/demo/demo-api/.den.yml`; the other demo repos are in
-[`examples/demo/`](examples/demo/).
+[`examples/demo/`](../examples/demo/).
 
 ## What it does
 
@@ -170,8 +170,8 @@ DEN_ORG_NAMES_FILE=<patterns file> node scripts/org-name-gate.mjs
 CI runs the same gates. The org-name gate fails the build when any file names
 an organisation, product, host or account; its patterns are kept out of this
 repo (a CI secret) so the list itself is never published. See
-[CONTRIBUTING.md](CONTRIBUTING.md).
+[CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](../LICENSE)

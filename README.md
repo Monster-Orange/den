@@ -10,21 +10,21 @@
 </p>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/preview/hero-dark.png">
-  <img src="docs/images/preview/hero-light.png" width="100%" alt="Den's Graph page: seven services across a shop and a blog, in dependency order, all healthy">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/0.4.1/hero-dark.png">
+  <img src="docs/images/0.4.1/hero-light.png" width="100%" alt="Den's Graph page: the demo workspace's services grouped by application, all healthy, with the status chip and the left rail">
 </picture>
 
 ## What Den is
 
 Den is an opinionated local development framework for solo developers and small teams. You point it at the
-repos you work on. Den starts them in the right order, puts them behind a local HTTPS edge, and shows you the
+repos you work on. Den starts them in the right order, puts them behind a local edge, and shows you the
 whole thing in one web shell and one CLI: what's up, what's down, why, and the fix.
 
 It doesn't replace your tools. Your repos, Docker, your test runners, your secrets store and your agents stay
 yours. Den connects them and turns on good practice from the start.
 
 <p align="center">
-  <img src="docs/images/preview/make-up.webp" width="100%" alt="acme up: services start in dependency order and the graph turns green">
+  <img src="docs/images/0.4.1/up.gif" width="100%" alt="make up in the Graph page: every stack down, then demo-api, demo-web and demo-notes come up in dependency order until the status chip reads All 3 healthy">
 </p>
 
 ## How it helps
@@ -53,9 +53,10 @@ yours. Den connects them and turns on good practice from the start.
   lives in your own repo.
 
 <p align="center">
-  <img src="docs/images/preview/status.png" width="32%" alt="The status drawer: what needs attention, and the fix">
-  <img src="docs/images/preview/services.png" width="32%" alt="Services: every service with its health and actions">
-  <img src="docs/images/preview/graph-dark.png" width="32%" alt="The Graph page in dark mode">
+  <img src="docs/images/0.4.1/agents.png" width="49%" alt="The Agents tab: the demo workspace's sessions on the left, and one open in a terminal pane on the right, running demo-api's test and then the service">
+  <img src="docs/images/0.4.1/workspaces.png" width="49%" alt="The Workspaces page: the demo workspace's repos with their health, mode and Start, Stop, Restart and Logs actions">
+  <img src="docs/images/0.4.1/status-drawer.png" width="49%" alt="The status drawer: nothing needs attention, and every service in the demo workspace, by application, with its latency">
+  <img src="docs/images/0.4.1/edge.png" width="49%" alt="The Edge page: the edge container up, its ports and TLS, and every route it serves, Den's own and each stack's, with its upstream">
 </p>
 
 ## Get started
