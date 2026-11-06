@@ -10,12 +10,16 @@ import {
   buildModel,
   commandTier,
   edgeModel,
+  GROUP_GAP,
   healthLine,
   mergeWorkspaceViews,
   ownerOfRepos,
+  packGroups,
   placementOf,
   repoPlacement,
   resolveActions,
+  routeCross,
+  splitTopLevel,
 } from "../../../src/ui/server/public/graph-model.js";
 
 const row = (address: string, extra: Record<string, unknown> = {}) => {
@@ -468,5 +472,113 @@ describe("healthLine", () => {
     expect(healthLine({ runs: "local", health: { ok: null } })).toBe(
       "no health check",
     );
+  });
+});
+
+// 0.3.0-dev.34: the top-level groups wrap to the stage (a consumer's 31
+// services in 10 org groups sat in one row and fitted at 15–24%).
+describe("splitTopLevel / packGroups / routeCross (wrapping groups)", () => {
+  const sizes = Array.from({ length: 10 }, () => ({ w: 600, h: 300 }));
+
+  it("one row is ten groups wide; wrapped for a 16:10 stage it is rows, and fits higher", () => {
+    const one = packGroups(sizes, { width: 1e9, height: 300 });
+    expect(new Set(one.pos.map((p) => p.band)).size).toBe(1);
+    const w = packGroups(sizes, { width: 1400, height: 700 });
+    const rows = new Set(w.pos.map((p) => p.band)).size;
+    expect(rows).toBeGreaterThan(1);
+    const zoom = (p: { w: number; h: number }) =>
+      Math.min(1400 / p.w, 700 / p.h);
+    expect(zoom(w)).toBeGreaterThan(zoom(one) * 2);
+    // Rows run left to right, top to bottom, a gap apart, nothing overlapping.
+    for (let i = 0; i < sizes.length; i++)
+      for (let j = i + 1; j < sizes.length; j++) {
+        const a = w.pos[i],
+          b = w.pos[j];
+        const apart =
+          a.x + 600 + GROUP_GAP <= b.x + 0.5 ||
+          b.x + 600 + GROUP_GAP <= a.x + 0.5 ||
+          a.y + 300 + GROUP_GAP <= b.y + 0.5 ||
+          b.y + 300 + GROUP_GAP <= a.y + 0.5;
+        expect([i, j, apart]).toEqual([i, j, true]);
+      }
+  });
+
+  it("left-right wraps into columns", () => {
+    const w = packGroups(sizes, {
+      direction: "right",
+      width: 1400,
+      height: 700,
+    });
+    const cols = new Set(w.pos.map((p) => p.x));
+    expect(cols.size).toBeGreaterThan(1);
+    // Within a column the groups stack downwards.
+    const first = w.pos.filter((p) => p.band === 0);
+    expect(first.map((p) => p.x)).toEqual(first.map(() => 0));
+    expect(first.map((p) => p.y)).toEqual(
+      first.map((_, i) => i * (300 + GROUP_GAP)),
+    );
+  });
+
+  it("splits by top-level group, the edges between them aside, a dependency after its user", () => {
+    const root = {
+      id: "root",
+      layoutOptions: { "elk.algorithm": "layered" },
+      children: [
+        { id: "grp:a", children: [{ id: "a/x" }] },
+        { id: "grp:b", children: [{ id: "rg:b", children: [{ id: "b/y" }] }] },
+      ],
+      edges: [{ id: "e0", sources: ["a/x"], targets: ["b/y"] }],
+    };
+    // b uses a: b first.
+    root.edges[0] = { id: "e0", sources: ["b/y"], targets: ["a/x"] };
+    const s = splitTopLevel(root);
+    expect(s.parts.map((p) => p.children[0].id)).toEqual(["grp:b", "grp:a"]);
+    expect(s.parts[0].layoutOptions).toBe(root.layoutOptions);
+    expect(s.parts.every((p) => p.edges.length === 0)).toBe(true);
+    expect(s.cross).toHaveLength(1);
+    expect(s.groupOf.get("b/y")).toBe("grp:b");
+  });
+
+  it("routes an edge to a later row through the gap above that row, ends on both cards", () => {
+    const s = { x: 0, y: 0, w: 100, h: 50 },
+      t = { x: 400, y: 300, w: 100, h: 50 };
+    const pts = routeCross(
+      s,
+      t,
+      { band: 0, from: 0, to: 200 },
+      { band: 1, from: 248, to: 400 },
+    );
+    expect(pts).toEqual([
+      [50, 50],
+      [50, 248 - GROUP_GAP / 2],
+      [450, 248 - GROUP_GAP / 2],
+      [450, 300],
+    ]);
+    // Same row: side to side.
+    expect(
+      routeCross(
+        s,
+        { ...t, y: 0 },
+        { band: 0, from: 0, to: 50 },
+        {
+          band: 0,
+          from: 0,
+          to: 50,
+        },
+      )[3],
+    ).toEqual([400, 25]);
+  });
+
+  it("an ELK layout of each part, wrapped, keeps every group's own layout", async () => {
+    const m = fixture();
+    const root = buildElkGraph(m, { direction: "down" });
+    const whole = await new ELK().layout(JSON.parse(JSON.stringify(root)));
+    const { parts } = splitTopLevel(root);
+    const each = await Promise.all(parts.map((p) => new ELK().layout(p)));
+    const size = (n: Elk) => [n.width, n.height];
+    // A lone group: the same layout as before.
+    if (parts.length === 1)
+      expect(size(each[0].children[0])).toEqual(size(whole.children[0]));
+    expect(each.every((r) => r.children[0].width > 0)).toBe(true);
   });
 });

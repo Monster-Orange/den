@@ -467,6 +467,20 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- **The graph's top-level groups wrap to the stage** (0.3.0-dev.34, a
+  consumer's dogfood finding: 31 services in 10 org groups). Top-down,
+  every org (or application) group sat in one row, so the whole graph
+  fitted only at 15–24%, where cards are hard to read. Each top-level
+  group is now laid out on its own by the same layered layout (a group's
+  inside is unchanged), and the groups wrap into rows (top-down) or
+  columns (left-right), choosing the wrap that fits the stage at the
+  highest zoom; the edges between groups are routed through the gaps
+  between rows. A 31-card, 10-org graph fits at 45% at 1440×900 (was
+  22%) and 33% at 1024×768 (was 14%).
+- **The automatic fit shows the whole graph** (0.3.0-dev.34). A graph
+  that needed less than 25% used to open on its top at 60%; the first
+  paint now fits it as Fit does (down to 10%).
+
 - **The Graph page follows the top bar's workspace scope** (0.3.0-dev.33,
   a consumer's dogfood finding). With the top bar's Workspace on "All
   active", `/graph` used to show (and name) the focused workspace only. It
@@ -590,6 +604,33 @@ config and manifest changes a distribution must make to move to it under
   `backendAvailable` (and `backend`, `reason`).
 
 ### Fixed
+
+- **The graph fits on first paint** (0.3.0-dev.34, a consumer's dogfood
+  finding). With "All active", `/graph` opened at 60% with 17 of 31 cards
+  outside the stage at 1440×900 (23 at 1024×768) until Fit was clicked:
+  the org frames land after the first draw, the graph was drawn again,
+  and only the first draw was fitted (a render a newer one overtook could
+  also fit the stale layout). The view now fits once the final layout is
+  drawn, and again whenever the set of cards changes, unless you zoomed
+  or panned since. Local Dev's per-workspace graph likewise.
+- **The Workspace picker on `/graph` replaces `?ws=`** (0.3.0-dev.34, a
+  consumer's dogfood finding). On `/graph?ws=w2`, "All active" changed the
+  pill but the URL kept `?ws=w2`, which wins, so the header and the graph
+  stayed on w2, after a reload too. A choice there now drops `?ws=` (All
+  active) or sets it (a workspace), replacing the history entry, and the
+  pill shows the workspace a fresh `?ws=` names: the pill, URL, the
+  header's line and the graph agree.
+- **The runs dock is a tablist only while it holds tabs** (0.3.0-dev.34).
+  With no runs, `.den-runs-l` was a `role=tablist` holding a "No runs"
+  span and no tab; the role and its label come back with the first run.
+- **`theme-switch-isolation` is deterministic under load** (0.3.0-dev.34;
+  it failed 5/6 then 1/6 on a busy machine). Its file snapshot covered the
+  throwaway HOME, where a container runner's CLI that the health check
+  calls writes its own update hint on its own schedule; it now covers
+  Den's files (the distribution and `DEN_HOME`). The server gets a port
+  from the OS on localhost (not a random pick that could land on another
+  session's server), and readiness waits for the server whose
+  `/api/server-info` names this distribution's root.
 
 - **Stale daemon records are dropped** (0.3.0-dev.33, a consumer's
   dogfood finding). A record whose repo had been relocated (no pid,

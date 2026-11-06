@@ -388,6 +388,198 @@ export function buildElkGraph(
   return root;
 }
 
+// ── Wrapping the top-level groups (0.3.0-dev.34) ─────────────────────────
+// A consumer's distribution with 31 services in 10 org groups: one layered
+// layout put every top-level group in one row (top-down), so the whole
+// graph fitted only at 15–24%, where cards are hard to read. ELK's own
+// options did not help: with INCLUDE_CHILDREN the root is one layered
+// graph, and elk.aspectRatio (its component packing) left the row as it
+// was. So each top-level group is laid out on its own, by the same layered
+// layout with the same options (a group's inside is as before), the groups
+// are wrapped into rows (top-down) or columns (left-right) sized for the
+// stage, and the few edges between groups are routed here, orthogonally,
+// through the gaps between rows (or columns).
+
+/** Gap between wrapped groups: elk.spacing.componentComponent. */
+export const GROUP_GAP = 48;
+
+/**
+ * Split buildElkGraph's root into one ELK graph per top-level group (the
+ * root's options, the group, the edges inside it) and the edges between
+ * groups (the root's own). Groups are ordered so that an edge's source
+ * comes first where the edges allow (stable otherwise): in reading order
+ * a dependency then sits after, below or to the right of, its user, as the
+ * layered layout puts it.
+ */
+export function splitTopLevel(root) {
+  const groups = root.children || [];
+  const cross = root.edges || [];
+  const groupOf = new Map();
+  (function index(n, top) {
+    for (const c of n.children || []) {
+      const t = top ?? c.id;
+      groupOf.set(c.id, t);
+      index(c, t);
+    }
+  })(root, null);
+  const idx = new Map(groups.map((g, i) => [g.id, i]));
+  const after = groups.map(() => new Set());
+  const indeg = groups.map(() => 0);
+  for (const e of cross) {
+    const a = idx.get(groupOf.get(e.sources[0]));
+    const b = idx.get(groupOf.get(e.targets[0]));
+    if (a == null || b == null || a === b || after[a].has(b)) continue;
+    after[a].add(b);
+    indeg[b]++;
+  }
+  const order = [];
+  const done = new Set();
+  while (order.length < groups.length) {
+    // The first group with nothing before it; on a cycle, the first left.
+    let i = groups.findIndex((_, k) => !done.has(k) && indeg[k] === 0);
+    if (i < 0) i = groups.findIndex((_, k) => !done.has(k));
+    done.add(i);
+    order.push(i);
+    for (const b of after[i]) indeg[b]--;
+  }
+  return {
+    parts: order.map((i) => ({
+      id: "root",
+      layoutOptions: root.layoutOptions,
+      children: [groups[i]],
+      edges: [],
+    })),
+    cross,
+    groupOf,
+  };
+}
+
+/**
+ * Wrap groups of the given sizes, in order, into rows (direction "down")
+ * or columns ("right"), choosing the wrap that lets the whole fit the
+ * area (width × height) at the highest zoom. Returns each group's place
+ * ({ x, y, band }) and the size of the whole ({ w, h }), from 0,0.
+ * Without an area, a 16:10 one.
+ */
+export function packGroups(
+  sizes,
+  { direction = "down", width = 1600, height = 1000, gap = GROUP_GAP } = {},
+) {
+  const down = direction !== "right";
+  // Along: the axis a row runs along (x top-down); across: the other.
+  const along = sizes.map((s) => (down ? s.w : s.h));
+  const across = sizes.map((s) => (down ? s.h : s.w));
+  const lay = (limit) => {
+    const pos = [];
+    let a = 0,
+      c = 0,
+      band = 0,
+      depth = 0,
+      maxA = 0;
+    along.forEach((len, i) => {
+      if (a > 0 && a + gap + len > limit) {
+        c += depth + gap;
+        a = 0;
+        depth = 0;
+        band++;
+      }
+      const at = a > 0 ? a + gap : 0;
+      pos.push({ a: at, c, band });
+      a = at + len;
+      depth = Math.max(depth, across[i]);
+      maxA = Math.max(maxA, a);
+    });
+    return { pos, A: maxA, C: c + depth };
+  };
+  // Every row width a greedy wrap can end on: a run of consecutive groups.
+  const limits = new Set();
+  for (let i = 0; i < along.length; i++) {
+    let w = 0;
+    for (let j = i; j < along.length; j++) {
+      w += (j > i ? gap : 0) + along[j];
+      limits.add(w);
+    }
+  }
+  // Widest first, so a tie keeps fewer rows.
+  let best = null;
+  for (const limit of [...limits].sort((x, y) => y - x)) {
+    const l = lay(limit);
+    const W = down ? l.A : l.C,
+      H = down ? l.C : l.A;
+    const z = Math.min(width / Math.max(W, 1), height / Math.max(H, 1));
+    if (!best || z > best.z + 1e-9) best = { z, l, W, H };
+  }
+  if (!best) return { pos: [], w: 0, h: 0 };
+  return {
+    pos: best.l.pos.map((p) => ({
+      x: down ? p.a : p.c,
+      y: down ? p.c : p.a,
+      band: p.band,
+    })),
+    w: best.W,
+    h: best.H,
+  };
+}
+
+/**
+ * An edge between two wrapped groups, as orthogonal points. s and t are
+ * the endpoint cards' boxes ({ x, y, w, h }); sBand and tBand their
+ * groups' row (or column) spans across the wrap ({ from, to, band }).
+ * A target in a later row: down out of the source, along the gap above
+ * the target's row, down into the target. In an earlier row: up, along
+ * the gap above the source's row, up into the target's foot. In the same
+ * row: out of the facing side, across the gap between them. Left-right
+ * is the same with the axes swapped.
+ */
+export function routeCross(
+  s,
+  t,
+  sBand,
+  tBand,
+  direction = "down",
+  gap = GROUP_GAP,
+) {
+  const down = direction !== "right";
+  // Work top-down; swap axes for left-right and swap back at the end.
+  const sw = (b) => (down ? b : { x: b.y, y: b.x, w: b.h, h: b.w });
+  const S = sw(s),
+    T = sw(t);
+  const scx = S.x + S.w / 2,
+    tcx = T.x + T.w / 2;
+  let pts;
+  if (tBand.band > sBand.band) {
+    const mid = tBand.from - gap / 2;
+    pts = [
+      [scx, S.y + S.h],
+      [scx, mid],
+      [tcx, mid],
+      [tcx, T.y],
+    ];
+  } else if (tBand.band < sBand.band) {
+    const mid = sBand.from - gap / 2;
+    pts = [
+      [scx, S.y],
+      [scx, mid],
+      [tcx, mid],
+      [tcx, T.y + T.h],
+    ];
+  } else {
+    const right = T.x >= S.x + S.w;
+    const sx = right ? S.x + S.w : S.x,
+      tx = right ? T.x : T.x + T.w;
+    const sy = S.y + S.h / 2,
+      ty = T.y + T.h / 2;
+    const mid = (sx + tx) / 2;
+    pts = [
+      [sx, sy],
+      [mid, sy],
+      [mid, ty],
+      [tx, ty],
+    ];
+  }
+  return down ? pts : pts.map(([x, y]) => [y, x]);
+}
+
 /** Manifest commands that destroy state confirm inline, in Careful. */
 export const DANGER_CMD = /reset|drop|wipe|clean|destroy|purge/;
 export const commandTier = (cmd) =>

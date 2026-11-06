@@ -345,6 +345,49 @@ describe("the runs dock (R16)", () => {
     await p.context().close();
   }, 30_000);
 
+  // A consumer's dev.33 finding: with no runs the dock's list was a
+  // role=tablist holding a "No runs" span and no tab. The role (and its
+  // label) is there only while a tab is.
+  it("is a tablist only while it holds a run tab: none, the first run, the last one closed", async () => {
+    if (!browser) return;
+    const p = await open("/services");
+    const aria = () =>
+      p.$eval("#den-dock .den-runs-l", (e) => ({
+        role: e.getAttribute("role"),
+        label: e.getAttribute("aria-label"),
+        tabs: e.querySelectorAll('[role="tab"]').length,
+        text: (e as HTMLElement).innerText.trim(),
+      }));
+    expect(await aria()).toEqual({
+      role: null,
+      label: null,
+      tabs: 0,
+      text: "No runs",
+    });
+    // No tablist anywhere in the dock while it is empty.
+    expect(await p.$('#den-dock [role="tablist"]')).toBeNull();
+    await runs(p, "start", "t1", "up shop/web");
+    await p.waitForSelector('#den-dock .den-runs-l[role="tablist"] .den-rtab');
+    expect(await aria()).toEqual({
+      role: "tablist",
+      label: "Runs",
+      tabs: 1,
+      text: expect.stringContaining("up shop/web"),
+    });
+    await runs(p, "finish", "t1", { ok: true });
+    await p.click("#den-dock [data-rclose]");
+    await p.waitForFunction(
+      () => !document.querySelector("#den-dock .den-rtab"),
+    );
+    expect(await aria()).toEqual({
+      role: null,
+      label: null,
+      tabs: 0,
+      text: "No runs",
+    });
+    await p.context().close();
+  }, 30_000);
+
   it("a page's command runs into a tab, its output as the pane had it", async () => {
     if (!browser) return;
     const p = await open("/services");

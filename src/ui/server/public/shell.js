@@ -2061,9 +2061,15 @@
       "<b>" +
       esc(t("runs.title")) +
       "</b>" +
-      '<div class="den-runs-l" role="tablist" aria-label="' +
-      esc(t("runs.title")) +
-      '">' +
+      // A tablist only while it holds tabs: an empty one ("No runs") is
+      // a tablist with no tab, which screen readers announce as broken
+      // (0.3.0-dev.34, a consumer's finding). The bar redraws on any run's
+      // state change, so the first tab brings the role back.
+      '<div class="den-runs-l"' +
+      (RUNS.length
+        ? ' role="tablist" aria-label="' + esc(t("runs.title")) + '"'
+        : "") +
+      ">" +
       tabs +
       "</div>" +
       (acts ? '<span class="den-dock-acts">' + acts + "</span>" : "") +

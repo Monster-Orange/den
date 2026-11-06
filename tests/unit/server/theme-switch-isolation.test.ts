@@ -11,18 +11,31 @@
  * overlays (0.3.0-dev.20) in a real browser: opening the palette, the
  * status drawer, the lock popover and the user menu writes nothing, and
  * switching appearance and theme from the palette writes `appearance` only.
+ *
+ * Deterministic under load (0.3.0-dev.34; it failed 5/6 then 1/6 on a busy
+ * machine): the port is one the OS hands out (a random pick in a fixed
+ * range could land on another session's server, and stdio was ignored, so
+ * a server that never bound went unseen); readiness waits for *this*
+ * distribution's server (`/api/server-info` names its root); and the file
+ * snapshot covers Den's files, the distribution and Den's state home
+ * (DEN_HOME), not the throwaway HOME, where CLIs Den shells out to (a
+ * container runner's `container ls` for health, a secrets CLI for the lock
+ * popover) keep their own state on their own schedule: one wrote an
+ * update hint there a moment after the snapshot, on a loaded machine only.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawn, type ChildProcess } from "child_process";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as http from "http";
+import * as net from "net";
+import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
 
 const ENGINE = process.cwd();
-const PORT = 21876 + Math.floor(Math.random() * 1000);
+let PORT = 0;
 let tmp: string;
 let dist: string;
 let server: ChildProcess | null = null;
@@ -36,7 +49,7 @@ function request(
     const data = body === undefined ? undefined : JSON.stringify(body);
     const req = http.request(
       {
-        host: "127.0.0.1",
+        host: "localhost",
         port: PORT,
         path: p,
         method,
@@ -62,10 +75,14 @@ function request(
   });
 }
 
-/** Every file under tmp (the distribution and the state home) → sha256. */
+/**
+ * Every file of Den's (the distribution, and Den's state home DEN_HOME)
+ * → sha256. Not the rest of the throwaway HOME: other tools' state.
+ */
 function snapshot(): Record<string, string> {
   const out: Record<string, string> = {};
   const walk = (dir: string): void => {
+    if (!fs.existsSync(dir)) return;
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) walk(abs);
@@ -75,7 +92,8 @@ function snapshot(): Record<string, string> {
           .digest("hex");
     }
   };
-  walk(tmp);
+  walk(path.join(tmp, "dist"));
+  walk(path.join(tmp, "home", ".den"));
   return out;
 }
 
@@ -132,6 +150,12 @@ beforeAll(async () => {
     }),
   );
 
+  // A port the OS hands out, on localhost (as the other server tests do).
+  const probe = net.createServer();
+  await new Promise<void>((r) => probe.listen(0, "localhost", r));
+  PORT = (probe.address() as AddressInfo).port;
+  await new Promise<void>((r) => probe.close(() => r()));
+  let serverOut = "";
   server = spawn(
     process.execPath,
     [
@@ -149,20 +173,30 @@ beforeAll(async () => {
         PORT: String(PORT),
         DEN_NO_OPEN: "1",
       },
-      stdio: ["ignore", "ignore", "ignore"],
+      stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
+  server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
   const start = Date.now();
-  while (Date.now() - start < 20_000) {
+  while (Date.now() - start < 40_000) {
+    if (server.exitCode !== null)
+      throw new Error(`server exited (${server.exitCode}):\n${serverOut}`);
     try {
-      if ((await request("GET", "/api/server-info")).status === 200) return;
+      const r = await request("GET", "/api/server-info");
+      // Ours: another server on the port would name another root.
+      if (
+        r.status === 200 &&
+        (JSON.parse(r.body) as { root?: string }).root === dist
+      )
+        return;
     } catch {
       /* not up yet */
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error("server did not start within 20s");
-}, 30_000);
+  throw new Error(`server did not start within 40s:\n${serverOut}`);
+}, 60_000);
 
 afterAll(() => {
   server?.kill("SIGTERM");
@@ -491,7 +525,7 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
           `${r.method()} ${new URL(r.url()).pathname} ${r.postData() ?? ""}`.trim(),
         ),
       );
-      await p.goto(`http://127.0.0.1:${PORT}/services`);
+      await p.goto(`http://localhost:${PORT}/services`);
       await p.waitForSelector(".den-rail .den-ni");
       await p.waitForFunction(
         () =>
@@ -543,10 +577,10 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
       const after = snapshot();
       // The lock popover asks the secrets backend what it holds
       // (vault-status, as Local Dev's banner always did); its CLI keeps its
-      // own config in the (throwaway) home. That is the CLI's file, not Den's.
-      const cli = /^home\/(\.doppler|\.config\/op|\.op)\//;
+      // own config in the (throwaway) HOME, outside the snapshot: that is
+      // the CLI's file, not Den's.
       const changed = Object.keys({ ...before, ...after }).filter(
-        (f) => before[f] !== after[f] && !cli.test(f),
+        (f) => before[f] !== after[f],
       );
       expect(changed).toEqual([USER_YML]);
       const { appearance, ...rest } = yaml.parse(

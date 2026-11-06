@@ -26,11 +26,14 @@ import {
   neighbours,
   nodeFor,
   orgOf,
+  packGroups,
   placementText,
   repoPlacement,
   repoRollup,
   repoStatus,
   repoStatusWord,
+  routeCross,
+  splitTopLevel,
   status,
   statusWord,
 } from "/graph-model.js";
@@ -104,21 +107,16 @@ let vpObserver = null;
 const $ = (s, el = host) => el?.querySelector(s);
 const zoomFloor = 0.35;
 /**
- * The automatic fit (first draw, a layout change, the viewport resizing):
- * the whole graph whenever it fits at AUTO_MIN or more, else the top of it
- * at a readable 0.6. (AUTO_MIN was 35%, the old Fit floor; the page header,
- * R20 in 0.3.0-dev.32, takes 70px of height, and a graph that fitted at
- * 35% above an open runs dock no longer did.) A fixed 0.6 floor left a graph that
- * fitted above an empty output panel clipped once a run's output opened
- * the panel: the viewport shrank, the re-fit stopped at 0.6, and the lower
- * cards sat past the viewport's bottom edge, where the panel begins
- * (a consumer's dev.18 run).
+ * The automatic fit (first draw, a new set of cards, a layout change, the
+ * viewport resizing) shows the whole graph, as Fit does (0.3.0-dev.34).
+ * Until dev.33 a graph that needed less than 25% opened on the top of it
+ * at 60%, and a 31-card graph across 10 org groups opened with 17 of 31
+ * cards outside the stage (a consumer's finding); the groups now wrap to
+ * the stage (packGroups), so a graph that big fits at a readable zoom.
  */
 const AUTO_FIT = "auto";
 /** How far Fit (and zooming out to it) goes for a very big graph. */
 const FIT_MIN = 0.1;
-/** The automatic fit shows the whole graph down to this zoom. */
-const AUTO_MIN = 0.25;
 
 bindPanel({
   model: () => M,
@@ -168,7 +166,7 @@ function loadServerPrefs() {
       store.set("prefs", prefs());
       if (JSON.stringify(prefs()) !== before && host?.isConnected) {
         syncControls();
-        render().then(() => fit(AUTO_FIT));
+        render().then((d) => d && fit(AUTO_FIT));
       }
     })
     .catch(() => {});
@@ -244,8 +242,15 @@ export function mountGraph(el, data, pageHooks) {
   wire();
   syncControls();
   loadServerPrefs();
-  render().then(() => {
-    if (!st.fitted) {
+  // Fit once the layout that is drawn is known: a render a newer one
+  // overtook draws nothing and fits nothing (All active, and the org
+  // frames landing after the first draw, mount twice in quick succession).
+  // A new set of cards (the orgs landing, the picker, a workspace
+  // activated) re-fits while the view is the automatic one; a view the
+  // user zoomed or panned stays where they put it.
+  render().then((drawn) => {
+    if (!drawn) return;
+    if (!st.fitted || autoFit != null) {
       fit(AUTO_FIT);
       st.fitted = true;
     } else applyView();
@@ -304,8 +309,21 @@ async function render() {
     for (const e of n.edges || []) meta.set(e.id, e._m);
     (n.children || []).forEach(walk);
   })(root);
-  const res = await elk.layout(root);
-  if (seq !== renderSeq || !world.isConnected) return; // a newer render won
+  // Each top-level group on its own, then wrapped to the stage
+  // (graph-model.js splitTopLevel / packGroups, 0.3.0-dev.34).
+  const { parts, cross, groupOf } = splitTopLevel(root);
+  const results = await Promise.all(parts.map((p) => elk.layout(p)));
+  if (seq !== renderSeq || !world.isConnected) return false; // a newer render won
+  const area = fitArea();
+  const tops = results.map((r) => r.children[0]);
+  const pack = packGroups(
+    tops.map((g) => ({ w: g.width, h: g.height })),
+    {
+      direction: st.dir,
+      // The world adds 30px to the groups' extent (padding and margin).
+      ...(area ? { width: area.w - 30, height: area.h - 30 } : {}),
+    },
+  );
   world.querySelectorAll(".dg-grp,.dg-card,.dg-msg").forEach((n) => n.remove());
   edges = edgeModel(M, st.collapsed);
   layoutAbs = {};
@@ -313,7 +331,7 @@ async function render() {
   const paths = [];
   let maxX = 0,
     maxY = 0;
-  (function walk(n, ox, oy) {
+  function walk(n, ox, oy) {
     const x = ox + (n.x || 0),
       y = oy + (n.y || 0);
     if (n.id !== "root") {
@@ -346,7 +364,33 @@ async function render() {
       }
     }
     for (const c of n.children || []) walk(c, x, y);
-  })(res, 0, 0);
+  }
+  // The root's padding (10) around the wrapped groups.
+  const PAD = 10;
+  const bands = new Map();
+  results.forEach((r, i) => {
+    const g = tops[i],
+      at = pack.pos[i];
+    walk(r, PAD + at.x - g.x, PAD + at.y - g.y);
+    const down = st.dir !== "right";
+    const from = PAD + (down ? at.y : at.x);
+    const b = bands.get(at.band) || { band: at.band, from, to: from };
+    b.from = Math.min(b.from, from);
+    b.to = Math.max(b.to, from + (down ? g.height : g.width));
+    bands.set(at.band, b);
+  });
+  const bandOf = new Map(
+    tops.map((g, i) => [g.id, bands.get(pack.pos[i].band)]),
+  );
+  // Edges between groups: routed through the gaps between the wrap's rows.
+  for (const e of cross) {
+    const a = layoutAbs[e.sources[0]],
+      b = layoutAbs[e.targets[0]];
+    const ba = bandOf.get(groupOf.get(e.sources[0])),
+      bb = bandOf.get(groupOf.get(e.targets[0]));
+    if (!a || !b || !ba || !bb) continue;
+    paths.push({ d: roundPath(routeCross(a, b, ba, bb, st.dir)), m: e._m });
+  }
   world.appendChild(frag);
   const svg = $(".dg-world > svg");
   svg.setAttribute("width", maxX + 20);
@@ -375,6 +419,7 @@ async function render() {
   world.style.height = maxY + 20 + "px";
   legend();
   applyFocus();
+  return true;
 }
 
 function roundPath(pts) {
@@ -682,18 +727,20 @@ function bottomReserve(vp) {
   }
   return vp.bottom - top + FIT_GAP;
 }
+/** The area a fitted graph may use in the viewport now, or null. */
+function fitArea() {
+  const vp = $(".dg-vp")?.getBoundingClientRect();
+  if (!vp || vp.width < 1 || vp.height < 1) return null;
+  return { w: vp.width - 32, h: vp.height - FIT_TOP - bottomReserve(vp) };
+}
 /** The zoom that shows the whole graph in the viewport now (≤ 1), or null. */
 function fitNeed() {
-  const vp = $(".dg-vp")?.getBoundingClientRect();
+  const area = fitArea();
   const world = $(".dg-world");
-  if (!vp || !world) return null;
+  if (!area || !world) return null;
   const w = parseFloat(world.style.width) || 1,
     h = parseFloat(world.style.height) || 1;
-  return Math.min(
-    1,
-    (vp.width - 32) / w,
-    (vp.height - FIT_TOP - bottomReserve(vp)) / h,
-  );
+  return Math.min(1, area.w / w, area.h / h);
 }
 /**
  * Fit the graph; automatic fits pass AUTO_FIT, the Fit button FIT_MIN.
@@ -707,12 +754,7 @@ function fit(floor = FIT_MIN) {
   if (!vp) return;
   const w = parseFloat($(".dg-world").style.width) || 1;
   const need = fitNeed();
-  st.z =
-    floor === AUTO_FIT
-      ? need >= AUTO_MIN
-        ? need
-        : 0.6
-      : Math.max(floor, need);
+  st.z = Math.max(floor === AUTO_FIT ? FIT_MIN : floor, need);
   st.tx = Math.max(16, (vp.width - w * st.z) / 2);
   st.ty = FIT_TOP;
   autoFit = floor;
@@ -949,7 +991,7 @@ function wire() {
             [...M.byRepo.keys()].filter((r) => M.byRepo.get(r).length > 1),
           );
     store.set("collapsed", [...st.collapsed]);
-    render().then(() => fit(AUTO_FIT));
+    render().then((d) => d && fit(AUTO_FIT));
   });
   const find = $("[data-find]");
   find.addEventListener("input", () => {

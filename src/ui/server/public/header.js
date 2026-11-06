@@ -775,13 +775,45 @@ async function _renderScopeMenu() {
         .catch(() => null),
     ]);
     sh.setWorkspaces({
-      ...buildScopeMenuModel(scope, data),
+      ...buildScopeMenuModel(pageScope(scope, data), data),
       onSelect: _switchScope,
       onFocus: _setFocus,
     });
   } catch {
     sh.setWorkspaces(null);
   }
+}
+
+/**
+ * The Graph page draws what its ?ws= names (it wins over the stored view,
+ * 0.3.0-dev.33), so its pill shows that workspace too: the pill, the URL,
+ * the header's line and the graph agree (0.3.0-dev.34, a consumer's
+ * finding). Elsewhere, and for a ?ws= that names no active workspace,
+ * the stored view.
+ */
+function pageScope(scope, data) {
+  if (location.pathname !== "/graph") return scope;
+  const ws = new URLSearchParams(location.search).get("ws");
+  const active = Array.isArray(data?.active)
+    ? data.active
+    : data?.active
+      ? [data.active]
+      : [];
+  return ws && active.includes(ws) ? { ...scope, scope: ws } : scope;
+}
+
+/**
+ * On the Graph page a choice replaces ?ws= (All active drops it, a
+ * workspace sets it), so the reload shows the choice rather than the old
+ * ?ws=, which would win over it. The history entry is replaced, not
+ * pushed: Back does not return to a view the picker has left.
+ */
+function followScopeInUrl(value) {
+  if (location.pathname !== "/graph") return;
+  const u = new URL(location.href);
+  if (value === "all") u.searchParams.delete("ws");
+  else u.searchParams.set("ws", value);
+  history.replaceState(history.state, "", u.pathname + u.search + u.hash);
 }
 
 /**
@@ -801,6 +833,7 @@ async function _switchScope(value) {
     window.denShell?.toast?.(`Could not change the view: ${err.message}`);
     return;
   }
+  followScopeInUrl(value);
   location.reload();
 }
 
