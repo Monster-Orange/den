@@ -63,12 +63,14 @@ export function mergeAppearancePrefs(
   const out: AppearancePrefs = { ...current };
   for (const [key, v] of Object.entries(patch)) {
     if (key === "mode") {
-      if (!MODES.includes(v as ModePref))
+      // null clears it to the default (0.3.0-dev.32), as theme's does.
+      if (v === null) out.mode = APPEARANCE_DEFAULTS.mode;
+      else if (!MODES.includes(v as ModePref))
         return {
           ok: false,
           error: `appearance.mode must be one of ${MODES.map((m) => `"${m}"`).join(", ")}`,
         };
-      out.mode = v as ModePref;
+      else out.mode = v as ModePref;
     } else if (key === "theme") {
       if (v === null || v === "") out.theme = null;
       else if (typeof v !== "string" || !THEME_ID.test(v) || !isUsableTheme(v))

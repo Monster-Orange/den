@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import {
+  certHeading,
   edgeSub,
   edgeView,
   tlsNote,
@@ -105,5 +106,78 @@ describe("edgeView", () => {
     expect(none).not.toContain("tile");
     expect(edgeSub({ configured: false })).toBe("Not configured");
     expect(edgeSub(st)).toBe("acme / acme-edge · running");
+  });
+});
+
+describe("the cert-names card under tls files (a consumer's nit, 0.3.0-dev.32)", () => {
+  it("files: the names the included certs should cover; mkcert keeps its heading", () => {
+    expect(certHeading("files", false)).toBe(
+      "Names the included certs should cover",
+    );
+    expect(certHeading("files", true)).toBe(
+      "Names the included certs should cover",
+    );
+    expect(certHeading("mkcert", false)).toBe("Certificate names (planned)");
+    expect(certHeading("mkcert", true)).toBe("Certificate names");
+    const files = edgeView({
+      ...st,
+      certIssued: false,
+      tls: { strategy: "files", implicit: false, from: "explicit", ca: null },
+    });
+    expect(files).toContain(
+      '<h2 class="sec" id="edge-h-cert">Names the included certs should cover</h2>',
+    );
+    expect(files).not.toContain("Certificate names");
+    expect(edgeView({ ...st, certIssued: false })).toContain(
+      '<h2 class="sec" id="edge-h-cert">Certificate names (planned)</h2>',
+    );
+  });
+});
+
+describe("the stacks' routes (a consumer's finding, 0.3.0-dev.32)", () => {
+  it("lists the routers in stack-*.yml, source stack, marked with the file", () => {
+    const html = edgeView({
+      ...st,
+      stacks: [
+        {
+          name: "stack-shop-web",
+          file: "stack-shop-main.yml",
+          rule: "Host(`web.shop.acme.localhost`)",
+          service: "stack-shop-web",
+          entryPoints: ["websecure"],
+          hosts: ["web.shop.acme.localhost"],
+          tls: true,
+        },
+      ],
+      stackErrors: [{ file: "stack-bad.yml", error: "bad indent" }],
+    });
+    expect(html).toContain(
+      '<a href="https://web.shop.acme.localhost" target="_blank" rel="noopener noreferrer">web.shop.acme.localhost</a>',
+    );
+    expect(html).toMatch(
+      /<td><span class="src" title="written by stack up">stack<\/span> <span class="mono sub">stack-shop-main\.yml<\/span><\/td>/,
+    );
+    // After Den's own and the included routers.
+    expect(html.indexOf("stack-shop-web")).toBeGreaterThan(
+      html.indexOf("vpn-web"),
+    );
+    expect(html).toMatch(/stack-bad\.yml<\/span>: not read \(bad indent\)/);
+  });
+});
+
+describe("CA trust when fronted (a consumer's finding, 0.3.0-dev.32)", () => {
+  it("edge.publish false (no host ports): not needed, neutral, never not trusted", () => {
+    const html = edgeView({ ...st, ports: null, caTrusted: false });
+    expect(html).toMatch(
+      /<div class="tile"><div class="k">CA trust<\/div><div class="v">not needed: fronted<\/div>/,
+    );
+    expect(html).not.toContain("not trusted");
+    expect(html).not.toMatch(/tile bad"><div class="k">CA trust/);
+  });
+
+  it("published: an untrusted CA is still a bad tile", () => {
+    expect(edgeView(st)).toMatch(
+      /<div class="tile bad"><div class="k">CA trust<\/div><div class="v">not trusted<\/div>/,
+    );
   });
 });

@@ -6,9 +6,35 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.3.0] - unreleased
 
-0.3.0-dev.31 includes all of 0.2.7 (below).
+0.3.0-dev.31 and later include all of 0.2.7 (below).
 
 ### Added
+
+- **The Graph page** (0.3.0-dev.32, R22, Ward 2026-11-05). Develop ›
+  Graph, after Local Dev, at `/graph`: the workspace graph alone, full
+  width under its page header, with the same toolbar, zoom, Maximize
+  (which now hides the page header too) and details panel as Local Dev's
+  Graph tab. It shows the workspace Local Dev would (`?ws=`, else the
+  view scope when it is one workspace, else the focus). Local Dev keeps
+  the workspace list, the workspace's actions and its tabs, Graph tab
+  included. Overview and Security stay out for now.
+- **A page header on every page** (0.3.0-dev.32, R20). The shell draws the
+  prototype's `.ph` on each page that has no header of its own: the page's
+  title (`600 22px/1.2`, its one h1, which used to be visually hidden) and
+  a 13px muted line with the scope, `org / workspace / env`, kept in step
+  with the top bar (Local Dev and Graph name the workspace they show). Pages
+  keep their content below it. `denShell.pageHeader()` gives a page the
+  header's `act` (the primary action, at the end) and `tabs` (`.ptabs`,
+  below it), and `setScope` / `setSub` for the line. Local Dev's workspace
+  tabs are page tabs now: real tabs (`role="tab"`, `aria-selected`) at the
+  prototype's sizes (8px 12px, 14px, a 2px accent rule under the selected
+  one).
+- **The stacks' routes on the Edge page and in `edge routes`**
+  (0.3.0-dev.32, from a consumer). The routers Den writes into
+  `edge/dynamic/stack-*.yml` when a stack comes up are neither Den's host
+  routes nor `edge include` files, so nothing listed them. They are listed
+  last, source "stack" with the file; `/api/edge` adds `stacks` and
+  `stackErrors` (a file that doesn't parse is named, never fatal).
 
 - **The runs dock** (0.3.0-dev.30, R16). One output dock for every page, at
   the foot of the content column, ported from the shell prototype: a bar
@@ -441,6 +467,17 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- **POST /api/settings: null clears a pref** (0.3.0-dev.32, from a
+  consumer). A key set to `null` (`{"graph":{"workspaces":null}}`, or in
+  `shell` or `appearance`) is removed from config/local/user.yml instead of
+  failing with 400, and a block left empty goes too; a whole block set to
+  `null` (`{"graph":null}`) removes it. `graph:` now keeps only the keys
+  someone set (it used to write every default), so setting a pref and
+  clearing it again leaves user.yml byte-identical.
+- **Edge page: the cert-names card under tls `files`** (0.3.0-dev.32, from a
+  consumer) reads "Names the included certs should cover": Den issues
+  nothing there. mkcert keeps "Certificate names (planned)".
+
 - **The pages' output panes are gone; their runs are tabs in the runs
   dock** (0.3.0-dev.30, R16). Local Dev's output panel (one tab per
   system, log tails, the dismissed tabs per workspace), Services' output
@@ -521,6 +558,16 @@ config and manifest changes a distribution must make to move to it under
   `backendAvailable` (and `backend`, `reason`).
 
 ### Fixed
+
+- **CA trust on a fronted edge reads "not needed: fronted"** (0.3.0-dev.32,
+  from a consumer). With `edge.publish: false` a proxy in front owns
+  browser trust (BOOT-1), so the Edge page's CA trust tile is neutral
+  instead of a red "not trusted", and `edge status` says the same.
+- **Fit follows the graph's size on maximize and restore** (0.3.0-dev.32,
+  R23, from a consumer). Fit stopped at 35%, so a big graph at 1440×900 read
+  35% maximized or not, and didn't fit either way. Fit now fits the whole
+  graph, by width and height, down to 10% (zooming out goes as far as
+  that), and a fitted view refits when the graph is maximized or restored.
 
 - **A seed without a terminal no longer resets a workspace that has
   entries** (SEED-0, 0.3.0-dev.29; also 0.2.7). `<cli> init` and

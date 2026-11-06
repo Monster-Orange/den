@@ -145,6 +145,15 @@ export function mergeShellPrefs(
     order: [...current.order],
   };
   for (const key of Object.keys(patch)) {
+    // null clears a pref back to its default (0.3.0-dev.32): the stored
+    // block drops it, so set-then-clear leaves user.yml as it was.
+    if (patch[key] === null && key in SHELL_DEFAULTS) {
+      const d = SHELL_DEFAULTS[key as keyof ShellPrefs];
+      (out as unknown as Record<string, unknown>)[key] = Array.isArray(d)
+        ? []
+        : d;
+      continue;
+    }
     if (key === "pins") {
       const p = checkPins(patch.pins);
       if (!p.ok) return p;

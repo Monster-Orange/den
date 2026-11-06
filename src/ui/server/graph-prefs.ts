@@ -94,3 +94,31 @@ export function mergeGraphPrefs(
   }
   return { ok: true, value: out };
 }
+
+/**
+ * The stored block after a POSTed patch (0.3.0-dev.32, a consumer's nit):
+ * only the keys someone set are kept, and a key set to null is removed, so
+ * setting a pref and clearing it again leaves user.yml as it was. Nothing
+ * left: undefined (the caller drops `graph:`). Any bad field fails it.
+ */
+export function patchStoredGraph(
+  stored: unknown,
+  patch: unknown,
+):
+  | { ok: true; value: Record<string, unknown> | undefined }
+  | { ok: false; error: string } {
+  if (!isObject(patch)) return { ok: false, error: "graph must be an object" };
+  const out: Record<string, unknown> = isObject(stored) ? { ...stored } : {};
+  for (const [key, v] of Object.entries(patch)) {
+    if (!(key in GRAPH_DEFAULTS))
+      return { ok: false, error: `unknown graph setting "${key}"` };
+    if (v === null) {
+      delete out[key];
+      continue;
+    }
+    const c = check(key as keyof GraphPrefs, v);
+    if (!c.ok) return c;
+    out[key] = c.value;
+  }
+  return { ok: true, value: Object.keys(out).length ? out : undefined };
+}

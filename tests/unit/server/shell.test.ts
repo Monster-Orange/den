@@ -125,6 +125,7 @@ describe("the shell's source", () => {
       [
         "/edge",
         "/environments",
+        "/graph",
         "/local-dev",
         "/logs",
         "/settings",

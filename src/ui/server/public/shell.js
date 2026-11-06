@@ -98,6 +98,10 @@
   if (!host || host.dataset.mounted) return;
   host.dataset.mounted = "1";
   var page = host.dataset.page || "";
+  // The page id on the body (den-page-<id>), for CSS from first paint: the
+  // Graph page is Local Dev's file at /graph (R22, 0.3.0-dev.32).
+  if (/^[a-z0-9-]+$/.test(page) && document.body)
+    document.body.classList.add("den-page-" + page);
 
   // ── i18n: labels are keys; only en ships until slice 5 ─────────────────
   var MESSAGES = {
@@ -107,6 +111,7 @@
       "g.verify": "Verify",
       "g.ship": "Ship",
       "n.local-dev": "Local Dev",
+      "n.graph": "Graph",
       "n.services": "Services",
       "n.logs": "Logs",
       "n.tests": "Tests",
@@ -182,6 +187,8 @@
   // ── icons: the prototype's 24px line drawings ─────────────────────────
   var ICONS = {
     overview: '<path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"/>',
+    graph:
+      '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.2 7.2 15.6 8M7 8.4l1.6 7.2M16.4 10.2l-5.6 6"/>',
     services:
       '<rect x="4" y="4" width="16" height="6" rx="1.5"/><rect x="4" y="14" width="16" height="6" rx="1.5"/><path d="M8 7h.01M8 17h.01"/>',
     logs: '<path d="M5 5h14M5 9h10M5 13h14M5 17h8"/>',
@@ -826,8 +833,7 @@
     GROUPS.push({ id: g.id, label: g.label, order: g.order, from: null });
   });
   [
-    // Den's overview: the workspace and its graph (the prototype's
-    // Overview and Graph are one page here).
+    // Den's overview: the workspaces, their actions and their graph.
     {
       id: "local-dev",
       label: "n.local-dev",
@@ -835,6 +841,16 @@
       group: "develop",
       order: 10,
       href: "/local-dev",
+    },
+    // The Graph page (R22, 0.3.0-dev.32, Ward 2026-11-05): the graph alone,
+    // full width, after Local Dev as the prototype orders them.
+    {
+      id: "graph",
+      label: "n.graph",
+      icon: "graph",
+      group: "develop",
+      order: 15,
+      href: "/graph",
     },
     {
       id: "services",
@@ -1539,27 +1555,114 @@
     if (drawerOpen() && window.innerWidth > 720) closeDrawer(false);
   });
 
+  // ── the page header (R20, 0.3.0-dev.32) ──────────────────────────────
   // One h1 per page, the page's own (the brand is not a heading). A page
-  // whose content has none gets a visually hidden one, named from its
-  // <title> ("__DEN_TITLE__ · Services" → Services) or its rail entry.
-  function ensurePageHeading() {
+  // whose content has none gets the prototype's page header (.ph): the h1,
+  // named from its rail entry or its <title> ("__DEN_TITLE__ · Services" →
+  // Services), and a 13px muted sub line with the scope ("org / ws / env",
+  // kept in step with the top bar's scope). A page adds its primary action
+  // with denShell.pageHeader().act and its tabs below it with .tabs (both
+  // empty until a page fills them). Settings and Edge draw their own.
+  var ph = null;
+  function scopeText() {
+    var parts = [];
+    var org = document.getElementById("org-crumb");
+    if (org && !org.hidden) {
+      var on =
+        org.querySelector(".den-org-name") || org.querySelector(".den-vn");
+      if (on && on.textContent) parts.push(on.textContent);
+    }
+    var over = (ph && ph.over) || {};
+    [
+      ["ws-pill", over.ws],
+      ["env-btn", over.env],
+    ].forEach(function (p) {
+      if (p[1]) return parts.push(p[1]);
+      var b = document.getElementById(p[0]);
+      var v = b && !b.hidden ? b.querySelector(".den-vn") : null;
+      if (v && v.textContent) parts.push(v.textContent);
+    });
+    return parts.join(" / ");
+  }
+  function paintPageSub() {
+    if (!ph || ph.subFixed) return;
+    var text = scopeText();
+    if (ph.sub.textContent !== text) ph.sub.textContent = text;
+  }
+  function ensurePageHeader() {
     var main = document.getElementById("den-content");
     if (!main || main.querySelector("h1")) return;
-    var title = String(document.title || "");
-    var label = title.indexOf(" · ") >= 0 ? title.split(" · ").pop() : "";
-    if (!label)
-      NAV.forEach(function (n) {
-        if (n.id === page) label = t(n.label);
-      });
+    var label = "";
+    NAV.forEach(function (n) {
+      if (n.id === page) label = t(n.label);
+    });
+    if (!label) {
+      var title = String(document.title || "");
+      label = title.indexOf(" · ") >= 0 ? title.split(" · ").pop() : "";
+    }
     if (!label) return;
-    var h = document.createElement("h1");
-    h.className = "den-sr den-page-h";
-    h.textContent = label;
-    main.insertBefore(h, main.firstChild);
+    var el = document.createElement("div");
+    el.className = "ph den-ph";
+    el.innerHTML =
+      '<div class="den-ph-h"><h1></h1><div class="sub"></div></div>' +
+      '<div class="act" hidden></div>';
+    el.querySelector("h1").textContent = label;
+    var tabs = document.createElement("div");
+    tabs.className = "ptabs den-ptabs";
+    tabs.setAttribute("role", "tablist");
+    tabs.hidden = true;
+    main.insertBefore(tabs, main.firstChild);
+    main.insertBefore(el, tabs);
+    ph = {
+      el: el,
+      h1: el.querySelector("h1"),
+      sub: el.querySelector(".sub"),
+      act: el.querySelector(".act"),
+      tabs: tabs,
+      subFixed: false,
+      over: null,
+    };
+    paintPageSub();
+    var scope = host.querySelector(".den-scope");
+    if (scope && typeof MutationObserver === "function")
+      new MutationObserver(paintPageSub).observe(scope, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ["hidden"],
+      });
+  }
+  /**
+   * The page header (R20): { el, h1, sub, act, tabs }, or null on a page
+   * that draws its own. setSub(text) fixes the sub line (null: the scope
+   * again); setScope({ ws?, env? }) keeps the scope line but names the
+   * workspace or env the page shows (Local Dev and Graph show one
+   * workspace, locally); a page shows .act or .tabs by filling them and
+   * unhiding them.
+   */
+  function pageHeader() {
+    if (!ph) return null;
+    return {
+      el: ph.el,
+      h1: ph.h1,
+      sub: ph.sub,
+      act: ph.act,
+      tabs: ph.tabs,
+      setSub: function (text) {
+        ph.subFixed = text != null;
+        if (text != null) ph.sub.textContent = String(text);
+        else paintPageSub();
+      },
+      setScope: function (over) {
+        ph.over = over || null;
+        paintPageSub();
+      },
+    };
   }
   if (document.readyState === "loading")
-    document.addEventListener("DOMContentLoaded", ensurePageHeading);
-  else ensurePageHeading();
+    document.addEventListener("DOMContentLoaded", ensurePageHeader);
+  else ensurePageHeader();
 
   // Skip to content: the page's <main id="den-content">, its one main
   // landmark (each page wraps its content in it).
@@ -2339,6 +2442,8 @@
     setDock: setDock,
     /** The runs dock (R16): every page's output, one path. */
     runs: runsApi,
+    /** The page header (R20): { el, h1, sub, act, tabs, setSub }, or null. */
+    pageHeader: pageHeader,
     registerSettingsCategory: registerSettingsCategory,
     registerSetting: registerSetting,
     settings: function () {
@@ -2494,6 +2599,23 @@
     "body.den-has-shell > #den-content { display: flex; flex-direction: column; flex: 1 1 auto;",
     "  min-height: 0; min-width: 0; }",
     "body.den-has-shell > #den-content:focus { outline: none; }",
+    // The page header (.ph, R20, 0.3.0-dev.32), the prototype's sizes: it
+    // sits in .main's 20px/24px inset (pages keep their own content
+    // full-bleed below it). .ptabs are the page tabs below it.
+    "#den-content > .den-ph { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;",
+    "  flex: none; margin: 0 0 16px; padding: 20px 24px 0; font: 14px/1.45 var(--sans); color: var(--text); box-sizing: border-box; }",
+    ".den-ph h1 { font: 600 22px/1.2 var(--display); margin: 0; padding: 0; text-wrap: balance; color: var(--text); }",
+    ".den-ph .sub { color: var(--muted); font-size: 13px; margin: 4px 0 0; padding: 0; min-height: 1.45em; }",
+    ".den-ph .act { margin-left: auto; display: flex; gap: 8px; }",
+    ".den-ph [hidden], .den-ptabs[hidden] { display: none; }",
+    ".ptabs.den-ptabs { flex: none; margin: 0 24px 18px; }",
+    ".ptabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto; }",
+    // A link among the tabs (Local Dev's "Settings ↗") looks like one.
+    ".ptabs [role='tab'], .ptabs > a { background: none; border: 0; padding: 8px 12px; color: var(--muted); cursor: pointer;",
+    "  border-bottom: 2px solid transparent; margin: 0 0 -1px; white-space: nowrap; font: inherit; font-size: 14px;",
+    "  line-height: 1.45; text-decoration: none; }",
+    ".ptabs [role='tab']:hover, .ptabs > a:hover { color: var(--text); }",
+    ".ptabs [role='tab'][aria-selected='true'] { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }",
     // Search (.search, kbd: R5). The prototype's sizes are content-box
     // (the pages reset everything to border-box).
     ".den-search { flex: 1 1 260px; max-width: 420px; margin: 0 auto; display: flex; align-items: center;",

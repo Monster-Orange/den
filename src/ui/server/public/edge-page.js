@@ -9,7 +9,13 @@
  *   legacy keys, or implicit) · CA trust · the cert and its names · the
  *   domains · Den's own routes · the routers in the included dynamic files
  *   (`edge include`), each with its source file: Traefik serves them, Den
- *   doesn't generate them (a consumer's review).
+ *   doesn't generate them (a consumer's review) · the routers the stacks
+ *   wrote (`stack-*.yml`, 0.3.0-dev.32), source "stack" with the file.
+ *
+ * CA trust reads "not needed: fronted" when edge.publish is false (no host
+ * ports: a proxy in front owns browser trust, the BOOT-1 rule), neutral,
+ * never a red "not trusted" (0.3.0-dev.32). Under tls `files` the cert
+ * names are the ones the included certs should cover (0.3.0-dev.32).
  *
  * No trust/untrust or up/down here: those stay CLI commands.
  *
@@ -64,6 +70,16 @@ function table(cols, rows, empty) {
   );
 }
 
+/**
+ * The cert-names card's heading. Under tls `files` Den issues nothing: the
+ * names are the ones the included certs should cover (a consumer's nit,
+ * 0.3.0-dev.32). mkcert (and none): Den's own cert, issued or planned.
+ */
+export function certHeading(strategy, issued) {
+  if (strategy === "files") return "Names the included certs should cover";
+  return `Certificate names${issued ? "" : " (planned)"}`;
+}
+
 /** The page's content (below the header) from /api/edge's JSON. */
 export function edgeView(st) {
   if (!st || st.configured === false)
@@ -78,15 +94,24 @@ export function edgeView(st) {
       ? `:${st.ports.http} (http only)`
       : `:${st.ports.http} / :${st.ports.https}`
     : "not published";
+  // Fronted: no host ports (edge.publish: false). The proxy in front
+  // terminates TLS for browsers, so this machine's CA trust is moot.
+  const fronted = !st.ports;
   const trust = none
     ? "—"
-    : st.caTrusted === null || st.caTrusted === undefined
-      ? "unknown"
-      : st.caTrusted
-        ? "trusted"
-        : "not trusted";
+    : fronted
+      ? "not needed: fronted"
+      : st.caTrusted === null || st.caTrusted === undefined
+        ? "unknown"
+        : st.caTrusted
+          ? "trusted"
+          : "not trusted";
   const included = Array.isArray(st.included) ? st.included : [];
-  const errors = Array.isArray(st.includedErrors) ? st.includedErrors : [];
+  const stacks = Array.isArray(st.stacks) ? st.stacks : [];
+  const errors = [
+    ...(Array.isArray(st.includedErrors) ? st.includedErrors : []),
+    ...(Array.isArray(st.stackErrors) ? st.stackErrors : []),
+  ];
   const certNames = Array.isArray(st.certNames) ? st.certNames : [];
   const tiles = [
     tile(
@@ -107,10 +132,12 @@ export function edgeView(st) {
       trust,
       none
         ? "http only: no CA"
-        : tls.ca
-          ? `<span class="mono">${esc(tls.ca)}</span>`
-          : "no CA set",
-      st.caTrusted === false,
+        : fronted
+          ? "a proxy in front owns browser trust"
+          : tls.ca
+            ? `<span class="mono">${esc(tls.ca)}</span>`
+            : "no CA set",
+      st.caTrusted === false && !fronted,
     ),
     tile(
       "Certificate",
@@ -130,7 +157,7 @@ export function edgeView(st) {
     `<span class="mono">${esc(r.upstream)}</span>`,
     `<span class="src">den</span>`,
   ]);
-  const inc = included.map((r) => [
+  const routerRow = (r, src) => [
     `<span class="mono">${esc(r.name)}</span>`,
     r.hosts?.length
       ? r.hosts
@@ -138,14 +165,29 @@ export function edgeView(st) {
           .join("<br>")
       : `<span class="mono rule">${esc(r.rule)}</span>`,
     `<span class="mono">${esc(r.service)}</span>`,
-    `<span class="src" title="included dynamic file">${esc(r.file)}</span>`,
-  ]);
+    src,
+  ];
+  const inc = included.map((r) =>
+    routerRow(
+      r,
+      `<span class="src" title="included dynamic file">${esc(r.file)}</span>`,
+    ),
+  );
+  // The stacks' own route files (stack up writes them): source "stack",
+  // marked with the file.
+  const stk = stacks.map((r) =>
+    routerRow(
+      r,
+      `<span class="src" title="written by stack up">stack</span> ` +
+        `<span class="mono sub">${esc(r.file)}</span>`,
+    ),
+  );
   return (
     `<div class="sum">${tiles.join("")}</div>` +
     `<section aria-labelledby="edge-h-routes"><h2 class="sec" id="edge-h-routes">Routes</h2>` +
     table(
       ["Name", "URL", "Upstream", "Source"],
-      [...routes, ...inc],
+      [...routes, ...inc, ...stk],
       "No routes.",
     ) +
     (errors.length
@@ -158,7 +200,7 @@ export function edgeView(st) {
           .join("") +
         `</ul>`
       : "") +
-    `<p class="note">Den's own routes, then the routers in the included dynamic files (edge include), each with its source file.</p>` +
+    `<p class="note">Den's own routes, then the routers in the included dynamic files (edge include), each with its source file, then the routers the stacks wrote (stack).</p>` +
     `</section>` +
     `<section aria-labelledby="edge-h-domains"><h2 class="sec" id="edge-h-domains">Domains</h2>` +
     `<ul class="names">` +
@@ -171,7 +213,7 @@ export function edgeView(st) {
     `</ul></section>` +
     (none
       ? ""
-      : `<section aria-labelledby="edge-h-cert"><h2 class="sec" id="edge-h-cert">Certificate names${st.certIssued ? "" : " (planned)"}</h2>` +
+      : `<section aria-labelledby="edge-h-cert"><h2 class="sec" id="edge-h-cert">${esc(certHeading(tls.strategy, st.certIssued))}</h2>` +
         (certNames.length
           ? `<ul class="names">${certNames.map((n) => `<li class="mono">${esc(n)}</li>`).join("")}</ul>`
           : `<p class="none">None: the included config holds the certs.</p>`) +

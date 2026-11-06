@@ -6,7 +6,11 @@
 import * as fs from "fs";
 import * as path from "path";
 import { certNames, edgeDomains, edgeNames, routeUrl } from "./render.js";
-import { includedRouters, type IncludedRouters } from "./included.js";
+import {
+  includedRouters,
+  stackRouters,
+  type IncludedRouters,
+} from "./included.js";
 import { caTrusted, containerState } from "./runtime.js";
 import { caDir } from "./tls.js";
 import type { EdgeConfig, EdgePorts } from "./types.js";
@@ -46,6 +50,13 @@ export interface EdgeStatus {
   included: IncludedRouters["routers"];
   /** Included files that could not be parsed (listed, never fatal). */
   includedErrors: IncludedRouters["errors"];
+  /**
+   * Routers in the stacks' route files (`stack-*.yml`, written by `stack
+   * up` into the edge's dynamic directory), each with its file (0.3.0-dev.32).
+   */
+  stacks: IncludedRouters["routers"];
+  /** Stack route files that could not be parsed (listed, never fatal). */
+  stackErrors: IncludedRouters["errors"];
 }
 
 export interface EdgeStatusDeps {
@@ -55,6 +66,8 @@ export interface EdgeStatusDeps {
   issuedNames: (cfg: EdgeConfig) => string[] | null;
   /** The included files' routers (read from disk by default). */
   included?: (cfg: EdgeConfig) => IncludedRouters;
+  /** The stacks' route files' routers (read from disk by default). */
+  stacks?: (cfg: EdgeConfig) => IncludedRouters;
 }
 
 /** The names stamp `ensureCerts` writes beside the cert. */
@@ -69,6 +82,7 @@ const defaultDeps: EdgeStatusDeps = {
   caTrusted,
   issuedNames: issuedCertNames,
   included: includedRouters,
+  stacks: stackRouters,
 };
 
 /** Den's own routes: `<name>.<domain>` → upstream (no Docker asked). */
@@ -88,6 +102,7 @@ export function edgeStatus(
   const state = deps.containerState(n.container);
   const issued = deps.issuedNames(cfg);
   const inc = (deps.included ?? includedRouters)(cfg);
+  const stk = (deps.stacks ?? stackRouters)(cfg);
   return {
     org: cfg.org,
     container: n.container,
@@ -113,5 +128,7 @@ export function edgeStatus(
     },
     included: inc.routers,
     includedErrors: inc.errors,
+    stacks: stk.routers,
+    stackErrors: stk.errors,
   };
 }

@@ -148,6 +148,8 @@ describe("edgeStatus", () => {
       },
       included: [],
       includedErrors: [],
+      stacks: [],
+      stackErrors: [],
     });
   });
 

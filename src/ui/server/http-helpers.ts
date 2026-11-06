@@ -74,9 +74,15 @@ export function setHtmlFill(fn: ((html: string) => string) | null): void {
   htmlFill = fn;
 }
 
-export function serveFile(res: http.ServerResponse, filePath: string): void {
+export function serveFile(
+  res: http.ServerResponse,
+  filePath: string,
+  /** A page served from another's file (the Graph page): its raw text in, out. */
+  transform?: (html: string) => string,
+): void {
   try {
     let data: Buffer | string = fs.readFileSync(filePath);
+    if (transform) data = transform(data.toString("utf-8"));
     // Pages are static and product-neutral: their product names are
     // placeholders (__DEN_CLI__, …) filled from the running profile.
     if (filePath.endsWith(".html") || filePath.endsWith(".js"))

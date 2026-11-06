@@ -163,7 +163,8 @@ import {
 } from "./audit.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import { serveUiAsset } from "./ui-assets.js";
-import { graphPrefs, mergeGraphPrefs } from "./graph-prefs.js";
+import { graphPrefs, patchStoredGraph } from "./graph-prefs.js";
+import { graphPageHtml } from "./graph-page.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
 import {
@@ -705,6 +706,20 @@ async function handleRequest(
       return;
     }
     return serveFile(res, path.join(PUBLIC_DIR, "local-dev.html"));
+  }
+
+  // The Graph page (R22): Local Dev's page in its full-width graph view.
+  if (pathname === "/graph" || pathname === "/graph.html") {
+    if (!isLocalEnabled()) {
+      res.writeHead(302, { Location: "/tests" });
+      res.end();
+      return;
+    }
+    return serveFile(
+      res,
+      path.join(PUBLIC_DIR, "local-dev.html"),
+      graphPageHtml,
+    );
   }
 
   if (pathname === "/tests" || pathname === "/index.html") {
@@ -3078,21 +3093,29 @@ async function handleRequest(
           shell?: unknown;
         };
         const user = readUserConfig();
+        // null clears (0.3.0-dev.32, a consumer's nit): a block or a key
+        // set to null is removed from user.yml, and a block left empty
+        // goes too, so setting a pref and clearing it again leaves the
+        // file byte-identical.
         // The rail's pins and collapse (R14): a view preference only.
-        if (body.shell !== undefined) {
+        if (body.shell === null) delete user.shell;
+        else if (body.shell !== undefined) {
           const sh = mergeShellPrefs(shellPrefs(user.shell), body.shell);
           if (!sh.ok) return send400(res, sh.error);
           const stored = storedShell(sh.value);
           if (stored) user.shell = stored;
           else delete user.shell;
         }
-        if (body.graph !== undefined) {
-          const g = mergeGraphPrefs(graphPrefs(user.graph), body.graph);
+        if (body.graph === null) delete user.graph;
+        else if (body.graph !== undefined) {
+          const g = patchStoredGraph(user.graph, body.graph);
           if (!g.ok) return send400(res, g.error);
-          user.graph = g.value;
+          if (g.value) user.graph = g.value as UserConfig["graph"];
+          else delete user.graph;
         }
         // A UI preference only: the page swaps /theme.css and data-mode.
-        if (body.appearance !== undefined) {
+        if (body.appearance === null) delete user.appearance;
+        else if (body.appearance !== undefined) {
           const a = mergeAppearancePrefs(
             appearancePrefs(user.appearance),
             body.appearance,

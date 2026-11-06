@@ -133,6 +133,27 @@
       .graph-max .content-body {
         padding: 8px;
       }
+      /* Maximized, the page header goes too (R20 is the shell's). */
+      body.den-graph-max #den-content > .den-ph {
+        display: none;
+      }
+
+      /* The Graph page (R22, Ward 2026-11-05): the graph alone, full width,
+         below the page header. Local Dev keeps the workspace list, the
+         workspace's actions and its tabs. */
+      body.den-page-graph .page-main,
+      body.den-page-graph .page-main.ws-collapsed {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      body.den-page-graph .page-main > .sidebar,
+      body.den-page-graph .content-header,
+      body.den-page-graph .cmd-bar,
+      body.den-page-graph .ctab-bar {
+        display: none;
+      }
+      body.den-page-graph .content-body {
+        padding: 0 24px 16px;
+      }
 
       /* A phone gets the workspace content only (the header's workspace pill
          still switches workspaces), so the graph has the width it needs. */
@@ -1104,32 +1125,18 @@
         color: var(--muted);
       }
 
-      /* ── Content tabs (below cmd-bar) ────────────────────────────────────── */
+      /* ── Content tabs (below cmd-bar): the page tabs (.ptabs, R20) ───────
+         The shell's .ptabs sizes (8px 12px, 14px, a 2px accent rule under
+         the selected one); here they sit in the workspace pane's 18px inset,
+         flush with the content below. */
       .ctab-bar {
-        display: flex;
-        gap: 0;
-        border-bottom: 1px solid var(--border);
         background: var(--bg);
         flex-shrink: 0;
         padding: 0 18px;
       }
       .ctab {
-        padding: 6px 14px;
-        font-size: 11px;
-        font-weight: 500;
-        color: var(--muted);
-        cursor: pointer;
-        border-bottom: 2px solid transparent;
         user-select: none;
         transition: color 0.1s;
-        text-decoration: none;
-      }
-      .ctab:hover {
-        color: var(--text);
-      }
-      .ctab.active {
-        color: var(--text);
-        border-bottom-color: var(--accent);
       }
       .ctab-panel {
         display: none;
@@ -1411,6 +1418,12 @@
         }
 
         let activeWs = null;
+        /**
+         * The Graph page (R22): this page at /graph (the server swaps the
+         * shell's page id; shell.js marks the body den-page-graph, so the
+         * CSS has the graph alone from first paint).
+         */
+        const GRAPH_PAGE = document.body.classList.contains("den-page-graph");
         let wsData = null;
         let _svcSortMode = "name"; // 'name' | 'workspace'
 
@@ -1679,6 +1692,13 @@
         }
 
         // ── Content pane ──────────────────────────────────────────────────────────
+        /** The workspace pane's tabs: one selected (class and aria-selected). */
+        function selectCtab(name) {
+          document.querySelectorAll(".ctab[data-ctab]").forEach((t) => {
+            t.classList.toggle("active", t.dataset.ctab === name);
+            t.setAttribute("aria-selected", String(t.dataset.ctab === name));
+          });
+        }
         async function renderContent(wsName) {
           const content = document.getElementById("content");
           const ws = wsData?.workspaces?.[wsName];
@@ -1688,9 +1708,17 @@
             return;
           }
 
-          // Preserve whichever tab was active before re-render (default: graph)
-          const activeTab =
-            document.querySelector(".ctab.active")?.dataset?.ctab ?? "graph";
+          // Preserve whichever tab was active before re-render (default:
+          // graph). The Graph page (R22) always shows the graph.
+          const activeTab = GRAPH_PAGE
+            ? "graph"
+            : (document.querySelector(".ctab.active")?.dataset?.ctab ??
+              "graph");
+          // The page header's scope line names the workspace shown (R20).
+          window.denShell?.pageHeader?.()?.setScope({
+            ws: wsName,
+            env: "local",
+          });
 
           const isActive = isWsActive(wsName);
           const isFocus = wsName === focusName();
@@ -1940,10 +1968,10 @@
         </div>
         `
             : `
-        <div class="ctab-bar" id="ctab-bar">
-          <div class="ctab active" data-ctab="graph">Graph</div>
-          <div class="ctab" data-ctab="apps">Applications</div>
-          <div class="ctab" data-ctab="config">Config</div>
+        <div class="ctab-bar ptabs" id="ctab-bar" role="tablist" aria-label="Workspace">
+          <button type="button" role="tab" class="ctab active" aria-selected="true" data-ctab="graph">Graph</button>
+          <button type="button" role="tab" class="ctab" aria-selected="false" data-ctab="apps">Applications</button>
+          <button type="button" role="tab" class="ctab" aria-selected="false" data-ctab="config">Config</button>
           <a class="ctab" href="/settings?ws=${encodeURIComponent(wsName)}#workspace" title="This workspace's settings, on the Settings page">Settings ↗</a>
         </div>
 
@@ -2008,11 +2036,7 @@
               const tab = e.target.closest(".ctab[data-ctab]");
               if (!tab) return;
               const name = tab.dataset.ctab;
-              document
-                .querySelectorAll(".ctab")
-                .forEach((t) =>
-                  t.classList.toggle("active", t.dataset.ctab === name),
-                );
+              selectCtab(name);
               document
                 .querySelectorAll(".ctab-panel")
                 .forEach((p) =>
@@ -2025,11 +2049,7 @@
 
           // Restore the previously active tab (or default to graph on first load)
           if (activeTab !== "graph") {
-            document
-              .querySelectorAll(".ctab")
-              .forEach((t) =>
-                t.classList.toggle("active", t.dataset.ctab === activeTab),
-              );
+            selectCtab(activeTab);
             document
               .querySelectorAll(".ctab-panel")
               .forEach((p) =>
@@ -4041,6 +4061,7 @@
         }
         function setGraphMax(on) {
           pageMain.classList.toggle("graph-max", on);
+          document.body.classList.toggle("den-graph-max", on);
           graphMaximized(on);
           if (!on) document.querySelector('[data-z="max"]')?.focus();
         }

@@ -68,6 +68,8 @@ const REAL = args.real.replace(/\/$/, "");
 /** Den page → the prototype's page id. */
 const PROTO_PAGE = {
   "/local-dev": "overview",
+  "/graph": "graph",
+  "/edge": "edge",
   "/services": "services",
   "/logs": "logs",
   "/tests": "tests",
@@ -855,6 +857,84 @@ const SETTINGS_PAIRS = [
 if (PAGE === "/settings") PAIRS.push(...SETTINGS_PAIRS);
 
 /**
+ * The page header on every other page (R20, 0.3.0-dev.32): the shell's
+ * .ph (h1, 13px sub line), inset as the prototype's .main insets it. Edge
+ * draws its own .ph in a padded main, as Settings does.
+ */
+const HEADER_PAIRS = [
+  PAGE === "/edge"
+    ? [
+        "main padding",
+        ".main",
+        "#den-content",
+        ["paddingTop", "paddingRight", "paddingLeft"],
+      ]
+    : [
+        "page header inset",
+        ".main",
+        "#den-content > .ph",
+        ["paddingTop", "paddingRight", "paddingLeft"],
+      ],
+  ["page header", ".ph", "#den-content > .ph", ["columnGap", "marginBottom"]],
+  [
+    "page title",
+    ".ph h1",
+    "#den-content > .ph h1",
+    ["fontSize", "fontWeight", "lineHeight", "marginTop", "marginBottom"],
+  ],
+  [
+    "page sub line",
+    ".ph .sub",
+    "#den-content > .ph .sub",
+    ["fontSize", "lineHeight", "marginTop", "@color=--muted"],
+  ],
+];
+if (PAGE !== "/settings") PAIRS.push(...HEADER_PAIRS);
+
+/**
+ * Page tabs (.ptabs, R20): the prototype styles them but no page of its
+ * draws them, so the pair measures tabs made with its classes, injected
+ * into its page. Den's are Local Dev's workspace tabs.
+ */
+const PTABS =
+  '<div class="ptabs"><button aria-selected="true">Graph</button><button aria-selected="false">Applications</button></div>';
+const TAB_PAIRS = [
+  [
+    "page tabs",
+    ".main .ptabs",
+    ".ctab-bar.ptabs",
+    ["columnGap", "borderBottomWidth"],
+    { inject: [".main", PTABS] },
+  ],
+  [
+    "page tab",
+    '.main .ptabs button[aria-selected="false"]',
+    '.ctab-bar [role="tab"][aria-selected="false"]',
+    [
+      "fontSize",
+      "fontWeight",
+      "lineHeight",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft",
+      "borderBottomWidth",
+      "marginBottom",
+      "@color=--muted",
+    ],
+    { inject: [".main", PTABS] },
+  ],
+  [
+    "page tab (selected)",
+    '.main .ptabs button[aria-selected="true"]',
+    '.ctab-bar [role="tab"][aria-selected="true"]',
+    ["fontWeight", "borderBottomWidth", "@color=--text"],
+    { inject: [".main", PTABS] },
+  ],
+];
+if (PAGE.startsWith("/local-dev")) PAIRS.push(...TAB_PAIRS);
+
+/**
  * Deliberate deviations, each with its reason. Keyed "pair|prop".
  */
 const ALLOWLIST = {
@@ -877,6 +957,10 @@ const UNPAIRED = {
     "Ward QA 2026-11-05: room for the graph; the prototype's Local Dev list does not collapse",
   "R16a runs dock starts collapsed; open/closed and height are user prefs":
     "Ward QA 2026-11-05: a run starting never opens it (the chip pulses, its tab appears); measured open, as the prototype draws it",
+  "R22 Graph page: the graph itself (toolbar, canvas, zoom, details panel)":
+    "Ward 2026-11-05: a separate full-width Graph page; the prototype's Graph page is a placeholder (its header only, measured above)",
+  "R20 Local Dev page tabs sit below the workspace header and action row":
+    "Den's tabs are the selected workspace's (Graph, Applications, Config, Settings ↗); the prototype styles .ptabs but draws none. Sizes measured above",
   "R21a Settings: the page header (search) and the category list are sticky":
     "Ward QA 2026-11-05: they stay put while the rows scroll; sizes unchanged",
 };

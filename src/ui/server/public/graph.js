@@ -104,14 +104,20 @@ const $ = (s, el = host) => el?.querySelector(s);
 const zoomFloor = 0.35;
 /**
  * The automatic fit (first draw, a layout change, the viewport resizing):
- * the whole graph whenever it fits at the Fit button's floor or more, else
- * the top of it at a readable 0.6. A fixed 0.6 floor left a graph that
+ * the whole graph whenever it fits at AUTO_MIN or more, else the top of it
+ * at a readable 0.6. (AUTO_MIN was 35%, the old Fit floor; the page header,
+ * R20 in 0.3.0-dev.32, takes 70px of height, and a graph that fitted at
+ * 35% above an open runs dock no longer did.) A fixed 0.6 floor left a graph that
  * fitted above an empty output panel clipped once a run's output opened
  * the panel: the viewport shrank, the re-fit stopped at 0.6, and the lower
  * cards sat past the viewport's bottom edge, where the panel begins
  * (a consumer's dev.18 run).
  */
 const AUTO_FIT = "auto";
+/** How far Fit (and zooming out to it) goes for a very big graph. */
+const FIT_MIN = 0.1;
+/** The automatic fit shows the whole graph down to this zoom. */
+const AUTO_MIN = 0.25;
 
 bindPanel({
   model: () => M,
@@ -649,22 +655,38 @@ function zoomAt(f, cx, cy) {
   cx ??= vp.width / 2;
   cy ??= vp.height / 2;
   autoFit = null;
-  const nz = Math.min(2, Math.max(zoomFloor, st.z * f));
+  // Out to 35%, or further when that is what the whole graph needs.
+  const lo = Math.min(zoomFloor, Math.max(FIT_MIN, fitNeed() ?? zoomFloor));
+  const nz = Math.min(2, Math.max(lo, st.z * f));
   st.tx = cx - ((cx - st.tx) * nz) / st.z;
   st.ty = cy - ((cy - st.ty) * nz) / st.z;
   st.z = nz;
   applyView();
 }
-/** Fit the graph; automatic fits pass AUTO_FIT, the Fit button 0.35. */
-function fit(floor = zoomFloor) {
+/** The zoom that shows the whole graph in the viewport now (≤ 1), or null. */
+function fitNeed() {
+  const vp = $(".dg-vp")?.getBoundingClientRect();
+  const world = $(".dg-world");
+  if (!vp || !world) return null;
+  const w = parseFloat(world.style.width) || 1,
+    h = parseFloat(world.style.height) || 1;
+  return Math.min(1, (vp.width - 32) / w, (vp.height - 70) / h);
+}
+/**
+ * Fit the graph; automatic fits pass AUTO_FIT, the Fit button FIT_MIN.
+ * Fit fits: the whole graph, bound by the width and the height (R23), down
+ * to FIT_MIN. A 35% floor here made Fit read 35% for a big graph whether
+ * the graph was maximized or not (a consumer's dev.30 finding). The fitted
+ * view refits when the viewport changes size (maximize, restore, the dock).
+ */
+function fit(floor = FIT_MIN) {
   const vp = $(".dg-vp")?.getBoundingClientRect();
   if (!vp) return;
-  const w = parseFloat($(".dg-world").style.width) || 1,
-    h = parseFloat($(".dg-world").style.height) || 1;
-  const need = Math.min(1, (vp.width - 32) / w, (vp.height - 70) / h);
+  const w = parseFloat($(".dg-world").style.width) || 1;
+  const need = fitNeed();
   st.z =
     floor === AUTO_FIT
-      ? need >= zoomFloor
+      ? need >= AUTO_MIN
         ? need
         : 0.6
       : Math.max(floor, need);
@@ -994,7 +1016,7 @@ function wire() {
       st.ty = 24;
       applyView();
     }
-    if (z === "fit") fit(zoomFloor);
+    if (z === "fit") fit(FIT_MIN);
     if (z === "max") hooks.maximize?.toggle?.();
   });
   // panel resize (360–760px, remembered)

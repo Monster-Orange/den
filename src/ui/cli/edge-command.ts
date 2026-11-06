@@ -4,7 +4,8 @@
  * This org's edge: routes at `<name>.<edge.domain>`, TLS as `edge.tls` says
  * (none, mkcert or files). `trust` / `untrust` exist only under mkcert.
  * `routes` lists Den's own routes, then the routers in the included
- * dynamic files, each with its source file.
+ * dynamic files, each with its source file, then the stacks' routers
+ * (`stack-*.yml`, 0.3.0-dev.32), each marked "stack" with its file.
  */
 import chalk from "chalk";
 import { readBrand } from "../../shared/brand.js";
@@ -20,6 +21,7 @@ import {
 } from "../../shared/edge/runtime.js";
 import {
   includedRouters,
+  stackRouters,
   type IncludedRouter,
 } from "../../shared/edge/included.js";
 import { edgeRoutes, edgeStatus } from "../../shared/edge/status.js";
@@ -82,7 +84,13 @@ export async function cmdEdge(args: string[]): Promise<void> {
         console.log(
           `${includedUrl(r).padEnd(52)} → ${r.service || "?"}  (${r.file})`,
         );
-      for (const e of inc.errors)
+      // Routers the stacks wrote (stack up): neither Den's nor included.
+      const stk = stackRouters(cfg);
+      for (const r of stk.routers)
+        console.log(
+          `${includedUrl(r).padEnd(52)} → ${r.service || "?"}  (stack: ${r.file})`,
+        );
+      for (const e of [...inc.errors, ...stk.errors])
         console.log(chalk.yellow(`${e.file}: not read (${e.error})`));
       return;
     }
@@ -97,7 +105,9 @@ export async function cmdEdge(args: string[]): Promise<void> {
       );
       if (cfg.tls.strategy !== "none")
         console.log(
-          `  CA         ${caDir(cfg)} — ${st.caTrusted === null ? "unknown" : st.caTrusted ? "trusted" : "NOT trusted"}`,
+          // Fronted (edge.publish: false): the proxy in front owns
+          // browser trust (BOOT-1), so this machine's trust is moot.
+          `  CA         ${caDir(cfg)} — ${!st.ports ? "not needed: fronted" : st.caTrusted === null ? "unknown" : st.caTrusted ? "trusted" : "NOT trusted"}`,
         );
       if (st.certIssued) console.log(`  cert       ${st.certNames.join(", ")}`);
       return;

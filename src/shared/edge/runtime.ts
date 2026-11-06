@@ -89,9 +89,13 @@ export function includeFiles(dir: string | null): string[] {
  */
 const INCLUDED_LEDGER = "included.json";
 
+/** A stack's own route file (`stack-<project>.yml`, stacks/runtime.ts). */
+export const isStackRoutes = (f: string): boolean =>
+  /^stack-.*\.ya?ml$/.test(f);
+
 /** Files other writers own in the dynamic directory: never copied over or pruned. */
 export const isOwnedElsewhere = (f: string): boolean =>
-  f === GENERATED || /^stack-.*\.ya?ml$/.test(f);
+  f === GENERATED || isStackRoutes(f);
 
 function readLedger(stateDir: string): string[] {
   try {

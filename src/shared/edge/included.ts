@@ -7,11 +7,16 @@
  * Read-only: the files are parsed, never written, and only `http.routers`
  * is read. The same files `edge up` copies in (top-level YAML, not the
  * generated edge.yml, not a stack's own route file).
+ *
+ * Since 0.3.0-dev.32 (a consumer's finding) also the stacks' own route
+ * files: Den writes `stack-<project>.yml` into the edge's dynamic directory
+ * when a stack comes up, and those routers are neither Den's host routes
+ * nor included files, so nothing listed them.
  */
 import * as fs from "fs";
 import * as path from "path";
 import { parse } from "yaml";
-import { includeFiles, isOwnedElsewhere } from "./runtime.js";
+import { includeFiles, isOwnedElsewhere, isStackRoutes } from "./runtime.js";
 import type { EdgeConfig } from "./types.js";
 
 export interface IncludedRouter {
@@ -85,6 +90,37 @@ export function includedRouters(cfg: EdgeConfig): IncludedRouters {
     try {
       const doc: unknown = parse(
         fs.readFileSync(path.join(cfg.include, file), "utf-8"),
+      );
+      out.routers.push(...routersOf(doc, file));
+    } catch (e) {
+      out.errors.push({ file, error: (e as Error).message.split("\n")[0] });
+    }
+  }
+  return out;
+}
+
+/**
+ * Every router in the stacks' route files (`stack-*.yml` in the edge's
+ * dynamic directory, which `stack up` writes and `stack down` removes), in
+ * file then key order. No directory yet: none.
+ */
+export function stackRouters(cfg: EdgeConfig): IncludedRouters {
+  const out: IncludedRouters = { routers: [], errors: [] };
+  const dyn = path.join(cfg.stateDir, "dynamic");
+  let files: string[];
+  try {
+    files = fs
+      .readdirSync(dyn, { withFileTypes: true })
+      .filter((e) => e.isFile() && isStackRoutes(e.name))
+      .map((e) => e.name)
+      .sort();
+  } catch {
+    return out;
+  }
+  for (const file of files) {
+    try {
+      const doc: unknown = parse(
+        fs.readFileSync(path.join(dyn, file), "utf-8"),
       );
       out.routers.push(...routersOf(doc, file));
     } catch (e) {

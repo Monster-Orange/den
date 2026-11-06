@@ -11,6 +11,7 @@ import * as path from "path";
 import {
   includedRouters,
   ruleHosts,
+  stackRouters,
 } from "../../../src/shared/edge/included.js";
 import { edgeStatus } from "../../../src/shared/edge/status.js";
 import type { EdgeConfig } from "../../../src/shared/edge/types.js";
@@ -183,6 +184,88 @@ describe("edgeStatus", () => {
       from: "legacy",
       ca: "/x/ca",
     });
+  });
+});
+
+describe("the stacks' routers (a consumer's finding, 0.3.0-dev.32)", () => {
+  // `stack up` writes stack-<project>.yml into the edge's dynamic dir.
+  const stackState = () => {
+    const stateDir = path.join(tmp, "stack-state");
+    const d = path.join(stateDir, "dynamic");
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(
+      path.join(d, "stack-shop-main.yml"),
+      "http:\n  routers:\n    stack-shop-web:\n      rule: Host(`web.shop.acme.localhost`)\n      service: stack-shop-web\n      tls: {}\n",
+    );
+    fs.writeFileSync(path.join(d, "stack-bad.yml"), "http: [unclosed\n");
+    // Den's own and a copied-in included file: not a stack's.
+    fs.writeFileSync(
+      path.join(d, "edge.yml"),
+      "http:\n  routers:\n    own: { rule: Host(`x`), service: x }\n",
+    );
+    fs.writeFileSync(path.join(d, "vpn-routes.yml"), VPN_ROUTES);
+    return stateDir;
+  };
+
+  it("lists http.routers from each stack-*.yml in the dynamic dir, marked by file", () => {
+    const out = stackRouters(base({ stateDir: stackState() }));
+    expect(out.routers).toEqual([
+      {
+        name: "stack-shop-web",
+        file: "stack-shop-main.yml",
+        rule: "Host(`web.shop.acme.localhost`)",
+        service: "stack-shop-web",
+        entryPoints: [],
+        hosts: ["web.shop.acme.localhost"],
+        tls: true,
+      },
+    ]);
+    expect(out.errors.map((e) => e.file)).toEqual(["stack-bad.yml"]);
+  });
+
+  it("no dynamic dir yet: none", () => {
+    expect(
+      stackRouters(base({ stateDir: path.join(tmp, "no-such-state") })),
+    ).toEqual({ routers: [], errors: [] });
+  });
+
+  it("edgeStatus carries them apart from the included ones", () => {
+    const st = edgeStatus(base({ stateDir: stackState() }), {
+      containerState: () => "running",
+      caTrusted: () => null,
+      issuedNames: () => null,
+    });
+    expect(st.stacks.map((r) => `${r.file}:${r.name}`)).toEqual([
+      "stack-shop-main.yml:stack-shop-web",
+    ]);
+    expect(st.stackErrors.map((e) => e.file)).toEqual(["stack-bad.yml"]);
+    expect(st.included.map((r) => r.name)).not.toContain("stack-shop-web");
+  });
+
+  it("`edge routes` prints them after the included ones, marked stack", async () => {
+    const root = path.join(tmp, "dist-stack");
+    fs.cpSync(path.join(process.cwd(), "examples", "distribution"), root, {
+      recursive: true,
+    });
+    const saved = { ...process.env };
+    process.env.DEN_ROOT = root;
+    process.env.DEN_EDGE_DIR = stackState();
+    process.env.HOME = path.join(tmp, "home");
+    const lines: string[] = [];
+    const log = console.log;
+    console.log = (...a: unknown[]) => void lines.push(a.join(" "));
+    try {
+      const { cmdEdge } = await import("../../../src/ui/cli/edge-command.js");
+      await cmdEdge(["routes"]);
+    } finally {
+      console.log = log;
+      process.env = saved;
+    }
+    const text = lines.join("\n");
+    expect(text).toMatch(
+      /https:\/\/web\.shop\.acme\.localhost\s+→ stack-shop-web {2}\(stack: stack-shop-main\.yml\)/,
+    );
+    expect(text).toMatch(/stack-bad\.yml: not read/);
   });
 });
 
