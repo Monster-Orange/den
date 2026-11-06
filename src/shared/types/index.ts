@@ -228,10 +228,12 @@ export type ServiceHealthConfig =
     ));
 
 /**
- * A command can be a plain shell string (detached by default) or an object
- * that explicitly controls behaviour:
+ * A command can be a plain shell string or an object that explicitly
+ * controls behaviour. up and restart detach by default; every other command
+ * runs to completion unless it says `detachable: true` (0.3.0-dev.40):
  *
- *   up: make up               # string — detached: true (default)
+ *   up: make up               # string — detached (up and restart)
+ *   preflight: make check     # string — runs to completion
  *   seed:
  *     cmd: make db-seed
  *     detachable: false       # wait for exit, stream output until done

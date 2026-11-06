@@ -9,6 +9,9 @@
  *                          Workspaces and Search (⌘K); the list of pages;
  *                          for /plugins/<id>/…, that the plugin isn't
  *                          installed, by name
+ *   422 "Config is invalid"  each validation problem (file, key path,
+ *                          message), `<cli> validate`, "Reload once fixed",
+ *                          and links to Logs and Settings (config-free)
  *   500 "Something went wrong"  the method and route template (never query
  *                          values), the time, the request id; Retry and
  *                          Copy details. No stack: the server log has it
@@ -179,15 +182,36 @@ export function mountErrorPage(root) {
   }
 
   if (d.status === 422) {
+    // R26a's 422 (0.3.0-dev.40): each problem (file, key path, message),
+    // the command that shows them in a terminal, and "Reload once fixed".
+    // Settings and Logs are config-free, so the rail reaches the fix.
     document.title = document.title.replace(/Error$/, t("err.422.title"));
+    const issues =
+      Array.isArray(d.issues) && d.issues.length
+        ? d.issues
+        : [{ file: "", key: "", message: d.message ?? "" }];
+    const cmd = `${d.cli || "den"} validate`;
     root.innerHTML =
       header(t("err.422.title"), esc(t("err.422.sub"))) +
-      `<div class="empty"><p class="lead mono">${esc(d.message ?? "")}</p>` +
-      `<p>${esc(t("err.422.lead"))}</p>` +
+      `<div class="empty wide"><p class="lead">${esc(t("err.422.lead"))}</p>` +
+      `<div class="tablewrap"><table class="svc" id="den-err-issues"><thead><tr>` +
+      `<th>${esc(t("err.422.file"))}</th><th>${esc(t("err.422.key"))}</th><th>${esc(t("err.422.problem"))}</th>` +
+      `</tr></thead><tbody>` +
+      issues
+        .map(
+          (i) =>
+            `<tr><td class="mono">${esc(i.file)}</td><td class="mono"><b>${esc(i.key)}</b></td><td>${esc(i.message)}</td></tr>`,
+        )
+        .join("") +
+      `</tbody></table></div>` +
+      `<p>${esc(t("err.422.cmd"))}</p>` +
+      `<pre class="code" id="den-err-cmd">${esc(cmd)}</pre>` +
       `<dl class="facts">` +
       `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
       `</dl><div class="acts">` +
-      `<button type="button" class="btn primary" id="den-err-retry">${esc(t("err.retry"))}</button>` +
+      `<button type="button" class="btn primary" id="den-err-retry">${esc(t("err.422.reload"))}</button>` +
+      `<a class="btn" href="/logs">${esc(t("err.422.logs"))}</a>` +
+      `<a class="btn" href="/settings">${esc(t("err.422.settings"))}</a>` +
       `</div></div>`;
     root
       .querySelector("#den-err-retry")

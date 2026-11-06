@@ -10,6 +10,27 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **R26a's 422 page: "Config is invalid"** (0.3.0-dev.40). A page
+  navigation with a config that fails validation gets the shell frame
+  with a table of each problem (file, key path, message), the command
+  that shows them in a terminal (`<cli> validate`), "Reload once fixed",
+  and links to Logs and Settings, in en, ja and es. The rail stays
+  usable: `/settings` and `/logs` load whatever the config holds, and so
+  do the routes the shell and those pages need (`/api/settings`,
+  `/api/themes`, `/api/scope`, `/api/workspaces/settings`,
+  `/api/sudo-password/status`, besides `/api/server-info`,
+  `/api/server-log`, `/api/changelog` and `/api/web/restart`). Any other
+  page answers 422 with this page.
+  - Org config validation lists every problem, not the first: a
+    ConfigError carries `issues` (`{ file, key, message }`), its message is
+    one line per issue as each always read, and the 422 JSON body gains
+    `issues`.
+- **`up --dry-run` says what up will do about a pre-dev.37 record or a
+  held port** (0.3.0-dev.40, a consumer's dev.39 nit; it said only "Would
+  up"): "would adopt pid N (port P), nothing started", "would drop the
+  record (nothing running), then start it", or "port P held outside the
+  repo: would not start" (exit 1, as the real up). It signals nothing and
+  writes no record.
 - Everything in 0.2.8 (scoped MCP for agents, orgs that own their sources,
   config validation that stops every command) is in 0.3.0.
 - **The UI in Japanese and Spanish** (0.3.0-dev.39, R19; R10's and R21's
@@ -91,7 +112,7 @@ config and manifest changes a distribution must make to move to it under
   versions and the restart. `/api/server-info` gains `loaded` and `onDisk`
   (`{ version, buildId }`) and `engineStale`; its `version` is now the
   engine the server runs.
-- **DOC-1: the README's screenshots, generated** (`npm run docs:shots`,
+- **DOC-1: the README's screenshots, generated** (0.3.0-dev.40; `npm run docs:shots`,
   `scripts/doc-shots.mjs`). Runs Den on a scratch copy of
   `examples/distribution` with the `examples/demo` repos as its workspace (a
   docker shim, a random localhost port, a throwaway HOME, and a server env
@@ -663,6 +684,19 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- **`down` works under an invalid config** (0.3.0-dev.40): it is
+  config-free, so stopping is never stranded. With a config that fails
+  validation it says so ("Stopping anyway, without the config's org
+  data") and stops from the daemon records and compose projects; `down -a`
+  too. Every other command still stops first.
+- **Only up and restart detach by default** (0.3.0-dev.40, DOC-1). Every
+  string command but down and setup ran detached, so `preflight` run from
+  the Services page never finished. A command other than up and restart
+  now runs to completion unless it says `detachable: true`.
+- **English plurals** (0.3.0-dev.40): en has the `.one` forms (`org.n.one`
+  "{n} workspace", and the status, badge, drawer and changelog counts), so
+  the org menu no longer says "1 workspaces". The catalog test fails when a
+  count another catalog makes singular has no en `.one`.
 - **The graph's top-level groups wrap to the stage** (0.3.0-dev.34, a
   consumer's dogfood finding: 31 services in 10 org groups). Top-down,
   every org (or application) group sat in one row, so the whole graph
@@ -801,6 +835,52 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **Safety: an edge another state dir owns is never replaced**
+  (0.3.0-dev.40, P1). The edge's container and Compose project are named
+  by `edge.org`, so a scratch root with its own `DEN_EDGE_DIR` but the real
+  `edge.org` recreated the real edge with its scratch certs and routes
+  (`stack up` brings the edge up first). The edge container now carries
+  `den.edge.root=<realpath of its state dir>` and `den.edge.org=<org>`, and
+  `edge up`, `stack up`/`restart` (their implicit edge up) and `edge down`
+  touch an existing `<org>-edge` only when its `den.edge.root` is their own
+  state dir. Otherwise they refuse before writing or starting anything,
+  exit 1: "edge <org>-edge belongs to <its dir>; not replacing it". An
+  unlabelled (pre-dev.40) edge is adopted only from the default state dir,
+  never under a `DEN_EDGE_DIR` that overrides it (the refusal names its
+  mounts' dir when known). Under such an override a refusal also warns:
+  "Give this root a distinct edge.org." `edge up --take-over` is the only
+  override, and nothing implies it. The routes (the dynamic files) are
+  byte-identical. See "The edge and TLS" in docs/distributions.md.
+- **A recreated edge keeps running stacks routed** (0.3.0-dev.40, P1). A
+  new or restarted edge container starts on its own network only, so every
+  running stack's routes answered 502 until that stack's next `stack up`.
+  After `edge up` (and `stack up`/`restart`'s implicit edge up) the edge
+  now rejoins the routed networks of each stack that has its routes file
+  (`dynamic/stack-<project>.yml`) in this edge's state dir and whose
+  Compose project is running, with one line per network ("rejoined
+  <network> (<project>)"). Stacks that are down are skipped; a network the
+  edge is on already is left alone; a project with no routes file in this
+  state dir is never touched. `stack up` connects through the same helper.
+- **`validate` reports an org config error** (0.3.0-dev.40, a consumer's
+  0.2.8 nit): each problem with its file and key path, exit 1; the
+  manifests are still checked.
+- **The scoped `manifest_validate` refusal names the whole path**
+  (0.3.0-dev.40, a consumer's 0.2.8 nit): it was cut at 80 characters,
+  mid-filename. Up to 160 it is whole; a longer one keeps its start and its
+  filename and elides the middle with "…".
+- **A named `up <repo>/<svc>` whose port is held refuses before spawning**
+  (0.3.0-dev.40, a consumer's dev.39 finding): it started the server once,
+  which died on EADDRINUSE, before refusing. It now refuses as the
+  repo-level up does ("<repo>/<svc> not started"), with or without a
+  pre-dev.37 record. And a listener in the repo but in Den's own process
+  group is said as that ("in Den's own process group; not adopted"), not
+  as "outside <repoPath>".
+- **Graph cards** (0.3.0-dev.40, DOC-1): a service card's red "down"
+  border goes when it recovers (only repo cards toggled it); before the
+  first health round cards say "checking…", as the Workspaces table does,
+  not "no health check"; the details panel's Opens link follows the edge's
+  TLS (`http://` and the http port for `tls: none`; it always said
+  `https://`).
 - **Records from before 0.3.0-dev.37 reach adoption from the CLI**
   (0.3.0-dev.39, a consumer's dev.38 finding). dev.38 decided right when
   asked, but the CLI's paths never asked. Every up, down and healthy-skip
@@ -1006,9 +1086,10 @@ config and manifest changes a distribution must make to move to it under
   `configFile` field of `/api/sudo-password/vault-status`.
 - **`register` with no terminal exits cleanly** (0.3.0-dev.25): with stdin
   closed or piped, the interactive `register` crashed with
-  ERR_USE_AFTER_CLOSE. It now exits 1: "register needs a terminal (stdin
-  is not a TTY)", naming the non-interactive form, `register <path>
-  [--name <repo>] [--gh <owner/repo>]`.
+  ERR_USE_AFTER_CLOSE. It now exits 2 (a usage error, since 0.2.8's
+  check; it exited 1 before): "register needs a terminal (stdin is not a
+  TTY)", naming the non-interactive form, `register <path> [--name
+  <repo>] [--gh <owner/repo>]`.
 - **`bin/den` sets no backend account** (0.3.0-dev.24, from a consumer's
   dev.23 run): the launcher exported `OP_ACCOUNT` with a placeholder
   domain for every command, whatever the secrets backend, so it reached
@@ -1324,6 +1405,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
+- 0.3.0-dev.40, the edge's owner labels: nothing required. The edge's
+  compose.yml gains `den.edge.root` and `den.edge.org` labels, so the first
+  `edge up` (or `stack up`) after upgrading recreates the edge once, from
+  its own state dir, and routes stay up: the edge rejoins running stacks'
+  networks. A scratch or test root that sets `DEN_EDGE_DIR` needs an
+  `edge.org` of its own; with the real one it is refused.
+- 0.3.0-dev.40, commands that detach: a command other than up and restart
+  that should keep running detached says `detachable: true`.
 - 0.3.0-dev.39, the UI language: nothing required. With no `language:`
   in `user.yml` the UI is English, as before. A distribution or plugin
   that adds its own words with `denShell.addMessages(lang, table)` can

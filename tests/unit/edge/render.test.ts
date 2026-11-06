@@ -134,6 +134,17 @@ describe("renderEdgeCompose", () => {
     expect(doc.services.edge.networks).toEqual(["acme-edge"]);
     expect(JSON.stringify(doc)).not.toContain("docker.sock");
   });
+  it("labels the edge container with the state dir and org that own it (0.3.0-dev.40)", () => {
+    const doc = yaml.parse(renderEdgeCompose(edge, "/real/edge-dir"));
+    expect(doc.services.edge.labels).toEqual({
+      "den.edge.root": "/real/edge-dir",
+      "den.edge.org": "acme",
+    });
+    // Its own state dir by default.
+    expect(
+      yaml.parse(renderEdgeCompose(edge)).services.edge.labels["den.edge.root"],
+    ).toBe(edge.stateDir);
+  });
   it("publishes nothing when fronted by another proxy", () => {
     const doc = yaml.parse(renderEdgeCompose({ ...edge, ports: null }));
     expect(doc.services.edge.ports).toBeUndefined();

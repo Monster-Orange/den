@@ -73,7 +73,11 @@ import type { ChildProcess } from "child_process";
 import { getDistRoot, getStateDir } from "../paths.js";
 
 import { product } from "../product.js";
-import { adoptLegacyProcess, servicePort } from "../process/legacy-adopt.js";
+import {
+  adoptLegacyProcess,
+  busyListenerText,
+  servicePort,
+} from "../process/legacy-adopt.js";
 import {
   processGroupStateSync,
   recordProcessGroup,
@@ -1264,17 +1268,22 @@ function opctlDownBasesFromCommand(cmd: string): string[] {
   return bases;
 }
 
+/**
+ * Whether a service command runs detached (a daemon whose log is tailed)
+ * or to completion. Only the commands that start a service, up and restart
+ * (which ends with a long-running up), detach by default; a restart that
+ * finishes on its own says `detachable: false`. Every other command is
+ * one-shot unless it says `detachable: true` (0.3.0-dev.40, DOC-1: every
+ * string command but down and setup detached, so a preflight run from the
+ * Services page never finished). down and setup never detach.
+ */
 export function shouldDetachServiceCommand(
   command: string,
   cmdDef: CommandDef,
 ): boolean {
-  return command === "down" || command === "setup"
-    ? false
-    : typeof cmdDef === "string"
-      ? true
-      : // restart ends with a long-running up, so it detaches unless the
-        // command says it finishes on its own (`detachable: false`).
-        (cmdDef.detachable ?? true);
+  if (command === "down" || command === "setup") return false;
+  const starts = command === "up" || command === "restart";
+  return typeof cmdDef === "string" ? starts : (cmdDef.detachable ?? starts);
 }
 
 export function isInteractiveServiceCommand(cmdDef: CommandDef): boolean {
@@ -1575,9 +1584,7 @@ function settleUntrackedListener(
   }
   if (!verdict.busy) return null;
   onLine(
-    `Warning: port ${verdict.busy.port} is in use by pid ${verdict.busy.pid}` +
-      (verdict.busy.cwd ? ` (cwd ${verdict.busy.cwd})` : "") +
-      `, outside ${resolved.repoPath}: not ${resolved.address}, left alone; ${then}`,
+    `Warning: ${busyListenerText(verdict.busy, resolved.repoPath, resolved.address)}; ${then}`,
   );
   return "busy";
 }
@@ -1620,9 +1627,7 @@ function settleLegacyRecord(
   );
   if (verdict.busy)
     onLine(
-      `Warning: port ${verdict.busy.port} is in use by pid ${verdict.busy.pid}` +
-        (verdict.busy.cwd ? ` (cwd ${verdict.busy.cwd})` : "") +
-        `, outside ${record.repoPath}: not ${record.address}, left alone`,
+      `Warning: ${busyListenerText(verdict.busy, record.repoPath, record.address)}`,
     );
   unregisterDaemon(record.address);
   return verdict.busy ? "busy" : "dropped";
@@ -1858,10 +1863,63 @@ export async function prepareServiceSecretEnv(
 
 /** What a run of `command` on `address` would do, without running it. */
 export type ServiceCommandPreview =
-  | { kind: "run"; address: string }
+  | { kind: "run"; address: string; note?: string }
   | { kind: "via-repo"; address: string; note: string }
   | { kind: "nothing"; address: string; note: string }
   | { kind: "error"; address: string; note: string };
+
+/**
+ * What a real `up` of a service with an up of its own does first about its
+ * record and port (settleDaemonRecord, settleUntrackedListener), said for a
+ * dry run (0.3.0-dev.40, a consumer's dev.39 nit: it said only "Would up").
+ * It only looks: nothing is signalled and the record is not written. Null
+ * when there is nothing to settle (the up just runs). Only for a dry run's
+ * words: up-targets reads previewServiceCommand, which this leaves alone.
+ */
+export function previewUpSettle(
+  address: string,
+  workspace?: string,
+): ServiceCommandPreview | null {
+  const resolved = resolveService(address, workspace);
+  if (!resolved) return null;
+  const record = findDaemonByAddress(resolved.address);
+  const legacy = !!record && isLegacyRecord(record);
+  if (record && !legacy) return null;
+  const facts = serviceProcessFacts(resolved, workspace ?? "default");
+  if (!facts.upCommand) return null;
+  if (!legacy && (!facts.plain || !facts.port)) return null;
+  const verdict = adoptLegacyProcess({
+    repoPath: resolved.repoPath,
+    pid: legacy && typeof record.pid === "number" ? record.pid : undefined,
+    port: facts.port,
+    upCommand: legacy ? facts.upCommand : null,
+  });
+  const what = legacy ? "a pre-dev.37 record" : "no record";
+  if (verdict.kind === "adopted")
+    return {
+      kind: "nothing",
+      address,
+      note:
+        `${resolved.address} (${what}): would adopt pid ${verdict.pid}` +
+        (verdict.port ? ` (port ${verdict.port})` : "") +
+        ", nothing started",
+    };
+  if (verdict.busy)
+    return {
+      kind: "error",
+      address,
+      note:
+        verdict.busy.reason === "outside"
+          ? `${resolved.address} (${what}): port ${verdict.busy.port} held outside the repo: would not start`
+          : `${resolved.address} (${what}): port ${verdict.busy.port} held by pid ${verdict.busy.pid} in Den's own process group: would not start`,
+    };
+  if (!legacy) return null;
+  return {
+    kind: "run",
+    address,
+    note: `${resolved.address} (${what}): would drop the record (nothing running), then start it`,
+  };
+}
 
 /**
  * The dry-run twin of runServiceCommand's command lookup: the same
@@ -2072,6 +2130,15 @@ export function runServiceCommand(
   // down step; a down after its ownership gate, which signals nothing.
   const upSettle =
     command === "up" ? settleDaemonRecord(resolved, workspace, onLine) : null;
+  // Dropped with its port held by a process Den won't adopt (said by the
+  // settle): refused before anything is spawned, as a repo-level up refuses
+  // it (0.3.0-dev.40, a consumer's dev.39 finding: the start died on
+  // EADDRINUSE first).
+  if (upSettle?.outcome === "busy") {
+    onLine(`${resolved.address} not started: its port is in use`);
+    closeAsync(1);
+    return dummy();
+  }
 
   // ── Up: share-if-identical / hard-block on conflict ─────────────────────────
   if (command === "up" || command === "restart") {
@@ -2136,16 +2203,20 @@ export function runServiceCommand(
       } else if (command === "up" && !upSettle?.outcome) {
         // Nothing recorded, but the port is taken (0.3.0-dev.39). In the
         // repo: that is the service, adopted, already up. Elsewhere: said
-        // and left alone; the up still runs (the port may be a proxy's),
-        // and a start that dies keeps no record.
+        // and left alone, and refused before anything is spawned
+        // (0.3.0-dev.40), as a repo-level up refuses it.
         const holder = settleUntrackedListener(
           resolved,
           workspace,
           onLine,
-          `starting ${resolved.address} anyway`,
+          `${resolved.address} not started`,
         );
         if (holder === "adopted") {
           closeAsync(0);
+          return dummy();
+        }
+        if (holder === "busy") {
+          closeAsync(1);
           return dummy();
         }
       }

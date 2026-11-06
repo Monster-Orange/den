@@ -17,7 +17,7 @@
  * GitHub sources clone through the user's gh, a repo with no source clones
  * from its catalog `remote:` through plain git (SEC-0).
  */
-import { ConfigError } from "./config-error.js";
+import { ConfigError, type ConfigIssue } from "./config-error.js";
 import type { ServiceCatalog, ServiceCatalogEntry } from "./types/index.js";
 
 /** `orgs.<id>.sources[i]`: a git host and the owner (or group) it claims. */
@@ -65,13 +65,23 @@ const sourceOwner = (s: OrgSourceConfig): string =>
   (s.owner ?? s.group ?? "").trim();
 
 /**
- * Check the ORG-1d keys of `orgs:` and throw on the first problem, naming the
- * key. Entries without them are not looked at (C1). A repo listed by two
- * orgs, or an owner claimed by two orgs' sources (or by a source and a
- * legacy org of that name), names both.
+ * Check the ORG-1d keys of `orgs:` and throw a ConfigError listing every
+ * problem (0.3.0-dev.40; it threw on the first), each naming its key. A
+ * problem with a source skips the rest of that source; one with `sources`
+ * or `repos` as a whole skips that key. Entries without them are not
+ * looked at (C1). A repo listed by two orgs, or an owner claimed by two
+ * orgs' sources (or by a source and a legacy org of that name), names both.
  */
 export function validateOrgSources(orgs: unknown, file: string): void {
   if (!orgs || typeof orgs !== "object" || Array.isArray(orgs)) return;
+  const issues: ConfigIssue[] = [];
+  // `text` is the message as it reads after "<file>: ".
+  const bad = (key: string, text: string): void => {
+    const message = text.startsWith(key)
+      ? text.slice(key.length).replace(/^:?\s*/, "")
+      : text;
+    issues.push({ file, key, message, text });
+  };
   const entries = Object.entries(orgs as Record<string, unknown>);
   const repoAt = new Map<string, string>();
   const ownerAt = new Map<string, string>();
@@ -81,67 +91,74 @@ export function validateOrgSources(orgs: unknown, file: string): void {
     const at = `orgs.${id}`;
     if ("sources" in e) {
       if (!Array.isArray(e.sources))
-        throw new ConfigError(
-          `${file}: ${at}.sources must be a list of { host, owner } or { host, group }`,
+        bad(
+          `${at}.sources`,
+          `${at}.sources must be a list of { host, owner } or { host, group }`,
         );
-      e.sources.forEach((s: unknown, i: number) => {
-        const k = `${at}.sources[${i}]`;
-        if (!s || typeof s !== "object" || Array.isArray(s))
-          throw new ConfigError(
-            `${file}: ${k} must be a map: { host: github, owner: <owner> }`,
-          );
-        const src = s as Record<string, unknown>;
-        for (const key of Object.keys(src))
-          if (!["host", "owner", "group"].includes(key))
-            throw new ConfigError(
-              `${file}: ${k}: unknown key "${key}" (known: host, owner, group)`,
+      else
+        e.sources.forEach((s: unknown, i: number) => {
+          const k = `${at}.sources[${i}]`;
+          if (!s || typeof s !== "object" || Array.isArray(s))
+            return bad(
+              k,
+              `${k} must be a map: { host: github, owner: <owner> }`,
             );
-        if (typeof src.host !== "string" || !HOST_RE.test(src.host))
-          throw new ConfigError(
-            `${file}: ${k}.host must be a git host id such as github or gitlab`,
+          const src = s as Record<string, unknown>;
+          const unknown = Object.keys(src).find(
+            (key) => !["host", "owner", "group"].includes(key),
           );
-        const hasOwner = src.owner !== undefined;
-        const hasGroup = src.group !== undefined;
-        if (hasOwner === hasGroup)
-          throw new ConfigError(
-            `${file}: ${k} needs exactly one of owner or group`,
-          );
-        const key = hasOwner ? "owner" : "group";
-        const v = src[key];
-        const ok =
-          typeof v === "string" &&
-          (src.host === "github" ? GH_OWNER_RE : GROUP_RE).test(v.trim());
-        if (!ok)
-          throw new ConfigError(
-            src.host === "github"
-              ? `${file}: ${k}.${key} must be a GitHub owner name (letters, digits and hyphens)`
-              : `${file}: ${k}.${key} must be an owner or group path`,
-          );
-        const claim = `${src.host}:${lower((v as string).trim())}`;
-        const prior = ownerAt.get(claim);
-        if (prior && !prior.startsWith(`${at}.`))
-          throw new ConfigError(
-            `${file}: ${src.host} owner ${(v as string).trim()} is claimed by both ${prior} and ${k}`,
-          );
-        if (!prior) ownerAt.set(claim, k);
-      });
+          if (unknown !== undefined)
+            return bad(
+              k,
+              `${k}: unknown key "${unknown}" (known: host, owner, group)`,
+            );
+          if (typeof src.host !== "string" || !HOST_RE.test(src.host))
+            return bad(
+              `${k}.host`,
+              `${k}.host must be a git host id such as github or gitlab`,
+            );
+          const hasOwner = src.owner !== undefined;
+          const hasGroup = src.group !== undefined;
+          if (hasOwner === hasGroup)
+            return bad(k, `${k} needs exactly one of owner or group`);
+          const key = hasOwner ? "owner" : "group";
+          const v = src[key];
+          const ok =
+            typeof v === "string" &&
+            (src.host === "github" ? GH_OWNER_RE : GROUP_RE).test(v.trim());
+          if (!ok)
+            return bad(
+              `${k}.${key}`,
+              src.host === "github"
+                ? `${k}.${key} must be a GitHub owner name (letters, digits and hyphens)`
+                : `${k}.${key} must be an owner or group path`,
+            );
+          const claim = `${src.host}:${lower((v as string).trim())}`;
+          const prior = ownerAt.get(claim);
+          if (prior && !prior.startsWith(`${at}.`))
+            return bad(
+              k,
+              `${src.host} owner ${(v as string).trim()} is claimed by both ${prior} and ${k}`,
+            );
+          if (!prior) ownerAt.set(claim, k);
+        });
     }
     if ("repos" in e) {
       if (
         !Array.isArray(e.repos) ||
         e.repos.some((r) => typeof r !== "string" || !r.trim())
       )
-        throw new ConfigError(
-          `${file}: ${at}.repos must be a list of repo names`,
-        );
-      for (const r of e.repos as string[]) {
-        const prior = repoAt.get(r.trim());
-        if (prior && prior !== `${at}.repos`)
-          throw new ConfigError(
-            `${file}: repo ${r.trim()} is claimed by both ${prior} and ${at}.repos`,
-          );
-        repoAt.set(r.trim(), `${at}.repos`);
-      }
+        bad(`${at}.repos`, `${at}.repos must be a list of repo names`);
+      else
+        for (const r of e.repos as string[]) {
+          const prior = repoAt.get(r.trim());
+          if (prior && prior !== `${at}.repos`)
+            bad(
+              `${at}.repos`,
+              `repo ${r.trim()} is claimed by both ${prior} and ${at}.repos`,
+            );
+          else repoAt.set(r.trim(), `${at}.repos`);
+        }
     }
   }
   // A legacy org is the GitHub owner of its own name: a source elsewhere that
@@ -150,11 +167,13 @@ export function validateOrgSources(orgs: unknown, file: string): void {
     if (isSourcedOrg(raw as WorkOrgConfig)) continue;
     const prior = ownerAt.get(`github:${lower(id)}`);
     if (prior)
-      throw new ConfigError(
-        `${file}: github owner ${id} is claimed by both ${prior} and orgs.${id} ` +
+      bad(
+        `orgs.${id}`,
+        `github owner ${id} is claimed by both ${prior} and orgs.${id} ` +
           `(an org with no sources: is the GitHub owner of its own name)`,
       );
   }
+  if (issues.length) throw new ConfigError(issues);
 }
 
 /** `gh: owner/repo`'s owner, as spelled, or "" (the legacy orgOf). */

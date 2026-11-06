@@ -37,6 +37,18 @@ describe("openUrlFor", () => {
     expect(at("webapp")).toBe("https://app.webapp.globex.localhost/");
   });
 
+  it("follows the edge's TLS: http (and its http port) for tls: none (0.3.0-dev.40)", () => {
+    expect(at("frontend", { edgeOrigin: { https: false, port: 80 } })).toBe(
+      "http://app.webapp.globex.localhost/",
+    );
+    expect(at("frontend", { edgeOrigin: { https: false, port: 8080 } })).toBe(
+      "http://app.webapp.globex.localhost:8080/",
+    );
+    expect(at("frontend", { edgeOrigin: { https: true, port: 8443 } })).toBe(
+      "https://app.webapp.globex.localhost:8443/",
+    );
+  });
+
   it("gives an unrouted container nothing", () => {
     expect(at("postgres")).toBeNull();
   });

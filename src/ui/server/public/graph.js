@@ -264,9 +264,13 @@ export function graphHealth(results) {
   if (!M || !host?.isConnected) return;
   applyHealth(M, results);
   for (const c of host.querySelectorAll(".dg-card")) {
-    if (c.dataset.id && M.byId.has(c.dataset.id))
-      c.innerHTML = cardInner(M.byId.get(c.dataset.id));
-    else if (c.dataset.repo && M.byRepo.has(c.dataset.repo)) {
+    if (c.dataset.id && M.byId.has(c.dataset.id)) {
+      const s = M.byId.get(c.dataset.id);
+      c.innerHTML = cardInner(s);
+      // A service card's border follows its health too (0.3.0-dev.40,
+      // DOC-1: it stayed red after a recovery; only repo cards toggled).
+      c.classList.toggle("down", s.health.ok === false);
+    } else if (c.dataset.repo && M.byRepo.has(c.dataset.repo)) {
       c.innerHTML = repoCardInner(c.dataset.repo);
       const s = repoRollup(M, c.dataset.repo).state;
       c.classList.toggle("down", s === "down");

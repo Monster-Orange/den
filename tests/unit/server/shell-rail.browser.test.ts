@@ -637,7 +637,8 @@ describe("the scope breadcrumb (R4)", () => {
     await p.click("#org-crumb");
     expect(await menuRows(p)).toEqual([
       { text: "Acme3 workspaces", role: "menuitemradio", checked: "true" },
-      { text: "Globex1 workspaces", role: "menuitemradio", checked: "false" },
+      // en's .one (0.3.0-dev.40): it said "1 workspaces".
+      { text: "Globex1 workspace", role: "menuitemradio", checked: "false" },
     ]);
     await p.click('.den-pop .den-mi:has-text("Globex")');
     expect(

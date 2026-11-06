@@ -168,6 +168,55 @@
         color: var(--muted);
         margin: 22px 0 10px;
       }
+      /* The 422 page's problems (0.3.0-dev.40): the prototype's .tablewrap
+         and table.svc, and its pre.code for the command. */
+      .tablewrap {
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        margin: 0 0 16px;
+      }
+      table.svc {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13.5px;
+      }
+      table.svc th {
+        text-align: left;
+        font: 11px var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--faint);
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        font-weight: 400;
+      }
+      table.svc td {
+        padding: 7px 12px;
+        border-bottom: 1px solid var(--border);
+        color: var(--text);
+        vertical-align: top;
+      }
+      table.svc td.mono {
+        white-space: nowrap;
+      }
+      table.svc tr:last-child td {
+        border-bottom: 0;
+      }
+      pre.code {
+        background: var(--sunken);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button);
+        padding: 12px;
+        overflow-x: auto;
+        font: 12px/1.5 var(--mono);
+        margin: 0 0 12px;
+        color: var(--text);
+      }
+      .empty.wide {
+        max-width: 880px;
+      }
       ul.pages {
         list-style: none;
         margin: 0;

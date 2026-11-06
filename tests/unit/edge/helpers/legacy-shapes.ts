@@ -14,6 +14,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { readEdgeConfig } from "../../../../src/shared/edge/config.js";
+import { withoutOwnerLabels } from "./owner-labels.js";
 import {
   certNames,
   renderEdgeCompose,
@@ -194,7 +195,7 @@ export function renderShape(shape: Shape): Rendered {
       return {
         certNames: certNames(cfg),
         dynamic: out(renderEdgeDynamic(cfg)),
-        compose: out(renderEdgeCompose(cfg)),
+        compose: out(withoutOwnerLabels(renderEdgeCompose(cfg))),
         routeUrls: ["edge", ...Object.keys(cfg.routes)].map((n) =>
           routeUrl(n, cfg),
         ),

@@ -137,4 +137,16 @@ describe("restart detaching", () => {
     expect(shouldDetachServiceCommand("restart", { cmd: "x" })).toBe(true);
     expect(shouldDetachServiceCommand("down", "make down")).toBe(false);
   });
+
+  it("runs a one-shot command such as preflight to completion (0.3.0-dev.40)", () => {
+    expect(shouldDetachServiceCommand("up", "make up")).toBe(true);
+    for (const c of ["preflight", "seed", "test", "build"]) {
+      expect(shouldDetachServiceCommand(c, `make ${c}`)).toBe(false);
+      expect(shouldDetachServiceCommand(c, { cmd: `make ${c}` })).toBe(false);
+    }
+    // A command that says it is long-running still detaches.
+    expect(
+      shouldDetachServiceCommand("watch", { cmd: "x", detachable: true }),
+    ).toBe(true);
+  });
 });

@@ -6,6 +6,7 @@
 import { describe, expect, it } from "@jest/globals";
 import ELK from "elkjs/lib/elk.bundled.js";
 import {
+  applyHealth,
   buildElkGraph,
   buildModel,
   commandTier,
@@ -473,6 +474,18 @@ describe("healthLine", () => {
     expect(healthLine({ runs: "local", health: { ok: null } })).toBe(
       "no health check",
     );
+  });
+});
+
+describe("before the first health round (0.3.0-dev.40)", () => {
+  it('a card says "checking…" until a round reaches it, then "no health check" when it has none', () => {
+    const m = buildModel({ services: [row("shop/api"), row("shop/db")] });
+    expect(healthLine(m.byId.get("shop/api")!)).toBe("checking…");
+    expect(healthLine(m.byId.get("shop/db")!)).toBe("checking…");
+    // A round with a row for api only: db had its check too.
+    applyHealth(m, [{ repo: "shop", service: "api", ok: null }]);
+    expect(healthLine(m.byId.get("shop/api")!)).toBe("no health check");
+    expect(healthLine(m.byId.get("shop/db")!)).toBe("no health check");
   });
 });
 

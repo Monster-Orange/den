@@ -497,7 +497,19 @@ export function assertDenConfigValid(): void {
     }
     checked = { key, error };
   }
-  if (checked.error) throw new ConfigError(checked.error.message);
+  if (checked.error) throw new ConfigError(checked.error.issues);
+}
+
+let orgsWaived = false;
+
+/**
+ * For `down` only (0.3.0-dev.40): from now on in this process, a config
+ * whose `orgs:` fails validation reads as one with no org data instead of
+ * throwing, so stopping is never stranded by it. Every other key is read as
+ * usual; a file that does not parse still throws.
+ */
+export function waiveInvalidOrgs(): void {
+  orgsWaived = true;
 }
 
 /**
@@ -512,7 +524,13 @@ export function readDenConfig(): DenConfig {
     const parsed = yaml.parse(raw) as Partial<DenConfig> | null;
     // ORG-1d keys (orgs.<id>.sources / .repos) are checked here, where a bad
     // value throws naming its key; configs without them are not touched.
-    validateOrgSources(parsed?.orgs, product().configFile);
+    let orgs = parsed?.orgs;
+    try {
+      validateOrgSources(orgs, product().configFile);
+    } catch (e) {
+      if (!orgsWaived || !isConfigError(e)) throw e;
+      orgs = undefined;
+    }
     // `environments` may be malformed (scalar/object) in a hand-edited file —
     // fall back to the default set rather than throwing on .filter below.
     const envs = Array.isArray(parsed?.environments)
@@ -525,7 +543,7 @@ export function readDenConfig(): DenConfig {
       production_envs: parsed?.production_envs,
       repos_root: parsed?.repos_root,
       github_org: parsed?.github_org,
-      orgs: parsed?.orgs,
+      orgs,
       graph: parsed?.graph,
       org: parsed?.org,
       applications: parsed?.applications,

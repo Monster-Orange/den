@@ -114,6 +114,7 @@ import { waitForReady } from "../../shared/environment-manager/readiness.js";
 import {
   canonicalServiceAddress,
   previewServiceCommand,
+  previewUpSettle,
   previewServiceSecretEnv,
   prepareServiceSecretEnv,
   resolveService,
@@ -121,8 +122,10 @@ import {
   type ServiceCommandPreview,
 } from "../../shared/environment-manager/service-runner.js";
 import { getGitHubCoords } from "../../shared/smoke/git-remote.js";
+import { isConfigError } from "../../shared/config-error.js";
 import {
   assertDenConfigValid,
+  waiveInvalidOrgs,
   getReposRoot,
   mergeUserConfig,
   readDenConfig,
@@ -526,6 +529,7 @@ function resolveCliBaseApiUrl(explicitBaseApiUrl?: string): string | undefined {
 const TELEMETRY_COMMANDS = new Set<string>([
   "run",
   "view-results",
+  "down",
   "menu",
   "web",
   "up",
@@ -563,8 +567,10 @@ const TELEMETRY_COMMANDS = new Set<string>([
  * Commands that run with a config that fails validation: the web and MCP
  * servers (each route or tool reports it), and those that read neither orgs,
  * the catalog nor clones (manifest validate, create, the per-engineer
- * config and local-dev toggles, saved results). Every other registered
- * command checks the config first.
+ * config and local-dev toggles, saved results), and `down` (0.3.0-dev.40:
+ * stopping is never stranded by a config that fails; it stops from the
+ * daemon records and compose projects, reading no org data). Every other
+ * registered command checks the config first.
  */
 const CONFIG_FREE_COMMANDS = new Set<string>([
   "web",
@@ -574,6 +580,7 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "config",
   "local-dev",
   "view-results",
+  "down",
 ]);
 
 function configCheckedCommand(command: string): boolean {
@@ -807,6 +814,22 @@ class DenCLI {
       // anything: some (sync over existing clones, register, workspace
       // create) never read `orgs:` and used to carry on (ORG-1d).
       if (command && configCheckedCommand(command)) assertDenConfigValid();
+      // `down` is never stranded by an invalid config (0.3.0-dev.40): it
+      // says so and stops from the daemon records and compose projects,
+      // reading the config without its org data.
+      if (command === "down") {
+        try {
+          assertDenConfigValid();
+        } catch (e) {
+          if (!isConfigError(e)) throw e;
+          console.log(
+            chalk.yellow(
+              `\n  ⚠ ${e.message}\n  Stopping anyway, without the config's org data. Fix it, then \`${product().cli} validate\`.`,
+            ),
+          );
+          waiveInvalidOrgs();
+        }
+      }
 
       switch (command) {
         case "run":
@@ -1677,7 +1700,15 @@ class DenCLI {
       // The same lookup a real run makes, so the dry run says what it does.
       const previews = ordered.map((a): ServiceCommandPreview => {
         const remote = remoteRefusal(a);
-        if (!remote) return previewServiceCommand(a, command, workspace);
+        if (!remote) {
+          const p = previewServiceCommand(a, command, workspace);
+          // What up does first about a pre-dev.37 record or a held port.
+          return (
+            (command === "up" && p.kind === "run"
+              ? previewUpSettle(a, workspace)
+              : null) ?? p
+          );
+        }
         // As the loop below: a named remote target fails, any other is
         // said and skipped.
         return isNamedTarget(a, opts?.named ?? [])
@@ -1700,7 +1731,7 @@ class DenCLI {
         ),
       );
       for (const p of previews) {
-        if (p.kind === "via-repo" || p.kind === "nothing")
+        if (p.kind !== "error" && p.note)
           console.log(chalk.gray(`  ${p.note}`));
         if (p.kind === "error") console.log(chalk.red(`  ✗ ${p.note}`));
       }
@@ -1789,7 +1820,7 @@ class DenCLI {
           if (health.health === "ok" && claim === "busy") {
             console.log(
               chalk.red(
-                `  ✗ ${chalk.bold(address)} not started: its port is in use outside its repo`,
+                `  ✗ ${chalk.bold(address)} not started: its port is in use by a process ${product().cli} won't adopt`,
               ),
             );
             // A dependency only warns; the service you named failed.
@@ -4471,6 +4502,25 @@ class DenCLI {
   // ── den validate ────────────────────────────────────────────────────────
 
   private async cmdValidate(args: string[]): Promise<void> {
+    // The org config first (0.3.0-dev.40, a consumer's 0.2.8 nit: a
+    // ConfigError went unreported): each problem with its file and key
+    // path, a non-zero exit, and the manifests are still checked, reading
+    // the config without its org data.
+    try {
+      assertDenConfigValid();
+    } catch (e) {
+      if (!isConfigError(e)) throw e;
+      console.error(chalk.red(`\n  ✗ ${product().configFile} is invalid:`));
+      const issues = e.issues.length
+        ? e.issues
+        : [{ file: product().configFile, key: "", message: e.message }];
+      for (const i of issues)
+        console.error(
+          chalk.red(`  ✗ ${i.file}  ${chalk.bold(i.key)}  ${i.message}`),
+        );
+      process.exitCode = 1;
+      waiveInvalidOrgs();
+    }
     // The distribution's secrets config, once: a 1password backend with no
     // refs leaves the vault-backed features off (no built-in vault/item).
     try {

@@ -576,14 +576,32 @@ function allWorkspaceCheckouts(): ResolvedService[] {
 /**
  * API routes that answer whatever the config holds: the identity probe the
  * CLI and MCP use to find this server, its own log (where a config error is
- * also written), the changelog, and restarting it.
+ * also written), the changelog, and restarting it. And (0.3.0-dev.40, R26a's
+ * 422 page) what the shell and the Settings and Logs pages need, so the
+ * rail stays usable to reach the fix: the UI prefs (theme, mode, language,
+ * the rail's pins) and editor settings (/api/settings: user.yml, and the
+ * org config's Distribution rows read without validation), the installed
+ * themes, the view scope and a workspace's editor (workspaces.yml), and
+ * whether a sudo password is held. None of them reads org data.
  */
 const CONFIG_FREE_ROUTES = new Set([
   "/api/server-info",
   "/api/server-log",
   "/api/changelog",
   "/api/web/restart",
+  "/api/settings",
+  "/api/themes",
+  "/api/scope",
+  "/api/workspaces/settings",
+  "/api/sudo-password/status",
 ]);
+
+/**
+ * Pages that load whatever the config holds (0.3.0-dev.40): the rail's way
+ * to the fix (Settings, Logs). Any other page navigation with a config that
+ * fails validation gets the 422 "Config is invalid" page.
+ */
+const CONFIG_FREE_PAGES = new Set(["/settings", "/settings.html", "/logs"]);
 
 // ── Sudo password store ───────────────────────────────────────────────────────
 import {
@@ -639,10 +657,12 @@ import { EditorManager, SUPPORTED_LANGUAGES } from "./editor-manager.js";
 import { handleWorkspaceRoutes } from "./workspace-routes.js";
 import { isLifecycleExecCmd, streamLifecycleExec } from "./lifecycle-exec.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
+import { edgeHttps } from "../../shared/edge/render.js";
 import {
   linksFor,
   openUrlFor,
   rehost,
+  type EdgeOrigin,
   type OpenLink,
 } from "../../shared/open-url.js";
 
@@ -805,6 +825,16 @@ async function handleRequest(
   // the ConfigError the handler below maps to 422 JSON, before any route's own
   // catch can turn it into a 400, a 500 or an empty list. Pages still load.
   if (pathname.startsWith("/api/") && !CONFIG_FREE_ROUTES.has(pathname))
+    assertDenConfigValid();
+  // A page navigation, likewise: the shell frame with the 422 page, not a
+  // page whose every call then fails (R26a). Static files never get here
+  // as a navigation (wantsHtmlPage needs Accept: text/html).
+  if (
+    wantsHtmlPage(req, pathname) &&
+    !CONFIG_FREE_PAGES.has(pathname) &&
+    (path.extname(pathname) === ".html" ||
+      !STATIC_EXTS.has(path.extname(pathname)))
+  )
     assertDenConfigValid();
 
   // ── Static UI ──────────────────────────────────────────────────────────────
@@ -1215,8 +1245,15 @@ async function handleRequest(
     }> = [];
     const focusName = getFocusedWorkspaceName();
     let edgeDomain: string | null = null;
+    // The links follow the edge's TLS: http on its http port for `tls: none`
+    // (0.3.0-dev.40, DOC-1: the panel's Opens said https).
+    let edgeOrigin: EdgeOrigin | undefined;
     try {
-      edgeDomain = readEdgeConfig().domain;
+      const edge = readEdgeConfig();
+      edgeDomain = edge.domain;
+      edgeOrigin = edgeHttps(edge)
+        ? { https: true, port: edge.ports?.https ?? 443 }
+        : { https: false, port: edge.ports?.http ?? 80 };
     } catch {
       /* no edge configured: local links come from manifests only */
     }
@@ -1329,6 +1366,7 @@ async function handleRequest(
           env,
           healthUrl: healthCfg && "url" in healthCfg ? healthCfg.url : null,
           edgeDomain,
+          edgeOrigin,
         }),
         links: linksFor(manifest, resolved.subsystem, env),
         org: orgOf(resolved.repoName, catalog),
@@ -3612,6 +3650,8 @@ const server = http.createServer((req, res) => {
             status: CONFIG_ERROR_STATUS,
             path: pathname,
             message: err.message,
+            issues: configErrorBody(err).issues,
+            cli: product().cli,
             requestId,
           });
           return;

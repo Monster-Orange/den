@@ -55,7 +55,7 @@ function colorFor(name) {
 /** Build the model the graph and panel render from. */
 export function buildModel({
   services = [],
-  health = [],
+  health = null,
   graph = {},
   apps = [],
   orgs = null,
@@ -78,7 +78,8 @@ export function buildModel({
       org: orgs?.repos?.[r.repo] || "",
       app: a ? a.title || a.name : r.repo,
       ...placementOf(r),
-      health: { ok: null },
+      // No health round has reached it yet (0.3.0-dev.40): "checking…".
+      health: { ok: null, checked: false },
       open: null,
       entry: !!r.isEntrypoint,
       infra: !!r.infra,
@@ -129,7 +130,8 @@ export function buildModel({
     apps: apps || [],
     mixed: false,
   };
-  applyHealth(m, health);
+  // null: no health round yet, so every card says "checking…".
+  if (health) applyHealth(m, health);
   return m;
 }
 
@@ -141,8 +143,13 @@ export function applyHealth(m, results) {
   for (const s of m.services) {
     // Health rows name repo + service; a single-service repo's address is the bare repo.
     const h = byKey.get(`${s.repo}/${s.name}`) || byKey.get(s.id);
-    if (!h) continue;
+    // A round without a row for it still counts as its first check.
+    if (!h) {
+      s.health = { ...s.health, checked: true };
+      continue;
+    }
     s.health = {
+      checked: true,
       ok: h.ok === true ? true : h.ok === false ? false : null,
       label: h.label,
       url: h.url ?? null,
@@ -198,6 +205,8 @@ export const fmtMs = (ms) =>
   ms == null ? "" : ms >= 1000 ? (ms / 1000).toFixed(1) + " s" : ms + " ms";
 
 export function healthLine(s) {
+  // Before the first health round, as the Workspaces table says (dev.37).
+  if (s.health.checked === false) return "checking…";
   const ms = s.health.ms != null ? " · " + fmtMs(s.health.ms) : "";
   if (s.runs === "remote")
     return (

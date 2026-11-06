@@ -40,6 +40,11 @@ export interface EdgeConfig {
   /** Where the org's CA, certs and generated config live. */
   stateDir: string;
   /**
+   * The state dir the config names, when DEN_EDGE_DIR overrides it with
+   * another (0.3.0-dev.40): an unlabelled edge is adopted only from that one.
+   */
+  defaultStateDir?: string;
+  /**
    * How the edge gets its certificates: the `edge.tls` strategy (see
    * tls.ts). `none`: http only, no https entrypoint. `mkcert`: the edge
    * issues its own wildcard cert from a local CA (its own under `stateDir`,

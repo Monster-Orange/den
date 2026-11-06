@@ -20,7 +20,11 @@ import {
   stackRestartService,
   stackUp,
 } from "../../shared/stacks/runtime.js";
-import { loadStackContext, stackStatuses } from "../../shared/stacks/status.js";
+import {
+  loadStackContext,
+  rejoinRunningStacks,
+  stackStatuses,
+} from "../../shared/stacks/status.js";
 import {
   assertStackClaim,
   forgetStackOwners,
@@ -156,6 +160,7 @@ export async function cmdStack(argv: string[]): Promise<void> {
       // workspace runs one of these projects from a different checkout.
       const shared = claims(order);
       await edgeUp(edge);
+      rejoinRunningStacks();
       for (const n of order) {
         console.log(chalk.cyan(`\n▶ ${n} (${projectName(n, ctx.workspace)})`));
         if (shared.get(n)?.length)
@@ -192,6 +197,7 @@ export async function cmdStack(argv: string[]): Promise<void> {
       }
       const shared = claims(pick());
       await edgeUp(edge);
+      rejoinRunningStacks();
       for (const n of pick()) {
         console.log(chalk.cyan(`↻ ${n}`));
         if (shared.get(n)?.length)

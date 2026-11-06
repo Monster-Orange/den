@@ -108,6 +108,19 @@ describe("the catalogs", () => {
     },
   );
 
+  it("en pluralizes: a count with a singular in any catalog has its en .one (0.3.0-dev.40)", () => {
+    // The org menu said "1 workspaces".
+    expect(EN["org.n.one"]).toBe("{n} workspace");
+    const counted = Object.keys(EN).filter(
+      (k) => base(k) === k && vars(EN[k]).includes("n"),
+    );
+    const missing = counted.filter(
+      (k) =>
+        NON_EN.some((l) => `${k}.one` in messages[l]) && !(`${k}.one` in EN),
+    );
+    expect(missing).toEqual([]);
+  });
+
   it.each(NON_EN)("%s keeps every placeholder of en", (lang) => {
     const table = messages[lang];
     const off = Object.keys(table).filter(

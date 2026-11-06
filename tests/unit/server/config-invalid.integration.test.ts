@@ -135,6 +135,15 @@ describe("a config that fails validation is a JSON error naming its keys", () =>
         ok: false,
         error: MESSAGE,
         code: "config_invalid",
+        // Each problem with its file and key (0.3.0-dev.40).
+        issues: [
+          {
+            file: "config/den.yml",
+            key: "orgs.globex.repos",
+            message:
+              "repo widget is claimed by both orgs.initech.repos and orgs.globex.repos",
+          },
+        ],
         requestId: r.requestId,
       });
     },

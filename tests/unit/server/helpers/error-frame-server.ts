@@ -62,7 +62,11 @@ function write(file: string, content: string, mode?: number): void {
 }
 
 export async function startFrameServer(
-  opts: { prefix?: string } = {},
+  opts: {
+    prefix?: string;
+    /** The distribution's config/den.yml (default: local only). */
+    denConfig?: string;
+  } = {},
 ): Promise<FrameServer> {
   const tmp = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), opts.prefix ?? "den-frame-")),
@@ -81,7 +85,10 @@ export async function startFrameServer(
   // The distribution.
   const root = path.join(tmp, "dist");
   write(path.join(root, "den.yml"), "product:\n  name: den\n");
-  write(path.join(root, "config", "den.yml"), "environments: [local]\n");
+  write(
+    path.join(root, "config", "den.yml"),
+    opts.denConfig ?? "environments: [local]\n",
+  );
   fs.mkdirSync(path.join(root, "config", "local"), { recursive: true });
   // Shims: every external tool a route might ask fails at once.
   const shim = path.join(tmp, "shim");

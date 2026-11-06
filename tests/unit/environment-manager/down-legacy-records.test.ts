@@ -385,7 +385,9 @@ describe("the service's port held by a process outside the repo", () => {
     return { port, pid };
   }
 
-  it("up says the port is busy and whose, leaves it alone, and starts", async () => {
+  // 0.3.0-dev.40 (a consumer's dev.39 finding): it used to start anyway,
+  // and the start died on EADDRINUSE; it now refuses before spawning.
+  it("up says the port is busy and whose, leaves it alone, and refuses before starting", async () => {
     const { port, pid } = await setup();
     const r = await run("up");
     const text = r.lines.join("\n");
@@ -393,9 +395,11 @@ describe("the service's port held by a process outside the repo", () => {
       new RegExp(`^Warning: port ${port} is in use by pid \\d+`, "m"),
     );
     expect(text).toContain(`outside ${repoPath}`);
+    expect(text).toContain("repo/api not started");
+    expect(r.exitCode).toBe(1);
     expect(await listening(port)).toBe(true);
     expect(alive(pid)).toBe(true);
-    expect(freshGroup()).not.toBe(pid);
+    expect(findDaemonByAddress("repo/api")).toBeUndefined();
   });
 
   it("down leaves it alone: nothing to stop", async () => {

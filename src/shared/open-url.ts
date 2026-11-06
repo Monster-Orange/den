@@ -6,7 +6,8 @@
  * Order, first answer wins:
  *   1. manifest `services.<svc>.urls.<env>`
  *   2. local only: the edge route for the service's compose container,
- *      `https://<route>.<stack>.<edge domain>`; the stack-wide service (the
+ *      `https://<route>.<stack>.<edge domain>` (`http://` and the edge's http
+ *      port for `tls: none`, 0.3.0-dev.40); the stack-wide service (the
  *      entrypoint, or one named after the stack) takes the `app` route, else
  *      the first route
  *   3. the origin of the env's HTTP health URL
@@ -32,11 +33,22 @@ export function httpUrl(raw: unknown): string | null {
   }
 }
 
+/**
+ * How the edge serves its routes: https on 443 (every edge.tls strategy but
+ * `none`), or http on its http port for `tls: none`. A non-default port is
+ * part of the URL.
+ */
+export interface EdgeOrigin {
+  https: boolean;
+  port?: number | null;
+}
+
 function edgeRouteUrl(
   manifest: DenManifest,
   subsystem: string,
   repoName: string,
   edgeDomain: string,
+  origin: EdgeOrigin,
 ): string | null {
   const routes = manifest.compose?.routes;
   if (!routes || !Object.keys(routes).length) return null;
@@ -51,7 +63,11 @@ function edgeRouteUrl(
   });
   if (!route && (manifest.entrypoint === subsystem || subsystem === stack))
     route = routes.app ? "app" : names[0];
-  return route ? `https://${route}.${stack}.${edgeDomain}/` : null;
+  if (!route) return null;
+  const scheme = origin.https ? "https" : "http";
+  const dflt = origin.https ? 443 : 80;
+  const port = origin.port && origin.port !== dflt ? `:${origin.port}` : "";
+  return `${scheme}://${route}.${stack}.${edgeDomain}${port}/`;
 }
 
 export function openUrlFor(opts: {
@@ -63,6 +79,8 @@ export function openUrlFor(opts: {
   healthUrl?: string | null;
   /** Primary edge domain; local edge routes are skipped without it. */
   edgeDomain?: string | null;
+  /** The edge's scheme and port (default: https on 443). */
+  edgeOrigin?: EdgeOrigin;
 }): string | null {
   const svc = opts.manifest.services?.[opts.subsystem];
   const declared = httpUrl(
@@ -75,6 +93,7 @@ export function openUrlFor(opts: {
       opts.subsystem,
       opts.repoName,
       opts.edgeDomain,
+      opts.edgeOrigin ?? { https: true },
     );
     if (routed) return routed;
   }

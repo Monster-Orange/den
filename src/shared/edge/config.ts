@@ -306,6 +306,16 @@ function computeEdgeConfig(root: string): EdgeConfig {
       "edge.include and edge.tls.include are both set; keep one (tls.include for files' certs)",
     );
   const include = tls.include ?? team.include;
+  // The state dir the config names (or the XDG default), DEN_EDGE_DIR aside.
+  const configuredStateDir = expandHome(
+    user.state_dir ??
+      team.state_dir ??
+      path.join(
+        process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share"),
+        team.org,
+        "edge",
+      ),
+  );
   return {
     org: team.org,
     domain: team.domain,
@@ -332,17 +342,15 @@ function computeEdgeConfig(root: string): EdgeConfig {
           ),
         }
       : null,
-    stateDir: expandHome(
-      process.env.DEN_EDGE_DIR ??
-        user.state_dir ??
-        team.state_dir ??
-        path.join(
-          process.env.XDG_DATA_HOME ||
-            path.join(os.homedir(), ".local", "share"),
-          team.org,
-          "edge",
-        ),
-    ),
+    stateDir:
+      process.env.DEN_EDGE_DIR !== undefined
+        ? expandHome(process.env.DEN_EDGE_DIR)
+        : configuredStateDir,
+    // Set only when DEN_EDGE_DIR overrides it: the dir the config names.
+    ...(process.env.DEN_EDGE_DIR !== undefined &&
+    expandHome(process.env.DEN_EDGE_DIR) !== configuredStateDir
+      ? { defaultStateDir: configuredStateDir }
+      : {}),
     tls: tls.tls,
     tlsFrom: tls.from,
     httpsRedirect: (user.https_redirect ?? team.https_redirect) !== false,

@@ -10,6 +10,7 @@ import { readCatalog } from "../environment-manager/catalog.js";
 import { readEdgeConfig } from "../edge/config.js";
 import { routeUrl } from "../edge/render.js";
 import {
+  getActiveWorkspaces,
   getFocusedWorkspaceName,
   getWorkspaceByName,
   listWorkspaceServices,
@@ -21,7 +22,11 @@ import {
   type StackNamespaceSource,
 } from "./namespace.js";
 import { projectName } from "./render.js";
-import { stackHealth, type StackContext } from "./runtime.js";
+import {
+  rejoinEdgeNetworks,
+  stackHealth,
+  type StackContext,
+} from "./runtime.js";
 
 export interface StackRoute {
   name: string;
@@ -99,6 +104,25 @@ export function loadStackContext(denWorkspace?: string | null): StackContext {
     denWorkspace: fkWs,
     namespaceSource: source,
   };
+}
+
+/**
+ * After edge up: the edge back on the routed networks of every running
+ * stack it routes (rejoinEdgeNetworks), across the focused and active
+ * workspaces' stack namespaces. A workspace whose stacks cannot be read is
+ * skipped.
+ */
+export function rejoinRunningStacks(
+  onLine: (line: string) => void = console.log,
+): string[] {
+  const contexts: StackContext[] = [];
+  for (const ws of new Set([null, ...getActiveWorkspaces()]))
+    try {
+      contexts.push(loadStackContext(ws));
+    } catch {
+      /* unreadable: nothing of it to rejoin */
+    }
+  return rejoinEdgeNetworks(contexts, onLine);
 }
 
 /** Each stack's name, project, routes and (optionally) container health. */

@@ -103,6 +103,27 @@ function printable(v: string): string {
   return v.replace(/[^\x20-\x7e]/g, "?").slice(0, 80);
 }
 
+/**
+ * A path echoed back in an error: one printable line, never cut mid-name
+ * (0.3.0-dev.40, a consumer's 0.2.8 nit: printable's 80-character cap cut
+ * the filename). Up to `max` characters it is whole; a longer one keeps its
+ * start and its last segment whole, eliding the middle with "…".
+ */
+export function printablePath(v: string, max = 160): string {
+  const s = v.replace(/[^\x20-\x7e]/g, "?");
+  if (s.length <= max) return s;
+  const cut = s.lastIndexOf("/");
+  const tail = cut >= 0 ? s.slice(cut) : s;
+  // The last segment is kept whole whatever its length; the room left is
+  // shared between the path's start and the directories just before it.
+  const room = max - tail.length - 1;
+  if (room <= 0) return `…${tail}`;
+  const head = s.slice(0, Math.ceil(room / 2));
+  const end = s.length - tail.length;
+  const more = s.slice(end - (room - head.length), end);
+  return `${head}…${more}${tail}`;
+}
+
 /** The refusal for a call that names `other`. */
 export function otherWorkspace(
   tool: string,
@@ -272,6 +293,6 @@ export async function assertPathInScope(
     .map((r) => path.resolve(r));
   if (!roots.some((r) => target === r || target.startsWith(r + path.sep)))
     throw new ScopeRefusal(
-      `${tool}: ${printable(p)} is not inside a repo of workspace "${scope.workspace}", the only one this MCP server serves; nothing was read.`,
+      `${tool}: ${printablePath(p)} is not inside a repo of workspace "${scope.workspace}", the only one this MCP server serves; nothing was read.`,
     );
 }

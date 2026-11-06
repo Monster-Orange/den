@@ -91,7 +91,15 @@ function run(workspace: string) {
   const downOut = den(["stack", "down", "cart", "shop", "-w", workspace]);
   const docker = norm(fs.readFileSync(log, "utf-8"))
     .split("\n")
-    .filter(Boolean);
+    .filter(Boolean)
+    // The edge owner guard's probe and the rejoin's read of the edge's
+    // networks (both 0.3.0-dev.40) came after the golden: read-only, they
+    // name nothing and start nothing. Every other call stays.
+    .filter(
+      (l) =>
+        !/\|inspect (--type container )?-f .* acme-edge$/.test(l) &&
+        !/\|ps -q --filter label=com\.docker\.compose\.project=/.test(l),
+    );
   return { upPlan, ls, upOut, downOut, docker, files };
 }
 

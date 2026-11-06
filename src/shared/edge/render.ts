@@ -179,7 +179,20 @@ export function dockerProxyName(org: string): string {
  * Compose file for the edge; publishes host ports only when configured.
  * With `tls: none` there is no https entrypoint, port or cert volume.
  */
-export function renderEdgeCompose(cfg: EdgeConfig): string {
+/** The labels that say which state dir and org own the edge container. */
+export const EDGE_ROOT_LABEL = "den.edge.root";
+export const EDGE_ORG_LABEL = "den.edge.org";
+
+/**
+ * The edge's compose.yml. Its container carries `den.edge.root` (the state
+ * dir that owns it, `ownerRoot`: edgeUp passes its realpath) and
+ * `den.edge.org` (0.3.0-dev.40): edgeUp and `edge down` touch an existing
+ * edge only when its root is theirs.
+ */
+export function renderEdgeCompose(
+  cfg: EdgeConfig,
+  ownerRoot: string = cfg.stateDir,
+): string {
   const https = edgeHttps(cfg);
   const n = edgeNames(cfg.org);
   const proxy = dockerProxyName(cfg.org);
@@ -193,6 +206,7 @@ export function renderEdgeCompose(cfg: EdgeConfig): string {
       image: cfg.image,
       container_name: n.container,
       restart: "unless-stopped",
+      labels: { [EDGE_ROOT_LABEL]: ownerRoot, [EDGE_ORG_LABEL]: cfg.org },
       ...(labels ? { depends_on: ["docker-proxy"] } : {}),
       command: [
         "--entrypoints.web.address=:80",

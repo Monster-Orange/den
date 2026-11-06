@@ -268,6 +268,10 @@ export interface ErrorPageData {
   path?: string;
   /** 422: the ConfigError's message (it names config keys, never values). */
   message?: string;
+  /** 422: each problem: its file, key path and message (0.3.0-dev.40). */
+  issues?: Array<{ file: string; key: string; message: string }>;
+  /** 422: the distribution's CLI, for "`<cli> validate`". */
+  cli?: string;
   /** 500: what failed. */
   method?: string;
   route?: string;

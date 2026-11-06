@@ -199,7 +199,7 @@ beforeAll(async () => {
     path.join(tmp, "shim", "docker"),
     [
       `#!${process.execPath}`,
-      `require("fs").appendFileSync(${JSON.stringify(dockerLog())}, process.argv.slice(2).join(" ") + "\\n");`,
+      `require("fs").appendFileSync(${JSON.stringify(dockerLog())}, (process.env.DEN_SHIM_TAG ? "[" + process.env.DEN_SHIM_TAG + "] " : "") + process.argv.slice(2).join(" ") + "\\n");`,
       `const rows = ${JSON.stringify(rows)};`,
       "const args = process.argv.slice(2);",
       "const want = (k) => args.map((a) => a.match(new RegExp('^label=com\\\\.docker\\\\.compose\\\\.' + k + '=(.*)$'))).find(Boolean)?.[1];",
@@ -264,7 +264,6 @@ describe("compose health under load", () => {
   }, 180_000);
 
   it("<cli> status answers container checks the same way, from one docker call", () => {
-    const dockerBefore = lines(dockerLog());
     const r = spawnSync(
       path.join(ENGINE, "bin", "den"),
       ["status", "--verbose"],
@@ -280,10 +279,16 @@ describe("compose health under load", () => {
           DEN_DAEMONS_FILE: path.join(tmp, "daemons.json"),
           NO_COLOR: "1",
           FORCE_COLOR: "0",
+          // Its own calls only: the server started above keeps polling
+          // health through the same shim.
+          DEN_SHIM_TAG: "status",
         },
       },
     );
-    const dockerCalls = lines(dockerLog()) - dockerBefore;
+    const dockerCalls = fs
+      .readFileSync(dockerLog(), "utf-8")
+      .split("\n")
+      .filter((l) => l.startsWith("[status] ")).length;
     console.log(`status: ${dockerCalls} docker call(s)`);
     expect(r.status).toBe(0);
     const out = r.stdout;

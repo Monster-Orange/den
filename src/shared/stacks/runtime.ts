@@ -199,6 +199,94 @@ function connect(network: string, container: string): void {
     throw new Error(`docker network connect ${network} ${container}: ${r.err}`);
 }
 
+/**
+ * Connect the edge to each of `nets` it is not on (`on`: the networks it
+ * is on already; unknown, every one is connected, "already connected"
+ * being fine). Returns the networks it joined. stack up and the rejoin
+ * after edge up share it.
+ */
+function joinEdge(
+  edge: EdgeConfig,
+  nets: string[],
+  on: ReadonlySet<string> = new Set(),
+): string[] {
+  const container = edgeNames(edge.org).container;
+  const joined: string[] = [];
+  for (const n of nets) {
+    if (on.has(n)) continue;
+    connect(n, container);
+    joined.push(n);
+  }
+  return joined;
+}
+
+/** The dynamic file a running stack's routes live in, under this edge's state dir. */
+function stackRoutesFile(edge: EdgeConfig, project: string): string {
+  return path.join(edge.stateDir, "dynamic", `stack-${project}.yml`);
+}
+
+/**
+ * After edge up (re)creates or starts the edge, put it back on every
+ * running stack's routed networks (0.3.0-dev.40): a recreated container
+ * starts on its own network only, and each stack's routes 502 until that
+ * stack's next `stack up`. A stack counts when it has its routes file in
+ * this edge's dynamic dir and its compose project has a container up;
+ * stacks that are down, and projects with no routes file here (another
+ * state dir's, or none of Den's), are not touched. Idempotent: a network
+ * the edge is on already is left alone. One line per network joined;
+ * a stack that cannot be resolved gets a line and is skipped.
+ */
+export function rejoinEdgeNetworks(
+  contexts: StackContext[],
+  onLine: (line: string) => void = console.log,
+): string[] {
+  if (!contexts.length) return [];
+  const edge = contexts[0].edge;
+  const on = new Set(
+    run("docker", [
+      "inspect",
+      "-f",
+      "{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}",
+      edgeNames(edge.org).container,
+    ]).out.split(/\s+/),
+  );
+  const joined: string[] = [];
+  const seen = new Set<string>();
+  for (const ctx of contexts) {
+    // Only this edge's state dir.
+    if (ctx.edge.stateDir !== edge.stateDir) continue;
+    for (const s of Object.values(ctx.stacks)) {
+      const project = projectName(s.name, ctx.workspace);
+      if (seen.has(project)) continue;
+      seen.add(project);
+      if (!fs.existsSync(stackRoutesFile(edge, project))) continue;
+      const up = run("docker", [
+        "ps",
+        "-q",
+        "--filter",
+        `label=com.docker.compose.project=${project}`,
+      ]);
+      if (up.code !== 0 || !up.out) continue;
+      try {
+        for (const n of joinEdge(
+          edge,
+          routedNetworks(s, resolve(ctx, s)),
+          on,
+        )) {
+          on.add(n);
+          joined.push(n);
+          onLine(`  rejoined ${n} (${project})`);
+        }
+      } catch (err) {
+        onLine(
+          `  ${project}: not rejoined (${(err as Error).message.split("\n")[0]})`,
+        );
+      }
+    }
+  }
+  return joined;
+}
+
 function running(container: string): boolean {
   return (
     run("docker", ["inspect", "-f", "{{.State.Running}}", container]).out ===
@@ -263,29 +351,19 @@ export function stackUp(
     for (const svc of providerServices(c)[s.name] ?? [])
       connect(net, containerName(projectName(s.name, ctx.workspace), svc));
   }
-  const edge = edgeNames(ctx.edge.org).container;
   const nets = routedNetworks(s, resolved);
-  for (const n of nets) connect(n, edge);
+  joinEdge(ctx.edge, nets);
   fs.writeFileSync(
-    path.join(
-      ctx.edge.stateDir,
-      "dynamic",
-      `stack-${projectName(s.name, ctx.workspace)}.yml`,
-    ),
+    stackRoutesFile(ctx.edge, projectName(s.name, ctx.workspace)),
     renderStackRoutes(ctx.edge, s, resolved),
   );
   return { project: resolved.name, networks: nets };
 }
 
 export function stackDown(ctx: StackContext, s: StackConfig): void {
-  fs.rmSync(
-    path.join(
-      ctx.edge.stateDir,
-      "dynamic",
-      `stack-${projectName(s.name, ctx.workspace)}.yml`,
-    ),
-    { force: true },
-  );
+  fs.rmSync(stackRoutesFile(ctx.edge, projectName(s.name, ctx.workspace)), {
+    force: true,
+  });
   const edge = edgeNames(ctx.edge.org).container;
   const dir = repoDir(s);
   const override = path.join(stackDir(ctx, s), "override.yml");

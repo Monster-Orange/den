@@ -378,3 +378,36 @@ describe("a validation failure is a ConfigError (0.2.8-dev.2)", () => {
     expect(bad({ acme: { sources: "x" } })).toThrow(ConfigError);
   });
 });
+
+describe("every problem is listed, each with its file and key (0.3.0-dev.40)", () => {
+  it("collects one issue per bad key instead of stopping at the first", () => {
+    let err: ConfigError | null = null;
+    try {
+      validateOrgSources(
+        {
+          acme: { sources: "x" },
+          globex: { sources: [{ host: "github" }], repos: "nope" },
+          initech: { sources: [{ host: "github", owner: "ok-owner" }] },
+        },
+        FILE,
+      );
+    } catch (e) {
+      err = e as ConfigError;
+    }
+    expect(err).toBeInstanceOf(ConfigError);
+    expect(err!.issues.map((i) => [i.file, i.key])).toEqual([
+      [FILE, "orgs.acme.sources"],
+      [FILE, "orgs.globex.sources[0]"],
+      [FILE, "orgs.globex.repos"],
+    ]);
+    expect(err!.issues[0].message).toBe(
+      "must be a list of { host, owner } or { host, group }",
+    );
+    // The message is one line per issue, each as it always read.
+    expect(err!.message.split("\n")).toEqual([
+      `${FILE}: orgs.acme.sources must be a list of { host, owner } or { host, group }`,
+      `${FILE}: orgs.globex.sources[0] needs exactly one of owner or group`,
+      `${FILE}: orgs.globex.repos must be a list of repo names`,
+    ]);
+  });
+});

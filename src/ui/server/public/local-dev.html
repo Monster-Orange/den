@@ -4255,7 +4255,9 @@
           _graphDepsMap = null,
           _graphDerived = null,
           _graphApps = []; // /api/applications for the viewed workspace
-        let _lastHealthResults = []; // cache of most recent __DEN_CLI__:health-update payload
+        // The most recent __DEN_CLI__:health-update payload; null until the
+        // first round, so the graph's cards say "checking…" (0.3.0-dev.40).
+        let _lastHealthResults = null;
         let _lastHealthAt = null; // when it landed (the table's "failed at")
 
         // Orgs (GitHub owners) for the graph's org frames: id → {label, color},

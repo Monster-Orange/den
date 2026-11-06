@@ -10,7 +10,11 @@ import {
   callTool,
   type ToolContext,
 } from "../../../src/ui/mcp/tools.js";
-import { parseScopeFlags, type McpScope } from "../../../src/ui/mcp/scope.js";
+import {
+  parseScopeFlags,
+  printablePath,
+  type McpScope,
+} from "../../../src/ui/mcp/scope.js";
 import type { DenApi, Query } from "../../../src/ui/mcp/api.js";
 import type { ResolvedMcpConfig } from "../../../src/shared/den-config.js";
 import {
@@ -239,6 +243,29 @@ describe("a scoped server refuses another workspace", () => {
       path: "/repos/billing/.den.yml",
       reason: expect.stringMatching(/is not inside a repo of workspace "smb"/),
     });
+  });
+
+  it("a refused manifest_validate names a long path whole, never cut mid-filename (0.3.0-dev.40)", async () => {
+    const long = `/Users/someone/Projects/${"deeply-nested-folder/".repeat(4)}billing/.den.yml`;
+    const { api } = fakeApi();
+    const r = await callTool(
+      "manifest_validate",
+      { path: long },
+      ctx(api, SCOPE),
+    );
+    expect(long.length).toBeGreaterThan(80);
+    expect(r.text).toContain(`manifest_validate: ${long} is not inside`);
+  });
+
+  it("printablePath elides the middle of a very long path and keeps its filename", () => {
+    const name = "a-rather-long-manifest-name.den.yml";
+    const p = `/start/${"x/".repeat(200)}${name}`;
+    const out = printablePath(p);
+    expect(out.length).toBeLessThanOrEqual(160);
+    expect(out.startsWith("/start/")).toBe(true);
+    expect(out.endsWith(`/${name}`)).toBe(true);
+    expect(out).toContain("…");
+    expect(printablePath("/short/.den.yml")).toBe("/short/.den.yml");
   });
 
   it("a repo of another workspace is not served: logs, lifecycle, manifests", async () => {

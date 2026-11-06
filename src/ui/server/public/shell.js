@@ -148,12 +148,15 @@
       "Make it the default target for commands (writes workspaces.yml)",
     "ws.viewFailed": "Could not change the view: {msg}",
     "ws.focusFailed": "Could not set the focus: {msg}",
-    // No .one in en yet: English shows what it showed before R19 (a
-    // catalog may have its own .one).
+    // A count's singular is its .one (0.3.0-dev.40: en had none, so the org
+    // menu said "1 workspaces").
     "org.n": "{n} workspaces",
+    "org.n.one": "{n} workspace",
     from: "from {d}",
     "b.logs": "{n} open",
+    "b.logs.one": "{n} open",
     "b.down": "{n} down",
+    "b.down.one": "{n} down",
     "act.pin": "Pin",
     "act.unpin": "Unpin",
     "act.pinX": "Pin {s}",
@@ -171,10 +174,14 @@
     "status.none": "No services",
     "status.unchecked": "{n} not checked",
     "status.all": "All {n} healthy",
+    "status.all.one": "{n} healthy",
     "status.some": "{ok}/{n} healthy",
     "status.down": "{n} down",
+    "status.down.one": "{n} down",
     "status.title": "{n} checked",
+    "status.title.one": "{n} checked",
     "status.pending": "{n} pending",
+    "status.pending.one": "{n} pending",
     "status.awaiting": "{n} still checking",
     "status.unknown": "Status unknown",
     "status.unknownTip":
@@ -204,6 +211,7 @@
     "drawer.nothing": "Nothing needs attention.",
     "drawer.everything": "Everything",
     "drawer.okTip": "{ok} of {n} checked services healthy",
+    "drawer.okTip.one": "{ok} of {n} checked service healthy",
     "toast.openWs": "Open Workspaces to run this",
     // The command palette (R17).
     "kind.page": "Page",
@@ -276,6 +284,7 @@
     "cl.copyFailed": "Copy failed — try again",
     "cl.latest": "Show latest only",
     "cl.all": "Show all versions ({n} earlier)",
+    "cl.all.one": "Show all versions ({n} earlier)",
     "stale.title":
       "This {cli} web server is running code older than your working tree — click to restart and pick up your changes. Running deploys continue on GitHub; an open deploy log reattaches after the reload.",
     "stale.aria": "Stale server: restart",
@@ -347,7 +356,14 @@
     "err.422.title": "Config is invalid",
     "err.422.sub": "The distribution config fails validation",
     "err.422.lead":
-      "Fix the key named above in the distribution config, then retry.",
+      "Pages that read the config wait until it validates. Fix each key below; Settings and Logs still work meanwhile.",
+    "err.422.file": "File",
+    "err.422.key": "Key",
+    "err.422.problem": "Problem",
+    "err.422.cmd": "To see the same in a terminal, run:",
+    "err.422.reload": "Reload once fixed",
+    "err.422.logs": "Open Logs",
+    "err.422.settings": "Open Settings",
     // The Settings registry's built-in rows, as the palette shows them
     // (set.<row id>; settings-registry.js keeps the English label).
     "set.appearance.mode": "Mode",

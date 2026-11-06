@@ -192,9 +192,37 @@ export type LegacyVerdict =
     }
   | {
       kind: "stale";
-      /** A listener on the port from outside repoPath: left alone. */
-      busy?: { port: number; pid: number; cwd: string | null };
+      /** A listener on the port Den won't adopt: left alone. */
+      busy?: LegacyBusy;
     };
+
+/**
+ * A listener on the service's port that is not adopted: its cwd is outside
+ * repoPath ("outside"), or it is in the repo but in Den's own process group
+ * ("own-group": stopping that group would stop Den) or in init's ("init").
+ */
+export interface LegacyBusy {
+  port: number;
+  pid: number;
+  cwd: string | null;
+  reason: "outside" | "own-group" | "init";
+}
+
+/** Why a busy port's listener is not `address`, for a warning line. */
+export function busyListenerText(
+  busy: LegacyBusy,
+  repoPath: string,
+  address: string,
+): string {
+  const head =
+    `port ${busy.port} is in use by pid ${busy.pid}` +
+    (busy.cwd ? ` (cwd ${busy.cwd})` : "");
+  if (busy.reason === "own-group")
+    return `${head}, in Den's own process group; not adopted`;
+  if (busy.reason === "init")
+    return `${head}, in process group 1 (init); not adopted`;
+  return `${head}, outside ${repoPath}: not ${address}, left alone`;
+}
 
 /** The group of `member`, as `down` records one: leader's start, else its own. */
 function groupOf(
@@ -225,17 +253,19 @@ export function adoptLegacyProcess(
 ): LegacyVerdict {
   let rows: ProcRow[] | null = null;
   const procs = (): ProcRow[] => (rows ??= probe.processes());
-  let busy: { port: number; pid: number; cwd: string | null } | undefined;
+  let busy: LegacyBusy | undefined;
 
   if (rec.port) {
     for (const pid of probe.listeners(rec.port)) {
       const cwd = probe.cwd(pid);
       const row = procs().find((r) => r.pid === pid);
+      let reason: LegacyBusy["reason"] = "outside";
       if (cwd && row && inside(cwd, rec.repoPath)) {
         const group = groupOf(row, procs());
         if (group) return { kind: "adopted", group, pid, port: rec.port };
+        reason = row.pgid <= 1 ? "init" : "own-group";
       }
-      busy ??= { port: rec.port, pid, cwd };
+      busy ??= { port: rec.port, pid, cwd, reason };
     }
   }
 

@@ -140,3 +140,30 @@ describe("bare validate in the distribution root", () => {
     expect(r.out).not.toMatch(/extra/);
   });
 });
+
+describe("an org config that fails validation (0.3.0-dev.40)", () => {
+  it("validate lists each problem with its key path and exits non-zero", () => {
+    const file = path.join(root, "config", "den.yml");
+    const before = fs.readFileSync(file, "utf-8");
+    write(
+      file,
+      before +
+        "orgs:\n  acme:\n    sources: not-a-list\n  globex:\n    repos: nope\n",
+    );
+    try {
+      const r = den(["validate"]);
+      expect(r.code).toBe(1);
+      expect(r.out).toMatch(
+        /✗\s+config\/den\.yml\s+orgs\.acme\.sources\s+must be a list/,
+      );
+      expect(r.out).toMatch(
+        /✗\s+config\/den\.yml\s+orgs\.globex\.repos\s+must be a list of repo names/,
+      );
+      // The manifests are still checked.
+      expect(r.out).toMatch(/✓\s+shop\s/);
+      expect(r.out).not.toContain("❌");
+    } finally {
+      write(file, before);
+    }
+  });
+});

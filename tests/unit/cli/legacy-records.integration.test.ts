@@ -156,8 +156,16 @@ function legacy(d: Dist, address: string, extra: object = {}): void {
   );
 }
 
-/** A listener on `port` with its cwd in `cwd`, leading its own group. */
-async function listener(cwd: string, port: number): Promise<number> {
+/**
+ * A listener on `port` with its cwd in `cwd`, leading its own group; with
+ * `ownGroup`, in this test's process group instead (the group bin/den runs
+ * in, so Den's own).
+ */
+async function listener(
+  cwd: string,
+  port: number,
+  ownGroup = false,
+): Promise<number> {
   fs.mkdirSync(cwd, { recursive: true });
   const p = spawn(
     process.execPath,
@@ -166,7 +174,7 @@ async function listener(cwd: string, port: number): Promise<number> {
       `require("http").createServer((q,s)=>s.end("ok")).listen(${port},"127.0.0.1")`,
       MARK,
     ],
-    { cwd, detached: true, stdio: "ignore" },
+    { cwd, detached: !ownGroup, stdio: "ignore" },
   );
   p.unref();
   await until(() => listening(port));
@@ -208,8 +216,23 @@ function marked(): { pid: number; pgid: number }[] {
     .map((m) => ({ pid: Number(m[1]), pgid: Number(m[2]) }));
 }
 
+/** This test process's own group: never signalled as a group. */
+const OWN_PGID = Number(
+  execFileSync("ps", ["-o", "pgid=", "-p", String(process.pid)], {
+    encoding: "utf-8",
+  }).trim(),
+);
+
 afterEach(async () => {
   for (const { pgid, pid } of marked()) {
+    if (pgid === OWN_PGID) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        /* gone */
+      }
+      continue;
+    }
     try {
       process.kill(-pgid, "SIGKILL");
     } catch {
@@ -294,6 +317,7 @@ describe("a pre-dev.37 record from the CLI", () => {
     legacy(d, "repox");
     legacy(d, "ghost", { repoName: "ghost", repoPath: "/nonexistent/ghost" });
     const down = den(d, "down", "-a");
+    expect(down.out).not.toContain("❌");
     expect(down.code).toBe(0);
     expect(down.out).toContain(`adopted pre-dev.37 process (pid ${pid}`);
     expect(await until(async () => !(await listening(d.api)))).toBe(true);
@@ -328,5 +352,133 @@ describe("an up that exits during startup", () => {
     expect(r.code).toBe(1);
     expect(r.out).toContain("service exited 3 during startup");
     expect(record(d, "repox/bad")).toBeUndefined();
+  }, 120_000);
+});
+
+describe("a named up whose port is held (0.3.0-dev.40)", () => {
+  it("refuses before spawning when the port is held outside the repo (legacy record)", async () => {
+    const d = await dist();
+    const pid = await listener(path.join(d.dir, "elsewhere"), d.web);
+    legacy(d, "repox/web");
+    const up = den(d, "up", "repox/web");
+    expect(up.code).toBe(1);
+    expect(up.out).toMatch(
+      new RegExp(`port ${d.web} is in use by pid ${pid} .*outside`),
+    );
+    expect(up.out).toContain("repox/web not started");
+    expect(up.out).not.toContain("EADDRINUSE");
+    // Nothing was spawned: the one marked process is the listener.
+    expect(marked().map((m) => m.pid)).toEqual([pid]);
+    expect(record(d, "repox/web")).toBeUndefined();
+  }, 120_000);
+
+  it("refuses before spawning when the port is held outside the repo (no record)", async () => {
+    const d = await dist();
+    const pid = await listener(path.join(d.dir, "elsewhere"), d.web);
+    const up = den(d, "up", "repox/web");
+    expect(up.code).toBe(1);
+    expect(up.out).toContain("repox/web not started");
+    expect(up.out).not.toContain("EADDRINUSE");
+    expect(marked().map((m) => m.pid)).toEqual([pid]);
+    expect(record(d, "repox/web")).toBeUndefined();
+  }, 120_000);
+
+  it("says a listener in Den's own process group is not adopted, not that it is outside the repo", async () => {
+    const d = await dist();
+    const pid = await listener(d.repo, d.web, true);
+    legacy(d, "repox/web");
+    const up = den(d, "up", "repox/web");
+    expect(up.code).toBe(1);
+    expect(up.out).toContain(
+      `port ${d.web} is in use by pid ${pid} (cwd ${fs.realpathSync(d.repo)}), in Den's own process group; not adopted`,
+    );
+    expect(up.out).not.toContain("outside");
+    expect(marked().map((m) => m.pid)).toEqual([pid]);
+  }, 120_000);
+});
+
+describe("up --dry-run on a pre-dev.37 record (0.3.0-dev.40)", () => {
+  const unchanged = (d: Dist, run: () => void): void => {
+    const before = fs.readFileSync(d.daemons, "utf-8");
+    run();
+    expect(fs.readFileSync(d.daemons, "utf-8")).toBe(before);
+  };
+
+  it("says it would adopt the in-repo listener, and signals and writes nothing", async () => {
+    const d = await dist();
+    const pid = await listener(d.repo, d.web);
+    legacy(d, "repox/web");
+    unchanged(d, () => {
+      const r = den(d, "up", "repox/web", "--dry-run");
+      expect(r.code).toBe(0);
+      expect(r.out).toContain(`would adopt pid ${pid} (port ${d.web})`);
+    });
+    expect(await listening(d.web)).toBe(true);
+    expect(record(d, "repox/web")?.pgid).toBeUndefined();
+  }, 120_000);
+
+  it("says it would drop the record when nothing runs", async () => {
+    const d = await dist();
+    legacy(d, "repox/web");
+    unchanged(d, () => {
+      const r = den(d, "up", "repox/web", "--dry-run");
+      expect(r.code).toBe(0);
+      expect(r.out).toContain("would drop the record (nothing running)");
+    });
+    expect(marked()).toEqual([]);
+  }, 120_000);
+
+  it("says a port held outside the repo would not start", async () => {
+    const d = await dist();
+    const pid = await listener(path.join(d.dir, "elsewhere"), d.web);
+    legacy(d, "repox/web");
+    unchanged(d, () => {
+      const r = den(d, "up", "repox/web", "--dry-run");
+      expect(r.code).toBe(1);
+      expect(r.out).toContain(
+        `port ${d.web} held outside the repo: would not start`,
+      );
+    });
+    expect(marked().map((m) => m.pid)).toEqual([pid]);
+  }, 120_000);
+});
+
+describe("down under a config that fails validation (0.3.0-dev.40)", () => {
+  const invalid = (d: Dist): void =>
+    write(
+      path.join(d.root, "config", "den.yml"),
+      "repos_root: ../repos\norgs:\n  acme:\n    sources: not-a-list\n",
+    );
+
+  it("down <repo>/<svc> still stops a running service", async () => {
+    const d = await dist();
+    expect(den(d, "up", "repox/web").code).toBe(0);
+    expect(await until(() => listening(d.web))).toBe(true);
+    invalid(d);
+    // The config does fail: an up is refused.
+    const up = den(d, "up", "repox/api");
+    expect(up.code).not.toBe(0);
+    expect(up.out).toContain("orgs.acme.sources");
+    const down = den(d, "down", "repox/web");
+    // Said, not fatal.
+    expect(down.out).toContain(
+      "Stopping anyway, without the config's org data",
+    );
+    expect(down.out).not.toContain("❌");
+    expect(down.code).toBe(0);
+    expect(await until(async () => !(await listening(d.web)))).toBe(true);
+    expect(record(d, "repox/web")).toBeUndefined();
+  }, 120_000);
+
+  it("down -a still stops a running service", async () => {
+    const d = await dist();
+    expect(den(d, "up", "repox/web").code).toBe(0);
+    expect(await until(() => listening(d.web))).toBe(true);
+    invalid(d);
+    const down = den(d, "down", "-a");
+    expect(down.out).not.toContain("❌");
+    expect(down.code).toBe(0);
+    expect(await until(async () => !(await listening(d.web)))).toBe(true);
+    expect(record(d, "repox/web")).toBeUndefined();
   }, 120_000);
 });

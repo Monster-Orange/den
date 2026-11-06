@@ -1,5 +1,5 @@
 /**
- * `edge up | down | status | trust | untrust | routes`
+ * `edge up [--take-over] | down | status | trust | untrust | routes`
  *
  * This org's edge: routes at `<name>.<edge.domain>`, TLS as `edge.tls` says
  * (none, mkcert or files). `trust` / `untrust` exist only under mkcert.
@@ -27,6 +27,7 @@ import {
 } from "../../shared/edge/included.js";
 import { edgeRoutes, edgeStatus } from "../../shared/edge/status.js";
 import { tlsYaml } from "../../shared/edge/tls.js";
+import { rejoinRunningStacks } from "../../shared/stacks/status.js";
 
 /** An included router's URLs (the hosts its rule names), else its name. */
 function includedUrl(r: IncludedRouter): string {
@@ -44,7 +45,11 @@ export async function cmdEdge(args: string[]): Promise<void> {
     : `not published (reach it on Docker network ${n.network})`;
   switch (sub) {
     case "up": {
-      const { certs } = await edgeUp(cfg);
+      // --take-over: the only way to replace an edge another state dir
+      // owns (0.3.0-dev.40); never implied.
+      const { certs } = await edgeUp(cfg, {
+        takeOver: args.includes("--take-over"),
+      });
       console.log(
         chalk.green(
           `✓ ${n.container} up — ${edgeDomains(cfg)
@@ -63,6 +68,8 @@ export async function cmdEdge(args: string[]): Promise<void> {
         );
       for (const name of ["edge", ...Object.keys(cfg.routes)])
         console.log(`  ${routeUrl(name, cfg)}`);
+      // Running stacks' routes stay up: the edge rejoins their networks.
+      rejoinRunningStacks();
       return;
     }
     case "down":
@@ -114,7 +121,7 @@ export async function cmdEdge(args: string[]): Promise<void> {
     }
     default:
       throw new Error(
-        `Unknown edge command "${sub}". Use: up | down | status | trust | untrust | routes`,
+        `Unknown edge command "${sub}". Use: up [--take-over] | down | status | trust | untrust | routes`,
       );
   }
 }

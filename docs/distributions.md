@@ -505,6 +505,23 @@ later plugins.
   mkcert with a local CA. Set edge.tls explicitly.") by `validate`,
   `doctor`, `edge up` and `stack up`. `edge.tls` beside a legacy key is an
   error. See the 0.3.0 Migrations in the changelog.
+- **One edge per `edge.org` per machine.** The edge's container and Compose
+  project are named after `edge.org` (`<org>-edge`), whatever its state dir
+  (`DEN_EDGE_DIR`). Give a scratch or test root that points `DEN_EDGE_DIR`
+  (and `DEN_HOME`) elsewhere an `edge.org` of its own: the name comes from
+  the org, so nothing else keeps it apart. The edge container is labelled
+  with the state dir that owns it (`den.edge.root`). Edge up, edge down and
+  stack up (which brings the edge up first) refuse to touch an `<org>-edge`
+  another state dir owns. They start nothing and exit non-zero: "edge
+  acme-edge belongs to <its dir>; not replacing it". An unlabelled edge
+  (from before 0.3.0-dev.40) is adopted only from the default state dir,
+  never under an overriding `DEN_EDGE_DIR`. The only override is
+  `edge up --take-over`. (0.3.0-dev.40.)
+- **A recreated edge keeps its routes.** After edge up creates, recreates
+  or starts the edge, it rejoins the routed networks of every running stack
+  whose routes file (`dynamic/stack-<project>.yml`) is in its state dir,
+  one line per network. Stacks that are down, and projects with no routes
+  file there, are left alone. (0.3.0-dev.40.)
 
 ## doctor
 
