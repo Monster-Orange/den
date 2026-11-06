@@ -1,102 +1,13 @@
 /**
- * The Workspace ▾ menu's model.
+ * The owners label a shared service carries in a list.
  *
- * Pure and DOM-free (like perf-report.js) so the shape of the header's
- * Workspace menu is unit-testable under Jest's node environment; header.js
- * owns everything that touches the DOM.
- *
- * Input is always the `/api/workspaces` payload:
- *   { workspaces: { [name]: config }, active: string[] | string, focus?: string }
- * `active` is an array since multi-active workspaces; older payloads sent a
- * single string, which both helpers still accept.
+ * 0.4.3 (WS-6): the top bar's Workspace menu moved to workspace-switch.js
+ * (its pure parts: workspace-status.js). What stays here is the one helper
+ * the Services list, the Graph and the Tests page import.
  */
 
-/**
- * The menu's en strings, for where there is no shell (a unit test). In a
- * page, header.js passes the shell's t (R19), which has the same en text
- * (i18n.test.ts holds them equal).
- */
-export const EN_FALLBACK = {
-  "ws.all": "All active",
-  "ws.allN": "All active ({n})",
-  "ws.allTip":
-    "Every active workspace; a service several define is listed once",
-  "ws.noneLabel": "none",
-  "ws.viewTitle":
-    "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing.",
-  "ws.viewTitleFocus":
-    "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing, and focus ({focus}) stays the target for commands.",
-};
-function enT(key, vars) {
-  return String(EN_FALLBACK[key] ?? key).replace(/\{(\w+)\}/g, (m, k) =>
-    vars && vars[k] != null ? String(vars[k]) : m,
-  );
-}
-
-/** Active workspace names, normalised to an array. */
-function activeNames(data) {
-  const active = data?.active;
-  if (Array.isArray(active)) return active.filter(Boolean);
-  return active ? [active] : [];
-}
-
-/** Focused workspace name: explicit focus → first active → null. */
-function focusName(data) {
-  const active = activeNames(data);
-  if (data?.focus) return data.focus;
-  return active[0] ?? null;
-}
-
-/**
- * The top bar's Workspace ▾ menu (R4, 0.3.0-dev.18), from the `/api/scope`
- * and `/api/workspaces` payloads. It is the view scope: what every page,
- * the health row and `status` show. Choosing an entry never moves the
- * focus (the default target for commands); the focused workspace is
- * marked, and `focusable` names the workspace in view when it is not the
- * focus, for the menu's separate "Set <ws> as focus" item.
- *
- * "All active" is offered with two or more active workspaces; with one,
- * it and that workspace are the same view.
- */
-export function buildScopeMenuModel(scope, data, t = enT) {
-  const active = activeNames(data);
-  const focus = scope?.focus ?? focusName(data);
-  const multi = active.length > 1;
-  const selected =
-    scope?.scope && scope.scope !== "all" && active.includes(scope.scope)
-      ? scope.scope
-      : "all";
-  const inView = Array.isArray(scope?.inView) ? scope.inView : active;
-  const one = multi ? (selected === "all" ? null : selected) : active[0];
-  const items = [
-    ...(multi
-      ? [
-          {
-            value: "all",
-            label: t("ws.allN", { n: active.length }),
-            checked: selected === "all",
-            focused: false,
-            title: t("ws.allTip"),
-          },
-        ]
-      : []),
-    ...active.map((n) => ({
-      value: n,
-      label: n,
-      checked: n === one,
-      focused: n === focus,
-    })),
-  ];
-  return {
-    label: active.length === 0 ? t("ws.noneLabel") : (one ?? t("ws.all")),
-    items,
-    focusable: one && one !== focus ? one : null,
-    title: t(focus ? "ws.viewTitleFocus" : "ws.viewTitle", {
-      ws: inView.join(", ") || t("ws.noneLabel"),
-      focus,
-    }),
-  };
-}
+/** No strings of its own any more (i18n.test.ts holds this to en). */
+export const EN_FALLBACK = {};
 
 /**
  * " · a, b" after a service that several workspaces in view define (it is

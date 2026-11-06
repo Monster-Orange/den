@@ -1,7 +1,7 @@
 /**
- * The view scope's pure parts (src/shared/environment-manager/scope.ts):
- * which workspaces are in view, what a client may store, the `--scope`
- * flag and the line `status` prints.
+ * The focus's pure parts (src/shared/environment-manager/scope.ts; the
+ * view scope until 0.4.3, WS-6.1): which workspaces are in view, what a
+ * client may store, the `--scope` flag and the line `status` prints.
  */
 import { describe, expect, it } from "@jest/globals";
 import {
@@ -10,7 +10,6 @@ import {
   scopeLine,
   scopeWorkspaceNames,
   storedScope,
-  storedView,
   takeScopeFlag,
 } from "../../../src/shared/environment-manager/scope.js";
 
@@ -43,18 +42,20 @@ describe("scopeWorkspaceNames", () => {
 });
 
 describe("what may be stored", () => {
-  it("parseScope: all, or an active workspace", () => {
+  it("parseScope: all, or a workspace on this machine", () => {
     expect(parseScope("all", ws.active)).toEqual({ ok: true, value: "all" });
     expect(parseScope("ws-c", ws.active)).toEqual({ ok: true, value: "ws-c" });
     for (const bad of ["ws-d", "", "../x", 3, null, undefined])
       expect([bad, parseScope(bad, ws.active).ok]).toEqual([bad, false]);
+    expect(parseScope("ws-d", ws.active)).toEqual({
+      ok: false,
+      error: 'workspace "ws-d" is not on this machine',
+    });
   });
-  it("storedScope reads all unless a plausible name; storedView keeps all out of the file", () => {
+  it("storedScope reads a 0.3.0 view scope: all unless a plausible name", () => {
     expect(storedScope({})).toBe("all");
     expect(storedScope({ view: { scope: "ws-b" } })).toBe("ws-b");
     expect(storedScope({ view: { scope: "../etc" } })).toBe("all");
-    expect(storedView("all")).toBeUndefined();
-    expect(storedView("ws-b")).toEqual({ scope: "ws-b" });
   });
 });
 
@@ -74,7 +75,7 @@ describe("status", () => {
       /--scope needs/,
     );
   });
-  it("prints what is in view and what commands target", () => {
+  it("prints the focus (WS-6.1): all workspaces, or one", () => {
     const w = (n: string) => ({ name: n, config: { services: {} } });
     expect(
       scopeLine({
@@ -83,7 +84,7 @@ describe("status", () => {
         workspaces: [w("ws-a"), w("ws-b")],
         focus: "ws-a",
       }),
-    ).toBe("Scope: all active (ws-a, ws-b) · focus: ws-a");
+    ).toBe("Focus: all workspaces (ws-a, ws-b)");
     expect(
       scopeLine({
         scope: "ws-b",
@@ -91,7 +92,7 @@ describe("status", () => {
         workspaces: [w("ws-b")],
         focus: "ws-a",
       }),
-    ).toBe("Scope: ws-b · focus: ws-a");
+    ).toBe("Focus: ws-b");
     expect(
       scopeLine({
         scope: "ws-d",
@@ -99,7 +100,7 @@ describe("status", () => {
         workspaces: [w("ws-a")],
         focus: "ws-a",
       }),
-    ).toBe("Scope: all active (ws-a) (ws-d is not active) · focus: ws-a");
+    ).toBe("Focus: all workspaces (ws-a) (ws-d is not on this machine)");
   });
   it("names the owners of a shared service only", () => {
     expect(ownersSuffix(["ws-a", "ws-b"])).toBe(" · ws-a, ws-b");

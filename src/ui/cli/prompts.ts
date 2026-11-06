@@ -696,7 +696,7 @@ export class CLIPrompts {
         name: "name",
         message: "Select workspace:",
         choices: workspaces.map((w) => ({
-          name: w === current ? `${w} (active)` : w,
+          name: w === current ? `${w} (in focus)` : w,
           value: w,
         })),
       },

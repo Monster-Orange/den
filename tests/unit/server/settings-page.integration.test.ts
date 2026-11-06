@@ -122,7 +122,9 @@ beforeAll(async () => {
     path.join(dist, "config", "local", "workspaces.yml"),
     yaml.stringify({
       active: ["ws-a", "ws-b"],
-      focus: "ws-a",
+      // All workspaces (WS-6.1): the Workspace rows ask which one (ws-a,
+      // the command target, first).
+      focus: "all",
       workspaces: {
         // One service, so the workspace view shows its tabs.
         "ws-a": {
@@ -251,6 +253,7 @@ describe("the Settings page writes only what you change (R21)", () => {
       "editor",
       "navigation",
       "graph",
+      "workspaces",
       "workspace",
       "cli",
       "distribution",
@@ -305,7 +308,7 @@ describe("the Settings page writes only what you change (R21)", () => {
     await p.waitForSelector("#set-body section");
     expect(await q.inputValue()).toBe("dark");
 
-    // The Workspace asker (View is All active) chooses, never writes.
+    // The Workspace asker (the focus is All workspaces) chooses, never writes.
     await q.fill("");
     await p.selectOption("#set-ws", "ws-b");
     await p.waitForTimeout(200);
@@ -495,7 +498,8 @@ describe("the Settings page's rows (R21)", () => {
       });
       const p = await ctx.newPage();
       await p.route("**/api/changelog", (r) => r.fulfill({ json: [] }));
-      await p.goto(BASE + "/local-dev");
+      // One workspace's view (the focus is All workspaces: ?ws= shows one).
+      await p.goto(BASE + "/local-dev?ws=ws-a");
       await p.waitForSelector(".den-rail .den-ni");
       await p.waitForSelector("#ws-open-graph");
       await act(p);

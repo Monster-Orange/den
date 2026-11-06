@@ -28,6 +28,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { denAuth } from "./helpers/den-auth.js";
 import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
@@ -91,12 +92,19 @@ function get(p: string): Promise<{ status: number; body: string }> {
   });
 }
 const api = (p: string) => `http://localhost:${port}${p}`;
-const setScope = (scope: string) =>
-  fetch(api("/api/scope"), {
+/** Set the focus (WS-6.1), as the CLI would: with its credential. */
+const setScope = async (scope: string) => {
+  const r = await fetch(api("/api/scope"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scope }),
+    headers: {
+      "Content-Type": "application/json",
+      Connection: "close",
+      ...denAuth(path.join(tmp, "home", ".den")),
+    },
+    body: JSON.stringify({ focus: scope }),
   });
+  expect(r.status).toBe(200);
+};
 
 beforeAll(async () => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-many-")));
@@ -118,7 +126,8 @@ beforeAll(async () => {
     path.join(root, "config", "local", "workspaces.yml"),
     [
       "active: [w1, w2]",
-      "focus: w1",
+      // All workspaces (WS-6.1, 0.4.3): 0.4.2's default view.
+      "focus: all",
       "workspaces:",
       "  w1:",
       "    services:",
@@ -510,13 +519,13 @@ describe("the Workspace picker on /graph replaces ?ws= (0.3.0-dev.34)", () => {
       await p.click("#ws-pill");
       await Promise.all([
         p.waitForNavigation(),
-        p.click('.den-pop .den-mi:has-text("All active")'),
+        p.click('#den-pop-ws [data-focus="all"]'),
       ]);
       const check = async () => {
         await settled(p);
         expect(new URL(p.url()).searchParams.has("ws")).toBe(false);
-        expect(await sub(p)).toMatch(/(^|\/ )All active \/ /);
-        expect(await pill(p)).toBe("All active");
+        expect(await sub(p)).toMatch(/(^|\/ )All workspaces \/ /);
+        expect(await pill(p)).toBe("All workspaces");
         expect(await repos(p)).toEqual([...W1, ...W2].sort());
       };
       await check();
@@ -529,7 +538,7 @@ describe("the Workspace picker on /graph replaces ?ws= (0.3.0-dev.34)", () => {
       await p.click("#ws-pill");
       await Promise.all([
         p.waitForNavigation(),
-        p.click('.den-pop .den-mi:has-text("w1")'),
+        p.click('#den-pop-ws [data-focus="w1"]'),
       ]);
       await settled(p, ...shape(W1));
       expect(new URL(p.url()).searchParams.get("ws")).toBe("w1");

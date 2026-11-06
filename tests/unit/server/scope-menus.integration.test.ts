@@ -236,55 +236,65 @@ describe("the org label", () => {
 });
 
 describe("Workspace ▾ (R4)", () => {
-  it("sets the view, a preference only; the focus moves only by its own item", async () => {
+  it("sets the focus (WS-6.1, 0.4.3): one value, the view and the command target; it starts nothing", async () => {
     if (!browser) return;
-    const before = wsFile();
     const { p, writes } = await open("/services");
     await p.waitForSelector("#ws-pill:not([hidden])");
-    expect(await p.textContent("#ws-pill")).toBe("Workspace All active ▾");
+    expect(await p.textContent("#ws-pill")).toBe("Workspace ws-a ▾");
     await p.click("#ws-pill");
+    await p.waitForSelector("#den-pop-ws");
+    // WS-6.6: the focus first (✓), then All workspaces, then the rest.
     expect(
-      await p.$$eval(".den-pop .den-mi", (r) =>
-        r.map((x) => [x.textContent, x.getAttribute("aria-checked")]),
+      await p.$$eval("#den-pop-ws [data-focus]", (r) =>
+        r.map((x) => [
+          x.getAttribute("data-focus"),
+          x.getAttribute("aria-checked"),
+        ]),
       ),
     ).toEqual([
-      ["All active (3)", "true"],
-      ["ws-afocus", "false"],
+      ["ws-a", "true"],
+      ["all", "false"],
       ["ws-b", "false"],
       ["ws-c", "false"],
-      ["Manage workspaces…", null],
     ]);
+    expect(await p.textContent("#den-pop-ws")).not.toMatch(
+      /focus$|Set .* as focus|\(active\)/m,
+    );
     await Promise.all([
       p.waitForNavigation(),
-      p.click('.den-pop .den-mi:has-text("ws-b")'),
+      p.click('#den-pop-ws [data-focus="ws-b"]'),
     ]);
-    // A view: user prefs (POST /api/scope) and nothing else.
-    expect(writes).toEqual(['POST /api/scope {"scope":"ws-b"}']);
-    expect(wsFile()).toBe(before);
+    // The focus (POST /api/scope), and nothing else: no start, no stop.
+    expect(writes).toEqual(['POST /api/scope {"focus":"ws-b"}']);
+    expect(wsFile()).toMatch(/^focus: ws-b$/m);
     expect(await getJson("/api/scope")).toMatchObject({
       scope: "ws-b",
       inView: ["ws-b"],
-      focus: "ws-a",
+      focus: "ws-b",
     });
     await p.waitForSelector("#ws-pill:not([hidden])");
     expect(await p.textContent("#ws-pill")).toBe("Workspace ws-b ▾");
-    // The cards are the view's: shop and billing.
+    // The cards are the focus's: shop and billing.
     await p.waitForSelector('[data-pin-toggle="billing"]');
     expect(await p.$$('[data-pin-toggle="search"]')).toHaveLength(0);
 
-    // "Set ws-b as focus" is the one item that writes workspaces.yml.
+    // All workspaces: every one in view; commands default to the first.
     await p.click("#ws-pill");
     await Promise.all([
       p.waitForNavigation(),
-      p.click('.den-pop .den-mi:has-text("Set ws-b as focus")'),
+      p.click('#den-pop-ws [data-focus="all"]'),
     ]);
-    expect((await getJson<{ focus: string }>("/api/workspaces")).focus).toBe(
-      "ws-b",
-    );
+    expect(wsFile()).toMatch(/^focus: all$/m);
+    expect(await getJson("/api/scope")).toMatchObject({
+      scope: "all",
+      inView: ["ws-a", "ws-b", "ws-c"],
+      focus: "ws-a",
+    });
+    await p.waitForSelector("#ws-pill:not([hidden])");
+    expect(await p.textContent("#ws-pill")).toBe("Workspace All workspaces ▾");
     await p.context().close();
     // Restore.
-    await request("POST", "/api/workspaces", { name: "ws-a", action: "focus" });
-    await request("POST", "/api/scope", { scope: "all" });
+    await request("POST", "/api/scope", { focus: "ws-a" });
   }, 60_000);
 });
 

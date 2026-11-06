@@ -4,6 +4,81 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.3] - unreleased
+
+WS-6: workspace focus, status and switch. Three words, used the same way
+in the web UI, the CLI and the docs: **focus** is what you see, **status**
+is what runs, **switch** shows a workspace and starts it.
+
+### Added
+
+- **One focus** (WS-6.1): All workspaces, or one. It replaces the view
+  scope and the Workspaces page's own selection: the top bar's Workspace
+  menu, the Workspaces list and `<cli> focus` set the same value
+  (workspaces.yml `focus`, which may now be `all`), and it is the default
+  target for commands (with All, the first workspace on this machine).
+  Changing it starts and stops nothing.
+- **Status from services** (WS-6.3): Running n/m, Partial n/m or Stopped,
+  plus a down count, on every workspace on this machine. A health row
+  carries `running`: a service runs when its check answers, when Den still
+  tracks it as started, or when a compose check finds its containers. One
+  that doesn't run is stopped, never down.
+- **The status chip** (WS-6.5) counts what is in focus, adds "· n down in
+  <ws>" for a problem elsewhere, reads "Nothing running" when nothing in
+  focus runs, and cuts off with "…" on a phone.
+- **The Workspace menu** (WS-6.6): the focus first (✓), then All
+  workspaces, then the rest, each with its status pill and a
+  [Switch | ▾] button; its footer links to Settings › Workspaces.
+- **Switch** (WS-6.7): focus a workspace and start its services that
+  aren't running. Nothing else stops, and it doesn't ask. `<cli> switch
+  <ws>`.
+- **Stop & Switch** (WS-6.8), in the ▾ menu: stop the other workspaces'
+  services, then start this one's. Services of repos it shares with
+  another workspace keep running, and so do agents and sessions. It asks
+  first (what stops, what starts, what keeps running) and needs the lock.
+  `<cli> switch <ws> --stop-others` (asks on a terminal; `-y` skips, `-n`
+  prints the plan only).
+- **The Workspaces page** (WS-6.9): explainer cards for focus, status and
+  switch; the list with All workspaces first and each workspace's pill;
+  All workspaces as a table (Workspace, Status, Services, Down, Agents,
+  Focus and the split button); a workspace's header with its pill and down
+  count, Start, Stop, the split button, Open in Graph and Open in Agents;
+  a "shared" tag on a repo another workspace also has.
+- **Settings › Workspaces** (WS-6.10): "When I pick a workspace" (Just
+  show it, the default; Ask whether to start it, which asks "Also start
+  <ws>?"; Start it automatically) and "Before Stop & Switch" (Confirm, the
+  default, or Don't ask). Stored as user.yml `switching`.
+- **`<cli> focus [<ws>|--all]`**, and `workspace add` / `workspace remove`.
+
+### Changed
+
+- **"On this machine", not "active"** (WS-6.2): the UI, the CLI's help and
+  messages, and the docs say a workspace is on this machine (polled,
+  listed, switchable). "(active)" is gone. `workspace activate` and
+  `deactivate` still work (they are `add` and `remove`), as does
+  `setup --plan --all-active` (now `--all-workspaces`).
+- **`POST /api/scope`** takes `{ focus }` (or `{ scope }`, as before) and
+  stores it as the focus. `POST /api/workspaces` takes `add` and `remove`
+  as well as `activate` and `deactivate`, and `focus` takes `all`.
+- **A workspace can't be named `all`** (it means All workspaces).
+- **The Workspaces sidebar is 250px** (was 260), as in the WS-6 mock.
+- **The README's screenshots are 0.4.3's**: the `make up` animation starts
+  from "Nothing running" (every stack stopped, none down) and counts up to
+  All 3 healthy.
+
+### Migrations
+
+- **user.yml `view.scope` folds into the focus**, silently, the first time
+  Den reads it: a stored scope (All, or a workspace on this machine)
+  becomes workspaces.yml's `focus`, and `view` leaves user.yml. Nothing to
+  do. Without a stored scope the focus stays as it was (one workspace), so
+  a machine that showed "All active" by default now shows its focus: pick
+  All workspaces once.
+- **workspaces.yml keeps its `active` list** (no migration): it is the
+  set on this machine. Only the words changed.
+- **A script that read `workspace list`'s "Active" column**: it is "On
+  this machine" now.
+
 ## [0.4.2] - 2026-11-06
 
 The 0.4.1 carry-overs.

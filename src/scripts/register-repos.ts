@@ -261,7 +261,7 @@ async function main(): Promise<void> {
   if (plan.mode === "workspace") {
     console.log(`\n  ${product().cli} · Test repo sources\n`);
     console.log(
-      `  Local Dev is enabled — test discovery follows your active workspace` +
+      `  Local Dev is enabled — test discovery follows your workspace in focus` +
         ` ("${plan.workspaceName}"):\n  the repos you develop against are the` +
         ` repos tests run against. Nothing to register.\n`,
     );

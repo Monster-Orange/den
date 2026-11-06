@@ -58,6 +58,13 @@ export const DEN_SETTING_CATEGORIES = [
       "How the graph is laid out, and how the Workspaces page shows its workspaces. The pages' own controls set these too.",
   },
   {
+    id: "workspaces",
+    label: "Workspaces",
+    order: 45,
+    description:
+      "Picking a workspace focuses the whole shell on it. Choose whether it should also start that workspace's services. Picking never stops anything; only Stop & Switch does.",
+  },
+  {
     id: "workspace",
     label: "Workspace",
     order: 50,
@@ -401,6 +408,43 @@ export const DEN_SETTINGS = [
     ["panel", "width", "details", "sidebar"],
     { type: "number", min: 360, max: 760, step: 10, unit: "px" },
   ),
+
+  // ── Workspaces (WS-6.10) ───────────────────────────────────────────────
+  {
+    id: "switching.on_pick",
+    category: "workspaces",
+    label: "When I pick a workspace",
+    description:
+      'In the top bar\'s Workspace menu or the Workspaces list. Ask shows "Also start it?"; Start it automatically switches to it. Picking All only shows it.',
+    keywords: ["workspace", "focus", "pick", "switch", "start", "ask"],
+    scope: "user",
+    control: seg([
+      { value: "show", label: "Just show it" },
+      { value: "ask", label: "Ask whether to start it" },
+      { value: "switch", label: "Start it automatically" },
+    ]),
+    keys: ["switching.on_pick"],
+    read: (ctx) => ctx.data.switching?.on_pick ?? "show",
+    write: (v, ctx) => ctx.post({ switching: { on_pick: v } }),
+  },
+  {
+    id: "switching.confirm_stop_switch",
+    category: "workspaces",
+    label: "Before Stop & Switch",
+    description:
+      "Stop & Switch stops the other workspaces' services. Confirm lists what stops, starts and keeps running first.",
+    keywords: ["workspace", "stop", "switch", "confirm", "ask", "dialog"],
+    scope: "user",
+    control: seg([
+      { value: "yes", label: "Confirm" },
+      { value: "no", label: "Don't ask" },
+    ]),
+    keys: ["switching.confirm_stop_switch"],
+    read: (ctx) =>
+      ctx.data.switching?.confirm_stop_switch === false ? "no" : "yes",
+    write: (v, ctx) =>
+      ctx.post({ switching: { confirm_stop_switch: v !== "no" } }),
+  },
 
   // ── Workspace ──────────────────────────────────────────────────────────
   {

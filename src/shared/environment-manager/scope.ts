@@ -1,29 +1,38 @@
 /**
- * The view scope (0.3.0-dev.16): which workspaces' repos are in view, the
- * one source for the header's health row, the pages and `<cli> status`.
+ * The focus (WS-6.1, 0.4.3): one value, "all" (every workspace on this
+ * machine) or one of them, stored as workspaces.yml `focus`. It is what
+ * every page, the top bar's status chip and `<cli> status` show, and the
+ * default target for commands (`up`, `restart`, the Workspaces actions).
  *
- * - **Scope** is a view filter: "all" (every active workspace) or one
- *   active workspace. It is a user preference (user.yml `view.scope`) and
- *   changes nothing else: no edge route, container or service.
- * - **Focus** is the default target for commands (`up`, `restart`, the
- *   Local Dev actions). Scope never changes it.
+ * - **Focus only filters.** Changing it starts, stops and routes nothing.
+ * - With "all", a command that needs one workspace takes the first one on
+ *   this machine; names resolve across them all (target-workspace.ts).
+ * - It replaces 0.3.0's separate view scope (user.yml `view.scope`): a
+ *   stored one becomes the focus the first time it is read, silently.
  *
- * "all" is the default, also with several active workspaces: the health
- * row already covered every active workspace, so a page that showed only
- * the focused one disagreed with the row above it. With one active
- * workspace "all" and that workspace are the same view.
+ * "On this machine" is the file's `active` list (WS-6.2): the set that is
+ * polled, listed and switchable, never "running". Health covers all of it,
+ * whatever is in focus (pollView, WS-6.4).
  */
-import { readUserConfig, type UserConfig } from "../den-config.js";
+import {
+  readUserConfig,
+  writeUserConfig,
+  type UserConfig,
+} from "../den-config.js";
 import type { WorkspaceConfig } from "../types/index.js";
-import { readWorkspacesFile } from "./workspaces.js";
+import {
+  FOCUS_ALL,
+  readWorkspacesFile,
+  setFocusedWorkspace,
+} from "./workspaces.js";
 
 /** "all", or one workspace's name. */
 export type ViewScope = string;
-export const ALL_ACTIVE = "all";
+export const ALL_ACTIVE = FOCUS_ALL;
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
-/** The stored scope, normalised: "all" unless a plausible workspace name. */
+/** A 0.3.0 view scope (user.yml `view.scope`), normalised: "all" unless a plausible name. */
 export function storedScope(user: Pick<UserConfig, "view">): ViewScope {
   const s = user.view?.scope;
   return typeof s === "string" && s !== ALL_ACTIVE && NAME.test(s)
@@ -32,9 +41,53 @@ export function storedScope(user: Pick<UserConfig, "view">): ViewScope {
 }
 
 /**
- * The workspaces in view, focused first, then the other active ones in
- * their file order. A named scope that is no longer active falls back to
- * all active (so a deactivated workspace never empties the view). Pure.
+ * Fold a 0.3.0 view scope into the focus, once and silently: a stored
+ * `view.scope` ("all" or a workspace on this machine) becomes the focus,
+ * and `view` leaves user.yml. One naming a workspace no longer on this
+ * machine is dropped and the focus stays. Never throws: an unreadable or
+ * unwritable config leaves things as they are.
+ */
+export function migrateViewScope(): void {
+  let user: UserConfig;
+  try {
+    user = readUserConfig();
+  } catch {
+    return;
+  }
+  if (!user.view || typeof user.view !== "object") return;
+  try {
+    const scope = storedScope(user);
+    const file = readWorkspacesFile();
+    if (scope === ALL_ACTIVE || file.active.includes(scope))
+      setFocusedWorkspace(scope);
+    const next = { ...user };
+    delete next.view;
+    writeUserConfig(next);
+  } catch {
+    /* a read-only config: the focus stays as stored */
+  }
+}
+
+/** The stored focus: "all" or a workspace on this machine. */
+export function storedFocus(): ViewScope {
+  migrateViewScope();
+  const file = readWorkspacesFile();
+  const f = file.focus;
+  if (f === ALL_ACTIVE) return ALL_ACTIVE;
+  return f && file.active.includes(f) ? f : (file.active[0] ?? ALL_ACTIVE);
+}
+
+/** Store the focus ("all" or a workspace on this machine). */
+export function writeFocus(value: ViewScope): void {
+  migrateViewScope();
+  setFocusedWorkspace(value);
+}
+
+/**
+ * The workspaces in view, the command target first, then the others on
+ * this machine in their file order. A named focus no longer on this
+ * machine falls back to all (so removing a workspace never empties the
+ * view). Pure.
  */
 export function scopeWorkspaceNames(
   scope: ViewScope,
@@ -46,25 +99,31 @@ export function scopeWorkspaceNames(
   return [...(focus ? [focus] : []), ...active.filter((n) => n !== focus)];
 }
 
-/** What a view resolves to: the scope asked for, and what is in it. */
+/** What a view resolves to: the focus asked for, and what is in it. */
 export interface ScopeView {
-  /** The stored scope ("all" or a workspace). */
+  /** The focus ("all" or a workspace). */
   scope: ViewScope;
-  /** True when a named scope is not active any more: showing all. */
+  /** True when a named focus is not on this machine any more: showing all. */
   fellBack: boolean;
-  /** The workspaces in view, focused first. */
+  /** The workspaces in view, the command target first. */
   workspaces: { name: string; config: WorkspaceConfig }[];
-  /** The focused workspace: the default target for commands. */
+  /** The workspace commands default to (the focus, or the first with "all"). */
   focus: string | null;
 }
 
-/** The view for `scope` (default: the user's stored one). */
+/** The view for `scope` (default: the stored focus). */
 export function scopeView(scope?: ViewScope): ScopeView {
-  const want = scope ?? storedScope(readUserConfig());
+  const want = scope ?? storedFocus();
   const file = readWorkspacesFile();
   const known = Object.keys(file.workspaces);
+  const stored = file.focus === ALL_ACTIVE ? undefined : file.focus;
+  const one = want !== ALL_ACTIVE && file.active.includes(want) ? want : null;
   const focusName =
-    process.env.DEN_WORKSPACE_OVERRIDE ?? file.focus ?? file.active[0] ?? null;
+    process.env.DEN_WORKSPACE_OVERRIDE ??
+    one ??
+    stored ??
+    file.active[0] ??
+    null;
   const focus = focusName && file.workspaces[focusName] ? focusName : null;
   const names = scopeWorkspaceNames(want, {
     active: file.active,
@@ -83,10 +142,10 @@ export function scopeView(scope?: ViewScope): ScopeView {
 }
 
 /**
- * WS-6.4: what health covers, whatever is in view: every active workspace,
- * focused first. Scope only filters what is displayed (inViewMarker); it
- * never narrows what is polled, so a workspace outside it still shows its
- * real health on the Workspaces page.
+ * WS-6.4: what health covers, whatever is in focus: every workspace on
+ * this machine. The focus only filters what is displayed (inViewMarker);
+ * it never narrows what is polled, so a workspace outside it still shows
+ * its real health on the Workspaces page.
  */
 export function pollView(): ScopeView {
   return scopeView(ALL_ACTIVE);
@@ -104,14 +163,14 @@ export function inViewMarker(
   return (owners) => !owners?.length || owners.some((o) => names.has(o));
 }
 
-/** A cache key for what is in view (the scope's workspaces, in order). */
+/** A cache key for what is in view (the focus's workspaces, in order). */
 export function scopeKey(view: ScopeView): string {
   return view.workspaces.map((w) => w.name).join(",");
 }
 
 /**
- * Validate a scope a client asks for: "all", or a workspace that is active
- * now. Pure; the caller stores the result in user.yml `view`.
+ * Validate a focus a client asks for: "all", or a workspace on this
+ * machine. Pure; the caller stores it (writeFocus).
  */
 export function parseScope(
   raw: unknown,
@@ -119,18 +178,13 @@ export function parseScope(
 ): { ok: true; value: ViewScope } | { ok: false; error: string } {
   if (raw === ALL_ACTIVE) return { ok: true, value: ALL_ACTIVE };
   if (typeof raw !== "string" || !NAME.test(raw))
-    return { ok: false, error: `scope must be "all" or a workspace name` };
+    return { ok: false, error: `focus must be "all" or a workspace name` };
   if (!active.includes(raw))
-    return { ok: false, error: `workspace "${raw}" is not active` };
+    return { ok: false, error: `workspace "${raw}" is not on this machine` };
   return { ok: true, value: raw };
 }
 
-/** The `view` block to store: none for the default, so user.yml stays lean. */
-export function storedView(scope: ViewScope): UserConfig["view"] | undefined {
-  return scope === ALL_ACTIVE ? undefined : { scope };
-}
-
-/** What `/api/scope` returns: the scope, what it shows, and the focus. */
+/** What `/api/scope` returns: the focus, what it shows, and the command target. */
 export function scopePayload(view: ScopeView): {
   scope: ViewScope;
   fellBack: boolean;
@@ -146,8 +200,9 @@ export function scopePayload(view: ScopeView): {
 }
 
 /**
- * Take `--scope <all|workspace>` (or `--scope=…`) out of argv. `--all` is
- * not it: on `status` that already means verbose (one row per service).
+ * Take `--scope <all|workspace>` (or `--scope=…`) out of argv: a one-off
+ * focus for this command (0.3.0's flag, kept for scripts). `--all` is not
+ * it: on `status` that already means verbose (one row per service).
  */
 export function takeScopeFlag(argv: string[]): {
   scope: string | null;
@@ -171,17 +226,17 @@ export function takeScopeFlag(argv: string[]): {
 }
 
 /**
- * The scope line `status` prints, so a reader sees what is in view and
- * what commands target: "Scope: all active (a, b, c) · focus: a".
+ * The focus line `status` prints, so a reader sees what is in view:
+ * "Focus: all workspaces (a, b, c)" or "Focus: a".
  */
 export function scopeLine(view: ScopeView): string {
   const names = view.workspaces.map((w) => w.name);
   const what =
     view.scope !== ALL_ACTIVE && !view.fellBack
       ? view.scope
-      : `all active (${names.join(", ") || "none"})`;
-  const fell = view.fellBack ? ` (${view.scope} is not active)` : "";
-  return `Scope: ${what}${fell} · focus: ${view.focus ?? "none"}`;
+      : `all workspaces (${names.join(", ") || "none"})`;
+  const fell = view.fellBack ? ` (${view.scope} is not on this machine)` : "";
+  return `Focus: ${what}${fell}`;
 }
 
 /** " · a, b" after a shared service's name; "" when one workspace owns it. */

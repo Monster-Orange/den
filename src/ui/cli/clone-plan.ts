@@ -366,7 +366,7 @@ export function renderClonePlan(
         outside
           .map((o) => `${o.workspace} (${o.repos.join(", ")})`)
           .join(", ") +
-        `. Plan them with -w <workspace> or --all-active.`,
+        `. Plan them with -w <workspace> or --all-workspaces.`,
     );
   }
   out.push("", "Plan only: nothing was cloned, seeded or written.");

@@ -464,7 +464,9 @@ async function healthy(p) {
 }
 
 /**
- * The `make up` animation's frames, from the real UI: every stack down, then each coming up in dependency order (demo-api before
+ * The `make up` animation's frames, from the real UI: every stack stopped
+ * (the chip reads "Nothing running": a stopped stack is never down,
+ * WS-6.3), then each coming up in dependency order (demo-api before
  * demo-web, which calls it) until the chip reads "All 3 healthy". The
  * docker shim's listing changes between frames; nothing is mocked in the
  * page. Returns [{ path, ms }].
@@ -502,11 +504,11 @@ async function upFrames(browser, c, dir, patterns, guardOpts) {
     await p.waitForTimeout(800);
   };
   // The layout and grouping are the saved prefs the stills left behind.
-  await step([], /3 down/);
+  await step([], /Nothing running/);
   await frame("down", 2500);
-  await step(["demo-api"], /1\/3 healthy/);
+  await step(["demo-api"], /(^|[^/\d])1 healthy/);
   await frame("demo-api", 1500);
-  await step(["demo-api", "demo-web"], /2\/3 healthy/);
+  await step(["demo-api", "demo-web"], /All 2 healthy/);
   await frame("demo-web", 1500);
   await step(["demo-api", "demo-web", "demo-notes"], /All 3 healthy/);
   await frame("all", 5000);
@@ -678,7 +680,7 @@ async function main() {
     const anim = encodeAnimation(frames, stage);
     if (anim) {
       alt[anim] =
-        "make up in the Graph page: every stack down, then demo-api, demo-web and demo-notes come up in dependency order until the status chip reads All 3 healthy";
+        "make up in the Graph page: every stack stopped (Nothing running), then demo-api, demo-web and demo-notes come up in dependency order until the status chip reads All 3 healthy";
       written.push({ file: anim, budget: BUDGET.anim });
       console.log(`  ok   ${anim}`);
     } else

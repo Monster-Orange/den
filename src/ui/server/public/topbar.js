@@ -45,6 +45,7 @@ export function statusSummary(row) {
       unchecked: 0,
       pending: 0,
       awaiting: 0,
+      stopped: 0,
     };
   let n = 0;
   let ok = 0;
@@ -52,19 +53,30 @@ export function statusSummary(row) {
   let unchecked = 0;
   let pending = 0;
   let awaiting = 0;
+  let stopped = 0;
   for (const r of row.flat) {
     if (r.rollup.awaiting) {
       awaiting++;
       continue;
     }
-    down += r.rollup.down.length;
     for (const i of r.items) {
       if (i.awaiting) continue;
+      // WS-6.3/6.5: a service that doesn't run is stopped, never down,
+      // and the chip counts only what runs (an older server sends no
+      // `running`: every checked service counts, as before).
+      if (i.running === false && i.ok !== true) {
+        if (i.ok === false) stopped++;
+        else if (i.pending) pending++;
+        else unchecked++;
+        continue;
+      }
       if (i.ok === true) {
         n++;
         ok++;
-      } else if (i.ok === false) n++;
-      else if (i.pending) pending++;
+      } else if (i.ok === false) {
+        n++;
+        down++;
+      } else if (i.pending) pending++;
       else unchecked++;
     }
   }
@@ -73,11 +85,13 @@ export function statusSummary(row) {
     : n === 0
       ? awaiting || pending
         ? "checking"
-        : "unchecked"
+        : stopped
+          ? "stopped"
+          : "unchecked"
       : down > 0
         ? "bad"
         : "ok";
-  return { state, n, ok, down, unchecked, pending, awaiting };
+  return { state, n, ok, down, unchecked, pending, awaiting, stopped };
 }
 
 /**
@@ -85,7 +99,20 @@ export function statusSummary(row) {
  * `lead` (the part that hides below 860px), `text` and a title that says
  * what was and wasn't checked. `t` is the shell's message lookup.
  */
-export function statusChip(sum, t = tr) {
+export function statusChip(sum, t = tr, away = null) {
+  const c = statusChipBase(sum, t);
+  // WS-6.5: "· n down in <ws>" for problems outside the focus.
+  if (!away || !away.n || c.busy) return c;
+  const more = t("status.away", { n: away.n, w: away.ws });
+  return {
+    ...c,
+    bad: true,
+    away: ` · ${more}`,
+    title: `${c.title} · ${more}`,
+  };
+}
+
+function statusChipBase(sum, t) {
   const extra = [
     sum.unchecked ? t("status.unchecked", { n: sum.unchecked }) : "",
     sum.pending ? t("status.pending", { n: sum.pending }) : "",
@@ -108,6 +135,16 @@ export function statusChip(sum, t = tr) {
       lead: "",
       text: t("status.none"),
       title: t("status.none"),
+      busy: false,
+    };
+  // WS-6.5: nothing in focus is running.
+  if (sum.state === "stopped")
+    return {
+      dot: "off",
+      bad: false,
+      lead: "",
+      text: t("status.nothing"),
+      title: t("status.nothing"),
       busy: false,
     };
   if (sum.state === "unchecked")
@@ -147,6 +184,8 @@ export function statusChip(sum, t = tr) {
 export const EN_FALLBACK = {
   "status.checking": "Checking…",
   "status.none": "No services",
+  "status.nothing": "Nothing running",
+  "status.away": "{n} down in {w}",
   "status.unchecked": "{n} not checked",
   "status.all": "All {n} healthy",
   "status.some": "{ok}/{n} healthy",
@@ -442,7 +481,7 @@ function go(href) {
 }
 
 /** What paintStatus last saw: the row, the application groups, the env. */
-const health = { row: null, groups: [], env: "local", at: null };
+const health = { row: null, groups: [], env: "local", at: null, away: null };
 let hooks = {};
 let inited = false;
 
@@ -485,8 +524,9 @@ function trapTab(e, box) {
  * paints once, complete: no partial red, no flash). `row` is buildRow's,
  * `groups` the application grouping, `env` the env checked.
  */
-export function paintStatus({ row, groups = [], env = "local" }) {
+export function paintStatus({ row, groups = [], env = "local", away = null }) {
   health.row = row;
+  health.away = away;
   health.groups = groups;
   health.env = env;
   health.at = new Date();
@@ -518,13 +558,14 @@ function paintChip() {
       `<span class="den-n">${esc(t("status.unknown"))}</span>`;
     return;
   }
-  const c = statusChip(statusSummary(health.row), t);
+  const c = statusChip(statusSummary(health.row), t, health.away);
   chip.classList.toggle("bad", c.bad);
   chip.setAttribute("aria-busy", c.busy ? "true" : "false");
   chip.title = c.title;
   chip.innerHTML =
     `<span class="den-dot ${c.dot}" aria-hidden="true"></span>` +
-    `<span class="den-n">${c.lead ? `<span class="den-lbl-l">${esc(c.lead)}</span>` : ""}${esc(c.text)}</span>`;
+    `<span class="den-n">${c.lead ? `<span class="den-lbl-l">${esc(c.lead)}</span>` : ""}${esc(c.text)}` +
+    `${c.away ? `<span class="den-lbl-l den-away">${esc(c.away)}</span>` : ""}</span>`;
 }
 
 // ── status drawer (R15) ─────────────────────────────────────────────────────

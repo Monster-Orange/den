@@ -373,12 +373,18 @@ export interface UserConfig {
     order?: string[];
   };
   /**
-   * What the web UI and `<cli> status` show: `scope` is "all" (every active
-   * workspace, the default) or one active workspace's name. A view filter
-   * only: the focused workspace stays the default target for commands. See
-   * src/shared/environment-manager/scope.ts.
+   * 0.3.0's view scope ("all" or a workspace). Since 0.4.3 the focus
+   * (workspaces.yml `focus`) is the one value: a stored `view` becomes the
+   * focus the first time it is read and leaves this file
+   * (src/shared/environment-manager/scope.ts migrateViewScope).
    */
   view?: { scope?: string };
+  /**
+   * WS-6.10, the Workspaces settings: what picking a workspace does
+   * (on_pick: show | ask | switch) and whether Stop & Switch asks first
+   * (confirm_stop_switch). See src/ui/server/switch-prefs.ts.
+   */
+  switching?: { on_pick?: string; confirm_stop_switch?: boolean };
 }
 
 const ALL_ENVIRONMENTS: Environment[] = [

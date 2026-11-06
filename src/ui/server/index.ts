@@ -63,9 +63,18 @@ import {
   inViewMarker,
   scopePayload,
   scopeView,
-  storedView,
+  writeFocus,
 } from "../../shared/environment-manager/scope.js";
 import { findServiceContainer } from "../../shared/environment-manager/service-container.js";
+import {
+  isRunning,
+  trackedAddresses,
+} from "../../shared/environment-manager/running.js";
+import {
+  mergeSwitchPrefs,
+  storedSwitchPrefs,
+  switchPrefs,
+} from "./switch-prefs.js";
 import {
   resolveHistorySource,
   ensureSnapshot,
@@ -259,6 +268,8 @@ const REPORT_DIR = path.join(ROOT, "playwright-report");
 interface HealthResult {
   repo: string;
   service: string;
+  /** Its address (as `up`, `down` and /api/workspace/exec name it). */
+  address?: string;
   label: string;
   /** The HTTP check's URL, or null (never a command: see `check`). */
   url: string | null;
@@ -293,6 +304,12 @@ interface HealthResult {
    * drawer count only these, while the pages see every row.
    */
   inView?: boolean;
+  /**
+   * WS-6.3: whether it runs (running.ts): a check that answers, a process
+   * Den tracks, or compose containers. A failing check on a service that
+   * runs is down; on one that doesn't, it is stopped.
+   */
+  running?: boolean;
 }
 
 /**
@@ -334,7 +351,18 @@ function healthForViewer(
 ): (r: HealthResult) => HealthResult {
   const rewrite = viewerRewrite(host);
   const inView = inViewMarker(scopeView());
-  return (r) => ({ ...rewrite(r), inView: inView(r.workspaces) });
+  // WS-6.3: whether it runs, from the daemon records now (running.ts).
+  let tracked = new Set<string>();
+  try {
+    tracked = trackedAddresses(listDaemons());
+  } catch {
+    /* no records: only the checks say */
+  }
+  return (r) => ({
+    ...rewrite(r),
+    inView: inView(r.workspaces),
+    running: isRunning(r, tracked),
+  });
 }
 
 const HEALTH_CACHE_TTL_MS = 8_000;
@@ -2022,7 +2050,13 @@ async function handleRequest(
     const results = await Promise.all(
       sortedEntries.map((e, idx) =>
         checkEntry(e).then((r) => {
-          const ranked = { ...r, openUrl: e.openUrl, links: e.links, idx };
+          const ranked = {
+            ...r,
+            address: e.address,
+            openUrl: e.openUrl,
+            links: e.links,
+            idx,
+          };
           onResult?.(ranked);
           return ranked;
         }),
@@ -2199,7 +2233,9 @@ async function handleRequest(
 
     const wsParam = url.searchParams.get("workspace");
     if (wsParam && !isWorkspaceActive(wsParam)) {
-      return fail(`Workspace "${wsParam}" is not active — activate it first`);
+      return fail(
+        `Workspace "${wsParam}" is not on this machine — add it first`,
+      );
     }
 
     // Resolve repo path via resolveService (handles single-service repos where
@@ -2331,7 +2367,7 @@ async function handleRequest(
       const ws = getActiveWorkspace();
       return fail(
         `Command "${cmdName}" not found for ${repoName}/${svcName} in env "${env}".` +
-          (!ws ? " No active workspace." : ` Active workspace: ${ws.name}.`) +
+          (!ws ? " No workspace on this machine." : ` Workspace: ${ws.name}.`) +
           ` resolved=${JSON.stringify(resolved ?? null)}`,
       );
     }
@@ -3910,25 +3946,28 @@ async function handleRequest(
   // the org config (tracked) sets, for the Settings page's Distribution rows.
   // Every key POST accepts has a row in the Settings page's registry
   // (settings-registry.js; settings-inventory.test.ts checks).
-  // The view scope: which active workspaces the pages, the health row and
-  // `status` show. A view preference only (user.yml `view`): it changes no
-  // edge route, container or service, and never the focus.
+  // The focus (WS-6.1): "all" or one workspace on this machine, the one
+  // value the top bar's Workspace menu, the Workspaces page's list and the
+  // CLI share (workspaces.yml `focus`). It only filters: it changes no
+  // edge route, container or service.
   if (pathname === "/api/scope") {
     if (req.method === "GET") return sendJson(res, scopePayload(scopeView()));
     if (req.method === "POST") {
-      let body: { scope?: unknown };
+      let body: { scope?: unknown; focus?: unknown };
       try {
-        body = JSON.parse(await readBody(req)) as { scope?: unknown };
+        body = JSON.parse(await readBody(req)) as {
+          scope?: unknown;
+          focus?: unknown;
+        };
       } catch {
         return send400(res, "invalid JSON");
       }
-      const parsed = parseScope(body.scope, getActiveWorkspaces());
+      const parsed = parseScope(
+        body.focus ?? body.scope,
+        getActiveWorkspaces(),
+      );
       if (!parsed.ok) return send400(res, parsed.error);
-      const user = readUserConfig();
-      const view = storedView(parsed.value);
-      if (view) user.view = view;
-      else delete user.view;
-      writeUserConfig(user);
+      writeFocus(parsed.value);
       return sendJson(res, scopePayload(scopeView(parsed.value)));
     }
   }
@@ -3957,6 +3996,8 @@ async function handleRequest(
         // The UI's language (R19), and the ones it has catalogs for.
         language: uiLanguage(user.language),
         ui_languages: UI_LANGUAGES,
+        // WS-6.10: what picking a workspace does, and Stop & Switch's ask.
+        switching: switchPrefs(user.switching),
       });
     }
     if (req.method === "POST") {
@@ -3969,8 +4010,21 @@ async function handleRequest(
           appearance?: unknown;
           shell?: unknown;
           language?: unknown;
+          switching?: unknown;
         };
         const user = readUserConfig();
+        // WS-6.10: the Workspaces settings; defaults are never stored.
+        if (body.switching === null) delete user.switching;
+        else if (body.switching !== undefined) {
+          const sw = mergeSwitchPrefs(
+            switchPrefs(user.switching),
+            body.switching,
+          );
+          if (!sw.ok) return send400(res, sw.error);
+          const stored = storedSwitchPrefs(sw.value);
+          if (stored) user.switching = stored;
+          else delete user.switching;
+        }
         // null clears (0.3.0-dev.32, a consumer's nit): a block or a key
         // set to null is removed from user.yml, and a block left empty
         // goes too, so setting a pref and clearing it again leaves the
@@ -4065,6 +4119,7 @@ async function handleRequest(
           appearance: appearancePrefs(user.appearance),
           shell: shellPrefs(user.shell),
           language: uiLanguage(user.language),
+          switching: switchPrefs(user.switching),
         });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);

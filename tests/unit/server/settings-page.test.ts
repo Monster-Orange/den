@@ -33,6 +33,8 @@ describe("search", () => {
       "editor",
       "navigation",
       "graph",
+      // WS-6.10 (0.4.3): what picking a workspace does.
+      "workspaces",
       "workspace",
       "cli",
       "distribution",

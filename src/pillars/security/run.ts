@@ -558,7 +558,7 @@ export async function runSecurityCli(
     deps.logError(
       "No security targets discovered" +
         (args.service ? ` matching "${args.service}"` : "") +
-        ". Add the repo to the active workspace and check the security: " +
+        ". Add the repo to the workspace and check the security: " +
         `block in its ${product().manifestYml} (or manifests/<repo>${product().manifestYml}) — ` +
         "zero targets is never a pass.",
     );

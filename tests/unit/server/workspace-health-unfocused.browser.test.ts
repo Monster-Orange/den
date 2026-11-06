@@ -9,7 +9,8 @@
  * north (the focus, repo notes) and south (repo blog), both active, the view
  * scope north. blog's check is an HTTP probe of a local server this test
  * runs, so it is healthy; notes' probe is a closed port, so it is down.
- * Nothing else runs: `docker` is a shim that fails.
+ * Nothing else runs: `docker` is a shim that fails. notes has a daemon
+ * record (Den started it), so it is down, not stopped (WS-6.3).
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
@@ -104,6 +105,24 @@ beforeAll(async () => {
       ].join("\n"),
     );
   write(path.join(tmp, "bin", "docker"), "#!/bin/sh\nexit 1\n", 0o755);
+  // WS-6.3 (0.4.3): Den tracks notes as started, so its failing check is
+  // down (it runs); a failing check alone is stopped.
+  write(
+    path.join(tmp, "daemons.json"),
+    JSON.stringify({
+      daemons: [
+        {
+          address: "notes",
+          repoName: "notes",
+          subsystem: "notes",
+          repoPath: path.join(repos, "notes"),
+          logPath: path.join(tmp, "notes.log"),
+          startedAt: new Date().toISOString(),
+          workspaces: ["north"],
+        },
+      ],
+    }),
+  );
 
   port = await freePort();
   const home = path.join(tmp, "home");

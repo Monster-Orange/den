@@ -140,25 +140,25 @@ describe("a service in an active workspace that isn't the focus", () => {
 });
 
 describe("names that don't resolve to one workspace", () => {
-  it("a name in several active workspaces is an error listing them (exit 1); nothing runs", () => {
+  it("a name in several workspaces on this machine is an error listing them (exit 1); nothing runs", () => {
     for (const cmd of ["setup", "up", "restart", "down"]) {
       const r = den(cmd, "gamma", ...(cmd === "setup" ? [] : ["--dry-run"]));
       expect([cmd, r.code]).toEqual([cmd, 1]);
       expect(r.out).toMatch(
         new RegExp(
-          `"gamma" is in more than one active workspace: south \\(den ${cmd} gamma -w south\\), east \\(den ${cmd} gamma -w east\\)`,
+          `"gamma" is in more than one workspace on this machine: south \\(den ${cmd} gamma -w south\\), east \\(den ${cmd} gamma -w east\\)`,
         ),
       );
       expect(r.out).not.toMatch(/RAN-gamma/);
     }
   }, 180_000);
 
-  it("a name in no active workspace exits 1 (never 0 having done nothing)", () => {
+  it("a name in no workspace on this machine exits 1 (never 0 having done nothing)", () => {
     for (const cmd of ["setup", "up", "restart", "down"]) {
       const r = den(cmd, "nope", ...(cmd === "setup" ? [] : ["--dry-run"]));
       expect([cmd, r.code]).toEqual([cmd, 1]);
       expect(r.out).toMatch(
-        /"nope" is not a service in any active workspace \(north, south, east\)/,
+        /"nope" is not a service in any workspace on this machine \(north, south, east\)/,
       );
     }
   }, 180_000);

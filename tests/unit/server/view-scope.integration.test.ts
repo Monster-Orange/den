@@ -1,12 +1,14 @@
 /**
- * The view scope (0.3.0-dev.16): one source for "which repos are in view",
- * read by the health row, the pages' /api/services and `<cli> status`.
+ * The focus (WS-6.1, 0.4.3; the view scope of 0.3.0-dev.16 before it):
+ * one source for "which repos are in view", read by the health row, the
+ * pages' /api/services and `<cli> status`, and the commands' default.
  *
- * Three active workspaces, focus ws-a; shop is in ws-a and ws-b (one
- * checkout), billing only in ws-b, search only in ws-c. Default scope "all":
- * every active workspace, shop listed once with both owners. Scope ws-b:
- * shop and billing only, and the focus stays ws-a. Real server and CLI,
- * throwaway distribution.
+ * Three workspaces on this machine, focus ws-a; shop is in ws-a and ws-b
+ * (one checkout), billing only in ws-b, search only in ws-c. Focus "all":
+ * every workspace, shop listed once with both owners, commands default to
+ * ws-a (the first). Focus ws-b: shop and billing only. A 0.3.0 user.yml
+ * `view.scope` becomes the focus. Real server and CLI, throwaway
+ * distribution.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawnSync, type ChildProcess } from "child_process";
@@ -169,8 +171,11 @@ type Health = { repo: string; workspaces?: string[]; inView?: boolean };
 const byAddr = <T extends { address: string }>(rows: T[]) =>
   Object.fromEntries(rows.map((r) => [r.address, r]));
 
-describe("the view scope", () => {
-  it("defaults to every active workspace, a shared service listed once with its owners", async () => {
+describe("the focus", () => {
+  it("All workspaces: every one on this machine, a shared service listed once with its owners", async () => {
+    expect((await request("POST", "/api/scope", { focus: "all" })).status).toBe(
+      200,
+    );
     const services = await getJson<Svc[]>("/api/services?refresh=1");
     expect(services.map((s) => s.address).sort()).toEqual([
       "billing",
@@ -208,7 +213,7 @@ describe("the view scope", () => {
       { cwd: root, env: env(), encoding: "utf-8", timeout: 30_000 },
     );
     const out = r.stdout + r.stderr;
-    expect(out).toContain("Scope: all active (ws-a, ws-b, ws-c) · focus: ws-a");
+    expect(out).toContain("Focus: all workspaces (ws-a, ws-b, ws-c)");
     expect(out).toMatch(/shop\S* · ws-a, ws-b/);
     expect(out).toContain("billing");
     expect(out).toContain("search");
@@ -224,16 +229,16 @@ describe("the view scope", () => {
       { cwd: root, env: env(), encoding: "utf-8", timeout: 30_000 },
     );
     const oneOut = one.stdout + one.stderr;
-    expect(oneOut).toContain("Scope: ws-c · focus: ws-a");
+    expect(oneOut).toContain("Focus: ws-c");
     expect(oneOut).toContain("search");
     expect(oneOut).not.toContain("billing");
   }, 60_000);
 
-  it("one workspace in view: its repos only, and the focus is unchanged", async () => {
-    const r = await request("POST", "/api/scope", { scope: "ws-b" });
+  it("one workspace in focus: its repos only, and it is the command target", async () => {
+    const r = await request("POST", "/api/scope", { focus: "ws-b" });
     expect([r.status, JSON.parse(r.body)]).toEqual([
       200,
-      { scope: "ws-b", fellBack: false, inView: ["ws-b"], focus: "ws-a" },
+      { scope: "ws-b", fellBack: false, inView: ["ws-b"], focus: "ws-b" },
     ]);
     const services = await getJson<Svc[]>("/api/services");
     expect(services.map((s) => s.address).sort()).toEqual(["billing", "shop"]);
@@ -254,12 +259,19 @@ describe("the view scope", () => {
     const ws = await getJson<{ focus: string; active: string[] }>(
       "/api/workspaces",
     );
-    expect([ws.focus, ws.active]).toEqual(["ws-a", ["ws-a", "ws-b", "ws-c"]]);
+    expect([ws.focus, ws.active]).toEqual(["ws-b", ["ws-a", "ws-b", "ws-c"]]);
 
-    // Back to all: no `view` block left behind.
+    // Back to all (the 0.3.0 body, { scope }, still works): stored in
+    // workspaces.yml, no `view` block in user.yml.
     expect((await request("POST", "/api/scope", { scope: "all" })).status).toBe(
       200,
     );
+    expect(
+      fs.readFileSync(
+        path.join(root, "config", "local", "workspaces.yml"),
+        "utf-8",
+      ),
+    ).toMatch(/^focus: all$/m);
     const userYml = path.join(root, "config", "local", "user.yml");
     expect(
       fs.existsSync(userYml) ? fs.readFileSync(userYml, "utf-8") : "",
@@ -267,10 +279,28 @@ describe("the view scope", () => {
     expect((await getJson<Svc[]>("/api/services")).length).toBe(3);
   }, 20_000);
 
-  it("refuses a workspace that is not active", async () => {
-    for (const scope of ["ws-z", "", 3, "../x"]) {
-      const r = await request("POST", "/api/scope", { scope });
-      expect([scope, r.status]).toEqual([scope, 400]);
+  it("refuses a workspace that is not on this machine", async () => {
+    for (const focus of ["ws-z", "", 3, "../x"]) {
+      const r = await request("POST", "/api/scope", { focus });
+      expect([focus, r.status]).toEqual([focus, 400]);
     }
+    const r = await request("POST", "/api/scope", { focus: "ws-z" });
+    expect((JSON.parse(r.body) as { error: string }).error).toBe(
+      'workspace "ws-z" is not on this machine',
+    );
+  });
+
+  it("a 0.3.0 view scope in user.yml becomes the focus, silently, and leaves user.yml", async () => {
+    const userYml = path.join(root, "config", "local", "user.yml");
+    const had = fs.existsSync(userYml) ? fs.readFileSync(userYml, "utf-8") : "";
+    fs.writeFileSync(userYml, `${had}view:\n  scope: ws-c\n`);
+    const ws = await getJson<{ focus: string }>("/api/workspaces");
+    expect(ws.focus).toBe("ws-c");
+    expect(await getJson("/api/scope")).toMatchObject({
+      scope: "ws-c",
+      inView: ["ws-c"],
+    });
+    expect(fs.readFileSync(userYml, "utf-8")).not.toMatch(/^view:/m);
+    await request("POST", "/api/scope", { focus: "ws-a" });
   });
 });

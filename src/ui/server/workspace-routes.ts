@@ -26,8 +26,8 @@ import {
   setActiveWorkspace,
   activateWorkspace,
   deactivateWorkspace,
-  setFocusedWorkspace,
   getActiveWorkspace,
+  getFocusedWorkspaceName,
   getWorkspaceByName,
   isWorkspaceActive,
   createWorkspace,
@@ -43,6 +43,10 @@ import {
   DEN_WORKSPACES_DIR,
   resolveWorkspaceDir,
 } from "../../shared/environment-manager/workspaces.js";
+import {
+  migrateViewScope,
+  writeFocus,
+} from "../../shared/environment-manager/scope.js";
 import {
   checkServiceHealth,
   claimHealthyService,
@@ -420,11 +424,26 @@ export async function handleWorkspaceRoutes(
         const body = await readBody(req);
         const { name, action } = JSON.parse(body) as {
           name?: string;
-          /** activate | deactivate | focus | use (default: use = activate+focus) */
-          action?: "activate" | "deactivate" | "focus" | "use";
+          /**
+           * add | remove (to and from this machine; 0.4.3, WS-6.2), focus
+           * ("all" or a workspace), use (add + focus, the default).
+           * activate and deactivate are add and remove's old names.
+           */
+          action?:
+            | "add"
+            | "remove"
+            | "activate"
+            | "deactivate"
+            | "focus"
+            | "use";
         };
         if (!name) return send400(res, "name required");
-        const act = action ?? "use";
+        const act =
+          action === "add"
+            ? "activate"
+            : action === "remove"
+              ? "deactivate"
+              : (action ?? "use");
         let released: Awaited<ReturnType<typeof releaseWorkspaceDaemons>> = [];
         switch (act) {
           case "activate":
@@ -437,7 +456,7 @@ export async function handleWorkspaceRoutes(
             released = await releaseWorkspaceDaemons(name);
             break;
           case "focus":
-            setFocusedWorkspace(name);
+            writeFocus(name);
             break;
           case "use":
             setActiveWorkspace(name);
@@ -516,6 +535,8 @@ export async function handleWorkspaceRoutes(
     // Augment with resolved absolute directories so the UI can open them.
     // Priority: ws.directory field → den-workspaces/<name> → legacy reposRoot/<name>
     // → reposRoot itself as last resort.
+    // A 0.3.0 view scope folds into the focus before it is reported.
+    migrateViewScope();
     const wsFile = readWorkspacesFile();
     const reposRoot = getReposRoot();
     const resolvedDirs: Record<string, string> = {};
@@ -852,7 +873,7 @@ export async function handleWorkspaceRoutes(
 
         // Prefer explicit workspace name; fall back to focused workspace.
         const file = readWorkspacesFile();
-        const wsName = workspace ?? file.focus ?? file.active[0];
+        const wsName = workspace ?? getFocusedWorkspaceName() ?? file.active[0];
         if (!wsName || !file.workspaces[wsName])
           return send400(res, `workspace "${wsName ?? ""}" not found`);
 
@@ -994,7 +1015,7 @@ export async function handleWorkspaceRoutes(
 
         // Prefer explicit workspace name; fall back to focused workspace.
         const file = readWorkspacesFile();
-        const wsName = workspace ?? file.focus ?? file.active[0];
+        const wsName = workspace ?? getFocusedWorkspaceName() ?? file.active[0];
         if (!wsName || !file.workspaces[wsName])
           return send400(res, `workspace "${wsName ?? ""}" not found`);
 
@@ -1169,7 +1190,7 @@ export async function handleWorkspaceRoutes(
     if (wsParam && !isWorkspaceActive(wsParam)) {
       emit({
         type: "error",
-        text: `Workspace "${wsParam}" is not active — activate it first`,
+        text: `Workspace "${wsParam}" is not on this machine — add it first`,
       });
       emit({ type: "done", exitCode: 1, duration: 0 });
       res.end();
@@ -1177,7 +1198,7 @@ export async function handleWorkspaceRoutes(
     }
     const ws = wsParam ? getWorkspaceByName(wsParam) : getActiveWorkspace();
     if (!ws) {
-      emit({ type: "error", text: "No active workspace" });
+      emit({ type: "error", text: "No workspace on this machine" });
       emit({ type: "done", exitCode: 1, duration: 0 });
       res.end();
       return;
@@ -1191,7 +1212,7 @@ export async function handleWorkspaceRoutes(
       ws.name,
     ).filter((s) => hasRuntime(repoKind(s.repoPath)));
     if (allServices.length === 0) {
-      emit({ type: "error", text: "No services in active workspace" });
+      emit({ type: "error", text: "No services in the workspace" });
       emit({ type: "done", exitCode: 1, duration: 0 });
       res.end();
       return;
@@ -2053,7 +2074,7 @@ export async function handleWorkspaceRoutes(
 
     const ws = getActiveWorkspace();
     if (!ws) {
-      emit({ type: "error", text: "No active workspace" });
+      emit({ type: "error", text: "No workspace on this machine" });
       emit({ type: "done" });
       res.end();
       return;

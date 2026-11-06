@@ -62,8 +62,11 @@
  *   setOrgs([{ id, title, workspaces? }], currentId, onSelect?)
  *                                    two or more: the Org ▾ menu; a pick
  *                                    calls onSelect(id), fires `den:org`
- *   setWorkspaces({ label, title, items, focusable, onSelect, onFocus })
- *                                    the Workspace ▾ menu (header.js)
+ *   setWorkspaces({ label, title, open(anchor) })
+ *                                    the Workspace part (header.js; the
+ *                                    menu is workspace-switch.js's, WS-6.6);
+ *                                    { label, title, items, onSelect } still
+ *                                    draws a plain menu
  *   syncEnv()                        repaint Env ▾ from #env-sel
  *   registerCommand({ id, label, keywords?, kind?, run })
  *                                    a ⌘K palette row (R17, dev.20). label
@@ -131,23 +134,88 @@
     scope: "Scope",
     "org.title": "Org: {title}",
     "org.titleId": "Org: {title} ({id})",
-    "ws.all": "All active",
-    "ws.focus": "focus",
-    "ws.none": "No active workspaces",
-    "ws.manage": "Manage workspaces…",
-    "ws.allN": "All active ({n})",
-    "ws.allTip":
-      "Every active workspace; a service several define is listed once",
+    // WS-6 (0.4.3): focus, status, switch. "Active" is never shown.
+    "ws.all": "All workspaces",
+    "ws.none": "No workspaces on this machine",
     "ws.noneLabel": "none",
     "ws.viewTitle":
-      "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing.",
-    "ws.viewTitleFocus":
-      "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing, and focus ({focus}) stays the target for commands.",
-    "ws.setFocus": "Set {ws} as focus",
-    "ws.setFocusTip":
-      "Make it the default target for commands (writes workspaces.yml)",
-    "ws.viewFailed": "Could not change the view: {msg}",
-    "ws.focusFailed": "Could not set the focus: {msg}",
+      "Focus: what every page shows ({ws}). It starts and stops nothing.",
+    "ws.viewFailed": "Could not change the focus: {msg}",
+    "ws.running": "Running {up}/{n}",
+    "ws.partial": "Partial {up}/{n}",
+    "ws.stopped": "Stopped",
+    "ws.unchecked": "Not checked",
+    "ws.down": "{n} down",
+    "ws.down.one": "{n} down",
+    "ws.sum.running": "{n} running",
+    "ws.sum.partial": "{n} partial",
+    "ws.sum.partial.one": "{n} partial",
+    "ws.sum.stopped": "{n} stopped",
+    "ws.sum.stopped.one": "{n} stopped",
+    "ws.sw": "Switch",
+    "ws.ss": "Stop & Switch",
+    "ws.swMore": "More ways to switch to {w}",
+    "ws.sw.p":
+      "Show {w} and start its services that aren't running. Nothing else stops.",
+    "ws.ss.p":
+      "Stop the other workspaces' services first, then start {w}'s. Shared services and agents keep running.",
+    "ws.menuFoot":
+      "Picking a workspace only changes what you see. Switch also starts its services; nothing else stops.",
+    "ws.pref": "Change what picking does",
+    "sw.title": "Stop & Switch to {w}?",
+    "sw.p": "Stops the other workspaces' services, then starts {w}'s.",
+    "sw.stops": "Stops",
+    "sw.starts": "Starts",
+    "sw.keeps": "Keeps running",
+    "sw.svcIn": "{n} services in {w}",
+    "sw.svcIn.one": "{n} service in {w}",
+    "sw.shared": "(shared with {w})",
+    "sw.agents": "{n} agents and sessions in {w}",
+    "sw.agents.one": "{n} agent or session in {w}",
+    "sw.go": "Stop & Switch",
+    "sw.cancel": "Cancel",
+    "sw.noask": "Don't ask before Stop & Switch",
+    "sw.nothing":
+      "Nothing to change: {w} is already the only workspace running.",
+    "sw.already": "{w} is already running. Nothing else changes.",
+    "sw.lock": "Needs unlock: it stops and starts services.",
+    "ask.title": "Also start {w}?",
+    "ask.p":
+      "You're now looking at {w}. Switch also starts its services that aren't running. Nothing else stops.",
+    "ask.go": "Switch",
+    "ask.just": "Just show it",
+    "ask.remember": "Remember my choice",
+    "toast.switched": "Switched to {w}",
+    "toast.ssDone": "Switched to {w} · stopped {n} elsewhere",
+    "toast.ssDone.one": "Switched to {w} · stopped {n} elsewhere",
+    "ws.how.focus": "Focus · what you see",
+    "ws.how.focus.p":
+      "Pick All or one workspace, here or in the top bar. It never starts or stops anything.",
+    "ws.how.status": "Status · what's running",
+    "ws.how.status.p":
+      "Running, Partial or Stopped, worked out from its services. Health is known for every workspace.",
+    "ws.how.switch": "Switch · show it and start it",
+    "ws.how.switch.p":
+      "Starts the services it has that aren't running. Nothing else stops. Stop & Switch, under ▾, also stops the other workspaces' services; shared services and agents keep running.",
+    "ws.summary": "{n} workspaces · {r} running · {p} partial · {s} stopped",
+    "ws.c.ws": "Workspace",
+    "ws.c.status": "Status",
+    "ws.c.svcs": "Services",
+    "ws.c.down": "Down",
+    "ws.c.agents": "Agents",
+    "ws.focusBtn": "Focus",
+    "ws.start": "Start",
+    "ws.stop": "Stop",
+    "ws.openGraph": "Open in Graph →",
+    "ws.openAgents": "Open in Agents →",
+    "ws.shared": "shared",
+    "ws.sharedWith": "also in {w}",
+    "ws.repos": "{n} repos",
+    "ws.repos.one": "{n} repo",
+    "ws.offMachine": "not on this machine",
+    "ws.inFocus": "in focus",
+    "set.switching.on_pick": "When I pick a workspace",
+    "set.switching.confirm_stop_switch": "Before Stop & Switch",
     // A count's singular is its .one (0.3.0-dev.40: en had none, so the org
     // menu said "1 workspaces").
     "org.n": "{n} workspaces",
@@ -172,6 +240,9 @@
     "search.ph": "Search pages, services, actions…",
     "status.checking": "Checking…",
     "status.none": "No services",
+    "status.nothing": "Nothing running",
+    "status.away": "{n} down in {w}",
+    "status.away.one": "{n} down in {w}",
     "status.unchecked": "{n} not checked",
     "status.all": "All {n} healthy",
     "status.all.one": "{n} healthy",
@@ -1437,18 +1508,29 @@
     var m = scopeMenus[kind];
     return typeof m === "function" ? m() : m;
   }
+  // A part whose menu draws itself (the Workspace menu: { open(anchor) }).
+  function openScope(b) {
+    var m = scopeMenu(b.dataset.scope);
+    if (m && typeof m.open === "function") {
+      closeMenu(false);
+      m.open(b);
+      return true;
+    }
+    openMenu(b, m);
+    return false;
+  }
   host.addEventListener("click", function (e) {
     var b = e.target.closest ? e.target.closest("[data-scope]") : null;
     if (!b || b.tagName !== "BUTTON") return;
-    openMenu(b, scopeMenu(b.dataset.scope));
+    openScope(b);
   });
   host.addEventListener("keydown", function (e) {
     var b = e.target.closest ? e.target.closest("[data-scope]") : null;
     if (!b || b.tagName !== "BUTTON") return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      if (!openPop || openPop.anchor !== b)
-        openMenu(b, scopeMenu(b.dataset.scope));
+      if (b.getAttribute("aria-expanded") === "true" && !openPop) return;
+      if ((!openPop || openPop.anchor !== b) && openScope(b)) return;
       if (e.key === "ArrowUp" && openPop) {
         var rows = menuRows(openPop.el);
         if (rows.length) rows[rows.length - 1].focus();
@@ -1561,10 +1643,11 @@
     return true;
   }
   /**
-   * The Workspace part: { label, title, items: [{ value, label, checked,
-   * focused, title? }], onSelect(value) }. "All active" and the active
-   * workspaces, the focused one marked; then, apart, "Set <ws> as focus"
-   * (model.focusable, model.onFocus(name)) and a link to manage them.
+   * The Workspace part (WS-6.6, 0.4.3): { label, title, open(anchor) }.
+   * The menu is the page's (workspace-switch.js): the focus first, All
+   * workspaces, the rest, each with its status pill and [Switch | ▾].
+   * The older shape, { label, title, items, onSelect }, still draws a
+   * plain menu (a plugin's).
    */
   function setWorkspaces(model) {
     var btn = document.getElementById("ws-pill");
@@ -1579,6 +1662,10 @@
     setValue(btn, model.label, model.title || null);
     btn.hidden = false;
     if (sep) sep.hidden = false;
+    if (typeof model.open === "function") {
+      scopeMenus.ws = { label: t("k.ws"), open: model.open };
+      return;
+    }
     var items = [{ heading: t("k.ws") }];
     if (!model.items || !model.items.length)
       items.push({ label: t("ws.none"), href: navHref("local-dev") });
@@ -1586,7 +1673,6 @@
       items.push({
         label: it.label,
         checked: !!it.checked,
-        tag: it.focused ? t("ws.focus") : null,
         title: it.title || null,
         onSelect: function () {
           if (!it.checked && typeof model.onSelect === "function")
@@ -1594,18 +1680,6 @@
         },
       });
     });
-    items.push({ hr: true });
-    // Focus is a separate action (it writes workspaces.yml and retargets
-    // the CLI); picking a view above never moves it.
-    if (model.focusable && typeof model.onFocus === "function")
-      items.push({
-        label: t("ws.setFocus", { ws: model.focusable }),
-        title: t("ws.setFocusTip"),
-        onSelect: function () {
-          model.onFocus(model.focusable);
-        },
-      });
-    items.push({ label: t("ws.manage"), href: navHref("local-dev") });
     scopeMenus.ws = { label: t("k.ws"), items: items };
   }
 
@@ -3829,6 +3903,52 @@
     ".den-pop .den-mi-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
     ".den-pop .den-mtag { font: 11px var(--mono); color: var(--muted); }",
     ".den-pop .den-hr { height: 1px; background: var(--border); margin: 6px 0; }",
+    // WS-6 (0.4.3), the prototype's sizes: status pills, the down count,
+    // the Workspace menu's rows, the [Switch | ▾] split button, the
+    // chevron's menu and the Stop & Switch / "Also start" dialogs.
+    ".den-wsp { font: 11px/1.45 var(--mono); border-radius: 999px; padding: 0 7px; white-space: nowrap;",
+    "  border: 1px solid var(--border); color: var(--muted); }",
+    ".den-wsp.running { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }",
+    ".den-wsp.partial { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }",
+    ".den-wsp.stopped { color: var(--faint); border-style: dashed; }",
+    ".den-downn { font: 11px/1.45 var(--mono); color: var(--bad); white-space: nowrap; }",
+    // The mock's sizes are content-box (420px, 320px, 480px): these are its
+    // measured outer widths.
+    ".den-pop.den-wsmenu { width: 434px; max-width: calc(100vw - 16px); }",
+    ".den-wsrow { display: flex; align-items: center; gap: 2px; }",
+    ".den-wsrow .den-mi { flex: 1; min-width: 0; }",
+    ".den-wsrow .den-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+    ".den-pop .den-wsrow .den-mi[aria-checked='true']::after { content: none; }",
+    ".den-wsrow .den-ck { width: 14px; color: var(--accent-text); flex: none; }",
+    ".den-wsrow .den-split { flex: none; margin-left: 4px; }",
+    ".den-wsrow .den-wsum { font: 11px var(--mono); color: var(--faint); white-space: nowrap; }",
+    ".den-split { display: inline-flex; align-items: stretch; vertical-align: middle; }",
+    ".den-split > .den-btn { display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; }",
+    ".den-split > .den-btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }",
+    ".den-split > .den-btn.den-chev { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px;",
+    "  padding-left: 5px; padding-right: 5px; }",
+    ".den-split > .den-btn.primary.den-chev { margin-left: 0;",
+    "  border-left-color: color-mix(in srgb, var(--on-accent) 35%, transparent); }",
+    ".den-split .den-chev svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2;",
+    "  stroke-linecap: round; stroke-linejoin: round; display: block; }",
+    ".den-pop.den-swm { width: 334px; max-width: calc(100vw - 16px); z-index: 46; }",
+    ".den-pop.den-swm .den-mi { display: grid; gap: 2px; }",
+    ".den-pop.den-swm .den-mi small { color: var(--faint); font-size: 12px; line-height: 1.35; }",
+    ".den-pop .den-foot2 { font-size: 12px; color: var(--faint); padding: 6px 8px 4px; line-height: 1.4; }",
+    ".den-pop .den-foot2 a { color: var(--accent-text); cursor: pointer; text-decoration: underline; }",
+    ".den-dlg-wrap { position: fixed; inset: 0; z-index: 55; display: grid; place-items: center; padding: 16px;",
+    "  background: rgb(0 0 0 / 0.4); }",
+    ".den-dlg { width: min(518px, 100%); box-sizing: border-box; background: var(--raised); border: 1px solid var(--border-strong);",
+    "  border-radius: 12px; box-shadow: var(--shadow); padding: 18px 18px 14px; display: grid; gap: 12px;",
+    "  font: 14px/1.45 var(--sans); color: var(--text); }",
+    ".den-dlg h2 { margin: 0; font: 600 17px var(--display); }",
+    ".den-dlg p { margin: 0; color: var(--muted); font-size: 13.5px; }",
+    ".den-dlg ul { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 3px; }",
+    ".den-dlg ul .den-k { color: var(--faint); font: 11px var(--mono); text-transform: uppercase; letter-spacing: .06em;",
+    "  list-style: none; margin-left: -18px; margin-top: 4px; }",
+    ".den-dlg .den-btns { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }",
+    ".den-dlg .den-btns label { margin-right: auto; font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }",
+    ".den-dlg .den-mono { font-family: var(--mono); font-size: 12.5px; }",
     // The page's one main landmark (#den-content) holds all its content
     // and lays it out as the body did (a column), so pages keep their look.
     "body.den-has-shell > #den-content { display: flex; flex-direction: column; flex: 1 1 auto;",
@@ -3869,6 +3989,7 @@
     ".den-chip .den-n { font-variant-numeric: tabular-nums; }",
     ".den-chip .den-dot, .den-drawer .den-dot, .den-pal .den-dot { margin: 0; }",
     ".den-chip[aria-expanded='true'] { border-color: var(--border-strong); }",
+    ".den-chip .den-away { color: var(--bad); }",
     ".den-dot.run { background: var(--accent); animation: den-pulse 1.2s infinite; }",
     ".den-dot.pending { background: var(--faint); animation: den-pulse 1.2s infinite; }",
     "@keyframes den-pulse { 50% { opacity: .35; } }",
@@ -4099,6 +4220,9 @@
     "  .den-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }",
     "  .den-top .stale-lbl { display: none; }",
     "  .den-chips { flex-shrink: 0; }",
+    // WS-6.5: on phones the status chip's text cuts off with "…".
+    "  .den-chip#den-status .den-n { display: inline-block; vertical-align: middle; max-width: 76px;",
+    "    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
     "}",
     // Below 480px only the mark shows: the title stays the link's name,
     // visually hidden (SA's dev.21 run).

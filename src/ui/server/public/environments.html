@@ -423,7 +423,7 @@
           `<tr><th>Service</th>${envs.map((e) => `<th>${esc(e)}</th>`).join("")}</tr>`;
         const body = document.getElementById("body");
         if (!sorted.length) {
-          body.innerHTML = `<tr><td class="empty" colspan="${envs.length + 1}">No services in the active workspace have a __DEN_MANIFEST_YML__ yet.</td></tr>`;
+          body.innerHTML = `<tr><td class="empty" colspan="${envs.length + 1}">No services in the workspace in focus have a __DEN_MANIFEST_YML__ yet.</td></tr>`;
         } else {
           let html = "",
             lastRepo = null,

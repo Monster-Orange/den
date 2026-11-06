@@ -180,7 +180,7 @@ describe("dry-run and plan are read-only on every path", () => {
     const dry = await cli(["up", "nowhere", "-n"]);
     expect(dry.status).toBe(1);
     expect(dry.out).toMatch(
-      /"nowhere" is not a service in any active workspace/,
+      /"nowhere" is not a service in any workspace on this machine/,
     );
     const real = await cli(["up", "nowhere"]);
     expect(real.status).toBe(1);

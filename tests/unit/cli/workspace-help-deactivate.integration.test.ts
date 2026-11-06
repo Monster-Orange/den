@@ -126,14 +126,16 @@ afterAll(() => {
 });
 
 describe("workspace --help", () => {
-  it("lists activate, deactivate and focus with a line each", () => {
+  it("lists add, remove and focus with a line each (0.4.3: activate and deactivate are their old names)", () => {
     const out = den(["workspace", "--help"]);
     expect(out).toMatch(
-      /workspace <list\|activate\|deactivate\|focus\|use\|create\|delete\|code\|seed>/,
+      /workspace <list\|add\|remove\|focus\|use\|create\|delete\|code\|seed>/,
     );
-    expect(out).toMatch(/^\s+activate <n>\s+\S/m);
-    expect(out).toMatch(/^\s+deactivate <n>\s+\S/m);
-    expect(out).toMatch(/^\s+focus <n>\s+\S/m);
+    expect(out).toMatch(/^\s+add <n>\s+\S/m);
+    expect(out).toMatch(/^\s+remove <n>\s+\S/m);
+    expect(out).toMatch(/^\s+focus <n\|all>\s+\S/m);
+    expect(out).toMatch(/was `activate`, which still works/);
+    expect(out).not.toMatch(/\(active\)/);
     expect(out).toMatch(
       /compose\s+stacks keep running; stop them with `den down <repo>`/,
     );
@@ -143,9 +145,9 @@ describe("workspace --help", () => {
 describe("workspace <sub> --help", () => {
   it("prints that subcommand's help only", () => {
     const out = den(["workspace", "focus", "--help"]);
-    expect(out).toMatch(/den workspace focus <n>/);
+    expect(out).toMatch(/den workspace focus <n\|all>/);
     expect(out).toMatch(/default for commands/);
-    expect(out).not.toMatch(/activate <n>|create \[n\]/);
+    expect(out).not.toMatch(/add <n>|create \[n\]/);
   });
 });
 
@@ -162,7 +164,7 @@ describe("workspace deactivate", () => {
       ]),
     );
     expect(SHOP_PROJECT).toBe("shopdb-main");
-    expect(out).toMatch(/Deactivated workspace: default/);
+    expect(out).toMatch(/Off this machine: default/);
     expect(out).toMatch(
       /compose stacks keep running \(shopdb-main, site\): stop them with `den down shop`, `den down site`/,
     );
@@ -222,17 +224,15 @@ describe("workspace deactivate", () => {
         { project: "unrelated", workingDir: path.join(tmp, "elsewhere") },
       ]),
     );
-    expect(out).toMatch(/Deactivated workspace: default/);
+    expect(out).toMatch(/Off this machine: default/);
     expect(out).not.toMatch(/compose stacks/);
   }, 60_000);
 });
 
 describe("workspace focus", () => {
-  it("focuses an active workspace", () => {
+  it("focuses a workspace on this machine", () => {
     resetWorkspaces();
-    expect(den(["workspace", "focus", "ws-a"])).toMatch(
-      /Focused workspace: ws-a/,
-    );
+    expect(den(["workspace", "focus", "ws-a"])).toMatch(/✓ Focus: ws-a/);
     expect(
       fs.readFileSync(
         path.join(root, "config", "local", "workspaces.yml"),

@@ -786,7 +786,7 @@ describe("activateWorkspace / deactivateWorkspace", () => {
       },
     });
 
-    expect(() => setFocusedWorkspace("feat-x")).toThrow(/not active/);
+    expect(() => setFocusedWorkspace("feat-x")).toThrow(/not on this machine/);
   });
 
   it("getActiveWorkspaces returns the full active set", () => {

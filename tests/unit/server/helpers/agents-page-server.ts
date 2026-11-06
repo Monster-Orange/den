@@ -107,7 +107,9 @@ export async function startAgentsPageServer(
     path.join(root, "config", "local", "workspaces.yml"),
     [
       "active: [north, south]",
-      "focus: north",
+      // WS-6.1 (0.4.3): the focus is All workspaces (commands default to
+      // north, the first); 0.4.2's default view showed every workspace.
+      "focus: all",
       "workspaces:",
       ...Object.entries(members).flatMap(([ws, repo]) => [
         `  ${ws}:`,

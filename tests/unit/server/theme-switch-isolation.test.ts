@@ -6,8 +6,9 @@
  * service process (same pid, no restart). Pinning to the rail and
  * collapsing it (0.3.0-dev.17, R14), and hiding and reordering its pages
  * (0.3.0-dev.19, R21 Navigation) are held to the same rule: only
- * user.yml's `shell` block changes; so is switching the view scope
- * (0.3.0-dev.18, R4): only user.yml's `view` changes. And the top bar's
+ * user.yml's `shell` block changes; so is changing the focus (WS-6.1,
+ * 0.4.3; the view scope before it): only workspaces.yml's `focus`
+ * changes. And the top bar's
  * overlays (0.3.0-dev.20) in a real browser: opening the palette, the
  * status drawer, the lock popover and the user menu writes nothing, and
  * switching appearance and theme from the palette writes `appearance` only.
@@ -337,39 +338,41 @@ describe("switching theme or mode (criterion 5)", () => {
   });
 });
 
-describe("switching the view scope", () => {
-  it("changes nothing but the view block of the settings file", async () => {
+describe("changing the focus (WS-6.1, 0.4.3: the view scope's successor)", () => {
+  it("changes nothing but workspaces.yml's focus: no settings, no services, no process", async () => {
     const info = JSON.parse(
       (await request("GET", "/api/server-info")).body,
     ) as { pid: number; startedAt: string };
     const edgeBefore = (await request("GET", "/api/edge")).body;
     const daemonsBefore = (await request("GET", "/api/service/daemons")).body;
-    // Active set and focus (GET /api/workspaces itself lays out workspace
-    // folders for a terminal editor, so not its whole body).
+    // The set on this machine (GET /api/workspaces itself lays out
+    // workspace folders for a terminal editor, so not its whole body).
     const workspaces = async () => {
       const w = JSON.parse((await request("GET", "/api/workspaces")).body) as {
         active: string[];
         focus: string;
         workspaces: unknown;
       };
-      return [w.active, w.focus, w.workspaces];
+      return [w.active, w.workspaces];
     };
     const wsBefore = await workspaces();
-    const userBefore = yaml.parse(
-      fs.readFileSync(path.join(tmp, USER_YML), "utf-8"),
-    ) as Record<string, unknown>;
     await new Promise((r) => setTimeout(r, 500));
     const before = snapshot();
 
     for (const scope of ["ws-b", "all", "ws-c", "ws-a", "ws-b"]) {
-      const r = await request("POST", "/api/scope", { scope });
+      const r = await request("POST", "/api/scope", { focus: scope });
       expect([scope, r.status]).toEqual([scope, 200]);
-      // The pages and the health row read the new view right away.
+      // The pages and the health row read the new focus right away; the
+      // command target is it (with all, the first on this machine).
       const view = JSON.parse((await request("GET", "/api/scope")).body) as {
         scope: string;
         focus: string;
       };
-      expect([scope, view.scope, view.focus]).toEqual([scope, scope, "ws-a"]);
+      expect([scope, view.scope, view.focus]).toEqual([
+        scope,
+        scope,
+        scope === "all" ? "ws-a" : scope,
+      ]);
       expect((await request("GET", "/api/health")).status).toBe(200);
       expect((await request("GET", "/api/services")).status).toBe(200);
     }
@@ -379,14 +382,13 @@ describe("switching the view scope", () => {
     const changed = Object.keys({ ...before, ...after }).filter(
       (f) => before[f] !== after[f],
     );
-    expect(changed).toEqual([USER_YML]);
-    const { view, ...rest } = yaml.parse(
-      fs.readFileSync(path.join(tmp, USER_YML), "utf-8"),
-    ) as Record<string, unknown>;
-    expect(view).toEqual({ scope: "ws-b" });
-    expect(rest).toEqual(userBefore);
+    const WS_YML = path.join("dist", "config", "local", "workspaces.yml");
+    expect(changed).toEqual([WS_YML]);
+    expect(
+      yaml.parse(fs.readFileSync(path.join(tmp, WS_YML), "utf-8")).focus,
+    ).toBe("ws-b");
 
-    // Same edge, same services, same workspaces and focus, same process.
+    // Same edge, same services, same workspaces, same process.
     expect((await request("GET", "/api/edge")).body).toBe(edgeBefore);
     expect((await request("GET", "/api/service/daemons")).body).toBe(
       daemonsBefore,
@@ -399,7 +401,7 @@ describe("switching the view scope", () => {
       info.pid,
       info.startedAt,
     ]);
-    await request("POST", "/api/scope", { scope: "all" });
+    await request("POST", "/api/scope", { focus: "ws-a" });
   }, 30_000);
 });
 

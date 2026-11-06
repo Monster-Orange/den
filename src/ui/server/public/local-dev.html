@@ -87,7 +87,8 @@
       .page-main {
         flex: 1;
         display: grid;
-        grid-template-columns: 260px 1fr;
+        /* WS-6.9: the mock's list column (.wsx: 250px). */
+        grid-template-columns: 250px 1fr;
         overflow: hidden;
         min-height: 0;
       }
@@ -220,6 +221,155 @@
         align-items: center;
         gap: 2px;
         flex-shrink: 0;
+      }
+      /* WS-6.9 (0.4.3): the list as the mock's (.wsl): a dot, the name and
+         the status pill, then a meta line (repos, down) under the name. */
+      .ws-list {
+        display: grid;
+        align-content: start;
+        gap: 2px;
+        padding: 6px;
+      }
+      .ws-item {
+        display: grid;
+        grid-template-columns: 14px minmax(0, 1fr) auto;
+        gap: 2px 8px;
+        align-items: center;
+        padding: 7px 8px;
+        border-left: 0;
+        border-radius: var(--radius-button, 6px);
+        font-family: inherit;
+        font-size: 14px;
+        line-height: 1.45;
+        color: var(--text);
+      }
+      .ws-item:hover {
+        background: var(--sunken, var(--surface));
+      }
+      .ws-item.active {
+        font-weight: inherit;
+        background: color-mix(in srgb, var(--accent) 13%, transparent);
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+      .ws-item .den-dot {
+        margin: 0;
+        justify-self: center;
+      }
+      .ws-item .ws-nm {
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .ws-item .ws-pill {
+        grid-column: 3;
+        grid-row: 1;
+      }
+      .ws-item .ws-pill .den-wsp {
+        display: block;
+      }
+      .ws-item .ws-meta {
+        grid-column: 2 / 4;
+        grid-row: 2;
+        font: 11.5px/1.45 var(--mono);
+        color: var(--faint, var(--muted));
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      /* Its terminal, editor and ⋮ buttons sit over the meta line's end,
+         shown on hover or keyboard focus (the mock's row has none). */
+      .ws-item {
+        position: relative;
+      }
+      .ws-item .ws-item-right {
+        position: absolute;
+        right: 6px;
+        bottom: 5px;
+        background: var(--surface);
+        border-radius: 4px;
+        visibility: hidden;
+      }
+      .ws-item:hover .ws-item-right,
+      .ws-item:focus-within .ws-item-right,
+      .ws-item .ws-item-right:has(.ws-menu-dropdown.open) {
+        visibility: visible;
+      }
+      .ws-item.ws-all .ws-meta {
+        white-space: normal;
+      }
+      .ws-item.ws-all {
+        border-bottom: 1px solid var(--border);
+        border-radius: var(--radius-button, 6px) var(--radius-button, 6px) 0 0;
+        margin-bottom: 4px;
+      }
+      .ws-count {
+        font: 11px var(--mono);
+        color: var(--faint, var(--muted));
+      }
+      .ws-item.off .ws-nm,
+      .ws-item.off .ws-meta {
+        color: var(--faint, var(--muted));
+      }
+      .ws-howto {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+      .ws-howto div {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button, 6px);
+        background: var(--surface);
+        padding: 8px 12px;
+        font-size: 12.5px;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+      .ws-howto b {
+        color: var(--text);
+        display: block;
+        font-size: 13px;
+      }
+      @media (max-width: 860px) {
+        .ws-howto {
+          grid-template-columns: 1fr;
+        }
+      }
+      .ws-head-status,
+      .ws-head-acts {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .ws-head-status .den-dot {
+        margin: 0;
+      }
+      @media (max-width: 760px) {
+        .content-header {
+          flex-wrap: wrap;
+          row-gap: 6px;
+        }
+        .ws-head-status {
+          flex: 0 1 auto;
+        }
+      }
+      .ws-head .ws-sub {
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      .ws-shared {
+        font: 10.5px var(--mono);
+        color: var(--remote, var(--accent-text));
+        border: 1px solid
+          color-mix(in srgb, var(--remote, var(--accent)) 40%, transparent);
+        border-radius: 4px;
+        padding: 0 4px;
+        margin-left: 6px;
+      }
+      #ws-all-table .tbl-acts {
+        justify-content: flex-end;
       }
       .ws-open-btn {
         background: none;
@@ -1465,7 +1615,21 @@
           problemCards,
           problemFix,
           buildRow,
+          onWorkspaceClick,
+          pickFocus,
+          setFocusHandler,
+          setSwitchRunner,
+          takePendingSwitch,
+          writeFocus,
+          workspaceRows,
+          runSwitch,
         } from "/header.js";
+        import {
+          allViewHtml,
+          sharedTagHtml,
+          wsHeadStatusHtml,
+          wsListHtml,
+        } from "/workspaces-page.js";
         import { checkLine } from "/topbar.js";
         import { agentsSectionHtml, mountAgents } from "/agents-section.js";
         import { mountGraph, graphHealth, graphMaximized } from "/graph.js";
@@ -1533,6 +1697,12 @@
         let _noAutostartRepos = new Set();
 
         async function init() {
+          // WS-6.7, WS-6.8: switches run here, and the focus moves in place
+          // (set first: a pick can come before the health stream settles).
+          if (!GRAPH_PAGE) {
+            setSwitchRunner(switchHere);
+            setFocusHandler(showFocus);
+          }
           await Promise.all([
             loadWorkspaces(),
             initHealth(),
@@ -1547,6 +1717,11 @@
           setServiceRunner((cmd, s) =>
             window.runCmd(s.address, s.repo, s.service, cmd),
           );
+          // A switch handed over by another page runs once the rows are in.
+          if (!GRAPH_PAGE) {
+            const sw = takePendingSwitch();
+            if (sw) void runSwitch(sw.ws, sw.stopOthers);
+          }
           // One handed over by another page (this tab, under a minute old).
           const pending = takePendingAction();
           if (pending) {
@@ -1564,41 +1739,13 @@
             .catch(() => null);
           if (!wsData) return;
 
-          const names = Object.keys(wsData.workspaces ?? {});
-          document.getElementById("ws-list").innerHTML = names
-            .map((n) => {
-              const dirPath = wsData.resolvedDirs?.[n] ?? "";
-              const menuId = `ws-menu-${n.replace(/[^a-z0-9]/gi, "-")}`;
-              const deleteItem =
-                n !== "default"
-                  ? `<button class="danger" data-action="delete">Delete</button>`
-                  : "";
-              return `<div class="ws-item ${n === activeWs ? "active" : ""}" data-name="${escHtml(n)}" data-action="select">
-          <span>${escHtml(n)}${isWsActive(n) ? ' <span style="font-size:10px;color:var(--muted)">(active)</span>' : ""}${n === focusName() ? ' <span style="font-size:10px;color:var(--accent-text)">●</span>' : ""}</span>
-          <span class="ws-item-right">
-            <button class="ws-term-btn" title="Open in terminal" data-open-term="${escHtml(dirPath)}">&#62;_</button>
-            <button class="ws-open-btn" title="Open in editor" data-open-path="${escHtml(wsData.codeWorkspacePaths?.[n] || dirPath)}">↗</button>
-            <div class="ws-menu-wrap">
-              <button class="ws-menu-btn" title="More actions" data-menu-id="${escHtml(menuId)}">⋮</button>
-              <div class="ws-menu-dropdown" id="${escHtml(menuId)}">
-                ${
-                  isWsActive(n)
-                    ? `<button data-action="deactivate">Deactivate</button>`
-                    : `<button data-action="activate">Activate</button>`
-                }
-                <button data-action="rename">Rename</button>
-                ${deleteItem}
-              </div>
-            </div>
-          </span>
-        </div>`;
-            })
-            .join("");
+          // WS-6.9: All workspaces, then each workspace with its status.
+          drawWsList();
 
-          // On first load, prefer URL ?ws= param, then the view scope when it
-          // is one workspace (the top bar's View), then focus. This page edits
-          // one workspace at a time; the logs and health cover the whole view.
-          if (!activeWs && !GRAPH_ALL) {
+          // On first load: the URL's ?ws= (a link, or a switch handed over),
+          // else the focus (WS-6.1): All workspaces draws the All view on
+          // Workspaces and every workspace on the Graph page; one draws it.
+          if (!activeWs && !GRAPH_ALL && !_allShown) {
             const urlWs = new URLSearchParams(location.search).get("ws");
             const view = await fetch("/api/scope")
               .then((r) => (r.ok ? r.json() : null))
@@ -1608,10 +1755,6 @@
                 ? view.scope
                 : null;
             const named = urlWs && wsData.workspaces?.[urlWs] ? urlWs : null;
-            // The Graph page follows the top bar's View (0.3.0-dev.33):
-            // "All active" draws every workspace in view, one picked draws
-            // that one, and ?ws= still wins. Workspaces keeps one workspace,
-            // the list's selection: its actions and table are per workspace.
             const inView = Array.isArray(view?.inView) ? view.inView : [];
             if (
               GRAPH_PAGE &&
@@ -1622,12 +1765,107 @@
               await renderGraphAll(inView, view.focus ?? focusName());
               return;
             }
+            // (Nothing on this machine yet: the workspace to add, as before.)
+            if (!GRAPH_PAGE && !named && !scoped && activeSet().length) {
+              renderAll();
+              return;
+            }
             const target =
               named ??
               scoped ??
               (GRAPH_PAGE && inView.length === 1 ? inView[0] : focusName());
             if (target) selectWorkspace(target);
           }
+        }
+
+        // ── WS-6.9: the list, the All view, the switch runner ────────────────────
+        /** True while the All workspaces view is shown (Workspaces only). */
+        let _allShown = false;
+        /** The running agents and sessions (GET /api/sessions), for the All view. */
+        let _sessions = [];
+        function shownValue() {
+          return _allShown ? "all" : activeWs;
+        }
+        function drawWsList() {
+          const el = document.getElementById("ws-list");
+          if (!el || !wsData) return;
+          el.innerHTML = wsListHtml({
+            data: wsData,
+            rows: workspaceRows(),
+            selected: shownValue(),
+          });
+        }
+        /** The All workspaces view: one row per workspace on this machine. */
+        async function renderAll() {
+          if (GRAPH_PAGE) return;
+          _allShown = true;
+          activeWs = null;
+          _tbl = null;
+          const content = document.getElementById("content");
+          delete content.dataset.ws;
+          window.denShell?.pageHeader?.()?.setScope({ env: "local" });
+          runs().scope(null);
+          paintAll();
+          drawWsList();
+          _sessions = await fetch("/api/sessions")
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => d?.sessions ?? [])
+            .catch(() => []);
+          if (_allShown) paintAll();
+        }
+        function paintAll() {
+          if (!_allShown) return;
+          document.getElementById("content").innerHTML = allViewHtml({
+            data: wsData,
+            rows: workspaceRows(),
+            sessions: _sessions,
+          });
+        }
+        /** The selected workspace's status line, from the latest health. */
+        function paintHeadStatus() {
+          const el = document.getElementById("ws-head-status");
+          if (el && activeWs)
+            el.innerHTML = wsHeadStatusHtml({
+              name: activeWs,
+              data: wsData,
+              rows: workspaceRows(),
+            });
+        }
+        /** The focus moved (the list, the top bar's menu): show it here. */
+        function showFocus(value) {
+          const params = new URLSearchParams(location.search);
+          if (value === "all") params.delete("ws");
+          else params.set("ws", value);
+          const qs = params.toString();
+          history.replaceState(null, "", location.pathname + (qs ? "?" + qs : ""));
+          if (value === "all") return void renderAll();
+          if (wsData?.workspaces?.[value])
+            return void selectWorkspace(value, { updateUrl: false });
+        }
+        /**
+         * Switch and Stop & Switch run here (WS-6.7, WS-6.8): with Stop &
+         * Switch, each other workspace's services the plan stops (never a
+         * shared repo's, never a session), then the focus, then Up in the
+         * target (it starts what isn't running). Nothing else changes.
+         */
+        async function switchHere(ws, { stopOthers, plan }) {
+          let stopped = 0;
+          if (stopOthers)
+            for (const g of plan.stops) {
+              const ok = await runWorkspaceCmdAsync("down", g.addresses, {
+                workspace: g.workspace,
+              });
+              if (ok) stopped += g.addresses.length;
+            }
+          if (!(await writeFocus(ws))) return;
+          showFocus(ws);
+          await runWorkspaceCmdAsync("up", null, { workspace: ws });
+          window.denShell?.toast?.(
+            stopOthers
+              ? window.denShell.t("toast.ssDone", { w: ws, n: stopped })
+              : window.denShell.t("toast.switched", { w: ws }),
+          );
+          await loadWorkspaces();
         }
 
         /**
@@ -1745,6 +1983,18 @@
             openInEditor(openBtn.dataset.openPath);
             return;
           }
+          const pickEl = e.target.closest(".ws-item[data-pick]");
+          if (pickEl && !e.target.closest(".ws-item-right")) {
+            // WS-6.1: picking sets the focus (and, per Settings ›
+            // Workspaces, may ask or switch).
+            const v = pickEl.dataset.pick;
+            if (v === shownValue()) return;
+            void pickFocus(v).then(() => {
+              // Already the stored focus (another tab, the URL): show it.
+              if (v !== shownValue()) showFocus(v);
+            });
+            return;
+          }
           const item = e.target.closest(".ws-item[data-name]");
           if (!item) return;
           const name = item.dataset.name;
@@ -1769,8 +2019,16 @@
               .forEach((d) => d.classList.remove("open"));
             deactivateWorkspaceUi(name);
           } else if (!e.target.closest(".ws-item-right")) {
+            // Not on this machine: shown here only (it can't be the focus).
             selectWorkspace(name);
           }
+        });
+        document.getElementById("ws-list").addEventListener("keydown", (e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          const item = e.target.closest?.(".ws-item");
+          if (!item || e.target !== item) return;
+          e.preventDefault();
+          item.click();
         });
 
         // ── Select workspace ──────────────────────────────────────────────────────
@@ -1779,22 +2037,27 @@
           { updateUrl = true } = {},
         ) {
           activeWs = name;
+          _allShown = false;
           if (updateUrl) {
             const params = new URLSearchParams(location.search);
             params.set("ws", name);
             history.replaceState(null, "", "?" + params.toString());
           }
-          document
-            .querySelectorAll(".ws-item")
-            .forEach((el) =>
-              el.classList.toggle("active", el.dataset.name === name),
-            );
+          drawWsList();
           await renderContent(name);
         };
 
         // Event delegation for content pane — reads workspace from content.dataset.ws
         // so workspace names are never interpolated into inline JS strings.
         document.getElementById("content").addEventListener("click", (e) => {
+          // WS-6.6 to WS-6.8: Focus, Switch and the chevron's menu (the All
+          // table, the header's split button), as in the top bar's menu.
+          if (
+            e.target.closest(
+              "[data-focus],[data-switch],[data-swmenu],[data-stopswitch]",
+            )
+          )
+            return void onWorkspaceClick(e);
           const content = document.getElementById("content");
           const wsName = content?.dataset?.ws;
           if (!wsName) return;
@@ -1823,7 +2086,11 @@
             e.stopPropagation();
             return;
           }
-          if (action === "switch-ws") {
+          if (action === "ws-start") {
+            runWorkspaceCmd("up");
+          } else if (action === "ws-stop") {
+            runWorkspaceCmd("down");
+          } else if (action === "switch-ws") {
             switchWorkspace(wsName);
           } else if (action === "activate-ws") {
             activateWorkspaceUi(wsName);
@@ -1970,7 +2237,7 @@
 
           const masterDisabled = isActive
             ? ""
-            : 'disabled title="Activate this workspace first"';
+            : 'disabled title="Add this workspace to this machine first"';
           // Membership is config-driven, not disk-driven: a managed entry
           // whose clone doesn't exist yet must still ENABLE Sync — Sync is the
           // control that creates the clone. Deriving this from svcList alone
@@ -1992,17 +2259,11 @@
           content.innerHTML = `
         <div class="content-header">
           <h2>${escHtml(wsName)}</h2>
-          ${
-            isActive
-              ? `<span class="badge active-ws">active${isFocus ? " · focus" : ""}</span>
-               ${!isFocus ? `<button class="switch-btn" data-action="focus-ws">set focus</button>` : ""}
-               <button class="switch-btn" data-action="deactivate-ws">deactivate</button>`
-              : `<button class="switch-btn" data-action="activate-ws">activate</button>
-               <button class="switch-btn" data-action="switch-ws">activate + focus</button>`
-          }
+          <span class="ws-head-status" id="ws-head-status">${wsHeadStatusHtml({ name: wsName, data: wsData, rows: workspaceRows() })}</span>
           ${stackNsChip}
           <span class="badge ws-agents" id="ws-agents-count" hidden></span>
-          <a class="ws-head-link" id="ws-open-graph" href="/graph?ws=${enc}">Open in Graph →</a>
+          <a class="ws-head-link" id="ws-open-graph" href="/graph?ws=${enc}">${window.denShell?.t?.("ws.openGraph") ?? "Open in Graph →"}</a>
+          <a class="ws-head-link" id="ws-open-agents" href="/agents?ws=${enc}">${window.denShell?.t?.("ws.openAgents") ?? "Open in Agents →"}</a>
           <div class="action-menu-wrap ws-more">
             <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${escHtml(wsName)}" title="More for this workspace">⋯</button>
             <div class="action-dropdown" id="ws-more-menu" role="menu" style="display:none">
@@ -2367,7 +2628,7 @@
             ? `<span class="tbl-mode"><span class="badge ${escHtml(mode)}">${escHtml(mode)}</span><button type="button" class="tbl-switch" data-action="tbl-mode" data-repo="${escHtml(repo)}" data-mode="${switchTo}" aria-label="${escHtml(repo)}: use ${mode === "managed" ? "local" : "managed"}" data-k="mode:${escHtml(repo)}">use ${mode === "managed" ? "local" : "managed"}</button></span>`
             : "";
           const head = `<tr class="repo${r.problem ? " prob" : ""}" data-repo="${escHtml(repo)}">
-              <th scope="row">${exp}<span class="repo-name">${escHtml(repo)}</span>${badges}</th>
+              <th scope="row">${exp}<span class="repo-name">${escHtml(repo)}</span>${sharedTagHtml(repo, _tbl.wsName, wsData)}${badges}</th>
               <td>${repoHealth(r)}</td>
               <td class="tbl-mono tbl-muted">${escHtml(primary?.branch ?? "")}</td>
               <td>${modeCell}</td>
@@ -3816,7 +4077,7 @@
             const idle = () => busyRoutes.forEach((r) => setBusy(r, false));
             const params = new URLSearchParams({
               cmd,
-              workspace: activeWs || focusName(),
+              workspace: opts.workspace || activeWs || focusName(),
             });
             if (addresses?.length) params.set("addresses", addresses.join(","));
             // `seed` and `addresses` are alternatives: seed asks the SERVER to
@@ -4608,6 +4869,12 @@
           _lastHealthAt = new Date();
           graphHealth(_lastHealthResults);
           renderTable();
+          // WS-6.3: every workspace's status follows the health.
+          if (!GRAPH_PAGE) {
+            drawWsList();
+            paintHeadStatus();
+            paintAll();
+          }
         });
 
         async function openInEditor(repoPath) {

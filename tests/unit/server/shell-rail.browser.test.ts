@@ -490,22 +490,17 @@ describe("the scope breadcrumb (R4)", () => {
     await p.context().close();
   });
 
-  it("Workspace ▾: All active and the active workspaces, focus marked; picking sets the view, focus is a separate item", async () => {
+  it("Workspace ▾ (a plugin's items shape): a plain menu, ✓ on the pick, keys; picking calls onSelect", async () => {
     if (!browser) return;
     const { p } = await mount("services");
     await stubWorkspaces(
       p,
       [
-        {
-          value: "all",
-          label: "All active (2)",
-          checked: false,
-          focused: false,
-        },
-        { value: "ws-a", label: "ws-a", checked: false, focused: true },
-        { value: "ws-b", label: "ws-b", checked: true, focused: false },
+        { value: "all", label: "All workspaces", checked: false },
+        { value: "ws-a", label: "ws-a", checked: false },
+        { value: "ws-b", label: "ws-b", checked: true },
       ],
-      { label: "ws-b", focusable: "ws-b" },
+      { label: "ws-b" },
     );
     await p.click("#ws-pill");
     expect(await p.getAttribute("#ws-pill", "aria-expanded")).toBe("true");
@@ -524,12 +519,11 @@ describe("the scope breadcrumb (R4)", () => {
       label: "Workspace",
       labelFont: "11px",
     });
+    // WS-6.2: no "focus" marker and no separate focus item (0.4.3).
     expect(await menuRows(p)).toEqual([
-      { text: "All active (2)", role: "menuitemradio", checked: "false" },
-      { text: "ws-afocus", role: "menuitemradio", checked: "false" },
+      { text: "All workspaces", role: "menuitemradio", checked: "false" },
+      { text: "ws-a", role: "menuitemradio", checked: "false" },
       { text: "ws-b", role: "menuitemradio", checked: "true" },
-      { text: "Set ws-b as focus", role: "menuitem", checked: null },
-      { text: "Manage workspaces…", role: "menuitem", checked: null },
     ]);
     // ✓ on the checked row (R18), and focus starts there.
     expect(
@@ -541,39 +535,57 @@ describe("the scope breadcrumb (R4)", () => {
     expect(await focusedText(p)).toBe("ws-b");
     // ↑/↓ move (wrapping), Home and End.
     await p.keyboard.press("ArrowDown");
-    expect(await focusedText(p)).toBe("Set ws-b as focus");
-    await p.keyboard.press("Home");
-    expect(await focusedText(p)).toBe("All active (2)");
+    expect(await focusedText(p)).toBe("All workspaces");
+    await p.keyboard.press("End");
+    expect(await focusedText(p)).toBe("ws-b");
     await p.keyboard.press("ArrowUp");
-    expect(await focusedText(p)).toBe("Manage workspaces…");
+    expect(await focusedText(p)).toBe("ws-a");
     // Escape closes and gives focus back to the button.
     await p.keyboard.press("Escape");
     expect(await p.$$(".den-pop")).toHaveLength(0);
     expect(await p.evaluate(() => document.activeElement?.id)).toBe("ws-pill");
     expect(await p.getAttribute("#ws-pill", "aria-expanded")).toBe("false");
-    // ↓ on the button opens it; Enter picks: the view, never the focus.
+    // ↓ on the button opens it; Enter picks.
     await p.keyboard.press("ArrowDown");
     await p.keyboard.press("Home");
     await p.keyboard.press("Enter");
     expect(
-      await p.evaluate(() => {
-        const w = window as unknown as { picked: string[]; focused: string[] };
-        return [w.picked, w.focused];
-      }),
-    ).toEqual([["all"], []]);
-    // The separate focus item is the only way to move the focus.
-    await p.click("#ws-pill");
-    await p.click('.den-pop .den-mi:has-text("Set ws-b as focus")');
-    expect(
-      await p.evaluate(() => {
-        const w = window as unknown as { picked: string[]; focused: string[] };
-        return [w.picked, w.focused];
-      }),
-    ).toEqual([["all"], ["ws-b"]]);
+      await p.evaluate(
+        () => (window as unknown as { picked: string[] }).picked,
+      ),
+    ).toEqual(["all"]);
     // A click outside closes.
     await p.click("#ws-pill");
     expect(await p.$$(".den-pop")).toHaveLength(1);
     await p.mouse.click(900, 600);
+    expect(await p.$$(".den-pop")).toHaveLength(0);
+    await p.context().close();
+  });
+
+  it("Workspace ▾ with open(anchor) (WS-6.6): the page draws the menu; the shell only calls it", async () => {
+    if (!browser) return;
+    const { p } = await mount("services");
+    await p.evaluate(() => {
+      const w = window as unknown as {
+        denShell: Shell;
+        opened: string[];
+      };
+      w.opened = [];
+      w.denShell.setWorkspaces({
+        label: "north",
+        title: "Focus",
+        open: (a: HTMLElement) => w.opened.push(a.id),
+      });
+    });
+    expect((await p.textContent("#ws-pill"))?.trim()).toMatch(/north/);
+    await p.click("#ws-pill");
+    await p.focus("#ws-pill");
+    await p.keyboard.press("ArrowDown");
+    expect(
+      await p.evaluate(
+        () => (window as unknown as { opened: string[] }).opened,
+      ),
+    ).toEqual(["ws-pill", "ws-pill"]);
     expect(await p.$$(".den-pop")).toHaveLength(0);
     await p.context().close();
   });
@@ -940,7 +952,7 @@ describe("a consumer's dev.18 run (two consumers)", () => {
     await p.context().close();
   });
 
-  it("names: a group by its label, a workspace row 'default, focus', scope buttons without ▾", async () => {
+  it("names: a group by its label, a workspace row by its name, scope buttons without ▾", async () => {
     if (!browser) return;
     const { p } = await mount("services");
     await shell(p, "registerGroup", {
@@ -971,7 +983,7 @@ describe("a consumer's dev.18 run (two consumers)", () => {
     await p.click("#ws-pill");
     await p.waitForSelector(".den-pop");
     const items = await axNames(p, "menuitemradio");
-    expect(items).toContain("default, focus");
+    expect(items).toContain("default");
     await p.context().close();
   });
 

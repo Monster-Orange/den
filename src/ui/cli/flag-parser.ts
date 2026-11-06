@@ -225,7 +225,17 @@ const COMMAND_FLAGS: Record<string, readonly string[]> = {
   ],
   restart: ["-A", "--app", "-n", "--dry-run"],
   logs: [],
-  setup: ["-f", "--force", "--plan", "-w", "--workspace", "--all-active"],
+  setup: [
+    "-f",
+    "--force",
+    "--plan",
+    "-w",
+    "--workspace",
+    "--all-workspaces",
+    "--all-active",
+  ],
+  switch: ["--stop-others", "-y", "--yes", "-n", "--dry-run"],
+  focus: ["--all"],
   sync: [],
   // The only override for an edge another state dir owns; a typo'd one
   // must not be ignored.

@@ -73,6 +73,21 @@ export function readManifestAnyBranch(
   return null;
 }
 
+/**
+ * WS-6.1: the focus value meaning every workspace on this machine. A
+ * workspace can't be named this (createWorkspace refuses it).
+ */
+export const FOCUS_ALL = "all";
+
+/**
+ * "on this machine" (WS-6.2): the file's `active` list is the set Den
+ * polls, lists and can switch to. It never means "running"; the UI, the
+ * help and the docs never call it "active".
+ */
+export function notOnMachine(name: string): string {
+  return `Workspace "${name}" is not on this machine — run \`${product().cli} workspace add ${name}\` first`;
+}
+
 const DEFAULT_FILE: WorkspacesFile = {
   active: ["default"],
   focus: "default",
@@ -136,8 +151,10 @@ export function normalizeWorkspacesFileShape(parsed: {
     changed = true;
   }
 
+  // WS-6.1: the focus is "all" (every workspace on this machine) or one of
+  // them. "all" is kept as written.
   let focus = typeof parsed.focus === "string" ? parsed.focus : undefined;
-  if (!focus || !active.includes(focus)) {
+  if (!focus || (focus !== FOCUS_ALL && !active.includes(focus))) {
     focus = active[0];
     changed = true;
   }
@@ -366,9 +383,7 @@ export function requireActiveWorkspace(name: string): {
     throw new Error(`Workspace "${name}" does not exist`);
   }
   if (!isWorkspaceActive(name)) {
-    throw new Error(
-      `Workspace "${name}" is not active — run \`${product().cli} workspace activate ${name}\` first`,
-    );
+    throw new Error(notOnMachine(name));
   }
   return ws;
 }
@@ -383,13 +398,24 @@ export function isWorkspaceActive(name: string): boolean {
 }
 
 /**
- * Focused workspace name: DEN_WORKSPACE_OVERRIDE → focus → active[0].
+ * The focus value (WS-6.1): "all", or one workspace on this machine. The
+ * view and the CLI share it; see scope.ts for what it shows.
+ */
+export function getFocus(): string {
+  const file = readWorkspacesFile();
+  return file.focus ?? file.active[0] ?? FOCUS_ALL;
+}
+
+/**
+ * The workspace commands default to: DEN_WORKSPACE_OVERRIDE → the focus
+ * when it is one workspace → the first on this machine (the focus "all").
  * Returns null when the resolved name is missing from the file.
  */
 export function getFocusedWorkspaceName(): string | null {
   const file = readWorkspacesFile();
+  const focus = file.focus === FOCUS_ALL ? undefined : file.focus;
   const name =
-    process.env.DEN_WORKSPACE_OVERRIDE ?? file.focus ?? file.active[0] ?? null;
+    process.env.DEN_WORKSPACE_OVERRIDE ?? focus ?? file.active[0] ?? null;
   if (!name || !file.workspaces[name]) return null;
   return name;
 }
@@ -443,21 +469,29 @@ export function deactivateWorkspace(name: string): void {
       if (first) file.active = [first];
     }
   }
-  if (!file.active.includes(file.focus ?? "")) {
+  if (file.focus !== FOCUS_ALL && !file.active.includes(file.focus ?? "")) {
     file.focus = file.active[0];
   }
   writeWorkspacesFile(file);
 }
 
+/**
+ * Set the focus (WS-6.1): "all" or a workspace on this machine. It only
+ * changes what is shown and what commands default to: nothing starts or
+ * stops.
+ */
 export function setFocusedWorkspace(name: string): void {
   const file = readWorkspacesFile();
+  if (name === FOCUS_ALL) {
+    file.focus = FOCUS_ALL;
+    writeWorkspacesFile(file);
+    return;
+  }
   if (!file.workspaces[name]) {
     throw new Error(`Workspace "${name}" does not exist`);
   }
   if (!file.active.includes(name)) {
-    throw new Error(
-      `Workspace "${name}" is not active — run \`${product().cli} workspace activate ${name}\` first`,
-    );
+    throw new Error(notOnMachine(name));
   }
   file.focus = name;
   writeWorkspacesFile(file);
@@ -477,6 +511,10 @@ export function setActiveWorkspace(name: string): void {
 }
 
 export function createWorkspace(name: string, config: WorkspaceConfig): void {
+  if (name === FOCUS_ALL)
+    throw new Error(
+      `"${FOCUS_ALL}" is the focus that shows every workspace; pick another name`,
+    );
   const file = readWorkspacesFile();
   file.workspaces[name] = config;
   writeWorkspacesFile(file);
@@ -494,7 +532,10 @@ export function deleteWorkspaceConfig(name: string): void {
       if (first) file.active = [first];
     }
   }
-  if (!file.focus || !file.active.includes(file.focus)) {
+  if (
+    !file.focus ||
+    (file.focus !== FOCUS_ALL && !file.active.includes(file.focus))
+  ) {
     file.focus = file.active[0];
   }
   writeWorkspacesFile(file);

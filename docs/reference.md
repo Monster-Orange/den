@@ -136,12 +136,14 @@ provider in `src/shared/auth/token-providers/`.
 den up [repo]          # start the repo's derived dependency closure (-x deps only, -n dry run)
 den down [repo]        # stop it cleanly (--with-deps: and what it sits on)
 den restart [svc...]   # restart services (-A <app> for a whole application)
-den status             # service health for the active workspace
+den status             # service health for what is in focus
 den apps               # Org > Application > Repo > Services
 den graph [repo]       # the derived dependency graph
 den logs [repo]        # tail a repo's local logs
 den use-local [repo]   # use your checkout · use-managed [repo] to switch back
-den workspace list     # workspaces (activate · deactivate · use · create · delete)
+den workspace list     # workspaces (add · remove · create · delete)
+den focus [ws|--all]   # what you see and commands default to; starts nothing
+den switch <ws>        # focus it and start it (--stop-others: Stop & Switch)
 den run                # run test suites (interactive, or with options)
 den web                # the web UI (open · login · sessions · logout · token)
 den sessions list      # terminals that outlive the web server (start · attach · kill)
@@ -152,7 +154,7 @@ den --help             # everything else
 
 `up`, `down`, `restart` and `setup` take `-w <workspace>`. Without it, a
 service you name is found in the focused workspace first, then across the
-other active workspaces; when it is in several, the error lists the `-w`
+other workspaces on this machine; when it is in several, the error lists the `-w`
 command for each.
 
 In a distribution the command is that distribution's `cli` name.

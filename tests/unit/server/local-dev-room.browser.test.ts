@@ -1,6 +1,6 @@
 /**
  * Room for the graph (R23, 0.3.0-dev.30, Ward QA 2026-11-05): the
- * workspace list (260px), the output and two toolbar rows left Local
+ * workspace list (250px since 0.4.3, the WS-6 mock), the output and two toolbar rows left Local
  * Dev's graph at 40% Fit. The workspace list collapses to a 40px strip,
  * remembered per user (/api/settings graph.workspaces); Maximize (the
  * graph's button, or F with focus outside a field) gives the graph the
@@ -285,7 +285,7 @@ describe("room for the graph (R23, Ward QA 2026-11-05; on /graph since dev.35)",
     const w0 = await tableW(p);
     expect(
       await p.$eval(".sidebar", (e) => e.getBoundingClientRect().width),
-    ).toBe(260);
+    ).toBe(250);
     await p.click("#ws-toggle");
     await p.waitForTimeout(300);
     expect(
@@ -293,7 +293,7 @@ describe("room for the graph (R23, Ward QA 2026-11-05; on /graph since dev.35)",
     ).toBe(40);
     expect(await p.getAttribute("#ws-toggle", "aria-expanded")).toBe("false");
     expect(await visible(p, "#ws-list")).toBe(false);
-    expect(await tableW(p)).toBe(w0 + 220);
+    expect(await tableW(p)).toBe(w0 + 210);
     await p.waitForFunction(
       async (u) =>
         (await (await fetch(u)).json()).graph?.workspaces === "collapsed",
@@ -318,7 +318,7 @@ describe("room for the graph (R23, Ward QA 2026-11-05; on /graph since dev.35)",
     await q.waitForTimeout(300);
     expect(
       await q.$eval(".sidebar", (e) => e.getBoundingClientRect().width),
-    ).toBe(260);
+    ).toBe(250);
     expect(await visible(q, "#ws-list")).toBe(true);
     await q.context().close();
   }, 45_000);
@@ -670,19 +670,19 @@ describe("the Graph page follows the top bar's workspace scope (0.3.0-dev.33)", 
       ),
     ]);
 
-  it("All active: every active workspace, its line naming All active; one picked: that one; ?ws= still wins; Workspaces keeps its one", async () => {
+  it("All workspaces: every one, its line naming All workspaces; one picked: that one; ?ws= still wins; Workspaces shows All as its table (WS-6.9)", async () => {
     if (!browser) return;
     await setScope("all");
     try {
       let p = await page("/graph");
       await p.waitForSelector(".dg-card");
       await p.waitForFunction(() =>
-        /All active \/ local$/.test(
+        /All workspaces \/ local$/.test(
           document.querySelector("#den-content > .ph .sub")?.textContent ?? "",
         ),
       );
-      expect(await sub(p)).toMatch(/(^|\/ )All active \/ local$/);
-      expect(await p.textContent("#ws-pill .den-vn")).toBe("All active");
+      expect(await sub(p)).toMatch(/(^|\/ )All workspaces \/ local$/);
+      expect(await p.textContent("#ws-pill .den-vn")).toBe("All workspaces");
       expect((await repos(p)).sort()).toEqual([...REPOS, ...BIG].sort());
       await p.context().close();
 
@@ -697,9 +697,18 @@ describe("the Graph page follows the top bar's workspace scope (0.3.0-dev.33)", 
       expect((await repos(p)).sort()).toEqual([...REPOS].sort());
       await p.context().close();
 
-      // Workspaces keeps the list's one workspace (its actions and table
-      // are per workspace), and its line names it.
+      // Workspaces with All: the All workspaces table, a row each.
       p = await page("/local-dev");
+      await p.waitForSelector("#ws-all-table tbody tr[data-ws]");
+      expect(
+        await p.$$eval("#ws-all-table tbody tr[data-ws]", (rs) =>
+          rs.map((r) => (r as HTMLElement).dataset.ws),
+        ),
+      ).toEqual(["main", "big"]);
+      await p.context().close();
+
+      // ?ws= shows one workspace (its actions and table), its line naming it.
+      p = await page("/local-dev?ws=main");
       await p.waitForSelector("#repo-table tr.repo");
       await p.waitForFunction(() =>
         /(^|\/ )main \/ local$/.test(

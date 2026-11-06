@@ -10,12 +10,23 @@
  * the current env is counted.
  */
 
-import { buildScopeMenuModel } from "./workspace-picker.js";
+import {
+  awayDown,
+  focusLabel,
+  openWorkspaceMenu,
+  setWorkspaceState,
+} from "./workspace-switch.js";
 import { initAppearance } from "./appearance.js";
 import { versionLabel } from "./version-label.js";
 import { changelogView } from "./changelog-view.js";
 import { buildRow, healthCycle, paintGate, shellHealth } from "./health-fit.js";
-import { initTopbar, paintChecking, paintStatus } from "./topbar.js";
+import {
+  initTopbar,
+  isUnlocked,
+  paintChecking,
+  paintStatus,
+  requireUnlock,
+} from "./topbar.js";
 import { registerDenSettings } from "./settings-registry.js";
 
 /** The shell's message lookup (R19; shell.js MESSAGES). */
@@ -39,6 +50,22 @@ export {
   takePendingAction,
 } from "./topbar.js";
 export { buildRow } from "./health-fit.js";
+export {
+  askStopSwitch,
+  dialog,
+  downHtml,
+  onClick as onWorkspaceClick,
+  pick as pickFocus,
+  pillHtml,
+  runSwitch,
+  setFocusHandler,
+  setSwitchRunner,
+  splitHtml,
+  summaryHtml,
+  takePendingSwitch,
+  workspaceRows,
+  writeFocus,
+} from "./workspace-switch.js";
 
 // Every page with this header gets the appearance controls (mode, theme)
 // and the top bar's chips, palette and drawer (topbar.js).
@@ -789,17 +816,17 @@ export function groupReposByApplication(repos, apps) {
   return out;
 }
 
-// ── Workspace: the scope breadcrumb's Workspace ▾ menu (R4) ─────────────────
+// ── Workspace: the top bar's Workspace menu (R4, WS-6.6) ───────────────────
 
 /**
- * Feed the shell's Workspace part (shell.js #ws-pill, a menu): "All active"
- * and each active workspace, the focused one marked. Choosing one sets the
- * view scope (POST /api/scope, a preference) for every page. It replaces
- * dev.17's workspace pill and its focus menu (one control, not two): the
- * focus moves only through the menu's separate "Set <ws> as focus".
+ * Feed the shell's Workspace part (shell.js #ws-pill): its label is the
+ * focus (WS-6.1, All workspaces or one) and its menu is
+ * workspace-switch.js's: the focus first, All workspaces, the rest, each
+ * with its status pill and [Switch | ▾]. The menu and the Workspaces
+ * page's list are one control: both set the one focus (POST /api/scope).
  *
  * The arguments are dev.17's (an env select, an onSwitch callback) and are
- * no longer used: the view applies to every env.
+ * no longer used: the focus applies to every env.
  */
 export async function initWorkspacePill() {
   await _renderScopeMenu();
@@ -820,91 +847,56 @@ async function _renderScopeMenu() {
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
     ]);
+    const names = Array.isArray(data?.active)
+      ? data.active
+      : data?.active
+        ? [data.active]
+        : [];
+    const focus = pageFocus(scope?.scope ?? "all", names);
+    setWorkspaceState({
+      names,
+      focus,
+      unlock: requireUnlock,
+      unlocked: isUnlocked,
+    });
     sh.setWorkspaces({
-      ...buildScopeMenuModel(pageScope(scope, data), data, t),
-      onSelect: _switchScope,
-      onFocus: _setFocus,
+      label: names.length ? focusLabel(focus, names, t) : t("ws.noneLabel"),
+      title: t("ws.viewTitle", {
+        ws:
+          (Array.isArray(scope?.inView) ? scope.inView : names).join(", ") ||
+          t("ws.noneLabel"),
+      }),
+      open: openWorkspaceMenu,
     });
   } catch {
     sh.setWorkspaces(null);
   }
 }
 
-/** The pages whose ?ws= wins over the stored view (Graph, Agents). */
+/** The pages whose ?ws= wins over the stored focus (Graph, Agents). */
 const WS_URL_PAGES = new Set(["/graph", "/agents"]);
 
 /**
- * The Graph page draws what its ?ws= names (it wins over the stored view,
- * 0.3.0-dev.33), so its pill shows that workspace too: the pill, the URL,
- * the header's line and the graph agree (0.3.0-dev.34, a consumer's
- * finding). The Agents page's ?ws= (the Workspaces page's "Open in
- * Agents") is the same. Elsewhere, and for a ?ws= that names no active
- * workspace, the stored view.
+ * The Graph page draws what its ?ws= names (it wins over the stored
+ * focus, 0.3.0-dev.33), so its Workspace part shows that workspace too:
+ * the part, the URL, the header's line and the graph agree. The Agents
+ * page's ?ws= (the Workspaces page's "Open in Agents") is the same.
+ * Elsewhere, and for a ?ws= naming no workspace on this machine, the
+ * stored focus.
  */
-function pageScope(scope, data) {
-  if (!WS_URL_PAGES.has(location.pathname)) return scope;
+function pageFocus(focus, names) {
+  if (!WS_URL_PAGES.has(location.pathname)) return focus;
   const ws = new URLSearchParams(location.search).get("ws");
-  const active = Array.isArray(data?.active)
-    ? data.active
-    : data?.active
-      ? [data.active]
-      : [];
-  return ws && active.includes(ws) ? { ...scope, scope: ws } : scope;
+  return ws && names.includes(ws) ? ws : focus;
 }
 
-/**
- * On the Graph page a choice replaces ?ws= (All active drops it, a
- * workspace sets it), so the reload shows the choice rather than the old
- * ?ws=, which would win over it. The history entry is replaced, not
- * pushed: Back does not return to a view the picker has left.
- */
-function followScopeInUrl(value) {
-  if (!WS_URL_PAGES.has(location.pathname)) return;
-  const u = new URL(location.href);
-  if (value === "all") u.searchParams.delete("ws");
-  else u.searchParams.set("ws", value);
-  history.replaceState(history.state, "", u.pathname + u.search + u.hash);
-}
-
-/**
- * A view filter only: POST /api/scope stores the preference (user.yml
- * `view`), then the page reloads to show the new view whole. No service,
- * container, daemon or route changes, and the focus stays where it is.
- */
-async function _switchScope(value) {
-  try {
-    await window.denShell.api("POST", "/api/scope", { scope: value });
-  } catch (err) {
-    if (err?.denApi) {
-      err.message = t("ws.viewFailed", { msg: err.message });
-      window.denShell.errorToast(err);
-    } else window.denShell?.toast?.(t("ws.viewFailed", { msg: err.message }));
-    return;
-  }
-  followScopeInUrl(value);
-  location.reload();
-}
-
-/**
- * "Set <ws> as focus": Local Dev's focus action (POST /api/workspaces
- * `focus`, which writes workspaces.yml and retargets the CLI). Separate
- * from the view: it is the only thing in the menu that moves the focus.
- */
-async function _setFocus(name) {
-  try {
-    await window.denShell.api("POST", "/api/workspaces", {
-      name,
-      action: "focus",
-    });
-  } catch (err) {
-    if (err?.denApi) {
-      err.message = t("ws.focusFailed", { msg: err.message });
-      window.denShell.errorToast(err);
-    } else window.denShell?.toast?.(t("ws.focusFailed", { msg: err.message }));
-    return;
-  }
-  location.reload();
-}
+// The focus moved in place (workspace-switch.js): the part's label and
+// the chip, which counts what is in focus, follow it now.
+if (typeof window !== "undefined")
+  window.addEventListener("den:focus", () => {
+    void refreshWorkspacePill();
+    if (pollGen > 0) void refreshHealth(healthEnv(), { force: true });
+  });
 
 // ── Health: the status chip and drawer (topbar.js, R6 and R15) ─────────────
 
@@ -1069,16 +1061,18 @@ function _streamHealth(env, force, onResult) {
  * ones never do.
  */
 function _paintHealth(env, results) {
-  // WS-6.4: the server checks every active workspace; the chip and the
-  // drawer count only what the view scope shows (`inView`). The pages get
-  // every row, so the Workspaces page knows any workspace's health.
+  // WS-6.4: the server checks every workspace on this machine; the chip
+  // and the drawer count only what is in focus (`inView`). The pages get
+  // every row, so the Workspaces page knows any workspace's health, and
+  // the chip adds "· n down in <ws>" for the rest (WS-6.5).
   const shown = results.filter((r) => r.inView !== false);
   const repos = [...new Set(shown.map((r) => r.repo))];
   const groups = groupReposByApplication(repos, _apps);
   const row = buildRow(shown, groups);
   window.denShell?.setState(shellHealth(row));
   _healthEnvPainted = env;
-  paintStatus({ row, groups, env });
+  setWorkspaceState({ rows: results });
+  paintStatus({ row, groups, env, away: awayDown(results) });
 
   // Broadcast results so other components (e.g. dep graph) can stay in sync
   document.dispatchEvent(

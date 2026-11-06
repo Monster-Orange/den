@@ -63,14 +63,14 @@ export function targetWorkspaceFor(
       const looked = [o.focus, ...others].filter(Boolean).join(", ");
       return {
         ok: false,
-        error: `"${name}" is not a service in any active workspace (${looked || "none active"}).`,
+        error: `"${name}" is not a service in any workspace on this machine (${looked || "none"}).`,
       };
     }
     if (hits.length > 1)
       return {
         ok: false,
         error:
-          `"${name}" is in more than one active workspace: ` +
+          `"${name}" is in more than one workspace on this machine: ` +
           `${hits.map((w) => `${w} (${o.cli} ${o.command} ${name} -w ${w})`).join(", ")}. ` +
           "Name one with -w.",
       };

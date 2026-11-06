@@ -49,7 +49,6 @@ import {
   deactivateWorkspace,
   getActiveWorkspaces,
   setActiveWorkspace,
-  setFocusedWorkspace,
   createWorkspace,
   deleteWorkspaceConfig,
   parseAddress,
@@ -58,6 +57,9 @@ import {
   syncJetBrainsWorkspaceSymlinks,
   DEN_SERVICES_DIR,
   DEN_WORKSPACES_DIR,
+  FOCUS_ALL,
+  getFocus,
+  notOnMachine,
 } from "../../shared/environment-manager/workspaces.js";
 import {
   ownersSuffix,
@@ -65,7 +67,9 @@ import {
   scopeLine,
   scopeView,
   takeScopeFlag,
+  writeFocus,
 } from "../../shared/environment-manager/scope.js";
+import { switchPlanFor, switchPlanLines } from "./switch-plan.js";
 import {
   deleteWorkspaceDirectory,
   checkBehindCount,
@@ -258,33 +262,39 @@ const WORKSPACE_SUBCOMMANDS: {
     name: "list",
     usage: "list [--org <id>]",
     lines: [
-      "every workspace, the active set, the focus and its org;",
+      "every workspace, which are on this machine, the focus and its org;",
       "--org <id> lists one org's workspaces",
     ],
   },
   {
-    name: "activate",
-    usage: "activate <n>",
-    lines: ["add a workspace to the active set"],
+    name: "add",
+    usage: "add <n>",
+    lines: [
+      "put a workspace on this machine: {cli} lists it, checks its",
+      "health and can switch to it (was `activate`, which still works)",
+    ],
   },
   {
-    name: "deactivate",
-    usage: "deactivate <n>",
+    name: "remove",
+    usage: "remove <n>",
     lines: [
-      "remove it from the active set and stop the services",
-      "only it owns. Only services {cli} tracks: compose",
-      "stacks keep running; stop them with `{cli} down <repo>`",
+      "take it off this machine and stop the services only it",
+      "owns; its config and checkouts stay. Only services {cli} tracks:",
+      "compose stacks keep running; stop them with `{cli} down <repo>`",
+      "(was `deactivate`, which still works)",
     ],
   },
   {
     name: "focus",
-    usage: "focus <n>",
-    lines: ["make an active workspace the default for commands"],
+    usage: "focus <n|all>",
+    lines: [
+      "the same as `{cli} focus`: what you see, and the default for commands",
+    ],
   },
   {
     name: "use",
     usage: "use <n>",
-    lines: ["activate and focus a workspace"],
+    lines: ["add a workspace to this machine and focus it"],
   },
   {
     name: "create",
@@ -312,6 +322,26 @@ const WORKSPACE_SUBCOMMANDS: {
 ];
 
 const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
+  focus: {
+    usage: "focus [<workspace>|--all]",
+    lines: [
+      "Show or set the focus: all workspaces on this machine, or one. It is",
+      "what the web UI and `status` show and what commands default to, the",
+      "same value as the web UI's Workspace menu. It never starts or stops",
+      "anything.",
+    ],
+  },
+  switch: {
+    usage: "switch <workspace> [--stop-others] [-y|--yes] [-n|--dry-run]",
+    lines: [
+      "Switch: focus the workspace and start its services that aren't running",
+      "(as `{cli} up -a -w <workspace>`). Nothing else stops.",
+      "--stop-others (Stop & Switch): first stop the other workspaces'",
+      "services. Services of repos this workspace also has keep running, and",
+      "so do agents and sessions. On a terminal it asks first, unless -y.",
+      "-n/--dry-run prints what would stop, start and keep running.",
+    ],
+  },
   down: {
     usage: "down [repo] [-w <workspace>] [flags]",
     lines: [
@@ -319,22 +349,23 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "derived closure, in reverse order), naming anything else that uses it.",
       "-a/--all stops EVERY workspace system (reverse derived order, cwd-agnostic;",
       "every down script runs — no already-stopped skip).",
-      "Flags: -w/--workspace <ws> (that active workspace, not the focused one; focus stays) · -a/--all · -A/--app <app> · --with-deps · -n/--dry-run (print order, stop nothing) · --manifest (legacy depends_on)",
+      "Flags: -w/--workspace <ws> (that workspace, not the one in focus; focus stays) · -a/--all · -A/--app <app> · --with-deps · -n/--dry-run (print order, stop nothing) · --manifest (legacy depends_on)",
     ],
   },
   restart: {
     usage: "restart [service...] [-w <workspace>] [-A <app>] [-n|--dry-run]",
     lines: [
       `Restart the given services, or every repo in an application (\`${product().cli} apps\`).`,
-      "-w/--workspace <ws> acts in that active workspace instead of the focused one; focus stays.",
+      "-w/--workspace <ws> acts in that workspace instead of the one in focus; focus stays.",
     ],
   },
   status: {
     usage: "status [-A <app>] [--scope <all|workspace>] [--verbose]",
     lines: [
-      "Show service health for what is in view: every active workspace by",
-      "default (the web UI's scope), or --scope <workspace> for one. A",
-      "service several workspaces share is listed once, with its owners.",
+      `Show service health for what is in focus (\`${product().cli} focus\`, the web UI's`,
+      "Workspace menu): every workspace on this machine, or one. --scope",
+      "<all|workspace> shows another for this run only. A service several",
+      "workspaces share is listed once, with its owners.",
       "--verbose (or --all) shows one row per service instead of per repo.",
     ],
   },
@@ -357,7 +388,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "With a path: add that checkout (dev-managed) under its manifest name.",
       "Without one: pick the repo interactively. A managed clone is picked",
       "from the focused workspace's org; --org <id> picks from another.",
-      "-w writes that workspace (active or not) and leaves focus alone.",
+      "-w writes that workspace (on this machine or not) and leaves focus alone.",
     ],
   },
   relocate: {
@@ -371,7 +402,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   },
   setup: {
     usage:
-      "setup [service...] [-w <workspace>] [--force|-f] [--plan [-w <workspace>]... [--all-active]]",
+      "setup [service...] [-w <workspace>] [--force|-f] [--plan [-w <workspace>]... [--all-workspaces]]",
     lines: [
       "Run 'make setup' once per system (clones missing managed repos first).",
       "Default targets MANAGED clones only — setup's codegen/installs",
@@ -380,7 +411,8 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "--plan prints each repo's org and clone URL and stops: nothing is",
       "cloned, seeded or written (on a fresh machine: the blueprint's plan).",
       "It plans the focused workspace; -w <workspace> (repeatable) plans those,",
-      "--all-active every active one. Repos only other workspaces hold are named.",
+      "--all-workspaces every workspace on this machine (--all-active, its old",
+      "name, still works). Repos only other workspaces hold are named.",
       "Without --plan, -w <workspace> sets up that workspace's systems instead of the focused one's.",
     ],
   },
@@ -575,6 +607,8 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "service",
   "theme",
   "plugin",
+  "focus",
+  "switch",
 ]);
 
 /**
@@ -766,9 +800,7 @@ class DenCLI {
         workspaceFlagRequiresActive(parsed.command ?? "") &&
         !isWorkspaceActive(parsed.flags.workspace)
       ) {
-        throw new Error(
-          `Workspace "${parsed.flags.workspace}" is not active — run \`${product().cli} workspace activate ${parsed.flags.workspace}\` first`,
-        );
+        throw new Error(notOnMachine(parsed.flags.workspace));
       }
       process.env.DEN_WORKSPACE_OVERRIDE = parsed.flags.workspace;
     }
@@ -924,6 +956,15 @@ class DenCLI {
 
         case "workspace":
           await this.cmdWorkspace(args.slice(1));
+          break;
+
+        // WS-6 (0.4.3): the focus, and Switch / Stop & Switch.
+        case "focus":
+          this.cmdFocus(args.slice(1), "focus");
+          break;
+
+        case "switch":
+          await this.cmdSwitch(args.slice(1));
           break;
 
         case "org":
@@ -1539,12 +1580,12 @@ class DenCLI {
           const names = Object.keys(file.workspaces);
           const selected = await cliPrompts.promptSelectWorkspace(
             names,
-            file.focus ?? file.active[0],
+            getFocusedWorkspaceName() ?? file.active[0],
           );
           setActiveWorkspace(selected);
           console.log(
             chalk.green(
-              `\n  ✓ Activated and focused workspace: ${chalk.bold(selected)}\n`,
+              `\n  ✓ On this machine and in focus: ${chalk.bold(selected)}\n`,
             ),
           );
           break;
@@ -1571,7 +1612,7 @@ class DenCLI {
         case "remove-service": {
           const ws = getActiveWorkspace();
           if (!ws) {
-            console.log(chalk.red("\n  No active workspace.\n"));
+            console.log(chalk.red("\n  No workspace on this machine.\n"));
             break;
           }
 
@@ -2543,9 +2584,7 @@ class DenCLI {
     const target = this.allWorkspaceOrder(only);
     if (!target) {
       console.log(
-        chalk.yellow(
-          "\n  No services in the active workspace — nothing to start.\n",
-        ),
+        chalk.yellow("\n  No services in the workspace — nothing to start.\n"),
       );
       if (plan) process.exitCode = 1;
       return;
@@ -2666,9 +2705,7 @@ class DenCLI {
     const target = this.allWorkspaceOrder(only);
     if (!target) {
       console.log(
-        chalk.yellow(
-          "\n  No services in the active workspace — nothing to stop.\n",
-        ),
+        chalk.yellow("\n  No services in the workspace — nothing to stop.\n"),
       );
       return;
     }
@@ -2694,7 +2731,7 @@ class DenCLI {
     if (!only)
       for (const d of daemonsOutsideWorkspaces())
         printNotice(
-          `Warning: ${d.address} is recorded as running (${d.repoPath}) but is in no active workspace: ` +
+          `Warning: ${d.address} is recorded as running (${d.repoPath}) but is in no workspace on this machine: ` +
             `down -a left it alone. Stop it yourself if it still runs.`,
         );
   }
@@ -2743,7 +2780,7 @@ class DenCLI {
     );
     row(
       "-w, --workspace <ws>",
-      "act in that (active) workspace instead of the focused one; focus stays",
+      "act in that workspace instead of the one in focus; focus stays",
     );
     row("--skip-secrets", "skip the secrets-backend sign-in preflight");
     row("-h, --help", "show this help");
@@ -2945,7 +2982,7 @@ class DenCLI {
       const focus = readWorkspacesFile().focus;
       console.log(
         chalk.green(
-          `  ✓ ${plural(seeded.length, "workspace")} ${willReset ? "reset to the blueprint" : "ready"} (${seeded.map((w) => w.name).join(", ")}), all active; focus: ${focus}. ` +
+          `  ✓ ${plural(seeded.length, "workspace")} ${willReset ? "reset to the blueprint" : "ready"} (${seeded.map((w) => w.name).join(", ")}), all on this machine; focus: ${focus}. ` +
             `Run \`${product().cli} up <repo>\` to bring up its closure.\n`,
         ),
       );
@@ -3267,8 +3304,8 @@ class DenCLI {
   private async cmdServiceStatus(argv: string[] = []): Promise<void> {
     await this.ensureWorkspaceSeeded();
     const { app, rest: appRest } = takeAppFlag(argv);
-    // The view scope (as the web UI's): every active workspace by default,
-    // or `--scope <workspace>` for one. A view only: focus is unchanged.
+    // What is in focus (WS-6.1, the web UI's value): every workspace on
+    // this machine, or one; `--scope <all|workspace>` for this run only.
     const scoped = takeScopeFlag(appRest);
     const args = scoped.rest;
     const scopeArg =
@@ -3283,7 +3320,7 @@ class DenCLI {
       );
       process.exit(1);
     }
-    // `-w <workspace>` still means that workspace only (active or not).
+    // `-w <workspace>` still means that workspace only (on this machine or not).
     const named = process.env.DEN_WORKSPACE_OVERRIDE
       ? getActiveWorkspace()
       : null;
@@ -3413,7 +3450,7 @@ class DenCLI {
     if (!resolved) {
       console.log(
         chalk.red(
-          `\n  Service "${target.target}" not found in catalog or active workspace.\n`,
+          `\n  Service "${target.target}" not found in the catalog or the workspace.\n`,
         ),
       );
       process.exit(1);
@@ -3552,7 +3589,7 @@ class DenCLI {
           "  With a path: add that checkout to the catalog and the focused\n" +
           "  workspace as your own (dev-managed) copy, without prompts. The name\n" +
           "  defaults to the manifest's name, then the folder name; the GitHub\n" +
-          "  slug to the git remote. -w writes that workspace (active or not)\n" +
+          "  slug to the git remote. -w writes that workspace (on this machine or not)\n" +
           "  and leaves focus alone.\n" +
           "  Without a path: choose a local checkout or a managed clone interactively;\n" +
           "  a managed clone comes from the workspace's org, or --org <id>.\n",
@@ -3578,7 +3615,7 @@ class DenCLI {
     if (!ws) {
       console.log(
         chalk.red(
-          `\n  No active workspace. Create one first: ${product().cli} workspace create\n`,
+          `\n  No workspace on this machine. Create one first: ${product().cli} workspace create\n`,
         ),
       );
       return;
@@ -3618,7 +3655,7 @@ class DenCLI {
           "  name or GitHub remote names a different repo, and one where\n" +
           "  neither names this repo (--force accepts that last). --dry-run shows\n" +
           "  the changes without writing. -w limits it to that workspace.\n" +
-          "  Focus and the active set never change.\n",
+          "  The focus and the workspaces on this machine never change.\n",
       );
       return;
     }
@@ -4052,7 +4089,7 @@ class DenCLI {
   ): void {
     const ws = getActiveWorkspace();
     if (!ws) {
-      console.log(chalk.red("\n  No active workspace.\n"));
+      console.log(chalk.red("\n  No workspace on this machine.\n"));
       return;
     }
     const file = readWorkspacesFile();
@@ -4099,9 +4136,11 @@ class DenCLI {
   }
 
   private async cmdSetup(rawArgs: string[]): Promise<void> {
-    // `-w <ws>` (repeatable) and `--all-active` pick the workspaces to plan.
+    // `-w <ws>` (repeatable) and `--all-workspaces` (0.4.3; `--all-active`,
+    // its old name, still works) pick the workspaces to plan.
     const { workspaces: planWs, rest: args } = takeWorkspaceFlags(rawArgs);
-    const allActive = args.includes("--all-active");
+    const allActive =
+      args.includes("--all-workspaces") || args.includes("--all-active");
     const force = args.includes("--force") || args.includes("-f");
     const names = args.filter((a) => !a.startsWith("-"));
 
@@ -4124,7 +4163,7 @@ class DenCLI {
     if (planWs.length > 1 || allActive) {
       console.error(
         chalk.red(
-          `\n  More than one -w, and --all-active, go with --plan: setup itself works on one workspace (-w <workspace>, or the one the named repos are in, else the focus).\n`,
+          `\n  More than one -w, and --all-workspaces, go with --plan: setup itself works on one workspace (-w <workspace>, or the one the named repos are in, else the focus).\n`,
         ),
       );
       process.exitCode = 1;
@@ -4138,11 +4177,7 @@ class DenCLI {
         return;
       }
       if (!isWorkspaceActive(ws)) {
-        console.error(
-          chalk.red(
-            `\n  Workspace "${ws}" is not active — run \`${product().cli} workspace activate ${ws}\` first\n`,
-          ),
-        );
+        console.error(chalk.red(`\n  ${notOnMachine(ws)}\n`));
         process.exitCode = 1;
         return;
       }
@@ -4156,7 +4191,7 @@ class DenCLI {
     if (services.length === 0) {
       console.log(
         chalk.yellow(
-          `\n  No services in active workspace. Run: ${product().cli} register\n`,
+          `\n  No services in the workspace. Run: ${product().cli} register\n`,
         ),
       );
       return;
@@ -4244,11 +4279,121 @@ class DenCLI {
     }
   }
 
+  /**
+   * `<cli> focus [<ws>|--all]` (WS-6.1): show or set the focus, the one
+   * value the web UI's Workspace menu and Workspaces list also set. It
+   * only changes what is shown and what commands default to: nothing
+   * starts or stops.
+   */
+  private cmdFocus(args: string[], usage: string): void {
+    const cli = product().cli;
+    const want = args.includes("--all")
+      ? FOCUS_ALL
+      : args.find((a) => !a.startsWith("-"));
+    if (!want) {
+      const view = scopeView();
+      console.log(chalk.cyan(`\n  ${scopeLine(view)}\n`));
+      return;
+    }
+    const parsed = parseScope(want, getActiveWorkspaces());
+    if (!parsed.ok) {
+      console.error(
+        chalk.red(
+          `\n  ✗ ${parsed.error}. Usage: ${cli} ${usage} <workspace> | --all\n`,
+        ),
+      );
+      process.exitCode = 1;
+      return;
+    }
+    writeFocus(parsed.value);
+    const label =
+      parsed.value === FOCUS_ALL ? "all workspaces" : chalk.bold(parsed.value);
+    console.log(chalk.green(`\n  ✓ Focus: ${label}`));
+    console.log(
+      chalk.gray(
+        "    It changes what you see and what commands default to. Nothing started or stopped.\n",
+      ),
+    );
+  }
+
+  /**
+   * `<cli> switch <ws> [--stop-others] [-y] [-n]` (WS-6.7, WS-6.8).
+   * Switch: focus the workspace and start its services that aren't
+   * running (`up -a -w <ws>`); nothing else stops. `--stop-others` (Stop &
+   * Switch) first stops the other workspaces' services, except those of
+   * repos the target also has; agents and sessions are never touched. It
+   * asks first on a terminal unless -y.
+   */
+  private async cmdSwitch(args: string[]): Promise<void> {
+    const cli = product().cli;
+    const name = args.find((a) => !a.startsWith("-"));
+    const stopOthers = args.includes("--stop-others");
+    const yes = args.includes("-y") || args.includes("--yes");
+    const dryRun = args.includes("-n") || args.includes("--dry-run");
+    const active = getActiveWorkspaces();
+    const parsed =
+      name && name !== FOCUS_ALL
+        ? parseScope(name, active)
+        : ({ ok: false, error: "switch needs one workspace" } as const);
+    if (!parsed.ok) {
+      console.error(
+        chalk.red(
+          `\n  ✗ ${parsed.error}. Usage: ${cli} switch <workspace> [--stop-others] [-y] [-n]\n`,
+        ),
+      );
+      process.exitCode = 1;
+      return;
+    }
+    const target = parsed.value;
+    const plan = switchPlanFor(target, active, readWorkspacesFile());
+    if (stopOthers || dryRun) {
+      for (const line of switchPlanLines(plan, stopOthers))
+        console.log(`  ${line}`);
+      console.log();
+    }
+    if (dryRun) {
+      console.log(chalk.gray("  (--dry-run: nothing changed)\n"));
+      return;
+    }
+    if (
+      stopOthers &&
+      plan.stops.length > 0 &&
+      !yes &&
+      process.stdin.isTTY === true
+    ) {
+      const n = plan.stops.reduce((k, s) => k + s.repos.length, 0);
+      const ok = await cliPrompts.confirm(
+        `Stop ${n} ${n === 1 ? "repo" : "repos"} in other workspaces, then switch to ${target}?`,
+        false,
+      );
+      if (!ok) {
+        console.log(chalk.gray("  Nothing changed.\n"));
+        return;
+      }
+    }
+    const prior = process.env.DEN_WORKSPACE_OVERRIDE;
+    try {
+      if (stopOthers)
+        for (const s of plan.stops) {
+          process.env.DEN_WORKSPACE_OVERRIDE = s.workspace;
+          await this.runAllDown(false, false, new Set(s.repos));
+        }
+      writeFocus(target);
+      console.log(chalk.green(`\n  ✓ Focus: ${chalk.bold(target)}`));
+      process.env.DEN_WORKSPACE_OVERRIDE = target;
+      await this.runAllUp(false, false, false);
+      if (!stopOthers) console.log(chalk.gray("  Nothing else stopped.\n"));
+    } finally {
+      if (prior === undefined) delete process.env.DEN_WORKSPACE_OVERRIDE;
+      else process.env.DEN_WORKSPACE_OVERRIDE = prior;
+    }
+  }
+
   private async cmdWorkspace(args: string[]): Promise<void> {
     const sub = args[0];
     const file = readWorkspacesFile();
     const activeSet = new Set(file.active);
-    const focus = file.focus ?? file.active[0];
+    const focus = getFocus();
 
     switch (sub) {
       case "list": {
@@ -4271,7 +4416,7 @@ class DenCLI {
           head: [
             "Workspace",
             "Org",
-            "Active",
+            "On this machine",
             "Focus",
             "Services",
             "Type",
@@ -4285,7 +4430,9 @@ class DenCLI {
             chalk.bold(name),
             orgOfWs.get(name) ?? chalk.gray("none"),
             activeSet.has(name) ? chalk.green("✓") : "",
-            name === focus ? chalk.cyan("●") : "",
+            name === focus || (focus === FOCUS_ALL && activeSet.has(name))
+              ? chalk.cyan("●")
+              : "",
             Object.keys(cfg.services).join(", ") || chalk.gray("none"),
             cfg.directory ? chalk.magenta("feature") : chalk.blue("default"),
             ...(nsCol
@@ -4315,25 +4462,29 @@ class DenCLI {
         );
         break;
       }
+      // `add` and `remove` (0.4.3, WS-6.2): on and off this machine.
+      // `activate` and `deactivate` are their old names and still work.
+      case "add":
       case "activate": {
         const name = args[1];
         if (!name) {
           console.log(
-            chalk.red(`Usage: ${product().cli} workspace activate <name>`),
+            chalk.red(`Usage: ${product().cli} workspace add <name>`),
           );
           return;
         }
         activateWorkspace(name);
         console.log(
-          chalk.green(`\n  ✓ Activated workspace: ${chalk.bold(name)}\n`),
+          chalk.green(`\n  ✓ On this machine: ${chalk.bold(name)}\n`),
         );
         break;
       }
+      case "remove":
       case "deactivate": {
         const name = args[1];
         if (!name) {
           console.log(
-            chalk.red(`Usage: ${product().cli} workspace deactivate <name>`),
+            chalk.red(`Usage: ${product().cli} workspace remove <name>`),
           );
           return;
         }
@@ -4343,9 +4494,7 @@ class DenCLI {
         const releases = await releaseWorkspaceDaemons(name, (line) =>
           console.log(chalk.gray(`    ${line}`)),
         );
-        console.log(
-          chalk.green(`\n  ✓ Deactivated workspace: ${chalk.bold(name)}`),
-        );
+        console.log(chalk.green(`\n  ✓ Off this machine: ${chalk.bold(name)}`));
         for (const release of releases) {
           switch (release.outcome) {
             case "detached":
@@ -4371,8 +4520,8 @@ class DenCLI {
             }
           }
         }
-        // Deactivate releases tracked daemons only; say what it left up.
-        // One docker ps for this workspace and every other active one.
+        // Remove releases tracked daemons only; say what it left up.
+        // One docker ps for this workspace and every other one on this machine.
         let up: ReturnType<typeof runningComposeProjects> | undefined;
         const running = () =>
           up === undefined ? (up = runningComposeProjects()) : up;
@@ -4388,17 +4537,7 @@ class DenCLI {
         break;
       }
       case "focus": {
-        const name = args[1];
-        if (!name) {
-          console.log(
-            chalk.red(`Usage: ${product().cli} workspace focus <name>`),
-          );
-          return;
-        }
-        setFocusedWorkspace(name);
-        console.log(
-          chalk.green(`\n  ✓ Focused workspace: ${chalk.bold(name)}\n`),
-        );
+        this.cmdFocus(args.slice(1), "workspace focus");
         break;
       }
       case "use": {
@@ -4412,7 +4551,7 @@ class DenCLI {
         setActiveWorkspace(name);
         console.log(
           chalk.green(
-            `\n  ✓ Activated and focused workspace: ${chalk.bold(name)}\n`,
+            `\n  ✓ On this machine and in focus: ${chalk.bold(name)}\n`,
           ),
         );
         break;
@@ -4521,9 +4660,7 @@ class DenCLI {
   private async cmdSync(args: string[]): Promise<void> {
     const allServices = getWorkspaceServices();
     if (allServices.length === 0) {
-      console.log(
-        chalk.yellow("\n  No services in active workspace to sync.\n"),
-      );
+      console.log(chalk.yellow("\n  No services in the workspace to sync.\n"));
       return;
     }
 
@@ -4896,7 +5033,7 @@ class DenCLI {
       "  restart [service...] Restart services (-A <app> for a whole application)",
     );
     console.log(
-      "  status               Show service health for the view scope (-A <app>, --scope <ws>)",
+      "  status               Show service health for what is in focus (-A <app>, --scope <ws>)",
     );
     console.log(
       "  apps                 Org > Application > Repo > Services (--json)",
@@ -4955,16 +5092,24 @@ class DenCLI {
     );
     console.log();
     console.log(
-      "  workspace list           List workspaces (active set + focus)",
-    );
-    console.log("  workspace activate <n>   Add workspace to the active set");
-    console.log(
-      "  workspace deactivate <n> Remove workspace from the active set",
+      "  focus [<ws>|--all]       Show or set the focus: what you see, and the default for commands",
     );
     console.log(
-      "  workspace focus <n>      Focus an active workspace (the default)",
+      "  switch <ws>              Focus a workspace and start what isn't running; nothing stops",
     );
-    console.log("  workspace use <n>        Activate and focus a workspace");
+    console.log(
+      "  switch <ws> --stop-others  Also stop the other workspaces' services (shared repos and agents keep running)",
+    );
+    console.log(
+      "  workspace list           List workspaces (on this machine, focus)",
+    );
+    console.log(
+      "  workspace add <n>        Put a workspace on this machine (was: activate)",
+    );
+    console.log(
+      "  workspace remove <n>     Take it off this machine (was: deactivate)",
+    );
+    console.log("  workspace use <n>        Add a workspace and focus it");
     console.log("  workspace create [n]     Create a new workspace");
     console.log("  workspace delete <n>     Delete a workspace");
     console.log(

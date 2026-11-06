@@ -247,12 +247,12 @@ describe("setup --plan picks its workspaces (0.2.8)", () => {
     expect(out).toMatch(/mine {2}dev-managed feature\/plan-w {2}org: acme/);
     expect(out).not.toMatch(/Workspace (client|spare)/);
     expect(out).toContain(
-      "Not in this plan: 2 repos in other workspaces: client (globex-web), spare (spare-api). Plan them with -w <workspace> or --all-active.",
+      "Not in this plan: 2 repos in other workspaces: client (globex-web), spare (spare-api). Plan them with -w <workspace> or --all-workspaces.",
     );
     expect(calls().slice(n)).toEqual([]);
   }, 60_000);
 
-  it("-w (repeatable) plans the named workspaces, active or not", () => {
+  it("-w (repeatable) plans the named workspaces, on this machine or not", () => {
     const { root } = machine();
     const { out, code } = den(root, [
       "setup",
@@ -271,17 +271,21 @@ describe("setup --plan picks its workspaces (0.2.8)", () => {
     );
   }, 60_000);
 
-  it("--all-active plans every active workspace", () => {
-    const { root } = machine();
-    const { out, code } = den(root, ["setup", "--plan", "--all-active"]);
-    expect(code).toBe(0);
-    expect(out).toMatch(/Workspace main {2}org: acme/);
-    expect(out).toMatch(/Workspace client {2}org: globex/);
-    expect(out).not.toMatch(/Workspace spare/);
-    expect(out).toContain(
-      "Not in this plan: 1 repo in other workspaces: spare (spare-api).",
-    );
-  }, 60_000);
+  it.each(["--all-workspaces", "--all-active"])(
+    "%s plans every workspace on this machine (--all-active: its 0.2.8 name)",
+    (flag) => {
+      const { root } = machine();
+      const { out, code } = den(root, ["setup", "--plan", flag]);
+      expect(code).toBe(0);
+      expect(out).toMatch(/Workspace main {2}org: acme/);
+      expect(out).toMatch(/Workspace client {2}org: globex/);
+      expect(out).not.toMatch(/Workspace spare/);
+      expect(out).toContain(
+        "Not in this plan: 1 repo in other workspaces: spare (spare-api).",
+      );
+    },
+    60_000,
+  );
 
   it("an unknown -w is an error; more than one -w without --plan is refused, setting nothing up", () => {
     const { root } = machine();
@@ -295,7 +299,7 @@ describe("setup --plan picks its workspaces (0.2.8)", () => {
     const real = den(root, ["setup", "-w", "client", "-w", "spare"]);
     expect(real.code).toBe(1);
     expect(real.out).toContain(
-      "More than one -w, and --all-active, go with --plan",
+      "More than one -w, and --all-workspaces, go with --plan",
     );
     expect(calls().slice(n)).toEqual([]);
     expect(snapshot(root)).toEqual(before);
@@ -449,7 +453,7 @@ describe("org list and workspace list", () => {
     const root = machine();
     const all = den(root, ["workspace", "list"]);
     expect(all.code).toBe(0);
-    expect(all.out).toMatch(/│ Workspace +│ Org +│ Active/);
+    expect(all.out).toMatch(/│ Workspace +│ Org +│ On this machine/);
     expect(all.out).toMatch(/│ client +│ globex +│/);
     expect(all.out).toMatch(/│ mixed +│ acme +│/);
     expect(all.out).toContain("⚠ workspace mixed:");

@@ -34,6 +34,10 @@ export const UI_MODULES: readonly string[] = [
   "/error-page.js",
   "/agents-section.js",
   "/agents-page.js",
+  // WS-6: workspace focus, status and switch.
+  "/workspace-status.js",
+  "/workspace-switch.js",
+  "/workspaces-page.js",
   // The UI's catalogs other than English (R19; en is in shell.js).
   "/i18n/ja.js",
   "/i18n/es.js",

@@ -913,14 +913,66 @@ To see what a setup would clone before it clones anything, run
 `acme setup --plan`: each repo with its org and clone URL, and whether it
 is cloned yet. On a fresh machine it plans the blueprint (every workspace
 `acme workspace seed` would create); once seeded, the focused workspace.
-`-w <workspace>` (repeatable) plans those workspaces instead, active or not,
-and `--all-active` every active one; on a fresh machine `-w` narrows the
+`-w <workspace>` (repeatable) plans those workspaces instead, on this
+machine or not, and `--all-workspaces` every one on this machine
+(`--all-active` still works); on a fresh machine `-w` narrows the
 blueprint's plan. Repos that only workspaces outside the plan hold are named
 in a closing hint. A dev-managed repo shows the branch its checkout has out
 (read from its `.git/HEAD`), not a configured one. `acme up --plan` lists
 the same lines for the repos it would start, and exits 1 when nothing
 resolves (a name no workspace has, an empty workspace). Both are read-only:
 nothing is cloned, seeded or written.
+
+## Workspaces: focus, status and switch
+
+A workspace is **on this machine** once you add it (`acme workspace add
+<ws>`, or Add to this machine on the Workspaces page): its services are
+polled, listed and can be switched to. Three words then say what Den does
+with it, the same in the web UI, the CLI and here:
+
+- **Focus** is what you see: All workspaces, or one. Every page, the top
+  bar's status chip and `acme status` show what is in focus, and commands
+  without `-w` default to it (with All, the first workspace on this
+  machine). It only filters: changing it starts and stops nothing. Set it
+  from the top bar's Workspace menu, the Workspaces page's list, or
+  `acme focus <ws>` / `acme focus --all`.
+- **Status** is what runs, worked out from a workspace's services:
+  Running n/m, Partial n/m or Stopped, plus how many are down. A service
+  is down when it runs and its check fails; one that isn't running is
+  stopped, never down. Health is known for every workspace on this
+  machine, whatever is in focus. The status chip counts what is in focus
+  and adds "· n down in <ws>" for a problem elsewhere; it reads "Nothing
+  running" when nothing in focus runs.
+- **Switch** focuses a workspace and starts its services that aren't
+  running. Nothing else stops, and it doesn't ask. **Stop & Switch**, in
+  the chevron menu of the [Switch | ▾] button, first stops the other
+  workspaces' services, then starts this one's. Services of repos this
+  workspace shares with another keep running, and so do agents and
+  sessions. It is the only workspace action that asks first (its dialog
+  lists what stops, what starts and what keeps running), and it needs the
+  lock, like every privileged action.
+
+```bash
+acme focus                     # Focus: north
+acme focus --all               # every workspace on this machine; starts nothing
+acme switch south              # focus south, start what isn't running
+acme switch south --stop-others   # Stop & Switch (asks on a terminal; -y skips)
+acme switch south -n           # print the plan, change nothing
+```
+
+The Workspaces page lists All workspaces, then each workspace with its
+status pill. All workspaces is a table (status, services, down count,
+agents, Focus and the split button); one workspace shows Start, Stop, the
+split button, Open in Graph and Open in Agents, and its repo table tags a
+repo another workspace also has "shared". Settings › Workspaces sets what
+picking a workspace does (Just show it, the default; Ask whether to start
+it; or Start it automatically) and whether Stop & Switch asks first
+(`switching` in `config/local/user.yml`).
+
+`acme workspace activate` and `deactivate` still work: they are `workspace
+add` and `workspace remove`. In `config/local/workspaces.yml` the
+workspaces on this machine are still the `active` list (no migration), and
+the focus is `focus` (a name, or `all`; no workspace can be named `all`).
 
 ## Orgs
 
@@ -1679,7 +1731,7 @@ The routes: `GET /api/workspaces/<ws>/agents`, `POST
 "Agents" in the rail (Develop, after Graph) is `/agents`: every session and
 agent of the workspaces in view, and their terminals in the browser.
 
-- **The list** is grouped by workspace and follows the scope bar (or the
+- **The list** is grouped by workspace and follows the focus (or the
   page's `?ws=<ws>`, which "Open in Agents →" sets). Each row has its
   state, persona (a `sessions start` session is labelled "session"),
   runtime and directory, and "waiting" when it waits on you (once the

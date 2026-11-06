@@ -266,11 +266,11 @@ export async function mountSettings(deps) {
                 `<option value="${esc(w)}"${w === ctx.workspace ? " selected" : ""}>${esc(w)}</option>`,
             )
             .join("")}</select>` +
-          `<span class="set-note">You view All active: pick the workspace these are for.</span></div>`
+          `<span class="set-note">The focus is All workspaces: pick the workspace these are for.</span></div>`
         : "";
     const none =
       rows.some((r) => r.scope === "workspace") && !ctx.workspace
-        ? '<p class="set-note">No active workspaces.</p>'
+        ? '<p class="set-note">No workspaces on this machine.</p>'
         : "";
     return (
       `<section id="cat-${esc(c.id)}" data-cat="${esc(c.id)}" aria-labelledby="h-${esc(c.id)}">` +

@@ -17,6 +17,7 @@ import * as path from "path";
 import { APPEARANCE_DEFAULTS } from "../../../src/ui/server/appearance-prefs.js";
 import { GRAPH_DEFAULTS } from "../../../src/ui/server/graph-prefs.js";
 import { SHELL_DEFAULTS } from "../../../src/ui/server/shell-prefs.js";
+import { switchPrefs } from "../../../src/ui/server/switch-prefs.js";
 import {
   DEN_SETTINGS,
   DEN_SETTING_CATEGORIES,
@@ -32,6 +33,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   graph: GRAPH_DEFAULTS as unknown as Record<string, unknown>,
   appearance: APPEARANCE_DEFAULTS as unknown as Record<string, unknown>,
   shell: SHELL_DEFAULTS as unknown as Record<string, unknown>,
+  switching: switchPrefs(undefined) as unknown as Record<string, unknown>,
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -84,6 +86,9 @@ describe("the settings inventory (R21)", () => {
         "shell.hidden",
         "shell.order",
         "shell.pins",
+        // WS-6.10 (0.4.3): what picking a workspace does, and Stop & Switch's ask.
+        "switching.confirm_stop_switch",
+        "switching.on_pick",
         "terminal",
       ].sort(),
     );

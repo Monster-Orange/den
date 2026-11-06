@@ -139,7 +139,7 @@ async function main() {
       : "any discovered repo";
     console.error(`❌ No synthetics config found in ${hint}.`);
     console.error(
-      `   Ensure the repo is in your active workspace or registered via make register-repos,`,
+      `   Ensure the repo is in your workspace or registered via make register-repos,`,
     );
     console.error(
       `   and that its ${product().manifestYml} contains a "synthetics" section with a valid testDir.`,
