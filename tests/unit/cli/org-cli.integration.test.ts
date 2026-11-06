@@ -159,7 +159,12 @@ describe("setup --plan", () => {
     expect(setup.out).not.toContain("From the blueprint");
     expect(setup.out).toMatch(/Workspace main {2}org: acme/);
     expect(setup.out).toContain("https://github.com/acme/acme-web.git");
-    expect(setup.out).not.toContain("globex-web");
+    // The client workspace is not planned, only named in the hint (0.2.8).
+    expect(setup.out).not.toMatch(/Workspace client/);
+    expect(setup.out).not.toMatch(/globex-web {2}managed/);
+    expect(setup.out).toContain(
+      "Not in this plan: 1 repo in other workspaces: client (globex-web).",
+    );
 
     const up = den(root, ["up", "-a", "--plan"]);
     expect(up.code).toBe(0);
@@ -180,6 +185,196 @@ describe("setup --plan", () => {
     expect(out).toMatch(/Unknown flag for 'setup': --paln/);
     expect(code).toBe(1);
     expect(calls().slice(n)).toEqual([]);
+  }, 60_000);
+});
+
+describe("setup --plan picks its workspaces (0.2.8)", () => {
+  /**
+   * A seeded machine: main (focused, with a dev-managed checkout on a
+   * feature branch), client (active) and spare (inactive).
+   */
+  function machine(): { root: string; mine: string } {
+    const root = makeRoot(
+      `pick-${Math.random().toString(36).slice(2)}`,
+      ["environments: [local]", "github_org: acme", ""].join("\n"),
+    );
+    // A checkout Den doesn't manage: its branch is read from .git/HEAD.
+    const mine = path.join(root, "checkouts", "mine");
+    write(path.join(mine, ".git", "HEAD"), "ref: refs/heads/feature/plan-w\n");
+    write(
+      path.join(root, "config", "local", "service-catalog.yml"),
+      [
+        "acme-api: { gh: acme/acme-api }",
+        "mine: { gh: acme/mine }",
+        "globex-web: { gh: globex/globex-web }",
+        "spare-api: { gh: acme/spare-api }",
+        "",
+      ].join("\n"),
+    );
+    write(
+      path.join(root, "config", "local", "workspaces.yml"),
+      [
+        "active: [main, client]",
+        "focus: main",
+        "workspaces:",
+        "  main:",
+        "    services:",
+        "      acme-api:",
+        "        mode: managed",
+        "      mine:",
+        "        mode: dev-managed",
+        `        path: ${mine}`,
+        "  client:",
+        "    services:",
+        "      globex-web:",
+        "        mode: managed",
+        "  spare:",
+        "    services:",
+        "      spare-api:",
+        "        mode: managed",
+        "",
+      ].join("\n"),
+    );
+    return { root, mine };
+  }
+
+  it("the focused workspace, a dev-managed repo's real branch, and a hint for the rest", () => {
+    const { root } = machine();
+    const n = calls().length;
+    const { out, code } = den(root, ["setup", "--plan"]);
+    expect(code).toBe(0);
+    expect(out).toMatch(/Workspace main {2}org: acme/);
+    expect(out).toMatch(/mine {2}dev-managed feature\/plan-w {2}org: acme/);
+    expect(out).not.toMatch(/Workspace (client|spare)/);
+    expect(out).toContain(
+      "Not in this plan: 2 repos in other workspaces: client (globex-web), spare (spare-api). Plan them with -w <workspace> or --all-active.",
+    );
+    expect(calls().slice(n)).toEqual([]);
+  }, 60_000);
+
+  it("-w (repeatable) plans the named workspaces, active or not", () => {
+    const { root } = machine();
+    const { out, code } = den(root, [
+      "setup",
+      "--plan",
+      "-w",
+      "client",
+      "--workspace=spare",
+    ]);
+    expect(code).toBe(0);
+    expect(out).toMatch(/Workspace client {2}org: globex/);
+    expect(out).toMatch(/Workspace spare {2}org: acme/);
+    expect(out).toContain("https://github.com/acme/spare-api.git");
+    expect(out).not.toMatch(/Workspace main/);
+    expect(out).toContain(
+      "Not in this plan: 2 repos in other workspaces: main (acme-api, mine).",
+    );
+  }, 60_000);
+
+  it("--all-active plans every active workspace", () => {
+    const { root } = machine();
+    const { out, code } = den(root, ["setup", "--plan", "--all-active"]);
+    expect(code).toBe(0);
+    expect(out).toMatch(/Workspace main {2}org: acme/);
+    expect(out).toMatch(/Workspace client {2}org: globex/);
+    expect(out).not.toMatch(/Workspace spare/);
+    expect(out).toContain(
+      "Not in this plan: 1 repo in other workspaces: spare (spare-api).",
+    );
+  }, 60_000);
+
+  it("an unknown -w is an error; -w without --plan is refused, setting nothing up", () => {
+    const { root } = machine();
+    const before = snapshot(root);
+    const n = calls().length;
+    const bad = den(root, ["setup", "--plan", "-w", "nope"]);
+    expect(bad.code).toBe(1);
+    expect(bad.out).toContain(
+      "no workspace named nope (workspaces: main, client, spare)",
+    );
+    const real = den(root, ["setup", "-w", "client"]);
+    expect(real.code).toBe(1);
+    expect(real.out).toContain("-w and --all-active go with --plan");
+    expect(calls().slice(n)).toEqual([]);
+    expect(snapshot(root)).toEqual(before);
+  }, 60_000);
+
+  it("on a fresh machine -w narrows the blueprint's plan", () => {
+    const root = makeRoot(`fresh-w-${Math.random().toString(36).slice(2)}`);
+    const { out, code } = den(root, ["setup", "--plan", "-w", "client"]);
+    expect(code).toBe(0);
+    expect(out).toMatch(/Workspace client {2}org: globex \(blueprint\)/);
+    expect(out).not.toMatch(/Workspace main/);
+  }, 60_000);
+});
+
+describe("up --plan resolving nothing exits 1 (0.2.8)", () => {
+  it("a name nothing resolves, and a workspace with nothing in it", () => {
+    const root = makeRoot(
+      `up-none-${Math.random().toString(36).slice(2)}`,
+      ["environments: [local]", "github_org: acme", ""].join("\n"),
+    );
+    write(
+      path.join(root, "config", "local", "workspaces.yml"),
+      [
+        "active: [main]",
+        "focus: main",
+        "workspaces:",
+        "  main:",
+        "    services: {}",
+        "",
+      ].join("\n"),
+    );
+    const n = calls().length;
+    const named = den(root, ["up", "--plan", "no-such-repo"]);
+    expect(named.code).toBe(1);
+    const all = den(root, ["up", "-a", "--plan"]);
+    expect(all.out).toContain("nothing to start");
+    expect(all.code).toBe(1);
+    expect(calls().slice(n)).toEqual([]);
+  }, 60_000);
+});
+
+describe("register with no terminal (0.2.8)", () => {
+  it("exits 2 with one usage line that names -w", () => {
+    const root = makeRoot(`reg-${Math.random().toString(36).slice(2)}`);
+    const { out, code } = den(root, ["register"]);
+    expect(code).toBe(2);
+    expect(out.trim()).toBe(
+      "register needs a terminal (stdin is not a TTY); without one: den register <path> [--name <repo>] [--gh <owner/repo>] [-w <workspace>]",
+    );
+  }, 60_000);
+});
+
+describe("register <path> -w (0.2.8)", () => {
+  it("writes the named workspace, inactive, and leaves focus alone", () => {
+    const root = makeRoot(
+      `reg-w-${Math.random().toString(36).slice(2)}`,
+      ["environments: [local]", "github_org: acme", ""].join("\n"),
+    );
+    const wsFile = path.join(root, "config", "local", "workspaces.yml");
+    write(
+      wsFile,
+      [
+        "active: [main]",
+        "focus: main",
+        "workspaces:",
+        "  main:",
+        "    services: {}",
+        "  spare:",
+        "    services: {}",
+        "",
+      ].join("\n"),
+    );
+    const blog = path.join(root, "checkouts", "blog");
+    fs.mkdirSync(blog, { recursive: true });
+    const { out, code } = den(root, ["register", blog, "-w", "spare"]);
+    expect(code).toBe(0);
+    expect(out).toContain('Added to workspace "spare"');
+    const text = fs.readFileSync(wsFile, "utf-8");
+    expect(text).toMatch(/focus: main/);
+    expect(text).toMatch(/active:\s*\n?\s*-?\s*\[?main\]?/);
+    expect(text).toMatch(/spare:\s*\n\s+services:\s*\n\s+blog:/);
   }, 60_000);
 });
 

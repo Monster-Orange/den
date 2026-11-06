@@ -20,6 +20,10 @@ export interface AuditEntry {
   clientVersion?: string;
   mcpPid?: number | null;
   session?: string;
+  /** A scoped MCP server's actor, `agent:<id>` (AG-2a-core). */
+  agent?: string;
+  /** The workspace that scoped server is pinned to. */
+  workspace?: string;
   /** exec | run | sync, or the MCP tool name for a refused non-lifecycle call */
   verb: string;
   detail: string;
@@ -63,6 +67,8 @@ export function recordAction(
           clientVersion: actor.clientVersion,
           mcpPid: actor.mcpPid,
           session: actor.session,
+          ...(actor.agent ? { agent: actor.agent } : {}),
+          ...(actor.workspace ? { workspace: actor.workspace } : {}),
         }
       : {}),
     verb: action.verb,

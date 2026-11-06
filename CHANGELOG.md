@@ -4,6 +4,59 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.2.8] - unreleased
+
+### Added
+
+- **A scoped MCP server for cooperating agents** (0.2.8-dev.0, AG-2a-core).
+  `<cli> mcp --workspace <ws> --actor agent:<id>` pins one workspace: a tool
+  that takes a workspace gets `<ws>`, and a call naming another is refused
+  before it reaches the web server and recorded in the activity trail.
+  Lists are filtered to `<ws>`: `workspaces` shows it alone, the log tools
+  and `manifest_validate` take only its services and repos, `workspace_sync`
+  syncs it, and the test tools need it to be the focused workspace. Every
+  web API call is stamped with the actor (`x-den-mcp-agent`,
+  `x-den-mcp-workspace`), so each exec, run and sync in the activity trail
+  and the server log names `agent:<id>` and its workspace. Both flags or
+  neither; a bad value is a usage error (exit 2). `--list` and `--call` take
+  them too. Without them the server is unchanged. **Limit:** it binds
+  cooperating agents only. The scope lives in the MCP process, and the web
+  server's HTTP API does not check it yet (WS-3a, 0.4); `mcp connect` still
+  registers the unscoped server.
+- **`<cli> setup --plan -w <ws>` and `--all-active`** (0.2.8-dev.0). `-w` is
+  repeatable and plans those workspaces, active or not; `--all-active` plans
+  every active one; on a fresh machine `-w` narrows the blueprint's plan. A
+  closing hint names the repos only workspaces outside the plan hold. `-w`
+  and `--all-active` go with `--plan` only.
+- **`<cli> register <path> -w <ws>`** (0.2.8-dev.0) writes that workspace,
+  active or not, and leaves focus alone. It used to fail with "-w/--workspace
+  is not valid with register".
+
+### Changed
+
+- **`setup --plan` and `up --plan` show a dev-managed repo's real branch**
+  (0.2.8-dev.0): the one its checkout has out (read from `.git/HEAD`, no git
+  process), or `(branch unknown)`, where they printed `main` for every
+  checkout.
+- **`up --plan` exits 1 when nothing resolves** (0.2.8-dev.0): a name no
+  workspace has, or a workspace with nothing to start. It exited 0.
+- **`register` with no terminal exits 2** (0.2.8-dev.0) with one usage line
+  that names `-w`: `register needs a terminal (stdin is not a TTY); without
+  one: <cli> register <path> [--name <repo>] [--gh <owner/repo>] [-w
+  <workspace>]`. It went on to prompt with nothing to answer.
+
+### Fixed
+
+- **Test workers inherit no credentials** (0.2.8-dev.0). `tests/setup.ts`
+  strips credential-shaped variables (by name, family or token shape) from
+  the environment before any suite runs, so a failing assertion on a
+  spawn env can no longer print a developer's tokens.
+
+### Migrations
+
+- None. A script that ran `up --plan` and ignored its exit code may now see
+  1 when the plan is empty.
+
 ## [0.2.7] - 2026-11-05
 
 ### Added

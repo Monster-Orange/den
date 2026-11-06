@@ -473,8 +473,14 @@ To see what a setup would clone before it clones anything, run
 `acme setup --plan`: each repo with its org and clone URL, and whether it
 is cloned yet. On a fresh machine it plans the blueprint (every workspace
 `acme workspace seed` would create); once seeded, the focused workspace.
-`acme up --plan` lists the same lines for the repos it would start. Both
-are read-only: nothing is cloned, seeded or written.
+`-w <workspace>` (repeatable) plans those workspaces instead, active or not,
+and `--all-active` every active one; on a fresh machine `-w` narrows the
+blueprint's plan. Repos that only workspaces outside the plan hold are named
+in a closing hint. A dev-managed repo shows the branch its checkout has out
+(read from its `.git/HEAD`), not a configured one. `acme up --plan` lists
+the same lines for the repos it would start, and exits 1 when nothing
+resolves (a name no workspace has, an empty workspace). Both are read-only:
+nothing is cloned, seeded or written.
 
 ## Orgs
 
@@ -735,6 +741,46 @@ everyone's checkout is in the same place.
 
 `--port <n>` (on `mcp` or `mcp connect`) points it at a web server on another
 port.
+
+### Scoped to one workspace
+
+```sh
+./bin/acme mcp --workspace smb --actor agent:planner
+```
+
+`--workspace <ws>` and `--actor agent:<id>` (both or neither) scope the server
+to one workspace for one agent:
+
+- **Pinned.** A tool that takes a `workspace` gets `<ws>` when none is given.
+  A call naming another workspace is refused (`Refused: <tool>: this MCP
+server is scoped to workspace "<ws>" (agent:<id>); "<other>" is another
+workspace`) before anything reaches the web server. A refused call is
+  recorded in the activity trail, read tools included.
+- **Filtered.** `workspaces` lists `<ws>` only. `logs_search` and `logs_tail`
+  take only `<ws>`'s services, `manifest_validate` takes only an absolute path
+  inside one of its repos (or the content), and `workspace_sync` syncs `<ws>`.
+  Tests run against the focused workspace, so `tests_available` and
+  `run_tests` are refused unless `<ws>` is the focused one.
+- **Not workspace data**, served as unscoped: `environments`,
+  `security_latest`, `release_status` and `edge_status` (the org's and the
+  distribution's, not a workspace's).
+- **Stamped.** Every web API call carries `x-den-mcp-agent: agent:<id>` and
+  `x-den-mcp-workspace: <ws>` beside the usual audit headers. The activity
+  entry gains `agent` and `workspace`, and the log line reads `· by
+agent:<id> <client> <version> (workspace <ws>, mcp pid <pid>, session
+<id>)` for every exec, run and sync.
+- `<ws>` must exist in this distribution; until it does, every tool says so.
+  The id is letters, digits, dots, dashes and underscores (at most 64). A bad
+  or half-given scope is a usage error, exit 2. `--list` and `--call` take
+  the scope too.
+
+**It binds cooperating agents only.** The scope lives in the MCP server's
+process. The web server's HTTP API does not check it yet, so an agent that
+calls the API itself (curl, a browser) is not held to its workspace. Enforcing
+the scope in the HTTP server is WS-3a, planned for 0.4. `mcp connect` still
+registers the unscoped server; to hand one agent a scoped server, add it to
+that agent's config yourself, for example in a project's `.mcp.json`:
+`"args": ["mcp", "--workspace", "smb", "--actor", "agent:planner"]`.
 
 ### One call from a shell
 

@@ -781,7 +781,7 @@ function activityList(x) {
     .then(({ entries = [] }) => {
       if (!live) return;
       el.innerHTML = entries.length
-        ? `<ol class="act">${entries.map((a) => `<li><time datetime="${esc(a.ts)}">${esc(hhmm(a.ts))}</time><span class="dg-who ${a.actor === "agent" ? "agent" : ""}">${esc(a.actor === "agent" ? "[agent]" + (a.client ? " " + a.client : "") : "you")}</span><span>${esc(a.verb)} ${esc(a.detail)}${a.outcome === "refused" ? ` <em class="refused">refused: ${esc(a.reason || "")}</em>` : ""}</span></li>`).join("")}</ol>`
+        ? `<ol class="act">${entries.map((a) => `<li><time datetime="${esc(a.ts)}">${esc(hhmm(a.ts))}</time><span class="dg-who ${a.actor === "agent" ? "agent" : ""}">${esc(a.actor === "agent" ? (a.agent ? "[" + a.agent + "]" : "[agent]") + (a.client ? " " + a.client : "") : "you")}</span><span>${esc(a.verb)} ${esc(a.detail)}${a.outcome === "refused" ? ` <em class="refused">refused: ${esc(a.reason || "")}</em>` : ""}</span></li>`).join("")}</ol>`
         : none(
             "No actions yet. Starts, restarts and syncs, yours and agents', show here.",
           );

@@ -33,12 +33,27 @@ import {
   type ServiceEntryLike,
   type SecurityPlanLike,
 } from "./guards.js";
+import {
+  ScopeRefusal,
+  assertPathInScope,
+  assertScopeExists,
+  assertScopeFocused,
+  assertServicesInScope,
+  filterWorkspacesBody,
+  pinWorkspace,
+  type McpScope,
+} from "./scope.js";
 
 export interface ToolContext {
   api: DenApi;
   cfg: ResolvedMcpConfig;
   /** The CLI name, for messages (`<cli> web up`). */
   cli: string;
+  /**
+   * A scoped server's workspace and actor (AG-2a-core); absent, every tool
+   * behaves as it always has.
+   */
+  scope?: McpScope;
 }
 
 type Args = Record<string, unknown>;
@@ -193,7 +208,10 @@ const READ_TOOLS: DenTool[] = [
     "Workspaces",
     "Workspaces, which are active and which is focused.",
     {},
-    (_a, { api }) => api.get("/api/workspaces"),
+    async (_a, { api, scope }) => {
+      const body = await api.get("/api/workspaces");
+      return scope ? filterWorkspacesBody(body, scope) : body;
+    },
   ),
   read(
     "environments",
@@ -215,9 +233,19 @@ const READ_TOOLS: DenTool[] = [
         .describe("repo/service names"),
       env: envArg,
     },
-    async (a, { api, cfg }) => {
+    async (a, { api, cfg, scope }) => {
       const env = envOf(a);
       assertLogsEnv(env, cfg);
+      if (scope)
+        await assertServicesInScope(
+          "logs_search",
+          api,
+          scope,
+          (a.targets as string[]).map((t) => {
+            const slash = t.lastIndexOf("/");
+            return { repo: t.slice(0, slash), service: t.slice(slash + 1) };
+          }),
+        );
       return api.get("/api/logs/search", {
         q: String(a.q),
         env,
@@ -241,9 +269,13 @@ const READ_TOOLS: DenTool[] = [
         .describe("Lines to return (default 200)"),
       env: envArg,
     },
-    async (a, { api, cfg }) => {
+    async (a, { api, cfg, scope }) => {
       const env = envOf(a);
       assertLogsEnv(env, cfg);
+      if (scope)
+        await assertServicesInScope("logs_tail", api, scope, [
+          { repo: String(a.repo), service: String(a.service) },
+        ]);
       const n = (a.lines as number | undefined) ?? 200;
       const query: Query = { repo: String(a.repo), service: String(a.service) };
       const r =
@@ -270,11 +302,17 @@ const READ_TOOLS: DenTool[] = [
     "Available tests",
     "The test modules of a pillar, and which repos (branch + SHA) they come from.",
     { pillar: z.enum(PILLARS) },
-    async (a, { api }) => ({
-      modules: await api.get("/api/modules", { pillar: String(a.pillar) }),
-      sources: await api.get("/api/test-sources", { pillar: String(a.pillar) }),
-    }),
+    async (a, { api, scope }) => {
+      if (scope) await assertScopeFocused("tests_available", api, scope);
+      return {
+        modules: await api.get("/api/modules", { pillar: String(a.pillar) }),
+        sources: await api.get("/api/test-sources", {
+          pillar: String(a.pillar),
+        }),
+      };
+    },
   ),
+
   read(
     "security_latest",
     "Latest security scans",
@@ -307,13 +345,20 @@ const READ_TOOLS: DenTool[] = [
       path: z.string().optional().describe("Repo directory or manifest file"),
       content: z.string().optional().describe("Manifest YAML to validate"),
     },
-    async (a, { api }) => {
+    async (a, { api, scope }) => {
       if (str(a.content) !== undefined)
         return api.get("/api/manifest/validate", {}, "POST", {
           content: a.content,
         });
       if (str(a.path) === undefined)
         throw new Refusal("give a path or the manifest content.");
+      if (scope)
+        await assertPathInScope(
+          "manifest_validate",
+          api,
+          scope,
+          String(a.path),
+        );
       return api.get("/api/manifest/validate", { path: str(a.path) });
     },
   ),
@@ -447,19 +492,27 @@ const ACTION_TOOLS: Record<McpAction, DenTool> = {
     shape: {
       repo: z.string().optional().describe("One managed repo (default: all)"),
     },
-    async run(a, { api }) {
+    async run(a, { api, scope }) {
       const repo = str(a.repo);
+      // Scoped: the sync names the scoped workspace (the web server's own
+      // default is the focused one).
+      const ws = scope ? { workspace: scope.workspace } : {};
       if (repo) {
         const services = (await api.get("/api/services", {
           env: "local",
+          ...ws,
         })) as ServiceEntryLike[];
         assertSyncableRepo(repo, services);
       }
-      const r = await api.stream("/api/workspace/sync", repo ? { repo } : {}, {
-        method: "POST",
-        maxLines: 5000,
-        timeoutMs: 15 * 60_000,
-      });
+      const r = await api.stream(
+        "/api/workspace/sync",
+        repo ? { repo, ...ws } : { ...ws },
+        {
+          method: "POST",
+          maxLines: 5000,
+          timeoutMs: 15 * 60_000,
+        },
+      );
       return actionResult(r, 300);
     },
   },
@@ -478,13 +531,14 @@ const ACTION_TOOLS: Record<McpAction, DenTool> = {
         .optional()
         .describe("Security scan mode (default baseline)"),
     },
-    async run(a, { api, cfg }) {
+    async run(a, { api, cfg, scope }) {
       const pillar = String(a.pillar);
       const env = envOf(a);
       const modules = (a.modules as string[] | undefined) ?? [];
       const mode =
         pillar === "security" ? (str(a.mode) ?? "baseline") : undefined;
       assertRunTestsAllowed({ pillar, env, mode }, cfg);
+      if (scope) await assertScopeFocused("run_tests", api, scope);
       if (pillar === "security") {
         for (const service of modules.length ? modules : [undefined]) {
           const plan = (await api.get("/api/security/plan", {
@@ -606,6 +660,27 @@ async function reportRefusal(
   }
 }
 
+/**
+ * A scoped server's arguments: the workspace exists (checked once per
+ * server), and a tool that takes a workspace gets the scoped one; naming
+ * another is refused.
+ */
+const verifiedScopes = new WeakSet<McpScope>();
+async function scopeArgs(
+  tool: DenTool,
+  args: Args,
+  ctx: ToolContext,
+  scope: McpScope,
+): Promise<Args> {
+  if (!verifiedScopes.has(scope)) {
+    await assertScopeExists(ctx.api, scope);
+    verifiedScopes.add(scope);
+  }
+  return "workspace" in tool.shape
+    ? pinWorkspace(tool.name, args, scope)
+    : args;
+}
+
 export async function callTool(
   name: string,
   args: Args,
@@ -618,7 +693,10 @@ export async function callTool(
       isError: true,
     };
   try {
-    const out = await tool.run(args, ctx);
+    const out = await tool.run(
+      ctx.scope ? await scopeArgs(tool, args, ctx, ctx.scope) : args,
+      ctx,
+    );
     const text = typeof out === "string" ? out : JSON.stringify(out, null, 2);
     return { text: redactSecrets(text), isError: false };
   } catch (e) {
@@ -633,7 +711,9 @@ export async function callTool(
       );
       return { text: redactSecrets(text), isError: true };
     }
-    if (e instanceof Refusal && tool.action)
+    // A call outside a scoped server's workspace is recorded whatever the
+    // tool: it is an attempt to cross the boundary (AG-2a-core).
+    if (e instanceof Refusal && (tool.action || e instanceof ScopeRefusal))
       await reportRefusal(ctx, name, args, e.message);
     const msg =
       e instanceof Refusal
