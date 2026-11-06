@@ -77,10 +77,18 @@ const WORKSPACE_COMMANDS = new Set([
 
 /**
  * Commands that read `-w`/`--workspace` themselves, so it is left in their
- * args: `setup --plan -w a -w b` takes several, and `mcp --workspace <ws>`
- * scopes the MCP server (it never sets the CLI's workspace override).
+ * args: `setup --plan -w a -w b` takes several, `mcp --workspace <ws>`
+ * scopes the MCP server, and `sessions`/`agents` name a session's
+ * workspace. None of them sets the CLI's workspace override.
  */
-const OWN_WORKSPACE_FLAG_COMMANDS = new Set(["setup", "mcp"]);
+const OWN_WORKSPACE_FLAG_COMMANDS = new Set([
+  "setup",
+  "mcp",
+  // A session's workspace is part of its name (AG-3a); -w never sets the
+  // CLI's workspace override here.
+  "sessions",
+  "agents",
+]);
 
 /** Whether `-w <name>` on this command requires `<name>` to be active. */
 export function workspaceFlagRequiresActive(command: string): boolean {

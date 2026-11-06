@@ -51,7 +51,11 @@ const spawned = () =>
 describe("doctor", () => {
   it("lists secrets and tls, with no edge and no store", () => {
     const rows = doctorRows(dist("secrets:\n  provider: none\n"));
-    expect(rows.map((r) => r.kind)).toEqual(["secrets", "tls"]);
+    expect(rows.map((r) => r.kind)).toEqual([
+      "secrets",
+      "tls",
+      "session-backend",
+    ]);
     expect(rows[0]).toMatchObject({
       selected: "none",
       implicit: false,
@@ -89,6 +93,19 @@ describe("doctor", () => {
         "edge.tls is not set; defaulting to mkcert with a local CA. Set edge.tls explicitly.",
       ],
     });
+    expect(spawned()).toEqual([0, 0, 0, 0]);
+  });
+
+  it("lists the session backend (den-pty); unavailable is never a problem", () => {
+    const row = doctorRows(dist("environments: [local]\n")).find(
+      (r) => r.kind === "session-backend",
+    );
+    expect(row).toMatchObject({
+      selected: "den-pty",
+      implicit: true,
+      problem: false,
+    });
+    if (!row!.available) expect(row!.reason).toMatch(/node-pty/);
     expect(spawned()).toEqual([0, 0, 0, 0]);
   });
 

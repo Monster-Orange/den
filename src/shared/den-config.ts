@@ -244,6 +244,11 @@ export interface DenConfig {
    */
   mcp?: McpConfig;
   /**
+   * Agents: `max_concurrent` caps the sessions running at once in this
+   * distribution (default 4). See readAgentsConfig.
+   */
+  agents?: AgentsConfig;
+  /**
    * The web UI: `port` (read by edge/config.ts readWebPort) and `service`,
    * the launchd service `<cli> service` installs. See readWebServiceConfig.
    */
@@ -552,6 +557,7 @@ export function readDenConfig(): DenConfig {
       env_health_urls: parsed?.env_health_urls,
       security: parsed?.security,
       mcp: parsed?.mcp,
+      agents: parsed?.agents,
       web: parsed?.web,
       test_accounts: parsed?.test_accounts,
       defaults: parsed?.defaults,
@@ -727,6 +733,41 @@ export function readMcpConfig(
     runTestsEnvs: [...new Set(runTestsEnvs)],
     logsRemote: raw.logs?.remote === true,
   };
+}
+
+// ── Agents (`<cli> sessions`, `<cli> agents`) ─────────────────────────────────
+
+/** `agents:` in the org config. */
+export interface AgentsConfig {
+  /** Sessions that may run at once (default 4). */
+  max_concurrent?: number;
+}
+
+export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
+
+/** `agents:` with its defaults applied. */
+export interface ResolvedAgentsConfig {
+  maxConcurrent: number;
+}
+
+/**
+ * The effective agents config. A max_concurrent that is not a whole number
+ * of at least 1 throws, naming the key: a typo must not lift the cap.
+ */
+export function readAgentsConfig(
+  config: DenConfig = readDenConfig(),
+): ResolvedAgentsConfig {
+  const raw = config.agents ?? {};
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+    throw new Error(`agents: must be a mapping (got ${JSON.stringify(raw)})`);
+  const max = raw.max_concurrent;
+  if (max === undefined)
+    return { maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT };
+  if (typeof max !== "number" || !Number.isInteger(max) || max < 1)
+    throw new Error(
+      `agents.max_concurrent: must be a whole number of at least 1 (got ${JSON.stringify(max)})`,
+    );
+  return { maxConcurrent: max };
 }
 
 // ── Web UI service (`<cli> service`) ──────────────────────────────────────────

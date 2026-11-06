@@ -13,6 +13,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { getDistRoot, getEngineRoot } from "./paths.js";
 
 /** An absolute path inside Den's own package. */
@@ -82,4 +83,26 @@ export function distPath(...parts: string[]): string {
 /** `playwright ...args` from Den's own @playwright/test. */
 export function playwrightCommand(...args: string[]): EngineCommand {
   return { command: engineBin("playwright"), args };
+}
+
+/**
+ * How to run Den's CLI as a background process of its own, whatever process
+ * asks (the CLI, the web server): one node process, never the tsx CLI (a
+ * parent that relays signals). Live TypeScript source with tsx's loader in
+ * a checkout or a package install; the compiled build when tsx is absent,
+ * or with DEN_USE_DIST=1. Mirrors the web server's resolveServerEntrypoint.
+ */
+export function cliEntrypoint(engine: string = getEngineRoot()): EngineCommand {
+  const built = path.join(engine, "dist/src/ui/cli/index.js");
+  if (process.env.DEN_USE_DIST === "1" && fs.existsSync(built))
+    return { command: process.execPath, args: [built] };
+  const loader = engineModuleFile("tsx/dist/loader.mjs", engine);
+  const src = path.join(engine, "src/ui/cli/index.ts");
+  if (loader && fs.existsSync(src))
+    return {
+      command: process.execPath,
+      args: ["--import", pathToFileURL(loader).href, src],
+    };
+  if (fs.existsSync(built)) return { command: process.execPath, args: [built] };
+  return { command: engineBin("tsx", engine), args: [src] };
 }

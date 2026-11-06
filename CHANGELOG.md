@@ -4,6 +4,64 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.0] - unreleased
+
+0.4.0-dev.0 is built on 0.3.0-dev.40 and includes all of it (below).
+
+### Added
+
+- **Sessions: terminals that outlive the web server** (0.4.0-dev.0,
+  AG-3a). `<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>]
+  -- <argv…>` runs argv in a PTY named `<dist>-<ws>:<n>`; `sessions list
+  [-w <ws>] [--json]` lists them (`-w` shows that workspace's only);
+  `sessions attach <name|id>` is a raw terminal on one (output fans out to
+  every attachment, scrollback replays first, SIGWINCH resizes, ctrl-]
+  detaches and leaves it running); `sessions kill <name|id> [--signal
+  INT|TERM|KILL]` signals its process group (TERM by default) or, once it
+  has exited, removes it and its scrollback. A name is the full name,
+  `<ws>:<n>`, a bare `<n>` only one session has, or the id. Usage errors
+  exit 2.
+  - A **session host** owns every PTY: `<cli> sessions host`, one detached
+    process per distribution (its own session and process group), started
+    on demand by the first client and serving `<stateDir>/sessions.sock`
+    (mode 0600). Restarting the web server, or the CLI that started a
+    session, leaves it running. A second host finds the first and stands
+    down; a socket nobody answers on is stale and is replaced. `sessions
+    host --stop` stops it (its running sessions end). The host logs to
+    `<stateDir>/logs/<cli>/sessions-host.log`. Its protocol is versioned
+    (newline JSON, v1).
+  - **Scrollback** is a 2 MB ring per session, flushed to
+    `<stateDir>/sessions/<id>.log` (0600), so after a host restart a session
+    is listed as exited and attaching replays its history. A record holds
+    the name, cwd, pid, times and exit code, never argv or env.
+  - **`agents.max_concurrent`** (default 4) caps the sessions running at
+    once; a start past it is refused, naming the key. A value that is not a
+    whole number of at least 1 is an error naming the key.
+- **`<cli> agents list -w <ws> [--json]`** (0.4.0-dev.0): that workspace's
+  sessions as agents. Persona and runtime are blank until personas land
+  (AG-2a).
+- **`<cli> doctor` lists the session backend** (0.4.0-dev.0): `den-pty`,
+  available when the PTY module loads, else why not. It is never a doctor
+  failure.
+
+### Changed
+
+- **A PTY module is an optional dependency** (0.4.0-dev.0, Q-AG-1):
+  `@lydell/node-pty` 1.1.0, exact. Its binaries are prebuilt per platform
+  (macOS and Linux, x64 and arm64; Windows) in packages npm installs with
+  it, with no install script and nothing downloaded. Installed with
+  `--omit=optional`, or on another platform, Den runs as before and
+  `sessions start` says den-pty is unavailable and why.
+
+### Migrations
+
+- None. `agents:` is a new, optional block of the org config:
+
+  ```yaml
+  agents:
+    max_concurrent: 4
+  ```
+
 ## [0.3.0] - unreleased
 
 0.3.0-dev.31 and later include all of 0.2.7 (below).

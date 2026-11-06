@@ -525,10 +525,11 @@ later plugins.
 
 ## doctor
 
-`<cli> doctor` lists every strategy kind in the registry (secrets, tls):
-the one this distribution selects, whether nothing chose it (implicit),
-and whether it can work on this machine, with the reason. It only checks
-PATH: it never runs a backend CLI, prompts, or prints a secret. It exits
+`<cli> doctor` lists every strategy kind in the registry (secrets, tls,
+session-backend): the one this distribution selects, whether nothing chose
+it (implicit), and whether it can work on this machine, with the reason.
+It only checks PATH (and, for session-backend, whether the PTY module
+loads): it never runs a backend CLI, prompts, or prints a secret. It exits
 1 when a strategy that will be used cannot work (an implicit secrets
 default is used only when a secret is asked for, so it never fails
 doctor).
@@ -536,10 +537,14 @@ doctor).
 ```
 Acme doctor: strategies
 
-  secrets  none                 ✓ available: no secrets backend configured
-  tls      mkcert (implicit)    ✗ unavailable: mkcert is not installed
+  secrets          none                 ✓ available: no secrets backend configured
+  tls              mkcert (implicit)    ✗ unavailable: mkcert is not installed
     ⚠ edge.tls is not set; defaulting to mkcert with a local CA. Set edge.tls explicitly.
+  session-backend  den-pty (implicit)   ✓ available: PTY module loaded
 ```
+
+`session-backend` is never a doctor failure: nothing needs a session until
+one is started (see Sessions).
 
 ## den.yml: the product profile
 
@@ -1444,6 +1449,51 @@ authorise anything), and the MCP server's pid and session id. They travel as
 (and each UI one) as a lifecycle line in its log; on the Logs page, the
 `acme/server` stream shows an agent's actions as `[agent]`, ending
 `· by agent <client> <version> (mcp pid <pid>, session <id>)`.
+
+## Sessions
+
+A session is a terminal that keeps running when the web server restarts:
+an argv in a PTY, owned by the distribution's **session host**. The host
+is one small detached process (`<cli> sessions host`) that the first
+client starts on demand; it serves `<stateDir>/sessions.sock` (mode 0600)
+and logs to `<stateDir>/logs/<cli>/sessions-host.log`. The state dir is
+the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
+
+```
+<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] -- <argv…>
+<cli> sessions list [-w <ws>] [--json]
+<cli> sessions attach <name|id>          # ctrl-] detaches; the session keeps running
+<cli> sessions kill <name|id> [--signal INT|TERM|KILL]
+<cli> sessions host [--stop]
+<cli> agents list -w <ws> [--json]
+```
+
+- A session is named `<dist>-<ws>:<n>`. `list -w <ws>` and `agents list
+-w <ws>` show that workspace's sessions only. Elsewhere a session can be
+  named in full, as `<ws>:<n>`, as a bare `<n>` only one session has, or by
+  its id.
+- It runs in `--cwd` (default: where you ran the command) with your
+  environment. Every attachment gets all of its output; attaching replays
+  the scrollback first (2 MB per session, kept in
+  `<stateDir>/sessions/<id>.log`).
+- Stopping the host (`sessions host --stop`, or a reboot) ends its
+  sessions. They stay listed as exited, with their scrollback, until
+  `sessions kill` removes them.
+- `agents.max_concurrent` caps the sessions running at once (default 4):
+
+  ```yaml
+  agents:
+    max_concurrent: 4
+  ```
+
+- A PTY needs a native module, `@lydell/node-pty`, which Den lists as an
+  optional dependency (prebuilt binaries for macOS, Linux and Windows,
+  nothing downloaded at install). Without it (`npm install
+--omit=optional`, another platform) everything else works, and `sessions
+start` and `<cli> doctor` say why den-pty is unavailable.
+- A state dir whose socket path would pass 103 bytes (the unix socket
+  limit) is refused with that reason; point `<PREFIX>_HOME` somewhere
+  shorter.
 
 ## Pinning and upgrading
 

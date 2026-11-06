@@ -9,6 +9,9 @@
 # acme brand (page + /api) with no __DEN_ placeholder left.
 #
 # Usage: scripts/dist-smoke.sh            (from Den's checkout; CI runs it too)
+#        DIST_SMOKE_OMIT_OPTIONAL=1 scripts/dist-smoke.sh
+#                                         (installs with --omit=optional: no
+#                                         PTY module, den-pty unavailable)
 # The throwaway install lives under $RUNNER_TEMP (CI) or $TMPDIR.
 set -euo pipefail
 
@@ -40,7 +43,17 @@ stop_web() {
     done
   fi
 }
-trap stop_web EXIT
+# A session host this run started (ACME_HOME is ours) never outlives it.
+stop_sessions() {
+  if [ -x "$DIST/bin/acme" ] && [ -S "$ACME_HOME/sessions.sock" ]; then
+    (cd "$DIST" && ./bin/acme sessions host --stop >/dev/null 2>&1) || true
+  fi
+}
+cleanup() {
+  stop_web
+  stop_sessions
+}
+trap cleanup EXIT
 
 # run <label> <cmd...>: run in the distribution; stdout → $WORK/<label>.out,
 # stderr → $WORK/<label>.err. Fails on a non-zero exit or any stderr output.
@@ -107,7 +120,9 @@ else
 fi
 
 say "install the tarball into the distribution"
-(cd "$DIST" && npm install --no-audit --no-fund --silent "$TARBALL") >"$WORK/install.out" 2>&1 ||
+OMIT=()
+[ "${DIST_SMOKE_OMIT_OPTIONAL:-}" = "1" ] && OMIT=(--omit=optional)
+(cd "$DIST" && npm install --no-audit --no-fund --silent ${OMIT[@]+"${OMIT[@]}"} "$TARBALL") >"$WORK/install.out" 2>&1 ||
   {
     cat "$WORK/install.out"
     exit 1
@@ -125,6 +140,25 @@ run graph ./bin/acme graph
 run version ./bin/acme --version
 DEN_VERSION="$(node -p "require('$ENGINE/package.json').version")"
 expect_in "version is Den's ($DEN_VERSION)" "$WORK/version.out" "v$DEN_VERSION"
+
+say "sessions (den-pty)"
+# The PTY module is optional: with it doctor says den-pty is available;
+# without it (--omit=optional) doctor says why, and nothing else changes.
+run doctor ./bin/acme doctor
+if [ -d "$DIST/node_modules/@lydell/node-pty" ]; then
+  ok "PTY module installed (no install script, prebuilt binary)"
+  expect_in "doctor: den-pty available" "$WORK/doctor.out" "den-pty (implicit)   ✓ available"
+else
+  ok "PTY module absent"
+  expect_in "doctor says why den-pty is unavailable" "$WORK/doctor.out" "@lydell/node-pty is not installed"
+fi
+# list starts the session host on demand; --stop ends it.
+run sessions-list ./bin/acme sessions list
+expect_in "sessions list (host started on demand)" "$WORK/sessions-list.out" "no sessions"
+if [ -S "$ACME_HOME/sessions.sock" ]; then ok "the host's socket is in ACME_HOME"; else bad "no sessions.sock in ACME_HOME"; fi
+run sessions-host-stop ./bin/acme sessions host --stop
+expect_in "sessions host --stop" "$WORK/sessions-host-stop.out" "stopped the session host"
+[ ! -e "$ACME_HOME/sessions.sock" ] && ok "host stopped: socket removed" || bad "sessions.sock left behind"
 
 say "MCP server (stdio)"
 # initialize + tools/list need no web server; every stdout line must be

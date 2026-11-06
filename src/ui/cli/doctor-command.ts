@@ -1,11 +1,12 @@
 /**
- * `doctor`: every strategy kind in the registry (secrets, tls), the
- * strategy this distribution selects for it, whether nothing chose it
- * (implicit), and its detect() result with the reason.
+ * `doctor`: every strategy kind in the registry (secrets, tls,
+ * session-backend), the strategy this distribution selects for it, whether
+ * nothing chose it (implicit), and its detect() result with the reason.
  *
- * Read-only: detect() is a PATH check, so doctor never spawns a backend
- * CLI, never prompts, and never prints a secret value. Exit 1 when a
- * strategy that will be used is unavailable or its config is invalid.
+ * Read-only: detect() is a PATH check (session-backend loads the optional
+ * PTY module, which runs nothing), so doctor never spawns a backend CLI,
+ * never prompts, and never prints a secret value. Exit 1 when a strategy
+ * that will be used is unavailable or its config is invalid.
  */
 import chalk from "chalk";
 import { readBrand } from "../../shared/brand.js";
@@ -15,7 +16,14 @@ import {
   readSecretsConfig,
   secretsStatus,
 } from "../../shared/secrets/index.js";
-import { strategyKinds } from "../../shared/strategies/registry.js";
+import {
+  DEN_PTY_ID,
+  SESSION_BACKEND_KIND,
+} from "../../shared/sessions/den-pty.js";
+import {
+  getStrategy,
+  strategyKinds,
+} from "../../shared/strategies/registry.js";
 
 export interface DoctorRow {
   kind: string;
@@ -79,6 +87,24 @@ const SELECTORS: Record<string, Selector> = {
         warnings: [],
       };
     }
+  },
+  // Agents' terminals (AG-3a). Only den-pty exists, so it is the implicit
+  // choice; unavailable is never a problem (nothing needs a session until
+  // one is started, and `sessions start` says why).
+  [SESSION_BACKEND_KIND](env) {
+    const d = getStrategy(SESSION_BACKEND_KIND, DEN_PTY_ID)?.detect(env) ?? {
+      available: false,
+      reason: "not registered",
+    };
+    return {
+      kind: SESSION_BACKEND_KIND,
+      selected: DEN_PTY_ID,
+      implicit: true,
+      available: d.available,
+      reason: d.reason,
+      problem: false,
+      warnings: [],
+    };
   },
 };
 

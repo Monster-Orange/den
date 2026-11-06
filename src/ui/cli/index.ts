@@ -193,6 +193,12 @@ import { cleanupStaleTabs } from "../../shared/cli-tabs.js";
 import { cmdConfig } from "./config-command.js";
 import { cmdEdge } from "./edge-command.js";
 import { cmdDoctor } from "./doctor-command.js";
+import {
+  AGENTS_HELP,
+  cmdAgents,
+  cmdSessions,
+  SESSIONS_HELP,
+} from "./sessions-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
 import { cmdTheme } from "./theme-command.js";
@@ -508,6 +514,8 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     usage: "menu",
     lines: ["Open the interactive menu (pillar/module/env picker)."],
   },
+  sessions: SESSIONS_HELP,
+  agents: AGENTS_HELP,
 };
 
 function resolveCliBaseApiUrl(explicitBaseApiUrl?: string): string | undefined {
@@ -558,6 +566,8 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "apps",
   "applications",
   "mcp",
+  "sessions",
+  "agents",
   "service",
   "theme",
   "plugin",
@@ -581,6 +591,10 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "local-dev",
   "view-results",
   "down",
+  // The session host and its clients read no org data, and stopping or
+  // listing a session is never stranded by a config that fails (AG-3a).
+  "sessions",
+  "agents",
 ]);
 
 function configCheckedCommand(command: string): boolean {
@@ -987,6 +1001,14 @@ class DenCLI {
         case "applications":
           await this.ensureWorkspaceSeeded();
           cmdApps(args.slice(1));
+          break;
+
+        case "sessions":
+          process.exitCode = await cmdSessions(args.slice(1));
+          break;
+
+        case "agents":
+          process.exitCode = await cmdAgents(args.slice(1));
           break;
 
         case "mcp": {
@@ -4805,6 +4827,13 @@ class DenCLI {
     console.log(
       "  plugin list          Local and added plugins, checked (validate, add, update, remove)",
     );
+    console.log(
+      "  sessions start -w <ws> --name <n> -- <argv…>  A terminal that outlives the web server",
+    );
+    console.log(
+      "  sessions list|attach|kill   List, attach to (ctrl-] detaches) or stop sessions",
+    );
+    console.log("  agents list -w <ws>  The workspace's agent sessions");
     console.log();
     console.log(
       "  workspace list           List workspaces (active set + focus)",
