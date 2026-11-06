@@ -86,7 +86,8 @@ That's it: `acme` is now your tool, with your name, your CLI and your config, in
 
 ## Coming next
 
-Several orgs in one Den, and a one-command machine setup.
+One workspace focus with Switch, agent pane layouts, and a Start dialog with personas, roles and a choice of
+runtime and model.
 
 ## Docs
 
