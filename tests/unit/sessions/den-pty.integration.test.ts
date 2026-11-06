@@ -60,7 +60,7 @@ maybe("den-pty with the native module", () => {
       "--",
       "sh",
       "-c",
-      "echo hi; sleep 5",
+      "echo hi; sleep 120",
     ]);
     expect(started.out).toMatch(/started acme-north:hi/);
     expect(started.code).toBe(0);

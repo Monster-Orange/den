@@ -452,6 +452,18 @@ describe("the runs dock (R16)", () => {
     // A run still going: the chip's dot pulses; still collapsed.
     await runs(p, "start", "long", "up shop/web");
     await p.waitForSelector("#den-runs .den-dot.run");
+    // Motion allowed, then wait for the pulse (it failed once on a slow CI
+    // runner read straight after the class landed).
+    await p.emulateMedia({ reducedMotion: "no-preference" });
+    await p
+      .waitForFunction(
+        () =>
+          getComputedStyle(document.querySelector("#den-runs .den-dot.run")!)
+            .animationName === "den-pulse",
+        undefined,
+        { timeout: 3_000 },
+      )
+      .catch(() => undefined);
     expect(
       await p.$eval(
         "#den-runs .den-dot.run",
