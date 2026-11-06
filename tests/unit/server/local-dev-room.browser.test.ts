@@ -794,6 +794,11 @@ describe("Fit reserves the legend and the zoom group (0.3.0-dev.33)", () => {
       // Left-right stacks the big workspace's repos: Fit is bound by height.
       await p.click('[data-seg="dir"] [data-v="right"]');
       await p.waitForTimeout(600);
+      // One line's height on this machine (fonts differ across platforms).
+      const oneLineH = await p.evaluate(
+        () =>
+          document.querySelector(".dg-legend")!.getBoundingClientRect().height,
+      );
       await p.addStyleTag({ content: ".dg-legend { max-width: 64px; }" });
       await p.click('[data-z="fit"]');
       await p.waitForTimeout(200);
@@ -812,8 +817,9 @@ describe("Fit reserves the legend and the zoom group (0.3.0-dev.33)", () => {
           .getBoundingClientRect().height;
         return { under: under.length, legendH };
       });
-      // The legend wrapped (taller than one line).
-      expect(r.legendH).toBeGreaterThan(60);
+      // The legend wrapped (taller than its one line, measured above, not a
+      // pixel count: the Linux CI fonts set it shorter than macOS's).
+      expect(r.legendH).toBeGreaterThan(oneLineH + 8);
       expect(r.under).toBe(0);
     } finally {
       await p.click('[data-seg="dir"] [data-v="down"]');
