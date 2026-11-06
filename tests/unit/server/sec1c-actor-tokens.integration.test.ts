@@ -105,6 +105,7 @@ function upgrade(p: string, headers: Record<string, string>): Promise<number> {
       resolve(res.statusCode ?? 0);
     });
     req.on("upgrade", (res, socket) => {
+      socket.on("error", () => undefined);
       socket.destroy();
       resolve(res.statusCode ?? 0);
     });
@@ -195,9 +196,10 @@ describe("what an agent's token can't do (403 agent_forbidden)", () => {
     const other = await call("GET", "/api/sessions/someone-else/io", agent());
     expect([other.status, other.json.code]).toEqual([403, "agent_forbidden"]);
     expect(await upgrade("/api/sessions/someone-else/io", agent())).toBe(403);
-    // Its own: past the checks (no io route is served before AG-4a-term).
+    // Its own: past the checks. The io is a WebSocket (AG-4a-term): a
+    // plain GET is 426, an upgrade opens it (101).
     const own = await call("GET", `/api/sessions/${sessionId}/io`, agent());
-    expect([own.status, own.json.code]).toEqual([404, "not_found"]);
+    expect([own.status, own.json.code]).toEqual([426, "upgrade_required"]);
     expect(
       (
         await call(
@@ -206,8 +208,8 @@ describe("what an agent's token can't do (403 agent_forbidden)", () => {
           agent(),
         )
       ).status,
-    ).toBe(404);
-    expect(await upgrade(`/api/sessions/${sessionId}/io`, agent())).toBe(404);
+    ).toBe(426);
+    expect(await upgrade(`/api/sessions/${sessionId}/io`, agent())).toBe(101);
   });
 
   it("mint tokens: agent start and resume", async () => {

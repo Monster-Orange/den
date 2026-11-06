@@ -9,6 +9,7 @@ import type * as http from "http";
 import {
   bindRefusal,
   checkRequest,
+  isEdgePeer,
   requestIsHttps,
   type GuardContext,
   type GuardSession,
@@ -367,11 +368,73 @@ describe("refusing to start a non-loopback bind", () => {
       expect(why).toMatch(/web\.allow_plain_http_remote: true/);
     }
   });
-  it("starts with the edge's HTTPS in front, or web.allow_plain_http_remote", () => {
-    expect(bindRefusal("0.0.0.0", { ...no, fronted: true })).toBeNull();
+  it("starts with web.allow_plain_http_remote; the edge in front is not enough (its own port still answers plain HTTP)", () => {
     expect(
       bindRefusal("0.0.0.0", { ...no, allowPlainHttpRemote: true }),
     ).toBeNull();
+    for (const b of ["0.0.0.0", "::", "192.0.2.4", "10.0.0.5"]) {
+      const why = bindRefusal(b, { ...no, fronted: true });
+      expect([b, why]).toEqual([b, expect.stringMatching(/clear text/)]);
+      expect(why).toMatch(/even with the edge in front/);
+    }
+  });
+  it("edge-fronted, a Docker bridge address (Linux's host-gateway) starts; not without the edge", () => {
+    for (const b of ["172.17.0.1", "172.18.0.1", "172.31.255.1"])
+      expect([b, bindRefusal(b, { ...no, fronted: true })]).toEqual([b, null]);
+    expect(bindRefusal("172.17.0.1", no)).toMatch(/clear text/);
+    for (const b of ["172.15.0.1", "172.32.0.1", "192.168.65.1"])
+      expect([b, bindRefusal(b, { ...no, fronted: true })]).toEqual([
+        b,
+        expect.stringMatching(/clear text/),
+      ]);
+  });
+});
+
+describe("the edge hostname is believed only from an edge peer", () => {
+  const edgeCtx = (): GuardContext => ({
+    ...ctx(),
+    peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress),
+  });
+  it("from a LAN client sending Host: <edge> straight to the port: 421, signed in or not", () => {
+    for (const peer of ["192.168.1.20", "10.0.0.7", "192.0.2.9"])
+      for (const h of [{}, cookie])
+        expect([
+          peer,
+          checkRequest(
+            req("GET", "/api/settings", { host: EDGE, ...h }, peer),
+            edgeCtx(),
+          ),
+        ]).toEqual([
+          peer,
+          expect.objectContaining({
+            ok: false,
+            status: 421,
+            code: "misdirected",
+          }),
+        ]);
+  });
+  it("from loopback or a Docker network (the edge's Traefik): the edge, as before", () => {
+    for (const peer of [
+      "127.0.0.1",
+      "::ffff:127.0.0.1",
+      "172.18.0.3",
+      "192.168.65.3",
+    ])
+      expect([
+        peer,
+        checkRequest(
+          req("GET", "/api/settings", { host: EDGE, ...cookie }, peer),
+          edgeCtx(),
+        ),
+      ]).toEqual([peer, expect.objectContaining({ ok: true, via: "edge" })]);
+  });
+  it("a loopback Host is unaffected by the peer check", () => {
+    expect(
+      checkRequest(
+        req("GET", "/api/settings", { host: local }, "127.0.0.1"),
+        edgeCtx(),
+      ),
+    ).toMatchObject({ ok: true, via: "loopback" });
   });
 });
 

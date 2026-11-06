@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Mode before first paint: yours (the server fills it in below),
+      // else the system's, else the theme's default, else dark.
+      (function () {
+        var m = "@@DEN_MODE@@";
+        if (m !== "dark" && m !== "light") {
+          var q = function (s) {
+            return (
+              window.matchMedia &&
+              matchMedia("(prefers-color-scheme: " + s + ")").matches
+            );
+          };
+          m = q("light")
+            ? "light"
+            : q("dark")
+              ? "dark"
+              : "@@DEN_DEFAULT_MODE@@";
+        }
+        document.documentElement.dataset.mode =
+          m === "light" ? "light" : "dark";
+      })();
+    </script>
+    <link rel="stylesheet" href="/theme.css" id="theme-css" />
+    <link rel="stylesheet" href="/vendor/xterm.css" />
+    <title>__DEN_TITLE__ · Agents</title>
+    <style>
+      /* The Agents tab (AG-4a-term, AG spec §5d): the prototype's
+         (den-shell.html) page header (.ph), list column (.agl, 300px) and
+         panes (.agp: 1, 2 side by side, 3-4 as 2x2), ported as they are;
+         --r is --radius, --r-btn is --radius-button. */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      html body.den-has-shell > #den-content {
+        overflow: auto;
+        min-width: 0;
+        padding: 20px 24px 32px 24px;
+        font: 14px/1.45 var(--sans);
+        color: var(--text);
+        display: block;
+      }
+      #den-content :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .ph {
+        display: flex;
+        align-items: flex-end;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      .ph h1 {
+        font: 600 22px/1.2 var(--display);
+        margin: 0;
+        text-wrap: balance;
+      }
+      .ph .sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 4px;
+        overflow-wrap: anywhere;
+      }
+      .ph .act {
+        margin-left: auto;
+        display: flex;
+        gap: 8px;
+      }
+      .mono {
+        font-family: var(--mono);
+      }
+      .agx {
+        display: grid;
+        grid-template-columns: 300px minmax(0, 1fr);
+        gap: 14px;
+        min-height: 420px;
+        height: calc(100vh - 300px);
+      }
+      .agl {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        overflow: auto;
+        min-height: 0;
+      }
+      .agl .wsh {
+        font: 11px var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--faint);
+        padding: 10px 12px 4px;
+        display: flex;
+        justify-content: space-between;
+      }
+      .agr {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 2px 8px;
+        align-items: center;
+        width: 100%;
+        text-align: left;
+        border: 0;
+        border-left: 2px solid transparent;
+        background: none;
+        padding: 7px 12px;
+        cursor: pointer;
+        color: var(--text);
+        font: inherit;
+      }
+      .agr:hover {
+        background: var(--sunken);
+      }
+      .agr[aria-pressed="true"] {
+        background: var(--sunken);
+        border-left-color: var(--accent);
+      }
+      .agr .nm {
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .agr .nm .id {
+        font-weight: 400;
+        color: var(--faint);
+      }
+      .agr .st {
+        font: 12px var(--mono);
+        color: var(--faint);
+      }
+      .agr .agtags {
+        grid-column: 2 / 4;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+        margin-top: 2px;
+      }
+      .agr .meta {
+        grid-column: 2 / 4;
+        font: 11.5px var(--mono);
+        color: var(--faint);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .wbdg {
+        font: 10.5px var(--mono);
+        color: var(--warn);
+        border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+        border-radius: 999px;
+        padding: 0 6px;
+      }
+      .sbdg,
+      .tagx {
+        font: 10.5px var(--mono);
+        color: var(--faint);
+        border: 1px dashed var(--border-strong);
+        border-radius: 4px;
+        padding: 0 4px;
+        font-weight: 400;
+      }
+      .tagx {
+        font-size: 10px;
+      }
+      .tagx.warn {
+        color: var(--warn);
+        border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+      }
+      .agp {
+        display: grid;
+        gap: 10px;
+        min-height: 0;
+      }
+      .agp.n1 {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr);
+      }
+      .agp.n2 {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr);
+      }
+      .agp.n3,
+      .agp.n4 {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-auto-rows: minmax(0, 1fr);
+      }
+      .pane {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--sunken);
+        min-height: 0;
+        min-width: 0;
+        overflow: hidden;
+      }
+      .pane .bar2 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+        font-size: 13px;
+        min-width: 0;
+      }
+      .pane .bar2 b {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+        flex: 0 0 auto;
+        max-width: 45%;
+      }
+      .pane .bar2 .tagx {
+        flex: none;
+        white-space: nowrap;
+      }
+      .pane .bar2 .where {
+        flex: 0 1 auto;
+        min-width: 0;
+        color: var(--faint);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 12.5px;
+      }
+      .pane .bar2 .x {
+        margin-left: auto;
+        display: flex;
+        gap: 6px;
+        flex: none;
+      }
+      /* The body: mono 12px/1.5 (xterm draws inside it). */
+      .pane .term {
+        min-height: 0;
+        min-width: 0;
+        padding: 6px 4px 4px 8px;
+        font: 12px/1.5 var(--mono);
+        color: var(--text);
+        overflow: hidden;
+      }
+      .pane .term .xterm {
+        height: 100%;
+      }
+      /* xterm.css paints its viewport black: the pane's colour instead. */
+      .pane .term .xterm .xterm-viewport {
+        background-color: var(--sunken);
+      }
+      .pane .note {
+        margin: 0;
+        padding: 10px 12px;
+        font: 12px/1.5 var(--mono);
+        color: var(--muted);
+        white-space: pre-wrap;
+      }
+      .agempty {
+        border: 1px dashed var(--border-strong);
+        border-radius: var(--radius);
+        display: grid;
+        place-items: center;
+        color: var(--muted);
+        padding: 28px;
+        text-align: center;
+      }
+      .signin,
+      .agnote {
+        margin: 8px 12px;
+        padding: 8px 10px;
+        border: 1px dashed var(--border-strong);
+        border-radius: var(--radius-button);
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .agl .none {
+        padding: 12px;
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      dialog.ag-dlg {
+        width: min(440px, calc(100vw - 32px));
+        background: var(--raised);
+        color: var(--text);
+        border: 1px solid var(--border-strong);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        padding: 18px 18px 14px;
+      }
+      dialog.ag-dlg::backdrop {
+        background: rgb(0 0 0 / 0.35);
+      }
+      .ag-dlg form {
+        display: grid;
+        gap: 12px;
+      }
+      .ag-dlg h2 {
+        margin: 0;
+        font: 600 17px var(--display);
+      }
+      .ag-dlg label {
+        display: grid;
+        gap: 6px;
+        font: 11px var(--mono);
+        color: var(--faint);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+      }
+      .ag-dlg select {
+        font: 13px var(--sans);
+        text-transform: none;
+        letter-spacing: 0;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+        border-radius: var(--radius-button);
+        padding: 6px 8px;
+      }
+      .ag-dlg .btns {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      @media (max-width: 860px) {
+        .agx {
+          grid-template-columns: minmax(0, 1fr);
+          height: auto;
+        }
+        .ph .act {
+          flex-wrap: wrap;
+        }
+        .agp.n2,
+        .agp.n3,
+        .agp.n4 {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .pane {
+          min-height: 260px;
+        }
+        .agl {
+          max-height: 50vh;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The shell: top bar and rail, the same on every page (shell.js). -->
+    <div id="den-shell" data-page="agents"></div>
+    <script src="/shell.js"></script>
+
+    <!-- The page's one main landmark: everything after the shell. -->
+    <main id="den-content">
+      <div class="ph">
+        <div>
+          <h1 id="ag-h">Agents</h1>
+          <div class="sub" id="ag-sub">
+            <span id="ag-count"></span> ·
+            <span class="mono" id="ag-url">/agents</span>
+          </div>
+        </div>
+        <div class="act">
+          <button type="button" class="den-btn primary" id="ag-start">
+            + Start agent
+          </button>
+        </div>
+      </div>
+      <div class="agx" id="agx">
+        <div
+          class="agl"
+          id="agl"
+          role="region"
+          aria-labelledby="ag-h"
+          aria-busy="true"
+        ></div>
+        <div id="agr" class="agempty"></div>
+      </div>
+      <dialog class="ag-dlg" id="ag-dlg" aria-labelledby="ag-dlg-h">
+        <form method="dialog" id="ag-form">
+          <h2 id="ag-dlg-h">Start an agent</h2>
+          <label id="ag-ws-l"
+            ><span id="ag-ws-t">Workspace</span>
+            <select name="ws" id="ag-ws"></select
+          ></label>
+          <label
+            ><span id="ag-p-t">Persona</span>
+            <select name="persona" id="ag-persona" required></select
+          ></label>
+          <label
+            ><span id="ag-r-t">Runtime</span>
+            <select name="runtime" id="ag-runtime"></select
+          ></label>
+          <div class="btns">
+            <button type="button" class="den-btn" id="ag-cancel">Cancel</button>
+            <button type="submit" class="den-btn primary" id="ag-go">
+              Start
+            </button>
+          </div>
+        </form>
+      </dialog>
+
+      <script type="module">
+        import {
+          applyDenConfig,
+          initChangelog,
+          initHealth,
+          initLogBadge,
+          initWorkspacePill,
+        } from "/header.js";
+        import { mountAgentsPage } from "/agents-page.js";
+        void Promise.all([
+          initHealth(),
+          initWorkspacePill(),
+          applyDenConfig(),
+          initChangelog(),
+        ]).then(initLogBadge);
+        void mountAgentsPage(document.getElementById("den-content"));
+      </script>
+    </main>
+  </body>
+</html>

@@ -23,8 +23,8 @@
  * from this server's environment, never all of it. Every action, refused
  * or done, is audited (recordAction) with the person as its actor.
  *
- * There is no terminal here: nothing writes to a session or streams its
- * output to the browser (that is SEC-1's, with AG-4a's Open).
+ * There is no terminal here: the Agents tab's io (session-routes.ts) is
+ * the only route that writes to a session or streams its output.
  */
 import * as http from "http";
 import { getReposRoot } from "../../shared/den-config.js";
@@ -150,6 +150,8 @@ function sendStarted(res: http.ServerResponse, s: Started): void {
       workspace: s.rec.workspace,
       cwd: s.rec.cwd,
       session: s.rec.sessionName,
+      // The host's id: the Agents tab opens its pane by it (?open=<id>).
+      sessionId: s.info.ref.id,
       startedAt: s.rec.startedAt,
     },
     ...(s.warnings.length ? { warnings: s.warnings } : {}),

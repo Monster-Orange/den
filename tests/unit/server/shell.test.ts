@@ -21,6 +21,8 @@ const PAGES: Record<string, { page: string; healthEnv?: string }> = {
   "settings.html": { page: "settings" },
   "index.html": { page: "tests" },
   "edge.html": { page: "edge" },
+  // The Agents tab (AG-4a-term).
+  "agents.html": { page: "agents" },
   // The error page (R26a): a failed page request's, in the frame.
   "error.html": { page: "error" },
 };
@@ -125,6 +127,7 @@ describe("the shell's source", () => {
     const hrefs = [...SHELL.matchAll(/href: "(\/[^"]*)"/g)].map((m) => m[1]);
     expect(hrefs.sort()).toEqual(
       [
+        "/agents",
         "/edge",
         "/environments",
         "/graph",

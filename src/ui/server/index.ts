@@ -183,6 +183,7 @@ import {
   auditActorOf,
   bindRefusal,
   checkRequest,
+  isEdgePeer,
   isLoopbackAddress,
   isLoopbackBind,
   newCsrfToken,
@@ -763,6 +764,13 @@ import { GitHubService } from "./github-service.js";
 import { EditorManager, SUPPORTED_LANGUAGES } from "./editor-manager.js";
 import { handleWorkspaceRoutes } from "./workspace-routes.js";
 import { handleAgentRoutes } from "./agent-routes.js";
+import {
+  handleSessionList,
+  handleSessionUpgrade,
+  isSessionIoPath,
+  sendSessionHttp,
+} from "./session-routes.js";
+import { refuseUpgrade } from "./websocket.js";
 import { isLifecycleExecCmd, streamLifecycleExec } from "./lifecycle-exec.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { edgeDomains, edgeHttps, routeHost } from "../../shared/edge/render.js";
@@ -1034,6 +1042,8 @@ const GUARD: GuardContext = {
   csrfToken: newCsrfToken(),
   session: (req) => webSessions.lookup(sessionCookie(req)),
   peerIsLoopback: (req) => isLoopbackAddress(req.socket?.remoteAddress),
+  // The edge hostname only from the edge's own peers (loopback, Docker).
+  peerIsEdge: (req) => isEdgePeer(req.socket?.remoteAddress),
 };
 
 /**
@@ -1317,18 +1327,10 @@ async function handleRequest(
     });
   }
   // AG-4a-term's session routes (`/api/sessions/<id>/io`): shell-grade, and
-  // an agent's token reaches its own session's only (request-guard). Not
-  // served yet.
+  // an agent's token reaches its own session's only (request-guard). The io
+  // is a WebSocket (the server's upgrade handler): a plain GET of it is 426.
   if (pathname.startsWith("/api/sessions/"))
-    return sendJson(
-      res,
-      {
-        ok: false,
-        error: "No session route here yet (AG-4a-term)",
-        code: "not_found",
-      },
-      404,
-    );
+    return sendSessionHttp(req, res, pathname);
 
   // A mutating request may change what /api/services would list (exec and
   // sync stream over GET, for EventSource).
@@ -1397,6 +1399,11 @@ async function handleRequest(
       path.join(PUBLIC_DIR, "local-dev.html"),
       graphPageHtml,
     );
+  }
+
+  // The Agents tab (AG-4a-term, AG spec §5d): sessions and terminal panes.
+  if (pathname === "/agents" || pathname === "/agents.html") {
+    return serveFile(res, path.join(PUBLIC_DIR, "agents.html"));
   }
 
   if (pathname === "/tests" || pathname === "/index.html") {
@@ -3692,6 +3699,17 @@ async function handleRequest(
 
   // ── Agents on the Workspaces page (AG-4a, agent-routes.ts) ───────────────
   if (await handleAgentRoutes(req, res, pathname)) return;
+  // ── The Agents tab's list (AG-4a-term, session-routes.ts) ────────────────
+  // Beyond loopback a terminal needs a signed-in session (or a bearer).
+  if (
+    await handleSessionList(
+      req,
+      res,
+      pathname,
+      guard.ok && (!guard.beyond || !!guard.session || !!guard.principal),
+    )
+  )
+    return;
 
   // ── Workspace routes (extracted to workspace-routes.ts) ──────────────────
   await handleWorkspaceRoutes(req, res, pathname, url, editors, github);
@@ -4373,23 +4391,47 @@ const server = http.createServer((req, res) => {
 });
 
 // WebSocket upgrades pass the same checks (SEC-1 §3: Origin on every
-// upgrade). No route takes one yet (AG-4a-term will): a passing upgrade
-// answers 404.
-server.on("upgrade", (req: http.IncomingMessage, socket: net.Socket) => {
-  const guard = checkRequest(req, GUARD, product().cli, product().title);
-  const status = guard.ok ? 404 : guard.status;
-  const body = JSON.stringify({
-    ok: false,
-    error: guard.ok ? "No WebSocket route here" : guard.error,
-    code: guard.ok ? "not_found" : guard.code,
-    requestId: requestIdOf(req),
-  });
-  socket.end(
-    `HTTP/1.1 ${status} ${http.STATUS_CODES[status] ?? ""}\r\n` +
-      "Content-Type: application/json\r\nConnection: close\r\n" +
-      `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
-  );
-});
+// upgrade; CSRF as the `den.csrf.<token>` subprotocol). One route takes
+// one: a session's io (AG-4a-term, session-routes.ts); any other passing
+// upgrade answers 404.
+server.on(
+  "upgrade",
+  (req: http.IncomingMessage, socket: net.Socket, head: Buffer) => {
+    socket.on("error", () => undefined);
+    const requestId = requestIdOf(req);
+    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    const guard = checkRequest(req, GUARD, product().cli, product().title);
+    const refuse = (status: number, error: string, code: string) =>
+      refuseUpgrade(
+        socket,
+        status,
+        { ok: false, error, code, requestId },
+        http.STATUS_CODES[status] ?? "",
+      );
+    if (!guard.ok) {
+      serverLog(
+        `  ${logTimestamp()}  ${bold("WS  ")}  ${pathname}  →  ${logStatus(guard.status)}` +
+          dim(`  req ${requestId}`),
+        "request",
+      );
+      return refuse(guard.status, guard.error, guard.code);
+    }
+    setPrincipal(req, guard.principal);
+    if (!isSessionIoPath(pathname))
+      return refuse(404, "No WebSocket route here", "not_found");
+    handleSessionUpgrade(req, socket, head, pathname, requestId).catch(
+      (err: unknown) => {
+        serverLog(
+          `  ✗ WS ${routeTemplate(pathname)} failed (req ${requestId}): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+          "error",
+        );
+        socket.destroy();
+      },
+    );
+  },
+);
 
 server.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EADDRINUSE") {

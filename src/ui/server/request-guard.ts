@@ -118,6 +118,13 @@ export interface GuardContext {
    * request object without a socket, in a unit test); the server sets it.
    */
   peerIsLoopback?: (req: http.IncomingMessage) => boolean;
+  /**
+   * Whether the request's peer is one the edge's proxy runs on (isEdgePeer:
+   * loopback or a Docker network). The edge hostname is believed only from
+   * one: a LAN client that sends `Host: <edge hostname>` straight to this
+   * server's port gets 421. Unset: taken as yes (a unit test).
+   */
+  peerIsEdge?: (req: http.IncomingMessage) => boolean;
 }
 
 export type GuardResult =
@@ -215,6 +222,17 @@ function header(req: http.IncomingMessage, name: string): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
+/** An upgrade's CSRF token, offered as the subprotocol `den.csrf.<token>`. */
+export const CSRF_PROTOCOL_PREFIX = "den.csrf.";
+function csrfFromProtocols(req: http.IncomingMessage): string | undefined {
+  const raw = req.headers["sec-websocket-protocol"];
+  const all = (Array.isArray(raw) ? raw.join(",") : (raw ?? ""))
+    .split(",")
+    .map((s) => s.trim());
+  const p = all.find((s) => s.startsWith(CSRF_PROTOCOL_PREFIX));
+  return p ? p.slice(CSRF_PROTOCOL_PREFIX.length) : undefined;
+}
+
 /** A WebSocket (or any) upgrade request. */
 export function isUpgrade(req: http.IncomingMessage): boolean {
   return header(req, "upgrade") !== undefined;
@@ -271,21 +289,43 @@ export function isLoopbackBind(host: string): boolean {
 }
 
 /**
- * §4: why a bind may not start, or null. A non-loopback bind needs HTTPS in
- * front (the edge) or `web.allow_plain_http_remote: true`: otherwise a
- * session cookie would cross the network in clear text.
+ * A Docker bridge address (172.16.0.0/12): where a Linux host's containers
+ * reach it as host.docker.internal (`host-gateway`, the edge's
+ * extra_hosts). One address, never 0.0.0.0 or ::.
+ */
+export function isDockerBridgeAddress(addr: string): boolean {
+  const a = addr.trim();
+  if (!net.isIPv4(a)) return false;
+  const [x, y] = a.split(".").map(Number);
+  return x === 172 && y >= 16 && y <= 31;
+}
+
+/**
+ * §4: why a bind may not start, or null. A non-loopback bind needs
+ * `web.allow_plain_http_remote: true`, edge or no edge: whatever is in
+ * front, this server's own port still answers plain HTTP on that address,
+ * so a session cookie (or a LAN client posing as the edge) would cross the
+ * network in clear text. The one exception is the edge's own path on
+ * Linux: with HTTPS in front (`fronted`), a Docker bridge address (the
+ * host-gateway host.docker.internal resolves to there), which only this
+ * machine's containers reach. On macOS Docker Desktop delivers
+ * host.docker.internal to loopback, so the default bind serves the edge.
  */
 export function bindRefusal(
   bind: string,
   opts: { allowPlainHttpRemote: boolean; fronted: boolean },
 ): string | null {
-  if (isLoopbackBind(bind) || opts.allowPlainHttpRemote || opts.fronted)
-    return null;
+  if (isLoopbackBind(bind) || opts.allowPlainHttpRemote) return null;
+  if (opts.fronted && isDockerBridgeAddress(bind)) return null;
   return (
     `Refusing to listen on ${bind}: it is reachable beyond this machine, ` +
-    "and without HTTPS in front a session cookie would cross the network in " +
-    "clear text. Put the edge (edge.tls) in front of this server, or set " +
-    "web.allow_plain_http_remote: true in config/local/user.yml to accept that."
+    "and this server's own port answers plain HTTP there, so a session " +
+    "cookie would cross the network in clear text, even with the edge in " +
+    "front. The edge reaches Den on loopback (or, on Linux, on the Docker " +
+    "bridge address: DEN_BIND_HOST=172.17.0.1). To accept plain HTTP from " +
+    "other machines, set web.allow_plain_http_remote: true in " +
+    "config/local/user.yml (this machine's file; the distribution config's " +
+    "is ignored)."
   );
 }
 
@@ -316,7 +356,10 @@ export function checkRequest(
   cli = "den",
   title = "Den",
 ): GuardResult {
-  const via = hostAllowed(header(req, "host"), ctx);
+  const named = hostAllowed(header(req, "host"), ctx);
+  // The edge hostname from a peer that isn't the edge: not the edge.
+  const via =
+    named === "edge" && ctx.peerIsEdge && !ctx.peerIsEdge(req) ? null : named;
   if (!via)
     return {
       ok: false,
@@ -426,7 +469,11 @@ export function checkRequest(
     };
   // A valid bearer is a CLI's or an agent's call: no CSRF to prove.
   if (principal) return ok(principal);
-  const csrf = header(req, CSRF_HEADER);
+  // A browser's WebSocket can't send a header: on an upgrade the token
+  // rides as a subprotocol, `den.csrf.<token>` (AG-4a-term's io).
+  const csrf =
+    header(req, CSRF_HEADER) ??
+    (isUpgrade(req) ? csrfFromProtocols(req) : undefined);
   // Signed in: the session's own token; else (loopback) this start's.
   const want = session ? session.csrf : ctx.csrfToken;
   if (!csrf || !same(csrf, want))

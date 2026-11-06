@@ -8,8 +8,9 @@
  * Every call is the server's agent routes (agent-routes.ts), which are the
  * CLI's own operations: nothing here keeps an agent's state. Each action
  * goes through denShell.api() (a refusal is its error toast) after the
- * lock rule (requireUnlock, R8), as a service action does. There is no
- * terminal and no Open: attaching from the browser comes with SEC-1.
+ * lock rule (requireUnlock, R8), as a service action does. A row with a
+ * session has Open (its terminal on the Agents page, AG-4a-term), and the
+ * header links to the Agents page for the workspace.
  *
  * The page's table styles (table.svc, .tablewrap, .tbl-*) and the shell's
  * (.den-sec, .den-btn, .den-dot) are reused as they are.
@@ -38,7 +39,10 @@ let personasAsked = null;
 /** The section's frame, drawn with the page; mountAgents fills it. */
 export function agentsSectionHtml(ws) {
   return `<section class="agents" id="agents-section" data-ws="${esc(ws)}" aria-labelledby="agents-h">
-            <h2 class="den-sec" id="agents-h">${esc(t("ag.title"))}</h2>
+            <div class="ag-head">
+              <h2 class="den-sec" id="agents-h">${esc(t("ag.title"))}</h2>
+              <a href="/agents?ws=${encodeURIComponent(ws)}" id="agents-open-all">${esc(t("ws.openAgents"))}</a>
+            </div>
             <div class="tablewrap">
               <table class="svc" id="agent-table">
                 <caption>${esc(t("ag.caption", { ws }))}</caption>
@@ -108,7 +112,13 @@ function rowHtml(r) {
   const running = r.state === "running" || r.state === "stopping";
   const btn = (act, label, name) =>
     `<button type="button" class="den-btn sm tbl-btn" data-agent-act="${act}" data-id="${esc(r.agent)}" aria-label="${esc(name)}">${esc(label)}</button>`;
+  // Open: the session's terminal on the Agents page (AG-4a-term).
+  const sid = r.session?.ref?.id;
+  const open = sid
+    ? `<a class="den-btn sm tbl-btn" data-agent-open href="/agents?open=${encodeURIComponent(sid)}" aria-label="${esc(t("ag.openName", { id: r.agent }))}">${esc(t("ag.open"))}</a>`
+    : "";
   const acts =
+    open +
     (running
       ? btn("stop", t("ag.stop"), t("ag.stopName", { id: r.agent }))
       : "") +

@@ -145,7 +145,7 @@ describe("the catalogs", () => {
     for (const f of fs.readdirSync(PUBLIC).filter((x) => x.endsWith(".js")))
       for (const m of read(f).matchAll(/\btr?\(\s*"([\w.]+)"/g)) keys.add(m[1]);
     // Computed keys: topbar.js's kind labels.
-    for (const k of ["page", "service", "app", "action", "setting"])
+    for (const k of ["page", "service", "app", "agent", "action", "setting"])
       keys.add(`kind.${k}`);
     const unknown = [...keys].filter((k) => !(k in EN));
     expect(unknown).toEqual([]);

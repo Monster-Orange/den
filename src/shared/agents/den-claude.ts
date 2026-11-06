@@ -10,8 +10,9 @@
  *   agent acts only through Den (§1).
  * - The role prompt is appended to Claude Code's own system prompt.
  * - Den's state dir is denied to the agent (SEC-1 §6c.1): a settings file
- *   (--settings, 0600) whose `permissions.deny` lists Read and `Bash(cat …)`
- *   of `<state>/web.secret` and `<state>/sessions/**`. It binds a
+ *   (--settings, 0600) whose `permissions.deny` lists Read and Bash rules
+ *   (any command naming the path) for `<state>/web.secret` and
+ *   `<state>/sessions/**`. It binds a
  *   cooperating agent only: the agent runs as the same OS user, so nothing
  *   stops one that ignores its permission config from reading them.
  * - Each launch picks a fresh conversation id (--session-id); resume
@@ -106,19 +107,72 @@ function detect(env: NodeJS.ProcessEnv = process.env): RuntimeDetect {
 /**
  * Claude Code `permissions.deny` rules that keep a cooperating agent out of
  * Den's credentials (SEC-1 §6c.1): web.secret and the session host's
- * records. Read paths are absolute (`//…` in Claude Code's rule syntax).
+ * records.
+ *
+ * - Read: absolute paths (`//…` in Claude Code's rule syntax).
+ * - Bash, in Claude Code's documented wildcard form: `*` matches any run of
+ *   characters, at any position, and a rule matches a command (each part
+ *   of a compound one) whole. `Bash(*<path>*)` denies any command that names
+ *   the path, whatever the program (cat, head, cp, base64) and whether it is
+ *   quoted ("…" or '…' still contain it). The legacy prefix form,
+ *   `Bash(cat <path>:*)`, didn't match a bare `cat <path>` on Claude Code
+ *   2.1.x (it asked for approval instead of denying: a dogfood finding), so
+ *   it is kept only for older versions, after the wildcard rules.
+ * - The readers in BASH_READERS (cat, head, tail, …) by name as well. This
+ *   binds a cooperating agent only, and no list names every reader: the
+ *   boundary is the server's token rules (SEC-1 §5), never these.
+ * - The same path as a shell writes it from `home`: `~/…` and `$HOME/…`,
+ *   `${HOME}/…`, and, when the path has a space, with each space
+ *   backslash-escaped.
  */
-export function stateDirDenyRules(stateDir: string): string[] {
+export function stateDirDenyRules(stateDir: string, home?: string): string[] {
   const abs = path.resolve(stateDir);
   const secret = path.join(abs, "web.secret");
   const sessions = path.join(abs, "sessions");
+  const spellings = (p: string): string[] => {
+    const out = [p];
+    if (home) {
+      const h = path.resolve(home);
+      if (p.startsWith(h + path.sep)) {
+        const rel = p.slice(h.length + 1);
+        out.push(`~/${rel}`, `$HOME/${rel}`, "${HOME}/" + rel);
+      }
+    }
+    for (const x of [...out])
+      if (x.includes(" ")) out.push(x.replace(/ /g, "\\ "));
+    return [...new Set(out)];
+  };
+  const targets = [
+    ...spellings(secret).map((p) => `${p}*`),
+    ...spellings(sessions).map((p) => `${p}/*`),
+  ];
   return [
     `Read(/${secret})`,
     `Read(/${sessions}/**)`,
+    // Any command naming the path, whatever the program.
+    ...targets.map((t) => `Bash(*${t})`),
+    // The common readers by name too, should a version match a leading
+    // wildcard differently. A deny list can't name every reader: the
+    // boundary is the server's token rules (SEC-1 §5), not these.
+    ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
     `Bash(cat ${secret}:*)`,
     `Bash(cat ${sessions}/:*)`,
   ];
 }
+
+/** The readers named in the Bash deny rules (stateDirDenyRules). */
+export const BASH_READERS = [
+  "cat",
+  "head",
+  "tail",
+  "less",
+  "more",
+  "xxd",
+  "od",
+  "strings",
+  "base64",
+  "cp",
+] as const;
 
 /** The settings file den-claude passes with --settings. */
 export function settingsPath(input: Pick<LaunchInput, "filesDir">): string {
@@ -156,7 +210,11 @@ function common(input: LaunchInput): {
       ...(settings && input.stateDir
         ? {
             [settings]: `${JSON.stringify(
-              { permissions: { deny: stateDirDenyRules(input.stateDir) } },
+              {
+                permissions: {
+                  deny: stateDirDenyRules(input.stateDir, input.env?.HOME),
+                },
+              },
               null,
               2,
             )}\n`,

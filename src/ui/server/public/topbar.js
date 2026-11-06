@@ -411,7 +411,7 @@ export function runOf(url, base = "http://localhost/") {
 const LS_LAST_RUN = "__DEN_CLI__-last-run";
 const LS_LOCK = "__DEN_CLI__-lock";
 const SS_PENDING = "__DEN_CLI__-pending-action";
-const KIND = ["page", "service", "app", "action", "setting"];
+const KIND = ["page", "service", "app", "agent", "action", "setting"];
 const kindLabel = (k) =>
   KIND.includes(k)
     ? t(`kind.${k}`)
@@ -781,6 +781,25 @@ function openLogs(svc) {
 
 // ── command palette (R17) ───────────────────────────────────────────────────
 
+/**
+ * The sessions and agents in view (GET /api/sessions), asked when the
+ * palette opens: each is "Agents › <ws> / <name>", which opens its pane on
+ * the Agents page (AG-4a-term).
+ */
+let palSessions = [];
+function askPaletteSessions(redraw) {
+  if (sh()?.apiOff?.()) return;
+  fetch("/api/sessions")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      palSessions = Array.isArray(d?.sessions) ? d.sessions : [];
+      redraw();
+    })
+    .catch(() => {
+      /* no sessions to offer */
+    });
+}
+
 /** Every palette row: pages, apps, services, their actions, then commands. */
 function paletteItems() {
   const s = sh();
@@ -848,6 +867,26 @@ function paletteItems() {
       run: () => openLogs(svcOf(id)),
     });
   }
+  for (const x of palSessions) {
+    const name = x.kind === "agent" ? (x.persona ?? x.label) : x.label;
+    items.push({
+      key: `agent:${x.id}`,
+      kind: "agent",
+      label: t("ag.pal", { ws: x.workspace, name }),
+      sub: x.kind === "agent" && x.persona !== x.label ? x.label : undefined,
+      dot: x.state === "running" ? "" : "off",
+      keywords: [x.workspace, x.label, x.persona ?? "", "agents", "terminal"],
+      run: () => go(`/agents?open=${encodeURIComponent(x.id)}`),
+    });
+  }
+  if (s?.nav?.().some((n) => n.id === "agents"))
+    items.push({
+      key: "agent:start",
+      kind: "action",
+      label: t("ag.palStart"),
+      keywords: ["agents", "start", "persona"],
+      run: () => go("/agents?start=1"),
+    });
   for (const c of s?.commands?.() ?? [])
     items.push({
       key: `cmd:${c.id}`,
@@ -957,6 +996,9 @@ function openPalette() {
   };
   draw();
   input.focus();
+  askPaletteSessions(() => {
+    if (overlay?.kind === "palette") draw();
+  });
 }
 
 // ── Runs chip (R7) ──────────────────────────────────────────────────────────

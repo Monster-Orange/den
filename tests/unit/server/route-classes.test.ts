@@ -170,6 +170,13 @@ describe("the classes", () => {
     expect(isMutatingGet("POST", "/api/run")).toBe(false);
   });
 
+  it("AG-4a-term: the Agents tab and its list are read-only; the io is shell-grade", () => {
+    expect(routeClass("GET", "/agents")).toBe("readonly");
+    expect(routeClass("GET", "/api/sessions")).toBe("readonly");
+    expect(routeClass("POST", "/api/sessions")).toBeNull();
+    expect(isMutatingGet("GET", "/api/sessions/abc/io")).toBe(true);
+  });
+
   it("SEC-1c: a session's own routes (/api/sessions/<id>/io) are shell-grade", () => {
     expect(routeClass("GET", "/api/sessions/abc/io")).toBe("shell-grade");
     expect(routeClass("POST", "/api/sessions/abc/resize")).toBe("shell-grade");

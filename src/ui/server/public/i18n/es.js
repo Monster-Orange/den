@@ -337,5 +337,40 @@
     "ag.started": "Agente {id} iniciado",
     "ag.stopped": "Agente {id} detenido",
     "ag.resumed": "Agente {id} reanudado",
+    // The Agents tab (AG-4a-term, agents-page.js).
+    "n.agents": "Agentes",
+    "kind.agent": "Agente",
+    "ag.sub": "{n} sesiones · {w} en espera · {scope}",
+    "ag.sub.one": "{n} sesión · {w} en espera · {scope}",
+    "ag.all": "todos los espacios",
+    "ag.waiting": "en espera",
+    "ag.session": "sesión",
+    "ag.empty":
+      "Elige una sesión a la izquierda para abrir su terminal. Abre más para verlas en mosaico (hasta 4).",
+    "ag.none.scope": "Aún no hay sesiones ni agentes en {scope}",
+    "ag.detach": "Cerrar panel",
+    "ag.detachName": "Cerrar el panel de {id} (sigue en marcha)",
+    "ag.detached": "Panel de {id} cerrado: sigue en marcha",
+    "ag.open": "Abrir",
+    "ag.openName": "Abrir {id} en Agentes",
+    "ws.openAgents": "Abrir en Agentes →",
+    "ag.signin": "Inicia sesión para abrir terminales: ejecuta {cli} web login",
+    "ag.revoked": "token revocado",
+    "ag.revokedTip":
+      "Su token fue revocado (web logout --all): detenlo y reanúdalo, o inícialo de nuevo, para darle uno nuevo",
+    "ag.ended":
+      "Esta sesión ha terminado. Su registro se queda hasta que se reanude o se elimine.",
+    "ag.exitedLine": "[la sesión terminó{code}]",
+    "ag.lost": "[desconectado: {why}]",
+    "ag.reconnect": "Reconectar",
+    "ag.noBackend":
+      "Los terminales necesitan el módulo PTY opcional (den-pty no está disponible): {cli} doctor explica por qué",
+    "ag.noHost":
+      "No hay ningún host de sesiones en marcha: aún no se ha iniciado nada",
+    "ag.ws": "Espacio de trabajo",
+    "ag.pal": "Agentes › {ws} / {name}",
+    "ag.palStart": "Iniciar agente…",
+    "ag.cap":
+      "Hasta 4 paneles: se cerró el de {id} para hacer sitio (sigue en marcha)",
   };
 })((window.denMessages = window.denMessages || {}));

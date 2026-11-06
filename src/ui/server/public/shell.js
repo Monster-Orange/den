@@ -451,6 +451,39 @@
     "ag.started": "Started agent {id}",
     "ag.stopped": "Stopped agent {id}",
     "ag.resumed": "Resumed agent {id}",
+    // The Agents tab (AG-4a-term, agents-page.js).
+    "n.agents": "Agents",
+    "kind.agent": "Agent",
+    "ag.sub": "{n} sessions · {w} waiting · {scope}",
+    "ag.sub.one": "{n} session · {w} waiting · {scope}",
+    "ag.all": "all workspaces",
+    "ag.waiting": "waiting",
+    "ag.session": "session",
+    "ag.empty":
+      "Pick a session on the left to open its terminal. Open more to tile them (up to 4).",
+    "ag.none.scope": "No sessions or agents in {scope} yet",
+    "ag.detach": "Close pane",
+    "ag.detachName": "Close {id}'s pane (it keeps running)",
+    "ag.detached": "Closed {id}'s pane: it keeps running",
+    "ag.open": "Open",
+    "ag.openName": "Open {id} in Agents",
+    "ws.openAgents": "Open in Agents →",
+    "ag.signin": "Sign in to open terminals: run {cli} web login",
+    "ag.revoked": "token revoked",
+    "ag.revokedTip":
+      "Its token was revoked (web logout --all): stop and resume it, or start it again, to give it a new one",
+    "ag.ended":
+      "This session has ended. Its record stays until it is resumed or removed.",
+    "ag.exitedLine": "[the session exited{code}]",
+    "ag.lost": "[disconnected: {why}]",
+    "ag.reconnect": "Reconnect",
+    "ag.noBackend":
+      "Terminals need the optional PTY module (den-pty is unavailable): {cli} doctor says why",
+    "ag.noHost": "No session host is running: nothing has started yet",
+    "ag.ws": "Workspace",
+    "ag.pal": "Agents › {ws} / {name}",
+    "ag.palStart": "Start agent…",
+    "ag.cap": "Up to 4 panes: {id}'s closed to make room (it keeps running)",
   };
   // The languages the UI has a catalog for, each named in itself (a name is
   // never translated). The server's list is ui-language.ts's UI_LANGUAGES.
@@ -533,6 +566,9 @@
     settings:
       '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
     page: '<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 9h6M9 13h6"/>',
+    // The prototype's Agents icon: a terminal window with a prompt.
+    agents:
+      '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
     edge: '<path d="M12 3l8 4v5c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V7z"/><path d="M8 12h8M12 8v8"/>',
   };
   function icon(name) {
@@ -1199,6 +1235,17 @@
       group: "develop",
       order: 15,
       href: "/graph",
+    },
+    // The Agents tab (AG-4a-term, AG spec §5d): sessions and terminal
+    // panes, after Graph as the prototype orders them.
+    {
+      id: "agents",
+      label: "n.agents",
+      icon: "agents",
+      group: "develop",
+      order: 17,
+      href: "/agents",
+      keywords: ["sessions", "terminal"],
     },
     {
       id: "services",

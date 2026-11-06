@@ -71,6 +71,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/local-dev.html",
     "/graph",
     "/graph.html",
+    "/agents",
+    "/agents.html",
     "/tests",
     "/index.html",
     "/services",
@@ -145,6 +147,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/personas",
     "/api/workspaces/:ws/agents",
   ].map((p) => R(p)),
+  R(
+    "/api/sessions",
+    "lists the sessions and agents (names and states, never their output)",
+  ),
   R("/api/health", "runs the manifests' health probes: read-only checks"),
   R("/api/test-sources", "git rev-parse in each repo: read-only"),
   R("/api/manifest/validate", "GET validates a file at a path: read-only"),
@@ -236,6 +242,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "resumes an agent: a runtime in a PTY",
   ),
   S(
+    ["GET", "HEAD"],
+    "/api/sessions/:id/io",
+    "a session's terminal (AG-4a-term): a WebSocket, its input a shell's",
+  ),
+  S(
     ["GET", "HEAD", "POST", "DELETE"],
     "/api/sessions/*",
     "a session's own routes (AG-4a-term's io): an agent's token reaches its own session's only",
@@ -261,6 +272,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/stop",
     "/api/workspaces/:ws/agents/:id/resume",
   ],
+  "session-routes.ts:IO_PATH": ["/api/sessions/:id/io"],
 };
 
 /** Whether `pathname` matches a table path. */

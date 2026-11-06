@@ -33,6 +33,7 @@ export const UI_MODULES: readonly string[] = [
   "/edge-page.js",
   "/error-page.js",
   "/agents-section.js",
+  "/agents-page.js",
   // The UI's catalogs other than English (R19; en is in shell.js).
   "/i18n/ja.js",
   "/i18n/es.js",
@@ -41,6 +42,11 @@ export const UI_MODULES: readonly string[] = [
 /** URL path → file inside node_modules. */
 export const VENDOR_ASSETS: Readonly<Record<string, string>> = {
   "/vendor/elk.bundled.js": "elkjs/lib/elk.bundled.js",
+  // The Agents tab's terminal panes (AG-4a-term): xterm.js and its fit
+  // addon, ES modules, MIT.
+  "/vendor/xterm.mjs": "@xterm/xterm/lib/xterm.mjs",
+  "/vendor/xterm.css": "@xterm/xterm/css/xterm.css",
+  "/vendor/addon-fit.mjs": "@xterm/addon-fit/lib/addon-fit.mjs",
 };
 
 /** The installed file for a vendored URL path, or null. */
@@ -82,7 +88,9 @@ export function serveUiAsset(
   // Pinned versions: the bytes only change with Den itself. Not run through
   // the product-token fill the UI's own scripts get.
   res.writeHead(200, {
-    "Content-Type": "application/javascript",
+    "Content-Type": file.endsWith(".css")
+      ? "text/css"
+      : "application/javascript",
     "Cache-Control": "public, max-age=86400",
   });
   res.end(fs.readFileSync(file));

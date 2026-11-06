@@ -127,6 +127,39 @@ describe("the Origin check", () => {
     ).toMatchObject({ ok: false, code: "origin_rejected" });
   });
 
+  it("an upgrade's CSRF token rides as the den.csrf.<token> subprotocol (a browser's WebSocket sends no header); a plain request's never does", () => {
+    const up = (protocols: string, extra: Record<string, string> = {}) =>
+      checkRequest(
+        req("GET", {
+          host: local,
+          upgrade: "websocket",
+          origin: `http://${local}`,
+          "sec-websocket-protocol": protocols,
+          ...extra,
+        }),
+        ctx(),
+      );
+    expect(up("den.io, den.csrf.the-csrf")).toMatchObject({ ok: true });
+    expect(up("den.csrf.the-csrf")).toMatchObject({ ok: true });
+    expect(up("den.io")).toMatchObject({ ok: false, code: "csrf" });
+    expect(up("den.io, den.csrf.other")).toMatchObject({
+      ok: false,
+      code: "csrf",
+    });
+    expect(up("den.io, den.csrf.")).toMatchObject({ ok: false, code: "csrf" });
+    // Not an upgrade: the subprotocol header proves nothing.
+    expect(
+      checkRequest(
+        req("POST", {
+          host: local,
+          origin: `http://${local}`,
+          "sec-websocket-protocol": "den.csrf.the-csrf",
+        }),
+        ctx(),
+      ),
+    ).toMatchObject({ ok: false, code: "csrf" });
+  });
+
   it("a GET with another site's Origin passes (only the Host is checked)", () => {
     expect(
       checkRequest(

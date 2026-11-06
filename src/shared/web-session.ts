@@ -161,6 +161,12 @@ export interface WebAuthConfig {
    * session never expires. The server warns about each at start.
    */
   ignored: string[];
+  /**
+   * The distribution config's file when it sets
+   * `web.allow_plain_http_remote`: ignored there (a per-machine choice,
+   * never the distribution's), and warned about at start.
+   */
+  plainHttpInDistribution?: string;
 }
 
 function readYaml(file: string): Record<string, unknown> {
@@ -198,11 +204,19 @@ function ignoredSessionKeys(
 
 /** The start-up warning for the ignored keys, or null when there are none. */
 export function ignoredConfigWarning(cfg: WebAuthConfig): string | null {
-  if (!cfg.ignored.length) return null;
-  return (
-    `${cfg.ignored.join(", ")}: ignored. A browser session never expires; ` +
-    "it ends at sign-out or `web logout`. Remove the key to silence this."
-  );
+  const lines: string[] = [];
+  if (cfg.ignored.length)
+    lines.push(
+      `${cfg.ignored.join(", ")}: ignored. A browser session never expires; ` +
+        "it ends at sign-out or `web logout`. Remove the key to silence this.",
+    );
+  if (cfg.plainHttpInDistribution)
+    lines.push(
+      `web.allow_plain_http_remote (${cfg.plainHttpInDistribution}): ignored. ` +
+        "It is a choice for one machine, read only from config/local/user.yml; " +
+        "move it there on the machine that needs it, and remove it here.",
+    );
+  return lines.length ? lines.join("\n  ") : null;
 }
 
 /**
@@ -227,7 +241,13 @@ export function readWebAuthConfig(
     throw new Error(
       `web.allow_plain_http_remote must be true or false, got ${JSON.stringify(plain)}`,
     );
-  return { allowPlainHttpRemote: plain === true, ignored };
+  return {
+    allowPlainHttpRemote: plain === true,
+    ignored,
+    ...(team.allow_plain_http_remote !== undefined
+      ? { plainHttpInDistribution: configFile }
+      : {}),
+  };
 }
 
 // ── The session store ──────────────────────────────────────────────────────

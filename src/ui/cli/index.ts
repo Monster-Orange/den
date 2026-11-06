@@ -313,19 +313,20 @@ const WORKSPACE_SUBCOMMANDS: {
 
 const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   down: {
-    usage: "down [repo] [flags]",
+    usage: "down [repo] [-w <workspace>] [flags]",
     lines: [
       "Stop the cwd (or named) repo; --with-deps also stops what it sits on (its",
       "derived closure, in reverse order), naming anything else that uses it.",
       "-a/--all stops EVERY workspace system (reverse derived order, cwd-agnostic;",
       "every down script runs — no already-stopped skip).",
-      "Flags: -a/--all · -A/--app <app> · --with-deps · -n/--dry-run (print order, stop nothing) · --manifest (legacy depends_on)",
+      "Flags: -w/--workspace <ws> (that active workspace, not the focused one; focus stays) · -a/--all · -A/--app <app> · --with-deps · -n/--dry-run (print order, stop nothing) · --manifest (legacy depends_on)",
     ],
   },
   restart: {
-    usage: "restart [service...] [-A <app>] [-n|--dry-run]",
+    usage: "restart [service...] [-w <workspace>] [-A <app>] [-n|--dry-run]",
     lines: [
       `Restart the given services, or every repo in an application (\`${product().cli} apps\`).`,
+      "-w/--workspace <ws> acts in that active workspace instead of the focused one; focus stays.",
     ],
   },
   status: {
@@ -370,7 +371,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   },
   setup: {
     usage:
-      "setup [service...] [--force|-f] [--plan [-w <workspace>]... [--all-active]]",
+      "setup [service...] [-w <workspace>] [--force|-f] [--plan [-w <workspace>]... [--all-active]]",
     lines: [
       "Run 'make setup' once per system (clones missing managed repos first).",
       "Default targets MANAGED clones only — setup's codegen/installs",
@@ -380,6 +381,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "cloned, seeded or written (on a fresh machine: the blueprint's plan).",
       "It plans the focused workspace; -w <workspace> (repeatable) plans those,",
       "--all-active every active one. Repos only other workspaces hold are named.",
+      "Without --plan, -w <workspace> sets up that workspace's systems instead of the focused one's.",
     ],
   },
   org: {
@@ -2735,6 +2737,10 @@ class DenCLI {
     row(
       "--manifest",
       `use legacy ${product().manifestYml} depends_on instead of the derived graph`,
+    );
+    row(
+      "-w, --workspace <ws>",
+      "act in that (active) workspace instead of the focused one; focus stays",
     );
     row("--skip-secrets", "skip the secrets-backend sign-in preflight");
     row("-h, --help", "show this help");

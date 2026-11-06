@@ -4,7 +4,9 @@
  * workspace (persona and id, runtime, state, cwd, started at), Stop, and
  * Resume where the record allows it; "+ Start agent" picks a persona and a
  * runtime and calls the start route; the workspace header counts the
- * agents. There is no Open (no terminal before SEC-1). In ja too. Each
+ * agents. The header links to the Agents page ("Open in Agents →", for
+ * the workspace) and a row with a session has Open (its terminal there,
+ * AG-4a-term). In ja too. Each
  * page signs in first (SEC-1b: Start and Resume are shell-grade).
  *
  * The real server on the demo distribution with a session host in this
@@ -163,12 +165,14 @@ describe("the Agents section", () => {
     await south.context().close();
   }, 45_000);
 
-  it("has no Open action (no terminal before SEC-1)", async () => {
+  it("links to the Agents page: Open in Agents → for the workspace; no Open on a row without a session", async () => {
     if (skip()) return;
     const p = await open("north");
     const sec = p.locator("#agents-section");
-    expect(await sec.getByRole("button", { name: /open/i }).count()).toBe(0);
-    expect(await sec.getByRole("link").count()).toBe(0);
+    const all = sec.getByRole("link", { name: "Open in Agents →" });
+    expect(await all.getAttribute("href")).toBe("/agents?ws=north");
+    // scout's session is gone: nothing to open.
+    expect(await row(p, "scout").getByRole("link").count()).toBe(0);
     expect(
       await sec
         .locator("[data-agent-act]")
@@ -245,6 +249,16 @@ describe("the Agents section", () => {
         `${n} agents`,
       before + 1,
     );
+    // A running agent has a session: Open, its terminal on the Agents page.
+    const { sessionId } = (
+      (await res.json()) as { agent: { sessionId: string } }
+    ).agent;
+    expect(sessionId).toEqual(expect.any(String));
+    expect(
+      await row(p, "planner")
+        .getByRole("link", { name: "Open planner in Agents" })
+        .getAttribute("href"),
+    ).toBe(`/agents?open=${encodeURIComponent(sessionId)}`);
     // A running agent: Stop, no Resume.
     expect(
       await row(p, "planner")

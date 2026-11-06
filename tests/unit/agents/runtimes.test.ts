@@ -13,6 +13,7 @@ import {
   RUNTIME_KIND,
   type LaunchInput,
 } from "../../../src/shared/agents/runtimes.js";
+import { stateDirDenyRules } from "../../../src/shared/agents/den-claude.js";
 import {
   getStrategy,
   strategyIds,
@@ -180,17 +181,25 @@ describe("den-claude launch", () => {
     expect(out.env).toEqual({});
     expect(Object.keys(out.files ?? {})).toEqual([mcpFile, settingsFile]);
     // SEC-1 §6c.1: Den's state dir is denied to the agent (binds a
-    // cooperating agent only): Read and `cat` of web.secret and sessions/.
+    // cooperating agent only): Read, and any command naming web.secret or
+    // sessions/.
     expect(JSON.parse(out.files![settingsFile])).toEqual({
-      permissions: {
-        deny: [
-          "Read(//home/someone/.acme/web.secret)",
-          "Read(//home/someone/.acme/sessions/**)",
-          "Bash(cat /home/someone/.acme/web.secret:*)",
-          "Bash(cat /home/someone/.acme/sessions/:*)",
-        ],
-      },
+      permissions: { deny: stateDirDenyRules("/home/someone/.acme") },
     });
+    expect(stateDirDenyRules("/home/someone/.acme")).toEqual(
+      expect.arrayContaining([
+        "Read(//home/someone/.acme/web.secret)",
+        "Read(//home/someone/.acme/sessions/**)",
+        // Any command naming the path (Claude Code's wildcard form).
+        "Bash(*/home/someone/.acme/web.secret*)",
+        "Bash(*/home/someone/.acme/sessions/*)",
+        "Bash(head */home/someone/.acme/web.secret*)",
+        // The legacy prefix form, for versions before wildcards.
+        "Bash(cat /home/someone/.acme/web.secret:*)",
+        "Bash(cat /home/someone/.acme/sessions/:*)",
+      ]),
+    );
+
     expect(JSON.parse(out.files![mcpFile])).toEqual({
       mcpServers: {
         acme: {

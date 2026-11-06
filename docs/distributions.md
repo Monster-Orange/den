@@ -1239,12 +1239,25 @@ logout --all` the old token is refused; the CLI reads the new one.
   `token_revoked` ("restart or resume the agent to get a new one"). Plain
   `web logout` (one browser, or every browser) leaves agent tokens alone.
 - **Another machine.** `DEN_BIND_HOST=0.0.0.0` (or any non-loopback
-  address) starts only with HTTPS in front (the edge, with `edge.tls`), or
-  with `web.allow_plain_http_remote: true` in `config/local/user.yml` (a
-  choice for that machine; the org config can't make it), since a session
-  cookie would otherwise cross the network in clear text. With it, the
-  machine's own addresses and host name are accepted with the port, and
-  every route there needs a session.
+  address) starts only with `web.allow_plain_http_remote: true` in
+  `config/local/user.yml`, since a session cookie would otherwise cross the
+  network in clear text. Having the edge in front is not enough: the
+  server's own port would still answer plain HTTP on every interface. Only
+  `config/local/user.yml` is read (a choice for that machine); the key in
+  the distribution config is ignored, and the server logs a warning naming
+  the file. With it, the machine's own addresses and host name are accepted
+  with the port, and every route there needs a session.
+- **The edge** reaches Den on loopback (macOS, through
+  `host.docker.internal`), so it needs no other bind. On Linux, where the
+  edge container reaches the host on the Docker bridge, the one other bind
+  allowed without the key is the bridge address (`172.16.0.0/12`, for
+  example `DEN_BIND_HOST=172.17.0.1`), and only with the edge configured.
+- **The edge hostname is believed only from the edge.** A request whose
+  `Host` is the edge hostname is accepted only from a peer the edge could
+  be (loopback, the Docker bridge range or Docker Desktop's VM network);
+  from any other address it is
+  421 `misdirected`, so a LAN client can't send the edge's name straight to
+  the server's port.
 
 ## Running the web UI as a service (macOS)
 
@@ -1643,8 +1656,8 @@ started. The workspace header counts them ("2 agents").
   for an agent (agents don't start agents from the page). Each one is in the
   server log's activity, with you as its actor. The agent's environment is
   the one below, built from the web server's environment.
-- There is no terminal on the page yet: attach with `<cli> sessions attach
-<ws>:<id>`.
+- **Open in Agents →** (the section header) opens the Agents tab for the
+  workspace, and **Open** on a row with a session opens its terminal there.
 
 The routes: `GET /api/workspaces/<ws>/agents`, `POST
 /api/workspaces/<ws>/agents` (`{ persona, runtime?, model?, id? }`), `POST
@@ -1653,6 +1666,47 @@ The routes: `GET /api/workspaces/<ws>/agents`, `POST
 `{ ok: false, error, code, requestId }`: `locked` (423), `cap` (429),
 `conflict` (409, e.g. already running, or no resume), `not_found` (404),
 `exited_at_once` (502, with the session's last lines).
+
+### The Agents tab
+
+"Agents" in the rail (Develop, after Graph) is `/agents`: every session and
+agent of the workspaces in view, and their terminals in the browser.
+
+- **The list** is grouped by workspace and follows the scope bar (or the
+  page's `?ws=<ws>`, which "Open in Agents →" sets). Each row has its
+  state, persona (a `sessions start` session is labelled "session"),
+  runtime and directory, and "waiting" when it waits on you (once the
+  session host can tell, AG-6a; not yet). An agent whose
+  token `web logout --all` revoked says "token revoked": stop and resume
+  it, or start it again.
+- **A pane** is the session's terminal: it shows the scrollback, then the
+  live output, and your keys go to the session; its size follows the
+  pane. Click more rows to tile up to four (a fifth closes the oldest).
+  The URL holds the open panes (`/agents?open=<id>,<id>`), so a link, a
+  reload or Back reopens them.
+- **Close** (×) detaches, as leaving the page does: the session keeps
+  running, and opening it again replays what you missed. **Stop** (an
+  agent only) is `agents stop`, behind the lock. **+ Start agent** (or
+  `/agents?start=1`) starts one and opens its pane; under All it asks for
+  the workspace.
+- ⌘K lists each as "Agents › <ws> / <name>", and "Start agent…".
+- Several browsers and `<cli> sessions attach` can attach to one session
+  at once and each sees every byte; the terminal's size is the last
+  one's to change it.
+- Terminals need the optional PTY module (`<cli> doctor`); without it the
+  page lists what there is and says so.
+- **Who can open one.** The terminal is shell-grade: on localhost the
+  page's own Origin and CSRF token, beyond loopback a signed-in browser
+  (the list says "Sign in to open terminals" otherwise), and an agent's
+  token only its own session's. Each attach and detach is in the server
+  log's activity, with its actor.
+
+The routes: `GET /api/sessions` (`{ sessions, workspaces, host, backend,
+io }`) and the WebSocket `/api/sessions/<id>/io` (subprotocol `den.io`, the
+CSRF token as `den.csrf.<token>`): binary frames are output and input, a
+text frame `{"type":"resize","cols":c,"rows":r}` resizes, and the server
+sends `{"type":"session",…}` first and `{"type":"exit","exitCode":n}` when
+the session ends.
 
 ### An agent's environment
 
@@ -1704,13 +1758,21 @@ unlock, use the sudo password or start another agent (403
 `DEN_PERSON_TOKEN`, a person token's value and a path to `web.secret` are
 always removed, and `sessions start --keep-env` of one is refused and logged.
 An agent runs as your OS user, so it could still read `web.secret` itself;
-the token keeps what Den does on its behalf attributable and bounded. As a
-cooperative mitigation, den-claude passes Claude Code a settings file
-(`--settings`) whose `permissions.deny` lists `Read` and `Bash(cat …)` of
-`<state dir>/web.secret` and `<state dir>/sessions/**`. **It binds
-cooperating agents only**: an agent that ignores its permission config
-can still read them. OS-user isolation (a separate user, a container, a
-sandbox) is not in 0.4.x. `web logout --all` revokes every agent's token
+the token keeps what Den does on its behalf attributable and bounded.
+**The boundary is the server's token rules** (above), not a deny list.
+
+As a cooperative mitigation, den-claude passes Claude Code a settings file
+(`--settings`) whose `permissions.deny` lists `Read` of `<state
+dir>/web.secret` and `<state dir>/sessions/**`, and `Bash` rules in Claude
+Code's wildcard form for the path (`Bash(*<state dir>/web.secret*)`, and
+each of `cat`, `head`, `tail`, `less`, `more`, `xxd`, `od`, `strings`,
+`base64` and `cp` followed by it), spelled as an absolute path, under `~`
+and under `$HOME`, with a path that has spaces also backslash-escaped. A
+deny list can't name every way to read a file (another program, a script,
+a copy under another name), so it is a speed bump. **It binds cooperating
+agents only**: an agent that ignores its permission config, or reads the
+file some other way, can still read them. OS-user isolation (a separate
+user, a container, a sandbox) is not in 0.4.x. `web logout --all` revokes every agent's token
 (above, under Signing in).
 
 **What the scope does not do.** An agent's MCP scope binds cooperating

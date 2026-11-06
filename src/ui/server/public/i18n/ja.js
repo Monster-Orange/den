@@ -325,5 +325,37 @@
     "ag.started": "エージェント {id} を開始しました",
     "ag.stopped": "エージェント {id} を停止しました",
     "ag.resumed": "エージェント {id} を再開しました",
+    // The Agents tab (AG-4a-term, agents-page.js).
+    "n.agents": "エージェント",
+    "kind.agent": "エージェント",
+    "ag.sub": "{n} セッション · 承認待ち {w} · {scope}",
+    "ag.all": "すべてのワークスペース",
+    "ag.waiting": "承認待ち",
+    "ag.session": "セッション",
+    "ag.empty":
+      "左のセッションを選ぶとターミナルが開きます。複数開くと並べて表示します（最大 4）。",
+    "ag.none.scope": "{scope} にはまだセッションもエージェントもありません",
+    "ag.detach": "ペインを閉じる",
+    "ag.detachName": "{id} のペインを閉じる（実行は続きます）",
+    "ag.detached": "{id} のペインを閉じました。実行は続いています",
+    "ag.open": "開く",
+    "ag.openName": "{id} をエージェントで開く",
+    "ws.openAgents": "エージェントで開く →",
+    "ag.signin": "ターミナルを開くにはサインイン: {cli} web login を実行",
+    "ag.revoked": "トークン失効",
+    "ag.revokedTip":
+      "トークンが失効しました（web logout --all）。新しいトークンを渡すには停止して再開するか、もう一度開始してください",
+    "ag.ended": "このセッションは終了しました。記録は再開か削除まで残ります。",
+    "ag.exitedLine": "[セッションが終了しました{code}]",
+    "ag.lost": "[切断: {why}]",
+    "ag.reconnect": "再接続",
+    "ag.noBackend":
+      "ターミナルにはオプションの PTY モジュールが必要です（den-pty は使えません）。理由は {cli} doctor で確認できます",
+    "ag.noHost": "セッションホストは動いていません。まだ何も開始されていません",
+    "ag.ws": "ワークスペース",
+    "ag.pal": "エージェント › {ws} / {name}",
+    "ag.palStart": "エージェントを開始…",
+    "ag.cap":
+      "ペインは最大 4 つです。{id} のペインを閉じました（実行は続きます）",
   };
 })((window.denMessages = window.denMessages || {}));

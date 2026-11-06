@@ -830,15 +830,19 @@ async function _renderScopeMenu() {
   }
 }
 
+/** The pages whose ?ws= wins over the stored view (Graph, Agents). */
+const WS_URL_PAGES = new Set(["/graph", "/agents"]);
+
 /**
  * The Graph page draws what its ?ws= names (it wins over the stored view,
  * 0.3.0-dev.33), so its pill shows that workspace too: the pill, the URL,
  * the header's line and the graph agree (0.3.0-dev.34, a consumer's
- * finding). Elsewhere, and for a ?ws= that names no active workspace,
- * the stored view.
+ * finding). The Agents page's ?ws= (the Workspaces page's "Open in
+ * Agents") is the same. Elsewhere, and for a ?ws= that names no active
+ * workspace, the stored view.
  */
 function pageScope(scope, data) {
-  if (location.pathname !== "/graph") return scope;
+  if (!WS_URL_PAGES.has(location.pathname)) return scope;
   const ws = new URLSearchParams(location.search).get("ws");
   const active = Array.isArray(data?.active)
     ? data.active
@@ -855,7 +859,7 @@ function pageScope(scope, data) {
  * pushed: Back does not return to a view the picker has left.
  */
 function followScopeInUrl(value) {
-  if (location.pathname !== "/graph") return;
+  if (!WS_URL_PAGES.has(location.pathname)) return;
   const u = new URL(location.href);
   if (value === "all") u.searchParams.delete("ws");
   else u.searchParams.set("ws", value);

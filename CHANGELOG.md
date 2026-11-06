@@ -8,6 +8,41 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **The Agents tab** (0.4.1-dev.5, AG-4a-term, AG spec §5d): "Agents" in
+  the rail under Develop, after Graph, at `/agents`. The list holds every
+  session and agent of the workspaces in view (the scope bar, or `?ws=`),
+  grouped by workspace: state, persona and runtime, and a waiting badge
+  (shown once the host can tell, AG-6a);
+  a plain session (`sessions start`) is labelled "session", an agent whose
+  token `web logout --all` revoked says "token revoked". Click a row to
+  open its terminal (xterm.js, served from Den's own node_modules: no CDN):
+  the scrollback, then the live output, and your keys go to the session.
+  Up to four panes tile (a fifth closes the oldest), and the URL holds them
+  (`/agents?open=<id>,<id>`), so a reload or Back reattaches each with its
+  scrollback. A pane's bar has its name, workspace and runtime, Stop (an
+  agent, behind the lock) and Close, which detaches: the session keeps
+  running, as it does when you leave the page. "+ Start agent" (or
+  `/agents?start=1`) asks for the workspace under All, starts it and opens
+  its pane. ⌘K offers "Agents › <ws> / <name>" for each and "Start agent…".
+  The Workspaces page's Agents section links to it ("Open in Agents →",
+  and Open on a row with a session). In English, Japanese and Spanish;
+  light and dark; one column on a phone. Without the optional PTY module
+  the list says terminals need it, and nothing else changes.
+- **`GET /api/sessions` and the `/api/sessions/<id>/io` WebSocket**
+  (0.4.1-dev.5). The list: the sessions and agents of the active
+  workspaces, this distribution's only (asking never starts a session
+  host). The io socket is the session host's attach: binary frames carry
+  output and input, a text frame `{"type":"resize","cols":c,"rows":r}`
+  resizes, and the server says `{"type":"session",…}` first and
+  `{"type":"exit","exitCode":n}` at the end. Closing it detaches and never
+  signals the session; several browsers and the CLI can attach at once
+  (the size is the last one's). It is shell-grade: this server's Host, the
+  page's Origin, the CSRF token as the `den.csrf.<token>` subprotocol (a
+  browser's WebSocket can't send a header), a sign-in beyond loopback, and
+  an agent token reaches its own session's io only. Every attach and
+  detach is in the audit trail, with the actor from the credential. A
+  plain GET of it is 426.
+
 - **`web logout --all` revokes every agent's token** (0.4.1-dev.4, SEC-1
   §6c.2): it is the "something leaked" button, so it ends everything. A
   running agent's next call gets 401 `token_revoked`: "This agent's token
@@ -17,8 +52,9 @@ config and manifest changes a distribution must make to move to it under
   browser) leaves agent tokens alone.
 - **den-claude denies Den's state dir to the agent** (0.4.1-dev.4, SEC-1
   §6c.1): `--settings <file>` (0600) with `permissions.deny` for `Read` and
-  `Bash(cat …)` of `<state>/web.secret` and `<state>/sessions/**`. It binds
-  cooperating agents only: an agent runs as the same OS user.
+  `Bash` of `<state>/web.secret` and `<state>/sessions/**`. It binds
+  cooperating agents only: an agent runs as the same OS user, and the
+  server's token rules are the boundary.
 - **`setup`, `up`, `down` and `restart` across active workspaces**
   (0.4.1-dev.4). `-w <workspace>` names the workspace (`setup` takes one
   now; several still go with `--plan`). With no `-w`, a named service
@@ -183,7 +219,8 @@ config and manifest changes a distribution must make to move to it under
     action is audited with the person as its actor.
   - Listing never starts a session host: with none running, every agent
     reads `ended`.
-  - No terminal and no Open yet (SEC-1).
+  - No terminal and no Open in dev.0 to dev.4: dev.5 adds them (the Agents
+    tab, above).
 
 ### Changed
 
@@ -230,6 +267,40 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **A non-loopback bind needs `web.allow_plain_http_remote`, edge or no
+  edge** (0.4.1-dev.5, a dev.4 dogfood finding). With the edge configured,
+  `DEN_BIND_HOST=0.0.0.0` started, but the server's own port still answered
+  plain HTTP on every interface. It is refused now unless
+  `web.allow_plain_http_remote: true` is in `config/local/user.yml`; the
+  one exception is the Docker bridge address (`172.16.0.0/12`, as
+  `DEN_BIND_HOST=172.17.0.1`) with the edge configured, for an edge that
+  reaches the host there (Linux). The edge on macOS reaches Den on
+  loopback and needs neither.
+- **The edge hostname is believed only from the edge** (0.4.1-dev.5): a
+  request whose `Host` is the edge hostname from a peer the edge can't be
+  (not loopback, the Docker bridge or Docker Desktop's network) is 421
+  `misdirected`. A LAN client could send the edge's name straight to a
+  non-loopback bind and be treated as coming through the edge.
+- **`web.allow_plain_http_remote` in the distribution config is said to be
+  ignored** (0.4.1-dev.5): it is read only from `config/local/user.yml` (a
+  choice for one machine); the server logs a warning naming the file it
+  found it in, and the refusal names the file to set it in.
+- **den-claude's Bash denies match** (0.4.1-dev.5): Claude Code 2.1.x asked
+  for approval of `cat <state>/web.secret` instead of denying it; the
+  legacy `Bash(cat <path>:*)` shape didn't match. The rules are Claude
+  Code's wildcard form now (`Bash(*<path>*)`, and `cat`, `head`, `tail`,
+  `less`, `more`, `xxd`, `od`, `strings`, `base64` and `cp` of it), with
+  the path under `~` and `$HOME` too, and a path with spaces escaped. The
+  `Read` rules are unchanged.
+- **`restart <repo>/<svc>` of a single-service repo restarts it** after
+  `up <repo>` (0.4.1-dev.5, a dev.4 dogfood finding). The record was kept
+  under `<repo>`, so the restart found none, adopted the running process
+  and printed ✔ without restarting anything, leaving two records on one
+  process group. For a repo with one service, `<repo>` and `<repo>/<svc>`
+  are one daemon now; a duplicate left by dev.4 is merged at the next
+  command; and a restart that adopts a process restarts it.
+- **`up`, `down`, `restart` and `setup --help` mention `-w <workspace>`**
+  (0.4.1-dev.5).
 - **A subcommand's `--help` is its own** (0.4.1-dev.4): `web sessions`,
   `web login`, `web logout` and `web token --help` (or `-h`) printed the
   general web help, and `mcp connect|disconnect|clients|config --help`

@@ -400,6 +400,70 @@ export function findDaemonByAddress(address: string): DaemonRecord | undefined {
   return _daemonRegistry.get(address);
 }
 
+/**
+ * The other spelling of a single-service repo's daemon: "<repo>" and
+ * "<repo>/<svc>" name the same process (0.4.1-dev.5, a consumer's dev.4
+ * finding: `up <repo>` recorded "<repo>", `restart <repo>/<svc>` found no
+ * record, adopted the running process instead of restarting it, and left
+ * two records on one process group). Null for a repo with several
+ * services: each of its services is its own daemon.
+ */
+function singleServiceAlias(
+  resolved: Pick<ResolvedService, "address" | "repoName" | "subsystem"> & {
+    repoPath: string;
+  },
+): string | null {
+  const keys = Object.keys(readManifest(resolved.repoPath)?.services ?? {});
+  if (keys.length !== 1 || keys[0] !== resolved.subsystem) return null;
+  const full = `${resolved.repoName}/${resolved.subsystem}`;
+  if (resolved.address === resolved.repoName) return full;
+  if (resolved.address === full) return resolved.repoName;
+  return null;
+}
+
+/**
+ * Bring a single-service repo's record to the address this command uses,
+ * so every lookup by `resolved.address` finds it whichever spelling wrote
+ * it. A record only under the other spelling moves; a duplicate (two
+ * records on one process group, the dev.4 bug's leftover, or one of them
+ * dead or without a group) is merged into one, owners and containers
+ * unioned. Two records on two different live groups are left alone.
+ */
+export function reconcileDaemonAddress(resolved: ResolvedService): void {
+  const alias = singleServiceAlias(resolved);
+  if (!alias) return;
+  loadDaemonsFromFile();
+  const other = _daemonRegistry.get(alias);
+  if (!other || other.repoPath !== resolved.repoPath) return;
+  const own = _daemonRegistry.get(resolved.address);
+  if (own) {
+    const sameGroup =
+      own.pgid === undefined ||
+      other.pgid === undefined ||
+      own.pgid === other.pgid ||
+      isDaemonVerifiablyDead(other);
+    if (!sameGroup) return;
+  }
+  // The record carrying a process group is the one `down` can stop.
+  const keep =
+    own && (own.pgid !== undefined || other.pgid === undefined) ? own : other;
+  const drop = keep === own ? other : own;
+  const merged: DaemonRecord = {
+    ...keep,
+    address: resolved.address,
+    workspaces: [
+      ...new Set([...(keep.workspaces ?? []), ...(drop?.workspaces ?? [])]),
+    ],
+  };
+  const containers = [
+    ...new Set([...(keep.containers ?? []), ...(drop?.containers ?? [])]),
+  ];
+  if (containers.length > 0) merged.containers = containers;
+  _daemonRegistry.delete(alias);
+  _daemonRegistry.set(resolved.address, merged);
+  saveDaemonsFile(getDaemonsFile());
+}
+
 /** Add a workspace owner to a running daemon (share / attach). */
 export function attachDaemonOwner(address: string, workspace: string): void {
   loadDaemonsFromFile();
@@ -1344,6 +1408,12 @@ export interface RunCommandOptions {
   explicit?: boolean;
   /** For `down`: what it found to stop (see DownOutcome). */
   onDownOutcome?: (outcome: DownOutcome) => void;
+  /**
+   * Internal: this `up` is a restart's up step ("up"), or the up step of
+   * the restart a restart ran after adopting a process ("after-adopt").
+   * A restart never ends on an adoption: what it adopts it restarts.
+   */
+  restartStep?: "up" | "after-adopt";
 }
 
 /**
@@ -1506,6 +1576,7 @@ function settleDaemonRecord(
   record: DaemonRecord | undefined;
   outcome: "adopted" | "dropped" | "busy" | null;
 } {
+  reconcileDaemonAddress(resolved);
   const record = findDaemonByAddress(resolved.address);
   if (!record || !isLegacyRecord(record)) return { record, outcome: null };
   const outcome = settleLegacyRecord(record, resolved, workspace, onLine);
@@ -1674,7 +1745,12 @@ function restartAsDownThenUp(
         options.onClose(code);
         return;
       }
-      const up = runServiceCommand({ ...options, command: "up" });
+      const up = runServiceCommand({
+        ...options,
+        command: "up",
+        restartStep:
+          options.restartStep === "after-adopt" ? "after-adopt" : "up",
+      });
       tail = up.proc;
       if (stopTail) {
         try {
@@ -2052,6 +2128,9 @@ export function runServiceCommand(
   }
 
   const { repoPath, subsystem } = resolved;
+  // A single-service repo's record answers to "<repo>" and "<repo>/<svc>":
+  // every decision below reads it under this command's spelling.
+  reconcileDaemonAddress(resolved);
 
   const explicit = options.explicit ?? true;
   const reportDown = (outcome: DownOutcome): void =>
@@ -2217,6 +2296,16 @@ export function runServiceCommand(
           `${resolved.address} not started`,
         );
         if (holder === "adopted") {
+          // A restart's up step (its down found nothing recorded): the
+          // adopted process is the old instance, so it is restarted now,
+          // never left running as if restarted (0.4.1-dev.5).
+          if (options.restartStep === "up") {
+            onLine(`restarting the adopted process for ${resolved.address}`);
+            return restartAsDownThenUp(
+              { ...options, restartStep: "after-adopt" },
+              getServiceLogPath(resolved.repoName, resolved.subsystem),
+            );
+          }
           closeAsync(0);
           return dummy();
         }

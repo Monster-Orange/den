@@ -42,6 +42,35 @@ describe("vendorAssetFile", () => {
     expect(fs.readFileSync(file!, "utf-8")).toMatch(/ELK/);
   });
 
+  it("serves xterm.js and its fit addon (the Agents tab's panes, AG-4a-term) from Den's own dependencies, MIT", () => {
+    for (const [url, rel] of [
+      ["/vendor/xterm.mjs", "@xterm/xterm/lib/xterm.mjs"],
+      ["/vendor/xterm.css", "@xterm/xterm/css/xterm.css"],
+      ["/vendor/addon-fit.mjs", "@xterm/addon-fit/lib/addon-fit.mjs"],
+    ]) {
+      expect(VENDOR_ASSETS[url]).toBe(rel);
+      expect(vendorAssetFile(url)).not.toBeNull();
+    }
+    const pkg = JSON.parse(fs.readFileSync("package.json", "utf-8")) as {
+      dependencies: Record<string, string>;
+    };
+    // Pinned, exact: the served bytes change only with Den itself.
+    expect(pkg.dependencies["@xterm/xterm"]).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(pkg.dependencies["@xterm/addon-fit"]).toMatch(/^\d+\.\d+\.\d+$/);
+    for (const name of ["@xterm/xterm", "@xterm/addon-fit"])
+      expect(
+        (
+          JSON.parse(
+            fs.readFileSync(`node_modules/${name}/package.json`, "utf-8"),
+          ) as { license: string }
+        ).license,
+      ).toBe("MIT");
+    // An ES module with no import of its own: it loads offline as it is.
+    expect(
+      fs.readFileSync(vendorAssetFile("/vendor/xterm.mjs")!, "utf-8"),
+    ).not.toMatch(/^\s*import\s/m);
+  });
+
   it("returns null for a path that is not a vendored asset, or not installed", () => {
     expect(vendorAssetFile("/vendor/../package.json")).toBeNull();
     expect(vendorAssetFile("/vendor/elk.bundled.js", "/")).toBeNull();

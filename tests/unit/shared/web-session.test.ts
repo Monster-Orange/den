@@ -277,4 +277,17 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
     write("config/local/user.yml", "web:\n  allow_plain_http_remote: true\n");
     expect(readWebAuthConfig(tmp).allowPlainHttpRemote).toBe(true);
   });
+  it("set in the distribution config, it is ignored and warned about at start, naming the file and where it belongs", () => {
+    fs.rmSync(path.join(tmp, "config"), { recursive: true, force: true });
+    write("config/den.yml", "web:\n  allow_plain_http_remote: true\n");
+    const cfg = readWebAuthConfig(tmp);
+    expect(cfg.allowPlainHttpRemote).toBe(false);
+    expect(cfg.plainHttpInDistribution).toBe(path.join("config", "den.yml"));
+    expect(ignoredConfigWarning(cfg)).toMatch(
+      /web\.allow_plain_http_remote \(config\/den\.yml\): ignored\. It is a choice for one machine, read only from config\/local\/user\.yml/,
+    );
+    // Not set there: no such warning.
+    write("config/den.yml", "environments: [local]\n");
+    expect(ignoredConfigWarning(readWebAuthConfig(tmp))).toBeNull();
+  });
 });

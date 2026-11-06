@@ -235,6 +235,19 @@ else bad "GET /vendor/elk.bundled.js failed"; fi
 for m in graph.js graph-model.js panel.js graph.css; do
   curl -fsS "http://localhost:$PORT/$m" -o /dev/null && ok "GET /$m" || bad "GET /$m failed"
 done
+# The Agents tab (AG-4a-term): its page and xterm.js from the install (no
+# CDN); its list answers with or without the PTY module (without it,
+# backend.available is false and the page says so).
+for m in agents agents-page.js vendor/xterm.mjs vendor/xterm.css vendor/addon-fit.mjs; do
+  curl -fsS "http://localhost:$PORT/$m" -o /dev/null && ok "GET /$m" || bad "GET /$m failed"
+done
+if curl -fsS "http://localhost:$PORT/api/sessions" -o "$WORK/sessions.json"; then
+  if [ "${DIST_SMOKE_OMIT_OPTIONAL:-}" = "1" ]; then
+    expect_in "GET /api/sessions: den-pty unavailable" "$WORK/sessions.json" '"available":false'
+  else
+    expect_in "GET /api/sessions: den-pty available" "$WORK/sessions.json" '"available":true'
+  fi
+else bad "GET /api/sessions failed"; fi
 WEB_LOG="$ACME_HOME/logs/acme/web.log"
 if [ -f "$WEB_LOG" ]; then
   ok "ACME_HOME holds the state dir ($WEB_LOG)"

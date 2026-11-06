@@ -186,6 +186,19 @@ export function revokeAllActorTokens(stateDir: string): number {
   return n;
 }
 
+/**
+ * The agents whose token `web logout --all` revoked and whose record is
+ * still kept (their session still runs): the Agents tab marks them, so a
+ * person knows to restart or resume them (AG-4a-term). Ids only.
+ */
+export function revokedAgentIds(stateDir: string): Set<string> {
+  const out = new Set<string>();
+  for (const r of Object.values(load(stateDir).tokens))
+    if (r.revokedAt && AGENT_ACTOR_RE.test(r.actor))
+      out.add(r.actor.slice("agent:".length));
+  return out;
+}
+
 /** What a presented token was minted as, live or not; null when unknown. */
 export function lookupActorToken(
   stateDir: string,
