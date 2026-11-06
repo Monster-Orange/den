@@ -236,6 +236,18 @@
       "このサーバーは自身のアドレスでのみ応答するため、別の名前のページからは届きません。",
     "err.421.open": "localhost で開く",
     "err.refused.title": "リクエストが拒否されました",
+    "err.signin.title": "{name} を使うにはサインインしてください",
+    "err.signin.terminal": "ターミナルを使うにはサインインしてください",
+    "err.signin.sub": "このブラウザはサインインしていません",
+    "err.signin.lead": "{cmd} を実行し、表示されたリンクを開いてください。",
+    "err.signin.expiredTitle": "サインインリンクの期限切れ",
+    "err.signin.expired":
+      "このサインインリンクは期限切れか、使用済みです。{cmd} を実行して新しいリンクを取得してください。",
+    "err.signin.local":
+      "サインインはアドレスごとです。このページは {host} にあります。サインイン済みの localhost で同じページを開いてください。",
+    "err.signin.why":
+      "パスワードはありません。リンクは、あなたのユーザーアカウントだけが読めるファイルから作られます。",
+    "err.signin.copy": "コマンドをコピー",
     "err.422.title": "設定が無効です",
     "err.422.sub": "ディストリビューションの設定が検証に失敗しました",
     "err.422.lead":
@@ -269,6 +281,7 @@
     "set.cli.cli_tabs": "ターミナルのタブ",
     "set.cli.log_window_lines": "ログ欄の行数",
     "set.cli.web_port": "あなたの web ポート",
+    "set.cli.signin": "ブラウザのサインイン",
     "set.distribution.brand": "製品名",
     "set.distribution.github_org": "GitHub の組織",
     "set.distribution.orgs": "組織のラベル",

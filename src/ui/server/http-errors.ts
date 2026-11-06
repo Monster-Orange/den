@@ -286,6 +286,19 @@ export interface ErrorPageData {
   plugin?: PluginRoute | null;
   /** MD-2: the restart message, when the engine on disk is newer. */
   engine?: { loaded: string | null; onDisk: string | null; message: string };
+  /**
+   * 401 signin_required (SEC-1b): the signed-out page. `scope` terminal
+   * (shell-grade on loopback) or den (beyond loopback); `cmd` the command
+   * that prints a link; `localhost` the same path there (on 127.0.0.1 or
+   * [::1]); `expired` for a login link that expired or was used.
+   */
+  signin?: {
+    scope: "terminal" | "den";
+    name: string;
+    cmd: string;
+    localhost?: string;
+    expired?: boolean;
+  };
 }
 
 /**

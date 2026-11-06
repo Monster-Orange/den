@@ -16,6 +16,7 @@ import {
   REGEX_ROUTES,
   routeClass,
   ROUTES,
+  SIGNIN_FREE,
 } from "../../../src/ui/server/route-classes.js";
 
 const SERVER = path.join(process.cwd(), "src", "ui", "server");
@@ -108,7 +109,7 @@ describe("the route table covers every dispatched route", () => {
 });
 
 describe("the classes", () => {
-  it("the GETs that run something are shell-grade, and get the mutating-GET check", () => {
+  it("the GETs that run a declared command are mutating (§4: up, down, restart, …), and get the mutating-GET check", () => {
     for (const p of [
       "/api/service/exec",
       "/api/run",
@@ -116,9 +117,19 @@ describe("the classes", () => {
       "/api/workspace/sync",
       "/api/aws/login",
     ]) {
-      expect([p, routeClass("GET", p)]).toEqual([p, "shell-grade"]);
+      expect([p, routeClass("GET", p)]).toEqual([p, "mutating"]);
       expect([p, isMutatingGet("GET", p)]).toEqual([p, true]);
     }
+  });
+
+  it("SEC-1b's routes: /auth starts a session (mutating GET); /signin and the session admin are shell-grade; only /auth and /api/session are sign-in free", () => {
+    expect(routeClass("GET", "/auth")).toBe("mutating");
+    expect(isMutatingGet("GET", "/auth")).toBe(true);
+    expect(routeClass("GET", "/signin")).toBe("shell-grade");
+    expect(routeClass("POST", "/api/session/logout")).toBe("mutating");
+    expect(routeClass("GET", "/api/web/sessions")).toBe("shell-grade");
+    expect(routeClass("POST", "/api/web/logout")).toBe("shell-grade");
+    expect([...SIGNIN_FREE].sort()).toEqual(["/api/session", "/auth"]);
   });
 
   it("read-only GETs are not checked as mutations", () => {

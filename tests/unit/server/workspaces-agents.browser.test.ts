@@ -4,7 +4,8 @@
  * workspace (persona and id, runtime, state, cwd, started at), Stop, and
  * Resume where the record allows it; "+ Start agent" picks a persona and a
  * runtime and calls the start route; the workspace header counts the
- * agents. There is no Open (no terminal before SEC-1). In ja too.
+ * agents. There is no Open (no terminal before SEC-1). In ja too. Each
+ * page signs in first (SEC-1b: Start and Resume are shell-grade).
  *
  * The real server on the demo distribution with a session host in this
  * process (helpers/agents-page-server.ts): a scripted PTY, so nothing an
@@ -16,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import type { Browser, Page } from "playwright";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
+import { signInUrl } from "./helpers/den-auth.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -70,7 +72,9 @@ async function open(ws: string): Promise<Page> {
     }
   }, latest);
   const p = await ctx.newPage();
-  await p.goto(`${s!.base}/?ws=${ws}`);
+  // SEC-1b: Start and Resume are shell-grade, so the browser signs in as a
+  // person does, through a one-time /auth link (never a bypass).
+  await p.goto(signInUrl(s!.stateDir, s!.base, `/?ws=${ws}`));
   await p.waitForSelector(
     `#agents-section[data-ws="${ws}"] #agent-table tbody tr:not(.tbl-none), #agents-section[data-ws="${ws}"] #agent-table tbody tr.tbl-none td:not(:empty)`,
     { timeout: 20_000 },

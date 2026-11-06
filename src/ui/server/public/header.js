@@ -90,10 +90,13 @@ export function envReady() {
   if (_envReady) return _envReady;
   _envReady = (async () => {
     const sel = document.getElementById("env-sel");
-    const envs = await fetch("/api/environments")
-      .then((r) => r.json())
-      .then((v) => (Array.isArray(v) ? v : ["local"]))
-      .catch(() => ["local"]);
+    // A refusal page (SEC-1b, shell.js apiOff): /api answers the refusal.
+    const envs = apiOff()
+      ? ["local"]
+      : await fetch("/api/environments")
+          .then((r) => r.json())
+          .then((v) => (Array.isArray(v) ? v : ["local"]))
+          .catch(() => ["local"]);
     if (!sel) return envs;
     const esc = (s) =>
       String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -632,6 +635,7 @@ window.closeChangelog = function () {
  * Call once per page from each page's init function.
  */
 export async function initChangelog() {
+  if (apiOff()) return;
   _injectChangelogStyles();
   try {
     _changelogEntries = await fetch("/api/changelog").then((r) => r.json());
@@ -674,6 +678,14 @@ let ___DEN_CLI__Config = null;
  */
 function configInvalid() {
   return window.denShell?.configInvalid?.() === true;
+}
+
+/**
+ * SEC-1b: a refusal page (421, signed out; shell.js apiOff): every /api
+ * call would answer the same refusal, so none is made.
+ */
+function apiOff() {
+  return window.denShell?.apiOff?.() === true;
 }
 
 async function getDenConfig() {
@@ -1216,6 +1228,7 @@ async function _fetchServerInfo() {
 }
 
 async function _staleTick() {
+  if (apiOff()) return;
   const info = await _fetchServerInfo();
   if (info && info.pid != null)
     _lastServerInfo = { pid: info.pid, startedAt: info.startedAt };

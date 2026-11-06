@@ -247,6 +247,18 @@
       "Este servidor solo responde en sus propias direcciones, así que una página con otro nombre no puede alcanzarlo.",
     "err.421.open": "Abrir en localhost",
     "err.refused.title": "Solicitud rechazada",
+    "err.signin.title": "Inicia sesión para usar {name}",
+    "err.signin.terminal": "Inicia sesión para usar la terminal",
+    "err.signin.sub": "Este navegador no ha iniciado sesión",
+    "err.signin.lead": "Ejecuta {cmd} y abre el enlace.",
+    "err.signin.expiredTitle": "El enlace de inicio de sesión caducó",
+    "err.signin.expired":
+      "Ese enlace de inicio de sesión caducó o ya se usó. Ejecuta {cmd} para obtener uno nuevo.",
+    "err.signin.local":
+      "Un inicio de sesión pertenece a una sola dirección. Esta página está en {host}: abre la misma página en localhost, donde este navegador tiene la sesión iniciada.",
+    "err.signin.why":
+      "No hay contraseña: el enlace sale de un archivo que solo tu cuenta de usuario puede leer.",
+    "err.signin.copy": "Copiar comando",
     "err.422.title": "La configuración no es válida",
     "err.422.sub": "La configuración de la distribución no pasa la validación",
     "err.422.lead":
@@ -280,6 +292,7 @@
     "set.cli.cli_tabs": "Pestañas de terminal",
     "set.cli.log_window_lines": "Líneas del panel de registros",
     "set.cli.web_port": "Tu puerto web",
+    "set.cli.signin": "Inicio de sesión del navegador",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
     "set.distribution.orgs": "Etiquetas de org",

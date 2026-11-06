@@ -13,10 +13,22 @@ import {
 import { getDistRoot, getEngineRoot, getStateDir } from "../../shared/paths.js";
 import { hasDenUiMarker } from "../../shared/ui-marker.js";
 import {
+  cliAuthHeaders,
   ensureWebSecret,
   osUser,
   personToken,
+  readWebSecret,
+  rotateWebSecret,
 } from "../../shared/web-secret.js";
+import {
+  localhostOrigin,
+  loginLink,
+  mintLoginCode,
+  parseOrigin,
+  readWebAuthConfig,
+  sessionIdPrefix,
+  WebSessionStore,
+} from "../../shared/web-session.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import {
@@ -28,7 +40,8 @@ import {
 
 import { product } from "../../shared/product.js";
 interface WebCommandOptions {
-  action: "up" | "down" | "restart";
+  /** `open` is `up` that always opens a fresh sign-in tab (SEC-1b). */
+  action: "up" | "down" | "restart" | "open";
   port: number;
   openBrowser: boolean;
   silent: boolean;
@@ -118,6 +131,7 @@ export function parseWebCommandArgs(
     const arg = args[i];
     if (
       arg === "up" ||
+      arg === "open" ||
       arg === "down" ||
       arg === "restart" ||
       arg === "start" || // legacy alias for up
@@ -164,6 +178,7 @@ export function parseWebCommandArgs(
     throw new Error(`Unknown web option: ${arg}`);
   }
 
+  if (options.action === "open") options.openBrowser = true;
   if (options.setupBrowserAccess && options.action !== "up") {
     throw new Error(
       `--setup-browser-access is only valid with ${product().cli} web up`,
@@ -872,15 +887,26 @@ function openUrl(url: string): BrowserOpenResult {
   return { status: "open-failed", error };
 }
 
-function openOrFocusDenWebUrl(url: string, port: number): BrowserOpenResult {
-  const focusResult = focusExistingBrowserTab(port);
-  if (focusResult.status === "focused") return focusResult;
+/**
+ * Focus a tab already on this server, else open `url()` (SEC-1b: the
+ * sign-in link, minted only when it is opened). `focus: false` (`web
+ * open`) always opens.
+ */
+function openOrFocusDenWebUrl(
+  url: () => string,
+  port: number,
+  focus = true,
+): BrowserOpenResult {
+  if (focus) {
+    const focusResult = focusExistingBrowserTab(port);
+    if (focusResult.status === "focused") return focusResult;
 
-  if (focusResult.status === "error" && process.platform === "darwin") {
-    return focusResult;
+    if (focusResult.status === "error" && process.platform === "darwin") {
+      return focusResult;
+    }
   }
 
-  return openUrl(url);
+  return openUrl(url());
 }
 
 function buildBrowserAccessProbeScript(appName: string): string {
@@ -999,6 +1025,13 @@ export function displayWebHelp(): void {
   );
   console.log(`  ${product().cli} web --setup-browser-access`);
   console.log(`  ${product().cli} web token --print`);
+  console.log(
+    `  ${product().cli} web login [--next <path>] [--origin <url>] [--port <port>]`,
+  );
+  console.log(`  ${product().cli} web sessions [--json] [--port <port>]`);
+  console.log(
+    `  ${product().cli} web logout [<id prefix>] [--all] [--port <port>]`,
+  );
   console.log();
   console.log(chalk.bold("Actions:"));
   console.log(
@@ -1008,6 +1041,16 @@ export function displayWebHelp(): void {
     `  down               Stop the ${product().title} web daemon only`,
   );
   console.log(`  restart            Stop then start ${product().title} web`);
+  console.log(
+    "  open               Start if needed, and sign this browser in (a new tab)",
+  );
+  console.log(
+    "  login              Print a one-time sign-in link (60 s), for another browser",
+  );
+  console.log("  sessions           List the signed-in browsers");
+  console.log(
+    "  logout [<id>]      Sign out one browser, or all; --all also rotates web.secret",
+  );
   console.log(
     "  token --print      Print your CLI token, for curl (Authorization: Bearer …)",
   );
@@ -1072,6 +1115,18 @@ export async function cmdWeb(args: string[]): Promise<void> {
     process.exitCode = cmdWebToken(args.slice(1));
     return;
   }
+  if (args[0] === "login") {
+    process.exitCode = cmdWebLogin(args.slice(1));
+    return;
+  }
+  if (args[0] === "sessions") {
+    process.exitCode = await cmdWebSessions(args.slice(1));
+    return;
+  }
+  if (args[0] === "logout") {
+    process.exitCode = await cmdWebLogout(args.slice(1));
+    return;
+  }
 
   const options = parseWebCommandArgs(args);
   if (options.setupBrowserAccess) {
@@ -1125,6 +1180,10 @@ export async function cmdWeb(args: string[]): Promise<void> {
     );
   }
 
+  // SEC-1b: a wrong web.session value would stop the server at start;
+  // say so here, naming the key, instead of "did not become ready".
+  readWebAuthConfig(getDistRoot(), product().configFile);
+
   const apiRunning = await isDenWebApiRunning(options.port);
   let running = apiRunning && (await isDenWebUiReady(options.port));
   let started: StartedServer | null = null;
@@ -1176,7 +1235,16 @@ export async function cmdWeb(args: string[]): Promise<void> {
     return;
   }
 
-  const browser = openOrFocusDenWebUrl(url, options.port);
+  // SEC-1b: what opens is a sign-in link (localhost, one-time, 60 s). It
+  // is printed only when the browser couldn't be opened: the one line the
+  // person then needs.
+  let link: string | null = null;
+  const signIn = () => (link ??= freshLoginLink(options.port));
+  const browser = openOrFocusDenWebUrl(
+    signIn,
+    options.port,
+    options.action !== "open",
+  );
   if (browser.status === "focused") {
     console.log(chalk.green(`  OK Focused existing ${browser.app} tab`));
     console.log(chalk.gray(`  ${url}\n`));
@@ -1208,5 +1276,304 @@ export async function cmdWeb(args: string[]): Promise<void> {
   } else {
     console.log(chalk.yellow("\n  Could not open a browser automatically."));
   }
-  console.log(chalk.gray(`  Visit: ${url}\n`));
+  console.log(`  Sign in (once, within 60 s): ${signIn()}\n`);
+}
+
+// ── SEC-1b: sign-in (`web login`, `web sessions`, `web logout`) ─────────────
+
+/** A fresh one-time sign-in link for `origin` (localhost by default). */
+export function freshLoginLink(
+  port: number,
+  next = "/",
+  origin: string = localhostOrigin(port),
+  stateDir: string = getStateDir(),
+): string {
+  return loginLink(origin, mintLoginCode(ensureWebSecret(stateDir)), next);
+}
+
+interface CliIo {
+  out: (s: string) => void;
+  err: (s: string) => void;
+  stateDir?: string;
+}
+const stdIo: CliIo = {
+  out: (s) => process.stdout.write(s),
+  err: (s) => process.stderr.write(s),
+};
+
+/** `--port <p>` / `--port=<p>` / `-p <p>`, and the rest of `args`. */
+function takePort(args: string[]): { port: number; rest: string[] } {
+  let port = parsePort(process.env.PORT);
+  const rest: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--port" || a === "-p") {
+      port = parsePort(args[++i]);
+    } else if (a.startsWith("--port=")) {
+      port = parsePort(a.slice("--port=".length));
+    } else rest.push(a);
+  }
+  return { port, rest };
+}
+
+/**
+ * `<cli> web login [--next <path>] [--origin <url>]`: a fresh sign-in link
+ * on stdout, alone (the only place a login code is ever printed); a note on
+ * stderr. `--origin` for the edge hostname or a LAN name, where the cookie
+ * must be set (the signed-out page there says which).
+ */
+export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
+  let next = "/";
+  let origin: string | null = null;
+  let port: number;
+  let rest: string[];
+  try {
+    ({ port, rest } = takePort(args));
+  } catch (e) {
+    io.err(`${(e as Error).message}\n`);
+    return 2;
+  }
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    const val = (flag: string) =>
+      a === flag
+        ? rest[++i]
+        : a.startsWith(`${flag}=`)
+          ? a.slice(flag.length + 1)
+          : undefined;
+    const n = val("--next");
+    const o = val("--origin");
+    if (n !== undefined) next = n;
+    else if (o !== undefined) {
+      origin = parseOrigin(o);
+      if (!origin) {
+        io.err(
+          `--origin must be http(s)://host[:port] with no path, got "${o}"\n`,
+        );
+        return 2;
+      }
+    } else {
+      io.err(
+        `Usage: ${product().cli} web login [--next <path>] [--origin <url>] [--port <port>]\n`,
+      );
+      return 2;
+    }
+  }
+  const link = freshLoginLink(
+    port,
+    next,
+    origin ?? localhostOrigin(port),
+    io.stateDir ?? getStateDir(),
+  );
+  io.err(
+    `${product().cli}: open this link within 60 seconds; it signs in one browser, once.\n`,
+  );
+  io.out(`${link}\n`);
+  return 0;
+}
+
+interface SessionRow {
+  id: string;
+  createdAt: string;
+  lastSeenAt: string;
+  userAgent: string;
+  host: string;
+}
+
+/**
+ * A call to the running server with the person token, or null when no
+ * server answers on the port (the caller then edits the state files).
+ */
+function serverCall(
+  stateDir: string,
+  port: number,
+  method: string,
+  p: string,
+  body?: unknown,
+): Promise<{ status: number; json: unknown } | null> {
+  return new Promise((resolve) => {
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: p,
+        method,
+        timeout: 10_000,
+        headers: {
+          ...cliAuthHeaders(stateDir),
+          ...(payload !== undefined
+            ? {
+                "Content-Type": "application/json",
+                "Content-Length": String(Buffer.byteLength(payload)),
+              }
+            : {}),
+        },
+      },
+      (res) => {
+        let out = "";
+        res.setEncoding("utf-8");
+        res.on("data", (d: string) => (out += d));
+        res.on("end", () => {
+          let json: unknown = null;
+          try {
+            json = JSON.parse(out);
+          } catch {
+            /* not JSON */
+          }
+          resolve({ status: res.statusCode ?? 0, json });
+        });
+      },
+    );
+    req.on("timeout", () => req.destroy());
+    req.on("error", () => resolve(null));
+    req.end(payload);
+  });
+}
+
+function offlineStore(stateDir: string): WebSessionStore {
+  return new WebSessionStore({
+    stateDir: () => stateDir,
+    secret: () => readWebSecret(stateDir),
+  });
+}
+
+function apiError(r: { status: number; json: unknown }): string {
+  const e = (r.json as { error?: unknown } | null)?.error;
+  return typeof e === "string" ? e : `the server answered ${r.status}`;
+}
+
+/** `<cli> web sessions [--json]`: the signed-in browsers. */
+export async function cmdWebSessions(
+  args: string[],
+  io: CliIo = stdIo,
+): Promise<number> {
+  let port: number;
+  let rest: string[];
+  try {
+    ({ port, rest } = takePort(args));
+  } catch (e) {
+    io.err(`${(e as Error).message}\n`);
+    return 2;
+  }
+  const asJson = rest.includes("--json");
+  if (rest.some((a) => a !== "--json")) {
+    io.err(`Usage: ${product().cli} web sessions [--json] [--port <port>]\n`);
+    return 2;
+  }
+  const stateDir = io.stateDir ?? getStateDir();
+  let rows: SessionRow[];
+  const r = await serverCall(stateDir, port, "GET", "/api/web/sessions");
+  if (r) {
+    if (r.status !== 200) {
+      io.err(`${product().cli}: ${apiError(r)}\n`);
+      return 1;
+    }
+    rows = (r.json as { sessions: SessionRow[] }).sessions;
+  } else {
+    rows = offlineStore(stateDir)
+      .list()
+      .map((x) => ({
+        id: sessionIdPrefix(x.key),
+        createdAt: new Date(x.createdAt).toISOString(),
+        lastSeenAt: new Date(x.lastSeenAt).toISOString(),
+        userAgent: x.userAgent,
+        host: x.host,
+      }));
+  }
+  if (asJson) {
+    io.out(`${JSON.stringify(rows, null, 2)}\n`);
+    return 0;
+  }
+  if (rows.length === 0) {
+    io.out("No signed-in browsers.\n");
+    return 0;
+  }
+  const when = (iso: string) => iso.replace("T", " ").replace(/\.\d+Z$/, "Z");
+  const table = [
+    ["ID", "CREATED", "LAST SEEN", "HOST", "USER AGENT"],
+    ...rows.map((x) => [
+      x.id,
+      when(x.createdAt),
+      when(x.lastSeenAt),
+      x.host,
+      x.userAgent,
+    ]),
+  ];
+  const widths = table[0].map((_, c) =>
+    Math.max(...table.map((row) => row[c].length)),
+  );
+  for (const row of table)
+    io.out(
+      `${row
+        .map((cell, c) =>
+          c === row.length - 1 ? cell : cell.padEnd(widths[c]),
+        )
+        .join("  ")
+        .trimEnd()}\n`,
+    );
+  return 0;
+}
+
+/**
+ * `<cli> web logout [<id prefix>] [--all]`: sign out one browser, or every
+ * browser; `--all` also rotates web.secret, which ends every session and
+ * every person token (the CLI re-reads it, so it keeps working).
+ */
+export async function cmdWebLogout(
+  args: string[],
+  io: CliIo = stdIo,
+): Promise<number> {
+  let port: number;
+  let rest: string[];
+  try {
+    ({ port, rest } = takePort(args));
+  } catch (e) {
+    io.err(`${(e as Error).message}\n`);
+    return 2;
+  }
+  const all = rest.includes("--all");
+  const ids = rest.filter((a) => a !== "--all");
+  if (
+    ids.length > 1 ||
+    ids.some((a) => a.startsWith("-")) ||
+    (all && ids.length)
+  ) {
+    io.err(
+      `Usage: ${product().cli} web logout [<id prefix>] [--all] [--port <port>]\n`,
+    );
+    return 2;
+  }
+  const id = ids[0];
+  const stateDir = io.stateDir ?? getStateDir();
+  const r = await serverCall(stateDir, port, "POST", "/api/web/logout", {
+    ...(id ? { id } : {}),
+    ...(all ? { rotate: true } : {}),
+  });
+  let ended: number;
+  if (r) {
+    if (r.status !== 200) {
+      io.err(`${product().cli}: ${apiError(r)}\n`);
+      return 1;
+    }
+    ended = ((r.json as { ended?: unknown[] }).ended ?? []).length;
+  } else {
+    // No server: the state files themselves (the same OS user's).
+    const store = offlineStore(stateDir);
+    try {
+      ended = id ? (store.endByPrefix(id), 1) : store.endAll();
+    } catch (e) {
+      io.err(`${product().cli}: ${(e as Error).message}\n`);
+      return 1;
+    }
+    if (all && readWebSecret(stateDir)) rotateWebSecret(stateDir);
+  }
+  io.out(
+    `Signed out ${ended} browser${ended === 1 ? "" : "s"}.` +
+      (all
+        ? " web.secret rotated: every old session and token is void; this CLI keeps working."
+        : "") +
+      "\n",
+  );
+  return 0;
 }

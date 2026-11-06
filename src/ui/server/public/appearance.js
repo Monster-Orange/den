@@ -513,6 +513,9 @@ let inited = false;
 export async function initAppearance() {
   if (inited || typeof document === "undefined") return;
   inited = true;
+  // A refusal page (SEC-1b): /api/themes answers the refusal; the page
+  // keeps its first paint.
+  if (window.denShell?.apiOff?.() === true) return;
   const mq = window.matchMedia?.("(prefers-color-scheme: light)");
   mq?.addEventListener?.("change", () => {
     if (st.mode === "system") applyMode();

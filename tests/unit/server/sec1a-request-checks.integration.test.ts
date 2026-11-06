@@ -225,9 +225,12 @@ describe("the Host allowlist (DNS rebinding)", () => {
     expect(r.status).toBe(421);
   });
 
-  it("the edge hostname that routes to Den is 200", async () => {
+  it("the edge hostname that routes to Den passes the Host check (SEC-1b: then it needs a sign-in)", async () => {
     for (const host of ["den.acme.localhost", "den.acme.localhost:443"]) {
-      const r = await call("GET", "/api/server-info", { host });
+      // Beyond loopback: allowed, but signed in only (here the bearer).
+      const anon = await call("GET", "/api/server-info", { host });
+      expect([anon.status, json(anon).code]).toEqual([401, "signin_required"]);
+      const r = await call("GET", "/api/server-info", { host, ...bearer() });
       expect(r.status).toBe(200);
     }
     expect(

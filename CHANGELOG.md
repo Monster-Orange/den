@@ -8,6 +8,68 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **Signing in the browser** (0.4.1-dev.2, SEC-1b, SEC-1 spec §2, §4). No
+  password: reading `web.secret` proves you are this computer's user, and
+  the CLI does it.
+  - **`<cli> web open`** starts the server if needed and opens a fresh tab
+    on a sign-in link; **`<cli> web up`** opens one too when it doesn't find
+    an existing tab. **`<cli> web login [--next <path>] [--origin <url>]`**
+    prints a fresh link, for another browser or after the cookie expires.
+    The link is `http://localhost:<port>/auth?c=<code>&next=<path>`: the
+    code works once, within 60 seconds, and is an HMAC of a random nonce
+    and its expiry under `web.secret` (the server records the nonce as
+    used). It is printed only on that one line and never logged. `next`
+    must be a same-origin path (`//evil`, `http://evil`, `/\evil` go to
+    `/`).
+  - **`GET /auth?c=…`** swaps the code for a session and answers 303 to
+    `next`. A bad, expired or used code gets the signed-out page: "That
+    sign-in link expired or was used. Run `<cli> web login` for a new one."
+  - **The cookie** `den_session_<port>` (an opaque random id; per port, so
+    two distributions on one machine keep their own): HttpOnly,
+    SameSite=Strict, Path=/, and Secure when the request came over HTTPS
+    (the edge's `X-Forwarded-Proto` counts only on the edge hostname from
+    a loopback or Docker peer). The record is server-side, in
+    `web-sessions.json` (0600) in the state dir, keyed by an HMAC of the id
+    under the secret: created, last seen, the user agent (truncated), the
+    host it was issued on and its own CSRF token. Idle 7 days (sliding),
+    30 days at most; `web.session.idle` and `web.session.max` (`12h`,
+    `7d`, …) shorten them, and a wrong value stops the server, naming the
+    key.
+  - **`GET /api/session`** answers `{ csrf, actor: "person-browser",
+    signedIn: true }` for a signed-in browser, with the session's own CSRF
+    token (a signed-in browser's mutations must carry that one). Signed out
+    on loopback it answers as before.
+  - **The route classes (§4).** On loopback: read-only is open; mutating
+    needs Origin and CSRF (as in SEC-1a); **shell-grade** (an agent's start
+    and resume, `/signin`, the session admin routes, later the terminal)
+    needs a signed-in browser plus Origin and CSRF, or the person's bearer
+    (the CLI and MCP need no setup). Beyond loopback (the edge hostname, a
+    LAN name, or a peer that isn't loopback): every route needs a session
+    or a bearer, so a LAN or edge Host is usable again once signed in. Only
+    `/auth`, `/api/session` and the UI's static files need none.
+  - **The signed-out page**, in the shell frame: "Sign in to use the
+    terminal" (shell-grade on loopback) or "Sign in to use <name>" (beyond
+    loopback), "Run `<cli> web login` and open the link." with a copy
+    button (through the edge the command names its origin), and on
+    `127.0.0.1` or `[::1]` a link to the same page on `localhost`, where the
+    cookie is. It never offers a form for a secret or a token. `/api`
+    answers 401 `signin_required` (R26's shape). In en, ja and es.
+  - **localhost is canonical**: the links Den prints use it, and following
+    the signed-out page's link from 127.0.0.1 lands signed in.
+  - **`<cli> web sessions [--json]`** lists the signed-in browsers (id
+    prefix, created, last seen, host, user agent); **`<cli> web logout
+    [<id prefix>]`** signs out one, or every browser; **`--all`** also
+    rotates `web.secret`, which ends every session and every person token
+    (the CLI re-reads it and keeps working). They ask the running server
+    with the person token, or edit the state files when it isn't running.
+  - **Settings → Command line → Browser sign-in** says whether this
+    browser is signed in, with **Sign out** (`POST /api/session/logout`).
+  - **A non-loopback bind refuses to start** (`DEN_BIND_HOST=0.0.0.0` or a
+    LAN address) without HTTPS in front (the edge, with `edge.tls`), unless
+    `web.allow_plain_http_remote: true` is in `config/local/user.yml`: the
+    error says a session cookie would cross the network in clear text.
+    With it, the machine's own addresses and host name are accepted with
+    the port.
 - **Request checks on every request** (0.4.1-dev.1, SEC-1a, SEC-1 spec §3).
   Hardening for everyone; no sign-in yet (that is SEC-1b).
   - **Host allowlist** (DNS rebinding): `localhost`, `127.0.0.1` and
@@ -86,6 +148,12 @@ config and manifest changes a distribution must make to move to it under
   Stop or Resume of an agent id that belongs to another workspace answers
   "no agent here" even while the lock is closed (it answered 423), and
   still never names the other workspace.
+- **The 421 page and the signed-out page start no polls** (0.4.1-dev.2, a
+  consumer's SEC-1a dogfood). Every `/api` call from them would answer the
+  same refusal, so the server marks them and the shell, as for an invalid
+  config, starts none of its polls and streams (health, the lock, the env
+  list, themes, the changelog, the stale-server check); the status chip
+  reads "Status unknown" instead of "Checking…" forever.
 - **No config polls under an invalid config.** The server marks every page
   it serves while the config fails validation, and the shell also learns it
   from the first `422 config_invalid` answer. From then on it starts none of
@@ -103,9 +171,27 @@ config and manifest changes a distribution must make to move to it under
   `/api/workspace/exec`, `/api/workspace/sync`, `/api/aws/login`). Other
   GETs work unchanged.
 - **A Host other than `localhost`, `127.0.0.1`, `[::1]` or Den's edge
-  hostname** now answers 421: a server exposed with `DEN_BIND_HOST=0.0.0.0`
-  and reached by a LAN name or address goes through the edge instead, or
-  binds that address (`DEN_BIND_HOST=<address>`).
+  hostname** answers 421 (SEC-1a). A server exposed with
+  `DEN_BIND_HOST=0.0.0.0` goes through the edge, or sets
+  `web.allow_plain_http_remote: true` in `config/local/user.yml`: then the
+  machine's own addresses and host name work again, signed in (SEC-1b).
+  Without either, a non-loopback bind now refuses to start, saying why.
+- **SEC-1: the terminal needs a signed-in browser; run `<cli> web open`.**
+  On loopback nothing else changes: pages, read-only calls and the
+  shell's changes work without signing in. Starting or resuming an agent
+  from the browser asks for a sign-in once per browser (one click via
+  `<cli> web open`, or `<cli> web login` for a link).
+- **Edge-fronted or remote users** see the signed-out page once; `<cli> web
+  login --origin <the edge's URL>` (the page shows the exact command) signs
+  that browser in.
+- **Scripts that call `/api` with curl from loopback**: GETs work
+  unchanged; mutations need `Authorization: Bearer $(<cli> web token
+  --print)` or an `Origin`. Through the edge every call needs the bearer.
+- **The GETs that run a service's, a workspace's or a test's command**
+  (`/api/service/exec`, `/api/run`, `/api/workspace/exec`,
+  `/api/workspace/sync`, `/api/aws/login`) are classed `mutating`, as §4
+  lists up, down and restart, not `shell-grade`: they need no sign-in on
+  loopback, and keep SEC-1a's same-origin-or-bearer check.
 
 ## [0.4.0] - 2026-11-06
 

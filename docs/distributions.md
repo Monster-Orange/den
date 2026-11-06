@@ -1179,6 +1179,65 @@ Den's scripts run with the engine's tsx (`tsxCommand()`), never through `npx`
 or a path relative to the current directory. In Den's own checkout both roots
 are the same directory.
 
+## Signing in
+
+The web UI has no password. Reading `web.secret` (32 random bytes, mode 0600
+in the state dir, made at the first `web up`) proves you are this
+computer's user, and the CLI does that for you:
+
+```bash
+./bin/acme web open        # start if needed, and sign this browser in (a new tab)
+./bin/acme web login       # print a one-time sign-in link, for another browser
+./bin/acme web sessions    # the signed-in browsers: id, created, last seen, host, user agent
+./bin/acme web logout <id> # sign out one browser (an id prefix from `web sessions`)
+./bin/acme web logout      # sign out every browser
+./bin/acme web logout --all  # and rotate web.secret: every session and token ends
+```
+
+- **The link** is `http://localhost:<port>/auth?c=<code>`, with `&next=<path>`
+  for where to land (`web login --next /settings`). The code works once,
+  within 60 seconds, and only this server's secret makes one. It is printed
+  only on the one line you asked for (`web login`, or `web up` when it
+  couldn't open the browser), never logged. Through the edge or a LAN name,
+  the cookie belongs to that name: `web login --origin https://acme.acme.localhost`
+  (the signed-out page there shows the exact command).
+- **The cookie** (`den_session_<port>`) is HttpOnly, SameSite=Strict and
+  Path=/, and Secure when the request came over HTTPS through the edge. The
+  session lives server-side (`web-sessions.json`, 0600, in the state dir):
+  idle 7 days (sliding), 30 days at most. Shorten either in
+  `config/local/user.yml` or the org config:
+
+  ```yaml
+  web:
+    session:
+      idle: 12h # s, m, h or d; at least 1m
+      max: 7d # at least idle; at most 400d
+  ```
+
+  A wrong value stops `web up` and the server, naming the key.
+
+- **What needs it.** On loopback, pages and read-only calls stay open, and
+  changes need only the page's own CSRF token (as before). Shell-grade
+  actions (starting or resuming an agent, and the terminal) need a
+  signed-in browser. Through the edge, or from another machine, every page
+  and call needs one. A page that needs one shows "Sign in to use the
+  terminal" (or "Sign in to use <name>") with the command to run; it never
+  asks for a secret. `/api` answers 401 `signin_required`.
+- **localhost is the canonical name.** A cookie set on `localhost` isn't
+  sent to `127.0.0.1`, so the links Den prints use `localhost`, and a page
+  on `127.0.0.1` or `[::1]` that needs a session links to the same page on
+  `localhost`.
+- **Scripts and the CLI** are unaffected: the CLI and the MCP server send
+  the person token (`web token --print` prints it for curl). After `web
+logout --all` the old token is refused; the CLI reads the new one.
+- **Another machine.** `DEN_BIND_HOST=0.0.0.0` (or any non-loopback
+  address) starts only with HTTPS in front (the edge, with `edge.tls`), or
+  with `web.allow_plain_http_remote: true` in `config/local/user.yml` (a
+  choice for that machine; the org config can't make it), since a session
+  cookie would otherwise cross the network in clear text. With it, the
+  machine's own addresses and host name are accepted with the port, and
+  every route there needs a session.
+
 ## Running the web UI as a service (macOS)
 
 Den ships a launchd installer that runs the web UI at login and restarts it if

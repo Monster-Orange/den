@@ -178,15 +178,33 @@ import {
 } from "./audit.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import {
+  bindRefusal,
   checkRequest,
+  isLoopbackAddress,
+  isLoopbackBind,
   newCsrfToken,
   principalOf,
+  requestIsHttps,
   sessionRequestAllowed,
   setPrincipal,
   type GuardContext,
   type GuardResult,
 } from "./request-guard.js";
-import { verifyPersonToken, WebSecretStore } from "../../shared/web-secret.js";
+import {
+  rotateWebSecret,
+  verifyPersonToken,
+  WebSecretStore,
+} from "../../shared/web-secret.js";
+import {
+  checkLoginCode,
+  localhostOrigin,
+  readWebAuthConfig,
+  safeNext,
+  sessionCookieName,
+  sessionIdPrefix,
+  WebSessionStore,
+  type WebAuthConfig,
+} from "../../shared/web-session.js";
 import { serveUiAsset } from "./ui-assets.js";
 import { graphPrefs, patchStoredGraph } from "./graph-prefs.js";
 import { graphPageHtml } from "./graph-page.js";
@@ -547,10 +565,22 @@ function sendErrorPage(
     res.end();
     return;
   }
+  // A refusal page (421, signed out): every /api call the shell frame
+  // would make answers the same refusal, so the shell starts none of its
+  // polls and streams (data-api-off; shell.js apiOff).
+  const off = data.status === 421 || data.code === "signin_required";
   serveFile(
     res,
     path.join(PUBLIC_DIR, "error.html"),
-    (html) => fillErrorPage(html, full),
+    (html) => {
+      const page = fillErrorPage(html, full);
+      return off
+        ? page.replace(
+            '<div id="den-shell"',
+            () => '<div id="den-shell" data-api-off="1"',
+          )
+        : page;
+    },
     data.status,
   );
 }
@@ -614,6 +644,10 @@ const CONFIG_FREE_ROUTES = new Set([
   "/api/server-info",
   // SEC-1a: the shell's CSRF token, which the Settings fix itself needs.
   "/api/session",
+  // SEC-1b: signing out, and the CLI's `web sessions` / `web logout`.
+  "/api/session/logout",
+  "/api/web/sessions",
+  "/api/web/logout",
   "/api/server-log",
   "/api/changelog",
   "/api/web/restart",
@@ -840,11 +874,29 @@ function denEdgeHosts(): string[] {
   );
 }
 
+// Bind loopback only: this UI runs privileged local actions (sudo-backed
+// service commands). DEN_BIND_HOST=0.0.0.0 exposes it deliberately, and
+// (SEC-1b) only with HTTPS in front or web.allow_plain_http_remote.
+const BIND_HOST = process.env.DEN_BIND_HOST ?? "127.0.0.1";
+
+/**
+ * SEC-1b: the sign-in config (`web.session.idle` / `.max`,
+ * `web.allow_plain_http_remote`), read at start. A wrong value refuses to
+ * start, naming its key.
+ */
+const WEB_AUTH: WebAuthConfig = (() => {
+  try {
+    return readWebAuthConfig(getDistRoot(), product().configFile);
+  } catch (e) {
+    console.error(`\n  ✗ ${(e as Error).message}\n`);
+    process.exit(1);
+  }
+})();
+
 /**
  * The loopback names, with the port: localhost (canonical), 127.0.0.1 and
  * [::1]; the product's own name when /etc/hosts maps it to 127.0.0.1 (the
- * URL `web up` opens then); and a specific address DEN_BIND_HOST binds (an
- * IP literal can't be rebound).
+ * URL `web up` opens then); and a loopback address DEN_BIND_HOST binds.
  */
 function loopbackNames(): string[] {
   const names = ["localhost", "127.0.0.1", "[::1]"];
@@ -854,23 +906,153 @@ function loopbackNames(): string[] {
   } catch {
     /* no hosts file */
   }
-  const bind = process.env.DEN_BIND_HOST?.trim().toLowerCase();
-  if (bind && bind !== "0.0.0.0" && bind !== "::" && net.isIP(bind))
+  const bind = BIND_HOST.trim().toLowerCase();
+  if (net.isIP(bind) && isLoopbackBind(bind))
     names.push(net.isIPv6(bind) ? `[${bind}]` : bind);
   return [...new Set(names)];
 }
 
+/**
+ * SEC-1b: this machine's own LAN names, with the port, for a non-loopback
+ * bind that `web.allow_plain_http_remote` allows: the bound address, or
+ * (0.0.0.0, ::) every interface's address and the host name. Beyond
+ * loopback, so every route needs a session. An IP literal or this
+ * machine's own name can't be rebound; any other name stays 421.
+ */
+function lanHosts(): string[] {
+  const bind = BIND_HOST.trim().toLowerCase();
+  if (isLoopbackBind(bind) || !WEB_AUTH.allowPlainHttpRemote) return [];
+  const br = (a: string) => (net.isIPv6(a) ? `[${a}]` : a);
+  if (bind !== "0.0.0.0" && bind !== "::")
+    return net.isIP(bind) ? [br(bind)] : [bind];
+  const out: string[] = [];
+  for (const list of Object.values(os.networkInterfaces()))
+    for (const a of list ?? [])
+      if (!a.internal)
+        out.push(br(a.address.toLowerCase().replace(/%.*$/, "")));
+  const host = os.hostname().toLowerCase();
+  if (host) out.push(host, host.endsWith(".local") ? host : `${host}.local`);
+  return [...new Set(out)];
+}
+
+/** HTTPS in front of this server: an edge with TLS that routes to it. */
+function edgeFronted(): boolean {
+  try {
+    return (
+      readEdgeConfig().tls.strategy !== "none" && denEdgeHosts().length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
 const webSecret = new WebSecretStore();
+const webSessions = new WebSessionStore({
+  secret: () => webSecret.current(),
+  lifetime: () => WEB_AUTH,
+});
+const SESSION_COOKIE = sessionCookieName(PORT);
+
+/** The request's `den_session_<port>` cookie value, if any. */
+function sessionCookie(req: http.IncomingMessage): string | undefined {
+  const raw = req.headers.cookie;
+  if (!raw) return undefined;
+  for (const part of raw.split(";")) {
+    const i = part.indexOf("=");
+    if (i > 0 && part.slice(0, i).trim() === SESSION_COOKIE)
+      return part.slice(i + 1).trim();
+  }
+  return undefined;
+}
+
+const LAN_HOSTS = lanHosts();
 const GUARD: GuardContext = {
   port: PORT,
   loopbackNames: loopbackNames(),
   edgeHosts: denEdgeHosts,
+  lanHosts: () => LAN_HOSTS,
   verifyBearer: (token) => {
     const secret = webSecret.current();
     return secret ? verifyPersonToken(token, secret) : null;
   },
   csrfToken: newCsrfToken(),
+  session: (req) => webSessions.lookup(sessionCookie(req)),
+  peerIsLoopback: (req) => isLoopbackAddress(req.socket?.remoteAddress),
 };
+
+/**
+ * The Set-Cookie for a session: HttpOnly, SameSite=Strict, Path=/, Secure
+ * when the request came over HTTPS (requestIsHttps: the edge's own header
+ * only from the edge), for the absolute lifetime (the server enforces idle).
+ */
+function sessionSetCookie(id: string, secure: boolean): string {
+  return (
+    `${SESSION_COOKIE}=${id}; Path=/; HttpOnly; SameSite=Strict; ` +
+    `Max-Age=${Math.floor(WEB_AUTH.maxMs / 1000)}${secure ? "; Secure" : ""}`
+  );
+}
+function clearSessionCookie(secure: boolean): string {
+  return (
+    `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0` +
+    (secure ? "; Secure" : "")
+  );
+}
+
+/** The loopback names that aren't localhost: their signed-out page links there. */
+function nonCanonicalLoopback(req: http.IncomingMessage): boolean {
+  const h = String(req.headers.host ?? "")
+    .toLowerCase()
+    .replace(/:\d+$/, "");
+  return h !== "localhost" && GUARD.loopbackNames.includes(h);
+}
+
+/**
+ * The signed-out page (§2): the shell frame, "Sign in to use the terminal"
+ * (shell-grade on loopback) or "Sign in to use <title>", the command that
+ * prints a link, and on 127.0.0.1 or [::1] a link to the same path on
+ * localhost (where the cookie is). Never a form for a secret or a token.
+ */
+function sendSignedOut(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  opts: {
+    pathname: string;
+    search: string;
+    scope: "terminal" | "den";
+    expired?: boolean;
+    requestId: string;
+    message: string;
+  },
+): void {
+  const host = String(req.headers.host ?? "").toLowerCase();
+  const toLocal = nonCanonicalLoopback(req);
+  const via = GUARD.edgeHosts().includes(host.replace(/:\d+$/, ""))
+    ? "edge"
+    : "other";
+  const origin = `${requestIsHttps(req, via === "edge" ? "edge" : null) ? "https" : "http"}://${host}`;
+  const cmd =
+    `${product().cli} web login` +
+    (toLocal || host === `localhost:${PORT}` ? "" : ` --origin ${origin}`);
+  res.setHeader("Cache-Control", "no-store");
+  sendErrorPage(req, res, {
+    status: 401,
+    code: "signin_required",
+    path: opts.pathname,
+    message: opts.message,
+    requestId: opts.requestId,
+    signin: {
+      scope: opts.scope,
+      name: product().title,
+      cmd,
+      ...(opts.expired ? { expired: true } : {}),
+      ...(toLocal && !opts.expired
+        ? {
+            localhost: `${localhostOrigin(PORT)}${opts.pathname}${opts.search}`,
+          }
+        : {}),
+    },
+  });
+}
 
 const PUBLIC_ASSET_EXTS = new Set([
   ".js",
@@ -896,6 +1078,7 @@ function sendGuardRefusal(
   pathname: string,
   refusal: Extract<GuardResult, { ok: false }>,
   requestId: string,
+  search = "",
 ): void {
   if (pathname === "/api" || pathname.startsWith("/api/"))
     return sendJson(
@@ -903,6 +1086,14 @@ function sendGuardRefusal(
       { ok: false, error: refusal.error, code: refusal.code, requestId },
       refusal.status,
     );
+  if (refusal.code === "signin_required" && wantsHtmlPage(req, pathname))
+    return sendSignedOut(req, res, {
+      pathname,
+      search,
+      scope: refusal.scope ?? "den",
+      requestId,
+      message: refusal.error,
+    });
   if (wantsHtmlPage(req, pathname))
     return sendErrorPage(req, res, {
       status: refusal.status,
@@ -913,6 +1104,47 @@ function sendGuardRefusal(
     });
   res.writeHead(refusal.status, { "Content-Type": "text/plain" });
   res.end(`${refusal.error} (${refusal.code}, request ${requestId})`);
+}
+
+/**
+ * `GET /auth?c=<code>&next=<path>` (§2): a valid, unused login code (60 s,
+ * constant-time mac, single use) becomes a session and its cookie, then a
+ * 303 to `next` when it is a same-origin path, else `/`. Anything else gets
+ * the signed-out page, which never echoes the code.
+ */
+function handleAuth(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  requestId: string,
+  via: "loopback" | "edge" | "lan" | null,
+): void {
+  const secret = webSecret.current();
+  const check = secret
+    ? checkLoginCode(url.searchParams.get("c") ?? "", secret)
+    : null;
+  if (!check?.ok || !webSessions.consumeCode(check.nonce, check.expiresAt)) {
+    res.setHeader("Referrer-Policy", "no-referrer");
+    return sendSignedOut(req, res, {
+      pathname: "/auth",
+      search: "",
+      scope: "den",
+      expired: true,
+      requestId,
+      message: `That sign-in link expired or was used. Run \`${product().cli} web login\` for a new one.`,
+    });
+  }
+  const { id } = webSessions.create({
+    userAgent: req.headers["user-agent"],
+    host: req.headers.host,
+  });
+  res.writeHead(303, {
+    Location: safeNext(url.searchParams.get("next")),
+    "Set-Cookie": sessionSetCookie(id, requestIsHttps(req, via)),
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+  });
+  res.end();
 }
 
 // ── Server ────────────────────────────────────────────────────────────────────
@@ -955,16 +1187,37 @@ async function handleRequest(
 
   // ── Request checks (SEC-1a): Host, credential, Origin, CSRF ────────────────
   // Before any route, and before a refused request can clear a cache.
-  const guard = checkRequest(req, GUARD, product().cli);
-  // The UI's own scripts and styles answer any host, so the 421 page
-  // (which needs shell.js and the theme) renders; they hold no data.
-  // The request log above records the refusal (status, request id).
+  const guard = checkRequest(req, GUARD, product().cli, product().title);
+  // The UI's own scripts and styles answer any host, and without a
+  // session, so the 421 and signed-out pages (which need shell.js and the
+  // theme) render; they hold no data. The request log above records the
+  // refusal (status, request id; never the query, where a login code is).
   if (
     !guard.ok &&
-    !(guard.code === "misdirected" && isPublicAsset(req, pathname))
+    !(
+      (guard.code === "misdirected" || guard.code === "signin_required") &&
+      isPublicAsset(req, pathname)
+    )
   )
-    return sendGuardRefusal(req, res, pathname, guard, requestId);
+    return sendGuardRefusal(req, res, pathname, guard, requestId, url.search);
   if (guard.ok) setPrincipal(req, guard.principal);
+
+  // ── Sign-in (SEC-1b, §2) ───────────────────────────────────────────────────
+  // Before config validation: signing in never depends on the config.
+  if (pathname === "/auth" && (req.method === "GET" || req.method === "HEAD"))
+    return handleAuth(req, res, url, requestId, guard.ok ? guard.via : null);
+  if (
+    pathname === "/signin" &&
+    (req.method === "GET" || req.method === "HEAD")
+  ) {
+    // Shell-grade: the request checks let it through only signed in.
+    res.writeHead(303, {
+      Location: safeNext(url.searchParams.get("next")),
+      "Cache-Control": "no-store",
+    });
+    res.end();
+    return;
+  }
 
   // A mutating request may change what /api/services would list (exec and
   // sync stream over GET, for EventSource).
@@ -2878,9 +3131,12 @@ async function handleRequest(
   }
 
   // ── API: server info + staleness (drives the header "stale server" pill) ────
-  // ── API: the browser's session (SEC-1a) ──────────────────────────────────
+  // ── API: the browser's session (SEC-1a, SEC-1b) ──────────────────────────
   // The CSRF token the shell sends on mutating calls (X-Den-CSRF), for a
-  // same-origin caller only. SEC-1b: actor "person-browser" with a cookie.
+  // same-origin caller only: the session's own when signed in
+  // (actor "person-browser"); else, on loopback, this server start's.
+  // Beyond loopback without a session there is none to hand out (every
+  // route there needs a session first).
   if (pathname === "/api/session" && req.method === "GET") {
     if (!sessionRequestAllowed(req, GUARD))
       return sendJson(
@@ -2892,7 +3148,72 @@ async function handleRequest(
         },
         403,
       );
-    return sendJson(res, { csrf: GUARD.csrfToken, actor: null });
+    res.setHeader("Cache-Control", "no-store");
+    const g = guard.ok ? guard : null;
+    if (g?.session)
+      return sendJson(res, {
+        csrf: g.session.csrf,
+        actor: "person-browser",
+        signedIn: true,
+      });
+    return sendJson(res, {
+      csrf: g?.beyond ? null : GUARD.csrfToken,
+      actor: null,
+      signedIn: false,
+    });
+  }
+  // Sign out: this browser's session ends and its cookie is cleared.
+  if (pathname === "/api/session/logout" && req.method === "POST") {
+    const g = guard.ok ? guard : null;
+    const ended = g?.session ? webSessions.end(g.session.key) : false;
+    res.setHeader(
+      "Set-Cookie",
+      clearSessionCookie(requestIsHttps(req, g?.via ?? null)),
+    );
+    return sendJson(res, { ok: true, ended });
+  }
+  // `<cli> web sessions` (shell-grade: the person's bearer, or a session).
+  if (pathname === "/api/web/sessions" && req.method === "GET") {
+    const mine = guard.ok ? guard.session?.key : undefined;
+    return sendJson(res, {
+      sessions: webSessions.list().map((x) => ({
+        id: sessionIdPrefix(x.key),
+        createdAt: new Date(x.createdAt).toISOString(),
+        lastSeenAt: new Date(x.lastSeenAt).toISOString(),
+        userAgent: x.userAgent,
+        host: x.host,
+        ...(x.key === mine ? { current: true } : {}),
+      })),
+    });
+  }
+  // `<cli> web logout [<id>] [--all]` (shell-grade). `rotate` (--all) also
+  // replaces web.secret: every session and person token derived from the
+  // old one stops verifying; the CLI re-reads the file, so it keeps working.
+  if (pathname === "/api/web/logout" && req.method === "POST") {
+    let body: { id?: unknown; rotate?: unknown } = {};
+    try {
+      body = (JSON.parse((await readBody(req)) || "{}") ?? {}) as typeof body;
+    } catch {
+      return send400(res, "the body must be JSON: { id?, rotate? }");
+    }
+    if (body.id !== undefined && typeof body.id !== "string")
+      return send400(res, "id must be a session id prefix");
+    try {
+      const ended =
+        typeof body.id === "string"
+          ? [sessionIdPrefix(webSessions.endByPrefix(body.id).key)]
+          : webSessions.list().map((x) => sessionIdPrefix(x.key));
+      if (typeof body.id !== "string") webSessions.endAll();
+      const rotated = body.rotate === true;
+      if (rotated) rotateWebSecret();
+      return sendJson(res, { ok: true, ended, rotated });
+    } catch (e) {
+      return sendJson(
+        res,
+        { ok: false, error: (e as Error).message, code: "not_found" },
+        404,
+      );
+    }
   }
 
   if (pathname === "/api/server-info" && req.method === "GET") {
@@ -3905,7 +4226,7 @@ const server = http.createServer((req, res) => {
 // upgrade). No route takes one yet (AG-4a-term will): a passing upgrade
 // answers 404.
 server.on("upgrade", (req: http.IncomingMessage, socket: net.Socket) => {
-  const guard = checkRequest(req, GUARD, product().cli);
+  const guard = checkRequest(req, GUARD, product().cli, product().title);
   const status = guard.ok ? 404 : guard.status;
   const body = JSON.stringify({
     ok: false,
@@ -4026,10 +4347,17 @@ try {
   serverLog(`  ⚠ cache warm-up failed: ${(e as Error).message}`);
 }
 
-// Bind loopback only — this UI runs privileged local actions (sudo-backed
-// service commands), so it must not be reachable from the LAN. Opt out with
-// DEN_BIND_HOST=0.0.0.0 for deliberate exposure.
-const BIND_HOST = process.env.DEN_BIND_HOST ?? "127.0.0.1";
+// §4: a non-loopback bind needs HTTPS in front, or the person's say-so.
+{
+  const refusal = bindRefusal(BIND_HOST, {
+    allowPlainHttpRemote: WEB_AUTH.allowPlainHttpRemote,
+    fronted: edgeFronted(),
+  });
+  if (refusal) {
+    console.error(`\n  ✗ ${refusal}\n`);
+    process.exit(1);
+  }
+}
 // SEC-1a: the secret the CLI's person token is derived from (0600 in the
 // state dir). Never printed or logged; a failure leaves bearers unverifiable.
 try {

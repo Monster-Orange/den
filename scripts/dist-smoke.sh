@@ -261,6 +261,21 @@ code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: applic
   -H "Authorization: Bearer $SEC_TOKEN" --data '{"editor":null}' "http://localhost:$PORT/api/settings")"
 SEC_TOKEN=""
 [ "$code" = "200" ] && ok "POST /api/settings with \`acme web token --print\`: 200" || bad "POST /api/settings with the CLI token answered $code"
+# SEC-1b: `web login` prints a one-time link (never echoed here) that the
+# server swaps for a session cookie, once; shell-grade needs a session.
+SEC_LINK="$(cd "$DIST" && ./bin/acme web login --port "$PORT" 2>/dev/null)"
+SEC_HDR="$(curl -sS -o /dev/null -D - -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
+again="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
+SEC_LINK=""
+if [[ "$SEC_HDR" == HTTP/*" 303"* ]] &&
+  grep -qi "^set-cookie: den_session_$PORT=[^;]*; Path=/; HttpOnly; SameSite=Strict" <<<"$SEC_HDR" &&
+  [ "$again" = "401" ]; then
+  ok "\`acme web login\`'s link signs in once (303 and a session cookie; 401 the second time)"
+else bad "\`acme web login\`'s link didn't sign in once (second use answered $again)"; fi
+SEC_HDR=""
+code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "Origin: http://localhost:$PORT" \
+  -H 'Content-Type: application/json' --data '{}' "http://localhost:$PORT/api/workspaces/main/agents")"
+[ "$code" = "401" ] && ok "agent start without a signed-in browser: 401" || bad "agent start without a session answered $code"
 run web-restart ./bin/acme web restart --no-open --port "$PORT"
 run web-down ./bin/acme web down --port "$PORT"
 port_free() { ! (lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1); }

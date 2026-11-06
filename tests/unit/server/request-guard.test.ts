@@ -163,6 +163,8 @@ describe("CSRF and the bearer", () => {
       ok: true,
       principal: { kind: "person-browser" },
       via: "loopback",
+      beyond: false,
+      session: null,
     });
   });
   it("no Origin with a valid bearer passes, as person:<user>; CSRF skipped", () => {
@@ -175,6 +177,8 @@ describe("CSRF and the bearer", () => {
       ok: true,
       principal: { kind: "person", actor: "person:someone" },
       via: "loopback",
+      beyond: false,
+      session: null,
     });
     expect(
       checkRequest(

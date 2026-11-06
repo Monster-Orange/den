@@ -1,17 +1,24 @@
 /**
  * Every route the web server dispatches, with its class (SEC-1 spec §3, §4).
- * One source for the request checks (request-guard.ts) and, in SEC-1b, for
- * which routes need a signed-in session.
+ * One source for the request checks (request-guard.ts) and for which routes
+ * need a signed-in session (SEC-1b).
  *
- *   readonly     reads state. A GET passes with the Host check alone (§6),
- *                even when it runs a read-only probe (a health check, a
- *                `git rev-parse`, a `docker logs` tail).
- *   mutating     changes state: config, workspaces, the lock, a deploy.
- *   shell-grade  runs a command or a process for the caller: a service's
- *                lifecycle command, a test run, a workspace command, a sync
- *                (git in the checkouts), an SSO login, an agent's start or
- *                resume. SEC-1b adds "needs a signed-in session"; until
- *                then it gets the mutating checks.
+ *   readonly     reads state. On loopback a GET passes with the Host check
+ *                alone (§6), even when it runs a read-only probe (a health
+ *                check, a `git rev-parse`, a `docker logs` tail).
+ *   mutating     changes state or runs a declared lifecycle command: config,
+ *                workspaces, the lock, a deploy, a service's up/down, a test
+ *                run, a sync, an SSO login (§4: "up, down, restart, …").
+ *                Origin and CSRF; the session's CSRF when one is signed in.
+ *   shell-grade  a shell for the caller, or what manages them: an agent's
+ *                start or resume (a runtime in a PTY), the browser
+ *                sessions, and (AG-4a-term) /api/sessions/*. Needs a
+ *                signed-in browser (or a person bearer) even on loopback.
+ *
+ * Beyond loopback (the edge hostname, or a peer that isn't loopback) every
+ * class needs a signed-in session or a bearer (§4); SIGNIN_FREE lists the
+ * only routes that don't (how a browser gets a session, and what it asks
+ * first).
  *
  * POST, PUT, PATCH and DELETE are checked as mutations by method, whatever
  * the table says; they are listed so SEC-1b reads one table. A GET that is
@@ -146,20 +153,47 @@ export const ROUTES: readonly RouteEntry[] = [
     "GET attaches to a deploy session's log; it starts nothing",
   ),
 
-  // ── Shell-grade GETs: they run something (SSE, so they are GETs) ────────
-  S(
+  // ── GETs that run something (SSE, so they are GETs): mutating (§4) ─────
+  M(
     ["GET", "HEAD"],
     "/api/service/exec",
     "runs a service's lifecycle command (up, down, restart, …)",
   ),
-  S(["GET", "HEAD"], "/api/run", "starts a test run (playwright, k6, ZAP)"),
-  S(["GET", "HEAD"], "/api/workspace/exec", "runs a workspace command"),
-  S(
+  M(["GET", "HEAD"], "/api/run", "starts a test run (playwright, k6, ZAP)"),
+  M(
+    ["GET", "HEAD"],
+    "/api/workspace/exec",
+    "runs a workspace's lifecycle command over its services",
+  ),
+  M(
     ["GET", "HEAD", "POST"],
     "/api/workspace/sync",
     "runs git in the workspace's checkouts (clone, pull)",
   ),
-  S(["GET", "HEAD"], "/api/aws/login", "runs `aws sso login`"),
+  M(["GET", "HEAD"], "/api/aws/login", "runs `aws sso login`"),
+
+  // ── Sign-in (SEC-1b, §2) ────────────────────────────────────────────────
+  M(
+    ["GET", "HEAD"],
+    "/auth",
+    "swaps a one-time login code for a session cookie",
+  ),
+  S(
+    ["GET", "HEAD"],
+    "/signin",
+    "a page that needs a signed-in browser: it goes on to `next` once signed in",
+  ),
+  M(["POST"], "/api/session/logout", "ends this browser's session"),
+  S(
+    ["GET", "HEAD"],
+    "/api/web/sessions",
+    "lists the browser sessions (`web sessions`)",
+  ),
+  S(
+    ["POST"],
+    "/api/web/logout",
+    "ends browser sessions, and rotates web.secret (`web logout`)",
+  ),
 
   // ── Mutations (checked by method) ───────────────────────────────────────
   M(["POST"], "/api/activity", "an agent's refused-call report"),
@@ -201,6 +235,14 @@ export const ROUTES: readonly RouteEntry[] = [
     "resumes an agent: a runtime in a PTY",
   ),
 ];
+
+/**
+ * The routes that never need a signed-in session, even beyond loopback:
+ * the sign-in itself, and the session probe the shell and the signed-out
+ * page ask first (it hands out a CSRF token only to a session, or on
+ * loopback).
+ */
+export const SIGNIN_FREE: readonly string[] = ["/auth", "/api/session"];
 
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {

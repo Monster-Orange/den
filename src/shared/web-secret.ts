@@ -10,9 +10,9 @@
  * sent as `Authorization: Bearer den_pt_<b64url>`. The server recomputes it
  * and compares in constant time; its actor is `person:<os user>`.
  *
- * Seams: SEC-1b's `web logout --all` rotates the secret (rotateWebSecret
- * is the place), and SEC-1c's agent tokens (`den_at_…`) are verified next
- * to verifyPersonToken.
+ * SEC-1b's `web logout --all` rotates the secret (rotateWebSecret). Seam:
+ * SEC-1c's agent tokens (`den_at_…`) are verified next to
+ * verifyPersonToken.
  */
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
@@ -75,6 +75,22 @@ export function ensureWebSecret(stateDir: string = getStateDir()): Buffer {
   }
   tighten(file);
   return fresh;
+}
+
+/**
+ * SEC-1b (`web logout --all`): a fresh secret in place of the old one,
+ * written to a temp file (0600) and renamed over it, so a reader sees one
+ * or the other, never half. Every person token and every browser session
+ * derived from the old one stops verifying; the CLI re-reads the file on
+ * each call, so it keeps working.
+ */
+export function rotateWebSecret(stateDir: string = getStateDir()): void {
+  fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+  const file = webSecretPath(stateDir);
+  const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  fs.writeFileSync(tmp, randomBytes(SECRET_BYTES), { mode: 0o600, flag: "wx" });
+  fs.renameSync(tmp, file);
+  tighten(file);
 }
 
 function tighten(file: string): void {

@@ -121,6 +121,77 @@ async function copy(text, btn, t) {
   setTimeout(() => (btn.textContent = label), 1500);
 }
 
+/** `text` with `{cmd}` as inline code (the rest escaped). */
+function withCmd(text, cmd) {
+  return esc(text).replace("\u0000", `<code class="mono">${esc(cmd)}</code>`);
+}
+
+/**
+ * The signed-out page (SEC-1b, SEC-1 spec §2): "Sign in to use the
+ * terminal" (a shell-grade route on loopback) or "Sign in to use <name>"
+ * (beyond loopback), the command that prints a sign-in link with a copy
+ * button, and on 127.0.0.1 or [::1] a link to the same page on localhost,
+ * where the cookie is. It never asks for a secret or a token.
+ *
+ * A link from 127.0.0.1 lands here once without the cookie (a cross-site
+ * navigation doesn't carry a SameSite=Strict one); /api/session, asked
+ * same-origin, does carry it, so a signed-in browser reloads the page
+ * from here (same-origin) and is let through.
+ */
+function mountSignedOut(root, sh, d) {
+  const t = sh.t;
+  const s = d.signin;
+  const title = s.expired
+    ? t("err.signin.expiredTitle")
+    : s.scope === "terminal"
+      ? t("err.signin.terminal")
+      : t("err.signin.title", { name: s.name || "Den" });
+  document.title = document.title.replace(/Error$/, title);
+  const lead = s.expired
+    ? withCmd(t("err.signin.expired", { cmd: "\u0000" }), s.cmd)
+    : withCmd(t("err.signin.lead", { cmd: "\u0000" }), s.cmd);
+  root.innerHTML =
+    `<div class="ph"><div><h1>${esc(title)}</h1>` +
+    `<div class="sub">${esc(t("err.signin.sub"))}</div></div></div>` +
+    `<div class="empty" id="den-signin"><p class="lead">${lead}</p>` +
+    `<pre class="code" id="den-signin-cmd">${esc(s.cmd)}</pre>` +
+    (s.localhost
+      ? `<p>${esc(t("err.signin.local", { host: location.host }))}</p>`
+      : "") +
+    `<p class="den-signin-why">${esc(t("err.signin.why"))}</p>` +
+    `<dl class="facts">` +
+    `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
+    `</dl><div class="acts">` +
+    (s.localhost
+      ? `<a class="btn primary" id="den-signin-local" href="${esc(s.localhost)}">${esc(t("err.421.open"))}</a>`
+      : "") +
+    `<button type="button" class="btn${s.localhost ? "" : " primary"}" id="den-signin-copy">${esc(t("err.signin.copy"))}</button>` +
+    `</div></div>`;
+  const btn = root.querySelector("#den-signin-copy");
+  btn?.addEventListener("click", () => copy(s.cmd, btn, t));
+  if (s.expired || s.localhost) return;
+  let tried = false;
+  try {
+    tried = sessionStorage.getItem("den-signin-reload") === location.href;
+    sessionStorage.removeItem("den-signin-reload");
+  } catch {
+    /* no storage: try once */
+  }
+  if (tried) return;
+  fetch("/api/session", { cache: "no-store", credentials: "same-origin" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((b) => {
+      if (!b || b.signedIn !== true) return;
+      try {
+        sessionStorage.setItem("den-signin-reload", location.href);
+      } catch {
+        /* none */
+      }
+      location.replace(location.href);
+    })
+    .catch(() => {});
+}
+
 export function mountErrorPage(root) {
   const sh = window.denShell;
   const d = readData();
@@ -216,6 +287,11 @@ export function mountErrorPage(root) {
     root
       .querySelector("#den-err-retry")
       ?.addEventListener("click", () => location.reload());
+    return;
+  }
+
+  if (d.status === 401 && d.code === "signin_required" && d.signin) {
+    mountSignedOut(root, sh, d);
     return;
   }
 

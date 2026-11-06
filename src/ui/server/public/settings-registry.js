@@ -465,6 +465,39 @@ export const DEN_SETTINGS = [
         ? String(ctx.data.user_web_port)
         : "Not set: the distribution's applies",
   },
+  {
+    // SEC-1b: whether this browser is signed in, and Sign out. Signing in
+    // is the CLI's (`web login` prints a one-time link): no form here.
+    id: "cli.signin",
+    category: "cli",
+    label: "Browser sign-in",
+    description:
+      "Signing in lets this browser start and resume agents. __DEN_CLI__ web login prints a sign-in link; __DEN_CLI__ web sessions lists signed-in browsers.",
+    keywords: ["sign in", "sign out", "login", "logout", "session", "browser"],
+    scope: "user",
+    control: {
+      type: "custom",
+      render(host, ctx) {
+        const draw = (signedIn) => {
+          host.innerHTML = signedIn
+            ? '<output class="set-ro">Signed in</output> ' +
+              '<button type="button" class="btn" id="set-signout">Sign out</button>'
+            : '<output class="set-ro">Not signed in: run <code>__DEN_CLI__ web login</code></output>';
+          host.querySelector("#set-signout")?.addEventListener("click", () =>
+            ctx.shell
+              .api("POST", "/api/session/logout", {})
+              .then(() => draw(false))
+              .catch(() => {}),
+          );
+        };
+        fetch("/api/session", { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((b) => draw(b?.signedIn === true))
+          .catch(() => draw(false));
+      },
+    },
+    read: () => null,
+  },
 
   // ── Distribution (read-only) ───────────────────────────────────────────
   distRow(

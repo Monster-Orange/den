@@ -507,7 +507,9 @@ let serverDown = false;
 function paintChip() {
   const chip = $("den-status");
   if (!chip) return;
-  if (serverDown) {
+  // R26d, and SEC-1b's refusal pages (421, signed out: sh().apiOff), where
+  // no health is asked for: unknown, neutral, never "Checking…" forever.
+  if (serverDown || sh()?.apiOff?.() === true) {
     chip.classList.remove("bad");
     chip.setAttribute("aria-busy", "false");
     chip.title = t("status.unknownTip");
@@ -1181,6 +1183,8 @@ function checkVault() {
 }
 
 async function initLock() {
+  // A refusal page (SEC-1b): /api would answer the same refusal.
+  if (sh()?.apiOff?.() === true) return;
   try {
     if (sessionStorage.getItem(LS_LOCK) === "1") {
       lock.unlocked = true;

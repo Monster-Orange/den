@@ -358,6 +358,18 @@
       "This server answers only on its own addresses, so a page on another name can't reach it.",
     "err.421.open": "Open on localhost",
     "err.refused.title": "Request refused",
+    "err.signin.title": "Sign in to use {name}",
+    "err.signin.terminal": "Sign in to use the terminal",
+    "err.signin.sub": "This browser isn't signed in",
+    "err.signin.lead": "Run {cmd} and open the link.",
+    "err.signin.expiredTitle": "Sign-in link expired",
+    "err.signin.expired":
+      "That sign-in link expired or was used. Run {cmd} for a new one.",
+    "err.signin.local":
+      "A sign-in belongs to one address. This page is on {host}: open the same page on localhost, where this browser is signed in.",
+    "err.signin.why":
+      "There is no password: the link comes from a file only your user account can read.",
+    "err.signin.copy": "Copy command",
     "err.422.title": "Config is invalid",
     "err.422.sub": "The distribution config fails validation",
     "err.422.lead":
@@ -393,6 +405,7 @@
     "set.cli.cli_tabs": "Terminal tabs",
     "set.cli.log_window_lines": "Log pane lines",
     "set.cli.web_port": "Your web port",
+    "set.cli.signin": "Browser sign-in",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
     "set.distribution.orgs": "Org labels",
@@ -3294,8 +3307,16 @@
   // config (health, edge, workspaces, applications, the org config, …):
   // each would only answer 422 again. A reload once fixed starts them.
   var configBad = host.dataset.configInvalid === "1";
+  // SEC-1b: a refusal page (421 "Wrong address", or signed out): the server
+  // marks it (data-api-off), since every /api call from it would answer
+  // the same refusal. The shell starts none of its polls and streams, the
+  // same gate as an invalid config, and the status chip reads unknown.
+  var apiOffPage = host.dataset.apiOff === "1";
+  function apiOff() {
+    return apiOffPage;
+  }
   function configInvalid() {
-    return configBad;
+    return configBad || apiOffPage;
   }
   function markConfigInvalid() {
     if (configBad) return;
@@ -3490,7 +3511,7 @@
     wrapped.__denShell = true;
     window.fetch = wrapped;
     // The token is in hand before the first click needs it.
-    csrfToken(false);
+    if (!apiOffPage) csrfToken(false);
   }
 
   // ── the UI language (R19): a user pref ───────────────────────────────
@@ -3555,8 +3576,13 @@
     serverUp: function () {
       return server.up;
     },
-    /** 0.4.1: true once the config is known to fail validation. */
+    /**
+     * 0.4.1: true once the config is known to fail validation, or on a
+     * refusal page (apiOff): the config polls and streams don't start.
+     */
     configInvalid: configInvalid,
+    /** SEC-1b: a refusal page (421, signed out): no /api call would answer. */
+    apiOff: apiOff,
     /** The browser-tab icon (appearance.js: the active theme's, per mode). */
     setFavicon: setFavicon,
     /** The org part of the scope: "/ ORG <title>", static (one org). */
@@ -3636,7 +3662,7 @@
   checkOrphansSoon();
 
   // The server's prefs win over the local copy.
-  if (typeof fetch === "function")
+  if (typeof fetch === "function" && !apiOff())
     fetch("/api/settings")
       .then(function (r) {
         return r.ok ? r.json() : null;
