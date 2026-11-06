@@ -1077,7 +1077,11 @@ function checkEdgeExposure(): void {
     .then((why) => {
       if (!why) return;
       EDGE_EXPOSED = why;
-      serverLog(`  ⚠ ${EDGE_EXPOSED_MESSAGE} (${why})`, "warn");
+      // The in-app log, and stderr, which is web.log even when `web up`
+      // starts this --silent (stdout is not written then).
+      const line = `  ⚠ ${EDGE_EXPOSED_MESSAGE} (${why})`;
+      pushLog("warn", line);
+      if (!outputLost()) process.stderr.write(line + "\n");
     })
     .catch(() => undefined);
 }
