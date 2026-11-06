@@ -75,6 +75,7 @@ import {
   markSetupSucceeded,
   fetchAndFastForward,
 } from "../../shared/environment-manager/workspace-manager.js";
+import { stackNamespaceRows } from "../../shared/stacks/namespace.js";
 import {
   runServiceCommand,
   claimHealthyService,
@@ -1734,12 +1735,15 @@ class DenCLI {
         const resolved = resolveService(address, workspace);
         if (resolved) {
           const health = await checkServiceHealth(resolved, "local");
-          if (health.health === "ok") {
-            // Skipping must not lose the refcount — this workspace is an owner
-            // of what's running, whether den tracked it or not.
-            const claim = workspace
+          // `conflict`: a shared stack namespace runs another checkout's
+          // project; the real up below refuses it, naming both.
+          const claim =
+            health.health === "ok" && workspace
               ? claimHealthyService(resolved, workspace)
               : "untracked";
+          if (health.health === "ok" && claim !== "conflict") {
+            // Skipping must not lose the refcount — this workspace is an owner
+            // of what's running, whether den tracked it or not.
             const suffix =
               claim === "adopted"
                 ? " (adopted its running containers)"
@@ -3985,14 +3989,32 @@ class DenCLI {
         const only = orgFlag(args.slice(1));
         const { resolved, warnings } = orgListRows();
         const orgOfWs = new Map(resolved.map((w) => [w.workspace, w.org]));
-        const table = newTable({
-          head: ["Workspace", "Org", "Active", "Focus", "Services", "Type"],
-          style: { head: ["cyan"] },
-        });
         const shown = Object.entries(file.workspaces).filter(
           ([name]) => !only || sameOrg(orgOfWs.get(name) ?? null, only),
         );
+        // A Stacks column only when a shown workspace's stack namespace is
+        // not its default suffix (or is invalid): the list is otherwise as before.
+        const nsRows = new Map(
+          stackNamespaceRows(shown.map(([n]) => n)).map((r) => [
+            r.workspace,
+            r,
+          ]),
+        );
+        const nsCol = [...nsRows.values()].some((r) => r.differs || r.error);
+        const table = newTable({
+          head: [
+            "Workspace",
+            "Org",
+            "Active",
+            "Focus",
+            "Services",
+            "Type",
+            ...(nsCol ? ["Stacks"] : []),
+          ],
+          style: { head: ["cyan"] },
+        });
         for (const [name, cfg] of shown) {
+          const ns = nsRows.get(name);
           table.push([
             chalk.bold(name),
             orgOfWs.get(name) ?? chalk.gray("none"),
@@ -4000,9 +4022,23 @@ class DenCLI {
             name === focus ? chalk.cyan("●") : "",
             Object.keys(cfg.services).join(", ") || chalk.gray("none"),
             cfg.directory ? chalk.magenta("feature") : chalk.blue("default"),
+            ...(nsCol
+              ? [
+                  ns?.error
+                    ? chalk.red("invalid")
+                    : ns?.differs
+                      ? `${ns.stack_namespace} ${chalk.gray(`(${ns.source})`)}`
+                      : chalk.gray(ns?.default ?? ""),
+                ]
+              : []),
           ]);
         }
         console.log(table.toString());
+        printOrgWarnings(
+          [...nsRows.values()].flatMap((r) =>
+            r.error ? [`workspace ${r.workspace}: ${r.error}`] : r.warnings,
+          ),
+        );
         if (only && shown.length === 0)
           console.log(chalk.yellow(`  No workspace in org ${only}.`));
         const names = new Set(shown.map(([n]) => n));

@@ -19,6 +19,7 @@ import type { ResolvedService } from "../../shared/types/index.js";
 import type { EditorManager } from "./editor-manager.js";
 import type { GitHubService } from "./github-service.js";
 import { JETBRAINS_EDITORS } from "./editor-manager.js";
+import { stackNamespaceRows } from "../../shared/stacks/namespace.js";
 import {
   readWorkspacesFile,
   writeWorkspacesFile,
@@ -550,7 +551,21 @@ export async function handleWorkspaceRoutes(
       syncJetBrainsWorkspaceSymlinks(wsFile);
     }
 
-    return sendJson(res, { ...wsFile, resolvedDirs, codeWorkspacePaths });
+    // Each workspace's stack namespace, resolved, with where it came from
+    // (workspace, blueprint or default) and whether it differs from the
+    // default suffix: the page's "stacks: <ns>" chip.
+    const stackNamespaces = Object.fromEntries(
+      stackNamespaceRows(Object.keys(wsFile.workspaces)).map((r) => [
+        r.workspace,
+        r,
+      ]),
+    );
+    return sendJson(res, {
+      ...wsFile,
+      resolvedDirs,
+      codeWorkspacePaths,
+      stackNamespaces,
+    });
   }
 
   // ── API: rename workspace ─────────────────────────────────────────────────
@@ -1773,10 +1788,15 @@ export async function handleWorkspaceRoutes(
           if (cmd === "up") {
             const health = await checkServiceHealth(resolved, "local");
             if (cancelled) return;
-            if (health.health === "ok") {
+            // `conflict`: a shared stack namespace runs another checkout's
+            // project; the real up refuses it, naming both.
+            const claim =
+              health.health === "ok"
+                ? claimHealthyService(resolved, ws.name)
+                : "untracked";
+            if (health.health === "ok" && claim !== "conflict") {
               // Skipping must not lose the refcount — this workspace is an
               // owner of what's running, whether den tracked it or not.
-              const claim = claimHealthyService(resolved, ws.name);
               emit({
                 type: "line",
                 text:

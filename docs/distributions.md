@@ -869,7 +869,8 @@ defaults:
       focus: true
 ```
 
-Each entry takes `repos`, `branch`, `autostart_off` and `org`, the same
+Each entry takes `repos`, `branch`, `autostart_off`, `org` and
+`stack_namespace` (see [Stack namespaces](#stack-namespaces)), the same
 fields as `defaults.workspace`, plus `focus`. Seeding creates every named workspace
 with its repos, activates them all, and focuses the one with `focus: true`
 (else the first). Set `defaults.workspace` or `defaults.workspaces`, not both:
@@ -939,6 +940,69 @@ its workspace's org is a warning in both lists, never an error.
 
 `org:` in the blueprint needs Den 0.2.7 or later: an older Den rejects the
 unknown key. Pin 0.2.7 before you commit it.
+
+## Stack namespaces
+
+A repo's compose stack runs as the Compose project `<stack>-<workspace>`,
+and its containers, volumes and networks are named from it. The `default`
+workspace uses `main` (`shop-main`), so its data predates workspaces. That
+is the default and needs no config.
+
+A workspace can opt out with `stack_namespace`, which replaces the suffix:
+
+```yaml
+# config/local/workspaces.yml (this machine)
+workspaces:
+  storefront:
+    stack_namespace: main # shop runs as shop-main, with default's data
+    services: { shop: { mode: dev-managed, path: ~/src/shop } }
+```
+
+```yaml
+# org config: on a blueprint workspace, next to org
+defaults:
+  workspaces:
+    storefront:
+      repos: [shop-web, shop]
+      stack_namespace: main
+```
+
+A workspace's namespace is the first of `stack_namespace` in
+workspaces.yml, `stack_namespace` on the blueprint workspace of the same
+name, and its own name (`default`: `main`). `acme workspace seed` writes
+the blueprint's value into the workspace it seeds. workspaces.yml
+overriding a different blueprint value is a warning naming both. The value
+is lowercase letters, digits and dashes; anything else is a config error
+that names the key.
+
+Workspaces with the same namespace share their stacks' projects, and so
+their data; a stack keeps its data when its repo moves between them. A
+shared project is one instance, keyed by checkout:
+
+- Two workspaces bringing up the same stack from the same checkout (repo
+  path and branch) share it. `acme down <repo>` or `acme stack down
+<stack>` from one, while another active workspace in the namespace still
+  holds it, detaches and leaves it running; the last one stops it.
+  `stack down --force` stops it regardless. A workspace that skips the
+  stack as already healthy counts as holding it too.
+- Bringing it up from a different checkout or branch is refused
+  (`identity_mismatch`), naming both checkouts and the namespace. Stop it
+  where it runs first, or give the workspace its own `stack_namespace`.
+
+`acme workspace list` adds a Stacks column when a workspace's namespace is
+not its default, the Workspaces page shows a "stacks: <ns>" chip in the
+workspace's header, and `GET /api/workspaces` gives `stackNamespaces`:
+each workspace's `stack_namespace`, its `source` (`workspace`, `blueprint`
+or `default`), its `default` and whether it `differs`.
+
+`DEN_STACK_WORKSPACE=<suffix>` overrides the suffix for one command
+(`DEN_STACK_WORKSPACE=pr-12 acme stack up shop` runs `shop-pr-12`). It wins
+over `stack_namespace` and bypasses the shared-project bookkeeping. It is a
+per-command override, not a migration tool: to keep a workspace on another
+namespace, set `stack_namespace`.
+
+`stack_namespace` in the blueprint needs Den 0.3.0-dev.36 or later: an
+older Den rejects the unknown key.
 
 ## Releases
 

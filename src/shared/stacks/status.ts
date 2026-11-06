@@ -15,7 +15,12 @@ import {
   listWorkspaceServices,
 } from "../environment-manager/workspaces.js";
 import { readManifestStacks, readStacks } from "./config.js";
-import { projectName, stackWorkspace } from "./render.js";
+import { STACK_NAMESPACE_RE } from "../den-config.js";
+import {
+  resolveStackNamespace,
+  type StackNamespaceSource,
+} from "./namespace.js";
+import { projectName } from "./render.js";
 import { stackHealth, type StackContext } from "./runtime.js";
 
 export interface StackRoute {
@@ -38,40 +43,62 @@ export interface StackStatus {
   health?: { ok: boolean | null; detail: string };
 }
 
-const WS_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
-
 /**
  * The den workspace stacks read their manifests from, and the Compose
  * project suffix they run under. `denWorkspace` defaults to the CLI's
- * -w override, then the focused workspace, then `default`.
+ * -w override, then the focused workspace, then `default`. The suffix is
+ * the workspace's stack namespace (namespace.ts); DEN_STACK_WORKSPACE, a
+ * per-command override, wins over it for this one process (source `env`).
+ *
+ * The one place a den workspace becomes a Compose project suffix: every
+ * stack path (status, runtime, health, container lookup) comes through here.
  */
 export function resolveStackWorkspaces(
   denWorkspace?: string | null,
   env: NodeJS.ProcessEnv = process.env,
-): { denWorkspace: string; stackWorkspace: string } {
+): {
+  denWorkspace: string;
+  stackWorkspace: string;
+  source: StackNamespaceSource | "env";
+} {
   const fkWs =
     denWorkspace ||
     env.DEN_WORKSPACE_OVERRIDE ||
     getFocusedWorkspaceName() ||
     "default";
-  const ws = env.DEN_STACK_WORKSPACE || stackWorkspace(fkWs);
-  if (!WS_RE.test(ws))
+  const override = env.DEN_STACK_WORKSPACE;
+  const resolved = override ? null : resolveStackNamespace(fkWs);
+  const ws = override || resolved!.namespace;
+  if (!STACK_NAMESPACE_RE.test(ws))
     throw new Error(
       `workspace "${ws}" must be lowercase letters, digits and dashes`,
     );
-  return { denWorkspace: fkWs, stackWorkspace: ws };
+  return {
+    denWorkspace: fkWs,
+    stackWorkspace: ws,
+    source: resolved ? resolved.source : "env",
+  };
 }
 
 /** The edge, the known stacks and the project suffix for one workspace. */
 export function loadStackContext(denWorkspace?: string | null): StackContext {
-  const { denWorkspace: fkWs, stackWorkspace: ws } =
-    resolveStackWorkspaces(denWorkspace);
+  const {
+    denWorkspace: fkWs,
+    stackWorkspace: ws,
+    source,
+  } = resolveStackWorkspaces(denWorkspace);
   const edge = readEdgeConfig();
   // Repo manifests come from that den workspace's checkouts.
   const stacks = readStacks(undefined, {
     workspace: getWorkspaceByName(fkWs) ? fkWs : undefined,
   });
-  return { edge, stacks, workspace: ws };
+  return {
+    edge,
+    stacks,
+    workspace: ws,
+    denWorkspace: fkWs,
+    namespaceSource: source,
+  };
 }
 
 /** Each stack's name, project, routes and (optionally) container health. */

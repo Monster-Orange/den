@@ -72,6 +72,16 @@ function blueprintServices(
 }
 
 /**
+ * The blueprint's `stack_namespace`, carried into the seeded workspace so
+ * its stacks keep that namespace on this machine ({} when it sets none).
+ */
+function blueprintStackNamespace(
+  bp: ResolvedWorkspaceBlueprint,
+): Pick<WorkspaceConfig, "stack_namespace"> {
+  return bp.stackNamespace ? { stack_namespace: bp.stackNamespace } : {};
+}
+
+/**
  * The clone slug seeding would give each repo the catalog has no `gh` for:
  * `<org>/<repo>` with its workspace's resolved org. A repo in several
  * workspaces takes the first one's. Reads only; throws when a repo needs an
@@ -166,7 +176,8 @@ function sameEntry(a: unknown, b: unknown): boolean {
 /**
  * Whether seeding now would change nothing: every workspace the blueprint
  * seeds holds exactly what seeding writes (same repos, all managed on the
- * blueprint's branch, same autostart defaults), records the blueprint as
+ * blueprint's branch, same autostart defaults, its stack_namespace),
+ * records the blueprint as
  * applied, and (multi blueprint) is active. A workspace the user changed
  * since (a repo switched to a local checkout, one added or removed) is not
  * "already seeded": seeding would reset it.
@@ -187,6 +198,8 @@ export function blueprintAlreadySeeded(
       applied.length !== bp.repos.length ||
       bp.repos.some((r, i) => applied[i] !== r)
     )
+      return false;
+    if (bp.stackNamespace && ws.stack_namespace !== bp.stackNamespace)
       return false;
     return sameEntry(ws.services ?? {}, blueprintServices(bp));
   });
@@ -214,6 +227,7 @@ export function seedDefaultWorkspace(): string[] {
     ...(file.workspaces.default ?? {}),
     services: blueprintServices(bp),
     seeded_repos: [...repos],
+    ...blueprintStackNamespace(bp),
   };
   if (!file.active?.length) {
     file.active = ["default"];
@@ -240,6 +254,7 @@ export function seedBlueprintWorkspaces(): { name: string; repos: string[] }[] {
       ...(prev ?? {}),
       services: blueprintServices(bp),
       seeded_repos: [...bp.repos],
+      ...blueprintStackNamespace(bp),
     };
   }
   const names = bps.map((b) => b.name);

@@ -3,7 +3,8 @@
  * page. One job, run your workspaces: the rail item and the page are
  * "Workspaces" (R24a; / and /local-dev still serve it, "Local Dev" stays a
  * palette alias); the list has no ⚙ Settings footer (R24b); the selected
- * workspace's header has "Open in Graph →" and a ⋯ menu (R24c); one repo
+ * workspace's header has "Open in Graph →", a ⋯ menu and, when its stacks
+ * run under another namespace, a "stacks: <ns>" chip (R24c); one repo
  * table replaces the Graph, Applications and Config tabs (R24d); the runs
  * dock shows this workspace's runs, "All runs" every one (R24e).
  *
@@ -93,6 +94,9 @@ beforeAll(async () => {
       "    services:",
       ...["queue", "web", "notes"].flatMap(member),
       "  side:",
+      // Its stacks share main's namespace (0.3.0-dev.36): the chip and the
+      // Stacks column show it; main's own (its default suffix) shows nothing.
+      "    stack_namespace: main",
       "    services:",
       ...member("blog"),
       "",
@@ -313,6 +317,57 @@ describe("R24c: the workspace header", () => {
     ]);
     await p.context().close();
   }, 30_000);
+});
+
+describe("stack_namespace: the header chip, /api/workspaces and workspace list", () => {
+  it("/api/workspaces gives each workspace's stack namespace, its source and whether it differs", async () => {
+    const body = (await (await fetch(api("/api/workspaces"))).json()) as {
+      stackNamespaces: Record<string, Record<string, unknown>>;
+    };
+    expect(body.stackNamespaces.side).toEqual({
+      workspace: "side",
+      stack_namespace: "main",
+      source: "workspace",
+      default: "side",
+      differs: true,
+      warnings: [],
+    });
+    expect(body.stackNamespaces.main).toMatchObject({
+      stack_namespace: "main",
+      source: "default",
+      differs: false,
+    });
+  });
+
+  it('the header shows "stacks: main" for side, and no chip for main', async () => {
+    if (!browser) return;
+    const p = await open("side");
+    await p.waitForSelector('#repo-table tr.repo[data-repo="blog"]');
+    expect((await p.textContent("#content #ws-stack-ns"))?.trim()).toBe(
+      "stacks: main",
+    );
+    await p.click('.ws-item[data-name="main"]');
+    await p.waitForSelector('#repo-table tr.repo[data-repo="notes"]');
+    expect(await p.$("#content #ws-stack-ns")).toBeNull();
+    await p.context().close();
+  }, 45_000);
+
+  it("workspace list has a Stacks column naming side's namespace and source", () => {
+    const r = spawnSync(
+      path.join(ENGINE, "bin", "den"),
+      ["workspace", "list"],
+      {
+        cwd: root,
+        encoding: "utf-8",
+        env: { ...envBase, FORCE_COLOR: "0" },
+        timeout: 60_000,
+      },
+    );
+    const out = `${r.stdout}${r.stderr}`;
+    expect(out).toMatch(/│\s*Stacks\s*│/);
+    expect(out).toMatch(/│\s*side\s*│.*│\s*main \(workspace\)\s*│/);
+    expect(out).toMatch(/│\s*main\s*│.*│\s*main\s*│/);
+  }, 60_000);
 });
 
 describe("R24d: one repo table", () => {

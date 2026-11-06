@@ -60,10 +60,16 @@ function must(
 export interface StackContext {
   edge: EdgeConfig;
   stacks: Record<string, StackConfig>;
+  /** The Compose project suffix (the stack namespace). */
   workspace: string;
+  /** The den workspace the stacks were read for (loadStackContext). */
+  denWorkspace?: string;
+  /** Where the suffix came from; `env`: DEN_STACK_WORKSPACE. */
+  namespaceSource?: "workspace" | "blueprint" | "default" | "env";
 }
 
-function stackDir(ctx: StackContext, s: StackConfig): string {
+/** The project's local state: generated.env, override.yml, owners.json. */
+export function stackDir(ctx: StackContext, s: StackConfig): string {
   return path.join(
     ctx.edge.stateDir,
     "stacks",

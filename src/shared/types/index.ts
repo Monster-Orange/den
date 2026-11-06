@@ -693,6 +693,13 @@ export interface WorkspaceConfig {
    * resolved org is computed on read (see workspace-org.ts).
    */
   org?: string;
+  /**
+   * The Compose project suffix this workspace's stacks run under, in place of
+   * its own name (`default`: `main`). Workspaces that set the same value
+   * share their stacks' projects, and so their volumes and data. Wins over
+   * the blueprint's `stack_namespace`. See stacks/namespace.ts.
+   */
+  stack_namespace?: string;
 }
 
 export interface WorkspacesFile {

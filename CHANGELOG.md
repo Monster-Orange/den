@@ -10,6 +10,47 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **`stack_namespace`: a workspace can choose its stacks' Compose
+  namespace** (0.3.0-dev.36, Ward 2026-11-05). By default nothing changes:
+  a stack runs as Compose project `<stack>-<workspace>` (`default`:
+  `<stack>-main`), and so do its containers, volumes and networks. A
+  workspace can opt out with `stack_namespace: <slug>`, which replaces that
+  suffix: several workspaces can then share one namespace, and a stack
+  keeps its data when its repo moves to another workspace.
+  - Where: `workspaces.<ws>.stack_namespace` in
+    `config/local/workspaces.yml`, or `stack_namespace` on a blueprint
+    workspace (`defaults.workspaces.<n>`, next to `org`). First match wins:
+    workspaces.yml, the blueprint, then the workspace's own name.
+    `workspace seed` carries the blueprint's value into the workspace it
+    seeds. workspaces.yml overriding a different blueprint value is a
+    warning naming both, as for `org`. The value is lowercase letters,
+    digits and dashes; anything else is a config error naming the key.
+  - One resolver: every stack path (`stack` commands, `/api/stacks`,
+    Den's in-process compose health checks, a stack service's container
+    lookup, `workspace deactivate`'s running-stacks note) turns a workspace
+    into its suffix through `resolveStackWorkspaces`.
+  - A shared namespace means a shared instance, keyed by checkout. Two
+    workspaces bringing up the same stack from the same checkout (repo
+    path and branch) share one project: `stack down` (and `down <repo>`)
+    from one while another active workspace in the namespace still holds
+    it detaches instead of stopping it; the last one stops it
+    (`stack down --force` stops it regardless). A workspace skipping the
+    stack as already healthy is recorded as an owner too. The owners are
+    kept in `owners.json` in the project's edge state directory, and
+    re-derived on every decision (active, same namespace, still holds the
+    stack), like Den's own service refcount. Bringing it up from a
+    different checkout or branch is refused (`ServiceConflictError`,
+    `identity_mismatch`), naming both checkouts and the namespace: Den
+    never swaps the containers under another workspace.
+  - Visible: `workspace list` gains a Stacks column when a workspace's
+    namespace is not its default; the Workspaces page header shows a
+    "stacks: <ns>" chip; `GET /api/workspaces` adds `stackNamespaces`, each
+    workspace's resolved `stack_namespace`, its `source` (`workspace`,
+    `blueprint` or `default`), its `default` and whether it `differs`.
+  - `DEN_STACK_WORKSPACE` still wins over all of it, for that one process:
+    a per-command override (it also bypasses the owner refcount), not a
+    migration tool. To move a workspace's stacks onto another namespace
+    for good, set `stack_namespace`.
 - **The graph's edges flow when a card is selected, and stay on top**
   (0.3.0-dev.35, R22b, Ward's QA of dev.34). Selecting a card only
   thickened its edges, and the edge layer painted under the group frames,
@@ -1075,6 +1116,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
+- 0.3.0-dev.36, `stack_namespace`: optional, no change required. Without it
+  every Compose project, container, volume and network keeps its name.
+  `stack_namespace` in a blueprint needs Den 0.3.0-dev.36 or later: an
+  older Den rejects the unknown key.
 - 0.3.0-dev.25, edge TLS. Nothing is required: every existing edge config
   renders as before (only `edge trust` under `issue_cert: false` with no
   `caroot` now refuses). To silence the warnings, say what your config already means,

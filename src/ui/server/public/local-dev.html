@@ -1938,6 +1938,12 @@
               ? 'disabled title="No managed services in this workspace"'
               : "";
           const enc = encodeURIComponent(wsName);
+          // "stacks: <ns>" only when this workspace's stacks run under a
+          // namespace other than its default suffix (stack_namespace).
+          const stackNs = wsData?.stackNamespaces?.[wsName];
+          const stackNsChip = stackNs?.differs
+            ? `<span class="badge stack-ns" id="ws-stack-ns" title="Compose projects run as &lt;stack&gt;-${escHtml(stackNs.stack_namespace)} (stack_namespace from ${escHtml(stackNs.source)}; default ${escHtml(stackNs.default)})">stacks: ${escHtml(stackNs.stack_namespace)}</span>`
+            : "";
           content.innerHTML = `
         <div class="content-header">
           <h2>${escHtml(wsName)}</h2>
@@ -1949,6 +1955,7 @@
               : `<button class="switch-btn" data-action="activate-ws">activate</button>
                <button class="switch-btn" data-action="switch-ws">activate + focus</button>`
           }
+          ${stackNsChip}
           <a class="ws-head-link" id="ws-open-graph" href="/graph?ws=${enc}">Open in Graph →</a>
           <div class="action-menu-wrap ws-more">
             <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${escHtml(wsName)}" title="More for this workspace">⋯</button>

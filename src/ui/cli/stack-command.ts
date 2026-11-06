@@ -1,5 +1,5 @@
 /**
- * `stack ls | up <name…> [--build] | down <name…> | restart <name…> | health <name…> | ps <name> | logs <name> [args]`
+ * `stack ls | up <name…> [--build] | down <name…> [--force] | restart <name…> | health <name…> | ps <name> | logs <name> [args]`
  *
  * Runs repos' Docker Compose projects with no host ports, each as its own
  * project (`<stack>-<workspace>`), served by the edge at
@@ -21,6 +21,14 @@ import {
   stackUp,
 } from "../../shared/stacks/runtime.js";
 import { loadStackContext, stackStatuses } from "../../shared/stacks/status.js";
+import {
+  assertStackClaim,
+  forgetStackOwners,
+  recordStackOwner,
+  releaseStackOwner,
+  stackRefcounted,
+} from "../../shared/stacks/owners.js";
+import { resolveStackNamespace } from "../../shared/stacks/namespace.js";
 import type { StackConfig } from "../../shared/stacks/types.js";
 import { STACK_HEALTH_UNKNOWN_EXIT } from "../../shared/constants.js";
 
@@ -104,6 +112,19 @@ export async function cmdStack(argv: string[]): Promise<void> {
   const ctx = loadStackContext();
   const { edge, stacks } = ctx;
   const names = args.filter((a) => !a.startsWith("-"));
+  // workspaces.yml overriding a different blueprint stack_namespace.
+  if (ctx.denWorkspace && ctx.namespaceSource === "workspace")
+    for (const w of resolveStackNamespace(ctx.denWorkspace).warnings)
+      console.error(chalk.yellow(`⚠ ${w}`));
+  /** Each stack's other live owners; throws on a checkout mismatch. */
+  const claims = (targets: string[]): Map<string, string[]> => {
+    const out = new Map<string, string[]>();
+    if (!stackRefcounted(ctx)) return out;
+    for (const n of targets)
+      if (stacks[n])
+        out.set(n, assertStackClaim(ctx, stacks[n], ctx.denWorkspace));
+    return out;
+  };
   const pick = () => {
     if (!names.length)
       throw new Error(
@@ -131,13 +152,24 @@ export async function cmdStack(argv: string[]): Promise<void> {
       // Re-render the edge so its cert covers every stack, then start the stacks.
       const order = startOrder(pick(), stacks);
       const secrets = await resolveStacksSecretEnv(order.map((n) => stacks[n]));
+      // A shared namespace: refused before anything starts when another
+      // workspace runs one of these projects from a different checkout.
+      const shared = claims(order);
       await edgeUp(edge);
       for (const n of order) {
         console.log(chalk.cyan(`\n▶ ${n} (${projectName(n, ctx.workspace)})`));
+        if (shared.get(n)?.length)
+          console.log(
+            chalk.gray(
+              `  shared with [${shared.get(n)!.join(", ")}] (stack namespace ${ctx.workspace})`,
+            ),
+          );
         stackUp(ctx, stacks[n], {
           build: args.includes("--build"),
           secretEnv: secrets.get(n),
         });
+        if (stackRefcounted(ctx))
+          recordStackOwner(ctx, stacks[n], ctx.denWorkspace);
         for (const route of Object.keys(stacks[n].routes))
           console.log(chalk.green(`  ✓ ${routeUrl(`${route}.${n}`, edge)}`));
       }
@@ -158,14 +190,23 @@ export async function cmdStack(argv: string[]): Promise<void> {
         }
         return;
       }
+      const shared = claims(pick());
       await edgeUp(edge);
       for (const n of pick()) {
         console.log(chalk.cyan(`↻ ${n}`));
+        if (shared.get(n)?.length)
+          console.log(
+            chalk.yellow(
+              `  Warning: restarting a shared stack — this interrupts [${shared.get(n)!.join(", ")}]`,
+            ),
+          );
         stackDown(ctx, stacks[n]);
         stackUp(ctx, stacks[n], {
           build: args.includes("--build"),
           secretEnv: secrets.get(n),
         });
+        if (stackRefcounted(ctx))
+          recordStackOwner(ctx, stacks[n], ctx.denWorkspace);
       }
       return;
     }
@@ -173,8 +214,22 @@ export async function cmdStack(argv: string[]): Promise<void> {
       for (const n of startOrder(pick(), stacks)
         .reverse()
         .filter((n) => names.includes(n))) {
+        // A shared namespace: the last live owner stops it; any other
+        // detaches. `--force` stops it whoever else holds it.
+        if (stackRefcounted(ctx) && !args.includes("--force")) {
+          const r = releaseStackOwner(ctx, stacks[n], ctx.denWorkspace);
+          if (!r.stop) {
+            console.log(
+              chalk.cyan(
+                `▼ ${n}: detached workspace "${ctx.denWorkspace}" — ${projectName(n, ctx.workspace)} still running for [${r.remaining.join(", ")}]`,
+              ),
+            );
+            continue;
+          }
+        }
         console.log(chalk.cyan(`▼ ${n}`));
         stackDown(ctx, stacks[n]);
+        forgetStackOwners(ctx, stacks[n]);
       }
       return;
     case "ps":

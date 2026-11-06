@@ -682,6 +682,11 @@ export interface ResolvedWorkspaceBlueprint {
   focus: boolean;
   /** `org:` (ORG-1a): the org this workspace belongs to, when the blueprint names one. */
   org?: string;
+  /**
+   * `stack_namespace:`: the Compose project suffix this workspace's stacks
+   * run under, in place of its own name (see stacks/namespace.ts).
+   */
+  stackNamespace?: string;
 }
 
 /** Which blueprint shape the distribution uses, and its workspaces. */
@@ -690,7 +695,32 @@ export interface WorkspaceBlueprints {
   workspaces: ResolvedWorkspaceBlueprint[];
 }
 
-const BLUEPRINT_KEYS = ["branch", "repos", "autostart_off", "org"];
+const BLUEPRINT_KEYS = [
+  "branch",
+  "repos",
+  "autostart_off",
+  "org",
+  "stack_namespace",
+];
+
+/**
+ * A stack namespace (and a Compose project suffix): lowercase letters,
+ * digits and dashes, not starting or ending with a dash.
+ */
+export const STACK_NAMESPACE_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+/** `v` as a stack namespace, or undefined when unset; throws naming `key`. */
+export function checkStackNamespace(
+  key: string,
+  v: unknown,
+): string | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "string" || !STACK_NAMESPACE_RE.test(v))
+    throw new Error(
+      `${key} must be lowercase letters, digits and dashes (got ${JSON.stringify(v)})`,
+    );
+  return v;
+}
 
 function blueprintStrings(where: string, key: string, v: unknown): string[] {
   if (v === undefined) return [];
@@ -722,6 +752,10 @@ function resolveBlueprint(
     throw new Error(`${where}.focus must be true or false`);
   if (bp.org !== undefined && (typeof bp.org !== "string" || !bp.org.trim()))
     throw new Error(`${where}.org must be an org id (a key of orgs:)`);
+  const stackNamespace = checkStackNamespace(
+    `${where}.stack_namespace`,
+    bp.stack_namespace,
+  );
   return {
     name,
     repos: blueprintStrings(where, "repos", bp.repos),
@@ -729,7 +763,42 @@ function resolveBlueprint(
     autostartOff: blueprintStrings(where, "autostart_off", bp.autostart_off),
     focus: bp.focus === true,
     ...(typeof bp.org === "string" ? { org: bp.org.trim() } : {}),
+    ...(stackNamespace ? { stackNamespace } : {}),
   };
+}
+
+/**
+ * Each blueprint workspace's `stack_namespace`, by workspace name (the
+ * single `defaults.workspace` is `default`). Reads only that key, so a
+ * blueprint malformed elsewhere still gives its namespaces: the stacks'
+ * Compose projects never fall back to another name because of an unrelated
+ * error. A bad `stack_namespace` itself throws, naming the key.
+ */
+export function readBlueprintStackNamespaces(
+  config: DenConfig = readDenConfig(),
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const defaults: unknown = config.defaults;
+  if (!defaults || typeof defaults !== "object" || Array.isArray(defaults))
+    return out;
+  const { workspace, workspaces } = defaults as Record<string, unknown>;
+  const take = (where: string, name: string, raw: unknown) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+    const ns = checkStackNamespace(
+      `${where}.stack_namespace`,
+      (raw as Record<string, unknown>).stack_namespace,
+    );
+    if (ns) out[name] = ns;
+  };
+  if (
+    workspaces &&
+    typeof workspaces === "object" &&
+    !Array.isArray(workspaces)
+  )
+    for (const [name, raw] of Object.entries(workspaces))
+      take(`defaults.workspaces.${name}`, name, raw);
+  else if (workspace != null) take("defaults.workspace", "default", workspace);
+  return out;
 }
 
 /**

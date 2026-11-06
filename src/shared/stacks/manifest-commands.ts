@@ -14,7 +14,7 @@ import { product } from "../product.js";
 type CommandDef = string | { cmd: string; detachable?: boolean };
 
 /** Whether `subsystem` is the repo's primary service (the one the stack belongs to). */
-function isPrimary(manifest: RawManifest, subsystem: string): boolean {
+export function isPrimary(manifest: RawManifest, subsystem: string): boolean {
   const keys = Object.keys(manifest.services ?? {});
   if (manifest.entrypoint) return manifest.entrypoint === subsystem;
   return keys.length <= 1;

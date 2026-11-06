@@ -9,6 +9,7 @@
 import { hasRuntime, repoKind } from "../repo-kind.js";
 import { effectiveLocalCommands } from "../stacks/manifest-commands.js";
 import { manifestStackName } from "../stacks/config.js";
+import { claimHealthyStack } from "../stacks/owners.js";
 import fs from "fs";
 import path from "path";
 import { readManifest } from "../manifest/read-manifest.js";
@@ -573,7 +574,13 @@ export function adoptRunningContainers(
 export function claimHealthyService(
   resolved: ResolvedService,
   workspace: string,
-): "attached" | "adopted" | "untracked" {
+): "attached" | "adopted" | "untracked" | "conflict" {
+  // A compose stack's primary service: its owner is recorded with the
+  // stack's project (a shared stack namespace's refcount, stacks/owners.ts).
+  // `conflict`: the running project is another checkout's; the caller runs
+  // the real up, which refuses it.
+  const stack = claimHealthyStack(resolved, workspace);
+  if (stack) return stack;
   const existing = findDaemonByAddress(resolved.address);
   if (existing) {
     if (!sameDaemonIdentity(existing, resolved.repoPath, resolved.branch)) {
