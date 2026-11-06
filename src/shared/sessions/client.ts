@@ -123,11 +123,20 @@ export class HostClient extends EventEmitter {
 
   async start(
     spec: SessionSpec,
-    opts: { limit?: number } = {},
+    opts: {
+      limit?: number;
+      /** `--keep-env` names, for the host's audit line (never values). */
+      keptEnv?: { name: string; credentialShaped: boolean }[];
+      /** Who asked, for that line. */
+      actor?: string;
+    } = {},
   ): Promise<SessionInfo> {
     const r = await this.request("start", {
       spec,
       ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+      ...(opts.keptEnv?.length
+        ? { keptEnv: opts.keptEnv, actor: opts.actor ?? "unknown" }
+        : {}),
     });
     return r.info as SessionInfo;
   }

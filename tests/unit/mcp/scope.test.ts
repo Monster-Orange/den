@@ -181,7 +181,7 @@ describe("a scoped server refuses another workspace", () => {
       expect(r.isError).toBe(true);
       expect(r.text).toMatch(
         new RegExp(
-          `^Refused: ${tool}: this MCP server is scoped to workspace "north" \\(agent:planner\\); "south" is another workspace`,
+          `^Refused: ${tool}: this MCP server is scoped to workspace "north" \\(agent:planner; no grants\\); "south" is another workspace`,
         ),
       );
     }

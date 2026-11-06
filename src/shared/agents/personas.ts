@@ -14,7 +14,8 @@
  *
  * Den's own keys sit beside them: `runtime` (default den-claude),
  * `standing` (starts with its workspace, §5), `context` (what to read
- * first), and `argv` (the generic runtime's template). Any other key (a
+ * first), `argv` (the generic runtime's template), and `permission_mode`
+ * (den-claude's Claude Code permission mode; it checks the value). Any other key (a
  * Claude Code `color`) is ignored. A file without front matter (a pack's
  * README) is not a persona.
  */
@@ -42,6 +43,8 @@ export interface Persona {
   context: string[];
   /** The generic runtime's argv template ({model}, {mcp_config}). */
   argv?: string[];
+  /** `permission_mode`: the runtime's permission mode (den-claude checks it). */
+  permissionMode?: string;
   /** The file it came from. */
   source: string;
 }
@@ -129,6 +132,7 @@ export function parsePersona(text: string, file: string): Persona | null {
   }
   const model = optString(f, "model", file);
   const runtime = optString(f, "runtime", file);
+  const permissionMode = optString(f, "permission_mode", file);
   return {
     id,
     role: optString(f, "role", file) ?? optString(f, "description", file) ?? "",
@@ -139,6 +143,7 @@ export function parsePersona(text: string, file: string): Persona | null {
     tools: stringList(f, "tools", file),
     context: stringList(f, "context", file),
     ...(argv ? { argv } : {}),
+    ...(permissionMode ? { permissionMode } : {}),
     source: file,
   };
 }

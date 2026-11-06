@@ -9,12 +9,19 @@
  *           --actor agent:<id>`, plus a `--grant` per agents.<id>.grants),
  *           starts `<dist>-<ws>:<id>` in the workspace's dir, and writes the
  *           agent record (<stateDir>/agents/<id>.json, 0600; no env, no argv).
- *   list    the workspace's sessions, with each agent's persona, runtime and
- *           model from its record; a record whose session is gone is listed
- *           as stopped or ended.
+ *           The agent's env is an allowlist plus what its runtime declares,
+ *           less every runtime's scrubEnv (sessions/env.ts), never the
+ *           caller's whole environment; no --keep-env. A
+ *           session that exits non-zero in its first moments (exitWatchMs)
+ *           is reported with its last lines, exit 1.
+ *   list    the workspace's agents (sessions with an agent record), with
+ *           persona, runtime and model; a record whose session is gone is
+ *           listed as stopped or ended. A plain session is not an agent.
  *   stop    ends its session (TERM) and marks the record stopped.
  *   resume  only when its runtime declares resume and its session is not
- *           running: a new session, in the same cwd, continuing the last run.
+ *           running: a new session, in the same cwd, continuing the last run;
+ *           when that session was never prompted, a fresh start under the
+ *           same conversation id (there is nothing to continue).
  *
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start.
@@ -28,6 +35,8 @@ import {
 } from "../../shared/den-config.js";
 import { cliEntrypoint } from "../../shared/engine.js";
 import { getDistRoot } from "../../shared/paths.js";
+import { envKey } from "../../shared/product.js";
+import { redactSecrets } from "../../shared/redact.js";
 import {
   loadPersonas,
   resolvePackDirs,
@@ -43,6 +52,7 @@ import {
   type AgentRecord,
 } from "../../shared/agents/records.js";
 import {
+  agentSessionEnv,
   DEFAULT_RUNTIME_ID,
   getRuntime,
   LaunchError,
@@ -53,11 +63,7 @@ import {
 } from "../../shared/agents/runtimes.js";
 import { HostError, type HostClient } from "../../shared/sessions/client.js";
 import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
-import {
-  inWorkspace,
-  parseSessionName,
-  sessionName,
-} from "../../shared/sessions/names.js";
+import { inWorkspace, sessionName } from "../../shared/sessions/names.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
 import { serverSpec } from "../mcp/connect.js";
 import {
@@ -68,7 +74,6 @@ import {
   noExtra,
   parseArgs,
   resolveDeps,
-  sessionEnv,
   state,
   UsageError,
   withClient,
@@ -89,12 +94,15 @@ export const AGENTS_HELP = {
     "    (plus agents.<id>.grants); capped by agents.max_concurrent",
     "{cli} agents stop <id> [-w <ws>]",
     "{cli} agents resume <id> [-w <ws>]",
-    "    only when its runtime declares resume and its session has ended",
+    "    only when its runtime declares resume and its session has ended;",
+    "    a session never prompted starts fresh under the same conversation id",
     "{cli} agents personas [--json]",
     "    Den's default pack, then agents.persona_packs (a later pack wins by id)",
     "",
     "Runtimes: den-claude (default; needs claude on PATH) and generic (the",
     "persona's argv template). Attach with `{cli} sessions attach <ws>:<id>`.",
+    "An agent's env is PATH, HOME, USER, LOGNAME, SHELL, TERM, COLORTERM, LANG,",
+    "LC_*, TZ and TMPDIR, plus what its runtime declares: nothing else of yours.",
   ],
 };
 
@@ -105,6 +113,11 @@ export interface AgentsDeps extends SessionsDeps {
   workspaceDir?: (ws: string) => string;
   /** The MCP server binary and its env; Den adds the scoped args. */
   mcpServer?: () => { command: string[] | string; env: Record<string, string> };
+  /**
+   * How long start and resume watch a new session for an early non-zero
+   * exit (default 3000 ms; 0: not at all).
+   */
+  exitWatchMs?: number;
 }
 
 interface AgentsResolved extends Resolved {
@@ -112,7 +125,14 @@ interface AgentsResolved extends Resolved {
   distRoot: () => string;
   workspaceDir: (ws: string) => string;
   mcpServer: () => { command: string[] | string; env: Record<string, string> };
+  exitWatchMs: number;
 }
+
+/** The early-exit watch: at most this long, polling the host. */
+export const EXIT_WATCH_MS = 3000;
+const EXIT_POLL_MS = 100;
+/** The most lines of an early exit's scrollback printed. */
+const EXIT_TAIL_LINES = 10;
 
 let workspaceDirFn: ((ws: string) => string) | null = null;
 async function loadWorkspaceDir(d: AgentsDeps): Promise<void> {
@@ -155,10 +175,27 @@ function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
         return workspaceDirFn(ws);
       }),
     mcpServer: d.mcpServer ?? (() => defaultMcpServer(base.cli)),
+    exitWatchMs: d.exitWatchMs ?? EXIT_WATCH_MS,
   };
 }
 
 // ── the agent's MCP ─────────────────────────────────────────────────────────
+
+/**
+ * Where the distribution is, from the caller's env (DEN_ROOT,
+ * `<PREFIX>_ROOT`, `<PREFIX>_HOME`): the agent's env is an allowlist, so
+ * its MCP server gets them in its own config instead, and reaches the same
+ * distribution and state dir as the CLI that started it. Paths, never
+ * secrets.
+ */
+function distLocationEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of new Set(["DEN_ROOT", envKey("ROOT"), envKey("HOME")])) {
+    const v = env[k];
+    if (v) out[k] = v;
+  }
+  return out;
+}
 
 /** `<cli> mcp --workspace <ws> --actor agent:<id> [--grant <g>…]`. */
 export function agentMcp(
@@ -180,7 +217,7 @@ export function agentMcp(
       `agent:${id}`,
       ...grants.flatMap((g) => ["--grant", g]),
     ],
-    env: server.env,
+    env: { ...distLocationEnv(d.env), ...server.env },
     scope: ws,
   };
 }
@@ -188,10 +225,10 @@ export function agentMcp(
 // ── rows ────────────────────────────────────────────────────────────────────
 
 /**
- * One row per agent of a workspace: each session, joined to the agent
- * record that started it (by session id); a session without one is listed
- * with persona and runtime blank, a record without its session as stopped
- * (after `agents stop`) or ended.
+ * One row per agent of a workspace: each session joined to the agent record
+ * that started it (by session id), and each record whose session is gone,
+ * as stopped (after `agents stop`) or ended. A session without a record is
+ * a plain one (`sessions start`), not an agent: `sessions list` shows it.
  */
 export interface AgentRow {
   agent: string;
@@ -213,7 +250,6 @@ function rowState(rec: AgentRecord | undefined, s?: SessionInfo): string {
 
 export function agentRows(
   sessions: SessionInfo[],
-  dist: string,
   records: AgentRecord[] = [],
 ): AgentRow[] {
   const bySession = new Map(records.map((r) => [r.session.id, r]));
@@ -221,10 +257,11 @@ export function agentRows(
   const shown = new Set<string>();
   for (const s of sessions) {
     const rec = bySession.get(s.ref.id);
-    if (rec) shown.add(rec.id);
+    if (!rec) continue;
+    shown.add(rec.id);
     rows.push({
-      agent: rec?.id ?? parseSessionName(s.name, dist)?.name ?? s.name,
-      ...(rec ? recordFields(rec) : {}),
+      agent: rec.id,
+      ...recordFields(rec),
       state: rowState(rec, s),
       session: contractInfo(s),
     });
@@ -255,7 +292,7 @@ async function list(args: string[], d: AgentsResolved): Promise<number> {
     inWorkspace(s, d.dist, ws),
   );
   const records = listRecords(d.stateDir()).filter((r) => r.workspace === ws);
-  const rows = agentRows(sessions, d.dist, records);
+  const rows = agentRows(sessions, records);
   if (p.flags["--json"]) {
     d.out(JSON.stringify(rows, null, 2));
     return 0;
@@ -362,6 +399,9 @@ interface Launch {
   rec: Omit<AgentRecord, "session" | "startedAt">;
   argv: string[];
   env: Record<string, string>;
+  /** The runtime's envPassthrough. */
+  passthrough?: readonly string[];
+  warnings?: string[];
 }
 
 /** Start `launch` as the agent's session (replacing an exited one) and record it. */
@@ -371,7 +411,7 @@ async function startSession(
   launch: Launch,
   old: SessionInfo | undefined,
   extra: Partial<AgentRecord>,
-): Promise<AgentRecord> {
+): Promise<{ rec: AgentRecord; info: SessionInfo }> {
   if (old?.exited) await c.forget(old.ref.id);
   const tty = d.stdout.isTTY;
   const info = await c.start(
@@ -379,7 +419,13 @@ async function startSession(
       name: launch.rec.sessionName,
       cwd: launch.rec.cwd,
       argv: launch.argv,
-      env: { ...sessionEnv(d.env), ...launch.env },
+      // Never the caller's whole env: the allowlist, then the runtime's.
+      env: agentSessionEnv(
+        d.env,
+        { envPassthrough: launch.passthrough },
+        launch.env,
+        launch.rec.id,
+      ),
       cols: (tty && d.stdout.columns) || 80,
       rows: (tty && d.stdout.rows) || 24,
     },
@@ -393,7 +439,63 @@ async function startSession(
   };
   delete rec.stoppedAt;
   writeRecord(d.stateDir(), rec);
-  return rec;
+  for (const w of launch.warnings ?? []) d.err(w);
+  return { rec, info };
+}
+
+/** CSI, OSC (BEL or ST ended), and other two-byte escapes. */
+/* eslint-disable no-control-regex */
+const TERMINAL_ESCAPE =
+  /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g;
+/* eslint-enable no-control-regex */
+
+/** Printable lines of terminal output: escapes and control bytes removed. */
+export function plainLines(text: string): string[] {
+  return (
+    text
+      .replace(TERMINAL_ESCAPE, "")
+      .split(/\r?\n/)
+      // A carriage return redraws the line: what stays is after the last.
+      .map((l) => l.slice(l.lastIndexOf("\r") + 1))
+      // eslint-disable-next-line no-control-regex
+      .map((l) => l.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "").trimEnd())
+      .filter((l) => l.trim())
+  );
+}
+
+/**
+ * Watch a new session for an early exit (d.exitWatchMs, polling the host).
+ * A non-zero exit is reported with its code and the last lines it printed
+ * (secret-shaped values redacted); true when it did.
+ */
+async function exitedAtOnce(
+  d: AgentsResolved,
+  c: HostClient,
+  id: string,
+  info: SessionInfo,
+): Promise<boolean> {
+  const deadline = Date.now() + d.exitWatchMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) =>
+      setTimeout(r, Math.min(EXIT_POLL_MS, Math.max(0, deadline - Date.now()))),
+    );
+    const s = (await c.list()).find((x) => x.ref.id === info.ref.id);
+    if (!s) return false;
+    if (!s.exited) continue;
+    if (s.exitCode === 0) return false;
+    const code = s.exitCode === undefined ? "" : ` (exit ${s.exitCode})`;
+    d.err(`✗ agent ${id} exited at once${code}`);
+    const tail = plainLines(
+      (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8"),
+    ).slice(-EXIT_TAIL_LINES);
+    if (tail.length) {
+      d.err(`  its last ${tail.length === 1 ? "line" : "lines"}:`);
+      for (const l of tail) d.err(`  | ${redactSecrets(l)}`);
+    }
+    d.err(`  All of it: ${d.cli} sessions attach ${s.name}`);
+    return true;
+  }
+  return false;
 }
 
 function launchInput(
@@ -490,7 +592,7 @@ async function start(args: string[], d: AgentsResolved): Promise<number> {
       ]);
     const out = rt.launch(input);
     writeRuntimeFiles(input.filesDir, out.files);
-    const rec = await startSession(
+    const { rec, info } = await startSession(
       d,
       c,
       {
@@ -506,10 +608,13 @@ async function start(args: string[], d: AgentsResolved): Promise<number> {
         },
         argv: out.argv,
         env: out.env,
+        passthrough: rt.envPassthrough,
+        warnings: out.warnings,
       },
       old,
       {},
     );
+    if (await exitedAtOnce(d, c, id, info)) return 1;
     d.out(
       `started agent ${id} (${persona.id}, ${rt.id}) as ${rec.sessionName} in ${rec.cwd}`,
     );
@@ -585,22 +690,40 @@ async function resume(args: string[], d: AgentsResolved): Promise<number> {
       rec.model,
     );
     // Resume in the cwd the agent had, wherever the workspace points now.
-    const out = rt.resume!({
+    const at = {
       ...input,
       worktree: rec.cwd,
       ...(rec.resumeToken ? { resumeToken: rec.resumeToken } : {}),
-    });
+    };
+    // A session nobody prompted left no conversation: continuing it fails,
+    // so it starts afresh under the same id. A session the host no longer
+    // lists is assumed prompted.
+    const fresh = Boolean(old && !old.prompted && rec.resumeToken);
+    const out = fresh ? rt.launch(at) : rt.resume!(at);
     if (!out) throw new Refused(`agent ${rec.id} has nothing to resume`);
     writeRuntimeFiles(input.filesDir, out.files);
-    const { session: _s, startedAt: _t, ...base } = rec;
-    const next = await startSession(
+    const { session: _s, startedAt: _t, resumedAt: _r, ...base } = rec;
+    if (fresh)
+      d.out(
+        `agent ${rec.id}: starting fresh: it was never prompted, so there is no conversation to resume`,
+      );
+    const { rec: next, info } = await startSession(
       d,
       c,
-      { rec: { ...base, cwd: rec.cwd }, argv: out.argv, env: out.env },
+      {
+        rec: { ...base, cwd: rec.cwd },
+        argv: out.argv,
+        env: out.env,
+        passthrough: rt.envPassthrough,
+        warnings: out.warnings,
+      },
       old,
-      { resumedAt: new Date().toISOString() },
+      fresh ? {} : { resumedAt: new Date().toISOString() },
     );
-    d.out(`resumed agent ${rec.id} as ${next.sessionName} in ${next.cwd}`);
+    if (await exitedAtOnce(d, c, rec.id, info)) return 1;
+    d.out(
+      `${fresh ? "started" : "resumed"} agent ${rec.id} as ${next.sessionName} in ${next.cwd}`,
+    );
     d.out(`  attach: ${d.cli} sessions attach ${next.sessionName}`);
     return 0;
   });

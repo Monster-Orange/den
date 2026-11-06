@@ -1328,8 +1328,8 @@ to one workspace for one agent:
 
 - **Pinned.** A tool that takes a `workspace` gets `<ws>` when none is given.
   A call naming another workspace is refused (`Refused: <tool>: this MCP
-server is scoped to workspace "<ws>" (agent:<id>); "<other>" is another
-workspace`) before anything reaches the web server. A refused call is
+server is scoped to workspace "<ws>" (agent:<id>; no grants); "<other>" is
+another workspace`; with grants, `grants: <a>, <b>`) before anything reaches the web server. A refused call is
   recorded in the activity trail, read tools included.
 - **Filtered.** `workspaces` lists `<ws>` only. `logs_search` and `logs_tail`
   take only `<ws>`'s services, `manifest_validate` takes only an absolute path
@@ -1350,7 +1350,8 @@ agent:<id> <client> <version> (workspace <ws>, mcp pid <pid>, session
   workspace is reported to the web server before it runs, and its activity
   entry names both (`workspace` and `targetWorkspace`; the log line reads
   `▶ <tool> in workspace <other>, under a grant to agent:<id> of workspace
-<ws>`). `workspaces` lists `<ws>` and its grants, and tests run when either
+<ws>`). `GET /api/activity?address=workspace:<ws>` lists these entries
+  under either workspace. `workspaces` lists `<ws>` and its grants, and tests run when either
   is focused. Logs and `manifest_validate` stay on `<ws>`'s own services.
   `agents start` passes an agent's grants for you (see [Agents](#agents)).
 - `<ws>` must exist in this distribution; until it does, every tool says so.
@@ -1469,7 +1470,7 @@ and logs to `<stateDir>/logs/<cli>/sessions-host.log`. The state dir is
 the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
 
 ```
-<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] -- <argv…>
+<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] -- <argv…>
 <cli> sessions list [-w <ws>] [--json]
 <cli> sessions attach <name|id>          # ctrl-] detaches; the session keeps running
 <cli> sessions kill <name|id> [--signal INT|TERM|KILL]
@@ -1481,9 +1482,21 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
 -w <ws>` show that workspace's sessions only. Elsewhere a session can be
   named in full, as `<ws>:<n>`, as a bare `<n>` only one session has, or by
   its id.
-- It runs in `--cwd` (default: where you ran the command) with your
-  environment. Every attachment gets all of its output; attaching replays
-  the scrollback first (2 MB per session, kept in
+- It runs in `--cwd` (default: where you ran the command). Its environment
+  starts empty and gets only `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`,
+  `TERM` (default `xterm-256color`), `COLORTERM`, `LANG`, `LC_*`, `TZ` and
+  `TMPDIR` from yours; `start` names the variables it left out (names, never
+  values). `--keep-env NAME` adds one more: one exact name per flag,
+  repeatable, no globs. It is audited: the session host's log
+  (`<stateDir>/logs/<cli>/sessions-host.log`) gets a line naming each kept
+  variable and who asked, never its value, and says `credential-shaped` when
+  the value or name looks like a credential (it is still passed: you named
+  it). An agent can't use it: `agents start` has no `--keep-env`, and
+  `sessions start` refuses it when run by an agent (`DEN_AGENT` is set).
+  Every runtime's `scrubEnv` (den-claude: `CLAUDECODE`, `CLAUDE_CODE_*`) is
+  removed last, even a name you kept.
+- Every attachment gets all of its output; attaching prints `[attached to
+<name>]`, then replays the scrollback (2 MB per session, kept in
   `<stateDir>/sessions/<id>.log`).
 - Stopping the host (`sessions host --stop`, or a reboot) ends its
   sessions. They stay listed as exited, with their scrollback, until
@@ -1529,9 +1542,55 @@ server scoped to its workspace.
   the environment or the command line. `list` reads it for persona, runtime
   and model; a record whose session has gone is listed as `stopped` (after
   `stop`) or `ended`.
+- `list` shows agents only: sessions with an agent record. A session from
+  `sessions start` is not an agent; `sessions list` shows it.
 - `stop` sends its session TERM and marks it stopped. `resume` works only
   when the runtime declares resume and the session is not running: it starts
-  a new session in the same cwd that continues the last conversation.
+  a new session in the same cwd that continues the last conversation. A
+  session that never got a prompt (no input with a line end) has no
+  conversation, so `resume` starts it fresh under the same conversation id
+  and says so.
+- After `start` or `resume`, Den watches the session for up to 3 s. If it
+  exits non-zero, Den prints the exit code and its last lines (at most 10,
+  secret-shaped values redacted) and exits 1.
+
+### An agent's environment
+
+An agent's environment starts empty and gets, in order:
+
+1. `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `TERM` (default
+   `xterm-256color`), `COLORTERM`, `LANG`, `LC_*`, `TZ` and `TMPDIR` from
+   yours;
+2. the variables its runtime names (`envPassthrough`; den-claude:
+   `CLAUDE_CONFIG_DIR`);
+3. the runtime's launch env;
+4. `DEN_AGENT=agent:<id>`.
+
+Then every runtime's `scrubEnv` is removed (den-claude: `CLAUDECODE` and
+`CLAUDE_CODE_*`), whatever put it there. Nothing else of yours reaches it:
+not your tokens, not your shell's other variables, and not the Claude Code
+session you started it from (its session id, messaging socket and token,
+and the child-session marker that turns transcripts off). The agent record
+still holds no env. The agent's MCP server gets the distribution's location
+(`DEN_ROOT`, `<PREFIX>_ROOT`, `<PREFIX>_HOME`, when set) in its own config,
+so it reaches the same distribution.
+
+`<cli> doctor --probe` checks this through the real session host: it runs a
+short probe session for a plain session and for each available runtime's
+agent env (built as `agents start` builds it, running the probe instead of
+the runtime's CLI). The probe prints key names and whether each is
+credential-shaped, never values. Doctor exits 1, one row per finding, when a
+runtime's `scrubEnv` name or a credential-shaped variable reaches either.
+Without the PTY module it says the probe is unavailable; that is not a
+failure. Plain `doctor` never spawns anything; when agents are configured it
+adds a note to run `<cli> doctor --probe`.
+
+**What the scope does not do.** An agent's MCP scope binds cooperating
+agents only. A runtime with a shell can still run `<cli>` itself, outside
+the scoped MCP server, and reach other workspaces; WS-3a and SEC-1 close
+that later. And the user's own Claude Code settings and hooks
+(`~/.claude/settings.json`, its hooks, a project's `.claude/`) load in a
+den-claude agent, as in any `claude` you start.
 
 ### Personas
 
@@ -1547,6 +1606,7 @@ tools: Read, Grep # hints for the runtime; Den restricts nothing with them
 standing: true # starts with its workspace (later slices)
 context: [docs/specs, the design system] # what to read first
 runtime: generic # default den-claude
+permission_mode: plan # den-claude only; default `default`
 argv: ["some-cli", "--model", "{model}", "--mcp-config", "{mcp_config}"]
 ---
 
@@ -1577,7 +1637,10 @@ are errors naming the file or the key.
 <id> --mcp-config <file> --strict-mcp-config [--model <m>]
 --append-system-prompt <role prompt>`, so Den's MCP server is the agent's
   only one, and resumes with `claude --resume <id>`. Permission prompts stay
-  in the agent's terminal.
+  in the agent's terminal: it passes `--permission-mode default` unless the
+  persona's `permission_mode` sets one of `default`, `acceptEdits`, `plan` or
+  `bypassPermissions` (anything else is an error naming the key).
+  `bypassPermissions` prints a one-line warning at every start.
 - **`generic`** runs the persona's `argv` template. `{model}` is the agent's
   model (an error when the template uses it and there is none);
   `{mcp_config}` is the path of the agent's MCP config, written only when the

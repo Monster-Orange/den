@@ -51,23 +51,32 @@ export interface LaunchInput {
   mcp: AgentMcp;
   /** A directory of this agent's own (0700) for the files a runtime writes. */
   filesDir: string;
-  /** The environment the agent will run with (for finding its CLI on PATH). */
+  /**
+   * The caller's environment, for finding the runtime's CLI on PATH. The
+   * agent does not get it: it starts from an allowlist (sessions/env.ts),
+   * plus envPassthrough and LaunchOutput.env.
+   */
   env: NodeJS.ProcessEnv;
+  /**
+   * A conversation id to start under instead of a new one: a resume of a
+   * run that was never prompted starts afresh with the id it had.
+   */
+  resumeToken?: string;
 }
 
 export interface LaunchOutput {
   argv: string[];
-  /** Added to the session's environment. */
+  /** Added to the session's environment (after the allowlist). */
   env: Record<string, string>;
   /** Absolute path (inside filesDir) → content; Den writes each 0600. */
   files?: Record<string, string>;
   /** What resume needs to continue this run (kept in the agent record). */
   resumeToken?: string;
+  /** One line each, printed when the agent starts (never secret). */
+  warnings?: string[];
 }
 
-export interface ResumeInput extends LaunchInput {
-  resumeToken?: string;
-}
+export type ResumeInput = LaunchInput;
 
 export interface Runtime {
   /** "den-claude", "generic". */
@@ -79,6 +88,19 @@ export interface Runtime {
   resume?(input: ResumeInput): Omit<LaunchOutput, "resumeToken"> | null;
   /** Where permission prompts surface (Q-AG-2). */
   approvals?: "terminal" | "hook";
+  /**
+   * Caller variables this runtime needs beyond the allowlist (PATH, HOME,
+   * USER, LOGNAME, SHELL, TERM, COLORTERM, LANG, LC_*, TZ, TMPDIR). Named
+   * one by one; Claude Code's session plumbing never passes.
+   */
+  envPassthrough?: readonly string[];
+  /**
+   * Names this runtime owns that must never reach a session Den starts
+   * (an exact name, or a prefix ending in `*`): den-claude's CLAUDECODE and
+   * CLAUDE_CODE_*. Den removes them after building any session's env,
+   * whatever put them there (sessions/env.ts).
+   */
+  scrubEnv: readonly string[];
 }
 
 /** A runtime cannot launch this agent here: a refusal, not a crash. */
@@ -114,6 +136,13 @@ export function getRuntime(id: string): Runtime | undefined {
 
 export function runtimeIds(): string[] {
   return strategyIds(RUNTIME_KIND);
+}
+
+/** Every registered runtime's scrubEnv: applied to every session Den starts. */
+export function allScrubEnv(): string[] {
+  return [
+    ...new Set(runtimeIds().flatMap((id) => getRuntime(id)?.scrubEnv ?? [])),
+  ];
 }
 
 /** The first executable `bin` on `env.PATH`, or null. Runs nothing. */

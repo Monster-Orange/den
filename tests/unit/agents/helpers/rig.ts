@@ -100,6 +100,8 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
       env: { PATH: "/usr/bin:/bin" },
     }),
     invokeCwd: () => dir,
+    // No early-exit watch unless a test asks for one (it waits up to 3 s).
+    exitWatchMs: 0,
     env: {
       PATH: `${bin}:/usr/bin:/bin`,
       HOME: "/home/someone",

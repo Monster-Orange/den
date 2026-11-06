@@ -461,10 +461,14 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   doctor: {
-    usage: "doctor",
+    usage: "doctor [--probe]",
     lines: [
       "Each strategy kind (secrets, tls): the one selected, whether it was implicit,",
       "and whether it can work here (a PATH check; nothing is run or prompted).",
+      "--probe: start a short probe session (through the session host) for a",
+      "plain session and each available runtime's agent env; key names only.",
+      "Exit 1 when a runtime's scrubEnv name or a credential-shaped variable",
+      "reaches one. Without the PTY module it says unavailable, not failed.",
     ],
   },
   plugin: {
@@ -974,7 +978,7 @@ class DenCLI {
           break;
 
         case "doctor":
-          process.exitCode = cmdDoctor(args.slice(1));
+          process.exitCode = await cmdDoctor(args.slice(1));
           break;
 
         case "service":

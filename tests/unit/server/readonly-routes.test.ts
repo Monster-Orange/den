@@ -93,6 +93,16 @@ const deps: ReadonlyRouteDeps = {
       verb: "run",
       detail: "smoke/local · modules=all [a4]",
     },
+    {
+      ts: "2026-11-04T09:05:00.000Z",
+      actor: "agent",
+      agent: "agent:planner",
+      workspace: "ws-a",
+      targetWorkspace: "ws-b",
+      verb: "services",
+      detail:
+        "in workspace ws-b, under a grant to agent:planner of workspace ws-a",
+    },
   ],
   securityPlan: async (args) => {
     calls.plan.push(args);
@@ -308,6 +318,26 @@ describe("/api/activity", () => {
       "shop/worker restart (local) [a2]",
       "shop/api up (local) [a1]",
     ]);
+  });
+
+  it("a cross-workspace call is listed under workspace:<ws>, for the target and the agent's own", async () => {
+    for (const ws of ["ws-b", "ws-a"]) {
+      const r = await get(`/api/activity?address=workspace:${ws}`);
+      expect(r.status).toBe(200);
+      const entries = (r.json as { entries: Record<string, unknown>[] })
+        .entries;
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        verb: "services",
+        targetWorkspace: "ws-b",
+        workspace: "ws-a",
+      });
+    }
+    const none = await get("/api/activity?address=workspace:ws-c");
+    expect((none.json as { entries: unknown[] }).entries).toEqual([]);
+    expect((await get("/api/activity?address=workspace:a%20b")).status).toBe(
+      400,
+    );
   });
 
   it("needs an address or a repo", async () => {

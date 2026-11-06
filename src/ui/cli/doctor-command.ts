@@ -7,9 +7,20 @@
  * PTY module, which runs nothing; runtime reads a CLI's version from its
  * install, never by running it), so doctor never spawns a backend CLI,
  * never prompts, and never prints a secret value. Exit 1 when a strategy
- * that will be used is unavailable or its config is invalid.
+ * that will be used is unavailable or its config is invalid. When agents
+ * are configured, a note says to run `<cli> doctor --probe`.
+ *
+ * `--probe` (opt-in, AG spec §5a-env) is the one exception to never
+ * spawning: it runs a short probe session through the session host for a
+ * plain session and each available runtime's agent env (env-probe.ts), and
+ * exits 1 when a runtime's scrubEnv name or a credential-shaped variable
+ * reaches one. Without the PTY module the probe is unavailable, not failed.
  */
 import chalk from "chalk";
+import { readDenConfig, type DenConfig } from "../../shared/den-config.js";
+import { getStateDir } from "../../shared/paths.js";
+import { product } from "../../shared/product.js";
+import { listRecords } from "../../shared/agents/records.js";
 import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
 import { edgeTlsWarnings, tlsStrategyFor } from "../../shared/edge/tls.js";
@@ -173,8 +184,77 @@ export function formatDoctor(rows: DoctorRow[], title: string): string[] {
   return lines;
 }
 
-export function cmdDoctor(_args: string[]): number {
+/**
+ * Whether agents are configured here: an `agents:` block with anything in
+ * it (max_concurrent, persona_packs, an agent id), or an agent record.
+ */
+export function agentsConfigured(
+  config: DenConfig | null,
+  stateDir: string,
+): boolean {
+  const raw = config?.agents as unknown;
+  if (raw && typeof raw === "object" && Object.keys(raw).length) return true;
+  try {
+    return listRecords(stateDir).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Informational lines after the rows: never a failure. */
+export function doctorNotes(cli: string, configured: boolean): string[] {
+  return configured
+    ? [
+        "",
+        `  ℹ agents are configured: run \`${cli} doctor --probe\` to verify agent env isolation`,
+      ]
+    : [];
+}
+
+function readConfigOrNull(): DenConfig | null {
+  try {
+    return readDenConfig();
+  } catch {
+    return null;
+  }
+}
+
+export async function cmdDoctor(args: string[]): Promise<number> {
+  const probe = args.includes("--probe");
+  const unknown = args.filter((a) => a !== "--probe");
+  if (unknown.length) {
+    console.error(
+      `✗ doctor: unknown argument ${unknown[0]} (doctor [--probe])`,
+    );
+    return 2;
+  }
   const rows = doctorRows();
   for (const l of formatDoctor(rows, readBrand().name)) console.log(l);
-  return rows.some((r) => r.problem) ? 1 : 0;
+  const cli = product().cli;
+  if (!probe) {
+    for (const l of doctorNotes(
+      cli,
+      agentsConfigured(readConfigOrNull(), getStateDir()),
+    ))
+      console.log(l);
+    return rows.some((r) => r.problem) ? 1 : 0;
+  }
+  const { runEnvProbe, formatProbe } = await import("./env-probe.js");
+  const { resolveDeps, plainSessionEnv } =
+    await import("./sessions-command.js");
+  const d = resolveDeps({});
+  const results = await runEnvProbe({
+    dist: d.dist,
+    cli: d.cli,
+    env: d.env,
+    pty: d.pty,
+    connect: d.connect,
+    plainEnv: (caller) => plainSessionEnv(caller),
+  });
+  console.log("");
+  console.log(chalk.bold(`${readBrand().name} doctor: session env probe`));
+  console.log("");
+  for (const l of formatProbe(results)) console.log(l);
+  const found = results.some((r) => r.findings.length);
+  return rows.some((r) => r.problem) || found ? 1 : 0;
 }

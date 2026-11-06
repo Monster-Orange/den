@@ -184,7 +184,14 @@ export function printablePath(v: string, max = 160): string {
   return `${head}…${more}${tail}`;
 }
 
-/** The refusal for a call that names `other`. */
+/** "grants: a, b" or "no grants": what else the scope reaches. */
+function grantsNote(scope: McpScope): string {
+  return scope.grants?.length
+    ? `grants: ${scope.grants.join(", ")}`
+    : "no grants";
+}
+
+/** The refusal for a call that names `other`; it names the agent's grants. */
 export function otherWorkspace(
   tool: string,
   scope: McpScope,
@@ -192,7 +199,7 @@ export function otherWorkspace(
 ): ScopeRefusal {
   return new ScopeRefusal(
     `${tool}: this MCP server is scoped to workspace "${scope.workspace}" ` +
-      `(${scope.actor}); "${printable(other)}" is another workspace, so nothing was read or run.`,
+      `(${scope.actor}; ${grantsNote(scope)}); "${printable(other)}" is another workspace, so nothing was read or run.`,
   );
 }
 

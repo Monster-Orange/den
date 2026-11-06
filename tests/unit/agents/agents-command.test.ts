@@ -8,6 +8,8 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
+import { connectHost } from "../../../src/shared/sessions/client.js";
+import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
@@ -19,6 +21,26 @@ const record = (r: Rig, id: string) =>
     fs.readFileSync(path.join(r.stateDir, "agents", `${id}.json`), "utf-8"),
   ) as Record<string, unknown>;
 const mode = (f: string) => fs.statSync(f).mode & 0o777;
+
+/** Type `text` into the agent's session, as an attached terminal would. */
+async function typeInto(r: Rig, id: string, text: string): Promise<void> {
+  const sid = (record(r, id).session as { id: string }).id;
+  const c = await connectHost(sessionPaths(r.stateDir).socket);
+  c.write(sid, Buffer.from(text));
+  await settle();
+  c.close();
+}
+
+/** A persona pack with one persona, `name`, whose front matter adds `extra`. */
+function persona(r: Rig, name: string, extra: string): void {
+  const packs = path.join(r.dir, "personas");
+  fs.mkdirSync(packs, { recursive: true });
+  fs.writeFileSync(
+    path.join(packs, `${name}.md`),
+    `---\nname: ${name}\n${extra}---\nYou plan.\n`,
+  );
+  r.config.personaPacks = ["personas"];
+}
 
 async function listRows(r: Rig, ws: string) {
   r.out.length = 0;
@@ -343,6 +365,8 @@ describe("agents stop and resume", () => {
     const token = record(r, "planner").resumeToken as string;
     expect(await agents(r, "resume", "planner")).toBe(1);
     expect(r.err.join("\n")).toMatch(/agent planner is running/);
+    // It was prompted: there is a conversation to continue.
+    await typeInto(r, "planner", "plan the release\r");
     r.made[0].exit(0);
     await settle();
     expect(await agents(r, "resume", "planner")).toBe(0);
@@ -379,5 +403,147 @@ describe("agents stop and resume", () => {
     expect(r.err.join("\n")).toMatch(
       /agent planner is in workspace north, not south/,
     );
+  });
+});
+
+describe("an agent's environment", () => {
+  it("starts from an allowlist: none of the caller's Claude Code plumbing, secrets or other variables", async () => {
+    const r = await rig();
+    r.deps.env = {
+      ...r.deps.env,
+      CLAUDECODE: "1",
+      CLAUDE_CODE_SESSION_ID: "parent-session",
+      CLAUDE_CODE_CHILD_SESSION: "1",
+      FAKE_PROBE_TOKEN: "probe-value",
+      FOO: "bar",
+      LANG: "en_US.UTF-8",
+      LC_ALL: "en_US.UTF-8",
+    };
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    // Key names only: a failure never prints a value.
+    const keys = Object.keys(r.made[0].opts.env);
+    expect(
+      keys.filter((k) =>
+        [
+          "CLAUDECODE",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION",
+          "FAKE_PROBE_TOKEN",
+          "SOME_TOKEN",
+          "FOO",
+        ].includes(k),
+      ),
+    ).toEqual([]);
+    for (const k of ["PATH", "HOME", "TERM", "LANG", "LC_ALL"])
+      expect(keys).toContain(k);
+    expect(keys.filter((k) => k.startsWith("CLAUDE_CODE_"))).toEqual([]);
+  });
+
+  it("carries Den's marker DEN_AGENT=agent:<id>, and agents start takes no --keep-env", async () => {
+    const r = await rig();
+    await agents(r, "start", "-w", "north", "--persona", "planner");
+    expect(r.made[0].opts.env.DEN_AGENT).toBe("agent:planner");
+    expect(
+      await agents(
+        r,
+        "start",
+        "-w",
+        "north",
+        "--persona",
+        "reviewer",
+        "--keep-env",
+        "FOO",
+      ),
+    ).toBe(2);
+    expect(r.err.join("\n")).toMatch(/unknown flag --keep-env/);
+  });
+
+  it("a runtime's envPassthrough names extra variables it needs (den-claude: CLAUDE_CONFIG_DIR)", async () => {
+    const r = await rig();
+    r.deps.env = {
+      ...r.deps.env,
+      CLAUDE_CONFIG_DIR: "/home/someone/.cc",
+      FOO: "bar",
+    };
+    await agents(r, "start", "-w", "north", "--persona", "planner");
+    const keys = Object.keys(r.made[0].opts.env);
+    expect(keys).toContain("CLAUDE_CONFIG_DIR");
+    // Only what it names: everything else stays behind.
+    expect(keys).not.toContain("FOO");
+  });
+});
+
+describe("den-claude's permission mode", () => {
+  it("passes --permission-mode default unless the persona sets permission_mode", async () => {
+    const r = await rig();
+    await agents(r, "start", "-w", "north", "--persona", "planner");
+    const a = r.made[0].args;
+    expect(a[a.indexOf("--permission-mode") + 1]).toBe("default");
+    persona(r, "careful", "permission_mode: plan\n");
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "careful"),
+    ).toBe(0);
+    const b = r.made[1].args;
+    expect(b[b.indexOf("--permission-mode") + 1]).toBe("plan");
+  });
+
+  it("an invalid permission_mode is a config error naming the key", async () => {
+    const r = await rig();
+    persona(r, "odd", "permission_mode: yolo\n");
+    expect(await agents(r, "start", "-w", "north", "--persona", "odd")).toBe(1);
+    expect(r.err.join("\n")).toMatch(
+      /permission_mode "yolo" must be one of default, acceptEdits, plan, bypassPermissions/,
+    );
+    expect(r.made).toHaveLength(0);
+  });
+
+  it("bypassPermissions prints a one-line warning on start", async () => {
+    const r = await rig();
+    persona(r, "bold", "permission_mode: bypassPermissions\n");
+    expect(await agents(r, "start", "-w", "north", "--persona", "bold")).toBe(
+      0,
+    );
+    const warn = r.err.filter((l) => /bypassPermissions/.test(l));
+    expect(warn).toHaveLength(1);
+    expect(warn[0]).toMatch(/will not ask before/);
+  });
+});
+
+describe("agents resume, never prompted", () => {
+  it("starts fresh with the same conversation id when the session never got input", async () => {
+    const r = await rig();
+    await agents(r, "start", "-w", "north", "--persona", "planner");
+    const token = record(r, "planner").resumeToken as string;
+    r.made[0].exit(0);
+    await settle();
+    expect(await agents(r, "resume", "planner")).toBe(0);
+    expect(r.out.join("\n")).toMatch(
+      /starting fresh: it was never prompted, so there is no conversation to resume/,
+    );
+    const p = r.made[1];
+    expect(p.args.slice(0, 2)).toEqual(["--session-id", token]);
+    expect(p.args).not.toContain("--resume");
+    expect(record(r, "planner").resumeToken).toBe(token);
+  });
+});
+
+describe("an agent that exits at once", () => {
+  it("start or resume reports a non-zero exit in the first moments, with its last lines, and exits 1", async () => {
+    const r = await rig();
+    r.deps.exitWatchMs = 2000;
+    const run = agents(r, "start", "-w", "north", "--persona", "planner");
+    for (let i = 0; i < 50 && !r.made.length; i++) await settle(20);
+    r.made[0].emit(
+      "\x1b[31mNo conversation found with session ID x\x1b[0m\r\n",
+    );
+    r.made[0].exit(1);
+    expect(await run).toBe(1);
+    const err = r.err.join("\n");
+    expect(err).toMatch(/agent planner exited at once \(exit 1\)/);
+    expect(err).toMatch(/No conversation found with session ID x/);
+    expect(err).not.toContain("\x1b[");
+    expect(r.out.join("\n")).not.toMatch(/started agent/);
   });
 });

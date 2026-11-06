@@ -20,7 +20,10 @@ import { ROOT } from "./helpers/doctor-root.js";
 import * as child from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import {
+  agentsConfigured,
+  doctorNotes,
   doctorRows,
   formatDoctor,
 } from "../../../src/ui/cli/doctor-command.js";
@@ -173,5 +176,57 @@ describe("doctor", () => {
       "  tls      mkcert (implicit)    ✗ unavailable: mkcert is not installed",
       "    ⚠ edge.tls is not set; …",
     ]);
+  });
+});
+
+describe("doctor's agents note", () => {
+  const NOTE =
+    "  ℹ agents are configured: run `acme doctor --probe` to verify agent env isolation";
+  const tmp = () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "doctor-notes-"));
+    created.push(d);
+    return d;
+  };
+  const created: string[] = [];
+  afterAll(() => {
+    for (const d of created.splice(0))
+      fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  it("is shown when agents are configured, informational only", () => {
+    const state = tmp();
+    for (const agents of [
+      { persona_packs: ["personas"] },
+      { max_concurrent: 2 },
+      { planner: { grants: ["south"] } },
+    ])
+      expect(
+        doctorNotes(
+          "acme",
+          agentsConfigured({ environments: [], agents }, state),
+        ),
+      ).toContain(NOTE);
+  });
+
+  it("is shown when an agent record exists", () => {
+    const state = tmp();
+    fs.mkdirSync(path.join(state, "agents"));
+    fs.writeFileSync(
+      path.join(state, "agents", "planner.json"),
+      JSON.stringify({ id: "planner", session: { id: "x" } }),
+    );
+    expect(
+      doctorNotes("acme", agentsConfigured({ environments: [] }, state)),
+    ).toContain(NOTE);
+  });
+
+  it("is absent otherwise", () => {
+    const state = tmp();
+    for (const cfg of [
+      { environments: [] },
+      { environments: [], agents: {} },
+      null,
+    ])
+      expect(doctorNotes("acme", agentsConfigured(cfg, state))).toEqual([]);
   });
 });

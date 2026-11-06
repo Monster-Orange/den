@@ -11,7 +11,9 @@
  *                        target discovery and the owned-host check, nothing run
  *   /api/activity        the audit trail for one service (?address=repo/svc) or
  *                        repo (?repo=): execs and syncs, yours and agents',
- *                        newest first (the graph panel's Activity tab)
+ *                        newest first (the graph panel's Activity tab);
+ *                        ?address=workspace:<ws>, an agent's cross-workspace
+ *                        calls (a grant) into or out of workspace <ws>
  *
  * The MCP server's `stacks`, `edge_status` and `run_tests` (its security
  * pre-flight) read these. Collaborators are injectable for tests.
@@ -28,6 +30,7 @@ import {
 } from "../../shared/stacks/status.js";
 import { send400, sendJson } from "./http-helpers.js";
 import { recentActions, type AuditEntry } from "./audit.js";
+import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
 
 export interface SecurityPlanArgs {
   env: string;
@@ -97,6 +100,17 @@ export function activityFor(
   entries: AuditEntry[],
   target: { address?: string; repo?: string },
 ): AuditEntry[] {
+  // workspace:<ws>: a cross-workspace call has no repo or service; it is
+  // listed under the workspace it reached and the agent's own.
+  const ws = workspaceAddress(target.address);
+  if (ws !== null)
+    return entries
+      .filter(
+        (e) =>
+          e.targetWorkspace !== undefined &&
+          (e.targetWorkspace === ws || e.workspace === ws),
+      )
+      .reverse();
   // A repo-level entry ("core down (local)") is an attempt on the repo
   // without naming a service, as agents usually do: it shows for the repo
   // and for each of its services.
@@ -126,6 +140,12 @@ export function activityFor(
   return entries.filter(matches).reverse();
 }
 const MODES = ["baseline", "api", "full", "all"];
+
+/** The workspace a `workspace:<ws>` address names, else null. */
+function workspaceAddress(address: string | undefined): string | null {
+  const m = /^workspace:(.*)$/.exec(address ?? "");
+  return m && WORKSPACE_NAME_RE.test(m[1]) ? m[1] : null;
+}
 
 /** Handles the routes above; false when `pathname` is not one of them. */
 export async function handleReadonlyRoutes(
@@ -187,7 +207,10 @@ export async function handleReadonlyRoutes(
     const address = url.searchParams.get("address") ?? undefined;
     const repo = url.searchParams.get("repo") ?? undefined;
     const name = address ?? repo;
-    if (!name || !SAFE_NAME.test(name)) {
+    if (
+      !name ||
+      (!SAFE_NAME.test(name) && workspaceAddress(address) === null)
+    ) {
       send400(res, "address or repo is required");
       return true;
     }

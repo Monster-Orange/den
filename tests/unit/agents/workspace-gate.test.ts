@@ -114,6 +114,8 @@ describe("an agent's MCP is pinned to its workspace", () => {
     expect(res.text).toMatch(
       /scoped to workspace "north".*"south" is another workspace/,
     );
+    // The refusal says what the agent may reach: here, nothing more.
+    expect(res.text).toMatch(/\(agent:planner; no grants\)/);
     expect(calls.filter((c) => c.path === "/api/services")).toEqual([]);
     const ws = await callTool("workspaces", {}, ctx(api, scope));
     expect(ws.text).not.toContain("south");
@@ -190,6 +192,7 @@ describe("an agent's MCP is pinned to its workspace", () => {
       ctx(api, scope),
     );
     expect(res.text).toMatch(/^Refused: .*"other" is another workspace/);
+    expect(res.text).toMatch(/\(agent:planner; grants: south\)/);
     expect(calls.filter((c) => c.path === "/api/services")).toEqual([]);
   });
 

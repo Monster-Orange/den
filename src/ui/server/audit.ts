@@ -209,7 +209,8 @@ export function recordAgentRefusal(
  * spec §5b), reported by its MCP server before the call runs. Recorded
  * with both workspaces: the agent's own (from its headers) and the target.
  * Null, and nothing recorded, unless the actor is a scoped agent and the
- * target is a well-formed workspace other than its own.
+ * target is a well-formed workspace other than its own. `GET /api/activity
+ * ?address=workspace:<ws>` lists it under either workspace.
  */
 export function recordCrossWorkspace(
   actor: Actor,

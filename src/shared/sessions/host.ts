@@ -12,7 +12,8 @@
  * starting keeps two hosts from both replacing it at once.
  *
  * The host never logs or stores a session's env or argv: a record holds
- * its name, cwd, pid, times and exit code.
+ * its name, cwd, pid, times, exit code and whether it was ever prompted
+ * (input with a line end written to it), never the input itself.
  */
 import { randomBytes } from "crypto";
 import * as fs from "fs";
@@ -103,6 +104,34 @@ export function socketAnswers(sock: string, ms = 1000): Promise<boolean> {
     s.once("connect", () => done(true));
     s.once("error", () => done(false));
   });
+}
+
+/**
+ * The audit of a start's `--keep-env` names: "A, B (credential-shaped)",
+ * or "" for none. Names only: a value never reaches the host's log.
+ */
+function keptEnvAudit(v: unknown): string {
+  if (!Array.isArray(v)) return "";
+  return v
+    .filter(
+      (k): k is { name: string; credentialShaped?: unknown } =>
+        !!k &&
+        typeof (k as { name?: unknown }).name === "string" &&
+        /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test((k as { name: string }).name),
+    )
+    .map(
+      (k) =>
+        `${k.name}${k.credentialShaped === true ? " (credential-shaped)" : ""}`,
+    )
+    .join(", ");
+}
+
+function printableActor(v: unknown): string {
+  return (
+    String(v ?? "unknown")
+      .replace(/[^\x20-\x7e]/g, "")
+      .slice(0, 80) || "unknown"
+  );
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -230,6 +259,7 @@ export class SessionHost {
           startedAt: string;
           exited?: boolean;
           exitCode?: number;
+          prompted?: boolean;
         };
         if (typeof rec.id !== "string" || typeof rec.name !== "string")
           continue;
@@ -244,6 +274,7 @@ export class SessionHost {
             ...(typeof rec.exitCode === "number"
               ? { exitCode: rec.exitCode }
               : {}),
+            ...(rec.prompted === true ? { prompted: true } : {}),
           },
           cwd: rec.cwd,
           pty: null,
@@ -273,6 +304,7 @@ export class SessionHost {
       startedAt: s.info.startedAt,
       ...(s.info.exited ? { exited: true } : {}),
       ...(s.info.exitCode !== undefined ? { exitCode: s.info.exitCode } : {}),
+      ...(s.info.prompted ? { prompted: true } : {}),
     };
     try {
       fs.writeFileSync(
@@ -373,8 +405,19 @@ export class SessionHost {
       }
       case "write": {
         const s = this.session(req.ref);
-        if (s.pty && !s.info.exited && typeof req.data === "string")
-          s.pty.write(Buffer.from(req.data, "base64"));
+        if (s.pty && !s.info.exited && typeof req.data === "string") {
+          const bytes = Buffer.from(req.data, "base64");
+          s.pty.write(bytes);
+          // A line end is a prompt sent; a terminal's own replies to the
+          // program's queries (escape sequences) carry none.
+          if (
+            !s.info.prompted &&
+            (bytes.includes(0x0d) || bytes.includes(0x0a))
+          ) {
+            s.info.prompted = true;
+            this.persist(s);
+          }
+        }
         return {};
       }
       case "resize": {
@@ -539,6 +582,11 @@ export class SessionHost {
       }, EXIT_SETTLE_MS);
     });
     this.log(`session ${id} (${name}) started, pid ${pty.pid}`);
+    const kept = keptEnvAudit(req.keptEnv);
+    if (kept)
+      this.log(
+        `session ${id} (${name}) --keep-env ${kept} · by ${printableActor(req.actor)}`,
+      );
     return s.info;
   }
 

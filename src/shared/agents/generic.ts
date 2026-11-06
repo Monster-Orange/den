@@ -22,6 +22,7 @@ export const generic: Runtime = {
   id: GENERIC_ID,
   // The CLI is the persona's; there is nothing to look for until launch.
   detect: () => ({ available: true }),
+  scrubEnv: [],
   launch(input): LaunchOutput {
     const template = input.persona.argv;
     if (!template?.length)

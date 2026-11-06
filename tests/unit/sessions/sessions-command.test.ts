@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { PassThrough } from "stream";
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { SessionHost } from "../../../src/shared/sessions/host.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
@@ -32,6 +33,8 @@ afterEach(async () => {
 interface Rig {
   deps: SessionsDeps;
   made: ScriptedPty[];
+  /** The host's log lines. */
+  hostLog: string[];
   out: string[];
   err: string[];
   connects: number;
@@ -46,11 +49,12 @@ async function rig(over: Partial<SessionsDeps> = {}): Promise<Rig> {
     stateDir: dir,
     pty: () => load,
     flushMs: 0,
-    log: () => undefined,
+    log: (l) => hostLog.push(l),
   });
+  const hostLog: string[] = [];
   hosts.push(h);
   await h.listen();
-  const r: Rig = { made, out: [], err: [], connects: 0, deps: {} };
+  const r: Rig = { made, hostLog, out: [], err: [], connects: 0, deps: {} };
   r.deps = {
     dist: "acme",
     cli: "acme",
@@ -109,6 +113,149 @@ describe("sessions start", () => {
       "DEN_WORKSPACE_OVERRIDE",
     ])
       expect(p.opts.env[k]).toBeUndefined();
+  });
+
+  it("starts from the allowlist: no Claude Code plumbing, no credentials, nothing else of the caller's; the dropped names are listed", async () => {
+    const r = await rig();
+    r.deps.env = {
+      ...r.deps.env,
+      CLAUDECODE: "1",
+      CLAUDE_CODE_SESSION_ID: "parent-session",
+      CLAUDE_CODE_CHILD_SESSION: "1",
+      FAKE_PROBE_TOKEN: "probe-value-xyz",
+      FOO: "bar",
+      LANG: "en_US.UTF-8",
+      LC_CTYPE: "UTF-8",
+    };
+    expect(await start(r, "north", "planner")).toBe(0);
+    // Key names only: a failure never prints a value.
+    const keys = Object.keys(r.made[0].opts.env).sort();
+    expect(keys).toEqual(["HOME", "LANG", "LC_CTYPE", "PATH", "TERM"]);
+    const line = r.out.filter((l) => /dropped from its environment/.test(l));
+    expect(line).toHaveLength(1);
+    for (const k of [
+      "CLAUDECODE",
+      "CLAUDE_CODE_SESSION_ID",
+      "CLAUDE_CODE_CHILD_SESSION",
+      "FAKE_PROBE_TOKEN",
+      "FOO",
+    ])
+      expect(line[0]).toContain(k);
+    const all = [...r.out, ...r.err, ...r.hostLog].join("\n");
+    expect(all).not.toContain("probe-value-xyz");
+    // A long environment: the first eight names, then a count.
+    const many = Object.fromEntries(
+      Array.from({ length: 20 }, (_, i) => [
+        `VAR_${String(i).padStart(2, "0")}`,
+        "x",
+      ]),
+    );
+    r.deps.env = { ...r.deps.env, ...many };
+    r.out.length = 0;
+    expect(await start(r, "north", "planner2")).toBe(0);
+    const long = r.out.find((l) => /dropped from its environment/.test(l))!;
+    expect(long.split(",").length).toBe(8);
+    expect(long).toMatch(/ and \d+ more \(keep one with --keep-env NAME\)$/);
+    expect(all).not.toContain("parent-session");
+  });
+
+  it("--keep-env NAME (exact, repeatable) adds a variable, audited by name with the actor, never the value", async () => {
+    const r = await rig();
+    r.deps.env = {
+      ...r.deps.env,
+      USER: "someone",
+      FAKE_PROBE_TOKEN: "probe-value-xyz",
+      FOO: "foo-value-qq",
+      CLAUDE_CODE_SESSION_ID: "parent-session",
+    };
+    expect(
+      await cmdSessions(
+        [
+          "start",
+          "-w",
+          "north",
+          "--name",
+          "p",
+          "--keep-env",
+          "FAKE_PROBE_TOKEN",
+          "--keep-env=FOO",
+          // A runtime's scrubEnv wins, even over --keep-env.
+          "--keep-env",
+          "CLAUDE_CODE_SESSION_ID",
+          "--",
+          "sh",
+        ],
+        r.deps,
+      ),
+    ).toBe(0);
+    const keys = Object.keys(r.made[0].opts.env);
+    expect(keys).toContain("FAKE_PROBE_TOKEN");
+    expect(keys).toContain("FOO");
+    expect(keys).not.toContain("CLAUDE_CODE_SESSION_ID");
+    const audit = r.hostLog.filter((l) => /--keep-env/.test(l));
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatch(
+      /--keep-env FAKE_PROBE_TOKEN \(credential-shaped\), FOO · by user someone/,
+    );
+    const all = [...r.out, ...r.err, ...r.hostLog].join("\n");
+    expect(all).not.toContain("probe-value-xyz");
+    // A long environment: the first eight names, then a count.
+    const many = Object.fromEntries(
+      Array.from({ length: 20 }, (_, i) => [
+        `VAR_${String(i).padStart(2, "0")}`,
+        "x",
+      ]),
+    );
+    r.deps.env = { ...r.deps.env, ...many };
+    r.out.length = 0;
+    expect(await start(r, "north", "planner2")).toBe(0);
+    const long = r.out.find((l) => /dropped from its environment/.test(l))!;
+    expect(long.split(",").length).toBe(8);
+    expect(long).toMatch(/ and \d+ more \(keep one with --keep-env NAME\)$/);
+    expect(all).not.toContain("foo-value-qq");
+    // One exact name per flag: no globs, no lists.
+    for (const bad of ["CLAUDE_*", "A,B", "a b"])
+      expect(
+        await cmdSessions(
+          [
+            "start",
+            "-w",
+            "north",
+            "--name",
+            "q",
+            "--keep-env",
+            bad,
+            "--",
+            "sh",
+          ],
+          r.deps,
+        ),
+      ).toBe(2);
+  });
+
+  it("--keep-env is refused for an agent actor", async () => {
+    const r = await rig();
+    r.deps.env = { ...r.deps.env, DEN_AGENT: "agent:planner", FOO: "bar" };
+    expect(
+      await cmdSessions(
+        [
+          "start",
+          "-w",
+          "north",
+          "--name",
+          "p",
+          "--keep-env",
+          "FOO",
+          "--",
+          "sh",
+        ],
+        r.deps,
+      ),
+    ).toBe(1);
+    expect(r.err.join("\n")).toMatch(
+      /--keep-env is refused for an agent \(agent:planner\)/,
+    );
+    expect(r.made).toHaveLength(0);
   });
 
   it("--cwd sets the working directory", async () => {
@@ -204,17 +351,48 @@ describe("sessions kill", () => {
   });
 });
 
+describe("sessions attach", () => {
+  it("prints the [attached to …] banner before replaying the scrollback", async () => {
+    const r = await rig();
+    await start(r, "north", "planner");
+    r.made[0].emit("earlier output\r\n");
+    const order: string[] = [];
+    const stdin = new PassThrough() as unknown as NodeJS.ReadStream;
+    const stdout = {
+      isTTY: false,
+      write: (d: unknown) => {
+        order.push(`out ${String(d)}`);
+        return true;
+      },
+    } as unknown as NodeJS.WriteStream;
+    const run = cmdSessions(["attach", "planner"], {
+      ...r.deps,
+      stdin,
+      stdout,
+      err: (l) => order.push(`err ${l}`),
+    });
+    await new Promise((res) => setTimeout(res, 200));
+    (stdin as unknown as PassThrough).end();
+    expect(await run).toBe(0);
+    const banner = order.findIndex((l) => l.includes("[attached to"));
+    const replay = order.findIndex((l) => l.includes("earlier output"));
+    expect(banner).toBeGreaterThanOrEqual(0);
+    expect(replay).toBeGreaterThanOrEqual(0);
+    expect(banner).toBeLessThan(replay);
+  });
+});
+
 describe("agents list", () => {
-  it("a session with no agent record is listed with persona and runtime blank", async () => {
+  it("lists agents only: a plain session (no agent record) is left out", async () => {
     const r = await rig();
     await start(r, "north", "planner");
     await start(r, "south", "reviewer");
     r.out.length = 0;
     expect(await cmdAgents(["list", "-w", "north"], r.deps)).toBe(0);
-    const [header, ...rows] = r.out.join("\n").split("\n").filter(Boolean);
-    expect(header).toMatch(/AGENT\s+PERSONA\s+RUNTIME\s+STATE/);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatch(/^planner\s+-\s+-\s+running/);
+    expect(r.out.join("\n")).toMatch(/no agents in north/);
+    r.out.length = 0;
+    expect(await cmdAgents(["list", "-w", "north", "--json"], r.deps)).toBe(0);
+    expect(JSON.parse(r.out.join("\n"))).toEqual([]);
   });
 
   it("says when a workspace has no agents", async () => {

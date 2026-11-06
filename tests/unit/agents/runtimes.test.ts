@@ -160,6 +160,8 @@ describe("den-claude launch", () => {
       "--mcp-config",
       mcpFile,
       "--strict-mcp-config",
+      "--permission-mode",
+      "default",
       "--model",
       "opus",
       "--append-system-prompt",

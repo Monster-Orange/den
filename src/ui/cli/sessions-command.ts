@@ -21,7 +21,9 @@ import * as path from "path";
 import { readAgentsConfig } from "../../shared/den-config.js";
 import { cliEntrypoint } from "../../shared/engine.js";
 import { getDistRoot, getInvokeCwd, getStateDir } from "../../shared/paths.js";
-import { envKey, product } from "../../shared/product.js";
+import { product } from "../../shared/product.js";
+import { ENV_NAME_RE, isCredentialShaped } from "../../shared/secret-env.js";
+import { allScrubEnv } from "../../shared/agents/runtimes.js";
 import {
   ensureHost,
   connectHost,
@@ -30,6 +32,7 @@ import {
   type HostClient,
 } from "../../shared/sessions/client.js";
 import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
+import { AGENT_ACTOR_ENV, buildSessionEnv } from "../../shared/sessions/env.js";
 import { runSessionHost } from "../../shared/sessions/host.js";
 import {
   inWorkspace,
@@ -44,7 +47,8 @@ import {
   type SessionInfo,
   type SessionSignal,
 } from "../../shared/sessions/types.js";
-import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
+import * as os from "os";
+import { AGENT_ACTOR_RE, WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
 
 /** ctrl-]: leaves the session running (as telnet's escape does). */
 export const DETACH_KEY = 0x1d;
@@ -55,8 +59,10 @@ export const SESSIONS_HELP = {
     "Terminals that keep running when the web server restarts, owned by a",
     "session host (one per distribution, started on demand).",
     "",
-    "{cli} sessions start --workspace <ws> --name <n> [--cwd <dir>] -- <argv…>",
+    "{cli} sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] -- <argv…>",
     "    run argv in a PTY as <dist>-<ws>:<n> (cwd: here); capped by agents.max_concurrent",
+    "    env: PATH, HOME, USER, LOGNAME, SHELL, TERM, COLORTERM, LANG, LC_*, TZ,",
+    "    TMPDIR only; --keep-env NAME (exact, repeatable; audited) adds one",
     "{cli} sessions list [-w <ws>] [--json]",
     "{cli} sessions attach <name|id>",
     "    raw terminal; ctrl-] detaches and leaves it running",
@@ -194,12 +200,14 @@ export async function loadWorkspaces(d: SessionsDeps): Promise<void> {
 // ── argument parsing ──────────────────────────────────────────────────────────
 
 export interface FlagSpec {
-  /** Canonical name → takes a value. */
-  [flag: string]: boolean;
+  /** Canonical name → takes a value ("repeat": a value, any number of times). */
+  [flag: string]: boolean | "repeat";
 }
 
 export interface Parsed {
   flags: Record<string, string | true>;
+  /** Each "repeat" flag's values, in order. */
+  repeated: Record<string, string[]>;
   positional: string[];
   /** After `--`, or null when there was none. */
   rest: string[] | null;
@@ -212,7 +220,7 @@ export function parseArgs(
   args: string[],
   spec: FlagSpec,
 ): Parsed {
-  const out: Parsed = { flags: {}, positional: [], rest: null };
+  const out: Parsed = { flags: {}, repeated: {}, positional: [], rest: null };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--") {
@@ -239,7 +247,8 @@ export function parseArgs(
       (eq === -1 && value.startsWith("-"))
     )
       throw new UsageError(`${where}: ${raw} needs a value`);
-    out.flags[flag] = value;
+    if (spec[flag] === "repeat") (out.repeated[flag] ??= []).push(value);
+    else out.flags[flag] = value;
   }
   return out;
 }
@@ -294,19 +303,27 @@ export function contractInfo(s: SessionInfo): SessionInfo {
 
 // ── subcommands ───────────────────────────────────────────────────────────────
 
-/** The environment a session gets: the caller's, without Den's own plumbing. */
-export function sessionEnv(env: NodeJS.ProcessEnv): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(env)) if (v !== undefined) out[k] = v;
-  for (const k of [
-    "DEN_INVOKE_CWD",
-    "DEN_ENGINE_ROOT",
-    "DEN_WORKSPACE_OVERRIDE",
-    envKey("INVOKE_CWD"),
-  ])
-    delete out[k];
-  if (!out.TERM) out.TERM = "xterm-256color";
-  return out;
+/**
+ * A plain session's env (AG spec §5a-env): the allowlist, the names the
+ * user kept, then every runtime's scrubEnv. `doctor --probe` checks it.
+ */
+export function plainSessionEnv(
+  caller: NodeJS.ProcessEnv,
+  keep: readonly string[] = [],
+): Record<string, string> {
+  return buildSessionEnv({ caller, keep, scrub: allScrubEnv() });
+}
+
+/** Who ran the CLI, for an audit line: a login name, printable. */
+function cliUser(env: NodeJS.ProcessEnv): string {
+  let name = env.USER ?? env.LOGNAME ?? "";
+  if (!name)
+    try {
+      name = os.userInfo().username;
+    } catch {
+      /* none */
+    }
+  return name.replace(/[^A-Za-z0-9._-]/g, "").slice(0, 64) || "unknown";
 }
 
 export async function withClient<T>(
@@ -327,6 +344,7 @@ async function start(args: string[], d: Resolved): Promise<number> {
     "--workspace": true,
     "--name": true,
     "--cwd": true,
+    "--keep-env": "repeat",
   });
   if (p.positional.length)
     throw new UsageError(
@@ -354,6 +372,32 @@ async function start(args: string[], d: Resolved): Promise<number> {
       : d.invokeCwd();
   if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory())
     throw new UsageError(`${where}: --cwd ${cwd} is not a directory`);
+  const keep = [...new Set(p.repeated["--keep-env"] ?? [])];
+  for (const k of keep)
+    if (!ENV_NAME_RE.test(k))
+      throw new UsageError(
+        `${where}: --keep-env "${k}" is not an environment variable name (one exact name per flag)`,
+      );
+  // An agent's env is its allowlist and its runtime's, never widened by
+  // the agent itself (`agents start` has no --keep-env).
+  const actor = d.env[AGENT_ACTOR_ENV];
+  if (keep.length && actor !== undefined) {
+    d.err(
+      `✗ --keep-env is refused for an agent (${AGENT_ACTOR_RE.test(actor) ? actor : "agent"}): its env is the allowlist and its runtime's`,
+    );
+    return 1;
+  }
+  const env = plainSessionEnv(d.env, keep);
+  // Names only, never values: what was left out, so it can be asked for.
+  const dropped = Object.keys(d.env)
+    .filter((k) => d.env[k] !== undefined && !(k in env))
+    .sort();
+  const kept = keep
+    .filter((k) => k in env)
+    .map((name) => ({
+      name,
+      credentialShaped: isCredentialShaped(name, d.env[name]),
+    }));
 
   const pty = d.pty();
   if (!pty.available) {
@@ -371,13 +415,32 @@ async function start(args: string[], d: Resolved): Promise<number> {
           name: full,
           cwd,
           argv: p.rest!,
-          env: sessionEnv(d.env),
+          env,
           cols: (tty && d.stdout.columns) || 80,
           rows: (tty && d.stdout.rows) || 24,
         },
-        { limit },
+        {
+          limit,
+          // Audited by the host: each name, and whether it is
+          // credential-shaped; never a value.
+          ...(kept.length
+            ? { keptEnv: kept, actor: `user ${cliUser(d.env)}` }
+            : {}),
+        },
       );
       d.out(`started ${info.name} (id ${info.ref.id}, pid ${info.pid})`);
+      // With an allowlist nearly everything is left out: the first few
+      // names, then a count, so the line stays readable.
+      if (dropped.length)
+        d.out(
+          `  dropped from its environment: ${dropped.slice(0, 8).join(", ")}` +
+            (dropped.length > 8 ? ` and ${dropped.length - 8} more` : "") +
+            " (keep one with --keep-env NAME)",
+        );
+      for (const k of kept.filter((x) => x.credentialShaped))
+        d.err(
+          `  ⚠ --keep-env ${k.name}: credential-shaped; passed because you named it`,
+        );
       d.out(`  attach: ${d.cli} sessions attach ${info.name}`);
       return 0;
     } catch (e) {
@@ -526,6 +589,8 @@ function attachTerminal(
       c.close();
       resolve(code);
     };
+    // The banner comes first: the replay that follows is the session's own.
+    if (!s.exited) d.err(`[attached to ${s.name}; detach: ctrl-]]`);
     const att = c.attach(id, {
       onData: (data) => stdout.write(data),
       onExit: (code) =>
@@ -549,7 +614,6 @@ function attachTerminal(
     att.ready.then(
       () => {
         if (done) return;
-        if (!s.exited) d.err(`[attached to ${s.name}; detach: ctrl-]]`);
         resize();
       },
       (e: Error) => finish(1, `✗ ${e.message}`),

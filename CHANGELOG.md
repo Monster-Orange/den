@@ -10,6 +10,38 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **`<cli> doctor --probe`** (0.4.0-dev.3, AG spec §5a-env; a consumer's
+  dogfood finding). Opt-in: it starts a short probe session through the
+  real session host for a plain session and for each available runtime's
+  agent env (built as `agents start` builds it, running a tiny node script
+  instead of the runtime's CLI). The probe prints key names and whether
+  each is credential-shaped, never values. It exits 1, one row per finding,
+  when a runtime's `scrubEnv` name or a credential-shaped variable reaches
+  either; without the PTY module it says unavailable, not failed. Plain
+  `doctor` still never spawns anything, and adds a note to run `<cli>
+  doctor --probe` when agents are configured (an `agents:` block or an
+  agent record).
+- **`sessions start --keep-env NAME`** (0.4.0-dev.3): one exact name per
+  flag, repeatable, no globs. The session host's log names each kept
+  variable and who asked, never its value, and marks a credential-shaped one
+  (it is still passed). Refused for an agent (`DEN_AGENT` set); `agents
+  start` has no `--keep-env`.
+- **Runtime contract: `envPassthrough` and `scrubEnv`** (0.4.0-dev.3). A
+  runtime names extra caller variables it needs (den-claude:
+  `CLAUDE_CONFIG_DIR`) and names it owns that must never reach a session
+  (exact, or a prefix ending in `*`; den-claude: `CLAUDECODE`,
+  `CLAUDE_CODE_*`). Every runtime's `scrubEnv` is removed from every
+  session's env last, whatever put it back. `LaunchOutput.warnings` are
+  printed at start.
+- **den-claude passes `--permission-mode`** (0.4.0-dev.3; a consumer's
+  dogfood finding): `default` unless the persona's `permission_mode` sets
+  `default`, `acceptEdits`, `plan` or `bypassPermissions` (anything else is
+  an error naming the key), so `approvals: "terminal"` means prompts reach
+  the terminal. `bypassPermissions` prints a one-line warning at start.
+- **`GET /api/activity?address=workspace:<ws>`** (0.4.0-dev.3; a consumer's
+  dogfood finding): an agent's cross-workspace call under a grant, which has
+  no repo or service, is listed under the workspace it reached and the
+  agent's own. Before, it showed only in the server log.
 - **Agents: personas, runtimes and the agent record** (0.4.0-dev.1, AG-2a).
   `<cli> agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>]
   [--id <id>]` resolves the persona and the runtime, asks the runtime for
@@ -91,6 +123,42 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- **A session's environment is an allowlist** (0.4.0-dev.3, AG spec
+  §5a-env; a consumer's dogfood finding). Every session started an agent
+  with the caller's whole environment, so an agent started from inside
+  Claude Code inherited `CLAUDECODE` and `CLAUDE_CODE_*` (Claude Code then
+  turned transcripts off, so resume could not work, and the agent could
+  message peers as its parent), and every secret in the caller's env reached
+  every agent. Now every session's env starts empty: `PATH`, `HOME`, `USER`,
+  `LOGNAME`, `SHELL`, `TERM` (default `xterm-256color`), `COLORTERM`,
+  `LANG`, `LC_*`, `TZ` and `TMPDIR`; then, for a plain session, the names
+  given with `--keep-env`; for an agent, its runtime's `envPassthrough`, its
+  launch env and `DEN_AGENT=agent:<id>`; then every runtime's `scrubEnv` is
+  removed. `sessions start` names the variables it left out, never values.
+  An agent's MCP server gets the distribution's location (`DEN_ROOT`,
+  `<PREFIX>_ROOT`, `<PREFIX>_HOME`, when set) in its own config. The
+  credential patterns test workers are scrubbed with now live in Den
+  (`src/shared/secret-env.ts`), and the tests import them.
+- **`agents resume` of a session that was never prompted starts fresh**
+  (0.4.0-dev.3; a consumer's dogfood finding): there is no conversation to
+  continue, so it starts under the same conversation id (`--session-id`, not
+  `--resume`) and says "starting fresh: it was never prompted, so there is
+  no conversation to resume". The session host records whether a session
+  ever got input with a line end (`prompted`), never the input.
+- **`agents start` and `resume` report an early exit** (0.4.0-dev.3; a
+  consumer's dogfood finding): Den watches the new session for up to 3 s;
+  a non-zero exit prints the code and the last lines it printed (at most
+  10, escapes stripped, secret-shaped values redacted) and exits 1. Before,
+  it printed "resumed agent …" and exited 0 while the agent's CLI had
+  exited 1.
+- **`agents list` shows agents only** (0.4.0-dev.3; a consumer's dogfood
+  finding): a session without an agent record (from `sessions start`) is
+  left out; `sessions list` shows it.
+- **`sessions attach` prints its banner first** (0.4.0-dev.3; a consumer's
+  dogfood finding): `[attached to …]`, then the scrollback replay.
+- **An MCP scope refusal names the agent's grants** (0.4.0-dev.3; a
+  consumer's dogfood finding): `(agent:<id>; grants: <a>, <b>)` or
+  `(agent:<id>; no grants)`.
 - **A PTY module is an optional dependency** (0.4.0-dev.0, Q-AG-1):
   `@lydell/node-pty` 1.1.0, exact. Its binaries are prebuilt per platform
   (macOS and Linux, x64 and arm64; Windows) in packages npm installs with

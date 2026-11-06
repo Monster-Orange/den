@@ -24,6 +24,12 @@ export interface SessionInfo {
   startedAt: string;
   exited?: boolean;
   exitCode?: number;
+  /**
+   * Set once input ending a line (Enter) has been written to it: someone
+   * prompted it. A runtime with nothing to resume until then (den-claude)
+   * starts afresh instead. Never what was typed.
+   */
+  prompted?: boolean;
 }
 
 /** What to run. `env` is the whole environment: nothing is inherited. */
