@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.2.8] - unreleased
+## [0.2.8] - 2026-11-05
 
 ### Added
 
@@ -81,7 +81,9 @@ config and manifest changes a distribution must make to move to it under
 - **A scoped MCP `manifest_validate` refused on another workspace's path
   shows in that repo's activity** (0.2.8-dev.2). The refusal is recorded
   under the catalog repo whose checkout holds the path (in any workspace),
-  never as the path itself, as `logs_tail` refusals are since 0.2.8-dev.1.
+  as `logs_tail` refusals are since 0.2.8-dev.1. The entry is addressed by
+  the repo, not the path; its detail is the refusal message, which quotes
+  the path.
 - **A scoped MCP refusal of a non-lifecycle tool shows on its service**
   (0.2.8-dev.1). A refused `logs_tail`, `logs_search` or other non-lifecycle tool
   was stored with an empty detail and no service, so the service panel's
