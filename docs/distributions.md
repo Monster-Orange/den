@@ -1581,9 +1581,16 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
 - Stopping the host (`sessions host --stop`, or a reboot) ends its
   sessions. They stay listed as exited, with their scrollback, until
   `sessions kill` removes them.
-- `agents.max_concurrent` caps the sessions running at once (default 4):
+- `sessions.max_concurrent` caps the plain sessions (`sessions start`)
+  running at once (default 8), and `agents.max_concurrent` the agents
+  (default 4). Each counts only its own, so a few plain shells never stop
+  an agent from starting, nor agents a shell. Past either, the start is
+  refused, naming the key ("2 sessions are running and
+  sessions.max_concurrent is 2"); `<cli> validate` names a wrong value.
 
   ```yaml
+  sessions:
+    max_concurrent: 8
   agents:
     max_concurrent: 4
   ```
@@ -1614,7 +1621,7 @@ server scoped to its workspace.
 
 - `start` runs the agent as session `<dist>-<ws>:<id>` in the workspace's
   checkout dir (its `directory`, else `den-workspaces/<ws>`), capped by
-  `agents.max_concurrent`. The id defaults to the persona's id; an id is
+  `agents.max_concurrent` (agents only: plain sessions never count). The id defaults to the persona's id; an id is
   unique in the distribution, so a second workspace's planner gets
   `planner-<ws>` unless you give `--id`.
 - The **agent record**, `<stateDir>/agents/<id>.json` (0600), holds its id,
@@ -1761,19 +1768,22 @@ An agent runs as your OS user, so it could still read `web.secret` itself;
 the token keeps what Den does on its behalf attributable and bounded.
 **The boundary is the server's token rules** (above), not a deny list.
 
-As a cooperative mitigation, den-claude passes Claude Code a settings file
-(`--settings`) whose `permissions.deny` lists `Read` of `<state
-dir>/web.secret` and `<state dir>/sessions/**`, and `Bash` rules in Claude
-Code's wildcard form for the path (`Bash(*<state dir>/web.secret*)`, and
-each of `cat`, `head`, `tail`, `less`, `more`, `xxd`, `od`, `strings`,
-`base64` and `cp` followed by it), spelled as an absolute path, under `~`
-and under `$HOME`, with a path that has spaces also backslash-escaped. A
-deny list can't name every way to read a file (another program, a script,
-a copy under another name), so it is a speed bump. **It binds cooperating
-agents only**: an agent that ignores its permission config, or reads the
-file some other way, can still read them. OS-user isolation (a separate
-user, a container, a sandbox) is not in 0.4.x. `web logout --all` revokes every agent's token
-(above, under Signing in).
+**The deny list is a convenience, not the boundary.** den-claude passes
+Claude Code a settings file (`--settings`) whose `permissions.deny` lists
+`Read` of `<state dir>/web.secret` and `<state dir>/sessions/**`, and
+`Bash` rules in Claude Code's wildcard form for the path
+(`Bash(*<state dir>/web.secret*)`, and each of `cat`, `head`, `tail`,
+`less`, `more`, `xxd`, `od`, `strings`, `base64` and `cp` followed by it),
+spelled as an absolute path, under `~` and under `$HOME`, with a path that
+has spaces also backslash-escaped. It binds cooperating agents only: an
+agent that ignores its permission config can read the files anyway. And
+it does not catch every spelling: a path relative to the agent's cwd
+(`cat ../.den/web.secret`, say), another program, a script or a copy under
+another name all get past it. The server's token rules (above)
+are the boundary: whatever an agent reads, its token reaches only its own
+session's routes, never a shell-grade route or the lock. OS-user isolation
+(a separate user, a container, a sandbox) is not in 0.4.x. `web logout
+--all` revokes every agent's token (above, under Signing in).
 
 **What the scope does not do.** An agent's MCP scope binds cooperating
 agents only. A runtime with a shell can still run `<cli>` itself, outside

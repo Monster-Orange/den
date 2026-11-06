@@ -29,7 +29,12 @@ import {
   type Request,
 } from "./protocol.js";
 import type { PtyLoad, PtyProcess } from "./pty.js";
-import { SESSION_SIGNALS, type SessionInfo } from "./types.js";
+import {
+  SESSION_POOLS,
+  SESSION_SIGNALS,
+  type SessionInfo,
+  type SessionPool,
+} from "./types.js";
 
 export const BACKEND_ID = "den-pty";
 
@@ -58,6 +63,8 @@ interface Session {
   log: ScrollbackLog;
   /** aid → its connection. */
   attachments: Map<string, Conn>;
+  /** The cap it counts against (start's `pool`), when one was named. */
+  pool?: SessionPool;
 }
 
 class Conn {
@@ -81,6 +88,17 @@ class Refusal extends Error {
 
 const isInt = (n: unknown, min: number, max: number): n is number =>
   typeof n === "number" && Number.isInteger(n) && n >= min && n <= max;
+
+/**
+ * The cap refusal: "2 agents are running and agents.max_concurrent is 2".
+ * With no pool (an older client's limit) every session counts, and the key
+ * is agents.max_concurrent, as it was.
+ */
+function capMessage(live: number, limit: number, pool?: unknown): string {
+  const noun = pool === "agents" ? "agent" : "session";
+  const key = pool === "sessions" ? "sessions" : "agents";
+  return `${live} ${noun}${live === 1 ? " is" : "s are"} running and ${key}.max_concurrent is ${limit}`;
+}
 
 function pidAlive(pid: number): boolean {
   try {
@@ -528,20 +546,26 @@ export class SessionHost {
     );
     if (same.some((s) => !s.info.exited))
       throw new Refusal("exists", `${name} is already running`);
-    const live = [...this.sessions.values()].filter(
-      (s) => !s.info.exited,
-    ).length;
+    // A cap counts its own pool's running sessions: agents.max_concurrent
+    // the agents, sessions.max_concurrent the plain ones. A limit with no
+    // pool (an older client) counts every running session, as before.
+    const pool = req.pool;
+    if (pool !== undefined && !SESSION_POOLS.includes(pool as SessionPool))
+      throw new Refusal(
+        "bad-request",
+        `pool must be ${SESSION_POOLS.join(" or ")}`,
+      );
     if (req.limit !== undefined) {
       if (!isInt(req.limit, 1, 100_000))
         throw new Refusal(
           "bad-request",
           "limit must be a whole number of at least 1",
         );
+      const live = [...this.sessions.values()].filter(
+        (s) => !s.info.exited && (pool === undefined || s.pool === pool),
+      ).length;
       if (live >= req.limit)
-        throw new Refusal(
-          "cap",
-          `${live} session${live === 1 ? " is" : "s are"} running and agents.max_concurrent is ${req.limit}`,
-        );
+        throw new Refusal("cap", capMessage(live, req.limit, pool));
     }
     const load = this.opts.pty();
     if (!load.available) throw new Refusal("unavailable", load.reason);
@@ -582,6 +606,7 @@ export class SessionHost {
         },
       ),
       attachments: new Map(),
+      ...(pool !== undefined ? { pool: pool as SessionPool } : {}),
     };
     this.sessions.set(id, s);
     this.persist(s);

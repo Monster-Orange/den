@@ -13,12 +13,16 @@
  *
  * The R8 lock is the web UI's (an in-memory admin password in the web
  * server); CLI service actions (up, down) do not consult it, so neither do
- * these. agents.max_concurrent caps every start.
+ * these. sessions.max_concurrent caps the plain sessions running at once;
+ * agents count against agents.max_concurrent instead, never this one.
  */
 import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import { readAgentsConfig } from "../../shared/den-config.js";
+import {
+  readAgentsConfig,
+  readSessionsConfig,
+} from "../../shared/den-config.js";
 import { cliEntrypoint } from "../../shared/engine.js";
 import { getDistRoot, getInvokeCwd, getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
@@ -64,7 +68,7 @@ export const SESSIONS_HELP = {
     "session host (one per distribution, started on demand).",
     "",
     "{cli} sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] -- <argv…>",
-    "    run argv in a PTY as <dist>-<ws>:<n> (cwd: here); capped by agents.max_concurrent",
+    "    run argv in a PTY as <dist>-<ws>:<n> (cwd: here); capped by sessions.max_concurrent",
     "    env: PATH, HOME, USER, LOGNAME, SHELL, TERM, COLORTERM, LANG, LC_*, TZ,",
     "    TMPDIR only; --keep-env NAME (exact, repeatable; audited) adds one",
     "    (never a person's credential: DEN_PERSON_TOKEN, a web.secret path)",
@@ -97,7 +101,10 @@ export interface SessionsDeps {
   connectExisting?: () => Promise<HostClient | null>;
   pty?: () => PtyLoad;
   workspaceExists?: (ws: string) => boolean;
+  /** agents.max_concurrent: the agents running at once. */
   maxConcurrent?: () => number;
+  /** sessions.max_concurrent: the plain sessions running at once. */
+  maxSessions?: () => number;
   invokeCwd?: () => string;
   env?: NodeJS.ProcessEnv;
   out?: (line: string) => void;
@@ -114,7 +121,10 @@ export interface Resolved {
   connectExisting: () => Promise<HostClient | null>;
   pty: () => PtyLoad;
   workspaceExists: (ws: string) => boolean;
+  /** agents.max_concurrent: the agents running at once. */
   maxConcurrent: () => number;
+  /** sessions.max_concurrent: the plain sessions running at once. */
+  maxSessions: () => number;
   invokeCwd: () => string;
   env: NodeJS.ProcessEnv;
   out: (line: string) => void;
@@ -180,6 +190,7 @@ export function resolveDeps(d: SessionsDeps): Resolved {
     pty: d.pty ?? (() => loadPty()),
     workspaceExists: d.workspaceExists ?? defaultWorkspaceExists,
     maxConcurrent: d.maxConcurrent ?? (() => readAgentsConfig().maxConcurrent),
+    maxSessions: d.maxSessions ?? (() => readSessionsConfig().maxConcurrent),
     invokeCwd: d.invokeCwd ?? getInvokeCwd,
     env: d.env ?? process.env,
     out: d.out ?? ((l) => console.log(l)),
@@ -437,7 +448,7 @@ async function start(args: string[], d: Resolved): Promise<number> {
     d.err(`  \`${d.cli} doctor\` shows the session backend's state.`);
     return 1;
   }
-  const limit = d.maxConcurrent();
+  const limit = d.maxSessions();
   const full = sessionName(d.dist, ws, name);
   const tty = d.stdout.isTTY;
   return withClient(d, async (c) => {
@@ -453,6 +464,7 @@ async function start(args: string[], d: Resolved): Promise<number> {
         },
         {
           limit,
+          pool: "sessions",
           // Audited by the host: each name, and whether it is
           // credential-shaped; never a value.
           ...(kept.length
@@ -480,7 +492,7 @@ async function start(args: string[], d: Resolved): Promise<number> {
       d.err(`✗ ${e.message}`);
       if (e.code === "cap")
         d.err(
-          `  Stop one first (\`${d.cli} sessions kill <name>\`), or raise agents.max_concurrent.`,
+          `  Stop one first (\`${d.cli} sessions kill <name>\`), or raise sessions.max_concurrent.`,
         );
       if (e.code === "exists")
         d.err(

@@ -16,6 +16,7 @@ import type {
   AttachHandlers,
   Attachment,
   SessionInfo,
+  SessionPool,
   SessionSignal,
   SessionSpec,
 } from "./types.js";
@@ -125,6 +126,11 @@ export class HostClient extends EventEmitter {
     spec: SessionSpec,
     opts: {
       limit?: number;
+      /**
+       * Which running sessions `limit` counts: agents (agents.max_concurrent)
+       * or plain ones (sessions.max_concurrent). Without it, all of them.
+       */
+      pool?: SessionPool;
       /** `--keep-env` names, for the host's audit line (never values). */
       keptEnv?: { name: string; credentialShaped: boolean }[];
       /** Who asked, for that line. */
@@ -139,6 +145,7 @@ export class HostClient extends EventEmitter {
     const r = await this.request("start", {
       spec,
       ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+      ...(opts.pool !== undefined ? { pool: opts.pool } : {}),
       ...(opts.keptEnv?.length || opts.refusedEnv?.length
         ? { actor: opts.actor ?? "unknown" }
         : {}),

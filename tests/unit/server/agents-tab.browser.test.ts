@@ -8,7 +8,8 @@
  *     labelled "session", a revoked token marked;
  *   - a pane: the scrollback first, then live output, keystrokes to the
  *     session; up to four tile, the URL holds them (?open=), a fifth closes
- *     the oldest; Close detaches and never kills;
+ *     the oldest; Close detaches and never kills; an agent's pane is
+ *     titled with its id, never its persona;
  *   - leaving the page detaches, and coming back reattaches with what was
  *     missed;
  *   - ⌘K offers each session ("Agents › <ws> / <name>") and Start agent;
@@ -292,6 +293,17 @@ describe("the Agents tab", () => {
       id("scout"),
     ]);
     expect(await p.locator(`.pane[data-id="${id("shell")}"]`).count()).toBe(0);
+    // Its title and Close name the agent (its id until AG-10's display
+    // name), never its persona ("reviewer"); the list row keeps the persona.
+    expect(
+      (await p.textContent(`.pane[data-id="${id("scout")}"] .bar2 b`))?.trim(),
+    ).toBe("scout");
+    expect(
+      await p.getAttribute(
+        `.pane[data-id="${id("scout")}"] [data-act="close"]`,
+        "aria-label",
+      ),
+    ).toBe("Close scout's pane (it keeps running)");
     // The agent's pane has Stop; a plain session's doesn't.
     expect(
       await p

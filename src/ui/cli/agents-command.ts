@@ -26,7 +26,7 @@
  *           same conversation id (there is nothing to continue).
  *
  * Nothing here takes a grant: grants come from the org config only. The
- * host enforces agents.max_concurrent on every start.
+ * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import { DEFAULT_RUNTIME_ID } from "../../shared/agents/runtimes.js";
 import { HostError } from "../../shared/sessions/client.js";

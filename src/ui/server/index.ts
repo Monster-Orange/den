@@ -4543,6 +4543,17 @@ try {
   serverLog(`  ⚠ cache warm-up failed: ${(e as Error).message}`);
 }
 
+// Ignored config keys (a distribution's web.allow_plain_http_remote, the
+// old web.session lifetimes): the in-app log, and stderr, which is web.log
+// even when `web up` starts this --silent. Before the bind refusal, which
+// such a key often explains.
+{
+  const ignored = ignoredConfigWarning(WEB_AUTH);
+  if (ignored) {
+    pushLog("warn", `  ⚠ ${ignored}`);
+    if (!outputLost()) process.stderr.write(`  ⚠ ${ignored}\n`);
+  }
+}
 // §4: a non-loopback bind needs HTTPS in front, or the person's say-so.
 {
   const refusal = bindRefusal(BIND_HOST, {
@@ -4553,10 +4564,6 @@ try {
     console.error(`\n  ✗ ${refusal}\n`);
     process.exit(1);
   }
-}
-{
-  const ignored = ignoredConfigWarning(WEB_AUTH);
-  if (ignored) serverLog(`  ⚠ ${ignored}`, "warn");
 }
 // SEC-1a: the secret the CLI's person token is derived from (0600 in the
 // state dir). Never printed or logged; a failure leaves bearers unverifiable.

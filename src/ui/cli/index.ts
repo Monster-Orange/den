@@ -2711,8 +2711,11 @@ class DenCLI {
     );
     console.log();
     console.log(chalk.bold("  Flags:"));
+    // Two spaces at least between a flag and its text, a long one too.
     const row = (f: string, d: string) =>
-      console.log(`    ${chalk.cyan(f.padEnd(20))}${d}`);
+      console.log(
+        `    ${chalk.cyan(f.padEnd(Math.max(20, f.length + 2)))}${d}`,
+      );
     row(
       "-x, --exclude",
       "start only the dependencies, not the current/seed repo",
@@ -4659,6 +4662,35 @@ class DenCLI {
         const d = tlsStrategyFor(edge).detect();
         if (!d.available) warn(`edge.tls ${edge.tls.strategy}: ${d.reason}`);
       }
+    }
+    // The web keys: a wrong value would stop `web up`; one read and
+    // ignored (the distribution's web.allow_plain_http_remote: only
+    // config/local/user.yml counts) is flagged, as `web up` says it.
+    {
+      const { ignoredConfigWarning, readWebAuthConfig } =
+        await import("../../shared/web-session.js");
+      try {
+        const w = ignoredConfigWarning(
+          readWebAuthConfig(getDistRoot(), product().configFile),
+        );
+        if (w) console.warn(chalk.yellow(`\n  ⚠  ${w}`));
+      } catch (e) {
+        console.error(chalk.red(`\n  ✗  web: ${(e as Error).message}`));
+        process.exitCode = 1;
+      }
+    }
+    // The caps: agents.max_concurrent (agents) and sessions.max_concurrent
+    // (plain sessions). A wrong value would refuse every start.
+    {
+      const { readAgentsConfig, readSessionsConfig } =
+        await import("../../shared/den-config.js");
+      for (const read of [readAgentsConfig, readSessionsConfig])
+        try {
+          read();
+        } catch (e) {
+          console.error(chalk.red(`\n  ✗  ${(e as Error).message}`));
+          process.exitCode = 1;
+        }
     }
     const positional = args.filter((a) => !a.startsWith("-"));
     const held = args.includes("--held");

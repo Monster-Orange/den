@@ -21,6 +21,7 @@ import {
   rotateWebSecret,
 } from "../../shared/web-secret.js";
 import {
+  ignoredConfigWarning,
   localhostOrigin,
   loginLink,
   mintLoginCode,
@@ -1242,7 +1243,12 @@ export async function cmdWeb(args: string[]): Promise<void> {
 
   // SEC-1b: a wrong web.allow_plain_http_remote would stop the server at
   // start; say so here, naming the key, instead of "did not become ready".
-  readWebAuthConfig(getDistRoot(), product().configFile);
+  // A key read and ignored (the distribution's web.allow_plain_http_remote:
+  // only user.yml counts) is said here too, not only in the server's log.
+  const ignored = ignoredConfigWarning(
+    readWebAuthConfig(getDistRoot(), product().configFile),
+  );
+  if (ignored) console.log(chalk.yellow(`\n  ⚠ ${ignored}`));
 
   const apiRunning = await isDenWebApiRunning(options.port);
   let running = apiRunning && (await isDenWebUiReady(options.port));

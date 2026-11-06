@@ -1,7 +1,7 @@
 /**
  * `<cli> sessions start|list|kill` and `<cli> agents list` (AG-3a) in
  * process, against a real session host on a temp socket with a scripted
- * PTY: workspace scoping, --json, the cap from agents.max_concurrent, the
+ * PTY: workspace scoping, --json, the cap from sessions.max_concurrent, the
  * den-pty unavailable reason, and what start hands the host.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
@@ -13,7 +13,10 @@ import { connectHost } from "../../../src/shared/sessions/client.js";
 import { SessionHost } from "../../../src/shared/sessions/host.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import type { PtyLoad } from "../../../src/shared/sessions/pty.js";
-import { readAgentsConfig } from "../../../src/shared/den-config.js";
+import {
+  readAgentsConfig,
+  readSessionsConfig,
+} from "../../../src/shared/den-config.js";
 import {
   cmdSessions,
   type SessionsDeps,
@@ -67,6 +70,7 @@ async function rig(over: Partial<SessionsDeps> = {}): Promise<Rig> {
     stateDir: () => dir,
     workspaceExists: (ws) => ["north", "south"].includes(ws),
     maxConcurrent: () => 4,
+    maxSessions: () => 8,
     invokeCwd: () => dir,
     env: {
       PATH: "/usr/bin:/bin",
@@ -331,14 +335,36 @@ describe("sessions start", () => {
     expect(r.made[0].opts.cwd).toBe(path.resolve(cwd));
   });
 
-  it("is capped by agents.max_concurrent", async () => {
-    const r = await rig({ maxConcurrent: () => 1 });
+  it("is capped by sessions.max_concurrent, never agents.max_concurrent", async () => {
+    const r = await rig({ maxConcurrent: () => 1, maxSessions: () => 2 });
     expect(await start(r, "north", "a")).toBe(0);
-    expect(await start(r, "north", "b")).toBe(1);
+    expect(await start(r, "north", "b")).toBe(0);
+    expect(await start(r, "north", "c")).toBe(1);
     expect(r.err.join("\n")).toMatch(
-      /1 session is running.*agents\.max_concurrent is 1/,
+      /2 sessions are running and sessions\.max_concurrent is 2/,
     );
-    expect(r.made).toHaveLength(1);
+    expect(r.err.join("\n")).toMatch(/or raise sessions\.max_concurrent\./);
+    expect(r.err.join("\n")).not.toMatch(/agents\.max_concurrent/);
+    expect(r.made).toHaveLength(2);
+  });
+
+  it("running agents never count against sessions.max_concurrent", async () => {
+    const r = await rig({ maxConcurrent: () => 1, maxSessions: () => 1 });
+    const c = await r.deps.connect!();
+    await c.start(
+      {
+        name: "acme-north:scout",
+        cwd: os.tmpdir(),
+        argv: ["sh"],
+        env: {},
+        cols: 80,
+        rows: 24,
+      },
+      { limit: 4, pool: "agents" },
+    );
+    c.close();
+    expect(await start(r, "north", "a")).toBe(0);
+    expect(r.made).toHaveLength(2);
   });
 
   it("says why den-pty is unavailable, and starts no host", async () => {
@@ -462,6 +488,32 @@ describe("agents list", () => {
     const r = await rig();
     expect(await cmdAgents(["list", "-w", "north"], r.deps)).toBe(0);
     expect(r.out.join("\n")).toMatch(/no agents in north/);
+  });
+});
+
+describe("sessions.max_concurrent", () => {
+  it("defaults to 8", () => {
+    expect(readSessionsConfig({ environments: [] }).maxConcurrent).toBe(8);
+  });
+
+  it("takes a whole number of at least 1, and no other key", () => {
+    expect(
+      readSessionsConfig({ environments: [], sessions: { max_concurrent: 3 } })
+        .maxConcurrent,
+    ).toBe(3);
+    for (const bad of [0, -1, 2.5, "4", null])
+      expect(() =>
+        readSessionsConfig({
+          environments: [],
+          sessions: { max_concurrent: bad as unknown as number },
+        }),
+      ).toThrow(/sessions\.max_concurrent: must be a whole number/);
+    expect(() =>
+      readSessionsConfig({
+        environments: [],
+        sessions: { max: 3 } as unknown as { max_concurrent: number },
+      }),
+    ).toThrow(/sessions\.max: unknown key/);
   });
 });
 

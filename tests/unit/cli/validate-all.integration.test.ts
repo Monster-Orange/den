@@ -167,3 +167,28 @@ describe("an org config that fails validation (0.3.0-dev.40)", () => {
     }
   });
 });
+
+describe("the caps (0.4.2)", () => {
+  it("a wrong sessions.max_concurrent or agents.max_concurrent fails validate, naming the key", () => {
+    const file = path.join(root, "config", "den.yml");
+    const before = fs.readFileSync(file, "utf-8");
+    write(
+      file,
+      before +
+        "agents:\n  max_concurrent: 0\nsessions:\n  max_concurrent: lots\n",
+    );
+    try {
+      const r = den(["validate"]);
+      expect(r.code).toBe(1);
+      expect(r.out).toMatch(
+        /✗\s+agents\.max_concurrent: must be a whole number of at least 1 \(got 0\)/,
+      );
+      expect(r.out).toMatch(
+        /✗\s+sessions\.max_concurrent: must be a whole number of at least 1 \(got "lots"\)/,
+      );
+      expect(r.out).toMatch(/✓\s+shop\s/);
+    } finally {
+      write(file, before);
+    }
+  });
+});

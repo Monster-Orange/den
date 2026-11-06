@@ -18,7 +18,8 @@
  *   - a person only: an agent (its actor token, SEC-1c) can't start or
  *     stop agents from the page (403; agents use MCP agent_spawn, §5,
  *     under its own guards);
- *   - agents.max_concurrent (the host's cap: 429 cap).
+ *   - agents.max_concurrent (the host's cap on agents, never plain
+ *     sessions: 429 cap).
  * The env is the CLI's (§5a-env): the allowlist and the runtime's, built
  * from this server's environment, never all of it. Every action, refused
  * or done, is audited (recordAction) with the person as its actor.

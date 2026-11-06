@@ -244,10 +244,16 @@ export interface DenConfig {
    */
   mcp?: McpConfig;
   /**
-   * Agents: `max_concurrent` caps the sessions running at once in this
-   * distribution (default 4). See readAgentsConfig.
+   * Agents: `max_concurrent` caps the agents running at once in this
+   * distribution (default 4); plain sessions never count. See
+   * readAgentsConfig.
    */
   agents?: AgentsConfig;
+  /**
+   * Plain sessions (`<cli> sessions start`): `max_concurrent` caps those
+   * running at once (default 8); agents never count. See readSessionsConfig.
+   */
+  sessions?: SessionsConfig;
   /**
    * The web UI: `port` (read by edge/config.ts readWebPort) and `service`,
    * the launchd service `<cli> service` installs. See readWebServiceConfig.
@@ -558,6 +564,7 @@ export function readDenConfig(): DenConfig {
       security: parsed?.security,
       mcp: parsed?.mcp,
       agents: parsed?.agents,
+      sessions: parsed?.sessions,
       web: parsed?.web,
       test_accounts: parsed?.test_accounts,
       defaults: parsed?.defaults,
@@ -739,7 +746,7 @@ export function readMcpConfig(
 
 /** `agents:` in the org config. */
 export interface AgentsConfig {
-  /** Sessions that may run at once (default 4). */
+  /** Agents that may run at once (default 4); plain sessions never count. */
   max_concurrent?: number;
   /**
    * Persona packs (AG-2a): directories of persona files, relative to the
@@ -841,6 +848,48 @@ export function readAgentsConfig(
         );
     });
     out.agents[id] = { grants: [...new Set(grants as string[])] };
+  }
+  return out;
+}
+
+/** `sessions:` in the org config: plain sessions (`<cli> sessions start`). */
+export interface SessionsConfig {
+  /** Plain sessions that may run at once (default 8); agents never count. */
+  max_concurrent?: number;
+}
+
+export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
+
+/** `sessions:` with its defaults applied. */
+export interface ResolvedSessionsConfig {
+  maxConcurrent: number;
+}
+
+/**
+ * The effective sessions config. Anything malformed throws, naming the key,
+ * as readAgentsConfig does: a typo must not lift the cap.
+ */
+export function readSessionsConfig(
+  config: DenConfig = readDenConfig(),
+): ResolvedSessionsConfig {
+  const raw = (config.sessions ?? {}) as unknown;
+  if (!isMapping(raw))
+    throw new Error(`sessions: must be a mapping (got ${JSON.stringify(raw)})`);
+  for (const k of Object.keys(raw))
+    if (k !== "max_concurrent")
+      throw new Error(
+        `sessions.${k}: unknown key (sessions: takes max_concurrent)`,
+      );
+  const out: ResolvedSessionsConfig = {
+    maxConcurrent: DEFAULT_SESSIONS_MAX_CONCURRENT,
+  };
+  const max = raw.max_concurrent;
+  if (max !== undefined) {
+    if (typeof max !== "number" || !Number.isInteger(max) || max < 1)
+      throw new Error(
+        `sessions.max_concurrent: must be a whole number of at least 1 (got ${JSON.stringify(max)})`,
+      );
+    out.maxConcurrent = max;
   }
   return out;
 }

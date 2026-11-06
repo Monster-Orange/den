@@ -104,6 +104,12 @@ function displayName(r) {
   return r.kind === "agent" ? (r.persona ?? r.label) : r.label;
 }
 
+// A pane's title and its Close: the agent's display name (AG-10.8), else
+// its id, never the persona. There is no display name before AG-10.
+function paneName(r) {
+  return r.kind === "agent" ? r.displayName || r.agent || r.label : r.label;
+}
+
 function rowHtml(r) {
   const open = st.open.includes(r.id);
   const nm =
@@ -293,7 +299,7 @@ function paintLayout() {
 function paintBar(p) {
   const r = rowOf(p.id);
   const bar = p.el.querySelector(".bar2");
-  const name = r ? displayName(r) : p.label || p.id;
+  const name = r ? paneName(r) : p.label || p.id;
   const where = r
     ? [r.workspace, r.runtime].filter(Boolean).join(" · ")
     : p.workspace || "";

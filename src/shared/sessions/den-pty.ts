@@ -21,6 +21,7 @@ import type {
   Attachment,
   SessionBackend,
   SessionInfo,
+  SessionPool,
   SessionRef,
   SessionSignal,
   SessionSpec,
@@ -32,8 +33,10 @@ export { BACKEND_ID as DEN_PTY_ID };
 export interface DenPtyOptions {
   /** A client of the running host (ensureHost). */
   client: HostClient;
-  /** Applied to every start: agents.max_concurrent. */
+  /** Applied to every start, counting `pool`'s running sessions. */
   limit?: number;
+  /** agents (agents.max_concurrent) or sessions (sessions.max_concurrent). */
+  pool?: SessionPool;
 }
 
 export class DenPtyBackend implements SessionBackend {
@@ -49,7 +52,12 @@ export class DenPtyBackend implements SessionBackend {
   }
 
   async start(spec: SessionSpec): Promise<SessionRef> {
-    return (await this.opts.client.start(spec, { limit: this.opts.limit })).ref;
+    return (
+      await this.opts.client.start(spec, {
+        limit: this.opts.limit,
+        ...(this.opts.pool ? { pool: this.opts.pool } : {}),
+      })
+    ).ref;
   }
   list(): Promise<SessionInfo[]> {
     return this.opts.client.list();

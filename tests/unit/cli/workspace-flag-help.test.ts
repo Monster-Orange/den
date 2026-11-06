@@ -1,6 +1,7 @@
 /**
  * `up`, `down`, `restart` and `setup --help` name -w (a dogfood finding on
- * 0.4.1-dev.4: the cross-workspace flag worked but no help said so). The
+ * 0.4.1-dev.4: the cross-workspace flag worked but no help said so), with
+ * a space between it and its text (0.4.1's `up --help` had none). The
  * real bin/den in a throwaway distribution (helpers/dist.ts).
  */
 import { afterAll, describe, expect, it } from "@jest/globals";
@@ -23,6 +24,11 @@ describe("--help names -w", () => {
       expect([cmd, /--workspace|-w <workspace>/.test(r.out)]).toEqual([
         cmd,
         true,
+      ]);
+      // A flag is never run into its text ("<ws>act in that…", 0.4.1).
+      expect([cmd, r.out.match(/^.*<[a-z-]+>[A-Za-z].*$/m)?.[0]]).toEqual([
+        cmd,
+        undefined,
       ]);
     },
     60_000,

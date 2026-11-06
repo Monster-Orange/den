@@ -189,6 +189,28 @@ describe("session host", () => {
     });
   });
 
+  it("counts each pool's own running sessions: agents and plain sessions never block each other", async () => {
+    const dir = stateDir();
+    await host(dir);
+    const c = await client(dir);
+    const agents = { limit: 1, pool: "agents" as const };
+    const plain = { limit: 1, pool: "sessions" as const };
+    await c.start(spec("acme-north:scout"), agents);
+    await expect(c.start(spec("acme-north:sh"), plain)).resolves.toMatchObject({
+      name: "acme-north:sh",
+    });
+    await expect(c.start(spec("acme-north:b"), agents)).rejects.toThrow(
+      /^1 agent is running and agents\.max_concurrent is 1$/,
+    );
+    await expect(c.start(spec("acme-north:c"), plain)).rejects.toThrow(
+      /^1 session is running and sessions\.max_concurrent is 1$/,
+    );
+    // A limit with no pool (an older client) still counts every session.
+    await expect(
+      c.start(spec("acme-north:d"), { limit: 2 }),
+    ).rejects.toMatchObject({ code: "cap" });
+  });
+
   it("says why when the PTY module is unavailable", async () => {
     const dir = stateDir();
     await host(dir, () => ({

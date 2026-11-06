@@ -246,6 +246,34 @@ describe("agents start", () => {
     expect(r.err.join("\n")).toMatch(/agent planner is running/);
   });
 
+  it("agents.max_concurrent counts agents only: plain sessions never block an agent", async () => {
+    const r = await rig();
+    r.config.maxConcurrent = 1;
+    const c = await r.deps.connect!();
+    for (const n of ["sh1", "sh2"])
+      await c.start(
+        {
+          name: `acme-north:${n}`,
+          cwd: r.wsDir("north"),
+          argv: ["sh"],
+          env: {},
+          cols: 80,
+          rows: 24,
+        },
+        { limit: 8, pool: "sessions" },
+      );
+    c.close();
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "reviewer"),
+    ).toBe(1);
+    expect(r.err.join("\n")).toMatch(
+      /1 agent is running and agents\.max_concurrent is 1/,
+    );
+  });
+
   it("is capped by agents.max_concurrent (the host enforces it)", async () => {
     const r = await rig();
     r.config.maxConcurrent = 1;

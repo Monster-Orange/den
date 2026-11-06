@@ -4,6 +4,54 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.2] - unreleased
+
+The 0.4.1 carry-overs.
+
+### Added
+
+- **`sessions.max_concurrent`** (default 8): the cap on plain sessions
+  (`sessions start`) running at once. Past it, `sessions start` is refused
+  as the agents' cap is: "2 sessions are running and
+  sessions.max_concurrent is 2", then "Stop one first (`<cli> sessions
+  kill <name>`), or raise sessions.max_concurrent." `<cli> validate` names
+  a wrong value of it or of `agents.max_concurrent`.
+
+### Changed
+
+- **`agents.max_concurrent` counts agents only.** Plain sessions count
+  against `sessions.max_concurrent` instead, so a few plain shells never
+  stop an agent from starting (from the CLI, the Workspaces page, the
+  Agents tab or MCP). Its refusal says "1 agent is running and
+  agents.max_concurrent is 1".
+- **The Agents tab's pane title and Close** name the agent by its id
+  (its display name once AG-10 adds one), never its persona; the list row
+  still shows the persona, with the id beside it.
+- **den-claude's deny list, in the docs**: it is a convenience, not the
+  boundary. It binds cooperating agents only and does not catch every
+  spelling (a path relative to the agent's cwd, another program); the
+  server's token rules are the boundary.
+
+### Fixed
+
+- **A distribution config's `web.allow_plain_http_remote`** (ignored: it is
+  read only from `config/local/user.yml`) was warned about only in the
+  in-app server log. It is now in `web.log` too (before a bind refusal it
+  often explains), in the `web up` and `web restart` output, and in
+  `<cli> validate`.
+- **`up --help`**: `-w, --workspace <ws>` ran into its text ("<ws>act in
+  that…"); there are two spaces now. `down`, `restart` and `setup --help`
+  were already spaced.
+
+### Migrations
+
+- **More than 4 plain sessions at once**, or a script that relied on
+  `agents.max_concurrent` to cap plain sessions: set
+  `sessions.max_concurrent` (default 8). `agents.max_concurrent` no longer
+  counts them. A session host already running from 0.4.1 keeps counting
+  every session until it restarts (`sessions host --stop`, which ends its
+  sessions, or a reboot).
+
 ## [0.4.1] - 2026-11-06
 
 ### Added

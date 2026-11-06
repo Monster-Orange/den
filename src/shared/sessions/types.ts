@@ -32,6 +32,14 @@ export interface SessionInfo {
   prompted?: boolean;
 }
 
+/**
+ * The cap a start counts against: `agents` (agents.max_concurrent) or
+ * `sessions` (sessions.max_concurrent, the plain ones), each counting only
+ * its own running sessions.
+ */
+export const SESSION_POOLS = ["agents", "sessions"] as const;
+export type SessionPool = (typeof SESSION_POOLS)[number];
+
 /** What to run. `env` is the whole environment: nothing is inherited. */
 export interface SessionSpec {
   name: string;

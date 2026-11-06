@@ -32,7 +32,7 @@
  *           actor token; the old one stops working.
  *
  * Nothing here takes a grant: grants come from the org config only. The
- * host enforces agents.max_concurrent on every start.
+ * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -515,7 +515,7 @@ async function startSession(
           cols: (tty && d.stdout.columns) || 80,
           rows: (tty && d.stdout.rows) || 24,
         },
-        { limit: d.maxConcurrent() },
+        { limit: d.maxConcurrent(), pool: "agents" },
       )
       .catch((e: unknown) => capOrThrow(d, e));
   } catch (e) {
