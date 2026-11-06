@@ -11,6 +11,7 @@ import * as http from "http";
 import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const requests: { path: string; headers: http.IncomingHttpHeaders }[] = [];
@@ -69,7 +70,7 @@ beforeAll(async () => {
     "environments: [local]\nmcp:\n  actions: [service_up, run_tests]\n",
   );
 
-  child = spawn(
+  child = spawnServer(
     path.join(ENGINE, "bin", "den"),
     ["mcp", "--port", String(port)],
     {
@@ -106,7 +107,7 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  child?.kill("SIGTERM");
+  await stopServer(child);
   await new Promise<void>((r) => stub.close(() => r()));
   fs.rmSync(root, { recursive: true, force: true });
 });

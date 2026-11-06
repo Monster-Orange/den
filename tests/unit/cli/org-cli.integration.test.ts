@@ -283,7 +283,7 @@ describe("setup --plan picks its workspaces (0.2.8)", () => {
     );
   }, 60_000);
 
-  it("an unknown -w is an error; -w without --plan is refused, setting nothing up", () => {
+  it("an unknown -w is an error; more than one -w without --plan is refused, setting nothing up", () => {
     const { root } = machine();
     const before = snapshot(root);
     const n = calls().length;
@@ -292,9 +292,11 @@ describe("setup --plan picks its workspaces (0.2.8)", () => {
     expect(bad.out).toContain(
       "no workspace named nope (workspaces: main, client, spare)",
     );
-    const real = den(root, ["setup", "-w", "client"]);
+    const real = den(root, ["setup", "-w", "client", "-w", "spare"]);
     expect(real.code).toBe(1);
-    expect(real.out).toContain("-w and --all-active go with --plan");
+    expect(real.out).toContain(
+      "More than one -w, and --all-active, go with --plan",
+    );
     expect(calls().slice(n)).toEqual([]);
     expect(snapshot(root)).toEqual(before);
   }, 60_000);

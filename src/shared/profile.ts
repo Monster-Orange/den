@@ -70,8 +70,16 @@ const expandHome = (p: string): string =>
       ? path.join(os.homedir(), p.slice(2))
       : p;
 
-/** A profile from a `product:` block; unset fields derive from the name. */
-export function profileFrom(raw: RawProduct = {}): ProductProfile {
+/**
+ * A profile from a `product:` block; unset fields derive from the name. A
+ * relative `state_dir` resolves against `baseDir`: the directory holding
+ * den.yml (the distribution root), never the cwd, so an agent's CLI or MCP
+ * server started elsewhere reads the same state.
+ */
+export function profileFrom(
+  raw: RawProduct = {},
+  baseDir: string = process.cwd(),
+): ProductProfile {
   const name = str(raw.name) ?? "den";
   if (!SLUG.test(name))
     throw new Error(
@@ -91,7 +99,10 @@ export function profileFrom(raw: RawProduct = {}): ProductProfile {
     envPrefix,
     configFile: str(raw.config) ?? `config/${name}.yml`,
     manifestFiles: json === manifest ? [manifest] : [manifest, json],
-    stateDir: path.resolve(expandHome(str(raw.state_dir) ?? `~/.${name}`)),
+    stateDir: path.resolve(
+      baseDir,
+      expandHome(str(raw.state_dir) ?? `~/.${name}`),
+    ),
     servicesDir: str(raw.services_dir) ?? `.${name}-services`,
     workspacesDir: str(raw.workspaces_dir) ?? `${name}-workspaces`,
   };
@@ -106,7 +117,7 @@ export function readProfileFile(file: string): ProductProfile {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return profileFrom();
     throw new Error(`${file}: ${(e as Error).message}`);
   }
-  return profileFrom(raw?.product ?? {});
+  return profileFrom(raw?.product ?? {}, path.dirname(path.resolve(file)));
 }
 
 let cached: { key: string; profile: ProductProfile } | null = null;

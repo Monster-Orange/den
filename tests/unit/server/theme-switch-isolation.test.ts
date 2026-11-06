@@ -24,7 +24,7 @@
  * update hint there a moment after the snapshot, on a loaded machine only.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { spawn, type ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as http from "http";
@@ -34,6 +34,7 @@ import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
 import { denAuth } from "./helpers/den-auth.js";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = process.cwd();
 let PORT = 0;
@@ -161,7 +162,7 @@ beforeAll(async () => {
   PORT = (probe.address() as AddressInfo).port;
   await new Promise<void>((r) => probe.close(() => r()));
   let serverOut = "";
-  server = spawn(
+  server = spawnServer(
     process.execPath,
     [
       path.join(ENGINE, "node_modules", ".bin", "tsx"),
@@ -203,8 +204,8 @@ beforeAll(async () => {
   throw new Error(`server did not start within 40s:\n${serverOut}`);
 }, 60_000);
 
-afterAll(() => {
-  server?.kill("SIGTERM");
+afterAll(async () => {
+  await stopServer(server ?? undefined);
   server = null;
   fs.rmSync(tmp, { recursive: true, force: true });
 });

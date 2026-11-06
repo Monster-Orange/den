@@ -11,7 +11,7 @@
  * skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { spawn, type ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as net from "net";
@@ -23,6 +23,7 @@ import {
   runningDenVersion,
   writeDistribution,
 } from "../../../src/ui/cli/create.js";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const FAKES = ["gh", "op", "doppler", "mkcert"];
@@ -72,7 +73,7 @@ beforeAll(async () => {
   const env: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries(process.env))
     if (!/^(DEN_|ACME_|OP_|DOPPLER_|GH_|GITHUB_)/.test(k)) env[k] = v;
-  server = spawn(
+  server = spawnServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -114,15 +115,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await browser?.close();
-  if (server && server.exitCode === null) {
-    const exited = new Promise((r) => server.once("exit", r));
-    server.kill("SIGTERM");
-    await Promise.race([
-      exited,
-      new Promise((r) => setTimeout(r, 5_000).unref()),
-    ]);
-    if (server.exitCode === null) server.kill("SIGKILL");
-  }
+  await stopServer(server);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 

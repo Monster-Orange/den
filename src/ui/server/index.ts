@@ -59,6 +59,8 @@ import {
 import {
   parseScope,
   scopeKey,
+  pollView,
+  inViewMarker,
   scopePayload,
   scopeView,
   storedView,
@@ -199,13 +201,16 @@ import {
 } from "../../shared/web-secret.js";
 import {
   ACTOR_TOKEN_PREFIX,
-  verifyActorToken,
+  checkActorToken,
+  revokeAllActorTokens,
 } from "../../shared/actor-token.js";
 import {
   checkLoginCode,
+  ignoredConfigWarning,
   localhostOrigin,
   readWebAuthConfig,
   safeNext,
+  SESSION_COOKIE_MAX_AGE_S,
   sessionCookieName,
   sessionIdPrefix,
   WebSessionStore,
@@ -277,10 +282,16 @@ interface HealthResult {
   /** From the focused workspace: the header sorts these first. */
   focused?: boolean;
   /**
-   * The workspaces in view that define this service (focus first). More
+   * The active workspaces that define this service (focus first). More
    * than one means a shared service: it is listed once, with its owners.
    */
   workspaces?: string[];
+  /**
+   * WS-6.4: whether the view scope shows it (one of its workspaces is in
+   * view). Health covers every active workspace; the header's chip and
+   * drawer count only these, while the pages see every row.
+   */
+  inView?: boolean;
 }
 
 /**
@@ -312,6 +323,19 @@ function viewerRewrite(
   });
 }
 
+/**
+ * A health row as this request sees it: its links rewritten for the
+ * viewer's host, and `inView` from the view scope now (WS-6.4: the rows
+ * are cached for every active workspace; the scope is applied per answer).
+ */
+function healthForViewer(
+  host: string | undefined,
+): (r: HealthResult) => HealthResult {
+  const rewrite = viewerRewrite(host);
+  const inView = inViewMarker(scopeView());
+  return (r) => ({ ...rewrite(r), inView: inView(r.workspaces) });
+}
+
 const HEALTH_CACHE_TTL_MS = 8_000;
 /** Consecutive timed-out health cycles per check (see TimeoutStreaks). */
 const healthTimeouts = new TimeoutStreaks();
@@ -341,10 +365,11 @@ enableReadCache(READ_CACHE_TTL_MS);
 const servicesCache = singleFlight<ServicesList>(SERVICES_CACHE_TTL_MS);
 /**
  * A workspace-scoped run covers a different service set than the default
- * one, and the default one covers whatever the view scope has in view.
+ * one, and the default one covers every active workspace (WS-6.4: the view
+ * scope filters what is displayed, never what is polled).
  */
 function healthCacheKey(env: Environment, workspace: string | null): string {
-  return `${env}|${workspace ?? `*:${scopeKey(scopeView())}`}`;
+  return `${env}|${workspace ?? `*:${scopeKey(pollView())}`}`;
 }
 import {
   LOG_SWEEP_INTERVAL_MS,
@@ -898,9 +923,9 @@ function denEdgeHosts(): string[] {
 const BIND_HOST = process.env.DEN_BIND_HOST ?? "127.0.0.1";
 
 /**
- * SEC-1b: the sign-in config (`web.session.idle` / `.max`,
- * `web.allow_plain_http_remote`), read at start. A wrong value refuses to
- * start, naming its key.
+ * SEC-1b: `web.allow_plain_http_remote`, read at start. A wrong value
+ * refuses to start, naming its key. The 0.4.1-dev `web.session` lifetimes
+ * are ignored (a session never expires), with a warning at start.
  */
 const WEB_AUTH: WebAuthConfig = (() => {
   try {
@@ -967,7 +992,6 @@ function edgeFronted(): boolean {
 const webSecret = new WebSecretStore();
 const webSessions = new WebSessionStore({
   secret: () => webSecret.current(),
-  lifetime: () => WEB_AUTH,
 });
 const SESSION_COOKIE = sessionCookieName(PORT);
 
@@ -992,7 +1016,8 @@ const GUARD: GuardContext = {
   verifyBearer: (token) => {
     // SEC-1c: an agent's actor token, live while its session runs.
     if (token.startsWith(ACTOR_TOKEN_PREFIX)) {
-      const rec = verifyActorToken(getStateDir(), token);
+      const rec = checkActorToken(getStateDir(), token);
+      if (rec === "revoked") return "revoked";
       return rec
         ? {
             kind: "agent",
@@ -1014,12 +1039,13 @@ const GUARD: GuardContext = {
 /**
  * The Set-Cookie for a session: HttpOnly, SameSite=Strict, Path=/, Secure
  * when the request came over HTTPS (requestIsHttps: the edge's own header
- * only from the edge), for the absolute lifetime (the server enforces idle).
+ * only from the edge), for as long as a browser keeps a cookie: the
+ * session itself never expires.
  */
 function sessionSetCookie(id: string, secure: boolean): string {
   return (
     `${SESSION_COOKIE}=${id}; Path=/; HttpOnly; SameSite=Strict; ` +
-    `Max-Age=${Math.floor(WEB_AUTH.maxMs / 1000)}${secure ? "; Secure" : ""}`
+    `Max-Age=${SESSION_COOKIE_MAX_AGE_S}${secure ? "; Secure" : ""}`
   );
 }
 function clearSessionCookie(secure: boolean): string {
@@ -1271,9 +1297,10 @@ async function handleRequest(
     (req.method === "GET" || req.method === "HEAD")
   ) {
     // Read-only and sign-in free (§6b.3): it checks the session itself.
-    // Signed in, it goes on to a same-origin `next`; signed out, it is the
-    // signed-out page (the `web login` hint, never a form for the secret).
-    if (guard.ok && guard.session) {
+    // Signed in, or on loopback (no sign-in there), it goes on to a
+    // same-origin `next`; signed out beyond loopback, it is the signed-out
+    // page (the `web login` hint, never a form for the secret).
+    if (guard.ok && (guard.session || !guard.beyond)) {
       res.writeHead(303, {
         Location: safeNext(url.searchParams.get("next")),
         "Cache-Control": "no-store",
@@ -1284,9 +1311,9 @@ async function handleRequest(
     return sendSignedOut(req, res, {
       pathname,
       search: url.search,
-      scope: "terminal",
+      scope: "den",
       requestId,
-      message: signinMessage("terminal", product().cli, product().title),
+      message: signinMessage("den", product().cli, product().title),
     });
   }
   // AG-4a-term's session routes (`/api/sessions/<id>/io`): shell-grade, and
@@ -1663,11 +1690,11 @@ async function handleRequest(
 
   // ── API: health check ─────────────────────────────────────────────────────
   /**
-   * Workspaces a health run covers: one named workspace, else the view
-   * scope's (every active one by default, focus first). Health is
+   * Workspaces a health run covers: one named workspace, else every active
+   * one, focus first, whatever the view scope (WS-6.4). Health is
    * machine-level: a service running under a non-focused active workspace
-   * is still up, and its card must say so. The pages and `status` read the
-   * same scope (src/shared/environment-manager/scope.ts).
+   * is still up, and the Workspaces page must say so for any workspace.
+   * The scope filters what is displayed: each row's `inView` (forViewer).
    */
   function healthWorkspaces(
     workspaceName: string | null,
@@ -1676,7 +1703,7 @@ async function handleRequest(
       const named = getWorkspaceByName(workspaceName);
       return named ? [named] : [];
     }
-    return scopeView().workspaces.filter((w) => w.config);
+    return pollView().workspaces.filter((w) => w.config);
   }
 
   /**
@@ -2034,7 +2061,7 @@ async function handleRequest(
   // single-service `?address=` probe always runs live: it exists to re-check one
   // node on demand, where staleness is the whole thing being avoided.
   if (pathname === "/api/health") {
-    const forViewer = viewerRewrite(req.headers.host);
+    const forViewer = healthForViewer(req.headers.host);
     const env = (url.searchParams.get("env") ?? "local") as Environment;
     const addressFilter = url.searchParams.get("address");
     const wsParam = url.searchParams.get("workspace");
@@ -2063,7 +2090,7 @@ async function handleRequest(
   // Same checks, streamed: each result is sent the moment it lands so the fast
   // ones paint immediately instead of every dot waiting on the slowest.
   if (pathname === "/api/health/stream") {
-    const forViewer = viewerRewrite(req.headers.host);
+    const forViewer = healthForViewer(req.headers.host);
     const env = (url.searchParams.get("env") ?? "local") as Environment;
     const wsParam = url.searchParams.get("workspace");
     if (wsParam && !getWorkspaceByName(wsParam))
@@ -3299,6 +3326,9 @@ async function handleRequest(
   // `<cli> web logout [<id>] [--all]` (shell-grade). `rotate` (--all) also
   // replaces web.secret: every session and person token derived from the
   // old one stops verifying; the CLI re-reads the file, so it keeps working.
+  // And (SEC-1 §6c.2) it revokes every agent's actor token: a running
+  // agent's next call gets 401 token_revoked. One browser's or every
+  // browser's logout without --all leaves agent tokens alone.
   if (pathname === "/api/web/logout" && req.method === "POST") {
     let body: { id?: unknown; rotate?: unknown } = {};
     try {
@@ -3315,8 +3345,17 @@ async function handleRequest(
           : webSessions.list().map((x) => sessionIdPrefix(x.key));
       if (typeof body.id !== "string") webSessions.endAll();
       const rotated = body.rotate === true;
-      if (rotated) rotateWebSecret();
-      return sendJson(res, { ok: true, ended, rotated });
+      let agentTokens = 0;
+      if (rotated) {
+        rotateWebSecret();
+        agentTokens = revokeAllActorTokens(getStateDir());
+      }
+      return sendJson(res, {
+        ok: true,
+        ended,
+        rotated,
+        ...(rotated ? { agentTokens } : {}),
+      });
     } catch (e) {
       return sendJson(
         res,
@@ -4472,6 +4511,10 @@ try {
     console.error(`\n  ✗ ${refusal}\n`);
     process.exit(1);
   }
+}
+{
+  const ignored = ignoredConfigWarning(WEB_AUTH);
+  if (ignored) serverLog(`  ⚠ ${ignored}`, "warn");
 }
 // SEC-1a: the secret the CLI's person token is derived from (0600 in the
 // state dir). Never printed or logged; a failure leaves bearers unverifiable.

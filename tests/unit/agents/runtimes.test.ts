@@ -98,6 +98,7 @@ function input(over: Partial<LaunchInput> = {}): LaunchInput {
       scope: "north",
     },
     filesDir,
+    stateDir: "/home/someone/.acme",
     env: {},
     ...over,
   };
@@ -152,6 +153,7 @@ describe("den-claude launch", () => {
     const inp = input({ env: s.env, model: "opus" });
     const out = getRuntime("den-claude")!.launch(inp);
     const mcpFile = path.join(inp.filesDir, "mcp.json");
+    const settingsFile = path.join(inp.filesDir, "settings.json");
     expect(out.argv[0]).toBe(s.bin);
     expect(out.argv).toEqual([
       s.bin,
@@ -160,6 +162,8 @@ describe("den-claude launch", () => {
       "--mcp-config",
       mcpFile,
       "--strict-mcp-config",
+      "--settings",
+      settingsFile,
       "--permission-mode",
       "default",
       "--model",
@@ -174,7 +178,19 @@ describe("den-claude launch", () => {
     expect(prompt).toMatch(/agent planner in workspace north/);
     expect(prompt).toMatch(/docs\/specs/);
     expect(out.env).toEqual({});
-    expect(Object.keys(out.files ?? {})).toEqual([mcpFile]);
+    expect(Object.keys(out.files ?? {})).toEqual([mcpFile, settingsFile]);
+    // SEC-1 §6c.1: Den's state dir is denied to the agent (binds a
+    // cooperating agent only): Read and `cat` of web.secret and sessions/.
+    expect(JSON.parse(out.files![settingsFile])).toEqual({
+      permissions: {
+        deny: [
+          "Read(//home/someone/.acme/web.secret)",
+          "Read(//home/someone/.acme/sessions/**)",
+          "Bash(cat /home/someone/.acme/web.secret:*)",
+          "Bash(cat /home/someone/.acme/sessions/:*)",
+        ],
+      },
+    });
     expect(JSON.parse(out.files![mcpFile])).toEqual({
       mcpServers: {
         acme: {

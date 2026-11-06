@@ -9,7 +9,7 @@
  * throwaway distribution.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { spawn, spawnSync, type ChildProcess } from "child_process";
+import { spawnSync, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as net from "net";
@@ -17,6 +17,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { denAuth } from "./helpers/den-auth.js";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -134,7 +135,7 @@ beforeAll(async () => {
     );
 
   port = await freePort();
-  server = spawn(
+  server = spawnServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -159,20 +160,12 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  if (server && server.exitCode === null) {
-    const exited = new Promise((r) => server.once("exit", r));
-    server.kill("SIGTERM");
-    await Promise.race([
-      exited,
-      new Promise((r) => setTimeout(r, 5_000).unref()),
-    ]);
-    if (server.exitCode === null) server.kill("SIGKILL");
-  }
+  await stopServer(server);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
 type Svc = { address: string; inWorkspaces?: string[] };
-type Health = { repo: string; workspaces?: string[] };
+type Health = { repo: string; workspaces?: string[]; inView?: boolean };
 const byAddr = <T extends { address: string }>(rows: T[]) =>
   Object.fromEntries(rows.map((r) => [r.address, r]));
 
@@ -244,8 +237,20 @@ describe("the view scope", () => {
     ]);
     const services = await getJson<Svc[]>("/api/services");
     expect(services.map((s) => s.address).sort()).toEqual(["billing", "shop"]);
+    // WS-6.4: health still covers every active workspace (search is
+    // ws-c's); the scope marks what is in view, for the chip to count.
     const health = await getJson<Health[]>("/api/health");
-    expect(health.map((h) => h.repo).sort()).toEqual(["billing", "shop"]);
+    expect(health.map((h) => h.repo).sort()).toEqual([
+      "billing",
+      "search",
+      "shop",
+    ]);
+    expect(
+      health
+        .filter((h) => h.inView)
+        .map((h) => h.repo)
+        .sort(),
+    ).toEqual(["billing", "shop"]);
     const ws = await getJson<{ focus: string; active: string[] }>(
       "/api/workspaces",
     );

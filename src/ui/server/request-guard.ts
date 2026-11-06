@@ -9,7 +9,9 @@
  *    `misdirected`.
  *  - Credential: `Authorization: Bearer den_pt_…` (the person token, §5)
  *    or `den_at_…` (SEC-1c: an agent's actor token, live only while its
- *    session runs). A bearer that doesn't verify: 401 `unauthorized`. Or
+ *    session runs). A bearer that doesn't verify: 401 `unauthorized`; an
+ *    actor token `web logout --all` revoked: 401 `token_revoked` ("restart
+ *    or resume the agent"). Or
  *    the browser's session cookie (SEC-1b), looked up server-side.
  *  - An agent's token (SEC-1c, §5) never reaches: web.secret's management
  *    and sign-in (/api/web/*, /auth, /api/session/logout), the lock (R8:
@@ -19,8 +21,10 @@
  *    agentRefusal's seam.
  *  - Sign-in (§4, route-classes.ts): beyond loopback (the edge hostname, a
  *    LAN name, or a peer that isn't loopback) every route needs a session
- *    or a bearer; on loopback only `shell-grade` routes do. Otherwise 401
- *    `signin_required`. SIGNIN_FREE routes never need one.
+ *    or a bearer. Otherwise 401 `signin_required`. On loopback no route
+ *    does, shell-grade ones included (Ward, 2026-11-06: the lock, R8, is
+ *    the only prompt there; Host, Origin and CSRF cover CSRF and DNS
+ *    rebinding). SIGNIN_FREE routes never need one.
  *  - Origin, on POST/PUT/PATCH/DELETE and every WebSocket upgrade: an
  *    allowed host (http or https). No Origin needs a valid bearer.
  *    Otherwise 403 `origin_rejected`.
@@ -99,9 +103,12 @@ export interface GuardContext {
   lanHosts?: () => readonly string[];
   /**
    * What a bearer token proves (a person token's `person:<user>`, an actor
-   * token's agent), or null when it doesn't verify.
+   * token's agent), `"revoked"` for an actor token `web logout --all`
+   * revoked (SEC-1 §6c.2), or null when it doesn't verify.
    */
-  verifyBearer: (token: string) => `person:${string}` | AgentPrincipal | null;
+  verifyBearer: (
+    token: string,
+  ) => `person:${string}` | AgentPrincipal | "revoked" | null;
   /** This server start's CSRF token (loopback, no session). */
   csrfToken: string;
   /** The live session the request's cookie names (SEC-1b), or null. */
@@ -130,16 +137,14 @@ export type GuardResult =
       code:
         | "misdirected"
         | "unauthorized"
+        | "token_revoked"
         | "signin_required"
         | "origin_rejected"
         | "csrf"
         | "cross_site"
         | "agent_forbidden";
       error: string;
-      /**
-       * signin_required: why (a shell-grade route on loopback: the terminal,
-       * or an agent's start or resume; or beyond loopback).
-       */
+      /** signin_required: why (beyond loopback: `den`). */
       scope?: SigninScope;
       via?: Via;
       beyond?: boolean;
@@ -284,14 +289,11 @@ export function bindRefusal(
   );
 }
 
-/** Why a sign-in is asked for: the terminal, an agent's start, or all of Den. */
+/**
+ * Why a sign-in is asked for. The request checks ask only beyond loopback
+ * (`den`); `terminal` and `agents` are kept for the page's wording.
+ */
 export type SigninScope = "terminal" | "agents" | "den";
-
-/** Agent start and resume: their own sign-in wording ("start agents"). */
-const AGENT_LAUNCH = [
-  "/api/workspaces/:ws/agents",
-  "/api/workspaces/:ws/agents/:id/resume",
-];
 
 /** What signin_required says, by why it was asked for. */
 export function signinMessage(
@@ -332,6 +334,14 @@ export function checkRequest(
   const bearer = auth ? /^Bearer\s+(\S+)\s*$/i.exec(auth) : null;
   if (bearer) {
     const proved = ctx.verifyBearer(bearer[1]);
+    if (proved === "revoked")
+      return {
+        ok: false,
+        status: 401,
+        code: "token_revoked",
+        error:
+          "This agent's token was revoked (`web logout --all`): restart or resume the agent to get a new one.",
+      };
     if (!proved)
       return {
         ok: false,
@@ -363,18 +373,9 @@ export function checkRequest(
       };
   }
 
-  // §4: a session (or a bearer) where one is needed.
-  if (
-    !principal &&
-    !session &&
-    !SIGNIN_FREE.includes(pathname) &&
-    (beyond || cls === "shell-grade")
-  ) {
-    const scope: SigninScope = beyond
-      ? "den"
-      : AGENT_LAUNCH.some((r) => pathMatches(r, pathname))
-        ? "agents"
-        : "terminal";
+  // §4: a session (or a bearer) beyond loopback; on loopback, never.
+  if (!principal && !session && !SIGNIN_FREE.includes(pathname) && beyond) {
+    const scope: SigninScope = "den";
     return {
       ok: false,
       status: 401,

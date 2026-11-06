@@ -8,6 +8,28 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **`web logout --all` revokes every agent's token** (0.4.1-dev.4, SEC-1
+  §6c.2): it is the "something leaked" button, so it ends everything. A
+  running agent's next call gets 401 `token_revoked`: "This agent's token
+  was revoked (`web logout --all`): restart or resume the agent to get a
+  new one." (its stdio MCP server refuses to start with one). The output
+  says how many it revoked. Plain `web logout` (one browser, or every
+  browser) leaves agent tokens alone.
+- **den-claude denies Den's state dir to the agent** (0.4.1-dev.4, SEC-1
+  §6c.1): `--settings <file>` (0600) with `permissions.deny` for `Read` and
+  `Bash(cat …)` of `<state>/web.secret` and `<state>/sessions/**`. It binds
+  cooperating agents only: an agent runs as the same OS user.
+- **`setup`, `up`, `down` and `restart` across active workspaces**
+  (0.4.1-dev.4). `-w <workspace>` names the workspace (`setup` takes one
+  now; several still go with `--plan`). With no `-w`, a named service
+  resolves in the focus first, then across the other active workspaces, as
+  the web API's `&workspace=` does: in exactly one, it runs there (the CLI
+  says which); in several, an error lists them with the `-w` command for
+  each; in none, or names in different workspaces, an error. Each exits 1
+  and runs nothing. Before, a service in an active workspace that wasn't
+  the focus made `setup` print nothing and exit 0, `restart` say "not
+  found" and `up` say "no derived dependencies".
+
 - **Agent actor tokens** (0.4.1-dev.3, SEC-1c, SEC-1 spec §1, §5, §7).
   - **`agents start`** (the CLI and `POST /api/workspaces/<ws>/agents`)
     mints a random `den_at_…` token for the agent and hands it to the
@@ -47,7 +69,7 @@ config and manifest changes a distribution must make to move to it under
   - **`<cli> web open`** starts the server if needed and opens a fresh tab
     on a sign-in link; **`<cli> web up`** opens one too when it doesn't find
     an existing tab. **`<cli> web login [--next <path>] [--origin <url>]`**
-    prints a fresh link, for another browser or after the cookie expires.
+    prints a fresh link, for another browser.
     The link is `http://localhost:<port>/auth?c=<code>&next=<path>`: the
     code works once, within 60 seconds, and is an HMAC of a random nonce
     and its expiry under `web.secret` (the server records the nonce as
@@ -64,25 +86,22 @@ config and manifest changes a distribution must make to move to it under
     a loopback or Docker peer). The record is server-side, in
     `web-sessions.json` (0600) in the state dir, keyed by an HMAC of the id
     under the secret: created, last seen, the user agent (truncated), the
-    host it was issued on and its own CSRF token. Idle 7 days (sliding),
-    30 days at most; `web.session.idle` and `web.session.max` (`12h`,
-    `7d`, …) shorten them, and a wrong value stops the server, naming the
-    key.
+    host it was issued on and its own CSRF token. It never expires
+    (0.4.1-dev.4, above).
   - **`GET /api/session`** answers `{ csrf, actor: "person-browser",
     signedIn: true }` for a signed-in browser, with the session's own CSRF
     token (a signed-in browser's mutations must carry that one). Signed out
     on loopback it answers as before.
-  - **The route classes (§4).** On loopback: read-only is open; mutating
-    needs Origin and CSRF (as in SEC-1a); **shell-grade** (an agent's start
-    and resume, the session admin routes, later the terminal)
-    needs a signed-in browser plus Origin and CSRF, or the person's bearer
-    (the CLI and MCP need no setup). Beyond loopback (the edge hostname, a
-    LAN name, or a peer that isn't loopback): every route needs a session
-    or a bearer, so a LAN or edge Host is usable again once signed in. Only
-    `/auth`, `/api/session` and the UI's static files need none.
-  - **The signed-out page**, in the shell frame: "Sign in to use the
-    terminal" (shell-grade on loopback) or "Sign in to use <name>" (beyond
-    loopback), "Run `<cli> web login` and open the link." with a copy
+  - **The route classes (§4).** On loopback no route needs a sign-in
+    (0.4.1-dev.4): read-only is open; mutating and **shell-grade** (an
+    agent's start and resume, the session admin routes, later the terminal)
+    need Origin and CSRF (as in SEC-1a), or the person's bearer (the CLI and
+    MCP need no setup). Beyond loopback (the edge hostname, a LAN name, or
+    a peer that isn't loopback): every route needs a session or a bearer,
+    so a LAN or edge Host is usable again once signed in. Only `/auth`,
+    `/signin`, `/api/session` and the UI's static files need none.
+  - **The signed-out page** (beyond loopback), in the shell frame: "Sign in
+    to use <name>", "Run `<cli> web login` and open the link." with a copy
     button (through the edge the command names its origin), and on
     `127.0.0.1` or `[::1]` a link to the same page on `localhost`, where the
     cookie is. It never offers a form for a secret or a token. `/api`
@@ -93,7 +112,8 @@ config and manifest changes a distribution must make to move to it under
     prefix, created, last seen, host, user agent); **`<cli> web logout
     [<id prefix>]`** signs out one, or every browser; **`--all`** also
     rotates `web.secret`, which ends every session and every person token
-    (the CLI re-reads it and keeps working). They ask the running server
+    (the CLI re-reads it and keeps working), and (0.4.1-dev.4) revokes every
+    agent's token. They ask the running server
     with the person token, or edit the state files when it isn't running.
   - **Settings → Command line → Browser sign-in** says whether this
     browser is signed in, with **Sign out** (`POST /api/session/logout`).
@@ -167,25 +187,63 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
-- **`/signin` is read-only** (0.4.1-dev.3). Signed in, it answers 303 to
-  its (same-origin) `next`; signed out, the signed-out page. It was
-  shell-grade, so the route's own check never ran beyond loopback.
-- **Signed-out agent start or resume says "Sign in to start agents"**
-  (0.4.1-dev.3; the 401's `scope` is `agents`), then the command to run, in
-  en, ja and es. The terminal keeps its own wording.
+- **No browser sign-in on loopback, for any route** (0.4.1-dev.4; Ward,
+  2026-11-06; SEC-1 Q-SEC-1). On localhost the agents (start, resume), the
+  browser-session routes, `/signin` and, later, the terminal need only what
+  any change needs: this server's Host, the page's Origin and its CSRF
+  token. The lock (R8) stays the only prompt. A sign-in is still required
+  for every route when the server is reached beyond loopback: the edge
+  hostname, a LAN name or address, or a peer that isn't loopback (a
+  `DEN_BIND_HOST` bind). The Host allowlist, the Origin check,
+  `X-Den-CSRF`, `web.secret`, the person token and agent tokens (and what
+  an agent token can't do) are unchanged.
+- **A browser session never expires** (0.4.1-dev.4; SEC-1 Q-SEC-2): it ends
+  at sign-out, `web logout` or `web logout --all`. The cookie asks to be
+  kept 400 days, a browser's most. `web.session.idle` and
+  `web.session.max` are gone: if either is still in a config file the
+  server logs that it is ignored, naming the key and the file, and starts.
+- **Health covers every active workspace, whatever is in view**
+  (0.4.1-dev.4, WS-6.4). `/api/health` and its stream check every active
+  workspace's services; each row carries `inView` (one of its workspaces is
+  in the view scope). The top bar's chip and drawer count only the rows in
+  view; the pages get every row, so the Workspaces page shows a workspace's
+  real health when it is outside the view (it read "unknown (not
+  checked)").
+- **The stdio MCP server's startup line says `unverified`** (0.4.1-dev.4,
+  SEC-1 §6c.3) when no `DEN_ACTOR_TOKEN` verified its `--actor`: "scoped
+  to north as agent:planner (unverified: no DEN_ACTOR_TOKEN)".
+- **`/signin` is read-only** (0.4.1-dev.3). Signed in, or on loopback, it
+  answers 303 to its (same-origin) `next`; signed out beyond loopback, the
+  signed-out page. It was shell-grade, so the route's own check never ran
+  beyond loopback.
 - **`web up` and `web restart` print the server's refusal** (0.4.1-dev.3):
   when the server exits at start (a non-loopback bind without HTTPS, a
-  wrong `web.session` value) the CLI prints "<name> web refused to start:
+  wrong `web.allow_plain_http_remote` value) the CLI prints "<name> web refused to start:
   <the reason line>" and then where the log is, instead of waiting out
   "did not become ready". Secrets in the line are redacted.
 - **`web sessions --help`** says that LAST SEEN is written at most once a
-  minute, so it equals CREATED right after a sign-in.
+  minute, so it equals CREATED right after a sign-in, and that a session
+  never expires.
 - **`agents list` shows `stopping`** for an agent that was stopped while its
   session is still on its way out (it was `running`), and its `--json` rows
   gain `startedAt` and `resumable`.
 
 ### Fixed
 
+- **A subcommand's `--help` is its own** (0.4.1-dev.4): `web sessions`,
+  `web login`, `web logout` and `web token --help` (or `-h`) printed the
+  general web help, and `mcp connect|disconnect|clients|config --help`
+  printed `mcp`'s, because the dispatcher answered `<command> --help`
+  first. `web login`, `web logout` and `web token` have a help of their own
+  now (`web token --help` exited 2).
+- **A relative `product.state_dir` is relative to den.yml's directory**
+  (0.4.1-dev.4), the distribution root. It was resolved against the cwd, so
+  an agent's CLI or MCP server started in its workspace's directory read
+  and wrote another state dir (another `web.secret`, other tokens).
+- **Den's test servers are all tracked** (0.4.1-dev.4): every suite and
+  helper that starts a web or MCP server starts it in a process group of
+  its own and stops the group (tests/child-servers.ts), so none outlives a
+  run.
 - **A command name that isn't declared never runs** (0.4.1-dev.3, SEC-1
   §6b.2). `/api/service/exec?cmd=constructor` (or `toString`, any name an
   object inherits) ran `undefined` as a shell command; the service and
@@ -248,11 +306,17 @@ config and manifest changes a distribution must make to move to it under
   `web.allow_plain_http_remote: true` in `config/local/user.yml`: then the
   machine's own addresses and host name work again, signed in (SEC-1b).
   Without either, a non-loopback bind now refuses to start, saying why.
-- **SEC-1: the terminal needs a signed-in browser; run `<cli> web open`.**
-  On loopback nothing else changes: pages, read-only calls and the
-  shell's changes work without signing in. Starting or resuming an agent
-  from the browser asks for a sign-in once per browser (one click via
-  `<cli> web open`, or `<cli> web login` for a link).
+- **SEC-1: nothing asks for a sign-in on localhost.** Pages, read-only
+  calls, the shell's changes, agents and (later) the terminal work as
+  before; the lock (R8) is the only prompt. A sign-in is needed only when
+  the server is reached beyond loopback (below).
+- **`web.session.idle` and `web.session.max` are ignored** (a session never
+  expires). Remove them; until then the server logs a warning naming each,
+  and starts.
+- **Supported browsers for signing in**: Chromium, Firefox and Safari 16.4
+  or later. A browser that sends neither `Sec-Fetch-Site` nor `Origin`
+  (Safari before 16.4) can't sign in (it can still use localhost, where no
+  sign-in is asked).
 - **Edge-fronted or remote users** see the signed-out page once; `<cli> web
   login --origin <the edge's URL>` (the page shows the exact command) signs
   that browser in.

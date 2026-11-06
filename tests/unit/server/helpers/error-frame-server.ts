@@ -12,7 +12,7 @@
  *     bump "the engine on disk" without touching the real package.json;
  *   - DEN_DEBUG_ROUTES=1 arms /_den/throw and /api/_den/throw.
  */
-import { spawn, type ChildProcess } from "child_process";
+import type { ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as net from "net";
@@ -20,6 +20,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { denAuth } from "./den-auth.js";
+import { spawnServer, stopServer } from "../../../child-servers.js";
 
 export const ENGINE = path.resolve(__dirname, "../../../..");
 
@@ -169,7 +170,7 @@ export async function startFrameServer(
     });
 
   const start = async (): Promise<void> => {
-    proc = spawn(
+    proc = spawnServer(
       path.join(ENGINE, "node_modules", ".bin", "tsx"),
       [path.join(ENGINE, "src", "ui", "server", "index.ts")],
       { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] },
@@ -191,14 +192,8 @@ export async function startFrameServer(
   const stop = async (): Promise<void> => {
     const p = proc;
     proc = null;
-    if (!p || p.exitCode !== null) return;
-    const exited = new Promise((r) => p.once("exit", r));
-    p.kill("SIGTERM");
-    await Promise.race([
-      exited,
-      new Promise((r) => setTimeout(r, 5_000).unref()),
-    ]);
-    if (p.exitCode === null) p.kill("SIGKILL");
+    if (!p) return;
+    await stopServer(p);
   };
 
   await start();

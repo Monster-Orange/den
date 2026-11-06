@@ -14,7 +14,7 @@
  *
  * Invented names only. The caller closes it (stop) and its temp dir goes.
  */
-import { spawn, type ChildProcess } from "child_process";
+import type { ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as net from "net";
@@ -32,6 +32,7 @@ import {
   type ScriptedPty,
 } from "../../sessions/helpers/fake-pty.js";
 import { denAuth } from "./den-auth.js";
+import { spawnServer, stopServer } from "../../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../../..");
 
@@ -176,7 +177,7 @@ export async function startAgentsPageServer(
     PORT: String(port),
   };
   let out = "";
-  const server: ChildProcess = spawn(
+  const server: ChildProcess = spawnServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] },
@@ -191,6 +192,7 @@ export async function startAgentsPageServer(
       /* not up yet */
     }
     if (server.exitCode !== null || Date.now() > deadline) {
+      await stopServer(server);
       await host.close();
       throw new Error("the web server did not start");
     }
@@ -226,15 +228,7 @@ export async function startAgentsPageServer(
     },
     log: () => out,
     async stop() {
-      if (server.exitCode === null) {
-        const exited = new Promise((r) => server.once("exit", r));
-        server.kill("SIGTERM");
-        await Promise.race([
-          exited,
-          new Promise((r) => setTimeout(r, 5_000).unref()),
-        ]);
-        if (server.exitCode === null) server.kill("SIGKILL");
-      }
+      await stopServer(server);
       await host.close();
       if (!opts.root) fs.rmSync(tmp, { recursive: true, force: true });
     },

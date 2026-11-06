@@ -63,7 +63,7 @@ describe("on loopback", () => {
       ]).toEqual([p, true]);
   });
 
-  it("shell-grade without a session: 401 signin_required (the terminal), before any Origin or CSRF", () => {
+  it("shell-grade needs no sign-in on loopback (Ward, 2026-11-06): Origin and the start's CSRF pass it, as for any mutation", () => {
     const r = checkRequest(
       req("POST", START, {
         host: local,
@@ -73,20 +73,91 @@ describe("on loopback", () => {
       ctx(),
     );
     expect(r).toMatchObject({
-      ok: false,
-      status: 401,
-      code: "signin_required",
-      scope: "agents",
+      ok: true,
+      session: null,
+      beyond: false,
+      principal: { kind: "person-browser" },
     });
+    // The terminal's io and the resume: no signin_required on loopback.
+    for (const [method, p] of [
+      ["GET", "/api/sessions/s1/io"],
+      ["POST", "/api/workspaces/north/agents/a1/resume"],
+    ] as const) {
+      const g = checkRequest(
+        req(method, p, {
+          host: local,
+          origin: `http://${local}`,
+          "sec-fetch-site": "same-origin",
+          "x-den-csrf": "start-csrf",
+        }),
+        ctx(),
+      );
+      expect([p, g.ok]).toEqual([p, true]);
+    }
+    // The browser-session admin routes too (the CLI sends its bearer).
     expect(
-      checkRequest(req("GET", "/api/sessions/s1/io", { host: local }), ctx()),
-    ).toMatchObject({ ok: false, code: "signin_required", scope: "terminal" });
-    // /signin is read-only and sign-in free (§6b.3): its handler shows the
-    // signed-out page itself, on loopback and beyond.
+      checkRequest(
+        req("GET", "/api/web/sessions", {
+          host: local,
+          "sec-fetch-site": "same-origin",
+        }),
+        ctx(),
+      ),
+    ).toMatchObject({ ok: true });
+    // /signin is read-only and sign-in free (§6b.3): its handler decides,
+    // on loopback and beyond.
     for (const host of [local, EDGE])
       expect(
         checkRequest(req("GET", "/signin", { host }), ctx()),
       ).toMatchObject({ ok: true, session: null });
+  });
+
+  it("shell-grade on loopback still needs Origin and CSRF: no sign-in is not no checks", () => {
+    expect(
+      checkRequest(
+        req("POST", START, { host: local, "x-den-csrf": "start-csrf" }),
+        ctx(),
+      ),
+    ).toMatchObject({ ok: false, status: 403, code: "origin_rejected" });
+    expect(
+      checkRequest(
+        req("POST", START, { host: local, origin: `http://${local}` }),
+        ctx(),
+      ),
+    ).toMatchObject({ ok: false, status: 403, code: "csrf" });
+    expect(
+      checkRequest(
+        req("GET", "/api/sessions/s1/io", {
+          host: local,
+          "sec-fetch-site": "cross-site",
+        }),
+        ctx(),
+      ),
+    ).toMatchObject({ ok: false, status: 403, code: "cross_site" });
+  });
+
+  it("beyond loopback, shell-grade still needs a sign-in", () => {
+    expect(
+      checkRequest(
+        req("POST", START, {
+          host: EDGE,
+          origin: `https://${EDGE}`,
+          "x-den-csrf": "start-csrf",
+        }),
+        ctx(),
+      ),
+    ).toMatchObject({
+      ok: false,
+      status: 401,
+      code: "signin_required",
+      scope: "den",
+    });
+    expect(
+      checkRequest(
+        req("GET", "/api/sessions/s1/io", { host: local }, "192.0.2.7"),
+        ctx(),
+      ),
+    ).toMatchObject({ ok: false, code: "signin_required", scope: "den" });
   });
 
   it("shell-grade with a session, Origin and the session's CSRF: passes, as the browser's session", () => {
@@ -301,5 +372,23 @@ describe("refusing to start a non-loopback bind", () => {
     expect(
       bindRefusal("0.0.0.0", { ...no, allowPlainHttpRemote: true }),
     ).toBeNull();
+  });
+});
+
+describe("a revoked agent token (SEC-1 §6c.2: `web logout --all`)", () => {
+  it("answers 401 token_revoked, telling the agent to restart or resume", () => {
+    const c: GuardContext = {
+      ...ctx(),
+      verifyBearer: (t) => (t === "den_at_revoked" ? "revoked" : null),
+    };
+    const r = checkRequest(
+      req("GET", "/api/settings", {
+        host: local,
+        authorization: "Bearer den_at_revoked",
+      }),
+      c,
+    );
+    expect(r).toMatchObject({ ok: false, status: 401, code: "token_revoked" });
+    expect(r.ok ? "" : r.error).toMatch(/restart or resume the agent/);
   });
 });

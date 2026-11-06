@@ -279,11 +279,42 @@ export function actorTokenRefusal(
   const rec = lookupActorToken(stateDir, token);
   if (!rec)
     return `${ACTOR_TOKEN_ENV} is not a live actor token of this distribution (stopped, resumed, or never minted here)`;
+  if (rec.revokedAt)
+    return `${ACTOR_TOKEN_ENV} was revoked (\`web logout --all\`): restart or resume the agent to get a new one`;
   if (scope && scope.actor !== rec.actor)
     return `--actor ${scope.actor} does not match ${ACTOR_TOKEN_ENV}, which is ${rec.actor}'s`;
   if (scope && scope.workspace !== rec.workspace)
     return `--workspace ${scope.workspace} does not match ${ACTOR_TOKEN_ENV}, which is workspace ${rec.workspace}'s`;
   return null;
+}
+
+/**
+ * The line the stdio server prints at start (stderr). Its actor reads
+ * `as agent:<id>` only when DEN_ACTOR_TOKEN verified it (actorTokenRefusal
+ * passed with a token); without one the actor is a claim, and says so.
+ */
+export function mcpStartupLine(o: {
+  cli: string;
+  tools: number;
+  actions: readonly string[];
+  baseUrl: string;
+  scope: McpScope | null;
+  /** A DEN_ACTOR_TOKEN that matched the scope's actor and workspace. */
+  verified: boolean;
+}): string {
+  const { scope } = o;
+  const actor = scope
+    ? o.verified
+      ? scope.actor
+      : `${scope.actor} (unverified: no ${ACTOR_TOKEN_ENV})`
+    : "";
+  return (
+    `${o.cli} mcp: ${plural(o.tools, "tool")} ` +
+    `(${o.actions.length ? `actions: ${o.actions.join(", ")}` : "read only"}) → ${o.baseUrl}` +
+    (scope ? ` · scoped to ${scope.workspace} as ${actor}` : "") +
+    (scope?.grants?.length ? ` · grants: ${scope.grants.join(", ")}` : "") +
+    "\n"
+  );
 }
 
 /** Run `<cli> mcp` until stdin closes (or one `--call` / `--list`). */
@@ -369,10 +400,14 @@ export async function runMcp(rawArgv: string[]): Promise<void> {
   });
   await server.connect(new StdioServerTransport());
   process.stderr.write(
-    `${cli} mcp: ${plural(toolsFor(cfg).length, "tool")} ` +
-      `(${cfg.actions.length ? `actions: ${cfg.actions.join(", ")}` : "read only"}) → ${baseUrl}` +
-      (scope ? ` · scoped to ${scope.workspace} as ${scope.actor}` : "") +
-      (scope?.grants?.length ? ` · grants: ${scope.grants.join(", ")}` : "") +
-      "\n",
+    mcpStartupLine({
+      cli,
+      tools: toolsFor(cfg).length,
+      actions: cfg.actions,
+      baseUrl,
+      scope,
+      // actorTokenRefusal passed: a token, if any, is this scope's.
+      verified: process.env[ACTOR_TOKEN_ENV] !== undefined,
+    }),
   );
 }

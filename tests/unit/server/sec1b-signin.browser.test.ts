@@ -17,7 +17,7 @@
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { spawn, type ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as net from "net";
 import type { AddressInfo } from "net";
@@ -25,6 +25,7 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
@@ -73,7 +74,7 @@ beforeAll(async () => {
     ].join("\n"),
   );
   port = await freePort();
-  server = spawn(
+  server = spawnServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -106,15 +107,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await browser?.close();
-  if (server && server.exitCode === null) {
-    const exited = new Promise((r) => server.once("exit", r));
-    server.kill("SIGTERM");
-    await Promise.race([
-      exited,
-      new Promise((r) => setTimeout(r, 5_000).unref()),
-    ]);
-    if (server.exitCode === null) server.kill("SIGKILL");
-  }
+  await stopServer(server);
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -125,37 +118,20 @@ const signedIn = (p: Page) =>
     return ((await r.json()) as { signedIn?: boolean }).signedIn === true;
   });
 
-describe("localhost is canonical", () => {
-  it("signed in on localhost, a session page on 127.0.0.1 links to localhost, and one click is signed in", async () => {
+describe("no sign-in prompt on loopback (Ward, 2026-11-06)", () => {
+  it("a browser that never signed in: /signin goes on to its page on localhost and 127.0.0.1, with no signed-out page", async () => {
     if (skip()) return;
     const ctx = await browser!.newContext({
       viewport: { width: 1280, height: 800 },
     });
     const p = await ctx.newPage();
-    await p.goto(signInUrl(stateDir, `http://localhost:${port}`, "/settings"));
-    await p.waitForURL(`http://localhost:${port}/settings`);
-    expect(await signedIn(p)).toBe(true);
-
-    // 127.0.0.1: the cookie belongs to localhost, so this browser isn't
-    // signed in here. The signed-out page, and its link to localhost.
-    const r = await p.goto(`http://127.0.0.1:${port}/signin?next=%2Fsettings`);
-    expect(r?.status()).toBe(401);
-    await p.waitForSelector("#den-signin");
-    expect(await p.textContent("#den-error-page h1")).toBe(
-      "Sign in to use the terminal",
-    );
-    expect(await p.textContent("#den-signin-cmd")).toBe("den web login");
-    expect(await p.getAttribute("#den-signin-local", "href")).toBe(
-      `http://localhost:${port}/signin?next=%2Fsettings`,
-    );
-    // No form takes a secret or a token.
-    expect(await p.locator("#den-error-page input").count()).toBe(0);
-
-    await p.click("#den-signin-local");
-    await p.waitForURL(`http://localhost:${port}/settings`, {
-      timeout: 20_000,
-    });
-    expect(await signedIn(p)).toBe(true);
+    for (const host of [`localhost:${port}`, `127.0.0.1:${port}`]) {
+      const r = await p.goto(`http://${host}/signin?next=%2Fsettings`);
+      await p.waitForURL(`http://${host}/settings`);
+      expect([host, r?.status()]).toEqual([host, 200]);
+      expect(await p.locator("#den-signin").count()).toBe(0);
+      expect(await signedIn(p)).toBe(false);
+    }
     await ctx.close();
   }, 60_000);
 });

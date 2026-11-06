@@ -9,7 +9,7 @@
  * A real server on a throwaway distribution; no browser.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { spawn, type ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as net from "net";
@@ -17,6 +17,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { denAuth } from "./helpers/den-auth.js";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -71,7 +72,7 @@ beforeAll(async () => {
   await new Promise<void>((r) => s.listen(0, "localhost", r));
   port = (s.address() as AddressInfo).port;
   await new Promise<void>((r) => s.close(() => r()));
-  server = spawn(
+  server = spawnServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -109,15 +110,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  if (server && server.exitCode === null) {
-    const exited = new Promise((r) => server.once("exit", r));
-    server.kill("SIGTERM");
-    await Promise.race([
-      exited,
-      new Promise((r) => setTimeout(r, 5_000).unref()),
-    ]);
-    if (server.exitCode === null) server.kill("SIGKILL");
-  }
+  await stopServer(server);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 

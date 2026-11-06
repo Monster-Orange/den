@@ -215,10 +215,12 @@ import {
 import { githubOrgFor } from "../../shared/environment-manager/workspace-org.js";
 import { cmdWeb, displayWebHelp } from "./web-command.js";
 import { cmdGraph } from "./graph-command.js";
+import { resolveTargetWorkspace } from "./target-workspace.js";
 import { resolveLogsTarget, tailServiceLogs } from "./logs-command.js";
 import {
   parseCliArgs,
   takeWorkspaceFlags,
+  ownsSubcommandHelp,
   unknownCommandFlags,
   workspaceFlagRequiresActive,
   type ParsedCliArgs,
@@ -794,10 +796,13 @@ class DenCLI {
 
     // `<command> -h/--help` → that command's help (every command supports it).
     // (`-h`/`--help` AS the command falls through to the switch → global help.)
+    // A subcommand that prints its own help (`web sessions --help`, `mcp
+    // connect --help`) is dispatched instead: its help wins.
     if (
       command &&
       !["-h", "--help", "-v", "--version"].includes(command) &&
-      (ownArgs.includes("-h") || ownArgs.includes("--help"))
+      (ownArgs.includes("-h") || ownArgs.includes("--help")) &&
+      !ownsSubcommandHelp(command, ownArgs[1])
     ) {
       this.printCommandHelp(command, ownArgs[1]);
       return;
@@ -2976,7 +2981,44 @@ class DenCLI {
     }
   }
 
+  /**
+   * With no `-w`: the workspace the named services are in, when it isn't
+   * the focus (target-workspace.ts), set as this run's workspace. False
+   * (exit 1, said why) when a name is in no active workspace, in several,
+   * or the names are in different ones.
+   */
+  private pickTargetWorkspace(command: string, args: string[]): boolean {
+    if (process.env.DEN_WORKSPACE_OVERRIDE) return true;
+    const terminator = args.indexOf("--");
+    const own = terminator === -1 ? args : args.slice(0, terminator);
+    let rest: string[];
+    try {
+      const taken = takeAppFlag(own);
+      if (taken.app) return true; // -A names an application, not services
+      rest = taken.rest;
+    } catch {
+      return true; // the command itself reports a bad -A
+    }
+    const names = rest.filter((a) => !a.startsWith("-"));
+    const r = resolveTargetWorkspace(names, product().cli, command);
+    if (!r.ok) {
+      console.error(chalk.red(`\n  ✗ ${r.error}\n`));
+      process.exitCode = 1;
+      return false;
+    }
+    if (r.workspace) {
+      process.env.DEN_WORKSPACE_OVERRIDE = r.workspace;
+      console.log(
+        chalk.gray(
+          `\n  ${names.join(", ")}: in workspace ${r.workspace} (not the focus)`,
+        ),
+      );
+    }
+    return true;
+  }
+
   private async cmdServiceUp(args: string[]): Promise<void> {
+    if (!this.pickTargetWorkspace("up", args)) return;
     // Tokens after a `--` terminator belong to a child command — they must
     // never be read as up's own flags (`den up -- -a` is NOT `up -a`).
     const terminator = args.indexOf("--");
@@ -3101,6 +3143,7 @@ class DenCLI {
   }
 
   private async cmdServiceDown(args: string[]): Promise<void> {
+    if (!this.pickTargetWorkspace("down", args)) return;
     // Tokens after a `--` terminator belong to a child command — they must
     // never be read as down's own flags (`den down -- -a` must NOT tear
     // down the whole workspace).
@@ -3171,6 +3214,7 @@ class DenCLI {
   }
 
   private async cmdServiceRestart(argv: string[]): Promise<void> {
+    if (!this.pickTargetWorkspace("restart", argv)) return;
     const { app, rest: args } = takeAppFlag(argv);
     const dryRun = args.includes("--dry-run") || args.includes("-n");
     if (!dryRun) preflightSecrets();
@@ -4068,15 +4112,33 @@ class DenCLI {
       console.log();
       return;
     }
-    if (planWs.length || allActive) {
+    if (planWs.length > 1 || allActive) {
       console.error(
         chalk.red(
-          `\n  -w and --all-active go with --plan: setup itself works on the focused workspace.\n`,
+          `\n  More than one -w, and --all-active, go with --plan: setup itself works on one workspace (-w <workspace>, or the one the named repos are in, else the focus).\n`,
         ),
       );
       process.exitCode = 1;
       return;
     }
+    if (planWs.length === 1) {
+      const ws = planWs[0];
+      if (!readWorkspacesFile().workspaces[ws]) {
+        console.error(chalk.red(`\n  Workspace "${ws}" does not exist\n`));
+        process.exitCode = 1;
+        return;
+      }
+      if (!isWorkspaceActive(ws)) {
+        console.error(
+          chalk.red(
+            `\n  Workspace "${ws}" is not active — run \`${product().cli} workspace activate ${ws}\` first\n`,
+          ),
+        );
+        process.exitCode = 1;
+        return;
+      }
+      process.env.DEN_WORKSPACE_OVERRIDE = ws;
+    } else if (!this.pickTargetWorkspace("setup", args)) return;
 
     // Clone any managed repos that aren't on disk yet before reading manifests.
     this.cloneMissingManagedRepos();
@@ -4091,11 +4153,27 @@ class DenCLI {
       return;
     }
 
+    // A name the listing doesn't spell the same way (an alias, a bare repo
+    // listed only by subsystem) is matched as resolveService resolves it.
+    const matches = (name: string, s: (typeof services)[number]): boolean => {
+      if (name === s.address || name === s.repoName) return true;
+      const r = resolveService(name);
+      return !!r && (r.address === s.address || r.repoName === s.address);
+    };
+    const unmatched = names.filter((n) => !services.some((s) => matches(n, s)));
+    if (unmatched.length > 0) {
+      const ws = getActiveWorkspace()?.name ?? "default";
+      console.error(
+        chalk.red(
+          `\n  ✗ Not in workspace ${ws}: ${unmatched.join(", ")}. Nothing was set up.\n`,
+        ),
+      );
+      process.exitCode = 1;
+      return;
+    }
     let targets =
       names.length > 0
-        ? services.filter(
-            (s) => names.includes(s.address) || names.includes(s.repoName),
-          )
+        ? services.filter((s) => names.some((n) => matches(n, s)))
         : services;
 
     // Workspace-wide default: MANAGED clones only. `make setup` runs

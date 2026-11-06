@@ -262,7 +262,7 @@ code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: applic
 SEC_TOKEN=""
 [ "$code" = "200" ] && ok "POST /api/settings with \`acme web token --print\`: 200" || bad "POST /api/settings with the CLI token answered $code"
 # SEC-1b: `web login` prints a one-time link (never echoed here) that the
-# server swaps for a session cookie, once; shell-grade needs a session.
+# server swaps for a session cookie, once.
 SEC_LINK="$(cd "$DIST" && ./bin/acme web login --port "$PORT" 2>/dev/null)"
 SEC_HDR="$(curl -sS -o /dev/null -D - -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 again="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
@@ -273,9 +273,23 @@ if [[ "$SEC_HDR" == HTTP/*" 303"* ]] &&
   ok "\`acme web login\`'s link signs in once (303 and a session cookie; 401 the second time)"
 else bad "\`acme web login\`'s link didn't sign in once (second use answered $again)"; fi
 SEC_HDR=""
-code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "Origin: http://localhost:$PORT" \
-  -H 'Content-Type: application/json' --data '{}' "http://localhost:$PORT/api/workspaces/main/agents")"
-[ "$code" = "401" ] && ok "agent start without a signed-in browser: 401" || bad "agent start without a session answered $code"
+# SEC-1 (Ward, 2026-11-06): no sign-in on loopback, shell-grade included:
+# the page's Origin and CSRF token (never echoed) reach an agent start.
+# Beyond loopback (the edge hostname) every route needs a sign-in.
+SEC_CSRF="$(curl -sS -H 'Sec-Fetch-Site: same-origin' "http://localhost:$PORT/api/session" |
+  node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).csrf||""))}catch{}})')"
+SEC_BODY="$WORK/agent-start.json"
+code="$(curl -sS -o "$SEC_BODY" -w '%{http_code}' -X POST -H "Origin: http://localhost:$PORT" \
+  -H "X-Den-CSRF: $SEC_CSRF" -H 'Content-Type: application/json' --data '{}' \
+  "http://localhost:$PORT/api/workspaces/main/agents")"
+SEC_CSRF=""
+if [ -n "$code" ] && [ "$code" != "401" ] && [ "$code" != "403" ] && ! grep -q signin_required "$SEC_BODY"; then
+  ok "agent start on localhost needs no sign-in (past the checks: $code)"
+else bad "agent start on localhost answered $code (a sign-in or a refused check)"; fi
+code="$(curl -sS -o "$SEC_BODY" -w '%{http_code}' -H "Host: acme.acme.localhost" "http://localhost:$PORT/api/settings")"
+if [ "$code" = "401" ] && grep -q signin_required "$SEC_BODY"; then
+  ok "beyond loopback (the edge hostname) a read needs a sign-in: 401 signin_required"
+else bad "the edge hostname without a session answered $code"; fi
 run web-restart ./bin/acme web restart --no-open --port "$PORT"
 run web-down ./bin/acme web down --port "$PORT"
 port_free() { ! (lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1); }

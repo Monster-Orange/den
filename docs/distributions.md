@@ -563,16 +563,16 @@ product:
   # workspaces_dir: acme-workspaces
 ```
 
-| Field            | Default              | What it names                                                     |
-| ---------------- | -------------------- | ----------------------------------------------------------------- |
-| `name`           | `den`                | The product; `[a-z][a-z0-9-]*`. Everything below derives from it  |
-| `cli`            | `<name>`             | The command shown in help, hints and the web UI                   |
-| `env_prefix`     | `<NAME>` (`-` → `_`) | Env vars: `<PREFIX>_ROOT`, `<PREFIX>_HOME`, `<PREFIX>_INVOKE_CWD` |
-| `config`         | `config/<name>.yml`  | The org config, relative to the distribution root                 |
-| `manifest`       | `.<name>.yml`        | The manifest file a repo carries; the `.json` twin is also read   |
-| `state_dir`      | `~/.<name>`          | Per-user state: web server, daemons, logs, history                |
-| `services_dir`   | `.<name>-services`   | Managed clones, relative to the distribution root                 |
-| `workspaces_dir` | `<name>-workspaces`  | Workspace checkouts, relative to the distribution root            |
+| Field            | Default              | What it names                                                                                                        |
+| ---------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `name`           | `den`                | The product; `[a-z][a-z0-9-]*`. Everything below derives from it                                                     |
+| `cli`            | `<name>`             | The command shown in help, hints and the web UI                                                                      |
+| `env_prefix`     | `<NAME>` (`-` → `_`) | Env vars: `<PREFIX>_ROOT`, `<PREFIX>_HOME`, `<PREFIX>_INVOKE_CWD`                                                    |
+| `config`         | `config/<name>.yml`  | The org config, relative to the distribution root                                                                    |
+| `manifest`       | `.<name>.yml`        | The manifest file a repo carries; the `.json` twin is also read                                                      |
+| `state_dir`      | `~/.<name>`          | Per-user state: web server, daemons, logs, history (a relative path is relative to den.yml's directory, not the cwd) |
+| `services_dir`   | `.<name>-services`   | Managed clones, relative to the distribution root                                                                    |
+| `workspaces_dir` | `<name>-workspaces`  | Workspace checkouts, relative to the distribution root                                                               |
 
 Env vars, with `ACME` as the prefix:
 
@@ -1181,9 +1181,15 @@ are the same directory.
 
 ## Signing in
 
-The web UI has no password. Reading `web.secret` (32 random bytes, mode 0600
-in the state dir, made at the first `web up`) proves you are this
-computer's user, and the CLI does that for you:
+On localhost nothing asks you to sign in: every page, the agents and the
+terminal work as they are, and the lock (R8) is the only prompt (for
+privileged actions). Signing in is for when the server is reached beyond
+this machine: through the edge hostname, a LAN address, or a bind that
+isn't loopback (`DEN_BIND_HOST`).
+
+There is no password. Reading `web.secret` (32 random bytes, mode 0600 in
+the state dir, made at the first `web up`) proves you are this computer's
+user, and the CLI does that for you:
 
 ```bash
 ./bin/acme web open        # start if needed, and sign this browser in (a new tab)
@@ -1191,7 +1197,7 @@ computer's user, and the CLI does that for you:
 ./bin/acme web sessions    # the signed-in browsers: id, created, last seen, host, user agent
 ./bin/acme web logout <id> # sign out one browser (an id prefix from `web sessions`)
 ./bin/acme web logout      # sign out every browser
-./bin/acme web logout --all  # and rotate web.secret: every session and token ends
+./bin/acme web logout --all  # and rotate web.secret and revoke every agent's token
 ```
 
 - **The link** is `http://localhost:<port>/auth?c=<code>`, with `&next=<path>`
@@ -1203,36 +1209,35 @@ computer's user, and the CLI does that for you:
   (the signed-out page there shows the exact command).
 - **The cookie** (`den_session_<port>`) is HttpOnly, SameSite=Strict and
   Path=/, and Secure when the request came over HTTPS through the edge. The
-  session lives server-side (`web-sessions.json`, 0600, in the state dir):
-  idle 7 days (sliding), 30 days at most. Shorten either in
-  `config/local/user.yml` or the org config:
-
-  ```yaml
-  web:
-    session:
-      idle: 12h # s, m, h or d; at least 1m
-      max: 7d # at least idle; at most 400d
-  ```
-
-  A wrong value stops `web up` and the server, naming the key.
+  session lives server-side (`web-sessions.json`, 0600, in the state dir)
+  and never expires: it ends at sign-out, `web logout`, or `web logout
+--all`. The cookie asks the browser to keep it for 400 days, the most a
+  browser allows. The 0.4.1-dev `web.session.idle` and `web.session.max`
+  keys are ignored; the server logs a warning naming each one it finds.
 
   `web sessions`' LAST SEEN is written at most once a minute (60 s), so it
   equals CREATED right after a sign-in.
 
-- **What needs it.** On loopback, pages and read-only calls stay open, and
-  changes need only the page's own CSRF token (as before). Shell-grade
-  actions (starting or resuming an agent, and the terminal) need a
-  signed-in browser. Through the edge, or from another machine, every page
-  and call needs one. A page that needs one shows "Sign in to use the
-  terminal" (or "Sign in to use <name>") with the command to run; it never
-  asks for a secret. `/api` answers 401 `signin_required`.
+- **What needs it.** On loopback, nothing: pages and read-only calls are
+  open, and changes (an agent's start or resume and the terminal included)
+  need only the page's own Origin and CSRF token, which the shell sends.
+  The Host allowlist, the Origin check and the CSRF token are what stop
+  another site or a rebinding DNS name. Through the edge, or from another
+  machine, every page and call needs a signed-in browser (or a bearer). A
+  page there shows "Sign in to use <name>" with the command to run; it
+  never asks for a secret. `/api` answers 401 `signin_required`.
 - **localhost is the canonical name.** A cookie set on `localhost` isn't
-  sent to `127.0.0.1`, so the links Den prints use `localhost`, and a page
-  on `127.0.0.1` or `[::1]` that needs a session links to the same page on
-  `localhost`.
+  sent to `127.0.0.1`, so the links Den prints use `localhost`.
+- **Browsers.** Chromium, Firefox and Safari 16.4 or later: a sign-in link
+  needs the browser to send `Sec-Fetch-Site` or `Origin`.
 - **Scripts and the CLI** are unaffected: the CLI and the MCP server send
   the person token (`web token --print` prints it for curl). After `web
 logout --all` the old token is refused; the CLI reads the new one.
+- **`web logout --all` is the "something leaked" button.** It signs out
+  every browser, rotates `web.secret` (every person token is void) and
+  revokes every agent's token: a running agent's next call gets 401
+  `token_revoked` ("restart or resume the agent to get a new one"). Plain
+  `web logout` (one browser, or every browser) leaves agent tokens alone.
 - **Another machine.** `DEN_BIND_HOST=0.0.0.0` (or any non-loopback
   address) starts only with HTTPS in front (the edge, with `edge.tls`), or
   with `web.allow_plain_http_remote: true` in `config/local/user.yml` (a
@@ -1699,7 +1704,14 @@ unlock, use the sudo password or start another agent (403
 `DEN_PERSON_TOKEN`, a person token's value and a path to `web.secret` are
 always removed, and `sessions start --keep-env` of one is refused and logged.
 An agent runs as your OS user, so it could still read `web.secret` itself;
-the token keeps what Den does on its behalf attributable and bounded.
+the token keeps what Den does on its behalf attributable and bounded. As a
+cooperative mitigation, den-claude passes Claude Code a settings file
+(`--settings`) whose `permissions.deny` lists `Read` and `Bash(cat …)` of
+`<state dir>/web.secret` and `<state dir>/sessions/**`. **It binds
+cooperating agents only**: an agent that ignores its permission config
+can still read them. OS-user isolation (a separate user, a container, a
+sandbox) is not in 0.4.x. `web logout --all` revokes every agent's token
+(above, under Signing in).
 
 **What the scope does not do.** An agent's MCP scope binds cooperating
 agents only. A runtime with a shell can still run `<cli>` itself, outside
@@ -1750,7 +1762,7 @@ are errors naming the file or the key.
 
 - **`den-claude`** (the default) needs `claude` on PATH; doctor reads its
   version from the install, without running it. It runs `claude --session-id
-<id> --mcp-config <file> --strict-mcp-config [--model <m>]
+<id> --mcp-config <file> --strict-mcp-config --settings <file> [--model <m>]
 --append-system-prompt <role prompt>`, so Den's MCP server is the agent's
   only one, and resumes with `claude --resume <id>`. Permission prompts stay
   in the agent's terminal: it passes `--permission-mode default` unless the

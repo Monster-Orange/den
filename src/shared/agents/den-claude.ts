@@ -9,6 +9,11 @@
  *   workspace; --strict-mcp-config keeps any other MCP server out, so the
  *   agent acts only through Den (§1).
  * - The role prompt is appended to Claude Code's own system prompt.
+ * - Den's state dir is denied to the agent (SEC-1 §6c.1): a settings file
+ *   (--settings, 0600) whose `permissions.deny` lists Read and `Bash(cat …)`
+ *   of `<state>/web.secret` and `<state>/sessions/**`. It binds a
+ *   cooperating agent only: the agent runs as the same OS user, so nothing
+ *   stops one that ignores its permission config from reading them.
  * - Each launch picks a fresh conversation id (--session-id); resume
  *   continues it with --resume <id>, in the same cwd, with the same MCP.
  * - Permission prompts stay in the terminal (approvals: "terminal"):
@@ -98,6 +103,28 @@ function detect(env: NodeJS.ProcessEnv = process.env): RuntimeDetect {
   return version ? { available: true, version } : { available: true };
 }
 
+/**
+ * Claude Code `permissions.deny` rules that keep a cooperating agent out of
+ * Den's credentials (SEC-1 §6c.1): web.secret and the session host's
+ * records. Read paths are absolute (`//…` in Claude Code's rule syntax).
+ */
+export function stateDirDenyRules(stateDir: string): string[] {
+  const abs = path.resolve(stateDir);
+  const secret = path.join(abs, "web.secret");
+  const sessions = path.join(abs, "sessions");
+  return [
+    `Read(/${secret})`,
+    `Read(/${sessions}/**)`,
+    `Bash(cat ${secret}:*)`,
+    `Bash(cat ${sessions}/:*)`,
+  ];
+}
+
+/** The settings file den-claude passes with --settings. */
+export function settingsPath(input: Pick<LaunchInput, "filesDir">): string {
+  return path.join(input.filesDir, "settings.json");
+}
+
 /** The flags every run shares: Den's MCP only, the model, the role prompt. */
 function common(input: LaunchInput): {
   argv: string[];
@@ -106,11 +133,13 @@ function common(input: LaunchInput): {
 } {
   const file = mcpConfigPath(input);
   const mode = permissionMode(input);
+  const settings = input.stateDir ? settingsPath(input) : null;
   return {
     argv: [
       "--mcp-config",
       file,
       "--strict-mcp-config",
+      ...(settings ? ["--settings", settings] : []),
       "--permission-mode",
       mode,
       ...(input.model ? ["--model", input.model] : []),
@@ -122,7 +151,18 @@ function common(input: LaunchInput): {
         input.mcp.name,
       ),
     ],
-    files: { [file]: mcpConfigJson(input.mcp) },
+    files: {
+      [file]: mcpConfigJson(input.mcp),
+      ...(settings && input.stateDir
+        ? {
+            [settings]: `${JSON.stringify(
+              { permissions: { deny: stateDirDenyRules(input.stateDir) } },
+              null,
+              2,
+            )}\n`,
+          }
+        : {}),
+    },
     warnings:
       mode === "bypassPermissions"
         ? [

@@ -15,7 +15,11 @@
  *   for is listed as running in the session host's own record
  *   (`sessions/<id>.json`); an ended one's token is removed when presented.
  * - It never derives from web.secret, so it proves nothing about the
- *   person: rotating the secret (`web logout --all`) leaves it alone.
+ *   person. `web logout --all` (the "something leaked" button, SEC-1
+ *   §6c.2) revokes every token as well as rotating the secret: each record
+ *   is kept, marked `revokedAt`, so a running agent's next call is told
+ *   `token_revoked` (restart or resume it) rather than a bare 401. Minting
+ *   the agent's next token, or its session's end, drops the record.
  *
  * Nothing here prints or logs a token.
  */
@@ -46,6 +50,8 @@ export interface ActorTokenRecord {
   session: { name: string; id?: string };
   /** ISO 8601. */
   createdAt: string;
+  /** ISO 8601: revoked by `web logout --all`. A revoked token never verifies. */
+  revokedAt?: string;
 }
 
 interface StoreFile {
@@ -163,6 +169,23 @@ export function revokeAgentTokens(stateDir: string, agentId: string): number {
   return n;
 }
 
+/**
+ * Revoke every agent's token (`web logout --all`, SEC-1 §6c.2): each record
+ * is marked revoked, so its agent learns why. How many were live.
+ */
+export function revokeAllActorTokens(stateDir: string): number {
+  const data = load(stateDir);
+  const now = new Date().toISOString();
+  let n = 0;
+  for (const r of Object.values(data.tokens))
+    if (!r.revokedAt) {
+      r.revokedAt = now;
+      n++;
+    }
+  if (n) save(stateDir, data);
+  return n;
+}
+
 /** What a presented token was minted as, live or not; null when unknown. */
 export function lookupActorToken(
   stateDir: string,
@@ -189,13 +212,15 @@ export function sessionRunning(stateDir: string, id: string): boolean {
 }
 
 /**
- * The record a presented token proves, or null: unknown, revoked, not yet
- * bound to a session, or its session has ended (then it is revoked here).
+ * What a presented token proves: its record; `"revoked"` when `web logout
+ * --all` revoked it and its session still runs (the agent is told to
+ * restart or resume); or null: unknown, not yet bound to a session, or its
+ * session has ended (then its record is removed here).
  */
-export function verifyActorToken(
+export function checkActorToken(
   stateDir: string,
   token: string,
-): ActorTokenRecord | null {
+): ActorTokenRecord | "revoked" | null {
   const rec = lookupActorToken(stateDir, token);
   if (!rec?.session.id) return null;
   if (!sessionRunning(stateDir, rec.session.id)) {
@@ -206,7 +231,16 @@ export function verifyActorToken(
     }
     return null;
   }
-  return rec;
+  return rec.revokedAt ? "revoked" : rec;
+}
+
+/** The record a presented token proves, or null (checkActorToken, revoked or not). */
+export function verifyActorToken(
+  stateDir: string,
+  token: string,
+): ActorTokenRecord | null {
+  const r = checkActorToken(stateDir, token);
+  return r === "revoked" ? null : r;
 }
 
 /**

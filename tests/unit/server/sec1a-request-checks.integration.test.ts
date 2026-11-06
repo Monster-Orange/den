@@ -9,7 +9,7 @@
  * bodies are searched for them, and a failure says only true or false.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { spawn, spawnSync, type ChildProcess } from "child_process";
+import { spawnSync, type ChildProcess } from "child_process";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as http from "http";
@@ -21,6 +21,7 @@ import {
   cliAuthHeaders,
   readWebSecret,
 } from "../../../src/shared/web-secret.js";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -127,21 +128,25 @@ beforeAll(async () => {
   await new Promise<void>((r) => s.listen(0, "localhost", r));
   port = (s.address() as AddressInfo).port;
   await new Promise<void>((r) => s.close(() => r()));
-  server = spawn(TSX, [path.join(ENGINE, "src", "ui", "server", "index.ts")], {
-    cwd: root,
-    env: {
-      ...process.env,
-      DEN_ROOT: root,
-      DEN_ENGINE_ROOT: ENGINE,
-      DEN_EDGE_DIR: path.join(tmp, "edge-state"),
-      DEN_HOME: stateDir,
-      HOME: path.join(tmp, "home"),
-      DEN_NO_OPEN: "1",
-      NO_COLOR: "1",
-      PORT: String(port),
+  server = spawnServer(
+    TSX,
+    [path.join(ENGINE, "src", "ui", "server", "index.ts")],
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        DEN_ROOT: root,
+        DEN_ENGINE_ROOT: ENGINE,
+        DEN_EDGE_DIR: path.join(tmp, "edge-state"),
+        DEN_HOME: stateDir,
+        HOME: path.join(tmp, "home"),
+        DEN_NO_OPEN: "1",
+        NO_COLOR: "1",
+        PORT: String(port),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
     },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  );
   server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
   server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
   const deadline = Date.now() + 30_000;
@@ -157,15 +162,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  if (server && server.exitCode === null) {
-    const exited = new Promise((r) => server.once("exit", r));
-    server.kill("SIGTERM");
-    await Promise.race([
-      exited,
-      new Promise((r) => setTimeout(r, 5_000).unref()),
-    ]);
-    if (server.exitCode === null) server.kill("SIGKILL");
-  }
+  await stopServer(server);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 

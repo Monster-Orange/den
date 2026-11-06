@@ -82,6 +82,28 @@ export function scopeView(scope?: ViewScope): ScopeView {
   };
 }
 
+/**
+ * WS-6.4: what health covers, whatever is in view: every active workspace,
+ * focused first. Scope only filters what is displayed (inViewMarker); it
+ * never narrows what is polled, so a workspace outside it still shows its
+ * real health on the Workspaces page.
+ */
+export function pollView(): ScopeView {
+  return scopeView(ALL_ACTIVE);
+}
+
+/**
+ * Whether a health row is in view: one of the workspaces that define it
+ * (`workspaces`, its owners) is in `view`. A row without owners counts as
+ * in view.
+ */
+export function inViewMarker(
+  view: ScopeView,
+): (owners: readonly string[] | undefined) => boolean {
+  const names = new Set(view.workspaces.map((w) => w.name));
+  return (owners) => !owners?.length || owners.some((o) => names.has(o));
+}
+
 /** A cache key for what is in view (the scope's workspaces, in order). */
 export function scopeKey(view: ScopeView): string {
   return view.workspaces.map((w) => w.name).join(",");

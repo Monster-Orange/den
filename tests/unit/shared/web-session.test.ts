@@ -1,6 +1,6 @@
 /**
- * SEC-1b (SEC-1 spec §2): the login code, `next`, the session store's
- * lifetimes and the sign-in config, as pure functions with an injected
+ * SEC-1b (SEC-1 spec §2): the login code, `next`, the session store (a
+ * session never expires: Ward, 2026-11-06) and the sign-in config, as pure functions with an injected
  * clock (no test waits 60 s). No code, cookie value or secret is printed:
  * a failure shows booleans and reasons only.
  */
@@ -11,6 +11,7 @@ import * as os from "os";
 import * as path from "path";
 import {
   checkLoginCode,
+  ignoredConfigWarning,
   LOGIN_CODE_TTL_MS,
   loginLink,
   mintLoginCode,
@@ -154,12 +155,11 @@ describe("next: only a same-origin path", () => {
 
 describe("the session store", () => {
   let now = T0;
-  const store = (lifetime = { idleMs: 7 * DAY, maxMs: 30 * DAY }) =>
+  const store = () =>
     new WebSessionStore({
       stateDir: () => tmp,
       secret: () => readWebSecret(tmp),
       now: () => now,
-      lifetime: () => lifetime,
     });
   beforeEach(() => {
     now = T0;
@@ -185,38 +185,18 @@ describe("the session store", () => {
     expect(s.lookup("")).toBeNull();
   });
 
-  it("idle expiry slides: each use within 7 days keeps it, 7 idle days end it", () => {
+  it("never expires: idle for a year, or two years after sign-in, it is still live (it ends at sign-out)", () => {
     const s = store();
     const { id } = s.create({});
-    now = T0 + 6 * DAY;
+    now = T0 + 365 * DAY; // a year without a request
     expect(s.lookup(id)).not.toBeNull();
-    now = T0 + 12 * DAY; // 6 days after the last use
+    now = T0 + 730 * DAY;
     expect(s.lookup(id)).not.toBeNull();
-    now = T0 + 19 * DAY + 1; // 7 days and a ms idle
-    expect(s.lookup(id)).toBeNull();
-    // And it is gone, not merely skipped.
-    now = T0;
-    expect(s.lookup(id)).toBeNull();
-  });
-
-  it("absolute expiry: 30 days from sign-in, however often it is used", () => {
-    const s = store();
-    const { id } = s.create({});
-    for (let d = 1; d < 30; d++) {
-      now = T0 + d * DAY;
-      expect([d, s.lookup(id) !== null]).toEqual([d, true]);
-    }
-    now = T0 + 30 * DAY;
-    expect(s.lookup(id)).toBeNull();
-  });
-
-  it("the configured lifetimes apply", () => {
-    const s = store({ idleMs: 30 * MIN, maxMs: 2 * 3_600_000 });
-    const { id } = s.create({});
-    now = T0 + 29 * MIN;
+    expect(s.list().length).toBe(1);
+    // Making another session never prunes it either.
+    s.create({});
+    expect(s.list().length).toBe(2);
     expect(s.lookup(id)).not.toBeNull();
-    now = T0 + 60 * MIN;
-    expect(s.lookup(id)).toBeNull();
   });
 
   it("rotating web.secret ends every session", () => {
@@ -243,63 +223,52 @@ describe("the session store", () => {
   });
 });
 
-describe("the sign-in config (web.session, web.allow_plain_http_remote)", () => {
+describe("the sign-in config (web.allow_plain_http_remote; web.session is ignored)", () => {
   const write = (rel: string, body: string) => {
     const f = path.join(tmp, rel);
     fs.mkdirSync(path.dirname(f), { recursive: true });
     fs.writeFileSync(f, body);
   };
 
-  it("defaults: idle 7 days, absolute 30, no plain-HTTP remote", () => {
-    expect(readWebAuthConfig(tmp)).toEqual({
-      idleMs: 7 * DAY,
-      maxMs: 30 * DAY,
-      allowPlainHttpRemote: false,
-    });
-  });
-
-  it("user.yml over the distribution's; durations in s, m, h, d or seconds", () => {
-    write("config/den.yml", "web:\n  session:\n    idle: 2d\n    max: 10d\n");
-    write("config/local/user.yml", "web:\n  session:\n    idle: 12h\n");
-    expect(readWebAuthConfig(tmp)).toMatchObject({
-      idleMs: 12 * 3_600_000,
-      maxMs: 10 * DAY,
-    });
-    write("config/local/user.yml", "web:\n  session:\n    idle: 3600\n");
-    expect(readWebAuthConfig(tmp).idleMs).toBe(3_600_000);
+  it("defaults: no plain-HTTP remote, nothing ignored, no warning", () => {
+    const cfg = readWebAuthConfig(tmp);
+    expect(cfg).toEqual({ allowPlainHttpRemote: false, ignored: [] });
+    expect(ignoredConfigWarning(cfg)).toBeNull();
   });
 
   it.each([
-    [
-      "web:\n  session:\n    idle: soon\n",
-      /web\.session\.idle must be a duration/,
-    ],
-    ["web:\n  session:\n    max: -1\n", /web\.session\.max must be a duration/],
-    [
-      "web:\n  session:\n    idle: 0d\n",
-      /web\.session\.idle must be a duration/,
-    ],
-    [
-      "web:\n  session:\n    idle: 30s\n",
-      /web\.session\.idle must be at least 1m/,
-    ],
-    [
-      "web:\n  session:\n    idle: 10d\n    max: 2d\n",
-      /web\.session\.max must be at least web\.session\.idle/,
-    ],
-    [
-      "web:\n  session:\n    max: 500d\n",
-      /web\.session\.max must be at most 400d/,
-    ],
-    ["web:\n  session:\n    ttl: 1d\n", /web\.session: unknown key "ttl"/],
-    ["web:\n  session: 7d\n", /web\.session must be a map/],
-    [
+    ["web:\n  session:\n    idle: 12h\n    max: 10d\n"],
+    ["web:\n  session:\n    idle: soon\n"],
+    ["web:\n  session:\n    ttl: 1d\n"],
+    ["web:\n  session: 7d\n"],
+  ])(
+    "the 0.4.1-dev web.session keys (%p) are read, ignored and warned about: never a refusal",
+    (body) => {
+      write("config/local/user.yml", body);
+      write("config/den.yml", "web:\n  session:\n    max: 30d\n");
+      let cfg: ReturnType<typeof readWebAuthConfig> | null = null;
+      expect(() => (cfg = readWebAuthConfig(tmp))).not.toThrow();
+      const c = cfg as unknown as ReturnType<typeof readWebAuthConfig>;
+      expect(c.ignored.some((k) => k.endsWith("(config/local/user.yml)"))).toBe(
+        true,
+      );
+      expect(c.ignored).toContain(
+        `web.session.max (${path.join("config", "den.yml")})`,
+      );
+      expect(ignoredConfigWarning(c)).toMatch(
+        /: ignored\. A browser session never expires/,
+      );
+    },
+  );
+
+  it("a wrong allow_plain_http_remote still names the key", () => {
+    write(
+      "config/local/user.yml",
       "web:\n  allow_plain_http_remote: yes please\n",
+    );
+    expect(() => readWebAuthConfig(tmp)).toThrow(
       /web\.allow_plain_http_remote must be true or false/,
-    ],
-  ])("user.yml %p: names the key", (body, msg) => {
-    write("config/local/user.yml", body);
-    expect(() => readWebAuthConfig(tmp)).toThrow(msg);
+    );
   });
 
   it("allow_plain_http_remote is this machine's choice: user.yml only", () => {

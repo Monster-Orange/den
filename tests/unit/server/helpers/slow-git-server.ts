@@ -4,7 +4,7 @@
  * commands synchronously holds the event loop for as long as they take, so
  * /api/server-info, probed meanwhile, answers late.
  */
-import { spawn, spawnSync, type ChildProcess } from "child_process";
+import { spawnSync, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as net from "net";
@@ -12,6 +12,7 @@ import type { AddressInfo } from "net";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { denAuth } from "./den-auth.js";
+import { spawnServer, stopServer } from "../../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../../..");
 
@@ -102,7 +103,7 @@ export async function startSlowGitServer(opts: {
         ],
       ]
     : [path.join(ENGINE, "node_modules", ".bin", "tsx"), [entry]];
-  const server: ChildProcess = spawn(cmd, args, {
+  const server: ChildProcess = spawnServer(cmd, args, {
     cwd: opts.root,
     env: {
       ...process.env,
@@ -167,14 +168,7 @@ export async function startSlowGitServer(opts: {
         ? fs.readFileSync(log, "utf-8").split("\n").filter(Boolean).length
         : 0,
     async stop() {
-      if (server.exitCode !== null) return;
-      const exited = new Promise((r) => server.once("exit", r));
-      server.kill("SIGTERM");
-      await Promise.race([
-        exited,
-        new Promise((r) => setTimeout(r, 5_000).unref()),
-      ]);
-      if (server.exitCode === null) server.kill("SIGKILL");
+      await stopServer(server);
     },
   };
 }

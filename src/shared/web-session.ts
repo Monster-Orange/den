@@ -12,8 +12,10 @@
  *    the record lives in `<state dir>/web-sessions.json` (0600), keyed by
  *    HMAC(secret, id), so the file holds no cookie value and rotating the
  *    secret (`web logout --all`) ends every session at once.
- *  - Lifetime: idle 7 days (sliding) and absolute 30 days, or
- *    `web.session.idle` / `web.session.max` in the config.
+ *  - Lifetime: none (Ward, 2026-11-06). A session ends only at sign-out,
+ *    `web logout [<id>]`, or `web logout --all` (which rotates the secret).
+ *    The 0.4.1-dev `web.session.idle` / `web.session.max` keys are ignored,
+ *    with a warning at start.
  */
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
@@ -35,9 +37,11 @@ export const SESSION_TOUCH_MS = 60_000;
 const TOUCH_EVERY_MS = SESSION_TOUCH_MS;
 const UA_MAX = 120;
 
-const DAY = 86_400_000;
-export const DEFAULT_SESSION_IDLE_MS = 7 * DAY;
-export const DEFAULT_SESSION_MAX_MS = 30 * DAY;
+/**
+ * The cookie's Max-Age: the most a browser keeps one (RFC 6265bis caps it
+ * at 400 days). The session itself never expires server-side.
+ */
+export const SESSION_COOKIE_MAX_AGE_S = 400 * 86_400;
 
 /** The cookie's name: per port, so two distributions on one machine never share one. */
 export function sessionCookieName(port: number): string {
@@ -146,36 +150,17 @@ export function parseOrigin(raw: string): string | null {
   return u.origin;
 }
 
-// ── Lifetime and remote-access config ──────────────────────────────────────
+// ── Remote-access config ───────────────────────────────────────────────────
 
 export interface WebAuthConfig {
-  idleMs: number;
-  maxMs: number;
   /** `web.allow_plain_http_remote` (config/local/user.yml only). */
   allowPlainHttpRemote: boolean;
-}
-
-const UNIT_MS: Record<string, number> = {
-  s: 1000,
-  m: 60_000,
-  h: 3_600_000,
-  d: DAY,
-};
-
-/** A duration (`7d`, `12h`, `30m`, `90s`, or seconds as a number), naming `key` on error. */
-export function parseDuration(key: string, v: unknown): number {
-  const bad = () =>
-    new Error(
-      `${key} must be a duration such as 7d, 12h or 30m, got ${JSON.stringify(v)}`,
-    );
-  if (typeof v === "number") {
-    if (!Number.isInteger(v) || v <= 0) throw bad();
-    return v * 1000;
-  }
-  if (typeof v !== "string") throw bad();
-  const m = /^\s*(\d{1,6})\s*([smhd])\s*$/.exec(v);
-  if (!m || Number(m[1]) <= 0) throw bad();
-  return Number(m[1]) * UNIT_MS[m[2]];
+  /**
+   * Config keys read and ignored, each with its file: the 0.4.1-dev
+   * session lifetimes (`web.session.idle`, `web.session.max`), since a
+   * session never expires. The server warns about each at start.
+   */
+  ignored: string[];
 }
 
 function readYaml(file: string): Record<string, unknown> {
@@ -196,11 +181,34 @@ function webBlock(doc: Record<string, unknown>, file: string) {
   return w as Record<string, unknown>;
 }
 
+/** `web.session`'s keys in one file, as `web.session.<key> (<file>)`. */
+function ignoredSessionKeys(
+  w: Record<string, unknown>,
+  file: string,
+): string[] {
+  const s = w.session;
+  if (s === undefined) return [];
+  if (s === null || typeof s !== "object" || Array.isArray(s))
+    return [`web.session (${file})`];
+  const keys = Object.keys(s);
+  return keys.length
+    ? keys.map((k) => `web.session.${k} (${file})`)
+    : [`web.session (${file})`];
+}
+
+/** The start-up warning for the ignored keys, or null when there are none. */
+export function ignoredConfigWarning(cfg: WebAuthConfig): string | null {
+  if (!cfg.ignored.length) return null;
+  return (
+    `${cfg.ignored.join(", ")}: ignored. A browser session never expires; ` +
+    "it ends at sign-out or `web logout`. Remove the key to silence this."
+  );
+}
+
 /**
- * `web.session.idle` / `web.session.max` (config/local/user.yml over the
- * distribution's config) and `web.allow_plain_http_remote` (user.yml only:
- * a choice for this machine, never the distribution's). Throws naming the
- * key when a value is wrong.
+ * `web.allow_plain_http_remote` (user.yml only: a choice for this machine,
+ * never the distribution's), and the ignored `web.session` keys of either
+ * file. Throws naming the key when a value is wrong.
  */
 export function readWebAuthConfig(
   root: string,
@@ -210,41 +218,16 @@ export function readWebAuthConfig(
   const userFile = path.join(root, "config", "local", "user.yml");
   const team = webBlock(readYaml(teamFile), configFile);
   const user = webBlock(readYaml(userFile), "config/local/user.yml");
-  const session = (w: Record<string, unknown>) => {
-    const s = w.session;
-    if (s === undefined || s === null) return {};
-    if (typeof s !== "object" || Array.isArray(s))
-      throw new Error("web.session must be a map: { idle, max }");
-    for (const k of Object.keys(s))
-      if (k !== "idle" && k !== "max")
-        throw new Error(`web.session: unknown key "${k}" (known: idle, max)`);
-    return s as { idle?: unknown; max?: unknown };
-  };
-  const us = session(user);
-  const ts = session(team);
-  const idleRaw = us.idle ?? ts.idle;
-  const maxRaw = us.max ?? ts.max;
-  const idleMs =
-    idleRaw === undefined
-      ? DEFAULT_SESSION_IDLE_MS
-      : parseDuration("web.session.idle", idleRaw);
-  const maxMs =
-    maxRaw === undefined
-      ? DEFAULT_SESSION_MAX_MS
-      : parseDuration("web.session.max", maxRaw);
-  if (idleMs < 60_000) throw new Error("web.session.idle must be at least 1m");
-  if (maxMs > 400 * DAY)
-    throw new Error("web.session.max must be at most 400d");
-  if (maxMs < idleMs)
-    throw new Error(
-      "web.session.max must be at least web.session.idle (the absolute lifetime can't end before the idle one)",
-    );
+  const ignored = [
+    ...ignoredSessionKeys(team, configFile),
+    ...ignoredSessionKeys(user, "config/local/user.yml"),
+  ];
   const plain = user.allow_plain_http_remote;
   if (plain !== undefined && typeof plain !== "boolean")
     throw new Error(
       `web.allow_plain_http_remote must be true or false, got ${JSON.stringify(plain)}`,
     );
-  return { idleMs, maxMs, allowPlainHttpRemote: plain === true };
+  return { allowPlainHttpRemote: plain === true, ignored };
 }
 
 // ── The session store ──────────────────────────────────────────────────────
@@ -286,23 +269,15 @@ export class WebSessionStore {
   private readonly stateDir: () => string;
   private readonly secret: () => Buffer | null;
   private readonly now: () => number;
-  private readonly lifetime: () => { idleMs: number; maxMs: number };
 
   constructor(opts: {
     stateDir?: () => string;
     secret: () => Buffer | null;
     now?: () => number;
-    lifetime?: () => { idleMs: number; maxMs: number };
   }) {
     this.stateDir = opts.stateDir ?? getStateDir;
     this.secret = opts.secret;
     this.now = opts.now ?? Date.now;
-    this.lifetime =
-      opts.lifetime ??
-      (() => ({
-        idleMs: DEFAULT_SESSION_IDLE_MS,
-        maxMs: DEFAULT_SESSION_MAX_MS,
-      }));
   }
 
   private file(): string {
@@ -362,19 +337,9 @@ export class WebSessionStore {
       .digest("hex");
   }
 
-  private live(r: SessionRecord, now: number): boolean {
-    const { idleMs, maxMs } = this.lifetime();
-    return now - r.createdAt < maxMs && now - r.lastSeenAt < idleMs;
-  }
-
-  /** Drop expired sessions and used codes past their expiry. */
+  /** Drop used codes past their expiry (a session never expires). */
   private prune(data: StoreFile, now: number): boolean {
     let changed = false;
-    for (const [k, r] of Object.entries(data.sessions))
-      if (!this.live(r, now)) {
-        delete data.sessions[k];
-        changed = true;
-      }
     for (const [k, exp] of Object.entries(data.usedCodes))
       if (exp <= now) {
         delete data.usedCodes[k];
@@ -424,8 +389,8 @@ export class WebSessionStore {
   }
 
   /**
-   * The live session a cookie value names, its lastSeenAt slid forward
-   * (written at most once a minute). Null when unknown, expired or the
+   * The session a cookie value names, its lastSeenAt slid forward
+   * (written at most once a minute). Null when unknown, ended, or the
    * secret has rotated since.
    */
   lookup(id: string | undefined | null): SessionView | null {
@@ -436,12 +401,6 @@ export class WebSessionStore {
     const rec = data.sessions[key];
     if (!rec) return null;
     const now = this.now();
-    if (!this.live(rec, now)) {
-      const next = structuredClone(data);
-      delete next.sessions[key];
-      this.trySave(next);
-      return null;
-    }
     if (now - rec.lastSeenAt >= TOUCH_EVERY_MS) {
       const next = structuredClone(data);
       next.sessions[key] = { ...rec, lastSeenAt: now };
@@ -459,11 +418,9 @@ export class WebSessionStore {
     }
   }
 
-  /** Every live session, newest first. */
+  /** Every session, newest first. */
   list(): SessionView[] {
-    const now = this.now();
     return Object.entries(this.load().sessions)
-      .filter(([, r]) => this.live(r, now))
       .map(([key, r]) => ({ key, ...r }))
       .sort((a, b) => b.createdAt - a.createdAt);
   }

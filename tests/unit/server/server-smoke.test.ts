@@ -10,6 +10,7 @@
 
 import { describe, it, expect, afterAll } from "@jest/globals";
 import * as http from "http";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 // Import the server module to start it on a random port
 const TEST_PORT = 19876 + Math.floor(Math.random() * 1000);
@@ -41,8 +42,7 @@ function fetch(path: string): Promise<{ status: number; body: string }> {
 describe("server smoke", () => {
   // Start the actual server before tests
   beforeAll(async () => {
-    const { spawn } = await import("child_process");
-    serverProcess = spawn("npx", ["tsx", "src/ui/server/index.ts"], {
+    serverProcess = spawnServer("npx", ["tsx", "src/ui/server/index.ts"], {
       env: {
         ...process.env,
         PORT: String(TEST_PORT),
@@ -66,11 +66,9 @@ describe("server smoke", () => {
     throw new Error("Server did not start within 10s");
   }, 15000);
 
-  afterAll(() => {
-    if (serverProcess) {
-      serverProcess.kill("SIGTERM");
-      serverProcess = null;
-    }
+  afterAll(async () => {
+    await stopServer(serverProcess ?? undefined);
+    serverProcess = null;
   });
 
   it("GET /api/environments returns JSON array", async () => {

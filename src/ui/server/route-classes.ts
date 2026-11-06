@@ -12,8 +12,10 @@
  *                Origin and CSRF; the session's CSRF when one is signed in.
  *   shell-grade  a shell for the caller, or what manages them: an agent's
  *                start or resume (a runtime in a PTY), the browser
- *                sessions, and (AG-4a-term) /api/sessions/*. Needs a
- *                signed-in browser (or a person bearer) even on loopback.
+ *                sessions, and (AG-4a-term) /api/sessions/*. On loopback
+ *                Origin and CSRF, as mutating, and no sign-in (Ward,
+ *                2026-11-06); an agent's token never reaches one but its
+ *                own session's.
  *
  * Beyond loopback (the edge hostname, or a peer that isn't loopback) every
  * class needs a signed-in session or a bearer (§4); SIGNIN_FREE lists the

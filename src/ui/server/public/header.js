@@ -1065,9 +1065,13 @@ function _streamHealth(env, force, onResult) {
  * ones never do.
  */
 function _paintHealth(env, results) {
-  const repos = [...new Set(results.map((r) => r.repo))];
+  // WS-6.4: the server checks every active workspace; the chip and the
+  // drawer count only what the view scope shows (`inView`). The pages get
+  // every row, so the Workspaces page knows any workspace's health.
+  const shown = results.filter((r) => r.inView !== false);
+  const repos = [...new Set(shown.map((r) => r.repo))];
   const groups = groupReposByApplication(repos, _apps);
-  const row = buildRow(results, groups);
+  const row = buildRow(shown, groups);
   window.denShell?.setState(shellHealth(row));
   _healthEnvPainted = env;
   paintStatus({ row, groups, env });

@@ -30,6 +30,7 @@ import {
   sessionIdPrefix,
   WebSessionStore,
 } from "../../shared/web-session.js";
+import { revokeAllActorTokens } from "../../shared/actor-token.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import {
@@ -1063,6 +1064,14 @@ function setupBrowserAccess(): void {
   console.log(chalk.gray(`  ${product().cli} web --setup-browser-access\n`));
 }
 
+/** `web` subcommands that answer their own --help (cmdWeb dispatches them first). */
+export const WEB_SUBCOMMANDS_WITH_HELP = [
+  "token",
+  "login",
+  "sessions",
+  "logout",
+] as const;
+
 export function displayWebHelp(): void {
   console.log(chalk.bold("\nUsage:"));
   console.log(
@@ -1094,7 +1103,7 @@ export function displayWebHelp(): void {
   );
   console.log("  sessions           List the signed-in browsers");
   console.log(
-    "  logout [<id>]      Sign out one browser, or all; --all also rotates web.secret",
+    "  logout [<id>]      Sign out one browser, or all; --all also rotates web.secret and revokes agent tokens",
   );
   console.log(
     "  token --print      Print your CLI token, for curl (Authorization: Bearer …)",
@@ -1134,12 +1143,16 @@ export function cmdWebToken(
     err: (s) => process.stderr.write(s),
   },
 ): number {
+  const usage =
+    `Usage: ${product().cli} web token --print\n` +
+    "  Prints the token that authorizes your CLI's calls to the web server.\n";
+  if (isHelp(args)) {
+    io.out(usage);
+    return 0;
+  }
   const rest = args.filter((a) => a !== "--print");
   if (!args.includes("--print") || rest.length > 0) {
-    io.err(
-      `Usage: ${product().cli} web token --print\n` +
-        "  Prints the token that authorizes your CLI's calls to the web server.\n",
-    );
+    io.err(usage);
     return 2;
   }
   const secret = ensureWebSecret(io.stateDir ?? getStateDir());
@@ -1152,10 +1165,8 @@ export function cmdWebToken(
 }
 
 export async function cmdWeb(args: string[]): Promise<void> {
-  if (args.includes("--help") || args.includes("-h")) {
-    displayWebHelp();
-    return;
-  }
+  // A subcommand with its own help answers its own --help (it is
+  // dispatched first); the rest (up, down, restart, open) share this one.
   if (args[0] === "token") {
     process.exitCode = cmdWebToken(args.slice(1));
     return;
@@ -1170,6 +1181,10 @@ export async function cmdWeb(args: string[]): Promise<void> {
   }
   if (args[0] === "logout") {
     process.exitCode = await cmdWebLogout(args.slice(1));
+    return;
+  }
+  if (args.includes("--help") || args.includes("-h")) {
+    displayWebHelp();
     return;
   }
 
@@ -1225,8 +1240,8 @@ export async function cmdWeb(args: string[]): Promise<void> {
     );
   }
 
-  // SEC-1b: a wrong web.session value would stop the server at start;
-  // say so here, naming the key, instead of "did not become ready".
+  // SEC-1b: a wrong web.allow_plain_http_remote would stop the server at
+  // start; say so here, naming the key, instead of "did not become ready".
   readWebAuthConfig(getDistRoot(), product().configFile);
 
   const apiRunning = await isDenWebApiRunning(options.port);
@@ -1350,6 +1365,11 @@ const stdIo: CliIo = {
   err: (s) => process.stderr.write(s),
 };
 
+/** `--help` or `-h` among a subcommand's args. */
+function isHelp(args: readonly string[]): boolean {
+  return args.includes("--help") || args.includes("-h");
+}
+
 /** `--port <p>` / `--port=<p>` / `-p <p>`, and the rest of `args`. */
 function takePort(args: string[]): { port: number; rest: string[] } {
   let port = parsePort(process.env.PORT);
@@ -1372,6 +1392,18 @@ function takePort(args: string[]): { port: number; rest: string[] } {
  * must be set (the signed-out page there says which).
  */
 export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
+  const usage = `Usage: ${product().cli} web login [--next <path>] [--origin <url>] [--port <port>]\n`;
+  if (isHelp(args)) {
+    io.out(
+      usage +
+        "  Prints a one-time sign-in link (it works once, within 60 s) for one browser.\n" +
+        "  On localhost nothing asks for a sign-in; it is needed when this server is\n" +
+        "  reached beyond this machine (the edge, or a LAN address: pass its --origin).\n" +
+        "  --next <path>   where the browser lands after signing in (same origin only)\n" +
+        "  --origin <url>  the address the browser uses, http(s)://host[:port]\n",
+    );
+    return 0;
+  }
   let next = "/";
   let origin: string | null = null;
   let port: number;
@@ -1402,9 +1434,7 @@ export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
         return 2;
       }
     } else {
-      io.err(
-        `Usage: ${product().cli} web login [--next <path>] [--origin <url>] [--port <port>]\n`,
-      );
+      io.err(usage);
       return 2;
     }
   }
@@ -1506,14 +1536,14 @@ export async function cmdWebSessions(
     return 2;
   }
   const usage = `Usage: ${product().cli} web sessions [--json] [--port <port>]\n`;
-  if (rest.includes("--help") || rest.includes("-h")) {
+  if (isHelp(rest)) {
     io.out(
       usage +
         "  The browsers signed in to this server: ID (for `web logout <id>`), CREATED,\n" +
         `  LAST SEEN, HOST and USER AGENT. LAST SEEN is written at most once a\n` +
         `  minute (${SESSION_TOUCH_MS / 1000} s) per session, so it trails a browser's last request by up to\n` +
-        "  that long (right after sign-in it equals CREATED). The idle lifetime\n" +
-        "  (web.session.idle, default 7d) slides from it.\n",
+        "  that long (right after sign-in it equals CREATED). A session never\n" +
+        "  expires: it ends at sign-out or `web logout`.\n",
     );
     return 0;
   }
@@ -1579,7 +1609,8 @@ export async function cmdWebSessions(
 /**
  * `<cli> web logout [<id prefix>] [--all]`: sign out one browser, or every
  * browser; `--all` also rotates web.secret, which ends every session and
- * every person token (the CLI re-reads it, so it keeps working).
+ * every person token (the CLI re-reads it, so it keeps working), and
+ * revokes every agent's actor token (SEC-1 §6c.2).
  */
 export async function cmdWebLogout(
   args: string[],
@@ -1593,6 +1624,18 @@ export async function cmdWebLogout(
     io.err(`${(e as Error).message}\n`);
     return 2;
   }
+  const usage = `Usage: ${product().cli} web logout [<id prefix>] [--all] [--port <port>]\n`;
+  if (isHelp(rest)) {
+    io.out(
+      usage +
+        "  <id prefix>  sign out one browser (an ID from `web sessions`)\n" +
+        "  (none)       sign out every browser; agents keep their tokens\n" +
+        "  --all        sign out every browser, rotate web.secret (every person token\n" +
+        "               is void; this CLI re-reads it) and revoke every agent's token:\n" +
+        "               a running agent must be restarted or resumed for a new one\n",
+    );
+    return 0;
+  }
   const all = rest.includes("--all");
   const ids = rest.filter((a) => a !== "--all");
   if (
@@ -1600,9 +1643,7 @@ export async function cmdWebLogout(
     ids.some((a) => a.startsWith("-")) ||
     (all && ids.length)
   ) {
-    io.err(
-      `Usage: ${product().cli} web logout [<id prefix>] [--all] [--port <port>]\n`,
-    );
+    io.err(usage);
     return 2;
   }
   const id = ids[0];
@@ -1612,12 +1653,15 @@ export async function cmdWebLogout(
     ...(all ? { rotate: true } : {}),
   });
   let ended: number;
+  let agentTokens = 0;
   if (r) {
     if (r.status !== 200) {
       io.err(`${product().cli}: ${apiError(r)}\n`);
       return 1;
     }
-    ended = ((r.json as { ended?: unknown[] }).ended ?? []).length;
+    const j = r.json as { ended?: unknown[]; agentTokens?: unknown };
+    ended = (j.ended ?? []).length;
+    if (typeof j.agentTokens === "number") agentTokens = j.agentTokens;
   } else {
     // No server: the state files themselves (the same OS user's).
     const store = offlineStore(stateDir);
@@ -1627,12 +1671,16 @@ export async function cmdWebLogout(
       io.err(`${product().cli}: ${(e as Error).message}\n`);
       return 1;
     }
-    if (all && readWebSecret(stateDir)) rotateWebSecret(stateDir);
+    if (all) {
+      if (readWebSecret(stateDir)) rotateWebSecret(stateDir);
+      agentTokens = revokeAllActorTokens(stateDir);
+    }
   }
   io.out(
     `Signed out ${ended} browser${ended === 1 ? "" : "s"}.` +
       (all
-        ? " web.secret rotated: every old session and token is void; this CLI keeps working."
+        ? ` web.secret rotated: every old session and person token is void; this CLI keeps working.` +
+          ` Revoked ${agentTokens} agent token${agentTokens === 1 ? "" : "s"}: a running agent must be restarted or resumed to get a new one.`
         : "") +
       "\n",
   );

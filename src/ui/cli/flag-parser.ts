@@ -170,6 +170,27 @@ function validateFlagScopes(parsed: ParsedCliArgs): void {
   }
 }
 
+/**
+ * Subcommands that print their own `--help`: the dispatcher's
+ * `<command> --help` must not answer for them (`web sessions --help` printed
+ * the general web help). web-command.ts's WEB_SUBCOMMANDS_WITH_HELP and
+ * mcp-connect.ts's MCP_CONNECT_SUBCOMMANDS are the same lists (a test
+ * checks).
+ */
+export const SUBCOMMAND_OWN_HELP: Readonly<Record<string, readonly string[]>> =
+  {
+    web: ["token", "login", "sessions", "logout"],
+    mcp: ["connect", "disconnect", "clients", "config"],
+  };
+
+/** Whether `<command> <sub> --help` is the subcommand's own to answer. */
+export function ownsSubcommandHelp(
+  command: string,
+  sub: string | undefined,
+): boolean {
+  return !!sub && (SUBCOMMAND_OWN_HELP[command] ?? []).includes(sub);
+}
+
 // Dash-flags each mutation subcommand accepts (global flags — -w/--workspace,
 // -t/--tabs/--no-tabs, --skip-secrets — are consumed by parseCliArgs before
 // dispatch, and -h/--help is handled by the dispatcher). Commands not listed

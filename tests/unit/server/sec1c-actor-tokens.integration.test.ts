@@ -48,13 +48,22 @@ async function call(
   headers: Record<string, string> = {},
   body?: unknown,
 ): Promise<Reply> {
-  const r = await fetch(`${s.base}${p}`, {
-    method,
-    headers: {
-      ...(body === undefined ? {} : { "content-type": "application/json" }),
-      ...headers,
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  const send = () =>
+    fetch(`${s.base}${p}`, {
+      method,
+      headers: {
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+        ...headers,
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  // A kept-alive socket the server closed while a slow step (the stdio MCP
+  // runs) left it idle resets on reuse: the request never reached the
+  // server, so sending it again is safe.
+  const r = await send().catch((err: unknown) => {
+    const code = (err as { cause?: { code?: string } }).cause?.code;
+    if (code === "ECONNRESET") return send();
+    throw err;
   });
   const text = await r.text();
   let json: Record<string, unknown> = {};
@@ -376,6 +385,85 @@ describe("the stdio MCP server Den starts for an agent (item 5: --actor)", () =>
     );
     expect(`${r.stdout}${r.stderr}`.includes(token)).toBe(false);
   }, 90_000);
+});
+
+describe("the stdio MCP server's startup line (SEC-1 §6c.3)", () => {
+  const ENGINE = path.resolve(__dirname, "../../..");
+  /** `mcp --workspace north --actor agent:planner` over stdio, stdin closed at once. */
+  const stdio = (env: Record<string, string>) =>
+    spawnSync(
+      path.join(ENGINE, "node_modules", ".bin", "tsx"),
+      [
+        path.join(ENGINE, "src", "ui", "cli", "index.ts"),
+        "mcp",
+        "--port",
+        String(s.port),
+        "--workspace",
+        "north",
+        "--actor",
+        "agent:planner",
+      ],
+      {
+        cwd: path.join(s.tmp, "dist"),
+        encoding: "utf-8",
+        input: "",
+        timeout: 60_000,
+        env: {
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          HOME: path.join(s.tmp, "home"),
+          DEN_ROOT: path.join(s.tmp, "dist"),
+          DEN_ENGINE_ROOT: ENGINE,
+          ACME_HOME: s.stateDir,
+          DEN_HOME: path.join(s.tmp, "home", ".den"),
+          NO_COLOR: "1",
+          CI: "1",
+          ...env,
+        },
+      },
+    );
+  const startLine = (r: ReturnType<typeof stdio>) =>
+    r.stderr.split("\n").find((l) => / mcp: \d+ tools? /.test(l)) ?? "";
+
+  it("says unverified with no DEN_ACTOR_TOKEN (the actor is a claim); as agent:<id> with the agent's token", () => {
+    expect(startLine(stdio({}))).toMatch(
+      /scoped to north as agent:planner \(unverified: no DEN_ACTOR_TOKEN\)/,
+    );
+    const r = stdio({ DEN_ACTOR_TOKEN: token });
+    const line = startLine(r);
+    expect(line).toMatch(/scoped to north as agent:planner/);
+    expect(line).not.toMatch(/unverified/);
+    expect(`${r.stdout}${r.stderr}`.includes(token)).toBe(false);
+  }, 90_000);
+});
+
+describe("`web logout --all` revokes every agent token (SEC-1 §6c.2)", () => {
+  it("without --all it is left alone; with --all the running agent's next call is 401 token_revoked, telling it to restart or resume", async () => {
+    const plain = await call("POST", "/api/web/logout", person(), {});
+    expect(plain.status).toBe(200);
+    expect(plain.json.agentTokens).toBeUndefined();
+    expect((await call("GET", "/api/settings", agent())).status).toBe(200);
+
+    const r = await call("POST", "/api/web/logout", person(), {
+      rotate: true,
+    });
+    expect([r.status, r.json.rotated, r.json.agentTokens]).toEqual([
+      200,
+      true,
+      1,
+    ]);
+    const after = await call("GET", "/api/settings", agent());
+    expect([after.status, after.json.code]).toEqual([401, "token_revoked"]);
+    expect(String(after.json.error)).toMatch(
+      /restart or resume the agent to get a new one/,
+    );
+    // The record is kept (revoked), hashed only: never the token.
+    const file = fs.readFileSync(
+      path.join(s.stateDir, "actor-tokens.json"),
+      "utf-8",
+    );
+    expect(file.includes(token)).toBe(false);
+    expect(file).toMatch(/"revokedAt"/);
+  });
 });
 
 describe("stop revokes the token", () => {

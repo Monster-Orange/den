@@ -16,7 +16,7 @@
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { spawn, type ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as os from "os";
@@ -24,6 +24,7 @@ import * as path from "path";
 import * as yaml from "yaml";
 import type { Browser, Page } from "playwright";
 import { png } from "../../fixtures/images.js";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = process.cwd();
 const PORT = 25876 + Math.floor(Math.random() * 1000);
@@ -109,7 +110,7 @@ beforeAll(async () => {
     { png: "mark.png", png_dark: "mark-dark.png", shape: "circle" },
     { "mark.png": PNG, "mark-dark.png": PNG_DARK },
   );
-  server = spawn(
+  server = spawnServer(
     process.execPath,
     [
       path.join(ENGINE, "node_modules", ".bin", "tsx"),
@@ -143,7 +144,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await browser?.close();
-  server?.kill("SIGTERM");
+  await stopServer(server ?? undefined);
   server = null;
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
 });

@@ -621,6 +621,7 @@ function launchInput(
     ...(model ? { model } : {}),
     mcp: agentMcp(d, ws, id, grants),
     filesDir: agentFilesDir(d.stateDir(), id),
+    stateDir: d.stateDir(),
     env: d.env,
   };
 }

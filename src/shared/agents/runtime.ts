@@ -52,6 +52,13 @@ export interface LaunchInput {
   /** A directory of this agent's own (0700) for the files a runtime writes. */
   filesDir: string;
   /**
+   * Den's own state dir (web.secret, the session records). A runtime adds
+   * deny rules for it to the agent's own permission config (SEC-1 §6c.1):
+   * that binds a cooperating agent only, since an agent runs as the same OS
+   * user and could read the files itself.
+   */
+  stateDir?: string;
+  /**
    * The caller's environment, for finding the runtime's CLI on PATH. The
    * agent does not get it: it starts from an allowlist (sessions/env.ts),
    * plus envPassthrough and LaunchOutput.env.

@@ -10,7 +10,7 @@
  * booleans, statuses and hashes.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { spawn, spawnSync, type ChildProcess } from "child_process";
+import { spawnSync, type ChildProcess } from "child_process";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as http from "http";
@@ -23,6 +23,7 @@ import {
   readWebSecret,
 } from "../../../src/shared/web-secret.js";
 import { mintLoginCode } from "../../../src/shared/web-session.js";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -198,11 +199,15 @@ beforeAll(async () => {
     ].join("\n"),
   );
   port = await freePort();
-  server = spawn(TSX, [path.join(ENGINE, "src", "ui", "server", "index.ts")], {
-    cwd: root,
-    env: serverEnv(root, path.join(tmp, "home"), port),
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  server = spawnServer(
+    TSX,
+    [path.join(ENGINE, "src", "ui", "server", "index.ts")],
+    {
+      cwd: root,
+      env: serverEnv(root, path.join(tmp, "home"), port),
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
   server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
   server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
   const deadline = Date.now() + 40_000;
@@ -218,15 +223,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  if (server && server.exitCode === null) {
-    const exited = new Promise((r) => server.once("exit", r));
-    server.kill("SIGTERM");
-    await Promise.race([
-      exited,
-      new Promise((r) => setTimeout(r, 5_000).unref()),
-    ]);
-    if (server.exitCode === null) server.kill("SIGKILL");
-  }
+  await stopServer(server);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -244,7 +241,9 @@ describe("the login link", () => {
     expect(flags(line)).toEqual(["httponly", "max-age", "path", "samesite"]);
     expect(line).toMatch(/; Path=\//);
     expect(line).toMatch(/; SameSite=Strict/);
-    expect(line).toMatch(/; Max-Age=2592000/);
+    // A session never expires: the cookie lasts as long as a browser keeps
+    // one (400 days), not the old 30-day absolute lifetime.
+    expect(line).toMatch(/; Max-Age=34560000/);
     expect(r.headers["cache-control"]).toBe("no-store");
   });
 
@@ -350,7 +349,7 @@ describe("the route classes", () => {
     ).toBe(200);
   });
 
-  it("shell-grade without a session: 401 signin_required (R26 JSON); an agent start says so in its own words", async () => {
+  it("shell-grade on loopback needs no sign-in (Ward, 2026-11-06): with Origin and the page's CSRF an agent start reaches the route", async () => {
     const csrf = String((await sessionCsrf({})).csrf);
     const r = await call(
       "POST",
@@ -358,14 +357,17 @@ describe("the route classes", () => {
       { origin: `http://localhost:${port}`, "x-den-csrf": csrf },
       startBody,
     );
-    expect(r.status).toBe(401);
-    expect(json(r)).toMatchObject({
-      ok: false,
-      code: "signin_required",
-      scope: "agents",
-      error: "Sign in to start agents: run `den web login` and open the link.",
+    // Past the checks: whatever the route says (no such workspace here).
+    expect([r.status, json(r).code === "signin_required"]).not.toEqual([
+      401,
+      true,
+    ]);
+    expect([401, 403].includes(r.status)).toBe(false);
+    // The browser-session admin route too, from this server's own page.
+    const list = await call("GET", "/api/web/sessions", {
+      "sec-fetch-site": "same-origin",
     });
-    expect(json(r).requestId).toMatch(/^[0-9a-f]{8}$/);
+    expect(list.status).toBe(200);
   });
 
   it("shell-grade with a session, Origin and its CSRF reaches the route", async () => {
@@ -422,23 +424,29 @@ describe("the route classes", () => {
     ).toBe(200);
   });
 
-  it("/signin is read-only (§6b.3): signed out it renders the signed-out page itself, on loopback and through the edge; a cross-site Sec-Fetch-Site doesn't stop it", async () => {
+  it("/signin is read-only (§6b.3): on loopback it goes straight on to next, signed in or not; signed out through the edge it renders the signed-out page itself", async () => {
     for (const headers of [
       { ...nav },
       { ...nav, "sec-fetch-site": "cross-site" },
-      { ...nav, host: EDGE },
+      { ...nav, host: `127.0.0.1:${port}` },
     ]) {
       const r = await call("GET", "/signin?next=%2Fsettings", headers);
-      expect([headers.host ?? "loopback", r.status]).toEqual([
-        headers.host ?? "loopback",
-        401,
-      ]);
-      expect(r.body).toContain('"code":"signin_required"');
-      expect(r.body).toContain('"scope":"terminal"');
-      expect(r.body).toContain("web login");
-      expect(r.body).not.toMatch(/<input[^>]*type="password"/);
-      expect(r.body).not.toMatch(/<form/i);
+      expect([
+        headers.host ?? "localhost",
+        r.status,
+        r.headers.location,
+      ]).toEqual([headers.host ?? "localhost", 303, "/settings"]);
     }
+    const edge = await call("GET", "/signin?next=%2Fsettings", {
+      ...nav,
+      host: EDGE,
+    });
+    expect(edge.status).toBe(401);
+    expect(edge.body).toContain('"code":"signin_required"');
+    expect(edge.body).toContain('"scope":"den"');
+    expect(edge.body).toContain("web login");
+    expect(edge.body).not.toMatch(/<input[^>]*type="password"/);
+    expect(edge.body).not.toMatch(/<form/i);
     // Signed in: a same-origin `next` only.
     const c = await signIn();
     const evil = await call("GET", "/signin?next=%2F%2Fevil.example", {
@@ -446,22 +454,6 @@ describe("the route classes", () => {
       ...c,
     });
     expect([evil.status, evil.headers.location]).toEqual([303, "/"]);
-  });
-
-  it("a shell-grade page on 127.0.0.1 without a session: the signed-out page, linking to the same path on localhost", async () => {
-    const r = await call("GET", "/signin?next=%2Fsettings", {
-      ...nav,
-      host: `127.0.0.1:${port}`,
-    });
-    expect(r.status).toBe(401);
-    expect(r.body).toContain('"scope":"terminal"');
-    expect(r.body).toContain(
-      `"localhost":"http://localhost:${port}/signin?next=%2Fsettings"`,
-    );
-    // Signed in on localhost, /signin goes on to next.
-    const c = await signIn();
-    const ok = await call("GET", "/signin?next=%2Fsettings", { ...nav, ...c });
-    expect([ok.status, ok.headers.location]).toEqual([303, "/settings"]);
   });
 
   it("signing out ends the session and clears the cookie", async () => {
@@ -545,14 +537,17 @@ describe("the CLI: web login, web sessions, web logout", () => {
     const r = cli(["web", "logout", "--all", "--port", String(port)]);
     expect(r.status).toBe(0);
     expect(r.stdout).toMatch(/web\.secret rotated/);
+    // And (§6c.2) every agent token: none run here.
+    expect(r.stdout).toMatch(
+      /Revoked 0 agent tokens: a running agent must be restarted or resumed/,
+    );
     expect(hash(readWebSecret(stateDir)!.toString("hex"))).not.toBe(oldSecret);
     expect(fs.statSync(path.join(stateDir, "web.secret")).mode & 0o777).toBe(
       0o600,
     );
 
-    // Old cookies: signed out (shell-grade on loopback, anything on the edge).
-    const page = await call("GET", "/signin", { ...nav, ...c });
-    expect(page.status).toBe(401);
+    // Old cookies: signed out (no session on loopback, 401 on the edge).
+    expect(view(await sessionCsrf(c)).signedIn).toBe(false);
     const edge = await call("GET", "/api/settings", {
       host: EDGE,
       ...edgeCookie,
@@ -580,17 +575,25 @@ describe("nothing leaks", () => {
 });
 
 describe("refusing to start", () => {
+  /**
+   * Start a server on a fresh distribution: its exit code, or (with
+   * `untilListening`) "listening" once it answers, then it is stopped.
+   */
   async function start(
     name: string,
-    opts: { env?: Record<string, string>; userYml?: string },
-  ): Promise<{ code: number | null; out: string }> {
+    opts: {
+      env?: Record<string, string>;
+      userYml?: string;
+      untilListening?: boolean;
+    },
+  ): Promise<{ code: number | null | "listening"; out: string }> {
     const dist = path.join(tmp, name);
     write(path.join(dist, "den.yml"), "product:\n  name: den\n");
     write(path.join(dist, "config", "den.yml"), "environments: [local]\n");
     if (opts.userYml)
       write(path.join(dist, "config", "local", "user.yml"), opts.userYml);
     const p = await freePort();
-    const child = spawn(
+    const child = spawnServer(
       TSX,
       [path.join(ENGINE, "src", "ui", "server", "index.ts")],
       {
@@ -605,16 +608,36 @@ describe("refusing to start", () => {
     let out = "";
     child.stdout!.on("data", (d: Buffer) => (out += d.toString()));
     child.stderr!.on("data", (d: Buffer) => (out += d.toString()));
-    const code = await new Promise<number | null>((resolve) => {
+    const code = await new Promise<number | null | "listening">((resolve) => {
       const t = setTimeout(() => {
-        child.kill("SIGKILL");
+        void stopServer(child);
         resolve(null);
       }, 45_000);
       child.once("exit", (c) => {
         clearTimeout(t);
         resolve(c);
       });
+      if (opts.untilListening) {
+        const poll = async (): Promise<void> => {
+          if (child.exitCode !== null) return;
+          try {
+            if (
+              (await call("GET", "/api/server-info", {}, undefined, p))
+                .status === 200
+            ) {
+              clearTimeout(t);
+              resolve("listening");
+              return;
+            }
+          } catch {
+            /* not up yet */
+          }
+          setTimeout(() => void poll(), 200);
+        };
+        void poll();
+      }
     });
+    await stopServer(child);
     return { code, out };
   }
 
@@ -626,11 +649,14 @@ describe("refusing to start", () => {
     expect(r.out).toMatch(/web\.allow_plain_http_remote: true/);
   }, 60_000);
 
-  it("a wrong web.session value exits 1, naming the key", async () => {
+  it("an old web.session value (even a wrong one) never stops the start: it is ignored, with a warning", async () => {
     const r = await start("cfg", {
       userYml: "web:\n  session:\n    idle: forever\n",
+      untilListening: true,
     });
-    expect(r.code).toBe(1);
-    expect(r.out).toMatch(/web\.session\.idle must be a duration/);
+    expect(r.code).toBe("listening");
+    expect(r.out).toMatch(
+      /web\.session\.idle \(config\/local\/user\.yml\): ignored\. A browser session never expires/,
+    );
   }, 60_000);
 });

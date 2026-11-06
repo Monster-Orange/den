@@ -14,11 +14,12 @@
  * Den does, and /api/server-info with a root that is not ours.
  */
 import { afterAll, afterEach, describe, expect, it } from "@jest/globals";
-import { spawn, spawnSync, type ChildProcess } from "child_process";
+import { spawnSync, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { startSlowGitServer } from "../server/helpers/slow-git-server.js";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "den-web-foreign-"));
@@ -69,7 +70,7 @@ const fakes: Fake[] = [];
 
 /** Start the stand-in, run from `cwd`, answering server-info with `info`. */
 async function startFake(cwd: string, info: object): Promise<Fake> {
-  const child = spawn(
+  const child = spawnServer(
     process.execPath,
     // The extra argument puts this engine's server entry point on the
     // command line, as a server run from a linked engine has it.
@@ -119,8 +120,8 @@ function den(
   return { out: `${r.stdout}${r.stderr}`, status: r.status };
 }
 
-afterEach(() => {
-  for (const f of fakes.splice(0)) if (alive(f)) f.child.kill("SIGKILL");
+afterEach(async () => {
+  for (const f of fakes.splice(0)) await stopServer(f.child, 0);
 });
 
 afterAll(() => {
