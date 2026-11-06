@@ -11,16 +11,9 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const raw =
-  process.env.DEN_ORG_NAMES ??
-  (process.env.DEN_ORG_NAMES_FILE
-    ? readFileSync(process.env.DEN_ORG_NAMES_FILE, "utf-8")
-    : "");
-const patterns = raw
-  .split("\n")
-  .map((l) => l.trim())
-  .filter((l) => l && !l.startsWith("#"))
-  .map((l) => new RegExp(l, "i"));
+import { orgHits, orgPatterns } from "./org-names.js";
+
+const patterns = orgPatterns();
 if (patterns.length === 0) {
   console.error(
     "org-name gate: no patterns (set DEN_ORG_NAMES or DEN_ORG_NAMES_FILE)",
@@ -42,15 +35,14 @@ for (const file of files) {
   if (text.includes("\0")) continue; // binary
   const lines = [file, ...text.split("\n")];
   lines.forEach((line, i) => {
-    for (const p of patterns)
-      if (p.test(line)) {
-        hits++;
-        // Name the file, line and pattern index, never the matched text: CI
-        // logs are public too.
-        console.log(
-          `${file}:${i === 0 ? "(path)" : i} matches pattern #${patterns.indexOf(p) + 1}`,
-        );
-      }
+    for (const { index } of orgHits(line, patterns)) {
+      hits++;
+      // Name the file, line and pattern index, never the matched text: CI
+      // logs are public too.
+      console.log(
+        `${file}:${i === 0 ? "(path)" : i} matches pattern #${index}`,
+      );
+    }
   });
 }
 if (hits) {

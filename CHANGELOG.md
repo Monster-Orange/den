@@ -91,6 +91,32 @@ config and manifest changes a distribution must make to move to it under
   versions and the restart. `/api/server-info` gains `loaded` and `onDisk`
   (`{ version, buildId }`) and `engineStale`; its `version` is now the
   engine the server runs.
+- **DOC-1: the README's screenshots, generated** (`npm run docs:shots`,
+  `scripts/doc-shots.mjs`). Runs Den on a scratch copy of
+  `examples/distribution` with the `examples/demo` repos as its workspace (a
+  docker shim, a random localhost port, a throwaway HOME, and a server env
+  built from HOME, PATH and the DEN_* it needs, never the caller's), and
+  writes to `docs/images/<version>/` (package.json's version without the
+  prerelease suffix): `hero-dark.png` and `hero-light.png` (the Graph page,
+  2x), `social-preview.png`, `workspaces.png`, `graph.png`,
+  `status-drawer.png`, `edge.png`, `runs-dock.png`, the `make up`
+  animation (`up.gif` with ffmpeg, else `up.webp` with img2webp, else
+  skipped with a message) and `alt.json`, the alt text. Size budgets: hero
+  400 KB a theme, the rest 200 KB, the animation 5 MB; over budget, the run
+  fails. Nothing reaches the tree unless every shot passes.
+  - The capture guard (`scripts/doc-shots-guard.js`): before each shot, the
+    page's innerText, every title, alt, aria-label and placeholder, and SVG
+    text go through the org-name gate's own matcher, now shared
+    (`scripts/org-names.js`, used by `org-name-gate.mjs` too). A hit aborts
+    the run naming the shot and the term, never the text around it, and
+    writes no image; so does a path under the real HOME. Without
+    DEN_ORG_NAMES or DEN_ORG_NAMES_FILE the script refuses (exit 2);
+    `--unguarded` is for local layout work only.
+  - The images stay out of the npm package: `files` has `!docs/images/`,
+    and dist-smoke fails on any image in the tarball.
+- **`npm run docs:links`** (`scripts/docs-links.js`) checks that every
+  relative link in README.md and docs/ reaches a file and, with a
+  `#fragment`, a heading.
 
 - **`stack_namespace`: a workspace can choose its stacks' Compose
   namespace** (0.3.0-dev.36, Ward 2026-11-05). By default nothing changes:
