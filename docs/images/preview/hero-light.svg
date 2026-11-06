@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 510" width="960" height="510" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<rect width="960" height="510" rx="10" fill="#ffffff" stroke="#d1d9e0"/>
+<rect x="1" y="1" width="958" height="44" rx="9" fill="#eef1f4"/><line x1="0" y1="45" x2="960" y2="45" stroke="#d1d9e0"/>
+<circle cx="26" cy="23" r="8" fill="#e8590c"/><text x="44" y="28" fill="#59636e" font-size="14" font-weight="600">acme / workspace main / env local</text>
+<rect x="1" y="46" width="200" height="463" fill="#eef1f4"/><line x1="201" y1="46" x2="201" y2="510" stroke="#d1d9e0"/>
+<rect x="680" y="10" width="170" height="26" rx="13" fill="#ffffff" stroke="#d1d9e0"/><circle cx="698" cy="23" r="4" fill="#1a7f37"/><text x="710" y="28" fill="#1f2328" font-size="13" font-weight="600">All 12 healthy</text>
+<rect x="20" y="70" width="150" height="12" rx="5" fill="#e8590c" opacity="0.6"/>
+<rect x="20" y="96" width="150" height="12" rx="5" fill="#d1d9e0" opacity="1"/>
+<rect x="20" y="122" width="150" height="12" rx="5" fill="#d1d9e0" opacity="1"/>
+<rect x="20" y="148" width="90" height="12" rx="5" fill="#d1d9e0" opacity="1"/>
+<rect x="20" y="174" width="150" height="12" rx="5" fill="#d1d9e0" opacity="1"/>
+<rect x="20" y="200" width="110" height="12" rx="5" fill="#d1d9e0" opacity="1"/>
+<rect x="240" y="120" width="210" height="110" rx="8" fill="#ffffff" stroke="#d1d9e0"/>
+<circle cx="262" cy="148" r="7" fill="#1a7f37"/><text x="278" y="153" fill="#1f2328" font-size="16" font-weight="600">web</text>
+<rect x="256" y="176" width="150" height="9" rx="4" fill="#d1d9e0"/><rect x="256" y="196" width="100" height="9" rx="4" fill="#d1d9e0"/>
+<rect x="480" y="120" width="210" height="110" rx="8" fill="#ffffff" stroke="#d1d9e0"/>
+<circle cx="502" cy="148" r="7" fill="#1a7f37"/><text x="518" y="153" fill="#1f2328" font-size="16" font-weight="600">api</text>
+<rect x="496" y="176" width="150" height="9" rx="4" fill="#d1d9e0"/><rect x="496" y="196" width="100" height="9" rx="4" fill="#d1d9e0"/>
+<rect x="720" y="120" width="210" height="110" rx="8" fill="#ffffff" stroke="#d1d9e0"/>
+<circle cx="742" cy="148" r="7" fill="#1a7f37"/><text x="758" y="153" fill="#1f2328" font-size="16" font-weight="600">worker</text>
+<rect x="736" y="176" width="150" height="9" rx="4" fill="#d1d9e0"/><rect x="736" y="196" width="100" height="9" rx="4" fill="#d1d9e0"/>
+<rect x="240" y="290" width="210" height="110" rx="8" fill="#ffffff" stroke="#d1d9e0"/>
+<circle cx="262" cy="318" r="7" fill="#1a7f37"/><text x="278" y="323" fill="#1f2328" font-size="16" font-weight="600">db</text>
+<rect x="256" y="346" width="150" height="9" rx="4" fill="#d1d9e0"/><rect x="256" y="366" width="100" height="9" rx="4" fill="#d1d9e0"/>
+<rect x="480" y="290" width="210" height="110" rx="8" fill="#ffffff" stroke="#d1d9e0"/>
+<circle cx="502" cy="318" r="7" fill="#1a7f37"/><text x="518" y="323" fill="#1f2328" font-size="16" font-weight="600">cache</text>
+<rect x="496" y="346" width="150" height="9" rx="4" fill="#d1d9e0"/><rect x="496" y="366" width="100" height="9" rx="4" fill="#d1d9e0"/>
+<rect x="720" y="290" width="210" height="110" rx="8" fill="#ffffff" stroke="#d1d9e0"/>
+<circle cx="742" cy="318" r="7" fill="#1a7f37"/><text x="758" y="323" fill="#1f2328" font-size="16" font-weight="600">mail</text>
+<rect x="736" y="346" width="150" height="9" rx="4" fill="#d1d9e0"/><rect x="736" y="366" width="100" height="9" rx="4" fill="#d1d9e0"/>
+<rect x="744.8" y="12" width="203.20000000000002" height="22" rx="4" fill="#e8590c"/><text x="940" y="27" text-anchor="end" fill="#fff" font-size="11" font-weight="700" letter-spacing=".5">STAND-IN · HERO SCREENSHOT</text>
+</svg>
