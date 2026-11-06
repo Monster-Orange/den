@@ -223,7 +223,8 @@ export async function startServer(tmp, demo) {
   for (let i = 0; i < 150; i++) {
     if (server.exitCode !== null) break;
     try {
-      if ((await fetch(`${base}/api/server-info`)).ok) return { server, base };
+      if ((await fetch(`${base}/api/server-info`)).ok)
+        return { server, base, env };
     } catch {
       /* not up yet */
     }
@@ -233,6 +234,73 @@ export async function startServer(tmp, demo) {
   throw new Error(
     `doc-shots: the server did not start (log: ${path.join(tmp, "server.log")})`,
   );
+}
+
+/**
+ * The Agents tab's terminal: a plain session in demo-api that runs its test
+ * and then the service itself, started with the CLI under the server's own
+ * env (so the same state dir and session host). Returns the session id, or
+ * null when the PTY module is unavailable (the shot is then skipped).
+ */
+export async function startSession(tmp, demo, env) {
+  const cli = path.join(ENGINE, "bin", "den");
+  const run = (args) =>
+    execFileSync(cli, args, {
+      cwd: demo.root,
+      env,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  const port = await freePort();
+  const script = [
+    "make test",
+    `SERVICE=demo-api PORT=${port} exec '${process.execPath}' server.mjs`,
+  ].join(" && ");
+  try {
+    run([
+      "sessions",
+      "start",
+      "--workspace",
+      WORKSPACE,
+      "--name",
+      "api",
+      "--cwd",
+      path.join(demo.repos, "demo-api"),
+      "--",
+      "/bin/sh",
+      "-c",
+      script,
+    ]);
+  } catch (e) {
+    console.log(
+      `  skip agents.png: no session (${
+        String(e.stderr ?? e.message)
+          .trim()
+          .split("\n")[0]
+      })`,
+    );
+    return null;
+  }
+  const rows = JSON.parse(run(["sessions", "list", "--json"]));
+  const list = Array.isArray(rows) ? rows : (rows.sessions ?? []);
+  return list.find((r) => /:api$/.test(r.name ?? ""))?.ref?.id ?? null;
+}
+
+/** Stops the session host startSession started (its sessions end). */
+export function stopSessions(demo, env) {
+  try {
+    execFileSync(
+      path.join(ENGINE, "bin", "den"),
+      ["sessions", "host", "--stop"],
+      {
+        cwd: demo.root,
+        env,
+        stdio: "ignore",
+      },
+    );
+  } catch {
+    /* none running */
+  }
 }
 
 // ── the shots ───────────────────────────────────────────────────────────────
@@ -314,6 +382,26 @@ const STILLS = [
       await p.goto(`${c.base}/edge`);
       await p.waitForSelector("text=stack-demo-web-app");
       await healthy(p);
+    },
+  },
+  {
+    file: "agents.png",
+    needsSession: true,
+    alt: "The Agents tab: the demo workspace's sessions on the left, and one open in a terminal pane on the right, running demo-api's test and then the service",
+    budget: "thumb",
+    go: async (p, c) => {
+      await p.goto(`${c.base}/agents?open=${encodeURIComponent(c.session)}`);
+      await p.waitForSelector(".agr");
+      await p.waitForFunction(
+        () =>
+          /listening on/.test(
+            document.querySelector("#agr")?.textContent ?? "",
+          ),
+        null,
+        { timeout: 30_000 },
+      );
+      await healthy(p);
+      await p.waitForTimeout(600);
     },
   },
   // After the animation: it leaves the runs dock open in the saved prefs.
@@ -536,7 +624,8 @@ async function main() {
   fs.mkdirSync(stage);
   const demo = scaffoldDemo(tmp);
   setRunning(demo, REPOS);
-  const { server, base: url } = await startServer(tmp, demo);
+  const { server, base: url, env: serverEnv } = await startServer(tmp, demo);
+  const session = await startSession(tmp, demo, serverEnv);
   const { createRequire } = await import("node:module");
   const { chromium } = createRequire(path.join(ENGINE, "package.json"))(
     "playwright",
@@ -547,6 +636,7 @@ async function main() {
   const c = {
     base: url,
     demo,
+    session,
     async context(b, { scheme = "dark", viewport = VIEW, scale = 1 } = {}) {
       const ctx = await b.newContext({
         viewport,
@@ -582,7 +672,8 @@ async function main() {
       alt[s.file] = s.alt;
       console.log(`  ok   ${s.file}`);
     };
-    for (const s of STILLS.filter((s) => !s.afterAnimation)) await still(s);
+    const stills = STILLS.filter((s) => !s.needsSession || session);
+    for (const s of stills.filter((s) => !s.afterAnimation)) await still(s);
     const frames = await upFrames(browser, c, tmp, patterns, guardOpts);
     const anim = encodeAnimation(frames, stage);
     if (anim) {
@@ -594,9 +685,10 @@ async function main() {
       console.log(
         "  skip up animation: neither ffmpeg nor img2webp is on PATH",
       );
-    for (const s of STILLS.filter((s) => s.afterAnimation)) await still(s);
+    for (const s of stills.filter((s) => s.afterAnimation)) await still(s);
   } finally {
     await browser.close();
+    stopSessions(demo, serverEnv);
     server.kill("SIGTERM");
   }
 
