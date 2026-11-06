@@ -393,6 +393,12 @@ describe("a named up whose port is held (0.3.0-dev.40)", () => {
       `port ${d.web} is in use by pid ${pid} (cwd ${fs.realpathSync(d.repo)}), in Den's own process group; not adopted`,
     );
     expect(up.out).not.toContain("outside");
+    // dev.40: the first warning said "nothing running is it", which
+    // the busy line then contradicted.
+    expect(up.out).not.toContain("nothing running");
+    expect(up.out).toContain(
+      "its port is held by a process that is not its up",
+    );
     expect(marked().map((m) => m.pid)).toEqual([pid]);
   }, 120_000);
 });

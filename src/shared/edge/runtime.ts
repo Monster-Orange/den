@@ -192,7 +192,12 @@ function realOrSelf(p: string): string {
  */
 export function assertEdgeOwnedHere(
   cfg: EdgeConfig,
-  opts: { takeOver?: boolean; warn?: (line: string) => void } = {},
+  opts: {
+    takeOver?: boolean;
+    warn?: (line: string) => void;
+    /** What a refusal says it won't do: "replacing" (up), "stopping" (down). */
+    verb?: "replacing" | "stopping";
+  } = {},
 ): void {
   const n = edgeNames(cfg.org);
   const found = existingEdge(n.container);
@@ -216,7 +221,9 @@ export function assertEdgeOwnedHere(
     warn(`Taking over edge ${n.container} from ${other} (--take-over).`);
     return;
   }
-  throw new Error(`edge ${n.container} belongs to ${other}; not replacing it`);
+  throw new Error(
+    `edge ${n.container} belongs to ${other}; not ${opts.verb ?? "replacing"} it`,
+  );
 }
 
 export async function edgeUp(
@@ -261,7 +268,7 @@ export async function edgeUp(
 
 export function edgeDown(cfg: EdgeConfig): void {
   // The project is named by org too: another dir's edge is not ours to stop.
-  assertEdgeOwnedHere(cfg);
+  assertEdgeOwnedHere(cfg, { verb: "stopping" });
   const compose = path.join(cfg.stateDir, "compose.yml");
   if (fs.existsSync(compose))
     must("docker", ["compose", "-f", compose, "down"]);

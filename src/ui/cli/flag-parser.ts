@@ -198,6 +198,9 @@ const COMMAND_FLAGS: Record<string, readonly string[]> = {
   logs: [],
   setup: ["-f", "--force", "--plan", "-w", "--workspace", "--all-active"],
   sync: [],
+  // The only override for an edge another state dir owns; a typo'd one
+  // must not be ignored.
+  edge: ["--take-over"],
 };
 
 /**

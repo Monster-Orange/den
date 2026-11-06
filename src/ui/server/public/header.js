@@ -92,6 +92,7 @@ export function envReady() {
     const sel = document.getElementById("env-sel");
     const envs = await fetch("/api/environments")
       .then((r) => r.json())
+      .then((v) => (Array.isArray(v) ? v : ["local"]))
       .catch(() => ["local"]);
     if (!sel) return envs;
     const esc = (s) =>
@@ -1104,7 +1105,7 @@ export function storeOpenLog(repo, service, env) {
 export function computePrimaryByRepo(svcList) {
   const primary = new Map();
   const rank = new Map();
-  for (const s of svcList || []) {
+  for (const s of Array.isArray(svcList) ? svcList : []) {
     const r = s.isEntrypoint ? 2 : s.service === s.repo ? 1 : 0;
     if (!primary.has(s.repo) || r > (rank.get(s.repo) ?? -1)) {
       primary.set(s.repo, s.address);

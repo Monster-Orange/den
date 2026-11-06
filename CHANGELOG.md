@@ -18,7 +18,7 @@ config and manifest changes a distribution must make to move to it under
   usable: `/settings` and `/logs` load whatever the config holds, and so
   do the routes the shell and those pages need (`/api/settings`,
   `/api/themes`, `/api/scope`, `/api/workspaces/settings`,
-  `/api/sudo-password/status`, besides `/api/server-info`,
+  `/api/sudo-password/status`, `/api/environments` (dev.41), besides `/api/server-info`,
   `/api/server-log`, `/api/changelog` and `/api/web/restart`). Any other
   page answers 422 with this page.
   - Org config validation lists every problem, not the first: a
@@ -835,6 +835,18 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **No page throws under an invalid config** (0.3.0-dev.41, a consumer's
+  dev.40 finding: "envs.map is not a function" on every page).
+  `/api/environments` is config-free (it already fell back to `local`),
+  the env picker and the Logs toolbar treat an error answer as an empty
+  list, and a test loads every page with an invalid config and expects
+  no uncaught error.
+- **A refused `edge down` says "not stopping it"**, not "not replacing
+  it"; `edge` rejects an unknown flag (a mistyped `--take-over` is never
+  ignored) (0.3.0-dev.41).
+- **A pre-dev.37 record whose port is held by another process** no
+  longer warns "nothing running is it" before saying what holds the port
+  (0.3.0-dev.41).
 - **Safety: an edge another state dir owns is never replaced**
   (0.3.0-dev.40, P1). The edge's container and Compose project are named
   by `edge.org`, so a scratch root with its own `DEN_EDGE_DIR` but the real
