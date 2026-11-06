@@ -10,8 +10,8 @@
 </p>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/preview/hero-dark.svg">
-  <img src="docs/images/preview/hero-light.svg" width="100%" alt="Den's shell: the dependency graph of a workspace, every service healthy, with the status chip reading All 12 healthy">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/preview/hero-dark.png">
+  <img src="docs/images/preview/hero-light.png" width="100%" alt="Den's Graph page: seven services across a shop and a blog, in dependency order, all healthy">
 </picture>
 
 ## What Den is
@@ -24,7 +24,7 @@ It doesn't replace your tools. Your repos, Docker, your test runners, your secre
 yours. Den connects them and turns on good practice from the start.
 
 <p align="center">
-  <img src="docs/images/preview/make-up.svg" width="100%" alt="make up: services start in dependency order and the graph turns green">
+  <img src="docs/images/preview/make-up.webp" width="100%" alt="acme up: services start in dependency order and the graph turns green">
 </p>
 
 ## How it helps
@@ -53,9 +53,9 @@ yours. Den connects them and turns on good practice from the start.
   lives in your own repo.
 
 <p align="center">
-  <img src="docs/images/preview/graph.svg" width="32%" alt="The dependency graph">
-  <img src="docs/images/preview/status.svg" width="32%" alt="The status drawer: what needs attention and how to fix it">
-  <img src="docs/images/preview/edge.svg" width="32%" alt="The Edge page: routes, domains and certificates">
+  <img src="docs/images/preview/status.png" width="32%" alt="The status drawer: what needs attention, and the fix">
+  <img src="docs/images/preview/services.png" width="32%" alt="Services: every service with its health and actions">
+  <img src="docs/images/preview/graph-dark.png" width="32%" alt="The Graph page in dark mode">
 </p>
 
 ## Get started
