@@ -21,6 +21,7 @@ import {
   buildModel,
   edgeModel,
   entryOf,
+  findHit,
   healthLine,
   isCollapsed,
   neighbours,
@@ -412,7 +413,14 @@ async function render() {
     paths
       .map(({ d, m }) => {
         const k = m.cross ? "cross" : m.kind;
-        return `<path class="dg-e ${k}" data-f="${esc(m.from)}" data-t="${esc(m.to)}" d="${d}" marker-end="url(#dg-ah-${k})"/>`;
+        // R22b-2: each edge's flow overlay, drawn on its base path (same
+        // d, same kind, so the same colour); it shows and marches from
+        // data-f to data-t only while the edge is highlighted.
+        const ends = `data-f="${esc(m.from)}" data-t="${esc(m.to)}" d="${d}"`;
+        return (
+          `<path class="dg-e ${k}" ${ends} marker-end="url(#dg-ah-${k})"/>` +
+          `<path class="dg-flow ${k}" ${ends}/>`
+        );
       })
       .join("");
   world.style.width = maxX + 20 + "px";
@@ -584,7 +592,7 @@ function applyFocus() {
   const q = st.q.trim().toLowerCase();
   host.querySelectorAll(".dg-card").forEach((c) => {
     const k = c.dataset.id || "repo:" + c.dataset.repo;
-    const hit = !!q && k.toLowerCase().includes(q);
+    const hit = findHit(k, q);
     c.classList.toggle("sel", key != null && k === key);
     c.classList.toggle("hit", hit);
     c.classList.toggle("dim", (focus && !focus.has(k)) || (!!q && !hit));
@@ -598,6 +606,9 @@ function applyFocus() {
         : p.dataset.f === key || p.dataset.t === key);
     p.classList.toggle("hl", on);
     p.classList.toggle("dim", (!!focus && !on) || !!q);
+    // Its flow overlay (the next sibling, R22b-2) runs only while lit.
+    const flow = p.nextElementSibling;
+    if (flow?.classList.contains("dg-flow")) flow.classList.toggle("on", on);
   });
 }
 function focusOn(sel) {
@@ -1002,7 +1013,7 @@ function wire() {
     if (e.key !== "Enter") return;
     const q = st.q.trim().toLowerCase();
     if (!q) return;
-    const s = M.services.find((x) => x.id.toLowerCase().includes(q));
+    const s = M.services.find((x) => findHit(x.id, q));
     if (s)
       focusOn(
         isCollapsed(M, st.collapsed, s.repo) ? { repo: s.repo } : { id: s.id },

@@ -454,7 +454,7 @@ describe("the ⌘K palette (R17)", () => {
       "den-pal-o-0",
     );
     // Empty: the pages first.
-    expect(await text(p, "#den-pal-o-0")).toBe("Local Dev PAGE");
+    expect(await text(p, "#den-pal-o-0")).toBe("Workspaces PAGE");
     await p.keyboard.type("shop");
     expect(
       await p.$$eval("#den-pal-list [role=option]", (o) =>

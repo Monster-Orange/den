@@ -55,7 +55,7 @@ export const DEN_SETTING_CATEGORIES = [
     label: "Graph",
     order: 40,
     description:
-      "How the Local Dev graph is laid out. The graph's own controls set these too.",
+      "How the graph is laid out, and how the Workspaces page shows its workspaces. The pages' own controls set these too.",
   },
   {
     id: "workspace",
@@ -314,11 +314,22 @@ export const DEN_SETTINGS = [
   graphRow(
     "workspaces",
     "Workspace list",
-    "Local Dev's workspace list, open or collapsed to a strip so the graph gets the width.",
+    "The Workspaces page's workspace list, open or collapsed to a strip so the table gets the width.",
     ["workspaces", "list", "sidebar", "collapse", "strip", "local dev"],
     seg([
       { value: "open", label: "Open" },
       { value: "collapsed", label: "Collapsed" },
+    ]),
+  ),
+  graphRow(
+    "groupBy",
+    "Group repos by",
+    "The Workspaces page's repo table: one list, or grouped by application (as __DEN_CLI__ apps) or by org.",
+    ["workspaces", "group", "application", "apps", "org", "table", "local dev"],
+    seg([
+      { value: "none", label: "None" },
+      { value: "app", label: "Application" },
+      { value: "org", label: "Org" },
     ]),
   ),
   graphRow(
@@ -379,7 +390,7 @@ export const DEN_SETTINGS = [
     category: "cli",
     label: "Local environment",
     description:
-      "Off hides Local Dev and the workspace APIs for you. __DEN_CLI__ config local_dev=false",
+      "Off hides Workspaces and the workspace APIs for you. __DEN_CLI__ config local_dev=false",
     keywords: ["local", "local dev", "environment", "disable"],
     scope: "user",
     control: { type: "readonly" },

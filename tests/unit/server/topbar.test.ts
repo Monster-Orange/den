@@ -14,6 +14,7 @@ import {
   checkLine,
   drawerGroups,
   problemCards,
+  problemFix,
   rankCommands,
   runOf,
   statusChip,
@@ -153,6 +154,30 @@ describe("the status drawer (R15)", () => {
       },
     ]);
     expect(problemCards(null)).toEqual([]);
+  });
+
+  it("a card's fix (R15; the Workspaces table's problem rows, R24d): its text and buttons, each named with the service", () => {
+    const [c] = problemCards(r);
+    expect(problemFix(c, "12:03")).toEqual({
+      text: "http://shop/mailpit — connect ECONNREFUSED · failed at 12:03",
+      actions: [
+        {
+          act: "start",
+          label: "Start",
+          name: "Start shop/mailpit",
+          primary: true,
+        },
+        {
+          act: "logs",
+          label: "Logs",
+          name: "Logs of shop/mailpit",
+          primary: false,
+        },
+      ],
+    });
+    expect(problemFix(c).text).toBe(
+      "http://shop/mailpit — connect ECONNREFUSED",
+    );
   });
 
   it("Everything: per application ok/N, each service with its ms; pending is pending", () => {

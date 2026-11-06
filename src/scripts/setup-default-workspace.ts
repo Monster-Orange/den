@@ -145,7 +145,7 @@ async function main() {
     '  This builds the "default" workspace — every standard system repo,\n' +
       `  all managed: ${product().cli} clones and keeps each one up to date for\n` +
       "  you, no checkouts or decisions required. For anything you actively\n" +
-      "  develop, flip that repo to dev-managed in the web UX (Local Dev)\n" +
+      "  develop, flip that repo to dev-managed in the web UX (Workspaces)\n" +
       "  and point it at your own checkout.\n",
   );
 
@@ -183,7 +183,7 @@ async function main() {
     `\n  ✓ Default workspace configured with ${seed.length} service(s), all managed.`,
   );
   console.log(
-    "  Change any repo to dev-managed in the web UX: make web → Local Dev.",
+    "  Change any repo to dev-managed in the web UX: make web → Workspaces.",
   );
   console.log(`  Run 'make ${product().cli}-up' to start your services.\n`);
 }

@@ -21,10 +21,13 @@ import { registerDenSettings } from "./settings-registry.js";
 export {
   isUnlocked,
   onLockChange,
+  problemCards,
+  problemFix,
   requireUnlock,
   setServiceRunner,
   takePendingAction,
 } from "./topbar.js";
+export { buildRow } from "./health-fit.js";
 
 // Every page with this header gets the appearance controls (mode, theme)
 // and the top bar's chips, palette and drawer (topbar.js).
@@ -659,7 +662,7 @@ async function getDenConfig() {
 }
 
 /**
- * Apply __DEN_CLI__ config to the nav — hide "Local Dev" when local environment is disabled.
+ * Apply __DEN_CLI__ config to the nav — hide Workspaces when the local environment is disabled.
  * Call once on page load from each page's init function.
  */
 export async function applyDenConfig() {

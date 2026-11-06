@@ -315,337 +315,336 @@
 
     <!-- The page's one main landmark: everything after the shell. -->
     <main id="den-content">
-    <!-- One workspace control: the shell's View (what this page lists) and
+      <!-- One workspace control: the shell's View (what this page lists) and
          Focus (where commands go), not a select of its own. -->
-    <div class="page-main">
-      <div class="services-pane" id="services-pane">
-        <div class="empty-state">Loading services…</div>
+      <div class="page-main">
+        <div class="services-pane" id="services-pane">
+          <div class="empty-state">Loading services…</div>
+        </div>
       </div>
-    </div>
 
-    <script type="module">
-      import {
-        initHealth,
-        refreshHealth,
-        initWorkspacePill,
-        applyDenConfig,
-        initLogBadge,
-        initChangelog,
-        computePrimaryByRepo,
-        envReady,
-      } from "/header.js";
-      import { ownersLabel } from "/workspace-picker.js";
+      <script type="module">
+        import {
+          initHealth,
+          refreshHealth,
+          initWorkspacePill,
+          applyDenConfig,
+          initLogBadge,
+          initChangelog,
+          computePrimaryByRepo,
+          envReady,
+        } from "/header.js";
+        import { ownersLabel } from "/workspace-picker.js";
 
-      let es = null;
-      // The run tab `es` feeds in the shell's runs dock (R16): one per
-      // service, its label the latest command ("restart shop/web").
-      let runId = null;
-      const runs = () => window.denShell.runs;
+        let es = null;
+        // The run tab `es` feeds in the shell's runs dock (R16): one per
+        // service, its label the latest command ("restart shop/web").
+        let runId = null;
+        const runs = () => window.denShell.runs;
 
-      // Release any open SSE socket on reload / navigation / bfcache-enter so the
-      // reloaded page isn't starved of a connection by a lingering stream.
-      window.addEventListener("pagehide", () => {
-        try {
-          es?.close();
-        } catch {}
-        es = null;
-      });
+        // Release any open SSE socket on reload / navigation / bfcache-enter so the
+        // reloaded page isn't starved of a connection by a lingering stream.
+        window.addEventListener("pagehide", () => {
+          try {
+            es?.close();
+          } catch {}
+          es = null;
+        });
 
-      // ── Init ──────────────────────────────────────────────────────────────────
-      async function init() {
-        // The shell's env picker (header.js), one for every page.
-        await envReady();
+        // ── Init ──────────────────────────────────────────────────────────────────
+        async function init() {
+          // The shell's env picker (header.js), one for every page.
+          await envReady();
 
-        await Promise.all([
-          loadServices(),
-          initHealth(),
-          initWorkspacePill(),
-          applyDenConfig(),
-          initChangelog(),
-        ]);
-        initLogBadge();
-      }
+          await Promise.all([
+            loadServices(),
+            initHealth(),
+            initWorkspacePill(),
+            applyDenConfig(),
+            initChangelog(),
+          ]);
+          initLogBadge();
+        }
 
-      document.getElementById("env-sel").addEventListener("change", () => {
-        const env = document.getElementById("env-sel").value;
-        loadServices();
-        // Restart the header health poll for the new env — without this the dots
-        // kept polling the page-load env forever (index.html/logs.html do this too).
-        refreshHealth(env);
-      });
+        document.getElementById("env-sel").addEventListener("change", () => {
+          const env = document.getElementById("env-sel").value;
+          loadServices();
+          // Restart the header health poll for the new env — without this the dots
+          // kept polling the page-load env forever (index.html/logs.html do this too).
+          refreshHealth(env);
+        });
 
-      // ── Workspace panel ───────────────────────────────────────────────────────
-      window.toggleWsPanel = function () {
-        const panel = document.getElementById("ws-panel");
-        const open = panel.classList.toggle("open");
-        if (open) refreshWsPanel();
-      };
+        // ── Workspace panel ───────────────────────────────────────────────────────
+        window.toggleWsPanel = function () {
+          const panel = document.getElementById("ws-panel");
+          const open = panel.classList.toggle("open");
+          if (open) refreshWsPanel();
+        };
 
-      async function refreshWsPanel() {
-        const data = await fetch("/api/workspaces")
-          .then((r) => r.json())
-          .catch(() => null);
-        if (!data) return;
+        async function refreshWsPanel() {
+          const data = await fetch("/api/workspaces")
+            .then((r) => r.json())
+            .catch(() => null);
+          if (!data) return;
 
-        const focus = Array.isArray(data.active)
-          ? (data.focus ?? data.active[0])
-          : data.active;
-        // Update active label
-        document.getElementById("ws-active-label").textContent = Array.isArray(
-          data.active,
-        )
-          ? data.active.join(", ")
-          : (data.active ?? "");
+          const focus = Array.isArray(data.active)
+            ? (data.focus ?? data.active[0])
+            : data.active;
+          // Update active label
+          document.getElementById("ws-active-label").textContent =
+            Array.isArray(data.active)
+              ? data.active.join(", ")
+              : (data.active ?? "");
 
-        // Current services list
-        const services = Object.entries(
-          data.workspaces?.[focus]?.services ?? {},
-        );
-        const listEl = document.getElementById("ws-service-list");
-        if (services.length === 0) {
-          listEl.innerHTML = '<span class="ws-msg">No services yet.</span>';
-        } else {
-          listEl.innerHTML = services
-            .map(([addr, entry]) => {
-              const meta =
-                entry.mode === "dev-managed"
-                  ? `<span style="color:var(--muted);font-size:11px">dev-managed · ${entry.path ?? ""}</span>`
-                  : `<span style="color:var(--muted);font-size:11px">managed · ${entry.branch ?? "main"}</span>`;
-              return `<div class="ws-service-row">
+          // Current services list
+          const services = Object.entries(
+            data.workspaces?.[focus]?.services ?? {},
+          );
+          const listEl = document.getElementById("ws-service-list");
+          if (services.length === 0) {
+            listEl.innerHTML = '<span class="ws-msg">No services yet.</span>';
+          } else {
+            listEl.innerHTML = services
+              .map(([addr, entry]) => {
+                const meta =
+                  entry.mode === "dev-managed"
+                    ? `<span style="color:var(--muted);font-size:11px">dev-managed · ${entry.path ?? ""}</span>`
+                    : `<span style="color:var(--muted);font-size:11px">managed · ${entry.branch ?? "main"}</span>`;
+                return `<div class="ws-service-row">
             <span>${addr}</span>${meta}
             <button title="Remove" onclick="removeService('${addr}')">×</button>
           </div>`;
-            })
-            .join("");
+              })
+              .join("");
+          }
+
+          // Available repos dropdown
+          const repos = await fetch("/api/workspaces/available-repos")
+            .then((r) => r.json())
+            .catch(() => []);
+          const repoSel = document.getElementById("ws-repo-sel");
+          repoSel.innerHTML =
+            '<option value="">Select repo…</option>' +
+            repos
+              .map((r) => {
+                const label = r.hasManifest ? `${r.name} ✓` : r.name;
+                const disabled = r.alreadyAdded ? " disabled" : "";
+                const suffix = r.alreadyAdded ? " (added)" : "";
+                return `<option value="${r.name}" data-path="${r.absPath}"${disabled}>${label}${suffix}</option>`;
+              })
+              .join("");
         }
 
-        // Available repos dropdown
-        const repos = await fetch("/api/workspaces/available-repos")
-          .then((r) => r.json())
-          .catch(() => []);
-        const repoSel = document.getElementById("ws-repo-sel");
-        repoSel.innerHTML =
-          '<option value="">Select repo…</option>' +
-          repos
-            .map((r) => {
-              const label = r.hasManifest ? `${r.name} ✓` : r.name;
-              const disabled = r.alreadyAdded ? " disabled" : "";
-              const suffix = r.alreadyAdded ? " (added)" : "";
-              return `<option value="${r.name}" data-path="${r.absPath}"${disabled}>${label}${suffix}</option>`;
-            })
-            .join("");
-      }
-
-      window.createWorkspace = async function () {
-        const name = document.getElementById("ws-name-input").value.trim();
-        const msg = document.getElementById("ws-create-msg");
-        if (!name) {
-          msg.textContent = "Name required";
-          msg.className = "ws-msg err";
-          return;
-        }
-        const res = await fetch("/api/workspaces/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
-        });
-        if (res.ok) {
-          msg.textContent = `✓ Created "${name}"`;
-          msg.className = "ws-msg ok";
-          document.getElementById("ws-name-input").value = "";
-          await refreshWsPanel();
-        } else {
-          msg.textContent = await res.text();
-          msg.className = "ws-msg err";
-        }
-      };
-
-      window.deleteWorkspace = async function () {
-        const data = await fetch("/api/workspaces")
-          .then((r) => r.json())
-          .catch(() => ({}));
-        const name = data.focus ?? data.active?.[0] ?? "default";
-        const msg = document.getElementById("ws-delete-msg");
-        if (name === "default") {
-          msg.textContent = "Cannot delete default";
-          msg.className = "ws-msg err";
-          return;
-        }
-        if (!confirm(`Delete workspace "${name}"?`)) return;
-        const res = await fetch("/api/workspaces", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
-        });
-        if (res.ok) {
-          msg.textContent = `✓ Deleted "${name}"`;
-          msg.className = "ws-msg ok";
-          await Promise.all([loadServices(), refreshWsPanel()]);
-        } else {
-          msg.textContent = await res.text();
-          msg.className = "ws-msg err";
-        }
-      };
-
-      window.addService = async function () {
-        const repoSel = document.getElementById("ws-repo-sel");
-        const mode = document.getElementById("ws-mode-sel").value;
-        const msg = document.getElementById("ws-add-msg");
-        const repoName = repoSel.value;
-        if (!repoName) {
-          msg.textContent = "Select a repo";
-          msg.className = "ws-msg err";
-          return;
-        }
-        const opt = repoSel.options[repoSel.selectedIndex];
-        const linkedPath = opt.dataset.path;
-        const res = await fetch("/api/workspaces/services", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address: repoName, mode, linkedPath }),
-        });
-        if (res.ok) {
-          msg.textContent = `✓ Added ${repoName}`;
-          msg.className = "ws-msg ok";
-          await Promise.all([loadServices(), refreshWsPanel()]);
-        } else {
-          msg.textContent = await res.text();
-          msg.className = "ws-msg err";
-        }
-      };
-
-      window.removeService = async function (address) {
-        const msg = document.getElementById("ws-add-msg");
-        const res = await fetch("/api/workspaces/services", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address }),
-        });
-        if (res.ok) {
-          await Promise.all([loadServices(), refreshWsPanel()]);
-        } else {
-          msg.textContent = await res.text();
-          msg.className = "ws-msg err";
-        }
-      };
-
-      // ── Load services ─────────────────────────────────────────────────────────
-      async function loadServices() {
-        const env = document.getElementById("env-sel").value;
-        const pane = document.getElementById("services-pane");
-        pane.innerHTML = '<div class="empty-state">Loading…</div>';
-
-        let services;
-        let apps = [];
-        try {
-          const [svcRes, appRes] = await Promise.all([
-            fetch(`/api/services?env=${env}`),
-            fetch("/api/applications").catch(() => null),
-          ]);
-          services = await svcRes.json();
-          if (appRes?.ok) apps = (await appRes.json()).applications ?? [];
-        } catch {
-          pane.innerHTML =
-            '<div class="empty-state">Failed to load services</div>';
-          return;
-        }
-
-        if (!services.length) {
-          pane.innerHTML = `<div class="empty-state">No services registered.<br><code>__DEN_CLI__ register &lt;path&gt;</code> to add a repo.</div>`;
-          return;
-        }
-
-        // A "system" is a repo's primary service (entrypoint > root-named >
-        // first seen) — the same rollup the health dots, log tabs and logs
-        // toolbar use, so "one thing per system" means the same thing here.
-        // Everything else is a sub-service.
-        const primaryByRepo = computePrimaryByRepo(services);
-
-        // The shared-infra repo's own sub-services (`graph.infra.repo`; the
-        // server marks them `infra`) are the shared infra that repo IS. They
-        // carry no usable actions of their own — their only command was a
-        // lifecycle one, already dropped for sub-services — so the cards were
-        // pure noise beside the system card that already represents them.
-        // Sub-services of OTHER repos are kept: several own real work
-        // (shop/db's migrate, notes-api/db's lint) that exists nowhere else.
-        const visible = services.filter(
-          (s) =>
-            !s.infra ||
-            primaryByRepo.get(s.repo) ===
-              (s.address ?? `${s.repo}/${s.service}`),
-        );
-
-        // Top-down dependency order — entry repo (shop-web) first, infra-stack
-        // last — matching the health row, the dep graph and `__DEN_CLI__ status`.
-        // graphRank comes from the server, which owns deriveGraph. Sub-services
-        // sort under their own system rather than floating to the end.
-        visible.sort(
-          (a, b) =>
-            (a.graphRank ?? Number.MAX_SAFE_INTEGER) -
-              (b.graphRank ?? Number.MAX_SAFE_INTEGER) ||
-            a.repo.localeCompare(b.repo) ||
-            (primaryByRepo.get(a.repo) ===
-            (a.address ?? `${a.repo}/${a.service}`)
-              ? -1
-              : 0) -
-              (primaryByRepo.get(b.repo) ===
-              (b.address ?? `${b.repo}/${b.service}`)
-                ? -1
-                : 0) ||
-            a.service.localeCompare(b.service),
-        );
-
-        // Lifecycle commands on a sub-service are a lie: the resource is owned by
-        // its system or by shared infra-stack infra (files-api/db, for one,
-        // is a handle onto shared localstack — `up` there does nothing useful).
-        // Domain commands are NOT hidden: shop/db's migrate/seed/rollback and
-        // notes-api/db's migrate/lint are real work you can only do here.
-        const LIFECYCLE_CMDS = new Set(["up", "down", "restart"]);
-
-        // Pin a system (or a sub-service) to the rail (R14).
-        const pinBtn = (id) => {
-          const on = window.denShell?.isPinned(id);
-          if (!window.denShell) return "";
-          return `<button class="pin-btn" data-pin-toggle="${esc(id)}" aria-pressed="${on ? "true" : "false"}" title="${on ? "Unpin" : "Pin"} ${esc(id)}" aria-label="${on ? "Unpin" : "Pin"} ${esc(id)}">${on ? "★" : "☆"}</button>`;
+        window.createWorkspace = async function () {
+          const name = document.getElementById("ws-name-input").value.trim();
+          const msg = document.getElementById("ws-create-msg");
+          if (!name) {
+            msg.textContent = "Name required";
+            msg.className = "ws-msg err";
+            return;
+          }
+          const res = await fetch("/api/workspaces/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name }),
+          });
+          if (res.ok) {
+            msg.textContent = `✓ Created "${name}"`;
+            msg.className = "ws-msg ok";
+            document.getElementById("ws-name-input").value = "";
+            await refreshWsPanel();
+          } else {
+            msg.textContent = await res.text();
+            msg.className = "ws-msg err";
+          }
         };
-        const cardHtml = (s) => {
-          const addr = s.address ?? `${s.repo}/${s.service}`;
-          const isSub = primaryByRepo.get(s.repo) !== addr;
-          const usableCmds = isSub
-            ? s.commands.filter((cmd) => !LIFECYCLE_CMDS.has(cmd))
-            : s.commands;
-          const cmdButtons = usableCmds
-            .map(
-              (cmd) =>
-                `<button class="cmd-btn" data-repo="${s.repo}" data-service="${s.service}" data-cmd="${cmd}" data-type="exec">${cmd}</button>`,
-            )
-            .join("");
-          const logsButton = s.logs
-            ? `<button class="cmd-btn logs-btn" data-repo="${s.repo}" data-service="${s.service}" data-type="logs">logs</button>`
-            : "";
-          const hasCaps = usableCmds.length > 0 || s.logs;
-          const emptyNote =
-            s.cloned === false
-              ? "not cloned yet — run Sync in Local Dev"
-              : isSub
-                ? "managed by its system"
-                : "no commands for this env";
-          const modeBadge = s.mode
-            ? `<span class="badge ${s.mode}">${s.mode}</span>`
-            : "";
-          const unclonedBadge =
-            s.cloned === false
-              ? `<span class="badge" style="border-color:var(--warn);color:var(--warn)" title="Not cloned yet">⬇ not cloned</span>`
+
+        window.deleteWorkspace = async function () {
+          const data = await fetch("/api/workspaces")
+            .then((r) => r.json())
+            .catch(() => ({}));
+          const name = data.focus ?? data.active?.[0] ?? "default";
+          const msg = document.getElementById("ws-delete-msg");
+          if (name === "default") {
+            msg.textContent = "Cannot delete default";
+            msg.className = "ws-msg err";
+            return;
+          }
+          if (!confirm(`Delete workspace "${name}"?`)) return;
+          const res = await fetch("/api/workspaces", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name }),
+          });
+          if (res.ok) {
+            msg.textContent = `✓ Deleted "${name}"`;
+            msg.className = "ws-msg ok";
+            await Promise.all([loadServices(), refreshWsPanel()]);
+          } else {
+            msg.textContent = await res.text();
+            msg.className = "ws-msg err";
+          }
+        };
+
+        window.addService = async function () {
+          const repoSel = document.getElementById("ws-repo-sel");
+          const mode = document.getElementById("ws-mode-sel").value;
+          const msg = document.getElementById("ws-add-msg");
+          const repoName = repoSel.value;
+          if (!repoName) {
+            msg.textContent = "Select a repo";
+            msg.className = "ws-msg err";
+            return;
+          }
+          const opt = repoSel.options[repoSel.selectedIndex];
+          const linkedPath = opt.dataset.path;
+          const res = await fetch("/api/workspaces/services", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address: repoName, mode, linkedPath }),
+          });
+          if (res.ok) {
+            msg.textContent = `✓ Added ${repoName}`;
+            msg.className = "ws-msg ok";
+            await Promise.all([loadServices(), refreshWsPanel()]);
+          } else {
+            msg.textContent = await res.text();
+            msg.className = "ws-msg err";
+          }
+        };
+
+        window.removeService = async function (address) {
+          const msg = document.getElementById("ws-add-msg");
+          const res = await fetch("/api/workspaces/services", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address }),
+          });
+          if (res.ok) {
+            await Promise.all([loadServices(), refreshWsPanel()]);
+          } else {
+            msg.textContent = await res.text();
+            msg.className = "ws-msg err";
+          }
+        };
+
+        // ── Load services ─────────────────────────────────────────────────────────
+        async function loadServices() {
+          const env = document.getElementById("env-sel").value;
+          const pane = document.getElementById("services-pane");
+          pane.innerHTML = '<div class="empty-state">Loading…</div>';
+
+          let services;
+          let apps = [];
+          try {
+            const [svcRes, appRes] = await Promise.all([
+              fetch(`/api/services?env=${env}`),
+              fetch("/api/applications").catch(() => null),
+            ]);
+            services = await svcRes.json();
+            if (appRes?.ok) apps = (await appRes.json()).applications ?? [];
+          } catch {
+            pane.innerHTML =
+              '<div class="empty-state">Failed to load services</div>';
+            return;
+          }
+
+          if (!services.length) {
+            pane.innerHTML = `<div class="empty-state">No services registered.<br><code>__DEN_CLI__ register &lt;path&gt;</code> to add a repo.</div>`;
+            return;
+          }
+
+          // A "system" is a repo's primary service (entrypoint > root-named >
+          // first seen) — the same rollup the health dots, log tabs and logs
+          // toolbar use, so "one thing per system" means the same thing here.
+          // Everything else is a sub-service.
+          const primaryByRepo = computePrimaryByRepo(services);
+
+          // The shared-infra repo's own sub-services (`graph.infra.repo`; the
+          // server marks them `infra`) are the shared infra that repo IS. They
+          // carry no usable actions of their own — their only command was a
+          // lifecycle one, already dropped for sub-services — so the cards were
+          // pure noise beside the system card that already represents them.
+          // Sub-services of OTHER repos are kept: several own real work
+          // (shop/db's migrate, notes-api/db's lint) that exists nowhere else.
+          const visible = services.filter(
+            (s) =>
+              !s.infra ||
+              primaryByRepo.get(s.repo) ===
+                (s.address ?? `${s.repo}/${s.service}`),
+          );
+
+          // Top-down dependency order — entry repo (shop-web) first, infra-stack
+          // last — matching the health row, the dep graph and `__DEN_CLI__ status`.
+          // graphRank comes from the server, which owns deriveGraph. Sub-services
+          // sort under their own system rather than floating to the end.
+          visible.sort(
+            (a, b) =>
+              (a.graphRank ?? Number.MAX_SAFE_INTEGER) -
+                (b.graphRank ?? Number.MAX_SAFE_INTEGER) ||
+              a.repo.localeCompare(b.repo) ||
+              (primaryByRepo.get(a.repo) ===
+              (a.address ?? `${a.repo}/${a.service}`)
+                ? -1
+                : 0) -
+                (primaryByRepo.get(b.repo) ===
+                (b.address ?? `${b.repo}/${b.service}`)
+                  ? -1
+                  : 0) ||
+              a.service.localeCompare(b.service),
+          );
+
+          // Lifecycle commands on a sub-service are a lie: the resource is owned by
+          // its system or by shared infra-stack infra (files-api/db, for one,
+          // is a handle onto shared localstack — `up` there does nothing useful).
+          // Domain commands are NOT hidden: shop/db's migrate/seed/rollback and
+          // notes-api/db's migrate/lint are real work you can only do here.
+          const LIFECYCLE_CMDS = new Set(["up", "down", "restart"]);
+
+          // Pin a system (or a sub-service) to the rail (R14).
+          const pinBtn = (id) => {
+            const on = window.denShell?.isPinned(id);
+            if (!window.denShell) return "";
+            return `<button class="pin-btn" data-pin-toggle="${esc(id)}" aria-pressed="${on ? "true" : "false"}" title="${on ? "Unpin" : "Pin"} ${esc(id)}" aria-label="${on ? "Unpin" : "Pin"} ${esc(id)}">${on ? "★" : "☆"}</button>`;
+          };
+          const cardHtml = (s) => {
+            const addr = s.address ?? `${s.repo}/${s.service}`;
+            const isSub = primaryByRepo.get(s.repo) !== addr;
+            const usableCmds = isSub
+              ? s.commands.filter((cmd) => !LIFECYCLE_CMDS.has(cmd))
+              : s.commands;
+            const cmdButtons = usableCmds
+              .map(
+                (cmd) =>
+                  `<button class="cmd-btn" data-repo="${s.repo}" data-service="${s.service}" data-cmd="${cmd}" data-type="exec">${cmd}</button>`,
+              )
+              .join("");
+            const logsButton = s.logs
+              ? `<button class="cmd-btn logs-btn" data-repo="${s.repo}" data-service="${s.service}" data-type="logs">logs</button>`
               : "";
-          const branchBadge = s.branch
-            ? `<span class="badge branch">${s.branch}</span>`
-            : "";
-          // Which manifest layers built this card: repo or held, + override.
-          const layersBadge =
-            Array.isArray(s.manifestLayers) && s.manifestLayers.length > 0
-              ? `<span class="badge layers" title="Manifest layers applied">manifest: ${s.manifestLayers.join(" + ")}</span>`
+            const hasCaps = usableCmds.length > 0 || s.logs;
+            const emptyNote =
+              s.cloned === false
+                ? "not cloned yet — run Sync in Workspaces"
+                : isSub
+                  ? "managed by its system"
+                  : "no commands for this env";
+            const modeBadge = s.mode
+              ? `<span class="badge ${s.mode}">${s.mode}</span>`
               : "";
-          return `
+            const unclonedBadge =
+              s.cloned === false
+                ? `<span class="badge" style="border-color:var(--warn);color:var(--warn)" title="Not cloned yet">⬇ not cloned</span>`
+                : "";
+            const branchBadge = s.branch
+              ? `<span class="badge branch">${s.branch}</span>`
+              : "";
+            // Which manifest layers built this card: repo or held, + override.
+            const layersBadge =
+              Array.isArray(s.manifestLayers) && s.manifestLayers.length > 0
+                ? `<span class="badge layers" title="Manifest layers applied">manifest: ${s.manifestLayers.join(" + ")}</span>`
+                : "";
+            return `
           <div class="service-card${isSub ? " subservice" : ""}"${isSub ? "" : ` id="repo-${esc(s.repo)}"`}>
             <div class="service-card-header">
               <span class="dot" id="dot-${s.repo}-${s.service}"></span>
@@ -665,49 +664,49 @@
               ${hasCaps ? cmdButtons + logsButton : `<span style="color:var(--muted);font-size:11px">${emptyNote}</span>`}
             </div>
           </div>`;
-        };
+          };
 
-        // Section the cards by application, keeping the order above within
-        // each. Repos that are their own application share one section; any
-        // card no application claims goes last.
-        const esc = (t) =>
-          String(t ?? "").replace(
-            /[&<>"]/g,
-            (c) =>
-              ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+          // Section the cards by application, keeping the order above within
+          // each. Repos that are their own application share one section; any
+          // card no application claims goes last.
+          const esc = (t) =>
+            String(t ?? "").replace(
+              /[&<>"]/g,
+              (c) =>
+                ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+            );
+          const appOf = new Map();
+          for (const a of apps) for (const r of a.repos) appOf.set(r, a);
+          const sections = [];
+          for (const a of apps.filter((x) => x.source === "declared")) {
+            const cards = visible.filter((s) => appOf.get(s.repo) === a);
+            if (cards.length) sections.push({ app: a, cards });
+          }
+          const standalone = visible.filter(
+            (s) => appOf.get(s.repo)?.source === "repo",
           );
-        const appOf = new Map();
-        for (const a of apps) for (const r of a.repos) appOf.set(r, a);
-        const sections = [];
-        for (const a of apps.filter((x) => x.source === "declared")) {
-          const cards = visible.filter((s) => appOf.get(s.repo) === a);
-          if (cards.length) sections.push({ app: a, cards });
-        }
-        const standalone = visible.filter(
-          (s) => appOf.get(s.repo)?.source === "repo",
-        );
-        if (standalone.length)
-          sections.push({
-            app: {
-              title: "Single-repo applications",
-              description: "Each repo is its own application.",
-            },
-            cards: standalone,
-          });
-        const rest = visible.filter((s) => !appOf.has(s.repo));
-        if (rest.length)
-          sections.push({
-            app: apps.length
-              ? {
-                  title: "Not in an application",
-                  description: "In view, but in no application.",
-                }
-              : null,
-            cards: rest,
-          });
-        pane.innerHTML = sections
-          .map(
-            ({ app, cards }) => `
+          if (standalone.length)
+            sections.push({
+              app: {
+                title: "Single-repo applications",
+                description: "Each repo is its own application.",
+              },
+              cards: standalone,
+            });
+          const rest = visible.filter((s) => !appOf.has(s.repo));
+          if (rest.length)
+            sections.push({
+              app: apps.length
+                ? {
+                    title: "Not in an application",
+                    description: "In view, but in no application.",
+                  }
+                : null,
+              cards: rest,
+            });
+          pane.innerHTML = sections
+            .map(
+              ({ app, cards }) => `
         <section class="app-section"${app?.name ? ` data-app="${esc(app.name)}"` : ""}>
           ${
             app
@@ -720,211 +719,211 @@
           }
           <div class="app-cards">${cards.map(cardHtml).join("")}</div>
         </section>`,
-          )
-          .join("");
+            )
+            .join("");
 
-        // Pin / unpin (a preference only). The star repaints from the
-        // shell's den:pins event, whoever changed the pin (this button,
-        // the rail's × or Delete, the graph's panel).
-        pane.querySelectorAll("[data-pin-toggle]").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const id = btn.dataset.pinToggle;
-            const sh = window.denShell;
-            if (!sh) return;
-            if (sh.isPinned(id)) sh.unpin(id);
-            else sh.pin(id);
+          // Pin / unpin (a preference only). The star repaints from the
+          // shell's den:pins event, whoever changed the pin (this button,
+          // the rail's × or Delete, the graph's panel).
+          pane.querySelectorAll("[data-pin-toggle]").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const id = btn.dataset.pinToggle;
+              const sh = window.denShell;
+              if (!sh) return;
+              if (sh.isPinned(id)) sh.unpin(id);
+              else sh.pin(id);
+            });
           });
-        });
-        // A pinned row in the rail links here (#repo-<name>).
-        if (location.hash.startsWith("#repo-"))
-          document
-            .getElementById(decodeURIComponent(location.hash.slice(1)))
-            ?.scrollIntoView({ block: "center" });
+          // A pinned row in the rail links here (#repo-<name>).
+          if (location.hash.startsWith("#repo-"))
+            document
+              .getElementById(decodeURIComponent(location.hash.slice(1)))
+              ?.scrollIntoView({ block: "center" });
 
-        // Attach click handlers
-        pane.querySelectorAll(".cmd-btn").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const { repo, service, cmd, type } = btn.dataset;
-            if (type === "exec") runExec(repo, service, cmd, btn);
-            else runLogs(repo, service, btn);
+          // Attach click handlers
+          pane.querySelectorAll(".cmd-btn").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const { repo, service, cmd, type } = btn.dataset;
+              if (type === "exec") runExec(repo, service, cmd, btn);
+              else runLogs(repo, service, btn);
+            });
           });
-        });
 
-        // Re-render destroys the dot elements, and the poll may have already
-        // fired before this ran — repaint from the last broadcast so the cards
-        // aren't blank until the next tick.
-        applyHealthToCards(_lastHealth);
-      }
-
-      // ── Run command ───────────────────────────────────────────────────────────
-      /** The previous stream's tab stops pulsing: a new action replaced it. */
-      function endStream() {
-        if (es) {
-          es.close();
-          es = null;
-          if (runId) runs().set(runId, { running: false });
+          // Re-render destroys the dot elements, and the poll may have already
+          // fired before this ran — repaint from the last broadcast so the cards
+          // aren't blank until the next tick.
+          applyHealthToCards(_lastHealth);
         }
-      }
 
-      function runExec(repo, service, cmd, btn) {
-        endStream();
-        const env = document.getElementById("env-sel").value;
-
-        disableAllButtons();
-        setDot(repo, service, "running");
-        runId = runs().start(
-          `${repo}/${service}`,
-          `${cmd} ${repo}/${service}`,
-          {
-            doneLine: false,
-          },
-        );
-        appendLine(`\n▶ ${repo}/${service} · ${cmd} · ${env}\n`, "cmd");
-
-        const params = new URLSearchParams({ repo, service, cmd, env });
-        es = new EventSource(`/api/service/exec?${params}`);
-        handleSSE(es, repo, service);
-      }
-
-      function runLogs(repo, service, btn) {
-        endStream();
-        const env = document.getElementById("env-sel").value;
-
-        // A log tail is a continuous stream, not a command. It never emits
-        // `done`, so disabling the buttons here left every button on the page
-        // dead — cursor and all — until a manual reload. Tailing also says
-        // nothing about health, so the dot is left to the health poll rather
-        // than being forced to "running". Starting any other action closes this
-        // stream (both runners close `es` first).
-        // A tail is a stream, not a run: its tab doesn't pulse.
-        runId = runs().start(
-          `${repo}/${service}`,
-          `logs ${repo}/${service}`,
-          {
-            running: false,
-            doneLine: false,
-            // Clicking Logs is for its output: the dock opens (R16a).
-            open: true,
-          },
-        );
-        appendLine(`\n▶ ${repo}/${service} logs · ${env}\n`, "cmd");
-
-        const params = new URLSearchParams({ repo, service, env });
-        es = new EventSource(`/api/service/logs?${params}`);
-        handleSSE(es, repo, service, { stream: true });
-      }
-
-      function handleSSE(evtSrc, repo, service, opts = {}) {
-        // Streams (log tails) never disabled the buttons and never own the dot,
-        // so they must not re-enable or repaint either.
-        const isStream = opts.stream === true;
-        const id = runId;
-        const appendLine = (text, cls) => runs().append(id, text, cls);
-        evtSrc.onmessage = (e) => {
-          const msg = JSON.parse(e.data);
-          if (msg.type === "cmd") {
-            appendLine(msg.text, "cmd");
-          } else if (msg.type === "line") {
-            appendLine(msg.text, "");
-          } else if (msg.type === "error") {
-            appendLine(msg.text, "err");
-          } else if (msg.type === "done") {
-            const ok = msg.exitCode === 0;
-            if (msg.duration > 0) {
-              appendLine(
-                `\n${ok ? "✓ Done" : "✗ Failed"} in ${fmtDuration(msg.duration)}\n`,
-                ok ? "done-ok" : "done-fail",
-              );
-            }
-            if (!isStream) {
-              setDot(repo, service, ok ? "ok" : "err");
-              enableAllButtons();
-              runs().finish(id, { ok });
-            } else runs().set(id, { running: false });
-            evtSrc.close();
+        // ── Run command ───────────────────────────────────────────────────────────
+        /** The previous stream's tab stops pulsing: a new action replaced it. */
+        function endStream() {
+          if (es) {
+            es.close();
             es = null;
+            if (runId) runs().set(runId, { running: false });
           }
-        };
-        evtSrc.onerror = () => {
-          appendLine("Connection closed", "err");
-          // A tail ending is not a health signal — leave the dot to the poll.
-          if (!isStream) {
-            setDot(repo, service, "err");
-            enableAllButtons();
-            runs().finish(id, { ok: false });
-          } else runs().set(id, { running: false });
-          evtSrc?.close();
-          es = null;
-        };
-      }
+        }
 
-      // ── Output: the run's tab in the shell's runs dock ─────────────────────────
-      function appendLine(text, cls) {
-        if (runId) runs().append(runId, text, cls);
-      }
+        function runExec(repo, service, cmd, btn) {
+          endStream();
+          const env = document.getElementById("env-sel").value;
 
-      // ── Dots ──────────────────────────────────────────────────────────────────
-      function setDot(repo, service, state) {
-        const el = document.getElementById(`dot-${repo}-${service}`);
-        if (el) el.className = `dot ${state}`;
-      }
+          disableAllButtons();
+          setDot(repo, service, "running");
+          runId = runs().start(
+            `${repo}/${service}`,
+            `${cmd} ${repo}/${service}`,
+            {
+              doneLine: false,
+            },
+          );
+          appendLine(`\n▶ ${repo}/${service} · ${cmd} · ${env}\n`, "cmd");
 
-      // ── Card health ───────────────────────────────────────────────────────────
-      // Card dots follow the header's existing poll instead of running their own:
-      // header.js broadcasts every poll and manual refresh as
-      // `__DEN_CLI__:health-update`, the same feed local-dev's graph subscribes to.
-      // Nothing had ever subscribed here, so a card dot was only written by a
-      // command's outcome — meaning it showed a stale exit status, or stayed
-      // muted forever on a page where you'd run nothing. That looked like the
-      // header and the cards disagreeing about health.
-      let _lastHealth = [];
-      function applyHealthToCards(results) {
-        for (const h of results || []) {
-          // ok === null means "no health check declared". Leave it muted rather
-          // than painting it red, which would claim the service is down.
-          const state = h.ok === true ? "ok" : h.ok === false ? "err" : "";
-          const el = document.getElementById(`dot-${h.repo}-${h.service}`);
-          if (el) el.className = `dot${state ? " " + state : ""}`;
-          const link = document.getElementById(`site-${h.repo}-${h.service}`);
-          if (link) {
-            if (h.openUrl) {
-              link.href = h.openUrl;
-              link.textContent = `${h.openUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")} ↗`;
-              link.title = `Open ${h.openUrl} in a new tab`;
-              link.hidden = false;
-            } else {
-              link.hidden = true;
+          const params = new URLSearchParams({ repo, service, cmd, env });
+          es = new EventSource(`/api/service/exec?${params}`);
+          handleSSE(es, repo, service);
+        }
+
+        function runLogs(repo, service, btn) {
+          endStream();
+          const env = document.getElementById("env-sel").value;
+
+          // A log tail is a continuous stream, not a command. It never emits
+          // `done`, so disabling the buttons here left every button on the page
+          // dead — cursor and all — until a manual reload. Tailing also says
+          // nothing about health, so the dot is left to the health poll rather
+          // than being forced to "running". Starting any other action closes this
+          // stream (both runners close `es` first).
+          // A tail is a stream, not a run: its tab doesn't pulse.
+          runId = runs().start(
+            `${repo}/${service}`,
+            `logs ${repo}/${service}`,
+            {
+              running: false,
+              doneLine: false,
+              // Clicking Logs is for its output: the dock opens (R16a).
+              open: true,
+            },
+          );
+          appendLine(`\n▶ ${repo}/${service} logs · ${env}\n`, "cmd");
+
+          const params = new URLSearchParams({ repo, service, env });
+          es = new EventSource(`/api/service/logs?${params}`);
+          handleSSE(es, repo, service, { stream: true });
+        }
+
+        function handleSSE(evtSrc, repo, service, opts = {}) {
+          // Streams (log tails) never disabled the buttons and never own the dot,
+          // so they must not re-enable or repaint either.
+          const isStream = opts.stream === true;
+          const id = runId;
+          const appendLine = (text, cls) => runs().append(id, text, cls);
+          evtSrc.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
+            if (msg.type === "cmd") {
+              appendLine(msg.text, "cmd");
+            } else if (msg.type === "line") {
+              appendLine(msg.text, "");
+            } else if (msg.type === "error") {
+              appendLine(msg.text, "err");
+            } else if (msg.type === "done") {
+              const ok = msg.exitCode === 0;
+              if (msg.duration > 0) {
+                appendLine(
+                  `\n${ok ? "✓ Done" : "✗ Failed"} in ${fmtDuration(msg.duration)}\n`,
+                  ok ? "done-ok" : "done-fail",
+                );
+              }
+              if (!isStream) {
+                setDot(repo, service, ok ? "ok" : "err");
+                enableAllButtons();
+                runs().finish(id, { ok });
+              } else runs().set(id, { running: false });
+              evtSrc.close();
+              es = null;
+            }
+          };
+          evtSrc.onerror = () => {
+            appendLine("Connection closed", "err");
+            // A tail ending is not a health signal — leave the dot to the poll.
+            if (!isStream) {
+              setDot(repo, service, "err");
+              enableAllButtons();
+              runs().finish(id, { ok: false });
+            } else runs().set(id, { running: false });
+            evtSrc?.close();
+            es = null;
+          };
+        }
+
+        // ── Output: the run's tab in the shell's runs dock ─────────────────────────
+        function appendLine(text, cls) {
+          if (runId) runs().append(runId, text, cls);
+        }
+
+        // ── Dots ──────────────────────────────────────────────────────────────────
+        function setDot(repo, service, state) {
+          const el = document.getElementById(`dot-${repo}-${service}`);
+          if (el) el.className = `dot ${state}`;
+        }
+
+        // ── Card health ───────────────────────────────────────────────────────────
+        // Card dots follow the header's existing poll instead of running their own:
+        // header.js broadcasts every poll and manual refresh as
+        // `__DEN_CLI__:health-update`, the same feed local-dev's graph subscribes to.
+        // Nothing had ever subscribed here, so a card dot was only written by a
+        // command's outcome — meaning it showed a stale exit status, or stayed
+        // muted forever on a page where you'd run nothing. That looked like the
+        // header and the cards disagreeing about health.
+        let _lastHealth = [];
+        function applyHealthToCards(results) {
+          for (const h of results || []) {
+            // ok === null means "no health check declared". Leave it muted rather
+            // than painting it red, which would claim the service is down.
+            const state = h.ok === true ? "ok" : h.ok === false ? "err" : "";
+            const el = document.getElementById(`dot-${h.repo}-${h.service}`);
+            if (el) el.className = `dot${state ? " " + state : ""}`;
+            const link = document.getElementById(`site-${h.repo}-${h.service}`);
+            if (link) {
+              if (h.openUrl) {
+                link.href = h.openUrl;
+                link.textContent = `${h.openUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")} ↗`;
+                link.title = `Open ${h.openUrl} in a new tab`;
+                link.hidden = false;
+              } else {
+                link.hidden = true;
+              }
             }
           }
         }
-      }
-      document.addEventListener("__DEN_CLI__:health-update", (e) => {
-        _lastHealth = e.detail || [];
-        applyHealthToCards(_lastHealth);
-      });
+        document.addEventListener("__DEN_CLI__:health-update", (e) => {
+          _lastHealth = e.detail || [];
+          applyHealthToCards(_lastHealth);
+        });
 
-      // ── Button helpers ────────────────────────────────────────────────────────
-      function disableAllButtons() {
-        document
-          .querySelectorAll(".cmd-btn")
-          .forEach((b) => (b.disabled = true));
-      }
-      function enableAllButtons() {
-        document
-          .querySelectorAll(".cmd-btn")
-          .forEach((b) => (b.disabled = false));
-      }
+        // ── Button helpers ────────────────────────────────────────────────────────
+        function disableAllButtons() {
+          document
+            .querySelectorAll(".cmd-btn")
+            .forEach((b) => (b.disabled = true));
+        }
+        function enableAllButtons() {
+          document
+            .querySelectorAll(".cmd-btn")
+            .forEach((b) => (b.disabled = false));
+        }
 
-      // ── Helpers ───────────────────────────────────────────────────────────────
-      function fmtDuration(ms) {
-        if (ms < 1000) return `${ms}ms`;
-        const s = Math.floor(ms / 1000),
-          m = Math.floor(s / 60);
-        return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
-      }
+        // ── Helpers ───────────────────────────────────────────────────────────────
+        function fmtDuration(ms) {
+          if (ms < 1000) return `${ms}ms`;
+          const s = Math.floor(ms / 1000),
+            m = Math.floor(s / 60);
+          return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+        }
 
-      init();
-    </script>
-      </main>
+        init();
+      </script>
+    </main>
   </body>
 </html>

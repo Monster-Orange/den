@@ -463,7 +463,10 @@ describe("/graph with many groups (0.3.0-dev.34)", () => {
   }, 45_000);
 });
 
-describe("Local Dev's per-workspace graph fits on first paint (0.3.0-dev.34)", () => {
+// One workspace's graph (renderContent's, not the All active merge). It
+// was Local Dev's Graph tab until dev.35; Workspaces has no graph of its
+// own now (R24), so the check runs where that graph lives: /graph?ws=.
+describe("one workspace's graph (/graph?ws=) fits on first paint (0.3.0-dev.34)", () => {
   it.each([
     [1440, 900],
     [1024, 768],
@@ -471,7 +474,7 @@ describe("Local Dev's per-workspace graph fits on first paint (0.3.0-dev.34)", (
     "w1 at %i×%i: every card inside the stage, without Fit",
     async (w, h) => {
       if (!browser) return;
-      const p = await page("/local-dev?ws=w1", w, h);
+      const p = await page("/graph?ws=w1", w, h);
       await settled(p, ...shape(W1));
       const r = await outside(p);
       expect({ cards: r.cards, groups: r.groups }).toEqual({

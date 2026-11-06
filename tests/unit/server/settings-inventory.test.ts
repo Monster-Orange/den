@@ -73,6 +73,7 @@ describe("the settings inventory (R21)", () => {
         "graph.density",
         "graph.direction",
         "graph.group",
+        "graph.groupBy",
         "graph.panelWidth",
         "graph.workspaces",
         "shell.collapsed",

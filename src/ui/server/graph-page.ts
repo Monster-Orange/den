@@ -1,14 +1,14 @@
 /**
  * The Graph page (R22, 0.3.0-dev.32, Ward 2026-11-05): the workspace graph
- * alone, full width, at /graph. It is Local Dev's own page in its graph
- * view (the same graph, actions and details panel; no second copy of
- * them): served from local-dev.html with the shell's page id and the
- * <title> swapped, and the page hides the workspace list, the workspace
- * header, the action row and the tabs when its page id is "graph".
+ * alone, full width, at /graph. It is served from local-dev.html (the
+ * Workspaces page, R24) with the shell's page id and the <title> swapped:
+ * the same graph, actions and details panel, no second copy of them. With
+ * page id "graph" the page hides the workspace list and draws only the
+ * graph.
  */
 
 const SHELL = '<div id="den-shell" data-page="local-dev"';
-const TITLE = "· Local Dev</title>";
+const TITLE = "· Workspaces</title>";
 
 /** local-dev.html → the Graph page. Throws when the markers are gone. */
 export function graphPageHtml(localDev: string): string {

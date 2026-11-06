@@ -67,6 +67,7 @@ const REAL = args.real.replace(/\/$/, "");
 
 /** Den page → the prototype's page id. */
 const PROTO_PAGE = {
+  "/": "overview",
   "/local-dev": "overview",
   "/graph": "graph",
   "/edge": "edge",
@@ -892,49 +893,6 @@ const HEADER_PAIRS = [
 if (PAGE !== "/settings") PAIRS.push(...HEADER_PAIRS);
 
 /**
- * Page tabs (.ptabs, R20): the prototype styles them but no page of its
- * draws them, so the pair measures tabs made with its classes, injected
- * into its page. Den's are Local Dev's workspace tabs.
- */
-const PTABS =
-  '<div class="ptabs"><button aria-selected="true">Graph</button><button aria-selected="false">Applications</button></div>';
-const TAB_PAIRS = [
-  [
-    "page tabs",
-    ".main .ptabs",
-    ".ctab-bar.ptabs",
-    ["columnGap", "borderBottomWidth"],
-    { inject: [".main", PTABS] },
-  ],
-  [
-    "page tab",
-    '.main .ptabs button[aria-selected="false"]',
-    '.ctab-bar [role="tab"][aria-selected="false"]',
-    [
-      "fontSize",
-      "fontWeight",
-      "lineHeight",
-      "paddingTop",
-      "paddingRight",
-      "paddingBottom",
-      "paddingLeft",
-      "borderBottomWidth",
-      "marginBottom",
-      "@color=--muted",
-    ],
-    { inject: [".main", PTABS] },
-  ],
-  [
-    "page tab (selected)",
-    '.main .ptabs button[aria-selected="true"]',
-    '.ctab-bar [role="tab"][aria-selected="true"]',
-    ["fontWeight", "borderBottomWidth", "@color=--text"],
-    { inject: [".main", PTABS] },
-  ],
-];
-if (PAGE.startsWith("/local-dev")) PAIRS.push(...TAB_PAIRS);
-
-/**
  * Deliberate deviations, each with its reason. Keyed "pair|prop".
  */
 const ALLOWLIST = {
@@ -951,16 +909,16 @@ const ALLOWLIST = {
  * that the prototype has no counterpart for. Listed with each run.
  */
 const UNPAIRED = {
-  "R23 Local Dev graph Maximize (⤢ in the zoom group, F, Esc restores)":
-    "Ward QA 2026-11-05: the workspace list, the output and two toolbar rows left the graph at 40% Fit; the prototype has no maximize control",
-  "R23 Local Dev workspace list collapses to a 40px strip (« / »)":
-    "Ward QA 2026-11-05: room for the graph; the prototype's Local Dev list does not collapse",
+  "R23 Graph page Maximize (⤢ in the zoom group, F, Esc restores)":
+    "Ward QA 2026-11-05: room for the graph; the prototype has no maximize control",
+  "R23 Workspaces list collapses to a 40px strip (« / »)":
+    "Ward QA 2026-11-05: room for the table; the prototype's list does not collapse",
   "R16a runs dock starts collapsed; open/closed and height are user prefs":
     "Ward QA 2026-11-05: a run starting never opens it (the chip pulses, its tab appears); measured open, as the prototype draws it",
   "R22 Graph page: the graph itself (toolbar, canvas, zoom, details panel)":
     "Ward 2026-11-05: a separate full-width Graph page; the prototype's Graph page is a placeholder (its header only, measured above)",
-  "R20 Local Dev page tabs sit below the workspace header and action row":
-    "Den's tabs are the selected workspace's (Graph, Applications, Config, Settings ↗); the prototype styles .ptabs but draws none. Sizes measured above",
+  "R24 Workspaces (/): the workspace header (Open in Graph →, ⋯), the action row and the repo table":
+    "Ward 2026-11-05: an ops page; the prototype's Overview has no workspace header or repo table. The table uses the prototype's Services table styles (table.svc: 11px mono heads, 7px/12px cells, a sunken group row); the rail, the top bar and the page header are measured above",
   "R21a Settings: the page header (search) and the category list are sticky":
     "Ward QA 2026-11-05: they stay put while the rows scroll; sizes unchanged",
 };

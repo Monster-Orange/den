@@ -222,13 +222,12 @@ describe("Environments groups services by their repo's org", () => {
 
 describe("the old settings entry points go to the Settings page (R21)", () => {
   const local = read("local-dev.html");
-  it("Local Dev's ⚙ links to Editor & terminal; its workspace Settings tab to Workspace", () => {
+  it("Workspaces' ⋯ menu links to the workspace's settings; the list's ⚙ footer is gone (R24b/c)", () => {
+    expect(local).not.toContain("sidebar-settings-btn");
     expect(local).toMatch(
-      /<a\s+class="sidebar-settings-btn"\s+id="sidebar-settings-btn"\s+href="\/settings#editor"/,
+      /<a role="menuitem" href="\/settings\?ws=\$\{enc\}#workspace">Workspace settings<\/a>/,
     );
-    expect(local).toContain(
-      'href="/settings?ws=${encodeURIComponent(wsName)}#workspace"',
-    );
+    expect(local).toContain("const enc = encodeURIComponent(wsName);");
     // No editor or terminal set: the open actions send you there too.
     expect(local.match(/location\.href = "\/settings#editor"/g)).toHaveLength(
       2,

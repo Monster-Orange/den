@@ -1,5 +1,6 @@
 /**
- * Local Dev's output (since 0.3.0-dev.30 the shell's runs dock, R16) takes
+ * The graph's output (since 0.3.0-dev.30 the shell's runs dock, R16; on
+ * the Graph page since dev.35, when Local Dev became Workspaces, R24) takes
  * its own room below the graph; it never covers a card (a consumer's dev.18
  * run). The repro: a workspace with enough cards to fill the height, a run's
  * output open in the dock (~233px: the bar and the 170px pre), the graph
@@ -154,7 +155,7 @@ afterAll(async () => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-describe("Local Dev's output, in the runs dock (a consumer's dev.18 run)", () => {
+describe("the Graph page's output, in the runs dock (a consumer's dev.18 run)", () => {
   it("with a run's output open, the lowest card is still the card under the pointer, and clicks", async () => {
     if (!browser) return;
     const ctx = await browser.newContext({
@@ -174,7 +175,7 @@ describe("Local Dev's output, in the runs dock (a consumer's dev.18 run)", () =>
       }
     }, latest ?? "");
     const p = await ctx.newPage();
-    await p.goto(`http://127.0.0.1:${port}/local-dev?ws=main`);
+    await p.goto(`http://127.0.0.1:${port}/graph?ws=main`);
     await p.evaluate(() =>
       (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
     );

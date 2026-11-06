@@ -238,6 +238,18 @@ export function entryOf(m, repo) {
   return l.find((s) => s.entry) || l.find((s) => s.name === repo) || l[0];
 }
 
+/**
+ * Find (the Graph page's, and the Workspaces table's, R24d): does `key` (a
+ * service address, "repo:<name>", or a repo name) match the query? Case
+ * apart, a substring; an empty query matches nothing (nothing is a hit).
+ */
+export function findHit(key, query) {
+  const q = String(query ?? "")
+    .trim()
+    .toLowerCase();
+  return !!q && String(key).toLowerCase().includes(q);
+}
+
 export const isCollapsed = (m, collapsed, repo) =>
   collapsed.has(repo) && (m.byRepo.get(repo)?.length || 0) > 1;
 export const nodeFor = (m, collapsed, id) => {

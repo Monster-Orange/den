@@ -1,5 +1,6 @@
 /**
- * Graph preferences: how the Local Dev graph is laid out for this engineer.
+ * Graph preferences: how the graph is laid out for this engineer, and the
+ * Workspaces page's own view prefs (its list, its table's grouping).
  * Stored in the user config as `graph:` and served by /api/settings, so the
  * layout is remembered between sessions (the page mirrors it to localStorage
  * so the first paint does not wait on the server).
@@ -15,10 +16,15 @@ export interface GraphPrefs {
   /** Details panel width in px. */
   panelWidth: number;
   /**
-   * Local Dev's workspace list: open, or collapsed to a 40px strip (R23,
+   * The Workspaces page's workspace list: open, or collapsed to a 40px strip (R23,
    * 0.3.0-dev.30, Ward QA 2026-11-05), so the graph gets the width.
    */
   workspaces: "open" | "collapsed";
+  /**
+   * The Workspaces page's repo table (R24d, 0.3.0-dev.35): grouped by
+   * nothing, by application (as `<cli> apps`) or by org.
+   */
+  groupBy: "none" | "app" | "org";
 }
 
 export const GRAPH_DEFAULTS: GraphPrefs = {
@@ -27,6 +33,7 @@ export const GRAPH_DEFAULTS: GraphPrefs = {
   density: "detailed",
   panelWidth: 440,
   workspaces: "open",
+  groupBy: "none",
 };
 
 const CHOICES = {
@@ -34,6 +41,7 @@ const CHOICES = {
   group: ["org", "app"],
   density: ["detailed", "compact"],
   workspaces: ["open", "collapsed"],
+  groupBy: ["none", "app", "org"],
 } as const;
 
 const PANEL_MIN = 360;

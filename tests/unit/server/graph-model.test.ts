@@ -10,6 +10,7 @@ import {
   buildModel,
   commandTier,
   edgeModel,
+  findHit,
   GROUP_GAP,
   healthLine,
   mergeWorkspaceViews,
@@ -580,5 +581,16 @@ describe("splitTopLevel / packGroups / routeCross (wrapping groups)", () => {
     if (parts.length === 1)
       expect(size(each[0].children[0])).toEqual(size(whole.children[0]));
     expect(each.every((r) => r.children[0].width > 0)).toBe(true);
+  });
+});
+
+describe("findHit (the Graph page's Find and the Workspaces table's, R24d)", () => {
+  it("a case-blind substring of the key; an empty or blank query is no hit", () => {
+    expect(findHit("shop/worker", "WORK")).toBe(true);
+    expect(findHit("repo:shop", " shop ")).toBe(true);
+    expect(findHit("shop/api", "billing")).toBe(false);
+    expect(findHit("shop/api", "")).toBe(false);
+    expect(findHit("shop/api", "   ")).toBe(false);
+    expect(findHit("shop/api", undefined)).toBe(false);
   });
 });

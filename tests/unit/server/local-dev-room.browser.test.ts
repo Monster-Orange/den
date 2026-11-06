@@ -1,11 +1,15 @@
 /**
- * Room for Local Dev's graph (R23, 0.3.0-dev.30, Ward QA 2026-11-05): the
- * workspace list (260px), the output and two toolbar rows left the graph at
- * 40% Fit. The workspace list collapses to a 40px strip, remembered per
- * user (/api/settings graph.workspaces); Maximize (the graph's button, or
- * F with focus outside a field) hides the list, the header, the action row
- * and the tabs, and Esc restores. Fit uses the whole area, so its zoom
- * rises once maximized. The runs dock starts collapsed here too (R16a).
+ * Room for the graph (R23, 0.3.0-dev.30, Ward QA 2026-11-05): the
+ * workspace list (260px), the output and two toolbar rows left Local
+ * Dev's graph at 40% Fit. The workspace list collapses to a 40px strip,
+ * remembered per user (/api/settings graph.workspaces); Maximize (the
+ * graph's button, or F with focus outside a field) gives the graph the
+ * whole content area, and Esc restores. Fit uses the whole area, so its
+ * zoom rises once maximized. The runs dock starts collapsed here too (R16a).
+ *
+ * Since 0.3.0-dev.35 (R24) Local Dev is Workspaces, an ops page with no
+ * graph of its own: the graph checks run on the Graph page (/graph?ws=),
+ * and the list's collapse is measured against the Workspaces repo table.
  *
  * The real web server in a throwaway distribution (one workspace, three
  * repos with two services each), driven by Playwright's headless
@@ -164,8 +168,15 @@ afterAll(async () => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
+/** A page for a workspace: /graph (the graph drawn) or / (the table). */
 async function open(
-  o: { keep?: boolean; ws?: string; width?: number; height?: number } = {},
+  o: {
+    keep?: boolean;
+    ws?: string;
+    width?: number;
+    height?: number;
+    path?: "/graph" | "/";
+  } = {},
 ): Promise<Page> {
   if (!o.keep)
     await fetch(api("/api/settings"), {
@@ -184,8 +195,9 @@ async function open(
     }
   }, latest);
   const p = await ctx.newPage();
-  await p.goto(api(`/local-dev?ws=${o.ws ?? "main"}`));
-  await p.waitForSelector(".dg-card");
+  const where = o.path ?? "/graph";
+  await p.goto(api(`${where}?ws=${o.ws ?? "main"}`));
+  await p.waitForSelector(where === "/" ? "#repo-table tr.repo" : ".dg-card");
   await p.waitForTimeout(500);
   return p;
 }
@@ -212,8 +224,8 @@ async function fit(p: Page): Promise<number> {
   return zoom(p);
 }
 
-describe("Local Dev: room for the graph (R23, Ward QA 2026-11-05)", () => {
-  it("Maximize hides the list, the action row and the tabs; the graph grows and Fit zooms higher; Esc restores", async () => {
+describe("room for the graph (R23, Ward QA 2026-11-05; on /graph since dev.35)", () => {
+  it("Maximize hides the page header; the graph grows and Fit zooms higher; Esc restores", async () => {
     if (!browser) return;
     const p = await open();
     // R16a: the dock is just its bar here too.
@@ -223,16 +235,15 @@ describe("Local Dev: room for the graph (R23, Ward QA 2026-11-05)", () => {
     // Fit is bound by the area here, not by its 35% floor or 100%.
     expect(z0).toBeGreaterThan(35);
     expect(z0).toBeLessThan(100);
-    for (const sel of [".sidebar", ".cmd-bar", ".ctab-bar"])
-      expect([sel, await visible(p, sel)]).toEqual([sel, true]);
+    const PH = "#den-content > .ph";
+    expect(await visible(p, PH)).toBe(true);
 
     await p.click('[data-z="max"]');
     await p.waitForTimeout(300);
     expect(await p.getAttribute('[data-z="max"]', "aria-pressed")).toBe("true");
-    for (const sel of [".sidebar", ".cmd-bar", ".ctab-bar", ".content-header"])
-      expect([sel, await visible(p, sel)]).toEqual([sel, false]);
+    expect(await visible(p, PH)).toBe(false);
     const max = await vpArea(p);
-    expect(max.w).toBeGreaterThan(before.w + 200);
+    expect(max.w).toBeGreaterThan(before.w + 20);
     expect(max.h).toBeGreaterThan(before.h + 60);
     const z1 = await fit(p);
     expect(z1).toBeGreaterThan(z0);
@@ -241,8 +252,7 @@ describe("Local Dev: room for the graph (R23, Ward QA 2026-11-05)", () => {
     await p.focus(".dg-vp");
     await p.keyboard.press("Escape");
     await p.waitForTimeout(300);
-    for (const sel of [".sidebar", ".cmd-bar", ".ctab-bar"])
-      expect([sel, await visible(p, sel)]).toEqual([sel, true]);
+    expect(await visible(p, PH)).toBe(true);
     expect(await p.getAttribute('[data-z="max"]', "aria-pressed")).toBe(
       "false",
     );
@@ -255,24 +265,27 @@ describe("Local Dev: room for the graph (R23, Ward QA 2026-11-05)", () => {
     const p = await open();
     await p.click("[data-find]");
     await p.keyboard.press("F");
+    const PH = "#den-content > .ph";
     expect(await p.inputValue("[data-find]")).toBe("F");
-    expect(await visible(p, ".sidebar")).toBe(true);
+    expect(await visible(p, PH)).toBe(true);
     await p.fill("[data-find]", "");
     await p.focus(".dg-vp");
     await p.keyboard.press("f");
     await p.waitForTimeout(200);
-    expect(await visible(p, ".sidebar")).toBe(false);
-    expect(await visible(p, ".ctab-bar")).toBe(false);
+    expect(await visible(p, PH)).toBe(false);
+    expect(await p.getAttribute('[data-z="max"]', "aria-pressed")).toBe("true");
     await p.keyboard.press("f");
     await p.waitForTimeout(200);
-    expect(await visible(p, ".sidebar")).toBe(true);
+    expect(await visible(p, PH)).toBe(true);
     await p.context().close();
   }, 30_000);
 
-  it("the workspace list collapses to a 40px strip, the graph gets the width, and a reload and a fresh browser keep it", async () => {
+  it("the workspace list collapses to a 40px strip, the Workspaces table gets the width, and a reload and a fresh browser keep it", async () => {
     if (!browser) return;
-    const p = await open();
-    const w0 = (await vpArea(p)).w;
+    const tableW = (p: Page) =>
+      p.$eval(".tablewrap", (e) => Math.round(e.getBoundingClientRect().width));
+    const p = await open({ path: "/" });
+    const w0 = await tableW(p);
     expect(
       await p.$eval(".sidebar", (e) => e.getBoundingClientRect().width),
     ).toBe(260);
@@ -283,21 +296,21 @@ describe("Local Dev: room for the graph (R23, Ward QA 2026-11-05)", () => {
     ).toBe(40);
     expect(await p.getAttribute("#ws-toggle", "aria-expanded")).toBe("false");
     expect(await visible(p, "#ws-list")).toBe(false);
-    expect((await vpArea(p)).w).toBe(w0 + 220);
+    expect(await tableW(p)).toBe(w0 + 220);
     await p.waitForFunction(
       async (u) =>
         (await (await fetch(u)).json()).graph?.workspaces === "collapsed",
       api("/api/settings"),
     );
     await p.reload();
-    await p.waitForSelector(".dg-card");
+    await p.waitForSelector("#repo-table tr.repo");
     expect(
       await p.$eval(".sidebar", (e) => e.getBoundingClientRect().width),
     ).toBe(40);
     await p.context().close();
 
     // A fresh browser: the user's pref, from the server.
-    const q = await open({ keep: true });
+    const q = await open({ keep: true, path: "/" });
     await q.waitForFunction(
       () =>
         document.querySelector(".sidebar")!.getBoundingClientRect().width ===
@@ -315,9 +328,11 @@ describe("Local Dev: room for the graph (R23, Ward QA 2026-11-05)", () => {
 });
 
 describe("Fit follows the size on maximize and restore (a consumer's dev.30 finding)", () => {
-  it("a big graph at 1440×900: Fit fits it (below 35%), maximized Fit zooms higher, and the fitted view refits on maximize and restore", async () => {
+  // (On the Graph page Maximize gains the page header's height and a little
+  // padding, so the stage is wide and short: Fit is bound by the height.)
+  it("a big graph at 1920×640: Fit fits it (below 35%), maximized Fit zooms higher, and the fitted view refits on maximize and restore", async () => {
     if (!browser) return;
-    const p = await open({ ws: "big", width: 1440, height: 900 });
+    const p = await open({ ws: "big", width: 1920, height: 640 });
     const z0 = await fit(p);
     // The whole graph fits: no 35% floor in the way.
     expect(z0).toBeLessThan(35);
@@ -376,7 +391,8 @@ const scopeLine = (p: Page) =>
 
 describe("R20 page headers (0.3.0-dev.32)", () => {
   it.each([
-    ["/local-dev?ws=main", "Local Dev"],
+    ["/?ws=main", "Workspaces"],
+    ["/local-dev?ws=main", "Workspaces"],
     ["/graph?ws=main", "Graph"],
     ["/services", "Services"],
     ["/logs", "Logs"],
@@ -400,8 +416,8 @@ describe("R20 page headers (0.3.0-dev.32)", () => {
       const p = await ctx.newPage();
       await p.goto(api(url));
       await p.waitForSelector("#den-content > .ph h1");
-      // The line settles once the scope (and Local Dev's workspace) is known.
-      const oneWs = url.startsWith("/local-dev") || url.startsWith("/graph");
+      // The line settles once the scope (and the workspace shown) is known.
+      const oneWs = /^\/(\?|local-dev|graph)/.test(url);
       await p.waitForFunction((oneWs) => {
         const sub =
           document.querySelector("#den-content > .ph .sub")?.textContent ?? "";
@@ -449,7 +465,7 @@ describe("R20 page headers (0.3.0-dev.32)", () => {
         subFont: ["13px", "4px"],
         inset: [20, 24],
       });
-      // Local Dev and Graph show one workspace, locally: their line names
+      // Workspaces and Graph show one workspace, locally: their line names
       // it. Every other page's line is the top bar's scope.
       if (oneWs) expect(h.sub).toMatch(/(^|\/ )main \/ local$/);
       else expect(h.sub).toBe(await scopeLine(p));
@@ -460,37 +476,24 @@ describe("R20 page headers (0.3.0-dev.32)", () => {
 });
 
 describe("R22: the Graph page (Ward 2026-11-05)", () => {
-  it("the rail's Graph lands on /graph: the graph alone, full width; Local Dev keeps its list, actions and tabs", async () => {
+  it("the rail's Graph lands on /graph: the graph alone, full width; Workspaces keeps its list, actions and table, and no graph (R24)", async () => {
     if (!browser) return;
-    const p = await open({ width: 1440, height: 900 });
-    // Local Dev: the list, the action row and the page tabs (.ptabs).
-    for (const sel of [".sidebar", ".cmd-bar", ".ctab-bar", "#dep-graph-wrap"])
+    const p = await open({ width: 1440, height: 900, path: "/" });
+    // Workspaces: the list, the action row and the repo table; no graph.
+    for (const sel of [
+      ".sidebar",
+      ".cmd-bar",
+      ".content-header",
+      "#repo-table",
+    ])
       expect([sel, await visible(p, sel)]).toEqual([sel, true]);
-    const tabs = await p.$$eval(".ctab-bar [role='tab']", (els) =>
-      els.map((e) => {
-        const cs = getComputedStyle(e);
-        return [
-          e.textContent,
-          e.getAttribute("aria-selected"),
-          cs.fontSize,
-          cs.paddingTop,
-          cs.paddingLeft,
-          cs.borderBottomWidth,
-        ];
-      }),
+    expect(await p.$$eval("#dep-graph-wrap, .dg-card", (e) => e.length)).toBe(
+      0,
     );
-    expect(tabs).toEqual([
-      ["Graph", "true", "14px", "8px", "12px", "2px"],
-      ["Applications", "false", "14px", "8px", "12px", "2px"],
-      ["Config", "false", "14px", "8px", "12px", "2px"],
-    ]);
-    await p.click(".ctab-bar [data-ctab='apps']");
-    expect(
-      await p.getAttribute(".ctab-bar [data-ctab='apps']", "aria-selected"),
-    ).toBe("true");
-    await p.click(".ctab-bar [data-ctab='graph']");
-    await p.waitForSelector(".dg-card");
-    const localW = (await vpArea(p)).w;
+    const localW = await p.$eval(
+      ".tablewrap",
+      (e) => e.getBoundingClientRect().width,
+    );
 
     // The rail item, clicked.
     await p.click('.den-ni[data-nav="graph"]');
@@ -502,7 +505,12 @@ describe("R22: the Graph page (Ward 2026-11-05)", () => {
     ).toBe("page");
     expect(await p.title()).toMatch(/ · Graph$/);
     expect(await p.textContent("#den-content > .ph h1")).toBe("Graph");
-    for (const sel of [".sidebar", ".cmd-bar", ".ctab-bar", ".content-header"])
+    for (const sel of [
+      ".sidebar",
+      ".cmd-bar",
+      "#repo-table",
+      ".content-header",
+    ])
       expect([sel, await visible(p, sel)]).toEqual([sel, false]);
     // Full width: the content column, less the 24px insets.
     const g = await p.evaluate(() => {
@@ -520,7 +528,6 @@ describe("R22: the Graph page (Ward 2026-11-05)", () => {
     await p.keyboard.press("Escape");
     await p.waitForTimeout(200);
     expect(await visible(p, "#den-content > .ph")).toBe(true);
-    // The Graph page never shows another tab, whatever Local Dev had open.
     await p.context().close();
   }, 45_000);
 });
@@ -547,95 +554,9 @@ const setScope = (scope: string) =>
   });
 
 // A consumer's dev.32 dogfood finding: ArrowRight, Home and End left focus
-// on Graph. The WAI-ARIA tabs pattern, from one shell helper.
-describe("Local Dev's workspace tabs: the WAI-ARIA tabs pattern (0.3.0-dev.33)", () => {
-  /** The tabs as the keyboard sees them, and which panel shows. */
-  const LIST = '[role="tablist"][aria-label="Workspace"]';
-  const state = (p: Page) =>
-    p.evaluate((LIST) => {
-      const list = document.querySelector(LIST)!;
-      const tabs = [...list.querySelectorAll<HTMLElement>('[role="tab"]')];
-      return {
-        focus: document.activeElement?.textContent ?? "",
-        selected: tabs
-          .filter((t) => t.getAttribute("aria-selected") === "true")
-          .map((t) => t.textContent),
-        stops: tabs
-          .filter((t) => t.getAttribute("tabindex") === "0")
-          .map((t) => t.textContent),
-        shown: [...document.querySelectorAll<HTMLElement>(".ctab-panel")]
-          .filter((pnl) => pnl.getBoundingClientRect().height > 0)
-          .map((pnl) => pnl.id),
-      };
-    }, LIST);
-
-  it("one tab stop; ←/→ wrap, Home and End, each selects its tab and shows its panel", async () => {
-    if (!browser) return;
-    const p = await open({ width: 1440, height: 900 });
-    expect(await state(p)).toEqual({
-      focus: expect.any(String),
-      selected: ["Graph"],
-      stops: ["Graph"],
-      shown: ["ctab-graph"],
-    });
-
-    await p.focus(`${LIST} [role="tab"][aria-selected="true"]`);
-    const steps: [string, string, string][] = [
-      ["ArrowRight", "Applications", "ctab-apps"],
-      ["ArrowRight", "Config", "ctab-config"],
-      ["ArrowRight", "Graph", "ctab-graph"], // wraps
-      ["ArrowLeft", "Config", "ctab-config"], // wraps
-      ["Home", "Graph", "ctab-graph"],
-      ["End", "Config", "ctab-config"],
-      ["ArrowLeft", "Applications", "ctab-apps"],
-    ];
-    for (const [key, tab, panel] of steps) {
-      await p.keyboard.press(key);
-      expect([key, await state(p)]).toEqual([
-        key,
-        { focus: tab, selected: [tab], stops: [tab], shown: [panel] },
-      ]);
-    }
-    // Each tab controls a role=tabpanel labelled by it; the list holds tabs
-    // only (the Settings link sits beside it).
-    const wiring = await p.evaluate((LIST) => {
-      const list = document.querySelector(LIST)!;
-      return {
-        label: list.getAttribute("aria-label"),
-        kids: [...list.children].map((c) => c.getAttribute("role")),
-        tabs: [...list.querySelectorAll('[role="tab"]')].map((t) => {
-          const pnl = document.getElementById(t.getAttribute("aria-controls")!);
-          return [
-            t.textContent,
-            pnl?.getAttribute("role"),
-            pnl?.getAttribute("aria-labelledby") === t.id && !!t.id,
-          ];
-        }),
-      };
-    }, LIST);
-    expect(wiring).toEqual({
-      label: "Workspace",
-      kids: ["tab", "tab", "tab"],
-      tabs: [
-        ["Graph", "tabpanel", true],
-        ["Applications", "tabpanel", true],
-        ["Config", "tabpanel", true],
-      ],
-    });
-    // Tab leaves the tablist (one stop), into the panel's content.
-    await p.keyboard.press("Tab");
-    expect(
-      await p.evaluate(
-        () => document.activeElement?.closest('[role="tablist"]') === null,
-      ),
-    ).toBe(true);
-    // A click still selects; the graph comes back.
-    await p.click('.ctab-bar [data-ctab="graph"]');
-    await p.waitForSelector("#ctab-graph .dg-card");
-    expect((await state(p)).shown).toEqual(["ctab-graph"]);
-    await p.context().close();
-  }, 45_000);
-
+// on Graph. The WAI-ARIA tabs pattern, from one shell helper (Local Dev's
+// workspace tabs used it until dev.35, R24; the shell's page tabs still do).
+describe("page tabs: the WAI-ARIA tabs pattern (0.3.0-dev.33)", () => {
   it("no empty tablist stub: the shell makes page tabs only when a page asks, wired the same way", async () => {
     if (!browser) return;
     const p = await page("/services");
@@ -752,7 +673,7 @@ describe("the Graph page follows the top bar's workspace scope (0.3.0-dev.33)", 
       ),
     ]);
 
-  it("All active: every active workspace, its line naming All active; one picked: that one; ?ws= still wins; Local Dev keeps its one", async () => {
+  it("All active: every active workspace, its line naming All active; one picked: that one; ?ws= still wins; Workspaces keeps its one", async () => {
     if (!browser) return;
     await setScope("all");
     try {
@@ -779,16 +700,22 @@ describe("the Graph page follows the top bar's workspace scope (0.3.0-dev.33)", 
       expect((await repos(p)).sort()).toEqual([...REPOS].sort());
       await p.context().close();
 
-      // Local Dev keeps the list's one workspace (its actions and tabs are
-      // per workspace), and its line names it.
+      // Workspaces keeps the list's one workspace (its actions and table
+      // are per workspace), and its line names it.
       p = await page("/local-dev");
-      await p.waitForSelector(".dg-card");
+      await p.waitForSelector("#repo-table tr.repo");
       await p.waitForFunction(() =>
         /(^|\/ )main \/ local$/.test(
           document.querySelector("#den-content > .ph .sub")?.textContent ?? "",
         ),
       );
-      expect((await repos(p)).sort()).toEqual([...REPOS].sort());
+      expect(
+        (
+          await p.$$eval("#repo-table tr.repo", (rs) =>
+            rs.map((r) => (r as HTMLElement).dataset.repo!),
+          )
+        ).sort(),
+      ).toEqual([...REPOS].sort());
       await p.context().close();
 
       // One workspace picked in the top bar: that one.

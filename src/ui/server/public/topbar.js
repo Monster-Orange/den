@@ -190,6 +190,22 @@ export function problemCards(row) {
   return out;
 }
 
+/**
+ * What a problem card says and offers (R15), the one source for the status
+ * drawer and the Workspaces table's problem rows (R24d): its text (what the
+ * check said, when it failed) and its fix buttons, each with an accessible
+ * name that names the service. `at` is the check's time, or "".
+ */
+export function problemFix(c, at = "") {
+  return {
+    text: `${c.line}${at ? ` · failed at ${at}` : ""}`,
+    actions: [
+      { act: "start", label: "Start", name: `Start ${c.id}`, primary: true },
+      { act: "logs", label: "Logs", name: `Logs of ${c.id}`, primary: false },
+    ],
+  };
+}
+
 /** A service's state in the drawer: ok, down, pending, unchecked or awaiting. */
 function serviceState(r, i) {
   if (i.awaiting || r.rollup.awaiting) return "awaiting";
@@ -558,17 +574,23 @@ function renderDrawerBody() {
       (cards.length
         ? '<div class="den-cards">' +
           cards
-            .map(
-              (c) =>
+            .map((c) => {
+              const fix = problemFix(c, at);
+              return (
                 '<div class="den-prob-card">' +
                 `<div class="den-t"><span class="den-dot bad" aria-hidden="true"></span>${esc(c.service)} <span class="den-mono">${esc(c.repo)}</span></div>` +
-                `<div class="den-s">${esc(c.line)}${at ? ` · failed at ${esc(at)}` : ""}${c.workspaces.length > 1 ? ` · ${esc(c.workspaces.join(", "))}` : ""}</div>` +
+                `<div class="den-s">${esc(fix.text)}${c.workspaces.length > 1 ? ` · ${esc(c.workspaces.join(", "))}` : ""}</div>` +
                 '<div class="den-a">' +
-                `<button type="button" class="den-btn sm primary" data-k="start:${esc(c.id)}" data-start="${esc(c.id)}" aria-label="Start ${esc(c.id)}">Start</button>` +
-                `<button type="button" class="den-btn sm" data-k="logs:${esc(c.id)}" data-logs="${esc(c.id)}" aria-label="Logs of ${esc(c.id)}">Logs</button>` +
+                fix.actions
+                  .map(
+                    (a) =>
+                      `<button type="button" class="den-btn sm${a.primary ? " primary" : ""}" data-k="${a.act}:${esc(c.id)}" data-${a.act}="${esc(c.id)}" aria-label="${esc(a.name)}">${esc(a.label)}</button>`,
+                  )
+                  .join("") +
                 `<button type="button" class="den-btn sm" data-k="pin:${esc(c.id)}" data-pin="${esc(c.id)}" aria-pressed="${pinned(c.id)}" aria-label="${pinned(c.id) ? "Unpin" : "Pin"} ${esc(c.id)}">${pinned(c.id) ? "Unpin" : "Pin"}</button>` +
-                "</div></div>",
-            )
+                "</div></div>"
+              );
+            })
             .join("") +
           "</div>"
         : '<p class="den-none">Nothing needs attention.</p>') +
@@ -671,7 +693,7 @@ export function runServiceAction(cmd, svc) {
       JSON.stringify({ cmd, address: svc.address, at: Date.now() }),
     );
   } catch {
-    toast("Open Local Dev to run this");
+    toast("Open Workspaces to run this");
     return;
   }
   go("/local-dev");
@@ -710,7 +732,7 @@ function paletteItems() {
       key: `page:${n.id}`,
       kind: "page",
       label,
-      keywords: [n.id, n.group],
+      keywords: [n.id, n.group, ...(n.keywords ?? [])],
       run: () => go(n.href),
     });
   }

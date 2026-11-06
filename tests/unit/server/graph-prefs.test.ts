@@ -18,6 +18,7 @@ describe("graphPrefs (what GET returns)", () => {
       density: "detailed",
       panelWidth: 440,
       workspaces: "open",
+      groupBy: "none",
     });
   });
 
@@ -36,7 +37,18 @@ describe("graphPrefs (what GET returns)", () => {
   });
 });
 
-describe("Local Dev's workspace list (R23, Ward QA 2026-11-05)", () => {
+describe("Workspaces' repo table Group by (R24d, 0.3.0-dev.35)", () => {
+  it("none, app or org; anything else is refused, a stored oddity is none", () => {
+    expect(mergeGraphPrefs(GRAPH_DEFAULTS, { groupBy: "app" })).toEqual({
+      ok: true,
+      value: { ...GRAPH_DEFAULTS, groupBy: "app" },
+    });
+    expect(mergeGraphPrefs(GRAPH_DEFAULTS, { groupBy: "team" }).ok).toBe(false);
+    expect(graphPrefs({ groupBy: 3 }).groupBy).toBe("none");
+  });
+});
+
+describe("the Workspaces list (R23, Ward QA 2026-11-05)", () => {
   it("open or collapsed; anything else is refused, a stored oddity is open", () => {
     expect(
       mergeGraphPrefs(GRAPH_DEFAULTS, { workspaces: "collapsed" }),

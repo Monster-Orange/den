@@ -120,10 +120,15 @@
   top: 0;
   transform-origin: 0 0;
 }
+/* R22b-1 (Ward QA of dev.34): the edge layer paints above the org and
+   repo frames and the cards (positioned, z-index auto, in DOM order), so
+   a line or an arrowhead crossing a frame is never hidden. It takes no
+   pointer events: cards and frames stay clickable under it. */
 .dg-world > svg {
   position: absolute;
   left: 0;
   top: 0;
+  z-index: 1;
   overflow: visible;
   pointer-events: none;
 }
@@ -527,6 +532,42 @@ path.dg-e.hl {
 }
 path.dg-e.dim {
   opacity: 0.12;
+}
+/* R22b-2: a highlighted edge flows from data-f to data-t (the arrow's
+   way): a marching-dash overlay in the base path's colour, one 20px dash
+   cycle a second. Decreasing dashoffset moves the dashes toward the end. */
+path.dg-flow {
+  fill: none;
+  display: none;
+  stroke: var(--faint);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-dasharray: 6 14;
+}
+path.dg-flow.on {
+  display: inline;
+  animation: dg-flow 1s linear infinite;
+}
+path.dg-flow.hard {
+  stroke: var(--accent);
+}
+path.dg-flow.soft,
+path.dg-flow.intra {
+  stroke: var(--muted);
+}
+path.dg-flow.event {
+  stroke: var(--dg-event);
+}
+path.dg-flow.cross {
+  stroke: var(--dg-remote);
+}
+@keyframes dg-flow {
+  from {
+    stroke-dashoffset: 20;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 /* panel */
@@ -1013,5 +1054,14 @@ path.dg-e.dim {
 @media (prefers-reduced-motion: reduce) {
   .dg * {
     transition: none !important;
+  }
+  /* No motion: the lit edge stays thicker, in the accent colour. */
+  path.dg-flow.on {
+    animation: none;
+    display: none;
+  }
+  path.dg-e.hl {
+    stroke: var(--accent);
+    stroke-width: 3;
   }
 }

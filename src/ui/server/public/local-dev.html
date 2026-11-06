@@ -26,7 +26,7 @@
       })();
     </script>
     <link rel="stylesheet" href="/theme.css" id="theme-css" />
-    <title>__DEN_TITLE__ · Local Dev</title>
+    <title>__DEN_TITLE__ · Workspaces</title>
     <link rel="stylesheet" href="/graph.css" />
     <style>
       *,
@@ -93,9 +93,8 @@
       }
 
       /* R23 (Ward QA 2026-11-05): the workspace list collapses to a 40px
-         strip (remembered: graph.workspaces), and Maximize (F; Esc restores)
-         gives the graph the whole content area: no list, no header, no
-         action row, no tabs. */
+         strip (remembered: graph.workspaces). On the Graph page, Maximize
+         (F; Esc restores) gives the graph the whole content area. */
       .page-main.ws-collapsed {
         grid-template-columns: 40px minmax(0, 1fr);
       }
@@ -121,16 +120,7 @@
         color: var(--text);
         border-color: var(--border);
       }
-      .page-main.graph-max {
-        grid-template-columns: minmax(0, 1fr);
-      }
-      .graph-max > .sidebar,
-      .graph-max .content-header,
-      .graph-max .cmd-bar,
-      .graph-max .ctab-bar {
-        display: none;
-      }
-      .graph-max .content-body {
+      .page-main.graph-max .content-body {
         padding: 8px;
       }
       /* Maximized, the page header goes too (R20 is the shell's). */
@@ -139,16 +129,14 @@
       }
 
       /* The Graph page (R22, Ward 2026-11-05): the graph alone, full width,
-         below the page header. Local Dev keeps the workspace list, the
-         workspace's actions and its tabs. */
+         below the page header, from first paint. Workspaces keeps the
+         workspace list, the workspace's header and actions, and its repo
+         table (R24); the Graph page draws none of them. */
       body.den-page-graph .page-main,
       body.den-page-graph .page-main.ws-collapsed {
         grid-template-columns: minmax(0, 1fr);
       }
-      body.den-page-graph .page-main > .sidebar,
-      body.den-page-graph .content-header,
-      body.den-page-graph .cmd-bar,
-      body.den-page-graph .ctab-bar {
+      body.den-page-graph .page-main > .sidebar {
         display: none;
       }
       body.den-page-graph .content-body {
@@ -168,11 +156,11 @@
           padding: 10px 8px;
         }
         /* The page scrolls instead of squeezing the graph to a strip. */
-        #ctab-graph.active {
+        .graph-panel {
           overflow: visible;
           flex: none;
         }
-        #ctab-graph #dep-graph-wrap {
+        .graph-panel #dep-graph-wrap {
           flex: none;
           height: 70vh;
         }
@@ -351,34 +339,6 @@
       .new-ws-form button:hover {
         opacity: 0.85;
       }
-      .sidebar-settings-btn {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 14px;
-        border-top: 1px solid var(--border);
-        flex-shrink: 0;
-        background: none;
-        border-left: none;
-        border-right: none;
-        border-bottom: none;
-        width: 100%;
-        text-align: left;
-        cursor: pointer;
-        font-size: 11px;
-        color: var(--muted);
-        font-family: var(--mono);
-        text-decoration: none;
-        box-sizing: border-box;
-        transition:
-          color 0.1s,
-          background 0.1s;
-      }
-      .sidebar-settings-btn:hover {
-        color: var(--text);
-        background: var(--surface);
-      }
-
       /* ── Content ──────────────────────────────────────────────────────────── */
       .content {
         display: flex;
@@ -496,36 +456,7 @@
         margin-bottom: 8px;
       }
 
-      /* ── Command table ────────────────────────────────────────────────────── */
-      table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-      th {
-        text-align: left;
-        font-size: 10px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        color: var(--muted);
-        padding: 0 10px 6px 0;
-        border-bottom: 1px solid var(--border);
-      }
-      td {
-        padding: 7px 10px 7px 0;
-        font-size: 12px;
-        border-bottom: 1px solid var(--border);
-        vertical-align: middle;
-      }
-      td:last-child {
-        text-align: right;
-        padding-right: 14px;
-      }
-      td code {
-        font-family: var(--mono);
-        font-size: 11px;
-        color: var(--muted);
-      }
+      /* ── Badges ───────────────────────────────────────────────────────── */
       .badge {
         display: inline-block;
         font-size: 10px;
@@ -583,13 +514,6 @@
       .cmd-btn:disabled {
         opacity: 0.4;
         cursor: not-allowed;
-      }
-
-      .empty-row td {
-        color: var(--muted);
-        font-style: italic;
-        padding: 14px 0;
-        font-size: 12px;
       }
 
       /* ── Add service (trigger button + dep rows) ─────────────────────────── */
@@ -1010,20 +934,6 @@
       .dep-missing-row .dep-label strong {
         color: var(--text);
       }
-      .svc-detail-row td {
-        border-top: none;
-        padding-top: 0;
-        padding-bottom: 6px;
-        text-align: left;
-      }
-      .svc-detail-row code {
-        font-size: 10px;
-        color: var(--muted);
-        font-family: var(--mono);
-      }
-      .has-detail-row td {
-        border-bottom: none;
-      }
       /* ── Service action menu ──────────────────────────────────────────────── */
       .action-menu-wrap {
         position: relative;
@@ -1125,32 +1035,12 @@
         color: var(--muted);
       }
 
-      /* ── Content tabs (below cmd-bar): the page tabs (.ptabs, R20) ───────
-         The shell's .ptabs sizes (8px 12px, 14px, a 2px accent rule under
-         the selected one); here they sit in the workspace pane's 18px inset,
-         flush with the content below. */
-      .ctab-bar {
-        background: var(--bg);
-        flex-shrink: 0;
-        padding: 0 18px;
-      }
-      .ctab {
-        user-select: none;
-        transition: color 0.1s;
-      }
-      .ctab-panel {
-        display: none;
-      }
-      .ctab-panel.active {
+      /* ── The Graph page's graph ───────────────────────────────────────── */
+      .graph-panel {
         display: flex;
         flex-direction: column;
-        gap: 20px;
         flex: 1;
         min-height: 0;
-        overflow-y: auto;
-        scrollbar-gutter: stable;
-      }
-      #ctab-graph.active {
         overflow: hidden;
       }
 
@@ -1165,141 +1055,6 @@
         position: relative;
       }
 
-      /* ── Applications tab ─────────────────────────────────────────────────── */
-      #apps-wrap {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      .app-card {
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 10px 12px;
-        background: var(--bg);
-      }
-      .app-head {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-      .app-title {
-        font-weight: 600;
-      }
-      .app-name {
-        font-size: 11px;
-        color: var(--muted);
-      }
-      .app-owner {
-        font-size: 11px;
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 0 8px;
-      }
-      .app-subs {
-        font-size: 11px;
-        color: var(--muted);
-      }
-      .app-absent {
-        font-size: 11px;
-        color: var(--muted);
-        margin-top: 8px;
-      }
-      .app-org {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-weight: 600;
-        font-size: 13px;
-      }
-      .app-org-sep,
-      .app-org-hint {
-        color: var(--muted);
-        font-weight: 400;
-        font-size: 12px;
-      }
-      .app-place {
-        font-size: 11px;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 0 8px;
-        color: var(--muted);
-      }
-      .app-place.remote {
-        color: var(--remote);
-        border-color: color-mix(in srgb, var(--remote) 53%, transparent);
-      }
-      .app-place.hybrid {
-        color: var(--warn);
-        border-color: color-mix(in srgb, var(--warn) 53%, transparent);
-      }
-      .app-source {
-        font-size: 11px;
-        color: var(--muted);
-      }
-      .app-desc {
-        font-size: 12px;
-        color: var(--muted);
-        margin-top: 4px;
-      }
-      .app-repos {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 8px;
-      }
-      .app-repo {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 12px;
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        padding: 2px 8px;
-      }
-      .app-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: var(--muted);
-        opacity: 0.5;
-      }
-      .app-repo.ok .app-dot {
-        background: var(--ok);
-        opacity: 1;
-      }
-      .app-repo.down .app-dot {
-        background: var(--bad);
-        opacity: 1;
-      }
-      .app-contrib-label {
-        font-size: 11px;
-        color: var(--muted);
-        margin-top: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-      }
-      .app-contrib {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 12px;
-        color: var(--muted);
-        border: 1px dashed var(--border);
-        border-radius: 4px;
-        padding: 2px 8px;
-      }
-      .app-kind {
-        font-size: 10px;
-        text-transform: uppercase;
-        border: 1px solid var(--border);
-        border-radius: 3px;
-        padding: 0 4px;
-      }
-      .app-into {
-        opacity: 0.8;
-      }
       .graph-empty {
         padding: 40px;
         text-align: center;
@@ -1322,6 +1077,270 @@
         50% {
           opacity: 1;
         }
+      }
+
+      /* ── Workspaces: the selected workspace's header (R24c) ───────────── */
+      .ws-head-link {
+        font-size: 12px;
+        color: var(--accent-text);
+        text-decoration: underline;
+        text-underline-offset: 0.2em;
+        text-decoration-color: color-mix(
+          in srgb,
+          currentColor 40%,
+          transparent
+        );
+        white-space: nowrap;
+      }
+      .ws-head-link:hover {
+        text-decoration-color: currentColor;
+      }
+      .ws-more {
+        position: relative;
+      }
+      .ws-more > .action-dropdown {
+        min-width: 180px;
+      }
+      .ws-more .action-dropdown a {
+        display: block;
+        color: var(--text);
+        font-size: 12px;
+        padding: 5px 12px;
+        text-decoration: none;
+      }
+      .ws-more .action-dropdown a:hover {
+        background: var(--bg);
+      }
+
+      /* ── Workspaces: the repo table (R24d) ─────────────────────────────
+         The prototype's Services table (table.svc, .tablewrap): 11px mono
+         uppercase heads, 7px/12px cells, a sunken group row. */
+      .tbl-tools {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .tbl-tools label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .tbl-find {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: var(--radius-button);
+        padding: 6px 10px;
+        width: 220px;
+        min-width: 0;
+        color: var(--text);
+        font: inherit;
+      }
+      .tbl-seg {
+        display: inline-flex;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button);
+        overflow: hidden;
+      }
+      .tbl-seg button {
+        background: none;
+        border: 0;
+        padding: 5px 10px;
+        cursor: pointer;
+        color: var(--muted);
+        font: inherit;
+        font-size: 12px;
+      }
+      .tbl-seg button[aria-pressed="true"] {
+        background: color-mix(in srgb, var(--accent) 16%, transparent);
+        color: var(--text);
+        font-weight: 500;
+      }
+      .tablewrap {
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+      }
+      table.svc {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13.5px;
+      }
+      table.svc caption {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      table.svc thead th {
+        text-align: left;
+        font: 11px var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--faint);
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        font-weight: 400;
+      }
+      table.svc td,
+      table.svc tbody th {
+        padding: 7px 12px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        font-weight: 400;
+        vertical-align: middle;
+      }
+      table.svc tbody:last-child tr:last-child > * {
+        border-bottom: 0;
+      }
+      table.svc tr.g > th {
+        background: var(--sunken);
+        font-weight: 600;
+        font-size: 12.5px;
+      }
+      table.svc tr.g .g-meta {
+        font-weight: 400;
+        color: var(--muted);
+        margin-left: 8px;
+      }
+      table.svc tr.g .g-acts {
+        float: right;
+        display: inline-flex;
+        gap: 6px;
+      }
+      table.svc .repo-name {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      table.svc tr.sub > th {
+        padding-left: 40px;
+      }
+      table.svc tr.sub .repo-name {
+        font-weight: 400;
+      }
+      table.svc tr.sub[hidden] {
+        display: none;
+      }
+      table.svc tr.fix > td {
+        background: color-mix(in srgb, var(--bad) 8%, transparent);
+        padding-left: 40px;
+      }
+      table.svc tr.fix .fix-t {
+        color: var(--bad);
+        margin-right: 10px;
+      }
+      table.svc tr.prob > th {
+        box-shadow: inset 3px 0 0 var(--bad);
+      }
+      .tbl-exp {
+        background: none;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        color: var(--muted);
+        cursor: pointer;
+        width: 20px;
+        padding: 0;
+        margin-right: 4px;
+        font-size: 11px;
+      }
+      .tbl-exp:hover {
+        color: var(--text);
+        border-color: var(--border);
+      }
+      .tbl-exp-sp {
+        display: inline-block;
+        width: 24px;
+      }
+      .tbl-health {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        color: var(--muted);
+      }
+      /* A long check line truncates (its title has it whole). */
+      .tbl-ht {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 170px;
+      }
+      .tbl-health.bad {
+        color: var(--bad);
+      }
+      .tbl-health.ok {
+        color: var(--ok);
+      }
+      .tbl-muted {
+        color: var(--muted);
+        font-size: 12.5px;
+        white-space: nowrap;
+      }
+      .tbl-mono {
+        font-family: var(--mono);
+        font-size: 12.5px;
+      }
+      .tbl-mode {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+      }
+      .tbl-switch {
+        background: none;
+        border: 0;
+        padding: 0;
+        cursor: pointer;
+        color: var(--accent-text);
+        font: inherit;
+        font-size: 12px;
+        text-decoration: underline;
+        text-underline-offset: 0.2em;
+      }
+      .tbl-acts {
+        display: flex;
+        gap: 4px;
+        justify-content: flex-end;
+        white-space: nowrap;
+      }
+      /* The ⋯ and, on a sub-row (no ⋯ of its own), a spacer as wide: the
+         Start/Stop/Restart/Logs columns line up across repo and sub-rows. */
+      .tbl-acts .tbl-more,
+      .tbl-acts .tbl-more-sp {
+        flex: none;
+        width: 30px;
+        padding-left: 0;
+        padding-right: 0;
+        text-align: center;
+      }
+      .tbl-acts .tbl-more-sp {
+        display: inline-block;
+      }
+      .tbl-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .tbl-none td {
+        color: var(--muted);
+        text-align: center;
+        padding: 18px;
+      }
+      .tbl-foot {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .validate-details > summary {
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 10px;
       }
 
       /* ── Empty state ──────────────────────────────────────────────────────── */
@@ -1372,14 +1391,6 @@
             />
             <button type="submit">+</button>
           </form>
-          <!-- Settings are a page of their own (R21): Editor & terminal. -->
-          <a
-            class="sidebar-settings-btn"
-            id="sidebar-settings-btn"
-            href="/settings#editor"
-          >
-            ⚙ Settings
-          </a>
         </aside>
 
         <!-- Content pane -->
@@ -1407,9 +1418,24 @@
           requireUnlock,
           setServiceRunner,
           takePendingAction,
+          problemCards,
+          problemFix,
+          buildRow,
         } from "/header.js";
+        import { checkLine } from "/topbar.js";
         import { mountGraph, graphHealth, graphMaximized } from "/graph.js";
-        import { mergeWorkspaceViews, ownerOfRepos } from "/graph-model.js";
+        import {
+          mergeWorkspaceViews,
+          ownerOfRepos,
+          buildModel,
+          repoRollup,
+          entryOf,
+          status,
+          healthLine,
+          repoStatus,
+          repoStatusWord,
+          findHit,
+        } from "/graph-model.js";
 
         // Re-ping all health dots (top nav + cards) NOW — used after lifecycle
         // commands so status doesn't wait out the 30s poll interval.
@@ -1428,7 +1454,6 @@
          */
         const GRAPH_PAGE = document.body.classList.contains("den-page-graph");
         let wsData = null;
-        let _svcSortMode = "name"; // 'name' | 'workspace'
 
         // ── Add Service modal state ───────────────────────────────────────────────
         let _addSvcWsName = null;
@@ -1448,7 +1473,7 @@
             .replace(/"/g, "&quot;");
 
         // ── The lock (R8): the shell's lock chip and popover (topbar.js) ──────────
-        // requireSudo() is Local Dev's lock rule, shared with every page: true
+        // requireSudo() is this page's lock rule, shared with every page: true
         // when unlocked; otherwise the lock popover opens on its password
         // field and the command doesn't run.
         function requireSudo() {
@@ -1540,8 +1565,8 @@
             const named = urlWs && wsData.workspaces?.[urlWs] ? urlWs : null;
             // The Graph page follows the top bar's View (0.3.0-dev.33):
             // "All active" draws every workspace in view, one picked draws
-            // that one, and ?ws= still wins. Local Dev keeps one workspace,
-            // the list's selection: its actions and tabs are per workspace.
+            // that one, and ?ws= still wins. Workspaces keeps one workspace,
+            // the list's selection: its actions and table are per workspace.
             const inView = Array.isArray(view?.inView) ? view.inView : [];
             if (
               GRAPH_PAGE &&
@@ -1599,10 +1624,7 @@
             ownerOf: ownerOfRepos(services),
           };
           _graphApps = merged.apps;
-          const svcList = topoSortServices(
-            services,
-            deriveRepoRank(merged.graph),
-          );
+          const svcList = _sortByName(services);
           _noAutostartRepos = new Set(
             svcList.filter((s) => s.autostart === false).map((s) => s.repo),
           );
@@ -1611,7 +1633,7 @@
           content.dataset.all = names.join(",");
           content.innerHTML = `
         <div class="content-body">
-          <div class="ctab-panel active" id="ctab-graph">
+          <div class="graph-panel" id="graph-panel">
             <div id="dep-graph-wrap"><div class="graph-empty graph-loading">Loading…</div></div>
           </div>
         </div>`;
@@ -1764,6 +1786,12 @@
             deactivateWorkspaceUi(wsName);
           } else if (action === "focus-ws") {
             focusWorkspaceUi(wsName);
+          } else if (action === "rename-ws") {
+            btn.closest(".action-dropdown").style.display = "none";
+            renameWorkspace(wsName);
+          } else if (action === "delete-ws") {
+            btn.closest(".action-dropdown").style.display = "none";
+            deleteWorkspace(e, wsName);
           } else if (action === "add-svc") {
             addService(wsName);
           } else if (action === "remove-svc") {
@@ -1795,32 +1823,10 @@
         }
 
         // ── Content pane ──────────────────────────────────────────────────────────
-        /**
-         * Wire the workspace pane's tablist with the shell's tabs helper
-         * (denShell.wireTabs); null without the shell.
-         */
-        function wireCtabs({ selected, onSelect }) {
-          const list = document.getElementById("ctab-list");
-          const wire = window.denShell?.wireTabs;
-          if (!list || !wire) return null;
-          const tabs = [...list.querySelectorAll('[role="tab"]')];
-          const i = tabs.findIndex((t) => t.dataset.ctab === selected);
-          return wire(list, { selected: i < 0 ? 0 : i, onSelect });
-        }
-        /** Without the shell: the tab named and its panel, selected. */
-        function selectCtab(name) {
-          document.querySelectorAll(".ctab[data-ctab]").forEach((t) => {
-            const on = t.dataset.ctab === name;
-            t.classList.toggle("active", on);
-            t.setAttribute("aria-selected", String(on));
-            t.setAttribute("tabindex", on ? "0" : "-1");
-          });
-          document.querySelectorAll(".ctab-panel").forEach((p) => {
-            const on = p.id === "ctab-" + name;
-            p.hidden = !on;
-            p.classList.toggle("active", on);
-          });
-        }
+        // Workspaces (R24, 0.3.0-dev.35, Ward 2026-11-05): one job, run your
+        // workspaces. The selected workspace's header (name, badges, its
+        // actions, Open in Graph →, ⋯) and one repo table (R24d). The
+        // Graph page (R22) is this file at /graph: the graph alone.
         async function renderContent(wsName) {
           const content = document.getElementById("content");
           const ws = wsData?.workspaces?.[wsName];
@@ -1830,28 +1836,30 @@
             return;
           }
 
-          // Preserve whichever tab was active before re-render (default:
-          // graph). The Graph page (R22) always shows the graph.
-          const activeTab = GRAPH_PAGE
-            ? "graph"
-            : (document.querySelector(".ctab.active")?.dataset?.ctab ??
-              "graph");
           // The page header's scope line names the workspace shown (R20).
           window.denShell?.pageHeader?.()?.setScope({
             ws: wsName,
             env: "local",
           });
+          // R24e: the runs dock shows this workspace's runs ("All runs"
+          // shows every one). The Graph page keeps every run.
+          if (!GRAPH_PAGE) {
+            // (Tabs docked before the workspaces loaded get their tags now.)
+            for (const a of _tabs.keys())
+              if (runs().has(a)) runs().add(a, null, { ws: wsOfAddress(a) });
+            runs().scope({ ws: wsName });
+          }
 
           const isActive = isWsActive(wsName);
           const isFocus = wsName === focusName();
 
           // Derived dependency graph (repo-level) — the SAME graph `__DEN_CLI__ graph` and
-          // `__DEN_CLI__ up/down` use. The web graph + card order key off this (not the
+          // `__DEN_CLI__ up/down` use. The graph and the table's order key off this (not the
           // hand-written manifest depends_on), so display matches behavior.
           // Graph must be derived against the workspace being VIEWED: with several
           // workspaces active, a repo name points at a different checkout per
           // workspace, so a focus-derived graph has no edges for these nodes.
-          // Applications draw the boundaries around the graph's cards.
+          // Applications draw the graph's boundaries and group the table.
           const [derivedGraph, appTree] = await Promise.all([
             fetch(`/api/graph?workspace=${encodeURIComponent(wsName)}`)
               .then((r) => r.json())
@@ -1861,19 +1869,18 @@
               .catch(() => ({ applications: [] })),
           ]);
           _graphApps = appTree.applications || [];
+          _graphDerived = derivedGraph;
           const repoRank = deriveRepoRank(derivedGraph);
 
-          // Fetch expanded services (with available commands) for this workspace,
-          // ordered by the derived repo layer so cards match the graph + up/down order.
-          const svcList = topoSortServices(
+          // Expanded services (with available commands) for this workspace.
+          const svcList = _sortByName(
             await fetch(
               `/api/services?env=local&workspace=${encodeURIComponent(wsName)}`,
             )
               .then((r) => r.json())
               .catch(() => []),
-            repoRank,
           );
-          // Refresh the auto-start-off set from the same payload the cards render from.
+          // Refresh the auto-start-off set from the same payload the rows render from.
           _noAutostartRepos = new Set(
             svcList.filter((s) => s.autostart === false).map((s) => s.repo),
           );
@@ -1903,143 +1910,18 @@
           depsCheck.forEach(({ address, missingDeps }) => {
             depsMap[address] = missingDeps;
           });
+          content.dataset.ws = wsName;
 
-          // Services with commands (catalog-aware, expanded)
-          const cmdRows =
-            svcList.length === 0
-              ? `<tr class="empty-row"><td colspan="3">No services — add one below</td></tr>`
-              : svcList
-                  .map((s) => {
-                    const missing = depsMap[s.address] ?? depsMap[s.repo] ?? [];
-                    const depWarn =
-                      missing.length > 0
-                        ? ` <span class="dep-warn" title="Missing deps: ${missing.join(", ")}">⚠ missing: ${escHtml(missing.join(", "))}</span>`
-                        : "";
-                    const cmdBtns =
-                      s.commands.length === 0
-                        ? `<span style="font-size:11px;color:var(--muted)">no local commands</span>`
-                        : s.commands
-                            .map(
-                              (cmd) =>
-                                `<button class="cmd-btn" onclick="runCmd('${s.address}','${s.repo}','${s.service}','${cmd}')">${cmd}</button>`,
-                            )
-                            .join("");
-                    return `<tr>
-              <td><strong>${s.address}</strong>${depWarn}</td>
-              <td><span class="badge ${s.mode}">${s.mode}</span></td>
-              <td><div class="cmd-row">${cmdBtns}</div></td>
-            </tr>`;
-                  })
-                  .join("");
-
-          // Config table rows — ONE row per SYSTEM (repo), no sub-system rows, ordered
-          // BOTTOM-UP like startup: infra-stack (foundation) first … entry repo
-          // last. Config is repo-level (mode/path/branch/autostart apply to the whole
-          // system), so subsystem rows only added noise; missing deps aggregate
-          // across the repo's subsystems.
-          const cfgSvcsByRepo = new Map();
-          for (const s of svcList) {
-            if (!cfgSvcsByRepo.has(s.repo)) cfgSvcsByRepo.set(s.repo, []);
-            cfgSvcsByRepo.get(s.repo).push(s);
+          if (GRAPH_PAGE) {
+            content.innerHTML = `
+        <div class="content-body">
+          <div class="graph-panel" id="graph-panel">
+            <div id="dep-graph-wrap"><div class="graph-empty graph-loading">Loading…</div></div>
+          </div>
+        </div>`;
+            renderDepGraph(svcList, depsMap, derivedGraph);
+            return;
           }
-          // Bottom-up = ascending startup rank (repoRank: infra-stack = 0 … entry
-          // repo last), regardless of the Sort-by toggle governing svcList.
-          const cfgRepoOrder = [...cfgSvcsByRepo.keys()].sort((a, b) => {
-            const ra = repoRank.get(a) ?? Infinity,
-              rb = repoRank.get(b) ?? Infinity;
-            return ra - rb || a.localeCompare(b);
-          });
-          const seenDep = new Set();
-          const cfgRows =
-            cfgRepoOrder.length === 0
-              ? `<tr class="empty-row"><td colspan="3">No services configured</td></tr>`
-              : cfgRepoOrder
-                  .flatMap((repo) => {
-                    const svcs = cfgSvcsByRepo.get(repo);
-                    const primary =
-                      svcs.find((x) => x.isEntrypoint) ||
-                      svcs.find((x) => x.service === repo) ||
-                      svcs[0];
-                    const missing = [
-                      ...new Set(
-                        svcs
-                          .flatMap((x) => depsMap[x.address] ?? [])
-                          .concat(depsMap[repo] ?? []),
-                      ),
-                    ];
-                    const depWarn =
-                      missing.length > 0
-                        ? `<span class="dep-warn">⚠</span>`
-                        : "";
-                    const wsEntry =
-                      ws.services?.[repo] ??
-                      ws.services?.[primary.address] ??
-                      {};
-                    const parts = [];
-                    if (wsEntry.path) parts.push(wsEntry.path);
-                    if (primary.branch) parts.push(`@ ${primary.branch}`);
-                    if (svcs.length > 1) parts.push(`${svcs.length} services`);
-                    const owners = [
-                      ...new Set(svcs.flatMap((x) => x.owners ?? [])),
-                    ];
-                    if (owners.length > 1)
-                      parts.push(`shared by ${owners.join(", ")}`);
-                    else if (owners.length === 1)
-                      parts.push(`owned by ${owners[0]}`);
-                    const detail = parts.join("  ");
-                    const safeRepoId = repo.replace(/[^a-z0-9]/gi, "-");
-                    const repoPath = wsEntry.path || primary.repoPath || "";
-                    const isUncloned = svcs.some((x) => x.cloned === false);
-                    const openBtn =
-                      primary.mode === "dev-managed" && primary.repoPath
-                        ? `<button class="cmd-btn" data-open-term="${escHtml(primary.repoPath)}" title="Open in terminal" style="font-family:var(--mono);font-size:10px">&gt;_</button>
-                 <button class="cmd-btn" data-open-path="${escHtml(primary.repoPath)}" title="Open in editor">↗</button>`
-                        : "";
-                    const menuId = `svc-menu-${safeRepoId}`;
-                    const isAutoOff = _noAutostartRepos.has(repo);
-                    const moreMenu = `<div class="action-menu-wrap">
-              <button class="cmd-btn" data-action="toggle-svc-menu" data-menu-id="${menuId}" title="More actions">⋮</button>
-              <div class="action-dropdown" id="${menuId}" style="display:none">
-                <button title="start / don't start with workspace" onclick="toggleAutostart('${repo.replace(/'/g, "\\'")}', ${isAutoOff})">${isAutoOff ? "⏸ auto-start: off" : "▶ auto-start: on"}</button>
-                ${isUncloned ? `<button title="Clone this managed repo now" onclick="runRepoSync('${repo.replace(/'/g, "\\'")}')">⬇ clone now</button>` : ""}
-                <button onclick="validateServiceManifest('${safeRepoId}','${repoPath.replace(/'/g, "\\'")}','${repo.replace(/'/g, "\\'")}')">validate<span class="validate-inline" id="vr-${safeRepoId}"></span></button>
-                <button class="danger" data-action="remove-svc" data-address="${escHtml(repo)}">remove</button>
-              </div>
-            </div>`;
-                    const offBadge = isAutoOff
-                      ? ` <span class="badge" title="start / don't start with workspace" style="border-color:var(--warn);color:var(--warn)">⏸ off</span>`
-                      : "";
-                    const unclonedBadge = isUncloned
-                      ? ` <span class="badge uncloned" title="Not cloned yet — run Sync to clone it">⬇ not cloned</span>`
-                      : "";
-                    const serviceRow = `<tr${detail ? ' class="has-detail-row"' : ""}>
-              <td><strong>${escHtml(repo)}</strong>${offBadge}${unclonedBadge}${depWarn}</td>
-              <td><span class="badge ${primary.mode}">${primary.mode}</span></td>
-              <td><div class="cmd-row">${openBtn}${moreMenu}</div></td>
-            </tr>`;
-                    const detailRow = detail
-                      ? `<tr class="svc-detail-row">
-              <td colspan="3"><code>${escHtml(detail)}</code></td>
-            </tr>`
-                      : "";
-                    // One dep sub-row per unique missing dep (deduped across systems)
-                    const depRows = missing
-                      .filter((dep) => {
-                        if (seenDep.has(dep)) return false;
-                        seenDep.add(dep);
-                        return true;
-                      })
-                      .map((dep) => {
-                        const depId = dep.replace(/[^a-z0-9]/gi, "-");
-                        return `<tr class="dep-missing-row">
-                  <td colspan="2"><span class="dep-label">⚠ missing dep: <strong>${escHtml(dep)}</strong></span></td>
-                  <td><button class="add-btn" data-action="add-dep" data-dep="${escHtml(dep)}">Add</button></td>
-                </tr>`;
-                      })
-                      .join("");
-                    return [serviceRow, detailRow, depRows];
-                  })
-                  .join("");
 
           const masterDisabled = isActive
             ? ""
@@ -2055,7 +1937,7 @@
             !isActive || !hasManagedServices
               ? 'disabled title="No managed services in this workspace"'
               : "";
-          content.dataset.ws = wsName;
+          const enc = encodeURIComponent(wsName);
           content.innerHTML = `
         <div class="content-header">
           <h2>${escHtml(wsName)}</h2>
@@ -2067,6 +1949,15 @@
               : `<button class="switch-btn" data-action="activate-ws">activate</button>
                <button class="switch-btn" data-action="switch-ws">activate + focus</button>`
           }
+          <a class="ws-head-link" id="ws-open-graph" href="/graph?ws=${enc}">Open in Graph →</a>
+          <div class="action-menu-wrap ws-more">
+            <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${escHtml(wsName)}" title="More for this workspace">⋯</button>
+            <div class="action-dropdown" id="ws-more-menu" role="menu" style="display:none">
+              <a role="menuitem" href="/settings?ws=${enc}#workspace">Workspace settings</a>
+              <button type="button" role="menuitem" data-action="rename-ws">Rename…</button>
+              ${wsName !== "default" ? `<button type="button" role="menuitem" class="danger" data-action="delete-ws">Delete…</button>` : ""}
+            </div>
+          </div>
         </div>
 
         <div class="cmd-bar">
@@ -2090,55 +1981,45 @@
         </div>
         `
             : `
-        <div class="ctab-bar ptabs" id="ctab-bar">
-          <div role="tablist" aria-label="Workspace" id="ctab-list">
-            <button type="button" role="tab" class="ctab active" id="ctab-tab-graph" aria-selected="true" tabindex="0" aria-controls="ctab-graph" data-ctab="graph">Graph</button>
-            <button type="button" role="tab" class="ctab" id="ctab-tab-apps" aria-selected="false" tabindex="-1" aria-controls="ctab-apps" data-ctab="apps">Applications</button>
-            <button type="button" role="tab" class="ctab" id="ctab-tab-config" aria-selected="false" tabindex="-1" aria-controls="ctab-config" data-ctab="config">Config</button>
-          </div>
-          <a class="ctab" href="/settings?ws=${encodeURIComponent(wsName)}#workspace" title="This workspace's settings, on the Settings page">Settings ↗</a>
-        </div>
-
         <div class="content-body">
-
-          <!-- Graph tab: dependency visualization -->
-          <div class="ctab-panel active" id="ctab-graph" role="tabpanel" aria-labelledby="ctab-tab-graph">
-            <div id="dep-graph-wrap"><div class="graph-empty graph-loading">Loading…</div></div>
+          <div class="tbl-tools">
+            <label>Find <input type="search" class="tbl-find" id="tbl-find" placeholder="repo, service…" autocomplete="off" value="${escHtml(_tblQuery)}"></label>
+            <span class="tbl-muted" id="tbl-group-l">Group by</span>
+            <div class="tbl-seg" role="group" aria-labelledby="tbl-group-l" id="tbl-group">
+              ${[
+                ["none", "None"],
+                ["app", "Application"],
+                ["org", "Org"],
+              ]
+                .map(
+                  ([v, l]) =>
+                    `<button type="button" data-group="${v}" aria-pressed="${_tblGroup === v}">${l}</button>`,
+                )
+                .join("")}
+            </div>
+          </div>
+          <div class="tablewrap">
+            <table class="svc" id="repo-table">
+              <caption>Repos in ${escHtml(wsName)}</caption>
+              <thead><tr>
+                <th scope="col">Repo</th>
+                <th scope="col">Health</th>
+                <th scope="col">Branch</th>
+                <th scope="col">Mode</th>
+                <th scope="col">Last run</th>
+                <th scope="col"><span class="tbl-sr">Actions</span></th>
+              </tr></thead>
+            </table>
+          </div>
+          <div class="tbl-foot">
+            <button class="add-svc-open-btn" onclick="openAddSvcModal('${escHtml(wsName)}')">+ Add repo</button>
+            <span class="form-msg" id="add-msg"></span>
           </div>
 
-          <!-- Applications tab: Org > Application > Repo > Services -->
-          <div class="ctab-panel" id="ctab-apps" role="tabpanel" aria-labelledby="ctab-tab-apps" hidden>
-            <div id="apps-wrap"><div class="graph-empty graph-loading">Loading…</div></div>
-          </div>
-
-          <!-- Config tab: workspace services + add form -->
-          <div class="ctab-panel" id="ctab-config" role="tabpanel" aria-labelledby="ctab-tab-config" hidden>
-            <div>
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                <div class="section-label" style="margin-bottom:0">Workspace Services</div>
-                <div style="display:flex;align-items:center;gap:6px">
-                  <span style="font-size:10px;color:var(--muted)">Sort by</span>
-                  <div class="svc-sort-btns">
-                    <button class="svc-sort-btn${_svcSortMode === "name" ? " active" : ""}" data-sort="name" onclick="setSvcSortMode('name')">Name</button>
-                    <button class="svc-sort-btn${_svcSortMode === "workspace" ? " active" : ""}" data-sort="workspace" onclick="setSvcSortMode('workspace')">Workspace</button>
-                  </div>
-                </div>
-              </div>
-              <table>
-                <thead><tr><th>Address</th><th>Mode</th><th></th></tr></thead>
-                <tbody>${cfgRows}</tbody>
-              </table>
-            </div>
-
-            <!-- Add Service trigger -->
-            <div style="margin-top:16px;display:flex;align-items:center;gap:10px">
-              <button class="add-svc-open-btn" onclick="openAddSvcModal('${escHtml(wsName)}')">+ Add Service</button>
-              <span class="form-msg" id="add-msg"></span>
-            </div>
-
-            <!-- Validate manifest -->
+          <!-- Validate a manifest (by path, or pasted) -->
+          <details class="validate-details">
+            <summary>Validate a manifest</summary>
             <div class="validate-form">
-              <div class="section-label" style="margin-bottom:10px">Validate Manifest</div>
               <div class="row" style="margin-bottom:8px">
                 <label style="white-space:nowrap">Path or dir</label>
                 <input class="form-inp" id="validate-path-inp" placeholder="/absolute/path/to/repo  or  /path/to/__DEN_MANIFEST_YML__" style="flex:1">
@@ -2147,27 +2028,12 @@
               <textarea id="validate-textarea" placeholder="…or paste __DEN_MANIFEST_YML__ content here"></textarea>
               <div id="validate-result-panel" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
             </div>
-          </div>
-
+          </details>
         </div>`
         }
 `;
-
-          // The workspace tabs: the shell's WAI-ARIA tabs (one tab stop,
-          // ←/→ wrap, Home/End, select on arrow; each tab controls its
-          // panel, only the selected one shows). Restores the previously
-          // active tab (graph on first load).
-          const showTab = (name) => {
-            if (name === "graph")
-              renderDepGraph(svcList, depsMap, derivedGraph);
-            if (name === "apps") renderApplications(wsName);
-          };
-          const ctabs = wireCtabs({
-            selected: activeTab,
-            onSelect: (tab) => showTab(tab.dataset.ctab),
-          });
-          if (!ctabs) selectCtab(activeTab);
-          showTab(activeTab);
+          _tbl = { wsName, ws, svcList, depsMap, repoRank, appTree };
+          renderTable();
 
           // Pre-fetch GitHub org repos so the Add Service modal loads instantly
           fetch("/api/github/repos")
@@ -2178,6 +2044,478 @@
             });
         }
 
+        // ── The repo table (R24d) ─────────────────────────────────────────────────
+        // One row per repo: Config's address and mode merged with live state
+        // (health and its rollup, branch, the last run, Start/Stop/Restart/
+        // Logs and ⋯). A repo with several services expands to one sub-row
+        // each. Problems sort first, with the status drawer's fix text and
+        // buttons (topbar.js problemCards/problemFix: one source). Group by
+        // none, Application (as `__DEN_CLI__ apps`) or Org; Find is the Graph
+        // page's matcher (graph-model.js findHit).
+        let _tbl = null;
+        let _tblQuery = "";
+        let _tblGroup = "none";
+        const _tblOpen = new Set(); // repos whose sub-rows are shown
+        const TBL_COLS = 6;
+        const PROBLEM = new Set(["down", "degraded"]);
+
+        /** The table's rows, from the last render's data and the health. */
+        function tableModel() {
+          const { svcList, depsMap, repoRank } = _tbl;
+          const m = buildModel({
+            services: svcList,
+            health: _lastHealthResults,
+            apps: _graphApps,
+            orgs: _orgData,
+            depsMap,
+            workspace: _tbl.wsName,
+          });
+          const mine = new Set(m.byRepo.keys());
+          const row = buildRow(
+            (_lastHealthResults || []).filter((h) => mine.has(h.repo)),
+            [],
+          );
+          const cards = problemCards(row);
+          const at = _lastHealthAt
+            ? new Intl.DateTimeFormat(undefined, {
+                hour: "2-digit",
+                minute: "2-digit",
+              }).format(_lastHealthAt)
+            : "";
+          return [...m.byRepo.keys()].map((repo) => {
+            const svcs = m.byRepo.get(repo);
+            const raw = svcList.filter((s) => s.repo === repo);
+            const primary = entryOf(m, repo);
+            const rollup = repoRollup(m, repo);
+            const missing = [
+              ...new Set(
+                raw
+                  .flatMap((x) => depsMap[x.address] ?? [])
+                  .concat(depsMap[repo] ?? []),
+              ),
+            ];
+            return {
+              repo,
+              svcs,
+              raw,
+              primary,
+              rollup,
+              missing,
+              fixes: cards
+                .filter((c) => c.repo === repo)
+                .map((c) => ({ c, fix: problemFix(c, at) })),
+              problem: PROBLEM.has(rollup.state),
+              rank: repoRank.get(repo) ?? Infinity,
+              app: svcs[0]?.app ?? repo,
+              org: svcs[0]?.org ?? "",
+            };
+          });
+        }
+
+        /** Problems first; then the startup order (foundations first), then name. */
+        function byProblemThenOrder(a, b) {
+          return (
+            Number(b.problem) - Number(a.problem) ||
+            a.rank - b.rank ||
+            a.repo.localeCompare(b.repo)
+          );
+        }
+
+        /** Groups of rows: one (no heading), or per application or org. */
+        function tableGroups(rows) {
+          if (_tblGroup === "app") {
+            // `__DEN_CLI__ apps`: declared applications, then each remaining
+            // repo as its own; an app with nothing here is left out.
+            const apps = (_tbl.appTree.applications || []).filter(
+              (a) => a.repos.length > 0,
+            );
+            const placed = new Set();
+            const out = apps.map((a) => {
+              const mine = rows.filter(
+                (r) => a.repos.includes(r.repo) && !placed.has(r.repo),
+              );
+              mine.forEach((r) => placed.add(r.repo));
+              return {
+                key: "app:" + a.name,
+                app: a,
+                title: a.title,
+                rows: mine,
+              };
+            });
+            const rest = rows.filter((r) => !placed.has(r.repo));
+            if (rest.length)
+              out.push({
+                key: "app:",
+                title: "Not in an application",
+                rows: rest,
+              });
+            return out.filter((g) => g.rows.length);
+          }
+          if (_tblGroup === "org") {
+            const by = new Map();
+            for (const r of rows) {
+              if (!by.has(r.org)) by.set(r.org, []);
+              by.get(r.org).push(r);
+            }
+            const label = (id) =>
+              (_orgData?.orgs || []).find((o) => o.id === id)?.label ||
+              id ||
+              "No org";
+            return [...by]
+              .sort((a, b) => label(a[0]).localeCompare(label(b[0])))
+              .map(([id, rs]) => ({
+                key: "org:" + id,
+                title: label(id),
+                rows: rs,
+              }));
+          }
+          return [{ key: "", title: null, rows }];
+        }
+
+        /** The last run (the runs dock's) of a repo's tab: "✓ 12:03", "running…", "—". */
+        function lastRunText(repo) {
+          const list = runs()?.list?.() ?? [];
+          const mine = list.filter(
+            (r) => r.id === repo || r.id.split("/")[0] === repo,
+          );
+          const r = mine.sort((a, b) => (b.ranAt ?? 0) - (a.ranAt ?? 0))[0];
+          if (!r || (!r.ranAt && !r.running)) return { text: "—", cls: "" };
+          if (r.running) return { text: "running…", cls: "" };
+          const t = new Intl.DateTimeFormat(undefined, {
+            hour: "2-digit",
+            minute: "2-digit",
+          }).format(new Date(r.endedAt ?? r.ranAt));
+          return r.error
+            ? { text: `✗ failed ${t}`, cls: "bad" }
+            : { text: `✓ ${t}`, cls: "ok" };
+        }
+
+        /** A health cell: the dot and the rollup, or the failing check. */
+        function healthCell(state, text, title = text) {
+          const dot =
+            { ok: "", bad: "bad", warn: "bad", unk: "off" }[state] ?? "off";
+          const cls =
+            state === "ok"
+              ? " ok"
+              : state === "bad" || state === "warn"
+                ? " bad"
+                : "";
+          return `<span class="tbl-health${cls}" title="${escHtml(title)}"><span class="den-dot ${dot}" aria-hidden="true"></span><span class="tbl-ht">${escHtml(text)}</span></span>`;
+        }
+        function repoHealth(r) {
+          const { rollup } = r;
+          const checked = rollup.checked;
+          const ok = checked - rollup.down.length;
+          // A repo of several services summarises ("1/2 healthy", in the
+          // problem colour); what failed is on its problem row and its
+          // sub-row, and in the tooltip. One service shows its own state.
+          if (r.fixes.length)
+            return r.svcs.length > 1
+              ? healthCell(
+                  "bad",
+                  `${ok}/${checked} healthy`,
+                  r.fixes.map(({ c }) => `${c.id}: ${c.line}`).join("\n"),
+                )
+              : healthCell("bad", r.fixes[0].c.line);
+          if (rollup.state === "unknown")
+            return healthCell("unk", repoStatusWord(rollup));
+          return healthCell(
+            repoStatus(rollup),
+            `${ok}/${checked} healthy${rollup.unchecked ? `, ${rollup.unchecked} not checked` : ""}`,
+          );
+        }
+
+        /** Action buttons; each one's name says what and on which repo or service. */
+        function actBtns(id, o) {
+          const b = (act, label, name, extra = "") =>
+            `<button type="button" class="den-btn sm tbl-btn" data-action="tbl-${act}" data-id="${escHtml(id)}"${extra} aria-label="${escHtml(name)}" data-k="${act}:${escHtml(id)}">${label}</button>`;
+          // (A title keeps setAllButtons from re-enabling it.)
+          const off = (on) =>
+            on ? "" : ` disabled title="${escHtml(id)} has no up command"`;
+          return (
+            b("up", "Start", `Start ${id}`, off(o.up)) +
+            b("down", "Stop", `Stop ${id}`) +
+            b("restart", "Restart", `Restart ${id}`, off(o.restart)) +
+            b("logs", "Logs", `Logs of ${id}`)
+          );
+        }
+
+        function repoMenu(r) {
+          const { repo, primary, raw } = r;
+          const safe = repo.replace(/[^a-z0-9]/gi, "-");
+          const menuId = `svc-menu-${safe}`;
+          const q = (v) => String(v).replace(/'/g, "\\'");
+          const isAutoOff = _noAutostartRepos.has(repo);
+          const isUncloned = raw.some((x) => x.cloned === false);
+          const wsEntry =
+            _tbl.ws.services?.[repo] ?? _tbl.ws.services?.[primary?.id] ?? {};
+          const repoPath = wsEntry.path || primary?.path || "";
+          const local = primary?.mode === "dev-managed" && primary?.path;
+          return `<div class="action-menu-wrap">
+              <button type="button" class="den-btn sm tbl-btn tbl-more" data-action="toggle-svc-menu" data-menu-id="${menuId}" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${escHtml(repo)}" data-k="more:${escHtml(repo)}">⋯</button>
+              <div class="action-dropdown" id="${menuId}" role="menu" style="display:none">
+                ${local ? `<button role="menuitem" data-open-term="${escHtml(primary.path)}">&gt;_ open in terminal</button><button role="menuitem" data-open-path="${escHtml(primary.path)}">↗ open in editor</button>` : ""}
+                <button role="menuitem" title="start / don't start with workspace" onclick="toggleAutostart('${q(repo)}', ${isAutoOff})">${isAutoOff ? "⏸ auto-start: off" : "▶ auto-start: on"}</button>
+                ${isUncloned ? `<button role="menuitem" title="Clone this managed repo now" onclick="runRepoSync('${q(repo)}')">⬇ clone now</button>` : ""}
+                <button role="menuitem" onclick="validateServiceManifest('${safe}','${q(repoPath)}','${q(repo)}')">validate<span class="validate-inline" id="vr-${safe}"></span></button>
+                <button role="menuitem" class="danger" data-action="remove-svc" data-address="${escHtml(repo)}">remove</button>
+              </div>
+            </div>`;
+        }
+
+        function repoRows(r) {
+          const { repo, svcs, primary, missing } = r;
+          const many = svcs.length > 1;
+          const open = many && (_tblOpen.has(repo) || !!_tblQuery.trim());
+          const safe = repo.replace(/[^a-z0-9]/gi, "-");
+          const subIds = svcs.map((s, i) => `sub-${safe}-${i}`);
+          const isAutoOff = _noAutostartRepos.has(repo);
+          const isUncloned = r.raw.some((x) => x.cloned === false);
+          const mode = primary?.mode;
+          const has = (cmd) => svcs.some((s) => s.commands.includes(cmd));
+          const exp = many
+            ? `<button type="button" class="tbl-exp" data-action="tbl-exp" data-repo="${escHtml(repo)}" aria-expanded="${open}" aria-controls="${subIds.join(" ")}" aria-label="${open ? "Hide" : "Show"} ${escHtml(repo)}'s ${svcs.length} services" data-k="exp:${escHtml(repo)}">${open ? "▾" : "▸"}</button>`
+            : `<span class="tbl-exp-sp" aria-hidden="true"></span>`;
+          const run = lastRunText(repo);
+          const badges =
+            (isAutoOff
+              ? ` <span class="badge" title="start / don't start with workspace" style="border-color:var(--warn);color:var(--warn)">⏸ off</span>`
+              : "") +
+            (isUncloned
+              ? ` <span class="badge uncloned" title="Not cloned yet — run Sync to clone it">⬇ not cloned</span>`
+              : "") +
+            (missing.length
+              ? ` <span class="dep-warn" title="Missing deps: ${escHtml(missing.join(", "))}">⚠</span>`
+              : "") +
+            (many
+              ? ` <span class="tbl-muted">${svcs.length} services</span>`
+              : "");
+          const switchTo = mode === "managed" ? "dev-managed" : "managed";
+          const modeCell = mode
+            ? `<span class="tbl-mode"><span class="badge ${escHtml(mode)}">${escHtml(mode)}</span><button type="button" class="tbl-switch" data-action="tbl-mode" data-repo="${escHtml(repo)}" data-mode="${switchTo}" aria-label="${escHtml(repo)}: use ${mode === "managed" ? "local" : "managed"}" data-k="mode:${escHtml(repo)}">use ${mode === "managed" ? "local" : "managed"}</button></span>`
+            : "";
+          const head = `<tr class="repo${r.problem ? " prob" : ""}" data-repo="${escHtml(repo)}">
+              <th scope="row">${exp}<span class="repo-name">${escHtml(repo)}</span>${badges}</th>
+              <td>${repoHealth(r)}</td>
+              <td class="tbl-mono tbl-muted">${escHtml(primary?.branch ?? "")}</td>
+              <td>${modeCell}</td>
+              <td class="tbl-muted${run.cls ? " " + run.cls : ""}" data-last="${escHtml(repo)}">${escHtml(run.text)}</td>
+              <td><div class="tbl-acts">${actBtns(repo, { up: has("up"), restart: has("restart") || has("up") })}${repoMenu(r)}</div></td>
+            </tr>`;
+          const fixes = r.fixes
+            .map(
+              ({ c, fix }) => `<tr class="fix" data-repo="${escHtml(repo)}">
+              <td colspan="${TBL_COLS}"><span class="den-dot bad" aria-hidden="true"></span> <span class="fix-t"><span class="tbl-mono">${escHtml(c.id)}</span> · ${escHtml(fix.text)}</span>
+              ${fix.actions
+                .map(
+                  (a) =>
+                    `<button type="button" class="den-btn sm tbl-btn${a.primary ? " primary" : ""}" data-action="tbl-fix-${a.act}" data-id="${escHtml(c.id)}" aria-label="${escHtml(a.name)}" data-k="fix-${a.act}:${escHtml(c.id)}">${escHtml(a.label)}</button>`,
+                )
+                .join(" ")}</td>
+            </tr>`,
+            )
+            .join("");
+          const subs = many
+            ? svcs
+                .map(
+                  (
+                    s,
+                    i,
+                  ) => `<tr class="sub" id="${subIds[i]}" data-repo="${escHtml(repo)}" data-id="${escHtml(s.id)}"${open ? "" : " hidden"}>
+              <th scope="row"><span class="repo-name">${escHtml(s.name)}</span>${s.entry ? ' <span class="badge">entry</span>' : ""}</th>
+              <td>${healthCell(status(s), s.health.ok === false ? checkLineOf(s) : healthLine(s))}</td>
+              <td></td><td></td><td></td>
+              <td><div class="tbl-acts">${actBtns(s.id, { up: s.commands.includes("up"), restart: s.commands.includes("up") || s.commands.includes("restart") })}<span class="tbl-more-sp" aria-hidden="true"></span></div></td>
+            </tr>`,
+                )
+                .join("")
+            : "";
+          const deps = missing
+            .map(
+              (dep) => `<tr class="dep-missing-row">
+              <td colspan="${TBL_COLS - 1}"><span class="dep-label">⚠ missing dep: <strong>${escHtml(dep)}</strong></span></td>
+              <td><button class="add-btn" data-action="add-dep" data-dep="${escHtml(dep)}">Add</button></td>
+            </tr>`,
+            )
+            .join("");
+          return head + fixes + subs + deps;
+        }
+        /** What a down service's check said (the drawer's line). */
+        function checkLineOf(s) {
+          const h = (_lastHealthResults || []).find(
+            (x) =>
+              x.repo === s.repo &&
+              (x.service === s.name || `${x.repo}/${x.service}` === s.id),
+          );
+          return h ? checkLine(h) : "down";
+        }
+
+        /** Draw (or redraw) the table's body; focus stays where it was. */
+        function renderTable() {
+          const table = document.getElementById("repo-table");
+          if (!table || !_tbl) return;
+          const keep = table.contains(document.activeElement)
+            ? document.activeElement.dataset?.k
+            : null;
+          const q = _tblQuery;
+          const rows = tableModel()
+            .filter(
+              (r) =>
+                !q.trim() ||
+                findHit(r.repo, q) ||
+                r.svcs.some((s) => findHit(s.id, q)),
+            )
+            .sort(byProblemThenOrder);
+          table.querySelectorAll("tbody").forEach((b) => b.remove());
+          const groups = tableGroups(rows);
+          const html = rows.length
+            ? groups
+                .map((g) => {
+                  const appBtns =
+                    g.app && (g.app.addresses || []).length
+                      ? `<span class="g-acts">
+                    <button type="button" class="den-btn sm tbl-btn" data-action="tbl-app" data-cmd="up" data-app="${escHtml(g.app.name)}" aria-label="Up ${escHtml(g.title)}">▶ Up</button>
+                    <button type="button" class="den-btn sm tbl-btn" data-action="tbl-app" data-cmd="restart" data-app="${escHtml(g.app.name)}" aria-label="Restart ${escHtml(g.title)}">↻ Restart</button>
+                    <button type="button" class="den-btn sm tbl-btn" data-action="tbl-app" data-cmd="down" data-app="${escHtml(g.app.name)}" aria-label="Down ${escHtml(g.title)}">⏹ Down</button>
+                  </span>`
+                      : "";
+                  const meta = g.app
+                    ? [
+                        g.app.title !== g.app.name ? g.app.name : "",
+                        g.app.owner || "",
+                        (g.app.contributors || []).length
+                          ? `contributes: ${g.app.contributors.map((c) => c.repo).join(", ")}`
+                          : "",
+                        (g.app.absent || []).length
+                          ? `not in this workspace: ${g.app.absent.join(", ")}`
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : "";
+                  const head = g.title
+                    ? `<tr class="g"><th scope="rowgroup" colspan="${TBL_COLS}">${escHtml(g.title)}${meta ? `<span class="g-meta">${escHtml(meta)}</span>` : ""}${appBtns}</th></tr>`
+                    : "";
+                  return `<tbody data-group="${escHtml(g.key)}">${head}${g.rows.map(repoRows).join("")}</tbody>`;
+                })
+                .join("")
+            : `<tbody><tr class="tbl-none"><td colspan="${TBL_COLS}">No repo matches “${escHtml(q)}”</td></tr></tbody>`;
+          table.insertAdjacentHTML("beforeend", html);
+          if (keep)
+            table.querySelector(`[data-k="${CSS.escape(keep)}"]`)?.focus();
+        }
+        /** Only the Last run cells (the dock changed). */
+        function paintLastRuns() {
+          document.querySelectorAll("#repo-table [data-last]").forEach((td) => {
+            const run = lastRunText(td.dataset.last);
+            td.textContent = run.text;
+            td.className = "tbl-muted" + (run.cls ? " " + run.cls : "");
+          });
+        }
+
+        /** The repo's addresses that can run `cmd` (all for down). */
+        function repoAddresses(repo, cmd) {
+          const svcs = (_tbl?.svcList ?? []).filter((s) => s.repo === repo);
+          const can = svcs.filter(
+            (s) =>
+              cmd === "down" ||
+              s.commands.includes(cmd) ||
+              (cmd === "restart" && s.commands.includes("up")),
+          );
+          return (can.length ? can : svcs).map((s) => s.address);
+        }
+        /** Start/Stop/Restart a repo (each of its services) or one service. */
+        function runTableCmd(id, cmd) {
+          const svc = (_tbl?.svcList ?? []).find((s) => s.address === id);
+          if (svc) {
+            window.runCmd(svc.address, svc.repo, svc.service, cmd);
+            return;
+          }
+          const addrs = repoAddresses(id, cmd);
+          if (addrs.length) window.runWorkspaceCmd(cmd, addrs);
+        }
+        function logsOf(id) {
+          const svc =
+            (_tbl?.svcList ?? []).find((s) => s.address === id) ??
+            (_tbl?.svcList ?? []).find((s) => s.repo === id);
+          if (svc) openSystemLogs(svc.address, svc.repo, svc.service);
+        }
+
+        // The table's own controls: Find, Group by, expand, actions.
+        document.getElementById("content").addEventListener("input", (e) => {
+          if (e.target.id !== "tbl-find") return;
+          _tblQuery = e.target.value;
+          renderTable();
+        });
+        document.getElementById("content").addEventListener("click", (e) => {
+          const g = e.target.closest("#tbl-group [data-group]");
+          if (g) {
+            setTableGroup(g.dataset.group);
+            return;
+          }
+          const b = e.target.closest("[data-action^='tbl-']");
+          if (!b || b.disabled) return;
+          const a = b.dataset.action;
+          if (a === "tbl-exp") {
+            const repo = b.dataset.repo;
+            if (_tblOpen.has(repo)) _tblOpen.delete(repo);
+            else _tblOpen.add(repo);
+            renderTable();
+          } else if (
+            a === "tbl-up" ||
+            a === "tbl-down" ||
+            a === "tbl-restart"
+          ) {
+            runTableCmd(b.dataset.id, a.slice(4));
+          } else if (a === "tbl-logs" || a === "tbl-fix-logs") {
+            logsOf(b.dataset.id);
+          } else if (a === "tbl-fix-start") {
+            const [repo, ...rest] = b.dataset.id.split("/");
+            window.runCmd(b.dataset.id, repo, rest.join("/"), "up");
+          } else if (a === "tbl-mode") {
+            window.switchMode(b.dataset.repo, b.dataset.mode);
+          } else if (a === "tbl-app") {
+            const app = (_tbl?.appTree.applications || []).find(
+              (x) => x.name === b.dataset.app,
+            );
+            if (app?.addresses?.length)
+              window.runWorkspaceCmd(b.dataset.cmd, app.addresses);
+          }
+        });
+
+        // Group by: a user pref (graph.groupBy), mirrored for the first paint.
+        const LS_GROUP = "__DEN_CLI__-ws-group";
+        function paintGroup() {
+          document
+            .querySelectorAll("#tbl-group [data-group]")
+            .forEach((b) =>
+              b.setAttribute(
+                "aria-pressed",
+                String(b.dataset.group === _tblGroup),
+              ),
+            );
+          renderTable();
+        }
+        function setTableGroup(v) {
+          if (!["none", "app", "org"].includes(v) || v === _tblGroup) return;
+          _tblGroup = v;
+          paintGroup();
+          try {
+            localStorage.setItem(LS_GROUP, v);
+          } catch {}
+          fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ graph: { groupBy: v } }),
+          }).catch(() => {});
+        }
+        try {
+          const v = localStorage.getItem(LS_GROUP);
+          if (["none", "app", "org"].includes(v)) _tblGroup = v;
+        } catch {}
+        // The Last run column follows the dock.
+        window.denShell?.runs?.onChange?.(paintLastRuns);
+
         // ── Tab management (one persistent tab per service address) ───────────────
         //
         // Tab ID = service address ("shop/api", "tasks-runner").
@@ -2186,7 +2524,7 @@
 
         //
         // The tabs are drawn by the shell's runs dock (R16, denShell.runs):
-        // this map keeps what Local Dev needs to drive them (the stream, its
+        // this map keeps what this page needs to drive them (the stream, its
         // kind, the tail to re-attach); the dock keeps the lines (the last
         // MAX_TAB_LINES), batches the DOM, auto-scrolls, copies and clears.
         // A tab pulses while a command runs in it (busy); a red dot marks a
@@ -2195,10 +2533,22 @@
         let _activeTabId = null;
         const runs = () => window.denShell.runs;
         const MAX_TAB_LINES = 1000;
+        /**
+         * The workspaces a tab's runs belong to (R24e): every one whose
+         * services include its repo. A tab that is no repo's ("⟳ sync")
+         * belongs to none, and the dock always shows it.
+         */
+        function wsOfAddress(address) {
+          const repo = String(address).split("/")[0];
+          return Object.entries(wsData?.workspaces ?? {})
+            .filter(([, w]) => Object.hasOwn(w?.services ?? {}, repo))
+            .map(([n]) => n);
+        }
         /** The dock's tab for an address (no change of selection). */
         function dockTab(address) {
           const t = _tabs.get(address);
           runs().add(address, address, {
+            ws: wsOfAddress(address),
             max: MAX_TAB_LINES,
             doneLine: false,
             onClose: closeTab,
@@ -2790,9 +3140,11 @@
         }
 
         function setAllButtons(disabled) {
-          document.querySelectorAll(".master-btn, .cmd-btn").forEach((b) => {
-            if (!b.hasAttribute("title") || disabled) b.disabled = disabled;
-          });
+          document
+            .querySelectorAll(".master-btn, .cmd-btn, .tbl-btn")
+            .forEach((b) => {
+              if (!b.hasAttribute("title") || disabled) b.disabled = disabled;
+            });
         }
 
         // ── Per-service command (SSE) ──────────────────────────────────────────────
@@ -3835,66 +4187,13 @@
           setTabStatus(tabName, { live: false, errored: !data.valid });
         }
 
-        // ── Service ordering (cards, config table) ───────────────────────────────
+        // ── Service ordering (graph cards) ────────────────────────────────────────
         // Sort by service name (leaf): e.g. "api", "db", "worker" — ignores repo path.
         function _sortByName(services) {
           return [...services].sort((a, b) => {
             const na = a.service || a.address,
               nb = b.service || b.address;
             return na.localeCompare(nb);
-          });
-        }
-
-        // Sort by workspace/repo grouping: mono-repo subsystems stay adjacent,
-        // ordered by DAG layer so root services appear first.
-        function _sortByWorkspace(services) {
-          const layerOf = new Map(services.map((s) => [s.address, 0]));
-          const repoToAddrs = new Map();
-          for (const s of services) {
-            const repo = s.repo ?? s.address;
-            if (!repoToAddrs.has(repo)) repoToAddrs.set(repo, []);
-            repoToAddrs.get(repo).push(s.address);
-          }
-          const getDepLayer = (dep) => {
-            if (layerOf.has(dep)) return layerOf.get(dep);
-            const addrs = repoToAddrs.get(dep);
-            if (addrs?.length)
-              return Math.max(...addrs.map((a) => layerOf.get(a) ?? 0));
-            return null;
-          };
-          let changed = true,
-            iters = 0;
-          while (changed && iters++ < 50) {
-            changed = false;
-            for (const s of services) {
-              for (const dep of s.deps || []) {
-                const depLayer = getDepLayer(dep);
-                if (depLayer === null) continue;
-                const cur = layerOf.get(s.address);
-                const needed = depLayer + 1;
-                if (cur < needed) {
-                  layerOf.set(s.address, needed);
-                  changed = true;
-                }
-              }
-            }
-          }
-          const repoMaxLayer = new Map();
-          for (const s of services) {
-            const l = layerOf.get(s.address) ?? 0;
-            const repo = s.repo ?? s.address;
-            repoMaxLayer.set(repo, Math.max(repoMaxLayer.get(repo) ?? 0, l));
-          }
-          return [...services].sort((a, b) => {
-            const ra = a.repo ?? a.address,
-              rb = b.repo ?? b.address;
-            const groupDiff =
-              (repoMaxLayer.get(rb) ?? 0) - (repoMaxLayer.get(ra) ?? 0);
-            if (groupDiff !== 0) return groupDiff;
-            const layerDiff =
-              (layerOf.get(b.address) ?? 0) - (layerOf.get(a.address) ?? 0);
-            if (layerDiff !== 0) return layerDiff;
-            return a.address.localeCompare(b.address);
           });
         }
 
@@ -3924,176 +4223,13 @@
           return rank;
         }
 
-        // Order cards by the derived repo layer (subsystems grouped under their repo),
-        // so cards match the dependency graph and the up/down order.
-        function _sortByDerived(services, repoRank) {
-          return [...services].sort((a, b) => {
-            const ra = repoRank.get(a.repo) ?? -1,
-              rb = repoRank.get(b.repo) ?? -1;
-            if (rb !== ra) return rb - ra;
-            if (a.repo !== b.repo)
-              return (a.repo || "").localeCompare(b.repo || "");
-            return (a.service || a.address).localeCompare(
-              b.service || b.address,
-            );
-          });
-        }
-
-        function topoSortServices(services, repoRank) {
-          if (_svcSortMode === "name") return _sortByName(services);
-          if (repoRank && repoRank.size)
-            return _sortByDerived(services, repoRank);
-          return _sortByWorkspace(services);
-        }
-
-        window.setSvcSortMode = function (mode) {
-          _svcSortMode = mode;
-          document
-            .querySelectorAll(".svc-sort-btn")
-            .forEach((b) =>
-              b.classList.toggle("active", b.dataset.sort === mode),
-            );
-          if (activeWs) renderContent(activeWs);
-        };
-
         let _graphServices = null,
           _graphDepsMap = null,
           _graphDerived = null,
           _graphApps = []; // /api/applications for the viewed workspace
         let _lastHealthResults = []; // cache of most recent __DEN_CLI__:health-update payload
+        let _lastHealthAt = null; // when it landed (the table's "failed at")
 
-        // ── Applications tab ───────────────────────────────────────────────────
-        // Same as `__DEN_CLI__ apps`: Org > Application > Repo > Services. Declared
-        // applications (config `applications:` / manifest `application:`), then
-        // each remaining repo as its own. Each card acts on its repos only.
-        let _appsData = [];
-        const shownApps = () =>
-          _appsData.filter(
-            (a) =>
-              a.repos.length > 0 ||
-              a.contributors.length > 0 ||
-              (a.absent || []).length > 0,
-          );
-
-        async function renderApplications(wsName) {
-          const wrap = document.getElementById("apps-wrap");
-          if (!wrap) return;
-          const tree = await fetch(
-            `/api/applications?workspace=${encodeURIComponent(wsName)}`,
-          )
-            .then((r) => (r.ok ? r.json() : { applications: [] }))
-            .catch(() => ({ applications: [] }));
-          _appsData = tree.applications || [];
-          const shown = shownApps();
-          if (shown.length === 0) {
-            wrap.innerHTML =
-              '<div class="graph-empty">No applications in this workspace</div>';
-            return;
-          }
-          // Service entries are addresses; placement (R13) sits beside them in
-          // `placements[address]`. A remote service gets ☁ after its name.
-          const svcLabel = (a, addr, r) => {
-            const name = addr.includes("/") ? addr.split("/")[1] : addr;
-            const p = a.placements?.[addr] ?? tree.placements?.[addr];
-            return { name, remote: p?.runs === "remote", root: name === r };
-          };
-          const repoChip = (a, r) => {
-            const all = (a.services?.[r] || []).map((addr) =>
-              svcLabel(a, addr, r),
-            );
-            const subs = all
-              .filter((x) => !x.root)
-              .map((x) => x.name + (x.remote ? " ☁" : ""));
-            const rootRemote = all.some((x) => x.root && x.remote);
-            return `<span class="app-repo" data-repo="${escHtml(r)}"><span class="app-dot"></span>${escHtml(r)}${rootRemote ? " ☁" : ""}${subs.length ? ` <span class="app-subs">${escHtml(subs.join(", "))}</span>` : ""}</span>`;
-          };
-          const PLACE = {
-            remote: "☁ remote",
-            hybrid: "⇄ hybrid",
-            none: "no runtime",
-          };
-          const placeBadge = (a) =>
-            PLACE[a.placement]
-              ? `<span class="app-place ${escHtml(a.placement)}" title="${escHtml(a.summary ?? "")}">${PLACE[a.placement]}</span>`
-              : "";
-          const placeSummary = (a) => {
-            const t = a.summary;
-            return a.placement &&
-              a.placement !== "local" &&
-              typeof t === "string" &&
-              t
-              ? `<div class="app-desc">${escHtml(t)}</div>`
-              : "";
-          };
-          wrap.innerHTML =
-            (tree.org
-              ? `<div class="app-org">${escHtml(tree.org.title)}<span class="app-org-sep">›</span><span class="app-org-hint">${shown.length} application${shown.length === 1 ? "" : "s"}</span></div>`
-              : "") +
-            shown
-              .map(
-                (a, i) => `
-        <div class="app-card">
-          <div class="app-head">
-            <span class="app-title">${escHtml(a.title)}</span>
-            ${a.title !== a.name ? `<code class="app-name">${escHtml(a.name)}</code>` : ""}
-            ${a.owner ? `<span class="app-owner">${escHtml(a.owner)}</span>` : ""}
-            ${a.source === "repo" ? '<span class="app-source">repo is the application</span>' : ""}
-            ${placeBadge(a)}
-            <span class="cmd-bar-spacer"></span>
-            ${
-              a.repos.length
-                ? `
-            <button class="master-btn" onclick="runAppCmd('up', ${i})">▶ Up</button>
-            <button class="master-btn" onclick="runAppCmd('restart', ${i})">↻ Restart</button>
-            <button class="master-btn" onclick="runAppCmd('down', ${i})">⏹ Down</button>`
-                : ""
-            }
-          </div>
-          ${a.description ? `<div class="app-desc">${escHtml(a.description)}</div>` : ""}
-          ${placeSummary(a)}
-          <div class="app-repos">${a.repos.map((r) => repoChip(a, r)).join("")}</div>
-          ${
-            a.contributors.length
-              ? `
-          <div class="app-contrib-label">Contributes (no runtime of its own)</div>
-          <div class="app-repos">${a.contributors
-            .map(
-              (c) =>
-                `<span class="app-contrib" title="${escHtml(c.kind)}"><span class="app-kind">${escHtml(c.kind)}</span>${escHtml(c.repo)}${c.contributesTo.length ? ` <span class="app-into">→ ${escHtml(c.contributesTo.join(", "))}</span>` : ""}</span>`,
-            )
-            .join("")}</div>`
-              : ""
-          }
-          ${
-            (a.absent || []).length
-              ? `<div class="app-absent">Not in this workspace: ${escHtml(a.absent.join(", "))}</div>`
-              : ""
-          }
-        </div>`,
-              )
-              .join("");
-          applyHealthToApps(_lastHealthResults);
-        }
-
-        window.runAppCmd = function (cmd, i) {
-          const a = shownApps()[i];
-          if (a && a.addresses.length) runWorkspaceCmd(cmd, a.addresses);
-        };
-
-        function applyHealthToApps(results) {
-          const byRepo = {};
-          // A repo is down if any of its services is down, up if all known are up.
-          for (const h of results || []) {
-            if (h.ok === false) byRepo[h.repo] = false;
-            else if (h.ok === true && byRepo[h.repo] !== false)
-              byRepo[h.repo] = true;
-          }
-          document.querySelectorAll(".app-repo").forEach((el) => {
-            const v = byRepo[el.dataset.repo];
-            el.classList.toggle("ok", v === true);
-            el.classList.toggle("down", v === false);
-          });
-        }
         // Orgs (GitHub owners) for the graph's org frames: id → {label, color},
         // and repo → org. Loaded once; the graph redraws when it lands.
         let _orgData = null;
@@ -4118,9 +4254,9 @@
         // ── R23 (Ward QA 2026-11-05): room for the graph ──────────────────
         // The workspace list collapses to a 40px strip, remembered per user
         // (/api/settings graph.workspaces; mirrored locally for the first
-        // paint, the server's copy wins). Maximize (the graph's button, or
-        // F outside a field) hides the list, the header, the action row and
-        // the tabs; Esc restores. The graph re-fits to the larger area.
+        // paint, the server's copy wins). Maximize, on the Graph page (the
+        // graph's button, or F outside a field), gives the graph the whole
+        // content area; Esc restores. The graph re-fits to the larger area.
         const LS_WS_LIST = "__DEN_CLI__-ws-list";
         const pageMain = document.querySelector(".page-main");
         function paintWsList(collapsed) {
@@ -4153,6 +4289,14 @@
         fetch("/api/settings")
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => {
+            const g = d?.graph?.groupBy;
+            if (["none", "app", "org"].includes(g) && g !== _tblGroup) {
+              _tblGroup = g;
+              paintGroup();
+              try {
+                localStorage.setItem(LS_GROUP, g);
+              } catch {}
+            }
             const w = d?.graph?.workspaces;
             if (w !== "open" && w !== "collapsed") return;
             paintWsList(w === "collapsed");
@@ -4176,7 +4320,7 @@
         }
         /** F: only with the graph showing and focus outside a field. */
         function graphShowing() {
-          return !!document.querySelector("#ctab-graph.active .dg");
+          return !!document.querySelector("#graph-panel .dg");
         }
         function inField(el) {
           return !!el?.closest?.(
@@ -4382,8 +4526,9 @@
         // Keep graph health dots in sync with the header's poll / manual refresh
         document.addEventListener("__DEN_CLI__:health-update", (e) => {
           _lastHealthResults = e.detail || [];
+          _lastHealthAt = new Date();
           graphHealth(_lastHealthResults);
-          applyHealthToApps(_lastHealthResults);
+          renderTable();
         });
 
         async function openInEditor(repoPath) {

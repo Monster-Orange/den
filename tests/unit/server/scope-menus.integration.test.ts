@@ -9,7 +9,8 @@
  *   "Set <ws> as focus" is the separate item that does;
  * - a Services card's ☆ follows an unpin from the rail, without a reload;
  * - every page has exactly one main landmark, #den-content;
- * - Local Dev's output panel never covers the graph's cards.
+ * - the runs dock never covers the graph's cards (since 0.3.0-dev.35 on
+ *   the Graph page: Workspaces has no graph of its own, R24).
  *
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
@@ -332,10 +333,10 @@ describe("one main landmark (a consumer's dev.17 run)", () => {
   );
 });
 
-describe("Local Dev (a consumer's dev.17 run)", () => {
+describe("the Graph page (a consumer's dev.17 run, on Local Dev until dev.35)", () => {
   it("the runs dock (its output) never covers a graph card", async () => {
     if (!browser) return;
-    const { p } = await open("/local-dev", { width: 1440, height: 640 });
+    const { p } = await open("/graph", { width: 1440, height: 640 });
     await p.waitForSelector(".dg-card");
     await p.waitForTimeout(500);
     // A run opens the dock (R16): its tab and its output.

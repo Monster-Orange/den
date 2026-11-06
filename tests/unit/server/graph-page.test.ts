@@ -1,8 +1,9 @@
 /**
- * The Graph page (R22, 0.3.0-dev.32): Local Dev's file at /graph, with the
- * shell's page id and the <title> swapped, so the rail marks Graph and the
- * page shows the graph alone. If local-dev.html loses either marker, the
- * swap fails loudly instead of serving Local Dev as "Graph".
+ * The Graph page (R22, 0.3.0-dev.32): the Workspaces page's file
+ * (local-dev.html, R24) at /graph, with the shell's page id and the
+ * <title> swapped, so the rail marks Graph and the page shows the graph
+ * alone. If local-dev.html loses either marker, the swap fails loudly
+ * instead of serving Workspaces as "Graph".
  */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -25,7 +26,7 @@ describe("graphPageHtml", () => {
       LOCAL_DEV.length -
         "local-dev".length +
         "graph".length -
-        "Local Dev".length +
+        "Workspaces".length +
         "Graph".length,
     );
   });
@@ -34,13 +35,16 @@ describe("graphPageHtml", () => {
     expect(() => graphPageHtml("<html></html>")).toThrow(/markers/);
   });
 
-  it("local-dev.html hides the list, header, actions and tabs on the Graph page", () => {
-    for (const sel of [
-      ".page-main > .sidebar",
-      ".content-header",
-      ".cmd-bar",
-      ".ctab-bar",
-    ])
-      expect(LOCAL_DEV).toContain(`body.den-page-graph ${sel}`);
+  it("local-dev.html hides the list on the Graph page, and draws the graph alone there", () => {
+    expect(LOCAL_DEV).toContain("body.den-page-graph .page-main > .sidebar");
+    // The Graph page's branch draws the graph panel and returns: no
+    // workspace header, action row or repo table (R24).
+    const branch = LOCAL_DEV.slice(
+      LOCAL_DEV.indexOf("if (GRAPH_PAGE) {\n            content.innerHTML"),
+    );
+    expect(branch.slice(0, 600)).toMatch(
+      /<div class="graph-panel" id="graph-panel">[\s\S]*renderDepGraph\([^)]*\);\s*return;/,
+    );
+    expect(LOCAL_DEV).not.toMatch(/\bctab/);
   });
 });

@@ -10,6 +10,53 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **The graph's edges flow when a card is selected, and stay on top**
+  (0.3.0-dev.35, R22b, Ward's QA of dev.34). Selecting a card only
+  thickened its edges, and the edge layer painted under the group frames,
+  repo frames and cards, so an opaque frame hid an edge or an arrowhead
+  that crossed it (dev.34's routed cross-group edges too). The edge layer
+  now paints above the frames and cards, still taking no pointer events
+  (cards under an edge stay clickable). A highlighted edge carries a
+  marching-dash overlay, in its kind's colour, moving from the dependent
+  to its dependency (data-f to data-t) at about one cycle a second: a
+  selected card's dependencies flow out of it and its dependents flow in.
+  Under reduced motion nothing moves: a highlighted edge is drawn thicker
+  in the accent colour.
+- **Workspaces: Local Dev is an ops page** (0.3.0-dev.35, R24a–e, Ward
+  2026-11-05: "the UX is a bit of a kitchen sink"). One job: run your
+  workspaces.
+  - R24a: the rail item, the page title and its header read
+    **Workspaces** (same icon and place). `/` and `/local-dev` still serve
+    it; the palette finds it as "Local Dev" too. The nav label key is
+    `n.workspaces`.
+  - R24b: the "⚙ Settings" footer under the workspace list is gone; "+ new
+    workspace" stays.
+  - R24c: the selected workspace's header adds **Open in Graph →**
+    (`/graph?ws=<name>`) and a ⋯ menu: Workspace settings
+    (`/settings?ws=<name>#workspace`, the old "Settings ↗" tab), Rename,
+    Delete.
+  - R24d: **one repo table** replaces the Graph, Applications and Config
+    tabs. Per repo: the health dot and rollup ("2/2 healthy", or the
+    failing check), the branch, the mode with "use local / use managed",
+    the last run's result and time (from the runs dock), Start, Stop,
+    Restart, Logs (in the dock) and ⋯ (terminal, editor, auto-start,
+    clone, validate, remove). A repo with several services expands to a
+    sub-row each (keyboard: the ▸ button, `aria-expanded`). Problems sort
+    first, then the startup order, with the fix inline: the status
+    drawer's text and Start/Logs buttons, from one source
+    (`topbar.js problemFix`). **Group by** None, Application (as `den
+    apps`, each application's Up/Restart/Down in its row) or Org, a user
+    pref (`graph.groupBy`). **Find** uses the Graph page's matcher. "+ Add
+    repo" sits under the table; "Validate a manifest" folds under it. The
+    empty state is unchanged. A real `<table>` with `th scope`; every
+    action button is named with its repo or service.
+  - R24e: on Workspaces the runs dock shows the selected workspace's runs
+    (a run belongs to every workspace that has its repo; one with no repo,
+    such as Sync, always shows), with an **All runs** toggle in the bar.
+    `denShell.runs.scope({ ws })`, and `runs.add(…, { ws })` tags a run.
+  - Not changed: the Graph page, Services, Settings and every API; no
+    consumer config needs a change.
+
 - **The Graph page** (0.3.0-dev.32, R22, Ward 2026-11-05). Develop ›
   Graph, after Local Dev, at `/graph`: the workspace graph alone, full
   width under its page header, with the same toolbar, zoom, Maximize
@@ -604,6 +651,18 @@ config and manifest changes a distribution must make to move to it under
   `backendAvailable` (and `backend`, `reason`).
 
 ### Fixed
+
+- **`<cli> up <repo>` no longer fails fast on a multi-service dependency**
+  (0.3.0-dev.35; backported to 0.2.8). A dependency with no `up` of its
+  own but with per-service ups (two services, each with its `up`) was run
+  as the repo, `command "up" not found for service "<repo>"`, and the run
+  aborted before the repo you asked for. `up <repo>` and `up -a` now make
+  one decision (`resolveUpTargets`): a repo with its own `up` starts as
+  before; one with none but per-service ups starts its services (all of
+  them, or the ones its dependents name in `depends_on`); only one with
+  no `up` at all is skipped, said as `-a` says it ("Skipping (no local up
+  command): …"), and nothing waits on it. A dependency whose `up` fails
+  still fails fast.
 
 - **The graph fits on first paint** (0.3.0-dev.34, a consumer's dogfood
   finding). With "All active", `/graph` opened at 60% with 17 of 31 cards

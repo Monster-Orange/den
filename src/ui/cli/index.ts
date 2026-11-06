@@ -130,6 +130,11 @@ import {
   deriveStartTargets,
 } from "../../shared/environment-manager/derivation/derived-up.js";
 import type { DerivedGraph } from "../../shared/environment-manager/derivation/types.js";
+import {
+  repoOfAddress,
+  resolveUpTargets,
+  type UpTargets,
+} from "../../shared/environment-manager/up-targets.js";
 import { loadAliasResolver } from "../../shared/environment-manager/derivation/load-alias.js";
 import {
   cmdApps,
@@ -482,7 +487,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   "local-dev": {
     usage: "local-dev [on|off]",
     lines: [
-      "Toggle the local-dev experience (web Local Dev section + service mgmt).",
+      "Toggle the local-dev experience (web Workspaces page + service mgmt).",
     ],
   },
   menu: {
@@ -2160,11 +2165,15 @@ class DenCLI {
       this.renderUpClonePlan(rawOrder);
       return;
     }
+    // A repo with no up of its own starts its services, one with no up at
+    // all is skipped: the decision `up -a` makes (resolveUpTargets).
+    const targets = new Set(include ? [seed] : []);
     if (dryRun) {
+      const up = this.upTargets(order, targets, graph);
       await this.runServicesCommand(
-        order,
+        up.order,
         "up",
-        { order },
+        { order: up.order },
         { named, dryRun: true },
       );
       return;
@@ -2188,17 +2197,54 @@ class DenCLI {
       );
       return;
     }
+    const up = this.upTargets(order, targets, graph);
+    if (up.order.length === 0) {
+      console.log(chalk.yellow("  Nothing to start.\n"));
+      return;
+    }
     await this.runServicesCommand(
-      order,
+      up.order,
       "up",
       {
-        order,
-        waitDepsFor: (address) => hardDepsOf(graph, address),
+        order: up.order,
+        waitDepsFor: (address) =>
+          up.depsAs(hardDepsOf(graph, repoOfAddress(address))),
         failFast: true,
         skipHealthyAll: true,
       },
       { named },
     );
+  }
+
+  /**
+   * The start order `up` runs (`up <repo>` and `up -a` alike): a repo with
+   * no up of its own replaced by its services' ups, one with no up at all
+   * skipped (resolveUpTargets), said as it decides.
+   */
+  private upTargets(
+    order: string[],
+    targets: ReadonlySet<string>,
+    graph: DerivedGraph,
+  ): UpTargets {
+    const up = resolveUpTargets(order, this.focusedWs(), { targets, graph });
+    this.sayUpTargets(up);
+    return up;
+  }
+
+  /** What resolveUpTargets decided, in `up`'s words. */
+  private sayUpTargets(up: UpTargets): void {
+    for (const [repo, addrs] of up.expanded)
+      console.log(
+        chalk.gray(
+          `  ${repo} has no up of its own: starting ${addrs.join(", ")}`,
+        ),
+      );
+    if (up.skippedNoUp.length > 0)
+      console.log(
+        chalk.gray(
+          `  Skipping (no local up command): ${up.skippedNoUp.join(", ")}\n`,
+        ),
+      );
   }
 
   /**
@@ -2417,19 +2463,18 @@ class DenCLI {
     // is skipped, not fatal. `-a` starts independent peers — one unrunnable
     // repo must not strand the rest (runServiceCommand exits 1 on a missing
     // command, and a fail-fast would turn that into a full abort). Now that
-    // clones exist, the manifest lookup is meaningful.
-    const order: string[] = [];
-    const skippedNoUp: string[] = [];
-    for (const repo of candidates) {
-      const resolved = resolveService(repo);
-      const upDef = resolved
-        ? localCommandsFor(resolved, this.focusedWs())["up"]
-        : undefined;
-      (upDef ? order : skippedNoUp).push(repo);
-    }
+    // clones exist, the manifest lookup is meaningful. A repo with no up of
+    // its own but per-service ups starts those services: the same decision
+    // `up <repo>` makes for a dependency (upTargets).
+    const up = resolveUpTargets(candidates, this.focusedWs(), {
+      targets: new Set(candidates),
+      graph,
+    });
+    const order = up.order;
+    const systems = candidates.filter((r) => !up.skippedNoUp.includes(r));
     console.log(
       chalk.cyan(
-        `\n  ${only ? "Application" : "Workspace-wide"} up — ${chalk.bold(String(order.length))} ${noun(order.length, "system")}`,
+        `\n  ${only ? "Application" : "Workspace-wide"} up — ${chalk.bold(String(systems.length))} ${noun(systems.length, "system")}`,
       ),
     );
     console.log(chalk.gray(`  Order: ${order.join(" → ")}\n`));
@@ -2441,13 +2486,7 @@ class DenCLI {
         ),
       );
     }
-    if (skippedNoUp.length > 0) {
-      console.log(
-        chalk.gray(
-          `  Skipping (no local up command): ${skippedNoUp.join(", ")}\n`,
-        ),
-      );
-    }
+    this.sayUpTargets(up);
     if (order.length === 0) {
       console.log(chalk.yellow("  Nothing to start.\n"));
       return;
@@ -2457,13 +2496,17 @@ class DenCLI {
     // healthy-skip. Unlike runDerivedUp there is NO failFast on the start
     // loop: `-a`'s systems are independent peers — one failure must not
     // strand the rest (the web master button continues too).
-    const repoSet = new Set(order);
+    const repoSet = new Set(systems);
     await this.runServicesCommand(order, "up", {
       order,
       // Hard deps outside the workspace can't be waited on — filter to the set
       // we are actually starting.
       waitDepsFor: (address) =>
-        hardDepsOf(graph, address).filter((dep) => repoSet.has(dep)),
+        up.depsAs(
+          hardDepsOf(graph, repoOfAddress(address)).filter((dep) =>
+            repoSet.has(dep),
+          ),
+        ),
       skipHealthyAll: true,
     });
   }

@@ -467,14 +467,17 @@ describe("the Settings page's rows (R21)", () => {
         },
         "appearance",
       ],
+      // (The list's ⚙ footer is gone, R24b; the workspace's Settings tab
+      // moved into its ⋯ menu, R24c.)
       [
-        "the ⚙ button in the workspaces sidebar",
-        (p) => p.click("#sidebar-settings-btn"),
-        "editor",
-      ],
-      [
-        "the workspace's Settings tab",
-        (p) => p.click('.ctab-bar a.ctab[href^="/settings"]'),
+        "Workspace settings in the workspace's ⋯ menu",
+        async (p) => {
+          await p.click('#content .ws-more [data-action="toggle-svc-menu"]');
+          await p
+            .locator("#ws-more-menu")
+            .getByRole("menuitem", { name: "Workspace settings" })
+            .click();
+        },
         "workspace",
       ],
       [
@@ -493,8 +496,7 @@ describe("the Settings page's rows (R21)", () => {
       await p.route("**/api/changelog", (r) => r.fulfill({ json: [] }));
       await p.goto(BASE + "/local-dev");
       await p.waitForSelector(".den-rail .den-ni");
-      await p.waitForSelector("#sidebar-settings-btn");
-      await p.waitForSelector(".ctab-bar");
+      await p.waitForSelector("#ws-open-graph");
       await act(p);
       await p.waitForURL(/\/settings(\?|#|$)/, { timeout: 5000 });
       await p.waitForSelector("#set-body section");

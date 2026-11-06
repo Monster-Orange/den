@@ -88,7 +88,7 @@
  * named from its <title>.
  *
  * data-health-env pins the health row's env on pages that are local by
- * nature (Local Dev, Releases), whatever the env picker says.
+ * nature (Workspaces, Releases), whatever the env picker says.
  *
  * Every color and font is a theme token.
  */
@@ -99,7 +99,7 @@
   host.dataset.mounted = "1";
   var page = host.dataset.page || "";
   // The page id on the body (den-page-<id>), for CSS from first paint: the
-  // Graph page is Local Dev's file at /graph (R22, 0.3.0-dev.32).
+  // Graph page is the Workspaces page's file at /graph (R22, 0.3.0-dev.32).
   if (/^[a-z0-9-]+$/.test(page) && document.body)
     document.body.classList.add("den-page-" + page);
 
@@ -110,7 +110,7 @@
       "g.develop": "Develop",
       "g.verify": "Verify",
       "g.ship": "Ship",
-      "n.local-dev": "Local Dev",
+      "n.workspaces": "Workspaces",
       "n.graph": "Graph",
       "n.services": "Services",
       "n.logs": "Logs",
@@ -153,6 +153,9 @@
       "runs.n": "{n} running",
       "runs.none": "No runs",
       "runs.empty": "Nothing has run yet. Output from any page lands here.",
+      "runs.all": "All runs",
+      "runs.allTip": "Showing {ws}'s runs; press for every run",
+      "runs.allOn": "Showing every run; press for {ws}'s only",
       "dock.done": "done in {s}s",
       "dock.failed": "failed in {s}s",
       "dock.close": "Hide runs",
@@ -270,6 +273,8 @@
       href: n.href,
       badge: typeof n.badge === "function" ? n.badge : null,
       when: typeof n.when === "function" ? n.when : null,
+      // Other names the palette finds it by (R24a: "Local Dev").
+      keywords: Array.isArray(n.keywords) ? n.keywords.map(String) : [],
       from: n.from || null,
     });
     checkOrphansSoon();
@@ -801,7 +806,7 @@
     closeMenu(false);
   });
 
-  /** A page's href from the NAV registry (Local Dev manages workspaces). */
+  /** A page's href from the NAV registry (Workspaces manages them). */
   function navHref(id) {
     for (var i = 0; i < NAV.length; i++)
       if (NAV[i].id === id) return NAV[i].href;
@@ -833,17 +838,20 @@
     GROUPS.push({ id: g.id, label: g.label, order: g.order, from: null });
   });
   [
-    // Den's overview: the workspaces, their actions and their graph.
+    // Workspaces (R24a, 0.3.0-dev.35; was Local Dev): run your workspaces.
+    // Its id and route stay (prefs and links keep working); the palette
+    // still finds it as "Local Dev".
     {
       id: "local-dev",
-      label: "n.local-dev",
+      label: "n.workspaces",
       icon: "overview",
       group: "develop",
       order: 10,
       href: "/local-dev",
+      keywords: ["Local Dev", "workspaces"],
     },
     // The Graph page (R22, 0.3.0-dev.32, Ward 2026-11-05): the graph alone,
-    // full width, after Local Dev as the prototype orders them.
+    // full width, after Workspaces as the prototype orders them.
     {
       id: "graph",
       label: "n.graph",
@@ -927,6 +935,7 @@
       href: n.href,
       badge: n.badge || null,
       when: n.when || null,
+      keywords: n.keywords || [],
       from: null,
     });
   });
@@ -1629,8 +1638,7 @@
       });
   }
   // ── tabs: the WAI-ARIA tabs pattern, one helper (0.3.0-dev.33) ────────
-  // Every page tablist (Local Dev's workspace tabs, a page header's tabs)
-  // is wired here: one tab stop (the selected tab is tabindex 0, the rest
+  // Every page tablist (a page header's tabs) is wired here: one tab stop (the selected tab is tabindex 0, the rest
   // -1); ←/→ move and wrap, Home and End go to the ends, and each selects
   // as it moves (automatic activation); a click selects. Each tab has
   // aria-controls naming its role=tabpanel, which has aria-labelledby back
@@ -1788,7 +1796,7 @@
    * The page header (R20): { el, h1, sub, act, tabs }, or null on a page
    * that draws its own. setSub(text) fixes the sub line (null: the scope
    * again); setScope({ ws?, env? }) keeps the scope line but names the
-   * workspace or env the page shows (Local Dev and Graph show one
+   * workspace or env the page shows (Workspaces and Graph show one
    * workspace, locally); a page shows .act by filling it and unhiding it,
    * and tabs with tabs(spec) (pageTabs: made only then).
    */
@@ -1878,11 +1886,14 @@
   //   runs.clear(id), runs.remove(id)
   //   runs.show(), hide(), toggle(), isOpen(), has(id), list(), selected(),
   //   runs.text(id), running(), onChange(fn)
+  //   runs.scope({ ws } | null)     only that workspace's runs show, with
+  //                                 an "All runs" toggle in the bar (R24e)
   //
   // opts: closable (default true: a × on the tab), onClose(id) (the page
   // decides; else the tab goes), onSelect(id), onClear(id), max (lines
   // kept, 0 = all), actions [{ id, label, title?, run(id) }] (buttons in
-  // the bar for the selected run, e.g. Stop), doneLine.
+  // the bar for the selected run, e.g. Stop), doneLine, ws (the workspace
+  // or workspaces it ran in, added to the ones it has).
   //
   // The bar carries Copy and Clear for the selected run (the panes had
   // them). R16a (Ward QA 2026-11-05): the dock starts collapsed to its bar.
@@ -1926,8 +1937,24 @@
     for (var i = 0; i < RUNS.length; i++) if (RUNS[i].id === id) return RUNS[i];
     return null;
   }
+  // R24e (0.3.0-dev.35): a page showing one workspace scopes the dock to
+  // it (runs.scope({ ws })): only runs started in that workspace show, and
+  // "All runs" (aria-pressed) shows every one. A run's workspaces are what
+  // its page tagged it with (opts.ws); a run with none always shows.
+  var runScope = null;
+  var runAll = false;
+  function inScope(r) {
+    return (
+      !runScope || runAll || !r.ws.length || r.ws.indexOf(runScope.ws) >= 0
+    );
+  }
+  function visibleRuns() {
+    return RUNS.filter(inScope);
+  }
   function selectedRun() {
-    return runById(runSel) || RUNS[RUNS.length - 1] || null;
+    var shown = visibleRuns();
+    var r = runById(runSel);
+    return (r && inScope(r) ? r : null) || shown[shown.length - 1] || null;
   }
   function runsChanged() {
     runListeners.forEach(function (fn) {
@@ -1993,49 +2020,52 @@
   // The bar: redrawn on any run's state change (not on every line).
   function barHtml() {
     var sel = selectedRun();
-    var tabs = RUNS.length
-      ? RUNS.map(function (r) {
-          var on = sel && sel.id === r.id;
-          return (
-            '<span class="den-rtab-w">' +
-            '<button type="button" class="den-rtab' +
-            (r.closable ? " den-x" : "") +
-            '" role="tab" id="den-rtab-' +
-            r.n +
-            '" data-rsel="' +
-            r.n +
-            '" aria-selected="' +
-            (on ? "true" : "false") +
-            '" aria-controls="den-dock-out" tabindex="' +
-            (on ? "0" : "-1") +
-            '" title="' +
-            esc(runTitle(r)) +
-            '"' +
-            (r.closable ? ' aria-keyshortcuts="Delete"' : "") +
-            '><span class="den-dot ' +
-            dotClass(r) +
-            '" aria-hidden="true"></span>' +
-            esc(r.label) +
-            (r.running
-              ? '<span class="den-sr">, ' +
-                esc(t("runs.n", { n: 1 })) +
-                "</span>"
-              : r.error
-                ? '<span class="den-sr">, ' + esc(t("dock.err")) + "</span>"
+    var shown = visibleRuns();
+    var tabs = shown.length
+      ? shown
+          .map(function (r) {
+            var on = sel && sel.id === r.id;
+            return (
+              '<span class="den-rtab-w">' +
+              '<button type="button" class="den-rtab' +
+              (r.closable ? " den-x" : "") +
+              '" role="tab" id="den-rtab-' +
+              r.n +
+              '" data-rsel="' +
+              r.n +
+              '" aria-selected="' +
+              (on ? "true" : "false") +
+              '" aria-controls="den-dock-out" tabindex="' +
+              (on ? "0" : "-1") +
+              '" title="' +
+              esc(runTitle(r)) +
+              '"' +
+              (r.closable ? ' aria-keyshortcuts="Delete"' : "") +
+              '><span class="den-dot ' +
+              dotClass(r) +
+              '" aria-hidden="true"></span>' +
+              esc(r.label) +
+              (r.running
+                ? '<span class="den-sr">, ' +
+                  esc(t("runs.n", { n: 1 })) +
+                  "</span>"
+                : r.error
+                  ? '<span class="den-sr">, ' + esc(t("dock.err")) + "</span>"
+                  : "") +
+              "</button>" +
+              (r.closable
+                ? '<button type="button" class="den-rtab-x" tabindex="-1" data-rclose="' +
+                  r.n +
+                  '" aria-label="' +
+                  esc(t("dock.closeRun", { s: r.label })) +
+                  '" title="' +
+                  esc(t("dock.closeRun", { s: r.label })) +
+                  '"><span aria-hidden="true">×</span></button>'
                 : "") +
-            "</button>" +
-            (r.closable
-              ? '<button type="button" class="den-rtab-x" tabindex="-1" data-rclose="' +
-                r.n +
-                '" aria-label="' +
-                esc(t("dock.closeRun", { s: r.label })) +
-                '" title="' +
-                esc(t("dock.closeRun", { s: r.label })) +
-                '"><span aria-hidden="true">×</span></button>'
-              : "") +
-            "</span>"
-          );
-        }).join("")
+              "</span>"
+            );
+          })
+          .join("")
       : "<span>" + esc(t("runs.none")) + "</span>";
     var acts = "";
     if (dockOpen && sel) {
@@ -2066,13 +2096,23 @@
       // (0.3.0-dev.34, a consumer's finding). The bar redraws on any run's
       // state change, so the first tab brings the role back.
       '<div class="den-runs-l"' +
-      (RUNS.length
+      (shown.length
         ? ' role="tablist" aria-label="' + esc(t("runs.title")) + '"'
         : "") +
       ">" +
       tabs +
       "</div>" +
       (acts ? '<span class="den-dock-acts">' + acts + "</span>" : "") +
+      // (No runs at all: nothing to filter, no toggle.)
+      (runScope && RUNS.length
+        ? '<button type="button" class="den-ib" data-dock="all" aria-pressed="' +
+          (runAll ? "true" : "false") +
+          '" title="' +
+          esc(t(runAll ? "runs.allOn" : "runs.allTip", { ws: runScope.ws })) +
+          '">' +
+          esc(t("runs.all")) +
+          "</button>"
+        : "") +
       '<button type="button" class="den-ib" data-act="dock" aria-expanded="' +
       (dockOpen ? "true" : "false") +
       '" aria-controls="den-dock-out">' +
@@ -2216,9 +2256,15 @@
         max: 0,
         actions: [],
         keyed: {},
+        ws: [],
+        ranAt: null,
       };
       RUNS.push(r);
     } else if (label != null) r.label = String(label);
+    // The workspaces it ran in (R24e): every one a page tagged it with.
+    [].concat(opts.ws == null ? [] : opts.ws).forEach(function (w) {
+      if (w && r.ws.indexOf(String(w)) < 0) r.ws.push(String(w));
+    });
     [
       "closable",
       "doneLine",
@@ -2230,9 +2276,17 @@
     ].forEach(function (k) {
       if (opts[k] !== undefined) r[k] = opts[k];
     });
-    if (opts.running !== undefined) r.running = !!opts.running;
+    if (opts.running !== undefined) markRunning(r, !!opts.running);
     if (opts.error !== undefined) r.error = !!opts.error;
     return r;
+  }
+  /** Running on or off; when it last ran and ended (a page's last-run column). */
+  function markRunning(r, on) {
+    if (on && !r.running) {
+      r.ranAt = Date.now();
+      r.endedAt = null;
+    } else if (!on && r.running) r.endedAt = Date.now();
+    r.running = on;
   }
   var runsApi = {
     add: function (id, label, opts) {
@@ -2253,6 +2307,7 @@
       r.done = false;
       r.error = false;
       r.startedAt = Date.now();
+      r.ranAt = r.startedAt;
       r.endedAt = null;
       if (opts.clear) {
         r.lines = [];
@@ -2318,7 +2373,7 @@
       var r = runById(String(id));
       if (!r || !o) return;
       if (o.label != null) r.label = String(o.label);
-      if (o.running !== undefined) r.running = !!o.running;
+      if (o.running !== undefined) markRunning(r, !!o.running);
       if (o.error !== undefined) r.error = !!o.error;
       if (o.actions !== undefined) r.actions = o.actions || [];
       renderDock();
@@ -2384,8 +2439,24 @@
           done: r.done,
           error: r.error,
           lines: r.lines.length,
+          ws: r.ws.slice(),
+          ranAt: r.ranAt,
+          endedAt: r.endedAt,
+          shown: inScope(r),
         };
       });
+    },
+    /**
+     * Scope the dock to one workspace's runs (R24e), or null for every
+     * run. "All runs" in the bar lifts it until the scope changes.
+     */
+    scope: function (o) {
+      var ws = o && o.ws ? String(o.ws) : null;
+      if ((runScope && runScope.ws) === ws) return;
+      runScope = ws ? { ws: ws } : null;
+      runAll = false;
+      renderDock();
+      runsChanged();
     },
     selected: function () {
       var r = selectedRun();
@@ -2471,6 +2542,12 @@
         return;
       }
       var d = tgt.closest("[data-dock]");
+      if (d && d.getAttribute("data-dock") === "all") {
+        runAll = !runAll;
+        renderDock();
+        runsChanged();
+        return;
+      }
       if (!d || !sel) return;
       if (d.getAttribute("data-dock") === "clear") {
         runsApi.clear(sel.id);
@@ -2493,16 +2570,17 @@
       var tab = e.target && e.target.closest && e.target.closest("[data-rsel]");
       if (!tab) return;
       var r = runOfEl(tab, "data-rsel");
-      var i = RUNS.indexOf(r);
+      var shown = visibleRuns();
+      var i = shown.indexOf(r);
       var next =
         e.key === "ArrowRight"
-          ? (i + 1) % RUNS.length
+          ? (i + 1) % shown.length
           : e.key === "ArrowLeft"
-            ? (i - 1 + RUNS.length) % RUNS.length
+            ? (i - 1 + shown.length) % shown.length
             : e.key === "Home"
               ? 0
               : e.key === "End"
-                ? RUNS.length - 1
+                ? shown.length - 1
                 : -1;
       if (e.key === "Delete" && r && r.closable) {
         e.preventDefault();
@@ -2511,12 +2589,12 @@
         if (stop) stop.focus();
         return;
       }
-      if (next < 0 || !RUNS[next]) return;
+      if (next < 0 || !shown[next]) return;
       e.preventDefault();
-      runsApi.select(RUNS[next].id, { open: dockOpen });
-      if (typeof RUNS[next].onSelect === "function")
-        RUNS[next].onSelect(RUNS[next].id);
-      var to = dock.querySelector('[data-rsel="' + RUNS[next].n + '"]');
+      runsApi.select(shown[next].id, { open: dockOpen });
+      if (typeof shown[next].onSelect === "function")
+        shown[next].onSelect(shown[next].id);
+      var to = dock.querySelector('[data-rsel="' + shown[next].n + '"]');
       if (to) to.focus();
     });
     // Drag the top edge to resize (Local Dev's handle): 60px to half the
@@ -2767,16 +2845,12 @@
     ".den-ph .sub { color: var(--muted); font-size: 13px; margin: 4px 0 0; padding: 0; min-height: 1.45em; }",
     ".den-ph .act { margin-left: auto; display: flex; gap: 8px; }",
     ".den-ph [hidden], .den-ptabs[hidden], [role='tabpanel'][hidden] { display: none !important; }",
-    // A tablist inside a .ptabs row beside a link (Local Dev's "Settings ↗")
-    // lays its tabs out as the row does.
-    ".ptabs > [role='tablist'] { display: flex; gap: 2px; flex: none; }",
     ".ptabs.den-ptabs { flex: none; margin: 0 24px 18px; }",
     ".ptabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto; }",
-    // A link among the tabs (Local Dev's "Settings ↗") looks like one.
-    ".ptabs [role='tab'], .ptabs > a { background: none; border: 0; padding: 8px 12px; color: var(--muted); cursor: pointer;",
+    ".ptabs [role='tab'] { background: none; border: 0; padding: 8px 12px; color: var(--muted); cursor: pointer;",
     "  border-bottom: 2px solid transparent; margin: 0 0 -1px; white-space: nowrap; font: inherit; font-size: 14px;",
     "  line-height: 1.45; text-decoration: none; }",
-    ".ptabs [role='tab']:hover, .ptabs > a:hover { color: var(--text); }",
+    ".ptabs [role='tab']:hover { color: var(--text); }",
     ".ptabs [role='tab'][aria-selected='true'] { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }",
     // Search (.search, kbd: R5). The prototype's sizes are content-box
     // (the pages reset everything to border-box).
