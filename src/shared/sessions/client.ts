@@ -129,14 +129,21 @@ export class HostClient extends EventEmitter {
       keptEnv?: { name: string; credentialShaped: boolean }[];
       /** Who asked, for that line. */
       actor?: string;
+      /**
+       * `--keep-env` names Den refuses to forward (SEC-1 §5: a person's
+       * credential): the host records the refusal and starts nothing.
+       */
+      refusedEnv?: string[];
     } = {},
   ): Promise<SessionInfo> {
     const r = await this.request("start", {
       spec,
       ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
-      ...(opts.keptEnv?.length
-        ? { keptEnv: opts.keptEnv, actor: opts.actor ?? "unknown" }
+      ...(opts.keptEnv?.length || opts.refusedEnv?.length
+        ? { actor: opts.actor ?? "unknown" }
         : {}),
+      ...(opts.keptEnv?.length ? { keptEnv: opts.keptEnv } : {}),
+      ...(opts.refusedEnv?.length ? { refusedEnv: opts.refusedEnv } : {}),
     });
     return r.info as SessionInfo;
   }

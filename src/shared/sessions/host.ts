@@ -126,6 +126,17 @@ function keptEnvAudit(v: unknown): string {
     .join(", ");
 }
 
+/** A start's refused `--keep-env` names, printable: "A, B", or "". */
+function refusedEnvAudit(v: unknown): string {
+  if (!Array.isArray(v)) return "";
+  return v
+    .filter(
+      (k): k is string =>
+        typeof k === "string" && /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(k),
+    )
+    .join(", ");
+}
+
 function printableActor(v: unknown): string {
   return (
     String(v ?? "unknown")
@@ -477,6 +488,18 @@ export class SessionHost {
     const { name, cwd, argv, env } = spec;
     if (typeof name !== "string" || !name)
       throw new Refusal("bad-request", "start needs a name");
+    // SEC-1 §5: a --keep-env the caller refused (a person's credential) is
+    // audited here, names only, and nothing starts.
+    const refusedEnv = refusedEnvAudit(req.refusedEnv);
+    if (refusedEnv || Array.isArray(req.refusedEnv)) {
+      this.log(
+        `session ${printableActor(name)} refused: --keep-env ${refusedEnv || "?"} (a person's credential is never forwarded) · by ${printableActor(req.actor)}`,
+      );
+      throw new Refusal(
+        "bad-request",
+        `--keep-env ${refusedEnv || "?"}: a person's credential is never forwarded to a session`,
+      );
+    }
     if (
       !Array.isArray(argv) ||
       !argv.length ||

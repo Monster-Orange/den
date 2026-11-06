@@ -1216,6 +1216,9 @@ computer's user, and the CLI does that for you:
 
   A wrong value stops `web up` and the server, naming the key.
 
+  `web sessions`' LAST SEEN is written at most once a minute (60 s), so it
+  equals CREATED right after a sign-in.
+
 - **What needs it.** On loopback, pages and read-only calls stay open, and
   changes need only the page's own CSRF token (as before). Shell-grade
   actions (starting or resuming an agent, and the terminal) need a
@@ -1656,7 +1659,7 @@ An agent's environment starts empty and gets, in order:
 2. the variables its runtime names (`envPassthrough`; den-claude:
    `CLAUDE_CONFIG_DIR`);
 3. the runtime's launch env;
-4. `DEN_AGENT=agent:<id>`.
+4. `DEN_AGENT=agent:<id>` and `DEN_ACTOR_TOKEN` (below).
 
 Then every runtime's `scrubEnv` is removed (den-claude: `CLAUDECODE` and
 `CLAUDE_CODE_*`), whatever put it there. Nothing else of yours reaches it:
@@ -1677,10 +1680,31 @@ Without the PTY module it says the probe is unavailable; that is not a
 failure. Plain `doctor` never spawns anything; when agents are configured it
 adds a note to run `<cli> doctor --probe`.
 
+### An agent's token
+
+`agents start` (the CLI or the Workspaces page) mints a random `den_at_…`
+token for the agent and puts it in the session as `DEN_ACTOR_TOKEN`. Den
+keeps only its hash (`actor-tokens.json`, 0600, in the state dir) with the
+agent, its workspace, its grants and its session. Stop revokes it, and so
+does the session's end; resume mints a new one and the old one stops
+working. The `<cli>` and the MCP server Den starts for the agent send it, so
+the server audits their calls as the agent, from the token, never from a
+header (agent headers without the token are recorded as an unverified
+claim).
+
+An agent's token reaches only its own session's routes, and never a
+shell-grade route, `/api/web/*`, sign-in or sign-out, or the lock: it can't
+unlock, use the sudo password or start another agent (403
+`agent_forbidden`). A person's credential never reaches a session:
+`DEN_PERSON_TOKEN`, a person token's value and a path to `web.secret` are
+always removed, and `sessions start --keep-env` of one is refused and logged.
+An agent runs as your OS user, so it could still read `web.secret` itself;
+the token keeps what Den does on its behalf attributable and bounded.
+
 **What the scope does not do.** An agent's MCP scope binds cooperating
 agents only. A runtime with a shell can still run `<cli>` itself, outside
-the scoped MCP server, and reach other workspaces; WS-3a and SEC-1 close
-that later. And the user's own Claude Code settings and hooks
+the scoped MCP server, and reach other workspaces (with its own token, so
+it is audited as the agent); WS-3a closes that later. And the user's own Claude Code settings and hooks
 (`~/.claude/settings.json`, its hooks, a project's `.claude/`) load in a
 den-claude agent, as in any `claude` you start.
 

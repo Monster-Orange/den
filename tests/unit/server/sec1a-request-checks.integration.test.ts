@@ -328,7 +328,7 @@ describe("the audit actor comes from the credential", () => {
       unknown
     >[];
 
-  it("a person token's call is person:<os user>; a header can't claim one", async () => {
+  it("a person token's call is person:<os user>; a header can't claim one, and its agent claim is kept unverified (SEC-1c)", async () => {
     const r = await call(
       "POST",
       "/api/activity",
@@ -338,8 +338,10 @@ describe("the audit actor comes from the credential", () => {
     expect(r.status).toBe(200);
     const last = (await entries())[0];
     expect(last).toMatchObject({
-      actor: "agent",
+      actor: "user",
       principal: `person:${os.userInfo().username}`,
+      unverified: true,
+      claimed: { client: "test" },
     });
 
     const b = await call(

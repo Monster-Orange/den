@@ -17,7 +17,7 @@
  *    deterministic.
  */
 import { afterAll, describe, expect, it } from "@jest/globals";
-import { spawn, type ChildProcess } from "child_process";
+import type { ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as net from "net";
@@ -26,6 +26,7 @@ import * as os from "os";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { resolveServerEntrypoint } from "../../../src/ui/cli/web-command.js";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "den-shutdown-"));
@@ -78,7 +79,7 @@ async function startInstalled(nodeOptions?: string): Promise<Started> {
   delete env.DEN_PROFILE;
   const entry = resolveServerEntrypoint(installed);
   let out = "";
-  const server = spawn(entry.cmd, entry.args, {
+  const server = spawnServer(entry.cmd, entry.args, {
     cwd: dist,
     env: {
       ...env,
@@ -126,8 +127,9 @@ async function terminate(
 }
 
 const started: ChildProcess[] = [];
-afterAll(() => {
-  for (const s of started) if (s.exitCode === null) s.kill("SIGKILL");
+afterAll(async () => {
+  // Each server's whole group, even one a test left running.
+  await Promise.all(started.map((s) => stopServer(s, 1_000)));
   fs.rmSync(tmpBase, { recursive: true, force: true });
 });
 

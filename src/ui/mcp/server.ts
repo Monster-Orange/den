@@ -16,7 +16,8 @@ import {
   type ResolvedMcpConfig,
 } from "../../shared/den-config.js";
 import { readWebPort } from "../../shared/edge/config.js";
-import { engineVersion } from "../../shared/paths.js";
+import { engineVersion, getStateDir } from "../../shared/paths.js";
+import { ACTOR_TOKEN_ENV, lookupActorToken } from "../../shared/actor-token.js";
 import { product } from "../../shared/product.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { createDenApi, type DenApi } from "./api.js";
@@ -259,6 +260,32 @@ export async function runOneShot(
   return r.isError ? 1 : 0;
 }
 
+/**
+ * SEC-1c: the MCP server Den starts for an agent carries the agent's actor
+ * token (DEN_ACTOR_TOKEN, inherited from the agent's session) as the
+ * credential of every call (cliAuthHeaders), and the web server records
+ * that token's agent as the actor. Why it must not start, or null: a token
+ * minted for another agent than `--actor`, or one this distribution never
+ * minted. With no token it runs as before (a person's own scoped server:
+ * the person token, its --actor an unverified claim).
+ */
+export function actorTokenRefusal(
+  scope: McpScope | null,
+  env: NodeJS.ProcessEnv,
+  stateDir: string,
+): string | null {
+  const token = env[ACTOR_TOKEN_ENV];
+  if (token === undefined) return null;
+  const rec = lookupActorToken(stateDir, token);
+  if (!rec)
+    return `${ACTOR_TOKEN_ENV} is not a live actor token of this distribution (stopped, resumed, or never minted here)`;
+  if (scope && scope.actor !== rec.actor)
+    return `--actor ${scope.actor} does not match ${ACTOR_TOKEN_ENV}, which is ${rec.actor}'s`;
+  if (scope && scope.workspace !== rec.workspace)
+    return `--workspace ${scope.workspace} does not match ${ACTOR_TOKEN_ENV}, which is workspace ${rec.workspace}'s`;
+  return null;
+}
+
 /** Run `<cli> mcp` until stdin closes (or one `--call` / `--list`). */
 export async function runMcp(rawArgv: string[]): Promise<void> {
   const cli = product().cli;
@@ -276,6 +303,12 @@ export async function runMcp(rawArgv: string[]): Promise<void> {
       `${cli} mcp: ${e.message}\n` +
         `Usage: ${cli} mcp --workspace <ws> --actor agent:<id> [--port <n>] [--list | --call <tool> ['<json>']]\n`,
     );
+    process.exitCode = 2;
+    return;
+  }
+  const refusedToken = actorTokenRefusal(scope, process.env, getStateDir());
+  if (refusedToken) {
+    process.stderr.write(`${cli} mcp: ${refusedToken}\n`);
     process.exitCode = 2;
     return;
   }

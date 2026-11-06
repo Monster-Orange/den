@@ -21,6 +21,7 @@ jest.mock("../../../src/shared/edge/config.js", () => ({
 }));
 import {
   cmdWebLogin,
+  cmdWebSessions,
   parseWebCommandArgs,
 } from "../../../src/ui/cli/web-command.js";
 import { readWebSecret } from "../../../src/shared/web-secret.js";
@@ -100,5 +101,21 @@ describe("web login", () => {
     expect(login(["--origin", "x"]).code).toBe(2);
     expect(login(["--what"]).code).toBe(2);
     expect(login(["--what"]).out).toBe("");
+  });
+});
+
+describe("web sessions --help", () => {
+  it("says LAST SEEN is written at most once a minute (why it equals CREATED right after sign-in)", async () => {
+    let out = "";
+    const code = await cmdWebSessions(["--help"], {
+      out: (x) => (out += x),
+      err: () => undefined,
+      stateDir: tmp,
+    });
+    expect(code).toBe(0);
+    expect(out).toMatch(
+      /LAST SEEN is written at most once a\s+minute \(60 s\)/,
+    );
+    expect(out).toMatch(/equals CREATED/);
   });
 });

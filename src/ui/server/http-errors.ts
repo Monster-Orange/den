@@ -293,7 +293,7 @@ export interface ErrorPageData {
    * [::1]); `expired` for a login link that expired or was used.
    */
   signin?: {
-    scope: "terminal" | "den";
+    scope: "terminal" | "agents" | "den";
     name: string;
     cmd: string;
     localhost?: string;

@@ -238,6 +238,7 @@
     "err.refused.title": "リクエストが拒否されました",
     "err.signin.title": "{name} を使うにはサインインしてください",
     "err.signin.terminal": "ターミナルを使うにはサインインしてください",
+    "err.signin.agents": "エージェントを起動するにはサインインしてください",
     "err.signin.sub": "このブラウザはサインインしていません",
     "err.signin.lead": "{cmd} を実行し、表示されたリンクを開いてください。",
     "err.signin.expiredTitle": "サインインリンクの期限切れ",

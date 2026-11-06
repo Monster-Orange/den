@@ -12,6 +12,9 @@
  *           --actor agent:<id>`, plus a `--grant` per agents.<id>.grants),
  *           starts `<dist>-<ws>:<id>` in the workspace's dir, and writes the
  *           agent record (<stateDir>/agents/<id>.json, 0600; no env, no argv).
+ *           SEC-1c: it mints the agent's actor token (den_at_…, its hash in
+ *           <stateDir>/actor-tokens.json) and hands it to the session as
+ *           DEN_ACTOR_TOKEN; any earlier token of the agent stops working.
  *           The agent's env is an allowlist plus what its runtime declares,
  *           less every runtime's scrubEnv (sessions/env.ts), never the
  *           caller's whole environment; no --keep-env. A session that exits
@@ -20,11 +23,13 @@
  *   list    the workspace's agents (sessions with an agent record), with
  *           persona, runtime and model; a record whose session is gone is
  *           listed as stopped or ended. A plain session is not an agent.
- *   stop    ends its session (TERM) and marks the record stopped.
+ *   stop    ends its session (TERM), marks the record stopped and revokes
+ *           its actor token.
  *   resume  only when its runtime declares resume and its session is not
  *           running: a new session, in the same cwd, continuing the last run;
  *           when that session was never prompted, a fresh start under the
- *           same conversation id (there is nothing to continue).
+ *           same conversation id (there is nothing to continue). A fresh
+ *           actor token; the old one stops working.
  *
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start.
@@ -65,6 +70,12 @@ import {
   type Runtime,
 } from "../../shared/agents/runtimes.js";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
+import {
+  bindActorSession,
+  mintActorToken,
+  revokeActorToken,
+  revokeAgentTokens,
+} from "../../shared/actor-token.js";
 import { HostError, type HostClient } from "../../shared/sessions/client.js";
 import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
 import { inWorkspace, sessionName } from "../../shared/sessions/names.js";
@@ -447,6 +458,8 @@ interface Launch {
   env: Record<string, string>;
   /** The runtime's envPassthrough. */
   passthrough?: readonly string[];
+  /** agents.<id>.grants, recorded with its actor token. */
+  grants: readonly string[];
 }
 
 /** The host's cap refusal as an AgentError (its hint says what to do). */
@@ -462,7 +475,12 @@ function capOrThrow(d: AgentsResolved, e: unknown): never {
   throw e;
 }
 
-/** Start `launch` as the agent's session (replacing an exited one) and record it. */
+/**
+ * Start `launch` as the agent's session (replacing an exited one) and record
+ * it. SEC-1c: a fresh actor token for the session (every earlier one of the
+ * agent revoked), bound to the session id once the host has started it, and
+ * revoked again when the start fails.
+ */
 async function startSession(
   d: AgentsResolved,
   c: HostClient,
@@ -472,25 +490,39 @@ async function startSession(
 ): Promise<{ rec: AgentRecord; info: SessionInfo }> {
   if (old?.exited) await c.forget(old.ref.id);
   const tty = d.stdout.isTTY;
-  const info = await c
-    .start(
-      {
-        name: launch.rec.sessionName,
-        cwd: launch.rec.cwd,
-        argv: launch.argv,
-        // Never the caller's whole env: the allowlist, then the runtime's.
-        env: agentSessionEnv(
-          d.env,
-          { envPassthrough: launch.passthrough },
-          launch.env,
-          launch.rec.id,
-        ),
-        cols: (tty && d.stdout.columns) || 80,
-        rows: (tty && d.stdout.rows) || 24,
-      },
-      { limit: d.maxConcurrent() },
-    )
-    .catch((e: unknown) => capOrThrow(d, e));
+  const minted = mintActorToken(d.stateDir(), {
+    agentId: launch.rec.id,
+    workspace: launch.rec.workspace,
+    grants: launch.grants,
+    sessionName: launch.rec.sessionName,
+  });
+  let info: SessionInfo;
+  try {
+    info = await c
+      .start(
+        {
+          name: launch.rec.sessionName,
+          cwd: launch.rec.cwd,
+          argv: launch.argv,
+          // Never the caller's whole env: the allowlist, then the runtime's.
+          env: agentSessionEnv(
+            d.env,
+            { envPassthrough: launch.passthrough },
+            launch.env,
+            launch.rec.id,
+            minted.token,
+          ),
+          cols: (tty && d.stdout.columns) || 80,
+          rows: (tty && d.stdout.rows) || 24,
+        },
+        { limit: d.maxConcurrent() },
+      )
+      .catch((e: unknown) => capOrThrow(d, e));
+  } catch (e) {
+    revokeActorToken(d.stateDir(), minted.key);
+    throw e;
+  }
+  bindActorSession(d.stateDir(), minted.key, info.ref.id);
   const rec: AgentRecord = {
     ...launch.rec,
     session: { backend: info.ref.backend, id: info.ref.id },
@@ -687,6 +719,7 @@ export async function startAgent(
         argv: out.argv,
         env: out.env,
         passthrough: rt.envPassthrough,
+        grants: cfg.agents[id]?.grants ?? [],
       },
       old,
       {},
@@ -732,6 +765,8 @@ export async function stopAgent(
   const rec = agentRecord(d, id, ws);
   return withClient(d, async (c) => {
     const s = sessionOf(await c.list(), rec);
+    // Its token stops working before the session is asked to end.
+    revokeAgentTokens(d.stateDir(), rec.id);
     if (s && !s.exited) await c.kill(s.ref.id, "TERM");
     const next = { ...rec, stoppedAt: new Date().toISOString() };
     writeRecord(d.stateDir(), next);
@@ -796,6 +831,7 @@ export async function resumeAgent(
         argv: out.argv,
         env: out.env,
         passthrough: rt.envPassthrough,
+        grants: cfg.agents[rec.id]?.grants ?? [],
       },
       old,
       fresh ? {} : { resumedAt: new Date().toISOString() },

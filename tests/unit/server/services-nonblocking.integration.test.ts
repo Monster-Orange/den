@@ -9,13 +9,14 @@
  * loop for ~1.6s across four repos. Real server, throwaway distribution.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { spawn, type ChildProcess } from "child_process";
+import type { ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as net from "net";
 import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
+import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const REPOS = ["shop", "billing", "search", "ledger"];
@@ -118,7 +119,7 @@ beforeAll(async () => {
   );
 
   port = await freePort();
-  server = spawn(
+  server = spawnServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -150,15 +151,9 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  if (server && server.exitCode === null) {
-    const exited = new Promise((r) => server.once("exit", r));
-    server.kill("SIGTERM"); // tsx forwards it to the server, which exits
-    await Promise.race([
-      exited,
-      new Promise((r) => setTimeout(r, 5_000).unref()),
-    ]);
-    if (server.exitCode === null) server.kill("SIGKILL");
-  }
+  // The whole group: the tsx CLI and the server under it (a SIGKILL of the
+  // CLI alone left the server running).
+  await stopServer(server);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 

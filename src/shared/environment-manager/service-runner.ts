@@ -2355,7 +2355,10 @@ export function runServiceCommand(
     resolved.repoName,
     workspace,
   );
-  let cmdDef = svcCommands[command];
+  // Own properties only (SEC-1 §6b.2): `constructor` is no command.
+  let cmdDef = Object.prototype.hasOwnProperty.call(svcCommands, command)
+    ? svcCommands[command]
+    : undefined;
   const requestedCmdDef = cmdDef;
 
   // `restart` fallback: synthesise `make down && make up` when no explicit

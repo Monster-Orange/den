@@ -7,9 +7,16 @@
  *    (a non-loopback bind with `web.allow_plain_http_remote`) this
  *    machine's own LAN names with the port. Anything else: 421
  *    `misdirected`.
- *  - Credential: `Authorization: Bearer den_pt_…` (the person token, §5).
- *    A bearer that doesn't verify: 401 `unauthorized`. Or the browser's
- *    session cookie (SEC-1b), looked up server-side.
+ *  - Credential: `Authorization: Bearer den_pt_…` (the person token, §5)
+ *    or `den_at_…` (SEC-1c: an agent's actor token, live only while its
+ *    session runs). A bearer that doesn't verify: 401 `unauthorized`. Or
+ *    the browser's session cookie (SEC-1b), looked up server-side.
+ *  - An agent's token (SEC-1c, §5) never reaches: web.secret's management
+ *    and sign-in (/api/web/*, /auth, /api/session/logout), the lock (R8:
+ *    /api/sudo-password*), or a shell-grade route other than its own
+ *    session's /api/sessions/<id>/*: agent start and resume mint tokens.
+ *    403 `agent_forbidden`. WS-3a (0.4.2) adds the workspace check at
+ *    agentRefusal's seam.
  *  - Sign-in (§4, route-classes.ts): beyond loopback (the edge hostname, a
  *    LAN name, or a peer that isn't loopback) every route needs a session
  *    or a bearer; on loopback only `shell-grade` routes do. Otherwise 401
@@ -24,14 +31,25 @@
  * GETs, pages and SSE streams on loopback pass with only the Host check
  * (§6), except the GETs route-classes.ts marks `mutating` or `shell-grade`
  * (a run, a service's lifecycle command): same-origin only, or a CLI's
- * bearer. Seam: SEC-1c adds agent tokens beside the person token in
- * `verifyBearer`.
+ * bearer.
+ *
+ * The audit actor (auditActorOf, principalOf) comes from the credential,
+ * never from a header the caller sets: `agent:<id>` for an actor token,
+ * `person:<os user>` for a person token or a signed-in browser. An
+ * x-den-actor claim is kept only as an unverified label.
  */
 import { randomBytes, timingSafeEqual, createHash } from "crypto";
 import type * as http from "http";
 import * as net from "net";
 import {
+  actorFromHeaders,
+  type Actor,
+  type AgentActor,
+} from "../../shared/agent-actor.js";
+import { osUser } from "../../shared/web-secret.js";
+import {
   isMutatingGet,
+  pathMatches,
   routeClass,
   SIGNIN_FREE,
   type RouteClass,
@@ -40,9 +58,20 @@ import {
 export const CSRF_HEADER = "x-den-csrf";
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/** An agent's actor token (SEC-1c): what it was minted as. */
+export interface AgentPrincipal {
+  kind: "agent";
+  actor: `agent:${string}`;
+  workspace: string;
+  grants: readonly string[];
+  /** The session it runs in: its name and the host's id for it. */
+  session: { name: string; id?: string };
+}
+
 /** Who a request proved itself to be. */
 export type Principal =
   | { kind: "person"; actor: `person:${string}` }
+  | AgentPrincipal
   | { kind: "person-browser"; session?: string };
 
 /** What the request checks need of a signed-in browser session. */
@@ -68,8 +97,11 @@ export interface GuardContext {
    * with `web.allow_plain_http_remote` only). Beyond loopback.
    */
   lanHosts?: () => readonly string[];
-  /** The actor a bearer token proves, or null when it doesn't verify. */
-  verifyBearer: (token: string) => `person:${string}` | null;
+  /**
+   * What a bearer token proves (a person token's `person:<user>`, an actor
+   * token's agent), or null when it doesn't verify.
+   */
+  verifyBearer: (token: string) => `person:${string}` | AgentPrincipal | null;
   /** This server start's CSRF token (loopback, no session). */
   csrfToken: string;
   /** The live session the request's cookie names (SEC-1b), or null. */
@@ -101,10 +133,14 @@ export type GuardResult =
         | "signin_required"
         | "origin_rejected"
         | "csrf"
-        | "cross_site";
+        | "cross_site"
+        | "agent_forbidden";
       error: string;
-      /** signin_required: why (a shell-grade route on loopback, or beyond loopback). */
-      scope?: "terminal" | "den";
+      /**
+       * signin_required: why (a shell-grade route on loopback: the terminal,
+       * or an agent's start or resume; or beyond loopback).
+       */
+      scope?: SigninScope;
       via?: Via;
       beyond?: boolean;
     };
@@ -248,18 +284,28 @@ export function bindRefusal(
   );
 }
 
+/** Why a sign-in is asked for: the terminal, an agent's start, or all of Den. */
+export type SigninScope = "terminal" | "agents" | "den";
+
+/** Agent start and resume: their own sign-in wording ("start agents"). */
+const AGENT_LAUNCH = [
+  "/api/workspaces/:ws/agents",
+  "/api/workspaces/:ws/agents/:id/resume",
+];
+
 /** What signin_required says, by why it was asked for. */
 export function signinMessage(
-  scope: "terminal" | "den",
+  scope: SigninScope,
   cli: string,
   title: string,
 ): string {
-  return (
-    (scope === "terminal"
-      ? "Sign in to use the terminal: run "
-      : `Sign in to use ${title}: run `) +
-    `\`${cli} web login\` and open the link.`
-  );
+  const what =
+    scope === "terminal"
+      ? "use the terminal"
+      : scope === "agents"
+        ? "start agents"
+        : `use ${title}`;
+  return `Sign in to ${what}: run \`${cli} web login\` and open the link.`;
 }
 
 export function checkRequest(
@@ -285,15 +331,18 @@ export function checkRequest(
   const auth = header(req, "authorization");
   const bearer = auth ? /^Bearer\s+(\S+)\s*$/i.exec(auth) : null;
   if (bearer) {
-    const actor = ctx.verifyBearer(bearer[1]);
-    if (!actor)
+    const proved = ctx.verifyBearer(bearer[1]);
+    if (!proved)
       return {
         ok: false,
         status: 401,
         code: "unauthorized",
-        error: `The bearer token is not valid here; \`${cli} web token --print\` prints the current one.`,
+        error: bearer[1].startsWith("den_at_")
+          ? "This agent token is not valid here: its agent was stopped or resumed, or its session ended."
+          : `The bearer token is not valid here; \`${cli} web token --print\` prints the current one.`,
       };
-    principal = { kind: "person", actor };
+    principal =
+      typeof proved === "string" ? { kind: "person", actor: proved } : proved;
   }
   const session = principal ? null : (ctx.session?.(req) ?? null);
 
@@ -303,6 +352,17 @@ export function checkRequest(
     routeClass(method, pathname) ??
     (MUTATING.has(method) || isUpgrade(req) ? "mutating" : "readonly");
 
+  if (principal?.kind === "agent") {
+    const refused = agentRefusal(principal, method, pathname, cls);
+    if (refused)
+      return {
+        ok: false,
+        status: 403,
+        code: "agent_forbidden",
+        error: refused,
+      };
+  }
+
   // §4: a session (or a bearer) where one is needed.
   if (
     !principal &&
@@ -310,7 +370,11 @@ export function checkRequest(
     !SIGNIN_FREE.includes(pathname) &&
     (beyond || cls === "shell-grade")
   ) {
-    const scope = beyond ? "den" : "terminal";
+    const scope: SigninScope = beyond
+      ? "den"
+      : AGENT_LAUNCH.some((r) => pathMatches(r, pathname))
+        ? "agents"
+        : "terminal";
     return {
       ok: false,
       status: 401,
@@ -373,6 +437,70 @@ export function checkRequest(
         "The request is missing this page's CSRF token; reload the page and try again.",
     };
   return ok(browser ?? { kind: "person-browser" });
+}
+
+/** Routes an agent's token never reaches, whatever the method (SEC-1 §5). */
+export const AGENT_FORBIDDEN: readonly string[] = [
+  // web.secret's management and the browser sign-in: an agent mints nothing.
+  "/api/web/*",
+  "/auth",
+  "/signin",
+  "/api/session/logout",
+];
+
+/**
+ * Routes an agent's token may read but never change: the lock (R8).
+ * Privileged actions stay with people (AG-5); its status is a read.
+ */
+export const AGENT_READ_ONLY: readonly string[] = [
+  "/api/sudo-password",
+  "/api/sudo-password/*",
+];
+
+/** `/api/sessions/<id>/…`: a session's own routes (AG-4a-term's io). */
+const SESSION_ROUTE = /^\/api\/sessions\/([^/]+)(?:\/|$)/;
+
+/**
+ * Why an agent's token can't make this request, or null (SEC-1 §5):
+ *  - a route in AGENT_FORBIDDEN;
+ *  - a shell-grade route, unless it is its own session's
+ *    (`/api/sessions/<its session id or name>/…`): agent start and resume
+ *    mint tokens, the browser sessions are a person's.
+ * Seam (WS-3a, 0.4.2): the route's workspace against `p.workspace` and
+ * `p.grants` is checked here; nothing is yet.
+ */
+export function agentRefusal(
+  p: AgentPrincipal,
+  method: string,
+  pathname: string,
+  cls: RouteClass,
+): string | null {
+  if (
+    AGENT_FORBIDDEN.some((r) => pathMatches(r, pathname)) ||
+    (method !== "GET" &&
+      method !== "HEAD" &&
+      AGENT_READ_ONLY.some((r) => pathMatches(r, pathname)))
+  )
+    return `${p.actor} can't use ${pathname}: signing in, web.secret and the lock are a person's.`;
+  const m = SESSION_ROUTE.exec(pathname);
+  if (m) {
+    let id = m[1];
+    try {
+      id = decodeURIComponent(id);
+    } catch {
+      /* compared as given */
+    }
+    if (id === p.session.id || id === p.session.name) return null;
+    return `${p.actor} can use its own session only, not ${id}.`;
+  }
+  if (cls === "shell-grade")
+    return `${p.actor} can't ${method === "GET" ? "open" : "use"} ${pathname}: starting or resuming an agent, and the browser sessions, are a person's.`;
+  return workspaceRefusal(p, pathname);
+}
+
+/** WS-3a's seam (0.4.2): an agent's route outside its workspace. Not yet. */
+function workspaceRefusal(_p: AgentPrincipal, _pathname: string): null {
+  return null;
 }
 
 /**
@@ -444,12 +572,51 @@ export function setPrincipal(
   if (p) PRINCIPALS.set(req, p);
 }
 
+/** The agent a request's actor token proves (SEC-1c), if any. */
+export function agentPrincipalOf(
+  req: http.IncomingMessage,
+): AgentPrincipal | null {
+  const p = PRINCIPALS.get(req);
+  return p?.kind === "agent" ? p : null;
+}
+
 /**
- * The audit actor the request's credential proves: `person:<user>` for a
- * person token, never anything a header the caller sets claims. Undefined
- * for a browser call (SEC-1c sets the audit actor from a session).
+ * Who the request's credential proves it is, for the audit trail:
+ * `agent:<id>` for an actor token, `person:<user>` for a person token,
+ * `person:<os user>` for a signed-in browser (a session is the OS user's:
+ * only they can mint its login code). Undefined with no credential. Never
+ * anything a header the caller sets claims.
  */
 export function principalOf(req: http.IncomingMessage): string | undefined {
   const p = PRINCIPALS.get(req);
-  return p?.kind === "person" ? p.actor : undefined;
+  if (p?.kind === "person" || p?.kind === "agent") return p.actor;
+  if (p?.kind === "person-browser" && p.session) return `person:${osUser()}`;
+  return undefined;
+}
+
+/**
+ * The audit actor of a request (recordAction's first argument), from its
+ * credential (SEC-1c):
+ *  - an actor token: that agent and its workspace, verified; the MCP
+ *    client's self-reported name and version are labels only;
+ *  - anything else: null (the person), unless the caller sent x-den-actor
+ *    headers. Those are never the actor: they are kept as an unverified
+ *    claim (AuditEntry.claimed), whatever credential came with them.
+ */
+export function auditActorOf(req: http.IncomingMessage): Actor {
+  const claimed = actorFromHeaders(req.headers);
+  const agent = agentPrincipalOf(req);
+  if (agent) {
+    const actor: AgentActor = {
+      kind: "agent",
+      client: claimed?.client ?? "unknown",
+      clientVersion: claimed?.clientVersion ?? "unknown",
+      mcpPid: claimed?.mcpPid ?? null,
+      session: claimed?.session ?? "",
+      agent: agent.actor,
+      workspace: agent.workspace,
+    };
+    return actor;
+  }
+  return claimed ? { ...claimed, unverified: true } : null;
 }

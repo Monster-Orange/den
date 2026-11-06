@@ -350,7 +350,7 @@ describe("the route classes", () => {
     ).toBe(200);
   });
 
-  it("shell-grade without a session: 401 signin_required (R26 JSON)", async () => {
+  it("shell-grade without a session: 401 signin_required (R26 JSON); an agent start says so in its own words", async () => {
     const csrf = String((await sessionCsrf({})).csrf);
     const r = await call(
       "POST",
@@ -362,8 +362,8 @@ describe("the route classes", () => {
     expect(json(r)).toMatchObject({
       ok: false,
       code: "signin_required",
-      error:
-        "Sign in to use the terminal: run `den web login` and open the link.",
+      scope: "agents",
+      error: "Sign in to start agents: run `den web login` and open the link.",
     });
     expect(json(r).requestId).toMatch(/^[0-9a-f]{8}$/);
   });
@@ -420,6 +420,32 @@ describe("the route classes", () => {
       (await call("GET", "/", { host: EDGE, accept: "text/html", ...c }))
         .status,
     ).toBe(200);
+  });
+
+  it("/signin is read-only (§6b.3): signed out it renders the signed-out page itself, on loopback and through the edge; a cross-site Sec-Fetch-Site doesn't stop it", async () => {
+    for (const headers of [
+      { ...nav },
+      { ...nav, "sec-fetch-site": "cross-site" },
+      { ...nav, host: EDGE },
+    ]) {
+      const r = await call("GET", "/signin?next=%2Fsettings", headers);
+      expect([headers.host ?? "loopback", r.status]).toEqual([
+        headers.host ?? "loopback",
+        401,
+      ]);
+      expect(r.body).toContain('"code":"signin_required"');
+      expect(r.body).toContain('"scope":"terminal"');
+      expect(r.body).toContain("web login");
+      expect(r.body).not.toMatch(/<input[^>]*type="password"/);
+      expect(r.body).not.toMatch(/<form/i);
+    }
+    // Signed in: a same-origin `next` only.
+    const c = await signIn();
+    const evil = await call("GET", "/signin?next=%2F%2Fevil.example", {
+      ...nav,
+      ...c,
+    });
+    expect([evil.status, evil.headers.location]).toEqual([303, "/"]);
   });
 
   it("a shell-grade page on 127.0.0.1 without a session: the signed-out page, linking to the same path on localhost", async () => {

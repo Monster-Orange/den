@@ -178,10 +178,9 @@ export const ROUTES: readonly RouteEntry[] = [
     "/auth",
     "swaps a one-time login code for a session cookie",
   ),
-  S(
-    ["GET", "HEAD"],
+  R(
     "/signin",
-    "a page that needs a signed-in browser: it goes on to `next` once signed in",
+    "the signed-out landing page (§6b.3): it renders signed out; signed in, it goes on to `next`",
   ),
   M(["POST"], "/api/session/logout", "ends this browser's session"),
   S(
@@ -234,15 +233,24 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/workspaces/:ws/agents/:id/resume",
     "resumes an agent: a runtime in a PTY",
   ),
+  S(
+    ["GET", "HEAD", "POST", "DELETE"],
+    "/api/sessions/*",
+    "a session's own routes (AG-4a-term's io): an agent's token reaches its own session's only",
+  ),
 ];
 
 /**
  * The routes that never need a signed-in session, even beyond loopback:
- * the sign-in itself, and the session probe the shell and the signed-out
- * page ask first (it hands out a CSRF token only to a session, or on
- * loopback).
+ * the sign-in itself, the signed-out landing page (it checks the session
+ * itself), and the session probe the shell and the signed-out page ask
+ * first (it hands out a CSRF token only to a session, or on loopback).
  */
-export const SIGNIN_FREE: readonly string[] = ["/auth", "/api/session"];
+export const SIGNIN_FREE: readonly string[] = [
+  "/auth",
+  "/signin",
+  "/api/session",
+];
 
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {

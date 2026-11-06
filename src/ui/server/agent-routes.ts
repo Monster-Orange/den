@@ -15,8 +15,9 @@
  * Guards on Start, Stop and Resume, as on a service action:
  *   - the lock (R8): locked, the action is refused (423 locked); the page
  *     opens the lock popover first, as Local Dev's service actions do;
- *   - a person only: an agent can't start or stop agents from the page
- *     (403; agents use MCP agent_spawn, §5, under its own guards);
+ *   - a person only: an agent (its actor token, SEC-1c) can't start or
+ *     stop agents from the page (403; agents use MCP agent_spawn, §5,
+ *     under its own guards);
  *   - agents.max_concurrent (the host's cap: 429 cap).
  * The env is the CLI's (§5a-env): the allowlist and the runtime's, built
  * from this server's environment, never all of it. Every action, refused
@@ -48,8 +49,8 @@ import {
   type AgentsResolved,
   type Started,
 } from "../cli/agent-ops.js";
-import { actorFromHeaders, recordAction } from "./audit.js";
-import { principalOf } from "./request-guard.js";
+import { recordAction } from "./audit.js";
+import { auditActorOf, principalOf } from "./request-guard.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { hasPasswordlessSudo, hasSudoPassword } from "./sudo-store.js";
 import type { Actor } from "../../shared/agent-actor.js";
@@ -237,7 +238,8 @@ export async function handleAgentRoutes(
   if (method !== "POST")
     return methodNotAllowed(res, action ? "POST" : "GET, POST");
 
-  const actor = actorFromHeaders(req.headers);
+  // From the credential (SEC-1c): an agent's actor token, never a header.
+  const actor = auditActorOf(req);
   const verb = action ?? "start";
   const audit = (detail: string, reason?: string) =>
     recordAction(
@@ -286,9 +288,13 @@ export async function handleAgentRoutes(
   return true;
 }
 
-/** R8 and the actor: a person, with the lock open. */
+/**
+ * R8 and the actor: a person, with the lock open. An agent is one its actor
+ * token proves (the request checks already refuse its start and resume);
+ * an x-den-actor header alone is an unverified claim, not an agent.
+ */
 function guard(actor: Actor, unlocked: () => boolean): void {
-  if (actor)
+  if (actor && !actor.unverified)
     throw new AgentError(
       "an agent can't start, stop or resume agents from the page; agents use MCP agent_spawn",
       { status: 403 },

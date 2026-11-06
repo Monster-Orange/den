@@ -8,6 +8,39 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **Agent actor tokens** (0.4.1-dev.3, SEC-1c, SEC-1 spec §1, §5, §7).
+  - **`agents start`** (the CLI and `POST /api/workspaces/<ws>/agents`)
+    mints a random `den_at_…` token for the agent and hands it to the
+    session as `DEN_ACTOR_TOKEN`, through the §5a-env allowlist's Den
+    markers (a caller's, a runtime's or a `--keep-env` value of it is
+    dropped). Only its sha256 is stored, in `actor-tokens.json` (0600) in
+    the state dir, with the agent, its workspace, its grants and its
+    session. One live token per agent: **resume** mints a fresh one and the
+    old one stops working; **stop** revokes it, and so does the session's
+    end (an exit or a crash), checked when the token is presented.
+  - **The scrub always strips a person's credential** from every session's
+    env, whatever put it there: `DEN_PERSON_TOKEN`, any value carrying a
+    person token, a path to `web.secret`. **`sessions start --keep-env`**
+    of one (or of `DEN_ACTOR_TOKEN`) is refused, exit 1, and the session
+    host's log records the refusal and who asked (the name, never a value).
+  - **The server accepts the agent's bearer.** The CLI inside an agent
+    sends its `DEN_ACTOR_TOKEN`, never the person token (an agent without
+    one sends none). The audit actor comes from the credential: an entry
+    reads `actor: "agent"` only for a verified agent token. Agent headers
+    (`X-Den-Agent`, …) next to another credential, or alone, are recorded
+    as `claimed` with `unverified: true`, and the Activity panel shows
+    them as "(unverified)".
+  - **What an agent token can't do**: open another session's routes
+    (`/api/sessions/<id>/…`: only its own session; the routes themselves
+    come with the terminal), any other shell-grade route (start, resume,
+    the session admin routes, so it mints no tokens), `/api/web/*`,
+    `/auth`, `/signin`, sign out or rotate; and it never passes the lock
+    (R8): no unlock, no sudo password, no prewarmed sudo, and the lock reads
+    closed to it. Each answers 403 `agent_forbidden`. A workspace check
+    (WS-3a) has its seam in the request guard, allowing everything for now.
+  - **The stdio MCP server Den starts for an agent** carries that agent's
+    token: its calls are audited as the agent, and `--actor` /
+    `--workspace` that don't match the token's record refuse to start.
 - **Signing in the browser** (0.4.1-dev.2, SEC-1b, SEC-1 spec §2, §4). No
   password: reading `web.secret` proves you are this computer's user, and
   the CLI does it.
@@ -41,7 +74,7 @@ config and manifest changes a distribution must make to move to it under
     on loopback it answers as before.
   - **The route classes (§4).** On loopback: read-only is open; mutating
     needs Origin and CSRF (as in SEC-1a); **shell-grade** (an agent's start
-    and resume, `/signin`, the session admin routes, later the terminal)
+    and resume, the session admin routes, later the terminal)
     needs a signed-in browser plus Origin and CSRF, or the person's bearer
     (the CLI and MCP need no setup). Beyond loopback (the edge hostname, a
     LAN name, or a peer that isn't loopback): every route needs a session
@@ -134,12 +167,51 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- **`/signin` is read-only** (0.4.1-dev.3). Signed in, it answers 303 to
+  its (same-origin) `next`; signed out, the signed-out page. It was
+  shell-grade, so the route's own check never ran beyond loopback.
+- **Signed-out agent start or resume says "Sign in to start agents"**
+  (0.4.1-dev.3; the 401's `scope` is `agents`), then the command to run, in
+  en, ja and es. The terminal keeps its own wording.
+- **`web up` and `web restart` print the server's refusal** (0.4.1-dev.3):
+  when the server exits at start (a non-loopback bind without HTTPS, a
+  wrong `web.session` value) the CLI prints "<name> web refused to start:
+  <the reason line>" and then where the log is, instead of waiting out
+  "did not become ready". Secrets in the line are redacted.
+- **`web sessions --help`** says that LAST SEEN is written at most once a
+  minute, so it equals CREATED right after a sign-in.
 - **`agents list` shows `stopping`** for an agent that was stopped while its
   session is still on its way out (it was `running`), and its `--json` rows
   gain `startedAt` and `resumable`.
 
 ### Fixed
 
+- **A command name that isn't declared never runs** (0.4.1-dev.3, SEC-1
+  §6b.2). `/api/service/exec?cmd=constructor` (or `toString`, any name an
+  object inherits) ran `undefined` as a shell command; the service and
+  workspace command lookups now read the declared commands only. `/api/run`
+  refuses a `module` that isn't a module name (a `..` segment, a slash at
+  the start), 400.
+- **A web server whose output's reader is gone no longer spins**
+  (0.4.1-dev.3). When the terminal, script or test runner that started the
+  server was killed, the next log line failed with EPIPE and the "continue"
+  guard for uncaught errors logged that to the equally closed stderr, which
+  failed again: a loop at a full core that stopped the server answering,
+  for as long as the orphan lived. The server now writes nothing once its
+  output is gone, and shuts down (as for SIGTERM: services it started stay
+  up). A server `<cli> web up` starts logs to a file and is not affected.
+- **The server's exit is bounded** (0.4.1-dev.3). A SIGTERM or SIGINT with
+  no prompt waiting on the person forces the exit after 10 s
+  (`DEN_SHUTDOWN_DEADLINE_MS`) if the shutdown hasn't finished, and a
+  second signal exits at once (it was ignored, so a stuck shutdown left the
+  server deaf to every later SIGTERM).
+- **Den's own test servers never outlive a test run** (0.4.1-dev.3): they
+  start in a process group of their own, a test stops the whole group, and
+  the run's global teardown (or the next run's setup) stops any group a
+  killed or timed-out test left behind.
+- **The Release page with no deploy environment** (`environments: [local]`
+  only) no longer asks `/api/release/status?env=undefined` (a 400 on every
+  load); it says no deploy environment is configured.
 - **An agent's persona shows on every row** (0.4.1-dev.1), an id that is
   its persona too ("planner persona planner").
 - **The unlock popover names agents** (0.4.1-dev.1): "Unlock to start, stop
@@ -192,6 +264,19 @@ config and manifest changes a distribution must make to move to it under
   `/api/workspace/sync`, `/api/aws/login`) are classed `mutating`, as §4
   lists up, down and restart, not `shell-grade`: they need no sign-in on
   loopback, and keep SEC-1a's same-origin-or-bearer check.
+- **Audit entries (SEC-1c).** `actor: "agent"` now means a verified agent
+  token. Agent headers without one (an MCP server started with `--actor`
+  but no token, a script that sets `X-Den-Agent`) record the person (or
+  `user`) as the actor, with the headers under `claimed` and `unverified:
+  true`. A reader that filtered on `actor: "agent"` and the headers should
+  read `claimed` for those.
+- **An agent's MCP server** is audited as the agent only when it inherits
+  the agent's `DEN_ACTOR_TOKEN` from the session (Den starts it so); a
+  hand-written MCP entry with `--actor agent:<id>` and no token is now a
+  claim.
+- **`sessions start --keep-env DEN_PERSON_TOKEN`** (or of a variable that
+  holds a person token or a path to `web.secret`) is refused; it was
+  passed with a warning.
 
 ## [0.4.0] - 2026-11-06
 

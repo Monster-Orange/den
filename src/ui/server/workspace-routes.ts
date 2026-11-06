@@ -102,8 +102,8 @@ import {
   devManagedPaths,
   selectSyncTargets,
 } from "../../shared/environment-manager/sync-targets.js";
-import { actorFromHeaders, recordAction } from "./audit.js";
-import { principalOf } from "./request-guard.js";
+import { recordAction } from "./audit.js";
+import { auditActorOf, principalOf } from "./request-guard.js";
 import {
   GIT_REMOTE_TIMEOUT_MS,
   DETACH_WINDOW_MS,
@@ -1579,8 +1579,9 @@ export async function handleWorkspaceRoutes(
         const svcCmds = localCommandsFor(resolved, ws.name);
         const hasCmd =
           cmd === "down" ||
-          cmd in svcCmds ||
-          (cmd === "restart" && "up" in svcCmds);
+          Object.prototype.hasOwnProperty.call(svcCmds, cmd) ||
+          (cmd === "restart" &&
+            Object.prototype.hasOwnProperty.call(svcCmds, "up"));
         if (!hasCmd) {
           runNext(i + 1);
           return;
@@ -2075,7 +2076,7 @@ export async function handleWorkspaceRoutes(
         text: `  ${r.repoName}: not synced — ${r.reason}`,
       });
     recordAction(
-      actorFromHeaders(req.headers),
+      auditActorOf(req),
       {
         verb: "sync",
         detail: `${ws.name}${onlyRepo ? ` · repo=${onlyRepo}` : ""} · ${targets.length} managed repo(s)`,

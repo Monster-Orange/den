@@ -258,6 +258,69 @@ describe("sessions start", () => {
     expect(r.made).toHaveLength(0);
   });
 
+  it("SEC-1c: --keep-env can't forward a person's credential or an actor token: refused, and audited by the host (names only)", async () => {
+    const r = await rig();
+    r.deps.env = {
+      ...r.deps.env,
+      USER: "someone",
+      DEN_PERSON_TOKEN: "den_pt_fake-person-value",
+      SECRET_FILE: "/home/someone/.den/web.secret",
+      DEN_ACTOR_TOKEN: "den_at_fake-actor-value",
+    };
+    for (const name of ["DEN_PERSON_TOKEN", "SECRET_FILE", "DEN_ACTOR_TOKEN"]) {
+      r.hostLog.length = 0;
+      expect([
+        name,
+        await cmdSessions(
+          [
+            "start",
+            "-w",
+            "north",
+            "--name",
+            "p",
+            "--keep-env",
+            name,
+            "--",
+            "sh",
+          ],
+          r.deps,
+        ),
+      ]).toEqual([name, 1]);
+      expect(r.err.join("\n")).toContain(
+        `--keep-env ${name}: a person's credential`,
+      );
+      const audit = r.hostLog.filter((l) => /refused: --keep-env/.test(l));
+      expect([name, audit.length]).toEqual([name, 1]);
+      expect(audit[0]).toMatch(
+        new RegExp(`refused: --keep-env ${name} .*· by user someone`),
+      );
+    }
+    expect(r.made).toHaveLength(0);
+    const all = [...r.out, ...r.err, ...r.hostLog].join("\n");
+    for (const v of [
+      "fake-person-value",
+      "fake-actor-value",
+      ".den/web.secret",
+    ])
+      expect([v, all.includes(v)]).toEqual([v, false]);
+  });
+
+  it("SEC-1c: a plain session never gets a person's credential, whatever its name", async () => {
+    const r = await rig();
+    r.deps.env = {
+      ...r.deps.env,
+      DEN_PERSON_TOKEN: "den_pt_fake-person-value",
+      LANG: "den_pt_shaped-value",
+      DEN_ACTOR_TOKEN: "den_at_fake-actor-value",
+    };
+    expect(await start(r, "north", "plain")).toBe(0);
+    const keys = Object.keys(r.made[0].opts.env);
+    expect(keys).not.toContain("DEN_PERSON_TOKEN");
+    expect(keys).not.toContain("DEN_ACTOR_TOKEN");
+    // LANG is in the allowlist, but its value is a person token.
+    expect(keys).not.toContain("LANG");
+  });
+
   it("--cwd sets the working directory", async () => {
     const r = await rig();
     const cwd = os.tmpdir();

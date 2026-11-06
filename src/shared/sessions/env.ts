@@ -10,13 +10,20 @@
  *   4. `launch`: the runtime's launch env (LaunchOutput.env)
  *   5. `extra`: the persona's or runtime's declared env (none can declare
  *      one yet)
- *   6. `den`: Den's own markers (DEN_AGENT for an agent)
+ *   6. `den`: Den's own markers (DEN_AGENT, and SEC-1c's DEN_ACTOR_TOKEN
+ *      for an agent: the only way an actor token reaches a session; one
+ *      from anywhere above is dropped first)
  *   7. then `scrub` removes every name it matches, whatever put it back:
  *      each runtime's scrubEnv (den-claude: CLAUDECODE, CLAUDE_CODE_*).
+ *   8. and always (SEC-1 §5): a person's credential, DEN_PERSON_TOKEN or
+ *      any value that is a person token or names web.secret
+ *      (actor-token.ts isPersonCredentialEnv), whatever put it there.
  *
  * The session backend knows none of this: it is handed the result. Nothing
  * here logs or returns a value other than the env itself.
  */
+
+import { ACTOR_TOKEN_ENV, isPersonCredentialEnv } from "../actor-token.js";
 
 export const DEFAULT_TERM = "xterm-256color";
 
@@ -72,8 +79,11 @@ export function buildSessionEnv(i: SessionEnvInput): Record<string, string> {
   for (const [k, v] of Object.entries(i.caller))
     if (v !== undefined && (inSessionBase(k) || named.has(k))) env[k] = v;
   if (!env.TERM) env.TERM = DEFAULT_TERM;
-  Object.assign(env, i.launch ?? {}, i.extra ?? {}, i.den ?? {});
+  Object.assign(env, i.launch ?? {}, i.extra ?? {});
+  delete env[ACTOR_TOKEN_ENV];
+  Object.assign(env, i.den ?? {});
   const scrub = i.scrub ?? [];
-  for (const k of Object.keys(env)) if (matchesScrub(k, scrub)) delete env[k];
+  for (const [k, v] of Object.entries(env))
+    if (matchesScrub(k, scrub) || isPersonCredentialEnv(k, v)) delete env[k];
   return env;
 }

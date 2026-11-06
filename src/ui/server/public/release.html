@@ -895,6 +895,14 @@
 
       // ── Load status ─────────────────────────────────────────────────────────────
       async function loadStatus(refresh = false) {
+        // No deploy environment (environments: [local] only): nothing to ask.
+        if (!state.env) {
+          state.rows = [];
+          state.loading = null;
+          setStatus("no deploy environment configured");
+          renderTable();
+          return;
+        }
         state.loading = refresh ? "refresh" : "initial";
         setStatus(refresh ? "refreshing…" : "checking deployed state…");
         renderTable(); // shows the loading row; see renderTable

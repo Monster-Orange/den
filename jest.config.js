@@ -55,6 +55,9 @@ export default {
   },
   coverageDirectory: "<rootDir>/coverage",
   setupFilesAfterEnv: ["<rootDir>/tests/setup.ts"],
+  // A test's child servers never outlive the run (tests/child-servers.ts).
+  globalSetup: "<rootDir>/tests/global-setup.mjs",
+  globalTeardown: "<rootDir>/tests/global-teardown.mjs",
   // On 2-vCPU CI runners jest runs ONE worker (availableParallelism − 1), so
   // every suite's ts-jest transform state accumulates in a single heap —
   // measured >1 GB and still climbing by suite ~68 of this repo's schedule.

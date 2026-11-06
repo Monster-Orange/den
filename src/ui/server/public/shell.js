@@ -360,6 +360,7 @@
     "err.refused.title": "Request refused",
     "err.signin.title": "Sign in to use {name}",
     "err.signin.terminal": "Sign in to use the terminal",
+    "err.signin.agents": "Sign in to start agents",
     "err.signin.sub": "This browser isn't signed in",
     "err.signin.lead": "Run {cmd} and open the link.",
     "err.signin.expiredTitle": "Sign-in link expired",
@@ -3064,6 +3065,19 @@
               : typeof data === "string" && data.trim()
                 ? data.trim().slice(0, 300)
                 : t("api.failed", { what: what }) + " (" + r.status + ")";
+          // SEC-1: a sign-in refusal in the page's language, with its command.
+          if (
+            data &&
+            data.code === "signin_required" &&
+            (data.scope === "agents" || data.scope === "terminal")
+          ) {
+            var cmd = /`([^`]+)`/.exec(String(data.error || ""));
+            msg =
+              (data.scope === "agents"
+                ? t("err.signin.agents")
+                : t("err.signin.terminal")) +
+              (cmd ? ". " + t("err.signin.lead", { cmd: cmd[1] }) : "");
+          }
           throw apiError(msg, {
             status: r.status,
             code: data && typeof data === "object" ? data.code : null,

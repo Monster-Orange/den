@@ -27,8 +27,12 @@ const LOGIN_CODE_SKEW_MS = 5_000;
 const LOGIN_CONTEXT = "den-login-v1:";
 const SESSION_CONTEXT = "den-session-v1:";
 export const WEB_SESSIONS_FILE = "web-sessions.json";
-/** lastSeenAt is written at most this often per session. */
-const TOUCH_EVERY_MS = 60_000;
+/**
+ * lastSeenAt is written at most this often per session (so a page load
+ * doesn't rewrite the file): `web sessions` shows it to the minute.
+ */
+export const SESSION_TOUCH_MS = 60_000;
+const TOUCH_EVERY_MS = SESSION_TOUCH_MS;
 const UA_MAX = 120;
 
 const DAY = 86_400_000;

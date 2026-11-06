@@ -10,15 +10,17 @@
  * sent as `Authorization: Bearer den_pt_<b64url>`. The server recomputes it
  * and compares in constant time; its actor is `person:<os user>`.
  *
- * SEC-1b's `web logout --all` rotates the secret (rotateWebSecret). Seam:
- * SEC-1c's agent tokens (`den_at_…`) are verified next to
- * verifyPersonToken.
+ * SEC-1b's `web logout --all` rotates the secret (rotateWebSecret).
+ * SEC-1c's agent tokens (`den_at_…`) are actor-token.ts's: random, not
+ * derived from the secret.
  */
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { ACTOR_TOKEN_ENV, isActorTokenShape } from "./actor-token.js";
 import { getStateDir } from "./paths.js";
+import { AGENT_ACTOR_ENV } from "./sessions/env.js";
 
 export const WEB_SECRET_FILE = "web.secret";
 const SECRET_BYTES = 32;
@@ -125,14 +127,21 @@ export function verifyPersonToken(
 }
 
 /**
- * The headers every CLI and stdio-MCP call to the web server carries: the
- * person token, or none when there is no secret yet (a server that predates
- * SEC-1, or none started). SEC-1c: an agent's DEN_ACTOR_TOKEN goes here
- * instead.
+ * The headers every CLI and stdio-MCP call to the web server carries:
+ *  - inside an agent's session (SEC-1c): its DEN_ACTOR_TOKEN, never the
+ *    person's; an agent (DEN_AGENT set) without one sends no credential
+ *    rather than fall back to the person token;
+ *  - otherwise the person token, or none when there is no secret yet (a
+ *    server that predates SEC-1, or none started).
  */
 export function cliAuthHeaders(
   stateDir: string = getStateDir(),
+  env: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
+  const actorToken = env[ACTOR_TOKEN_ENV];
+  if (isActorTokenShape(actorToken))
+    return { Authorization: `Bearer ${actorToken}` };
+  if (env[AGENT_ACTOR_ENV] !== undefined || actorToken !== undefined) return {};
   const secret = readWebSecret(stateDir);
   return secret ? { Authorization: `Bearer ${personToken(secret)}` } : {};
 }

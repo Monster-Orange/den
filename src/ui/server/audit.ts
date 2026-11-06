@@ -17,13 +17,28 @@ export { actorFromHeaders } from "../../shared/agent-actor.js";
 
 export interface AuditEntry {
   ts: string;
+  /** "agent" only for an agent's actor token (SEC-1c); a claim never is. */
   actor: "agent" | "user";
   /**
-   * SEC-1a: who the request's credential proves it is, `person:<os user>`
-   * for the person token. From the credential only, never from a header
-   * the caller sets; absent for a call without one (a browser in SEC-1a).
+   * Who the request's credential proves it is: `person:<os user>` for the
+   * person token or a signed-in browser, `agent:<id>` for an actor token
+   * (SEC-1c). From the credential only, never from a header the caller
+   * sets; absent for a call without one.
    */
   principal?: string;
+  /**
+   * SEC-1c: what the caller's x-den-actor headers claimed, when no actor
+   * token proved it (unverified is then set). A label, never the actor.
+   */
+  claimed?: {
+    agent?: string;
+    workspace?: string;
+    client: string;
+    clientVersion: string;
+    mcpPid: number | null;
+    session: string;
+  };
+  unverified?: true;
   client?: string;
   clientVersion?: string;
   mcpPid?: number | null;
@@ -80,18 +95,33 @@ export function recordAction(
   /** The credential's actor (request-guard principalOf). */
   principal?: string,
 ): AuditEntry {
+  const claim = actor?.unverified ? actor : null;
+  const verified = actor && !actor.unverified ? actor : null;
   const entry: AuditEntry = {
     ts: new Date().toISOString(),
-    actor: actor ? "agent" : "user",
+    actor: verified ? "agent" : "user",
     ...(principal ? { principal } : {}),
-    ...(actor
+    ...(claim
       ? {
-          client: actor.client,
-          clientVersion: actor.clientVersion,
-          mcpPid: actor.mcpPid,
-          session: actor.session,
-          ...(actor.agent ? { agent: actor.agent } : {}),
-          ...(actor.workspace ? { workspace: actor.workspace } : {}),
+          claimed: {
+            ...(claim.agent ? { agent: claim.agent } : {}),
+            ...(claim.workspace ? { workspace: claim.workspace } : {}),
+            client: claim.client,
+            clientVersion: claim.clientVersion,
+            mcpPid: claim.mcpPid,
+            session: claim.session,
+          },
+          unverified: true as const,
+        }
+      : {}),
+    ...(verified
+      ? {
+          client: verified.client,
+          clientVersion: verified.clientVersion,
+          mcpPid: verified.mcpPid,
+          session: verified.session,
+          ...(verified.agent ? { agent: verified.agent } : {}),
+          ...(verified.workspace ? { workspace: verified.workspace } : {}),
         }
       : {}),
     ...(action.targetWorkspace
@@ -114,7 +144,8 @@ export function recordAction(
       ? ""
       : action.detail;
   sink?.(
-    `${mark} ${action.verb}${what ? ` ${what}` : ""}${why}${actorSuffix(actor)}`,
+    `${mark} ${action.verb}${what ? ` ${what}` : ""}${why}${actorSuffix(actor)}` +
+      (principal && !verified ? ` · as ${principal}` : ""),
     actor,
   );
   return entry;

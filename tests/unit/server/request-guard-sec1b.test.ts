@@ -76,11 +76,17 @@ describe("on loopback", () => {
       ok: false,
       status: 401,
       code: "signin_required",
-      scope: "terminal",
+      scope: "agents",
     });
     expect(
-      checkRequest(req("GET", "/signin", { host: local }), ctx()),
-    ).toMatchObject({ ok: false, code: "signin_required" });
+      checkRequest(req("GET", "/api/sessions/s1/io", { host: local }), ctx()),
+    ).toMatchObject({ ok: false, code: "signin_required", scope: "terminal" });
+    // /signin is read-only and sign-in free (§6b.3): its handler shows the
+    // signed-out page itself, on loopback and beyond.
+    for (const host of [local, EDGE])
+      expect(
+        checkRequest(req("GET", "/signin", { host }), ctx()),
+      ).toMatchObject({ ok: true, session: null });
   });
 
   it("shell-grade with a session, Origin and the session's CSRF: passes, as the browser's session", () => {

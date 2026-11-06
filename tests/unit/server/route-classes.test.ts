@@ -122,14 +122,19 @@ describe("the classes", () => {
     }
   });
 
-  it("SEC-1b's routes: /auth starts a session (mutating GET); /signin and the session admin are shell-grade; only /auth and /api/session are sign-in free", () => {
+  it("SEC-1b's routes: /auth starts a session (mutating GET); /signin is read-only (§6b.3) and sign-in free; the session admin is shell-grade", () => {
     expect(routeClass("GET", "/auth")).toBe("mutating");
     expect(isMutatingGet("GET", "/auth")).toBe(true);
-    expect(routeClass("GET", "/signin")).toBe("shell-grade");
+    expect(routeClass("GET", "/signin")).toBe("readonly");
+    expect(isMutatingGet("GET", "/signin")).toBe(false);
     expect(routeClass("POST", "/api/session/logout")).toBe("mutating");
     expect(routeClass("GET", "/api/web/sessions")).toBe("shell-grade");
     expect(routeClass("POST", "/api/web/logout")).toBe("shell-grade");
-    expect([...SIGNIN_FREE].sort()).toEqual(["/api/session", "/auth"]);
+    expect([...SIGNIN_FREE].sort()).toEqual([
+      "/api/session",
+      "/auth",
+      "/signin",
+    ]);
   });
 
   it("read-only GETs are not checked as mutations", () => {
@@ -163,6 +168,11 @@ describe("the classes", () => {
     ).toBe("mutating");
     // A POST is a mutation by method, not by the table (isMutatingGet is GETs only).
     expect(isMutatingGet("POST", "/api/run")).toBe(false);
+  });
+
+  it("SEC-1c: a session's own routes (/api/sessions/<id>/io) are shell-grade", () => {
+    expect(routeClass("GET", "/api/sessions/abc/io")).toBe("shell-grade");
+    expect(routeClass("POST", "/api/sessions/abc/resize")).toBe("shell-grade");
   });
 
   it("an unknown route has no class", () => {

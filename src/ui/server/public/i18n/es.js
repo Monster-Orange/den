@@ -249,6 +249,7 @@
     "err.refused.title": "Solicitud rechazada",
     "err.signin.title": "Inicia sesión para usar {name}",
     "err.signin.terminal": "Inicia sesión para usar la terminal",
+    "err.signin.agents": "Inicia sesión para iniciar agentes",
     "err.signin.sub": "Este navegador no ha iniciado sesión",
     "err.signin.lead": "Ejecuta {cmd} y abre el enlace.",
     "err.signin.expiredTitle": "El enlace de inicio de sesión caducó",

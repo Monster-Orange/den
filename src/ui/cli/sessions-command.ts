@@ -31,6 +31,10 @@ import {
   noHost,
   type HostClient,
 } from "../../shared/sessions/client.js";
+import {
+  ACTOR_TOKEN_ENV,
+  isPersonCredentialEnv,
+} from "../../shared/actor-token.js";
 import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
 import { AGENT_ACTOR_ENV, buildSessionEnv } from "../../shared/sessions/env.js";
 import { runSessionHost } from "../../shared/sessions/host.js";
@@ -63,6 +67,7 @@ export const SESSIONS_HELP = {
     "    run argv in a PTY as <dist>-<ws>:<n> (cwd: here); capped by agents.max_concurrent",
     "    env: PATH, HOME, USER, LOGNAME, SHELL, TERM, COLORTERM, LANG, LC_*, TZ,",
     "    TMPDIR only; --keep-env NAME (exact, repeatable; audited) adds one",
+    "    (never a person's credential: DEN_PERSON_TOKEN, a web.secret path)",
     "{cli} sessions list [-w <ws>] [--json]",
     "{cli} sessions attach <name|id>",
     "    raw terminal; ctrl-] detaches and leaves it running",
@@ -385,6 +390,33 @@ async function start(args: string[], d: Resolved): Promise<number> {
     d.err(
       `✗ --keep-env is refused for an agent (${AGENT_ACTOR_RE.test(actor) ? actor : "agent"}): its env is the allowlist and its runtime's`,
     );
+    return 1;
+  }
+  // SEC-1 §5: a person's credential (DEN_PERSON_TOKEN, a person token, a
+  // path to web.secret) or an actor token is never forwarded. Refused, and
+  // audited by the session host (names only).
+  const forbidden = keep.filter(
+    (k) => k === ACTOR_TOKEN_ENV || isPersonCredentialEnv(k, d.env[k]),
+  );
+  if (forbidden.length) {
+    d.err(
+      `✗ --keep-env ${forbidden.join(", ")}: a person's credential (or an actor token) is never forwarded to a session`,
+    );
+    await withClient(d, (c) =>
+      c.start(
+        {
+          name: sessionName(d.dist, ws, name),
+          cwd,
+          argv: p.rest!,
+          env: {},
+          cols: 80,
+          rows: 24,
+        },
+        { refusedEnv: forbidden, actor: `user ${cliUser(d.env)}` },
+      ),
+    ).catch((e: unknown) => {
+      if (!(e instanceof HostError)) throw e;
+    });
     return 1;
   }
   const env = plainSessionEnv(d.env, keep);

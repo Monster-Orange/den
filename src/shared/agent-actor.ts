@@ -43,6 +43,11 @@ export interface AgentInfo {
 
 export interface AgentActor extends AgentInfo {
   kind: "agent";
+  /**
+   * SEC-1c: set when this came from headers the caller set, not from an
+   * agent's actor token. The audit keeps it as a claim, never as the actor.
+   */
+  unverified?: true;
 }
 
 /** null: a person in the web UI (no agent headers). */
@@ -75,7 +80,11 @@ export function agentAuditHeaders(info: AgentInfo): Record<string, string> {
   };
 }
 
-/** The actor an incoming request names, or null for a person in the UI. */
+/**
+ * The actor an incoming request's headers claim, or null. SEC-1c: a claim,
+ * never the audit actor; the server's auditActorOf (request-guard.ts)
+ * takes the actor from the credential and keeps this as unverified.
+ */
 export function actorFromHeaders(
   headers: IncomingHttpHeaders | Record<string, string | undefined>,
 ): Actor {
@@ -107,6 +116,7 @@ export function actorLabel(actor: AgentActor): string {
   const ws = actor.workspace ? `workspace ${actor.workspace}, ` : "";
   return (
     `${who} ${actor.client} ${actor.clientVersion} ` +
-    `(${ws}mcp pid ${actor.mcpPid ?? "?"}, session ${actor.session || "?"})`
+    `(${ws}mcp pid ${actor.mcpPid ?? "?"}, session ${actor.session || "?"})` +
+    (actor.unverified ? " (unverified)" : "")
   );
 }

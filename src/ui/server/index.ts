@@ -128,6 +128,7 @@ import {
   engineVersion,
   getDistRoot,
   getEngineRoot,
+  getStateDir,
 } from "../../shared/paths.js";
 import { enginePath } from "../../shared/engine.js";
 import {
@@ -168,7 +169,6 @@ import {
 import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
 import { actorLabel } from "../../shared/agent-actor.js";
 import {
-  actorFromHeaders,
   actorSuffix,
   recordAction,
   recordAgentRefusal,
@@ -178,6 +178,7 @@ import {
 } from "./audit.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import {
+  auditActorOf,
   bindRefusal,
   checkRequest,
   isLoopbackAddress,
@@ -187,6 +188,7 @@ import {
   requestIsHttps,
   sessionRequestAllowed,
   setPrincipal,
+  signinMessage,
   type GuardContext,
   type GuardResult,
 } from "./request-guard.js";
@@ -195,6 +197,10 @@ import {
   verifyPersonToken,
   WebSecretStore,
 } from "../../shared/web-secret.js";
+import {
+  ACTOR_TOKEN_PREFIX,
+  verifyActorToken,
+} from "../../shared/actor-token.js";
 import {
   checkLoginCode,
   localhostOrigin,
@@ -467,8 +473,12 @@ function pushLog(kind: string, text: string, actor?: string): void {
  */
 function serverLog(msg: string, kind: string = "info", actor?: string): void {
   pushLog(kind, msg, actor);
-  if (!SILENT) process.stdout.write(msg + "\n");
+  if (!SILENT && !outputLost()) process.stdout.write(msg + "\n");
 }
+
+// Its output's reader gone (the terminal, runner or script that started it
+// was killed): write nothing more, and shut down (shutdown-guard.ts).
+guardStdio(() => beginShutdown("SIGPIPE"));
 
 // ── Theme ────────────────────────────────────────────────────────────────────
 // The active theme (user's, else the org config's `theme:`, else den). A
@@ -671,11 +681,19 @@ const CONFIG_FREE_PAGES = new Set(["/settings", "/settings.html", "/logs"]);
 import {
   setSudoPassword,
   clearSudoPassword,
+  closeLockForThisRequest,
+  inRequestLockScope,
   getSudoEnv,
   prewarmSudo,
   hasSudoPassword,
   hasPasswordlessSudo,
 } from "./sudo-store.js";
+import {
+  guardStdio,
+  isLostOutputError,
+  outputLost,
+  requestShutdown,
+} from "./shutdown-guard.js";
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 import { sweepLogs } from "../../shared/process/log-rotation.js";
@@ -972,6 +990,19 @@ const GUARD: GuardContext = {
   edgeHosts: denEdgeHosts,
   lanHosts: () => LAN_HOSTS,
   verifyBearer: (token) => {
+    // SEC-1c: an agent's actor token, live while its session runs.
+    if (token.startsWith(ACTOR_TOKEN_PREFIX)) {
+      const rec = verifyActorToken(getStateDir(), token);
+      return rec
+        ? {
+            kind: "agent",
+            actor: rec.actor,
+            workspace: rec.workspace,
+            grants: rec.grants,
+            session: rec.session,
+          }
+        : null;
+    }
     const secret = webSecret.current();
     return secret ? verifyPersonToken(token, secret) : null;
   },
@@ -1018,7 +1049,7 @@ function sendSignedOut(
   opts: {
     pathname: string;
     search: string;
-    scope: "terminal" | "den";
+    scope: "terminal" | "agents" | "den";
     expired?: boolean;
     requestId: string;
     message: string;
@@ -1083,7 +1114,14 @@ function sendGuardRefusal(
   if (pathname === "/api" || pathname.startsWith("/api/"))
     return sendJson(
       res,
-      { ok: false, error: refusal.error, code: refusal.code, requestId },
+      {
+        ok: false,
+        error: refusal.error,
+        code: refusal.code,
+        // signin_required: why, so the page words it in its own language.
+        ...(refusal.scope ? { scope: refusal.scope } : {}),
+        requestId,
+      },
       refusal.status,
     );
   if (refusal.code === "signin_required" && wantsHtmlPage(req, pathname))
@@ -1147,6 +1185,26 @@ function handleAuth(
   res.end();
 }
 
+/**
+ * A service's declared command `cmd` for `env`, own properties only
+ * (SEC-1 §6b.2): `constructor` or `__proto__` is no command, never
+ * something from Object.prototype.
+ */
+function declaredCommand<T>(
+  commands: Record<string, Record<string, T> | undefined> | undefined,
+  env: string,
+  cmd: string,
+): T | undefined {
+  const own = (o: object | undefined, k: string) =>
+    o !== undefined && Object.prototype.hasOwnProperty.call(o, k);
+  if (!own(commands, env)) return undefined;
+  const forEnv = commands![env];
+  return own(forEnv, cmd) ? forEnv![cmd] : undefined;
+}
+
+/** A test module's name as a run takes it (SEC-1 §6b.2): never a path out. */
+const SAFE_MODULE_RE = /^[A-Za-z0-9_@][A-Za-z0-9._@/-]{0,127}$/;
+
 // ── Server ────────────────────────────────────────────────────────────────────
 
 async function handleRequest(
@@ -1201,6 +1259,8 @@ async function handleRequest(
   )
     return sendGuardRefusal(req, res, pathname, guard, requestId, url.search);
   if (guard.ok) setPrincipal(req, guard.principal);
+  // SEC-1c (R8): an agent's request never passes the lock.
+  if (guard.ok && guard.principal?.kind === "agent") closeLockForThisRequest();
 
   // ── Sign-in (SEC-1b, §2) ───────────────────────────────────────────────────
   // Before config validation: signing in never depends on the config.
@@ -1210,14 +1270,38 @@ async function handleRequest(
     pathname === "/signin" &&
     (req.method === "GET" || req.method === "HEAD")
   ) {
-    // Shell-grade: the request checks let it through only signed in.
-    res.writeHead(303, {
-      Location: safeNext(url.searchParams.get("next")),
-      "Cache-Control": "no-store",
+    // Read-only and sign-in free (§6b.3): it checks the session itself.
+    // Signed in, it goes on to a same-origin `next`; signed out, it is the
+    // signed-out page (the `web login` hint, never a form for the secret).
+    if (guard.ok && guard.session) {
+      res.writeHead(303, {
+        Location: safeNext(url.searchParams.get("next")),
+        "Cache-Control": "no-store",
+      });
+      res.end();
+      return;
+    }
+    return sendSignedOut(req, res, {
+      pathname,
+      search: url.search,
+      scope: "terminal",
+      requestId,
+      message: signinMessage("terminal", product().cli, product().title),
     });
-    res.end();
-    return;
   }
+  // AG-4a-term's session routes (`/api/sessions/<id>/io`): shell-grade, and
+  // an agent's token reaches its own session's only (request-guard). Not
+  // served yet.
+  if (pathname.startsWith("/api/sessions/"))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        error: "No session route here yet (AG-4a-term)",
+        code: "not_found",
+      },
+      404,
+    );
 
   // A mutating request may change what /api/services would list (exec and
   // sync stream over GET, for EventSource).
@@ -1474,7 +1558,8 @@ async function handleRequest(
   // route; it reports them here so the activity trail shows failed attempts.
   // Agents only (the audit header), and the entry is all it can write.
   if (pathname === "/api/activity" && req.method === "POST") {
-    const actor = actorFromHeaders(req.headers);
+    // An agent's token, or (unverified) an MCP server's audit headers.
+    const actor = auditActorOf(req);
     if (!actor) return sendJson(res, { error: "agents only" }, 403);
     const raw = await readBody(req).catch(() => "");
     if (raw.length > 4096) return send400(res, "report too large");
@@ -2064,7 +2149,7 @@ async function handleRequest(
     // Recorded, so failed attempts show in the activity trail (F2).
     const fail = (msg: string): void => {
       recordAction(
-        actorFromHeaders(req.headers),
+        auditActorOf(req),
         {
           verb: "exec",
           detail: `${repoName}/${svcName} ${cmdName} (${env})`,
@@ -2108,8 +2193,11 @@ async function handleRequest(
       );
       if (refusal) return fail(refusal);
       if (manifest) {
-        cmdDef =
-          manifest.services?.[resolved.subsystem]?.commands?.[env]?.[cmdName];
+        cmdDef = declaredCommand(
+          manifest.services?.[resolved.subsystem]?.commands,
+          env,
+          cmdName,
+        );
       }
       // Lifecycle commands run through the service runner, as the CLI's do:
       // restart without a declared restart is down + up, up on a healthy
@@ -2122,7 +2210,7 @@ async function handleRequest(
           );
         const execId = shortRunId();
         const execDesc = `${repoName}/${svcName} ${cmdName} (${env})`;
-        const execActor = actorFromHeaders(req.headers);
+        const execActor = auditActorOf(req);
         recordAction(
           execActor,
           {
@@ -2185,7 +2273,11 @@ async function handleRequest(
           )
         : null;
       if (refusal) return fail(refusal);
-      cmdDef = repo?.manifest.services?.[svcName]?.commands?.[env]?.[cmdName];
+      cmdDef = declaredCommand(
+        repo?.manifest.services?.[svcName]?.commands,
+        env,
+        cmdName,
+      );
     }
 
     if (!cmdDef || !repoPath) {
@@ -2231,7 +2323,7 @@ async function handleRequest(
 
     const execId = shortRunId();
     const execDesc = `${repoName}/${svcName} ${cmdName} (${env})`;
-    const execActor = actorFromHeaders(req.headers);
+    const execActor = auditActorOf(req);
     recordAction(
       execActor,
       {
@@ -2866,6 +2958,17 @@ async function handleRequest(
     }
 
     if (!pillar) return send400(res, "pillar required");
+    // SEC-1 §6b.2: a run takes the ids of declared modules, never a path. A
+    // module that climbs out (`..`), is absolute, or reads as a flag would
+    // point the runner at a script of the caller's choosing.
+    const badModule = modules.find(
+      (m) => !SAFE_MODULE_RE.test(m) || m.split("/").includes(".."),
+    );
+    if (badModule !== undefined)
+      return send400(
+        res,
+        `module ${JSON.stringify(badModule.slice(0, 80))} is not a module name`,
+      );
 
     // Resolve declarative optional fields → per-module env. Only the perf pillar
     // declares optionalFields; for every other pillar this is an empty map.
@@ -2953,7 +3056,7 @@ async function handleRequest(
     const runId = shortRunId();
     const modDesc = modules.length ? modules.join(",") : "all";
     const runDesc = `${pillar}/${env} · modules=${modDesc}`;
-    const runActor = actorFromHeaders(req.headers);
+    const runActor = auditActorOf(req);
     recordAction(
       runActor,
       { verb: "run", detail: `${runDesc} [${runId}]` },
@@ -3150,6 +3253,13 @@ async function handleRequest(
       );
     res.setHeader("Cache-Control", "no-store");
     const g = guard.ok ? guard : null;
+    // An agent's token gets no browser CSRF token: it has its bearer.
+    if (g?.principal?.kind === "agent")
+      return sendJson(res, {
+        csrf: null,
+        actor: g.principal.actor,
+        signedIn: false,
+      });
     if (g?.session)
       return sendJson(res, {
         csrf: g.session.csrf,
@@ -4140,7 +4250,8 @@ const server = http.createServer((req, res) => {
   // An async handler with no catch turns any route throw into an unhandled
   // rejection — which CRASHES the whole server on modern Node (freezing every
   // health dot) and leaves the request hanging. Fail the one request instead.
-  handleRequest(req, res).catch((err: unknown) => {
+  // Each request in its own lock scope (SEC-1c: an agent's stays shut).
+  inRequestLockScope(() => handleRequest(req, res)).catch((err: unknown) => {
     // R26: the log has the stack under the request id; the browser gets the
     // id, never the stack. The route is its template: no query values.
     const requestId = requestIdOf(req);
@@ -4330,10 +4441,14 @@ setInterval(sweepServiceLogs, LOG_SWEEP_INTERVAL_MS).unref();
 // timers — code the per-request catch can't see) would kill the whole
 // dashboard; a TDZ bug in a down-flow callback did exactly that. For a local
 // dev server, staying alive degraded beats dying — log loudly and continue.
+// Never log a lost-output error, or anything once the output is gone: that
+// write fails too, and looped (shutdown-guard.ts).
 process.on("uncaughtException", (err) => {
+  if (isLostOutputError(err) || outputLost()) return;
   console.error("[server] uncaught exception (continuing):", err);
 });
 process.on("unhandledRejection", (reason) => {
+  if (isLostOutputError(reason) || outputLost()) return;
   console.error("[server] unhandled rejection (continuing):", reason);
 });
 
@@ -4484,7 +4599,8 @@ async function handleShutdown(signal: string): Promise<void> {
     process.exit(0);
   }
 
-  const isTTY = process.stdin.isTTY;
+  // Lost output (SIGPIPE): nobody can answer a prompt.
+  const isTTY = process.stdin.isTTY && signal !== "SIGPIPE";
 
   if (!isTTY) {
     // Non-interactive shutdown usually means `den web` is being restarted.
@@ -4524,10 +4640,8 @@ async function handleShutdown(signal: string): Promise<void> {
 }
 
 /**
- * Run the shutdown for `signal`. A failure still ends the process: the guard
- * below ignores every later signal, so a shutdown that rejected would leave
- * the server running and deaf to SIGTERM (a service manager then waits out
- * its timeout and SIGKILLs it).
+ * Run the shutdown for `signal`. A failure still ends the process, at once
+ * rather than at the deadline.
  */
 function shutdownOn(signal: string): void {
   handleShutdown(signal).catch((e: unknown) => {
@@ -4536,16 +4650,22 @@ function shutdownOn(signal: string): void {
   });
 }
 
-let _shuttingDown = false;
+/**
+ * Start the shutdown once; a second signal exits at once, and a shutdown
+ * nobody waits on (stdin isn't a TTY) is forced to exit after a deadline
+ * (shutdown-guard.ts).
+ */
+function beginShutdown(signal: string): void {
+  requestShutdown(signal, shutdownOn, {
+    interactive: Boolean(process.stdin.isTTY) && signal !== "SIGPIPE",
+  });
+}
+
 process.on("SIGINT", () => {
-  if (_shuttingDown) return;
-  _shuttingDown = true;
-  console.log(""); // newline after ^C
-  shutdownOn("SIGINT");
+  if (!outputLost()) console.log(""); // newline after ^C
+  beginShutdown("SIGINT");
 });
 
 process.on("SIGTERM", () => {
-  if (_shuttingDown) return;
-  _shuttingDown = true;
-  shutdownOn("SIGTERM");
+  beginShutdown("SIGTERM");
 });

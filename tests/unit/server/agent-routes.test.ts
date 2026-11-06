@@ -18,6 +18,8 @@ import {
   newRequestId,
 } from "../../../src/ui/server/http-errors.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
+import { verifyActorToken } from "../../../src/shared/actor-token.js";
+import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import { cleanupRigs, rig, settle, type Rig } from "../agents/helpers/rig.js";
 
 interface Api {
@@ -47,6 +49,20 @@ async function api(): Promise<Api> {
     res.setHeader("X-Request-Id", id);
     jsonApiErrors(res, id);
     const p = new URL(req.url ?? "/", "http://localhost").pathname;
+    // The server's credential step (request-guard): an agent's actor token
+    // (SEC-1c) is the request's principal; no header claims one.
+    const bearer = /^Bearer (den_at_\S+)$/.exec(
+      String(req.headers.authorization ?? ""),
+    );
+    const rec = bearer ? verifyActorToken(r.stateDir, bearer[1]) : null;
+    if (rec)
+      setPrincipal(req, {
+        kind: "agent",
+        actor: rec.actor,
+        workspace: rec.workspace,
+        grants: rec.grants,
+        session: rec.session,
+      });
     handleAgentRoutes(req, res, p, {
       agents: r.deps,
       unlocked: () => lock.open,
@@ -286,17 +302,45 @@ describe("POST /api/workspaces/<ws>/agents (start)", () => {
     expect((await rows(a, "south")).length).toBe(0);
   });
 
-  it("refuses an agent actor (403): agents use MCP agent_spawn", async () => {
+  it("refuses an agent (its actor token, SEC-1c: 403): agents use MCP agent_spawn", async () => {
     const a = await api();
-    const { status, json } = await a.call(
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    const token = a.r.made[0].opts.env.DEN_ACTOR_TOKEN ?? "";
+    const auth = { authorization: `Bearer ${token}` };
+    for (const [p, body] of [
+      ["/api/workspaces/north/agents", { persona: "planner", id: "p2" }],
+      ["/api/workspaces/north/agents/planner/stop", undefined],
+    ] as const) {
+      const { status, json } = await a.call("POST", p, body, auth);
+      expect([p, status]).toEqual([p, 403]);
+      expectR26(json, "forbidden");
+    }
+    expect(a.r.made).toHaveLength(1);
+    expect(recentActions().at(-1)).toMatchObject({
+      actor: "agent",
+      agent: "agent:planner",
+      workspace: "north",
+      outcome: "refused",
+    });
+  });
+
+  it("an x-den-actor header alone is no agent (SEC-1c): ignored, kept as an unverified claim", async () => {
+    const a = await api();
+    await start(a, "north", { persona: "planner" });
+    const { status } = await a.call(
       "POST",
-      "/api/workspaces/north/agents",
-      { persona: "planner" },
-      { "x-den-actor": "agent", "x-den-mcp-agent": "agent:planner" },
+      "/api/workspaces/north/agents/planner/stop",
+      undefined,
+      { "x-den-actor": "agent", "x-den-mcp-agent": "agent:other" },
     );
-    expect(status).toBe(403);
-    expectR26(json, "forbidden");
-    expect(a.r.made).toHaveLength(0);
+    expect(status).toBe(200);
+    const e = recentActions().at(-1)!;
+    expect(e).toMatchObject({
+      actor: "user",
+      unverified: true,
+      claimed: { agent: "agent:other" },
+    });
+    expect(e).not.toHaveProperty("agent");
   });
 
   it("answers a bad request in R26's shape: no persona, an unknown one, an unknown runtime, bad JSON", async () => {

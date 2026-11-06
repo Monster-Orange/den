@@ -26,6 +26,7 @@ import {
   mintLoginCode,
   parseOrigin,
   readWebAuthConfig,
+  SESSION_TOUCH_MS,
   sessionIdPrefix,
   WebSessionStore,
 } from "../../shared/web-session.js";
@@ -39,6 +40,7 @@ import {
 } from "./server-identity.js";
 
 import { product } from "../../shared/product.js";
+import { redactSecrets } from "../../shared/redact.js";
 interface WebCommandOptions {
   /** `open` is `up` that always opens a fresh sign-in tab (SEC-1b). */
   action: "up" | "down" | "restart" | "open";
@@ -51,6 +53,8 @@ interface WebCommandOptions {
 interface StartedServer {
   pid: number | undefined;
   logPath: string;
+  /** Where this start's output begins in the log. */
+  logOffset?: number;
 }
 
 interface WebServerState {
@@ -330,10 +334,50 @@ export async function isDenWebRunning(port: number): Promise<boolean> {
   return (await isDenWebApiRunning(port)) && (await isDenWebUiReady(port));
 }
 
-async function waitForDenWeb(port: number): Promise<boolean> {
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Why a server that just started refused to (its `✗ <reason>` line: the
+ * bind refusal, a wrong web.session value), read from this start's part of
+ * its log, secret-shaped values redacted. Null when it said none.
+ */
+export function startupRefusal(logPath: string, offset = 0): string | null {
+  let text: string;
+  try {
+    const fd = fs.openSync(logPath, "r");
+    try {
+      const size = fs.fstatSync(fd).size;
+      const from = Math.max(0, Math.min(offset, size), size - 64 * 1024);
+      const buf = Buffer.alloc(size - from);
+      fs.readSync(fd, buf, 0, buf.length, from);
+      text = buf.toString("utf-8");
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => /^\s*✗\s+(.+?)\s*$/.exec(l)?.[1])
+    .filter((l): l is string => !!l);
+  const last = lines.at(-1);
+  return last ? redactSecrets(last).slice(0, 600) : null;
+}
+
+async function waitForDenWeb(port: number, pid?: number): Promise<boolean> {
   const deadline = Date.now() + WEB_START_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (await isDenWebRunning(port)) return true;
+    // A server that refused to start has exited: no point waiting it out.
+    if (pid !== undefined && !pidAlive(pid)) return isDenWebRunning(port);
     await new Promise((resolve) => setTimeout(resolve, WEB_START_POLL_MS));
   }
   return false;
@@ -413,6 +457,7 @@ function startDenWebServer(options: WebCommandOptions): StartedServer {
     `\n--- ${product().cli} web start ${new Date().toISOString()} ---\n`,
   );
 
+  const logOffset = fs.statSync(logPath).size;
   const logFd = fs.openSync(logPath, "a");
   try {
     const child = spawn(
@@ -426,7 +471,7 @@ function startDenWebServer(options: WebCommandOptions): StartedServer {
       },
     );
     child.unref();
-    const started = { pid: child.pid, logPath };
+    const started = { pid: child.pid, logPath, logOffset };
     writeWebServerState({
       ...started,
       port: options.port,
@@ -1207,10 +1252,14 @@ export async function cmdWeb(args: string[]): Promise<void> {
     console.log(chalk.cyan(`\n  Starting ${product().cli} web on ${url}...`));
     try {
       started = startDenWebServer(options);
-      running = await waitForDenWeb(options.port);
+      running = await waitForDenWeb(options.port, started.pid);
       if (!running) {
+        // The server's own reason, when it gave one, then where to look.
+        const why = startupRefusal(started.logPath, started.logOffset);
         throw new Error(
-          `${product().title} web did not become ready. See ${started.logPath}`,
+          why
+            ? `${product().title} web refused to start: ${why}\n  See ${started.logPath}`
+            : `${product().title} web did not become ready. See ${started.logPath}`,
         );
       }
       console.log(
@@ -1456,9 +1505,21 @@ export async function cmdWebSessions(
     io.err(`${(e as Error).message}\n`);
     return 2;
   }
+  const usage = `Usage: ${product().cli} web sessions [--json] [--port <port>]\n`;
+  if (rest.includes("--help") || rest.includes("-h")) {
+    io.out(
+      usage +
+        "  The browsers signed in to this server: ID (for `web logout <id>`), CREATED,\n" +
+        `  LAST SEEN, HOST and USER AGENT. LAST SEEN is written at most once a\n` +
+        `  minute (${SESSION_TOUCH_MS / 1000} s) per session, so it trails a browser's last request by up to\n` +
+        "  that long (right after sign-in it equals CREATED). The idle lifetime\n" +
+        "  (web.session.idle, default 7d) slides from it.\n",
+    );
+    return 0;
+  }
   const asJson = rest.includes("--json");
   if (rest.some((a) => a !== "--json")) {
-    io.err(`Usage: ${product().cli} web sessions [--json] [--port <port>]\n`);
+    io.err(usage);
     return 2;
   }
   const stateDir = io.stateDir ?? getStateDir();

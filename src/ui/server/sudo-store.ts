@@ -9,7 +9,15 @@
  * because intermediate launchers (opctl, make, etc.) may reset the environment
  * before sudo is invoked. The cache is valid for ~5 min by default, which is
  * more than enough for a service to finish its startup sudo calls.
+ *
+ * SEC-1c (R8, SEC-1 §5): an agent's request never passes the lock. The
+ * server runs every request in its own lock scope (inRequestLockScope) and
+ * closes it for an agent's actor token (closeLockForThisRequest): inside a
+ * closed scope, and in everything the request starts (its spawned
+ * commands' callbacks included), the store reads as locked and hands out
+ * no sudo wrapper and warms no sudo cache.
  */
+import { AsyncLocalStorage } from "async_hooks";
 
 import * as fs from "fs";
 import * as os from "os";
@@ -19,6 +27,23 @@ import { CLI_SPAWN_TIMEOUT_MS } from "../../shared/constants.js";
 
 import { product } from "../../shared/product.js";
 let _sudoPassword: string | null = null;
+const lockScope = new AsyncLocalStorage<{ closed: boolean }>();
+
+/** Run one request in its own lock scope (open unless closed below). */
+export function inRequestLockScope<T>(fn: () => T): T {
+  return lockScope.run({ closed: false }, fn);
+}
+
+/** This request is an agent's: the lock stays shut for all it starts. */
+export function closeLockForThisRequest(): void {
+  const s = lockScope.getStore();
+  if (s) s.closed = true;
+}
+
+/** Whether the current request's lock scope is closed (an agent's). */
+export function lockClosedHere(): boolean {
+  return lockScope.getStore()?.closed === true;
+}
 let _sudoDir: string | null = null;
 
 export function setSudoPassword(password: string): void {
@@ -53,7 +78,7 @@ export function clearSudoPassword(): void {
  * 'sudo' call in the spawned process tree uses the stored password.
  */
 export function getSudoEnv(): NodeJS.ProcessEnv {
-  if (!_sudoDir) return {};
+  if (!_sudoDir || lockClosedHere()) return {};
   const currentPath = process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin";
   return { PATH: `${_sudoDir}:${currentPath}` };
 }
@@ -63,7 +88,7 @@ export function getSudoEnv(): NodeJS.ProcessEnv {
  * belt-and-suspenders fallback alongside the PATH wrapper.
  */
 export function prewarmSudo(): void {
-  if (!_sudoPassword) return;
+  if (!_sudoPassword || lockClosedHere()) return;
   try {
     execSync("sudo -S -v", {
       input: _sudoPassword + "\n",
@@ -77,7 +102,7 @@ export function prewarmSudo(): void {
 
 /** True when a sudo password has been set. */
 export function hasSudoPassword(): boolean {
-  return _sudoDir !== null;
+  return _sudoDir !== null && !lockClosedHere();
 }
 
 let _passwordlessCache: { value: boolean; at: number } | null = null;
@@ -92,6 +117,7 @@ const PASSWORDLESS_TTL_MS = 60_000;
  * status endpoint doesn't spawn sudo on every check.
  */
 export function hasPasswordlessSudo(): boolean {
+  if (lockClosedHere()) return false;
   const now = Date.now();
   if (_passwordlessCache && now - _passwordlessCache.at < PASSWORDLESS_TTL_MS) {
     return _passwordlessCache.value;
