@@ -11,6 +11,28 @@
  * single string, which both helpers still accept.
  */
 
+/**
+ * The menu's en strings, for where there is no shell (a unit test). In a
+ * page, header.js passes the shell's t (R19), which has the same en text
+ * (i18n.test.ts holds them equal).
+ */
+export const EN_FALLBACK = {
+  "ws.all": "All active",
+  "ws.allN": "All active ({n})",
+  "ws.allTip":
+    "Every active workspace; a service several define is listed once",
+  "ws.noneLabel": "none",
+  "ws.viewTitle":
+    "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing.",
+  "ws.viewTitleFocus":
+    "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing, and focus ({focus}) stays the target for commands.",
+};
+function enT(key, vars) {
+  return String(EN_FALLBACK[key] ?? key).replace(/\{(\w+)\}/g, (m, k) =>
+    vars && vars[k] != null ? String(vars[k]) : m,
+  );
+}
+
 /** Active workspace names, normalised to an array. */
 function activeNames(data) {
   const active = data?.active;
@@ -36,7 +58,7 @@ function focusName(data) {
  * "All active" is offered with two or more active workspaces; with one,
  * it and that workspace are the same view.
  */
-export function buildScopeMenuModel(scope, data) {
+export function buildScopeMenuModel(scope, data, t = enT) {
   const active = activeNames(data);
   const focus = scope?.focus ?? focusName(data);
   const multi = active.length > 1;
@@ -51,11 +73,10 @@ export function buildScopeMenuModel(scope, data) {
       ? [
           {
             value: "all",
-            label: `All active (${active.length})`,
+            label: t("ws.allN", { n: active.length }),
             checked: selected === "all",
             focused: false,
-            title:
-              "Every active workspace; a service several define is listed once",
+            title: t("ws.allTip"),
           },
         ]
       : []),
@@ -67,13 +88,13 @@ export function buildScopeMenuModel(scope, data) {
     })),
   ];
   return {
-    label: active.length === 0 ? "none" : (one ?? "All active"),
+    label: active.length === 0 ? t("ws.noneLabel") : (one ?? t("ws.all")),
     items,
     focusable: one && one !== focus ? one : null,
-    title:
-      `View: what every page shows (${inView.join(", ") || "none"}). ` +
-      "A view filter only: it starts, stops and routes nothing" +
-      (focus ? `, and focus (${focus}) stays the target for commands.` : "."),
+    title: t(focus ? "ws.viewTitleFocus" : "ws.viewTitle", {
+      ws: inView.join(", ") || t("ws.noneLabel"),
+      focus,
+    }),
   };
 }
 

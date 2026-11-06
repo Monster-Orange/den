@@ -231,12 +231,20 @@ interface Cmd {
 }
 const opened: { anchor: El; menu: { label: string; items: MenuItem[] } }[] = [];
 const cmds = new Map<string, Cmd>();
+const languagePicks: string[] = [];
 const denShell = {
   openMenu: (anchor: El, menu: { label: string; items: MenuItem[] }) =>
     opened.push({ anchor, menu }),
   registerCommand: (c: Cmd) => cmds.set(c.id, c),
   unregisterCommand: (id: string) => cmds.delete(id),
   commands: () => [...cmds.values()],
+  // The shell's language (R19, dev.39): a pick goes to setLanguage.
+  lang: () => "en",
+  languages: () => [
+    { id: "en", name: "English" },
+    { id: "ja", name: "日本語" },
+  ],
+  setLanguage: (id: string) => languagePicks.push(id),
 };
 
 beforeAll(async () => {
@@ -406,8 +414,11 @@ describe("the user menu (initAppearance, R10)", () => {
       "Den",
       "Ink",
       "Sun",
-      // Language (R19) lands in dev.23: its slot is there, hidden.
-      "[lang hidden]",
+      "--",
+      // Language (R19, dev.39): each named in itself.
+      "# Language",
+      "English ✓",
+      "日本語",
       "--",
       // The Settings page (R21), at Appearance.
       "All settings → /settings#appearance",
@@ -473,7 +484,11 @@ describe("the user menu (initAppearance, R10)", () => {
       ["theme-den", "Theme: Den", "action"],
       ["theme-ink", "Theme: Ink", "action"],
       ["theme-sun", "Theme: Sun", "action"],
+      ["language-en", "Language: English", "action"],
+      ["language-ja", "Language: 日本語", "action"],
     ]);
+    await cmds.get("language-ja")!.run();
+    expect(languagePicks).toEqual(["ja"]);
     expect(cmds.get("appearance-dark")!.keywords).toContain("mode");
     await cmds.get("appearance-dark")!.run();
     expect(server.posts.at(-1)).toEqual({ mode: "dark" });

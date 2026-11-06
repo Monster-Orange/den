@@ -85,13 +85,13 @@ export function statusSummary(row) {
  * `lead` (the part that hides below 860px), `text` and a title that says
  * what was and wasn't checked. `t` is the shell's message lookup.
  */
-export function statusChip(sum, t = defaultT) {
+export function statusChip(sum, t = tr) {
   const extra = [
     sum.unchecked ? t("status.unchecked", { n: sum.unchecked }) : "",
-    sum.pending ? `${sum.pending} pending` : "",
-    sum.awaiting ? `${sum.awaiting} still checking` : "",
+    sum.pending ? t("status.pending", { n: sum.pending }) : "",
+    sum.awaiting ? t("status.awaiting", { n: sum.awaiting }) : "",
   ].filter(Boolean);
-  const title = [`${sum.n} checked`, ...extra].join(" · ");
+  const title = [t("status.title", { n: sum.n }), ...extra].join(" · ");
   if (sum.state === "checking")
     return {
       dot: "off",
@@ -138,19 +138,47 @@ export function statusChip(sum, t = defaultT) {
   };
 }
 
-const EN = {
+/**
+ * The shell's catalog (shell.js MESSAGES, R19) does every lookup in a page.
+ * These are the en strings of this module's pure exports, for where there
+ * is no shell (a unit test, a script): the same text as shell.js's en
+ * (i18n.test.ts holds them equal).
+ */
+export const EN_FALLBACK = {
   "status.checking": "Checking…",
   "status.none": "No services",
   "status.unchecked": "{n} not checked",
   "status.all": "All {n} healthy",
   "status.some": "{ok}/{n} healthy",
   "status.down": "{n} down",
+  "status.title": "{n} checked",
+  "status.pending": "{n} pending",
+  "status.awaiting": "{n} still checking",
   "status.unknown": "Status unknown",
   "status.unknownTip":
     "Den's server isn't responding, so service health is unknown",
+  "chk.awaiting": "still checking",
+  "chk.pending": "{what} — pending",
+  "chk.check": "check",
+  "chk.unchecked": "not checked",
+  "chk.healthy": "healthy",
+  "chk.down": "down",
+  "chk.pendingWord": "pending",
+  "chk.checking": "checking…",
+  ms: "{n} ms",
+  "fix.failedAt": "{line} · failed at {at}",
+  "fix.start": "Start",
+  "fix.startX": "Start {s}",
+  "fix.logs": "Logs",
+  "fix.logsX": "Logs of {s}",
+  "row.name": "{id}, {state}",
+  "row.nameMs": "{id}, {state}, {ms}",
 };
-function defaultT(key, vars) {
-  return String(EN[key] ?? key).replace(/\{(\w+)\}/g, (m, k) =>
+/** t: the shell's, else the en fallback. */
+function tr(key, vars) {
+  const s = typeof window !== "undefined" ? window.denShell : null;
+  if (s?.t) return s.t(key, vars);
+  return String(EN_FALLBACK[key] ?? key).replace(/\{(\w+)\}/g, (m, k) =>
     vars && vars[k] != null ? String(vars[k]) : m,
   );
 }
@@ -161,10 +189,12 @@ function defaultT(key, vars) {
  */
 export function checkLine(i) {
   const what = i.url ?? i.check ?? null;
-  if (i.awaiting) return "still checking";
+  if (i.awaiting) return tr("chk.awaiting");
   if (i.ok == null)
-    return i.pending ? `${what ?? "check"} — pending` : "not checked";
-  if (!what) return i.ok ? "healthy" : (i.error ?? "down");
+    return i.pending
+      ? tr("chk.pending", { what: what ?? tr("chk.check") })
+      : tr("chk.unchecked");
+  if (!what) return i.ok ? tr("chk.healthy") : (i.error ?? tr("chk.down"));
   if (i.error) return `${what} — ${i.error}`;
   return i.status != null ? `${what} → ${i.status}` : what;
 }
@@ -201,10 +231,20 @@ export function problemCards(row) {
  */
 export function problemFix(c, at = "") {
   return {
-    text: `${c.line}${at ? ` · failed at ${at}` : ""}`,
+    text: at ? tr("fix.failedAt", { line: c.line, at }) : c.line,
     actions: [
-      { act: "start", label: "Start", name: `Start ${c.id}`, primary: true },
-      { act: "logs", label: "Logs", name: `Logs of ${c.id}`, primary: false },
+      {
+        act: "start",
+        label: tr("fix.start"),
+        name: tr("fix.startX", { s: c.id }),
+        primary: true,
+      },
+      {
+        act: "logs",
+        label: tr("fix.logs"),
+        name: tr("fix.logsX", { s: c.id }),
+        primary: false,
+      },
     ],
   };
 }
@@ -371,18 +411,19 @@ export function runOf(url, base = "http://localhost/") {
 const LS_LAST_RUN = "__DEN_CLI__-last-run";
 const LS_LOCK = "__DEN_CLI__-lock";
 const SS_PENDING = "__DEN_CLI__-pending-action";
-const KIND = {
-  page: "Page",
-  service: "Service",
-  app: "App",
-  action: "Action",
-  setting: "Setting",
-};
+const KIND = ["page", "service", "app", "action", "setting"];
 const kindLabel = (k) =>
-  KIND[k] ?? String(k).charAt(0).toUpperCase() + String(k).slice(1);
+  KIND.includes(k)
+    ? t(`kind.${k}`)
+    : String(k).charAt(0).toUpperCase() + String(k).slice(1);
 
 const sh = () => (typeof window !== "undefined" ? window.denShell : null);
-const t = (k, v) => (sh()?.t ? sh().t(k, v) : defaultT(k, v));
+/** The locale for dates and times: the browser's for English, else the page's. */
+function uiLocale() {
+  const l = sh()?.lang?.();
+  return l && l !== "en" ? l : undefined;
+}
+const t = tr;
 const $ = (id) => document.getElementById(id);
 function esc(v) {
   return String(v ?? "").replace(
@@ -501,9 +542,9 @@ function openDrawer() {
   d.setAttribute("aria-modal", "true");
   d.setAttribute("aria-labelledby", "den-drawer-title");
   d.innerHTML =
-    '<div class="den-dh"><h2 id="den-drawer-title">Status</h2>' +
-    '<button type="button" class="den-ib" data-refresh title="Check again" aria-label="Check again">⟳</button>' +
-    '<button type="button" class="den-ib" data-close aria-label="Close">✕</button></div>' +
+    `<div class="den-dh"><h2 id="den-drawer-title">${esc(t("drawer.title"))}</h2>` +
+    `<button type="button" class="den-ib" data-refresh title="${esc(t("drawer.refresh"))}" aria-label="${esc(t("drawer.refresh"))}">⟳</button>` +
+    `<button type="button" class="den-ib" data-close aria-label="${esc(t("drawer.close"))}">✕</button></div>` +
     '<div class="den-db"></div>';
   document.body.append(scrim, d);
   chip?.setAttribute("aria-expanded", "true");
@@ -544,11 +585,12 @@ function dotClass(state) {
         : "off";
 }
 function msText(s) {
-  if (s.state === "ok") return s.ms != null ? `${s.ms} ms` : "healthy";
-  if (s.state === "down") return "down";
-  if (s.state === "pending") return "pending";
-  if (s.state === "awaiting") return "checking…";
-  return "not checked";
+  if (s.state === "ok")
+    return s.ms != null ? tr("ms", { n: s.ms }) : tr("chk.healthy");
+  if (s.state === "down") return tr("chk.down");
+  if (s.state === "pending") return tr("chk.pendingWord");
+  if (s.state === "awaiting") return tr("chk.checking");
+  return tr("chk.unchecked");
 }
 
 /**
@@ -557,10 +599,10 @@ function msText(s) {
  * name (SA's dev.20 run).
  */
 export function rowName(s) {
-  const word = s.state === "ok" ? "healthy" : msText(s);
+  const word = s.state === "ok" ? tr("chk.healthy") : msText(s);
   return s.state === "ok" && s.ms != null
-    ? `${s.id}, ${word}, ${s.ms} ms`
-    : `${s.id}, ${word}`;
+    ? tr("row.nameMs", { id: s.id, state: word, ms: tr("ms", { n: s.ms }) })
+    : tr("row.name", { id: s.id, state: word });
 }
 
 function renderDrawerBody() {
@@ -573,7 +615,9 @@ function renderDrawerBody() {
   const row = health.row;
   const pinned = (id) => !!sh()?.isPinned?.(id);
   const at = health.at
-    ? new Intl.DateTimeFormat(undefined, {
+    ? // English keeps the browser's own clock (12 or 24 hours); another
+      // language's page reads its times in that language.
+      new Intl.DateTimeFormat(uiLocale(), {
         hour: "2-digit",
         minute: "2-digit",
       }).format(health.at)
@@ -585,7 +629,7 @@ function renderDrawerBody() {
     const cards = problemCards(row);
     const groups = drawerGroups(row, health.groups);
     html =
-      '<section aria-labelledby="den-dr-p"><h2 class="den-sec" id="den-dr-p">Needs attention</h2>' +
+      `<section aria-labelledby="den-dr-p"><h2 class="den-sec" id="den-dr-p">${esc(t("drawer.attention"))}</h2>` +
       (cards.length
         ? '<div class="den-cards">' +
           cards
@@ -602,20 +646,20 @@ function renderDrawerBody() {
                       `<button type="button" class="den-btn sm${a.primary ? " primary" : ""}" data-k="${a.act}:${esc(c.id)}" data-${a.act}="${esc(c.id)}" aria-label="${esc(a.name)}">${esc(a.label)}</button>`,
                   )
                   .join("") +
-                `<button type="button" class="den-btn sm" data-k="pin:${esc(c.id)}" data-pin="${esc(c.id)}" aria-pressed="${pinned(c.id)}" aria-label="${pinned(c.id) ? "Unpin" : "Pin"} ${esc(c.id)}">${pinned(c.id) ? "Unpin" : "Pin"}</button>` +
+                `<button type="button" class="den-btn sm" data-k="pin:${esc(c.id)}" data-pin="${esc(c.id)}" aria-pressed="${pinned(c.id)}" aria-label="${esc(t(pinned(c.id) ? "act.unpinX" : "act.pinX", { s: c.id }))}">${esc(t(pinned(c.id) ? "act.unpin" : "act.pin"))}</button>` +
                 "</div></div>"
               );
             })
             .join("") +
           "</div>"
-        : '<p class="den-none">Nothing needs attention.</p>') +
+        : `<p class="den-none">${esc(t("drawer.nothing"))}</p>`) +
       "</section>" +
-      '<section aria-labelledby="den-dr-e"><h2 class="den-sec" id="den-dr-e">Everything</h2><div class="den-grps">' +
+      `<section aria-labelledby="den-dr-e"><h2 class="den-sec" id="den-dr-e">${esc(t("drawer.everything"))}</h2><div class="den-grps">` +
       groups
         .map(
           (g) =>
             '<div class="den-grp">' +
-            `<h3><span>${esc(g.title)}</span><span title="${g.ok} of ${g.checked} checked services healthy">${g.ok}/${g.checked}</span></h3>` +
+            `<h3><span>${esc(g.title)}</span><span title="${esc(t("drawer.okTip", { ok: g.ok, n: g.checked }))}">${g.ok}/${g.checked}</span></h3>` +
             '<div class="den-svl">' +
             g.services
               .map(
@@ -708,7 +752,7 @@ export function runServiceAction(cmd, svc) {
       JSON.stringify({ cmd, address: svc.address, at: Date.now() }),
     );
   } catch {
-    toast("Open Workspaces to run this");
+    toast(t("toast.openWs"));
     return;
   }
   go("/local-dev");
@@ -756,7 +800,7 @@ function paletteItems() {
     items.push({
       key: "page:settings",
       kind: "page",
-      label: settings.getAttribute("title") || "Settings",
+      label: settings.getAttribute("title") || t("n.settings"),
       keywords: ["settings", "preferences"],
       run: () => go(settings.getAttribute("href")),
     });
@@ -767,7 +811,7 @@ function paletteItems() {
         key: `app:${g.app.name}`,
         kind: "app",
         label: g.app.title || g.app.name,
-        sub: `${g.repos.length} ${g.repos.length === 1 ? "repo" : "repos"}`,
+        sub: t("pal.repos", { n: g.repos.length }),
         keywords: [g.app.name, ...g.repos],
         run: () => go(`/services#repo-${encodeURIComponent(g.repos[0])}`),
       });
@@ -788,7 +832,7 @@ function paletteItems() {
     items.push({
       key: `restart:${id}`,
       kind: "action",
-      label: `Restart ${id}`,
+      label: t("pal.restart", { s: id }),
       keywords: ["restart"],
       hideEmpty: true,
       run: () => runServiceAction("restart", svcOf(id)),
@@ -796,7 +840,7 @@ function paletteItems() {
     items.push({
       key: `logs:${id}`,
       kind: "action",
-      label: `Logs of ${id}`,
+      label: t("fix.logsX", { s: id }),
       keywords: ["logs", "tail"],
       hideEmpty: true,
       run: () => openLogs(svcOf(id)),
@@ -830,8 +874,8 @@ function openPalette() {
   wrap.innerHTML =
     `<div class="den-pal" role="dialog" aria-modal="true" aria-label="${esc(ph)}">` +
     `<input id="den-pal-q" role="combobox" aria-expanded="true" aria-controls="den-pal-list" aria-autocomplete="list" aria-label="${esc(ph)}" placeholder="${esc(ph)}" autocomplete="off" spellcheck="false">` +
-    '<ul id="den-pal-list" role="listbox" aria-label="Results"></ul>' +
-    '<div class="den-foot" aria-hidden="true"><span>↑↓ to move</span><span>↵ to open</span><span>esc to close</span></div>' +
+    `<ul id="den-pal-list" role="listbox" aria-label="${esc(t("pal.results"))}"></ul>` +
+    `<div class="den-foot" aria-hidden="true"><span>${esc(t("pal.move"))}</span><span>${esc(t("pal.open"))}</span><span>${esc(t("pal.close"))}</span></div>` +
     '<span class="den-sr" role="status" aria-live="polite" id="den-pal-count"></span></div>';
   document.body.appendChild(wrap);
   const input = $("den-pal-q");
@@ -854,12 +898,11 @@ function openPalette() {
               `<span class="den-kind">${esc(x.kindLabel)}</span></li>`,
           )
           .join("")
-      : '<li class="den-pal-empty" role="presentation">No matches</li>';
+      : `<li class="den-pal-empty" role="presentation">${esc(t("pal.none"))}</li>`;
     if (list.length)
       input.setAttribute("aria-activedescendant", `den-pal-o-${sel}`);
     else input.removeAttribute("aria-activedescendant");
-    $("den-pal-count").textContent =
-      `${list.length} ${list.length === 1 ? "result" : "results"}`;
+    $("den-pal-count").textContent = t("pal.count", { n: list.length });
     ul.querySelector('[aria-selected="true"]')?.scrollIntoView?.({
       block: "nearest",
     });
@@ -967,9 +1010,9 @@ function paintRuns() {
   chip.title = n
     ? labels.join(", ")
     : last
-      ? `Last run: ${last.label}`
-      : "Runs";
-  chip.setAttribute("aria-label", n ? `Runs, ${n} running` : "Runs");
+      ? t("runs.last", { s: last.label })
+      : t("runs.title");
+  chip.setAttribute("aria-label", n ? t("runs.aria", { n }) : t("runs.title"));
   chip.innerHTML =
     `<span class="den-dot ${n ? "run" : "off"}" aria-hidden="true"></span>` +
     `<span class="den-n den-lbl-l">${esc(n ? t("runs.n", { n }) : t("runs.title"))}</span>`;
@@ -982,7 +1025,7 @@ function paintRuns() {
 export function showRuns() {
   const runs = sh()?.runs;
   if (runs?.toggle) return runs.toggle() ? "open" : "closed";
-  toast("Nothing has run yet. A page's output shows here.");
+  toast(t("runs.toast"));
   return "none";
 }
 
@@ -1077,8 +1120,8 @@ function paintLock() {
   if (!chip) return;
   chip.title = lock.unlocked
     ? lock.passwordless
-      ? "Passwordless sudo (NOPASSWD): no admin password needed"
-      : "Unlocked for this session"
+      ? t("lock.nopw")
+      : t("lock.session")
     : t("lock.title");
   chip.innerHTML =
     `<span class="den-lock-ic" aria-hidden="true">${lock.unlocked ? "🔓" : "🔒"}</span>` +
@@ -1174,14 +1217,14 @@ async function initLock() {
 function notConfiguredNote() {
   const v = lock.vault;
   if (!v || v.configured !== false || !v.configFile) return null;
-  return `Saving the password is off: set secrets.provider and secrets.refs.sudo in ${v.configFile}.`;
+  return t("lock.cfg", { file: v.configFile });
 }
 
 function saveLabel() {
   if (!lock.vault.backendAvailable) return null;
   return lock.vault.hasStored
-    ? "Update stored password"
-    : `Save to ${lock.vault.label || lock.vault.backend}`;
+    ? t("lock.update")
+    : t("lock.saveTo", { s: lock.vault.label || lock.vault.backend });
 }
 
 function lockFormHtml() {
@@ -1189,12 +1232,12 @@ function lockFormHtml() {
   const note = notConfiguredNote();
   return (
     `<form class="den-lock-form"><b id="den-lock-t">${esc(t("lock.title"))}</b>` +
-    '<input type="password" id="den-lock-pw" placeholder="Admin password" aria-label="Admin password" autocomplete="current-password">' +
+    `<input type="password" id="den-lock-pw" placeholder="${esc(t("lock.pw"))}" aria-label="${esc(t("lock.pw"))}" autocomplete="current-password">` +
     `<label class="den-lock-save"${save ? "" : " hidden"}><input type="checkbox" id="den-lock-vault"> <span>${esc(save ?? "")}</span></label>` +
     '<span class="den-lock-err" id="den-lock-err" role="alert" hidden></span>' +
     `<span class="den-note den-lock-cfg"${note ? "" : " hidden"}>${esc(note ?? "")}</span>` +
-    '<button class="den-btn primary" type="submit" id="den-lock-go">Unlock</button>' +
-    `<span class="den-note">Den asks once per session. Agents can't unlock.</span></form>`
+    `<button class="den-btn primary" type="submit" id="den-lock-go">${esc(t("lock.go"))}</button>` +
+    `<span class="den-note">${esc(t("lock.note"))}</span></form>`
   );
 }
 
@@ -1219,10 +1262,10 @@ function openLock() {
     else
       pop.innerHTML =
         `<div class="den-ml">${esc(t("lock.unlocked"))}</div>` +
-        `<div class="den-lock-desc">${esc(lock.passwordless ? "Passwordless sudo (NOPASSWD): no admin password needed." : "Unlocked for this session: start, stop and restart work on every page.")}</div>` +
+        `<div class="den-lock-desc">${esc(lock.passwordless ? `${t("lock.nopw")}.` : t("lock.sessionDesc"))}</div>` +
         (lock.passwordless
           ? ""
-          : '<button type="button" class="den-mi" data-reenter>Enter the password again…</button>');
+          : `<button type="button" class="den-mi" data-reenter>${esc(t("lock.again"))}</button>`);
     pop.querySelector("form")?.addEventListener("submit", onSubmit);
     pop.querySelector("[data-reenter]")?.addEventListener("click", () => {
       forceForm = true;
@@ -1238,7 +1281,7 @@ function openLock() {
     const saveCb = $("den-lock-vault");
     const pw = input.value;
     if (!pw) return;
-    btn.textContent = "Checking…";
+    btn.textContent = t("lock.checking");
     btn.disabled = true;
     err.hidden = true;
     const saveToVault = !!(lock.vault.backendAvailable && saveCb?.checked);
@@ -1257,21 +1300,27 @@ function openLock() {
         closeOverlay(true);
         toast(
           saveToVault && data.vaultError
-            ? `Unlocked, but saving to ${lock.vault.label || lock.vault.backend} failed: ${data.vaultError}`
-            : "Unlocked for this session",
+            ? t("lock.saveFailed", {
+                s: lock.vault.label || lock.vault.backend,
+                err: data.vaultError,
+              })
+            : t("lock.session"),
         );
         return;
       }
-      err.textContent = data.error ?? "Incorrect password — try again";
+      // A wrong password is said in the page's language; another refusal
+      // is the server's own message.
+      err.textContent =
+        r.status === 401 || !data.error ? t("lock.wrong") : data.error;
       err.hidden = false;
       input.value = "";
       input.focus();
     } catch {
-      err.textContent = "Request failed — is the server running?";
+      err.textContent = t("lock.reqFailed");
       err.hidden = false;
     } finally {
       if (btn.isConnected) {
-        btn.textContent = "Unlock";
+        btn.textContent = t("lock.go");
         btn.disabled = false;
       }
     }

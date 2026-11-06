@@ -45,6 +45,7 @@ import {
 import {
   checkServiceHealth,
   claimHealthyService,
+  settledDaemonRecord,
   runServiceCommand,
   prepareServiceSecretEnv,
   resolveService,
@@ -1792,8 +1793,24 @@ export async function handleWorkspaceRoutes(
             // project; the real up refuses it, naming both.
             const claim =
               health.health === "ok"
-                ? claimHealthyService(resolved, ws.name)
+                ? claimHealthyService(resolved, ws.name, (text) =>
+                    emit({ type: "line", text }),
+                  )
                 : "untracked";
+            // Another process answers on its port (said above): nothing is
+            // claimed and nothing started on top of it (0.3.0-dev.39).
+            if (health.health === "ok" && claim === "busy") {
+              overallExit = 1;
+              emit({
+                type: "svc-done",
+                address,
+                exitCode: 1,
+                repoName: svcRepoName,
+                subsystem: svcSubsystem,
+              });
+              safeRunNext(i + 1);
+              return;
+            }
             if (health.health === "ok" && claim !== "conflict") {
               // Skipping must not lose the refcount — this workspace is an
               // owner of what's running, whether den tracked it or not.
@@ -1819,6 +1836,11 @@ export async function handleWorkspaceRoutes(
               return;
             }
           } else {
+            // A pre-dev.37 record is settled before the skip decides
+            // (0.3.0-dev.39): adopted, it is running; stale, it is dropped.
+            settledDaemonRecord(resolved, ws.name, (text) =>
+              emit({ type: "line", text }),
+            );
             let running = hasRunningOpctlContainers(resolved);
             if (!running) {
               // Not opctl-visible but still responding (host-run process)?

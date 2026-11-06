@@ -94,6 +94,341 @@
  */
 (function () {
   "use strict";
+  // ── i18n (R19, 0.3.0-dev.39) ───────────────────────────────────────────
+  // Every word the shell shows is a key in MESSAGES, looked up with
+  // t(key, vars). en is here, the fallback for any key a catalog lacks;
+  // every other language is a classic script, /i18n/<lang>.js, that the
+  // server loads before this one for a page in that language (with
+  // <html lang>, ui-language.ts), adding its table to window.denMessages.
+  // A page, a plugin or a distribution adds its own keys with
+  // denShell.addMessages(lang, table).
+  //
+  //   {name}       a var; a number is formatted by Intl.NumberFormat
+  //   key.one      the plural form t(key, { n }) uses where Intl.PluralRules
+  //                says "one" for n (any CLDR category works: key.few, …)
+  //
+  // Names (services, workspaces, repos, themes, languages), logs and
+  // command output are never translated. tests/unit/server/i18n.test.ts
+  // fails when a key is missing from any catalog.
+  var MESSAGES = (window.denMessages = window.denMessages || {});
+  MESSAGES.en = {
+    "g.pinned": "Pinned",
+    "g.develop": "Develop",
+    "g.verify": "Verify",
+    "g.ship": "Ship",
+    "n.workspaces": "Workspaces",
+    "n.graph": "Graph",
+    "n.services": "Services",
+    "n.logs": "Logs",
+    "n.tests": "Tests",
+    "n.environments": "Environments",
+    "n.releases": "Releases",
+    "n.edge": "Edge",
+    "n.settings": "Settings",
+    "k.org": "Org",
+    "k.ws": "Workspace",
+    "k.env": "Env",
+    scope: "Scope",
+    "org.title": "Org: {title}",
+    "org.titleId": "Org: {title} ({id})",
+    "ws.all": "All active",
+    "ws.focus": "focus",
+    "ws.none": "No active workspaces",
+    "ws.manage": "Manage workspaces…",
+    "ws.allN": "All active ({n})",
+    "ws.allTip":
+      "Every active workspace; a service several define is listed once",
+    "ws.noneLabel": "none",
+    "ws.viewTitle":
+      "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing.",
+    "ws.viewTitleFocus":
+      "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing, and focus ({focus}) stays the target for commands.",
+    "ws.setFocus": "Set {ws} as focus",
+    "ws.setFocusTip":
+      "Make it the default target for commands (writes workspaces.yml)",
+    "ws.viewFailed": "Could not change the view: {msg}",
+    "ws.focusFailed": "Could not set the focus: {msg}",
+    // No .one in en yet: English shows what it showed before R19 (a
+    // catalog may have its own .one).
+    "org.n": "{n} workspaces",
+    from: "from {d}",
+    "b.logs": "{n} open",
+    "b.down": "{n} down",
+    "act.pin": "Pin",
+    "act.unpin": "Unpin",
+    "act.pinX": "Pin {s}",
+    "act.unpinX": "Unpin {s}",
+    "toast.pinned": "Pinned {s}",
+    "toast.unpinned": "Unpinned {s}",
+    collapse: "Collapse",
+    expand: "Expand",
+    menu: "Menu",
+    skip: "Skip to content",
+    pages: "Pages",
+    // The top bar (dev.20): the prototype's strings.
+    "search.ph": "Search pages, services, actions…",
+    "status.checking": "Checking…",
+    "status.none": "No services",
+    "status.unchecked": "{n} not checked",
+    "status.all": "All {n} healthy",
+    "status.some": "{ok}/{n} healthy",
+    "status.down": "{n} down",
+    "status.title": "{n} checked",
+    "status.pending": "{n} pending",
+    "status.awaiting": "{n} still checking",
+    "status.unknown": "Status unknown",
+    "status.unknownTip":
+      "Den's server isn't responding, so service health is unknown",
+    // What a check said (the words; the URL and the error are output).
+    "chk.awaiting": "still checking",
+    "chk.pending": "{what} — pending",
+    "chk.check": "check",
+    "chk.unchecked": "not checked",
+    "chk.healthy": "healthy",
+    "chk.down": "down",
+    "chk.pendingWord": "pending",
+    "chk.checking": "checking…",
+    ms: "{n} ms",
+    "fix.failedAt": "{line} · failed at {at}",
+    "fix.start": "Start",
+    "fix.startX": "Start {s}",
+    "fix.logs": "Logs",
+    "fix.logsX": "Logs of {s}",
+    "row.name": "{id}, {state}",
+    "row.nameMs": "{id}, {state}, {ms}",
+    // The status drawer (R15).
+    "drawer.title": "Status",
+    "drawer.refresh": "Check again",
+    "drawer.close": "Close",
+    "drawer.attention": "Needs attention",
+    "drawer.nothing": "Nothing needs attention.",
+    "drawer.everything": "Everything",
+    "drawer.okTip": "{ok} of {n} checked services healthy",
+    "toast.openWs": "Open Workspaces to run this",
+    // The command palette (R17).
+    "kind.page": "Page",
+    "kind.service": "Service",
+    "kind.app": "App",
+    "kind.action": "Action",
+    "kind.setting": "Setting",
+    "pal.repos": "{n} repos",
+    "pal.repos.one": "{n} repo",
+    "pal.restart": "Restart {s}",
+    "pal.results": "Results",
+    "pal.move": "↑↓ to move",
+    "pal.open": "↵ to open",
+    "pal.close": "esc to close",
+    "pal.none": "No matches",
+    "pal.count": "{n} results",
+    "pal.count.one": "{n} result",
+    // The runs chip and dock (R7, R16).
+    "runs.title": "Runs",
+    "runs.n": "{n} running",
+    "runs.aria": "Runs, {n} running",
+    "runs.last": "Last run: {s}",
+    "runs.none": "No runs",
+    "runs.empty": "Nothing has run yet. Output from any page lands here.",
+    "runs.toast": "Nothing has run yet. A page's output shows here.",
+    "runs.all": "All runs",
+    "runs.allTip": "Showing {ws}'s runs; press for every run",
+    "runs.allOn": "Showing every run; press for {ws}'s only",
+    "dock.done": "done in {s}s",
+    "dock.failed": "failed in {s}s",
+    "dock.close": "Hide runs",
+    "dock.show": "Show runs",
+    "dock.copy": "Copy",
+    "dock.copied": "Copied!",
+    "dock.clear": "Clear",
+    "dock.closeRun": "Close {s}",
+    "dock.err": "failed",
+    "dock.last": "Last run: {s} ↗",
+    "dock.resize": "Drag to resize",
+    // The lock chip and its popover (R8).
+    "lock.locked": "Locked",
+    "lock.unlocked": "Unlocked",
+    "lock.title": "Unlock to start, stop and restart services",
+    "lock.nopw": "Passwordless sudo (NOPASSWD): no admin password needed",
+    "lock.session": "Unlocked for this session",
+    "lock.sessionDesc":
+      "Unlocked for this session: start, stop and restart work on every page.",
+    "lock.cfg":
+      "Saving the password is off: set secrets.provider and secrets.refs.sudo in {file}.",
+    "lock.update": "Update stored password",
+    "lock.saveTo": "Save to {s}",
+    "lock.pw": "Admin password",
+    "lock.go": "Unlock",
+    "lock.checking": "Checking…",
+    "lock.note": "Den asks once per session. Agents can't unlock.",
+    "lock.again": "Enter the password again…",
+    "lock.saveFailed": "Unlocked, but saving to {s} failed: {err}",
+    "lock.wrong": "Incorrect password — try again",
+    "lock.reqFailed": "Request failed — is the server running?",
+    // What's new (R9) and the stale-server pill.
+    "v.title": "View changelog",
+    "cl.title": "What's new",
+    "cl.close": "Close",
+    "cl.gotIt": "Got it",
+    "cl.none": "No entries found.",
+    "cl.copyMd": "Copy as Markdown",
+    "cl.copyMdX": "Copy v{v} as Markdown",
+    "cl.copySlack": "Copy for Slack",
+    "cl.copySlackX": "Copy v{v} for Slack",
+    "cl.copyFailed": "Copy failed — try again",
+    "cl.latest": "Show latest only",
+    "cl.all": "Show all versions ({n} earlier)",
+    "stale.title":
+      "This {cli} web server is running code older than your working tree — click to restart and pick up your changes. Running deploys continue on GitHub; an open deploy log reattaches after the reload.",
+    "stale.aria": "Stale server: restart",
+    "stale.label": "stale server",
+    "stale.restart": "Restart",
+    "restart.msg": "Restarting {cli} web…",
+    "restart.hint": "Reconnecting — this page will reload automatically.",
+    "restart.still":
+      "Still restarting… if this persists, run {cmd} in a terminal, then reload.",
+    // The user menu (R10) and its palette commands (R17).
+    "um.label": "Appearance",
+    "um.title": "Appearance and theme",
+    "um.appearance": "Appearance",
+    "um.system": "System",
+    "um.dark": "Dark",
+    "um.light": "Light",
+    "um.theme": "Theme",
+    "um.language": "Language",
+    "um.all": "All settings",
+    "cmd.appearance": "Appearance: {mode}",
+    "cmd.theme": "Theme: {name}",
+    "cmd.language": "Language: {name}",
+    "theme.orgDefault": "Org default ({name})",
+    "theme.pinned": "{name} (pinned)",
+    "theme.notInstalled":
+      "Your theme {id} isn't installed, so {inUse} is in use",
+    "theme.invalid":
+      "Your theme {id} isn't valid ({why}), so {inUse} is in use",
+    "theme.invalidBare": "Your theme {id} isn't valid, so {inUse} is in use",
+    // Errors (R26, 0.3.0-dev.38).
+    "api.network": "Den's server didn't answer {what}",
+    "api.failed": "{what} failed",
+    "api.request": "Request {id}",
+    "api.retry": "Retry",
+    "api.copy": "Copy details",
+    "api.copied": "Copied",
+    "api.close": "Dismiss",
+    "api.retried": "Done",
+    "net.down": "Den's server isn't responding — retrying",
+    "net.next": "next try in {s}s",
+    "net.now": "Retry now",
+    "engine.stale":
+      "Den was updated to {onDisk}. This server is still running {loaded}. Restart it: {cli} web restart (or your service restart).",
+    "engine.title": "Restart needed",
+    // The error page (R26a, error-page.js).
+    "err.404.title": "Page not found",
+    "err.404.sub": "Nothing here at {path}",
+    "err.404.lead": "There is no page at this address.",
+    "err.404.mean": "Did you mean {page}?",
+    "err.404.stale":
+      "This page may be new in Den {onDisk}: the server is still running {loaded}.",
+    "err.404.plugin":
+      "This page belongs to the {name} plugin, which isn't installed in this distribution.",
+    "err.404.pluginLocked":
+      "This page belongs to the {name} plugin. It is in plugins.lock.json, but its files are missing.",
+    "err.404.pluginNoPage":
+      "The {name} plugin is installed, but it has no page here.",
+    "err.404.workspaces": "Go to Workspaces",
+    "err.404.search": "Search",
+    "err.404.pages": "Pages",
+    "err.500.title": "Something went wrong",
+    "err.500.sub": "{what} failed on the server",
+    "err.500.lead":
+      "The server hit an error answering this page. Retry, or copy the details for a report: the server log has the full error under the same request id.",
+    "err.500.what": "What failed",
+    "err.500.time": "Time",
+    "err.500.id": "Request id",
+    "err.500.version": "Version",
+    // The Settings registry's built-in rows, as the palette shows them
+    // (set.<row id>; settings-registry.js keeps the English label).
+    "set.appearance.mode": "Mode",
+    "set.appearance.theme": "Theme",
+    "set.language": "Language",
+    "set.appearance.org-theme": "Org default theme",
+    "set.editor": "Default IDE",
+    "set.editor_overrides": "Per-language IDE",
+    "set.terminal": "Default terminal",
+    "set.shell.pages": "Pages",
+    "set.shell.pins": "Pinned",
+    "set.shell.collapsed": "Collapse the rail",
+    "set.shell.dock": "Open the runs dock",
+    "set.graph.workspaces": "Workspace list",
+    "set.graph.groupBy": "Group repos by",
+    "set.graph.direction": "Direction",
+    "set.graph.group": "Frames",
+    "set.graph.density": "Cards",
+    "set.graph.panelWidth": "Details panel",
+    "set.workspace.editor": "IDE for this workspace",
+    "set.cli.local_dev": "Local environment",
+    "set.cli.cli_tabs": "Terminal tabs",
+    "set.cli.log_window_lines": "Log pane lines",
+    "set.cli.web_port": "Your web port",
+    "set.distribution.brand": "Product name",
+    "set.distribution.github_org": "GitHub org",
+    "set.distribution.orgs": "Org labels",
+    "set.distribution.web_port": "Web port",
+    "set.distribution.environments": "Environments",
+    "set.distribution.domain": "Edge domain",
+    "err.retry": "Retry",
+    "err.copy": "Copy details",
+    "err.copied": "Copied",
+  };
+  // The languages the UI has a catalog for, each named in itself (a name is
+  // never translated). The server's list is ui-language.ts's UI_LANGUAGES.
+  var LANGUAGES = [
+    { id: "en", name: "English" },
+    { id: "ja", name: "日本語" },
+    { id: "es", name: "Español" },
+  ];
+  // The page's language: <html lang>, when a catalog for it is loaded.
+  var lang = (function () {
+    var l = (document.documentElement && document.documentElement.lang) || "en";
+    return MESSAGES[l] ? l : "en";
+  })();
+  function has(table, key) {
+    return !!table && Object.prototype.hasOwnProperty.call(table, key);
+  }
+  var pluralRules = null;
+  function pluralOf(n) {
+    try {
+      pluralRules = pluralRules || new Intl.PluralRules(lang);
+      return pluralRules.select(n);
+    } catch (e) {
+      return n === 1 ? "one" : "other";
+    }
+  }
+  /** A number in the page's language (Intl.NumberFormat, its options). */
+  function num(n, opts) {
+    try {
+      return new Intl.NumberFormat(lang, opts).format(n);
+    } catch (e) {
+      return String(n);
+    }
+  }
+  /** The catalog's text for key (its plural form for vars.n), or null. */
+  function lookup(table, key, vars) {
+    if (!has(table, key)) return null;
+    if (vars && typeof vars.n === "number") {
+      var form = key + "." + pluralOf(vars.n);
+      if (has(table, form)) return table[form];
+    }
+    return table[key];
+  }
+  function t(key, vars) {
+    var s = lookup(MESSAGES[lang], key, vars);
+    if (s == null && lang !== "en") s = lookup(MESSAGES.en, key, vars);
+    if (s == null) s = key;
+    return String(s).replace(/\{(\w+)\}/g, function (m, k) {
+      if (!vars || vars[k] == null) return m;
+      return typeof vars[k] === "number" ? num(vars[k]) : String(vars[k]);
+    });
+  }
+
   var host = document.getElementById("den-shell");
   if (!host || host.dataset.mounted) return;
   host.dataset.mounted = "1";
@@ -103,102 +438,6 @@
   if (/^[a-z0-9-]+$/.test(page) && document.body)
     document.body.classList.add("den-page-" + page);
 
-  // ── i18n: labels are keys; only en ships until slice 5 ─────────────────
-  var MESSAGES = {
-    en: {
-      "g.pinned": "Pinned",
-      "g.develop": "Develop",
-      "g.verify": "Verify",
-      "g.ship": "Ship",
-      "n.workspaces": "Workspaces",
-      "n.graph": "Graph",
-      "n.services": "Services",
-      "n.logs": "Logs",
-      "n.tests": "Tests",
-      "n.environments": "Environments",
-      "n.releases": "Releases",
-      "n.edge": "Edge",
-      "n.settings": "Settings",
-      "k.org": "Org",
-      "k.ws": "Workspace",
-      "k.env": "Env",
-      "ws.all": "All active",
-      "ws.focus": "focus",
-      "ws.none": "No active workspaces",
-      "ws.manage": "Manage workspaces…",
-      "ws.setFocus": "Set {ws} as focus",
-      "ws.setFocusTip":
-        "Make it the default target for commands (writes workspaces.yml)",
-      "org.n": "{n} workspaces",
-      from: "from {d}",
-      "b.logs": "{n} open",
-      "b.down": "{n} down",
-      "act.unpin": "Unpin",
-      "toast.pinned": "Pinned {s}",
-      "toast.unpinned": "Unpinned {s}",
-      collapse: "Collapse",
-      expand: "Expand",
-      menu: "Menu",
-      skip: "Skip to content",
-      pages: "Pages",
-      // The top bar (dev.20): the prototype's strings.
-      "search.ph": "Search pages, services, actions…",
-      "status.checking": "Checking…",
-      "status.none": "No services",
-      "status.unchecked": "{n} not checked",
-      "status.all": "All {n} healthy",
-      "status.some": "{ok}/{n} healthy",
-      "status.down": "{n} down",
-      "runs.title": "Runs",
-      "runs.n": "{n} running",
-      "runs.none": "No runs",
-      "runs.empty": "Nothing has run yet. Output from any page lands here.",
-      "runs.all": "All runs",
-      "runs.allTip": "Showing {ws}'s runs; press for every run",
-      "runs.allOn": "Showing every run; press for {ws}'s only",
-      "dock.done": "done in {s}s",
-      "dock.failed": "failed in {s}s",
-      "dock.close": "Hide runs",
-      "dock.show": "Show runs",
-      "dock.copy": "Copy",
-      "dock.copied": "Copied!",
-      "dock.clear": "Clear",
-      "dock.closeRun": "Close {s}",
-      "dock.err": "failed",
-      "dock.last": "Last run: {s} ↗",
-      "dock.resize": "Drag to resize",
-      "lock.locked": "Locked",
-      "lock.unlocked": "Unlocked",
-      "lock.title": "Unlock to start, stop and restart services",
-      // Errors (R26, 0.3.0-dev.38).
-      "api.network": "Den's server didn't answer {what}",
-      "api.failed": "{what} failed",
-      "api.request": "Request {id}",
-      "api.retry": "Retry",
-      "api.copy": "Copy details",
-      "api.copied": "Copied",
-      "api.close": "Dismiss",
-      "api.retried": "Done",
-      "net.down": "Den's server isn't responding — retrying",
-      "net.next": "next try in {s}s",
-      "net.now": "Retry now",
-      "engine.stale":
-        "Den was updated to {onDisk}. This server is still running {loaded}. Restart it: {cli} web restart (or your service restart).",
-      "engine.title": "Restart needed",
-      "status.unknown": "Status unknown",
-      "status.unknownTip":
-        "Den's server isn't responding, so service health is unknown",
-    },
-  };
-  var lang = "en";
-  function t(key, vars) {
-    var s = (MESSAGES[lang] || {})[key];
-    if (s == null) s = MESSAGES.en[key];
-    if (s == null) s = key;
-    return String(s).replace(/\{(\w+)\}/g, function (m, k) {
-      return vars && vars[k] != null ? String(vars[k]) : m;
-    });
-  }
   function esc(v) {
     return String(v == null ? "" : v).replace(/[&<>"]/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
@@ -444,9 +683,18 @@
    */
   function settingCommand(r) {
     var cat = r.category;
+    // A built-in row's palette label is in the catalogs (set.<id>); a row
+    // a distribution or a plugin adds shows its own label. The Settings
+    // search (?q=) keeps the row's own label, which that page shows.
+    var key = "set." + r.id;
     registerCommand({
       id: "setting:" + r.id,
-      label: r.label,
+      label:
+        has(MESSAGES.en, key) && MESSAGES.en[key] === r.label
+          ? function () {
+              return t(key);
+            }
+          : r.label,
       keywords: (Array.isArray(r.keywords) ? r.keywords : []).concat([
         cat,
         "settings",
@@ -571,7 +819,7 @@
       var b = btns[i];
       var id = b.getAttribute("data-pin-toggle");
       var on = isPinned(id);
-      var label = (on ? "Unpin" : "Pin") + " " + id;
+      var label = t(on ? "act.unpinX" : "act.pinX", { s: id });
       b.textContent = on ? "★" : "☆";
       b.setAttribute("aria-pressed", on ? "true" : "false");
       b.setAttribute("aria-label", label);
@@ -991,7 +1239,9 @@
     '"><span class="den-lock-ic" aria-hidden="true">🔒</span><span class="den-lbl-l">' +
     esc(t("lock.locked")) +
     "</span></button>" +
-    '<button class="den-ib v-pill" id="version-pill" onclick="openChangelog()" title="View changelog">' +
+    '<button class="den-ib v-pill" id="version-pill" onclick="openChangelog()" title="' +
+    esc(t("v.title")) +
+    '">' +
     '<span class="v-txt">v…</span><span class="v-pip" id="v-pip"></span></button>' +
     '<span class="den-user" id="den-user"></span>' +
     "</div>";
@@ -1014,7 +1264,9 @@
     // hidden until header.js knows it; the workspace part is hidden until
     // header.js knows the workspaces. #env-sel stays as the env's value
     // (pages read it and listen for its change): the Env menu drives it.
-    '<div class="den-scope" role="group" aria-label="Scope">' +
+    '<div class="den-scope" role="group" aria-label="' +
+    esc(t("scope")) +
+    '">' +
     '<span class="den-sep" aria-hidden="true">/</span>' +
     '<span id="org-crumb" class="den-ib den-org den-opt" hidden><span class="den-k">' +
     esc(t("k.org")) +
@@ -1112,7 +1364,10 @@
     }
     scopeMenus.org = null;
     el.querySelector(".den-org-name").textContent = org.title;
-    el.title = "Org: " + org.title + (org.id ? " (" + org.id + ")" : "");
+    el.title = t(org.id ? "org.titleId" : "org.title", {
+      title: org.title,
+      id: org.id,
+    });
     el.hidden = false;
     var sep = el.nextElementSibling;
     if (sep && sep.classList.contains("den-org-sep")) sep.hidden = false;
@@ -1148,7 +1403,11 @@
       el = btn;
     }
     el.hidden = false;
-    setValue(el, title(cur), "Org: " + title(cur) + " (" + cur.id + ")");
+    setValue(
+      el,
+      title(cur),
+      t("org.titleId", { title: title(cur), id: cur.id }),
+    );
     var sep = el.nextElementSibling;
     if (sep && sep.classList.contains("den-org-sep")) sep.hidden = false;
     scopeMenus.org = {
@@ -1330,7 +1589,7 @@
               '<button type="button" class="den-pin-x" tabindex="-1" data-unpin="' +
               esc(p) +
               '" aria-label="' +
-              esc(t("act.unpin") + " " + p) +
+              esc(t("act.unpinX", { s: p })) +
               '" title="' +
               esc(t("act.unpin")) +
               '"><span aria-hidden="true">×</span></button></div>'
@@ -2005,7 +2264,10 @@
     renderDock();
   }
   function secs(ms) {
-    return (Math.max(0, ms) / 1000).toFixed(1);
+    return num(Math.max(0, ms) / 1000, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
   }
   function dotClass(r) {
     if (r.running) return "run";
@@ -2942,10 +3204,12 @@
       hideBanner("engine");
       return;
     }
+    // The server's message is the English one (it names builds when the
+    // versions match); another language says it from its catalog.
     showBanner("engine", {
       title: t("engine.title"),
       text:
-        info.message ||
+        (lang === "en" && info.message) ||
         t("engine.stale", {
           onDisk: info.onDisk || "?",
           loaded: info.loaded || "?",
@@ -3055,6 +3319,28 @@
     window.fetch = wrapped;
   }
 
+  // ── the UI language (R19): a user pref ───────────────────────────────
+  // /api/settings `language` (user.yml), then a reload: the server serves
+  // every page with that language's catalog from its first paint.
+  function setLanguage(l) {
+    if (l === lang) return Promise.resolve(false);
+    return api("POST", "/api/settings", { language: l }).then(function () {
+      location.reload();
+      return true;
+    });
+  }
+  // The tab's title names the page in the page's language.
+  (function () {
+    var label = page === SETTINGS.id ? SETTINGS.label : null;
+    NAV.forEach(function (n) {
+      if (n.id === page) label = n.label;
+    });
+    var title = String(document.title || "");
+    var at = title.lastIndexOf(" · ");
+    if (label && at >= 0)
+      document.title = title.slice(0, at) + " · " + t(label);
+  })();
+
   window.denShell = {
     registerGroup: registerGroup,
     registerNav: registerNav,
@@ -3064,6 +3350,16 @@
       renderRail();
     },
     t: t,
+    /** R19: the page's language, the ones with a catalog, and a switch. */
+    lang: function () {
+      return lang;
+    },
+    languages: function () {
+      return LANGUAGES.slice();
+    },
+    setLanguage: setLanguage,
+    /** A number in the page's language (Intl.NumberFormat options). */
+    formatNumber: num,
     setState: setState,
     getState: function () {
       return state;

@@ -11,6 +11,7 @@ import {
   runningWorkspaceStacks,
 } from "../../shared/stacks/status.js";
 import { isNamedTarget } from "./named-target.js";
+import { isNotice, printNotice } from "./notice.js";
 import chalk from "chalk";
 import { noun, plural } from "../../shared/plural.js";
 // Spinners: progress on stderr (a terminal) or stdout (piped); plain lines
@@ -79,6 +80,7 @@ import { stackNamespaceRows } from "../../shared/stacks/namespace.js";
 import {
   runServiceCommand,
   claimHealthyService,
+  daemonsOutsideWorkspaces,
   getWorkspaceServices,
   ensureDaemonRegistryLoaded,
   hasRunningOpctlContainers,
@@ -1740,8 +1742,20 @@ class DenCLI {
           // project; the real up below refuses it, naming both.
           const claim =
             health.health === "ok" && workspace
-              ? claimHealthyService(resolved, workspace)
+              ? claimHealthyService(resolved, workspace, printNotice)
               : "untracked";
+          // Healthy, but another process answers on its port: said (above),
+          // never claimed, and nothing is started on top of it.
+          if (health.health === "ok" && claim === "busy") {
+            console.log(
+              chalk.red(
+                `  ✗ ${chalk.bold(address)} not started: its port is in use outside its repo`,
+              ),
+            );
+            // A dependency only warns; the service you named failed.
+            if (isNamedTarget(address, opts?.named ?? [])) process.exitCode = 1;
+            continue;
+          }
           if (health.health === "ok" && claim !== "conflict") {
             // Skipping must not lose the refcount — this workspace is an owner
             // of what's running, whether den tracked it or not.
@@ -1935,6 +1949,13 @@ class DenCLI {
           },
           secretEnv: secrets.secretEnv,
           onLine: (line) => {
+            // What Den decided about a record or a port is said, not
+            // only flashed in the spinner (0.3.0-dev.39).
+            if (isNotice(line)) {
+              spinner.clear();
+              printNotice(line);
+              if (spinner.isEnabled) spinner.render();
+            }
             spinner.text = `${command} ${chalk.bold(address)}: ${chalk.gray(line.slice(0, 80))}`;
             const trimmed = line.trim();
             if (trimmed) {
@@ -2566,6 +2587,14 @@ class DenCLI {
       return;
     }
     await this.runServicesCommand(order, "down", { order }, { force });
+    // Records no workspace reaches: -a stops every workspace's services,
+    // not these. Said, and left alone (0.3.0-dev.39, a consumer's finding).
+    if (!only)
+      for (const d of daemonsOutsideWorkspaces())
+        printNotice(
+          `Warning: ${d.address} is recorded as running (${d.repoPath}) but is in no active workspace: ` +
+            `down -a left it alone. Stop it yourself if it still runs.`,
+        );
   }
 
   private printUpHelp(): void {

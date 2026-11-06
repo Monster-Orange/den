@@ -107,6 +107,14 @@ export function recordProcessGroup(pid: number): RecordedProcessGroup | null {
   return { pgid: pid, startedAt: row.lstart };
 }
 
+/** A recorded group's state now, synchronously; null when `ps` cannot be run. */
+export function processGroupStateSync(
+  rec: RecordedProcessGroup,
+): GroupState | null {
+  const rows = psRowsSync(PS_ARGS);
+  return rows ? classifyGroup(rec, rows) : null;
+}
+
 /** Whether a recorded group is still the one `up` started (see the header). */
 export function classifyGroup(
   rec: RecordedProcessGroup,

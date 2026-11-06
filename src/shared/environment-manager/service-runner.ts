@@ -75,6 +75,7 @@ import { getDistRoot, getStateDir } from "../paths.js";
 import { product } from "../product.js";
 import { adoptLegacyProcess, servicePort } from "../process/legacy-adopt.js";
 import {
+  processGroupStateSync,
   recordProcessGroup,
   stopProcessGroup,
   type RecordedProcessGroup,
@@ -365,6 +366,18 @@ export function updateDaemonProcessGroup(
   saveDaemonsFile(getDaemonsFile());
 }
 
+/** Forget a record's process group (it is gone; nothing of it to stop). */
+function clearDaemonProcessGroup(address: string): void {
+  loadDaemonsFromFile();
+  const existing = _daemonRegistry.get(address);
+  if (!existing) return;
+  const rest = { ...existing };
+  delete rest.pgid;
+  delete rest.pgidStartedAt;
+  _daemonRegistry.set(address, rest);
+  saveDaemonsFile(getDaemonsFile());
+}
+
 /**
  * This root's daemons (and unstamped legacy ones). Every root of a product
  * shares one daemons file; another root's records stay in it untouched but
@@ -613,14 +626,21 @@ export function adoptRunningContainers(
 export function claimHealthyService(
   resolved: ResolvedService,
   workspace: string,
-): "attached" | "adopted" | "untracked" | "conflict" {
+  onLine: (line: string) => void = () => {},
+): "attached" | "adopted" | "untracked" | "conflict" | "busy" {
   // A compose stack's primary service: its owner is recorded with the
   // stack's project (a shared stack namespace's refcount, stacks/owners.ts).
   // `conflict`: the running project is another checkout's; the caller runs
   // the real up, which refuses it.
   const stack = claimHealthyStack(resolved, workspace);
   if (stack) return stack;
-  const existing = findDaemonByAddress(resolved.address);
+  // A record from before 0.3.0-dev.37 is settled (adopted or dropped)
+  // before anything is decided on it (0.3.0-dev.39, a consumer's dev.38
+  // finding: the healthy-skip attached to it and it never gained a group).
+  const settled = settleDaemonRecord(resolved, workspace, onLine);
+  // Dropped with its port held from outside the repo: said by the settle.
+  if (settled.outcome === "busy") return "busy";
+  const existing = settled.record;
   if (existing) {
     if (!sameDaemonIdentity(existing, resolved.repoPath, resolved.branch)) {
       // Healthy, but the record describes a different checkout — leave the
@@ -630,9 +650,17 @@ export function claimHealthyService(
     attachDaemonOwner(resolved.address, workspace);
     return "attached";
   }
-  return adoptRunningContainers(resolved, workspace).length > 0
-    ? "adopted"
-    : "untracked";
+  if (adoptRunningContainers(resolved, workspace).length > 0) return "adopted";
+  // Healthy with no record: whose process answers on the service's port?
+  // One in the repo is the service (adopted, so `down` can stop it); one
+  // from elsewhere is not, and is said, never claimed or touched.
+  const holder = settleUntrackedListener(
+    resolved,
+    workspace,
+    onLine,
+    `${resolved.address} not started`,
+  );
+  return holder ?? "untracked";
 }
 
 /**
@@ -691,6 +719,15 @@ export function findDaemonConflict(
 
 function canResolveDaemonAddress(d: DaemonRecord): boolean {
   return resolvedRepoPathsOf(d).length > 0;
+}
+
+/**
+ * This root's records whose address resolves in no active workspace: what
+ * `down -a` (every workspace) cannot reach, and so warns about and leaves
+ * alone (0.3.0-dev.39).
+ */
+export function daemonsOutsideWorkspaces(): DaemonRecord[] {
+  return listDaemons().filter((d) => !canResolveDaemonAddress(d));
 }
 
 /**
@@ -1438,19 +1475,39 @@ function isLegacyRecord(d: DaemonRecord): boolean {
 }
 
 /**
- * What a record from before 0.3.0-dev.37 means now (legacy-adopt.ts), for
- * `up` and `down` alike: "adopted" (the running process is the service; its
- * group is written into the record, so it is `down`'s to stop) or "dropped"
- * (stale: warned, the record removed, nothing signalled). The port is the
- * service's known one (servicePort: `port`, its health URL, `--port` in its
- * up command); the token match uses its configured up command.
+ * The daemon record for `resolved`, settled: a record from before
+ * 0.3.0-dev.37 (no process group, nothing of its own to verify) is adopted
+ * or dropped here, before any caller decides on it (0.3.0-dev.39). Every
+ * up, restart, down and healthy-skip reads its record through this.
  */
-function settleLegacyRecord(
-  record: DaemonRecord,
+export function settledDaemonRecord(
   resolved: ResolvedService,
   workspace: string,
   onLine: (line: string) => void,
-): "adopted" | "dropped" {
+): DaemonRecord | undefined {
+  return settleDaemonRecord(resolved, workspace, onLine).record;
+}
+
+/** settledDaemonRecord, with what the settle did (null: nothing to settle). */
+function settleDaemonRecord(
+  resolved: ResolvedService,
+  workspace: string,
+  onLine: (line: string) => void,
+): {
+  record: DaemonRecord | undefined;
+  outcome: "adopted" | "dropped" | "busy" | null;
+} {
+  const record = findDaemonByAddress(resolved.address);
+  if (!record || !isLegacyRecord(record)) return { record, outcome: null };
+  const outcome = settleLegacyRecord(record, resolved, workspace, onLine);
+  return { record: findDaemonByAddress(resolved.address), outcome };
+}
+
+/** The service's known port and configured up command (legacy-adopt.ts). */
+function serviceProcessFacts(
+  resolved: ResolvedService,
+  workspace: string,
+): { port: number | null; upCommand: string | null; plain: boolean } {
   const manifest = readManifest(resolved.repoPath);
   const svc = manifest?.services?.[resolved.subsystem] as
     | { port?: unknown; health?: { local?: { url?: string } } }
@@ -1469,6 +1526,77 @@ function settleLegacyRecord(
     healthUrl: svc?.health?.local?.url ?? null,
     upCommand,
   });
+  // A plain process: an up of its own, no compose stack and no dev op. A
+  // container's port is held by the container runtime, never by the repo.
+  const plain =
+    !!upCommand &&
+    !manifest?.compose &&
+    devOpContainerNames(resolved.repoPath).length === 0;
+  return { port, upCommand, plain };
+}
+
+/**
+ * A service with no record whose port is already taken (a plain process
+ * service only): a listener whose cwd is in the repo is the service,
+ * adopted with its process group ("adopted"); one from elsewhere is
+ * reported and left alone ("busy"). Null when the port is free or unknown.
+ */
+function settleUntrackedListener(
+  resolved: ResolvedService,
+  workspace: string,
+  onLine: (line: string) => void,
+  /** What the caller does about a busy port, said after the warning. */
+  then: string,
+): "adopted" | "busy" | null {
+  const facts = serviceProcessFacts(resolved, workspace);
+  if (!facts.plain || !facts.port) return null;
+  const verdict = adoptLegacyProcess({
+    repoPath: resolved.repoPath,
+    port: facts.port,
+    upCommand: null,
+  });
+  if (verdict.kind === "adopted") {
+    registerDaemon({
+      address: resolved.address,
+      repoName: resolved.repoName,
+      subsystem: resolved.subsystem,
+      repoPath: resolved.repoPath,
+      branch: resolved.branch,
+      workspaces: [workspace],
+      logPath: getServiceLogPath(resolved.repoName, resolved.subsystem),
+      startedAt: new Date(),
+      containers: [],
+    });
+    updateDaemonProcessGroup(resolved.address, verdict.group);
+    onLine(
+      `adopted the running process (pid ${verdict.pid}, port ${facts.port}) for ${resolved.address}: it runs in ${resolved.repoPath}`,
+    );
+    return "adopted";
+  }
+  if (!verdict.busy) return null;
+  onLine(
+    `Warning: port ${verdict.busy.port} is in use by pid ${verdict.busy.pid}` +
+      (verdict.busy.cwd ? ` (cwd ${verdict.busy.cwd})` : "") +
+      `, outside ${resolved.repoPath}: not ${resolved.address}, left alone; ${then}`,
+  );
+  return "busy";
+}
+
+/**
+ * What a record from before 0.3.0-dev.37 means now (legacy-adopt.ts), for
+ * `up` and `down` alike: "adopted" (the running process is the service; its
+ * group is written into the record, so it is `down`'s to stop) or "dropped"
+ * (stale: warned, the record removed, nothing signalled). The port is the
+ * service's known one (servicePort: `port`, its health URL, `--port` in its
+ * up command); the token match uses its configured up command.
+ */
+function settleLegacyRecord(
+  record: DaemonRecord,
+  resolved: ResolvedService,
+  workspace: string,
+  onLine: (line: string) => void,
+): "adopted" | "dropped" | "busy" {
+  const { port, upCommand } = serviceProcessFacts(resolved, workspace);
   const verdict = adoptLegacyProcess({
     repoPath: record.repoPath,
     pid: typeof record.pid === "number" ? record.pid : undefined,
@@ -1497,7 +1625,7 @@ function settleLegacyRecord(
         `, outside ${record.repoPath}: not ${record.address}, left alone`,
     );
   unregisterDaemon(record.address);
-  return "dropped";
+  return verdict.busy ? "busy" : "dropped";
 }
 
 /**
@@ -1589,6 +1717,18 @@ function repoStartedFallback(
   if (!repoEntry || repoEntry.subsystem === resolved.subsystem) return null;
   const manifest = readManifest(resolved.repoPath);
   if (!manifest) return null;
+  // A service with an up of its own starts itself, so its down is its own
+  // too: the process group that up recorded (0.3.0-dev.39, a consumer's
+  // dev.38 finding: `down repo/api` pointed at the repo's down instead).
+  if (
+    effectiveLocalCommands(
+      manifest,
+      resolved.subsystem,
+      resolved.repoName,
+      workspace ?? "default",
+    )["up"]
+  )
+    return null;
   const repoCommands = effectiveLocalCommands(
     manifest,
     repoEntry.subsystem,
@@ -1755,7 +1895,7 @@ export function previewServiceCommand(
         workspace ?? "default",
       )
     : {};
-  if (own[command] || (command === "restart" && own["down"] && own["up"]))
+  if (own[command] || (command === "restart" && own["up"]))
     return { kind: "run", address };
   const viaRepo = repoStartedFallback(resolved, command, workspace);
   if (viaRepo?.address)
@@ -1885,12 +2025,8 @@ export function runServiceCommand(
       });
       return dummy();
     }
-    let record = findDaemonByAddress(resolved.address);
     // A record from before 0.3.0-dev.37: adopt what runs, or drop it.
-    if (record && isLegacyRecord(record)) {
-      settleLegacyRecord(record, resolved, workspace, onLine);
-      record = findDaemonByAddress(resolved.address);
-    }
+    const record = settledDaemonRecord(resolved, workspace, onLine);
     if (hasProcessGroup(record)) {
       void stopDaemonProcessGroup(record, onLine).then((outcome) => {
         reportDown(outcome);
@@ -1930,6 +2066,13 @@ export function runServiceCommand(
     return dummy();
   }
 
+  // Every up decision below reads the service's record: one from before
+  // 0.3.0-dev.37 is settled (adopted or dropped, and said) first
+  // (0.3.0-dev.39, a consumer's dev.38 finding). A restart settles in its
+  // down step; a down after its ownership gate, which signals nothing.
+  const upSettle =
+    command === "up" ? settleDaemonRecord(resolved, workspace, onLine) : null;
+
   // ── Up: share-if-identical / hard-block on conflict ─────────────────────────
   if (command === "up" || command === "restart") {
     let existing = findDaemonByAddress(resolved.address);
@@ -1943,13 +2086,6 @@ export function runServiceCommand(
       );
       unregisterDaemon(resolved.address);
       existing = undefined;
-    }
-    // A record from before 0.3.0-dev.37 (no process group): adopt the
-    // process that runs the service (then it is already up), or drop the
-    // record and start it (0.3.0-dev.38).
-    if (existing && command === "up" && isLegacyRecord(existing)) {
-      settleLegacyRecord(existing, resolved, workspace, onLine);
-      existing = findDaemonByAddress(resolved.address);
     }
     if (
       existing &&
@@ -1997,6 +2133,21 @@ export function runServiceCommand(
           closeAsync(0);
           return dummy();
         }
+      } else if (command === "up" && !upSettle?.outcome) {
+        // Nothing recorded, but the port is taken (0.3.0-dev.39). In the
+        // repo: that is the service, adopted, already up. Elsewhere: said
+        // and left alone; the up still runs (the port may be a proxy's),
+        // and a start that dies keeps no record.
+        const holder = settleUntrackedListener(
+          resolved,
+          workspace,
+          onLine,
+          `starting ${resolved.address} anyway`,
+        );
+        if (holder === "adopted") {
+          closeAsync(0);
+          return dummy();
+        }
       }
     }
   }
@@ -2024,6 +2175,9 @@ export function runServiceCommand(
       return dummy();
     }
   }
+  // Past the ownership gate, a down stops what it finds: a pre-dev.37 record
+  // is settled first, so its adopted group is stopped (0.3.0-dev.39).
+  if (command === "down") settledDaemonRecord(resolved, workspace, onLine);
 
   // Down via opctl: stop the service's running containers directly, identified
   // from live `opctl container ls` ∪ docker `opctl_<base>_<hash>` names — no
@@ -2136,7 +2290,9 @@ export function runServiceCommand(
     // A daemon restart is a down step, then a detached up step, never one
     // `sh -c "<down> && <up>"`: the up's recorded process group must hold
     // only the up (0.3.0-dev.38). The tab runtime composes its own below.
-    if (downDef && upDef && runtime !== "tab") {
+    // With no down of its own (0.3.0-dev.39, a consumer's dev.38 finding),
+    // the down step stops what the detached up recorded, as `down` does.
+    if (upDef && (!downDef || runtime !== "tab")) {
       return restartAsDownThenUp(
         options,
         getServiceLogPath(resolved.repoName, resolved.subsystem),
@@ -2456,13 +2612,34 @@ export function runServiceCommand(
   };
 
   // A detached up records its process group, so `down` can stop it.
+  let recorded: RecordedProcessGroup | null = null;
   const recordGroup =
     detachable && logPath && command !== "down"
       ? (pid: number) => {
-          const group = recordProcessGroup(pid);
-          if (group) updateDaemonProcessGroup(resolved.address, group);
+          recorded = recordProcessGroup(pid);
+          if (recorded) updateDaemonProcessGroup(resolved.address, recorded);
         }
       : null;
+  // A detached up whose whole group is gone when its leader exits leaves
+  // nothing to stop: never keep its pgid (0.3.0-dev.39, a consumer's dev.38
+  // finding: a second server that died on EADDRINUSE was recorded, and a
+  // later down signalled the dead group while the real listener ran on).
+  // A failed start keeps no record at all.
+  const serviceExited = (exitCode: number): void => {
+    const rec = recorded;
+    if (rec && processGroupStateSync(rec)?.state === "gone") {
+      const now = findDaemonByAddress(resolved.address);
+      // A non-zero exit is a failed start: nothing of it runs, so no
+      // record (its containers, if any, still run: then only the group
+      // goes). A zero exit handed off (`make up`): its group stays, and
+      // down says it already exited.
+      if (now?.pgid === rec.pgid && exitCode !== 0) {
+        if (!(now.containers?.length ?? 0)) unregisterDaemon(resolved.address);
+        else clearDaemonProcessGroup(resolved.address);
+      }
+    }
+    onServiceExit?.(exitCode);
+  };
   const proc = recordGroup
     ? spawnStreaming(
         cmdString,
@@ -2473,7 +2650,7 @@ export function runServiceCommand(
         repoPath,
         detachable,
         logPath,
-        onServiceExit,
+        serviceExited,
         recordGroup,
       )
     : spawnStreaming(

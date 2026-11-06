@@ -10,6 +10,40 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **The UI in Japanese and Spanish** (0.3.0-dev.39, R19; R10's and R21's
+  Language).
+  - Catalogs for en, ja and es. en is shell.js's `MESSAGES.en`, the
+    fallback; ja and es are `public/i18n/<lang>.js`, which the server
+    loads before shell.js for a page in that language (with
+    `<html lang>`), so the first paint is already in it. Every lookup is
+    `t(key, vars)`; a `key.one` (any CLDR category) is the plural form
+    `Intl.PluralRules` picks for `n`, and numbers go through
+    `Intl.NumberFormat`.
+  - The language is a user pref, `language:` in `config/local/user.yml`
+    (absent: English), read and written by `/api/settings` (`ui_languages`
+    lists the choices; anything else is a 400). The user menu has a
+    Language section, each language named in itself, Settings → Appearance
+    a Language row, and ⌘K a "Language: …" command; a pick reloads the
+    page in it.
+  - The whole shell is converted: rail, top bar and scope menus, status
+    chip and drawer, ⌘K palette (its Settings rows too), Runs chip and
+    dock, lock popover, user menu, What's new, the stale-server pill and
+    restart overlay, the engine and network banners, the error toasts and
+    the 404 and 500 pages. The pages' own content (Workspaces, Graph,
+    Services, Logs, Tests, Environments, Releases, Edge and the Settings
+    page's rows) is still English: they move to `t()` page by page.
+  - Never translated: names (services, workspaces, repos, themes,
+    languages), logs, command output, run labels, and "Copy details"
+    (it is for a report, so it stays English).
+  - Guards: `i18n.test.ts` fails when any catalog lacks a key en has, has
+    one en doesn't, drops a placeholder, or uses a plural form its
+    language doesn't; when the code looks up a key en lacks; and when a
+    node-side `EN_FALLBACK` drifts from en. `i18n-shell.browser.test.ts`
+    draws the shell in a pseudo-locale with every overlay open and fails
+    on any word that skipped `t()`.
+  - English shows exactly what it did, apart from the new Language
+    controls.
+
 - **Errors people can see and act on** (0.3.0-dev.38, R26, Ward QA
   2026-11-05: "we don't handle 500 or 404s from the den server with
   anything remotely obvious ... just text").
@@ -739,6 +773,37 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **Records from before 0.3.0-dev.37 reach adoption from the CLI**
+  (0.3.0-dev.39, a consumer's dev.38 finding). dev.38 decided right when
+  asked, but the CLI's paths never asked. Every up, down and healthy-skip
+  now reads a service's record through one accessor
+  (`settledDaemonRecord`) that settles a pre-dev.37 record first: adopted
+  (its group recorded) or dropped (said, nothing signalled).
+  - `up <repo>` on a healthy service attached to the old record and left
+    it without a group, so a later `down` could not stop it. It now adopts
+    the running process ("adopted pre-dev.37 process (pid …, port …)"),
+    starts nothing, and `down <repo>` stops it.
+  - `down <repo>/<svc>` of a service with an up of its own pointed at the
+    repo's down ("it is stopped by repox's down") and stopped nothing. Its
+    down is its own: the group its up recorded.
+  - A healthy service with no record whose port is held by a process in
+    its repo is adopted the same way; one held from outside the repo is
+    said ("port N is in use by pid … (cwd …), outside …: left alone"),
+    never claimed or signalled, and nothing is started on it (a named
+    target fails; a dependency warns).
+  - An up whose process exits non-zero during startup (a second server
+    that died on EADDRINUSE) keeps no record and no process group, so a
+    later `down` never signals a dead group while the real listener runs.
+  - The CLI prints what was adopted, dropped or found busy; before, those
+    lines only flashed in the spinner.
+  - `down -a` warns about records no active workspace reaches ("… is in no
+    active workspace: down -a left it alone") and leaves them alone, where
+    it skipped them silently.
+- **`restart` of a service with only an `up` works** (0.3.0-dev.39, a
+  consumer's dev.38 finding). `restart repox/web` failed with `command
+  "restart" not found` and left the old group running. With no restart or
+  down command, a restart stops the recorded group, then runs the up
+  detached, as `down` then `up` would.
 - **`down <repo>` and `down -a` stop a repo's per-service daemons**
   (0.3.0-dev.38, a consumer's dev.37 finding). A repo with services of
   their own (`up repox` started `repox/web` and `repox/api`, each with
@@ -1231,6 +1296,18 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
+- 0.3.0-dev.39, the UI language: nothing required. With no `language:`
+  in `user.yml` the UI is English, as before. A distribution or plugin
+  that adds its own words with `denShell.addMessages(lang, table)` can
+  add `ja` and `es` tables the same way.
+- 0.3.0-dev.39, pre-dev.37 records: nothing required. Their next `up`,
+  `down` or `restart` from the CLI or the web adopts or drops them (said).
+- 0.3.0-dev.38, the restart banner: **restart the web server once after
+  installing.** The first upgrade from a server older than dev.38 can't
+  show the "Den was updated" banner: the old server has no MD-2 code, so
+  it keeps serving the new pages from the old engine until it restarts
+  (`<cli> web restart`, or your service restart). From dev.38 on, the
+  banner says when a restart is needed.
 - 0.3.0-dev.38, `/api` error bodies: **they changed from text to JSON.**
   Every `/api/*` error now answers `Content-Type: application/json` with
   `{ ok: false, error, code, requestId }`, where some routes sent

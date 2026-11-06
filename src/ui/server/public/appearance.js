@@ -21,6 +21,38 @@
  * change, from either, fires `den:appearance` on window and both repaint.
  */
 
+/**
+ * The en strings of this module's pure exports, for where there is no
+ * shell (a unit test). In a page every lookup is the shell's t (R19), whose
+ * en is the same text (i18n.test.ts holds them equal).
+ */
+export const EN_FALLBACK = {
+  "um.label": "Appearance",
+  "um.title": "Appearance and theme",
+  "um.appearance": "Appearance",
+  "um.system": "System",
+  "um.dark": "Dark",
+  "um.light": "Light",
+  "um.theme": "Theme",
+  "um.language": "Language",
+  "um.all": "All settings",
+  "cmd.appearance": "Appearance: {mode}",
+  "cmd.theme": "Theme: {name}",
+  "cmd.language": "Language: {name}",
+  "theme.orgDefault": "Org default ({name})",
+  "theme.pinned": "{name} (pinned)",
+  "theme.notInstalled": "Your theme {id} isn't installed, so {inUse} is in use",
+  "theme.invalid": "Your theme {id} isn't valid ({why}), so {inUse} is in use",
+  "theme.invalidBare": "Your theme {id} isn't valid, so {inUse} is in use",
+};
+function t(key, vars) {
+  const sh = typeof window !== "undefined" ? window.denShell : null;
+  if (sh?.t) return sh.t(key, vars);
+  return String(EN_FALLBACK[key] ?? key).replace(/\{(\w+)\}/g, (m, k) =>
+    vars && vars[k] != null ? String(vars[k]) : m,
+  );
+}
+
 /** The mode to draw in: yours, else the system's, else the theme's, else dark. */
 export function effectiveMode(mode, system, defaultMode) {
   if (mode === "dark" || mode === "light") return mode;
@@ -69,21 +101,21 @@ export function markView(mark, mode, themeName) {
  * what happened instead, so it never reads as "Org default". Pure, for tests.
  */
 export function themeOptions(themes, prefsTheme, orgDefault) {
-  const usable = (themes || []).filter((t) => t.ok);
-  const chosen = usable.some((t) => t.id === prefsTheme) ? prefsTheme : null;
+  const usable = (themes || []).filter((th) => th.ok);
+  const chosen = usable.some((th) => th.id === prefsTheme) ? prefsTheme : null;
   return [
     {
       value: "",
-      label: `Org default (${orgDefault?.name || "Den"})`,
+      label: t("theme.orgDefault", { name: orgDefault?.name || "Den" }),
       selected: !prefsTheme,
     },
-    ...usable.map((t) => ({
-      value: t.id,
+    ...usable.map((th) => ({
+      value: th.id,
       label:
-        t.id === chosen && t.id === orgDefault?.id
-          ? `${t.name} (pinned)`
-          : t.name,
-      selected: t.id === chosen,
+        th.id === chosen && th.id === orgDefault?.id
+          ? t("theme.pinned", { name: th.name })
+          : th.name,
+      selected: th.id === chosen,
     })),
   ];
 }
@@ -96,15 +128,17 @@ export function themeOptions(themes, prefsTheme, orgDefault) {
  */
 export function themeNotice(themes, prefsTheme, active) {
   if (!prefsTheme) return null;
-  const t = (themes || []).find((x) => x.id === prefsTheme);
-  if (t?.ok) return null;
+  const th = (themes || []).find((x) => x.id === prefsTheme);
+  if (th?.ok) return null;
   const inUse = active?.name || active?.id || "Den";
-  if (!t)
-    return `Your theme ${prefsTheme} isn't installed, so ${inUse} is in use`;
-  const first = String(t.problem || "")
+  if (!th) return t("theme.notInstalled", { id: prefsTheme, inUse });
+  // The validator's problem is output: it is quoted, not translated.
+  const first = String(th.problem || "")
     .split("; ")[0]
     .trim();
-  return `Your theme ${prefsTheme} isn't valid${first ? ` (${first})` : ""}, so ${inUse} is in use`;
+  return first
+    ? t("theme.invalid", { id: prefsTheme, why: first, inUse })
+    : t("theme.invalidBare", { id: prefsTheme, inUse });
 }
 
 const st = {
@@ -350,35 +384,48 @@ export function userMenu() {
   const notice = themeNotice(st.themes, st.prefsTheme, st.active);
   // "All settings": the Settings page, at Appearance (R10, R21).
   const settings = "/settings#appearance";
+  const sh = window.denShell;
+  const here = sh?.lang?.() ?? "en";
   return {
-    label: "Appearance",
+    label: t("um.label"),
     items: [
-      { heading: "Appearance" },
-      ...MODES.map(([v, l]) => ({
-        label: l,
+      { heading: t("um.appearance") },
+      ...MODES.map(([v, key]) => ({
+        label: t(key),
         checked: st.mode === v,
         onSelect: () => setMode(v),
       })),
       { hr: true },
-      { heading: "Theme" },
+      { heading: t("um.theme") },
       ...opts.map((o) => ({
         label: o.label,
         checked: o.selected,
         onSelect: () => (o.selected ? null : setTheme(o.value)),
       })),
       ...(notice ? [{ note: notice }] : []),
-      // Language (R19) comes in dev.23: its slot, hidden until then.
-      { slot: "lang", hidden: true },
+      // Language (R19, 0.3.0-dev.39): each named in itself; a pick saves
+      // the pref and reloads the page in it.
+      ...(sh?.languages
+        ? [
+            { hr: true },
+            { heading: t("um.language") },
+            ...sh.languages().map((l) => ({
+              label: l.name,
+              checked: l.id === here,
+              onSelect: () => (l.id === here ? null : sh.setLanguage(l.id)),
+            })),
+          ]
+        : []),
       { hr: true },
-      { label: "All settings", href: settings },
+      { label: t("um.all"), href: settings },
     ],
   };
 }
 
 const MODES = [
-  ["system", "System"],
-  ["dark", "Dark"],
-  ["light", "Light"],
+  ["system", "um.system"],
+  ["dark", "um.dark"],
+  ["light", "um.light"],
 ];
 
 /**
@@ -388,23 +435,34 @@ const MODES = [
 function registerCommands() {
   const sh = window.denShell;
   if (!sh?.registerCommand) return;
-  for (const [v, l] of MODES)
+  for (const [v, key] of MODES)
     sh.registerCommand({
       id: `appearance-${v}`,
-      label: `Appearance: ${l}`,
+      label: t("cmd.appearance", { mode: t(key) }),
       keywords: ["mode", "appearance", "theme", v],
       kind: "action",
       run: () => setMode(v),
     });
   for (const c of sh.commands?.() ?? [])
-    if (c.id.startsWith("theme-")) sh.unregisterCommand(c.id);
+    if (c.id.startsWith("theme-") || c.id.startsWith("language-"))
+      sh.unregisterCommand(c.id);
   for (const o of themeOptions(st.themes, st.prefsTheme, st.orgDefault))
     sh.registerCommand({
       id: `theme-${o.value || "org-default"}`,
-      label: `Theme: ${o.label}`,
+      label: t("cmd.theme", { name: o.label }),
       keywords: ["theme", "brand", "colors", o.value],
       kind: "action",
       run: () => setTheme(o.value),
+    });
+  // Language (R19, R17): after Appearance and Theme, so the palette's first
+  // rows stay as they were.
+  for (const l of sh.languages?.() ?? [])
+    sh.registerCommand({
+      id: `language-${l.id}`,
+      label: t("cmd.language", { name: l.name }),
+      keywords: ["language", "lang", "locale", l.id, l.name],
+      kind: "action",
+      run: () => sh.setLanguage(l.id),
     });
 }
 
@@ -423,8 +481,8 @@ function render(host) {
   glyph.setAttribute("aria-hidden", "true");
   glyph.textContent = "◐ ▾";
   btn.replaceChildren(glyph);
-  btn.title = "Appearance and theme";
-  btn.setAttribute("aria-label", "Appearance");
+  btn.title = t("um.title");
+  btn.setAttribute("aria-label", t("um.label"));
   btn.setAttribute("aria-haspopup", "menu");
   btn.setAttribute("aria-expanded", "false");
   if (btn.dataset.wired) return;

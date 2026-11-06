@@ -261,7 +261,10 @@ describe("the old settings entry points go to the Settings page (R21)", () => {
     expect(page).toMatch(/shell\.settings\(\)/);
     expect(page).not.toMatch(/registerSetting\(/);
     for (const f of fs.readdirSync(PUBLIC))
-      if (!["settings-registry.js", "shell.js"].includes(f))
+      if (
+        !["settings-registry.js", "shell.js"].includes(f) &&
+        fs.statSync(path.join(PUBLIC, f)).isFile()
+      )
         expect([f, /registerSetting\(/.test(read(f))]).toEqual([f, false]);
   });
 });

@@ -8,6 +8,10 @@
  * origin` of every local checkout the catalog has no slug for. Here `git` is
  * a shim that makes those 400ms, so a synchronous pass over four repos
  * blocks the event loop for ~1.6s.
+ *
+ * The bound is 250ms (0.3.0-dev.39): one synchronous 400ms call cannot hide
+ * under it, and a busy machine running the browser suites alongside took
+ * 107ms against the old 100ms with nothing blocking.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -21,6 +25,7 @@ import {
   type SlowGitServer,
 } from "./helpers/slow-git-server.js";
 
+const BOUND_MS = 250;
 const HELD = ["alpha", "beta", "gamma", "delta"];
 const LOCAL = ["north", "south", "east", "west"];
 let tmp = "";
@@ -94,7 +99,7 @@ describe("server-info stays responsive", () => {
     for (const n of HELD) expect(body).toContain(`"repo":"${n}"`);
     expect(body).toMatch(/"type":"done"/);
     expect(probes).toBeGreaterThan(0);
-    expect(worst).toBeLessThan(100);
+    expect(worst).toBeLessThan(BOUND_MS);
   }, 30_000);
 
   it("while /api/workspaces/available-repos runs", async () => {
@@ -110,6 +115,6 @@ describe("server-info stays responsive", () => {
     // The slow lookups did run (the route is slow) ...
     expect(srv.slowCalls() - before).toBeGreaterThanOrEqual(LOCAL.length);
     // ... and server-info did not wait on them.
-    expect(worst).toBeLessThan(100);
+    expect(worst).toBeLessThan(BOUND_MS);
   }, 30_000);
 });

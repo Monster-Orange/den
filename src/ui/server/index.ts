@@ -180,6 +180,12 @@ import {
   type ThemeRouteDeps,
 } from "./theme-routes.js";
 import { findTheme } from "./theme-runtime.js";
+import {
+  UI_LANGUAGES,
+  isUiLanguage,
+  localizePage,
+  uiLanguage,
+} from "./ui-language.js";
 import { singleFlight } from "./single-flight.js";
 import { graphOrder } from "./graph-order.js";
 import { clearReadCache, enableReadCache } from "../../shared/read-cache.js";
@@ -436,16 +442,21 @@ const themeDeps: ThemeRouteDeps = {
 };
 // The pre-paint script in each page reads the user's mode and the theme's
 // default mode from these placeholders, so the first paint is right.
+// The UI language (R19): a page in another language than English loads
+// its catalog before shell.js, so the first paint is in it.
 setHtmlFill((html) => {
   let mode = "system";
   let def = "dark";
+  let lang = uiLanguage(undefined);
   try {
-    mode = appearancePrefs(readUserConfig().appearance).mode;
+    const user = readUserConfig();
+    lang = uiLanguage(user.language);
+    mode = appearancePrefs(user.appearance).mode;
     def = activeTheme(themeDeps)?.theme.default_mode ?? "dark";
   } catch {
     /* defaults */
   }
-  let out = html
+  let out = localizePage(html, lang)
     .split("@@DEN_MODE@@")
     .join(mode)
     .split("@@DEN_DEFAULT_MODE@@")
@@ -3114,11 +3125,14 @@ async function handleRequest(
   // ── API: user settings ────────────────────────────────────────────────────
   // GET  /api/settings  → { editor, editors, terminal, terminals, editor_overrides, languages,
   //                         log_window_lines, graph, appearance, shell, distribution,
-  //                         user_web_port, local_dev, cli_tabs }
-  // POST /api/settings  body: { editor?, terminal?, editor_overrides?, graph?, appearance?, shell? }
+  //                         user_web_port, local_dev, cli_tabs, language, ui_languages }
+  // POST /api/settings  body: { editor?, terminal?, editor_overrides?, graph?, appearance?, shell?,
+  //                             language? }
   //   graph: { direction, group, density, panelWidth } (see graph-prefs.ts)
   //   appearance: { theme: id | null, mode: system|dark|light } (appearance-prefs.ts)
   //   shell: { pins, collapsed, hidden, order, dock, dockHeight } (shell-prefs.ts)
+  //   language: the UI's language, en | ja | es (ui-language.ts); null or
+  //     "en" clears it (English is the default)
   // It writes config/local/user.yml only. `distribution` is read-only: what
   // the org config (tracked) sets, for the Settings page's Distribution rows.
   // Every key POST accepts has a row in the Settings page's registry
@@ -3167,6 +3181,9 @@ async function handleRequest(
         user_web_port: userWebPort(user as Record<string, unknown>),
         local_dev: user.local_dev !== false,
         cli_tabs: user.cli_tabs === true,
+        // The UI's language (R19), and the ones it has catalogs for.
+        language: uiLanguage(user.language),
+        ui_languages: UI_LANGUAGES,
       });
     }
     if (req.method === "POST") {
@@ -3178,6 +3195,7 @@ async function handleRequest(
           graph?: unknown;
           appearance?: unknown;
           shell?: unknown;
+          language?: unknown;
         };
         const user = readUserConfig();
         // null clears (0.3.0-dev.32, a consumer's nit): a block or a key
@@ -3212,6 +3230,20 @@ async function handleRequest(
           const stored = storedAppearance(a.value);
           if (stored) user.appearance = stored;
           else delete user.appearance;
+        }
+        // The UI's language (R19): stored only when it isn't English.
+        if (body.language !== undefined) {
+          const clear =
+            body.language === null ||
+            body.language === "" ||
+            body.language === "en";
+          if (!clear && !isUiLanguage(body.language))
+            return send400(
+              res,
+              `language must be one of ${UI_LANGUAGES.map((l) => `"${l}"`).join(", ")}`,
+            );
+          if (clear) delete user.language;
+          else user.language = body.language as string;
         }
         if (body.editor === null || body.editor === "") {
           delete user.editor;
@@ -3259,6 +3291,7 @@ async function handleRequest(
           graph: graphPrefs(user.graph),
           appearance: appearancePrefs(user.appearance),
           shell: shellPrefs(user.shell),
+          language: uiLanguage(user.language),
         });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);

@@ -158,6 +158,38 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.appearance.prefsTheme || "",
     write: (v, ctx) => ctx.setAppearance({ theme: v || null }),
   },
+  // The UI's language (R19, R21; 0.3.0-dev.39): a user pref, `language`
+  // in user.yml. Each is named in itself. A change reloads the page, which
+  // the server then serves with that language's catalog.
+  {
+    id: "language",
+    category: "appearance",
+    label: "Language",
+    description:
+      "The language of Den's own words. Names, logs and command output stay as they are. Changing it reloads the page.",
+    keywords: [
+      "language",
+      "locale",
+      "translation",
+      "english",
+      "japanese",
+      "spanish",
+      "日本語",
+      "español",
+    ],
+    scope: "user",
+    control: {
+      type: "seg",
+      options: (ctx) =>
+        (ctx.shell?.languages?.() ?? []).map((l) => ({
+          value: l.id,
+          label: l.name,
+        })),
+    },
+    keys: ["language"],
+    read: (ctx) => ctx.data.language ?? ctx.shell?.lang?.() ?? "en",
+    write: (v, ctx) => ctx.shell.setLanguage(v),
+  },
   {
     id: "appearance.org-theme",
     category: "appearance",

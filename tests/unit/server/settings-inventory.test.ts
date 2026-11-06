@@ -76,6 +76,8 @@ describe("the settings inventory (R21)", () => {
         "graph.groupBy",
         "graph.panelWidth",
         "graph.workspaces",
+        // The UI's language (R19, 0.3.0-dev.39).
+        "language",
         "shell.collapsed",
         "shell.dock",
         "shell.dockHeight",

@@ -18,6 +18,17 @@ import { buildRow, healthCycle, paintGate, shellHealth } from "./health-fit.js";
 import { initTopbar, paintChecking, paintStatus } from "./topbar.js";
 import { registerDenSettings } from "./settings-registry.js";
 
+/** The shell's message lookup (R19; shell.js MESSAGES). */
+const t = (key, vars) =>
+  typeof window !== "undefined" && window.denShell?.t
+    ? window.denShell.t(key, vars)
+    : key;
+const escT = (key, vars) =>
+  String(t(key, vars)).replace(
+    /[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+  );
+
 export {
   isUnlocked,
   onLockChange,
@@ -247,9 +258,11 @@ function _injectChangelogStyles() {
   overlay.className = "cl-overlay";
   overlay.innerHTML =
     '<div class="cl-box" role="dialog" aria-modal="true" aria-labelledby="cl-title">' +
-    '<div class="cl-hdr"><h3 id="cl-title" tabindex="-1">What\'s new</h3><button type="button" class="cl-close" id="cl-close-btn" title="Close" aria-label="Close">×</button></div>' +
+    `<div class="cl-hdr"><h3 id="cl-title" tabindex="-1">${escT("cl.title")}</h3><button type="button" class="cl-close" id="cl-close-btn" title="${escT("cl.close")}" aria-label="${escT("cl.close")}">×</button></div>` +
     '<div class="cl-body" id="cl-body"></div>' +
-    '<div class="cl-footer"><button type="button" class="cl-more-btn" id="cl-more" aria-controls="cl-body" aria-expanded="false" hidden></button><button class="cl-got-it" id="cl-got-it-btn">Got it</button></div>' +
+    '<div class="cl-footer"><button type="button" class="cl-more-btn" id="cl-more" aria-controls="cl-body" aria-expanded="false" hidden></button><button class="cl-got-it" id="cl-got-it-btn">' +
+    escT("cl.gotIt") +
+    "</button></div>" +
     "</div>";
   document.body.appendChild(overlay);
   document.getElementById("cl-more")?.addEventListener("click", () => {
@@ -304,8 +317,7 @@ function _renderChangelogBody(entries) {
   const body = document.getElementById("cl-body");
   if (!body) return;
   if (!entries.length) {
-    body.innerHTML =
-      '<p style="color:var(--muted);font-size:12px">No entries found.</p>';
+    body.innerHTML = `<p style="color:var(--muted);font-size:12px">${escT("cl.none")}</p>`;
     return;
   }
   const escHtml = (s) =>
@@ -333,9 +345,11 @@ function _renderChangelogBody(entries) {
         '<div class="cl-copy-group">' +
         '<button class="cl-copy-btn" data-cl-version="' +
         escHtml(entry.version) +
-        '" title="Copy as Markdown" aria-label="Copy v' +
-        escHtml(entry.version) +
-        ' as Markdown">' +
+        '" title="' +
+        escT("cl.copyMd") +
+        '" aria-label="' +
+        escT("cl.copyMdX", { v: entry.version }) +
+        '">' +
         '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
         '<rect x="4" y="0.5" width="8.5" height="8.5" rx="1.5"/>' +
         '<path d="M8.5 9v2.5a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h2.5"/>' +
@@ -343,9 +357,11 @@ function _renderChangelogBody(entries) {
         "</button>" +
         '<button class="cl-slack-btn" data-cl-version="' +
         escHtml(entry.version) +
-        '" title="Copy for Slack" aria-label="Copy v' +
-        escHtml(entry.version) +
-        ' for Slack">' +
+        '" title="' +
+        escT("cl.copySlack") +
+        '" aria-label="' +
+        escT("cl.copySlackX", { v: entry.version }) +
+        '">' +
         '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
         '<path d="M1 2a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7.5L5 12v-3H2a1 1 0 0 1-1-1V2z"/>' +
         "</svg>" +
@@ -390,7 +406,11 @@ function _renderChangelogBody(entries) {
   if (more) {
     more.hidden = !view.toggle;
     if (view.toggle) {
-      more.textContent = view.toggle.label;
+      // changelog-view.js's labels are its en; the button says them in
+      // the page's language.
+      more.textContent = view.toggle.expanded
+        ? t("cl.latest")
+        : t("cl.all", { n: entries.length - 1 });
       more.setAttribute("aria-expanded", String(view.toggle.expanded));
     }
   }
@@ -425,8 +445,8 @@ function _renderChangelogBody(entries) {
           btn.classList.remove("copied");
         }, 2000);
       } catch {
-        btn.title = "Copy failed — try again";
-        setTimeout(() => (btn.title = "Copy as Markdown"), 2000);
+        btn.title = t("cl.copyFailed");
+        setTimeout(() => (btn.title = t("cl.copyMd")), 2000);
       }
     });
   });
@@ -448,8 +468,8 @@ function _renderChangelogBody(entries) {
           btn.classList.remove("copied");
         }, 2000);
       } catch {
-        btn.title = "Copy failed — try again";
-        setTimeout(() => (btn.title = "Copy for Slack"), 2000);
+        btn.title = t("cl.copyFailed");
+        setTimeout(() => (btn.title = t("cl.copySlack")), 2000);
       }
     });
   });
@@ -690,7 +710,7 @@ function _renderOrgCrumb(org) {
   if (!h1 || !org?.title || document.getElementById("org-crumb")) return;
   const crumb = document.createElement("span");
   crumb.id = "org-crumb";
-  crumb.title = `Org: ${org.title} (${org.id})`;
+  crumb.title = t("org.titleId", { title: org.title, id: org.id });
   crumb.style.cssText =
     "font-size:12px;font-weight:600;color:var(--text);" +
     "white-space:nowrap;flex-shrink:0;display:flex;align-items:center;gap:8px";
@@ -778,7 +798,7 @@ async function _renderScopeMenu() {
         .catch(() => null),
     ]);
     sh.setWorkspaces({
-      ...buildScopeMenuModel(pageScope(scope, data), data),
+      ...buildScopeMenuModel(pageScope(scope, data), data, t),
       onSelect: _switchScope,
       onFocus: _setFocus,
     });
@@ -829,10 +849,9 @@ async function _switchScope(value) {
     await window.denShell.api("POST", "/api/scope", { scope: value });
   } catch (err) {
     if (err?.denApi) {
-      err.message = `Could not change the view: ${err.message}`;
+      err.message = t("ws.viewFailed", { msg: err.message });
       window.denShell.errorToast(err);
-    } else
-      window.denShell?.toast?.(`Could not change the view: ${err.message}`);
+    } else window.denShell?.toast?.(t("ws.viewFailed", { msg: err.message }));
     return;
   }
   followScopeInUrl(value);
@@ -852,9 +871,9 @@ async function _setFocus(name) {
     });
   } catch (err) {
     if (err?.denApi) {
-      err.message = `Could not set the focus: ${err.message}`;
+      err.message = t("ws.focusFailed", { msg: err.message });
       window.denShell.errorToast(err);
-    } else window.denShell?.toast?.(`Could not set the focus: ${err.message}`);
+    } else window.denShell?.toast?.(t("ws.focusFailed", { msg: err.message }));
     return;
   }
   location.reload();
@@ -1159,13 +1178,9 @@ function _renderStalePill(info) {
     pill = document.createElement("button");
     pill.id = "stale-pill";
     pill.className = "stale-pill";
-    pill.title =
-      "This __DEN_CLI__ web server is running code older than your working tree — " +
-      "click to restart and pick up your changes. Running deploys continue on " +
-      "GitHub; an open deploy log reattaches after the reload.";
-    pill.setAttribute("aria-label", "Stale server: restart");
-    pill.innerHTML =
-      '<span aria-hidden="true">⚠</span><span class="stale-lbl"> stale server · <b>Restart</b></span>';
+    pill.title = t("stale.title", { cli: "__DEN_CLI__" });
+    pill.setAttribute("aria-label", t("stale.aria"));
+    pill.innerHTML = `<span aria-hidden="true">⚠</span><span class="stale-lbl"> ${escT("stale.label")} · <b>${escT("stale.restart")}</b></span>`;
     pill.addEventListener("click", _requestRestart);
     const vpill = document.getElementById("version-pill");
     if (vpill && vpill.parentNode)
@@ -1227,8 +1242,8 @@ function _showRestartOverlay() {
   o.className = "restart-overlay";
   o.innerHTML =
     '<div class="spinner"></div>' +
-    '<div class="msg">Restarting __DEN_CLI__ web…</div>' +
-    '<div class="hint" id="restart-hint">Reconnecting — this page will reload automatically.</div>';
+    `<div class="msg">${escT("restart.msg", { cli: "__DEN_CLI__" })}</div>` +
+    `<div class="hint" id="restart-hint">${escT("restart.hint")}</div>`;
   document.body.appendChild(o);
 }
 
@@ -1245,8 +1260,10 @@ async function _pollForNewServer(before, startedAt) {
   if (Date.now() - startedAt > 90_000) {
     const hint = document.getElementById("restart-hint");
     if (hint)
-      hint.innerHTML =
-        "Still restarting… if this persists, run <b>__DEN_CLI__ web restart</b> in a terminal, then reload.";
+      hint.innerHTML = escT("restart.still", { cmd: "\u0000" }).replace(
+        "\u0000",
+        "<b>__DEN_CLI__ web restart</b>",
+      );
   }
   setTimeout(() => _pollForNewServer(before, startedAt), 1500);
 }

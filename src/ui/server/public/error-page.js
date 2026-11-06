@@ -21,34 +21,9 @@
  */
 import { rankCommands } from "/topbar.js";
 
-const EN = {
-  "err.404.title": "Page not found",
-  "err.404.sub": "Nothing here at {path}",
-  "err.404.lead": "There is no page at this address.",
-  "err.404.mean": "Did you mean {page}?",
-  "err.404.stale":
-    "This page may be new in Den {onDisk}: the server is still running {loaded}.",
-  "err.404.plugin":
-    "This page belongs to the {name} plugin, which isn't installed in this distribution.",
-  "err.404.pluginLocked":
-    "This page belongs to the {name} plugin. It is in plugins.lock.json, but its files are missing.",
-  "err.404.pluginNoPage":
-    "The {name} plugin is installed, but it has no page here.",
-  "err.404.workspaces": "Go to Workspaces",
-  "err.404.search": "Search",
-  "err.404.pages": "Pages",
-  "err.500.title": "Something went wrong",
-  "err.500.sub": "{what} failed on the server",
-  "err.500.lead":
-    "The server hit an error answering this page. Retry, or copy the details for a report: the server log has the full error under the same request id.",
-  "err.500.what": "What failed",
-  "err.500.time": "Time",
-  "err.500.id": "Request id",
-  "err.500.version": "Version",
-  "err.retry": "Retry",
-  "err.copy": "Copy details",
-  "err.copied": "Copied",
-};
+// Its words are the shell's catalog (shell.js MESSAGES, R19: the err.*
+// keys), so the page is in the page's language. "Copy details" is a
+// report: it stays in English, like the server log it points at.
 
 function esc(v) {
   return String(v ?? "").replace(
@@ -147,7 +122,6 @@ export function mountErrorPage(root) {
   const sh = window.denShell;
   const d = readData();
   if (!root || !sh || !d) return;
-  sh.addMessages("en", EN);
   const t = sh.t;
   const header = (title, sub) =>
     `<div class="ph"><div><h1>${esc(title)}</h1>` +
@@ -184,8 +158,11 @@ export function mountErrorPage(root) {
     root.innerHTML =
       header(
         t("err.404.title"),
-        esc(t("err.404.sub", { path: "" })) +
+        // The path sits where the language puts it ("Nothing at {path}").
+        esc(t("err.404.sub", { path: "\u0000" })).replace(
+          "\u0000",
           `<span class="mono">${esc(d.path)}</span>`,
+        ),
       ) +
       `<div class="empty">${lines.join("")}` +
       `<div class="acts"><a class="btn primary" href="/local-dev">${esc(t("err.404.workspaces"))}</a>` +
@@ -212,7 +189,7 @@ export function mountErrorPage(root) {
     `<div class="empty"><p class="lead">${esc(t("err.500.lead"))}</p>` +
     `<dl class="facts">` +
     `<dt>${esc(t("err.500.what"))}</dt><dd class="mono">${esc(what)}</dd>` +
-    `<dt>${esc(t("err.500.time"))}</dt><dd><time datetime="${esc(d.time)}">${esc(isNaN(when) ? d.time : when.toLocaleString())}</time></dd>` +
+    `<dt>${esc(t("err.500.time"))}</dt><dd><time datetime="${esc(d.time)}">${esc(isNaN(when) ? d.time : when.toLocaleString(sh.lang?.() && sh.lang() !== "en" ? sh.lang() : undefined))}</time></dd>` +
     `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
     `<dt>${esc(t("err.500.version"))}</dt><dd class="mono">${esc(d.version ?? "unknown")}</dd>` +
     `</dl><div class="acts">` +

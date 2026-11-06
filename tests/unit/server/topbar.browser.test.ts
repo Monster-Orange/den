@@ -653,6 +653,21 @@ describe("the lock on Local Dev", () => {
 });
 
 describe("the user menu (R10) and Runs (R7)", () => {
+  it("a language pick stores the user's language and reloads the page in it", async () => {
+    if (!browser) return;
+    const { p, posts } = await mount();
+    await p.click("#appearance-btn");
+    await p.waitForSelector(".den-pop");
+    const reloaded = p.waitForEvent("framenavigated");
+    await p.click('.den-pop .den-mi:has-text("日本語")');
+    await reloaded;
+    expect(posts.at(-1)).toEqual({
+      path: "/api/settings",
+      body: { language: "ja" },
+    });
+    await p.context().close();
+  }, 30_000);
+
   it("◐ ▾ opens a .pop: Appearance, Theme, All settings; a pick switches live", async () => {
     if (!browser) return;
     const { p, posts } = await mount();
@@ -678,14 +693,13 @@ describe("the user menu (R10) and Runs (R7)", () => {
       "Org default (Den) ✓",
       "Den",
       "Paper",
+      // R10's Language (R19, dev.39): each language named in itself.
+      "Language",
+      "English ✓",
+      "日本語",
+      "Español",
       "All settings",
     ]);
-    expect(
-      await p.$eval(
-        ".den-pop [data-slot=lang]",
-        (e) => (e as HTMLElement).hidden,
-      ),
-    ).toBe(true);
     await p.click('.den-pop .den-mi:has-text("Light")');
     await p.waitForFunction(
       () => document.documentElement.dataset.mode === "light",

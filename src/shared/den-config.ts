@@ -343,6 +343,11 @@ export interface UserConfig {
    */
   appearance?: { theme?: string; mode?: string };
   /**
+   * The web UI's language (R19): en (the default, never stored), ja or es.
+   * See src/ui/server/ui-language.ts.
+   */
+  language?: string;
+  /**
    * The rail's pins and collapse, and (R21 Navigation) the pages it hides
    * and their order (src/ui/server/shell-prefs.ts).
    */
