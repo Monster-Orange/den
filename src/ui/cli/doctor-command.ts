@@ -206,7 +206,7 @@ export function doctorNotes(cli: string, configured: boolean): string[] {
   return configured
     ? [
         "",
-        `  ℹ agents are configured: run \`${cli} doctor --probe\` to verify agent env isolation`,
+        `  ℹ agents are configured or have run here: run \`${cli} doctor --probe\` to verify agent env isolation`,
       ]
     : [];
 }

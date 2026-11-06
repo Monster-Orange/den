@@ -181,7 +181,7 @@ describe("doctor", () => {
 
 describe("doctor's agents note", () => {
   const NOTE =
-    "  ℹ agents are configured: run `acme doctor --probe` to verify agent env isolation";
+    "  ℹ agents are configured or have run here: run `acme doctor --probe` to verify agent env isolation";
   const tmp = () => {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), "doctor-notes-"));
     created.push(d);

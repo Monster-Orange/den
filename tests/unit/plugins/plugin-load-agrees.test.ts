@@ -72,7 +72,7 @@ function pluginTheme(distRoot: string, id: string, patch: Patch = {}): void {
       name: id,
       version: "1.0.0",
       license: "MIT",
-      den: ">=0.3.0-0 <0.4.0",
+      den: ">=0.3.0-0 <1.0.0",
       maintainer: "design",
       provides: [{ kind: "theme", manifest: "theme/den-theme.json" }],
     }),

@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.0] - unreleased
+## [0.4.0] - 2026-11-06
 
 0.4.0-dev.2 and later are built on 0.3.0 and include all of it (below).
 
@@ -172,7 +172,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
-- None. `agents:` is a new, optional block of the org config. Any key other
+- **Plugins with a `den` range that ends below 0.4.0** (for example
+  `>=0.3.0-0 <0.4.0`) are skipped on 0.4.0, and `validate` fails them:
+  widen the range (for example `<1.0.0`). A plugin with no `den` range,
+  as Den's own themes, needs nothing.
+- `agents:` is a new, optional block of the org config. Any key other
   than `max_concurrent` and `persona_packs` is an agent id; an invalid value
   is an error naming the key:
 
