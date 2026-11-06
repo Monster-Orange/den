@@ -70,6 +70,17 @@ const base = (k: string) =>
     ? k.replace(PLURAL, "")
     : k;
 
+describe("the unlock popover's title (0.4.1-dev.1, a consumer's nit)", () => {
+  // The lock gates agents too (AG-5): its title names them in every language.
+  it.each([
+    ["en", /services and agents/],
+    ["ja", /エージェント/],
+    ["es", /servicios y agentes/],
+  ])("%s names services and agents", (lang, re) => {
+    expect(messages[lang]["lock.title"]).toMatch(re);
+  });
+});
+
 describe("the catalogs", () => {
   it("en is shell.js's, and has the shell's words", () => {
     expect(Object.keys(EN).length).toBeGreaterThan(200);

@@ -11,6 +11,7 @@ import * as net from "net";
 import type { AddressInfo } from "net";
 import * as path from "path";
 import { pathToFileURL } from "url";
+import { denAuth } from "./den-auth.js";
 
 const ENGINE = path.resolve(__dirname, "../../../..");
 
@@ -33,6 +34,8 @@ export function gitRepo(dir: string, origin: string): void {
 
 export interface SlowGitServer {
   port: number;
+  /** SEC-1a: the CLI's credential for this server (its person token). */
+  auth(): Record<string, string>;
   /** GET `p`; how long the full response took. */
   timed(
     p: string,
@@ -157,6 +160,7 @@ export async function startSlowGitServer(opts: {
 
   return {
     port,
+    auth: () => denAuth(path.join(opts.tmp, "home")),
     timed,
     slowCalls: () =>
       fs.existsSync(log)

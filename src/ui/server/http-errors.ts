@@ -262,11 +262,16 @@ export function pluginForPath(
 
 /** What error.html is told: everything error-page.js draws from. */
 export interface ErrorPageData {
-  /** 422: the config fails validation (a ConfigError). */
-  status: 404 | 422 | 500;
+  /**
+   * 422: the config fails validation (a ConfigError). 401, 403, 421: the
+   * request checks refused it (SEC-1a): `message` says why, `code` names it.
+   */
+  status: 401 | 403 | 404 | 421 | 422 | 500;
+  /** 401, 403, 421: the refusal's code (misdirected, origin_rejected, …). */
+  code?: string;
   /** 404 and 422: the path asked for (no query). */
   path?: string;
-  /** 422: the ConfigError's message (it names config keys, never values). */
+  /** 422: the ConfigError's message (it names config keys, never values); 401/403/421: the refusal's. */
   message?: string;
   /** 422: each problem: its file, key path and message (0.3.0-dev.40). */
   issues?: Array<{ file: string; key: string; message: string }>;

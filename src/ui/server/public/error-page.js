@@ -219,6 +219,33 @@ export function mountErrorPage(root) {
     return;
   }
 
+  if (d.status === 421 || d.status === 403 || d.status === 401) {
+    // SEC-1a: the request checks refused it (a host that isn't this
+    // server's, a cross-site request). A 421 links to the same path on
+    // localhost, the canonical loopback name.
+    const title =
+      d.status === 421 ? t("err.421.title") : t("err.refused.title");
+    document.title = document.title.replace(/Error$/, title);
+    const here =
+      d.status === 421
+        ? `http://localhost${location.port ? `:${location.port}` : ""}${d.path ?? "/"}`
+        : null;
+    root.innerHTML =
+      header(title, `<span class="mono">${esc(d.code ?? "")}</span>`) +
+      `<div class="empty"><p class="lead">${esc(d.status === 421 ? t("err.421.lead") : (d.message ?? ""))}</p>` +
+      `<dl class="facts">` +
+      `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
+      `</dl><div class="acts">` +
+      (here
+        ? `<a class="btn primary" id="den-err-local" href="${esc(here)}">${esc(t("err.421.open"))}</a>`
+        : `<button type="button" class="btn primary" id="den-err-retry">${esc(t("err.retry"))}</button>`) +
+      `</div></div>`;
+    root
+      .querySelector("#den-err-retry")
+      ?.addEventListener("click", () => location.reload());
+    return;
+  }
+
   document.title = document.title.replace(/Error$/, t("err.500.title"));
   const what = `${d.method ?? "GET"} ${d.route ?? ""}`;
   const when = new Date(d.time);

@@ -19,6 +19,7 @@ import {
 import { healthCheckFields, type HealthCheckType } from "./health-row.js";
 import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
 import * as http from "http";
+import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -136,7 +137,10 @@ import {
   type ReleaseEvent,
 } from "./release-service.js";
 import { deploySessions } from "./release-deploy-session.js";
-import { spawnDetachedWebRestart } from "../cli/web-command.js";
+import {
+  hasDenHostsEntry,
+  spawnDetachedWebRestart,
+} from "../cli/web-command.js";
 import { recordInvocation } from "../../shared/dev-metrics/emit.js";
 import {
   validateManifest,
@@ -173,6 +177,16 @@ import {
   setAuditSink,
 } from "./audit.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
+import {
+  checkRequest,
+  newCsrfToken,
+  principalOf,
+  sessionRequestAllowed,
+  setPrincipal,
+  type GuardContext,
+  type GuardResult,
+} from "./request-guard.js";
+import { verifyPersonToken, WebSecretStore } from "../../shared/web-secret.js";
 import { serveUiAsset } from "./ui-assets.js";
 import { graphPrefs, patchStoredGraph } from "./graph-prefs.js";
 import { graphPageHtml } from "./graph-page.js";
@@ -598,6 +612,8 @@ function allWorkspaceCheckouts(): ResolvedService[] {
  */
 const CONFIG_FREE_ROUTES = new Set([
   "/api/server-info",
+  // SEC-1a: the shell's CSRF token, which the Settings fix itself needs.
+  "/api/session",
   "/api/server-log",
   "/api/changelog",
   "/api/web/restart",
@@ -672,7 +688,7 @@ import { handleWorkspaceRoutes } from "./workspace-routes.js";
 import { handleAgentRoutes } from "./agent-routes.js";
 import { isLifecycleExecCmd, streamLifecycleExec } from "./lifecycle-exec.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
-import { edgeHttps } from "../../shared/edge/render.js";
+import { edgeDomains, edgeHttps, routeHost } from "../../shared/edge/render.js";
 import {
   linksFor,
   openUrlFor,
@@ -788,6 +804,117 @@ function mirrorLine(runId: string, text: string): void {
   process.stdout.write(`  ${dim(`[${runId}]`)} ${stripAnsi(text)}\n`);
 }
 
+// ── Request checks (SEC-1a, SEC-1 spec §3) ─────────────────────────────────────
+
+/**
+ * The edge hostnames that route to this server: each route whose upstream
+ * is this server's port (or the configured `web.port`, which the edge's
+ * own route for Den names) on the docker host, under every edge domain.
+ * None without an edge block.
+ */
+function denEdgeHosts(): string[] {
+  let cfg: ReturnType<typeof readEdgeConfig>;
+  try {
+    cfg = readEdgeConfig();
+  } catch {
+    return [];
+  }
+  const ports = new Set([PORT, readWebPortSafe()]);
+  const names = Object.entries(cfg.routes)
+    .filter(([, upstream]) => {
+      try {
+        const u = new URL(upstream);
+        return (
+          ports.has(Number(u.port || (u.protocol === "https:" ? 443 : 80))) &&
+          ["host.docker.internal", "localhost", "127.0.0.1"].includes(
+            u.hostname,
+          )
+        );
+      } catch {
+        return false;
+      }
+    })
+    .map(([name]) => name);
+  return names.flatMap((n) =>
+    edgeDomains(cfg).map((d) => routeHost(n, d).toLowerCase()),
+  );
+}
+
+/**
+ * The loopback names, with the port: localhost (canonical), 127.0.0.1 and
+ * [::1]; the product's own name when /etc/hosts maps it to 127.0.0.1 (the
+ * URL `web up` opens then); and a specific address DEN_BIND_HOST binds (an
+ * IP literal can't be rebound).
+ */
+function loopbackNames(): string[] {
+  const names = ["localhost", "127.0.0.1", "[::1]"];
+  try {
+    if (hasDenHostsEntry(fs.readFileSync("/etc/hosts", "utf-8")))
+      names.push(product().cli.toLowerCase());
+  } catch {
+    /* no hosts file */
+  }
+  const bind = process.env.DEN_BIND_HOST?.trim().toLowerCase();
+  if (bind && bind !== "0.0.0.0" && bind !== "::" && net.isIP(bind))
+    names.push(net.isIPv6(bind) ? `[${bind}]` : bind);
+  return [...new Set(names)];
+}
+
+const webSecret = new WebSecretStore();
+const GUARD: GuardContext = {
+  port: PORT,
+  loopbackNames: loopbackNames(),
+  edgeHosts: denEdgeHosts,
+  verifyBearer: (token) => {
+    const secret = webSecret.current();
+    return secret ? verifyPersonToken(token, secret) : null;
+  },
+  csrfToken: newCsrfToken(),
+};
+
+const PUBLIC_ASSET_EXTS = new Set([
+  ".js",
+  ".css",
+  ".ico",
+  ".png",
+  ".svg",
+  ".webp",
+  ".woff",
+  ".woff2",
+]);
+/** A GET of the UI's code or styling (never /api, a report or a page). */
+function isPublicAsset(req: http.IncomingMessage, pathname: string): boolean {
+  if (req.method !== "GET" && req.method !== "HEAD") return false;
+  if (/^\/(api|reports?)(\/|$)/.test(pathname)) return false;
+  return PUBLIC_ASSET_EXTS.has(path.extname(pathname).toLowerCase());
+}
+
+/** A refused request: R26 JSON for /api, the error page for a page. */
+function sendGuardRefusal(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  refusal: Extract<GuardResult, { ok: false }>,
+  requestId: string,
+): void {
+  if (pathname === "/api" || pathname.startsWith("/api/"))
+    return sendJson(
+      res,
+      { ok: false, error: refusal.error, code: refusal.code, requestId },
+      refusal.status,
+    );
+  if (wantsHtmlPage(req, pathname))
+    return sendErrorPage(req, res, {
+      status: refusal.status,
+      path: pathname,
+      message: refusal.error,
+      code: refusal.code,
+      requestId,
+    });
+  res.writeHead(refusal.status, { "Content-Type": "text/plain" });
+  res.end(`${refusal.error} (${refusal.code}, request ${requestId})`);
+}
+
 // ── Server ────────────────────────────────────────────────────────────────────
 
 async function handleRequest(
@@ -802,15 +929,6 @@ async function handleRequest(
   // R26b: every /api error answers JSON, whatever the route sends.
   if (pathname === "/api" || pathname.startsWith("/api/"))
     jsonApiErrors(res, requestId);
-  // A mutating request may change what /api/services would list (exec and
-  // sync stream over GET, for EventSource).
-  if (
-    (req.method !== "GET" && req.method !== "HEAD") ||
-    /\/(exec|sync)$/.test(pathname)
-  ) {
-    servicesCache.clear();
-    clearReadCache();
-  }
 
   // ── Request logging ────────────────────────────────────────────────────────
   // /api/health fires on the UI's 5s polling interval forever — it dominates
@@ -833,6 +951,29 @@ async function handleRequest(
         );
       });
     }
+  }
+
+  // ── Request checks (SEC-1a): Host, credential, Origin, CSRF ────────────────
+  // Before any route, and before a refused request can clear a cache.
+  const guard = checkRequest(req, GUARD, product().cli);
+  // The UI's own scripts and styles answer any host, so the 421 page
+  // (which needs shell.js and the theme) renders; they hold no data.
+  // The request log above records the refusal (status, request id).
+  if (
+    !guard.ok &&
+    !(guard.code === "misdirected" && isPublicAsset(req, pathname))
+  )
+    return sendGuardRefusal(req, res, pathname, guard, requestId);
+  if (guard.ok) setPrincipal(req, guard.principal);
+
+  // A mutating request may change what /api/services would list (exec and
+  // sync stream over GET, for EventSource).
+  if (
+    (req.method !== "GET" && req.method !== "HEAD") ||
+    /\/(exec|sync)$/.test(pathname)
+  ) {
+    servicesCache.clear();
+    clearReadCache();
   }
 
   // ── Config validation ──────────────────────────────────────────────────────
@@ -1103,11 +1244,11 @@ async function handleRequest(
     }
     // A call into a granted workspace (AG-2a): both workspaces recorded.
     if (report.crossWorkspace !== undefined) {
-      const crossed = recordCrossWorkspace(actor, report);
+      const crossed = recordCrossWorkspace(actor, report, principalOf(req));
       if (!crossed) return send400(res, "not a cross-workspace report");
       return sendJson(res, { recorded: true, ts: crossed.ts });
     }
-    const entry = recordAgentRefusal(actor, report);
+    const entry = recordAgentRefusal(actor, report, principalOf(req));
     return sendJson(res, { recorded: true, ts: entry.ts });
   }
 
@@ -1669,12 +1810,16 @@ async function handleRequest(
     // Every fail here is before anything ran: a refusal or a lookup miss.
     // Recorded, so failed attempts show in the activity trail (F2).
     const fail = (msg: string): void => {
-      recordAction(actorFromHeaders(req.headers), {
-        verb: "exec",
-        detail: `${repoName}/${svcName} ${cmdName} (${env})`,
-        outcome: "refused",
-        reason: msg,
-      });
+      recordAction(
+        actorFromHeaders(req.headers),
+        {
+          verb: "exec",
+          detail: `${repoName}/${svcName} ${cmdName} (${env})`,
+          outcome: "refused",
+          reason: msg,
+        },
+        principalOf(req),
+      );
       emit({ type: "error", text: msg });
       emit({ type: "done", exitCode: 1, duration: 0 });
       res.end();
@@ -1725,10 +1870,14 @@ async function handleRequest(
         const execId = shortRunId();
         const execDesc = `${repoName}/${svcName} ${cmdName} (${env})`;
         const execActor = actorFromHeaders(req.headers);
-        recordAction(execActor, {
-          verb: "exec",
-          detail: `${execDesc} [${execId}]`,
-        });
+        recordAction(
+          execActor,
+          {
+            verb: "exec",
+            detail: `${execDesc} [${execId}]`,
+          },
+          principalOf(req),
+        );
         prewarmSudo();
         void streamLifecycleExec(
           {
@@ -1830,10 +1979,14 @@ async function handleRequest(
     const execId = shortRunId();
     const execDesc = `${repoName}/${svcName} ${cmdName} (${env})`;
     const execActor = actorFromHeaders(req.headers);
-    recordAction(execActor, {
-      verb: "exec",
-      detail: `${execDesc} [${execId}]`,
-    });
+    recordAction(
+      execActor,
+      {
+        verb: "exec",
+        detail: `${execDesc} [${execId}]`,
+      },
+      principalOf(req),
+    );
 
     // For detachable commands (up/restart), the service is spawned as a daemon
     // writing to a log file so it survives den restarts.  The tail proc
@@ -2548,7 +2701,11 @@ async function handleRequest(
     const modDesc = modules.length ? modules.join(",") : "all";
     const runDesc = `${pillar}/${env} · modules=${modDesc}`;
     const runActor = actorFromHeaders(req.headers);
-    recordAction(runActor, { verb: "run", detail: `${runDesc} [${runId}]` });
+    recordAction(
+      runActor,
+      { verb: "run", detail: `${runDesc} [${runId}]` },
+      principalOf(req),
+    );
     if (
       pillar === "synthetic" ||
       pillar === "smoke" ||
@@ -2721,6 +2878,23 @@ async function handleRequest(
   }
 
   // ── API: server info + staleness (drives the header "stale server" pill) ────
+  // ── API: the browser's session (SEC-1a) ──────────────────────────────────
+  // The CSRF token the shell sends on mutating calls (X-Den-CSRF), for a
+  // same-origin caller only. SEC-1b: actor "person-browser" with a cookie.
+  if (pathname === "/api/session" && req.method === "GET") {
+    if (!sessionRequestAllowed(req, GUARD))
+      return sendJson(
+        res,
+        {
+          ok: false,
+          error: "same-origin callers only",
+          code: "origin_rejected",
+        },
+        403,
+      );
+    return sendJson(res, { csrf: GUARD.csrfToken, actor: null });
+  }
+
   if (pathname === "/api/server-info" && req.method === "GET") {
     const { stale, scanned } = computeStale();
     const engine = engineCheck();
@@ -3727,6 +3901,25 @@ const server = http.createServer((req, res) => {
   });
 });
 
+// WebSocket upgrades pass the same checks (SEC-1 §3: Origin on every
+// upgrade). No route takes one yet (AG-4a-term will): a passing upgrade
+// answers 404.
+server.on("upgrade", (req: http.IncomingMessage, socket: net.Socket) => {
+  const guard = checkRequest(req, GUARD, product().cli);
+  const status = guard.ok ? 404 : guard.status;
+  const body = JSON.stringify({
+    ok: false,
+    error: guard.ok ? "No WebSocket route here" : guard.error,
+    code: guard.ok ? "not_found" : guard.code,
+    requestId: requestIdOf(req),
+  });
+  socket.end(
+    `HTTP/1.1 ${status} ${http.STATUS_CODES[status] ?? ""}\r\n` +
+      "Content-Type: application/json\r\nConnection: close\r\n" +
+      `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
+  );
+});
+
 server.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EADDRINUSE") {
     console.error(
@@ -3837,6 +4030,13 @@ try {
 // service commands), so it must not be reachable from the LAN. Opt out with
 // DEN_BIND_HOST=0.0.0.0 for deliberate exposure.
 const BIND_HOST = process.env.DEN_BIND_HOST ?? "127.0.0.1";
+// SEC-1a: the secret the CLI's person token is derived from (0600 in the
+// state dir). Never printed or logged; a failure leaves bearers unverifiable.
+try {
+  webSecret.ensure();
+} catch (e) {
+  serverLog(`  ⚠ web.secret could not be created: ${(e as Error).message}`);
+}
 server.listen(PORT, BIND_HOST, () => {
   const hosts = fs.existsSync("/etc/hosts")
     ? fs.readFileSync("/etc/hosts", "utf-8")

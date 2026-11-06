@@ -25,6 +25,10 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { denAuth } from "./helpers/den-auth.js";
+
+/** SEC-1a: the CLI's credential for the test server. */
+const auth = () => denAuth(path.join(tmp, "home", ".den"));
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const REPOS = ["shop", "billing", "search"];
@@ -181,7 +185,7 @@ async function open(
   if (!o.keep)
     await fetch(api("/api/settings"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { ...auth(), "Content-Type": "application/json" },
       body: JSON.stringify({ graph: { workspaces: "open" } }),
     });
   const ctx = await browser!.newContext({
@@ -549,7 +553,7 @@ async function page(url: string, w = 1440, h = 900): Promise<Page> {
 const setScope = (scope: string) =>
   fetch(api("/api/scope"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...auth(), "Content-Type": "application/json" },
     body: JSON.stringify({ scope }),
   });
 

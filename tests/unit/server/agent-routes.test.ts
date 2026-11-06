@@ -170,6 +170,28 @@ describe("GET /api/workspaces/<ws>/agents", () => {
     expect(a.r.made[0].signals).toEqual([]);
   });
 
+  it("with the lock closed, another workspace's agent is still a 404 that doesn't name it (not 423)", async () => {
+    const a = await api();
+    await start(a, "north", { persona: "planner" });
+    a.lock.open = false;
+    for (const verb of ["stop", "resume"]) {
+      const { status, json } = await a.call(
+        "POST",
+        `/api/workspaces/south/agents/planner/${verb}`,
+      );
+      expect(status).toBe(404);
+      expectR26(json, "not_found");
+      expect(String(json.error)).not.toContain("north");
+    }
+    // This workspace's own agent is still behind the lock.
+    const own = await a.call(
+      "POST",
+      "/api/workspaces/north/agents/planner/stop",
+    );
+    expect(own.status).toBe(423);
+    expect(a.r.made[0].signals).toEqual([]);
+  });
+
   it("asking never starts a session host: with none running, a record lists as ended", async () => {
     const a = await api();
     await start(a, "north", { persona: "planner" });

@@ -228,6 +228,10 @@ describe("the Agents section", () => {
     await p.waitForSelector(
       '#agent-table tr.agent[data-agent="planner"][data-state="running"]',
     );
+    // An id that is its persona still says so, like every other row
+    // (0.4.1-dev.1, a consumer's nit).
+    const [named] = await cells(p, "planner");
+    expect(named.replace(/\s+/g, " ").trim()).toBe("planner persona planner");
     expect(s!.made).toHaveLength(1);
     expect(s!.made[0].opts.cwd).toBe(s!.wsDir("north"));
     expect(fs.existsSync(s!.ran)).toBe(false);

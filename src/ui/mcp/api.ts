@@ -10,6 +10,7 @@
  * every tool says whose server it is instead of serving its data.
  */
 import { product } from "../../shared/product.js";
+import { cliAuthHeaders } from "../../shared/web-secret.js";
 import {
   foreignServerMessage,
   identifyServer,
@@ -233,6 +234,11 @@ export function createDenApi(opts: {
   headers: () => Record<string, string>;
   /** Check whose server it is before any request (the MCP server does). */
   identity?: IdentityCheck;
+  /**
+   * The credential every call carries (SEC-1a): the person token from
+   * web.secret by default (cliAuthHeaders, the one CLI-side helper).
+   */
+  auth?: () => Record<string, string>;
 }): DenApi {
   const { baseUrl, cli } = opts;
   const { hostname } = new URL(baseUrl);
@@ -284,6 +290,7 @@ export function createDenApi(opts: {
         method,
         headers: {
           ...opts.headers(),
+          ...(opts.auth ?? cliAuthHeaders)(),
           ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
         },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),

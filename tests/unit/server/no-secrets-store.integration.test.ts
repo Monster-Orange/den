@@ -26,6 +26,7 @@ import {
   runningDenVersion,
   writeDistribution,
 } from "../../../src/ui/cli/create.js";
+import { denAuth } from "./helpers/den-auth.js";
 
 const ENGINE = process.cwd();
 /** External CLIs taken off PATH and replaced by recording fakes. */
@@ -46,10 +47,16 @@ function freePort(): Promise<number> {
   });
 }
 
-function get(port: number, p: string, method = "GET"): Promise<Run> {
+function get(
+  port: number,
+  p: string,
+  method = "GET",
+  /** SEC-1a: a mutation carries these (the CLI's credential). */
+  headers: Record<string, string> = {},
+): Promise<Run> {
   return new Promise((resolve, reject) => {
     const req = http.request(
-      { host: "localhost", port, path: p, method },
+      { host: "localhost", port, path: p, method, headers },
       (res) => {
         let body = "";
         res.on("data", (d: Buffer) => (body += d.toString()));
@@ -352,7 +359,14 @@ describe.each([
       "not configured: set secrets.provider and secrets.refs.sudo in config/acme.yml",
     );
     const load = JSON.parse(
-      (await get(port, "/api/sudo-password/load-from-vault", "POST")).out,
+      (
+        await get(
+          port,
+          "/api/sudo-password/load-from-vault",
+          "POST",
+          denAuth(path.join(f.tmp, "acme-home")),
+        )
+      ).out,
     );
     expect(load).toEqual({
       ok: false,

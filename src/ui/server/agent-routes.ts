@@ -35,6 +35,7 @@ import { getStateDir } from "../../shared/paths.js";
 import { HostError } from "../../shared/sessions/client.js";
 import {
   AgentError,
+  agentRecord,
   listAgents,
   listPersonas,
   listRuntimes,
@@ -48,6 +49,7 @@ import {
   type Started,
 } from "../cli/agent-ops.js";
 import { actorFromHeaders, recordAction } from "./audit.js";
+import { principalOf } from "./request-guard.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { hasPasswordlessSudo, hasSudoPassword } from "./sudo-store.js";
 import type { Actor } from "../../shared/agent-actor.js";
@@ -238,13 +240,20 @@ export async function handleAgentRoutes(
   const actor = actorFromHeaders(req.headers);
   const verb = action ?? "start";
   const audit = (detail: string, reason?: string) =>
-    recordAction(actor, {
-      verb: "agents",
-      detail,
-      ...(reason ? { outcome: "refused" as const, reason } : {}),
-    });
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
   let what = `${verb} ${id ?? "?"} in ${ws}`;
   try {
+    // Another workspace's agent is no agent here: a 404 that doesn't name
+    // it, before the lock (a locked request says the same).
+    if (id !== undefined) agentRecord(d, id, ws);
     guard(actor, deps.unlocked ?? defaultUnlocked);
     if (verb === "start") {
       const body = await startBody(req);

@@ -109,7 +109,19 @@ async function request(
   body: string;
   requestId: string | null;
 }> {
-  const r = await fetch(`http://localhost:${srv.port}${p}`, init);
+  // SEC-1a: a mutation carries the CLI's credential.
+  const r = await fetch(
+    `http://localhost:${srv.port}${p}`,
+    init.method && init.method !== "GET"
+      ? {
+          ...init,
+          headers: {
+            ...srv.auth(),
+            ...(init.headers as Record<string, string>),
+          },
+        }
+      : init,
+  );
   return {
     status: r.status,
     type: r.headers.get("content-type") ?? "",

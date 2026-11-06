@@ -103,6 +103,7 @@ import {
   selectSyncTargets,
 } from "../../shared/environment-manager/sync-targets.js";
 import { actorFromHeaders, recordAction } from "./audit.js";
+import { principalOf } from "./request-guard.js";
 import {
   GIT_REMOTE_TIMEOUT_MS,
   DETACH_WINDOW_MS,
@@ -2073,10 +2074,14 @@ export async function handleWorkspaceRoutes(
         type: "line",
         text: `  ${r.repoName}: not synced — ${r.reason}`,
       });
-    recordAction(actorFromHeaders(req.headers), {
-      verb: "sync",
-      detail: `${ws.name}${onlyRepo ? ` · repo=${onlyRepo}` : ""} · ${targets.length} managed repo(s)`,
-    });
+    recordAction(
+      actorFromHeaders(req.headers),
+      {
+        verb: "sync",
+        detail: `${ws.name}${onlyRepo ? ` · repo=${onlyRepo}` : ""} · ${targets.length} managed repo(s)`,
+      },
+      principalOf(req),
+    );
 
     if (targets.length === 0) {
       // Distinguish "you asked for a repo we can't sync" from "nothing to do",

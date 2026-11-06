@@ -246,6 +246,21 @@ else bad "no web log under ACME_HOME"; fi
 expect_in "page carries the UI marker" "$WORK/page.html" '<meta name="den-ui" content="1">'
 expect_in "web log shows Den's version" "$WEB_LOG" "v$(node -p "require('$DEN/package.json').version")"
 expect_not_in "web log shows no example name" "$WEB_LOG" "Shop"
+# SEC-1a: web.secret (0600) in ACME_HOME; a mutation needs the CLI's token
+# (from `web token --print`, never echoed) or the page's Origin and CSRF.
+if [ -f "$ACME_HOME/web.secret" ] && [ "$(stat -c %a "$ACME_HOME/web.secret" 2>/dev/null || stat -f %Lp "$ACME_HOME/web.secret")" = "600" ]; then
+  ok "web.secret is 0600 in ACME_HOME"
+else bad "no 0600 web.secret in ACME_HOME"; fi
+code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+  --data '{"editor":null}' "http://localhost:$PORT/api/settings")"
+[ "$code" = "403" ] && ok "POST /api/settings without a token: 403" || bad "POST /api/settings without a token answered $code"
+code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Host: evil.example" "http://localhost:$PORT/api/health")"
+[ "$code" = "421" ] && ok "a rebinding Host: 421" || bad "a rebinding Host answered $code"
+SEC_TOKEN="$(cd "$DIST" && ./bin/acme web token --print 2>/dev/null)"
+code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $SEC_TOKEN" --data '{"editor":null}' "http://localhost:$PORT/api/settings")"
+SEC_TOKEN=""
+[ "$code" = "200" ] && ok "POST /api/settings with \`acme web token --print\`: 200" || bad "POST /api/settings with the CLI token answered $code"
 run web-restart ./bin/acme web restart --no-open --port "$PORT"
 run web-down ./bin/acme web down --port "$PORT"
 port_free() { ! (lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1); }

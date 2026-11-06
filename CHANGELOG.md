@@ -8,6 +8,45 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **Request checks on every request** (0.4.1-dev.1, SEC-1a, SEC-1 spec §3).
+  Hardening for everyone; no sign-in yet (that is SEC-1b).
+  - **Host allowlist** (DNS rebinding): `localhost`, `127.0.0.1` and
+    `[::1]` with the server's port, plus the edge hostnames that route to
+    Den. Anything else answers 421 `misdirected` (R26's JSON for `/api`, the
+    shell-frame error page for a page, which links to the same path on
+    `localhost`). The product's own name is accepted when `/etc/hosts` maps
+    it to 127.0.0.1 (the URL `web up` opens then), and so is a specific
+    address `DEN_BIND_HOST` binds.
+  - **Origin** on POST, PUT, PATCH, DELETE and every WebSocket upgrade: an
+    allowed host, http or https. A missing Origin needs a valid
+    `Authorization`. Otherwise 403 `origin_rejected`.
+  - **CSRF**: the shell sends `X-Den-CSRF` on every same-origin mutation,
+    through `denShell.api()` or a page's own `fetch()`, with the token the
+    new `GET /api/session` hands out (`{ csrf, actor }`, same-origin callers
+    only). The token is per server start; after a restart the shell fetches
+    a fresh one and retries once. A browser mutation without it answers 403
+    `csrf`.
+  - **GETs that run something** (they stream over GET, for EventSource):
+    `/api/service/exec`, `/api/run`, `/api/workspace/exec`,
+    `/api/workspace/sync` and `/api/aws/login`. They answer this server's
+    own pages only (`Sec-Fetch-Site: same-origin`, or `none` for a typed
+    URL), or a caller with neither header and a valid bearer (the CLI,
+    MCP, curl). Another site's `<img src>` or no-cors fetch answers 403
+    `cross_site` (or `origin_rejected`), and nothing runs.
+  - **One route table** (`route-classes.ts`): every route the server
+    dispatches is `readonly`, `mutating` or `shell-grade` (§4), by method
+    and path; the checks read it, and SEC-1b will too. A test scans the
+    dispatchers and fails on a route the table doesn't classify.
+  - Other GETs, pages and SSE streams are unchanged on loopback (§6).
+- **`web.secret` and the CLI's person token** (SEC-1a, §5). The server
+  creates `web.secret` (32 random bytes, mode 0600) in the state dir at
+  start. The CLI and the stdio MCP server send `Authorization: Bearer
+  den_pt_…`, derived from it, on every call: nothing to set up. The server
+  verifies it in constant time; an invalid bearer answers 401
+  `unauthorized`. The audit entry of a call made with it gains `principal:
+  "person:<os user>"`, from the credential, never from a header.
+  `<cli> web token --print` prints it for curl (stdout only, with a
+  one-line note on stderr that it grants your access).
 - **Agents on the Workspaces page** (0.4.1-dev.0, AG-4a, AG spec §5c).
   Under the selected workspace's repo table, one row per agent: id and
   persona, runtime, state (`running`, `stopping`, `stopped`, `ended`,
@@ -39,6 +78,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **An agent's persona shows on every row** (0.4.1-dev.1), an id that is
+  its persona too ("planner persona planner").
+- **The unlock popover names agents** (0.4.1-dev.1): "Unlock to start, stop
+  and restart services and agents", in en, ja and es.
+- **Another workspace's agent is a 404 before the lock** (0.4.1-dev.1):
+  Stop or Resume of an agent id that belongs to another workspace answers
+  "no agent here" even while the lock is closed (it answered 423), and
+  still never names the other workspace.
 - **No config polls under an invalid config.** The server marks every page
   it serves while the config fails validation, and the shell also learns it
   from the first `422 config_invalid` answer. From then on it starts none of
@@ -50,7 +97,15 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
-None.
+- **Scripts that POST to `/api` with curl** need `Authorization: Bearer
+  $(<cli> web token --print)` or an `Origin` (SEC-1a), and so do curl GETs
+  of the routes that run something (`/api/service/exec`, `/api/run`,
+  `/api/workspace/exec`, `/api/workspace/sync`, `/api/aws/login`). Other
+  GETs work unchanged.
+- **A Host other than `localhost`, `127.0.0.1`, `[::1]` or Den's edge
+  hostname** now answers 421: a server exposed with `DEN_BIND_HOST=0.0.0.0`
+  and reached by a LAN name or address goes through the edge instead, or
+  binds that address (`DEN_BIND_HOST=<address>`).
 
 ## [0.4.0] - 2026-11-06
 

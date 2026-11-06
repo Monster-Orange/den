@@ -254,7 +254,7 @@
     // The lock chip and its popover (R8).
     "lock.locked": "Locked",
     "lock.unlocked": "Unlocked",
-    "lock.title": "Unlock to start, stop and restart services",
+    "lock.title": "Unlock to start, stop and restart services and agents",
     "lock.nopw": "Passwordless sudo (NOPASSWD): no admin password needed",
     "lock.session": "Unlocked for this session",
     "lock.sessionDesc":
@@ -353,6 +353,11 @@
     "err.500.time": "Time",
     "err.500.id": "Request id",
     "err.500.version": "Version",
+    "err.421.title": "Wrong address",
+    "err.421.lead":
+      "This server answers only on its own addresses, so a page on another name can't reach it.",
+    "err.421.open": "Open on localhost",
+    "err.refused.title": "Request refused",
     "err.422.title": "Config is invalid",
     "err.422.sub": "The distribution config fails validation",
     "err.422.lead":
@@ -3307,7 +3312,10 @@
   var rawFetch =
     typeof window.fetch === "function" ? window.fetch.bind(window) : null;
   function sameOrigin(input) {
-    var u = typeof input === "string" ? input : input && input.url;
+    var u =
+      typeof input === "string"
+        ? input
+        : input && (typeof input.url === "string" ? input.url : input.href);
     if (!u) return false;
     if (u.charAt(0) === "/" && u.charAt(1) !== "/") return true;
     try {
@@ -3374,9 +3382,91 @@
     hideBanner("net");
     serverState(true);
   }
+  // SEC-1a: every same-origin call that changes something (POST, PUT,
+  // PATCH, DELETE), through denShell.api() or a page's own fetch(), carries
+  // X-Den-CSRF with the token GET /api/session hands out. The token is per
+  // server start: a 403 `csrf` (the server restarted) fetches a fresh one
+  // and retries once. Never sent to another origin.
+  var CSRF_METHODS = { POST: 1, PUT: 1, PATCH: 1, DELETE: 1 };
+  var csrf = { token: null, pending: null };
+  function csrfToken(fresh) {
+    if (fresh) csrf.token = null;
+    if (csrf.token) return Promise.resolve(csrf.token);
+    if (!csrf.pending)
+      csrf.pending = rawFetch("/api/session", {
+        cache: "no-store",
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.ok ? r.json() : null;
+        })
+        .then(
+          function (b) {
+            csrf.pending = null;
+            csrf.token = b && typeof b.csrf === "string" ? b.csrf : null;
+            return csrf.token;
+          },
+          function () {
+            csrf.pending = null;
+            return null;
+          },
+        );
+    return csrf.pending;
+  }
+  function isRequest(input) {
+    return typeof Request !== "undefined" && input instanceof Request;
+  }
+  function methodOf(input, init) {
+    var m = (init && init.method) || (isRequest(input) && input.method);
+    return String(m || "GET").toUpperCase();
+  }
+  function withCsrf(input, init, token) {
+    var headers = new Headers(
+      (init && init.headers) || (isRequest(input) ? input.headers : undefined),
+    );
+    headers.set("X-Den-CSRF", token);
+    return Object.assign({}, init || {}, { headers: headers });
+  }
+  function csrfFetch(input, init) {
+    // A body that can be sent twice (not a stream) may be retried.
+    var body = init && init.body;
+    var again =
+      !isRequest(input) &&
+      (body == null ||
+        typeof body === "string" ||
+        (typeof FormData !== "undefined" && body instanceof FormData) ||
+        (typeof URLSearchParams !== "undefined" &&
+          body instanceof URLSearchParams) ||
+        (typeof Blob !== "undefined" && body instanceof Blob));
+    var send = function (token) {
+      return rawFetch(input, token ? withCsrf(input, init, token) : init);
+    };
+    return csrfToken(false).then(function (token) {
+      return send(token).then(function (r) {
+        if (!again || !r || r.status !== 403) return r;
+        return r
+          .clone()
+          .json()
+          .then(
+            function (b) {
+              if (!b || b.code !== "csrf") return r;
+              return csrfToken(true).then(function (fresh) {
+                return fresh ? send(fresh) : r;
+              });
+            },
+            function () {
+              return r;
+            },
+          );
+      });
+    });
+  }
   if (rawFetch && !window.fetch.__denShell) {
     var wrapped = function (input, init) {
-      var p = rawFetch(input, init);
+      var p =
+        CSRF_METHODS[methodOf(input, init)] && sameOrigin(input)
+          ? csrfFetch(input, init)
+          : rawFetch(input, init);
       if (!p || typeof p.then !== "function") return p;
       return p.then(
         function (r) {
@@ -3399,6 +3489,8 @@
     };
     wrapped.__denShell = true;
     window.fetch = wrapped;
+    // The token is in hand before the first click needs it.
+    csrfToken(false);
   }
 
   // ── the UI language (R19): a user pref ───────────────────────────────

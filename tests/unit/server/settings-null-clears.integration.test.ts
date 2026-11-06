@@ -16,6 +16,7 @@ import * as net from "net";
 import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
+import { denAuth } from "./helpers/den-auth.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -50,7 +51,10 @@ function ping(): Promise<number> {
 async function post(body: unknown): Promise<{ status: number; text: string }> {
   const r = await fetch(`http://localhost:${port}/api/settings`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      ...denAuth(path.join(tmp, "home", ".den")),
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(body),
   });
   return { status: r.status, text: await r.text() };

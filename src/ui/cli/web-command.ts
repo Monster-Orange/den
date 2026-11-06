@@ -12,6 +12,11 @@ import {
 } from "../../shared/secrets/index.js";
 import { getDistRoot, getEngineRoot, getStateDir } from "../../shared/paths.js";
 import { hasDenUiMarker } from "../../shared/ui-marker.js";
+import {
+  ensureWebSecret,
+  osUser,
+  personToken,
+} from "../../shared/web-secret.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import {
@@ -993,6 +998,7 @@ export function displayWebHelp(): void {
     `  ${product().cli} web [up|down|restart] [--port <port>] [--no-open] [--verbose]`,
   );
   console.log(`  ${product().cli} web --setup-browser-access`);
+  console.log(`  ${product().cli} web token --print`);
   console.log();
   console.log(chalk.bold("Actions:"));
   console.log(
@@ -1002,6 +1008,9 @@ export function displayWebHelp(): void {
     `  down               Stop the ${product().title} web daemon only`,
   );
   console.log(`  restart            Stop then start ${product().title} web`);
+  console.log(
+    "  token --print      Print your CLI token, for curl (Authorization: Bearer …)",
+  );
   console.log("  (start/stop remain accepted as legacy aliases for up/down)");
   console.log();
   console.log(chalk.bold("Options:"));
@@ -1021,9 +1030,46 @@ export function displayWebHelp(): void {
   console.log();
 }
 
+/**
+ * `<cli> web token --print` (SEC-1a): the person token, for curl. The token
+ * alone on stdout; a one-line note on stderr that it grants the user's
+ * access. Creates web.secret on first need.
+ */
+export function cmdWebToken(
+  args: string[],
+  io: {
+    out: (s: string) => void;
+    err: (s: string) => void;
+    stateDir?: string;
+  } = {
+    out: (s) => process.stdout.write(s),
+    err: (s) => process.stderr.write(s),
+  },
+): number {
+  const rest = args.filter((a) => a !== "--print");
+  if (!args.includes("--print") || rest.length > 0) {
+    io.err(
+      `Usage: ${product().cli} web token --print\n` +
+        "  Prints the token that authorizes your CLI's calls to the web server.\n",
+    );
+    return 2;
+  }
+  const secret = ensureWebSecret(io.stateDir ?? getStateDir());
+  io.err(
+    `${product().cli}: this token grants your access (person:${osUser()}) to ` +
+      `${product().title} web; keep it out of logs and shared shells.\n`,
+  );
+  io.out(`${personToken(secret)}\n`);
+  return 0;
+}
+
 export async function cmdWeb(args: string[]): Promise<void> {
   if (args.includes("--help") || args.includes("-h")) {
     displayWebHelp();
+    return;
+  }
+  if (args[0] === "token") {
+    process.exitCode = cmdWebToken(args.slice(1));
     return;
   }
 

@@ -18,6 +18,12 @@ export { actorFromHeaders } from "../../shared/agent-actor.js";
 export interface AuditEntry {
   ts: string;
   actor: "agent" | "user";
+  /**
+   * SEC-1a: who the request's credential proves it is, `person:<os user>`
+   * for the person token. From the credential only, never from a header
+   * the caller sets; absent for a call without one (a browser in SEC-1a).
+   */
+  principal?: string;
   client?: string;
   clientVersion?: string;
   mcpPid?: number | null;
@@ -71,10 +77,13 @@ export function recordAction(
     addresses?: string[];
     targetWorkspace?: string;
   },
+  /** The credential's actor (request-guard principalOf). */
+  principal?: string,
 ): AuditEntry {
   const entry: AuditEntry = {
     ts: new Date().toISOString(),
     actor: actor ? "agent" : "user",
+    ...(principal ? { principal } : {}),
     ...(actor
       ? {
           client: actor.client,
@@ -177,6 +186,7 @@ export function recordAgentRefusal(
     targets?: unknown;
     reason?: unknown;
   },
+  principal?: string,
 ): AuditEntry {
   const tool = clean(report.tool, 64).replace(/[^A-Za-z0-9_]/g, "") || "tool";
   const repo = typeof report.repo === "string" ? report.repo : "";
@@ -186,22 +196,30 @@ export function recordAgentRefusal(
   if (lifecycle && SAFE_PART.test(repo)) {
     const address =
       service && SAFE_PART.test(service) ? `${repo}/${service}` : repo;
-    return recordAction(actor, {
-      verb: "exec",
-      detail: `${address} ${lifecycle[1]} (local)`,
-      outcome: "refused",
-      reason,
-    });
+    return recordAction(
+      actor,
+      {
+        verb: "exec",
+        detail: `${address} ${lifecycle[1]} (local)`,
+        outcome: "refused",
+        reason,
+      },
+      principal,
+    );
   }
   // Any other tool: the refusal is the detail, under every service or repo
   // the call named (all of a logs_search's targets, in one entry).
-  return recordAction(actor, {
-    verb: tool,
-    detail: reason,
-    outcome: "refused",
-    reason,
-    addresses: refusedAddresses(report),
-  });
+  return recordAction(
+    actor,
+    {
+      verb: tool,
+      detail: reason,
+      outcome: "refused",
+      reason,
+      addresses: refusedAddresses(report),
+    },
+    principal,
+  );
 }
 
 /**
@@ -215,6 +233,7 @@ export function recordAgentRefusal(
 export function recordCrossWorkspace(
   actor: Actor,
   report: { tool?: unknown; crossWorkspace?: unknown },
+  principal?: string,
 ): AuditEntry | null {
   if (!actor?.agent || !actor.workspace) return null;
   const target =
@@ -222,11 +241,15 @@ export function recordCrossWorkspace(
   if (!WORKSPACE_NAME_RE.test(target) || target === actor.workspace)
     return null;
   const tool = clean(report.tool, 64).replace(/[^A-Za-z0-9_]/g, "") || "tool";
-  return recordAction(actor, {
-    verb: tool,
-    detail: `in workspace ${target}, under a grant to ${actor.agent} of workspace ${actor.workspace}`,
-    targetWorkspace: target,
-  });
+  return recordAction(
+    actor,
+    {
+      verb: tool,
+      detail: `in workspace ${target}, under a grant to ${actor.agent} of workspace ${actor.workspace}`,
+      targetWorkspace: target,
+    },
+    principal,
+  );
 }
 
 /**

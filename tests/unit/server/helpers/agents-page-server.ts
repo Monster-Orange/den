@@ -31,6 +31,7 @@ import {
   scriptedFactory,
   type ScriptedPty,
 } from "../../sessions/helpers/fake-pty.js";
+import { denAuth } from "./den-auth.js";
 
 const ENGINE = path.resolve(__dirname, "../../../..");
 
@@ -218,7 +219,7 @@ export async function startAgentsPageServer(
     async settings(body) {
       const r = await fetch(`${base}/api/settings`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { ...denAuth(stateDir), "content-type": "application/json" },
         body: JSON.stringify(body),
       });
       return r.status;

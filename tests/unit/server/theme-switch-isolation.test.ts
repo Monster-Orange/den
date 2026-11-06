@@ -33,6 +33,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
+import { denAuth } from "./helpers/den-auth.js";
 
 const ENGINE = process.cwd();
 let PORT = 0;
@@ -54,12 +55,16 @@ function request(
         path: p,
         method,
         timeout: 10_000,
-        headers: data
-          ? {
-              "Content-Type": "application/json",
-              "Content-Length": Buffer.byteLength(data),
-            }
-          : {},
+        headers: {
+          // SEC-1a: a mutation carries the CLI's credential.
+          ...(method === "GET" ? {} : denAuth(path.join(tmp, "home", ".den"))),
+          ...(data
+            ? {
+                "Content-Type": "application/json",
+                "Content-Length": Buffer.byteLength(data),
+              }
+            : {}),
+        },
       },
       (res) => {
         let out = "";

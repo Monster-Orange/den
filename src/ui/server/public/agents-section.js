@@ -115,10 +115,10 @@ function rowHtml(r) {
     (r.resumable
       ? btn("resume", t("ag.resume"), t("ag.resumeName", { id: r.agent }))
       : "");
-  const persona =
-    r.persona && r.persona !== r.agent
-      ? ` <span class="tbl-muted">${esc(t("ag.personaOf", { persona: r.persona }))}</span>`
-      : "";
+  // Every row names its persona, an id that is the persona too.
+  const persona = r.persona
+    ? ` <span class="tbl-muted">${esc(t("ag.personaOf", { persona: r.persona }))}</span>`
+    : "";
   const model = r.model
     ? ` <span class="tbl-muted">· ${esc(r.model)}</span>`
     : "";

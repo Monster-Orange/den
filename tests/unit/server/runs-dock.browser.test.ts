@@ -27,6 +27,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { denAuth } from "./helpers/den-auth.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -153,7 +154,10 @@ afterAll(async () => {
 async function resetDock(): Promise<void> {
   await fetch(`http://localhost:${port}/api/settings`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      ...denAuth(path.join(tmp, "home", ".acme")),
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({ shell: { dock: false, dockHeight: 0 } }),
   });
 }

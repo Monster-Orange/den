@@ -24,6 +24,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { denAuth } from "./helpers/den-auth.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -216,8 +217,10 @@ describe("preflight from the Services page", () => {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 15_000);
     try {
+      // SEC-1a: a GET that runs something carries the CLI's credential.
       const r = await fetch(api(`/api/service/exec?${q}`), {
         signal: ctl.signal,
+        headers: denAuth(path.join(tmp, "home", ".den")),
       });
       const reader = r.body!.getReader();
       const dec = new TextDecoder();

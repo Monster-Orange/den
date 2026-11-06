@@ -185,6 +185,7 @@ describe("a repo removed from default is never re-added", () => {
             method: "DELETE",
             agent: false,
             headers: {
+              ...srv.auth(),
               "content-type": "application/json",
               "content-length": Buffer.byteLength(body),
             },

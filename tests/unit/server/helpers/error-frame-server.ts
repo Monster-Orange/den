@@ -19,6 +19,7 @@ import * as net from "net";
 import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
+import { denAuth } from "./den-auth.js";
 
 export const ENGINE = path.resolve(__dirname, "../../../..");
 
@@ -131,7 +132,11 @@ export async function startFrameServer(
           port,
           path: p,
           method,
-          headers: o.headers,
+          // SEC-1a: a mutation carries the CLI's credential.
+          headers:
+            method === "GET" || method === "HEAD"
+              ? o.headers
+              : { ...denAuth(path.join(tmp, "den-home")), ...o.headers },
           agent: false,
           timeout: 15_000,
         },

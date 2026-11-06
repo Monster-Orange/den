@@ -144,7 +144,8 @@
     "dock.resize": "Arrastra para cambiar el tamaño",
     "lock.locked": "Bloqueado",
     "lock.unlocked": "Desbloqueado",
-    "lock.title": "Desbloquea para iniciar, detener y reiniciar servicios",
+    "lock.title":
+      "Desbloquea para iniciar, detener y reiniciar servicios y agentes",
     "lock.nopw":
       "sudo sin contraseña (NOPASSWD): no hace falta la contraseña de administrador",
     "lock.session": "Desbloqueado durante esta sesión",
@@ -241,6 +242,11 @@
     "err.500.time": "Hora",
     "err.500.id": "Id de solicitud",
     "err.500.version": "Versión",
+    "err.421.title": "Dirección incorrecta",
+    "err.421.lead":
+      "Este servidor solo responde en sus propias direcciones, así que una página con otro nombre no puede alcanzarlo.",
+    "err.421.open": "Abrir en localhost",
+    "err.refused.title": "Solicitud rechazada",
     "err.422.title": "La configuración no es válida",
     "err.422.sub": "La configuración de la distribución no pasa la validación",
     "err.422.lead":

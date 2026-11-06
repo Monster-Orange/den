@@ -216,6 +216,9 @@ async function mount(o: Opts = {}): Promise<{
         });
       case "/api/changelog":
         return json([]);
+      // SEC-1a: the shell's CSRF token, as the server hands it out.
+      case "/api/session":
+        return json({ csrf: "stub-csrf", actor: null });
     }
     if (url.pathname.startsWith("/api/")) return json({});
     const which =
@@ -611,7 +614,7 @@ describe("the lock chip (R8)", () => {
     expect(reqs.filter((r) => r.includes("vault-status"))).toHaveLength(1);
     expect(await p.getAttribute("#den-lock-pop", "role")).toBe("dialog");
     expect(await text(p, "#den-lock-pop")).toBe(
-      "Unlock to start, stop and restart services Save to 1Password Unlock Den asks once per session. Agents can't unlock.",
+      "Unlock to start, stop and restart services and agents Save to 1Password Unlock Den asks once per session. Agents can't unlock.",
     );
     await p.fill("#den-lock-pw", "wrong");
     await p.click("#den-lock-go");
