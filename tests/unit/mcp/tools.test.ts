@@ -594,7 +594,7 @@ describe("a web server older than the MCP server", () => {
     );
   });
 
-  it("other 404s never read server-info", async () => {
+  it("other 404s read server-info once, only to check the engine (MD-2)", async () => {
     const { api, calls } = fakeApi({
       get: (path) => {
         throw new DenHttpError("GET", path, 404, "no such repo");
@@ -604,6 +604,31 @@ describe("a web server older than the MCP server", () => {
     expect(r.text).toBe(
       "Error: graph: the web server answered 404 for GET /api/graph: no such repo",
     );
-    expect(calls.map((c) => c.path)).toEqual(["/api/graph"]);
+    expect(calls.map((c) => c.path)).toEqual([
+      "/api/graph",
+      "/api/server-info",
+    ]);
+  });
+
+  it("names both versions and the restart when the engine on disk is newer (MD-2)", async () => {
+    const { api } = fakeApi({
+      get: (path) => {
+        if (path === "/api/server-info")
+          return {
+            pid: 1,
+            version: "0.3.0-dev.37",
+            engineStale: true,
+            loaded: { version: "0.3.0-dev.37", buildId: "aaa" },
+            onDisk: { version: "0.3.0-dev.38", buildId: "bbb" },
+          };
+        throw new DenHttpError("GET", path, 404, "No such API route");
+      },
+    });
+    const r = await callTool("graph", { seed: "shop" }, ctx(api));
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain(
+      "Den was updated to 0.3.0-dev.38, but the web server is still running 0.3.0-dev.37",
+    );
+    expect(r.text).toContain("acme web restart");
   });
 });

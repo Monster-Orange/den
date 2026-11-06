@@ -21,6 +21,8 @@ const PAGES: Record<string, { page: string; healthEnv?: string }> = {
   "settings.html": { page: "settings" },
   "index.html": { page: "tests" },
   "edge.html": { page: "edge" },
+  // The error page (R26a): a failed page request's, in the frame.
+  "error.html": { page: "error" },
 };
 
 describe("every page mounts the shell", () => {

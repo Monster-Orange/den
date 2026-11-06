@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Mode before first paint: yours (the server fills it in below),
+      // else the system's, else the theme's default, else dark.
+      (function () {
+        var m = "@@DEN_MODE@@";
+        if (m !== "dark" && m !== "light") {
+          var q = function (s) {
+            return (
+              window.matchMedia &&
+              matchMedia("(prefers-color-scheme: " + s + ")").matches
+            );
+          };
+          m = q("light")
+            ? "light"
+            : q("dark")
+              ? "dark"
+              : "@@DEN_DEFAULT_MODE@@";
+        }
+        document.documentElement.dataset.mode =
+          m === "light" ? "light" : "dark";
+      })();
+    </script>
+    <link rel="stylesheet" href="/theme.css" id="theme-css" />
+    <title>__DEN_TITLE__ · Error</title>
+    <style>
+      /* The error page (R26a, 0.3.0-dev.38): the prototype's (den-shell.html)
+         page header (.ph), empty-state box (.empty) and buttons (.btn),
+         ported as they are; --r is --radius, --r-btn is --radius-button. */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      /* .main */
+      html body.den-has-shell > #den-content {
+        overflow: auto;
+        min-width: 0;
+        padding: 20px 24px 32px 24px;
+        font: 14px/1.45 var(--sans);
+        color: var(--text);
+        display: block;
+      }
+      #den-content :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      a {
+        color: var(--accent-text);
+      }
+      /* .ph */
+      .ph {
+        display: flex;
+        align-items: flex-end;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      .ph h1 {
+        font: 600 22px/1.2 var(--display);
+        margin: 0;
+        text-wrap: balance;
+      }
+      .ph .sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 4px;
+        overflow-wrap: anywhere;
+      }
+      .ph .k {
+        font: 11px var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--faint);
+      }
+      /* .empty */
+      .empty {
+        border: 1px dashed var(--border-strong);
+        border-radius: var(--radius);
+        padding: 28px;
+        color: var(--muted);
+        max-width: 640px;
+      }
+      .empty b {
+        color: var(--text);
+      }
+      .empty p {
+        margin: 0 0 12px;
+      }
+      .empty .lead {
+        color: var(--text);
+      }
+      /* .btn */
+      .btn {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        border-radius: var(--radius-button);
+        padding: 6px 12px;
+        cursor: pointer;
+        font: 500 14px/1.45 var(--sans);
+        white-space: nowrap;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .btn:hover {
+        border-color: var(--border-strong);
+      }
+      .btn.primary {
+        background: var(--accent-fill);
+        border-color: var(--accent-fill);
+        color: var(--on-accent);
+      }
+      .btn kbd {
+        font: 11px var(--mono);
+        color: var(--faint);
+      }
+      .acts {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+      }
+      .mono {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        color: var(--text);
+        overflow-wrap: anywhere;
+      }
+      dl.facts {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 6px 16px;
+        margin: 0;
+      }
+      dl.facts dt {
+        font: 11px var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--faint);
+        padding-top: 2px;
+      }
+      dl.facts dd {
+        margin: 0;
+      }
+      h2.sec {
+        font: 600 13px var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+        margin: 22px 0 10px;
+      }
+      ul.pages {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The shell: top bar and rail, the same on every page (shell.js). -->
+    <div id="den-shell" data-page="error"></div>
+    <script src="/shell.js"></script>
+
+    <!-- The page's one main landmark: everything after the shell. -->
+    <main id="den-content">
+      <div id="den-error-page" aria-live="polite"></div>
+      <script type="application/json" id="den-error">
+        @@DEN_ERROR@@
+      </script>
+      <script type="module">
+        import {
+          applyDenConfig,
+          initChangelog,
+          initHealth,
+          initLogBadge,
+          initWorkspacePill,
+        } from "/header.js";
+        import { mountErrorPage } from "/error-page.js";
+        mountErrorPage(document.getElementById("den-error-page"));
+        void Promise.all([
+          initHealth(),
+          initWorkspacePill(),
+          applyDenConfig(),
+          initChangelog(),
+        ]).then(initLogBadge);
+      </script>
+    </main>
+  </body>
+</html>

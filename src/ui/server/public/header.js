@@ -826,14 +826,13 @@ function followScopeInUrl(value) {
  */
 async function _switchScope(value) {
   try {
-    const res = await fetch("/api/scope", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope: value }),
-    });
-    if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+    await window.denShell.api("POST", "/api/scope", { scope: value });
   } catch (err) {
-    window.denShell?.toast?.(`Could not change the view: ${err.message}`);
+    if (err?.denApi) {
+      err.message = `Could not change the view: ${err.message}`;
+      window.denShell.errorToast(err);
+    } else
+      window.denShell?.toast?.(`Could not change the view: ${err.message}`);
     return;
   }
   followScopeInUrl(value);
@@ -847,14 +846,15 @@ async function _switchScope(value) {
  */
 async function _setFocus(name) {
   try {
-    const res = await fetch("/api/workspaces", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, action: "focus" }),
+    await window.denShell.api("POST", "/api/workspaces", {
+      name,
+      action: "focus",
     });
-    if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
   } catch (err) {
-    window.denShell?.toast?.(`Could not set the focus: ${err.message}`);
+    if (err?.denApi) {
+      err.message = `Could not set the focus: ${err.message}`;
+      window.denShell.errorToast(err);
+    } else window.denShell?.toast?.(`Could not set the focus: ${err.message}`);
     return;
   }
   location.reload();
@@ -1191,6 +1191,13 @@ async function _staleTick() {
   if (info && info.pid != null)
     _lastServerInfo = { pid: info.pid, startedAt: info.startedAt };
   _renderStalePill(info);
+  // MD-2: a newer engine on disk than the one this server runs.
+  if (info && "engineStale" in info)
+    window.denShell?.setEngine?.({
+      stale: info.engineStale === true,
+      loaded: info.loaded?.version ?? null,
+      onDisk: info.onDisk?.version ?? null,
+    });
   setTimeout(_staleTick, SERVER_INFO_POLL_MS);
 }
 

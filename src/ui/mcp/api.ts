@@ -85,6 +85,28 @@ export class DenHttpError extends Error {
   }
 }
 
+/**
+ * An error body as a line: the server's R26b JSON ({ ok: false, error,
+ * code, requestId }) as its message and request id, anything else as is.
+ */
+export function errorText(body: string): string {
+  try {
+    const j = JSON.parse(body) as {
+      error?: unknown;
+      code?: unknown;
+      requestId?: unknown;
+    };
+    if (j && typeof j.error === "string")
+      return (
+        j.error +
+        (typeof j.requestId === "string" ? ` (request ${j.requestId})` : "")
+      );
+  } catch {
+    /* not JSON */
+  }
+  return body;
+}
+
 /** Read routes: GET only. */
 const READ_ROUTES = new Set([
   "/api/health",
@@ -268,8 +290,12 @@ export function createDenApi(opts: {
         signal,
       });
       if (!res.ok) {
-        const text = (await res.text()).slice(0, 2000);
-        throw new DenHttpError(method, path, res.status, text);
+        throw new DenHttpError(
+          method,
+          path,
+          res.status,
+          errorText((await res.text()).slice(0, 2000)),
+        );
       }
       return res;
     } catch (e) {

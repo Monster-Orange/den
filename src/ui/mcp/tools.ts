@@ -547,13 +547,17 @@ export function versionBefore(a: string, b: string): boolean {
   return false;
 }
 
-/** The running web server's version, or undefined when it reports none. */
-async function webServerVersion(api: DenApi): Promise<string | undefined> {
+/** The running web server's /api/server-info, or null when it has none. */
+async function readServerInfo(
+  api: DenApi,
+): Promise<Record<string, unknown> | null> {
   try {
-    const info = (await api.get("/api/server-info")) as { version?: unknown };
-    return typeof info?.version === "string" ? info.version : undefined;
+    const info = (await api.get("/api/server-info")) as unknown;
+    return info && typeof info === "object"
+      ? (info as Record<string, unknown>)
+      : null;
   } catch (e) {
-    if (e instanceof DenHttpError) return undefined;
+    if (e instanceof DenHttpError) return null;
     throw e;
   }
 }
@@ -567,11 +571,13 @@ async function notFoundMessage(
   e: DenHttpError,
   tool: string,
   ctx: ToolContext,
+  info: () => Promise<Record<string, unknown> | null>,
 ): Promise<string> {
   const plain = `Error: ${tool}: the web server answered 404 for ${e.method} ${e.path}: ${e.body}`;
   const since = ROUTE_SINCE[e.path];
   if (!since) return plain;
-  const version = await webServerVersion(ctx.api);
+  const v = (await info())?.version;
+  const version = typeof v === "string" ? v : undefined;
   if (version !== undefined && !versionBefore(version, since)) return plain;
   return (
     `web server is Den ${version ?? `< ${since}`}; ` +
@@ -606,6 +612,30 @@ async function reportRefusal(
   }
 }
 
+/**
+ * MD-2: when the web server runs an older engine than the one on disk (a
+ * pin upgraded Den under it), every failed call says so, naming both
+ * versions and the restart. Null when the engines agree or it can't tell.
+ */
+function staleEngineMessage(
+  tool: string,
+  ctx: ToolContext,
+  info: Record<string, unknown> | null,
+): string | null {
+  if (info?.engineStale !== true) return null;
+  const ver = (x: unknown) =>
+    x &&
+    typeof x === "object" &&
+    typeof (x as { version?: unknown }).version === "string"
+      ? (x as { version: string }).version
+      : "unknown";
+  return (
+    `Error: ${tool}: Den was updated to ${ver(info.onDisk)}, but the web server ` +
+    `is still running ${ver(info.loaded)}. Restart it: ${ctx.cli} web restart ` +
+    `(or your service restart).`
+  );
+}
+
 export async function callTool(
   name: string,
   args: Args,
@@ -627,8 +657,21 @@ export async function callTool(
         text: redactSecrets(JSON.stringify(e.out, null, 2)),
         isError: true,
       };
+    // server-info is read lazily, once, and only after a call failed.
+    let infoRead: Promise<Record<string, unknown> | null> | null = null;
+    const info = () => (infoRead ??= readServerInfo(ctx.api).catch(() => null));
+    if (e instanceof DenHttpError) {
+      const stale = staleEngineMessage(name, ctx, await info());
+      if (stale)
+        return {
+          text: redactSecrets(
+            `${stale} (${e.method} ${e.path} answered ${e.status}: ${e.body})`,
+          ),
+          isError: true,
+        };
+    }
     if (e instanceof DenHttpError && e.status === 404) {
-      const text = await notFoundMessage(e, name, ctx).catch(
+      const text = await notFoundMessage(e, name, ctx, info).catch(
         (inner: Error) => `Error: ${inner.message}`,
       );
       return { text: redactSecrets(text), isError: true };

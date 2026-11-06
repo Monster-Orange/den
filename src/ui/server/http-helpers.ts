@@ -79,6 +79,8 @@ export function serveFile(
   filePath: string,
   /** A page served from another's file (the Graph page): its raw text in, out. */
   transform?: (html: string) => string,
+  /** The status to answer with (an error page's: R26a). */
+  status = 200,
 ): void {
   try {
     let data: Buffer | string = fs.readFileSync(filePath);
@@ -96,7 +98,7 @@ export function serveFile(
     // so any heuristic caching would have no way to revalidate).
     if (filePath.endsWith(".html") || filePath.endsWith(".js"))
       headers["Cache-Control"] = "no-store";
-    res.writeHead(200, headers);
+    res.writeHead(status, headers);
     res.end(data);
   } catch {
     res.writeHead(404, { "Content-Type": "text/plain" });

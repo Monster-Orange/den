@@ -145,6 +145,9 @@ const EN = {
   "status.all": "All {n} healthy",
   "status.some": "{ok}/{n} healthy",
   "status.down": "{n} down",
+  "status.unknown": "Status unknown",
+  "status.unknownTip":
+    "Den's server isn't responding, so service health is unknown",
 };
 function defaultT(key, vars) {
   return String(EN[key] ?? key).replace(/\{(\w+)\}/g, (m, k) =>
@@ -457,9 +460,21 @@ export function paintChecking() {
   paintChip();
 }
 
+/** R26d: the server isn't answering, so nothing about health is known. */
+let serverDown = false;
+
 function paintChip() {
   const chip = $("den-status");
   if (!chip) return;
+  if (serverDown) {
+    chip.classList.remove("bad");
+    chip.setAttribute("aria-busy", "false");
+    chip.title = t("status.unknownTip");
+    chip.innerHTML =
+      `<span class="den-dot off" aria-hidden="true"></span>` +
+      `<span class="den-n">${esc(t("status.unknown"))}</span>`;
+    return;
+  }
   const c = statusChip(statusSummary(health.row), t);
   chip.classList.toggle("bad", c.bad);
   chip.setAttribute("aria-busy", c.busy ? "true" : "false");
@@ -1309,6 +1324,13 @@ export function initTopbar(opts = {}) {
   if (inited || typeof document === "undefined") return;
   inited = true;
   trackRuns();
+  // R26d: while the server doesn't answer, the chip reads unknown (never a
+  // stale green); it repaints from the last health once it is back.
+  serverDown = sh()?.serverUp ? !sh().serverUp() : false;
+  window.addEventListener("den:server", (e) => {
+    serverDown = e.detail?.up === false;
+    paintChip();
+  });
   paintChip();
   paintRuns();
   sh()?.runs?.onChange?.(paintRuns);

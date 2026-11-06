@@ -1251,10 +1251,10 @@
             env,
             targets: targets.join(","),
           });
-          const data = await fetch(`/api/logs/search?${params}`).then((r) => {
-            if (!r.ok) throw new Error(`search failed (${r.status})`);
-            return r.json();
-          });
+          const data = await window.denShell.api(
+            "GET",
+            `/api/logs/search?${params}`,
+          );
           let total = 0;
           for (const result of data.results) {
             if (result.error) {

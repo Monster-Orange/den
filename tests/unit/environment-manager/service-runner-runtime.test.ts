@@ -538,24 +538,21 @@ describe("runServiceCommand tab runtime", () => {
       },
     });
 
-    runServiceCommand({
+    const result = runServiceCommand({
       address: "repo/api",
       command: "restart",
       onLine: jest.fn(),
       onClose: jest.fn(),
     });
 
-    expect(mockSpawnStreaming).toHaveBeenCalledWith(
-      "opctl container delete --label container-name='repo' && make up",
-      [],
-      expect.any(Object),
-      expect.any(Function),
-      expect.any(Function),
-      "/repos/repo",
-      true,
-      undefined,
-      undefined,
-    );
+    // A down step, then a detached up step (0.3.0-dev.38): never one
+    // `<down> && <up>`, so the up's process group holds only the up. (The
+    // mock closes each spawn at once, so the up follows the down here.)
+    expect(result.detachable).toBe(true);
+    expect(mockSpawnStreaming.mock.calls.map((c) => [c[0], c[6]])).toEqual([
+      ["opctl container delete --label container-name='repo'", false],
+      ["make up", true],
+    ]);
   });
 
   it("keeps a tracked tab entry when tab close automation fails", () => {
@@ -1299,7 +1296,7 @@ describe("workspace ownership refcount through runServiceCommand", () => {
     );
   }
 
-  function sharedDaemon(workspaces: string[]): void {
+  function sharedDaemon(workspaces: string[], extra = {}): void {
     registerDaemon({
       address: "repo/api",
       repoName: "repo",
@@ -1309,6 +1306,7 @@ describe("workspace ownership refcount through runServiceCommand", () => {
       workspaces,
       logPath: "/logs/repo-api.log",
       startedAt: new Date("2026-08-03T00:00:00.000Z"),
+      ...extra,
     });
   }
 
@@ -1417,7 +1415,12 @@ describe("workspace ownership refcount through runServiceCommand", () => {
 
   it("up attaches the workspace as an owner and short-circuits", async () => {
     withWorkspaces("wsA", "wsB");
-    sharedDaemon(["wsB"]);
+    // A dev.37+ record carries its process group (a record without one is
+    // a pre-dev.37 record: down-legacy-records.test.ts).
+    sharedDaemon(["wsB"], {
+      pgid: 2_000_000_000,
+      pgidStartedAt: "Thu Jan  1 00:00:00 1970",
+    });
     const onClose = jest.fn();
 
     runServiceCommand({

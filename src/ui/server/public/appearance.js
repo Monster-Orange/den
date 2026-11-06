@@ -274,6 +274,13 @@ function syncMenu() {
 }
 
 async function save(patch) {
+  // R26c: the shell's one client path (its error names the server's
+  // message and request id); a page without the shell, a plain fetch.
+  const api = typeof window !== "undefined" ? window.denShell?.api : null;
+  if (api) {
+    await api("POST", "/api/settings", { appearance: patch });
+    return;
+  }
   const r = await fetch("/api/settings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

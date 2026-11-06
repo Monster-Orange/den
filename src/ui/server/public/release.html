@@ -1388,14 +1388,12 @@
           });
         });
         try {
-          const updated = await fetch("/api/release/config", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ repos }),
-          }).then((r) => {
-            if (!r.ok) throw new Error("save failed");
-            return r.json();
-          });
+          // R26c: the server's message on a failure, not "save failed".
+          const updated = await window.denShell.api(
+            "PUT",
+            "/api/release/config",
+            { repos },
+          );
           state.config = updated;
           closeModal();
           renderTable();
@@ -1423,34 +1421,26 @@
 
         let session;
         try {
-          const res = await fetch("/api/release/deploy", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              env: state.env,
-              mode: params.mode,
-              repo: params.repo,
-              ref: params.ref,
-              confirm: params.confirm,
-            }),
+          // R26c: a refusal (a 409 names the repos already in flight) is the
+          // server's message in the run's output; a lost server is said too.
+          session = await window.denShell.api("POST", "/api/release/deploy", {
+            env: state.env,
+            mode: params.mode,
+            repo: params.repo,
+            ref: params.ref,
+            confirm: params.confirm,
           });
-          if (!res.ok) {
-            // 409 carries a JSON body naming the repos already in flight.
-            let text = await res.text().catch(() => "deploy request failed");
-            try {
-              const j = JSON.parse(text);
-              if (j?.error) text = j.error;
-            } catch {
-              /* not JSON — show as-is */
-            }
-            appendLine(text, "err");
+        } catch (e) {
+          if (e.denApi && !e.network) {
+            appendLine(
+              e.message + (e.requestId ? ` (request ${e.requestId})` : ""),
+              "err",
+            );
             runs().finish(REQUEST_RUN, { ok: false });
             setStatus("deploy not started");
             await refreshSessions();
             return;
           }
-          session = await res.json();
-        } catch (e) {
           appendLine("Failed to start deploy: " + e.message, "err");
           runs().finish(REQUEST_RUN, { ok: false });
           setStatus("deploy not started");

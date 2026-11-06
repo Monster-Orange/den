@@ -445,12 +445,70 @@ setHtmlFill((html) => {
   } catch {
     /* defaults */
   }
-  return html
+  let out = html
     .split("@@DEN_MODE@@")
     .join(mode)
     .split("@@DEN_DEFAULT_MODE@@")
     .join(def);
+  // MD-2: every page says when the engine on disk is not the one running.
+  const engine = engineCheck();
+  if (engine.stale)
+    out = out.replace(
+      '<div id="den-shell"',
+      () =>
+        `<div id="den-shell" data-engine-stale="${escAttr(JSON.stringify(engineBanner(engine)))}"`,
+    );
+  return out;
 });
+
+// ── MD-2: the engine this server loaded, against the one on disk ─────────────
+const ENGINE = engineWatch(getEngineRoot);
+function engineCheck(): EngineCheck {
+  return ENGINE.check();
+}
+/** What the shell's banner and the error pages say on a mismatch. */
+function engineBanner(c: EngineCheck): {
+  loaded: string | null;
+  onDisk: string | null;
+  message: string;
+} {
+  return {
+    loaded: c.loaded.version,
+    onDisk: c.onDisk.version,
+    message: engineStaleMessage(c, product().cli),
+  };
+}
+function escAttr(v: string): string {
+  return v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+/**
+ * R26a: the shell's error page for a failed page request (404 or 500).
+ * HEAD gets the status and headers only.
+ */
+function sendErrorPage(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  data: Omit<ErrorPageData, "time" | "version" | "engine">,
+): void {
+  const engine = engineCheck();
+  const full: ErrorPageData = {
+    ...data,
+    time: new Date().toISOString(),
+    version: engine.loaded.version,
+    ...(engine.stale ? { engine: engineBanner(engine) } : {}),
+  };
+  if (res.headersSent) {
+    res.end();
+    return;
+  }
+  serveFile(
+    res,
+    path.join(PUBLIC_DIR, "error.html"),
+    (html) => fillErrorPage(html, full),
+    data.status,
+  );
+}
 
 // Every audited action (exec, run, sync) lands in the log as a lifecycle
 // line; an agent's carries its label so the /logs page can mark it.
@@ -509,6 +567,20 @@ import {
   setHtmlFill,
 } from "./http-helpers.js";
 import { orgOf, listOrgs } from "../../shared/manifest/service-links.js";
+import {
+  engineStaleMessage,
+  engineWatch,
+  type EngineCheck,
+} from "./engine-stamp.js";
+import {
+  fillErrorPage,
+  jsonApiErrors,
+  newRequestId,
+  pluginForPath,
+  routeTemplate,
+  wantsHtmlPage,
+  type ErrorPageData,
+} from "./http-errors.js";
 import {
   readOrgContext,
   resolveAllWorkspaceOrgs,
@@ -650,6 +722,12 @@ async function handleRequest(
 ): Promise<void> {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const pathname = url.pathname;
+  // R26: one id per request, on every response and on its failure's log line.
+  const requestId = requestIdOf(req);
+  if (!res.headersSent) res.setHeader("X-Request-Id", requestId);
+  // R26b: every /api error answers JSON, whatever the route sends.
+  if (pathname === "/api" || pathname.startsWith("/api/"))
+    jsonApiErrors(res, requestId);
   // A mutating request may change what /api/services would list (exec and
   // sync stream over GET, for EventSource).
   if (
@@ -675,7 +753,8 @@ async function handleRequest(
       res.on("finish", () => {
         const ms = dim(`${Date.now() - start}ms`);
         serverLog(
-          `  ${logTimestamp()}  ${method}  ${pathname}  →  ${logStatus(res.statusCode)}  ${ms}`,
+          `  ${logTimestamp()}  ${method}  ${pathname}  →  ${logStatus(res.statusCode)}  ${ms}` +
+            (res.statusCode >= 400 ? dim(`  req ${requestId}`) : ""),
           "request",
         );
       });
@@ -2525,11 +2604,17 @@ async function handleRequest(
   // ── API: server info + staleness (drives the header "stale server" pill) ────
   if (pathname === "/api/server-info" && req.method === "GET") {
     const { stale, scanned } = computeStale();
+    const engine = engineCheck();
     return sendJson(res, {
       pid: process.pid,
       port: PORT,
-      // Den's version: the MCP server compares it with the routes it needs.
-      version: engineVersion() ?? null,
+      // The Den this server runs (its routes): the MCP server compares it
+      // with the routes it needs. loaded and onDisk (MD-2): the engine at
+      // startup and on disk now; engineStale when they differ.
+      version: ENGINE.loaded.version ?? engineVersion() ?? null,
+      loaded: engine.loaded,
+      onDisk: engine.onDisk,
+      engineStale: engine.stale,
       // Whose server this is: `<cli> web up|down`, `mcp connect` and
       // `service install` compare both with their own and never act on
       // another distribution's server (see cli/server-identity.ts).
@@ -3341,22 +3426,122 @@ async function handleRequest(
     }
   }
 
+  // A route that throws, for the error frame's tests and screenshots only
+  // (DEN_DEBUG_ROUTES=1): a page and an API call.
+  if (
+    process.env.DEN_DEBUG_ROUTES === "1" &&
+    (pathname === "/_den/throw" || pathname === "/api/_den/throw")
+  ) {
+    throw new Error("a debug route threw (DEN_DEBUG_ROUTES)");
+  }
+
   // ── 404 ────────────────────────────────────────────────────────────────────
+  sendNotFound(req, res, pathname, requestId);
+}
+
+/**
+ * No route answered. /api: the R26b JSON (an `engine_stale` code naming
+ * both versions when the engine on disk is newer: its routes are the ones
+ * that 404 here). A page: the shell's 404 page (R26a). Anything else (an
+ * asset): plain text, as before.
+ */
+function sendNotFound(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  requestId: string,
+): void {
+  if (pathname === "/api" || pathname.startsWith("/api/")) {
+    const engine = engineCheck();
+    if (engine.stale)
+      return sendJson(
+        res,
+        {
+          ok: false,
+          error: engineStaleMessage(engine, product().cli),
+          code: "engine_stale",
+          loaded: engine.loaded.version,
+          onDisk: engine.onDisk.version,
+        },
+        404,
+      );
+    return sendJson(
+      res,
+      {
+        ok: false,
+        error: `No such API route: ${req.method ?? "GET"} ${pathname}`,
+        code: "not_found",
+      },
+      404,
+    );
+  }
+  if (wantsHtmlPage(req, pathname))
+    return sendErrorPage(req, res, {
+      status: 404,
+      path: pathname,
+      requestId,
+      plugin: pluginForPath(pathname, ROOT),
+    });
   res.writeHead(404, { "Content-Type": "text/plain" });
   res.end("Not found");
+}
+
+/** The request's id: assigned once (the handler and its catch share it). */
+const REQUEST_IDS = new WeakMap<http.IncomingMessage, string>();
+function requestIdOf(req: http.IncomingMessage): string {
+  let id = REQUEST_IDS.get(req);
+  if (!id) {
+    id = newRequestId();
+    REQUEST_IDS.set(req, id);
+  }
+  return id;
 }
 
 const server = http.createServer((req, res) => {
   // An async handler with no catch turns any route throw into an unhandled
   // rejection — which CRASHES the whole server on modern Node (freezing every
   // health dot) and leaves the request hanging. Fail the one request instead.
-  handleRequest(req, res).catch((err) => {
-    console.error(`[server] ${req.method} ${req.url} failed:`, err);
+  handleRequest(req, res).catch((err: unknown) => {
+    // R26: the log has the stack under the request id; the browser gets the
+    // id, never the stack. The route is its template: no query values.
+    const requestId = requestIdOf(req);
+    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    const route = routeTemplate(pathname);
+    const method = req.method ?? "GET";
+    const stack =
+      err instanceof Error ? (err.stack ?? err.message) : String(err);
+    serverLog(
+      `  ✗ ${method} ${route} failed (req ${requestId}): ${stack}`,
+      "error",
+    );
+    if (SILENT)
+      console.error(
+        `[server] ${method} ${route} failed (req ${requestId}):`,
+        err,
+      );
     try {
-      if (!res.headersSent) {
-        res.writeHead(500, { "Content-Type": "text/plain" });
+      if (res.headersSent) {
+        res.end();
+        return;
       }
-      res.end("internal server error");
+      if (pathname === "/api" || pathname.startsWith("/api/")) {
+        sendJson(
+          res,
+          {
+            ok: false,
+            error: `${method} ${route} failed on the server`,
+            code: "internal",
+          },
+          500,
+        );
+        return;
+      }
+      if (wantsHtmlPage(req, pathname)) {
+        sendErrorPage(req, res, { status: 500, method, route, requestId });
+        return;
+      }
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end(`internal server error (request ${requestId})`);
     } catch {
       /* socket already gone */
     }

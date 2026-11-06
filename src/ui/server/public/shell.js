@@ -170,6 +170,24 @@
       "lock.locked": "Locked",
       "lock.unlocked": "Unlocked",
       "lock.title": "Unlock to start, stop and restart services",
+      // Errors (R26, 0.3.0-dev.38).
+      "api.network": "Den's server didn't answer {what}",
+      "api.failed": "{what} failed",
+      "api.request": "Request {id}",
+      "api.retry": "Retry",
+      "api.copy": "Copy details",
+      "api.copied": "Copied",
+      "api.close": "Dismiss",
+      "api.retried": "Done",
+      "net.down": "Den's server isn't responding — retrying",
+      "net.next": "next try in {s}s",
+      "net.now": "Retry now",
+      "engine.stale":
+        "Den was updated to {onDisk}. This server is still running {loaded}. Restart it: {cli} web restart (or your service restart).",
+      "engine.title": "Restart needed",
+      "status.unknown": "Status unknown",
+      "status.unknownTip":
+        "Den's server isn't responding, so service health is unknown",
     },
   };
   var lang = "en";
@@ -2629,6 +2647,414 @@
   }
   renderDock();
 
+  // ── Errors people can see and act on (R26c, R26d, MD-2; dev.38) ───────
+  // denShell.api(method, url, body?, opts?) is the one client path for a
+  // call: it resolves with the data (JSON, else text) or throws a typed
+  // error (name "DenApiError": status, code, requestId, method, url,
+  // network, data, retry). The server's errors are { ok: false, error,
+  // code, requestId } (R26b); a 200 with ok:false is an error too. One a
+  // page doesn't catch becomes a toast: the message, the request id,
+  // Retry and Copy details.
+  //
+  // Every same-origin fetch that fails at the network level (the server
+  // stopped or is restarting) raises the banner "Den's server isn't
+  // responding — retrying"; it probes /api/server-info with backoff and
+  // clears itself when the server answers. Meanwhile `den:server` (detail
+  // { up }) fires on window and the status chip reads unknown.
+  //
+  // Banners sit at the top of the page's content (the prototype's
+  // .note-banner): the unreachable one, and the engine one (MD-2: the
+  // server fills data-engine-stale on #den-shell; header.js's server-info
+  // poll calls setEngine).
+  function apiError(message, o) {
+    var e = new Error(message);
+    e.name = "DenApiError";
+    e.denApi = true;
+    e.status = o.status || 0;
+    e.code = o.code || (o.network ? "network" : "http_" + e.status);
+    e.requestId = o.requestId || null;
+    e.method = o.method;
+    e.url = o.url;
+    e.network = !!o.network;
+    e.data = o.data === undefined ? null : o.data;
+    e.retry = o.retry || null;
+    return e;
+  }
+  function pathOf(url) {
+    return String(url || "").split("?")[0];
+  }
+  function api(method, url, body, opts) {
+    opts = opts || {};
+    method = String(method || "GET").toUpperCase();
+    var init = { method: method, headers: {} };
+    if (body !== undefined && body !== null) {
+      init.headers["Content-Type"] = "application/json";
+      init.body = typeof body === "string" ? body : JSON.stringify(body);
+    }
+    if (opts.signal) init.signal = opts.signal;
+    if (opts.headers)
+      for (var h in opts.headers) init.headers[h] = opts.headers[h];
+    var what = method + " " + pathOf(url);
+    var retry =
+      opts.retry ||
+      (method === "GET"
+        ? function () {
+            location.reload();
+          }
+        : function () {
+            return api(method, url, body, opts).then(function () {
+              toast(t("api.retried"));
+            });
+          });
+    return fetch(url, init).then(
+      function (r) {
+        var get = function (k) {
+          return r.headers && r.headers.get ? r.headers.get(k) || "" : "";
+        };
+        var isJson = /json/.test(get("Content-Type"));
+        var parsed = isJson
+          ? r.json().catch(function () {
+              return null;
+            })
+          : typeof r.text === "function"
+            ? r.text()
+            : Promise.resolve(null);
+        return parsed.then(function (data) {
+          var failed =
+            !r.ok || (data && typeof data === "object" && data.ok === false);
+          if (!failed) return data;
+          var msg =
+            data && typeof data === "object" && typeof data.error === "string"
+              ? data.error
+              : typeof data === "string" && data.trim()
+                ? data.trim().slice(0, 300)
+                : t("api.failed", { what: what }) + " (" + r.status + ")";
+          throw apiError(msg, {
+            status: r.status,
+            code: data && typeof data === "object" ? data.code : null,
+            requestId:
+              (data && typeof data === "object" && data.requestId) ||
+              get("X-Request-Id") ||
+              null,
+            method: method,
+            url: url,
+            data: data,
+            retry: retry,
+          });
+        });
+      },
+      function (err) {
+        if (err && err.name === "AbortError") throw err;
+        throw apiError(t("api.network", { what: what }), {
+          network: true,
+          method: method,
+          url: url,
+          retry: retry,
+        });
+      },
+    );
+  }
+  /** The text "Copy details" puts on the clipboard (no stack, no body). */
+  function errorDetails(err) {
+    return [
+      "Den " + (versionText() || "unknown"),
+      (err.method || "GET") + " " + pathOf(err.url),
+      "Status " + (err.network ? "no answer" : err.status),
+      "Code " + (err.code || ""),
+      "Request " + (err.requestId || "none"),
+      "Message " + err.message,
+      "Page " + location.pathname,
+      "Time " + new Date().toISOString(),
+    ].join("\n");
+  }
+  function versionText() {
+    var v =
+      document.querySelector && document.querySelector("#version-pill .v-txt");
+    var s = v ? String(v.textContent || "").replace(/^v/, "") : "";
+    return s && s !== "…" ? s : "";
+  }
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      return navigator.clipboard.writeText(text).catch(function () {});
+    return Promise.resolve();
+  }
+  var errToastTimer = null;
+  /** An error toast: message, request id, Retry, Copy details, ×. */
+  function errorToast(err) {
+    if (!document.body || !document.createElement) return;
+    var old = document.querySelector && document.querySelector(".den-toast");
+    if (old && old.remove) old.remove();
+    clearTimeout(toastTimer);
+    clearTimeout(errToastTimer);
+    var el = document.createElement("div");
+    el.className = "den-toast den-toast-err";
+    el.setAttribute("role", "alert");
+    el.innerHTML =
+      '<span class="den-te-ic" aria-hidden="true">⚠</span>' +
+      '<span class="den-te-msg"><span class="den-te-t"></span>' +
+      (err.requestId
+        ? '<span class="den-te-id">' +
+          esc(t("api.request", { id: err.requestId })) +
+          "</span>"
+        : "") +
+      "</span>" +
+      (err.retry
+        ? '<button type="button" class="den-tbtn" data-te="retry">' +
+          esc(t("api.retry")) +
+          "</button>"
+        : "") +
+      '<button type="button" class="den-tbtn" data-te="copy">' +
+      esc(t("api.copy")) +
+      "</button>" +
+      '<button type="button" class="den-tx" data-te="close" aria-label="' +
+      esc(t("api.close")) +
+      '">×</button>';
+    el.querySelector(".den-te-t").textContent = err.message;
+    var hold = false;
+    var arm = function () {
+      clearTimeout(errToastTimer);
+      errToastTimer = setTimeout(function () {
+        if (!hold && el.remove) el.remove();
+      }, 12000);
+    };
+    el.addEventListener("mouseenter", function () {
+      hold = true;
+    });
+    el.addEventListener("mouseleave", function () {
+      hold = false;
+      arm();
+    });
+    el.addEventListener("focusin", function () {
+      hold = true;
+    });
+    el.addEventListener("click", function (e) {
+      var b = e.target.closest && e.target.closest("[data-te]");
+      if (!b) return;
+      var act = b.getAttribute("data-te");
+      if (act === "close") el.remove();
+      else if (act === "copy")
+        copyText(errorDetails(err)).then(function () {
+          b.textContent = t("api.copied");
+        });
+      else if (act === "retry") {
+        el.remove();
+        try {
+          var p = err.retry();
+          if (p && typeof p.catch === "function")
+            p.catch(function (again) {
+              if (again && again.denApi) errorToast(again);
+            });
+        } catch (again) {
+          if (again && again.denApi) errorToast(again);
+        }
+      }
+    });
+    document.body.appendChild(el);
+    arm();
+  }
+  if (typeof window.addEventListener === "function")
+    window.addEventListener("unhandledrejection", function (e) {
+      var r = e && e.reason;
+      if (!r || !r.denApi) return;
+      if (e.preventDefault) e.preventDefault();
+      errorToast(r);
+    });
+
+  // Banners (.note-banner): at the top of the page's content.
+  var BANNERS = {};
+  function bannerHost() {
+    var main =
+      document.getElementById && document.getElementById("den-content");
+    if (!main) return null;
+    var box = document.getElementById("den-banners");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "den-banners";
+      box.className = "den-banners";
+      box.setAttribute("aria-live", "polite");
+    }
+    if (main.firstChild !== box) main.insertBefore(box, main.firstChild);
+    // A page whose content is already inset (edge, settings) needs none.
+    var pad = 0;
+    try {
+      pad = parseFloat(getComputedStyle(main).paddingLeft) || 0;
+    } catch (e) {
+      pad = 0;
+    }
+    box.classList.toggle("den-banners-inset", pad >= 12);
+    return box;
+  }
+  /** Show (or replace) banner `id`: { title?, text, action?: { label, run } }. */
+  function showBanner(id, b) {
+    BANNERS[id] = b;
+    paintBanners();
+  }
+  function hideBanner(id) {
+    if (!BANNERS[id]) return;
+    delete BANNERS[id];
+    paintBanners();
+  }
+  function paintBanners() {
+    var box = bannerHost();
+    if (!box) {
+      if (document.readyState === "loading")
+        document.addEventListener("DOMContentLoaded", paintBanners, {
+          once: true,
+        });
+      return;
+    }
+    var ids = Object.keys(BANNERS);
+    box.hidden = ids.length === 0;
+    box.innerHTML = ids
+      .map(function (id) {
+        var b = BANNERS[id];
+        return (
+          '<div class="den-banner warn" data-banner="' +
+          esc(id) +
+          '" role="status"><span class="den-bn-ic" aria-hidden="true">⚠</span>' +
+          (b.title ? "<b>" + esc(b.title) + "</b>" : "") +
+          '<span class="den-bn-t">' +
+          esc(b.text) +
+          "</span>" +
+          (b.note ? '<span class="den-bn-n">' + esc(b.note) + "</span>" : "") +
+          (b.action
+            ? '<button type="button" class="den-tbtn" data-bn-act="' +
+              esc(id) +
+              '">' +
+              esc(b.action.label) +
+              "</button>"
+            : "") +
+          "</div>"
+        );
+      })
+      .join("");
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target && e.target.closest && e.target.closest("[data-bn-act]");
+    if (!b) return;
+    var ban = BANNERS[b.getAttribute("data-bn-act")];
+    if (ban && ban.action) ban.action.run();
+  });
+
+  // MD-2: the engine on disk is not the one this server runs.
+  function setEngine(info) {
+    if (!info || !info.stale) {
+      hideBanner("engine");
+      return;
+    }
+    showBanner("engine", {
+      title: t("engine.title"),
+      text:
+        info.message ||
+        t("engine.stale", {
+          onDisk: info.onDisk || "?",
+          loaded: info.loaded || "?",
+          cli: "__DEN_CLI__",
+        }),
+    });
+  }
+  if (host.dataset.engineStale) {
+    try {
+      var eng = JSON.parse(host.dataset.engineStale);
+      eng.stale = true;
+      setEngine(eng);
+    } catch (e) {
+      /* a malformed attribute: no banner */
+    }
+  }
+
+  // R26d: the server unreachable.
+  var server = { up: true, delay: 0, timer: null, tick: null, nextAt: 0 };
+  var rawFetch =
+    typeof window.fetch === "function" ? window.fetch.bind(window) : null;
+  function sameOrigin(input) {
+    var u = typeof input === "string" ? input : input && input.url;
+    if (!u) return false;
+    if (u.charAt(0) === "/" && u.charAt(1) !== "/") return true;
+    try {
+      return new URL(u, location.href).origin === location.origin;
+    } catch (e) {
+      return false;
+    }
+  }
+  function serverState(up) {
+    if (server.up === up) return;
+    server.up = up;
+    if (document.body && document.body.classList)
+      document.body.classList.toggle("den-server-down", !up);
+    try {
+      window.dispatchEvent(
+        new CustomEvent("den:server", { detail: { up: up } }),
+      );
+    } catch (e) {
+      /* no CustomEvent */
+    }
+  }
+  function paintDown() {
+    var left = Math.max(0, Math.ceil((server.nextAt - Date.now()) / 1000));
+    showBanner("net", {
+      text: t("net.down"),
+      note: left > 0 ? t("net.next", { s: left }) : "",
+      action: { label: t("net.now"), run: probeNow },
+    });
+  }
+  function serverUnreachable() {
+    if (!server.up) return;
+    serverState(false);
+    server.delay = 1000;
+    scheduleProbe();
+  }
+  function scheduleProbe() {
+    clearTimeout(server.timer);
+    clearInterval(server.tick);
+    server.nextAt = Date.now() + server.delay;
+    paintDown();
+    server.tick = setInterval(paintDown, 1000);
+    server.timer = setTimeout(probe, server.delay);
+  }
+  function probeNow() {
+    clearTimeout(server.timer);
+    probe();
+  }
+  function probe() {
+    if (!rawFetch) return;
+    rawFetch("/api/server-info", { cache: "no-store" }).then(
+      function () {
+        serverBack();
+      },
+      function () {
+        if (server.up) return;
+        server.delay = Math.min(server.delay * 2, 15000);
+        scheduleProbe();
+      },
+    );
+  }
+  function serverBack() {
+    clearTimeout(server.timer);
+    clearInterval(server.tick);
+    hideBanner("net");
+    serverState(true);
+  }
+  if (rawFetch && !window.fetch.__denShell) {
+    var wrapped = function (input, init) {
+      var p = rawFetch(input, init);
+      if (!p || typeof p.then !== "function") return p;
+      return p.then(
+        function (r) {
+          if (!server.up && sameOrigin(input)) serverBack();
+          return r;
+        },
+        function (err) {
+          if (err && err.name === "TypeError" && sameOrigin(input))
+            serverUnreachable();
+          throw err;
+        },
+      );
+    };
+    wrapped.__denShell = true;
+    window.fetch = wrapped;
+  }
+
   window.denShell = {
     registerGroup: registerGroup,
     registerNav: registerNav,
@@ -2646,6 +3072,19 @@
     unpin: unpin,
     isPinned: isPinned,
     toast: toast,
+    /** R26c: a call that resolves with its data or throws a DenApiError. */
+    api: api,
+    /** R26c: the error toast for a DenApiError (what an uncaught one gets). */
+    errorToast: errorToast,
+    /** A banner at the top of the content: { title?, text, note?, action? }. */
+    showBanner: showBanner,
+    hideBanner: hideBanner,
+    /** MD-2: { stale, loaded, onDisk, message? } from /api/server-info. */
+    setEngine: setEngine,
+    /** R26d: whether the server answers (false while the banner shows). */
+    serverUp: function () {
+      return server.up;
+    },
     /** The browser-tab icon (appearance.js: the active theme's, per mode). */
     setFavicon: setFavicon,
     /** The org part of the scope: "/ ORG <title>", static (one org). */
@@ -3008,6 +3447,34 @@
     "  background: var(--raised); border: 1px solid var(--border-strong); border-radius: 8px;",
     "  padding: 8px 14px; box-shadow: var(--shadow); z-index: 60; font: 14px/1.45 var(--sans);",
     "  color: var(--text); }",
+    // The error toast (R26c): .toast with the message, its request id and
+    // the prototype's small buttons (.btn.sm).
+    ".den-toast-err { display: flex; align-items: center; gap: 10px; max-width: min(640px, calc(100vw - 32px));",
+    "  border-color: color-mix(in srgb, var(--bad) 45%, var(--border-strong)); }",
+    ".den-toast-err .den-te-ic { color: var(--bad); }",
+    ".den-toast-err .den-te-msg { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }",
+    ".den-toast-err .den-te-id { font: 11px var(--mono); color: var(--faint); }",
+    ".den-tbtn { border: 1px solid var(--border); background: var(--surface); color: var(--text);",
+    "  border-radius: var(--radius-button); padding: 2px 9px; font: 500 12.5px/1.45 var(--sans);",
+    "  cursor: pointer; white-space: nowrap; }",
+    ".den-tbtn:hover { border-color: var(--border-strong); }",
+    ".den-tx { border: 0; background: none; color: var(--faint); cursor: pointer; font: 16px/1 var(--sans); padding: 0 2px; }",
+    ".den-tx:hover { color: var(--text); }",
+    ".den-toast :focus-visible, .den-banners :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
+    // Banners (.note-banner): the unreachable server (R26d) and a newer
+    // engine on disk (MD-2), at the top of the content.
+    ".den-banners { flex: none; margin: 16px 24px 0; display: grid; gap: 8px; font: 14px/1.45 var(--sans); }",
+    ".den-banners.den-banners-inset { margin: 0 0 16px; }",
+    ".den-banners[hidden] { display: none; }",
+    ".den-banner { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 12.5px;",
+    "  color: var(--muted); border: 1px dashed var(--border-strong); border-radius: var(--radius);",
+    "  padding: 8px 12px; }",
+    ".den-banner b { color: var(--text); }",
+    ".den-banner.warn { border-color: color-mix(in srgb, var(--warn) 55%, var(--border-strong)); }",
+    ".den-banner .den-bn-ic { color: var(--warn); }",
+    ".den-banner .den-bn-t { color: var(--text); }",
+    ".den-banner .den-bn-n { font: 11px var(--mono); color: var(--faint); }",
+    ".den-banner .den-tbtn { margin-left: auto; align-self: center; }",
     // The runs dock (.dock, .bar, .runs, .rtab, pre: R16), at the foot of
     // the content column; content-box as in the prototype.
     ".den-dock { flex: none; order: 99; position: sticky; bottom: 0; z-index: 14; min-width: 0;",

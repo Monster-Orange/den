@@ -3501,20 +3501,17 @@
           const linkedPath =
             source === "local" ? absPath || undefined : undefined;
           const useBranch = source === "managed" ? branch || "main" : "main";
-          const res = await fetch("/api/workspaces/services", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          // R26c: one client path; a failure is the error toast.
+          try {
+            await window.denShell.api("POST", "/api/workspaces/services", {
               workspace: _addSvcWsName,
               address: relPath,
               mode,
               linkedPath,
               branch: useBranch,
-            }),
-          });
-          const text = await res.text();
-          if (!res.ok) {
-            alert(text);
+            });
+          } catch (err) {
+            window.denShell.errorToast(err);
             return;
           }
           await loadWorkspaces();
@@ -3700,28 +3697,25 @@
           const submitBtn = document.getElementById("add-svc-submit");
           submitBtn.disabled = true;
           msgEl.textContent = "";
-          const res = await fetch("/api/workspaces/services", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              workspace: _addSvcWsName,
-              address: r.name,
-              mode,
-              ghSlug: r.nameWithOwner,
-              branch,
-              newBranch,
-            }),
-          });
-          submitBtn.disabled = false;
-          const text = await res.text();
-          if (!res.ok) {
-            showMsg(msgEl, text, "err");
-            return;
-          }
           let data = {};
           try {
-            data = JSON.parse(text);
-          } catch {}
+            data =
+              (await window.denShell.api("POST", "/api/workspaces/services", {
+                workspace: _addSvcWsName,
+                address: r.name,
+                mode,
+                ghSlug: r.nameWithOwner,
+                branch,
+                newBranch,
+              })) ?? {};
+          } catch (err) {
+            // R26c: the server's message, inline in the dialog.
+            submitBtn.disabled = false;
+            showMsg(msgEl, err.message, "err");
+            return;
+          }
+          submitBtn.disabled = false;
+          if (typeof data !== "object") data = {};
           await loadWorkspaces();
           await renderContent(_addSvcWsName);
           document.getElementById("add-svc-backdrop").style.display = "none";
@@ -3931,18 +3925,17 @@
           const input = document.getElementById("new-ws-name");
           const name = input.value.trim();
           if (!name) return;
-          const res = await fetch("/api/workspaces/create", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name }),
-          });
-          if (res.ok) {
-            input.value = "";
-            await loadWorkspaces();
-            selectWorkspace(name);
-          } else {
-            alert(await res.text());
+          try {
+            await window.denShell.api("POST", "/api/workspaces/create", {
+              name,
+            });
+          } catch (err) {
+            window.denShell.errorToast(err);
+            return;
           }
+          input.value = "";
+          await loadWorkspaces();
+          selectWorkspace(name);
         };
 
         // ── Delete workspace ──────────────────────────────────────────────────────
@@ -3990,17 +3983,19 @@
             );
           }
 
-          const res = await fetch("/api/workspaces", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          let deleted = true;
+          try {
+            await window.denShell.api("DELETE", "/api/workspaces", {
               name,
               cleanupDirectory,
               cleanupDev,
               cleanupDen,
-            }),
-          });
-          if (res.ok) {
+            });
+          } catch (err) {
+            deleted = false;
+            window.denShell.errorToast(err);
+          }
+          if (deleted) {
             if (activeWs === name) {
               activeWs = null;
               document.getElementById("content").innerHTML =
@@ -4012,8 +4007,6 @@
               history.replaceState(null, "", qs ? "?" + qs : location.pathname);
             }
             await loadWorkspaces();
-          } else {
-            alert(await res.text());
           }
         };
 
@@ -4027,18 +4020,18 @@
             );
             return;
           }
-          const res = await fetch("/api/workspaces/rename", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ oldName, newName }),
-          });
-          if (res.ok) {
-            if (activeWs === oldName) activeWs = newName;
-            await loadWorkspaces();
-            if (activeWs) selectWorkspace(activeWs, { updateUrl: true });
-          } else {
-            alert(await res.text());
+          try {
+            await window.denShell.api("POST", "/api/workspaces/rename", {
+              oldName,
+              newName,
+            });
+          } catch (err) {
+            window.denShell.errorToast(err);
+            return;
           }
+          if (activeWs === oldName) activeWs = newName;
+          await loadWorkspaces();
+          if (activeWs) selectWorkspace(activeWs, { updateUrl: true });
         }
 
         // (Copy, Clear and the resize handle are the runs dock's.)
@@ -4454,20 +4447,18 @@
           wsName = document.getElementById("content")?.dataset.ws || activeWs,
         ) {
           try {
-            const res = await fetch("/api/workspaces/services/autostart", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ workspace: wsName, repo, autostart }),
-            });
-            if (!res.ok) {
-              const d = await res.json().catch(() => ({}));
-              alert(`auto-start toggle failed: ${d.error ?? res.status}`);
-              return;
-            }
-            await refreshView(wsName); // refetch services → re-render graph + tables
+            await window.denShell.api(
+              "POST",
+              "/api/workspaces/services/autostart",
+              { workspace: wsName, repo, autostart },
+            );
           } catch (err) {
-            alert("auto-start toggle failed: " + err.message);
+            if (!err.denApi) throw err;
+            err.message = `auto-start toggle failed: ${err.message}`;
+            window.denShell.errorToast(err);
+            return;
           }
+          await refreshView(wsName); // refetch services → re-render graph + tables
         }
 
         // Switch a system between dev-managed (your local checkout) and
@@ -4477,20 +4468,18 @@
           const wsName =
             document.getElementById("content")?.dataset.ws || activeWs;
           try {
-            const res = await fetch("/api/workspaces/services/mode", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ workspace: wsName, repo, mode }),
+            await window.denShell.api("POST", "/api/workspaces/services/mode", {
+              workspace: wsName,
+              repo,
+              mode,
             });
-            if (!res.ok) {
-              const d = await res.json().catch(() => ({}));
-              alert(`mode switch failed: ${d.error ?? res.status}`);
-              return;
-            }
-            await refreshView(wsName);
           } catch (err) {
-            alert("mode switch failed: " + err.message);
+            if (!err.denApi) throw err;
+            err.message = `mode switch failed: ${err.message}`;
+            window.denShell.errorToast(err);
+            return;
           }
+          await refreshView(wsName);
         };
 
         window.toggleAutostart = function (repo, turnOn) {
@@ -4567,41 +4556,41 @@
         });
 
         async function openInEditor(repoPath) {
-          const r = await fetch("/api/editor/open", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: repoPath }),
-          });
-          if (!r.ok) {
-            const err = await r.json().catch(() => ({}));
-            if (err.error?.includes("No editor")) {
+          try {
+            await window.denShell.api("POST", "/api/editor/open", {
+              path: repoPath,
+            });
+          } catch (e) {
+            if (!e.denApi) throw e;
+            const err = e.data && typeof e.data === "object" ? e.data : {};
+            if (e.message.includes("No editor")) {
               location.href = "/settings#editor";
             } else if (err.runCmd) {
               alert(
-                `Could not open Terminal.app automatically.\n\nRun this in your terminal:\n\n  ${err.runCmd}\n\n${err.error}`,
+                `Could not open Terminal.app automatically.\n\nRun this in your terminal:\n\n  ${err.runCmd}\n\n${e.message}`,
               );
-            } else if (err.error) {
-              alert(err.error);
+            } else {
+              window.denShell.errorToast(e);
             }
           }
         }
 
         async function openInTerminal(repoPath) {
-          const r = await fetch("/api/terminal/open", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: repoPath }),
-          });
-          if (!r.ok) {
-            const err = await r.json().catch(() => ({}));
-            if (err.error?.includes("No terminal")) {
+          try {
+            await window.denShell.api("POST", "/api/terminal/open", {
+              path: repoPath,
+            });
+          } catch (e) {
+            if (!e.denApi) throw e;
+            const err = e.data && typeof e.data === "object" ? e.data : {};
+            if (e.message.includes("No terminal")) {
               location.href = "/settings#editor";
             } else if (err.runCmd) {
               alert(
-                `Could not open the terminal automatically.\n\nRun this in your terminal:\n\n  ${err.runCmd}\n\n${err.error}`,
+                `Could not open the terminal automatically.\n\nRun this in your terminal:\n\n  ${err.runCmd}\n\n${e.message}`,
               );
-            } else if (err.error) {
-              alert(err.error);
+            } else {
+              window.denShell.errorToast(e);
             }
           }
         }

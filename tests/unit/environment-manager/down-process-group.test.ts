@@ -291,7 +291,9 @@ describe("down stops what a detached up started", () => {
     expect(findDaemonByAddress("repo/api")).toBeUndefined();
   });
 
-  it("an explicit down that cannot stop a recorded service warns and fails", async () => {
+  it("a record from before dev.37 that nothing running matches is dropped, never signalled", async () => {
+    // 0.3.0-dev.38: such a record is adopted when its process is found
+    // (down-legacy-records.test.ts), else it is stale: warned and dropped.
     manifestWith({ up: IDLE });
     const legacy = {
       address: "repo/api",
@@ -304,15 +306,12 @@ describe("down stops what a detached up started", () => {
     registerDaemon(legacy);
 
     const named = await down();
-    expect(named.exitCode).toBe(1);
-    expect(named.outcome).toBe("unstoppable");
-    expect(named.lines.join("\n")).toMatch(/^Warning: repo\/api is recorded/m);
-
-    registerDaemon(legacy);
-    const workspaceWide = await down(false);
-    expect(workspaceWide.exitCode).toBe(0);
-    expect(workspaceWide.outcome).toBe("unstoppable");
-    expect(workspaceWide.lines.join("\n")).toContain("Warning:");
+    expect(named.exitCode).toBe(0);
+    expect(named.outcome).toBe("nothing-recorded");
+    expect(named.lines.join("\n")).toMatch(
+      /^Warning: repo\/api was recorded before 0\.3\.0-dev\.37/m,
+    );
+    expect(findDaemonByAddress("repo/api")).toBeUndefined();
   });
 
   it("with no record, says there is nothing to stop", async () => {

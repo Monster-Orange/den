@@ -10,6 +10,52 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **Errors people can see and act on** (0.3.0-dev.38, R26, Ward QA
+  2026-11-05: "we don't handle 500 or 404s from the den server with
+  anything remotely obvious ... just text").
+  - A page request that fails gets the shell frame (rail, top bar, status
+    chip) around an error page (`error.html`, `error-page.js`). 404 "Page
+    not found" shows the path, "Did you mean …" from the command palette's
+    own matcher (`rankCommands`), links to Workspaces and Search (⌘K) and
+    the list of pages; a path under `/plugins/<id>/` says which plugin it
+    belongs to and that it isn't installed. 500 "Something went wrong"
+    shows the method and route template (never query values), the time,
+    a request id, Retry and Copy details, and no stack: the server log
+    has it under the same request id (`✗ GET /route failed (req
+    <id>): …`). Assets and non-browser requests keep a plain 404.
+  - Every `/api/*` error is JSON, one shape:
+    `{ ok: false, error, code, requestId }` (`code`: `not_found`,
+    `bad_request`, `internal`, `method_not_allowed`, `engine_stale`, …). It
+    holds at the response for every route, whatever the route sends, and a
+    route's own fields (`runCmd`, …) are kept. Every response carries
+    `X-Request-Id`; a failed request's log line carries the id.
+  - `denShell.api(method, url, body?)`: the one client path for a call. It
+    resolves with the data or throws a typed error (`DenApiError`: status,
+    code, requestId, network); one no page catches becomes a toast with
+    the message, the request id, Retry and Copy details
+    (`denShell.errorToast`). The shell's own calls, the scope and focus
+    menus, Services' workspace panel, the Workspaces page's add, create,
+    delete, rename, auto-start, mode and open-in-editor/terminal actions,
+    Releases' config save and deploy start, and the log search use it.
+  - When fetches fail at the network level (the server stopped or is
+    restarting), a banner says "Den's server isn't responding — retrying",
+    retries with backoff (1 s doubling to 15 s, or Retry now), and clears
+    itself when the server answers; meanwhile the status chip reads
+    "Status unknown", never a stale green.
+- **A server older than the engine on disk says so** (0.3.0-dev.38, MD-2).
+  After a pin upgrades Den under a running web server, the server keeps the
+  old engine in memory while serving the new pages, so their new routes
+  404. The server records the engine's version and build id (a hash of its
+  package.json) at startup and compares them with the engine on disk on
+  page requests (cached for 3 s). On a mismatch every page leads with a
+  banner, "Den was updated to <new>. This server is still running <old>.
+  Restart it: `<cli> web restart` (or your service restart).", an unknown
+  route answers that message (`/api`: code `engine_stale` with `loaded`
+  and `onDisk`) instead of a 404, and a failed MCP tool call names both
+  versions and the restart. `/api/server-info` gains `loaded` and `onDisk`
+  (`{ version, buildId }`) and `engineStale`; its `version` is now the
+  engine the server runs.
+
 - **`stack_namespace`: a workspace can choose its stacks' Compose
   namespace** (0.3.0-dev.36, Ward 2026-11-05). By default nothing changes:
   a stack runs as Compose project `<stack>-<workspace>` (`default`:
@@ -693,6 +739,34 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **`down <repo>` and `down -a` stop a repo's per-service daemons**
+  (0.3.0-dev.38, a consumer's dev.37 finding). A repo with services of
+  their own (`up repox` started `repox/web` and `repox/api`, each with
+  its own process group) and no down of its own printed "down repox
+  (nothing to stop)" and left both running. A repo-level down with no
+  down command now stops every service record of the repo through the
+  per-record path (its refcount, its down command or its recorded group);
+  `down -a` does it for each repo of the workspace. The mirror of
+  dev.35's `up` multi-service fix.
+- **Records from before 0.3.0-dev.37 are adopted or dropped, never
+  trusted blindly** (0.3.0-dev.38, a consumer's dev.37 finding). A record
+  with no process group made `up` print "✔ up repox/api" while nothing ran,
+  and `down` give up on it. One rule now serves `up` and `down`: the
+  listener on the service's known port (its `port`, the port in its
+  health URL, or `--port`/`-p` in its up command) whose cwd is inside the
+  repo is adopted (its process group is recorded: "adopted pre-dev.37
+  process (pid N, port P)"); else a recorded pid whose group shows every
+  token of the up command (leading `VAR=value` and an `npx`/`npm exec`
+  prefix stripped) is adopted; else the record is stale: warned, dropped,
+  nothing signalled. `up` then reports an adopted service already running
+  and starts a stale one; `down` stops an adopted one through the
+  TERM→KILL group path. A port held by a process outside the repo is
+  named and left alone.
+- **A restart records only the up** (0.3.0-dev.38). A service with a down
+  and an up but no restart ran one detached `sh -c "<down> && <up>"`, so
+  its recorded process group held the down too. It is now the down step,
+  then a detached up step, and the group is the up's.
+
 - **Graph: a selected card's flowing edges are visible** (0.3.0-dev.37,
   Ward QA of dev.35). The marching dashes were drawn in the same colour on
   a full-strength line, so they barely showed. A lit edge's line is now a
@@ -1157,6 +1231,16 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
+- 0.3.0-dev.38, `/api` error bodies: **they changed from text to JSON.**
+  Every `/api/*` error now answers `Content-Type: application/json` with
+  `{ ok: false, error, code, requestId }`, where some routes sent
+  `text/plain` (a message, or an empty body). A script that read the text
+  should read `.error`; a status check needs nothing. Den's own pages and
+  the MCP server read the new shape.
+- 0.3.0-dev.38, records from before dev.37: nothing required. A service
+  still running from such a record is adopted on its next `up` or `down`
+  (by its port, else its pid); one that can't be matched is dropped with a
+  warning and never signalled.
 - 0.3.0-dev.37, `down` and process groups: nothing required. A service
   started by an older Den has no recorded group, so its first `down
   <repo>` after the upgrade (for a service with no down command and no

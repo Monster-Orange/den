@@ -443,20 +443,20 @@
             msg.className = "ws-msg err";
             return;
           }
-          const res = await fetch("/api/workspaces/create", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name }),
-          });
-          if (res.ok) {
-            msg.textContent = `✓ Created "${name}"`;
-            msg.className = "ws-msg ok";
-            document.getElementById("ws-name-input").value = "";
-            await refreshWsPanel();
-          } else {
-            msg.textContent = await res.text();
+          try {
+            await window.denShell.api("POST", "/api/workspaces/create", {
+              name,
+            });
+          } catch (err) {
+            // R26c: the server's message (its JSON error), inline.
+            msg.textContent = err.message;
             msg.className = "ws-msg err";
+            return;
           }
+          msg.textContent = `✓ Created "${name}"`;
+          msg.className = "ws-msg ok";
+          document.getElementById("ws-name-input").value = "";
+          await refreshWsPanel();
         };
 
         window.deleteWorkspace = async function () {
@@ -471,19 +471,17 @@
             return;
           }
           if (!confirm(`Delete workspace "${name}"?`)) return;
-          const res = await fetch("/api/workspaces", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name }),
-          });
-          if (res.ok) {
-            msg.textContent = `✓ Deleted "${name}"`;
-            msg.className = "ws-msg ok";
-            await Promise.all([loadServices(), refreshWsPanel()]);
-          } else {
-            msg.textContent = await res.text();
+          try {
+            await window.denShell.api("DELETE", "/api/workspaces", { name });
+          } catch (err) {
+            // R26c: the server's message (its JSON error), inline.
+            msg.textContent = err.message;
             msg.className = "ws-msg err";
+            return;
           }
+          msg.textContent = `✓ Deleted "${name}"`;
+          msg.className = "ws-msg ok";
+          await Promise.all([loadServices(), refreshWsPanel()]);
         };
 
         window.addService = async function () {
@@ -498,34 +496,36 @@
           }
           const opt = repoSel.options[repoSel.selectedIndex];
           const linkedPath = opt.dataset.path;
-          const res = await fetch("/api/workspaces/services", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ address: repoName, mode, linkedPath }),
-          });
-          if (res.ok) {
-            msg.textContent = `✓ Added ${repoName}`;
-            msg.className = "ws-msg ok";
-            await Promise.all([loadServices(), refreshWsPanel()]);
-          } else {
-            msg.textContent = await res.text();
+          try {
+            await window.denShell.api("POST", "/api/workspaces/services", {
+              address: repoName,
+              mode,
+              linkedPath,
+            });
+          } catch (err) {
+            // R26c: the server's message (its JSON error), inline.
+            msg.textContent = err.message;
             msg.className = "ws-msg err";
+            return;
           }
+          msg.textContent = `✓ Added ${repoName}`;
+          msg.className = "ws-msg ok";
+          await Promise.all([loadServices(), refreshWsPanel()]);
         };
 
         window.removeService = async function (address) {
           const msg = document.getElementById("ws-add-msg");
-          const res = await fetch("/api/workspaces/services", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ address }),
-          });
-          if (res.ok) {
-            await Promise.all([loadServices(), refreshWsPanel()]);
-          } else {
-            msg.textContent = await res.text();
+          try {
+            await window.denShell.api("DELETE", "/api/workspaces/services", {
+              address,
+            });
+          } catch (err) {
+            // R26c: the server's message (its JSON error), inline.
+            msg.textContent = err.message;
             msg.className = "ws-msg err";
+            return;
           }
+          await Promise.all([loadServices(), refreshWsPanel()]);
         };
 
         // ── Load services ─────────────────────────────────────────────────────────

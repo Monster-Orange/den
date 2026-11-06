@@ -162,7 +162,8 @@ describe("POST /api/settings: null clears a pref (0.3.0-dev.32)", () => {
     const before = bytes();
     const r = await post({ graph: { zoom: null } });
     expect(r.status).toBe(400);
-    expect(r.text).toContain('unknown graph setting "zoom"');
+    // R26b: the message in the JSON error body.
+    expect(JSON.parse(r.text).error).toContain('unknown graph setting "zoom"');
     expect(bytes().equals(before)).toBe(true);
   });
 });

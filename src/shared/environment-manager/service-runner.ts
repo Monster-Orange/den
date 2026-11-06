@@ -73,6 +73,7 @@ import type { ChildProcess } from "child_process";
 import { getDistRoot, getStateDir } from "../paths.js";
 
 import { product } from "../product.js";
+import { adoptLegacyProcess, servicePort } from "../process/legacy-adopt.js";
 import {
   recordProcessGroup,
   stopProcessGroup,
@@ -126,6 +127,11 @@ export interface DaemonRecord {
    * reused pid is never signalled.
    */
   pgidStartedAt?: string;
+  /**
+   * A pid some writers before 0.3.0-dev.37 kept. Only a hint for adopting
+   * such a record (legacy-adopt.ts); never signalled on its own.
+   */
+  pid?: number;
 }
 
 /** This process's distribution root, as stamped on its daemon records. */
@@ -1364,6 +1370,186 @@ async function stopDaemonProcessGroup(
   }
 }
 
+/**
+ * The daemon records of `repo`'s own services (`<repo>/<svc>`), this root's
+ * or unstamped, other than `except`: what a repo-level down stops.
+ */
+function repoServiceRecords(repo: string, except: string): DaemonRecord[] {
+  return listDaemons().filter(
+    (d) =>
+      d.address !== except &&
+      d.address.startsWith(`${repo}/`) &&
+      daemonRootOf(d) !== "other",
+  );
+}
+
+/** Which of two down outcomes says more: what a fanned-out down reports. */
+const DOWN_RANK: Record<DownOutcome, number> = {
+  "nothing-recorded": 0,
+  "already-exited": 1,
+  stopped: 2,
+  unstoppable: 3,
+};
+
+/**
+ * Down each address in turn (each through runServiceCommand's own path:
+ * its refcount, its down command or its recorded process group), lines to
+ * the caller's onLine. Resolves the outcome that says most and the worst
+ * exit code.
+ */
+async function downEach(
+  addresses: string[],
+  options: RunCommandOptions,
+): Promise<{ outcome: DownOutcome; exitCode: number }> {
+  let outcome: DownOutcome = "nothing-recorded";
+  let exitCode = 0;
+  for (const address of addresses) {
+    let own: DownOutcome | null = null;
+    const code = await new Promise<number>((resolve) => {
+      runServiceCommand({
+        ...options,
+        address,
+        command: "down",
+        onDownOutcome: (o) => {
+          own = o;
+        },
+        onClose: resolve,
+      });
+    });
+    // A service with a down command of its own reports no outcome: a
+    // success is a stop.
+    const o: DownOutcome = own ?? (code === 0 ? "stopped" : "unstoppable");
+    if (DOWN_RANK[o] > DOWN_RANK[outcome]) outcome = o;
+    exitCode = Math.max(exitCode, code);
+  }
+  return { outcome, exitCode };
+}
+
+/**
+ * A record `up` and `down` can't verify by its process group: none was
+ * recorded (before 0.3.0-dev.37) and it names no container of its own.
+ */
+function isLegacyRecord(d: DaemonRecord): boolean {
+  return (
+    !hasProcessGroup(d) &&
+    !(d.containers?.length ?? 0) &&
+    devOpContainerNames(d.repoPath).length === 0
+  );
+}
+
+/**
+ * What a record from before 0.3.0-dev.37 means now (legacy-adopt.ts), for
+ * `up` and `down` alike: "adopted" (the running process is the service; its
+ * group is written into the record, so it is `down`'s to stop) or "dropped"
+ * (stale: warned, the record removed, nothing signalled). The port is the
+ * service's known one (servicePort: `port`, its health URL, `--port` in its
+ * up command); the token match uses its configured up command.
+ */
+function settleLegacyRecord(
+  record: DaemonRecord,
+  resolved: ResolvedService,
+  workspace: string,
+  onLine: (line: string) => void,
+): "adopted" | "dropped" {
+  const manifest = readManifest(resolved.repoPath);
+  const svc = manifest?.services?.[resolved.subsystem] as
+    | { port?: unknown; health?: { local?: { url?: string } } }
+    | undefined;
+  const upDef = manifest
+    ? effectiveLocalCommands(
+        manifest,
+        resolved.subsystem,
+        resolved.repoName,
+        workspace,
+      )["up"]
+    : undefined;
+  const upCommand = upDef ? commandDefToString(upDef) : null;
+  const port = servicePort({
+    port: svc?.port,
+    healthUrl: svc?.health?.local?.url ?? null,
+    upCommand,
+  });
+  const verdict = adoptLegacyProcess({
+    repoPath: record.repoPath,
+    pid: typeof record.pid === "number" ? record.pid : undefined,
+    port,
+    upCommand,
+  });
+  if (verdict.kind === "adopted") {
+    updateDaemonProcessGroup(record.address, verdict.group);
+    onLine(
+      `adopted pre-dev.37 process (pid ${verdict.pid}` +
+        (verdict.port ? `, port ${verdict.port}` : "") +
+        `) for ${record.address}`,
+    );
+    return "adopted";
+  }
+  onLine(
+    `Warning: ${record.address} was recorded before 0.3.0-dev.37 and nothing running is it ` +
+      `(no process on its port in ${record.repoPath}` +
+      (typeof record.pid === "number" ? `, pid ${record.pid} not its up` : "") +
+      `); dropped the record, nothing was signalled`,
+  );
+  if (verdict.busy)
+    onLine(
+      `Warning: port ${verdict.busy.port} is in use by pid ${verdict.busy.pid}` +
+        (verdict.busy.cwd ? ` (cwd ${verdict.busy.cwd})` : "") +
+        `, outside ${record.repoPath}: not ${record.address}, left alone`,
+    );
+  unregisterDaemon(record.address);
+  return "dropped";
+}
+
+/**
+ * A restart with no `restart` of its own: the service's down (its declared
+ * down, then the recorded group, as `down` does; forced, since a restart
+ * brings it back for every owner), then its up, detached, as `up` does. The
+ * returned proc stands for the up's streaming tail: killing it stops the
+ * tail (now, or as soon as the up starts), never the service.
+ */
+function restartAsDownThenUp(
+  options: RunCommandOptions,
+  logPath: string | undefined,
+): RunCommandResult {
+  let tail: ChildProcess | null = null;
+  let stopTail = false;
+  const proxy = new EventEmitter() as unknown as ChildProcess;
+  (proxy as unknown as { kill: (s?: NodeJS.Signals) => boolean }).kill = (
+    signal,
+  ) => {
+    stopTail = true;
+    try {
+      tail?.kill?.(signal);
+    } catch {
+      /* already gone */
+    }
+    return true;
+  };
+  runServiceCommand({
+    ...options,
+    command: "down",
+    force: true,
+    onDownOutcome: undefined,
+    onServiceExit: undefined,
+    onClose: (code) => {
+      if (code !== 0) {
+        options.onClose(code);
+        return;
+      }
+      const up = runServiceCommand({ ...options, command: "up" });
+      tail = up.proc;
+      if (stopTail) {
+        try {
+          tail?.kill?.("SIGTERM");
+        } catch {
+          /* already gone */
+        }
+      }
+    },
+  });
+  return { proc: proxy, detachable: true, interactive: false, logPath };
+}
+
 export interface RunCommandResult {
   proc: ChildProcess;
   /** True when the command is expected to run indefinitely (e.g. `up`). */
@@ -1582,6 +1768,12 @@ export function previewServiceCommand(
     // The real down stops the process group a detached up recorded.
     const record = findDaemonByAddress(resolved.address);
     if (hasProcessGroup(record)) return { kind: "run", address };
+    // A repo-level down stops its services' records.
+    if (
+      !address.includes("/") &&
+      repoServiceRecords(resolved.repoName, resolved.address).length > 0
+    )
+      return { kind: "run", address };
     return {
       kind: "nothing",
       address,
@@ -1674,7 +1866,31 @@ export function runServiceCommand(
    * Such a record is dropped, since Den can neither stop nor verify it.
    */
   const downWithoutCommand = (why: string): RunCommandResult => {
-    const record = findDaemonByAddress(resolved.address);
+    // A repo-level down (`down <repo>`, and `down -a`, which downs each
+    // repo) with no down of its own stops every service record of the repo
+    // through the same per-record path (0.3.0-dev.38): the mirror of `up`
+    // starting a repo's services (resolveUpTargets).
+    const serviceRecords = address.includes("/")
+      ? []
+      : repoServiceRecords(resolved.repoName, resolved.address);
+    if (serviceRecords.length > 0) {
+      void downEach(
+        serviceRecords.map((d) => d.address),
+        options,
+      ).then(({ outcome, exitCode }) => {
+        const own = findDaemonByAddress(resolved.address);
+        if (own) unregisterDaemon(own.address);
+        reportDown(outcome);
+        onClose(exitCode);
+      });
+      return dummy();
+    }
+    let record = findDaemonByAddress(resolved.address);
+    // A record from before 0.3.0-dev.37: adopt what runs, or drop it.
+    if (record && isLegacyRecord(record)) {
+      settleLegacyRecord(record, resolved, workspace, onLine);
+      record = findDaemonByAddress(resolved.address);
+    }
     if (hasProcessGroup(record)) {
       void stopDaemonProcessGroup(record, onLine).then((outcome) => {
         reportDown(outcome);
@@ -1727,6 +1943,13 @@ export function runServiceCommand(
       );
       unregisterDaemon(resolved.address);
       existing = undefined;
+    }
+    // A record from before 0.3.0-dev.37 (no process group): adopt the
+    // process that runs the service (then it is already up), or drop the
+    // record and start it (0.3.0-dev.38).
+    if (existing && command === "up" && isLegacyRecord(existing)) {
+      settleLegacyRecord(existing, resolved, workspace, onLine);
+      existing = findDaemonByAddress(resolved.address);
     }
     if (
       existing &&
@@ -1910,6 +2133,15 @@ export function runServiceCommand(
   if (!cmdDef && command === "restart") {
     const downDef = svcCommands["down"];
     const upDef = svcCommands["up"];
+    // A daemon restart is a down step, then a detached up step, never one
+    // `sh -c "<down> && <up>"`: the up's recorded process group must hold
+    // only the up (0.3.0-dev.38). The tab runtime composes its own below.
+    if (downDef && upDef && runtime !== "tab") {
+      return restartAsDownThenUp(
+        options,
+        getServiceLogPath(resolved.repoName, resolved.subsystem),
+      );
+    }
     if (downDef && upDef) {
       const downCmd = rewriteLegacyOpctlKillCommand(
         "down",
