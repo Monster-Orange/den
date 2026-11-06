@@ -48,23 +48,43 @@ async function call(
   headers: Record<string, string> = {},
   body?: unknown,
 ): Promise<Reply> {
-  const send = () =>
-    fetch(`${s.base}${p}`, {
-      method,
-      headers: {
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
-        ...headers,
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-  // A kept-alive socket the server closed while a slow step (the stdio MCP
-  // runs) left it idle resets on reuse: the request never reached the
-  // server, so sending it again is safe.
-  const r = await send().catch((err: unknown) => {
-    const code = (err as { cause?: { code?: string } }).cause?.code;
-    if (code === "ECONNRESET") return send();
-    throw err;
-  });
+  // A fresh connection per call (agent: false, Connection: close): a
+  // kept-alive socket the server closed while a slow step left it idle
+  // fails on reuse, and retrying a POST (the rotate) isn't safe.
+  const payload = body === undefined ? undefined : JSON.stringify(body);
+  const r = await new Promise<{ status: number; text: () => Promise<string> }>(
+    (resolve, reject) => {
+      const req = http.request(
+        `${s.base}${p}`,
+        {
+          method,
+          agent: false,
+          headers: {
+            connection: "close",
+            ...(payload === undefined
+              ? {}
+              : {
+                  "content-type": "application/json",
+                  "content-length": Buffer.byteLength(payload),
+                }),
+            ...headers,
+          },
+        },
+        (res) => {
+          let buf = "";
+          res.setEncoding("utf8");
+          res.on("data", (c: string) => (buf += c));
+          res.on("end", () =>
+            resolve({ status: res.statusCode ?? 0, text: async () => buf }),
+          );
+          res.on("error", reject);
+        },
+      );
+      req.on("error", reject);
+      if (payload !== undefined) req.write(payload);
+      req.end();
+    },
+  );
   const text = await r.text();
   let json: Record<string, unknown> = {};
   try {
