@@ -48,6 +48,8 @@ const req = (
     socket: { remoteAddress: peer },
   }) as unknown as http.IncomingMessage;
 const cookie = { cookie: `den_session_${PORT}=good` };
+/** The edge's X-Forwarded-For for a client on another machine. */
+const AWAY = { "x-forwarded-for": "203.0.113.7" };
 const START = "/api/workspaces/north/agents";
 
 describe("on loopback", () => {
@@ -137,11 +139,12 @@ describe("on loopback", () => {
     ).toMatchObject({ ok: false, status: 403, code: "cross_site" });
   });
 
-  it("beyond loopback, shell-grade still needs a sign-in", () => {
+  it("beyond loopback (the edge for another machine), shell-grade still needs a sign-in", () => {
     expect(
       checkRequest(
         req("POST", START, {
           host: EDGE,
+          ...AWAY,
           origin: `https://${EDGE}`,
           "x-den-csrf": "start-csrf",
         }),
@@ -237,27 +240,27 @@ describe("on loopback", () => {
 });
 
 describe("beyond loopback", () => {
-  it("an edge Host with no session: 401 signin_required even on a read-only GET or page", () => {
+  it("an edge Host for another machine (its X-Forwarded-For) with no session: 401 signin_required even on a read-only GET or page", () => {
     for (const p of ["/", "/api/settings", "/api/health", "/settings"])
       expect([
         p,
-        checkRequest(req("GET", p, { host: EDGE }), ctx()),
+        checkRequest(req("GET", p, { host: EDGE, ...AWAY }), ctx()),
       ]).toMatchObject([
         p,
         { ok: false, status: 401, code: "signin_required", scope: "den" },
       ]);
   });
 
-  it("an edge Host with a session passes, and its mutations still need Origin and CSRF", () => {
+  it("an edge Host for another machine with a session passes, and its mutations still need Origin and CSRF", () => {
     expect(
       checkRequest(
-        req("GET", "/api/settings", { host: EDGE, ...cookie }),
+        req("GET", "/api/settings", { host: EDGE, ...AWAY, ...cookie }),
         ctx(),
       ),
     ).toMatchObject({ ok: true, beyond: true, via: "edge" });
     expect(
       checkRequest(
-        req("POST", "/api/settings", { host: EDGE, ...cookie }),
+        req("POST", "/api/settings", { host: EDGE, ...AWAY, ...cookie }),
         ctx(),
       ),
     ).toMatchObject({ ok: false, code: "origin_rejected" });
@@ -265,6 +268,7 @@ describe("beyond loopback", () => {
       checkRequest(
         req("POST", "/api/settings", {
           host: EDGE,
+          ...AWAY,
           origin: `https://${EDGE}`,
           "x-den-csrf": "session-csrf",
           ...cookie,
@@ -279,6 +283,7 @@ describe("beyond loopback", () => {
       checkRequest(
         req("GET", "/api/settings", {
           host: EDGE,
+          ...AWAY,
           authorization: "Bearer den_pt_good",
         }),
         ctx(),
@@ -289,12 +294,16 @@ describe("beyond loopback", () => {
   it("the sign-in routes need no session: /auth and /api/session", () => {
     expect(
       checkRequest(
-        req("GET", "/auth?c=x", { host: EDGE, "sec-fetch-site": "none" }),
+        req("GET", "/auth?c=x", {
+          host: EDGE,
+          ...AWAY,
+          "sec-fetch-site": "none",
+        }),
         ctx(),
       ),
     ).toMatchObject({ ok: true });
     expect(
-      checkRequest(req("GET", "/api/session", { host: EDGE }), ctx()),
+      checkRequest(req("GET", "/api/session", { host: EDGE, ...AWAY }), ctx()),
     ).toMatchObject({ ok: true, session: null, beyond: true });
   });
 

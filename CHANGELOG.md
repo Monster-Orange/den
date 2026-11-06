@@ -4,6 +4,42 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.3] - unreleased
+
+The edge counts as local.
+
+### Changed
+
+- **The edge from this machine needs no sign-in.** A request for the edge
+  hostname from an edge peer is treated as loopback: no sign-in on any
+  route, agents and the terminal included (0.4.2 asked for one on every
+  route). Host, Origin, CSRF and the agent-token rules stay. The client is
+  the left-most `X-Forwarded-For` entry: loopback or one of this machine's
+  own interface addresses (a Tailscale `100.x` included) is local; missing,
+  or a Docker/VM network's address (what Docker Desktop and OrbStack hand
+  the edge), is "can't tell", also local; any other address is another
+  machine and needs a sign-in. A non-loopback `DEN_BIND_HOST` bind (other
+  than the Linux edge's Docker bridge) and `web.allow_plain_http_remote`'s
+  LAN names still need one. See docs/distributions.md, "Signing in".
+
+### Added
+
+- **"Your edge is reachable from other machines".** When an edge hostname
+  resolves to an address that isn't loopback, or the edge container
+  publishes a port on every interface (`docker inspect`), Den says so once
+  in `web.log` at start and in a banner on every page (dismissed per
+  browser): "Your edge is reachable from other machines; anyone who can
+  reach it can use terminals. Auth is coming."
+- **`<cli> web login --host <name>`** mints the one-time link for an edge
+  hostname (an edge domain or alias, a VPN name among them) at its edge
+  URL, instead of localhost. A name the edge doesn't route to this server
+  is refused, naming the hostnames it does and what to add. `--origin`
+  stays.
+
+### Migrations
+
+None.
+
 ## [0.4.2] - 2026-11-06
 
 The 0.4.1 carry-overs.

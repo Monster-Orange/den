@@ -1183,9 +1183,11 @@ are the same directory.
 
 On localhost nothing asks you to sign in: every page, the agents and the
 terminal work as they are, and the lock (R8) is the only prompt (for
-privileged actions). Signing in is for when the server is reached beyond
-this machine: through the edge hostname, a LAN address, or a bind that
-isn't loopback (`DEN_BIND_HOST`).
+privileged actions). The edge counts as local too (0.4.3): opening
+`https://acme.acme.localhost` from this machine asks for nothing.
+Signing in is for when the server is reached from another machine: the
+edge for a client the edge says is elsewhere, a LAN address, or a bind
+that isn't loopback (`DEN_BIND_HOST`).
 
 There is no password. Reading `web.secret` (32 random bytes, mode 0600 in
 the state dir, made at the first `web up`) proves you are this computer's
@@ -1205,7 +1207,11 @@ user, and the CLI does that for you:
   within 60 seconds, and only this server's secret makes one. It is printed
   only on the one line you asked for (`web login`, or `web up` when it
   couldn't open the browser), never logged. Through the edge or a LAN name,
-  the cookie belongs to that name: `web login --origin https://acme.acme.localhost`
+  the cookie belongs to that name: `web login --host acme.acme.localhost`
+  mints the link for an edge hostname (any edge domain or alias, a VPN name
+  among them; its URL comes from the edge config, and a name the edge
+  doesn't route here is refused, saying what to add), and
+  `web login --origin http://<lan name>:<port>` for any other allowed name
   (the signed-out page there shows the exact command).
 - **The cookie** (`den_session_<port>`) is HttpOnly, SameSite=Strict and
   Path=/, and Secure when the request came over HTTPS through the edge. The
@@ -1222,10 +1228,38 @@ user, and the CLI does that for you:
   open, and changes (an agent's start or resume and the terminal included)
   need only the page's own Origin and CSRF token, which the shell sends.
   The Host allowlist, the Origin check and the CSRF token are what stop
-  another site or a rebinding DNS name. Through the edge, or from another
-  machine, every page and call needs a signed-in browser (or a bearer). A
-  page there shows "Sign in to use <name>" with the command to run; it
-  never asks for a secret. `/api` answers 401 `signin_required`.
+  another site or a rebinding DNS name. From another machine, every page
+  and call needs a signed-in browser (or a bearer). A page there shows
+  "Sign in to use <name>" with the command to run; it never asks for a
+  secret. `/api` answers 401 `signin_required`.
+- **The edge counts as local.** A request for the edge hostname from the
+  edge (an edge peer, below) is treated as loopback: no sign-in on any
+  route, the agents and the terminal included. Host, Origin, CSRF and the
+  agent-token rules still apply. Who the client is comes from the left-most
+  `X-Forwarded-For` entry the edge sends:
+  - loopback, or one of this machine's own interface addresses (a LAN
+    address, or a VPN's such as a Tailscale `100.x`): local;
+  - missing, or a container/VM network's address (the Docker ranges, or a
+    subnet of one of this machine's Docker/OrbStack/VM bridges): Den can't
+    tell (Docker Desktop and OrbStack on macOS hand the edge their
+    gateway's address, and a TCP passthrough in front of the edge hides the
+    client), so local;
+  - any other address: another machine, which needs a sign-in.
+
+  With `DEN_BIND_HOST` beyond loopback (a deliberate exposure, other than
+  the Linux edge's Docker bridge address) the edge needs a sign-in as
+  before. With `forwardedHeaders.insecure` (the edge's default) Traefik
+  keeps an `X-Forwarded-For` the client sent, so this is a convenience,
+  not a boundary: whoever can reach the edge can use the terminal.
+
+- **"Your edge is reachable from other machines".** When Den can tell, at
+  start, that the edge is reachable beyond this machine (an edge hostname
+  that resolves to an address that isn't loopback, such as a LAN or
+  Tailscale address, or the edge container publishing a port on every
+  interface, from `docker inspect`), it writes "Your edge is reachable from
+  other machines; anyone who can reach it can use terminals. Auth is
+  coming." once to `web.log`, and every page shows it as a banner (dismissed
+  per browser).
 - **localhost is the canonical name.** A cookie set on `localhost` isn't
   sent to `127.0.0.1`, so the links Den prints use `localhost`.
 - **Browsers.** Chromium, Firefox and Safari 16.4 or later: a sign-in link

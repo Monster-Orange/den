@@ -3361,6 +3361,31 @@
     }
   }
 
+  // 0.4.3: the edge is reachable from other machines (the server fills
+  // data-edge-exposed on #den-shell). One line; dismissed per browser.
+  var EDGE_LS = "den.edgeExposed.dismissed";
+  var edgeDismissed = false;
+  try {
+    edgeDismissed = localStorage.getItem(EDGE_LS) === "1";
+  } catch (e) {
+    edgeDismissed = false;
+  }
+  if (host.dataset.edgeExposed && !edgeDismissed)
+    showBanner("edge-exposed", {
+      text: host.dataset.edgeExposed,
+      action: {
+        label: t("api.close"),
+        run: function () {
+          try {
+            localStorage.setItem(EDGE_LS, "1");
+          } catch (e) {
+            /* no storage: dismissed for this page only */
+          }
+          hideBanner("edge-exposed");
+        },
+      },
+    });
+
   // The config fails validation (0.4.1): the server marks every page it
   // serves while it does (data-config-invalid on #den-shell), and the first
   // /api answer of 422 config_invalid marks it too. From then on the shell

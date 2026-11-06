@@ -288,7 +288,8 @@ else bad "\`acme web login\`'s link didn't sign in once (second use answered $ag
 SEC_HDR=""
 # SEC-1 (Ward, 2026-11-06): no sign-in on loopback, shell-grade included:
 # the page's Origin and CSRF token (never echoed) reach an agent start.
-# Beyond loopback (the edge hostname) every route needs a sign-in.
+# The edge from this machine counts as local (0.4.3); for another machine
+# (the edge's X-Forwarded-For) every route needs a sign-in.
 SEC_CSRF="$(curl -sS -H 'Sec-Fetch-Site: same-origin' "http://localhost:$PORT/api/session" |
   node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).csrf||""))}catch{}})')"
 SEC_BODY="$WORK/agent-start.json"
@@ -299,10 +300,14 @@ SEC_CSRF=""
 if [ -n "$code" ] && [ "$code" != "401" ] && [ "$code" != "403" ] && ! grep -q signin_required "$SEC_BODY"; then
   ok "agent start on localhost needs no sign-in (past the checks: $code)"
 else bad "agent start on localhost answered $code (a sign-in or a refused check)"; fi
-code="$(curl -sS -o "$SEC_BODY" -w '%{http_code}' -H "Host: acme.acme.localhost" "http://localhost:$PORT/api/settings")"
+code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Host: acme.acme.localhost" "http://localhost:$PORT/api/settings")"
+[ "$code" = "200" ] && ok "the edge hostname from this machine needs no sign-in: 200" ||
+  bad "the edge hostname from this machine answered $code"
+code="$(curl -sS -o "$SEC_BODY" -w '%{http_code}' -H "Host: acme.acme.localhost" \
+  -H "X-Forwarded-For: 203.0.113.7" "http://localhost:$PORT/api/settings")"
 if [ "$code" = "401" ] && grep -q signin_required "$SEC_BODY"; then
-  ok "beyond loopback (the edge hostname) a read needs a sign-in: 401 signin_required"
-else bad "the edge hostname without a session answered $code"; fi
+  ok "the edge hostname for another machine needs a sign-in: 401 signin_required"
+else bad "the edge hostname for another machine without a session answered $code"; fi
 run web-restart ./bin/acme web restart --no-open --port "$PORT"
 run web-down ./bin/acme web down --port "$PORT"
 port_free() { ! (lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1); }

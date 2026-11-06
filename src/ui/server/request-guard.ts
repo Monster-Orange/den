@@ -19,12 +19,17 @@
  *    session's /api/sessions/<id>/*: agent start and resume mint tokens.
  *    403 `agent_forbidden`. WS-3a (0.4.2) adds the workspace check at
  *    agentRefusal's seam.
- *  - Sign-in (§4, route-classes.ts): beyond loopback (the edge hostname, a
- *    LAN name, or a peer that isn't loopback) every route needs a session
- *    or a bearer. Otherwise 401 `signin_required`. On loopback no route
- *    does, shell-grade ones included (Ward, 2026-11-06: the lock, R8, is
- *    the only prompt there; Host, Origin and CSRF cover CSRF and DNS
- *    rebinding). SIGNIN_FREE routes never need one.
+ *  - Sign-in (§4, route-classes.ts): beyond loopback (a LAN name, a peer
+ *    that isn't loopback, or the edge hostname for a client on another
+ *    machine) every route needs a session or a bearer. Otherwise 401
+ *    `signin_required`. On loopback no route does, shell-grade ones
+ *    included (Ward, 2026-11-06: the lock, R8, is the only prompt there;
+ *    Host, Origin and CSRF cover CSRF and DNS rebinding). SIGNIN_FREE
+ *    routes never need one.
+ *  - The edge counts as local (0.4.3, edgeClientIsLocal): the edge hostname
+ *    from an edge peer gets loopback's treatment unless the edge's
+ *    X-Forwarded-For names another machine, or this server is deliberately
+ *    exposed (`exposed`: a non-loopback DEN_BIND_HOST bind).
  *  - Origin, on POST/PUT/PATCH/DELETE and every WebSocket upgrade: an
  *    allowed host (http or https). No Origin needs a valid bearer.
  *    Otherwise 403 `origin_rejected`.
@@ -45,6 +50,7 @@
 import { randomBytes, timingSafeEqual, createHash } from "crypto";
 import type * as http from "http";
 import * as net from "net";
+import * as os from "os";
 import {
   actorFromHeaders,
   type Actor,
@@ -125,6 +131,18 @@ export interface GuardContext {
    * server's port gets 421. Unset: taken as yes (a unit test).
    */
   peerIsEdge?: (req: http.IncomingMessage) => boolean;
+  /**
+   * This machine's own addresses and container/VM bridges (localNet), for
+   * telling whether an edge request's client is this machine. Unset: none
+   * (a unit test): only loopback and the Docker ranges count as local.
+   */
+  localNet?: () => LocalNet;
+  /**
+   * A deliberate network exposure (a non-loopback DEN_BIND_HOST bind other
+   * than the Docker bridge the edge uses on Linux): the edge hostname
+   * needs a sign-in too, as before 0.4.3.
+   */
+  exposed?: boolean;
 }
 
 export type GuardResult =
@@ -263,6 +281,93 @@ export function isEdgePeer(addr: string | undefined): boolean {
   );
 }
 
+/** An address without its zone, IPv4-mapped prefix or brackets, lowercase. */
+function normAddress(a: string): string {
+  return a
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/%.*$/, "")
+    .replace(/^::ffff:(?=\d+\.)/, "");
+}
+
+/** This machine's own addresses, and the container/VM bridges it hosts. */
+export interface LocalNet {
+  /** Every interface address (loopback, LAN, a VPN's such as Tailscale's 100.x). */
+  own: readonly string[];
+  /** IPv4 subnets of its container/VM bridges (Docker, OrbStack, VMs). */
+  bridges: readonly { address: string; netmask: string }[];
+}
+
+/** Interface names of container/VM bridges: their peers are this machine's. */
+const BRIDGE_IFACE =
+  /^(docker\d*|br-|bridge\d+|vmnet|virbr|veth|cni|podman|vboxnet)/;
+
+/** localNet from os.networkInterfaces() (or a given table, in a test). */
+export function localNet(
+  ifaces: ReturnType<typeof os.networkInterfaces> = os.networkInterfaces(),
+): LocalNet {
+  const own: string[] = [];
+  const bridges: { address: string; netmask: string }[] = [];
+  for (const [name, list] of Object.entries(ifaces))
+    for (const a of list ?? []) {
+      own.push(normAddress(a.address));
+      if (a.family === "IPv4" && BRIDGE_IFACE.test(name))
+        bridges.push({ address: a.address, netmask: a.netmask });
+    }
+  return { own: [...new Set(own)], bridges };
+}
+
+function ipv4(a: string): number {
+  return a.split(".").reduce((n, o) => n * 256 + Number(o), 0);
+}
+function inSubnet(a: string, net4: { address: string; netmask: string }) {
+  if (!net.isIPv4(a) || !net.isIPv4(net4.address)) return false;
+  const m = ipv4(net4.netmask);
+  // Unsigned compare of the masked halves (no 32-bit sign games).
+  const lo = (x: number) => x - (x % (2 ** 32 - m));
+  return m > 0 && lo(ipv4(a)) === lo(ipv4(net4.address));
+}
+
+/**
+ * The original client X-Forwarded-For names: its left-most entry, as an
+ * IP (a port or brackets dropped), or undefined when there is none.
+ */
+export function forwardedClient(xff: string | undefined): string | undefined {
+  const first = xff?.split(",")[0]?.trim();
+  if (!first) return undefined;
+  let a = first;
+  const b = /^\[([^\]]+)\](?::\d+)?$/.exec(a);
+  if (b) a = b[1];
+  else if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(a)) a = a.replace(/:\d+$/, "");
+  a = normAddress(a);
+  return net.isIP(a) ? a : undefined;
+}
+
+/**
+ * The edge counts as local (0.4.3): whether an edge request (the edge
+ * hostname from an edge peer) comes from this machine, by the left-most
+ * X-Forwarded-For entry (the original client):
+ *  - loopback, or one of this machine's own interface addresses (its LAN
+ *    or VPN address, a Tailscale 100.x one included): local;
+ *  - missing, unreadable, or a container/VM network's address (the Docker
+ *    ranges isEdgePeer takes, or a subnet of one of this machine's
+ *    bridges): we can't tell (Docker Desktop and OrbStack on macOS hand the
+ *    edge their gateway's address, and a TCP passthrough in front hides the
+ *    client), so local;
+ *  - anything else: another machine, beyond loopback (sign-in required).
+ * The edge's own page warns when it is reachable beyond this machine
+ * (edge-exposure.ts): with no sign-in, anyone who reaches it is local.
+ */
+export function edgeClientIsLocal(
+  xff: string | undefined,
+  local: LocalNet = { own: [], bridges: [] },
+): boolean {
+  const c = forwardedClient(xff);
+  if (!c || isEdgePeer(c) || local.own.includes(c)) return true;
+  return local.bridges.some((b) => inSubnet(c, b));
+}
+
 /**
  * Whether the request came over HTTPS: the socket's own encryption, or,
  * only for the edge hostname from an edge peer, `X-Forwarded-Proto: https`.
@@ -370,7 +475,13 @@ export function checkRequest(
         "127.0.0.1, [::1] with its port, or its edge hostname).",
     };
   const peerLoopback = ctx.peerIsLoopback ? ctx.peerIsLoopback(req) : true;
-  const beyond = via !== "loopback" || !peerLoopback;
+  // The edge from this machine (edgeClientIsLocal) is local, unless this
+  // server is deliberately exposed; a LAN name or peer is beyond.
+  const beyond =
+    via === "edge"
+      ? !!ctx.exposed ||
+        !edgeClientIsLocal(header(req, "x-forwarded-for"), ctx.localNet?.())
+      : via !== "loopback" || !peerLoopback;
 
   let principal: Principal | null = null;
   const auth = header(req, "authorization");

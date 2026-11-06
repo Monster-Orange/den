@@ -184,8 +184,10 @@ import {
   bindRefusal,
   checkRequest,
   isEdgePeer,
+  isDockerBridgeAddress,
   isLoopbackAddress,
   isLoopbackBind,
+  localNet,
   newCsrfToken,
   principalOf,
   requestIsHttps,
@@ -549,6 +551,13 @@ setHtmlFill((html) => {
         () => '<div id="den-shell" data-config-invalid="1"',
       );
   }
+  // 0.4.3: every page says when the edge is reachable from other machines.
+  if (EDGE_EXPOSED)
+    out = out.replace(
+      '<div id="den-shell"',
+      () =>
+        `<div id="den-shell" data-edge-exposed="${escAttr(EDGE_EXPOSED_MESSAGE)}"`,
+    );
   // MD-2: every page says when the engine on disk is not the one running.
   const engine = engineCheck();
   if (engine.stale)
@@ -773,7 +782,12 @@ import {
 import { refuseUpgrade } from "./websocket.js";
 import { isLifecycleExecCmd, streamLifecycleExec } from "./lifecycle-exec.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
-import { edgeDomains, edgeHttps, routeHost } from "../../shared/edge/render.js";
+import {
+  edgeHttps,
+  edgeNames,
+  webRouteHosts,
+} from "../../shared/edge/render.js";
+import { EDGE_EXPOSED_MESSAGE, edgeExposure } from "./edge-exposure.js";
 import {
   linksFor,
   openUrlFor,
@@ -904,24 +918,8 @@ function denEdgeHosts(): string[] {
   } catch {
     return [];
   }
-  const ports = new Set([PORT, readWebPortSafe()]);
-  const names = Object.entries(cfg.routes)
-    .filter(([, upstream]) => {
-      try {
-        const u = new URL(upstream);
-        return (
-          ports.has(Number(u.port || (u.protocol === "https:" ? 443 : 80))) &&
-          ["host.docker.internal", "localhost", "127.0.0.1"].includes(
-            u.hostname,
-          )
-        );
-      } catch {
-        return false;
-      }
-    })
-    .map(([name]) => name);
-  return names.flatMap((n) =>
-    edgeDomains(cfg).map((d) => routeHost(n, d).toLowerCase()),
+  return webRouteHosts(cfg, new Set([PORT, readWebPortSafe()])).map(
+    (r) => r.host,
   );
 }
 
@@ -1016,6 +1014,13 @@ function sessionCookie(req: http.IncomingMessage): string | undefined {
 }
 
 const LAN_HOSTS = lanHosts();
+/** This machine's addresses (localNet), re-read at most every 10 s. */
+let LOCAL_NET = { at: 0, net: localNet() };
+function currentLocalNet(): ReturnType<typeof localNet> {
+  if (Date.now() - LOCAL_NET.at > 10_000)
+    LOCAL_NET = { at: Date.now(), net: localNet() };
+  return LOCAL_NET.net;
+}
 const GUARD: GuardContext = {
   port: PORT,
   loopbackNames: loopbackNames(),
@@ -1044,7 +1049,38 @@ const GUARD: GuardContext = {
   peerIsLoopback: (req) => isLoopbackAddress(req.socket?.remoteAddress),
   // The edge hostname only from the edge's own peers (loopback, Docker).
   peerIsEdge: (req) => isEdgePeer(req.socket?.remoteAddress),
+  // 0.4.3: the edge from this machine counts as local (edgeClientIsLocal).
+  localNet: currentLocalNet,
+  // A deliberate exposure (DEN_BIND_HOST beyond loopback, other than the
+  // Linux edge's Docker bridge): the edge needs a sign-in too.
+  exposed: !isLoopbackBind(BIND_HOST) && !isDockerBridgeAddress(BIND_HOST),
 };
+
+/**
+ * 0.4.3: why the edge is reachable beyond this machine (edge-exposure.ts),
+ * once at start; null until known, or when Den can't tell.
+ */
+let EDGE_EXPOSED: string | null = null;
+function checkEdgeExposure(): void {
+  // `docker inspect` only when the edge publishes host ports itself
+  // (edge.publish); behind another proxy, only the hostnames tell.
+  let container: string | null = null;
+  try {
+    const cfg = readEdgeConfig();
+    container = cfg.ports ? edgeNames(cfg.org).container : null;
+  } catch {
+    return; // no edge
+  }
+  const hosts = denEdgeHosts();
+  if (hosts.length === 0) return;
+  void edgeExposure(hosts, container)
+    .then((why) => {
+      if (!why) return;
+      EDGE_EXPOSED = why;
+      serverLog(`  ⚠ ${EDGE_EXPOSED_MESSAGE} (${why})`, "warn");
+    })
+    .catch(() => undefined);
+}
 
 /**
  * The Set-Cookie for a session: HttpOnly, SameSite=Strict, Path=/, Secure
@@ -4594,6 +4630,7 @@ server.listen(PORT, BIND_HOST, () => {
   console.log();
   // Once per start: a secrets config that leaves Den's own features off.
   for (const w of secretsConfigWarnings()) serverLog(`  ⚠ ${w}`);
+  checkEdgeExposure();
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────

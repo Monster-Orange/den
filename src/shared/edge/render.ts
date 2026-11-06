@@ -70,6 +70,37 @@ export function routeUrl(
   return `https://${routeHost(name, domain)}${p === 443 ? "" : `:${p}`}`;
 }
 
+/**
+ * The edge routes to a web server on one of `ports` (an upstream on the
+ * docker host or loopback), under every edge domain: `{ host, url }`, the
+ * hostname (lowercase) and the URL a browser uses there.
+ */
+export function webRouteHosts(
+  cfg: EdgeConfig,
+  ports: ReadonlySet<number>,
+): { host: string; url: string }[] {
+  return Object.entries(cfg.routes)
+    .filter(([, upstream]) => {
+      try {
+        const u = new URL(upstream);
+        return (
+          ports.has(Number(u.port || (u.protocol === "https:" ? 443 : 80))) &&
+          ["host.docker.internal", "localhost", "127.0.0.1"].includes(
+            u.hostname,
+          )
+        );
+      } catch {
+        return false;
+      }
+    })
+    .flatMap(([name]) =>
+      edgeDomains(cfg).map((d) => ({
+        host: routeHost(name, d).toLowerCase(),
+        url: routeUrl(name, cfg, d),
+      })),
+    );
+}
+
 /** Names that go on the org's certificate. */
 export function certNames(cfg: EdgeConfig): string[] {
   const zones = [...cfg.workspaces, ...(cfg.subzones ?? [])];

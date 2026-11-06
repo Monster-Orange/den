@@ -33,7 +33,8 @@ import {
 } from "../../shared/web-session.js";
 import { revokeAllActorTokens } from "../../shared/actor-token.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
-import { readWebPort } from "../../shared/edge/config.js";
+import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
+import { webRouteHosts } from "../../shared/edge/render.js";
 import {
   ownServer,
   processCwd,
@@ -1081,7 +1082,7 @@ export function displayWebHelp(): void {
   console.log(`  ${product().cli} web --setup-browser-access`);
   console.log(`  ${product().cli} web token --print`);
   console.log(
-    `  ${product().cli} web login [--next <path>] [--origin <url>] [--port <port>]`,
+    `  ${product().cli} web login [--next <path>] [--host <name> | --origin <url>] [--port <port>]`,
   );
   console.log(`  ${product().cli} web sessions [--json] [--port <port>]`);
   console.log(
@@ -1392,20 +1393,24 @@ function takePort(args: string[]): { port: number; rest: string[] } {
 }
 
 /**
- * `<cli> web login [--next <path>] [--origin <url>]`: a fresh sign-in link
+ * `<cli> web login [--next <path>] [--host <name> | --origin <url>]`: a fresh sign-in link
  * on stdout, alone (the only place a login code is ever printed); a note on
- * stderr. `--origin` for the edge hostname or a LAN name, where the cookie
- * must be set (the signed-out page there says which).
+ * stderr. `--host` for an edge hostname (its URL from the edge config),
+ * `--origin` for any allowed origin (a LAN name), where the cookie must be
+ * set (the signed-out page there says which).
  */
 export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
-  const usage = `Usage: ${product().cli} web login [--next <path>] [--origin <url>] [--port <port>]\n`;
+  const usage = `Usage: ${product().cli} web login [--next <path>] [--host <name> | --origin <url>] [--port <port>]\n`;
   if (isHelp(args)) {
     io.out(
       usage +
         "  Prints a one-time sign-in link (it works once, within 60 s) for one browser.\n" +
         "  On localhost nothing asks for a sign-in; it is needed when this server is\n" +
-        "  reached beyond this machine (the edge, or a LAN address: pass its --origin).\n" +
+        "  reached from another machine (pass the edge hostname as --host, or a LAN\n" +
+        "  address as --origin).\n" +
         "  --next <path>   where the browser lands after signing in (same origin only)\n" +
+        "  --host <name>   an edge hostname that routes here (an edge domain or alias,\n" +
+        "                  a VPN name among them): the link uses its edge URL\n" +
         "  --origin <url>  the address the browser uses, http(s)://host[:port]\n",
     );
     return 0;
@@ -1430,8 +1435,16 @@ export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
           : undefined;
     const n = val("--next");
     const o = val("--origin");
+    const h = val("--host");
     if (n !== undefined) next = n;
-    else if (o !== undefined) {
+    else if (h !== undefined) {
+      const found = edgeOriginFor(h, port);
+      if (typeof found !== "string") {
+        io.err(found.error);
+        return 2;
+      }
+      origin = found;
+    } else if (o !== undefined) {
       origin = parseOrigin(o);
       if (!origin) {
         io.err(
@@ -1455,6 +1468,38 @@ export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
   );
   io.out(`${link}\n`);
   return 0;
+}
+
+/**
+ * `web login --host <name>`: the origin a browser uses for an edge hostname
+ * that routes to this server (edge.routes under any edge domain or alias),
+ * or why there is none and what to add.
+ */
+export function edgeOriginFor(
+  name: string,
+  port: number,
+): string | { error: string } {
+  const want = name.trim().toLowerCase().replace(/\.$/, "");
+  let routes: { host: string; url: string }[] = [];
+  try {
+    routes = webRouteHosts(readEdgeConfig(), new Set([port, readWebPort()]));
+  } catch {
+    routes = [];
+  }
+  const hit = routes.find((r) => r.host === want);
+  if (hit) return hit.url;
+  const known = routes.map((r) => r.host);
+  return {
+    error:
+      `--host ${name} is not a hostname this server answers to` +
+      (known.length
+        ? ` (its edge hostnames: ${known.join(", ")}).\n`
+        : " (no edge route reaches this server).\n") +
+      "  Add it to the config's edge block: its domain to edge.aliases (a VPN\n" +
+      "  name), or a route to this server in edge.routes, then `edge up`. For a\n" +
+      "  LAN name (DEN_BIND_HOST and web.allow_plain_http_remote) pass\n" +
+      "  --origin http://<name>:<port> instead.\n",
+  };
 }
 
 interface SessionRow {

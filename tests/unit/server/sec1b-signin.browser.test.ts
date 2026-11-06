@@ -29,6 +29,8 @@ import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
+/** The edge's X-Forwarded-For for a client on another machine (0.4.3). */
+const AWAY = { "x-forwarded-for": "203.0.113.7" };
 let browser: Browser | null = null;
 let tmp = "";
 let stateDir = "";
@@ -137,9 +139,14 @@ describe("no sign-in prompt on loopback (Ward, 2026-11-06)", () => {
 });
 
 /** A page, and every /api answer of 421 or 401 after it loaded. */
-async function quiet(url: string, status: number) {
+async function quiet(
+  url: string,
+  status: number,
+  extraHTTPHeaders?: Record<string, string>,
+) {
   const ctx = await browser!.newContext({
     viewport: { width: 1280, height: 800 },
+    ...(extraHTTPHeaders ? { extraHTTPHeaders } : {}),
   });
   const p = await ctx.newPage();
   const refused: string[] = [];
@@ -176,16 +183,16 @@ describe("refusal pages start no polls (no /api answers 421 or 401 after load)",
     expect(r.chip).toBe("Status unknown");
   }, 60_000);
 
-  it("the signed-out page beyond loopback (the edge hostname)", async () => {
+  it("the signed-out page beyond loopback (the edge hostname, for another machine)", async () => {
     if (skip()) return;
-    const r = await quiet(`http://${EDGE}:${port}/`, 401);
+    const r = await quiet(`http://${EDGE}:${port}/`, 401, AWAY);
     expect(r.refused).toEqual([]);
     expect(r.chip).toBe("Status unknown");
   }, 60_000);
 
-  it("the edge's signed-out page names the command for its own origin; signing in there lets the page load", async () => {
+  it("the edge's signed-out page (another machine) names the command for its own origin; signing in there lets the page load", async () => {
     if (skip()) return;
-    const ctx = await browser!.newContext();
+    const ctx = await browser!.newContext({ extraHTTPHeaders: AWAY });
     const p = await ctx.newPage();
     await p.goto(`http://${EDGE}:${port}/`);
     await p.waitForSelector("#den-signin");

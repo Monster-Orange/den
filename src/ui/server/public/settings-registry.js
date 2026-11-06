@@ -472,7 +472,7 @@ export const DEN_SETTINGS = [
     category: "cli",
     label: "Browser sign-in",
     description:
-      "Signing in is needed only when this server is reached beyond this machine (the edge, or a LAN address); on localhost nothing asks for it. __DEN_CLI__ web login prints a sign-in link; __DEN_CLI__ web sessions lists signed-in browsers.",
+      "Signing in is needed only when this server is reached from another machine (through the edge, or a LAN address); on localhost, and through the edge from this machine, nothing asks for it. __DEN_CLI__ web login prints a sign-in link; __DEN_CLI__ web sessions lists signed-in browsers.",
     keywords: ["sign in", "sign out", "login", "logout", "session", "browser"],
     scope: "user",
     control: {
