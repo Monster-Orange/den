@@ -741,33 +741,108 @@ export function readMcpConfig(
 export interface AgentsConfig {
   /** Sessions that may run at once (default 4). */
   max_concurrent?: number;
+  /**
+   * Persona packs (AG-2a): directories of persona files, relative to the
+   * distribution root. Den's default pack is always read first; a pack's
+   * persona replaces one of the same id.
+   */
+  persona_packs?: string[];
+  /**
+   * Any other key is an agent id: `agents.<id>.grants` widens that agent's
+   * MCP scope to other workspaces (AG spec §5b). Config only: an agent
+   * never grants itself one.
+   */
+  [agentId: string]: unknown;
 }
 
 export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
 
+/** The keys of `agents:` that are not an agent id. */
+export const AGENTS_RESERVED_KEYS = ["max_concurrent", "persona_packs"];
+
+/** One agent's own block, `agents.<id>`. */
+export interface AgentGrantsConfig {
+  /** Workspaces beyond its own that its MCP serves. */
+  grants: string[];
+}
+
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
+  /** As configured (relative to the distribution root). */
+  personaPacks: string[];
+  /** `agents.<id>` blocks, by agent id. */
+  agents: Record<string, AgentGrantsConfig>;
 }
 
+/** An agent id or workspace name: what WORKSPACE_NAME_RE accepts. */
+const AGENT_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+const isMapping = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+
 /**
- * The effective agents config. A max_concurrent that is not a whole number
- * of at least 1 throws, naming the key: a typo must not lift the cap.
+ * The effective agents config. Anything malformed throws, naming the key:
+ * a typo must not lift the cap, drop a pack or widen a grant.
  */
 export function readAgentsConfig(
   config: DenConfig = readDenConfig(),
 ): ResolvedAgentsConfig {
-  const raw = config.agents ?? {};
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+  const raw = (config.agents ?? {}) as unknown;
+  if (!isMapping(raw))
     throw new Error(`agents: must be a mapping (got ${JSON.stringify(raw)})`);
+  const out: ResolvedAgentsConfig = {
+    maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+    personaPacks: [],
+    agents: {},
+  };
   const max = raw.max_concurrent;
-  if (max === undefined)
-    return { maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT };
-  if (typeof max !== "number" || !Number.isInteger(max) || max < 1)
-    throw new Error(
-      `agents.max_concurrent: must be a whole number of at least 1 (got ${JSON.stringify(max)})`,
-    );
-  return { maxConcurrent: max };
+  if (max !== undefined) {
+    if (typeof max !== "number" || !Number.isInteger(max) || max < 1)
+      throw new Error(
+        `agents.max_concurrent: must be a whole number of at least 1 (got ${JSON.stringify(max)})`,
+      );
+    out.maxConcurrent = max;
+  }
+  const packs = raw.persona_packs;
+  if (packs !== undefined && packs !== null) {
+    if (!Array.isArray(packs))
+      throw new Error(
+        `agents.persona_packs: must be a list of paths (got ${JSON.stringify(packs)})`,
+      );
+    packs.forEach((p, i) => {
+      if (typeof p !== "string" || !p.trim())
+        throw new Error(
+          `agents.persona_packs[${i}]: must be a non-empty path (got ${JSON.stringify(p)})`,
+        );
+    });
+    out.personaPacks = packs as string[];
+  }
+  for (const [id, block] of Object.entries(raw)) {
+    if (AGENTS_RESERVED_KEYS.includes(id)) continue;
+    const where = `agents.${id}`;
+    if (!AGENT_KEY_RE.test(id) || !isMapping(block))
+      throw new Error(
+        `${where}: unknown key (agents: takes max_concurrent, persona_packs, ` +
+          `or an agent id mapping to { grants: [...] })`,
+      );
+    for (const k of Object.keys(block))
+      if (k !== "grants")
+        throw new Error(`${where}.${k}: unknown key (an agent takes grants)`);
+    const grants = block.grants ?? [];
+    if (!Array.isArray(grants))
+      throw new Error(
+        `${where}.grants: must be a list of workspace names (got ${JSON.stringify(grants)})`,
+      );
+    grants.forEach((g, i) => {
+      if (typeof g !== "string" || !AGENT_KEY_RE.test(g))
+        throw new Error(
+          `${where}.grants[${i}]: ${JSON.stringify(g)} is not a workspace name`,
+        );
+    });
+    out.agents[id] = { grants: [...new Set(grants as string[])] };
+  }
+  return out;
 }
 
 // ── Web UI service (`<cli> service`) ──────────────────────────────────────────

@@ -168,6 +168,7 @@ import {
   actorSuffix,
   recordAction,
   recordAgentRefusal,
+  recordCrossWorkspace,
   repoAtPath,
   setAuditSink,
 } from "./audit.js";
@@ -1085,6 +1086,12 @@ async function handleRequest(
         /* unresolvable workspaces: recorded under the tool only */
       }
       if (repo) report = { ...report, repo };
+    }
+    // A call into a granted workspace (AG-2a): both workspaces recorded.
+    if (report.crossWorkspace !== undefined) {
+      const crossed = recordCrossWorkspace(actor, report);
+      if (!crossed) return send400(res, "not a cross-workspace report");
+      return sendJson(res, { recorded: true, ts: crossed.ts });
     }
     const entry = recordAgentRefusal(actor, report);
     return sendJson(res, { recorded: true, ts: entry.ts });

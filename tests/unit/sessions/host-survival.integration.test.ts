@@ -104,7 +104,7 @@ afterAll(async () => {
 
 describe("host survival", () => {
   it("a session outlives the client that started it", async () => {
-    const starter = run("start-client.ts", dir, "acme-smb:planner");
+    const starter = run("start-client.ts", dir, "acme-north:planner");
     const ready = await line(starter, /ready \S+/);
     const id = ready.split(" ")[1];
 

@@ -31,12 +31,12 @@ const usageErrors: Array<[string, string[], RegExp]> = [
   ],
   [
     "start without --name",
-    ["sessions", "start", "-w", "smb", "--", "sh"],
+    ["sessions", "start", "-w", "north", "--", "sh"],
     /--name/,
   ],
   [
     "start with nothing to run",
-    ["sessions", "start", "-w", "smb", "--name", "p"],
+    ["sessions", "start", "-w", "north", "--name", "p"],
     /after --/,
   ],
   [
@@ -46,7 +46,7 @@ const usageErrors: Array<[string, string[], RegExp]> = [
   ],
   [
     "start with a bad name",
-    ["sessions", "start", "-w", "smb", "--name", "a:b", "--", "sh"],
+    ["sessions", "start", "-w", "north", "--name", "a:b", "--", "sh"],
     /--name/,
   ],
   [
@@ -55,7 +55,7 @@ const usageErrors: Array<[string, string[], RegExp]> = [
       "sessions",
       "start",
       "-w",
-      "smb",
+      "north",
       "--name",
       "p",
       "--cwd",
@@ -75,7 +75,7 @@ const usageErrors: Array<[string, string[], RegExp]> = [
   ["agents list without -w", ["agents", "list"], /-w <workspace>/],
   [
     "an unknown agents subcommand",
-    ["agents", "frob", "-w", "smb"],
+    ["agents", "frob", "-w", "north"],
     /unknown agents command "frob"/,
   ],
 ];
@@ -104,6 +104,11 @@ describe("help", () => {
   it("agents --help", () => {
     const r = dist.den(["agents", "--help"]);
     expect(r.code).toBe(0);
-    expect(r.out).toMatch(/acme agents list -w <workspace>/);
+    expect(r.out).toMatch(/acme agents list -w <ws>/);
+    expect(r.out).toMatch(
+      /acme agents start -w <ws> --persona <p> \[--runtime <r>\] \[--model <m>\] \[--id <id>\]/,
+    );
+    expect(r.out).toMatch(/acme agents resume <id>/);
+    expect(r.out).not.toMatch(/<cli>|\{cli\}/);
   });
 });

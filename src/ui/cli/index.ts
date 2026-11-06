@@ -193,12 +193,8 @@ import { cleanupStaleTabs } from "../../shared/cli-tabs.js";
 import { cmdConfig } from "./config-command.js";
 import { cmdEdge } from "./edge-command.js";
 import { cmdDoctor } from "./doctor-command.js";
-import {
-  AGENTS_HELP,
-  cmdAgents,
-  cmdSessions,
-  SESSIONS_HELP,
-} from "./sessions-command.js";
+import { cmdSessions, SESSIONS_HELP } from "./sessions-command.js";
+import { AGENTS_HELP, cmdAgents } from "./agents-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
 import { cmdTheme } from "./theme-command.js";
@@ -4833,7 +4829,10 @@ class DenCLI {
     console.log(
       "  sessions list|attach|kill   List, attach to (ctrl-] detaches) or stop sessions",
     );
-    console.log("  agents list -w <ws>  The workspace's agent sessions");
+    console.log("  agents list -w <ws>  The workspace's agents");
+    console.log(
+      "  agents start -w <ws> --persona <p>  Run a persona in the workspace (stop, resume, personas)",
+    );
     console.log();
     console.log(
       "  workspace list           List workspaces (active set + focus)",

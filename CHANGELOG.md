@@ -10,6 +10,51 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **Agents: personas, runtimes and the agent record** (0.4.0-dev.1, AG-2a).
+  `<cli> agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>]
+  [--id <id>]` resolves the persona and the runtime, asks the runtime for
+  argv, env and files, and starts the agent as session `<dist>-<ws>:<id>`
+  in the workspace's checkout dir (what `/api/workspaces` reports as its
+  `resolvedDirs`), capped by `agents.max_concurrent`. `agents stop <id>`
+  ends its session (TERM) and marks it stopped; `agents resume <id>`, only
+  when its runtime declares resume and its session is not running, starts a
+  new session in the same cwd continuing the last run. `agents personas
+  [--json]` lists the personas. `agents list -w <ws>` now shows each
+  agent's persona, runtime, model, state and cwd. Attach with `sessions
+  attach`.
+  - **The agent record**: `<stateDir>/agents/<id>.json` (0600, directory
+    0700): id, persona, runtime, model, workspace, cwd, session, start and
+    stop times, and the runtime's resume handle. Never the env or the argv.
+    An id is unique in a distribution: the default is the persona's id, or
+    `<persona>-<ws>` when another workspace has that one.
+  - **Personas** are markdown files with YAML front matter; the body is the
+    role prompt. The format is a Claude Code agent file read as it is
+    (`name`, `description`, `model`, `tools`; `model: inherit` means none),
+    with Den's own keys beside it: `id`, `role`, `runtime`, `standing`,
+    `context` and `argv`. A pack is a directory of them; a pack with an
+    `agents/` directory (a Claude Code plugin) is read from there. Den ships
+    a default pack: planner and orchestrator (standing), fe-dev, be-dev,
+    devops, reviewer and ux-designer, with short runtime-neutral prompts.
+  - **Runtimes** are strategy kind `runtime` (`<cli> doctor` lists it).
+    `den-claude` (default) finds `claude` on PATH and reads its version from
+    the install without running it; it launches `claude --session-id <id>
+    --mcp-config <file> --strict-mcp-config [--model <m>]
+    --append-system-prompt <role prompt>` and resumes with `--resume <id>`.
+    `generic` runs the persona's `argv` template, substituting `{model}`
+    and `{mcp_config}`; it declares no resume.
+  - **An agent's MCP is pinned to its workspace**: its MCP config
+    (`<stateDir>/agent-files/<id>/mcp.json`, 0600) runs `<cli> mcp
+    --workspace <ws> --actor agent:<id>`, plus `--grant <ws>` for each
+    workspace in `agents.<id>.grants`.
+- **`<cli> mcp --grant <ws>`** (0.4.0-dev.1, AG spec §5b; repeatable): a
+  scoped server also serves that workspace, only when the org config's
+  `agents.<id>.grants` lists it (a flag alone is refused, exit 2). A call
+  naming a granted workspace is reported before it runs, and the web
+  server's audit entry names both workspaces (`workspace` and
+  `targetWorkspace`). `workspaces` lists the scoped workspace and its
+  grants; tests run when the focused workspace is either. Logs and manifest
+  checks stay on the scoped workspace's own services.
+
 - **Sessions: terminals that outlive the web server** (0.4.0-dev.0,
   AG-3a). `<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>]
   -- <argv…>` runs argv in a PTY named `<dist>-<ws>:<n>`; `sessions list
@@ -38,8 +83,8 @@ config and manifest changes a distribution must make to move to it under
     once; a start past it is refused, naming the key. A value that is not a
     whole number of at least 1 is an error naming the key.
 - **`<cli> agents list -w <ws> [--json]`** (0.4.0-dev.0): that workspace's
-  sessions as agents. Persona and runtime are blank until personas land
-  (AG-2a).
+  sessions as agents. Persona and runtime come from the agent record
+  (0.4.0-dev.1); a session started with `sessions start` has them blank.
 - **`<cli> doctor` lists the session backend** (0.4.0-dev.0): `den-pty`,
   available when the PTY module loads, else why not. It is never a doctor
   failure.
@@ -52,14 +97,23 @@ config and manifest changes a distribution must make to move to it under
   it, with no install script and nothing downloaded. Installed with
   `--omit=optional`, or on another platform, Den runs as before and
   `sessions start` says den-pty is unavailable and why.
+- **`agents list --json`** (0.4.0-dev.1): each row has `state` (running,
+  exited, stopped or ended) and, for an agent with a record, `persona`,
+  `runtime`, `model`, `workspace` and `cwd`; `session` is absent for a
+  record whose session is gone.
 
 ### Migrations
 
-- None. `agents:` is a new, optional block of the org config:
+- None. `agents:` is a new, optional block of the org config. Any key other
+  than `max_concurrent` and `persona_packs` is an agent id; an invalid value
+  is an error naming the key:
 
   ```yaml
   agents:
     max_concurrent: 4
+    persona_packs: [personas] # relative to the distribution root
+    planner:
+      grants: [other-workspace] # widens agent planner's MCP scope
   ```
 
 ## [0.3.0] - unreleased

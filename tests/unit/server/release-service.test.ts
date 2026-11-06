@@ -751,7 +751,7 @@ describe("deploy — waves, gates, aborts", () => {
 // ── Per-environment targets ───────────────────────────────────────────────────
 
 describe("per-environment release targets", () => {
-  const smb = cfg({
+  const north = cfg({
     environments: ["dev", "staging"],
     profiles: {
       cdk: {
@@ -797,7 +797,7 @@ describe("per-environment release targets", () => {
   });
 
   it("merges the repo's target over its profile, with no default inputs", () => {
-    expect(resolveReleaseTarget(smb.repos[0], "dev", smb)).toEqual({
+    expect(resolveReleaseTarget(north.repos[0], "dev", north)).toEqual({
       environments: ["dev-cdk-deploy"],
       workflows: ["deploy-dev.yml", "deploy-dev-base.yml"],
       branch: "dev",
@@ -806,7 +806,7 @@ describe("per-environment release targets", () => {
   });
 
   it("checks the mapped GitHub environment, any listed workflow, and the env's branch", async () => {
-    mockReadReleaseConfig.mockReturnValue(smb);
+    mockReadReleaseConfig.mockReturnValue(north);
     on("branches/dev", MAIN);
     on(
       "deployments?environment=dev-cdk-deploy",
@@ -842,7 +842,7 @@ describe("per-environment release targets", () => {
 
   it("gives one row per GitHub environment when an env maps onto several", async () => {
     mockReadReleaseConfig.mockReturnValue({
-      ...smb,
+      ...north,
       repos: [
         { name: "web", workflow: "deploy-aws.yml", wave: 0, profile: "cells" },
       ],

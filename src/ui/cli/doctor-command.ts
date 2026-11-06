@@ -1,10 +1,11 @@
 /**
  * `doctor`: every strategy kind in the registry (secrets, tls,
- * session-backend), the strategy this distribution selects for it, whether
+ * session-backend, runtime), the strategy this distribution selects for it, whether
  * nothing chose it (implicit), and its detect() result with the reason.
  *
  * Read-only: detect() is a PATH check (session-backend loads the optional
- * PTY module, which runs nothing), so doctor never spawns a backend CLI,
+ * PTY module, which runs nothing; runtime reads a CLI's version from its
+ * install, never by running it), so doctor never spawns a backend CLI,
  * never prompts, and never prints a secret value. Exit 1 when a strategy
  * that will be used is unavailable or its config is invalid.
  */
@@ -24,6 +25,10 @@ import {
   getStrategy,
   strategyKinds,
 } from "../../shared/strategies/registry.js";
+import {
+  DEFAULT_RUNTIME_ID,
+  RUNTIME_KIND,
+} from "../../shared/agents/runtimes.js";
 
 export interface DoctorRow {
   kind: string;
@@ -99,6 +104,24 @@ const SELECTORS: Record<string, Selector> = {
     return {
       kind: SESSION_BACKEND_KIND,
       selected: DEN_PTY_ID,
+      implicit: true,
+      available: d.available,
+      reason: d.reason,
+      problem: false,
+      warnings: [],
+    };
+  },
+  // Agents' CLIs (AG-2a): the default runtime, chosen per persona or agent,
+  // so it is implicit and its absence is never a problem (`agents start`
+  // says why it can't run).
+  [RUNTIME_KIND](env) {
+    const d = getStrategy(RUNTIME_KIND, DEFAULT_RUNTIME_ID)?.detect(env) ?? {
+      available: false,
+      reason: "not registered",
+    };
+    return {
+      kind: RUNTIME_KIND,
+      selected: DEFAULT_RUNTIME_ID,
       implicit: true,
       available: d.available,
       reason: d.reason,

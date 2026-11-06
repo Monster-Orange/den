@@ -36,12 +36,12 @@ export function makeDist(
   write(
     path.join(root, "config", "local", "workspaces.yml"),
     [
-      "active: [smb]",
-      "focus: smb",
+      "active: [north]",
+      "focus: north",
       "workspaces:",
-      "  smb:",
+      "  north:",
       "    services: {}",
-      "  enterprise:",
+      "  south:",
       "    services: {}",
       "",
     ].join("\n"),

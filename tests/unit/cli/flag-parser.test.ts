@@ -157,22 +157,22 @@ describe("commands that read -w themselves (0.2.8)", () => {
         "setup",
         "--plan",
         "-w",
-        "smb",
-        "--workspace=ent",
+        "north",
+        "--workspace=sth",
         "-w",
         "x",
       ]),
     ).toEqual({
       command: "setup",
-      args: ["--plan", "-w", "smb", "--workspace=ent", "-w", "x"],
+      args: ["--plan", "-w", "north", "--workspace=sth", "-w", "x"],
       flags: {},
     });
     expect(
       unknownCommandFlags("setup", [
         "--plan",
         "-w",
-        "smb",
-        "--workspace=ent",
+        "north",
+        "--workspace=sth",
         "--all-active",
       ]),
     ).toEqual([]);
@@ -180,19 +180,19 @@ describe("commands that read -w themselves (0.2.8)", () => {
 
   it("mcp keeps --workspace for its scope (never the CLI's override)", () => {
     expect(
-      parseCliArgs(["mcp", "--workspace", "smb", "--actor", "agent:p"]),
+      parseCliArgs(["mcp", "--workspace", "north", "--actor", "agent:p"]),
     ).toEqual({
       command: "mcp",
-      args: ["--workspace", "smb", "--actor", "agent:p"],
+      args: ["--workspace", "north", "--actor", "agent:p"],
       flags: {},
     });
   });
 
   it("register takes -w as the workspace to write", () => {
-    expect(parseCliArgs(["register", "../shop", "-w", "smb"])).toEqual({
+    expect(parseCliArgs(["register", "../shop", "-w", "north"])).toEqual({
       command: "register",
       args: ["../shop"],
-      flags: { workspace: "smb" },
+      flags: { workspace: "north" },
     });
   });
 

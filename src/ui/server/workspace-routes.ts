@@ -41,6 +41,7 @@ import {
   syncJetBrainsWorkspaceSymlinks,
   DEN_SERVICES_DIR,
   DEN_WORKSPACES_DIR,
+  resolveWorkspaceDir,
 } from "../../shared/environment-manager/workspaces.js";
 import {
   checkServiceHealth,
@@ -517,21 +518,8 @@ export async function handleWorkspaceRoutes(
     const wsFile = readWorkspacesFile();
     const reposRoot = getReposRoot();
     const resolvedDirs: Record<string, string> = {};
-    for (const [name, ws] of Object.entries(wsFile.workspaces)) {
-      if (ws.directory) {
-        resolvedDirs[name] = path.resolve(ROOT, ws.directory);
-      } else {
-        const gwDir = path.join(DEN_WORKSPACES_DIR, name);
-        const legacyDir = path.join(reposRoot, name);
-        if (fs.existsSync(gwDir)) {
-          resolvedDirs[name] = gwDir;
-        } else if (fs.existsSync(legacyDir)) {
-          resolvedDirs[name] = legacyDir;
-        } else {
-          resolvedDirs[name] = reposRoot;
-        }
-      }
-    }
+    for (const [name, ws] of Object.entries(wsFile.workspaces))
+      resolvedDirs[name] = resolveWorkspaceDir(name, ws, reposRoot);
     const editor = readUserConfig().editor ?? "";
     const catalog = readCatalog();
     const codeWorkspacePaths: Record<string, string> = {};

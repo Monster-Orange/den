@@ -14,10 +14,10 @@ import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import type { PtyLoad } from "../../../src/shared/sessions/pty.js";
 import { readAgentsConfig } from "../../../src/shared/den-config.js";
 import {
-  cmdAgents,
   cmdSessions,
   type SessionsDeps,
 } from "../../../src/ui/cli/sessions-command.js";
+import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { scriptedFactory, type ScriptedPty } from "./helpers/fake-pty.js";
 
 const tmps: string[] = [];
@@ -59,7 +59,9 @@ async function rig(over: Partial<SessionsDeps> = {}): Promise<Rig> {
       return connectHost(sessionPaths(dir).socket);
     },
     pty: () => load,
-    workspaceExists: (ws) => ["smb", "enterprise"].includes(ws),
+    // Agent records are read from here: never the developer's state dir.
+    stateDir: () => dir,
+    workspaceExists: (ws) => ["north", "south"].includes(ws),
     maxConcurrent: () => 4,
     invokeCwd: () => dir,
     env: {
@@ -93,8 +95,8 @@ const start = (r: Rig, ws: string, name: string, ...argv: string[]) =>
 describe("sessions start", () => {
   it("names the session <dist>-<ws>:<name> and hands the host argv, cwd and env", async () => {
     const r = await rig();
-    expect(await start(r, "smb", "planner", "sh", "-c", "echo hi")).toBe(0);
-    expect(r.out.join("\n")).toMatch(/started acme-smb:planner/);
+    expect(await start(r, "north", "planner", "sh", "-c", "echo hi")).toBe(0);
+    expect(r.out.join("\n")).toMatch(/started acme-north:planner/);
     const p = r.made[0];
     expect([p.file, ...p.args]).toEqual(["sh", "-c", "echo hi"]);
     expect(p.opts.cwd).toBe(r.deps.invokeCwd!());
@@ -113,7 +115,7 @@ describe("sessions start", () => {
     const r = await rig();
     const cwd = os.tmpdir();
     await cmdSessions(
-      ["start", "-w", "smb", "--name", "p", "--cwd", cwd, "--", "sh"],
+      ["start", "-w", "north", "--name", "p", "--cwd", cwd, "--", "sh"],
       r.deps,
     );
     expect(r.made[0].opts.cwd).toBe(path.resolve(cwd));
@@ -121,8 +123,8 @@ describe("sessions start", () => {
 
   it("is capped by agents.max_concurrent", async () => {
     const r = await rig({ maxConcurrent: () => 1 });
-    expect(await start(r, "smb", "a")).toBe(0);
-    expect(await start(r, "smb", "b")).toBe(1);
+    expect(await start(r, "north", "a")).toBe(0);
+    expect(await start(r, "north", "b")).toBe(1);
     expect(r.err.join("\n")).toMatch(
       /1 session is running.*agents\.max_concurrent is 1/,
     );
@@ -136,7 +138,7 @@ describe("sessions start", () => {
         reason: "@lydell/node-pty is not installed",
       }),
     });
-    expect(await start(r, "smb", "a")).toBe(1);
+    expect(await start(r, "north", "a")).toBe(1);
     expect(r.err.join("\n")).toMatch(
       /den-pty is unavailable: @lydell\/node-pty is not installed/,
     );
@@ -147,37 +149,37 @@ describe("sessions start", () => {
 describe("sessions list", () => {
   it("-w shows only that workspace's sessions", async () => {
     const r = await rig();
-    await start(r, "smb", "planner");
-    await start(r, "enterprise", "planner");
+    await start(r, "north", "planner");
+    await start(r, "south", "planner");
     r.out.length = 0;
-    expect(await cmdSessions(["list", "-w", "smb"], r.deps)).toBe(0);
+    expect(await cmdSessions(["list", "-w", "north"], r.deps)).toBe(0);
     const text = r.out.join("\n");
-    expect(text).toMatch(/acme-smb:planner/);
-    expect(text).not.toMatch(/enterprise/);
+    expect(text).toMatch(/acme-north:planner/);
+    expect(text).not.toMatch(/south/);
   });
 
   it("--json prints SessionInfo records", async () => {
     const r = await rig();
-    await start(r, "smb", "planner");
-    await start(r, "enterprise", "planner");
+    await start(r, "north", "planner");
+    await start(r, "south", "planner");
     r.out.length = 0;
-    await cmdSessions(["list", "--workspace", "enterprise", "--json"], r.deps);
+    await cmdSessions(["list", "--workspace", "south", "--json"], r.deps);
     const rows = JSON.parse(r.out.join("\n")) as Array<Record<string, unknown>>;
     expect(rows).toHaveLength(1);
     expect(Object.keys(rows[0]).sort()).toEqual(
       ["name", "pid", "ref", "startedAt"].sort(),
     );
-    expect(rows[0].name).toBe("acme-enterprise:planner");
+    expect(rows[0].name).toBe("acme-south:planner");
   });
 });
 
 describe("sessions kill", () => {
   it("sends TERM by default and --signal otherwise", async () => {
     const r = await rig();
-    await start(r, "smb", "planner");
+    await start(r, "north", "planner");
     expect(await cmdSessions(["kill", "planner"], r.deps)).toBe(0);
     expect(
-      await cmdSessions(["kill", "smb:planner", "--signal", "KILL"], r.deps),
+      await cmdSessions(["kill", "north:planner", "--signal", "KILL"], r.deps),
     ).toBe(0);
     await new Promise((res) => setTimeout(res, 50));
     expect(r.made[0].signals).toEqual(["SIGTERM", "SIGKILL"]);
@@ -185,11 +187,11 @@ describe("sessions kill", () => {
 
   it("removes a session that has exited", async () => {
     const r = await rig();
-    await start(r, "smb", "planner");
+    await start(r, "north", "planner");
     r.made[0].exit(0);
     await new Promise((res) => setTimeout(res, 200));
-    expect(await cmdSessions(["kill", "acme-smb:planner"], r.deps)).toBe(0);
-    expect(r.out.join("\n")).toMatch(/removed acme-smb:planner/);
+    expect(await cmdSessions(["kill", "acme-north:planner"], r.deps)).toBe(0);
+    expect(r.out.join("\n")).toMatch(/removed acme-north:planner/);
     r.out.length = 0;
     await cmdSessions(["list", "--json"], r.deps);
     expect(JSON.parse(r.out.join("\n"))).toEqual([]);
@@ -203,12 +205,12 @@ describe("sessions kill", () => {
 });
 
 describe("agents list", () => {
-  it("lists the workspace's sessions, persona and runtime blank until AG-2a", async () => {
+  it("a session with no agent record is listed with persona and runtime blank", async () => {
     const r = await rig();
-    await start(r, "smb", "planner");
-    await start(r, "enterprise", "reviewer");
+    await start(r, "north", "planner");
+    await start(r, "south", "reviewer");
     r.out.length = 0;
-    expect(await cmdAgents(["list", "-w", "smb"], r.deps)).toBe(0);
+    expect(await cmdAgents(["list", "-w", "north"], r.deps)).toBe(0);
     const [header, ...rows] = r.out.join("\n").split("\n").filter(Boolean);
     expect(header).toMatch(/AGENT\s+PERSONA\s+RUNTIME\s+STATE/);
     expect(rows).toHaveLength(1);
@@ -217,8 +219,8 @@ describe("agents list", () => {
 
   it("says when a workspace has no agents", async () => {
     const r = await rig();
-    expect(await cmdAgents(["list", "-w", "smb"], r.deps)).toBe(0);
-    expect(r.out.join("\n")).toMatch(/no agents in smb/);
+    expect(await cmdAgents(["list", "-w", "north"], r.deps)).toBe(0);
+    expect(r.out.join("\n")).toMatch(/no agents in north/);
   });
 });
 

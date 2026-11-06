@@ -159,6 +159,11 @@ if [ -S "$ACME_HOME/sessions.sock" ]; then ok "the host's socket is in ACME_HOME
 run sessions-host-stop ./bin/acme sessions host --stop
 expect_in "sessions host --stop" "$WORK/sessions-host-stop.out" "stopped the session host"
 [ ! -e "$ACME_HOME/sessions.sock" ] && ok "host stopped: socket removed" || bad "sessions.sock left behind"
+# Den's default persona pack ships in the package and is read from there.
+run agents-personas ./bin/acme agents personas
+expect_in "agents personas: the default pack ships" "$WORK/agents-personas.out" "orchestrator"
+expect_in "agents personas: planner is listed" "$WORK/agents-personas.out" "planner"
+expect_in "doctor: the runtime kind is listed" "$WORK/doctor.out" "den-claude (implicit)"
 
 say "MCP server (stdio)"
 # initialize + tools/list need no web server; every stdout line must be

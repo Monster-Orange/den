@@ -55,6 +55,7 @@ describe("doctor", () => {
       "secrets",
       "tls",
       "session-backend",
+      "runtime",
     ]);
     expect(rows[0]).toMatchObject({
       selected: "none",
@@ -106,6 +107,20 @@ describe("doctor", () => {
       problem: false,
     });
     if (!row!.available) expect(row!.reason).toMatch(/node-pty/);
+    expect(spawned()).toEqual([0, 0, 0, 0]);
+  });
+
+  it("lists the agent runtime (den-claude), found on PATH without running it", () => {
+    const row = doctorRows(dist("environments: [local]\n")).find(
+      (r) => r.kind === "runtime",
+    );
+    expect(row).toMatchObject({
+      selected: "den-claude",
+      implicit: true,
+      available: false,
+      reason: "claude is not on PATH",
+      problem: false,
+    });
     expect(spawned()).toEqual([0, 0, 0, 0]);
   });
 

@@ -4,11 +4,18 @@
  * filters lists to it, and stamps the actor on every web API call (the
  * x-den-mcp-agent / x-den-mcp-workspace headers, see shared/agent-actor.ts).
  *
+ * `--grant <ws>` (AG-2a, AG spec §5b; repeatable) widens the scope to another
+ * workspace, and only as far as the org config's `agents.<id>.grants` says
+ * (checkGrants): an agent never grants itself one. A call that names a
+ * granted workspace is served, and reported to the audit trail with both
+ * workspaces named. Lists show the scoped workspace and its grants.
+ *
  * It binds cooperating agents only: the scope lives in this process, and the
  * web server's HTTP API does not check it yet (WS-3a).
  */
 import * as path from "path";
 import { AGENT_ACTOR_RE, WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
+import type { ResolvedAgentsConfig } from "../../shared/den-config.js";
 import type { DenApi } from "./api.js";
 import { Refusal } from "./guards.js";
 
@@ -17,6 +24,16 @@ export interface McpScope {
   workspace: string;
   /** Who acts: `agent:<id>`. */
   actor: string;
+  /**
+   * Other workspaces it may name (`--grant`, from agents.<id>.grants);
+   * absent when there are none.
+   */
+  grants?: string[];
+}
+
+/** The workspaces a scope serves: its own first, then its grants. */
+export function scopeWorkspaces(scope: McpScope): string[] {
+  return [scope.workspace, ...(scope.grants ?? [])];
 }
 
 /** A call reached outside the scoped workspace. Always reported (F2). */
@@ -35,10 +52,11 @@ export class ScopeUsageError extends Error {
   }
 }
 
-const FLAGS: Record<string, "workspace" | "actor"> = {
+const FLAGS: Record<string, "workspace" | "actor" | "grant"> = {
   "--workspace": "workspace",
   "-w": "workspace",
   "--actor": "actor",
+  "--grant": "grant",
 };
 
 /**
@@ -53,6 +71,7 @@ export function parseScopeFlags(argv: readonly string[]): {
   rest: string[];
 } {
   const got: Partial<Record<"workspace" | "actor", string>> = {};
+  const grants: string[] = [];
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -71,12 +90,25 @@ export function parseScopeFlags(argv: readonly string[]): {
         throw new ScopeUsageError(`${name} needs a value`);
       i++;
     }
+    if (key === "grant") {
+      if (!WORKSPACE_NAME_RE.test(value))
+        throw new ScopeUsageError(
+          `--grant "${printable(value)}" is not a workspace name`,
+        );
+      if (!grants.includes(value)) grants.push(value);
+      continue;
+    }
     if (got[key] !== undefined && got[key] !== value)
       throw new ScopeUsageError(`--${key} given twice`);
     got[key] = value;
   }
-  if (got.workspace === undefined && got.actor === undefined)
+  if (got.workspace === undefined && got.actor === undefined) {
+    if (grants.length)
+      throw new ScopeUsageError(
+        "--grant needs --workspace and --actor: a grant widens a scoped server",
+      );
     return { scope: null, rest };
+  }
   if (got.workspace === undefined)
     throw new ScopeUsageError(
       "--actor needs --workspace: a scoped server serves one workspace",
@@ -95,7 +127,35 @@ export function parseScopeFlags(argv: readonly string[]): {
       `--actor "${printable(got.actor)}" is not agent:<id> ` +
         "(the id: letters, digits, dots, dashes, underscores; at most 64)",
     );
-  return { scope: { workspace: got.workspace, actor: got.actor }, rest };
+  const widened = grants.filter((g) => g !== got.workspace);
+  return {
+    scope: {
+      workspace: got.workspace,
+      actor: got.actor,
+      ...(widened.length ? { grants: widened } : {}),
+    },
+    rest,
+  };
+}
+
+/**
+ * Null when every `--grant` is one the org config gives this agent
+ * (`agents.<id>.grants`), else the refusal. A grant is config in git,
+ * reviewed like code: a flag alone never widens a scope.
+ */
+export function checkGrants(
+  scope: McpScope,
+  agents: Pick<ResolvedAgentsConfig, "agents">,
+): string | null {
+  const id = scope.actor.slice("agent:".length);
+  const allowed = agents.agents[id]?.grants ?? [];
+  for (const g of scope.grants ?? [])
+    if (!allowed.includes(g))
+      return (
+        `--grant ${g}: ${scope.actor} has no such grant in agents.${id}.grants ` +
+        "of the org config; a grant is config, never a flag alone"
+      );
+  return null;
 }
 
 /** A value echoed back in an error: one printable line, bounded. */
@@ -146,9 +206,20 @@ export function pinWorkspace(
   scope: McpScope,
 ): Record<string, unknown> {
   const ws = args.workspace;
-  if (ws !== undefined && ws !== null && ws !== "" && ws !== scope.workspace)
+  if (ws === undefined || ws === null || ws === "")
+    return { ...args, workspace: scope.workspace };
+  if (!scopeWorkspaces(scope).includes(String(ws)))
     throw otherWorkspace(tool, scope, String(ws));
-  return { ...args, workspace: scope.workspace };
+  return { ...args, workspace: String(ws) };
+}
+
+/** The granted workspace `args` names, or null for the scope's own. */
+export function crossedWorkspace(
+  args: Record<string, unknown>,
+  scope: McpScope,
+): string | null {
+  const ws = args.workspace;
+  return typeof ws === "string" && ws && ws !== scope.workspace ? ws : null;
 }
 
 /** What /api/workspaces answers (the fields the scope reads). */
@@ -175,13 +246,20 @@ export function filterWorkspacesBody(
 ): Record<string, unknown> {
   const b = asRecord(body) as WorkspacesBody;
   const ws = scope.workspace;
+  const served = scopeWorkspaces(scope);
   const only = (v: unknown): Record<string, unknown> => {
     const r = asRecord(v);
-    return ws in r ? { [ws]: r[ws] } : {};
+    return Object.fromEntries(
+      served.filter((n) => n in r).map((n) => [n, r[n]]),
+    );
   };
   return {
-    active: Array.isArray(b.active) ? b.active.filter((n) => n === ws) : [],
-    ...(b.focus === ws ? { focus: ws } : {}),
+    active: Array.isArray(b.active)
+      ? b.active.filter((n) => served.includes(n as string))
+      : [],
+    ...(typeof b.focus === "string" && served.includes(b.focus)
+      ? { focus: b.focus }
+      : {}),
     workspaces: only(b.workspaces),
     ...(b.resolvedDirs !== undefined
       ? { resolvedDirs: only(b.resolvedDirs) }
@@ -189,7 +267,11 @@ export function filterWorkspacesBody(
     ...(b.codeWorkspacePaths !== undefined
       ? { codeWorkspacePaths: only(b.codeWorkspacePaths) }
       : {}),
-    scope: { workspace: ws, actor: scope.actor },
+    scope: {
+      workspace: ws,
+      actor: scope.actor,
+      ...(scope.grants?.length ? { grants: scope.grants } : {}),
+    },
   };
 }
 
@@ -219,23 +301,38 @@ export async function assertScopeExists(
   return body;
 }
 
+/** Throws unless the granted workspace `ws` exists in this distribution. */
+export async function assertGrantExists(
+  tool: string,
+  api: DenApi,
+  scope: McpScope,
+  ws: string,
+): Promise<void> {
+  const body = await api.get("/api/workspaces");
+  if (!(ws in asRecord(asRecord(body).workspaces)))
+    throw new ScopeRefusal(
+      `${tool}: ${scope.actor} has a grant for workspace "${printable(ws)}", which does not exist in this distribution; nothing was read or run.`,
+    );
+}
+
 /**
  * Tests run against the focused workspace (the web server has no workspace
  * argument for them): a scoped server runs or lists them only when that is
- * its own.
+ * its own or a granted one. Returns the focused workspace.
  */
 export async function assertScopeFocused(
   tool: string,
   api: DenApi,
   scope: McpScope,
-): Promise<void> {
+): Promise<string> {
   const focused = focusedOf(await api.get("/api/workspaces"));
-  if (focused !== scope.workspace)
-    throw new ScopeRefusal(
-      `${tool}: tests run against the focused workspace` +
-        `${focused ? ` ("${focused}")` : ""}, and this MCP server is scoped to ` +
-        `"${scope.workspace}". Focus "${scope.workspace}" first; nothing was read or run.`,
-    );
+  // A granted workspace that is focused is served too (and audited).
+  if (focused && scopeWorkspaces(scope).includes(focused)) return focused;
+  throw new ScopeRefusal(
+    `${tool}: tests run against the focused workspace` +
+      `${focused ? ` ("${focused}")` : ""}, and this MCP server is scoped to ` +
+      `"${scope.workspace}". Focus "${scope.workspace}" first; nothing was read or run.`,
+  );
 }
 
 /** The fields of an /api/services entry the scope checks read. */

@@ -50,9 +50,9 @@ beforeAll(async () => {
               { pid: process.pid, version: "0.2.6", root, product: "den" }
             : url.pathname === "/api/workspaces"
               ? {
-                  active: ["smb", "enterprise"],
-                  focus: "enterprise",
-                  workspaces: { smb: {}, enterprise: {} },
+                  active: ["north", "south"],
+                  focus: "south",
+                  workspaces: { north: {}, south: {} },
                 }
               : {},
       ),
@@ -243,7 +243,7 @@ describe("bin/den mcp --call / --list (one shot)", () => {
   }, 30_000);
 
   describe("scoped: --workspace <ws> --actor agent:<id> (AG-2a-core)", () => {
-    const scoped = ["--workspace", "smb", "--actor", "agent:planner"];
+    const scoped = ["--workspace", "north", "--actor", "agent:planner"];
 
     it("stamps the actor and the workspace on every call", async () => {
       const before = requests.length;
@@ -254,7 +254,7 @@ describe("bin/den mcp --call / --list (one shot)", () => {
       expect(health?.headers).toMatchObject({
         "x-den-actor": "agent",
         "x-den-mcp-agent": "agent:planner",
-        "x-den-mcp-workspace": "smb",
+        "x-den-mcp-workspace": "north",
       });
       for (const q of mine.filter((x) => x.path !== "/api/server-info"))
         expect(q.headers["x-den-mcp-agent"]).toBe("agent:planner");
@@ -266,11 +266,11 @@ describe("bin/den mcp --call / --list (one shot)", () => {
         ...scoped,
         "--call",
         "status",
-        JSON.stringify({ workspace: "enterprise" }),
+        JSON.stringify({ workspace: "south" }),
       );
       expect(r.status).toBe(1);
       expect(r.stdout).toMatch(
-        /^Refused: status: this MCP server is scoped to workspace "smb" \(agent:planner\); "enterprise" is another workspace/,
+        /^Refused: status: this MCP server is scoped to workspace "north" \(agent:planner\); "south" is another workspace/,
       );
       expect(
         requests
@@ -282,7 +282,13 @@ describe("bin/den mcp --call / --list (one shot)", () => {
 
     it("a bad --actor is a usage error (exit 2) naming the shape", async () => {
       const before = requests.length;
-      const r = await run("--workspace", "smb", "--actor", "planner", "--list");
+      const r = await run(
+        "--workspace",
+        "north",
+        "--actor",
+        "planner",
+        "--list",
+      );
       expect(r.status).toBe(2);
       expect(r.stderr).toMatch(/--actor "planner" is not agent:<id>/);
       expect(r.stdout).toBe("");

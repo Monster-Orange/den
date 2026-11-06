@@ -54,7 +54,7 @@ maybe("den-pty with the native module", () => {
       "sessions",
       "start",
       "-w",
-      "smb",
+      "north",
       "--name",
       "hi",
       "--",
@@ -62,7 +62,7 @@ maybe("den-pty with the native module", () => {
       "-c",
       "echo hi; sleep 5",
     ]);
-    expect(started.out).toMatch(/started acme-smb:hi/);
+    expect(started.out).toMatch(/started acme-north:hi/);
     expect(started.code).toBe(0);
     const sock = sessionPaths(dist.home).socket;
     expect(fs.statSync(sock).mode & 0o777).toBe(0o600);
@@ -98,9 +98,9 @@ maybe("den-pty with the native module", () => {
     expect(code).toBe(0);
     expect(out).toMatch(/detached/);
 
-    const listed = dist.den(["sessions", "list", "-w", "smb", "--json"]);
+    const listed = dist.den(["sessions", "list", "-w", "north", "--json"]);
     expect(JSON.parse(listed.out)).toEqual([
-      expect.objectContaining({ name: "acme-smb:hi" }),
+      expect.objectContaining({ name: "acme-north:hi" }),
     ]);
     expect(JSON.parse(listed.out)[0].exited).toBeFalsy();
 
@@ -111,7 +111,7 @@ maybe("den-pty with the native module", () => {
       await new Promise((r) => setTimeout(r, 100));
       after = JSON.parse(dist.den(["sessions", "list", "--json"]).out);
     }
-    expect(after[0]).toMatchObject({ name: "acme-smb:hi", exited: true });
+    expect(after[0]).toMatchObject({ name: "acme-north:hi", exited: true });
 
     expect(dist.den(["sessions", "host", "--stop"]).code).toBe(0);
     expect(fs.existsSync(sock)).toBe(false);

@@ -90,13 +90,13 @@ describe("resolveApplications", () => {
   it("lists modules and libraries as contributors of their application", () => {
     const apps = resolveApplications({
       repos: ["core", "feature-x", "lib-y"],
-      config: { smb: { repos: ["core", "feature-x"] } },
+      config: { north: { repos: ["core", "feature-x"] } },
       kinds: { "feature-x": "module", "lib-y": "library" },
       contributesTo: { "feature-x": ["core"], "lib-y": [] },
     });
     expect(apps).toEqual([
       expect.objectContaining({
-        name: "smb",
+        name: "north",
         repos: ["core"],
         contributors: [
           { repo: "feature-x", kind: "module", contributesTo: ["core"] },

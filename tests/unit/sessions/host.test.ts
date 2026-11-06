@@ -85,10 +85,10 @@ describe("session host", () => {
     const dir = stateDir();
     const { made } = await host(dir);
     const c = await client(dir);
-    const info = await c.start(spec("acme-smb:planner"));
+    const info = await c.start(spec("acme-north:planner"));
     expect(info).toMatchObject({
       ref: { backend: "den-pty" },
-      name: "acme-smb:planner",
+      name: "acme-north:planner",
       pid: made[0].pid,
     });
     expect(Date.parse(info.startedAt)).not.toBeNaN();
@@ -102,7 +102,7 @@ describe("session host", () => {
     const { made } = await host(dir);
     const a = await client(dir);
     const b = await client(dir);
-    const { ref } = await a.start(spec("acme-smb:planner"));
+    const { ref } = await a.start(spec("acme-north:planner"));
     const got = { a1: "", a2: "", b: "" };
     const a1 = a.attach(ref.id, { onData: (d) => (got.a1 += d.toString()) });
     const a2 = a.attach(ref.id, { onData: (d) => (got.a2 += d.toString()) });
@@ -123,7 +123,7 @@ describe("session host", () => {
     const dir = stateDir();
     const { made } = await host(dir);
     const c = await client(dir);
-    const { ref } = await c.start(spec("acme-smb:planner"));
+    const { ref } = await c.start(spec("acme-north:planner"));
     made[0].emit("before\n");
     await tick();
     let seen = "";
@@ -138,7 +138,7 @@ describe("session host", () => {
     const dir = stateDir();
     const { made } = await host(dir);
     const c = await client(dir);
-    const { ref } = await c.start(spec("acme-smb:planner"));
+    const { ref } = await c.start(spec("acme-north:planner"));
     let exit: number | undefined;
     const att = c.attach(ref.id, {
       onData: () => undefined,
@@ -164,8 +164,8 @@ describe("session host", () => {
     const dir = stateDir();
     await host(dir);
     const c = await client(dir);
-    await c.start(spec("acme-smb:planner"));
-    await expect(c.start(spec("acme-smb:planner"))).rejects.toMatchObject({
+    await c.start(spec("acme-north:planner"));
+    await expect(c.start(spec("acme-north:planner"))).rejects.toMatchObject({
       code: "exists",
     });
   });
@@ -174,18 +174,18 @@ describe("session host", () => {
     const dir = stateDir();
     const { made } = await host(dir);
     const c = await client(dir);
-    await c.start(spec("acme-smb:a"), { limit: 2 });
-    await c.start(spec("acme-smb:b"), { limit: 2 });
-    const refused = c.start(spec("acme-smb:c"), { limit: 2 });
+    await c.start(spec("acme-north:a"), { limit: 2 });
+    await c.start(spec("acme-north:b"), { limit: 2 });
+    const refused = c.start(spec("acme-north:c"), { limit: 2 });
     await expect(refused).rejects.toBeInstanceOf(HostError);
     await expect(refused).rejects.toMatchObject({ code: "cap" });
     await expect(refused).rejects.toThrow(/agents\.max_concurrent.*2/);
     made[0].exit(0);
     await tick(150);
     await expect(
-      c.start(spec("acme-smb:c"), { limit: 2 }),
+      c.start(spec("acme-north:c"), { limit: 2 }),
     ).resolves.toMatchObject({
-      name: "acme-smb:c",
+      name: "acme-north:c",
     });
   });
 
@@ -196,7 +196,7 @@ describe("session host", () => {
       reason: "@lydell/node-pty is not installed",
     }));
     const c = await client(dir);
-    await expect(c.start(spec("acme-smb:a"))).rejects.toMatchObject({
+    await expect(c.start(spec("acme-north:a"))).rejects.toMatchObject({
       code: "unavailable",
       message: expect.stringMatching(/not installed/),
     });
@@ -277,7 +277,7 @@ describe("a host restart", () => {
     const dir = stateDir();
     const first = await host(dir);
     let c = await client(dir);
-    const { ref } = await c.start(spec("acme-smb:planner"));
+    const { ref } = await c.start(spec("acme-north:planner"));
     first.made[0].emit("history line\n");
     await tick();
     c.close();
@@ -288,7 +288,7 @@ describe("a host restart", () => {
     const [listed] = await c.list();
     expect(listed).toMatchObject({
       ref,
-      name: "acme-smb:planner",
+      name: "acme-north:planner",
       exited: true,
     });
     let seen = "";
@@ -306,7 +306,7 @@ describe("a host restart", () => {
     const dir = stateDir();
     const { made } = await host(dir);
     const c = await client(dir);
-    const { ref } = await c.start(spec("acme-smb:planner"));
+    const { ref } = await c.start(spec("acme-north:planner"));
     made[0].emit("x");
     made[0].exit(0);
     await tick(150);

@@ -35,10 +35,12 @@ import {
 } from "./guards.js";
 import {
   ScopeRefusal,
+  assertGrantExists,
   assertPathInScope,
   assertScopeExists,
   assertScopeFocused,
   assertServicesInScope,
+  crossedWorkspace,
   filterWorkspacesBody,
   pinWorkspace,
   type McpScope,
@@ -303,7 +305,12 @@ const READ_TOOLS: DenTool[] = [
     "The test modules of a pillar, and which repos (branch + SHA) they come from.",
     { pillar: z.enum(PILLARS) },
     async (a, { api, scope }) => {
-      if (scope) await assertScopeFocused("tests_available", api, scope);
+      if (scope)
+        await crossIfGranted(
+          { api, scope },
+          "tests_available",
+          await assertScopeFocused("tests_available", api, scope),
+        );
       return {
         modules: await api.get("/api/modules", { pillar: String(a.pillar) }),
         sources: await api.get("/api/test-sources", {
@@ -538,7 +545,12 @@ const ACTION_TOOLS: Record<McpAction, DenTool> = {
       const mode =
         pillar === "security" ? (str(a.mode) ?? "baseline") : undefined;
       assertRunTestsAllowed({ pillar, env, mode }, cfg);
-      if (scope) await assertScopeFocused("run_tests", api, scope);
+      if (scope)
+        await crossIfGranted(
+          { api, scope },
+          "run_tests",
+          await assertScopeFocused("run_tests", api, scope),
+        );
       if (pillar === "security") {
         for (const service of modules.length ? modules : [undefined]) {
           const plan = (await api.get("/api/security/plan", {
@@ -710,9 +722,36 @@ async function scopeArgs(
     await assertScopeExists(ctx.api, scope);
     verifiedScopes.add(scope);
   }
-  return "workspace" in tool.shape
-    ? pinWorkspace(tool.name, args, scope)
-    : args;
+  if (!("workspace" in tool.shape)) return args;
+  const pinned = pinWorkspace(tool.name, args, scope);
+  const crossed = crossedWorkspace(pinned, scope);
+  if (crossed) {
+    await assertGrantExists(tool.name, ctx.api, scope, crossed);
+    await reportCrossWorkspace(ctx.api, tool.name, crossed);
+  }
+  return pinned;
+}
+
+/**
+ * A call into a granted workspace (AG-2a, §5b) is recorded before it runs,
+ * with both workspaces named: the server's entry takes the scoped one from
+ * the actor's headers and the target from this report.
+ */
+async function reportCrossWorkspace(
+  api: DenApi,
+  tool: string,
+  target: string,
+): Promise<void> {
+  await api.get("/api/activity", {}, "POST", { tool, crossWorkspace: target });
+}
+
+/** Report `ws` when it is a granted workspace, not the scope's own. */
+async function crossIfGranted(
+  ctx: { api: DenApi; scope: McpScope },
+  tool: string,
+  ws: string,
+): Promise<void> {
+  if (ws !== ctx.scope.workspace) await reportCrossWorkspace(ctx.api, tool, ws);
 }
 
 export async function callTool(

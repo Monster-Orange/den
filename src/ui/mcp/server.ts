@@ -11,6 +11,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { agentAuditHeaders } from "../../shared/agent-actor.js";
 import {
+  readAgentsConfig,
   readMcpConfig,
   type ResolvedMcpConfig,
 } from "../../shared/den-config.js";
@@ -22,7 +23,12 @@ import { createDenApi, type DenApi } from "./api.js";
 import { ownServer } from "../cli/server-identity.js";
 import { callTool, toolsFor, type ToolContext } from "./tools.js";
 import { plural } from "../../shared/plural.js";
-import { parseScopeFlags, ScopeUsageError, type McpScope } from "./scope.js";
+import {
+  checkGrants,
+  parseScopeFlags,
+  ScopeUsageError,
+  type McpScope,
+} from "./scope.js";
 
 export interface DenMcpOptions {
   cfg: ResolvedMcpConfig;
@@ -146,7 +152,7 @@ export const MCP_USAGE = (cli: string): string =>
     `Usage: ${cli} mcp [--port <web port>]`,
     `       ${cli} mcp --list`,
     `       ${cli} mcp --call <tool> ['<json args>']`,
-    `       ${cli} mcp --workspace <ws> --actor agent:<id> [...]`,
+    `       ${cli} mcp --workspace <ws> --actor agent:<id> [--grant <ws>…] [...]`,
     "",
     `An MCP server over stdio for agents, a client of the running web server`,
     `(\`${cli} web up\`; default port: config web.port). Read tools always;`,
@@ -159,6 +165,10 @@ export const MCP_USAGE = (cli: string): string =>
     "a call naming another is refused, lists show that one only, and every call",
     "is recorded as agent:<id>. It binds cooperating agents only: the web",
     "server's HTTP API does not check the scope yet.",
+    "",
+    "--grant <ws> (repeatable) also serves another workspace, only when the org",
+    "config's agents.<id>.grants lists it; each such call is recorded with both",
+    "workspaces. `agents start` passes an agent's grants for you.",
     "",
     `Register it with your agents: ${cli} mcp clients, then ${cli} mcp connect <client> (or --all).`,
   ].join("\n");
@@ -269,6 +279,20 @@ export async function runMcp(rawArgv: string[]): Promise<void> {
     process.exitCode = 2;
     return;
   }
+  if (scope?.grants?.length) {
+    // A grant is config: a flag alone never widens a scope.
+    let refused: string | null;
+    try {
+      refused = checkGrants(scope, readAgentsConfig());
+    } catch (e) {
+      refused = (e as Error).message;
+    }
+    if (refused) {
+      process.stderr.write(`${cli} mcp: ${refused}\n`);
+      process.exitCode = 2;
+      return;
+    }
+  }
   let port = parsePort(argv);
   if (port === undefined) {
     try {
@@ -315,6 +339,7 @@ export async function runMcp(rawArgv: string[]): Promise<void> {
     `${cli} mcp: ${plural(toolsFor(cfg).length, "tool")} ` +
       `(${cfg.actions.length ? `actions: ${cfg.actions.join(", ")}` : "read only"}) → ${baseUrl}` +
       (scope ? ` · scoped to ${scope.workspace} as ${scope.actor}` : "") +
+      (scope?.grants?.length ? ` · grants: ${scope.grants.join(", ")}` : "") +
       "\n",
   );
 }

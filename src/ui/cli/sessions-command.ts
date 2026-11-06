@@ -1,6 +1,7 @@
 /**
- * `<cli> sessions start|list|attach|kill|host` and `<cli> agents list`
- * (AG-3a): terminals that outlive the web server, from the CLI.
+ * `<cli> sessions start|list|attach|kill|host` (AG-3a): terminals that
+ * outlive the web server, from the CLI. `<cli> agents` (agents-command.ts)
+ * builds on the helpers exported here.
  *
  * Every command but `host` is a client of the distribution's session host
  * (src/shared/sessions/host.ts) and starts it on demand. The host is a
@@ -32,7 +33,6 @@ import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
 import { runSessionHost } from "../../shared/sessions/host.js";
 import {
   inWorkspace,
-  parseSessionName,
   resolveSession,
   SESSION_NAME_RE,
   sessionName,
@@ -70,18 +70,12 @@ export const SESSIONS_HELP = {
   ],
 };
 
-export const AGENTS_HELP = {
-  usage: "agents list -w <workspace> [--json]",
-  lines: [
-    "The workspace's agent sessions. Persona and runtime come with personas (AG-2a);",
-    "until then each session is listed with them blank.",
-    "{cli} agents list -w <workspace> [--json]",
-  ],
-};
-
-class UsageError extends Error {}
+/** A usage error: exit 2, with the command's usage line. */
+export class UsageError extends Error {}
 
 export interface SessionsDeps {
+  /** The distribution's state dir (getStateDir). */
+  stateDir?: () => string;
   /** The distribution's name: the `<dist>` of a session name. */
   dist?: string;
   /** The distribution's CLI, for messages. */
@@ -101,7 +95,8 @@ export interface SessionsDeps {
   stdout?: NodeJS.WriteStream;
 }
 
-interface Resolved {
+export interface Resolved {
+  stateDir: () => string;
   dist: string;
   cli: string;
   connect: () => Promise<HostClient>;
@@ -140,9 +135,10 @@ function spawnHost(stateDir: string): void {
   }
 }
 
-function resolveDeps(d: SessionsDeps): Resolved {
-  const stateDir = () => getStateDir();
+export function resolveDeps(d: SessionsDeps): Resolved {
+  const stateDir = d.stateDir ?? (() => getStateDir());
   return {
+    stateDir,
     dist: d.dist ?? product().name,
     cli: d.cli ?? product().cli,
     connect:
@@ -189,7 +185,7 @@ function defaultWorkspaceExists(ws: string): boolean {
   if (!workspacesModule) throw new Error("workspaces not loaded");
   return Boolean(workspacesModule.readWorkspacesFile().workspaces[ws]);
 }
-async function loadWorkspaces(d: SessionsDeps): Promise<void> {
+export async function loadWorkspaces(d: SessionsDeps): Promise<void> {
   if (!d.workspaceExists && !workspacesModule)
     workspacesModule =
       await import("../../shared/environment-manager/workspaces.js");
@@ -197,12 +193,12 @@ async function loadWorkspaces(d: SessionsDeps): Promise<void> {
 
 // ── argument parsing ──────────────────────────────────────────────────────────
 
-interface FlagSpec {
+export interface FlagSpec {
   /** Canonical name → takes a value. */
   [flag: string]: boolean;
 }
 
-interface Parsed {
+export interface Parsed {
   flags: Record<string, string | true>;
   positional: string[];
   /** After `--`, or null when there was none. */
@@ -211,7 +207,11 @@ interface Parsed {
 
 const ALIASES: Record<string, string> = { "-w": "--workspace" };
 
-function parseArgs(where: string, args: string[], spec: FlagSpec): Parsed {
+export function parseArgs(
+  where: string,
+  args: string[],
+  spec: FlagSpec,
+): Parsed {
   const out: Parsed = { flags: {}, positional: [], rest: null };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -244,7 +244,7 @@ function parseArgs(where: string, args: string[], spec: FlagSpec): Parsed {
   return out;
 }
 
-function noExtra(where: string, p: Parsed, maxPositional = 0): void {
+export function noExtra(where: string, p: Parsed, maxPositional = 0): void {
   if (p.positional.length > maxPositional)
     throw new UsageError(
       `${where}: unexpected argument ${p.positional[maxPositional]}`,
@@ -252,7 +252,7 @@ function noExtra(where: string, p: Parsed, maxPositional = 0): void {
   if (p.rest !== null) throw new UsageError(`${where}: takes nothing after --`);
 }
 
-function workspaceFlag(where: string, p: Parsed): string | undefined {
+export function workspaceFlag(where: string, p: Parsed): string | undefined {
   const ws = p.flags["--workspace"];
   if (ws === undefined) return undefined;
   const name = String(ws);
@@ -263,12 +263,12 @@ function workspaceFlag(where: string, p: Parsed): string | undefined {
 
 // ── output ────────────────────────────────────────────────────────────────────
 
-function state(s: SessionInfo): string {
+export function state(s: SessionInfo): string {
   if (!s.exited) return "running";
   return s.exitCode === undefined ? "exited" : `exited (${s.exitCode})`;
 }
 
-function columns(rows: string[][]): string[] {
+export function columns(rows: string[][]): string[] {
   const widths = rows[0].map((_, i) =>
     Math.max(...rows.map((r) => r[i].length)),
   );
@@ -281,7 +281,7 @@ function columns(rows: string[][]): string[] {
 }
 
 /** A record as the contract defines it: nothing more goes into --json. */
-function contractInfo(s: SessionInfo): SessionInfo {
+export function contractInfo(s: SessionInfo): SessionInfo {
   return {
     ref: { backend: s.ref.backend, id: s.ref.id },
     name: s.name,
@@ -309,7 +309,7 @@ export function sessionEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   return out;
 }
 
-async function withClient<T>(
+export async function withClient<T>(
   d: Resolved,
   fn: (c: HostClient) => Promise<T>,
 ): Promise<T> {
@@ -396,7 +396,10 @@ async function start(args: string[], d: Resolved): Promise<number> {
   });
 }
 
-async function listSessions(d: Resolved, ws?: string): Promise<SessionInfo[]> {
+export async function listSessions(
+  d: Resolved,
+  ws?: string,
+): Promise<SessionInfo[]> {
   const all = await withClient(d, (c) => c.list());
   return ws ? all.filter((s) => inWorkspace(s, d.dist, ws)) : all;
 }
@@ -564,7 +567,7 @@ async function host(args: string[], d: Resolved): Promise<number> {
   const p = parseArgs(where, args, { "--stop": false });
   noExtra(where, p);
   if (!p.flags["--stop"])
-    return runSessionHost({ stateDir: getStateDir(), pty: () => loadPty() });
+    return runSessionHost({ stateDir: d.stateDir(), pty: () => loadPty() });
   const c = await d.connectExisting();
   if (!c) {
     d.out("no session host is running");
@@ -577,7 +580,7 @@ async function host(args: string[], d: Resolved): Promise<number> {
   const closed = new Promise<void>((r) => c.once("close", () => r()));
   await c.shutdown();
   // The host drops every connection, then removes its socket.
-  const sock = sessionPaths(getStateDir()).socket;
+  const sock = sessionPaths(d.stateDir()).socket;
   const deadline = Date.now() + 5000;
   await Promise.race([closed, new Promise((r) => setTimeout(r, 5000))]);
   while (fs.existsSync(sock) && Date.now() < deadline)
@@ -592,11 +595,15 @@ async function host(args: string[], d: Resolved): Promise<number> {
   return 0;
 }
 
-function usageLine(cli: string, help: { usage: string }, cmd: string): string {
+export function usageLine(
+  cli: string,
+  help: { usage: string },
+  cmd: string,
+): string {
   return `Usage: ${cli} ${help.usage}  (\`${cli} ${cmd} --help\`)`;
 }
 
-async function guarded(
+export async function guarded(
   d: Resolved,
   help: { usage: string },
   cmd: string,
@@ -644,64 +651,4 @@ export async function cmdSessions(
         throw new UsageError(`unknown sessions command "${sub}"`);
     }
   });
-}
-
-/** `<cli> agents list -w <ws>`: the workspace's sessions, as agents. */
-export async function cmdAgents(
-  args: string[],
-  deps: SessionsDeps = {},
-): Promise<number> {
-  const d = resolveDeps(deps);
-  const sub =
-    args[0] === undefined || args[0].startsWith("-") ? "list" : args[0];
-  const rest = sub === args[0] ? args.slice(1) : args;
-  return guarded(d, AGENTS_HELP, "agents", async () => {
-    if (sub !== "list") throw new UsageError(`unknown agents command "${sub}"`);
-    const where = "agents list";
-    const p = parseArgs(where, rest, { "--workspace": true, "--json": false });
-    noExtra(where, p);
-    const ws = workspaceFlag(where, p);
-    if (!ws) throw new UsageError(`${where} needs -w <workspace>`);
-    const rows = agentRows(await listSessions(d, ws), d.dist);
-    if (p.flags["--json"]) {
-      d.out(JSON.stringify(rows, null, 2));
-      return 0;
-    }
-    if (!rows.length) {
-      d.out(`no agents in ${ws}`);
-      return 0;
-    }
-    for (const l of columns([
-      ["AGENT", "PERSONA", "RUNTIME", "STATE", "PID", "STARTED", "SESSION"],
-      ...rows.map((r) => [
-        r.agent,
-        r.persona ?? "-",
-        r.runtime ?? "-",
-        state(r.session),
-        String(r.session.pid),
-        r.session.startedAt,
-        r.session.name,
-      ]),
-    ]))
-      d.out(l);
-    return 0;
-  });
-}
-
-/**
- * One row per session, as an agent. AG-2a joins the agent record here (its
- * persona and runtime, by session name); until then they are unset.
- */
-export interface AgentRow {
-  agent: string;
-  persona?: string;
-  runtime?: string;
-  session: SessionInfo;
-}
-
-export function agentRows(sessions: SessionInfo[], dist: string): AgentRow[] {
-  return sessions.map((s) => ({
-    agent: parseSessionName(s.name, dist)?.name ?? s.name,
-    session: contractInfo(s),
-  }));
 }

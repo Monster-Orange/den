@@ -32,18 +32,18 @@ interface Call {
 }
 
 const WORKSPACES = {
-  active: ["smb", "enterprise"],
-  focus: "enterprise",
+  active: ["north", "south"],
+  focus: "south",
   workspaces: {
-    smb: { services: { shop: { mode: "managed" } } },
-    enterprise: { services: { billing: { mode: "managed" } } },
+    north: { services: { shop: { mode: "managed" } } },
+    south: { services: { billing: { mode: "managed" } } },
   },
-  resolvedDirs: { smb: "/w/smb", enterprise: "/w/enterprise" },
+  resolvedDirs: { north: "/w/north", south: "/w/south" },
   codeWorkspacePaths: {},
 };
 
 const SERVICES: Record<string, unknown[]> = {
-  smb: [
+  north: [
     {
       repo: "shop",
       service: "api",
@@ -53,7 +53,7 @@ const SERVICES: Record<string, unknown[]> = {
       isEntrypoint: true,
     },
   ],
-  enterprise: [
+  south: [
     {
       repo: "billing",
       service: "api",
@@ -76,7 +76,7 @@ function fakeApi(workspaces: unknown = WORKSPACES): {
       calls.push({ path, query, ...(body !== undefined ? { body } : {}) });
       if (path === "/api/workspaces") return workspaces;
       if (path === "/api/services")
-        return SERVICES[String(query?.workspace ?? "enterprise")] ?? [];
+        return SERVICES[String(query?.workspace ?? "south")] ?? [];
       return [{ path, workspace: query?.workspace ?? null }];
     },
     async stream(path, query) {
@@ -98,7 +98,7 @@ const cfg: ResolvedMcpConfig = {
   logsRemote: false,
 };
 
-const SCOPE: McpScope = { workspace: "smb", actor: "agent:planner" };
+const SCOPE: McpScope = { workspace: "north", actor: "agent:planner" };
 
 function ctx(api: DenApi, scope?: McpScope): ToolContext {
   return { api, cfg, cli: "acme", ...(scope ? { scope: { ...scope } } : {}) };
@@ -115,18 +115,18 @@ describe("--workspace / --actor", () => {
     expect(
       parseScopeFlags([
         "--workspace",
-        "smb",
+        "north",
         "--actor=agent:planner-1",
         "--port",
         "7001",
       ]),
     ).toEqual({
-      scope: { workspace: "smb", actor: "agent:planner-1" },
+      scope: { workspace: "north", actor: "agent:planner-1" },
       rest: ["--port", "7001"],
     });
     expect(
-      parseScopeFlags(["-w=smb", "--actor", "agent:a.b_c", "--list"]).scope,
-    ).toEqual({ workspace: "smb", actor: "agent:a.b_c" });
+      parseScopeFlags(["-w=north", "--actor", "agent:a.b_c", "--list"]).scope,
+    ).toEqual({ workspace: "north", actor: "agent:a.b_c" });
   });
 
   it("neither: no scope, argv untouched (the unscoped server)", () => {
@@ -135,7 +135,7 @@ describe("--workspace / --actor", () => {
   });
 
   it("one without the other is a usage error", () => {
-    expect(() => parseScopeFlags(["--workspace", "smb"])).toThrow(
+    expect(() => parseScopeFlags(["--workspace", "north"])).toThrow(
       /--workspace needs --actor agent:<id>/,
     );
     expect(() => parseScopeFlags(["--actor", "agent:x"])).toThrow(
@@ -155,9 +155,9 @@ describe("--workspace / --actor", () => {
       "agent:\u001b[31mx",
     ])
       expect(() =>
-        parseScopeFlags(["--workspace", "smb", "--actor", bad]),
+        parseScopeFlags(["--workspace", "north", "--actor", bad]),
       ).toThrow(/is not agent:<id>/);
-    for (const bad of ["../smb", "-smb", "a b", "smb;rm"])
+    for (const bad of ["../north", "-north", "a b", "north;rm"])
       expect(() =>
         parseScopeFlags([`--workspace=${bad}`, "--actor", "agent:x"]),
       ).toThrow(/is not a workspace name/);
@@ -177,15 +177,11 @@ describe("a scoped server refuses another workspace", () => {
       "graph",
       "stacks",
     ]) {
-      const r = await callTool(
-        tool,
-        { workspace: "enterprise" },
-        ctx(api, SCOPE),
-      );
+      const r = await callTool(tool, { workspace: "south" }, ctx(api, SCOPE));
       expect(r.isError).toBe(true);
       expect(r.text).toMatch(
         new RegExp(
-          `^Refused: ${tool}: this MCP server is scoped to workspace "smb" \\(agent:planner\\); "enterprise" is another workspace`,
+          `^Refused: ${tool}: this MCP server is scoped to workspace "north" \\(agent:planner\\); "south" is another workspace`,
         ),
       );
     }
@@ -196,7 +192,7 @@ describe("a scoped server refuses another workspace", () => {
     const { api, calls } = fakeApi();
     const r = await callTool(
       "service_up",
-      { repo: "billing", workspace: "enterprise" },
+      { repo: "billing", workspace: "south" },
       ctx(api, SCOPE),
     );
     expect(r.isError).toBe(true);
@@ -205,13 +201,13 @@ describe("a scoped server refuses another workspace", () => {
     expect(report?.body).toMatchObject({
       tool: "service_up",
       repo: "billing",
-      reason: expect.stringMatching(/scoped to workspace "smb".*"enterprise"/),
+      reason: expect.stringMatching(/scoped to workspace "north".*"south"/),
     });
   });
 
   it("a read refused for its workspace is recorded too", async () => {
     const { api, calls } = fakeApi();
-    await callTool("services", { workspace: "enterprise" }, ctx(api, SCOPE));
+    await callTool("services", { workspace: "south" }, ctx(api, SCOPE));
     expect(calls.some((c) => c.path === "/api/activity")).toBe(true);
   });
 
@@ -241,7 +237,9 @@ describe("a scoped server refuses another workspace", () => {
     expect(report?.body).toMatchObject({
       tool: "manifest_validate",
       path: "/repos/billing/.den.yml",
-      reason: expect.stringMatching(/is not inside a repo of workspace "smb"/),
+      reason: expect.stringMatching(
+        /is not inside a repo of workspace "north"/,
+      ),
     });
   });
 
@@ -276,7 +274,7 @@ describe("a scoped server refuses another workspace", () => {
       ctx(api, SCOPE),
     );
     expect(tail.text).toMatch(
-      /^Refused: logs_tail: billing\/api is not a service of workspace "smb"/,
+      /^Refused: logs_tail: billing\/api is not a service of workspace "north"/,
     );
     const search = await callTool(
       "logs_search",
@@ -284,7 +282,7 @@ describe("a scoped server refuses another workspace", () => {
       ctx(api, SCOPE),
     );
     expect(search.text).toMatch(/billing\/api is not a service/);
-    // Pinned to smb, a repo only enterprise has is not found there.
+    // Pinned to north, a repo only south has is not found there.
     const up = await callTool(
       "service_up",
       { repo: "billing" },
@@ -296,7 +294,7 @@ describe("a scoped server refuses another workspace", () => {
       { path: "/repos/billing/.den.yml" },
       ctx(api, SCOPE),
     );
-    expect(man.text).toMatch(/is not inside a repo of workspace "smb"/);
+    expect(man.text).toMatch(/is not inside a repo of workspace "north"/);
     const rel = await callTool(
       "manifest_validate",
       { path: "../billing" },
@@ -307,7 +305,7 @@ describe("a scoped server refuses another workspace", () => {
       work(calls).filter(
         (c) =>
           c.path !== "/api/services" ||
-          (c.query as Query | undefined)?.workspace !== "smb",
+          (c.query as Query | undefined)?.workspace !== "north",
       ),
     ).toEqual([]);
   });
@@ -321,7 +319,7 @@ describe("a scoped server refuses another workspace", () => {
       const r = await callTool(tool, { ...args }, ctx(api, SCOPE));
       expect(r.text).toMatch(
         new RegExp(
-          `^Refused: ${tool}: tests run against the focused workspace \\("enterprise"\\)`,
+          `^Refused: ${tool}: tests run against the focused workspace \\("south"\\)`,
         ),
       );
     }
@@ -352,22 +350,22 @@ describe("a scoped server pins and filters", () => {
     ])
       expect((await callTool(tool, {}, ctx(api, SCOPE))).isError).toBe(false);
     // Naming its own workspace is fine too.
-    await callTool("status", { workspace: "smb" }, ctx(api, SCOPE));
+    await callTool("status", { workspace: "north" }, ctx(api, SCOPE));
     for (const c of work(calls))
-      expect((c.query as Query).workspace).toBe("smb");
+      expect((c.query as Query).workspace).toBe("north");
   });
 
   it("workspaces lists the scoped workspace only", async () => {
     const { api } = fakeApi();
     const r = await callTool("workspaces", {}, ctx(api, SCOPE));
     expect(JSON.parse(r.text)).toEqual({
-      active: ["smb"],
-      workspaces: { smb: WORKSPACES.workspaces.smb },
-      resolvedDirs: { smb: "/w/smb" },
+      active: ["north"],
+      workspaces: { north: WORKSPACES.workspaces.north },
+      resolvedDirs: { north: "/w/north" },
       codeWorkspacePaths: {},
-      scope: { workspace: "smb", actor: "agent:planner" },
+      scope: { workspace: "north", actor: "agent:planner" },
     });
-    expect(r.text).not.toContain("enterprise");
+    expect(r.text).not.toContain("south");
   });
 
   it("lifecycle and sync name the scoped workspace", async () => {
@@ -381,10 +379,10 @@ describe("a scoped server pins and filters", () => {
     ).toBe(false);
     expect(
       calls.find((c) => c.path === "/api/service/exec")?.query,
-    ).toMatchObject({ repo: "shop", workspace: "smb" });
+    ).toMatchObject({ repo: "shop", workspace: "north" });
     expect(calls.find((c) => c.path === "/api/workspace/sync")?.query).toEqual({
       repo: "shop",
-      workspace: "smb",
+      workspace: "north",
     });
   });
 
@@ -411,7 +409,7 @@ describe("a scoped server pins and filters", () => {
   });
 
   it("tests are served when the scoped workspace is the focused one", async () => {
-    const { api } = fakeApi({ ...WORKSPACES, focus: "smb" });
+    const { api } = fakeApi({ ...WORKSPACES, focus: "north" });
     const r = await callTool(
       "tests_available",
       { pillar: "smoke" },
@@ -433,14 +431,13 @@ describe("unscoped behaviour is unchanged", () => {
   it("another workspace is passed through, no workspace is sent as none", async () => {
     const { api, calls } = fakeApi();
     expect(
-      (await callTool("services", { workspace: "enterprise" }, ctx(api)))
-        .isError,
+      (await callTool("services", { workspace: "south" }, ctx(api))).isError,
     ).toBe(false);
     await callTool("status", {}, ctx(api));
     expect(calls).toEqual([
       {
         path: "/api/services",
-        query: { env: "local", workspace: "enterprise" },
+        query: { env: "local", workspace: "south" },
       },
       { path: "/api/health", query: { env: "local", workspace: undefined } },
     ]);
@@ -491,13 +488,13 @@ describe("the actor is stamped", () => {
     mcpPid: 4242,
     session: "0b9f6c1e-1d2a-4c3b-9e8f-7a6b5c4d3e2f",
     agent: "agent:planner",
-    workspace: "smb",
+    workspace: "north",
   };
 
   it("on every call's headers, and the web server reads it back", () => {
     const headers = agentAuditHeaders(info);
     expect(headers[AUDIT_HEADERS.agent]).toBe("agent:planner");
-    expect(headers[AUDIT_HEADERS.workspace]).toBe("smb");
+    expect(headers[AUDIT_HEADERS.workspace]).toBe("north");
     expect(actorFromHeaders(headers)).toEqual({ kind: "agent", ...info });
   });
 
@@ -505,7 +502,7 @@ describe("the actor is stamped", () => {
     const a = actorFromHeaders({
       [AUDIT_HEADERS.actor]: "agent",
       [AUDIT_HEADERS.agent]: "agent:pl anner",
-      [AUDIT_HEADERS.workspace]: "../smb",
+      [AUDIT_HEADERS.workspace]: "../north",
     });
     expect(a).not.toBeNull();
     expect(a).not.toHaveProperty("agent");
@@ -523,13 +520,13 @@ describe("the actor is stamped", () => {
     expect(e).toMatchObject({
       actor: "agent",
       agent: "agent:planner",
-      workspace: "smb",
+      workspace: "north",
     });
     expect(lines).toEqual([
-      `▶ run smoke/local · modules=all [abc123] · by agent:planner claude-code 2.0.0 (workspace smb, mcp pid 4242, session ${info.session})`,
+      `▶ run smoke/local · modules=all [abc123] · by agent:planner claude-code 2.0.0 (workspace north, mcp pid 4242, session ${info.session})`,
     ]);
     expect(actorLabel({ kind: "agent", ...info })).toBe(
-      `agent:planner claude-code 2.0.0 (workspace smb, mcp pid 4242, session ${info.session})`,
+      `agent:planner claude-code 2.0.0 (workspace north, mcp pid 4242, session ${info.session})`,
     );
   });
 });

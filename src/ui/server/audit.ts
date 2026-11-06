@@ -8,6 +8,7 @@
 import * as path from "path";
 import {
   actorLabel,
+  WORKSPACE_NAME_RE,
   type Actor,
   type AgentActor,
 } from "../../shared/agent-actor.js";
@@ -25,6 +26,11 @@ export interface AuditEntry {
   agent?: string;
   /** The workspace that scoped server is pinned to. */
   workspace?: string;
+  /**
+   * The other workspace a call reached under a grant (`agents.<id>.grants`,
+   * AG-2a); `workspace` is the agent's own.
+   */
+  targetWorkspace?: string;
   /** exec | run | sync, or the MCP tool name for a refused non-lifecycle call */
   verb: string;
   detail: string;
@@ -63,6 +69,7 @@ export function recordAction(
     outcome?: "refused";
     reason?: string;
     addresses?: string[];
+    targetWorkspace?: string;
   },
 ): AuditEntry {
   const entry: AuditEntry = {
@@ -77,6 +84,9 @@ export function recordAction(
           ...(actor.agent ? { agent: actor.agent } : {}),
           ...(actor.workspace ? { workspace: actor.workspace } : {}),
         }
+      : {}),
+    ...(action.targetWorkspace
+      ? { targetWorkspace: action.targetWorkspace }
       : {}),
     verb: action.verb,
     detail: action.detail,
@@ -191,6 +201,30 @@ export function recordAgentRefusal(
     outcome: "refused",
     reason,
     addresses: refusedAddresses(report),
+  });
+}
+
+/**
+ * A scoped agent's call into a workspace it holds a grant for (AG-2a, AG
+ * spec §5b), reported by its MCP server before the call runs. Recorded
+ * with both workspaces: the agent's own (from its headers) and the target.
+ * Null, and nothing recorded, unless the actor is a scoped agent and the
+ * target is a well-formed workspace other than its own.
+ */
+export function recordCrossWorkspace(
+  actor: Actor,
+  report: { tool?: unknown; crossWorkspace?: unknown },
+): AuditEntry | null {
+  if (!actor?.agent || !actor.workspace) return null;
+  const target =
+    typeof report.crossWorkspace === "string" ? report.crossWorkspace : "";
+  if (!WORKSPACE_NAME_RE.test(target) || target === actor.workspace)
+    return null;
+  const tool = clean(report.tool, 64).replace(/[^A-Za-z0-9_]/g, "") || "tool";
+  return recordAction(actor, {
+    verb: tool,
+    detail: `in workspace ${target}, under a grant to ${actor.agent} of workspace ${actor.workspace}`,
+    targetWorkspace: target,
   });
 }
 

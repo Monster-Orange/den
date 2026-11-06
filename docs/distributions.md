@@ -1320,7 +1320,7 @@ port.
 ### Scoped to one workspace
 
 ```sh
-./bin/acme mcp --workspace smb --actor agent:planner
+./bin/acme mcp --workspace north --actor agent:planner
 ```
 
 `--workspace <ws>` and `--actor agent:<id>` (both or neither) scope the server
@@ -1344,6 +1344,15 @@ workspace`) before anything reaches the web server. A refused call is
   entry gains `agent` and `workspace`, and the log line reads `· by
 agent:<id> <client> <version> (workspace <ws>, mcp pid <pid>, session
 <id>)` for every exec, run and sync.
+- **Granted.** `--grant <other>` (repeatable) also serves `<other>`, but only
+  when the org config's `agents.<id>.grants` lists it; otherwise the server
+  exits 2 (an agent can't grant itself one). A call naming a granted
+  workspace is reported to the web server before it runs, and its activity
+  entry names both (`workspace` and `targetWorkspace`; the log line reads
+  `▶ <tool> in workspace <other>, under a grant to agent:<id> of workspace
+<ws>`). `workspaces` lists `<ws>` and its grants, and tests run when either
+  is focused. Logs and `manifest_validate` stay on `<ws>`'s own services.
+  `agents start` passes an agent's grants for you (see [Agents](#agents)).
 - `<ws>` must exist in this distribution; until it does, every tool says so.
   The id is letters, digits, dots, dashes and underscores (at most 64). A bad
   or half-given scope is a usage error, exit 2. `--list` and `--call` take
@@ -1355,7 +1364,7 @@ calls the API itself (curl, a browser) is not held to its workspace. Enforcing
 the scope in the HTTP server is WS-3a, planned for 0.4. `mcp connect` still
 registers the unscoped server; to hand one agent a scoped server, add it to
 that agent's config yourself, for example in a project's `.mcp.json`:
-`"args": ["mcp", "--workspace", "smb", "--actor", "agent:planner"]`.
+`"args": ["mcp", "--workspace", "north", "--actor", "agent:planner"]`.
 
 ### One call from a shell
 
@@ -1494,6 +1503,105 @@ start` and `<cli> doctor` say why den-pty is unavailable.
 - A state dir whose socket path would pass 103 bytes (the unix socket
   limit) is refused with that reason; point `<PREFIX>_HOME` somewhere
   shorter.
+
+## Agents
+
+An agent is a **persona** (who) in a **workspace** (where), run by a
+**runtime** (which CLI) in a [session](#sessions), acting through Den's MCP
+server scoped to its workspace.
+
+```
+<cli> agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--id <id>]
+<cli> agents list -w <ws> [--json]
+<cli> agents stop <id> [-w <ws>]
+<cli> agents resume <id> [-w <ws>]
+<cli> agents personas [--json]
+<cli> sessions attach <ws>:<id>         # its terminal; ctrl-] detaches
+```
+
+- `start` runs the agent as session `<dist>-<ws>:<id>` in the workspace's
+  checkout dir (its `directory`, else `den-workspaces/<ws>`), capped by
+  `agents.max_concurrent`. The id defaults to the persona's id; an id is
+  unique in the distribution, so a second workspace's planner gets
+  `planner-<ws>` unless you give `--id`.
+- The **agent record**, `<stateDir>/agents/<id>.json` (0600), holds its id,
+  persona, runtime, model, workspace, cwd, session and times. It never holds
+  the environment or the command line. `list` reads it for persona, runtime
+  and model; a record whose session has gone is listed as `stopped` (after
+  `stop`) or `ended`.
+- `stop` sends its session TERM and marks it stopped. `resume` works only
+  when the runtime declares resume and the session is not running: it starts
+  a new session in the same cwd that continues the last conversation.
+
+### Personas
+
+A persona is a markdown file: YAML front matter, then the role prompt. It is
+a Claude Code agent file, read as it is, plus a few keys of Den's own:
+
+```markdown
+---
+name: planner # the id (or `id:`; default: the file name)
+description: Writes stories and their acceptance criteria. # or `role:`
+model: some-model # optional; `inherit` means none
+tools: Read, Grep # hints for the runtime; Den restricts nothing with them
+standing: true # starts with its workspace (later slices)
+context: [docs/specs, the design system] # what to read first
+runtime: generic # default den-claude
+argv: ["some-cli", "--model", "{model}", "--mcp-config", "{mcp_config}"]
+---
+
+You are the planner. …
+```
+
+Den ships a default pack: `planner` and `orchestrator` (standing), `fe-dev`,
+`be-dev`, `devops`, `reviewer` and `ux-designer`. Add your own packs, read in
+order after Den's; a persona with the same id replaces the earlier one:
+
+```yaml
+agents:
+  persona_packs: [personas, ../some-plugin] # relative to the distribution root
+```
+
+A pack is a directory of persona files. A pack with an `agents/` directory
+inside (a Claude Code plugin) is read from there, so a plugin's agents are
+used without converting them. Files without front matter (a README) are
+skipped; two files with one id in a pack, or a pack that isn't a directory,
+are errors naming the file or the key.
+
+### Runtimes
+
+`<cli> doctor` lists the runtime kind. Two are built in:
+
+- **`den-claude`** (the default) needs `claude` on PATH; doctor reads its
+  version from the install, without running it. It runs `claude --session-id
+<id> --mcp-config <file> --strict-mcp-config [--model <m>]
+--append-system-prompt <role prompt>`, so Den's MCP server is the agent's
+  only one, and resumes with `claude --resume <id>`. Permission prompts stay
+  in the agent's terminal.
+- **`generic`** runs the persona's `argv` template. `{model}` is the agent's
+  model (an error when the template uses it and there is none);
+  `{mcp_config}` is the path of the agent's MCP config, written only when the
+  template references it. It declares no resume.
+
+### Workspace scope and grants
+
+An agent's MCP config, `<stateDir>/agent-files/<id>/mcp.json` (0600), runs
+`<cli> mcp --workspace <ws> --actor agent:<id>`: the agent sees and acts on
+its own workspace only, and every action is recorded as `agent:<id>` (see
+[Scoped to one workspace](#scoped-to-one-workspace)). A grant widens one
+agent's scope. It is config in git, reviewed like code; an agent can't give
+itself one:
+
+```yaml
+agents:
+  planner:
+    grants: [other-workspace]
+```
+
+`start` then adds `--grant other-workspace`, and each call into it is audited
+with both workspaces named. Any key of `agents:` other than `max_concurrent`
+and `persona_packs` is an agent id, and its only key is `grants`. A grant
+naming a workspace that doesn't exist stops `start`, naming the key.
 
 ## Pinning and upgrading
 

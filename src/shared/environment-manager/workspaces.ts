@@ -325,6 +325,25 @@ export function writeWorkspacesFile(file: WorkspacesFile): void {
   }
 }
 
+/**
+ * A workspace's checkout directory: its `directory` (relative to the
+ * distribution root), else den-workspaces/<name>, else the legacy
+ * <reposRoot>/<name>, else the repos root itself. What /api/workspaces
+ * reports as resolvedDirs, and where an agent of the workspace runs.
+ */
+export function resolveWorkspaceDir(
+  name: string,
+  ws: Pick<WorkspaceConfig, "directory">,
+  reposRoot: string,
+): string {
+  if (ws.directory) return path.resolve(ROOT, ws.directory);
+  const gwDir = path.join(DEN_WORKSPACES_DIR, name);
+  if (fs.existsSync(gwDir)) return gwDir;
+  const legacyDir = path.join(reposRoot, name);
+  if (fs.existsSync(legacyDir)) return legacyDir;
+  return reposRoot;
+}
+
 export function getWorkspaceByName(name: string): {
   name: string;
   config: WorkspaceConfig;
