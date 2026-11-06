@@ -28,6 +28,20 @@ config and manifest changes a distribution must make to move to it under
   every active one; on a fresh machine `-w` narrows the blueprint's plan. A
   closing hint names the repos only workspaces outside the plan hold. `-w`
   and `--all-active` go with `--plan` only.
+- **Orgs are Den's own; sources are bindings** (0.2.8-dev.1, ORG-1d). An
+  org is any key of `orgs:`. `orgs.<id>.sources: [{host, owner|group}]`
+  claims git-host owners for it (an org can span two GitHub owners), and
+  `orgs.<id>.repos: [...]` lists repos outright (one owner can be split
+  across orgs). Catalog entries take `remote: <git url>` for any host;
+  `gh: owner/repo` stays the GitHub shorthand. A repo's org is the org
+  listing it, else the one whose source claims its owner, else its GitHub
+  owner; inference, `/api/orgs` and `org list` use it, and a claimed owner
+  is not listed as its own org. A repo clones from its source (GitHub with
+  `gh` as credential helper), or with no source from its `remote:` through
+  plain git and the user's own credential helper (SEC-0); `setup --plan`
+  shows that URL. Discovery (`register`) and the Release page skip an org
+  with no GitHub source. A bad value names its key; a repo or owner claimed
+  by two orgs is an error naming both. See docs/distributions.md, Orgs.
 - **`<cli> register <path> -w <ws>`** (0.2.8-dev.0) writes that workspace,
   active or not, and leaves focus alone. It used to fail with "-w/--workspace
   is not valid with register".
@@ -47,6 +61,17 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **A scoped MCP refusal of a non-lifecycle tool shows on its service**
+  (0.2.8-dev.1). A refused `logs_tail`, `logs_search` or other non-lifecycle tool
+  was stored with an empty detail and no service, so the service panel's
+  activity (`GET /api/activity?address=<repo>/<svc>`) never showed it. The
+  entry's detail is now the refusal, and it carries `addresses`: the repo
+  or `repo/service` the call named, or every target of a `logs_search`
+  (one entry, listed under each).
+- **`up --plan -w <ws>` with nothing to start is a usage error**
+  (0.2.8-dev.1): one line, exit 2, naming `up -a -w <ws>` (the whole
+  workspace) and `up <repo> -w <ws>`. It printed "No services specified and
+  no invocation target resolvable".
 - **Test workers inherit no credentials** (0.2.8-dev.0). `tests/setup.ts`
   strips credential-shaped variables (by name, family or token shape) from
   the environment before any suite runs, so a failing assertion on a
@@ -55,7 +80,11 @@ config and manifest changes a distribution must make to move to it under
 ### Migrations
 
 - None. A script that ran `up --plan` and ignored its exit code may now see
-  1 when the plan is empty.
+  1 when the plan is empty (2 for `up --plan -w <ws>` with no repo or
+  `-a`).
+- ORG-1d (`orgs.<id>.sources`, `orgs.<id>.repos`, catalog `remote:`) is
+  optional: no change is needed, and a config without those keys behaves
+  exactly as on 0.2.7. A den.yml that uses them needs Den 0.2.8 or later.
 
 ## [0.2.7] - 2026-11-05
 

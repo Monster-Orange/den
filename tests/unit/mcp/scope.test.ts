@@ -211,6 +211,21 @@ describe("a scoped server refuses another workspace", () => {
     expect(calls.some((c) => c.path === "/api/activity")).toBe(true);
   });
 
+  it("a refused logs_search reports its targets, so each service's activity shows it", async () => {
+    const { api, calls } = fakeApi();
+    await callTool(
+      "logs_search",
+      { q: "error", targets: ["shop/api", "billing/api"] },
+      ctx(api, SCOPE),
+    );
+    const report = calls.find((c) => c.path === "/api/activity");
+    expect(report?.body).toMatchObject({
+      tool: "logs_search",
+      targets: ["shop/api", "billing/api"],
+      reason: expect.stringMatching(/billing\/api is not a service/),
+    });
+  });
+
   it("a repo of another workspace is not served: logs, lifecycle, manifests", async () => {
     const { api, calls } = fakeApi();
     const tail = await callTool(

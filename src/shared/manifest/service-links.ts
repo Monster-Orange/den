@@ -12,6 +12,7 @@ import type {
   ServiceCatalog,
   ServiceManagementConfig,
 } from "../types/index.js";
+import { orgOfRepo, type WorkOrgsConfig } from "../org-sources.js";
 
 export interface OpenLink {
   label: string;
@@ -63,11 +64,18 @@ export function linksFor(
   return out;
 }
 
-/** The GitHub owner a repo is catalogued under ("acme"), or "". */
-export function orgOf(repo: string, catalog: ServiceCatalog): string {
-  const gh = catalog[repo]?.gh ?? "";
-  const slash = gh.indexOf("/");
-  return slash > 0 ? gh.slice(0, slash) : "";
+/**
+ * The org a repo belongs to (ORG-1d): an org whose `repos` lists it, then an
+ * org with a source that claims its owner, then (legacy) its bare GitHub
+ * owner from `gh` ("acme"), else "". Without `orgs` (or with no ORG-1d keys
+ * in it) this is the repo's GitHub owner, as before.
+ */
+export function orgOf(
+  repo: string,
+  catalog: ServiceCatalog,
+  orgs: WorkOrgsConfig = {},
+): string {
+  return orgOfRepo(repo, catalog, orgs);
 }
 
 export interface OrgDisplay {
@@ -75,14 +83,18 @@ export interface OrgDisplay {
   color?: string;
 }
 
-/** Every org in the catalog with its display name, configured ones first. */
+/**
+ * Every org with its display name, configured ones first, then each
+ * catalogued repo's org. An owner a source claims is not an org of its own,
+ * so it is not listed.
+ */
 export function listOrgs(
   catalog: ServiceCatalog,
-  configured: Record<string, OrgDisplay> = {},
+  configured: WorkOrgsConfig = {},
 ): Array<{ id: string; label: string; color?: string }> {
   const ids = new Set<string>(Object.keys(configured));
   for (const repo of Object.keys(catalog)) {
-    const o = orgOf(repo, catalog);
+    const o = orgOf(repo, catalog, configured);
     if (o) ids.add(o);
   }
   return [...ids].map((id) => ({

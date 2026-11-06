@@ -529,6 +529,69 @@ its workspace's org is a warning in both lists, never an error.
 `org:` in the blueprint needs Den 0.2.7 or later: an older Den rejects the
 unknown key. Pin 0.2.7 before you commit it.
 
+### Sources and repos (0.2.8)
+
+An org is Den's own: its id is any key of `orgs:`, and it needs no git
+host. Two optional keys bind it to where its repos live:
+
+```yaml
+github_org: acme
+orgs:
+  acme-group: # one org, two GitHub owners
+    label: Acme Group
+    sources:
+      - { host: github, owner: acme }
+      - { host: github, owner: acme-labs }
+  globex-billing: # one owner split across two orgs
+    repos: [globex-invoices]
+  globex:
+    sources: [{ host: github, owner: globex }]
+  initech: # no git host at all
+    sources: []
+    repos: [widget]
+```
+
+- `orgs.<id>.sources` is a list of `{host, owner}` (or `{host, group}`). A
+  source claims that owner's repos for the org. `host: github` is built
+  in; any other host id (`gitlab`, …) claims repos whose `remote:` is on
+  `<host>.com` or a `<host>.` hostname, and clones them from that remote.
+- `orgs.<id>.repos` lists repos that belong to the org whatever their
+  owner.
+- An entry with neither key is what it was before 0.2.8: the GitHub owner
+  of its own name.
+
+The catalog (`config/local/service-catalog.yml`) takes a `remote:` for any
+host, beside `gh: owner/repo`, which stays as the GitHub shorthand:
+
+```yaml
+widget: { remote: git@git.initech.example:tools/widget.git }
+```
+
+A repo's org is the org whose `repos` lists it, else the org with a source
+that claims its owner, else its GitHub owner as before. That org is what
+`/api/orgs?repos=1` maps the repo to and what infers a workspace's org (step
+3 above). A claimed owner is not listed as an org of its own, and a
+`github_org` that names one makes the claiming org the default. Service rows
+(`/api/services`, `/api/health`) keep `org` as the repo's GitHub owner.
+
+A repo clones from its source: a GitHub source gives
+`https://github.com/<owner>/<repo>.git` with your `gh` as credential helper.
+A repo with no source that claims it clones and pulls from its `remote:`
+through plain git, with your own git credential helper; Den never hands it
+`gh` or any credential of its own. A remote must be `https://`, `ssh://`,
+`git://`, `file://`, `user@host:path` or an absolute path. `setup --plan`
+shows it as the clone URL, with any user info masked.
+
+An org with no GitHub source has no repo discovery (`register` lists
+nothing for it) and its repos are left off the Release page.
+
+These keys are checked when den.yml is read, and a bad value is an error
+that names its key (`orgs.initech.sources[0].owner must be …`). A repo
+listed by two orgs, or an owner claimed by two orgs' sources (or by a
+source and an org with no `sources` of that name), is an error naming both
+keys. Without the new keys nothing changes: `/api/orgs` is byte for byte
+what 0.2.7 answered. They need Den 0.2.8 or later.
+
 ## Releases
 
 The Release page dispatches each repo's CD workflow on GitHub. A repo's

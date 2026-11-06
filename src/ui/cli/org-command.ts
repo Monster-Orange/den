@@ -9,6 +9,8 @@
 import chalk from "chalk";
 import { product } from "../../shared/product.js";
 import { listOrgs } from "../../shared/manifest/service-links.js";
+import { githubOwnersOf } from "../../shared/org-sources.js";
+import { readDenConfig } from "../../shared/den-config.js";
 import {
   defaultOrg,
   githubOrgFor,
@@ -107,7 +109,12 @@ export function registerOrg(
   ctx?: OrgContext,
 ): string | undefined {
   let org = orgArg?.trim();
-  if (!org) {
+  if (org) {
+    // ORG-1d: an org id names its first GitHub source's owner; an org with
+    // no GitHub source has nothing to list.
+    org = githubOwnersOf(org, (ctx?.config ?? readDenConfig()).orgs)[0];
+    if (!org) return undefined;
+  } else {
     try {
       org = githubOrgFor(workspace, ctx);
     } catch {

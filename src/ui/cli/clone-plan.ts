@@ -11,7 +11,16 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { readCatalog } from "../../shared/environment-manager/catalog.js";
+import {
+  readCatalog,
+  resolveRepoCloneSource,
+} from "../../shared/environment-manager/catalog.js";
+import {
+  isGitRemote,
+  redactRemote,
+} from "../../shared/environment-manager/git-remote.js";
+import { readDenConfig } from "../../shared/den-config.js";
+import type { WorkOrgsConfig } from "../../shared/org-sources.js";
 import {
   blueprintWorkspaces,
   catalogFill,
@@ -107,20 +116,31 @@ function cloneDir(repo: string, branch: string): string {
   return path.join(DEN_SERVICES_DIR, repo, branch);
 }
 
-/** The slug setup and up would clone `repo` from, or null without an org. */
+/**
+ * What setup and up would clone `repo` from (a GitHub slug, or an ORG-1d
+ * `remote:`), or null without an org. `owner` gives the slug's owner for a
+ * repo with neither `gh` nor `remote`.
+ */
+function sourceFor(
+  repo: string,
+  catalog: ServiceCatalog,
+  ctx: OrgContext,
+  owner: () => string,
+): string | null {
+  try {
+    return resolveRepoCloneSource(repo, catalog, owner, ctx.config.orgs);
+  } catch {
+    return null;
+  }
+}
+
 function slugFor(
   repo: string,
   workspace: string,
   catalog: ServiceCatalog,
   ctx: OrgContext,
 ): string | null {
-  const gh = catalog[repo]?.gh?.trim();
-  if (gh) return gh;
-  try {
-    return `${githubOrgFor(workspace, ctx)}/${repo}`;
-  } catch {
-    return null;
-  }
+  return sourceFor(repo, catalog, ctx, () => githubOrgFor(workspace, ctx));
 }
 
 function managedRow(
@@ -131,12 +151,13 @@ function managedRow(
 ): ClonePlanRow {
   const dir = cloneDir(repo, branch);
   const cloned = fs.existsSync(dir);
+  const remote = slug !== null && isGitRemote(slug);
   return {
     repo,
     mode: "managed",
     branch,
-    owner: slug ? ownerOf(slug) : null,
-    url: slug ? ghCloneUrl(slug) : null,
+    owner: !slug ? null : remote ? null : ownerOf(slug),
+    url: !slug ? null : remote ? redactRemote(slug) : ghCloneUrl(slug),
     state: cloned
       ? "cloned"
       : !slug
@@ -212,7 +233,11 @@ function blueprintClonePlan(ctx: OrgContext): ClonePlanWorkspace[] {
       managedRow(
         repo,
         bp.branch,
-        ctx.catalog[repo]?.gh?.trim() || fill.get(repo) || null,
+        sourceFor(repo, ctx.catalog, ctx, () => {
+          const slug = fill.get(repo);
+          if (!slug) throw new Error(`no org for ${repo}`);
+          return ownerOf(slug);
+        }),
         true, // seeding writes every blueprint repo into the catalog
       ),
     ),
@@ -303,6 +328,7 @@ export function renderClonePlan(
   plan: ClonePlan,
   cli: string,
   catalog: ServiceCatalog = readCatalog(),
+  orgs: WorkOrgsConfig | undefined = readDenConfig().orgs,
 ): string[] {
   const out: string[] = [];
   if (plan.fromBlueprint)
@@ -323,7 +349,7 @@ export function renderClonePlan(
             ? `  ${r.path}`
             : ""
           : "";
-      const owner = r.owner ?? orgOf(r.repo, catalog) ?? "";
+      const owner = r.owner ?? orgOf(r.repo, catalog, orgs) ?? "";
       out.push(
         `  ${r.repo}  ${r.mode} ${r.branch}  org: ${owner || "(unknown)"}` +
           `${r.url ? `  ${r.url}` : ""}  ${STATE_TEXT[r.state]}${where}`,

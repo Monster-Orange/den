@@ -16,6 +16,7 @@ import type { Environment, ReleaseSourceConfig } from "./types/index.js";
 import { getDistRoot } from "./paths.js";
 import type { SecretsConfig } from "./secrets/index.js";
 import type { OrgConfig } from "./org.js";
+import { validateOrgSources, type WorkOrgsConfig } from "./org-sources.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
 
 import { product } from "./product.js";
@@ -194,11 +195,13 @@ export interface DenConfig {
   /** GitHub org slug used to list org repos in the web UI (e.g. "Globex-Corp"). */
   github_org?: string;
   /**
-   * Display names (and an optional colour) for the GitHub orgs repos belong
-   * to, keyed by GitHub owner. Orgs are worked out from the catalog; this
-   * only names them.
+   * Work orgs, keyed by org id: a display name and an optional colour. An
+   * entry with neither `sources` nor `repos` is the GitHub owner of its own
+   * name (ORG-1a). ORG-1d: `sources: [{host, owner|group}]` binds the org to
+   * git-host owners, and `repos: [...]` lists repos outright. See
+   * src/shared/org-sources.ts.
    */
-  orgs?: Record<string, { label?: string; color?: string }>;
+  orgs?: WorkOrgsConfig;
   /** Derived-dependency-graph tuning (aliases + edge overrides). */
   graph?: GraphConfig;
   /**
@@ -422,6 +425,9 @@ export function readDenConfig(): DenConfig {
   try {
     const raw = fs.readFileSync(DEN_CONFIG_PATH, "utf-8");
     const parsed = yaml.parse(raw) as Partial<DenConfig> | null;
+    // ORG-1d keys (orgs.<id>.sources / .repos) are checked here, where a bad
+    // value throws naming its key; configs without them are not touched.
+    validateOrgSources(parsed?.orgs, product().configFile);
     // `environments` may be malformed (scalar/object) in a hand-edited file —
     // fall back to the default set rather than throwing on .filter below.
     const envs = Array.isArray(parsed?.environments)

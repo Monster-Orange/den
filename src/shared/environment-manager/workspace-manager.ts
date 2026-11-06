@@ -22,6 +22,12 @@ import {
 } from "../process/spawn-streaming.js";
 import { buildServiceEnv } from "./service-env.js";
 import { assertSafeCloneDestination } from "./clone-guard.js";
+import {
+  SAFE_SLUG_RE,
+  isGitRemote,
+  isSafeRemote,
+  redactRemote,
+} from "./git-remote.js";
 import type { CommandDef } from "../types/index.js";
 
 // ── Terminal resolution (macOS) ──────────────────────────────────────────────
@@ -76,11 +82,43 @@ function resolveTerminalAppName(key: string): string | null {
 
 // ── Git helpers ───────────────────────────────────────────────────────────────
 
-function git(cmd: string, cwd?: string): void {
-  execSync(`git -c credential.helper="!gh auth git-credential" ${cmd}`, {
+const GH_CREDENTIAL = `-c credential.helper="!gh auth git-credential"`;
+
+/**
+ * Run git with gh as an extra credential helper (a GitHub clone), or as
+ * plain git (`gh` false: a clone from a catalog `remote:`, which gets only
+ * the user's own credential helper, never gh's: SEC-0).
+ */
+function git(cmd: string, cwd?: string, gh = true): void {
+  execSync(`git ${gh ? `${GH_CREDENTIAL} ` : ""}${cmd}`, {
     cwd,
     stdio: "inherit",
   });
+}
+
+/** Set in a clone made from a `remote:`; its later fetches stay plain git. */
+const PLAIN_MARK = "den.credential";
+
+/** Whether a clone's fetches use gh: every clone but one Den made from a `remote:`. */
+function usesGhCredential(repoPath: string): boolean {
+  try {
+    return (
+      execSync(`git config --local --get ${PLAIN_MARK}`, {
+        cwd: repoPath,
+        stdio: ["ignore", "pipe", "ignore"],
+        encoding: "utf-8",
+      }).trim() !== "git"
+    );
+  } catch {
+    return true; // unset: a GitHub clone, as every clone before ORG-1d
+  }
+}
+
+/** Clone `source` (a GitHub slug or a checked git URL) with its own credentials. */
+function gitClone(args: string, source: string, dest: string): void {
+  const plain = isGitRemote(source);
+  git(`clone ${args}"${cloneUrlOf(source)}" "${dest}"`, undefined, !plain);
+  if (plain) git(`config --local ${PLAIN_MARK} git`, dest, false);
 }
 
 function gitCapture(cmd: string, cwd?: string): string {
@@ -96,6 +134,16 @@ export function ghCloneUrl(ghSlug: string): string {
   return `https://github.com/${ghSlug}.git`;
 }
 
+/** The URL a clone of `source` is made from: a GitHub slug's, or the remote itself. */
+export function cloneUrlOf(source: string): string {
+  return isGitRemote(source) ? source : ghCloneUrl(source);
+}
+
+/** `source` for a log line: a slug as is, a remote with any user info masked. */
+function shown(source: string): string {
+  return isGitRemote(source) ? redactRemote(source) : source;
+}
+
 // ── Injection guards ──────────────────────────────────────────────────────────
 //
 // git() runs through a shell (execSync), so branch names and GitHub slugs
@@ -106,7 +154,7 @@ export function ghCloneUrl(ghSlug: string): string {
 // the single choke point for every clone path.
 
 export const SAFE_BRANCH_RE = /^[a-zA-Z0-9._/-]+$/;
-export const SAFE_SLUG_RE = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
+export { SAFE_SLUG_RE };
 
 function assertSafeBranch(branch: string): void {
   if (!SAFE_BRANCH_RE.test(branch)) {
@@ -116,10 +164,12 @@ function assertSafeBranch(branch: string): void {
   }
 }
 
+/** A GitHub slug, or (ORG-1d) a git URL from a catalog `remote:`. */
 function assertSafeSlug(ghSlug: string): void {
+  if (isGitRemote(ghSlug) && isSafeRemote(ghSlug)) return;
   if (!SAFE_SLUG_RE.test(ghSlug)) {
     throw new Error(
-      `Invalid GitHub slug "${ghSlug}" — expected "owner/repo" using only letters, digits, ".", "_" and "-"`,
+      `Invalid GitHub slug "${redactRemote(ghSlug)}" — expected "owner/repo" using only letters, digits, ".", "_" and "-"`,
     );
   }
 }
@@ -427,17 +477,15 @@ export function ensureManagedServiceClone(
   if (!fs.existsSync(cloneDir)) {
     assertSafeCloneDestination(cloneDir, repoName);
     console.log(
-      `  ⬇ Cloning ${ghSlug}@${branch} → ${product().servicesDir}/${repoName}/${branch}/`,
+      `  ⬇ Cloning ${shown(ghSlug)}@${branch} → ${product().servicesDir}/${repoName}/${branch}/`,
     );
     fs.mkdirSync(path.join(DEN_SERVICES_DIR, repoName), {
       recursive: true,
     });
-    git(
-      `clone --filter=blob:none --branch "${branch}" "${ghCloneUrl(ghSlug)}" "${cloneDir}"`,
-    );
+    gitClone(`--filter=blob:none --branch "${branch}" `, ghSlug, cloneDir);
     if (runSetup) runSetupIfDefined(cloneDir);
   } else {
-    git("pull --ff-only", cloneDir);
+    git("pull --ff-only", cloneDir, usesGhCredential(cloneDir));
   }
 
   return cloneDir;
@@ -463,12 +511,10 @@ export function ensureManagedServiceCloneNewBranch(
   if (!fs.existsSync(cloneDir)) {
     assertSafeCloneDestination(cloneDir, repoName);
     console.log(
-      `  ⬇ Cloning ${ghSlug}@${baseBranch} → ${product().servicesDir}/${repoName}/${newBranch}/ (new branch: ${newBranch})`,
+      `  ⬇ Cloning ${shown(ghSlug)}@${baseBranch} → ${product().servicesDir}/${repoName}/${newBranch}/ (new branch: ${newBranch})`,
     );
     fs.mkdirSync(path.dirname(cloneDir), { recursive: true });
-    git(
-      `clone --filter=blob:none --branch "${baseBranch}" "${ghCloneUrl(ghSlug)}" "${cloneDir}"`,
-    );
+    gitClone(`--filter=blob:none --branch "${baseBranch}" `, ghSlug, cloneDir);
     git(`checkout -b "${newBranch}"`, cloneDir);
     runSetupIfDefined(cloneDir);
   }
@@ -496,15 +542,13 @@ export function ensureDevManagedClone(
   if (!fs.existsSync(targetDir)) {
     const leafName = path.basename(targetDir);
     assertSafeCloneDestination(targetDir, leafName);
-    console.log(`  ⬇ Cloning ${ghSlug}@${branch} → ${targetDir}/`);
+    console.log(`  ⬇ Cloning ${shown(ghSlug)}@${branch} → ${targetDir}/`);
     fs.mkdirSync(path.dirname(targetDir), { recursive: true });
     try {
-      git(
-        `clone --filter=blob:none --branch "${branch}" "${ghCloneUrl(ghSlug)}" "${targetDir}"`,
-      );
+      gitClone(`--filter=blob:none --branch "${branch}" `, ghSlug, targetDir);
     } catch {
       // Branch may not exist — clone default branch and checkout/create the branch
-      git(`clone --filter=blob:none "${ghCloneUrl(ghSlug)}" "${targetDir}"`);
+      gitClone(`--filter=blob:none `, ghSlug, targetDir);
       try {
         git(`checkout "${branch}"`, targetDir);
       } catch {
@@ -538,17 +582,15 @@ export function ensureWorkspaceClone(
   if (!fs.existsSync(cloneDir)) {
     assertSafeCloneDestination(cloneDir, repoName);
     console.log(
-      `  ⬇ Cloning ${ghSlug}@${branch} → ${product().workspacesDir}/${workspaceName}/${repoName}/`,
+      `  ⬇ Cloning ${shown(ghSlug)}@${branch} → ${product().workspacesDir}/${workspaceName}/${repoName}/`,
     );
     fs.mkdirSync(wsDir, { recursive: true });
 
     try {
-      git(
-        `clone --filter=blob:none --branch "${branch}" "${ghCloneUrl(ghSlug)}" "${cloneDir}"`,
-      );
+      gitClone(`--filter=blob:none --branch "${branch}" `, ghSlug, cloneDir);
     } catch {
       // Branch doesn't exist yet — clone main and create the branch
-      git(`clone --filter=blob:none "${ghCloneUrl(ghSlug)}" "${cloneDir}"`);
+      gitClone(`--filter=blob:none `, ghSlug, cloneDir);
       git(`checkout -b "${branch}"`, cloneDir);
       console.log(`  ✓ Created new branch ${branch} in ${repoName}`);
     }
@@ -660,7 +702,7 @@ export function pullRepo(repoPath: string): void {
   } catch {
     /* best-effort — a genuinely diverged clone still errors on the pull */
   }
-  git("pull --ff-only", repoPath);
+  git("pull --ff-only", repoPath, usesGhCredential(repoPath));
 }
 
 /**
@@ -682,7 +724,7 @@ export function fetchAndFastForward(repoPath: string): {
   pulled: boolean;
   error?: string;
 } {
-  const GH_CRED = `-c credential.helper="!gh auth git-credential"`;
+  const GH_CRED = usesGhCredential(repoPath) ? GH_CREDENTIAL : "";
   try {
     execSync(`git ${GH_CRED} fetch --quiet`, {
       cwd: repoPath,

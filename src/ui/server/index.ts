@@ -690,6 +690,9 @@ async function handleRequest(
 
   // ── API: environments ──────────────────────────────────────────────────────
   // Orgs the catalog's repos belong to, with config/den.yml display names.
+  // ORG-1d: a repo's org is an org listing it, else one whose source claims
+  // its owner, else its GitHub owner; a claimed owner is not listed. Service
+  // rows keep `org` as the repo's GitHub owner (C3).
   // Each entry also says whether it is the default org (`github_org`) and
   // which workspaces on this machine belong to it (ORG-1a). Nothing else
   // changes: same entries, order and fields (ORG-SPEC C3).
@@ -704,7 +707,7 @@ async function handleRequest(
     );
     if (url.searchParams.get("repos") !== "1") return sendJson(res, orgs);
     const repos = Object.fromEntries(
-      Object.keys(catalog).map((r) => [r, orgOf(r, catalog)]),
+      Object.keys(catalog).map((r) => [r, orgOf(r, catalog, ctx.config.orgs)]),
     );
     return sendJson(res, { orgs, repos });
   }

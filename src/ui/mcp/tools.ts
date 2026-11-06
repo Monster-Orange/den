@@ -653,6 +653,7 @@ async function reportRefusal(
       tool,
       ...(typeof args.repo === "string" ? { repo: args.repo } : {}),
       ...(typeof args.service === "string" ? { service: args.service } : {}),
+      ...(Array.isArray(args.targets) ? { targets: args.targets } : {}),
       reason,
     });
   } catch {

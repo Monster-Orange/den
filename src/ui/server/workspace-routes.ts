@@ -86,10 +86,12 @@ import { depService } from "../../shared/manifest/deps.js";
 import { waitForReady } from "../../shared/environment-manager/readiness.js";
 import {
   readCatalog,
-  resolveRepoGhSlug,
+  needsGhRepair,
+  resolveRepoCloneSource,
   upsertCatalogEntry,
 } from "../../shared/environment-manager/catalog.js";
 import { getReposRoot, readUserConfig } from "../../shared/den-config.js";
+import { redactRemote } from "../../shared/environment-manager/git-remote.js";
 import { getDistRoot } from "../../shared/paths.js";
 import { recordRemovedFromWorkspace } from "../../shared/environment-manager/default-workspace.js";
 import { getSudoEnv, prewarmSudo } from "./sudo-store.js";
@@ -320,7 +322,7 @@ async function buildAvailableRepos(wsOverride: string | null) {
       hasManifest: false,
       alreadyAdded,
       source: "catalog",
-      gh: entry.gh,
+      gh: entry.gh ?? null,
     });
   }
 
@@ -2159,16 +2161,18 @@ export async function handleWorkspaceRoutes(
         // flow writes one), which used to read as "not in the catalog" and
         // skip the clone entirely. Derive the conventional slug instead, and
         // persist it so every other flow (CLI up/setup) stops hitting this.
-        const ghSlug = resolveRepoGhSlug(svc.repoName, readCatalog(), () =>
+        // ORG-1d: a repo with no source and a `remote:` clones from it.
+        const ghSlug = resolveRepoCloneSource(svc.repoName, readCatalog(), () =>
           githubOrgFor(ws.name),
         );
-        if (!readCatalog()[svc.repoName]?.gh) {
-          upsertCatalogEntry(svc.repoName, { gh: ghSlug });
+        const entry = readCatalog()[svc.repoName];
+        if (needsGhRepair(entry, ghSlug)) {
+          upsertCatalogEntry(svc.repoName, { ...entry, gh: ghSlug });
         }
         const branch = (svc as { branch?: string | null }).branch ?? "main";
         emit({
           type: "line",
-          text: `  ${svc.repoName}: cloning ${ghSlug} (${branch})…`,
+          text: `  ${svc.repoName}: cloning ${redactRemote(ghSlug)} (${branch})…`,
         });
         try {
           // Synchronous (same helper the workspace-add flow uses) — the server

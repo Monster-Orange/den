@@ -32,10 +32,12 @@ import { moduleScanner } from "../../shared/test-discovery/module-scanner.js";
 import { resolvePerformanceModules } from "./module-selection.js";
 import {
   readCatalog,
-  resolveRepoGhSlug,
+  needsGhRepair,
+  resolveRepoCloneSource,
   upsertCatalogEntry,
 } from "../../shared/environment-manager/catalog.js";
 import { seedSecretsFromSibling } from "../../shared/environment-manager/secrets-check.js";
+import { upNeedsTarget } from "./up-args.js";
 import {
   readWorkspacesFile,
   writeWorkspacesFile,
@@ -1147,10 +1149,11 @@ class DenCLI {
       try {
         // An entry with `gh: ""` clones from the workspace's org, as `up`
         // does (and `setup --plan` says), instead of failing on an empty slug.
-        const ghSlug = resolveRepoGhSlug(repoName, catalog, () =>
+        // ORG-1d: a repo with no source and a `remote:` clones from it.
+        const ghSlug = resolveRepoCloneSource(repoName, catalog, () =>
           githubOrgFor(ws.name),
         );
-        if (!catalogEntry.gh?.trim())
+        if (needsGhRepair(catalogEntry, ghSlug))
           upsertCatalogEntry(repoName, { ...catalogEntry, gh: ghSlug });
         ensureManagedServiceClone(repoName, ghSlug, branch);
       } catch (err) {
@@ -1253,10 +1256,12 @@ class DenCLI {
       // Catalog entries written by the dev-managed add flow carry `gh: ""`, so
       // an entry can exist yet be unclonable. Derive the conventional slug and
       // persist the repair rather than cloning from an empty URL.
-      const ghSlug = resolveRepoGhSlug(repoName, catalog, () =>
+      // ORG-1d: a repo with no source and a `remote:` clones from it.
+      const ghSlug = resolveRepoCloneSource(repoName, catalog, () =>
         githubOrgFor(ws.name),
       );
-      if (!catalog[repoName]?.gh) upsertCatalogEntry(repoName, { gh: ghSlug });
+      if (needsGhRepair(catalog[repoName], ghSlug))
+        upsertCatalogEntry(repoName, { ...catalog[repoName], gh: ghSlug });
       try {
         // runSetup=false: clone only — setup is run below, hidden + non-interactive.
         ensureManagedServiceClone(repoName, ghSlug, branch, false);
@@ -2724,10 +2729,10 @@ class DenCLI {
   }
 
   private async cmdServiceUp(args: string[]): Promise<void> {
-    await this.ensureWorkspaceSeeded();
     // Tokens after a `--` terminator belong to a child command — they must
     // never be read as up's own flags (`den up -- -a` is NOT `up -a`).
     const terminator = args.indexOf("--");
+    await this.ensureWorkspaceSeeded();
     const { app, rest } = takeAppFlag(
       terminator === -1 ? args : args.slice(0, terminator),
     );
@@ -2818,6 +2823,16 @@ class DenCLI {
                 `  or run \`${product().cli} graph\` to see the workspace.\n`,
             ),
         );
+      } else if (process.env.DEN_WORKSPACE_OVERRIDE) {
+        // `up -w <ws>` with nothing to start: -w picks the workspace, not
+        // what in it to start. A usage error, not an empty plan.
+        console.error(
+          chalk.red(
+            `\n  ${upNeedsTarget(product().cli, process.env.DEN_WORKSPACE_OVERRIDE, plan)}\n`,
+          ),
+        );
+        process.exitCode = 2;
+        return;
       } else {
         console.log(
           chalk.yellow(
@@ -3331,7 +3346,8 @@ class DenCLI {
       console.log(
         chalk.red(
           `\n  ❌ No GitHub org to list: set github_org in ${product().configFile}, ` +
-            `org: on workspace ${ws.name}, or pass --org <id>\n`,
+            `org: on workspace ${ws.name}, or pass --org <id> ` +
+            `(an org with no GitHub source in orgs.<id>.sources has none)\n`,
         ),
       );
       return;
