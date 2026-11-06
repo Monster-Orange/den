@@ -11,9 +11,11 @@
  * The distribution is the demo's (examples/distribution, product acme)
  * with neutral repos: queue (api healthy, worker down: two services),
  * web (application store, depends on queue/api), notes (standalone) in
- * workspace main, and blog in workspace side. The checks are HTTP probes
+ * workspace main, and blog and shop (a compose stack, 0.3.0-dev.37) in
+ * workspace side. The checks are HTTP probes
  * against a local server this test runs (and a closed port for the down
- * one). Nothing else runs.
+ * one). Nothing else runs: `docker` is a shim that fails, so shop's stack
+ * health never reaches a real daemon.
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
@@ -24,7 +26,7 @@ import * as net from "net";
 import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
-import type { Browser, Page } from "playwright";
+import type { Browser, BrowserContext, Page } from "playwright";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -74,7 +76,7 @@ beforeAll(async () => {
   await new Promise<void>((r) => okServer.listen(0, "127.0.0.1", r));
   const ok = `http://127.0.0.1:${(okServer.address() as AddressInfo).port}/health`;
   const down = `http://127.0.0.1:${await freePort()}/health`;
-  const all = ["queue", "web", "notes", "blog"];
+  const all = ["queue", "web", "notes", "blog", "shop"];
   write(
     path.join(root, "config", "local", "service-catalog.yml"),
     all.map((n) => `${n}:\n  gh: acme/${n}\n`).join(""),
@@ -99,6 +101,7 @@ beforeAll(async () => {
       "    stack_namespace: main",
       "    services:",
       ...member("blog"),
+      ...member("shop"),
       "",
     ].join("\n"),
   );
@@ -135,10 +138,29 @@ beforeAll(async () => {
     path.join(repos, "blog", ".acme.yml"),
     "name: blog\nservices:\n" + svc("blog"),
   );
+  // A compose stack: no up of its own; Den supplies the stack's.
+  write(
+    path.join(repos, "shop", ".acme.yml"),
+    [
+      "name: shop",
+      "entrypoint: api",
+      "compose:",
+      "  name: shop",
+      "services:",
+      "  api: {}",
+      "  worker: {}",
+      "",
+    ].join("\n"),
+  );
+  write(path.join(repos, "shop", "docker-compose.yml"), "services: {}\n");
+  const shim = path.join(tmp, "bin");
+  write(path.join(shim, "docker"), "#!/bin/sh\nexit 1\n");
+  fs.chmodSync(path.join(shim, "docker"), 0o755);
 
   port = await freePort();
   envBase = {
     ...process.env,
+    PATH: `${path.join(tmp, "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
     DEN_ROOT: root,
     DEN_ENGINE_ROOT: ENGINE,
     DEN_EDGE_DIR: path.join(tmp, "edge-state"),
@@ -206,8 +228,10 @@ async function open(
   ws = "main",
   url = "/",
   viewport = { width: 1440, height: 900 },
+  before?: (ctx: BrowserContext) => Promise<void>,
 ): Promise<Page> {
   const ctx = await browser!.newContext({ viewport });
+  await before?.(ctx);
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("den-changelog-seen", v);
@@ -563,13 +587,27 @@ describe("R24d: one repo table", () => {
     await p.fill("#tbl-find", "WORK");
     await p.waitForTimeout(100);
     expect(await repoOrder(p)).toEqual(["queue"]);
-    // A match on a service opens its repo's sub-rows.
+    // A match on a service opens its repo's sub-rows: only the ones it
+    // matches (0.3.0-dev.37).
     expect(
-      await p.$eval(
-        '#repo-table tr.sub[data-id="queue/worker"]',
-        (e) => (e as HTMLElement).hidden,
+      await p.$$eval('#repo-table tr.sub[data-repo="queue"]', (r) =>
+        r.map((e) => ({
+          id: (e as HTMLElement).dataset.id,
+          hidden: (e as HTMLElement).hidden,
+        })),
       ),
-    ).toBe(false);
+    ).toEqual([
+      { id: "queue/api", hidden: true },
+      { id: "queue/worker", hidden: false },
+    ]);
+    // A match on the repo shows every one of its services.
+    await p.fill("#tbl-find", "queue");
+    await p.waitForTimeout(100);
+    expect(
+      await p.$$eval('#repo-table tr.sub[data-repo="queue"]', (r) =>
+        r.map((e) => (e as HTMLElement).hidden),
+      ),
+    ).toEqual([false, false]);
     await p.fill("#tbl-find", "nothing-like-it");
     await p.waitForTimeout(100);
     expect(await p.textContent("#repo-table .tbl-none")).toMatch(
@@ -580,6 +618,80 @@ describe("R24d: one repo table", () => {
     expect((await repoOrder(p)).sort()).toEqual(["notes", "queue", "web"]);
     await p.context().close();
   }, 30_000);
+
+  it('health cells say "checking…" until the first health round lands', async () => {
+    if (!browser) return;
+    // Hold every health request: the first round never lands.
+    const p = await open("main", "/", undefined, async (ctx) => {
+      await ctx.route("**/api/health**", () => {
+        /* never answered */
+      });
+    });
+    await p.click('#repo-table [data-action="tbl-exp"][data-repo="queue"]');
+    const cells = await p.$$eval(
+      "#repo-table tr.repo .tbl-health, #repo-table tr.sub .tbl-health",
+      (es) =>
+        es.map((e) => ({
+          text: e.textContent,
+          bad: e.classList.contains("bad"),
+          pending: !!e.querySelector(".den-dot.pending"),
+        })),
+    );
+    expect(cells.length).toBe(5);
+    for (const c of cells)
+      expect(c).toEqual({ text: "checking…", bad: false, pending: true });
+    await p.context().close();
+  }, 30_000);
+
+  it("a compose-stack repo's Start and Restart run what `up <repo>` starts", async () => {
+    if (!browser) return;
+    // The decision `up shop` makes (resolveUpTargets): the stack's up,
+    // through its entry service.
+    const list = (await (
+      await fetch(api("/api/services?env=local&workspace=side"))
+    ).json()) as {
+      address: string;
+      commands: string[];
+      upTargets?: string[];
+    }[];
+    const shop = list.filter((s) => s.address.startsWith("shop/"));
+    expect(shop.map((s) => s.upTargets)).toEqual([["shop/api"], ["shop/api"]]);
+    expect(shop.find((s) => s.address === "shop/api")!.commands).toEqual(
+      expect.arrayContaining(["up", "down", "restart"]),
+    );
+    const asked: { cmd: string | null; addresses: string | null }[] = [];
+    for (const k of ["up", "restart"]) {
+      // The run itself is held: only what the row asks for is checked.
+      const p = await open("side", "/", undefined, async (ctx) => {
+        // Unlocked (passwordless), so the row's action is not held for sudo.
+        await ctx.route("**/api/sudo-password/status", (route) =>
+          route.fulfill({ json: { set: false, passwordless: true } }),
+        );
+        await ctx.route("**/api/workspace/exec**", (route) => {
+          const q = new URL(route.request().url()).searchParams;
+          asked.push({ cmd: q.get("cmd"), addresses: q.get("addresses") });
+          return route.abort();
+        });
+      });
+      const sel = `#repo-table tr.repo[data-repo="shop"] [data-action="tbl-${k}"]`;
+      await p.waitForSelector(sel);
+      expect(
+        await p.$eval(sel, (b) => ({
+          disabled: (b as HTMLButtonElement).disabled,
+          title: b.getAttribute("title"),
+        })),
+      ).toEqual({ disabled: false, title: null });
+      const before = asked.length;
+      await p.click(sel);
+      for (let i = 0; i < 50 && asked.length === before; i++)
+        await p.waitForTimeout(100);
+      await p.context().close();
+    }
+    expect(asked).toEqual([
+      { cmd: "up", addresses: "shop/api" },
+      { cmd: "restart", addresses: "shop/api" },
+    ]);
+  }, 60_000);
 
   it("+ Add repo sits under the table; at 1440×900 nothing scrolls sideways", async () => {
     if (!browser) return;

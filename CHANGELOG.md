@@ -693,6 +693,47 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **Graph: a selected card's flowing edges are visible** (0.3.0-dev.37,
+  Ward QA of dev.35). The marching dashes were drawn in the same colour on
+  a full-strength line, so they barely showed. A lit edge's line is now a
+  faint track in its kind's colour and the dashes run wider on top of it;
+  under reduced motion the lit edge stays solid and thicker, as before.
+- **Test workers inherit no credentials** (0.3.0-dev.37). `tests/setup.ts`
+  strips credential-shaped variables (by name, family or token shape) from
+  the environment before any suite runs, so a failing assertion on a
+  spawn env can no longer print a developer's tokens.
+- **`down` stops what a detached `up` started** (0.3.0-dev.37, a
+  consumer's dogfood finding). `<cli> down <repo>` for a service with no
+  down command and no container printed ✔ and stopped nothing: daemon
+  records kept no process. A detached `up` now records its process group
+  (`pgid`, and the leader's start time as `pgidStartedAt`) in the daemon
+  record, and `down` sends the group SIGTERM, waits up to 3s
+  (`DEN_DOWN_GRACE_MS`), then SIGKILL. Before each signal it checks the
+  pid still belongs to the recorded process (same start time), so a
+  reused pid is never signalled: that service had already exited, and
+  `down` says so and leaves the process alone. After a declared down
+  succeeds, a recorded group still running is stopped too. When `down`
+  cannot stop what it knows is running (a record written before dev.37,
+  with no group; a group that survives SIGKILL), it warns, and an explicit
+  `down <repo>` exits non-zero (a workspace-wide `down` warns and goes
+  on). With nothing recorded, the CLI says "nothing to stop" instead of ✔.
+  `down --dry-run` lists a service with a recorded group as one it stops.
+- **A compose-stack repo's Start and Restart work on the Workspaces page**
+  (0.3.0-dev.37, a consumer's dev.35 finding). The repo row's buttons
+  were disabled, "has no up command", for a repo whose up is its compose
+  stack's. `/api/services` now gives each local service its effective
+  commands (a stack's synthesized up/down/restart included) and
+  `upTargets`: what `<cli> up <repo>` starts (`resolveUpTargets`), as the
+  table's addresses. The repo row's Start and Restart are enabled when it
+  is non-empty and run exactly those addresses.
+- **The Workspaces table says "checking…" until the first health round
+  lands** (0.3.0-dev.37). Before it, repo and service health cells read
+  "unknown (not checked)" or "no health check".
+- **Find shows only the sub-rows it matches** (0.3.0-dev.37). A Find that
+  matched one service of a repo opened every one of the repo's sub-rows;
+  now only the matching ones show under their repo (a match on the repo
+  itself still shows them all).
+
 - **`<cli> up <repo>` no longer fails fast on a multi-service dependency**
   (0.3.0-dev.35; backported to 0.2.8). A dependency with no `up` of its
   own but with per-service ups (two services, each with its `up`) was run
@@ -1116,6 +1157,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
+- 0.3.0-dev.37, `down` and process groups: nothing required. A service
+  started by an older Den has no recorded group, so its first `down
+  <repo>` after the upgrade (for a service with no down command and no
+  container) warns, drops that record and exits non-zero: stop it
+  yourself once; its next `up` records the group.
 - 0.3.0-dev.36, `stack_namespace`: optional, no change required. Without it
   every Compose project, container, volume and network keeps its name.
   `stack_namespace` in a blueprint needs Den 0.3.0-dev.36 or later: an

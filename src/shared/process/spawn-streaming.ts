@@ -74,6 +74,7 @@ export function spawnDaemon(
   onClose: (exitCode: number) => void,
   cwd?: string,
   onServiceExit?: (exitCode: number) => void,
+  onSpawn?: (pid: number) => void,
 ): ReturnType<typeof spawn> {
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
 
@@ -112,6 +113,9 @@ export function spawnDaemon(
     onLine(`Error: ${err.message}`);
     onServiceExit?.(1);
   });
+  // The service leads its own process group (detached), so its pid is the
+  // group id `down` signals later.
+  if (onSpawn && svcProc.pid) onSpawn(svcProc.pid);
   svcProc.unref(); // den's event loop can exit independently
   fs.closeSync(logFd); // parent closes its copy; child keeps its own fd
 
@@ -148,6 +152,7 @@ export function spawnDaemon(
  * @param cwd      Working directory (defaults to process.cwd())
  * @param detached Put the child in its own process group (default false)
  * @param logPath  If provided together with detached=true, run as a daemon writing to this path
+ * @param onSpawn  Daemon mode: called with the service's pid (its process group id) once spawned
  */
 export function spawnStreaming(
   command: string,
@@ -159,6 +164,7 @@ export function spawnStreaming(
   detached?: boolean,
   logPath?: string,
   onServiceExit?: (exitCode: number) => void,
+  onSpawn?: (pid: number) => void,
 ): ReturnType<typeof spawn> {
   // Daemon mode: service runs independently from den — survives restarts.
   if (detached && logPath) {
@@ -170,6 +176,7 @@ export function spawnStreaming(
       onClose,
       cwd,
       onServiceExit,
+      onSpawn,
     );
   }
 

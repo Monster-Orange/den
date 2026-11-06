@@ -527,22 +527,28 @@ path.dg-e.intra {
   stroke: var(--muted);
   stroke-width: 1.5;
 }
+/* A lit edge's base becomes a faint track in its kind's colour, so the
+   flow overlay on top of it reads (Ward QA of dev.35: dashes in the same
+   colour on a full-strength line were barely visible). The arrowhead's
+   fill is its own and stays full strength. */
 path.dg-e.hl {
   stroke-width: 2.6;
+  stroke-opacity: 0.3;
 }
 path.dg-e.dim {
   opacity: 0.12;
 }
 /* R22b-2: a highlighted edge flows from data-f to data-t (the arrow's
-   way): a marching-dash overlay in the base path's colour, one 20px dash
-   cycle a second. Decreasing dashoffset moves the dashes toward the end. */
+   way): a marching-dash overlay in the base path's colour, wider than the
+   track, one 20px dash cycle a second. Decreasing dashoffset moves the
+   dashes toward the end. */
 path.dg-flow {
   fill: none;
   display: none;
   stroke: var(--faint);
-  stroke-width: 2.6;
+  stroke-width: 3.6;
   stroke-linecap: round;
-  stroke-dasharray: 6 14;
+  stroke-dasharray: 10 10;
 }
 path.dg-flow.on {
   display: inline;
@@ -1063,5 +1069,6 @@ path.dg-flow.cross {
   path.dg-e.hl {
     stroke: var(--accent);
     stroke-width: 3;
+    stroke-opacity: 1;
   }
 }

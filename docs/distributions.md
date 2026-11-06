@@ -989,6 +989,10 @@ shared project is one instance, keyed by checkout:
   (`identity_mismatch`), naming both checkouts and the namespace. Stop it
   where it runs first, or give the workspace its own `stack_namespace`.
 
+A shared stack's identity is its checkout path, plus the branch only when
+the workspace entry pins one. Den does not read the checkout's HEAD, so a
+`git switch` in that checkout does not refuse its co-owners.
+
 `acme workspace list` adds a Stacks column when a workspace's namespace is
 not its default, the Workspaces page shows a "stacks: <ns>" chip in the
 workspace's header, and `GET /api/workspaces` gives `stackNamespaces`:

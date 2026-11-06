@@ -214,6 +214,24 @@ describe("R22b-2: a selected card's edges flow from data-f to data-t", () => {
     );
     expect(colours[1]).toBe(colours[0]);
 
+    // Visible (Ward QA of dev.35): the lit base fades to a track and the
+    // overlay is full strength and wider, so the dashes stand out from it.
+    const look = await p.evaluate(
+      ([a, b]) => {
+        const base = getComputedStyle(document.querySelector(a)!);
+        const flow = getComputedStyle(document.querySelector(b)!);
+        return {
+          baseOpacity: parseFloat(base.strokeOpacity),
+          flowOpacity: parseFloat(flow.strokeOpacity),
+          wider: parseFloat(flow.strokeWidth) > parseFloat(base.strokeWidth),
+        };
+      },
+      [EDGE, FLOW],
+    );
+    expect(look.baseOpacity).toBeLessThanOrEqual(0.4);
+    expect(look.flowOpacity).toBe(1);
+    expect(look.wider).toBe(true);
+
     // From → to: the dashoffset falls over time (it wraps 0 → 20 once a
     // second, so a fall is a small step and a wrap a big jump).
     const offs: number[] = [];
@@ -246,12 +264,18 @@ describe("R22b-2: a selected card's edges flow from data-f to data-t", () => {
         return {
           flow: getComputedStyle(document.querySelector(b)!).animationName,
           width: base.strokeWidth,
+          opacity: base.strokeOpacity,
           accent: base.stroke === accent,
         };
       },
       [EDGE, FLOW],
     );
-    expect(r).toEqual({ flow: "none", width: "3px", accent: true });
+    expect(r).toEqual({
+      flow: "none",
+      width: "3px",
+      opacity: "1",
+      accent: true,
+    });
     await p.context().close();
   }, 30_000);
 });

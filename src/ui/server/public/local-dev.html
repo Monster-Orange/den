@@ -2200,7 +2200,9 @@
         /** A health cell: the dot and the rollup, or the failing check. */
         function healthCell(state, text, title = text) {
           const dot =
-            { ok: "", bad: "bad", warn: "bad", unk: "off" }[state] ?? "off";
+            { ok: "", bad: "bad", warn: "bad", unk: "off", pending: "pending" }[
+              state
+            ] ?? "off";
           const cls =
             state === "ok"
               ? " ok"
@@ -2209,7 +2211,15 @@
                 : "";
           return `<span class="tbl-health${cls}" title="${escHtml(title)}"><span class="den-dot ${dot}" aria-hidden="true"></span><span class="tbl-ht">${escHtml(text)}</span></span>`;
         }
+        /** Before the first health round lands, a cell says so (not down, not blank). */
+        const CHECKING = () =>
+          healthCell(
+            "pending",
+            "checking…",
+            "waiting for the first health check",
+          );
         function repoHealth(r) {
+          if (!_lastHealthAt) return CHECKING();
           const { rollup } = r;
           const checked = rollup.checked;
           const ok = checked - rollup.down.length;
@@ -2273,13 +2283,15 @@
         function repoRows(r) {
           const { repo, svcs, primary, missing } = r;
           const many = svcs.length > 1;
-          const open = many && (_tblOpen.has(repo) || !!_tblQuery.trim());
+          const finding = !!_tblQuery.trim();
+          const open = many && (_tblOpen.has(repo) || finding);
+          // Find shows only the sub-rows it matches, under their repo.
+          const shown = (s) => open && (!finding || findHit(s.id, _tblQuery));
           const safe = repo.replace(/[^a-z0-9]/gi, "-");
           const subIds = svcs.map((s, i) => `sub-${safe}-${i}`);
           const isAutoOff = _noAutostartRepos.has(repo);
           const isUncloned = r.raw.some((x) => x.cloned === false);
           const mode = primary?.mode;
-          const has = (cmd) => svcs.some((s) => s.commands.includes(cmd));
           const exp = many
             ? `<button type="button" class="tbl-exp" data-action="tbl-exp" data-repo="${escHtml(repo)}" aria-expanded="${open}" aria-controls="${subIds.join(" ")}" aria-label="${open ? "Hide" : "Show"} ${escHtml(repo)}'s ${svcs.length} services" data-k="exp:${escHtml(repo)}">${open ? "▾" : "▸"}</button>`
             : `<span class="tbl-exp-sp" aria-hidden="true"></span>`;
@@ -2307,7 +2319,7 @@
               <td class="tbl-mono tbl-muted">${escHtml(primary?.branch ?? "")}</td>
               <td>${modeCell}</td>
               <td class="tbl-muted${run.cls ? " " + run.cls : ""}" data-last="${escHtml(repo)}">${escHtml(run.text)}</td>
-              <td><div class="tbl-acts">${actBtns(repo, { up: has("up"), restart: has("restart") || has("up") })}${repoMenu(r)}</div></td>
+              <td><div class="tbl-acts">${actBtns(repo, { up: !!startOf(repo).length, restart: !!startOf(repo).length })}${repoMenu(r)}</div></td>
             </tr>`;
           const fixes = r.fixes
             .map(
@@ -2328,9 +2340,9 @@
                   (
                     s,
                     i,
-                  ) => `<tr class="sub" id="${subIds[i]}" data-repo="${escHtml(repo)}" data-id="${escHtml(s.id)}"${open ? "" : " hidden"}>
+                  ) => `<tr class="sub" id="${subIds[i]}" data-repo="${escHtml(repo)}" data-id="${escHtml(s.id)}"${shown(s) ? "" : " hidden"}>
               <th scope="row"><span class="repo-name">${escHtml(s.name)}</span>${s.entry ? ' <span class="badge">entry</span>' : ""}</th>
-              <td>${healthCell(status(s), s.health.ok === false ? checkLineOf(s) : healthLine(s))}</td>
+              <td>${!_lastHealthAt ? CHECKING() : healthCell(status(s), s.health.ok === false ? checkLineOf(s) : healthLine(s))}</td>
               <td></td><td></td><td></td>
               <td><div class="tbl-acts">${actBtns(s.id, { up: s.commands.includes("up"), restart: s.commands.includes("up") || s.commands.includes("restart") })}<span class="tbl-more-sp" aria-hidden="true"></span></div></td>
             </tr>`,
@@ -2420,8 +2432,24 @@
           });
         }
 
+        /**
+         * What starting `repo` runs: the server's `upTargets`, the decision
+         * `__DEN_CLI__ up <repo>` makes (its own up, its compose stack's, else
+         * its services'); [] when it has no up. An older server without the
+         * field: its services that declare up.
+         */
+        function startOf(repo) {
+          const svcs = (_tbl?.svcList ?? []).filter((s) => s.repo === repo);
+          const t = svcs.find((s) => Array.isArray(s.upTargets))?.upTargets;
+          return (
+            t ??
+            svcs.filter((s) => s.commands.includes("up")).map((s) => s.address)
+          );
+        }
         /** The repo's addresses that can run `cmd` (all for down). */
         function repoAddresses(repo, cmd) {
+          // Start and Restart run what `up <repo>` starts.
+          if (cmd === "up" || cmd === "restart") return startOf(repo);
           const svcs = (_tbl?.svcList ?? []).filter((s) => s.repo === repo);
           const can = svcs.filter(
             (s) =>

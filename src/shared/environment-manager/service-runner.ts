@@ -73,6 +73,11 @@ import type { ChildProcess } from "child_process";
 import { getDistRoot, getStateDir } from "../paths.js";
 
 import { product } from "../product.js";
+import {
+  recordProcessGroup,
+  stopProcessGroup,
+  type RecordedProcessGroup,
+} from "../process/process-group.js";
 // Re-export so existing callers don't need to change their import path.
 export type { ServiceHealthResult };
 export { checkServiceHealth, checkCatalogHealth };
@@ -109,6 +114,18 @@ export interface DaemonRecord {
    * written before 0.2.7.
    */
   root?: string;
+  /**
+   * The process group a detached `up` started (its leader's pid), so `down`
+   * can stop a service that has no down command and no container
+   * (0.3.0-dev.37). Missing on records written before that.
+   */
+  pgid?: number;
+  /**
+   * The group leader's start time (`ps -o lstart=`). `down` signals the
+   * group only while the process holding `pgid` started at this time, so a
+   * reused pid is never signalled.
+   */
+  pgidStartedAt?: string;
 }
 
 /** This process's distribution root, as stamped on its daemon records. */
@@ -323,6 +340,22 @@ export function updateDaemonContainers(
   if (!existing) return;
   const merged = [...new Set([...(existing.containers ?? []), ...containers])];
   _daemonRegistry.set(address, { ...existing, containers: merged });
+  saveDaemonsFile(getDaemonsFile());
+}
+
+/** Record the process group a detached `up` just spawned. */
+export function updateDaemonProcessGroup(
+  address: string,
+  group: RecordedProcessGroup,
+): void {
+  loadDaemonsFromFile();
+  const existing = _daemonRegistry.get(address);
+  if (!existing) return;
+  _daemonRegistry.set(address, {
+    ...existing,
+    pgid: group.pgid,
+    pgidStartedAt: group.startedAt,
+  });
   saveDaemonsFile(getDaemonsFile());
 }
 
@@ -1251,6 +1284,84 @@ export interface RunCommandOptions {
    * declares secret_env is refused unless every key is here.
    */
   secretEnv?: Record<string, string>;
+  /**
+   * For `down`: whether the caller named this service (default true). When
+   * down cannot stop a service it knows is running it warns; an explicit
+   * down then exits non-zero, a workspace-wide one does not.
+   */
+  explicit?: boolean;
+  /** For `down`: what it found to stop (see DownOutcome). */
+  onDownOutcome?: (outcome: DownOutcome) => void;
+}
+
+/**
+ * What a `down` of a service with no down command and no container did, for
+ * callers that report it: it "stopped" the process group `up` recorded,
+ * found it "already-exited", had "nothing-recorded" to stop, or could not
+ * stop what it knows is running ("unstoppable").
+ */
+export type DownOutcome =
+  | "stopped"
+  | "already-exited"
+  | "nothing-recorded"
+  | "unstoppable";
+
+/** SIGTERM-to-SIGKILL grace for a recorded process group. */
+function downGraceMs(): number {
+  const raw = process.env.DEN_DOWN_GRACE_MS;
+  const ms = raw === undefined ? NaN : Number(raw);
+  return Number.isFinite(ms) && ms >= 0 ? ms : 3000;
+}
+
+type GroupRecord = DaemonRecord & { pgid: number; pgidStartedAt: string };
+
+/** Whether a record carries a process group `down` can verify and signal. */
+function hasProcessGroup(d: DaemonRecord | undefined): d is GroupRecord {
+  return !!d && typeof d.pgid === "number" && !!d.pgidStartedAt;
+}
+
+/**
+ * Stop the process group a detached `up` recorded for this daemon (SIGTERM,
+ * grace, SIGKILL; see process-group.ts), say what happened on `onLine`, and
+ * unregister the record once nothing of it runs.
+ */
+async function stopDaemonProcessGroup(
+  record: GroupRecord,
+  onLine: (line: string) => void,
+): Promise<DownOutcome> {
+  const result = await stopProcessGroup(
+    { pgid: record.pgid, startedAt: record.pgidStartedAt },
+    downGraceMs(),
+  );
+  switch (result.outcome) {
+    case "stopped":
+      onLine(
+        `stopped ${record.address}: process group ${record.pgid} (${result.signal})`,
+      );
+      unregisterDaemon(record.address);
+      return "stopped";
+    case "gone":
+      onLine(
+        `${record.address} had already exited (process group ${record.pgid})`,
+      );
+      unregisterDaemon(record.address);
+      return "already-exited";
+    case "reused":
+      // The recorded process exited; whatever holds its pid now is not ours.
+      onLine(
+        `${record.address} had already exited: ${result.detail}; left it alone`,
+      );
+      unregisterDaemon(record.address);
+      return "already-exited";
+    case "survived":
+      onLine(
+        `Warning: could not stop ${record.address}: process group ${record.pgid} survived SIGKILL (pids ${result.members.join(", ")})`,
+      );
+      return "unstoppable";
+    case "error":
+      onLine(`Warning: could not stop ${record.address}: ${result.detail}`);
+      return "unstoppable";
+  }
 }
 
 export interface RunCommandResult {
@@ -1467,12 +1578,16 @@ export function previewServiceCommand(
     return command === "down"
       ? { kind: "nothing", address, note: viaRepo.note }
       : { kind: "error", address, note: viaRepo.note };
-  if (command === "down")
+  if (command === "down") {
+    // The real down stops the process group a detached up recorded.
+    const record = findDaemonByAddress(resolved.address);
+    if (hasProcessGroup(record)) return { kind: "run", address };
     return {
       kind: "nothing",
       address,
       note: "no down command: nothing to stop",
     };
+  }
   return {
     kind: "error",
     address,
@@ -1542,6 +1657,48 @@ export function runServiceCommand(
   }
 
   const { repoPath, subsystem } = resolved;
+
+  const explicit = options.explicit ?? true;
+  const reportDown = (outcome: DownOutcome): void =>
+    options.onDownOutcome?.(outcome);
+  // A down that could not stop what it knows is running: always a warning,
+  // and a failure when the caller named this service.
+  const unstoppableExit = (): number => (explicit ? 1 : 0);
+
+  /**
+   * Down with no down command and no container to stop (0.3.0-dev.37): stop
+   * the process group a detached `up` recorded. With no record there is
+   * nothing to stop. A record without a group (written before dev.37, or by
+   * an adoption) is running as far as Den knows, and Den cannot stop it:
+   * that is said and fails an explicit down instead of reporting a success.
+   * Such a record is dropped, since Den can neither stop nor verify it.
+   */
+  const downWithoutCommand = (why: string): RunCommandResult => {
+    const record = findDaemonByAddress(resolved.address);
+    if (hasProcessGroup(record)) {
+      void stopDaemonProcessGroup(record, onLine).then((outcome) => {
+        reportDown(outcome);
+        onClose(outcome === "unstoppable" ? unstoppableExit() : 0);
+      });
+      return dummy();
+    }
+    if (record && !isDaemonVerifiablyDead(record)) {
+      onLine(
+        `Warning: ${record.address} is recorded as running, but ${product().cli} kept no process for it ` +
+          `(started before 0.3.0-dev.37) and it has no down command; ` +
+          `stop it yourself (${product().cli} has dropped its record)`,
+      );
+      unregisterDaemon(record.address);
+      reportDown("unstoppable");
+      closeAsync(unstoppableExit());
+      return dummy();
+    }
+    if (record) unregisterDaemon(record.address);
+    onLine(`nothing to stop (${why})`);
+    reportDown("nothing-recorded");
+    closeAsync(0);
+    return dummy();
+  };
 
   // R13: Den never runs a command on a remote service. A down stops nothing
   // here, which is a success; anything else is refused.
@@ -1730,11 +1887,9 @@ export function runServiceCommand(
     // there is nothing to stop — success, same contract as the declared-down
     // fallthrough below.
     if (command === "down") {
-      onLine(
-        `nothing to stop (no matching opctl containers; no manifest at ${repoPath})`,
+      return downWithoutCommand(
+        `no matching opctl containers; no manifest at ${repoPath}`,
       );
-      closeAsync(0);
-      return dummy();
     }
     onLine(`Error: could not read ${product().manifestYml} in ${repoPath}`);
     closeAsync(1);
@@ -1782,9 +1937,7 @@ export function runServiceCommand(
     // successful down, not an error (keeps the ⋮ menu / workspace Down safe to
     // offer on every system).
     if (command === "down") {
-      onLine("nothing to stop (no running opctl containers, no down command)");
-      closeAsync(0);
-      return dummy();
+      return downWithoutCommand("no running opctl containers, no down command");
     }
     onLine(
       `Error: command "${command}" not found for service "${address}" (subsystem "${subsystem}") in local environment`,
@@ -2040,6 +2193,17 @@ export function runServiceCommand(
       // "nothing left to stop" is an absence of evidence, not evidence the
       // teardown worked — reporting ✔ there would hide every real failure.
       const effective = exitCode === 0 || sweptClean ? 0 : exitCode;
+      // The down command ran; what the detached up started may still run
+      // (the down stopped its containers, not the process that started
+      // them). Stop the recorded group too (0.3.0-dev.37).
+      const record = findDaemonByAddress(resolved.address);
+      if (effective === 0 && hasProcessGroup(record)) {
+        void stopDaemonProcessGroup(record, onLine).then((outcome) => {
+          closeExistingTab();
+          onClose(outcome === "unstoppable" ? unstoppableExit() : 0);
+        });
+        return;
+      }
       if (effective === 0) {
         unregisterDaemon(resolved.address);
         closeExistingTab();
@@ -2059,17 +2223,38 @@ export function runServiceCommand(
     onClose(exitCode);
   };
 
-  const proc = spawnStreaming(
-    cmdString,
-    [],
-    { ...process.env, ...runEnv },
-    onLine,
-    wrappedOnClose,
-    repoPath,
-    detachable,
-    logPath,
-    onServiceExit,
-  );
+  // A detached up records its process group, so `down` can stop it.
+  const recordGroup =
+    detachable && logPath && command !== "down"
+      ? (pid: number) => {
+          const group = recordProcessGroup(pid);
+          if (group) updateDaemonProcessGroup(resolved.address, group);
+        }
+      : null;
+  const proc = recordGroup
+    ? spawnStreaming(
+        cmdString,
+        [],
+        { ...process.env, ...runEnv },
+        onLine,
+        wrappedOnClose,
+        repoPath,
+        detachable,
+        logPath,
+        onServiceExit,
+        recordGroup,
+      )
+    : spawnStreaming(
+        cmdString,
+        [],
+        { ...process.env, ...runEnv },
+        onLine,
+        wrappedOnClose,
+        repoPath,
+        detachable,
+        logPath,
+        onServiceExit,
+      );
   return { proc, detachable, interactive: false, logPath };
 }
 

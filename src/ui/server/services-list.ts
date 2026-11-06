@@ -25,13 +25,18 @@ import {
 import { graphOrder } from "./graph-order.js";
 import { scopeView } from "../../shared/environment-manager/scope.js";
 import type { WorkspaceConfig } from "../../shared/types/index.js";
-import { listDaemons } from "../../shared/environment-manager/service-runner.js";
+import {
+  listDaemons,
+  resolveService,
+} from "../../shared/environment-manager/service-runner.js";
 import { loadManifest } from "../../shared/manifest/read-manifest.js";
 import { servicePlacement } from "../../shared/manifest/placement.js";
 import { depService } from "../../shared/manifest/deps.js";
 import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
 import { readDenConfig } from "../../shared/den-config.js";
 import { GIT_REMOTE_TIMEOUT_MS } from "../../shared/constants.js";
+import { effectiveLocalCommands } from "../../shared/stacks/manifest-commands.js";
+import { resolveUpTargets } from "../../shared/environment-manager/up-targets.js";
 
 /** `repoPath`'s checked-out branch, or null (not a checkout, git failed). */
 export function currentBranch(repoPath: string): Promise<string | null> {
@@ -118,6 +123,34 @@ export async function buildServicesList(
   const daemonOwners = new Map(
     listDaemons().map((d) => [d.address, d.workspaces ?? []] as const),
   );
+  // What starting a repo runs: the decision `up <repo>` makes
+  // (resolveUpTargets: its own up, a compose stack's, else its services'),
+  // so a repo row's Start/Restart offers exactly what `up` would start
+  // (0.3.0-dev.37). [] when it has no up at all. One per workspace + repo.
+  const upTargetsBy = new Map<string, string[]>();
+  const upTargetsOf = (ws: string, repo: string): string[] => {
+    const key = `${ws}\0${repo}`;
+    let t = upTargetsBy.get(key);
+    if (!t) {
+      try {
+        const up = resolveUpTargets([repo], ws, {
+          targets: new Set([repo]),
+        });
+        // As the table's rows name them: a bare repo is its entry service.
+        t = up.skippedNoUp.includes(repo)
+          ? []
+          : up.order.map((a) => {
+              const r = resolveService(a, ws);
+              return r ? `${r.repoName}/${r.subsystem}` : a;
+            });
+      } catch {
+        t = [];
+      }
+      upTargetsBy.set(key, t);
+    }
+    return t;
+  };
+
   // Modules and libraries have no runtime: no card, health or commands.
   // They show as contributors on the Applications tab instead.
   const pendingBranches: Promise<void>[] = [];
@@ -171,7 +204,23 @@ export async function buildServicesList(
             service: resolved.subsystem,
             address: resolved.address,
             repoPath: resolved.repoPath,
-            commands: withDown(Object.keys(svc.commands?.[env] ?? {})),
+            // Locally, a compose stack's synthesized up/down/restart count
+            // (what the runner runs), not just the declared ones.
+            commands: withDown(
+              Object.keys(
+                env === "local"
+                  ? effectiveLocalCommands(
+                      manifest,
+                      resolved.subsystem,
+                      resolved.repoName,
+                      ws.name,
+                    )
+                  : (svc.commands?.[env] ?? {}),
+              ),
+            ),
+            ...(env === "local"
+              ? { upTargets: upTargetsOf(ws.name, resolved.repoName) }
+              : {}),
             logs: svc.logs?.[env] ?? null,
             mode: resolved.mode,
             branch: resolved.branch as string | null,

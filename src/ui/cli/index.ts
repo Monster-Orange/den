@@ -113,6 +113,7 @@ import {
   previewServiceSecretEnv,
   prepareServiceSecretEnv,
   resolveService,
+  type DownOutcome,
   type ServiceCommandPreview,
 } from "../../shared/environment-manager/service-runner.js";
 import { getGitHubCoords } from "../../shared/smoke/git-remote.js";
@@ -1844,6 +1845,8 @@ class DenCLI {
         let result: ReturnType<typeof runServiceCommand> | null = null;
         let detachable = false;
         let interactive = false;
+        // A down that found nothing to stop is said as such, never as ✔.
+        let downOutcome: DownOutcome | null = null;
 
         const settleFromClose = (exitCode: number): void => {
           if (settled) return;
@@ -1859,6 +1862,17 @@ class DenCLI {
                   `  ✗ ${command} ${chalk.bold(address)} (exit ${exitCode})`,
                 ),
               );
+            }
+          } else if (exitCode === 0 && downOutcome === "nothing-recorded") {
+            spinner.info(
+              `${command} ${chalk.bold(address)} ${chalk.gray("(nothing to stop)")}`,
+            );
+          } else if (exitCode === 0 && downOutcome === "unstoppable") {
+            spinner.warn(
+              `${command} ${chalk.bold(address)} ${chalk.yellow("(could not stop it)")}`,
+            );
+            for (const l of lastLines) {
+              console.log(chalk.gray(`      ${l}`));
             }
           } else if (exitCode === 0) {
             spinner.succeed(`${command} ${chalk.bold(address)}`);
@@ -1913,6 +1927,12 @@ class DenCLI {
           runtime,
           workspace,
           force: command === "down" ? force : false,
+          // Down fails when it cannot stop a service the user named; one
+          // reached as part of a workspace-wide down warns instead.
+          explicit: isNamedTarget(address, opts?.named ?? []),
+          onDownOutcome: (outcome) => {
+            downOutcome = outcome;
+          },
           secretEnv: secrets.secretEnv,
           onLine: (line) => {
             spinner.text = `${command} ${chalk.bold(address)}: ${chalk.gray(line.slice(0, 80))}`;
