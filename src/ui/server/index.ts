@@ -595,6 +595,8 @@ const CONFIG_FREE_ROUTES = new Set([
   "/api/scope",
   "/api/workspaces/settings",
   "/api/sudo-password/status",
+  // The env picker on every page (falls back to local; a consumer's dev.40 finding).
+  "/api/environments",
 ]);
 
 /**

@@ -684,6 +684,8 @@
           services = await fetch(`/api/services?env=${env}`).then((r) =>
             r.json(),
           );
+          // An error answer (an invalid config: 422) lists nothing.
+          if (!Array.isArray(services)) services = [];
         } catch {
           services = [];
         }

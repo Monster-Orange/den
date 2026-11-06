@@ -6,7 +6,7 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.0] - unreleased
 
-0.4.0-dev.0 is built on 0.3.0-dev.40 and includes all of it (below).
+0.4.0-dev.2 and later are built on 0.3.0 and include all of it (below).
 
 ### Added
 
@@ -116,7 +116,7 @@ config and manifest changes a distribution must make to move to it under
       grants: [other-workspace] # widens agent planner's MCP scope
   ```
 
-## [0.3.0] - unreleased
+## [0.3.0] - 2026-11-06
 
 0.3.0-dev.31 and later include all of 0.2.7 (below).
 
@@ -130,7 +130,7 @@ config and manifest changes a distribution must make to move to it under
   usable: `/settings` and `/logs` load whatever the config holds, and so
   do the routes the shell and those pages need (`/api/settings`,
   `/api/themes`, `/api/scope`, `/api/workspaces/settings`,
-  `/api/sudo-password/status`, besides `/api/server-info`,
+  `/api/sudo-password/status`, `/api/environments` (dev.41), besides `/api/server-info`,
   `/api/server-log`, `/api/changelog` and `/api/web/restart`). Any other
   page answers 422 with this page.
   - Org config validation lists every problem, not the first: a
@@ -947,6 +947,25 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **`web up` under an invalid config reports the server ready**
+  (0.3.0-dev.42, a consumer's dev.41 finding). It waited for
+  `/api/health`, which answers 422 by design then, and exited 1 with
+  "web did not become ready" while the server ran. Readiness now asks
+  `/api/server-info` (answered under any config; `/api/health` for a
+  server too old for it), and the 422 "Config is invalid" page counts as
+  the shell serving.
+- **No page throws under an invalid config** (0.3.0-dev.41, a consumer's
+  dev.40 finding: "envs.map is not a function" on every page).
+  `/api/environments` is config-free (it already fell back to `local`),
+  the env picker and the Logs toolbar treat an error answer as an empty
+  list, and a test loads every page with an invalid config and expects
+  no uncaught error.
+- **A refused `edge down` says "not stopping it"**, not "not replacing
+  it"; `edge` rejects an unknown flag (a mistyped `--take-over` is never
+  ignored) (0.3.0-dev.41).
+- **A pre-dev.37 record whose port is held by another process** no
+  longer warns "nothing running is it" before saying what holds the port
+  (0.3.0-dev.41).
 - **Safety: an edge another state dir owns is never replaced**
   (0.3.0-dev.40, P1). The edge's container and Compose project are named
   by `edge.org`, so a scratch root with its own `DEN_EDGE_DIR` but the real
@@ -1517,11 +1536,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
-- 0.3.0-dev.40, the edge's owner labels: nothing required. The edge's
+- 0.3.0-dev.40, the edge's owner labels: plan one `edge up`. The edge's
   compose.yml gains `den.edge.root` and `den.edge.org` labels, so the first
   `edge up` (or `stack up`) after upgrading recreates the edge once, from
-  its own state dir, and routes stay up: the edge rejoins running stacks'
-  networks. A scratch or test root that sets `DEN_EDGE_DIR` needs an
+  its own state dir. Routes drop only while the container restarts, then
+  stay up: the edge rejoins running stacks' networks. Run it once, from
+  the edge's own dir, when a brief blip is acceptable. A scratch or test root that sets `DEN_EDGE_DIR` needs an
   `edge.org` of its own; with the real one it is refused.
 - 0.3.0-dev.40, commands that detach: a command other than up and restart
   that should keep running detached says `detachable: true`.

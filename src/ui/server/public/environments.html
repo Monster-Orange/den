@@ -325,6 +325,7 @@
         status.textContent = "checking…";
         const envs = await fetch("/api/environments")
           .then((r) => r.json())
+          .then((v) => (Array.isArray(v) ? v : ["local"]))
           .catch(() => ["local"]);
         const [results, orgs, relCfg] = await Promise.all([
           Promise.all(

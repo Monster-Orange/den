@@ -6,6 +6,6 @@
   "graph.png": "The Graph page with demo-web selected: its details panel shows its health, its URL on the edge and that it depends on demo-api",
   "status-drawer.png": "The status drawer: nothing needs attention, and every service in the demo workspace, by application, with its latency",
   "edge.png": "The Edge page: the edge container up, its ports and TLS, and every route it serves, Den's own and each stack's, with its upstream",
-  "up.webp": "make up in the Graph page: every stack down, then demo-api, demo-web and demo-notes come up in dependency order until the status chip reads All 3 healthy",
+  "up.gif": "make up in the Graph page: every stack down, then demo-api, demo-web and demo-notes come up in dependency order until the status chip reads All 3 healthy",
   "runs-dock.png": "The Services page with the runs dock open: a preflight run of demo-api and its output"
 }

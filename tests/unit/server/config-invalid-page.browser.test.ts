@@ -51,11 +51,16 @@ afterAll(async () => {
 const skip = () => !browser;
 
 /** A page, and every /api answer it got that was 422. */
-async function open(p: string): Promise<{ page: Page; refused: string[] }> {
+async function open(
+  p: string,
+): Promise<{ page: Page; refused: string[]; errors: string[] }> {
   const page = await browser!.newPage({
     viewport: { width: 1440, height: 900 },
   });
   const refused: string[] = [];
+  // Uncaught exceptions on the page: messages only.
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
   page.on("response", (r) => {
     const u = new URL(r.url());
     if (u.pathname.startsWith("/api/") && r.status() === 422)
@@ -63,7 +68,7 @@ async function open(p: string): Promise<{ page: Page; refused: string[] }> {
   });
   await page.goto(`${s!.base}${p}`);
   await page.waitForSelector(".den-top");
-  return { page, refused };
+  return { page, refused, errors };
 }
 
 describe("a page navigation with an invalid config", () => {
@@ -117,6 +122,7 @@ describe("a page navigation with an invalid config", () => {
         "/api/server-log",
         "/api/server-info",
         "/api/changelog",
+        "/api/environments",
       ])
         expect(refused).not.toContain(route);
       // The rail can reach the other one.
@@ -130,6 +136,29 @@ describe("a page navigation with an invalid config", () => {
       await page.close();
     },
   );
+
+  // dev.40: every page threw "envs.map is not a function" once
+  // /api/environments answered 422. The sweep: no page throws, and each
+  // shows the 422 page or (Settings, Logs) loads.
+  it.each([
+    "/",
+    "/graph",
+    "/tests",
+    "/services",
+    "/environments",
+    "/release",
+    "/edge",
+    "/settings",
+    "/logs",
+  ])("%s throws nothing", async (p) => {
+    if (skip()) return;
+    const { page, errors } = await open(p);
+    await page.waitForTimeout(1_500);
+    expect(errors).toEqual([]);
+    const free = p === "/settings" || p === "/logs";
+    expect(await page.locator("#den-error-page").count()).toBe(free ? 0 : 1);
+    await page.close();
+  });
 
   it.each([
     ["ja", "設定が無効です", "直したら再読み込み"],

@@ -177,8 +177,8 @@ afterAll(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-const refusal = (dir: string) =>
-  `edge acme-edge belongs to ${dir}; not replacing it`;
+const refusal = (dir: string, verb = "replacing") =>
+  `edge acme-edge belongs to ${dir}; not ${verb} it`;
 
 describe("two state dirs, one edge.org", () => {
   it("the first dir's edge up labels the container with its state dir", () => {
@@ -212,7 +212,10 @@ describe("two state dirs, one edge.org", () => {
     for (const sub of ["up", "down"]) {
       const r = den(["edge", sub], dirB);
       expect(r.code).not.toBe(0);
-      expect(r.out).toContain(refusal(dirA));
+      // (dev.40: a refused down said "not replacing it".)
+      expect(r.out).toContain(
+        refusal(dirA, sub === "up" ? "replacing" : "stopping"),
+      );
     }
     expect(composeCalls()).toEqual([]);
     expect(container()).toEqual(before);
@@ -240,6 +243,12 @@ describe("two state dirs, one edge.org", () => {
     expect(container().state).toBe(
       `${dirB}|${dirB}/dynamic>/etc/edge/dynamic;\n`,
     );
+    // A mistyped override is rejected, not ignored (dev.40: --force).
+    write(log, "");
+    const typo = den(["edge", "up", "--force"], dirA);
+    expect(typo.code).not.toBe(0);
+    expect(typo.out).toContain("Unknown flag for 'edge': --force");
+    expect(composeCalls()).toEqual([]);
     // Nothing else takes over: stack up from the first dir is now refused.
     const st = den(["stack", "up", "shop"], dirA);
     expect(st.code).not.toBe(0);
@@ -278,7 +287,9 @@ describe("an unlabelled (legacy) edge", () => {
     ]) {
       const r = den(argv, dirB);
       expect(r.code).not.toBe(0);
-      expect(r.out).toContain(refusal(dirD));
+      expect(r.out).toContain(
+        refusal(dirD, argv[1] === "down" ? "stopping" : "replacing"),
+      );
     }
     expect(composeCalls()).toEqual([]);
     expect(container()).toEqual(before);

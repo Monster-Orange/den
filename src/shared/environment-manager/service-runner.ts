@@ -1620,10 +1620,15 @@ function settleLegacyRecord(
     return "adopted";
   }
   onLine(
-    `Warning: ${record.address} was recorded before 0.3.0-dev.37 and nothing running is it ` +
-      `(no process on its port in ${record.repoPath}` +
-      (typeof record.pid === "number" ? `, pid ${record.pid} not its up` : "") +
-      `); dropped the record, nothing was signalled`,
+    `Warning: ${record.address} was recorded before 0.3.0-dev.37 and ` +
+      (verdict.busy
+        ? "its port is held by a process that is not its up"
+        : `nothing running is it (no process on its port in ${record.repoPath}` +
+          (typeof record.pid === "number"
+            ? `, pid ${record.pid} not its up`
+            : "") +
+          ")") +
+      "; dropped the record, nothing was signalled",
   );
   if (verdict.busy)
     onLine(
