@@ -24,7 +24,8 @@
     "LICENSE",
     "README.md",
     "CHANGELOG.md",
-    "docs/"
+    "docs/",
+    "!docs/images/"
   ],
   "scripts": {
     "cli": "tsx src/ui/cli/index.ts menu",
@@ -41,6 +42,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.build.json",
     "test": "jest --forceExit",
     "gate:org-names": "node scripts/org-name-gate.mjs",
+    "docs:shots": "node scripts/doc-shots.mjs",
+    "docs:links": "node scripts/docs-links.js",
     "example:regen": "rm -rf examples/distribution && ./bin/den create acme examples/distribution",
     "dist-smoke": "bash scripts/dist-smoke.sh"
   },

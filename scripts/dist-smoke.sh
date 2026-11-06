@@ -78,6 +78,16 @@ TARBALL="$WORK/$(tail -1 "$WORK/pack.out")"
   exit 1
 }
 ok "$(basename "$TARBALL") ($(du -k "$TARBALL" | cut -f1) KB)"
+# The README's screenshots (docs/images/, DOC-1) live in the repo, never in
+# the package: package.json `files` has !docs/images/. Images anywhere else
+# in the tarball are a size regression too.
+tar -tzf "$TARBALL" >"$WORK/tarball.list"
+if grep -qE '^package/docs/images/|\.(png|gif|webp|jpe?g)$' "$WORK/tarball.list"; then
+  bad "images in the tarball (package.json files needs !docs/images/):"
+  grep -E '^package/docs/images/|\.(png|gif|webp|jpe?g)$' "$WORK/tarball.list" | head -5 | sed 's/^/       /'
+else
+  ok "no images in the tarball"
+fi
 
 say "scaffold: npx --package <tarball> den create acme"
 if (cd "$WORK" && npx --yes --package "$TARBALL" den create acme "$DIST") >"$WORK/create.out" 2>"$WORK/create.err"; then
