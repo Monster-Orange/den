@@ -50,6 +50,7 @@ import {
   getWorkspaceByName,
   isWorkspaceActive,
   listWorkspaceServices,
+  readWorkspacesFile,
   resolveDepAddress,
   parseAddress,
   readManifestAnyBranch,
@@ -96,6 +97,7 @@ import {
   getServiceLogPath,
 } from "../../shared/process/spawn-streaming.js";
 import {
+  assertDenConfigValid,
   readDenConfig,
   isProductionEnv,
   isLocalEnabled,
@@ -106,6 +108,11 @@ import {
   writeUserReleaseConfig,
   type ReleaseConfig,
 } from "../../shared/den-config.js";
+import {
+  CONFIG_ERROR_STATUS,
+  configErrorBody,
+  isConfigError,
+} from "../../shared/config-error.js";
 import { readOrg } from "../../shared/org.js";
 import { engineVersion, getDistRoot } from "../../shared/paths.js";
 import { enginePath } from "../../shared/engine.js";
@@ -143,6 +150,7 @@ import {
   actorSuffix,
   recordAction,
   recordAgentRefusal,
+  repoAtPath,
   setAuditSink,
 } from "./audit.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
@@ -417,6 +425,26 @@ const STATIC_EXTS = new Set([
   ".woff2",
 ]);
 
+/** Every workspace's checkouts (active or not), for repoAtPath. */
+function allWorkspaceCheckouts(): ResolvedService[] {
+  const catalog = readCatalog();
+  return Object.entries(readWorkspacesFile().workspaces).flatMap(
+    ([name, config]) => listWorkspaceServices(config, catalog, name),
+  );
+}
+
+/**
+ * API routes that answer whatever the config holds: the identity probe the
+ * CLI and MCP use to find this server, its own log (where a config error is
+ * also written), the changelog, and restarting it.
+ */
+const CONFIG_FREE_ROUTES = new Set([
+  "/api/server-info",
+  "/api/server-log",
+  "/api/changelog",
+  "/api/web/restart",
+]);
+
 // ── Sudo password store ───────────────────────────────────────────────────────
 import {
   setSudoPassword,
@@ -608,6 +636,13 @@ async function handleRequest(
       });
     }
   }
+
+  // ── Config validation ──────────────────────────────────────────────────────
+  // A config that fails validation answers every API route that reads it as
+  // the ConfigError the handler below maps to 422 JSON, before any route's own
+  // catch can turn it into a 400, a 500 or an empty list. Pages still load.
+  if (pathname.startsWith("/api/") && !CONFIG_FREE_ROUTES.has(pathname))
+    assertDenConfigValid();
 
   // ── Static UI ──────────────────────────────────────────────────────────────
   // Local Dev is the default page when local environment is enabled.
@@ -811,6 +846,17 @@ async function handleRequest(
       report = JSON.parse(raw || "{}") as Record<string, unknown>;
     } catch {
       return send400(res, "invalid JSON");
+    }
+    // A call that named a path (manifest_validate) is recorded under the
+    // catalog repo that path is inside, across every workspace's checkouts.
+    if (typeof report.repo !== "string" && report.path !== undefined) {
+      let repo: string | null = null;
+      try {
+        repo = repoAtPath(report.path, allWorkspaceCheckouts());
+      } catch {
+        /* unresolvable workspaces: recorded under the tool only */
+      }
+      if (repo) report = { ...report, repo };
     }
     const entry = recordAgentRefusal(actor, report);
     return sendJson(res, { recorded: true, ts: entry.ts });
@@ -3155,6 +3201,21 @@ const server = http.createServer((req, res) => {
   // rejection — which CRASHES the whole server on modern Node (freezing every
   // health dot) and leaves the request hanging. Fail the one request instead.
   handleRequest(req, res).catch((err) => {
+    // A config that fails validation is the user's to fix: name it to the
+    // caller as JSON (the {ok, error, code} frame), not a bare 500.
+    if (isConfigError(err)) {
+      serverLog(
+        `  ⚠ ${req.method} ${(req.url ?? "").split("?")[0]}: ${err.message}`,
+      );
+      try {
+        if (!res.headersSent)
+          return sendJson(res, configErrorBody(err), CONFIG_ERROR_STATUS);
+        res.end();
+      } catch {
+        /* socket already gone */
+      }
+      return;
+    }
     console.error(`[server] ${req.method} ${req.url} failed:`, err);
     try {
       if (!res.headersSent) {

@@ -61,6 +61,27 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **A config that fails validation stops every command** (0.2.8-dev.2).
+  A repo or owner claimed by two orgs (or any other bad ORG-1d value) is
+  checked before any command that touches orgs, the catalog, clones or
+  releases runs, and it exits 1 naming both keys. `sync` over existing
+  clones exited 0 and pulled, because it reads only workspaces.yml and the
+  catalog; `register <path> -w <ws>` wrote workspaces.yml and the catalog,
+  `workspace create` wrote workspaces.yml, and `workspace use` /
+  `add-service` exited 0. Now each stops before any git call or write. `web`, `mcp`, `validate`, `create`,
+  `config`, `local-dev` and `view-results` still run.
+- **The web API answers a config that fails validation as JSON**
+  (0.2.8-dev.2). Every API route that reads the config answers 422
+  `{ ok: false, error: "<the message naming the keys>", code:
+  "config_invalid" }`, where `/api/orgs`, `/api/services` and others
+  answered a text/plain 500 "internal server error" and some routes turned
+  it into a 400 or an empty list. The error names config keys, never
+  values. `/api/server-info`, `/api/server-log`, `/api/changelog` and
+  `/api/web/restart` still answer, and pages still load.
+- **A scoped MCP `manifest_validate` refused on another workspace's path
+  shows in that repo's activity** (0.2.8-dev.2). The refusal is recorded
+  under the catalog repo whose checkout holds the path (in any workspace),
+  never as the path itself, as `logs_tail` refusals are since 0.2.8-dev.1.
 - **A scoped MCP refusal of a non-lifecycle tool shows on its service**
   (0.2.8-dev.1). A refused `logs_tail`, `logs_search` or other non-lifecycle tool
   was stored with an empty detail and no service, so the service panel's
@@ -85,6 +106,9 @@ config and manifest changes a distribution must make to move to it under
 - ORG-1d (`orgs.<id>.sources`, `orgs.<id>.repos`, catalog `remote:`) is
   optional: no change is needed, and a config without those keys behaves
   exactly as on 0.2.7. A den.yml that uses them needs Den 0.2.8 or later.
+- A client of the web API that reads a config error should check for
+  status 422 and `code: "config_invalid"` (0.2.8-dev.2); it was a
+  text/plain 500.
 
 ## [0.2.7] - 2026-11-05
 

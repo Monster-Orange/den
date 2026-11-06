@@ -654,6 +654,9 @@ async function reportRefusal(
       ...(typeof args.repo === "string" ? { repo: args.repo } : {}),
       ...(typeof args.service === "string" ? { service: args.service } : {}),
       ...(Array.isArray(args.targets) ? { targets: args.targets } : {}),
+      // A path (manifest_validate): the server records it under the catalog
+      // repo it is inside, never as the path itself.
+      ...(typeof args.path === "string" ? { path: args.path } : {}),
       reason,
     });
   } catch {

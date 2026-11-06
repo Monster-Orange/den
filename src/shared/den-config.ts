@@ -17,6 +17,7 @@ import { getDistRoot } from "./paths.js";
 import type { SecretsConfig } from "./secrets/index.js";
 import type { OrgConfig } from "./org.js";
 import { validateOrgSources, type WorkOrgsConfig } from "./org-sources.js";
+import { ConfigError, isConfigError } from "./config-error.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
 
 import { product } from "./product.js";
@@ -413,6 +414,41 @@ export function requireGithubOrg(config: DenConfig = readDenConfig()): string {
       `github_org is not set: add \`github_org: <your-org>\` to ${DEN_CONFIG_PATH}`,
     );
   return org;
+}
+
+let checked: { key: string; error: ConfigError | null } | null = null;
+
+/**
+ * Throw the config's validation error (a ConfigError naming its keys), if it
+ * has one, without reading anything else. The CLI runs this before any
+ * command that touches orgs, the catalog, clones or releases, and the web
+ * server before every config-reading route, so a config that fails
+ * validation stops them all, not only those that happen to read `orgs:`.
+ * A missing file, or one that does not parse, is left to readDenConfig.
+ * Memoised on the file's mtime and size: the server checks per request.
+ */
+export function assertDenConfigValid(): void {
+  let key: string;
+  try {
+    const st = fs.statSync(DEN_CONFIG_PATH);
+    key = `${st.mtimeMs}:${st.size}`;
+  } catch {
+    return;
+  }
+  if (checked?.key !== key) {
+    let error: ConfigError | null = null;
+    try {
+      const parsed = yaml.parse(fs.readFileSync(DEN_CONFIG_PATH, "utf-8")) as {
+        orgs?: unknown;
+      } | null;
+      validateOrgSources(parsed?.orgs, product().configFile);
+    } catch (e) {
+      if (!isConfigError(e)) return;
+      error = e;
+    }
+    checked = { key, error };
+  }
+  if (checked.error) throw new ConfigError(checked.error.message);
 }
 
 /**

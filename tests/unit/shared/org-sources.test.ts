@@ -41,6 +41,7 @@ import {
 } from "../../../src/shared/environment-manager/workspace-org.js";
 import { catalogFill } from "../../../src/shared/environment-manager/default-workspace.js";
 import { registerOrg } from "../../../src/ui/cli/org-command.js";
+import { ConfigError } from "../../../src/shared/config-error.js";
 
 const FILE = "config/den.yml";
 const bad = (orgs: unknown) => () => validateOrgSources(orgs, FILE);
@@ -359,5 +360,21 @@ describe("workspaces follow the org's sources", () => {
       ctx(),
     );
     expect([...fill]).toEqual([["acme-new", "acme/acme-new"]]);
+  });
+});
+
+describe("a validation failure is a ConfigError (0.2.8-dev.2)", () => {
+  it("so the CLI and the web server can tell it from a crash", () => {
+    const claimed = bad({
+      initech: { repos: ["widget"] },
+      globex: { repos: ["widget"] },
+    });
+    expect(claimed).toThrow(ConfigError);
+    try {
+      claimed();
+    } catch (e) {
+      expect((e as ConfigError).code).toBe("config_invalid");
+    }
+    expect(bad({ acme: { sources: "x" } })).toThrow(ConfigError);
   });
 });

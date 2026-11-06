@@ -14,6 +14,7 @@ import {
   recentActions,
   recordAction,
   recordAgentRefusal,
+  repoAtPath,
   setAuditSink,
 } from "../../../src/ui/server/audit.js";
 
@@ -180,5 +181,33 @@ describe("refusals are recorded too (F2)", () => {
     );
     expect(e.addresses).toEqual(["shop/api", "core/web"]);
     expect(e.detail).toBe("out of scope");
+  });
+});
+
+describe("repoAtPath: the catalog repo a refused call's path is inside", () => {
+  const repos = [
+    { repoName: "shop", repoPath: "/repos/shop" },
+    { repoName: "shop", repoPath: "/ws/b/.den-services/shop/main" },
+    { repoName: "tools", repoPath: "/repos/shop/vendor/tools" },
+    { repoName: "bad name", repoPath: "/repos/bad" },
+  ];
+
+  it("the repo whose checkout is the path or holds it; the deepest when they nest", () => {
+    expect(repoAtPath("/repos/shop", repos)).toBe("shop");
+    expect(repoAtPath("/repos/shop/.den.yml", repos)).toBe("shop");
+    expect(repoAtPath("/ws/b/.den-services/shop/main/.den.yml", repos)).toBe(
+      "shop",
+    );
+    expect(repoAtPath("/repos/shop/vendor/tools/.den.yml", repos)).toBe(
+      "tools",
+    );
+  });
+
+  it("null for a relative path, a path in no repo, a prefix sibling or an unsafe name", () => {
+    expect(repoAtPath("repos/shop", repos)).toBeNull();
+    expect(repoAtPath("/repos/shopfront/.den.yml", repos)).toBeNull();
+    expect(repoAtPath("/elsewhere", repos)).toBeNull();
+    expect(repoAtPath("/repos/bad/.den.yml", repos)).toBeNull();
+    expect(repoAtPath(7, repos)).toBeNull();
   });
 });

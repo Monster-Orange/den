@@ -226,6 +226,21 @@ describe("a scoped server refuses another workspace", () => {
     });
   });
 
+  it("a refused manifest_validate reports its path, so the server can name the repo", async () => {
+    const { api, calls } = fakeApi();
+    await callTool(
+      "manifest_validate",
+      { path: "/repos/billing/.den.yml" },
+      ctx(api, SCOPE),
+    );
+    const report = calls.find((c) => c.path === "/api/activity");
+    expect(report?.body).toMatchObject({
+      tool: "manifest_validate",
+      path: "/repos/billing/.den.yml",
+      reason: expect.stringMatching(/is not inside a repo of workspace "smb"/),
+    });
+  });
+
   it("a repo of another workspace is not served: logs, lifecycle, manifests", async () => {
     const { api, calls } = fakeApi();
     const tail = await callTool(

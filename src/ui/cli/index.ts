@@ -111,6 +111,7 @@ import {
 } from "../../shared/environment-manager/service-runner.js";
 import { getGitHubCoords } from "../../shared/smoke/git-remote.js";
 import {
+  assertDenConfigValid,
   getReposRoot,
   mergeUserConfig,
   readDenConfig,
@@ -494,6 +495,27 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "service",
 ]);
 
+/**
+ * Commands that run with a config that fails validation: the web and MCP
+ * servers (each route or tool reports it), and those that read neither orgs,
+ * the catalog nor clones (manifest validate, create, the per-engineer
+ * config and local-dev toggles, saved results). Every other registered
+ * command checks the config first.
+ */
+const CONFIG_FREE_COMMANDS = new Set<string>([
+  "web",
+  "mcp",
+  "validate",
+  "create",
+  "config",
+  "local-dev",
+  "view-results",
+]);
+
+function configCheckedCommand(command: string): boolean {
+  return TELEMETRY_COMMANDS.has(command) && !CONFIG_FREE_COMMANDS.has(command);
+}
+
 /** Map a raw command token to a PII-safe, registered telemetry command name. */
 function telemetryCommandName(command?: string): string {
   if (!command) return "none";
@@ -716,6 +738,12 @@ class DenCLI {
     }
 
     try {
+      // A config that fails validation stops every command that touches
+      // orgs, the catalog, clones or releases before it reads or writes
+      // anything: some (sync over existing clones, register, workspace
+      // create) never read `orgs:` and used to carry on (ORG-1d).
+      if (command && configCheckedCommand(command)) assertDenConfigValid();
+
       switch (command) {
         case "run":
           await this.runTestsCommand(args.slice(1));

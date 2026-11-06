@@ -589,8 +589,12 @@ These keys are checked when den.yml is read, and a bad value is an error
 that names its key (`orgs.initech.sources[0].owner must be …`). A repo
 listed by two orgs, or an owner claimed by two orgs' sources (or by a
 source and an org with no `sources` of that name), is an error naming both
-keys. Without the new keys nothing changes: `/api/orgs` is byte for byte
-what 0.2.7 answered. They need Den 0.2.8 or later.
+keys. Such an error stops every command that touches orgs, the catalog,
+clones or releases (exit 1, before any git call or write), and every web
+API route that reads the config answers it as 422 `{ "ok": false, "error":
+"<message>", "code": "config_invalid" }`. Without the new keys nothing
+changes: `/api/orgs` is byte for byte what 0.2.7 answered. They need Den
+0.2.8 or later.
 
 ## Releases
 

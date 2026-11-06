@@ -11,6 +11,7 @@ import { product } from "../../shared/product.js";
 import { listOrgs } from "../../shared/manifest/service-links.js";
 import { githubOwnersOf } from "../../shared/org-sources.js";
 import { readDenConfig } from "../../shared/den-config.js";
+import { isConfigError } from "../../shared/config-error.js";
 import {
   defaultOrg,
   githubOrgFor,
@@ -117,7 +118,9 @@ export function registerOrg(
   } else {
     try {
       org = githubOrgFor(workspace, ctx);
-    } catch {
+    } catch (e) {
+      // No org is "nothing to register"; a config that fails validation is not.
+      if (isConfigError(e)) throw e;
       return undefined;
     }
   }

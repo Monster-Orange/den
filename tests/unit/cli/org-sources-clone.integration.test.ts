@@ -5,7 +5,8 @@
  *   - `setup --plan` shows that remote as the clone URL;
  *   - `org list` lists orgs, not the owners their sources claim, and an org
  *     spanning two GitHub owners holds both owners' workspaces;
- *   - a repo or owner claimed by two orgs is an error naming both keys.
+ *   - a repo or owner claimed by two orgs is an error naming both keys, and
+ *     stops sync (no git call in a clone) and register (nothing written).
  *
  * gh, op, doppler and mkcert are shims that log and fail; https is refused
  * (GIT_ALLOW_PROTOCOL=file), so nothing can reach a network.
@@ -100,6 +101,12 @@ beforeAll(() => {
       `#!/bin/sh\necho "${b} $*" >> "${path.join(tmp, "shim.log")}"\nexit 1\n`,
       0o755,
     );
+  // Den's git, logged with the directory it ran in, then the real git.
+  write(
+    path.join(tmp, "shim", "git"),
+    `#!/bin/sh\necho "$PWD | $*" >> "${path.join(tmp, "git.log")}"\nexec ${GIT} "$@"\n`,
+    0o755,
+  );
 
   fs.mkdirSync(seed, { recursive: true });
   git(["init", "-q"], seed);
@@ -216,5 +223,75 @@ describe("a claim made twice is an error naming both keys", () => {
     expect(r.out).toMatch(
       /github owner ACME is claimed by both orgs\.acme-group\.sources\[0\] and orgs\.globex\.sources\[0\]/,
     );
+  }, 60_000);
+});
+
+describe("a config that fails validation stops sync and register (0.2.8-dev.2)", () => {
+  const gitLog = () => path.join(tmp, "git.log");
+  const local = (f: string) => path.join(root, "config", "local", f);
+  const snapshot = () =>
+    ["workspaces.yml", "service-catalog.yml"].map((f) =>
+      fs.readFileSync(local(f), "utf-8"),
+    );
+  /** Den's git calls since the log was cleared that ran in a clone, or fetched, pulled or cloned. */
+  const repoGitCalls = (): string[] =>
+    fs.existsSync(gitLog())
+      ? fs
+          .readFileSync(gitLog(), "utf-8")
+          .split("\n")
+          .filter(Boolean)
+          .filter(
+            (l) =>
+              l.startsWith(path.join(root, ".den-services")) ||
+              /\| (fetch|pull|clone|rev-list)\b/.test(l),
+          )
+      : [];
+
+  beforeAll(() => {
+    // The clone the tests above made: sync has something to pull.
+    expect(fs.existsSync(clone())).toBe(true);
+  });
+  afterAll(() => config(ORGS));
+
+  it("sync with a repo claimed twice exits 1, names both keys, and runs no git in the clone", () => {
+    config([...ORGS, "  globex: { repos: [widget] }"]);
+    fs.writeFileSync(gitLog(), "");
+    const r = den("sync");
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(
+      /repo widget is claimed by both orgs\.initech\.repos and orgs\.globex\.repos/,
+    );
+    expect(repoGitCalls()).toEqual([]);
+  }, 60_000);
+
+  it("sync with an owner claimed twice exits 1, names both keys, and runs no git in the clone", () => {
+    config([
+      ...ORGS,
+      "  globex:",
+      "    sources: [{ host: github, owner: ACME }]",
+    ]);
+    fs.writeFileSync(gitLog(), "");
+    const r = den("sync");
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(
+      /github owner ACME is claimed by both orgs\.acme-group\.sources\[0\] and orgs\.globex\.sources\[0\]/,
+    );
+    expect(repoGitCalls()).toEqual([]);
+  }, 60_000);
+
+  it("register <path> -w with a repo claimed twice exits 1 and writes nothing", () => {
+    config([...ORGS, "  globex: { repos: [widget] }"]);
+    const checkout = path.join(tmp, "gadget");
+    write(
+      path.join(checkout, ".den.yml"),
+      "version: 1\nname: gadget\nservices:\n  gadget: {}\n",
+    );
+    const before = snapshot();
+    const r = den("register", checkout, "-w", "main");
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(
+      /repo widget is claimed by both orgs\.initech\.repos and orgs\.globex\.repos/,
+    );
+    expect(snapshot()).toEqual(before);
   }, 60_000);
 });

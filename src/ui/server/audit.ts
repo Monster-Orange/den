@@ -5,6 +5,7 @@
  * as the web-server log, so agent actions sit beside the UI's own; the
  * structured entries are kept in a small in-memory ring.
  */
+import * as path from "path";
 import {
   actorLabel,
   type Actor,
@@ -191,6 +192,30 @@ export function recordAgentRefusal(
     reason,
     addresses: refusedAddresses(report),
   });
+}
+
+/**
+ * The catalog repo a refused call's `path` is inside (manifest_validate), so
+ * the refusal shows in that repo's activity: the repo whose checkout is the
+ * path or holds it, the deepest when checkouts nest. Null for a relative
+ * path or one inside no repo. The path itself is never recorded.
+ */
+export function repoAtPath(
+  p: unknown,
+  repos: readonly { repoName: string; repoPath: string }[],
+): string | null {
+  if (typeof p !== "string" || p.length > 4096 || !path.isAbsolute(p))
+    return null;
+  const target = path.resolve(p);
+  let best: { repoName: string; depth: number } | null = null;
+  for (const r of repos) {
+    if (!r.repoPath || !path.isAbsolute(r.repoPath)) continue;
+    const root = path.resolve(r.repoPath);
+    if (target !== root && !target.startsWith(root + path.sep)) continue;
+    if (!best || root.length > best.depth)
+      best = { repoName: r.repoName, depth: root.length };
+  }
+  return best && SAFE_PART.test(best.repoName) ? best.repoName : null;
 }
 
 /** The most recent actions, oldest first. */
