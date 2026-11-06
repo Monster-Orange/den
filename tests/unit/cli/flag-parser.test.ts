@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   parseCliArgs,
+  takeWorkspaceFlags,
   unknownCommandFlags,
   workspaceFlagRequiresActive,
 } from "../../../src/ui/cli/flag-parser.js";
@@ -146,5 +147,60 @@ describe("unknownCommandFlags", () => {
   it("does not check commands without an allowlist", () => {
     expect(unknownCommandFlags("status", ["--verbose"])).toEqual([]);
     expect(unknownCommandFlags("graph", ["--format=json"])).toEqual([]);
+  });
+});
+
+describe("commands that read -w themselves (0.2.8)", () => {
+  it("setup keeps every -w in its args, so several can be planned", () => {
+    expect(
+      parseCliArgs([
+        "setup",
+        "--plan",
+        "-w",
+        "smb",
+        "--workspace=ent",
+        "-w",
+        "x",
+      ]),
+    ).toEqual({
+      command: "setup",
+      args: ["--plan", "-w", "smb", "--workspace=ent", "-w", "x"],
+      flags: {},
+    });
+    expect(
+      unknownCommandFlags("setup", [
+        "--plan",
+        "-w",
+        "smb",
+        "--workspace=ent",
+        "--all-active",
+      ]),
+    ).toEqual([]);
+  });
+
+  it("mcp keeps --workspace for its scope (never the CLI's override)", () => {
+    expect(
+      parseCliArgs(["mcp", "--workspace", "smb", "--actor", "agent:p"]),
+    ).toEqual({
+      command: "mcp",
+      args: ["--workspace", "smb", "--actor", "agent:p"],
+      flags: {},
+    });
+  });
+
+  it("register takes -w as the workspace to write", () => {
+    expect(parseCliArgs(["register", "../shop", "-w", "smb"])).toEqual({
+      command: "register",
+      args: ["../shop"],
+      flags: { workspace: "smb" },
+    });
+  });
+
+  it("takeWorkspaceFlags: every -w, in order, and the rest", () => {
+    expect(
+      takeWorkspaceFlags(["--plan", "-w", "a", "--workspace=b", "shop"]),
+    ).toEqual({ workspaces: ["a", "b"], rest: ["--plan", "shop"] });
+    expect(() => takeWorkspaceFlags(["-w"])).toThrow(/-w requires a value/);
+    expect(() => takeWorkspaceFlags(["-w="])).toThrow(/-w requires a value/);
   });
 });

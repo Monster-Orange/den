@@ -13,6 +13,7 @@ import {
   readDenConfig,
 } from "../../shared/den-config.js";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
+import { githubOwnersOf } from "../../shared/org-sources.js";
 import {
   GH_API_TIMEOUT_MS,
   BRANCH_CACHE_TTL_MS,
@@ -187,7 +188,11 @@ export class GitHubService {
     const primary = configuredGithubOrg(config);
     if (!primary) return [];
     const orgs = new Set<string>([primary]);
-    for (const id of Object.keys(config.orgs ?? {})) orgs.add(id);
+    // A legacy `orgs:` key is a GitHub owner; an ORG-1d org lists its GitHub
+    // sources' owners, and one with no GitHub source adds none (discovery is
+    // hidden for it).
+    for (const id of Object.keys(config.orgs ?? {}))
+      for (const owner of githubOwnersOf(id, config.orgs)) orgs.add(owner);
     for (const entry of Object.values(readCatalog() ?? {})) {
       if (entry?.gh && entry.gh.includes("/")) {
         orgs.add(entry.gh.slice(0, entry.gh.indexOf("/")));

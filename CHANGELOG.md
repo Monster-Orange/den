@@ -10,6 +10,8 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- Everything in 0.2.8 (scoped MCP for agents, orgs that own their sources,
+  config validation that stops every command) is in 0.3.0.
 - **The UI in Japanese and Spanish** (0.3.0-dev.39, R19; R10's and R21's
   Language).
   - Catalogs for en, ja and es. en is shell.js's `MESSAGES.en`, the
@@ -1414,6 +1416,113 @@ config and manifest changes a distribution must make to move to it under
   (`theme new` sets one). A plugin's `den` range is now enforced: write
   `>=0.3.0-0 <0.4.0` to admit Den's 0.3.0 prereleases, because `>=0.3.0`
   excludes them.
+## [0.2.8] - 2026-11-05
+
+### Added
+
+- **A scoped MCP server for cooperating agents** (0.2.8-dev.0, AG-2a-core).
+  `<cli> mcp --workspace <ws> --actor agent:<id>` pins one workspace: a tool
+  that takes a workspace gets `<ws>`, and a call naming another is refused
+  before it reaches the web server and recorded in the activity trail.
+  Lists are filtered to `<ws>`: `workspaces` shows it alone, the log tools
+  and `manifest_validate` take only its services and repos, `workspace_sync`
+  syncs it, and the test tools need it to be the focused workspace. Every
+  web API call is stamped with the actor (`x-den-mcp-agent`,
+  `x-den-mcp-workspace`), so each exec, run and sync in the activity trail
+  and the server log names `agent:<id>` and its workspace. Both flags or
+  neither; a bad value is a usage error (exit 2). `--list` and `--call` take
+  them too. Without them the server is unchanged. **Limit:** it binds
+  cooperating agents only. The scope lives in the MCP process, and the web
+  server's HTTP API does not check it yet (WS-3a, 0.4); `mcp connect` still
+  registers the unscoped server.
+- **`<cli> setup --plan -w <ws>` and `--all-active`** (0.2.8-dev.0). `-w` is
+  repeatable and plans those workspaces, active or not; `--all-active` plans
+  every active one; on a fresh machine `-w` narrows the blueprint's plan. A
+  closing hint names the repos only workspaces outside the plan hold. `-w`
+  and `--all-active` go with `--plan` only.
+- **Orgs are Den's own; sources are bindings** (0.2.8-dev.1, ORG-1d). An
+  org is any key of `orgs:`. `orgs.<id>.sources: [{host, owner|group}]`
+  claims git-host owners for it (an org can span two GitHub owners), and
+  `orgs.<id>.repos: [...]` lists repos outright (one owner can be split
+  across orgs). Catalog entries take `remote: <git url>` for any host;
+  `gh: owner/repo` stays the GitHub shorthand. A repo's org is the org
+  listing it, else the one whose source claims its owner, else its GitHub
+  owner; inference, `/api/orgs` and `org list` use it, and a claimed owner
+  is not listed as its own org. A repo clones from its source (GitHub with
+  `gh` as credential helper), or with no source from its `remote:` through
+  plain git and the user's own credential helper (SEC-0); `setup --plan`
+  shows that URL. Discovery (`register`) and the Release page skip an org
+  with no GitHub source. A bad value names its key; a repo or owner claimed
+  by two orgs is an error naming both. See docs/distributions.md, Orgs.
+- **`<cli> register <path> -w <ws>`** (0.2.8-dev.0) writes that workspace,
+  active or not, and leaves focus alone. It used to fail with "-w/--workspace
+  is not valid with register".
+
+### Changed
+
+- **`setup --plan` and `up --plan` show a dev-managed repo's real branch**
+  (0.2.8-dev.0): the one its checkout has out (read from `.git/HEAD`, no git
+  process), or `(branch unknown)`, where they printed `main` for every
+  checkout.
+- **`up --plan` exits 1 when nothing resolves** (0.2.8-dev.0): a name no
+  workspace has, or a workspace with nothing to start. It exited 0.
+- **`register` with no terminal exits 2** (0.2.8-dev.0) with one usage line
+  that names `-w`: `register needs a terminal (stdin is not a TTY); without
+  one: <cli> register <path> [--name <repo>] [--gh <owner/repo>] [-w
+  <workspace>]`. It went on to prompt with nothing to answer.
+
+### Fixed
+
+- **A config that fails validation stops every command** (0.2.8-dev.2).
+  A repo or owner claimed by two orgs (or any other bad ORG-1d value) is
+  checked before any command that touches orgs, the catalog, clones or
+  releases runs, and it exits 1 naming both keys. `sync` over existing
+  clones exited 0 and pulled, because it reads only workspaces.yml and the
+  catalog; `register <path> -w <ws>` wrote workspaces.yml and the catalog,
+  `workspace create` wrote workspaces.yml, and `workspace use` /
+  `add-service` exited 0. Now each stops before any git call or write. `web`, `mcp`, `validate`, `create`,
+  `config`, `local-dev` and `view-results` still run.
+- **The web API answers a config that fails validation as JSON**
+  (0.2.8-dev.2). Every API route that reads the config answers 422
+  `{ ok: false, error: "<the message naming the keys>", code:
+  "config_invalid" }`, where `/api/orgs`, `/api/services` and others
+  answered a text/plain 500 "internal server error" and some routes turned
+  it into a 400 or an empty list. The error names config keys, never
+  values. `/api/server-info`, `/api/server-log`, `/api/changelog` and
+  `/api/web/restart` still answer, and pages still load.
+- **A scoped MCP `manifest_validate` refused on another workspace's path
+  shows in that repo's activity** (0.2.8-dev.2). The refusal is recorded
+  under the catalog repo whose checkout holds the path (in any workspace),
+  as `logs_tail` refusals are since 0.2.8-dev.1. The entry is addressed by
+  the repo, not the path; its detail is the refusal message, which quotes
+  the path.
+- **A scoped MCP refusal of a non-lifecycle tool shows on its service**
+  (0.2.8-dev.1). A refused `logs_tail`, `logs_search` or other non-lifecycle tool
+  was stored with an empty detail and no service, so the service panel's
+  activity (`GET /api/activity?address=<repo>/<svc>`) never showed it. The
+  entry's detail is now the refusal, and it carries `addresses`: the repo
+  or `repo/service` the call named, or every target of a `logs_search`
+  (one entry, listed under each).
+- **`up --plan -w <ws>` with nothing to start is a usage error**
+  (0.2.8-dev.1): one line, exit 2, naming `up -a -w <ws>` (the whole
+  workspace) and `up <repo> -w <ws>`. It printed "No services specified and
+  no invocation target resolvable".
+- **Test workers inherit no credentials** (0.2.8-dev.0). `tests/setup.ts`
+  strips credential-shaped variables (by name, family or token shape) from
+  the environment before any suite runs, so a failing assertion on a
+  spawn env can no longer print a developer's tokens.
+
+### Migrations
+
+- None. A script that ran `up --plan` and ignored its exit code may now see
+  1 when the plan is empty (2 for `up --plan -w <ws>` with no repo or
+  `-a`).
+- ORG-1d (`orgs.<id>.sources`, `orgs.<id>.repos`, catalog `remote:`) is
+  optional: no change is needed, and a config without those keys behaves
+  exactly as on 0.2.7. A den.yml that uses them needs Den 0.2.8 or later.
+- A client of the web API that reads a config error should check for
+  status 422 and `code: "config_invalid"` (0.2.8-dev.2); it was a
+  text/plain 500.
 
 ## [0.2.7] - 2026-11-05
 

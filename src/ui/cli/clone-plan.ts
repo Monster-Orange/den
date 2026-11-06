@@ -5,12 +5,22 @@
  *
  * On a fresh machine (no workspace set up yet, a blueprint in the config)
  * the plan is what `<cli> workspace seed` and then setup would do, for every
- * blueprint workspace. Otherwise it is the focused workspace's repos, the
- * ones setup works on.
+ * blueprint workspace (`-w` narrows it). Otherwise it is the focused
+ * workspace's repos, the ones setup works on, or the `-w` / `--all-active`
+ * ones; repos only other workspaces hold are named in a hint.
  */
 import * as fs from "fs";
 import * as path from "path";
-import { readCatalog } from "../../shared/environment-manager/catalog.js";
+import {
+  readCatalog,
+  resolveRepoCloneSource,
+} from "../../shared/environment-manager/catalog.js";
+import {
+  isGitRemote,
+  redactRemote,
+} from "../../shared/environment-manager/git-remote.js";
+import { readDenConfig } from "../../shared/den-config.js";
+import type { WorkOrgsConfig } from "../../shared/org-sources.js";
 import {
   blueprintWorkspaces,
   catalogFill,
@@ -32,6 +42,7 @@ import {
 } from "../../shared/environment-manager/workspace-org.js";
 import { orgOf } from "../../shared/manifest/service-links.js";
 import type { ServiceCatalog } from "../../shared/types/index.js";
+import { plural } from "../../shared/plural.js";
 
 export type ClonePlanState =
   | "cloned"
@@ -64,6 +75,39 @@ export interface ClonePlan {
   /** True when planned from the blueprint (nothing seeded yet). */
   fromBlueprint: boolean;
   workspaces: ClonePlanWorkspace[];
+  /** Repos held only by workspaces outside the plan, per workspace. */
+  outside?: { workspace: string; repos: string[] }[];
+}
+
+/** Which workspaces `setup --plan` plans (default: the focused one). */
+export interface PlanSelection {
+  /** `-w <ws>`, repeatable. */
+  workspaces?: readonly string[];
+  /** `--all-active`: every active workspace (plus any `-w` one). */
+  allActive?: boolean;
+}
+
+/**
+ * The branch a checkout has out, read from its HEAD file (no git process):
+ * the branch name, `detached <sha7>`, or null when it can't be read.
+ */
+export function checkoutBranch(dir: string): string | null {
+  try {
+    let gitDir = path.join(dir, ".git");
+    if (fs.statSync(gitDir).isFile()) {
+      // A worktree or submodule: .git names the real git dir.
+      const m = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(gitDir, "utf-8"));
+      if (!m) return null;
+      gitDir = path.resolve(dir, m[1].trim());
+    }
+    const head = fs.readFileSync(path.join(gitDir, "HEAD"), "utf-8").trim();
+    const ref = /^ref:\s*refs\/heads\/(.+)$/.exec(head);
+    if (ref) return ref[1];
+    if (/^[0-9a-f]{40,64}$/.test(head)) return `detached ${head.slice(0, 7)}`;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 const ownerOf = (slug: string): string => slug.slice(0, slug.indexOf("/"));
@@ -72,20 +116,31 @@ function cloneDir(repo: string, branch: string): string {
   return path.join(DEN_SERVICES_DIR, repo, branch);
 }
 
-/** The slug setup and up would clone `repo` from, or null without an org. */
+/**
+ * What setup and up would clone `repo` from (a GitHub slug, or an ORG-1d
+ * `remote:`), or null without an org. `owner` gives the slug's owner for a
+ * repo with neither `gh` nor `remote`.
+ */
+function sourceFor(
+  repo: string,
+  catalog: ServiceCatalog,
+  ctx: OrgContext,
+  owner: () => string,
+): string | null {
+  try {
+    return resolveRepoCloneSource(repo, catalog, owner, ctx.config.orgs);
+  } catch {
+    return null;
+  }
+}
+
 function slugFor(
   repo: string,
   workspace: string,
   catalog: ServiceCatalog,
   ctx: OrgContext,
 ): string | null {
-  const gh = catalog[repo]?.gh?.trim();
-  if (gh) return gh;
-  try {
-    return `${githubOrgFor(workspace, ctx)}/${repo}`;
-  } catch {
-    return null;
-  }
+  return sourceFor(repo, catalog, ctx, () => githubOrgFor(workspace, ctx));
 }
 
 function managedRow(
@@ -96,12 +151,13 @@ function managedRow(
 ): ClonePlanRow {
   const dir = cloneDir(repo, branch);
   const cloned = fs.existsSync(dir);
+  const remote = slug !== null && isGitRemote(slug);
   return {
     repo,
     mode: "managed",
     branch,
-    owner: slug ? ownerOf(slug) : null,
-    url: slug ? ghCloneUrl(slug) : null,
+    owner: !slug ? null : remote ? null : ownerOf(slug),
+    url: !slug ? null : remote ? redactRemote(slug) : ghCloneUrl(slug),
     state: cloned
       ? "cloned"
       : !slug
@@ -135,7 +191,9 @@ export function workspaceClonePlan(
       rows.push({
         repo: repoName,
         mode: "dev-managed",
-        branch,
+        // Den doesn't set a checkout's branch: say what it has out.
+        branch:
+          (entry.path && checkoutBranch(entry.path)) || "(branch unknown)",
         owner: owner || null,
         url: null,
         state: "checkout",
@@ -175,26 +233,86 @@ function blueprintClonePlan(ctx: OrgContext): ClonePlanWorkspace[] {
       managedRow(
         repo,
         bp.branch,
-        ctx.catalog[repo]?.gh?.trim() || fill.get(repo) || null,
+        sourceFor(repo, ctx.catalog, ctx, () => {
+          const slug = fill.get(repo);
+          if (!slug) throw new Error(`no org for ${repo}`);
+          return ownerOf(slug);
+        }),
         true, // seeding writes every blueprint repo into the catalog
       ),
     ),
   }));
 }
 
-/** `<cli> setup --plan`: the plan for `names` (every repo when empty). */
-export function buildSetupPlan(names: readonly string[] = []): ClonePlan {
+/**
+ * `<cli> setup --plan`: the plan for `names` (every repo when empty) in the
+ * selected workspaces. Throws on a workspace that does not exist.
+ */
+export function buildSetupPlan(
+  names: readonly string[] = [],
+  sel: PlanSelection = {},
+): ClonePlan {
   const ctx = readOrgContext();
-  if (isFreshWorkspaceSetup(ctx.file) && blueprintWorkspaces().length > 0)
-    return { fromBlueprint: true, workspaces: blueprintClonePlan(ctx) };
-  const ws = getActiveWorkspace();
-  if (!ws) return { fromBlueprint: false, workspaces: [] };
+  const want = [...new Set(sel.workspaces ?? [])];
+  if (isFreshWorkspaceSetup(ctx.file) && blueprintWorkspaces().length > 0) {
+    const all = blueprintClonePlan(ctx);
+    const unknown = want.filter((n) => !all.some((w) => w.name === n));
+    if (unknown.length)
+      throw new Error(
+        `no blueprint workspace named ${unknown.join(", ")} (the blueprint has ${all.map((w) => w.name).join(", ")})`,
+      );
+    return {
+      fromBlueprint: true,
+      workspaces: want.length ? all.filter((w) => want.includes(w.name)) : all,
+    };
+  }
+  const focused = getActiveWorkspace()?.name;
+  const planned = [
+    ...new Set(
+      sel.allActive
+        ? [...ctx.file.active, ...want]
+        : want.length
+          ? want
+          : focused
+            ? [focused]
+            : [],
+    ),
+  ];
+  const unknown = planned.filter((n) => !ctx.file.workspaces[n]);
+  if (unknown.length)
+    throw new Error(
+      `no workspace named ${unknown.join(", ")} (workspaces: ${Object.keys(ctx.file.workspaces).join(", ") || "none"})`,
+    );
+  const workspaces = planned.map((n) =>
+    workspaceClonePlan(n, names.length ? names : undefined, ctx),
+  );
   return {
     fromBlueprint: false,
-    workspaces: [
-      workspaceClonePlan(ws.name, names.length ? names : undefined, ctx),
-    ],
+    workspaces,
+    outside: outsideRepos(ctx, planned, workspaces),
   };
+}
+
+/** Repos that only workspaces outside `planned` hold, per workspace. */
+function outsideRepos(
+  ctx: OrgContext,
+  planned: readonly string[],
+  workspaces: readonly ClonePlanWorkspace[],
+): { workspace: string; repos: string[] }[] {
+  const inPlan = new Set(workspaces.flatMap((w) => w.rows.map((r) => r.repo)));
+  const out: { workspace: string; repos: string[] }[] = [];
+  for (const [name, ws] of Object.entries(ctx.file.workspaces)) {
+    if (planned.includes(name)) continue;
+    const repos = [
+      ...new Set(
+        Object.keys(ws?.services ?? {}).map(
+          (a) => parseAddress(a, ctx.catalog).repoName,
+        ),
+      ),
+    ].filter((r) => !inPlan.has(r));
+    if (repos.length) out.push({ workspace: name, repos });
+  }
+  return out;
 }
 
 const STATE_TEXT: Record<ClonePlanState, string> = {
@@ -210,6 +328,7 @@ export function renderClonePlan(
   plan: ClonePlan,
   cli: string,
   catalog: ServiceCatalog = readCatalog(),
+  orgs: WorkOrgsConfig | undefined = readDenConfig().orgs,
 ): string[] {
   const out: string[] = [];
   if (plan.fromBlueprint)
@@ -230,13 +349,25 @@ export function renderClonePlan(
             ? `  ${r.path}`
             : ""
           : "";
-      const owner = r.owner ?? orgOf(r.repo, catalog) ?? "";
+      const owner = r.owner ?? orgOf(r.repo, catalog, orgs) ?? "";
       out.push(
         `  ${r.repo}  ${r.mode} ${r.branch}  org: ${owner || "(unknown)"}` +
           `${r.url ? `  ${r.url}` : ""}  ${STATE_TEXT[r.state]}${where}`,
       );
     }
     for (const w of ws.warnings) out.push(`  ⚠ ${w}`);
+  }
+  const outside = plan.outside ?? [];
+  if (outside.length) {
+    const n = new Set(outside.flatMap((o) => o.repos)).size;
+    out.push(
+      "",
+      `Not in this plan: ${plural(n, "repo")} in other workspaces: ` +
+        outside
+          .map((o) => `${o.workspace} (${o.repos.join(", ")})`)
+          .join(", ") +
+        `. Plan them with -w <workspace> or --all-active.`,
+    );
   }
   out.push("", "Plan only: nothing was cloned, seeded or written.");
   return out;

@@ -622,8 +622,18 @@ export interface DiscoveredRepo {
 // ── Service catalog & workspace types ────────────────────────────────────────
 
 export interface ServiceCatalogEntry {
-  /** Full GitHub slug: "Globex-Corp/repo-name" — used when cloning managed repos */
-  gh: string;
+  /**
+   * Full GitHub slug: "Globex-Corp/repo-name" — used when cloning managed
+   * repos. GitHub shorthand: a repo on another host (or none) sets `remote`.
+   */
+  gh?: string;
+  /**
+   * The repo's git URL, for any host (ORG-1d): `https://…`, `ssh://…`,
+   * `git@host:owner/repo.git`, `file://…` or an absolute path. A repo whose
+   * org has no source that claims it clones and pulls from here through
+   * plain git and the user's own credential helper.
+   */
+  remote?: string;
 }
 
 /** Keyed by GH repo name (e.g. "shop", "tasks-runner") */

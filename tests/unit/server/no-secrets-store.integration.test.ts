@@ -277,9 +277,9 @@ describe.each([
     expect(r.out).toMatch(/edge trust needs edge.tls.strategy: mkcert/);
   }, 120_000);
 
-  it("register with stdin closed exits 1 cleanly", () => {
+  it("register with stdin closed exits 2 cleanly", () => {
     const r = f.acme("register");
-    expect(r.code).toBe(1);
+    expect(r.code).toBe(2);
     expect(r.out).toMatch(/register needs a terminal \(stdin is not a TTY\)/);
     expect(r.out).not.toMatch(/ERR_USE_AFTER_CLOSE|at .*\.ts:\d+/);
   }, 120_000);

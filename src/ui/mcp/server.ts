@@ -22,6 +22,7 @@ import { createDenApi, type DenApi } from "./api.js";
 import { ownServer } from "../cli/server-identity.js";
 import { callTool, toolsFor, type ToolContext } from "./tools.js";
 import { plural } from "../../shared/plural.js";
+import { parseScopeFlags, ScopeUsageError, type McpScope } from "./scope.js";
 
 export interface DenMcpOptions {
   cfg: ResolvedMcpConfig;
@@ -33,6 +34,8 @@ export interface DenMcpOptions {
   /** For tests: an API in place of the HTTP client. */
   api?: DenApi;
   log?: (line: string) => void;
+  /** `--workspace` + `--actor`: one workspace, one agent (AG-2a-core). */
+  scope?: McpScope;
 }
 
 export function createDenMcpServer(opts: DenMcpOptions): McpServer {
@@ -48,7 +51,11 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
         `through the running ${p.title} web server (\`${opts.cli} web up\`). ` +
         (opts.cfg.actions.length
           ? `Actions enabled: ${opts.cfg.actions.join(", ")}.`
-          : "Read-only: the org has enabled no actions (mcp.actions)."),
+          : "Read-only: the org has enabled no actions (mcp.actions).") +
+        (opts.scope
+          ? ` Scoped to workspace "${opts.scope.workspace}" as ${opts.scope.actor}: ` +
+            "a call naming another workspace is refused, and lists show this one only."
+          : ""),
     },
   );
 
@@ -67,9 +74,15 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
           clientVersion: client()?.version ?? "unknown",
           mcpPid: opts.pid ?? process.pid,
           session,
+          ...scopeInfo(opts.scope),
         }),
     });
-  const ctx: ToolContext = { api, cfg: opts.cfg, cli: opts.cli };
+  const ctx: ToolContext = {
+    api,
+    cfg: opts.cfg,
+    cli: opts.cli,
+    ...(opts.scope ? { scope: opts.scope } : {}),
+  };
 
   for (const t of tools) {
     server.registerTool(
@@ -90,6 +103,9 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
           const who = client();
           log(
             `[mcp] ${t.name} ${r.isError ? "refused/failed" : "ok"} · ` +
+              (opts.scope
+                ? `${opts.scope.actor} in ${opts.scope.workspace} · `
+                : "") +
               `${who?.name ?? "unknown"} ${who?.version ?? ""} · session ${session}` +
               (r.isError ? ` · ${r.text.split("\n")[0]}` : ""),
           );
@@ -102,6 +118,14 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
     );
   }
   return server;
+}
+
+/** The audit fields a scope adds to every call's headers (none unscoped). */
+function scopeInfo(scope: McpScope | undefined): {
+  agent?: string;
+  workspace?: string;
+} {
+  return scope ? { agent: scope.actor, workspace: scope.workspace } : {};
 }
 
 function parsePort(argv: string[]): number | undefined {
@@ -122,6 +146,7 @@ export const MCP_USAGE = (cli: string): string =>
     `Usage: ${cli} mcp [--port <web port>]`,
     `       ${cli} mcp --list`,
     `       ${cli} mcp --call <tool> ['<json args>']`,
+    `       ${cli} mcp --workspace <ws> --actor agent:<id> [...]`,
     "",
     `An MCP server over stdio for agents, a client of the running web server`,
     `(\`${cli} web up\`; default port: config web.port). Read tools always;`,
@@ -129,6 +154,11 @@ export const MCP_USAGE = (cli: string): string =>
     "",
     "--list prints the tool names; --call runs one tool through the same guards,",
     "prints its text result and exits 1 if the tool reports an error.",
+    "",
+    "--workspace + --actor (both, or neither) scope the server to one workspace:",
+    "a call naming another is refused, lists show that one only, and every call",
+    "is recorded as agent:<id>. It binds cooperating agents only: the web",
+    "server's HTTP API does not check the scope yet.",
     "",
     `Register it with your agents: ${cli} mcp clients, then ${cli} mcp connect <client> (or --all).`,
   ].join("\n");
@@ -167,6 +197,7 @@ export interface OneShotOptions {
   cfg: ResolvedMcpConfig;
   cli: string;
   api: DenApi;
+  scope?: McpScope;
   out?: (text: string) => void;
   err?: (text: string) => void;
 }
@@ -185,7 +216,12 @@ export async function runOneShot(
     out(names.length ? `${names.join("\n")}\n` : "");
     return 0;
   }
-  const ctx: ToolContext = { api: opts.api, cfg: opts.cfg, cli: opts.cli };
+  const ctx: ToolContext = {
+    api: opts.api,
+    cfg: opts.cfg,
+    cli: opts.cli,
+    ...(opts.scope ? { scope: opts.scope } : {}),
+  };
   // The stdio server validates arguments against each tool's schema (the
   // SDK does it); a one-shot must too, and strictly: it is typed by hand, so
   // an unknown or misspelt key is an error, not silently dropped.
@@ -214,10 +250,23 @@ export async function runOneShot(
 }
 
 /** Run `<cli> mcp` until stdin closes (or one `--call` / `--list`). */
-export async function runMcp(argv: string[]): Promise<void> {
+export async function runMcp(rawArgv: string[]): Promise<void> {
   const cli = product().cli;
-  if (argv.includes("-h") || argv.includes("--help")) {
+  if (rawArgv.includes("-h") || rawArgv.includes("--help")) {
     process.stderr.write(`${MCP_USAGE(cli)}\n`);
+    return;
+  }
+  let scope: McpScope | null;
+  let argv: string[];
+  try {
+    ({ scope, rest: argv } = parseScopeFlags(rawArgv));
+  } catch (e) {
+    if (!(e instanceof ScopeUsageError)) throw e;
+    process.stderr.write(
+      `${cli} mcp: ${e.message}\n` +
+        `Usage: ${cli} mcp --workspace <ws> --actor agent:<id> [--port <n>] [--list | --call <tool> ['<json>']]\n`,
+    );
+    process.exitCode = 2;
     return;
   }
   let port = parsePort(argv);
@@ -244,15 +293,28 @@ export async function runMcp(argv: string[]): Promise<void> {
           clientVersion: engineVersion() ?? "unknown",
           mcpPid: process.pid,
           session,
+          ...scopeInfo(scope ?? undefined),
         }),
     });
-    process.exitCode = await runOneShot(shot, { cfg, cli, api });
+    process.exitCode = await runOneShot(shot, {
+      cfg,
+      cli,
+      api,
+      ...(scope ? { scope } : {}),
+    });
     return;
   }
-  const server = createDenMcpServer({ cfg, baseUrl, cli });
+  const server = createDenMcpServer({
+    cfg,
+    baseUrl,
+    cli,
+    ...(scope ? { scope } : {}),
+  });
   await server.connect(new StdioServerTransport());
   process.stderr.write(
     `${cli} mcp: ${plural(toolsFor(cfg).length, "tool")} ` +
-      `(${cfg.actions.length ? `actions: ${cfg.actions.join(", ")}` : "read only"}) → ${baseUrl}\n`,
+      `(${cfg.actions.length ? `actions: ${cfg.actions.join(", ")}` : "read only"}) → ${baseUrl}` +
+      (scope ? ` · scoped to ${scope.workspace} as ${scope.actor}` : "") +
+      "\n",
   );
 }

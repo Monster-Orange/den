@@ -50,6 +50,7 @@ import {
   getWorkspaceByName,
   isWorkspaceActive,
   listWorkspaceServices,
+  readWorkspacesFile,
   resolveDepAddress,
   parseAddress,
   readManifestAnyBranch,
@@ -105,6 +106,7 @@ import {
   getServiceLogPath,
 } from "../../shared/process/spawn-streaming.js";
 import {
+  assertDenConfigValid,
   readDenConfig,
   isProductionEnv,
   isLocalEnabled,
@@ -115,6 +117,11 @@ import {
   writeUserReleaseConfig,
   type ReleaseConfig,
 } from "../../shared/den-config.js";
+import {
+  CONFIG_ERROR_STATUS,
+  configErrorBody,
+  isConfigError,
+} from "../../shared/config-error.js";
 import { readOrgView } from "../../shared/org.js";
 import {
   engineVersion,
@@ -161,6 +168,7 @@ import {
   actorSuffix,
   recordAction,
   recordAgentRefusal,
+  repoAtPath,
   setAuditSink,
 } from "./audit.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
@@ -557,6 +565,26 @@ const STATIC_EXTS = new Set([
   ".woff2",
 ]);
 
+/** Every workspace's checkouts (active or not), for repoAtPath. */
+function allWorkspaceCheckouts(): ResolvedService[] {
+  const catalog = readCatalog();
+  return Object.entries(readWorkspacesFile().workspaces).flatMap(
+    ([name, config]) => listWorkspaceServices(config, catalog, name),
+  );
+}
+
+/**
+ * API routes that answer whatever the config holds: the identity probe the
+ * CLI and MCP use to find this server, its own log (where a config error is
+ * also written), the changelog, and restarting it.
+ */
+const CONFIG_FREE_ROUTES = new Set([
+  "/api/server-info",
+  "/api/server-log",
+  "/api/changelog",
+  "/api/web/restart",
+]);
+
 // ── Sudo password store ───────────────────────────────────────────────────────
 import {
   setSudoPassword,
@@ -772,6 +800,13 @@ async function handleRequest(
     }
   }
 
+  // ── Config validation ──────────────────────────────────────────────────────
+  // A config that fails validation answers every API route that reads it as
+  // the ConfigError the handler below maps to 422 JSON, before any route's own
+  // catch can turn it into a 400, a 500 or an empty list. Pages still load.
+  if (pathname.startsWith("/api/") && !CONFIG_FREE_ROUTES.has(pathname))
+    assertDenConfigValid();
+
   // ── Static UI ──────────────────────────────────────────────────────────────
   // The Settings page (R21). Local Dev's old settings panel link
   // (/local-dev?settings=1) lands on its category there.
@@ -888,6 +923,9 @@ async function handleRequest(
 
   // ── API: environments ──────────────────────────────────────────────────────
   // Orgs the catalog's repos belong to, with config/den.yml display names.
+  // ORG-1d: a repo's org is an org listing it, else one whose source claims
+  // its owner, else its GitHub owner; a claimed owner is not listed. Service
+  // rows keep `org` as the repo's GitHub owner (C3).
   // Each entry also says whether it is the default org (`github_org`) and
   // which workspaces on this machine belong to it (ORG-1a). Nothing else
   // changes: same entries, order and fields (ORG-SPEC C3).
@@ -902,7 +940,7 @@ async function handleRequest(
     );
     if (url.searchParams.get("repos") !== "1") return sendJson(res, orgs);
     const repos = Object.fromEntries(
-      Object.keys(catalog).map((r) => [r, orgOf(r, catalog)]),
+      Object.keys(catalog).map((r) => [r, orgOf(r, catalog, ctx.config.orgs)]),
     );
     return sendJson(res, { orgs, repos });
   }
@@ -1006,6 +1044,17 @@ async function handleRequest(
       report = JSON.parse(raw || "{}") as Record<string, unknown>;
     } catch {
       return send400(res, "invalid JSON");
+    }
+    // A call that named a path (manifest_validate) is recorded under the
+    // catalog repo that path is inside, across every workspace's checkouts.
+    if (typeof report.repo !== "string" && report.path !== undefined) {
+      let repo: string | null = null;
+      try {
+        repo = repoAtPath(report.path, allWorkspaceCheckouts());
+      } catch {
+        /* unresolvable workspaces: recorded under the tool only */
+      }
+      if (repo) report = { ...report, repo };
     }
     const entry = recordAgentRefusal(actor, report);
     return sendJson(res, { recorded: true, ts: entry.ts });
@@ -3541,6 +3590,39 @@ const server = http.createServer((req, res) => {
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
     const route = routeTemplate(pathname);
     const method = req.method ?? "GET";
+    // A config that fails validation is the user's to fix, not a crash: the
+    // /api frame answers 422 config_invalid (jsonApiErrors adds requestId), a
+    // page gets the error page saying so, anything else the message as text.
+    if (isConfigError(err)) {
+      serverLog(
+        `  ⚠ ${method} ${route} (req ${requestId}): ${err.message}`,
+        "error",
+      );
+      try {
+        if (res.headersSent) {
+          res.end();
+          return;
+        }
+        if (pathname === "/api" || pathname.startsWith("/api/")) {
+          sendJson(res, configErrorBody(err), CONFIG_ERROR_STATUS);
+          return;
+        }
+        if (wantsHtmlPage(req, pathname)) {
+          sendErrorPage(req, res, {
+            status: CONFIG_ERROR_STATUS,
+            path: pathname,
+            message: err.message,
+            requestId,
+          });
+          return;
+        }
+        res.writeHead(CONFIG_ERROR_STATUS, { "Content-Type": "text/plain" });
+        res.end(`${err.message} (request ${requestId})`);
+      } catch {
+        /* socket already gone */
+      }
+      return;
+    }
     const stack =
       err instanceof Error ? (err.stack ?? err.message) : String(err);
     serverLog(

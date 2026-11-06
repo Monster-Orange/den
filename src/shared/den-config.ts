@@ -16,6 +16,8 @@ import type { Environment, ReleaseSourceConfig } from "./types/index.js";
 import { getDistRoot } from "./paths.js";
 import type { SecretsConfig } from "./secrets/index.js";
 import type { OrgConfig } from "./org.js";
+import { validateOrgSources, type WorkOrgsConfig } from "./org-sources.js";
+import { ConfigError, isConfigError } from "./config-error.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
 
 import { product } from "./product.js";
@@ -194,11 +196,13 @@ export interface DenConfig {
   /** GitHub org slug used to list org repos in the web UI (e.g. "Globex-Corp"). */
   github_org?: string;
   /**
-   * Display names (and an optional colour) for the GitHub orgs repos belong
-   * to, keyed by GitHub owner. Orgs are worked out from the catalog; this
-   * only names them.
+   * Work orgs, keyed by org id: a display name and an optional colour. An
+   * entry with neither `sources` nor `repos` is the GitHub owner of its own
+   * name (ORG-1a). ORG-1d: `sources: [{host, owner|group}]` binds the org to
+   * git-host owners, and `repos: [...]` lists repos outright. See
+   * src/shared/org-sources.ts.
    */
-  orgs?: Record<string, { label?: string; color?: string }>;
+  orgs?: WorkOrgsConfig;
   /** Derived-dependency-graph tuning (aliases + edge overrides). */
   graph?: GraphConfig;
   /**
@@ -461,6 +465,41 @@ export function requireGithubOrg(config: DenConfig = readDenConfig()): string {
   return org;
 }
 
+let checked: { key: string; error: ConfigError | null } | null = null;
+
+/**
+ * Throw the config's validation error (a ConfigError naming its keys), if it
+ * has one, without reading anything else. The CLI runs this before any
+ * command that touches orgs, the catalog, clones or releases, and the web
+ * server before every config-reading route, so a config that fails
+ * validation stops them all, not only those that happen to read `orgs:`.
+ * A missing file, or one that does not parse, is left to readDenConfig.
+ * Memoised on the file's mtime and size: the server checks per request.
+ */
+export function assertDenConfigValid(): void {
+  let key: string;
+  try {
+    const st = fs.statSync(DEN_CONFIG_PATH);
+    key = `${st.mtimeMs}:${st.size}`;
+  } catch {
+    return;
+  }
+  if (checked?.key !== key) {
+    let error: ConfigError | null = null;
+    try {
+      const parsed = yaml.parse(fs.readFileSync(DEN_CONFIG_PATH, "utf-8")) as {
+        orgs?: unknown;
+      } | null;
+      validateOrgSources(parsed?.orgs, product().configFile);
+    } catch (e) {
+      if (!isConfigError(e)) return;
+      error = e;
+    }
+    checked = { key, error };
+  }
+  if (checked.error) throw new ConfigError(checked.error.message);
+}
+
 /**
  * Read the effective den config, merging the shared deployment config with
  * per-engineer overrides from config/local/user.yml.
@@ -471,6 +510,9 @@ export function readDenConfig(): DenConfig {
   try {
     const raw = fs.readFileSync(DEN_CONFIG_PATH, "utf-8");
     const parsed = yaml.parse(raw) as Partial<DenConfig> | null;
+    // ORG-1d keys (orgs.<id>.sources / .repos) are checked here, where a bad
+    // value throws naming its key; configs without them are not touched.
+    validateOrgSources(parsed?.orgs, product().configFile);
     // `environments` may be malformed (scalar/object) in a hand-edited file —
     // fall back to the default set rather than throwing on .filter below.
     const envs = Array.isArray(parsed?.environments)

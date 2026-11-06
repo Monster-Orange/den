@@ -344,6 +344,10 @@
     "err.500.time": "Time",
     "err.500.id": "Request id",
     "err.500.version": "Version",
+    "err.422.title": "Config is invalid",
+    "err.422.sub": "The distribution config fails validation",
+    "err.422.lead":
+      "Fix the key named above in the distribution config, then retry.",
     // The Settings registry's built-in rows, as the palette shows them
     // (set.<row id>; settings-registry.js keeps the English label).
     "set.appearance.mode": "Mode",

@@ -230,6 +230,10 @@
     "err.500.time": "時刻",
     "err.500.id": "リクエスト ID",
     "err.500.version": "バージョン",
+    "err.422.title": "設定が無効です",
+    "err.422.sub": "ディストリビューションの設定が検証に失敗しました",
+    "err.422.lead":
+      "上に示したキーをディストリビューションの設定で直してから、再試行してください。",
     "set.appearance.mode": "モード",
     "set.appearance.theme": "テーマ",
     "set.language": "言語",

@@ -75,6 +75,13 @@ const WORKSPACE_COMMANDS = new Set([
   ...WORKSPACE_EDIT_COMMANDS,
 ]);
 
+/**
+ * Commands that read `-w`/`--workspace` themselves, so it is left in their
+ * args: `setup --plan -w a -w b` takes several, and `mcp --workspace <ws>`
+ * scopes the MCP server (it never sets the CLI's workspace override).
+ */
+const OWN_WORKSPACE_FLAG_COMMANDS = new Set(["setup", "mcp"]);
+
 /** Whether `-w <name>` on this command requires `<name>` to be active. */
 export function workspaceFlagRequiresActive(command: string): boolean {
   return WORKSPACE_MUTATION_COMMANDS.has(command);
@@ -189,7 +196,7 @@ const COMMAND_FLAGS: Record<string, readonly string[]> = {
   ],
   restart: ["-A", "--app", "-n", "--dry-run"],
   logs: [],
-  setup: ["-f", "--force", "--plan"],
+  setup: ["-f", "--force", "--plan", "-w", "--workspace", "--all-active"],
   sync: [],
 };
 
@@ -209,8 +216,9 @@ export function unknownCommandFlags(command: string, args: string[]): string[] {
     (a) =>
       a.startsWith("-") &&
       !allowed.includes(a) &&
-      // `--app=<name>` is the one flag that also takes the = form.
-      !(allowed.includes("--app") && a.startsWith("--app=")),
+      // `--app=<name>` and `-w=`/`--workspace=` also take the = form.
+      !(allowed.includes("--app") && a.startsWith("--app=")) &&
+      !(allowed.includes("--workspace") && /^(-w|--workspace)=/.test(a)),
   );
 }
 
@@ -237,6 +245,16 @@ export function parseCliArgs(raw: string[]): ParsedCliArgs {
       continue;
     }
 
+    if (
+      parsed.command &&
+      OWN_WORKSPACE_FLAG_COMMANDS.has(parsed.command) &&
+      /^(-w|--workspace)(=|$)/.test(token)
+    ) {
+      parsed.args.push(token);
+      i += 1;
+      continue;
+    }
+
     const nextIndex = applyFlag(raw, i, parsed.flags);
     if (nextIndex !== null) {
       i = nextIndex;
@@ -253,4 +271,33 @@ export function parseCliArgs(raw: string[]): ParsedCliArgs {
 
   validateFlagScopes(parsed);
   return parsed;
+}
+
+/**
+ * Every `-w <ws>` / `--workspace <ws>` (and `=` form) in `args`, in order and
+ * repeatable, and the args without them. For a command that reads `-w`
+ * itself (OWN_WORKSPACE_FLAG_COMMANDS).
+ */
+export function takeWorkspaceFlags(args: readonly string[]): {
+  workspaces: string[];
+  rest: string[];
+} {
+  const workspaces: string[] = [];
+  const rest: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    const m = /^(-w|--workspace)(?:=(.*))?$/.exec(a);
+    if (!m) {
+      rest.push(a);
+      continue;
+    }
+    if (m[2] !== undefined) {
+      if (!m[2]) throw new Error(`${m[1]} requires a value`);
+      workspaces.push(m[2]);
+      continue;
+    }
+    workspaces.push(consumeFlagValue([...args], i, m[1]));
+    i++;
+  }
+  return { workspaces, rest };
 }

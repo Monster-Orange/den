@@ -42,4 +42,30 @@ describe("activityFor", () => {
       ),
     ).toBe(false);
   });
+
+  it("a refused non-lifecycle call shows for each service it named, and for their repos", () => {
+    const refused = [
+      ...entries,
+      at("logs_search", "out of scope", {
+        outcome: "refused",
+        reason: "out of scope",
+        addresses: ["core/api", "shop/web"],
+      }),
+      at("logs_tail", "out of scope", {
+        outcome: "refused",
+        reason: "out of scope",
+        addresses: ["core-web/ui"],
+      }),
+    ];
+    const verbs = (t: { address?: string; repo?: string }) =>
+      activityFor(refused, t).map((e) => e.verb);
+    expect(verbs({ address: "core/api" })).toEqual([
+      "logs_search",
+      "exec",
+      "exec",
+    ]);
+    expect(verbs({ address: "shop/web" })).toEqual(["logs_search", "exec"]);
+    expect(verbs({ repo: "core" })).toEqual(["logs_search", "exec", "exec"]);
+    expect(verbs({ address: "core/db" })).toEqual(["exec"]);
+  });
 });

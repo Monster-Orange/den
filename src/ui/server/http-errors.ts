@@ -4,7 +4,8 @@
  *   R26a  a page request (a browser navigation: GET/HEAD, Accept text/html,
  *         not /api/*) that fails gets the shell frame around an error page
  *         (public/error.html, drawn by error-page.js): 404 "Page not found"
- *         or 500 "Something went wrong", with the request id.
+ *         or 500 "Something went wrong", with the request id (422 "Config
+ *         is invalid" for a ConfigError).
  *   R26b  every /api/* error is JSON, one shape:
  *         { ok: false, error, code, requestId }. jsonApiErrors() makes that
  *         true for every route at the response, whatever the route sent
@@ -261,9 +262,12 @@ export function pluginForPath(
 
 /** What error.html is told: everything error-page.js draws from. */
 export interface ErrorPageData {
-  status: 404 | 500;
-  /** 404: the path asked for (no query). */
+  /** 422: the config fails validation (a ConfigError). */
+  status: 404 | 422 | 500;
+  /** 404 and 422: the path asked for (no query). */
   path?: string;
+  /** 422: the ConfigError's message (it names config keys, never values). */
+  message?: string;
   /** 500: what failed. */
   method?: string;
   route?: string;

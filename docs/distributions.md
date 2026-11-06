@@ -891,8 +891,14 @@ To see what a setup would clone before it clones anything, run
 `acme setup --plan`: each repo with its org and clone URL, and whether it
 is cloned yet. On a fresh machine it plans the blueprint (every workspace
 `acme workspace seed` would create); once seeded, the focused workspace.
-`acme up --plan` lists the same lines for the repos it would start. Both
-are read-only: nothing is cloned, seeded or written.
+`-w <workspace>` (repeatable) plans those workspaces instead, active or not,
+and `--all-active` every active one; on a fresh machine `-w` narrows the
+blueprint's plan. Repos that only workspaces outside the plan hold are named
+in a closing hint. A dev-managed repo shows the branch its checkout has out
+(read from its `.git/HEAD`), not a configured one. `acme up --plan` lists
+the same lines for the repos it would start, and exits 1 when nothing
+resolves (a name no workspace has, an empty workspace). Both are read-only:
+nothing is cloned, seeded or written.
 
 ## Orgs
 
@@ -940,6 +946,74 @@ its workspace's org is a warning in both lists, never an error.
 
 `org:` in the blueprint needs Den 0.2.7 or later: an older Den rejects the
 unknown key. Pin 0.2.7 before you commit it.
+
+### Sources and repos (0.2.8)
+
+An org is Den's own: its id is any key of `orgs:`, and it needs no git
+host. Two optional keys bind it to where its repos live:
+
+```yaml
+github_org: acme
+orgs:
+  acme-group: # one org, two GitHub owners
+    label: Acme Group
+    sources:
+      - { host: github, owner: acme }
+      - { host: github, owner: acme-labs }
+  globex-billing: # one owner split across two orgs
+    repos: [globex-invoices]
+  globex:
+    sources: [{ host: github, owner: globex }]
+  initech: # no git host at all
+    sources: []
+    repos: [widget]
+```
+
+- `orgs.<id>.sources` is a list of `{host, owner}` (or `{host, group}`). A
+  source claims that owner's repos for the org. `host: github` is built
+  in; any other host id (`gitlab`, …) claims repos whose `remote:` is on
+  `<host>.com` or a `<host>.` hostname, and clones them from that remote.
+- `orgs.<id>.repos` lists repos that belong to the org whatever their
+  owner.
+- An entry with neither key is what it was before 0.2.8: the GitHub owner
+  of its own name.
+
+The catalog (`config/local/service-catalog.yml`) takes a `remote:` for any
+host, beside `gh: owner/repo`, which stays as the GitHub shorthand:
+
+```yaml
+widget: { remote: git@git.initech.example:tools/widget.git }
+```
+
+A repo's org is the org whose `repos` lists it, else the org with a source
+that claims its owner, else its GitHub owner as before. That org is what
+`/api/orgs?repos=1` maps the repo to and what infers a workspace's org (step
+3 above). A claimed owner is not listed as an org of its own, and a
+`github_org` that names one makes the claiming org the default. Service rows
+(`/api/services`, `/api/health`) keep `org` as the repo's GitHub owner.
+
+A repo clones from its source: a GitHub source gives
+`https://github.com/<owner>/<repo>.git` with your `gh` as credential helper.
+A repo with no source that claims it clones and pulls from its `remote:`
+through plain git, with your own git credential helper; Den never hands it
+`gh` or any credential of its own. A remote must be `https://`, `ssh://`,
+`git://`, `file://`, `user@host:path` or an absolute path. `setup --plan`
+shows it as the clone URL, with any user info masked.
+
+An org with no GitHub source has no repo discovery (`register` lists
+nothing for it) and its repos are left off the Release page.
+
+These keys are checked when den.yml is read, and a bad value is an error
+that names its key (`orgs.initech.sources[0].owner must be …`). A repo
+listed by two orgs, or an owner claimed by two orgs' sources (or by a
+source and an org with no `sources` of that name), is an error naming both
+keys. Such an error stops every command that touches orgs, the catalog,
+clones or releases (exit 1, before any git call or write), and every web
+API route that reads the config answers it as 422 `{ "ok": false, "error":
+"<message>", "code": "config_invalid", "requestId": "<id>" }` (0.3: with
+the `X-Request-Id` header; a page request gets the error page). Without the new keys nothing
+changes: `/api/orgs` is byte for byte what 0.2.7 answered. They need Den
+0.2.8 or later.
 
 ## Stack namespaces
 
@@ -1220,6 +1294,46 @@ everyone's checkout is in the same place.
 
 `--port <n>` (on `mcp` or `mcp connect`) points it at a web server on another
 port.
+
+### Scoped to one workspace
+
+```sh
+./bin/acme mcp --workspace smb --actor agent:planner
+```
+
+`--workspace <ws>` and `--actor agent:<id>` (both or neither) scope the server
+to one workspace for one agent:
+
+- **Pinned.** A tool that takes a `workspace` gets `<ws>` when none is given.
+  A call naming another workspace is refused (`Refused: <tool>: this MCP
+server is scoped to workspace "<ws>" (agent:<id>); "<other>" is another
+workspace`) before anything reaches the web server. A refused call is
+  recorded in the activity trail, read tools included.
+- **Filtered.** `workspaces` lists `<ws>` only. `logs_search` and `logs_tail`
+  take only `<ws>`'s services, `manifest_validate` takes only an absolute path
+  inside one of its repos (or the content), and `workspace_sync` syncs `<ws>`.
+  Tests run against the focused workspace, so `tests_available` and
+  `run_tests` are refused unless `<ws>` is the focused one.
+- **Not workspace data**, served as unscoped: `environments`,
+  `security_latest`, `release_status` and `edge_status` (the org's and the
+  distribution's, not a workspace's).
+- **Stamped.** Every web API call carries `x-den-mcp-agent: agent:<id>` and
+  `x-den-mcp-workspace: <ws>` beside the usual audit headers. The activity
+  entry gains `agent` and `workspace`, and the log line reads `· by
+agent:<id> <client> <version> (workspace <ws>, mcp pid <pid>, session
+<id>)` for every exec, run and sync.
+- `<ws>` must exist in this distribution; until it does, every tool says so.
+  The id is letters, digits, dots, dashes and underscores (at most 64). A bad
+  or half-given scope is a usage error, exit 2. `--list` and `--call` take
+  the scope too.
+
+**It binds cooperating agents only.** The scope lives in the MCP server's
+process. The web server's HTTP API does not check it yet, so an agent that
+calls the API itself (curl, a browser) is not held to its workspace. Enforcing
+the scope in the HTTP server is WS-3a, planned for 0.4. `mcp connect` still
+registers the unscoped server; to hand one agent a scoped server, add it to
+that agent's config yourself, for example in a project's `.mcp.json`:
+`"args": ["mcp", "--workspace", "smb", "--actor", "agent:planner"]`.
 
 ### One call from a shell
 

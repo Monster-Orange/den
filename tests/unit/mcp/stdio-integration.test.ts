@@ -48,7 +48,13 @@ beforeAll(async () => {
           : url.pathname === "/api/server-info"
             ? // This distribution's server: the MCP server checks first.
               { pid: process.pid, version: "0.2.6", root, product: "den" }
-            : {},
+            : url.pathname === "/api/workspaces"
+              ? {
+                  active: ["smb", "enterprise"],
+                  focus: "enterprise",
+                  workspaces: { smb: {}, enterprise: {} },
+                }
+              : {},
       ),
     );
   });
@@ -183,7 +189,7 @@ describe("bin/den mcp --call / --list (one shot)", () => {
   // block it from answering.
   const run = (
     ...args: string[]
-  ): Promise<{ status: number | null; stdout: string }> =>
+  ): Promise<{ status: number | null; stdout: string; stderr: string }> =>
     new Promise((resolve) => {
       const p = spawn(
         path.join(ENGINE, "bin", "den"),
@@ -199,8 +205,10 @@ describe("bin/den mcp --call / --list (one shot)", () => {
         },
       );
       let stdout = "";
+      let stderr = "";
       p.stdout!.on("data", (d: Buffer) => (stdout += d.toString()));
-      p.on("close", (status) => resolve({ status, stdout }));
+      p.stderr!.on("data", (d: Buffer) => (stderr += d.toString()));
+      p.on("close", (status) => resolve({ status, stdout, stderr }));
     });
 
   it("--list prints the enabled tool names", async () => {
@@ -233,4 +241,61 @@ describe("bin/den mcp --call / --list (one shot)", () => {
     expect(r.status).toBe(1);
     expect(r.stdout).toMatch(/^Refused: .*production/);
   }, 30_000);
+
+  describe("scoped: --workspace <ws> --actor agent:<id> (AG-2a-core)", () => {
+    const scoped = ["--workspace", "smb", "--actor", "agent:planner"];
+
+    it("stamps the actor and the workspace on every call", async () => {
+      const before = requests.length;
+      const r = await run(...scoped, "--call", "status", "{}");
+      expect(r.status).toBe(0);
+      const mine = requests.slice(before);
+      const health = mine.find((q) => q.path === "/api/health");
+      expect(health?.headers).toMatchObject({
+        "x-den-actor": "agent",
+        "x-den-mcp-agent": "agent:planner",
+        "x-den-mcp-workspace": "smb",
+      });
+      for (const q of mine.filter((x) => x.path !== "/api/server-info"))
+        expect(q.headers["x-den-mcp-agent"]).toBe("agent:planner");
+    }, 30_000);
+
+    it("refuses another workspace with exit 1, reaching only the report", async () => {
+      const before = requests.length;
+      const r = await run(
+        ...scoped,
+        "--call",
+        "status",
+        JSON.stringify({ workspace: "enterprise" }),
+      );
+      expect(r.status).toBe(1);
+      expect(r.stdout).toMatch(
+        /^Refused: status: this MCP server is scoped to workspace "smb" \(agent:planner\); "enterprise" is another workspace/,
+      );
+      expect(
+        requests
+          .slice(before)
+          .map((q) => q.path)
+          .filter((p) => p !== "/api/server-info"),
+      ).toEqual(["/api/workspaces", "/api/activity"]);
+    }, 30_000);
+
+    it("a bad --actor is a usage error (exit 2) naming the shape", async () => {
+      const before = requests.length;
+      const r = await run("--workspace", "smb", "--actor", "planner", "--list");
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/--actor "planner" is not agent:<id>/);
+      expect(r.stdout).toBe("");
+      expect(requests.length).toBe(before);
+    }, 30_000);
+
+    it("unscoped calls send no agent or workspace header", async () => {
+      const before = requests.length;
+      expect((await run("--call", "status", "{}")).status).toBe(0);
+      for (const q of requests.slice(before)) {
+        expect(q.headers).not.toHaveProperty("x-den-mcp-agent");
+        expect(q.headers).not.toHaveProperty("x-den-mcp-workspace");
+      }
+    }, 30_000);
+  });
 });

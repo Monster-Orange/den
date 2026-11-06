@@ -19,6 +19,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { GH_API_TIMEOUT_MS } from "../../shared/constants.js";
 import {
+  readDenConfig,
   readExplicitReleaseOrg,
   readReleaseConfig,
   releaseOwnerFor,
@@ -29,6 +30,11 @@ import {
 } from "../../shared/den-config.js";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import { orgOf } from "../../shared/manifest/service-links.js";
+import {
+  ghOwnerOf,
+  isSourcedOrg,
+  orgHasGithub,
+} from "../../shared/org-sources.js";
 import { listReposWithManifests } from "../../shared/manifest/workspace-manifests.js";
 
 import { product } from "../../shared/product.js";
@@ -258,10 +264,10 @@ export class ReleaseService {
     const known = new Set(cfg.repos.map((r) => r.name));
     return {
       ...cfg,
-      repos: [
+      repos: releasableOnGithub([
         ...cfg.repos,
         ...manifestReleaseRepos().filter((r) => !known.has(r.name)),
-      ],
+      ]),
     };
   }
 
@@ -274,7 +280,8 @@ export class ReleaseService {
   private ownerFor(repo: string, cfg: ReleaseConfig): string {
     return releaseOwnerFor({
       explicitOrg: readExplicitReleaseOrg(),
-      catalogOwner: orgOf(repo, readCatalog()),
+      // The repo's GitHub owner, never its ORG-1d org id (which needn't be one).
+      catalogOwner: ghOwnerOf(readCatalog()[repo]),
       githubOrg: cfg.org,
     });
   }
@@ -1120,6 +1127,21 @@ export async function readVersionSha(
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
+}
+
+/**
+ * Release repos less those of an org with no GitHub source (ORG-1d): their
+ * release flow needs GitHub, so the Release page hides them rather than
+ * failing. With no ORG-1d keys every repo stays.
+ */
+export function releasableOnGithub(repos: ReleaseRepo[]): ReleaseRepo[] {
+  const orgs = readDenConfig().orgs ?? {};
+  if (!Object.values(orgs).some(isSourcedOrg)) return repos;
+  const catalog = readCatalog();
+  return repos.filter((r) => {
+    const org = orgOf(r.name, catalog, orgs);
+    return !org || orgHasGithub(org, orgs);
+  });
 }
 
 /** Workspace repos whose manifest has a `release:` block, as release repos. */

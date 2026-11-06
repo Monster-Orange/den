@@ -240,6 +240,10 @@
     "err.500.time": "Hora",
     "err.500.id": "Id de solicitud",
     "err.500.version": "Versión",
+    "err.422.title": "La configuración no es válida",
+    "err.422.sub": "La configuración de la distribución no pasa la validación",
+    "err.422.lead":
+      "Corrige la clave indicada arriba en la configuración de la distribución y reintenta.",
     "set.appearance.mode": "Modo",
     "set.appearance.theme": "Tema",
     "set.language": "Idioma",

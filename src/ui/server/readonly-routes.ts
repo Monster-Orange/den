@@ -102,13 +102,22 @@ export function activityFor(
   // and for each of its services.
   const repoLevel = (e: AuditEntry, repo: string): boolean =>
     e.verb === "exec" && e.detail.startsWith(repo + " ");
+  // A refused non-lifecycle call (logs_tail, logs_search, …) is listed under
+  // each service or repo it named.
+  const named = (e: AuditEntry, hit: (a: string) => boolean): boolean =>
+    (e.addresses ?? []).some(hit);
   const matches = (e: AuditEntry): boolean => {
-    if (target.address)
+    if (target.address) {
+      const address = target.address;
+      const repo = address.split("/")[0];
       return (
-        (e.verb === "exec" && e.detail.startsWith(target.address + " ")) ||
-        repoLevel(e, target.address.split("/")[0])
+        (e.verb === "exec" && e.detail.startsWith(address + " ")) ||
+        repoLevel(e, repo) ||
+        named(e, (a) => a === address || a === repo)
       );
+    }
     const repo = target.repo ?? "";
+    if (named(e, (a) => a === repo || a.startsWith(repo + "/"))) return true;
     if (e.verb === "exec")
       return e.detail.startsWith(repo + "/") || repoLevel(e, repo);
     if (e.verb === "sync") return e.detail.split(" ").includes(`repo=${repo}`);

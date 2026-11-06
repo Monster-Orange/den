@@ -33,10 +33,12 @@ import { moduleScanner } from "../../shared/test-discovery/module-scanner.js";
 import { resolvePerformanceModules } from "./module-selection.js";
 import {
   readCatalog,
-  resolveRepoGhSlug,
+  needsGhRepair,
+  resolveRepoCloneSource,
   upsertCatalogEntry,
 } from "../../shared/environment-manager/catalog.js";
 import { seedSecretsFromSibling } from "../../shared/environment-manager/secrets-check.js";
+import { upNeedsTarget } from "./up-args.js";
 import {
   readWorkspacesFile,
   writeWorkspacesFile,
@@ -120,6 +122,7 @@ import {
 } from "../../shared/environment-manager/service-runner.js";
 import { getGitHubCoords } from "../../shared/smoke/git-remote.js";
 import {
+  assertDenConfigValid,
   getReposRoot,
   mergeUserConfig,
   readDenConfig,
@@ -210,6 +213,7 @@ import { cmdGraph } from "./graph-command.js";
 import { resolveLogsTarget, tailServiceLogs } from "./logs-command.js";
 import {
   parseCliArgs,
+  takeWorkspaceFlags,
   unknownCommandFlags,
   workspaceFlagRequiresActive,
   type ParsedCliArgs,
@@ -358,7 +362,8 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   setup: {
-    usage: "setup [service...] [--force|-f] [--plan]",
+    usage:
+      "setup [service...] [--force|-f] [--plan [-w <workspace>]... [--all-active]]",
     lines: [
       "Run 'make setup' once per system (clones missing managed repos first).",
       "Default targets MANAGED clones only — setup's codegen/installs",
@@ -366,6 +371,8 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "--force (-f) includes dev-managed repos; naming a service always works.",
       "--plan prints each repo's org and clone URL and stops: nothing is",
       "cloned, seeded or written (on a fresh machine: the blueprint's plan).",
+      "It plans the focused workspace; -w <workspace> (repeatable) plans those,",
+      "--all-active every active one. Repos only other workspaces hold are named.",
     ],
   },
   org: {
@@ -551,6 +558,27 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "theme",
   "plugin",
 ]);
+
+/**
+ * Commands that run with a config that fails validation: the web and MCP
+ * servers (each route or tool reports it), and those that read neither orgs,
+ * the catalog nor clones (manifest validate, create, the per-engineer
+ * config and local-dev toggles, saved results). Every other registered
+ * command checks the config first.
+ */
+const CONFIG_FREE_COMMANDS = new Set<string>([
+  "web",
+  "mcp",
+  "validate",
+  "create",
+  "config",
+  "local-dev",
+  "view-results",
+]);
+
+function configCheckedCommand(command: string): boolean {
+  return TELEMETRY_COMMANDS.has(command) && !CONFIG_FREE_COMMANDS.has(command);
+}
 
 /** Map a raw command token to a PII-safe, registered telemetry command name. */
 function telemetryCommandName(command?: string): string {
@@ -774,6 +802,12 @@ class DenCLI {
     }
 
     try {
+      // A config that fails validation stops every command that touches
+      // orgs, the catalog, clones or releases before it reads or writes
+      // anything: some (sync over existing clones, register, workspace
+      // create) never read `orgs:` and used to carry on (ORG-1d).
+      if (command && configCheckedCommand(command)) assertDenConfigValid();
+
       switch (command) {
         case "run":
           await this.runTestsCommand(args.slice(1));
@@ -1223,10 +1257,11 @@ class DenCLI {
       try {
         // An entry with `gh: ""` clones from the workspace's org, as `up`
         // does (and `setup --plan` says), instead of failing on an empty slug.
-        const ghSlug = resolveRepoGhSlug(repoName, catalog, () =>
+        // ORG-1d: a repo with no source and a `remote:` clones from it.
+        const ghSlug = resolveRepoCloneSource(repoName, catalog, () =>
           githubOrgFor(ws.name),
         );
-        if (!catalogEntry.gh?.trim())
+        if (needsGhRepair(catalogEntry, ghSlug))
           upsertCatalogEntry(repoName, { ...catalogEntry, gh: ghSlug });
         ensureManagedServiceClone(repoName, ghSlug, branch);
       } catch (err) {
@@ -1329,10 +1364,12 @@ class DenCLI {
       // Catalog entries written by the dev-managed add flow carry `gh: ""`, so
       // an entry can exist yet be unclonable. Derive the conventional slug and
       // persist the repair rather than cloning from an empty URL.
-      const ghSlug = resolveRepoGhSlug(repoName, catalog, () =>
+      // ORG-1d: a repo with no source and a `remote:` clones from it.
+      const ghSlug = resolveRepoCloneSource(repoName, catalog, () =>
         githubOrgFor(ws.name),
       );
-      if (!catalog[repoName]?.gh) upsertCatalogEntry(repoName, { gh: ghSlug });
+      if (needsGhRepair(catalog[repoName], ghSlug))
+        upsertCatalogEntry(repoName, { ...catalog[repoName], gh: ghSlug });
       try {
         // runSetup=false: clone only — setup is run below, hidden + non-interactive.
         ensureManagedServiceClone(repoName, ghSlug, branch, false);
@@ -1569,6 +1606,8 @@ class DenCLI {
        * in order, and run nothing. Read-only on every path.
        */
       dryRun?: boolean;
+      /** `--plan`: a preview that would run nothing exits 1. */
+      plan?: boolean;
     },
   ): Promise<void> {
     // How long to show startup output before handing control back to the menu
@@ -1680,6 +1719,7 @@ class DenCLI {
         );
       }
       if (previews.some((p) => p.kind === "error")) process.exitCode = 1;
+      if (opts?.plan && runs.length === 0) process.exitCode = 1;
       console.log(chalk.gray(`  (--dry-run: not ${doing} anything)\n`));
       return;
     }
@@ -2164,6 +2204,7 @@ class DenCLI {
           `\n  ${chalk.bold(seed)} has no derived dependencies to start.\n`,
         ),
       );
+      if (plan) process.exitCode = 1;
       return;
     }
     // Systems the user toggled to auto-start OFF in this workspace are not
@@ -2446,6 +2487,7 @@ class DenCLI {
           "\n  No services in the active workspace — nothing to start.\n",
         ),
       );
+      if (plan) process.exitCode = 1;
       return;
     }
     const { rawOrder, graph } = target;
@@ -2882,10 +2924,10 @@ class DenCLI {
   }
 
   private async cmdServiceUp(args: string[]): Promise<void> {
-    await this.ensureWorkspaceSeeded();
     // Tokens after a `--` terminator belong to a child command — they must
     // never be read as up's own flags (`den up -- -a` is NOT `up -a`).
     const terminator = args.indexOf("--");
+    await this.ensureWorkspaceSeeded();
     const { app, rest } = takeAppFlag(
       terminator === -1 ? args : args.slice(0, terminator),
     );
@@ -2949,6 +2991,7 @@ class DenCLI {
     await this.cmdServiceUpManifest(
       ownArgs.filter((a) => !a.startsWith("-")),
       dryRun || plan,
+      plan,
     );
   }
 
@@ -2956,6 +2999,7 @@ class DenCLI {
   private async cmdServiceUpManifest(
     addresses: string[],
     dryRun = false,
+    plan = false,
   ): Promise<void> {
     // Resolve targets BEFORE the secrets preflight — otherwise running
     // `den up` from a non-service dir (e.g. the den repo root) triggers
@@ -2974,6 +3018,16 @@ class DenCLI {
                 `  or run \`${product().cli} graph\` to see the workspace.\n`,
             ),
         );
+      } else if (process.env.DEN_WORKSPACE_OVERRIDE) {
+        // `up -w <ws>` with nothing to start: -w picks the workspace, not
+        // what in it to start. A usage error, not an empty plan.
+        console.error(
+          chalk.red(
+            `\n  ${upNeedsTarget(product().cli, process.env.DEN_WORKSPACE_OVERRIDE, plan)}\n`,
+          ),
+        );
+        process.exitCode = 2;
+        return;
       } else {
         console.log(
           chalk.yellow(
@@ -2981,12 +3035,15 @@ class DenCLI {
           ),
         );
       }
+      // A plan that resolves nothing is a failed plan (scripts check it).
+      if (plan) process.exitCode = 1;
       return;
     }
     if (!dryRun) preflightSecrets();
     await this.runServicesCommand(targets, "up", undefined, {
       named: addresses,
       dryRun,
+      plan,
     });
   }
 
@@ -3396,6 +3453,21 @@ class DenCLI {
       );
       return;
     }
+    const repoPathArg = args.find(
+      (a, i) =>
+        !a.startsWith("-") && !/^--(name|gh|org)$/.test(args[i - 1] ?? ""),
+    );
+    // Without a path, register prompts: with no terminal (stdin closed or
+    // piped, where readline would throw ERR_USE_AFTER_CLOSE mid-prompt), say
+    // how to name one. Usage error: exit 2.
+    if (!repoPathArg && !process.stdin.isTTY) {
+      process.stderr.write(
+        `register needs a terminal (stdin is not a TTY); without one: ` +
+          `${product().cli} register <path> [--name <repo>] [--gh <owner/repo>] [-w <workspace>]\n`,
+      );
+      process.exitCode = 2;
+      return;
+    }
     const ws = getActiveWorkspace();
     if (!ws) {
       console.log(
@@ -3406,10 +3478,6 @@ class DenCLI {
       return;
     }
 
-    const repoPathArg = args.find(
-      (a, i) =>
-        !a.startsWith("-") && !/^--(name|gh|org)$/.test(args[i - 1] ?? ""),
-    );
     if (repoPathArg) {
       const flag = (n: string) => {
         const i = args.indexOf(n);
@@ -3419,18 +3487,6 @@ class DenCLI {
       return;
     }
 
-    // The pickers below need a terminal: with stdin closed or piped,
-    // readline would throw ERR_USE_AFTER_CLOSE mid-prompt.
-    if (!process.stdin.isTTY) {
-      console.error(
-        chalk.red(
-          "\n  ❌ register needs a terminal (stdin is not a TTY).\n" +
-            `     Without one, name the checkout: ${product().cli} register <path> [--name <repo>] [--gh <owner/repo>] [-w <workspace>]\n`,
-        ),
-      );
-      process.exitCode = 1;
-      return;
-    }
     const source = await cliPrompts.promptForRegistrationSource();
 
     if (source === "local") {
@@ -3682,7 +3738,8 @@ class DenCLI {
       console.log(
         chalk.red(
           `\n  ❌ No GitHub org to list: set github_org in ${product().configFile}, ` +
-            `org: on workspace ${ws.name}, or pass --org <id>\n`,
+            `org: on workspace ${ws.name}, or pass --org <id> ` +
+            `(an org with no GitHub source in orgs.<id>.sources has none)\n`,
         ),
       );
       return;
@@ -3935,16 +3992,36 @@ class DenCLI {
     console.log(chalk.gray(`    revert: ${revert}\n`));
   }
 
-  private async cmdSetup(args: string[]): Promise<void> {
+  private async cmdSetup(rawArgs: string[]): Promise<void> {
+    // `-w <ws>` (repeatable) and `--all-active` pick the workspaces to plan.
+    const { workspaces: planWs, rest: args } = takeWorkspaceFlags(rawArgs);
+    const allActive = args.includes("--all-active");
     const force = args.includes("--force") || args.includes("-f");
     const names = args.filter((a) => !a.startsWith("-"));
 
     // `--plan`: each repo's org and clone URL, then stop. Read-only.
     if (args.includes("--plan")) {
+      let plan: ReturnType<typeof buildSetupPlan>;
+      try {
+        plan = buildSetupPlan(names, { workspaces: planWs, allActive });
+      } catch (e) {
+        console.error(chalk.red(`\n  ${(e as Error).message}\n`));
+        process.exitCode = 1;
+        return;
+      }
       console.log(chalk.bold("\n  Setup plan (no changes will be made):\n"));
-      for (const line of renderClonePlan(buildSetupPlan(names), product().cli))
+      for (const line of renderClonePlan(plan, product().cli))
         console.log(`  ${line}`.trimEnd());
       console.log();
+      return;
+    }
+    if (planWs.length || allActive) {
+      console.error(
+        chalk.red(
+          `\n  -w and --all-active go with --plan: setup itself works on the focused workspace.\n`,
+        ),
+      );
+      process.exitCode = 1;
       return;
     }
 

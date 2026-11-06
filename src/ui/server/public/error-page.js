@@ -178,6 +178,23 @@ export function mountErrorPage(root) {
     return;
   }
 
+  if (d.status === 422) {
+    document.title = document.title.replace(/Error$/, t("err.422.title"));
+    root.innerHTML =
+      header(t("err.422.title"), esc(t("err.422.sub"))) +
+      `<div class="empty"><p class="lead mono">${esc(d.message ?? "")}</p>` +
+      `<p>${esc(t("err.422.lead"))}</p>` +
+      `<dl class="facts">` +
+      `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
+      `</dl><div class="acts">` +
+      `<button type="button" class="btn primary" id="den-err-retry">${esc(t("err.retry"))}</button>` +
+      `</div></div>`;
+    root
+      .querySelector("#den-err-retry")
+      ?.addEventListener("click", () => location.reload());
+    return;
+  }
+
   document.title = document.title.replace(/Error$/, t("err.500.title"));
   const what = `${d.method ?? "GET"} ${d.route ?? ""}`;
   const when = new Date(d.time);

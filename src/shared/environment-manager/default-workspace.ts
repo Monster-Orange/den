@@ -22,8 +22,10 @@ import {
 import {
   githubOrgFor,
   readOrgContext,
+  resolveWorkspaceOrg,
   type OrgContext,
 } from "./workspace-org.js";
+import { orgHasGithub } from "../org-sources.js";
 import type {
   ServiceCatalog,
   WorkspaceConfig,
@@ -93,11 +95,17 @@ export function catalogFill(
   ctx: OrgContext = readOrgContext(),
 ): Map<string, string> {
   const fill = new Map<string, string>();
-  for (const ws of workspaces)
+  for (const ws of workspaces) {
+    // ORG-1d: an org with no GitHub source has no slug to give; its repos
+    // clone from their catalog `remote:`.
+    const org = resolveWorkspaceOrg(ws.name, ctx).org;
+    if (org && !orgHasGithub(org, ctx.config.orgs)) continue;
     for (const repo of ws.repos) {
-      if (catalog[repo]?.gh || fill.has(repo)) continue;
+      if (catalog[repo]?.gh || catalog[repo]?.remote || fill.has(repo))
+        continue;
       fill.set(repo, `${githubOrgFor(ws.name, ctx)}/${repo}`);
     }
+  }
   return fill;
 }
 

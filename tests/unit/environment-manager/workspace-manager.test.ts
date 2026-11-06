@@ -470,6 +470,22 @@ describe("branch/slug validation", () => {
     expect(mockCp.execSync).not.toHaveBeenCalled();
   });
 
+  it("a rejected remote carrying a token is never echoed in the error", () => {
+    let msg = "";
+    try {
+      mod.ensureManagedServiceClone(
+        "repo",
+        "https://user:sekrit-probe@git.example.test/a b.git",
+        "main",
+      );
+    } catch (e) {
+      msg = (e as Error).message;
+    }
+    expect(msg).toMatch(/Invalid GitHub slug/);
+    expect(msg).not.toContain("sekrit-probe");
+    expect(mockCp.execSync).not.toHaveBeenCalled();
+  });
+
   it("ensureManagedServiceCloneNewBranch validates baseBranch and newBranch", () => {
     expect(() =>
       mod.ensureManagedServiceCloneNewBranch(
@@ -695,16 +711,44 @@ describe("pullRepo", () => {
   it("restores codegen-dirtied files, then pulls --ff-only in the repo directory", () => {
     pullRepo("/my/repo");
 
-    const calls = (mockCp.execSync as jest.Mock).mock.calls as [
-      string,
-      Record<string, unknown>,
-    ][];
+    // ORG-1d's credential-mark lookup (`git config --get den.credential`) is
+    // not part of the restore → pull order.
+    const calls = (
+      (mockCp.execSync as jest.Mock).mock.calls as [
+        string,
+        Record<string, unknown>,
+      ][]
+    ).filter(([c]) => !/config --local --get/.test(c));
     // `make up` codegen (datestamped gen/openapi/README.md etc.) dirties
     // managed clones and blocks ff-only pulls — restore must come FIRST.
     expect(calls[0][0]).toMatch(/restore \./);
     expect(calls[0][1]).toMatchObject({ cwd: "/my/repo" });
     expect(calls[1][0]).toMatch(/pull --ff-only/);
     expect(calls[1][1]).toMatchObject({ cwd: "/my/repo" });
+  });
+
+  it("ORG-1d: a clone Den made from a remote: pulls through plain git, never gh", () => {
+    (mockCp.execSync as jest.Mock).mockImplementation(
+      (cmd: string, opts?: Record<string, unknown>) =>
+        /config --local --get den\.credential/.test(cmd)
+          ? "git\n"
+          : opts?.encoding === "utf-8"
+            ? "0"
+            : Buffer.from(""),
+    );
+    pullRepo("/my/plain");
+    const pull = (
+      (mockCp.execSync as jest.Mock).mock.calls as [string, unknown][]
+    ).find(([c]) => /pull --ff-only/.test(c));
+    expect(pull?.[0]).toBe("git pull --ff-only");
+  });
+
+  it("ORG-1d: an unmarked (GitHub) clone still pulls with gh as credential helper", () => {
+    pullRepo("/my/repo");
+    const pull = (
+      (mockCp.execSync as jest.Mock).mock.calls as [string, unknown][]
+    ).find(([c]) => /pull --ff-only/.test(c));
+    expect(pull?.[0]).toContain('credential.helper="!gh auth git-credential"');
   });
 });
 

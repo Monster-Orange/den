@@ -1,8 +1,9 @@
 /**
  * Which work org a workspace belongs to (ORG-1a, ORG-SPEC §2).
  *
- * An org is a key of `orgs:` or a GitHub owner. ORG-1a keeps today's model:
- * an org with no `sources` is the GitHub owner of the same name, and
+ * An org is a key of `orgs:` or a GitHub owner. An org with no `sources`
+ * and no `repos` is the GitHub owner of the same name (ORG-1a); ORG-1d's
+ * keys make it any name (org-sources.ts), and a repo's org is orgOf's.
  * `github_org` is the default org. A workspace's org resolves through this
  * chain, first match wins:
  *
@@ -25,6 +26,7 @@ import {
 import { readCatalog } from "./catalog.js";
 import { parseAddress, readWorkspacesFile } from "./workspaces.js";
 import { orgOf } from "../manifest/service-links.js";
+import { githubOwnersOf, orgClaimingOwner } from "../org-sources.js";
 import { cachedRead } from "../read-cache.js";
 import type {
   ServiceCatalog,
@@ -71,12 +73,16 @@ export function readOrgContext(): OrgContext {
   };
 }
 
-/** `id` spelled as its `orgs:` key when one matches case-insensitively. */
+/**
+ * `id` spelled as its `orgs:` key when one matches case-insensitively; a
+ * GitHub owner an ORG-1d source claims (`github_org: acme` with a source
+ * for acme) is that source's org.
+ */
 export function canonicalOrg(id: string, config: DenConfig): string {
   const key = Object.keys(config.orgs ?? {}).find(
     (k) => lower(k) === lower(id),
   );
-  return key ?? id;
+  return key ?? orgClaimingOwner(id, config.orgs) ?? id;
 }
 
 /** The default org: `github_org`, or null when unset. */
@@ -104,7 +110,7 @@ function workspaceRepos(
 function knownOrgs(ctx: OrgContext): Set<string> {
   const ids = new Set(Object.keys(ctx.config.orgs ?? {}).map(lower));
   for (const repo of Object.keys(ctx.catalog)) {
-    const o = orgOf(repo, ctx.catalog);
+    const o = orgOf(repo, ctx.catalog, ctx.config.orgs);
     if (o) ids.add(lower(o));
   }
   const d = ctx.config.github_org?.trim();
@@ -133,7 +139,7 @@ export function resolveWorkspaceOrg(
   const repos = workspaceRepos(ws, bp, ctx.catalog);
   const owners = new Map<string, string>(); // lowercased → first spelling
   for (const repo of repos) {
-    const o = orgOf(repo, ctx.catalog);
+    const o = orgOf(repo, ctx.catalog, ctx.config.orgs);
     if (o && !owners.has(lower(o))) owners.set(lower(o), o);
   }
 
@@ -179,7 +185,7 @@ export function resolveWorkspaceOrg(
     (owners.size <= 1 || source === "workspace" || source === "blueprint")
   )
     for (const repo of repos) {
-      const o = orgOf(repo, ctx.catalog);
+      const o = orgOf(repo, ctx.catalog, ctx.config.orgs);
       if (o && lower(o) !== lower(org))
         warnings.push(
           `workspace ${name}: repo ${repo} belongs to ${o}, not the workspace's org ${org}`,
@@ -209,16 +215,25 @@ export function resolveAllWorkspaceOrgs(ctx?: OrgContext): WorkspaceOrg[] {
 
 /**
  * The GitHub owner to clone and register a workspace's repos under: its
- * resolved org. With none at all (no org anywhere and no `github_org`) this
- * throws exactly as requireGithubOrg does, so an old config fails as before.
+ * resolved org, which for a legacy org is that GitHub owner. An org with
+ * ORG-1d `sources` gives its first GitHub source's owner, and one with no
+ * GitHub source throws (its repos clone from `remote:`; discovery is off).
+ * With no org at all (no org anywhere and no `github_org`) this throws
+ * exactly as requireGithubOrg does, so an old config fails as before.
  */
 export function githubOrgFor(workspace: string, ctx?: OrgContext): string {
   const hit = ctx
     ? resolveWorkspaceOrg(workspace, ctx)
     : (resolveAllWorkspaceOrgs().find((w) => w.workspace === workspace) ??
       resolveWorkspaceOrg(workspace, readOrgContext()));
-  if (hit.org) return hit.org;
-  return requireGithubOrg(ctx?.config);
+  if (!hit.org) return requireGithubOrg(ctx?.config);
+  const orgs = (ctx?.config ?? readDenConfig()).orgs;
+  const owner = githubOwnersOf(hit.org, orgs)[0];
+  if (owner) return owner;
+  throw new Error(
+    `org ${hit.org} has no GitHub source (orgs.${hit.org}.sources): ` +
+      `give workspace ${workspace}'s repos a remote: in the service catalog`,
+  );
 }
 
 export interface OrgEntry {
