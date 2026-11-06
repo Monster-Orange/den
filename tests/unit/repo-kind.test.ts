@@ -64,18 +64,18 @@ describe("repo kind", () => {
 
 describe("applications with modules", () => {
   it("lists modules and libraries as contributors, not as runtime repos", () => {
-    const [smb] = resolveApplications({
+    const [north] = resolveApplications({
       repos: ["core", "feat", "lib"],
-      config: { smb: { repos: ["core", "feat", "lib"] } },
+      config: { north: { repos: ["core", "feat", "lib"] } },
       kinds: { feat: "module", lib: "library" },
       contributesTo: { feat: ["core"] },
     });
-    expect(smb.repos).toEqual(["core"]);
-    expect(smb.contributors).toEqual([
+    expect(north.repos).toEqual(["core"]);
+    expect(north.contributors).toEqual([
       { repo: "feat", kind: "module", contributesTo: ["core"] },
       { repo: "lib", kind: "library", contributesTo: [] },
     ]);
-    expect(describeContributor(smb.contributors[0])).toBe(
+    expect(describeContributor(north.contributors[0])).toBe(
       "feat (module) → ships in core",
     );
   });

@@ -1315,7 +1315,7 @@ port.
 ### Scoped to one workspace
 
 ```sh
-./bin/acme mcp --workspace smb --actor agent:planner
+./bin/acme mcp --workspace north --actor agent:planner
 ```
 
 `--workspace <ws>` and `--actor agent:<id>` (both or neither) scope the server
@@ -1350,7 +1350,7 @@ calls the API itself (curl, a browser) is not held to its workspace. Enforcing
 the scope in the HTTP server is WS-3a, planned for 0.4. `mcp connect` still
 registers the unscoped server; to hand one agent a scoped server, add it to
 that agent's config yourself, for example in a project's `.mcp.json`:
-`"args": ["mcp", "--workspace", "smb", "--actor", "agent:planner"]`.
+`"args": ["mcp", "--workspace", "north", "--actor", "agent:planner"]`.
 
 ### One call from a shell
 

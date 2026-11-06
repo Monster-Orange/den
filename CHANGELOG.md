@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.3.0] - unreleased
+## [0.3.0] - 2026-11-06
 
 0.3.0-dev.31 and later include all of 0.2.7 (below).
 
@@ -1424,11 +1424,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
-- 0.3.0-dev.40, the edge's owner labels: nothing required. The edge's
+- 0.3.0-dev.40, the edge's owner labels: plan one `edge up`. The edge's
   compose.yml gains `den.edge.root` and `den.edge.org` labels, so the first
   `edge up` (or `stack up`) after upgrading recreates the edge once, from
-  its own state dir, and routes stay up: the edge rejoins running stacks'
-  networks. A scratch or test root that sets `DEN_EDGE_DIR` needs an
+  its own state dir. Routes drop only while the container restarts, then
+  stay up: the edge rejoins running stacks' networks. Run it once, from
+  the edge's own dir, when a brief blip is acceptable. A scratch or test root that sets `DEN_EDGE_DIR` needs an
   `edge.org` of its own; with the real one it is refused.
 - 0.3.0-dev.40, commands that detach: a command other than up and restart
   that should keep running detached says `detachable: true`.
