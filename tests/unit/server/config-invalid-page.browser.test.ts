@@ -160,6 +160,40 @@ describe("a page navigation with an invalid config", () => {
     await page.close();
   });
 
+  // 0.4.1 (the config-poll fix): once the shell knows the config is
+  // invalid (the 422 page's data, or the server's mark on a page that still
+  // loads), it starts none of its config polls and streams, so the console
+  // has no "Failed to load resource … 422" lines. The navigation itself is
+  // the only 422 a page gets: every /api answer counted here is after it.
+  it.each([
+    "/",
+    "/graph",
+    "/tests",
+    "/services",
+    "/environments",
+    "/release",
+    "/edge",
+    "/settings",
+    "/logs",
+  ])(
+    "%s asks no /api route that answers 422",
+    async (p) => {
+      if (skip()) return;
+      const { page, refused } = await open(p);
+      // The shell has booted: its chips are drawn and the lock asked.
+      await page.waitForFunction(
+        () => !!(window as unknown as { denShell?: unknown }).denShell,
+      );
+      await page.waitForSelector("#den-lock .den-lbl-l");
+      // A poll interval's worth of quiet (the health poll is 5 s): nothing
+      // the shell starts later may answer 422 either.
+      await page.waitForTimeout(6_000);
+      expect(refused).toEqual([]);
+      await page.close();
+    },
+    30_000,
+  );
+
   it.each([
     ["ja", "設定が無効です", "直したら再読み込み"],
     ["es", "La configuración no es válida", "Recargar cuando esté corregido"],

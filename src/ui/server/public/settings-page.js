@@ -172,6 +172,11 @@ export async function mountSettings(deps) {
     return true;
   }
   async function loadWorkspaceSettings() {
+    // 0.4.1: under an invalid config it answers 422; the rows show none.
+    if (window.denShell?.configInvalid?.() === true) {
+      ctx.wsSettings = null;
+      return;
+    }
     ctx.wsSettings = ctx.workspace
       ? await getJson(
           `/api/workspaces/settings?workspace=${encodeURIComponent(ctx.workspace)}`,

@@ -397,6 +397,41 @@
     "err.retry": "Retry",
     "err.copy": "Copy details",
     "err.copied": "Copied",
+    // The Workspaces page's Agents section (AG-4a, agents-section.js).
+    "ag.title": "Agents",
+    "ag.caption": "Agents in {ws}",
+    "ag.count": "{n} agents",
+    "ag.count.one": "{n} agent",
+    "ag.col.agent": "Agent",
+    "ag.col.runtime": "Runtime",
+    "ag.col.state": "State",
+    "ag.col.cwd": "Directory",
+    "ag.col.started": "Started",
+    "ag.col.actions": "Actions",
+    "ag.loading": "Loading agents…",
+    "ag.none": "No agents in this workspace yet",
+    "ag.personaOf": "persona {persona}",
+    "ag.state.running": "running",
+    "ag.state.stopping": "stopping…",
+    "ag.state.stopped": "stopped",
+    "ag.state.ended": "ended",
+    "ag.state.exited": "exited",
+    "ag.state.exitedCode": "exited ({code})",
+    "ag.stop": "Stop",
+    "ag.resume": "Resume",
+    "ag.stopName": "Stop {id}",
+    "ag.resumeName": "Resume {id}",
+    "ag.start": "+ Start agent",
+    "ag.persona": "Persona",
+    "ag.runtime": "Runtime",
+    "ag.runtime.auto": "The persona's",
+    "ag.unavailable": "unavailable",
+    "ag.go": "Start",
+    "ag.starting": "Starting…",
+    "ag.cancel": "Cancel",
+    "ag.started": "Started agent {id}",
+    "ag.stopped": "Stopped agent {id}",
+    "ag.resumed": "Resumed agent {id}",
   };
   // The languages the UI has a catalog for, each named in itself (a name is
   // never translated). The server's list is ui-language.ts's UI_LANGUAGES.
@@ -3247,6 +3282,26 @@
     }
   }
 
+  // The config fails validation (0.4.1): the server marks every page it
+  // serves while it does (data-config-invalid on #den-shell), and the first
+  // /api answer of 422 config_invalid marks it too. From then on the shell
+  // and its modules start none of the polls and streams that read the
+  // config (health, edge, workspaces, applications, the org config, …):
+  // each would only answer 422 again. A reload once fixed starts them.
+  var configBad = host.dataset.configInvalid === "1";
+  function configInvalid() {
+    return configBad;
+  }
+  function markConfigInvalid() {
+    if (configBad) return;
+    configBad = true;
+    try {
+      window.dispatchEvent(new CustomEvent("den:config-invalid"));
+    } catch (e) {
+      /* no CustomEvent */
+    }
+  }
+
   // R26d: the server unreachable.
   var server = { up: true, delay: 0, timer: null, tick: null, nextAt: 0 };
   var rawFetch =
@@ -3326,6 +3381,13 @@
       return p.then(
         function (r) {
           if (!server.up && sameOrigin(input)) serverBack();
+          if (r && r.status === 422 && !configBad && sameOrigin(input))
+            r.clone()
+              .json()
+              .then(function (b) {
+                if (b && b.code === "config_invalid") markConfigInvalid();
+              })
+              .catch(function () {});
           return r;
         },
         function (err) {
@@ -3401,6 +3463,8 @@
     serverUp: function () {
       return server.up;
     },
+    /** 0.4.1: true once the config is known to fail validation. */
+    configInvalid: configInvalid,
     /** The browser-tab icon (appearance.js: the active theme's, per mode). */
     setFavicon: setFavicon,
     /** The org part of the scope: "/ ORG <title>", static (one org). */
@@ -3502,7 +3566,7 @@
       .catch(function () {});
 
   // The Edge page shows once the edge is configured (no Docker asked).
-  if (typeof fetch === "function")
+  if (typeof fetch === "function" && !configInvalid())
     fetch("/api/edge?probe=1")
       .then(function (r) {
         return r.ok ? r.json() : null;

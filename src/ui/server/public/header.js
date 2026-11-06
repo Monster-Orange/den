@@ -668,8 +668,17 @@ export async function initChangelog() {
 
 let ___DEN_CLI__Config = null;
 
+/**
+ * 0.4.1: true once the shell knows the config fails validation (shell.js
+ * configInvalid): the polls and streams below that read it don't start.
+ */
+function configInvalid() {
+  return window.denShell?.configInvalid?.() === true;
+}
+
 async function getDenConfig() {
   if (___DEN_CLI__Config) return ___DEN_CLI__Config;
+  if (configInvalid()) return { environments: ["local"] };
   try {
     ___DEN_CLI__Config = await fetch("/api/__DEN_CLI__/config").then((r) =>
       r.json(),
@@ -731,6 +740,7 @@ let _apps = null;
 let _appsAt = 0;
 async function _loadApps() {
   if (_apps && Date.now() - _appsAt < 30_000) return _apps;
+  if (configInvalid()) return _apps ?? [];
   try {
     const r = await fetch("/api/applications", {
       signal: AbortSignal.timeout(5_000),
@@ -790,7 +800,7 @@ export async function refreshWorkspacePill() {
 
 async function _renderScopeMenu() {
   const sh = window.denShell;
-  if (!sh?.setWorkspaces) return;
+  if (!sh?.setWorkspaces || configInvalid()) return;
   try {
     const [data, scope] = await Promise.all([
       fetch("/api/workspaces").then((r) => r.json()),
@@ -885,6 +895,7 @@ async function _setFocus(name) {
 /** Call once on page load. Does NOT manage env changes — caller handles that. */
 export async function initHealth() {
   await envReady();
+  if (configInvalid()) return;
   const env = healthEnv();
   const gen = ++pollGen;
   await renderHealth(env, gen);
@@ -895,6 +906,7 @@ export async function initHealth() {
 export async function refreshHealth(env, { force = false } = {}) {
   const gen = ++pollGen;
   clearTimeout(pollTimer);
+  if (configInvalid()) return;
   // The chip goes neutral while the new env is checked: never red from
   // the old env's answers, never a partial count.
   if (env !== _healthEnvPainted) paintChecking();
@@ -913,6 +925,7 @@ document.addEventListener("visibilitychange", () => {
 
 function schedulePoll(env, gen) {
   if (gen !== pollGen) return; // superseded by an env switch/re-init
+  if (configInvalid()) return; // a reload once fixed starts it again
   clearTimeout(pollTimer);
   pollTimer = setTimeout(async () => {
     try {

@@ -681,6 +681,9 @@
         const toolbar = document.getElementById("logs-toolbar");
         let services;
         try {
+          // An invalid config (the shell knows): not asked, it lists nothing.
+          if (window.denShell?.configInvalid?.() === true)
+            throw new Error("config invalid");
           services = await fetch(`/api/services?env=${env}`).then((r) =>
             r.json(),
           );

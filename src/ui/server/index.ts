@@ -470,6 +470,17 @@ setHtmlFill((html) => {
     .join(mode)
     .split("@@DEN_DEFAULT_MODE@@")
     .join(def);
+  // 0.4.1: every page says when the config fails validation, so the shell
+  // starts none of its config polls (each would answer 422).
+  try {
+    assertDenConfigValid();
+  } catch (e) {
+    if (isConfigError(e))
+      out = out.replace(
+        '<div id="den-shell"',
+        () => '<div id="den-shell" data-config-invalid="1"',
+      );
+  }
   // MD-2: every page says when the engine on disk is not the one running.
   const engine = engineCheck();
   if (engine.stale)
@@ -658,6 +669,7 @@ import { parseChangelog } from "./changelog-parser.js";
 import { GitHubService } from "./github-service.js";
 import { EditorManager, SUPPORTED_LANGUAGES } from "./editor-manager.js";
 import { handleWorkspaceRoutes } from "./workspace-routes.js";
+import { handleAgentRoutes } from "./agent-routes.js";
 import { isLifecycleExecCmd, streamLifecycleExec } from "./lifecycle-exec.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { edgeHttps } from "../../shared/edge/render.js";
@@ -3033,6 +3045,9 @@ async function handleRequest(
     res.end("Local environment is not enabled for this deployment");
     return;
   }
+
+  // ── Agents on the Workspaces page (AG-4a, agent-routes.ts) ───────────────
+  if (await handleAgentRoutes(req, res, pathname)) return;
 
   // ── Workspace routes (extracted to workspace-routes.ts) ──────────────────
   await handleWorkspaceRoutes(req, res, pathname, url, editors, github);

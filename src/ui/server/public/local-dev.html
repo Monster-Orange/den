@@ -1336,6 +1336,40 @@
         align-items: center;
         gap: 10px;
       }
+      /* ── Workspaces: the Agents section (AG-4a, §5c) ─────────────────────
+         The repo table's look (table.svc, .tbl-*) under the shell's section
+         heading (.den-sec); the start form sits in the table's foot. */
+      .agents .tbl-foot {
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+      .agent-form {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .agent-form[hidden] {
+        display: none;
+      }
+      .agent-form label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .agent-form select {
+        max-width: 320px;
+      }
+      .agent-cwd {
+        max-width: 280px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .ws-empty-state + .ws-agents-only {
+        flex: none;
+      }
       .validate-details > summary {
         cursor: pointer;
         color: var(--muted);
@@ -1423,6 +1457,7 @@
           buildRow,
         } from "/header.js";
         import { checkLine } from "/topbar.js";
+        import { agentsSectionHtml, mountAgents } from "/agents-section.js";
         import { mountGraph, graphHealth, graphMaximized } from "/graph.js";
         import {
           mergeWorkspaceViews,
@@ -1956,6 +1991,7 @@
                <button class="switch-btn" data-action="switch-ws">activate + focus</button>`
           }
           ${stackNsChip}
+          <span class="badge ws-agents" id="ws-agents-count" hidden></span>
           <a class="ws-head-link" id="ws-open-graph" href="/graph?ws=${enc}">Open in Graph →</a>
           <div class="action-menu-wrap ws-more">
             <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${escHtml(wsName)}" title="More for this workspace">⋯</button>
@@ -1985,6 +2021,9 @@
           <div class="ws-empty-msg">No services in this workspace yet</div>
           <button class="add-svc-open-btn ws-empty-add-btn" onclick="openAddSvcModal('${escHtml(wsName)}')">+ Add Service</button>
           <span class="form-msg" id="add-msg"></span>
+        </div>
+        <div class="content-body ws-agents-only">
+          ${agentsSectionHtml(wsName)}
         </div>
         `
             : `
@@ -2023,6 +2062,9 @@
             <span class="form-msg" id="add-msg"></span>
           </div>
 
+          <!-- Agents (AG-4a, §5c): the workspace's agents, under its repos. -->
+          ${agentsSectionHtml(wsName)}
+
           <!-- Validate a manifest (by path, or pasted) -->
           <details class="validate-details">
             <summary>Validate a manifest</summary>
@@ -2041,6 +2083,7 @@
 `;
           _tbl = { wsName, ws, svcList, depsMap, repoRank, appTree };
           renderTable();
+          mountAgents(wsName);
 
           // Pre-fetch GitHub org repos so the Add Service modal loads instantly
           fetch("/api/github/repos")

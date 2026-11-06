@@ -4,6 +4,54 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.1] - unreleased
+
+### Added
+
+- **Agents on the Workspaces page** (0.4.1-dev.0, AG-4a, AG spec §5c).
+  Under the selected workspace's repo table, one row per agent: id and
+  persona, runtime, state (`running`, `stopping`, `stopped`, `ended`,
+  `exited (<code>)`), directory and when its session started. **Stop**, and
+  **Resume** where the record allows it (the runtime declares resume and the
+  agent isn't running). **+ Start agent** picks a persona and a runtime. The
+  workspace header counts them ("n agents"). In en, ja and es.
+  - Routes: `GET /api/workspaces/<ws>/agents`, `POST
+    /api/workspaces/<ws>/agents` (start), `POST
+    /api/workspaces/<ws>/agents/<id>/stop` and `…/resume`, `GET
+    /api/personas`. They call the CLI's own operations (the new
+    `agent-ops.ts`, which `<cli> agents` is now a front for): neither keeps
+    state of its own, and a workspace lists its own agents only.
+  - Guards: the lock (R8) gates Start, Stop and Resume (423 `locked`;
+    the page opens the lock first, as for a service action),
+    `agents.max_concurrent` caps starts (429 `cap`), and an agent actor is
+    refused (403). Errors are R26's shape and reach the page as error
+    toasts. The agent's env is the CLI's allowlist (§5a-env), and every
+    action is audited with the person as its actor.
+  - Listing never starts a session host: with none running, every agent
+    reads `ended`.
+  - No terminal and no Open yet (SEC-1).
+
+### Changed
+
+- **`agents list` shows `stopping`** for an agent that was stopped while its
+  session is still on its way out (it was `running`), and its `--json` rows
+  gain `startedAt` and `resumable`.
+
+### Fixed
+
+- **No config polls under an invalid config.** The server marks every page
+  it serves while the config fails validation, and the shell also learns it
+  from the first `422 config_invalid` answer. From then on it starts none of
+  the polls and streams that read the config (health and its stream, edge,
+  workspaces, applications, the org config, the sudo vault status, Logs'
+  services, Settings' workspace settings), so the browser console no longer
+  logs a "Failed to load resource … 422" line for each of them. A reload
+  once the config is fixed starts them again.
+
+### Migrations
+
+None.
+
 ## [0.4.0] - 2026-11-06
 
 0.4.0-dev.2 and later are built on 0.3.0 and include all of it (below).

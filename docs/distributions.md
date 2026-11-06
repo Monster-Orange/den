@@ -1554,6 +1554,39 @@ server scoped to its workspace.
   exits non-zero, Den prints the exit code and its last lines (at most 10,
   secret-shaped values redacted) and exits 1.
 
+### On the Workspaces page
+
+The selected workspace's agents are listed under its repo table, one row
+per agent: its id and persona, runtime, state (`running`, `stopping`,
+`stopped`, `ended` or `exited (<code>)`), directory, and when its session
+started. The workspace header counts them ("2 agents").
+
+- **Stop** sends its session TERM, as `agents stop` does; the row reads
+  `stopping…` until the session has gone. **Resume** shows only when
+  `agents resume` would run: the runtime declares resume and the agent is
+  not running.
+- **+ Start agent** picks a persona (Den's pack, then
+  `agents.persona_packs`) and a runtime (the persona's own unless you pick
+  one; one that can't run here is listed, disabled), then Start.
+- The page and the CLI call the same operations and read the same agent
+  records, so an agent started in one is listed in the other. A workspace
+  lists its own agents only.
+- Start, Stop and Resume need the lock open (🔓, the same rule as a
+  service's Start), are capped by `agents.max_concurrent`, and are refused
+  for an agent (agents don't start agents from the page). Each one is in the
+  server log's activity, with you as its actor. The agent's environment is
+  the one below, built from the web server's environment.
+- There is no terminal on the page yet: attach with `<cli> sessions attach
+<ws>:<id>`.
+
+The routes: `GET /api/workspaces/<ws>/agents`, `POST
+/api/workspaces/<ws>/agents` (`{ persona, runtime?, model?, id? }`), `POST
+/api/workspaces/<ws>/agents/<id>/stop` and `…/resume`, and `GET
+/api/personas` (personas and runtimes). Errors are the usual
+`{ ok: false, error, code, requestId }`: `locked` (423), `cap` (429),
+`conflict` (409, e.g. already running, or no resume), `not_found` (404),
+`exited_at_once` (502, with the session's last lines).
+
 ### An agent's environment
 
 An agent's environment starts empty and gets, in order:

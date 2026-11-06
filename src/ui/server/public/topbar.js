@@ -1153,6 +1153,9 @@ async function getJson(url, fallback, init) {
  */
 let vaultAsked = null;
 function checkVault() {
+  // 0.4.1: it reads the config's secrets refs; an invalid one answers 422.
+  if (window.denShell?.configInvalid?.() === true)
+    return Promise.resolve(lock.vault);
   vaultAsked ??= getJson("/api/sudo-password/vault-status", {
     backend: "none",
     label: "",
