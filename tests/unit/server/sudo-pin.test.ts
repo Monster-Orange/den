@@ -23,7 +23,9 @@ afterEach(() => {
 
 function fakeSudo(): { dir: string; file: string } {
   const dir = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), "den-sudo-pin-")),
+    // Not "<cli>-sudo-…": on Linux (tmpdir /tmp) that is Den's own shim
+    // prefix, which the PATH fallback rightly skips.
+    fs.mkdtempSync(path.join(os.tmpdir(), "fake-system-sudo-")),
   );
   tmps.push(dir);
   const file = path.join(dir, "sudo");
