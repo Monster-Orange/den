@@ -84,6 +84,7 @@ async function session(name: string): Promise<[string, ScriptedPty]> {
 async function viewer(
   sid: string,
   width: number,
+  opts: { noSizeFrames?: boolean } = {},
 ): Promise<{ ctx: BrowserContext; p: Page }> {
   const ctx = await browser!.newContext({
     viewport: { width, height: 900 },
@@ -103,44 +104,56 @@ async function viewer(
       response: await r.fetch({ url: r.request().url().split("?")[0] }),
     }),
   );
-  await ctx.addInitScript((v) => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, v);
-    } catch {
-      /* none */
-    }
-    const w = window as unknown as Record<string, unknown>;
-    w.__frames = [];
-    const Real = window.WebSocket;
-    window.WebSocket = class extends Real {
-      constructor(url: string | URL, protocols?: string | string[]) {
-        super(url, protocols);
-        this.addEventListener("message", (e) => {
-          if (typeof e.data === "string")
-            (w.__frames as unknown[]).push(JSON.parse(e.data));
-        });
+  await ctx.addInitScript(
+    ([v, drop]) => {
+      (window as unknown as Record<string, unknown>).__dropSize = drop;
+      try {
+        for (const k of ["den-changelog-seen", "acme-changelog-seen"])
+          localStorage.setItem(k, v);
+      } catch {
+        /* none */
       }
-    };
-    for (const C of [
-      (globalThis as Record<string, unknown>).OffscreenCanvasRenderingContext2D,
-      globalThis.CanvasRenderingContext2D,
-    ] as Array<{ prototype: CanvasRenderingContext2D } | undefined>) {
-      if (!C) continue;
-      const real = C.prototype.measureText;
-      C.prototype.measureText = function (text: string) {
-        const m = real.call(this, text);
-        const k = (w.__fontScale as number | undefined) ?? 1;
-        if (k === 1) return m;
-        return new Proxy(m, {
-          get: (o, key) =>
-            key === "width"
-              ? o.width * k
-              : (o as unknown as Record<string | symbol, unknown>)[key],
-        });
+      const w = window as unknown as Record<string, unknown>;
+      w.__frames = [];
+      const Real = window.WebSocket;
+      window.WebSocket = class extends Real {
+        constructor(url: string | URL, protocols?: string | string[]) {
+          super(url, protocols);
+          this.addEventListener("message", (e) => {
+            if (typeof e.data !== "string") return;
+            const f = JSON.parse(e.data) as { type?: string };
+            // An older session host (one that outlived an upgrade) sends no
+            // size frames: drop them before the page sees one.
+            if (w.__dropSize && f.type === "size") {
+              e.stopImmediatePropagation();
+              return;
+            }
+            (w.__frames as unknown[]).push(f);
+          });
+        }
       };
-    }
-  }, latest);
+      for (const C of [
+        (globalThis as Record<string, unknown>)
+          .OffscreenCanvasRenderingContext2D,
+        globalThis.CanvasRenderingContext2D,
+      ] as Array<{ prototype: CanvasRenderingContext2D } | undefined>) {
+        if (!C) continue;
+        const real = C.prototype.measureText;
+        C.prototype.measureText = function (text: string) {
+          const m = real.call(this, text);
+          const k = (w.__fontScale as number | undefined) ?? 1;
+          if (k === 1) return m;
+          return new Proxy(m, {
+            get: (o, key) =>
+              key === "width"
+                ? o.width * k
+                : (o as unknown as Record<string | symbol, unknown>)[key],
+          });
+        };
+      }
+    },
+    [latest, !!opts.noSizeFrames] as const,
+  );
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(`${width}: ${e.message}`));
   await p.goto(`${s!.base}/agents?open=${sid}`);
@@ -251,6 +264,42 @@ describe("the Agents tab's terminal size", () => {
     expect(last(pty)).toEqual(wideSize);
     // Never under 2x2, whatever was measured.
     expect(pty.resizes.every(([c, r]) => c >= 2 && r >= 2)).toBe(true);
+    await narrow.ctx.close();
+    await wide.ctx.close();
+  }, 60_000);
+
+  it("with an older host (no size frames), typing in the wide viewer again takes the PTY back from the narrow one", async () => {
+    if (skip()) return;
+    const [sid, pty] = await session("old-host");
+    const wide = await viewer(sid, 1440, { noSizeFrames: true });
+    await eventually(async () => same(last(pty), await termSize(wide.p)));
+    const wideSize = await termSize(wide.p);
+    const narrow = await viewer(sid, 900, { noSizeFrames: true });
+    await eventually(async () => same(last(pty), await termSize(narrow.p)));
+    const narrowSize = await termSize(narrow.p);
+    expect(narrowSize[0]).toBeLessThan(wideSize[0]);
+    const type = (v: { p: Page }, d: string) =>
+      v.p.evaluate(
+        (ch) =>
+          (
+            window as unknown as {
+              __terms: { input(d: string, user: boolean): void }[];
+            }
+          ).__terms[0].input(ch, true),
+        d,
+      );
+    for (let round = 0; round < 3; round++) {
+      // The narrow one types: its size.
+      let writes = pty.writes.length;
+      await type(narrow, "n");
+      await eventually(() => pty.writes.length > writes);
+      expect(last(pty)).toEqual(narrowSize);
+      // The wide one types again, no focus first: its size again.
+      writes = pty.writes.length;
+      await type(wide, "w");
+      await eventually(() => pty.writes.length > writes);
+      expect(last(pty)).toEqual(wideSize);
+    }
     await narrow.ctx.close();
     await wide.ctx.close();
   }, 60_000);

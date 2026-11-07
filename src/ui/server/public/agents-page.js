@@ -378,13 +378,17 @@ function markSize(p) {
   }
 }
 
-/** Whether the PTY is known to have another size than this pane. */
+/**
+ * Whether this pane must say its size before a keystroke: the PTY is known
+ * to have another size, or the host never says the PTY's size (an older
+ * session host that outlived an upgrade sends no size frames), so another
+ * viewer may have resized it unseen. Saying the same size again is free:
+ * the PTY only redraws when the size really changes.
+ */
 function outOfStep(p) {
-  return (
-    !!p.pty &&
-    !!p.term &&
-    (p.pty.cols !== p.term.cols || p.pty.rows !== p.term.rows)
-  );
+  if (!p.term) return false;
+  if (!p.heardSize) return true;
+  return !!p.pty && (p.pty.cols !== p.term.cols || p.pty.rows !== p.term.rows);
 }
 
 /**
@@ -453,6 +457,7 @@ async function connect(p) {
   sock.onopen = () => {
     opened = true;
     p.pty = null;
+    p.heardSize = false;
     refit(p);
     sendSize(p);
   };
@@ -466,6 +471,7 @@ async function connect(p) {
       }
       if (msg?.type === "size") {
         if (Number.isInteger(msg.cols) && Number.isInteger(msg.rows)) {
+          p.heardSize = true;
           p.pty = { cols: msg.cols, rows: msg.rows };
           markSize(p);
         }

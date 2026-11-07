@@ -100,7 +100,9 @@ through Den's MCP (MCP-2).
   send that pane's size; a hidden pane never resizes the PTY, and no
   resize under 2×2 is sent (the server refuses one too). The server tells
   every viewer the PTY's size on attach and on each change (a `size`
-  frame), so a viewer knows when it is out of step. The cells are also
+  frame), so a viewer knows when it is out of step. A session host
+  that outlived an upgrade sends no such frame, so then every keystroke
+  says the typing viewer's size (the same size again redraws nothing). The cells are also
   measured again once fonts finish loading and after a theme is applied,
   so a theme's web font no longer leaves the terminal fitted to the
   fallback font's width.
