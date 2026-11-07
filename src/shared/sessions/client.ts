@@ -236,11 +236,24 @@ export function noHost(e: unknown): boolean {
   return code === "ENOENT" || code === "ECONNREFUSED";
 }
 
-/** Connect to the host on `socket` and say hello (checks the protocol). */
+/**
+ * Connect to the host on `socket` and say hello (checks the protocol). No
+ * host there (noHost) rejects with the connect error; any other failure
+ * to connect (a socket path the OS refuses, no permission) is a HostError
+ * ("unavailable") that says where and why, never a bare errno.
+ */
 export function connectHost(socket: string): Promise<HostClient> {
   return new Promise((resolve, reject) => {
     const s = net.connect(socket);
-    const fail = (e: Error) => reject(e);
+    const fail = (e: Error) =>
+      reject(
+        noHost(e)
+          ? e
+          : new HostError(
+              "unavailable",
+              `could not reach the session host on ${socket}: ${(e as NodeJS.ErrnoException).code ?? e.message}`,
+            ),
+      );
     s.once("error", fail);
     s.once("connect", () => {
       s.off("error", fail);

@@ -16,6 +16,7 @@ import {
   stopCount,
   summaryParts,
   statusesOf,
+  stoppedAsQuiet,
   switchPlan,
   switchPrefs,
   workspaceStatus,
@@ -96,6 +97,60 @@ describe("WS-6.3: status is derived from services", () => {
       text: "1 running · 1 partial · 1 stopped",
       down: 1,
     });
+  });
+});
+
+describe("WS-6.3: a service whose process died without down (0.4.5)", () => {
+  // The server sends running: false, down: true for a record whose process
+  // is gone and whose check fails: it doesn't run, and it is down.
+  const crashed = {
+    ...row("blog", ["north"], { ok: false, running: false }),
+    down: true,
+  };
+  const rows = [
+    row("notes", ["north"], { ok: true }),
+    row("api", ["north"], { ok: true }),
+    crashed,
+  ];
+
+  it("counts as not running and down: Partial 2/3 · 1 down", () => {
+    expect(workspaceStatus(rows, "north")).toEqual({
+      n: 3,
+      up: 2,
+      down: 1,
+      state: "partial",
+    });
+  });
+
+  it("Switch and Stop & Switch start it", () => {
+    expect(switchPlan("north", rows, []).starts).toEqual(["blog"]);
+  });
+});
+
+describe("WS-6.3: a stopped service reads as stopped, not failing (0.4.5)", () => {
+  it("stoppedAsQuiet: a stopped service's failing check is no verdict", () => {
+    const mail = (service: string) => ({
+      ...row("mail", ["south", "west"], { ok: false, running: false }),
+      service,
+      address: `mail/${service}`,
+    });
+    const crashed = {
+      ...row("blog", ["north"], { ok: false, running: false }),
+      down: true,
+    };
+    const q = stoppedAsQuiet([
+      mail("web"),
+      mail("worker"),
+      crashed,
+      row("notes", ["north"], { ok: true }),
+    ]);
+    expect([...q.stopped]).toEqual(["mail/web", "mail/worker"]);
+    expect(q.rows.map((r) => [r.repo, r.ok])).toEqual([
+      ["mail", null],
+      ["mail", null],
+      ["blog", false],
+      ["notes", true],
+    ]);
   });
 });
 

@@ -10,8 +10,8 @@
 </p>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/0.4.3/hero-dark.png">
-  <img src="docs/images/0.4.3/hero-light.png" width="100%" alt="Den's Graph page: the demo workspace's services grouped by application, all healthy, with the status chip and the left rail">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/0.4.5/hero-dark.png">
+  <img src="docs/images/0.4.5/hero-light.png" width="100%" alt="Den's Graph page: the demo workspace's services grouped by application, all healthy, with the status chip and the left rail">
 </picture>
 
 ## What Den is
@@ -24,7 +24,7 @@ It doesn't replace your tools. Your repos, Docker, your test runners, your secre
 yours. Den connects them and turns on good practice from the start.
 
 <p align="center">
-  <img src="docs/images/0.4.3/up.gif" width="100%" alt="make up in the Graph page: every stack stopped (Nothing running), then demo-api, demo-web and demo-notes come up in dependency order until the status chip reads All 3 healthy">
+  <img src="docs/images/0.4.5/up.gif" width="100%" alt="make up in the Graph page: every stack stopped (Nothing running), then demo-api, demo-web and demo-notes come up in dependency order until the status chip reads All 3 healthy">
 </p>
 
 ## How it helps
@@ -53,10 +53,10 @@ yours. Den connects them and turns on good practice from the start.
   lives in your own repo.
 
 <p align="center">
-  <img src="docs/images/0.4.3/agents.png" width="49%" alt="The Agents tab: the demo workspace's sessions on the left, and one open in a terminal pane on the right, running demo-api's test and then the service">
-  <img src="docs/images/0.4.3/workspaces.png" width="49%" alt="The Workspaces page: the demo workspace's repos with their health, mode and Start, Stop, Restart and Logs actions">
-  <img src="docs/images/0.4.3/status-drawer.png" width="49%" alt="The status drawer: nothing needs attention, and every service in the demo workspace, by application, with its latency">
-  <img src="docs/images/0.4.3/edge.png" width="49%" alt="The Edge page: the edge container up, its ports and TLS, and every route it serves, Den's own and each stack's, with its upstream">
+  <img src="docs/images/0.4.5/agents.png" width="49%" alt="The Agents tab: the demo workspace's sessions on the left, and one open in a terminal pane on the right, running demo-api's test and then the service">
+  <img src="docs/images/0.4.5/workspaces.png" width="49%" alt="The Workspaces page: the demo workspace's repos with their health, mode and Start, Stop, Restart and Logs actions">
+  <img src="docs/images/0.4.5/status-drawer.png" width="49%" alt="The status drawer: nothing needs attention, and every service in the demo workspace, by application, with its latency">
+  <img src="docs/images/0.4.5/edge.png" width="49%" alt="The Edge page: the edge container up, its ports and TLS, and every route it serves, Den's own and each stack's, with its upstream">
 </p>
 
 ## Get started

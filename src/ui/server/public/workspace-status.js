@@ -65,14 +65,44 @@ export function rowRunning(r) {
   return typeof r?.running === "boolean" ? r.running : r?.ok === true;
 }
 
-/** Down: it runs and its check fails. A stopped service is never down. */
+/**
+ * Down (the server's `down`): it runs and its check fails, or its process
+ * died without `down` (a stale record) and its check fails. A service that
+ * was stopped is never down. An older server: it runs and its check fails.
+ */
 export function rowDown(r) {
+  if (typeof r?.down === "boolean") return r.down;
   return rowRunning(r) && r?.ok === false;
 }
 
 /**
+ * Stopped: Den starts it here, it doesn't run, and it isn't down (it was
+ * stopped, or never started). Its failing check is no problem: it reads
+ * as stopped (grey), not failing.
+ */
+export function rowStopped(r) {
+  return countsForStatus(r) && !rowRunning(r) && !rowDown(r) && r?.ok === false;
+}
+
+/**
+ * Health rows for a page that shows problems (the Workspaces table): a
+ * stopped service's failing check becomes no verdict (ok null, `stopped`
+ * set), so it is grey, never a problem. `stopped` lists their
+ * "repo/service" keys.
+ */
+export function stoppedAsQuiet(rows) {
+  const stopped = new Set();
+  const out = (rows || []).map((r) => {
+    if (!rowStopped(r)) return r;
+    stopped.add(`${r.repo}/${r.service}`);
+    return { ...r, ok: null, stopped: true };
+  });
+  return { rows: out, stopped };
+}
+
+/**
  * One workspace's status (WS-6.3): `n` its services, `up` those running,
- * `down` those running but failing, and `state` running (all up), partial,
+ * `down` those failing (rowDown: running, or died without `down`), and `state` running (all up), partial,
  * stopped (none up) or none (nothing Den starts here, or nothing known yet).
  */
 export function workspaceStatus(rows, ws) {

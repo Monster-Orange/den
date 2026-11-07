@@ -1599,7 +1599,11 @@ an argv in a PTY, owned by the distribution's **session host**. The host
 is one small detached process (`<cli> sessions host`) that the first
 client starts on demand; it serves `<stateDir>/sessions.sock` (mode 0600)
 and logs to `<stateDir>/logs/<cli>/sessions-host.log`. The state dir is
-the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
+the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`. When that
+socket path would be longer than a unix socket allows (103 bytes), the
+socket is `/tmp/den-<uid>/<hash of the state dir>.sock` instead (the dir
+0700, the socket 0600); the host and every client work the path out the
+same way.
 
 ```
 <cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] -- <argv…>

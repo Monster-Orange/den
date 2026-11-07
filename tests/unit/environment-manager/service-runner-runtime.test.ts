@@ -11,7 +11,8 @@ import { EventEmitter } from "events";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import type { ChildProcess } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
+import { recordProcessGroup } from "../../../src/shared/process/process-group.js";
 import type { ResolvedService } from "../../../src/shared/types/index.js";
 
 jest.mock("../../../src/shared/manifest/read-manifest.js");
@@ -1352,11 +1353,42 @@ describe("workspace ownership refcount through runServiceCommand", () => {
     expect(listDaemons()).toEqual([]);
   });
 
-  it("down by a non-owner is a no-op that names --force as the way through", async () => {
+  it("down by a workspace that has the service stops it, whichever workspace started it", () => {
     withWorkspaces("wsA", "wsB");
+    sharedDaemon(["wsB"]);
+
+    runServiceCommand({
+      address: "repo/api",
+      command: "down",
+      workspace: "wsA",
+      onLine: jest.fn(),
+      onClose: jest.fn(),
+    });
+
+    expect(mockSpawnStreaming.mock.calls[0]?.[0]).toBe("make down");
+    expect(listDaemons()).toEqual([]);
+  });
+
+  it("down by a non-owner without the service is a no-op that names --force as the way through", async () => {
+    withWorkspaces("wsA", "wsB");
+    // wsA's config no longer lists it (its record still says wsB).
+    mockGetWorkspaceByName.mockImplementation((name: string) =>
+      ["wsA", "wsB"].includes(name)
+        ? {
+            name,
+            config: {
+              services:
+                name === "wsB"
+                  ? { "repo/api": { mode: "dev-managed" as const } }
+                  : {},
+            },
+          }
+        : null,
+    );
     sharedDaemon(["wsB"]);
     const onLine = jest.fn();
     const onClose = jest.fn();
+    const outcomes: string[] = [];
 
     runServiceCommand({
       address: "repo/api",
@@ -1364,9 +1396,11 @@ describe("workspace ownership refcount through runServiceCommand", () => {
       workspace: "wsA",
       onLine,
       onClose,
+      onDownOutcome: (o) => outcomes.push(o),
     });
     await new Promise((resolve) => setImmediate(resolve));
 
+    expect(outcomes).toEqual(["not-owner"]);
     expect(mockSpawnStreaming).not.toHaveBeenCalled();
     expect(onLine).toHaveBeenCalledWith(
       expect.stringContaining("does not own running"),
@@ -1416,21 +1450,25 @@ describe("workspace ownership refcount through runServiceCommand", () => {
   it("up attaches the workspace as an owner and short-circuits", async () => {
     withWorkspaces("wsA", "wsB");
     // A dev.37+ record carries its process group (a record without one is
-    // a pre-dev.37 record: down-legacy-records.test.ts).
-    sharedDaemon(["wsB"], {
-      pgid: 2_000_000_000,
-      pgidStartedAt: "Thu Jan  1 00:00:00 1970",
-    });
+    // a pre-dev.37 record: down-legacy-records.test.ts), and it is alive
+    // (one whose group is gone is stale: down-process-group.test.ts).
+    const live = spawn("sleep", ["30"], { detached: true, stdio: "ignore" });
+    const g = recordProcessGroup(live.pid!);
+    sharedDaemon(["wsB"], { pgid: g?.pgid, pgidStartedAt: g?.startedAt });
     const onClose = jest.fn();
 
-    runServiceCommand({
-      address: "repo/api",
-      command: "up",
-      workspace: "wsA",
-      onLine: jest.fn(),
-      onClose,
-    });
-    await new Promise((resolve) => setImmediate(resolve));
+    try {
+      runServiceCommand({
+        address: "repo/api",
+        command: "up",
+        workspace: "wsA",
+        onLine: jest.fn(),
+        onClose,
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+    } finally {
+      process.kill(-live.pid!, "SIGKILL");
+    }
 
     expect(mockSpawnStreaming).not.toHaveBeenCalled();
     expect(listDaemons()[0].workspaces).toEqual(["wsB", "wsA"]);

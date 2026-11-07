@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.3] - unreleased
+## [0.4.5] - unreleased
 
 WS-6: workspace focus, status and switch. Three words, used the same way
 in the web UI, the CLI and the docs: **focus** is what you see, **status**
@@ -20,9 +20,12 @@ is what runs, **switch** shows a workspace and starts it.
   Changing it starts and stops nothing.
 - **Status from services** (WS-6.3): Running n/m, Partial n/m or Stopped,
   plus a down count, on every workspace on this machine. A health row
-  carries `running`: a service runs when its check answers, when Den still
-  tracks it as started, or when a compose check finds its containers. One
-  that doesn't run is stopped, never down.
+  carries `running` and `down`: a service runs when its check answers,
+  when Den still tracks it as started and its process (group) is alive, or
+  when a compose check finds its containers. One whose process died
+  without `down` (a stale record) doesn't run, and with a failing check it
+  is down: Switch starts it. One that was stopped is stopped, never down,
+  and the Workspaces table shows it grey ("stopped"), not failing.
 - **The status chip** (WS-6.5) counts what is in focus, adds "· n down in
   <ws>" for a problem elsewhere, reads "Nothing running" when nothing in
   focus runs, and cuts off with "…" on a phone.
@@ -37,13 +40,18 @@ is what runs, **switch** shows a workspace and starts it.
   another workspace keep running, and so do agents and sessions. It asks
   first (what stops, what starts, what keeps running) and needs the lock.
   `<cli> switch <ws> --stop-others` (asks on a terminal; `-y` skips, `-n`
-  prints the plan only).
+  prints the plan only; off a terminal it needs `-y`, else exits 1). The
+  kept shared repos' records then belong to the target, so its own `down`
+  stops them. The CLI's plan lists what isn't running by the same rule as
+  the web UI.
 - **The Workspaces page** (WS-6.9): explainer cards for focus, status and
   switch; the list with All workspaces first and each workspace's pill;
   All workspaces as a table (Workspace, Status, Services, Down, Agents,
   Focus and the split button); a workspace's header with its pill and down
   count, Start, Stop, the split button, Open in Graph and Open in Agents;
-  a "shared" tag on a repo another workspace also has.
+  a "shared" tag on a repo another workspace also has. A `?ws=` the page
+  wrote only to repeat the focus gives way to the focus on a reload, so
+  the page, the top bar and the breadcrumb show one value.
 - **Settings › Workspaces** (WS-6.10): "When I pick a workspace" (Just
   show it, the default; Ask whether to start it, which asks "Also start
   <ws>?"; Start it automatically) and "Before Stop & Switch" (Confirm, the
@@ -62,9 +70,27 @@ is what runs, **switch** shows a workspace and starts it.
   as well as `activate` and `deactivate`, and `focus` takes `all`.
 - **A workspace can't be named `all`** (it means All workspaces).
 - **The Workspaces sidebar is 250px** (was 260), as in the WS-6 mock.
-- **The README's screenshots are 0.4.3's**: the `make up` animation starts
+- **The README's screenshots are 0.4.5's**: the `make up` animation starts
   from "Nothing running" (every stack stopped, none down) and counts up to
   All 3 healthy.
+
+### Fixed
+
+- **`down -a` stops every workspace on this machine** (one at a time, a
+  shared repo once), as its help says; it stopped only the focus's. With
+  `-w <ws>`, only that workspace.
+- **`down <repo> -w <ws>` stops a repo that is in `<ws>`**, whichever
+  workspace started it. A down that stops nothing (another workspace still
+  uses it, or it isn't in this workspace) says so and why, never ✔.
+- **The session socket with a long state dir**: when
+  `<stateDir>/sessions.sock` would be over a unix socket's limit (103
+  bytes), it is `/tmp/den-<uid>/<hash>.sock` (dir 0700, socket 0600),
+  worked out the same way by the host and every client. The agents route
+  answered 500 (`connect EINVAL`) there; a session host it can't reach is
+  now a 503 that says where and why.
+- **The Workspaces page's repo table** is never cut off (it scrolled
+  inside itself, and on a phone looked empty) when the Agents section sits
+  below it.
 
 ### Migrations
 

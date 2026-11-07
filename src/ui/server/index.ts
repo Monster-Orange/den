@@ -67,9 +67,12 @@ import {
 } from "../../shared/environment-manager/scope.js";
 import { findServiceContainer } from "../../shared/environment-manager/service-container.js";
 import {
+  deadAddresses,
+  isDown,
   isRunning,
   trackedAddresses,
 } from "../../shared/environment-manager/running.js";
+import { processRows } from "../../shared/process/process-group.js";
 import {
   mergeSwitchPrefs,
   storedSwitchPrefs,
@@ -310,6 +313,11 @@ interface HealthResult {
    * runs is down; on one that doesn't, it is stopped.
    */
   running?: boolean;
+  /**
+   * Whether it is down (running.ts isDown): it runs and its check fails,
+   * or its process died without `down` and its check fails.
+   */
+  down?: boolean;
 }
 
 /**
@@ -346,15 +354,23 @@ function viewerRewrite(
  * viewer's host, and `inView` from the view scope now (WS-6.4: the rows
  * are cached for every active workspace; the scope is applied per answer).
  */
-function healthForViewer(
+async function healthForViewer(
   host: string | undefined,
-): (r: HealthResult) => HealthResult {
+): Promise<(r: HealthResult) => HealthResult> {
   const rewrite = viewerRewrite(host);
   const inView = inViewMarker(scopeView());
-  // WS-6.3: whether it runs, from the daemon records now (running.ts).
+  // WS-6.3: whether it runs, from the daemon records now and whether their
+  // processes are still alive (running.ts): a record whose process died
+  // without `down` doesn't run.
   let tracked = new Set<string>();
+  let dead = new Set<string>();
   try {
-    tracked = trackedAddresses(listDaemons());
+    const daemons = listDaemons();
+    const rows = daemons.some((d) => typeof d.pgid === "number")
+      ? await processRows()
+      : null;
+    tracked = trackedAddresses(daemons, rows);
+    dead = deadAddresses(daemons, rows);
   } catch {
     /* no records: only the checks say */
   }
@@ -362,6 +378,7 @@ function healthForViewer(
     ...rewrite(r),
     inView: inView(r.workspaces),
     running: isRunning(r, tracked),
+    down: isDown(r, tracked, dead),
   });
 }
 
@@ -2102,7 +2119,7 @@ async function handleRequest(
   // single-service `?address=` probe always runs live: it exists to re-check one
   // node on demand, where staleness is the whole thing being avoided.
   if (pathname === "/api/health") {
-    const forViewer = healthForViewer(req.headers.host);
+    const forViewer = await healthForViewer(req.headers.host);
     const env = (url.searchParams.get("env") ?? "local") as Environment;
     const addressFilter = url.searchParams.get("address");
     const wsParam = url.searchParams.get("workspace");
@@ -2131,7 +2148,7 @@ async function handleRequest(
   // Same checks, streamed: each result is sent the moment it lands so the fast
   // ones paint immediately instead of every dot waiting on the slowest.
   if (pathname === "/api/health/stream") {
-    const forViewer = healthForViewer(req.headers.host);
+    const forViewer = await healthForViewer(req.headers.host);
     const env = (url.searchParams.get("env") ?? "local") as Environment;
     const wsParam = url.searchParams.get("workspace");
     if (wsParam && !getWorkspaceByName(wsParam))

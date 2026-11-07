@@ -9,7 +9,8 @@
  * dock shows this workspace's runs, "All runs" every one (R24e).
  *
  * The distribution is the demo's (examples/distribution, product acme)
- * with neutral repos: queue (api healthy, worker down: two services),
+ * with neutral repos: queue (api healthy, worker down: Den tracks it and
+ * its check fails; two services),
  * web (application store, depends on queue/api), notes (standalone) in
  * workspace main, and blog and shop (a compose stack, 0.3.0-dev.37) in
  * workspace side. The checks are HTTP probes
@@ -154,6 +155,24 @@ beforeAll(async () => {
     ].join("\n"),
   );
   write(path.join(repos, "shop", "docker-compose.yml"), "services: {}\n");
+  // queue/worker runs as far as Den knows (a record), and its check fails:
+  // down, a problem (WS-6.3). Without the record it would be stopped.
+  write(
+    path.join(tmp, "daemons.json"),
+    JSON.stringify({
+      daemons: [
+        {
+          address: "queue/worker",
+          repoName: "queue",
+          subsystem: "worker",
+          repoPath: path.join(repos, "queue"),
+          logPath: path.join(tmp, "worker.log"),
+          startedAt: new Date().toISOString(),
+          workspaces: ["main"],
+        },
+      ],
+    }),
+  );
   const shim = path.join(tmp, "bin");
   write(path.join(shim, "docker"), "#!/bin/sh\nexit 1\n");
   fs.chmodSync(path.join(shim, "docker"), 0o755);

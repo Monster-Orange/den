@@ -69,7 +69,7 @@ import {
   takeScopeFlag,
   writeFocus,
 } from "../../shared/environment-manager/scope.js";
-import { switchPlanFor, switchPlanLines } from "./switch-plan.js";
+import { runningRepos, switchPlanFor, switchPlanLines } from "./switch-plan.js";
 import {
   deleteWorkspaceDirectory,
   checkBehindCount,
@@ -87,6 +87,7 @@ import {
   runServiceCommand,
   claimHealthyService,
   daemonsOutsideWorkspaces,
+  transferRepoDaemons,
   getWorkspaceServices,
   ensureDaemonRegistryLoaded,
   hasRunningOpctlContainers,
@@ -338,7 +339,8 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "(as `{cli} up -a -w <workspace>`). Nothing else stops.",
       "--stop-others (Stop & Switch): first stop the other workspaces'",
       "services. Services of repos this workspace also has keep running, and",
-      "so do agents and sessions. On a terminal it asks first, unless -y.",
+      "so do agents and sessions. On a terminal it asks first, unless -y; off",
+      "a terminal (a script, an agent) it needs -y, or it exits 1.",
       "-n/--dry-run prints what would stop, start and keep running.",
     ],
   },
@@ -348,7 +350,10 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "Stop the cwd (or named) repo; --with-deps also stops what it sits on (its",
       "derived closure, in reverse order), naming anything else that uses it.",
       "-a/--all stops EVERY workspace system (reverse derived order, cwd-agnostic;",
-      "every down script runs — no already-stopped skip).",
+      "every down script runs — no already-stopped skip): every workspace on this",
+      "machine, one at a time, or with -w only that one. A workspace stops a shared",
+      "repo it has, whichever workspace started it; one another workspace still",
+      "uses is let go and said so, never shown as stopped.",
       "Flags: -w/--workspace <ws> (that workspace, not the one in focus; focus stays) · -a/--all · -A/--app <app> · --with-deps · -n/--dry-run (print order, stop nothing) · --manifest (legacy depends_on)",
     ],
   },
@@ -2022,6 +2027,22 @@ class DenCLI {
             spinner.info(
               `${command} ${chalk.bold(address)} ${chalk.gray("(nothing to stop)")}`,
             );
+          } else if (
+            exitCode === 0 &&
+            (downOutcome === "detached" || downOutcome === "not-owner")
+          ) {
+            // Nothing stopped: it runs on for another workspace. Said with
+            // the reason (the runner's last line), never as ✔.
+            const why =
+              downOutcome === "detached"
+                ? "not stopped: another workspace still uses it"
+                : "not stopped: it isn't in this workspace";
+            spinner.warn(
+              `${command} ${chalk.bold(address)} ${chalk.yellow(`(${why})`)}`,
+            );
+            for (const l of lastLines.slice(-1)) {
+              console.log(chalk.gray(`      ${l}`));
+            }
           } else if (exitCode === 0 && downOutcome === "unstoppable") {
             spinner.warn(
               `${command} ${chalk.bold(address)} ${chalk.yellow("(could not stop it)")}`,
@@ -2697,10 +2718,62 @@ class DenCLI {
     });
   }
 
+  /**
+   * `down -a` with no -w: every workspace on this machine, one at a time
+   * (each in its reverse derived order, as itself, so its own records and
+   * shared repos are its to stop). A repo two workspaces share is stopped
+   * once. With -w (or an app, or a switch) runAllDown is that one.
+   */
+  private async runEveryWorkspaceDown(
+    dryRun: boolean,
+    force = false,
+  ): Promise<void> {
+    const names = getActiveWorkspaces();
+    if (names.length <= 1) return this.runAllDown(dryRun, force);
+    const prior = process.env.DEN_WORKSPACE_OVERRIDE;
+    const done = new Set<string>();
+    try {
+      for (const ws of names) {
+        process.env.DEN_WORKSPACE_OVERRIDE = ws;
+        const repos = this.allWorkspaceOrder()?.rawOrder.filter(
+          (r) => !done.has(r),
+        );
+        if (!repos?.length) continue;
+        for (const r of repos) done.add(r);
+        // Every workspace is being stopped: no owner is left to keep a
+        // shared one running, so the refcount doesn't apply (force).
+        await this.runAllDown(dryRun, true, new Set(repos), {
+          label: `Workspace ${ws}`,
+          warnOutside: false,
+        });
+      }
+    } finally {
+      if (prior === undefined) delete process.env.DEN_WORKSPACE_OVERRIDE;
+      else process.env.DEN_WORKSPACE_OVERRIDE = prior;
+    }
+    if (done.size === 0)
+      console.log(
+        chalk.yellow(
+          "\n  No services in any workspace on this machine — nothing to stop.\n",
+        ),
+      );
+    if (!dryRun) this.warnOutsideWorkspaces();
+  }
+
+  /** Records no workspace reaches: said, and left alone (0.3.0-dev.39). */
+  private warnOutsideWorkspaces(): void {
+    for (const d of daemonsOutsideWorkspaces())
+      printNotice(
+        `Warning: ${d.address} is recorded as running (${d.repoPath}) but is in no workspace on this machine: ` +
+          `down -a left it alone. Stop it yourself if it still runs.`,
+      );
+  }
+
   private async runAllDown(
     dryRun: boolean,
     force = false,
     only?: Set<string>,
+    opts: { label?: string; warnOutside?: boolean } = {},
   ): Promise<void> {
     const target = this.allWorkspaceOrder(only);
     if (!target) {
@@ -2717,7 +2790,7 @@ class DenCLI {
     const order = [...target.rawOrder].reverse();
     console.log(
       chalk.cyan(
-        `\n  ${only ? "Application" : "Workspace-wide"} down — ${chalk.bold(String(order.length))} ${noun(order.length, "system")}`,
+        `\n  ${opts.label ?? (only ? "Application" : "Workspace-wide")} down — ${chalk.bold(String(order.length))} ${noun(order.length, "system")}`,
       ),
     );
     console.log(chalk.gray(`  Order: ${order.join(" → ")}\n`));
@@ -2728,12 +2801,7 @@ class DenCLI {
     await this.runServicesCommand(order, "down", { order }, { force });
     // Records no workspace reaches: -a stops every workspace's services,
     // not these. Said, and left alone (0.3.0-dev.39, a consumer's finding).
-    if (!only)
-      for (const d of daemonsOutsideWorkspaces())
-        printNotice(
-          `Warning: ${d.address} is recorded as running (${d.repoPath}) but is in no workspace on this machine: ` +
-            `down -a left it alone. Stop it yourself if it still runs.`,
-        );
+    if (!only && opts.warnOutside !== false) this.warnOutsideWorkspaces();
   }
 
   private printUpHelp(): void {
@@ -3229,7 +3297,10 @@ class DenCLI {
         );
         process.exit(1);
       }
-      await this.runAllDown(dryRun, force);
+      // Without -w: every workspace on this machine (as the help says).
+      if (process.env.DEN_WORKSPACE_OVERRIDE)
+        await this.runAllDown(dryRun, force);
+      else await this.runEveryWorkspaceDown(dryRun, force);
       return;
     }
 
@@ -4345,7 +4416,21 @@ class DenCLI {
       return;
     }
     const target = parsed.value;
-    const plan = switchPlanFor(target, active, readWorkspacesFile());
+    // Off a terminal nobody can be asked: Stop & Switch needs -y there.
+    if (stopOthers && !yes && !dryRun && process.stdin.isTTY !== true) {
+      console.error(
+        chalk.red(
+          `\n  ✗ switch --stop-others stops other workspaces' services and can't ask here (no terminal): add -y to go ahead, or -n to see the plan.\n`,
+        ),
+      );
+      process.exitCode = 1;
+      return;
+    }
+    const file = readWorkspacesFile();
+    // Only what is printed needs what runs now (its checks take a moment).
+    const running =
+      stopOthers || dryRun ? await runningRepos(file, target) : undefined;
+    const plan = switchPlanFor(target, active, file, undefined, running);
     if (stopOthers || dryRun) {
       for (const line of switchPlanLines(plan, stopOthers))
         console.log(`  ${line}`);
@@ -4373,11 +4458,15 @@ class DenCLI {
     }
     const prior = process.env.DEN_WORKSPACE_OVERRIDE;
     try {
-      if (stopOthers)
+      if (stopOthers) {
         for (const s of plan.stops) {
           process.env.DEN_WORKSPACE_OVERRIDE = s.workspace;
           await this.runAllDown(false, false, new Set(s.repos));
         }
+        // What kept running is the target's now: the others are stopped,
+        // so its own down stops it.
+        for (const k of plan.keeps) transferRepoDaemons(k.repo, target);
+      }
       writeFocus(target);
       console.log(chalk.green(`\n  ✓ Focus: ${chalk.bold(target)}`));
       process.env.DEN_WORKSPACE_OVERRIDE = target;

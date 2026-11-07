@@ -78,8 +78,10 @@ import {
   busyListenerText,
   servicePort,
 } from "../process/legacy-adopt.js";
+import { recordLiveness } from "./running.js";
 import {
   processGroupStateSync,
+  processRowsSync,
   recordProcessGroup,
   stopProcessGroup,
   type RecordedProcessGroup,
@@ -132,6 +134,13 @@ export interface DaemonRecord {
    * reused pid is never signalled.
    */
   pgidStartedAt?: string;
+  /**
+   * The command `up` started exited 0 and its group is gone: it handed the
+   * service off (`make up` starting containers). The record still stands
+   * for a running service, so a gone group doesn't make it stale
+   * (running.ts recordLiveness).
+   */
+  handedOff?: boolean;
   /**
    * A pid some writers before 0.3.0-dev.37 kept. Only a hint for adopting
    * such a record (legacy-adopt.ts); never signalled on its own.
@@ -362,11 +371,22 @@ export function updateDaemonProcessGroup(
   loadDaemonsFromFile();
   const existing = _daemonRegistry.get(address);
   if (!existing) return;
+  const rest = { ...existing };
+  delete rest.handedOff;
   _daemonRegistry.set(address, {
-    ...existing,
+    ...rest,
     pgid: group.pgid,
     pgidStartedAt: group.startedAt,
   });
+  saveDaemonsFile(getDaemonsFile());
+}
+
+/** A record whose command exited 0 and handed the service off (see handedOff). */
+function markDaemonHandedOff(address: string): void {
+  loadDaemonsFromFile();
+  const existing = _daemonRegistry.get(address);
+  if (!existing || existing.handedOff) return;
+  _daemonRegistry.set(address, { ...existing, handedOff: true });
   saveDaemonsFile(getDaemonsFile());
 }
 
@@ -524,6 +544,27 @@ function workspaceContainsDaemon(
 ): boolean {
   const services = getWorkspaceByName(name)?.config.services ?? {};
   return daemon.address in services || daemon.repoName in services;
+}
+
+/**
+ * Stop & Switch kept a shared repo running for `workspace` while it
+ * stopped every other workspace's services: the repo's records now belong
+ * to `workspace` alone, so its own `down` stops them (never "another
+ * workspace still uses it"). Returns the addresses changed.
+ */
+export function transferRepoDaemons(
+  repoName: string,
+  workspace: string,
+): string[] {
+  const changed: string[] = [];
+  for (const d of listDaemons()) {
+    if (d.repoName !== repoName) continue;
+    const owners = d.workspaces ?? [];
+    if (owners.length === 1 && owners[0] === workspace) continue;
+    setDaemonOwners(d.address, [workspace]);
+    changed.push(d.address);
+  }
+  return changed;
 }
 
 /** Replace a running daemon's owners (re-derived from membership). */
@@ -1420,13 +1461,19 @@ export interface RunCommandOptions {
  * What a `down` of a service with no down command and no container did, for
  * callers that report it: it "stopped" the process group `up` recorded,
  * found it "already-exited", had "nothing-recorded" to stop, or could not
- * stop what it knows is running ("unstoppable").
+ * stop what it knows is running ("unstoppable"). Any down also reports
+ * "detached" (another workspace still uses it) and "not-owner" (it runs
+ * for other workspaces and isn't in this one), so none is said as a stop.
  */
 export type DownOutcome =
   | "stopped"
   | "already-exited"
   | "nothing-recorded"
-  | "unstoppable";
+  | "unstoppable"
+  /** Another workspace still uses it: this one let go, it keeps running. */
+  | "detached"
+  /** It runs for other workspaces and isn't in this one: left alone. */
+  | "not-owner";
 
 /** SIGTERM-to-SIGKILL grace for a recorded process group. */
 function downGraceMs(): number {
@@ -1503,8 +1550,10 @@ function repoServiceRecords(repo: string, except: string): DaemonRecord[] {
 const DOWN_RANK: Record<DownOutcome, number> = {
   "nothing-recorded": 0,
   "already-exited": 1,
-  stopped: 2,
-  unstoppable: 3,
+  detached: 2,
+  "not-owner": 3,
+  stopped: 4,
+  unstoppable: 5,
 };
 
 /**
@@ -2238,6 +2287,20 @@ export function runServiceCommand(
       unregisterDaemon(resolved.address);
       existing = undefined;
     }
+    // Nor one whose process died without `down` (its group is gone, or its
+    // pid is another process's now): the status says it doesn't run, so
+    // Switch and up start it (running.ts recordLiveness).
+    if (
+      existing &&
+      typeof existing.pgid === "number" &&
+      recordLiveness(existing, processRowsSync()) === "dead"
+    ) {
+      onLine(
+        `stale daemon record for ${resolved.address} — its process exited; starting fresh`,
+      );
+      unregisterDaemon(resolved.address);
+      existing = undefined;
+    }
     if (
       existing &&
       sameDaemonIdentity(existing, resolved.repoPath, resolved.branch)
@@ -2319,14 +2382,23 @@ export function runServiceCommand(
 
   // ── Down: refcount detach unless last owner or --force ──────────────────────
   // Only ACTIVE owners count: a deactivated workspace can't stop the service
-  // itself, so letting it hold a reference would wedge the instance.
+  // itself, so letting it hold a reference would wedge the instance. A
+  // workspace that has the service stops it, whichever workspace started
+  // it (a shared repo another workspace's switch started). Neither a detach
+  // nor a refusal stops anything: each is reported so, never as a stop.
   if (command === "down" && !force) {
     const existing = findDaemonByAddress(resolved.address);
     const owners = activeDaemonOwners(existing);
-    if (owners.length > 0 && !owners.includes(workspace)) {
+    if (
+      existing &&
+      owners.length > 0 &&
+      !owners.includes(workspace) &&
+      !workspaceContainsDaemon(workspace, existing)
+    ) {
       onLine(
         `workspace "${workspace}" does not own running "${resolved.address}" (owners: [${owners.join(", ")}]) — use \`--force\` to stop it anyway`,
       );
+      options.onDownOutcome?.("not-owner");
       closeAsync(0);
       return dummy();
     }
@@ -2336,6 +2408,7 @@ export function runServiceCommand(
       onLine(
         `detached workspace "${workspace}" — still running for [${remaining.join(", ")}]`,
       );
+      options.onDownOutcome?.("detached");
       closeAsync(0);
       return dummy();
     }
@@ -2804,7 +2877,7 @@ export function runServiceCommand(
       if (now?.pgid === rec.pgid && exitCode !== 0) {
         if (!(now.containers?.length ?? 0)) unregisterDaemon(resolved.address);
         else clearDaemonProcessGroup(resolved.address);
-      }
+      } else if (now?.pgid === rec.pgid) markDaemonHandedOff(resolved.address);
     }
     onServiceExit?.(exitCode);
   };

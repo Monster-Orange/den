@@ -175,7 +175,7 @@ export function wsHeadStatusHtml({ name, data, rows }) {
   const st = workspaceStatus(rows, name);
   return (
     `<span class="den-dot ${wsDot(st)}" aria-hidden="true" id="ws-head-dot"></span>` +
-    `<span id="ws-head-pill">${pillHtml(st)}${downHtml(st)}</span>` +
+    `<span id="ws-head-pill">${pillHtml(st)}${st.down ? ` · ${downHtml(st)}` : ""}</span>` +
     `<span class="ws-head-acts">` +
     (st.up < st.n
       ? `<button type="button" class="den-btn sm" data-action="ws-start">${esc(t("ws.start"))}</button>`

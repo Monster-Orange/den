@@ -1,7 +1,8 @@
 /**
  * The session host (AG-3a, AG spec §3): one small detached process per
  * distribution that owns every PTY and serves them on a unix socket in the
- * state dir (`<stateDir>/sessions.sock`, mode 0600). The CLI and, later,
+ * state dir (`<stateDir>/sessions.sock`, mode 0600; with a state dir too
+ * long for a socket path, `/tmp/den-<uid>/<hash>.sock`: paths.ts). The CLI and, later,
  * the web server are its clients, so restarting the web server leaves every
  * session running. A reboot (or stopping the host) ends them; their records
  * and scrollback stay, listed as exited, until forgotten.
@@ -20,7 +21,12 @@ import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
 import { DEFAULT_SCROLLBACK_BYTES, ScrollbackLog } from "./ring-buffer.js";
-import { MAX_SOCKET_PATH, sessionPaths, type SessionPaths } from "./paths.js";
+import {
+  ensureSocketDir,
+  MAX_SOCKET_PATH,
+  sessionPaths,
+  type SessionPaths,
+} from "./paths.js";
 import {
   frame,
   LineReader,
@@ -193,6 +199,7 @@ export class SessionHost {
         `the session socket path is ${Buffer.byteLength(socket)} bytes, over the ${MAX_SOCKET_PATH}-byte limit for a unix socket: ${socket}. Use a shorter state dir.`,
       );
     fs.mkdirSync(this.paths.dir, { recursive: true, mode: 0o700 });
+    ensureSocketDir(socket);
     if (await socketAnswers(socket)) return "already-running";
     if (!(await this.takeLock())) return "already-running";
     try {

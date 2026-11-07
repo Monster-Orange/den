@@ -1309,6 +1309,8 @@
         font-weight: 500;
       }
       .tablewrap {
+        /* A flex item of .content-body: never shrunk into its own scroller. */
+        flex-shrink: 0;
         overflow-x: auto;
         border: 1px solid var(--border);
         border-radius: var(--radius);
@@ -1631,6 +1633,7 @@
           wsListHtml,
         } from "/workspaces-page.js";
         import { checkLine } from "/topbar.js";
+        import { stoppedAsQuiet } from "/workspace-status.js";
         import { agentsSectionHtml, mountAgents } from "/agents-section.js";
         import { mountGraph, graphHealth, graphMaximized } from "/graph.js";
         import {
@@ -1732,6 +1735,9 @@
           // /settings#editor by the server.)
         }
 
+        /** history.state for a URL whose ?ws= only mirrors the focus. */
+        const FOCUS_URL = { denFocusUrl: true };
+
         // ── Workspace list ────────────────────────────────────────────────────────
         async function loadWorkspaces() {
           wsData = await fetch("/api/workspaces")
@@ -1746,7 +1752,13 @@
           // else the focus (WS-6.1): All workspaces draws the All view on
           // Workspaces and every workspace on the Graph page; one draws it.
           if (!activeWs && !GRAPH_ALL && !_allShown) {
-            const urlWs = new URLSearchParams(location.search).get("ws");
+            // A ?ws= this page wrote for the focus (FOCUS_URL) is not a
+            // link: the focus now wins, so the page, the top bar and the
+            // breadcrumb show one value.
+            const urlWs =
+              history.state?.denFocusUrl === true
+                ? null
+                : new URLSearchParams(location.search).get("ws");
             const view = await fetch("/api/scope")
               .then((r) => (r.ok ? r.json() : null))
               .catch(() => null);
@@ -1837,7 +1849,11 @@
           if (value === "all") params.delete("ws");
           else params.set("ws", value);
           const qs = params.toString();
-          history.replaceState(null, "", location.pathname + (qs ? "?" + qs : ""));
+          history.replaceState(
+            FOCUS_URL,
+            "",
+            location.pathname + (qs ? "?" + qs : ""),
+          );
           if (value === "all") return void renderAll();
           if (wsData?.workspaces?.[value])
             return void selectWorkspace(value, { updateUrl: false });
@@ -2041,7 +2057,13 @@
           if (updateUrl) {
             const params = new URLSearchParams(location.search);
             params.set("ws", name);
-            history.replaceState(null, "", "?" + params.toString());
+            // ?ws= that only repeats the focus is marked: a reload after the
+            // focus moved elsewhere (the CLI, another tab) shows the focus.
+            history.replaceState(
+              name === focusName() ? FOCUS_URL : null,
+              "",
+              "?" + params.toString(),
+            );
           }
           drawWsList();
           await renderContent(name);
@@ -2377,15 +2399,22 @@
         let _tblQuery = "";
         let _tblGroup = "none";
         const _tblOpen = new Set(); // repos whose sub-rows are shown
+        let _tblStopped = new Set(); // "repo/service" of stopped services
+        const isStoppedSvc = (s) => _tblStopped.has(`${s.repo}/${s.name}`);
         const TBL_COLS = 6;
         const PROBLEM = new Set(["down", "degraded"]);
 
         /** The table's rows, from the last render's data and the health. */
         function tableModel() {
           const { svcList, depsMap, repoRank } = _tbl;
+          // A stopped service is grey, not failing (WS-6.3).
+          const quiet = _lastHealthResults
+            ? stoppedAsQuiet(_lastHealthResults)
+            : { rows: null, stopped: new Set() };
+          _tblStopped = quiet.stopped;
           const m = buildModel({
             services: svcList,
-            health: _lastHealthResults,
+            health: quiet.rows,
             apps: _graphApps,
             orgs: _orgData,
             depsMap,
@@ -2393,7 +2422,7 @@
           });
           const mine = new Set(m.byRepo.keys());
           const row = buildRow(
-            (_lastHealthResults || []).filter((h) => mine.has(h.repo)),
+            (quiet.rows || []).filter((h) => mine.has(h.repo)),
             [],
           );
           const cards = problemCards(row);
@@ -2548,11 +2577,16 @@
                   r.fixes.map(({ c }) => `${c.id}: ${c.line}`).join("\n"),
                 )
               : healthCell("bad", r.fixes[0].c.line);
+          const stopped = r.svcs.filter(isStoppedSvc).length;
           if (rollup.state === "unknown")
-            return healthCell("unk", repoStatusWord(rollup));
+            return healthCell(
+              "unk",
+              stopped ? "stopped" : repoStatusWord(rollup),
+            );
+          const unchecked = rollup.unchecked - stopped;
           return healthCell(
             repoStatus(rollup),
-            `${ok}/${checked} healthy${rollup.unchecked ? `, ${rollup.unchecked} not checked` : ""}`,
+            `${ok}/${checked} healthy${stopped ? `, ${stopped} stopped` : ""}${unchecked ? `, ${unchecked} not checked` : ""}`,
           );
         }
 
@@ -2656,7 +2690,7 @@
                     i,
                   ) => `<tr class="sub" id="${subIds[i]}" data-repo="${escHtml(repo)}" data-id="${escHtml(s.id)}"${shown(s) ? "" : " hidden"}>
               <th scope="row"><span class="repo-name">${escHtml(s.name)}</span>${s.entry ? ' <span class="badge">entry</span>' : ""}</th>
-              <td>${!_lastHealthAt ? CHECKING() : healthCell(status(s), s.health.ok === false ? checkLineOf(s) : healthLine(s))}</td>
+              <td>${!_lastHealthAt ? CHECKING() : isStoppedSvc(s) ? healthCell("unk", "stopped") : healthCell(status(s), s.health.ok === false ? checkLineOf(s) : healthLine(s))}</td>
               <td></td><td></td><td></td>
               <td><div class="tbl-acts">${actBtns(s.id, { up: s.commands.includes("up"), restart: s.commands.includes("up") || s.commands.includes("restart") })}<span class="tbl-more-sp" aria-hidden="true"></span></div></td>
             </tr>`,

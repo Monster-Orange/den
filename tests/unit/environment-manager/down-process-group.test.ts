@@ -17,6 +17,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import type { ResolvedService } from "../../../src/shared/types/index.js";
+import { recordProcessGroup } from "../../../src/shared/process/process-group.js";
 
 jest.mock("../../../src/shared/manifest/read-manifest.js");
 jest.mock("../../../src/shared/environment-manager/catalog.js");
@@ -319,5 +320,49 @@ describe("down stops what a detached up started", () => {
     const r = await down();
     expect(r.exitCode).toBe(0);
     expect(r.outcome).toBe("nothing-recorded");
+  });
+});
+
+describe("up after the process died without down (0.4.5)", () => {
+  it("starts it fresh: a record whose group is gone is stale, never 'already running'", async () => {
+    // A group of this file's, killed: its record outlives it, as when the
+    // service dies after the `up` that started it has exited.
+    const dead = spawn("node", ["-e", "setInterval(()=>{},1000)", MARK], {
+      detached: true,
+      stdio: "ignore",
+    });
+    spawnedGroups.add(dead.pid!);
+    await until(() => alive(dead.pid!));
+    const g = recordProcessGroup(dead.pid!);
+    expect(g).not.toBeNull();
+    const exited = new Promise((r) => dead.once("exit", r));
+    process.kill(-dead.pid!, "SIGKILL");
+    await exited;
+    registerDaemon({
+      address: "repo/api",
+      repoName: "repo",
+      subsystem: "api",
+      repoPath,
+      branch: null,
+      logPath: path.join(tmp, "api.log"),
+      startedAt: new Date(),
+      workspaces: ["default"],
+      pgid: g!.pgid,
+      pgidStartedAt: g!.startedAt,
+    });
+    manifestWith({ up: IDLE });
+    const lines: string[] = [];
+    const result = runServiceCommand({
+      address: "repo/api",
+      command: "up",
+      onLine: (l) => lines.push(l),
+      onClose: () => {},
+    });
+    tails.push(result.proc);
+    expect(lines.join("\n")).toContain("its process exited; starting fresh");
+    expect(lines.join("\n")).not.toContain("already running");
+    const now = findDaemonByAddress("repo/api");
+    expect(now?.pgid).not.toBe(g!.pgid);
+    if (now?.pgid) spawnedGroups.add(now.pgid);
   });
 });

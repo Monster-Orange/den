@@ -155,6 +155,7 @@ export async function mountSettings(deps) {
       "graph",
       "appearance",
       "shell",
+      "switching",
     ])
       if (reply[k] !== undefined) ctx.data[k] = reply[k];
     return true;

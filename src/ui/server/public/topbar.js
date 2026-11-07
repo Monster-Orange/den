@@ -64,7 +64,9 @@ export function statusSummary(row) {
       // WS-6.3/6.5: a service that doesn't run is stopped, never down,
       // and the chip counts only what runs (an older server sends no
       // `running`: every checked service counts, as before).
-      if (i.running === false && i.ok !== true) {
+      // A service whose process died without `down` (the server's
+      // `down`) is down, not stopped.
+      if (i.running === false && i.ok !== true && i.down !== true) {
         if (i.ok === false) stopped++;
         else if (i.pending) pending++;
         else unchecked++;

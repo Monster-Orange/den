@@ -40,7 +40,8 @@ export type StopGroupOutcome =
   | { outcome: "survived"; members: number[] }
   | { outcome: "error"; detail: string };
 
-interface PsRow {
+/** One `ps` row (pid, group, zombie, start time). */
+export interface PsRow {
   pid: number;
   pgid: number;
   zombie: boolean;
@@ -105,6 +106,19 @@ export function recordProcessGroup(pid: number): RecordedProcessGroup | null {
   );
   if (!row || row.pgid !== pid) return null;
   return { pgid: pid, startedAt: row.lstart };
+}
+
+/**
+ * Every process's `ps` row now, read once so many records can be checked
+ * against one listing (classifyGroup); null when `ps` cannot be run.
+ */
+export function processRows(): Promise<PsRow[] | null> {
+  return psRows();
+}
+
+/** processRows, synchronously (a CLI command that is about to block anyway). */
+export function processRowsSync(): PsRow[] | null {
+  return psRowsSync(PS_ARGS);
 }
 
 /** A recorded group's state now, synchronously; null when `ps` cannot be run. */
