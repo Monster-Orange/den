@@ -116,6 +116,7 @@ describe("dev-metrics record — buffering, guards, fail-open", () => {
   });
 
   it("CI=true suppresses shipping but still buffers", () => {
+    optIn();
     process.env.CI = "true";
     process.env.DEV_METRICS_SENTRY_DSN = "https://pub@fake.invalid/42";
     const out = path.join(tmp, "env.out");
@@ -127,7 +128,66 @@ describe("dev-metrics record — buffering, guards, fail-open", () => {
     expect(fs.existsSync(out)).toBe(false); // never shipped
   });
 
-  it("ships (captures an envelope) when a DSN is set and not suppressed", () => {
+  /** The opt-in (den#2): `metrics.share: true` in config/local/user.yml. */
+  const optIn = (body = "metrics:\n  share: true\n"): void => {
+    fs.mkdirSync(path.join(tmp, "config", "local"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "config", "local", "user.yml"), body);
+  };
+
+  it("sends nothing by default: a DSN in env alone never ships (local only)", () => {
+    process.env.DEV_METRICS_SENTRY_DSN = "https://pub@fake.invalid/42";
+    const out = path.join(tmp, "env.out");
+    process.env.DEV_METRICS_ENVELOPE_OUT = out;
+    const sent: unknown[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = ((...a: unknown[]) => {
+      sent.push(a);
+      return Promise.reject(new Error("no network in tests"));
+    }) as typeof fetch;
+    try {
+      record("devtool.den.invocation", { tool: "den", command: "up" });
+      delete process.env.DEV_METRICS_ENVELOPE_OUT;
+      record("devtool.den.invocation", { tool: "den", command: "down" });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    expect(fs.existsSync(out)).toBe(false);
+    expect(sent).toHaveLength(0);
+    expect(readJsonl()).toHaveLength(2); // still buffered locally
+  });
+
+  it("a DSN in a synced dev-metrics.config alone never ships", () => {
+    const cfgDir = path.join(tmp, ".stack", "common-iac", "scripts", "lib");
+    fs.mkdirSync(cfgDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cfgDir, "dev-metrics.config"),
+      'DEV_METRICS_SENTRY_DSN="https://pub@fake.invalid/42"\n',
+    );
+    const out = path.join(tmp, "env.out");
+    process.env.DEV_METRICS_ENVELOPE_OUT = out;
+    record("devtool.den.invocation", { tool: "den", command: "up" });
+    expect(fs.existsSync(out)).toBe(false);
+  });
+
+  it("anything but `share: true` is not an opt-in", () => {
+    process.env.DEV_METRICS_SENTRY_DSN = "https://pub@fake.invalid/42";
+    const out = path.join(tmp, "env.out");
+    process.env.DEV_METRICS_ENVELOPE_OUT = out;
+    for (const body of [
+      "metrics:\n  share: false\n",
+      'metrics:\n  share: "true"\n',
+      "metrics: true\n",
+      "share: true\n",
+      "{ not yaml",
+    ]) {
+      optIn(body);
+      record("devtool.den.invocation", { tool: "den", command: "up" });
+    }
+    expect(fs.existsSync(out)).toBe(false);
+  });
+
+  it("ships (captures an envelope) when opted in, a DSN is set and not suppressed", () => {
+    optIn();
     process.env.DEV_METRICS_SENTRY_DSN = "https://pub@fake.invalid/42";
     const out = path.join(tmp, "env.out");
     process.env.DEV_METRICS_ENVELOPE_OUT = out;
