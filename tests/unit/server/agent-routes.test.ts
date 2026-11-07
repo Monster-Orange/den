@@ -181,6 +181,8 @@ describe("GET /api/personas: each runtime's readiness (AG-0.2)", () => {
     expect(runtimes.find((x) => x.id === "den-claude")).toEqual({
       id: "den-claude",
       label: "Claude Code",
+      vendor: "Anthropic",
+      denTools: true,
       available: true,
       version: "9.9.9",
       path: a.r.claude,
@@ -574,5 +576,109 @@ describe("POST …/agents/<id>/stop and …/resume", () => {
     const g = await a.call("GET", "/api/workspaces/north/agents/ghost/stop");
     expect(g.status).toBe(405);
     expectR26(g.json, "method_not_allowed");
+  });
+});
+
+describe("the runtime catalog's routes (AG-0.5)", () => {
+  /** A fake codex in the rig's PATH dir: --version only. */
+  function fakeCodex(a: Api, dir: string, version = "codex-cli 0.50.0") {
+    const bin = path.join(dir, "codex");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      bin,
+      `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${version}"; exit 0; fi\necho "$@" >> "${a.r.ran}"\nexit 1\n`,
+      { mode: 0o755 },
+    );
+    return bin;
+  }
+
+  it("GET /api/agents/runtimes lists the catalog, installed first; ?workspace= shows that workspace's path", async () => {
+    const a = await api();
+    fakeCodex(a, path.dirname(a.r.claude));
+    const north = fakeCodex(a, path.join(a.r.dir, "n"), "codex-cli 0.52.0");
+    a.r.wsBins.north = { codex: north };
+    const list = async (q = "") => {
+      const { status, json } = await a.call("GET", `/api/agents/runtimes${q}`);
+      expect(status).toBe(200);
+      return json.runtimes as Record<string, unknown>[];
+    };
+    const plain = await list();
+    expect(plain.map((x) => x.id)).toEqual([
+      "den-claude",
+      "codex",
+      "gemini",
+      "grok",
+      "generic",
+    ]);
+    expect(plain[1]).toMatchObject({ source: "PATH", version: "0.50.0" });
+    expect((await list("?workspace=north"))[1]).toMatchObject({
+      path: north,
+      source: "workspace",
+      version: "0.52.0",
+    });
+    const nowhere = await a.call(
+      "GET",
+      "/api/agents/runtimes?workspace=nowhere",
+    );
+    expect(nowhere.status).toBe(404);
+    expectR26(nowhere.json);
+    expect(fs.existsSync(a.r.ran)).toBe(false);
+  });
+
+  it("POST …/runtimes/<id>/path: a path that isn't the runtime is 422, the runtime's is saved; an agent is refused (403); each audited", async () => {
+    const a = await api();
+    const good = fakeCodex(a, path.join(a.r.dir, "g"));
+    const other = fakeCodex(a, path.join(a.r.dir, "o"), "1.2.3");
+    const post = (body: unknown, headers?: Record<string, string>) =>
+      a.call("POST", "/api/agents/runtimes/codex/path", body, headers);
+    let r = await post({ scope: "global", bin: other });
+    expect(r.status).toBe(422);
+    expectR26(r.json);
+    expect(String(r.json.error)).toMatch(/is not Codex CLI/);
+    expect(a.r.runtimeBins).toEqual({});
+    r = await post({ scope: "global", bin: good });
+    expect(r.status).toBe(200);
+    expect(r.json.runtime).toMatchObject({
+      id: "codex",
+      path: good,
+      version: "0.50.0",
+    });
+    expect(a.r.runtimeBins).toEqual({ codex: good });
+    expect(recentActions().at(-1)).toMatchObject({
+      verb: "agents",
+      detail: "runtime codex path (global)",
+    });
+    expect(recentActions().at(-1)!.outcome).toBeUndefined();
+    r = await post({ scope: "workspace", workspace: "north", bin: good });
+    expect(r.status).toBe(200);
+    expect(a.r.wsBins).toEqual({ north: { codex: good } });
+    r = await post({ scope: "workspace", workspace: "north", bin: null });
+    expect(r.status).toBe(200);
+    expect(a.r.wsBins).toEqual({ north: {} });
+    // Bad requests: a scope, a bin, an unknown runtime, GET.
+    expect((await post({ scope: "x", bin: good })).status).toBe(400);
+    expect((await post({ bin: 3 })).status).toBe(400);
+    expect(
+      (await a.call("POST", "/api/agents/runtimes/nope/path", { bin: good }))
+        .status,
+    ).toBe(400);
+    expect(
+      (await a.call("GET", "/api/agents/runtimes/codex/path")).status,
+    ).toBe(405);
+    // An agent (its actor token) can't set one.
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    const token = a.r.made[0].opts.env.DEN_ACTOR_TOKEN ?? "";
+    r = await post(
+      { scope: "global", bin: good },
+      { authorization: `Bearer ${token}` },
+    );
+    expect(r.status).toBe(403);
+    expectR26(r.json, "forbidden");
+    expect(recentActions().at(-1)).toMatchObject({
+      actor: "agent",
+      outcome: "refused",
+    });
+    // Only --version ever ran.
+    expect(fs.existsSync(a.r.ran)).toBe(false);
   });
 });

@@ -13,6 +13,7 @@ import { SessionHost } from "../../../../src/shared/sessions/host.js";
 import { sessionPaths } from "../../../../src/shared/sessions/paths.js";
 import type { PtyLoad } from "../../../../src/shared/sessions/pty.js";
 import type { ResolvedAgentsConfig } from "../../../../src/shared/den-config.js";
+import { validateCatalog } from "../../../../src/shared/agents/catalog.js";
 import type { AgentsDeps } from "../../../../src/ui/cli/agents-command.js";
 import {
   scriptedFactory,
@@ -33,6 +34,10 @@ export interface Rig {
   config: ResolvedAgentsConfig;
   /** `agents.runtimes.<id>.bin` as a user.yml would set it (none by default). */
   runtimeBins: Record<string, unknown>;
+  /** Per workspace: `<ws>.agents.runtimes.<id>.bin` (AG-0.5). */
+  wsBins: Record<string, Record<string, unknown>>;
+  /** user.yml's `agents.runtime_catalog`, as written. */
+  userCatalog: unknown;
 }
 
 const tmps: string[] = [];
@@ -89,8 +94,15 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     ran,
     claude,
     wsDir,
-    config: { maxConcurrent: 4, personaPacks: [], agents: {} },
+    config: {
+      maxConcurrent: 4,
+      personaPacks: [],
+      agents: {},
+      runtimeCatalog: [],
+    },
     runtimeBins: {},
+    wsBins: {},
+    userCatalog: undefined,
     deps: {},
   };
   r.deps = {
@@ -113,6 +125,21 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     exitWatchMs: 0,
     // Never this machine's user.yml.
     runtimeBin: (id) => r.runtimeBins[id],
+    workspaceRuntimeBin: (ws, id) => r.wsBins[ws]?.[id],
+    userCatalog: (taken) =>
+      validateCatalog(
+        r.userCatalog,
+        "agents.runtime_catalog (user.yml)",
+        taken,
+      ),
+    saveRuntimeBin: (scope, ws, id, bin) => {
+      if (scope === "workspace" && ws) {
+        r.wsBins[ws] ??= {};
+        if (bin === null) delete r.wsBins[ws][id];
+        else r.wsBins[ws][id] = bin;
+      } else if (bin === null) delete r.runtimeBins[id];
+      else r.runtimeBins[id] = bin;
+    },
     userConfigFile: () => path.join(dir, "config", "local", "user.yml"),
     env: {
       PATH: `${bin}:/usr/bin:/bin`,

@@ -160,6 +160,57 @@ describe("session host", () => {
     ]);
   });
 
+  it("tells an attachment that asks the PTY's size on attach and each change; one that doesn't ask gets no size event", async () => {
+    const dir = stateDir();
+    await host(dir);
+    const a = await client(dir);
+    const b = await client(dir);
+    const { ref } = await a.start(spec("acme-north:planner"));
+    const sizesA: Array<[number, number]> = [];
+    const sizesB: Array<[number, number]> = [];
+    await a.attach(ref.id, {
+      onData: () => undefined,
+      onSize: (c, r) => sizesA.push([c, r]),
+    }).ready;
+    // The start's size, on attach.
+    expect(sizesA).toEqual([[80, 24]]);
+    await b.attach(ref.id, {
+      onData: () => undefined,
+      onSize: (c, r) => sizesB.push([c, r]),
+    }).ready;
+    // An older client (no `sizes`): an unknown event would read as the
+    // session's exit, so it never gets one.
+    const raw = net.connect(sessionPaths(dir).socket);
+    const lines: string[] = [];
+    raw.on("data", (d) => lines.push(...d.toString().split("\n")));
+    await new Promise((r) => raw.once("connect", r));
+    raw.write(
+      JSON.stringify({
+        v: PROTOCOL_VERSION,
+        id: 1,
+        op: "attach",
+        ref: ref.id,
+        aid: "old.1",
+      }) + "\n",
+    );
+    await until(() => lines.some((l) => l.includes('"id":1')));
+    // b resizes: both hear it; the same size again says nothing.
+    b.resize(ref.id, 132, 41);
+    await until(() => sizesA.length === 2 && sizesB.length === 2);
+    expect(sizesA.at(-1)).toEqual([132, 41]);
+    expect(sizesB.at(-1)).toEqual([132, 41]);
+    a.resize(ref.id, 132, 41);
+    a.resize(ref.id, 90, 30);
+    await until(() => sizesB.length === 3);
+    expect(sizesB).toEqual([
+      [80, 24],
+      [132, 41],
+      [90, 30],
+    ]);
+    expect(lines.filter((l) => l.includes('"size"'))).toEqual([]);
+    raw.destroy();
+  });
+
   it("refuses a second running session of the same name", async () => {
     const dir = stateDir();
     await host(dir);

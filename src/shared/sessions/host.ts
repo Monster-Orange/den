@@ -63,6 +63,10 @@ interface Session {
   log: ScrollbackLog;
   /** aid → its connection. */
   attachments: Map<string, Conn>;
+  /** The attachments that asked for size events (attach `sizes: true`). */
+  sizeAids?: Set<string>;
+  /** The PTY's size: the start's, then the last resize's (any client's). */
+  size?: { cols: number; rows: number };
   /** The cap it counts against (start's `pool`), when one was named. */
   pool?: SessionPool;
 }
@@ -453,7 +457,15 @@ export class SessionHost {
         const s = this.session(req.ref);
         if (!isInt(req.cols, 1, 10_000) || !isInt(req.rows, 1, 10_000))
           throw new Refusal("bad-request", "resize needs whole cols and rows");
-        if (s.pty && !s.info.exited) s.pty.resize(req.cols, req.rows);
+        if (s.pty && !s.info.exited) {
+          s.pty.resize(req.cols, req.rows);
+          // Last writer wins: every viewer that asked hears the new size,
+          // so one out of step knows to say its own again.
+          if (s.size?.cols !== req.cols || s.size?.rows !== req.rows) {
+            s.size = { cols: req.cols, rows: req.rows };
+            this.sendSize(s);
+          }
+        }
         return {};
       }
       case "signal": {
@@ -606,6 +618,7 @@ export class SessionHost {
         },
       ),
       attachments: new Map(),
+      size: { cols, rows },
       ...(pool !== undefined ? { pool: pool as SessionPool } : {}),
     };
     this.sessions.set(id, s);
@@ -626,6 +639,7 @@ export class SessionHost {
         for (const [aid, c] of s.attachments)
           c.send({ ev: "exit", aid, exitCode: s.info.exitCode });
         s.attachments.clear();
+        s.sizeAids?.clear();
         this.log(`session ${id} (${name}) exited (${s.info.exitCode})`);
       }, EXIT_SETTLE_MS);
     });
@@ -654,8 +668,22 @@ export class SessionHost {
     } else {
       conn.aids.add(aid);
       s.attachments.set(aid, conn);
+      if (req.sizes === true) {
+        (s.sizeAids ??= new Set()).add(aid);
+        if (s.size) conn.send({ ev: "size", aid, ...s.size });
+      }
     }
     return s.info;
+  }
+
+  /** Tell each attachment that asked the session's current size. */
+  private sendSize(s: Session): void {
+    if (!s.size || !s.sizeAids?.size) return;
+    for (const aid of s.sizeAids) {
+      const c = s.attachments.get(aid);
+      if (c) c.send({ ev: "size", aid, ...s.size });
+      else s.sizeAids.delete(aid);
+    }
   }
 
   /** Stop serving: running sessions get SIGHUP, scrollback is flushed. */

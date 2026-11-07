@@ -76,7 +76,8 @@ export class HostClient extends EventEmitter {
       const h = this.attachments.get(ev.aid);
       if (!h) return;
       if (ev.ev === "data") h.onData(Buffer.from(ev.data, "base64"));
-      else {
+      else if (ev.ev === "size") h.onSize?.(ev.cols, ev.rows);
+      else if (ev.ev === "exit") {
         this.attachments.delete(ev.aid);
         h.onExit?.(ev.exitCode);
       }
@@ -174,6 +175,9 @@ export class HostClient extends EventEmitter {
       ref: id,
       aid,
       ...(opts.replay !== undefined ? { replay: opts.replay } : {}),
+      // Only a client that handles them is sent size events: an older
+      // client would read an unknown event as the session's exit.
+      ...(handlers.onSize ? { sizes: true } : {}),
     }).then(
       (r) => r.info as SessionInfo,
       (e: Error) => {

@@ -233,6 +233,37 @@ describe("the io WebSocket", () => {
     await ws.closed;
   });
 
+  it("echoes the PTY's size: on attach, and to every viewer whenever any of them (or the CLI) resizes it", async () => {
+    const sizes = (w: TestWs) =>
+      w
+        .controls()
+        .filter((m) => m.type === "size")
+        .map((m) => [m.cols, m.rows]);
+    const a = await attach("logs");
+    await a.until(() => sizes(a).length === 1);
+    expect(sizes(a)).toEqual([[80, 24]]);
+    const b = await attach("logs");
+    await b.until(() => sizes(b).length === 1);
+    b.sendText(JSON.stringify({ type: "resize", cols: 150, rows: 40 }));
+    await a.until(() => sizes(a).length === 2);
+    expect(sizes(a).at(-1)).toEqual([150, 40]);
+    await b.until(() => sizes(b).length === 2);
+    // Another client of the host (a CLI attach) resizes: both hear it.
+    const cli = await connectHost(sessionPaths(s.stateDir).socket);
+    cli.resize(sess.logs.ref.id, 100, 30);
+    await a.until(() => sizes(a).length === 3);
+    await b.until(() => sizes(b).length === 3);
+    expect(sizes(b).at(-1)).toEqual([100, 30]);
+    // Under 2x2 is refused: a pane that wasn't laid out yet.
+    a.sendText(JSON.stringify({ type: "resize", cols: 1, rows: 1 }));
+    await settle(150);
+    expect(pty("logs").resizes.some(([c]) => c === 1)).toBe(false);
+    cli.close();
+    a.close();
+    b.close();
+    await Promise.all([a.closed, b.closed]);
+  });
+
   it("two browsers and the CLI attach at once: each sees every byte, and either browser's typing reaches the session", async () => {
     const a = await attach("shell");
     const b = await attach("shell");

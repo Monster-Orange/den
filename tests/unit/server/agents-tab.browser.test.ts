@@ -480,7 +480,8 @@ describe("the Agents tab", () => {
         200,
       );
       const p = await page("/agents", { width, height });
-      await p.route("**/api/personas", (route) =>
+      // AG-0.5: the dialog asks for its workspace's (?workspace=).
+      await p.route(/\/api\/personas(\?|$)/, (route) =>
         route.fulfill({
           json: {
             personas: [

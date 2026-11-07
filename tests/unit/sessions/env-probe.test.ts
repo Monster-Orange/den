@@ -1,7 +1,8 @@
 /**
  * `<cli> doctor --probe` (AG spec §5a-env): a real session host on a temp
  * socket, a PTY stand-in that really runs the probe (pipes, no native
- * module), and a `claude` PATH shim that must never run. The caller's env
+ * module), and PATH shims for each catalog runtime's CLI (claude, codex,
+ * gemini, grok) that must never run. The caller's env
  * carries Claude Code's session plumbing and a token; the probe reports
  * key names and flags only.
  */
@@ -46,11 +47,13 @@ async function rig(pty?: PtyLoad): Promise<{ deps: ProbeDeps; ran: string }> {
   const bin = path.join(dir, "bin");
   fs.mkdirSync(bin);
   const ran = path.join(dir, "claude-ran");
-  fs.writeFileSync(
-    path.join(bin, "claude"),
-    `#!/bin/sh\necho "$@" >> "${ran}"\nexit 1\n`,
-    { mode: 0o755 },
-  );
+  // Every catalog runtime's CLI, as a shim that must never run.
+  for (const b of ["claude", "codex", "gemini", "grok"])
+    fs.writeFileSync(
+      path.join(bin, b),
+      `#!/bin/sh\necho "$@" >> "${ran}"\nexit 1\n`,
+      { mode: 0o755 },
+    );
   const load: PtyLoad = pty ?? { available: true, factory: pipePtyFactory };
   const h = new SessionHost({
     stateDir: dir,
@@ -97,6 +100,9 @@ describe("doctor --probe", () => {
     for (const target of [
       "plain session",
       "agent (den-claude)",
+      "agent (codex)",
+      "agent (gemini)",
+      "agent (grok)",
       "agent (generic)",
     ])
       for (const key of [
@@ -119,6 +125,9 @@ describe("doctor --probe", () => {
     expect(results.map((r) => r.target)).toEqual([
       "plain session",
       "agent (den-claude)",
+      "agent (codex)",
+      "agent (gemini)",
+      "agent (grok)",
       "agent (generic)",
     ]);
     expect(reached(results)).toEqual([]);

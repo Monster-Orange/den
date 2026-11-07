@@ -18,6 +18,10 @@
  *   - on attach, the scrollback replay, then live output: binary frames;
  *   - a text frame `{"type":"session",…}` first (what is attached), and
  *     `{"type":"exit","exitCode":n}` when the session ends;
+ *   - `{"type":"size","cols":c,"rows":r}`: the PTY's size, on attach and
+ *     each time any viewer (another browser, a CLI attach) resizes it. The
+ *     size is last-writer-wins; a pane that learns it is out of step says
+ *     its own again when it is used (focused, typed in, shown);
  *   - in: binary frames are input; a text frame is JSON control:
  *     `{"type":"resize","cols":c,"rows":r}` (or `{"type":"input","data":s}`).
  * Closing the socket detaches. Nothing here ever signals a session: leaving
@@ -391,6 +395,9 @@ export async function handleSessionUpgrade(
   let exited = s.exited === true;
   const att = client.attach(s.ref.id, {
     onData: (data) => ws.send(data),
+    onSize: (cols, rows) => {
+      if (ws.open) ws.send(JSON.stringify({ type: "size", cols, rows }));
+    },
     onExit: (exitCode) => {
       exited = true;
       ws.send(
@@ -417,8 +424,9 @@ export async function handleSessionUpgrade(
       return;
     }
     if (msg?.type === "resize") {
+      // Never below 2x2: a pane measured before it was laid out.
       const ok = (n: unknown): n is number =>
-        typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= 1000;
+        typeof n === "number" && Number.isInteger(n) && n >= 2 && n <= 1000;
       if (!exited && ok(msg.cols) && ok(msg.rows))
         client.resize(s.ref.id, msg.cols, msg.rows);
     } else if (msg?.type === "input" && typeof msg.data === "string") {

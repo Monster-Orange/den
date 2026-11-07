@@ -24,8 +24,10 @@
  *           running: a new session, in the same cwd, continuing the last run;
  *           when that session was never prompted, a fresh start under the
  *           same conversation id (there is nothing to continue).
- *   doctor  (AG-0.3) each runtime: its status, the CLI it runs and where
- *           that came from (setting, login-shell, PATH, well-known), its
+ *   doctor  (AG-0.3, AG-0.5) each runtime of the catalog, installed
+ *           first: its status, the CLI it runs and where that came from
+ *           (workspace or user.yml setting, login shell, PATH, install
+ *           directory, interactive shell), its
  *           version (its version command, once, under a timeout), the
  *           directories searched (names only, never an env value), and the
  *           fix when it is missing. Exit 1 when the default runtime is
@@ -88,16 +90,20 @@ export const AGENTS_HELP = {
     "    a session never prompted starts fresh under the same conversation id",
     "{cli} agents personas [--json]",
     "    Den's default pack, then agents.persona_packs (a later pack wins by id)",
-    "{cli} agents doctor [--json]",
-    "    each runtime: status, the CLI it runs and where it came from, its version,",
-    "    the directories searched, and the fix; exit 1 when the default is missing",
+    "{cli} agents doctor [-w <ws>] [--json]",
+    "    each runtime, installed first: status, the CLI it runs and where it came",
+    "    from, its version, the directories searched, and the fix; exit 1 when the",
+    "    default is missing. -w: as that workspace's agents find them",
     "",
-    "Runtimes: den-claude (default; Claude Code's claude) and generic (the",
-    "persona's argv template). Attach with `{cli} sessions attach <ws>:<id>`.",
-    "A runtime's CLI is found as your terminal finds it: agents.runtimes.<id>.bin",
-    "in config/local/user.yml (an absolute path) wins, then the login shell's PATH,",
-    "this PATH, and its install directories (~/.local/bin, ~/.claude/local,",
-    "/opt/homebrew/bin, /usr/local/bin, npm's global bin).",
+    "Runtimes: den-claude (default; Claude Code's claude), codex (OpenAI's Codex",
+    "CLI), gemini (Google's Gemini CLI), grok (xAI's Grok Build), and generic (the",
+    "persona's argv template). codex, gemini and grok run as their own CLI in the",
+    "workspace, without Den's tools yet. Attach with `{cli} sessions attach <ws>:<id>`.",
+    "A runtime's CLI is found as your terminal finds it: <ws>.agents.runtimes.<id>.bin",
+    "in config/local/workspaces.yml, then agents.runtimes.<id>.bin in",
+    "config/local/user.yml (absolute paths), then the login shell's PATH, this PATH,",
+    "its install directories (~/.local/bin, /opt/homebrew/bin, /usr/local/bin, npm's",
+    "global bin, the vendor's own), and last the interactive shell's PATH.",
     "An agent's env is PATH, HOME, USER, LOGNAME, SHELL, TERM, COLORTERM, LANG,",
     "LC_*, TZ and TMPDIR, plus what its runtime declares: nothing else of yours.",
   ],
@@ -273,10 +279,12 @@ export interface AgentsDoctorDeps {
 }
 
 const SOURCE_WORD: Record<string, string> = {
+  workspace: "the workspace's agents.runtimes setting",
   setting: "agents.runtimes setting",
   "login-shell": "login shell PATH",
   PATH: "PATH",
   "well-known": "install directory",
+  "interactive-shell": "interactive shell PATH",
 };
 
 /** `agents doctor`'s lines for one runtime (names and paths, never env values). */
@@ -284,9 +292,11 @@ export function doctorLines(
   r: RuntimeChoice,
   cli: string,
   userConfig: string,
+  /** Directory lists already printed (a repeat is counted, not listed). */
+  printed: string[] = [],
 ): string[] {
   const lines = [
-    `${r.id}${r.label ? ` (${r.label})` : ""}${r.default ? "  [default]" : ""}`,
+    `${r.id}${r.label ? ` (${r.label}${r.vendor ? `, ${r.vendor}` : ""})` : ""}${r.default ? "  [default]" : ""}${r.denTools === false ? "  [Den tools: coming]" : ""}`,
     r.available
       ? "  status    ✓ available"
       : `  status    ✗ unavailable: ${r.why ?? "unknown"}`,
@@ -298,11 +308,19 @@ export function doctorLines(
   if (r.available && r.setting)
     lines.push(`  version   ${r.version ?? "unknown"}`);
   if (!r.setting) lines.push("  path      none to find (the persona's argv)");
-  else if (r.searched?.length)
-    r.searched.forEach((dir, i) =>
-      lines.push(`  ${i === 0 ? "searched  " : "          "}${dir}`),
-    );
-  else if (r.source !== "setting") lines.push("  searched  (no directories)");
+  else if (r.searched?.length) {
+    const key = r.searched.join("\0");
+    if (printed.includes(key))
+      lines.push(
+        `  searched  the same ${r.searched.length} ${r.searched.length === 1 ? "directory" : "directories"} as above`,
+      );
+    else {
+      printed.push(key);
+      r.searched.forEach((dir, i) =>
+        lines.push(`  ${i === 0 ? "searched  " : "          "}${dir}`),
+      );
+    }
+  } else if (r.source !== "setting") lines.push("  searched  (no directories)");
   if (!r.available && r.setting)
     lines.push(
       `  fix       install ${r.label ?? r.id}, or set ${r.setting} to its absolute path in ${userConfig}`,
@@ -317,25 +335,34 @@ async function doctor(
   deps: AgentsDoctorDeps,
 ): Promise<number> {
   const where = "agents doctor";
-  const p = parseArgs(where, args, { "--json": false });
+  const p = parseArgs(where, args, { "--workspace": true, "--json": false });
   noExtra(where, p);
+  const ws = workspaceFlag(where, p);
+  if (ws && !d.workspaceExists(ws))
+    throw new UsageError(`${where}: workspace "${ws}" does not exist`);
   await (deps.loginPath ?? (() => initLoginPath({ env: d.env })))();
-  const rts = await listRuntimes(d);
+  const rts = await listRuntimes(d, ws);
   const def = rts.find((r) => r.default);
   const code = def?.available ? 0 : 1;
   if (p.flags["--json"]) {
     d.out(
       JSON.stringify(
-        { runtimes: rts, userConfig: d.userConfigFile() },
+        {
+          runtimes: rts,
+          ...(ws ? { workspace: ws } : {}),
+          userConfig: d.userConfigFile(),
+        },
         null,
         2,
       ),
     );
     return code;
   }
+  const printed: string[] = [];
   rts.forEach((r, i) => {
     if (i) d.out("");
-    for (const l of doctorLines(r, d.cli, d.userConfigFile())) d.out(l);
+    for (const l of doctorLines(r, d.cli, d.userConfigFile(), printed))
+      d.out(l);
   });
   d.out("");
   d.out(

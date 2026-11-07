@@ -4,6 +4,57 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.4] - unreleased
+
+An agent's terminal uses its pane's width, and Den knows Codex, Gemini and
+Grok as well as Claude Code.
+
+### Fixed
+
+- **An agent's terminal uses the pane's width.** A session has one PTY
+  size, and the last viewer to resize it won: a second, narrower browser
+  (or a hidden tab) left the TUI wrapping at its width in every other
+  viewer. The viewer in use now wins: focusing a pane, typing in it after
+  another viewer changed the size, and the page being shown again each
+  send that pane's size; a hidden pane never resizes the PTY, and no
+  resize under 2×2 is sent (the server refuses one too). The server tells
+  every viewer the PTY's size on attach and on each change (a `size`
+  frame), so a viewer knows when it is out of step. The cells are also
+  measured again once fonts finish loading and after a theme is applied,
+  so a theme's web font no longer leaves the terminal fitted to the
+  fallback font's width.
+
+- **Settings rows with their own controls draw them.** A row that draws
+  itself (Browser sign-in's Sign out) showed an empty value.
+
+### Added
+
+- **The runtime catalog (AG-0.5).** Den ships, as data, the vendor CLIs it
+  can find: Claude Code (`den-claude`), OpenAI's Codex CLI (`codex`),
+  Google's Gemini CLI (`gemini`) and xAI's Grok Build (`grok`), each with
+  its binary names, version command, install directories and launch
+  command, checked against the vendor's docs. Installed runtimes are
+  listed first, with their versions, in the Start agent dialog, Settings
+  and `agents doctor`. A runtime other than Claude Code runs its own
+  interactive CLI in the workspace's directory, tagged "Den tools:
+  coming"; nothing is offered as startable unless it can start here.
+  When a catalog runtime is still not found, Den asks your interactive
+  shell (`$SHELL -ilc`) once, and says so (`interactive-shell`).
+- **Runtime paths per workspace.** `<ws>.agents.runtimes.<id>.bin` in
+  `config/local/workspaces.yml` wins over `agents.runtimes.<id>.bin` in
+  `config/local/user.yml`, which wins over what Den finds. **Settings ›
+  Agents › Runtimes** shows each runtime's status, version, path and its
+  source; **Set path…** runs the version command and refuses a path that
+  isn't that runtime, and a selector edits one workspace's paths.
+  `agents doctor -w <ws>` shows that workspace's.
+- **The Start agent dialog is the approved width** (the mock's 600px of
+  content: 638px wide, never wider than the window less 16px a side).
+
+### Migrations
+
+- None required. A distribution may add runtimes with
+  `agents.runtime_catalog` (see Runtimes in docs/distributions.md).
+
 ## [0.4.3] - unreleased
 
 Agents start, and the edge counts as local.

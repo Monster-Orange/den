@@ -44,6 +44,11 @@ export function registerStrategy<K extends string, C>(
   byId.set(entry.id, entry as StrategyEntry);
 }
 
+/** Remove strategy `id` of `kind` (no-op when it isn't there). */
+export function unregisterStrategy(kind: string, id: string): void {
+  registries.get(kind)?.delete(id);
+}
+
 /** The strategy `id` of `kind`, or undefined. */
 export function getStrategy<K extends string, C>(
   kind: K,

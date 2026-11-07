@@ -65,6 +65,13 @@ export const DEN_SETTING_CATEGORIES = [
       "Settings for one workspace. They follow the Workspace you view in the top bar.",
   },
   {
+    id: "agents",
+    label: "Agents",
+    order: 55,
+    description:
+      "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one workspace (config/local/workspaces.yml), which wins.",
+  },
+  {
     id: "cli",
     label: "Command line",
     order: 60,
@@ -416,6 +423,29 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.saveWorkspace({ editor: v || null }),
   },
 
+  // ── Agents ─────────────────────────────────────────────────────────────
+  {
+    id: "agents.runtimes",
+    category: "agents",
+    label: "Runtimes",
+    description:
+      "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",
+    keywords: [
+      "runtime",
+      "claude",
+      "codex",
+      "gemini",
+      "grok",
+      "path",
+      "bin",
+      "cli",
+      "agent",
+    ],
+    scope: "user",
+    control: { type: "custom", render: renderRuntimes },
+    read: () => null,
+  },
+
   // ── Command line ───────────────────────────────────────────────────────
   {
     id: "cli.local_dev",
@@ -546,6 +576,154 @@ export const DEN_SETTINGS = [
     (d) => d.domain || "not set",
   ),
 ];
+
+// ── Settings › Agents › Runtimes (AG-0.5) ────────────────────────────────
+
+const escR = (s) =>
+  String(s ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
+
+/** Where a runtime's path came from, as the row says it. */
+export const RUNTIME_SOURCE = {
+  workspace: "workspace",
+  setting: "global",
+  "login-shell": "detected · login shell",
+  PATH: "detected · PATH",
+  "well-known": "detected · install directory",
+  "interactive-shell": "detected · interactive shell",
+};
+
+/** One runtime's row (r: GET /api/agents/runtimes' entry). */
+export function runtimeRowHtml(r, scopeWs) {
+  const id = escR(r.id);
+  const name =
+    `<b>${escR(r.label || r.id)}</b>` +
+    (r.vendor ? ` <span class="rt-v">${escR(r.vendor)}</span>` : "") +
+    (r.denTools === false
+      ? ` <span class="set-tag" data-den-tools="coming">Den tools: coming</span>`
+      : "");
+  const set = r.source === "workspace" || r.source === "setting";
+  const status = r.available
+    ? `<span class="rt-ok">✓ ${escR(r.version ? r.version : "installed")}</span>`
+    : `<span class="rt-bad">${escR(set ? r.why : "Not installed")}</span>`;
+  const where = r.path
+    ? `<span class="den-mono rt-p">${escR(r.path)}</span> <span class="set-tag" data-src="${escR(r.source || "")}">${escR(RUNTIME_SOURCE[r.source] || r.source || "")}</span>`
+    : set
+      ? `<span class="set-tag" data-src="${escR(r.source)}">${escR(RUNTIME_SOURCE[r.source])}</span>`
+      : "";
+  // A path set at the scope shown can be cleared from here.
+  const mine = scopeWs ? r.source === "workspace" : r.source === "setting";
+  return (
+    `<div class="rt" data-runtime="${id}" data-available="${r.available ? "true" : "false"}">` +
+    `<div class="rt-n">${name}</div>` +
+    `<div class="rt-s">${status}</div>` +
+    `<div class="rt-w">${where}</div>` +
+    `<div class="rt-a"><button type="button" class="btn sm" data-set-path="${id}">Set path…</button>` +
+    (mine
+      ? ` <button type="button" class="btn sm" data-clear-path="${id}">Clear</button>`
+      : "") +
+    `</div>` +
+    `<form class="rt-f" data-path-form="${id}" hidden>` +
+    `<label class="rt-fl" for="rt-in-${id}">Path to ${escR(r.label || r.id)}${scopeWs ? ` for ${escR(scopeWs)}` : " (every workspace)"}</label>` +
+    `<input type="text" id="rt-in-${id}" class="den-mono" spellcheck="false" autocomplete="off" placeholder="/absolute/path/to/${escR(r.id === "den-claude" ? "claude" : r.id)}" value="${escR(mine ? r.path || "" : "")}">` +
+    `<button type="submit" class="btn sm primary">Save</button> <button type="button" class="btn sm" data-cancel-path>Cancel</button>` +
+    `<div class="rt-err" role="alert" hidden></div></form>` +
+    `</div>`
+  );
+}
+
+/** The Runtimes row: the list, a workspace selector, Set path… and Clear. */
+function renderRuntimes(host, ctx) {
+  const wss = ctx.workspaces || [];
+  let ws = "";
+  const draw = (rows, note) => {
+    host.innerHTML =
+      `<div class="rt-scope"><label for="rt-ws">Paths for</label> <select id="rt-ws" data-focus-key="rt-ws">` +
+      `<option value="">every workspace (user.yml)</option>` +
+      wss
+        .map(
+          (w) =>
+            `<option value="${escR(w)}"${w === ws ? " selected" : ""}>${escR(w)} (workspaces.yml)</option>`,
+        )
+        .join("") +
+      `</select></div>` +
+      (note ? `<div class="set-note">${escR(note)}</div>` : "") +
+      `<div class="rt-list" role="list">${rows.map((r) => runtimeRowHtml(r, ws)).join("")}</div>`;
+  };
+  const load = () => {
+    // Under an invalid config the runtimes answer 422: say why, ask nothing.
+    if (ctx.shell?.configInvalid?.() === true)
+      return draw([], "Fix the config first: the runtimes are read from it.");
+    return ctx.shell
+      .api(
+        "GET",
+        `/api/agents/runtimes${ws ? `?workspace=${encodeURIComponent(ws)}` : ""}`,
+      )
+      .then((b) =>
+        // Only what has a CLI to find: generic is the persona's argv.
+        draw((b?.runtimes || []).filter((r) => r.setting)),
+      )
+      .catch((e) => draw([], e?.message || "The runtimes did not load."));
+  };
+  host.addEventListener("change", (e) => {
+    if (e.target.id !== "rt-ws") return;
+    ws = e.target.value;
+    void load();
+  });
+  host.addEventListener("click", async (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const row = b.closest(".rt");
+    const form = row?.querySelector(".rt-f");
+    if (b.dataset.setPath && form) {
+      form.hidden = false;
+      form.querySelector("input").focus();
+    } else if (b.hasAttribute("data-cancel-path") && form) {
+      form.hidden = true;
+    } else if (b.dataset.clearPath) {
+      await savePath(b.dataset.clearPath, null, form);
+    }
+  });
+  host.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.target.closest(".rt-f");
+    if (!form) return;
+    const bin = form.querySelector("input").value.trim();
+    if (!bin) return;
+    await savePath(form.dataset.pathForm, bin, form);
+  });
+  async function savePath(id, bin, form) {
+    const err = form?.querySelector(".rt-err");
+    const btns = form ? [...form.querySelectorAll("button")] : [];
+    btns.forEach((x) => (x.disabled = true));
+    try {
+      await ctx.shell.api(
+        "POST",
+        `/api/agents/runtimes/${encodeURIComponent(id)}/path`,
+        {
+          scope: ws ? "workspace" : "global",
+          ...(ws ? { workspace: ws } : {}),
+          bin,
+        },
+      );
+      await load();
+    } catch (x) {
+      // Its refusal is shown here, under the field, not as a toast.
+      if (err) {
+        err.textContent = x?.message || "Not saved";
+        err.hidden = false;
+      }
+    } finally {
+      btns.forEach((x) => (x.disabled = false));
+    }
+  }
+  void load();
+}
 
 /** Register Den's categories and rows with the shell's SETTINGS registry. */
 export function registerDenSettings(shell) {

@@ -1,7 +1,12 @@
 /**
  * Den's built-in runtimes, registered as strategy kind `runtime`: import
- * this module to have them. den-claude first: it is the default.
+ * this module to have them. den-claude first: it is the default. Then the
+ * rest of the runtime catalog (AG-0.5: codex, gemini, grok), then generic.
+ * Entries a distribution or user.yml adds are registered by
+ * syncConfiguredRuntimes, after the built-ins.
  */
+import { BUILTIN_CATALOG, type CatalogEntry } from "./catalog.js";
+import { catalogRuntime } from "./catalog-runtime.js";
 import { denClaude } from "./den-claude.js";
 import { generic } from "./generic.js";
 import {
@@ -9,6 +14,7 @@ import {
   getRuntime,
   registerRuntime,
   runtimeIds,
+  unregisterRuntime,
   type Runtime,
 } from "./runtime.js";
 import { sessionPath, type RuntimeFind } from "./runtime-search.js";
@@ -16,7 +22,23 @@ import { ACTOR_TOKEN_ENV } from "../actor-token.js";
 import { AGENT_ACTOR_ENV, buildSessionEnv } from "../sessions/env.js";
 
 registerRuntime(denClaude);
+for (const e of BUILTIN_CATALOG)
+  if (e.id !== denClaude.id) registerRuntime(catalogRuntime(e));
 registerRuntime(generic);
+
+let configured: string[] = [];
+
+/**
+ * Register the catalog entries a distribution and user.yml add (already
+ * checked: catalog.ts validateCatalog), replacing the last set: an entry
+ * taken out of the config is no runtime any more.
+ */
+export function syncConfiguredRuntimes(entries: readonly CatalogEntry[]): void {
+  const ids = entries.map((e) => e.id);
+  for (const id of configured) if (!ids.includes(id)) unregisterRuntime(id);
+  for (const e of entries) registerRuntime(catalogRuntime(e));
+  configured = ids;
+}
 
 export {
   allScrubEnv,

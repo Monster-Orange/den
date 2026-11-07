@@ -13,6 +13,17 @@
  * The open panes are the URL (?open=<id>,<id>), so a reload, Back or a
  * link reopens them, each reattaching with its scrollback.
  *
+ * The size. A session has one PTY size and every viewer shares it (the
+ * last resize wins: another browser, a CLI attach). The server says the
+ * PTY's size on attach and whenever anyone changes it (a `size` frame), so
+ * a pane knows when it is out of step, and the pane in use wins: it says
+ * its own size when it is focused, when the page is shown again, and
+ * before the first keystroke after the PTY's size changed under it. A
+ * hidden pane never resizes the PTY, nor does one under 2x2. The cells
+ * are measured again once the theme's fonts have loaded (a web font
+ * arriving after the first fit would leave the cell width the fallback
+ * font's) and after the theme changes.
+ *
  * Nothing here keeps a session's state: the list is GET /api/sessions,
  * asked again every few seconds while the page is shown.
  *
@@ -57,6 +68,7 @@ const st = {
   timer: null,
   xterm: null,
   csrf: null,
+  docWired: false,
 };
 
 // ── the URL ─────────────────────────────────────────────────────────────
@@ -336,6 +348,96 @@ function send(p, obj) {
   if (p.sock?.readyState === WebSocket.OPEN) p.sock.send(JSON.stringify(obj));
 }
 
+/** The smallest size a pane ever asks for (a pane not laid out yet). */
+const MIN_COLS = 2;
+const MIN_ROWS = 2;
+
+/** Shown: the page is visible and the pane has a box. */
+function paneShown(p) {
+  return (
+    !document.hidden &&
+    p.el.isConnected &&
+    p.el.offsetWidth > 0 &&
+    p.el.offsetHeight > 0
+  );
+}
+
+/** Fit the terminal to its pane (its own cols and rows; nothing is sent). */
+function refit(p) {
+  const box = p.el.querySelector(".term");
+  if (!p.fit || !p.el.isConnected || !box || box.clientWidth <= 0) return;
+  try {
+    p.fit.fit();
+  } catch {
+    /* not laid out yet */
+  }
+  markSize(p);
+}
+
+/** The pane's size and the PTY's, on the pane (data-cols, data-pty-cols). */
+function markSize(p) {
+  if (!p.term) return;
+  p.el.dataset.cols = String(p.term.cols);
+  p.el.dataset.rows = String(p.term.rows);
+  if (p.pty) {
+    p.el.dataset.ptyCols = String(p.pty.cols);
+    p.el.dataset.ptyRows = String(p.pty.rows);
+  }
+}
+
+/** Whether the PTY is known to have another size than this pane. */
+function outOfStep(p) {
+  return (
+    !!p.pty &&
+    !!p.term &&
+    (p.pty.cols !== p.term.cols || p.pty.rows !== p.term.rows)
+  );
+}
+
+/**
+ * Say this pane's size to the session (the PTY takes it: last writer
+ * wins). Never from a hidden pane, never under 2x2.
+ */
+function sendSize(p) {
+  const term = p.term;
+  if (!term || p.sock?.readyState !== WebSocket.OPEN || !paneShown(p))
+    return false;
+  if (term.cols < MIN_COLS || term.rows < MIN_ROWS) return false;
+  send(p, { type: "resize", cols: term.cols, rows: term.rows });
+  // What the PTY will be: the server's frame follows (or another
+  // viewer's, if it resized after).
+  p.pty = { cols: term.cols, rows: term.rows };
+  markSize(p);
+  return true;
+}
+
+/** This pane is in use: fit it and make the PTY its size. */
+function claimSize(p) {
+  refit(p);
+  sendSize(p);
+}
+
+/**
+ * Measure the cells again (xterm measures them once, when the font is
+ * set) and refit: a web font that arrived after the first fit, or a theme
+ * whose --mono is another font. A change the PTY hears via onResize.
+ */
+function remeasure(p) {
+  const term = p.term;
+  if (!term) return;
+  const family = cssVar("--mono") ?? "monospace";
+  // Setting the same family is a no-op in xterm: set another first (never
+  // drawn: the theme's family is back before the refit).
+  if (term.options["fontFamily"] === family)
+    Object.assign(term.options, { fontFamily: `${family}, monospace` });
+  Object.assign(term.options, { fontFamily: family });
+  refit(p);
+}
+
+function remeasureAll() {
+  for (const p of st.panes.values()) remeasure(p);
+}
+
 async function connect(p) {
   p.lost = false;
   paintBar(p);
@@ -357,8 +459,9 @@ async function connect(p) {
   let opened = false;
   sock.onopen = () => {
     opened = true;
-    if (p.term)
-      send(p, { type: "resize", cols: p.term.cols, rows: p.term.rows });
+    p.pty = null;
+    refit(p);
+    sendSize(p);
   };
   sock.onmessage = (e) => {
     if (typeof e.data === "string") {
@@ -368,7 +471,12 @@ async function connect(p) {
       } catch {
         return;
       }
-      if (msg?.type === "session") {
+      if (msg?.type === "size") {
+        if (Number.isInteger(msg.cols) && Number.isInteger(msg.rows)) {
+          p.pty = { cols: msg.cols, rows: msg.rows };
+          markSize(p);
+        }
+      } else if (msg?.type === "session") {
         p.label = msg.label;
         p.workspace = msg.workspace;
         p.exited = !!msg.exited;
@@ -415,7 +523,16 @@ async function openPane(id) {
   el.className = "pane";
   el.dataset.id = id;
   el.innerHTML = `<div class="bar2"></div><div class="term"></div>`;
-  const p = { id, el, term: null, fit: null, sock: null, closed: false };
+  const p = {
+    id,
+    el,
+    term: null,
+    fit: null,
+    sock: null,
+    closed: false,
+    // The PTY's size as last heard (the server's size frame), or null.
+    pty: null,
+  };
   st.panes.set(id, p);
   st.open.push(id);
   paintBar(p);
@@ -448,19 +565,21 @@ async function openPane(id) {
   p.fit = fit;
   const enc = new TextEncoder();
   term.onData((d) => {
-    if (p.sock?.readyState === WebSocket.OPEN) p.sock.send(enc.encode(d));
+    if (p.sock?.readyState !== WebSocket.OPEN) return;
+    // The one typing wins: another viewer resized the PTY since.
+    if (outOfStep(p)) claimSize(p);
+    p.sock.send(enc.encode(d));
   });
-  term.onResize(({ cols, rows }) => send(p, { type: "resize", cols, rows }));
-  const refit = () => {
-    try {
-      if (el.isConnected && el.clientWidth > 0) fit.fit();
-    } catch {
-      /* not laid out yet */
-    }
-  };
-  p.ro = new ResizeObserver(() => refit());
+  term.onResize(() => sendSize(p));
+  // Focused (a click, the window coming back): this pane's size.
+  el.addEventListener("focusin", () => claimSize(p));
+  p.ro = new ResizeObserver(() => refit(p));
   p.ro.observe(el.querySelector(".term"));
-  refit();
+  refit(p);
+  // The theme's font may still be loading: measure again once it has.
+  document.fonts?.ready?.then(() => {
+    if (!p.closed) remeasure(p);
+  });
   void connect(p);
 }
 
@@ -505,7 +624,54 @@ async function stopAgent(p, button) {
 
 // ── Start agent ─────────────────────────────────────────────────────────
 
-let personasAsked = null;
+// Personas and runtimes, per workspace (AG-0.5: a workspace's own runtime
+// paths win), asked once per page each.
+const personasAsked = new Map();
+
+function personasFor(ws) {
+  const key = ws || "";
+  if (!personasAsked.has(key))
+    personasAsked.set(
+      key,
+      api(
+        "GET",
+        `/api/personas${ws ? `?workspace=${encodeURIComponent(ws)}` : ""}`,
+      ).catch((err) => {
+        personasAsked.delete(key);
+        throw err;
+      }),
+    );
+  return personasAsked.get(key);
+}
+
+/** Fill the form for the workspace picked; false when the ask failed. */
+async function fillForWorkspace(ws) {
+  let data;
+  try {
+    data = await personasFor(ws);
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+    return false;
+  }
+  const form = st.root.querySelector("#ag-form");
+  const keep = [
+    form.querySelector("#ag-persona").value,
+    form.querySelector("#ag-runtime").value,
+  ];
+  fillStartForm(form, data, t);
+  // The persona and runtime picked stay, where the new list still has them.
+  const ps = form.querySelector("#ag-persona");
+  if (keep[0] && [...ps.options].some((o) => o.value === keep[0])) {
+    ps.value = keep[0];
+    ps.onchange?.();
+  }
+  const rs = form.querySelector("#ag-runtime");
+  if ([...rs.options].some((o) => o.value === keep[1] && !o.disabled)) {
+    rs.value = keep[1];
+    rs.onchange?.();
+  }
+  return true;
+}
 
 async function openStart() {
   const dlg = st.root.querySelector("#ag-dlg");
@@ -516,18 +682,7 @@ async function openStart() {
     .map((w) => `<option value="${esc(w)}">${esc(w)}</option>`)
     .join("");
   st.root.querySelector("#ag-ws-l").hidden = shown.length <= 1;
-  personasAsked ??= api("GET", "/api/personas").catch((err) => {
-    personasAsked = null;
-    throw err;
-  });
-  let data;
-  try {
-    data = await personasAsked;
-  } catch (err) {
-    window.denShell?.errorToast?.(err);
-    return;
-  }
-  fillStartForm(st.root.querySelector("#ag-form"), data, t);
+  if (!(await fillForWorkspace(wsSel.value || shown[0]))) return;
   // LK-1: the lock before the modal. Locked, its password is asked here.
   paintInlineLock(!(await checkUnlock()));
   if (dlg.open) return;
@@ -615,6 +770,40 @@ async function submitStart(form) {
   }
 }
 
+/**
+ * Once per document: a font that loads later (the theme's --mono as a web
+ * font) and a theme applied without a reload (its sheet, then
+ * den:appearance) measure the cells again; the page shown again makes
+ * each pane say its size (another viewer may have taken the PTY while it
+ * was hidden).
+ */
+function wireDocument() {
+  st.docWired = true;
+  document.fonts?.addEventListener?.("loadingdone", remeasureAll);
+  window.addEventListener("den:appearance", () => {
+    for (const p of st.panes.values())
+      if (p.term) p.term.options.theme = termTheme();
+    remeasureAll();
+  });
+  document.addEventListener(
+    "load",
+    (e) => {
+      if (e.target?.id === "theme-css") {
+        for (const p of st.panes.values())
+          if (p.term) p.term.options.theme = termTheme();
+        remeasureAll();
+      }
+    },
+    true,
+  );
+  // Shown again: each pane says its size (another viewer may have taken
+  // the PTY while this page was hidden).
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    for (const p of st.panes.values()) claimSize(p);
+  });
+}
+
 // ── mount ───────────────────────────────────────────────────────────────
 
 function translateStatic(root) {
@@ -667,6 +856,9 @@ export async function mountAgentsPage(root) {
   root.querySelector("#ag-start").addEventListener("click", () => {
     void openStart();
   });
+  root.querySelector("#ag-ws").addEventListener("change", (e) => {
+    void fillForWorkspace(e.currentTarget.value);
+  });
   // Unlocked elsewhere (the chip, another tab): the field goes.
   onLockChange((unlocked) => {
     if (unlocked) paintInlineLock(false);
@@ -695,6 +887,7 @@ export async function mountAgentsPage(root) {
     attributes: true,
     attributeFilter: ["data-mode", "data-theme", "class"],
   });
+  if (!st.docWired) wireDocument();
   window.addEventListener("pagehide", () => {
     for (const p of st.panes.values()) {
       p.closed = true;

@@ -1658,7 +1658,7 @@ server scoped to its workspace.
 <cli> agents stop <id> [-w <ws>]
 <cli> agents resume <id> [-w <ws>]
 <cli> agents personas [--json]
-<cli> agents doctor [--json]            # can each runtime run here, and why not
+<cli> agents doctor [-w <ws>] [--json]  # can each runtime run here, and why not
 <cli> sessions attach <ws>:<id>         # its terminal; ctrl-] detaches
 ```
 
@@ -1884,7 +1884,8 @@ are errors naming the file or the key.
 
 ### Runtimes
 
-`<cli> doctor` lists the runtime kind. Two are built in:
+`<cli> doctor` lists the runtime kind. Den knows the runtimes in its
+**catalog** (below); two are special:
 
 - **`den-claude`** (the default) runs Claude Code's `claude`, found as
   below; `<cli> doctor` reads its version from the install, without running
@@ -1899,14 +1900,64 @@ are errors naming the file or the key.
 - **`generic`** runs the persona's `argv` template. `{model}` is the agent's
   model (an error when the template uses it and there is none);
   `{mcp_config}` is the path of the agent's MCP config, written only when the
-  template references it. It declares no resume.
+  template references it. It declares no resume. It is startable only for
+  a persona that has an `argv`.
+
+**The runtime catalog.** Den ships, as data, every vendor CLI it knows how
+to find. Each entry was checked against the vendor's own docs or installer:
+
+| id           | Vendor    | CLI                   | Found in (after PATH)                                            | Source                                                                                             |
+| ------------ | --------- | --------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `den-claude` | Anthropic | Claude Code, `claude` | `~/.local/bin`, `~/.claude/local`, system dirs                   | [setup](https://code.claude.com/docs/en/setup)                                                     |
+| `codex`      | OpenAI    | Codex CLI, `codex`    | `$CODEX_INSTALL_DIR`, `~/.local/bin`, system dirs                | [openai/codex](https://github.com/openai/codex), [installer](https://chatgpt.com/codex/install.sh) |
+| `gemini`     | Google    | Gemini CLI, `gemini`  | system dirs                                                      | [google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli)                            |
+| `grok`       | xAI       | Grok Build, `grok`    | `$GROK_BIN_DIR`, `~/.grok/bin`, `~/.local/bin`, `/usr/local/bin` | [Grok Build](https://docs.x.ai/build/overview), [installer](https://x.ai/cli/install.sh)           |
+
+"System dirs" are `/opt/homebrew/bin`, `/usr/local/bin` and npm's global
+bin. Each one's version is `<bin> --version`. Every vendor here publishes
+an official CLI, so none is left out; a vendor without one is left out
+rather than guessed at (community CLIs, such as third-party "grok" CLIs,
+are not xAI's and are not in the catalog).
+
+Claude Code runs as `den-claude` (above). Every other installed runtime
+runs its own interactive CLI (`codex`, `gemini`, `grok`) in the
+workspace's directory; Den's tools (MCP) and permission modes are coming
+for them, and lists tag them **Den tools: coming**. A runtime is offered
+as startable only when it can start here: installed (or, for `generic`,
+with the persona's `argv`).
+
+A distribution adds entries with `agents.runtime_catalog` in its config,
+and a person with the same key in `config/local/user.yml`. Both go
+through the validator the built-in entries pass; an entry can't reuse a
+catalog id (set a path instead, below):
+
+```yaml
+agents:
+  runtime_catalog:
+    - id: aider # lowercase, starts with a letter
+      vendor: Aider
+      name: Aider
+      bins: [aider] # executable names, no paths
+      version:
+        args: [--version]
+        identity: # at least one: how a path is known to be it
+          output: "aider" # a pattern its version output matches
+          # package: aider-chat        (the npm package it resolves into)
+          # realpath_under: [~/.aider] (where it really lives)
+      dirs: [~/.local/bin, $AIDER_DIR, "{system}"]
+      launch:
+        argv: ["{bin}"] # "{bin}" first: the path found
+```
 
 **Where a runtime's CLI is found.** As your terminal would find it, not
 only on the web server's own PATH (a launchd service's PATH leaves out
 `~/.local/bin`, where Claude Code's native installer puts `claude`). The
 first match wins:
 
-1. **`agents.runtimes.<id>.bin`** in `config/local/user.yml`: the absolute
+1. **A workspace's own path**, `<ws>.agents.runtimes.<id>.bin` in
+   `config/local/workspaces.yml`, for that workspace's agents. Checked the
+   same way as the next one.
+2. **`agents.runtimes.<id>.bin`** in `config/local/user.yml`: the absolute
    path of the runtime's CLI. Paths are per machine, so it is read from
    user.yml only, never from the distribution's config. A bad value (not
    absolute, missing, not an executable file) makes the runtime
@@ -1920,14 +1971,28 @@ first match wins:
          bin: /Users/me/.local/bin/claude
    ```
 
-2. **Your login shell's PATH**: the web server asks `$SHELL -lc` once at
+3. **Your login shell's PATH**: the web server asks `$SHELL -lc` once at
    start, in the background, under a 3-second timeout. On a timeout or
    any failure it is left out.
-3. **The server's own PATH.**
-4. **The runtime's install directories.** For den-claude: `~/.local/bin`,
-   `~/.claude/local`, `/opt/homebrew/bin`, `/usr/local/bin` and npm's
-   global bin (`$npm_config_prefix/bin`, and node's own directory). Den
-   never runs npm to find it.
+4. **The server's own PATH.**
+5. **The runtime's install directories** (its catalog entry's; for
+   den-claude: `~/.local/bin`, `~/.claude/local`, `/opt/homebrew/bin`,
+   `/usr/local/bin` and npm's global bin, `$npm_config_prefix/bin` and
+   node's own directory). Den never runs npm to find it.
+6. **Your interactive shell's PATH**, only while a catalog runtime is
+   still not found: `$SHELL -ilc` once (stdin closed, 3-second timeout,
+   the answer kept), for a PATH set only in an interactive startup file
+   such as `~/.zshrc`. Its source is `interactive-shell`.
+
+Paths are this machine's only: Den reads them from `config/local` files,
+never from the distribution's config. **Settings › Agents › Runtimes**
+shows each runtime's status, version, the path in use and its source.
+**Set path…** runs the runtime's version command and refuses a path that
+isn't that runtime (its output, npm package or install location must name
+it); **Clear** removes it. The **Paths for** selector switches between
+every workspace (`user.yml`) and one workspace (`workspaces.yml`). Only a
+person sets a path, never an agent (`POST /api/agents/runtimes/<id>/path`,
+audited).
 
 Sessions and agents Den starts get the same directories on their PATH
 (and a configured CLI's own directory), so the runtime's own tools are
@@ -1936,17 +2001,19 @@ diagnosis: `DEN_LOGIN_SHELL` (the shell to ask instead of `$SHELL`; `off`
 for none) and `DEN_RUNTIME_DIRS` (a PATH-style list that replaces every
 runtime's install directories; empty for none).
 
-**`<cli> agents doctor`** prints, for each runtime, its status, the CLI it
-runs and where that came from (the `agents.runtimes` setting, the login
-shell's PATH, PATH, or an install directory), its version (`claude
+**`<cli> agents doctor`** prints, for each runtime (installed first), its
+status, the CLI it runs and where that came from (the workspace's or the
+user.yml `agents.runtimes` setting, the login shell's PATH, PATH, an
+install directory, or the interactive shell's PATH), its version (`claude
 --version`, run once under a timeout), the directories it searched (names
 only, never an environment value), and the fix when it's missing. It
 resolves the login shell's PATH first, as the web server does. It exits 1
-when the default runtime is unavailable; `--json` prints what the Start
-dialog gets.
+when the default runtime is unavailable; `-w <ws>` uses that workspace's
+paths; `--json` prints what the Start dialog gets. A search list the same
+as the one above it prints once.
 
 ```
-den-claude (Claude Code)  [default]
+den-claude (Claude Code, Anthropic)  [default]
   status    ✗ unavailable: claude not found (searched 5 directories)
   searched  /usr/bin
             /bin
@@ -1955,9 +2022,12 @@ den-claude (Claude Code)  [default]
             then run `<cli> agents doctor` again
 ```
 
-`GET /api/personas` gives each runtime its `version`, `path`, `source`
-(`setting`, `login-shell`, `well-known` or `PATH`), `searched` and
-`setting` (the user.yml key), and `userConfig`, the user.yml to edit.
+`GET /api/personas` and `GET /api/agents/runtimes` (each with an optional
+`?workspace=<ws>`) give each runtime its `vendor`, `denTools`, `version`,
+`path`, `source` (`workspace`, `setting`, `login-shell`, `PATH`,
+`well-known` or `interactive-shell`), `searched`, `setting` (the user.yml
+key) and `workspaceSetting` (the workspaces.yml key), and `userConfig`,
+the user.yml to edit.
 
 ### Workspace scope and grants
 
