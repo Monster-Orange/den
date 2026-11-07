@@ -481,9 +481,10 @@ describe("the Agents tab", () => {
     [1440, 900],
     [375, 812],
   ])(
-    "AG-10.0: with a 200-character role, Cancel and Start sit inside the Start dialog at %ix%i",
+    "AG-10.0: with a 200-character description, Cancel and Start sit inside the Start dialog at %ix%i",
     async (width, height) => {
       if (skip()) return;
+      // An older answer: a role sentence and no category (normalized).
       const role = `${"Reviews every change for correctness ".repeat(6)}`.slice(
         0,
         200,
@@ -538,15 +539,26 @@ describe("the Agents tab", () => {
         expect(b.x + b.width).toBeLessThanOrEqual(dlg.x + dlg.width + 0.5);
         expect(b.y + b.height).toBeLessThanOrEqual(dlg.y + dlg.height + 0.5);
       }
-      // The option is the id; the role is the help line, and follows the pick.
+      // AG-10.2: each row is the id with its one-line description, which
+      // wraps inside the list; a pick checks it.
       expect(
-        await p.$$eval("#ag-persona option", (os) =>
+        await p.$$eval("#ag-persona .pr .pn", (os) =>
           os.map((o) => o.textContent),
         ),
-      ).toEqual(["reviewer", "builder"]);
-      expect(await p.textContent("#ag-p-help")).toBe(role);
-      await p.selectOption("#ag-persona", "builder");
-      expect(await p.textContent("#ag-p-help")).toBe("Builds it.");
+      ).toEqual(["reviewer", "builder", "Plain session"]);
+      expect(await p.textContent('#ag-persona [data-pid="reviewer"] .pd')).toBe(
+        role,
+      );
+      const list = await box(p, "#ag-persona");
+      const row = await box(p, '#ag-persona [data-pid="reviewer"]');
+      expect(row.x + row.width).toBeLessThanOrEqual(list.x + list.width + 0.5);
+      await p.click('#ag-persona [data-pid="builder"]');
+      expect(
+        await p.getAttribute(
+          '#ag-persona [data-pid="builder"]',
+          "aria-checked",
+        ),
+      ).toBe("true");
       // The runtime names what it resolves to; one that can't run says why.
       expect(
         await p.$$eval("#ag-runtime option", (os) =>
@@ -572,11 +584,10 @@ describe("the Agents tab", () => {
     const p = await page("/agents?start=1");
     await p.waitForSelector("#ag-dlg[open]");
     expect(await p.isVisible("#ag-ws-l")).toBe(true);
-    await p.waitForSelector('#ag-persona option[value="planner"]', {
-      state: "attached",
-    });
+    await p.waitForSelector('#ag-persona [data-pid="planner"]');
     await p.selectOption("#ag-ws", "south");
-    await p.selectOption("#ag-persona", "planner");
+    await p.waitForSelector('#ag-persona [data-pid="planner"]');
+    await p.click('#ag-persona [data-pid="planner"]');
     await p.selectOption("#ag-runtime", "den-claude");
     const made = s!.made.length;
     const [res] = await Promise.all([

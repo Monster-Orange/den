@@ -4,6 +4,87 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.13] - unreleased
+
+### Added
+
+- **The Start dialog.** + Start agent opens the dialog from the Den Shell
+  design. Pick a persona from a list you can search, with category and
+  source chips (built-in, distribution, mine); with no filter it is grouped
+  by category, and Plain session (your shell in the workspace, no agent) is
+  pinned last. Each persona shows its one-line description. "What's a
+  persona?" explains the idea, and Details shows the instructions, runtime,
+  model and version, permission mode and allowed commands. Then Runtime,
+  Workspace, an optional first instruction, and a collapsed Advanced
+  section: Model and Version, Permission mode, and Extra allowed commands,
+  with a preview of exactly what the runtime will be given.
+- **First instruction.** Den types it into the agent's session once the
+  session is ready, as a bracketed paste when the runtime asks for one,
+  then Enter. It never goes on the command line and is never stored; the
+  audit log records its length only.
+- **Your own personas.** + New persona, Duplicate and Edit write personas
+  of your own to `<state_dir>/personas/<id>.md` (0600). Settings ›
+  Personas lists every persona with the same search and chips: View or
+  Edit, Duplicate, Delete (your own only), + New persona. Built-in and
+  distribution personas are read-only; Duplicate makes your own copy.
+  Routes: `GET /api/personas/<id>`, `POST /api/personas`, `POST` and
+  `DELETE /api/personas/<id>`.
+- **Models and versions.** A runtime lists its models (den-claude: opus,
+  sonnet and haiku, each "latest" or a pinned version, from a catalog
+  shipped with Den). A pinned version runs as `--model <full id>`. A
+  persona or session pinned to an older version says "newer available";
+  your own persona has Use latest.
+- **Permissions as intent.** Ask for everything, Auto-approve edits in the
+  worktree, or Auto-approve all, plus extra allowed commands as plain
+  prefixes. den-claude turns them into `--permission-mode` and
+  `Bash(<prefix>)` / `Bash(<prefix> *)` allow rules beside Den's deny
+  rules. Other runtimes take none from Den yet, and the dialog says "not
+  supported on <runtime>" rather than dropping one.
+- **Override tags.** A session started with choices that differ from its
+  persona is tagged in the list: "model: haiku", "pinned <version>",
+  "auto-approve edits", "custom tools", the runtime. "auto-approve all" is
+  always tagged. Start fresh and Relaunch keep the choices.
+- **Roles and categories.** Den's roles are planner, orchestrator, sde,
+  reviewer, tester and designer. Each is a template (instructions,
+  permission mode, a read-only command preset) that fills in New persona
+  without overwriting what you typed, and it adds nothing hidden to a
+  prompt. A distribution adds roles and categories (`agents.roles`,
+  `agents.categories`) and may extend a Den role's preset, never redefine
+  it.
+- **Plain session from the page.** `POST /api/workspaces/<ws>/sessions`
+  starts your login shell in the workspace's folder (capped by
+  `sessions.max_concurrent`).
+- **A tester persona** in Den's default pack.
+
+### Changed
+
+- `POST /api/workspaces/<ws>/agents` takes `version`, `permission`,
+  `allow` and `instruction`, and refuses an unknown field. Each is checked
+  against the runtime's catalog: a model or version it doesn't list, a
+  mode other than `ask`, `edits` or `all`, or a command that isn't a plain
+  prefix (at most 32, 120 characters each) is a 400. An agent's token gets
+  403 on every persona route and on a plain session.
+- The agent record keeps `version`, `permission`, `allow` and `overrides`.
+- A persona's `role` is a role key; a sentence there still reads as its
+  description. Personas gain `display_name`, `category`, `version` and
+  `allowed_commands`. `permission_mode` takes `ask`, `edits` or `all`
+  (Claude Code's own modes still read). `agents personas` shows SOURCE and
+  ROLE columns.
+- fe-dev, be-dev and devops are role `sde`; ux-designer is role
+  `designer` in category Design.
+- A persona whose runtime isn't installed starts on the first one that is,
+  and the Start dialog says so.
+
+### Migrations
+
+- None required. A persona whose `role:` is a sentence keeps working (it
+  becomes the description); set `role:` to a role key to give it one.
+- A persona pack may now set `display_name`, `category`, `version` and
+  `allowed_commands`. Use `permission_mode: ask | edits | all` for a mode
+  every runtime can translate.
+- `agents.roles` and `agents.categories` are new keys of `agents:` in the
+  distribution's config (see docs/distributions.md, Personas).
+
 ## [0.4.12] - 2026-11-07
 
 ### Added

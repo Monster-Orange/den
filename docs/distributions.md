@@ -2054,8 +2054,12 @@ server scoped to its workspace.
   unique in the distribution, so a second workspace's planner gets
   `planner-<ws>` unless you give `--id`.
 - The **agent record**, `<stateDir>/agents/<id>.json` (0600), holds its id,
-  persona, runtime, model, workspace, cwd, session and times. It never holds
-  the environment or the command line. `list` reads it for persona, runtime
+  persona, runtime, model, workspace, cwd, session and times, and what it was
+  started with from the Start dialog: `version` (the model's, "latest" or
+  pinned), `permission` (`ask`, `edits` or `all`), `allow` (extra allowed
+  commands) and `overrides` (which of these differ from its persona). Start
+  fresh and Relaunch keep them. It never holds the environment, the command
+  line or a first instruction. `list` reads it for persona, runtime
   and model; a record whose session has gone is listed as `stopped` (after
   `stop`) or `ended`.
 - `list` shows agents only: sessions with an agent record. A session from
@@ -2104,12 +2108,77 @@ started. The workspace header counts them ("2 agents").
   workspace, and **Open** on a row with a session opens its terminal there.
 
 The routes: `GET /api/workspaces/<ws>/agents`, `POST
-/api/workspaces/<ws>/agents` (`{ persona, runtime?, model?, id? }`), `POST
-/api/workspaces/<ws>/agents/<id>/stop` and `…/resume`, and `GET
-/api/personas` (personas and runtimes). Errors are the usual
+/api/workspaces/<ws>/agents` (`{ persona, runtime?, model?, version?,
+permission?, allow?, instruction?, id? }`, see
+[The Start dialog](#the-start-dialog)), `POST
+/api/workspaces/<ws>/agents/<id>/stop` and `…/resume`, `POST
+/api/workspaces/<ws>/sessions` (a plain session), `GET /api/personas`
+(personas, runtimes with their models and permission translation, roles
+and categories), and the persona routes under
+[Personas](#personas). Errors are the usual
 `{ ok: false, error, code, requestId }`: `cap` (429),
 `conflict` (409, e.g. already running, or no resume), `not_found` (404),
 `exited_at_once` (502, with the session's last lines).
+
+### The Start dialog
+
+**+ Start agent** on the Agents tab (or `/agents?start=1`) opens the Start
+dialog:
+
+- **Persona**: a list you can search (name, role, description), with
+  category chips (only the categories that have personas) and source chips
+  (built-in, distribution, mine). With no filter set it is grouped by
+  category. Each row is the persona's name ("Rita (reviewer)", else its
+  id), its source badge and its one-line description, and "not installed"
+  when its runtime isn't. **Plain session** is pinned last: your login
+  shell in the workspace's folder, no agent. **What's a persona?** explains
+  the idea; **Details** shows the selected persona's instructions, runtime,
+  model and version, permission mode, role preset and extra commands.
+  **+ New persona**, **Duplicate** and (for your own) **Edit** open the
+  persona editor, and the dialog picks what you saved.
+- **Runtime** and **Workspace**. Installed runtimes come first; the rest
+  are listed, disabled, and named under the field ("Not found on this
+  machine: …"). A persona whose runtime isn't installed starts on the first
+  one that is, and the dialog says so. The line under the runtime says what
+  will run (see below).
+- **First instruction** (optional, up to 8000 characters): the agent's
+  first message. Den types it into the agent's session once the session is
+  ready (it has printed and gone quiet, or after 30 s), through the session
+  host, as a bracketed paste when the runtime asked for one, then Enter. It
+  is never a command-line argument and never stored; the audit log records
+  its length only.
+- **Advanced** (collapsed): **Model** and **Version** (the runtime's own
+  list; "Persona default" first), the **Permission mode** (Ask for
+  everything, Auto-approve edits in the worktree, Auto-approve all), the
+  role's command preset as chips, **Extra allowed commands** (plain command
+  prefixes, one per line, no patterns), and a preview of exactly what the
+  runtime will be given. A command a runtime can't take says "not supported
+  on <runtime>", and a pattern says "use a plain prefix"; neither is ever
+  dropped silently. "Edit raw runtime config…" is not there yet.
+
+What you change in Advanced applies to that launch only, and the session's
+row is tagged: "model: haiku", "pinned claude-opus-4-8", "auto-approve
+edits", "custom tools", the runtime, and always "auto-approve all" for an
+agent started so. An agent pinned to an older version says "newer
+available".
+
+Every field is checked on the server, not only in the page. The model and
+version must be ones the runtime lists, the permission one of `ask`,
+`edits` or `all`, and `allow` a list of at most 32 plain prefixes (letters,
+digits, single spaces and `. _ / : = @ % + , -`, at most 120 characters
+each). An unknown field is refused. A person's start only: an agent's
+token gets 403.
+
+**How each runtime takes the choices.** den-claude (Claude Code): a model is
+`--model <alias>` (`opus`, `sonnet`, `haiku`), a pinned version is `--model
+<full id>`. The model list is a catalog shipped with each Den release,
+because `claude` can't list its models. The permission mode is
+`--permission-mode` (`default`, `acceptEdits`, `bypassPermissions`), and
+each command prefix becomes two allow rules, `Bash(<prefix>)` and
+`Bash(<prefix> *)`, in the agent's settings file beside Den's deny rules
+(deny wins). Codex CLI, Gemini CLI, Grok Build and generic take no model,
+mode or commands from Den yet: the dialog says "not supported on <runtime>"
+and the start is refused if you set one.
 
 ### The Agents tab
 
@@ -2386,13 +2455,18 @@ a Claude Code agent file, read as it is, plus a few keys of Den's own:
 ```markdown
 ---
 name: planner # the id (or `id:`; default: the file name)
-description: Writes stories and their acceptance criteria. # or `role:`
+display_name: Rita # optional; shown as "Rita (reviewer)"
+role: planner # a role (see Roles); a sentence here is the description
+category: engineering # see Categories; default: the role's
+description: Writes stories and their acceptance criteria. # one line
 model: some-model # optional; `inherit` means none
+version: latest # or a pinned version of the model
+allowed_commands: [npm test] # extra plain prefixes allowed without asking
 tools: Read, Grep # hints for the runtime; Den restricts nothing with them
 standing: true # starts with its workspace (later slices)
 context: [docs/specs, the design system] # what to read first
 runtime: generic # default den-claude
-permission_mode: plan # den-claude only; default `default`
+permission_mode: ask # ask, edits or all (Claude Code's own modes still read)
 den_hooks: false # Den's guardrail hooks for this persona (see Guardrails)
 den_instructions: false # Den's shared instructions for this persona
 argv: ["some-cli", "--model", "{model}", "--mcp-config", "{mcp_config}"]
@@ -2402,8 +2476,9 @@ You are the planner. …
 ```
 
 Den ships a default pack: `planner` and `orchestrator` (standing), `fe-dev`,
-`be-dev`, `devops`, `reviewer` and `ux-designer`. Add your own packs, read in
-order after Den's; a persona with the same id replaces the earlier one:
+`be-dev` and `devops` (role `sde`), `reviewer`, `tester` and `ux-designer`
+(role `designer`, category Design). Add your own packs, read in order after
+Den's; a persona with the same id replaces the earlier one:
 
 ```yaml
 agents:
@@ -2415,6 +2490,53 @@ inside (a Claude Code plugin) is read from there, so a plugin's agents are
 used without converting them. Files without front matter (a README) are
 skipped; two files with one id in a pack, or a pack that isn't a directory,
 are errors naming the file or the key.
+
+**Your own personas** live in `<stateDir>/personas/<id>.md` (0600), in the
+same format, read last: one wins over a pack's persona of the same id.
+Settings › Personas lists every persona with the Start dialog's search and
+chips: **View** (or **Edit** for your own), **Duplicate**, **Delete** (your
+own only) and **+ New persona**. A built-in or distribution persona is
+read-only; Duplicate makes your own copy to edit. "newer available" marks a
+persona pinned to an older version, with **Use latest** for your own. The
+routes: `GET /api/personas/<id>` (with its instructions), `POST
+/api/personas` (new), `POST /api/personas/<id>` (edit; 409 `read_only` for
+one that isn't yours) and `DELETE /api/personas/<id>`. Each field is
+checked: the role, category, runtime, model and version must be registered,
+the description one line of at most 200 characters, the name at most 40,
+the instructions at most 20000 characters with no control characters but
+newlines and tabs. An agent's token can't create, change or delete a
+persona (403); a person sets what agents may do.
+
+**Roles.** A role is a template and a key: default instructions, a
+permission mode and a command preset (read-only commands, allowed without
+asking). Den's roles are `planner`, `orchestrator`, `sde`, `reviewer`,
+`tester` and `designer`. Picking a role in New persona fills the form in,
+never over text you typed; a role adds nothing hidden to an agent's prompt.
+A distribution adds roles, and may extend a Den role's preset but not
+redefine it:
+
+```yaml
+agents:
+  roles:
+    copywriter:
+      description: Drafts release notes and site copy.
+      instructions: Draft copy in the house voice. Leave drafts for review.
+      mode: ask # ask, edits or all
+      preset: [vale]
+      category: marketing
+    reviewer:
+      preset: [semgrep] # added to Den's preset
+```
+
+**Categories** group personas in the Start list and Settings › Personas.
+Den's are Engineering, Design, Product, Marketing and Operations; a
+distribution adds more:
+
+```yaml
+agents:
+  categories:
+    - { id: legal, label: Legal }
+```
 
 ### Guardrails: hooks, shared instructions, hand-backs
 

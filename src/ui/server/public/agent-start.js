@@ -37,9 +37,10 @@ export function personaOptions(personas) {
     .join("");
 }
 
-/** The help line under the persona select: the picked persona's role. */
+/** The help line under the persona select: the picked persona's description. */
 export function personaHelp(personas, id) {
-  return (personas ?? []).find((p) => p.id === id)?.role ?? "";
+  const p = (personas ?? []).find((x) => x.id === id);
+  return p?.description ?? p?.role ?? "";
 }
 
 /** A runtime's name for people ("Claude Code"); its id when it has none. */

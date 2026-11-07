@@ -1,5 +1,6 @@
 ---
 name: reviewer
+role: reviewer
 description: Reviews a pull request adversarially. Never approves or merges.
 context: [the pull request and its story, the repo's conventions and tests]
 ---

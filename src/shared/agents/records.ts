@@ -21,6 +21,7 @@ import * as path from "path";
 import { WORKSPACE_NAME_RE } from "../agent-actor.js";
 import type { SessionRef } from "../sessions/types.js";
 import type { RotationEntry } from "./rotation.js";
+import type { PermissionIntent } from "./permissions.js";
 
 export interface AgentRecord {
   id: string;
@@ -80,7 +81,34 @@ export interface AgentRecord {
   displayName?: string;
   /** When displayName was given (ISO 8601): the latest rename wins (AG-4b). */
   displayNameAt?: string;
+  /**
+   * The model version it runs (AG-12.3): "latest" (the model's newest), or
+   * a pinned version. Absent: before AG-12, `model` as given.
+   */
+  version?: string;
+  /** The permission intent it was started with (AG-13), when one was set. */
+  permission?: PermissionIntent;
+  /**
+   * The extra allowed commands it was started with (AG-13.4: plain
+   * prefixes; its role's preset comes on top), when set for it.
+   */
+  allow?: string[];
+  /**
+   * What it was started with that differs from its persona (AG-10.9):
+   * the list tags it. Start fresh and Relaunch keep the choices.
+   */
+  overrides?: Override[];
 }
+
+/** A setting a session can override for one launch (AG-10.9). */
+export type Override = "runtime" | "model" | "version" | "permission" | "allow";
+export const OVERRIDES: readonly Override[] = [
+  "runtime",
+  "model",
+  "version",
+  "permission",
+  "allow",
+];
 
 /** The longest name a person may give an agent (AG-4b). */
 export const MAX_DISPLAY_NAME = 40;

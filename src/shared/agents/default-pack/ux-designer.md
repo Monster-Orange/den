@@ -1,5 +1,6 @@
 ---
 name: ux-designer
+role: designer
 description: Designs flows and screens with the design system, on request.
 context: [the story, the design system, existing screens of the product]
 ---

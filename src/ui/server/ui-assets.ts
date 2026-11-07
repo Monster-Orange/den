@@ -36,6 +36,9 @@ export const UI_MODULES: readonly string[] = [
   "/agents-page.js",
   // The Start agent form's choices, shared by both (AG-10.0).
   "/agent-start.js",
+  // AG-10.4-10.7: the persona picker, editor and Settings › Personas.
+  "/persona-ui.js",
+  "/persona-ui.css",
   // AG-4b: the panes' keys and links (Shift+Enter, ⌃⇧1-3, paths).
   "/term-input.js",
   // SEC-2a: Pair a device's QR code (a tiny encoder of Den's own).

@@ -1,0 +1,539 @@
+/*
+ * The Start dialog's persona picker, the persona editor and Settings ›
+ * Personas (persona-ui.js). Sizes are the Den Shell prototype's
+ * (den-merge-notes/shell-proto/den-shell.html: .dlg.wide, .plist, .pr,
+ * .pfbar, .pgh, .pmode, .pv, .pdet), its colors mapped onto the theme's
+ * tokens (--r-btn is --radius-button). tests/unit/server/
+ * start-dialog.browser.test.ts measures them.
+ */
+
+/* The editor's frame where agents.html's dialog styles aren't loaded. */
+dialog.pe-dlg {
+  box-sizing: border-box;
+  /* The prototype's base (.app: 14px/1.45): labels, rows and chips take
+     their line height from it. */
+  font: 14px/1.45 var(--sans);
+  width: min(638px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 18px 18px 14px;
+}
+dialog.pe-dlg::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+.pe-dlg form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.pe-dlg h2 {
+  margin: 0;
+  font: 600 17px var(--display);
+}
+.pe-dlg p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.pe-dlg .help {
+  margin: 0;
+  font: 12.5px/1.45 var(--sans);
+  color: var(--muted);
+}
+.pe-dlg .err {
+  margin: 0;
+  font: 12.5px/1.45 var(--sans);
+  color: var(--bad);
+  overflow-wrap: anywhere;
+}
+/* Hidden wins over a field's grid. */
+.pe-dlg [hidden] {
+  display: none !important;
+}
+.pe-dlg .btns {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  /* AG-10.0: the footer stays in sight while the dialog scrolls. */
+  position: sticky;
+  bottom: -14px;
+  margin-bottom: -14px;
+  padding-bottom: 14px;
+  background: var(--raised);
+}
+.pe-dlg .btns .sp {
+  margin-right: auto;
+}
+
+/* A field: the 11px mono caps label over its control (.dlg .fld). */
+.pe-dlg .fld {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  min-width: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
+.pe-dlg .fld > span,
+.pe-dlg .fldh > .k {
+  font: 11px/1.45 var(--mono);
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.pe-dlg .two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+@media (max-width: 520px) {
+  .pe-dlg .two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.pe-dlg select,
+.pe-dlg input[type="text"],
+.pe-dlg input[type="search"] {
+  box-sizing: border-box;
+  /* The prototype's controls keep the browser's own line box: 31px for a
+     select, 30 for a text field (padding 6, a 1px border). */
+  height: 31px;
+  width: 100%;
+  min-width: 0;
+  font: 13px/1.45 var(--sans);
+  text-transform: none;
+  letter-spacing: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: var(--radius-button);
+  padding: 6px 8px;
+}
+.pe-dlg textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: var(--radius-button);
+  padding: 8px;
+  font: 13px/1.5 var(--sans);
+  text-transform: none;
+  letter-spacing: 0;
+  resize: vertical;
+  min-height: 96px;
+}
+.pe-dlg select:disabled,
+.pe-dlg input:disabled,
+.pe-dlg textarea:disabled {
+  opacity: 0.75;
+}
+.pe-dlg details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  padding: 8px 10px;
+}
+.pe-dlg details summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+}
+.pe-dlg details[open] > summary {
+  margin-bottom: 8px;
+}
+.pe-dlg details.xtra {
+  padding: 6px 10px;
+}
+.pe-dlg details.xtra textarea {
+  display: block;
+  margin-bottom: 4px;
+  min-height: 64px;
+  font: 12px/1.5 var(--mono);
+}
+.pe-dlg .adv-body {
+  display: grid;
+  gap: 10px;
+}
+.pe-dlg .adv-body > p {
+  margin: 0;
+}
+.pe-dlg .pblk {
+  display: grid;
+  gap: 12px;
+}
+
+.helpl {
+  font-size: 12px;
+  color: var(--faint);
+  line-height: 1.4;
+}
+.helpl .mono {
+  font: 11.5px/1.4 var(--mono);
+}
+.helpl.warn {
+  color: var(--warn);
+}
+.faint {
+  color: var(--faint);
+}
+.fldh {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.fldh .sp {
+  margin-left: auto;
+}
+.lnk {
+  color: var(--accent-text);
+  cursor: pointer;
+  font: 12.5px/1.45 var(--sans);
+  text-decoration: underline;
+  text-transform: none;
+  letter-spacing: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.lnk[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The filter bar (AG-10.4). */
+.pfbar {
+  display: grid;
+  gap: 6px;
+}
+.pe-dlg input[type="text"] {
+  height: 30px;
+}
+.pfbar input[type="search"] {
+  box-sizing: border-box;
+  height: 29px;
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: var(--radius-button);
+  padding: 6px 10px;
+  font: 13px/1.45 var(--sans);
+}
+.pfrow {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.pfrow .lab {
+  font: 11px/1.45 var(--mono);
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 2px;
+}
+.pfc {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 1px 10px;
+  font: 12.5px/1.45 var(--sans);
+  cursor: pointer;
+}
+.pfc[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.pfc .c {
+  color: var(--faint);
+  font: 11px/1.45 var(--mono);
+  margin-left: 4px;
+}
+
+/* The list: radios grouped by category (.plist, .pr, .pgh). */
+.plist {
+  display: grid;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  padding: 4px;
+  background: var(--bg);
+}
+.pr {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 0 8px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: none;
+  border-radius: var(--radius-button);
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--text);
+  font: 13px/1.45 var(--sans);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.pr:hover {
+  background: var(--sunken);
+}
+.pr[aria-checked="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.pr .rd {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+}
+.pr[aria-checked="true"] .rd {
+  border-color: var(--accent);
+  background: radial-gradient(var(--accent) 45%, transparent 50%);
+}
+.pr .pn,
+.prow .pn {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr .pn .role,
+.prow .pn .role {
+  color: var(--faint);
+  font-weight: 400;
+}
+.pr .pd {
+  grid-column: 2 / 4;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.pgh {
+  font: 11px/1.45 var(--mono);
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 8px 8px 2px;
+  display: flex;
+  justify-content: space-between;
+}
+.pempty {
+  padding: 10px 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+/* A tag (agents.html's, for the pages that don't have it: Settings). */
+.tagx {
+  font: 10px var(--mono);
+  color: var(--faint);
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.tagx.warn {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+}
+.tagx.src-local {
+  color: var(--accent-text);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.tagx.src-distribution {
+  color: var(--muted);
+  border-style: solid;
+}
+.tagx.src-hub {
+  color: var(--remote, var(--accent-text));
+  border-color: color-mix(
+    in srgb,
+    var(--remote, var(--accent)) 50%,
+    transparent
+  );
+}
+
+/* Details (AG-10.6) and "What's a persona?". */
+.pdet {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--sunken);
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+  font: 12.5px/1.45 var(--sans);
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.pdet .k {
+  font: 11px/1.45 var(--mono);
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.pdet pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px/1.5 var(--mono);
+  color: var(--text);
+  max-height: 200px;
+  overflow-y: auto;
+}
+.pdet .why {
+  color: var(--muted);
+}
+.pdet .mono,
+.pv .mono {
+  font-family: var(--mono);
+}
+
+/* The permission block (AG-13). */
+.seg.pmode {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  overflow: hidden;
+}
+.seg.pmode button {
+  text-align: center;
+  background: none;
+  border: 0;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--muted);
+  font: 13px/1.45 var(--sans);
+}
+.seg.pmode button + button {
+  border-left: 1px solid var(--border);
+}
+.seg.pmode button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text);
+  font-weight: 500;
+}
+.seg.pmode button:disabled {
+  cursor: default;
+}
+.pchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.pchip {
+  font: 11.5px/1.45 var(--mono);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 8px;
+  background: var(--surface);
+}
+.pvw {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+}
+.pv {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--sunken);
+  padding: 8px 10px;
+  font: 12.5px/1.45 var(--sans);
+  color: var(--text);
+  min-width: 0;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.pv ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 2px;
+}
+.pv .mono {
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+.pv .gone {
+  text-decoration: line-through;
+  color: var(--faint);
+}
+.pv .src {
+  color: var(--faint);
+}
+
+/* Settings › Personas. */
+.pe-set {
+  display: grid;
+  gap: 8px;
+}
+.pe-set .plist {
+  max-height: none;
+}
+.prow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--surface);
+  font-size: 13px;
+}
+.prow .pd {
+  grid-column: 1;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.prow .pm {
+  grid-column: 1;
+  font-size: 12px;
+  color: var(--faint);
+}
+.prow .pm .mono {
+  font-family: var(--mono);
+}
+.prow .pa {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+@media (max-width: 520px) {
+  .prow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .prow .pa {
+    grid-column: 1;
+    grid-row: auto;
+    justify-content: flex-start;
+  }
+}
+.den-btn.sm {
+  padding: 2px 9px;
+  font-size: 12.5px;
+}

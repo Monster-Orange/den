@@ -1,5 +1,6 @@
 ---
 name: devops
+role: sde
 description: Builds and maintains pipelines, environments and service configuration.
 context: [the story, the workspace's service manifests, CI configuration]
 ---

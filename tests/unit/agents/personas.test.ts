@@ -55,7 +55,12 @@ describe("parsePersona", () => {
     const p = parsePersona(CLAUDE_CODE_AGENT, "/pack/code-reviewer.md");
     expect(p).toEqual({
       id: "code-reviewer",
-      role: "Reviews code for quality and security. Use after every change.",
+      // Claude Code's description is the one line a list shows (AG-10.2).
+      description:
+        "Reviews code for quality and security. Use after every change.",
+      category: "engineering",
+      allowedCommands: [],
+      origin: "builtin",
       prompt:
         "You are a senior code reviewer.\n\nCheck every change for correctness.",
       model: "sonnet",
@@ -86,7 +91,8 @@ describe("parsePersona", () => {
     );
     expect(p).toMatchObject({
       id: "planner",
-      role: "Writes stories and acceptance criteria.",
+      // A role that is a sentence (before AG-11) is its description.
+      description: "Writes stories and acceptance criteria.",
       runtime: "generic",
       model: "some-model",
       standing: true,
@@ -131,7 +137,7 @@ describe("parsePersona", () => {
 });
 
 describe("packs", () => {
-  it("Den's default pack has the seven role personas, runtime-neutral", () => {
+  it("Den's default pack has the eight role personas, runtime-neutral", () => {
     const ids = readPack(DEFAULT_PACK_DIR).map((p) => p.id);
     expect(ids.sort()).toEqual(
       [
@@ -141,6 +147,7 @@ describe("packs", () => {
         "orchestrator",
         "planner",
         "reviewer",
+        "tester",
         "ux-designer",
       ].sort(),
     );

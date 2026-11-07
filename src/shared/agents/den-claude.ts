@@ -61,7 +61,10 @@ import {
   type LaunchOutput,
   type Runtime,
   type RuntimeDetect,
+  type RuntimeModel,
+  type RuntimePermissions,
 } from "./runtime.js";
+import { PERMISSION_INTENTS, type PermissionIntent } from "./permissions.js";
 import { builtinEntry } from "./catalog.js";
 import { catalogFind } from "./catalog-runtime.js";
 import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
@@ -90,12 +93,91 @@ export const PERMISSION_MODES = [
 ] as const;
 export const DEFAULT_PERMISSION_MODE = "default";
 
-/** The persona's permission mode, checked; a bad one names the key. */
+/**
+ * Den's permission intents (AG-13) as Claude Code's modes:
+ * https://code.claude.com/docs/en/iam (permission modes): `default` asks
+ * on first use of each tool, `acceptEdits` accepts file edits for the
+ * session, `bypassPermissions` skips every prompt.
+ */
+export const INTENT_MODE: Record<PermissionIntent, string> = {
+  ask: "default",
+  edits: "acceptEdits",
+  all: "bypassPermissions",
+};
+
+/**
+ * One plain command prefix as Claude Code allow rules (the same docs,
+ * Bash rules): the command alone, and the command with arguments (`*`
+ * matches any run of characters). Deny rules (Den's state dir) still win:
+ * Claude Code checks deny before allow.
+ */
+export const COMMAND_RULES = ["Bash({c})", "Bash({c} *)"];
+
+/** How den-claude expresses permission intents (AG-13.2). */
+export const DEN_CLAUDE_PERMISSIONS: RuntimePermissions = {
+  modes: {
+    ask: "--permission-mode default: asks before edits and commands",
+    edits:
+      "--permission-mode acceptEdits: file edits run without asking; commands ask",
+    all: "--permission-mode bypassPermissions: nothing asks",
+  },
+  commandRules: COMMAND_RULES,
+};
+
+/** A command prefix's allow rules (permissions.ts checked it). */
+export function allowRules(commands: readonly string[]): string[] {
+  return commands.flatMap((c) =>
+    COMMAND_RULES.map((r) => r.split("{c}").join(c)),
+  );
+}
+
+/**
+ * Claude Code's models (AG-12.3): the aliases `claude --model` takes,
+ * each "latest" (the alias tracks its newest model) or pinned to one full
+ * model id. Claude Code has no command that lists models, so the list
+ * ships with each Den release (https://code.claude.com/docs/en/model-config:
+ * aliases opus, sonnet, haiku, or a full model name). Newest first.
+ */
+export const DEN_CLAUDE_MODELS: readonly RuntimeModel[] = [
+  {
+    id: "opus",
+    label: "Opus",
+    versions: [
+      "claude-opus-5-5",
+      "claude-opus-5",
+      "claude-opus-4-8",
+      "claude-opus-4-7",
+      "claude-opus-4-6",
+    ],
+    latest: "claude-opus-5-5",
+  },
+  {
+    id: "sonnet",
+    label: "Sonnet",
+    versions: ["claude-sonnet-5-5", "claude-sonnet-5", "claude-sonnet-4-6"],
+    latest: "claude-sonnet-5-5",
+  },
+  {
+    id: "haiku",
+    label: "Haiku",
+    versions: ["claude-haiku-5-5", "claude-haiku-4-5"],
+    latest: "claude-haiku-5-5",
+  },
+];
+
+/**
+ * The mode to launch with: the agent's intent (Start › Advanced), else the
+ * persona's `permission_mode`: one of Den's intents, or one of Claude
+ * Code's own modes (as before AG-13). A bad one names the key.
+ */
 function permissionMode(input: LaunchInput): string {
+  if (input.permission) return INTENT_MODE[input.permission];
   const m = input.persona.permissionMode ?? DEFAULT_PERMISSION_MODE;
+  if ((PERMISSION_INTENTS as readonly string[]).includes(m))
+    return INTENT_MODE[m as PermissionIntent];
   if (!(PERMISSION_MODES as readonly string[]).includes(m))
     throw new LaunchError(
-      `${input.persona.source}: permission_mode "${m.replace(/[^\x20-\x7e]/g, "?").slice(0, 40)}" must be one of ${PERMISSION_MODES.join(", ")}`,
+      `${input.persona.source}: permission_mode "${m.replace(/[^\x20-\x7e]/g, "?").slice(0, 40)}" must be one of ${[...PERMISSION_INTENTS, ...PERMISSION_MODES].join(", ")}`,
     );
   return m;
 }
@@ -244,7 +326,9 @@ function common(input: LaunchInput): {
         }),
       )
     : null;
-  const settings = input.stateDir || hooks ? settingsPath(input) : null;
+  const allow = allowRules(input.allow ?? []);
+  const settings =
+    input.stateDir || hooks || allow.length ? settingsPath(input) : null;
   return {
     argv: [
       "--mcp-config",
@@ -268,13 +352,18 @@ function common(input: LaunchInput): {
         ? {
             [settings]: `${JSON.stringify(
               {
-                ...(input.stateDir
+                ...(input.stateDir || allow.length
                   ? {
                       permissions: {
-                        deny: stateDirDenyRules(
-                          input.stateDir,
-                          input.env?.HOME,
-                        ),
+                        ...(allow.length ? { allow } : {}),
+                        ...(input.stateDir
+                          ? {
+                              deny: stateDirDenyRules(
+                                input.stateDir,
+                                input.env?.HOME,
+                              ),
+                            }
+                          : {}),
                       },
                     }
                   : {}),
@@ -289,7 +378,9 @@ function common(input: LaunchInput): {
     warnings:
       mode === "bypassPermissions"
         ? [
-            `⚠ persona ${input.persona.id} sets permission_mode: bypassPermissions: Claude Code will not ask before running any tool`,
+            input.permission === "all"
+              ? `⚠ agent ${input.agentId} starts with auto-approve all (bypassPermissions): Claude Code will not ask before running any tool`
+              : `⚠ persona ${input.persona.id} sets permission_mode: bypassPermissions: Claude Code will not ask before running any tool`,
           ]
         : [],
   };
@@ -347,6 +438,9 @@ export const denClaude: Runtime = {
   denTools: true,
   firstPrompt: true,
   find: DEN_CLAUDE_FIND,
+  models: () =>
+    DEN_CLAUDE_MODELS.map((m) => ({ ...m, versions: [...m.versions] })),
+  permissions: DEN_CLAUDE_PERMISSIONS,
   detect,
   launch(input): LaunchOutput {
     const bin = binFor(input);

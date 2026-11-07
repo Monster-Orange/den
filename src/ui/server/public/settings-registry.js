@@ -29,6 +29,7 @@
  */
 import { themeNotice, themeOptions } from "./appearance.js";
 import { qrSvg } from "./qr.js";
+import { renderPersonasSettings } from "./persona-ui.js";
 
 export const DEN_SETTING_CATEGORIES = [
   {
@@ -876,6 +877,27 @@ export const DEN_SETTINGS = [
     ],
     scope: "user",
     control: { type: "custom", render: renderRuntimes },
+    read: () => null,
+  },
+
+  {
+    id: "agents.personas",
+    category: "agents",
+    label: "Personas",
+    description:
+      "Agent setups you can start from. Built-in ones ship with Den, distribution ones with your distribution, and yours live on this machine. View or Edit, Duplicate, + New persona; only your own can be edited or deleted.",
+    keywords: [
+      "persona",
+      "role",
+      "agent",
+      "model",
+      "version",
+      "permission",
+      "allowed commands",
+      "instructions",
+    ],
+    scope: "user",
+    control: { type: "custom", render: renderPersonasSettings },
     read: () => null,
   },
 

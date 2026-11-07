@@ -12,20 +12,35 @@
  *   model        the default model; `inherit` means none of its own
  *   tools        "Read, Grep" or a list: hints, never a restriction Den applies
  *
- * Den's own keys sit beside them: `runtime` (default den-claude),
+ * Den's own keys sit beside them (AG-10.2): `display_name` ("Rita", shown
+ * as "Rita (reviewer)"), `role` (a key into the role registry, roles.ts:
+ * planner, sde, …; a sentence there, as before AG-10, is read as the
+ * description), `category` (engineering, design, …; default from the
+ * role), `version` ("latest" or a pinned model version),
+ * `allowed_commands` (plain command prefixes run without asking: AG-13.4),
+ * `runtime` (default den-claude),
  * `standing` (starts with its workspace, §5; resumes after a restart),
  * `resume_on_restart` (AG-14.3: resumes after a restart too), `context` (what to read
  * first), `argv` (the generic runtime's template), and `permission_mode`
- * (den-claude's Claude Code permission mode; it checks the value), and
+ * (Den's intent: ask, edits or all; or a Claude Code mode, which
+ * den-claude checks), and
  * `den_hooks` / `den_instructions` (true or false: this persona's
  * guardrails, guardrails.ts, over its pack's). Any other key (a
  * Claude Code `color`) is ignored. A file without front matter (a pack's
  * README) is not a persona.
+ *
+ * Where personas come from (AG-10.3), each with its origin: built-in
+ * (Den's default pack), distribution (agents.persona_packs) and local
+ * (<state_dir>/personas/*.md, made in the UI or by hand: persona-store.ts).
+ * Of two with one id, local wins over distribution, and distribution over
+ * built-in. Hub comes later; only its origin value exists now.
  */
 import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "yaml";
 import { WORKSPACE_NAME_RE } from "../agent-actor.js";
+import { checkCommands } from "./permissions.js";
+import { DEN_ROLES, REGISTRY_ID_RE } from "./roles.js";
 import { enginePath } from "../engine.js";
 import {
   DEFAULT_PACK_GUARDRAILS,
@@ -34,10 +49,31 @@ import {
   type Guardrails,
 } from "./guardrails.js";
 
+/** Where a persona came from (AG-10.3). */
+export type PersonaOrigin = "builtin" | "distribution" | "local" | "hub";
+export const PERSONA_ORIGINS: readonly PersonaOrigin[] = [
+  "builtin",
+  "distribution",
+  "local",
+  "hub",
+];
+
 export interface Persona {
   id: string;
+  /** A person's name for it ("Rita"), shown as "Rita (reviewer)". */
+  displayName?: string;
+  /** Its role: a key into the role registry (roles.ts), when it has one. */
+  role?: string;
   /** One line: what it does. */
-  role: string;
+  description: string;
+  /** Its category (roles.ts): the role's, else engineering. */
+  category: string;
+  /** "latest" (default) or a pinned version of its model. */
+  version?: string;
+  /** Plain command prefixes it may run without asking (AG-13.4). */
+  allowedCommands: string[];
+  /** Where it came from (loadPersonas sets it). */
+  origin: PersonaOrigin;
   /** The role prompt: the file's body. */
   prompt: string;
   /** The runtime it runs on unless an agent says otherwise. */
@@ -69,6 +105,9 @@ export interface Persona {
   /** The file it came from. */
   source: string;
 }
+
+/** A model version as a persona pins it: "latest" or a version id. */
+export const VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._@:-]{0,63}$/;
 
 /** A persona id: the same rules as an agent id or a workspace name. */
 export const PERSONA_ID_RE = WORKSPACE_NAME_RE;
@@ -115,7 +154,11 @@ function stringList(
 }
 
 /** One persona file, or null when it has no front matter. */
-export function parsePersona(text: string, file: string): Persona | null {
+export function parsePersona(
+  text: string,
+  file: string,
+  origin: PersonaOrigin = "builtin",
+): Persona | null {
   const m = FRONT_MATTER.exec(text);
   if (!m) return null;
   let fm: unknown;
@@ -155,6 +198,35 @@ export function parsePersona(text: string, file: string): Persona | null {
     argv = f.argv as string[];
   }
   const model = optString(f, "model", file);
+  const displayName = optString(f, "display_name", file);
+  if (
+    displayName &&
+    ([...displayName].length > 40 ||
+      /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(displayName))
+  )
+    throw new Error(
+      `${file}: display_name must be at most 40 characters, with no control characters`,
+    );
+  // AG-10.2: `role` is a role key; a sentence there (before AG-10) is the
+  // description it always was.
+  const roleRaw = optString(f, "role", file);
+  const role = roleRaw && REGISTRY_ID_RE.test(roleRaw) ? roleRaw : undefined;
+  const category = optString(f, "category", file);
+  if (category && !REGISTRY_ID_RE.test(category))
+    throw new Error(
+      `${file}: category "${category.slice(0, 40)}" must be lowercase letters, digits and "-"`,
+    );
+  const version = optString(f, "version", file);
+  if (version && !VERSION_RE.test(version))
+    throw new Error(
+      `${file}: version must be "latest" or a version id (letters, digits, . _ @ : -)`,
+    );
+  let allowedCommands: string[];
+  try {
+    allowedCommands = checkCommands(f.allowed_commands, "allowed_commands");
+  } catch (e) {
+    throw new Error(`${file}: ${(e as Error).message}`);
+  }
   const runtime = optString(f, "runtime", file);
   const permissionMode = optString(f, "permission_mode", file);
   const guardrailsSet: Partial<Guardrails> = {};
@@ -170,7 +242,19 @@ export function parsePersona(text: string, file: string): Persona | null {
   }
   return {
     id,
-    role: optString(f, "role", file) ?? optString(f, "description", file) ?? "",
+    ...(displayName ? { displayName } : {}),
+    ...(role ? { role } : {}),
+    description:
+      (roleRaw && !role ? roleRaw : undefined) ??
+      optString(f, "description", file) ??
+      "",
+    category:
+      category ??
+      DEN_ROLES.find((r) => r.id === role)?.category ??
+      "engineering",
+    ...(version && version !== "latest" ? { version } : {}),
+    allowedCommands,
+    origin,
     prompt: text.slice(m[0].length).trim(),
     ...(runtime ? { runtime } : {}),
     ...(model && model !== "inherit" ? { model } : {}),
@@ -189,7 +273,10 @@ export function parsePersona(text: string, file: string): Persona | null {
  * A pack's personas, by file name. A directory with an `agents/` inside (a
  * Claude Code plugin) is read from there.
  */
-export function readPack(dir: string): Persona[] {
+export function readPack(
+  dir: string,
+  origin: PersonaOrigin = "builtin",
+): Persona[] {
   const agents = path.join(dir, "agents");
   const from = fs.statSync(agents, { throwIfNoEntry: false })?.isDirectory()
     ? agents
@@ -200,7 +287,7 @@ export function readPack(dir: string): Persona[] {
     if (!name.endsWith(".md")) continue;
     const file = path.join(from, name);
     if (!fs.statSync(file).isFile()) continue;
-    const p = parsePersona(fs.readFileSync(file, "utf-8"), file);
+    const p = parsePersona(fs.readFileSync(file, "utf-8"), file, origin);
     if (!p) continue;
     const prev = seen.get(p.id);
     if (prev) throw new Error(`${prev} and ${file} both define "${p.id}"`);
@@ -237,17 +324,34 @@ export function loadPersonas(
   packDirs: string[],
   defaultPack: string = DEFAULT_PACK_DIR,
   guardrails: PackGuardrails = {},
+  /**
+   * <state_dir>/personas (AG-10.3): a person's own, read last so one wins
+   * over a pack's of the same id. Absent: none. They get the default
+   * pack's guardrails (Den's hooks and instructions) unless their own
+   * front matter says otherwise.
+   */
+  localDir?: string,
 ): Map<string, Persona> {
   const all = new Map<string, Persona>();
-  const packs: [string, Guardrails][] = [
-    [defaultPack, { ...DEFAULT_PACK_GUARDRAILS, ...guardrails.defaultPack }],
-    ...packDirs.map((dir, i): [string, Guardrails] => [
+  const packs: [string, Guardrails, PersonaOrigin][] = [
+    [
+      defaultPack,
+      { ...DEFAULT_PACK_GUARDRAILS, ...guardrails.defaultPack },
+      "builtin",
+    ],
+    ...packDirs.map((dir, i): [string, Guardrails, PersonaOrigin] => [
       dir,
       { ...PACK_GUARDRAILS, ...guardrails.packs?.[i] },
+      "distribution",
     ]),
   ];
-  for (const [dir, g] of packs)
-    for (const p of readPack(dir))
+  if (
+    localDir &&
+    fs.statSync(localDir, { throwIfNoEntry: false })?.isDirectory()
+  )
+    packs.push([localDir, { ...DEFAULT_PACK_GUARDRAILS }, "local"]);
+  for (const [dir, g, origin] of packs)
+    for (const p of readPack(dir, origin))
       all.set(p.id, { ...p, guardrails: { ...g, ...p.guardrailsSet } });
   return all;
 }

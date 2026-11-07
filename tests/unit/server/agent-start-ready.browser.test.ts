@@ -103,6 +103,19 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
     const p = await page(missing!, "/agents?start=1");
     await p.waitForSelector("#ag-dlg[open]");
     await p.waitForSelector("#ag-r-ready:not([hidden])");
+    // AG-12.2: the persona's runtime isn't installed, so it starts on the
+    // first one that is, and the dialog says so.
+    expect(await p.inputValue("#ag-runtime")).toBe("codex");
+    expect(await text(p, "#ag-r-fb")).toMatch(
+      /default runtime, Claude Code, isn't installed here, so this starts on Codex CLI\.$/,
+    );
+    expect(await p.isDisabled("#ag-go")).toBe(false);
+    // AG-12.1: what isn't installed, and Install… (later).
+    expect(await text(p, "#ag-r-miss")).toBe(
+      "Not found on this machine: Claude Code, Gemini CLI, Grok Build · Install… later",
+    );
+    // Picking the persona's own runtime: Start is disabled, and says why.
+    await p.selectOption("#ag-runtime", "");
     expect(await p.isDisabled("#ag-go")).toBe(true);
     expect(await p.getAttribute("#ag-r-ready", "data-tone")).toBe("warn");
     const user = path.join(missing!.tmp, "dist", "config", "local", "user.yml");
@@ -125,7 +138,7 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
       ["Generic command — the persona has no argv template", true],
     ]);
     // Enter doesn't start it either.
-    await p.press("#ag-persona", "Enter");
+    await p.press("#ag-q", "Enter");
     expect(await p.isVisible("#ag-dlg")).toBe(true);
     if (SHOTS)
       await p.screenshot({ path: path.join(SHOTS, "ag0-unavailable.png") });

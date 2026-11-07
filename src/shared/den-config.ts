@@ -21,6 +21,13 @@ import { ConfigError, isConfigError } from "./config-error.js";
 import { validateCatalog, type CatalogEntry } from "./agents/catalog.js";
 import type { Guardrails } from "./agents/guardrails.js";
 import { DEFAULT_ROTATE, type RotateSettings } from "./agents/rotation.js";
+import {
+  checkCategoriesConfig,
+  checkRolesConfig,
+  DEN_CATEGORIES,
+  type Category,
+  type RolesConfig,
+} from "./agents/roles.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
 
 import { product } from "./product.js";
@@ -918,6 +925,9 @@ export const AGENTS_RESERVED_KEYS = [
   "runtime_catalog",
   "default_pack",
   "rotate",
+  // AG-10.5, AG-11.1: the distribution's persona categories and roles.
+  "categories",
+  "roles",
 ];
 
 /** One agent's own block, `agents.<id>`. */
@@ -941,6 +951,10 @@ export interface ResolvedAgentsConfig {
   runtimeCatalog: CatalogEntry[];
   /** agents.rotate with its defaults (den#4); unset: DEFAULT_ROTATE. */
   rotate?: RotateSettings;
+  /** agents.categories (AG-10.5): the distribution's, after Den's. */
+  categories?: Category[];
+  /** agents.roles (AG-11.1): new roles and Den roles' preset extensions. */
+  roles?: RolesConfig;
 }
 
 /** `agents.rotate` checked; any other key, or a bad value, throws naming it. */
@@ -1034,6 +1048,11 @@ export function readAgentsConfig(
     ),
     rotate: rotateBlock(raw.rotate),
   };
+  out.categories = checkCategoriesConfig(raw.categories);
+  out.roles = checkRolesConfig(raw.roles, [
+    ...DEN_CATEGORIES.map((c) => c.id),
+    ...out.categories.map((c) => c.id),
+  ]);
   const max = raw.max_concurrent;
   if (max !== undefined) {
     if (typeof max !== "number" || !Number.isInteger(max) || max < 1)
@@ -1066,7 +1085,7 @@ export function readAgentsConfig(
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(
-        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, default_pack, rotate, ` +
+        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, default_pack, rotate, categories, roles, ` +
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))

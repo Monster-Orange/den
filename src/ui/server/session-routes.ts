@@ -55,7 +55,8 @@ import { parseSessionName } from "../../shared/sessions/names.js";
 import { sessionPaths } from "../../shared/sessions/paths.js";
 import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
-import { agentRows, noteEnded } from "../cli/agent-ops.js";
+import { agentRows, newerOf, noteEnded } from "../cli/agent-ops.js";
+import type { Override } from "../../shared/agents/records.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
@@ -149,6 +150,15 @@ export interface ListedSession {
   persona?: string;
   runtime?: string;
   model?: string;
+  /** A pinned model version (AG-12), and the newer one when there is. */
+  version?: string;
+  newer?: string;
+  /** Its permission intent (AG-13): ask, edits, all. */
+  permission?: string;
+  /** Extra allowed commands it was started with (AG-13.3). */
+  allow?: string[];
+  /** What it overrides of its persona (AG-10.9): its row's tags. */
+  overrides?: Override[];
   cwd?: string;
   /** running, stopping, exited (<code>), stopped, interrupted (AG-14). */
   state: string;
@@ -213,6 +223,11 @@ export function listedSessions(
       persona: rec.persona,
       runtime: rec.runtime,
       ...(rec.model ? { model: rec.model } : {}),
+      ...(rec.version ? { version: rec.version } : {}),
+      ...newerOf(rec),
+      ...(rec.permission ? { permission: rec.permission } : {}),
+      ...(rec.allow?.length ? { allow: [...rec.allow] } : {}),
+      ...(rec.overrides?.length ? { overrides: [...rec.overrides] } : {}),
       cwd: rec.cwd,
       state: r.state,
       exited: !s || s.exited === true,

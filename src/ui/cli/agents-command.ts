@@ -410,13 +410,23 @@ async function listPersonas(
     return 0;
   }
   for (const l of columns([
-    ["PERSONA", "STANDING", "RUNTIME", "MODEL", "ROLE"],
+    [
+      "PERSONA",
+      "SOURCE",
+      "STANDING",
+      "RUNTIME",
+      "MODEL",
+      "ROLE",
+      "DESCRIPTION",
+    ],
     ...all.map((x) => [
       x.id,
+      x.origin,
       x.standing ? "yes" : "-",
       x.runtime ?? DEFAULT_RUNTIME_ID,
       x.model ?? "-",
-      x.role,
+      x.role ?? "-",
+      x.description,
     ]),
   ]))
     d.out(l);

@@ -112,7 +112,10 @@ function probeInput(d: ProbeDeps, dir: string): LaunchInput {
   return {
     persona: {
       id: PROBE_ID,
-      role: "",
+      description: "",
+      category: "engineering",
+      allowedCommands: [],
+      origin: "builtin",
       prompt: "",
       standing: false,
       tools: [],

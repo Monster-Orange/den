@@ -20,6 +20,7 @@ import {
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { verifyActorToken } from "../../../src/shared/actor-token.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
+import { readRecord } from "../../../src/shared/agents/records.js";
 import { hasSudoPassword } from "../../../src/ui/server/sudo-store.js";
 import { cleanupRigs, rig, settle, type Rig } from "../agents/helpers/rig.js";
 
@@ -63,7 +64,11 @@ async function api(): Promise<Api> {
         grants: rec.grants,
         session: rec.session,
       });
-    handleAgentRoutes(req, res, p, { agents: r.deps })
+    handleAgentRoutes(req, res, p, {
+      agents: r.deps,
+      // A first instruction counts its session ready quickly here.
+      instruction: { quietMs: 30, maxMs: 1500 },
+    })
       .then((handled) => {
         if (!handled) {
           res.writeHead(404);
@@ -185,8 +190,21 @@ describe("GET /api/personas: each runtime's readiness (AG-0.2)", () => {
       setting: "agents.runtimes.den-claude.bin",
       resume: true,
       default: true,
+      // AG-12, AG-13: the models it offers, and how it takes permissions.
+      models: expect.arrayContaining([
+        expect.objectContaining({ id: "opus", latest: "claude-opus-5-5" }),
+      ]),
+      permissions: expect.objectContaining({
+        commandRules: ["Bash({c})", "Bash({c} *)"],
+      }),
     });
-    // generic has nothing to find.
+    // generic has nothing to find, and takes no model or permissions from Den.
+    expect(runtimes.find((x) => x.id === "generic")).toMatchObject({
+      models: [],
+    });
+    expect(runtimes.find((x) => x.id === "generic")).not.toHaveProperty(
+      "permissions",
+    );
     expect(runtimes.find((x) => x.id === "generic")).not.toHaveProperty("path");
     // Asked again: nothing but --version ever ran.
     await getJson(base, "/api/personas");
@@ -795,5 +813,423 @@ describe("GET /api/workspaces/<ws>/agents/<id>/paths (AG-4b: path links)", () =>
       "/api/workspaces/north/agents/planner/paths",
     );
     expect(post.status).toBe(405);
+  });
+});
+
+/** The args after `flag` in a PTY's argv. */
+const argAfter = (args: string[], flag: string) => args[args.indexOf(flag) + 1];
+
+/** The text the host typed into a PTY. */
+const typed = (p: { writes: Buffer[] }) =>
+  Buffer.concat(p.writes).toString("utf-8");
+
+async function until(ok: () => boolean, ms = 3000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!ok() && Date.now() < end) await settle(25);
+}
+
+describe("POST …/agents start: the Start dialog's choices (AG-10.1, AG-12, AG-13)", () => {
+  it("a model, a pinned version, a permission intent and extra commands reach the launch, the record and its row", async () => {
+    const a = await api();
+    const { status, json } = await start(a, "north", {
+      persona: "planner",
+      model: "opus",
+      version: "claude-opus-4-8",
+      permission: "edits",
+      allow: ["npm test", "make lint"],
+    });
+    expect(status).toBe(200);
+    expect(json.agent).toMatchObject({
+      model: "opus",
+      version: "claude-opus-4-8",
+      permission: "edits",
+    });
+    const p = a.r.made[0];
+    // A pinned version runs as its full id; the intent in Claude Code's terms.
+    expect(argAfter(p.args, "--model")).toBe("claude-opus-4-8");
+    expect(argAfter(p.args, "--permission-mode")).toBe("acceptEdits");
+    const settings = JSON.parse(
+      fs.readFileSync(argAfter(p.args, "--settings"), "utf-8"),
+    ) as { permissions: { allow: string[]; deny: string[] } };
+    // The role's preset (planner: gh issue list, gh issue view) and the extras.
+    expect(settings.permissions.allow).toEqual(
+      expect.arrayContaining([
+        "Bash(npm test)",
+        "Bash(npm test *)",
+        "Bash(make lint)",
+        "Bash(gh issue list)",
+      ]),
+    );
+    expect(settings.permissions.deny.length).toBeGreaterThan(0);
+    const rec = readRecord(a.r.stateDir, "planner")!;
+    expect(rec).toMatchObject({
+      model: "opus",
+      version: "claude-opus-4-8",
+      permission: "edits",
+      allow: ["npm test", "make lint"],
+    });
+    expect(rec.overrides).toEqual(
+      expect.arrayContaining(["model", "version", "permission", "allow"]),
+    );
+    const row = (await rows(a, "north"))[0];
+    expect(row).toMatchObject({
+      model: "opus",
+      version: "claude-opus-4-8",
+      newer: "claude-opus-5-5",
+      permission: "edits",
+    });
+    expect(row.overrides).toEqual(expect.arrayContaining(["model"]));
+    const entry = recentActions().at(-1)!;
+    expect(entry.detail).toMatch(
+      /^start planner \(planner, den-claude; overrides .*model/,
+    );
+  });
+
+  it("no choices: no overrides, and the row has no tags to show", async () => {
+    const a = await api();
+    await start(a, "north", { persona: "planner" });
+    const rec = readRecord(a.r.stateDir, "planner")!;
+    expect(rec.overrides ?? []).toEqual([]);
+    expect((await rows(a, "north"))[0]).not.toHaveProperty("overrides");
+  });
+
+  it("Start fresh keeps what it was started with", async () => {
+    const a = await api();
+    await start(a, "north", {
+      persona: "planner",
+      model: "sonnet",
+      permission: "all",
+      allow: ["npm test"],
+    });
+    await a.call("POST", "/api/workspaces/north/agents/planner/stop");
+    a.r.made[0].exit(0);
+    await settle();
+    const { status } = await a.call(
+      "POST",
+      "/api/workspaces/north/agents/planner/fresh",
+    );
+    expect(status).toBe(200);
+    const p = a.r.made[1];
+    expect(argAfter(p.args, "--model")).toBe("sonnet");
+    expect(argAfter(p.args, "--permission-mode")).toBe("bypassPermissions");
+    expect(readRecord(a.r.stateDir, "planner")).toMatchObject({
+      model: "sonnet",
+      permission: "all",
+      allow: ["npm test"],
+    });
+  });
+
+  it("refuses each choice that isn't the catalog's or a plain prefix (400, nothing starts)", async () => {
+    const a = await api();
+    for (const [body, re] of [
+      [{ model: "gpt" }, /model: "gpt" is not one of den-claude's/],
+      [{ model: "opus", version: "claude-opus-1" }, /version: "claude-opus-1"/],
+      [{ version: "claude-opus-4-8" }, /version needs a model/],
+      [
+        { permission: "yolo" },
+        /permission: "yolo" must be one of ask, edits, all/,
+      ],
+      [{ allow: "npm test" }, /must be a list of command prefixes/],
+      [{ allow: ["npm test; rm"] }, /must be a plain prefix/],
+      [{ allow: ["npm *"] }, /is a pattern/],
+      [{ allow: [3] }, /must be a string/],
+      [{ allow: Array.from({ length: 33 }, (_, i) => `c${i}`) }, /at most 32/],
+      [
+        { instruction: "hi\u001b[2J" },
+        /instruction can't have control characters/,
+      ],
+      [{ instruction: 7 }, /instruction must be a string/],
+      [{ instruction: "x".repeat(8001) }, /at most 8000/],
+      [{ model: "opus --dangerously" }, /must be a short name/],
+      [{ prompt: "x" }, /prompt: unknown field/],
+    ] as [Record<string, unknown>, RegExp][]) {
+      const { status, json } = await start(a, "north", {
+        persona: "planner",
+        ...body,
+      });
+      expect([JSON.stringify(body).slice(0, 40), status]).toEqual([
+        JSON.stringify(body).slice(0, 40),
+        400,
+      ]);
+      expectR26(json, "bad_request");
+      expect(String(json.error)).toMatch(re);
+    }
+    expect(a.r.made).toHaveLength(0);
+  });
+
+  it("a runtime that takes no model from Den refuses one", async () => {
+    const a = await api();
+    const { status, json } = await start(a, "north", {
+      persona: "planner",
+      runtime: "generic",
+      model: "opus",
+    });
+    expect(status).toBe(400);
+    expect(String(json.error)).toMatch(/generic takes no model choice/);
+  });
+
+  it("the first instruction is typed into the session once it is ready, never an argument, and never logged", async () => {
+    const a = await api();
+    const text = "Plan the login story.\nKeep it small.";
+    const { status, json } = await start(a, "north", {
+      persona: "planner",
+      instruction: text,
+    });
+    expect(status).toBe(200);
+    expect(json.instruction).toBe("pending");
+    const p = a.r.made[0];
+    expect(p.args.join(" ")).not.toContain("Plan the login");
+    // The runtime asks for bracketed paste, then goes quiet: ready.
+    p.emit("\x1b[?2004h> ");
+    await until(() => typed(p).includes("\r"));
+    expect(typed(p)).toBe(
+      "\x1b[200~Plan the login story.\nKeep it small.\x1b[201~\r",
+    );
+    await until(() =>
+      Boolean(recentActions().at(-1)?.detail.startsWith("first instruction")),
+    );
+    const entry = recentActions().at(-1)!;
+    expect(entry.detail).toBe(
+      `first instruction to planner in north (${text.length} characters)`,
+    );
+    expect(JSON.stringify(recentActions())).not.toContain("Plan the login");
+    expect(JSON.stringify(readRecord(a.r.stateDir, "planner"))).not.toContain(
+      "Plan the login",
+    );
+  });
+
+  it("without bracketed paste, its newlines are the runtime's soft newline", async () => {
+    const a = await api();
+    await start(a, "north", { persona: "planner", instruction: "a\nb" });
+    const p = a.r.made[0];
+    p.emit("ready> ");
+    await until(() => typed(p).endsWith("\r") && typed(p).length > 2);
+    expect(typed(p)).toBe("a\x1b\rb\r");
+  });
+});
+
+describe("the persona routes (AG-10.6, AG-10.7)", () => {
+  const mine = {
+    displayName: "Copy checker",
+    role: "reviewer",
+    category: "marketing",
+    description: "Checks copy for tone and typos.",
+    instructions: "Read the changed copy. Report tone and typo problems.",
+    runtime: "den-claude",
+    model: "sonnet",
+    version: "latest",
+    permission: "ask",
+    allowedCommands: ["git diff"],
+  };
+
+  it("GET /api/personas has the role and category registries; GET …/<id> has a persona's instructions", async () => {
+    const a = await api();
+    const { json } = await a.call("GET", "/api/personas");
+    expect((json.roles as { id: string }[]).map((r) => r.id)).toEqual([
+      "planner",
+      "orchestrator",
+      "sde",
+      "reviewer",
+      "tester",
+      "designer",
+    ]);
+    expect((json.categories as { id: string }[]).map((c) => c.id)).toContain(
+      "marketing",
+    );
+    const one = await a.call("GET", "/api/personas/planner");
+    expect(one.status).toBe(200);
+    expect(one.json.persona).toMatchObject({
+      id: "planner",
+      origin: "builtin",
+      role: "planner",
+    });
+    expect(
+      String((one.json.persona as { instructions: string }).instructions),
+    ).toMatch(/\S/);
+    expect((await a.call("GET", "/api/personas/nobody")).status).toBe(404);
+  });
+
+  it("New persona writes the person's own (0600), lists as mine, edits and deletes; every change audited", async () => {
+    const a = await api();
+    const made = await a.call("POST", "/api/personas", mine);
+    expect(made.status).toBe(200);
+    const p = made.json.persona as Record<string, unknown>;
+    expect(p).toMatchObject({
+      id: "copy-checker",
+      origin: "local",
+      displayName: "Copy checker",
+      category: "marketing",
+      model: "sonnet",
+    });
+    const file = path.join(a.r.stateDir, "personas", "copy-checker.md");
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    expect(recentActions().at(-1)).toMatchObject({
+      actor: "user",
+      detail: "persona create copy-checker",
+    });
+    // A second with the same name gets the next id.
+    const again = await a.call("POST", "/api/personas", mine);
+    expect((again.json.persona as { id: string }).id).toBe("copy-checker-2");
+    const list = (await a.call("GET", "/api/personas")).json.personas as {
+      id: string;
+      origin: string;
+    }[];
+    expect(list.find((x) => x.id === "copy-checker")?.origin).toBe("local");
+
+    const edit = await a.call("POST", "/api/personas/copy-checker", {
+      ...mine,
+      description: "Checks copy.",
+    });
+    expect(edit.status).toBe(200);
+    expect(fs.readFileSync(file, "utf-8")).toMatch(
+      /description: Checks copy\./,
+    );
+
+    const del = await a.call("DELETE", "/api/personas/copy-checker");
+    expect(del.status).toBe(200);
+    expect(fs.existsSync(file)).toBe(false);
+    expect(recentActions().at(-1)?.detail).toBe("persona delete copy-checker");
+    expect((await a.call("GET", "/api/personas/copy-checker")).status).toBe(
+      404,
+    );
+  });
+
+  it("a persona made here starts with its own model and commands", async () => {
+    const a = await api();
+    await a.call("POST", "/api/personas", mine);
+    const { status } = await start(a, "north", { persona: "copy-checker" });
+    expect(status).toBe(200);
+    const p = a.r.made[0];
+    expect(argAfter(p.args, "--model")).toBe("sonnet");
+    const settings = JSON.parse(
+      fs.readFileSync(argAfter(p.args, "--settings"), "utf-8"),
+    ) as { permissions: { allow: string[] } };
+    expect(settings.permissions.allow).toContain("Bash(git diff)");
+    // Its own choices, not overrides.
+    expect(readRecord(a.r.stateDir, "copy-checker")?.overrides ?? []).toEqual(
+      [],
+    );
+    expect(readRecord(a.r.stateDir, "copy-checker")?.displayName).toBe(
+      "Copy checker",
+    );
+  });
+
+  it("a built-in or a distribution's persona is read-only: edit and delete are 409 read_only", async () => {
+    const a = await api();
+    const edit = await a.call("POST", "/api/personas/planner", mine);
+    expect(edit.status).toBe(409);
+    expectR26(edit.json, "read_only");
+    const del = await a.call("DELETE", "/api/personas/planner");
+    expect(del.status).toBe(409);
+    expectR26(del.json, "read_only");
+  });
+
+  it("refuses each field that isn't what it may be (400, naming it; nothing written)", async () => {
+    const a = await api();
+    for (const [over, re] of [
+      [{ role: "boss" }, /role: "boss" is not one of/],
+      [{ category: "x" }, /category: "x" is not one of/],
+      [{ runtime: "nope" }, /runtime: "nope" is not one of/],
+      [{ model: "gpt" }, /model: "gpt" is not one of den-claude's/],
+      [{ version: "claude-sonnet-1" }, /version: "claude-sonnet-1"/],
+      [
+        { permission: "bypassPermissions" },
+        /permission: .* must be one of ask, edits, all/,
+      ],
+      [{ allowedCommands: ["rm -rf /; x"] }, /allowedCommands\[0\]/],
+      [{ description: "" }, /description is required/],
+      [
+        { description: "a\u0007b" },
+        /description can't have control characters/,
+      ],
+      [{ displayName: "x".repeat(41) }, /displayName must be at most 40/],
+      [{ instructions: "  " }, /instructions are required/],
+      [
+        { instructions: "a\u001b[31mb" },
+        /instructions can't have control characters/,
+      ],
+      [{ instructions: "a‮b" }, /instructions can't have control characters/],
+      [{ hidden: true }, /hidden: unknown field/],
+    ] as [Record<string, unknown>, RegExp][]) {
+      const { status, json } = await a.call("POST", "/api/personas", {
+        ...mine,
+        ...over,
+      });
+      expect([Object.keys(over)[0], status]).toEqual([
+        Object.keys(over)[0],
+        400,
+      ]);
+      expectR26(json, "bad_request");
+      expect(String(json.error)).toMatch(re);
+    }
+    expect(fs.existsSync(path.join(a.r.stateDir, "personas"))).toBe(false);
+    expect(recentActions().at(-1)?.outcome).toBe("refused");
+  });
+
+  it("an agent's token can't create, edit or delete a persona, nor start a plain session (403, audited)", async () => {
+    const a = await api();
+    await a.call("POST", "/api/personas", mine);
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    const token = a.r.made[0].opts.env.DEN_ACTOR_TOKEN ?? "";
+    const auth = { authorization: `Bearer ${token}` };
+    for (const [m, p, body] of [
+      ["POST", "/api/personas", { ...mine, displayName: "Sneaky" }],
+      ["POST", "/api/personas/copy-checker", { ...mine, permission: "all" }],
+      ["DELETE", "/api/personas/copy-checker", undefined],
+      ["POST", "/api/workspaces/north/sessions", undefined],
+      [
+        "POST",
+        "/api/workspaces/north/agents",
+        { persona: "planner", id: "p2", permission: "all" },
+      ],
+    ] as const) {
+      const { status, json } = await a.call(m, p, body, auth);
+      expect([m, p, status]).toEqual([m, p, 403]);
+      expectR26(json, "forbidden");
+      expect(recentActions().at(-1)).toMatchObject({
+        actor: "agent",
+        outcome: "refused",
+      });
+    }
+    expect(
+      fs.existsSync(path.join(a.r.stateDir, "personas", "sneaky.md")),
+    ).toBe(false);
+    expect(
+      fs.readFileSync(
+        path.join(a.r.stateDir, "personas", "copy-checker.md"),
+        "utf-8",
+      ),
+    ).toMatch(/permission_mode: ask/);
+    expect(a.r.made).toHaveLength(1);
+  });
+});
+
+describe("POST /api/workspaces/<ws>/sessions (Plain session, AG-10.1)", () => {
+  it("starts the person's login shell in the workspace's folder, named shell, then shell-2", async () => {
+    const a = await api();
+    a.r.deps.maxSessions = () => 4;
+    a.r.deps.env = { ...a.r.deps.env, SHELL: "/bin/sh" };
+    const one = await a.call("POST", "/api/workspaces/north/sessions");
+    expect(one.status).toBe(200);
+    expect(one.json.session).toMatchObject({
+      name: "acme-north:shell",
+      workspace: "north",
+    });
+    const p = a.r.made[0];
+    expect([p.file, ...p.args]).toEqual(["/bin/sh", "-l"]);
+    expect(p.opts.cwd).toBe(a.r.wsDir("north"));
+    expect(p.opts.env).not.toHaveProperty("SOME_TOKEN");
+    const two = await a.call("POST", "/api/workspaces/north/sessions");
+    expect((two.json.session as { name: string }).name).toBe(
+      "acme-north:shell-2",
+    );
+    expect(recentActions().at(-1)).toMatchObject({
+      actor: "user",
+      verb: "sessions",
+      detail: "plain session acme-north:shell-2 in north",
+    });
+    expect(
+      (await a.call("POST", "/api/workspaces/nowhere/sessions")).status,
+    ).toBe(404);
   });
 });

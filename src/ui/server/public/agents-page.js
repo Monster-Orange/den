@@ -27,8 +27,17 @@
  * Nothing here keeps a session's state: the list is GET /api/sessions,
  * asked again every few seconds while the page is shown.
  *
- * Start agent (AG-0.2): the runtime line says what will run, or why it
- * can't, before Start (agent-start.js readiness). Starting, stopping and
+ * Start agent (AG-10.1): a searchable persona list (category and source
+ * chips, grouped by category, Plain session pinned last), What's a
+ * persona?, Details, + New persona, Duplicate or Edit (persona-ui.js),
+ * Runtime and Workspace, a first instruction (typed into the session once
+ * it is ready, by the server: never an argument), and Advanced: model and
+ * version (AG-12), permission mode and extra allowed commands with the
+ * preview of what the runtime is given (AG-13). What differs from the
+ * persona tags the session's row (AG-10.9). The runtime line says what
+ * will run, or why it can't, before Start (agent-start.js readiness); a
+ * persona whose runtime isn't installed starts on the first one that is,
+ * and the dialog says so (AG-12.2). Starting, stopping and
  * resuming an agent never ask for the admin password: it is for sudo, and
  * no agent action runs sudo (LK-0).
  *
@@ -74,7 +83,27 @@
  * and Start fresh. A running one says "Handoff due" or "Ready to relaunch"
  * as a tag.
  */
-import { fillStartForm } from "/agent-start.js";
+import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
+import {
+  commandProblem,
+  filterBarHtml,
+  modelOptionsHtml,
+  normalizeData,
+  openPersonaEditor,
+  overrideTagsHtml,
+  permBlockHtml,
+  personaDetail,
+  personaDetailHtml,
+  personaListHtml,
+  personaName,
+  personaRowHtml,
+  personaRuntime,
+  runtimeInstalled,
+  splitCommands,
+  syncPermBlock,
+  versionLabel,
+  versionOptionsHtml,
+} from "/persona-ui.js";
 import {
   editorUrl,
   findPaths,
@@ -377,9 +406,10 @@ function rowHtml(r) {
   const revokedTag = r.tokenRevoked
     ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
     : "";
+  const ovTags = r.kind === "agent" ? overrideTagsHtml(r) : "";
   const tags =
-    rotTag || revokedTag
-      ? `<span class="agtags">${revokedTag}${rotTag}</span>`
+    rotTag || revokedTag || ovTags
+      ? `<span class="agtags">${revokedTag}${rotTag}${ovTags}</span>`
       : "";
   return (
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
@@ -1448,7 +1478,7 @@ function review() {
   )?.focus();
 }
 
-// ── Start agent ─────────────────────────────────────────────────────────
+// ── Start agent (AG-10.1) ───────────────────────────────────────────────
 
 // Personas and runtimes, per workspace (AG-0.5: a workspace's own runtime
 // paths win), asked once per page each.
@@ -1470,79 +1500,478 @@ function personasFor(ws) {
   return personasAsked.get(key);
 }
 
-/** Fill the form for the workspace picked; false when the ask failed. */
-async function fillForWorkspace(ws) {
-  let data;
+/**
+ * "Plain session": no persona, a shell in the workspace (AG-10.1). A ":"
+ * is never in a persona's id.
+ */
+const PLAIN = ":plain";
+
+/** The dialog's state while it is open. */
+const sd = {
+  data: null,
+  f: { q: "", cat: "", src: "" },
+  pid: "",
+  det: false,
+  what: false,
+  detail: null,
+  // Advanced: "" = the persona's.
+  model: "",
+  ver: "",
+  intent: "ask",
+  extras: [],
+  extrasOpen: false,
+};
+
+const $d = (sel) => st.root.querySelector(sel);
+const curPersona = () =>
+  sd.pid === PLAIN
+    ? null
+    : (sd.data?.personas ?? []).find((p) => p.id === sd.pid) || null;
+
+/** The runtime the dialog will start: the one picked, else the persona's. */
+function chosenRuntime() {
+  const p = curPersona();
+  return $d("#ag-runtime").value || personaRuntime(sd.data, p);
+}
+
+/** The persona's own model and version, on the runtime chosen (AG-12.3). */
+function personaModel() {
+  const p = curPersona();
+  const same = p && personaRuntime(sd.data, p) === chosenRuntime();
+  return {
+    model: same ? p.model || "" : "",
+    version: same ? p.version || "latest" : "latest",
+  };
+}
+
+/** The persona list's rows, and Plain session pinned at the bottom. */
+function plistHtml() {
+  const ps = sd.data?.personas ?? [];
+  const cats = sd.data?.categories ?? [];
+  return (
+    personaListHtml(sd.f, ps, cats, (p) =>
+      personaRowHtml(p, p.id === sd.pid, sd.data),
+    ) +
+    `<div class="pgh"><span>${esc(t("ag.session"))}</span><span></span></div>` +
+    `<button type="button" class="pr" role="radio" data-pid="${esc(PLAIN)}" aria-checked="${sd.pid === PLAIN}"><span class="rd" aria-hidden="true"></span><span class="pn">${esc(t("ag.new.plain"))}</span><span></span><span class="pd">${esc(t("ag.new.plainP"))}</span></button>`
+  );
+}
+
+function paintPlist(keepScroll = true) {
+  const l = $d("#ag-persona");
+  const top = l.scrollTop;
+  l.innerHTML = plistHtml();
+  l.scrollTop = keepScroll ? top : 0;
+}
+
+/** The Details row (and Duplicate or Edit) under the list, and Details. */
+function paintDetails() {
+  const p = curPersona();
+  const el = $d("#ag-detrow");
+  if (!p) {
+    el.innerHTML = "";
+    return;
+  }
+  const mine = p.origin === "local";
+  el.innerHTML =
+    `<div class="fldh"><button type="button" class="lnk" data-x="det" aria-expanded="${sd.det}" aria-controls="ag-det">${esc(sd.det ? t("ag.new.hide") : t("ag.new.details", { n: personaName(p) }))}</button><span class="sp"></span>` +
+    (mine
+      ? `<button type="button" class="lnk" data-x="edit">${esc(t("pe.editB"))}</button>`
+      : "") +
+    `<button type="button" class="lnk" data-x="dup">${esc(t("pe.dup"))}</button></div>` +
+    (sd.det
+      ? personaDetailHtml(
+          sd.detail?.id === p.id ? sd.detail : { ...p, instructions: null },
+          sd.data,
+        )
+      : "");
+}
+
+/**
+ * The runtime select and its readiness line (AG-0.2), and AG-12.2: a
+ * persona whose runtime isn't installed starts on the first one that is,
+ * and the dialog says so.
+ */
+function paintRuntime(reset) {
+  const rs = $d("#ag-runtime");
+  const go = $d("#ag-go");
+  const ready = $d("#ag-r-ready");
+  const plain = sd.pid === PLAIN;
+  $d("#ag-r-l").hidden = plain;
+  $d("#ag-task-l").hidden = plain;
+  $d("#ag-adv").hidden = plain;
+  const fb = $d("#ag-r-fb");
+  fb.hidden = true;
+  if (plain) {
+    $d("#ag-r-miss").hidden = true;
+    ready.hidden = true;
+    go.disabled = false;
+    go.dataset.blocked = "";
+    return;
+  }
+  const personas = sd.data?.personas ?? [];
+  const runtimes = sd.data?.runtimes ?? [];
+  const keep = reset ? "" : rs.value;
+  rs.innerHTML = runtimeOptions(personas, runtimes, sd.pid, t);
+  if ([...rs.options].some((o) => o.value === keep && !o.disabled))
+    rs.value = keep;
+  const p = curPersona();
+  if (reset && p && !runtimeInstalled(sd.data, p)) {
+    const first = [...rs.options].find((o) => o.value && !o.disabled);
+    if (first) {
+      rs.value = first.value;
+      fb.textContent = t("rt.fallback", {
+        p: personaName(p),
+        r: runtimeName(runtimes, personaRuntime(sd.data, p)),
+        f: runtimeName(runtimes, first.value),
+      });
+      fb.hidden = false;
+    }
+  }
+  // AG-12.1: what isn't installed here, and Install… (later).
+  const miss = runtimes.filter(
+    (x) => !x.available && x.denTools !== undefined && x.source !== "setting",
+  );
+  const ml = $d("#ag-r-miss");
+  ml.innerHTML = miss.length
+    ? `${esc(t("rt.missingLine"))} ${miss.map((x) => `<span class="mono">${esc(x.label || x.id)}</span>`).join(", ")} · <span class="lnk" aria-disabled="true" title="${esc(t("rt.later"))}">${esc(t("rt.install"))}</span> <span class="tagx">${esc(t("rt.later"))}</span>`
+    : "";
+  ml.hidden = !miss.length;
+  const r = readiness(sd.data, sd.pid, rs.value, t);
+  ready.innerHTML = r.html;
+  ready.hidden = !r.html;
+  ready.dataset.tone = r.tone;
+  go.disabled = !r.ok;
+  go.dataset.blocked = r.ok ? "" : "runtime";
+}
+
+/** Advanced (AG-12, AG-13): model, version and the permission block. */
+function paintAdvanced() {
+  const p = curPersona();
+  const body = $d("#ag-adv-b");
+  if (!p) {
+    body.innerHTML = "";
+    return;
+  }
+  const rt = chosenRuntime();
+  const rtv = (sd.data?.runtimes ?? []).find((r) => r.id === rt);
+  const name = runtimeName(sd.data?.runtimes ?? [], rt);
+  const def = personaModel();
+  const models = rtv?.models ?? [];
+  const model = sd.model || def.model;
+  const first = t("ag.new.modelDef", {
+    m: `${def.model || t("pe.rtDefault")} · ${versionLabel(def.model ? def.version : "latest")}`,
+  });
+  const verFirst = t("ag.new.verDef", {
+    v: versionLabel(
+      sd.model && sd.model !== def.model ? "latest" : def.version,
+    ),
+  });
+  body.innerHTML =
+    `<p>${esc(t("ag.new.advNote"))}</p>` +
+    `<div class="two"><label class="fld"><span>${esc(t("ag.new.model"))}</span><select id="ag-model"${models.length ? "" : " disabled"}>${models.length ? modelOptionsHtml(sd.data, rt, sd.model, first) : `<option value="">${esc(t("pe.nsModel", { r: name }))}</option>`}</select></label>` +
+    `<label class="fld"><span>${esc(t("ag.new.ver"))}</span><select id="ag-ver"${models.length && model ? "" : " disabled"}>${versionOptionsHtml(sd.data, rt, model, sd.ver, verFirst)}</select></label></div>` +
+    permBlockHtml("ag", sd.data, {
+      intent: sd.intent,
+      role: p.role,
+      extras: sd.extras,
+      runtime: rt,
+      extrasOpen: sd.extrasOpen,
+      disabled: !rtv?.permissions,
+    });
+  $d("#ag-tools").disabled = false;
+}
+
+/** Pick persona `id` (or PLAIN): its own choices fill Advanced in. */
+function pickPersona(id) {
+  sd.pid = id;
+  sd.det = sd.det && id !== PLAIN;
+  const p = curPersona();
+  sd.model = "";
+  sd.ver = "";
+  sd.intent = p?.permission || "ask";
+  sd.extras = [...(p?.allowedCommands ?? [])];
+  sd.extrasOpen = sd.extras.length > 0;
+  for (const b of st.root.querySelectorAll("#ag-persona [data-pid]"))
+    b.setAttribute("aria-checked", String(b.dataset.pid === id));
+  paintDetails();
+  paintRuntime(true);
+  paintAdvanced();
+  if (sd.det) void loadDetail();
+}
+
+async function loadDetail() {
+  const p = curPersona();
+  if (!p) return;
   try {
-    data = await personasFor(ws);
+    const d = await personaDetail(p.id);
+    if (curPersona()?.id !== d.id) return;
+    sd.detail = d;
+    paintDetails();
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+  }
+}
+
+/** The whole persona field, for the data asked. */
+function paintPersonaField() {
+  const ps = sd.data?.personas ?? [];
+  $d("#ag-pfbar").innerHTML = filterBarHtml(
+    sd.f,
+    "ag",
+    ps,
+    sd.data?.categories ?? [],
+  );
+  $d("#ag-what").hidden = !sd.what;
+  paintPlist(false);
+}
+
+/** Ask for the workspace's personas and runtimes; false when it failed. */
+async function fillForWorkspace(ws) {
+  try {
+    sd.data = normalizeData(await personasFor(ws));
   } catch (err) {
     window.denShell?.errorToast?.(err);
     return false;
   }
-  const form = st.root.querySelector("#ag-form");
-  const keep = [
-    form.querySelector("#ag-persona").value,
-    form.querySelector("#ag-runtime").value,
-  ];
-  fillStartForm(form, data, t);
-  // The persona and runtime picked stay, where the new list still has them.
-  const ps = form.querySelector("#ag-persona");
-  if (keep[0] && [...ps.options].some((o) => o.value === keep[0])) {
-    ps.value = keep[0];
-    ps.onchange?.();
+  const ps = sd.data?.personas ?? [];
+  if (sd.pid !== PLAIN && !ps.some((p) => p.id === sd.pid)) {
+    // The first persona the list shows (grouped by category).
+    const cats = (sd.data?.categories ?? []).map((c) => c.id);
+    const sorted = [...ps].sort(
+      (a, b) =>
+        (cats.indexOf(a.category) + 1 || 99) -
+        (cats.indexOf(b.category) + 1 || 99),
+    );
+    sd.pid = sorted[0]?.id ?? PLAIN;
   }
-  const rs = form.querySelector("#ag-runtime");
-  if ([...rs.options].some((o) => o.value === keep[1] && !o.disabled)) {
-    rs.value = keep[1];
-    rs.onchange?.();
-  }
+  paintPersonaField();
+  pickPersona(sd.pid);
   return true;
 }
 
 async function openStart() {
-  const dlg = st.root.querySelector("#ag-dlg");
+  const dlg = $d("#ag-dlg");
   if (!dlg || dlg.open) return;
   const shown = viewWorkspaces();
-  const wsSel = st.root.querySelector("#ag-ws");
+  const wsSel = $d("#ag-ws");
   wsSel.innerHTML = shown
     .map((w) => `<option value="${esc(w)}">${esc(w)}</option>`)
     .join("");
-  st.root.querySelector("#ag-ws-l").hidden = shown.length <= 1;
+  wsSel.disabled = shown.length <= 1;
+  sd.f = { q: "", cat: "", src: "" };
+  sd.det = false;
+  sd.what = false;
+  $d("#ag-err").hidden = true;
+  $d("#ag-task").value = "";
+  $d("#ag-adv").open = false;
   if (!(await fillForWorkspace(wsSel.value || shown[0]))) return;
   if (dlg.open) return;
   if (typeof dlg.showModal === "function") dlg.showModal();
   else dlg.setAttribute("open", "");
+  $d("#ag-q")?.focus();
+}
+
+/** What Start sends (agent-routes.ts checks each field again). */
+function startBody() {
+  const p = curPersona();
+  const rt = chosenRuntime();
+  const rtv = (sd.data?.runtimes ?? []).find((r) => r.id === rt);
+  const runtime = $d("#ag-runtime").value;
+  const body = { persona: p.id, ...(runtime ? { runtime } : {}) };
+  const def = personaModel();
+  if (rtv?.models?.length) {
+    if (sd.model) body.model = sd.model;
+    if (sd.ver) {
+      body.version = sd.ver;
+      body.model ??= def.model || undefined;
+      if (!body.model) delete body.version;
+    }
+  }
+  if (rtv?.permissions) {
+    // A persona's own mode Den doesn't name (Claude Code's plan) stays its
+    // own unless a mode is picked.
+    if (p.permission !== undefined || sd.intent !== "ask")
+      body.permission = sd.intent;
+    body.allow = sd.extras;
+  }
+  const task = $d("#ag-task").value.trim();
+  if (task) body.instruction = task;
+  return body;
+}
+
+function showStartError(err) {
+  const el = $d("#ag-err");
+  el.textContent = err?.message || String(err);
+  el.hidden = false;
 }
 
 async function submitStart(form) {
-  const dlg = st.root.querySelector("#ag-dlg");
-  const go = st.root.querySelector("#ag-go");
+  const dlg = $d("#ag-dlg");
+  const go = $d("#ag-go");
   if (go.disabled) return;
   const ws = form.querySelector("#ag-ws").value || viewWorkspaces()[0];
-  const persona = form.querySelector("#ag-persona").value;
-  const runtime = form.querySelector("#ag-runtime").value;
-  if (!ws || !persona) return;
+  if (!ws || !sd.pid) return;
+  const bad = sd.extras.find((c) => commandProblem(c));
+  if (sd.pid !== PLAIN && bad)
+    return showStartError(new Error(t("pe.badCmd", { c: bad })));
   go.disabled = true;
   go.textContent = t("ag.starting");
   try {
+    if (sd.pid === PLAIN) {
+      const r = await api(
+        "POST",
+        `/api/workspaces/${encodeURIComponent(ws)}/sessions`,
+      );
+      window.denShell?.toast?.(
+        t("ag.new.started", { p: t("ag.session"), w: ws }),
+      );
+      dlg.close?.();
+      await refresh();
+      if (r?.session?.id) await openPane(r.session.id);
+      return;
+    }
     const r = await api(
       "POST",
       `/api/workspaces/${encodeURIComponent(ws)}/agents`,
-      {
-        persona,
-        ...(runtime ? { runtime } : {}),
-      },
+      startBody(),
     );
-    window.denShell?.toast?.(t("ag.started", { id: r?.agent?.id ?? persona }));
+    window.denShell?.toast?.(t("ag.started", { id: r?.agent?.id ?? sd.pid }));
+    for (const w of r?.warnings ?? []) window.denShell?.toast?.(w);
     dlg.close?.();
     await refresh();
     if (r?.agent?.sessionId) await openPane(r.agent.sessionId);
   } catch (err) {
-    window.denShell?.errorToast?.(err);
+    showStartError(err);
   } finally {
     go.disabled = false;
     go.textContent = t("ag.go");
+    if (dlg.open) paintRuntime(false);
   }
+}
+
+/** New persona, Edit or Duplicate from the dialog; back to it after. */
+async function editFromStart(kind) {
+  const p = curPersona();
+  let src = null;
+  if (kind !== "new" && p) {
+    try {
+      src = await personaDetail(p.id);
+    } catch (err) {
+      return void window.denShell?.errorToast?.(err);
+    }
+  }
+  openPersonaEditor({
+    data: sd.data,
+    src,
+    dup: kind === "dup",
+    onSaved: async (saved) => {
+      personasAsked.clear();
+      if (saved) sd.pid = saved.id;
+      await fillForWorkspace($d("#ag-ws").value);
+    },
+  });
+}
+
+/** Wire the dialog once (mountAgentsPage). */
+function wireStartDialog(root) {
+  const form = root.querySelector("#ag-form");
+  form.addEventListener("click", (e) => {
+    const pr = e.target.closest("#ag-persona [data-pid]");
+    if (pr) {
+      e.preventDefault();
+      pickPersona(pr.dataset.pid);
+      pr.focus();
+      return;
+    }
+    const chip = e.target.closest("[data-pf]");
+    if (chip) {
+      e.preventDefault();
+      sd.f[chip.dataset.pf] = chip.dataset.v;
+      for (const c of form.querySelectorAll(`[data-pf="${chip.dataset.pf}"]`))
+        c.setAttribute("aria-pressed", String(c.dataset.v === chip.dataset.v));
+      return paintPlist(false);
+    }
+    const pm = e.target.closest("[data-pm]");
+    if (pm) {
+      e.preventDefault();
+      if (pm.disabled) return;
+      sd.intent = pm.dataset.pm;
+      return syncPermBlock(form, "ag", sd.data, {
+        intent: sd.intent,
+        role: curPersona()?.role,
+        extras: sd.extras,
+        runtime: chosenRuntime(),
+      });
+    }
+    const x = e.target.closest("[data-x]")?.dataset.x;
+    if (!x) return;
+    e.preventDefault();
+    if (x === "what") {
+      sd.what = !sd.what;
+      $d("#ag-what").hidden = !sd.what;
+      e.target
+        .closest("[data-x]")
+        .setAttribute("aria-expanded", String(sd.what));
+    } else if (x === "det") {
+      sd.det = !sd.det;
+      paintDetails();
+      if (sd.det) void loadDetail();
+    } else if (x === "clear") {
+      sd.f = { q: "", cat: "", src: "" };
+      paintPersonaField();
+    } else if (x === "raw") window.denShell?.toast?.(t("pe.rawLater"));
+    else if (x === "newp") void editFromStart("new");
+    else if (x === "dup") void editFromStart("dup");
+    else if (x === "edit") void editFromStart("edit");
+  });
+  form.addEventListener("input", (e) => {
+    if (e.target.id === "ag-q") {
+      sd.f.q = e.target.value;
+      paintPlist(false);
+    } else if (e.target.id === "ag-tools") {
+      sd.extras = splitCommands(e.target.value);
+      syncPermBlock(form, "ag", sd.data, {
+        intent: sd.intent,
+        role: curPersona()?.role,
+        extras: sd.extras,
+        runtime: chosenRuntime(),
+      });
+    }
+  });
+  form.addEventListener(
+    "toggle",
+    (e) => {
+      if (e.target.id === "ag-xtra") sd.extrasOpen = e.target.open;
+    },
+    true,
+  );
+  form.addEventListener("change", (e) => {
+    const id = e.target.id;
+    if (id === "ag-ws") void fillForWorkspace(e.target.value);
+    else if (id === "ag-runtime") {
+      sd.model = "";
+      sd.ver = "";
+      $d("#ag-r-fb").hidden = true;
+      paintRuntime(false);
+      paintAdvanced();
+    } else if (id === "ag-model") {
+      sd.model = e.target.value;
+      sd.ver = "";
+      paintAdvanced();
+    } else if (id === "ag-ver") sd.ver = e.target.value;
+  });
+  // ↑ ↓ move through the persona list (a radio group).
+  root.querySelector("#ag-persona").addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const rows = [...e.currentTarget.querySelectorAll("[data-pid]")];
+    const i = rows.indexOf(document.activeElement);
+    const next = rows[i + (e.key === "ArrowDown" ? 1 : -1)];
+    if (!next) return;
+    e.preventDefault();
+    pickPersona(next.dataset.pid);
+    next.focus();
+  });
 }
 
 /**
@@ -1589,10 +2018,21 @@ function translateStatic(root) {
   set("#ag-h", "n.agents");
   set("#ag-start", "ag.start");
   set("#ag-clear", "ag.clear");
-  set("#ag-dlg-h", "ag.start");
+  set("#ag-dlg-h", "ag.new.title");
   set("#ag-ws-t", "ag.ws");
   set("#ag-p-t", "ag.persona");
   set("#ag-r-t", "ag.runtime");
+  set("#ag-what-b", "ag.new.what");
+  set("#ag-newp", "ag.new.newP");
+  set("#ag-what-p", "pe.what");
+  set("#ag-task-t", "ag.new.task");
+  set("#ag-adv-s", "ag.new.adv");
+  set("#ag-note", "ag.new.note");
+  const task = root.querySelector("#ag-task");
+  if (task) task.placeholder = t("ag.new.taskPh");
+  root
+    .querySelector("#ag-persona")
+    ?.setAttribute("aria-label", t("ag.persona"));
   set("#ag-cancel", "ag.cancel");
   set("#ag-go", "ag.go");
   for (const b of root.querySelectorAll("[data-layouts] button")) {
@@ -1605,8 +2045,6 @@ function translateStatic(root) {
   root
     .querySelector("[data-layouts]")
     ?.setAttribute("aria-label", t("ag.layout"));
-  const h = root.querySelector("#ag-dlg-h");
-  if (h) h.textContent = h.textContent.replace(/^\+\s*/, "");
 }
 
 /** Fill the page drawn by agents.html and wire it. */
@@ -1679,9 +2117,7 @@ export async function mountAgentsPage(root) {
   root.querySelector("#ag-clear")?.addEventListener("click", (e) => {
     void clearStopped(e.currentTarget);
   });
-  root.querySelector("#ag-ws").addEventListener("change", (e) => {
-    void fillForWorkspace(e.currentTarget.value);
-  });
+  wireStartDialog(root);
   root.querySelector("#ag-cancel").addEventListener("click", () => {
     root.querySelector("#ag-dlg").close?.();
   });
@@ -1693,7 +2129,7 @@ export async function mountAgentsPage(root) {
   // cancels (the dialog's own cancel). A button keeps its own Enter.
   root.querySelector("#ag-form").addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.isComposing) return;
-    if (e.target.closest("button, textarea")) return;
+    if (e.target.closest("button, textarea, summary")) return;
     e.preventDefault();
     if (!st.root.querySelector("#ag-go").disabled)
       e.currentTarget.requestSubmit();

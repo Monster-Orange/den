@@ -12,8 +12,26 @@
  *                                                 runs its version command and
  *                                                 refuses a path that isn't
  *                                                 that runtime (AG-0.5)
+ *   GET  /api/personas/<id>                       one persona with its
+ *                                                 instructions (Details)
+ *   POST /api/personas                            New persona (AG-10.7): a
+ *                                                 local one; a person only
+ *   POST /api/personas/<id>                       Edit: a local one only
+ *                                                 (409 read_only otherwise)
+ *   DELETE /api/personas/<id>                     Delete: a local one only
  *   GET  /api/workspaces/<ws>/agents              the workspace's agents
- *   POST /api/workspaces/<ws>/agents              start { persona, runtime?, model?, id? }
+ *   POST /api/workspaces/<ws>/agents              start { persona, runtime?,
+ *                                                 model?, version?,
+ *                                                 permission?, allow?,
+ *                                                 instruction?, id? }
+ *                                                 (AG-10.1): each checked
+ *                                                 against the catalog; the
+ *                                                 instruction is typed into
+ *                                                 the session once it is
+ *                                                 ready, never an argument
+ *   POST /api/workspaces/<ws>/sessions            a plain session: the login
+ *                                                 shell in the workspace's
+ *                                                 folder (AG-10.1)
  *   POST /api/workspaces/<ws>/agents/<id>/stop
  *   POST /api/workspaces/<ws>/agents/<id>/resume  the same conversation (AG-14)
  *   POST /api/workspaces/<ws>/agents/<id>/fresh   a new conversation, same
@@ -75,8 +93,16 @@ import { HostError } from "../../shared/sessions/client.js";
 import {
   AgentError,
   agentRecord,
+  checkInstruction,
+  createPersona,
+  deletePersona,
   listAgents,
   listPersonas,
+  personaDetail,
+  registries,
+  sendFirstInstruction,
+  startPlainSession,
+  updatePersona,
   listRuntimes,
   markInterrupted,
   NOT_IN_WORKSPACE,
@@ -112,14 +138,18 @@ import type { Actor } from "../../shared/agent-actor.js";
 export interface AgentRouteDeps {
   /** The operations' deps (tests: an in-process host, a temp state dir). */
   agents?: AgentsDeps;
+  /** When a first instruction counts its session ready (tests: shorter). */
+  instruction?: { quietMs?: number; maxMs?: number };
 }
 
 const AGENTS_PATH =
   /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths))?$/;
 
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
-/** A start's body is a few short names. */
-const MAX_BODY = 4096;
+const PERSONA_PATH = /^\/api\/personas\/([^/]+)$/;
+const PLAIN_PATH = /^\/api\/workspaces\/([^/]+)\/sessions$/;
+/** A start's body: a few names, commands and a first instruction. */
+const MAX_BODY = 32 * 1024;
 /** A list of names (a page's workspaces, an Undo's agents). */
 const MANY_BODY = 64 * 1024;
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -187,6 +217,7 @@ function sendStarted(
   res: http.ServerResponse,
   s: Started & { fresh?: boolean },
   d: AgentsResolved,
+  extra: Record<string, unknown> = {},
 ): void {
   if (s.early) {
     const code =
@@ -217,6 +248,10 @@ function sendStarted(
       // The host's id: the Agents tab opens its pane by it (?open=<id>).
       sessionId: s.info.ref.id,
       startedAt: s.rec.startedAt,
+      ...(s.rec.model ? { model: s.rec.model } : {}),
+      ...(s.rec.version ? { version: s.rec.version } : {}),
+      ...(s.rec.permission ? { permission: s.rec.permission } : {}),
+      ...(s.rec.overrides?.length ? { overrides: s.rec.overrides } : {}),
       ...(s.rec.displayName ? { displayName: s.rec.displayName } : {}),
       // AG-4b: its session's name (Den's rename or the runtime's), as the
       // lists show it (MCP agent_resume answers with this).
@@ -225,13 +260,34 @@ function sendStarted(
     // A resume with nothing to continue yet started fresh (same id).
     ...(s.fresh ? { fresh: true } : {}),
     ...(s.warnings.length ? { warnings: s.warnings } : {}),
+    ...extra,
   });
 }
 
-/** What a POST's body names: a few optional strings. */
-async function startBody(
-  req: http.IncomingMessage,
-): Promise<Record<string, string | undefined>> {
+/** What a start's body names: optional strings, a command list, an instruction. */
+interface StartBody {
+  persona?: string;
+  runtime?: string;
+  model?: string;
+  id?: string;
+  version?: string;
+  permission?: string;
+  allow?: unknown;
+  instruction?: unknown;
+}
+
+const START_KEYS = [
+  "persona",
+  "runtime",
+  "model",
+  "id",
+  "version",
+  "permission",
+  "allow",
+  "instruction",
+];
+
+async function startBody(req: http.IncomingMessage): Promise<StartBody> {
   const raw = await readBody(req).catch(() => "");
   if (raw.length > MAX_BODY)
     throw new AgentError("request too large", { status: 413, usage: true });
@@ -243,15 +299,38 @@ async function startBody(
   }
   if (!v || typeof v !== "object" || Array.isArray(v))
     throw new AgentError("the body must be a JSON object", { usage: true });
-  const out: Record<string, string | undefined> = {};
-  for (const k of ["persona", "runtime", "model", "id"]) {
-    const x = (v as Record<string, unknown>)[k];
+  const o = v as Record<string, unknown>;
+  for (const k of Object.keys(o))
+    if (!START_KEYS.includes(k))
+      throw new AgentError(
+        `${k}: unknown field (a start takes ${START_KEYS.join(", ")})`,
+        { usage: true },
+      );
+  const out: Record<string, unknown> = {};
+  for (const k of [
+    "persona",
+    "runtime",
+    "model",
+    "id",
+    "version",
+    "permission",
+  ]) {
+    const x = o[k];
     if (x === undefined || x === null || x === "") continue;
     if (typeof x !== "string")
       throw new AgentError(`${k} must be a string`, { usage: true });
+    if (x.length > 128 || /[^\x21-\x7e]/.test(x))
+      throw new AgentError(
+        `${k} must be a short name (no spaces or control characters)`,
+        {
+          usage: true,
+        },
+      );
     out[k] = x;
   }
-  return out;
+  if (o.allow !== undefined && o.allow !== null) out.allow = o.allow;
+  if (o.instruction !== undefined) out.instruction = o.instruction;
+  return out as StartBody;
 }
 
 /**
@@ -267,6 +346,8 @@ export async function handleAgentRoutes(
 ): Promise<boolean> {
   const m = AGENTS_PATH.exec(pathname);
   const rp = RUNTIME_PATH.exec(pathname);
+  const pp = PERSONA_PATH.exec(pathname);
+  const plain = PLAIN_PATH.exec(pathname);
   // AG-14's routes over many agents at once.
   const many =
     pathname === "/api/agents/clear-stopped" ||
@@ -277,22 +358,34 @@ export async function handleAgentRoutes(
     pathname !== "/api/agents/runtimes" &&
     !m &&
     !rp &&
+    !pp &&
+    !plain &&
     !many
   )
     return false;
   const method = req.method ?? "GET";
   const d = webDeps(deps.agents);
 
+  if (pp) return personaRoute(req, res, safeDecode(pp[1]), d);
+  if (plain) return plainSession(req, res, safeDecode(plain[1]), d);
+  if (pathname === "/api/personas" && method === "POST")
+    return personaRoute(req, res, null, d);
+
   if (rp) return runtimePath(req, res, safeDecode(rp[1]), d);
   if (many) return manyAgents(req, res, pathname, d);
   if (!m) {
     if (method !== "GET" && method !== "HEAD")
-      return methodNotAllowed(res, "GET");
+      return methodNotAllowed(
+        res,
+        pathname === "/api/personas" ? "GET, POST" : "GET",
+      );
     try {
       const ws = queryWorkspace(req, d);
       const runtimes = await listRuntimes(d, ws);
       sendJson(res, {
-        ...(pathname === "/api/personas" ? { personas: listPersonas(d) } : {}),
+        ...(pathname === "/api/personas"
+          ? { personas: listPersonas(d), ...registries(d) }
+          : {}),
         runtimes,
         ...(ws ? { workspace: ws } : {}),
         // AG-0.2: the file a person edits to set a runtime's path.
@@ -403,16 +496,54 @@ export async function handleAgentRoutes(
       if (!body.persona)
         throw new AgentError("persona is required", { usage: true });
       what = `start ${body.id ?? body.persona} in ${ws}`;
+      const instruction = checkInstruction(body.instruction);
       const s = await startAgent(d, {
         workspace: ws,
         persona: body.persona,
         runtime: body.runtime,
         model: body.model,
         id: body.id,
+        ...(body.version !== undefined ? { version: body.version } : {}),
+        ...(body.permission !== undefined
+          ? { permission: body.permission }
+          : {}),
+        ...(body.allow !== undefined ? { allow: body.allow } : {}),
+        strict: true,
       });
-      what = `start ${s.rec.id} (${s.rec.persona}, ${s.rec.runtime}) in ${ws}`;
+      const ov = s.rec.overrides?.length
+        ? `; overrides ${s.rec.overrides.join(", ")}`
+        : "";
+      what = `start ${s.rec.id} (${s.rec.persona}, ${s.rec.runtime}${ov}) in ${ws}`;
       audit(what, s.early ? "exited at once" : undefined);
-      sendStarted(res, s, d);
+      sendStarted(res, s, d, instruction ? { instruction: "pending" } : {});
+      // AG-10.1: its first message, once it is ready: typed into its
+      // session (the host's write path), never an argument. Its text is
+      // never logged; its length is.
+      if (instruction && !s.early) {
+        const id = s.rec.id;
+        void sendFirstInstruction(
+          d,
+          s.info.ref.id,
+          s.rec.runtime,
+          instruction,
+          deps.instruction ?? {},
+        ).then((sent) =>
+          recordAction(
+            actor,
+            {
+              verb: "agents",
+              detail: `first instruction to ${id} in ${ws} (${instruction.length} characters)`,
+              ...(sent
+                ? {}
+                : {
+                    outcome: "refused" as const,
+                    reason: "its session ended or no host",
+                  }),
+            },
+            principalOf(req),
+          ),
+        );
+      }
     } else if (verb === "stop") {
       // The answer comes once the session has ended (200, stopped: true),
       // or, still running after the wait, 202 with stillStopping: true.
@@ -584,6 +715,113 @@ function queryWorkspace(
   if (!d.workspaceExists(ws))
     throw new AgentError(`workspace "${ws}" does not exist`, { status: 404 });
   return ws;
+}
+
+/**
+ * The persona routes (AG-10.6, 10.7): GET one (anyone who may read);
+ * POST (new: `id` null; edit: a local one), DELETE (a local one): a
+ * person only. An agent's token can't make or change a persona (its
+ * permissions are the person's to set). Every change is audited, refused
+ * or done; never the instructions themselves.
+ */
+async function personaRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  id: string | null,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (id !== null && (method === "GET" || method === "HEAD")) {
+    try {
+      sendJson(res, { persona: personaDetail(d, id) });
+    } catch (e) {
+      sendError(res, e);
+    }
+    return true;
+  }
+  if (method !== "POST" && !(method === "DELETE" && id !== null))
+    return methodNotAllowed(
+      res,
+      id === null ? "GET, POST" : "GET, POST, DELETE",
+    );
+  const actor = auditActorOf(req);
+  const verb = id === null ? "create" : method === "DELETE" ? "delete" : "edit";
+  let what = `persona ${verb}${id ? ` ${id}` : ""}`;
+  const audit = (reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail: what,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (actor && !actor.unverified)
+      throw new AgentError(
+        "an agent can't create, change or delete personas: a person sets what agents may do",
+        { status: 403 },
+      );
+    if (verb === "delete") {
+      deletePersona(d, id!);
+      audit();
+      sendJson(res, { ok: true, deleted: id });
+      return true;
+    }
+    const body = await jsonBody(req);
+    const p =
+      verb === "create" ? createPersona(d, body) : updatePersona(d, id!, body);
+    what = `persona ${verb} ${p.id}`;
+    audit();
+    sendJson(res, { ok: true, persona: p });
+  } catch (e) {
+    audit(e instanceof Error ? e.message : String(e));
+    sendError(res, e);
+  }
+  return true;
+}
+
+/**
+ * POST /api/workspaces/<ws>/sessions (AG-10.1 Plain session): a person's
+ * login shell in the workspace's folder. A person only; audited.
+ */
+async function plainSession(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ws: string,
+  d: AgentsResolved,
+): Promise<true> {
+  if (req.method !== "POST") return methodNotAllowed(res, "POST");
+  const actor = auditActorOf(req);
+  let what = `plain session in ${ws}`;
+  const audit = (reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "sessions",
+        detail: what,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (actor && !actor.unverified)
+      throw new AgentError("an agent can't start a session from the page", {
+        status: 403,
+      });
+    const { info } = await startPlainSession(d, ws);
+    what = `plain session ${info.name} in ${ws}`;
+    audit();
+    sendJson(res, {
+      ok: true,
+      session: { id: info.ref.id, name: info.name, workspace: ws },
+    });
+  } catch (e) {
+    audit(e instanceof Error ? e.message : String(e));
+    sendError(res, e, ws);
+  }
+  return true;
 }
 
 /**

@@ -82,6 +82,31 @@ import {
   type Persona,
 } from "../../shared/agents/personas.js";
 import {
+  checkModelChoice,
+  checkPersonaInput,
+  deleteLocalPersona,
+  localPersonaExists,
+  localPersonasDir,
+  newPersonaId,
+  PersonaInputError,
+  writeLocalPersona,
+  type PersonaInput,
+} from "../../shared/agents/persona-store.js";
+import {
+  categoryRegistry,
+  roleRegistry,
+  rolePreset,
+  type Category,
+  type RoleTemplate,
+} from "../../shared/agents/roles.js";
+import {
+  checkCommands,
+  checkIntent,
+  intentOf,
+  type PermissionIntent,
+} from "../../shared/agents/permissions.js";
+import { softNewlineSeq } from "../../shared/agents/catalog.js";
+import {
   AGENT_ID_RE,
   agentFilesDir,
   listRecords,
@@ -93,6 +118,7 @@ import {
   checkDisplayName,
   writeRuntimeFiles,
   type AgentRecord,
+  type Override,
 } from "../../shared/agents/records.js";
 import {
   agentSessionEnv,
@@ -105,7 +131,11 @@ import {
   type LaunchInput,
   type Runtime,
 } from "../../shared/agents/runtimes.js";
-import type { RuntimeDetect } from "../../shared/agents/runtime.js";
+import type {
+  RuntimeDetect,
+  RuntimeModel,
+  RuntimePermissions,
+} from "../../shared/agents/runtime.js";
 import {
   archiveHandoff,
   DEFAULT_ROTATE,
@@ -367,6 +397,16 @@ export interface AgentRow {
   persona?: string;
   runtime?: string;
   model?: string;
+  /** Its model version: "latest" or pinned (AG-12.3). */
+  version?: string;
+  /** The permission intent it started with (AG-13). */
+  permission?: PermissionIntent;
+  /** Its extra allowed commands, when set for it (AG-13.4). */
+  allow?: string[];
+  /** What it overrides of its persona (AG-10.9). */
+  overrides?: Override[];
+  /** A newer version of its pinned model (AG-12.4). */
+  newer?: string;
   workspace?: string;
   cwd?: string;
   /** running, stopping (stopped, its session not yet gone), exited
@@ -504,9 +544,30 @@ function recordFields(rec: AgentRecord): Partial<AgentRow> {
     persona: rec.persona,
     runtime: rec.runtime,
     ...(rec.model ? { model: rec.model } : {}),
+    ...(rec.version ? { version: rec.version } : {}),
+    ...(rec.permission ? { permission: rec.permission } : {}),
+    ...(rec.allow ? { allow: [...rec.allow] } : {}),
+    ...(rec.overrides?.length ? { overrides: [...rec.overrides] } : {}),
+    ...newerOf(rec),
     workspace: rec.workspace,
     cwd: rec.cwd,
   };
+}
+
+/**
+ * AG-12.4: a pinned version older than its model's newest, as
+ * `{ newer: <latest> }`; nothing otherwise.
+ */
+export function newerOf(
+  rec: Pick<AgentRecord, "runtime" | "model" | "version">,
+): {
+  newer?: string;
+} {
+  if (!rec.version || rec.version === "latest" || !rec.model) return {};
+  const m = getRuntime(rec.runtime)
+    ?.models?.()
+    .find((x) => x.id === rec.model);
+  return m && m.latest !== rec.version ? { newer: m.latest } : {};
 }
 
 /**
@@ -586,6 +647,7 @@ function personas(
       resolvePackDirs(cfg.personaPacks, d.distRoot()),
       undefined,
       { defaultPack: cfg.defaultPackGuardrails, packs: cfg.packGuardrails },
+      localPersonasDir(d.stateDir()),
     );
   } catch (e) {
     throw refused((e as Error).message, [], 422);
@@ -593,13 +655,112 @@ function personas(
 }
 
 /** A persona as listed: everything but its role prompt. */
-export type ListedPersona = Omit<Persona, "prompt" | "guardrailsSet">;
+export type ListedPersona = Omit<Persona, "prompt" | "guardrailsSet"> & {
+  /** Its permission mode as Den's intent (AG-13), when it is one. */
+  permission?: PermissionIntent;
+};
 
-/** Den's default pack, then agents.persona_packs, by id. */
+function listed(p: Persona): ListedPersona {
+  const { prompt: _p, guardrailsSet: _g, ...rest } = p;
+  const permission = intentOf(p.permissionMode);
+  return { ...rest, ...(permission ? { permission } : {}) };
+}
+
+/** Den's default pack, then agents.persona_packs, then local ones, by id. */
 export function listPersonas(d: AgentsResolved): ListedPersona[] {
   return [...personas(d, agentsConfig(d)).values()]
     .sort((a, b) => a.id.localeCompare(b.id))
-    .map(({ prompt: _p, guardrailsSet: _g, ...rest }) => rest);
+    .map(listed);
+}
+
+/** A persona with its instructions (Details, Edit: AG-10.6). */
+export function personaDetail(
+  d: AgentsResolved,
+  id: string,
+): ListedPersona & { instructions: string } {
+  const p = personas(d, agentsConfig(d)).get(id);
+  if (!p) throw refused(`no persona "${id}"`, [], 404);
+  return { ...listed(p), instructions: p.prompt };
+}
+
+/** The role and category registries (AG-10.5, AG-11.1). */
+export function registries(d: AgentsResolved): {
+  roles: RoleTemplate[];
+  categories: Category[];
+} {
+  const cfg = agentsConfig(d);
+  return {
+    roles: roleRegistry(cfg.roles),
+    categories: categoryRegistry(cfg.categories),
+  };
+}
+
+/** What a persona's fields may name (persona-store.ts checks them). */
+function personaChoices(d: AgentsResolved) {
+  syncCatalog(d);
+  const reg = registries(d);
+  return {
+    roles: reg.roles.map((r) => r.id),
+    categories: reg.categories.map((c) => c.id),
+    runtimes: runtimeIds()
+      .filter((id) => getRuntime(id)?.catalog || id === DEFAULT_RUNTIME_ID)
+      .map((id) => ({ id, models: getRuntime(id)?.models?.() ?? [] })),
+  };
+}
+
+function checkedInput(d: AgentsResolved, body: unknown): PersonaInput {
+  try {
+    return checkPersonaInput(body, personaChoices(d));
+  } catch (e) {
+    if (e instanceof PersonaInputError) throw usage(e.message);
+    throw e;
+  }
+}
+
+/**
+ * New persona (AG-10.7): a local one, its id from its name (or role),
+ * never one any persona has. Returns it as listed.
+ */
+export function createPersona(d: AgentsResolved, body: unknown): ListedPersona {
+  const input = checkedInput(d, body);
+  const all = personas(d, agentsConfig(d));
+  const id = newPersonaId(input, new Set(all.keys()));
+  writeLocalPersona(d.stateDir(), id, input);
+  return personaDetail(d, id);
+}
+
+/**
+ * Edit persona `id` (AG-10.7): only a local one is written. A built-in or
+ * a distribution's persona is read-only: 409, and the page duplicates it.
+ */
+export function updatePersona(
+  d: AgentsResolved,
+  id: string,
+  body: unknown,
+): ListedPersona {
+  const p = personas(d, agentsConfig(d)).get(id);
+  if (!p) throw refused(`no persona "${id}"`, [], 404);
+  if (p.origin !== "local" || !localPersonaExists(d.stateDir(), id))
+    throw new AgentError(
+      `${id} is ${p.origin === "builtin" ? "built in" : `the ${p.origin}'s`}: duplicate it to edit a copy of your own`,
+      { status: 409, code: "read_only" },
+    );
+  writeLocalPersona(d.stateDir(), id, checkedInput(d, body));
+  return personaDetail(d, id);
+}
+
+/** Delete local persona `id` (never a built-in or a distribution's). */
+export function deletePersona(d: AgentsResolved, id: string): void {
+  const p = personas(d, agentsConfig(d)).get(id);
+  if (!p) throw refused(`no persona "${id}"`, [], 404);
+  if (p.origin !== "local" || !deleteLocalPersona(d.stateDir(), id))
+    throw new AgentError(
+      `${id} isn't yours to delete: only local personas are`,
+      {
+        status: 409,
+        code: "read_only",
+      },
+    );
 }
 
 export interface RuntimeChoice {
@@ -633,6 +794,12 @@ export interface RuntimeChoice {
   /** It declares resume. */
   resume: boolean;
   default: boolean;
+  /** Its models (AG-12.3); [] when it takes no model choice from Den. */
+  models: RuntimeModel[];
+  /** How it expresses permission intents (AG-13.2), when it can. */
+  permissions?: RuntimePermissions;
+  /** Its Shift+Enter bytes: also how a first instruction's newlines go. */
+  softNewline?: string;
 }
 
 /**
@@ -761,6 +928,8 @@ export async function listRuntimes(
           : {}),
         resume: Boolean(rt.resume),
         default: id === DEFAULT_RUNTIME_ID,
+        models: rt.models?.() ?? [],
+        ...(rt.permissions ? { permissions: rt.permissions } : {}),
       };
     }),
   );
@@ -1037,6 +1206,8 @@ function launchInput(
   bin?: string,
   /** The grants to serve (a resume's, narrowed); default the config's. */
   only?: readonly string[],
+  /** AG-13: the intent and the allowed commands (preset and extras). */
+  perms: { permission?: PermissionIntent; allow?: string[] } = {},
 ): LaunchInput {
   const grants = only ? [...only] : (cfg.agents[id]?.grants ?? []);
   for (const g of grants)
@@ -1065,7 +1236,30 @@ function launchInput(
     env: d.env,
     ...(bin ? { bin } : {}),
     rotateAfter: after,
+    ...(perms.permission ? { permission: perms.permission } : {}),
+    ...(perms.allow?.length ? { allow: [...perms.allow] } : {}),
   };
+}
+
+/** The model a runtime is given: a pinned version, else the model. */
+export function launchModel(
+  model: string | undefined,
+  version: string | undefined,
+): string | undefined {
+  return version && version !== "latest" ? version : model;
+}
+
+/**
+ * The commands an agent may run without asking (AG-13.3, 13.4): its
+ * persona role's preset, then its extra commands.
+ */
+function allowedFor(
+  d: AgentsResolved,
+  persona: Persona,
+  extras: readonly string[],
+): string[] {
+  const preset = rolePreset(registries(d).roles, persona.role);
+  return [...new Set([...preset, ...extras])];
 }
 
 /** The rotation limit a launch counts against: 0 when its runtime can't relaunch. */
@@ -1108,6 +1302,112 @@ export interface StartRequest {
   runtime?: string;
   model?: string;
   id?: string;
+  /** "latest" or a pinned version of the model (AG-12.3). */
+  version?: string;
+  /** The permission intent for this launch (AG-13.6). */
+  permission?: string;
+  /** Extra allowed commands for this launch, instead of the persona's. */
+  allow?: unknown;
+  /**
+   * The page's start (AG-10.1): a model must be one the runtime offers,
+   * never a free string (the CLI's --model for generic stays free).
+   */
+  strict?: boolean;
+}
+
+/** What a start resolved, checked, before it launches. */
+interface Choices {
+  model?: string;
+  version: string;
+  permission?: PermissionIntent;
+  extras: string[];
+  overrides: Override[];
+}
+
+/**
+ * The model, version, permission and extra commands a start runs with
+ * (AG-10.9, 12.3, 13.6): the request's, else the persona's; each checked
+ * against what the runtime offers. What differs from the persona is an
+ * override, and the list tags it.
+ */
+function startChoices(
+  req: StartRequest,
+  persona: Persona,
+  rt: Runtime,
+): Choices {
+  const where = "agents start";
+  const models = rt.models?.() ?? [];
+  const overrides: Override[] = [];
+  const personaRt = persona.runtime ?? DEFAULT_RUNTIME_ID;
+  if (req.runtime && req.runtime !== personaRt) overrides.push("runtime");
+  // The persona's model is for its own runtime only.
+  const sameRt = rt.id === personaRt;
+  const personaModel = sameRt ? persona.model : undefined;
+  const personaVersion = (sameRt && persona.version) || "latest";
+  let model = req.model ?? personaModel;
+  let version =
+    req.version ??
+    (req.model === undefined || req.model === personaModel
+      ? personaVersion
+      : "latest");
+  if (req.model !== undefined && req.strict && !models.length)
+    throw usage(`${where}: ${rt.id} takes no model choice from Den`);
+  if (req.version !== undefined && req.version !== "latest" && !models.length)
+    throw usage(`${where}: ${rt.id} takes no model version from Den`);
+  // The page's choices are checked against the catalog; the CLI's --model
+  // stays as given (a full model name), unless a version comes with it.
+  if (
+    models.length &&
+    (req.strict || req.version !== undefined) &&
+    (req.model !== undefined || req.version !== undefined)
+  )
+    try {
+      const c = checkModelChoice({ id: rt.id, models }, model, version);
+      model = c.model;
+      version = c.version;
+    } catch (e) {
+      throw usage(`${where}: ${(e as Error).message}`);
+    }
+  if (req.model !== undefined && req.model !== personaModel)
+    overrides.push("model");
+  if (version !== personaVersion) overrides.push("version");
+  let permission: PermissionIntent | undefined;
+  if (req.permission !== undefined) {
+    try {
+      permission = checkIntent(req.permission, "permission");
+    } catch (e) {
+      throw usage(`${where}: ${(e as Error).message}`);
+    }
+    if (!rt.permissions)
+      throw usage(
+        `${where}: ${rt.id} can't take a permission mode from Den yet`,
+      );
+    if (permission !== intentOf(persona.permissionMode))
+      overrides.push("permission");
+  }
+  let extras = persona.allowedCommands;
+  if (req.allow !== undefined) {
+    try {
+      extras = checkCommands(req.allow, "allow");
+    } catch (e) {
+      throw usage(`${where}: ${(e as Error).message}`);
+    }
+    if (extras.length && !rt.permissions)
+      throw usage(
+        `${where}: ${rt.id} can't take allowed commands from Den yet`,
+      );
+    const same =
+      extras.length === persona.allowedCommands.length &&
+      extras.every((c) => persona.allowedCommands.includes(c));
+    if (!same) overrides.push("allow");
+  }
+  return {
+    ...(model ? { model } : {}),
+    version,
+    ...(permission ? { permission } : {}),
+    extras: [...extras],
+    overrides,
+  };
 }
 
 /** What a relaunch from handoff adds to a start (den#4). */
@@ -1139,7 +1439,8 @@ export async function startAgent(
   syncCatalog(d);
   const rt = runtimeFor(req.runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID);
   const det = await availableOrRefuse(d, rt, ws);
-  const model = req.model ?? persona.model;
+  const ch = startChoices(req, persona, rt);
+  const model = launchModel(ch.model, ch.version);
 
   const prev = readRecord(d.stateDir(), id);
   if (prev && prev.workspace !== ws)
@@ -1147,10 +1448,21 @@ export async function startAgent(
       `agent ${id} belongs to workspace ${prev.workspace}; give this one another --id`,
     );
   ptyOrRefuse(d);
+  const allow = allowedFor(d, persona, ch.extras);
   const input = {
-    ...launchInput(d, cfg, persona, ws, id, model, det.path),
+    ...launchInput(d, cfg, persona, ws, id, model, det.path, undefined, {
+      ...(ch.permission ? { permission: ch.permission } : {}),
+      ...(rt.permissions ? { allow } : {}),
+    }),
     ...(more.firstPrompt ? { firstPrompt: more.firstPrompt } : {}),
   };
+  // AG-13.4: a command a runtime can't express is said, never dropped.
+  const unexpressed =
+    !rt.permissions && allow.length
+      ? [
+          `${rt.id} can't take allowed commands from Den yet: ${allow.join(", ")} not applied (it asks as usual)`,
+        ]
+      : [];
 
   return withClient(d, async (c) => {
     const sessions = await c.list();
@@ -1179,13 +1491,22 @@ export async function startAgent(
           id,
           persona: persona.id,
           runtime: rt.id,
-          ...(model ? { model } : {}),
+          ...(ch.model ? { model: ch.model } : {}),
+          ...(ch.model ? { version: ch.version } : {}),
+          ...(ch.permission ? { permission: ch.permission } : {}),
+          ...(req.allow !== undefined ? { allow: ch.extras } : {}),
+          ...(ch.overrides.length ? { overrides: ch.overrides } : {}),
           workspace: ws,
           cwd: input.worktree,
           sessionName: sessionName(d.dist, ws, id),
           // AG-4b: a name given to the agent is the agent's, not its
-          // conversation's: Start fresh and Relaunch keep it.
-          ...(prev?.displayName ? { displayName: prev.displayName } : {}),
+          // conversation's: Start fresh and Relaunch keep it. AG-10.8:
+          // else its persona's name ("Rita").
+          ...(prev?.displayName
+            ? { displayName: prev.displayName }
+            : persona.displayName
+              ? { displayName: persona.displayName }
+              : {}),
           ...(prev?.displayName && prev.displayNameAt
             ? { displayNameAt: prev.displayNameAt }
             : {}),
@@ -1204,7 +1525,12 @@ export async function startAgent(
       more.rotations?.length ? { rotations: more.rotations } : {},
     );
     const early = await exitedAtOnce(d, c, info);
-    return { rec, info, warnings: out.warnings ?? [], early };
+    return {
+      rec,
+      info,
+      warnings: [...(out.warnings ?? []), ...unexpressed],
+      early,
+    };
   });
 }
 
@@ -1377,9 +1703,21 @@ export async function resumeAgent(
       persona,
       rec.workspace,
       rec.id,
-      rec.model,
+      launchModel(rec.model, rec.version),
       det.path,
       grants,
+      {
+        ...(rec.permission ? { permission: rec.permission } : {}),
+        ...(rt.permissions
+          ? {
+              allow: allowedFor(
+                d,
+                persona,
+                rec.allow ?? persona.allowedCommands,
+              ),
+            }
+          : {}),
+      },
     );
     // Resume in the cwd the agent had, wherever the workspace points now.
     const at = {
@@ -1488,9 +1826,22 @@ export async function startFresh(
     workspace: rec.workspace,
     persona: rec.persona,
     runtime: rec.runtime,
-    ...(rec.model ? { model: rec.model } : {}),
+    ...keptChoices(rec),
     id: rec.id,
   });
+}
+
+/**
+ * What a record was started with (AG-10.9), for Start fresh and Relaunch:
+ * the same model, version, permission and extra commands.
+ */
+function keptChoices(rec: AgentRecord): Partial<StartRequest> {
+  return {
+    ...(rec.model ? { model: rec.model } : {}),
+    ...(rec.version ? { version: rec.version } : {}),
+    ...(rec.permission ? { permission: rec.permission } : {}),
+    ...(rec.allow ? { allow: [...rec.allow] } : {}),
+  };
 }
 
 // ── den#4: relaunch from handoff ────────────────────────────────────────────
@@ -1573,7 +1924,7 @@ export async function relaunchAgent(
       workspace: rec.workspace,
       persona: rec.persona,
       runtime: rec.runtime,
-      ...(rec.model ? { model: rec.model } : {}),
+      ...keptChoices(rec),
       id: rec.id,
     },
     {
@@ -1799,4 +2150,169 @@ export async function resumeInterrupted(
     }
   }
   return { resumed, failed };
+}
+
+// ── AG-10.1: the first instruction, a plain session ─────────────────────────
+
+/** The longest first instruction. */
+export const MAX_INSTRUCTION = 8000;
+
+/**
+ * A first instruction, checked: text of up to MAX_INSTRUCTION characters,
+ * newlines and tabs allowed, no other control character (no escape
+ * sequence can ride along) and no bidi override. Blank is none (null).
+ */
+export function checkInstruction(v: unknown): string | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== "string") throw usage("instruction must be a string");
+  const t = v.replace(/\r\n?/g, "\n").trim();
+  if (!t) return null;
+  if (t.length > MAX_INSTRUCTION)
+    throw usage(`instruction must be at most ${MAX_INSTRUCTION} characters`);
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/.test(t))
+    throw usage("instruction can't have control characters");
+  return t;
+}
+
+/** How long the session must print nothing before it counts as ready. */
+export const READY_QUIET_MS = 800;
+/** The longest a first instruction waits for the session to be ready. */
+export const READY_MAX_MS = 30_000;
+const READY_POLL_MS = 150;
+const PASTE_ON = "\x1b[?2004h";
+const PASTE_OFF = "\x1b[?2004l";
+
+/**
+ * The bytes a first instruction is typed as: a bracketed paste when the
+ * program turned bracketed paste on (its output has ESC[?2004h, last), so
+ * newlines stay newlines; else each newline as the runtime's soft newline
+ * (catalog softNewline). Then Enter, separately.
+ */
+export function instructionBytes(
+  text: string,
+  said: string,
+  softNewline: string,
+): { body: string; enter: string } {
+  const paste = said.lastIndexOf(PASTE_ON) > said.lastIndexOf(PASTE_OFF);
+  return {
+    body: paste
+      ? `\x1b[200~${text}\x1b[201~`
+      : text.split("\n").join(softNewline),
+    enter: "\r",
+  };
+}
+
+/**
+ * Send an agent its first instruction once it is ready (AG-10.1): it has
+ * printed something and then nothing for READY_QUIET_MS (a TUI drawn and
+ * waiting), or READY_MAX_MS passed. Typed into its session over the host's
+ * write path (the same as a keystroke from the pane), never as an argument
+ * or through a shell. False when the session ended first or there is no
+ * host. Never throws.
+ */
+export async function sendFirstInstruction(
+  d: AgentsResolved,
+  sessionId: string,
+  runtime: string,
+  text: string,
+  o: { quietMs?: number; maxMs?: number } = {},
+): Promise<boolean> {
+  const quiet = o.quietMs ?? READY_QUIET_MS;
+  const max = o.maxMs ?? READY_MAX_MS;
+  let c: HostClient | null = null;
+  try {
+    c = await d.connectExisting();
+    if (!c) return false;
+    const deadline = Date.now() + max;
+    let last = "";
+    let changedAt = Date.now();
+    let said = "";
+    for (;;) {
+      const s = (await c.list()).find((x) => x.ref.id === sessionId);
+      if (!s || s.exited) return false;
+      said = (await c.scrollback(sessionId, 256 * 1024)).toString("utf-8");
+      if (said !== last) {
+        last = said;
+        changedAt = Date.now();
+      } else if (said && Date.now() - changedAt >= quiet) break;
+      if (Date.now() >= deadline) break;
+      await new Promise((r) => setTimeout(r, READY_POLL_MS));
+    }
+    const soft = softNewlineSeq(getRuntime(runtime)?.catalog);
+    const b = instructionBytes(text, said, soft);
+    c.write(sessionId, Buffer.from(b.body, "utf-8"));
+    await new Promise((r) => setTimeout(r, 120));
+    c.write(sessionId, Buffer.from(b.enter, "utf-8"));
+    // Let the host take the bytes before the connection closes.
+    await c.list();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    c?.close();
+  }
+}
+
+/** A plain session started from the page (AG-10.1 "Plain session"). */
+export interface PlainStarted {
+  info: SessionInfo;
+}
+
+/**
+ * Plain session (AG-10.1): the person's login shell ($SHELL when it is an
+ * absolute path to an executable, else /bin/sh) in the workspace's folder,
+ * named shell, shell-2, … in that workspace. Its env is a plain session's
+ * (the allowlist, every runtime's scrubEnv); it counts against
+ * sessions.max_concurrent, never the agents' cap.
+ */
+export async function startPlainSession(
+  d: AgentsResolved,
+  ws: string,
+): Promise<PlainStarted> {
+  checkWorkspaceName("sessions start", ws);
+  if (!d.workspaceExists(ws))
+    throw usage(`workspace "${ws}" does not exist`, 404);
+  const dir = d.workspaceDir(ws);
+  if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory())
+    throw refused(`workspace ${ws}'s directory ${dir} does not exist`);
+  ptyOrRefuse(d);
+  const sh = d.env.SHELL;
+  let shell = "/bin/sh";
+  if (sh && path.isAbsolute(sh))
+    try {
+      fs.accessSync(sh, fs.constants.X_OK);
+      shell = sh;
+    } catch {
+      /* the default */
+    }
+  const { plainSessionEnv } = await import("./sessions-command.js");
+  return withClient(d, async (c) => {
+    const names = new Set((await c.list()).map((s) => s.name));
+    let n = 1;
+    let name = sessionName(d.dist, ws, "shell");
+    while (names.has(name)) name = sessionName(d.dist, ws, `shell-${++n}`);
+    const info = await c
+      .start(
+        {
+          name,
+          cwd: dir,
+          argv: [shell, "-l"],
+          env: plainSessionEnv(d.env),
+          cols: 80,
+          rows: 24,
+        },
+        { limit: d.maxSessions(), pool: "sessions" },
+      )
+      .catch((e: unknown) => {
+        if (e instanceof HostError && e.code === "cap")
+          throw new AgentError(e.message, {
+            status: 429,
+            code: "cap",
+            hints: ["Stop a session first, or raise sessions.max_concurrent."],
+          });
+        throw e;
+      });
+    return { info };
+  });
 }

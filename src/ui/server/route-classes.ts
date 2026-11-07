@@ -148,6 +148,17 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/agents/runtimes",
     "/api/workspaces/:ws/agents",
   ].map((p) => R(p)),
+  R("/api/personas/:id", "one persona with its instructions (AG-10.6 Details)"),
+  M(
+    ["POST"],
+    "/api/personas",
+    "New persona: a person's own, in the state dir (AG-10.7); never an agent's token",
+  ),
+  M(
+    ["POST", "DELETE"],
+    "/api/personas/:id",
+    "edits or deletes a person's own persona (AG-10.7); never an agent's token",
+  ),
   R(
     "/api/workspaces/:ws/agents/:id/paths",
     "which paths an agent printed exist in its workspace (stat only, AG-4b)",
@@ -344,6 +355,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   S(
     ["POST"],
+    "/api/workspaces/:ws/sessions",
+    "starts a plain session: the person's login shell in the workspace (AG-10.1)",
+  ),
+  S(
+    ["POST"],
     "/api/workspaces/:ws/agents/:id/resume",
     "resumes an agent: a runtime in a PTY",
   ),
@@ -420,6 +436,8 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/paths",
   ],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
+  "agent-routes.ts:PERSONA_PATH": ["/api/personas/:id"],
+  "agent-routes.ts:PLAIN_PATH": ["/api/workspaces/:ws/sessions"],
   "session-routes.ts:IO_PATH": ["/api/sessions/:id/io"],
   "github-routes.ts:SIGNIN_PATH": ["/api/github/signin/:id"],
   "github-routes.ts:LINK_PATH": ["/api/web/owner/link/:id"],

@@ -1,5 +1,6 @@
 ---
 name: fe-dev
+role: sde
 description: Implements front-end stories, test first, to the design system.
 context:
   [

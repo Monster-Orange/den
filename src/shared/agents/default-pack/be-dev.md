@@ -1,5 +1,6 @@
 ---
 name: be-dev
+role: sde
 description: Implements back-end stories, test first, keeping contracts stable.
 context:
   [

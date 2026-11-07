@@ -102,6 +102,10 @@ describe("agents start", () => {
         "grants",
         // 0.4.8: launched on resumeToken, so a resume continues it.
         "launched",
+        // AG-12: its model's version ("latest": the alias); AG-10.9: what
+        // it overrides of its persona (here: the model).
+        "version",
+        "overrides",
       ].sort(),
     );
     expect(rec).toMatchObject({
@@ -533,7 +537,7 @@ describe("den-claude's permission mode", () => {
     persona(r, "odd", "permission_mode: yolo\n");
     expect(await agents(r, "start", "-w", "north", "--persona", "odd")).toBe(1);
     expect(r.err.join("\n")).toMatch(
-      /permission_mode "yolo" must be one of default, acceptEdits, plan, bypassPermissions/,
+      /permission_mode "yolo" must be one of ask, edits, all, default, acceptEdits, plan, bypassPermissions/,
     );
     expect(r.made).toHaveLength(0);
   });

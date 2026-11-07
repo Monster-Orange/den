@@ -20,6 +20,7 @@ import type { CatalogEntry } from "./catalog.js";
 import type { AgentRecord } from "./records.js";
 import type { Persona } from "./personas.js";
 import type { BinSource, RuntimeFind } from "./runtime-search.js";
+import type { PermissionIntent } from "./permissions.js";
 
 export const RUNTIME_KIND = "runtime";
 
@@ -96,6 +97,16 @@ export interface LaunchInput {
    */
   rotateAfter?: number;
   /**
+   * The permission intent to launch with (AG-13): the agent's, else its
+   * persona's `permission_mode`. Only a runtime with `permissions` takes it.
+   */
+  permission?: PermissionIntent;
+  /**
+   * Plain command prefixes allowed without asking (AG-13.3, 13.4): the
+   * role's preset and the extra commands, checked (permissions.ts).
+   */
+  allow?: string[];
+  /**
    * The new conversation's first prompt (a relaunch from handoff.md).
    * Only a runtime with `firstPrompt: true` is given one.
    */
@@ -115,6 +126,29 @@ export interface LaunchOutput {
 }
 
 export type ResumeInput = LaunchInput;
+
+/**
+ * A model a runtime offers (AG-12.3): its id as the Model list shows it,
+ * and the versions it can be pinned to, newest first. "Latest" tracks the
+ * newest release; a pinned version is one of `versions`.
+ */
+export interface RuntimeModel {
+  id: string;
+  label: string;
+  versions: string[];
+  latest: string;
+}
+
+/**
+ * How a runtime expresses Den's permission intents (AG-13.2), as its own
+ * launch config: a read-only preview of each mode ("What this allows on
+ * <runtime>"), and how one plain command prefix becomes its rules
+ * (`{c}` the prefix). The runtime's launch writes exactly these.
+ */
+export interface RuntimePermissions {
+  modes: Record<PermissionIntent, string>;
+  commandRules: string[];
+}
 
 export interface Runtime {
   /** "den-claude", "generic". */
@@ -142,6 +176,13 @@ export interface Runtime {
    * firstPrompt): Relaunch from handoff needs it (den#4).
    */
   firstPrompt?: boolean;
+  /**
+   * The models it offers (AG-12.3), from the catalog shipped with each Den
+   * release; none: it takes no model choice from Den.
+   */
+  models?(): RuntimeModel[];
+  /** How it expresses permission intents (AG-13); none: it can't yet. */
+  permissions?: RuntimePermissions;
   /** Throws LaunchError when this persona or this machine can't run it. */
   launch(input: LaunchInput): LaunchOutput;
   /** A new run that continues the last one; null when there is nothing to resume. */

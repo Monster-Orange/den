@@ -1,5 +1,6 @@
 ---
 name: planner
+role: planner
 description: Writes stories and their acceptance criteria for the workspace.
 standing: true
 context: [the workspace's specs and docs, open work items, the design system]
