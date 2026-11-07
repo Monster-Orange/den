@@ -48,7 +48,8 @@
  * GETs, pages and SSE streams on loopback pass with only the Host check
  * (§6), except the GETs route-classes.ts marks `mutating` or `shell-grade`
  * (a run, a service's lifecycle command): same-origin only, or a CLI's
- * bearer.
+ * bearer. A sign-in GET (SIGNIN_GETS: /auth, the GitHub sign-in poll) may
+ * also come with no fetch metadata at all, as a plain-http LAN origin's do.
  *
  * The audit actor (auditActorOf, principalOf) comes from the credential,
  * never from a header the caller sets: `agent:<id>` for an actor token,
@@ -71,6 +72,7 @@ import {
   routeClass,
   SIGNIN_CSRF_FREE,
   SIGNIN_FREE,
+  SIGNIN_GETS,
   type RouteClass,
 } from "./route-classes.js";
 
@@ -596,7 +598,7 @@ export function checkRequest(
 
   if (!MUTATING.has(method) && !isUpgrade(req)) {
     if (isMutatingGet(method, pathname)) {
-      const refused = mutatingGetRefusal(req, ctx, principal, cli);
+      const refused = mutatingGetRefusal(req, ctx, pathname, principal, cli);
       if (refused) return refused;
     }
     return ok(principal ?? browser);
@@ -717,13 +719,15 @@ function workspaceRefusal(_p: AgentPrincipal, _pathname: string): null {
  * is a GET too, so these pass only:
  *  - from this server's own pages: Sec-Fetch-Site same-origin (or none, a
  *    URL the person typed), and an Origin, if any, that is allowed;
- *  - or with neither header (the CLI, curl, MCP) and a valid bearer.
+ *  - or with neither header (the CLI, curl, MCP) and a valid bearer, or
+ *    (SIGNIN_GETS) a sign-in GET, which carries its own credential.
  * Sec-Fetch-Site same-site or cross-site: 403 `cross_site` (another port on
  * localhost is same-site, not same-origin).
  */
 function mutatingGetRefusal(
   req: http.IncomingMessage,
   ctx: GuardContext,
+  pathname: string,
   principal: Principal | null,
   cli: string,
 ): Extract<GuardResult, { ok: false }> | null {
@@ -743,7 +747,21 @@ function mutatingGetRefusal(
       code: "origin_rejected",
       error: "Requests from another site can't start or change anything here.",
     };
-  if (site === undefined && origin === undefined && !principal)
+  // A sign-in GET (route-classes.ts SIGNIN_GETS) may come with neither
+  // header. A plain-http origin that isn't localhost (a LAN bind with
+  // web.allow_plain_http_remote) is not "potentially trustworthy", so
+  // Chromium sends it no Sec-Fetch-* headers, and a top-level navigation
+  // sends no Origin: the person's own `web login --origin` link arrives
+  // bare. That is safe: the request carries its own unguessable credential
+  // (/auth a one-time code derived from web.secret, the poll its flow id),
+  // which another site can't know, and a cross-site request from a modern
+  // browser sends Sec-Fetch-Site or Origin, which the checks above refuse.
+  if (
+    site === undefined &&
+    origin === undefined &&
+    !principal &&
+    !SIGNIN_GETS.some((r) => pathMatches(r, pathname))
+  )
     return {
       ok: false,
       status: 403,

@@ -2,6 +2,7 @@ import chalk from "chalk";
 import { execFileSync, spawn, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
+import * as net from "net";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { CLI_SPAWN_TIMEOUT_MS, DEFAULT_PORT } from "../../shared/constants.js";
@@ -269,6 +270,29 @@ export function isDenWebTabUrl(rawUrl: string, port: number): boolean {
   }
 }
 
+/**
+ * Where `web up`'s probes (readiness, the CLI's own calls) reach the
+ * server, and the Host they send: the address DEN_BIND_HOST binds. Unset,
+ * 0.0.0.0 or `::` answer on loopback, so 127.0.0.1; one specific address
+ * (a LAN IP with web.allow_plain_http_remote, or ::1) answers only there.
+ * The Host names that address (an IPv6 one bracketed): the Host allowlist
+ * accepts it (a loopback name, or the bound LAN address).
+ */
+export function webProbeTarget(
+  bind: string | undefined,
+  port: number,
+): { host: string; hostHeader: string } {
+  const b = (bind ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
+  const host = b === "" || b === "0.0.0.0" || b === "::" ? "127.0.0.1" : b;
+  return {
+    host,
+    hostHeader: `${net.isIPv6(host) ? `[${host}]` : host}:${port}`,
+  };
+}
+
 async function getHttpText(
   port: number,
   requestPath: string,
@@ -283,12 +307,16 @@ async function getHttpText(
       resolve(value);
     };
 
+    const to = webProbeTarget(process.env.DEN_BIND_HOST, port);
     const req = http.get(
       {
-        host: "127.0.0.1",
+        host: to.host,
         port,
         path: requestPath,
         timeout: 1_500,
+        agent: false,
+        setHost: false,
+        headers: { host: to.hostHeader },
       },
       (res) => {
         let body = "";
@@ -1549,14 +1577,17 @@ function serverCall(
 ): Promise<{ status: number; json: unknown } | null> {
   return new Promise((resolve) => {
     const payload = body === undefined ? undefined : JSON.stringify(body);
+    const to = webProbeTarget(process.env.DEN_BIND_HOST, port);
     const req = http.request(
       {
-        host: "127.0.0.1",
+        host: to.host,
         port,
         path: p,
         method,
         timeout: 10_000,
+        setHost: false,
         headers: {
+          host: to.hostHeader,
           ...cliAuthHeaders(stateDir),
           ...(payload !== undefined
             ? {

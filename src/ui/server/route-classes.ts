@@ -307,6 +307,17 @@ export const SIGNIN_FREE: readonly string[] = [
  */
 export const SIGNIN_CSRF_FREE: readonly string[] = ["/api/github/signin"];
 
+/**
+ * Sign-in GETs that carry their own unguessable credential: /auth a one-time
+ * code derived from web.secret, the GitHub sign-in poll its flow id. They
+ * may come with no fetch metadata at all (request-guard.ts,
+ * mutatingGetRefusal): a plain-http LAN origin gets none from the browser.
+ */
+export const SIGNIN_GETS: readonly string[] = [
+  "/auth",
+  "/api/github/signin/:id",
+];
+
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:AGENTS_PATH": [

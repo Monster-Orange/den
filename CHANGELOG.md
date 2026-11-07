@@ -65,6 +65,19 @@ Sign in with GitHub as the owner, from your other devices (SEC-2a).
 - **A custom Settings control draws itself even with no value to save.**
   Settings › Command line's "Browser sign-in" (Sign out) showed an empty
   read-only box; it and the Access rows now render.
+- **A browser signs in on a plain-http LAN bind** (`DEN_BIND_HOST` with
+  `web.allow_plain_http_remote`). A `web login --origin http://<LAN IP>:<port>`
+  link got 403 `origin_rejected`: the browser sends a plain-http origin that
+  isn't localhost no `Sec-Fetch-*` headers, and a navigation sends no
+  Origin. The sign-in GETs (`/auth` and the GitHub sign-in poll), which
+  carry their own one-time credential, now pass with neither header. Either
+  header, when present, is still checked, and every other GET that runs
+  something still needs this server's page or a bearer.
+- **`web up` with `DEN_BIND_HOST` on one address is ready when it serves.**
+  Its readiness probe (and `web sessions`/`web logout`'s calls) asked
+  127.0.0.1, so a server bound to a LAN IP or `::1` printed "did not become
+  ready" and exited non-zero. They ask the bound address now (loopback for
+  0.0.0.0 and `::`), with a Host the allowlist accepts.
 
 ### Migrations
 

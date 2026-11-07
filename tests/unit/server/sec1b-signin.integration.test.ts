@@ -643,6 +643,111 @@ describe("nothing leaks", () => {
   });
 });
 
+describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_remote)", () => {
+  // Chromium sends a plain-http origin that isn't localhost no Sec-Fetch-*
+  // headers, and a top-level navigation has no Origin: the link must still
+  // sign in. The server is reached on localhost, with this machine's own
+  // name as the Host (a LAN name, so beyond loopback).
+  const name = os.hostname().toLowerCase();
+  let lanDist = "";
+  let lanHome = "";
+  let lanPort = 0;
+  let lan: ChildProcess | null = null;
+
+  beforeAll(async () => {
+    if (!name) return;
+    lanDist = path.join(tmp, "lan");
+    lanHome = path.join(tmp, "lan-home");
+    write(path.join(lanDist, "den.yml"), "product:\n  name: den\n");
+    write(path.join(lanDist, "config", "den.yml"), "environments: [local]\n");
+    write(
+      path.join(lanDist, "config", "local", "user.yml"),
+      "web:\n  allow_plain_http_remote: true\n",
+    );
+    lanPort = await freePort();
+    lan = spawnServer(
+      TSX,
+      [path.join(ENGINE, "src", "ui", "server", "index.ts")],
+      {
+        cwd: lanDist,
+        env: {
+          ...serverEnv(lanDist, lanHome, lanPort),
+          DEN_BIND_HOST: "0.0.0.0",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    lan.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
+    lan.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
+    const deadline = Date.now() + 40_000;
+    for (;;) {
+      try {
+        const r = await call("GET", "/api/server-info", {}, undefined, lanPort);
+        if (r.status === 200) break;
+      } catch {
+        /* not up yet */
+      }
+      if (Date.now() > deadline) throw new Error("LAN server did not start");
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }, 60_000);
+  afterAll(async () => {
+    if (lan) await stopServer(lan);
+  });
+
+  it("a `web login --origin http://<this machine>:<port>` link with no fetch-metadata headers: 303 and the cookie", async () => {
+    if (!name) return;
+    const r = spawnSync(
+      TSX,
+      [
+        path.join(ENGINE, "src", "ui", "cli", "index.ts"),
+        "web",
+        "login",
+        "--port",
+        String(lanPort),
+        "--origin",
+        `http://${name}:${lanPort}`,
+      ],
+      {
+        cwd: lanDist,
+        encoding: "utf-8",
+        timeout: 60_000,
+        env: { ...serverEnv(lanDist, lanHome, lanPort), CI: "1" },
+      },
+    );
+    expect(r.status).toBe(0);
+    const link = r.stdout.trim();
+    minted.push(link);
+    const u = new URL(link);
+    minted.push(u.searchParams.get("c") ?? "");
+    expect([u.host, u.pathname]).toEqual([`${name}:${lanPort}`, "/auth"]);
+    {
+      const host = { host: u.host, accept: "text/html" };
+      // A foreign page's request still can't use it.
+      const cross = await call(
+        "GET",
+        `${u.pathname}${u.search}`,
+        { ...host, "sec-fetch-site": "cross-site" },
+        undefined,
+        lanPort,
+      );
+      expect([cross.status, setCookie(cross)]).toEqual([403, ""]);
+      const a = await call(
+        "GET",
+        `${u.pathname}${u.search}`,
+        host,
+        undefined,
+        lanPort,
+      );
+      const line = ([] as string[])
+        .concat(a.headers["set-cookie"] ?? [])
+        .find((c) => c.startsWith(`den_session_${lanPort}=`));
+      minted.push(line?.split(";")[0].split("=")[1] ?? "");
+      expect([a.status, a.headers.location, !!line]).toEqual([303, "/", true]);
+    }
+  }, 90_000);
+});
+
 describe("refusing to start", () => {
   /**
    * Start a server on a fresh distribution: its exit code, or (with
