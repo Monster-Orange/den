@@ -132,6 +132,8 @@ export interface ListedSession {
   /** The `<name>` part: an agent's id, a plain session's name. */
   label: string;
   agent?: string;
+  /** The name a person gave the agent (AG-4b), when one did. */
+  displayName?: string;
   persona?: string;
   runtime?: string;
   model?: string;
@@ -193,6 +195,7 @@ export function listedSessions(
       kind: "agent",
       label: rec.id,
       agent: rec.id,
+      ...(rec.displayName ? { displayName: rec.displayName } : {}),
       persona: rec.persona,
       runtime: rec.runtime,
       ...(rec.model ? { model: rec.model } : {}),

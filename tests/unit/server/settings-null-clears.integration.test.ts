@@ -163,4 +163,23 @@ describe("POST /api/settings: null clears a pref (0.3.0-dev.32)", () => {
     expect(JSON.parse(r.text).error).toContain('unknown graph setting "zoom"');
     expect(bytes().equals(before)).toBe(true);
   });
+
+  it("agents_layout (AG-4b): focus, tabs or tile, under agents.layout; null clears it; anything else is refused", async () => {
+    const before = bytes();
+    const r = await post({ agents_layout: "tile" });
+    expect(r.status).toBe(200);
+    expect(JSON.parse(r.text).agents_layout).toBe("tile");
+    expect(bytes().toString()).toMatch(/^agents:\n {2}layout: tile$/m);
+    const got = await fetch(`http://localhost:${port}/api/settings`, {
+      headers: denAuth(path.join(tmp, "home", ".den")),
+    });
+    expect(((await got.json()) as Record<string, unknown>).agents_layout).toBe(
+      "tile",
+    );
+    const bad = await post({ agents_layout: "grid" });
+    expect(bad.status).toBe(400);
+    expect(JSON.parse(bad.text).error).toContain('"focus", "tabs", "tile"');
+    expect((await post({ agents_layout: null })).status).toBe(200);
+    expect(bytes().equals(before)).toBe(true);
+  });
 });

@@ -138,7 +138,7 @@ function rowHtml(r) {
     ? ` <span class="tbl-muted">· ${esc(r.model)}</span>`
     : "";
   return `<tr class="agent" data-agent="${esc(r.agent)}" data-state="${esc(r.state)}">
-              <th scope="row"><span class="repo-name">${esc(r.agent)}</span>${persona}</th>
+              <th scope="row">${r.displayName ? `<span class="repo-name">${esc(r.displayName)}</span> <span class="tbl-muted">${esc(r.agent)}</span>` : `<span class="repo-name">${esc(r.agent)}</span>`}${persona}</th>
               <td class="tbl-mono">${esc(r.runtime ?? "—")}${model}</td>
               <td>${stateCell(r.state)}</td>
               <td class="tbl-mono tbl-muted agent-cwd" title="${esc(r.cwd ?? "")}">${esc(r.cwd ?? "—")}</td>

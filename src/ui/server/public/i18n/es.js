@@ -342,6 +342,7 @@
     "set.graph.panelWidth": "Panel de detalles",
     "set.workspace.editor": "IDE de este espacio de trabajo",
     "set.agents.runtimes": "Runtimes",
+    "set.agents.layout": "Disposición de la pestaña Agentes",
     "set.cli.local_dev": "Entorno local",
     "set.cli.cli_tabs": "Pestañas de terminal",
     "set.cli.log_window_lines": "Líneas del panel de registros",
@@ -476,6 +477,19 @@
     "ag.palStart": "Iniciar agente…",
     "ag.cap":
       "Hasta 4 paneles: se cerró el de {id} para hacer sitio (sigue en marcha)",
+    "ag.layout": "Disposición",
+    "ag.l.focus": "Enfoque",
+    "ag.l.tabs": "Pestañas",
+    "ag.l.tile": "Mosaico",
+    "ag.l.tip": "{name} ({key})",
+    "ag.tabs": "Sesiones abiertas",
+    "ag.hint.focus":
+      "Un clic muestra una sesión. Mayús o ⌘ y clic la añade al lado.",
+    "ag.hint.tabs":
+      "Un clic abre una sesión en una pestaña. Doble clic en una pestaña para cambiarle el nombre.",
+    "ag.hint.tile": "Un clic añade una sesión al mosaico, hasta 4.",
+    "ag.renameTip": "Doble clic para cambiar el nombre",
+    "ag.renameName": "Cambiar el nombre de {id}",
     "ag.rt.ready": "Inicia {name} {version} desde",
     "ag.rt.readyNoVer": "Inicia {name} desde",
     "ag.rt.notFound": "No se encontró {name}.",

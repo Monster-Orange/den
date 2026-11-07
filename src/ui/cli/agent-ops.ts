@@ -89,6 +89,7 @@ import {
   removeRecord,
   restoreRecord,
   writeRecord,
+  checkDisplayName,
   writeRuntimeFiles,
   type AgentRecord,
 } from "../../shared/agents/records.js";
@@ -355,6 +356,8 @@ export function agentMcp(
  */
 export interface AgentRow {
   agent: string;
+  /** The name a person gave it (AG-4b), when one did. */
+  displayName?: string;
   persona?: string;
   runtime?: string;
   model?: string;
@@ -489,6 +492,7 @@ export function agentRows(
 
 function recordFields(rec: AgentRecord): Partial<AgentRow> {
   return {
+    ...(rec.displayName ? { displayName: rec.displayName } : {}),
     persona: rec.persona,
     runtime: rec.runtime,
     ...(rec.model ? { model: rec.model } : {}),
@@ -1171,6 +1175,9 @@ export async function startAgent(
           workspace: ws,
           cwd: input.worktree,
           sessionName: sessionName(d.dist, ws, id),
+          // AG-4b: a name given to the agent is the agent's, not its
+          // conversation's: Start fresh and Relaunch keep it.
+          ...(prev?.displayName ? { displayName: prev.displayName } : {}),
           // 0.4.8: launched on this token, so a resume continues it.
           ...(out.resumeToken
             ? { resumeToken: out.resumeToken, launched: true }
@@ -1210,6 +1217,31 @@ export function agentRecord(
       { status: 404, code: NOT_IN_WORKSPACE },
     );
   return rec;
+}
+
+/**
+ * Name agent `id` (AG-4b: a person double-clicked its tab): `name` as
+ * checkDisplayName takes it; null or blank clears it. The id never
+ * changes. A usage error (400) when the name isn't one.
+ */
+export function renameAgent(
+  d: AgentsResolved,
+  id: string,
+  ws: string,
+  name: unknown,
+): AgentRecord {
+  const rec = agentRecord(d, id, ws);
+  let checked: string | null;
+  try {
+    checked = checkDisplayName(name);
+  } catch (e) {
+    throw usage((e as Error).message);
+  }
+  const next: AgentRecord = { ...rec };
+  if (checked) next.displayName = checked;
+  else delete next.displayName;
+  writeRecord(d.stateDir(), next);
+  return next;
 }
 
 export interface Stopped {

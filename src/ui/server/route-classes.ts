@@ -304,6 +304,11 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/workspaces/:ws/agents/:id/stop", "TERM to its session"),
   M(
     ["POST"],
+    "/api/workspaces/:ws/agents/:id/name",
+    "the name a person gave an agent (AG-4b); its id never changes",
+  ),
+  M(
+    ["POST"],
     "/api/workspaces/:ws/agents/:id/remove",
     "forgets a stopped agent (AG-14.1b); its record waits for Undo",
   ),
@@ -407,6 +412,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/fresh",
     "/api/workspaces/:ws/agents/:id/relaunch",
     "/api/workspaces/:ws/agents/:id/remove",
+    "/api/workspaces/:ws/agents/:id/name",
   ],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "session-routes.ts:IO_PATH": ["/api/sessions/:id/io"],

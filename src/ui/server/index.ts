@@ -256,6 +256,7 @@ import {
   sshTarget,
 } from "../../shared/cli-command.js";
 import { graphPrefs, patchStoredGraph } from "./graph-prefs.js";
+import { agentsLayout, patchAgentsLayout } from "./agents-layout-pref.js";
 import { graphPageHtml } from "./graph-page.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
@@ -4467,6 +4468,8 @@ async function handleRequest(
   //   graph: { direction, group, density, panelWidth } (see graph-prefs.ts)
   //   appearance: { theme: id | null, mode: system|dark|light } (appearance-prefs.ts)
   //   shell: { pins, collapsed, hidden, order, dock, dockHeight } (shell-prefs.ts)
+  //   agents_layout: focus | tabs | tile, the Agents tab's layout (AG-4b,
+  //     agents-layout-pref.ts; user.yml agents.layout); null clears it
   //   language: the UI's language, en | ja | es (ui-language.ts); null or
   //     "en" clears it (English is the default)
   // It writes config/local/user.yml only. `distribution` is read-only: what
@@ -4512,6 +4515,7 @@ async function handleRequest(
         graph: graphPrefs(user.graph),
         appearance: appearancePrefs(user.appearance),
         shell: shellPrefs(user.shell),
+        agents_layout: agentsLayout(user),
         distribution: distributionSettings(getDistRoot()),
         // Set from the command line (`<cli> config`), shown read-only.
         user_web_port: userWebPort(user as Record<string, unknown>),
@@ -4537,8 +4541,14 @@ async function handleRequest(
           shell?: unknown;
           language?: unknown;
           machine_name?: unknown;
+          agents_layout?: unknown;
         };
         const user = readUserConfig();
+        // AG-4b: the Agents tab's layout, a view preference only.
+        if (body.agents_layout !== undefined) {
+          const l = patchAgentsLayout(user, body.agents_layout);
+          if (!l.ok) return send400(res, l.error);
+        }
         // SEC-2a: web.machine_name (user.yml); null or "" clears it.
         if (body.machine_name !== undefined) {
           let name: string | null;
@@ -4648,6 +4658,7 @@ async function handleRequest(
           shell: shellPrefs(user.shell),
           language: uiLanguage(user.language),
           machine_name: machineNameSetting(user),
+          agents_layout: agentsLayout(user),
         });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);

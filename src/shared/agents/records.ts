@@ -72,6 +72,33 @@ export interface AgentRecord {
    * rotation), oldest first.
    */
   rotations?: RotationEntry[];
+  /**
+   * The name a person gave it (AG-4b: double-click its tab), shown in the
+   * Agents tab, its tabs, ⌘K and the agent lists; the id never changes.
+   * checkDisplayName says what one may be.
+   */
+  displayName?: string;
+}
+
+/** The longest name a person may give an agent (AG-4b). */
+export const MAX_DISPLAY_NAME = 40;
+
+/**
+ * A name given to an agent, checked (AG-4b): a string, trimmed, at most
+ * MAX_DISPLAY_NAME characters, with no control or format characters (no
+ * newline, no bidi override). Blank (or null) clears it: null. Anything
+ * else throws, saying why.
+ */
+export function checkDisplayName(v: unknown): string | null {
+  if (v === null) return null;
+  if (typeof v !== "string") throw new Error("name must be a string, or null");
+  const name = v.trim();
+  if (!name) return null;
+  if ([...name].length > MAX_DISPLAY_NAME)
+    throw new Error(`name must be at most ${MAX_DISPLAY_NAME} characters`);
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(name))
+    throw new Error("name can't have control characters");
+  return name;
 }
 
 /** What an agent's run came to (den#6). Read locally; never sent. */

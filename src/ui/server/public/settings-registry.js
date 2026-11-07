@@ -814,6 +814,23 @@ export const DEN_SETTINGS = [
 
   // ── Agents ─────────────────────────────────────────────────────────────
   {
+    id: "agents.layout",
+    category: "agents",
+    label: "Agents tab layout",
+    description:
+      "Focus shows one agent, Tabs shows one with a tab for each, Tile shows up to four in a grid. The Agents tab's switch and ⌘1, ⌘2, ⌘3 set it too.",
+    keywords: ["agents", "layout", "focus", "tabs", "tile", "grid", "panes"],
+    scope: "user",
+    control: seg([
+      { value: "focus", label: "Focus" },
+      { value: "tabs", label: "Tabs" },
+      { value: "tile", label: "Tile" },
+    ]),
+    keys: ["agents_layout"],
+    read: (ctx) => ctx.data.agents_layout ?? "focus",
+    write: (v, ctx) => ctx.post({ agents_layout: v }),
+  },
+  {
     id: "agents.runtimes",
     category: "agents",
     label: "Runtimes",

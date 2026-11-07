@@ -23,6 +23,10 @@
  *                                                 first prompt is its
  *                                                 handoff.md; a resume of
  *                                                 one is refused (409 rotated)
+ *   POST /api/workspaces/<ws>/agents/<id>/name    { name: string | null }: the
+ *                                                 name its tab and the lists
+ *                                                 show (AG-4b); the id never
+ *                                                 changes; null or "" clears
  *   POST /api/workspaces/<ws>/agents/<id>/remove  forget a stopped one (Undo:
  *                                                 /api/agents/restore)
  *   POST /api/agents/clear-stopped                { workspaces: [...] }: forget
@@ -74,6 +78,7 @@ import {
   NOT_IN_WORKSPACE,
   pruneStopped,
   removeAgent,
+  renameAgent,
   removeStopped,
   restoreAgents,
   resumeInterrupted,
@@ -104,7 +109,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name))?$/;
 
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 /** A start's body is a few short names. */
@@ -197,6 +202,7 @@ function sendStarted(
       // The host's id: the Agents tab opens its pane by it (?open=<id>).
       sessionId: s.info.ref.id,
       startedAt: s.rec.startedAt,
+      ...(s.rec.displayName ? { displayName: s.rec.displayName } : {}),
     },
     // A resume with nothing to continue yet started fresh (same id).
     ...(s.fresh ? { fresh: true } : {}),
@@ -294,6 +300,7 @@ export async function handleAgentRoutes(
     | "fresh"
     | "relaunch"
     | "remove"
+    | "name"
     | undefined;
 
   if (!action && method === "GET") {
@@ -381,6 +388,19 @@ export async function handleAgentRoutes(
       what = `relaunch ${s.rec.id} from its handoff (${s.why}) in ${ws}`;
       audit(what, s.early ? "exited at once" : undefined);
       sendStarted(res, s);
+    } else if (verb === "name") {
+      const body = await jsonBody(req);
+      if (!("name" in body))
+        throw new AgentError("name is required (null clears it)", {
+          usage: true,
+        });
+      const rec = renameAgent(d, id!, ws, body.name);
+      audit(what);
+      sendJson(res, {
+        ok: true,
+        agent: rec.id,
+        ...(rec.displayName ? { displayName: rec.displayName } : {}),
+      });
     } else if (verb === "remove") {
       const removed = await removeAgent(d, id!, ws);
       audit(what);

@@ -2132,9 +2132,32 @@ agent of the workspaces in view, and their terminals in the browser.
   it, or start it again.
 - **A pane** is the session's terminal: it shows the scrollback, then the
   live output, and your keys go to the session; its size follows the
-  pane. Click more rows to tile up to four (a fifth closes the oldest).
-  The URL holds the open panes (`/agents?open=<id>,<id>`), so a link, a
-  reload or Back reopens them.
+  pane. Up to four are open at once (a fifth closes the oldest). The URL
+  holds the open panes (`/agents?open=<id>,<id>`), so a link, a reload or
+  Back reopens them. The list and the panes fill the window down to the
+  runs dock.
+- **Layouts.** The switch in the page header picks one, or ⌘1, ⌘2, ⌘3:
+  - **Focus** (the default) shows one pane. A click replaces it;
+    Shift-click or ⌘-click adds one alongside.
+  - **Tabs** shows one pane under a strip of tabs. Each tab has the
+    agent's name, then its persona and workspace ("reviewer · north"), and
+    a dot when it is waiting.
+  - **Tile** shows the open panes in a grid: one fills it, two sit side
+    by side, three or four make a 2×2.
+
+  At phone width, Focus and Tile show as Tabs. The choice is yours: it is
+  saved in `config/local/user.yml` as `agents.layout` (`POST /api/settings
+{ agents_layout: "focus" | "tabs" | "tile" | null }`, also in Settings ›
+  Agents). The URL says it too (`&layout=tabs`); a link's layout is used
+  for that page and saves nothing.
+
+- **Rename an agent** by double-clicking its tab: Enter saves, Esc keeps
+  the old name. The name (trimmed, up to 40 characters, no control
+  characters) is stored in the agent's record as `displayName`, and the
+  list, its pane, ⌘K and `agents list --json` show it. The agent's id
+  never changes. Clear the name to go back to the id. The route is `POST
+/api/workspaces/<ws>/agents/<id>/name` (`{ name: string | null }`), for
+  a person only.
 - **Close** (×) detaches, as leaving the page does: the session keeps
   running, and opening it again replays what you missed. **Stop** (an
   agent only) is `agents stop`. **+ Start agent** (or
