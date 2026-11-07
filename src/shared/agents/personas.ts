@@ -15,7 +15,9 @@
  * Den's own keys sit beside them: `runtime` (default den-claude),
  * `standing` (starts with its workspace, §5), `context` (what to read
  * first), `argv` (the generic runtime's template), and `permission_mode`
- * (den-claude's Claude Code permission mode; it checks the value). Any other key (a
+ * (den-claude's Claude Code permission mode; it checks the value), and
+ * `den_hooks` / `den_instructions` (true or false: this persona's
+ * guardrails, guardrails.ts, over its pack's). Any other key (a
  * Claude Code `color`) is ignored. A file without front matter (a pack's
  * README) is not a persona.
  */
@@ -24,6 +26,12 @@ import * as path from "path";
 import * as yaml from "yaml";
 import { WORKSPACE_NAME_RE } from "../agent-actor.js";
 import { enginePath } from "../engine.js";
+import {
+  DEFAULT_PACK_GUARDRAILS,
+  PACK_GUARDRAILS,
+  sharedInstructions,
+  type Guardrails,
+} from "./guardrails.js";
 
 export interface Persona {
   id: string;
@@ -45,6 +53,13 @@ export interface Persona {
   argv?: string[];
   /** `permission_mode`: the runtime's permission mode (den-claude checks it). */
   permissionMode?: string;
+  /** `den_hooks` / `den_instructions` as its front matter sets them. */
+  guardrailsSet?: Partial<Guardrails>;
+  /**
+   * Den's guardrails for it (guardrails.ts), resolved by loadPersonas from
+   * its pack and its own front matter. Absent: none.
+   */
+  guardrails?: Guardrails;
   /** The file it came from. */
   source: string;
 }
@@ -133,6 +148,17 @@ export function parsePersona(text: string, file: string): Persona | null {
   const model = optString(f, "model", file);
   const runtime = optString(f, "runtime", file);
   const permissionMode = optString(f, "permission_mode", file);
+  const guardrailsSet: Partial<Guardrails> = {};
+  for (const [key, k] of [
+    ["den_hooks", "hooks"],
+    ["den_instructions", "instructions"],
+  ] as const) {
+    const v = f[key];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "boolean")
+      throw new Error(`${file}: ${key} must be true or false`);
+    guardrailsSet[k] = v;
+  }
   return {
     id,
     role: optString(f, "role", file) ?? optString(f, "description", file) ?? "",
@@ -144,6 +170,7 @@ export function parsePersona(text: string, file: string): Persona | null {
     context: stringList(f, "context", file),
     ...(argv ? { argv } : {}),
     ...(permissionMode ? { permissionMode } : {}),
+    ...(Object.keys(guardrailsSet).length ? { guardrailsSet } : {}),
     source: file,
   };
 }
@@ -183,23 +210,42 @@ export function resolvePackDirs(packs: string[], distRoot: string): string[] {
   });
 }
 
+/** Each pack's guardrails (guardrails.ts), as agents: configures them. */
+export interface PackGuardrails {
+  /** Den's default pack (default: both on). */
+  defaultPack?: Partial<Guardrails>;
+  /** Each of packDirs, in order (default: both off). */
+  packs?: (Partial<Guardrails> | undefined)[];
+}
+
 /**
  * Every persona: Den's default pack, then each pack in order. A later
- * pack's persona replaces an earlier one of the same id.
+ * pack's persona replaces an earlier one of the same id. Each gets its
+ * guardrails: its own front matter's, else its pack's.
  */
 export function loadPersonas(
   packDirs: string[],
   defaultPack: string = DEFAULT_PACK_DIR,
+  guardrails: PackGuardrails = {},
 ): Map<string, Persona> {
   const all = new Map<string, Persona>();
-  for (const dir of [defaultPack, ...packDirs])
-    for (const p of readPack(dir)) all.set(p.id, p);
+  const packs: [string, Guardrails][] = [
+    [defaultPack, { ...DEFAULT_PACK_GUARDRAILS, ...guardrails.defaultPack }],
+    ...packDirs.map((dir, i): [string, Guardrails] => [
+      dir,
+      { ...PACK_GUARDRAILS, ...guardrails.packs?.[i] },
+    ]),
+  ];
+  for (const [dir, g] of packs)
+    for (const p of readPack(dir))
+      all.set(p.id, { ...p, guardrails: { ...g, ...p.guardrailsSet } });
   return all;
 }
 
 /**
  * The role prompt as an agent gets it: who and where it is, what to read
- * first, then the persona's own prompt. Runtime-neutral; a runtime only
+ * first, the persona's own prompt, then Den's shared instructions
+ * (guardrails/instructions.md) when its guardrails include them. Runtime-neutral; a runtime only
  * chooses how to pass it in.
  */
 export function rolePrompt(
@@ -214,5 +260,8 @@ export function rolePrompt(
   ];
   if (persona.context.length)
     lines.push(`Read first: ${persona.context.join("; ")}.`);
-  return `${lines.join("\n")}\n\n${persona.prompt}`;
+  const shared = persona.guardrails?.instructions
+    ? `\n\n${sharedInstructions()}`
+    : "";
+  return `${lines.join("\n")}\n\n${persona.prompt}${shared}`;
 }

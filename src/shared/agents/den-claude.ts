@@ -15,6 +15,10 @@
  *   `<state>/sessions/**`. It binds a
  *   cooperating agent only: the agent runs as the same OS user, so nothing
  *   stops one that ignores its permission config from reading them.
+ * - Den's guardrail hooks (den#5, guardrails.ts), when the persona's
+ *   guardrails include them: the same settings file carries
+ *   guardrails/hooks.json's `hooks` (PreToolUse on Bash and Read, and Stop),
+ *   alongside any hooks the user has; Den never writes ~/.claude.
  * - Each launch picks a fresh conversation id (--session-id); resume
  *   continues it with --resume <id>, in the same cwd, with the same MCP.
  * - Permission prompts stay in the terminal (approvals: "terminal"):
@@ -41,6 +45,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { configuredRuntimeBin } from "../den-config.js";
 import { rolePrompt } from "./personas.js";
+import { guardrailHooks } from "./guardrails.js";
 import {
   LaunchError,
   mcpConfigJson,
@@ -221,7 +226,8 @@ function common(input: LaunchInput): {
 } {
   const file = mcpConfigPath(input);
   const mode = permissionMode(input);
-  const settings = input.stateDir ? settingsPath(input) : null;
+  const hooks = input.persona.guardrails?.hooks ? guardrailHooks() : null;
+  const settings = input.stateDir || hooks ? settingsPath(input) : null;
   return {
     argv: [
       "--mcp-config",
@@ -241,13 +247,21 @@ function common(input: LaunchInput): {
     ],
     files: {
       [file]: mcpConfigJson(input.mcp),
-      ...(settings && input.stateDir
+      ...(settings
         ? {
             [settings]: `${JSON.stringify(
               {
-                permissions: {
-                  deny: stateDirDenyRules(input.stateDir, input.env?.HOME),
-                },
+                ...(input.stateDir
+                  ? {
+                      permissions: {
+                        deny: stateDirDenyRules(
+                          input.stateDir,
+                          input.env?.HOME,
+                        ),
+                      },
+                    }
+                  : {}),
+                ...(hooks ? { hooks } : {}),
               },
               null,
               2,

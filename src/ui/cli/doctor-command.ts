@@ -15,12 +15,19 @@
  * plain session and each available runtime's agent env (env-probe.ts), and
  * exits 1 when a runtime's scrubEnv name or a credential-shaped variable
  * reaches one. Without the PTY module the probe is unavailable, not failed.
+ *
+ * It also reads the tail of the local .dev-metrics/events.jsonl (bounded,
+ * polling.ts) and warns when one command, run from one place, ran more than
+ * 600 times in an hour: an agent polling it. A warning, never a failure;
+ * nothing is sent.
  */
 import chalk from "chalk";
 import { readDenConfig, type DenConfig } from "../../shared/den-config.js";
 import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { listRecords } from "../../shared/agents/records.js";
+import { eventsFile } from "../../shared/dev-metrics/emit.js";
+import { pollingWarnings } from "../../shared/dev-metrics/polling.js";
 import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
 import { edgeTlsWarnings, tlsStrategyFor } from "../../shared/edge/tls.js";
@@ -219,6 +226,18 @@ export function doctorNotes(cli: string, configured: boolean): string[] {
     : [];
 }
 
+/** The polling-loop warnings for this events file, as doctor prints them. */
+export function pollingLines(file: string, title: string): string[] {
+  const warnings = pollingWarnings(file);
+  if (!warnings.length) return [];
+  return [
+    "",
+    chalk.bold(`${title} doctor: dev-metrics (local, never sent)`),
+    "",
+    ...warnings.map((w) => chalk.yellow(`  ⚠ ${w}`)),
+  ];
+}
+
 function readConfigOrNull(): DenConfig | null {
   try {
     return readDenConfig();
@@ -293,6 +312,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   }
   const rows = doctorRows();
   for (const l of formatDoctor(rows, readBrand().name)) console.log(l);
+  for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {
     for (const l of doctorNotes(

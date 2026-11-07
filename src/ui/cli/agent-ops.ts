@@ -437,20 +437,24 @@ function personas(
   cfg: ResolvedAgentsConfig,
 ): Map<string, Persona> {
   try {
-    return loadPersonas(resolvePackDirs(cfg.personaPacks, d.distRoot()));
+    return loadPersonas(
+      resolvePackDirs(cfg.personaPacks, d.distRoot()),
+      undefined,
+      { defaultPack: cfg.defaultPackGuardrails, packs: cfg.packGuardrails },
+    );
   } catch (e) {
     throw refused((e as Error).message, [], 422);
   }
 }
 
 /** A persona as listed: everything but its role prompt. */
-export type ListedPersona = Omit<Persona, "prompt">;
+export type ListedPersona = Omit<Persona, "prompt" | "guardrailsSet">;
 
 /** Den's default pack, then agents.persona_packs, by id. */
 export function listPersonas(d: AgentsResolved): ListedPersona[] {
   return [...personas(d, agentsConfig(d)).values()]
     .sort((a, b) => a.id.localeCompare(b.id))
-    .map(({ prompt: _p, ...rest }) => rest);
+    .map(({ prompt: _p, guardrailsSet: _g, ...rest }) => rest);
 }
 
 export interface RuntimeChoice {

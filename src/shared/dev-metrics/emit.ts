@@ -19,6 +19,12 @@
  * else). A DSN, in the env or a synced dev-metrics.config, is where to send
  * once opted in; on its own it never sends.
  *
+ * Each line also has `cwd` (den#5): where the command ran, relative to the
+ * distribution root ("." for the root itself), or "outside" for anywhere
+ * else, never an absolute or home path. `<cli> doctor` reads it to spot
+ * polling loops (polling.ts). Like every field, it is sent only when opted
+ * in; the envelope format is unchanged.
+ *
  * Guarantees: never throws, never blocks the caller (the Sentry ship is
  * fire-and-forget, bounded to ~2s). CI=true / DEV_METRICS_DISABLED=1 suppress
  * shipping but still buffer the JSONL locally.
@@ -113,6 +119,29 @@ function commonFields(event: string, root: string): Record<string, string> {
     sha: git(["rev-parse", "--short", "HEAD"], root),
     pins,
   };
+}
+
+/** The JSONL file, under the repo root. */
+export function eventsFile(root: string = repoRoot()): string {
+  return path.join(root, ".dev-metrics", "events.jsonl");
+}
+
+/**
+ * `cwd` for a local line: the path from the root to cwd ("." for the root,
+ * "/"-separated), or "outside" when cwd is not under the root.
+ */
+export function cwdField(root: string, cwd: string = process.cwd()): string {
+  const real = (p: string): string => {
+    try {
+      return fs.realpathSync(p);
+    } catch {
+      return path.resolve(p);
+    }
+  };
+  const rel = path.relative(real(root), real(cwd));
+  if (rel === "") return ".";
+  if (rel.startsWith("..") || path.isAbsolute(rel)) return "outside";
+  return rel.split(path.sep).join("/");
 }
 
 function isoNoMillis(): string {
@@ -334,14 +363,12 @@ export function record(
     for (const [k, v] of Object.entries(fields)) {
       obj[k] = v == null ? "" : String(v);
     }
+    obj.cwd = cwdField(root);
 
     try {
       const dir = path.join(root, ".dev-metrics");
       fs.mkdirSync(dir, { recursive: true });
-      fs.appendFileSync(
-        path.join(dir, "events.jsonl"),
-        JSON.stringify(obj) + "\n",
-      );
+      fs.appendFileSync(eventsFile(root), JSON.stringify(obj) + "\n");
     } catch {
       /* non-writable dir → fail-open */
     }

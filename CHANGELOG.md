@@ -4,6 +4,60 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.7] - unreleased
+
+Agents read slices, wait in the background and hand back plainly (den#5,
+the default-pack guardrails issue). Every persona in Den's default pack
+gets Den's shared instructions and, on Claude Code, Den's hooks, with no
+setup. `doctor` warns about polling loops it sees in the local dev metrics.
+
+### Added
+
+- **Hooks for default-pack agents.** A Claude Code agent from Den's default
+  pack runs with Den's own hooks, in its own `--settings` file (never your
+  `~/.claude`). A `PreToolUse` hook on Bash and Read blocks reading all of
+  a log or a large file into the conversation (`cat`, `less`, `tail` from
+  a line such as `tail +1`, a Read with no limit; a plain `tail` passes) and says to read a slice or use a
+  subagent. It blocks a foreground `sleep`, alone or in an `until`/`while`/
+  `for` loop, and says to run in the background or use a wait primitive.
+  It blocks nothing else.
+- **Shared persona instructions.** Every default-pack persona's role prompt
+  ends with Den's `guardrails/instructions.md`: write plainly, in short
+  sentences; say what every issue or ID is; ask each decision as a numbered
+  yes/no question; no caveat sections; and the hand-back template (URL,
+  machine, branch, what changed, what to click, decisions).
+- **The hand-back check.** `<cli> agents handback-check <file|->` rejects a
+  hand-back with a missing part, an unexplained ID, or a decision that is
+  not a numbered yes/no question, and says what to fix. A `Stop` hook runs
+  the same check on a turn that ends with a `Hand-back` heading, and sends
+  Claude back to fix it once.
+- **doctor warns about polling loops.** It reads the end of the local
+  `.dev-metrics/events.jsonl` (at most 8 MB) and warns when one command,
+  run from one place, ran more than 600 times in an hour:
+  `looks like a polling loop: status in services/api, 1200 calls in an hour (…)`.
+  It is local and sends nothing.
+- **Each dev-metrics line records `cwd`**, relative to the distribution root
+  (`.` at the root, `outside` elsewhere), never an absolute or home path.
+  Like every field, it is sent only when you opt in.
+
+### Metrics (before → after)
+
+- Polling loops a week: 18,600 → under 100 expected, since the hook blocks
+  them. The "after" is counted on the candidate's first week.
+- Incomplete hand-backs: not measured → 0 for default-pack agents (the Stop
+  hook sends them back). The candidate's first run sets the baseline.
+- Hand-backs with an unexplained ID: no baseline → 0 for default-pack
+  agents. The candidate's first run sets the baseline.
+- doctor on a replay of a three-day polling burst: no warning → it warns.
+
+### Migrations
+
+- None needed. To turn the guardrails off for Den's pack, set
+  `agents.default_pack: { hooks: false, instructions: false }`. To turn
+  them on for your own pack, write its `persona_packs` entry as
+  `{ path: <dir>, hooks: true, instructions: true }`. A persona's
+  `den_hooks` / `den_instructions` front matter wins over its pack's.
+
 ## [0.4.6] - unreleased
 
 Den in five minutes, set up by your own agent (ON-2, with ON-4's dry run).

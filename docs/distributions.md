@@ -684,6 +684,18 @@ one is started (see Sessions).
 server, Den's MCP) and answers with one JSON object: see
 [Set up by your agent](#up-doctor-and-mcp-connect).
 
+doctor also reads the end of the local `.dev-metrics/events.jsonl` (at
+most 8 MB of it, however big the file) and warns when one command, run
+from one place, ran more than 600 times in an hour. That is almost always
+an agent polling. It is a warning, never a failure, and nothing is sent
+(see [Dev metrics](#dev-metrics-local-unless-you-opt-in)):
+
+```
+Acme doctor: dev-metrics (local, never sent)
+
+  ⚠ looks like a polling loop: status in services/api, 1200 calls in an hour (2026-11-04T09:00:00Z–2026-11-04T09:59:57Z)
+```
+
 ## den.yml: the product profile
 
 Every runtime name derives from `product.name`. Set only what you want to
@@ -2012,6 +2024,7 @@ server scoped to its workspace.
 <cli> agents resume <id> [-w <ws>]
 <cli> agents personas [--json]
 <cli> agents doctor [-w <ws>] [--json]  # can each runtime run here, and why not
+<cli> agents handback-check <file|->    # is a hand-back complete and plain (see Guardrails)
 <cli> sessions attach <ws>:<id>         # its terminal; ctrl-] detaches
 ```
 
@@ -2215,6 +2228,8 @@ standing: true # starts with its workspace (later slices)
 context: [docs/specs, the design system] # what to read first
 runtime: generic # default den-claude
 permission_mode: plan # den-claude only; default `default`
+den_hooks: false # Den's guardrail hooks for this persona (see Guardrails)
+den_instructions: false # Den's shared instructions for this persona
 argv: ["some-cli", "--model", "{model}", "--mcp-config", "{mcp_config}"]
 ---
 
@@ -2235,6 +2250,100 @@ inside (a Claude Code plugin) is read from there, so a plugin's agents are
 used without converting them. Files without front matter (a README) are
 skipped; two files with one id in a pack, or a pack that isn't a directory,
 are errors naming the file or the key.
+
+### Guardrails: hooks, shared instructions, hand-backs
+
+Every persona in Den's default pack gets two things with no setup: Den's
+**shared persona instructions** and, on den-claude, Den's **hooks**. Both
+are Den's own files, in `src/shared/agents/guardrails/` of the package.
+
+**Shared instructions** (`instructions.md`) are appended to the role prompt
+(den-claude's `--append-system-prompt`; any runtime that takes the role
+prompt gets them). They say:
+
+- write to people plainly, in short sentences;
+- never name an issue or ID without saying what it is;
+- ask each decision as a numbered yes/no question;
+- no caveat sections, and nothing the person doesn't need in order to act;
+- read a slice of a log, or hand it to a subagent; don't poll with `sleep`;
+- end a hand-back with the template below.
+
+**Hooks** (`hooks.json`, a Claude Code settings fragment) go in the agent's
+own settings file, `--settings <stateDir>/agent-files/<id>/settings.json`.
+Den never writes your `~/.claude`; your own hooks still run.
+
+- `PreToolUse` on `Bash|Read` (`pretooluse.mjs`, plain Node, no imports)
+  blocks, with a reason Claude sees (exit 2):
+  - reading all of a log or a large file into the conversation: a `Read`
+    with no `limit`, or `cat`, `less`, or `tail` from a line (`tail +1`,
+    `tail -n +1`), whose output reaches the conversation. A log is `*.log` or `*.log.<N>`, a `.jsonl` under
+    `.dev-metrics/`, or a `.jsonl` under `.claude/projects/` (a transcript).
+    Large is over 256 KB. `cat x.log | grep …`, `cat x.log > y`, a plain
+    `tail x.log` (10 lines) and `tail -n 100 x.log` pass. The reason says to read a slice or hand the
+    file to a subagent.
+  - `sleep` in the foreground, alone or in an `until …; do sleep …; done`,
+    `while` or `for` loop. A Bash call with `run_in_background`, and
+    `sleep … &`, pass. The reason says to run in the background or use a
+    wait primitive.
+  - Nothing else. Quoted text, heredoc bodies and other tools always pass,
+    and a hook that can't read its input lets the call through.
+- `Stop` (`stop-hook.ts`) runs the hand-back check on a turn's last message
+  when it has a `Hand-back` heading. If the check fails, Claude is told what
+  to fix and keeps going (Claude Code's `decision: "block"`). It never
+  blocks twice in a row (`stop_hook_active`), and any other turn ends as
+  usual. Den adds no `SubagentStop` hook: a subagent reports to its parent
+  agent, not to a person.
+
+**The hand-back template**, which the check enforces:
+
+```markdown
+## Hand-back
+
+- URL: <the full link the person opens, with https://>
+- Machine: <the machine it runs on>
+- Branch: <the branch>
+- What changed: <what is different now>
+- What to click: <the steps to see it working>
+- Decisions:
+  1. <a question the person answers yes or no>?
+```
+
+`<cli> agents handback-check <file|-> [--json]` runs the same check on a
+file or stdin: exit 0 when the hand-back passes, 1 with each problem. It
+rejects a hand-back when:
+
+- a part is missing or empty. A part is a line starting with its label and
+  a colon (bold is fine), or a heading that is its label. URL must hold a
+  link (`://`). `Decisions: none` is allowed.
+- an ID is bare. An ID is `#<digits>`, or 1 to 4 capitals, an optional `-`,
+  digits and an optional `.<digits>` (`R12`, `AG-14`, `KB-4.1`). Links,
+  `inline code`, code blocks, and the URL and Branch parts are not checked.
+  An ID is explained (glossed) when
+  1. a parenthetical of two or more words follows it: `#5 (the hooks issue)`;
+  2. a colon or a spaced dash and two or more words follow it:
+     `R12: plain writing`;
+  3. it sits in a parenthetical of IDs only, right after a word:
+     `plain writing (R12)`, `the issues (#5, #6)`;
+  4. or the same ID was explained earlier in the text.
+- a decision isn't a numbered yes/no question: each item must be numbered
+  (`1.` or `1)`), end in `?`, not start with what, which, how, why, when,
+  where or who, and not offer a choice (`or`).
+
+**Turning them off or on.** They are on for Den's default pack and off for
+your own packs. A pack's setting applies to each of its personas; a
+persona's front matter (`den_hooks`, `den_instructions`) wins over it:
+
+```yaml
+agents:
+  default_pack: { hooks: false } # Den's pack: no hooks, instructions kept
+  persona_packs:
+    - personas # your pack: neither
+    - { path: more-personas, hooks: true, instructions: true } # both
+```
+
+A persona of yours that replaces a default one (same id) takes your
+pack's setting, not Den's pack's. Anything but `true` or `false`, or an
+unknown key, is an error naming the key.
 
 ### Runtimes
 
@@ -2417,6 +2526,11 @@ Nothing is sent anywhere unless the engineer opts in, per machine:
 metrics:
   share: true
 ```
+
+Each line also records `cwd`: where the command ran, relative to the
+distribution root (`.` for the root), or `outside` for anywhere else. It is
+never an absolute or home path. [`<cli> doctor`](#doctor) uses it to warn
+about polling loops.
 
 Only the boolean `true` counts. With it, and a Sentry DSN in
 `DEV_METRICS_SENTRY_DSN` (or a synced `dev-metrics.config`), each line is

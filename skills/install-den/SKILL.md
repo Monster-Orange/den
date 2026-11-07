@@ -65,8 +65,8 @@ person (`ask`, sometimes with `choices`).
      in `package.json`. `--sidecar` asks for this explicitly, and fails if the repo has its own manifest.
    - If you can see which port the app listens on, add `--health http://localhost:<port>/`. Den then checks that it
      answers.
-2. If the answer has `ask` and `choices`, Den couldn't tell how the repo starts, and it wrote nothing. Ask the person
-   **one** question: the `ask` text, with the choices numbered. Then re-run with their answer:
+2. If the answer has `ask`, Den couldn't tell how the repo starts, and it wrote nothing. Ask the person **one**
+   question: the `ask` text, with any `choices` numbered (there may be none). Then re-run with their answer:
    `./bin/<name> repo add <repo> --run "<their command>" --json`.
 3. The answer names the repo (`repo`), the workspace it joined (`workspace`) and where its manifest is (`manifest`).
    A workspace is Den's name for a set of repos that run together. The first one is called `default`.

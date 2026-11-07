@@ -19,6 +19,7 @@ import type { OrgConfig } from "./org.js";
 import { validateOrgSources, type WorkOrgsConfig } from "./org-sources.js";
 import { ConfigError, isConfigError } from "./config-error.js";
 import { validateCatalog, type CatalogEntry } from "./agents/catalog.js";
+import type { Guardrails } from "./agents/guardrails.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
 
 import { product } from "./product.js";
@@ -833,9 +834,16 @@ export interface AgentsConfig {
   /**
    * Persona packs (AG-2a): directories of persona files, relative to the
    * distribution root. Den's default pack is always read first; a pack's
-   * persona replaces one of the same id.
+   * persona replaces one of the same id. An entry may be a mapping,
+   * `{ path, hooks, instructions }`, to turn Den's guardrails on for that
+   * pack (agents/guardrails.ts; off for a distribution's pack by default).
    */
-  persona_packs?: string[];
+  persona_packs?: (string | PersonaPackConfig)[];
+  /**
+   * Den's default pack's guardrails, `{ hooks, instructions }` (both on
+   * by default): false turns that one off for every persona of the pack.
+   */
+  default_pack?: Partial<Guardrails>;
   /**
    * More runtime catalog entries (AG-0.5, agents/catalog.ts): a vendor CLI
    * Den doesn't ship, with the same fields and checks as a built-in one.
@@ -849,6 +857,13 @@ export interface AgentsConfig {
   [agentId: string]: unknown;
 }
 
+/** A `persona_packs` entry written as a mapping. */
+export interface PersonaPackConfig {
+  path: string;
+  hooks?: boolean;
+  instructions?: boolean;
+}
+
 export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
 
 /** The keys of `agents:` that are not an agent id. */
@@ -856,6 +871,7 @@ export const AGENTS_RESERVED_KEYS = [
   "max_concurrent",
   "persona_packs",
   "runtime_catalog",
+  "default_pack",
 ];
 
 /** One agent's own block, `agents.<id>`. */
@@ -869,6 +885,10 @@ export interface ResolvedAgentsConfig {
   maxConcurrent: number;
   /** As configured (relative to the distribution root). */
   personaPacks: string[];
+  /** Each pack's guardrails as configured, by index of personaPacks. */
+  packGuardrails?: (Partial<Guardrails> | undefined)[];
+  /** agents.default_pack as configured. */
+  defaultPackGuardrails?: Partial<Guardrails>;
   /** `agents.<id>` blocks, by agent id. */
   agents: Record<string, AgentGrantsConfig>;
   /** The distribution's runtime catalog entries (AG-0.5), checked. */
@@ -880,6 +900,36 @@ const AGENT_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 const isMapping = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * `{ hooks, instructions }` (agents.default_pack, or a persona_packs
+ * mapping with its `path`): each true or false; any other key throws.
+ */
+function guardrailsBlock(
+  v: unknown,
+  where: string,
+  withPath: boolean,
+): Partial<Guardrails> {
+  if (v === undefined || v === null) return {};
+  if (!isMapping(v))
+    throw new Error(
+      `${where}: must be a mapping ({ hooks: true|false, instructions: true|false })`,
+    );
+  const out: Partial<Guardrails> = {};
+  for (const [k, x] of Object.entries(v)) {
+    if (withPath && k === "path") continue;
+    if (k !== "hooks" && k !== "instructions")
+      throw new Error(
+        `${where}.${k}: unknown key (takes ${withPath ? "path, " : ""}hooks, instructions)`,
+      );
+    if (typeof x !== "boolean")
+      throw new Error(
+        `${where}.${k}: must be true or false (got ${JSON.stringify(x)})`,
+      );
+    out[k] = x;
+  }
+  return out;
+}
 
 /**
  * The effective agents config. Anything malformed throws, naming the key:
@@ -894,6 +944,12 @@ export function readAgentsConfig(
   const out: ResolvedAgentsConfig = {
     maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
     personaPacks: [],
+    packGuardrails: [],
+    defaultPackGuardrails: guardrailsBlock(
+      raw.default_pack,
+      "agents.default_pack",
+      false,
+    ),
     agents: {},
     runtimeCatalog: validateCatalog(
       raw.runtime_catalog,
@@ -915,19 +971,24 @@ export function readAgentsConfig(
         `agents.persona_packs: must be a list of paths (got ${JSON.stringify(packs)})`,
       );
     packs.forEach((p, i) => {
-      if (typeof p !== "string" || !p.trim())
+      const where = `agents.persona_packs[${i}]`;
+      const dir = isMapping(p) ? p.path : p;
+      if (typeof dir !== "string" || !dir.trim())
         throw new Error(
-          `agents.persona_packs[${i}]: must be a non-empty path (got ${JSON.stringify(p)})`,
+          `${where}: must be a non-empty path or { path, hooks, instructions } (got ${JSON.stringify(p)})`,
         );
+      out.personaPacks.push(dir);
+      out.packGuardrails!.push(
+        isMapping(p) ? guardrailsBlock(p, where, true) : undefined,
+      );
     });
-    out.personaPacks = packs as string[];
   }
   for (const [id, block] of Object.entries(raw)) {
     if (AGENTS_RESERVED_KEYS.includes(id)) continue;
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(
-        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, ` +
+        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, default_pack, ` +
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))

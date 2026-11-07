@@ -93,11 +93,23 @@ export function playwrightCommand(...args: string[]): EngineCommand {
  * or with DEN_USE_DIST=1. Mirrors the web server's resolveServerEntrypoint.
  */
 export function cliEntrypoint(engine: string = getEngineRoot()): EngineCommand {
-  const built = path.join(engine, "dist/src/ui/cli/index.js");
+  return scriptEntrypoint("src/ui/cli/index.ts", engine);
+}
+
+/**
+ * How to run one of Den's TypeScript entry points (`src/….ts`, relative to
+ * the engine root) as a node process: cliEntrypoint's rules, for any
+ * script (an agent's hook, guardrails/stop-hook.ts).
+ */
+export function scriptEntrypoint(
+  rel: string,
+  engine: string = getEngineRoot(),
+): EngineCommand {
+  const built = path.join(engine, "dist", rel.replace(/\.ts$/, ".js"));
   if (process.env.DEN_USE_DIST === "1" && fs.existsSync(built))
     return { command: process.execPath, args: [built] };
   const loader = engineModuleFile("tsx/dist/loader.mjs", engine);
-  const src = path.join(engine, "src/ui/cli/index.ts");
+  const src = path.join(engine, rel);
   if (loader && fs.existsSync(src))
     return {
       command: process.execPath,
