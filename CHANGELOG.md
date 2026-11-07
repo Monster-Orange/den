@@ -18,6 +18,12 @@ config and manifest changes a distribution must make to move to it under
   picking a workspace does it. The "CLI default" tag stays on its row, and
   Local Dev keeps its "Make CLI default" button, to set it without
   changing what pages show. Each workspace row's tooltip says so.
+- **Picking the workspace already in view makes it the CLI default** when
+  it isn't one (after Local Dev's "Make CLI default" or `<cli> workspace
+  focus` moved it). The view stays as it is.
+- **Pages whose address names a workspace follow the pick.** Workspaces'
+  detail pane and breadcrumb now show the workspace the top bar picked,
+  not the one in the old `?ws=`.
 
 ### Migrations
 

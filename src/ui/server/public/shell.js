@@ -1748,8 +1748,12 @@
         tag: it.focused ? t("ws.focus") : null,
         title: it.title || null,
         onSelect: function () {
-          if (!it.checked && typeof model.onSelect === "function")
-            model.onSelect(it.value, model.focus || null);
+          if (typeof model.onSelect !== "function") return;
+          // The workspace in view still becomes the CLI default when it
+          // isn't one; picking what is both already does nothing.
+          if (it.checked && (it.value === "all" || it.value === model.focus))
+            return;
+          model.onSelect(it.value, model.focus || null, !!it.checked);
         },
       });
     });

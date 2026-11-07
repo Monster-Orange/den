@@ -852,14 +852,15 @@ function pageScope(scope, data) {
 }
 
 /**
- * On the Graph page a choice replaces ?ws= (All active drops it, a
- * workspace sets it), so the reload shows the choice rather than the old
- * ?ws=, which would win over it. The history entry is replaced, not
- * pushed: Back does not return to a view the picker has left.
+ * A choice replaces ?ws= (All active drops it, a workspace sets it) on the
+ * Graph and Agents pages, and on any page whose URL names a workspace
+ * (Workspaces' detail pane), so the reload shows the choice rather than
+ * the old ?ws=. The history entry is replaced, not pushed: Back does not
+ * return to a view the picker has left.
  */
 function followScopeInUrl(value) {
-  if (!WS_URL_PAGES.has(location.pathname)) return;
   const u = new URL(location.href);
+  if (!WS_URL_PAGES.has(location.pathname) && !u.searchParams.has("ws")) return;
   if (value === "all") u.searchParams.delete("ws");
   else u.searchParams.set("ws", value);
   history.replaceState(history.state, "", u.pathname + u.search + u.hash);
@@ -869,11 +870,16 @@ function followScopeInUrl(value) {
  * A workspace: first the CLI default (workspaces.yml), then the view. When
  * the CLI default can't be set, nothing changes and the error shows. "All
  * active": the view only. POST /api/scope stores the view (user.yml
- * `view`), then the page reloads to show it whole. No service, container,
- * daemon or route changes.
+ * `view`), then the page reloads to show it whole. The workspace already
+ * in view (`inView`): the CLI default only, the view untouched. No
+ * service, container, daemon or route changes.
  */
-async function _switchScope(value, focus) {
+async function _switchScope(value, focus, inView) {
   if (value !== "all" && value !== focus && !(await _setFocus(value))) return;
+  if (inView) {
+    location.reload();
+    return;
+  }
   try {
     await window.denShell.api("POST", "/api/scope", { scope: value });
   } catch (err) {

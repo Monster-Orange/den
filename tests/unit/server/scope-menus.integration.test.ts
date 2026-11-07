@@ -39,10 +39,22 @@ function write(file: string, content: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
 }
+/** A change from a page of this server: its Origin and the loopback CSRF token. */
+async function pageHeaders(): Promise<Record<string, string>> {
+  const r = await request("GET", "/api/session");
+  const csrf = (JSON.parse(r.body) as { csrf?: string }).csrf ?? "";
+  return { Origin: `http://127.0.0.1:${port}`, "X-Den-CSRF": csrf };
+}
+/** A POST as the page sends it; throws unless it is 2xx. */
+async function post(p: string, body: unknown): Promise<void> {
+  const r = await request("POST", p, body, await pageHeaders());
+  if (r.status >= 300) throw new Error(`POST ${p}: ${r.status}`);
+}
 function request(
   method: string,
   p: string,
   body?: unknown,
+  extra: Record<string, string> = {},
 ): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? undefined : JSON.stringify(body);
@@ -54,12 +66,15 @@ function request(
         method,
         timeout: 15_000,
         agent: false,
-        headers: data
-          ? {
-              "Content-Type": "application/json",
-              "Content-Length": Buffer.byteLength(data),
-            }
-          : {},
+        headers: {
+          ...extra,
+          ...(data
+            ? {
+                "Content-Type": "application/json",
+                "Content-Length": String(Buffer.byteLength(data)),
+              }
+            : {}),
+        },
       },
       (res) => {
         let out = "";
@@ -292,8 +307,60 @@ describe("Workspace ▾ (R4)", () => {
     );
     await p.context().close();
     // Restore.
-    await request("POST", "/api/workspaces", { name: "ws-a", action: "focus" });
-    await request("POST", "/api/scope", { scope: "all" });
+    await post("/api/workspaces", { name: "ws-a", action: "focus" });
+    await post("/api/scope", { scope: "all" });
+  }, 60_000);
+  it("re-picking the workspace in view makes it the CLI default when it isn't (the view stays)", async () => {
+    if (!browser) return;
+    await post("/api/scope", { scope: "ws-b" });
+    await post("/api/workspaces", { name: "ws-a", action: "focus" });
+    const { p, writes } = await open("/services");
+    await p.waitForSelector("#ws-pill:not([hidden])");
+    expect(await p.textContent("#ws-pill")).toBe("Workspace ws-b ▾");
+    await p.click("#ws-pill");
+    await Promise.all([
+      p.waitForNavigation(),
+      p.click('.den-pop .den-mi:has-text("ws-b")'),
+    ]);
+    expect(writes).toEqual([
+      'POST /api/workspaces {"name":"ws-b","action":"focus"}',
+    ]);
+    expect(await getJson("/api/scope")).toMatchObject({
+      scope: "ws-b",
+      focus: "ws-b",
+    });
+    // Already both: picking it again sends nothing.
+    writes.length = 0;
+    await p.waitForSelector("#ws-pill:not([hidden])");
+    await p.click("#ws-pill");
+    await p.click('.den-pop .den-mi:has-text("ws-b")');
+    await p.waitForTimeout(300);
+    expect(writes).toEqual([]);
+    await p.context().close();
+    await post("/api/workspaces", { name: "ws-a", action: "focus" });
+    await post("/api/scope", { scope: "all" });
+  }, 60_000);
+
+  it("a page whose URL names a workspace (?ws=) follows the pick, so Workspaces never disagrees with the top bar", async () => {
+    if (!browser) return;
+    const { p } = await open("/local-dev?ws=ws-a");
+    await p.waitForSelector("#ws-pill:not([hidden])");
+    await p.click("#ws-pill");
+    await Promise.all([
+      p.waitForNavigation(),
+      p.click('.den-pop .den-mi:has-text("ws-b")'),
+    ]);
+    expect(new URL(p.url()).searchParams.get("ws")).toBe("ws-b");
+    await p.waitForSelector("#ws-pill:not([hidden])");
+    await p.click("#ws-pill");
+    await Promise.all([
+      p.waitForNavigation(),
+      p.click('.den-pop .den-mi:has-text("All active")'),
+    ]);
+    expect(new URL(p.url()).searchParams.has("ws")).toBe(false);
+    await p.context().close();
+    await post("/api/workspaces", { name: "ws-a", action: "focus" });
+    await post("/api/scope", { scope: "all" });
   }, 60_000);
 });
 
