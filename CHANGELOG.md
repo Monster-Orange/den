@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.8] - unreleased
+## [0.4.8] - 2026-11-07
 
 Stopped agents stay in the list, and come back where they were (AG-14, the
 stopped-agents slice). Den also counts what each agent used and what it
