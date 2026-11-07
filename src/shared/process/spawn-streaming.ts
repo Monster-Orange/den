@@ -86,6 +86,10 @@ export function spawnDaemon(
   // Stamp the log so the tail starts reading from a clean boundary.
   const ts = new Date().toISOString();
   fs.appendFileSync(logPath, `\n\n─── ${product().cli} start ${ts} ───\n`);
+  // Where this run's output starts. The tail reads from here, not from "the
+  // end when tail opened": a fast command (a refused sudo, a typo) can write
+  // and exit before tail starts, and `-n 0` would drop those lines.
+  const startOffset = fs.statSync(logPath).size;
 
   // Open the log fd in the parent so we can hand it to the child.
   // MUST stay "a" (O_APPEND): rotation truncates this file in place, and only
@@ -120,9 +124,10 @@ export function spawnDaemon(
   fs.closeSync(logFd); // parent closes its copy; child keeps its own fd
 
   // Tail the log for streaming back to the caller.
-  // -F follows by name (handles log rotation). -n 0 shows only new lines written
-  // after tail started (we already stamped the marker above).
-  const tailProc = spawn("tail", ["-F", "-n", "0", logPath], {
+  // -F follows by name (handles log rotation). -c +N starts at this run's
+  // first byte (just after the stamp), so nothing the service wrote before
+  // tail opened the file is lost.
+  const tailProc = spawn("tail", ["-F", "-c", `+${startOffset + 1}`, logPath], {
     stdio: ["ignore", "pipe", "ignore"],
   });
 

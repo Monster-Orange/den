@@ -17,11 +17,13 @@ jest.mock("fs", () => ({
     openSync: jest.fn(() => 3),
     closeSync: jest.fn(),
     appendFileSync: jest.fn(),
+    statSync: jest.fn(() => ({ size: 41 })),
   },
   mkdirSync: jest.fn(),
   openSync: jest.fn(() => 3),
   closeSync: jest.fn(),
   appendFileSync: jest.fn(),
+  statSync: jest.fn(() => ({ size: 41 })),
 }));
 
 import { spawn } from "child_process";
@@ -295,7 +297,8 @@ describe("spawnDaemon", () => {
     expect(mockSpawn).toHaveBeenNthCalledWith(
       2,
       "tail",
-      ["-F", "-n", "0", "/tmp/test.log"],
+      // From this run's first byte (log size after the stamp, plus one).
+      ["-F", "-c", "+42", "/tmp/test.log"],
       expect.objectContaining({ stdio: ["ignore", "pipe", "ignore"] }),
     );
   });

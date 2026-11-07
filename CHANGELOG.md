@@ -261,6 +261,12 @@ through Den's MCP (MCP-2).
 
 ### Fixed
 
+- **A service's first lines reach the page.** A started service writes to
+  its log, and Den tails that log back to the page. The tail started at the
+  log's end, so a command that wrote and exited before the tail opened the
+  file (on Linux, a refused sudo) showed nothing, and the page never asked
+  for the admin password. The tail now reads from the start of this run.
+
 - **An agent's terminal uses the pane's width.** A session has one PTY
   size, and the last viewer to resize it won: a second, narrower browser
   (or a hidden tab) left the TUI wrapping at its width in every other
