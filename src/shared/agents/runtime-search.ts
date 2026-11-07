@@ -5,10 +5,13 @@
  * Claude Code's native installer puts `claude`.
  *
  * The search, first match wins:
+ *   0. workspace    `<ws>.agents.runtimes.<id>.bin` in
+ *                   config/local/workspaces.yml (AG-0.5), for an agent of
+ *                   that workspace;
  *   1. setting      `agents.runtimes.<id>.bin` in config/local/user.yml
  *                   (per machine, so never in the distribution's config):
- *                   an absolute path to an executable file; a bad one is
- *                   refused with its reason, never skipped.
+ *                   an absolute path to an executable file; a bad one (at
+ *                   either scope) is refused with its reason, never skipped.
  *   2. login-shell  the login shell's PATH (`$SHELL -lc`), resolved once
  *                   at server start, async, under a 3-second timeout; on
  *                   any failure it is left out (the current PATH remains).
@@ -18,6 +21,11 @@
  *                   /opt/homebrew/bin, /usr/local/bin and npm's global
  *                   bin, derived from npm_config_prefix and node's own
  *                   directory, never by running npm).
+ *   5. interactive-shell  only when a runtime is still missing: the
+ *                   interactive login shell's PATH (`$SHELL -ilc`, where
+ *                   some people set PATH in .zshrc/.bashrc), asked once per
+ *                   process with stdin closed under the same 3-second
+ *                   timeout, and kept (ensureInteractivePath).
  *
  * Sessions and agents Den starts get the same directories on their PATH
  * (sessionPath), so the runtime's own tools are found too.
@@ -32,7 +40,13 @@ import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
-export type BinSource = "setting" | "login-shell" | "well-known" | "PATH";
+export type BinSource =
+  | "workspace"
+  | "setting"
+  | "login-shell"
+  | "well-known"
+  | "PATH"
+  | "interactive-shell";
 
 /** The shell asked for the login PATH instead of $SHELL; "off" for none. */
 export const LOGIN_SHELL_ENV = "DEN_LOGIN_SHELL";
@@ -52,7 +66,7 @@ export interface RuntimeFind {
 
 export interface SearchDir {
   dir: string;
-  source: Exclude<BinSource, "setting">;
+  source: Exclude<BinSource, "setting" | "workspace">;
 }
 
 export interface Located {
@@ -96,6 +110,8 @@ const END = "__DEN_PATH_END__";
 export interface LoginPathOptions {
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
+  /** The shell's flags: "-lc" (a login shell), "-ilc" (interactive too). */
+  flags?: "-lc" | "-ilc";
 }
 
 /**
@@ -127,10 +143,14 @@ export function resolveLoginPath(
     };
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(shell, ["-lc", `printf '${BEGIN}%s${END}' "$PATH"`], {
-        env,
-        stdio: ["ignore", "pipe", "ignore"],
-      });
+      child = spawn(
+        shell,
+        [o.flags ?? "-lc", `printf '${BEGIN}%s${END}' "$PATH"`],
+        {
+          env,
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      );
     } catch {
       resolve(undefined);
       return;
@@ -165,6 +185,38 @@ export function resolveLoginPath(
 export async function initLoginPath(o: LoginPathOptions = {}): Promise<void> {
   const p = await resolveLoginPath(o);
   if (p) setLoginPath(p);
+}
+
+// ── the interactive shell's PATH (the fallback) ─────────────────────────────
+
+let interactiveDirs: string[] | null = null;
+let interactiveAsked: Promise<void> | null = null;
+
+/**
+ * Ask the interactive login shell (`$SHELL -ilc`) for its PATH, once per
+ * process (stdin closed, the same timeout), and keep its directories as
+ * the last place a runtime is looked for. Only for a runtime still missing
+ * after the login PATH and the install directories; a second call waits
+ * on (or returns) the first. Never throws.
+ */
+export function ensureInteractivePath(
+  o: Omit<LoginPathOptions, "flags"> = {},
+): Promise<void> {
+  interactiveAsked ??= resolveLoginPath({ ...o, flags: "-ilc" }).then((p) => {
+    if (p) interactiveDirs = absoluteDirs(p);
+  });
+  return interactiveAsked;
+}
+
+/** Whether the interactive shell was asked already (the answer is kept). */
+export function interactivePathAsked(): boolean {
+  return interactiveAsked !== null;
+}
+
+/** Forget the interactive shell's PATH and that it was asked (tests). */
+export function resetInteractivePath(): void {
+  interactiveDirs = null;
+  interactiveAsked = null;
 }
 
 // ── the directories ─────────────────────────────────────────────────────────
@@ -213,7 +265,10 @@ export function wellKnownDirs(
     : [];
 }
 
-/** Where a runtime is looked for, in order: login shell, PATH, well-known. */
+/**
+ * Where a runtime is looked for, in order: login shell, PATH, well-known,
+ * then (once asked) the interactive shell's PATH.
+ */
 export function searchDirs(
   find: RuntimeFind | undefined,
   env: NodeJS.ProcessEnv,
@@ -226,6 +281,7 @@ export function searchDirs(
   add(loginDirs ?? [], "login-shell");
   add(absoluteDirs(env.PATH ?? ""), "PATH");
   add(wellKnownDirs(find, env), "well-known");
+  add(interactiveDirs ?? [], "interactive-shell");
   return out;
 }
 
@@ -248,8 +304,8 @@ export const binSettingKey = (id: string) => `agents.runtimes.${id}.bin`;
 export function checkBinSetting(
   id: string,
   value: unknown,
+  key: string = binSettingKey(id),
 ): { path: string } | { why: string } {
-  const key = binSettingKey(id);
   if (
     value &&
     typeof value === "object" &&
@@ -268,10 +324,18 @@ export function checkBinSetting(
   return { path: p };
 }
 
+/** A path someone set: where (global or the workspace's) and its key. */
+export interface BinSetting {
+  value: unknown;
+  source: "setting" | "workspace";
+  /** The key it is under, for a refusal ("agents.runtimes.codex.bin"). */
+  key?: string;
+}
+
 /**
  * Find runtime `id`'s CLI: the setting when there is one (refused with its
  * reason when bad), else the first of `find.bins` in searchDirs. Runs
- * nothing.
+ * nothing. `setting` is a value (global, as before) or a BinSetting.
  */
 export function locateRuntime(
   id: string,
@@ -279,11 +343,17 @@ export function locateRuntime(
   env: NodeJS.ProcessEnv,
   setting?: unknown,
 ): Located {
-  if (setting !== undefined && setting !== null) {
-    const c = checkBinSetting(id, setting);
+  const set: BinSetting | null =
+    setting === undefined || setting === null
+      ? null
+      : isBinSetting(setting)
+        ? setting
+        : { value: setting, source: "setting" };
+  if (set && set.value !== undefined && set.value !== null) {
+    const c = checkBinSetting(id, set.value, set.key);
     return "path" in c
-      ? { available: true, path: c.path, source: "setting", searched: [] }
-      : { available: false, why: c.why, source: "setting", searched: [] };
+      ? { available: true, path: c.path, source: set.source, searched: [] }
+      : { available: false, why: c.why, source: set.source, searched: [] };
   }
   const dirs = searchDirs(find, env);
   for (const { dir, source } of dirs)
@@ -302,6 +372,17 @@ export function locateRuntime(
     why: `${find.bins.join(" or ")} not found (searched ${dirs.length} ${dirs.length === 1 ? "directory" : "directories"})`,
     searched: dirs.map((d) => d.dir),
   };
+}
+
+function isBinSetting(v: unknown): v is BinSetting {
+  return (
+    !!v &&
+    typeof v === "object" &&
+    "source" in v &&
+    "value" in v &&
+    ((v as BinSetting).source === "setting" ||
+      (v as BinSetting).source === "workspace")
+  );
 }
 
 /**
@@ -408,6 +489,52 @@ export function runtimeVersion(
   });
   versions.set(key, p);
   return p;
+}
+
+/**
+ * Run `<bin> <args>` (stdin closed, under a timeout, never cached) and
+ * return what it printed and whether it exited 0: to check a path someone
+ * sets is the runtime it claims to be. Never throws.
+ */
+export function versionOutput(
+  bin: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  timeoutMs: number = VERSION_TIMEOUT_MS,
+): Promise<{ ok: boolean; out: string }> {
+  return new Promise((resolve) => {
+    let out = "";
+    let done = false;
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve({ ok, out });
+    };
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(bin, [...args], { env, stdio: ["ignore", "pipe", "pipe"] });
+    } catch {
+      resolve({ ok: false, out: "" });
+      return;
+    }
+    const timer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* gone */
+      }
+      finish(false);
+    }, timeoutMs);
+    timer.unref?.();
+    const take = (d: Buffer) => {
+      if (out.length < 4096) out += d.toString("utf-8");
+    };
+    child.stdout?.on("data", take);
+    child.stderr?.on("data", take);
+    child.on("error", () => finish(false));
+    child.on("close", (code) => finish(code === 0));
+  });
 }
 
 /** Forget every version asked (tests). */

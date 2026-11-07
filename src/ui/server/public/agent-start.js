@@ -13,6 +13,11 @@
  * Start is disabled and the line says why and how to fix it (install it,
  * or set agents.runtimes.<id>.bin in the user.yml it names, or run
  * `<cli> agents doctor`). Nothing fails only after Start.
+ *
+ * AG-0.5: the runtimes come installed first (the server's order). One
+ * that runs as its own CLI, without Den's tools yet, says "Den tools:
+ * coming"; one not installed is disabled; generic is startable only for a
+ * persona with an argv template. Nothing is offered that can't start.
  */
 
 function escHtml(s) {
@@ -53,10 +58,28 @@ export function defaultRuntimeOf(personas, runtimes, personaId) {
   return (runtimes ?? []).find((r) => r.default)?.id ?? "";
 }
 
+/** A catalog runtime the search didn't find (not a path someone set). */
+const notFound = (r) =>
+  !r.available &&
+  r.denTools !== undefined &&
+  r.source !== "setting" &&
+  r.source !== "workspace";
+
+/** Why runtime `r` can't start for persona `personaId`, or "" when it can. */
+export function cantStart(personas, r, personaId, t) {
+  if (!r.available) return r.why || t("ag.unavailable");
+  // generic runs the persona's own argv: none, nothing to run.
+  if (r.id === "generic") {
+    const p = (personas ?? []).find((x) => x.id === personaId);
+    if (!p?.argv?.length) return t("ag.rt.needsArgv");
+  }
+  return "";
+}
+
 /**
  * The runtime select's options. The first ("" = the persona's) reads
  * "<name> (persona default)"; one that can't run here is disabled and
- * says why.
+ * says why; one without Den's tools yet says so.
  */
 export function runtimeOptions(personas, runtimes, personaId, t) {
   const name = runtimeName(
@@ -69,12 +92,18 @@ export function runtimeOptions(personas, runtimes, personaId, t) {
     (runtimes ?? [])
       .map((r) => {
         const label = runtimeName(runtimes, r.id);
-        return r.available
-          ? `<option value="${escHtml(r.id)}">${escHtml(
-              r.version ? `${label} · ${r.version}` : label,
+        const no = cantStart(personas, r, personaId, t);
+        const parts = [
+          label,
+          r.version,
+          r.denTools === false ? t("ag.rt.denTools") : "",
+        ];
+        return no
+          ? `<option value="${escHtml(r.id)}" disabled>${escHtml(
+              `${label} — ${notFound(r) ? t("ag.rt.notInstalled") : no}`,
             )}</option>`
-          : `<option value="${escHtml(r.id)}" disabled>${escHtml(
-              `${label} — ${r.why || t("ag.unavailable")}`,
+          : `<option value="${escHtml(r.id)}">${escHtml(
+              parts.filter(Boolean).join(" · "),
             )}</option>`;
       })
       .join("")
@@ -103,6 +132,13 @@ export function readiness(data, personaId, runtimeId, t) {
   const name = runtimeName(runtimes, r.id);
   const mono = (x) => `<span class="mono">${escHtml(x)}</span>`;
   if (r.available) {
+    const no = cantStart(personas, r, personaId, t);
+    if (no)
+      return {
+        ok: false,
+        tone: "warn",
+        html: escHtml(t("ag.rt.refused", { name, why: no })),
+      };
     if (!r.path) return { ok: true, tone: "none", html: "" };
     return {
       ok: true,
@@ -114,7 +150,10 @@ export function readiness(data, personaId, runtimeId, t) {
             : t("ag.rt.readyNoVer", { name }),
         ) +
         " " +
-        mono(r.path),
+        mono(r.path) +
+        (r.denTools === false
+          ? ` <span class="tagx" data-den-tools="coming">${escHtml(t("ag.rt.denTools"))}</span> ${escHtml(t("ag.rt.ownCli"))}`
+          : ""),
     };
   }
   const file = data?.userConfig || "config/local/user.yml";

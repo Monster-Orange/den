@@ -101,6 +101,11 @@ export async function startAgentsPageServer(
     elevatedUp?: boolean;
     /** config/local/user.yml's content (agents.runtimes.<id>.bin). */
     userYml?: string;
+    /**
+     * More fake CLIs on PATH (AG-0.5's catalog), name to the line each
+     * prints for --version; any other run is recorded and fails.
+     */
+    bins?: Record<string, string>;
   } = {},
 ): Promise<AgentsPageServer> {
   const tmp = fs.realpathSync(
@@ -198,6 +203,12 @@ export async function startAgentsPageServer(
   // recorded and fails. runtime "missing": no claude anywhere it looks.
   if (opts.runtime !== "missing")
     write(path.join(bin, "claude"), CLAUDE_SHIM(ran), 0o755);
+  for (const [name, version] of Object.entries(opts.bins ?? {}))
+    write(
+      path.join(bin, name),
+      `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${version}"; exit 0; fi\necho "$@" >> "${ran}"\nexit 1\n`,
+      0o755,
+    );
 
   const home = path.join(tmp, "home");
   const stateDir = path.join(home, ".acme");
@@ -215,12 +226,10 @@ export async function startAgentsPageServer(
   const port = await freePort();
   const env: NodeJS.ProcessEnv = {
     HOME: home,
-    // "missing": never this machine's own PATH (it may hold a real
-    // claude), only the system's; else the shims come first.
-    PATH:
-      opts.runtime === "missing"
-        ? `${bin}${path.delimiter}/usr/bin:/bin`
-        : `${bin}${path.delimiter}${process.env.PATH ?? "/usr/bin:/bin"}`,
+    // Never this machine's own PATH (it may hold a real claude, codex,
+    // gemini or grok), only the system's, after the shims ("missing": no
+    // claude shim).
+    PATH: `${bin}${path.delimiter}/usr/bin:/bin`,
     // AG-0.1: no login shell here, and no install directory of this
     // machine's (tests/setup.ts sets the same for in-process tests).
     DEN_LOGIN_SHELL: "off",

@@ -1,9 +1,17 @@
 /**
  * The Workspaces page's Agents section (AG-4a, AG spec §5c), its routes:
  *
- *   GET  /api/personas                            personas and runtimes (each
+ *   GET  /api/personas[?workspace=<ws>]           personas and runtimes (each
  *                                                 with its path, where it came
- *                                                 from and its version: AG-0.2)
+ *                                                 from and its version: AG-0.2;
+ *                                                 for <ws>, its own paths win)
+ *   GET  /api/agents/runtimes[?workspace=<ws>]    the runtime catalog as
+ *                                                 Settings › Agents lists it
+ *   POST /api/agents/runtimes/<id>/path           { scope: global|workspace,
+ *                                                 workspace?, bin: path|null }:
+ *                                                 runs its version command and
+ *                                                 refuses a path that isn't
+ *                                                 that runtime (AG-0.5)
  *   GET  /api/workspaces/<ws>/agents              the workspace's agents
  *   POST /api/workspaces/<ws>/agents              start { persona, runtime?, model?, id? }
  *   POST /api/workspaces/<ws>/agents/<id>/stop
@@ -45,6 +53,7 @@ import {
   listPersonas,
   listRuntimes,
   NOT_IN_WORKSPACE,
+  setRuntimePath,
   resolveAgentsDeps,
   resumeAgent,
   startAgent,
@@ -65,6 +74,7 @@ export interface AgentRouteDeps {
 
 const AGENTS_PATH =
   /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume))?$/;
+const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 /** A start's body is a few short names. */
 const MAX_BODY = 4096;
 
@@ -192,16 +202,28 @@ export async function handleAgentRoutes(
   deps: AgentRouteDeps = {},
 ): Promise<boolean> {
   const m = AGENTS_PATH.exec(pathname);
-  if (pathname !== "/api/personas" && !m) return false;
+  const rp = RUNTIME_PATH.exec(pathname);
+  if (
+    pathname !== "/api/personas" &&
+    pathname !== "/api/agents/runtimes" &&
+    !m &&
+    !rp
+  )
+    return false;
   const method = req.method ?? "GET";
   const d = webDeps(deps.agents);
 
+  if (rp) return runtimePath(req, res, safeDecode(rp[1]), d);
   if (!m) {
-    if (method !== "GET") return methodNotAllowed(res, "GET");
+    if (method !== "GET" && method !== "HEAD")
+      return methodNotAllowed(res, "GET");
     try {
+      const ws = queryWorkspace(req, d);
+      const runtimes = await listRuntimes(d, ws);
       sendJson(res, {
-        personas: listPersonas(d),
-        runtimes: await listRuntimes(d),
+        ...(pathname === "/api/personas" ? { personas: listPersonas(d) } : {}),
+        runtimes,
+        ...(ws ? { workspace: ws } : {}),
         // AG-0.2: the file a person edits to set a runtime's path.
         userConfig: d.userConfigFile(),
       });
@@ -287,6 +309,86 @@ export async function handleAgentRoutes(
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e, ws);
+  }
+  return true;
+}
+
+/** `?workspace=<ws>`, when it names a workspace here; else none. */
+function queryWorkspace(
+  req: http.IncomingMessage,
+  d: AgentsResolved,
+): string | undefined {
+  const ws = new URL(req.url ?? "/", "http://x").searchParams.get("workspace");
+  if (!ws) return undefined;
+  if (!d.workspaceExists(ws))
+    throw new AgentError(`workspace "${ws}" does not exist`, { status: 404 });
+  return ws;
+}
+
+/**
+ * POST /api/agents/runtimes/<id>/path: a person only, never an agent (it
+ * runs the path given). Audited, refused or done; never the path's output.
+ */
+async function runtimePath(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  id: string,
+  d: AgentsResolved,
+): Promise<true> {
+  if (req.method !== "POST") return methodNotAllowed(res, "POST");
+  const actor = auditActorOf(req);
+  let what = `runtime ${id} path`;
+  const audit = (reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail: what,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (actor && !actor.unverified)
+      throw new AgentError("an agent can't set a runtime's path", {
+        status: 403,
+      });
+    const raw = await readBody(req).catch(() => "");
+    if (raw.length > MAX_BODY)
+      throw new AgentError("request too large", { status: 413, usage: true });
+    let v: unknown;
+    try {
+      v = JSON.parse(raw || "{}");
+    } catch {
+      throw new AgentError("invalid JSON", { usage: true });
+    }
+    const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+    const scope = b.scope === "workspace" ? "workspace" : "global";
+    if (
+      b.scope !== undefined &&
+      b.scope !== "global" &&
+      b.scope !== "workspace"
+    )
+      throw new AgentError('scope must be "global" or "workspace"', {
+        usage: true,
+      });
+    if (b.bin !== null && typeof b.bin !== "string")
+      throw new AgentError("bin must be an absolute path, or null to clear", {
+        usage: true,
+      });
+    const ws = typeof b.workspace === "string" ? b.workspace : undefined;
+    what = `runtime ${id} path (${scope === "workspace" ? `workspace ${ws ?? "?"}` : "global"}${b.bin === null ? ", cleared" : ""})`;
+    const row = await setRuntimePath(d, {
+      id,
+      scope,
+      ...(ws ? { workspace: ws } : {}),
+      bin: b.bin === null ? null : b.bin.trim(),
+    });
+    audit();
+    sendJson(res, { ok: true, runtime: row });
+  } catch (e) {
+    audit(e instanceof Error ? e.message : String(e));
+    sendError(res, e);
   }
   return true;
 }

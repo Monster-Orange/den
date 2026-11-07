@@ -668,6 +668,12 @@ export interface WorkspaceServiceEntry {
 
 export interface WorkspaceConfig {
   /**
+   * Agents in this workspace, on this machine (AG-0.5):
+   * `agents.runtimes.<id>.bin`, a runtime's CLI for this workspace's
+   * agents, which wins over user.yml's and the search.
+   */
+  agents?: { runtimes?: Record<string, { bin?: unknown } | null> };
+  /**
    * Service entries keyed by service address.
    * Single-service repos: "tasks-runner"
    * Mono-repo subsystems: "shop/api", "shop/web"

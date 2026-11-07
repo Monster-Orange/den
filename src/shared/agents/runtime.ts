@@ -13,8 +13,10 @@ import {
   getStrategy,
   registerStrategy,
   strategyIds,
+  unregisterStrategy,
   type StrategyEntry,
 } from "../strategies/registry.js";
+import type { CatalogEntry } from "./catalog.js";
 import type { Persona } from "./personas.js";
 import type { BinSource, RuntimeFind } from "./runtime-search.js";
 
@@ -39,7 +41,8 @@ export interface RuntimeDetect {
 export interface DetectOptions {
   /**
    * `agents.runtimes.<id>.bin` as configured in user.yml (undefined:
-   * read it there; null: none).
+   * read it there; null: none), or a BinSetting (runtime-search.ts) that
+   * says where it was set (the workspace's, or global).
    */
   bin?: unknown;
 }
@@ -107,6 +110,15 @@ export interface Runtime {
   id: string;
   /** Its name for people ("Claude Code"), in the Start agent form. */
   label?: string;
+  /** Who makes it ("Anthropic"): a catalog runtime's vendor (AG-0.5). */
+  vendor?: string;
+  /** Its catalog entry (catalog.ts), when it is one. */
+  catalog?: CatalogEntry;
+  /**
+   * Whether it runs with Den's tools (its MCP config and guards). false:
+   * it runs as its own CLI, tagged "Den tools: coming" (AG-0.5).
+   */
+  denTools?: boolean;
   /**
    * How its CLI is found and its version asked (AG-0.1): the search's
    * binary names and install directories, per runtime, so a catalog can
@@ -141,6 +153,11 @@ export class LaunchError extends Error {
     super(message);
     this.name = "LaunchError";
   }
+}
+
+/** Remove a runtime (a configured catalog entry that is gone). */
+export function unregisterRuntime(id: string): void {
+  unregisterStrategy(RUNTIME_KIND, id);
 }
 
 /** Register a runtime as strategy kind `runtime` (doctor lists it). */

@@ -51,27 +51,20 @@ import {
   type Runtime,
   type RuntimeDetect,
 } from "./runtime.js";
-import {
-  locateRuntime,
-  systemBinDirs,
-  type RuntimeFind,
-} from "./runtime-search.js";
+import { builtinEntry } from "./catalog.js";
+import { catalogFind } from "./catalog-runtime.js";
+import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
 
 export const DEN_CLAUDE_ID = "den-claude";
 const BIN = "claude";
 
-/** Where Claude Code is found, and how its version is asked. */
-export const DEN_CLAUDE_FIND: RuntimeFind = {
-  bins: [BIN],
-  dirs: (home, env) => [
-    // The native installer's, then the older local install's.
-    ...(home
-      ? [path.join(home, ".local", "bin"), path.join(home, ".claude", "local")]
-      : []),
-    ...systemBinDirs(env),
-  ],
-  versionArgs: ["--version"],
-};
+/**
+ * Where Claude Code is found, and how its version is asked: its catalog
+ * entry (catalog.ts): the native installer's ~/.local/bin, the older
+ * local install's ~/.claude/local, Homebrew's, /usr/local/bin, npm's.
+ */
+export const DEN_CLAUDE_CATALOG = builtinEntry(DEN_CLAUDE_ID)!;
+export const DEN_CLAUDE_FIND: RuntimeFind = catalogFind(DEN_CLAUDE_CATALOG);
 const PACKAGE = "@anthropic-ai/claude-code";
 const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
@@ -281,7 +274,10 @@ function binFor(input: LaunchInput): string {
 
 export const denClaude: Runtime = {
   id: DEN_CLAUDE_ID,
-  label: "Claude Code",
+  label: DEN_CLAUDE_CATALOG.name,
+  vendor: DEN_CLAUDE_CATALOG.vendor,
+  catalog: DEN_CLAUDE_CATALOG,
+  denTools: true,
   find: DEN_CLAUDE_FIND,
   detect,
   launch(input): LaunchOutput {

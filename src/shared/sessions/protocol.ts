@@ -7,6 +7,10 @@
  *             {id, ok: false, code, error}
  *   event     {ev: "data", aid, data}     host → client, per attachment
  *             {ev: "exit", aid, exitCode}
+ *             {ev: "size", aid, cols, rows} only to an attachment that
+ *                                           asked (attach `sizes: true`):
+ *                                           the PTY's size on attach, and
+ *                                           each time it changes
  *
  * ops: hello, start, list, attach, detach, write, resize, signal,
  * scrollback, forget, shutdown. A request whose `v` is not the host's is
@@ -47,7 +51,8 @@ export type Reply =
 
 export type HostEvent =
   | { ev: "data"; aid: string; data: string }
-  | { ev: "exit"; aid: string; exitCode?: number };
+  | { ev: "exit"; aid: string; exitCode?: number }
+  | { ev: "size"; aid: string; cols: number; rows: number };
 
 /** Splits a byte stream into lines; refuses one that grows too long. */
 export class LineReader {

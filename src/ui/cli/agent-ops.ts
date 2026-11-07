@@ -42,10 +42,22 @@ import * as path from "path";
 import {
   AGENTS_RESERVED_KEYS,
   configuredRuntimeBin,
+  configuredRuntimeCatalog,
   readAgentsConfig,
+  setUserRuntimeBin,
   userConfigPath,
   type ResolvedAgentsConfig,
 } from "../../shared/den-config.js";
+import {
+  setWorkspaceRuntimeBin,
+  workspaceBinKey,
+  workspaceRuntimeBin,
+} from "../../shared/environment-manager/workspaces.js";
+import {
+  BUILTIN_CATALOG,
+  type CatalogEntry,
+} from "../../shared/agents/catalog.js";
+import { checkRuntimeBin } from "../../shared/agents/catalog-runtime.js";
 import { cliEntrypoint } from "../../shared/engine.js";
 import { getDistRoot } from "../../shared/paths.js";
 import { envKey } from "../../shared/product.js";
@@ -70,6 +82,7 @@ import {
   getRuntime,
   LaunchError,
   runtimeIds,
+  syncConfiguredRuntimes,
   type AgentMcp,
   type LaunchInput,
   type Runtime,
@@ -77,7 +90,10 @@ import {
 import type { RuntimeDetect } from "../../shared/agents/runtime.js";
 import {
   binSettingKey,
+  ensureInteractivePath,
+  interactivePathAsked,
   runtimeVersion,
+  type BinSetting,
   type BinSource,
 } from "../../shared/agents/runtime-search.js";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
@@ -116,6 +132,20 @@ export interface AgentsDeps extends SessionsDeps {
   exitWatchMs?: number;
   /** `agents.runtimes.<id>.bin` (default: user.yml's; undefined: unset). */
   runtimeBin?: (id: string) => unknown;
+  /**
+   * Workspace `ws`'s `agents.runtimes.<id>.bin` (default: workspaces.yml's;
+   * undefined: unset). It wins over runtimeBin (AG-0.5).
+   */
+  workspaceRuntimeBin?: (ws: string, id: string) => unknown;
+  /** user.yml's runtime catalog entries, checked (default: user.yml's). */
+  userCatalog?: (taken: readonly string[]) => CatalogEntry[];
+  /** Save a checked path (null clears it): global or the workspace's. */
+  saveRuntimeBin?: (
+    scope: "global" | "workspace",
+    ws: string | undefined,
+    id: string,
+    bin: string | null,
+  ) => void;
   /** The user.yml a person edits to set it (default: config/local/user.yml). */
   userConfigFile?: () => string;
 }
@@ -127,6 +157,9 @@ export interface AgentsResolved extends Resolved {
   mcpServer: () => { command: string[] | string; env: Record<string, string> };
   exitWatchMs: number;
   runtimeBin: (id: string) => unknown;
+  workspaceRuntimeBin: (ws: string, id: string) => unknown;
+  userCatalog: (taken: readonly string[]) => CatalogEntry[];
+  saveRuntimeBin: NonNullable<AgentsDeps["saveRuntimeBin"]>;
   userConfigFile: () => string;
 }
 
@@ -217,6 +250,15 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     mcpServer: d.mcpServer ?? (() => defaultMcpServer(base.cli)),
     exitWatchMs: d.exitWatchMs ?? EXIT_WATCH_MS,
     runtimeBin: d.runtimeBin ?? ((id) => configuredRuntimeBin(id)),
+    workspaceRuntimeBin:
+      d.workspaceRuntimeBin ?? ((ws, id) => workspaceRuntimeBin(ws, id)),
+    userCatalog: d.userCatalog ?? ((taken) => configuredRuntimeCatalog(taken)),
+    saveRuntimeBin:
+      d.saveRuntimeBin ??
+      ((scope, ws, id, bin) =>
+        scope === "workspace" && ws
+          ? setWorkspaceRuntimeBin(ws, id, bin)
+          : setUserRuntimeBin(id, bin)),
     userConfigFile: d.userConfigFile ?? userConfigPath,
   };
 }
@@ -415,44 +457,137 @@ export interface RuntimeChoice {
   id: string;
   /** Its name for people ("Claude Code"). */
   label?: string;
+  /** Who makes it ("Anthropic"): a catalog runtime (AG-0.5). */
+  vendor?: string;
+  /**
+   * false: it runs as its own CLI, without Den's tools yet ("Den tools:
+   * coming"). Absent for a runtime that isn't from the catalog.
+   */
+  denTools?: boolean;
   available: boolean;
   /** Why it is unavailable. */
   why?: string;
   version?: string;
   /** The CLI it runs (AG-0.2). */
   path?: string;
-  /** Where that path came from: setting, login-shell, well-known or PATH. */
+  /**
+   * Where that path came from: workspace (its workspaces.yml entry),
+   * setting (user.yml), login-shell, PATH, well-known, interactive-shell.
+   */
   source?: BinSource;
   /** The directories searched, in order (a runtime with a CLI to find). */
   searched?: string[];
   /** The user.yml key that sets its path (a runtime with a CLI to find). */
   setting?: string;
+  /** The workspace's key for it, when listed for a workspace. */
+  workspaceSetting?: string;
   /** It declares resume. */
   resume: boolean;
   default: boolean;
 }
 
 /**
- * Whether runtime `rt` can run here (AG-0.1): its setting
- * (`agents.runtimes.<id>.bin`, from d.runtimeBin), else the search. Runs
- * nothing.
+ * The path set for runtime `id` (AG-0.5): the workspace's (when `ws` is
+ * given and it sets one), else user.yml's; null when neither does.
  */
-export function detectRuntime(d: AgentsResolved, rt: Runtime): RuntimeDetect {
-  return rt.detect(d.env, { bin: d.runtimeBin(rt.id) ?? null });
+export function runtimeSetting(
+  d: AgentsResolved,
+  id: string,
+  ws?: string,
+): BinSetting | null {
+  if (ws) {
+    const v = d.workspaceRuntimeBin(ws, id);
+    if (v !== undefined && v !== null)
+      return { value: v, source: "workspace", key: workspaceBinKey(ws, id) };
+  }
+  const g = d.runtimeBin(id);
+  return g === undefined || g === null ? null : { value: g, source: "setting" };
 }
 
 /**
- * Every registered runtime, and whether it can run here, with the path it
- * runs and its version: its version command (`claude --version`), run once
- * under a timeout and kept, else what its install says.
+ * Whether runtime `rt` can run here (AG-0.1, AG-0.5): a path set for the
+ * workspace, else user.yml's (`agents.runtimes.<id>.bin`), else the
+ * search. Runs nothing.
+ */
+export function detectRuntime(
+  d: AgentsResolved,
+  rt: Runtime,
+  ws?: string,
+): RuntimeDetect {
+  return rt.detect(d.env, { bin: runtimeSetting(d, rt.id, ws) });
+}
+
+/**
+ * The catalog entries the distribution and user.yml add, registered as
+ * runtimes (AG-0.5). A malformed entry is a refusal naming its key.
+ */
+export function syncCatalog(d: AgentsResolved): void {
+  const cfg = agentsConfig(d);
+  let extra: CatalogEntry[];
+  try {
+    extra = [
+      ...cfg.runtimeCatalog,
+      ...d.userCatalog([
+        ...BUILTIN_CATALOG.map((e) => e.id),
+        ...cfg.runtimeCatalog.map((e) => e.id),
+      ]),
+    ];
+  } catch (e) {
+    throw refused((e as Error).message, [], 422);
+  }
+  syncConfiguredRuntimes(extra);
+}
+
+/**
+ * When a catalog runtime is still missing (nothing set, not found on the
+ * login PATH, PATH or its install directories), ask the interactive shell
+ * for its PATH: once per process, then kept (AG-0.5).
+ */
+async function fallbackSearch(
+  d: AgentsResolved,
+  rts: Runtime[],
+  ws?: string,
+): Promise<void> {
+  if (interactivePathAsked()) return;
+  const missing = rts.some(
+    (rt) =>
+      rt.catalog &&
+      !runtimeSetting(d, rt.id, ws) &&
+      !detectRuntime(d, rt, ws).available,
+  );
+  if (missing) await ensureInteractivePath({ env: d.env });
+}
+
+/**
+ * The catalog's installed runtimes first, then the ones not found, then
+ * the rest (generic: no CLI of its own to find).
+ */
+function rank(r: RuntimeChoice): number {
+  if (r.denTools === undefined) return 2;
+  return r.available ? 0 : 1;
+}
+
+/**
+ * Every registered runtime, and whether it can run here (for an agent of
+ * `ws`, when given: its workspace's path wins), with the path it runs and
+ * its version: its version command (`claude --version`), run once under a
+ * timeout and kept, else what its install says. Installed ones first.
  */
 export async function listRuntimes(
   d: AgentsResolved,
+  ws?: string,
 ): Promise<RuntimeChoice[]> {
-  return Promise.all(
-    runtimeIds().map(async (id) => {
+  syncCatalog(d);
+  const ids = runtimeIds();
+  await fallbackSearch(
+    d,
+    ids.map((id) => getRuntime(id)!),
+    ws,
+  );
+  const rows = await Promise.all(
+    ids.map(async (id) => {
       const rt = getRuntime(id)!;
-      const det = detectRuntime(d, rt);
+      const det = detectRuntime(d, rt, ws);
       const asked =
         det.available && det.path && rt.find?.versionArgs
           ? await runtimeVersion(det.path, rt.find.versionArgs, d.env)
@@ -461,24 +596,72 @@ export async function listRuntimes(
       return {
         id,
         ...(rt.label ? { label: rt.label } : {}),
+        ...(rt.vendor ? { vendor: rt.vendor } : {}),
+        ...(rt.catalog ? { denTools: rt.denTools === true } : {}),
         available: det.available,
         ...(det.available ? {} : { why: det.why ?? "unavailable" }),
         ...(version ? { version } : {}),
         ...(det.path ? { path: det.path } : {}),
         ...(det.source ? { source: det.source } : {}),
         ...(rt.find
-          ? { searched: det.searched ?? [], setting: binSettingKey(id) }
+          ? {
+              searched: det.searched ?? [],
+              setting: binSettingKey(id),
+              ...(ws ? { workspaceSetting: workspaceBinKey(ws, id) } : {}),
+            }
           : {}),
         resume: Boolean(rt.resume),
         default: id === DEFAULT_RUNTIME_ID,
       };
     }),
   );
+  return rows
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => rank(a.r) - rank(b.r) || a.i - b.i)
+    .map((x) => x.r);
+}
+
+/**
+ * Set (or, with null, clear) runtime `id`'s path, global or for workspace
+ * `ws` (AG-0.5): its version command runs first, and a path that isn't
+ * that runtime is refused. Returns its row as listed after.
+ */
+export async function setRuntimePath(
+  d: AgentsResolved,
+  req: {
+    id: string;
+    scope: "global" | "workspace";
+    workspace?: string;
+    bin: string | null;
+  },
+): Promise<RuntimeChoice> {
+  syncCatalog(d);
+  const rt = runtimeFor(req.id);
+  if (!rt.catalog)
+    throw usage(`${req.id} has no CLI to find: its path can't be set`);
+  let ws: string | undefined;
+  if (req.scope === "workspace") {
+    ws = checkWorkspaceName("runtime path", req.workspace);
+    if (!d.workspaceExists(ws))
+      throw usage(`workspace "${ws}" does not exist`, 404);
+  }
+  if (req.bin !== null) {
+    const c = await checkRuntimeBin(rt.catalog, req.bin, d.env);
+    if (!c.ok) throw refused(c.why, [], 422);
+    d.saveRuntimeBin(req.scope, ws, rt.id, c.path);
+  } else d.saveRuntimeBin(req.scope, ws, rt.id, null);
+  const rows = await listRuntimes(d, ws);
+  return rows.find((r) => r.id === rt.id)!;
 }
 
 /** Refused unless `rt` can run here; its detect result when it can. */
-function availableOrRefuse(d: AgentsResolved, rt: Runtime): RuntimeDetect {
-  const det = detectRuntime(d, rt);
+async function availableOrRefuse(
+  d: AgentsResolved,
+  rt: Runtime,
+  ws?: string,
+): Promise<RuntimeDetect> {
+  await fallbackSearch(d, [rt], ws);
+  const det = detectRuntime(d, rt, ws);
   if (!det.available)
     throw refused(
       `${rt.id} is unavailable: ${det.why ?? "unknown"}`,
@@ -538,9 +721,15 @@ interface Launch {
   binDir?: string;
 }
 
-/** A configured CLI's directory, for its session's PATH (its own tools). */
+/**
+ * A CLI's directory when the session's PATH wouldn't have it (a path set
+ * for it, or found by the interactive shell), for its own tools.
+ */
 function binDirOf(det: RuntimeDetect): { binDir?: string } {
-  return det.source === "setting" && det.path
+  return (det.source === "setting" ||
+    det.source === "workspace" ||
+    det.source === "interactive-shell") &&
+    det.path
     ? { binDir: path.dirname(det.path) }
     : {};
 }
@@ -766,8 +955,9 @@ export async function startAgent(
     );
   const id = req.id ?? defaultId(d.stateDir(), persona.id, ws);
   checkId(where, id);
+  syncCatalog(d);
   const rt = runtimeFor(req.runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID);
-  const det = availableOrRefuse(d, rt);
+  const det = await availableOrRefuse(d, rt, ws);
   const model = req.model ?? persona.model;
 
   const prev = readRecord(d.stateDir(), id);
@@ -871,6 +1061,7 @@ export async function resumeAgent(
   ws?: string,
 ): Promise<Resumed> {
   const rec = agentRecord(d, id, ws);
+  syncCatalog(d);
   const rt = runtimeFor(rec.runtime);
   if (!rt.resume)
     throw refused(`runtime ${rt.id} does not declare resume`, [
@@ -880,7 +1071,7 @@ export async function resumeAgent(
   const persona = personas(d, cfg).get(rec.persona);
   if (!persona)
     throw refused(`agent ${rec.id}'s persona "${rec.persona}" is gone`);
-  const det = availableOrRefuse(d, rt);
+  const det = await availableOrRefuse(d, rt, rec.workspace);
   ptyOrRefuse(d);
   return withClient(d, async (c) => {
     const old = sessionOf(await c.list(), rec);

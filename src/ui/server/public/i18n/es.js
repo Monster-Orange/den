@@ -284,6 +284,7 @@
     "set.graph.density": "Tarjetas",
     "set.graph.panelWidth": "Panel de detalles",
     "set.workspace.editor": "IDE de este espacio de trabajo",
+    "set.agents.runtimes": "Runtimes",
     "set.cli.local_dev": "Entorno local",
     "set.cli.cli_tabs": "Pestañas de terminal",
     "set.cli.log_window_lines": "Líneas del panel de registros",
@@ -379,5 +380,10 @@
     "ag.rt.fix":
       "Instálalo, o pon su ruta en {key} en {file}, o ejecuta {cmd}.",
     "ag.rt.unknown": "Aquí no hay ningún runtime {id}.",
+    "ag.rt.denTools": "Herramientas de Den: próximamente",
+    "ag.rt.ownCli":
+      "Se ejecuta como su propia CLI en el workspace: las herramientas y los modos de permiso de Den llegarán más adelante.",
+    "ag.rt.notInstalled": "no instalado",
+    "ag.rt.needsArgv": "la persona no tiene plantilla argv",
   };
 })((window.denMessages = window.denMessages || {}));

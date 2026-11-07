@@ -272,6 +272,7 @@
     "set.graph.density": "カード",
     "set.graph.panelWidth": "詳細パネル",
     "set.workspace.editor": "このワークスペースの IDE",
+    "set.agents.runtimes": "ランタイム",
     "set.cli.local_dev": "ローカル環境",
     "set.cli.cli_tabs": "ターミナルのタブ",
     "set.cli.log_window_lines": "ログ欄の行数",
@@ -363,5 +364,10 @@
     "ag.rt.fix":
       "インストールするか、{file} の {key} にパスを設定するか、{cmd} を実行してください。",
     "ag.rt.unknown": "ランタイム {id} はここにありません。",
+    "ag.rt.denTools": "Den ツール: 近日対応",
+    "ag.rt.ownCli":
+      "ワークスペースで独自の CLI として動きます。Den のツールと権限モードは今後対応します。",
+    "ag.rt.notInstalled": "未インストール",
+    "ag.rt.needsArgv": "ペルソナに argv テンプレートがありません",
   };
 })((window.denMessages = window.denMessages || {}));

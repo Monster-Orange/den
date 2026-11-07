@@ -145,6 +145,7 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/graph",
     "/api/applications",
     "/api/personas",
+    "/api/agents/runtimes",
     "/api/workspaces/:ws/agents",
   ].map((p) => R(p)),
   R(
@@ -247,6 +248,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "resumes an agent: a runtime in a PTY",
   ),
   S(
+    ["POST"],
+    "/api/agents/runtimes/:id/path",
+    "runs the path given (its version command) before saving it as a runtime's CLI (AG-0.5)",
+  ),
+  S(
     ["GET", "HEAD"],
     "/api/sessions/:id/io",
     "a session's terminal (AG-4a-term): a WebSocket, its input a shell's",
@@ -277,6 +283,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/stop",
     "/api/workspaces/:ws/agents/:id/resume",
   ],
+  "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "session-routes.ts:IO_PATH": ["/api/sessions/:id/io"],
 };
 

@@ -95,7 +95,9 @@
         top: 0;
         z-index: 4;
         background: var(--bg);
-        box-shadow: 0 -20px 0 0 var(--bg), 0 12px 0 0 var(--bg);
+        box-shadow:
+          0 -20px 0 0 var(--bg),
+          0 12px 0 0 var(--bg);
       }
       .ph .act {
         margin-left: auto;
@@ -351,6 +353,93 @@
         border: 1px solid var(--border);
         border-radius: 999px;
         padding: 0 6px;
+      }
+      /* Settings › Agents › Runtimes (AG-0.5): one row per runtime. */
+      .set-custom {
+        flex: 1 1 100%;
+        min-width: 0;
+      }
+      .rt-scope {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 13px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .rt-list {
+        display: grid;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button);
+      }
+      .rt {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr) minmax(
+            0,
+            2fr
+          ) auto;
+        align-items: center;
+        gap: 4px 12px;
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+      .rt + .rt {
+        border-top: 1px solid var(--border);
+      }
+      .rt-v {
+        color: var(--muted);
+      }
+      .rt-n .set-tag {
+        white-space: nowrap;
+      }
+      .rt-ok {
+        color: var(--ok);
+      }
+      .rt-bad {
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+      .rt-w {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .rt-p {
+        font-size: 12px;
+      }
+      .rt-f {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+      }
+      .rt-f[hidden],
+      .rt-err[hidden] {
+        display: none;
+      }
+      .rt-fl {
+        flex-basis: 100%;
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      .rt-f input {
+        flex: 1 1 260px;
+        min-width: 0;
+      }
+      .rt-err {
+        flex-basis: 100%;
+        color: var(--bad);
+        font-size: 12.5px;
+        overflow-wrap: anywhere;
+      }
+      @media (max-width: 640px) {
+        .rt {
+          grid-template-columns: minmax(0, 1fr) auto;
+        }
+        .rt-w {
+          grid-column: 1 / -1;
+        }
       }
       .set-langs {
         display: grid;

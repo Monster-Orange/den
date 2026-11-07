@@ -25,8 +25,17 @@ describe("agents doctor", () => {
     const r = await rig();
     const bin = path.dirname(r.claude);
     expect(await doctor(r)).toBe(0);
+    const user = path.join(r.dir, "config", "local", "user.yml");
+    const missing = (id: string, label: string, b: string) => [
+      `${id} (${label})  [Den tools: coming]`,
+      `  status    ✗ unavailable: ${b} not found (searched 3 directories)`,
+      "  searched  the same 3 directories as above",
+      `  fix       install ${label.split(",")[0]}, or set agents.runtimes.${id}.bin to its absolute path in ${user}`,
+      "            then run `acme agents doctor` again",
+      "",
+    ];
     expect(r.out).toEqual([
-      "den-claude (Claude Code)  [default]",
+      "den-claude (Claude Code, Anthropic)  [default]",
       "  status    ✓ available",
       `  path      ${r.claude} (PATH)`,
       "  version   9.9.9",
@@ -34,6 +43,9 @@ describe("agents doctor", () => {
       "            /usr/bin",
       "            /bin",
       "",
+      ...missing("codex", "Codex CLI, OpenAI", "codex"),
+      ...missing("gemini", "Gemini CLI, Google", "gemini"),
+      ...missing("grok", "Grok Build, xAI", "grok"),
       "generic (Generic command)",
       "  status    ✓ available",
       "  path      none to find (the persona's argv)",
@@ -51,7 +63,7 @@ describe("agents doctor", () => {
     expect(await doctor(r)).toBe(1);
     const user = path.join(r.dir, "config", "local", "user.yml");
     expect(r.out.slice(0, 7)).toEqual([
-      "den-claude (Claude Code)  [default]",
+      "den-claude (Claude Code, Anthropic)  [default]",
       "  status    ✗ unavailable: claude not found (searched 2 directories)",
       "  searched  /usr/bin",
       "            /bin",
@@ -67,7 +79,7 @@ describe("agents doctor", () => {
     r.deps.env = { PATH: "/usr/bin:/bin" };
     expect(await doctor(r)).toBe(0);
     expect(r.out.slice(0, 4)).toEqual([
-      "den-claude (Claude Code)  [default]",
+      "den-claude (Claude Code, Anthropic)  [default]",
       "  status    ✓ available",
       `  path      ${r.claude} (agents.runtimes setting)`,
       "  version   9.9.9",
@@ -101,7 +113,9 @@ describe("agents doctor", () => {
 
   it("is in the help, and takes no other argument", async () => {
     expect(AGENTS_HELP.usage).toMatch(/doctor/);
-    expect(AGENTS_HELP.lines.join("\n")).toMatch(/agents doctor \[--json\]/);
+    expect(AGENTS_HELP.lines.join("\n")).toMatch(
+      /agents doctor \[-w <ws>\] \[--json\]/,
+    );
     const r = await rig();
     expect(await doctor(r, "extra")).toBe(2);
   });

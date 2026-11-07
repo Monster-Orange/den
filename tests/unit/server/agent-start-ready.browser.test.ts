@@ -48,8 +48,14 @@ beforeAll(async () => {
     throw err;
   }
   [missing, ready] = await Promise.all([
-    startAgentsPageServer({ runtime: "missing" }),
-    startAgentsPageServer({ sudoPassword: PW }),
+    startAgentsPageServer({
+      runtime: "missing",
+      bins: { codex: "codex-cli 0.50.0" },
+    }),
+    startAgentsPageServer({
+      sudoPassword: PW,
+      bins: { codex: "codex-cli 0.50.0" },
+    }),
   ]);
   latest =
     (
@@ -112,18 +118,24 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
       ),
     ).toEqual([
       ["Claude Code (persona default)", false],
-      ["Claude Code — claude not found (searched 3 directories)", true],
-      ["Generic command", false],
+      ["Codex CLI · 0.50.0 · Den tools: coming", false],
+      ["Claude Code — not installed", true],
+      ["Gemini CLI — not installed", true],
+      ["Grok Build — not installed", true],
+      ["Generic command — the persona has no argv template", true],
     ]);
     // Enter doesn't start it either.
     await p.press("#ag-persona", "Enter");
     expect(await p.isVisible("#ag-dlg")).toBe(true);
     if (SHOTS)
       await p.screenshot({ path: path.join(SHOTS, "ag0-unavailable.png") });
-    // Picking a runtime that can run lifts it.
-    await p.selectOption("#ag-runtime", "generic");
+    // Picking a runtime that can run lifts it (AG-0.5: its own CLI, tagged).
+    await p.selectOption("#ag-runtime", "codex");
     expect(await p.isDisabled("#ag-go")).toBe(false);
-    expect(await p.isHidden("#ag-r-ready")).toBe(true);
+    expect(await p.getAttribute("#ag-r-ready", "data-tone")).toBe("");
+    expect(await text(p, "#ag-r-ready")).toMatch(
+      /^Starts Codex CLI 0\.50\.0 from .*\/bin\/codex/,
+    );
     await p.context().close();
   }, 60_000);
 
@@ -162,7 +174,10 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
     ).toEqual([
       "Claude Code (persona default)",
       "Claude Code · 9.9.9",
-      "Generic command",
+      "Codex CLI · 0.50.0 · Den tools: coming",
+      "Gemini CLI — not installed",
+      "Grok Build — not installed",
+      "Generic command — the persona has no argv template",
     ]);
     await p.context().close();
   }, 60_000);

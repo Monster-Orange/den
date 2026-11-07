@@ -55,6 +55,12 @@ export interface AttachHandlers {
   onData(data: Buffer): void;
   /** The session ended (at once, after the replay, when it already had). */
   onExit?(exitCode: number | undefined): void;
+  /**
+   * The PTY's size: once on attach (after the replay), then each time any
+   * client resizes it. The size is last-writer-wins across every viewer,
+   * so a viewer learns here that another one changed it.
+   */
+  onSize?(cols: number, rows: number): void;
 }
 
 /** One attachment; a session has any number, each gets all the output. */

@@ -298,7 +298,17 @@
         font-size: 12.5px;
       }
       dialog.ag-dlg {
-        width: min(440px, calc(100vw - 32px));
+        /* The approved mock's Start agent dialog (AG-0.5), measured on
+           den-shell.html: .dlg.wide, min(600px, 100%) of content in a
+           content-box, so 600 + 2 x 18 padding + 2 x 1 border = 638
+           outside at 1440. Here the box is border-box: 638, and never
+           wider than the viewport less 16px a side (at 375 the mock's
+           box is 381 and overflows; this one is 343). */
+        box-sizing: border-box;
+        width: min(638px, calc(100vw - 32px));
+        max-width: none;
+        max-height: calc(100vh - 32px);
+        overflow-y: auto;
         background: var(--raised);
         color: var(--text);
         border: 1px solid var(--border-strong);

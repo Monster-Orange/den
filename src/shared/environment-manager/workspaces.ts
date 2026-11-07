@@ -877,3 +877,57 @@ export function generateVSCodeWorkspace(
   );
   return outPath;
 }
+
+/** The key of workspace `ws`'s runtime path, as a refusal names it. */
+export const workspaceBinKey = (ws: string, id: string) =>
+  `workspaces.${ws}.agents.runtimes.${id}.bin`;
+
+/**
+ * `<ws>.agents.runtimes.<id>.bin` in config/local/workspaces.yml (AG-0.5),
+ * as written (checked where it is used); undefined when unset or when the
+ * file can't be read. A block that is no mapping is `{ why }`.
+ */
+export function workspaceRuntimeBin(
+  ws: string,
+  id: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): unknown {
+  try {
+    const rts = read().workspaces[ws]?.agents?.runtimes;
+    if (!rts || typeof rts !== "object") return undefined;
+    const block = (rts as Record<string, unknown>)[id];
+    if (block === undefined || block === null) return undefined;
+    if (typeof block !== "object" || Array.isArray(block))
+      return {
+        why: `${workspaceBinKey(ws, id).replace(/\.bin$/, "")} must be a mapping ({ bin: <absolute path> })`,
+      };
+    return (block as { bin?: unknown }).bin;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Set (a path) or clear (null) workspace `ws`'s
+ * `agents.runtimes.<id>.bin`. The caller checks the path first.
+ */
+export function setWorkspaceRuntimeBin(
+  ws: string,
+  id: string,
+  bin: string | null,
+): void {
+  const file = readWorkspacesFile();
+  const cfg = file.workspaces[ws];
+  if (!cfg) throw new Error(`workspace "${ws}" does not exist`);
+  const agents = { ...(cfg.agents ?? {}) };
+  const runtimes = { ...(agents.runtimes ?? {}) };
+  if (bin === null) delete runtimes[id];
+  else runtimes[id] = { ...(runtimes[id] ?? {}), bin };
+  if (Object.keys(runtimes).length) agents.runtimes = runtimes;
+  else delete agents.runtimes;
+  const next = { ...cfg };
+  if (Object.keys(agents).length) next.agents = agents;
+  else delete next.agents;
+  file.workspaces[ws] = next;
+  writeWorkspacesFile(file);
+}

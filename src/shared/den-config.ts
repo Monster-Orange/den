@@ -18,6 +18,7 @@ import type { SecretsConfig } from "./secrets/index.js";
 import type { OrgConfig } from "./org.js";
 import { validateOrgSources, type WorkOrgsConfig } from "./org-sources.js";
 import { ConfigError, isConfigError } from "./config-error.js";
+import { validateCatalog, type CatalogEntry } from "./agents/catalog.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
 
 import { product } from "./product.js";
@@ -385,7 +386,11 @@ export interface UserConfig {
    * install directories). Per machine, so user.yml only: the distribution's
    * config never sets a path. See shared/agents/runtime-search.ts.
    */
-  agents?: { runtimes?: Record<string, { bin?: unknown } | null> };
+  agents?: {
+    runtimes?: Record<string, { bin?: unknown } | null>;
+    /** More runtime catalog entries (AG-0.5, agents/catalog.ts). */
+    runtime_catalog?: unknown;
+  };
 }
 
 const ALL_ENVIRONMENTS: Environment[] = [
@@ -434,6 +439,40 @@ export function configuredRuntimeBin(
   } catch {
     return undefined;
   }
+}
+
+/**
+ * user.yml's `agents.runtime_catalog`, checked (agents/catalog.ts), after
+ * the built-in entries and the distribution's (`taken`). Throws naming
+ * the key when malformed.
+ */
+export function configuredRuntimeCatalog(
+  taken: readonly string[],
+  read: () => UserConfig = readUserConfig,
+): CatalogEntry[] {
+  return validateCatalog(
+    read().agents?.runtime_catalog,
+    `agents.runtime_catalog (${path.basename(USER_CONFIG_PATH)})`,
+    taken,
+  );
+}
+
+/**
+ * Set (a path) or clear (null) `agents.runtimes.<id>.bin` in user.yml,
+ * keeping everything else there. The caller checks the path first.
+ */
+export function setUserRuntimeBin(id: string, bin: string | null): void {
+  const cfg = readUserConfig();
+  const agents = { ...(cfg.agents ?? {}) };
+  const runtimes = { ...(agents.runtimes ?? {}) };
+  if (bin === null) delete runtimes[id];
+  else runtimes[id] = { ...(runtimes[id] ?? {}), bin };
+  if (Object.keys(runtimes).length) agents.runtimes = runtimes;
+  else delete agents.runtimes;
+  const next: UserConfig = { ...cfg };
+  if (Object.keys(agents).length) next.agents = agents;
+  else delete next.agents;
+  writeUserConfig(next);
 }
 
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
@@ -791,6 +830,11 @@ export interface AgentsConfig {
    */
   persona_packs?: string[];
   /**
+   * More runtime catalog entries (AG-0.5, agents/catalog.ts): a vendor CLI
+   * Den doesn't ship, with the same fields and checks as a built-in one.
+   */
+  runtime_catalog?: unknown[];
+  /**
    * Any other key is an agent id: `agents.<id>.grants` widens that agent's
    * MCP scope to other workspaces (AG spec §5b). Config only: an agent
    * never grants itself one.
@@ -801,7 +845,11 @@ export interface AgentsConfig {
 export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
 
 /** The keys of `agents:` that are not an agent id. */
-export const AGENTS_RESERVED_KEYS = ["max_concurrent", "persona_packs"];
+export const AGENTS_RESERVED_KEYS = [
+  "max_concurrent",
+  "persona_packs",
+  "runtime_catalog",
+];
 
 /** One agent's own block, `agents.<id>`. */
 export interface AgentGrantsConfig {
@@ -816,6 +864,8 @@ export interface ResolvedAgentsConfig {
   personaPacks: string[];
   /** `agents.<id>` blocks, by agent id. */
   agents: Record<string, AgentGrantsConfig>;
+  /** The distribution's runtime catalog entries (AG-0.5), checked. */
+  runtimeCatalog: CatalogEntry[];
 }
 
 /** An agent id or workspace name: what WORKSPACE_NAME_RE accepts. */
@@ -838,6 +888,10 @@ export function readAgentsConfig(
     maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
     personaPacks: [],
     agents: {},
+    runtimeCatalog: validateCatalog(
+      raw.runtime_catalog,
+      "agents.runtime_catalog",
+    ),
   };
   const max = raw.max_concurrent;
   if (max !== undefined) {
@@ -866,7 +920,7 @@ export function readAgentsConfig(
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(
-        `${where}: unknown key (agents: takes max_concurrent, persona_packs, ` +
+        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, ` +
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))

@@ -398,6 +398,7 @@
     "set.graph.density": "Cards",
     "set.graph.panelWidth": "Details panel",
     "set.workspace.editor": "IDE for this workspace",
+    "set.agents.runtimes": "Runtimes",
     "set.cli.local_dev": "Local environment",
     "set.cli.cli_tabs": "Terminal tabs",
     "set.cli.log_window_lines": "Log pane lines",
@@ -492,6 +493,11 @@
     "ag.rt.fix":
       "Install it, or set {key} to its path in {file}, or run {cmd}.",
     "ag.rt.unknown": "No runtime {id} here.",
+    "ag.rt.denTools": "Den tools: coming",
+    "ag.rt.ownCli":
+      "It runs as its own CLI in the workspace: Den's tools and permission modes are coming for it.",
+    "ag.rt.notInstalled": "not installed",
+    "ag.rt.needsArgv": "the persona has no argv template",
   };
   // The languages the UI has a catalog for, each named in itself (a name is
   // never translated). The server's list is ui-language.ts's UI_LANGUAGES.
