@@ -13,14 +13,17 @@ every call. This keeps each session to one objective.
 
 ### Added
 
-- **Den counts compactions.** A `PreCompact` hook, alongside Den's other
-  hooks for default-pack Claude Code agents, counts each compaction of the
-  agent's conversation. The count is in
+- **Den counts compactions.** A `SessionStart` hook (source `compact`),
+  alongside Den's other hooks for default-pack Claude Code agents, counts
+  each compaction of the agent's conversation once it happened. A
+  `/compact` that does nothing is not counted. The count is in
   `<state dir>/agent-files/<id>/rotation.json`, and starts at 0 for each
   new conversation.
 - **Two triggers.** A rotation is due after `agents.rotate.after_compactions`
   compactions (default 3), or once the agent's pull request merged (the
-  `prMerged` outcome from `usage agents`).
+  `prMerged` outcome from `usage agents`). A merge counts only when the
+  agent ran `gh pr merge` itself, it exited 0, and `gh pr view` then says
+  MERGED. `echo gh pr merge 1` or `gh pr merge --help` never counts.
 - **The agent is told.** The compaction summary keeps the instruction, a
   `SessionStart` hook adds it after the compaction, and the `Stop` hook
   blocks once until the handoff is written. The shared instructions say
@@ -28,8 +31,8 @@ every call. This keeps each session to one objective.
   turn.
 - **The handoff check.** A handoff has five parts: Objective, State, Open
   items, How to QA, Next step. Each must be there and filled in, and every
-  ID explained. `<cli> agents handoff-check <file|->` runs the check and
-  names what is missing.
+  ID explained. `<cli> agents handoff-check <id|file|->` runs the check (on an
+  agent's own handoff.md, by its id) and names what is missing.
 - **Relaunch from handoff.** A fresh conversation (a new conversation id),
   with the same persona, workspace, folder and grants. Its first prompt is
   the handoff. The handoff is then kept in `handoffs/`, and the record

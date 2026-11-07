@@ -5,15 +5,15 @@
  * role relaunches from a handoff in a fresh conversation.
  *
  *   agent-files/<id>/rotation.json   the compaction count of the agent's
- *                                    current conversation (the PreCompact
- *                                    hook's), and whether a rotation is due
+ *                                    current conversation (the SessionStart
+ *                                    "compact" hook's), and whether a rotation is due
  *   agent-files/<id>/handoff.md      what the session wrote when it rotated
  *                                    (handoff.ts checks it)
  *   agent-files/<id>/handoffs/       handoffs Den relaunched from, kept
  *
  * Triggers (org config `agents.rotate`):
- *   - `after_compactions` (default 3): the PreCompact hook counts each
- *     compaction; at that many, a rotation is due;
+ *   - `after_compactions` (default 3): SessionStart "compact" counts each
+ *     compaction that happened; at that many, a rotation is due;
  *   - the agent's pull request merged: the record's outcome
  *     (`prMerged`, den#6), which `<cli> usage` fills in.
  *   `standing: false` keeps standing personas (planner, orchestrator) out:
@@ -48,6 +48,11 @@ export interface RotationState {
   /** The last compaction (ISO 8601) and what triggered it (manual, auto). */
   lastCompactAt?: string;
   lastTrigger?: string;
+  /**
+   * PreCompact's trigger, kept until SessionStart "compact" counts the
+   * compaction (SessionStart's input has no trigger).
+   */
+  pendingTrigger?: string;
   /** Set when a trigger fired. */
   due?: RotateReason;
   dueAt?: string;
@@ -111,6 +116,7 @@ export function readRotation(filesDir: string): RotationState | null {
   if (typeof o.conversation === "string") s.conversation = o.conversation;
   if (typeof o.lastCompactAt === "string") s.lastCompactAt = o.lastCompactAt;
   if (typeof o.lastTrigger === "string") s.lastTrigger = o.lastTrigger;
+  if (typeof o.pendingTrigger === "string") s.pendingTrigger = o.pendingTrigger;
   if (o.due === "compactions" || o.due === "pr-merged") s.due = o.due;
   if (typeof o.dueAt === "string") s.dueAt = o.dueAt;
   return s;
@@ -148,8 +154,9 @@ export function launchRotation(
 }
 
 /**
- * One compaction (the PreCompact hook). `input` is Claude Code's PreCompact
- * input: `session_id` and `trigger` (manual, auto) are read when present.
+ * One compaction that happened (SessionStart with source "compact"; never
+ * PreCompact, which runs even when nothing is compacted). `input` is the
+ * hook input: `session_id` and `trigger` (manual, auto) are read when present.
  * A different conversation than the one counted starts the count again.
  */
 export function noteCompaction(
@@ -176,13 +183,41 @@ export function noteCompaction(
   if (conversation !== undefined) s.conversation = conversation;
   s.compactions += 1;
   s.lastCompactAt = now.toISOString();
-  if (typeof i.trigger === "string") s.lastTrigger = i.trigger.slice(0, 20);
+  const trigger =
+    typeof i.trigger === "string"
+      ? i.trigger
+      : fresh
+        ? undefined
+        : prev?.pendingTrigger;
+  if (trigger) s.lastTrigger = trigger.slice(0, 20);
+  delete s.pendingTrigger;
   if (after > 0 && s.compactions >= after && !s.due) {
     s.due = "compactions";
     s.dueAt = now.toISOString();
   }
   writeRotation(filesDir, s);
   return s;
+}
+
+/**
+ * PreCompact: keep its trigger (manual, auto) for the count. Nothing is
+ * counted; a state for another conversation is left alone.
+ */
+export function notePendingCompaction(
+  filesDir: string,
+  conversation: string | undefined,
+  trigger: unknown,
+  after: number,
+): void {
+  if (typeof trigger !== "string") return;
+  const prev = readRotation(filesDir);
+  if (prev?.conversation && conversation && prev.conversation !== conversation)
+    return;
+  writeRotation(filesDir, {
+    ...(prev ?? { compactions: 0, after }),
+    ...(conversation ? { conversation } : {}),
+    pendingTrigger: trigger.slice(0, 20),
+  });
 }
 
 /** Mark a rotation due (its pull request merged), when the agent rotates. */

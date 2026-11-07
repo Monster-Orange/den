@@ -94,13 +94,46 @@ export function outcomeOf(
   }
   const pr = [...all].reverse().find((s) => s.prOpened)?.prOpened;
   if (pr) out.prOpened = pr;
-  if (all.some((s) => s.prMerged)) out.prMerged = true;
   // The last test run: of the transcript that ended last and ran tests.
   const tested = all
     .filter((s) => s.testsGreen !== undefined)
     .sort((a, b) => (a.last ?? 0) - (b.last ?? 0));
   if (tested.length) out.testsGreen = tested[tested.length - 1].testsGreen;
   return out;
+}
+
+/**
+ * Whether one of the transcripts' `gh pr merge` claims is a pull request
+ * gh says is MERGED. A bare `gh pr merge` (the branch's PR) is checked by
+ * the PR the agent opened, else in its folder.
+ */
+async function mergeVerified(
+  rec: AgentRecord,
+  stats: readonly TranscriptStats[],
+  outcome: AgentOutcome,
+  prState?: (
+    ref: string,
+    o: { repo?: string; cwd: string },
+  ) => Promise<string | undefined>,
+): Promise<boolean> {
+  if (!prState) return false;
+  const seen = new Set<string>();
+  for (const c of stats.flatMap((s) => s.prMerges)) {
+    const ref = c.ref || outcome.prOpened || "";
+    const key = `${c.repo ?? ""} ${ref}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    try {
+      const st = await prState(ref, {
+        ...(c.repo ? { repo: c.repo } : {}),
+        cwd: rec.cwd,
+      });
+      if (st?.trim().toUpperCase() === "MERGED") return true;
+    } catch {
+      // Not checked: not marked.
+    }
+  }
+  return false;
 }
 
 /**
@@ -112,6 +145,15 @@ export async function agentUsage(
   opts: {
     env?: NodeJS.ProcessEnv;
     source?: (runtime: string) => UsageSource | undefined;
+    /**
+     * A pull request's state (`gh pr view <ref> --json state`), run in the
+     * agent's folder: "MERGED" marks the outcome merged. Without it, or on
+     * any error, nothing is marked: a merge is never taken from text.
+     */
+    prState?: (
+      ref: string,
+      o: { repo?: string; cwd: string },
+    ) => Promise<string | undefined>;
   } = {},
 ): Promise<AgentUsageRow[]> {
   const pick = opts.source ?? sourceFor;
@@ -156,6 +198,8 @@ export async function agentUsage(
     }
     const usage = sumUsage(stats);
     const outcome = outcomeOf(rec, stats);
+    if (await mergeVerified(rec, stats, outcome, opts.prState))
+      outcome.prMerged = true;
     rows.push({
       ...base,
       transcripts: files.length,
@@ -327,7 +371,7 @@ export function renderReport(
   }
   lines.push(
     "",
-    "Read from this machine's transcripts; nothing was sent anywhere.",
+    "Read from this machine's transcripts; none of this was sent anywhere.",
   );
   return lines.join("\n") + "\n";
 }

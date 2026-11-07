@@ -49,7 +49,7 @@
  *           conversation, same persona, workspace, folder and grants, whose
  *           first prompt is the handoff. `resume` on a rotated agent
  *           refuses (exit 1) and names relaunch.
- *   handoff-check <file|->  (den#4) the handoff check (handoff.ts), like
+ *   handoff-check <id|file|->  (den#4) the handoff check (handoff.ts), like
  *           handback-check.
  *
  * Nothing here takes a grant: grants come from the org config only. The
@@ -61,8 +61,12 @@ import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import { HostError } from "../../shared/sessions/client.js";
 import { checkHandback } from "../../shared/agents/handback.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
-import { reasonText } from "../../shared/agents/rotation.js";
-import { listRecords } from "../../shared/agents/records.js";
+import { handoffFile, reasonText } from "../../shared/agents/rotation.js";
+import {
+  agentFilesDir,
+  listRecords,
+  readRecord,
+} from "../../shared/agents/records.js";
 import {
   AgentError,
   listAgents,
@@ -143,8 +147,8 @@ export const AGENTS_HELP = {
     "    checks a hand-back to a person: URL, machine, branch, what changed, what",
     "    to click and decisions are all there, every ID is explained, and each",
     "    decision is a numbered yes/no question; exit 1 with what to fix",
-    "{cli} agents handoff-check <file|-> [--json]",
-    "    checks a handoff.md: Objective, State, Open items, How to QA and Next step",
+    "{cli} agents handoff-check <id|file|-> [--json]",
+    "    checks an agent's handoff.md (or a file, or stdin): Objective, State, Open items, How to QA and Next step",
     "    are all there and filled in, and every ID is explained; exit 1 with what",
     "    to fix",
     "",
@@ -443,8 +447,27 @@ async function handbackCheck(
   const where = `agents ${kind}-check`;
   const p = parseArgs(where, args, { "--json": false });
   if (p.positional.length !== 1 || p.rest)
-    throw new UsageError(`${where} takes one file, or - for stdin`);
-  const src = p.positional[0];
+    throw new UsageError(
+      kind === "handoff"
+        ? `${where} takes an agent id, a file, or - for stdin`
+        : `${where} takes one file, or - for stdin`,
+    );
+  let src = p.positional[0];
+  // handoff-check <id>: that agent's handoff.md, when no such file is here.
+  if (
+    kind === "handoff" &&
+    src !== "-" &&
+    !fs.existsSync(src) &&
+    /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(src) &&
+    readRecord(d.stateDir(), src)
+  ) {
+    const file = handoffFile(agentFilesDir(d.stateDir(), src));
+    if (!fs.existsSync(file)) {
+      d.err(`✗ ${where}: no handoff.md yet for agent ${src} (${file})`);
+      return 1;
+    }
+    src = file;
+  }
   let text: string;
   try {
     text = await (deps.readHandback ?? readFileOrStdin)(src);

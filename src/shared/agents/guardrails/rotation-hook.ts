@@ -9,11 +9,13 @@
  *   - PreCompact: JSON on stdin with the common fields (`session_id`,
  *     `transcript_path`, `cwd`, `hook_event_name`) and `trigger` (manual or
  *     auto) and `custom_instructions`. Exit 0's stdout becomes instructions
- *     for the compaction summary. It counts the compaction in rotation.json
- *     (rotation.ts); once a rotation is due, its stdout asks the summary to
- *     keep the instruction to write the handoff.
- *   - SessionStart, with `source` "compact" (after a compaction) or
- *     "resume": while a rotation is due, it prints
+ *     for the compaction summary. It runs before Claude Code decides to
+ *     compact ("Not enough messages to compact" still runs it), so it never
+ *     counts. When this compaction would make a rotation due, its stdout
+ *     asks the summary to keep the instruction to write the handoff.
+ *   - SessionStart, with `source` "compact" (after a compaction that
+ *     happened) or "resume". "compact" counts the compaction in
+ *     rotation.json (rotation.ts). While a rotation is due, it prints
  *     `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":…}}`,
  *     which Claude Code adds to the context: write handoff.md, then end
  *     the turn.
@@ -25,6 +27,7 @@
 import {
   dueFor,
   noteCompaction,
+  notePendingCompaction,
   readHandoff,
   readRotation,
   rotationInstruction,
@@ -61,17 +64,36 @@ export function rotationHookOutput(
   const conversation =
     typeof i.session_id === "string" && i.session_id ? i.session_id : undefined;
   if (event === "PreCompact" || (event === undefined && "trigger" in i)) {
-    const s = noteCompaction(args.files, i, args.after, now);
-    const due = dueFor(s, conversation);
+    // Not counted here: the compaction may not happen.
+    const prev = readRotation(args.files);
+    notePendingCompaction(args.files, conversation, i.trigger, args.after);
+    const counted =
+      prev &&
+      (!conversation ||
+        !prev.conversation ||
+        prev.conversation === conversation)
+        ? prev
+        : null;
+    const next = (counted?.compactions ?? 0) + 1;
+    const due =
+      dueFor(counted, conversation) ??
+      (args.after > 0 && next >= args.after ? "compactions" : undefined);
     if (!due) return "";
     return [
       "Keep this instruction, word for word, at the top of the summary:",
-      rotationInstruction(args.files, due, s.compactions),
+      rotationInstruction(
+        args.files,
+        due,
+        Math.max(next, counted?.compactions ?? 0),
+      ),
     ].join("\n");
   }
-  if (event === "SessionStart") {
+  if (event === "SessionStart" || (event === undefined && "source" in i)) {
     if (i.source !== "compact" && i.source !== "resume") return "";
-    const s = readRotation(args.files);
+    const s =
+      i.source === "compact"
+        ? noteCompaction(args.files, i, args.after, now)
+        : readRotation(args.files);
     const due = dueFor(s, conversation);
     if (!due || readHandoff(args.files).status === "ok") return "";
     return JSON.stringify({

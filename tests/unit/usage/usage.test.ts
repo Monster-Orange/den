@@ -106,7 +106,7 @@ describe("one transcript", () => {
     expect(s.prompts).toBe(1);
     expect(s).toMatchObject({
       prOpened: "https://github.com/acme/notes/pull/101",
-      prMerged: true,
+      prMerges: [{ ref: "" }],
       testsGreen: true,
     });
     expect(s.last! - s.first!).toBe(900_000);
@@ -148,7 +148,10 @@ describe("joined on resumeToken (the scorecard metric)", () => {
 
   it("after: 10 of 11 agent sessions have attributed tokens and outcome (91%, at least 90%)", async () => {
     const f = fixture();
-    const rows = await agentUsage(listRecords(f.stateDir), { env: f.env });
+    const rows = await agentUsage(listRecords(f.stateDir), {
+      env: f.env,
+      prState: async () => "MERGED",
+    });
     expect(rows).toHaveLength(11);
     const pct = attributedPct(rows);
     expect(pct).toBe(91);
@@ -176,6 +179,7 @@ describe("joined on resumeToken (the scorecard metric)", () => {
         env: f.env,
         out: (l) => out.push(l),
         err: () => undefined,
+        prState: async () => undefined,
       }),
     ).toBe(0);
     expect(JSON.parse(out.join("\n")).attributedPct).toBe(91);
@@ -206,13 +210,14 @@ describe("the weekly report", () => {
         now: () => new Date(Date.now() + 1000),
         out: (l) => out.push(l),
         err: () => undefined,
+        prState: async () => undefined,
       }),
     ).toBe(0);
     const text = out.join("\n");
     expect(text).toMatch(/Compared with 2026-11-01/);
     expect(text).toMatch(/\| polls \| 1 \| 4 \| -3 better \|/);
     expect(text).toMatch(/\| attributed_pct \| 91 \|/);
-    expect(text).toMatch(/nothing was sent anywhere/);
+    expect(text).toMatch(/none of this was sent anywhere/);
     const written = fs
       .readdirSync(usageDir)
       .filter((x) => x !== "2026-11-01.json");

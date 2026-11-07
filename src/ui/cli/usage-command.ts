@@ -1,8 +1,10 @@
 /**
  * `<cli> usage` (den#6): how agents spend tokens and time, read from the
  * runtimes' own transcripts on this machine (usage sources, plugin kind
- * `usage`). Nothing is sent anywhere: it reads local files and writes
- * local files.
+ * `usage`). None of it is sent anywhere: it reads local files and writes
+ * local files. The one question it asks outside: when an agent ran
+ * `gh pr merge`, `gh pr view <ref> --json state` confirms the merge
+ * (gh-pr-state.ts) before it counts.
  *
  *   agents [-w <ws>] [--json]    each agent's tokens and outcome (PR opened
  *                                or merged, tests green, wall-clock), joined
@@ -21,6 +23,7 @@ import {
   writeRecord,
 } from "../../shared/agents/records.js";
 import { markDue } from "../../shared/agents/rotation.js";
+import { ghPrState } from "../../shared/git/gh-pr-state.js";
 import { readAgentsConfig } from "../../shared/den-config.js";
 import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
@@ -72,6 +75,28 @@ export interface UsageDeps {
   cli?: string;
   /** agents.rotate (default: the org config's). */
   rotateAfter?: () => { afterCompactions: number } | undefined;
+  /**
+   * A pull request's state, to confirm a `gh pr merge` the agent ran
+   * (default: `gh pr view <ref> --json state` in the agent's folder).
+   */
+  prState?: (
+    ref: string,
+    o: { repo?: string; cwd: string },
+  ) => Promise<string | undefined>;
+}
+
+/** The check, counting how often it asked (the summary line says so). */
+function counted(
+  f: NonNullable<UsageDeps["prState"]>,
+): NonNullable<UsageDeps["prState"]> & { asked: number } {
+  const g = Object.assign(
+    (ref: string, o: { repo?: string; cwd: string }) => {
+      g.asked++;
+      return f(ref, o);
+    },
+    { asked: 0 },
+  );
+  return g;
 }
 
 function resolve(d: UsageDeps) {
@@ -83,6 +108,7 @@ function resolve(d: UsageDeps) {
     err: d.err ?? ((l: string) => console.error(l)),
     cli: d.cli ?? product().cli,
     rotateLimit: () => rotateLimit(d),
+    prState: counted(d.prState ?? ghPrState(d.env ?? process.env)),
   };
 }
 
@@ -144,7 +170,10 @@ async function agents(
   const recs = listRecords(d.stateDir()).filter(
     (r) => !ws || r.workspace === ws,
   );
-  const rows = await agentUsage(recs, { env: d.env });
+  const rows = await agentUsage(recs, {
+    env: d.env,
+    prState: d.prState,
+  });
   save(d.stateDir(), rows);
   const pct = attributedPct(rows);
   if (p.flags["--json"]) {
@@ -191,8 +220,12 @@ async function agents(
   for (const r of rows) if (r.why) d.out(`  ${r.agent}: ${r.why}`);
   d.out("");
   d.out(
-    `${pct}% of agents have their tokens and outcome (${rows.filter((r) => r.attributed).length} of ${rows.length}). Read locally; nothing was sent.`,
+    `${pct}% of agents have their tokens and outcome (${rows.filter((r) => r.attributed).length} of ${rows.length}). Read locally; none of this was sent.`,
   );
+  if (d.prState.asked)
+    d.out(
+      `To confirm a merge, it asked GitHub for the state of ${d.prState.asked} pull request${d.prState.asked === 1 ? "" : "s"} (gh pr view).`,
+    );
   return 0;
 }
 
@@ -240,7 +273,10 @@ async function report(
   for (const src of usageSources())
     for (const f of src.files(since, d.env))
       stats.push(await src.mine(f, { since }));
-  const rows = await agentUsage(listRecords(d.stateDir()), { env: d.env });
+  const rows = await agentUsage(listRecords(d.stateDir()), {
+    env: d.env,
+    prState: d.prState,
+  });
   save(d.stateDir(), rows);
   const m = weeklyMetrics(stats, rows, d.rotateLimit());
   const date = now.toISOString().slice(0, 10);

@@ -181,6 +181,8 @@ describe("`usage agents` and session rotation", () => {
           out: (l) => out.push(l),
           err: () => undefined,
           rotateAfter: () => ({ afterCompactions: 3 }),
+          // gh confirms agent-1's merge.
+          prState: async () => "MERGED",
         });
       expect(await run(["agents", "--json"])).toBe(0);
       const rows = (JSON.parse(out.join("\n")) as { agents: AgentUsageRow[] })

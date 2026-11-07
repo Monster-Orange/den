@@ -2402,8 +2402,9 @@ Den never writes your `~/.claude`; your own hooks still run.
   row (`stop_hook_active`), so it can't loop. Den adds no `SubagentStop` hook: a subagent reports to its parent
   agent, not to a person.
 - `PreCompact`, and `SessionStart` after a compaction or on resume
-  (`rotation-hook.ts`), count the conversation's compactions and ask for a
-  handoff once a rotation is due. See Session rotation, below. While one is
+  (`rotation-hook.ts`), count the conversation's compactions (on
+  `SessionStart` after a compaction only) and ask for a handoff once a
+  rotation is due. See Session rotation, below. While one is
   due, the `Stop` hook also blocks once until `handoff.md` passes.
 
 **The hand-back template**, which the check enforces:
@@ -2468,14 +2469,23 @@ report. It works on den-claude for personas with Den's hooks on.
 
 **How it works.**
 
-1. Den's hooks count compactions. A `PreCompact` hook
-   (`guardrails/rotation-hook.ts`) adds one to
-   `<stateDir>/agent-files/<id>/rotation.json` at every compaction, manual
-   or automatic. The count belongs to one conversation, and starts at 0 for
-   a new one.
+1. Den's hooks count compactions. A `SessionStart` hook with source
+   `compact` (`guardrails/rotation-hook.ts`) adds one to
+   `<stateDir>/agent-files/<id>/rotation.json` after every compaction,
+   manual or automatic. It fires only once a compaction happened.
+   `PreCompact` does not count: it also runs for a `/compact` that does
+   nothing ("Not enough messages to compact"). The count belongs to one
+   conversation, and starts at 0 for a new one.
 2. A trigger fires. Either the count reaches
    `agents.rotate.after_compactions` (default 3), or the agent's pull
    request merged (the `prMerged` outcome that `<cli> usage agents` saves).
+   A merge is never taken from text. The agent must have run `gh pr merge`
+   as a command (after any `cd` or `VAR=value` prefix; not `--help`, not
+   `echo gh pr merge`), and it must have exited 0. Then `usage` asks
+   `gh pr view <ref> --json state` in the agent's folder, and only
+   `MERGED` counts. With no gh, or on any error, it is not marked. That
+   query is the one thing `usage` asks outside this machine; it says so
+   when it does.
 3. Den tells the agent. The `PreCompact` hook's output asks the compaction
    summary to keep the instruction. A `SessionStart` hook (after a
    compaction, or on resume) adds it to the context. The `Stop` hook blocks
@@ -2513,7 +2523,8 @@ characters, since it becomes a first prompt.
 <the one thing to do first>
 ```
 
-`<cli> agents handoff-check <file|-> [--json]` runs the check: exit 0 when
+`<cli> agents handoff-check <id|file|-> [--json]` runs the check, on an
+agent's `handoff.md` (by its id), a file, or stdin: exit 0 when
 it passes, 1 with each missing or empty part and each unexplained ID. A
 part can also be a line such as `Next step: open the PR`.
 
@@ -2750,7 +2761,10 @@ request it opened, whether it merged, whether its last test run passed,
 and its wall-clock time. It matches transcripts to agents by the
 conversation id Den saved at start. It prints the share of agents with
 both. Transcripts never leave the machine, and their text is never kept:
-only counts.
+only counts. "Whether it merged" is checked: when an agent ran
+`gh pr merge`, `usage` asks `gh pr view <ref> --json state` to confirm it.
+That query, the pull request's number or URL, is the only thing it asks
+outside, and the output says when it asked.
 
 `<cli> usage report [--days 7] [--json]` writes a weekly summary to
 `<state dir>/usage/<date>.json` and `.md`, compared with the last one:

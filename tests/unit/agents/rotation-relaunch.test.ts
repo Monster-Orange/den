@@ -70,7 +70,7 @@ async function started(r: Rig, id = "be-dev"): Promise<string> {
   return rec(r, id).resumeToken!;
 }
 
-/** Its conversation compacts `n` times (the PreCompact hook's count). */
+/** Its conversation compacts `n` times (the SessionStart "compact" count). */
 function compact(r: Rig, id: string, n: number): void {
   const token = rec(r, id).resumeToken!;
   const after = readRotation(files(r, id))!.after;
@@ -86,6 +86,20 @@ async function stop(r: Rig, id = "be-dev"): Promise<void> {
 
 const writeHandoff = (r: Rig, id: string, text = GOOD_HANDOFF) =>
   fs.writeFileSync(path.join(files(r, id), "handoff.md"), text);
+
+describe("agents handoff-check <id>", () => {
+  it("checks that agent's handoff.md; a missing one says where it would be", async () => {
+    const r = await rig();
+    await started(r);
+    expect(await agents(r, "handoff-check", "be-dev")).toBe(1);
+    expect(r.err.join("\n")).toContain(
+      `no handoff.md yet for agent be-dev (${path.join(files(r, "be-dev"), "handoff.md")})`,
+    );
+    writeHandoff(r, "be-dev");
+    expect(await agents(r, "handoff-check", "be-dev")).toBe(0);
+    expect(r.out.join("\n")).toContain("✓ the handoff is complete and plain");
+  });
+});
 
 describe("a session that rotated after 3 compactions", () => {
   it("counts from 0 at its start, under its own conversation", async () => {

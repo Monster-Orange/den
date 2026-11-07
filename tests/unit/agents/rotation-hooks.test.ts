@@ -61,7 +61,8 @@ function agent(after = 3) {
     });
     return { status: r.status, stdout: r.stdout.trim(), stderr: r.stderr };
   };
-  const compact = (trigger = "auto", session = CONV) =>
+  /** PreCompact alone: what Claude Code runs before it decides to compact. */
+  const preCompact = (trigger = "auto", session = CONV) =>
     sh("PreCompact", {
       session_id: session,
       transcript_path: path.join(root, `${session}.jsonl`),
@@ -70,7 +71,23 @@ function agent(after = 3) {
       trigger,
       custom_instructions: null,
     });
-  return { files, hooks, sh, compact };
+  /**
+   * A real compaction: PreCompact, then SessionStart with source "compact"
+   * once it happened. Returns PreCompact's result (the summary's
+   * instructions) and SessionStart's.
+   */
+  const compact = (trigger = "auto", session = CONV) => {
+    const pre = preCompact(trigger, session);
+    const start = sh("SessionStart", {
+      session_id: session,
+      transcript_path: path.join(root, `${session}.jsonl`),
+      cwd: root,
+      hook_event_name: "SessionStart",
+      source: "compact",
+    });
+    return { ...pre, start };
+  };
+  return { files, hooks, sh, compact, preCompact };
 }
 
 describe("the PreCompact hook", () => {
@@ -110,6 +127,21 @@ describe("the PreCompact hook", () => {
     );
   });
 
+  it('a /compact that does nothing ("Not enough messages to compact") is not counted: only SessionStart "compact" counts', () => {
+    const a = agent();
+    a.compact();
+    expect(a.preCompact("manual").status).toBe(0);
+    expect(a.preCompact("manual").status).toBe(0);
+    expect(readRotation(a.files)).toMatchObject({ compactions: 1 });
+    expect(readRotation(a.files)?.due).toBeUndefined();
+    a.compact();
+    a.compact();
+    expect(readRotation(a.files)).toMatchObject({
+      compactions: 3,
+      due: "compactions",
+    });
+  });
+
   it("starts the count again for another conversation", () => {
     const a = agent();
     a.compact();
@@ -123,7 +155,7 @@ describe("the PreCompact hook", () => {
 
   it("is tolerant: no session id or event name still counts; bad JSON is ignored", () => {
     const a = agent();
-    expect(a.sh("PreCompact", { trigger: "auto" }).status).toBe(0);
+    expect(a.sh("SessionStart", { source: "compact" }).status).toBe(0);
     expect(readRotation(a.files)?.compactions).toBe(1);
     const r = spawnSync(
       "/bin/sh",

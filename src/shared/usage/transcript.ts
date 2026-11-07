@@ -49,9 +49,64 @@ export interface TranscriptStats {
   activeSeconds: number;
   /** The last pull request URL it opened. */
   prOpened?: string;
-  prMerged: boolean;
+  /**
+   * `gh pr merge` commands that exited 0: claims, which `usage` checks
+   * with `gh pr view` before it marks the pull request merged.
+   */
+  prMerges: PrMergeClaim[];
   /** The last test run's result; undefined when it ran none. */
   testsGreen?: boolean;
+}
+
+/** A `gh pr merge` that ran: its PR (number, URL, or "" for the branch's). */
+export interface PrMergeClaim {
+  ref: string;
+  repo?: string;
+}
+
+/** Words of one simple command, with quotes removed (no expansion). */
+function words(part: string): string[] {
+  const out: string[] = [];
+  for (const m of part.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g))
+    out.push(m[1] ?? m[2] ?? m[3]);
+  return out;
+}
+
+/**
+ * The merge a shell command runs: one of its parts (split on `&&`, `||`,
+ * `;`, `|`, newlines), after `VAR=value` words, `env` or `command`, starts
+ * with `gh pr merge`, and is not asking for help. Null otherwise:
+ * `echo gh pr merge 1`, a grep for it, or a comment are not merges.
+ */
+export function ghPrMergeRef(cmd: string): PrMergeClaim | null {
+  for (const part of cmd.split(/&&|\|\||;|\||\n/)) {
+    const w = words(part.trim());
+    let i = 0;
+    while (
+      i < w.length &&
+      (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w[i]) ||
+        w[i] === "env" ||
+        w[i] === "command")
+    )
+      i++;
+    if (w[i] !== "gh" || w[i + 1] !== "pr" || w[i + 2] !== "merge") continue;
+    const rest = w.slice(i + 3);
+    if (rest.includes("--help") || rest.includes("-h")) return null;
+    const claim: PrMergeClaim = { ref: "" };
+    for (let j = 0; j < rest.length; j++) {
+      const a = rest[j];
+      if (a === "-R" || a === "--repo") {
+        if (rest[j + 1]) claim.repo = rest[++j];
+      } else if (a.startsWith("--repo=")) claim.repo = a.slice(7);
+      else if (
+        !claim.ref &&
+        /^(\d+|https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+)$/.test(a)
+      )
+        claim.ref = a;
+    }
+    return claim;
+  }
+  return null;
 }
 
 /** A correction, as the miner reads one (emphatic ones; polite ones slip by). */
@@ -130,13 +185,13 @@ export async function mineTranscript(
     interrupts: 0,
     agentSpawns: 0,
     activeSeconds: 0,
-    prMerged: false,
+    prMerges: [],
   };
   const seen = new Set<string>();
   const toolNames = new Map<string, string>();
   /** Tool-use ids of the commands whose result decides an outcome. */
   const tests = new Map<string, number>();
-  const merges = new Set<string>();
+  const merges = new Map<string, PrMergeClaim>();
   const creates = new Set<string>();
   let order = 0;
   let lastTest: { at: number; green: boolean } | undefined;
@@ -217,7 +272,8 @@ export async function mineTranscript(
         for (const s of cmd.matchAll(/\bsleep\s+(\d+)/g))
           r.sleepSeconds += Number(s[1]);
         if (TEST_RUN.test(cmd)) tests.set(useId, order++);
-        if (/\bgh pr merge\b/.test(cmd)) merges.add(useId);
+        const merge = ghPrMergeRef(cmd);
+        if (merge) merges.set(useId, merge);
         if (/\bgh pr create\b/.test(cmd)) creates.add(useId);
       }
       continue;
@@ -240,7 +296,8 @@ export async function mineTranscript(
         const t = tests.get(useId);
         if (t !== undefined && (!lastTest || t >= lastTest.at))
           lastTest = { at: t, green: !err };
-        if (merges.has(useId) && !err) r.prMerged = true;
+        const merge = merges.get(useId);
+        if (merge && !err) r.prMerges.push(merge);
         if (creates.has(useId) && !err) {
           const u = PR_URL.exec(textOf(tr.content));
           if (u) r.prOpened = u[0];
