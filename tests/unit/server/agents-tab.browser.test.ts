@@ -2,8 +2,10 @@
  * The Agents tab (AG-4a-term, AG spec §5d) in a real browser:
  *
  *   - the layout, measured against the prototype (den-shell.html's
- *     /agents at 1440x900: a 300px list beside the panes, 14px apart, the
- *     row's height 100vh - 300px; at 390px one column, no sideways scroll);
+ *     /agents at 1440x900: a 300px list beside the panes, 14px apart; the
+ *     row fills the window to 14px above the runs dock (AG-4b, Ward
+ *     2026-11-07: not the prototype's 100vh - 300px); at 390px one column,
+ *     no sideways scroll);
  *   - the list, grouped by workspace and following ?ws=, plain sessions
  *     labelled "session", a revoked token marked;
  *   - a pane: the scrollback first, then live output, keystrokes to the
@@ -163,16 +165,19 @@ const openIds = (p: Page) =>
   (new URL(p.url()).searchParams.get("open") ?? "").split(",").filter(Boolean);
 
 describe("the Agents tab", () => {
-  it("matches the prototype's layout at 1440x900: a 300px list, 14px gap, the row 100vh - 300px tall", async () => {
+  it("matches the prototype's layout at 1440x900: a 300px list, 14px gap, the row down to 14px above the runs dock", async () => {
     if (skip()) return;
     const p = await page("/agents");
-    const [agx, agl, agr] = await Promise.all([
+    const [agx, agl, agr, dock] = await Promise.all([
       box(p, "#agx"),
       box(p, "#agl"),
       box(p, "#agr"),
+      box(p, "#den-dock"),
     ]);
     expect(Math.abs(agl.width - 300)).toBeLessThanOrEqual(1);
-    expect(Math.abs(agx.height - (900 - 300))).toBeLessThanOrEqual(2);
+    expect(Math.abs(agx.y + agx.height - (dock.y - 14))).toBeLessThanOrEqual(
+      0.5,
+    );
     expect(Math.abs(agl.height - agx.height)).toBeLessThanOrEqual(1);
     expect(Math.abs(agr.x - (agl.x + agl.width + 14))).toBeLessThanOrEqual(1);
     expect(
@@ -237,7 +242,8 @@ describe("the Agents tab", () => {
 
   it("a pane: scrollback, then live output; keys reach the session; up to four tile in the URL, a fifth closes the oldest; Close detaches", async () => {
     if (skip()) return;
-    const p = await page("/agents");
+    // Tile (AG-4b): each click adds a pane.
+    const p = await page("/agents?layout=tile");
     await p.click(`.agr[data-id="${id("shell")}"]`);
     await waitTerm(p, id("shell"), "hello from north");
     expect(openIds(p)).toEqual([id("shell")]);
@@ -377,9 +383,12 @@ describe("the Agents tab", () => {
 
   it("in dark mode the terminal takes the theme's colours", async () => {
     if (skip()) return;
-    const p = await page(`/agents?open=${id("shell")},${id("scout")}`, {
-      dark: true,
-    });
+    const p = await page(
+      `/agents?open=${id("shell")},${id("scout")}&layout=tile`,
+      {
+        dark: true,
+      },
+    );
     await waitTerm(p, id("shell"), "hello from north");
     expect(await p.getAttribute("html", "data-mode")).toBe("dark");
     const [bg, sunken] = await p.evaluate((sid) => {

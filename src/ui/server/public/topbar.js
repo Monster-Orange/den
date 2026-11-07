@@ -877,14 +877,26 @@ function paletteItems() {
     });
   }
   for (const x of palSessions) {
-    const name = x.kind === "agent" ? (x.persona ?? x.label) : x.label;
+    // AG-4b: the name a person gave the agent, else its persona.
+    const name =
+      x.kind === "agent" ? x.displayName || (x.persona ?? x.label) : x.label;
     items.push({
       key: `agent:${x.id}`,
       kind: "agent",
       label: t("ag.pal", { ws: x.workspace, name }),
-      sub: x.kind === "agent" && x.persona !== x.label ? x.label : undefined,
-      dot: x.state === "running" ? "" : "off",
-      keywords: [x.workspace, x.label, x.persona ?? "", "agents", "terminal"],
+      sub:
+        x.kind === "agent" && (x.displayName || x.persona !== x.label)
+          ? x.label
+          : undefined,
+      dot: x.waiting ? "warn" : x.state === "running" ? "" : "off",
+      keywords: [
+        x.workspace,
+        x.label,
+        x.persona ?? "",
+        x.displayName ?? "",
+        "agents",
+        "terminal",
+      ],
       run: () => go(`/agents?open=${encodeURIComponent(x.id)}`),
     });
   }

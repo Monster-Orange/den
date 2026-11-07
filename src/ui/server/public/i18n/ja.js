@@ -330,6 +330,7 @@
     "set.graph.panelWidth": "詳細パネル",
     "set.workspace.editor": "このワークスペースの IDE",
     "set.agents.runtimes": "ランタイム",
+    "set.agents.layout": "エージェントタブのレイアウト",
     "set.cli.local_dev": "ローカル環境",
     "set.cli.cli_tabs": "ターミナルのタブ",
     "set.cli.log_window_lines": "ログ欄の行数",
@@ -455,6 +456,19 @@
     "ag.palStart": "エージェントを開始…",
     "ag.cap":
       "ペインは最大 4 つです。{id} のペインを閉じました（実行は続きます）",
+    "ag.layout": "レイアウト",
+    "ag.l.focus": "フォーカス",
+    "ag.l.tabs": "タブ",
+    "ag.l.tile": "タイル",
+    "ag.l.tip": "{name}（{key}）",
+    "ag.tabs": "開いているセッション",
+    "ag.hint.focus":
+      "クリックで 1 つのセッションを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",
+    "ag.hint.tabs":
+      "クリックでセッションをタブで開きます。タブをダブルクリックすると名前を変えられます。",
+    "ag.hint.tile": "クリックでセッションをタイルに追加します（最大 4）。",
+    "ag.renameTip": "ダブルクリックで名前を変更",
+    "ag.renameName": "{id} の名前を変更",
     "ag.rt.ready": "{name} {version} を起動:",
     "ag.rt.readyNoVer": "{name} を起動:",
     "ag.rt.notFound": "{name} が見つかりません。",

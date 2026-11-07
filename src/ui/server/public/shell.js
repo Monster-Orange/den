@@ -452,6 +452,7 @@
     "set.graph.panelWidth": "Details panel",
     "set.workspace.editor": "IDE for this workspace",
     "set.agents.runtimes": "Runtimes",
+    "set.agents.layout": "Agents tab layout",
     "set.cli.local_dev": "Local environment",
     "set.cli.cli_tabs": "Terminal tabs",
     "set.cli.log_window_lines": "Log pane lines",
@@ -585,6 +586,20 @@
     "ag.pal": "Agents › {ws} / {name}",
     "ag.palStart": "Start agent…",
     "ag.cap": "Up to 4 panes: {id}'s closed to make room (it keeps running)",
+    // AG-4b: the Agents tab's layouts and named tabs.
+    "ag.layout": "Layout",
+    "ag.l.focus": "Focus",
+    "ag.l.tabs": "Tabs",
+    "ag.l.tile": "Tile",
+    "ag.l.tip": "{name} ({key})",
+    "ag.tabs": "Open sessions",
+    "ag.hint.focus":
+      "Click shows one session. Shift- or ⌘-click adds it alongside.",
+    "ag.hint.tabs":
+      "Click opens a session as a tab. Double-click a tab to rename it.",
+    "ag.hint.tile": "Click adds a session as a tile, up to 4.",
+    "ag.renameTip": "Double-click to rename",
+    "ag.renameName": "Rename {id}",
     "ag.rt.ready": "Starts {name} {version} from",
     "ag.rt.readyNoVer": "Starts {name} from",
     "ag.rt.notFound": "{name} not found.",

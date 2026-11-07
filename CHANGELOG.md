@@ -4,6 +4,41 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.12] - unreleased
+
+### Added
+
+- **Agents tab layouts.** A switch in the page header picks Focus, Tabs or
+  Tile, and so do ⌘1, ⌘2 and ⌘3. Focus, the default, shows one pane: a
+  click replaces it, and Shift-click or ⌘-click adds one alongside. Tabs
+  shows one pane under a strip of tabs. Tile is a grid: one pane fills
+  it, two sit side by side, three or four make a 2×2. At phone width,
+  Focus and Tile show as Tabs. Your choice is saved for you
+  (`agents.layout` in `config/local/user.yml`, `agents_layout` in
+  `/api/settings`, and Settings › Agents), and the URL says it
+  (`&layout=`).
+- **Named tabs.** Each tab shows the agent's name, then its persona and
+  workspace, and a dot when it is waiting. Double-click a tab to rename
+  the agent. The name is stored in its record (`displayName`) and shows in
+  the list, its pane, ⌘K, the Workspaces page and `agents list --json`.
+  Start fresh and Relaunch keep it. The id never changes. The route is
+  `POST /api/workspaces/<ws>/agents/<id>/name`.
+
+### Changed
+
+- **The Agents tab fills the window.** The list and the panes reach down to
+  14px above the runs dock at any window height, with the dock open or
+  shut. They used to stop at a fixed guess of the window less 300px.
+- **Every terminal fits its pane.** A terminal used to be sized for its
+  pane's padding as well, so its last row could be cut off. It now fits
+  the space inside the padding, in every layout, and refits when the
+  window or the dock changes size.
+
+### Migrations
+
+None. The record's new `displayName` is optional: records without one
+read as before. The layout pref is optional and defaults to Focus.
+
 ## [0.4.11] - 2026-11-07
 
 ### Changed

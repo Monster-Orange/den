@@ -652,3 +652,84 @@ describe("the runtime catalog's routes (AG-0.5)", () => {
     expect(fs.existsSync(a.r.ran)).toBe(false);
   });
 });
+
+describe("POST /api/workspaces/<ws>/agents/<id>/name (AG-4b: a tab's name)", () => {
+  const rename = (a: Api, ws: string, id: string, body: unknown, h = {}) =>
+    a.call("POST", `/api/workspaces/${ws}/agents/${id}/name`, body, h);
+
+  it("stores a trimmed name in the record; the id never changes; null or blank clears it", async () => {
+    const a = await api();
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    const r = await rename(a, "north", "planner", {
+      name: "  Release  notes ",
+    });
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({
+      ok: true,
+      agent: "planner",
+      displayName: "Release  notes",
+    });
+    const rec = JSON.parse(
+      fs.readFileSync(
+        path.join(a.r.stateDir, "agents", "planner.json"),
+        "utf-8",
+      ),
+    ) as Record<string, unknown>;
+    expect(rec).toMatchObject({ id: "planner", displayName: "Release  notes" });
+    // The list (and so the CLI's --json, MCP and the page) says it.
+    expect((await rows(a, "north"))[0]).toMatchObject({
+      agent: "planner",
+      displayName: "Release  notes",
+    });
+    expect(recentActions().at(-1)).toMatchObject({
+      detail: "name planner in north",
+    });
+    // Start fresh keeps the name: it is the agent's, not its session's.
+    await a.call("POST", "/api/workspaces/north/agents/planner/stop");
+    a.r.made[0].exit(0);
+    await settle();
+    expect(
+      (await a.call("POST", "/api/workspaces/north/agents/planner/fresh"))
+        .status,
+    ).toBe(200);
+    expect((await rows(a, "north"))[0].displayName).toBe("Release  notes");
+    for (const clear of [null, "   ", ""]) {
+      await rename(a, "north", "planner", { name: "x" });
+      const c = await rename(a, "north", "planner", { name: clear });
+      expect(c.status).toBe(200);
+      expect(c.json).not.toHaveProperty("displayName");
+      expect((await rows(a, "north"))[0]).not.toHaveProperty("displayName");
+    }
+  });
+
+  it("refuses a name that is too long, has control characters or isn't a string; another workspace's agent; and an agent", async () => {
+    const a = await api();
+    await start(a, "north", { persona: "planner" });
+    for (const name of [
+      "x".repeat(41),
+      "bad\nname",
+      "bell\u0007",
+      "rtl‮flip",
+      42,
+    ]) {
+      const r = await rename(a, "north", "planner", { name });
+      expect([name, r.status]).toEqual([name, 400]);
+      expectR26(r.json);
+    }
+    expect((await rename(a, "north", "planner", {})).status).toBe(400);
+    expect((await rows(a, "north"))[0]).not.toHaveProperty("displayName");
+    const other = await rename(a, "south", "planner", { name: "x" });
+    expect(other.status).toBe(404);
+    expect(String(other.json.error)).not.toContain("north");
+    const token = a.r.made[0].opts.env.DEN_ACTOR_TOKEN ?? "";
+    const agent = await rename(
+      a,
+      "north",
+      "planner",
+      { name: "mine now" },
+      { authorization: `Bearer ${token}` },
+    );
+    expect(agent.status).toBe(403);
+    expect((await rows(a, "north"))[0]).not.toHaveProperty("displayName");
+  });
+});
