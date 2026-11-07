@@ -265,6 +265,14 @@ describe("the Start dialog (AG-10.1)", () => {
     await openDialog(p);
     await p.click('#ag-persona [data-pid="reviewer"]');
     await p.click("#ag-adv summary");
+    // A persona with no model of its own: the short label, which fits the
+    // select at 638px (the long "the runtime's default · latest" was cut).
+    expect(
+      await p.$eval(
+        "#ag-model option:first-child",
+        (o) => (o as HTMLOptionElement).textContent,
+      ),
+    ).toBe("Persona default (latest)");
     const pv = () => p.textContent("#ag-pv");
     expect(await pv()).toMatch(/--permission-mode default/);
     expect(await pv()).toMatch(/Bash\(gh pr diff\)/);

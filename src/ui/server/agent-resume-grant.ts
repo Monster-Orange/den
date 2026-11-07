@@ -51,3 +51,38 @@ export function agentResumeTarget(
     return null;
   }
 }
+
+/**
+ * MCP `agent_import` (AG-17.1): bring a conversation in as an agent, and
+ * list the ones there are. Off unless `mcp.actions` lists it; only in the
+ * caller's workspace or one its grants give it. A person's otherwise.
+ */
+export const AGENT_IMPORT_ACTION = "agent_import";
+
+/** GET /api/workspaces/<ws>/conversations, POST …/<id>/import. */
+export const AGENT_IMPORT_ROUTE =
+  /^\/api\/workspaces\/([^/]+)\/conversations(?:\/([^/]+)\/import)?$/;
+
+/** Why this agent may not bring in a conversation of `ws`, or null. */
+export function agentImportRefusal(
+  p: ResumingAgent,
+  ws: string,
+  actions: readonly string[],
+): string | null {
+  if (!actions.includes(AGENT_IMPORT_ACTION))
+    return `${p.actor} can't bring in conversations: the org config's mcp.actions doesn't list ${AGENT_IMPORT_ACTION}.`;
+  if (ws !== p.workspace && !p.grants.includes(ws))
+    return `${p.actor} can bring in conversations of workspace ${p.workspace} only${p.grants.length ? ` (or ${p.grants.join(", ")}, its grants)` : ""}, not ${ws}.`;
+  return null;
+}
+
+/** The import route's workspace, decoded; null when it isn't it. */
+export function agentImportTarget(pathname: string): { ws: string } | null {
+  const m = AGENT_IMPORT_ROUTE.exec(pathname);
+  if (!m) return null;
+  try {
+    return { ws: decodeURIComponent(m[1]) };
+  } catch {
+    return null;
+  }
+}

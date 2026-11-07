@@ -29,6 +29,18 @@
  *                                                 instruction is typed into
  *                                                 the session once it is
  *                                                 ready, never an argument
+ *   GET  /api/workspaces/<ws>/conversations[?runtime=<r>]  Bring in
+ *                                                 (AG-17.1): each runtime's
+ *                                                 own conversations in the
+ *                                                 workspace's folder, newest
+ *                                                 first, with which runtimes
+ *                                                 can bring one in
+ *   POST /api/workspaces/<ws>/conversations/<id>/import  { persona,
+ *                                                 runtime?, id? }: the
+ *                                                 runtime's resume of it, as
+ *                                                 a Den agent; 409
+ *                                                 open_elsewhere when it was
+ *                                                 written in the last minute
  *   POST /api/workspaces/<ws>/sessions            a plain session: the login
  *                                                 shell in the workspace's
  *                                                 folder (AG-10.1)
@@ -114,6 +126,8 @@ import {
   resumeInterrupted,
   setRuntimePath,
   resolveAgentsDeps,
+  importAgent,
+  listConversations,
   relaunchAgent,
   resumeAgent,
   startAgent,
@@ -131,7 +145,10 @@ import {
   auditActorOf,
   principalOf,
 } from "./request-guard.js";
-import { agentResumeRefusal } from "./agent-resume-grant.js";
+import {
+  agentImportRefusal,
+  agentResumeRefusal,
+} from "./agent-resume-grant.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import type { Actor } from "../../shared/agent-actor.js";
 
@@ -148,6 +165,8 @@ const AGENTS_PATH =
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 const PERSONA_PATH = /^\/api\/personas\/([^/]+)$/;
 const PLAIN_PATH = /^\/api\/workspaces\/([^/]+)\/sessions$/;
+const CONVERSATIONS_PATH =
+  /^\/api\/workspaces\/([^/]+)\/conversations(?:\/([^/]+)\/import)?$/;
 /** A start's body: a few names, commands and a first instruction. */
 const MAX_BODY = 32 * 1024;
 /** A list of names (a page's workspaces, an Undo's agents). */
@@ -349,6 +368,7 @@ export async function handleAgentRoutes(
   const rp = RUNTIME_PATH.exec(pathname);
   const pp = PERSONA_PATH.exec(pathname);
   const plain = PLAIN_PATH.exec(pathname);
+  const conv = CONVERSATIONS_PATH.exec(pathname);
   // AG-14's routes over many agents at once.
   const many =
     pathname === "/api/agents/clear-stopped" ||
@@ -361,6 +381,7 @@ export async function handleAgentRoutes(
     !rp &&
     !pp &&
     !plain &&
+    !conv &&
     !many
   )
     return false;
@@ -369,6 +390,14 @@ export async function handleAgentRoutes(
 
   if (pp) return personaRoute(req, res, safeDecode(pp[1]), d);
   if (plain) return plainSession(req, res, safeDecode(plain[1]), d);
+  if (conv)
+    return conversations(
+      req,
+      res,
+      safeDecode(conv[1]),
+      conv[2] === undefined ? undefined : safeDecode(conv[2]),
+      d,
+    );
   if (pathname === "/api/personas" && method === "POST")
     return personaRoute(req, res, null, d);
 
@@ -595,6 +624,91 @@ export async function handleAgentRoutes(
     }
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
+    sendError(res, e, ws);
+  }
+  return true;
+}
+
+const IMPORT_KEYS = ["persona", "runtime", "id"];
+
+/**
+ * Bring in (AG-17.1): GET lists the workspace's conversations, POST
+ * …/<id>/import brings one in. A person's, or an agent's opted in through
+ * mcp.actions' agent_import inside its scope. Every import is audited.
+ */
+async function conversations(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ws: string,
+  session: string | undefined,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  const actor = auditActorOf(req);
+  const agent = agentPrincipalOf(req);
+  const allowed = () => {
+    if (agent) {
+      const why = agentImportRefusal(agent, ws, mcpActions());
+      if (why) throw new AgentError(why, { status: 403 });
+    } else guard(actor);
+  };
+  if (session === undefined) {
+    if (method !== "GET" && method !== "HEAD")
+      return methodNotAllowed(res, "GET");
+    try {
+      allowed();
+      const runtime =
+        new URL(req.url ?? "/", "http://x").searchParams.get("runtime") ??
+        undefined;
+      const listed = listConversations(d, ws, runtime);
+      sendJson(res, { workspace: ws, folder: d.workspaceDir(ws), ...listed });
+    } catch (e) {
+      sendError(res, e, ws);
+    }
+    return true;
+  }
+  if (method !== "POST") return methodNotAllowed(res, "POST");
+  let what = `bring in ${session} in ${ws}`;
+  const audit = (reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail: what,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    allowed();
+    const body = await jsonBody(req);
+    for (const k of Object.keys(body))
+      if (!IMPORT_KEYS.includes(k))
+        throw new AgentError(
+          `${k}: unknown field (an import takes ${IMPORT_KEYS.join(", ")})`,
+          { usage: true },
+        );
+    const str = (k: string): string | undefined => {
+      const v = body[k];
+      if (v === undefined || v === null || v === "") return undefined;
+      if (typeof v !== "string" || !NAME_RE.test(v))
+        throw new AgentError(`${k} must be a name`, { usage: true });
+      return v;
+    };
+    const persona = str("persona");
+    if (!persona) throw new AgentError("persona is required", { usage: true });
+    const s = await importAgent(d, {
+      workspace: ws,
+      session,
+      persona,
+      runtime: str("runtime"),
+      id: str("id"),
+    });
+    what = `bring in ${session} as ${s.rec.id} (${s.rec.persona}, ${s.rec.runtime}) in ${ws}`;
+    audit(s.early ? "exited at once" : undefined);
+    sendStarted(res, s, d);
+  } catch (e) {
+    audit(e instanceof Error ? e.message : String(e));
     sendError(res, e, ws);
   }
   return true;
