@@ -220,6 +220,97 @@ export const EDGE_ORG_LABEL = "den.edge.org";
  * `den.edge.org` (0.3.0-dev.40): edgeUp and `edge down` touch an existing
  * edge only when its root is theirs.
  */
+/**
+ * The addresses the edge's entrypoints believe X-Forwarded-* headers from
+ * (SEC-2a, in place of `forwardedHeaders.insecure`): loopback and the
+ * Docker networks the edge and its own proxies run on (Docker's
+ * 172.16.0.0/12, Docker Desktop's VM network). From anyone else Traefik
+ * drops the client's headers and writes its own; either way the right-most
+ * X-Forwarded-For entry is the peer it saw, which is all Den believes.
+ */
+export const EDGE_FORWARDED_TRUSTED_IPS: readonly string[] = [
+  "127.0.0.1/32",
+  "::1/128",
+  "172.16.0.0/12",
+  "192.168.65.0/24",
+];
+
+/** An `args` entry that sets what Den owns: the entrypoints' header or PROXY trust. */
+const OWNED_ARG =
+  /^--entrypoints\.[^.=]+\.(forwardedheaders\.(insecure|trustedips)|proxyprotocol\.)/i;
+
+/** The `edge.args` entries Den drops (SEC-2a): forwarded-header or PROXY trust. */
+export function droppedEdgeArgs(cfg: Pick<EdgeConfig, "args">): string[] {
+  return cfg.args.filter((a) => OWNED_ARG.test(a));
+}
+
+/** The edge entrypoints' trust (SEC-2a): forwarded headers, and the PROXY protocol when set. */
+export function edgeTrustArgs(cfg: EdgeConfig): string[] {
+  const eps = ["web", ...(edgeHttps(cfg) ? ["websecure"] : [])];
+  const pp = cfg.proxyProtocolTrustedIps ?? [];
+  return eps.flatMap((ep) => [
+    `--entrypoints.${ep}.forwardedHeaders.trustedIPs=${EDGE_FORWARDED_TRUSTED_IPS.join(",")}`,
+    ...(pp.length
+      ? [`--entrypoints.${ep}.proxyProtocol.trustedIPs=${pp.join(",")}`]
+      : []),
+  ]);
+}
+
+/** The edge container's command (its Traefik static config). */
+export function edgeCommand(cfg: EdgeConfig): string[] {
+  const https = edgeHttps(cfg);
+  const proxy = dockerProxyName(cfg.org);
+  const labels = cfg.dockerLabels;
+  return [
+    "--entrypoints.web.address=:80",
+    ...(https ? ["--entrypoints.websecure.address=:443"] : []),
+    ...edgeTrustArgs(cfg),
+    "--providers.file.directory=/etc/edge/dynamic",
+    "--providers.file.watch=true",
+    ...(labels
+      ? [
+          "--providers.docker=true",
+          `--providers.docker.endpoint=tcp://${proxy}:2375`,
+          "--providers.docker.exposedbydefault=false",
+          `--providers.docker.network=${labels.network}`,
+        ]
+      : []),
+    "--api.dashboard=true",
+    "--ping=true",
+    "--log.level=WARN",
+    ...cfg.args.filter((a) => !OWNED_ARG.test(a)),
+  ];
+}
+
+/**
+ * What changed between a running edge's command and the one `edge up`
+ * renders now, as words for its one-line notice; [] when nothing did (or
+ * the running one isn't known).
+ */
+export function edgeCommandDrift(
+  running: readonly string[] | null,
+  rendered: readonly string[],
+): string[] {
+  if (!running) return [];
+  const a = new Set(running);
+  const b = new Set(rendered);
+  const changed = [
+    ...rendered.filter((x) => !a.has(x)),
+    ...running.filter((x) => !b.has(x)),
+  ];
+  if (!changed.length) return [];
+  const what = new Set<string>();
+  for (const c of changed)
+    what.add(
+      /forwardedheaders/i.test(c)
+        ? "forwarded-header trust"
+        : /proxyprotocol/i.test(c)
+          ? "PROXY protocol"
+          : "its command",
+    );
+  return [...what];
+}
+
 export function renderEdgeCompose(
   cfg: EdgeConfig,
   ownerRoot: string = cfg.stateDir,
@@ -239,24 +330,7 @@ export function renderEdgeCompose(
       restart: "unless-stopped",
       labels: { [EDGE_ROOT_LABEL]: ownerRoot, [EDGE_ORG_LABEL]: cfg.org },
       ...(labels ? { depends_on: ["docker-proxy"] } : {}),
-      command: [
-        "--entrypoints.web.address=:80",
-        ...(https ? ["--entrypoints.websecure.address=:443"] : []),
-        "--providers.file.directory=/etc/edge/dynamic",
-        "--providers.file.watch=true",
-        ...(labels
-          ? [
-              "--providers.docker=true",
-              `--providers.docker.endpoint=tcp://${proxy}:2375`,
-              "--providers.docker.exposedbydefault=false",
-              `--providers.docker.network=${labels.network}`,
-            ]
-          : []),
-        "--api.dashboard=true",
-        "--ping=true",
-        "--log.level=WARN",
-        ...cfg.args,
-      ],
+      command: edgeCommand(cfg),
       ...(cfg.ports
         ? {
             ports: [

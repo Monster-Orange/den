@@ -34,6 +34,8 @@ export const UI_MODULES: readonly string[] = [
   "/error-page.js",
   "/agents-section.js",
   "/agents-page.js",
+  // SEC-2a: Pair a device's QR code (a tiny encoder of Den's own).
+  "/qr.js",
   // The UI's catalogs other than English (R19; en is in shell.js).
   "/i18n/ja.js",
   "/i18n/es.js",

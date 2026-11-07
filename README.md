@@ -46,8 +46,8 @@ yours. Den connects them and turns on good practice from the start.
   and audit trail as a person, under a token of its own. Agents can read and investigate. Acting is opt-in,
   and the lock still guards starting and stopping things.
 - **Safe on localhost, signed in beyond it.** On localhost there is nothing to sign in to. Reached through the
-  edge or your network, every page and call needs a sign-in, and there is no password: `acme web login` prints a
-  one-time link.
+  edge from another machine, or over your network, every page and call needs a sign-in, and there is no password:
+  Sign in with GitHub as the Den's owner, or open a one-time link from `acme web login`.
 - **Opinionated, not locked in.** Good defaults are switched on, and almost everything can be switched off. The
   safety guards stay on. Den never needs our accounts, secrets or certificates. Everything specific to you
   lives in your own repo.

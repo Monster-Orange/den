@@ -110,9 +110,12 @@ That is `examples/demo/demo-api/.den.yml`; the other demo repos are in
   workspace's checkout, with an MCP server pinned to that workspace and a
   token of its own. The web UI's Agents tab lists them and opens their
   terminals.
-- **Browser sign-in beyond loopback.** On localhost no route needs a sign-in.
-  Through the edge or on a non-loopback bind, every route needs one:
-  `<cli> web login` prints a one-time link (`web open` opens it).
+- **Browser sign-in beyond loopback.** On localhost no route needs a sign-in,
+  nor through the edge when it shows the browser is on this machine.
+  Anywhere else, every route needs one: Sign in with GitHub as the Den's
+  owner (`<cli> web owner link` links the account once), or a one-time link
+  (`<cli> web login`; `web open` opens it; Settings › Access pairs a device
+  with a QR code).
 - **Web UI and CLI** over the same state.
 
 ## Strategies

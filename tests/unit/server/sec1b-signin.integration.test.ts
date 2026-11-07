@@ -99,6 +99,8 @@ const code = () => {
 const nav = { "sec-fetch-site": "none", accept: "text/html" };
 /** The edge's X-Forwarded-For for a client on another machine (0.4.3). */
 const AWAY = { "x-forwarded-for": "203.0.113.7" };
+/** The edge's X-Forwarded-For for a browser on this machine (it attests loopback). */
+const HERE = { "x-forwarded-for": "127.0.0.1" };
 const cookieName = () => `den_session_${port}`;
 /** The Set-Cookie line for the session cookie, or "". */
 const setCookie = (r: Reply) =>
@@ -338,13 +340,20 @@ describe("/api/session", () => {
     expect(view(r)).toEqual({ csrf: null, actor: null, signedIn: false });
   });
 
-  it("the edge from this machine (no X-Forwarded-For, or loopback's): the start's token, as on loopback", async () => {
-    for (const c of [{}, { "x-forwarded-for": "127.0.0.1" }])
-      expect(view(await sessionCsrf(c, EDGE))).toEqual({
-        csrf: "<token>",
-        actor: null,
-        signedIn: false,
-      });
+  it("the edge from this machine (X-Forwarded-For loopback's): the start's token, as on loopback", async () => {
+    expect(view(await sessionCsrf(HERE, EDGE))).toEqual({
+      csrf: "<token>",
+      actor: null,
+      signedIn: false,
+    });
+  });
+
+  it("SEC-2a: a client the edge can't place (no X-Forwarded-For) has no CSRF token until it signs in", async () => {
+    expect(view(await sessionCsrf({}, EDGE))).toEqual({
+      csrf: null,
+      actor: null,
+      signedIn: false,
+    });
   });
 });
 
@@ -448,25 +457,29 @@ describe("the route classes", () => {
     ).toBe(200);
   });
 
-  it("the edge from this machine (0.4.3): no sign-in on any route, shell-grade included; Origin and CSRF still apply", async () => {
+  it("the edge from this machine (0.4.3; the edge attests it): no sign-in on any route, shell-grade included; Origin and CSRF still apply", async () => {
     for (const p of ["/api/settings", "/api/server-info"]) {
-      const r = await call("GET", p, { host: EDGE });
+      const r = await call("GET", p, { host: EDGE, ...HERE });
       expect([p, r.status]).toEqual([p, 200]);
     }
-    const page = await call("GET", "/", { host: EDGE, accept: "text/html" });
+    const page = await call("GET", "/", {
+      host: EDGE,
+      accept: "text/html",
+      ...HERE,
+    });
     expect(page.status).toBe(200);
-    const tok = String((await sessionCsrf({}, EDGE)).csrf);
+    const tok = String((await sessionCsrf(HERE, EDGE)).csrf);
     const ok = await call(
       "POST",
       start,
-      { host: EDGE, origin: `http://${EDGE}`, "x-den-csrf": tok },
+      { host: EDGE, origin: `http://${EDGE}`, "x-den-csrf": tok, ...HERE },
       startBody,
     );
     expect([401, 403].includes(ok.status)).toBe(false);
     const noCsrf = await call(
       "POST",
       start,
-      { host: EDGE, origin: `http://${EDGE}` },
+      { host: EDGE, origin: `http://${EDGE}`, ...HERE },
       startBody,
     );
     expect([noCsrf.status, json(noCsrf).code]).toEqual([403, "csrf"]);
@@ -494,6 +507,12 @@ describe("the route classes", () => {
     expect(edge.body).toContain('"code":"signin_required"');
     expect(edge.body).toContain('"scope":"den"');
     expect(edge.body).toContain("web login");
+    // SEC-2a: with no client id configured (the MO app's is empty until it
+    // exists), Sign in with GitHub says what to set instead.
+    expect(edge.body).toContain('"github":{"state":"no_client_id"');
+    expect(edge.body).toContain(
+      "Set web.github_client_id in config/local/user.yml",
+    );
     expect(edge.body).not.toMatch(/<input[^>]*type="password"/);
     expect(edge.body).not.toMatch(/<form/i);
     // Signed in: a same-origin `next` only.

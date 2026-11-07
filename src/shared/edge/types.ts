@@ -73,6 +73,16 @@ export interface EdgeConfig {
   mounts: Record<string, string>;
   /** Extra external Docker networks the edge joins. */
   networks: string[];
-  /** Extra Traefik static-config arguments. */
+  /**
+   * Extra Traefik static-config arguments. Den owns the entrypoints'
+   * forwarded-header and PROXY-protocol trust (SEC-2a): an argument that
+   * sets either is dropped, with a warning at `edge up`.
+   */
   args: string[];
+  /**
+   * `edge.proxy_protocol.trusted_ips` (SEC-2a): the front proxies (IPs or
+   * CIDRs) whose PROXY protocol header the entrypoints believe, so a TCP
+   * passthrough in front can pass on the real client. Empty: none.
+   */
+  proxyProtocolTrustedIps?: string[];
 }

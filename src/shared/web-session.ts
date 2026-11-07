@@ -167,7 +167,24 @@ export interface WebAuthConfig {
    * never the distribution's), and warned about at start.
    */
   plainHttpInDistribution?: string;
+  /**
+   * `web.github_client_id` (SEC-2a): the GitHub App whose device flow signs
+   * the owner in. user.yml over the distribution config; unset: the MO Den
+   * app's (github-app.ts).
+   */
+  githubClientId?: string;
+  /**
+   * `web.edge_unattested` (SEC-2a, user.yml only): what an edge request
+   * whose client Den can't place gets. `signin` (the default): it signs in;
+   * `local`: it is treated as this machine (0.4.3's allow).
+   */
+  edgeUnattested: EdgeUnattested;
+  /** The distribution config's file when it sets `web.edge_unattested`: ignored there. */
+  edgeUnattestedInDistribution?: string;
 }
+
+/** `web.edge_unattested`'s values. */
+export type EdgeUnattested = "local" | "signin";
 
 function readYaml(file: string): Record<string, unknown> {
   try {
@@ -210,6 +227,12 @@ export function ignoredConfigWarning(cfg: WebAuthConfig): string | null {
       `${cfg.ignored.join(", ")}: ignored. A browser session never expires; ` +
         "it ends at sign-out or `web logout`. Remove the key to silence this.",
     );
+  if (cfg.edgeUnattestedInDistribution)
+    lines.push(
+      `web.edge_unattested (${cfg.edgeUnattestedInDistribution}): ignored. ` +
+        "It is a choice for one machine, read only from config/local/user.yml; " +
+        "move it there on the machine that needs it, and remove it here.",
+    );
   if (cfg.plainHttpInDistribution)
     lines.push(
       `web.allow_plain_http_remote (${cfg.plainHttpInDistribution}): ignored. ` +
@@ -241,13 +264,43 @@ export function readWebAuthConfig(
     throw new Error(
       `web.allow_plain_http_remote must be true or false, got ${JSON.stringify(plain)}`,
     );
+  const unattested = user.edge_unattested;
+  if (
+    unattested !== undefined &&
+    unattested !== "local" &&
+    unattested !== "signin"
+  )
+    throw new Error(
+      `web.edge_unattested must be local or signin, got ${JSON.stringify(unattested)}`,
+    );
+  const clientId =
+    clientIdOf(user, "config/local/user.yml") ?? clientIdOf(team, configFile);
   return {
     allowPlainHttpRemote: plain === true,
     ignored,
+    edgeUnattested: unattested ?? "signin",
+    ...(clientId !== undefined ? { githubClientId: clientId } : {}),
     ...(team.allow_plain_http_remote !== undefined
       ? { plainHttpInDistribution: configFile }
       : {}),
+    ...(team.edge_unattested !== undefined
+      ? { edgeUnattestedInDistribution: configFile }
+      : {}),
   };
+}
+
+/** `web.github_client_id` in one file: a GitHub App client id, or unset. */
+function clientIdOf(
+  w: Record<string, unknown>,
+  file: string,
+): string | undefined {
+  const v = w.github_client_id;
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "string" || !/^[A-Za-z0-9._-]{0,64}$/.test(v.trim()))
+    throw new Error(
+      `web.github_client_id (${file}) must be a GitHub App client id (letters, digits, dots, dashes), got ${JSON.stringify(v)}`,
+    );
+  return v.trim();
 }
 
 // ── The session store ──────────────────────────────────────────────────────
@@ -260,6 +313,10 @@ export interface SessionRecord {
   csrf: string;
   /** The Host it was issued on. */
   host: string;
+  /** SEC-2a: how it signed in: a GitHub sign-in, or a one-time link (pairing). Unset: a link (before 0.4.4). */
+  via?: "github" | "link";
+  /** SEC-2a: the client's address when Den could attest it. */
+  client?: string;
 }
 
 interface StoreFile {
@@ -384,7 +441,12 @@ export class WebSessionStore {
   }
 
   /** A new session: its id (the cookie's value) and record. */
-  create(meta: { userAgent?: string; host?: string }): {
+  create(meta: {
+    userAgent?: string;
+    host?: string;
+    via?: "github" | "link";
+    client?: string;
+  }): {
     id: string;
     session: SessionView;
   } {
@@ -400,6 +462,8 @@ export class WebSessionStore {
       host: String(meta.host ?? "")
         .toLowerCase()
         .slice(0, 255),
+      ...(meta.via ? { via: meta.via } : {}),
+      ...(meta.client ? { client: String(meta.client).slice(0, 64) } : {}),
     };
     const data = structuredClone(this.load());
     this.prune(data, now);
@@ -488,4 +552,38 @@ export class WebSessionStore {
 /** A session's id as `web sessions` shows it: the first 8 hex of its key. */
 export function sessionIdPrefix(key: string): string {
   return key.slice(0, 8);
+}
+
+/**
+ * A linked device's name from its User-Agent (SEC-2a: "Chrome on macOS"),
+ * or "Unknown browser".
+ */
+export function deviceName(userAgent: string | undefined): string {
+  const ua = String(userAgent ?? "");
+  const browser = /Edg\//.test(ua)
+    ? "Edge"
+    : /Firefox\//.test(ua)
+      ? "Firefox"
+      : /(Chrome|CriOS)\//.test(ua)
+        ? "Chrome"
+        : /Safari\//.test(ua)
+          ? "Safari"
+          : /curl\//.test(ua)
+            ? "curl"
+            : null;
+  const os = /iPhone|iPad|iPod/.test(ua)
+    ? "iOS"
+    : /Android/.test(ua)
+      ? "Android"
+      : /Mac OS X|Macintosh/.test(ua)
+        ? "macOS"
+        : /Windows/.test(ua)
+          ? "Windows"
+          : /CrOS/.test(ua)
+            ? "ChromeOS"
+            : /Linux/.test(ua)
+              ? "Linux"
+              : null;
+  if (browser && os) return `${browser} on ${os}`;
+  return browser ?? (os ? `A browser on ${os}` : "Unknown browser");
 }

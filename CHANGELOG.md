@@ -4,6 +4,84 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.4] - unreleased
+
+Sign in with GitHub as the owner, from your other devices (SEC-2a).
+
+### Added
+
+- **Sign in with GitHub.** A Den has one owner, a GitHub account:
+  `<cli> web owner link` runs GitHub's device flow in the terminal (a code
+  to enter at https://github.com/login/device) and stores only
+  `github:<id>` and the login (`web-owner.json`, 0600), never the token.
+  `web owner show` and `web owner unlink` too. The signed-out page then
+  has **Sign in with GitHub**: the server runs the flow, and the owner's
+  approval sets the same never-expiring session a one-time link does;
+  any other account sees "@<login> isn't allowed on this Den". At most
+  three sign-ins wait at once. Before an owner is linked the page says to
+  run `web owner link`. See docs/distributions.md, "Signing in with GitHub".
+- **Settings › Access.** The owner (link and unlink, behind the lock), the
+  linked devices (browser, how it signed in, the client address the edge
+  vouched for, first and last seen) each with **Revoke**, which ends that
+  session at once, and **Pair a device**: a one-time link and its QR code
+  for an edge hostname you pick.
+- **`web.github_client_id`**: the GitHub App's client id (public). Den's
+  built-in default is empty until its App exists; until one is set, the
+  GitHub buttons say how to set it. The App needs "Enable Device Flow"
+  ticked, "Expire user authorization tokens" off and no permissions
+  (docs/distributions.md, "The GitHub App").
+- **`edge.proxy_protocol.trusted_ips`** (empty by default): the front
+  proxies (a TCP passthrough in front of the edge) whose PROXY protocol
+  every entrypoint accepts, so Den sees the real client through them.
+- **`web.edge_unattested: local | signin`** (default `signin`, read only
+  from `config/local/user.yml`): whether an edge client Den can't place
+  signs in. `local` restores 0.4.3's behaviour.
+
+### Changed
+
+- **Edge visitors Den can't place sign in.** A client the edge reports
+  with no `X-Forwarded-For`, or with a Docker/VM gateway or bridge address
+  (what a TCP passthrough or Docker Desktop and OrbStack hand it), now sees
+  the signed-out page with Sign in with GitHub, unless
+  `web.edge_unattested: local`. Loopback and this machine's own addresses,
+  as the edge reports them, stay local, and localhost straight to the
+  server's port never signs in.
+- **The client is the right-most `X-Forwarded-For` entry**, the one the
+  edge appended (0.4.3 read the left-most, which a client could write).
+- **The edge believes forwarded headers only from its own networks.** Den
+  renders `forwardedHeaders.trustedIPs` (loopback and the Docker ranges)
+  on every entrypoint, never `forwardedHeaders.insecure`. An `edge.args`
+  entry that sets `forwardedHeaders` or `proxyProtocol` is dropped with a
+  notice from `edge up`.
+- **"Your edge is reachable from other machines"** now reads "A browser it
+  can't place as this one signs in first (Sign in with GitHub, or a
+  pairing link)." (with `web.edge_unattested: local`, that anyone it can't
+  place can use terminals).
+- **`edge up` says when the running edge's command differs** from the one
+  it renders, and why, before recreating it.
+
+### Fixed
+
+- **A custom Settings control draws itself even with no value to save.**
+  Settings › Command line's "Browser sign-in" (Sign out) showed an empty
+  read-only box; it and the Access rows now render.
+
+### Migrations
+
+- **One edge recreate.** The edge's command changes (forwarded-header
+  trust), so the first `<cli> edge up` (or `stack up`) after upgrading
+  recreates it once, and says so: "<org>-edge's settings changed
+  (forwarded-header trust): recreating it once." Routes drop only while it
+  restarts.
+- **Edge visitors now see Sign in with GitHub** where 0.4.3 let a client
+  it couldn't place in. Link an owner (`<cli> web owner link`, with
+  `web.github_client_id` set) or pair with `<cli> web login --host <name>`;
+  or set `web.edge_unattested: local` in `config/local/user.yml` to keep
+  0.4.3's behaviour on that machine.
+- **Remove `forwardedHeaders.*` and `proxyProtocol.*` from `edge.args`.**
+  They are ignored now; use `edge.proxy_protocol.trusted_ips` for a front
+  proxy.
+
 ## [0.4.3] - unreleased
 
 The edge counts as local.

@@ -260,6 +260,27 @@
     "err.signin.why":
       "No hay contraseña: el enlace sale de un archivo que solo tu cuenta de usuario puede leer.",
     "err.signin.copy": "Copiar comando",
+    "err.signin.orLead":
+      "O bien, en la máquina donde corre Den, ejecuta {cmd} y abre el enlace.",
+    "err.signin.github": "Iniciar sesión con GitHub",
+    "err.signin.githubEnter": "Introduce este código en {url}:",
+    "err.signin.githubOpen": "Abrir GitHub",
+    "err.signin.githubCopy": "Copiar código",
+    "err.signin.githubWaiting": "Esperando a que lo apruebes en GitHub…",
+    "err.signin.githubDone": "Sesión iniciada. Cargando…",
+    "err.signin.githubRefused":
+      "@{login} no tiene acceso a este Den. Pide al propietario que te añada.",
+    "err.signin.githubExpired": "El código caducó antes de aprobarse.",
+    "err.signin.githubDenied": "La solicitud se canceló en GitHub.",
+    "err.signin.githubBusy":
+      "Hay demasiados inicios de sesión en curso. Vuelve a intentarlo en unos minutos.",
+    "err.signin.githubFailed":
+      "No se pudo contactar con GitHub. Inténtalo de nuevo.",
+    "err.signin.githubAgain": "Empezar de nuevo",
+    "err.signin.githubNoOwner":
+      "Iniciar sesión con GitHub necesita un propietario, y este Den aún no tiene. En la máquina donde corre, ejecuta {cmd}.",
+    "err.signin.githubNoClient":
+      "Iniciar sesión con GitHub necesita el client id de una GitHub App, y no hay ninguno configurado. En la máquina donde corre Den, define {key} en config/local/user.yml y reinicia el servidor.",
     "err.422.title": "La configuración no es válida",
     "err.422.sub": "La configuración de la distribución no pasa la validación",
     "err.422.lead":
@@ -294,6 +315,9 @@
     "set.cli.log_window_lines": "Líneas del panel de registros",
     "set.cli.web_port": "Tu puerto web",
     "set.cli.signin": "Inicio de sesión del navegador",
+    "set.access.owner": "Propietario",
+    "set.access.devices": "Dispositivos vinculados",
+    "set.access.pair": "Emparejar un dispositivo",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
     "set.distribution.orgs": "Etiquetas de org",

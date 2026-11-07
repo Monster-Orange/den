@@ -29,10 +29,13 @@
  *     mounts: { <host path>: <container path> }   # read-only
  *     networks: [<external network>]
  *     args: [--accesslog=true]
+ *     proxy_protocol:               # a TCP-passthrough front proxy that
+ *       trusted_ips: [172.18.0.5]   # sends the PROXY protocol (SEC-2a)
  *   web:
  *     port: 7777             # the web UI; routed as `<brand name>`
  */
 import * as fs from "fs";
+import * as net from "net";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
@@ -69,6 +72,7 @@ interface RawEdge {
   mounts?: Record<string, string>;
   networks?: string[];
   args?: string[];
+  proxy_protocol?: { trusted_ips?: unknown } | null;
 }
 
 function readYaml(file: string): Record<string, unknown> {
@@ -367,5 +371,40 @@ function computeEdgeConfig(root: string): EdgeConfig {
       ]),
     ],
     args: [...list(team.args, "args"), ...list(user.args, "args")],
+    proxyProtocolTrustedIps: proxyProtocolIps(
+      user.proxy_protocol ?? team.proxy_protocol,
+    ),
   };
+}
+
+/**
+ * `edge.proxy_protocol.trusted_ips`: a list of IPs or CIDRs (SEC-2a), or
+ * none. Throws naming the key on anything else.
+ */
+export function proxyProtocolIps(v: RawEdge["proxy_protocol"]): string[] {
+  if (v === undefined || v === null) return [];
+  if (typeof v !== "object" || Array.isArray(v))
+    throw new Error(
+      "edge.proxy_protocol must be a map: { trusted_ips: [...] }",
+    );
+  for (const k of Object.keys(v))
+    if (k !== "trusted_ips")
+      throw new Error(
+        `edge.proxy_protocol: unknown key "${k}" (known: trusted_ips)`,
+      );
+  const ips = list(v.trusted_ips, "proxy_protocol.trusted_ips");
+  for (const ip of ips) {
+    const [addr, bits, more] = ip.split("/");
+    const fam = net.isIP(addr);
+    const max = fam === 6 ? 128 : 32;
+    if (
+      !fam ||
+      more !== undefined ||
+      (bits !== undefined && (!/^\d{1,3}$/.test(bits) || Number(bits) > max))
+    )
+      throw new Error(
+        `edge.proxy_protocol.trusted_ips: "${ip}" is not an IP address or CIDR`,
+      );
+  }
+  return ips;
 }

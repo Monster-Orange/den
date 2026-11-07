@@ -11,6 +11,7 @@ import * as os from "os";
 import * as path from "path";
 import {
   checkLoginCode,
+  deviceName,
   ignoredConfigWarning,
   LOGIN_CODE_TTL_MS,
   loginLink,
@@ -232,7 +233,12 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
 
   it("defaults: no plain-HTTP remote, nothing ignored, no warning", () => {
     const cfg = readWebAuthConfig(tmp);
-    expect(cfg).toEqual({ allowPlainHttpRemote: false, ignored: [] });
+    // SEC-2a: an edge client Den can't place signs in by default.
+    expect(cfg).toEqual({
+      allowPlainHttpRemote: false,
+      ignored: [],
+      edgeUnattested: "signin",
+    });
     expect(ignoredConfigWarning(cfg)).toBeNull();
   });
 
@@ -289,5 +295,99 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
     // Not set there: no such warning.
     write("config/den.yml", "environments: [local]\n");
     expect(ignoredConfigWarning(readWebAuthConfig(tmp))).toBeNull();
+  });
+});
+
+describe("SEC-2a's config: web.edge_unattested and web.github_client_id", () => {
+  const write = (rel: string, body: string) => {
+    const f = path.join(tmp, rel);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, body);
+  };
+
+  it("web.edge_unattested: signin by default; local from user.yml restores 0.4.3's allow; anything else names the key", () => {
+    expect(readWebAuthConfig(tmp).edgeUnattested).toBe("signin");
+    write("config/local/user.yml", "web:\n  edge_unattested: local\n");
+    expect(readWebAuthConfig(tmp).edgeUnattested).toBe("local");
+    write("config/local/user.yml", "web:\n  edge_unattested: signin\n");
+    expect(readWebAuthConfig(tmp).edgeUnattested).toBe("signin");
+    write("config/local/user.yml", "web:\n  edge_unattested: maybe\n");
+    expect(() => readWebAuthConfig(tmp)).toThrow(
+      'web.edge_unattested must be local or signin, got "maybe"',
+    );
+  });
+
+  it("web.edge_unattested is this machine's choice: in the distribution config it is ignored and warned about", () => {
+    write("config/den.yml", "web:\n  edge_unattested: local\n");
+    const cfg = readWebAuthConfig(tmp);
+    expect(cfg.edgeUnattested).toBe("signin");
+    expect(cfg.edgeUnattestedInDistribution).toBe(
+      path.join("config", "den.yml"),
+    );
+    expect(ignoredConfigWarning(cfg)).toMatch(
+      /web\.edge_unattested \(config\/den\.yml\): ignored\. It is a choice for one machine/,
+    );
+  });
+
+  it("web.github_client_id: user.yml over the distribution's; unset by default; a value that isn't an id names the key", () => {
+    expect(readWebAuthConfig(tmp).githubClientId).toBeUndefined();
+    write("config/den.yml", "web:\n  github_client_id: Iv23liTeam\n");
+    expect(readWebAuthConfig(tmp).githubClientId).toBe("Iv23liTeam");
+    write("config/local/user.yml", "web:\n  github_client_id: Iv23liMine\n");
+    expect(readWebAuthConfig(tmp).githubClientId).toBe("Iv23liMine");
+    write("config/local/user.yml", "web:\n  github_client_id: [a, b]\n");
+    expect(() => readWebAuthConfig(tmp)).toThrow(
+      /web\.github_client_id \(config\/local\/user\.yml\) must be a GitHub App client id/,
+    );
+  });
+});
+
+describe("SEC-2a: a linked device's record", () => {
+  it("keeps how it signed in and the attested address", () => {
+    const secret = ensureWebSecret(tmp);
+    const store = new WebSessionStore({
+      stateDir: () => tmp,
+      secret: () => secret,
+      now: () => T0,
+    });
+    const { session } = store.create({
+      userAgent:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/130.0 Safari/537.36",
+      host: "den.acme.example",
+      via: "github",
+      client: "100.101.102.104",
+    });
+    expect(session).toMatchObject({ via: "github", client: "100.101.102.104" });
+    expect(store.list()[0]).toMatchObject({
+      via: "github",
+      client: "100.101.102.104",
+    });
+    // A link's (0.4.3 and before: no via) reads as a link.
+    const { session: old } = store.create({ userAgent: "curl/8.4.0" });
+    expect(old.via).toBeUndefined();
+    expect(old.client).toBeUndefined();
+  });
+
+  it.each([
+    [
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+      "Chrome on macOS",
+    ],
+    [
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+      "Safari on iOS",
+    ],
+    [
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
+      "Firefox on Windows",
+    ],
+    [
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
+      "Edge on Linux",
+    ],
+    ["curl/8.4.0", "curl"],
+    ["", "Unknown browser"],
+  ])("deviceName(%p) is %p", (ua, name) => {
+    expect(deviceName(ua)).toBe(name);
   });
 });

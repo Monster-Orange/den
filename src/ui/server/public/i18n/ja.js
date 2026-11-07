@@ -249,6 +249,27 @@
     "err.signin.why":
       "パスワードはありません。リンクは、あなたのユーザーアカウントだけが読めるファイルから作られます。",
     "err.signin.copy": "コマンドをコピー",
+    "err.signin.orLead":
+      "または、Den が動いているマシンで {cmd} を実行してリンクを開きます。",
+    "err.signin.github": "GitHub でサインイン",
+    "err.signin.githubEnter": "{url} でこのコードを入力してください:",
+    "err.signin.githubOpen": "GitHub を開く",
+    "err.signin.githubCopy": "コードをコピー",
+    "err.signin.githubWaiting": "GitHub での承認を待っています…",
+    "err.signin.githubDone": "サインインしました。読み込み中…",
+    "err.signin.githubRefused":
+      "@{login} はこの Den を使えません。オーナーに追加を依頼してください。",
+    "err.signin.githubExpired": "承認される前にコードの有効期限が切れました。",
+    "err.signin.githubDenied": "GitHub でリクエストがキャンセルされました。",
+    "err.signin.githubBusy":
+      "進行中のサインインが多すぎます。数分後にもう一度お試しください。",
+    "err.signin.githubFailed":
+      "GitHub に接続できませんでした。もう一度お試しください。",
+    "err.signin.githubAgain": "やり直す",
+    "err.signin.githubNoOwner":
+      "GitHub でのサインインにはオーナーが必要ですが、この Den にはまだいません。Den が動いているマシンで {cmd} を実行してください。",
+    "err.signin.githubNoClient":
+      "GitHub でのサインインには GitHub App のクライアント ID が必要ですが、設定されていません。Den が動いているマシンの config/local/user.yml に {key} を設定し、サーバーを再起動してください。",
     "err.422.title": "設定が無効です",
     "err.422.sub": "ディストリビューションの設定が検証に失敗しました",
     "err.422.lead":
@@ -283,6 +304,9 @@
     "set.cli.log_window_lines": "ログ欄の行数",
     "set.cli.web_port": "あなたの web ポート",
     "set.cli.signin": "ブラウザのサインイン",
+    "set.access.owner": "オーナー",
+    "set.access.devices": "リンク済みデバイス",
+    "set.access.pair": "デバイスをペアリング",
     "set.distribution.brand": "製品名",
     "set.distribution.github_org": "GitHub の組織",
     "set.distribution.orgs": "組織のラベル",

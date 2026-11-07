@@ -371,6 +371,26 @@
     "err.signin.why":
       "There is no password: the link comes from a file only your user account can read.",
     "err.signin.copy": "Copy command",
+    "err.signin.orLead":
+      "Or, on the machine Den runs on, run {cmd} and open the link.",
+    "err.signin.github": "Sign in with GitHub",
+    "err.signin.githubEnter": "Enter this code at {url}:",
+    "err.signin.githubOpen": "Open GitHub",
+    "err.signin.githubCopy": "Copy code",
+    "err.signin.githubWaiting": "Waiting for you to approve it on GitHub…",
+    "err.signin.githubDone": "Signed in. Loading…",
+    "err.signin.githubRefused":
+      "@{login} isn't allowed on this Den. Ask the owner to add you.",
+    "err.signin.githubExpired": "The code expired before it was approved.",
+    "err.signin.githubDenied": "The request was cancelled on GitHub.",
+    "err.signin.githubBusy":
+      "Too many sign-ins are in progress. Try again in a few minutes.",
+    "err.signin.githubFailed": "GitHub couldn't be reached. Try again.",
+    "err.signin.githubAgain": "Start again",
+    "err.signin.githubNoOwner":
+      "Sign in with GitHub needs an owner, and this Den has none yet. On the machine it runs on, run {cmd}.",
+    "err.signin.githubNoClient":
+      "Sign in with GitHub needs a GitHub App client id, and none is configured. On the machine Den runs on, set {key} in config/local/user.yml and restart the server.",
     "err.422.title": "Config is invalid",
     "err.422.sub": "The distribution config fails validation",
     "err.422.lead":
@@ -407,6 +427,9 @@
     "set.cli.log_window_lines": "Log pane lines",
     "set.cli.web_port": "Your web port",
     "set.cli.signin": "Browser sign-in",
+    "set.access.owner": "Owner",
+    "set.access.devices": "Linked devices",
+    "set.access.pair": "Pair a device",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
     "set.distribution.orgs": "Org labels",

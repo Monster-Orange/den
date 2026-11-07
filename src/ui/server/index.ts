@@ -209,8 +209,12 @@ import {
 } from "../../shared/actor-token.js";
 import {
   checkLoginCode,
+  deviceName,
   ignoredConfigWarning,
   localhostOrigin,
+  loginLink,
+  LOGIN_CODE_TTL_MS,
+  mintLoginCode,
   readWebAuthConfig,
   safeNext,
   SESSION_COOKIE_MAX_AGE_S,
@@ -220,6 +224,19 @@ import {
   type WebAuthConfig,
 } from "../../shared/web-session.js";
 import { serveUiAsset } from "./ui-assets.js";
+import {
+  githubClientId,
+  githubEndpoints,
+  noClientIdMessage,
+} from "../../shared/github-app.js";
+import { githubDeviceClient } from "../../shared/github-device.js";
+import { readWebOwner } from "../../shared/web-owner.js";
+import { DeviceFlows } from "./device-flows.js";
+import {
+  decideFlow,
+  handleGithubRoutes,
+  isGithubRoute,
+} from "./github-routes.js";
 import { graphPrefs, patchStoredGraph } from "./graph-prefs.js";
 import { graphPageHtml } from "./graph-page.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
@@ -556,7 +573,7 @@ setHtmlFill((html) => {
     out = out.replace(
       '<div id="den-shell"',
       () =>
-        `<div id="den-shell" data-edge-exposed="${escAttr(EDGE_EXPOSED_MESSAGE)}"`,
+        `<div id="den-shell" data-edge-exposed="${escAttr(edgeExposedMessage(WEB_AUTH.edgeUnattested))}"`,
     );
   // MD-2: every page says when the engine on disk is not the one running.
   const engine = engineCheck();
@@ -787,7 +804,7 @@ import {
   edgeNames,
   webRouteHosts,
 } from "../../shared/edge/render.js";
-import { EDGE_EXPOSED_MESSAGE, edgeExposure } from "./edge-exposure.js";
+import { edgeExposedMessage, edgeExposure } from "./edge-exposure.js";
 import {
   linksFor,
   openUrlFor,
@@ -1054,7 +1071,72 @@ const GUARD: GuardContext = {
   // A deliberate exposure (DEN_BIND_HOST beyond loopback, other than the
   // Linux edge's Docker bridge): the edge needs a sign-in too.
   exposed: !isLoopbackBind(BIND_HOST) && !isDockerBridgeAddress(BIND_HOST),
+  // SEC-2a: an edge client Den can't place signs in (web.edge_unattested).
+  edgeUnattested: WEB_AUTH.edgeUnattested,
 };
+
+// ── SEC-2a: Sign in with GitHub, the owner, pairing ──────────────────────────
+const GITHUB_CLIENT_ID = githubClientId(WEB_AUTH.githubClientId);
+const GITHUB = githubEndpoints();
+const DEVICE_FLOWS = new DeviceFlows({
+  client: githubDeviceClient(GITHUB),
+  clientId: () => GITHUB_CLIENT_ID,
+  decide: decideFlow(getStateDir, (l) => serverLog(l, "lifecycle")),
+  // A test's fake GitHub may answer interval 0; the real one never does.
+  minIntervalMs: GITHUB.fake ? 50 : 1000,
+});
+
+/**
+ * A browser's live WebSockets (a session's terminal), by its session's
+ * key: revoking a device closes them at once (SEC-2a).
+ */
+const SESSION_SOCKETS = new Map<string, Set<net.Socket>>();
+function trackSessionSocket(key: string, socket: net.Socket): void {
+  const set = SESSION_SOCKETS.get(key) ?? new Set<net.Socket>();
+  set.add(socket);
+  SESSION_SOCKETS.set(key, set);
+  socket.once("close", () => {
+    set.delete(socket);
+    if (set.size === 0) SESSION_SOCKETS.delete(key);
+  });
+}
+function closeSessionSockets(keys: Iterable<string>): void {
+  for (const k of keys) {
+    for (const sock of SESSION_SOCKETS.get(k) ?? []) sock.destroy();
+    SESSION_SOCKETS.delete(k);
+  }
+}
+
+/** A new session for this request and its Set-Cookie line (GitHub or a link). */
+function startSession(
+  req: http.IncomingMessage,
+  via: "github" | "link",
+): string {
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const named = g.ok ? g.via : null;
+  const { id } = webSessions.create({
+    userAgent: req.headers["user-agent"],
+    host: req.headers.host,
+    via,
+    ...(g.ok && g.client ? { client: g.client } : {}),
+  });
+  return sessionSetCookie(id, requestIsHttps(req, named));
+}
+
+/** The edge hostnames that route here, and their URLs (Pair a device). */
+function denEdgeRoutes(): { host: string; url: string }[] {
+  try {
+    return webRouteHosts(readEdgeConfig(), new Set([PORT, readWebPortSafe()]));
+  } catch {
+    return [];
+  }
+}
+
+/** What the signed-out page says about Sign in with GitHub. */
+function githubSigninState(): "ready" | "no_client_id" | "no_owner" {
+  if (!GITHUB_CLIENT_ID) return "no_client_id";
+  return readWebOwner(getStateDir()) ? "ready" : "no_owner";
+}
 
 /**
  * 0.4.3: why the edge is reachable beyond this machine (edge-exposure.ts),
@@ -1079,7 +1161,7 @@ function checkEdgeExposure(): void {
       EDGE_EXPOSED = why;
       // The in-app log, and stderr, which is web.log even when `web up`
       // starts this --silent (stdout is not written then).
-      const line = `  ⚠ ${EDGE_EXPOSED_MESSAGE} (${why})`;
+      const line = `  ⚠ ${edgeExposedMessage(WEB_AUTH.edgeUnattested)} (${why})`;
       pushLog("warn", line);
       if (!outputLost()) process.stderr.write(line + "\n");
     })
@@ -1151,6 +1233,14 @@ function sendSignedOut(
       scope: opts.scope,
       name: product().title,
       cmd,
+      // SEC-2a: Sign in with GitHub, and why it can't be offered yet.
+      github: {
+        state: githubSigninState(),
+        owner: `${product().cli} web owner link`,
+        ...(GITHUB_CLIENT_ID
+          ? {}
+          : { message: noClientIdMessage(product().cli) }),
+      },
       ...(opts.expired ? { expired: true } : {}),
       ...(toLocal && !opts.expired
         ? {
@@ -1248,13 +1338,10 @@ function handleAuth(
       message: `That sign-in link expired or was used. Run \`${product().cli} web login\` for a new one.`,
     });
   }
-  const { id } = webSessions.create({
-    userAgent: req.headers["user-agent"],
-    host: req.headers.host,
-  });
+  void via;
   res.writeHead(303, {
     Location: safeNext(url.searchParams.get("next")),
-    "Set-Cookie": sessionSetCookie(id, requestIsHttps(req, via)),
+    "Set-Cookie": startSession(req, "link"),
     "Cache-Control": "no-store",
     "Referrer-Policy": "no-referrer",
   });
@@ -1371,6 +1458,32 @@ async function handleRequest(
   // is a WebSocket (the server's upgrade handler): a plain GET of it is 426.
   if (pathname.startsWith("/api/sessions/"))
     return sendSessionHttp(req, res, pathname);
+  // SEC-2a: Sign in with GitHub, the owner's link, Pair a device. Before
+  // config validation, like the sign-in above.
+  if (
+    isGithubRoute(pathname) &&
+    (await handleGithubRoutes(req, res, pathname, {
+      flows: DEVICE_FLOWS,
+      clientId: () => GITHUB_CLIENT_ID,
+      cli: product().cli,
+      sendJson,
+      readBody,
+      signIn: startSession,
+      edgeRoutes: denEdgeRoutes,
+      mintLink: (origin) => {
+        const secret = webSecret.current();
+        if (!secret) return null;
+        const now = Date.now();
+        return {
+          url: loginLink(origin, mintLoginCode(secret, now)),
+          expiresAt: now + LOGIN_CODE_TTL_MS,
+        };
+      },
+      log: (l) => serverLog(l, "lifecycle"),
+      stateDir: getStateDir,
+    }))
+  )
+    return;
 
   // A mutating request may change what /api/services would list (exec and
   // sync stream over GET, for EventSource).
@@ -3350,6 +3463,7 @@ async function handleRequest(
   if (pathname === "/api/session/logout" && req.method === "POST") {
     const g = guard.ok ? guard : null;
     const ended = g?.session ? webSessions.end(g.session.key) : false;
+    if (g?.session) closeSessionSockets([g.session.key]);
     res.setHeader(
       "Set-Cookie",
       clearSessionCookie(requestIsHttps(req, g?.via ?? null)),
@@ -3366,6 +3480,10 @@ async function handleRequest(
         lastSeenAt: new Date(x.lastSeenAt).toISOString(),
         userAgent: x.userAgent,
         host: x.host,
+        // SEC-2a: a linked device's name, how it signed in, its address.
+        name: deviceName(x.userAgent),
+        via: x.via ?? "link",
+        ...(x.client ? { client: x.client } : {}),
         ...(x.key === mine ? { current: true } : {}),
       })),
     });
@@ -3386,11 +3504,14 @@ async function handleRequest(
     if (body.id !== undefined && typeof body.id !== "string")
       return send400(res, "id must be a session id prefix");
     try {
-      const ended =
+      const endedKeys =
         typeof body.id === "string"
-          ? [sessionIdPrefix(webSessions.endByPrefix(body.id).key)]
-          : webSessions.list().map((x) => sessionIdPrefix(x.key));
+          ? [webSessions.endByPrefix(body.id).key]
+          : webSessions.list().map((x) => x.key);
       if (typeof body.id !== "string") webSessions.endAll();
+      // SEC-2a: a revoked device's open terminals close now, too.
+      closeSessionSockets(endedKeys);
+      const ended = endedKeys.map(sessionIdPrefix);
       const rotated = body.rotate === true;
       let agentTokens = 0;
       if (rotated) {
@@ -4459,6 +4580,7 @@ server.on(
     setPrincipal(req, guard.principal);
     if (!isSessionIoPath(pathname))
       return refuse(404, "No WebSocket route here", "not_found");
+    if (guard.session) trackSessionSocket(guard.session.key, socket);
     handleSessionUpgrade(req, socket, head, pathname, requestId).catch(
       (err: unknown) => {
         serverLog(

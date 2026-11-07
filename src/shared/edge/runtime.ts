@@ -7,7 +7,10 @@ import * as net from "net";
 import * as path from "path";
 import { must, sh } from "./exec.js";
 import {
+  droppedEdgeArgs,
   EDGE_ROOT_LABEL,
+  edgeCommand,
+  edgeCommandDrift,
   edgeNames,
   renderEdgeCompose,
   renderEdgeDynamic,
@@ -226,9 +229,58 @@ export function assertEdgeOwnedHere(
   );
 }
 
+/** A container's command (`docker inspect .Config.Cmd`), or null. */
+export function runningEdgeCommand(name: string): string[] | null {
+  const r = sh("docker", [
+    "inspect",
+    "--type",
+    "container",
+    "-f",
+    "{{json .Config.Cmd}}",
+    name,
+  ]);
+  if (r.code !== 0) return null;
+  try {
+    const v: unknown = JSON.parse(r.out);
+    return Array.isArray(v) && v.every((x) => typeof x === "string")
+      ? (v as string[])
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What `edge up` says before it writes compose.yml (SEC-2a): the `edge.args`
+ * it drops (Den owns the entrypoints' trust), and, when the running edge's
+ * command differs from the new one, that it recreates the edge once and
+ * why. Pure: `running` is the running container's command, or null.
+ */
+export function edgeUpNotices(
+  cfg: EdgeConfig,
+  running: readonly string[] | null,
+): string[] {
+  const out: string[] = [];
+  const dropped = droppedEdgeArgs(cfg);
+  if (dropped.length)
+    out.push(
+      `edge.args: ignoring ${dropped.join(", ")}: Den sets the entrypoints' ` +
+        "forwarded-header trust itself (its own networks and loopback), and " +
+        "PROXY protocol trust from edge.proxy_protocol.trusted_ips. Remove it " +
+        "from the config to silence this.",
+    );
+  const drift = edgeCommandDrift(running, edgeCommand(cfg));
+  if (drift.length)
+    out.push(
+      `${edgeNames(cfg.org).container}'s settings changed (${drift.join(", ")}): ` +
+        "recreating it once. Routes drop only while it restarts.",
+    );
+  return out;
+}
+
 export async function edgeUp(
   cfg: EdgeConfig,
-  opts: { takeOver?: boolean } = {},
+  opts: { takeOver?: boolean; log?: (line: string) => void } = {},
 ) {
   // Before anything is written or started: an edge of this name that
   // another state dir owns is never replaced.
@@ -261,6 +313,10 @@ export async function edgeUp(
   const included = syncIncluded(cfg);
   write(path.join(cfg.stateDir, "dynamic", GENERATED), renderEdgeDynamic(cfg));
   const compose = path.join(cfg.stateDir, "compose.yml");
+  // SEC-2a: say what changed before compose recreates the edge for it.
+  const log = opts.log ?? ((l: string) => console.log(l));
+  for (const line of edgeUpNotices(cfg, runningEdgeCommand(n.container)))
+    log(line);
   write(compose, renderEdgeCompose(cfg, realOrSelf(cfg.stateDir)));
   must("docker", ["compose", "-f", compose, "up", "-d", "--remove-orphans"]);
   return { certs, included };

@@ -34,6 +34,7 @@ describe("search", () => {
       "navigation",
       "graph",
       "workspace",
+      "access",
       "cli",
       "distribution",
     ]);

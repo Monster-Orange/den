@@ -16,6 +16,7 @@ import {
   REGEX_ROUTES,
   routeClass,
   ROUTES,
+  SIGNIN_CSRF_FREE,
   SIGNIN_FREE,
 } from "../../../src/ui/server/route-classes.js";
 
@@ -131,10 +132,27 @@ describe("the classes", () => {
     expect(routeClass("GET", "/api/web/sessions")).toBe("shell-grade");
     expect(routeClass("POST", "/api/web/logout")).toBe("shell-grade");
     expect([...SIGNIN_FREE].sort()).toEqual([
+      "/api/github/signin",
+      "/api/github/signin/:id",
       "/api/session",
       "/auth",
       "/signin",
     ]);
+  });
+
+  it("SEC-2a's routes: a GitHub sign-in is sign-in free (its poll a mutating GET: it sets the cookie); the owner and pairing are shell-grade", () => {
+    expect(routeClass("POST", "/api/github/signin")).toBe("mutating");
+    expect(routeClass("GET", "/api/github/signin/abc")).toBe("mutating");
+    expect(isMutatingGet("GET", "/api/github/signin/abc")).toBe(true);
+    expect([...SIGNIN_CSRF_FREE]).toEqual(["/api/github/signin"]);
+    expect(routeClass("GET", "/api/web/owner")).toBe("readonly");
+    for (const [m, p] of [
+      ["POST", "/api/web/owner/link"],
+      ["GET", "/api/web/owner/link/abc"],
+      ["POST", "/api/web/owner/unlink"],
+      ["POST", "/api/web/pair"],
+    ])
+      expect([m, p, routeClass(m, p)]).toEqual([m, p, "shell-grade"]);
   });
 
   it("read-only GETs are not checked as mutations", () => {

@@ -201,6 +201,39 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/web/logout",
     "ends browser sessions, and rotates web.secret (`web logout`)",
   ),
+  // ── SEC-2a: GitHub sign-in, the owner, pairing ─────────────────────────
+  M(
+    ["POST"],
+    "/api/github/signin",
+    "starts a GitHub sign-in (a device flow the server runs)",
+  ),
+  M(
+    ["GET", "HEAD"],
+    "/api/github/signin/:id",
+    "a GitHub sign-in's outcome; once the owner approved it, sets the session cookie",
+  ),
+  R("/api/web/owner", "who the owner is (`web owner show`)"),
+  S(
+    ["POST"],
+    "/api/web/owner/link",
+    "links the owner's GitHub account (`web owner link`)",
+  ),
+  S(
+    ["GET", "HEAD"],
+    "/api/web/owner/link/:id",
+    "an owner link's device code and outcome",
+  ),
+  S(
+    ["POST"],
+    "/api/web/owner/unlink",
+    "unlinks the owner (`web owner unlink`)",
+  ),
+  R("/api/web/pair", "the edge hostnames a pairing link can be for"),
+  S(
+    ["POST"],
+    "/api/web/pair",
+    "mints a one-time sign-in link for another device (Pair a device)",
+  ),
 
   // ── Mutations (checked by method) ───────────────────────────────────────
   M(["POST"], "/api/activity", "an agent's refused-call report"),
@@ -263,7 +296,16 @@ export const SIGNIN_FREE: readonly string[] = [
   "/auth",
   "/signin",
   "/api/session",
+  // SEC-2a: Sign in with GitHub, from the signed-out page.
+  "/api/github/signin",
+  "/api/github/signin/:id",
 ];
+
+/**
+ * SIGNIN_FREE mutations a signed-out page makes, which holds no CSRF token:
+ * they need an allowed Origin only (SEC-2a: starting a GitHub sign-in).
+ */
+export const SIGNIN_CSRF_FREE: readonly string[] = ["/api/github/signin"];
 
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
@@ -273,6 +315,8 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/resume",
   ],
   "session-routes.ts:IO_PATH": ["/api/sessions/:id/io"],
+  "github-routes.ts:SIGNIN_PATH": ["/api/github/signin/:id"],
+  "github-routes.ts:LINK_PATH": ["/api/web/owner/link/:id"],
 };
 
 /** Whether `pathname` matches a table path. */

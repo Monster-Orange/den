@@ -26,10 +26,18 @@
  *    included (Ward, 2026-11-06: the lock, R8, is the only prompt there;
  *    Host, Origin and CSRF cover CSRF and DNS rebinding). SIGNIN_FREE
  *    routes never need one.
- *  - The edge counts as local (0.4.3, edgeClientIsLocal): the edge hostname
- *    from an edge peer gets loopback's treatment unless the edge's
- *    X-Forwarded-For names another machine, or this server is deliberately
- *    exposed (`exposed`: a non-loopback DEN_BIND_HOST bind).
+ *  - The edge (0.4.3, 0.4.4: edgeClient): the edge hostname from an edge
+ *    peer gets loopback's treatment when the edge attests the client is
+ *    this machine (the right-most X-Forwarded-For entry, the one the edge
+ *    itself appended, is loopback or one of this machine's addresses). A
+ *    client it can't place (none, or a Docker/VM gateway's address) signs
+ *    in unless `web.edge_unattested: local`; another machine always does,
+ *    as does every edge request when this server is deliberately exposed
+ *    (`exposed`: a non-loopback DEN_BIND_HOST bind). `localhost` (a
+ *    loopback Host from a loopback peer) never asks.
+ *  - Signing in with GitHub (SEC-2a): its start and poll are sign-in free,
+ *    and its start needs an allowed Origin but no CSRF token (a signed-out
+ *    page has none; route-classes.ts SIGNIN_CSRF_FREE).
  *  - Origin, on POST/PUT/PATCH/DELETE and every WebSocket upgrade: an
  *    allowed host (http or https). No Origin needs a valid bearer.
  *    Otherwise 403 `origin_rejected`.
@@ -61,6 +69,7 @@ import {
   isMutatingGet,
   pathMatches,
   routeClass,
+  SIGNIN_CSRF_FREE,
   SIGNIN_FREE,
   type RouteClass,
 } from "./route-classes.js";
@@ -143,6 +152,11 @@ export interface GuardContext {
    * needs a sign-in too, as before 0.4.3.
    */
   exposed?: boolean;
+  /**
+   * `web.edge_unattested` (SEC-2a): an edge client Den can't place signs
+   * in (`signin`, the default when unset) or counts as local (`local`).
+   */
+  edgeUnattested?: "local" | "signin";
 }
 
 export type GuardResult =
@@ -155,6 +169,8 @@ export type GuardResult =
       beyond: boolean;
       /** The signed-in session, when the cookie names a live one. */
       session: GuardSession | null;
+      /** The client's address when Den can attest it (SEC-2a: a device's record). */
+      client?: string;
     }
   | {
       ok: false;
@@ -329,14 +345,10 @@ function inSubnet(a: string, net4: { address: string; netmask: string }) {
   return m > 0 && lo(ipv4(a)) === lo(ipv4(net4.address));
 }
 
-/**
- * The original client X-Forwarded-For names: its left-most entry, as an
- * IP (a port or brackets dropped), or undefined when there is none.
- */
-export function forwardedClient(xff: string | undefined): string | undefined {
-  const first = xff?.split(",")[0]?.trim();
-  if (!first) return undefined;
-  let a = first;
+/** One X-Forwarded-For entry as an IP (a port or brackets dropped), or undefined. */
+function forwardedEntry(entry: string | undefined): string | undefined {
+  let a = entry?.trim();
+  if (!a) return undefined;
   const b = /^\[([^\]]+)\](?::\d+)?$/.exec(a);
   if (b) a = b[1];
   else if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(a)) a = a.replace(/:\d+$/, "");
@@ -345,27 +357,44 @@ export function forwardedClient(xff: string | undefined): string | undefined {
 }
 
 /**
- * The edge counts as local (0.4.3): whether an edge request (the edge
- * hostname from an edge peer) comes from this machine, by the left-most
- * X-Forwarded-For entry (the original client):
+ * The client the edge vouches for (SEC-2a): the right-most X-Forwarded-For
+ * entry, the one the edge's proxy appended itself (its TCP peer, or the
+ * client a trusted front passed on with the PROXY protocol). The entries
+ * left of it are whatever the client, or a hop the edge trusts, sent, so
+ * they are never believed (0.4.3 read the left-most: forgeable). Undefined
+ * when there is none, or it isn't an IP.
+ */
+export function forwardedClient(xff: string | undefined): string | undefined {
+  const all = xff?.split(",") ?? [];
+  return forwardedEntry(all[all.length - 1]);
+}
+
+/** Who an edge request's client is, as far as Den can tell (edgeClient). */
+export type EdgeClient = "local" | "unattested" | "foreign";
+
+/**
+ * Who an edge request (the edge hostname from an edge peer) comes from, by
+ * the client the edge vouches for (forwardedClient):
  *  - loopback, or one of this machine's own interface addresses (its LAN
- *    or VPN address, a Tailscale 100.x one included): local;
+ *    or VPN address, a Tailscale 100.x one included): `local`;
  *  - missing, unreadable, or a container/VM network's address (the Docker
  *    ranges isEdgePeer takes, or a subnet of one of this machine's
- *    bridges): we can't tell (Docker Desktop and OrbStack on macOS hand the
- *    edge their gateway's address, and a TCP passthrough in front hides the
- *    client), so local;
- *  - anything else: another machine, beyond loopback (sign-in required).
- * The edge's own page warns when it is reachable beyond this machine
- * (edge-exposure.ts): with no sign-in, anyone who reaches it is local.
+ *    bridges): `unattested`. Docker Desktop and OrbStack on macOS hand the
+ *    edge their gateway's address, and a TCP passthrough in front hides
+ *    the client, so Den can't tell. With SEC-2a it signs in, unless
+ *    `web.edge_unattested: local` (0.4.3's allow);
+ *  - anything else: `foreign`, another machine (sign-in required).
  */
-export function edgeClientIsLocal(
+export function edgeClient(
   xff: string | undefined,
   local: LocalNet = { own: [], bridges: [] },
-): boolean {
+): EdgeClient {
   const c = forwardedClient(xff);
-  if (!c || isEdgePeer(c) || local.own.includes(c)) return true;
-  return local.bridges.some((b) => inSubnet(c, b));
+  if (!c) return "unattested";
+  if (isLoopbackAddress(c)) return "local";
+  if (isEdgePeer(c) || local.bridges.some((b) => inSubnet(c, b)))
+    return "unattested";
+  return local.own.includes(c) ? "local" : "foreign";
 }
 
 /**
@@ -475,13 +504,25 @@ export function checkRequest(
         "127.0.0.1, [::1] with its port, or its edge hostname).",
     };
   const peerLoopback = ctx.peerIsLoopback ? ctx.peerIsLoopback(req) : true;
-  // The edge from this machine (edgeClientIsLocal) is local, unless this
-  // server is deliberately exposed; a LAN name or peer is beyond.
+  // The edge: local when it attests this machine; a client it can't place
+  // signs in unless web.edge_unattested is local; never local when this
+  // server is deliberately exposed. A LAN name or peer is beyond.
+  const xff = header(req, "x-forwarded-for");
+  const who = via === "edge" ? edgeClient(xff, ctx.localNet?.()) : null;
   const beyond =
     via === "edge"
       ? !!ctx.exposed ||
-        !edgeClientIsLocal(header(req, "x-forwarded-for"), ctx.localNet?.())
+        who === "foreign" ||
+        (who === "unattested" && ctx.edgeUnattested !== "local")
       : via !== "loopback" || !peerLoopback;
+  // The address a device's record keeps: the edge's attested client, or
+  // the peer itself off the edge.
+  const client =
+    via === "edge"
+      ? who === "unattested"
+        ? undefined
+        : forwardedClient(xff)
+      : (req.socket?.remoteAddress ?? undefined);
 
   let principal: Principal | null = null;
   const auth = header(req, "authorization");
@@ -528,7 +569,8 @@ export function checkRequest(
   }
 
   // §4: a session (or a bearer) beyond loopback; on loopback, never.
-  if (!principal && !session && !SIGNIN_FREE.includes(pathname) && beyond) {
+  const signinFree = SIGNIN_FREE.some((r) => pathMatches(r, pathname));
+  if (!principal && !session && !signinFree && beyond) {
     const scope: SigninScope = "den";
     return {
       ok: false,
@@ -546,6 +588,7 @@ export function checkRequest(
     via,
     beyond,
     session,
+    ...(client ? { client: normAddress(client) } : {}),
   });
   const browser: Principal | null = session
     ? { kind: "person-browser", session: session.key }
@@ -580,6 +623,10 @@ export function checkRequest(
     };
   // A valid bearer is a CLI's or an agent's call: no CSRF to prove.
   if (principal) return ok(principal);
+  // Starting a GitHub sign-in from the signed-out page (which holds no
+  // CSRF token): the allowed Origin above is the check.
+  if (!session && SIGNIN_CSRF_FREE.some((r) => pathMatches(r, pathname)))
+    return ok(null);
   // A browser's WebSocket can't send a header: on an upgrade the token
   // rides as a subprotocol, `den.csrf.<token>` (AG-4a-term's io).
   const csrf =
@@ -602,6 +649,7 @@ export function checkRequest(
 export const AGENT_FORBIDDEN: readonly string[] = [
   // web.secret's management and the browser sign-in: an agent mints nothing.
   "/api/web/*",
+  "/api/github/*",
   "/auth",
   "/signin",
   "/api/session/logout",

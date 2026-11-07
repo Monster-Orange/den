@@ -36,6 +36,23 @@ import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
 import {
+  GITHUB_DEVICE_PAGE,
+  githubClientId,
+  githubEndpoints,
+  noClientIdMessage,
+} from "../../shared/github-app.js";
+import {
+  githubDeviceClient,
+  githubPrincipal,
+  runDeviceFlow,
+  type GithubDeviceClient,
+} from "../../shared/github-device.js";
+import {
+  clearWebOwner,
+  readWebOwner,
+  writeWebOwner,
+} from "../../shared/web-owner.js";
+import {
   ownServer,
   processCwd,
   refuseForeignServer,
@@ -1072,6 +1089,7 @@ export const WEB_SUBCOMMANDS_WITH_HELP = [
   "login",
   "sessions",
   "logout",
+  "owner",
 ] as const;
 
 export function displayWebHelp(): void {
@@ -1088,6 +1106,7 @@ export function displayWebHelp(): void {
   console.log(
     `  ${product().cli} web logout [<id prefix>] [--all] [--port <port>]`,
   );
+  console.log(`  ${product().cli} web owner [link|show|unlink] [--json]`);
   console.log();
   console.log(chalk.bold("Actions:"));
   console.log(
@@ -1109,6 +1128,9 @@ export function displayWebHelp(): void {
   );
   console.log(
     "  token --print      Print your CLI token, for curl (Authorization: Bearer …)",
+  );
+  console.log(
+    "  owner link         Link your GitHub account as this Den's owner (Sign in with GitHub)",
   );
   console.log("  (start/stop remain accepted as legacy aliases for up/down)");
   console.log();
@@ -1183,6 +1205,10 @@ export async function cmdWeb(args: string[]): Promise<void> {
   }
   if (args[0] === "logout") {
     process.exitCode = await cmdWebLogout(args.slice(1));
+    return;
+  }
+  if (args[0] === "owner") {
+    process.exitCode = await cmdWebOwner(args.slice(1));
     return;
   }
   if (args.includes("--help") || args.includes("-h")) {
@@ -1735,5 +1761,133 @@ export async function cmdWebLogout(
         : "") +
       "\n",
   );
+  return 0;
+}
+
+// ── SEC-2a: the owner (`web owner link`, `show`, `unlink`) ─────────────────
+
+/**
+ * `<cli> web owner [link|show|unlink] [--json]`: the GitHub account this
+ * Den belongs to, which Sign in with GitHub admits.
+ *  - link: GitHub's device flow, here in the terminal: the code and
+ *    github.com/login/device, then a wait while you approve it. Den keeps
+ *    `github:<id>` and the login (a 0600 file in the state dir) and drops
+ *    the token at once. Refused while an owner is linked.
+ *  - show (the default): who it is.
+ *  - unlink: forget it. Signed-in browsers stay signed in.
+ * `client` and `sleep` are a test's.
+ */
+export async function cmdWebOwner(
+  args: string[],
+  io: CliIo & {
+    client?: GithubDeviceClient;
+    sleep?: (ms: number) => Promise<void>;
+    clientId?: string;
+  } = stdIo,
+): Promise<number> {
+  const usage = `Usage: ${product().cli} web owner [link|show|unlink] [--json]\n`;
+  if (isHelp(args)) {
+    io.out(
+      usage +
+        "  link    link your GitHub account as this Den's owner (GitHub's device flow:\n" +
+        `          enter the code it shows at ${GITHUB_DEVICE_PAGE}); only its id is kept\n` +
+        "  show    who the owner is (the default)\n" +
+        "  unlink  forget the owner; signed-in browsers stay signed in\n" +
+        "  The owner can then sign in from any device: the signed-out page's\n" +
+        "  Sign in with GitHub. No token is stored.\n",
+    );
+    return 0;
+  }
+  const asJson = args.includes("--json");
+  const rest = args.filter((a) => a !== "--json");
+  const sub = rest[0] ?? "show";
+  if (rest.length > 1 || !["link", "show", "unlink"].includes(sub)) {
+    io.err(usage);
+    return 2;
+  }
+  const stateDir = io.stateDir ?? getStateDir();
+  const cli = product().cli;
+  if (sub === "show") {
+    const o = readWebOwner(stateDir);
+    if (asJson) io.out(`${JSON.stringify({ owner: o }, null, 2)}\n`);
+    else
+      io.out(
+        o
+          ? `Owner: @${o.login} (${o.owner}), linked ${o.linkedAt.replace("T", " ").replace(/\.\d+Z$/, "Z")}.\n`
+          : `No owner is linked. Run \`${cli} web owner link\`.\n`,
+      );
+    return 0;
+  }
+  if (sub === "unlink") {
+    const was = clearWebOwner(stateDir);
+    if (asJson) io.out(`${JSON.stringify({ unlinked: was }, null, 2)}\n`);
+    else
+      io.out(
+        was
+          ? `Unlinked @${was.login}. Signed-in browsers stay signed in (\`${cli} web logout\` ends them).\n`
+          : "No owner was linked.\n",
+      );
+    return 0;
+  }
+  const linked = readWebOwner(stateDir);
+  if (linked) {
+    io.err(
+      `${cli}: this Den's owner is @${linked.login} already; \`${cli} web owner unlink\` first.\n`,
+    );
+    return 1;
+  }
+  let clientId = io.clientId;
+  if (clientId === undefined) {
+    try {
+      clientId = githubClientId(
+        readWebAuthConfig(getDistRoot(), product().configFile).githubClientId,
+      );
+    } catch (e) {
+      io.err(`${cli}: ${(e as Error).message}\n`);
+      return 1;
+    }
+  }
+  if (!clientId) {
+    io.err(`${cli}: ${noClientIdMessage(cli)}\n`);
+    return 1;
+  }
+  const ep = githubEndpoints();
+  let outcome;
+  try {
+    outcome = await runDeviceFlow({
+      clientId,
+      client: io.client ?? githubDeviceClient(ep),
+      ...(io.sleep ? { sleep: io.sleep } : {}),
+      minIntervalMs: ep.fake || io.client ? 0 : 1000,
+      onCode: (c) =>
+        io.out(
+          `Open ${GITHUB_DEVICE_PAGE} and enter this code:\n\n    ${c.userCode}\n\n` +
+            `Waiting for you to approve it on GitHub (it asks for no permissions; ` +
+            `the code lasts ${Math.round(c.expiresIn / 60)} min)…\n`,
+        ),
+    });
+  } catch (e) {
+    io.err(`${cli}: ${(e as Error).message}\n`);
+    return 1;
+  }
+  if (outcome.kind !== "ok") {
+    io.err(
+      `${cli}: ${
+        outcome.kind === "expired"
+          ? "the code expired before it was approved; run it again"
+          : outcome.kind === "denied"
+            ? "the request was cancelled on GitHub"
+            : outcome.message
+      }\n`,
+    );
+    return 1;
+  }
+  const rec = writeWebOwner(outcome.identity, stateDir);
+  if (asJson) io.out(`${JSON.stringify({ owner: rec }, null, 2)}\n`);
+  else
+    io.out(
+      `Linked @${rec.login} (${githubPrincipal(outcome.identity.id)}) as this Den's owner; ` +
+        "the token was not kept. Sign in with GitHub from your other devices now works.\n",
+    );
   return 0;
 }

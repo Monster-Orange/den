@@ -252,6 +252,7 @@ describe("the Settings page writes only what you change (R21)", () => {
       "navigation",
       "graph",
       "workspace",
+      "access",
       "cli",
       "distribution",
     ]);

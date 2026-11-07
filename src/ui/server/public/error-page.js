@@ -137,7 +137,125 @@ function withCmd(text, cmd) {
  * navigation doesn't carry a SameSite=Strict one); /api/session, asked
  * same-origin, does carry it, so a signed-in browser reloads the page
  * from here (same-origin) and is let through.
+ *
+ * SEC-2a: above that, Sign in with GitHub. The server runs GitHub's device
+ * flow; the page shows the code and github.com/login/device, polls the
+ * server, and reloads once the owner approved it (the server sets the
+ * cookie). Another account is refused by name. With no owner linked, or no
+ * client id configured, it says what to do on the Den machine instead.
  */
+function githubBlock(s, t) {
+  const g = s.github;
+  if (!g || s.localhost) return "";
+  if (g.state === "no_owner")
+    return `<div id="den-gh"><p class="lead">${withCmd(t("err.signin.githubNoOwner", { cmd: "\u0000" }), g.owner)}</p></div>`;
+  if (g.state === "no_client_id")
+    return `<div id="den-gh"><p>${withCmd(t("err.signin.githubNoClient", { key: "\u0000" }), "web.github_client_id")}</p></div>`;
+  return (
+    `<div id="den-gh"><div class="acts" style="margin-top:0">` +
+    `<button type="button" class="btn primary" id="den-gh-start">${esc(t("err.signin.github"))}</button>` +
+    `</div><div id="den-gh-flow" aria-live="polite"></div></div>`
+  );
+}
+
+/** The device flow on the page: start, show the code, poll, reload. */
+function wireGithub(root, t) {
+  const start = root.querySelector("#den-gh-start");
+  const box = root.querySelector("#den-gh-flow");
+  if (!start || !box) return;
+  let timer = null;
+  const show = (html) => (box.innerHTML = html);
+  const fail = (text) => {
+    clearTimeout(timer);
+    start.hidden = false;
+    start.textContent = t("err.signin.githubAgain");
+    show(
+      `<p class="den-gh-err" role="alert" style="margin-top:12px">${esc(text)}</p>`,
+    );
+  };
+  const poll = (id) => {
+    fetch(`/api/github/signin/${encodeURIComponent(id)}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then((r) => r.json().catch(() => ({})))
+      .then((b) => {
+        if (b.state === "pending") {
+          timer = setTimeout(() => poll(id), 1500);
+          return;
+        }
+        if (b.state === "ok") {
+          show(
+            `<p class="lead" style="margin-top:12px">${esc(t("err.signin.githubDone"))}</p>`,
+          );
+          location.replace(location.href);
+          return;
+        }
+        fail(
+          b.state === "refused"
+            ? t("err.signin.githubRefused", { login: b.login ?? "" })
+            : b.state === "expired"
+              ? t("err.signin.githubExpired")
+              : b.state === "denied"
+                ? t("err.signin.githubDenied")
+                : t("err.signin.githubFailed"),
+        );
+      })
+      .catch(() => fail(t("err.signin.githubFailed")));
+  };
+  start.addEventListener("click", () => {
+    clearTimeout(timer);
+    start.disabled = true;
+    fetch("/api/github/signin", {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then((r) =>
+        r
+          .json()
+          .catch(() => ({}))
+          .then((b) => [r.status, b]),
+      )
+      .then(([status, b]) => {
+        start.disabled = false;
+        if (!b.ok || !b.userCode) {
+          fail(
+            status === 429
+              ? t("err.signin.githubBusy")
+              : b.error || t("err.signin.githubFailed"),
+          );
+          return;
+        }
+        start.hidden = true;
+        const url = b.verificationUri || "https://github.com/login/device";
+        const shown = url.replace(/^https:\/\//, "");
+        show(
+          `<p class="lead" style="margin-top:12px">${t(
+            "err.signin.githubEnter",
+            {
+              url: `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(shown)}</a>`,
+            },
+          )}</p>` +
+            `<pre class="code" id="den-gh-code" style="font-size:22px;letter-spacing:0.12em;text-align:center">${esc(b.userCode)}</pre>` +
+            `<div class="acts" style="margin-top:0">` +
+            `<a class="btn primary" id="den-gh-open" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t("err.signin.githubOpen"))}</a>` +
+            `<button type="button" class="btn" id="den-gh-copy">${esc(t("err.signin.githubCopy"))}</button></div>` +
+            `<p class="den-gh-wait" style="margin-top:12px">${esc(t("err.signin.githubWaiting"))}</p>`,
+        );
+        const cp = box.querySelector("#den-gh-copy");
+        cp?.addEventListener("click", () => copy(b.userCode, cp, t));
+        timer = setTimeout(() => poll(b.id), 1500);
+      })
+      .catch(() => {
+        start.disabled = false;
+        fail(t("err.signin.githubFailed"));
+      });
+  });
+}
+
 function mountSignedOut(root, sh, d) {
   const t = sh.t;
   const s = d.signin;
@@ -147,13 +265,21 @@ function mountSignedOut(root, sh, d) {
       ? t("err.signin.terminal")
       : t("err.signin.title", { name: s.name || "Den" });
   document.title = document.title.replace(/Error$/, title);
+  const gh = githubBlock(s, t);
   const lead = s.expired
     ? withCmd(t("err.signin.expired", { cmd: "\u0000" }), s.cmd)
-    : withCmd(t("err.signin.lead", { cmd: "\u0000" }), s.cmd);
+    : withCmd(
+        t(gh ? "err.signin.orLead" : "err.signin.lead", { cmd: "\u0000" }),
+        s.cmd,
+      );
   root.innerHTML =
     `<div class="ph"><div><h1>${esc(title)}</h1>` +
     `<div class="sub">${esc(t("err.signin.sub"))}</div></div></div>` +
-    `<div class="empty" id="den-signin"><p class="lead">${lead}</p>` +
+    `<div class="empty" id="den-signin">` +
+    (gh
+      ? `${gh}<hr style="border:0;border-top:1px solid var(--border);margin:20px 0">`
+      : "") +
+    `<p class="lead">${lead}</p>` +
     `<pre class="code" id="den-signin-cmd">${esc(s.cmd)}</pre>` +
     (s.localhost
       ? `<p>${esc(t("err.signin.local", { host: location.host }))}</p>`
@@ -165,10 +291,11 @@ function mountSignedOut(root, sh, d) {
     (s.localhost
       ? `<a class="btn primary" id="den-signin-local" href="${esc(s.localhost)}">${esc(t("err.421.open"))}</a>`
       : "") +
-    `<button type="button" class="btn${s.localhost ? "" : " primary"}" id="den-signin-copy">${esc(t("err.signin.copy"))}</button>` +
+    `<button type="button" class="btn${s.localhost || gh ? "" : " primary"}" id="den-signin-copy">${esc(t("err.signin.copy"))}</button>` +
     `</div></div>`;
   const btn = root.querySelector("#den-signin-copy");
   btn?.addEventListener("click", () => copy(s.cmd, btn, t));
+  wireGithub(root, t);
   if (s.expired || s.localhost) return;
   let tried = false;
   try {

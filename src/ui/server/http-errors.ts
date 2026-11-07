@@ -298,6 +298,16 @@ export interface ErrorPageData {
     cmd: string;
     localhost?: string;
     expired?: boolean;
+    /**
+     * SEC-2a: Sign in with GitHub. `state` ready, or why it can't be offered
+     * (no client id configured, no owner linked); `owner` the command that
+     * links one; `message` what to set while no client id is configured.
+     */
+    github?: {
+      state: "ready" | "no_client_id" | "no_owner";
+      owner: string;
+      message?: string;
+    };
   };
 }
 
