@@ -132,7 +132,9 @@
     "org.title": "Org: {title}",
     "org.titleId": "Org: {title} ({id})",
     "ws.all": "All active",
-    "ws.focus": "focus",
+    "ws.focus": "CLI default",
+    "ws.focusTip":
+      "CLI commands run here when you don't name a workspace. Picking a workspace in the top bar only changes what pages show.",
     "ws.none": "No active workspaces",
     "ws.manage": "Manage workspaces…",
     "ws.allN": "All active ({n})",
@@ -142,12 +144,12 @@
     "ws.viewTitle":
       "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing.",
     "ws.viewTitleFocus":
-      "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing, and focus ({focus}) stays the target for commands.",
-    "ws.setFocus": "Set {ws} as focus",
+      "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing, and the CLI default ({focus}) stays the target for commands.",
+    "ws.setFocus": "Make {ws} the CLI default",
     "ws.setFocusTip":
-      "Make it the default target for commands (writes workspaces.yml)",
+      "CLI commands run in it when you don't name a workspace (writes workspaces.yml)",
     "ws.viewFailed": "Could not change the view: {msg}",
-    "ws.focusFailed": "Could not set the focus: {msg}",
+    "ws.focusFailed": "Could not change the CLI default: {msg}",
     // A count's singular is its .one (0.3.0-dev.40: en had none, so the org
     // menu said "1 workspaces").
     "org.n": "{n} workspaces",

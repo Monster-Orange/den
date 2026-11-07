@@ -127,6 +127,16 @@ unless you opt in.
 
 ### Fixed
 
+- **The workspace commands run in is named: "CLI default".** Local Dev's
+  workspace list marked it with a bare accent dot and no label, and
+  picking a workspace in the top bar never moved the dot (by design: that
+  picks the view), so it looked broken. It now says "CLI default", with
+  a tooltip: CLI commands run there when you don't name a workspace, and
+  the top bar only changes what pages show. The top bar's Workspace menu
+  tags it "CLI default" (was "focus") and offers "Make <ws> the CLI
+  default"; the Workspaces pane's badge reads "active · CLI default" and
+  its button "Make CLI default". Nothing behaves differently.
+
 - **A browser signs in on a plain-http LAN bind** (`DEN_BIND_HOST` with
   `web.allow_plain_http_remote`). A `web login --origin http://<LAN IP>:<port>`
   link got 403 `origin_rejected`: the browser sends a plain-http origin that

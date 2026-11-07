@@ -215,6 +215,13 @@
         font-weight: 600;
         background: color-mix(in srgb, var(--accent) 4%, var(--surface));
       }
+      /* The CLI default (focus): a word, never a bare glyph. */
+      .ws-cli-default {
+        font-size: 10px;
+        color: var(--accent-text);
+        margin-left: 4px;
+        cursor: help;
+      }
       .ws-item-right {
         display: flex;
         align-items: center;
@@ -1544,6 +1551,11 @@
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;");
+        /** A shell string, with the English when the shell isn't up yet. */
+        const wsT = (key, fallback) => {
+          const v = window.denShell?.t?.(key);
+          return v && v !== key ? v : fallback;
+        };
 
         // ── The admin password (R8, LK-0) ─────────────────────────────────────────
         // It is for sudo, and nothing else: no action here asks for it up
@@ -1601,7 +1613,7 @@
                   ? `<button class="danger" data-action="delete">Delete</button>`
                   : "";
               return `<div class="ws-item ${n === activeWs ? "active" : ""}" data-name="${escHtml(n)}" data-action="select">
-          <span>${escHtml(n)}${isWsActive(n) ? ' <span style="font-size:10px;color:var(--muted)">(active)</span>' : ""}${n === focusName() ? ' <span style="font-size:10px;color:var(--accent-text)">●</span>' : ""}</span>
+          <span>${escHtml(n)}${isWsActive(n) ? ' <span style="font-size:10px;color:var(--muted)">(active)</span>' : ""}${n === focusName() ? ` <span class="ws-cli-default" title="${escHtml(wsT("ws.focusTip", "CLI commands run here when you don't name a workspace. Picking a workspace in the top bar only changes what pages show."))}">${escHtml(wsT("ws.focus", "CLI default"))}</span>` : ""}</span>
           <span class="ws-item-right">
             <button class="ws-term-btn" title="Open in terminal" data-open-term="${escHtml(dirPath)}">&#62;_</button>
             <button class="ws-open-btn" title="Open in editor" data-open-path="${escHtml(wsData.codeWorkspacePaths?.[n] || dirPath)}">↗</button>
@@ -2021,11 +2033,11 @@
           <h2>${escHtml(wsName)}</h2>
           ${
             isActive
-              ? `<span class="badge active-ws">active${isFocus ? " · focus" : ""}</span>
-               ${!isFocus ? `<button class="switch-btn" data-action="focus-ws">set focus</button>` : ""}
+              ? `<span class="badge active-ws"${isFocus ? ` title="${escHtml(wsT("ws.focusTip", ""))}"` : ""}>active${isFocus ? ` · ${escHtml(wsT("ws.focus", "CLI default"))}` : ""}</span>
+               ${!isFocus ? `<button class="switch-btn" data-action="focus-ws" title="${escHtml(wsT("ws.setFocusTip", ""))}">Make CLI default</button>` : ""}
                <button class="switch-btn" data-action="deactivate-ws">deactivate</button>`
               : `<button class="switch-btn" data-action="activate-ws">activate</button>
-               <button class="switch-btn" data-action="switch-ws">activate + focus</button>`
+               <button class="switch-btn" data-action="switch-ws">activate + make CLI default</button>`
           }
           ${stackNsChip}
           <span class="badge ws-agents" id="ws-agents-count" hidden></span>

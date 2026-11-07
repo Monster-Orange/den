@@ -1,6 +1,6 @@
 /**
  * The Workspace ▾ menu's model (R4, 0.3.0-dev.18): the view scope, with
- * the focus marked and a separate "Set <ws> as focus".
+ * the focus marked and a separate "Make <ws> the CLI default".
  */
 import { describe, expect, it } from "@jest/globals";
 import {
@@ -44,7 +44,7 @@ describe("buildScopeMenuModel", () => {
       },
     ]);
     expect(m.title).toBe(
-      "View: what every page shows (files-api, tasks-api). A view filter only: it starts, stops and routes nothing, and focus (files-api) stays the target for commands.",
+      "View: what every page shows (files-api, tasks-api). A view filter only: it starts, stops and routes nothing, and the CLI default (files-api) stays the target for commands.",
     );
   });
 
