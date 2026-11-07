@@ -757,7 +757,9 @@ describe("the CLI default is named, never a bare glyph", () => {
     // No glyph with no words: every mark on the row is a word.
     expect(row.text).not.toMatch(/[●•◉○]/);
     expect(row.text).toContain("CLI default");
-    expect(row.tip).toMatch(/top bar only changes what pages show/);
+    expect(row.tip).toMatch(
+      /Picking a workspace in the top bar also makes it the CLI default/,
+    );
     const side = await p.$eval(
       '.ws-item[data-name="side"] > span:first-child',
       (e) => e.textContent!,

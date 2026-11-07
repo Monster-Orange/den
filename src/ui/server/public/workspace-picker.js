@@ -25,7 +25,9 @@ export const EN_FALLBACK = {
   "ws.viewTitle":
     "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing.",
   "ws.viewTitleFocus":
-    "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing, and the CLI default ({focus}) stays the target for commands.",
+    "View: what every page shows ({ws}). It starts, stops and routes nothing. CLI default: {focus}.",
+  "ws.pickTip":
+    "Picking a workspace here also makes it the CLI default, so __DEN_CLI__ commands run there.",
 };
 function enT(key, vars) {
   return String(EN_FALLBACK[key] ?? key).replace(/\{(\w+)\}/g, (m, k) =>
@@ -50,10 +52,10 @@ function focusName(data) {
 /**
  * The top bar's Workspace ▾ menu (R4, 0.3.0-dev.18), from the `/api/scope`
  * and `/api/workspaces` payloads. It is the view scope: what every page,
- * the health row and `status` show. Choosing an entry never moves the
- * focus (the default target for commands); the focused workspace is
- * marked, and `focusable` names the workspace in view when it is not the
- * focus, for the menu's separate "Set <ws> as focus" item.
+ * the health row and `status` show. Choosing a workspace also makes it the
+ * focus (the CLI default, Ward's decision in 0.4.11); "All active" leaves
+ * the focus where it is. The focused workspace is marked, and `focus`
+ * names it, so the caller can skip a choice that is already the focus.
  *
  * "All active" is offered with two or more active workspaces; with one,
  * it and that workspace are the same view.
@@ -85,12 +87,13 @@ export function buildScopeMenuModel(scope, data, t = enT) {
       label: n,
       checked: n === one,
       focused: n === focus,
+      title: t("ws.pickTip"),
     })),
   ];
   return {
     label: active.length === 0 ? t("ws.noneLabel") : (one ?? t("ws.all")),
     items,
-    focusable: one && one !== focus ? one : null,
+    focus: focus ?? null,
     title: t(focus ? "ws.viewTitleFocus" : "ws.viewTitle", {
       ws: inView.join(", ") || t("ws.noneLabel"),
       focus,

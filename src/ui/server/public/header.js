@@ -792,10 +792,11 @@ export function groupReposByApplication(repos, apps) {
 
 /**
  * Feed the shell's Workspace part (shell.js #ws-pill, a menu): "All active"
- * and each active workspace, the focused one marked. Choosing one sets the
- * view scope (POST /api/scope, a preference) for every page. It replaces
- * dev.17's workspace pill and its focus menu (one control, not two): the
- * focus moves only through the menu's separate "Set <ws> as focus".
+ * and each active workspace, the focused one marked. Choosing a workspace
+ * makes it the CLI default (POST /api/workspaces `focus`, workspaces.yml)
+ * and sets the view (POST /api/scope, a preference) for every page: one
+ * "current workspace" (Ward's decision, 0.4.11). "All active" sets only the
+ * view; the CLI default stays.
  *
  * The arguments are dev.17's (an env select, an onSwitch callback) and are
  * no longer used: the view applies to every env.
@@ -822,7 +823,6 @@ async function _renderScopeMenu() {
     sh.setWorkspaces({
       ...buildScopeMenuModel(pageScope(scope, data), data, t),
       onSelect: _switchScope,
-      onFocus: _setFocus,
     });
   } catch {
     sh.setWorkspaces(null);
@@ -866,11 +866,14 @@ function followScopeInUrl(value) {
 }
 
 /**
- * A view filter only: POST /api/scope stores the preference (user.yml
- * `view`), then the page reloads to show the new view whole. No service,
- * container, daemon or route changes, and the focus stays where it is.
+ * A workspace: first the CLI default (workspaces.yml), then the view. When
+ * the CLI default can't be set, nothing changes and the error shows. "All
+ * active": the view only. POST /api/scope stores the view (user.yml
+ * `view`), then the page reloads to show it whole. No service, container,
+ * daemon or route changes.
  */
-async function _switchScope(value) {
+async function _switchScope(value, focus) {
+  if (value !== "all" && value !== focus && !(await _setFocus(value))) return;
   try {
     await window.denShell.api("POST", "/api/scope", { scope: value });
   } catch (err) {
@@ -885,9 +888,9 @@ async function _switchScope(value) {
 }
 
 /**
- * "Set <ws> as focus": Local Dev's focus action (POST /api/workspaces
- * `focus`, which writes workspaces.yml and retargets the CLI). Separate
- * from the view: it is the only thing in the menu that moves the focus.
+ * Make `name` the CLI default: Local Dev's focus action (POST
+ * /api/workspaces `focus`, which writes workspaces.yml and retargets the
+ * CLI). False, with the error shown, when it couldn't.
  */
 async function _setFocus(name) {
   try {
@@ -900,9 +903,9 @@ async function _setFocus(name) {
       err.message = t("ws.focusFailed", { msg: err.message });
       window.denShell.errorToast(err);
     } else window.denShell?.toast?.(t("ws.focusFailed", { msg: err.message }));
-    return;
+    return false;
   }
-  location.reload();
+  return true;
 }
 
 // ── Health: the status chip and drawer (topbar.js, R6 and R15) ─────────────

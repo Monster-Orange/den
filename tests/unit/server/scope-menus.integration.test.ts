@@ -5,8 +5,10 @@
  * shop shared by ws-a and ws-b), driven by Playwright's headless Chromium.
  *
  * - the ORG label is the GitHub org's `orgs:` label, not the bare id;
- * - Workspace ▾ sets the view (user prefs only) and never moves the focus;
- *   "Make <ws> the CLI default" is the separate item that does;
+ * - Workspace ▾ (0.4.11, Ward's decision): picking one workspace sets the
+ *   view and makes it the CLI default (workspaces.yml); "All active (n)"
+ *   sets only the view and leaves the CLI default; there is no separate
+ *   "Make <ws> the CLI default" item;
  * - a Services card's ☆ follows an unpin from the rail, without a reload;
  * - every page has exactly one main landmark, #den-content;
  * - the runs dock never covers the graph's cards (since 0.3.0-dev.35 on
@@ -236,9 +238,8 @@ describe("the org label", () => {
 });
 
 describe("Workspace ▾ (R4)", () => {
-  it("sets the view, a preference only; the focus moves only by its own item", async () => {
+  it("picking a workspace sets the view and makes it the CLI default; All active sets only the view", async () => {
     if (!browser) return;
-    const before = wsFile();
     const { p, writes } = await open("/services");
     await p.waitForSelector("#ws-pill:not([hidden])");
     expect(await p.textContent("#ws-pill")).toBe("Workspace All active ▾");
@@ -254,30 +255,38 @@ describe("Workspace ▾ (R4)", () => {
       ["ws-c", "false"],
       ["Manage workspaces…", null],
     ]);
+    expect(
+      await p.getAttribute('.den-pop .den-mi:has-text("ws-b")', "title"),
+    ).toMatch(/Picking a workspace here also makes it the CLI default/);
     await Promise.all([
       p.waitForNavigation(),
       p.click('.den-pop .den-mi:has-text("ws-b")'),
     ]);
-    // A view: user prefs (POST /api/scope) and nothing else.
-    expect(writes).toEqual(['POST /api/scope {"scope":"ws-b"}']);
-    expect(wsFile()).toBe(before);
+    // The CLI default first (workspaces.yml), then the view.
+    expect(writes).toEqual([
+      'POST /api/workspaces {"name":"ws-b","action":"focus"}',
+      'POST /api/scope {"scope":"ws-b"}',
+    ]);
     expect(await getJson("/api/scope")).toMatchObject({
       scope: "ws-b",
       inView: ["ws-b"],
-      focus: "ws-a",
+      focus: "ws-b",
     });
     await p.waitForSelector("#ws-pill:not([hidden])");
     expect(await p.textContent("#ws-pill")).toBe("Workspace ws-b ▾");
-    // The cards are the view's: shop and billing.
     await p.waitForSelector('[data-pin-toggle="billing"]');
     expect(await p.$$('[data-pin-toggle="search"]')).toHaveLength(0);
 
-    // "Make ws-b the CLI default" is the one item that writes workspaces.yml.
+    // All active: the view only; the CLI default stays ws-b.
+    writes.length = 0;
+    const before = wsFile();
     await p.click("#ws-pill");
     await Promise.all([
       p.waitForNavigation(),
-      p.click('.den-pop .den-mi:has-text("Make ws-b the CLI default")'),
+      p.click('.den-pop .den-mi:has-text("All active")'),
     ]);
+    expect(writes).toEqual(['POST /api/scope {"scope":"all"}']);
+    expect(wsFile()).toBe(before);
     expect((await getJson<{ focus: string }>("/api/workspaces")).focus).toBe(
       "ws-b",
     );
