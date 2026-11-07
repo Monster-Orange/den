@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.9] - unreleased
+## [0.4.9] - 2026-11-07
 
 A session ends when its pull request merges, or after 3 compactions. The
 role then relaunches from a handoff, in a fresh conversation (den#4, the
