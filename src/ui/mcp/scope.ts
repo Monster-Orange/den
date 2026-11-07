@@ -191,6 +191,20 @@ function grantsNote(scope: McpScope): string {
     : "no grants";
 }
 
+/**
+ * How a person gives `scope`'s agent a grant to `other` (MCP-2.3, AG spec
+ * §5b): config in git, then a restart. An agent never grants itself one.
+ */
+export function grantHint(scope: McpScope, other: string): string {
+  const id = scope.actor.slice("agent:".length);
+  return (
+    `To reach it, a person adds "${printable(other)}" to agents.${id}.grants ` +
+    `in the org config and restarts the agent (agents start passes --grant); ` +
+    "an agent can't grant itself one. For names and status counts of every " +
+    "workspace, call org_summary."
+  );
+}
+
 /** The refusal for a call that names `other`; it names the agent's grants. */
 export function otherWorkspace(
   tool: string,
@@ -199,7 +213,8 @@ export function otherWorkspace(
 ): ScopeRefusal {
   return new ScopeRefusal(
     `${tool}: this MCP server is scoped to workspace "${scope.workspace}" ` +
-      `(${scope.actor}; ${grantsNote(scope)}); "${printable(other)}" is another workspace, so nothing was read or run.`,
+      `(${scope.actor}; ${grantsNote(scope)}); "${printable(other)}" is another workspace, so nothing was read or run. ` +
+      grantHint(scope, other),
   );
 }
 
@@ -299,8 +314,10 @@ function focusedOf(body: unknown): string | null {
 export async function assertScopeExists(
   api: DenApi,
   scope: McpScope,
+  /** An /api/workspaces body already read (else it is read now). */
+  read?: unknown,
 ): Promise<unknown> {
-  const body = await api.get("/api/workspaces");
+  const body = read ?? (await api.get("/api/workspaces"));
   if (!(scope.workspace in asRecord(asRecord(body).workspaces)))
     throw new ScopeRefusal(
       `this MCP server is scoped to workspace "${scope.workspace}", which does not exist in this distribution.`,
@@ -375,7 +392,10 @@ export async function assertServicesInScope(
   if (outside.length)
     throw new ScopeRefusal(
       `${tool}: ${outside.map(printable).join(", ")} ${outside.length === 1 ? "is" : "are"} not a service ` +
-        `of workspace "${scope.workspace}", the only one this MCP server serves; nothing was read.`,
+        `of workspace "${scope.workspace}", the only one this MCP server serves; nothing was read. ` +
+        "Logs and service details stay inside each workspace (logs can hold " +
+        "secrets), and a grant does not widen them; org_summary has every " +
+        "workspace's status counts.",
     );
 }
 

@@ -17,6 +17,7 @@ import {
   type ContainerHealthTarget,
 } from "../../shared/stacks/compose-health.js";
 import { healthCheckFields, type HealthCheckType } from "./health-row.js";
+import { notCheckedReason } from "../../shared/health/not-checked.js";
 import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
 import * as http from "http";
 import * as net from "net";
@@ -276,6 +277,10 @@ interface HealthResult {
   pending?: boolean;
   status?: number;
   error?: string;
+  /** A 3xx answer's target (MCP-2.4): ok null, not down. */
+  redirect?: string;
+  /** With ok null and nothing checked: why not (MCP-2.4). */
+  why?: string;
   /** Where the app opens for this env (open-in-new-tab), or null. */
   openUrl?: string | null;
   /** Extra named links for this env. */
@@ -1849,6 +1854,8 @@ async function handleRequest(
       compose: ComposeHealthTarget | null;
       /** A `type: container` check: answered from the shared listing. */
       container: ContainerHealthTarget | null;
+      /** The repo has no manifest (the row is kept, unchecked). */
+      noManifest?: boolean;
       meta: Pick<HealthResult, "runs" | "target" | "focused" | "workspaces">;
     }> = [];
     const focusName = getFocusedWorkspaceName();
@@ -1891,6 +1898,7 @@ async function handleRequest(
           org: orgOf(resolved.repoName, catalog),
           compose: null,
           container: null,
+          noManifest: true,
           meta: {
             runs: "none",
             target: null,
@@ -2018,6 +2026,7 @@ async function handleRequest(
       expect,
       compose,
       container,
+      noManifest,
     }) => {
       if (checkType !== "none") {
         const started = Date.now();
@@ -2084,6 +2093,13 @@ async function handleRequest(
         isEntrypoint,
         ...meta,
         ok: null,
+        why: notCheckedReason({
+          env,
+          runs: meta.runs,
+          target: meta.target,
+          manifest: !noManifest,
+          conventional,
+        }),
       };
     };
     // Stream each result the moment it lands. The checks run concurrently but

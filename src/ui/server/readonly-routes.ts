@@ -20,14 +20,20 @@
  */
 import * as http from "http";
 import { readEdgeConfig } from "../../shared/edge/config.js";
-import { edgeStatus, type EdgeStatus } from "../../shared/edge/status.js";
+import {
+  edgeStatus,
+  withHttpsServing,
+  type EdgeStatus,
+} from "../../shared/edge/status.js";
 import { getWorkspaceByName } from "../../shared/environment-manager/workspaces.js";
 import {
+  emptyStacksReason,
   loadStackContext,
   resolveStackWorkspaces,
   stackStatuses,
   type StackStatus,
 } from "../../shared/stacks/status.js";
+import { readStacks } from "../../shared/stacks/config.js";
 import { send400, sendJson } from "./http-helpers.js";
 import { recentActions, type AuditEntry } from "./audit.js";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
@@ -50,8 +56,11 @@ export interface ReadonlyRouteDeps {
     workspace: string;
     stackWorkspace: string;
     stacks: StackStatus[];
+    /** With no stacks: why the list is empty (MCP-2.4). */
+    why?: string;
   };
-  edge: () => EdgeStatus;
+  /** The edge's status; https.serving probed (MCP-2.5). */
+  edge: () => EdgeStatus | Promise<EdgeStatus>;
   /** The edge block reads (no Docker asked); throws with the reason if not. */
   edgeConfig: () => void;
   actions: () => AuditEntry[];
@@ -63,13 +72,28 @@ export const defaultReadonlyRouteDeps: ReadonlyRouteDeps = {
   stacks: ({ workspace, health }) => {
     const ws = resolveStackWorkspaces(workspace);
     const ctx = loadStackContext(ws.denWorkspace);
+    const stacks = stackStatuses(ctx, { health });
     return {
       workspace: ws.denWorkspace,
       stackWorkspace: ws.stackWorkspace,
-      stacks: stackStatuses(ctx, { health }),
+      stacks,
+      ...(stacks.length
+        ? {}
+        : {
+            why: emptyStacksReason({
+              workspace: ws.denWorkspace,
+              workspaceExists: !!getWorkspaceByName(ws.denWorkspace),
+              configStacks: Object.keys(
+                readStacks(undefined, { manifests: false }),
+              ).length,
+            }),
+          }),
     };
   },
-  edge: () => edgeStatus(readEdgeConfig()),
+  edge: () => {
+    const cfg = readEdgeConfig();
+    return withHttpsServing(edgeStatus(cfg), cfg);
+  },
   edgeConfig: () => void readEdgeConfig(),
   actions: recentActions,
   securityPlan: async ({ env, mode, service }) => {
@@ -195,7 +219,7 @@ export async function handleReadonlyRoutes(
         sendJson(res, { configured: true });
         return true;
       }
-      sendJson(res, { configured: true, ...deps.edge() });
+      sendJson(res, { configured: true, ...(await deps.edge()) });
     } catch (e) {
       // No edge configured is a state, not a server error.
       sendJson(res, { configured: false, error: (e as Error).message });

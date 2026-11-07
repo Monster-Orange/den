@@ -363,7 +363,14 @@ describe("a scoped server pins and filters", () => {
       workspaces: { north: WORKSPACES.workspaces.north },
       resolvedDirs: { north: "/w/north" },
       codeWorkspacePaths: {},
-      scope: { workspace: "north", actor: "agent:planner" },
+      // MCP-2.2: it says how much it leaves out, never naming it.
+      scope: {
+        workspace: "north",
+        actor: "agent:planner",
+        otherWorkspaces: 1,
+        hidden: { repos: 1 },
+        note: "1 workspace in north (your scope); 1 other workspace with 1 more repo: summary only, see org_summary",
+      },
     });
     expect(r.text).not.toContain("south");
   });

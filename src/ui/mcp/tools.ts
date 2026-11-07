@@ -45,6 +45,13 @@ import {
   pinWorkspace,
   type McpScope,
 } from "./scope.js";
+import {
+  graphInScope,
+  orgSummary,
+  scopeBlock,
+  statusView,
+  workspaceRepos,
+} from "./views.js";
 
 export interface ToolContext {
   api: DenApi;
@@ -173,37 +180,96 @@ const READ_TOOLS: DenTool[] = [
   read(
     "status",
     "Service health",
-    "Health of every service in the workspace (what `status` shows): up/down, mode, and what was checked: `url` for an HTTP check, `check` for a shell command or a container check (`container <project>/<service>`).",
+    "Health of every service in the workspace (what `status` shows): `counts`, then each service's `state` (up, down, redirect, pending, unknown, not-checked; `why` when there is no plain verdict), mode, and what was checked: `url` for an HTTP check, `check` for a shell command or a container check (`container <project>/<service>`). A redirect (302 → /login) answers, so it is not down.",
     { env: envArg, workspace: workspaceArg },
-    (a, { api }) =>
-      api.get("/api/health", { env: envOf(a), workspace: str(a.workspace) }),
+    async (a, { api, scope }) => {
+      const env = envOf(a);
+      const view = statusView(
+        await api.get("/api/health", { env, workspace: str(a.workspace) }),
+        env,
+      );
+      return scope
+        ? await withScope(api, scope, a, view, {
+            count: (view.services as unknown[]).length,
+            noun: "service",
+          })
+        : view;
+    },
   ),
   read(
     "services",
     "Services",
     "The workspace's services: repo, service, mode (managed or dev-managed), lifecycle commands, dependencies.",
     { env: envArg, workspace: workspaceArg },
-    (a, { api }) =>
-      api.get("/api/services", { env: envOf(a), workspace: str(a.workspace) }),
+    async (a, { api, scope }) => {
+      const list = await api.get("/api/services", {
+        env: envOf(a),
+        workspace: str(a.workspace),
+      });
+      if (!scope) return list;
+      const services = Array.isArray(list) ? list : [];
+      return withScope(
+        api,
+        scope,
+        a,
+        { services },
+        { count: services.length, noun: "service" },
+      );
+    },
   ),
   read(
     "applications",
     "Applications",
     "Org > Application > Repo > Services for a workspace (what `apps --json` shows).",
     { workspace: workspaceArg },
-    (a, { api }) =>
-      api.get("/api/applications", { workspace: str(a.workspace) }),
+    async (a, { api, scope }) => {
+      const tree = await api.get("/api/applications", {
+        workspace: str(a.workspace),
+      });
+      if (!scope) return tree;
+      const t =
+        tree && typeof tree === "object" && !Array.isArray(tree)
+          ? (tree as Record<string, unknown>)
+          : { applications: tree };
+      const apps = Array.isArray(t.applications) ? t.applications : [];
+      return withScope(api, scope, a, t, {
+        count: apps.length,
+        noun: "application",
+      });
+    },
   ),
   read(
     "graph",
     "Dependency graph",
-    "The derived dependency graph and its startup order; `seed` narrows it to one repo's closure.",
+    "The derived dependency graph and its startup order; `seed` narrows it to one repo's closure. Unscoped it is the org-wide map (`map: \"org-wide\"`); scoped, the workspace's own repos and the edges out of them (`outside` names the repos they depend on elsewhere; the org-wide map is `org_summary.graph`).",
     {
       seed: z.string().optional().describe("Repo whose closure to show"),
       workspace: workspaceArg,
     },
-    (a, { api }) =>
-      api.get("/api/graph", { seed: str(a.seed), workspace: str(a.workspace) }),
+    async (a, { api, scope }) => {
+      const graph = await api.get("/api/graph", {
+        seed: str(a.seed),
+        workspace: str(a.workspace),
+      });
+      if (!scope)
+        return graph && typeof graph === "object" && !Array.isArray(graph)
+          ? { map: "org-wide", ...(graph as Record<string, unknown>) }
+          : graph;
+      const body = await scopeWorkspacesBody(api, scope);
+      const shown = String(a.workspace);
+      const view = graphInScope(graph, workspaceRepos(body, shown));
+      const { hiddenNodes, ...rest } = view;
+      return {
+        ...rest,
+        scope: scopeBlock(
+          scope,
+          body,
+          shown,
+          { count: (view.nodes as unknown[]).length, noun: "repo" },
+          { graphNodes: hiddenNodes as number },
+        ),
+      };
+    },
   ),
   read(
     "workspaces",
@@ -212,7 +278,44 @@ const READ_TOOLS: DenTool[] = [
     {},
     async (_a, { api, scope }) => {
       const body = await api.get("/api/workspaces");
-      return scope ? filterWorkspacesBody(body, scope) : body;
+      if (!scope) return body;
+      const filtered = filterWorkspacesBody(body, scope);
+      return {
+        ...filtered,
+        scope: {
+          ...(filtered.scope as Record<string, unknown>),
+          ...scopeBlock(scope, body, scope.workspace, {
+            count: 1,
+            noun: "workspace",
+          }),
+        },
+      };
+    },
+  ),
+  read(
+    "org_summary",
+    "Org summary",
+    'The whole org at a glance, for every agent: each workspace and repo with status counts (running, partial, stopped; up, down, redirect, not checked), the dependency graph (names and edge kinds), the edge (up, TLS, whether HTTPS serves) and the environments. Scoped, `yours` adds your own workspace\'s services in full. It never carries logs, env values, commands, URLs or check output from outside your workspace. Start here for "what are our servers?".',
+    {},
+    async (_a, { api, scope }) => {
+      const [workspaces, health, graph, edge, environments, own] =
+        await Promise.all([
+          api.get("/api/workspaces"),
+          api.get("/api/health", { env: "local" }),
+          softGet(api, "/api/graph"),
+          softGet(api, "/api/edge"),
+          api.get("/api/environments"),
+          scope
+            ? api.get("/api/health", {
+                env: "local",
+                workspace: scope.workspace,
+              })
+            : Promise.resolve(undefined),
+        ]);
+      return orgSummary(
+        { workspaces, health, graph, edge, environments, own },
+        scope,
+      );
     },
   ),
   read(
@@ -372,7 +475,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "stacks",
     "Stacks",
-    "Compose stacks (what `stack ls/ps/health` show): name, project, routes and container health.",
+    "Compose stacks (what `stack ls/ps/health` show): name, project, routes and container health. An empty list says why (`why`).",
     {
       workspace: workspaceArg,
       health: z
@@ -380,20 +483,114 @@ const READ_TOOLS: DenTool[] = [
         .optional()
         .describe("Check container health (default true)"),
     },
-    (a, { api }) =>
-      api.get("/api/stacks", {
+    async (a, { api, scope }) => {
+      const body = (await api.get("/api/stacks", {
         workspace: str(a.workspace),
         health: a.health === false ? "0" : "1",
-      }),
+      })) as Record<string, unknown>;
+      const all = Array.isArray(body?.stacks)
+        ? (body.stacks as { repo?: unknown }[])
+        : [];
+      if (!scope) {
+        if (all.length || body?.why !== undefined) return body;
+        return {
+          ...body,
+          why: "no stacks (the web server gave no reason; it predates 0.4.4)",
+        };
+      }
+      const wsBody = await scopeWorkspacesBody(api, scope);
+      const shown = String(a.workspace);
+      const mine = new Set(workspaceRepos(wsBody, shown));
+      const stacks = all.filter((s) => mine.has(String(s.repo)));
+      const hiddenStacks = all.length - stacks.length;
+      const why = stacks.length
+        ? undefined
+        : hiddenStacks
+          ? `no stacks in workspace "${shown}": the ${hiddenStacks} stack${hiddenStacks === 1 ? "" : "s"} listed belong to repos outside it`
+          : ((body?.why as string | undefined) ??
+            "no stacks (the web server gave no reason; it predates 0.4.4)");
+      return withScope(
+        api,
+        scope,
+        a,
+        { ...body, stacks, ...(why ? { why } : {}) },
+        { count: stacks.length, noun: "stack" },
+        { stacks: hiddenStacks },
+      );
+    },
   ),
   read(
     "edge_status",
     "Edge status",
-    "The HTTPS edge: up or down, its routes and its cert names.",
+    "The HTTPS edge: up or down, its routes and its cert names. `https` says the TLS strategy, who supplies the cert (den, or the distribution under tls strategy files) and whether HTTPS is serving; `certIssuedByDen` replaces the deprecated `certIssued`.",
     {},
-    (_a, { api }) => api.get("/api/edge"),
+    async (_a, { api }) => {
+      const edge = await api.get("/api/edge");
+      const e =
+        edge && typeof edge === "object"
+          ? (edge as Record<string, unknown>)
+          : null;
+      // A web server before 0.4.4: say what certIssued means.
+      if (e && e.certIssued !== undefined && e.https === undefined)
+        return {
+          ...e,
+          certIssuedMeans:
+            "whether Den minted the cert itself (mkcert); false under tls strategy files, where the distribution supplies it, even while HTTPS serves. Restart the web server for https.serving.",
+        };
+      return edge;
+    },
   ),
 ];
+
+/**
+ * The /api/workspaces body a scoped answer is counted against, read at most
+ * once every few seconds per scope (one tool call often makes several).
+ */
+const WORKSPACES_TTL_MS = 5_000;
+const workspacesSeen = new WeakMap<McpScope, { at: number; body: unknown }>();
+async function scopeWorkspacesBody(
+  api: DenApi,
+  scope: McpScope,
+): Promise<unknown> {
+  const hit = workspacesSeen.get(scope);
+  if (hit && Date.now() - hit.at < WORKSPACES_TTL_MS) return hit.body;
+  const body = await api.get("/api/workspaces");
+  workspacesSeen.set(scope, { at: Date.now(), body });
+  return body;
+}
+
+/** `answer` with the scope it was served under (MCP-2.2). */
+async function withScope(
+  api: DenApi,
+  scope: McpScope,
+  args: Args,
+  answer: Record<string, unknown>,
+  shows: { count: number; noun: string },
+  extraHidden: Record<string, number> = {},
+): Promise<Record<string, unknown>> {
+  const body = await scopeWorkspacesBody(api, scope);
+  return {
+    scope: scopeBlock(
+      scope,
+      body,
+      str(args.workspace) ?? scope.workspace,
+      shows,
+      extraHidden,
+    ),
+    ...answer,
+  };
+}
+
+/** A read whose HTTP error is part of the answer, not the whole call's. */
+async function softGet(api: DenApi, path: string): Promise<unknown> {
+  try {
+    return await api.get(path);
+  } catch (e) {
+    if (e instanceof DenHttpError)
+      return { error: `${e.status} from ${e.path}` };
+    throw e;
+  }
+}
 
 // ── Action tools ────────────────────────────────────────────────────────────
 
@@ -580,13 +777,70 @@ export const READ_TOOL_NAMES: readonly string[] = READ_TOOLS.map((t) => t.name);
 export const ACTION_TOOL_NAMES: readonly McpAction[] = MCP_ACTIONS;
 
 /** The tools to register: every read tool, plus the actions the org named. */
-export function toolsFor(cfg: ResolvedMcpConfig): DenTool[] {
-  return [
+export function toolsFor(cfg: ResolvedMcpConfig, scope?: McpScope): DenTool[] {
+  const tools = [
     ...READ_TOOLS,
     ...MCP_ACTIONS.filter((a) => cfg.actions.includes(a)).map(
       (a) => ACTION_TOOLS[a],
     ),
   ];
+  return scope ? tools.map((t) => pinnedTool(t, scope)) : tools;
+}
+
+/**
+ * Tools that answer about one workspace, and so are "this workspace only"
+ * on a scoped server. The rest are the org's (environments, the edge,
+ * releases, security scans, the org summary) or take no workspace data.
+ */
+const WORKSPACE_TOOLS = new Set([
+  "status",
+  "services",
+  "applications",
+  "graph",
+  "workspaces",
+  "logs_search",
+  "logs_tail",
+  "tests_available",
+  "manifest_validate",
+  "stacks",
+  "service_up",
+  "service_down",
+  "service_restart",
+  "workspace_sync",
+  "run_tests",
+]);
+
+/**
+ * A tool as a scoped server registers it (MCP-2.2): its description says
+ * "this workspace only", and its `workspace` parameter is dropped, since it
+ * can only be the pinned one. With grants the parameter stays, to name a
+ * granted workspace, and says which those are. callTool still refuses a
+ * `workspace` naming another one (a one-shot or an old client may send it).
+ */
+export function pinnedTool(t: DenTool, scope: McpScope): DenTool {
+  if (!WORKSPACE_TOOLS.has(t.name)) return t;
+  const grants = scope.grants ?? [];
+  const only =
+    ` This workspace only ("${scope.workspace}"` +
+    (grants.length ? `, or a granted one: ${grants.join(", ")}` : "") +
+    "); every other workspace is in org_summary, names and counts only.";
+  let shape = t.shape;
+  if ("workspace" in t.shape) {
+    const rest = { ...t.shape };
+    delete rest.workspace;
+    shape = grants.length
+      ? {
+          ...rest,
+          workspace: z
+            .enum([scope.workspace, ...grants] as [string, ...string[]])
+            .optional()
+            .describe(
+              `"${scope.workspace}" (the default) or a granted workspace`,
+            ),
+        }
+      : rest;
+  }
+  return { ...t, description: t.description + only, shape };
 }
 
 /**
@@ -719,7 +973,12 @@ async function scopeArgs(
   scope: McpScope,
 ): Promise<Args> {
   if (!verifiedScopes.has(scope)) {
-    await assertScopeExists(ctx.api, scope);
+    // The body is the one scoped answers count against (one read).
+    await assertScopeExists(
+      ctx.api,
+      scope,
+      await scopeWorkspacesBody(ctx.api, scope),
+    );
     verifiedScopes.add(scope);
   }
   if (!("workspace" in tool.shape)) return args;

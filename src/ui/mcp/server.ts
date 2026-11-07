@@ -49,7 +49,9 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
   const p = product();
   const session = opts.session ?? randomUUID();
   const log = opts.log ?? ((l: string) => process.stderr.write(`${l}\n`));
-  const tools = toolsFor(opts.cfg);
+  // Scoped, each workspace tool is registered pinned (MCP-2.2): "this
+  // workspace only", and no workspace parameter unless there are grants.
+  const tools = toolsFor(opts.cfg, opts.scope);
   const server = new McpServer(
     { name: p.name, version: engineVersion() ?? "0.0.0" },
     {
@@ -61,8 +63,11 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
           : "Read-only: the org has enabled no actions (mcp.actions).") +
         (opts.scope
           ? ` Scoped to workspace "${opts.scope.workspace}" as ${opts.scope.actor}: ` +
-            "a call naming another workspace is refused, and lists show this one only."
-          : ""),
+            "a call naming another workspace is refused, and lists show this one only, " +
+            "each with a `scope` block saying how much is hidden. org_summary has " +
+            "every workspace and repo (names and status counts), the graph, the " +
+            "edge and the environments: start there for the whole picture."
+          : " org_summary has the whole org at a glance: start there."),
     },
   );
 
