@@ -156,6 +156,7 @@ export function applyHealth(m, results) {
       check: h.check ?? null,
       error: h.error ?? null,
       status: h.status ?? null,
+      redirect: h.redirect ?? null,
       ms:
         typeof h.ms === "number"
           ? h.ms
@@ -232,6 +233,7 @@ export function repoRollup(m, repo) {
       service: s.name,
       ok: s.health.ok,
       isEntrypoint: s.entry,
+      redirect: !!s.health.redirect,
     })),
   );
 }

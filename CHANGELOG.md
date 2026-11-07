@@ -125,6 +125,38 @@ through Den's MCP (MCP-2).
   stacks listed belong to repos outside it.
 - **`certIssued: false` while HTTPS works (MCP-2.5).** It meant "Den minted
   the cert", which is false under `tls: files`. Renamed `certIssuedByDen`.
+- **Security: a scoped `mcp --call` goes through the scoped path, and
+  says so.** A review reported that `mcp --workspace A --actor agent:<id>
+  --call services '{"workspace":"B"}'` could read workspace B's services
+  (paths and commands included). A one-shot now lists and validates
+  against the pinned tools exactly as the stdio server registers them, a
+  `workspace` naming another workspace always reaches Den's refusal, and
+  `--call` prints its scope on stderr (`<cli> mcp --call: scoped to A as
+  agent:<id>`), so an unscoped run can't pass for a scoped one. Tests now
+  drive the real `bin/den mcp --call` entry.
+- **An ungranted workspace gets Den's refusal (MCP-2.3).** On a scoped
+  server with grants, naming a workspace that is not granted answered
+  `MCP error -32602 … expected one of "A"|"C"` (the schema). The
+  `workspace` parameter is now a name whose description lists the allowed
+  ones, and any other gets the refusal naming `agents.<id>.grants` and how
+  a person grants it.
+- **The org-wide map is org-wide.** `org_summary.graph` and an unscoped
+  `graph` held only the focused workspace's repos, so a repo only in
+  another active workspace was missing. They now merge every active
+  workspace's graph (`workspaces` names them; `order`, a startup order
+  within one workspace, only when one is active); `org_summary` keeps
+  names and edge kinds only. `graph` with a `workspace` is labelled
+  `map: "workspace"`.
+- **A service's command runs in its own workspace.** The Services page's
+  and the tests page's setup, up, down and restart sent no workspace, so a
+  service only in a non-focused active workspace failed: `Command "setup"
+  not found for <repo>/<svc> … Active workspace: <focus>`. They now send
+  the workspace the row was built from. (0.4.3 had the same bug.)
+- **`agents doctor -w <ws>` works.** It answered `workspaces not loaded`;
+  it now loads the workspaces config first, as `agents start` does.
+- **A redirect is a redirect in `status`.** A repo row's reason counted a
+  service that answered with a redirect as "1 not checked"; it now says
+  "1 redirect" (the web header and graph cards too).
 
 ### Migrations
 

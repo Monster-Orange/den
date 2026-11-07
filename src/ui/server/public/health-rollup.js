@@ -27,9 +27,9 @@
 export const STATE_RANK = { down: 0, degraded: 1, ok: 2, unknown: 3 };
 
 /**
- * @typedef {{ service: string, ok: boolean | null | undefined, isEntrypoint?: boolean, awaiting?: boolean }} HealthSignal
+ * @typedef {{ service: string, ok: boolean | null | undefined, isEntrypoint?: boolean, awaiting?: boolean, redirect?: boolean }} HealthSignal
  * @typedef {"down" | "degraded" | "ok" | "unknown"} RepoState
- * @typedef {{ state: RepoState, entry: string | null, down: string[], checked: number, unchecked: number, awaiting: number }} RepoRollup
+ * @typedef {{ state: RepoState, entry: string | null, down: string[], checked: number, unchecked: number, awaiting: number, redirected?: number }} RepoRollup
  */
 
 /**
@@ -60,6 +60,11 @@ export function rollupRepo(repo, signals) {
   const answered = signals.filter((s) => !s.awaiting);
   const entry = entrySignal(repo, answered);
   const checked = answered.filter((s) => s.ok === true || s.ok === false);
+  // A redirect (ok null, `redirect`) answered: not down, not up, and not
+  // "not checked" either; counted on its own.
+  const redirected = answered.filter(
+    (s) => s.redirect && s.ok !== true && s.ok !== false,
+  ).length;
   const down = awaiting
     ? []
     : checked.filter((s) => s.ok === false).map((s) => s.service);
@@ -77,8 +82,9 @@ export function rollupRepo(repo, signals) {
     entry: entry ? entry.service : null,
     down,
     checked: checked.length,
-    unchecked: answered.length - checked.length,
+    unchecked: answered.length - checked.length - redirected,
     awaiting,
+    ...(redirected ? { redirected } : {}),
   };
 }
 
@@ -99,16 +105,22 @@ export function rollupRows(rows) {
 
 /**
  * "down (web down)", "degraded (mailpit down)", "healthy",
- * "healthy, 25 not checked", "unknown (not checked)".
+ * "healthy, 25 not checked", "healthy, 1 redirect", "unknown (not
+ * checked)", "unknown (1 redirect)".
  * @param {RepoRollup} r
  * @returns {string}
  */
 export function describeRollup(r) {
-  const notChecked = r.unchecked > 0 ? `${r.unchecked} not checked` : "";
+  const extra = [
+    r.redirected ? `${r.redirected} redirect` : "",
+    r.unchecked > 0 ? `${r.unchecked} not checked` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
   if (r.awaiting) return "unknown (still checking)";
-  if (r.state === "unknown") return "unknown (not checked)";
-  if (r.state === "ok")
-    return notChecked ? `healthy, ${notChecked}` : "healthy";
+  if (r.state === "unknown")
+    return r.redirected ? `unknown (${extra})` : "unknown (not checked)";
+  if (r.state === "ok") return extra ? `healthy, ${extra}` : "healthy";
   return `${r.state} (${r.down.join(", ")} down)`;
 }
 

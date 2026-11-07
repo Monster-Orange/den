@@ -614,10 +614,16 @@
             const usableCmds = isSub
               ? s.commands.filter((cmd) => !LIFECYCLE_CMDS.has(cmd))
               : s.commands;
+            // The workspace the row was built from (the first in view that
+            // defines it, focus first): its command runs there, not in
+            // whichever workspace is focused.
+            const wsAttr = s.inWorkspaces?.[0]
+              ? ` data-workspace="${esc(s.inWorkspaces[0])}"`
+              : "";
             const cmdButtons = usableCmds
               .map(
                 (cmd) =>
-                  `<button class="cmd-btn" data-repo="${s.repo}" data-service="${s.service}" data-cmd="${cmd}" data-type="exec">${cmd}</button>`,
+                  `<button class="cmd-btn" data-repo="${s.repo}" data-service="${s.service}" data-cmd="${cmd}" data-type="exec"${wsAttr}>${cmd}</button>`,
               )
               .join("");
             const logsButton = s.logs
@@ -744,8 +750,9 @@
           // Attach click handlers
           pane.querySelectorAll(".cmd-btn").forEach((btn) => {
             btn.addEventListener("click", () => {
-              const { repo, service, cmd, type } = btn.dataset;
-              if (type === "exec") runExec(repo, service, cmd, btn);
+              const { repo, service, cmd, type, workspace } = btn.dataset;
+              if (type === "exec")
+                runExec(repo, service, cmd, btn, workspace);
               else runLogs(repo, service, btn);
             });
           });
@@ -766,7 +773,7 @@
           }
         }
 
-        function runExec(repo, service, cmd, btn) {
+        function runExec(repo, service, cmd, btn, workspace) {
           endStream();
           const env = document.getElementById("env-sel").value;
 
@@ -782,11 +789,12 @@
           appendLine(`\n▶ ${repo}/${service} · ${cmd} · ${env}\n`, "cmd");
 
           const params = new URLSearchParams({ repo, service, cmd, env });
+          if (workspace) params.set("workspace", workspace);
           es = new EventSource(`/api/service/exec?${params}`);
           // LK-0: a command that needs sudo without the password asks,
           // then runs again.
           handleSSE(es, repo, service, {
-            again: () => runExec(repo, service, cmd, btn),
+            again: () => runExec(repo, service, cmd, btn, workspace),
           });
         }
 

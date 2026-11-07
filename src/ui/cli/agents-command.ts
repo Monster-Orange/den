@@ -396,6 +396,8 @@ export async function cmdAgents(
         case "personas":
           return await listPersonas(rest, d);
         case "doctor":
+          // -w checks the workspace exists, and reads its runtime paths.
+          await loadAgentWorkspaces(deps);
           return await doctor(rest, d, deps);
         default:
           throw new UsageError(`unknown agents command "${sub}"`);

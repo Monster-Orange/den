@@ -77,11 +77,14 @@ export function formatRollupLabel(r: RepoRollup): string {
 
 /**
  * Why, for a repo row: the down services ("mailpit down"), and how many
- * services aren't checked ("25 not checked"). Unchecked never means down.
+ * services aren't checked ("25 not checked"), and how many answered with a
+ * redirect ("1 redirect": answering, so neither down nor unchecked).
+ * Unchecked never means down.
  */
 export function rollupReasonText(r: RepoRollup): string {
   return [
     r.down.length ? `${r.down.join(", ")} down` : "",
+    r.redirected ? `${r.redirected} redirect` : "",
     r.unchecked ? `${r.unchecked} not checked` : "",
   ]
     .filter(Boolean)

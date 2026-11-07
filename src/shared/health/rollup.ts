@@ -17,6 +17,8 @@ export interface HealthSignal {
   isEntrypoint?: boolean;
   /** Not answered yet this cycle: the repo stays unknown until it has. */
   awaiting?: boolean;
+  /** The check answered with a redirect (ok null): counted as a redirect. */
+  redirect?: boolean;
 }
 
 export interface RepoRollup {
@@ -29,6 +31,8 @@ export interface RepoRollup {
   unchecked: number;
   /** Checks that haven't answered yet; any holds the state at unknown. */
   awaiting: number;
+  /** Checks that answered with a redirect (not in `unchecked`); absent at 0. */
+  redirected?: number;
 }
 
 export const STATE_RANK: Record<RepoState, number> = rollup.STATE_RANK;

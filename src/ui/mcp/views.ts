@@ -225,12 +225,56 @@ export function graphInScope(graph: unknown, repos: readonly string[]): Rec {
   };
 }
 
+/**
+ * The org-wide map from each active workspace's /api/graph (the web server
+ * derives a graph for one workspace: its repos, as that workspace checks
+ * them out). Nodes are the union; an edge two workspaces both derive is
+ * listed once (the first's). `order` is a startup order within one
+ * workspace, so it is kept only when there is one. A workspace whose graph
+ * failed is named in `unavailable`; when every one failed, the first error.
+ */
+export function mergeGraphs(
+  graphs: readonly { workspace: string; graph: unknown }[],
+): Rec {
+  const ok = graphs.filter((x) => !str(asRecord(x.graph).error));
+  const unavailable = graphs
+    .filter((x) => str(asRecord(x.graph).error))
+    .map((x) => ({ workspace: x.workspace, error: asRecord(x.graph).error }));
+  if (!ok.length && unavailable.length) return { error: unavailable[0].error };
+  const nodes = new Set<string>();
+  const edges: unknown[] = [];
+  const seen = new Set<string>();
+  for (const { graph } of ok) {
+    const g = asRecord(graph);
+    for (const n of asArray(g.nodes)) nodes.add(String(n));
+    for (const e of asArray(g.edges)) {
+      const x = asRecord(e);
+      const key = `${String(x.from)}\0${String(x.to)}\0${String(x.kind)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push(e);
+    }
+  }
+  const only = ok.length === 1 ? asRecord(ok[0].graph) : null;
+  return {
+    map: "org-wide",
+    workspaces: ok.map((x) => x.workspace),
+    nodes: [...nodes].sort(),
+    edges,
+    ...(only && Array.isArray(only.order) ? { order: only.order } : {}),
+    ...(unavailable.length ? { unavailable } : {}),
+  };
+}
+
 /** The org-wide graph with names and edge kinds only (no evidence). */
 function graphSummary(graph: unknown): Rec {
   const g = asRecord(graph);
   if (str(g.error)) return { error: g.error };
   return {
     map: "org-wide",
+    ...(Array.isArray(g.workspaces)
+      ? { workspaces: g.workspaces.map(String) }
+      : {}),
     nodes: asArray(g.nodes).map(String),
     edges: asArray(g.edges).map((e) => {
       const x = asRecord(e);
@@ -242,6 +286,14 @@ function graphSummary(graph: unknown): Rec {
       };
     }),
     ...(Array.isArray(g.order) ? { order: g.order.map(String) } : {}),
+    ...(Array.isArray(g.unavailable)
+      ? {
+          unavailable: g.unavailable.map((u) => ({
+            workspace: String(asRecord(u).workspace),
+            error: String(asRecord(u).error),
+          })),
+        }
+      : {}),
   };
 }
 

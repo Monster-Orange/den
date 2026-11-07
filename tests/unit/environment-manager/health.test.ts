@@ -514,6 +514,29 @@ describe("rollupRepoHealth", () => {
     expect(none.rollup!.state).toBe("unknown");
   });
 
+  it("a service that answered with a redirect is a redirect in the reason, not “not checked”", () => {
+    const redirected = (sub: string): ServiceHealthResult => ({
+      ...row("shop", sub, "unknown"),
+      healthDetail: "redirect 302 → /login",
+    });
+    const [r] = rollupRepoHealth(
+      [
+        row("shop", "web", "ok"),
+        redirected("admin"),
+        row("shop", "jobs", "unknown"),
+      ],
+      () => "web",
+    );
+    expect(r.rollup).toMatchObject({
+      state: "ok",
+      unchecked: 1,
+      redirected: 1,
+    });
+    expect(rollupReasonText(r.rollup!)).toBe("1 redirect; 1 not checked");
+    const [only] = rollupRepoHealth([redirected("admin")], () => undefined);
+    expect(rollupReasonText(only.rollup!)).toBe("1 redirect");
+  });
+
   it("keeps a single-row repo's row, with its rollup", () => {
     const results = [row("control-plane", "api", "error")];
     const out = rollupRepoHealth(results, () => "api");

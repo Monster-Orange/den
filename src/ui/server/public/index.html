@@ -2129,10 +2129,16 @@
 
         pane.innerHTML = services
           .map((s) => {
+            // The row's own workspace (the first in view that defines it):
+            // its command runs there, not in the focused one.
+            const ws = s.inWorkspaces?.[0];
+            const wsAttr = ws
+              ? ` data-workspace="${String(ws).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)}"`
+              : "";
             const cmdBtns = s.commands
               .map(
                 (cmd) =>
-                  `<button class="cmd-btn" data-repo="${s.repo}" data-service="${s.service}" data-cmd="${cmd}" data-type="exec">${cmd}</button>`,
+                  `<button class="cmd-btn" data-repo="${s.repo}" data-service="${s.service}" data-cmd="${cmd}" data-type="exec"${wsAttr}>${cmd}</button>`,
               )
               .join("");
             const logsBtn = s.logs
@@ -2157,8 +2163,8 @@
 
         pane.querySelectorAll(".cmd-btn").forEach((btn) => {
           btn.addEventListener("click", () => {
-            const { repo, service, cmd, type } = btn.dataset;
-            if (type === "exec") runExec(repo, service, cmd);
+            const { repo, service, cmd, type, workspace } = btn.dataset;
+            if (type === "exec") runExec(repo, service, cmd, workspace);
             else {
               const env = document.getElementById("env-sel").value;
               storeOpenLog(repo, service, env);
@@ -2202,7 +2208,7 @@
       }
 
       // ── Service exec ──────────────────────────────────────────────────────────
-      function runExec(repo, service, cmd) {
+      function runExec(repo, service, cmd, workspace) {
         if (execEs) {
           execEs.close();
           execEs = null;
@@ -2235,6 +2241,7 @@
         );
 
         const params = new URLSearchParams({ repo, service, cmd, env });
+        if (workspace) params.set("workspace", workspace);
         execEs = new EventSource(`/api/service/exec?${params}`);
         // LK-0: a command that needs sudo without the password asks, then
         // runs again.
@@ -2266,7 +2273,7 @@
               .forEach((b) => (b.disabled = false));
             execEs?.close();
             execEs = null;
-            void sudo.done(() => runExec(repo, service, cmd));
+            void sudo.done(() => runExec(repo, service, cmd, workspace));
           }
         };
         execEs.onerror = () => {

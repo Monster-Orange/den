@@ -335,15 +335,17 @@ describe("the gate: a scoped agent asks “what are our servers?”", () => {
       },
     ]);
     expect(s.summary).toMatch(/^3 workspaces \(2 active\), 5 repos\./);
+    // Every active workspace's graph, merged (here both answer the same);
+    // a startup order is one workspace's, so a merged map has none.
     expect(s.graph).toEqual({
       map: "org-wide",
-      nodes: GRAPH.nodes,
+      workspaces: ["north", "south"],
+      nodes: [...GRAPH.nodes].sort(),
       edges: [
         { from: "shop", to: "cart", kind: "http", blocking: "hard" },
         { from: "cart", to: "billing", kind: "http", blocking: "soft" },
         { from: "billing", to: "ledger", kind: "event", blocking: "soft" },
       ],
-      order: GRAPH.order,
     });
     expect(s.edge).toEqual({
       configured: true,
@@ -394,6 +396,7 @@ describe("the gate: a scoped agent asks “what are our servers?”", () => {
       [
         "/api/edge",
         "/api/environments",
+        "/api/graph",
         "/api/graph",
         "/api/health",
         "/api/health",
@@ -457,7 +460,7 @@ describe("scoped answers say so (MCP-2.2)", () => {
     });
     const all = await call("graph", {}, ctx(api));
     expect(all.map).toBe("org-wide");
-    expect(all.nodes).toEqual(GRAPH.nodes);
+    expect(all.nodes).toEqual([...GRAPH.nodes].sort());
   });
 
   it("a pinned server's workspace tools say “this workspace only” and take no workspace", () => {
@@ -495,7 +498,9 @@ describe("scoped answers say so (MCP-2.2)", () => {
       safeParse: (v: unknown) => { success: boolean };
     };
     expect(ws.safeParse("south").success).toBe(true);
-    expect(ws.safeParse("east").success).toBe(false);
+    // Any name passes the schema: an ungranted one is Den's refusal, which
+    // names the grant (MCP-2.3), not a schema error.
+    expect(ws.safeParse("east").success).toBe(true);
   });
 
   it("over MCP, tools/list shows the pinned schemas", async () => {

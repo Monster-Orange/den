@@ -227,8 +227,10 @@ export async function runOneShot(
   opts: OneShotOptions,
 ): Promise<number> {
   const out = opts.out ?? ((t: string) => process.stdout.write(t));
+  // The tools exactly as the stdio server registers them: pinned when scoped.
+  const tools = toolsFor(opts.cfg, opts.scope);
   if (shot.kind === "list") {
-    const names = toolsFor(opts.cfg).map((t) => t.name);
+    const names = tools.map((t) => t.name);
     out(names.length ? `${names.join("\n")}\n` : "");
     return 0;
   }
@@ -240,11 +242,18 @@ export async function runOneShot(
   };
   // The stdio server validates arguments against each tool's schema (the
   // SDK does it); a one-shot must too, and strictly: it is typed by hand, so
-  // an unknown or misspelt key is an error, not silently dropped.
+  // an unknown or misspelt key is an error, not silently dropped. Scoped,
+  // the schema is the pinned one; a `workspace` it dropped (no grants) is
+  // still taken, so naming another workspace gets Den's refusal (callTool),
+  // never a silent answer about the scope's own.
   let args = shot.args;
-  const tool = toolsFor(opts.cfg).find((t) => t.name === shot.tool);
+  const tool = tools.find((t) => t.name === shot.tool);
   if (tool) {
-    const parsed = z.object(tool.shape).strict().safeParse(args);
+    const shape =
+      opts.scope && !("workspace" in tool.shape) && "workspace" in args
+        ? { ...tool.shape, workspace: z.string().optional() }
+        : tool.shape;
+    const parsed = z.object(shape).strict().safeParse(args);
     if (!parsed.success) {
       const err = opts.err ?? ((t: string) => process.stderr.write(t));
       const lines = parsed.error.issues.map((i) => {
@@ -389,6 +398,16 @@ export async function runMcp(rawArgv: string[]): Promise<void> {
           ...scopeInfo(scope ?? undefined),
         }),
     });
+    // Say the scope on stderr (stdout is the result): a one-shot that ran
+    // unscoped must never pass for a scoped one.
+    if (scope)
+      process.stderr.write(
+        `${cli} mcp --call: scoped to ${scope.workspace} as ${scope.actor}` +
+          (scope.grants?.length
+            ? ` · grants: ${scope.grants.join(", ")}`
+            : "") +
+          "\n",
+      );
     process.exitCode = await runOneShot(shot, {
       cfg,
       cli,

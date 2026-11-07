@@ -1469,7 +1469,9 @@ to one workspace for one agent:
 - **Pinned.** A tool that takes a `workspace` gets `<ws>`. The server
   registers each workspace tool with "This workspace only" in its
   description and without the `workspace` parameter (with grants it stays,
-  as `<ws>` or a granted one). A call naming another workspace is refused
+  a name whose description lists `<ws>` and the granted ones; any other
+  name gets the refusal below, not a schema error). A call naming another
+  workspace is refused
   (`Refused: <tool>: this MCP server is scoped to workspace "<ws>"
 (agent:<id>; no grants); "<other>" is another workspace`; with grants,
   `grants: <a>, <b>`) before anything reaches the web server. The refusal
@@ -1482,7 +1484,9 @@ to one workspace for one agent:
   for example `hidden: { repos: 6 }`, and a note pointing at `org_summary`.
   A scoped `graph` is the workspace's own repos and the edges out of them
   (`map: "workspace"`, with `outside` naming the repos they depend on
-  elsewhere); unscoped it is labelled `map: "org-wide"`.
+  elsewhere). Unscoped with no `workspace` it is the org-wide map
+  (`map: "org-wide"`: every active workspace's graph merged, `workspaces`
+  naming them); with one, that workspace's (`map: "workspace"`).
 - **Filtered.** `workspaces` lists `<ws>` only. `logs_search` and `logs_tail`
   take only `<ws>`'s services, `manifest_validate` takes only an absolute path
   inside one of its repos (or the content), and `workspace_sync` syncs `<ws>`.
@@ -1514,7 +1518,9 @@ agent:<id> <client> <version> (workspace <ws>, mcp pid <pid>, session
 - `<ws>` must exist in this distribution; until it does, every tool says so.
   The id is letters, digits, dots, dashes and underscores (at most 64). A bad
   or half-given scope is a usage error, exit 2. `--list` and `--call` take
-  the scope too.
+  the scope too: they list and validate against the pinned tools, as the
+  server registers them, and `--call` names its scope on stderr
+  (`acme mcp --call: scoped to <ws> as agent:<id>`).
 
 **It binds cooperating agents only.** The scope lives in the MCP server's
 process. The web server's HTTP API does not check it yet, so an agent that
@@ -1565,7 +1571,7 @@ Read tools (always registered):
 | `status`            | `/api/health`                              | Service health: `counts`, then each service's `state` (`up`, `down`, `redirect`, `pending`, `unknown`, `not-checked`) and, without a plain verdict, `why`; `url` (HTTP check) or `check` (shell, or `container <project>/<service>`); `ok` true up, false down, null not known |
 | `services`          | `/api/services`                            | Services, their mode (managed or dev-managed) and commands                                                                                                                                                                                                                     |
 | `applications`      | `/api/applications`                        | Org > Application > Repo > Services                                                                                                                                                                                                                                            |
-| `graph`             | `/api/graph`                               | The derived dependency graph and startup order (`map: "org-wide"`; scoped, the workspace's own)                                                                                                                                                                                |
+| `graph`             | `/api/graph`                               | The derived dependency graph (`map: "org-wide"`, every active workspace's; with `workspace`, that one's and its startup order; scoped, the workspace's own)                                                                                                                    |
 | `workspaces`        | `/api/workspaces`                          | Workspaces, active and focused                                                                                                                                                                                                                                                 |
 | `environments`      | `/api/environments`                        | The enabled environment names (never their values)                                                                                                                                                                                                                             |
 | `logs_search`       | `/api/logs/search`                         | Search services' full log history                                                                                                                                                                                                                                              |
@@ -1597,7 +1603,10 @@ active workspace), `/api/graph`, `/api/edge` and `/api/environments`:
   some are down; `stopped`: all checked ones are down; `unknown`: nothing
   checked; `inactive`: not polled), its counts (up, down, redirect,
   pending, not checked) and its repos, each with its rolled-up state.
-- `graph`: the org-wide map, repo names and edge kinds only (no evidence).
+- `graph`: the org-wide map, every active workspace's repos merged (each
+  workspace's graph from the web server; `workspaces` names them, and
+  `unavailable` any whose graph failed), repo names and edge kinds only (no
+  evidence, paths or URLs).
 - `edge`: up, state, domains, the route count and `https`.
 - `environments`: the enabled names, never their values.
 - scoped, `yours`: your workspace's services as `status` gives them.

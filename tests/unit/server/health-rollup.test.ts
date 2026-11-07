@@ -46,6 +46,21 @@ describe("rollupRepo", () => {
     expect(describeRollup(r)).toBe("degraded (mailpit down)");
   });
 
+  it("a redirect is counted as a redirect, not as not checked", () => {
+    const r = rollupRepo("shop", [
+      sig("web", true, true),
+      { service: "admin", ok: null, redirect: true },
+      sig("jobs", null),
+    ]);
+    expect(r).toMatchObject({ state: "ok", unchecked: 1, redirected: 1 });
+    expect(describeRollup(r)).toBe("healthy, 1 redirect, 1 not checked");
+    expect(
+      describeRollup(
+        rollupRepo("site", [{ service: "site", ok: null, redirect: true }]),
+      ),
+    ).toBe("unknown (1 redirect)");
+  });
+
   it("all up → healthy", () => {
     expect(
       rollupRepo("shop", [sig("web", true, true), sig("db", true)]).state,
@@ -191,6 +206,45 @@ describe("the header, the chip, the graph and status agree (one service down)", 
     expect(row.health).toBe("error");
     expect(row.rollup).toEqual(arbor.rollup);
     expect(describeRollup(row.rollup!)).toBe("degraded (mailpit down)");
+  });
+});
+
+describe("the header, the graph and status agree on a redirect", () => {
+  it("all say healthy, 1 redirect", () => {
+    const health = [
+      { repo: "shop", service: "web", ok: true, isEntrypoint: true },
+      { repo: "shop", service: "admin", ok: null, redirect: "/login" },
+    ];
+    const { flat } = buildRow(health, null);
+    const shop = flat.find((r: { repo: string }) => r.repo === "shop");
+    expect(describeRollup(shop.rollup)).toBe("healthy, 1 redirect");
+    const m = {
+      byRepo: new Map([
+        [
+          "shop",
+          health.map((h) => ({
+            name: h.service,
+            entry: !!h.isEntrypoint,
+            health: { ok: h.ok, redirect: h.redirect ?? null },
+          })),
+        ],
+      ]),
+    };
+    expect(repoRollup(m, "shop")).toEqual(shop.rollup);
+    const [row] = rollupRepoHealth(
+      health.map((h) => ({
+        address: `shop/${h.service}`,
+        repoName: "shop",
+        subsystem: h.service,
+        repoPath: "/repos/shop",
+        mode: "managed" as const,
+        branch: "main",
+        health: h.ok ? ("ok" as const) : ("unknown" as const),
+        ...(h.redirect ? { healthDetail: `redirect 302 → ${h.redirect}` } : {}),
+      })),
+      () => "web",
+    );
+    expect(row.rollup).toEqual(shop.rollup);
   });
 });
 

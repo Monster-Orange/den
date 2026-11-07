@@ -47,6 +47,7 @@ import {
 } from "./scope.js";
 import {
   graphInScope,
+  mergeGraphs,
   orgSummary,
   scopeBlock,
   statusView,
@@ -241,19 +242,27 @@ const READ_TOOLS: DenTool[] = [
   read(
     "graph",
     "Dependency graph",
-    "The derived dependency graph and its startup order; `seed` narrows it to one repo's closure. Unscoped it is the org-wide map (`map: \"org-wide\"`); scoped, the workspace's own repos and the edges out of them (`outside` names the repos they depend on elsewhere; the org-wide map is `org_summary.graph`).",
+    "The derived dependency graph; `seed` narrows it to one repo's closure. Unscoped with no `workspace` it is the org-wide map (`map: \"org-wide\"`: every active workspace's repos and edges, `workspaces` naming them; `order` only when one is active), with `workspace` that workspace's (`map: \"workspace\"`, with its startup order). Scoped, the workspace's own repos and the edges out of them (`outside` names the repos they depend on elsewhere; the org-wide map is `org_summary.graph`).",
     {
       seed: z.string().optional().describe("Repo whose closure to show"),
       workspace: workspaceArg,
     },
     async (a, { api, scope }) => {
+      // Unscoped and naming nothing: the org-wide map, every active
+      // workspace's graph merged (the web server derives one per workspace).
+      if (!scope && !str(a.seed) && !str(a.workspace))
+        return orgGraph(api, (p, q) => api.get(p, q));
       const graph = await api.get("/api/graph", {
         seed: str(a.seed),
         workspace: str(a.workspace),
       });
       if (!scope)
         return graph && typeof graph === "object" && !Array.isArray(graph)
-          ? { map: "org-wide", ...(graph as Record<string, unknown>) }
+          ? {
+              map: str(a.seed) ? "closure" : "workspace",
+              ...(str(a.workspace) ? { workspace: str(a.workspace) } : {}),
+              ...(graph as Record<string, unknown>),
+            }
           : graph;
       const body = await scopeWorkspacesBody(api, scope);
       const shown = String(a.workspace);
@@ -298,20 +307,20 @@ const READ_TOOLS: DenTool[] = [
     'The whole org at a glance, for every agent: each workspace and repo with status counts (running, partial, stopped; up, down, redirect, not checked), the dependency graph (names and edge kinds), the edge (up, TLS, whether HTTPS serves) and the environments. Scoped, `yours` adds your own workspace\'s services in full. It never carries logs, env values, commands, URLs or check output from outside your workspace. Start here for "what are our servers?".',
     {},
     async (_a, { api, scope }) => {
-      const [workspaces, health, graph, edge, environments, own] =
-        await Promise.all([
-          api.get("/api/workspaces"),
-          api.get("/api/health", { env: "local" }),
-          softGet(api, "/api/graph"),
-          softGet(api, "/api/edge"),
-          api.get("/api/environments"),
-          scope
-            ? api.get("/api/health", {
-                env: "local",
-                workspace: scope.workspace,
-              })
-            : Promise.resolve(undefined),
-        ]);
+      const workspaces = await api.get("/api/workspaces");
+      const [health, graph, edge, environments, own] = await Promise.all([
+        api.get("/api/health", { env: "local" }),
+        // Names and edge kinds only (orgSummary drops the evidence).
+        orgGraph(api, (p, q) => softGet(api, p, q), workspaces),
+        softGet(api, "/api/edge"),
+        api.get("/api/environments"),
+        scope
+          ? api.get("/api/health", {
+              env: "local",
+              workspace: scope.workspace,
+            })
+          : Promise.resolve(undefined),
+      ]);
       return orgSummary(
         { workspaces, health, graph, edge, environments, own },
         scope,
@@ -582,14 +591,50 @@ async function withScope(
 }
 
 /** A read whose HTTP error is part of the answer, not the whole call's. */
-async function softGet(api: DenApi, path: string): Promise<unknown> {
+async function softGet(
+  api: DenApi,
+  path: string,
+  query?: Query,
+): Promise<unknown> {
   try {
-    return await api.get(path);
+    return await api.get(path, query);
   } catch (e) {
     if (e instanceof DenHttpError)
       return { error: `${e.status} from ${e.path}` };
     throw e;
   }
+}
+
+/**
+ * The org-wide graph: each active workspace's /api/graph, merged
+ * (mergeGraphs). With no active workspace, the web server's default one.
+ * `read`: an /api/workspaces body already read.
+ */
+async function orgGraph(
+  api: DenApi,
+  get: (path: string, query?: Query) => Promise<unknown>,
+  read?: unknown,
+): Promise<unknown> {
+  const body = read ?? (await api.get("/api/workspaces"));
+  const active =
+    body &&
+    typeof body === "object" &&
+    Array.isArray((body as Record<string, unknown>).active)
+      ? ((body as Record<string, unknown>).active as unknown[]).map(String)
+      : [];
+  if (!active.length) {
+    const g = await get("/api/graph");
+    return g && typeof g === "object" && !Array.isArray(g)
+      ? { map: "org-wide", ...(g as Record<string, unknown>) }
+      : g;
+  }
+  const graphs = await Promise.all(
+    active.map(async (workspace) => ({
+      workspace,
+      graph: await get("/api/graph", { workspace }),
+    })),
+  );
+  return mergeGraphs(graphs);
 }
 
 // ── Action tools ────────────────────────────────────────────────────────────
@@ -828,14 +873,17 @@ export function pinnedTool(t: DenTool, scope: McpScope): DenTool {
   if ("workspace" in t.shape) {
     const rest = { ...t.shape };
     delete rest.workspace;
+    // A string, not an enum of the allowed names: a schema rejection
+    // ("expected one of …") would hide Den's refusal, which names
+    // agents.<id>.grants and how a person grants one (MCP-2.3).
     shape = grants.length
       ? {
           ...rest,
           workspace: z
-            .enum([scope.workspace, ...grants] as [string, ...string[]])
+            .string()
             .optional()
             .describe(
-              `"${scope.workspace}" (the default) or a granted workspace`,
+              `"${scope.workspace}" (the default) or a granted workspace: ${grants.map((g) => `"${g}"`).join(", ")}; any other is refused`,
             ),
         }
       : rest;

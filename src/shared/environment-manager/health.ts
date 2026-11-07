@@ -750,6 +750,11 @@ export function containerTarget(
     : { project: h.project, service: h.service };
 }
 
+/** A health row whose check answered with a redirect (see checkService). */
+export function isRedirectDetail(detail: string | undefined): boolean {
+  return /^redirect \d{3} → /.test(detail ?? "");
+}
+
 /** A ping result as a ServiceHealthResult health state. */
 export function healthState(r: PingResult): ServiceHealthResult["health"] {
   // A redirect is a verdict of its own (MCP-2.4): not down, and not a check
@@ -967,6 +972,7 @@ export function rollupRepoHealth(
         service: r.subsystem,
         ok: r.health === "ok" ? true : r.health === "error" ? false : null,
         isEntrypoint: !!entrypoint && r.subsystem === entrypoint,
+        redirect: isRedirectDetail(r.healthDetail),
       })),
     );
     const lead =
