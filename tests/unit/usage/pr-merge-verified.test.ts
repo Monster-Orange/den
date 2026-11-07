@@ -12,13 +12,17 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { listRecords } from "../../../src/shared/agents/records.js";
+import {
+  listRecords,
+  writeRecord,
+} from "../../../src/shared/agents/records.js";
 import { ghPrState } from "../../../src/shared/git/gh-pr-state.js";
 import { agentUsage } from "../../../src/shared/usage/report.js";
 import {
   ghPrMergeRef,
   mineTranscript,
 } from "../../../src/shared/usage/transcript.js";
+import { cmdUsage } from "../../../src/ui/cli/usage-command.js";
 import { writeUsageFixture } from "./fixture.js";
 
 const tmps: string[] = [];
@@ -183,5 +187,81 @@ describe("the gh check itself (a fake gh on PATH; the real one never runs)", () 
     await expect(
       ghPrState({ PATH: path.join(g.dir, "nowhere") })("1", { cwd: g.dir }),
     ).rejects.toBeTruthy();
+  });
+});
+
+describe("a confirmed merge stays confirmed (0.4.10)", () => {
+  function fixture() {
+    const dir = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "den-prm-")),
+    );
+    tmps.push(dir);
+    const f = writeUsageFixture(dir);
+    const env = { HOME: dir, CLAUDE_CONFIG_DIR: path.join(dir, "claude") };
+    return { ...f, env };
+  }
+  const run = async (
+    f: ReturnType<typeof fixture>,
+    prState: (ref: string) => Promise<string | undefined>,
+    out: string[] = [],
+  ) =>
+    cmdUsage(["agents"], {
+      stateDir: () => f.stateDir,
+      env: f.env,
+      out: (l) => out.push(l),
+      err: () => undefined,
+      prState,
+    });
+
+  it("asks GitHub once per PR: a later run keeps prMerged without asking, even when it couldn't check", async () => {
+    const f = fixture();
+    const asked: string[] = [];
+    expect(
+      await run(f, async (ref) => {
+        asked.push(ref);
+        return "MERGED";
+      }),
+    ).toBe(0);
+    const rec1 = listRecords(f.stateDir).find((r) => r.id === "agent-1")!;
+    expect(rec1.outcome).toMatchObject({
+      prMerged: true,
+      prMergeConfirmed: "https://github.com/acme/notes/pull/101",
+    });
+    expect(
+      await run(f, async (ref) => {
+        asked.push(ref);
+        throw new Error("not a repo");
+      }),
+    ).toBe(0);
+    expect(asked).toEqual(["https://github.com/acme/notes/pull/101"]);
+    expect(
+      listRecords(f.stateDir).find((r) => r.id === "agent-1")!.outcome,
+    ).toMatchObject({ prMerged: true });
+  });
+
+  it("a prMerged from before 0.4.10 with no confirmation is checked again", async () => {
+    const f = fixture();
+    const id = "agent-1";
+    const rec = listRecords(f.stateDir).find((r) => r.id === id)!;
+    writeRecord(f.stateDir, { ...rec, outcome: { prMerged: true } });
+    await run(f, async () => "OPEN");
+    expect(
+      listRecords(f.stateDir).find((r) => r.id === id)!.outcome?.prMerged,
+    ).toBeUndefined();
+  });
+
+  it('counts "asked GitHub" only when gh ran; no gh says so', async () => {
+    const f = fixture();
+    const out: string[] = [];
+    await run(
+      f,
+      async () => {
+        throw Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" });
+      },
+      out,
+    );
+    const text = out.join("\n");
+    expect(text).not.toMatch(/asked GitHub/);
+    expect(text).toMatch(/Couldn't check 1 merge: gh is not installed\./);
   });
 });

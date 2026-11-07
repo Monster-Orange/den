@@ -4,6 +4,25 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.10] - unreleased
+
+### Changed
+
+- **A confirmed merge stays confirmed.** Once `gh pr view` says an agent's
+  pull request is MERGED, its record keeps that (`prMergeConfirmed`), and
+  `usage` doesn't ask GitHub about it again. A later run that can't check
+  no longer drops it. A merged flag from before 0.4.10, with no
+  confirmation, is checked again.
+- **`usage agents` counts only real asks.** "Asked GitHub for the state of
+  N pull requests" counts the times gh ran. When gh is not installed, it
+  says "Couldn't check N merges: gh is not installed." instead.
+- **The PR column** shows the confirmed pull request, with "(merged)", when
+  the agent merged one it didn't open.
+
+### Migrations
+
+None.
+
 ## [0.4.9] - 2026-11-07
 
 A session ends when its pull request merges, or after 3 compactions. The

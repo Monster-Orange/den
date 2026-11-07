@@ -2764,7 +2764,9 @@ both. Transcripts never leave the machine, and their text is never kept:
 only counts. "Whether it merged" is checked: when an agent ran
 `gh pr merge`, `usage` asks `gh pr view <ref> --json state` to confirm it.
 That query, the pull request's number or URL, is the only thing it asks
-outside, and the output says when it asked.
+outside, and the output says when it asked (or that it couldn't, because
+gh is not installed). A merge gh confirmed is kept in the record
+(`prMergeConfirmed`) and not asked about again.
 
 `<cli> usage report [--days 7] [--json]` writes a weekly summary to
 `<state dir>/usage/<date>.json` and `.md`, compared with the last one:

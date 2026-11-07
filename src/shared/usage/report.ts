@@ -115,8 +115,8 @@ async function mergeVerified(
     ref: string,
     o: { repo?: string; cwd: string },
   ) => Promise<string | undefined>,
-): Promise<boolean> {
-  if (!prState) return false;
+): Promise<string | undefined> {
+  if (!prState) return undefined;
   const seen = new Set<string>();
   for (const c of stats.flatMap((s) => s.prMerges)) {
     const ref = c.ref || outcome.prOpened || "";
@@ -128,12 +128,12 @@ async function mergeVerified(
         ...(c.repo ? { repo: c.repo } : {}),
         cwd: rec.cwd,
       });
-      if (st?.trim().toUpperCase() === "MERGED") return true;
+      if (st?.trim().toUpperCase() === "MERGED") return ref;
     } catch {
       // Not checked: not marked.
     }
   }
-  return false;
+  return undefined;
 }
 
 /**
@@ -198,8 +198,15 @@ export async function agentUsage(
     }
     const usage = sumUsage(stats);
     const outcome = outcomeOf(rec, stats);
-    if (await mergeVerified(rec, stats, outcome, opts.prState))
+    // Confirmed once, kept: GitHub is not asked again.
+    const confirmed =
+      rec.outcome?.prMerged && rec.outcome.prMergeConfirmed
+        ? rec.outcome.prMergeConfirmed
+        : await mergeVerified(rec, stats, outcome, opts.prState);
+    if (confirmed) {
       outcome.prMerged = true;
+      outcome.prMergeConfirmed = confirmed;
+    }
     rows.push({
       ...base,
       transcripts: files.length,

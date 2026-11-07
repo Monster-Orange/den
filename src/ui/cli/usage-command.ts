@@ -85,16 +85,26 @@ export interface UsageDeps {
   ) => Promise<string | undefined>;
 }
 
-/** The check, counting how often it asked (the summary line says so). */
+/**
+ * The check, counting how often gh ran (`asked`) and how often it could not
+ * run because gh is not installed (`missing`); the summary says both.
+ */
 function counted(
   f: NonNullable<UsageDeps["prState"]>,
-): NonNullable<UsageDeps["prState"]> & { asked: number } {
+): NonNullable<UsageDeps["prState"]> & { asked: number; missing: number } {
   const g = Object.assign(
-    (ref: string, o: { repo?: string; cwd: string }) => {
-      g.asked++;
-      return f(ref, o);
+    async (ref: string, o: { repo?: string; cwd: string }) => {
+      try {
+        const st = await f(ref, o);
+        g.asked++;
+        return st;
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException)?.code === "ENOENT") g.missing++;
+        else g.asked++;
+        throw e;
+      }
     },
-    { asked: 0 },
+    { asked: 0, missing: 0 },
   );
   return g;
 }
@@ -211,7 +221,9 @@ async function agents(
           : "red",
       r.outcome?.prOpened
         ? `${r.outcome.prOpened}${r.outcome.prMerged ? " (merged)" : ""}`
-        : "-",
+        : r.outcome?.prMergeConfirmed
+          ? `${r.outcome.prMergeConfirmed} (merged)`
+          : "-",
       r.compactions === undefined ? "-" : String(r.compactions),
       String(r.rotations),
     ]),
@@ -225,6 +237,10 @@ async function agents(
   if (d.prState.asked)
     d.out(
       `To confirm a merge, it asked GitHub for the state of ${d.prState.asked} pull request${d.prState.asked === 1 ? "" : "s"} (gh pr view).`,
+    );
+  if (d.prState.missing)
+    d.out(
+      `Couldn't check ${d.prState.missing} merge${d.prState.missing === 1 ? "" : "s"}: gh is not installed.`,
     );
   return 0;
 }

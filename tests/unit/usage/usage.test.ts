@@ -166,6 +166,7 @@ describe("joined on resumeToken (the scorecard metric)", () => {
       wallClockMs: 900_000,
       prOpened: "https://github.com/acme/notes/pull/101",
       prMerged: true,
+      prMergeConfirmed: "https://github.com/acme/notes/pull/101",
       testsGreen: true,
     });
   });

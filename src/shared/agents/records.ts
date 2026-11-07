@@ -80,6 +80,11 @@ export interface AgentOutcome {
   prOpened?: string;
   /** That pull request merged in the run. */
   prMerged?: boolean;
+  /**
+   * The pull request gh said is MERGED (0.4.10): a merge confirmed once
+   * stays, and is not asked again.
+   */
+  prMergeConfirmed?: string;
   /** The last test run it made passed (true) or failed (false). */
   testsGreen?: boolean;
   /** From its start to its last activity, in milliseconds. */
