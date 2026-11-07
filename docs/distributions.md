@@ -2482,7 +2482,7 @@ report. It works on den-claude for personas with Den's hooks on.
    A merge is never taken from text. The agent must have run `gh pr merge`
    as a command (after any `cd` or `VAR=value` prefix; not `--help`, not
    `echo gh pr merge`), and it must have exited 0. Then `usage` asks
-   `gh pr view <ref> --json state` in the agent's folder, and only
+   `gh pr view <ref> --json number,state` in the agent's folder, and only
    `MERGED` counts. With no gh, or on any error, it is not marked. That
    query is the one thing `usage` asks outside this machine; it says so
    when it does.
@@ -2762,11 +2762,13 @@ and its wall-clock time. It matches transcripts to agents by the
 conversation id Den saved at start. It prints the share of agents with
 both. Transcripts never leave the machine, and their text is never kept:
 only counts. "Whether it merged" is checked: when an agent ran
-`gh pr merge`, `usage` asks `gh pr view <ref> --json state` to confirm it.
+`gh pr merge`, `usage` asks `gh pr view <ref> --json number,state` to confirm it.
 That query, the pull request's number or URL, is the only thing it asks
 outside, and the output says when it asked (or that it couldn't, because
 gh is not installed). A merge gh confirmed is kept in the record
-(`prMergeConfirmed`) and not asked about again.
+(`prMergeConfirmed`, the pull request's ref or, for a bare `gh pr merge`,
+the number gh gave) and not asked about again. A mark gh no longer
+confirms is dropped, with the "PR merged" rotation it made due.
 
 `<cli> usage report [--days 7] [--json]` writes a weekly summary to
 `<state dir>/usage/<date>.json` and `.md`, compared with the last one:

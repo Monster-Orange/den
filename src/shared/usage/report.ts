@@ -103,6 +103,19 @@ export function outcomeOf(
 }
 
 /**
+ * What a pull request check answers: its state ("MERGED"), and its number
+ * when gh gave one (a bare `gh pr merge` is the branch's PR: the number is
+ * how it is kept).
+ */
+export type PrStateAnswer = string | { state: string; number?: number };
+
+/** Checks one pull request's state (gh pr view), in the agent's folder. */
+export type PrStateCheck = (
+  ref: string,
+  o: { repo?: string; cwd: string },
+) => Promise<PrStateAnswer | undefined>;
+
+/**
  * Whether one of the transcripts' `gh pr merge` claims is a pull request
  * gh says is MERGED. A bare `gh pr merge` (the branch's PR) is checked by
  * the PR the agent opened, else in its folder.
@@ -111,10 +124,7 @@ async function mergeVerified(
   rec: AgentRecord,
   stats: readonly TranscriptStats[],
   outcome: AgentOutcome,
-  prState?: (
-    ref: string,
-    o: { repo?: string; cwd: string },
-  ) => Promise<string | undefined>,
+  prState?: PrStateCheck,
 ): Promise<string | undefined> {
   if (!prState) return undefined;
   const seen = new Set<string>();
@@ -128,7 +138,12 @@ async function mergeVerified(
         ...(c.repo ? { repo: c.repo } : {}),
         cwd: rec.cwd,
       });
-      if (st?.trim().toUpperCase() === "MERGED") return ref;
+      const state = typeof st === "string" ? st : st?.state;
+      if (state?.trim().toUpperCase() !== "MERGED") continue;
+      // Kept by its ref, or by the number gh gave; never by "".
+      const n = typeof st === "object" ? st.number : undefined;
+      const key = ref || (Number.isInteger(n) && n! > 0 ? String(n) : "");
+      if (key) return key;
     } catch {
       // Not checked: not marked.
     }
@@ -146,14 +161,11 @@ export async function agentUsage(
     env?: NodeJS.ProcessEnv;
     source?: (runtime: string) => UsageSource | undefined;
     /**
-     * A pull request's state (`gh pr view <ref> --json state`), run in the
+     * A pull request's state (`gh pr view <ref> --json number,state`), run in the
      * agent's folder: "MERGED" marks the outcome merged. Without it, or on
      * any error, nothing is marked: a merge is never taken from text.
      */
-    prState?: (
-      ref: string,
-      o: { repo?: string; cwd: string },
-    ) => Promise<string | undefined>;
+    prState?: PrStateCheck;
   } = {},
 ): Promise<AgentUsageRow[]> {
   const pick = opts.source ?? sourceFor;

@@ -18,6 +18,12 @@ config and manifest changes a distribution must make to move to it under
   says "Couldn't check N merges: gh is not installed." instead.
 - **The PR column** shows the confirmed pull request, with "(merged)", when
   the agent merged one it didn't open.
+- **A bare `gh pr merge`** (the branch's own pull request) is confirmed by
+  the number gh gives: the check is now `gh pr view --json number,state`.
+  With no number, it is not marked; an empty ref is never a key.
+- **Dropping a mark drops its rotation.** When gh no longer confirms a
+  merged flag, a "PR merged" rotation it made due is cleared too. A
+  rotation due after compactions is left alone.
 
 ### Migrations
 

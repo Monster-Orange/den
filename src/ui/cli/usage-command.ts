@@ -3,7 +3,7 @@
  * runtimes' own transcripts on this machine (usage sources, plugin kind
  * `usage`). None of it is sent anywhere: it reads local files and writes
  * local files. The one question it asks outside: when an agent ran
- * `gh pr merge`, `gh pr view <ref> --json state` confirms the merge
+ * `gh pr merge`, `gh pr view <ref> --json number,state` confirms the merge
  * (gh-pr-state.ts) before it counts.
  *
  *   agents [-w <ws>] [--json]    each agent's tokens and outcome (PR opened
@@ -22,8 +22,9 @@ import {
   readRecord,
   writeRecord,
 } from "../../shared/agents/records.js";
-import { markDue } from "../../shared/agents/rotation.js";
+import { clearDue, markDue } from "../../shared/agents/rotation.js";
 import { ghPrState } from "../../shared/git/gh-pr-state.js";
+import type { PrStateCheck } from "../../shared/usage/report.js";
 import { readAgentsConfig } from "../../shared/den-config.js";
 import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
@@ -77,12 +78,9 @@ export interface UsageDeps {
   rotateAfter?: () => { afterCompactions: number } | undefined;
   /**
    * A pull request's state, to confirm a `gh pr merge` the agent ran
-   * (default: `gh pr view <ref> --json state` in the agent's folder).
+   * (default: `gh pr view <ref> --json number,state` in the agent's folder).
    */
-  prState?: (
-    ref: string,
-    o: { repo?: string; cwd: string },
-  ) => Promise<string | undefined>;
+  prState?: PrStateCheck;
 }
 
 /**
@@ -154,6 +152,9 @@ function save(stateDir: string, rows: readonly AgentUsageRow[]): void {
     });
     if (r.outcome?.prMerged)
       markDue(agentFilesDir(stateDir, rec.id), "pr-merged", rec.resumeToken);
+    // A mark gh no longer confirms is dropped, and its rotation with it.
+    else if (rec.outcome?.prMerged)
+      clearDue(agentFilesDir(stateDir, rec.id), "pr-merged");
   }
 }
 

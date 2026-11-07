@@ -13,9 +13,14 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
+  agentFilesDir,
   listRecords,
   writeRecord,
 } from "../../../src/shared/agents/records.js";
+import {
+  readRotation,
+  writeRotation,
+} from "../../../src/shared/agents/rotation.js";
 import { ghPrState } from "../../../src/shared/git/gh-pr-state.js";
 import { agentUsage } from "../../../src/shared/usage/report.js";
 import {
@@ -161,10 +166,10 @@ describe("the gh check itself (a fake gh on PATH; the real one never runs)", () 
 
   it("asks for the state of that PR only, in the agent's folder", async () => {
     const g = fakeGh(
-      'printf "%s\\n" "$PWD" "$@" > "$(dirname "$0")/argv"; echo MERGED',
+      'printf "%s\\n" "$PWD" "$@" > "$(dirname "$0")/argv"; echo \'{"number":7,"state":"MERGED"}\'',
     );
     const st = await ghPrState(g.env)("7", { repo: "acme/notes", cwd: g.dir });
-    expect(st).toBe("MERGED");
+    expect(st).toEqual({ state: "MERGED", number: 7 });
     expect(
       fs.readFileSync(path.join(g.dir, "argv"), "utf-8").trim().split("\n"),
     ).toEqual([
@@ -175,9 +180,7 @@ describe("the gh check itself (a fake gh on PATH; the real one never runs)", () 
       "-R",
       "acme/notes",
       "--json",
-      "state",
-      "-q",
-      ".state",
+      "number,state",
     ]);
   });
 
@@ -263,5 +266,134 @@ describe("a confirmed merge stays confirmed (0.4.10)", () => {
     const text = out.join("\n");
     expect(text).not.toMatch(/asked GitHub/);
     expect(text).toMatch(/Couldn't check 1 merge: gh is not installed\./);
+  });
+});
+
+describe("a bare `gh pr merge` (the branch's own PR) is confirmed by number", () => {
+  function setup() {
+    const f = transcriptWith("gh pr merge --squash");
+    const dir = path.dirname(f);
+    const source = {
+      id: "test",
+      runtimes: ["den-claude"],
+      root: () => dir,
+      agentFiles: () => [f],
+      files: () => [],
+      mine: (file: string) => mineTranscript(file),
+    };
+    const rec = {
+      id: "g51b",
+      workspace: "north",
+      persona: "be-dev",
+      runtime: "den-claude",
+      resumeToken: "t",
+      cwd: dir,
+      startedAt: "2026-11-01T10:00:00.000Z",
+    } as never;
+    return { dir, source, rec };
+  }
+
+  it("gh answers MERGED and its number: marked, keyed by that number", async () => {
+    const s = setup();
+    const asked: string[] = [];
+    const [row] = await agentUsage([s.rec], {
+      source: () => s.source,
+      prState: async (ref) => {
+        asked.push(ref);
+        return { state: "MERGED", number: 12 };
+      },
+    });
+    expect(asked).toEqual([""]);
+    expect(row.outcome).toMatchObject({
+      prMerged: true,
+      prMergeConfirmed: "12",
+    });
+  });
+
+  it("MERGED with no number: not marked (never an empty key)", async () => {
+    const s = setup();
+    const [row] = await agentUsage([s.rec], {
+      source: () => s.source,
+      prState: async () => "MERGED",
+    });
+    expect(row.outcome?.prMerged).toBeUndefined();
+    expect(row.outcome?.prMergeConfirmed).toBeUndefined();
+  });
+
+  it("the gh check asks for the number and state, and reads both", async () => {
+    const dir = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "den-prm-gh-")),
+    );
+    tmps.push(dir);
+    fs.writeFileSync(
+      path.join(dir, "gh"),
+      '#!/bin/sh\nprintf "%s\\n" "$@" > "$(dirname "$0")/argv"\necho \'{"number":12,"state":"MERGED"}\'\n',
+      { mode: 0o755 },
+    );
+    const st = await ghPrState({ PATH: `${dir}:/usr/bin:/bin` })("", {
+      cwd: dir,
+    });
+    expect(st).toEqual({ state: "MERGED", number: 12 });
+    expect(
+      fs.readFileSync(path.join(dir, "argv"), "utf-8").trim().split("\n"),
+    ).toEqual(["pr", "view", "--json", "number,state"]);
+  });
+});
+
+describe("dropping an old mark clears its rotation", () => {
+  it("a prMerged with no confirmation that gh now calls OPEN: the pr-merged due is cleared too", async () => {
+    const dir = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "den-prm-")),
+    );
+    tmps.push(dir);
+    const f = writeUsageFixture(dir);
+    const env = { HOME: dir, CLAUDE_CONFIG_DIR: path.join(dir, "claude") };
+    const rec = listRecords(f.stateDir).find((r) => r.id === "agent-1")!;
+    writeRecord(f.stateDir, { ...rec, outcome: { prMerged: true } });
+    const files = agentFilesDir(f.stateDir, "agent-1");
+    fs.mkdirSync(files, { recursive: true });
+    writeRotation(files, {
+      conversation: rec.resumeToken,
+      compactions: 0,
+      after: 3,
+      due: "pr-merged",
+      dueAt: "2026-11-01T10:00:00.000Z",
+    });
+    await cmdUsage(["agents"], {
+      stateDir: () => f.stateDir,
+      env,
+      out: () => undefined,
+      err: () => undefined,
+      prState: async () => "OPEN",
+    });
+    expect(readRotation(files)?.due).toBeUndefined();
+    expect(readRotation(files)?.dueAt).toBeUndefined();
+  });
+
+  it("a compactions due is left alone", async () => {
+    const dir = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "den-prm-")),
+    );
+    tmps.push(dir);
+    const f = writeUsageFixture(dir);
+    const env = { HOME: dir, CLAUDE_CONFIG_DIR: path.join(dir, "claude") };
+    const rec = listRecords(f.stateDir).find((r) => r.id === "agent-1")!;
+    writeRecord(f.stateDir, { ...rec, outcome: { prMerged: true } });
+    const files = agentFilesDir(f.stateDir, "agent-1");
+    fs.mkdirSync(files, { recursive: true });
+    writeRotation(files, {
+      conversation: rec.resumeToken,
+      compactions: 3,
+      after: 3,
+      due: "compactions",
+    });
+    await cmdUsage(["agents"], {
+      stateDir: () => f.stateDir,
+      env,
+      out: () => undefined,
+      err: () => undefined,
+      prState: async () => "OPEN",
+    });
+    expect(readRotation(files)?.due).toBe("compactions");
   });
 });

@@ -235,6 +235,15 @@ export function markDue(
   return true;
 }
 
+/** Clear a rotation due for `reason` (a merge mark gh no longer confirms). */
+export function clearDue(filesDir: string, reason: RotateReason): boolean {
+  const s = readRotation(filesDir);
+  if (!s || s.due !== reason) return false;
+  const { due: _d, dueAt: _a, ...rest } = s;
+  writeRotation(filesDir, rest);
+  return true;
+}
+
 /** Whether the state says a rotation is due, for this conversation. */
 export function dueFor(
   s: RotationState | null,
