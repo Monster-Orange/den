@@ -279,8 +279,13 @@ describe("the Agents section", () => {
         ),
     ).toEqual(["stop"]);
 
-    // Stop: TERM to its session; the row says stopping, then stopped
-    // once the session has exited.
+    // Stop: TERM to its session; the answer comes once the session has
+    // exited (0.4.8), and the row says stopped.
+    const kill = s!.made[0].kill.bind(s!.made[0]);
+    s!.made[0].kill = (sig: string) => {
+      kill(sig);
+      setTimeout(() => s!.made[0].exit(143), 300);
+    };
     const stopped = p.waitForResponse(
       (r) =>
         new URL(r.url()).pathname ===
@@ -290,11 +295,7 @@ describe("the Agents section", () => {
       .getByRole("button", { name: "Stop planner" })
       .click();
     expect((await stopped).status()).toBe(200);
-    await p.waitForSelector(
-      '#agent-table tr.agent[data-agent="planner"][data-state="stopping"]',
-    );
     expect(s!.made[0].signals).toContain("SIGTERM");
-    s!.made[0].exit(143);
     await p.waitForSelector(
       '#agent-table tr.agent[data-agent="planner"][data-state="stopped"]',
       { timeout: 15_000 },

@@ -138,6 +138,8 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     invokeCwd: () => dir,
     // No early-exit watch unless a test asks for one (it waits up to 3 s).
     exitWatchMs: 0,
+    // Stop doesn't wait for the session to end unless a test asks (0.4.8).
+    stopWaitMs: 0,
     // Never this machine's user.yml.
     runtimeBin: (id) => r.runtimeBins[id],
     workspaceRuntimeBin: (ws, id) => r.wsBins[ws]?.[id],

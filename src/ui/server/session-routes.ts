@@ -35,7 +35,10 @@
  */
 import type * as http from "http";
 import type { Duplex } from "stream";
-import { getActiveWorkspaces } from "../../shared/environment-manager/workspaces.js";
+import {
+  getActiveWorkspaces,
+  readWorkspacesFile,
+} from "../../shared/environment-manager/workspaces.js";
 import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { revokedAgentIds } from "../../shared/actor-token.js";
@@ -68,6 +71,8 @@ export interface SessionRouteDeps {
   /** A client of the running host, or null (never starts one). */
   connectExisting?: () => Promise<HostClient | null>;
   activeWorkspaces?: () => string[];
+  /** Whether workspaces.yml names `ws` (active or not). */
+  workspaceExists?: (ws: string) => boolean;
   pty?: () => PtyLoad;
 }
 
@@ -76,8 +81,12 @@ interface Resolved {
   dist: () => string;
   connectExisting: () => Promise<HostClient | null>;
   activeWorkspaces: () => string[];
+  workspaceExists: (ws: string) => boolean;
   pty: () => PtyLoad;
 }
+
+/** A workspace name as `?ws=` may give it. */
+const WS_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 function resolve(d: SessionRouteDeps = {}): Resolved {
   const stateDir = d.stateDir ?? (() => getStateDir());
@@ -95,6 +104,13 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
         }
       }),
     activeWorkspaces: d.activeWorkspaces ?? (() => getActiveWorkspaces()),
+    workspaceExists:
+      d.workspaceExists ??
+      ((ws) =>
+        Object.prototype.hasOwnProperty.call(
+          readWorkspacesFile().workspaces ?? {},
+          ws,
+        )),
     pty: d.pty ?? (() => loadPty()),
   };
 }
@@ -143,9 +159,12 @@ export interface ListedSession {
 export function listedSessions(
   sessions: SessionInfo[],
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces">,
+  /** A workspace asked for by name (`?ws=`), listed even when inactive. */
+  also?: string,
 ): ListedSession[] {
   const dist = d.dist();
   const active = new Set(d.activeWorkspaces());
+  if (also) active.add(also);
   const mine = sessions.filter((s) => {
     const p = parseSessionName(s.name, dist);
     return p !== null && active.has(p.workspace);
@@ -246,9 +265,27 @@ export async function handleSessionList(
   } catch (e) {
     hostError = (e as Error).message;
   }
+  // `?ws=<name>`: that workspace's too, active or not, and whether it is
+  // active and known (the page says so rather than show all of them).
+  const asked = new URL(req.url ?? "/", "http://localhost").searchParams.get(
+    "ws",
+  );
+  const wanted =
+    asked && WS_NAME.test(asked)
+      ? {
+          workspace: asked,
+          active: d.activeWorkspaces().includes(asked),
+          known: d.workspaceExists(asked),
+        }
+      : null;
   sendJson(res, {
-    sessions: listedSessions(sessions, d),
+    sessions: listedSessions(
+      sessions,
+      d,
+      wanted?.known ? wanted.workspace : undefined,
+    ),
     workspaces: d.activeWorkspaces(),
+    ...(wanted ? { requested: wanted } : {}),
     host,
     ...(hostError ? { hostError } : {}),
     backend: pty.available

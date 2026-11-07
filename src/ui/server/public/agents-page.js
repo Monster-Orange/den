@@ -100,11 +100,17 @@ function writeUrl() {
 
 // ── the list ────────────────────────────────────────────────────────────
 
-/** The workspaces to show: ?ws= (when active), else the scope bar's view. */
+/** ?ws=: the one workspace the page was asked for, or null. */
+const urlWorkspace = () => new URLSearchParams(location.search).get("ws");
+
+/**
+ * The workspaces to show: ?ws= (always that one, even when it isn't active
+ * or isn't known: never All in its place), else the scope bar's view.
+ */
 function viewWorkspaces() {
   const all = st.data?.workspaces ?? [];
-  const ws = new URLSearchParams(location.search).get("ws");
-  if (ws && all.includes(ws)) return [ws];
+  const ws = urlWorkspace();
+  if (ws) return [ws];
   if (st.scope && st.scope !== "all" && all.includes(st.scope))
     return [st.scope];
   return all;
@@ -249,6 +255,17 @@ function paintList() {
     return;
   }
   const shown = viewWorkspaces();
+  // ?ws= names a workspace that isn't active: say so, and offer the switch.
+  const asked = st.data.requested;
+  if (asked && !asked.active)
+    notes.push(
+      `<div class="agnote" data-note="inactive" role="status">` +
+        esc(t("ag.inactive", { ws: asked.workspace })) +
+        (asked.known
+          ? ` · <button type="button" class="lnk" data-act="switch-ws">${esc(t("ag.switchWs", { ws: asked.workspace }))}</button>`
+          : ` ${esc(t("ag.unknownWs"))}`) +
+        `</div>`,
+    );
   // AG-14.3: one line after a restart, for the agents it interrupted.
   const hit = visibleRows().filter((r) => r.state === "interrupted");
   if (hit.length)
@@ -320,7 +337,7 @@ async function loadScope() {
 }
 
 function scopeLabelFor(shown) {
-  const ws = new URLSearchParams(location.search).get("ws");
+  const ws = urlWorkspace();
   if (ws && shown.length === 1 && shown[0] === ws) return ws;
   return st.scope === "all" ? t("ag.all") : st.scope;
 }
@@ -328,7 +345,11 @@ function scopeLabelFor(shown) {
 async function refresh() {
   clearTimeout(st.timer);
   try {
-    const r = await fetch("/api/sessions", { headers: { accept: "json" } });
+    const ws = urlWorkspace();
+    const r = await fetch(
+      ws ? `/api/sessions?ws=${encodeURIComponent(ws)}` : "/api/sessions",
+      { headers: { accept: "json" } },
+    );
     if (r.status === 401) {
       st.signedOut = true;
     } else if (r.ok) {
@@ -716,11 +737,15 @@ async function stopAgent(p, button) {
   if (!r?.agent) return;
   button.disabled = true;
   try {
-    await api(
+    const out = await api(
       "POST",
       `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/stop`,
     );
-    window.denShell?.toast?.(t("ag.stopped", { id: r.agent }));
+    window.denShell?.toast?.(
+      t(out?.stillStopping ? "ag.stillStopping" : "ag.stopped", {
+        id: r.agent,
+      }),
+    );
   } catch (err) {
     window.denShell?.errorToast?.(err);
   }
@@ -846,6 +871,26 @@ async function resumeAll(button) {
     window.denShell?.errorToast?.(err);
   }
   await refresh();
+}
+
+/**
+ * Switch to ?ws='s workspace: make it active (as Local Dev's Activate
+ * does), then view it (POST /api/scope, the top bar's Workspace switch),
+ * then reload, as that switch does.
+ */
+async function switchWorkspace(button) {
+  const ws = st.data?.requested?.workspace;
+  if (!ws) return;
+  button.disabled = true;
+  try {
+    await api("POST", "/api/workspaces", { name: ws, action: "activate" });
+    await api("POST", "/api/scope", { scope: ws });
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+    button.disabled = false;
+    return;
+  }
+  location.reload();
 }
 
 /** Review: the first interrupted agent, scrolled to and focused. */
@@ -1031,6 +1076,7 @@ export async function mountAgentsPage(root) {
       const which = act.dataset.act;
       if (which === "resume-all") return void resumeAll(act);
       if (which === "review") return review();
+      if (which === "switch-ws") return void switchWorkspace(act);
       const agent = act.closest(".agst")?.dataset.agent;
       const ws = act.closest(".agst")?.dataset.ws;
       const r = visibleRows().find(

@@ -2117,7 +2117,13 @@ The routes: `GET /api/workspaces/<ws>/agents`, `POST
 agent of the workspaces in view, and their terminals in the browser.
 
 - **The list** is grouped by workspace and follows the scope bar (or the
-  page's `?ws=<ws>`, which "Open in Agents →" sets). Each row has its
+  page's `?ws=<ws>`, which "Open in Agents →" sets). A `?ws=` is never
+  replaced by All. A workspace that isn't active gets one line, "Workspace
+  west isn't active · Switch to west", and the list shows it alone.
+  Switch makes it active and views it, as the top bar's Workspace menu
+  does. A name no workspace has gets the same line and an empty list.
+  `GET /api/sessions?ws=<ws>` lists that workspace even when it isn't
+  active, and says `requested: { workspace, active, known }`. Each row has its
   state, persona (a `sessions start` session is labelled "session"),
   runtime and directory, and "waiting" when it waits on you (once the
   session host can tell, AG-6a; not yet). An agent whose
@@ -2169,6 +2175,14 @@ it. Each row has three buttons:
 - **Remove** takes the row away in one click. The toast offers **Undo** for
   10 seconds. Den keeps the removed record for an hour, then forgets it. It
   never touches the runtime's own history.
+
+**Stop waits for the agent to end.** `agents stop <id>` returns once the
+session has ended, so a resume right after it works. It waits up to 5
+seconds. If the session is still running then, it prints `<id> is still
+stopping` and exits 1. `--no-wait` returns once TERM is sent. The route
+`POST /api/workspaces/<ws>/agents/<id>/stop` answers the same way: 200
+with `{ ok, agent, wasRunning, stopped: true }` once the session has
+ended, or 202 with `stopped: false, stillStopping: true`.
 
 A runtime that can't resume (codex, gemini, grok), or an agent with no
 saved conversation id, shows only Start fresh, and says why. **Clear

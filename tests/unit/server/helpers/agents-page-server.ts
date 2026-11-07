@@ -106,6 +106,8 @@ export async function startAgentsPageServer(
      * prints for --version; any other run is recorded and fails.
      */
     bins?: Record<string, string>;
+    /** More workspaces in workspaces.yml, not active (no services). */
+    inactive?: string[];
   } = {},
 ): Promise<AgentsPageServer> {
   const tmp = fs.realpathSync(
@@ -139,6 +141,11 @@ export async function startAgentsPageServer(
         `      ${repo}:`,
         "        mode: dev-managed",
         `        path: ${path.join(repos, repo)}`,
+      ]),
+      ...(opts.inactive ?? []).flatMap((ws) => [
+        `  ${ws}:`,
+        `    directory: ${wsDir(ws)}`,
+        "    services: {}",
       ]),
       "",
     ].join("\n"),

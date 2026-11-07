@@ -490,6 +490,13 @@ describe("`web logout --all` revokes every agent token (SEC-1 §6c.2)", () => {
 
 describe("stop revokes the token", () => {
   it("after `Stop`, the token is refused (401)", async () => {
+    // The scripted runtime ends on TERM; stop answers once it has (0.4.8).
+    const p = s.made[0];
+    const kill = p.kill.bind(p);
+    p.kill = (sig: string) => {
+      kill(sig);
+      setTimeout(() => p.exit(143), 50);
+    };
     expect(
       (
         await call(

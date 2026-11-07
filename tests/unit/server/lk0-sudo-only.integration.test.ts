@@ -130,15 +130,23 @@ describe("LK-0: with no admin password set, nothing that runs no sudo asks for i
     });
     expect(start.status).toBe(200);
     expect(s.made).toHaveLength(1);
+    // The scripted runtime ends on TERM, as a stopped one would; stop
+    // answers once it has (0.4.8).
+    const kill = s.made[0].kill.bind(s.made[0]);
+    s.made[0].kill = (sig: string) => {
+      kill(sig);
+      setTimeout(() => s.made[0].exit(143), 50);
+    };
     const stop = await call(
       "POST",
       "/api/workspaces/north/agents/planner/stop",
     );
     expect(stop.status).toBe(200);
-    expect(stop.json).toMatchObject({ ok: true, agent: "planner" });
-    // The scripted runtime ends as a stopped one would.
-    s.made[0].exit(143);
-    await new Promise((r) => setTimeout(r, 300));
+    expect(stop.json).toMatchObject({
+      ok: true,
+      agent: "planner",
+      stopped: true,
+    });
     const resume = await call(
       "POST",
       "/api/workspaces/north/agents/planner/resume",

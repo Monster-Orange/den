@@ -221,9 +221,19 @@ async function openForm(sec) {
 async function act(ws, verb, id, button) {
   button.disabled = true;
   try {
-    await api("POST", `${base(ws)}/${encodeURIComponent(id)}/${verb}`);
+    const out = await api(
+      "POST",
+      `${base(ws)}/${encodeURIComponent(id)}/${verb}`,
+    );
     window.denShell?.toast?.(
-      t(verb === "stop" ? "ag.stopped" : "ag.resumed", { id }),
+      t(
+        verb === "stop"
+          ? out?.stillStopping
+            ? "ag.stillStopping"
+            : "ag.stopped"
+          : "ag.resumed",
+        { id },
+      ),
     );
   } catch (err) {
     window.denShell?.errorToast?.(err);

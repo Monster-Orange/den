@@ -146,6 +146,11 @@ export interface AgentsDeps extends SessionsDeps {
    * exit (default 3000 ms; 0: not at all).
    */
   exitWatchMs?: number;
+  /**
+   * How long stop waits for the session to end after TERM (default
+   * 5000 ms; 0: it doesn't wait, as `--no-wait`).
+   */
+  stopWaitMs?: number;
   /** `agents.runtimes.<id>.bin` (default: user.yml's; undefined: unset). */
   runtimeBin?: (id: string) => unknown;
   /**
@@ -172,6 +177,7 @@ export interface AgentsResolved extends Resolved {
   workspaceDir: (ws: string) => string;
   mcpServer: () => { command: string[] | string; env: Record<string, string> };
   exitWatchMs: number;
+  stopWaitMs: number;
   runtimeBin: (id: string) => unknown;
   workspaceRuntimeBin: (ws: string, id: string) => unknown;
   userCatalog: (taken: readonly string[]) => CatalogEntry[];
@@ -182,6 +188,8 @@ export interface AgentsResolved extends Resolved {
 /** The early-exit watch: at most this long, polling the host. */
 export const EXIT_WATCH_MS = 3000;
 const EXIT_POLL_MS = 100;
+/** Stop waits at most this long for the session to end (0.4.8). */
+export const STOP_WAIT_MS = 5000;
 /** The most lines of an early exit's scrollback returned. */
 const EXIT_TAIL_LINES = 10;
 
@@ -265,6 +273,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       }),
     mcpServer: d.mcpServer ?? (() => defaultMcpServer(base.cli)),
     exitWatchMs: d.exitWatchMs ?? EXIT_WATCH_MS,
+    stopWaitMs: d.stopWaitMs ?? STOP_WAIT_MS,
     runtimeBin: d.runtimeBin ?? ((id) => configuredRuntimeBin(id)),
     workspaceRuntimeBin:
       d.workspaceRuntimeBin ?? ((ws, id) => workspaceRuntimeBin(ws, id)),
@@ -1131,22 +1140,49 @@ export interface Stopped {
   rec: AgentRecord;
   /** The session it sent TERM to; undefined when it wasn't running. */
   session?: SessionInfo;
+  /** Its session was still running when the wait ran out. */
+  stillStopping?: boolean;
 }
 
+/**
+ * Stop: TERM to the agent's session, then wait (up to d.stopWaitMs) until
+ * the session has ended, so a resume right after it never finds the agent
+ * still running. Still running at the bound: `stillStopping`. With
+ * `wait: false` (or d.stopWaitMs 0) it returns once TERM is sent.
+ */
 export async function stopAgent(
   d: AgentsResolved,
   id: string,
   ws?: string,
+  opts: { wait?: boolean } = {},
 ): Promise<Stopped> {
   const rec = agentRecord(d, id, ws);
   return withClient(d, async (c) => {
     const s = sessionOf(await c.list(), rec);
     // Its token stops working before the session is asked to end.
     revokeAgentTokens(d.stateDir(), rec.id);
-    if (s && !s.exited) await c.kill(s.ref.id, "TERM");
+    const live = Boolean(s && !s.exited);
+    if (live) await c.kill(s!.ref.id, "TERM");
     const next = { ...rec, stoppedAt: new Date().toISOString() };
     writeRecord(d.stateDir(), next);
-    return { rec: next, ...(s && !s.exited ? { session: s } : {}) };
+    let stillStopping = false;
+    if (live && opts.wait !== false && d.stopWaitMs > 0) {
+      const deadline = Date.now() + d.stopWaitMs;
+      for (;;) {
+        const now = (await c.list()).find((x) => x.ref.id === s!.ref.id);
+        if (!now || now.exited) break;
+        if (Date.now() >= deadline) {
+          stillStopping = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, EXIT_POLL_MS));
+      }
+    }
+    return {
+      rec: next,
+      ...(live ? { session: s! } : {}),
+      ...(stillStopping ? { stillStopping } : {}),
+    };
   });
 }
 

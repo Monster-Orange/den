@@ -50,6 +50,17 @@ got done, read on this machine only (den#6, the agent-usage issue).
 
 ### Fixed
 
+- **`agents stop` waits for the agent to end.** It returns once the
+  agent's session has ended, so `agents stop X && agents resume X` works.
+  It waits up to 5 seconds. Still running then, it prints
+  `X is still stopping` and exits 1. `--no-wait` returns at once, as
+  before. The stop route answers 200 with `stopped: true` once the session
+  has ended, or 202 with `stillStopping: true`.
+- **The Agents page never shows All in place of its `?ws=`.** A workspace
+  that isn't active gets one line, "Workspace west isn't active · Switch
+  to west", and the list shows that workspace alone. Clear stopped acts on
+  exactly the workspaces listed. A name no workspace has gets the same
+  line and an empty list.
 - **Den's sudo is `/usr/bin/sudo`.** A `sudo` placed earlier on `PATH` no
   longer gets the admin password. Den looks on `PATH` only when there is no
   `/usr/bin/sudo`. `DEN_SYSTEM_SUDO` names another absolute path.

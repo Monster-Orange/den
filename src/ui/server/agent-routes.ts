@@ -339,9 +339,21 @@ export async function handleAgentRoutes(
       audit(what, s.early ? "exited at once" : undefined);
       sendStarted(res, s);
     } else if (verb === "stop") {
+      // The answer comes once the session has ended (200, stopped: true),
+      // or, still running after the wait, 202 with stillStopping: true.
       const s = await stopAgent(d, id!, ws);
-      audit(what);
-      sendJson(res, { ok: true, agent: s.rec.id, wasRunning: !!s.session });
+      audit(s.stillStopping ? `${what} (still stopping)` : what);
+      sendJson(
+        res,
+        {
+          ok: true,
+          agent: s.rec.id,
+          wasRunning: !!s.session,
+          stopped: !s.stillStopping,
+          ...(s.stillStopping ? { stillStopping: true } : {}),
+        },
+        s.stillStopping ? 202 : 200,
+      );
     } else if (verb === "fresh") {
       const s = await startFresh(d, id!, ws);
       what = `start ${s.rec.id} fresh (${s.rec.persona}, ${s.rec.runtime}) in ${ws}`;

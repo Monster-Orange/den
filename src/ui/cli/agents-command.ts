@@ -102,7 +102,9 @@ export const AGENTS_HELP = {
     "{cli} agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--id <id>]",
     "    runs in the workspace's dir as <dist>-<ws>:<id>; its MCP is pinned to <ws>",
     "    (plus agents.<id>.grants); capped by agents.max_concurrent",
-    "{cli} agents stop <id> [-w <ws>]",
+    "{cli} agents stop <id> [-w <ws>] [--no-wait]",
+    "    waits up to 5 s for the session to end (else: still stopping, exit 1);",
+    "    --no-wait: return once TERM is sent",
     "{cli} agents resume <id> [-w <ws>]",
     "{cli} agents resume --all-interrupted [-w <ws>]",
     "    the same conversation, persona, workspace and folder, when its runtime",
@@ -263,11 +265,28 @@ function idAndWorkspace(
 }
 
 async function stop(args: string[], d: AgentsResolved): Promise<number> {
-  const { id, ws } = idAndWorkspace("agents stop", args);
-  const { rec, session: s } = await stopAgent(d, id, ws);
+  // --no-wait: return once TERM is sent (before 0.4.8, always).
+  const wait = !args.includes("--no-wait");
+  const { id, ws } = idAndWorkspace(
+    "agents stop",
+    args.filter((a) => a !== "--no-wait"),
+  );
+  const {
+    rec,
+    session: s,
+    stillStopping,
+  } = await stopAgent(d, id, ws, {
+    wait,
+  });
+  if (stillStopping) {
+    d.err(
+      `${rec.id} is still stopping (sent TERM to ${s!.name}, pid ${s!.pid}; not ended after ${d.stopWaitMs / 1000} s)`,
+    );
+    return 1;
+  }
   d.out(
     s
-      ? `stopped agent ${rec.id} (sent TERM to ${s.name}, pid ${s.pid})`
+      ? `stopped agent ${rec.id} (sent TERM to ${s.name}, pid ${s.pid}${wait && d.stopWaitMs > 0 ? "; it has ended" : ""})`
       : `agent ${rec.id} was not running; marked stopped`,
   );
   return 0;
