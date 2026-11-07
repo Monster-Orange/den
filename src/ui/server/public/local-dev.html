@@ -1371,6 +1371,17 @@
       }
       .agent-form select {
         max-width: 320px;
+        min-width: 0;
+      }
+      .agent-form-help {
+        flex-basis: 100%;
+        margin: 0;
+        font-size: 12px;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+      .agent-form-help[hidden] {
+        display: none;
       }
       .agent-cwd {
         max-width: 280px;

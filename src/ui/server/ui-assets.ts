@@ -34,6 +34,8 @@ export const UI_MODULES: readonly string[] = [
   "/error-page.js",
   "/agents-section.js",
   "/agents-page.js",
+  // The Start agent form's choices, shared by both (AG-10.0).
+  "/agent-start.js",
   // The UI's catalogs other than English (R19; en is in shell.js).
   "/i18n/ja.js",
   "/i18n/es.js",

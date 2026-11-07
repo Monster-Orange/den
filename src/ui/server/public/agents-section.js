@@ -16,6 +16,7 @@
  * (.den-sec, .den-btn, .den-dot) are reused as they are.
  */
 import { requireUnlock } from "/topbar.js";
+import { fillStartForm } from "/agent-start.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -62,6 +63,7 @@ export function agentsSectionHtml(ws) {
               <form class="agent-form" id="agent-start-form" hidden>
                 <label>${esc(t("ag.persona"))} <select class="form-sel" name="persona" required></select></label>
                 <label>${esc(t("ag.runtime"))} <select class="form-sel" name="runtime"></select></label>
+                <p class="agent-form-help" data-persona-help hidden></p>
                 <button type="submit" class="den-btn sm primary" id="agent-start-go">${esc(t("ag.go"))}</button>
                 <button type="button" class="den-btn sm" data-agent-cancel>${esc(t("ag.cancel"))}</button>
               </form>
@@ -185,22 +187,7 @@ async function refresh(ws) {
 }
 
 function fillForm(form, data) {
-  const ps = form.querySelector('select[name="persona"]');
-  ps.innerHTML = (data.personas ?? [])
-    .map(
-      (p) =>
-        `<option value="${esc(p.id)}">${esc(p.id)}${p.role ? ` — ${esc(p.role)}` : ""}</option>`,
-    )
-    .join("");
-  const rs = form.querySelector('select[name="runtime"]');
-  rs.innerHTML =
-    `<option value="">${esc(t("ag.runtime.auto"))}</option>` +
-    (data.runtimes ?? [])
-      .map(
-        (r) =>
-          `<option value="${esc(r.id)}"${r.available ? "" : " disabled"}>${esc(r.id)}${r.available ? "" : ` — ${esc(t("ag.unavailable"))}`}</option>`,
-      )
-      .join("");
+  fillStartForm(form, data, t);
 }
 
 async function openForm(sec) {

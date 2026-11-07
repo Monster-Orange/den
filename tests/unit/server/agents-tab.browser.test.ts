@@ -468,6 +468,92 @@ describe("the Agents tab", () => {
     await p.context().close();
   }, 45_000);
 
+  it.each([
+    [1440, 900],
+    [375, 812],
+  ])(
+    "AG-10.0: with a 200-character role, Cancel and Start sit inside the Start dialog at %ix%i",
+    async (width, height) => {
+      if (skip()) return;
+      const role = `${"Reviews every change for correctness ".repeat(6)}`.slice(
+        0,
+        200,
+      );
+      const p = await page("/agents", { width, height });
+      await p.route("**/api/personas", (route) =>
+        route.fulfill({
+          json: {
+            personas: [
+              { id: "reviewer", role, standing: false, tools: [], context: [] },
+              {
+                id: "builder",
+                role: "Builds it.",
+                standing: false,
+                tools: [],
+                context: [],
+              },
+            ],
+            runtimes: [
+              {
+                id: "den-claude",
+                label: "Claude Code",
+                available: true,
+                resume: true,
+                default: true,
+              },
+              {
+                id: "generic",
+                label: "Generic command",
+                available: false,
+                why: "no argv",
+                resume: false,
+                default: false,
+              },
+            ],
+          },
+        }),
+      );
+      await p.click("#ag-start");
+      await p.waitForSelector("#ag-dlg[open]");
+      const dlg = await box(p, "#ag-dlg");
+      for (const sel of [
+        "#ag-cancel",
+        "#ag-go",
+        "#ag-persona",
+        "#ag-runtime",
+      ]) {
+        const b = await box(p, sel);
+        expect(b.x).toBeGreaterThanOrEqual(dlg.x);
+        expect(b.y).toBeGreaterThanOrEqual(dlg.y);
+        expect(b.x + b.width).toBeLessThanOrEqual(dlg.x + dlg.width + 0.5);
+        expect(b.y + b.height).toBeLessThanOrEqual(dlg.y + dlg.height + 0.5);
+      }
+      // The option is the id; the role is the help line, and follows the pick.
+      expect(
+        await p.$$eval("#ag-persona option", (os) =>
+          os.map((o) => o.textContent),
+        ),
+      ).toEqual(["reviewer", "builder"]);
+      expect(await p.textContent("#ag-p-help")).toBe(role);
+      await p.selectOption("#ag-persona", "builder");
+      expect(await p.textContent("#ag-p-help")).toBe("Builds it.");
+      // The runtime names what it resolves to; one that can't run says why.
+      expect(
+        await p.$$eval("#ag-runtime option", (os) =>
+          os.map((o) => [o.textContent, (o as HTMLOptionElement).disabled]),
+        ),
+      ).toEqual([
+        ["Claude Code (persona default)", false],
+        ["Claude Code", false],
+        ["Generic command — no argv", true],
+      ]);
+      // Esc cancels.
+      await p.keyboard.press("Escape");
+      expect(await p.isVisible("#ag-dlg")).toBe(false);
+      await p.context().close();
+    },
+  );
+
   it("Start agent (?start=1 opens the dialog): asks for the workspace under All, starts it, and opens its pane", async () => {
     if (skip() || !PTY) return;
     // Room under the host's cap (agents.max_concurrent): two sessions end.
@@ -490,7 +576,8 @@ describe("the Agents tab", () => {
           new URL(r.url()).pathname === "/api/workspaces/south/agents",
         { timeout: 20_000 },
       ),
-      p.click("#ag-go"),
+      // AG-10.0: Enter on a field starts it.
+      p.press("#ag-runtime", "Enter"),
     ]);
     expect(res.status()).toBe(200);
     const sid = ((await res.json()) as { agent: { sessionId: string } }).agent

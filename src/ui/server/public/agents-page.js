@@ -17,6 +17,7 @@
  * asked again every few seconds while the page is shown.
  */
 import { requireUnlock } from "/topbar.js";
+import { fillStartForm } from "/agent-start.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -515,20 +516,7 @@ async function openStart() {
     window.denShell?.errorToast?.(err);
     return;
   }
-  st.root.querySelector("#ag-persona").innerHTML = (data.personas ?? [])
-    .map(
-      (p) =>
-        `<option value="${esc(p.id)}">${esc(p.id)}${p.role ? ` — ${esc(p.role)}` : ""}</option>`,
-    )
-    .join("");
-  st.root.querySelector("#ag-runtime").innerHTML =
-    `<option value="">${esc(t("ag.runtime.auto"))}</option>` +
-    (data.runtimes ?? [])
-      .map(
-        (r) =>
-          `<option value="${esc(r.id)}"${r.available ? "" : " disabled"}>${esc(r.id)}${r.available ? "" : ` — ${esc(t("ag.unavailable"))}`}</option>`,
-      )
-      .join("");
+  fillStartForm(st.root.querySelector("#ag-form"), data, t);
   if (typeof dlg.showModal === "function") dlg.showModal();
   else dlg.setAttribute("open", "");
 }
@@ -620,6 +608,15 @@ export async function mountAgentsPage(root) {
   root.querySelector("#ag-form").addEventListener("submit", (e) => {
     e.preventDefault();
     void submitStart(e.currentTarget);
+  });
+  // Enter starts from any field (a select doesn't submit on its own); Esc
+  // cancels (the dialog's own cancel). A button keeps its own Enter.
+  root.querySelector("#ag-form").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.isComposing) return;
+    if (e.target.closest("button, textarea")) return;
+    e.preventDefault();
+    if (!st.root.querySelector("#ag-go").disabled)
+      e.currentTarget.requestSubmit();
   });
   // The terminals follow the mode (light, dark) and the theme.
   new MutationObserver(() => {

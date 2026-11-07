@@ -20,6 +20,7 @@ export const GENERIC_ID = "generic";
 
 export const generic: Runtime = {
   id: GENERIC_ID,
+  label: "Generic command",
   // The CLI is the persona's; there is nothing to look for until launch.
   detect: () => ({ available: true }),
   scrubEnv: [],

@@ -444,6 +444,7 @@
     "ag.persona": "Persona",
     "ag.runtime": "Runtime",
     "ag.runtime.auto": "The persona's",
+    "ag.runtime.default": "{name} (persona default)",
     "ag.unavailable": "unavailable",
     "ag.go": "Start",
     "ag.starting": "Starting…",

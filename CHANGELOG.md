@@ -70,6 +70,14 @@ The 0.4.1 carry-overs.
 
 ### Fixed
 
+- **The Start agent dialog can be submitted (AG-10.0).** A persona's whole
+  role sentence was in its option, so the select grew past the dialog and
+  pushed Cancel and Start out of sight. A persona option now shows its id,
+  with its role on a help line under the select that follows the pick. The
+  runtime's first option names what it resolves to ("Claude Code (persona
+  default)"), a runtime that can't run here says why, and Enter starts
+  from any field. The Workspaces page's agents form gets the same choices.
+
 - **A distribution config's `web.allow_plain_http_remote`** (ignored: it is
   read only from `config/local/user.yml`) was warned about only in the
   in-app server log. It is now in `web.log` too (before a bind refusal it

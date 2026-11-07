@@ -330,6 +330,7 @@
     "ag.persona": "Persona",
     "ag.runtime": "Runtime",
     "ag.runtime.auto": "La de la persona",
+    "ag.runtime.default": "{name} (la de la persona)",
     "ag.unavailable": "no disponible",
     "ag.go": "Iniciar",
     "ag.starting": "Iniciando…",

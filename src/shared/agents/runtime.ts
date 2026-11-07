@@ -88,6 +88,8 @@ export type ResumeInput = LaunchInput;
 export interface Runtime {
   /** "den-claude", "generic". */
   id: string;
+  /** Its name for people ("Claude Code"), in the Start agent form. */
+  label?: string;
   detect(env?: NodeJS.ProcessEnv): RuntimeDetect;
   /** Throws LaunchError when this persona or this machine can't run it. */
   launch(input: LaunchInput): LaunchOutput;

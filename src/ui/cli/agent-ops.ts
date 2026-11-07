@@ -394,6 +394,8 @@ export function listPersonas(d: AgentsResolved): ListedPersona[] {
 
 export interface RuntimeChoice {
   id: string;
+  /** Its name for people ("Claude Code"). */
+  label?: string;
   available: boolean;
   /** Why it is unavailable. */
   why?: string;
@@ -410,6 +412,7 @@ export function listRuntimes(d: AgentsResolved): RuntimeChoice[] {
     const det = rt.detect(d.env);
     return {
       id,
+      ...(rt.label ? { label: rt.label } : {}),
       available: det.available,
       ...(det.available ? {} : { why: det.why ?? "unavailable" }),
       ...(det.version ? { version: det.version } : {}),

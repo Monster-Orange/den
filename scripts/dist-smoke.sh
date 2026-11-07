@@ -238,7 +238,7 @@ done
 # The Agents tab (AG-4a-term): its page and xterm.js from the install (no
 # CDN); its list answers with or without the PTY module (without it,
 # backend.available is false and the page says so).
-for m in agents agents-page.js vendor/xterm.mjs vendor/xterm.css vendor/addon-fit.mjs; do
+for m in agents agents-page.js agent-start.js vendor/xterm.mjs vendor/xterm.css vendor/addon-fit.mjs; do
   curl -fsS "http://localhost:$PORT/$m" -o /dev/null && ok "GET /$m" || bad "GET /$m failed"
 done
 if curl -fsS "http://localhost:$PORT/api/sessions" -o "$WORK/sessions.json"; then

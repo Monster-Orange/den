@@ -318,6 +318,7 @@
     "ag.persona": "ペルソナ",
     "ag.runtime": "ランタイム",
     "ag.runtime.auto": "ペルソナの既定",
+    "ag.runtime.default": "{name}（ペルソナの既定）",
     "ag.unavailable": "利用不可",
     "ag.go": "開始",
     "ag.starting": "開始中…",

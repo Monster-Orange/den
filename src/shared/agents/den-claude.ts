@@ -238,6 +238,7 @@ function binFor(input: LaunchInput): string {
 
 export const denClaude: Runtime = {
   id: DEN_CLAUDE_ID,
+  label: "Claude Code",
   detect,
   launch(input): LaunchOutput {
     const bin = binFor(input);
