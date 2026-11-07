@@ -302,6 +302,17 @@ function binFor(input: LaunchInput): string {
   return d.path;
 }
 
+/**
+ * The first prompt as claude's last argument, or nothing. An agent wrote
+ * the text (its handoff), so it is never allowed to start with "-": that
+ * would be read as a flag. One that does gets a word in front.
+ */
+export function firstPromptArg(text: string | undefined): string[] {
+  const t = text?.trim();
+  if (!t) return [];
+  return [t.startsWith("-") ? `Prompt: ${t}` : t];
+}
+
 export const denClaude: Runtime = {
   id: DEN_CLAUDE_ID,
   label: DEN_CLAUDE_CATALOG.name,
@@ -316,10 +327,15 @@ export const denClaude: Runtime = {
     const id = input.resumeToken ?? randomUUID();
     const c = common(input);
     // A relaunch from handoff (den#4): the handoff is the first prompt,
-    // the last argument. It starts with a word, never a "-".
-    const first = input.firstPrompt?.trim();
+    // the last argument (firstPromptArg: never read as a flag).
     return {
-      argv: [bin, "--session-id", id, ...c.argv, ...(first ? [first] : [])],
+      argv: [
+        bin,
+        "--session-id",
+        id,
+        ...c.argv,
+        ...firstPromptArg(input.firstPrompt),
+      ],
       env: {},
       files: c.files,
       resumeToken: id,
