@@ -1535,7 +1535,97 @@ const sd = {
   intent: "ask",
   extras: [],
   extrasOpen: false,
+  // AG-17.1, Bring in: null for Start; else the workspace's conversations,
+  // the runtimes that can't bring one in, and the one picked.
+  bring: null,
 };
+
+/** The conversation picked in Bring in, when it can be brought in. */
+function bringPick() {
+  const c = (sd.bring?.list ?? []).find((x) => x.id === sd.bring.pick);
+  return c && !c.open && !c.agent ? c : null;
+}
+
+/** "3 min ago", "2 h ago", or the date. */
+function agoText(iso) {
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return "";
+  const m = Math.round(ms / 60000);
+  if (m < 1) return t("ag.bring.now");
+  if (m < 60) return t("ag.bring.min", { n: m });
+  const h = Math.round(m / 60);
+  if (h < 48) return t("ag.bring.h", { n: h });
+  return iso.slice(0, 10);
+}
+
+/** The folder a conversation ran in, inside the workspace's when it is. */
+function convFolder(c) {
+  const root = sd.bring?.root;
+  if (root && c.cwd === root) return ".";
+  if (root && c.cwd.startsWith(`${root}/`)) return c.cwd.slice(root.length + 1);
+  return c.cwd;
+}
+
+function convRowHtml(c) {
+  const taken = c.agent
+    ? ` <span class="tagx">${esc(t("ag.bring.agent", { id: c.agent }))}</span>`
+    : c.open
+      ? ` <span class="tagx warn" title="${esc(t("ag.bring.openTip"))}">${esc(t("ag.bring.open"))}</span>`
+      : "";
+  const off = c.agent || c.open;
+  return (
+    `<button type="button" class="pr" role="radio" data-cid="${esc(c.id)}" aria-checked="${c.id === sd.bring.pick}"${off ? ' aria-disabled="true"' : ""}>` +
+    `<span class="rd" aria-hidden="true"></span><span class="pn">${esc(c.title || t("ag.bring.untitled"))}${taken}</span><span class="mono">${esc(agoText(c.lastAt))}</span>` +
+    `<span class="pd mono">${esc(convFolder(c))} · ${esc(c.id.slice(0, 8))}</span></button>`
+  );
+}
+
+/** Bring in's conversation list and its help line. */
+function paintConversations() {
+  const f = $d("#ag-conv-f");
+  f.hidden = !sd.bring;
+  if (!sd.bring) return;
+  const list = sd.bring.list;
+  const cant = (sd.bring.runtimes ?? [])
+    .filter((r) => !r.bringIn && r.id !== "generic")
+    .map((r) => r.why);
+  $d("#ag-conv-h").textContent = [
+    list.length ? t("ag.bring.help") : t("ag.bring.none"),
+    ...cant,
+  ].join(" ");
+  $d("#ag-conv").innerHTML = list.map(convRowHtml).join("");
+  $d("#ag-conv").hidden = !list.length;
+}
+
+/** Ask for the workspace's conversations (Bring in). */
+async function fillConversations(ws) {
+  if (!sd.bring) return true;
+  try {
+    const r = await api(
+      "GET",
+      `/api/workspaces/${encodeURIComponent(ws)}/conversations`,
+    );
+    sd.bring.list = r?.conversations ?? [];
+    sd.bring.runtimes = r?.runtimes ?? [];
+    sd.bring.root = r?.folder ?? "";
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+    return false;
+  }
+  if (!sd.bring.list.some((c) => c.id === sd.bring.pick))
+    sd.bring.pick = sd.bring.list.find((c) => !c.open && !c.agent)?.id ?? "";
+  paintConversations();
+  return true;
+}
+
+function pickConversation(id) {
+  const c = (sd.bring?.list ?? []).find((x) => x.id === id);
+  if (!c || c.open || c.agent) return;
+  sd.bring.pick = id;
+  for (const b of st.root.querySelectorAll("#ag-conv [data-cid]"))
+    b.setAttribute("aria-checked", String(b.dataset.cid === id));
+  paintRuntime(false);
+}
 
 const $d = (sel) => st.root.querySelector(sel);
 const curPersona = () =>
@@ -1563,10 +1653,13 @@ function personaModel() {
 function plistHtml() {
   const ps = sd.data?.personas ?? [];
   const cats = sd.data?.categories ?? [];
+  const rows = personaListHtml(sd.f, ps, cats, (p) =>
+    personaRowHtml(p, p.id === sd.pid, sd.data),
+  );
+  // Bring in continues a conversation: it needs a persona.
+  if (sd.bring) return rows;
   return (
-    personaListHtml(sd.f, ps, cats, (p) =>
-      personaRowHtml(p, p.id === sd.pid, sd.data),
-    ) +
+    rows +
     `<div class="pgh"><span>${esc(t("ag.session"))}</span><span></span></div>` +
     `<button type="button" class="pr" role="radio" data-pid="${esc(PLAIN)}" aria-checked="${sd.pid === PLAIN}"><span class="rd" aria-hidden="true"></span><span class="pn">${esc(t("ag.new.plain"))}</span><span></span><span class="pd">${esc(t("ag.new.plainP"))}</span></button>`
   );
@@ -1612,9 +1705,19 @@ function paintRuntime(reset) {
   const go = $d("#ag-go");
   const ready = $d("#ag-r-ready");
   const plain = sd.pid === PLAIN;
-  $d("#ag-r-l").hidden = plain;
-  $d("#ag-task-l").hidden = plain;
-  $d("#ag-adv").hidden = plain;
+  // Bring in: the conversation's runtime, its own history; no first
+  // instruction, no Advanced (it keeps what the persona gives).
+  $d("#ag-r-l").hidden = plain || !!sd.bring;
+  $d("#ag-task-l").hidden = plain || !!sd.bring;
+  $d("#ag-adv").hidden = plain || !!sd.bring;
+  if (sd.bring) {
+    $d("#ag-r-miss").hidden = true;
+    ready.hidden = true;
+    const ok = !!bringPick() && !!curPersona();
+    go.disabled = !ok;
+    go.dataset.blocked = ok ? "" : "conversation";
+    return;
+  }
   const fb = $d("#ag-r-fb");
   fb.hidden = true;
   if (plain) {
@@ -1749,6 +1852,8 @@ async function fillForWorkspace(ws) {
     window.denShell?.errorToast?.(err);
     return false;
   }
+  if (!(await fillConversations(ws))) return false;
+  if (sd.bring && sd.pid === PLAIN) sd.pid = "";
   const ps = sd.data?.personas ?? [];
   if (sd.pid !== PLAIN && !ps.some((p) => p.id === sd.pid)) {
     // The first persona the list shows (grouped by category).
@@ -1765,9 +1870,19 @@ async function fillForWorkspace(ws) {
   return true;
 }
 
-async function openStart() {
+/** The dialog's words for Start, or for Bring in (AG-17.1). */
+function dialogMode(bring) {
+  sd.bring = bring ? { list: [], runtimes: [], root: "", pick: "" } : null;
+  $d("#ag-dlg-h").textContent = t(bring ? "ag.bring.title" : "ag.new.title");
+  $d("#ag-note").textContent = t(bring ? "ag.bring.note" : "ag.new.note");
+  $d("#ag-go").textContent = t(bring ? "ag.bring.go" : "ag.go");
+  $d("#ag-conv-f").hidden = !bring;
+}
+
+async function openStart(bring = false) {
   const dlg = $d("#ag-dlg");
   if (!dlg || dlg.open) return;
+  dialogMode(bring);
   const shown = viewWorkspaces();
   const wsSel = $d("#ag-ws");
   wsSel.innerHTML = shown
@@ -1827,6 +1942,7 @@ async function submitStart(form) {
   if (go.disabled) return;
   const ws = form.querySelector("#ag-ws").value || viewWorkspaces()[0];
   if (!ws || !sd.pid) return;
+  if (sd.bring) return submitBringIn(ws);
   const bad = sd.extras.find((c) => commandProblem(c));
   if (sd.pid !== PLAIN && bad)
     return showStartError(new Error(t("pe.badCmd", { c: bad })));
@@ -1865,6 +1981,36 @@ async function submitStart(form) {
   }
 }
 
+/** Bring in (AG-17.1): the runtime's resume of the conversation picked. */
+async function submitBringIn(ws) {
+  const dlg = $d("#ag-dlg");
+  const go = $d("#ag-go");
+  const c = bringPick();
+  const p = curPersona();
+  if (!c || !p) return;
+  go.disabled = true;
+  go.textContent = t("ag.bring.going");
+  try {
+    const r = await api(
+      "POST",
+      `/api/workspaces/${encodeURIComponent(ws)}/conversations/${encodeURIComponent(c.id)}/import`,
+      { persona: p.id, runtime: c.runtime },
+    );
+    window.denShell?.toast?.(t("ag.bring.done", { id: r?.agent?.id ?? p.id }));
+    for (const w of r?.warnings ?? []) window.denShell?.toast?.(w);
+    dlg.close?.();
+    await refresh();
+    if (r?.agent?.sessionId) await openPane(r.agent.sessionId);
+  } catch (err) {
+    showStartError(err);
+    // Still open elsewhere, or taken since: the list says so now.
+    await fillConversations(ws);
+  } finally {
+    go.textContent = t("ag.bring.go");
+    if (dlg.open) paintRuntime(false);
+  }
+}
+
 /** New persona, Edit or Duplicate from the dialog; back to it after. */
 async function editFromStart(kind) {
   const p = curPersona();
@@ -1892,6 +2038,12 @@ async function editFromStart(kind) {
 function wireStartDialog(root) {
   const form = root.querySelector("#ag-form");
   form.addEventListener("click", (e) => {
+    const cr = e.target.closest("#ag-conv [data-cid]");
+    if (cr) {
+      e.preventDefault();
+      pickConversation(cr.dataset.cid);
+      return;
+    }
     const pr = e.target.closest("#ag-persona [data-pid]");
     if (pr) {
       e.preventDefault();
@@ -2032,6 +2184,8 @@ function translateStatic(root) {
   };
   set("#ag-h", "n.agents");
   set("#ag-start", "ag.start");
+  set("#ag-bring", "ag.bring");
+  set("#ag-conv-t", "ag.bring.conv");
   set("#ag-clear", "ag.clear");
   set("#ag-dlg-h", "ag.new.title");
   set("#ag-ws-t", "ag.ws");
@@ -2128,6 +2282,9 @@ export async function mountAgentsPage(root) {
   });
   root.querySelector("#ag-start").addEventListener("click", () => {
     void openStart();
+  });
+  root.querySelector("#ag-bring")?.addEventListener("click", () => {
+    void openStart(true);
   });
   root.querySelector("#ag-clear")?.addEventListener("click", (e) => {
     void clearStopped(e.currentTarget);

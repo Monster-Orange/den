@@ -1932,6 +1932,13 @@ orchestrator. It is off unless `mcp.actions` names it. A scoped server
 itself. The web server checks the same rule, and the resume route is the
 only agent route an agent's token reaches.
 
+`agent_import` (AG-17.1) brings in a conversation started outside Den as an
+agent: with no `session` it lists them, with `session` and `persona` it
+brings one in (see [Bring in a conversation](#bring-in-a-conversation)). It
+is off unless `mcp.actions` names it, and a scoped server reaches its own
+workspace or a granted one. Without it, an agent's token gets 403 on both
+the list and the import.
+
 ### Guards
 
 - **Lifecycle only, local only.** The service tools run a manifest's `up`,
@@ -2042,6 +2049,8 @@ server scoped to its workspace.
 <cli> agents list -w <ws> [--json]
 <cli> agents stop <id> [-w <ws>]
 <cli> agents resume <id> [-w <ws>]
+<cli> agents import -w <ws> [--runtime <r>] [--json]          # conversations to bring in
+<cli> agents import -w <ws> --session <id> --persona <p>      # bring one in
 <cli> agents personas [--json]
 <cli> agents doctor [-w <ws>] [--json]  # can each runtime run here, and why not
 <cli> agents handback-check <file|->    # is a hand-back complete and plain (see Guardrails)
@@ -2084,6 +2093,35 @@ server scoped to its workspace.
 - After `start` or `resume`, Den watches the session for up to 3 s. If it
   exits non-zero, Den prints the exit code and its last lines (at most 10,
   secret-shaped values redacted) and exits 1.
+
+#### Bring in a conversation
+
+A conversation you started in a terminal outside Den (Claude Code, in the
+workspace's folder or a folder inside it) can become a Den agent. Agents ›
+**Bring in** lists them, newest first, with the persona list; `agents
+import -w <ws>` lists them too.
+
+- Den reads the runtime's own history: Claude Code's
+  `~/.claude/projects/<folder>/<id>.jsonl` (or under `CLAUDE_CONFIG_DIR`).
+  It reads only the first and last 64 KB of each file, for the folder it
+  ran in, its latest `/rename` and its first prompt. It never reads a whole
+  transcript, and it lists at most 50.
+- Bringing one in runs the runtime's resume (`claude --resume <id>`) in the
+  folder it ran in, as a new agent with the persona you pick. From then on
+  Den's token, MCP config, hooks, guards and audit trail apply. It is an
+  agent like any other: stop, resume, rename. The record notes
+  `broughtInAt`.
+- **One writer only.** A conversation written in the last minute is taken
+  to be still open in another terminal: "Still open in another terminal.
+  Close it there first" (HTTP 409 `open_elsewhere`). A conversation an
+  agent already continues is refused too (409 `already_agent`).
+- The agent's id is the persona's, or `<persona>-2`, `-3`… when that is
+  taken; `--id` sets one. An existing agent is never overwritten.
+- Only den-claude can bring one in for now. Other runtimes say "<runtime>
+  can't bring in a conversation yet".
+- Routes: `GET /api/workspaces/<ws>/conversations[?runtime=<r>]` and `POST
+/api/workspaces/<ws>/conversations/<id>/import` `{ persona, runtime?, id?
+}`. A person's only, unless MCP `agent_import` is opted in.
 
 ### On the Workspaces page
 

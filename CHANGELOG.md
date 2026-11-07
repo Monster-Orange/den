@@ -55,6 +55,19 @@ config and manifest changes a distribution must make to move to it under
   starts your login shell in the workspace's folder (capped by
   `sessions.max_concurrent`).
 - **A tester persona** in Den's default pack.
+- **Bring in a conversation (AG-17.1).** A Claude Code conversation you
+  started in a terminal outside Den, in the workspace's folder, can become
+  a Den agent. Agents › Bring in lists them, newest first, and asks for a
+  persona; Bring in runs `claude --resume <id>` in the folder it ran in,
+  with Den's token, MCP, hooks and guards from then on. Den reads only the
+  first and last 64 KB of each transcript. A conversation written in the
+  last minute is refused: "Still open in another terminal. Close it there
+  first". CLI: `agents import -w <ws>` lists, `agents import -w <ws>
+  --session <id> --persona <p>` brings one in. MCP `agent_import` is
+  opt-in through `mcp.actions`. Routes: `GET
+  /api/workspaces/<ws>/conversations`, `POST
+  /api/workspaces/<ws>/conversations/<id>/import`. Only den-claude can
+  bring one in for now.
 
 ### Changed
 

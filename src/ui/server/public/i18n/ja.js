@@ -448,6 +448,27 @@
     "ag.new.modelDef": "ペルソナの既定（{m}）",
     "ag.new.ver": "バージョン",
     "ag.new.verDef": "ペルソナの既定（{v}）",
+    // AG-17.1, Bring in.
+    "ag.bring": "取り込む",
+    "ag.bring.title": "会話を取り込む",
+    "ag.bring.conv": "会話",
+    "ag.bring.help":
+      "このワークスペースのフォルダーで Den の外で始めた会話です。新しい順に並びます。",
+    "ag.bring.none":
+      "このワークスペースのフォルダーに、Den の外で始めた会話はありません。",
+    "ag.bring.untitled": "無題の会話",
+    "ag.bring.open": "別の場所で開いています",
+    "ag.bring.openTip":
+      "まだ別のターミナルで開いています。先にそちらで閉じてください",
+    "ag.bring.agent": "エージェント {id}",
+    "ag.bring.note":
+      "実行していたフォルダーで続けます。ここからは Den のツールとガードが適用されます。ペインを閉じても実行は続きます。",
+    "ag.bring.go": "取り込む",
+    "ag.bring.going": "取り込み中…",
+    "ag.bring.done": "{id} として取り込みました",
+    "ag.bring.now": "たった今",
+    "ag.bring.min": "{n} 分前",
+    "ag.bring.h": "{n} 時間前",
     "ag.new.note":
       "ワークスペースのフォルダーで開始します。ペインを閉じても実行は続きます。",
     "ag.new.started": "{w} で {p} を開始しました",

@@ -160,6 +160,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "edits or deletes a person's own persona (AG-10.7); never an agent's token",
   ),
   R(
+    "/api/workspaces/:ws/conversations",
+    "lists a runtime's own conversations in the workspace's folder: titles only, the ends of each file (AG-17.1)",
+  ),
+  R(
     "/api/workspaces/:ws/agents/:id/paths",
     "which paths an agent printed exist in its workspace (stat only, AG-4b)",
   ),
@@ -355,6 +359,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   S(
     ["POST"],
+    "/api/workspaces/:ws/conversations/:id/import",
+    "brings in a conversation: its runtime's resume in a PTY (AG-17.1)",
+  ),
+  S(
+    ["POST"],
     "/api/workspaces/:ws/sessions",
     "starts a plain session: the person's login shell in the workspace (AG-10.1)",
   ),
@@ -438,6 +447,10 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "agent-routes.ts:PERSONA_PATH": ["/api/personas/:id"],
   "agent-routes.ts:PLAIN_PATH": ["/api/workspaces/:ws/sessions"],
+  "agent-routes.ts:CONVERSATIONS_PATH": [
+    "/api/workspaces/:ws/conversations",
+    "/api/workspaces/:ws/conversations/:id/import",
+  ],
   "session-routes.ts:IO_PATH": ["/api/sessions/:id/io"],
   "github-routes.ts:SIGNIN_PATH": ["/api/github/signin/:id"],
   "github-routes.ts:LINK_PATH": ["/api/web/owner/link/:id"],

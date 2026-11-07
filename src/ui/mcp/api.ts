@@ -140,10 +140,21 @@ const ACTION_ROUTES: Record<string, string> = {
   "/api/workspace/sync": "POST",
 };
 
-/** Action routes with a parameter: an agent's resume (MCP agent_resume). */
+/**
+ * Action routes with a parameter: an agent's resume (MCP agent_resume),
+ * and Bring in's list and import (MCP agent_import, AG-17.1).
+ */
 const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
   {
     re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/resume$/,
+    method: "POST",
+  },
+  {
+    re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/conversations$/,
+    method: "GET",
+  },
+  {
+    re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/conversations\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/import$/,
     method: "POST",
   },
 ];
