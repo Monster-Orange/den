@@ -147,7 +147,7 @@ jobs:
   publish:
     needs: [check, pack, tag]
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
-    timeout-minutes: 10
+    timeout-minutes: 45 # npm can take ~20 min to serve an accepted (202) upload
     permissions:
       contents: read
       id-token: write # the OIDC token npm trusts, instead of any npm token
@@ -167,6 +167,21 @@ jobs:
       # "./": without it, npm reads `release/<file>` as a GitHub repository (owner/name) and tries git over ssh
       - name: Publish it on npm
         run: npm publish "./release/${{ needs.pack.outputs.tarball }}" --access public --loglevel verbose
+      # npm answers 202 and processes the upload before serving it (seen: ~20 min). Until then the version is
+      # "staged": another publish gets 409, and a later run's check would not see it. So this job ends only when npm
+      # serves the version, and nobody reruns publish in that window.
+      - name: Wait until npm serves it
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          for i in $(seq 1 60); do
+            if [ "$(npm view "@monster-orange/den@$VERSION" version --prefer-online 2>/dev/null)" = "$VERSION" ]; then
+              echo "npm serves @monster-orange/den@$VERSION (after about $(( (i - 1) * 30 ))s)"; exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::npm accepted @monster-orange/den@$VERSION but has not served it after 30 minutes. Do not rerun publish (npm answers 409 for a staged version); check https://status.npmjs.org and the package page."
+          exit 1
 
   github-release:
     needs: [check, pack, publish]

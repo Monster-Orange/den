@@ -61,6 +61,9 @@ trusted publishing (no token anywhere):
 - A push to `main` whose `package.json` version is not on npm yet is the
   release: the gates, the tarball and its SHA256SUMS, the tag `v<version>`,
   `npm publish` with provenance, and a GitHub release.
+- npm can take about 20 minutes to serve a version after accepting it. The
+  publish job waits for it (up to 30 minutes) before the GitHub release.
+  Don't rerun publish in that window: npm answers 409 for a staged version.
 - A prerelease version (`0.1.0-dev.N`) never publishes, so `main` can carry
   work toward a version.
 - Bump the prerelease number (`-dev.N`) for every tarball handed to a
