@@ -575,6 +575,26 @@
     "ag.new.modelDef": "Persona default ({m})",
     "ag.new.ver": "Version",
     "ag.new.verDef": "Persona default ({v})",
+    // AG-17.1, Bring in.
+    "ag.bring": "Bring in",
+    "ag.bring.title": "Bring in a conversation",
+    "ag.bring.conv": "Conversation",
+    "ag.bring.help":
+      "Conversations started outside Den in this workspace's folder, newest first.",
+    "ag.bring.none":
+      "No conversations started outside Den in this workspace's folder.",
+    "ag.bring.untitled": "Untitled conversation",
+    "ag.bring.open": "Open elsewhere",
+    "ag.bring.openTip": "Still open in another terminal. Close it there first",
+    "ag.bring.agent": "Agent {id}",
+    "ag.bring.note":
+      "Continues it in the folder it ran in, with Den's tools and guards from now on. It keeps running if you close the pane. Close it in any other terminal first: Den only sees a conversation as open if it was written in the last minute.",
+    "ag.bring.go": "Bring in",
+    "ag.bring.going": "Bringing in…",
+    "ag.bring.done": "Brought in as {id}",
+    "ag.bring.now": "just now",
+    "ag.bring.min": "{n} min ago",
+    "ag.bring.h": "{n} h ago",
     "ag.new.note":
       "Starts in the workspace folder. It keeps running if you close the pane.",
     "ag.new.started": "Started {p} in {w}",

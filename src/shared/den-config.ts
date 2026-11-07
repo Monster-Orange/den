@@ -818,6 +818,8 @@ export const MCP_ACTIONS = [
   "run_tests",
   // AG-14.4: resume another agent of its workspace (or a granted one).
   "agent_resume",
+  // AG-17.1: bring in a conversation started outside Den, as an agent.
+  "agent_import",
 ] as const;
 export type McpAction = (typeof MCP_ACTIONS)[number];
 

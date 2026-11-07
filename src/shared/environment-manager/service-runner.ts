@@ -2794,18 +2794,13 @@ export function runServiceCommand(
   // later down signalled the dead group while the real listener ran on).
   // A failed start keeps no record at all.
   const serviceExited = (exitCode: number): void => {
-    const rec = recorded;
-    if (rec && processGroupStateSync(rec)?.state === "gone") {
-      const now = findDaemonByAddress(resolved.address);
-      // A non-zero exit is a failed start: nothing of it runs, so no
-      // record (its containers, if any, still run: then only the group
-      // goes). A zero exit handed off (`make up`): its group stays, and
-      // down says it already exited.
-      if (now?.pgid === rec.pgid && exitCode !== 0) {
-        if (!(now.containers?.length ?? 0)) unregisterDaemon(resolved.address);
-        else clearDaemonProcessGroup(resolved.address);
-      }
-    }
+    const rec: RecordedProcessGroup | null = recorded;
+    const state = rec ? (processGroupStateSync(rec)?.state ?? null) : null;
+    const now = findDaemonByAddress(resolved.address);
+    const action = failedStartCleanup(exitCode, rec, state, now);
+    if (action === "unregister") unregisterDaemon(resolved.address);
+    else if (action === "clear-group")
+      clearDaemonProcessGroup(resolved.address);
     onServiceExit?.(exitCode);
   };
   const proc = recordGroup
@@ -2833,6 +2828,30 @@ export function runServiceCommand(
         onServiceExit,
       );
   return { proc, detachable, interactive: false, logPath };
+}
+
+/**
+ * What a detached up does with its record when the service process exits.
+ * A non-zero exit is a failed start: nothing of it runs, so no record (its
+ * containers, if any, still run: then only the group goes). A zero exit
+ * handed off (`make up`): its group stays, and down says it already exited.
+ * The record goes only if it is this run's: its group is the one this run
+ * recorded and that group is gone, or this run could not record a group
+ * (the command exited, a zombie, before `ps` saw it) and the record names
+ * none.
+ */
+export function failedStartCleanup(
+  exitCode: number,
+  rec: RecordedProcessGroup | null,
+  groupState: string | null,
+  now: { pgid?: number; containers?: unknown[] } | undefined,
+): "unregister" | "clear-group" | "keep" {
+  if (exitCode === 0 || !now) return "keep";
+  const ours = rec
+    ? groupState === "gone" && now.pgid === rec.pgid
+    : now.pgid === undefined;
+  if (!ours) return "keep";
+  return (now.containers?.length ?? 0) ? "clear-group" : "unregister";
 }
 
 // ── Health checks ─────────────────────────────────────────────────────────────

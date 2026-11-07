@@ -129,6 +129,7 @@ import {
   syncConfiguredRuntimes,
   type AgentMcp,
   type LaunchInput,
+  type LaunchOutput,
   type Runtime,
 } from "../../shared/agents/runtimes.js";
 import type {
@@ -136,6 +137,11 @@ import type {
   RuntimeModel,
   RuntimePermissions,
 } from "../../shared/agents/runtime.js";
+import {
+  OPEN_ELSEWHERE_MESSAGE,
+  openElsewhere,
+  type RuntimeConversation,
+} from "../../shared/agents/conversations.js";
 import {
   archiveHandoff,
   DEFAULT_ROTATE,
@@ -1418,6 +1424,11 @@ interface StartMore {
   rotations?: AgentRecord["rotations"];
   /** Called once the old session is known ended, before the launch. */
   beforeLaunch?: () => void;
+  /**
+   * AG-17.1, bring in a conversation: launch the runtime's resume of this
+   * one (its id, in the folder it ran in) instead of a new conversation.
+   */
+  bringIn?: { token: string; cwd: string };
 }
 
 export async function startAgent(
@@ -1457,6 +1468,10 @@ export async function startAgent(
       ...(rt.permissions ? { allow } : {}),
     }),
     ...(more.firstPrompt ? { firstPrompt: more.firstPrompt } : {}),
+    // AG-17.1: the runtime's resume, in the folder the conversation ran in.
+    ...(more.bringIn
+      ? { worktree: more.bringIn.cwd, resumeToken: more.bringIn.token }
+      : {}),
   };
   // AG-13.4: a command a runtime can't express is said, never dropped.
   const unexpressed =
@@ -1473,7 +1488,9 @@ export async function startAgent(
       throw refused(`agent ${id} is running (${old.name})`, [
         `Attach: ${d.cli} sessions attach ${old.name}`,
       ]);
-    const out = launchOrThrow(() => rt.launch(input));
+    const out = more.bringIn
+      ? { ...broughtIn(rt, input), resumeToken: more.bringIn.token }
+      : launchOrThrow(() => rt.launch(input));
     more.beforeLaunch?.();
     // A new conversation: a handoff left from the last one is kept aside,
     // so the next rotation needs its own (den#4).
@@ -1516,6 +1533,7 @@ export async function startAgent(
           ...(out.resumeToken
             ? { resumeToken: out.resumeToken, launched: true }
             : {}),
+          ...(more.bringIn ? { broughtInAt: new Date().toISOString() } : {}),
         },
         argv: out.argv,
         env: out.env,
@@ -1534,6 +1552,174 @@ export async function startAgent(
       early,
     };
   });
+}
+
+/** A bring-in's launch: the runtime's resume (AG-17.1), never a new one. */
+function broughtIn(
+  rt: Runtime,
+  input: LaunchInput,
+): Omit<LaunchOutput, "resumeToken"> {
+  const out = launchOrThrow(() => rt.resume?.(input) ?? null);
+  if (!out) throw refused(`${rt.id} can't continue a conversation`);
+  return out;
+}
+
+// ── AG-17.1: bring in a conversation ────────────────────────────────────────
+
+/** A runtime's conversation as Bring in lists it. */
+export interface ListedConversation extends RuntimeConversation {
+  runtime: string;
+  /** Written in the last minute: still open in another terminal. */
+  open: boolean;
+  /** The Den agent already continuing it, if one is. */
+  agent?: string;
+}
+
+/** Each runtime, and whether it can bring a conversation in. */
+export interface BringInRuntime {
+  id: string;
+  label: string;
+  bringIn: boolean;
+  /** Why it can't, for the page. */
+  why?: string;
+}
+
+function bringInRuntimes(): BringInRuntime[] {
+  return runtimeIds().map((id) => {
+    const rt = getRuntime(id)!;
+    const label = rt.label ?? id;
+    return rt.listSessions
+      ? { id, label, bringIn: true }
+      : {
+          id,
+          label,
+          bringIn: false,
+          why: `${label} can't bring in a conversation yet`,
+        };
+  });
+}
+
+/** The conversation id each agent of this state dir continues. */
+function agentByToken(d: AgentsResolved): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const r of listRecords(d.stateDir()))
+    if (r.resumeToken) m.set(`${r.runtime} ${r.resumeToken}`, r.id);
+  return m;
+}
+
+/**
+ * The conversations Bring in offers for workspace `ws` (AG-17.1): each
+ * runtime's own (only those with listSessions), that ran in the
+ * workspace's folder or inside it, newest first. Reading never starts
+ * anything; a runtime's history is read only at the ends of each file.
+ */
+export function listConversations(
+  d: AgentsResolved,
+  ws: string,
+  runtime?: string,
+): { runtimes: BringInRuntime[]; conversations: ListedConversation[] } {
+  const where = "agents import";
+  checkWorkspaceName(where, ws);
+  if (!d.workspaceExists(ws))
+    throw usage(`${where}: workspace "${ws}" does not exist`, 404);
+  syncCatalog(d);
+  if (runtime !== undefined) runtimeFor(runtime);
+  const dir = d.workspaceDir(ws);
+  const taken = agentByToken(d);
+  const now = Date.now();
+  const conversations: ListedConversation[] = [];
+  for (const id of runtimeIds()) {
+    if (runtime !== undefined && id !== runtime) continue;
+    const rt = getRuntime(id);
+    if (!rt?.listSessions) continue;
+    for (const c of rt.listSessions(dir, d.env)) {
+      const agent = taken.get(`${id} ${c.id}`);
+      conversations.push({
+        ...c,
+        runtime: id,
+        open: openElsewhere(c.lastAt, now),
+        ...(agent ? { agent } : {}),
+      });
+    }
+  }
+  conversations.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+  return { runtimes: bringInRuntimes(), conversations };
+}
+
+export interface ImportRequest {
+  workspace: string;
+  /** The runtime's conversation id. */
+  session: string;
+  persona: string;
+  runtime?: string;
+  id?: string;
+}
+
+/** The persona's id, else the first `<persona>-<n>` no agent has. */
+function freeId(d: AgentsResolved, persona: string): string {
+  if (!readRecord(d.stateDir(), persona)) return persona;
+  for (let n = 2; n < 1000; n++) {
+    const id = `${persona.slice(0, 58)}-${n}`;
+    if (!readRecord(d.stateDir(), id)) return id;
+  }
+  throw refused(`no free agent id for ${persona}: give one with --id`);
+}
+
+/**
+ * Bring a conversation in (AG-17.1): the runtime's resume of it, under Den
+ * (its token, hooks, guards, the folder it ran in, the audit trail), as a
+ * new agent with the persona given. Afterwards it is an agent like any
+ * other: stop, resume, rename. Refused while the conversation is open in
+ * another terminal (written in the last minute), when an agent already
+ * continues it, or when it isn't one of the workspace's.
+ */
+export async function importAgent(
+  d: AgentsResolved,
+  req: ImportRequest,
+): Promise<Started> {
+  const where = "agents import";
+  const runtime = req.runtime ?? DEFAULT_RUNTIME_ID;
+  const { runtimes, conversations } = listConversations(
+    d,
+    req.workspace,
+    runtime,
+  );
+  const rt = runtimes.find((r) => r.id === runtime);
+  if (!rt?.bringIn)
+    throw refused(
+      rt?.why ?? `${runtime} can't bring in a conversation`,
+      [],
+      422,
+    );
+  const c = conversations.find((x) => x.id === req.session);
+  if (!c)
+    throw refused(
+      `${where}: no ${rt.label} conversation "${req.session}" in workspace ${req.workspace}'s folder`,
+      [`List them: ${d.cli} agents import -w ${req.workspace}`],
+      404,
+    );
+  if (c.agent)
+    throw new AgentError(
+      `${where}: agent ${c.agent} already continues this conversation`,
+      {
+        code: "already_agent",
+        hints: [
+          `Resume it: ${d.cli} agents resume ${c.agent} -w ${req.workspace}`,
+        ],
+      },
+    );
+  if (c.open)
+    throw new AgentError(OPEN_ELSEWHERE_MESSAGE, { code: "open_elsewhere" });
+  if (!fs.statSync(c.cwd, { throwIfNoEntry: false })?.isDirectory())
+    throw refused(`${where}: the folder it ran in, ${c.cwd}, is gone`);
+  const id = req.id ?? freeId(d, req.persona);
+  if (readRecord(d.stateDir(), id))
+    throw refused(`${where}: agent ${id} exists; give this one another --id`);
+  return startAgent(
+    d,
+    { workspace: req.workspace, persona: req.persona, runtime, id },
+    { bringIn: { token: c.id, cwd: c.cwd } },
+  );
 }
 
 // ── stop, resume ────────────────────────────────────────────────────────────

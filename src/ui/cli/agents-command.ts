@@ -28,6 +28,13 @@
  *           same conversation id (there is nothing to continue).
  *           --all-interrupted (AG-14.3): every agent interrupted when Den or
  *           the machine restarted that can resume.
+ *   import  (AG-17.1) bring in a conversation started outside Den: with
+ *           no --session, the runtime's own conversations in the
+ *           workspace's folder (newest first); with --session <id> and
+ *           --persona <p>, the runtime's resume of it (den-claude:
+ *           --resume <id>) in the folder it ran in, as a new agent under
+ *           Den's token, hooks and guards. Refused while it is still open
+ *           in another terminal (written in the last minute).
  *   rm      (AG-14.1b) forgets a stopped, interrupted or exited agent (never
  *           a running one); --stopped forgets every one of -w <ws> (or of
  *           every workspace). The runtime's own history stays.
@@ -69,7 +76,9 @@ import {
 } from "../../shared/agents/records.js";
 import {
   AgentError,
+  importAgent,
   listAgents,
+  listConversations,
   listPersonas as personaList,
   listRuntimes,
   loadAgentWorkspaces,
@@ -107,7 +116,7 @@ export {
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|relaunch|rm|personas|doctor|handback-check|handoff-check> ...",
+    "agents <list|start|stop|resume|relaunch|import|rm|personas|doctor|handback-check|handoff-check> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -132,6 +141,12 @@ export const AGENTS_HELP = {
     "    compactions (default 3) or its pull request merged, and its handoff.md",
     "    passes the check, a fresh conversation (same persona, workspace, folder,",
     "    grants) whose first prompt is the handoff",
+    "{cli} agents import -w <ws> [--runtime <r>] [--json]",
+    "{cli} agents import -w <ws> --session <id> --persona <p> [--runtime <r>] [--id <id>]",
+    "    bring in a conversation started outside Den: the first lists the runtime's",
+    "    own (default den-claude) in the workspace's folder; the second continues",
+    "    one as a Den agent (its resume, in the folder it ran in). Refused while it",
+    "    is still open in another terminal: close it there first",
     "{cli} agents rm <id> [-w <ws>]",
     "{cli} agents rm --stopped [-w <ws>]",
     "    forget a stopped, interrupted or exited agent (never a running one);",
@@ -276,6 +291,72 @@ async function start(args: string[], d: AgentsResolved): Promise<number> {
     d,
     s,
     `started agent ${s.rec.id} (${s.rec.persona}, ${s.rec.runtime}) as ${s.rec.sessionName} in ${s.rec.cwd}`,
+  );
+}
+
+/** `agents import` (AG-17.1): list, or bring one in. */
+async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
+  const where = "agents import";
+  const p = parseArgs(where, args, {
+    "--workspace": true,
+    "--runtime": true,
+    "--session": true,
+    "--persona": true,
+    "--id": true,
+    "--json": false,
+  });
+  noExtra(where, p);
+  const ws = workspaceFlag(where, p);
+  if (!ws) throw new UsageError(`${where} needs -w <workspace>`);
+  const runtime = str(p, "--runtime");
+  const session = str(p, "--session");
+  if (!session) {
+    if (str(p, "--persona") || str(p, "--id"))
+      throw new UsageError(`${where}: --persona and --id need --session <id>`);
+    const { runtimes, conversations } = listConversations(d, ws, runtime);
+    if (p.flags["--json"]) {
+      d.out(
+        JSON.stringify({ workspace: ws, runtimes, conversations }, null, 2),
+      );
+      return 0;
+    }
+    for (const r of runtimes)
+      if (!r.bringIn && (!runtime || runtime === r.id)) d.err(`${r.why}`);
+    if (!conversations.length) {
+      d.out(`no conversations to bring in for workspace ${ws}`);
+      return 0;
+    }
+    d.out(
+      columns([
+        ["ID", "RUNTIME", "LAST", "TITLE", "FOLDER", "NOTE"],
+        ...conversations.map((c) => [
+          c.id,
+          c.runtime,
+          c.lastAt.slice(0, 16).replace("T", " "),
+          c.title ?? "(untitled)",
+          c.cwd,
+          c.agent ? `agent ${c.agent}` : c.open ? "open elsewhere" : "",
+        ]),
+      ]).join("\n"),
+    );
+    d.out(
+      `bring one in: ${d.cli} agents import -w ${ws} --session <id> --persona <p>`,
+    );
+    return 0;
+  }
+  const persona = str(p, "--persona");
+  if (!persona) throw new UsageError(`${where} needs --persona <p>`);
+  const s = await importAgent(d, {
+    workspace: ws,
+    session,
+    persona,
+    runtime,
+    id: str(p, "--id"),
+  });
+  return report(
+    d,
+    s,
+    `brought in ${session} as agent ${s.rec.id} (${s.rec.persona}, ${s.rec.runtime}) as ${s.rec.sessionName} in ${s.rec.cwd}`,
   );
 }
 
@@ -616,6 +697,9 @@ export async function cmdAgents(
         case "relaunch":
           await loadAgentWorkspaces(deps);
           return await relaunch(rest, d);
+        case "import":
+          await loadAgentWorkspaces(deps);
+          return await bringIn(rest, d);
         case "rm":
           await loadAgentWorkspaces(deps);
           return await rm(rest, d);

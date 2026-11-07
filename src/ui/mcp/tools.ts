@@ -776,6 +776,63 @@ const agentResumeTool: DenTool = {
   },
 };
 
+/** A runtime's conversation id (Claude Code: a uuid). */
+const SESSION_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
+/**
+ * MCP agent_import (AG-17.1): bring in a conversation started outside Den
+ * as an agent of this workspace (or a granted one). No session: the list.
+ * Opt-in through mcp.actions; the web server checks the scope again.
+ */
+const agentImportTool: DenTool = {
+  name: "agent_import",
+  title: "Bring in a conversation",
+  description:
+    "Bring in a conversation started outside Den (in the workspace's folder) as a Den agent: its runtime's own resume, in the folder it ran in, under Den's token, hooks and guards. Without session: lists the conversations there are (id, title, lastAt, cwd, runtime, open, agent). With session and persona: brings that one in and answers with the agent. Refused while it is still open in another terminal (written in the last minute), or when an agent already continues it.",
+  action: true,
+  shape: {
+    session: z
+      .string()
+      .optional()
+      .describe("The runtime's conversation id (omit to list them)"),
+    persona: z.string().optional().describe("The persona to run it as"),
+    runtime: z.string().optional().describe("The runtime (default den-claude)"),
+    workspace: workspaceArg,
+  },
+  async run(a, { api, scope }) {
+    let ws = str(a.workspace) ?? scope?.workspace;
+    if (!ws) {
+      const focused = (await api.get("/api/workspaces")) as {
+        focus?: unknown;
+      };
+      ws = typeof focused?.focus === "string" ? focused.focus : undefined;
+    }
+    if (!ws || !NAME_RE.test(ws))
+      throw new Refusal("agent_import: name the workspace");
+    if (scope && ws !== scope.workspace && !(scope.grants ?? []).includes(ws))
+      throw new ScopeRefusal(
+        `agent_import: workspace "${ws}" is outside this agent's scope ("${scope.workspace}")`,
+      );
+    const runtime = str(a.runtime);
+    if (runtime && !NAME_RE.test(runtime))
+      throw new Refusal("agent_import: runtime must be a runtime id");
+    const session = str(a.session);
+    const base = `/api/workspaces/${encodeURIComponent(ws)}/conversations`;
+    if (!session) return api.get(base, runtime ? { runtime } : {}, "GET");
+    if (!SESSION_RE.test(session))
+      throw new Refusal("agent_import: session must be a conversation id");
+    const persona = str(a.persona);
+    if (!persona || !NAME_RE.test(persona))
+      throw new Refusal("agent_import: name the persona to run it as");
+    return api.get(
+      `${base}/${encodeURIComponent(session)}/import`,
+      {},
+      "POST",
+      { persona, ...(runtime ? { runtime } : {}) },
+    );
+  },
+};
+
 const ACTION_TOOLS: Record<McpAction, DenTool> = {
   service_up: lifecycleTool("up"),
   service_down: lifecycleTool("down"),
@@ -865,6 +922,7 @@ const ACTION_TOOLS: Record<McpAction, DenTool> = {
     },
   },
   agent_resume: agentResumeTool,
+  agent_import: agentImportTool,
 };
 
 export const READ_TOOL_NAMES: readonly string[] = READ_TOOLS.map((t) => t.name);
@@ -903,6 +961,7 @@ const WORKSPACE_TOOLS = new Set([
   "workspace_sync",
   "run_tests",
   "agent_resume",
+  "agent_import",
 ]);
 
 /**

@@ -642,6 +642,7 @@
           <button type="button" class="den-btn" id="ag-clear" hidden>
             Clear stopped
           </button>
+          <button type="button" class="den-btn" id="ag-bring">Bring in</button>
           <button type="button" class="den-btn primary" id="ag-start">
             + Start agent
           </button>
@@ -660,6 +661,18 @@
       <dialog class="ag-dlg pe-dlg" id="ag-dlg" aria-labelledby="ag-dlg-h">
         <form method="dialog" id="ag-form" novalidate>
           <h2 id="ag-dlg-h">Start an agent</h2>
+          <div class="fld" id="ag-conv-f" hidden>
+            <div class="fldh">
+              <span class="k" id="ag-conv-t">Conversation</span>
+            </div>
+            <p class="helpl" id="ag-conv-h"></p>
+            <div
+              class="plist"
+              id="ag-conv"
+              role="radiogroup"
+              aria-labelledby="ag-conv-t"
+            ></div>
+          </div>
           <div class="fld" id="ag-pfld">
             <div class="fldh">
               <span class="k" id="ag-p-t">Persona</span

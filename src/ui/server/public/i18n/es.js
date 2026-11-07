@@ -465,6 +465,26 @@
     "ag.new.modelDef": "Predeterminado de la persona ({m})",
     "ag.new.ver": "Versión",
     "ag.new.verDef": "Predeterminado de la persona ({v})",
+    // AG-17.1, Bring in.
+    "ag.bring": "Traer",
+    "ag.bring.title": "Traer una conversación",
+    "ag.bring.conv": "Conversación",
+    "ag.bring.help":
+      "Conversaciones iniciadas fuera de Den en la carpeta de este espacio de trabajo, la más reciente primero.",
+    "ag.bring.none":
+      "No hay conversaciones iniciadas fuera de Den en la carpeta de este espacio de trabajo.",
+    "ag.bring.untitled": "Conversación sin título",
+    "ag.bring.open": "Abierta en otro lugar",
+    "ag.bring.openTip": "Sigue abierta en otra terminal. Ciérrala allí primero",
+    "ag.bring.agent": "Agente {id}",
+    "ag.bring.note":
+      "La continúa en la carpeta donde se ejecutó, con las herramientas y protecciones de Den desde ahora. Sigue en ejecución si cierras el panel. Ciérrala antes en cualquier otro terminal: Den solo la ve abierta si se escribió en el último minuto.",
+    "ag.bring.go": "Traer",
+    "ag.bring.going": "Trayendo…",
+    "ag.bring.done": "Traída como {id}",
+    "ag.bring.now": "ahora mismo",
+    "ag.bring.min": "hace {n} min",
+    "ag.bring.h": "hace {n} h",
     "ag.new.note":
       "Se inicia en la carpeta del espacio de trabajo. Sigue en ejecución si cierras el panel.",
     "ag.new.started": "{p} iniciado en {w}",

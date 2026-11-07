@@ -70,6 +70,7 @@ import { catalogFind } from "./catalog-runtime.js";
 import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
 import { claudeProjectsDir } from "../usage/paths.js";
 import { cleanName, transcriptTitle } from "./transcript-follow.js";
+import { claudeConversations } from "./conversations.js";
 
 /**
  * `/rename "x"` keeps the quotes in customTitle: one matching pair around
@@ -487,6 +488,14 @@ export const denClaude: Runtime = {
   // Its transcript, <token>.jsonl in any project under its projects dir.
   conversationExists(token, env = process.env) {
     return transcriptFile(token, env) !== null;
+  },
+  // AG-17.1: its transcripts for the folder (conversations.ts).
+  listSessions(cwd, env = process.env) {
+    try {
+      return claudeConversations(cwd, env);
+    } catch {
+      return [];
+    }
   },
   // AG-4b, unofficial (catalog sessionName): `/rename` appends a
   // {"type":"custom-title","customTitle":…} record to the transcript; the

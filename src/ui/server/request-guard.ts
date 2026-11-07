@@ -17,9 +17,9 @@
  *    and sign-in (/api/web/*, /auth, /api/session/logout), the lock (R8:
  *    /api/sudo-password*), or a shell-grade route other than its own
  *    session's /api/sessions/<id>/*: agent start and resume mint tokens.
- *    403 `agent_forbidden`. One exception (AG-14.4): MCP agent_resume,
- *    when mcp.actions lists it, for another agent of its own workspace
- *    or a granted one (agent-resume-grant.ts). WS-3a (0.4.2) adds the workspace check at
+ *    403 `agent_forbidden`. Two exceptions: MCP agent_resume (AG-14.4)
+ *    and agent_import (AG-17.1), each when mcp.actions lists it, inside
+ *    its own workspace or a granted one (agent-resume-grant.ts). WS-3a (0.4.2) adds the workspace check at
  *    agentRefusal's seam.
  *  - Sign-in (§4, route-classes.ts): beyond loopback (a LAN name, a peer
  *    that isn't loopback, or the edge hostname for a client on another
@@ -61,7 +61,12 @@
 import { randomBytes, timingSafeEqual, createHash } from "crypto";
 import type * as http from "http";
 import { readMcpConfig } from "../../shared/den-config.js";
-import { agentResumeRefusal, agentResumeTarget } from "./agent-resume-grant.js";
+import {
+  agentImportRefusal,
+  agentImportTarget,
+  agentResumeRefusal,
+  agentResumeTarget,
+} from "./agent-resume-grant.js";
 import * as net from "net";
 import * as os from "os";
 import {
@@ -716,6 +721,14 @@ export function agentRefusal(
   if (target)
     return (
       agentResumeRefusal(p, target.ws, target.id, mcpActions()) ??
+      workspaceRefusal(p, pathname)
+    );
+  // AG-17.1: MCP agent_import, opted in, inside the agent's scope (its
+  // list as well as its import: conversation titles are a person's).
+  const imp = agentImportTarget(pathname);
+  if (imp)
+    return (
+      agentImportRefusal(p, imp.ws, mcpActions()) ??
       workspaceRefusal(p, pathname)
     );
   if (cls === "shell-grade")

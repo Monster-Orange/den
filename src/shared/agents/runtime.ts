@@ -21,6 +21,7 @@ import type { AgentRecord } from "./records.js";
 import type { Persona } from "./personas.js";
 import type { BinSource, RuntimeFind } from "./runtime-search.js";
 import type { PermissionIntent } from "./permissions.js";
+import type { RuntimeConversation } from "./conversations.js";
 
 export const RUNTIME_KIND = "runtime";
 
@@ -193,6 +194,14 @@ export interface Runtime {
    * just mean it isn't written yet.
    */
   conversationExists?(token: string, env?: NodeJS.ProcessEnv): boolean;
+  /**
+   * AG-17.1, bring in a conversation: the runtime's own recent
+   * conversations that ran in `cwd` or a folder inside it, newest first,
+   * read from its history (only the ends of each file, never a whole
+   * transcript). Each id is one `resume` continues. None: this runtime
+   * can't bring one in yet. Must never throw.
+   */
+  listSessions?(cwd: string, env?: NodeJS.ProcessEnv): RuntimeConversation[];
   /**
    * What the runtime prints when it exits at once (0.4.8): `noConversation`
    * when a resume finds nothing to continue, `idInUse` when a new
