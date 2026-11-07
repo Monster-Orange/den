@@ -742,3 +742,38 @@ describe("R24e: the runs dock follows the workspace", () => {
     await p.context().close();
   }, 60_000);
 });
+
+describe("the CLI default is named, never a bare glyph", () => {
+  it("the list row, the pane's badge and its action say “CLI default”, with the tooltip", async () => {
+    const p = await open("main", "/local-dev");
+    await p.waitForSelector('.ws-item[data-name="main"]');
+    const row = await p.$eval(
+      '.ws-item[data-name="main"] > span:first-child',
+      (e) => ({
+        text: e.textContent!.replace(/\s+/g, " ").trim(),
+        tip: e.querySelector(".ws-cli-default")?.getAttribute("title") ?? "",
+      }),
+    );
+    // No glyph with no words: every mark on the row is a word.
+    expect(row.text).not.toMatch(/[●•◉○]/);
+    expect(row.text).toContain("CLI default");
+    expect(row.tip).toMatch(/top bar only changes what pages show/);
+    const side = await p.$eval(
+      '.ws-item[data-name="side"] > span:first-child',
+      (e) => e.textContent!,
+    );
+    expect(side).not.toContain("CLI default");
+    await p.click('.ws-item[data-name="side"]');
+    await p.waitForSelector('[data-action="focus-ws"]');
+    expect(
+      await p.$eval('[data-action="focus-ws"]', (e) => e.textContent!.trim()),
+    ).toBe("Make CLI default");
+    await p.click('.ws-item[data-name="main"]');
+    await p.waitForFunction(() =>
+      document
+        .querySelector(".badge.active-ws")
+        ?.textContent?.includes("CLI default"),
+    );
+    await p.context().close();
+  }, 60_000);
+});

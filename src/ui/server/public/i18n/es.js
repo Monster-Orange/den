@@ -27,7 +27,9 @@
     "org.title": "Org: {title}",
     "org.titleId": "Org: {title} ({id})",
     "ws.all": "Todos los activos",
-    "ws.focus": "foco",
+    "ws.focus": "predeterminado de la CLI",
+    "ws.focusTip":
+      "Los comandos de la CLI se ejecutan aquí si no indicas un espacio de trabajo. Elegir un espacio en la barra superior solo cambia lo que muestran las páginas.",
     "ws.none": "No hay espacios de trabajo activos",
     "ws.manage": "Gestionar espacios de trabajo…",
     "ws.allN": "Todos los activos ({n})",
@@ -37,8 +39,8 @@
     "ws.viewTitle":
       "Vista: lo que muestra cada página ({ws}). Es solo un filtro: no inicia, detiene ni enruta nada.",
     "ws.viewTitleFocus":
-      "Vista: lo que muestra cada página ({ws}). Es solo un filtro: no inicia, detiene ni enruta nada, y el foco ({focus}) sigue siendo el destino de los comandos.",
-    "ws.setFocus": "Poner el foco en {ws}",
+      "Vista: lo que muestra cada página ({ws}). Es solo un filtro: no inicia, detiene ni enruta nada, y el predeterminado de la CLI ({focus}) sigue siendo el destino de los comandos.",
+    "ws.setFocus": "Hacer de {ws} el predeterminado de la CLI",
     "ws.setFocusTip":
       "Lo convierte en el destino por defecto de los comandos (escribe workspaces.yml)",
     "ws.viewFailed": "No se pudo cambiar la vista: {msg}",

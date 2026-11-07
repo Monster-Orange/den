@@ -25,7 +25,7 @@ export const EN_FALLBACK = {
   "ws.viewTitle":
     "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing.",
   "ws.viewTitleFocus":
-    "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing, and focus ({focus}) stays the target for commands.",
+    "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing, and the CLI default ({focus}) stays the target for commands.",
 };
 function enT(key, vars) {
   return String(EN_FALLBACK[key] ?? key).replace(/\{(\w+)\}/g, (m, k) =>

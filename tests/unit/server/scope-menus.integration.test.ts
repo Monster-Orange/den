@@ -6,7 +6,7 @@
  *
  * - the ORG label is the GitHub org's `orgs:` label, not the bare id;
  * - Workspace ▾ sets the view (user prefs only) and never moves the focus;
- *   "Set <ws> as focus" is the separate item that does;
+ *   "Make <ws> the CLI default" is the separate item that does;
  * - a Services card's ☆ follows an unpin from the rail, without a reload;
  * - every page has exactly one main landmark, #den-content;
  * - the runs dock never covers the graph's cards (since 0.3.0-dev.35 on
@@ -249,7 +249,7 @@ describe("Workspace ▾ (R4)", () => {
       ),
     ).toEqual([
       ["All active (3)", "true"],
-      ["ws-afocus", "false"],
+      ["ws-aCLI default", "false"],
       ["ws-b", "false"],
       ["ws-c", "false"],
       ["Manage workspaces…", null],
@@ -272,11 +272,11 @@ describe("Workspace ▾ (R4)", () => {
     await p.waitForSelector('[data-pin-toggle="billing"]');
     expect(await p.$$('[data-pin-toggle="search"]')).toHaveLength(0);
 
-    // "Set ws-b as focus" is the one item that writes workspaces.yml.
+    // "Make ws-b the CLI default" is the one item that writes workspaces.yml.
     await p.click("#ws-pill");
     await Promise.all([
       p.waitForNavigation(),
-      p.click('.den-pop .den-mi:has-text("Set ws-b as focus")'),
+      p.click('.den-pop .den-mi:has-text("Make ws-b the CLI default")'),
     ]);
     expect((await getJson<{ focus: string }>("/api/workspaces")).focus).toBe(
       "ws-b",

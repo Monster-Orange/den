@@ -526,9 +526,9 @@ describe("the scope breadcrumb (R4)", () => {
     });
     expect(await menuRows(p)).toEqual([
       { text: "All active (2)", role: "menuitemradio", checked: "false" },
-      { text: "ws-afocus", role: "menuitemradio", checked: "false" },
+      { text: "ws-aCLI default", role: "menuitemradio", checked: "false" },
       { text: "ws-b", role: "menuitemradio", checked: "true" },
-      { text: "Set ws-b as focus", role: "menuitem", checked: null },
+      { text: "Make ws-b the CLI default", role: "menuitem", checked: null },
       { text: "Manage workspaces…", role: "menuitem", checked: null },
     ]);
     // ✓ on the checked row (R18), and focus starts there.
@@ -541,7 +541,7 @@ describe("the scope breadcrumb (R4)", () => {
     expect(await focusedText(p)).toBe("ws-b");
     // ↑/↓ move (wrapping), Home and End.
     await p.keyboard.press("ArrowDown");
-    expect(await focusedText(p)).toBe("Set ws-b as focus");
+    expect(await focusedText(p)).toBe("Make ws-b the CLI default");
     await p.keyboard.press("Home");
     expect(await focusedText(p)).toBe("All active (2)");
     await p.keyboard.press("ArrowUp");
@@ -563,7 +563,7 @@ describe("the scope breadcrumb (R4)", () => {
     ).toEqual([["all"], []]);
     // The separate focus item is the only way to move the focus.
     await p.click("#ws-pill");
-    await p.click('.den-pop .den-mi:has-text("Set ws-b as focus")');
+    await p.click('.den-pop .den-mi:has-text("Make ws-b the CLI default")');
     expect(
       await p.evaluate(() => {
         const w = window as unknown as { picked: string[]; focused: string[] };
@@ -971,7 +971,7 @@ describe("a consumer's dev.18 run (two consumers)", () => {
     await p.click("#ws-pill");
     await p.waitForSelector(".den-pop");
     const items = await axNames(p, "menuitemradio");
-    expect(items).toContain("default, focus");
+    expect(items).toContain("default, CLI default");
     await p.context().close();
   });
 
