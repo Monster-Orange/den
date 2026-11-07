@@ -297,6 +297,13 @@ export async function startAgentsPageServer(
     ran,
     elevated,
     seed(rec) {
+      // A seeded agent with a token had a conversation: Claude Code's
+      // transcript for it is on disk, as it would be (0.4.8 resume rule).
+      if (rec.resumeToken) {
+        const dir = path.join(home, ".claude", "projects", "-seeded");
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, `${rec.resumeToken}.jsonl`), "{}\n");
+      }
       writeRecord(stateDir, {
         persona: rec.id,
         runtime: "den-claude",

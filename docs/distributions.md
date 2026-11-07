@@ -2172,12 +2172,16 @@ it. Each row has three buttons:
   The agent comes back in the folder it had, with its workspace and its
   grants. A grant you took out of the config since is gone; one you added
   is not taken. Resume is never a new conversation fed the old prompt.
-  Every launch marks the record `launched: true`, so every later resume
-  is `--resume <id>`, even when nobody typed. Den also checks Claude
-  Code's transcript (`<id>.jsonl` under `$CLAUDE_CONFIG_DIR/projects`,
-  else `~/.claude/projects`). If Claude Code says there is no conversation
-  yet, Den starts fresh once under the same id, folder and scope, and says
-  "nothing to resume yet; started fresh" (the route adds `fresh: true`).
+  Den decides before it launches. For Claude Code it looks for the
+  conversation's transcript (`<id>.jsonl` under
+  `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`): if it is
+  there, or someone typed in the last session, the resume is
+  `--resume <id>`. If not, nobody ever typed, so Den starts fresh under the
+  same id, folder and scope, and says "nothing to resume yet; started
+  fresh" (the route adds `fresh: true`). For a runtime Den can't check,
+  the record decides: every launch marks it `launched: true`, and a
+  launched record resumes. As a backstop, if the runtime still says there
+  is no conversation, Den starts fresh once and says so.
   If a fresh start says the id is already in use, Den resumes once
   instead. If both fail, the CLI exits 1 and the route answers 502 with
   code `resume_failed`, naming the id and Start fresh.

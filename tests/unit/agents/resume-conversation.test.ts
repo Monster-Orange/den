@@ -23,6 +23,7 @@ import * as http from "http";
 import type { AddressInfo } from "net";
 import * as path from "path";
 import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
+import { plainLines } from "../../../src/ui/cli/agent-ops.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { handleAgentRoutes } from "../../../src/ui/server/agent-routes.js";
 import {
@@ -69,6 +70,23 @@ function mcpArgs(r: Rig): string[] {
   return Object.values(cfg.mcpServers)[0].args;
 }
 
+/** Claude Code's transcript for `token`, as it writes it once prompted. */
+function transcript(r: Rig, token: string): void {
+  const claude = path.join(r.dir, "claude-config");
+  fs.mkdirSync(path.join(claude, "projects", "-work-north"), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    path.join(claude, "projects", "-work-north", `${token}.jsonl`),
+    "{}\n",
+  );
+  r.deps.env = { ...r.deps.env, CLAUDE_CONFIG_DIR: claude };
+}
+
+/** What Claude Code 2.1.319 prints on a resume with nothing to continue. */
+const NO_CONVERSATION =
+  "\x1b[2mNo conversation found with session ID: x\x1b[0m\r\n\x1b(B\x1b7\x1b8\x1b(B\x1b7\x1b8";
+
 async function started(r: Rig): Promise<string> {
   r.config.agents = { planner: { grants: ["south"] } };
   expect(await agents(r, "start", "-w", "north", "--persona", "planner")).toBe(
@@ -78,11 +96,13 @@ async function started(r: Rig): Promise<string> {
 }
 
 describe("the conversation survives stop and resume without typing", () => {
-  it("start, then stop and resume three times, never typing: every resume is --resume <token>", async () => {
+  it("prompted once, then stopped and resumed three times, never typing: every resume is --resume <token>", async () => {
     const r = await rig();
     const token = await started(r);
     expect(rec(r).launched).toBe(true);
     expect(head(r, 0)).toEqual(["--session-id", token]);
+    // The first session was prompted: Claude Code wrote its transcript.
+    transcript(r, token);
     for (let i = 1; i <= 3; i++) {
       await stopIt(r);
       expect(await agents(r, "resume", "planner")).toBe(0);
@@ -94,14 +114,32 @@ describe("the conversation survives stop and resume without typing", () => {
     expect(rec(r).resumeToken).toBe(token);
   });
 
-  it("a record marked launched resumes with --resume even when its last session was never prompted", async () => {
+  it("a brand-new agent stopped before anyone typed: no transcript, so it starts fresh at once and says so", async () => {
     const r = await rig();
     const token = await started(r);
     await stopIt(r);
-    writeRecord(r.stateDir, { ...rec(r), launched: true });
+    expect(rec(r).launched).toBe(true);
     expect(await agents(r, "resume", "planner")).toBe(0);
-    expect(head(r, 1)).toEqual(["--resume", token]);
+    expect(head(r, 1)).toEqual(["--session-id", token]);
+    expect(r.made).toHaveLength(2);
+    expect(r.made[1].opts.cwd).toBe(r.made[0].opts.cwd);
+    expect(r.out.join("\n")).toMatch(/nothing to resume yet; started fresh/);
   });
+
+  it("the backstop reads past Claude Code's trailing escape codes: no conversation → fresh once", async () => {
+    const r = await rig();
+    r.deps.exitWatchMs = 300;
+    const token = await started(r);
+    // A transcript Den sees, but the runtime still finds nothing.
+    transcript(r, token);
+    await stopIt(r);
+    const said = answers(r, 1, NO_CONVERSATION);
+    expect(await agents(r, "resume", "planner")).toBe(0);
+    await said;
+    expect(head(r, 1)).toEqual(["--resume", token]);
+    expect(head(r, 2)).toEqual(["--session-id", token]);
+    expect(r.out.join("\n")).toMatch(/nothing to resume yet; started fresh/);
+  }, 20_000);
 
   it("no flag, but the runtime's transcript is there: --resume", async () => {
     const r = await rig();
@@ -135,10 +173,11 @@ describe("the conversation survives stop and resume without typing", () => {
 });
 
 describe("one try the other way, then a clear error", () => {
-  it("start, stop without typing, resume: --resume first; told no conversation, it starts fresh with the same token, folder and scope", async () => {
+  it("a resume told no conversation starts fresh with the same token, folder and scope", async () => {
     const r = await rig();
     r.deps.exitWatchMs = 300;
     const token = await started(r);
+    transcript(r, token);
     await stopIt(r);
     const scope = mcpArgs(r);
     const said = answers(r, 1, "No conversation found with session ID: x");
@@ -177,6 +216,7 @@ describe("one try the other way, then a clear error", () => {
     const r = await rig();
     r.deps.exitWatchMs = 300;
     const token = await started(r);
+    transcript(r, token);
     await stopIt(r);
     const said = Promise.all([
       answers(r, 1, "No conversation found with session ID: x"),
@@ -197,6 +237,7 @@ describe("one try the other way, then a clear error", () => {
     const r = await rig();
     r.deps.exitWatchMs = 300;
     const token = await started(r);
+    transcript(r, token);
     await stopIt(r);
     const server = http.createServer((req, res) => {
       jsonApiErrors(res, newRequestId());
@@ -221,4 +262,13 @@ describe("one try the other way, then a clear error", () => {
     expect(String(json.error)).toContain(token);
     expect(JSON.stringify(json)).toMatch(/Start fresh/);
   }, 20_000);
+});
+
+describe("plainLines", () => {
+  it("drops charset, save and restore escapes, so only the text is left", () => {
+    expect(plainLines(NO_CONVERSATION)).toEqual([
+      "No conversation found with session ID: x",
+    ]);
+    expect(plainLines("a\x1b)0b\x1b=c\x1b>d")).toEqual(["abcd"]);
+  });
 });

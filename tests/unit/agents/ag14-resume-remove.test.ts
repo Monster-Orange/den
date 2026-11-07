@@ -62,6 +62,15 @@ async function typeInto(r: Rig, id: string, text: string): Promise<void> {
   c.write(sid, Buffer.from(text));
   await settle();
   c.close();
+  // Claude Code writes the conversation's transcript once prompted.
+  const token = record(r, id).resumeToken as string | undefined;
+  if (token) {
+    const claude = path.join(r.dir, "claude-config");
+    const dir = path.join(claude, "projects", "-work");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${token}.jsonl`), "{}\n");
+    r.deps.env = { ...r.deps.env, CLAUDE_CONFIG_DIR: claude };
+  }
 }
 
 async function listRows(r: Rig, ws: string, ...more: string[]) {

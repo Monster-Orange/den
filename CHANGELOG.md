@@ -53,10 +53,14 @@ got done, read on this machine only (den#6, the agent-usage issue).
 - **A resume never loses the conversation.** Stopping an agent without
   typing, then resuming it, could fail for good: Den started a new
   conversation under the same id, and Claude Code refused it as "already
-  in use". Now every launch marks the agent record `launched: true`, and
-  every later resume uses `--resume <id>`. If Claude Code says there is no
-  conversation yet, Den starts fresh once under the same id, in the same
-  folder and scope, and says "nothing to resume yet; started fresh". If a
+  in use". Now Den decides before it launches. For Claude Code it looks
+  for the conversation's transcript: if it is there, or someone typed in
+  the last session, it resumes with `--resume <id>`; if not, it starts
+  fresh under the same id, in the same folder and scope, and says "nothing
+  to resume yet; started fresh". Every launch also marks the record
+  `launched: true`, for runtimes Den can't check this way. If Claude Code
+  still says there is no conversation (Den now reads past its trailing
+  terminal codes), Den starts fresh once. If a
   fresh start says the id is in use, Den resumes once instead. If both
   fail, the error names the id and Start fresh (the route answers 502
   `resume_failed`).

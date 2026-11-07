@@ -914,10 +914,14 @@ async function startSession(
   return { rec, info };
 }
 
-/** CSI, OSC (BEL or ST ended), and other two-byte escapes. */
+/**
+ * CSI, OSC (BEL or ST ended), charset designations (`ESC ( B`), and other
+ * two-byte escapes, save and restore (`ESC 7`, `ESC 8`) and keypad modes
+ * included: Claude Code ends with `ESC ( B ESC 7 ESC 8`.
+ */
 /* eslint-disable no-control-regex */
 const TERMINAL_ESCAPE =
-  /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g;
+  /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()*+\-./][ -~]|\x1b[0-9:;<=>?@-Z\\-_]/g;
 /* eslint-enable no-control-regex */
 
 /** Printable lines of terminal output: escapes and control bytes removed. */
@@ -939,6 +943,8 @@ export interface EarlyExit {
   exitCode?: number;
   /** Its last printed lines, secret-shaped values redacted. */
   tail: string[];
+  /** All it printed (the last 64 KB), as plain text, to match against. */
+  said: string;
   sessionName: string;
 }
 
@@ -960,14 +966,14 @@ async function exitedAtOnce(
     if (!s) return null;
     if (!s.exited) continue;
     if (s.exitCode === 0) return null;
-    const tail = plainLines(
+    const lines = plainLines(
       (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8"),
-    )
-      .slice(-EXIT_TAIL_LINES)
-      .map((l) => redactSecrets(l));
+    );
+    const tail = lines.slice(-EXIT_TAIL_LINES).map((l) => redactSecrets(l));
     return {
       ...(s.exitCode === undefined ? {} : { exitCode: s.exitCode }),
       tail,
+      said: lines.join("\n"),
       sessionName: s.name,
     };
   }
@@ -1257,11 +1263,14 @@ export async function resumeAgent(
     // from before 0.4.8 whose session nobody prompted starts afresh under
     // the same id.
     const token = rec.resumeToken;
-    const known =
-      Boolean(rec.launched) ||
-      Boolean(token && rt.conversationExists?.(token, d.env)) ||
-      !old ||
-      Boolean(old.prompted);
+    // A runtime that can tell (den-claude: its transcript) decides before
+    // launching: a conversation on disk, or a last session someone typed
+    // into, resumes; neither starts fresh at once. Without that, the record
+    // decides: launched on this token, or a session the host lost.
+    const known = rt.conversationExists
+      ? Boolean(token && rt.conversationExists(token, d.env)) ||
+        Boolean(old?.prompted)
+      : Boolean(rec.launched) || !old || Boolean(old.prompted);
     const launchAs = (asFresh: boolean) => {
       const out = launchOrThrow(() =>
         asFresh ? rt.launch(at) : rt.resume!(at),
@@ -1295,7 +1304,7 @@ export async function resumeAgent(
     // It exited at once saying the other way was the right one: try that,
     // once. A resume with nothing to continue starts fresh under the same
     // id; a fresh start whose id is taken resumes it.
-    const said = r.early?.tail.join("\n") ?? "";
+    const said = r.early?.said ?? "";
     const other = fresh
       ? rt.launchFailures?.idInUse?.test(said)
       : rt.launchFailures?.noConversation?.test(said);
