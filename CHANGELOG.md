@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.5] - unreleased
+## [0.4.5] - 2026-11-07
 
 Sign in with GitHub as the owner, from your other devices; approve a
 computer with a code; see that you're signed in (SEC-2a). Save the admin
