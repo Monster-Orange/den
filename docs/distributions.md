@@ -87,6 +87,8 @@ question for the person (`ask`, sometimes with `choices`).
 | `<cli> web up --no-open --json`                            | `{ ok, url, port, version? }`                                                |
 | `<cli> doctor --json`                                      | `{ ok, checks: [{ id, status, detail, url?, port?, fix?, ask? }] }`          |
 | `<cli> mcp connect --runtime <runtime> --json`             | `{ ok, server, clients: [{ id, ok, said, file?, changed? }], restart, web }` |
+| `<cli> down <repo> --json`                                 | `{ ok, workspace, services, all? }`                                          |
+| `<cli> web down --json`                                    | `{ ok, url, port, running, stopped }`                                        |
 
 ### repo add
 
@@ -121,6 +123,10 @@ question for the person (`ask`, sometimes with `choices`).
   under the same name is an error that offers `relocate` or `--name`.
 
 ### up, doctor and mcp connect
+
+- `down --json` and `web down --json` are the clean-up steps. Each is safe
+  to re-run: `web down` answers `stopped: false` when the server wasn't
+  running, and `ok` is true once nothing answers on its port.
 
 - `up --json` runs `up` as usual, then reports each service it touched:
   `result` is `started`, `already-running`, `failed` or `skipped`, and

@@ -215,6 +215,7 @@ const COMMAND_FLAGS: Record<string, readonly string[]> = {
     "--json",
   ],
   down: [
+    "--json",
     "--manifest",
     "--no-derive",
     "-a",

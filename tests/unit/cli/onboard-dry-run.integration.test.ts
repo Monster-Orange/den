@@ -319,6 +319,23 @@ describe("ON-4: the install-den skill's steps, dry run", () => {
 
     // The metric: paste to "service running, MCP connected". Recorded only.
     const seconds = (Date.now() - started) / 1000;
+
+    // 7. Clean up the way the skill does, in JSON too: down, then web down,
+    // each twice (the second finds it already stopped).
+    const [x1, x2] = twice("down", "sample", "--json");
+    expect(x1.json).toMatchObject({ ok: true, services: ["sample"] });
+    expect(x2.json).toMatchObject({ ok: true });
+    const [y1, y2] = twice("web", "down", "--json");
+    for (const y of [y1, y2])
+      expect(y.json).toMatchObject({
+        ok: true,
+        running: false,
+        url: `http://localhost:${webPort}`,
+        port: webPort,
+      });
+    expect(y1.json.stopped).toBe(true);
+    expect(y2.json.stopped).toBe(false);
+    expect(await get(webPort, "/api/server-info")).toBe(0);
     process.stderr.write(
       `\n  ON-4 dry run: paste → service running, MCP connected in ${seconds.toFixed(1)}s (target ≤ 300s)\n`,
     );

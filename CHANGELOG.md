@@ -13,6 +13,10 @@ setup. `doctor` warns about polling loops it sees in the local dev metrics.
 
 ### Added
 
+- **`down --json` and `web down --json`.** The clean-up steps answer in
+  JSON like every other onboarding step: `{ ok, workspace, services }` and
+  `{ ok, url, port, running, stopped }`. Both are safe to re-run.
+
 - **Hooks for default-pack agents.** A Claude Code agent from Den's default
   pack runs with Den's own hooks, in its own `--settings` file (never your
   `~/.claude`). A `PreToolUse` hook on Bash and Read blocks reading all of

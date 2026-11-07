@@ -900,6 +900,12 @@ class DenCLI {
 
         case "web": {
           const sub = args[1];
+          if (args.includes("--json") && (sub === "down" || sub === "stop")) {
+            process.exitCode = await this.cmdWebDownJson(
+              args.slice(1).filter((a) => a !== "--json"),
+            );
+            break;
+          }
           if (
             args.includes("--json") &&
             (sub === undefined ||
@@ -926,7 +932,11 @@ class DenCLI {
           break;
 
         case "down":
-          await this.cmdServiceDown(args.slice(1));
+          if (args.slice(1).includes("--json"))
+            process.exitCode = await this.cmdServiceDownJson(
+              args.slice(1).filter((a) => a !== "--json"),
+            );
+          else await this.cmdServiceDown(args.slice(1));
           break;
 
         case "restart":
@@ -3272,6 +3282,101 @@ class DenCLI {
     out.next = out.ok
       ? [`${bin} web up --no-open --json`, `${bin} doctor --json`]
       : [];
+    printJson(out);
+    return out.ok ? 0 : 1;
+  }
+
+  /**
+   * `down --json`: down as it always runs, its log on stderr, then one JSON
+   * object on stdout, `{ ok, workspace, services, all? }`. Safe to re-run:
+   * stopping what is already stopped is ok. A failure names a fix.
+   */
+  private async cmdServiceDownJson(args: string[]): Promise<number> {
+    const bin = fs.existsSync(
+      nodePath.join(getDistRoot(), "bin", product().cli),
+    )
+      ? `./bin/${product().cli}`
+      : product().cli;
+    const before = process.exitCode;
+    process.exitCode = undefined;
+    let error: string | undefined;
+    try {
+      await quietStdout(() => this.cmdServiceDown(args));
+    } catch (e) {
+      if (!(e instanceof ExitRequested)) error = (e as Error).message;
+      else if (e.code !== 0) process.exitCode = e.code;
+    }
+    const failedExit = process.exitCode !== undefined && process.exitCode !== 0;
+    process.exitCode = before;
+    const terminator = args.indexOf("--");
+    const own = terminator === -1 ? args : args.slice(0, terminator);
+    const all = own.includes("-a") || own.includes("--all");
+    const out: Record<string, unknown> = {
+      ok: !error && !failedExit,
+      workspace:
+        process.env.DEN_WORKSPACE_OVERRIDE ?? getFocusedWorkspaceName() ?? null,
+      services: own.filter((a) => !a.startsWith("-")),
+      ...(all ? { all: true } : {}),
+    };
+    if (!out.ok) {
+      out.error = error ?? "down failed (its log is on stderr)";
+      out.fix = `${bin} doctor --json`;
+    }
+    printJson(out);
+    return out.ok ? 0 : 1;
+  }
+
+  /**
+   * `web down --json`: the web server stopped as usual (its log on stderr),
+   * then `{ ok, url, port, running: false, stopped }` once nothing answers
+   * (up to 10s). `stopped` is false when it wasn't running: re-running is ok.
+   */
+  private async cmdWebDownJson(args: string[]): Promise<number> {
+    const { parseWebCommandArgs } = await import("./web-command.js");
+    const { probeWebServer } = await import("./mcp-connect.js");
+    const bin = fs.existsSync(
+      nodePath.join(getDistRoot(), "bin", product().cli),
+    )
+      ? `./bin/${product().cli}`
+      : product().cli;
+    let port: number;
+    try {
+      port = parseWebCommandArgs(args).port;
+    } catch (e) {
+      printJson({
+        ok: false,
+        error: (e as Error).message,
+        fix: `${bin} web down --json`,
+      });
+      return 2;
+    }
+    const url = `http://localhost:${port}`;
+    const was = (await probeWebServer(url)).kind === "up";
+    let error: string | undefined;
+    try {
+      await quietStdout(() => cmdWeb(args));
+    } catch (e) {
+      if (!(e instanceof ExitRequested) || e.code !== 0)
+        error = (e as Error).message;
+    }
+    let probe = await probeWebServer(url);
+    const deadline = Date.now() + 10_000;
+    while (!error && probe.kind === "up" && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 250));
+      probe = await probeWebServer(url);
+    }
+    const running = probe.kind === "up";
+    const out: Record<string, unknown> = {
+      ok: !error && !running,
+      url,
+      port,
+      running,
+      stopped: was && !running,
+    };
+    if (!out.ok) {
+      out.error = error ?? `the web server still answers at ${url}`;
+      out.fix = `${bin} doctor --json`;
+    }
     printJson(out);
     return out.ok ? 0 : 1;
   }
