@@ -20,6 +20,7 @@ jest.mock("../../../src/shared/edge/config.js", () => ({
 import {
   isDenWebRunning,
   webProbeTarget,
+  webUpUrl,
 } from "../../../src/ui/cli/web-command.js";
 import { addDenUiMarker } from "../../../src/shared/ui-marker.js";
 
@@ -97,4 +98,19 @@ describe("isDenWebRunning against a server bound to one address", () => {
       expect([...new Set(s.hosts)]).toEqual([`${name}:${s.port}`]);
     },
   );
+});
+
+describe("webUpUrl: the address `web up` names", () => {
+  const hosts = "127.0.0.1 den\n";
+  it.each([
+    [undefined, "http://den:4000"],
+    ["0.0.0.0", "http://den:4000"],
+    ["::", "http://den:4000"],
+    ["127.0.0.1", "http://den:4000"],
+    ["::1", "http://den:4000"],
+    ["192.168.1.122", "http://192.168.1.122:4000"],
+    ["2001:db8::5", "http://[2001:db8::5]:4000"],
+  ])("DEN_BIND_HOST=%p: %s", (bind, url) => {
+    expect(webUpUrl(4000, bind, hosts)).toBe(url);
+  });
 });

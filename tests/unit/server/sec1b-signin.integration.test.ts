@@ -839,7 +839,7 @@ describe("a plain-http bind to one LAN address (DEN_BIND_HOST=<LAN IPv4>)", () =
         },
       },
     );
-    expect(r.stdout).toContain("already running");
+    expect(r.stdout).toContain(`already running at http://${lanV4}:${v4Port}`);
     expect(r.status).toBe(0);
   }, 90_000);
 });

@@ -243,6 +243,24 @@ export function buildDenWebUrl(
   return `http://${resolveDenWebHost(hostsContent)}:${port}`;
 }
 
+/**
+ * The address `web up` names: the bound one when DEN_BIND_HOST is a
+ * specific address beyond loopback (a LAN-only bind doesn't answer on
+ * localhost), else buildDenWebUrl's.
+ */
+export function webUpUrl(
+  port: number,
+  bind: string | undefined = process.env.DEN_BIND_HOST,
+  hostsContent?: string,
+): string {
+  const to = webProbeTarget(bind, port);
+  const loopback =
+    to.host === "::1" || /^127\./.test(to.host) || to.host === "localhost";
+  return loopback
+    ? buildDenWebUrl(port, hostsContent)
+    : `http://${to.hostHeader}`;
+}
+
 export function denWebUrlAliases(port: number): string[] {
   return [
     `http://${product().cli}:${port}`,
@@ -1252,7 +1270,7 @@ export async function cmdWeb(args: string[]): Promise<void> {
     return;
   }
 
-  const url = buildDenWebUrl(options.port);
+  const url = webUpUrl(options.port);
 
   // Never act on another distribution's server: not "already running", and
   // never a signal to it (down, restart).

@@ -79,6 +79,8 @@ Sign in with GitHub as the owner, from your other devices (SEC-2a).
   ready" and exited non-zero. They ask the bound address now (loopback for
   0.0.0.0 and `::`), with a Host the allowlist accepts and the CLI's
   bearer: a LAN address answers an unsigned probe 401 `signin_required`.
+  `web up` names the bound address (`http://<LAN IP>:<port>`), not
+  localhost, which a LAN-only bind doesn't answer.
 
 ### Migrations
 
