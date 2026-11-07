@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.7] - unreleased
+## [0.4.7] - 2026-11-07
 
 Agents read slices, wait in the background and hand back plainly (den#5,
 the default-pack guardrails issue). Every persona in Den's default pack
