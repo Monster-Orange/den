@@ -11,7 +11,13 @@
  * dev-metrics.emit.test.ts against golden envelopes captured via
  * DEV_METRICS_ENVELOPE_OUT):
  *   1. ALWAYS append one compact JSON line to <repoRoot>/.dev-metrics/events.jsonl.
- *   2. THEN best-effort ship to Sentry (Tier-1 -> log item, Tier-2 -> event item).
+ *   2. THEN, only when the engineer opted in, best-effort ship to Sentry
+ *      (Tier-1 -> log item, Tier-2 -> event item).
+ *
+ * Local only by default (den#2): nothing leaves the machine unless
+ * config/local/user.yml says `metrics: { share: true }` (the boolean, nothing
+ * else). A DSN, in the env or a synced dev-metrics.config, is where to send
+ * once opted in; on its own it never sends.
  *
  * Guarantees: never throws, never blocks the caller (the Sentry ship is
  * fire-and-forget, bounded to ~2s). CI=true / DEV_METRICS_DISABLED=1 suppress
@@ -27,6 +33,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFileSync } from "child_process";
 import { createHash, randomUUID } from "crypto";
+import * as yaml from "yaml";
 import { getDistRoot } from "../paths.js";
 
 import { product } from "../product.js";
@@ -114,6 +121,28 @@ function isoNoMillis(): string {
 
 function suppressShip(): boolean {
   return process.env.CI === "true" || process.env.DEV_METRICS_DISABLED === "1";
+}
+
+/**
+ * The opt-in (den#2): `metrics.share` is exactly `true` in the engineer's
+ * config/local/user.yml under the repo root. Read on each ship, so turning
+ * it off takes effect at once; any error reads as "not opted in".
+ */
+export function shareOptedIn(root: string = repoRoot()): boolean {
+  try {
+    const raw = fs.readFileSync(
+      path.join(root, "config", "local", "user.yml"),
+      "utf-8",
+    );
+    const doc = yaml.parse(raw) as unknown;
+    if (!doc || typeof doc !== "object") return false;
+    const m = (doc as { metrics?: unknown }).metrics;
+    return (
+      !!m && typeof m === "object" && (m as { share?: unknown }).share === true
+    );
+  } catch {
+    return false;
+  }
 }
 
 function resolveDsn(root: string): string {
@@ -217,6 +246,7 @@ function ship(
   epoch: number,
   root: string,
 ): void {
+  if (!shareOptedIn(root)) return;
   const dsn = resolveDsn(root);
   if (!dsn) return;
   const parsed = parseDsn(dsn);

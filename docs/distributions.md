@@ -12,6 +12,7 @@ Den's own checkout is itself a distribution, named `den`.
 - [The bin shim](#the-bin-shim)
 - [make: den.mk](#make-denmk)
 - [Two roots](#two-roots)
+- [Dev metrics: local unless you opt in](#dev-metrics-local-unless-you-opt-in)
 - [Pinning and upgrading](#pinning-and-upgrading)
 - [Developing Den against a distribution](#developing-den-against-a-distribution)
 
@@ -2128,6 +2129,26 @@ agents:
 with both workspaces named. Any key of `agents:` other than `max_concurrent`
 and `persona_packs` is an agent id, and its only key is `grants`. A grant
 naming a workspace that doesn't exist stops `start`, naming the key.
+
+## Dev metrics: local unless you opt in
+
+Den records each command it runs (its name, surface, duration and exit
+code, never arguments or values) as one JSON line in
+`.dev-metrics/events.jsonl` under the distribution root. That file stays
+on the machine.
+
+Nothing is sent anywhere unless the engineer opts in, per machine:
+
+```yaml
+# config/local/user.yml (gitignored)
+metrics:
+  share: true
+```
+
+Only the boolean `true` counts. With it, and a Sentry DSN in
+`DEV_METRICS_SENTRY_DSN` (or a synced `dev-metrics.config`), each line is
+also sent, best effort. A DSN on its own never sends. `CI=true` and
+`DEV_METRICS_DISABLED=1` stop sending even when opted in.
 
 ## Pinning and upgrading
 
