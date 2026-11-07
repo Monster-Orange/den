@@ -456,6 +456,9 @@
     "ag.new.plainP":
       "Una terminal en la carpeta del espacio de trabajo. Sin agente.",
     "ag.new.task": "Primera instrucción (opcional)",
+    "ag.new.name": "Nombre (opcional)",
+    "ag.new.as": "Se inicia como {id}",
+    "ag.new.openRunning": "Abrir el que está en ejecución",
     "ag.new.taskPh":
       "p. ej., Toma la historia del estado vacío. Sigue el diseño y añade una prueba.",
     "ag.new.adv": "Avanzado: modelo y permisos",

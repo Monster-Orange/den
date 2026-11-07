@@ -2061,7 +2061,10 @@ server scoped to its workspace.
   checkout dir (its `directory`, else `den-workspaces/<ws>`), capped by
   `agents.max_concurrent` (agents only: plain sessions never count). The id defaults to the persona's id; an id is
   unique in the distribution, so a second workspace's planner gets
-  `planner-<ws>` unless you give `--id`.
+  `planner-<ws>` unless you give `--id`. A persona that already has an
+  agent there, running or stopped, starts another: `planner-2`,
+  `planner-3`. A stopped agent is continued by Resume or Start fresh,
+  never by a new start. `--id` is exact: a running id is refused.
 - The **agent record**, `<stateDir>/agents/<id>.json` (0600), holds its id,
   persona, runtime, model, workspace, cwd, session and times, and what it was
   started with from the Start dialog: `version` (the model's, "latest" or
@@ -2097,7 +2100,8 @@ server scoped to its workspace.
 #### Bring in a conversation
 
 A conversation you started in a terminal outside Den (Claude Code, in the
-workspace's folder or a folder inside it) can become a Den agent. Agents ›
+workspace's folder, a folder inside it, or a folder of one of its repos,
+a repo added by path outside it too) can become a Den agent. Agents ›
 **Bring in** lists them, newest first, with the persona list; `agents
 import -w <ws>` lists them too.
 

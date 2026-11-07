@@ -315,6 +315,20 @@ dialog.pe-dlg::backdrop {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Bring in: the title is cut, never its badge ("Agent reviewer"). */
+.pr .pn.pnc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pr .pnc .pt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pr .pnc .tagx {
+  flex: none;
+}
 .pr .pn .role,
 .prow .pn .role {
   color: var(--faint);

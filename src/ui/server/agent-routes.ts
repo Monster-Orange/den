@@ -98,12 +98,14 @@ import {
 } from "../../shared/den-config.js";
 import {
   readWorkspacesFile,
+  repoFolders,
   resolveWorkspaceDir,
 } from "../../shared/environment-manager/workspaces.js";
 import { getStateDir } from "../../shared/paths.js";
 import { HostError } from "../../shared/sessions/client.js";
 import {
   AgentError,
+  defaultId,
   agentRecord,
   checkInstruction,
   createPersona,
@@ -185,6 +187,20 @@ function webDeps(over: AgentsDeps = {}): AgentsResolved {
       if (!cfg) throw new AgentError(`workspace "${ws}" does not exist`);
       return resolveWorkspaceDir(ws, cfg, getReposRoot());
     },
+    // AG-17.1: its folder and each by-path repo's, outside it too. A caller
+    // that gives its own folder (a test) gives its folders too, or just it.
+    ...(over.workspaceDir
+      ? {}
+      : {
+          workspaceFolders: (ws: string) => {
+            const cfg = readWorkspacesFile().workspaces[ws];
+            if (!cfg) throw new AgentError(`workspace "${ws}" does not exist`);
+            return [
+              resolveWorkspaceDir(ws, cfg, getReposRoot()),
+              ...repoFolders(cfg),
+            ];
+          },
+        }),
     stdout: NO_TTY,
     out: () => undefined,
     err: () => undefined,
@@ -207,6 +223,7 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
         error,
         ...(e.code && e.code !== NOT_IN_WORKSPACE ? { code: e.code } : {}),
         ...(e.hints.length ? { hints: e.hints } : {}),
+        ...(e.running ? { running: e.running } : {}),
       },
       e.status,
     );
@@ -294,6 +311,8 @@ interface StartBody {
   permission?: string;
   allow?: unknown;
   instruction?: unknown;
+  /** AG-10.10: a display name, checked as a rename's is. */
+  name?: unknown;
 }
 
 const START_KEYS = [
@@ -305,6 +324,7 @@ const START_KEYS = [
   "permission",
   "allow",
   "instruction",
+  "name",
 ];
 
 async function startBody(req: http.IncomingMessage): Promise<StartBody> {
@@ -350,6 +370,8 @@ async function startBody(req: http.IncomingMessage): Promise<StartBody> {
   }
   if (o.allow !== undefined && o.allow !== null) out.allow = o.allow;
   if (o.instruction !== undefined) out.instruction = o.instruction;
+  if (o.name !== undefined && o.name !== null && o.name !== "")
+    out.name = o.name;
   return out as StartBody;
 }
 
@@ -415,6 +437,20 @@ export async function handleAgentRoutes(
       sendJson(res, {
         ...(pathname === "/api/personas"
           ? { personas: listPersonas(d), ...registries(d) }
+          : {}),
+        // AG-10.10: the id a new start of each persona takes here.
+        ...(pathname === "/api/personas" && ws
+          ? {
+              startsAs: Object.fromEntries(
+                listPersonas(d).flatMap((p) => {
+                  try {
+                    return [[p.id, defaultId(d.stateDir(), p.id, ws)]];
+                  } catch {
+                    return []; // no free id: the start says so
+                  }
+                }),
+              ),
+            }
           : {}),
         runtimes,
         ...(ws ? { workspace: ws } : {}),
@@ -538,6 +574,7 @@ export async function handleAgentRoutes(
           ? { permission: body.permission }
           : {}),
         ...(body.allow !== undefined ? { allow: body.allow } : {}),
+        ...(body.name !== undefined ? { name: body.name } : {}),
         strict: true,
       });
       const ov = s.rec.overrides?.length

@@ -118,7 +118,13 @@ describe("Bring in (AG-17.1)", () => {
     if (skip() || !PTY) return;
     const docs = path.join(s!.wsDir("north"), "docs");
     fs.mkdirSync(docs, { recursive: true });
-    conversation(docs, OLD, "Tidy the docs", 30 * 60_000);
+    // Long enough to be cut: the badge must still show whole (the 0.4.14-dev.0 gate).
+    conversation(
+      docs,
+      OLD,
+      "Tidy the docs and the long README sections on installing it everywhere",
+      30 * 60_000,
+    );
     conversation(s!.wsDir("north"), OPEN, "Still typing here", 3_000);
 
     const p = await page("/agents?ws=north");
@@ -196,6 +202,19 @@ describe("Bring in (AG-17.1)", () => {
       `Agent ${agent.id}`,
     );
     expect(await p.isDisabled("#ag-go")).toBe(true);
+    // The badge shows whole beside a long title, at 1440 (the 0.4.14-dev.0 gate).
+    const clipped = await p.$eval(
+      `#ag-conv [data-cid="${OLD}"] .tagx`,
+      (e) =>
+        e.getBoundingClientRect().right >
+          (e.closest(".pr") as HTMLElement).getBoundingClientRect().right ||
+        e.scrollWidth > e.clientWidth + 0.5 ||
+        e.getBoundingClientRect().right >
+          (e.parentElement as HTMLElement).getBoundingClientRect().right + 0.5,
+    );
+    expect(clipped).toBe(false);
+    // Each runtime that can't is its own sentence (the 0.4.14-dev.0 gate).
+    expect(await p.textContent("#ag-conv-h")).not.toMatch(/yet [A-Z]/);
 
     // At 390, nothing is wider than the window.
     await p.setViewportSize({ width: 390, height: 844 });
