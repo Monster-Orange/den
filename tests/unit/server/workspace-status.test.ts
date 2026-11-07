@@ -15,6 +15,7 @@ import {
   pillText,
   stopCount,
   summaryParts,
+  summaryDownText,
   statusesOf,
   stoppedAsQuiet,
   switchPlan,
@@ -97,6 +98,11 @@ describe("WS-6.3: status is derived from services", () => {
       text: "1 running · 1 partial · 1 stopped",
       down: 1,
     });
+  });
+
+  it("names services in the All summary's down count, so it can't read as a workspace", () => {
+    expect(summaryDownText(1)).toBe("services down: 1");
+    expect(summaryDownText(3)).toBe("services down: 3");
   });
 });
 

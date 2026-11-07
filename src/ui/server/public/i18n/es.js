@@ -42,6 +42,7 @@
     "ws.sum.partial": "{n} parciales",
     "ws.sum.partial.one": "{n} parcial",
     "ws.sum.stopped": "{n} detenidos",
+    "ws.sum.down": "servicios caídos: {n}",
     "ws.sum.stopped.one": "{n} detenido",
     "ws.sw": "Cambiar",
     "ws.ss": "Detener y cambiar",

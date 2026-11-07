@@ -40,6 +40,7 @@
     "ws.sum.running": "実行中 {n}",
     "ws.sum.partial": "一部 {n}",
     "ws.sum.stopped": "停止中 {n}",
+    "ws.sum.down": "ダウン中のサービス {n}",
     "ws.sw": "切り替え",
     "ws.ss": "停止して切り替え",
     "ws.swMore": "{w} への切り替え方法",

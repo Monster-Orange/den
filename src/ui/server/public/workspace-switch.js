@@ -28,6 +28,7 @@ import {
   statusesOf,
   stopCount,
   summaryParts,
+  summaryDownText,
   switchPlan,
   switchPrefs,
   wsDot,
@@ -168,13 +169,13 @@ export function downHtml(st) {
     : "";
 }
 
-/** "2 running · 1 partial · 1 stopped · 1 down" for All workspaces. */
+/** "2 running · 1 partial · 1 stopped · services down: 1" for All workspaces. */
 export function summaryHtml(statuses) {
   const s = summaryParts(statuses, t);
   return (
     esc(s.text) +
     (s.down
-      ? ` · <span class="den-downn">${esc(t("ws.down", { n: s.down }))}</span>`
+      ? ` · <span class="den-downn">${esc(summaryDownText(s.down, t))}</span>`
       : "")
   );
 }

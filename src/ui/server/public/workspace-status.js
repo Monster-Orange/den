@@ -31,6 +31,7 @@ export const EN_FALLBACK = {
   "ws.sum.running": "{n} running",
   "ws.sum.partial": "{n} partial",
   "ws.sum.stopped": "{n} stopped",
+  "ws.sum.down": "services down: {n}",
   "ws.sw": "Switch",
   "ws.ss": "Stop & Switch",
   "ws.swMore": "More ways to switch to {w}",
@@ -141,6 +142,11 @@ export function wsDot(st) {
   if (st.state === "stopped" || st.state === "none") return "off";
   if (st.down) return "bad";
   return st.state === "partial" ? "warn" : "";
+}
+
+/** All workspaces' down count, naming services ("services down: 1"). */
+export function summaryDownText(n, t = enT) {
+  return t("ws.sum.down", { n });
 }
 
 /** "2 running · 1 partial · 1 stopped" (zeros left out), and the down count. */

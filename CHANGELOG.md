@@ -79,9 +79,13 @@ is what runs, **switch** shows a workspace and starts it.
 - **`down -a` stops every workspace on this machine** (one at a time, a
   shared repo once), as its help says; it stopped only the focus's. With
   `-w <ws>`, only that workspace.
-- **`down <repo> -w <ws>` stops a repo that is in `<ws>`**, whichever
-  workspace started it. A down that stops nothing (another workspace still
-  uses it, or it isn't in this workspace) says so and why, never ✔.
+- **`down <repo> -w <ws>` stops a repo that is in `<ws>`**, even when
+  another workspace started it. A shared repo several workspaces are using
+  is stopped by the last of them: each earlier down detaches that
+  workspace and says "another workspace still uses it". A down that stops
+  nothing says so and why, never ✔.
+- **All workspaces' summary** names the down count as services
+  ("services down: 1"), so it can't read as a fourth workspace.
 - **The session socket with a long state dir**: when
   `<stateDir>/sessions.sock` would be over a unix socket's limit (103
   bytes), it is `/tmp/den-<uid>/<hash>.sock` (dir 0700, socket 0600),

@@ -151,6 +151,7 @@
     "ws.sum.partial": "{n} partial",
     "ws.sum.partial.one": "{n} partial",
     "ws.sum.stopped": "{n} stopped",
+    "ws.sum.down": "services down: {n}",
     "ws.sum.stopped.one": "{n} stopped",
     "ws.sw": "Switch",
     "ws.ss": "Stop & Switch",
