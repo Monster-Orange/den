@@ -215,7 +215,9 @@ async function fits(p: Page): Promise<string[]> {
         // xterm's fit leaves 14px for its scrollbar (addon-fit 0.11).
         if (w - sr.width < -0.5 || w - sr.width >= cw + 14.5)
           out.push(`${id}: ${w - sr.width}px beside it (a cell is ${cw})`);
-        if (h - sr.height < -0.5 || h - sr.height >= ch)
+        // A full row left over is a missed row; exactly one cell (to half
+        // a pixel) is fit's floor on sub-pixel cell heights (Linux fonts).
+        if (h - sr.height < -0.5 || h - sr.height >= ch + 0.5)
           out.push(`${id}: ${h - sr.height}px below it (a cell is ${ch})`);
         return out;
       }),
