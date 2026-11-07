@@ -16,6 +16,10 @@ import {
   type GuardContext,
   type LocalNet,
 } from "../../../src/ui/server/request-guard.js";
+import {
+  cidrToSubnet,
+  edgeNetworkSubnets,
+} from "../../../src/ui/server/edge-exposure.js";
 
 const PORT = 41236;
 const EDGE = "den.acme.example";
@@ -262,5 +266,66 @@ describe("edgeClientIsLocal, forwardedClient and localNet", () => {
       "172.17.0.1",
       "192.168.216.0",
     ]);
+  });
+});
+
+describe("the edge's own Docker networks, and OrbStack's host (0.4.3)", () => {
+  it("cidrToSubnet: an IPv4 CIDR as address and netmask; IPv6, junk and wide ones refused", () => {
+    expect(cidrToSubnet("192.168.214.0/24")).toEqual({
+      address: "192.168.214.0",
+      netmask: "255.255.255.0",
+    });
+    expect(cidrToSubnet("10.210.0.0/16")).toEqual({
+      address: "10.210.0.0",
+      netmask: "255.255.0.0",
+    });
+    for (const bad of [
+      "fd00::/64",
+      "0.0.0.0/0",
+      "10.0.0.0/4",
+      "300.1.1.1/24",
+      "",
+    ])
+      expect(cidrToSubnet(bad)).toBeNull();
+  });
+
+  it("edgeNetworkSubnets: each network's IPv4 subnets; a missing network or Docker gives none", async () => {
+    const seen: string[] = [];
+    const nets = await edgeNetworkSubnets(
+      ["acme-edge", "shared", "acme-edge", "gone"],
+      async (n) => {
+        seen.push(n);
+        if (n === "acme-edge")
+          return [{ Subnet: "192.168.214.0/24" }, { Subnet: "fd00:1::/64" }];
+        if (n === "shared") return [{ Subnet: "10.210.4.0/22" }];
+        return null;
+      },
+    );
+    expect(seen).toEqual(["acme-edge", "shared", "gone"]);
+    expect(nets).toEqual([
+      { address: "192.168.214.0", netmask: "255.255.255.0" },
+      { address: "10.210.4.0", netmask: "255.255.252.0" },
+    ]);
+  });
+
+  it("a proxy on the edge's network, or its gateway, is this machine's (local) once the subnet is known", () => {
+    const withEdge: LocalNet = {
+      own: HERE.own,
+      bridges: [
+        ...HERE.bridges,
+        { address: "192.168.214.0", netmask: "255.255.255.0" },
+      ],
+    };
+    for (const c of ["192.168.214.3", "192.168.214.1"]) {
+      expect(edgeClientIsLocal(c, HERE)).toBe(false);
+      expect(edgeClientIsLocal(c, withEdge)).toBe(true);
+    }
+    // Another machine is still another machine.
+    expect(edgeClientIsLocal("8.8.8.8", withEdge)).toBe(false);
+    expect(edgeClientIsLocal("192.168.213.3", withEdge)).toBe(false);
+  });
+
+  it("OrbStack's host address (0.250.250.254) is never another machine", () => {
+    expect(edgeClientIsLocal("0.250.250.254", HERE)).toBe(true);
   });
 });

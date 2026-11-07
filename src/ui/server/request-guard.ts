@@ -351,8 +351,9 @@ export function forwardedClient(xff: string | undefined): string | undefined {
  *  - loopback, or one of this machine's own interface addresses (its LAN
  *    or VPN address, a Tailscale 100.x one included): local;
  *  - missing, unreadable, or a container/VM network's address (the Docker
- *    ranges isEdgePeer takes, or a subnet of one of this machine's
- *    bridges): we can't tell (Docker Desktop and OrbStack on macOS hand the
+ *    ranges isEdgePeer takes, a subnet of one of this machine's bridges,
+ *    one of the edge's own Docker networks, or OrbStack's 0.250.250.254):
+ *    we can't tell (Docker Desktop and OrbStack on macOS hand the
  *    edge their gateway's address, and a TCP passthrough in front hides the
  *    client), so local;
  *  - anything else: another machine, beyond loopback (sign-in required).
@@ -365,6 +366,9 @@ export function edgeClientIsLocal(
 ): boolean {
   const c = forwardedClient(xff);
   if (!c || isEdgePeer(c) || local.own.includes(c)) return true;
+  // 0.0.0.0/8 ("this network") is never a client on another machine:
+  // OrbStack presents the host to its containers as 0.250.250.254.
+  if (net.isIPv4(c) && c.startsWith("0.")) return true;
   return local.bridges.some((b) => inSubnet(c, b));
 }
 

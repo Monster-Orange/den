@@ -61,14 +61,20 @@ const CONTAINER_CHECKS: Record<
 let tmp = "";
 let srv: SlowGitServer;
 const burners: ChildProcess[] = [];
-// Not counted: the one `docker inspect` of the edge's published ports at
-// start (0.4.3, edge-exposure.ts), which is no health cycle's.
+// Not counted: the start-up reads of the edge (0.4.3, edge-exposure.ts),
+// its published ports and its networks' subnets, which are no health
+// cycle's.
 const lines = (f: string): number =>
   fs.existsSync(f)
     ? fs
         .readFileSync(f, "utf-8")
         .split("\n")
-        .filter((l) => l && !l.includes("HostConfig.PortBindings")).length
+        .filter(
+          (l) =>
+            l &&
+            !l.includes("HostConfig.PortBindings") &&
+            !l.includes(".IPAM.Config"),
+        ).length
     : 0;
 const cliLog = () => path.join(tmp, "cli-starts.log");
 const dockerLog = () => path.join(tmp, "docker-calls.log");

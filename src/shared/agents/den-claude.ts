@@ -131,6 +131,8 @@ function detect(
     return {
       available: false,
       why: found.why ?? `${BIN} not found`,
+      // "setting": a bad agents.runtimes.<id>.bin is the reason, not the search.
+      ...(found.source ? { source: found.source } : {}),
       searched: found.searched,
     };
   const version = installedVersion(found.path);

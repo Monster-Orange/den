@@ -283,7 +283,7 @@ export function locateRuntime(
     const c = checkBinSetting(id, setting);
     return "path" in c
       ? { available: true, path: c.path, source: "setting", searched: [] }
-      : { available: false, why: c.why, searched: [] };
+      : { available: false, why: c.why, source: "setting", searched: [] };
   }
   const dirs = searchDirs(find, env);
   for (const { dir, source } of dirs)

@@ -220,6 +220,8 @@ describe("GET /api/personas: each runtime's readiness (AG-0.2)", () => {
     ).toMatchObject({
       available: false,
       why: `agents.runtimes.den-claude.bin: ${path.join(a.r.dir, "nope")} does not exist`,
+      // The setting is the reason, so the page says so (not "not found").
+      source: "setting",
     });
     const r = await start(a, "north", { persona: "planner" });
     expect(r.status).toBe(503);

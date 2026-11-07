@@ -50,7 +50,11 @@ Agents start, and the edge counts as local.
   the left-most `X-Forwarded-For` entry: loopback or one of this machine's
   own interface addresses (a Tailscale `100.x` included) is local; missing,
   or a Docker/VM network's address (what Docker Desktop and OrbStack hand
-  the edge), is "can't tell", also local; any other address is another
+  the edge; the subnets of the edge's own Docker networks, `<org>-edge`
+  and those it joins, read once at start with `docker network inspect`;
+  OrbStack's host address `0.250.250.254`), is "can't tell", also local, so
+  a TCP-passthrough proxy container on the edge's network is no other
+  machine; any other address is another
   machine and needs a sign-in. A non-loopback `DEN_BIND_HOST` bind (other
   than the Linux edge's Docker bridge) and `web.allow_plain_http_remote`'s
   LAN names still need one. See docs/distributions.md, "Signing in".

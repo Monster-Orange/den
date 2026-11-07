@@ -787,7 +787,11 @@ import {
   edgeNames,
   webRouteHosts,
 } from "../../shared/edge/render.js";
-import { EDGE_EXPOSED_MESSAGE, edgeExposure } from "./edge-exposure.js";
+import {
+  EDGE_EXPOSED_MESSAGE,
+  edgeExposure,
+  edgeNetworkSubnets,
+} from "./edge-exposure.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import {
   linksFor,
@@ -1017,10 +1021,33 @@ function sessionCookie(req: http.IncomingMessage): string | undefined {
 const LAN_HOSTS = lanHosts();
 /** This machine's addresses (localNet), re-read at most every 10 s. */
 let LOCAL_NET = { at: 0, net: localNet() };
+/** The edge's Docker networks' subnets (edgeNetworkSubnets), once at start. */
+let EDGE_NETS: { address: string; netmask: string }[] = [];
 function currentLocalNet(): ReturnType<typeof localNet> {
-  if (Date.now() - LOCAL_NET.at > 10_000)
-    LOCAL_NET = { at: Date.now(), net: localNet() };
+  if (Date.now() - LOCAL_NET.at > 10_000) {
+    const here = localNet();
+    LOCAL_NET = {
+      at: Date.now(),
+      net: { own: here.own, bridges: [...here.bridges, ...EDGE_NETS] },
+    };
+  }
   return LOCAL_NET.net;
+}
+/** Read the edge's Docker networks' subnets in the background (no edge: none). */
+function readEdgeNetworks(): void {
+  let names: string[];
+  try {
+    const cfg = readEdgeConfig();
+    names = [edgeNames(cfg.org).network, ...cfg.networks];
+  } catch {
+    return;
+  }
+  void edgeNetworkSubnets(names)
+    .then((nets) => {
+      EDGE_NETS = nets;
+      LOCAL_NET = { at: 0, net: LOCAL_NET.net }; // re-read on the next request
+    })
+    .catch(() => undefined);
 }
 const GUARD: GuardContext = {
   port: PORT,
@@ -4641,6 +4668,7 @@ server.listen(PORT, BIND_HOST, () => {
   // Once per start: a secrets config that leaves Den's own features off.
   for (const w of secretsConfigWarnings()) serverLog(`  ⚠ ${w}`);
   checkEdgeExposure();
+  readEdgeNetworks();
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────

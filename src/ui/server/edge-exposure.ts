@@ -84,3 +84,60 @@ export async function edgeExposure(
   const bindings = await (deps.portBindings ?? inspectPortBindings)(container);
   return publishedOnAllInterfaces(bindings);
 }
+
+/**
+ * The IPv4 subnets of the edge's Docker networks (`<org>-edge` and the
+ * external networks it joins), from `docker network inspect`, read-only,
+ * once at start. On OrbStack and Docker Desktop a user-defined network is
+ * no host interface, so localNet can't see it: a proxy container on it, or
+ * its gateway, is this machine's container network ("can't tell", so
+ * local), not another machine. None when Docker or the network isn't
+ * there.
+ */
+export async function edgeNetworkSubnets(
+  names: readonly string[],
+  inspect: (name: string) => Promise<unknown> = inspectNetworkIpam,
+): Promise<{ address: string; netmask: string }[]> {
+  const out: { address: string; netmask: string }[] = [];
+  for (const n of [...new Set(names)]) {
+    const ipam = await inspect(n);
+    if (!Array.isArray(ipam)) continue;
+    for (const c of ipam as { Subnet?: unknown }[]) {
+      const s = cidrToSubnet(String(c?.Subnet ?? ""));
+      if (s) out.push(s);
+    }
+  }
+  return out;
+}
+
+/** "192.168.214.0/24" → { address, netmask }; null for IPv6 or junk. */
+export function cidrToSubnet(
+  cidr: string,
+): { address: string; netmask: string } | null {
+  const m = /^(\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,2})$/.exec(cidr.trim());
+  if (!m) return null;
+  const bits = Number(m[2]);
+  if (bits < 8 || bits > 32) return null;
+  if (m[1].split(".").some((o) => Number(o) > 255)) return null;
+  const mask = (0xffffffff << (32 - bits)) >>> 0;
+  const netmask = [24, 16, 8, 0].map((s) => (mask >>> s) & 255).join(".");
+  return { address: m[1], netmask };
+}
+
+function inspectNetworkIpam(name: string): Promise<unknown> {
+  return new Promise((resolve) => {
+    execFile(
+      "docker",
+      ["network", "inspect", "--format", "{{json .IPAM.Config}}", name],
+      { timeout: 5000 },
+      (err, stdout) => {
+        if (err) return resolve(null);
+        try {
+          resolve(JSON.parse(String(stdout)));
+        } catch {
+          resolve(null);
+        }
+      },
+    );
+  });
+}
