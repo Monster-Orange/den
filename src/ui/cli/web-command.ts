@@ -316,7 +316,9 @@ async function getHttpText(
         timeout: 1_500,
         agent: false,
         setHost: false,
-        headers: { host: to.hostHeader },
+        // The CLI's bearer, as serverCall sends: an address beyond loopback
+        // answers an unsigned probe 401 signin_required, never ready.
+        headers: { host: to.hostHeader, ...cliAuthHeaders() },
       },
       (res) => {
         let body = "";

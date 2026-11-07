@@ -193,9 +193,15 @@ describe("a page on another origin (SEC-1a)", () => {
 
     // A stale token (the server restarted under an open page): the first
     // answer is 403 csrf; the shell fetches a fresh token and retries once.
+    // The settings page's Access row asks /api/session too (when it
+    // redraws), so the token fetch is counted as at least one, and the retry
+    // by the POSTs: the refused one and exactly one more.
     let sessions = 0;
+    let posts = 0;
     own.on("request", (r) => {
-      if (new URL(r.url()).pathname === "/api/session") sessions++;
+      const p = new URL(r.url()).pathname;
+      if (p === "/api/session") sessions++;
+      if (p === "/api/settings" && r.method() === "POST") posts++;
     });
     let refusedOnce = false;
     await own.route("**/api/settings", async (route) => {
@@ -224,7 +230,8 @@ describe("a page on another origin (SEC-1a)", () => {
       await sh.api("POST", "/api/settings", { editor: "emacs" });
     });
     expect(refusedOnce).toBe(true);
-    expect(sessions).toBe(1);
+    expect(posts).toBe(2);
+    expect(sessions).toBeGreaterThanOrEqual(1);
     expect(yml()).toMatch(/editor: emacs/);
     await ctx.close();
   }, 60_000);

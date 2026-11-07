@@ -77,7 +77,8 @@ Sign in with GitHub as the owner, from your other devices (SEC-2a).
   Its readiness probe (and `web sessions`/`web logout`'s calls) asked
   127.0.0.1, so a server bound to a LAN IP or `::1` printed "did not become
   ready" and exited non-zero. They ask the bound address now (loopback for
-  0.0.0.0 and `::`), with a Host the allowlist accepts.
+  0.0.0.0 and `::`), with a Host the allowlist accepts and the CLI's
+  bearer: a LAN address answers an unsigned probe 401 `signin_required`.
 
 ### Migrations
 

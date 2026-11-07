@@ -748,6 +748,102 @@ describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_rem
   }, 90_000);
 });
 
+describe("a plain-http bind to one LAN address (DEN_BIND_HOST=<LAN IPv4>)", () => {
+  // `web up`'s readiness probe asks the bound address, which is beyond
+  // loopback, so the server answers an unsigned probe 401 signin_required.
+  // The probe carries the CLI's bearer, as `web sessions` does: `web up`
+  // sees the running server as ready ("already running", exit 0) instead of
+  // starting another and reporting "did not become ready".
+  const lanV4 = Object.values(os.networkInterfaces())
+    .flatMap((l) => l ?? [])
+    .find((a) => a.family === "IPv4" && !a.internal)?.address;
+  let v4Dist = "";
+  let v4Home = "";
+  let v4Port = 0;
+  let v4: ChildProcess | null = null;
+
+  /** Any answer from the server on the LAN address, or null. */
+  function status(p: string): Promise<number | null> {
+    return new Promise((resolve) => {
+      const req = http.get(
+        {
+          host: lanV4,
+          port: v4Port,
+          path: p,
+          agent: false,
+          timeout: 1_500,
+          headers: { connection: "close" },
+        },
+        (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.statusCode ?? null));
+        },
+      );
+      req.on("timeout", () => req.destroy());
+      req.on("error", () => resolve(null));
+    });
+  }
+
+  beforeAll(async () => {
+    if (!lanV4) return;
+    v4Dist = path.join(tmp, "lan-v4");
+    v4Home = path.join(tmp, "lan-v4-home");
+    write(path.join(v4Dist, "den.yml"), "product:\n  name: den\n");
+    write(path.join(v4Dist, "config", "den.yml"), "environments: [local]\n");
+    write(
+      path.join(v4Dist, "config", "local", "user.yml"),
+      "web:\n  allow_plain_http_remote: true\n",
+    );
+    v4Port = await freePort();
+    v4 = spawnServer(
+      TSX,
+      [path.join(ENGINE, "src", "ui", "server", "index.ts")],
+      {
+        cwd: v4Dist,
+        env: { ...serverEnv(v4Dist, v4Home, v4Port), DEN_BIND_HOST: lanV4 },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    v4.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
+    v4.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
+    const deadline = Date.now() + 40_000;
+    while ((await status("/api/server-info")) === null) {
+      if (Date.now() > deadline) throw new Error("LAN v4 server did not start");
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }, 60_000);
+  afterAll(async () => {
+    if (v4) await stopServer(v4);
+  });
+
+  it("an unsigned probe is refused there, and `web up` still calls the server running", async () => {
+    if (!lanV4) return;
+    expect(await status("/api/server-info")).toBe(401);
+    const r = spawnSync(
+      TSX,
+      [
+        path.join(ENGINE, "src", "ui", "cli", "index.ts"),
+        "web",
+        "up",
+        "--port",
+        String(v4Port),
+      ],
+      {
+        cwd: v4Dist,
+        encoding: "utf-8",
+        timeout: 60_000,
+        env: {
+          ...serverEnv(v4Dist, v4Home, v4Port),
+          DEN_BIND_HOST: lanV4,
+          CI: "1",
+        },
+      },
+    );
+    expect(r.stdout).toContain("already running");
+    expect(r.status).toBe(0);
+  }, 90_000);
+});
+
 describe("refusing to start", () => {
   /**
    * Start a server on a fresh distribution: its exit code, or (with
