@@ -881,7 +881,7 @@ function paletteItems() {
     const base =
       x.kind === "agent" ? x.displayName || (x.persona ?? x.label) : x.label;
     // AG-4b: the session's name (a /rename, or Den's), when it says more.
-    const sn = x.kind === "agent" ? (x.sessionName ?? "").trim() : "";
+    const sn = x.kind === "agent" ? (x.sessionTitle ?? "").trim() : "";
     const extra =
       sn && sn !== base && sn !== x.persona && sn !== x.label ? sn : "";
     const name = extra ? `${base} · ${extra}` : base;
@@ -899,7 +899,7 @@ function paletteItems() {
         x.label,
         x.persona ?? "",
         x.displayName ?? "",
-        x.sessionName ?? "",
+        x.sessionTitle ?? "",
         "agents",
         "terminal",
       ],

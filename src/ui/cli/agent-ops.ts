@@ -390,10 +390,12 @@ export interface AgentRow {
   /** The name a person gave it (AG-4b), when one did. */
   displayName?: string;
   /**
-   * Its session's name (AG-4b): the latest of Den's rename and the
-   * runtime's own (Claude Code's /rename), when there is one.
+   * The name its session shows (AG-4b): the latest of Den's rename and the
+   * runtime's own (Claude Code's /rename), when there is one. 0.4.12 called
+   * this sessionName; sessionName is the record's session handle
+   * (`<dist>-<ws>:<id>`), as it has been since 0.4.0.
    */
-  sessionName?: string;
+  sessionTitle?: string;
   persona?: string;
   runtime?: string;
   model?: string;
@@ -513,7 +515,7 @@ export function agentRows(
     return {
       agent: rec.id,
       ...recordFields(rec),
-      ...(named ? { sessionName: named } : {}),
+      ...(named ? { sessionTitle: named } : {}),
       state: st,
       startedAt: s?.startedAt ?? rec.startedAt,
       resumable,

@@ -69,7 +69,18 @@ import { builtinEntry } from "./catalog.js";
 import { catalogFind } from "./catalog-runtime.js";
 import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
 import { claudeProjectsDir } from "../usage/paths.js";
-import { transcriptTitle } from "./transcript-follow.js";
+import { cleanName, transcriptTitle } from "./transcript-follow.js";
+
+/**
+ * `/rename "x"` keeps the quotes in customTitle: one matching pair around
+ * the whole name goes, for display only (0.4.13). Nothing inside: null.
+ */
+export function unquoteTitle(name: string | null): string | null {
+  if (!name || name.length < 2) return name;
+  const q = name[0];
+  if ((q !== '"' && q !== "'") || name[name.length - 1] !== q) return name;
+  return cleanName(name.slice(1, -1));
+}
 
 export const DEN_CLAUDE_ID = "den-claude";
 const BIN = "claude";
@@ -479,12 +490,13 @@ export const denClaude: Runtime = {
   },
   // AG-4b, unofficial (catalog sessionName): `/rename` appends a
   // {"type":"custom-title","customTitle":…} record to the transcript; the
-  // latest one, read on from the last ask (never the whole file). Null on
-  // any failure: it must never break a pane.
+  // latest one, read on from the last ask (never the whole file), less one
+  // pair of surrounding quotes. Null on any failure: it must never break a
+  // pane.
   sessionName(rec, env = process.env) {
     try {
       const file = transcriptFile(rec.resumeToken, env);
-      return file ? transcriptTitle(file) : null;
+      return file ? unquoteTitle(transcriptTitle(file)) : null;
     } catch {
       return null;
     }

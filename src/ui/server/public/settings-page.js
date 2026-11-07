@@ -148,15 +148,10 @@ export async function mountSettings(deps) {
     });
     if (!r.ok) return false;
     const reply = await r.json().catch(() => ({}));
-    for (const k of [
-      "editor",
-      "terminal",
-      "editor_overrides",
-      "graph",
-      "appearance",
-      "shell",
-    ])
-      if (reply[k] !== undefined) ctx.data[k] = reply[k];
+    // Every setting the reply returns (0.4.13): a fixed list here left a
+    // new row's pressed button on its old value until a reload.
+    for (const [k, v] of Object.entries(reply))
+      if (k !== "ok" && v !== undefined) ctx.data[k] = v;
     return true;
   }
   async function saveWorkspace(patch) {

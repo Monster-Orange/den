@@ -204,12 +204,12 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
   throw e;
 }
 
-function sessionNameOf(
+function sessionTitleOf(
   rec: Started["rec"],
   d: AgentsResolved,
-): { sessionName?: string } {
+): { sessionTitle?: string } {
   const n = agentSessionName(rec, d.stateDir());
-  return n ? { sessionName: n } : {};
+  return n ? { sessionTitle: n } : {};
 }
 
 /** A started or resumed agent's answer: its record, or its early exit. */
@@ -253,9 +253,10 @@ function sendStarted(
       ...(s.rec.permission ? { permission: s.rec.permission } : {}),
       ...(s.rec.overrides?.length ? { overrides: s.rec.overrides } : {}),
       ...(s.rec.displayName ? { displayName: s.rec.displayName } : {}),
-      // AG-4b: its session's name (Den's rename or the runtime's), as the
-      // lists show it (MCP agent_resume answers with this).
-      ...sessionNameOf(s.rec, d),
+      // AG-4b: the name its session shows (Den's rename or the runtime's),
+      // as the lists show it (MCP agent_resume answers with this). Its
+      // handle is `session`.
+      ...sessionTitleOf(s.rec, d),
     },
     // A resume with nothing to continue yet started fresh (same id).
     ...(s.fresh ? { fresh: true } : {}),

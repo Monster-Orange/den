@@ -2062,6 +2062,17 @@ server scoped to its workspace.
   line or a first instruction. `list` reads it for persona, runtime
   and model; a record whose session has gone is listed as `stopped` (after
   `stop`) or `ended`.
+- **Two name fields.** In the record, `sessionName` is the session's
+  handle, `<dist>-<ws>:<id>` (what `sessions attach` takes); it has meant
+  that since 0.4.0, and `displayName` is the name a person gave the agent.
+  In `agents list --json`, `GET /api/sessions` and the start and resume
+  answers (MCP `agent_resume`), `sessionTitle` is the name its session
+  shows: the latest of Den's rename and the runtime's own (Claude Code's
+  `/rename`, one pair of surrounding quotes dropped), absent when there is
+  none. The handle there is `name` (`/api/sessions`) or `session` (the
+  start and resume answers). 0.4.12 sent the name shown as `sessionName`;
+  read `sessionTitle` instead. Records are unchanged, so none written
+  before needs migrating.
 - `list` shows agents only: sessions with an agent record. A session from
   `sessions start` is not an agent; `sessions list` shows it.
 - `stop` sends its session TERM and marks it stopped. `resume` works only
@@ -2250,7 +2261,10 @@ agent of the workspaces in view, and their terminals in the browser.
   pane header adds ` · <name>` after the runtime, and the tab, the list and
   ⌘K add it too, when it is not empty and says more than the agent's own
   name or persona. `GET /api/sessions`, `agents list --json` and the start
-  and resume answers (MCP `agent_resume`) carry it as `sessionName`.
+  and resume answers (MCP `agent_resume`) carry it as `sessionTitle`
+  (0.4.12: `sessionName`, which is the record's session handle). A
+  `/rename "api spike"` shows as api spike: one pair of quotes around the
+  whole name is dropped, for display only.
   Codex CLI, Gemini CLI and Grok Build have no name of their own yet. A
   catalog entry's `titleFromOsc: true` marks a runtime whose terminal
   title (OSC 0/2) names the session; no built-in runtime sets it, and the

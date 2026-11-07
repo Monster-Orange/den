@@ -29,7 +29,13 @@ import {
   FOLLOW_MAX_BYTES,
 } from "../../../src/shared/agents/session-name.js";
 import { denClaude } from "../../../src/shared/agents/den-claude.js";
-import type { AgentRecord } from "../../../src/shared/agents/records.js";
+import {
+  listRecords,
+  readRecord,
+  writeRecord,
+  type AgentRecord,
+} from "../../../src/shared/agents/records.js";
+import { agentRows } from "../../../src/ui/cli/agent-ops.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -95,6 +101,27 @@ describe("the Claude Code adapter (unofficial: /rename's custom-title)", () => {
     const { env, file } = claudeDir(tmp());
     fs.writeFileSync(file, FIXTURE);
     expect(denClaude.sessionName?.(rec(), env)).toBe("api spike");
+  });
+
+  it("strips one matching pair of quotes /rename kept (display only)", () => {
+    const { env, file } = claudeDir(tmp());
+    const named = (t: string) => {
+      fs.appendFileSync(
+        file,
+        JSON.stringify({ type: "custom-title", customTitle: t }) + "\n",
+      );
+      return denClaude.sessionName?.(rec(), env);
+    };
+    fs.writeFileSync(file, FIXTURE);
+    expect(named('"api spike"')).toBe("api spike");
+    expect(named("'x'")).toBe("x");
+    // Not one pair around the whole name: unchanged.
+    expect(named('"a" b')).toBe('"a" b');
+    expect(named("\"mixed'")).toBe("\"mixed'");
+    // Only one pair goes.
+    expect(named('""twice""')).toBe('"twice"');
+    // Nothing inside: no name.
+    expect(named('""')).toBeNull();
   });
 
   it("follows the file from its last offset: an appended rename is read, nothing before it again", () => {
@@ -271,5 +298,50 @@ describe("the terminal title (OSC 0/2), for runtimes that opt in", () => {
     // An unended one never grows past its cap.
     r = oscTitles("\u001b]0;" + "z".repeat(10_000), "");
     expect(r.carry.length).toBeLessThanOrEqual(1024);
+  });
+});
+
+describe("sessionName is the session handle; sessionTitle is the name shown (0.4.13)", () => {
+  /** A record as 0.4.12 wrote it, byte for byte the fields it had. */
+  const OLD = {
+    id: "planner",
+    persona: "planner",
+    runtime: "den-claude",
+    workspace: "north",
+    cwd: "/work/north",
+    session: { backend: "den-pty", id: "s1" },
+    sessionName: "acme-north:planner",
+    startedAt: "2026-11-07T09:00:00.000Z",
+    resumeToken: TOKEN,
+    launched: true,
+    grants: [],
+    displayName: "Night watch",
+    displayNameAt: "2026-11-07T09:30:00.000Z",
+    stoppedAt: "2026-11-07T11:00:00.000Z",
+  };
+
+  it("a record 0.4.12 wrote reads whole: its sessionName handle and every other field stay, and a rewrite loses nothing", () => {
+    const stateDir = path.join(tmp(), "state");
+    fs.mkdirSync(path.join(stateDir, "agents"), { recursive: true });
+    const file = path.join(stateDir, "agents", "planner.json");
+    fs.writeFileSync(file, JSON.stringify(OLD, null, 2) + "\n");
+    expect(readRecord(stateDir, "planner")).toEqual(OLD);
+    expect(listRecords(stateDir)).toEqual([OLD]);
+    writeRecord(stateDir, readRecord(stateDir, "planner")!);
+    expect(JSON.parse(fs.readFileSync(file, "utf-8"))).toEqual(OLD);
+  });
+
+  it("agents list --json and /api/sessions: the name shown is sessionTitle; sessionName (the handle) is never the display name", () => {
+    const root = tmp();
+    const stateDir = path.join(root, "state");
+    const rows = agentRows([], [OLD as AgentRecord], stateDir);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].sessionTitle).toBe("Night watch");
+    expect(rows[0]).not.toHaveProperty("sessionName");
+    // No name anywhere: no sessionTitle either.
+    const plain = { ...OLD, displayName: undefined, displayNameAt: undefined };
+    expect(
+      agentRows([], [plain as AgentRecord], stateDir)[0],
+    ).not.toHaveProperty("sessionTitle");
   });
 });

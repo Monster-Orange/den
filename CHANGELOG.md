@@ -74,6 +74,24 @@ config and manifest changes a distribution must make to move to it under
   `designer` in category Design.
 - A persona whose runtime isn't installed starts on the first one that is,
   and the Start dialog says so.
+- **`sessionTitle` is the name a session shows.** `agents list --json`,
+  `GET /api/sessions` and the start and resume answers (MCP
+  `agent_resume`) now carry the resolved name (Den's rename or the
+  runtime's, the later) as `sessionTitle`. 0.4.12 called it `sessionName`,
+  which is the agent record's session handle (`<dist>-<ws>:<id>`) and has
+  been since 0.4.0. Records are unchanged.
+
+### Fixed
+
+- **Settings shows a saved choice at once.** Agents tab layout and Open
+  file links in saved, but the pressed button stayed on the old value
+  until a reload. The page now takes every setting the save returns.
+- **Claude Code's `/rename "x"` shows as x.** Its title keeps the quotes;
+  Den drops one pair around the whole name, for display only.
+- **The terminal fit check is exact again.** The browser test compares
+  what is left below and beside a terminal with the cell size xterm drew
+  with (now on each pane as `data-cell-w` and `data-cell-h`), less than
+  one cell, so a missed row fails on any font.
 
 ### Migrations
 
@@ -84,6 +102,9 @@ config and manifest changes a distribution must make to move to it under
   every runtime can translate.
 - `agents.roles` and `agents.categories` are new keys of `agents:` in the
   distribution's config (see docs/distributions.md, Personas).
+- Read `sessionTitle`, not `sessionName`, for the name a session shows in
+  `agents list --json`, `GET /api/sessions` and the start and resume
+  answers. No record needs changing.
 
 ## [0.4.12] - 2026-11-07
 

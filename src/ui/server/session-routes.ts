@@ -138,10 +138,11 @@ export interface ListedSession {
   /** The name a person gave the agent (AG-4b), when one did. */
   displayName?: string;
   /**
-   * Its session's name (AG-4b): the latest of Den's rename and the
-   * runtime's (Claude Code's /rename), when there is one.
+   * The name its session shows (AG-4b): the latest of Den's rename and the
+   * runtime's (Claude Code's /rename), when there is one. Its handle is
+   * `name`.
    */
-  sessionName?: string;
+  sessionTitle?: string;
   /**
    * What Shift+Enter sends to it (AG-4b, its catalog entry's softNewline):
    * ESC CR unless the runtime says otherwise. A plain session: none (Enter).
@@ -218,7 +219,7 @@ export function listedSessions(
       label: rec.id,
       agent: rec.id,
       ...(rec.displayName ? { displayName: rec.displayName } : {}),
-      ...(r.sessionName ? { sessionName: r.sessionName } : {}),
+      ...(r.sessionTitle ? { sessionTitle: r.sessionTitle } : {}),
       softNewline: softNewlineSeq(getRuntime(rec.runtime)?.catalog),
       persona: rec.persona,
       runtime: rec.runtime,

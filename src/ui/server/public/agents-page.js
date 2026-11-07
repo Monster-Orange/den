@@ -269,7 +269,7 @@ function nameHtml(r) {
  * persona, not the name already shown. Else "".
  */
 function sessionExtra(r) {
-  const n = r?.kind === "agent" ? (r.sessionName ?? "").trim() : "";
+  const n = r?.kind === "agent" ? (r.sessionTitle ?? "").trim() : "";
   if (!n || n === r.persona || n === paneName(r) || n === displayName(r))
     return "";
   return n;
@@ -913,11 +913,26 @@ function refit(p) {
   markSize(p);
 }
 
-/** The pane's size and the PTY's, on the pane (data-cols, data-pty-cols). */
+/**
+ * The pane's size and the PTY's, on the pane (data-cols, data-pty-cols),
+ * and the cell size xterm drew with (data-cell-w, data-cell-h: its
+ * renderer's CSS cell, sub-pixel), so a check can tell a missed row from
+ * a fit's remainder.
+ */
 function markSize(p) {
   if (!p.term) return;
   p.el.dataset.cols = String(p.term.cols);
   p.el.dataset.rows = String(p.term.rows);
+  let cell = null;
+  try {
+    cell = p.term._core?._renderService?.dimensions?.css?.cell ?? null;
+  } catch {
+    cell = null;
+  }
+  if (cell?.width > 0 && cell?.height > 0) {
+    p.el.dataset.cellW = String(cell.width);
+    p.el.dataset.cellH = String(cell.height);
+  }
   if (p.pty) {
     p.el.dataset.ptyCols = String(p.pty.cols);
     p.el.dataset.ptyRows = String(p.pty.rows);

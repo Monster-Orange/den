@@ -182,7 +182,11 @@ const saved = async () =>
 /**
  * Each pane on screen: its terminal fits it. xterm's screen sits inside
  * the pane, and what is left beside and below it is less than one cell
- * (beside: and the scrollbar xterm's fit leaves room for).
+ * (beside: and the scrollbar xterm's fit leaves room for). The cell is
+ * the one xterm drew with (its renderer's CSS cell, sub-pixel: the pane's
+ * data-cell-w and data-cell-h), never the screen's size over its rows,
+ * which rounds; the space is what xterm's fit reads (whole pixels, as
+ * parseInt reads its computed size) of the .term's content box.
  */
 async function fits(p: Page): Promise<string[]> {
   return p.$$eval("#agr .pane", (ps) =>
@@ -192,38 +196,64 @@ async function fits(p: Page): Promise<string[]> {
         const el = pane as HTMLElement;
         const term = el.querySelector(".term") as HTMLElement;
         const scr = el.querySelector(".xterm-screen") as HTMLElement | null;
-        if (!scr) return [`${el.dataset.id}: no terminal`];
+        const id = el.dataset.id;
+        if (!scr) return [`${id}: no terminal`];
+        const cw = Number(el.dataset.cellW);
+        const ch = Number(el.dataset.cellH);
+        if (!(cw > 0) || !(ch > 0)) return [`${id}: no cell size`];
         const cs = getComputedStyle(term);
+        const tr = term.getBoundingClientRect();
+        const px = (k: string) => parseFloat(cs.getPropertyValue(k)) || 0;
+        // The .term's content box, in CSS pixels (not clientWidth: it rounds).
         const w =
-          term.clientWidth -
-          parseFloat(cs.paddingLeft) -
-          parseFloat(cs.paddingRight);
+          tr.width -
+          px("padding-left") -
+          px("padding-right") -
+          px("border-left-width") -
+          px("border-right-width");
         const h =
-          term.clientHeight -
-          parseFloat(cs.paddingTop) -
-          parseFloat(cs.paddingBottom);
+          tr.height -
+          px("padding-top") -
+          px("padding-bottom") -
+          px("border-top-width") -
+          px("border-bottom-width");
         const sr = scr.getBoundingClientRect();
         const pr = el.getBoundingClientRect();
         const cols = Number(el.dataset.cols);
         const rows = Number(el.dataset.rows);
-        const cw = sr.width / cols;
-        const ch = sr.height / rows;
         const out: string[] = [];
-        const id = el.dataset.id;
         if (sr.right > pr.right + 0.5 || sr.bottom > pr.bottom + 0.5)
           out.push(`${id}: the screen overflows the pane`);
+        if (sr.width > w + 0.5 || sr.height > h + 0.5)
+          out.push(
+            `${id}: the screen (${sr.width}x${sr.height}) is bigger than its box (${w}x${h})`,
+          );
         // xterm's fit leaves 14px for its scrollbar (addon-fit 0.11).
-        if (w - sr.width < -0.5 || w - sr.width >= cw + 14.5)
-          out.push(`${id}: ${w - sr.width}px beside it (a cell is ${cw})`);
-        // A full row left over is a missed row; exactly one cell (to half
-        // a pixel) is fit's floor on sub-pixel cell heights (Linux fonts).
-        if (h - sr.height < -0.5 || h - sr.height >= ch + 0.5)
-          out.push(`${id}: ${h - sr.height}px below it (a cell is ${ch})`);
+        const beside = Math.floor(w) - 14 - cols * cw;
+        if (beside < 0 || beside >= cw)
+          out.push(`${id}: ${beside}px beside it (a cell is ${cw})`);
+        // A whole cell left below is a missed row.
+        const below = Math.floor(h) - rows * ch;
+        if (below < 0 || below >= ch)
+          out.push(`${id}: ${below}px below it (a cell is ${ch})`);
         return out;
       }),
   );
 }
+let cellLogged = false;
 async function expectFits(p: Page): Promise<void> {
+  if (!cellLogged) {
+    cellLogged = true;
+    const c = await p.$eval("#agr .pane[data-cell-h]", (e) => ({
+      w: (e as HTMLElement).dataset.cellW,
+      h: (e as HTMLElement).dataset.cellH,
+      dpr: devicePixelRatio,
+    }));
+    // Measured: xterm's CSS cell on this machine.
+    process.stdout.write(
+      `AG-4b cell: ${c.w} x ${c.h} css px (devicePixelRatio ${c.dpr})\n`,
+    );
+  }
   let last: string[] = [];
   try {
     await eventually(async () => (last = await fits(p)).length === 0);

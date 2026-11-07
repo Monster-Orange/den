@@ -274,7 +274,9 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     );
     fs.appendFileSync(
       transcript(),
-      JSON.stringify({ type: "custom-title", customTitle: "api spike" }) + "\n",
+      // `/rename "api spike"` keeps the quotes; the header doesn't (0.4.13).
+      JSON.stringify({ type: "custom-title", customTitle: '"api spike"' }) +
+        "\n",
     );
     // Within the list's refresh (5 s).
     await eventually(
@@ -289,6 +291,15 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       "planner · north · api spike",
     );
     expect(await row.locator(".nm").textContent()).toContain("api spike");
+    // The API's name shown is sessionTitle; its handle is `name` (0.4.13).
+    const listed = (
+      (await (await fetch(`${s!.base}/api/sessions`)).json()) as {
+        sessions: Record<string, unknown>[];
+      }
+    ).sessions.find((x) => x.agent === "planner");
+    expect(listed).toMatchObject({ sessionTitle: "api spike" });
+    expect(listed).not.toHaveProperty("sessionName");
+    expect(String(listed?.name)).toMatch(/:planner$/);
     await p.click("#den-search");
     await p.fill("#den-pal-q", "api spike");
     await p.waitForSelector('#den-pal-list li[role="option"]');
@@ -335,7 +346,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       sessions: Record<string, unknown>[];
     };
     expect(list.sessions.find((x) => x.agent === "coder")).not.toHaveProperty(
-      "sessionName",
+      "sessionTitle",
     );
     await p.context().close();
   }, 60_000);

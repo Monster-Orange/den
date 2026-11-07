@@ -740,7 +740,7 @@ const agentResumeTool: DenTool = {
   name: "agent_resume",
   title: "Resume an agent",
   description:
-    "Resume a stopped or interrupted agent in the same conversation, persona, workspace and folder. Never starts a new conversation: an agent whose runtime can't resume is refused. Never the caller itself.",
+    "Resume a stopped or interrupted agent in the same conversation, persona, workspace and folder. Never starts a new conversation: an agent whose runtime can't resume is refused. Never the caller itself. Answers with agent: its id, persona, runtime, workspace, cwd, session (the session handle, <dist>-<ws>:<id>), sessionId, displayName (a person's name for it) and sessionTitle (the name its session shows: Den's rename or the runtime's, the later), when set.",
   action: true,
   shape: {
     agent: z.string().describe("The agent's id"),
