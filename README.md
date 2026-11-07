@@ -14,6 +14,20 @@
   <img src="docs/images/0.4.5/hero-light.png" width="100%" alt="Den's Graph page: the demo workspace's services grouped by application, all healthy, with the status chip and the left rail">
 </picture>
 
+## Set up by your agent
+
+Paste this line into your coding agent (Claude Code, Codex, Gemini, Grok, …):
+
+```text
+Set up Den for me by following https://raw.githubusercontent.com/Monster-Orange/den/main/skills/install-den/SKILL.md
+```
+
+The agent follows the [install-den skill](skills/install-den/SKILL.md). It asks you at most three questions,
+creates your Den, adds one of your repos without changing it, starts it, checks it, and connects itself to Den's
+MCP server. Then it tells you what's running and the URL to open. It never asks for a password in chat, never
+edits your repos and sends nothing off your machine. Every step it runs answers in JSON and is safe to re-run:
+see [Set up by your agent](docs/distributions.md#set-up-by-your-agent).
+
 ## What Den is
 
 Den is an opinionated local development framework for solo developers and small teams. You point it at the

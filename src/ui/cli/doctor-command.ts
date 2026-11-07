@@ -40,6 +40,14 @@ import {
   DEFAULT_RUNTIME_ID,
   RUNTIME_KIND,
 } from "../../shared/agents/runtimes.js";
+import {
+  defaultOnboardDeps,
+  onboardingChecks,
+  runnableCli,
+  type OnboardCheck,
+  type OnboardDeps,
+} from "./doctor-onboard.js";
+import { printJson } from "./json-out.js";
 
 export interface DoctorRow {
   kind: string;
@@ -219,14 +227,69 @@ function readConfigOrNull(): DenConfig | null {
   }
 }
 
+/** A strategy row as a `doctor --json` check. */
+export function strategyCheck(r: DoctorRow): OnboardCheck {
+  const sel = r.selected
+    ? `${r.selected}${r.implicit ? " (implicit)" : ""}`
+    : "(invalid config)";
+  const why = r.reason ? `: ${r.reason}` : "";
+  return {
+    id: `strategy:${r.kind}`,
+    status: r.problem
+      ? "fail"
+      : !r.available || r.warnings.length
+        ? "warn"
+        : "ok",
+    detail: `${sel} ${r.available ? "available" : "unavailable"}${why}${r.warnings.length ? ` (${r.warnings.join("; ")})` : ""}`,
+  };
+}
+
+/**
+ * `doctor --json` (ON-2): one JSON object, `{ ok, checks }`. The
+ * onboarding checks first (doctor-onboard.ts), then every strategy row;
+ * ok is false when any check fails. Exit 1 then, as for the human doctor.
+ */
+export async function doctorJson(
+  deps: OnboardDeps,
+  rows: DoctorRow[] = doctorRows(),
+): Promise<{ ok: boolean; checks: OnboardCheck[] }> {
+  const checks = [
+    ...(await onboardingChecks(deps)),
+    ...rows.map(strategyCheck),
+  ];
+  return { ok: !checks.some((c) => c.status === "fail"), checks };
+}
+
 export async function cmdDoctor(args: string[]): Promise<number> {
   const probe = args.includes("--probe");
-  const unknown = args.filter((a) => a !== "--probe");
+  const json = args.includes("--json");
+  const unknown = args.filter((a) => a !== "--probe" && a !== "--json");
   if (unknown.length) {
-    console.error(
-      `✗ doctor: unknown argument ${unknown[0]} (doctor [--probe])`,
-    );
+    const msg = `unknown argument ${unknown[0]} (doctor [--probe] [--json])`;
+    if (json)
+      printJson({
+        ok: false,
+        error: msg,
+        fix: `${runnableCli()} doctor --json`,
+      });
+    else console.error(`✗ doctor: ${msg}`);
     return 2;
+  }
+  if (json) {
+    if (probe) {
+      printJson({
+        ok: false,
+        error: "--probe and --json do not combine: the probe starts sessions",
+        fix: `${runnableCli()} doctor --json`,
+      });
+      return 2;
+    }
+    const { probeWebServer } = await import("./mcp-connect.js");
+    const r = await doctorJson(
+      defaultOnboardDeps((url) => probeWebServer(url)),
+    );
+    printJson(r);
+    return r.ok ? 0 : 1;
   }
   const rows = doctorRows();
   for (const l of formatDoctor(rows, readBrand().name)) console.log(l);

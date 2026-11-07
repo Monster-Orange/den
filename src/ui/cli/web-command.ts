@@ -1196,6 +1196,7 @@ export function displayWebHelp(): void {
   console.log("  --port, -p <port>  Use a non-default web port");
   console.log(
     "  --no-open          Start or check the server without opening a browser",
+    "  --json             (up, restart) log on stderr; stdout: { ok, url, port, version? }",
   );
   console.log(
     "  --setup-browser-access  Request macOS Automation access for browser tab reuse",

@@ -112,3 +112,10 @@ export const SKIP_TEST_DIRS = [
 
 /** Default den web server port. */
 export const DEFAULT_PORT = 7777;
+
+/**
+ * Ports a new distribution's web server never takes when `create` picks
+ * one because DEFAULT_PORT is in use: the edge's and other well-known Den
+ * instances' ports.
+ */
+export const RESERVED_DEN_PORTS: readonly number[] = [7778, 7791, 7799];

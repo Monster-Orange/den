@@ -10,11 +10,15 @@ import * as path from "path";
 import chalk from "chalk";
 import {
   MCP_CLIENTS,
+  RUNTIME_CLIENTS,
+  clientForRuntime,
   findClient,
   genericSnippet,
   jsonHasEntry,
   mergeJsonConfig,
+  mergeTomlConfig,
   serverSpec,
+  tomlHasEntry,
   type ConnectAction,
   type ConnectEnv,
   type McpClient,
@@ -33,6 +37,7 @@ import {
   type OwnServer,
 } from "./server-identity.js";
 import { readDenConfig, readMcpConfig } from "../../shared/den-config.js";
+import { printJson } from "./json-out.js";
 
 export const MCP_CONNECT_SUBCOMMANDS = [
   "connect",
@@ -77,15 +82,28 @@ interface Flags {
   project: string | null;
   port?: number;
   dryRun: boolean;
+  json: boolean;
+  runtime?: string;
 }
 
 function parseFlags(argv: string[]): Flags {
-  const f: Flags = { clients: [], all: false, project: null, dryRun: false };
+  const f: Flags = {
+    clients: [],
+    all: false,
+    project: null,
+    dryRun: false,
+    json: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--all" || a === "-a") f.all = true;
     else if (a === "--dry-run" || a === "-n") f.dryRun = true;
-    else if (a === "--project" || a === "-p") {
+    else if (a === "--json") f.json = true;
+    else if (a === "--runtime" || a.startsWith("--runtime=")) {
+      const v = a.includes("=") ? a.slice(a.indexOf("=") + 1) : argv[++i];
+      if (!v) throw new Error("--runtime needs a value");
+      f.runtime = v;
+    } else if (a === "--project" || a === "-p") {
       const next = argv[i + 1];
       if (next && !next.startsWith("-") && !findClient(next)) {
         f.project = path.resolve(next);
@@ -150,19 +168,21 @@ function apply(
   a: ConnectAction,
   remove: boolean,
   dryRun: boolean,
-): { ok: boolean; said: string } {
-  if (a.kind === "json") {
+): { ok: boolean; said: string; file?: string; changed?: boolean } {
+  if (a.kind === "json" || a.kind === "toml") {
     const before = readText(a.file);
-    const after = mergeJsonConfig(
-      before,
-      a.key,
-      a.name,
-      remove ? null : a.entry,
-    );
-    if (!dryRun) writeConfig(a.file, after);
+    const after =
+      a.kind === "json"
+        ? mergeJsonConfig(before, a.key, a.name, remove ? null : a.entry)
+        : mergeTomlConfig(before, a.name, remove ? null : a.entry);
+    const changed = after !== (before ?? "");
+    // Unchanged is not rewritten: a re-run leaves the file (and its .bak) be.
+    if (!dryRun && changed) writeConfig(a.file, after);
     return {
       ok: true,
-      said: `${dryRun ? "would write" : remove ? "removed from" : "wrote"} ${a.file}`,
+      file: a.file,
+      changed,
+      said: `${dryRun ? "would write" : !changed ? "already in" : remove ? "removed from" : "wrote"} ${a.file}`,
     };
   }
   if (remove) {
@@ -192,8 +212,11 @@ function status(
   env: ConnectEnv,
 ): string {
   const a = c.plan(s, scope, env);
-  if (a.kind === "json") {
-    const st = jsonHasEntry(readText(a.file), a.key, a.name, a.entry);
+  if (a.kind === "json" || a.kind === "toml") {
+    const st =
+      a.kind === "json"
+        ? jsonHasEntry(readText(a.file), a.key, a.name, a.entry)
+        : tomlHasEntry(readText(a.file), a.name, a.entry);
     return st === "connected"
       ? chalk.green("connected")
       : st === "different"
@@ -314,7 +337,8 @@ function usage(): string {
     `  ${cli} mcp clients                       which agents are installed and connected`,
     `  ${cli} mcp connect [<client>...|--all]   register ${cli}'s MCP server (user scope)`,
     `        [--project [dir]]                  in a project's config instead (default: here)`,
-    `        [--port <n>] [--dry-run]`,
+    `        [--port <n>] [--dry-run] [--json]`,
+    `  ${cli} mcp connect --runtime <runtime>   by the agent's own name: ${Object.keys(RUNTIME_CLIENTS).join(", ")}`,
     `  ${cli} mcp disconnect <client>... [--project [dir]]`,
     `  ${cli} mcp config [--port <n>]           JSON for any other MCP client`,
     ``,
@@ -332,8 +356,30 @@ export async function runMcpConnect(argv: string[]): Promise<number> {
   try {
     flags = parseFlags(rest);
   } catch (e) {
+    if (rest.includes("--json")) {
+      printJson({
+        ok: false,
+        error: (e as Error).message,
+        fix: `${product().cli} mcp connect --runtime <${Object.keys(RUNTIME_CLIENTS).join("|")}> --json`,
+      });
+      return 1;
+    }
     console.error(chalk.red(`${(e as Error).message}\n`) + usage());
     return 1;
+  }
+  if (flags.json && (sub === "connect" || sub === "disconnect"))
+    return runMcpConnectJson(sub, flags);
+  if (flags.runtime) {
+    const c = clientForRuntime(flags.runtime);
+    if (!c) {
+      console.error(
+        chalk.red(
+          `unknown runtime: ${flags.runtime} (${Object.keys(RUNTIME_CLIENTS).join(", ")})\n`,
+        ) + usage(),
+      );
+      return 1;
+    }
+    flags.clients.push(c.id);
   }
   const s = spec(flags.port);
   const scope: Scope = flags.project ? "project" : "user";
@@ -440,4 +486,122 @@ export async function runMcpConnect(argv: string[]): Promise<number> {
     console.log(`  ${await webServerLine(flags.port)}\n`);
   }
   return failed ? 1 : 0;
+}
+
+/** One client's result in `mcp connect --json`. */
+export interface ConnectJsonClient {
+  id: string;
+  title: string;
+  ok: boolean;
+  said: string;
+  file?: string;
+  /** For a config file: whether this run changed it (false on a re-run). */
+  changed?: boolean;
+}
+
+/**
+ * `mcp connect|disconnect … --json` (ON-2): one JSON object, `{ ok, server,
+ * clients, restart, web, fix? }`. Safe to re-run: a config file that
+ * already has the entry is left as it is (changed: false), and a client's
+ * own `mcp add` is preceded by its `mcp remove`.
+ */
+async function runMcpConnectJson(
+  sub: "connect" | "disconnect",
+  flags: Flags,
+): Promise<number> {
+  const cli = product().cli;
+  const fixAll = `./bin/${cli} mcp connect --runtime <${Object.keys(RUNTIME_CLIENTS).join("|")}> --json`;
+  const fail = (error: string, extra: Record<string, unknown> = {}) => {
+    printJson({ ok: false, error, ...extra });
+    return 1;
+  };
+  let s: ServerSpec;
+  try {
+    s = spec(flags.port);
+  } catch (e) {
+    return fail((e as Error).message, {
+      ask: "Run this from your Den folder (the one with bin/ in it)?",
+    });
+  }
+  const scope: Scope = flags.project ? "project" : "user";
+  const env = connectEnv(
+    flags.project ?? process.env.DEN_INVOKE_CWD ?? process.cwd(),
+  );
+  const ids = [...flags.clients];
+  if (flags.runtime) {
+    const c = clientForRuntime(flags.runtime);
+    if (!c)
+      return fail(
+        `unknown runtime "${flags.runtime}": Den connects ${Object.keys(RUNTIME_CLIENTS).join(", ")}`,
+        {
+          fix: `./bin/${cli} mcp config`,
+          ask: "Your agent is not one Den knows. Add the JSON that `mcp config` prints to its MCP settings by hand?",
+        },
+      );
+    ids.push(c.id);
+  }
+  const unknown = ids.filter((id) => !findClient(id));
+  if (unknown.length)
+    return fail(`unknown client: ${unknown.join(", ")}`, { fix: fixAll });
+  const targets = flags.all
+    ? MCP_CLIENTS.filter((c) => c.detect(env) && c.scopes.includes(scope))
+    : ids.map((id) => findClient(id)!);
+  if (targets.length === 0) return fail("no client named", { fix: fixAll });
+
+  const url = webUrl(flags.port);
+  const probe = await probeWebServer(url);
+  if (sub === "connect" && probe.kind === "foreign")
+    return fail(
+      `${probe.who} answers at ${url}, not this distribution's web server: agents would read it`,
+      { ask: pickAnotherPortHint(cli) },
+    );
+
+  const clients: ConnectJsonClient[] = [];
+  for (const c of targets) {
+    if (!c.scopes.includes(scope)) {
+      clients.push({
+        id: c.id,
+        title: c.title,
+        ok: false,
+        said: `no ${scope} scope`,
+      });
+      continue;
+    }
+    try {
+      const r = apply(
+        c.plan(s, scope, env),
+        sub === "disconnect",
+        flags.dryRun,
+      );
+      clients.push({ id: c.id, title: c.title, ...r });
+    } catch (e) {
+      clients.push({
+        id: c.id,
+        title: c.title,
+        ok: false,
+        said: (e as Error).message,
+      });
+    }
+  }
+  const ok = clients.every((c) => c.ok);
+  const failed = clients.find((c) => !c.ok);
+  printJson({
+    ok,
+    server: { name: s.name, command: s.command, args: s.args },
+    clients,
+    dryRun: flags.dryRun,
+    // Most agents load a new MCP server only when they start.
+    restart: sub === "connect" && !flags.dryRun && ok,
+    web: { url, up: probe.kind === "up" },
+    ...(failed
+      ? {
+          error: `${failed.title}: ${failed.said}`,
+          fix: `./bin/${cli} mcp config`,
+          ask: `Add Den's MCP server to ${failed.title} by hand, with the JSON \`mcp config\` prints?`,
+        }
+      : probe.kind !== "up" && sub === "connect"
+        ? { next: [`./bin/${cli} web up --no-open`] }
+        : {}),
+  });
+  return ok ? 0 : 1;
 }

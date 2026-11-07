@@ -695,7 +695,7 @@ export function agentRefusal(
       method !== "HEAD" &&
       AGENT_READ_ONLY.some((r) => pathMatches(r, pathname)))
   )
-    return `${p.actor} can't use ${pathname}: signing in, web.secret and the lock are a person's.`;
+    return `${p.actor} can't use ${pathname}: signing in, web.secret and the admin password are a person's.`;
   const m = SESSION_ROUTE.exec(pathname);
   if (m) {
     let id = m[1];

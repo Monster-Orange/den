@@ -47,6 +47,13 @@ export type ConnectAction =
       entry: Record<string, unknown>;
     }
   | {
+      /** One `[mcp_servers.<name>]` table in a TOML config (Grok CLI). */
+      kind: "toml";
+      file: string;
+      name: string;
+      entry: Record<string, unknown>;
+    }
+  | {
       kind: "exec";
       /** Run first, failure ignored: makes the add idempotent. */
       remove?: string[];
@@ -209,10 +216,47 @@ export const MCP_CLIENTS: readonly McpClient[] = [
         s,
       ),
   },
+  {
+    // Grok CLI (xAI). Its MCP servers live in ~/.grok/config.toml (user)
+    // or .grok/config.toml (project), one [mcp_servers.<name>] table each,
+    // with command, args and env keys; `grok mcp add` documents no env flag,
+    // so Den writes the table itself, PATH and all.
+    // https://docs.x.ai/build/features/mcp-servers
+    id: "grok",
+    title: "Grok CLI",
+    scopes: ["user", "project"],
+    detect: (e) => e.which("grok") || e.exists(path.join(e.home, ".grok")),
+    plan: (s, scope, e) => ({
+      kind: "toml",
+      file: path.join(
+        scope === "project" ? e.projectDir : e.home,
+        ".grok",
+        "config.toml",
+      ),
+      name: s.name,
+      entry: stdioEntry(s),
+    }),
+  },
 ];
 
 export function findClient(id: string): McpClient | undefined {
   return MCP_CLIENTS.find((c) => c.id === id);
+}
+
+/**
+ * `mcp connect --runtime <runtime>` (ON-2): the agent runtime's own name
+ * (AG-0.5's catalog: claude, codex, gemini, grok) to its MCP client id.
+ */
+export const RUNTIME_CLIENTS: Readonly<Record<string, string>> = {
+  claude: "claude-code",
+  codex: "codex",
+  gemini: "gemini",
+  grok: "grok",
+};
+
+export function clientForRuntime(runtime: string): McpClient | undefined {
+  const id = RUNTIME_CLIENTS[runtime];
+  return id ? findClient(id) : undefined;
 }
 
 /** The PATH a launched server needs: node's own directory first. */
@@ -303,4 +347,94 @@ export function genericSnippet(spec: ServerSpec): string {
     null,
     2,
   );
+}
+
+// ── TOML configs (Grok CLI) ─────────────────────────────────────────────────
+
+/** A TOML basic string: JSON's escaping is a subset TOML reads the same. */
+const tomlString = (v: string): string => JSON.stringify(v);
+
+function tomlValue(v: unknown): string {
+  if (typeof v === "string") return tomlString(v);
+  if (Array.isArray(v)) return `[${v.map(tomlValue).join(", ")}]`;
+  if (v && typeof v === "object")
+    return `{ ${Object.entries(v as Record<string, unknown>)
+      .map(
+        ([k, x]) =>
+          `${/^[A-Za-z0-9_-]+$/.test(k) ? k : tomlString(k)} = ${tomlValue(x)}`,
+      )
+      .join(", ")} }`;
+  return String(v);
+}
+
+/** The `[mcp_servers.<name>]` table for `entry`, newline-terminated. */
+export function tomlTable(
+  name: string,
+  entry: Record<string, unknown>,
+): string {
+  return [
+    `[mcp_servers.${name}]`,
+    ...Object.entries(entry).map(([k, v]) => `${k} = ${tomlValue(v)}`),
+    "",
+  ].join("\n");
+}
+
+/** Whether a header line opens `name`'s table or one of its sub-tables. */
+function ownsHeader(line: string, name: string): boolean {
+  const m =
+    /^\s*\[\s*mcp_servers\.(?:"([^"]+)"|([A-Za-z0-9_-]+))\s*(\]|\.)/.exec(line);
+  return !!m && (m[1] ?? m[2]) === name;
+}
+
+/** `text` split into [before, name's table, after] (the table may be ""). */
+function splitTable(text: string, name: string): [string, string, string] {
+  const lines = text.split("\n");
+  const start = lines.findIndex((l) => ownsHeader(l, name));
+  if (start === -1) return [text, "", ""];
+  let end = start + 1;
+  while (
+    end < lines.length &&
+    !(/^\s*\[/.test(lines[end]) && !ownsHeader(lines[end], name))
+  )
+    end++;
+  return [
+    lines.slice(0, start).join("\n"),
+    lines.slice(start, end).join("\n"),
+    lines.slice(end).join("\n"),
+  ];
+}
+
+/**
+ * `text` (a TOML config, or null) with `name`'s `[mcp_servers.<name>]`
+ * table replaced by `entry` (or removed, for null). Everything else in the
+ * file is kept as written.
+ */
+export function mergeTomlConfig(
+  text: string | null,
+  name: string,
+  entry: Record<string, unknown> | null,
+): string {
+  const [before, , after] = splitTable(text ?? "", name);
+  const head = before.replace(/\n*$/, "");
+  const tail = after.replace(/^\n*/, "").replace(/\n*$/, "");
+  const parts = [
+    head,
+    entry ? tomlTable(name, entry).trimEnd() : "",
+    tail,
+  ].filter(Boolean);
+  return parts.length ? `${parts.join("\n\n")}\n` : "";
+}
+
+/** Whether a TOML config already has `name`'s table, as `entry` writes it. */
+export function tomlHasEntry(
+  text: string | null,
+  name: string,
+  entry: Record<string, unknown>,
+): "connected" | "different" | "absent" {
+  if (!text) return "absent";
+  const [, table] = splitTable(text, name);
+  if (!table) return "absent";
+  return table.trim() === tomlTable(name, entry).trim()
+    ? "connected"
+    : "different";
 }

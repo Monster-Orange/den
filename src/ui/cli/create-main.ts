@@ -6,4 +6,4 @@
 import { runCreate } from "./create.js";
 
 const cwd = process.env.DEN_INVOKE_CWD?.trim() || process.cwd();
-process.exit(runCreate(process.argv.slice(2), cwd));
+process.exit(await runCreate(process.argv.slice(2), cwd));

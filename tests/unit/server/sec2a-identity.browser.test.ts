@@ -184,7 +184,7 @@ describe("the identity chip", () => {
     await row.waitFor();
     expect(await row.count()).toBe(1);
     expect((await row.textContent())?.replace(/\s+/g, " ")).toMatch(
-      /Chrome on \w+ · This device.*signed in with one-time link · created just now · from 203\.0\.113\.7 \(Chrome on \w+\) · last seen just now.*Revoke/,
+      /Chrome on \w+ · This device.*signed in with a one-time link · created just now · from 203\.0\.113\.7 \(Chrome on \w+\) · last seen just now.*Revoke/,
     );
     // A reload: the chip again, and no toast.
     await p.reload();

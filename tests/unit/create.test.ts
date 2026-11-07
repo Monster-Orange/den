@@ -219,6 +219,8 @@ describe("parseCreateArgs", () => {
       title: "Acme Web",
       cli: "ac",
       envPrefix: "AC",
+      yes: false,
+      json: false,
     });
   });
 
@@ -242,23 +244,29 @@ describe("runCreate's Next: hint", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  function cdLine(argv: string[], cwd: string): string {
+  async function cdLine(argv: string[], cwd: string): Promise<string> {
     const lines: string[] = [];
     const log = console.log;
     console.log = (...a: unknown[]) => void lines.push(a.join(" "));
     try {
-      expect(runCreate(argv, cwd)).toBe(0);
+      // A start port of its own, and no probing: never the real default.
+      expect(
+        await runCreate(argv, cwd, {
+          startPort: 41000,
+          inUse: async () => false,
+        }),
+      ).toBe(0);
     } finally {
       console.log = log;
     }
     return lines.find((l) => l.startsWith("  cd ")) ?? "";
   }
 
-  it("is relative under the cwd, absolute when the dir is elsewhere", () => {
+  it("is relative under the cwd, absolute when the dir is elsewhere", async () => {
     const here = path.join(tmp, "here");
     fs.mkdirSync(here);
-    expect(cdLine(["demo"], here)).toBe("  cd demo");
+    expect(await cdLine(["demo"], here)).toBe("  cd demo");
     const elsewhere = path.join(tmp, "elsewhere", "demo2");
-    expect(cdLine(["demo2", elsewhere], here)).toBe(`  cd ${elsewhere}`);
+    expect(await cdLine(["demo2", elsewhere], here)).toBe(`  cd ${elsewhere}`);
   });
 });

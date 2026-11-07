@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den",
-  "version": "0.4.5",
+  "version": "0.4.6-dev.0",
   "description": "Den: a local multi-repo dev orchestrator, HTTPS edge and E2E harness",
   "type": "module",
   "bin": {
@@ -25,7 +25,8 @@
     "README.md",
     "CHANGELOG.md",
     "docs/",
-    "!docs/images/"
+    "!docs/images/",
+    "skills/"
   ],
   "scripts": {
     "cli": "tsx src/ui/cli/index.ts menu",
@@ -44,7 +45,7 @@
     "gate:org-names": "node scripts/org-name-gate.mjs",
     "docs:shots": "node scripts/doc-shots.mjs",
     "docs:links": "node scripts/docs-links.js",
-    "example:regen": "rm -rf examples/distribution && ./bin/den create acme examples/distribution",
+    "example:regen": "rm -rf examples/distribution && ./bin/den create acme examples/distribution --port 7777",
     "dist-smoke": "bash scripts/dist-smoke.sh"
   },
   "keywords": [

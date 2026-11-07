@@ -156,17 +156,17 @@ export function seenAgo(iso, now = Date.now()) {
 export function deviceLine(d, now = Date.now()) {
   const how =
     d.via === "github"
-      ? `GitHub${d.login ? ` (@${d.login})` : ""}`
+      ? `signed in with GitHub${d.login ? ` (@${d.login})` : ""}`
       : d.via === "code"
         ? "approved with a code"
-        : "one-time link";
+        : "signed in with a one-time link";
   const name = d.name || "Unknown browser";
   const from = d.client || d.host;
   return {
     title: name,
     current: !!d.current,
     detail: [
-      `signed in with ${how}`,
+      how,
       `created ${seenAgo(d.createdAt, now)}`,
       from ? `from ${from} (${name})` : "",
       `last seen ${seenAgo(d.lastSeenAt, now)}`,

@@ -32,8 +32,22 @@ From a Den checkout, `./bin/den create acme ../acme` does the same.
 | `--title <title>`       | `<Name>` Title Case | Brand name shown to people            |
 | `--cli <cli>`           | `<name>`            | The command people type               |
 | `--env-prefix <PREFIX>` | `<NAME>`            | Env-var prefix (`ACME` → `ACME_HOME`) |
+| `--yes`, `-y`           |                     | Never prompt (create never does)      |
+| `--json`                |                     | One JSON object on stdout             |
+| `--port <n>`            | `7777`, else free   | The web UI's port                     |
 
 `create` refuses a directory that is not empty and never overwrites a file.
+A directory that already holds this distribution (its `den.yml` names the
+same product and command) is not an error: `create` says so and writes
+nothing, so it is safe to re-run.
+
+The web UI's port is 7777 unless that port is in use on this machine (another
+Den already running, say). Then `create` picks the next free port above it,
+never a port Den itself reserves (7778, 7791, 7799), writes it to the new
+distribution's `config/local/user.yml` as `web: { port: N }`, and says so.
+`--port <n>` sets it outright. The check only connects and binds; it sends
+nothing to whatever holds the port. `DEN_WEB_PORT_START` moves the starting
+port (tests use it so none touches 7777).
 [`examples/distribution/`](../examples/distribution) is exactly the output of
 `den create acme`; a unit test regenerates it, so the two never drift
 (`npm run example:regen` after changing the scaffolder).
@@ -47,6 +61,85 @@ npm install
 ./bin/acme web          # the web UI, branded "Acme"
 make help
 ```
+
+## Set up by your agent
+
+A developer pastes one line into their agent:
+
+```text
+Set up Den for me by following https://raw.githubusercontent.com/Monster-Orange/den/main/skills/install-den/SKILL.md
+```
+
+That file is the install-den skill, also in the package at
+`skills/install-den/SKILL.md`: plain Markdown any agent can follow, with
+Claude skill front matter. `den --help` prints the line. The skill runs the
+commands below. Each one takes `--json`, never prompts, and is safe to
+re-run. With `--json`, stdout carries exactly one JSON object and the
+command's log goes to stderr. When `ok` is false the object says why
+(`error`) and carries either a command the agent can run (`fix`) or a
+question for the person (`ask`, sometimes with `choices`).
+
+| Step                                                       | Answers                                                                      |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `npx @monster-orange/den create <name> [dir] --yes --json` | `{ ok, dir, cli, existed, files, port, portPicked?, next }`                  |
+| `<cli> repo add <path\|git-url> --json`                    | `{ ok, existed, repo, workspace, mode, path, manifest, services, next }`     |
+| `<cli> up <repo> --json`                                   | `{ ok, workspace, services: [{ address, result, health, detail? }], next }`  |
+| `<cli> web up --no-open --json`                            | `{ ok, url, port, version? }`                                                |
+| `<cli> doctor --json`                                      | `{ ok, checks: [{ id, status, detail, url?, port?, fix?, ask? }] }`          |
+| `<cli> mcp connect --runtime <runtime> --json`             | `{ ok, server, clients: [{ id, ok, said, file?, changed? }], restart, web }` |
+
+### repo add
+
+`<cli> repo add <path|git-url> [--sidecar] [-w <workspace>] [--name <repo>]
+[--run "<cmd>"] [--down "<cmd>"] [--health <url>] [--branch <branch>]
+[--json]` adds a repo to a workspace without writing into the repo.
+
+- A path is the person's own checkout, added dev-managed at that path. A git
+  URL is cloned where Den keeps its managed clones
+  (`.<name>-services/<repo>/<branch>`, the remote's default branch unless
+  `--branch` says otherwise) and added managed. A clone that is already
+  there is used as it is.
+- A repo with its own manifest is used as it is. One without, or with
+  `--sidecar`, gets a side-car: a held manifest at
+  `manifests/<repo>.<name>.yml` ([below](#overriding-a-manifest)), keyed by
+  the repo's `origin` name or folder name. It is checked by the manifest
+  validator before it is written, and an existing one is never overwritten.
+  `--sidecar` on a repo with its own manifest is an error: Den always uses
+  the repo's own file (change it with an override instead).
+- The side-car's commands are detected from the repo's files, in this order:
+  a Makefile with an `up` target (`make up`, plus `down`, `setup` and
+  `restart` when present); otherwise a compose file
+  (`docker compose -f <file> up -d` and `down`) or `package.json`'s `dev`,
+  else `start`, script. One candidate decides. Two, or none, is a question:
+  the answer has `ask` and `choices`, nothing is written, and a re-run names
+  the command with `--run "<cmd>"`. A Makefile `test` target or a
+  `package.json` `test` script becomes the repo's `tests.unit`.
+  `--health <url>` adds an HTTP health check.
+- The workspace is `-w <workspace>` (made and activated if it doesn't exist),
+  else the focused one, else a new `default` workspace.
+- The same repo again answers `ok` with `existed: true`. A different repo
+  under the same name is an error that offers `relocate` or `--name`.
+
+### up, doctor and mcp connect
+
+- `up --json` runs `up` as usual, then reports each service it touched:
+  `result` is `started`, `already-running`, `failed` or `skipped`, and
+  `health` is the service's health after it started (a service with a
+  health check is waited on, up to 30 seconds). A healthy service is
+  `already-running` on a re-run.
+- `doctor --json` lists the onboarding checks first: `node` (22.13 or
+  later), `git`, `docker` (only when a registered repo has a compose file or
+  block, or a docker command), `web` (the web server answers at `url`) and
+  `mcp` (`<cli> mcp --call workspaces` gets an answer through it). Then one
+  `strategy:<kind>` check per row of the [human doctor](#doctor). `ok` is
+  false, and the exit code 1, when any check is `fail`.
+- `mcp connect --runtime <runtime>` names the agent by its runtime: `claude`
+  (the `claude-code` client), `codex`, `gemini` or `grok`. Grok CLI keeps its
+  MCP servers in `~/.grok/config.toml` (or `.grok/config.toml` with
+  `--project`), one `[mcp_servers.<name>]` table each
+  ([xAI's docs](https://docs.x.ai/build/features/mcp-servers)); Den writes
+  only its own table. A config file that already has the entry is left as
+  it is (`changed: false`).
 
 ## Layout
 
@@ -586,6 +679,10 @@ Acme doctor: strategies
 
 `session-backend` is never a doctor failure: nothing needs a session until
 one is started (see Sessions).
+
+`<cli> doctor --json` adds the onboarding checks (Node, git, Docker, the web
+server, Den's MCP) and answers with one JSON object: see
+[Set up by your agent](#up-doctor-and-mcp-connect).
 
 ## den.yml: the product profile
 

@@ -88,6 +88,8 @@ const OWN_WORKSPACE_FLAG_COMMANDS = new Set([
   // CLI's workspace override here.
   "sessions",
   "agents",
+  // `repo add -w <ws>` names (or creates) the workspace to write.
+  "repo",
 ]);
 
 /** Whether `-w <name>` on this command requires `<name>` to be active. */
@@ -181,6 +183,7 @@ export const SUBCOMMAND_OWN_HELP: Readonly<Record<string, readonly string[]>> =
   {
     web: ["token", "login", "sessions", "logout", "owner", "approve"],
     mcp: ["connect", "disconnect", "clients", "config"],
+    repo: ["add"],
   };
 
 /** Whether `<command> <sub> --help` is the subcommand's own to answer. */
@@ -209,6 +212,7 @@ const COMMAND_FLAGS: Record<string, readonly string[]> = {
     "--pull",
     "-A",
     "--app",
+    "--json",
   ],
   down: [
     "--manifest",

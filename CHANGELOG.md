@@ -4,6 +4,80 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.6] - unreleased
+
+Den in five minutes, set up by your own agent (ON-2, with ON-4's dry run).
+A developer pastes one line into their agent, and every command the agent
+runs answers in JSON, never prompts, and is safe to re-run.
+
+### Added
+
+- **Set up by your agent.** `den --help` and the README print the line to
+  paste: "Set up Den for me by following
+  https://raw.githubusercontent.com/Monster-Orange/den/main/skills/install-den/SKILL.md". The install-den skill it points
+  at ships in the package as `skills/install-den/SKILL.md`: plain Markdown
+  with Claude skill front matter, at most three questions, no secrets in
+  chat, no edits to the person's repos, nothing sent off the machine.
+- **`<cli> repo add <path|git-url>`** adds a repo with no prompts and never
+  writes into it. A git URL is cloned where Den keeps managed clones. A repo
+  with no manifest (or `--sidecar`) gets a side-car manifest in the
+  distribution's `manifests/`, detected from its Makefile `up` target, its
+  compose file or its `package.json` `dev`/`start` scripts (and `test`), and
+  validated before it is written. When detection can't decide, nothing is
+  written and the answer asks, with the choices; a re-run passes
+  `--run "<cmd>"`. `--health <url>` adds a health check. The workspace is
+  `-w`, else the focused one, else a new `default`. The same repo again
+  answers `existed: true`.
+- **`--json` for setup.** `create --yes --json` (a directory that already
+  holds the distribution is `existed: true`), `up --json` (each service's
+  result and health), `doctor --json` and `mcp connect --json`. Stdout is
+  one JSON object, the log goes to stderr, and a failure carries a `fix`
+  the agent can run or an `ask` for the person.
+- **`doctor --json`'s onboarding checks:** Node 22.13 or later, git, Docker
+  (only when a registered repo needs it), the web server and its URL, and
+  Den's MCP through it, each `ok`, `warn` or `fail`. The human `doctor` is
+  unchanged.
+- **`mcp connect --runtime claude|codex|gemini|grok`** names the agent by
+  its runtime. Grok CLI is a new client: Den writes its own
+  `[mcp_servers.<cli>]` table in `~/.grok/config.toml` (or the project's
+  `.grok/config.toml`), as xAI documents. A config file that already has the
+  entry is no longer rewritten.
+- **`create` picks a free web port.** When 7777 is in use on this machine,
+  `create` picks the next free port above it (never 7778, 7791 or 7799),
+  writes it to the new distribution's `config/local/user.yml` and says so,
+  in JSON as `port` and `portPicked`. `--port <n>` sets it outright. The
+  check connects and binds only; it sends nothing to the port's holder.
+  `DEN_WEB_PORT_START` moves the starting port.
+- **`web up --json`** answers `{ ok, url, port }` once the server answers,
+  and `doctor --json`'s web check carries the `port`.
+
+### Changed
+
+- `create` into a directory that already holds the same distribution says
+  so and exits 0, instead of refusing a non-empty directory.
+
+### Fixed
+
+- **An opted-in CLI sends its metrics.** The CLI records each run as it
+  exits, and a send started then never ran. With `metrics.share: true`, the
+  CLI now hands the event to a small detached sender that gives up after 2
+  seconds. The web server sends as before. Not opted in, nothing is sent.
+- **Linked devices read plainly.** A device approved with a code says
+  "approved with a code", not "signed in with approved with a code".
+- **An agent's refusal names the admin password.** It said "the lock",
+  which 0.4.4 removed.
+
+### Metric
+
+- Time from the paste to "service running, MCP connected" (R11): not
+  measured before; ON-4's dry run (create, repo add, up, web up, doctor,
+  mcp connect, each run twice) now records it, about 16 s locally. Target:
+  5 minutes or less.
+
+### Migrations
+
+- None.
+
 ## [0.4.5] - 2026-11-07
 
 Sign in with GitHub as the owner, from your other devices; approve a

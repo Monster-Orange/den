@@ -20,6 +20,10 @@ BASE="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 WORK="$(cd "$(mktemp -d "${BASE%/}/den-dist-smoke.XXXXXX")" && pwd -P)"
 DIST="$WORK/acme"
 export ACME_HOME="$WORK/acme-home"
+# create looks for a free web port from here instead of the default (7777),
+# so the smoke never probes another Den on this machine.
+DEN_WEB_PORT_START="$(node -e 'const s=require("net").createServer();s.listen(0,"localhost",()=>{console.log(s.address().port);s.close()})')"
+export DEN_WEB_PORT_START
 PORT=""
 fails=0
 
@@ -100,6 +104,14 @@ if grep -qE '^package/docs/images/|\.(png|gif|webp|jpe?g)$' "$WORK/tarball.list"
   grep -E '^package/docs/images/|\.(png|gif|webp|jpe?g)$' "$WORK/tarball.list" | head -5 | sed 's/^/       /'
 else
   ok "no images in the tarball"
+fi
+
+# The install-den agent skill (ON-1) ships in the package, next to the
+# CLI whose flags it names.
+if grep -qxF 'package/skills/install-den/SKILL.md' "$WORK/tarball.list"; then
+  ok "skills/install-den/SKILL.md in the tarball"
+else
+  bad "skills/install-den/SKILL.md not in the tarball (package.json files needs skills/)"
 fi
 
 say "scaffold: npx --package <tarball> den create acme"

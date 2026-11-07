@@ -26,6 +26,7 @@ import { envSelector } from "../../shared/environment/env-selector.js";
 import {
   recordInvocation,
   recordFailure,
+  shipFromDetachedSender,
   startTimer,
 } from "../../shared/dev-metrics/emit.js";
 import type { Environment, Pillar } from "../../shared/types/index.js";
@@ -242,6 +243,8 @@ import {
 import { DEN_BANNER_LINES, DEN_DIVIDER } from "../../shared/banner.js";
 
 import { product } from "../../shared/product.js";
+import { AGENT_SETUP_LINE } from "../../shared/agent-setup.js";
+import { ExitRequested, printJson, quietStdout } from "./json-out.js";
 const DEN_HELP_DESCRIPTION = `  ${product().title} - local-first test, service, and workspace orchestration`;
 
 /**
@@ -360,6 +363,16 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "-w writes that workspace (active or not) and leaves focus alone.",
     ],
   },
+  repo: {
+    usage:
+      'repo add <path|git-url> [--sidecar] [-w <workspace>] [--name <repo>] [--run "<cmd>"] [--health <url>] [--json]',
+    lines: [
+      "Add a repo with no prompts, never writing into it. A repo with no",
+      "manifest (or --sidecar) gets a side-car manifest in manifests/, detected",
+      "from its Makefile, compose file or package.json scripts. Safe to re-run.",
+      "`{cli} repo add --help` says more.",
+    ],
+  },
   relocate: {
     usage: "relocate <repo> <path> [--dry-run] [--force] [-w <workspace>]",
     lines: [
@@ -465,8 +478,11 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   doctor: {
-    usage: "doctor [--probe]",
+    usage: "doctor [--probe] [--json]",
     lines: [
+      "--json: one object, { ok, checks: [{ id, status: ok|warn|fail, detail, fix?, ask? }] }:",
+      "Node 22.13+, git, Docker (only when a registered repo needs it), the web",
+      "server and Den's MCP through it, then each strategy below. Exit 1 on a fail.",
       "Each strategy kind (secrets, tls): the one selected, whether it was implicit,",
       "and whether it can work here (a PATH check; nothing is run or prompted).",
       "--probe: start a short probe session (through the session host) for a",
@@ -575,6 +591,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "service",
   "theme",
   "plugin",
+  "repo",
 ]);
 
 /**
@@ -678,7 +695,18 @@ function printValidation(
   }
 }
 
+/** What `up --json` collects while up runs (runServicesCommand fills it). */
+interface UpReport {
+  started: string[];
+  failed: string[];
+  alreadyRunning: string[];
+  skipped: string[];
+}
+
 class DenCLI {
+  /** Set while `up --json` runs. */
+  private upReport: UpReport | null = null;
+
   private static readonly serviceCommands = new Set([
     "up",
     "down",
@@ -715,6 +743,8 @@ class DenCLI {
     // synchronously. `telCmd` is always a REGISTERED command name (never raw
     // argv — PII); it is refined once the args parse successfully.
     const stopTimer = startTimer();
+    // The exit hook can't await a send; hand it to a detached sender.
+    shipFromDetachedSender();
     let telCmd = telemetryCommandName(args.find((a) => !a.startsWith("-")));
     process.once("exit", (code) => {
       recordInvocation({
@@ -868,13 +898,31 @@ class DenCLI {
           process.exit(0);
           break;
 
-        case "web":
+        case "web": {
+          const sub = args[1];
+          if (
+            args.includes("--json") &&
+            (sub === undefined ||
+              sub.startsWith("-") ||
+              sub === "up" ||
+              sub === "restart")
+          ) {
+            process.exitCode = await this.cmdWebUpJson(
+              args.slice(1).filter((a) => a !== "--json"),
+            );
+            break;
+          }
           await cmdWeb(args.slice(1));
           break;
+        }
 
         // ── Environment manager commands ──────────────────────────────────
         case "up":
-          await this.cmdServiceUp(args.slice(1));
+          if (args.slice(1).includes("--json"))
+            process.exitCode = await this.cmdServiceUpJson(
+              args.slice(1).filter((a) => a !== "--json"),
+            );
+          else await this.cmdServiceUp(args.slice(1));
           break;
 
         case "down":
@@ -905,6 +953,12 @@ class DenCLI {
         case "register":
           await this.cmdRegister(args.slice(1));
           break;
+
+        case "repo": {
+          const { cmdRepo } = await import("./repo-command.js");
+          process.exitCode = await cmdRepo(args.slice(1), validateManifest);
+          break;
+        }
 
         case "relocate":
           await this.cmdRelocate(args.slice(1));
@@ -967,7 +1021,7 @@ class DenCLI {
         case "create": {
           // bin/den routes `create` to its own entry (it needs no den.yml);
           // this covers the CLI run directly from a checkout.
-          const code = runCreate(args.slice(1), getInvokeCwd());
+          const code = await runCreate(args.slice(1), getInvokeCwd());
           if (code !== 0) process.exit(code);
           break;
         }
@@ -1829,8 +1883,10 @@ class DenCLI {
         if (isNamedTarget(address, opts?.named ?? [])) {
           console.log(chalk.red(`  ✗ ${remote}`));
           process.exitCode = 1;
+          this.upReport?.failed.push(address);
         } else {
           console.log(chalk.gray(`  • ${remote}`));
+          this.upReport?.skipped.push(address);
         }
         continue;
       }
@@ -1854,6 +1910,7 @@ class DenCLI {
             );
             // A dependency only warns; the service you named failed.
             if (isNamedTarget(address, opts?.named ?? [])) process.exitCode = 1;
+            this.upReport?.failed.push(address);
             continue;
           }
           if (health.health === "ok" && claim !== "conflict") {
@@ -1870,6 +1927,7 @@ class DenCLI {
                 `  • ${chalk.bold(address)} already healthy — skipping dependency up${suffix}`,
               ),
             );
+            if (command === "up") this.upReport?.alreadyRunning.push(address);
             continue;
           }
         }
@@ -2103,6 +2161,8 @@ class DenCLI {
       // Any target that failed makes the whole command fail (scripts and
       // agents read the exit code).
       if (!started) process.exitCode = 1;
+      if (command === "up")
+        this.upReport?.[started ? "started" : "failed"].push(address);
       if (plan?.failFast && !started) {
         console.log(
           chalk.red(
@@ -2746,6 +2806,10 @@ class DenCLI {
       "act in that (active) workspace instead of the focused one; focus stays",
     );
     row("--skip-secrets", "skip the secrets-backend sign-in preflight");
+    row(
+      "--json",
+      "log on stderr; stdout: { ok, services: [{ address, result, health }], fix? }",
+    );
     row("-h, --help", "show this help");
     console.log();
   }
@@ -3097,6 +3161,177 @@ class DenCLI {
       dryRun || plan,
       plan,
     );
+  }
+
+  /**
+   * `up --json` (ON-2): up as it always runs, its log on stderr, then one
+   * JSON object on stdout: each service it touched, what happened to it
+   * (started, already-running, failed, skipped) and its health once started
+   * (a started service with a health check is waited on, up to 30s). Safe to
+   * re-run: a healthy service is already-running. Every failure names a fix.
+   */
+  private async cmdServiceUpJson(args: string[]): Promise<number> {
+    const report: UpReport = {
+      started: [],
+      failed: [],
+      alreadyRunning: [],
+      skipped: [],
+    };
+    const bin = fs.existsSync(
+      nodePath.join(getDistRoot(), "bin", product().cli),
+    )
+      ? `./bin/${product().cli}`
+      : product().cli;
+    const before = process.exitCode;
+    process.exitCode = undefined;
+    let error: string | undefined;
+    this.upReport = report;
+    try {
+      await quietStdout(() => this.cmdServiceUp(args));
+    } catch (e) {
+      if (!(e instanceof ExitRequested)) error = (e as Error).message;
+      else if (e.code !== 0) process.exitCode = e.code;
+    } finally {
+      this.upReport = null;
+    }
+    const failedExit = process.exitCode !== undefined && process.exitCode !== 0;
+    process.exitCode = before;
+    const workspace =
+      process.env.DEN_WORKSPACE_OVERRIDE ??
+      getFocusedWorkspaceName() ??
+      undefined;
+    const result = (address: string): string =>
+      report.failed.includes(address)
+        ? "failed"
+        : report.started.includes(address)
+          ? "started"
+          : report.alreadyRunning.includes(address)
+            ? "already-running"
+            : "skipped";
+    const touched = [
+      ...new Set([
+        ...report.started,
+        ...report.alreadyRunning,
+        ...report.failed,
+        ...report.skipped,
+      ]),
+    ];
+    const services = await Promise.all(
+      touched.map(async (address) => {
+        const resolved = resolveService(address, workspace);
+        let health = "unknown";
+        let detail: string | undefined;
+        if (resolved && result(address) !== "skipped") {
+          const ready =
+            result(address) === "started"
+              ? await waitForReady(resolved, "local", { timeoutMs: 30_000 })
+              : null;
+          const h = await checkServiceHealth(resolved, "local");
+          health = h.health;
+          detail = h.healthDetail ?? ready?.detail;
+        }
+        return {
+          address,
+          result: result(address),
+          health,
+          ...(detail ? { detail } : {}),
+        };
+      }),
+    );
+    const unhealthy = services.filter(
+      (s) => s.result !== "skipped" && s.health === "error",
+    );
+    const out: Record<string, unknown> = {
+      ok:
+        !error &&
+        !failedExit &&
+        report.failed.length === 0 &&
+        unhealthy.length === 0 &&
+        touched.length > 0,
+      workspace: workspace ?? null,
+      services,
+    };
+    if (error) {
+      out.error = error;
+      out.fix = `${bin} doctor --json`;
+    } else if (report.failed.length > 0 || unhealthy.length > 0) {
+      const names = [
+        ...new Set([...report.failed, ...unhealthy.map((s) => s.address)]),
+      ];
+      out.error = `${names.join(", ")} did not start healthy`;
+      out.fix = `${bin} logs ${names[0].split("/")[0]}`;
+    } else if (failedExit) {
+      out.error = "up failed (its log is on stderr)";
+      out.fix = `${bin} up ${args.join(" ")} --plan`.replace(/\s+/g, " ");
+    } else if (touched.length === 0) {
+      out.error =
+        "nothing was started: no repo named, and the folder up ran in is not a repo in the workspace";
+      out.fix = `${bin} up -a --json`;
+      out.ask = "Which repo should start? (its name, as `repo add` printed it)";
+    }
+    out.next = out.ok
+      ? [`${bin} web up --no-open --json`, `${bin} doctor --json`]
+      : [];
+    printJson(out);
+    return out.ok ? 0 : 1;
+  }
+
+  /**
+   * `web up|restart --json` (ON-2): the web server started as usual (its
+   * log on stderr), then `{ ok, url, port, version? }` once it answers
+   * (up to 30s), so an agent hands back the right URL.
+   */
+  private async cmdWebUpJson(args: string[]): Promise<number> {
+    const { parseWebCommandArgs } = await import("./web-command.js");
+    const { probeWebServer } = await import("./mcp-connect.js");
+    const bin = fs.existsSync(
+      nodePath.join(getDistRoot(), "bin", product().cli),
+    )
+      ? `./bin/${product().cli}`
+      : product().cli;
+    let port: number;
+    try {
+      port = parseWebCommandArgs(args).port;
+    } catch (e) {
+      printJson({
+        ok: false,
+        error: (e as Error).message,
+        fix: `${bin} web up --no-open --json`,
+      });
+      return 2;
+    }
+    const url = `http://localhost:${port}`;
+    let error: string | undefined;
+    try {
+      await quietStdout(() => cmdWeb(args));
+    } catch (e) {
+      if (!(e instanceof ExitRequested) || e.code !== 0)
+        error = (e as Error).message;
+    }
+    let probe = await probeWebServer(url);
+    const deadline = Date.now() + 30_000;
+    while (!error && probe.kind !== "up" && probe.kind !== "foreign") {
+      if (Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 500));
+      probe = await probeWebServer(url);
+    }
+    const out: Record<string, unknown> = {
+      ok: probe.kind === "up",
+      url,
+      port,
+      ...(probe.kind === "up" && probe.version
+        ? { version: probe.version }
+        : {}),
+    };
+    if (probe.kind === "foreign") {
+      out.error = `${probe.who} answers at ${url}, not this distribution's web server`;
+      out.ask = `Another Den distribution uses port ${port}. Which port should ${product().title} use? (web.port in config/local/user.yml)`;
+    } else if (probe.kind !== "up") {
+      out.error = error ?? `the web server is not answering at ${url}`;
+      out.fix = `${bin} web restart --no-open --json`;
+    }
+    printJson(out);
+    return out.ok ? 0 : 1;
   }
 
   /** Legacy: start the given services via manifest depends_on. */
@@ -4880,6 +5115,10 @@ class DenCLI {
    */
   private displayHelp(): void {
     this.displayHelpBanner();
+    // ON-5: the line a developer pastes into their agent.
+    console.log(`Set up by your agent: paste this into it:`);
+    console.log(`  ${AGENT_SETUP_LINE}`);
+    console.log();
     console.log("Usage:");
     console.log(`  ${product().cli} [command] [options]`);
     console.log("\nEnvironment commands:");
@@ -4916,6 +5155,9 @@ class DenCLI {
     );
     console.log(
       "  register [path]      Register a repo in the service catalog",
+    );
+    console.log(
+      "  repo add <path|url>  Add a repo with no prompts, never changing it (--sidecar, --json)",
     );
     console.log(
       "  relocate <repo> <path>  Point a moved checkout's workspace entries at its new path",

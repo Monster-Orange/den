@@ -31,7 +31,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { execFileSync } from "child_process";
+import { execFileSync, spawn } from "child_process";
 import { createHash, randomUUID } from "crypto";
 import * as yaml from "yaml";
 import { getDistRoot } from "../paths.js";
@@ -241,6 +241,32 @@ export function buildEnvelope(
   return `{}\n${itemHeader}\n${payload}\n`;
 }
 
+/**
+ * Send from a short-lived detached process instead of this one. The CLI
+ * records its run in the `exit` handler, where an async fetch never runs;
+ * a detached sender outlives the CLI and gives up after SHIP_TIMEOUT_MS.
+ * The long-lived server keeps the in-process fetch.
+ */
+let shipDetached = false;
+export function shipFromDetachedSender(): void {
+  shipDetached = true;
+}
+
+const SENDER = `fetch(process.env.DM_URL,{method:"POST",headers:{"Content-Type":"application/x-sentry-envelope","X-Sentry-Auth":process.env.DM_AUTH},body:process.env.DM_BODY,signal:AbortSignal.timeout(${SHIP_TIMEOUT_MS})}).catch(()=>{}).finally(()=>process.exit(0))`;
+
+function sendDetached(url: string, auth: string, body: string): void {
+  try {
+    spawn(process.execPath, ["-e", SENDER], {
+      detached: true,
+      stdio: "ignore",
+      // Only what the sender needs: none of the caller's environment.
+      env: { DM_URL: url, DM_AUTH: auth, DM_BODY: body },
+    }).unref();
+  } catch {
+    /* fail-open: the JSONL line is already buffered */
+  }
+}
+
 function ship(
   record: Record<string, string>,
   epoch: number,
@@ -266,6 +292,7 @@ function ship(
 
   const url = `${parsed.scheme}://${parsed.host}/api/${parsed.projectId}/envelope/`;
   const auth = `Sentry sentry_key=${parsed.key}, sentry_version=7, sentry_client=dev-metrics-${product().cli}/1.0`;
+  if (shipDetached) return sendDetached(url, auth, envelope);
   // Fire-and-forget: never awaited, so the caller never blocks. Bounded by a 2s
   // abort so a hung ingest can't leak a pending request in the long-lived server.
   void fetch(url, {

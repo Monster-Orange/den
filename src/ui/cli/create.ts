@@ -15,7 +15,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { ENGINE_PACKAGE, getEngineRoot } from "../../shared/paths.js";
 import { profileFrom } from "../../shared/profile.js";
+import { parse as parseYaml } from "yaml";
 import { plural } from "../../shared/plural.js";
+import { DEFAULT_PORT } from "../../shared/constants.js";
+import { pickFreePort } from "../../shared/port-pick.js";
 
 export interface CreateOptions {
   /** Product name: lower-case `[a-z][a-z0-9-]*`. */
@@ -296,18 +299,34 @@ export function writeDistribution(dir: string, opts: CreateOptions): string[] {
 
 export interface ParsedCreateArgs extends Omit<CreateOptions, "denVersion"> {
   dir: string;
+  /** `--yes`: never prompt (create never does; accepted so agents can say so). */
+  yes: boolean;
+  /** `--json`: print one JSON object on stdout, nothing else. */
+  json: boolean;
+  /** `--port <n>`: the web UI's port, taken as given (no search). */
+  port?: number;
 }
 
 const CREATE_USAGE =
-  "usage: den create <name> [dir] [--title <title>] [--cli <cli>] [--env-prefix <PREFIX>]";
+  "usage: den create <name> [dir] [--title <title>] [--cli <cli>] [--env-prefix <PREFIX>] [--port <n>] [--yes] [--json]";
 
 /** Parse `create` argv (after the word `create`). `cwd` resolves the dir. */
 export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
   const positional: string[] = [];
   const flags: Record<string, string> = {};
+  let yes = false;
+  let json = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    const m = /^--(title|cli|env-prefix)(?:=(.*))?$/.exec(a);
+    if (a === "--yes" || a === "-y") {
+      yes = true;
+      continue;
+    }
+    if (a === "--json") {
+      json = true;
+      continue;
+    }
+    const m = /^--(title|cli|env-prefix|port)(?:=(.*))?$/.exec(a);
     if (m) {
       const value = m[2] ?? argv[++i];
       if (value === undefined)
@@ -326,7 +345,17 @@ export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
     title: flags.title,
     cli: flags.cli,
     envPrefix: flags["env-prefix"],
+    yes,
+    json,
+    ...(flags.port !== undefined ? { port: parsePortFlag(flags.port) } : {}),
   };
+}
+
+function parsePortFlag(v: string): number {
+  const n = Number(v);
+  if (!/^\d+$/.test(v) || n < 1 || n > 65535)
+    throw new Error(`--port must be a port number\n${CREATE_USAGE}`);
+  return n;
 }
 
 export const CREATE_HELP = `${CREATE_USAGE}
@@ -338,41 +367,245 @@ config/environments/local.json, manifests/ and tests/pillars/.
 
   --title <title>        brand name shown to people (default: <Name>)
   --cli <cli>            the command people type (default: <name>)
-  --env-prefix <PREFIX>  env-var prefix (default: <NAME>)`;
+  --env-prefix <PREFIX>  env-var prefix (default: <NAME>)
+  --port <n>             the web UI's port (default: ${DEFAULT_PORT}, or the next
+                         free one above it when that is in use)
+  --yes, -y              never prompt (create never does; for agents)
+  --json                 print one JSON object: { ok, dir, cli, existed, port, next }
 
-/** Run `create` end to end; returns the process exit code. */
-export function runCreate(argv: string[], cwd: string): number {
+Safe to re-run: a [dir] that already holds this distribution answers ok
+(existed: true) and writes nothing.`;
+
+/**
+ * Whether `dir` already holds the distribution `create` would make: its
+ * den.yml names this product (and this cli, when one was given).
+ */
+export function existingDistribution(
+  dir: string,
+  opts: { name: string; cli?: string },
+): boolean {
+  let text: string;
+  try {
+    text = fs.readFileSync(path.join(dir, "den.yml"), "utf-8");
+  } catch {
+    return false;
+  }
+  const name = /^\s+name:\s*(\S+)\s*$/m.exec(text)?.[1];
+  if (name !== opts.name) return false;
+  const cli = /^\s+cli:\s*(\S+)\s*$/m.exec(text)?.[1] ?? opts.name;
+  return cli === (opts.cli ?? opts.name);
+}
+
+/** What `create --json` prints. */
+export interface CreateJson {
+  ok: boolean;
+  dir?: string;
+  cli?: string;
+  existed?: boolean;
+  files?: number;
+  /** The web UI's port for this distribution. */
+  port?: number;
+  /** Set when DEFAULT_PORT was in use and `port` was picked instead. */
+  portPicked?: { wanted: number; file: string };
+  next?: string[];
+  error?: string;
+  fix?: string;
+  ask?: string;
+}
+
+function cdPathFor(cwd: string, dir: string): string {
+  // Relative only when the new directory is under the caller's cwd; a
+  // path that climbs out (../../..) is harder to read than the absolute one.
+  const rel = path.relative(cwd, dir);
+  return rel === ""
+    ? "."
+    : rel.startsWith("..") || path.isAbsolute(rel)
+      ? dir
+      : rel;
+}
+
+/** The web port a distribution at `dir` is set to (user, then team, config). */
+export function configuredWebPort(dir: string, name: string): number {
+  for (const rel of [
+    path.join("config", "local", "user.yml"),
+    path.join("config", `${name}.yml`),
+  ]) {
+    try {
+      const doc = parseYaml(fs.readFileSync(path.join(dir, rel), "utf-8")) as {
+        web?: { port?: unknown };
+      } | null;
+      const p = doc?.web?.port;
+      if (typeof p === "number" && Number.isInteger(p)) return p;
+    } catch {
+      /* absent or unreadable: next layer */
+    }
+  }
+  return DEFAULT_PORT;
+}
+
+export interface CreatePortOptions {
+  /**
+   * The port to start from: DEFAULT_PORT unless a test passes a port of its
+   * own (so no test probes the real default). The CLI reads it from
+   * DEN_WEB_PORT_START.
+   */
+  startPort?: number;
+  inUse?: (port: number) => Promise<boolean>;
+}
+
+/** DEN_WEB_PORT_START, for tests and CI: never probe the real default. */
+export function startPortFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): number | undefined {
+  const v = env.DEN_WEB_PORT_START?.trim();
+  if (!v) return undefined;
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 && n < 65536 ? n : undefined;
+}
+
+/**
+ * `create` as data: never prompts, never throws. A dir that already holds
+ * this distribution is ok (existed); any other non-empty dir is an error
+ * that names a fix.
+ *
+ * The web port: `--port` as given; else the default when it is free, else
+ * the next free port above it (never a reserved Den port), written to the
+ * new distribution's config/local/user.yml as `web.port`. Checking a port
+ * sends nothing to whoever holds it (port-pick.ts). A re-run reports the
+ * port the distribution is set to and picks nothing.
+ */
+export async function createResult(
+  args: ParsedCreateArgs,
+  cwd: string,
+  denVersion: string = runningDenVersion(),
+  portOpts: CreatePortOptions = {},
+): Promise<CreateJson> {
+  const cli = args.cli ?? args.name;
+  const next = (dir: string): string[] => [
+    `cd ${cdPathFor(cwd, dir)}`,
+    "npm install",
+    `./bin/${cli} repo add <path|git-url> --json`,
+  ];
+  try {
+    validateCreateOptions({ ...args, denVersion });
+    if (existingDistribution(args.dir, args))
+      return {
+        ok: true,
+        dir: args.dir,
+        cli,
+        existed: true,
+        port: configuredWebPort(args.dir, args.name),
+        next: next(args.dir),
+      };
+    // Refuse a busy dir before looking for a port.
+    if (
+      fs.existsSync(args.dir) &&
+      fs.statSync(args.dir).isDirectory() &&
+      fs.readdirSync(args.dir).length > 0
+    )
+      writeDistribution(args.dir, { ...args, denVersion }); // throws "not empty"
+    const wanted = args.port ?? portOpts.startPort ?? DEFAULT_PORT;
+    const port =
+      args.port ??
+      (await pickFreePort({ start: wanted, inUse: portOpts.inUse })) ??
+      wanted;
+    const written = writeDistribution(args.dir, { ...args, denVersion });
+    let portPicked: CreateJson["portPicked"];
+    // Written when the port differs from what the distribution would use
+    // anyway (an explicit --port that isn't the default, or a picked one).
+    if (port !== (args.port !== undefined ? DEFAULT_PORT : wanted)) {
+      const rel = path.join("config", "local", "user.yml");
+      const file = path.join(args.dir, rel);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(
+        file,
+        `# Yours, not the team's (gitignored). Set by create: ${
+          args.port !== undefined
+            ? "--port"
+            : `port ${wanted} was in use on this machine`
+        }.\nweb:\n  port: ${port}\n`,
+        { encoding: "utf-8", flag: "wx" },
+      );
+      written.push(rel);
+      if (args.port === undefined) portPicked = { wanted, file: rel };
+    }
+    return {
+      ok: true,
+      dir: args.dir,
+      cli,
+      existed: false,
+      files: written.length,
+      port,
+      ...(portPicked ? { portPicked } : {}),
+      next: next(args.dir),
+    };
+  } catch (e) {
+    const error = (e as Error).message;
+    if (/is not empty/.test(error))
+      return {
+        ok: false,
+        error,
+        fix: `npx ${ENGINE_PACKAGE} create ${args.name} ${path.join(path.dirname(args.dir), `${args.name}-den`)} --yes --json`,
+        ask: `${args.dir} already has files that are not a ${args.name} distribution. Which new or empty folder should the distribution go in?`,
+      };
+    return {
+      ok: false,
+      error,
+      ask: "Which name should the distribution have? Lower-case letters, digits and dashes, starting with a letter.",
+    };
+  }
+}
+
+/** Run `create` end to end; resolves to the process exit code. */
+export async function runCreate(
+  argv: string[],
+  cwd: string,
+  portOpts: CreatePortOptions = { startPort: startPortFromEnv() },
+): Promise<number> {
   if (argv.includes("-h") || argv.includes("--help")) {
     console.log(CREATE_HELP);
     return 0;
   }
+  const json = argv.includes("--json");
+  let args: ParsedCreateArgs;
   try {
-    const args = parseCreateArgs(argv, cwd);
-    const written = writeDistribution(args.dir, {
-      ...args,
-      denVersion: runningDenVersion(),
-    });
-    const cli = args.cli ?? args.name;
-    // Relative only when the new directory is under the caller's cwd; a
-    // path that climbs out (../../..) is harder to read than the absolute one.
-    const rel = path.relative(cwd, args.dir);
-    const cdPath =
-      rel === ""
-        ? "."
-        : rel.startsWith("..") || path.isAbsolute(rel)
-          ? args.dir
-          : rel;
-    console.log(
-      `Created ${args.name} in ${args.dir} (${plural(written.length, "file")}).`,
-    );
-    console.log("");
-    console.log("Next:");
-    console.log(`  cd ${cdPath}`);
-    console.log("  npm install");
-    console.log(`  ./bin/${cli} --help`);
-    return 0;
+    args = parseCreateArgs(argv, cwd);
   } catch (e) {
-    console.error(`create: ${(e as Error).message}`);
+    if (json) {
+      console.log(
+        JSON.stringify({
+          ok: false,
+          error: (e as Error).message.split("\n")[0],
+          fix: `npx ${ENGINE_PACKAGE} create <name> [dir] --yes --json`,
+        } satisfies CreateJson),
+      );
+    } else console.error(`create: ${(e as Error).message}`);
     return 1;
   }
+  const r = await createResult(args, cwd, runningDenVersion(), portOpts);
+  if (json) {
+    console.log(JSON.stringify(r));
+    return r.ok ? 0 : 1;
+  }
+  if (!r.ok) {
+    console.error(`create: ${r.error}`);
+    return 1;
+  }
+  const dir = r.dir ?? args.dir;
+  console.log(
+    r.existed
+      ? `${args.name} is already in ${dir}: nothing to do.`
+      : `Created ${args.name} in ${dir} (${plural(r.files ?? 0, "file")}).`,
+  );
+  console.log(
+    r.portPicked
+      ? `Web UI port: ${r.port} (${r.portPicked.wanted} is in use here; set in ${r.portPicked.file}).`
+      : `Web UI port: ${r.port}.`,
+  );
+  console.log("");
+  console.log("Next:");
+  console.log(`  cd ${cdPathFor(cwd, dir)}`);
+  console.log("  npm install");
+  console.log(`  ./bin/${r.cli} --help`);
+  return 0;
 }
