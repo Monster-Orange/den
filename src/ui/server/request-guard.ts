@@ -105,6 +105,8 @@ export interface GuardSession {
   key: string;
   /** The session's own CSRF token. */
   csrf: string;
+  /** sha256 of its approval key (approvals.ts); unset before 0.4.12. */
+  approveKeyHash?: string;
 }
 
 /** How a request reached Den. `edge` and `lan` are beyond loopback. */

@@ -106,6 +106,41 @@ export function serveFile(
   }
 }
 
+/**
+ * 0.4.12: the headers for a file something other than Den wrote (a test
+ * run's report: an agent may have written it). CSP `sandbox` without
+ * allow-same-origin runs its scripts in an opaque origin, so they can't
+ * read Den's localStorage (the approval key) or act as Den's page;
+ * nosniff keeps a .json from being run as a page.
+ */
+export const UNTRUSTED_FILE_HEADERS: Readonly<Record<string, string>> = {
+  "Content-Security-Policy":
+    "sandbox allow-scripts allow-popups allow-downloads",
+  "X-Content-Type-Options": "nosniff",
+  "Cache-Control": "no-store",
+  "Referrer-Policy": "no-referrer",
+};
+
+/** A file something other than Den wrote, as it is (no product tokens), sandboxed. */
+export function serveUntrustedFile(
+  res: http.ServerResponse,
+  filePath: string,
+): void {
+  let data: Buffer;
+  try {
+    data = fs.readFileSync(filePath);
+  } catch {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not found");
+    return;
+  }
+  res.writeHead(200, {
+    "Content-Type": mime(filePath),
+    ...UNTRUSTED_FILE_HEADERS,
+  });
+  res.end(data);
+}
+
 export function send400(res: http.ServerResponse, msg: string): void {
   res.writeHead(400, { "Content-Type": "text/plain" });
   res.end(msg);

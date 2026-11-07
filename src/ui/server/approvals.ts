@@ -3,9 +3,14 @@
  * waits for a person.
  *
  * Who may approve: approverAllowed, the one check. A signed-in browser
- * session only: its cookie, no bearer of any kind, on a mutation that
- * carried that session's own CSRF token (checkRequest checked it: with a
- * session, it accepts only the session's token). Not an anonymous
+ * session only: its cookie, no Authorization header of any kind, a POST
+ * that carried that session's own CSRF token (checkRequest checked it:
+ * with a session, it accepts only the session's token), and the session's
+ * approval key (X-Den-Approve-Key, web-session.ts). The key is what a
+ * stolen cookie lacks: browsers send a localhost cookie to every localhost
+ * port, so an agent's dev server on another port receives it, and GET
+ * /api/session gives any cookie holder the CSRF token; only the signed-in
+ * page holds the key. Not an anonymous
  * loopback request, though loopback lets those read and change everything
  * else (an agent with a shell can send one); not a person's or an agent's
  * bearer. Seam: a later "loopback isn't identity" mode (cloud machines)
@@ -14,8 +19,10 @@
  * The queue: request() holds a write with a copy of its exact args, so
  * nothing can change between Allow and the run. decide("allow") runs it
  * once, on the server, from the stored args, and keeps the result;
- * "deny" and expiry run nothing; a second decision is refused. In memory:
- * a restart drops what waits (the agent asks again).
+ * "deny" and expiry run nothing; a second decision is refused; Allow is
+ * refused once the agent that asked has been stopped. An agent may have 5
+ * requests waiting; settled ones are dropped an hour later. In memory: a
+ * restart drops what waits (the agent asks again).
  *
  * Limit: an agent running as the same OS user could, in principle, read
  * the browser's cookie store from disk. That is the strength of Den's
@@ -23,6 +30,10 @@
  */
 import { randomBytes } from "crypto";
 import type * as http from "http";
+import {
+  APPROVE_KEY_HEADER,
+  approveKeyMatches,
+} from "../../shared/web-session.js";
 import type { GuardResult } from "./request-guard.js";
 
 export type ApproverCheck =
@@ -36,19 +47,66 @@ export function approverAllowed(
 ): ApproverCheck {
   const method = (req.method ?? "GET").toUpperCase();
   const p = guard.principal;
-  if (
+  const signedIn =
     method === "POST" &&
     guard.session &&
     p?.kind === "person-browser" &&
     p.session === guard.session.key &&
-    !req.headers.authorization
+    req.headers.authorization === undefined;
+  if (!signedIn || !guard.session)
+    return {
+      ok: false,
+      code: "signin_to_approve",
+      error:
+        "Approving an agent's change needs a signed-in browser. Sign in on this page, then approve.",
+    };
+  const given = req.headers[APPROVE_KEY_HEADER];
+  if (
+    !approveKeyMatches(
+      guard.session.approveKeyHash,
+      typeof given === "string" ? given : null,
+    )
   )
-    return { ok: true, session: guard.session.key };
+    return {
+      ok: false,
+      code: "signin_to_approve",
+      error:
+        "This browser can't approve yet. Sign in again on this page, then approve.",
+    };
+  return { ok: true, session: guard.session.key };
+}
+
+/**
+ * Routes that let another browser in (pair a device, a sign-in link for
+ * an edge hostname, link or unlink the GitHub owner). On loopback an
+ * anonymous request counts as the person, and an agent with a shell can
+ * send one, so these need more: the person's bearer (the CLI, which
+ * refuses inside an agent's session), or what may approve (a signed-in
+ * browser holding its approval key).
+ */
+export const PERSON_GRANT_ROUTES: readonly string[] = [
+  "/api/web/pair",
+  "/api/web/approve",
+  "/api/web/owner/link",
+  "/api/web/owner/unlink",
+];
+
+export type PersonGrantCheck =
+  | { ok: true }
+  | { ok: false; code: "signin_to_approve"; error: string };
+
+/** Whether this request may let another browser in (PERSON_GRANT_ROUTES). */
+export function personGrantAllowed(
+  req: http.IncomingMessage,
+  guard: Extract<GuardResult, { ok: true }>,
+  cli: string,
+): PersonGrantCheck {
+  if (guard.principal?.kind === "person") return { ok: true };
+  if (approverAllowed(req, guard).ok) return { ok: true };
   return {
     ok: false,
     code: "signin_to_approve",
-    error:
-      "Approving an agent's change needs a signed-in browser. Sign in on this page, then approve.",
+    error: `This lets another browser in, so it needs you: sign in on this page first, or run \`${cli} web\` commands in your own terminal.`,
   };
 }
 
@@ -85,7 +143,7 @@ export type DecideResult =
   | { ok: true; approval: Approval }
   | {
       ok: false;
-      code: "not_found" | "already_decided" | "expired";
+      code: "not_found" | "already_decided" | "expired" | "actor_gone";
       error: string;
     };
 
@@ -93,6 +151,8 @@ export interface ApprovalQueueDeps {
   now?: () => number;
   /** How long a request waits for a person (default 10 minutes). */
   ttlMs?: number;
+  /** Whether the agent that asked still runs (its token not revoked). */
+  actorLive?: (actor: string) => boolean;
   /** Runs an allowed action from its stored args. */
   run: (
     action: string,
@@ -118,6 +178,11 @@ function frozenCopy(
   return copy;
 }
 
+/** Requests one agent may have waiting at once. */
+export const MAX_PENDING_PER_ACTOR = 5;
+/** How long a settled request is kept (to show its outcome). */
+const KEEP_SETTLED_MS = 60 * 60_000;
+
 export class ApprovalQueue {
   private readonly items = new Map<string, Approval>();
   private readonly now: () => number;
@@ -134,6 +199,14 @@ export class ApprovalQueue {
     args: Record<string, unknown>;
     summary: string;
   }): Approval {
+    this.prune();
+    let waiting = 0;
+    for (const x of this.items.values())
+      if (x.actor === r.actor && x.state === "pending") waiting++;
+    if (waiting >= MAX_PENDING_PER_ACTOR)
+      throw new Error(
+        `This agent already has ${MAX_PENDING_PER_ACTOR} requests waiting for a person. Wait for those first.`,
+      );
     const t = this.now();
     const a: Approval = {
       id: randomBytes(12).toString("base64url"),
@@ -150,7 +223,25 @@ export class ApprovalQueue {
   }
 
   private settle(a: Approval): void {
-    if (a.state === "pending" && this.now() >= a.expiresAt) a.state = "expired";
+    if (a.state === "pending" && this.now() >= a.expiresAt) {
+      a.state = "expired";
+      a.decidedAt = a.expiresAt;
+    }
+  }
+
+  /** Drop what settled more than an hour ago. */
+  private prune(): void {
+    const now = this.now();
+    for (const [id, a] of this.items) {
+      this.settle(a);
+      if (
+        a.state !== "pending" &&
+        a.state !== "running" &&
+        a.decidedAt !== undefined &&
+        now - a.decidedAt > KEEP_SETTLED_MS
+      )
+        this.items.delete(id);
+    }
   }
 
   get(id: string): Approval | null {
@@ -162,6 +253,7 @@ export class ApprovalQueue {
 
   /** What waits for a person, oldest first. */
   pending(): Approval[] {
+    this.prune();
     const out: Approval[] = [];
     for (const a of this.items.values()) {
       this.settle(a);
@@ -201,6 +293,15 @@ export class ApprovalQueue {
     if (decision === "deny") {
       a.state = "denied";
       return { ok: true, approval: { ...a } };
+    }
+    if (this.deps.actorLive && !this.deps.actorLive(a.actor)) {
+      a.state = "denied";
+      return {
+        ok: false,
+        code: "actor_gone",
+        error:
+          "The agent that asked has been stopped since, so this won't run.",
+      };
     }
     a.state = "running";
     try {

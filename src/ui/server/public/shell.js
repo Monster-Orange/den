@@ -3698,6 +3698,37 @@
   // server start: a 403 `csrf` (the server restarted) fetches a fresh one
   // and retries once. Never sent to another origin.
   var CSRF_METHODS = { POST: 1, PUT: 1, PATCH: 1, DELETE: 1 };
+  // 0.4.12: the approval key (web-session.ts). A sign-in's 303 carries it
+  // in the URL fragment (#ak=…), which never reaches a server: keep it in
+  // this origin's localStorage (other localhost ports can't read it),
+  // strip it from the address bar, and send it with every same-origin
+  // change as X-Den-Approve-Key. Only approving needs it.
+  var APPROVE_KEY_STORE = "den.approveKey";
+  (function takeApproveKey() {
+    var m = /(?:^#|&)ak=([A-Za-z0-9_-]{43})(?:&|$)/.exec(location.hash || "");
+    if (!m) return;
+    try {
+      localStorage.setItem(APPROVE_KEY_STORE, m[1]);
+    } catch (e) {
+      /* storage blocked: this browser signs in again to approve */
+    }
+    try {
+      history.replaceState(
+        history.state,
+        "",
+        location.pathname + location.search,
+      );
+    } catch (e) {
+      location.hash = "";
+    }
+  })();
+  function approveKey() {
+    try {
+      return localStorage.getItem(APPROVE_KEY_STORE);
+    } catch (e) {
+      return null;
+    }
+  }
   var csrf = { token: null, pending: null };
   function csrfToken(fresh) {
     if (fresh) csrf.token = null;
@@ -3736,6 +3767,9 @@
       (init && init.headers) || (isRequest(input) ? input.headers : undefined),
     );
     headers.set("X-Den-CSRF", token);
+    var ak = approveKey();
+    if (ak && !headers.has("X-Den-Approve-Key"))
+      headers.set("X-Den-Approve-Key", ak);
     return Object.assign({}, init || {}, { headers: headers });
   }
   function csrfFetch(input, init) {

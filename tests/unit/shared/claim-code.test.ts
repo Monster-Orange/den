@@ -82,9 +82,9 @@ describe("the claim code", () => {
     });
   });
 
-  it("the link is the page with ?claim=", () => {
+  it("the link is the sign-in route with ?claim=", () => {
     expect(claimLink("http://localhost:4100", "c1.x")).toBe(
-      "http://localhost:4100/?claim=c1.x",
+      "http://localhost:4100/auth?claim=c1.x",
     );
   });
 });
@@ -104,6 +104,18 @@ describe("single use, across a restart", () => {
     const file = path.join(dir, "claim-nonces.json");
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     expect(fs.readFileSync(file, "utf-8")).not.toContain(c);
+  });
+
+  it("a nonce file that won't parse fails closed: nothing is used, the file is left as it is", () => {
+    const dir = tmpDir();
+    const file = path.join(dir, "claim-nonces.json");
+    for (const junk of ["{not json", "[]", "null"]) {
+      fs.writeFileSync(file, junk, { mode: 0o600 });
+      expect(new ClaimNonces(dir).consume("n".repeat(22), T0 + 1000, T0)).toBe(
+        false,
+      );
+      expect(fs.readFileSync(file, "utf-8")).toBe(junk);
+    }
   });
 
   it("expired nonces are pruned", () => {

@@ -34,12 +34,12 @@ export interface GithubRouteDeps {
   cli: string;
   sendJson: (res: http.ServerResponse, body: unknown, status?: number) => void;
   readBody: (req: http.IncomingMessage) => Promise<string>;
-  /** A new browser session for this request; its Set-Cookie line. */
+  /** A new browser session for this request: its Set-Cookie line and approval key. */
   signIn: (
     req: http.IncomingMessage,
     via: "github" | "link",
     login?: string,
-  ) => string;
+  ) => { cookie: string; approveKey: string };
   /** The edge hostnames that route here, and the URL a browser uses for each. */
   edgeRoutes: () => { host: string; url: string }[];
   /** A one-time sign-in link at `origin` (60 s), or null with no secret. */
@@ -203,8 +203,16 @@ export async function handleGithubRoutes(
         deps.sendJson(res, { ok: false, state: "gone" }, 404);
         return true;
       }
-      res.setHeader("Set-Cookie", deps.signIn(req, "github", v.login));
-      deps.sendJson(res, { ok: true, state: "ok", login: v.login });
+      const s = deps.signIn(req, "github", v.login);
+      res.setHeader("Set-Cookie", s.cookie);
+      res.setHeader("Cache-Control", "no-store");
+      // The approval key goes to this answer only (web-session.ts).
+      deps.sendJson(res, {
+        ok: true,
+        state: "ok",
+        login: v.login,
+        approveKey: s.approveKey,
+      });
       return true;
     }
     const message = finishedMessage(v, deps.cli);

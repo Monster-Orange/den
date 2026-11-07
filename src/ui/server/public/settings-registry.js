@@ -159,7 +159,9 @@ export function deviceLine(d, now = Date.now()) {
       ? `signed in with GitHub${d.login ? ` (@${d.login})` : ""}`
       : d.via === "code"
         ? "approved with a code"
-        : "signed in with a one-time link";
+        : d.via === "claim"
+          ? "claimed with a setup link"
+          : "signed in with a one-time link";
   const name = d.name || "Unknown browser";
   const from = d.client || d.host;
   return {

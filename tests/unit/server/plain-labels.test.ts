@@ -21,6 +21,8 @@ describe("Linked devices: how a device signed in", () => {
     expect(d("github", "octo")).toBe("signed in with GitHub (@octo)");
     expect(d("code")).toBe("approved with a code");
     expect(d("link")).toBe("signed in with a one-time link");
+    // 0.4.12: the install's setup link (?claim=).
+    expect(d("claim")).toBe("claimed with a setup link");
   });
 });
 

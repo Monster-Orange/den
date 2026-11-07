@@ -226,9 +226,12 @@ import {
   sessionCookieName,
   sessionIdPrefix,
   WebSessionStore,
+  withApproveKey,
   type WebAuthConfig,
 } from "../../shared/web-session.js";
 import { serveUiAsset } from "./ui-assets.js";
+import { PERSON_GRANT_ROUTES, personGrantAllowed } from "./approvals.js";
+import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
   expiringTokenWarning,
   githubClientId,
@@ -787,6 +790,8 @@ import {
   readBody,
   sendJson,
   serveFile,
+  serveUntrustedFile,
+  UNTRUSTED_FILE_HEADERS,
   send400,
   send404,
   setHtmlFill,
@@ -1243,22 +1248,28 @@ function closeSessionSockets(keys: Iterable<string>): void {
   }
 }
 
-/** A new session for this request and its Set-Cookie line (GitHub or a link). */
+/**
+ * A new session for this request: its Set-Cookie line, and its approval
+ * key (web-session.ts), which only this sign-in's own answer may carry.
+ */
 function startSession(
   req: http.IncomingMessage,
-  via: "github" | "link" | "code",
+  via: "github" | "link" | "code" | "claim",
   login?: string,
-): string {
+): { cookie: string; approveKey: string } {
   const g = checkRequest(req, GUARD, product().cli, product().title);
   const named = g.ok ? g.via : null;
-  const { id } = webSessions.create({
+  const { id, approveKey } = webSessions.create({
     userAgent: req.headers["user-agent"],
     host: req.headers.host,
     via,
     ...(g.ok && g.client ? { client: g.client } : {}),
     ...(login ? { login } : {}),
   });
-  return sessionSetCookie(id, requestIsHttps(req, named));
+  return {
+    cookie: sessionSetCookie(id, requestIsHttps(req, named)),
+    approveKey,
+  };
 }
 
 /** The edge hostnames that route here, and their URLs (Pair a device). */
@@ -1473,6 +1484,8 @@ async function handleAuth(
   url: URL,
   requestId: string,
 ): Promise<void> {
+  if (url.searchParams.has("claim"))
+    return handleClaim(req, res, url, requestId);
   const secret = webSecret.current();
   const c = url.searchParams.get("c") ?? "";
   const nonce = loginCodeNonce(c);
@@ -1564,21 +1577,70 @@ async function handleAuth(
       device: deviceName(req.headers["user-agent"]),
       ...(g.ok && g.client ? { client: g.client } : {}),
     });
-    res.setHeader("Set-Cookie", startSession(req, "link"));
+    const s = startSession(req, "link");
+    res.setHeader("Set-Cookie", s.cookie);
+    res.setHeader("Cache-Control", "no-store");
     return sendJson(res, {
       ok: true,
       next: safeNext(url.searchParams.get("next")),
+      approveKey: s.approveKey,
     });
   }
   // A link nobody waits on (`web login --no-wait`, or minted with no
   // server running): it signs in when opened, once, as before.
   if (post || !webSessions.consumeCode(check.nonce, check.expiresAt))
     return gone();
+  const s = startSession(req, "link");
   res.writeHead(303, {
-    Location: safeNext(url.searchParams.get("next")),
-    "Set-Cookie": startSession(req, "link"),
+    // The approval key in the fragment: it never reaches a server.
+    Location: withApproveKey(
+      safeNext(url.searchParams.get("next")),
+      s.approveKey,
+    ),
+    "Set-Cookie": s.cookie,
     "Cache-Control": "no-store",
     "Referrer-Policy": "no-referrer",
+  });
+  res.end();
+}
+
+/**
+ * `GET /auth?claim=<code>` (0.4.12): the setup link `<cli> web claim-link`
+ * prints at the end of an install. A valid, unused claim code (30 min,
+ * single use across restarts) becomes a session ("claimed with a setup
+ * link" in Linked devices), then a 303 to `/` with the session's approval
+ * key in the fragment and no claim in the address, no referrer. Anything
+ * else: the signed-out page, which says the link was used and never
+ * echoes the code. An agent's token never gets here (AGENT_FORBIDDEN).
+ */
+const CLAIM_NONCES = new ClaimNonces(getStateDir());
+function handleClaim(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  requestId: string,
+): void {
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  const secret = webSecret.current();
+  const check =
+    req.method !== "POST" && secret
+      ? checkClaimCode(url.searchParams.get("claim") ?? "", secret)
+      : null;
+  if (!check?.ok || !CLAIM_NONCES.consume(check.nonce, check.expiresAt))
+    return sendSignedOut(req, res, {
+      pathname: "/auth",
+      search: "",
+      scope: "den",
+      expired: true,
+      requestId,
+      message: `This setup link was used or has expired. If you didn't open it yourself, someone else may have: check Settings › Access › Linked devices. Sign in below, or run \`${product().cli} web claim-link\` in your own terminal for a new one.`,
+    });
+  const s = startSession(req, "claim");
+  res.writeHead(303, {
+    // The approval key in the fragment: it never reaches a server.
+    Location: withApproveKey("/", s.approveKey),
+    "Set-Cookie": s.cookie,
   });
   res.end();
 }
@@ -1740,6 +1802,33 @@ async function handleRequest(
   // is a WebSocket (the server's upgrade handler): a plain GET of it is 426.
   if (pathname.startsWith("/api/sessions/"))
     return sendSessionHttp(req, res, pathname);
+  // 0.4.12: what lets another browser in needs the person, not just
+  // loopback (approvals.ts: an agent with a shell is on loopback too).
+  if (req.method === "POST" && PERSON_GRANT_ROUTES.includes(pathname)) {
+    const g = guard.ok ? guard : null;
+    const ok = g ? personGrantAllowed(req, g, printedCli()) : null;
+    if (!ok?.ok) {
+      recordAction(
+        auditActorOf(req),
+        {
+          verb: "person-grant",
+          detail: pathname,
+          outcome: "refused" as const,
+          reason: "signin_to_approve",
+        },
+        principalOf(req),
+      );
+      return sendJson(
+        res,
+        {
+          ok: false,
+          code: "signin_to_approve",
+          error: ok && !ok.ok ? ok.error : "Sign in first.",
+        },
+        403,
+      );
+    }
+  }
   // SEC-2a: Sign in with GitHub, the owner's link, Pair a device. Before
   // config validation, like the sign-in above.
   if (
@@ -1922,7 +2011,9 @@ async function handleRequest(
   }
 
   // ── Playwright report ──────────────────────────────────────────────────────
-  if (pathname.startsWith("/report")) {
+  // A test run wrote it (an agent may have): sandboxed, never Den's origin.
+  // `/report/…` only: `/reports/security/…` is ZAP's, below.
+  if (pathname === "/report" || pathname.startsWith("/report/")) {
     const relPath = pathname.slice("/report".length) || "/index.html";
     const filePath = path.resolve(path.join(REPORT_DIR, relPath));
 
@@ -1943,7 +2034,7 @@ async function handleRequest(
         ? path.join(filePath, "index.html")
         : filePath;
 
-    return serveFile(res, target);
+    return serveUntrustedFile(res, target);
   }
 
   // ── API: environments ──────────────────────────────────────────────────────
@@ -2045,9 +2136,8 @@ async function handleRequest(
         "Content-Type": file.endsWith(".html")
           ? "text/html; charset=utf-8"
           : "application/json",
-        "Cache-Control": "no-store",
         // ZAP's report pulls its own scripts; keep it away from Den's origin data.
-        "Content-Security-Policy": "sandbox allow-scripts",
+        ...UNTRUSTED_FILE_HEADERS,
       });
       return res.end(body);
     } catch {

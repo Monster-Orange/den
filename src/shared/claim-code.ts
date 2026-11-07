@@ -11,7 +11,8 @@
  *    a while to open it. An expiry further out than that is refused.
  *  - Single use. Used nonces are kept in `<state dir>/claim-nonces.json`
  *    (0600) until they expire, so a server restart can't revive one. The
- *    file holds nonces only, never a code.
+ *    file holds nonces only, never a code. A file that won't parse refuses
+ *    every claim (fail closed); the sign-in flows still work.
  *  - Minted by the CLI (`<cli> web claim-link`), which reads web.secret as
  *    the same OS user. The CLI refuses inside an agent's session
  *    (claimRefusalForAgent): an agent must never hold one.
@@ -79,16 +80,30 @@ export function checkClaimCode(
   return { ok: true, nonce: m[2], expiresAt };
 }
 
-/** `<origin>/?claim=<code>`. */
+/**
+ * `<origin>/auth?claim=<code>`: the sign-in route, so it is classed as one
+ * (a mutating GET: another site can't open it; an agent's token can't).
+ */
 export function claimLink(origin: string, code: string): string {
-  return `${origin.replace(/\/+$/, "")}/?claim=${encodeURIComponent(code)}`;
+  return `${origin.replace(/\/+$/, "")}/auth?claim=${encodeURIComponent(code)}`;
+}
+
+/**
+ * Why the CLI won't let a browser in from here (a claim link, a sign-in
+ * link, pairing a device, the GitHub owner), or null when it may: inside
+ * an agent's session (DEN_AGENT or DEN_ACTOR_TOKEN set) it never does.
+ */
+export function personGrantRefusal(env: NodeJS.ProcessEnv): string | null {
+  if (env[AGENT_ACTOR_ENV] !== undefined || env[ACTOR_TOKEN_ENV] !== undefined)
+    return "An agent can't do this: it lets a browser in as you. Run it in your own terminal.";
+  return null;
 }
 
 /** Why the CLI won't mint a claim code here, or null when it may. */
 export function claimRefusalForAgent(env: NodeJS.ProcessEnv): string | null {
-  if (env[AGENT_ACTOR_ENV] !== undefined || env[ACTOR_TOKEN_ENV] !== undefined)
-    return "An agent can't make a claim link: it signs a browser in as the person. Run it in your own terminal.";
-  return null;
+  return personGrantRefusal(env)
+    ? "An agent can't make a claim link: it signs a browser in as the person. Run it in your own terminal."
+    : null;
 }
 
 /** The used claim nonces, kept until they expire (a file, 0600). */
@@ -99,17 +114,25 @@ export class ClaimNonces {
     return path.join(this.stateDir, CLAIM_NONCES_FILE);
   }
 
-  private read(): Record<string, number> {
+  /** The used nonces; null when the file is there but won't parse (fail closed). */
+  private read(): Record<string, number> | null {
+    let raw: string;
     try {
-      const o = JSON.parse(fs.readFileSync(this.file(), "utf-8")) as unknown;
-      if (!o || typeof o !== "object") return {};
-      const out: Record<string, number> = {};
-      for (const [k, v] of Object.entries(o as Record<string, unknown>))
-        if (/^[A-Za-z0-9_-]{22}$/.test(k) && typeof v === "number") out[k] = v;
-      return out;
-    } catch {
-      return {};
+      raw = fs.readFileSync(this.file(), "utf-8");
+    } catch (e) {
+      return (e as NodeJS.ErrnoException).code === "ENOENT" ? {} : null;
     }
+    let o: unknown;
+    try {
+      o = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    if (!o || typeof o !== "object" || Array.isArray(o)) return null;
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(o as Record<string, unknown>))
+      if (/^[A-Za-z0-9_-]{22}$/.test(k) && typeof v === "number") out[k] = v;
+    return out;
   }
 
   private write(used: Record<string, number>): void {
@@ -126,6 +149,8 @@ export class ClaimNonces {
    */
   consume(nonce: string, expiresAt: number, now: number = Date.now()): boolean {
     const used = this.read();
+    // Unreadable: refuse every claim rather than forget which were used.
+    if (!used) return false;
     for (const [k, exp] of Object.entries(used)) if (exp <= now) delete used[k];
     if (nonce in used) {
       this.write(used);

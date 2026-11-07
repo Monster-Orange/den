@@ -181,7 +181,15 @@ function validateFlagScopes(parsed: ParsedCliArgs): void {
  */
 export const SUBCOMMAND_OWN_HELP: Readonly<Record<string, readonly string[]>> =
   {
-    web: ["token", "login", "sessions", "logout", "owner", "approve"],
+    web: [
+      "token",
+      "login",
+      "sessions",
+      "logout",
+      "owner",
+      "approve",
+      "claim-link",
+    ],
     mcp: ["connect", "disconnect", "clients", "config"],
     repo: ["add"],
   };
