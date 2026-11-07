@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.6] - unreleased
+## [0.4.6] - 2026-11-07
 
 Den in five minutes, set up by your own agent (ON-2, with ON-4's dry run).
 A developer pastes one line into their agent, and every command the agent
