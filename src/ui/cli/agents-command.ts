@@ -33,13 +33,18 @@
  *           fix when it is missing. Exit 1 when the default runtime is
  *           unavailable. It resolves the login shell's PATH first, as the
  *           web server does at start.
+ *   handback-check <file|->  (den#5) the hand-back check (handback.ts) on a
+ *           file or stdin: each problem on its own line, exit 1 when there
+ *           is one, 0 when the hand-back is complete and plain.
  *
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import * as fs from "fs";
 import { DEFAULT_RUNTIME_ID } from "../../shared/agents/runtimes.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import { HostError } from "../../shared/sessions/client.js";
+import { checkHandback } from "../../shared/agents/handback.js";
 import {
   AgentError,
   listAgents,
@@ -75,7 +80,7 @@ export {
 } from "./agent-ops.js";
 
 export const AGENTS_HELP = {
-  usage: "agents <list|start|stop|resume|personas|doctor> ...",
+  usage: "agents <list|start|stop|resume|personas|doctor|handback-check> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -94,6 +99,10 @@ export const AGENTS_HELP = {
     "    each runtime, installed first: status, the CLI it runs and where it came",
     "    from, its version, the directories searched, and the fix; exit 1 when the",
     "    default is missing. -w: as that workspace's agents find them",
+    "{cli} agents handback-check <file|-> [--json]",
+    "    checks a hand-back to a person: URL, machine, branch, what changed, what",
+    "    to click and decisions are all there, every ID is explained, and each",
+    "    decision is a numbered yes/no question; exit 1 with what to fix",
     "",
     "Runtimes: den-claude (default; Claude Code's claude), codex (OpenAI's Codex",
     "CLI), gemini (Google's Gemini CLI), grok (xAI's Grok Build), and generic (the",
@@ -276,6 +285,45 @@ async function listPersonas(
 export interface AgentsDoctorDeps {
   /** Resolve the login shell's PATH first (default: initLoginPath). */
   loginPath?: () => Promise<void>;
+  /** Read a hand-back: a file path, or "-" for stdin (handback-check). */
+  readHandback?: (src: string) => Promise<string>;
+}
+
+async function readFileOrStdin(src: string): Promise<string> {
+  if (src !== "-") return fs.promises.readFile(src, "utf-8");
+  let text = "";
+  for await (const chunk of process.stdin) text += String(chunk);
+  return text;
+}
+
+/** `agents handback-check <file|-> [--json]`. */
+async function handbackCheck(
+  args: string[],
+  d: AgentsResolved,
+  deps: AgentsDoctorDeps,
+): Promise<number> {
+  const where = "agents handback-check";
+  const p = parseArgs(where, args, { "--json": false });
+  if (p.positional.length !== 1 || p.rest)
+    throw new UsageError(`${where} takes one file, or - for stdin`);
+  const src = p.positional[0];
+  let text: string;
+  try {
+    text = await (deps.readHandback ?? readFileOrStdin)(src);
+  } catch (e) {
+    d.err(
+      `✗ ${where}: can't read ${src} (${(e as NodeJS.ErrnoException).code ?? "error"})`,
+    );
+    return 1;
+  }
+  const r = checkHandback(text);
+  if (p.flags["--json"]) d.out(JSON.stringify(r, null, 2));
+  else if (r.ok) d.out("✓ the hand-back is complete and plain");
+  else {
+    d.out("✗ the hand-back is not ready:");
+    for (const l of r.problems) d.out(`  - ${l}`);
+  }
+  return r.ok ? 0 : 1;
 }
 
 const SOURCE_WORD: Record<string, string> = {
@@ -399,6 +447,8 @@ export async function cmdAgents(
           // -w checks the workspace exists, and reads its runtime paths.
           await loadAgentWorkspaces(deps);
           return await doctor(rest, d, deps);
+        case "handback-check":
+          return await handbackCheck(rest, d, deps);
         default:
           throw new UsageError(`unknown agents command "${sub}"`);
       }

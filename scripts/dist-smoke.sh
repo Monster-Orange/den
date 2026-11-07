@@ -164,6 +164,20 @@ run agents-personas ./bin/acme agents personas
 expect_in "agents personas: the default pack ships" "$WORK/agents-personas.out" "orchestrator"
 expect_in "agents personas: planner is listed" "$WORK/agents-personas.out" "planner"
 expect_in "doctor: the runtime kind is listed" "$WORK/doctor.out" "den-claude (implicit)"
+# Den's guardrails (den#5) ship in the package: the default pack's hooks,
+# their settings fragment and the shared persona instructions.
+for f in pretooluse.mjs stop-hook.ts hooks.json instructions.md; do
+  [ -f "$ENGINE/src/shared/agents/guardrails/$f" ] && ok "guardrails ship: $f" || bad "guardrails missing from the package: $f"
+done
+# The PreToolUse hook runs from the install and blocks a polling loop.
+printf '%s' '{"tool_name":"Bash","tool_input":{"command":"until true; do sleep 2; done"}}' |
+  node "$ENGINE/src/shared/agents/guardrails/pretooluse.mjs" >/dev/null 2>"$WORK/pretool.err" && pre=0 || pre=$?
+[ "$pre" = 2 ] && ok "the PreToolUse hook blocks sleep from the install" || bad "the PreToolUse hook exited $pre, not 2"
+# The hand-back check runs as the distribution's CLI.
+printf '## Hand-back\n- URL: https://x.example\n' >"$WORK/handback.md"
+(cd "$DIST" && ./bin/acme agents handback-check "$WORK/handback.md") >"$WORK/handback.out" 2>&1 && hb=0 || hb=$?
+[ "$hb" = 1 ] && ok "agents handback-check rejects an incomplete hand-back" || bad "agents handback-check exited $hb, not 1"
+expect_in "agents handback-check names the missing part" "$WORK/handback.out" 'Missing "Machine:"'
 
 say "MCP server (stdio)"
 # initialize + tools/list need no web server; every stdout line must be
