@@ -20,6 +20,13 @@
  *   existed: true, and an existing side-car is never overwritten.
  * - The workspace: `-w <ws>` (created and activated when missing), else the
  *   focused one, else a new `default` workspace, activated and focused.
+ * - `--dry-run` (ON-3, the MCP tool manifest_draft's twin): a local path
+ *   only. Detection and the validator run as above, and the answer carries
+ *   the side-car as YAML (`draft`) and `validation`; nothing is written, not
+ *   the side-car, the workspace entry or the catalog.
+ *
+ * `<cli> repo detect <folder> [--json]` (ON-3, repos_detect's twin): the git
+ * repos in a folder and suggested workspaces (onboard-reads.ts).
  */
 import { execFileSync } from "child_process";
 import * as fs from "fs";
@@ -69,6 +76,8 @@ export interface RepoAddArgs {
   health?: string;
   branch?: string;
   json: boolean;
+  /** `--dry-run`: detect and validate, write nothing (a local path only). */
+  dryRun?: boolean;
 }
 
 export interface RepoAddResult {
@@ -93,11 +102,17 @@ export interface RepoAddResult {
   fix?: string;
   ask?: string;
   choices?: string[];
+  /** `--dry-run`: nothing was written. */
+  dryRun?: boolean;
+  /** `--dry-run`: the side-car Den would write, as YAML. */
+  draft?: string;
+  /** `--dry-run`: the validator's answer for the draft. */
+  validation?: { valid: boolean; errors: { path: string; message: string }[] };
 }
 
 const USAGE = () =>
   `${product().cli} repo add <path|git-url> [--sidecar] [-w <workspace>] [--name <repo>] ` +
-  `[--run "<cmd>"] [--down "<cmd>"] [--health <url>] [--branch <branch>] [--json]`;
+  `[--run "<cmd>"] [--down "<cmd>"] [--health <url>] [--branch <branch>] [--dry-run] [--json]`;
 
 export const REPO_HELP = () =>
   [
@@ -111,7 +126,14 @@ export const REPO_HELP = () =>
     '  cannot decide, nothing is written and --json answers with "ask" and',
     '  "choices": re-run with --run "<cmd>". --health <url> adds an HTTP health',
     "  check. -w picks the workspace (default: the focused one, else a new",
-    "  `default`). Safe to re-run: the same repo answers existed: true.\n",
+    "  `default`). Safe to re-run: the same repo answers existed: true.",
+    "  --dry-run (a local folder only): detect and validate the side-car and",
+    '  print it ("draft"), writing nothing: no side-car, no workspace entry.\n',
+    `\n  ${product().cli} repo detect <folder> [--json]\n`,
+    "  Find the git repos in a folder inside your home (one or two levels deep),",
+    "  say how each one runs, and suggest workspaces: the repos in one parent",
+    "  folder go in one workspace named after it. Reads only: it never writes,",
+    "  never runs a repo's tools and never follows a symlink.\n",
   ].join("\n");
 
 const VALUE_FLAGS = new Set([
@@ -136,6 +158,7 @@ export function parseRepoAddArgs(argv: string[]): RepoAddArgs {
     const flag = a.startsWith("--") && eq > 0 ? a.slice(0, eq) : a;
     if (a === "--sidecar") out.sidecar = true;
     else if (a === "--json") out.json = true;
+    else if (a === "--dry-run" || a === "-n") out.dryRun = true;
     else if (VALUE_FLAGS.has(flag)) {
       const v = flag !== a ? a.slice(eq + 1) : argv[++i];
       if (v === undefined || v === "") throw new Error(`${flag} needs a value`);
@@ -236,6 +259,15 @@ export function repoAdd(
       fix: `${bin} repo add ${a.spec} --health http://localhost:<port>/ --json`,
     };
 
+  if (a.dryRun && url)
+    return {
+      ok: false,
+      dryRun: true,
+      error:
+        "--dry-run takes a local folder: a git URL would have to be cloned first",
+      fix: `${bin} repo add <path> --dry-run --json`,
+    };
+
   // ── Where the repo is ────────────────────────────────────────────────────
   let repoPath: string;
   let mode: "dev-managed" | "managed";
@@ -299,6 +331,10 @@ export function repoAdd(
     ? (originRepoName(repoPath) ?? name)
     : (originRepoName(repoPath) ?? path.basename(repoPath));
   let manifestInfo: RepoAddResult["manifest"];
+  /** --dry-run: the side-car that would be written. */
+  let drafted:
+    | { manifest: Record<string, unknown>; text: string; valid: boolean }
+    | undefined;
   if (own) {
     manifestInfo = { source: "repo", file: own };
   } else {
@@ -324,29 +360,43 @@ export function repoAdd(
         };
       const manifest = sidecarManifest(mName, d.commands, a.health);
       const v = validate(manifest);
+      const dry = a.dryRun
+        ? {
+            dryRun: true,
+            draft: formatManifestYaml(manifest),
+            validation: { valid: v.valid, errors: v.errors },
+          }
+        : {};
       if (!v.valid)
         return {
           ok: false,
           error: `the detected manifest is not valid: ${v.errors.map((e) => `${e.path} ${e.message}`).join("; ")}`,
           fix: `${bin} repo add ${a.spec} --run "<command>" --json`,
+          ...dry,
         };
       const file = sidecarFile(key);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      // "wx": never overwrite a side-car someone may have edited.
-      fs.writeFileSync(file, formatManifestYaml(manifest), {
-        encoding: "utf-8",
-        flag: "wx",
-      });
+      if (a.dryRun) {
+        drafted = { manifest, text: dry.draft as string, valid: v.valid };
+      } else {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        // "wx": never overwrite a side-car someone may have edited.
+        fs.writeFileSync(file, formatManifestYaml(manifest), {
+          encoding: "utf-8",
+          flag: "wx",
+        });
+      }
       manifestInfo = {
         source: "sidecar",
         file,
-        written: true,
+        written: !a.dryRun,
         detected: d.commands.source,
       };
     }
   }
 
-  const manifest = readManifest(repoPath);
+  const manifest = drafted
+    ? (drafted.manifest as unknown as ReturnType<typeof readManifest>)
+    : readManifest(repoPath);
   if (!manifest)
     return {
       ok: false,
@@ -365,6 +415,34 @@ export function repoAdd(
       error: `cannot use "${name}" as a repo name`,
       fix: `${bin} repo add ${a.spec} --name <repo> --json`,
     };
+
+  if (a.dryRun) {
+    // Nothing is written: not the side-car, not the workspace entry.
+    const flags = [
+      a.name !== undefined ? ` --name ${a.name}` : "",
+      a.run !== undefined ? ` --run "${a.run}"` : "",
+      a.down !== undefined ? ` --down "${a.down}"` : "",
+      a.health !== undefined ? ` --health ${a.health}` : "",
+      a.workspace !== undefined ? ` -w ${a.workspace}` : "",
+    ].join("");
+    return {
+      ok: true,
+      dryRun: true,
+      repo: name,
+      workspace: a.workspace ?? getFocusedWorkspaceName() ?? "default",
+      mode,
+      path: repoPath,
+      manifest: manifestInfo,
+      services: Object.keys(manifest.services ?? {}),
+      ...(drafted
+        ? {
+            draft: drafted.text,
+            validation: { valid: drafted.valid, errors: [] },
+          }
+        : {}),
+      next: [`${bin} repo add ${a.spec}${flags} --json`],
+    };
+  }
 
   // ── The workspace entry ──────────────────────────────────────────────────
   const ws = targetWorkspace(a.workspace);
@@ -423,6 +501,18 @@ export function repoAdd(
 }
 
 function printHuman(r: RepoAddResult): void {
+  if (r.dryRun && r.ok) {
+    console.log(
+      `✓ Dry run: ${r.repo} would be added to workspace ${r.workspace} (${r.mode}, ${r.path}); nothing was written`,
+    );
+    if (r.manifest)
+      console.log(
+        `  manifest: ${r.manifest.source} ${r.manifest.file}${r.draft ? ` (would be written, from ${r.manifest.detected})` : ""}`,
+      );
+    if (r.draft) console.log(`\n${r.draft.replace(/^/gm, "    ")}`);
+    console.log(`  To add it: ${r.next?.[0] ?? ""}`);
+    return;
+  }
   if (!r.ok) {
     console.error(`✗ repo add: ${r.error}`);
     if (r.ask) console.error(`  ${r.ask}`);
@@ -442,6 +532,61 @@ function printHuman(r: RepoAddResult): void {
   console.log(`  Next: ${r.next?.[0] ?? ""}`);
 }
 
+/** `repo detect <folder> [--json]` (ON-3, repos_detect's twin). */
+async function cmdRepoDetect(argv: string[]): Promise<number> {
+  const { processPathRules, reposDetect } = await import("./onboard-reads.js");
+  const { registeredRepos } = await import("./onboard-command.js");
+  const { getStateDir } = await import("../../shared/paths.js");
+  const json = argv.includes("--json");
+  const positional = argv.filter((a) => a !== "--json");
+  const bad = positional.find((a) => a.startsWith("-"));
+  if (bad || positional.length !== 1) {
+    const r = {
+      ok: false,
+      error: bad ? `unknown flag ${bad}` : "repo detect needs one <folder>",
+      fix: `${runnable()} repo detect <folder> --json`,
+    };
+    if (json) printJson(r);
+    else console.error(`✗ repo detect: ${r.error}`);
+    return 2;
+  }
+  // A relative folder is the person's own, from where they typed it.
+  const given = positional[0];
+  const folder =
+    given.startsWith("~") || path.isAbsolute(given)
+      ? given
+      : path.resolve(getInvokeCwd(), given);
+  const r = reposDetect(folder, processPathRules(getStateDir()), {
+    registered: registeredRepos,
+    bin: runnable(),
+  });
+  if (json) printJson(r);
+  else if (!r.ok) console.error(`✗ repo detect: ${r.error}`);
+  else {
+    console.log(
+      `✓ ${r.repos.length} repo${r.repos.length === 1 ? "" : "s"} in ${r.path}${r.truncated ? " (stopped early: more are there)" : ""}`,
+    );
+    for (const x of r.repos) {
+      const how = x.runs
+        ? x.runs.up
+        : x.manifest !== "none"
+          ? `its ${x.manifest === "repo" ? "own" : "side-car"} manifest`
+          : (x.ask ?? "");
+      const inWs = x.registered?.length
+        ? ` (in ${x.registered.map((g) => g.workspace).join(", ")})`
+        : "";
+      console.log(`  ${x.name.padEnd(20)} ${how}${inWs}`);
+    }
+    if (r.workspaces.length) {
+      console.log("\n  Suggested workspaces:");
+      for (const w of r.workspaces)
+        console.log(`  ${w.name.padEnd(20)} ${w.repos.join(", ")}`);
+    }
+    if (r.next[0]) console.log(`\n  Next: ${r.next[0]}`);
+  }
+  return r.ok ? 0 : 1;
+}
+
 /** `repo <sub> …`; returns the exit code. */
 export async function cmdRepo(
   argv: string[],
@@ -453,6 +598,7 @@ export async function cmdRepo(
     return sub ? 0 : 1;
   }
   const json = rest.includes("--json");
+  if (sub === "detect") return cmdRepoDetect(rest);
   if (sub !== "add") {
     const r = {
       ok: false,

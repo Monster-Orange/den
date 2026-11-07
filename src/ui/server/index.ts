@@ -184,6 +184,11 @@ import {
 } from "./audit.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import {
+  defaultOnboardRouteDeps,
+  handleOnboardRoutes,
+  type OnboardRouteDeps,
+} from "./onboard-routes.js";
+import {
   auditActorOf,
   bindRefusal,
   checkRequest,
@@ -610,6 +615,9 @@ setHtmlFill((html) => {
 
 // ── MD-2: the engine this server loaded, against the one on disk ─────────────
 const ENGINE = engineWatch(getEngineRoot);
+
+/** The onboarding routes' deps, made on first use. */
+let onboardDeps: OnboardRouteDeps | null = null;
 function engineCheck(): EngineCheck {
   return ENGINE.check();
 }
@@ -2094,6 +2102,21 @@ async function handleRequest(
 
   // ── API: stacks, edge, security plan (read-only; see readonly-routes.ts) ──
   if (await handleReadonlyRoutes(req, res, pathname, url)) return;
+
+  // ── API: onboarding reads (ON-3; see onboard-routes.ts) ──────────────────
+  if (
+    await handleOnboardRoutes(
+      req,
+      res,
+      pathname,
+      url,
+      (onboardDeps ??= defaultOnboardRouteDeps(
+        (m) => validateManifest(m),
+        ENGINE.loaded.version ?? engineVersion() ?? "unknown",
+      )),
+    )
+  )
+    return;
 
   // ── API: test sources ─────────────────────────────────────────────────────
   // Returns the repos that contribute tests for a given pillar, with their
