@@ -304,6 +304,9 @@ function paintList() {
   el.innerHTML = notes.join("") + body;
   const clear = st.root.querySelector("#ag-clear");
   if (clear) clear.hidden = !visibleRows().some(isStopped);
+  // No such workspace: nothing to start an agent in.
+  const start = st.root.querySelector("#ag-start");
+  if (start) start.hidden = st.data.requested?.known === false;
 }
 
 function visibleRows() {
@@ -763,7 +766,14 @@ async function restartRow(r, verb, button) {
   try {
     const out = await api("POST", agentPath(r, verb));
     window.denShell?.toast?.(
-      t(verb === "resume" ? "ag.resumed" : "ag.startedFresh", { id: r.agent }),
+      t(
+        verb !== "resume"
+          ? "ag.startedFresh"
+          : out?.fresh
+            ? "ag.resumedFresh"
+            : "ag.resumed",
+        { id: r.agent },
+      ),
     );
     if (st.panes.has(r.id)) closePane(r.id, { quiet: true });
     await refresh();

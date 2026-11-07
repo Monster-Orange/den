@@ -111,6 +111,7 @@ describe("?ws= for a workspace that isn't active", () => {
       "Workspace west isn't active · Switch to west",
     );
     expect(await listed(p)).toEqual(["west/drifter"]);
+    expect(await p.locator("#ag-start").isVisible()).toBe(true);
     const req = p.waitForRequest(
       (r) => new URL(r.url()).pathname === "/api/agents/clear-stopped",
     );
@@ -136,6 +137,8 @@ describe("?ws= for a workspace that isn't active", () => {
     expect(await note(p).locator("button").count()).toBe(0);
     expect(await listed(p)).toEqual([]);
     expect(await p.locator("#ag-clear").isHidden()).toBe(true);
+    // Nowhere to start an agent: no + Start agent.
+    expect(await p.locator("#ag-start").isHidden()).toBe(true);
     await p.context().close();
   }, 60_000);
 

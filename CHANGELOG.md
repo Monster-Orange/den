@@ -50,6 +50,18 @@ got done, read on this machine only (den#6, the agent-usage issue).
 
 ### Fixed
 
+- **A resume never loses the conversation.** Stopping an agent without
+  typing, then resuming it, could fail for good: Den started a new
+  conversation under the same id, and Claude Code refused it as "already
+  in use". Now every launch marks the agent record `launched: true`, and
+  every later resume uses `--resume <id>`. If Claude Code says there is no
+  conversation yet, Den starts fresh once under the same id, in the same
+  folder and scope, and says "nothing to resume yet; started fresh". If a
+  fresh start says the id is in use, Den resumes once instead. If both
+  fail, the error names the id and Start fresh (the route answers 502
+  `resume_failed`).
+- **No "+ Start agent" for a workspace that doesn't exist** (`?ws=` with
+  an unknown name).
 - **`agents stop` waits for the agent to end.** It returns once the
   agent's session has ended, so `agents stop X && agents resume X` works.
   It waits up to 5 seconds. Still running then, it prints

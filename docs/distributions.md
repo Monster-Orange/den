@@ -2121,7 +2121,8 @@ agent of the workspaces in view, and their terminals in the browser.
   replaced by All. A workspace that isn't active gets one line, "Workspace
   west isn't active · Switch to west", and the list shows it alone.
   Switch makes it active and views it, as the top bar's Workspace menu
-  does. A name no workspace has gets the same line and an empty list.
+  does. A name no workspace has gets the same line, an empty list, and no
+  "+ Start agent".
   `GET /api/sessions?ws=<ws>` lists that workspace even when it isn't
   active, and says `requested: { workspace, active, known }`. Each row has its
   state, persona (a `sessions start` session is labelled "session"),
@@ -2171,6 +2172,15 @@ it. Each row has three buttons:
   The agent comes back in the folder it had, with its workspace and its
   grants. A grant you took out of the config since is gone; one you added
   is not taken. Resume is never a new conversation fed the old prompt.
+  Every launch marks the record `launched: true`, so every later resume
+  is `--resume <id>`, even when nobody typed. Den also checks Claude
+  Code's transcript (`<id>.jsonl` under `$CLAUDE_CONFIG_DIR/projects`,
+  else `~/.claude/projects`). If Claude Code says there is no conversation
+  yet, Den starts fresh once under the same id, folder and scope, and says
+  "nothing to resume yet; started fresh" (the route adds `fresh: true`).
+  If a fresh start says the id is already in use, Den resumes once
+  instead. If both fail, the CLI exits 1 and the route answers 502 with
+  code `resume_failed`, naming the id and Start fresh.
 - **Start fresh** starts a new conversation: same persona, workspace and id.
 - **Remove** takes the row away in one click. The toast offers **Undo** for
   10 seconds. Den keeps the removed record for an hour, then forgets it. It

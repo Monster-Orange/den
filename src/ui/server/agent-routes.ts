@@ -158,7 +158,10 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
 }
 
 /** A started or resumed agent's answer: its record, or its early exit. */
-function sendStarted(res: http.ServerResponse, s: Started): void {
+function sendStarted(
+  res: http.ServerResponse,
+  s: Started & { fresh?: boolean },
+): void {
   if (s.early) {
     const code =
       s.early.exitCode === undefined ? "" : ` (exit ${s.early.exitCode})`;
@@ -189,6 +192,8 @@ function sendStarted(res: http.ServerResponse, s: Started): void {
       sessionId: s.info.ref.id,
       startedAt: s.rec.startedAt,
     },
+    // A resume with nothing to continue yet started fresh (same id).
+    ...(s.fresh ? { fresh: true } : {}),
     ...(s.warnings.length ? { warnings: s.warnings } : {}),
   });
 }

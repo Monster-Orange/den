@@ -40,6 +40,13 @@ export interface AgentRecord {
   /** The runtime's handle for resume (den-claude: the conversation id). */
   resumeToken?: string;
   /**
+   * The runtime was launched on resumeToken at least once (0.4.8). A
+   * resume then always tries the runtime's own resume first, never a new
+   * conversation under the same id (which the runtime refuses once the
+   * conversation exists).
+   */
+  launched?: boolean;
+  /**
    * The workspaces beyond its own its MCP served when it started
    * (agents.<id>.grants then). A resume keeps them, never more than the
    * config still allows (AG-14).

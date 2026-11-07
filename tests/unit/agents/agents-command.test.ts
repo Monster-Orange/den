@@ -100,6 +100,8 @@ describe("agents start", () => {
         "resumeToken",
         // AG-14: the grants it started with, kept by a resume.
         "grants",
+        // 0.4.8: launched on resumeToken, so a resume continues it.
+        "launched",
       ].sort(),
     );
     expect(rec).toMatchObject({
@@ -549,16 +551,20 @@ describe("den-claude's permission mode", () => {
 });
 
 describe("agents resume, never prompted", () => {
-  it("starts fresh with the same conversation id when the session never got input", async () => {
+  it("a record from before 0.4.8 (no launched flag) whose session never got input starts fresh with the same conversation id", async () => {
     const r = await rig();
     await agents(r, "start", "-w", "north", "--persona", "planner");
     const token = record(r, "planner").resumeToken as string;
+    // As 0.4.7 wrote it: no `launched` (resume-conversation.test.ts has 0.4.8's).
+    const { launched: _l, ...old } = record(r, "planner");
+    fs.writeFileSync(
+      path.join(r.stateDir, "agents", "planner.json"),
+      JSON.stringify(old),
+    );
     r.made[0].exit(0);
     await settle();
     expect(await agents(r, "resume", "planner")).toBe(0);
-    expect(r.out.join("\n")).toMatch(
-      /starting fresh: it was never prompted, so there is no conversation to resume/,
-    );
+    expect(r.out.join("\n")).toMatch(/nothing to resume yet; started fresh/);
     const p = r.made[1];
     expect(p.args.slice(0, 2)).toEqual(["--session-id", token]);
     expect(p.args).not.toContain("--resume");

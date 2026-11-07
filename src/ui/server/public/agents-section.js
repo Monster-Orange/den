@@ -231,7 +231,9 @@ async function act(ws, verb, id, button) {
           ? out?.stillStopping
             ? "ag.stillStopping"
             : "ag.stopped"
-          : "ag.resumed",
+          : out?.fresh
+            ? "ag.resumedFresh"
+            : "ag.resumed",
         { id },
       ),
     );

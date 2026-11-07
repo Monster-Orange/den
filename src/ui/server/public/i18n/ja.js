@@ -388,6 +388,7 @@
     "ag.started": "エージェント {id} を開始しました",
     "ag.stopped": "エージェント {id} を停止しました",
     "ag.stillStopping": "{id} はまだ停止中です",
+    "ag.resumedFresh": "{id}: まだ再開するものがないため、新しく開始しました",
     "ag.inactive": "ワークスペース {ws} はアクティブではありません",
     "ag.switchWs": "{ws} に切り替え",
     "ag.unknownWs": "（その名前のワークスペースはありません）",

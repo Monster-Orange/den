@@ -512,6 +512,7 @@
     "ag.started": "Started agent {id}",
     "ag.stopped": "Stopped agent {id}",
     "ag.stillStopping": "{id} is still stopping",
+    "ag.resumedFresh": "{id}: nothing to resume yet; started fresh",
     "ag.inactive": "Workspace {ws} isn't active",
     "ag.switchWs": "Switch to {ws}",
     "ag.unknownWs": "(no workspace has that name)",

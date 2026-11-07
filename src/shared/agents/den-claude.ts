@@ -59,6 +59,7 @@ import {
 import { builtinEntry } from "./catalog.js";
 import { catalogFind } from "./catalog-runtime.js";
 import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
+import { claudeProjectsDir } from "../usage/paths.js";
 
 export const DEN_CLAUDE_ID = "den-claude";
 const BIN = "claude";
@@ -316,6 +317,24 @@ export const denClaude: Runtime = {
       files: c.files,
       warnings: c.warnings,
     };
+  },
+  // Its transcript, <token>.jsonl in any project under its projects dir.
+  conversationExists(token, env = process.env) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(token)) return false;
+    const root = claudeProjectsDir(env);
+    let projects: string[] = [];
+    try {
+      projects = fs.readdirSync(root);
+    } catch {
+      return false;
+    }
+    return projects.some((p) =>
+      fs.existsSync(path.join(root, p, `${token}.jsonl`)),
+    );
+  },
+  launchFailures: {
+    noConversation: /no conversation found/i,
+    idInUse: /already in use/i,
   },
   approvals: "terminal",
   envPassthrough: ["CLAUDE_CONFIG_DIR"],

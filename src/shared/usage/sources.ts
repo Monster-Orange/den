@@ -9,7 +9,6 @@
  * A source reads locally and never sends what it reads anywhere.
  */
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import {
   getStrategy,
@@ -37,14 +36,8 @@ export interface UsageSource {
 /** A conversation id as Claude Code names its files: never a path. */
 const TOKEN_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
-/** Claude Code's transcripts: $CLAUDE_CONFIG_DIR/projects, else ~/.claude/projects. */
-export function claudeProjectsDir(
-  env: NodeJS.ProcessEnv = process.env,
-): string {
-  const base =
-    env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), ".claude");
-  return path.join(base, "projects");
-}
+import { claudeProjectsDir } from "./paths.js";
+export { claudeProjectsDir };
 
 function dirs(p: string): string[] {
   try {

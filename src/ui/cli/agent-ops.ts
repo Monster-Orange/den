@@ -1098,7 +1098,10 @@ export async function startAgent(
           workspace: ws,
           cwd: input.worktree,
           sessionName: sessionName(d.dist, ws, id),
-          ...(out.resumeToken ? { resumeToken: out.resumeToken } : {}),
+          // 0.4.8: launched on this token, so a resume continues it.
+          ...(out.resumeToken
+            ? { resumeToken: out.resumeToken, launched: true }
+            : {}),
         },
         argv: out.argv,
         env: out.env,
@@ -1248,30 +1251,82 @@ export async function resumeAgent(
       worktree: rec.cwd,
       ...(rec.resumeToken ? { resumeToken: rec.resumeToken } : {}),
     };
-    // A session nobody prompted left no conversation: continuing it fails,
-    // so it starts afresh under the same id. A session the host no longer
-    // lists is assumed prompted.
-    const fresh = Boolean(old && !old.prompted && rec.resumeToken);
-    const out = launchOrThrow(() => (fresh ? rt.launch(at) : rt.resume!(at)));
-    if (!out) throw refused(`agent ${rec.id} has nothing to resume`);
-    writeRuntimeFiles(input.filesDir, out.files);
+    // 0.4.8: the runtime's own resume first, whenever this token was
+    // launched (the record says so), its conversation is on disk, the last
+    // session was prompted, or the host no longer lists it. Only a record
+    // from before 0.4.8 whose session nobody prompted starts afresh under
+    // the same id.
+    const token = rec.resumeToken;
+    const known =
+      Boolean(rec.launched) ||
+      Boolean(token && rt.conversationExists?.(token, d.env)) ||
+      !old ||
+      Boolean(old.prompted);
+    const launchAs = (asFresh: boolean) => {
+      const out = launchOrThrow(() =>
+        asFresh ? rt.launch(at) : rt.resume!(at),
+      );
+      if (!out) throw refused(`agent ${rec.id} has nothing to resume`);
+      writeRuntimeFiles(input.filesDir, out.files);
+      return out;
+    };
     const { session: _s, startedAt: _t, resumedAt: _r, ...base } = rec;
-    const { rec: next, info } = await startSession(
-      d,
-      c,
-      {
-        rec: { ...base, cwd: rec.cwd },
-        argv: out.argv,
-        env: out.env,
-        passthrough: rt.envPassthrough,
-        grants,
-        ...binDirOf(det),
-      },
-      old,
-      fresh ? {} : { resumedAt: new Date().toISOString() },
-    );
-    const early = await exitedAtOnce(d, c, info);
-    return { rec: next, info, warnings: out.warnings ?? [], early, fresh };
+    const run = async (asFresh: boolean, prior: SessionInfo | undefined) => {
+      const out = launchAs(asFresh);
+      const { rec: next, info } = await startSession(
+        d,
+        c,
+        {
+          rec: { ...base, cwd: rec.cwd, ...(token ? { launched: true } : {}) },
+          argv: out.argv,
+          env: out.env,
+          passthrough: rt.envPassthrough,
+          grants,
+          ...binDirOf(det),
+        },
+        prior,
+        asFresh ? {} : { resumedAt: new Date().toISOString() },
+      );
+      const early = await exitedAtOnce(d, c, info);
+      return { out, next, info, early };
+    };
+    let fresh = !known && Boolean(token);
+    let r = await run(fresh, old);
+    // It exited at once saying the other way was the right one: try that,
+    // once. A resume with nothing to continue starts fresh under the same
+    // id; a fresh start whose id is taken resumes it.
+    const said = r.early?.tail.join("\n") ?? "";
+    const other = fresh
+      ? rt.launchFailures?.idInUse?.test(said)
+      : rt.launchFailures?.noConversation?.test(said);
+    if (r.early && other && token) {
+      const first = r;
+      fresh = !fresh;
+      // The first try's token goes with its session.
+      revokeAgentTokens(d.stateDir(), rec.id);
+      r = await run(
+        fresh,
+        (await c.list()).find((x) => x.ref.id === first.info.ref.id),
+      );
+      if (r.early)
+        throw new AgentError(
+          `agent ${rec.id}: conversation ${token} could not be continued or started (${rt.id} exited at once both ways: ${[...first.early!.tail, ...r.early.tail].slice(-4).join(" / ") || "no output"})`,
+          {
+            status: 502,
+            code: "resume_failed",
+            hints: [
+              `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id} (a new conversation)`,
+            ],
+          },
+        );
+    }
+    return {
+      rec: r.next,
+      info: r.info,
+      warnings: r.out.warnings ?? [],
+      early: r.early,
+      fresh,
+    };
   });
 }
 

@@ -130,6 +130,18 @@ export interface Runtime {
   launch(input: LaunchInput): LaunchOutput;
   /** A new run that continues the last one; null when there is nothing to resume. */
   resume?(input: ResumeInput): Omit<LaunchOutput, "resumeToken"> | null;
+  /**
+   * Whether the runtime has a conversation for `token` on this machine
+   * (den-claude: its transcript file). Only ever a fast path: false may
+   * just mean it isn't written yet.
+   */
+  conversationExists?(token: string, env?: NodeJS.ProcessEnv): boolean;
+  /**
+   * What the runtime prints when it exits at once (0.4.8): `noConversation`
+   * when a resume finds nothing to continue, `idInUse` when a new
+   * conversation's id is taken. Den then tries the other way, once.
+   */
+  launchFailures?: { noConversation?: RegExp; idInUse?: RegExp };
   /** Where permission prompts surface (Q-AG-2). */
   approvals?: "terminal" | "hook";
   /**

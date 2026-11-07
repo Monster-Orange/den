@@ -401,6 +401,7 @@
     "ag.started": "Agente {id} iniciado",
     "ag.stopped": "Agente {id} detenido",
     "ag.stillStopping": "{id} todavía se está deteniendo",
+    "ag.resumedFresh": "{id}: aún no hay nada que reanudar; se inició de nuevo",
     "ag.inactive": "El espacio de trabajo {ws} no está activo",
     "ag.switchWs": "Cambiar a {ws}",
     "ag.unknownWs": "(ningún espacio de trabajo tiene ese nombre)",

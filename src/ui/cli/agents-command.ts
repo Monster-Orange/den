@@ -108,8 +108,8 @@ export const AGENTS_HELP = {
     "{cli} agents resume <id> [-w <ws>]",
     "{cli} agents resume --all-interrupted [-w <ws>]",
     "    the same conversation, persona, workspace and folder, when its runtime",
-    "    can resume one and its session has ended; a session never prompted",
-    "    starts fresh under the same conversation id. --all-interrupted: every",
+    "    can resume one and its session has ended; with nothing to resume yet,",
+    "    it starts fresh under the same conversation id. --all-interrupted: every",
     "    agent interrupted when Den or the machine restarted",
     "{cli} agents rm <id> [-w <ws>]",
     "{cli} agents rm --stopped [-w <ws>]",
@@ -298,7 +298,7 @@ async function resume(args: string[], d: AgentsResolved): Promise<number> {
   const s = await resumeAgent(d, id, ws);
   if (s.fresh)
     d.out(
-      `agent ${s.rec.id}: starting fresh: it was never prompted, so there is no conversation to resume`,
+      `agent ${s.rec.id}: nothing to resume yet; started fresh (same conversation id, folder and scope)`,
     );
   return report(
     d,
