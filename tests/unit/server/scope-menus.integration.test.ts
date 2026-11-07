@@ -5,8 +5,10 @@
  * shop shared by ws-a and ws-b), driven by Playwright's headless Chromium.
  *
  * - the ORG label is the GitHub org's `orgs:` label, not the bare id;
- * - Workspace ▾ sets the view (user prefs only) and never moves the focus;
- *   "Make <ws> the CLI default" is the separate item that does;
+ * - Workspace ▾ (0.4.11, Ward's decision): picking one workspace sets the
+ *   view and makes it the CLI default (workspaces.yml); "All active (n)"
+ *   sets only the view and leaves the CLI default; there is no separate
+ *   "Make <ws> the CLI default" item;
  * - a Services card's ☆ follows an unpin from the rail, without a reload;
  * - every page has exactly one main landmark, #den-content;
  * - the runs dock never covers the graph's cards (since 0.3.0-dev.35 on
@@ -37,10 +39,22 @@ function write(file: string, content: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
 }
+/** A change from a page of this server: its Origin and the loopback CSRF token. */
+async function pageHeaders(): Promise<Record<string, string>> {
+  const r = await request("GET", "/api/session");
+  const csrf = (JSON.parse(r.body) as { csrf?: string }).csrf ?? "";
+  return { Origin: `http://127.0.0.1:${port}`, "X-Den-CSRF": csrf };
+}
+/** A POST as the page sends it; throws unless it is 2xx. */
+async function post(p: string, body: unknown): Promise<void> {
+  const r = await request("POST", p, body, await pageHeaders());
+  if (r.status >= 300) throw new Error(`POST ${p}: ${r.status}`);
+}
 function request(
   method: string,
   p: string,
   body?: unknown,
+  extra: Record<string, string> = {},
 ): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? undefined : JSON.stringify(body);
@@ -52,12 +66,15 @@ function request(
         method,
         timeout: 15_000,
         agent: false,
-        headers: data
-          ? {
-              "Content-Type": "application/json",
-              "Content-Length": Buffer.byteLength(data),
-            }
-          : {},
+        headers: {
+          ...extra,
+          ...(data
+            ? {
+                "Content-Type": "application/json",
+                "Content-Length": String(Buffer.byteLength(data)),
+              }
+            : {}),
+        },
       },
       (res) => {
         let out = "";
@@ -236,9 +253,8 @@ describe("the org label", () => {
 });
 
 describe("Workspace ▾ (R4)", () => {
-  it("sets the view, a preference only; the focus moves only by its own item", async () => {
+  it("picking a workspace sets the view and makes it the CLI default; All active sets only the view", async () => {
     if (!browser) return;
-    const before = wsFile();
     const { p, writes } = await open("/services");
     await p.waitForSelector("#ws-pill:not([hidden])");
     expect(await p.textContent("#ws-pill")).toBe("Workspace All active ▾");
@@ -254,37 +270,97 @@ describe("Workspace ▾ (R4)", () => {
       ["ws-c", "false"],
       ["Manage workspaces…", null],
     ]);
+    expect(
+      await p.getAttribute('.den-pop .den-mi:has-text("ws-b")', "title"),
+    ).toMatch(/Picking a workspace here also makes it the CLI default/);
     await Promise.all([
       p.waitForNavigation(),
       p.click('.den-pop .den-mi:has-text("ws-b")'),
     ]);
-    // A view: user prefs (POST /api/scope) and nothing else.
-    expect(writes).toEqual(['POST /api/scope {"scope":"ws-b"}']);
-    expect(wsFile()).toBe(before);
+    // The CLI default first (workspaces.yml), then the view.
+    expect(writes).toEqual([
+      'POST /api/workspaces {"name":"ws-b","action":"focus"}',
+      'POST /api/scope {"scope":"ws-b"}',
+    ]);
     expect(await getJson("/api/scope")).toMatchObject({
       scope: "ws-b",
       inView: ["ws-b"],
-      focus: "ws-a",
+      focus: "ws-b",
     });
     await p.waitForSelector("#ws-pill:not([hidden])");
     expect(await p.textContent("#ws-pill")).toBe("Workspace ws-b ▾");
-    // The cards are the view's: shop and billing.
     await p.waitForSelector('[data-pin-toggle="billing"]');
     expect(await p.$$('[data-pin-toggle="search"]')).toHaveLength(0);
 
-    // "Make ws-b the CLI default" is the one item that writes workspaces.yml.
+    // All active: the view only; the CLI default stays ws-b.
+    writes.length = 0;
+    const before = wsFile();
     await p.click("#ws-pill");
     await Promise.all([
       p.waitForNavigation(),
-      p.click('.den-pop .den-mi:has-text("Make ws-b the CLI default")'),
+      p.click('.den-pop .den-mi:has-text("All active")'),
     ]);
+    expect(writes).toEqual(['POST /api/scope {"scope":"all"}']);
+    expect(wsFile()).toBe(before);
     expect((await getJson<{ focus: string }>("/api/workspaces")).focus).toBe(
       "ws-b",
     );
     await p.context().close();
     // Restore.
-    await request("POST", "/api/workspaces", { name: "ws-a", action: "focus" });
-    await request("POST", "/api/scope", { scope: "all" });
+    await post("/api/workspaces", { name: "ws-a", action: "focus" });
+    await post("/api/scope", { scope: "all" });
+  }, 60_000);
+  it("re-picking the workspace in view makes it the CLI default when it isn't (the view stays)", async () => {
+    if (!browser) return;
+    await post("/api/scope", { scope: "ws-b" });
+    await post("/api/workspaces", { name: "ws-a", action: "focus" });
+    const { p, writes } = await open("/services");
+    await p.waitForSelector("#ws-pill:not([hidden])");
+    expect(await p.textContent("#ws-pill")).toBe("Workspace ws-b ▾");
+    await p.click("#ws-pill");
+    await Promise.all([
+      p.waitForNavigation(),
+      p.click('.den-pop .den-mi:has-text("ws-b")'),
+    ]);
+    expect(writes).toEqual([
+      'POST /api/workspaces {"name":"ws-b","action":"focus"}',
+    ]);
+    expect(await getJson("/api/scope")).toMatchObject({
+      scope: "ws-b",
+      focus: "ws-b",
+    });
+    // Already both: picking it again sends nothing.
+    writes.length = 0;
+    await p.waitForSelector("#ws-pill:not([hidden])");
+    await p.click("#ws-pill");
+    await p.click('.den-pop .den-mi:has-text("ws-b")');
+    await p.waitForTimeout(300);
+    expect(writes).toEqual([]);
+    await p.context().close();
+    await post("/api/workspaces", { name: "ws-a", action: "focus" });
+    await post("/api/scope", { scope: "all" });
+  }, 60_000);
+
+  it("a page whose URL names a workspace (?ws=) follows the pick, so Workspaces never disagrees with the top bar", async () => {
+    if (!browser) return;
+    const { p } = await open("/local-dev?ws=ws-a");
+    await p.waitForSelector("#ws-pill:not([hidden])");
+    await p.click("#ws-pill");
+    await Promise.all([
+      p.waitForNavigation(),
+      p.click('.den-pop .den-mi:has-text("ws-b")'),
+    ]);
+    expect(new URL(p.url()).searchParams.get("ws")).toBe("ws-b");
+    await p.waitForSelector("#ws-pill:not([hidden])");
+    await p.click("#ws-pill");
+    await Promise.all([
+      p.waitForNavigation(),
+      p.click('.den-pop .den-mi:has-text("All active")'),
+    ]);
+    expect(new URL(p.url()).searchParams.has("ws")).toBe(false);
+    await p.context().close();
+    await post("/api/workspaces", { name: "ws-a", action: "focus" });
+    await post("/api/scope", { scope: "all" });
   }, 60_000);
 });
 

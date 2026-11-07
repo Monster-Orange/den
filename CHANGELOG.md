@@ -4,6 +4,31 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.11] - unreleased
+
+### Changed
+
+- **Picking a workspace in the top bar also makes it the CLI default.**
+  There is one "current workspace": choosing one in the Workspace menu
+  sets what pages show and where `<cli>` commands run (workspaces.yml, as
+  Local Dev's "Make CLI default" does). "All active (n)" changes only what
+  pages show; the CLI default stays. If the CLI default can't be set,
+  nothing changes and the error shows.
+- **The menu's separate "Make <ws> the CLI default" item is gone**, since
+  picking a workspace does it. The "CLI default" tag stays on its row, and
+  Local Dev keeps its "Make CLI default" button, to set it without
+  changing what pages show. Each workspace row's tooltip says so.
+- **Picking the workspace already in view makes it the CLI default** when
+  it isn't one (after Local Dev's "Make CLI default" or `<cli> workspace
+  focus` moved it). The view stays as it is.
+- **Pages whose address names a workspace follow the pick.** Workspaces'
+  detail pane and breadcrumb now show the workspace the top bar picked,
+  not the one in the old `?ws=`.
+
+### Migrations
+
+None.
+
 ## [0.4.10] - 2026-11-07
 
 ### Changed

@@ -420,8 +420,12 @@ async function stubWorkspaces(p: Page, items: unknown[], extra = {}) {
         title: "View",
         items,
         ...extra,
-        onSelect: (v: string) => w.picked.push(v),
-        onFocus: (v: string) => w.focused.push(v),
+        // onSelect(value, focus): header.js makes a workspace the CLI
+        // default too (0.4.11); the shell passes the current focus.
+        onSelect: (v: string, f: string | null) => {
+          w.picked.push(v);
+          w.focused.push(String(f));
+        },
       });
     },
     { items, extra },
@@ -490,7 +494,7 @@ describe("the scope breadcrumb (R4)", () => {
     await p.context().close();
   });
 
-  it("Workspace ▾: All active and the active workspaces, focus marked; picking sets the view, focus is a separate item", async () => {
+  it("Workspace ▾: All active and the active workspaces, focus marked; no separate CLI-default item", async () => {
     if (!browser) return;
     const { p } = await mount("services");
     await stubWorkspaces(
@@ -505,7 +509,7 @@ describe("the scope breadcrumb (R4)", () => {
         { value: "ws-a", label: "ws-a", checked: false, focused: true },
         { value: "ws-b", label: "ws-b", checked: true, focused: false },
       ],
-      { label: "ws-b", focusable: "ws-b" },
+      { label: "ws-b", focus: "ws-a" },
     );
     await p.click("#ws-pill");
     expect(await p.getAttribute("#ws-pill", "aria-expanded")).toBe("true");
@@ -528,7 +532,6 @@ describe("the scope breadcrumb (R4)", () => {
       { text: "All active (2)", role: "menuitemradio", checked: "false" },
       { text: "ws-aCLI default", role: "menuitemradio", checked: "false" },
       { text: "ws-b", role: "menuitemradio", checked: "true" },
-      { text: "Make ws-b the CLI default", role: "menuitem", checked: null },
       { text: "Manage workspaces…", role: "menuitem", checked: null },
     ]);
     // ✓ on the checked row (R18), and focus starts there.
@@ -541,7 +544,7 @@ describe("the scope breadcrumb (R4)", () => {
     expect(await focusedText(p)).toBe("ws-b");
     // ↑/↓ move (wrapping), Home and End.
     await p.keyboard.press("ArrowDown");
-    expect(await focusedText(p)).toBe("Make ws-b the CLI default");
+    expect(await focusedText(p)).toBe("Manage workspaces…");
     await p.keyboard.press("Home");
     expect(await focusedText(p)).toBe("All active (2)");
     await p.keyboard.press("ArrowUp");
@@ -551,7 +554,7 @@ describe("the scope breadcrumb (R4)", () => {
     expect(await p.$$(".den-pop")).toHaveLength(0);
     expect(await p.evaluate(() => document.activeElement?.id)).toBe("ws-pill");
     expect(await p.getAttribute("#ws-pill", "aria-expanded")).toBe("false");
-    // ↓ on the button opens it; Enter picks: the view, never the focus.
+    // ↓ on the button opens it; Enter picks, with the current focus.
     await p.keyboard.press("ArrowDown");
     await p.keyboard.press("Home");
     await p.keyboard.press("Enter");
@@ -560,16 +563,7 @@ describe("the scope breadcrumb (R4)", () => {
         const w = window as unknown as { picked: string[]; focused: string[] };
         return [w.picked, w.focused];
       }),
-    ).toEqual([["all"], []]);
-    // The separate focus item is the only way to move the focus.
-    await p.click("#ws-pill");
-    await p.click('.den-pop .den-mi:has-text("Make ws-b the CLI default")');
-    expect(
-      await p.evaluate(() => {
-        const w = window as unknown as { picked: string[]; focused: string[] };
-        return [w.picked, w.focused];
-      }),
-    ).toEqual([["all"], ["ws-b"]]);
+    ).toEqual([["all"], ["ws-a"]]);
     // A click outside closes.
     await p.click("#ws-pill");
     expect(await p.$$(".den-pop")).toHaveLength(1);

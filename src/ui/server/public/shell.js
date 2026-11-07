@@ -62,7 +62,7 @@
  *   setOrgs([{ id, title, workspaces? }], currentId, onSelect?)
  *                                    two or more: the Org ▾ menu; a pick
  *                                    calls onSelect(id), fires `den:org`
- *   setWorkspaces({ label, title, items, focusable, onSelect, onFocus })
+ *   setWorkspaces({ label, title, items, focus, onSelect })
  *                                    the Workspace ▾ menu (header.js)
  *   syncEnv()                        repaint Env ▾ from #env-sel
  *   registerCommand({ id, label, keywords?, kind?, run })
@@ -134,7 +134,9 @@
     "ws.all": "All active",
     "ws.focus": "CLI default",
     "ws.focusTip":
-      "CLI commands run here when you don't name a workspace. Picking a workspace in the top bar only changes what pages show.",
+      "CLI commands run here when you don't name a workspace. Picking a workspace in the top bar also makes it the CLI default.",
+    "ws.pickTip":
+      "Picking a workspace here also makes it the CLI default, so __DEN_CLI__ commands run there.",
     "ws.none": "No active workspaces",
     "ws.manage": "Manage workspaces…",
     "ws.allN": "All active ({n})",
@@ -144,10 +146,7 @@
     "ws.viewTitle":
       "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing.",
     "ws.viewTitleFocus":
-      "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing, and the CLI default ({focus}) stays the target for commands.",
-    "ws.setFocus": "Make {ws} the CLI default",
-    "ws.setFocusTip":
-      "CLI commands run in it when you don't name a workspace (writes workspaces.yml)",
+      "View: what every page shows ({ws}). It starts, stops and routes nothing. CLI default: {focus}.",
     "ws.viewFailed": "Could not change the view: {msg}",
     "ws.focusFailed": "Could not change the CLI default: {msg}",
     // A count's singular is its .one (0.3.0-dev.40: en had none, so the org
@@ -1722,8 +1721,9 @@
   /**
    * The Workspace part: { label, title, items: [{ value, label, checked,
    * focused, title? }], onSelect(value) }. "All active" and the active
-   * workspaces, the focused one marked; then, apart, "Set <ws> as focus"
-   * (model.focusable, model.onFocus(name)) and a link to manage them.
+   * workspaces, the focused one (model.focus, the CLI default) marked; then
+   * a link to manage them. onSelect(value, focus): choosing a workspace
+   * also makes it the CLI default (header.js).
    */
   function setWorkspaces(model) {
     var btn = document.getElementById("ws-pill");
@@ -1748,22 +1748,16 @@
         tag: it.focused ? t("ws.focus") : null,
         title: it.title || null,
         onSelect: function () {
-          if (!it.checked && typeof model.onSelect === "function")
-            model.onSelect(it.value);
+          if (typeof model.onSelect !== "function") return;
+          // The workspace in view still becomes the CLI default when it
+          // isn't one; picking what is both already does nothing.
+          if (it.checked && (it.value === "all" || it.value === model.focus))
+            return;
+          model.onSelect(it.value, model.focus || null, !!it.checked);
         },
       });
     });
     items.push({ hr: true });
-    // Focus is a separate action (it writes workspaces.yml and retargets
-    // the CLI); picking a view above never moves it.
-    if (model.focusable && typeof model.onFocus === "function")
-      items.push({
-        label: t("ws.setFocus", { ws: model.focusable }),
-        title: t("ws.setFocusTip"),
-        onSelect: function () {
-          model.onFocus(model.focusable);
-        },
-      });
     items.push({ label: t("ws.manage"), href: navHref("local-dev") });
     scopeMenus.ws = { label: t("k.ws"), items: items };
   }

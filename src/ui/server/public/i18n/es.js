@@ -29,7 +29,9 @@
     "ws.all": "Todos los activos",
     "ws.focus": "predeterminado de la CLI",
     "ws.focusTip":
-      "Los comandos de la CLI se ejecutan aquí si no indicas un espacio de trabajo. Elegir un espacio en la barra superior solo cambia lo que muestran las páginas.",
+      "Los comandos de la CLI se ejecutan aquí si no indicas un espacio de trabajo. Elegir un espacio en la barra superior también lo convierte en el predeterminado de la CLI.",
+    "ws.pickTip":
+      "Elegir un espacio de trabajo aquí también lo convierte en el predeterminado de la CLI, así que los comandos de __DEN_CLI__ se ejecutan allí.",
     "ws.none": "No hay espacios de trabajo activos",
     "ws.manage": "Gestionar espacios de trabajo…",
     "ws.allN": "Todos los activos ({n})",
@@ -39,10 +41,7 @@
     "ws.viewTitle":
       "Vista: lo que muestra cada página ({ws}). Es solo un filtro: no inicia, detiene ni enruta nada.",
     "ws.viewTitleFocus":
-      "Vista: lo que muestra cada página ({ws}). Es solo un filtro: no inicia, detiene ni enruta nada, y el predeterminado de la CLI ({focus}) sigue siendo el destino de los comandos.",
-    "ws.setFocus": "Hacer de {ws} el predeterminado de la CLI",
-    "ws.setFocusTip":
-      "Lo convierte en el destino por defecto de los comandos (escribe workspaces.yml)",
+      "Vista: lo que muestra cada página ({ws}). No inicia, detiene ni enruta nada. Predeterminado de la CLI: {focus}.",
     "ws.viewFailed": "No se pudo cambiar la vista: {msg}",
     "ws.focusFailed": "No se pudo poner el foco: {msg}",
     "org.n": "{n} espacios de trabajo",
