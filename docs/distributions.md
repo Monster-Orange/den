@@ -2290,14 +2290,17 @@ Den never writes your `~/.claude`; your own hooks still run.
   - `sleep` in the foreground, alone or in an `until …; do sleep …; done`,
     `while` or `for` loop. A Bash call with `run_in_background`, and
     `sleep … &`, pass. The reason says to run in the background or use a
-    wait primitive.
+    wait primitive. Recent Claude Code versions have their own sleep guard,
+    which answers first (and also stops `sleep … &`). The sleep is blocked
+    either way; Den's hook covers runtimes and versions without that guard.
   - Nothing else. Quoted text, heredoc bodies and other tools always pass,
     and a hook that can't read its input lets the call through.
-- `Stop` (`stop-hook.ts`) runs the hand-back check on a turn's last message
-  when it has a `Hand-back` heading. If the check fails, Claude is told what
-  to fix and keeps going (Claude Code's `decision: "block"`). It never
-  blocks twice in a row (`stop_hook_active`), and any other turn ends as
-  usual. Den adds no `SubagentStop` hook: a subagent reports to its parent
+- `Stop` (`stop-hook.ts`) checks a turn's last message, which is what the
+  person reads. With a `Hand-back` heading it gets the whole hand-back
+  check; any other message gets the plain-writing part only (every ID
+  explained). If the check fails, Claude is told what to fix and keeps
+  going (Claude Code's `decision: "block"`). It never blocks twice in a
+  row (`stop_hook_active`), so it can't loop. Den adds no `SubagentStop` hook: a subagent reports to its parent
   agent, not to a person.
 
 **The hand-back template**, which the check enforces:
@@ -2320,7 +2323,8 @@ rejects a hand-back when:
 
 - a part is missing or empty. A part is a line starting with its label and
   a colon (bold is fine), or a heading that is its label. URL must hold a
-  link (`://`). `Decisions: none` is allowed.
+  link (`://`), or say `none` for work with no page (`URL: none — a CLI
+change` is fine). `Decisions: none` is allowed.
 - an ID is bare. An ID is `#<digits>`, or 1 to 4 capitals, an optional `-`,
   digits and an optional `.<digits>` (`R12`, `AG-14`, `KB-4.1`). Links,
   `inline code`, code blocks, and the URL and Branch parts are not checked.

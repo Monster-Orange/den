@@ -34,4 +34,6 @@ a numbered yes/no question is sent back to you to fix.
   1. <a question the person answers yes or no>?
 ```
 
-Write "Decisions: none" when there are none.
+Write "Decisions: none" when there are none, and "URL: none" (with a short
+reason) when the work has no page to open. Every message you end a turn
+with is read by a person, hand-back or not: explain each ID in it.

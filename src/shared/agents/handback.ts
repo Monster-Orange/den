@@ -18,7 +18,8 @@
  * 1. A part is missing or empty. A part is a line that starts with its
  *    label and a colon (`URL:`, `- **Branch:** …`) or a heading that is its
  *    label (`### What changed`). Its content is the rest of the line and
- *    the lines after it, up to the next part. URL must hold a link (`://`).
+ *    the lines after it, up to the next part. URL must hold a link (`://`)
+ *    or say `none` (work with no page), optionally with a reason.
  *    Decisions may say `none`.
  * 2. It has a bare ID. An ID is `#<digits>` or 1-4 capitals, an optional
  *    `-`, digits and an optional `.<digits>` (`R12`, `AG-14`, `KB-4.1`).
@@ -223,9 +224,13 @@ export function checkHandback(text: string): HandbackResult {
     }
     if (!body.join(" ").trim())
       problems.push(`"${part}:" is empty. Fill it in.`);
-    else if (part === "URL" && !body.join(" ").includes("://"))
+    else if (
+      part === "URL" &&
+      !body.join(" ").includes("://") &&
+      !/^\s*none\b/i.test(body.join(" "))
+    )
       problems.push(
-        `"URL:" has no link. Give the full address, with http:// or https://.`,
+        `"URL:" has no link. Give the full address, with http:// or https://, or say none if this work has no page.`,
       );
   }
   for (const id of bareIds(lines.join("\n"), literal))

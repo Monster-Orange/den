@@ -367,7 +367,7 @@ export function bashDecision(command, opts = {}) {
       for (const f of [...fileArgs(cmd, args), ...st.inputs]) {
         const why = wholeReadReason(f, cwd, home);
         if (why)
-          return `Den blocked \`${cmd} ${f}\`: it reads all of ${f} (${why}) into the conversation. ${READ_HINT}`;
+          return `Den blocked \`${[cmd, ...args].join(" ")}\`: it reads all of ${f} (${why}) into the conversation. ${READ_HINT}`;
       }
     }
   return null;

@@ -452,21 +452,19 @@ describe("the runs dock (R16)", () => {
     // Motion allowed, then wait for the pulse (it failed once on a slow CI
     // runner read straight after the class landed).
     await p.emulateMedia({ reducedMotion: "no-preference" });
-    await p
-      .waitForFunction(
-        () =>
-          getComputedStyle(document.querySelector("#den-runs .den-dot.run")!)
-            .animationName === "den-pulse",
-        undefined,
-        { timeout: 3_000 },
-      )
-      .catch(() => undefined);
-    expect(
-      await p.$eval(
-        "#den-runs .den-dot.run",
-        (e) => getComputedStyle(e).animationName,
-      ),
-    ).toBe("den-pulse");
+    // Polled, not read once: a re-render can swap the dot between the
+    // query and the style read (CI read "" once, 0.4.6's release run).
+    let pulse = "";
+    for (let i = 0; i < 50 && pulse !== "den-pulse"; i++) {
+      pulse = await p
+        .$eval(
+          "#den-runs .den-dot.run",
+          (e) => getComputedStyle(e).animationName,
+        )
+        .catch(() => "");
+      if (pulse !== "den-pulse") await p.waitForTimeout(100);
+    }
+    expect(pulse).toBe("den-pulse");
     expect(await p.$("#den-dock-out")).toBeNull();
     expect(await runs(p, "isOpen")).toBe(false);
     // The engineer opens it: the chip.

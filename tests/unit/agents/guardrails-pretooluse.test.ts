@@ -55,6 +55,12 @@ describe("whole-log reads are blocked, with a slice or a subagent offered", () =
     expect(r.stderr).toMatch(/subagent/);
   });
 
+  it("quotes the command as typed, flags included", () => {
+    expect(bash("tail -n +1 web.log").stderr).toMatch(
+      /Den blocked `tail -n \+1 web\.log`/,
+    );
+  });
+
   it.each([
     "cat small.txt",
     "cat README.md",

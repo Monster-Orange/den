@@ -13,6 +13,14 @@ setup. `doctor` warns about polling loops it sees in the local dev metrics.
 
 ### Added
 
+- **The Stop hook reads every last message.** With a `## Hand-back`
+  heading it checks the whole hand-back, as before. Any other last message
+  gets the plain-writing check: every ID explained. It still never blocks
+  twice in a row.
+- **`URL: none` in a hand-back.** Work with no page (a CLI change, a
+  refused request) says `URL: none`, with a reason if it likes. An empty
+  or missing URL still fails.
+
 - **`down --json` and `web down --json`.** The clean-up steps answer in
   JSON like every other onboarding step: `{ ok, workspace, services }` and
   `{ ok, url, port, running, stopped }`. Both are safe to re-run.

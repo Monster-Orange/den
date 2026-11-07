@@ -31,6 +31,35 @@ describe("checkHandback", () => {
     expect(checkHandback(GOOD)).toEqual({ ok: true, problems: [] });
   });
 
+  it("accepts URL: none for work with no page, with or without a reason", () => {
+    const url = "- URL: https://localhost:7443/workspaces/north\n";
+    for (const v of [
+      "none",
+      "None",
+      "none — this work has no page",
+      "none: a CLI change",
+    ])
+      expect([v, checkHandback(GOOD.replace(url, `- URL: ${v}\n`))]).toEqual([
+        v,
+        { ok: true, problems: [] },
+      ]);
+  });
+
+  it("still fails an empty or missing URL, or one that is neither none nor a link", () => {
+    const url = "- URL: https://localhost:7443/workspaces/north\n";
+    expect(checkHandback(GOOD.replace(url, "- URL:\n")).problems).toEqual([
+      '"URL:" is empty. Fill it in.',
+    ]);
+    expect(checkHandback(GOOD.replace(url, "")).problems).toEqual([
+      'Missing "URL:". Add it.',
+    ]);
+    expect(
+      checkHandback(GOOD.replace(url, "- URL: the north page\n")).problems,
+    ).toEqual([
+      '"URL:" has no link. Give the full address, with http:// or https://, or say none if this work has no page.',
+    ]);
+  });
+
   it("accepts labels in bold, as headings, and Decisions: none", () => {
     const text = [
       "## Hand-back",
@@ -70,7 +99,7 @@ describe("checkHandback", () => {
       ),
     );
     expect(r.problems).toEqual([
-      `"URL:" has no link. Give the full address, with http:// or https://.`,
+      `"URL:" has no link. Give the full address, with http:// or https://, or say none if this work has no page.`,
       `"Machine:" is empty. Fill it in.`,
     ]);
   });
@@ -161,11 +190,34 @@ describe("gloss: what explains an ID", () => {
 });
 
 describe("the Stop hook", () => {
-  it("only checks a message with the Hand-back heading", () => {
+  it("with no Hand-back heading, checks the whole message for bare IDs only", () => {
     expect(looksLikeHandback(GOOD)).toBe(true);
-    expect(looksLikeHandback("All done, #5 shipped.")).toBe(false);
+    expect(looksLikeHandback("All done, see AG-14.")).toBe(false);
+    const out = stopDecision({
+      last_assistant_message: "All done, see AG-14.",
+    });
+    const o = JSON.parse(out) as { decision: string; reason: string };
+    expect(o.decision).toBe("block");
+    expect(o.reason).toMatch(/"AG-14" is not explained/);
+    // No parts are asked for outside a hand-back.
+    expect(o.reason).not.toMatch(/Missing/);
     expect(
-      stopDecision({ last_assistant_message: "All done, #5 shipped." }),
+      stopDecision({
+        last_assistant_message:
+          "All done. AG-14 (resume a stopped agent) works now.",
+      }),
+    ).toBe("");
+    expect(
+      stopDecision({ last_assistant_message: "All done, nothing to add." }),
+    ).toBe("");
+  });
+
+  it("a bare ID outside a hand-back is still let through the second time", () => {
+    expect(
+      stopDecision({
+        last_assistant_message: "All done, see AG-14.",
+        stop_hook_active: true,
+      }),
     ).toBe("");
   });
 
