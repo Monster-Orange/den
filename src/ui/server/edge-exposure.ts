@@ -1,6 +1,7 @@
 /**
- * The edge counts as local (0.4.3): with no sign-in through the edge, who
- * can reach the edge can use terminals. When Den can tell the edge is
+ * The edge counts as local (0.4.3) when it shows the client is this
+ * machine; since 0.4.5 any other client signs in (unless
+ * web.edge_unattested: local). When Den can tell the edge is
  * reachable beyond this machine it says so, once in web.log and in a
  * banner on every page (the shell, dismissible per browser).
  *
@@ -16,8 +17,19 @@ import { execFile } from "child_process";
 import { promises as dns } from "dns";
 import { isLoopbackAddress } from "./request-guard.js";
 
-export const EDGE_EXPOSED_MESSAGE =
-  "Your edge is reachable from other machines; anyone who can reach it can use terminals. Auth is coming.";
+/**
+ * The warning, by `web.edge_unattested` (SEC-2a): with `signin` (the
+ * default) a browser the edge can't place as this machine signs in first;
+ * with `local` it is let in, as in 0.4.3.
+ */
+export function edgeExposedMessage(unattested: "local" | "signin"): string {
+  return unattested === "local"
+    ? "Your edge is reachable from other machines, and web.edge_unattested is local: anyone it can't place can use terminals. Remove the key to have them sign in."
+    : "Your edge is reachable from other machines. A browser it can't place as this one signs in first (Sign in with GitHub, or a pairing link).";
+}
+
+/** 0.4.5's default wording (web.edge_unattested: signin). */
+export const EDGE_EXPOSED_MESSAGE = edgeExposedMessage("signin");
 
 export interface ExposureDeps {
   /** Every address a hostname resolves to (none when it doesn't). */

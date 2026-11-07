@@ -94,6 +94,8 @@ interface Opts {
   after?: string;
   width?: number;
   vaultStored?: boolean;
+  /** Fields of the vault status to replace (LK-4: no ref, canSave). */
+  vault?: Record<string, unknown>;
   /** /api/server-info reports a stale server (the ⚠ pill shows). */
   stale?: boolean;
 }
@@ -187,6 +189,7 @@ async function mount(o: Opts = {}): Promise<{
           configured: true,
           backendAvailable: true,
           hasStored: !!o.vaultStored,
+          ...o.vault,
         });
       case "/api/sudo-password/load-from-vault":
         if (o.vaultStored) unlocked = true;
@@ -772,6 +775,46 @@ describe("the prompt is always reachable, and asks the server first (LK-1..3, 0.
     expect(reqs).toContain("POST /api/sudo-password/load-from-vault");
     expect(await p.$("#den-lock-pop")).toBeNull();
     expect(await p.isHidden("#den-lock")).toBe(true);
+    await p.context().close();
+  }, 30_000);
+});
+
+describe("LK-4: the prompt's save option with no secrets.refs.sudo", () => {
+  /** A run needs sudo: the prompt opens (askSudo), as a real run's would. */
+  async function ask(p: Page): Promise<void> {
+    await p.waitForSelector("#den-status.bad");
+    await p.evaluate((n) => {
+      void (window as unknown as { __hdr: Hdr }).__hdr.askSudo(n);
+    }, NEED);
+    await p.waitForSelector("#den-lock-pop #den-lock-pw");
+  }
+
+  it("offers Save to 1Password with no note to edit YAML when saving can write the ref (canSave)", async () => {
+    if (!browser) return;
+    const { p } = await mount({
+      vault: { configured: false, canSave: true, configFile: "config/den.yml" },
+    });
+    await ask(p);
+    await p.waitForSelector("#den-lock-pop .den-lock-save:not([hidden])");
+    expect(await p.isVisible("#den-lock-pop .den-lock-cfg")).toBe(false);
+    expect(await text(p, "#den-lock-pop .den-lock-save")).toBe(
+      "Save to 1Password",
+    );
+    await p.context().close();
+  }, 30_000);
+
+  it("a backend that keeps nothing (canSave false): no save option, and the note says where the ref goes", async () => {
+    if (!browser) return;
+    const { p } = await mount({
+      vault: {
+        configured: false,
+        canSave: false,
+        configFile: "config/den.yml",
+      },
+    });
+    await ask(p);
+    await p.waitForSelector("#den-lock-pop .den-lock-cfg:not([hidden])");
+    expect(await p.isVisible("#den-lock-pop .den-lock-save")).toBe(false);
     await p.context().close();
   }, 30_000);
 });

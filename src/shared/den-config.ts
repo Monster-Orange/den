@@ -391,6 +391,13 @@ export interface UserConfig {
     /** More runtime catalog entries (AG-0.5, agents/catalog.ts). */
     runtime_catalog?: unknown;
   };
+  /**
+   * The web server's per-machine keys (src/shared/web-session.ts
+   * readWebAuthConfig): allow_plain_http_remote, edge_unattested,
+   * github_client_id, and (SEC-2a) machine_name, the name the signed-out
+   * page gives this machine.
+   */
+  web?: Record<string, unknown>;
 }
 
 const ALL_ENVIRONMENTS: Environment[] = [

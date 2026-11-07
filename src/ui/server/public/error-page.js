@@ -101,21 +101,30 @@ function readData() {
   }
 }
 
-async function copy(text, btn, t) {
+async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
+    return;
   } catch {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand("copy");
-    } catch {
-      /* nothing more to try */
-    }
-    ta.remove();
+    /* no Clipboard API here (plain http beyond localhost): the fallback */
   }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand("copy");
+  } catch {
+    /* nothing more to try */
+  }
+  ta.remove();
+}
+
+async function copy(text, btn, t) {
+  await copyText(text);
   const label = btn.textContent;
   btn.textContent = t("err.copied");
   setTimeout(() => (btn.textContent = label), 1500);
@@ -126,50 +135,453 @@ function withCmd(text, cmd) {
   return esc(text).replace("\u0000", `<code class="mono">${esc(cmd)}</code>`);
 }
 
+/** `t(key, vars)` escaped, with `{host}` (and `{target}`) in bold. */
+function withHost(t, key, vars) {
+  const marks = {};
+  const v = { ...vars };
+  for (const k of ["host", "target"])
+    if (k in v) {
+      marks[k] = v[k];
+      v[k] = `\u0001${k}\u0001`;
+    }
+  let out = esc(t(key, v));
+  for (const [k, val] of Object.entries(marks))
+    out = out.split(`\u0001${k}\u0001`).join(`<b>${esc(val)}</b>`);
+  return out;
+}
+
+const COPY_ICON =
+  '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-.5a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5"/></svg>';
+
 /**
- * The signed-out page (SEC-1b, SEC-1 spec §2): "Sign in to use the
- * terminal" (a shell-grade route on loopback) or "Sign in to use <name>"
- * (beyond loopback), the command that prints a sign-in link with a copy
- * button, and on 127.0.0.1 or [::1] a link to the same page on localhost,
- * where the cookie is. It never asks for a secret or a token.
+ * One command on the page: the line itself, and an icon button right next
+ * to it that copies it ("Copied" for a moment after). `extra` is more
+ * actions beside it (Open Terminal). Every command the page prints comes
+ * from the server, built by one helper (cli-command.ts): never a bare
+ * `<cli>` the server's user can't run.
+ */
+function cmdLine(id, cmd, t, extra = "") {
+  return (
+    `<div class="den-cmd" data-cmd="${esc(id)}">` +
+    `<pre class="code" id="${esc(id)}">${esc(cmd)}</pre>` +
+    `<button type="button" class="btn den-copy" data-copy-for="${esc(id)}" aria-label="${esc(t("err.signin.copy"))}" title="${esc(t("err.signin.copy"))}">` +
+    `${COPY_ICON}<span class="den-copied" aria-live="polite"></span></button>` +
+    extra +
+    `</div>`
+  );
+}
+
+/** Wire every copy button under `root` (each once). */
+function wireCopy(root, t) {
+  root.querySelectorAll("button[data-copy-for]").forEach((b) => {
+    if (b.dataset.wired) return;
+    b.dataset.wired = "1";
+    let timer = null;
+    b.addEventListener("click", async () => {
+      const pre = root.querySelector(`#${CSS.escape(b.dataset.copyFor)}`);
+      await copyText(pre?.textContent ?? "");
+      const note = b.querySelector(".den-copied");
+      if (!note) return;
+      note.textContent = t("err.copied");
+      b.classList.add("done");
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        note.textContent = "";
+        b.classList.remove("done");
+      }, 1500);
+    });
+  });
+}
+
+/** `ms` left as m:ss ("9:59"); 0:00 at or past the end. */
+export function countdownText(ms) {
+  const s = Math.max(0, Math.ceil(Number(ms) / 1000) || 0);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Where a signed-in page goes: the page that was asked for. On /signin,
+ * its same-origin `next` (else `/`); anywhere else, the same URL.
+ */
+export function landingAfterSignIn(loc) {
+  if (loc.pathname !== "/signin") return loc.pathname + loc.search + loc.hash;
+  const n = new URLSearchParams(loc.search).get("next") || "/";
+  return n.startsWith("/") && !n.startsWith("//") && !n.includes("\\")
+    ? n
+    : "/";
+}
+
+/**
+ * Sign in with GitHub (SEC-2a): the main button, shown only when a client
+ * id is configured. The server runs GitHub's device flow; the page shows
+ * the code and github.com/login/device, polls the server, and goes on once
+ * the owner approved it (the server sets the cookie). Another account is
+ * refused by name. With no owner linked, it says what to run on the server.
+ */
+function githubBlock(s, t) {
+  const g = s.github;
+  if (!g || s.localhost || g.state === "no_client_id") return "";
+  const host = s.machine || "";
+  if (g.state === "no_owner")
+    return (
+      `<div id="den-gh"><p>${withHost(t, "err.signin.githubNoOwner", { name: s.name, host })}</p>` +
+      cmdLine("den-gh-owner-cmd", g.owner, t) +
+      `</div>`
+    );
+  return (
+    `<div id="den-gh"><div class="acts" style="margin-top:0">` +
+    `<button type="button" class="btn primary" id="den-gh-start">${esc(t("err.signin.github"))}</button>` +
+    `</div><p class="den-gh-note" style="margin-top:8px">${esc(t("err.signin.githubNote", { name: s.name }))}</p>` +
+    `<div id="den-gh-flow" aria-live="polite"></div></div>`
+  );
+}
+
+/** The device flow on the page: start, show the code, poll, go on. */
+function wireGithub(root, t, s) {
+  const start = root.querySelector("#den-gh-start");
+  const box = root.querySelector("#den-gh-flow");
+  if (!start || !box) return;
+  let timer = null;
+  const show = (html) => (box.innerHTML = html);
+  const fail = (text) => {
+    clearTimeout(timer);
+    start.hidden = false;
+    start.textContent = t("err.signin.githubAgain");
+    show(
+      `<p class="den-gh-err" role="alert" style="margin-top:12px">${esc(text)}</p>`,
+    );
+  };
+  const poll = (id) => {
+    fetch(`/api/github/signin/${encodeURIComponent(id)}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then((r) => r.json().catch(() => ({})))
+      .then((b) => {
+        if (b.state === "pending") {
+          timer = setTimeout(() => poll(id), 1500);
+          return;
+        }
+        if (b.state === "ok") {
+          show(
+            `<p class="lead" style="margin-top:12px">${esc(t("err.signin.githubDone"))}</p>`,
+          );
+          location.replace(landingAfterSignIn(location));
+          return;
+        }
+        fail(
+          b.state === "refused"
+            ? t("err.signin.githubRefused", {
+                login: b.login ?? "",
+                name: s.name,
+              })
+            : b.state === "expired"
+              ? t("err.signin.githubExpired")
+              : b.state === "denied"
+                ? t("err.signin.githubDenied")
+                : t("err.signin.githubFailed"),
+        );
+      })
+      .catch(() => fail(t("err.signin.githubFailed")));
+  };
+  start.addEventListener("click", () => {
+    clearTimeout(timer);
+    start.disabled = true;
+    fetch("/api/github/signin", {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then((r) =>
+        r
+          .json()
+          .catch(() => ({}))
+          .then((b) => [r.status, b]),
+      )
+      .then(([status, b]) => {
+        start.disabled = false;
+        if (!b.ok || !b.userCode) {
+          fail(
+            status === 429
+              ? t("err.signin.githubBusy")
+              : b.error || t("err.signin.githubFailed"),
+          );
+          return;
+        }
+        start.hidden = true;
+        const url = b.verificationUri || "https://github.com/login/device";
+        const shown = url.replace(/^https:\/\//, "");
+        show(
+          `<p class="lead" style="margin-top:12px">${t(
+            "err.signin.githubEnter",
+            {
+              url: `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(shown)}</a>`,
+            },
+          )}</p>` +
+            `<pre class="code" id="den-gh-code" style="font-size:22px;letter-spacing:0.12em;text-align:center">${esc(b.userCode)}</pre>` +
+            `<div class="acts" style="margin-top:0">` +
+            `<a class="btn primary" id="den-gh-open" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t("err.signin.githubOpen"))}</a>` +
+            `<button type="button" class="btn" id="den-gh-copy">${esc(t("err.signin.githubCopy"))}</button></div>` +
+            `<p class="den-gh-wait" style="margin-top:12px">${esc(t("err.signin.githubWaiting"))}</p>`,
+        );
+        const cp = box.querySelector("#den-gh-copy");
+        cp?.addEventListener("click", () => copy(b.userCode, cp, t));
+        timer = setTimeout(() => poll(b.id), 1500);
+      })
+      .catch(() => {
+        start.disabled = false;
+        fail(t("err.signin.githubFailed"));
+      });
+  });
+}
+
+/**
+ * Approve this computer with a code (SEC-2a, the main fallback). The page
+ * asks the server for a request: a short code to approve it with, on the
+ * server (`<cli> web approve <code>`) or in a signed-in Settings › Access ›
+ * Waiting devices, and a poll id only this page holds. It polls; once
+ * approved, the poll sets the cookie and the page goes on by itself. A
+ * live countdown runs out at 10 minutes: "This code expired", and a new
+ * one is a click away. Denied, likewise.
+ */
+function wirePair(root, t, s) {
+  const box = root.querySelector("#den-pair");
+  if (!box) return;
+  const host = s.machine || "";
+  const target = s.ssh?.target || "";
+  let poll = null;
+  let tick = null;
+  let gen = 0;
+  const stop = () => {
+    clearTimeout(poll);
+    clearTimeout(tick);
+    gen++;
+  };
+  const ended = (key) => {
+    stop();
+    box.innerHTML =
+      `<p class="den-pair-end" role="alert" id="den-pair-ended">${withHost(t, key, { host })}</p>` +
+      `<div class="acts" style="margin-top:0"><button type="button" class="btn primary" id="den-pair-new">${esc(t("err.signin.newCode"))}</button></div>`;
+    box.querySelector("#den-pair-new").addEventListener("click", begin);
+  };
+  const failed = () => {
+    stop();
+    box.innerHTML =
+      `<p class="den-pair-end" role="alert">${esc(t("err.signin.codeFailed", { name: s.name }))}</p>` +
+      `<div class="acts" style="margin-top:0"><button type="button" class="btn" id="den-pair-new">${esc(t("err.retry"))}</button></div>`;
+    box.querySelector("#den-pair-new").addEventListener("click", begin);
+  };
+  const show = (b) => {
+    const term =
+      s.ssh?.name && target
+        ? `<a class="btn" id="den-pair-term" href="ssh://${esc(target)}">${esc(t("err.signin.openTerminal"))}</a>`
+        : "";
+    box.innerHTML =
+      `<ol class="den-steps">` +
+      `<li><p>${withHost(t, "err.signin.step1", { host })}</p>` +
+      cmdLine("den-pair-cmd", b.approve, t) +
+      `<p>${withHost(t, "err.signin.step1Or", { name: s.name, host })}</p></li>` +
+      `<li><p>${esc(t("err.signin.step2"))}</p>` +
+      `<p class="den-pair-wait" id="den-pair-status">${esc(t("err.signin.waiting"))} <span class="mono" id="den-pair-left"></span></p></li>` +
+      `</ol>` +
+      `<p>${withHost(t, "err.signin.noTerminal", { host })}</p>` +
+      cmdLine("den-pair-ssh", b.ssh, t, term) +
+      (term
+        ? `<p class="den-pair-note">${withHost(t, "err.signin.sshNote", { target })}</p>`
+        : "");
+    wireCopy(box, t);
+  };
+  function begin() {
+    stop();
+    const mine = gen;
+    fetch("/api/signin/code", {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then((r) => r.json().catch(() => ({})))
+      .then((b) => {
+        if (mine !== gen) return;
+        if (!b.ok || !b.id || !b.approve) return failed();
+        // The page's own clock, from what is left: no server clock skew.
+        const deadline = Date.now() + Number(b.expiresIn ?? 600_000);
+        show(b);
+        const left = box.querySelector("#den-pair-left");
+        const count = () => {
+          if (mine !== gen) return;
+          const ms = deadline - Date.now();
+          if (ms <= 0) return ended("err.signin.codeExpired");
+          left.textContent = countdownText(ms);
+          tick = setTimeout(count, Math.min(1000, ms % 1000 || 1000));
+        };
+        count();
+        const ask = () =>
+          fetch(`/api/signin/code/${encodeURIComponent(b.id)}`, {
+            cache: "no-store",
+            credentials: "same-origin",
+          })
+            .then((r) => r.json().catch(() => ({})))
+            .then((p) => {
+              if (mine !== gen) return;
+              if (p.state === "pending") {
+                poll = setTimeout(ask, 1500);
+                return;
+              }
+              if (p.state === "ok") {
+                stop();
+                box.innerHTML = `<p class="lead" id="den-pair-in">${esc(t("err.signin.youreIn"))}</p>`;
+                location.replace(landingAfterSignIn(location));
+                return;
+              }
+              ended(
+                p.state === "denied"
+                  ? "err.signin.codeDenied"
+                  : "err.signin.codeExpired",
+              );
+            })
+            .catch(() => {
+              if (mine === gen) poll = setTimeout(ask, 3000);
+            });
+        poll = setTimeout(ask, 1500);
+      })
+      .catch(() => {
+        if (mine === gen) failed();
+      });
+  }
+  begin();
+}
+
+/**
+ * The signed-out page (SEC-1b; SEC-2 spec "exact copy"): "Sign in to
+ * <product>", which machine it runs on, Sign in with GitHub (when a client
+ * id is configured), then "Or approve this computer" with a code, the ssh
+ * one-liner from this computer, why, and (collapsed) the one-time link.
+ * Every command names the machine it runs on and has a copy button. It
+ * never asks for a secret or a token, and never runs anything here.
  *
- * A link from 127.0.0.1 lands here once without the cookie (a cross-site
- * navigation doesn't carry a SameSite=Strict one); /api/session, asked
- * same-origin, does carry it, so a signed-in browser reloads the page
+ * On 127.0.0.1 or [::1] it links to the same page on localhost, where the
+ * cookie is. A link from 127.0.0.1 lands here once without the cookie (a
+ * cross-site navigation doesn't carry a SameSite=Strict one); /api/session,
+ * asked same-origin, does carry it, so a signed-in browser reloads the page
  * from here (same-origin) and is let through.
  */
 function mountSignedOut(root, sh, d) {
   const t = sh.t;
   const s = d.signin;
+  const name = s.name || "Den";
+  const host = s.machine || "";
   const title = s.expired
     ? t("err.signin.expiredTitle")
     : s.scope === "terminal"
       ? t("err.signin.terminal")
-      : t("err.signin.title", { name: s.name || "Den" });
+      : t("err.signin.title", { name });
   document.title = document.title.replace(/Error$/, title);
-  const lead = s.expired
-    ? withCmd(t("err.signin.expired", { cmd: "\u0000" }), s.cmd)
-    : withCmd(t("err.signin.lead", { cmd: "\u0000" }), s.cmd);
-  root.innerHTML =
-    `<div class="ph"><div><h1>${esc(title)}</h1>` +
-    `<div class="sub">${esc(t("err.signin.sub"))}</div></div></div>` +
-    `<div class="empty" id="den-signin"><p class="lead">${lead}</p>` +
-    `<pre class="code" id="den-signin-cmd">${esc(s.cmd)}</pre>` +
-    (s.localhost
-      ? `<p>${esc(t("err.signin.local", { host: location.host }))}</p>`
-      : "") +
-    `<p class="den-signin-why">${esc(t("err.signin.why"))}</p>` +
+  const facts =
     `<dl class="facts">` +
     `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
-    `</dl><div class="acts">` +
-    (s.localhost
-      ? `<a class="btn primary" id="den-signin-local" href="${esc(s.localhost)}">${esc(t("err.421.open"))}</a>`
+    `</dl>`;
+  const head =
+    `<div class="ph"><div><h1>${esc(title)}</h1>` +
+    `<div class="sub">${esc(t("err.signin.sub"))}</div></div></div>`;
+  if (s.confirm) {
+    // SEC-2a: a link `web login` waits on: the code it printed, first.
+    root.innerHTML =
+      `<div class="ph"><div><h1>${esc(t("err.signin.title", { name }))}</h1>` +
+      `<div class="sub">${esc(t("err.signin.sub"))}</div></div></div>` +
+      `<div class="empty" id="den-signin">` +
+      `<form id="den-confirm" autocomplete="off">` +
+      `<p class="lead"><label for="den-confirm-code">${withHost(t, "err.signin.confirmLead", { host })}</label></p>` +
+      `<div class="acts" style="margin-top:0">` +
+      `<input id="den-confirm-code" class="mono" name="code" required maxlength="12" spellcheck="false" autocapitalize="characters" placeholder="ABCD-EFGH" ` +
+      `style="font:16px/1.45 var(--mono);letter-spacing:0.08em;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-button);background:var(--sunken);color:var(--text);width:12ch">` +
+      `<button type="submit" class="btn primary" id="den-confirm-go">${esc(t("err.signin.confirmGo"))}</button></div>` +
+      `<p class="den-confirm-err" id="den-confirm-err" role="alert" style="margin-top:12px"></p>` +
+      `</form>` +
+      `<p class="den-signin-why">${withHost(t, "err.signin.confirmWhy", { host })}</p>` +
+      facts +
+      `</div>`;
+    const form = root.querySelector("#den-confirm");
+    const input = root.querySelector("#den-confirm-code");
+    const err = root.querySelector("#den-confirm-err");
+    const go = root.querySelector("#den-confirm-go");
+    input?.focus();
+    form?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      go.disabled = true;
+      err.textContent = "";
+      fetch(location.pathname + location.search, {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: input.value }),
+      })
+        .then((r) => r.json().catch(() => ({})))
+        .then((b) => {
+          go.disabled = false;
+          if (b.ok) {
+            err.textContent = "";
+            form.innerHTML = `<p class="lead" id="den-confirm-in">${esc(t("err.signin.youreIn"))}</p>`;
+            location.replace(typeof b.next === "string" ? b.next : "/");
+            return;
+          }
+          err.textContent =
+            b.code === "wrong_code"
+              ? t("err.signin.confirmWrong")
+              : b.code === "rate_limited"
+                ? t("err.signin.confirmBusy")
+                : t("err.signin.confirmGone", { host });
+          if (b.code !== "wrong_code" && b.code !== "rate_limited")
+            go.disabled = true;
+          input.select();
+        })
+        .catch(() => {
+          go.disabled = false;
+          err.textContent = t("err.signin.confirmBusy");
+        });
+    });
+    return;
+  }
+  if (s.localhost) {
+    // 127.0.0.1 or [::1]: the cookie is on localhost. Nothing to approve.
+    root.innerHTML =
+      head +
+      `<div class="empty" id="den-signin">` +
+      `<p class="lead">${esc(t("err.signin.local", { host: location.host }))}</p>` +
+      facts +
+      `<div class="acts"><a class="btn primary" id="den-signin-local" href="${esc(s.localhost)}">${esc(t("err.421.open"))}</a></div></div>`;
+    return;
+  }
+  const gh = githubBlock(s, t);
+  root.innerHTML =
+    head +
+    `<div class="empty" id="den-signin">` +
+    (s.expired
+      ? `<p class="lead" role="alert">${esc(t("err.signin.expiredLead"))}</p>`
       : "") +
-    `<button type="button" class="btn${s.localhost ? "" : " primary"}" id="den-signin-copy">${esc(t("err.signin.copy"))}</button>` +
-    `</div></div>`;
-  const btn = root.querySelector("#den-signin-copy");
-  btn?.addEventListener("click", () => copy(s.cmd, btn, t));
-  if (s.expired || s.localhost) return;
+    `<p class="lead" id="den-signin-where">${withHost(t, "err.signin.where", { name, host })}</p>` +
+    gh +
+    `<h2 class="den-h" id="den-pair-title">${esc(t(gh ? "err.signin.approveOr" : "err.signin.approve"))}</h2>` +
+    `<div id="den-pair" aria-live="polite"></div>` +
+    `<p class="den-signin-why"><b>${esc(t("err.signin.whyTitle"))}</b> ${withHost(t, "err.signin.whyText", { name, host })}</p>` +
+    `<details class="den-other" id="den-signin-other"><summary>${withCmd(t("err.signin.other", { cmd: "\u0000" }), "web login --origin")}</summary>` +
+    `<p>${withHost(t, "err.signin.otherStep", { host })}</p>` +
+    cmdLine("den-signin-cmd", s.cmd, t) +
+    (s.ssh?.login
+      ? `<p>${withHost(t, "err.signin.noTerminal", { host })}</p>` +
+        cmdLine("den-signin-ssh", s.ssh.login, t)
+      : "") +
+    `</details>` +
+    facts +
+    `</div>`;
+  wireCopy(root, t);
+  wireGithub(root, t, s);
+  wirePair(root, t, s);
+  if (s.expired) return;
   let tried = false;
   try {
     tried = sessionStorage.getItem("den-signin-reload") === location.href;

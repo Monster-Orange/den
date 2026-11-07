@@ -217,6 +217,65 @@
       .empty.wide {
         max-width: 880px;
       }
+      /* The signed-out page (SEC-2a): a command and its copy button on one
+         line, the numbered steps, and "Other ways" collapsed. The
+         prototype's tokens and sizes only (pre.code, .btn, .lead). */
+      .den-cmd {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        margin: 0 0 12px;
+      }
+      .den-cmd pre.code {
+        flex: 1 1 auto;
+        min-width: 0;
+        margin: 0;
+        /* The whole command in view: it wraps rather than scrolls. */
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .btn.den-copy {
+        padding: 6px 8px;
+        align-self: stretch;
+        color: var(--muted);
+      }
+      .btn.den-copy:hover,
+      .btn.den-copy.done {
+        color: var(--text);
+      }
+      .den-copied:empty {
+        display: none;
+      }
+      .den-copied {
+        font: 500 12px/1.45 var(--sans);
+      }
+      h2.den-h {
+        font: 600 15px/1.3 var(--sans);
+        color: var(--text);
+        margin: 20px 0 10px;
+      }
+      ol.den-steps {
+        margin: 0 0 12px;
+        padding-left: 20px;
+      }
+      ol.den-steps li {
+        margin: 0 0 4px;
+      }
+      ol.den-steps li::marker {
+        color: var(--text);
+        font-weight: 600;
+      }
+      details.den-other {
+        margin: 0 0 16px;
+      }
+      details.den-other summary {
+        cursor: pointer;
+        color: var(--muted);
+        margin: 0 0 12px;
+      }
+      details.den-other[open] summary {
+        color: var(--text);
+      }
       ul.pages {
         list-style: none;
         margin: 0;

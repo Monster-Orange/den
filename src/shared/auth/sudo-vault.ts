@@ -2,10 +2,13 @@
  * Secrets-backed persistence for the local-dev sudo password.
  *
  * Goes through the configured secrets strategy (see src/shared/secrets),
- * addressing the named ref `sudo`. There is no built-in location: a
- * distribution that wants the saved password sets `secrets.refs.sudo` in its
- * config. Without it, the vault path is "not configured" and only the
- * interactive unlock is offered; nothing is spawned.
+ * addressing the named ref `sudo`. A distribution may set
+ * `secrets.refs.sudo` in its config; that ref always wins. Without one, the
+ * vault path is "not configured" until the person saves the password
+ * (LK-4): when a backend that keeps secrets (1Password, Doppler) is
+ * available, saving creates the item and writes the ref to their own
+ * user.yml, because the password is the person's, not the distribution's.
+ * Nothing is spawned until then.
  *
  * All read helpers fail *soft*: if the backend isn't installed, the user isn't
  * signed in, the ref is not configured or the value is missing, they return
@@ -21,19 +24,61 @@ import {
   secretsStatus,
   SecretsNotConfiguredError,
   type SecretRef,
+  type SecretsConfig,
   type SecretsProviderName,
 } from "../secrets/index.js";
-import { product } from "../product.js";
+import {
+  readDenConfig,
+  readUserConfig,
+  writeUserConfig,
+} from "../den-config.js";
+import { envKey, product } from "../product.js";
 
 /** Name of the sudo ref under `secrets.refs`. */
 export const SUDO_REF_NAME = "sudo";
 
-/** The configured sudo ref, or null when `secrets.refs.sudo` is not set. */
+/**
+ * The configured sudo ref, or null when `secrets.refs.sudo` is not set. The
+ * distribution's own ref wins over one in user.yml (the merged config lets
+ * user.yml override refs in general; not this one).
+ */
 export function sudoRef(): SecretRef | null {
   try {
-    return namedSecretRef(SUDO_REF_NAME, readSecretsConfig());
+    const cfg = readSecretsConfig();
+    let team: SecretsConfig["refs"];
+    try {
+      team = readDenConfig().secrets?.refs;
+    } catch {
+      team = undefined;
+    }
+    const fromTeam = team?.[SUDO_REF_NAME]
+      ? namedSecretRef(SUDO_REF_NAME, {
+          ...cfg,
+          refs: { [SUDO_REF_NAME]: team[SUDO_REF_NAME] },
+        })
+      : null;
+    return fromTeam ?? namedSecretRef(SUDO_REF_NAME, cfg);
   } catch {
     return null;
+  }
+}
+
+/**
+ * LK-4: where a password saved with no `secrets.refs.sudo` goes, for a
+ * backend that keeps it: a new 1Password item in the person's default
+ * vault, or a Doppler key. Null for `env` (process memory only: nothing
+ * survives a restart) and `none`.
+ */
+export function newSudoRef(
+  backend: SecretsProviderName,
+): Partial<SecretRef> | null {
+  switch (backend) {
+    case "1password":
+      return { item: `${product().title} admin password`, field: "password" };
+    case "doppler":
+      return { key: envKey("LOCAL_ADMIN_PWD") };
+    default:
+      return null;
   }
 }
 
@@ -58,12 +103,64 @@ export async function hasSudoInVault(): Promise<boolean> {
   return (await readSudoFromVault()) !== null;
 }
 
-/** Save (or overwrite) the sudo password. Throws on backend errors. */
-export async function saveSudoToVault(password: string): Promise<void> {
+/**
+ * A backend error, without the command line it ran: a CLI's failure message
+ * can quote its arguments, and a password can be one of them.
+ */
+function withoutSecret(err: unknown, password: string): Error {
+  const msg = String((err as Error)?.message ?? err)
+    .split("\n")
+    .filter((l) => !/^Command failed:/.test(l))
+    .join(" ")
+    .split(password)
+    .join("***")
+    .trim();
+  return new Error(msg || "the secrets backend refused it");
+}
+
+/**
+ * Save (or overwrite) the sudo password. With no `secrets.refs.sudo` and a
+ * backend that keeps secrets (LK-4), it creates the item and then writes
+ * the ref to user.yml (`ref: "created"`); a failed save writes nothing.
+ * Throws on backend errors, never with the password in the message.
+ */
+export async function saveSudoToVault(
+  password: string,
+): Promise<{ ref: "configured" | "created" }> {
   const ref = sudoRef();
-  if (!ref)
+  if (ref) {
+    try {
+      await getSecretsProvider().set(ref, password);
+    } catch (err) {
+      throw withoutSecret(err, password);
+    }
+    return { ref: "configured" };
+  }
+  const st = secretsStatus(readSecretsConfig(), process.env);
+  // Only a backend someone chose (an unset provider is never used here).
+  const fresh =
+    !st.implicit && st.detect.available ? newSudoRef(st.backend) : null;
+  const made = fresh
+    ? namedSecretRef(
+        SUDO_REF_NAME,
+        { refs: { [SUDO_REF_NAME]: fresh } },
+        st.backend,
+      )
+    : null;
+  if (!fresh || !made)
     throw new SecretsNotConfiguredError(notConfiguredMessage(SUDO_REF_NAME));
-  await getSecretsProvider().set(ref, password);
+  try {
+    await getSecretsProvider().set(made, password);
+  } catch (err) {
+    throw withoutSecret(err, password);
+  }
+  const user = readUserConfig();
+  const secrets = user.secrets ?? {};
+  writeUserConfig({
+    ...user,
+    secrets: { ...secrets, refs: { ...secrets.refs, [SUDO_REF_NAME]: fresh } },
+  });
+  return { ref: "created" };
 }
 
 /** What the UI's unlock form may offer: `/api/sudo-password/vault-status`. */
@@ -74,6 +171,12 @@ export interface SudoVaultStatus {
   label: string;
   /** `secrets.refs.sudo` is set for this backend. */
   configured: boolean;
+  /**
+   * Saving works without editing YAML: the ref is configured, or (LK-4) it
+   * isn't and the backend keeps secrets, so saving creates the item and
+   * writes the ref to user.yml.
+   */
+  canSave: boolean;
   /**
    * The backend can work here, whether or not a sudo ref is configured
    * (`configured` says that). With no ref: detect() only (a PATH check,
@@ -106,6 +209,7 @@ export async function sudoVaultStatus(): Promise<SudoVaultStatus> {
     backend: st.backend,
     label: st.label,
     configured: !!ref,
+    canSave: backendAvailable && (!!ref || !!newSudoRef(st.backend)),
     backendAvailable,
     ...(reason ? { reason } : {}),
     configFile: product().configFile,

@@ -276,7 +276,7 @@ SEC_TOKEN=""
 [ "$code" = "200" ] && ok "POST /api/settings with \`acme web token --print\`: 200" || bad "POST /api/settings with the CLI token answered $code"
 # SEC-1b: `web login` prints a one-time link (never echoed here) that the
 # server swaps for a session cookie, once.
-SEC_LINK="$(cd "$DIST" && ./bin/acme web login --port "$PORT" 2>/dev/null)"
+SEC_LINK="$(cd "$DIST" && ./bin/acme web login --no-wait --port "$PORT" 2>/dev/null)"
 SEC_HDR="$(curl -sS -o /dev/null -D - -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 again="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 SEC_LINK=""
@@ -288,8 +288,8 @@ else bad "\`acme web login\`'s link didn't sign in once (second use answered $ag
 SEC_HDR=""
 # SEC-1 (Ward, 2026-11-06): no sign-in on loopback, shell-grade included:
 # the page's Origin and CSRF token (never echoed) reach an agent start.
-# The edge from this machine counts as local (0.4.3); for another machine
-# (the edge's X-Forwarded-For) every route needs a sign-in.
+# The edge counts as local when its X-Forwarded-For says this machine; a
+# client it can't place (none, 0.4.5) or another machine signs in.
 SEC_CSRF="$(curl -sS -H 'Sec-Fetch-Site: same-origin' "http://localhost:$PORT/api/session" |
   node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).csrf||""))}catch{}})')"
 SEC_BODY="$WORK/agent-start.json"
@@ -300,9 +300,14 @@ SEC_CSRF=""
 if [ -n "$code" ] && [ "$code" != "401" ] && [ "$code" != "403" ] && ! grep -q signin_required "$SEC_BODY"; then
   ok "agent start on localhost needs no sign-in (past the checks: $code)"
 else bad "agent start on localhost answered $code (a sign-in or a refused check)"; fi
-code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Host: acme.acme.localhost" "http://localhost:$PORT/api/settings")"
+code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Host: acme.acme.localhost" \
+  -H "X-Forwarded-For: 127.0.0.1" "http://localhost:$PORT/api/settings")"
 [ "$code" = "200" ] && ok "the edge hostname from this machine needs no sign-in: 200" ||
   bad "the edge hostname from this machine answered $code"
+code="$(curl -sS -o "$SEC_BODY" -w '%{http_code}' -H "Host: acme.acme.localhost" "http://localhost:$PORT/api/settings")"
+if [ "$code" = "401" ] && grep -q signin_required "$SEC_BODY"; then
+  ok "the edge hostname for a client it can't place needs a sign-in: 401 signin_required"
+else bad "the edge hostname with no X-Forwarded-For answered $code"; fi
 code="$(curl -sS -o "$SEC_BODY" -w '%{http_code}' -H "Host: acme.acme.localhost" \
   -H "X-Forwarded-For: 203.0.113.7" "http://localhost:$PORT/api/settings")"
 if [ "$code" = "401" ] && grep -q signin_required "$SEC_BODY"; then

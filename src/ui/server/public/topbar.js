@@ -1156,7 +1156,9 @@ export async function unlockWith(password, { saveToVault = false } = {}) {
     });
     const data = await r.json().catch(() => ({}));
     if (r.ok) {
-      if (data.savedToVault) sudo.vault.hasStored = true;
+      // LK-4: a first save also wrote the ref, so it is configured now.
+      if (data.savedToVault)
+        sudo.vault = { ...sudo.vault, hasStored: true, configured: true };
       return {
         ok: true,
         savedToVault: !!data.savedToVault,
@@ -1311,11 +1313,13 @@ function checkVault() {
 function notConfiguredNote() {
   const v = sudo.vault;
   if (!v || v.configured !== false || !v.configFile) return null;
+  // LK-4: saving writes the ref itself; nothing to edit.
+  if (v.canSave === true) return null;
   return t("lock.cfg", { file: v.configFile });
 }
 
 function saveLabel() {
-  if (!sudo.vault.backendAvailable) return null;
+  if (!sudo.vault.backendAvailable || sudo.vault.canSave === false) return null;
   return sudo.vault.hasStored
     ? t("lock.update")
     : t("lock.saveTo", { s: sudo.vault.label || sudo.vault.backend });
@@ -1381,7 +1385,7 @@ function openLock() {
     btn.textContent = t("lock.checking");
     btn.disabled = true;
     err.hidden = true;
-    const saveToVault = !!(sudo.vault.backendAvailable && saveCb?.checked);
+    const saveToVault = !!(saveLabel() && saveCb?.checked);
     try {
       const res = await unlockWith(pw, { saveToVault });
       if (res.ok) {

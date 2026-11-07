@@ -211,8 +211,13 @@ import {
 } from "../../shared/actor-token.js";
 import {
   checkLoginCode,
+  deviceName,
+  loginCodeNonce,
   ignoredConfigWarning,
   localhostOrigin,
+  loginLink,
+  LOGIN_CODE_TTL_MS,
+  mintLoginCode,
   readWebAuthConfig,
   safeNext,
   SESSION_COOKIE_MAX_AGE_S,
@@ -222,6 +227,32 @@ import {
   type WebAuthConfig,
 } from "../../shared/web-session.js";
 import { serveUiAsset } from "./ui-assets.js";
+import {
+  expiringTokenWarning,
+  githubClientId,
+  githubEndpoints,
+  noClientIdMessage,
+} from "../../shared/github-app.js";
+import { githubDeviceClient } from "../../shared/github-device.js";
+import { readWebOwner } from "../../shared/web-owner.js";
+import { DeviceFlows } from "./device-flows.js";
+import {
+  decideFlow,
+  handleGithubRoutes,
+  isGithubRoute,
+} from "./github-routes.js";
+import { PairRequests } from "./pair-requests.js";
+import { LoginWaits } from "./login-waits.js";
+import { handlePairRoutes, isPairRoute } from "./pair-routes.js";
+import {
+  cliCommand,
+  cliPrefix,
+  isIpLiteral,
+  machineLabel,
+  parseMachineName,
+  sshCommand,
+  sshTarget,
+} from "../../shared/cli-command.js";
 import { graphPrefs, patchStoredGraph } from "./graph-prefs.js";
 import { graphPageHtml } from "./graph-page.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
@@ -562,7 +593,7 @@ setHtmlFill((html) => {
     out = out.replace(
       '<div id="den-shell"',
       () =>
-        `<div id="den-shell" data-edge-exposed="${escAttr(EDGE_EXPOSED_MESSAGE)}"`,
+        `<div id="den-shell" data-edge-exposed="${escAttr(edgeExposedMessage(WEB_AUTH.edgeUnattested))}"`,
     );
   // MD-2: every page says when the engine on disk is not the one running.
   const engine = engineCheck();
@@ -799,7 +830,7 @@ import {
   webRouteHosts,
 } from "../../shared/edge/render.js";
 import {
-  EDGE_EXPOSED_MESSAGE,
+  edgeExposedMessage,
   edgeExposure,
   edgeNetworkSubnets,
 } from "./edge-exposure.js";
@@ -1088,12 +1119,153 @@ const GUARD: GuardContext = {
   peerIsLoopback: (req) => isLoopbackAddress(req.socket?.remoteAddress),
   // The edge hostname only from the edge's own peers (loopback, Docker).
   peerIsEdge: (req) => isEdgePeer(req.socket?.remoteAddress),
-  // 0.4.3: the edge from this machine counts as local (edgeClientIsLocal).
+  // This machine's addresses and bridges, for edgeClient (SEC-2a).
   localNet: currentLocalNet,
   // A deliberate exposure (DEN_BIND_HOST beyond loopback, other than the
   // Linux edge's Docker bridge): the edge needs a sign-in too.
   exposed: !isLoopbackBind(BIND_HOST) && !isDockerBridgeAddress(BIND_HOST),
+  // SEC-2a: an edge client Den can't place signs in (web.edge_unattested).
+  edgeUnattested: WEB_AUTH.edgeUnattested,
 };
+
+// ── SEC-2a: Sign in with GitHub, the owner, pairing ──────────────────────────
+const GITHUB_CLIENT_ID = githubClientId(WEB_AUTH.githubClientId);
+const GITHUB = githubEndpoints();
+const DEVICE_FLOWS = new DeviceFlows({
+  client: githubDeviceClient(GITHUB),
+  clientId: () => GITHUB_CLIENT_ID,
+  decide: decideFlow(getStateDir, (l) => serverLog(l, "lifecycle")),
+  // A test's fake GitHub may answer interval 0; the real one never does.
+  minIntervalMs: GITHUB.fake ? 50 : 1000,
+  onExpiringToken: noteExpiringToken,
+});
+
+/**
+ * The GitHub App has "Expire user authorization tokens" on (a token answer
+ * carried expires_in or a refresh_token). Sign-in still completes; Den
+ * warns once, naming the fix, and Settings › Access (GET /api/web/owner)
+ * says so as a boolean. The token itself is never logged or kept.
+ */
+let GITHUB_TOKENS_EXPIRE = false;
+function noteExpiringToken(): void {
+  if (GITHUB_TOKENS_EXPIRE) return;
+  GITHUB_TOKENS_EXPIRE = true;
+  // The in-app log, and stderr (web.log), as the edge's exposure warning.
+  const line = `  ⚠ ${expiringTokenWarning()}`;
+  pushLog("warn", line);
+  if (!outputLost()) process.stderr.write(line + "\n");
+}
+
+// ── SEC-2a: approve this computer with a code (pair-requests.ts) ──────────
+const PAIRS = new PairRequests();
+
+/**
+ * What every printed command starts with (cli-command.ts): `<cli>` when the
+ * first one on this server's PATH is this distribution's, else its
+ * absolute path. PATH doesn't change while the server runs: once.
+ */
+let CLI_PREFIX: string | null = null;
+function printedCli(): string {
+  CLI_PREFIX ??= cliPrefix(product().cli, getDistRoot(), getEngineRoot());
+  return CLI_PREFIX;
+}
+
+/**
+ * The name people read for this machine: `web.machine_name` (user.yml,
+ * read now, so a change in Settings shows at once), else the short
+ * hostname. Never the browser's Host.
+ */
+function machineName(): string {
+  let set: string | undefined;
+  try {
+    set = readWebAuthConfig(getDistRoot(), product().configFile).machineName;
+  } catch {
+    set = WEB_AUTH.machineName;
+  }
+  return machineLabel(set, os.hostname());
+}
+
+/** `web.machine_name` as user.yml holds it, or null (unset or unreadable). */
+function machineNameSetting(user: {
+  web?: Record<string, unknown>;
+}): string | null {
+  try {
+    return parseMachineName(user.web?.machine_name);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A path as the request log writes it: a sign-in poll's id is its
+ * credential (SEC-2a: the code request's, a GitHub flow's), so it shows
+ * as `:id`.
+ */
+function loggedPath(pathname: string): string {
+  return pathname.replace(
+    /^(\/api\/(?:signin\/code|github\/signin|web\/owner\/link))\/[^/]+$/,
+    "$1/:id",
+  );
+}
+
+/** The ssh target for this request: the Host it used, minus the port. */
+function sshTargetOf(req: http.IncomingMessage): string {
+  return sshTarget(req.headers.host, os.hostname());
+}
+
+/**
+ * A browser's live WebSockets (a session's terminal), by its session's
+ * key: revoking a device closes them at once (SEC-2a).
+ */
+const SESSION_SOCKETS = new Map<string, Set<net.Socket>>();
+function trackSessionSocket(key: string, socket: net.Socket): void {
+  const set = SESSION_SOCKETS.get(key) ?? new Set<net.Socket>();
+  set.add(socket);
+  SESSION_SOCKETS.set(key, set);
+  socket.once("close", () => {
+    set.delete(socket);
+    if (set.size === 0) SESSION_SOCKETS.delete(key);
+  });
+}
+function closeSessionSockets(keys: Iterable<string>): void {
+  for (const k of keys) {
+    for (const sock of SESSION_SOCKETS.get(k) ?? []) sock.destroy();
+    SESSION_SOCKETS.delete(k);
+  }
+}
+
+/** A new session for this request and its Set-Cookie line (GitHub or a link). */
+function startSession(
+  req: http.IncomingMessage,
+  via: "github" | "link" | "code",
+  login?: string,
+): string {
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const named = g.ok ? g.via : null;
+  const { id } = webSessions.create({
+    userAgent: req.headers["user-agent"],
+    host: req.headers.host,
+    via,
+    ...(g.ok && g.client ? { client: g.client } : {}),
+    ...(login ? { login } : {}),
+  });
+  return sessionSetCookie(id, requestIsHttps(req, named));
+}
+
+/** The edge hostnames that route here, and their URLs (Pair a device). */
+function denEdgeRoutes(): { host: string; url: string }[] {
+  try {
+    return webRouteHosts(readEdgeConfig(), new Set([PORT, readWebPortSafe()]));
+  } catch {
+    return [];
+  }
+}
+
+/** What the signed-out page says about Sign in with GitHub. */
+function githubSigninState(): "ready" | "no_client_id" | "no_owner" {
+  if (!GITHUB_CLIENT_ID) return "no_client_id";
+  return readWebOwner(getStateDir()) ? "ready" : "no_owner";
+}
 
 /**
  * 0.4.3: why the edge is reachable beyond this machine (edge-exposure.ts),
@@ -1118,7 +1290,7 @@ function checkEdgeExposure(): void {
       EDGE_EXPOSED = why;
       // The in-app log, and stderr, which is web.log even when `web up`
       // starts this --silent (stdout is not written then).
-      const line = `  ⚠ ${EDGE_EXPOSED_MESSAGE} (${why})`;
+      const line = `  ⚠ ${edgeExposedMessage(WEB_AUTH.edgeUnattested)} (${why})`;
       pushLog("warn", line);
       if (!outputLost()) process.stderr.write(line + "\n");
     })
@@ -1166,6 +1338,8 @@ function sendSignedOut(
     search: string;
     scope: "terminal" | "agents" | "den";
     expired?: boolean;
+    /** SEC-2a: a waited-on link: ask for the code `web login` printed. */
+    confirm?: boolean;
     requestId: string;
     message: string;
   },
@@ -1176,9 +1350,11 @@ function sendSignedOut(
     ? "edge"
     : "other";
   const origin = `${requestIsHttps(req, via === "edge" ? "edge" : null) ? "https" : "http"}://${host}`;
-  const cmd =
-    `${product().cli} web login` +
-    (toLocal || host === `localhost:${PORT}` ? "" : ` --origin ${origin}`);
+  const bin = printedCli();
+  const loginArgs =
+    toLocal || host === `localhost:${PORT}` ? [] : ["--origin", origin];
+  const cmd = cliCommand(bin, "web", "login", ...loginArgs);
+  const ssh = sshTargetOf(req);
   res.setHeader("Cache-Control", "no-store");
   sendErrorPage(req, res, {
     status: 401,
@@ -1190,7 +1366,24 @@ function sendSignedOut(
       scope: opts.scope,
       name: product().title,
       cmd,
+      // SEC-2a: which machine runs the commands, and how to reach it.
+      machine: machineName(),
+      ssh: {
+        target: ssh,
+        // Open Terminal (ssh://) only for a name, never an IP literal.
+        name: !isIpLiteral(ssh),
+        login: sshCommand(ssh, cmd),
+      },
+      // SEC-2a: Sign in with GitHub, and why it can't be offered yet.
+      github: {
+        state: githubSigninState(),
+        owner: cliCommand(bin, "web", "owner", "link"),
+        ...(GITHUB_CLIENT_ID
+          ? {}
+          : { message: noClientIdMessage(product().cli) }),
+      },
       ...(opts.expired ? { expired: true } : {}),
+      ...(opts.confirm ? { confirm: true } : {}),
       ...(toLocal && !opts.expired
         ? {
             localhost: `${localhostOrigin(PORT)}${opts.pathname}${opts.search}`,
@@ -1265,19 +1458,34 @@ function sendGuardRefusal(
  * 303 to `next` when it is a same-origin path, else `/`. Anything else gets
  * the signed-out page, which never echoes the code.
  */
-function handleAuth(
+async function handleAuth(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   url: URL,
   requestId: string,
-  via: "loopback" | "edge" | "lan" | null,
-): void {
+): Promise<void> {
   const secret = webSecret.current();
+  const c = url.searchParams.get("c") ?? "";
+  const nonce = loginCodeNonce(c);
+  // SEC-2a: a link `web login` waits on asks for its code first. Opened,
+  // its code is checked as of the moment it was opened (then 5 minutes).
+  const wait = nonce ? LOGIN_WAITS.forNonce(nonce) : null;
   const check = secret
-    ? checkLoginCode(url.searchParams.get("c") ?? "", secret)
+    ? checkLoginCode(c, secret, wait?.openedAt ?? Date.now())
     : null;
-  if (!check?.ok || !webSessions.consumeCode(check.nonce, check.expiresAt)) {
+  const post = req.method === "POST";
+  const gone = () => {
     res.setHeader("Referrer-Policy", "no-referrer");
+    if (post)
+      return sendJson(
+        res,
+        {
+          ok: false,
+          code: "expired",
+          error: `This link no longer works. On ${machineName()}, run web login again for a new one.`,
+        },
+        410,
+      );
     return sendSignedOut(req, res, {
       pathname: "/auth",
       search: "",
@@ -1286,19 +1494,89 @@ function handleAuth(
       requestId,
       message: `That sign-in link expired or was used. Run \`${product().cli} web login\` for a new one.`,
     });
+  };
+  if (!check?.ok) return gone();
+  if (wait && nonce) {
+    if (!post) {
+      if (wait.state !== "waiting" && wait.state !== "opened") return gone();
+      LOGIN_WAITS.open(nonce);
+      res.setHeader("Referrer-Policy", "no-referrer");
+      return sendSignedOut(req, res, {
+        pathname: "/auth",
+        search: "",
+        scope: "den",
+        confirm: true,
+        requestId,
+        message: "Enter the code `web login` printed.",
+      });
+    }
+    let body: { code?: unknown } = {};
+    try {
+      body = (JSON.parse((await readBody(req)) || "{}") ?? {}) as typeof body;
+    } catch {
+      return sendJson(
+        res,
+        { ok: false, error: "the body must be JSON: { code }" },
+        400,
+      );
+    }
+    const r = LOGIN_WAITS.confirm(nonce, String(body.code ?? ""));
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Cache-Control", "no-store");
+    if (!r.ok) {
+      if (r.error === "expired") return gone();
+      return sendJson(
+        res,
+        r.error === "wrong"
+          ? {
+              ok: false,
+              code: "wrong_code",
+              left: r.left,
+              error:
+                "That code isn't right. Check what web login printed and try again.",
+            }
+          : r.error === "rate_limited"
+            ? {
+                ok: false,
+                code: "rate_limited",
+                error: "Too many wrong codes. Wait a minute and try again.",
+              }
+            : {
+                ok: false,
+                code: "refused",
+                error: `Too many wrong codes: this link no longer works. On ${machineName()}, run web login again.`,
+              },
+        r.error === "wrong" ? 401 : r.error === "rate_limited" ? 429 : 410,
+      );
+    }
+    if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
+    const g = checkRequest(req, GUARD, product().cli, product().title);
+    LOGIN_WAITS.used(nonce, {
+      device: deviceName(req.headers["user-agent"]),
+      ...(g.ok && g.client ? { client: g.client } : {}),
+    });
+    res.setHeader("Set-Cookie", startSession(req, "link"));
+    return sendJson(res, {
+      ok: true,
+      next: safeNext(url.searchParams.get("next")),
+    });
   }
-  const { id } = webSessions.create({
-    userAgent: req.headers["user-agent"],
-    host: req.headers.host,
-  });
+  // A link nobody waits on (`web login --no-wait`, or minted with no
+  // server running): it signs in when opened, once, as before.
+  if (post || !webSessions.consumeCode(check.nonce, check.expiresAt))
+    return gone();
   res.writeHead(303, {
     Location: safeNext(url.searchParams.get("next")),
-    "Set-Cookie": sessionSetCookie(id, requestIsHttps(req, via)),
+    "Set-Cookie": startSession(req, "link"),
     "Cache-Control": "no-store",
     "Referrer-Policy": "no-referrer",
   });
   res.end();
 }
+
+/** `web login`'s wait (login-waits.ts), by the CLI's id. */
+const LOGIN_WAIT_PATH = /^\/api\/web\/logins\/([A-Za-z0-9_-]{16,64})$/;
+const LOGIN_WAITS = new LoginWaits();
 
 /**
  * A service's declared command `cmd` for `env`, own properties only
@@ -1350,7 +1628,7 @@ async function handleRequest(
       res.on("finish", () => {
         const ms = dim(`${Date.now() - start}ms`);
         serverLog(
-          `  ${logTimestamp()}  ${method}  ${pathname}  →  ${logStatus(res.statusCode)}  ${ms}` +
+          `  ${logTimestamp()}  ${method}  ${loggedPath(pathname)}  →  ${logStatus(res.statusCode)}  ${ms}` +
             (res.statusCode >= 400 ? dim(`  req ${requestId}`) : ""),
           "request",
         );
@@ -1379,8 +1657,51 @@ async function handleRequest(
 
   // ── Sign-in (SEC-1b, §2) ───────────────────────────────────────────────────
   // Before config validation: signing in never depends on the config.
-  if (pathname === "/auth" && (req.method === "GET" || req.method === "HEAD"))
-    return handleAuth(req, res, url, requestId, guard.ok ? guard.via : null);
+  if (
+    pathname === "/auth" &&
+    (req.method === "GET" || req.method === "HEAD" || req.method === "POST")
+  )
+    return handleAuth(req, res, url, requestId);
+  // SEC-2a: `web login` registers its link's wait, then polls it
+  // (shell-grade: the CLI's bearer).
+  if (pathname === "/api/web/logins" && req.method === "POST") {
+    let body: { nonce?: unknown; code?: unknown; expiresAt?: unknown } = {};
+    try {
+      body = (JSON.parse((await readBody(req)) || "{}") ?? {}) as typeof body;
+    } catch {
+      return send400(res, "the body must be JSON: { nonce, code, expiresAt }");
+    }
+    const exp = Number(body.expiresAt);
+    const id =
+      Number.isFinite(exp) &&
+      exp > Date.now() &&
+      exp - Date.now() <= LOGIN_CODE_TTL_MS + 5_000
+        ? LOGIN_WAITS.register(
+            String(body.nonce ?? ""),
+            String(body.code ?? ""),
+            exp,
+          )
+        : null;
+    if (!id) return send400(res, "not a login link's nonce, code and expiry");
+    res.setHeader("Cache-Control", "no-store");
+    return sendJson(res, { ok: true, id });
+  }
+  {
+    const w = LOGIN_WAIT_PATH.exec(pathname);
+    if (w && (req.method === "GET" || req.method === "HEAD")) {
+      res.setHeader("Cache-Control", "no-store");
+      const v = LOGIN_WAITS.get(w[1]);
+      if (!v) return sendJson(res, { ok: false, state: "expired" }, 404);
+      return sendJson(res, {
+        ok: true,
+        state: v.state,
+        ...(v.device ? { device: v.device } : {}),
+        ...(v.client ? { client: v.client } : {}),
+        ...(v.usedAt ? { usedAt: new Date(v.usedAt).toISOString() } : {}),
+        expiresAt: new Date(v.expiresAt).toISOString(),
+      });
+    }
+  }
   if (
     pathname === "/signin" &&
     (req.method === "GET" || req.method === "HEAD")
@@ -1410,6 +1731,65 @@ async function handleRequest(
   // is a WebSocket (the server's upgrade handler): a plain GET of it is 426.
   if (pathname.startsWith("/api/sessions/"))
     return sendSessionHttp(req, res, pathname);
+  // SEC-2a: Sign in with GitHub, the owner's link, Pair a device. Before
+  // config validation, like the sign-in above.
+  if (
+    isGithubRoute(pathname) &&
+    (await handleGithubRoutes(req, res, pathname, {
+      flows: DEVICE_FLOWS,
+      clientId: () => GITHUB_CLIENT_ID,
+      tokensExpire: () => GITHUB_TOKENS_EXPIRE,
+      cli: product().cli,
+      sendJson,
+      readBody,
+      signIn: startSession,
+      edgeRoutes: denEdgeRoutes,
+      mintLink: (origin) => {
+        const secret = webSecret.current();
+        if (!secret) return null;
+        const now = Date.now();
+        return {
+          url: loginLink(origin, mintLoginCode(secret, now)),
+          expiresAt: now + LOGIN_CODE_TTL_MS,
+        };
+      },
+      log: (l) => serverLog(l, "lifecycle"),
+      stateDir: getStateDir,
+    }))
+  )
+    return;
+
+  // SEC-2a: approve this computer with a code. Before config validation.
+  if (
+    isPairRoute(pathname) &&
+    (await handlePairRoutes(req, res, pathname, {
+      pairs: PAIRS,
+      sendJson,
+      readBody,
+      signIn: (r) => startSession(r, "code"),
+      client: (r) => {
+        const g = checkRequest(r, GUARD, product().cli, product().title);
+        return g.ok ? g.client : undefined;
+      },
+      commands: (r, code) => {
+        const approve = cliCommand(printedCli(), "web", "approve", code);
+        return { approve, ssh: sshCommand(sshTargetOf(r), approve) };
+      },
+      audit: (r, verb, detail, refused) =>
+        recordAction(
+          auditActorOf(r),
+          {
+            verb,
+            detail,
+            ...(refused
+              ? { outcome: "refused" as const, reason: refused }
+              : {}),
+          },
+          principalOf(r),
+        ),
+    }))
+  )
+    return;
 
   // A mutating request may change what /api/services would list (exec and
   // sync stream over GET, for EventSource).
@@ -3385,22 +3765,41 @@ async function handleRequest(
         actor: g.principal.actor,
         signedIn: false,
       });
-    if (g?.session)
+    // SEC-2a: who this browser is (the rail's identity chip), and, once
+    // after a sign-in, that it just signed in (the shell's toast).
+    if (g?.session) {
+      const rec = webSessions.list().find((x) => x.key === g.session!.key);
+      const github = rec?.via === "github";
       return sendJson(res, {
         csrf: g.session.csrf,
         actor: "person-browser",
         signedIn: true,
+        identity: {
+          kind: github ? "github" : "device",
+          via: rec?.via ?? "link",
+          ...(github && rec?.login ? { login: rec.login } : {}),
+        },
+        ...(webSessions.takeWelcome(g.session.key)
+          ? {
+              justSignedIn: true,
+              product: product().title,
+              machine: machineName(),
+            }
+          : {}),
       });
+    }
     return sendJson(res, {
       csrf: g?.beyond ? null : GUARD.csrfToken,
       actor: null,
       signedIn: false,
+      ...(g && !g.beyond ? { identity: { kind: "local" } } : {}),
     });
   }
   // Sign out: this browser's session ends and its cookie is cleared.
   if (pathname === "/api/session/logout" && req.method === "POST") {
     const g = guard.ok ? guard : null;
     const ended = g?.session ? webSessions.end(g.session.key) : false;
+    if (g?.session) closeSessionSockets([g.session.key]);
     res.setHeader(
       "Set-Cookie",
       clearSessionCookie(requestIsHttps(req, g?.via ?? null)),
@@ -3417,6 +3816,11 @@ async function handleRequest(
         lastSeenAt: new Date(x.lastSeenAt).toISOString(),
         userAgent: x.userAgent,
         host: x.host,
+        // SEC-2a: a linked device's name, how it signed in, its address.
+        name: deviceName(x.userAgent),
+        via: x.via ?? "link",
+        ...(x.login ? { login: x.login } : {}),
+        ...(x.client ? { client: x.client } : {}),
         ...(x.key === mine ? { current: true } : {}),
       })),
     });
@@ -3437,11 +3841,14 @@ async function handleRequest(
     if (body.id !== undefined && typeof body.id !== "string")
       return send400(res, "id must be a session id prefix");
     try {
-      const ended =
+      const endedKeys =
         typeof body.id === "string"
-          ? [sessionIdPrefix(webSessions.endByPrefix(body.id).key)]
-          : webSessions.list().map((x) => sessionIdPrefix(x.key));
+          ? [webSessions.endByPrefix(body.id).key]
+          : webSessions.list().map((x) => x.key);
       if (typeof body.id !== "string") webSessions.endAll();
+      // SEC-2a: a revoked device's open terminals close now, too.
+      closeSessionSockets(endedKeys);
+      const ended = endedKeys.map(sessionIdPrefix);
       const rotated = body.rotate === true;
       let agentTokens = 0;
       if (rotated) {
@@ -3895,7 +4302,7 @@ async function handleRequest(
   // GET  /api/sudo-password/status         → { set, passwordless,
   //        saved: "vault" | "session" | null, vault: { configured, label } }
   // GET  /api/sudo-password/vault-status   → { backend, label, configured,
-  //        backendAvailable, reason?, hasStored, opAvailable (deprecated) }
+  //        canSave, backendAvailable, reason?, hasStored, opAvailable (deprecated) }
   // POST /api/sudo-password/load-from-vault → { ok, reason?, message? }
   if (pathname === "/api/sudo-password") {
     if (req.method !== "POST") {
@@ -3925,16 +4332,24 @@ async function handleRequest(
       setSudoPassword(password);
       let savedToVault = false;
       let vaultError: string | undefined;
+      let refCreated = false;
       if (saveToVault) {
+        // LK-4: with no secrets.refs.sudo, this creates the item and writes
+        // the ref to user.yml. The error never carries the password.
         try {
-          await saveSudoToVault(password);
+          refCreated = (await saveSudoToVault(password)).ref === "created";
           savedToVault = true;
           sudoInVault = true;
         } catch (err) {
           vaultError = (err as Error).message;
         }
       }
-      return sendJson(res, { ok: true, savedToVault, vaultError });
+      return sendJson(res, {
+        ok: true,
+        savedToVault,
+        ...(refCreated ? { refCreated } : {}),
+        vaultError,
+      });
     } catch (e) {
       return send400(res, `Invalid request: ${(e as Error).message}`);
     }
@@ -4096,6 +4511,10 @@ async function handleRequest(
         // The UI's language (R19), and the ones it has catalogs for.
         language: uiLanguage(user.language),
         ui_languages: UI_LANGUAGES,
+        // SEC-2a: the name the signed-out page gives this machine, and
+        // what it is when unset (the short hostname).
+        machine_name: machineNameSetting(user),
+        machine_name_default: machineLabel(null, os.hostname()),
       });
     }
     if (req.method === "POST") {
@@ -4108,8 +4527,23 @@ async function handleRequest(
           appearance?: unknown;
           shell?: unknown;
           language?: unknown;
+          machine_name?: unknown;
         };
         const user = readUserConfig();
+        // SEC-2a: web.machine_name (user.yml); null or "" clears it.
+        if (body.machine_name !== undefined) {
+          let name: string | null;
+          try {
+            name = parseMachineName(body.machine_name);
+          } catch (e) {
+            return send400(res, (e as Error).message);
+          }
+          const web = { ...(user.web ?? {}) };
+          if (name) web.machine_name = name;
+          else delete web.machine_name;
+          if (Object.keys(web).length) user.web = web;
+          else delete user.web;
+        }
         // null clears (0.3.0-dev.32, a consumer's nit): a block or a key
         // set to null is removed from user.yml, and a block left empty
         // goes too, so setting a pref and clearing it again leaves the
@@ -4204,6 +4638,7 @@ async function handleRequest(
           appearance: appearancePrefs(user.appearance),
           shell: shellPrefs(user.shell),
           language: uiLanguage(user.language),
+          machine_name: machineNameSetting(user),
         });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);
@@ -4558,6 +4993,7 @@ server.on(
     setPrincipal(req, guard.principal);
     if (!isSessionIoPath(pathname))
       return refuse(404, "No WebSocket route here", "not_found");
+    if (guard.session) trackSessionSocket(guard.session.key, socket);
     handleSessionUpgrade(req, socket, head, pathname, requestId).catch(
       (err: unknown) => {
         serverLog(

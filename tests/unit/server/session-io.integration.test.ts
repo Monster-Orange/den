@@ -408,15 +408,28 @@ describe("the request checks on the io upgrade", () => {
     expect(
       await refusal(io("shell"), browser({ host: "evil.example" })),
     ).toEqual([421, "misdirected"]);
-    // The edge hostname from this machine is local (0.4.3): the terminal
-    // opens with the page's Origin and CSRF, as on localhost.
+    // The edge hostname, when the edge attests this machine (its
+    // X-Forwarded-For is loopback), is local (0.4.3): the terminal opens
+    // with the page's Origin and CSRF, as on localhost.
     const edgeHost = "acme.acme.localhost";
+    expect(
+      await refusal(
+        io("shell"),
+        browser({
+          host: edgeHost,
+          origin: `http://${edgeHost}`,
+          "x-forwarded-for": "127.0.0.1",
+        }),
+      ),
+    ).toEqual([101, "upgraded"]);
+    // SEC-2a (0.4.5): a client the edge can't place (no X-Forwarded-For)
+    // signs in first, so no terminal without a session.
     expect(
       await refusal(
         io("shell"),
         browser({ host: edgeHost, origin: `http://${edgeHost}` }),
       ),
-    ).toEqual([101, "upgraded"]);
+    ).toEqual([401, "signin_required"]);
     // For another machine (its X-Forwarded-For) it is beyond loopback: no
     // session, no terminal.
     expect(

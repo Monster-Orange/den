@@ -52,11 +52,34 @@ export class OnePasswordProvider implements SecretsProvider {
     }
   }
 
+  /** Overwrite the field; an item that isn't there yet is created (a Password item). */
   async set(ref: SecretRef, value: string): Promise<void> {
-    const args = ["item", "edit", ref.item];
-    if (ref.vault) args.push("--vault", ref.vault);
-    args.push(`${ref.field}[password]=${value}`);
-    await execFileAsync("op", args, { timeout: this.timeout });
+    const vault = ref.vault ? ["--vault", ref.vault] : [];
+    const field = `${ref.field}[password]=${value}`;
+    try {
+      await execFileAsync("op", ["item", "edit", ref.item, ...vault, field], {
+        timeout: this.timeout,
+      });
+    } catch (err) {
+      try {
+        await execFileAsync(
+          "op",
+          [
+            "item",
+            "create",
+            "--category",
+            "password",
+            "--title",
+            ref.item,
+            ...vault,
+            field,
+          ],
+          { timeout: this.timeout },
+        );
+      } catch {
+        throw err;
+      }
+    }
   }
 
   async preflight(): Promise<PreflightResult> {

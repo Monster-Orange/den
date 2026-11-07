@@ -380,9 +380,23 @@ a ref that is not set is **not configured**, and its feature says so
 ("not configured: set secrets.provider and secrets.refs.sudo in
 config/acme.yml") instead of running a CLI. Typing the password always
 works; only the saved password needs `refs.sudo`.
+
+**Saving writes `refs.sudo` for you** (LK-4, 0.4.5). When `secrets.provider`
+is `1password` or `doppler`, its CLI is available, and no `refs.sudo` is
+set, the admin password prompt (shown when a command is about to run sudo)
+still offers "Save to 1Password". Saving creates the item
+(1Password: a Password item "<Product> admin password", field `password`,
+in your default vault; Doppler: the key `<PREFIX>_LOCAL_ADMIN_PWD`) and
+then writes that ref to `config/local/user.yml`, because the password is
+the person's, not the distribution's. From then on it survives restarts.
+A failed save writes nothing, and its error never carries the password.
+`env` keeps nothing past the process, so it offers no save. A `refs.sudo`
+in the distribution's config always wins over the one in user.yml.
+
 `/api/sudo-password/vault-status` reports `backend`, `label`,
-`configured`, `backendAvailable`, `reason` and `hasStored` (`opAvailable`
-is a deprecated alias of `backendAvailable`, kept for one minor).
+`configured`, `canSave` (saving works with no YAML to edit),
+`backendAvailable`, `reason` and `hasStored` (`opAvailable` is a
+deprecated alias of `backendAvailable`, kept for one minor).
 
 The admin password is for sudo, and nothing else (LK-0). It is no sign-in
 and no access check: starting, stopping and resuming agents, sessions and
@@ -1210,11 +1224,13 @@ are the same directory.
 
 On localhost nothing asks you to sign in: every page, the agents and the
 terminal work as they are, and the admin password (R8) is the only prompt,
-asked only when a command Den runs needs sudo. The edge counts as local too (0.4.3): opening
-`https://acme.acme.localhost` from this machine asks for nothing.
-Signing in is for when the server is reached from another machine: the
-edge for a client the edge says is elsewhere, a LAN address, or a bind
-that isn't loopback (`DEN_BIND_HOST`).
+asked only when a command Den runs needs sudo. Through the edge, a browser
+the edge shows is on this machine asks for nothing either. Signing in is
+for everything else: the edge for a client it can't place here (0.4.5), a
+LAN address, or a bind that isn't loopback (`DEN_BIND_HOST`). From another
+device, sign in with GitHub as the Den's owner, approve the computer with
+the code its page shows, or open a one-time link (below, and
+[Signing in with GitHub](#signing-in-with-github)).
 
 There is no password. Reading `web.secret` (32 random bytes, mode 0600 in
 the state dir, made at the first `web up`) proves you are this computer's
@@ -1222,7 +1238,10 @@ user, and the CLI does that for you:
 
 ```bash
 ./bin/acme web open        # start if needed, and sign this browser in (a new tab)
-./bin/acme web login       # print a one-time sign-in link, for another browser
+./bin/acme web login       # a one-time sign-in link and its code; waits until it's used
+./bin/acme web login --no-wait  # the link alone (asks for no code), and return
+./bin/acme web approve ABC-123  # approve the computer showing this code
+./bin/acme web approve --list   # the computers waiting with a code
 ./bin/acme web sessions    # the signed-in browsers: id, created, last seen, host, user agent
 ./bin/acme web logout <id> # sign out one browser (an id prefix from `web sessions`)
 ./bin/acme web logout      # sign out every browser
@@ -1239,7 +1258,19 @@ user, and the CLI does that for you:
   among them; its URL comes from the edge config, and a name the edge
   doesn't route here is refused, saying what to add), and
   `web login --origin http://<lan name>:<port>` for any other allowed name
-  (the signed-out page there shows the exact command).
+  (the signed-out page there shows the exact command, under "Other ways").
+- **`web login` waits** (0.4.5). Besides the link it prints an
+  8-character code ("It asks for this code: ABCD-EFGH") and blocks until
+  the link is used, then says who: "Signed in: Safari on macOS
+  (100.64.0.7) at 10:42". Nobody within the minute: "Expired: nobody used
+  the link", exit 1. The link's page asks for the code before it signs in,
+  so the link alone is useless; once opened it waits 5 minutes for the
+  code. A wrong code is refused; five burn the link ("Refused: too many
+  wrong codes", exit 1), more than 20 wrong a minute (any link) are slowed,
+  and the link still works once. The CLI asks the running server through
+  its bearer and never logs the code. `--no-wait` prints the link alone and
+  returns, as before (no code); with no server running `web login` does
+  that too, and says so.
 - **The cookie** (`den_session_<port>`) is HttpOnly, SameSite=Strict and
   Path=/, and Secure when the request came over HTTPS through the edge. The
   session lives server-side (`web-sessions.json`, 0600, in the state dir)
@@ -1257,36 +1288,111 @@ user, and the CLI does that for you:
   The Host allowlist, the Origin check and the CSRF token are what stop
   another site or a rebinding DNS name. From another machine, every page
   and call needs a signed-in browser (or a bearer). A page there shows
-  "Sign in to use <name>" with the command to run; it never asks for a
+  "Sign in to <name>" and the ways to sign in (below); it never asks for a
   secret. `/api` answers 401 `signin_required`.
-- **The edge counts as local.** A request for the edge hostname from the
-  edge (an edge peer, below) is treated as loopback: no sign-in on any
-  route, the agents and the terminal included. Host, Origin, CSRF and the
-  agent-token rules still apply. Who the client is comes from the left-most
-  `X-Forwarded-For` entry the edge sends:
+- **The signed-out page says where to act.** It names the machine Den runs
+  on ("You're opening Den from another computer. Den runs on
+  **studio**, so it needs to know this is you."), then:
+  - **Sign in with GitHub**, only when a client id is set (below);
+  - **Approve this computer**: a code (`XXX-XXX`) and the command that
+    approves it, to run on that machine (`<cli> web approve <code>`), or
+    Settings › Access › Waiting devices there. The page signs itself in
+    when it's approved and goes to the page you asked for; it counts down
+    the 10 minutes, and an expired code is a click away from a new one.
+    From a computer with SSH access to it, the page gives the one-liner
+    (`ssh <host> '<cli> web approve <code>'`) and, when the host is a name,
+    an Open Terminal (`ssh://`) link;
+  - **Other ways**, collapsed: the one-time link with
+    `web login --origin`.
+
+  Every command the page prints names the machine it runs on and has a
+  copy button. It is `<cli>` when the first `<cli>` on that machine's PATH
+  is this distribution's, else the absolute path of its bin.
+
+- **The machine's name** on the page is `web.machine_name` from
+  `config/local/user.yml` (Settings › Access › Machine name), else the short
+  host name (up to the first dot). It is never taken from the browser's
+  Host. The ssh one-liner's target is the Host the browser used, without
+  the port (the machine's host name if it had none).
+- **Codes.** About 30 bits (Crockford base32: no I, L, O or U; typed in any
+  case, the dash optional); the page polls with a separate 128-bit id. A
+  code expires after 10 minutes and works once; at most five wait at once
+  (a sixth drops the oldest). They live in the server's memory only.
+  Approving is rate-limited (10 a minute) and recorded in the activity log
+  with who approved, never the code. The new session is "approved with a
+  code". **Deny** (Settings › Access, or `web deny` through the API) tells
+  the page it was refused.
+- **Seeing that you're signed in.** The chip at the foot of the rail says
+  "Local" (this machine), "Signed in · this device" (a code or a one-time
+  link) or "@<login>" (GitHub), and opens Settings › Access. The first page
+  after a sign-in says "This device is signed in to Den on <machine>",
+  once. Linked devices lists every session (GitHub, a code, a one-time
+  link): how it signed in, when, from where (the address and the browser
+  and OS), last seen, and **Revoke**; the one you're using says "This
+  device".
+- **The edge counts as local only when it shows the client is.** A
+  request for the edge hostname from the edge (an edge peer, below) is
+  treated as loopback (no sign-in on any route, the agents and the
+  terminal included) when the client the edge reports is this machine.
+  Host, Origin, CSRF and the agent-token rules still apply. Who the client
+  is comes from the right-most `X-Forwarded-For` entry, the one the edge
+  itself appended (anything left of it came from the client, and is never
+  believed):
   - loopback, or one of this machine's own interface addresses (a LAN
-    address, or a VPN's such as a Tailscale `100.x`): local;
+    address, or a VPN's such as a Tailscale `100.x`): local, no sign-in;
   - missing, or a container/VM network's address (the Docker ranges, or a
     subnet of one of this machine's Docker/OrbStack/VM bridges): Den can't
     tell (Docker Desktop and OrbStack on macOS hand the edge their
     gateway's address, and a TCP passthrough in front of the edge hides the
-    client), so local;
-  - any other address: another machine, which needs a sign-in.
+    client), so it signs in: `web.edge_unattested`, below;
+  - any other address: another machine, which signs in.
 
+  `web.edge_unattested: local` in `config/local/user.yml` counts a client
+  Den can't place as local again (0.4.4's behaviour). It is read only from
+  that file (a choice for that machine); the distribution config's key is
+  ignored with a warning. The default is `signin`. A request straight to
+  the server's port on localhost (loopback Host and peer) never signs in.
   With `DEN_BIND_HOST` beyond loopback (a deliberate exposure, other than
-  the Linux edge's Docker bridge address) the edge needs a sign-in as
-  before. With `forwardedHeaders.insecure` (the edge's default) Traefik
-  keeps an `X-Forwarded-For` the client sent, so this is a convenience,
-  not a boundary: whoever can reach the edge can use the terminal.
+  the Linux edge's Docker bridge address) the edge always signs in.
+
+- **The edge believes forwarded headers only from its own networks.** Den
+  renders each entrypoint with `forwardedHeaders.trustedIPs` set to
+  loopback and the Docker ranges (`127.0.0.1/32`, `::1/128`,
+  `172.16.0.0/12`, `192.168.65.0/24`), never `forwardedHeaders.insecure`,
+  so a client can't hand the edge an `X-Forwarded-For` of its own. An
+  `edge.args` entry that sets `forwardedHeaders` or `proxyProtocol` is
+  dropped, and `edge up` says so.
+- **A TCP passthrough in front of the edge** (a gateway that publishes
+  `:443` and passes TLS through) hides the client: the edge sees the
+  gateway's address. Have the gateway send the PROXY protocol, and list it
+  in `edge.proxy_protocol.trusted_ips` (empty by default; IP addresses or
+  CIDRs; `config/local/user.yml`'s list replaces the team's):
+
+  ```yaml
+  edge:
+    proxy_protocol:
+      trusted_ips: [172.18.0.5]
+  ```
+
+  Every entrypoint then takes the PROXY protocol from those addresses, and
+  the client it carries is what Den sees. Configuring the gateway is the
+  gateway's job.
+
+- **`edge up` recreates the edge when its command changed.** It compares
+  the running edge's command with the one it renders and says why ("acme-edge's
+  settings changed (forwarded-header trust): recreating it once. Routes
+  drop only while it restarts."). Upgrading to 0.4.5 does this once.
 
 - **"Your edge is reachable from other machines".** When Den can tell, at
   start, that the edge is reachable beyond this machine (an edge hostname
   that resolves to an address that isn't loopback, such as a LAN or
   Tailscale address, or the edge container publishing a port on every
   interface, from `docker inspect`), it writes "Your edge is reachable from
-  other machines; anyone who can reach it can use terminals. Auth is
-  coming." once to `web.log`, and every page shows it as a banner (dismissed
-  per browser).
+  other machines. A browser it can't place as this one signs in first
+  (Sign in with GitHub, or a pairing link)." once to `web.log`, and every
+  page shows it as a banner (dismissed per browser). With
+  `web.edge_unattested: local` it says instead that anyone it can't place
+  can use terminals, and to remove the key to have them sign in.
 - **localhost is the canonical name.** A cookie set on `localhost` isn't
   sent to `127.0.0.1`, so the links Den prints use `localhost`.
 - **Browsers.** Chromium, Firefox and Safari 16.4 or later: a sign-in link
@@ -1319,6 +1425,76 @@ logout --all` the old token is refused; the CLI reads the new one.
   from any other address it is
   421 `misdirected`, so a LAN client can't send the edge's name straight to
   the server's port.
+
+## Signing in with GitHub
+
+A Den has one owner: a GitHub account. Once it is linked, that account
+signs in from any device (a phone, another laptop, a browser through the
+edge) with **Sign in with GitHub** on the signed-out page. Den stores only
+the account's id and login, never a token, and no other account gets in.
+
+```bash
+./bin/acme web owner link    # link the owner: GitHub's device flow, in the terminal
+./bin/acme web owner         # show who it is (also: web owner show, --json)
+./bin/acme web owner unlink  # forget the owner (signed-in browsers stay signed in)
+```
+
+- **`web owner link`** prints `https://github.com/login/device` and a code.
+  Enter the code there and approve; Den asks GitHub who approved, stores
+  `owner: github:<id>` and the login in `web-owner.json` (0600, in the
+  state dir) and throws the token away. A second link is refused until
+  `web owner unlink`. Settings › Access does the same in the browser
+  (Link your GitHub account, Unlink): shell-grade actions, for a signed-in
+  browser and never an agent's token.
+- **Sign in with GitHub** on the signed-out page shows a code and
+  `github.com/login/device`. The server runs the flow, and when the owner
+  approves it sets the same never-expiring session cookie a one-time link
+  sets, and the page reloads signed in. Another account sees "@<login>
+  isn't allowed on this Den". The token is thrown away either way. At most
+  three sign-ins wait for GitHub at once; a code expires as GitHub says
+  (15 minutes). With no owner linked the page says to run
+  `web owner link`.
+- **Settings › Access** lists the linked devices (the browser, how it
+  signed in, the client address when the edge vouched for one, created and
+  last seen; "This device" on yours), each with **Revoke**, which ends its session at once (its
+  open terminals included). **Pair a device** makes a one-time link and a
+  QR code for an edge hostname you pick (`web login --host <name>` in the
+  browser): scan it on the other device within 60 seconds.
+- **`web.github_client_id`** is the GitHub App's client id (public; no
+  secret). The default is Den's own App, **Monster Orange Den**
+  (`Iv23liKL12gnN6WvRV5b`), so Sign in with GitHub works out of the box. A
+  distribution that ships its own App sets its client id here (below);
+  `config/local/user.yml`'s wins over the team's. An empty value
+  (`github_client_id: ""`) turns Sign in with GitHub off: the page then
+  offers the code and the one-time link only.
+- **Expiring tokens.** If the App hands out expiring tokens (GitHub's
+  answer carries `expires_in` or a `refresh_token`), sign-in still
+  completes, and Den says once, in the log and on stderr, to switch off
+  token expiry in the App's settings ("Expire user authorization tokens");
+  it never prints the token. `GET /api/web/owner` reports it as
+  `tokenExpiry: true`.
+
+### The GitHub App (once, by whoever ships the Den)
+
+Den's default App is Monster Orange Den. A distribution that wants its own
+(its name on GitHub's approval page) needs a GitHub App with the device
+flow on. Create it once (organization or account › Settings › Developer settings › GitHub
+Apps › New GitHub App):
+
+1. No callback URL; untick "Request user authorization during
+   installation". Webhook off.
+2. **Enable Device Flow**: ticked. The device flow needs only the client
+   id.
+3. **Expire user authorization tokens**: off. Den never asks for
+   `offline_access`, and keeps no token either way.
+4. Account permissions: none. Den reads only `GET /user` (the id and the
+   login), which needs none. Repository permissions are only for features
+   that act on a repository (Den's default App has Issues for feedback).
+5. **Where can this GitHub App be installed**: Any account. GitHub lets only
+   members of the owning organization authorize a private App, so anyone
+   else couldn't sign in.
+6. Put the **Client ID** in `web.github_client_id`. Never generate or
+   share a client secret or a private key for Den: it never uses one.
 
 ## Running the web UI as a service (macOS)
 
