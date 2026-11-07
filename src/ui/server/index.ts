@@ -162,6 +162,7 @@ import {
   saveSudoToVault,
   sudoRef,
   sudoVaultStatus,
+  sudoVaultWhere,
   SUDO_REF_NAME,
 } from "../../shared/auth/sudo-vault.js";
 import {
@@ -716,12 +717,14 @@ const CONFIG_FREE_PAGES = new Set(["/settings", "/settings.html", "/logs"]);
 import {
   setSudoPassword,
   clearSudoPassword,
+  clearSudoShims,
   closeLockForThisRequest,
   inRequestLockScope,
   getSudoEnv,
   prewarmSudo,
   hasSudoPassword,
   hasPasswordlessSudo,
+  watchSudo,
 } from "./sudo-store.js";
 import {
   guardStdio,
@@ -729,6 +732,9 @@ import {
   outputLost,
   requestShutdown,
 } from "./shutdown-guard.js";
+
+/** This server saved the admin password to the vault or loaded it from there. */
+let sudoInVault = false;
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 import { sweepLogs } from "../../shared/process/log-rotation.js";
@@ -2244,9 +2250,10 @@ async function handleRequest(
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
     });
-    const emit = (obj: unknown): void => {
+    // LK-0: the command's sudo without the password is a needs-sudo event.
+    const emit = watchSudo((obj: unknown): void => {
       res.write(`data: ${JSON.stringify(obj)}\n\n`);
-    };
+    }, `${repoName}/${svcName} ${cmdName}`);
     // Every fail here is before anything ran: a refusal or a lookup miss.
     // Recorded, so failed attempts show in the activity trail (F2).
     const fail = (msg: string): void => {
@@ -3864,8 +3871,13 @@ async function handleRequest(
   }
 
   // ── API: sudo password ────────────────────────────────────────────────────
+  // LK-0: the admin password is for sudo, and nothing else: no route asks
+  // for it as an access check. A run that is about to run sudo without it
+  // streams a needs-sudo event (watchSudo); the page asks, then runs again.
   // POST /api/sudo-password  body: { password: string, saveToVault?: boolean }
-  // GET  /api/sudo-password/status         → { set: boolean }
+  // POST /api/sudo-password/forget         → { ok, vaultCleared, vaultError? }
+  // GET  /api/sudo-password/status         → { set, passwordless,
+  //        saved: "vault" | "session" | null, vault: { configured, label } }
   // GET  /api/sudo-password/vault-status   → { backend, label, configured,
   //        backendAvailable, reason?, hasStored, opAvailable (deprecated) }
   // POST /api/sudo-password/load-from-vault → { ok, reason?, message? }
@@ -3901,6 +3913,7 @@ async function handleRequest(
         try {
           await saveSudoToVault(password);
           savedToVault = true;
+          sudoInVault = true;
         } catch (err) {
           vaultError = (err as Error).message;
         }
@@ -3912,10 +3925,51 @@ async function handleRequest(
   }
 
   if (pathname === "/api/sudo-password/status") {
-    // passwordless: NOPASSWD sudoer (or warm cache) — no admin login needed.
+    // passwordless: NOPASSWD sudoer (or warm cache) — sudo needs none.
+    // saved (Settings, LK-0): "vault" once this server saved it there or
+    // loaded it from there, "session" when it is held in memory only.
+    const set = hasSudoPassword();
     return sendJson(res, {
-      set: hasSudoPassword(),
+      set,
       passwordless: hasPasswordlessSudo(),
+      saved: sudoInVault ? "vault" : set ? "session" : null,
+      vault: sudoVaultWhere(),
+    });
+  }
+
+  // Forget (Settings, LK-0): the password this server holds goes, and the
+  // vault's copy when this server knows there is one (written empty, which
+  // every read takes as none). sudo's own cache is dropped too.
+  if (pathname === "/api/sudo-password/forget") {
+    if (req.method !== "POST") {
+      res.writeHead(405);
+      res.end();
+      return;
+    }
+    clearSudoPassword();
+    try {
+      execSync("sudo -k", {
+        stdio: ["ignore", "ignore", "ignore"],
+        timeout: CLI_SPAWN_TIMEOUT_MS,
+      });
+    } catch {
+      /* best-effort */
+    }
+    let vaultCleared = false;
+    let vaultError: string | undefined;
+    if (sudoInVault) {
+      try {
+        await saveSudoToVault("");
+        vaultCleared = true;
+        sudoInVault = false;
+      } catch (err) {
+        vaultError = (err as Error).message;
+      }
+    }
+    return sendJson(res, {
+      ok: true,
+      vaultCleared,
+      ...(vaultError ? { vaultError } : {}),
     });
   }
 
@@ -3960,6 +4014,7 @@ async function handleRequest(
       return sendJson(res, { ok: false, reason: "stale" });
     }
     setSudoPassword(password);
+    sudoInVault = true;
     return sendJson(res, { ok: true });
   }
 
@@ -4747,7 +4802,7 @@ async function stopDaemons(): Promise<void> {
 }
 
 async function handleShutdown(signal: string): Promise<void> {
-  clearSudoPassword();
+  clearSudoShims();
   // The registry lives in the state dir, which is resolved from the
   // distribution root on every call: if that can no longer be found (den.yml
   // moved or removed while the server ran), still exit. Never product() here:

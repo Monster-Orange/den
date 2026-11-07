@@ -612,7 +612,7 @@ export const AGENT_FORBIDDEN: readonly string[] = [
 ];
 
 /**
- * Routes an agent's token may read but never change: the lock (R8).
+ * Routes an agent's token may read but never change: the admin password (R8).
  * Privileged actions stay with people (AG-5); its status is a read.
  */
 export const AGENT_READ_ONLY: readonly string[] = [

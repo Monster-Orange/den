@@ -142,26 +142,21 @@
     "dock.err": "falló",
     "dock.last": "Última ejecución: {s} ↗",
     "dock.resize": "Arrastra para cambiar el tamaño",
-    "lock.locked": "Bloqueado",
-    "lock.unlocked": "Desbloqueado",
-    "lock.title":
-      "Desbloquea para iniciar, detener y reiniciar servicios y agentes",
-    "lock.nopw":
-      "sudo sin contraseña (NOPASSWD): no hace falta la contraseña de administrador",
-    "lock.session": "Desbloqueado durante esta sesión",
-    "lock.sessionDesc":
-      "Desbloqueado durante esta sesión: iniciar, detener y reiniciar funcionan en todas las páginas.",
+    "lock.waiting": "Se necesita la contraseña de administrador",
+    "lock.needs": "{cmd} necesita tu contraseña de administrador",
+    "lock.cmd": "Un comando",
     "lock.cfg":
       "Guardar la contraseña está desactivado: define secrets.provider y secrets.refs.sudo en {file}.",
     "lock.update": "Actualizar la contraseña guardada",
     "lock.saveTo": "Guardar en {s}",
     "lock.pw": "Contraseña de administrador",
-    "lock.go": "Desbloquear",
+    "lock.go": "Continuar",
     "lock.checking": "Comprobando…",
     "lock.note":
-      "Den la pide una vez por sesión. Los agentes no pueden desbloquear.",
-    "lock.again": "Escribir la contraseña de nuevo…",
-    "lock.saveFailed": "Desbloqueado, pero no se pudo guardar en {s}: {err}",
+      "Den la usa solo para sudo. Los agentes no pueden introducirla.",
+    "lock.saved": "Contraseña de administrador guardada para esta sesión",
+    "lock.saveFailed":
+      "Guardada para esta sesión, pero no se pudo guardar en {s}: {err}",
     "lock.wrong": "Contraseña incorrecta; inténtalo de nuevo",
     "lock.reqFailed": "La solicitud falló: ¿está en marcha el servidor?",
     "v.title": "Ver el registro de cambios",
@@ -294,6 +289,7 @@
     "set.cli.log_window_lines": "Líneas del panel de registros",
     "set.cli.web_port": "Tu puerto web",
     "set.cli.signin": "Inicio de sesión del navegador",
+    "set.cli.sudo": "Contraseña de administrador",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
     "set.distribution.orgs": "Etiquetas de org",

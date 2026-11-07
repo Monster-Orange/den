@@ -1487,8 +1487,8 @@
           initChangelog,
           copyToClipboard,
           computePrimaryByRepo,
-          requireUnlock,
           setServiceRunner,
+          sudoRun,
           takePendingAction,
           problemCards,
           problemFix,
@@ -1545,14 +1545,12 @@
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;");
 
-        // ── The lock (R8): the shell's lock chip and popover (topbar.js) ──────────
-        // requireSudo() is this page's lock rule, shared with every page
-        // (async): true when unlocked, after asking the server and the vault
-        // (LK-2, LK-3); otherwise the lock popover opens on its password
-        // field and the command doesn't run.
-        function requireSudo() {
-          return requireUnlock();
-        }
+        // ── The admin password (R8, LK-0) ─────────────────────────────────────────
+        // It is for sudo, and nothing else: no action here asks for it up
+        // front. A run whose command is about to run sudo without it gets a
+        // needs-sudo event from the server (sudoRun().see); the shell's
+        // prompt then says what needs it, and after the password the action
+        // runs again (sudoRun().done).
 
         // ── Bootstrap ─────────────────────────────────────────────────────────────
         // Systems with auto-start toggled OFF in the viewed workspace (`autostart:
@@ -1572,7 +1570,7 @@
           ]);
           initLogBadge();
           // Start and Restart from the status drawer and the ⌘K palette run
-          // here, with this page's lock rule and output (R15, R17).
+          // here, with this page's output (R15, R17).
           setServiceRunner((cmd, s) =>
             window.runCmd(s.address, s.repo, s.service, cmd),
           );
@@ -3051,9 +3049,9 @@
         // ── Workspace-level command (SSE) ─────────────────────────────────────────
         // Routes output to each service's own tab as `label` events arrive.
         window.runWorkspaceSync = async function () {
-          if (!(await requireSudo())) return;
           setAllButtons(true);
           setWsStatus("syncing…");
+          const sudo = sudoRun();
           const es = new EventSource("/api/workspace/sync");
           // Clear previous sync output then open/activate the tab (explicit action).
           clearDismissed("⟳ sync");
@@ -3062,6 +3060,7 @@
           setBusy("⟳ sync", true);
           es.onmessage = (e) => {
             const msg = JSON.parse(e.data);
+            sudo.see(msg);
             if (msg.type === "line") appendToTab("⟳ sync", msg.text);
             if (msg.type === "error")
               appendToTab("⟳ sync", "Error: " + msg.text, "err");
@@ -3073,6 +3072,7 @@
               setTimeout(() => setWsStatus(""), 3000);
               // See refreshAfterSync — a sync that clones brings new commands with it.
               refreshAfterSync();
+              void sudo.done(() => window.runWorkspaceSync());
             }
           };
           es.onerror = () => {
@@ -3103,9 +3103,9 @@
         // system. Buttons are not globally disabled: it is one repo.
         const _syncing = new Set();
         window.runRepoSync = async function (repo) {
-          if (!(await requireSudo())) return;
           if (_syncing.has(repo)) return; // already in flight — ignore re-entry
           _syncing.add(repo);
+          const sudo = sudoRun();
 
           const route = tabRouteFor(repo);
           clearDismissed(route); // explicit action — undo any prior dismissal
@@ -3130,12 +3130,14 @@
           );
           es.onmessage = (e) => {
             const msg = JSON.parse(e.data);
+            sudo.see(msg);
             if (msg.type === "line") appendToTab(route, msg.text);
             if (msg.type === "error")
               appendToTab(route, "Error: " + msg.text, "err");
             if (msg.type === "done") {
               es.close();
               finish("sync complete");
+              void sudo.done(() => window.runRepoSync(repo));
               // A pull can replace this repo's health probes on disk. The health
               // response is cached ~8s, so force a fresh poll rather than leaving
               // dots that reflect the code we just replaced.
@@ -3156,7 +3158,7 @@
         };
 
         window.runWorkspaceCmd = async function (cmd, addresses) {
-          if (!(await requireSudo())) return;
+          const sudo = sudoRun();
           const only =
             Array.isArray(addresses) && addresses.length
               ? `&addresses=${encodeURIComponent(addresses.join(","))}`
@@ -3174,6 +3176,7 @@
 
           esWs.onmessage = (e) => {
             const msg = JSON.parse(e.data);
+            sudo.see(msg);
             if (msg.type === "label") {
               // New service section — route to the SYSTEM's primary tab (one tab
               // per system; sidecar output lands in its repo's tab with a header).
@@ -3239,6 +3242,7 @@
               idle();
               // Lifecycle changed run-state — sync dots now, don't wait for the poll.
               syncHealthNow();
+              void sudo.done(() => window.runWorkspaceCmd(cmd, addresses));
             }
           };
           esWs.onerror = () => {
@@ -3270,7 +3274,6 @@
         // its rules are load-bearing, and the already-healthy skip it relies on is
         // suppressed whenever an explicit address list is sent.
         window.runUpWithDeps = async function (repo) {
-          if (!(await requireSudo())) return;
           void runWorkspaceCmdAsync("up", null, {
             seed: repo,
             undismiss: true,
@@ -3282,7 +3285,6 @@
         // same reason as its counterpart: the already-stopped skip is suppressed
         // when an explicit address list is sent.
         window.runDownWithDeps = async function (repo) {
-          if (!(await requireSudo())) return;
           void runWorkspaceCmdAsync("down", null, {
             seed: repo,
             undismiss: true,
@@ -3290,7 +3292,6 @@
         };
 
         window.runCmd = async function (address, repo, service, cmd) {
-          if (!(await requireSudo())) return;
           // Explicit single-service action — undo any prior dismissal so its pane returns.
           clearDismissed(address);
           // up/restart/down go through the workspace-exec runner: it uses the full
@@ -3319,9 +3320,12 @@
           setTabStatus(address, { es: esCmd });
           const _cmdTab = _tabs.get(address);
           if (_cmdTab) _cmdTab.esKind = "exec";
+          const sudo = sudoRun();
+          const again = () => window.runCmd(address, repo, service, cmd);
 
           esCmd.onmessage = (e) => {
             const msg = JSON.parse(e.data);
+            sudo.see(msg);
             if (msg.type === "cmd") {
               appendToTab(address, msg.text, "cmd");
             } else if (msg.type === "started") {
@@ -3349,6 +3353,7 @@
                   "done-fail",
                 );
                 setTabStatus(address, { live: false, errored: true, es: null });
+                void sudo.done(again);
               }
             } else if (msg.type === "line") {
               appendToTab(address, msg.text, "");
@@ -3369,6 +3374,7 @@
                 );
               _tabs.get(address) && (_tabs.get(address).busy = false);
               setTabStatus(address, { live: false, errored: !ok, es: null });
+              void sudo.done(again);
             }
           };
           esCmd.onerror = () => {
@@ -3853,9 +3859,11 @@
             // address filter — the filter suppresses the already-healthy skip and
             // the auto-start-off handling that make "with deps" behave.
             if (opts.seed) params.set("seed", opts.seed);
+            const sudo = sudoRun();
             const es = new EventSource(`/api/workspace/exec?${params}`);
             es.onmessage = (e) => {
               const msg = JSON.parse(e.data);
+              sudo.see(msg);
               if (msg.type === "label") {
                 currentAddress = msg.text;
                 // Route to the system's primary tab; skip dismissed panes on
@@ -3924,7 +3932,10 @@
                 idle();
                 // Lifecycle changed run-state — sync dots now, don't wait for the poll.
                 syncHealthNow();
-                resolve(ok);
+                // LK-0: after the admin password, the same run again.
+                void sudo
+                  .done(() => runWorkspaceCmdAsync(cmd, addresses, opts))
+                  .then((again) => resolve(again ?? ok));
               }
             };
             es.onerror = () => {

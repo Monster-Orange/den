@@ -172,15 +172,20 @@ describe("a fresh den create distribution in the browser", () => {
     expect(ran.split("\n").filter((l) => l.startsWith("gh "))).toEqual([]);
   }, 120_000);
 
-  it("the lock's not-configured note names config/acme.yml", async () => {
+  it("the admin-password prompt's not-configured note names config/acme.yml", async () => {
     if (!browser) return;
     const { ctx, p } = await page();
     await p.goto(`http://localhost:${port}/services`);
-    await p.waitForSelector("#den-lock");
+    await p.waitForSelector("#den-lock", { state: "attached" });
     await p.evaluate(() =>
       (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
     );
-    await p.click("#den-lock");
+    // LK-0: the prompt opens only when sudo needs the password; ask it
+    // as a run's needs-sudo would.
+    // A string, so the browser does the import (not the test's compiler).
+    await p.evaluate(
+      "import('/topbar.js').then((m) => void m.askSudo({ command: 'sudo true' }))",
+    );
     await p.waitForSelector("#den-lock-pop .den-lock-cfg:not([hidden])");
     const note = await p.$eval(
       "#den-lock-pop .den-lock-cfg",

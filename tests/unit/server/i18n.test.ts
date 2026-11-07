@@ -70,17 +70,18 @@ const base = (k: string) =>
     ? k.replace(PLURAL, "")
     : k;
 
-describe("the unlock popover's title (0.4.1-dev.1, a consumer's nit)", () => {
-  // The lock gates agents too (AG-5): its title names them in every language.
-  it.each([
-    ["en", /services and agents/],
-    ["ja", /エージェント/],
-    ["es", /servicios y agentes/],
-  ])("%s names services and agents", (lang, re) => {
-    expect(messages[lang]["lock.title"]).toMatch(re);
-  });
+describe("the admin-password prompt (LK-0)", () => {
+  // It is for sudo only: it names the command that needs it, and no
+  // language calls it a lock on services and agents any more.
+  it.each(["en", "ja", "es"])(
+    "%s names the command, and locks nothing",
+    (lang) => {
+      expect(vars(messages[lang]["lock.needs"])).toEqual(["cmd"]);
+      for (const k of ["lock.title", "lock.locked", "lock.unlocked"])
+        expect(messages[lang][k]).toBeUndefined();
+    },
+  );
 });
-
 describe("the catalogs", () => {
   it("en is shell.js's, and has the shell's words", () => {
     expect(Object.keys(EN).length).toBeGreaterThan(200);

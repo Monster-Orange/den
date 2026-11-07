@@ -97,7 +97,7 @@ import { getReposRoot, readUserConfig } from "../../shared/den-config.js";
 import { redactRemote } from "../../shared/environment-manager/git-remote.js";
 import { getDistRoot } from "../../shared/paths.js";
 import { recordRemovedFromWorkspace } from "../../shared/environment-manager/default-workspace.js";
-import { getSudoEnv, prewarmSudo } from "./sudo-store.js";
+import { getSudoEnv, prewarmSudo, watchSudo } from "./sudo-store.js";
 import {
   devManagedPaths,
   selectSyncTargets,
@@ -1155,7 +1155,9 @@ export async function handleWorkspaceRoutes(
       }
     });
 
-    const emit = (obj: unknown): void => {
+    // LK-0: a service's sudo without the password is a needs-sudo event,
+    // naming the command and the service (the last label).
+    const emit = watchSudo((obj: unknown): void => {
       if (cancelled) return;
       try {
         res.write(`data: ${JSON.stringify(obj)}\n\n`);
@@ -1163,7 +1165,7 @@ export async function handleWorkspaceRoutes(
         // Socket closed mid-write — mark cancelled so subsequent loops bail.
         cancelled = true;
       }
-    };
+    });
 
     const wsParam = url.searchParams.get("workspace");
     if (wsParam && !isWorkspaceActive(wsParam)) {
@@ -1959,6 +1961,8 @@ export async function handleWorkspaceRoutes(
     emit: (o: unknown) => void,
     isCancelled: () => boolean,
   ): Promise<boolean> {
+    // LK-0: this step's sudo without the password is a needs-sudo event.
+    emit = watchSudo(emit, `${repoName} ${command}`);
     emit({ type: "line", text: `  ${repoName}: ${command}…` });
     return new Promise<boolean>((resolve) => {
       let settled = false;
@@ -1972,6 +1976,9 @@ export async function handleWorkspaceRoutes(
         const result = runServiceCommand({
           address,
           command,
+          // The sudo shim (LK-0): the password when one is held, else a
+          // needs-sudo line instead of a prompt nobody can answer.
+          env: getSudoEnv(),
           onLine: (line) => {
             if (!isCancelled()) emit({ type: "line", text: `    ${line}` });
           },

@@ -14,14 +14,15 @@
  * `<cli> agents list -w <ws>` shows, and the other way round. A workspace
  * lists its own agents only: another workspace's id is no agent here.
  *
- * Guards on Start, Stop and Resume, as on a service action:
- *   - the lock (R8): locked, the action is refused (423 locked); the page
- *     opens the lock popover first, as Local Dev's service actions do;
+ * Guards on Start, Stop and Resume:
  *   - a person only: an agent (its actor token, SEC-1c) can't start or
  *     stop agents from the page (403; agents use MCP agent_spawn, §5,
  *     under its own guards);
  *   - agents.max_concurrent (the host's cap on agents, never plain
  *     sessions: 429 cap).
+ * The admin password (R8) is no guard here (LK-0): it is for sudo, and
+ * nothing an agent route does runs sudo. Starting, stopping and resuming
+ * an agent never asks for it.
  * The env is the CLI's (§5a-env): the allowlist and the runtime's, built
  * from this server's environment, never all of it. Every action, refused
  * or done, is audited (recordAction) with the person as its actor.
@@ -55,14 +56,11 @@ import {
 import { recordAction } from "./audit.js";
 import { auditActorOf, principalOf } from "./request-guard.js";
 import { readBody, sendJson } from "./http-helpers.js";
-import { hasPasswordlessSudo, hasSudoPassword } from "./sudo-store.js";
 import type { Actor } from "../../shared/agent-actor.js";
 
 export interface AgentRouteDeps {
   /** The operations' deps (tests: an in-process host, a temp state dir). */
   agents?: AgentsDeps;
-  /** R8: whether the lock is open (the lock chip's own status). */
-  unlocked?: () => boolean;
 }
 
 const AGENTS_PATH =
@@ -87,11 +85,6 @@ function webDeps(over: AgentsDeps = {}): AgentsResolved {
     err: () => undefined,
     ...over,
   });
-}
-
-/** The lock chip's state: an admin password set, or sudo without one. */
-function defaultUnlocked(): boolean {
-  return hasSudoPassword() || hasPasswordlessSudo();
 }
 
 /** An AgentError (or the host's refusal) as the R26 answer. */
@@ -264,9 +257,9 @@ export async function handleAgentRoutes(
   let what = `${verb} ${id ?? "?"} in ${ws}`;
   try {
     // Another workspace's agent is no agent here: a 404 that doesn't name
-    // it, before the lock (a locked request says the same).
+    // it, before anything else is said about it.
     if (id !== undefined) agentRecord(d, id, ws);
-    guard(actor, deps.unlocked ?? defaultUnlocked);
+    guard(actor);
     if (verb === "start") {
       const body = await startBody(req);
       if (!body.persona)
@@ -299,21 +292,16 @@ export async function handleAgentRoutes(
 }
 
 /**
- * R8 and the actor: a person, with the lock open. An agent is one its actor
- * token proves (the request checks already refuse its start and resume);
- * an x-den-actor header alone is an unverified claim, not an agent.
+ * The actor: a person. An agent is one its actor token proves (the request
+ * checks already refuse its start and resume); an x-den-actor header alone
+ * is an unverified claim, not an agent.
  */
-function guard(actor: Actor, unlocked: () => boolean): void {
+function guard(actor: Actor): void {
   if (actor && !actor.unverified)
     throw new AgentError(
       "an agent can't start, stop or resume agents from the page; agents use MCP agent_spawn",
       { status: 403 },
     );
-  if (!unlocked())
-    throw new AgentError("Unlock first: agent actions need the lock open", {
-      status: 423,
-      code: "locked",
-    });
 }
 
 function safeDecode(s: string): string {

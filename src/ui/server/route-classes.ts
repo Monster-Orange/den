@@ -209,8 +209,13 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST", "DELETE"], "/api/release/deploy", "starts or dismisses a deploy"),
   M(["POST"], "/api/manifest/validate", "validates posted content (no write)"),
   M(["POST"], "/api/local-dev"),
-  M(["POST"], "/api/sudo-password", "opens the lock (R8)"),
-  M(["POST"], "/api/sudo-password/load-from-vault", "opens the lock (R8)"),
+  M(["POST"], "/api/sudo-password", "sets the admin password, for sudo (R8)"),
+  M(
+    ["POST"],
+    "/api/sudo-password/load-from-vault",
+    "sets the admin password from the vault, for sudo (R8)",
+  ),
+  M(["POST"], "/api/sudo-password/forget", "forgets the admin password (R8)"),
   M(["POST"], "/api/scope"),
   M(["POST"], "/api/settings"),
   M(

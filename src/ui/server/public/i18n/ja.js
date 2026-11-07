@@ -131,27 +131,21 @@
     "dock.err": "失敗",
     "dock.last": "前回の実行: {s} ↗",
     "dock.resize": "ドラッグしてサイズを変更",
-    "lock.locked": "ロック中",
-    "lock.unlocked": "ロック解除",
-    "lock.title":
-      "ロックを解除するとサービスとエージェントの起動・停止・再起動ができます",
-    "lock.nopw":
-      "パスワード不要の sudo (NOPASSWD): 管理者パスワードは必要ありません",
-    "lock.session": "このセッションの間ロックを解除しました",
-    "lock.sessionDesc":
-      "このセッションの間ロック解除中: どのページでも起動・停止・再起動ができます。",
+    "lock.waiting": "管理者パスワードが必要です",
+    "lock.needs": "{cmd} に管理者パスワードが必要です",
+    "lock.cmd": "コマンド",
     "lock.cfg":
       "パスワードの保存はオフです: {file} で secrets.provider と secrets.refs.sudo を設定してください。",
     "lock.update": "保存したパスワードを更新",
     "lock.saveTo": "{s} に保存",
     "lock.pw": "管理者パスワード",
-    "lock.go": "ロック解除",
+    "lock.go": "続行",
     "lock.checking": "確認中…",
     "lock.note":
-      "Den が尋ねるのはセッションごとに一度です。エージェントはロックを解除できません。",
-    "lock.again": "パスワードをもう一度入力…",
+      "Den はこれを sudo にだけ使います。エージェントは入力できません。",
+    "lock.saved": "このセッションの間、管理者パスワードを保持します",
     "lock.saveFailed":
-      "ロックを解除しましたが、{s} への保存に失敗しました: {err}",
+      "このセッションの間は保持しますが、{s} への保存に失敗しました: {err}",
     "lock.wrong": "パスワードが違います。もう一度お試しください",
     "lock.reqFailed": "リクエストに失敗しました。サーバーは動いていますか?",
     "v.title": "変更履歴を見る",
@@ -283,6 +277,7 @@
     "set.cli.log_window_lines": "ログ欄の行数",
     "set.cli.web_port": "あなたの web ポート",
     "set.cli.signin": "ブラウザのサインイン",
+    "set.cli.sudo": "管理者パスワード",
     "set.distribution.brand": "製品名",
     "set.distribution.github_org": "GitHub の組織",
     "set.distribution.orgs": "組織のラベル",

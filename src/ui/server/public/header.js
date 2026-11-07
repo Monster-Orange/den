@@ -30,12 +30,11 @@ const escT = (key, vars) =>
   );
 
 export {
-  isUnlocked,
-  onLockChange,
+  askSudo,
   problemCards,
   problemFix,
-  requireUnlock,
   setServiceRunner,
+  sudoRun,
   takePendingAction,
 } from "./topbar.js";
 export { buildRow } from "./health-fit.js";

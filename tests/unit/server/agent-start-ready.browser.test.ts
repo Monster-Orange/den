@@ -1,6 +1,6 @@
 /**
- * The Start agent dialog states readiness up front (AG-0.2), and the lock
- * never hides behind it (LK-1), in a real browser on the real server:
+ * The Start agent dialog states readiness up front (AG-0.2), and never
+ * asks for the admin password (LK-0), in a real browser on the real server:
  *
  *   - a runtime that can't run here disables Start, and the line under
  *     the runtime says why and how to fix it (install it, or set
@@ -8,8 +8,9 @@
  *     `<cli> agents doctor`), in the Agents tab's dialog and on the
  *     Workspaces page's form; nothing fails only after Start;
  *   - one that can shows its version and the path it will run;
- *   - locked, the dialog asks for the admin password at its top, and Start
- *     unlocks, then starts the agent, without closing anything.
+ *   - with no admin password set (and a sudo that needs one), the dialog
+ *     has no password field, and Start starts the agent: it is for sudo,
+ *     and starting an agent runs none (LK-0).
  *
  * The demo distribution (acme) with a scripted PTY (helpers/
  * agents-page-server.ts): nothing really runs. The `claude` shim answers
@@ -167,38 +168,22 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
   }, 60_000);
 });
 
-describe("LK-1: locked, the Start dialog asks for the password itself", () => {
-  it("from a locked state, starts an agent from the dialog without closing anything", async () => {
+describe("LK-0: starting an agent never asks for the admin password", () => {
+  it("with no password set and sudo needing one, the dialog has no password field, and Start starts the agent", async () => {
     if (skip() || !PTY) return;
     const p = await page(ready!, "/agents?start=1");
-    await p.waitForSelector("#den-lock");
     await p.waitForSelector("#ag-dlg[open]");
-    // The lock is checked before the dialog opens: its field is at the top.
-    await p.waitForSelector("#ag-lock:not([hidden])");
-    expect(await p.getAttribute("#den-lock", "aria-label")).toBe("Locked");
+    // No password field in the dialog, and no prompt or sudo chip.
+    expect(await p.$$("#ag-dlg input[type=password]")).toHaveLength(0);
+    expect(await p.$("#den-lock-pop")).toBeNull();
+    expect(await p.isHidden("#den-lock")).toBe(true);
     const top = await p.$$eval("#ag-form > *", (els) =>
       els.filter((e) => !(e as HTMLElement).hidden).map((e) => e.id),
     );
-    expect(top.slice(0, 2)).toEqual(["ag-dlg-h", "ag-lock"]);
-    expect(await text(p, "#ag-lock")).toBe(
-      "Admin password Unlock to start, stop and restart services and agents",
-    );
-    expect(await p.evaluate(() => document.activeElement?.id)).toBe(
-      "ag-lock-pw",
-    );
-    if (SHOTS) await p.screenshot({ path: path.join(SHOTS, "lk1-locked.png") });
-    // A wrong one says so, there; nothing starts and the dialog stays.
+    expect(top[0]).toBe("ag-dlg-h");
+    expect(top).not.toContain("ag-lock");
+    if (SHOTS) await p.screenshot({ path: path.join(SHOTS, "lk0-start.png") });
     const made = ready!.made.length;
-    await p.fill("#ag-lock-pw", "not-it");
-    await p.click("#ag-go");
-    await p.waitForSelector("#ag-lock-err:not([hidden])");
-    expect(await text(p, "#ag-lock-err")).toBe(
-      "Incorrect password — try again",
-    );
-    expect(await p.isVisible("#ag-dlg")).toBe(true);
-    expect(ready!.made.length).toBe(made);
-    // The right one unlocks, then starts, in one Start.
-    await p.fill("#ag-lock-pw", PW);
     const [res] = await Promise.all([
       p.waitForResponse(
         (r) =>
@@ -206,14 +191,15 @@ describe("LK-1: locked, the Start dialog asks for the password itself", () => {
           new URL(r.url()).pathname === "/api/workspaces/north/agents",
         { timeout: 20_000 },
       ),
-      p.press("#ag-lock-pw", "Enter"),
+      p.click("#ag-go"),
     ]);
     expect(res.status()).toBe(200);
     await p.waitForFunction(
       () => !(document.getElementById("ag-dlg") as HTMLDialogElement).open,
     );
     expect(ready!.made.length).toBe(made + 1);
-    expect(await p.getAttribute("#den-lock", "aria-label")).toBe("Unlocked");
+    expect(await p.$("#den-lock-pop")).toBeNull();
+    expect(await p.isHidden("#den-lock")).toBe(true);
     await p.context().close();
   }, 60_000);
 

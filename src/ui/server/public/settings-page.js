@@ -300,7 +300,8 @@ export async function mountSettings(deps) {
     const did = `d-${id}`;
     const v = value(r);
     const t = r.control?.type || "readonly";
-    const ro = !r.write;
+    // A custom control draws (and saves) itself: no write to read it by.
+    const ro = !r.write && t !== "custom";
     const single = ["number", "select", "toggle", "text"].includes(t);
     const label = single
       ? `<label class="l" id="${lid}" for="${cid}">${esc(r.label)}</label>`
@@ -499,7 +500,7 @@ export async function mountSettings(deps) {
       }, 2000);
   }
   function wireRow(r) {
-    if (!r.write) return;
+    if (!r.write && r.control?.type !== "custom") return;
     const row = $(`setting-${slug(r.id)}`);
     if (!row) return;
     const t = r.control?.type;

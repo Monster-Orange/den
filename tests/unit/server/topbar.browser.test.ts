@@ -88,6 +88,7 @@ interface Opts {
   /** The stream breaks after these results (no "done"); /api/health completes. */
   partial?: Health[];
   healthDelay?: number;
+  /** The admin password is set (elsewhere, before the page asks). */
   unlocked?: boolean;
   before?: string;
   after?: string;
@@ -102,7 +103,7 @@ async function mount(o: Opts = {}): Promise<{
   p: Page;
   reqs: string[];
   posts: { path: string; body: unknown }[];
-  /** The lock opens elsewhere (another tab, another device). */
+  /** The password is set elsewhere (another tab, another device). */
   unlockElsewhere: () => void;
 }> {
   const page = o.page ?? "services";
@@ -336,7 +337,8 @@ describe("the status chip (R6)", () => {
     await p.waitForSelector("#den-status.bad");
     expect(await text(p, "#den-status")).toBe("1 down");
     expect(await text(p, "#den-runs")).toBe("");
-    expect(await text(p, "#den-lock")).toBe("🔒");
+    // LK-0: no lock chip; the sudo chip shows only while an ask waits.
+    expect(await p.isHidden("#den-lock")).toBe(true);
     expect(await p.isVisible("#den-runs .den-dot")).toBe(true);
     await p.context().close();
   }, 30_000);
@@ -556,22 +558,10 @@ describe("the ⌘K palette (R17)", () => {
     await p.context().close();
   }, 30_000);
 
-  it("Restart follows the lock rule, then hands the action to Local Dev", async () => {
+  it("Restart hands the action to Local Dev, asking for nothing first (LK-0)", async () => {
     if (!browser) return;
     const { p, reqs } = await mount();
     await p.waitForSelector("#den-status.bad");
-    await p.keyboard.press("Control+k");
-    await p.keyboard.type("restart shop/db");
-    await p.keyboard.press("Enter");
-    // Locked: the lock popover opens on its password field; nothing runs.
-    await p.waitForSelector("#den-lock-pop");
-    expect(await focused(p)).toBe("den-lock-pw");
-    expect(p.url()).toBe("http://den.test/services");
-    await p.fill("#den-lock-pw", "right");
-    await p.keyboard.press("Enter");
-    await p.waitForFunction(() =>
-      document.getElementById("den-lock")!.innerText.includes("Unlocked"),
-    );
     await p.keyboard.press("Control+k");
     await p.keyboard.type("restart shop/db");
     await Promise.all([
@@ -581,6 +571,8 @@ describe("the ⌘K palette (R17)", () => {
     await p.waitForFunction(
       () => (window as unknown as { __hdr?: object }).__hdr,
     );
+    // No password asked: the server says when sudo needs one.
+    expect(reqs.filter((r) => r.includes("/api/sudo-password"))).toEqual([]);
     expect(
       await p.evaluate(() =>
         JSON.parse(sessionStorage.getItem("__DEN_CLI__-pending-action")!),
@@ -608,40 +600,66 @@ describe("the ⌘K palette (R17)", () => {
   }, 30_000);
 });
 
-describe("the lock chip (R8)", () => {
-  it("holds the admin-password form in a popover; Escape returns to the chip", async () => {
+type Need = { command?: string; step?: string };
+type Hdr = {
+  askSudo: (need?: Need) => Promise<boolean>;
+  sudoRun: () => {
+    see: (msg: unknown) => boolean;
+    done: (retry: () => unknown) => Promise<unknown>;
+  };
+};
+const NEED: Need = { command: "sudo touch /etc/acme-test", step: "shop/db" };
+
+describe("the admin password, asked only when sudo needs it (R8, LK-0)", () => {
+  it("no chip on a page view, and no vault; a needs-sudo ask shows the chip and the prompt naming the command", async () => {
     if (!browser) return;
     const { p, posts, reqs } = await mount();
-    await p.waitForFunction(() => !!document.querySelector("#den-lock"));
-    expect(await text(p, "#den-lock")).toBe("🔒 Locked");
+    await p.waitForSelector("#den-status.bad");
     await p.waitForTimeout(200);
-    // A page view never wakes 1Password: it's asked when the popover opens.
-    expect(reqs).not.toContain("GET /api/sudo-password/vault-status");
-    await p.click("#den-lock");
+    expect(await p.isHidden("#den-lock")).toBe(true);
+    // A page view never wakes 1Password, nor asks about the password.
+    expect(reqs.filter((r) => r.includes("/api/sudo-password"))).toEqual([]);
+    await p.evaluate((n) => {
+      const w = window as unknown as { __hdr: Hdr; __asked?: unknown };
+      void w.__hdr.askSudo(n).then((ok) => (w.__asked = ok));
+    }, NEED);
     await p.waitForSelector("#den-lock-pop form");
     await p.waitForSelector("#den-lock-pop .den-lock-save:not([hidden])");
     expect(reqs.filter((r) => r.includes("vault-status"))).toHaveLength(1);
+    expect(await p.isVisible("#den-lock")).toBe(true);
+    expect(await text(p, "#den-lock")).toBe("🔑 Admin password needed");
     expect(await p.getAttribute("#den-lock-pop", "role")).toBe("dialog");
     expect(await text(p, "#den-lock-pop")).toBe(
-      "Unlock to start, stop and restart services and agents Save to 1Password Unlock Den asks once per session. Agents can't unlock.",
+      "sudo touch /etc/acme-test needs your admin password shop/db Save to 1Password Continue Den uses it only for sudo. Agents can't enter it.",
     );
+    expect(await focused(p)).toBe("den-lock-pw");
     await p.fill("#den-lock-pw", "wrong");
     await p.click("#den-lock-go");
     await p.waitForSelector("#den-lock-err:not([hidden])");
     expect(await text(p, "#den-lock-err")).toBe(
       "Incorrect password — try again",
     );
+    // Escape says no: the ask ends false, and the chip goes.
     await p.keyboard.press("Escape");
     expect(await p.$("#den-lock-pop")).toBeNull();
-    expect(await focused(p)).toBe("den-lock");
-    await p.click("#den-lock");
+    await p.waitForFunction(
+      () => (window as unknown as { __asked?: unknown }).__asked === false,
+    );
+    expect(await p.isHidden("#den-lock")).toBe(true);
+    // Asked again: the right one, saved to the vault, ends it true.
+    await p.evaluate((n) => {
+      const w = window as unknown as { __hdr: Hdr; __asked?: unknown };
+      void w.__hdr.askSudo(n).then((ok) => (w.__asked = ok));
+    }, NEED);
+    await p.waitForSelector("#den-lock-pop form");
     await p.check("#den-lock-vault");
     await p.fill("#den-lock-pw", "right");
     await p.keyboard.press("Enter");
-    await p.waitForFunction(() =>
-      document.getElementById("den-lock")!.innerText.includes("Unlocked"),
+    await p.waitForFunction(
+      () => (window as unknown as { __asked?: unknown }).__asked === true,
     );
-    expect(await text(p, "#den-lock")).toBe("🔓 Unlocked");
+    expect(await p.$("#den-lock-pop")).toBeNull();
+    expect(await p.isHidden("#den-lock")).toBe(true);
     expect(
       posts.filter((x) => x.path === "/api/sudo-password").map((x) => x.body),
     ).toEqual([
@@ -650,26 +668,52 @@ describe("the lock chip (R8)", () => {
     ]);
     await p.context().close();
   }, 30_000);
+
+  it("a run's needs-sudo asks, and after the password the action runs again; a run without one asks nothing", async () => {
+    if (!browser) return;
+    const { p, reqs } = await mount();
+    await p.waitForSelector("#den-status.bad");
+    // No needs-sudo: done never retries, nothing is asked.
+    expect(
+      await p.evaluate(async () => {
+        const r = (window as unknown as { __hdr: Hdr }).__hdr.sudoRun();
+        r.see({ type: "line", text: "x" });
+        return (await r.done(() => "again")) ?? "not again";
+      }),
+    ).toBe("not again");
+    expect(reqs.filter((r) => r.includes("/api/sudo-password"))).toEqual([]);
+    // needs-sudo: asked, then run again once the password is in.
+    await p.evaluate((n) => {
+      const w = window as unknown as { __hdr: Hdr; __again?: unknown };
+      const r = w.__hdr.sudoRun();
+      r.see({ type: "needs-sudo", ...n });
+      void r.done(() => "again").then((v) => (w.__again = v));
+    }, NEED);
+    await p.waitForSelector("#den-lock-pop #den-lock-pw");
+    await p.fill("#den-lock-pw", "right");
+    await p.keyboard.press("Enter");
+    await p.waitForFunction(
+      () => (window as unknown as { __again?: unknown }).__again === "again",
+    );
+    await p.context().close();
+  }, 30_000);
 });
 
-type Hdr = { requireUnlock: () => Promise<boolean> };
-
-describe("the lock is always reachable, and asks the server first (LK, 0.4.3)", () => {
-  it("LK-1: over an open modal dialog, the popover is on top and takes the password", async () => {
+describe("the prompt is always reachable, and asks the server first (LK-1..3, 0.4.3)", () => {
+  it("LK-1: over an open modal dialog, the prompt is on top and takes the password", async () => {
     if (!browser) return;
     const { p } = await mount();
-    await p.waitForFunction(() =>
-      document.getElementById("den-lock")!.innerText.includes("Locked"),
-    );
-    // A page's modal (the Start dialog's kind) is open when an action asks.
-    await p.evaluate(() => {
+    await p.waitForSelector("#den-status.bad");
+    // A page's modal is open when a run asks.
+    await p.evaluate((n) => {
       const d = document.createElement("dialog");
       d.id = "some-modal";
       d.innerHTML = "<p>a modal</p><button>ok</button>";
       document.body.appendChild(d);
       d.showModal();
-      void (window as unknown as { __hdr: Hdr }).__hdr.requireUnlock();
-    });
+      const w = window as unknown as { __hdr: Hdr; __asked?: unknown };
+      void w.__hdr.askSudo(n).then((ok) => (w.__asked = ok));
+    }, NEED);
     await p.waitForSelector("#den-lock-pop #den-lock-pw");
     const hit = await p.evaluate(() => {
       const r = document.getElementById("den-lock-pw")!.getBoundingClientRect();
@@ -682,8 +726,8 @@ describe("the lock is always reachable, and asks the server first (LK, 0.4.3)", 
     );
     await p.fill("#den-lock-pw", "right");
     await p.keyboard.press("Enter");
-    await p.waitForFunction(() =>
-      document.getElementById("den-lock")!.innerText.includes("Unlocked"),
+    await p.waitForFunction(
+      () => (window as unknown as { __asked?: unknown }).__asked === true,
     );
     // The page's modal is still open: nothing was closed to get there.
     expect(
@@ -694,57 +738,52 @@ describe("the lock is always reachable, and asks the server first (LK, 0.4.3)", 
     await p.context().close();
   }, 30_000);
 
-  it("LK-2: thinking it's locked, an action asks the server again before asking the person", async () => {
+  it("LK-2: set elsewhere, an ask asks the server again before asking the person", async () => {
     if (!browser) return;
     const { p, reqs, unlockElsewhere } = await mount();
-    await p.waitForFunction(() =>
-      document.getElementById("den-lock")!.innerText.includes("Locked"),
-    );
-    const asked = reqs.filter(
-      (r) => r === "GET /api/sudo-password/status",
-    ).length;
+    await p.waitForSelector("#den-status.bad");
     unlockElsewhere();
     expect(
-      await p.evaluate(() =>
-        (window as unknown as { __hdr: Hdr }).__hdr.requireUnlock(),
+      await p.evaluate(
+        (n) => (window as unknown as { __hdr: Hdr }).__hdr.askSudo(n),
+        NEED,
       ),
     ).toBe(true);
     expect(
       reqs.filter((r) => r === "GET /api/sudo-password/status").length,
-    ).toBe(asked + 1);
+    ).toBe(1);
     expect(await p.$("#den-lock-pop")).toBeNull();
-    expect(await text(p, "#den-lock")).toBe("🔓 Unlocked");
+    expect(await p.isHidden("#den-lock")).toBe(true);
     await p.context().close();
   }, 30_000);
 
-  it("LK-3: with a password in the vault, the first gated action on any page loads it before showing the field", async () => {
+  it("LK-3: with a password in the vault, an ask loads it before showing the field", async () => {
     if (!browser) return;
     const { p, reqs } = await mount({ vaultStored: true });
-    await p.waitForFunction(() =>
-      document.getElementById("den-lock")!.innerText.includes("Locked"),
-    );
+    await p.waitForSelector("#den-status.bad");
     // A page view alone never wakes the vault.
     expect(reqs).not.toContain("POST /api/sudo-password/load-from-vault");
     expect(
-      await p.evaluate(() =>
-        (window as unknown as { __hdr: Hdr }).__hdr.requireUnlock(),
+      await p.evaluate(
+        (n) => (window as unknown as { __hdr: Hdr }).__hdr.askSudo(n),
+        NEED,
       ),
     ).toBe(true);
     expect(reqs).toContain("POST /api/sudo-password/load-from-vault");
     expect(await p.$("#den-lock-pop")).toBeNull();
-    expect(await text(p, "#den-lock")).toBe("🔓 Unlocked");
+    expect(await p.isHidden("#den-lock")).toBe(true);
     await p.context().close();
   }, 30_000);
 });
 
-describe("the lock on Local Dev", () => {
-  it("asks the vault on load, as Local Dev always did, and unlocks from it", async () => {
+describe("Local Dev (LK-0)", () => {
+  it("doesn't wake the vault on load: the password is asked for only when sudo needs it", async () => {
     if (!browser) return;
     const { p, reqs } = await mount({ page: "local-dev", vaultStored: true });
-    await p.waitForFunction(() =>
-      document.getElementById("den-lock")!.innerText.includes("Unlocked"),
-    );
-    expect(reqs).toContain("POST /api/sudo-password/load-from-vault");
+    await p.waitForSelector(".den-rail .den-ni");
+    await p.waitForTimeout(300);
+    expect(reqs.filter((r) => r.includes("/api/sudo-password"))).toEqual([]);
+    expect(await p.isHidden("#den-lock")).toBe(true);
     await p.context().close();
   }, 30_000);
 });
@@ -877,7 +916,11 @@ describe("criterion 5: the overlays only read", () => {
     await p.waitForSelector("#den-status.bad");
     await p.click("#den-status");
     await p.keyboard.press("Escape");
-    await p.click("#den-lock");
+    // The admin-password prompt, opened and declined.
+    await p.evaluate(
+      () => void (window as unknown as { __hdr: Hdr }).__hdr.askSudo({}),
+    );
+    await p.waitForSelector("#den-lock-pop");
     await p.keyboard.press("Escape");
     await p.click("#appearance-btn");
     await p.keyboard.press("Escape");

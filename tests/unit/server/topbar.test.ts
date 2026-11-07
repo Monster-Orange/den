@@ -335,18 +335,20 @@ describe("the pages", () => {
     expect(read("header.js")).not.toMatch(/health-more|_layoutHealthRow/);
   });
 
-  it("the sudo banner is gone: the lock chip is the one unlock, on every page", () => {
+  it("the sudo banner is gone, and nothing asks for the admin password up front (LK-0)", () => {
     for (const f of fs.readdirSync(PUBLIC).filter((x) => x.endsWith(".html")))
       expect(read(f)).not.toMatch(/sudo-banner|sudo-lock|\/api\/sudo-password/);
+    // No page gates an action on the password: it is for sudo only.
+    for (const f of fs
+      .readdirSync(PUBLIC)
+      .filter((x) => /\.(html|js)$/.test(x)))
+      expect(read(f)).not.toMatch(/requireUnlock|requireSudo|checkUnlock/);
     const local = read("local-dev.html");
-    // Local Dev keeps its lock rule, now the shared one.
-    expect(local).toMatch(
-      /function requireSudo\(\) \{\s*return requireUnlock\(\);/,
-    );
-    // LK-2/LK-3: the rule asks the server (and the vault) first, so it's awaited.
-    expect(
-      local.match(/if \(!\(await requireSudo\(\)\)\) return;/g)?.length,
-    ).toBe(6);
+    // Its six runs (syncs, a workspace's command, up/down with deps, a
+    // card's command) ask only when the server says sudo needs it, then
+    // run again.
+    expect(local.match(/sudo\.see\(msg\)/g)?.length).toBe(5);
+    expect(local.match(/sudo\.done\(|sudo\s*\.done\(/g)?.length).toBe(6);
     // …and runs Start and Restart for the drawer and the palette.
     expect(local).toMatch(
       /setServiceRunner\(\(cmd, s\) =>\s*window\.runCmd\(s\.address, s\.repo, s\.service, cmd\)/,

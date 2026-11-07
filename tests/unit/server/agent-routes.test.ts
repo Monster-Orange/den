@@ -20,14 +20,13 @@ import {
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { verifyActorToken } from "../../../src/shared/actor-token.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
+import { hasSudoPassword } from "../../../src/ui/server/sudo-store.js";
 import { cleanupRigs, rig, settle, type Rig } from "../agents/helpers/rig.js";
 
 interface Api {
   r: Rig;
   /** http://localhost:<port> */
   base: string;
-  /** Whether the lock (R8) is open; tests flip it. */
-  lock: { open: boolean };
   call(
     method: string,
     p: string,
@@ -45,7 +44,6 @@ afterEach(async () => {
 
 async function api(): Promise<Api> {
   const r = await rig();
-  const lock = { open: true };
   const server = http.createServer((req, res) => {
     const id = newRequestId();
     res.setHeader("X-Request-Id", id);
@@ -65,10 +63,7 @@ async function api(): Promise<Api> {
         grants: rec.grants,
         session: rec.session,
       });
-    handleAgentRoutes(req, res, p, {
-      agents: r.deps,
-      unlocked: () => lock.open,
-    })
+    handleAgentRoutes(req, res, p, { agents: r.deps })
       .then((handled) => {
         if (!handled) {
           res.writeHead(404);
@@ -86,7 +81,6 @@ async function api(): Promise<Api> {
   return {
     r,
     base: `http://localhost:${port}`,
-    lock,
     async call(method, p, body, headers = {}) {
       const res = await fetch(`http://localhost:${port}${p}`, {
         method,
@@ -299,28 +293,6 @@ describe("GET /api/workspaces/<ws>/agents", () => {
     expect(a.r.made[0].signals).toEqual([]);
   });
 
-  it("with the lock closed, another workspace's agent is still a 404 that doesn't name it (not 423)", async () => {
-    const a = await api();
-    await start(a, "north", { persona: "planner" });
-    a.lock.open = false;
-    for (const verb of ["stop", "resume"]) {
-      const { status, json } = await a.call(
-        "POST",
-        `/api/workspaces/south/agents/planner/${verb}`,
-      );
-      expect(status).toBe(404);
-      expectR26(json, "not_found");
-      expect(String(json.error)).not.toContain("north");
-    }
-    // This workspace's own agent is still behind the lock.
-    const own = await a.call(
-      "POST",
-      "/api/workspaces/north/agents/planner/stop",
-    );
-    expect(own.status).toBe(423);
-    expect(a.r.made[0].signals).toEqual([]);
-  });
-
   it("asking never starts a session host: with none running, a record lists as ended", async () => {
     const a = await api();
     await start(a, "north", { persona: "planner" });
@@ -374,31 +346,29 @@ describe("POST /api/workspaces/<ws>/agents (start)", () => {
     expect(entry.outcome).toBeUndefined();
   });
 
-  it("is refused while the lock is closed (423 locked): nothing starts, and the refusal is audited", async () => {
+  it("never asks for the admin password (LK-0): with none held, start, stop and resume run", async () => {
     const a = await api();
-    a.lock.open = false;
-    const { status, json } = await start(a, "north", { persona: "planner" });
-    expect(status).toBe(423);
-    expectR26(json, "locked");
-    expect(a.r.made).toHaveLength(0);
-    expect(await rows(a, "north")).toEqual([]);
-    expect(recentActions().at(-1)).toMatchObject({
-      verb: "agents",
-      outcome: "refused",
-    });
-    // Stop and Resume are gated the same way.
-    a.lock.open = true;
-    await start(a, "north", { persona: "planner" });
-    a.lock.open = false;
-    for (const verb of ["stop", "resume"]) {
-      const r = await a.call(
-        "POST",
-        `/api/workspaces/north/agents/planner/${verb}`,
-      );
-      expect(r.status).toBe(423);
-      expectR26(r.json, "locked");
-    }
-    expect(a.r.made[0].signals).toEqual([]);
+    expect(hasSudoPassword()).toBe(false);
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    const stop = await a.call(
+      "POST",
+      "/api/workspaces/north/agents/planner/stop",
+    );
+    expect(stop.status).toBe(200);
+    a.r.made[0].exit(143);
+    await settle();
+    const resume = await a.call(
+      "POST",
+      "/api/workspaces/north/agents/planner/resume",
+    );
+    expect(resume.status).toBe(200);
+    expect(a.r.made).toHaveLength(2);
+    // Each one done, none refused.
+    expect(
+      recentActions()
+        .slice(-3)
+        .map((e) => e.outcome),
+    ).toEqual([undefined, undefined, undefined]);
   });
 
   it("is capped by agents.max_concurrent (429 cap)", async () => {

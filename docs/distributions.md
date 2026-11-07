@@ -352,7 +352,7 @@ where it is, under `secrets.refs`:
 
 | Ref                  | Feature                                                      |
 | -------------------- | ------------------------------------------------------------ |
-| `sudo`               | The saved local-dev sudo password (auto-unlock, "Save to …") |
+| `sudo`               | The saved admin password, for sudo (auto-load, "Save to …")  |
 | `journeys_agent_key` | The journeys agent's API key, when `CURSOR_API_KEY` is unset |
 
 ```yaml
@@ -377,19 +377,37 @@ secrets:
 and `env` need a `key` (or an env-shaped `field`). There are no defaults:
 a ref that is not set is **not configured**, and its feature says so
 ("not configured: set secrets.provider and secrets.refs.sudo in
-config/acme.yml") instead of running a CLI. The interactive unlock always
+config/acme.yml") instead of running a CLI. Typing the password always
 works; only the saved password needs `refs.sudo`.
 `/api/sudo-password/vault-status` reports `backend`, `label`,
 `configured`, `backendAvailable`, `reason` and `hasStored` (`opAvailable`
 is a deprecated alias of `backendAvailable`, kept for one minor).
 
-The lock (🔒 in the top bar) is asked for only when an action needs it,
-on any page: a page that thinks it's locked asks the server again first
-(another tab or device may have unlocked it), then, when a password is
-stored, loads it from the vault (once a page; a page view alone never
-wakes the vault), and only then shows the password field. Its popover is
-always on top, even over a dialog, and a dialog that needs the lock (Start
-agent) asks for the password itself.
+The admin password is for sudo, and nothing else (LK-0). It is no sign-in
+and no access check: starting, stopping and resuming agents, sessions and
+terminals, and a service whose commands run no sudo, never ask for it.
+Den asks only when a command it runs is about to run sudo without it:
+every service command (up, down, restart, setup, sync) gets a `sudo` shim
+first on its `PATH`. With a password held, the shim gives it to sudo. With
+none, sudo that needs no password (NOPASSWD, a warm cache) runs as it
+would, and anything else never prompts: the shim prints
+`<cli>: needs-sudo: sudo <command>` and fails, and the run's event stream
+carries `{ "type": "needs-sudo", "command": "sudo <command>", "step":
+"<service>" }` (sudo's own "a password is required" counts too, without
+the command). Only then does the page ask, saying "`sudo <command>` needs
+your admin password", with the 🔑 chip in the top bar while it waits. It
+asks the server first (another tab or device may have set it), then, when
+a password is stored, loads it from the vault (a page view alone never
+wakes the vault), and only then shows the password field, always on top,
+even over a dialog. After the password, the action runs again.
+
+Settings › Command line › Admin password says whether it is saved ("Saved
+in 1Password", "Saved for this session" or "Not saved"), with **Forget**:
+`POST /api/sudo-password/forget` drops the password the server holds and,
+when this server saved it to the vault or loaded it from there, clears the
+vault's copy. `GET /api/sudo-password/status` answers `set`,
+`passwordless`, `saved` (`vault`, `session` or null) and `vault` (`{
+configured, label }`, read from the config alone).
 
 A `1password` distribution with no refs gets one warning, in the web
 server's startup log and in `<cli> validate`, with the YAML to add.
@@ -1190,8 +1208,8 @@ are the same directory.
 ## Signing in
 
 On localhost nothing asks you to sign in: every page, the agents and the
-terminal work as they are, and the lock (R8) is the only prompt (for
-privileged actions). The edge counts as local too (0.4.3): opening
+terminal work as they are, and the admin password (R8) is the only prompt,
+asked only when a command Den runs needs sudo. The edge counts as local too (0.4.3): opening
 `https://acme.acme.localhost` from this machine asks for nothing.
 Signing in is for when the server is reached from another machine: the
 edge for a client the edge says is elsewhere, a LAN address, or a bind
@@ -1708,9 +1726,10 @@ started. The workspace header counts them ("2 agents").
 - The page and the CLI call the same operations and read the same agent
   records, so an agent started in one is listed in the other. A workspace
   lists its own agents only.
-- Start, Stop and Resume need the lock open (🔓, the same rule as a
-  service's Start), are capped by `agents.max_concurrent`, and are refused
-  for an agent (agents don't start agents from the page). Each one is in the
+- Start, Stop and Resume never ask for the admin password (it is for
+  sudo, and no agent action runs sudo), are capped by
+  `agents.max_concurrent`, and are refused for an agent (agents don't
+  start agents from the page). Each one is in the
   server log's activity, with you as its actor. The agent's environment is
   the one below, built from the web server's environment.
 - **Open in Agents →** (the section header) opens the Agents tab for the
@@ -1720,7 +1739,7 @@ The routes: `GET /api/workspaces/<ws>/agents`, `POST
 /api/workspaces/<ws>/agents` (`{ persona, runtime?, model?, id? }`), `POST
 /api/workspaces/<ws>/agents/<id>/stop` and `…/resume`, and `GET
 /api/personas` (personas and runtimes). Errors are the usual
-`{ ok: false, error, code, requestId }`: `locked` (423), `cap` (429),
+`{ ok: false, error, code, requestId }`: `cap` (429),
 `conflict` (409, e.g. already running, or no resume), `not_found` (404),
 `exited_at_once` (502, with the session's last lines).
 
@@ -1743,12 +1762,10 @@ agent of the workspaces in view, and their terminals in the browser.
   reload or Back reopens them.
 - **Close** (×) detaches, as leaving the page does: the session keeps
   running, and opening it again replays what you missed. **Stop** (an
-  agent only) is `agents stop`, behind the lock. **+ Start agent** (or
+  agent only) is `agents stop`. **+ Start agent** (or
   `/agents?start=1`) starts one and opens its pane; under All it asks for
   the workspace. It says before Start whether the runtime can run, as the
-  Workspaces page's form does. While the lock is closed, the dialog asks
-  for the admin password at its top, and Start unlocks, then starts, without
-  closing anything.
+  Workspaces page's form does. It never asks for the admin password.
 - ⌘K lists each as "Agents › <ws> / <name>", and "Start agent…".
 - Several browsers and `<cli> sessions attach` can attach to one session
   at once and each sees every byte; the terminal's size is the last
@@ -1813,8 +1830,9 @@ header (agent headers without the token are recorded as an unverified
 claim).
 
 An agent's token reaches only its own session's routes, and never a
-shell-grade route, `/api/web/*`, sign-in or sign-out, or the lock: it can't
-unlock, use the sudo password or start another agent (403
+shell-grade route, `/api/web/*`, sign-in or sign-out, or the admin
+password's routes: it can't set the admin password, use it for sudo or
+start another agent (403
 `agent_forbidden`). A person's credential never reaches a session:
 `DEN_PERSON_TOKEN`, a person token's value and a path to `web.secret` are
 always removed, and `sessions start --keep-env` of one is refused and logged.
@@ -1835,7 +1853,8 @@ it does not catch every spelling: a path relative to the agent's cwd
 (`cat ../.den/web.secret`, say), another program, a script or a copy under
 another name all get past it. The server's token rules (above)
 are the boundary: whatever an agent reads, its token reaches only its own
-session's routes, never a shell-grade route or the lock. OS-user isolation
+session's routes, never a shell-grade route or the admin password's.
+OS-user isolation
 (a separate user, a container, a sandbox) is not in 0.4.x. `web logout
 --all` revokes every agent's token (above, under Signing in).
 

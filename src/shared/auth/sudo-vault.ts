@@ -125,6 +125,22 @@ export async function sudoVaultStatus(): Promise<SudoVaultStatus> {
   return out(true, await hasSudoInVault());
 }
 
+/**
+ * Where a saved password would be kept, for Settings' "saved in <label>"
+ * (LK-0): read from the config alone, nothing spawned (a page view never
+ * wakes the vault).
+ */
+export function sudoVaultWhere(): { configured: boolean; label: string } {
+  try {
+    const st = secretsStatus(readSecretsConfig(), process.env, {
+      detect: false,
+    });
+    return { configured: !!sudoRef(), label: st.label };
+  } catch {
+    return { configured: false, label: "" };
+  }
+}
+
 /** Name of the active backend, for UI copy ("Save to Doppler"). */
 export function secretsBackendLabel(): string {
   return secretsStatus().label;

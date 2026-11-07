@@ -498,6 +498,53 @@ export const DEN_SETTINGS = [
     },
     read: () => null,
   },
+  {
+    // R8, LK-0: the admin password is for sudo, and nothing else. Den asks
+    // for it only when a command it runs needs sudo; here is whether it is
+    // saved, and Forget. Reading never wakes the vault.
+    id: "cli.sudo",
+    category: "cli",
+    label: "Admin password",
+    description:
+      "Used only when a command Den runs needs sudo, and asked for only then. It is no sign-in: nothing else needs it.",
+    keywords: ["admin", "password", "sudo", "forget", "vault", "1password"],
+    scope: "user",
+    control: {
+      type: "custom",
+      render(host, ctx) {
+        const draw = (st) => {
+          const saved = st?.saved;
+          const where =
+            saved === "vault"
+              ? `Saved in ${st.vault?.label || "the vault"}`
+              : saved === "session"
+                ? "Saved for this session"
+                : "Not saved";
+          host.innerHTML =
+            '<output class="set-ro" id="set-sudo"></output>' +
+            (saved
+              ? ' <button type="button" class="btn" id="set-sudo-forget">Forget</button>'
+              : "");
+          host.querySelector("output").textContent = where;
+          host
+            .querySelector("#set-sudo-forget")
+            ?.addEventListener("click", () =>
+              ctx.shell
+                .api("POST", "/api/sudo-password/forget", {})
+                .then(load)
+                .catch(load),
+            );
+        };
+        const load = () =>
+          fetch("/api/sudo-password/status", { cache: "no-store" })
+            .then((r) => (r.ok ? r.json() : null))
+            .then(draw)
+            .catch(() => draw(null));
+        void load();
+      },
+    },
+    read: () => null,
+  },
 
   // ── Distribution (read-only) ───────────────────────────────────────────
   distRow(

@@ -4,6 +4,55 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.4] - unreleased
+
+The admin password is for sudo, and nothing else (LK-0).
+
+### Changed
+
+- **Nothing asks for the admin password up front.** It was a lock: agent
+  start, stop and resume answered `423 locked` without it, and the pages
+  asked for it before agent actions, service actions and syncs. It is no
+  access check (that is sign-in, the Host/Origin/CSRF checks and agent
+  tokens), and Den now asks for it only when a command it runs is about to
+  run sudo. Agents, sessions, terminals and services whose commands run no
+  sudo never ask. The agent routes' `423 locked` is gone, and so is the
+  Start agent dialog's password field.
+- **A run that needs sudo says so, and the page asks then.** Every service
+  command (up, down, restart, setup, sync) gets a `sudo` shim first on its
+  PATH. With the password held, it gives it to sudo, as before. Without
+  it, sudo that needs no password (NOPASSWD, a warm cache) runs as it
+  would; anything else never prompts: the run's events carry
+  `{ "type": "needs-sudo", "command": "sudo <command>", "step": "<service>" }`
+  (sudo's own "a password is required" counts too, without the command).
+  The page then says "`sudo <command>` needs your admin password", in the
+  top layer, and runs the action again after it. Before asking, it asks
+  the server (another tab or device may have set it) and, when one is
+  stored, the vault. Local Dev no longer loads it from the vault on page
+  load.
+- **No Locked/Unlocked chip.** The top bar shows "🔑 Admin password
+  needed" only while a run waits for it. Settings › Command line › Admin
+  password says "Saved in 1Password", "Saved for this session" or "Not
+  saved", with Forget (`POST /api/sudo-password/forget`, which also clears
+  the vault's copy when this server saved or loaded it there).
+  `GET /api/sudo-password/status` adds `saved` and `vault`.
+
+### Fixed
+
+- **A Settings row with its own control is drawn.** A custom row without a
+  write was drawn as an empty read-only value, so Browser sign-in showed
+  nothing; it now shows its state and Sign out.
+
+### Migrations
+
+- A page script that imported `requireUnlock`, `checkUnlock`,
+  `isUnlocked` or `onLockChange` from `header.js` or `topbar.js`: they are
+  gone. Run the action; when its run's events carry `needs-sudo`, the
+  shell asks (`sudoRun()` from `header.js`: `see(msg)` on each event,
+  `done(retry)` when the run ends).
+- A client that handled `423 locked` from the agent routes: it no longer
+  happens.
+
 ## [0.4.3] - 2026-11-06
 
 Agents start, and the edge counts as local.

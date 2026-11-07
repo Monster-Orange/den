@@ -7,15 +7,15 @@
  *
  * Every call is the server's agent routes (agent-routes.ts), which are the
  * CLI's own operations: nothing here keeps an agent's state. Each action
- * goes through denShell.api() (a refusal is its error toast) after the
- * lock rule (requireUnlock, R8), as a service action does. A row with a
+ * goes through denShell.api() (a refusal is its error toast). None asks
+ * for the admin password: it is for sudo, and no agent action runs sudo
+ * (LK-0). A row with a
  * session has Open (its terminal on the Agents page, AG-4a-term), and the
  * header links to the Agents page for the workspace.
  *
  * The page's table styles (table.svc, .tablewrap, .tbl-*) and the shell's
  * (.den-sec, .den-btn, .den-dot) are reused as they are.
  */
-import { requireUnlock } from "/topbar.js";
 import { fillStartForm } from "/agent-start.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
@@ -217,7 +217,6 @@ async function openForm(sec) {
 }
 
 async function act(ws, verb, id, button) {
-  if (!(await requireUnlock())) return;
   button.disabled = true;
   try {
     await api("POST", `${base(ws)}/${encodeURIComponent(id)}/${verb}`);
@@ -231,7 +230,6 @@ async function act(ws, verb, id, button) {
 }
 
 async function start(ws, form) {
-  if (!(await requireUnlock())) return;
   const go = form.querySelector("#agent-start-go");
   const persona = form.querySelector('select[name="persona"]').value;
   const runtime = form.querySelector('select[name="runtime"]').value;

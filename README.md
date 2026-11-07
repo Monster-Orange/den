@@ -43,8 +43,8 @@ yours. Den connects them and turns on good practice from the start.
 - **Agents work by the same rules as you.** Start an agent from a persona (planner, orchestrator, developers,
   devops, reviewer, UX designer, or your own) in a workspace. Its terminal opens in the Agents tab and keeps
   running when you close the page or restart the web server. Over MCP it sees your stack with the same guards
-  and audit trail as a person, under a token of its own. Agents can read and investigate. Acting is opt-in,
-  and the lock still guards starting and stopping things.
+  and audit trail as a person, under a token of its own. Agents can read and investigate, and acting is opt-in.
+  Starting an agent never asks for your admin password: Den asks for it only when a command it runs needs sudo.
 - **Safe on localhost, signed in beyond it.** On localhost there is nothing to sign in to. Reached through the
   edge or your network, every page and call needs a sign-in, and there is no password: `acme web login` prints a
   one-time link.

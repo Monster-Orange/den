@@ -11,22 +11,24 @@
  *                     shell.js's denShell.runs, dev.30), where every page's
  *                     output lands; an empty dock links to the page that ran
  *                     the last run
- *   lock (R8)         #den-lock: 🔒 Locked / 🔓 Unlocked, the admin-password
- *                     form in a popover (Local Dev's sudo banner, moved)
+ *   sudo (R8, LK-0)   #den-lock: shown only while a run waits for the admin
+ *                     password because a command it runs needs sudo; it
+ *                     opens the password prompt (in the top layer)
  *
- * Exports for pages (through header.js): requireUnlock() (Local Dev's lock
- * rule, async: true when unlocked, else the lock popover opens), and
- * checkUnlock() and unlockWith(password) for a modal that asks inline
- * (LK-1), isUnlocked(), onLockChange(fn), setServiceRunner(fn) (the page
- * that runs Start and Restart itself), takePendingAction().
+ * Exports for pages (through header.js): askSudo(need) (the prompt for a
+ * run's needs-sudo event: true once the password is set), sudoRun() (a
+ * run's needs-sudo, then the action again after the password),
+ * unlockWith(password), setServiceRunner(fn) (the page that runs Start
+ * and Restart itself), takePendingAction().
  *
- * The lock (LK, 0.4.3): the page's own idea of it is never the last word.
- * When it thinks it's locked, an action asks the server again first
- * (another tab or device may have unlocked it, LK-2), then, when a
- * password is stored in the vault, loads it from there (LK-3, once a page,
- * on any page; a page view alone never wakes the vault). The popover is in
- * the top layer (a popover, or its own modal <dialog> when a modal is
- * open), so no modal ever covers it (LK-1).
+ * The admin password is for sudo, and nothing else (LK-0): no action asks
+ * for it up front, and it is no access check. The server says when a
+ * command is about to run sudo without it; then the page asks the server
+ * again first (another tab or device may have set it, LK-2), then, when a
+ * password is stored in the vault, loads it from there (LK-3; a page view
+ * alone never wakes the vault), and only then shows the field. The prompt
+ * is in the top layer (a popover, or its own modal <dialog> when a modal
+ * is open), so no modal ever covers it (LK-1).
  *
  * The pure parts (statusSummary, statusChip, problemCards, drawerGroups,
  * checkLine, rankCommands, runOf) take plain data, so tests need no
@@ -418,7 +420,6 @@ export function runOf(url, base = "http://localhost/") {
 // ── the UI ──────────────────────────────────────────────────────────────────
 
 const LS_LAST_RUN = "__DEN_CLI__-last-run";
-const LS_LOCK = "__DEN_CLI__-lock";
 const SS_PENDING = "__DEN_CLI__-pending-action";
 const KIND = ["page", "service", "app", "agent", "action", "setting"];
 const kindLabel = (k) =>
@@ -738,7 +739,7 @@ let serviceRunner = null;
 
 /**
  * The page that runs a service command itself (Local Dev: its runCmd, with
- * its lock rule and its output pane) registers `fn(cmd, svc)`; `svc` is
+ * its output pane) registers `fn(cmd, svc)`; `svc` is
  * `{ repo, service, address, workspaces }`.
  */
 export function setServiceRunner(fn) {
@@ -747,16 +748,15 @@ export function setServiceRunner(fn) {
 
 /**
  * Start (`up`) or Restart from the drawer or the palette: an explicit
- * action. The page's runner does it where there is one. Elsewhere the lock
- * rule applies first (requireUnlock), then the action is handed to Local
- * Dev, where the command runs with its output (a run stops when its page
+ * action. The page's runner does it where there is one. Elsewhere the
+ * action is handed to Local Dev, where the command runs with its output
+ * (and asks for the admin password only if it runs sudo, LK-0) (a run stops when its page
  * closes, so it can't run on a page that is about to be left): the page
  * stores it for this tab (sessionStorage, not a link anyone could open)
  * and Local Dev takes it once (takePendingAction).
  */
-export async function runServiceAction(cmd, svc) {
+export function runServiceAction(cmd, svc) {
   if (serviceRunner) return serviceRunner(cmd, svc);
-  if (!(await requireUnlock())) return;
   try {
     sessionStorage.setItem(
       SS_PENDING,
@@ -1119,83 +1119,32 @@ function trackRuns() {
   window.EventSource = DenEventSource;
 }
 
-// ── lock chip (R8) ──────────────────────────────────────────────────────────
+// ── the admin password, for sudo (R8, LK-0) ───────────────────────────────
 
-const lock = {
-  known: false,
-  unlocked: false,
-  passwordless: false,
+/*
+ * LK-0 (Ward, 2026-11-06): the admin password is for sudo, and nothing
+ * else. Nothing asks for it up front: a run that is about to run sudo
+ * without it streams a `needs-sudo` event (the server decides), and only
+ * then does the page ask, saying "<command> needs your admin password".
+ * The chip (#den-lock) shows only while such an ask is waiting. Asking
+ * goes: the server first (another tab or device may have set it, LK-2),
+ * then the vault when a password is stored there (LK-3, Touch ID), then
+ * the field, in the top layer (LK-1).
+ */
+const sudo = {
   vault: {
     backend: "none",
     label: "",
     backendAvailable: false,
     hasStored: false,
   },
-  subs: new Set(),
+  /** The ask that is waiting: { need, promise, resolve }, or null. */
+  waiting: null,
 };
 
-export function isUnlocked() {
-  return lock.unlocked;
-}
-/** fn(unlocked) on every change. */
-export function onLockChange(fn) {
-  lock.subs.add(fn);
-  return () => lock.subs.delete(fn);
-}
-
 /**
- * Whether the lock is open, asking before saying no (never prompts): the
- * server's status (LK-2), then, when a password is stored, the vault, once
- * a page (LK-3). Resolves true when unlocked.
- */
-let rechecking = null;
-let vaultTried = false;
-export function checkUnlock() {
-  if (lock.unlocked) return Promise.resolve(true);
-  rechecking ??= (async () => {
-    const st = await getJson("/api/sudo-password/status", null);
-    if (st && (st.set || st.passwordless)) {
-      setUnlocked(true, !!st.passwordless && !st.set);
-      return true;
-    }
-    if (!vaultTried) {
-      await checkVault();
-      if (
-        !lock.unlocked &&
-        lock.vault.backendAvailable &&
-        lock.vault.hasStored
-      ) {
-        vaultTried = true;
-        const loaded = await getJson(
-          "/api/sudo-password/load-from-vault",
-          { ok: false },
-          { method: "POST" },
-        );
-        if (loaded.ok && !lock.unlocked) setUnlocked(true);
-      }
-    }
-    return lock.unlocked;
-  })().finally(() => {
-    rechecking = null;
-  });
-  return rechecking;
-}
-
-/**
- * Local Dev's lock rule, for every page (async): true when unlocked, after
- * checkUnlock; otherwise the lock popover opens on its password field and
- * the action doesn't run.
- */
-export async function requireUnlock() {
-  if (await checkUnlock()) return true;
-  openLock();
-  return false;
-}
-
-/**
- * Unlock with `password` (the popover's form, or a modal's own field):
- * { ok, savedToVault?, vaultError?, error? }. On success every page
- * subscriber hears it (onLockChange). Never logs the password.
+ * Set the admin password (the prompt's form): { ok, savedToVault?,
+ * vaultError?, error? }. Never logs the password.
  */
 export async function unlockWith(password, { saveToVault = false } = {}) {
   if (!password) return { ok: false, error: t("lock.wrong") };
@@ -1207,8 +1156,7 @@ export async function unlockWith(password, { saveToVault = false } = {}) {
     });
     const data = await r.json().catch(() => ({}));
     if (r.ok) {
-      if (data.savedToVault) lock.vault.hasStored = true;
-      setUnlocked(true);
+      if (data.savedToVault) sudo.vault.hasStored = true;
       return {
         ok: true,
         savedToVault: !!data.savedToVault,
@@ -1226,36 +1174,89 @@ export async function unlockWith(password, { saveToVault = false } = {}) {
   }
 }
 
-function setUnlocked(unlocked, passwordless = false) {
-  const changed = lock.unlocked !== unlocked || !lock.known;
-  lock.known = true;
-  lock.unlocked = unlocked;
-  lock.passwordless = passwordless;
-  try {
-    sessionStorage.setItem(LS_LOCK, unlocked ? "1" : "0");
-  } catch {
-    /* a convenience only */
-  }
-  paintLock();
-  if (overlay?.kind === "lock") overlay.redraw?.();
-  if (changed) for (const fn of lock.subs) fn(unlocked);
+/** What needed sudo, for the prompt: the command, else the step. */
+function needWhat(need) {
+  return need?.command || need?.step || t("lock.cmd");
 }
 
+/**
+ * The run's server said sudo needs the password (`need` is its needs-sudo
+ * event: { command?, step? }). Resolves true once the password is set
+ * (from another tab, the vault or the field), false when the person
+ * closes the prompt. One ask at a time: a second need while one waits
+ * shares it.
+ */
+export function askSudo(need = {}) {
+  if (sudo.waiting) return sudo.waiting.promise;
+  let resolve;
+  const promise = new Promise((r) => (resolve = r));
+  sudo.waiting = { need, promise, resolve };
+  paintLock();
+  void (async () => {
+    const st = await getJson("/api/sudo-password/status", null);
+    if (st?.set) return settleSudo(true);
+    await checkVault();
+    if (sudo.vault.backendAvailable && sudo.vault.hasStored) {
+      const loaded = await getJson(
+        "/api/sudo-password/load-from-vault",
+        { ok: false },
+        { method: "POST" },
+      );
+      if (loaded.ok) return settleSudo(true);
+    }
+    if (sudo.waiting) openLock();
+  })();
+  return promise;
+}
+
+function settleSudo(ok) {
+  const w = sudo.waiting;
+  if (!w) return;
+  sudo.waiting = null;
+  if (overlay?.kind === "lock") closeOverlay(false);
+  paintLock();
+  w.resolve(ok);
+}
+
+/**
+ * For a page's run (an EventSource): `see(msg)` on every message (true
+ * for a needs-sudo one, which starts the ask), and `done(retry)` when the
+ * run ends: after the password, the action runs again (resolves to what
+ * `retry()` returns; undefined when nothing needed sudo, or the person
+ * said no).
+ */
+export function sudoRun() {
+  let asked = null;
+  return {
+    see(msg) {
+      if (msg?.type !== "needs-sudo") return false;
+      asked ??= askSudo(msg);
+      return true;
+    },
+    async done(retry) {
+      const a = asked;
+      asked = null;
+      return a && (await a) ? retry() : undefined;
+    },
+  };
+}
+
+/** The chip: only while an ask is waiting (LK-0). */
 function paintLock() {
   const chip = $("den-lock");
   if (!chip) return;
-  chip.title = lock.unlocked
-    ? lock.passwordless
-      ? t("lock.nopw")
-      : t("lock.session")
-    : t("lock.title");
+  const w = sudo.waiting;
+  chip.hidden = !w;
+  if (!w) {
+    chip.removeAttribute("title");
+    return;
+  }
+  const label = t("lock.waiting");
+  chip.title = t("lock.needs", { cmd: needWhat(w.need) });
   chip.innerHTML =
-    `<span class="den-lock-ic" aria-hidden="true">${lock.unlocked ? "🔓" : "🔒"}</span>` +
-    `<span class="den-lbl-l">${esc(lock.unlocked ? t("lock.unlocked") : t("lock.locked"))}</span>`;
-  chip.setAttribute(
-    "aria-label",
-    lock.unlocked ? t("lock.unlocked") : t("lock.locked"),
-  );
+    '<span class="den-lock-ic" aria-hidden="true">🔑</span>' +
+    `<span class="den-lbl-l">${esc(label)}</span>`;
+  chip.setAttribute("aria-label", label);
 }
 
 async function getJson(url, fallback, init) {
@@ -1268,27 +1269,23 @@ async function getJson(url, fallback, init) {
 }
 
 /**
- * Local Dev's bootstrap, moved: the in-memory status first (fast), then,
- * when locked, the vault's stored password in the background (op can be
- * slow: Touch ID, a cold session) so nothing waits on it.
- */
-/**
  * What the secrets backend can do here (`backend`, `backendAvailable`,
- * `reason`): asked once a page, then kept. Not configured or unavailable
- * means no save option and no auto-load.
+ * `reason`): asked once a page, when sudo first needs the password (a
+ * page view never wakes the vault), then kept. Not configured or
+ * unavailable means no save option and no auto-load.
  */
 let vaultAsked = null;
 function checkVault() {
   // 0.4.1: it reads the config's secrets refs; an invalid one answers 422.
   if (window.denShell?.configInvalid?.() === true)
-    return Promise.resolve(lock.vault);
+    return Promise.resolve(sudo.vault);
   vaultAsked ??= getJson("/api/sudo-password/vault-status", {
     backend: "none",
     label: "",
     backendAvailable: false,
     hasStored: false,
   }).then((v) => {
-    lock.vault = v;
+    sudo.vault = v;
     // Only the save option changes: what's typed stays.
     const label = document.querySelector("#den-lock-pop .den-lock-save");
     const save = saveLabel();
@@ -1306,64 +1303,44 @@ function checkVault() {
   return vaultAsked;
 }
 
-async function initLock() {
-  // A refusal page (SEC-1b): /api would answer the same refusal.
-  if (sh()?.apiOff?.() === true) return;
-  try {
-    if (sessionStorage.getItem(LS_LOCK) === "1") {
-      lock.unlocked = true;
-      paintLock();
-    }
-  } catch {
-    /* none */
-  }
-  const st = await getJson("/api/sudo-password/status", {
-    set: false,
-    passwordless: false,
-  });
-  if (st.set || st.passwordless) {
-    setUnlocked(true, !!st.passwordless && !st.set);
-    return;
-  }
-  setUnlocked(false);
-  // The vault (op) only where Local Dev always asked it, on load; any
-  // other page asks when the popover opens, so a page view never wakes op.
-  if (location.pathname !== "/local-dev") return;
-  await checkVault();
-  if (!lock.vault.backendAvailable || !lock.vault.hasStored || lock.unlocked)
-    return;
-  vaultTried = true;
-  const loaded = await getJson(
-    "/api/sudo-password/load-from-vault",
-    { ok: false },
-    { method: "POST" },
-  );
-  if (loaded.ok && !lock.unlocked) setUnlocked(true);
-}
-
 /**
  * Why there is no save option, when the sudo ref is not configured: the
  * server's reason, which names the distribution's real config file
  * (`configFile`, e.g. config/acme.yml), never a placeholder.
  */
 function notConfiguredNote() {
-  const v = lock.vault;
+  const v = sudo.vault;
   if (!v || v.configured !== false || !v.configFile) return null;
   return t("lock.cfg", { file: v.configFile });
 }
 
 function saveLabel() {
-  if (!lock.vault.backendAvailable) return null;
-  return lock.vault.hasStored
+  if (!sudo.vault.backendAvailable) return null;
+  return sudo.vault.hasStored
     ? t("lock.update")
-    : t("lock.saveTo", { s: lock.vault.label || lock.vault.backend });
+    : t("lock.saveTo", { s: sudo.vault.label || sudo.vault.backend });
 }
 
-function lockFormHtml() {
+/**
+ * "<command> needs your admin password", one string (so a language can
+ * put the command where it reads right), then the step it ran in.
+ */
+function needsHtml(need) {
+  const step =
+    need?.command && need?.step
+      ? `<span class="den-note den-lock-step">${esc(need.step)}</span>`
+      : "";
+  return (
+    `<b id="den-lock-t">${esc(t("lock.needs", { cmd: needWhat(need) }))}</b>` +
+    step
+  );
+}
+
+function lockFormHtml(need) {
   const save = saveLabel();
   const note = notConfiguredNote();
   return (
-    `<form class="den-lock-form"><b id="den-lock-t">${esc(t("lock.title"))}</b>` +
+    `<form class="den-lock-form">${needsHtml(need)}` +
     `<input type="password" id="den-lock-pw" placeholder="${esc(t("lock.pw"))}" aria-label="${esc(t("lock.pw"))}" autocomplete="current-password">` +
     `<label class="den-lock-save"${save ? "" : " hidden"}><input type="checkbox" id="den-lock-vault"> <span>${esc(save ?? "")}</span></label>` +
     '<span class="den-lock-err" id="den-lock-err" role="alert" hidden></span>' +
@@ -1375,14 +1352,15 @@ function lockFormHtml() {
 
 function openLock() {
   const chip = $("den-lock");
-  if (!chip) return;
+  const w = sudo.waiting;
+  if (!chip || !w) return;
   if (overlay?.kind === "lock") {
     overlay.el.querySelector("input,button")?.focus();
     return;
   }
   closeOverlay(false);
   sh()?.closeMenu?.();
-  if (!lock.unlocked) void checkVault();
+  void checkVault();
   // LK-1: in the top layer, so no modal covers it. Under an open modal
   // <dialog> only another modal is reachable (a popover there is inert),
   // so it opens as its own modal; elsewhere it is a popover.
@@ -1390,24 +1368,8 @@ function openLock() {
   pop.className = "den-pop den-lock-pop";
   pop.id = "den-lock-pop";
   pop.setAttribute("role", "dialog");
-  pop.setAttribute("aria-label", t("lock.title"));
-  let forceForm = false;
-  const draw = () => {
-    if (!lock.unlocked || forceForm) pop.innerHTML = lockFormHtml();
-    else
-      pop.innerHTML =
-        `<div class="den-ml">${esc(t("lock.unlocked"))}</div>` +
-        `<div class="den-lock-desc">${esc(lock.passwordless ? `${t("lock.nopw")}.` : t("lock.sessionDesc"))}</div>` +
-        (lock.passwordless
-          ? ""
-          : `<button type="button" class="den-mi" data-reenter>${esc(t("lock.again"))}</button>`);
-    pop.querySelector("form")?.addEventListener("submit", onSubmit);
-    pop.querySelector("[data-reenter]")?.addEventListener("click", () => {
-      forceForm = true;
-      draw();
-      pop.querySelector("input")?.focus();
-    });
-  };
+  pop.setAttribute("aria-labelledby", "den-lock-t");
+  pop.innerHTML = lockFormHtml(w.need);
   const onSubmit = async (e) => {
     e.preventDefault();
     const input = $("den-lock-pw");
@@ -1419,21 +1381,20 @@ function openLock() {
     btn.textContent = t("lock.checking");
     btn.disabled = true;
     err.hidden = true;
-    const saveToVault = !!(lock.vault.backendAvailable && saveCb?.checked);
+    const saveToVault = !!(sudo.vault.backendAvailable && saveCb?.checked);
     try {
       const res = await unlockWith(pw, { saveToVault });
       if (res.ok) {
         input.value = "";
-        forceForm = false;
-        closeOverlay(true);
         toast(
           saveToVault && res.vaultError
             ? t("lock.saveFailed", {
-                s: lock.vault.label || lock.vault.backend,
+                s: sudo.vault.label || sudo.vault.backend,
                 err: res.vaultError,
               })
-            : t("lock.session"),
+            : t("lock.saved"),
         );
+        settleSudo(true);
         return;
       }
       err.textContent = res.error;
@@ -1447,7 +1408,7 @@ function openLock() {
       }
     }
   };
-  draw();
+  pop.querySelector("form").addEventListener("submit", onSubmit);
   document.body.appendChild(pop);
   const underModal = [...document.querySelectorAll("dialog")].some(
     (d) => d !== pop && d.open && d.matches(":modal"),
@@ -1461,37 +1422,37 @@ function openLock() {
   } catch {
     pop.setAttribute("open", "");
   }
-  // A cancel (Escape on a modal) closes it as the chip would.
+  // Escape (or a modal's cancel) says no: the action doesn't run again
+  // (its run already said why it failed), and the chip goes.
+  const decline = () => {
+    closeOverlay(true);
+    settleSudo(false);
+  };
   pop.addEventListener("cancel", (e) => {
     e.preventDefault();
-    closeOverlay(true);
+    decline();
   });
   const r = chip.getBoundingClientRect();
   pop.style.top = `${r.bottom + 6}px`;
   pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8))}px`;
   chip.setAttribute("aria-expanded", "true");
   chip.setAttribute("aria-controls", pop.id);
-  const onDown = (e) => {
-    if (!pop.contains(e.target) && !chip.contains(e.target))
-      closeOverlay(false);
-  };
   pop.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      closeOverlay(true);
+      decline();
     }
   });
-  document.addEventListener("mousedown", onDown, true);
   overlay = {
     kind: "lock",
     el: pop,
-    redraw: draw,
+    // Another overlay closing it leaves the ask waiting: the chip
+    // stays, and opens the prompt again.
     close(refocus) {
-      document.removeEventListener("mousedown", onDown, true);
       pop.remove();
       chip.setAttribute("aria-expanded", "false");
-      if (refocus && chip.isConnected) chip.focus();
+      if (refocus && chip.isConnected && !chip.hidden) chip.focus();
     },
   };
   (
@@ -1531,13 +1492,13 @@ export function initTopbar(opts = {}) {
   $("den-lock")?.addEventListener("click", () =>
     overlay?.kind === "lock" ? closeOverlay(true) : openLock(),
   );
-  // LK-2: back on this tab, the lock may have been opened elsewhere.
+  // LK-2: back on this tab while an ask waits, the password may have
+  // been given elsewhere (another tab or device): the action goes on.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible" || lock.unlocked) return;
+    if (document.visibilityState !== "visible" || !sudo.waiting) return;
     if (sh()?.apiOff?.() === true) return;
     void getJson("/api/sudo-password/status", null).then((st) => {
-      if (st && (st.set || st.passwordless))
-        setUnlocked(true, !!st.passwordless && !st.set);
+      if (st?.set) settleSudo(true);
     });
   });
   document.addEventListener("keydown", (e) => {
@@ -1549,7 +1510,6 @@ export function initTopbar(opts = {}) {
       closeOverlay(true);
     }
   });
-  void initLock();
 }
 
 /** For tests and plugins: open an overlay by name. */

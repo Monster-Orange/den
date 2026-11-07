@@ -22,10 +22,10 @@
  *            each part an .ib button with a .pop menu (an ARIA menu: ↑/↓,
  *            Home, End, Enter; Escape and a click outside close it) ·
  *            the ⌘K search field (R5) · the status chip (R6) · the Runs
- *            chip (R7) · the lock chip (R8) · What's new · ◐ ▾ (R10).
+ *            chip (R7) · the sudo chip (R8, only while asked) · What's new · ◐ ▾ (R10).
  *            shell.js draws them; topbar.js (through header.js) drives the
  *            chips, the command palette (R17), the status drawer (R15) and
- *            the lock popover; appearance.js the user menu (dev.20).
+ *            the admin-password prompt; appearance.js the user menu (dev.20).
  *   rail     Pinned, then the NAV registry by GROUPS (Develop, Verify,
  *            Ship, a distribution's own), then Settings and the collapse
  *            toggle. One tab stop (the current page); ↑/↓, Home and End
@@ -251,24 +251,20 @@
     "dock.err": "failed",
     "dock.last": "Last run: {s} ↗",
     "dock.resize": "Drag to resize",
-    // The lock chip and its popover (R8).
-    "lock.locked": "Locked",
-    "lock.unlocked": "Unlocked",
-    "lock.title": "Unlock to start, stop and restart services and agents",
-    "lock.nopw": "Passwordless sudo (NOPASSWD): no admin password needed",
-    "lock.session": "Unlocked for this session",
-    "lock.sessionDesc":
-      "Unlocked for this session: start, stop and restart work on every page.",
+    // The admin password, asked only when a command needs sudo (R8, LK-0).
+    "lock.waiting": "Admin password needed",
+    "lock.needs": "{cmd} needs your admin password",
+    "lock.cmd": "A command",
     "lock.cfg":
       "Saving the password is off: set secrets.provider and secrets.refs.sudo in {file}.",
     "lock.update": "Update stored password",
     "lock.saveTo": "Save to {s}",
     "lock.pw": "Admin password",
-    "lock.go": "Unlock",
+    "lock.go": "Continue",
     "lock.checking": "Checking…",
-    "lock.note": "Den asks once per session. Agents can't unlock.",
-    "lock.again": "Enter the password again…",
-    "lock.saveFailed": "Unlocked, but saving to {s} failed: {err}",
+    "lock.note": "Den uses it only for sudo. Agents can't enter it.",
+    "lock.saved": "Admin password kept for this session",
+    "lock.saveFailed": "Kept for this session, but saving to {s} failed: {err}",
     "lock.wrong": "Incorrect password — try again",
     "lock.reqFailed": "Request failed — is the server running?",
     // What's new (R9) and the stale-server pill.
@@ -407,6 +403,7 @@
     "set.cli.log_window_lines": "Log pane lines",
     "set.cli.web_port": "Your web port",
     "set.cli.signin": "Browser sign-in",
+    "set.cli.sudo": "Admin password",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
     "set.distribution.orgs": "Org labels",
@@ -1347,9 +1344,9 @@
 
   // ── the frame ──────────────────────────────────────────────────────────
   // The top bar after the scope, in the prototype's order (dev.20): the ⌘K
-  // search field (R5), then .chips: status (R6), Runs (R7), the lock (R8),
+  // search field (R5), then .chips: status (R6), Runs (R7), the sudo ask (R8),
   // What's new (R9) and ◐ ▾ (R10, appearance.js fills #den-user). The
-  // chips start neutral ("Checking…", "Runs", "Locked") and topbar.js
+  // chips start neutral ("Checking…", "Runs"; the sudo chip hidden) and topbar.js
   // paints them: a cold load never shows a partial red.
   var chips =
     '<button type="button" class="den-search" id="den-search" aria-haspopup="dialog" aria-keyshortcuts="Meta+K Control+K" aria-label="' +
@@ -1366,10 +1363,10 @@
     '<span class="den-dot off" aria-hidden="true"></span><span class="den-n den-lbl-l">' +
     esc(t("runs.title")) +
     "</span></button>" +
-    '<button type="button" class="den-chip" id="den-lock" aria-haspopup="dialog" aria-expanded="false" title="' +
-    esc(t("lock.title")) +
-    '"><span class="den-lock-ic" aria-hidden="true">🔒</span><span class="den-lbl-l">' +
-    esc(t("lock.locked")) +
+    // LK-0: shown only while a run waits for the admin password (topbar.js).
+    '<button type="button" class="den-chip" id="den-lock" aria-haspopup="dialog" aria-expanded="false" hidden>' +
+    '<span class="den-lock-ic" aria-hidden="true">🔑</span><span class="den-lbl-l">' +
+    esc(t("lock.waiting")) +
     "</span></button>" +
     '<button class="den-ib v-pill" id="version-pill" onclick="openChangelog()" title="' +
     esc(t("v.title")) +
@@ -3853,7 +3850,7 @@
     "  max-height: calc(100vh - 72px); overflow-y: auto; box-sizing: border-box;",
     "  font: 14px/1.45 var(--sans); color: var(--text); }",
     ".den-pop:focus { outline: none; }",
-    // LK-1: the lock popover is a <dialog> in the top layer (a popover, or
+    // LK-1: the admin-password prompt is a <dialog> in the top layer (a popover, or
     // a modal over another modal): placed by its top/left, no UA box.
     "dialog.den-pop { margin: 0; inset: auto; max-width: none; }",
     "dialog.den-pop::backdrop { background: transparent; }",
@@ -3909,6 +3906,8 @@
     ".den-chip .den-n { font-variant-numeric: tabular-nums; }",
     ".den-chip .den-dot, .den-drawer .den-dot, .den-pal .den-dot { margin: 0; }",
     ".den-chip[aria-expanded='true'] { border-color: var(--border-strong); }",
+    ".den-chip[hidden] { display: none; }",
+    "#den-lock { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }",
     ".den-dot.run { background: var(--accent); animation: den-pulse 1.2s infinite; }",
     ".den-dot.pending { background: var(--faint); animation: den-pulse 1.2s infinite; }",
     "@keyframes den-pulse { 50% { opacity: .35; } }",
@@ -3973,7 +3972,7 @@
     ".den-pal li.den-pal-empty { cursor: default; color: var(--muted); }",
     ".den-pal .den-foot { display: flex; gap: 14px; padding: 8px 14px; border-top: 1px solid var(--border);",
     "  color: var(--faint); font-size: 12px; flex-wrap: wrap; }",
-    // The lock popover (.pop form, .pop input, .note: R8)
+    // The admin-password prompt (.pop form, .pop input, .note: R8, LK-0)
     ".den-pop form { display: grid; gap: 8px; padding: 6px 8px 8px; width: 260px; box-sizing: content-box; margin: 0; }",
     ".den-pop input:not([type='checkbox']) { border: 1px solid var(--border); background: var(--bg); color: var(--text);",
     "  border-radius: var(--radius-button); padding: 6px 8px; font: inherit; font-size: 13.3333px; line-height: normal; }",
@@ -3982,7 +3981,7 @@
     ".den-pop .den-lock-save { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; }",
     ".den-pop .den-lock-save[hidden], .den-pop .den-lock-err[hidden], .den-mslot[hidden] { display: none; }",
     ".den-pop .den-lock-err { color: var(--bad); font-size: 12.5px; }",
-    ".den-pop .den-lock-desc { padding: 2px 8px 6px; color: var(--muted); font-size: 12.5px; max-width: 260px; }",
+    ".den-pop #den-lock-t { overflow-wrap: anywhere; }",
     // What's new (.ib.whatsnew + .badge-dot)
     "#den-shell .v-pill { font: inherit; padding: 4px 8px; border: 1px solid transparent;",
     "  border-radius: var(--radius-button); color: var(--muted); flex-shrink: 0; }",

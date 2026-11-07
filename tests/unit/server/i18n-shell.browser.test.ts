@@ -247,7 +247,14 @@ describe("the shell in a pseudo-locale", () => {
     await open("#version-pill", ".cl-box #cl-title");
     await open("#den-status", "#den-drawer-title");
     await open("#den-search", "#den-pal-q");
-    await open("#den-lock", "#den-lock-pop form");
+    // The admin-password prompt, as a run's needs-sudo opens it (LK-0).
+    // A string, so the browser does the import (not the test's compiler).
+    await p.evaluate(
+      "import('/topbar.js').then((m) => void m.askSudo({ command: 'sudo true' }))",
+    );
+    await p.waitForSelector("#den-lock-pop form");
+    for (const l of await leaks(p)) found.add(l);
+    await p.keyboard.press("Escape");
     await p.click("#den-runs");
     await p.waitForSelector("#den-dock");
     for (const l of await leaks(p)) found.add(l);

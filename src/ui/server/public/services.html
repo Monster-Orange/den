@@ -333,6 +333,7 @@
           initChangelog,
           computePrimaryByRepo,
           envReady,
+          sudoRun,
         } from "/header.js";
         import { ownersLabel } from "/workspace-picker.js";
 
@@ -782,7 +783,11 @@
 
           const params = new URLSearchParams({ repo, service, cmd, env });
           es = new EventSource(`/api/service/exec?${params}`);
-          handleSSE(es, repo, service);
+          // LK-0: a command that needs sudo without the password asks,
+          // then runs again.
+          handleSSE(es, repo, service, {
+            again: () => runExec(repo, service, cmd, btn),
+          });
         }
 
         function runLogs(repo, service, btn) {
@@ -819,8 +824,10 @@
           const isStream = opts.stream === true;
           const id = runId;
           const appendLine = (text, cls) => runs().append(id, text, cls);
+          const sudo = sudoRun();
           evtSrc.onmessage = (e) => {
             const msg = JSON.parse(e.data);
+            sudo.see(msg);
             if (msg.type === "cmd") {
               appendLine(msg.text, "cmd");
             } else if (msg.type === "line") {
@@ -842,6 +849,7 @@
               } else runs().set(id, { running: false });
               evtSrc.close();
               es = null;
+              if (opts.again) void sudo.done(opts.again);
             }
           };
           evtSrc.onerror = () => {

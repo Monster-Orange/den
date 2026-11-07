@@ -1160,6 +1160,7 @@
         storeOpenLog,
         initChangelog,
         envReady,
+        sudoRun,
       } from "/header.js";
       import { ownersLabel } from "/workspace-picker.js";
       import {
@@ -2235,8 +2236,12 @@
 
         const params = new URLSearchParams({ repo, service, cmd, env });
         execEs = new EventSource(`/api/service/exec?${params}`);
+        // LK-0: a command that needs sudo without the password asks, then
+        // runs again.
+        const sudo = sudoRun();
         execEs.onmessage = (e) => {
           const msg = JSON.parse(e.data);
+          sudo.see(msg);
           if (msg.type === "cmd") {
             cmdAppendLine(msg.text, "cmd");
             execDetachable = !!msg.detached;
@@ -2261,6 +2266,7 @@
               .forEach((b) => (b.disabled = false));
             execEs?.close();
             execEs = null;
+            void sudo.done(() => runExec(repo, service, cmd));
           }
         };
         execEs.onerror = () => {

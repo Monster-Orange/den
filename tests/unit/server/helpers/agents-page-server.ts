@@ -9,9 +9,12 @@
  *     runs, and the server finds this host instead of starting one;
  *   - PATH shims: `claude` answers --version and otherwise records a run
  *     and fails (it must never run), `docker` fails, and `sudo` succeeds,
- *     so the lock (R8) reads unlocked (passwordless sudo) without a real
- *     password; or, with `sudoPassword`, the lock reads locked and the
- *     shim takes only that password;
+ *     as passwordless sudo, without a real password; or, with
+ *     `sudoPassword`, sudo needs a password (`-n` fails with sudo's own
+ *     "a password is required") and the shim takes only that one, on
+ *     stdin (`-S`), then runs the command it was given;
+ *   - with `elevatedUp`, south's repo (blog) has an `up` that runs
+ *     `sudo touch <tmp>/elevated-ran` (LK-0): the one elevated step;
  *   - an env built from a minimal set, never this process's.
  *
  * Invented names only. The caller closes it (stop) and its temp dir goes.
@@ -50,6 +53,8 @@ export interface AgentsPageServer {
   wsDir(ws: string): string;
   /** The `claude` shim's record of a run (must never exist). */
   ran: string;
+  /** What blog's elevated `up` touches, once sudo ran it (elevatedUp). */
+  elevated: string;
   /** Write an agent record as `agents start` would have. */
   seed(rec: Partial<AgentRecord> & { id: string; workspace: string }): void;
   /** POST /api/settings (language, appearance). */
@@ -90,8 +95,10 @@ export async function startAgentsPageServer(
     root?: string;
     /** "missing": no claude on PATH or in any install directory. */
     runtime?: "shim" | "missing";
-    /** Locked: the fake sudo takes only this password (LK). */
+    /** sudo needs a password: the fake sudo takes only this one (LK). */
     sudoPassword?: string;
+    /** blog's `up` runs sudo (LK-0's one elevated step). */
+    elevatedUp?: boolean;
     /** config/local/user.yml's content (agents.runtimes.<id>.bin). */
     userYml?: string;
   } = {},
@@ -131,8 +138,11 @@ export async function startAgentsPageServer(
       "",
     ].join("\n"),
   );
+  const elevated = path.join(tmp, "elevated-ran");
   for (const [ws, repo] of Object.entries(members)) {
     fs.mkdirSync(wsDir(ws), { recursive: true });
+    const up =
+      opts.elevatedUp && repo === "blog" ? `sudo touch ${elevated}` : "true";
     write(
       path.join(repos, repo, ".acme.yml"),
       [
@@ -141,7 +151,7 @@ export async function startAgentsPageServer(
         `  ${repo}:`,
         "    commands:",
         "      local:",
-        '        up: "true"',
+        `        up: ${JSON.stringify(up)}`,
         '        down: "true"',
         "",
       ].join("\n"),
@@ -156,13 +166,29 @@ export async function startAgentsPageServer(
     path.join(bin, "sudo"),
     opts.sudoPassword === undefined
       ? "#!/bin/sh\nexit 0\n"
-      : // Locked (R8): no passwordless sudo; `sudo -k -S -v` takes the one
-        // password from stdin. Never a real sudo.
+      : // sudo needs a password (R8): no passwordless sudo; with -S it
+        // takes the one password from stdin, then runs what it was given
+        // (`sudo -k -S -v`: nothing). Never a real sudo.
         [
           "#!/bin/sh",
-          'case "$*" in',
-          '  *-S*) IFS= read -r pw; [ "$pw" = "$DEN_TEST_SUDO_PW" ] && exit 0; exit 1;;',
-          "esac",
+          "S=0",
+          "while [ $# -gt 0 ]; do",
+          '  case "$1" in',
+          "    -S) S=1;;",
+          "    --) shift; break;;",
+          "    -*) ;;",
+          "    *) break;;",
+          "  esac",
+          "  shift",
+          "done",
+          'if [ "$S" = 1 ]; then',
+          '  IFS= read -r pw; [ "$pw" = "$DEN_TEST_SUDO_PW" ] || exit 1',
+          '  [ $# -gt 0 ] && exec "$@"',
+          "  exit 0",
+          "fi",
+          // `sudo -k` (Forget): nothing to run, nothing to ask.
+          "[ $# -eq 0 ] && exit 0",
+          'echo "sudo: a password is required" >&2',
           "exit 1",
           "",
         ].join("\n"),
@@ -250,6 +276,7 @@ export async function startAgentsPageServer(
     made,
     wsDir,
     ran,
+    elevated,
     seed(rec) {
       writeRecord(stateDir, {
         persona: rec.id,

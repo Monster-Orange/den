@@ -180,11 +180,12 @@ describe("a page navigation with an invalid config", () => {
     async (p) => {
       if (skip()) return;
       const { page, refused } = await open(p);
-      // The shell has booted: its chips are drawn and the lock asked.
+      // The shell has booted: its chips are drawn (the sudo chip hidden
+      // until a run needs the password, LK-0).
       await page.waitForFunction(
         () => !!(window as unknown as { denShell?: unknown }).denShell,
       );
-      await page.waitForSelector("#den-lock .den-lbl-l");
+      await page.waitForSelector("#den-lock .den-lbl-l", { state: "attached" });
       // A poll interval's worth of quiet (the health poll is 5 s): nothing
       // the shell starts later may answer 422 either.
       await page.waitForTimeout(6_000);
