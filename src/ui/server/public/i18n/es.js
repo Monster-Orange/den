@@ -414,6 +414,18 @@
     "ag.fresh": "Empezar de cero",
     "ag.freshName": "Empezar {id} de cero",
     "ag.startedFresh": "{id} empezó de cero",
+    "ag.rot.ready": "Listo para relanzar ({why})",
+    "ag.rot.due": "Falta el traspaso ({why})",
+    "ag.rot.compactions": "{n} compactaciones",
+    "ag.rot.compactions.one": "{n} compactación",
+    "ag.rot.merged": "PR fusionado",
+    "ag.rot.noHandoff":
+      "Su sesión rotó ({why}), pero no escribió handoff.md. Reanúdalo para que lo escriba, o empieza de cero.",
+    "ag.rot.badHandoff":
+      "Su sesión rotó ({why}), pero su handoff.md no está completo. Reanúdalo para arreglarlo, o empieza de cero.",
+    "ag.relaunch": "Relanzar desde el traspaso",
+    "ag.relaunchName": "Relanzar {id} desde el traspaso",
+    "ag.relaunched": "{id} relanzado desde su traspaso",
     "ag.remove": "Quitar",
     "ag.removeName": "Quitar {id}",
     "ag.removed": "{id} quitado",

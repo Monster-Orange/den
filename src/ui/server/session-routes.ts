@@ -43,6 +43,7 @@ import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { revokedAgentIds } from "../../shared/actor-token.js";
 import { listRecords } from "../../shared/agents/records.js";
+import type { RotationInfo } from "../../shared/agents/rotation.js";
 import {
   connectHost,
   noHost,
@@ -153,6 +154,11 @@ export interface ListedSession {
   tokenRevoked?: boolean;
   /** An approval is pending (AG-6a; only when the host knows). */
   waiting?: boolean;
+  /**
+   * Session rotation (den#4): why it rotates and its handoff.md. `ready`:
+   * Relaunch from handoff is its action, not Resume.
+   */
+  rotation?: RotationInfo;
 }
 
 /** The list, from the host's sessions and the agent records. */
@@ -176,7 +182,7 @@ export function listedSessions(
   const out: ListedSession[] = [];
   const agentSessions = new Set<string>();
   noteEnded(d.stateDir(), mine, records);
-  for (const r of agentRows(mine, records)) {
+  for (const r of agentRows(mine, records, d.stateDir())) {
     const rec = records.find((x) => x.id === r.agent)!;
     const s = r.session;
     if (s) agentSessions.add(s.ref.id);
@@ -201,6 +207,7 @@ export function listedSessions(
       ...(r.stoppedAt ? { stoppedAt: r.stoppedAt } : {}),
       ...(r.endedAt ? { endedAt: r.endedAt } : {}),
       ...(r.interruptedAt ? { interruptedAt: r.interruptedAt } : {}),
+      ...(r.rotation?.due ? { rotation: r.rotation } : {}),
       ...(revoked.has(rec.id) && s && !s.exited ? { tokenRevoked: true } : {}),
     });
   }

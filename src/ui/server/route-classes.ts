@@ -320,6 +320,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   S(
     ["POST"],
+    "/api/workspaces/:ws/agents/:id/relaunch",
+    "relaunches a rotated agent from its handoff: a runtime in a PTY (den#4)",
+  ),
+  S(
+    ["POST"],
     "/api/agents/resume-interrupted",
     "resumes interrupted agents: runtimes in PTYs (AG-14.3)",
   ),
@@ -400,6 +405,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/stop",
     "/api/workspaces/:ws/agents/:id/resume",
     "/api/workspaces/:ws/agents/:id/fresh",
+    "/api/workspaces/:ws/agents/:id/relaunch",
     "/api/workspaces/:ws/agents/:id/remove",
   ],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],

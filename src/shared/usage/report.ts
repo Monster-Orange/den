@@ -8,6 +8,17 @@
  * share of attributed sessions is the scorecard metric: before this, no
  * agent's tokens or outcome were joined to it (~0).
  *
+ * Session rotation (den#4) adds, per agent, its compactions (this
+ * conversation's) and its rotations (how many times Den relaunched it from
+ * a handoff); and per week, two numbers to move:
+ *   - long_session_context_k: the highest average context per call (input,
+ *     cache reads and cache writes, over calls) of any main session in the
+ *     window, in thousands of tokens;
+ *   - never_ending_reread_pct: the share of context re-reads (cache reads)
+ *     that came from never-ending sessions: main sessions that compacted
+ *     more often than the rotation limit (agents.rotate.after_compactions,
+ *     default 3).
+ *
  * Everything is read and written on this machine; nothing is sent.
  */
 import type {
@@ -30,6 +41,10 @@ export interface AgentUsageRow {
   usage?: AgentUsage;
   outcome?: AgentOutcome;
   attributed: boolean;
+  /** Its current conversation's compactions (den#4), when counted. */
+  compactions?: number;
+  /** How many times Den relaunched it from a handoff (den#4). */
+  rotations: number;
 }
 
 /** The sum of transcripts' counts, as the record keeps them. */
@@ -107,6 +122,7 @@ export async function agentUsage(
       workspace: rec.workspace,
       persona: rec.persona,
       runtime: rec.runtime,
+      rotations: rec.rotations?.length ?? 0,
     };
     const src = pick(rec.runtime);
     if (!src) {
@@ -145,6 +161,7 @@ export async function agentUsage(
       transcripts: files.length,
       usage,
       outcome,
+      compactions: usage.compactions,
       attributed: usage.calls > 0 && outcome.wallClockMs !== undefined,
     });
   }
@@ -176,6 +193,23 @@ export interface UsageMetrics {
   subagent_opus_pct: number;
   /** den#6: the share of agent sessions with attributed tokens and outcome. */
   attributed_pct?: number;
+  /** den#4: the highest average context per call of a main session (k tokens). */
+  long_session_context_k: number;
+  /** den#4: the share of cache reads from never-ending main sessions. */
+  never_ending_reread_pct: number;
+  /** den#4: relaunches from a handoff, over the agents listed. */
+  rotations?: number;
+}
+
+/** A main session's average context per call, in tokens. */
+export function contextPerCall(s: TranscriptStats): number {
+  const t = s.tokens.input + s.tokens.cacheRead + s.tokens.cacheWrite;
+  return s.calls ? t / s.calls : 0;
+}
+
+/** Never-ending: a main session that compacted more often than the limit. */
+export function isNeverEnding(s: TranscriptStats, after: number): boolean {
+  return !s.subagent && s.compactions > after;
 }
 
 const round = (n: number, d = 0) => {
@@ -186,6 +220,8 @@ const round = (n: number, d = 0) => {
 export function weeklyMetrics(
   stats: readonly TranscriptStats[],
   agents?: readonly AgentUsageRow[],
+  /** The rotation limit (agents.rotate.after_compactions, default 3). */
+  after = 3,
 ): UsageMetrics {
   const sum = (
     xs: readonly TranscriptStats[],
@@ -239,14 +275,28 @@ export function weeklyMetrics(
       1,
     ),
     subagent_opus_pct: round((100 * subOpus) / Math.max(1, subTotal)),
+    long_session_context_k: round(
+      Math.max(0, ...main.map(contextPerCall)) / 1e3,
+    ),
+    never_ending_reread_pct: round(
+      (100 *
+        sum(
+          main.filter((s) => isNeverEnding(s, after)),
+          (s) => s.tokens.cacheRead,
+        )) /
+        Math.max(1, reads),
+    ),
   };
-  if (agents) m.attributed_pct = attributedPct(agents);
+  if (agents) {
+    m.attributed_pct = attributedPct(agents);
+    m.rotations = agents.reduce((a, r) => a + r.rotations, 0);
+  }
   return m;
 }
 
 /** Higher is better for these; context only for calls, output and prompts. */
 const BETTER_HIGH = new Set(["attributed_pct"]);
-const CONTEXT = new Set(["calls", "output_M", "prompts"]);
+const CONTEXT = new Set(["calls", "output_M", "prompts", "rotations"]);
 
 /** The report as markdown: this week, last week, and the change. */
 export function renderReport(

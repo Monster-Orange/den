@@ -4,7 +4,8 @@
  * same agents, and so an agent outlives the session it runs in.
  *
  *   agents/<id>.json        the record (0600, its directory 0700)
- *   agent-files/<id>/       files its runtime wrote (0600): its MCP config
+ *   agent-files/<id>/       files its runtime wrote (0600): its MCP config;
+ *                           and its rotation state and handoff.md (den#4)
  *
  * A record never holds the env or the argv: the role prompt, tokens and
  * anything else a launch passes stay out of it. An agent id is unique in a
@@ -19,6 +20,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { WORKSPACE_NAME_RE } from "../agent-actor.js";
 import type { SessionRef } from "../sessions/types.js";
+import type { RotationEntry } from "./rotation.js";
 
 export interface AgentRecord {
   id: string;
@@ -65,6 +67,11 @@ export interface AgentRecord {
   outcome?: AgentOutcome;
   /** Its tokens, from the runtime's own transcript (den#6). */
   usage?: AgentUsage;
+  /**
+   * Each time Den relaunched it from its handoff (den#4, session
+   * rotation), oldest first.
+   */
+  rotations?: RotationEntry[];
 }
 
 /** What an agent's run came to (den#6). Read locally; never sent. */

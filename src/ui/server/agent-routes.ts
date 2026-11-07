@@ -18,6 +18,11 @@
  *   POST /api/workspaces/<ws>/agents/<id>/resume  the same conversation (AG-14)
  *   POST /api/workspaces/<ws>/agents/<id>/fresh   a new conversation, same
  *                                                 persona and workspace
+ *   POST /api/workspaces/<ws>/agents/<id>/relaunch  a rotated agent (den#4):
+ *                                                 a new conversation whose
+ *                                                 first prompt is its
+ *                                                 handoff.md; a resume of
+ *                                                 one is refused (409 rotated)
  *   POST /api/workspaces/<ws>/agents/<id>/remove  forget a stopped one (Undo:
  *                                                 /api/agents/restore)
  *   POST /api/agents/clear-stopped                { workspaces: [...] }: forget
@@ -74,6 +79,7 @@ import {
   resumeInterrupted,
   setRuntimePath,
   resolveAgentsDeps,
+  relaunchAgent,
   resumeAgent,
   startAgent,
   startFresh,
@@ -98,7 +104,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|remove))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove))?$/;
 
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 /** A start's body is a few short names. */
@@ -282,7 +288,13 @@ export async function handleAgentRoutes(
     return true;
   }
   const id = m[2] === undefined ? undefined : safeDecode(m[2]);
-  const action = m[3] as "stop" | "resume" | "fresh" | "remove" | undefined;
+  const action = m[3] as
+    | "stop"
+    | "resume"
+    | "fresh"
+    | "relaunch"
+    | "remove"
+    | undefined;
 
   if (!action && method === "GET") {
     try {
@@ -362,6 +374,11 @@ export async function handleAgentRoutes(
     } else if (verb === "fresh") {
       const s = await startFresh(d, id!, ws);
       what = `start ${s.rec.id} fresh (${s.rec.persona}, ${s.rec.runtime}) in ${ws}`;
+      audit(what, s.early ? "exited at once" : undefined);
+      sendStarted(res, s);
+    } else if (verb === "relaunch") {
+      const s = await relaunchAgent(d, id!, ws);
+      what = `relaunch ${s.rec.id} from its handoff (${s.why}) in ${ws}`;
       audit(what, s.early ? "exited at once" : undefined);
       sendStarted(res, s);
     } else if (verb === "remove") {

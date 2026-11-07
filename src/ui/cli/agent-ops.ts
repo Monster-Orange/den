@@ -105,6 +105,20 @@ import {
 } from "../../shared/agents/runtimes.js";
 import type { RuntimeDetect } from "../../shared/agents/runtime.js";
 import {
+  archiveHandoff,
+  DEFAULT_ROTATE,
+  handoffFile,
+  handoffPrompt,
+  launchRotation,
+  readHandoff,
+  readRotation,
+  writeRotation,
+  reasonText,
+  rotateAfter,
+  rotationInfo,
+  type RotationInfo,
+} from "../../shared/agents/rotation.js";
+import {
   binSettingKey,
   ensureInteractivePath,
   interactivePathAsked,
@@ -371,6 +385,13 @@ export interface AgentRow {
   autoResume?: boolean;
   outcome?: AgentRecord["outcome"];
   usage?: AgentRecord["usage"];
+  /**
+   * Session rotation (den#4): its compactions, whether a rotation is due
+   * and why, and its handoff.md. `ready`: Relaunch from handoff, not Resume.
+   */
+  rotation?: RotationInfo;
+  /** How many times Den relaunched it from a handoff. */
+  rotations?: number;
   session?: SessionInfo;
 }
 
@@ -416,17 +437,29 @@ function canResume(rec: AgentRecord, st: string): boolean {
   return isStoppedState(st) && resumeRefusal(rec) === null;
 }
 
+/** Why a rotated agent isn't resumed: its conversation ended there (den#4). */
+export function rotatedRefusal(rec: AgentRecord, r: RotationInfo): string {
+  return `${rec.id} rotated (${reasonText(r.due!, r.compactions)}): relaunch it from its handoff`;
+}
+
 export function agentRows(
   sessions: SessionInfo[],
   records: AgentRecord[] = [],
+  /** Den's state dir: each agent's rotation is read there (den#4). */
+  stateDir?: string,
 ): AgentRow[] {
   const bySession = new Map(records.map((r) => [r.session.id, r]));
   const rows: AgentRow[] = [];
   const shown = new Set<string>();
   const row = (rec: AgentRecord, s?: SessionInfo): AgentRow => {
     const st = rowState(rec, s);
-    const resumable = canResume(rec, st);
-    const why = isStoppedState(st) && !resumable ? resumeRefusal(rec) : null;
+    const rot = stateDir ? rotationInfo(stateDir, rec) : null;
+    // A rotated conversation is not resumed: it relaunches from its handoff.
+    const resumable = canResume(rec, st) && !rot?.ready;
+    const why =
+      isStoppedState(st) && !resumable
+        ? (resumeRefusal(rec) ?? (rot?.ready ? rotatedRefusal(rec, rot) : null))
+        : null;
     return {
       agent: rec.id,
       ...recordFields(rec),
@@ -439,6 +472,8 @@ export function agentRows(
       ...(rec.interruptedAt ? { interruptedAt: rec.interruptedAt } : {}),
       ...(rec.outcome ? { outcome: rec.outcome } : {}),
       ...(rec.usage ? { usage: rec.usage } : {}),
+      ...(rot ? { rotation: rot } : {}),
+      ...(rec.rotations?.length ? { rotations: rec.rotations.length } : {}),
       ...(s ? { session: contractInfo(s) } : {}),
     };
   };
@@ -514,7 +549,7 @@ export async function listAgents(
   const sessions = all.filter((s) => inWorkspace(s, d.dist, ws));
   const records = listRecords(d.stateDir()).filter((r) => r.workspace === ws);
   noteEnded(d.stateDir(), sessions, records);
-  const rows = agentRows(sessions, records);
+  const rows = agentRows(sessions, records, d.stateDir());
   return opts.stopped ? rows.filter((r) => isStoppedState(r.state)) : rows;
 }
 
@@ -1002,6 +1037,10 @@ function launchInput(
   const dir = d.workspaceDir(ws);
   if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory())
     throw refused(`workspace ${ws}'s directory ${dir} does not exist`);
+  // den#4: only Den's hooks count compactions; without them, no rotation.
+  const after = persona.guardrails?.hooks
+    ? rotateAfter(cfg.rotate ?? DEFAULT_ROTATE, persona)
+    : 0;
   return {
     persona,
     workspace: { name: ws, dir },
@@ -1013,7 +1052,13 @@ function launchInput(
     stateDir: d.stateDir(),
     env: d.env,
     ...(bin ? { bin } : {}),
+    rotateAfter: after,
   };
+}
+
+/** The rotation limit a launch counts against: 0 when its runtime can't relaunch. */
+function launchAfter(rt: Runtime, input: LaunchInput): number {
+  return rt.firstPrompt ? (input.rotateAfter ?? 0) : 0;
 }
 
 function ptyOrRefuse(d: AgentsResolved): void {
@@ -1053,9 +1098,18 @@ export interface StartRequest {
   id?: string;
 }
 
+/** What a relaunch from handoff adds to a start (den#4). */
+interface StartMore {
+  firstPrompt?: string;
+  rotations?: AgentRecord["rotations"];
+  /** Called once the old session is known ended, before the launch. */
+  beforeLaunch?: () => void;
+}
+
 export async function startAgent(
   d: AgentsResolved,
   req: StartRequest,
+  more: StartMore = {},
 ): Promise<Started> {
   const where = "agents start";
   const ws = checkWorkspaceName(where, req.workspace);
@@ -1081,7 +1135,10 @@ export async function startAgent(
       `agent ${id} belongs to workspace ${prev.workspace}; give this one another --id`,
     );
   ptyOrRefuse(d);
-  const input = launchInput(d, cfg, persona, ws, id, model, det.path);
+  const input = {
+    ...launchInput(d, cfg, persona, ws, id, model, det.path),
+    ...(more.firstPrompt ? { firstPrompt: more.firstPrompt } : {}),
+  };
 
   return withClient(d, async (c) => {
     const sessions = await c.list();
@@ -1091,7 +1148,17 @@ export async function startAgent(
         `Attach: ${d.cli} sessions attach ${old.name}`,
       ]);
     const out = launchOrThrow(() => rt.launch(input));
+    more.beforeLaunch?.();
+    // A new conversation: a handoff left from the last one is kept aside,
+    // so the next rotation needs its own (den#4).
+    if (fs.existsSync(handoffFile(input.filesDir)))
+      archiveHandoff(
+        input.filesDir,
+        `${new Date().toISOString().replace(/[:.]/g, "-")}-unused`,
+      );
     writeRuntimeFiles(input.filesDir, out.files);
+    // den#4: a new conversation's compactions count from 0.
+    launchRotation(input.filesDir, out.resumeToken, launchAfter(rt, input));
     const { rec, info } = await startSession(
       d,
       c,
@@ -1116,7 +1183,7 @@ export async function startAgent(
         ...binDirOf(det),
       },
       old,
-      {},
+      more.rotations?.length ? { rotations: more.rotations } : {},
     );
     const early = await exitedAtOnce(d, c, info);
     return { rec, info, warnings: out.warnings ?? [], early };
@@ -1228,6 +1295,20 @@ export async function resumeAgent(
     throw refused(why, [
       `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`,
     ]);
+  // den#4: a rotated conversation ends there; its role relaunches from
+  // the handoff, in a fresh one.
+  const rot = rotationInfo(d.stateDir(), rec);
+  if (rot?.ready)
+    throw new AgentError(
+      `agent ${rec.id} rotated after ${reasonText(rot.due!, rot.compactions)}: its conversation is not resumed`,
+      {
+        code: "rotated",
+        hints: [
+          `Relaunch from handoff: ${d.cli} agents relaunch ${rec.id}`,
+          `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`,
+        ],
+      },
+    );
   const cfg = agentsConfig(d);
   const grants = resumeGrants(rec, cfg);
   const persona = personas(d, cfg).get(rec.persona);
@@ -1277,6 +1358,8 @@ export async function resumeAgent(
       );
       if (!out) throw refused(`agent ${rec.id} has nothing to resume`);
       writeRuntimeFiles(input.filesDir, out.files);
+      // den#4: the same conversation keeps its count.
+      launchRotation(input.filesDir, token, launchAfter(rt, input));
       return out;
     };
     const { session: _s, startedAt: _t, resumedAt: _r, ...base } = rec;
@@ -1359,6 +1442,107 @@ export async function startFresh(
     ...(rec.model ? { model: rec.model } : {}),
     id: rec.id,
   });
+}
+
+// ── den#4: relaunch from handoff ────────────────────────────────────────────
+
+export interface Relaunched extends Started {
+  /** Why the last session rotated: "3 compactions", "PR merged". */
+  why: string;
+  /** Where its handoff was kept. */
+  handoff: string;
+}
+
+/**
+ * Relaunch from handoff (den#4): once agent `id`'s session rotated (a
+ * trigger fired and handoff.md passes the check), a fresh conversation
+ * with the same persona, runtime, model, workspace, folder and grants,
+ * whose first prompt is the handoff. A running session is stopped first.
+ * The handoff moves to handoffs/ so the next rotation needs a new one.
+ * Missing or failing: refused, saying so, with Start fresh and Resume.
+ */
+export async function relaunchAgent(
+  d: AgentsResolved,
+  id: string,
+  ws?: string,
+): Promise<Relaunched> {
+  const rec = agentRecord(d, id, ws);
+  syncCatalog(d);
+  const rt = runtimeFor(rec.runtime);
+  const files = agentFilesDir(d.stateDir(), rec.id);
+  const rot = rotationInfo(d.stateDir(), rec);
+  const fresh = `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`;
+  const resume = `Resume: ${d.cli} agents resume ${rec.id}`;
+  if (!rt.firstPrompt)
+    throw refused(`${rec.runtime} can't start a conversation from a handoff`, [
+      fresh,
+    ]);
+  if (!rot?.due)
+    throw refused(`agent ${rec.id} has not rotated: resume it instead`, [
+      resume,
+    ]);
+  const h = readHandoff(files);
+  if (h.status !== "ok")
+    throw new AgentError(
+      h.status === "missing"
+        ? `agent ${rec.id} has no handoff.md yet, so it can't relaunch from one`
+        : `agent ${rec.id}'s handoff.md is not ready: ${h.problems.join(" ")}`,
+      { code: "no_handoff", hints: [fresh, resume] },
+    );
+  // The rotated session ends here, if it is still open.
+  const s = sessionOf(await hostSessions(d), rec);
+  if (s && !s.exited) {
+    const stopped = await stopAgent(d, rec.id, ws);
+    if (stopped.stillStopping)
+      throw refused(`agent ${rec.id} is still stopping; try again`);
+  }
+  const now = new Date().toISOString();
+  const why = reasonText(rot.due, rot.compactions);
+  const entry = {
+    at: now,
+    reason: rot.due,
+    compactions: rot.compactions,
+    ...(rec.resumeToken ? { conversation: rec.resumeToken } : {}),
+  };
+  let kept = "";
+  const before = readRotation(files);
+  // The launch failed: the handoff and the rotation are as they were, for
+  // the conversation the record now names, so Relaunch is offered again.
+  const undo = (conversation?: string) => {
+    if (kept && fs.existsSync(kept) && !fs.existsSync(handoffFile(files)))
+      fs.renameSync(kept, handoffFile(files));
+    if (before)
+      writeRotation(files, {
+        ...before,
+        due: rot.due,
+        ...(conversation ? { conversation } : {}),
+      });
+  };
+  const started = await startAgent(
+    d,
+    {
+      workspace: rec.workspace,
+      persona: rec.persona,
+      runtime: rec.runtime,
+      ...(rec.model ? { model: rec.model } : {}),
+      id: rec.id,
+    },
+    {
+      firstPrompt: handoffPrompt(h.text!, rot.due, rot.compactions),
+      rotations: [...(rec.rotations ?? []), entry],
+      beforeLaunch: () => {
+        kept = archiveHandoff(
+          files,
+          `${now.replace(/[:.]/g, "-")}-${rec.resumeToken ?? "conversation"}`,
+        );
+      },
+    },
+  ).catch((e: unknown) => {
+    undo();
+    throw e;
+  });
+  if (started.early) undo(started.rec.resumeToken);
+  return { ...started, why, handoff: kept };
 }
 
 /** The host's sessions, never starting a host (none running: none). */
@@ -1517,7 +1701,10 @@ export async function markInterrupted(
     if (!p || !(p.standing || p.resumeOnRestart)) continue;
     if (resumeRefusal(rec)) continue;
     try {
-      const r = await resumeAgent(d, rec.id);
+      // den#4: a rotated one relaunches from its handoff instead.
+      const r = rotationInfo(d.stateDir(), rec)?.ready
+        ? await relaunchAgent(d, rec.id)
+        : await resumeAgent(d, rec.id);
       if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
       else found.resumed.push(rec.id);
     } catch (e) {
@@ -1547,7 +1734,9 @@ export async function resumeInterrupted(
   const resumed: Resumed[] = [];
   const failed: { agent: string; why: string }[] = [];
   for (const rec of recs) {
-    const why = resumeRefusal(rec);
+    const rot = rotationInfo(d.stateDir(), rec);
+    const why =
+      resumeRefusal(rec) ?? (rot?.ready ? rotatedRefusal(rec, rot) : null);
     if (why) {
       failed.push({ agent: rec.id, why });
       continue;

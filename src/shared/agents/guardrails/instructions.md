@@ -37,3 +37,26 @@ a numbered yes/no question is sent back to you to fix.
 Write "Decisions: none" when there are none, and "URL: none" (with a short
 reason) when the work has no page to open. Every message you end a turn
 with is read by a person, hand-back or not: explain each ID in it.
+
+### When your session rotates
+
+A session ends when its pull request merges, or after a few compactions
+(three unless your team set another number). Den tells you when that
+happens. Then write a handoff to the file Den names (`handoff.md` in your
+agent files folder) and end your turn. Den checks it, and relaunches your
+role from it in a fresh conversation. Use these headings, each filled in:
+
+```
+## Objective
+<what the work is for, in a sentence or two>
+## State
+<what is done, and where it is: branch, pull request, files>
+## Open items
+<what is left, one per line; or none>
+## How to QA
+<the steps to see it working>
+## Next step
+<the one thing to do first>
+```
+
+Write it plainly. Explain every ID in it, as in a hand-back.

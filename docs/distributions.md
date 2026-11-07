@@ -2401,6 +2401,10 @@ Den never writes your `~/.claude`; your own hooks still run.
   going (Claude Code's `decision: "block"`). It never blocks twice in a
   row (`stop_hook_active`), so it can't loop. Den adds no `SubagentStop` hook: a subagent reports to its parent
   agent, not to a person.
+- `PreCompact`, and `SessionStart` after a compaction or on resume
+  (`rotation-hook.ts`), count the conversation's compactions and ask for a
+  handoff once a rotation is due. See Session rotation, below. While one is
+  due, the `Stop` hook also blocks once until `handoff.md` passes.
 
 **The hand-back template**, which the check enforces:
 
@@ -2453,6 +2457,98 @@ agents:
 A persona of yours that replaces a default one (same id) takes your
 pack's setting, not Den's pack's. Anything but `true` or `false`, or an
 unknown key, is an error naming the key.
+
+### Session rotation: one session per objective
+
+A session that never ends re-reads its whole context on every call. So a
+session ends when its pull request merges, or after a few compactions. Its
+role then relaunches in a fresh conversation, from a handoff the session
+wrote. This is rule R2 (one session per objective) of the agent-loop
+report. It works on den-claude for personas with Den's hooks on.
+
+**How it works.**
+
+1. Den's hooks count compactions. A `PreCompact` hook
+   (`guardrails/rotation-hook.ts`) adds one to
+   `<stateDir>/agent-files/<id>/rotation.json` at every compaction, manual
+   or automatic. The count belongs to one conversation, and starts at 0 for
+   a new one.
+2. A trigger fires. Either the count reaches
+   `agents.rotate.after_compactions` (default 3), or the agent's pull
+   request merged (the `prMerged` outcome that `<cli> usage agents` saves).
+3. Den tells the agent. The `PreCompact` hook's output asks the compaction
+   summary to keep the instruction. A `SessionStart` hook (after a
+   compaction, or on resume) adds it to the context. The `Stop` hook blocks
+   the turn once while the handoff is missing or fails the check. The
+   instruction: write `handoff.md` in the agent's files folder, then end
+   the turn.
+4. Den relaunches the role. **Relaunch from handoff** starts a fresh
+   conversation (a new conversation id) with the same persona, workspace,
+   folder and grants. Its first prompt is the handoff. The handoff moves to
+   `agent-files/<id>/handoffs/`, and the record notes the rotation.
+
+**The handoff** has five parts, each a heading, each filled in. Write it
+plainly, and explain every ID, as in a hand-back. It must stay under 20,000
+characters, since it becomes a first prompt.
+
+```markdown
+## Objective
+
+<what the work is for>
+
+## State
+
+<what is done, and where it is: branch, pull request, files>
+
+## Open items
+
+<what is left; or none>
+
+## How to QA
+
+<the steps to see it working>
+
+## Next step
+
+<the one thing to do first>
+```
+
+`<cli> agents handoff-check <file|-> [--json]` runs the check: exit 0 when
+it passes, 1 with each missing or empty part and each unexplained ID. A
+part can also be a line such as `Next step: open the PR`.
+
+**Resume after a rotation.** Once a rotation is due and `handoff.md`
+passes, Den declines a plain Resume of that conversation:
+
+- The Agents page shows the row as "Ready to relaunch (3 compactions)" or
+  "Ready to relaunch (PR merged)". Its buttons are Relaunch from handoff
+  (the primary one), Start fresh and Remove.
+- `<cli> agents resume <id>` refuses (exit 1) and prints
+  `Relaunch from handoff: <cli> agents relaunch <id>`. The resume route
+  answers 409 with code `rotated`.
+- `<cli> agents relaunch <id> [-w <ws>]` and
+  `POST /api/workspaces/<ws>/agents/<id>/relaunch` relaunch it. A running
+  rotated agent is stopped first.
+- With `handoff.md` missing or failing the check, the row says so, and
+  Resume and Start fresh stay. Resume the agent to write or fix it.
+  Relaunch says what is wrong (409 `no_handoff`) and names Start fresh.
+- After a restart, a standing persona that rotated relaunches on its own,
+  as a standing persona resumes on its own.
+
+**Settings**, in the org config:
+
+```yaml
+agents:
+  rotate:
+    after_compactions: 3 # 1 to 100; the default is 3
+    standing: true # standing personas rotate too (the default)
+```
+
+`standing` is for standing personas, such as the planner and the
+orchestrator. With `true` (the default), they rotate like the rest: only
+their context resets, and they keep their id and workspace. With `false`,
+they never rotate. A setting takes effect at the agent's next start or
+relaunch. An unknown key, or a bad value, is an error naming the key.
 
 ### Runtimes
 
@@ -2660,6 +2756,19 @@ only counts.
 `<state dir>/usage/<date>.json` and `.md`, compared with the last one:
 calls, cache re-reads, polls, sleeps, compactions, corrections and the
 attributed share.
+
+For session rotation, `usage agents` also shows each agent's compactions
+(in its current conversation) and rotations (how many times Den relaunched
+it from a handoff). A merged pull request makes the agent's rotation due.
+`usage report` adds three numbers:
+
+- `long_session_context_k`: the highest average tokens per call of any
+  session in the window, in thousands. A call's tokens are its input,
+  cache reads and cache writes.
+- `never_ending_reread_pct`: the share of cache re-reads that came from
+  never-ending sessions. A never-ending session compacted more often than
+  `agents.rotate.after_compactions`.
+- `rotations`: relaunches from a handoff, over the agents listed.
 
 Den reads Claude Code's transcripts (`$CLAUDE_CONFIG_DIR/projects`, else
 `~/.claude/projects`). A plugin can add a reader for another runtime with

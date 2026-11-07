@@ -40,6 +40,15 @@
  * shows only Start fresh, saying so. Clear stopped removes every stopped
  * agent in view. After a restart, one line says how many were interrupted,
  * with Resume all and Review.
+ *
+ * Session rotation (den#4): an agent whose session rotated (after
+ * agents.rotate.after_compactions compactions, or its pull request merged)
+ * and whose handoff.md passes the check reads "Ready to relaunch (3
+ * compactions)" or "(PR merged)", with Relaunch from handoff as its primary
+ * action, then Start fresh and Remove; Resume is not offered. With the
+ * handoff missing or failing the check, the row says so and keeps Resume
+ * and Start fresh. A running one says "Handoff due" or "Ready to relaunch"
+ * as a tag.
  */
 import { fillStartForm } from "/agent-start.js";
 
@@ -181,6 +190,23 @@ export function stopReason(r) {
   return stateText(r.state);
 }
 
+/** Why it rotates, in words: "3 compactions", "PR merged" (den#4). */
+function rotationWhy(rot) {
+  if (rot.due === "pr-merged") return t("ag.rot.merged");
+  return t(
+    rot.compactions === 1 ? "ag.rot.compactions.one" : "ag.rot.compactions",
+    {
+      n: rot.compactions,
+    },
+  );
+}
+
+/** Its rotation, when one is due: "ready" or "due" (den#4). */
+function rotationOf(r) {
+  if (!r.rotation?.due) return "";
+  return r.rotation.ready ? "ready" : "due";
+}
+
 /** A stopped agent's row: its button (it opens an ended pane) and actions. */
 function stoppedHtml(r) {
   const open = st.open.includes(r.id);
@@ -188,26 +214,47 @@ function stoppedHtml(r) {
   const nm = `${esc(name)}${r.persona && r.persona !== r.label ? ` <span class="id">${esc(r.label)}</span>` : ""}`;
   const meta = [r.runtime, r.cwd].filter(Boolean).join(" · ");
   const who = esc(r.agent);
+  const rot = rotationOf(r);
+  const relaunch =
+    rot === "ready"
+      ? `<button type="button" class="den-btn sm primary" data-act="relaunch" aria-label="${esc(t("ag.relaunchName", { id: r.agent }))}">${esc(t("ag.relaunch"))}</button>`
+      : "";
   const resume = r.resumable
     ? `<button type="button" class="den-btn sm primary" data-act="resume" aria-label="${esc(t("ag.resumeName", { id: r.agent }))}">${esc(t("ag.resume"))}</button>`
     : "";
   const fresh = `<button type="button" class="den-btn sm" data-act="fresh" aria-label="${esc(t("ag.freshName", { id: r.agent }))}">${esc(t("ag.fresh"))}</button>`;
   const remove = `<button type="button" class="den-btn sm" data-act="remove" aria-label="${esc(t("ag.removeName", { id: r.agent }))}">${esc(t("ag.remove"))}</button>`;
+  // A rotation due without a handoff that passes: say so (den#4).
+  const handoff =
+    rot === "due"
+      ? `<span class="agcant" data-handoff="${esc(r.rotation.handoff)}">${esc(
+          t(
+            r.rotation.handoff === "missing"
+              ? "ag.rot.noHandoff"
+              : "ag.rot.badHandoff",
+            { why: rotationWhy(r.rotation) },
+          ),
+        )}</span>`
+      : "";
   const cant =
-    !r.resumable && r.noResume
+    !r.resumable && r.noResume && rot !== "ready"
       ? `<span class="agcant" data-no-resume>${esc(r.noResume.startsWith(`${r.runtime} `) ? t("ag.noResume", { runtime: r.runtime }) : r.noResume)}</span>`
       : "";
+  const stText =
+    rot === "ready"
+      ? t("ag.rot.ready", { why: rotationWhy(r.rotation) })
+      : stateText(r.state);
   return (
-    `<div class="agst" data-agent="${who}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}">` +
+    `<div class="agst" data-agent="${who}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}"` +
     ` aria-pressed="${open}"${r.attachable ? "" : ' aria-disabled="true"'}` +
     ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${name}` }))}">` +
     `<span class="den-dot ${stateTone(r)}" aria-hidden="true"></span>` +
-    `<span class="nm">${nm}</span><span class="st">${esc(stateText(r.state))}</span>` +
+    `<span class="nm">${nm}</span><span class="st">${esc(stText)}</span>` +
     (meta ? `<span class="meta">${esc(meta)}</span>` : "") +
     `<span class="why">${esc(stopReason(r))}</span>` +
     `</button>` +
-    `<div class="agacts">${cant}${resume}${fresh}${remove}</div>` +
+    `<div class="agacts">${handoff}${cant}${relaunch}${resume}${fresh}${remove}</div>` +
     `</div>`
   );
 }
@@ -223,9 +270,21 @@ function rowHtml(r) {
     ? `<span class="wbdg">${esc(t("ag.waiting"))}</span>`
     : `<span class="st">${esc(stateText(r.state))}</span>`;
   const meta = [r.runtime, r.cwd].filter(Boolean).join(" · ");
-  const tags = r.tokenRevoked
-    ? `<span class="agtags"><span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span></span>`
+  const rot = rotationOf(r);
+  const rotTag = rot
+    ? `<span class="tagx warn" data-rotation="${rot}">${esc(
+        t(rot === "ready" ? "ag.rot.ready" : "ag.rot.due", {
+          why: rotationWhy(r.rotation),
+        }),
+      )}</span>`
     : "";
+  const revokedTag = r.tokenRevoked
+    ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
+    : "";
+  const tags =
+    rotTag || revokedTag
+      ? `<span class="agtags">${revokedTag}${rotTag}</span>`
+      : "";
   return (
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
     ` aria-pressed="${open}"${r.attachable ? "" : ' aria-disabled="true"'}` +
@@ -760,18 +819,24 @@ async function stopAgent(p, button) {
 const agentPath = (r, verb) =>
   `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/${verb}`;
 
-/** Resume (the same conversation) or Start fresh; its pane opens on it. */
+/**
+ * Resume (the same conversation), Start fresh, or Relaunch from handoff
+ * (den#4: a new conversation that starts from handoff.md); its pane opens
+ * on it.
+ */
 async function restartRow(r, verb, button) {
   if (button) button.disabled = true;
   try {
     const out = await api("POST", agentPath(r, verb));
     window.denShell?.toast?.(
       t(
-        verb !== "resume"
-          ? "ag.startedFresh"
-          : out?.fresh
-            ? "ag.resumedFresh"
-            : "ag.resumed",
+        verb === "relaunch"
+          ? "ag.relaunched"
+          : verb !== "resume"
+            ? "ag.startedFresh"
+            : out?.fresh
+              ? "ag.resumedFresh"
+              : "ag.resumed",
         { id: r.agent },
       ),
     );
@@ -1093,7 +1158,7 @@ export async function mountAgentsPage(root) {
         (x) => x.agent === agent && x.workspace === ws,
       );
       if (!r) return;
-      if (which === "resume" || which === "fresh")
+      if (which === "resume" || which === "fresh" || which === "relaunch")
         void restartRow(r, which, act);
       else if (which === "remove") void removeRow(r, act);
       return;

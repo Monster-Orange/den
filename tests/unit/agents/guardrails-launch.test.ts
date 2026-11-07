@@ -11,7 +11,9 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
+  GUARDRAILS_DIR,
   guardrailHooks,
+  hookCommands,
   sharedInstructions,
 } from "../../../src/shared/agents/guardrails.js";
 import {
@@ -52,6 +54,16 @@ function input(persona: Persona, stateDir?: string): LaunchInput {
   };
 }
 
+/** The hooks a launch of `id` carries: its rotation counted in its files dir (den#4). */
+const agentHooks = (id: string) =>
+  guardrailHooks(
+    GUARDRAILS_DIR,
+    hookCommands(GUARDRAILS_DIR, process.execPath, {
+      files: path.join(root, "files", id),
+      after: 3,
+    }),
+  );
+
 function launch(persona: Persona, stateDir?: string) {
   const inp = input(persona, stateDir);
   const out = getRuntime("den-claude")!.launch(inp);
@@ -79,7 +91,12 @@ describe("a default-pack persona's launch", () => {
       string,
       { matcher?: string; hooks: { type: string; command: string }[] }[]
     >;
-    expect(Object.keys(hooks).sort()).toEqual(["PreToolUse", "Stop"]);
+    expect(Object.keys(hooks).sort()).toEqual([
+      "PreCompact",
+      "PreToolUse",
+      "SessionStart",
+      "Stop",
+    ]);
     expect(hooks.PreToolUse[0].matcher).toBe("Bash|Read");
     expect(hooks.PreToolUse[0].hooks[0].type).toBe("command");
     expect(hooks.PreToolUse[0].hooks[0].command).toContain(
@@ -89,7 +106,7 @@ describe("a default-pack persona's launch", () => {
       path.join("guardrails", "stop-hook"),
     );
     expect(l.settings!.permissions).toBeDefined();
-    expect(hooks).toEqual(guardrailHooks());
+    expect(hooks).toEqual(agentHooks("planner"));
     // Never the user's own Claude Code config.
     expect(JSON.stringify(l.settings)).not.toContain(".claude/settings");
   });
@@ -97,7 +114,7 @@ describe("a default-pack persona's launch", () => {
   it("writes the settings file for the hooks even with no state dir", () => {
     const l = launch(planner);
     expect(l.argv).toContain("--settings");
-    expect(l.settings).toEqual({ hooks: guardrailHooks() });
+    expect(l.settings).toEqual({ hooks: agentHooks("planner") });
   });
 
   it("appends the shared persona instructions to the role prompt", () => {

@@ -7,10 +7,12 @@
  *                    role prompt (personas.ts rolePrompt), so every runtime
  *                    gets them.
  *   hooks.json       a Claude Code settings fragment: a PreToolUse hook on
- *                    Bash and Read (pretooluse.mjs) and a Stop hook
- *                    (stop-hook.ts, the hand-back check). den-claude merges
- *                    it into the agent's own --settings file; Den never
- *                    writes the user's ~/.claude.
+ *                    Bash and Read (pretooluse.mjs), a Stop hook
+ *                    (stop-hook.ts, the hand-back check), and PreCompact
+ *                    and SessionStart (compact, resume) hooks
+ *                    (rotation-hook.ts, session rotation: den#4). den-claude
+ *                    merges it into the agent's own --settings file; Den
+ *                    never writes the user's ~/.claude.
  *
  * On by default for Den's default pack, off for a distribution's packs.
  * A distribution turns them off or on per pack (agents.default_pack, a
@@ -68,27 +70,56 @@ export interface HookCommands {
   pretooluse: string;
   /** The Stop hook's command line. */
   stop: string;
+  /** The PreCompact and SessionStart hooks' command line (den#4). */
+  rotation: string;
+}
+
+/**
+ * Where an agent's rotation state lives and its limit (den#4): its files
+ * dir, and the compactions after which it rotates (0: never).
+ */
+export interface RotationArgs {
+  files: string;
+  after: number;
 }
 
 /** The command lines Den's hooks run: this node, Den's own scripts. */
 export function hookCommands(
   dir: string = GUARDRAILS_DIR,
   node: string = process.execPath,
+  rotation?: RotationArgs,
 ): HookCommands {
+  const more = (c: EngineCommand): EngineCommand =>
+    rotation
+      ? {
+          command: c.command,
+          args: [
+            ...c.args,
+            "--files",
+            rotation.files,
+            "--after",
+            String(rotation.after),
+          ],
+        }
+      : c;
   return {
     pretooluse: commandLine({
       command: node,
       args: [path.join(dir, "pretooluse.mjs")],
     }),
     stop: commandLine(
-      scriptEntrypoint("src/shared/agents/guardrails/stop-hook.ts"),
+      more(scriptEntrypoint("src/shared/agents/guardrails/stop-hook.ts")),
+    ),
+    rotation: commandLine(
+      more(scriptEntrypoint("src/shared/agents/guardrails/rotation-hook.ts")),
     ),
   };
 }
 
 /**
  * The `hooks` block of the agent's settings file: hooks.json with each
- * `{pretooluse}` / `{stop}` placeholder replaced by its command line.
+ * `{pretooluse}` / `{stop}` / `{rotation}` placeholder replaced by its
+ * command line.
  */
 export function guardrailHooks(
   dir: string = GUARDRAILS_DIR,
@@ -100,7 +131,7 @@ export function guardrailHooks(
   const fill = (v: unknown): unknown => {
     if (typeof v === "string")
       return v.replace(
-        /\{(pretooluse|stop)\}/g,
+        /\{(pretooluse|stop|rotation)\}/g,
         (_, k: keyof HookCommands) => cmds[k],
       );
     if (Array.isArray(v)) return v.map(fill);

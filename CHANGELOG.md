@@ -4,6 +4,83 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.9] - unreleased
+
+A session ends when its pull request merges, or after 3 compactions. The
+role then relaunches from a handoff, in a fresh conversation (den#4, the
+session-rotation issue). Sessions that never end re-read huge contexts on
+every call. This keeps each session to one objective.
+
+### Added
+
+- **Den counts compactions.** A `PreCompact` hook, alongside Den's other
+  hooks for default-pack Claude Code agents, counts each compaction of the
+  agent's conversation. The count is in
+  `<state dir>/agent-files/<id>/rotation.json`, and starts at 0 for each
+  new conversation.
+- **Two triggers.** A rotation is due after `agents.rotate.after_compactions`
+  compactions (default 3), or once the agent's pull request merged (the
+  `prMerged` outcome from `usage agents`).
+- **The agent is told.** The compaction summary keeps the instruction, a
+  `SessionStart` hook adds it after the compaction, and the `Stop` hook
+  blocks once until the handoff is written. The shared instructions say
+  what to do: write `handoff.md` in the agent's files folder, then end the
+  turn.
+- **The handoff check.** A handoff has five parts: Objective, State, Open
+  items, How to QA, Next step. Each must be there and filled in, and every
+  ID explained. `<cli> agents handoff-check <file|->` runs the check and
+  names what is missing.
+- **Relaunch from handoff.** A fresh conversation (a new conversation id),
+  with the same persona, workspace, folder and grants. Its first prompt is
+  the handoff. The handoff is then kept in `handoffs/`, and the record
+  notes the rotation. `<cli> agents relaunch <id>`, and
+  `POST /api/workspaces/<ws>/agents/<id>/relaunch`.
+- **The Agents page.** A rotated agent reads "Ready to relaunch (3
+  compactions)" or "Ready to relaunch (PR merged)". Its buttons are
+  Relaunch from handoff (the primary one), Start fresh and Remove. With no
+  handoff, or one that fails the check, the row says so and keeps Resume
+  and Start fresh. A running agent shows "Handoff due" or "Ready to
+  relaunch" as a tag.
+- **`agents.rotate` in the org config**: `after_compactions` (1 to 100,
+  default 3) and `standing` (default true). With `standing: false`,
+  standing personas such as the planner never rotate.
+- **Usage shows rotation.** `usage agents` adds each agent's compactions
+  and rotations. `usage report` adds `long_session_context_k`,
+  `never_ending_reread_pct` and `rotations`.
+
+### Changed
+
+- **Resume refuses a rotated conversation.** Once a rotation is due and the
+  handoff passes, `agents resume <id>` exits 1 with
+  `Relaunch from handoff: <cli> agents relaunch <id>`. The resume route
+  answers 409 with code `rotated`. Resume all lists it as not resumed.
+- **A standing persona that rotated relaunches on its own** after a
+  restart, as it resumed on its own before.
+- **The `Stop` hook and the new hooks take the agent's files folder** on
+  their command line (`--files <dir> --after <n>`).
+
+### Metrics (before → after)
+
+- Peak tokens per call in a long session: 365–510k → <150k.
+- Share of context re-reads from never-ending sessions: 59% → <15%.
+- How it is measured: `usage report` on this machine.
+  `long_session_context_k` is the highest average tokens per call of any
+  session. `never_ending_reread_pct` is the share of cache re-reads from
+  sessions that compacted more than `agents.rotate.after_compactions`
+  times. Compare a week's report before and after.
+- On the test fixture (15 sessions with 16 compactions each, and 127 that
+  end within 3): 399k → 139k per call, and 59% → 0% of re-reads. The same
+  calls re-read fewer tokens.
+
+### Migrations
+
+- None needed. Rotation is on for Den's default pack, with 3 compactions.
+  To change the number, set `agents.rotate.after_compactions`. To keep
+  standing personas from rotating, set `agents.rotate.standing: false`.
+  `rotate` is now a reserved key under `agents:`, so no agent can have the
+  id `rotate`. Agents started before 0.4.9 start counting at their next
+  start or resume.
+
 ## [0.4.8] - 2026-11-07
 
 Stopped agents stay in the list, and come back where they were (AG-14, the

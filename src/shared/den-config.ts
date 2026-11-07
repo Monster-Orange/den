@@ -20,6 +20,7 @@ import { validateOrgSources, type WorkOrgsConfig } from "./org-sources.js";
 import { ConfigError, isConfigError } from "./config-error.js";
 import { validateCatalog, type CatalogEntry } from "./agents/catalog.js";
 import type { Guardrails } from "./agents/guardrails.js";
+import { DEFAULT_ROTATE, type RotateSettings } from "./agents/rotation.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
 
 import { product } from "./product.js";
@@ -880,6 +881,13 @@ export interface AgentsConfig {
    */
   runtime_catalog?: unknown[];
   /**
+   * Session rotation (den#4), `{ after_compactions, standing }`: a session
+   * ends after `after_compactions` compactions (default 3) or once its pull
+   * request merged, and its role relaunches from its handoff. `standing:
+   * false` keeps standing personas from rotating (default true).
+   */
+  rotate?: { after_compactions?: unknown; standing?: unknown };
+  /**
    * Any other key is an agent id: `agents.<id>.grants` widens that agent's
    * MCP scope to other workspaces (AG spec §5b). Config only: an agent
    * never grants itself one.
@@ -902,6 +910,7 @@ export const AGENTS_RESERVED_KEYS = [
   "persona_packs",
   "runtime_catalog",
   "default_pack",
+  "rotate",
 ];
 
 /** One agent's own block, `agents.<id>`. */
@@ -923,6 +932,37 @@ export interface ResolvedAgentsConfig {
   agents: Record<string, AgentGrantsConfig>;
   /** The distribution's runtime catalog entries (AG-0.5), checked. */
   runtimeCatalog: CatalogEntry[];
+  /** agents.rotate with its defaults (den#4); unset: DEFAULT_ROTATE. */
+  rotate?: RotateSettings;
+}
+
+/** `agents.rotate` checked; any other key, or a bad value, throws naming it. */
+function rotateBlock(v: unknown): RotateSettings {
+  const out: RotateSettings = { ...DEFAULT_ROTATE };
+  if (v === undefined || v === null) return out;
+  if (!isMapping(v))
+    throw new Error(
+      "agents.rotate: must be a mapping ({ after_compactions: <n>, standing: true|false })",
+    );
+  for (const [k, x] of Object.entries(v)) {
+    if (k === "after_compactions") {
+      if (typeof x !== "number" || !Number.isInteger(x) || x < 1 || x > 100)
+        throw new Error(
+          `agents.rotate.after_compactions: must be a whole number from 1 to 100 (got ${JSON.stringify(x)})`,
+        );
+      out.afterCompactions = x;
+    } else if (k === "standing") {
+      if (typeof x !== "boolean")
+        throw new Error(
+          `agents.rotate.standing: must be true or false (got ${JSON.stringify(x)})`,
+        );
+      out.standing = x;
+    } else
+      throw new Error(
+        `agents.rotate.${k}: unknown key (takes after_compactions, standing)`,
+      );
+  }
+  return out;
 }
 
 /** An agent id or workspace name: what WORKSPACE_NAME_RE accepts. */
@@ -985,6 +1025,7 @@ export function readAgentsConfig(
       raw.runtime_catalog,
       "agents.runtime_catalog",
     ),
+    rotate: rotateBlock(raw.rotate),
   };
   const max = raw.max_concurrent;
   if (max !== undefined) {
@@ -1018,7 +1059,7 @@ export function readAgentsConfig(
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(
-        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, default_pack, ` +
+        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, default_pack, rotate, ` +
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))

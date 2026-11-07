@@ -534,6 +534,19 @@
     "ag.restored": "Back in the list: {ids}",
     "ag.clear": "Clear stopped",
     "ag.noResume": "{runtime} can't resume a conversation",
+    // Session rotation (den#4).
+    "ag.rot.ready": "Ready to relaunch ({why})",
+    "ag.rot.due": "Handoff due ({why})",
+    "ag.rot.compactions": "{n} compactions",
+    "ag.rot.compactions.one": "{n} compaction",
+    "ag.rot.merged": "PR merged",
+    "ag.rot.noHandoff":
+      "Its session rotated ({why}), but it wrote no handoff.md. Resume it to write one, or start fresh.",
+    "ag.rot.badHandoff":
+      "Its session rotated ({why}), but its handoff.md is not complete. Resume it to fix it, or start fresh.",
+    "ag.relaunch": "Relaunch from handoff",
+    "ag.relaunchName": "Relaunch {id} from handoff",
+    "ag.relaunched": "Relaunched {id} from its handoff",
     "ag.interrupted": "{n} agents were interrupted when {name} restarted",
     "ag.interrupted.one": "{n} agent was interrupted when {name} restarted",
     "ag.resumeAll": "Resume all",

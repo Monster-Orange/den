@@ -89,6 +89,16 @@ export interface LaunchInput {
   resumeToken?: string;
   /** The CLI detect found (a setting, the login PATH, …); else searched again. */
   bin?: string;
+  /**
+   * Session rotation (den#4): the compactions after which this agent's
+   * session rotates (0: never). Den's hooks count them. Default 3.
+   */
+  rotateAfter?: number;
+  /**
+   * The new conversation's first prompt (a relaunch from handoff.md).
+   * Only a runtime with `firstPrompt: true` is given one.
+   */
+  firstPrompt?: string;
 }
 
 export interface LaunchOutput {
@@ -126,6 +136,11 @@ export interface Runtime {
    */
   find?: RuntimeFind;
   detect(env?: NodeJS.ProcessEnv, opts?: DetectOptions): RuntimeDetect;
+  /**
+   * It can start a conversation with a first prompt (LaunchInput
+   * firstPrompt): Relaunch from handoff needs it (den#4).
+   */
+  firstPrompt?: boolean;
   /** Throws LaunchError when this persona or this machine can't run it. */
   launch(input: LaunchInput): LaunchOutput;
   /** A new run that continues the last one; null when there is nothing to resume. */

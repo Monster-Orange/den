@@ -15,10 +15,13 @@
 import * as fs from "fs";
 import * as path from "path";
 import {
+  agentFilesDir,
   listRecords,
   readRecord,
   writeRecord,
 } from "../../shared/agents/records.js";
+import { markDue } from "../../shared/agents/rotation.js";
+import { readAgentsConfig } from "../../shared/den-config.js";
 import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import {
@@ -48,11 +51,14 @@ export const USAGE_HELP = {
     "",
     "{cli} usage agents [-w <ws>] [--json]",
     "    each agent's tokens and outcome (pull request opened or merged, tests",
-    "    green, wall-clock), joined on its conversation id, and saved in its",
-    "    record; then the share of agents with both",
+    "    green, wall-clock), compactions and rotations, joined on its",
+    "    conversation id, and saved in its record; then the share of agents",
+    "    with both. A merged pull request makes the agent's rotation due",
     "{cli} usage report [--days <n>] [--json]",
     "    the last n days (default 7): tokens, context re-reads, polling, denials,",
-    "    tool errors, corrections, subagents on Opus; written to",
+    "    tool errors, corrections, subagents on Opus, the longest session's context",
+    "    per call, the share of re-reads from never-ending sessions (more",
+    "    compactions than agents.rotate.after_compactions), rotations; written to",
     "    <state dir>/usage/<date>.json and .md, compared with the last report",
   ],
 };
@@ -64,6 +70,8 @@ export interface UsageDeps {
   out?: (line: string) => void;
   err?: (line: string) => void;
   cli?: string;
+  /** agents.rotate (default: the org config's). */
+  rotateAfter?: () => { afterCompactions: number } | undefined;
 }
 
 function resolve(d: UsageDeps) {
@@ -74,6 +82,7 @@ function resolve(d: UsageDeps) {
     out: d.out ?? ((l: string) => console.log(l)),
     err: d.err ?? ((l: string) => console.error(l)),
     cli: d.cli ?? product().cli,
+    rotateLimit: () => rotateLimit(d),
   };
 }
 
@@ -92,7 +101,11 @@ const mins = (ms?: number) =>
       ? `${Math.round(ms / 60_000)}m`
       : `${(ms / 3_600_000).toFixed(1)}h`;
 
-/** Save each attributed row's usage and outcome in its agent record. */
+/**
+ * Save each attributed row's usage and outcome in its agent record. An
+ * agent whose pull request merged has its rotation marked due (den#4): its
+ * Stop hook then asks it for its handoff.
+ */
 function save(stateDir: string, rows: readonly AgentUsageRow[]): void {
   for (const r of rows) {
     if (!r.usage) continue;
@@ -103,6 +116,20 @@ function save(stateDir: string, rows: readonly AgentUsageRow[]): void {
       usage: r.usage,
       ...(r.outcome ? { outcome: r.outcome } : {}),
     });
+    if (r.outcome?.prMerged)
+      markDue(agentFilesDir(stateDir, rec.id), "pr-merged", rec.resumeToken);
+  }
+}
+
+/** agents.rotate.after_compactions; the default when the config can't be read. */
+function rotateLimit(d: UsageDeps): number {
+  try {
+    return (
+      (d.rotateAfter ?? (() => readAgentsConfig().rotate))()
+        ?.afterCompactions ?? 3
+    );
+  } catch {
+    return 3;
   }
 }
 
@@ -138,6 +165,8 @@ async function agents(
       "WALL",
       "TESTS",
       "PR",
+      "COMPACTIONS",
+      "ROTATIONS",
     ],
     ...rows.map((r) => [
       r.agent,
@@ -154,6 +183,8 @@ async function agents(
       r.outcome?.prOpened
         ? `${r.outcome.prOpened}${r.outcome.prMerged ? " (merged)" : ""}`
         : "-",
+      r.compactions === undefined ? "-" : String(r.compactions),
+      String(r.rotations),
     ]),
   ]))
     d.out(l);
@@ -211,7 +242,7 @@ async function report(
       stats.push(await src.mine(f, { since }));
   const rows = await agentUsage(listRecords(d.stateDir()), { env: d.env });
   save(d.stateDir(), rows);
-  const m = weeklyMetrics(stats, rows);
+  const m = weeklyMetrics(stats, rows, d.rotateLimit());
   const date = now.toISOString().slice(0, 10);
   const dir = path.join(d.stateDir(), "usage");
   const prev = previous(dir, date);

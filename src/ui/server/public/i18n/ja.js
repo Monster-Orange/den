@@ -401,6 +401,17 @@
     "ag.fresh": "新しく始める",
     "ag.freshName": "{id} を新しく始める",
     "ag.startedFresh": "{id} を新しく始めました",
+    "ag.rot.ready": "再起動の準備ができました（{why}）",
+    "ag.rot.due": "引き継ぎが必要です（{why}）",
+    "ag.rot.compactions": "圧縮 {n} 回",
+    "ag.rot.merged": "PR がマージされました",
+    "ag.rot.noHandoff":
+      "セッションは交代しました（{why}）が、handoff.md がありません。再開して書かせるか、新しく始めてください。",
+    "ag.rot.badHandoff":
+      "セッションは交代しました（{why}）が、handoff.md が不完全です。再開して直すか、新しく始めてください。",
+    "ag.relaunch": "引き継ぎから再起動",
+    "ag.relaunchName": "{id} を引き継ぎから再起動",
+    "ag.relaunched": "{id} を引き継ぎから再起動しました",
     "ag.remove": "削除",
     "ag.removeName": "{id} を削除",
     "ag.removed": "{id} を削除しました",

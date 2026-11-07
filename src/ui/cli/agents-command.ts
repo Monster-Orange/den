@@ -43,6 +43,14 @@
  *   handback-check <file|->  (den#5) the hand-back check (handback.ts) on a
  *           file or stdin: each problem on its own line, exit 1 when there
  *           is one, 0 when the hand-back is complete and plain.
+ *   relaunch (den#4, session rotation) once an agent's session rotated
+ *           (after agents.rotate.after_compactions compactions, or its pull
+ *           request merged) and its handoff.md passes the check: a fresh
+ *           conversation, same persona, workspace, folder and grants, whose
+ *           first prompt is the handoff. `resume` on a rotated agent
+ *           refuses (exit 1) and names relaunch.
+ *   handoff-check <file|->  (den#4) the handoff check (handoff.ts), like
+ *           handback-check.
  *
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
@@ -52,6 +60,8 @@ import { DEFAULT_RUNTIME_ID } from "../../shared/agents/runtimes.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import { HostError } from "../../shared/sessions/client.js";
 import { checkHandback } from "../../shared/agents/handback.js";
+import { checkHandoff } from "../../shared/agents/handoff.js";
+import { reasonText } from "../../shared/agents/rotation.js";
 import { listRecords } from "../../shared/agents/records.js";
 import {
   AgentError,
@@ -59,6 +69,7 @@ import {
   listPersonas as personaList,
   listRuntimes,
   loadAgentWorkspaces,
+  relaunchAgent,
   removeAgent,
   removeStopped,
   resolveAgentsDeps,
@@ -92,7 +103,7 @@ export {
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|rm|personas|doctor|handback-check> ...",
+    "agents <list|start|stop|resume|relaunch|rm|personas|doctor|handback-check|handoff-check> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -110,7 +121,13 @@ export const AGENTS_HELP = {
     "    the same conversation, persona, workspace and folder, when its runtime",
     "    can resume one and its session has ended; with nothing to resume yet,",
     "    it starts fresh under the same conversation id. --all-interrupted: every",
-    "    agent interrupted when Den or the machine restarted",
+    "    agent interrupted when Den or the machine restarted. A rotated agent",
+    "    is not resumed: relaunch it",
+    "{cli} agents relaunch <id> [-w <ws>]",
+    "    session rotation: once a session ended after agents.rotate.after_compactions",
+    "    compactions (default 3) or its pull request merged, and its handoff.md",
+    "    passes the check, a fresh conversation (same persona, workspace, folder,",
+    "    grants) whose first prompt is the handoff",
     "{cli} agents rm <id> [-w <ws>]",
     "{cli} agents rm --stopped [-w <ws>]",
     "    forget a stopped, interrupted or exited agent (never a running one);",
@@ -126,6 +143,10 @@ export const AGENTS_HELP = {
     "    checks a hand-back to a person: URL, machine, branch, what changed, what",
     "    to click and decisions are all there, every ID is explained, and each",
     "    decision is a numbered yes/no question; exit 1 with what to fix",
+    "{cli} agents handoff-check <file|-> [--json]",
+    "    checks a handoff.md: Objective, State, Open items, How to QA and Next step",
+    "    are all there and filled in, and every ID is explained; exit 1 with what",
+    "    to fix",
     "",
     "Runtimes: den-claude (default; Claude Code's claude), codex (OpenAI's Codex",
     "CLI), gemini (Google's Gemini CLI), grok (xAI's Grok Build), and generic (the",
@@ -181,7 +202,9 @@ async function list(args: string[], d: AgentsResolved): Promise<number> {
       r.agent,
       r.persona ?? "-",
       r.runtime ?? "-",
-      r.state,
+      r.rotation?.due
+        ? `${r.state}, ${r.rotation.ready ? "ready to relaunch" : "handoff due"} (${reasonText(r.rotation.due, r.rotation.compactions)})`
+        : r.state,
       r.model ?? "-",
       r.session && !r.session.exited ? String(r.session.pid) : "-",
       r.session?.startedAt ?? "-",
@@ -307,6 +330,17 @@ async function resume(args: string[], d: AgentsResolved): Promise<number> {
   );
 }
 
+/** `agents relaunch <id> [-w <ws>]` (den#4). */
+async function relaunch(args: string[], d: AgentsResolved): Promise<number> {
+  const { id, ws } = idAndWorkspace("agents relaunch", args);
+  const s = await relaunchAgent(d, id, ws);
+  return report(
+    d,
+    s,
+    `relaunched agent ${s.rec.id} from its handoff (the last session ended after ${s.why}) as ${s.rec.sessionName} in ${s.rec.cwd}`,
+  );
+}
+
 /** `agents resume --all-interrupted [-w <ws>]` (AG-14.3). */
 async function resumeAll(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents resume";
@@ -399,13 +433,14 @@ async function readFileOrStdin(src: string): Promise<string> {
   return text;
 }
 
-/** `agents handback-check <file|-> [--json]`. */
+/** `agents handback-check <file|-> [--json]`, or handoff-check (den#4). */
 async function handbackCheck(
   args: string[],
   d: AgentsResolved,
   deps: AgentsDoctorDeps,
+  kind: "handback" | "handoff" = "handback",
 ): Promise<number> {
-  const where = "agents handback-check";
+  const where = `agents ${kind}-check`;
   const p = parseArgs(where, args, { "--json": false });
   if (p.positional.length !== 1 || p.rest)
     throw new UsageError(`${where} takes one file, or - for stdin`);
@@ -419,11 +454,12 @@ async function handbackCheck(
     );
     return 1;
   }
-  const r = checkHandback(text);
+  const r = kind === "handoff" ? checkHandoff(text) : checkHandback(text);
+  const what = kind === "handoff" ? "handoff" : "hand-back";
   if (p.flags["--json"]) d.out(JSON.stringify(r, null, 2));
-  else if (r.ok) d.out("✓ the hand-back is complete and plain");
+  else if (r.ok) d.out(`✓ the ${what} is complete and plain`);
   else {
-    d.out("✗ the hand-back is not ready:");
+    d.out(`✗ the ${what} is not ready:`);
     for (const l of r.problems) d.out(`  - ${l}`);
   }
   return r.ok ? 0 : 1;
@@ -544,6 +580,9 @@ export async function cmdAgents(
         case "resume":
           await loadAgentWorkspaces(deps);
           return await resume(rest, d);
+        case "relaunch":
+          await loadAgentWorkspaces(deps);
+          return await relaunch(rest, d);
         case "rm":
           await loadAgentWorkspaces(deps);
           return await rm(rest, d);
@@ -555,6 +594,8 @@ export async function cmdAgents(
           return await doctor(rest, d, deps);
         case "handback-check":
           return await handbackCheck(rest, d, deps);
+        case "handoff-check":
+          return await handbackCheck(rest, d, deps, "handoff");
         default:
           throw new UsageError(`unknown agents command "${sub}"`);
       }

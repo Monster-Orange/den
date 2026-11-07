@@ -21,6 +21,11 @@
  *   alongside any hooks the user has; Den never writes ~/.claude.
  * - Each launch picks a fresh conversation id (--session-id); resume
  *   continues it with --resume <id>, in the same cwd, with the same MCP.
+ *   A relaunch from handoff (den#4) is a launch whose first prompt, the
+ *   last argument, is the handoff.
+ * - Session rotation (den#4): the hooks include PreCompact and
+ *   SessionStart (rotation-hook.ts) with the agent's files dir and its
+ *   limit (LaunchInput rotateAfter), so its compactions are counted there.
  * - Permission prompts stay in the terminal (approvals: "terminal"):
  *   --permission-mode default, unless the persona's `permission_mode` sets
  *   one of Claude Code's modes; bypassPermissions warns at every start. The
@@ -45,7 +50,8 @@ import * as fs from "fs";
 import * as path from "path";
 import { configuredRuntimeBin } from "../den-config.js";
 import { rolePrompt } from "./personas.js";
-import { guardrailHooks } from "./guardrails.js";
+import { GUARDRAILS_DIR, guardrailHooks, hookCommands } from "./guardrails.js";
+import { DEFAULT_ROTATE } from "./rotation.js";
 import {
   LaunchError,
   mcpConfigJson,
@@ -227,7 +233,16 @@ function common(input: LaunchInput): {
 } {
   const file = mcpConfigPath(input);
   const mode = permissionMode(input);
-  const hooks = input.persona.guardrails?.hooks ? guardrailHooks() : null;
+  // den#4: the rotation hooks count this agent's compactions in its files dir.
+  const hooks = input.persona.guardrails?.hooks
+    ? guardrailHooks(
+        GUARDRAILS_DIR,
+        hookCommands(GUARDRAILS_DIR, process.execPath, {
+          files: input.filesDir,
+          after: input.rotateAfter ?? DEFAULT_ROTATE.afterCompactions,
+        }),
+      )
+    : null;
   const settings = input.stateDir || hooks ? settingsPath(input) : null;
   return {
     argv: [
@@ -293,14 +308,18 @@ export const denClaude: Runtime = {
   vendor: DEN_CLAUDE_CATALOG.vendor,
   catalog: DEN_CLAUDE_CATALOG,
   denTools: true,
+  firstPrompt: true,
   find: DEN_CLAUDE_FIND,
   detect,
   launch(input): LaunchOutput {
     const bin = binFor(input);
     const id = input.resumeToken ?? randomUUID();
     const c = common(input);
+    // A relaunch from handoff (den#4): the handoff is the first prompt,
+    // the last argument. It starts with a word, never a "-".
+    const first = input.firstPrompt?.trim();
     return {
-      argv: [bin, "--session-id", id, ...c.argv],
+      argv: [bin, "--session-id", id, ...c.argv, ...(first ? [first] : [])],
       env: {},
       files: c.files,
       resumeToken: id,
