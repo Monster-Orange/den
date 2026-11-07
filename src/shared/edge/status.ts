@@ -5,6 +5,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import * as tls from "tls";
 import { certNames, edgeDomains, edgeNames, routeUrl } from "./render.js";
 import {
   includedRouters,
@@ -28,7 +29,18 @@ export interface EdgeStatus {
   routes: { name: string; url: string; upstream: string }[];
   /** Names on the issued cert, or the planned ones when none is issued yet. */
   certNames: string[];
+  /**
+   * Whether Den minted the edge's cert itself (mkcert: its names stamp is
+   * there). False under `tls: files` (the distribution supplies the cert)
+   * and `tls: none`, whether or not HTTPS serves: see `https`.
+   */
+  certIssuedByDen: boolean;
+  /** @deprecated certIssuedByDen (MCP-2.5); kept for one release. */
   certIssued: boolean;
+  /** MCP-2.5: the TLS strategy in words, and whether HTTPS is serving. */
+  https: EdgeHttps;
+  /** Fields kept for one release under an old name, and what replaces them. */
+  deprecated: { certIssued: string };
   /** Whether the CA is trusted on this machine (null: can't tell, or none). */
   caTrusted: boolean | null;
   /**
@@ -58,6 +70,28 @@ export interface EdgeStatus {
   /** Stack route files that could not be parsed (listed, never fatal). */
   stackErrors: IncludedRouters["errors"];
 }
+
+export interface EdgeHttps {
+  strategy: EdgeConfig["tls"]["strategy"];
+  /**
+   * Who supplies the cert: "den" (mkcert, minted here), "distribution"
+   * (`tls: files`, or the legacy `issue_cert: false`), or "none" (http only).
+   */
+  certs: "den" | "distribution" | "none";
+  /**
+   * Whether the edge answers a TLS handshake on its https port: true, false,
+   * or null when it was not probed (`edge status` from the CLI, or a proxy
+   * in front owns the port).
+   */
+  serving: boolean | null;
+  /** How `serving` was decided, in words. */
+  detail: string;
+}
+
+export const CERT_ISSUED_DEPRECATION =
+  "certIssued is renamed certIssuedByDen (0.4.4) and goes in the release " +
+  "after: it says whether Den minted the cert itself, so it is false under " +
+  "tls strategy files while HTTPS serves. Read https.serving for that.";
 
 export interface EdgeStatusDeps {
   containerState: (name: string) => string;
@@ -113,7 +147,23 @@ export function edgeStatus(
     domains: edgeDomains(cfg),
     routes: edgeRoutes(cfg),
     certNames: issued ?? (cfg.tls.strategy === "none" ? [] : certNames(cfg)),
+    certIssuedByDen: issued !== null,
     certIssued: issued !== null,
+    https: {
+      strategy: cfg.tls.strategy,
+      certs:
+        cfg.tls.strategy === "mkcert"
+          ? "den"
+          : cfg.tls.strategy === "files"
+            ? "distribution"
+            : "none",
+      serving: cfg.tls.strategy === "none" ? false : null,
+      detail:
+        cfg.tls.strategy === "none"
+          ? "tls: none: the edge serves http only"
+          : "not probed",
+    },
+    deprecated: { certIssued: CERT_ISSUED_DEPRECATION },
     caTrusted: cfg.tls.strategy === "none" ? null : deps.caTrusted(cfg),
     tls: {
       strategy: cfg.tls.strategy,
@@ -131,4 +181,88 @@ export function edgeStatus(
     stacks: stk.routers,
     stackErrors: stk.errors,
   };
+}
+
+/** One TLS handshake: whether something on host:port speaks TLS. */
+export type TlsHandshake = (o: {
+  host: string;
+  port: number;
+  servername: string;
+  timeoutMs: number;
+}) => Promise<{ ok: boolean; error?: string }>;
+
+/**
+ * Connect, complete a TLS handshake, close. Trust is not checked here (that
+ * is `caTrusted`): only whether HTTPS is being served at all.
+ */
+export const tlsHandshake: TlsHandshake = ({
+  host,
+  port,
+  servername,
+  timeoutMs,
+}) =>
+  new Promise((resolve) => {
+    let settled = false;
+    const done = (v: { ok: boolean; error?: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(v);
+    };
+    const socket = tls.connect({
+      host,
+      port,
+      servername,
+      rejectUnauthorized: false,
+    });
+    const timer = setTimeout(
+      () => done({ ok: false, error: `no TLS answer in ${timeoutMs}ms` }),
+      timeoutMs,
+    );
+    socket.once("secureConnect", () => done({ ok: true }));
+    socket.once("error", (e: NodeJS.ErrnoException) =>
+      done({ ok: false, error: e.code ?? e.message }),
+    );
+    socket.once("close", () =>
+      done({ ok: false, error: "closed before a TLS handshake" }),
+    );
+  });
+
+/**
+ * `st` with `https.serving` probed (MCP-2.5): a TLS handshake on this
+ * machine's published https port, named as one of the edge's hosts. Not
+ * probed when a proxy in front owns the port (no published ports), and
+ * false without a handshake when the edge container is not running.
+ */
+export async function withHttpsServing(
+  st: EdgeStatus,
+  cfg: EdgeConfig,
+  handshake: TlsHandshake = tlsHandshake,
+): Promise<EdgeStatus> {
+  if (cfg.tls.strategy === "none") return st;
+  const set = (serving: boolean | null, detail: string): EdgeStatus => ({
+    ...st,
+    https: { ...st.https, serving, detail },
+  });
+  if (!st.ports)
+    return set(
+      null,
+      "not probed: a proxy in front of the edge owns its ports (edge.publish: false)",
+    );
+  if (!st.up) return set(false, `the edge container is ${st.state}`);
+  const port = st.ports.https;
+  const servername = `${Object.keys(cfg.routes)[0] ?? "edge"}.${cfg.domain}`;
+  const r = await handshake({
+    host: "127.0.0.1",
+    port,
+    servername,
+    timeoutMs: 1500,
+  });
+  return r.ok
+    ? set(true, `TLS handshake answered on 127.0.0.1:${port} (${servername})`)
+    : set(
+        false,
+        `no TLS on 127.0.0.1:${port} (${servername}): ${r.error ?? "failed"}`,
+      );
 }

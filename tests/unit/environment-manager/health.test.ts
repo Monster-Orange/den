@@ -80,17 +80,21 @@ describe("pingHttp — ok mapping by status", () => {
     expect(r.ok).toBe(true);
   });
 
-  it("returns ok=false for 301 — redirect from an AWS ALB (the regression)", async () => {
+  // A 301 from an AWS ALB (the regression) must never be green; since
+  // MCP-2.4 it is a redirect (ok null, its status and target), not down.
+  it("never ok for 301 — redirect from an AWS ALB (the regression): a redirect, ok null", async () => {
     mockFetch.mockResolvedValueOnce(mockResponse(301));
     const r = await pingHttp("http://localhost:8080/healthz");
-    expect(r.ok).toBe(false);
+    expect(r.ok).toBeNull();
     expect(r.status).toBe(301);
+    expect(r.redirect).toBe("(no Location header)");
   });
 
-  it("returns ok=false for 302", async () => {
+  it("a 302 is a redirect, ok null, not down", async () => {
     mockFetch.mockResolvedValueOnce(mockResponse(302));
     const r = await pingHttp("http://localhost:8080/healthz");
-    expect(r.ok).toBe(false);
+    expect(r.ok).toBeNull();
+    expect(r.status).toBe(302);
   });
 
   it("returns ok=true for 401 — service is up, just requires auth", async () => {

@@ -4,6 +4,72 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.4] - unreleased
+
+A scoped agent gets a whole, honest picture through Den's MCP (MCP-2).
+
+### Added
+
+- **`org_summary`, the org at a glance for every agent (MCP-2.1).** A new
+  read tool: every workspace and repo with status counts (running, partial,
+  stopped, inactive; up, down, redirect, not checked), the dependency graph
+  (names and edge kinds), the edge (up, TLS, whether HTTPS serves) and the
+  environments. Scoped, `yours` adds the agent's own workspace's services
+  in full, so "what are our servers?" is answered without `docker ps`. For
+  other workspaces it carries names and counts only: never logs, env
+  values, commands, URLs, paths or check output.
+- **`edge_status.https` (MCP-2.5)**: the TLS strategy, who supplies the
+  cert (`den` or `distribution`) and whether HTTPS is serving, from a TLS
+  handshake on the edge's https port. `edge status` prints it too.
+
+### Changed
+
+- **Scoped answers say so (MCP-2.2).** `status`, `services`,
+  `applications`, `graph`, `stacks` and `workspaces` on a scoped server
+  carry a `scope` block: the workspace shown and what is left out
+  (`hidden: { repos: 6 }`), pointing at `org_summary`. Their descriptions
+  say "This workspace only", and a pinned server registers them without
+  the `workspace` parameter (with grants it stays, as the scope's own or a
+  granted one). A scoped `graph` is the workspace's own repos and the edges
+  out of them; unscoped it is labelled `map: "org-wide"`. Before, `graph`
+  listed every repo while every other tool showed one workspace's.
+- **Refusals say how to get more (MCP-2.3).** A call naming another
+  workspace says a person adds it to `agents.<id>.grants` in the org config
+  and restarts the agent; a refused log read says logs stay inside each
+  workspace and a grant does not widen them.
+- **`status` (MCP tool) is an object:** `{ env, counts, services }`, each
+  service with a `state` and, when it has no plain verdict, `why`. It was
+  the bare `/api/health` array.
+
+### Fixed
+
+- **A redirect is not down (MCP-2.4).** A health check answered `302 →
+  /login` (a production app's login page) was reported down. The bug was
+  in the shared HTTP check, so the web health row and `<cli> status` had
+  it too. A 3xx is now `redirect`: ok null, with its status and target (the
+  query dropped), never green, so an ALB's 301 for a stopped service is
+  still not taken for up. `target.expect` listing the code counts it as up.
+  `<cli> status` shows `redirect 302 → /login`, and `up` and `restart` no
+  longer wait out a service that answers with a redirect.
+- **An unchecked service says why (MCP-2.4).** `ok: null` with no reason
+  (`runs: none` in beta and prod) now carries `why` on the web health row
+  and in `status`: no health check for the env, remote with no check, not
+  deployed in the env, or no manifest.
+- **An empty `stacks` explains itself (MCP-2.4):** `/api/stacks` says the
+  org config declares no `stacks:` and no repo of the workspace has a
+  `compose:` block (or the workspace doesn't exist); scoped, that the
+  stacks listed belong to repos outside it.
+- **`certIssued: false` while HTTPS works (MCP-2.5).** It meant "Den minted
+  the cert", which is false under `tls: files`. Renamed `certIssuedByDen`.
+
+### Migrations
+
+- A script reading `<cli> mcp --call status` gets `{ env, counts, services
+  }` in place of the array: read `.services`.
+- `edge_status.certIssued` (and `/api/edge`'s) is deprecated: read
+  `certIssuedByDen`, or `https.serving` for whether HTTPS works. It goes in
+  the release after 0.4.4.
+
 ## [0.4.3] - unreleased
 
 Agents start, and the edge counts as local.

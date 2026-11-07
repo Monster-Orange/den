@@ -25,7 +25,11 @@ import {
   routerUrls,
   type IncludedRouter,
 } from "../../shared/edge/included.js";
-import { edgeRoutes, edgeStatus } from "../../shared/edge/status.js";
+import {
+  edgeRoutes,
+  edgeStatus,
+  withHttpsServing,
+} from "../../shared/edge/status.js";
 import { tlsYaml } from "../../shared/edge/tls.js";
 import { rejoinRunningStacks } from "../../shared/stacks/status.js";
 
@@ -102,7 +106,7 @@ export async function cmdEdge(args: string[]): Promise<void> {
       return;
     }
     case "status": {
-      const st = edgeStatus(cfg);
+      const st = await withHttpsServing(edgeStatus(cfg), cfg);
       console.log(chalk.bold(`${readBrand().name} edge — ${st.org}`));
       console.log(`  container  ${st.container}: ${st.state}`);
       console.log(`  ports      ${published}`);
@@ -116,7 +120,16 @@ export async function cmdEdge(args: string[]): Promise<void> {
           // browser trust (BOOT-1), so this machine's trust is moot.
           `  CA         ${caDir(cfg)} — ${!st.ports ? "not needed: fronted" : st.caTrusted === null ? "unknown" : st.caTrusted ? "trusted" : "NOT trusted"}`,
         );
-      if (st.certIssued) console.log(`  cert       ${st.certNames.join(", ")}`);
+      if (st.certIssuedByDen)
+        console.log(`  cert       ${st.certNames.join(", ")}`);
+      else if (st.https.certs === "distribution")
+        console.log(
+          "  cert       the distribution's (tls: files): not minted by Den",
+        );
+      // MCP-2.5: whether HTTPS is actually serving, not only configured.
+      console.log(
+        `  https      ${st.https.serving === null ? "not probed" : st.https.serving ? "serving" : "NOT serving"} — ${st.https.detail}`,
+      );
       return;
     }
     default:

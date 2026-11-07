@@ -63,6 +63,14 @@ export interface PingResult {
   pending?: boolean;
   status?: number;
   error?: string;
+  /**
+   * MCP-2.4: the check answered with a redirect (3xx, `status`): where it
+   * points, as a path for the same origin, else origin + path (the query
+   * and fragment are dropped: they can carry tokens). A redirect is not
+   * down and not up (ok null): the service answered, and the check was
+   * sent elsewhere.
+   */
+  redirect?: string;
 }
 
 export interface ServiceHealthResult {
@@ -255,6 +263,41 @@ function statusOk(status: number, body404?: string): boolean {
   return status < 300 || (status >= 400 && status < 500);
 }
 
+/** A 3xx: the check was sent elsewhere (redirect: "manual"). */
+export function isRedirect(status: number | undefined): boolean {
+  return status !== undefined && status >= 300 && status < 400;
+}
+
+/**
+ * Where a redirect points, for a health row: a path when it stays on the
+ * checked URL's origin, else origin + path. Never the query or fragment
+ * (a login redirect's `?next=` or `state=` can carry a token).
+ */
+export function redirectTarget(
+  location: string | null | undefined,
+  from: string,
+): string {
+  if (!location) return "(no Location header)";
+  try {
+    const to = new URL(location, from);
+    const base = new URL(from);
+    return to.origin === base.origin
+      ? to.pathname
+      : `${to.origin}${to.pathname}`;
+  } catch {
+    return "(unreadable Location header)";
+  }
+}
+
+/** The PingResult for a 3xx: not down, not up, and where it points. */
+function redirectResult(
+  status: number,
+  location: string | null | undefined,
+  from: string,
+): PingResult {
+  return { ok: null, status, redirect: redirectTarget(location, from) };
+}
+
 /** The PingResult for `status`, naming an edge 404 as "no route". */
 function statusResult(status: number, body404?: string): PingResult {
   const ok = statusOk(status, body404);
@@ -309,6 +352,12 @@ async function pingHttps(parsed: URL, timeoutMs: number): Promise<PingResult> {
       },
       (res) => {
         const status = res.statusCode ?? 0;
+        if (isRedirect(status)) {
+          res.resume(); // discard the body
+          const loc = res.headers.location;
+          done(redirectResult(status, loc, parsed.toString()));
+          return;
+        }
         if (status !== 404) {
           res.resume(); // discard the body
           done({ ok: statusOk(status), status });
@@ -374,14 +423,21 @@ async function pingOnce(
     });
     clearTimeout(timer);
     // 2xx = healthy. 4xx = healthy (service is up; auth/route 4xx still proves it's responding).
-    // 3xx = unhealthy: with redirect:"manual", a redirect means "go verify somewhere else"
-    // and we haven't confirmed anything. Guards against hostname-to-AWS-ALB resolution
-    // (e.g. VPN / /etc/hosts) returning 301 on port 80 for services that actually run
-    // on a different port — the previous `< 500` check showed those as green.
+    // 3xx = a redirect (MCP-2.4): ok null, with its status and target. With
+    // redirect:"manual" a redirect means "go verify somewhere else", so it
+    // is never green: that guards against hostname-to-AWS-ALB resolution
+    // (e.g. VPN / /etc/hosts) returning 301 on port 80 for services that
+    // actually run on a different port (the old `< 500` check showed those
+    // green). It is not down either: something answered, and a login
+    // redirect (302 → /login) is how a healthy app answers a bare GET.
     // 5xx = unhealthy (service errored).
     // A 404 may be the edge's own "no route" (see EDGE_NO_ROUTE_BODY): read
     // a little of it. Otherwise discard the body: only the status matters,
     // and unconsumed bodies pin sockets in the long-lived web server.
+    if (isRedirect(res.status)) {
+      void res.body?.cancel().catch(() => {});
+      return redirectResult(res.status, res.headers?.get("location"), url);
+    }
     if (res.status === 404) {
       let body = "";
       try {
@@ -421,12 +477,17 @@ export async function pingHttp(
   // never a localhost fallback (it is not on this machine).
   if (expect !== undefined) {
     const r = await pingOnce(url, timeoutMs);
-    return r.status === undefined
-      ? r
-      : { ok: expectMatches(r.status, expect), status: r.status };
+    if (r.status === undefined) return r;
+    if (expectMatches(r.status, expect)) return { ok: true, status: r.status };
+    // A redirect the manifest does not list as up is still a redirect, not
+    // down (MCP-2.4): a production app answering 302 → /login is serving.
+    if (r.redirect !== undefined) return r;
+    return { ok: false, status: r.status };
   }
   const result = await pingOnce(url, timeoutMs);
-  if (!result.ok) {
+  // A redirect answered: no localhost fallback (that is for a name that
+  // could not be reached at all).
+  if (result.ok === false) {
     // Fall back to localhost for Docker-style hostnames regardless of how the
     // first ping failed. Timeouts on the primary are legitimate candidates for
     // retry: on macOS, VPN/`/etc/hosts` can resolve a Docker hostname to an
@@ -691,6 +752,10 @@ export function containerTarget(
 
 /** A ping result as a ServiceHealthResult health state. */
 export function healthState(r: PingResult): ServiceHealthResult["health"] {
+  // A redirect is a verdict of its own (MCP-2.4): not down, and not a check
+  // still waiting to answer. "unknown", like an unchecked service, so a
+  // caller waiting for health proceeds instead of waiting it out.
+  if (r.ok === null && r.redirect !== undefined) return "unknown";
   return r.ok === true ? "ok" : r.ok === false ? "error" : "pending";
 }
 
@@ -814,6 +879,9 @@ export async function checkServiceHealth(
     ...placed,
     health: healthState(result),
     healthDetail:
+      (result.redirect !== undefined
+        ? `redirect ${result.status} → ${result.redirect}`
+        : undefined) ??
       result.error ??
       (!result.ok && result.status !== undefined
         ? `http ${result.status}`

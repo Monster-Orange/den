@@ -5,7 +5,10 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import { stackStatuses } from "../../../src/shared/stacks/status.js";
-import { edgeStatus } from "../../../src/shared/edge/status.js";
+import {
+  CERT_ISSUED_DEPRECATION,
+  edgeStatus,
+} from "../../../src/shared/edge/status.js";
 import type { StackConfig } from "../../../src/shared/stacks/types.js";
 import type { EdgeConfig } from "../../../src/shared/edge/types.js";
 
@@ -138,8 +141,16 @@ describe("edgeStatus", () => {
         },
       ],
       certNames: ["acme.localhost", "*.acme.localhost"],
+      certIssuedByDen: true,
       certIssued: true,
       caTrusted: true,
+      https: {
+        strategy: "mkcert",
+        certs: "den",
+        serving: null,
+        detail: "not probed",
+      },
+      deprecated: { certIssued: CERT_ISSUED_DEPRECATION },
       tls: {
         strategy: "mkcert",
         implicit: false,

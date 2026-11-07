@@ -150,9 +150,9 @@ describe("bin/den mcp over stdio", () => {
       content: { text: string }[];
     };
     expect(sr.isError).toBeFalsy();
-    expect(JSON.parse(sr.content[0].text)).toEqual([
-      { repo: "shop", service: "api", ok: true },
-    ]);
+    expect(JSON.parse(sr.content[0].text)).toMatchObject({
+      services: [{ repo: "shop", service: "api", ok: true, state: "up" }],
+    });
     const health = requests.find((r) => r.path === "/api/health");
     expect(health?.headers).toMatchObject({
       "x-den-actor": "agent",
@@ -226,9 +226,9 @@ describe("bin/den mcp --call / --list (one shot)", () => {
     const before = requests.length;
     const r = await run("--call", "status", "{}");
     expect(r.status).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual([
-      { repo: "shop", service: "api", ok: true },
-    ]);
+    expect(JSON.parse(r.stdout)).toMatchObject({
+      services: [{ repo: "shop", service: "api", ok: true, state: "up" }],
+    });
     const health = requests.slice(before).find((q) => q.path === "/api/health");
     expect(health?.headers["x-den-actor"]).toBe("agent");
   }, 30_000);

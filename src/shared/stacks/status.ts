@@ -3,6 +3,7 @@
  * The CLI prints it; the web server serves it at /api/stacks (and through it
  * the MCP `stacks` tool).
  */
+import { product } from "../product.js";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -123,6 +124,29 @@ export function rejoinRunningStacks(
       /* unreadable: nothing of it to rejoin */
     }
   return rejoinEdgeNetworks(contexts, onLine);
+}
+
+/**
+ * Why a workspace has no stacks (MCP-2.4): an empty list with no reason
+ * reads as "docker is broken". A stack is a `stacks:` entry in the org
+ * config, or a repo of the workspace whose manifest has a `compose:` block.
+ */
+export function emptyStacksReason(o: {
+  workspace: string;
+  workspaceExists: boolean;
+  /** How many stacks the org config itself declares. */
+  configStacks: number;
+}): string {
+  const cfg = `the org config (${product().configFile}) declares no stacks:`;
+  if (!o.workspaceExists)
+    return (
+      `no stacks: workspace "${o.workspace}" does not exist here, so no ` +
+      `repo manifest was read, and ${cfg}`
+    );
+  return (
+    `no stacks: ${cfg}, and no repo of workspace "${o.workspace}" has a ` +
+    `compose: block in its ${product().manifestYml}`
+  );
 }
 
 /** Each stack's name, project, routes and (optionally) container health. */

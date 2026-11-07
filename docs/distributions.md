@@ -1448,19 +1448,36 @@ port.
 `--workspace <ws>` and `--actor agent:<id>` (both or neither) scope the server
 to one workspace for one agent:
 
-- **Pinned.** A tool that takes a `workspace` gets `<ws>` when none is given.
-  A call naming another workspace is refused (`Refused: <tool>: this MCP
-server is scoped to workspace "<ws>" (agent:<id>; no grants); "<other>" is
-another workspace`; with grants, `grants: <a>, <b>`) before anything reaches the web server. A refused call is
-  recorded in the activity trail, read tools included.
+- **Pinned.** A tool that takes a `workspace` gets `<ws>`. The server
+  registers each workspace tool with "This workspace only" in its
+  description and without the `workspace` parameter (with grants it stays,
+  as `<ws>` or a granted one). A call naming another workspace is refused
+  (`Refused: <tool>: this MCP server is scoped to workspace "<ws>"
+(agent:<id>; no grants); "<other>" is another workspace`; with grants,
+  `grants: <a>, <b>`) before anything reaches the web server. The refusal
+  says how to get more: a person adds `<other>` to `agents.<id>.grants` in
+  the org config and restarts the agent; an agent can't grant itself one. A
+  refused call is recorded in the activity trail, read tools included.
+- **Says so.** Every scoped answer (`status`, `services`, `applications`,
+  `graph`, `stacks`, `workspaces`) carries a `scope` block: the workspace
+  shown, how many other workspaces there are and how much it leaves out,
+  for example `hidden: { repos: 6 }`, and a note pointing at `org_summary`.
+  A scoped `graph` is the workspace's own repos and the edges out of them
+  (`map: "workspace"`, with `outside` naming the repos they depend on
+  elsewhere); unscoped it is labelled `map: "org-wide"`.
 - **Filtered.** `workspaces` lists `<ws>` only. `logs_search` and `logs_tail`
   take only `<ws>`'s services, `manifest_validate` takes only an absolute path
   inside one of its repos (or the content), and `workspace_sync` syncs `<ws>`.
   Tests run against the focused workspace, so `tests_available` and
   `run_tests` are refused unless `<ws>` is the focused one.
 - **Not workspace data**, served as unscoped: `environments`,
-  `security_latest`, `release_status` and `edge_status` (the org's and the
-  distribution's, not a workspace's).
+  `security_latest`, `release_status`, `edge_status` and `org_summary` (the
+  org's and the distribution's, not a workspace's).
+- **The org at a glance.** `org_summary` gives every agent every workspace
+  and repo with status counts, the graph, the edge and the environments
+  (see [Tools](#tools)). Detail and actions stay scoped: for workspaces
+  other than `<ws>` it carries names and counts only, never logs, env
+  values, commands, URLs, paths or check output.
 - **Stamped.** Every web API call carries `x-den-mcp-agent: agent:<id>` and
   `x-den-mcp-workspace: <ws>` beside the usual audit headers. The activity
   entry gains `agent` and `workspace`, and the log line reads `· by
@@ -1525,22 +1542,57 @@ guard off.
 
 Read tools (always registered):
 
-| Tool                | Web API                                    | What                                                                                                                                                                                |
-| ------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `status`            | `/api/health`                              | Service health; `url` (HTTP check) or `check` (shell, or `container <project>/<service>`); `ok` true up, false down, null not known (`pending: true` when a check has not answered) |
-| `services`          | `/api/services`                            | Services, their mode (managed or dev-managed) and commands                                                                                                                          |
-| `applications`      | `/api/applications`                        | Org > Application > Repo > Services                                                                                                                                                 |
-| `graph`             | `/api/graph`                               | The derived dependency graph and startup order                                                                                                                                      |
-| `workspaces`        | `/api/workspaces`                          | Workspaces, active and focused                                                                                                                                                      |
-| `environments`      | `/api/environments`                        | The enabled environment names (never their values)                                                                                                                                  |
-| `logs_search`       | `/api/logs/search`                         | Search services' full log history                                                                                                                                                   |
-| `logs_tail`         | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)                                                                                                                              |
-| `tests_available`   | `/api/modules`, `/api/test-sources`        | A pillar's modules and the repos they come from                                                                                                                                     |
-| `security_latest`   | `/api/security/latest`                     | The newest security scan per mode                                                                                                                                                   |
-| `release_status`    | `/api/release/runs`, `/api/release/status` | Recent CD runs, and an env's deployed-version table                                                                                                                                 |
-| `manifest_validate` | `/api/manifest/validate`                   | Validate a manifest by path or content                                                                                                                                              |
-| `stacks`            | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health                                                                                                                             |
-| `edge_status`       | `/api/edge`                                | The edge: up or down, its routes and cert names                                                                                                                                     |
+| Tool                | Web API                                    | What                                                                                                                                                                                                                                                                           |
+| ------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `status`            | `/api/health`                              | Service health: `counts`, then each service's `state` (`up`, `down`, `redirect`, `pending`, `unknown`, `not-checked`) and, without a plain verdict, `why`; `url` (HTTP check) or `check` (shell, or `container <project>/<service>`); `ok` true up, false down, null not known |
+| `services`          | `/api/services`                            | Services, their mode (managed or dev-managed) and commands                                                                                                                                                                                                                     |
+| `applications`      | `/api/applications`                        | Org > Application > Repo > Services                                                                                                                                                                                                                                            |
+| `graph`             | `/api/graph`                               | The derived dependency graph and startup order (`map: "org-wide"`; scoped, the workspace's own)                                                                                                                                                                                |
+| `workspaces`        | `/api/workspaces`                          | Workspaces, active and focused                                                                                                                                                                                                                                                 |
+| `environments`      | `/api/environments`                        | The enabled environment names (never their values)                                                                                                                                                                                                                             |
+| `logs_search`       | `/api/logs/search`                         | Search services' full log history                                                                                                                                                                                                                                              |
+| `logs_tail`         | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)                                                                                                                                                                                                                         |
+| `tests_available`   | `/api/modules`, `/api/test-sources`        | A pillar's modules and the repos they come from                                                                                                                                                                                                                                |
+| `security_latest`   | `/api/security/latest`                     | The newest security scan per mode                                                                                                                                                                                                                                              |
+| `release_status`    | `/api/release/runs`, `/api/release/status` | Recent CD runs, and an env's deployed-version table                                                                                                                                                                                                                            |
+| `manifest_validate` | `/api/manifest/validate`                   | Validate a manifest by path or content                                                                                                                                                                                                                                         |
+| `stacks`            | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health; an empty list says `why`                                                                                                                                                                                              |
+| `edge_status`       | `/api/edge`                                | The edge: up or down, its routes and cert names; `https` (TLS strategy, who supplies the cert, whether HTTPS is serving)                                                                                                                                                       |
+| `org_summary`       | several (read only)                        | Every workspace and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your workspace's services                                                                                                                                          |
+
+**Health states.** A service with no verdict says why in `why`: no health
+check in the manifest for the env, remote with no check or `target.url`
+for its env, not deployed in the env (no commands and no check there), no
+manifest, or checked but no answer yet. A redirect (`302 → /login`) is
+`redirect` with its status and target (the query is dropped), not down:
+something answered. It is never green either, so an unexpected redirect
+(an ALB answering for a stopped service) is not taken for up; list the code
+in `target.expect` to count it as up. The web health row and `<cli> status`
+use the same rule: the web row shows a redirect muted (with `status` and `redirect`
+in `/api/health`), and `<cli> status` as `redirect 302 → /login`.
+
+**`org_summary`** reads `/api/workspaces`, `/api/health` (local, every
+active workspace), `/api/graph`, `/api/edge` and `/api/environments`:
+
+- `workspaces`: each workspace's name, whether it is active, focused or
+  yours, its state (`running`: every checked service answers; `partial`:
+  some are down; `stopped`: all checked ones are down; `unknown`: nothing
+  checked; `inactive`: not polled), its counts (up, down, redirect,
+  pending, not checked) and its repos, each with its rolled-up state.
+- `graph`: the org-wide map, repo names and edge kinds only (no evidence).
+- `edge`: up, state, domains, the route count and `https`.
+- `environments`: the enabled names, never their values.
+- scoped, `yours`: your workspace's services as `status` gives them.
+
+**`edge_status.https`** says which TLS strategy is in use (`mkcert`,
+`files`, `none`), who supplies the cert (`den`, or `distribution` under
+`tls: files` and the legacy `issue_cert: false`) and whether HTTPS is
+serving: a TLS handshake on the edge's published https port (`serving`
+true or false, null when a proxy in front owns the port), with `detail`.
+`certIssuedByDen` replaces `certIssued`, which is kept for 0.4.4 with a
+note in `deprecated`: it said whether Den minted the cert, so it was
+`false` under `tls: files` while HTTPS worked. `edge status` prints the
+same `https` line.
 
 Action tools (only those named in `mcp.actions`): `service_up`,
 `service_down`, `service_restart` (through `/api/service/exec`),

@@ -102,9 +102,10 @@ describe("runOneShot", () => {
       h.opts,
     );
     expect(code).toBe(0);
-    expect(JSON.parse(h.out.join(""))).toEqual([
-      { repo: "shop", service: "api", ok: true },
-    ]);
+    expect(JSON.parse(h.out.join(""))).toMatchObject({
+      env: "local",
+      services: [{ repo: "shop", service: "api", ok: true, state: "up" }],
+    });
     expect(h.calls.map((c) => c.path)).toEqual(["/api/health"]);
   });
 
