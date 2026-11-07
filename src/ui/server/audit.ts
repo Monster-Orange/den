@@ -3,8 +3,15 @@
  * asked (a person in the UI, or an agent through `<cli> mcp`). Each action
  * becomes a lifecycle line in the server log, the stream the /logs page shows
  * as the web-server log, so agent actions sit beside the UI's own; the
- * structured entries are kept in a small in-memory ring.
+ * structured entries are kept in a small ring.
+ *
+ * den#6: the ring persists. With setAuditFile (the web server's state dir,
+ * audit.jsonl, 0600), each entry is appended as one JSON line and the last
+ * RING_MAX are read back when the server starts, so a restart keeps the
+ * trail. The file is compacted to the ring once it holds twice as many.
+ * Entries hold names and reasons, never an env value or a secret.
  */
+import * as fs from "fs";
 import * as path from "path";
 import {
   actorLabel,
@@ -72,6 +79,65 @@ const RING_MAX = 200;
 const ring: AuditEntry[] = [];
 let sink: Sink | null = null;
 
+/** The persisted ring's file name, in the state dir. */
+export const AUDIT_FILE = "audit.jsonl";
+let file: string | null = null;
+let fileLines = 0;
+
+/**
+ * Persist the ring to `f` (null: memory only). Reads the last RING_MAX
+ * entries back into the ring; a line that isn't an entry is skipped.
+ */
+export function setAuditFile(f: string | null): void {
+  file = f;
+  fileLines = 0;
+  ring.length = 0;
+  if (!f) return;
+  let text = "";
+  try {
+    text = fs.readFileSync(f, "utf-8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
+  const lines = text.split("\n").filter(Boolean);
+  fileLines = lines.length;
+  for (const l of lines.slice(-RING_MAX)) {
+    try {
+      const e = JSON.parse(l) as AuditEntry;
+      if (e && typeof e.ts === "string" && typeof e.verb === "string")
+        ring.push(e);
+    } catch {
+      /* a torn line */
+    }
+  }
+}
+
+function persist(entry: AuditEntry): void {
+  if (!file) return;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    if (fileLines + 1 > RING_MAX * 2) {
+      // Compact to the ring (which already holds this entry).
+      const tmp = `${file}.${process.pid}.tmp`;
+      fs.writeFileSync(
+        tmp,
+        ring.map((e) => JSON.stringify(e)).join("\n") + "\n",
+        {
+          mode: 0o600,
+        },
+      );
+      fs.renameSync(tmp, file);
+      fileLines = ring.length;
+      return;
+    }
+    fs.appendFileSync(file, JSON.stringify(entry) + "\n", { mode: 0o600 });
+    fs.chmodSync(file, 0o600);
+    fileLines++;
+  } catch {
+    /* the trail stays in memory; the log line still goes out */
+  }
+}
+
 /** Where audit lines go (the server log); null to disconnect. */
 export function setAuditSink(fn: Sink | null): void {
   sink = fn;
@@ -135,6 +201,7 @@ export function recordAction(
   };
   ring.push(entry);
   if (ring.length > RING_MAX) ring.shift();
+  persist(entry);
   const mark = entry.outcome === "refused" ? "✗" : "▶";
   const why = entry.reason ? ` — refused: ${entry.reason}` : "";
   // A refusal whose detail is its reason names what it touched instead.

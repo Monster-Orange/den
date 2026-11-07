@@ -497,6 +497,11 @@ in the distribution's config always wins over the one in user.yml.
 `backendAvailable`, `reason` and `hasStored` (`opAvailable` is a
 deprecated alias of `backendAvailable`, kept for one minor).
 
+**Den's sudo is `/usr/bin/sudo`.** Den checks and caches the admin
+password with `/usr/bin/sudo` only, never a `sudo` found earlier on `PATH`.
+Only on a machine with no `/usr/bin/sudo` does it look on `PATH`.
+`DEN_SYSTEM_SUDO=<absolute path>` names another system sudo.
+
 The admin password is for sudo, and nothing else (LK-0). It is no sign-in
 and no access check: starting, stopping and resuming agents, sessions and
 terminals, and a service whose commands run no sudo, never ask for it.
@@ -1836,6 +1841,9 @@ the server: only registered tools (so actions only as named in
 the tool's text to stdout and exits 1 when the tool reports an error (a
 refusal, a failed action, the web server down).
 
+`mcp` takes only the arguments its usage lists. Any other (a typo such as
+`--worksapce`) exits 2 with the usage, before anything starts.
+
 ### Config
 
 Without an `mcp:` block in the org config (`config/<name>.yml`) only the read
@@ -1917,6 +1925,12 @@ Action tools (only those named in `mcp.actions`): `service_up`,
 `service_down`, `service_restart` (through `/api/service/exec`),
 `workspace_sync` (`/api/workspace/sync`) and `run_tests` (`/api/run`). There
 is no deploy tool.
+
+`agent_resume` (AG-14.4) resumes a stopped or interrupted agent, for an
+orchestrator. It is off unless `mcp.actions` names it. A scoped server
+(`--workspace`) resumes agents of its own workspace or a granted one, never
+itself. The web server checks the same rule, and the resume route is the
+only agent route an agent's token reaches.
 
 ### Guards
 
@@ -2138,6 +2152,63 @@ CSRF token as `den.csrf.<token>`): binary frames are output and input, a
 text frame `{"type":"resize","cols":c,"rows":r}` resizes, and the server
 sends `{"type":"session",…}` first and `{"type":"exit","exitCode":n}` when
 the session ends.
+
+### Stopped agents: Resume, Start fresh, Remove
+
+An agent that stops stays in the list, below the running ones (AG-14, the
+stopped-agents slice). Its row says why it stopped: "Stopped by you",
+"Exited (code n)", or "Interrupted" when Den or the machine restarted under
+it. Each row has three buttons:
+
+- **Resume** continues the same conversation. Den runs the runtime's own
+  resume with the conversation id it saved (Claude Code: `--resume <id>`).
+  The agent comes back in the folder it had, with its workspace and its
+  grants. A grant you took out of the config since is gone; one you added
+  is not taken. Resume is never a new conversation fed the old prompt.
+- **Start fresh** starts a new conversation: same persona, workspace and id.
+- **Remove** takes the row away in one click. The toast offers **Undo** for
+  10 seconds. Den keeps the removed record for an hour, then forgets it. It
+  never touches the runtime's own history.
+
+A runtime that can't resume (codex, gemini, grok), or an agent with no
+saved conversation id, shows only Start fresh, and says why. **Clear
+stopped**, beside + Start agent, removes every stopped agent in view. A
+running agent is never removed: stop it first. None of this asks for the
+admin password.
+
+**After a restart**, the agents it cut off show Interrupted, and one line
+sits above the list: "2 agents were interrupted when Acme restarted ·
+Resume all · Review". Resume all resumes each one that can. Review marks
+them and moves to the first. Agents whose persona is `standing: true`, or
+has `resume_on_restart: true`, resume on their own when the web server
+starts.
+
+**Removed on their own.** Stopped agents can go after a while:
+
+```yaml
+# config/local/user.yml
+agents:
+  remove_stopped_after: 7d # never (the default), 1d or 7d
+```
+
+An interrupted agent is never removed this way. Any other value fails,
+naming the key.
+
+The CLI does the same:
+
+```sh
+./bin/acme agents list --stopped            # only the stopped ones
+./bin/acme agents resume planner            # the same conversation
+./bin/acme agents resume --all-interrupted  # every interrupted one that can
+./bin/acme agents rm planner                # one stopped agent
+./bin/acme agents rm --stopped [-w north]   # every stopped one
+```
+
+The routes (a person's only, audited): `POST
+/api/workspaces/<ws>/agents/<id>/resume`, `…/fresh` and `…/remove`, and
+`POST /api/agents/clear-stopped` (`{ workspaces }`), `/api/agents/restore`
+(`{ agents }`, the Undo) and `/api/agents/resume-interrupted` (`{
+workspaces }`).
 
 ### An agent's environment
 
@@ -2546,6 +2617,26 @@ Only the boolean `true` counts. With it, and a Sentry DSN in
 `DEV_METRICS_SENTRY_DSN` (or a synced `dev-metrics.config`), each line is
 also sent, best effort. A DSN on its own never sends. `CI=true` and
 `DEV_METRICS_DISABLED=1` stop sending even when opted in.
+
+## Agent usage: tokens and outcomes, read locally
+
+`<cli> usage agents [-w <ws>] [--json]` reads each agent's transcripts on
+this machine and saves its tokens and outcome in its record: the pull
+request it opened, whether it merged, whether its last test run passed,
+and its wall-clock time. It matches transcripts to agents by the
+conversation id Den saved at start. It prints the share of agents with
+both. Transcripts never leave the machine, and their text is never kept:
+only counts.
+
+`<cli> usage report [--days 7] [--json]` writes a weekly summary to
+`<state dir>/usage/<date>.json` and `.md`, compared with the last one:
+calls, cache re-reads, polls, sleeps, compactions, corrections and the
+attributed share.
+
+Den reads Claude Code's transcripts (`$CLAUDE_CONFIG_DIR/projects`, else
+`~/.claude/projects`). A plugin can add a reader for another runtime with
+the `usage` kind (server tier). A runtime with no reader shows "no usage
+source reads <runtime>".
 
 ## Pinning and upgrading
 

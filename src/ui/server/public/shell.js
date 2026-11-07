@@ -512,6 +512,29 @@
     "ag.started": "Started agent {id}",
     "ag.stopped": "Stopped agent {id}",
     "ag.resumed": "Resumed agent {id}",
+    "ag.state.interrupted": "interrupted",
+    "ag.why.stopped": "Stopped by you {time}",
+    "ag.why.interrupted": "Interrupted: {name} restarted",
+    "ag.why.exited": "Exited",
+    "ag.why.exitedCode": "Exited (code {code})",
+    "ag.fresh": "Start fresh",
+    "ag.freshName": "Start {id} fresh",
+    "ag.startedFresh": "Started {id} fresh",
+    "ag.remove": "Remove",
+    "ag.removeName": "Remove {id}",
+    "ag.removed": "Removed {id}",
+    "ag.removedMany": "Removed {n} stopped agents",
+    "ag.removedMany.one": "Removed {n} stopped agent",
+    "ag.undo": "Undo",
+    "ag.restored": "Back in the list: {ids}",
+    "ag.clear": "Clear stopped",
+    "ag.noResume": "{runtime} can't resume a conversation",
+    "ag.interrupted": "{n} agents were interrupted when {name} restarted",
+    "ag.interrupted.one": "{n} agent was interrupted when {name} restarted",
+    "ag.resumeAll": "Resume all",
+    "ag.review": "Review",
+    "ag.resumedAll": "Resumed {n} agents",
+    "ag.resumedAll.one": "Resumed {n} agent",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "Agents",
     "kind.agent": "Agent",
@@ -1115,6 +1138,42 @@
     toastTimer = setTimeout(function () {
       if (el.remove) el.remove();
     }, 2200);
+  }
+  /**
+   * A toast with one action (AG-14.1b: Remove's Undo): the message and a
+   * small button, for `ms` (default 10 s). The action runs once, and the
+   * toast goes.
+   */
+  function toastAction(msg, label, onAction, ms) {
+    if (!document.body || !document.createElement) return null;
+    var old = document.querySelector && document.querySelector(".den-toast");
+    if (old && old.remove) old.remove();
+    var el = document.createElement("div");
+    el.className = "den-toast den-toast-act";
+    el.setAttribute("role", "status");
+    var text = document.createElement("span");
+    text.textContent = msg;
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "den-tbtn";
+    b.textContent = label;
+    var done = false;
+    b.addEventListener("click", function () {
+      if (done) return;
+      done = true;
+      clearTimeout(toastTimer);
+      el.remove();
+      onAction();
+    });
+    el.appendChild(text);
+    el.appendChild(b);
+    document.body.appendChild(el);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      done = true;
+      if (el.remove) el.remove();
+    }, ms || 10000);
+    return el;
   }
 
   // ── menus (.pop, R18): the scope parts' popovers ─────────────────────
@@ -3776,6 +3835,7 @@
     unpin: unpin,
     isPinned: isPinned,
     toast: toast,
+    toastAction: toastAction,
     /** R26c: a call that resolves with its data or throws a DenApiError. */
     api: api,
     /** R26c: the error toast for a DenApiError (what an uncaught one gets). */
@@ -4168,6 +4228,7 @@
     // the prototype's small buttons (.btn.sm).
     ".den-toast-err { display: flex; align-items: center; gap: 10px; max-width: min(640px, calc(100vw - 32px));",
     "  border-color: color-mix(in srgb, var(--bad) 45%, var(--border-strong)); }",
+    ".den-toast-act { display: flex; align-items: center; gap: 10px; max-width: min(640px, calc(100vw - 32px)); }",
     ".den-toast-err .den-te-ic { color: var(--bad); }",
     ".den-toast-err .den-te-msg { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }",
     ".den-toast-err .den-te-id { font: 11px var(--mono); color: var(--faint); }",

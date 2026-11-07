@@ -15,7 +15,16 @@
  *   GET  /api/workspaces/<ws>/agents              the workspace's agents
  *   POST /api/workspaces/<ws>/agents              start { persona, runtime?, model?, id? }
  *   POST /api/workspaces/<ws>/agents/<id>/stop
- *   POST /api/workspaces/<ws>/agents/<id>/resume
+ *   POST /api/workspaces/<ws>/agents/<id>/resume  the same conversation (AG-14)
+ *   POST /api/workspaces/<ws>/agents/<id>/fresh   a new conversation, same
+ *                                                 persona and workspace
+ *   POST /api/workspaces/<ws>/agents/<id>/remove  forget a stopped one (Undo:
+ *                                                 /api/agents/restore)
+ *   POST /api/agents/clear-stopped                { workspaces: [...] }: forget
+ *                                                 every stopped one there
+ *   POST /api/agents/restore                      { agents: [ids] }: Undo
+ *   POST /api/agents/resume-interrupted           { workspaces: [...] }: Resume
+ *                                                 all after a restart (AG-14.3)
  *
  * Each calls the CLI's own operation (cli/agent-ops.ts): neither the page
  * nor the CLI keeps state of its own, so an agent started here is the one
@@ -39,7 +48,11 @@
  * the only route that writes to a session or streams its output.
  */
 import * as http from "http";
-import { getReposRoot } from "../../shared/den-config.js";
+import {
+  configuredRemoveStoppedAfter,
+  getReposRoot,
+  readMcpConfig,
+} from "../../shared/den-config.js";
 import {
   readWorkspacesFile,
   resolveWorkspaceDir,
@@ -52,18 +65,30 @@ import {
   listAgents,
   listPersonas,
   listRuntimes,
+  markInterrupted,
   NOT_IN_WORKSPACE,
+  pruneStopped,
+  removeAgent,
+  removeStopped,
+  restoreAgents,
+  resumeInterrupted,
   setRuntimePath,
   resolveAgentsDeps,
   resumeAgent,
   startAgent,
+  startFresh,
   stopAgent,
   type AgentsDeps,
   type AgentsResolved,
   type Started,
 } from "../cli/agent-ops.js";
 import { recordAction } from "./audit.js";
-import { auditActorOf, principalOf } from "./request-guard.js";
+import {
+  agentPrincipalOf,
+  auditActorOf,
+  principalOf,
+} from "./request-guard.js";
+import { agentResumeRefusal } from "./agent-resume-grant.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import type { Actor } from "../../shared/agent-actor.js";
 
@@ -73,10 +98,14 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|remove))?$/;
+
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 /** A start's body is a few short names. */
 const MAX_BODY = 4096;
+/** A list of names (a page's workspaces, an Undo's agents). */
+const MANY_BODY = 64 * 1024;
+const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 /** Never a TTY: a web start's terminal is 80×24. */
 const NO_TTY = { isTTY: false } as NodeJS.WriteStream;
@@ -203,17 +232,24 @@ export async function handleAgentRoutes(
 ): Promise<boolean> {
   const m = AGENTS_PATH.exec(pathname);
   const rp = RUNTIME_PATH.exec(pathname);
+  // AG-14's routes over many agents at once.
+  const many =
+    pathname === "/api/agents/clear-stopped" ||
+    pathname === "/api/agents/restore" ||
+    pathname === "/api/agents/resume-interrupted";
   if (
     pathname !== "/api/personas" &&
     pathname !== "/api/agents/runtimes" &&
     !m &&
-    !rp
+    !rp &&
+    !many
   )
     return false;
   const method = req.method ?? "GET";
   const d = webDeps(deps.agents);
 
   if (rp) return runtimePath(req, res, safeDecode(rp[1]), d);
+  if (many) return manyAgents(req, res, pathname, d);
   if (!m) {
     if (method !== "GET" && method !== "HEAD")
       return methodNotAllowed(res, "GET");
@@ -241,7 +277,7 @@ export async function handleAgentRoutes(
     return true;
   }
   const id = m[2] === undefined ? undefined : safeDecode(m[2]);
-  const action = m[3] as "stop" | "resume" | undefined;
+  const action = m[3] as "stop" | "resume" | "fresh" | "remove" | undefined;
 
   if (!action && method === "GET") {
     try {
@@ -281,7 +317,12 @@ export async function handleAgentRoutes(
     // Another workspace's agent is no agent here: a 404 that doesn't name
     // it, before anything else is said about it.
     if (id !== undefined) agentRecord(d, id, ws);
-    guard(actor);
+    // AG-14.4: MCP agent_resume may resume another agent of its scope.
+    const agent = agentPrincipalOf(req);
+    if (verb === "resume" && agent) {
+      const why = agentResumeRefusal(agent, ws, id!, mcpActions());
+      if (why) throw new AgentError(why, { status: 403 });
+    } else guard(actor);
     if (verb === "start") {
       const body = await startBody(req);
       if (!body.persona)
@@ -301,6 +342,15 @@ export async function handleAgentRoutes(
       const s = await stopAgent(d, id!, ws);
       audit(what);
       sendJson(res, { ok: true, agent: s.rec.id, wasRunning: !!s.session });
+    } else if (verb === "fresh") {
+      const s = await startFresh(d, id!, ws);
+      what = `start ${s.rec.id} fresh (${s.rec.persona}, ${s.rec.runtime}) in ${ws}`;
+      audit(what, s.early ? "exited at once" : undefined);
+      sendStarted(res, s);
+    } else if (verb === "remove") {
+      const removed = await removeAgent(d, id!, ws);
+      audit(what);
+      sendJson(res, { ok: true, removed });
     } else {
       const s = await resumeAgent(d, id!, ws);
       audit(what);
@@ -309,6 +359,112 @@ export async function handleAgentRoutes(
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e, ws);
+  }
+  return true;
+}
+
+/** The org config's mcp.actions; none when it can't be read. */
+function mcpActions(): readonly string[] {
+  try {
+    return readMcpConfig().actions;
+  } catch {
+    return [];
+  }
+}
+
+/** A POST body's JSON object (a usage error otherwise). */
+async function jsonBody(
+  req: http.IncomingMessage,
+): Promise<Record<string, unknown>> {
+  const raw = await readBody(req).catch(() => "");
+  if (raw.length > MANY_BODY)
+    throw new AgentError("request too large", { status: 413, usage: true });
+  let v: unknown;
+  try {
+    v = JSON.parse(raw || "{}");
+  } catch {
+    throw new AgentError("invalid JSON", { usage: true });
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v))
+    throw new AgentError("the body must be a JSON object", { usage: true });
+  return v as Record<string, unknown>;
+}
+
+/** A body's list of names (workspaces or agent ids), each checked. */
+function names(v: unknown, key: string): string[] {
+  if (!Array.isArray(v) || !v.length)
+    throw new AgentError(`${key} must be a list of names`, { usage: true });
+  for (const x of v)
+    if (typeof x !== "string" || !NAME_RE.test(x))
+      throw new AgentError(`${key}: "${String(x)}" is not a name`, {
+        usage: true,
+      });
+  return [...new Set(v as string[])];
+}
+
+/**
+ * POST /api/agents/clear-stopped, /restore, /resume-interrupted (AG-14):
+ * a person only. Each is audited, refused or done.
+ */
+async function manyAgents(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: AgentsResolved,
+): Promise<true> {
+  if (req.method !== "POST") return methodNotAllowed(res, "POST");
+  const actor = auditActorOf(req);
+  const verb = pathname.slice("/api/agents/".length);
+  let what = verb;
+  const audit = (reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail: what,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    guard(actor);
+    const body = await jsonBody(req);
+    if (verb === "restore") {
+      const ids = names(body.agents, "agents");
+      const restored = restoreAgents(d, ids);
+      what = `restore ${restored.join(", ") || "nothing"}`;
+      audit();
+      sendJson(res, { ok: true, restored });
+      return true;
+    }
+    const wss = names(body.workspaces, "workspaces");
+    for (const w of wss)
+      if (!d.workspaceExists(w))
+        throw new AgentError(`workspace "${w}" does not exist`, {
+          status: 404,
+        });
+    if (verb === "clear-stopped") {
+      const removed = await removeStopped(d, wss);
+      what = `clear stopped in ${wss.join(", ")}: ${removed.map((r) => r.agent).join(", ") || "none"}`;
+      audit();
+      sendJson(res, { ok: true, removed });
+      return true;
+    }
+    const r = await resumeInterrupted(d, wss);
+    what = `resume interrupted in ${wss.join(", ")}: ${r.resumed.map((x) => x.rec.id).join(", ") || "none"}`;
+    audit(r.failed.length ? `${r.failed.length} could not resume` : undefined);
+    sendJson(res, {
+      ok: r.failed.length === 0,
+      resumed: r.resumed.map((x) => ({
+        id: x.rec.id,
+        workspace: x.rec.workspace,
+        sessionId: x.info.ref.id,
+      })),
+      failed: r.failed,
+    });
+  } catch (e) {
+    audit(e instanceof Error ? e.message : String(e));
+    sendError(res, e);
   }
   return true;
 }
@@ -418,4 +574,52 @@ function methodNotAllowed(res: http.ServerResponse, allow: string): true {
   res.setHeader("Allow", allow);
   sendJson(res, { ok: false, error: "method not allowed" }, 405);
   return true;
+}
+
+/** How often stopped agents are checked against remove_stopped_after. */
+const PRUNE_EVERY_MS = 60 * 60 * 1000;
+
+/**
+ * What the web server does for agents on its own (AG-14):
+ *   - once, shortly after it starts: marks interrupted the agents whose
+ *     session is gone (Den or the machine went down), and resumes the
+ *     standing personas and those with `resume_on_restart: true`
+ *     (markInterrupted). A session host that outlived a web-server-only
+ *     restart keeps every session: nothing is marked;
+ *   - at start and every hour: forgets stopped and exited agents older
+ *     than user.yml's agents.remove_stopped_after (never by default;
+ *     interrupted ones never).
+ * Nothing here asks for the admin password (LK-0).
+ */
+export function startAgentUpkeep(
+  log: (line: string) => void,
+  deps: AgentRouteDeps & { delayMs?: number } = {},
+): void {
+  const d = webDeps(deps.agents);
+  const restart = async () => {
+    try {
+      const f = await markInterrupted(d);
+      if (f.interrupted.length)
+        log(
+          `Agents interrupted when Den restarted: ${f.interrupted.join(", ")}` +
+            (f.resumed.length ? ` · resumed: ${f.resumed.join(", ")}` : ""),
+        );
+      for (const x of f.failed)
+        log(`  ⚠ agent ${x.agent} did not resume: ${x.why}`);
+    } catch (e) {
+      log(`  ⚠ agents after the restart: ${(e as Error).message}`);
+    }
+  };
+  const prune = async () => {
+    try {
+      const gone = await pruneStopped(d, configuredRemoveStoppedAfter());
+      if (gone.length) log(`Removed stopped agents: ${gone.join(", ")}`);
+    } catch (e) {
+      log(`  ⚠ agents.remove_stopped_after: ${(e as Error).message}`);
+    }
+  };
+  setTimeout(() => {
+    void restart().then(prune);
+  }, deps.delayMs ?? 2000).unref();
+  setInterval(() => void prune(), PRUNE_EVERY_MS).unref();
 }

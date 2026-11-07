@@ -13,7 +13,8 @@
  *   tools        "Read, Grep" or a list: hints, never a restriction Den applies
  *
  * Den's own keys sit beside them: `runtime` (default den-claude),
- * `standing` (starts with its workspace, §5), `context` (what to read
+ * `standing` (starts with its workspace, §5; resumes after a restart),
+ * `resume_on_restart` (AG-14.3: resumes after a restart too), `context` (what to read
  * first), `argv` (the generic runtime's template), and `permission_mode`
  * (den-claude's Claude Code permission mode; it checks the value), and
  * `den_hooks` / `den_instructions` (true or false: this persona's
@@ -45,6 +46,11 @@ export interface Persona {
   model?: string;
   /** Started with its workspace (planner, orchestrator). */
   standing: boolean;
+  /**
+   * `resume_on_restart: true` (AG-14.3): resumed on its own when Den or
+   * the machine restarted. Standing personas always are.
+   */
+  resumeOnRestart?: boolean;
   /** Tool hints. */
   tools: string[];
   /** What to read first (specs, the design system, workspace config). */
@@ -135,6 +141,9 @@ export function parsePersona(text: string, file: string): Persona | null {
   const standing = f.standing ?? false;
   if (typeof standing !== "boolean")
     throw new Error(`${file}: standing must be true or false`);
+  const resumeOnRestart = f.resume_on_restart ?? false;
+  if (typeof resumeOnRestart !== "boolean")
+    throw new Error(`${file}: resume_on_restart must be true or false`);
   let argv: string[] | undefined;
   if (f.argv !== undefined && f.argv !== null) {
     if (
@@ -166,6 +175,7 @@ export function parsePersona(text: string, file: string): Persona | null {
     ...(runtime ? { runtime } : {}),
     ...(model && model !== "inherit" ? { model } : {}),
     standing,
+    ...(resumeOnRestart ? { resumeOnRestart } : {}),
     tools: stringList(f, "tools", file),
     context: stringList(f, "context", file),
     ...(argv ? { argv } : {}),

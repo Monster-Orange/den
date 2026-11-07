@@ -20,10 +20,17 @@
  *           persona, runtime and model; a record whose session is gone is
  *           listed as stopped or ended. A plain session is not an agent.
  *   stop    ends its session (TERM) and marks the record stopped.
- *   resume  only when its runtime declares resume and its session is not
- *           running: a new session, in the same cwd, continuing the last run;
+ *   resume  only when its runtime declares resume, its record holds the
+ *           runtime's resume token, and its session is not running: a new
+ *           session, in the same cwd and workspace with the grants it had,
+ *           continuing the last conversation (den-claude: --resume <token>);
  *           when that session was never prompted, a fresh start under the
  *           same conversation id (there is nothing to continue).
+ *           --all-interrupted (AG-14.3): every agent interrupted when Den or
+ *           the machine restarted that can resume.
+ *   rm      (AG-14.1b) forgets a stopped, interrupted or exited agent (never
+ *           a running one); --stopped forgets every one of -w <ws> (or of
+ *           every workspace). The runtime's own history stays.
  *   doctor  (AG-0.3, AG-0.5) each runtime of the catalog, installed
  *           first: its status, the CLI it runs and where that came from
  *           (workspace or user.yml setting, login shell, PATH, install
@@ -45,14 +52,18 @@ import { DEFAULT_RUNTIME_ID } from "../../shared/agents/runtimes.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import { HostError } from "../../shared/sessions/client.js";
 import { checkHandback } from "../../shared/agents/handback.js";
+import { listRecords } from "../../shared/agents/records.js";
 import {
   AgentError,
   listAgents,
   listPersonas as personaList,
   listRuntimes,
   loadAgentWorkspaces,
+  removeAgent,
+  removeStopped,
   resolveAgentsDeps,
   resumeAgent,
+  resumeInterrupted,
   startAgent,
   stopAgent,
   type AgentsDeps,
@@ -80,19 +91,29 @@ export {
 } from "./agent-ops.js";
 
 export const AGENTS_HELP = {
-  usage: "agents <list|start|stop|resume|personas|doctor|handback-check> ...",
+  usage:
+    "agents <list|start|stop|resume|rm|personas|doctor|handback-check> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
     "",
-    "{cli} agents list -w <ws> [--json]",
+    "{cli} agents list -w <ws> [--stopped] [--json]",
+    "    --stopped: only the stopped, interrupted and exited ones",
     "{cli} agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--id <id>]",
     "    runs in the workspace's dir as <dist>-<ws>:<id>; its MCP is pinned to <ws>",
     "    (plus agents.<id>.grants); capped by agents.max_concurrent",
     "{cli} agents stop <id> [-w <ws>]",
     "{cli} agents resume <id> [-w <ws>]",
-    "    only when its runtime declares resume and its session has ended;",
-    "    a session never prompted starts fresh under the same conversation id",
+    "{cli} agents resume --all-interrupted [-w <ws>]",
+    "    the same conversation, persona, workspace and folder, when its runtime",
+    "    can resume one and its session has ended; a session never prompted",
+    "    starts fresh under the same conversation id. --all-interrupted: every",
+    "    agent interrupted when Den or the machine restarted",
+    "{cli} agents rm <id> [-w <ws>]",
+    "{cli} agents rm --stopped [-w <ws>]",
+    "    forget a stopped, interrupted or exited agent (never a running one);",
+    "    the runtime keeps its own history. agents.remove_stopped_after in",
+    "    user.yml (never, 1d, 7d) forgets stopped ones on its own",
     "{cli} agents personas [--json]",
     "    Den's default pack, then agents.persona_packs (a later pack wins by id)",
     "{cli} agents doctor [-w <ws>] [--json]",
@@ -120,17 +141,27 @@ export const AGENTS_HELP = {
 
 async function list(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents list";
-  const p = parseArgs(where, args, { "--workspace": true, "--json": false });
+  const p = parseArgs(where, args, {
+    "--workspace": true,
+    "--json": false,
+    "--stopped": false,
+  });
   noExtra(where, p);
   const ws = workspaceFlag(where, p);
   if (!ws) throw new UsageError(`${where} needs -w <workspace>`);
-  const rows = await listAgents(d, ws);
+  const rows = await listAgents(d, ws, {
+    stopped: p.flags["--stopped"] === true,
+  });
   if (p.flags["--json"]) {
     d.out(JSON.stringify(rows, null, 2));
     return 0;
   }
   if (!rows.length) {
-    d.out(`no agents in ${ws}`);
+    d.out(
+      p.flags["--stopped"]
+        ? `no stopped agents in ${ws}`
+        : `no agents in ${ws}`,
+    );
     return 0;
   }
   for (const l of columns([
@@ -243,6 +274,7 @@ async function stop(args: string[], d: AgentsResolved): Promise<number> {
 }
 
 async function resume(args: string[], d: AgentsResolved): Promise<number> {
+  if (args.includes("--all-interrupted")) return resumeAll(args, d);
   const { id, ws } = idAndWorkspace("agents resume", args);
   const s = await resumeAgent(d, id, ws);
   if (s.fresh)
@@ -254,6 +286,58 @@ async function resume(args: string[], d: AgentsResolved): Promise<number> {
     s,
     `${s.fresh ? "started" : "resumed"} agent ${s.rec.id} as ${s.rec.sessionName} in ${s.rec.cwd}`,
   );
+}
+
+/** `agents resume --all-interrupted [-w <ws>]` (AG-14.3). */
+async function resumeAll(args: string[], d: AgentsResolved): Promise<number> {
+  const where = "agents resume";
+  const p = parseArgs(where, args, {
+    "--workspace": true,
+    "--all-interrupted": false,
+  });
+  noExtra(where, p);
+  const ws = workspaceFlag(where, p);
+  const r = await resumeInterrupted(d, ws ? [ws] : undefined);
+  if (!r.resumed.length && !r.failed.length) {
+    d.out(`no interrupted agents${ws ? ` in ${ws}` : ""}`);
+    return 0;
+  }
+  for (const x of r.resumed)
+    d.out(
+      `${x.fresh ? "started" : "resumed"} agent ${x.rec.id} as ${x.rec.sessionName} in ${x.rec.cwd}`,
+    );
+  for (const f of r.failed) d.err(`✗ agent ${f.agent}: ${f.why}`);
+  return r.failed.length ? 1 : 0;
+}
+
+/** `agents rm <id> [-w <ws>]`, `agents rm --stopped [-w <ws>]` (AG-14.1b). */
+async function rm(args: string[], d: AgentsResolved): Promise<number> {
+  const where = "agents rm";
+  const p = parseArgs(where, args, { "--workspace": true, "--stopped": false });
+  noExtra(where, p, 1);
+  const ws = workspaceFlag(where, p);
+  const id = p.positional[0];
+  if (p.flags["--stopped"]) {
+    if (id) throw new UsageError(`${where}: give <id> or --stopped, not both`);
+    if (ws && !d.workspaceExists(ws))
+      throw new UsageError(`${where}: workspace "${ws}" does not exist`);
+    const wss = ws
+      ? [ws]
+      : [...new Set(listRecords(d.stateDir()).map((r) => r.workspace))];
+    const gone = await removeStopped(d, wss);
+    d.out(
+      gone.length
+        ? `removed ${gone.length} stopped ${gone.length === 1 ? "agent" : "agents"}: ${gone.map((g) => g.agent).join(", ")}`
+        : `no stopped agents${ws ? ` in ${ws}` : ""}`,
+    );
+    return 0;
+  }
+  if (!id) throw new UsageError(`${where} needs <id> or --stopped`);
+  const [gone] = await removeAgent(d, id, ws);
+  d.out(
+    `removed agent ${gone?.agent ?? id}; its conversation stays in the runtime's own history`,
+  );
+  return 0;
 }
 
 async function listPersonas(
@@ -441,6 +525,9 @@ export async function cmdAgents(
         case "resume":
           await loadAgentWorkspaces(deps);
           return await resume(rest, d);
+        case "rm":
+          await loadAgentWorkspaces(deps);
+          return await rm(rest, d);
         case "personas":
           return await listPersonas(rest, d);
         case "doctor":

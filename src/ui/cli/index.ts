@@ -196,6 +196,7 @@ import { cmdEdge } from "./edge-command.js";
 import { cmdDoctor } from "./doctor-command.js";
 import { cmdSessions, SESSIONS_HELP } from "./sessions-command.js";
 import { AGENTS_HELP, cmdAgents } from "./agents-command.js";
+import { USAGE_HELP, cmdUsage } from "./usage-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
 import { cmdTheme } from "./theme-command.js";
@@ -536,6 +537,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   },
   sessions: SESSIONS_HELP,
   agents: AGENTS_HELP,
+  usage: USAGE_HELP,
 };
 
 function resolveCliBaseApiUrl(explicitBaseApiUrl?: string): string | undefined {
@@ -588,6 +590,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "mcp",
   "sessions",
   "agents",
+  "usage",
   "service",
   "theme",
   "plugin",
@@ -616,6 +619,8 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   // listing a session is never stranded by a config that fails (AG-3a).
   "sessions",
   "agents",
+  // den#6: reads local transcripts and agent records, no org data.
+  "usage",
 ]);
 
 function configCheckedCommand(command: string): boolean {
@@ -1080,6 +1085,10 @@ class DenCLI {
 
         case "agents":
           process.exitCode = await cmdAgents(args.slice(1));
+          break;
+
+        case "usage":
+          process.exitCode = await cmdUsage(args.slice(1));
           break;
 
         case "mcp": {
@@ -5298,7 +5307,10 @@ class DenCLI {
     );
     console.log("  agents list -w <ws>  The workspace's agents");
     console.log(
-      "  agents start -w <ws> --persona <p>  Run a persona in the workspace (stop, resume, personas)",
+      "  agents start -w <ws> --persona <p>  Run a persona in the workspace (stop, resume, rm, personas)",
+    );
+    console.log(
+      "  usage agents|report      Agents' tokens and outcomes, from local transcripts (never sent)",
     );
     console.log();
     console.log(

@@ -79,7 +79,9 @@ function stateText(state) {
     return m[1] === undefined
       ? t("ag.state.exited")
       : t("ag.state.exitedCode", { code: m[1] });
-  return ["running", "stopping", "stopped", "ended"].includes(state)
+  return ["running", "stopping", "stopped", "ended", "interrupted"].includes(
+    state,
+  )
     ? t(`ag.state.${state}`)
     : state;
 }

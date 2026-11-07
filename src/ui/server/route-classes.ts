@@ -302,6 +302,27 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST", "DELETE"], "/api/workspaces/services"),
   M(["POST"], "/api/workspaces/settings"),
   M(["POST"], "/api/workspaces/:ws/agents/:id/stop", "TERM to its session"),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/agents/:id/remove",
+    "forgets a stopped agent (AG-14.1b); its record waits for Undo",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/clear-stopped",
+    "forgets every stopped agent of the workspaces named (AG-14.1b)",
+  ),
+  M(["POST"], "/api/agents/restore", "Undo: brings removed agents back"),
+  S(
+    ["POST"],
+    "/api/workspaces/:ws/agents/:id/fresh",
+    "starts an agent afresh: a runtime in a PTY",
+  ),
+  S(
+    ["POST"],
+    "/api/agents/resume-interrupted",
+    "resumes interrupted agents: runtimes in PTYs (AG-14.3)",
+  ),
   S(
     ["POST"],
     "/api/workspaces/:ws/agents",
@@ -378,6 +399,8 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents",
     "/api/workspaces/:ws/agents/:id/stop",
     "/api/workspaces/:ws/agents/:id/resume",
+    "/api/workspaces/:ws/agents/:id/fresh",
+    "/api/workspaces/:ws/agents/:id/remove",
   ],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "session-routes.ts:IO_PATH": ["/api/sessions/:id/io"],

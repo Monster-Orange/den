@@ -230,6 +230,9 @@ export async function startAgentsPageServer(
     // gemini or grok), only the system's, after the shims ("missing": no
     // claude shim).
     PATH: `${bin}${path.delimiter}/usr/bin:/bin`,
+    // The pinned sudo (0.4.8, sudo-store.ts systemSudo) is the shim above,
+    // never this machine's /usr/bin/sudo.
+    DEN_SYSTEM_SUDO: path.join(bin, "sudo"),
     // AG-0.1: no login shell here, and no install directory of this
     // machine's (tests/setup.ts sets the same for in-process tests).
     DEN_LOGIN_SHELL: "off",

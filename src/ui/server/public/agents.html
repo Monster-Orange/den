@@ -85,6 +85,9 @@
         display: flex;
         gap: 8px;
       }
+      .ph .act [hidden] {
+        display: none;
+      }
       .mono {
         font-family: var(--mono);
       }
@@ -162,6 +165,44 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      /* AG-14: a stopped agent's row. Its why is the row's .meta line; its
+         actions are the mock's .btn.sm (den-btn sm), starting under the name
+         (the row's 12px padding, its 2px border, the 8px dot with its 5px
+         margins (.den-dot), the 8px gap: 40px). */
+      .agr .why {
+        grid-column: 2 / 4;
+        font: 11.5px var(--mono);
+        color: var(--faint);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .agst .agacts {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 0 12px 8px 40px;
+      }
+      .agst .agcant {
+        flex-basis: 100%;
+        font: 12px/1.4 var(--sans);
+        color: var(--faint);
+      }
+      .agst[data-review] > .agr {
+        border-left-color: var(--warn);
+      }
+      /* The mock's .lnk: a button that reads as a link. */
+      .lnk {
+        color: var(--accent-text);
+        cursor: pointer;
+        font: inherit;
+        font-size: 12.5px;
+        text-decoration: underline;
+        background: none;
+        border: 0;
+        padding: 0;
       }
       .wbdg {
         font: 10.5px var(--mono);
@@ -424,6 +465,9 @@
           </div>
         </div>
         <div class="act">
+          <button type="button" class="den-btn" id="ag-clear" hidden>
+            Clear stopped
+          </button>
           <button type="button" class="den-btn primary" id="ag-start">
             + Start agent
           </button>

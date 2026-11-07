@@ -140,6 +140,14 @@ const ACTION_ROUTES: Record<string, string> = {
   "/api/workspace/sync": "POST",
 };
 
+/** Action routes with a parameter: an agent's resume (MCP agent_resume). */
+const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
+  {
+    re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/resume$/,
+    method: "POST",
+  },
+];
+
 /**
  * Throws a Refusal unless (method, path) is an allowed route. Never reached:
  * sudo-password, aws/login, terminal/open, editor/open, workspace/exec,
@@ -155,7 +163,8 @@ export function assertAllowedRequest(
     (READ_ROUTES.has(path) &&
       (method === "GET" ||
         (method === "POST" && path === "/api/manifest/validate"))) ||
-    ACTION_ROUTES[path] === method;
+    ACTION_ROUTES[path] === method ||
+    ACTION_ROUTE_PATTERNS.some((r) => r.method === method && r.re.test(path));
   if (!ok) throw new Refusal(`${method} ${path} is not exposed to agents.`);
   if (path === "/api/service/exec") {
     const cmd = String(query.cmd ?? "");

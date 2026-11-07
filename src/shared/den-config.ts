@@ -391,6 +391,11 @@ export interface UserConfig {
     runtimes?: Record<string, { bin?: unknown } | null>;
     /** More runtime catalog entries (AG-0.5, agents/catalog.ts). */
     runtime_catalog?: unknown;
+    /**
+     * AG-14.1b: forget stopped and exited agents after this long: never
+     * (the default), 1d or 7d. Interrupted agents are never forgotten.
+     */
+    remove_stopped_after?: unknown;
   };
   /**
    * The web server's per-machine keys (src/shared/web-session.ts
@@ -462,6 +467,29 @@ export function configuredRuntimeCatalog(
     read().agents?.runtime_catalog,
     `agents.runtime_catalog (${path.basename(USER_CONFIG_PATH)})`,
     taken,
+  );
+}
+
+/** The values `agents.remove_stopped_after` takes, in days (AG-14.1b). */
+export const REMOVE_STOPPED_AFTER: Readonly<Record<string, number>> = {
+  never: 0,
+  "1d": 1,
+  "7d": 7,
+};
+
+/**
+ * user.yml's `agents.remove_stopped_after`, in days (0: never, the
+ * default). Throws naming the key when it is none of never, 1d, 7d.
+ */
+export function configuredRemoveStoppedAfter(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.remove_stopped_after;
+  if (v === undefined || v === null) return 0;
+  if (typeof v === "string" && Object.hasOwn(REMOVE_STOPPED_AFTER, v))
+    return REMOVE_STOPPED_AFTER[v];
+  throw new Error(
+    `agents.remove_stopped_after (${path.basename(USER_CONFIG_PATH)}): must be never, 1d or 7d (got ${JSON.stringify(v)})`,
   );
 }
 
@@ -773,6 +801,8 @@ export const MCP_ACTIONS = [
   "service_restart",
   "workspace_sync",
   "run_tests",
+  // AG-14.4: resume another agent of its workspace (or a granted one).
+  "agent_resume",
 ] as const;
 export type McpAction = (typeof MCP_ACTIONS)[number];
 

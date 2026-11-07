@@ -24,7 +24,7 @@ import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { execSync, spawn, spawnSync } from "child_process";
+import { execFileSync, spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { envSelector } from "../../shared/environment/env-selector.js";
 import { moduleScanner } from "../../shared/test-discovery/module-scanner.js";
@@ -179,6 +179,8 @@ import {
   recordCrossWorkspace,
   repoAtPath,
   setAuditSink,
+  setAuditFile,
+  AUDIT_FILE,
 } from "./audit.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import {
@@ -672,6 +674,12 @@ function sendErrorPage(
 setAuditSink((line, actor) =>
   serverLog(line, "lifecycle", actor ? actorLabel(actor) : undefined),
 );
+// den#6: the audit ring outlives a restart (<state dir>/audit.jsonl, 0600).
+try {
+  setAuditFile(path.join(getStateDir(), AUDIT_FILE));
+} catch (e) {
+  console.error(`[server] the audit file could not be read: ${String(e)}`);
+}
 
 /** ANSI helpers (no chalk dependency in the server) */
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
@@ -752,6 +760,7 @@ const CONFIG_FREE_PAGES = new Set(["/settings", "/settings.html", "/logs"]);
 // ── Sudo password store ───────────────────────────────────────────────────────
 import {
   setSudoPassword,
+  realSudoPath,
   clearSudoPassword,
   clearSudoShims,
   closeLockForThisRequest,
@@ -814,7 +823,7 @@ import { parseChangelog } from "./changelog-parser.js";
 import { GitHubService } from "./github-service.js";
 import { EditorManager, SUPPORTED_LANGUAGES } from "./editor-manager.js";
 import { handleWorkspaceRoutes } from "./workspace-routes.js";
-import { handleAgentRoutes } from "./agent-routes.js";
+import { handleAgentRoutes, startAgentUpkeep } from "./agent-routes.js";
 import {
   handleSessionList,
   handleSessionUpgrade,
@@ -4321,7 +4330,7 @@ async function handleRequest(
       // Validate the password before storing it.
       try {
         // -k: ignore cached credentials for this check (don't permanently invalidate)
-        execSync("sudo -k -S -v", {
+        execFileSync(realSudoPath(), ["-k", "-S", "-v"], {
           input: password + "\n",
           stdio: ["pipe", "pipe", "pipe"],
           timeout: CLI_SPAWN_TIMEOUT_MS,
@@ -4379,7 +4388,7 @@ async function handleRequest(
     }
     clearSudoPassword();
     try {
-      execSync("sudo -k", {
+      execFileSync(realSudoPath(), ["-k"], {
         stdio: ["ignore", "ignore", "ignore"],
         timeout: CLI_SPAWN_TIMEOUT_MS,
       });
@@ -4433,7 +4442,7 @@ async function handleRequest(
       return sendJson(res, { ok: false, reason: "not-found" });
     }
     try {
-      execSync("sudo -k -S -v", {
+      execFileSync(realSudoPath(), ["-k", "-S", "-v"], {
         input: password + "\n",
         stdio: ["pipe", "pipe", "pipe"],
         timeout: CLI_SPAWN_TIMEOUT_MS,
@@ -5152,6 +5161,8 @@ try {
 // service's PATH leaves out ~/.local/bin. Until (or unless) it answers, the
 // search is this PATH and the runtimes' install directories.
 void initLoginPath();
+// AG-14: agents interrupted by a restart, and stopped ones to forget.
+startAgentUpkeep((line) => serverLog(line, "lifecycle"));
 server.listen(PORT, BIND_HOST, () => {
   const hosts = fs.existsSync("/etc/hosts")
     ? fs.readFileSync("/etc/hosts", "utf-8")

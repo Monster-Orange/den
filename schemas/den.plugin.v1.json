@@ -70,7 +70,7 @@
       "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+$"
     },
     "kind": {
-      "description": "files tier: theme, catalog, persona-pack. browser tier: page. server tier: mcp-tools, work-items, runtime, session-backend, notifier, secrets, identity, health-source.",
+      "description": "files tier: theme, catalog, persona-pack. browser tier: page. server tier: mcp-tools, work-items, runtime, session-backend, notifier, secrets, identity, health-source, usage.",
       "enum": [
         "theme",
         "catalog",
@@ -83,7 +83,8 @@
         "notifier",
         "secrets",
         "identity",
-        "health-source"
+        "health-source",
+        "usage"
       ]
     },
     "provide": {

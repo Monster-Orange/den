@@ -31,6 +31,15 @@
  * can't, before Start (agent-start.js readiness). Starting, stopping and
  * resuming an agent never ask for the admin password: it is for sudo, and
  * no agent action runs sudo (LK-0).
+ *
+ * Stopped agents (AG-14) stay listed under their workspace, below the
+ * running ones, each with why it stopped ("Stopped by you 19:52",
+ * "Interrupted: Den restarted", "Exited (code 1)") and its actions:
+ * Resume (the same conversation; its pane opens), Start fresh, Remove (one
+ * click, and Undo in the toast for 10 s). A runtime that can't resume
+ * shows only Start fresh, saying so. Clear stopped removes every stopped
+ * agent in view. After a restart, one line says how many were interrupted,
+ * with Resume all and Review.
  */
 import { fillStartForm } from "/agent-start.js";
 
@@ -45,6 +54,9 @@ const esc = (s) =>
   );
 const api = (method, url, body) => window.denShell.api(method, url, body);
 const CLI = "__DEN_CLI__";
+const TITLE = "__DEN_TITLE__";
+/** How long Remove's Undo stays offered (AG-14.1b). */
+export const UNDO_MS = 10_000;
 
 /** The most panes at once (the prototype's 2x2). */
 export const MAX_PANES = 4;
@@ -112,7 +124,9 @@ function stateText(state) {
     return m[1] === undefined
       ? t("ag.state.exited")
       : t("ag.state.exitedCode", { code: m[1] });
-  return ["running", "stopping", "stopped", "ended"].includes(state)
+  return ["running", "stopping", "stopped", "ended", "interrupted"].includes(
+    state,
+  )
     ? t(`ag.state.${state}`)
     : state;
 }
@@ -127,7 +141,73 @@ function paneName(r) {
   return r.kind === "agent" ? r.displayName || r.agent || r.label : r.label;
 }
 
+/** An agent that isn't running: stopped, interrupted or exited (AG-14). */
+export function isStopped(r) {
+  return r.kind === "agent" && r.state !== "running" && r.state !== "stopping";
+}
+
+/** "19:52" today, else "Nov 6, 19:52" (the browser's own format). */
+function when(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const time = d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const today = new Date().toDateString() === d.toDateString();
+  return today
+    ? time
+    : `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
+}
+
+/** Why a stopped agent stopped (AG-14.1). */
+export function stopReason(r) {
+  if (r.state === "interrupted")
+    return t("ag.why.interrupted", { name: TITLE });
+  if (r.state === "stopped")
+    return t("ag.why.stopped", { time: when(r.stoppedAt ?? "") }).trim();
+  const m = /^exited(?: \((-?\d+)\))?$/.exec(r.state);
+  if (m)
+    return m[1] === undefined
+      ? t("ag.why.exited")
+      : t("ag.why.exitedCode", { code: m[1] });
+  return stateText(r.state);
+}
+
+/** A stopped agent's row: its button (it opens an ended pane) and actions. */
+function stoppedHtml(r) {
+  const open = st.open.includes(r.id);
+  const name = displayName(r);
+  const nm = `${esc(name)}${r.persona && r.persona !== r.label ? ` <span class="id">${esc(r.label)}</span>` : ""}`;
+  const meta = [r.runtime, r.cwd].filter(Boolean).join(" · ");
+  const who = esc(r.agent);
+  const resume = r.resumable
+    ? `<button type="button" class="den-btn sm primary" data-act="resume" aria-label="${esc(t("ag.resumeName", { id: r.agent }))}">${esc(t("ag.resume"))}</button>`
+    : "";
+  const fresh = `<button type="button" class="den-btn sm" data-act="fresh" aria-label="${esc(t("ag.freshName", { id: r.agent }))}">${esc(t("ag.fresh"))}</button>`;
+  const remove = `<button type="button" class="den-btn sm" data-act="remove" aria-label="${esc(t("ag.removeName", { id: r.agent }))}">${esc(t("ag.remove"))}</button>`;
+  const cant =
+    !r.resumable && r.noResume
+      ? `<span class="agcant" data-no-resume>${esc(r.noResume.startsWith(`${r.runtime} `) ? t("ag.noResume", { runtime: r.runtime }) : r.noResume)}</span>`
+      : "";
+  return (
+    `<div class="agst" data-agent="${who}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}">` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}"` +
+    ` aria-pressed="${open}"${r.attachable ? "" : ' aria-disabled="true"'}` +
+    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${name}` }))}">` +
+    `<span class="den-dot ${stateTone(r)}" aria-hidden="true"></span>` +
+    `<span class="nm">${nm}</span><span class="st">${esc(stateText(r.state))}</span>` +
+    (meta ? `<span class="meta">${esc(meta)}</span>` : "") +
+    `<span class="why">${esc(stopReason(r))}</span>` +
+    `</button>` +
+    `<div class="agacts">${cant}${resume}${fresh}${remove}</div>` +
+    `</div>`
+  );
+}
+
 function rowHtml(r) {
+  if (isStopped(r)) return stoppedHtml(r);
   const open = st.open.includes(r.id);
   const nm =
     r.kind === "agent"
@@ -169,10 +249,29 @@ function paintList() {
     return;
   }
   const shown = viewWorkspaces();
+  // AG-14.3: one line after a restart, for the agents it interrupted.
+  const hit = visibleRows().filter((r) => r.state === "interrupted");
+  if (hit.length)
+    notes.push(
+      `<div class="agnote" data-note="interrupted" role="status">` +
+        `${esc(t(hit.length === 1 ? "ag.interrupted.one" : "ag.interrupted", { n: hit.length, name: TITLE }))}` +
+        (hit.some((r) => r.resumable)
+          ? ` · <button type="button" class="lnk" data-act="resume-all">${esc(t("ag.resumeAll"))}</button>`
+          : "") +
+        ` · <button type="button" class="lnk" data-act="review">${esc(t("ag.review"))}</button></div>`,
+    );
   const groups = shown
     .map((ws) => ({
       ws,
-      rows: st.data.sessions.filter((s) => s.workspace === ws),
+      // Running ones (and plain sessions) first, then the stopped agents.
+      rows: st.data.sessions
+        .filter((s) => s.workspace === ws)
+        .map((s, i) => ({ s, i }))
+        .sort(
+          (a, b) =>
+            Number(isStopped(a.s)) - Number(isStopped(b.s)) || a.i - b.i,
+        )
+        .map((x) => x.s),
     }))
     .filter((g) => g.rows.length > 0);
   const body = groups.length
@@ -186,6 +285,8 @@ function paintList() {
         .join("")
     : `<div class="none">${esc(t("ag.none.scope", { scope: st.scopeLabel }))}</div>`;
   el.innerHTML = notes.join("") + body;
+  const clear = st.root.querySelector("#ag-clear");
+  if (clear) clear.hidden = !visibleRows().some(isStopped);
 }
 
 function visibleRows() {
@@ -325,6 +426,11 @@ function paintBar(p) {
     r?.kind === "agent" && (r.state === "running" || r.state === "stopping")
       ? `<button type="button" class="den-btn sm" data-act="stop" aria-label="${esc(t("ag.stopName", { id: r.agent }))}">${esc(t("ag.stop"))}</button>`
       : "";
+  // The mock's pane bar: Resume (primary) on an ended agent that can.
+  const resume =
+    r && isStopped(r) && r.resumable
+      ? `<button type="button" class="den-btn sm primary" data-act="resume" aria-label="${esc(t("ag.resumeName", { id: r.agent }))}">${esc(t("ag.resume"))}</button>`
+      : "";
   const reconnect = p.lost
     ? `<button type="button" class="den-btn sm" data-act="reconnect">${esc(t("ag.reconnect"))}</button>`
     : "";
@@ -334,7 +440,7 @@ function paintBar(p) {
     (r?.tokenRevoked
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +
-    `<span class="x">${reconnect}${stop}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
+    `<span class="x">${reconnect}${stop}${resume}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
 }
 
 function send(p, obj) {
@@ -621,6 +727,143 @@ async function stopAgent(p, button) {
   await refresh();
 }
 
+// ── Stopped agents (AG-14) ──────────────────────────────────────────────
+
+const agentPath = (r, verb) =>
+  `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/${verb}`;
+
+/** Resume (the same conversation) or Start fresh; its pane opens on it. */
+async function restartRow(r, verb, button) {
+  if (button) button.disabled = true;
+  try {
+    const out = await api("POST", agentPath(r, verb));
+    window.denShell?.toast?.(
+      t(verb === "resume" ? "ag.resumed" : "ag.startedFresh", { id: r.agent }),
+    );
+    if (st.panes.has(r.id)) closePane(r.id, { quiet: true });
+    await refresh();
+    if (out?.agent?.sessionId) await openPane(out.agent.sessionId);
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+    await refresh();
+  }
+}
+
+/** Undo: the removed agents come back (POST /api/agents/restore). */
+async function undoRemove(ids) {
+  try {
+    const out = await api("POST", "/api/agents/restore", { agents: ids });
+    const back = out?.restored ?? [];
+    if (back.length)
+      window.denShell?.toast?.(t("ag.restored", { ids: back.join(", ") }));
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+  }
+  await refresh();
+}
+
+/** The removal's toast, with Undo for UNDO_MS. */
+function removedToast(msg, ids) {
+  const shell = window.denShell;
+  if (shell?.toastAction)
+    shell.toastAction(msg, t("ag.undo"), () => void undoRemove(ids), UNDO_MS);
+  else shell?.toast?.(msg);
+}
+
+/** Remove: one click, no confirm (AG-14.1b). */
+async function removeRow(r, button) {
+  if (button) button.disabled = true;
+  try {
+    const out = await api("POST", agentPath(r, "remove"));
+    if (st.panes.has(r.id)) closePane(r.id, { quiet: true });
+    const ids = (out?.removed ?? []).map((x) => x.agent);
+    await refresh();
+    removedToast(
+      t("ag.removed", { id: r.agent }),
+      ids.length ? ids : [r.agent],
+    );
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+    await refresh();
+  }
+}
+
+/** Clear stopped: every stopped agent in view (AG-14.1b). */
+async function clearStopped(button) {
+  const workspaces = [
+    ...new Set(
+      visibleRows()
+        .filter(isStopped)
+        .map((r) => r.workspace),
+    ),
+  ];
+  if (!workspaces.length) return;
+  button.disabled = true;
+  try {
+    const out = await api("POST", "/api/agents/clear-stopped", { workspaces });
+    const ids = (out?.removed ?? []).map((x) => x.agent);
+    for (const r of visibleRows())
+      if (ids.includes(r.agent) && st.panes.has(r.id))
+        closePane(r.id, { quiet: true });
+    await refresh();
+    if (ids.length)
+      removedToast(
+        t(ids.length === 1 ? "ag.removedMany.one" : "ag.removedMany", {
+          n: ids.length,
+        }),
+        ids,
+      );
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+    await refresh();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/** Resume all: every interrupted agent in view that can resume (AG-14.3). */
+async function resumeAll(button) {
+  const workspaces = [
+    ...new Set(
+      visibleRows()
+        .filter((r) => r.state === "interrupted")
+        .map((r) => r.workspace),
+    ),
+  ];
+  if (!workspaces.length) return;
+  button.disabled = true;
+  try {
+    const out = await window.denShell.api(
+      "POST",
+      "/api/agents/resume-interrupted",
+      { workspaces },
+    );
+    const n = out?.resumed?.length ?? 0;
+    window.denShell?.toast?.(
+      t(n === 1 ? "ag.resumedAll.one" : "ag.resumedAll", { n }),
+    );
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+  }
+  await refresh();
+}
+
+/** Review: the first interrupted agent, scrolled to and focused. */
+function review() {
+  const first = st.root.querySelector('#agl .agst[data-state="interrupted"]');
+  if (!first) return;
+  for (const el of st.root.querySelectorAll("#agl .agst[data-review]"))
+    el.removeAttribute("data-review");
+  for (const el of st.root.querySelectorAll(
+    '#agl .agst[data-state="interrupted"]',
+  ))
+    el.setAttribute("data-review", "");
+  first.scrollIntoView({ block: "nearest" });
+  (
+    first.querySelector('[data-act="resume"]') ?? first.querySelector(".agr")
+  )?.focus();
+}
+
 // ── Start agent ─────────────────────────────────────────────────────────
 
 // Personas and runtimes, per workspace (AG-0.5: a workspace's own runtime
@@ -761,6 +1004,7 @@ function translateStatic(root) {
   };
   set("#ag-h", "n.agents");
   set("#ag-start", "ag.start");
+  set("#ag-clear", "ag.clear");
   set("#ag-dlg-h", "ag.start");
   set("#ag-ws-t", "ag.ws");
   set("#ag-p-t", "ag.persona");
@@ -782,6 +1026,22 @@ export async function mountAgentsPage(root) {
   const startAsked = new URLSearchParams(location.search).get("start") === "1";
 
   root.querySelector("#agl").addEventListener("click", (e) => {
+    const act = e.target.closest("button[data-act]");
+    if (act) {
+      const which = act.dataset.act;
+      if (which === "resume-all") return void resumeAll(act);
+      if (which === "review") return review();
+      const agent = act.closest(".agst")?.dataset.agent;
+      const ws = act.closest(".agst")?.dataset.ws;
+      const r = visibleRows().find(
+        (x) => x.agent === agent && x.workspace === ws,
+      );
+      if (!r) return;
+      if (which === "resume" || which === "fresh")
+        void restartRow(r, which, act);
+      else if (which === "remove") void removeRow(r, act);
+      return;
+    }
     const b = e.target.closest(".agr");
     if (!b) return;
     if (b.getAttribute("aria-disabled") === "true") return;
@@ -797,10 +1057,16 @@ export async function mountAgentsPage(root) {
     if (!p) return;
     if (b.dataset.act === "close") closePane(id);
     else if (b.dataset.act === "stop") void stopAgent(p, b);
-    else if (b.dataset.act === "reconnect") void connect(p);
+    else if (b.dataset.act === "resume") {
+      const r = rowOf(id);
+      if (r) void restartRow(r, "resume", b);
+    } else if (b.dataset.act === "reconnect") void connect(p);
   });
   root.querySelector("#ag-start").addEventListener("click", () => {
     void openStart();
+  });
+  root.querySelector("#ag-clear")?.addEventListener("click", (e) => {
+    void clearStopped(e.currentTarget);
   });
   root.querySelector("#ag-ws").addEventListener("change", (e) => {
     void fillForWorkspace(e.currentTarget.value);

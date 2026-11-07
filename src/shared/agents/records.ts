@@ -9,6 +9,11 @@
  * A record never holds the env or the argv: the role prompt, tokens and
  * anything else a launch passes stay out of it. An agent id is unique in a
  * distribution.
+ *
+ * AG-14: a removed agent's record moves to removed-agents/<id>.json, so
+ * Undo can bring it back; restoreRecord does, and purgeRemoved forgets
+ * the ones older than the undo window. The runtime's own conversation
+ * history is never touched.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -34,6 +39,47 @@ export interface AgentRecord {
   resumedAt?: string;
   /** The runtime's handle for resume (den-claude: the conversation id). */
   resumeToken?: string;
+  /**
+   * The workspaces beyond its own its MCP served when it started
+   * (agents.<id>.grants then). A resume keeps them, never more than the
+   * config still allows (AG-14).
+   */
+  grants?: string[];
+  /** When its session was seen to end on its own (AG-14: "Exited"). */
+  endedAt?: string;
+  /** That session's exit code, when the host said it. */
+  exitCode?: number;
+  /**
+   * Set when its session was gone after Den or the machine restarted
+   * (AG-14.3: "Interrupted"); cleared by a resume or a start.
+   */
+  interruptedAt?: string;
+  /** What its run came to (den#6), filled in by `<cli> usage`. */
+  outcome?: AgentOutcome;
+  /** Its tokens, from the runtime's own transcript (den#6). */
+  usage?: AgentUsage;
+}
+
+/** What an agent's run came to (den#6). Read locally; never sent. */
+export interface AgentOutcome {
+  /** The pull request it opened, when it opened one. */
+  prOpened?: string;
+  /** That pull request merged in the run. */
+  prMerged?: boolean;
+  /** The last test run it made passed (true) or failed (false). */
+  testsGreen?: boolean;
+  /** From its start to its last activity, in milliseconds. */
+  wallClockMs?: number;
+}
+
+/** An agent's token counts (den#6), summed over its transcripts. */
+export interface AgentUsage {
+  calls: number;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  compactions: number;
 }
 
 /** An agent id: the same rules as a workspace or session name. */
@@ -82,6 +128,67 @@ export function readRecord(stateDir: string, id: string): AgentRecord | null {
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw e;
+  }
+}
+
+/** Where removed records wait for Undo (AG-14.1b). */
+export function removedDir(stateDir: string): string {
+  return path.join(stateDir, "removed-agents");
+}
+
+/** How long a removed record can be brought back. */
+export const UNDO_KEEP_MS = 60 * 60 * 1000;
+
+/**
+ * Forget agent `id` (its record moves aside for Undo). True when there
+ * was one. Its files and the runtime's history stay.
+ */
+export function removeRecord(stateDir: string, id: string): boolean {
+  const from = recordFile(stateDir, id);
+  if (!fs.existsSync(from)) return false;
+  ensureDir(removedDir(stateDir));
+  const to = path.join(removedDir(stateDir), `${id}.json`);
+  fs.renameSync(from, to);
+  // Its mtime is when it was removed: purgeRemoved goes by it.
+  const now = new Date();
+  fs.utimesSync(to, now, now);
+  return true;
+}
+
+/**
+ * Bring a removed record back (Undo). False when there is none to bring
+ * back, or an agent of that id exists again.
+ */
+export function restoreRecord(stateDir: string, id: string): boolean {
+  if (!AGENT_ID_RE.test(id)) return false;
+  const from = path.join(removedDir(stateDir), `${id}.json`);
+  const to = recordFile(stateDir, id);
+  if (!fs.existsSync(from) || fs.existsSync(to)) return false;
+  ensureDir(agentsDir(stateDir));
+  fs.renameSync(from, to);
+  return true;
+}
+
+/** Forget removed records older than `keepMs` for good. */
+export function purgeRemoved(
+  stateDir: string,
+  keepMs = UNDO_KEEP_MS,
+  now = Date.now(),
+): void {
+  let names: string[];
+  try {
+    names = fs.readdirSync(removedDir(stateDir));
+  } catch {
+    return;
+  }
+  for (const n of names) {
+    if (!n.endsWith(".json") || !AGENT_ID_RE.test(n.slice(0, -5))) continue;
+    const f = path.join(removedDir(stateDir), n);
+    try {
+      if (now - fs.statSync(f).mtimeMs > keepMs) fs.unlinkSync(f);
+    } catch {
+      /* gone already */
+    }
   }
 }
 

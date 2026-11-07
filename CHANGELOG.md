@@ -4,6 +4,73 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.8] - unreleased
+
+Stopped agents stay in the list, and come back where they were (AG-14, the
+stopped-agents slice). Den also counts what each agent used and what it
+got done, read on this machine only (den#6, the agent-usage issue).
+
+### Added
+
+- **Stopped agents stay listed.** They sit below the running ones, each
+  with why it stopped: stopped by you, exited (with its code), or
+  interrupted by a restart. Each row has Resume, Start fresh and Remove.
+- **Resume is the same conversation.** Den runs the runtime's own resume
+  with the conversation id it saved (Claude Code: `--resume <id>`). The
+  agent comes back in its own folder, with its workspace and grants. A
+  runtime that can't resume (codex, gemini, grok), or an agent with no
+  saved id, offers Start fresh only and says why.
+- **Remove in one click, with Undo.** The toast offers Undo for 10 seconds.
+  **Clear stopped** removes every stopped agent in view. A running agent
+  is never removed.
+- **After a restart, one line.** "2 agents were interrupted when Acme
+  restarted · Resume all · Review". Standing personas, and personas with
+  `resume_on_restart: true`, resume on their own.
+- **The CLI:** `agents list --stopped`, `agents resume --all-interrupted`,
+  `agents rm <id>` and `agents rm --stopped`.
+- **`agent_resume`, an MCP action for orchestrators.** Off unless
+  `mcp.actions` names it. It resumes agents of its own workspace or a
+  granted one, never itself. The web server checks the same rule.
+- **`usage agents` and `usage report`.** Each agent's tokens and outcome
+  (pull request opened or merged, tests green, wall-clock time) are read
+  from its transcripts and saved in its record, matched by the
+  conversation id. `usage report` writes a weekly summary, compared with
+  the last. Transcripts stay on the machine, and only counts are kept.
+- **The `usage` plugin kind** (server tier) adds a transcript reader for
+  another runtime. Den ships one for Claude Code.
+
+### Changed
+
+- **The audit trail survives a restart.** The last 200 actions are kept in
+  `<state dir>/audit.jsonl` (0600) and read back at start.
+- **An agent after a restart says Interrupted**, not Exited. An agent that
+  exited says Exited (code n), even after the session host forgets it.
+- **An agent record notes its grants**, its end and exit code, and its
+  usage and outcome.
+
+### Fixed
+
+- **Den's sudo is `/usr/bin/sudo`.** A `sudo` placed earlier on `PATH` no
+  longer gets the admin password. Den looks on `PATH` only when there is no
+  `/usr/bin/sudo`. `DEN_SYSTEM_SUDO` names another absolute path.
+- **`mcp` refuses an argument it doesn't take.** A typo such as
+  `--worksapce` exits 2 with the usage, instead of starting an unscoped
+  server.
+
+### Metrics (before → after)
+
+- Share of agent sessions with attributed tokens and outcome: ~0 → ≥90%.
+  On the test fixture (11 agents): 0% → 91%. The one left out runs on
+  codex, which no usage reader covers yet.
+
+### Migrations
+
+- None needed. To remove stopped agents on their own, set
+  `agents.remove_stopped_after` in `config/local/user.yml` to `1d` or `7d`
+  (the default is `never`). Interrupted agents are never removed this way.
+  To let an orchestrator resume agents, add `agent_resume` to
+  `mcp.actions`.
+
 ## [0.4.7] - 2026-11-07
 
 Agents read slices, wait in the background and hand back plainly (den#5,

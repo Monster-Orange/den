@@ -295,7 +295,7 @@ describe("GET /api/workspaces/<ws>/agents", () => {
     expect(a.r.made[0].signals).toEqual([]);
   });
 
-  it("asking never starts a session host: with none running, a record lists as ended", async () => {
+  it("asking never starts a session host: with none running, a record lists as interrupted", async () => {
     const a = await api();
     await start(a, "north", { persona: "planner" });
     let started = 0;
@@ -305,7 +305,7 @@ describe("GET /api/workspaces/<ws>/agents", () => {
     };
     a.r.deps.connectExisting = async () => null;
     const [row] = await rows(a, "north");
-    expect(row).toMatchObject({ agent: "planner", state: "ended" });
+    expect(row).toMatchObject({ agent: "planner", state: "interrupted" });
     expect(started).toBe(0);
   });
 
@@ -534,7 +534,7 @@ describe("POST …/agents/<id>/stop and …/resume", () => {
     );
     expect(status).toBe(409);
     expectR26(json, "conflict");
-    expect(String(json.error)).toMatch(/does not declare resume/);
+    expect(String(json.error)).toMatch(/generic can't resume a conversation/);
     expect(a.r.made).toHaveLength(1);
   });
 

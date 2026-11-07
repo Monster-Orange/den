@@ -38,6 +38,12 @@ export interface Rig {
   wsBins: Record<string, Record<string, unknown>>;
   /** user.yml's `agents.runtime_catalog`, as written. */
   userCatalog: unknown;
+  /**
+   * Den or the machine restarted (AG-14.3): the session host goes, with
+   * every session, and a new one starts on the same state dir. The agent
+   * records stay.
+   */
+  restartHost(): Promise<void>;
 }
 
 const tmps: string[] = [];
@@ -76,14 +82,18 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
 
   const { factory, made } = scriptedFactory();
   const load: PtyLoad = { available: true, factory };
-  const h = new SessionHost({
-    stateDir,
-    pty: () => load,
-    flushMs: 0,
-    log: () => undefined,
-  });
-  hosts.push(h);
-  await h.listen();
+  const newHost = async () => {
+    const h = new SessionHost({
+      stateDir,
+      pty: () => load,
+      flushMs: 0,
+      log: () => undefined,
+    });
+    hosts.push(h);
+    await h.listen();
+    return h;
+  };
+  let h = await newHost();
 
   const r: Rig = {
     dir,
@@ -104,6 +114,11 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     wsBins: {},
     userCatalog: undefined,
     deps: {},
+    async restartHost() {
+      await h.close();
+      hosts.splice(hosts.indexOf(h), 1);
+      h = await newHost();
+    },
   };
   r.deps = {
     dist: "acme",

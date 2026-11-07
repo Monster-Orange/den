@@ -48,8 +48,19 @@ beforeAll(async () => {
     )[0]?.version ?? "";
   // Two records as `agents start` leaves them, their sessions gone (a
   // reboot): one in each workspace.
-  s.seed({ id: "scout", persona: "reviewer", workspace: "north" });
-  s.seed({ id: "lookout", persona: "devops", workspace: "south" });
+  // Each with its conversation's token: only then can it resume (AG-14.2).
+  s.seed({
+    id: "scout",
+    persona: "reviewer",
+    workspace: "north",
+    resumeToken: "55555555-5555-4555-8555-555555555555",
+  });
+  s.seed({
+    id: "lookout",
+    persona: "devops",
+    workspace: "south",
+    resumeToken: "66666666-6666-4666-8666-666666666666",
+  });
 }, 60_000);
 
 afterAll(async () => {
@@ -98,7 +109,7 @@ describe("the Agents section", () => {
     const [agent, runtime, state, cwd, started, acts] = await cells(p, "scout");
     expect(agent.replace(/\s+/g, " ").trim()).toBe("scout persona reviewer");
     expect(runtime.trim()).toBe("den-claude");
-    expect(state.trim()).toBe("ended");
+    expect(state.trim()).toBe("interrupted");
     expect(cwd.trim()).toBe(s!.wsDir("north"));
     // The page's own format of the record's startedAt: a date, not "—".
     expect(started.trim()).not.toBe("—");
@@ -322,7 +333,7 @@ describe("the Agents section", () => {
       ]);
       const [agent, , state, , , acts] = await cells(p, "lookout");
       expect(agent.replace(/\s+/g, " ").trim()).toBe("lookout ペルソナ devops");
-      expect(state.trim()).toBe("終了");
+      expect(state.trim()).toBe("中断");
       expect(acts.trim()).toBe("再開");
       expect((await p.textContent("#agent-start-open"))?.trim()).toBe(
         "+ エージェントを開始",

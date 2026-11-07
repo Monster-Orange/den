@@ -58,6 +58,9 @@ export const KIND_TIERS: Readonly<Record<string, PluginTier>> = {
   secrets: "server",
   identity: "server",
   "health-source": "server",
+  // den#6: reads a runtime's own transcripts on this machine, for tokens
+  // and outcomes per agent; never sends them anywhere.
+  usage: "server",
 };
 
 export interface PluginProvide {

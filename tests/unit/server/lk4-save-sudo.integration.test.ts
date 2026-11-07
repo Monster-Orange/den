@@ -113,6 +113,8 @@ function makeDist(name: string, refs?: Record<string, unknown>): Dist {
     env: {
       ...process.env,
       PATH: [bin, process.env.PATH ?? ""].join(path.delimiter),
+      // The pinned sudo (0.4.8) is this fake, never the system's.
+      DEN_SYSTEM_SUDO: path.join(bin, "sudo"),
       FAKE_OP_ITEMS: items,
       DEN_ROOT: root,
       DEN_ENGINE_ROOT: ENGINE,

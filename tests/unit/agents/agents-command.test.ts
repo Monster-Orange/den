@@ -98,6 +98,8 @@ describe("agents start", () => {
         "sessionName",
         "startedAt",
         "resumeToken",
+        // AG-14: the grants it started with, kept by a resume.
+        "grants",
       ].sort(),
     );
     expect(rec).toMatchObject({
@@ -427,7 +429,7 @@ describe("agents stop and resume", () => {
     r.made[0].exit(0);
     await settle();
     expect(await agents(r, "resume", "shell")).toBe(1);
-    expect(r.err.join("\n")).toMatch(/runtime generic does not declare resume/);
+    expect(r.err.join("\n")).toMatch(/generic can't resume a conversation/);
     expect(r.made).toHaveLength(1);
   });
 

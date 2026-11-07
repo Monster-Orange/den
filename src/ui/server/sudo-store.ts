@@ -32,7 +32,7 @@ import { AsyncLocalStorage } from "async_hooks";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { CLI_SPAWN_TIMEOUT_MS } from "../../shared/constants.js";
 
 import { product } from "../../shared/product.js";
@@ -62,11 +62,40 @@ function shimDirPrefix(): string {
   return path.join(os.tmpdir(), `${product().cli}-sudo-`);
 }
 
+/** The system's sudo: what Den runs whenever it is there. */
+export const SYSTEM_SUDO = "/usr/bin/sudo";
+
 /**
- * The real sudo: the first `sudo` on PATH that isn't one of Den's shims,
- * else /usr/bin/sudo. Read when a shim is written.
+ * Where the system's sudo is: /usr/bin/sudo, or DEN_SYSTEM_SUDO when set
+ * to an absolute path (a machine whose sudo lives elsewhere, and the
+ * tests' fake sudo). Never a name looked up on PATH.
  */
-export function realSudoPath(envPath: string = process.env.PATH ?? ""): string {
+export function systemSudo(env: NodeJS.ProcessEnv = process.env): string {
+  const v = env.DEN_SYSTEM_SUDO;
+  return v && path.isAbsolute(v) ? v : SYSTEM_SUDO;
+}
+
+function isExecutableFile(file: string): boolean {
+  try {
+    fs.accessSync(file, fs.constants.X_OK);
+    return fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The real sudo: /usr/bin/sudo (systemSudo), pinned, so a `sudo` earlier
+ * on PATH (a directory a user or a tool can write to) never receives the
+ * admin password. Only where there is none there: the first `sudo` on
+ * PATH that isn't one of Den's shims. Read when a shim is written, and by
+ * every check Den runs itself.
+ */
+export function realSudoPath(
+  envPath: string = process.env.PATH ?? "",
+  system: string = systemSudo(),
+): string {
+  if (isExecutableFile(system)) return system;
   const prefix = shimDirPrefix();
   for (const dir of envPath.split(path.delimiter)) {
     if (!dir || dir.startsWith(prefix)) continue;
@@ -78,7 +107,7 @@ export function realSudoPath(envPath: string = process.env.PATH ?? ""): string {
       /* not here */
     }
   }
-  return "/usr/bin/sudo";
+  return system;
 }
 
 /** A path inside single quotes, for a shim. */
@@ -254,7 +283,7 @@ export function watchSudo(
 export function prewarmSudo(): void {
   if (!_sudoPassword || lockClosedHere()) return;
   try {
-    execSync("sudo -S -v", {
+    execFileSync(realSudoPath(), ["-S", "-v"], {
       input: _sudoPassword + "\n",
       stdio: ["pipe", "pipe", "pipe"],
       timeout: CLI_SPAWN_TIMEOUT_MS,
@@ -288,7 +317,7 @@ export function hasPasswordlessSudo(): boolean {
   }
   let value = false;
   try {
-    execSync("sudo -n true", {
+    execFileSync(realSudoPath(), ["-n", "true"], {
       stdio: ["ignore", "ignore", "ignore"],
       timeout: CLI_SPAWN_TIMEOUT_MS,
     });

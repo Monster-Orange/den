@@ -28,11 +28,24 @@
  *           listed as stopped or ended. A plain session is not an agent.
  *   stop    ends its session (TERM), marks the record stopped and revokes
  *           its actor token.
- *   resume  only when its runtime declares resume and its session is not
- *           running: a new session, in the same cwd, continuing the last run;
+ *   resume  only when its runtime declares resume, the record has its
+ *           resume token, and its session is not running: a new session,
+ *           in the same cwd and workspace with the grants it had (never
+ *           more than the config still gives), continuing the last run with
+ *           the runtime's own resume (den-claude: `--resume <token>`);
  *           when that session was never prompted, a fresh start under the
  *           same conversation id (there is nothing to continue). A fresh
  *           actor token; the old one stops working.
+ *   fresh   (AG-14) a new conversation with the same persona, runtime,
+ *           model and workspace, under the same id.
+ *   remove  (AG-14.1b) forgets a stopped, interrupted or exited agent: its
+ *           record moves aside for Undo (restore). Never a running one.
+ *           The runtime's own history stays.
+ *   interrupted (AG-14.3) an agent whose session is gone though nobody
+ *           stopped it and it never exited: Den or the machine went down.
+ *           markInterrupted stamps them when the web server starts, and
+ *           resumes the standing personas and those with
+ *           `resume_on_restart: true`.
  *
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
@@ -71,7 +84,10 @@ import {
   AGENT_ID_RE,
   agentFilesDir,
   listRecords,
+  purgeRemoved,
   readRecord,
+  removeRecord,
+  restoreRecord,
   writeRecord,
   writeRuntimeFiles,
   type AgentRecord,
@@ -322,32 +338,73 @@ export interface AgentRow {
   workspace?: string;
   cwd?: string;
   /** running, stopping (stopped, its session not yet gone), exited
-   * (<code>), stopped or ended. */
+   * (<code>), stopped or interrupted. */
   state: string;
   /** When its current (or last) session started (ISO 8601). */
   startedAt?: string;
-  /** Resume applies: its runtime declares resume and it isn't running. */
+  /**
+   * Resume applies: its runtime declares resume, its record has the
+   * runtime's resume token, and it isn't running.
+   */
   resumable: boolean;
+  /**
+   * Why Resume doesn't apply to a stopped agent (AG-14.2), e.g. "codex
+   * can't resume a conversation": only Start fresh is offered.
+   */
+  noResume?: string;
+  /** When `agents stop` stopped it. */
+  stoppedAt?: string;
+  /** When its session was seen to end on its own. */
+  endedAt?: string;
+  /** When Den found it interrupted by a restart. */
+  interruptedAt?: string;
+  /** Its persona resumes on its own after a restart (AG-14.3). */
+  autoResume?: boolean;
+  outcome?: AgentRecord["outcome"];
+  usage?: AgentRecord["usage"];
   session?: SessionInfo;
 }
 
-function rowState(rec: AgentRecord | undefined, s?: SessionInfo): string {
+/** Its state as a row shows it (AG-14.1: stopped, exited or interrupted). */
+export function rowState(
+  rec: AgentRecord | undefined,
+  s?: SessionInfo,
+): string {
   // Stopped (TERM sent) while its session still runs: on its way out.
   if (s && !s.exited)
     return rec?.stoppedAt && rec.stoppedAt >= s.startedAt
       ? "stopping"
       : "running";
   if (rec?.stoppedAt) return "stopped";
-  return s ? state(s) : "ended";
+  if (rec?.endedAt)
+    return rec.exitCode === undefined ? "exited" : `exited (${rec.exitCode})`;
+  // A host sees every exit of its own sessions, with its code. A session
+  // listed as ended with no code ended with an earlier host (the host
+  // loads them so: AG-3a); one not listed at all, the same. Nobody stopped
+  // it and it never exited: the host (Den, or the machine) went down.
+  if (s && s.exitCode !== undefined) return state(s);
+  return "interrupted";
+}
+
+/** A state an agent can be removed or resumed in: not running. */
+export function isStoppedState(st: string): boolean {
+  return st !== "running" && st !== "stopping";
+}
+
+/**
+ * Why `rec` can't be resumed (AG-14.2), or null when it can be: its
+ * runtime can't resume a conversation, or has no token to resume with.
+ */
+export function resumeRefusal(rec: AgentRecord): string | null {
+  const rt = getRuntime(rec.runtime);
+  if (!rt?.resume) return `${rec.runtime} can't resume a conversation`;
+  if (!rec.resumeToken) return `${rec.id} has no conversation to resume`;
+  return null;
 }
 
 /** Whether `rec` may be resumed now, in `rowState`. */
 function canResume(rec: AgentRecord, st: string): boolean {
-  return (
-    st !== "running" &&
-    st !== "stopping" &&
-    Boolean(getRuntime(rec.runtime)?.resume)
-  );
+  return isStoppedState(st) && resumeRefusal(rec) === null;
 }
 
 export function agentRows(
@@ -359,12 +416,20 @@ export function agentRows(
   const shown = new Set<string>();
   const row = (rec: AgentRecord, s?: SessionInfo): AgentRow => {
     const st = rowState(rec, s);
+    const resumable = canResume(rec, st);
+    const why = isStoppedState(st) && !resumable ? resumeRefusal(rec) : null;
     return {
       agent: rec.id,
       ...recordFields(rec),
       state: st,
       startedAt: s?.startedAt ?? rec.startedAt,
-      resumable: canResume(rec, st),
+      resumable,
+      ...(why ? { noResume: why } : {}),
+      ...(rec.stoppedAt ? { stoppedAt: rec.stoppedAt } : {}),
+      ...(rec.endedAt ? { endedAt: rec.endedAt } : {}),
+      ...(rec.interruptedAt ? { interruptedAt: rec.interruptedAt } : {}),
+      ...(rec.outcome ? { outcome: rec.outcome } : {}),
+      ...(rec.usage ? { usage: rec.usage } : {}),
       ...(s ? { session: contractInfo(s) } : {}),
     };
   };
@@ -388,6 +453,28 @@ function recordFields(rec: AgentRecord): Partial<AgentRow> {
   };
 }
 
+/**
+ * Note in each record whose session the host lists as exited that it
+ * ended, with its code (AG-14.1: "Exited (code n)"), so it still says so
+ * once the host forgets the session (a restart). Only what the host says.
+ */
+export function noteEnded(
+  stateDir: string,
+  sessions: SessionInfo[],
+  records: AgentRecord[],
+): void {
+  const byId = new Map(sessions.map((s) => [s.ref.id, s]));
+  for (const rec of records) {
+    const s = byId.get(rec.session.id);
+    // An exit with no code is a host that went down: interrupted, not ended.
+    if (!s?.exited || s.exitCode === undefined) continue;
+    if (rec.endedAt || rec.stoppedAt) continue;
+    rec.endedAt = new Date().toISOString();
+    rec.exitCode = s.exitCode;
+    writeRecord(stateDir, rec);
+  }
+}
+
 /** A workspace name as given, checked (a usage error otherwise). */
 export function checkWorkspaceName(where: string, ws: unknown): string {
   if (typeof ws !== "string" || !WORKSPACE_NAME_RE.test(ws))
@@ -403,7 +490,7 @@ export function checkWorkspaceName(where: string, ws: unknown): string {
 export async function listAgents(
   d: AgentsResolved,
   ws: string,
-  opts: { startHost?: boolean } = {},
+  opts: { startHost?: boolean; stopped?: boolean } = {},
 ): Promise<AgentRow[]> {
   checkWorkspaceName("agents list", ws);
   let all: SessionInfo[];
@@ -417,7 +504,9 @@ export async function listAgents(
   } else all = await withClient(d, (c) => c.list());
   const sessions = all.filter((s) => inWorkspace(s, d.dist, ws));
   const records = listRecords(d.stateDir()).filter((r) => r.workspace === ws);
-  return agentRows(sessions, records);
+  noteEnded(d.stateDir(), sessions, records);
+  const rows = agentRows(sessions, records);
+  return opts.stopped ? rows.filter((r) => isStoppedState(r.state)) : rows;
 }
 
 // ── personas, runtimes ──────────────────────────────────────────────────────
@@ -804,9 +893,14 @@ async function startSession(
     ...launch.rec,
     session: { backend: info.ref.backend, id: info.ref.id },
     startedAt: info.startedAt,
+    grants: [...launch.grants],
     ...extra,
   };
+  // A new session: whatever ended the last one no longer applies.
   delete rec.stoppedAt;
+  delete rec.endedAt;
+  delete rec.exitCode;
+  delete rec.interruptedAt;
   writeRecord(d.stateDir(), rec);
   return { rec, info };
 }
@@ -879,8 +973,10 @@ function launchInput(
   id: string,
   model: string | undefined,
   bin?: string,
+  /** The grants to serve (a resume's, narrowed); default the config's. */
+  only?: readonly string[],
 ): LaunchInput {
-  const grants = cfg.agents[id]?.grants ?? [];
+  const grants = only ? [...only] : (cfg.agents[id]?.grants ?? []);
   for (const g of grants)
     if (!d.workspaceExists(g))
       throw refused(
@@ -1059,6 +1155,20 @@ export interface Resumed extends Started {
   fresh: boolean;
 }
 
+/**
+ * The grants a resume serves (AG-14): the ones the agent had, never more
+ * than agents.<id>.grants gives now (a grant taken out of the config is
+ * gone). A record from before 0.4.8 has none noted: the config's.
+ */
+export function resumeGrants(
+  rec: AgentRecord,
+  cfg: ResolvedAgentsConfig,
+): string[] {
+  const now = cfg.agents[rec.id]?.grants ?? [];
+  if (!rec.grants) return [...now];
+  return rec.grants.filter((g) => now.includes(g));
+}
+
 export async function resumeAgent(
   d: AgentsResolved,
   id: string,
@@ -1067,11 +1177,14 @@ export async function resumeAgent(
   const rec = agentRecord(d, id, ws);
   syncCatalog(d);
   const rt = runtimeFor(rec.runtime);
-  if (!rt.resume)
-    throw refused(`runtime ${rt.id} does not declare resume`, [
-      `Start it again: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`,
+  // AG-14.2: never a resume that would start a new conversation instead.
+  const why = resumeRefusal(rec);
+  if (why)
+    throw refused(why, [
+      `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`,
     ]);
   const cfg = agentsConfig(d);
+  const grants = resumeGrants(rec, cfg);
   const persona = personas(d, cfg).get(rec.persona);
   if (!persona)
     throw refused(`agent ${rec.id}'s persona "${rec.persona}" is gone`);
@@ -1091,6 +1204,7 @@ export async function resumeAgent(
       rec.id,
       rec.model,
       det.path,
+      grants,
     );
     // Resume in the cwd the agent had, wherever the workspace points now.
     const at = {
@@ -1114,7 +1228,7 @@ export async function resumeAgent(
         argv: out.argv,
         env: out.env,
         passthrough: rt.envPassthrough,
-        grants: cfg.agents[rec.id]?.grants ?? [],
+        grants,
         ...binDirOf(det),
       },
       old,
@@ -1123,4 +1237,228 @@ export async function resumeAgent(
     const early = await exitedAtOnce(d, c, info);
     return { rec: next, info, warnings: out.warnings ?? [], early, fresh };
   });
+}
+
+// ── AG-14: start fresh, remove, restart ─────────────────────────────────────
+
+/**
+ * A new conversation for agent `id` (AG-14.1 Start fresh): the same
+ * persona, runtime, model and workspace, under the same id. Its last
+ * conversation stays in the runtime's own history.
+ */
+export async function startFresh(
+  d: AgentsResolved,
+  id: string,
+  ws?: string,
+): Promise<Started> {
+  const rec = agentRecord(d, id, ws);
+  return startAgent(d, {
+    workspace: rec.workspace,
+    persona: rec.persona,
+    runtime: rec.runtime,
+    ...(rec.model ? { model: rec.model } : {}),
+    id: rec.id,
+  });
+}
+
+/** The host's sessions, never starting a host (none running: none). */
+async function hostSessions(d: AgentsResolved): Promise<SessionInfo[]> {
+  const c = await d.connectExisting();
+  try {
+    return c ? await c.list() : [];
+  } finally {
+    c?.close();
+  }
+}
+
+/** An agent removed (AG-14.1b): what Undo brings back. */
+export interface Removed {
+  agent: string;
+  workspace: string;
+}
+
+/**
+ * Forget agents `ids` (AG-14.1b): each record moves aside for Undo, its
+ * actor tokens are revoked and the host forgets its ended session. A
+ * running agent is refused: stop it first. Never asks a host to start.
+ */
+async function removeRecords(
+  d: AgentsResolved,
+  recs: AgentRecord[],
+): Promise<Removed[]> {
+  const c = await d.connectExisting();
+  try {
+    const sessions = c ? await c.list() : [];
+    for (const rec of recs) {
+      const s = sessionOf(sessions, rec);
+      if (!isStoppedState(rowState(rec, s)))
+        throw refused(`agent ${rec.id} is running: stop it first`, [
+          `${d.cli} agents stop ${rec.id}`,
+        ]);
+    }
+    const out: Removed[] = [];
+    for (const rec of recs) {
+      const s = sessionOf(sessions, rec);
+      revokeAgentTokens(d.stateDir(), rec.id);
+      if (c && s?.exited) await c.forget(s.ref.id).catch(() => undefined);
+      if (removeRecord(d.stateDir(), rec.id))
+        out.push({ agent: rec.id, workspace: rec.workspace });
+    }
+    purgeRemoved(d.stateDir());
+    return out;
+  } finally {
+    c?.close();
+  }
+}
+
+export async function removeAgent(
+  d: AgentsResolved,
+  id: string,
+  ws?: string,
+): Promise<Removed[]> {
+  return removeRecords(d, [agentRecord(d, id, ws)]);
+}
+
+/**
+ * Remove every stopped, interrupted or exited agent of `workspaces`
+ * (AG-14.1b Clear stopped); running ones stay.
+ */
+export async function removeStopped(
+  d: AgentsResolved,
+  workspaces: readonly string[],
+): Promise<Removed[]> {
+  const sessions = await hostSessions(d);
+  const recs = listRecords(d.stateDir()).filter(
+    (r) =>
+      workspaces.includes(r.workspace) &&
+      isStoppedState(rowState(r, sessionOf(sessions, r))),
+  );
+  return removeRecords(d, recs);
+}
+
+/** Undo: bring removed agents back; the ones that came back. */
+export function restoreAgents(
+  d: AgentsResolved,
+  ids: readonly string[],
+): string[] {
+  return ids.filter((id) => restoreRecord(d.stateDir(), id));
+}
+
+/**
+ * Forget stopped and exited agents older than `days` (AG-14.1b,
+ * agents.remove_stopped_after in user.yml; 0: never). Interrupted ones
+ * are never forgotten. Returns the ids forgotten.
+ */
+export async function pruneStopped(
+  d: AgentsResolved,
+  days: number,
+  now = Date.now(),
+): Promise<string[]> {
+  if (!(days > 0)) return [];
+  const sessions = await hostSessions(d);
+  const cutoff = now - days * 86_400_000;
+  const old = listRecords(d.stateDir()).filter((r) => {
+    const st = rowState(r, sessionOf(sessions, r));
+    if (st === "interrupted" || !isStoppedState(st)) return false;
+    const at = Date.parse(r.stoppedAt ?? r.endedAt ?? r.startedAt);
+    return Number.isFinite(at) && at < cutoff;
+  });
+  for (const r of old) {
+    revokeAgentTokens(d.stateDir(), r.id);
+    removeRecord(d.stateDir(), r.id);
+  }
+  purgeRemoved(d.stateDir(), 0, now);
+  return old.map((r) => r.id);
+}
+
+/** What a restart found (AG-14.3). */
+export interface RestartFound {
+  /** Agents newly marked interrupted. */
+  interrupted: string[];
+  /** Of those, the ones resumed on their own (standing, resume_on_restart). */
+  resumed: string[];
+  /** Ones that should have resumed but couldn't, with why. */
+  failed: { agent: string; why: string }[];
+}
+
+/**
+ * When the web server starts (AG-14.3): every agent whose session is gone
+ * though nobody stopped it and it never exited is marked interrupted. A
+ * session host that survived a web-server-only restart still lists its
+ * sessions, so nothing is marked. Then the standing personas, and those
+ * with `resume_on_restart: true`, resume (when their runtime can); the
+ * rest wait for someone to click Resume.
+ */
+export async function markInterrupted(
+  d: AgentsResolved,
+  opts: { autoResume?: boolean } = {},
+): Promise<RestartFound> {
+  const sessions = await hostSessions(d);
+  const found: RestartFound = { interrupted: [], resumed: [], failed: [] };
+  const now = new Date().toISOString();
+  const marked: AgentRecord[] = [];
+  for (const rec of listRecords(d.stateDir())) {
+    if (rec.interruptedAt) continue;
+    if (rowState(rec, sessionOf(sessions, rec)) !== "interrupted") continue;
+    const next = { ...rec, interruptedAt: now };
+    writeRecord(d.stateDir(), next);
+    marked.push(next);
+    found.interrupted.push(rec.id);
+  }
+  if (opts.autoResume === false || !marked.length) return found;
+  let all: Map<string, Persona>;
+  try {
+    all = personas(d, agentsConfig(d));
+  } catch {
+    return found;
+  }
+  for (const rec of marked) {
+    const p = all.get(rec.persona);
+    if (!p || !(p.standing || p.resumeOnRestart)) continue;
+    if (resumeRefusal(rec)) continue;
+    try {
+      const r = await resumeAgent(d, rec.id);
+      if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
+      else found.resumed.push(rec.id);
+    } catch (e) {
+      found.failed.push({ agent: rec.id, why: (e as Error).message });
+    }
+  }
+  return found;
+}
+
+/**
+ * Resume every interrupted agent of `workspaces` that can resume
+ * (AG-14.3 "Resume all", `agents resume --all-interrupted`).
+ */
+export async function resumeInterrupted(
+  d: AgentsResolved,
+  workspaces?: readonly string[],
+): Promise<{
+  resumed: Resumed[];
+  failed: { agent: string; why: string }[];
+}> {
+  const sessions = await hostSessions(d);
+  const recs = listRecords(d.stateDir()).filter(
+    (r) =>
+      (!workspaces || workspaces.includes(r.workspace)) &&
+      rowState(r, sessionOf(sessions, r)) === "interrupted",
+  );
+  const resumed: Resumed[] = [];
+  const failed: { agent: string; why: string }[] = [];
+  for (const rec of recs) {
+    const why = resumeRefusal(rec);
+    if (why) {
+      failed.push({ agent: rec.id, why });
+      continue;
+    }
+    try {
+      const r = await resumeAgent(d, rec.id);
+      if (r.early) failed.push({ agent: rec.id, why: "exited at once" });
+      else resumed.push(r);
+    } catch (e) {
+      failed.push({ agent: rec.id, why: (e as Error).message });
+    }
+  }
+  return { resumed, failed };
 }

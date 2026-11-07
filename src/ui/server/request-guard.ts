@@ -17,7 +17,9 @@
  *    and sign-in (/api/web/*, /auth, /api/session/logout), the lock (R8:
  *    /api/sudo-password*), or a shell-grade route other than its own
  *    session's /api/sessions/<id>/*: agent start and resume mint tokens.
- *    403 `agent_forbidden`. WS-3a (0.4.2) adds the workspace check at
+ *    403 `agent_forbidden`. One exception (AG-14.4): MCP agent_resume,
+ *    when mcp.actions lists it, for another agent of its own workspace
+ *    or a granted one (agent-resume-grant.ts). WS-3a (0.4.2) adds the workspace check at
  *    agentRefusal's seam.
  *  - Sign-in (§4, route-classes.ts): beyond loopback (a LAN name, a peer
  *    that isn't loopback, or the edge hostname for a client on another
@@ -58,6 +60,8 @@
  */
 import { randomBytes, timingSafeEqual, createHash } from "crypto";
 import type * as http from "http";
+import { readMcpConfig } from "../../shared/den-config.js";
+import { agentResumeRefusal, agentResumeTarget } from "./agent-resume-grant.js";
 import * as net from "net";
 import * as os from "os";
 import {
@@ -707,9 +711,25 @@ export function agentRefusal(
     if (id === p.session.id || id === p.session.name) return null;
     return `${p.actor} can use its own session only, not ${id}.`;
   }
+  // AG-14.4: MCP agent_resume, opted in, inside the agent's scope.
+  const target = method === "POST" ? agentResumeTarget(pathname) : null;
+  if (target)
+    return (
+      agentResumeRefusal(p, target.ws, target.id, mcpActions()) ??
+      workspaceRefusal(p, pathname)
+    );
   if (cls === "shell-grade")
     return `${p.actor} can't ${method === "GET" ? "open" : "use"} ${pathname}: starting or resuming an agent, and the browser sessions, are a person's.`;
   return workspaceRefusal(p, pathname);
+}
+
+/** The org config's mcp.actions; none when it can't be read. */
+function mcpActions(): readonly string[] {
+  try {
+    return readMcpConfig().actions;
+  } catch {
+    return [];
+  }
 }
 
 /** WS-3a's seam (0.4.2): an agent's route outside its workspace. Not yet. */

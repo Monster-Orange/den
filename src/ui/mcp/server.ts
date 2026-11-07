@@ -179,6 +179,32 @@ export const MCP_USAGE = (cli: string): string =>
     `Register it with your agents: ${cli} mcp clients, then ${cli} mcp connect <client> (or --all).`,
   ].join("\n");
 
+/**
+ * The first argument `<cli> mcp` doesn't take (after the scope flags), or
+ * null. It takes --port <n> (or --port=<n>), --list, and --call <tool>
+ * ['<json>']; anything else fails closed (exit 2), never ignored.
+ */
+export function unknownMcpArg(argv: readonly string[]): string | null {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--list") continue;
+    if (a === "--port") {
+      i++;
+      continue;
+    }
+    if (a.startsWith("--port=")) continue;
+    if (a === "--call") {
+      // The tool, then its JSON arguments when they aren't a flag.
+      i++;
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith("--")) i++;
+      continue;
+    }
+    return a;
+  }
+  return null;
+}
+
 /** A one-shot invocation: `--list`, or `--call <tool> [json]`. */
 export type OneShot =
   | { kind: "list" }
@@ -347,6 +373,14 @@ export async function runMcp(rawArgv: string[]): Promise<void> {
     process.stderr.write(
       `${cli} mcp: ${e.message}\n` +
         `Usage: ${cli} mcp --workspace <ws> --actor agent:<id> [--port <n>] [--list | --call <tool> ['<json>']]\n`,
+    );
+    process.exitCode = 2;
+    return;
+  }
+  const unknown = unknownMcpArg(argv);
+  if (unknown !== null) {
+    process.stderr.write(
+      `${cli} mcp: unknown argument "${unknown.replace(/[^\x20-\x7e]/g, "?").slice(0, 80)}"\n${MCP_USAGE(cli)}\n`,
     );
     process.exitCode = 2;
     return;

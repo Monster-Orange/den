@@ -728,6 +728,54 @@ function lifecycleTool(cmd: LifecycleCmd): DenTool {
   };
 }
 
+/** An agent id or workspace name (WORKSPACE_NAME_RE). */
+const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/**
+ * MCP agent_resume (AG-14.4): resume a stopped or interrupted agent of this
+ * workspace (or a granted one) in its own conversation. Opt-in through
+ * mcp.actions; for orchestrators. The web server checks the scope again.
+ */
+const agentResumeTool: DenTool = {
+  name: "agent_resume",
+  title: "Resume an agent",
+  description:
+    "Resume a stopped or interrupted agent in the same conversation, persona, workspace and folder. Never starts a new conversation: an agent whose runtime can't resume is refused. Never the caller itself.",
+  action: true,
+  shape: {
+    agent: z.string().describe("The agent's id"),
+    workspace: workspaceArg,
+  },
+  async run(a, { api, scope }) {
+    const agent = str(a.agent);
+    if (!agent || !NAME_RE.test(agent))
+      throw new Refusal("agent_resume: agent must be an agent id");
+    let ws = str(a.workspace) ?? scope?.workspace;
+    if (!ws) {
+      const focused = (await api.get("/api/workspaces")) as {
+        focus?: unknown;
+      };
+      ws = typeof focused?.focus === "string" ? focused.focus : undefined;
+    }
+    if (!ws || !NAME_RE.test(ws))
+      throw new Refusal("agent_resume: name the agent's workspace");
+    // Scoped: callTool's scopeArgs pinned `workspace` to the scope (or a
+    // granted one, reported) before this runs.
+    if (scope && ws !== scope.workspace && !(scope.grants ?? []).includes(ws))
+      throw new ScopeRefusal(
+        `agent_resume: workspace "${ws}" is outside this agent's scope ("${scope.workspace}")`,
+      );
+    if (scope && `agent:${agent}` === scope.actor)
+      throw new Refusal("agent_resume: an agent can't resume itself");
+    return api.get(
+      `/api/workspaces/${encodeURIComponent(ws)}/agents/${encodeURIComponent(agent)}/resume`,
+      {},
+      "POST",
+      {},
+    );
+  },
+};
+
 const ACTION_TOOLS: Record<McpAction, DenTool> = {
   service_up: lifecycleTool("up"),
   service_down: lifecycleTool("down"),
@@ -816,6 +864,7 @@ const ACTION_TOOLS: Record<McpAction, DenTool> = {
       return actionResult(r, 300, { pillar, env });
     },
   },
+  agent_resume: agentResumeTool,
 };
 
 export const READ_TOOL_NAMES: readonly string[] = READ_TOOLS.map((t) => t.name);
@@ -853,6 +902,7 @@ const WORKSPACE_TOOLS = new Set([
   "service_restart",
   "workspace_sync",
   "run_tests",
+  "agent_resume",
 ]);
 
 /**

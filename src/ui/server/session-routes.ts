@@ -49,7 +49,7 @@ import { parseSessionName } from "../../shared/sessions/names.js";
 import { sessionPaths } from "../../shared/sessions/paths.js";
 import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
-import { agentRows } from "../cli/agent-ops.js";
+import { agentRows, noteEnded } from "../cli/agent-ops.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
@@ -119,7 +119,7 @@ export interface ListedSession {
   runtime?: string;
   model?: string;
   cwd?: string;
-  /** running, stopping, exited (<code>), stopped, ended. */
+  /** running, stopping, exited (<code>), stopped, interrupted (AG-14). */
   state: string;
   exited: boolean;
   exitCode?: number;
@@ -127,6 +127,12 @@ export interface ListedSession {
   /** The host has it (running, or ended with its scrollback): a pane can attach. */
   attachable: boolean;
   resumable?: boolean;
+  /** Why only Start fresh applies (AG-14.2): "<runtime> can't resume a conversation". */
+  noResume?: string;
+  /** When it was stopped, seen to end, or found interrupted (AG-14.1). */
+  stoppedAt?: string;
+  endedAt?: string;
+  interruptedAt?: string;
   /** Its actor token was revoked (`web logout --all`): restart or resume it. */
   tokenRevoked?: boolean;
   /** An approval is pending (AG-6a; only when the host knows). */
@@ -150,6 +156,7 @@ export function listedSessions(
   const revoked = revokedAgentIds(d.stateDir());
   const out: ListedSession[] = [];
   const agentSessions = new Set<string>();
+  noteEnded(d.stateDir(), mine, records);
   for (const r of agentRows(mine, records)) {
     const rec = records.find((x) => x.id === r.agent)!;
     const s = r.session;
@@ -171,6 +178,10 @@ export function listedSessions(
       ...(r.startedAt ? { startedAt: r.startedAt } : {}),
       attachable: Boolean(s),
       resumable: r.resumable,
+      ...(r.noResume ? { noResume: r.noResume } : {}),
+      ...(r.stoppedAt ? { stoppedAt: r.stoppedAt } : {}),
+      ...(r.endedAt ? { endedAt: r.endedAt } : {}),
+      ...(r.interruptedAt ? { interruptedAt: r.interruptedAt } : {}),
       ...(revoked.has(rec.id) && s && !s.exited ? { tokenRevoked: true } : {}),
     });
   }
