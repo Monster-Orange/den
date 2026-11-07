@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.3] - unreleased
+## [0.4.3] - 2026-11-06
 
 Agents start, and the edge counts as local.
 
