@@ -10,10 +10,22 @@
  */
 
 /**
- * The MO "Den" GitHub App's client id (public; it ships in Den). Empty until
- * the app exists: the GitHub buttons then say no client id is configured.
+ * The "Monster Orange Den" GitHub App's client id (owner Monster-Orange,
+ * slug monster-orange-den). Public by design: it ships in Den. A
+ * distribution sets its own app with `web.github_client_id`; an empty
+ * value there turns Sign in with GitHub off.
  */
-export const MO_DEN_GITHUB_CLIENT_ID = "";
+export const MO_DEN_GITHUB_CLIENT_ID = "Iv23liKL12gnN6WvRV5b";
+
+/** What a person reads when the app issues expiring tokens (never the token). */
+export function expiringTokenWarning(): string {
+  return (
+    "The GitHub App issues expiring user tokens (its answer carried expires_in " +
+    "or a refresh_token). Sign-in still works: Den uses the token once and never " +
+    "keeps it. To fix it, switch off \u201cExpire user authorization tokens\u201d in " +
+    "the app's settings (GitHub \u203a Settings \u203a Developer settings \u203a GitHub Apps)."
+  );
+}
 
 /** Where a person enters the device code. */
 export const GITHUB_DEVICE_PAGE = "https://github.com/login/device";

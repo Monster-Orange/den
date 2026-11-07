@@ -187,6 +187,12 @@ describe("Sign in with GitHub on the edge's signed-out page", () => {
       return ((await r.json()) as { signedIn?: boolean }).signedIn === true;
     });
     expect(signedIn).toBe(true);
+    // The rail's identity chip names the GitHub account.
+    await p.waitForSelector("#den-ident");
+    expect([
+      (await p.textContent("#den-ident .den-lbl"))?.trim(),
+      await p.getAttribute("#den-ident", "data-ident"),
+    ]).toEqual(["@octo-owner", "github"]);
     await ctx.close();
   }, 90_000);
 
@@ -198,7 +204,7 @@ describe("Sign in with GitHub on the edge's signed-out page", () => {
     gh.approve(lastCode(), { id: 777, login: "someone-else" });
     await p.waitForSelector(".den-gh-err", { timeout: 20_000 });
     expect((await p.textContent(".den-gh-err"))?.trim()).toBe(
-      "@someone-else isn't allowed on this Den. Ask the owner to add you.",
+      "@someone-else isn't the owner of this Den. Ask the owner to add you, or use 'Approve this computer'.",
     );
     expect((await p.textContent("#den-gh-start"))?.trim()).toBe("Start again");
     expect(await p.isVisible("#den-gh-start")).toBe(true);
@@ -234,7 +240,7 @@ describe("Settings › Access", () => {
     const before = await p.locator(".set-device").count();
     expect(before).toBeGreaterThanOrEqual(1);
     expect(await p.locator(".set-device").first().textContent()).toMatch(
-      /Chrome on \w+.*signed in with GitHub.*first seen just now/,
+      /Chrome on \w+.*signed in with GitHub \(@octo-owner\) · created just now · from .* · last seen just now/,
     );
     const section = p.locator("#setting-access-owner");
     const access = () =>

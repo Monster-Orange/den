@@ -216,8 +216,9 @@ describe("before an owner is linked", () => {
     });
     expect(r.status).toBe(401);
     expect(r.body).toContain('"code":"signin_required"');
-    expect(r.body).toContain(
-      '"github":{"state":"no_owner","owner":"den web owner link"}',
+    // The command that runs on this server: `den`, or its absolute path.
+    expect(r.body).toMatch(
+      /"github":\{"state":"no_owner","owner":"(den|\/[^"]*\/bin\/den) web owner link"\}/,
     );
   });
 
@@ -402,6 +403,55 @@ describe("Sign in with GitHub through the edge", () => {
   });
 });
 
+describe("the app's token expiry (a misconfiguration Den names)", () => {
+  const WARNING =
+    /switch off .Expire user authorization tokens. in the app's settings/;
+
+  it("a token answer without expires_in or a refresh_token: no warning, and Access says token expiry is off", async () => {
+    // The sign-ins above got plain tokens.
+    expect(serverOut).not.toMatch(WARNING);
+    const o = json(await call("GET", "/api/web/owner", await localCsrf()));
+    expect(o.tokenExpiry).toBe(false);
+  });
+
+  it("with expires_in and a refresh_token: the sign-in completes, one warning naming the fix, and Access says so; neither token is kept or logged", async () => {
+    gh.expiringTokens = true;
+    try {
+      for (let i = 0; i < 2; i++) {
+        const start = await call("POST", "/api/github/signin", edge(), "{}");
+        gh.approve(lastCode(), OWNER);
+        const done = await settle(
+          `/api/github/signin/${String(json(start).id)}`,
+          edge(),
+        );
+        expect([json(done).state, cookieOf(done).length > 0]).toEqual([
+          "ok",
+          true,
+        ]);
+      }
+    } finally {
+      gh.expiringTokens = false;
+    }
+    expect(serverOut.match(new RegExp(WARNING.source, "g"))?.length).toBe(1);
+    const o = json(await call("GET", "/api/web/owner", await localCsrf()));
+    expect(o.tokenExpiry).toBe(true);
+    const stored = fs
+      .readdirSync(stateDir)
+      .map((f) => {
+        try {
+          return fs.readFileSync(path.join(stateDir, f), "utf-8");
+        } catch {
+          return "";
+        }
+      })
+      .join("\n");
+    const kept = [...gh.tokens, ...gh.refreshTokens].filter(
+      (t) => serverOut.includes(t) || stored.includes(t),
+    );
+    expect(kept.length).toBe(0);
+  });
+});
+
 describe("Settings › Access", () => {
   it("Revoke ends that device's session at once", async () => {
     const start = await call("POST", "/api/github/signin", edge(), "{}");
@@ -480,13 +530,20 @@ describe("secrets", () => {
     const leaked = [
       ...gh.codes.flatMap((c) => [c.userCode, c.deviceCode]),
       ...gh.tokens,
+      ...gh.refreshTokens,
       ...secrets.filter(Boolean),
     ].filter((s) => serverOut.includes(s));
     expect(leaked.length).toBe(0);
-    // Only a client id ever went to GitHub.
+    // Only a client id ever went to GitHub: no secret, no scope, and
+    // never offline_access (it would force an expiring token).
     expect(
       gh.requests.some((r) =>
         Object.keys(r.fields).some((k) => /secret|scope/i.test(k)),
+      ),
+    ).toBe(false);
+    expect(
+      gh.requests.some((r) =>
+        JSON.stringify(r.fields).includes("offline_access"),
       ),
     ).toBe(false);
   });

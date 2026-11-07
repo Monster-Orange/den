@@ -78,6 +78,8 @@ describe("the settings inventory (R21)", () => {
         "graph.workspaces",
         // The UI's language (R19, 0.3.0-dev.39).
         "language",
+        // SEC-2a: the name the signed-out page gives this machine.
+        "machine_name",
         "shell.collapsed",
         "shell.dock",
         "shell.dockHeight",

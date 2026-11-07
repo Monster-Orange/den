@@ -18,6 +18,7 @@ import {
   ROUTES,
   SIGNIN_CSRF_FREE,
   SIGNIN_FREE,
+  SIGNIN_GETS,
 } from "../../../src/ui/server/route-classes.js";
 
 const SERVER = path.join(process.cwd(), "src", "ui", "server");
@@ -135,6 +136,8 @@ describe("the classes", () => {
       "/api/github/signin",
       "/api/github/signin/:id",
       "/api/session",
+      "/api/signin/code",
+      "/api/signin/code/:id",
       "/auth",
       "/signin",
     ]);
@@ -144,7 +147,11 @@ describe("the classes", () => {
     expect(routeClass("POST", "/api/github/signin")).toBe("mutating");
     expect(routeClass("GET", "/api/github/signin/abc")).toBe("mutating");
     expect(isMutatingGet("GET", "/api/github/signin/abc")).toBe(true);
-    expect([...SIGNIN_CSRF_FREE]).toEqual(["/api/github/signin"]);
+    expect([...SIGNIN_CSRF_FREE]).toEqual([
+      "/api/github/signin",
+      "/api/signin/code",
+      "/auth",
+    ]);
     expect(routeClass("GET", "/api/web/owner")).toBe("readonly");
     for (const [m, p] of [
       ["POST", "/api/web/owner/link"],
@@ -153,6 +160,35 @@ describe("the classes", () => {
       ["POST", "/api/web/pair"],
     ])
       expect([m, p, routeClass(m, p)]).toEqual([m, p, "shell-grade"]);
+  });
+
+  it("SEC-2a's approve-with-a-code: asking for a code is sign-in free (its poll a mutating GET with its own id: it sets the cookie); the waiting list, approve and deny are shell-grade", () => {
+    expect(routeClass("POST", "/api/signin/code")).toBe("mutating");
+    expect(routeClass("GET", "/api/signin/code/abc")).toBe("mutating");
+    expect(isMutatingGet("GET", "/api/signin/code/abc")).toBe(true);
+    expect(SIGNIN_GETS).toContain("/api/signin/code/:id");
+    expect(SIGNIN_GETS).not.toContain("/api/signin/code");
+    for (const [m, p] of [
+      ["GET", "/api/web/waiting"],
+      ["POST", "/api/web/approve"],
+      ["POST", "/api/web/deny"],
+    ]) {
+      expect([m, p, routeClass(m, p)]).toEqual([m, p, "shell-grade"]);
+      expect(SIGNIN_FREE).not.toContain(p);
+    }
+  });
+
+  it("SEC-2a's waiting `web login`: the link's page posts its code (sign-in free, an Origin and no CSRF); registering and polling a wait is the CLI's, shell-grade", () => {
+    expect(routeClass("GET", "/auth")).toBe("mutating");
+    expect(routeClass("POST", "/auth")).toBe("mutating");
+    expect(SIGNIN_FREE).toContain("/auth");
+    for (const [m, p] of [
+      ["POST", "/api/web/logins"],
+      ["GET", "/api/web/logins/abc"],
+    ]) {
+      expect([m, p, routeClass(m, p)]).toEqual([m, p, "shell-grade"]);
+      expect(SIGNIN_FREE).not.toContain(p);
+    }
   });
 
   it("read-only GETs are not checked as mutations", () => {

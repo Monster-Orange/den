@@ -6,7 +6,9 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.4] - unreleased
 
-Sign in with GitHub as the owner, from your other devices (SEC-2a).
+Sign in with GitHub as the owner, from your other devices; approve a
+computer with a code; see that you're signed in (SEC-2a). Save the admin
+password without editing YAML (LK-4).
 
 ### Added
 
@@ -25,11 +27,57 @@ Sign in with GitHub as the owner, from your other devices (SEC-2a).
   vouched for, first and last seen) each with **Revoke**, which ends that
   session at once, and **Pair a device**: a one-time link and its QR code
   for an edge hostname you pick.
-- **`web.github_client_id`**: the GitHub App's client id (public). Den's
-  built-in default is empty until its App exists; until one is set, the
-  GitHub buttons say how to set it. The App needs "Enable Device Flow"
-  ticked, "Expire user authorization tokens" off and no permissions
-  (docs/distributions.md, "The GitHub App").
+- **`web.github_client_id`**: the GitHub App's client id (public). The
+  default is Den's own App, "Monster Orange Den" (`Iv23liKL12gnN6WvRV5b`);
+  a distribution sets its own App's id here, and an empty value turns Sign
+  in with GitHub off (the page then offers only the code and the link).
+  The App needs "Enable Device Flow" ticked and "Expire user authorization
+  tokens" off (docs/distributions.md, "The GitHub App").
+- **Expiring GitHub tokens are noticed.** If the App hands out expiring
+  tokens (`expires_in` or `refresh_token` in the answer), sign-in still
+  completes, and Den says once to switch off token expiry in the App's
+  settings (never with the token). `GET /api/web/owner` reports it as
+  `tokenExpiry`. Den never asks for `offline_access`.
+- **Approve this computer with a code.** The signed-out page shows a
+  six-character code (`XXX-XXX`, about 30 bits; the page polls with its own
+  128-bit id) and the command that approves it on the machine Den runs on:
+  `<cli> web approve <code>` (any case, dash optional; `--list` shows what
+  waits). The page signs itself in when it's approved, onto the page it
+  asked for. From a machine with SSH access the page gives the one-liner
+  (`ssh <host> '<cli> web approve <code>'`) and, for a host name, an Open
+  Terminal link. Codes expire after 10 minutes, are single-use, at most
+  five wait at once (the oldest drops) and are kept in memory only;
+  approvals are rate-limited and audited with who approved. The device is
+  labelled "approved with a code".
+- **Settings › Access › Waiting devices**: the computers waiting with a
+  code (browser and OS, address, when), each with **Approve** and **Deny**.
+- **`web.machine_name`** (Settings › Access › Machine name, in user.yml):
+  the name the signed-out page gives this machine. Default: the short
+  hostname. It's never taken from the browser's Host; the ssh one-liner's
+  target is the Host the browser used (without the port).
+- **The signed-out page says where to act.** "Sign in to <product>", which
+  machine Den runs on and why it asks (once per computer), Sign in with
+  GitHub (only with a client id), Approve this computer, and the one-time
+  link under "Other ways". Every command it prints names the machine it
+  runs on, has a copy button, and is `<cli>` when that's on PATH and this
+  distribution's, else the absolute path of its bin. English, Japanese and
+  Spanish.
+- **See that you're signed in.** A chip at the foot of the rail says
+  "Local", "Signed in · this device" or "@<login>" and opens Settings ›
+  Access. The first page after a sign-in says "This device is signed in
+  to <product> on <machine>", once. Linked devices lists every session
+  (GitHub, a code, a one-time link) with how it signed in, when, from
+  where, last seen and Revoke, and marks the one you're using as "This
+  device".
+- **Save the admin password without editing YAML (LK-4).** When a secrets
+  backend that keeps secrets (1Password, Doppler) is available and no
+  `secrets.refs.sudo` is set, the lock still offers "Save to <backend>".
+  Saving creates the item (1Password: "<Product> admin password" in your
+  default vault; Doppler: `<PREFIX>_LOCAL_ADMIN_PWD`) and writes
+  `secrets.refs.sudo` to your `config/local/user.yml`, so the password
+  survives restarts. A ref in the distribution's config still wins. The
+  vault status says so as `canSave`. A save error no longer carries the
+  backend's command line.
 - **`edge.proxy_protocol.trusted_ips`** (empty by default): the front
   proxies (a TCP passthrough in front of the edge) whose PROXY protocol
   every entrypoint accepts, so Den sees the real client through them.
@@ -39,6 +87,13 @@ Sign in with GitHub as the owner, from your other devices (SEC-2a).
 
 ### Changed
 
+- **`<cli> web login` waits.** It prints the link and an 8-character code,
+  and blocks until the link is used ("Signed in: <browser> (<address>) at
+  <time>") or expires ("Expired: nobody used the link", exit 1). The link
+  asks for the code before it signs in; a wrong code is refused (five burn
+  the link, and wrong codes are rate-limited) and the link stays
+  single-use. `--no-wait` prints the link alone, as before, and asks for no
+  code; with no server running it behaves like `--no-wait` and says so.
 - **Edge visitors Den can't place sign in.** A client the edge reports
   with no `X-Forwarded-For`, or with a Docker/VM gateway or bridge address
   (what a TCP passthrough or Docker Desktop and OrbStack hand it), now sees
@@ -90,10 +145,13 @@ Sign in with GitHub as the owner, from your other devices (SEC-2a).
   (forwarded-header trust): recreating it once." Routes drop only while it
   restarts.
 - **Edge visitors now see Sign in with GitHub** where 0.4.3 let a client
-  it couldn't place in. Link an owner (`<cli> web owner link`, with
-  `web.github_client_id` set) or pair with `<cli> web login --host <name>`;
+  it couldn't place in. Link an owner (`<cli> web owner link`), approve
+  the computer with its code (`<cli> web approve <code>`) or pair with
+  `<cli> web login --host <name>`;
   or set `web.edge_unattested: local` in `config/local/user.yml` to keep
   0.4.3's behaviour on that machine.
+- **Scripts that run `<cli> web login` and read its output** should pass
+  `--no-wait`: it now waits for the link to be used.
 - **Remove `forwardedHeaders.*` and `proxyProtocol.*` from `edge.args`.**
   They are ignored now; use `edge.proxy_protocol.trusted_ips` for a front
   proxy.

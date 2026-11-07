@@ -1266,11 +1266,13 @@ async function initLock() {
 function notConfiguredNote() {
   const v = lock.vault;
   if (!v || v.configured !== false || !v.configFile) return null;
+  // LK-4: saving writes the ref itself; nothing to edit.
+  if (v.canSave === true) return null;
   return t("lock.cfg", { file: v.configFile });
 }
 
 function saveLabel() {
-  if (!lock.vault.backendAvailable) return null;
+  if (!lock.vault.backendAvailable || lock.vault.canSave === false) return null;
   return lock.vault.hasStored
     ? t("lock.update")
     : t("lock.saveTo", { s: lock.vault.label || lock.vault.backend });
@@ -1343,7 +1345,8 @@ function openLock() {
       const data = await r.json();
       if (r.ok) {
         input.value = "";
-        if (data.savedToVault) lock.vault.hasStored = true;
+        if (data.savedToVault)
+          lock.vault = { ...lock.vault, hasStored: true, configured: true };
         forceForm = false;
         setUnlocked(true);
         closeOverlay(true);

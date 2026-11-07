@@ -236,29 +236,68 @@
       "このサーバーは自身のアドレスでのみ応答するため、別の名前のページからは届きません。",
     "err.421.open": "localhost で開く",
     "err.refused.title": "リクエストが拒否されました",
-    "err.signin.title": "{name} を使うにはサインインしてください",
     "err.signin.terminal": "ターミナルを使うにはサインインしてください",
     "err.signin.agents": "エージェントを起動するにはサインインしてください",
     "err.signin.sub": "このブラウザはサインインしていません",
     "err.signin.lead": "{cmd} を実行し、表示されたリンクを開いてください。",
     "err.signin.expiredTitle": "サインインリンクの期限切れ",
-    "err.signin.expired":
-      "このサインインリンクは期限切れか、使用済みです。{cmd} を実行して新しいリンクを取得してください。",
     "err.signin.local":
       "サインインはアドレスごとです。このページは {host} にあります。サインイン済みの localhost で同じページを開いてください。",
-    "err.signin.why":
-      "パスワードはありません。リンクは、あなたのユーザーアカウントだけが読めるファイルから作られます。",
     "err.signin.copy": "コマンドをコピー",
-    "err.signin.orLead":
-      "または、Den が動いているマシンで {cmd} を実行してリンクを開きます。",
+    "err.signin.title": "{name} にサインイン",
+    "err.signin.where":
+      "別のコンピューターから {name} を開いています。{name} は {host} で動いているため、あなた本人であることを確認する必要があります。",
+    "err.signin.githubNote":
+      "あなたの GitHub アカウントを使います。この {name} のオーナーが自分のアカウントをリンクしている必要があります。",
+    "err.signin.githubNoOwner":
+      "GitHub でのサインインにはオーナーが必要ですが、この {name} にはまだいません。{host} で(このコンピューターではありません)次を実行してください:",
+    "err.signin.githubRefused":
+      "@{login} はこの {name} のオーナーではありません。オーナーに追加を依頼するか、「このコンピューターを承認」を使ってください。",
+    "err.signin.approveOr": "または、このコンピューターを承認",
+    "err.signin.approve": "このコンピューターを承認",
+    "err.signin.step1":
+      "{host} で(このコンピューターではありません)次を実行します:",
+    "err.signin.step1Or":
+      "または、{host} 上で {name} を開き、設定 › アクセス › 承認待ちのデバイス に進みます。",
+    "err.signin.step2":
+      "承認されると、このページは自動でサインインします。コードの有効期限は 10 分です。",
+    "err.signin.waiting": "承認を待っています…",
+    "err.signin.noTerminal":
+      "{host} のターミナルがありませんか?このコンピューターで次を実行します:",
+    "err.signin.openTerminal": "ターミナルを開く",
+    "err.signin.sshNote":
+      "「ターミナルを開く」はターミナルアプリで ssh://{target} を開きます。{target} への SSH アクセスが必要です。",
+    "err.signin.whyTitle": "なぜ?",
+    "err.signin.whyText":
+      "{name} は {host} でターミナルやエージェントを起動できるため、オーナーであることを証明した人だけを通します。これはコンピューターごとに一度だけで、サインインしたままになります。",
+    "err.signin.other": "その他の方法({cmd} による一回限りのリンク)",
+    "err.signin.otherStep":
+      "{host} で(このコンピューターではありません)次を実行し、表示されたリンクをこのブラウザで開きます:",
+    "err.signin.codeExpired": "このコードは期限切れです。",
+    "err.signin.codeDenied": "このコンピューターは {host} で拒否されました。",
+    "err.signin.codeFailed":
+      "{name} からコードを取得できませんでした。もう一度お試しください。",
+    "err.signin.newCode": "新しいコードを取得",
+    "err.signin.youreIn": "サインインしました。",
+    "err.signin.expiredLead":
+      "このサインインリンクは期限切れか、使用済みです。下から改めてサインインしてください。",
+    "err.signin.confirmLead":
+      "{host} で web login が表示したコードを入力してください:",
+    "err.signin.confirmGo": "サインイン",
+    "err.signin.confirmWrong":
+      "コードが正しくありません。web login の表示を確認して、もう一度お試しください。",
+    "err.signin.confirmBusy":
+      "試行回数が多すぎます。1 分待ってからもう一度お試しください。",
+    "err.signin.confirmGone":
+      "このリンクはもう使えません。{host} で web login をもう一度実行して新しいリンクを取得してください。",
+    "err.signin.confirmWhy":
+      "リンクだけでは足りません。{host} に表示されたコードも必要なので、他の人がリンクを見てもサインインできません。",
     "err.signin.github": "GitHub でサインイン",
     "err.signin.githubEnter": "{url} でこのコードを入力してください:",
     "err.signin.githubOpen": "GitHub を開く",
     "err.signin.githubCopy": "コードをコピー",
     "err.signin.githubWaiting": "GitHub での承認を待っています…",
     "err.signin.githubDone": "サインインしました。読み込み中…",
-    "err.signin.githubRefused":
-      "@{login} はこの Den を使えません。オーナーに追加を依頼してください。",
     "err.signin.githubExpired": "承認される前にコードの有効期限が切れました。",
     "err.signin.githubDenied": "GitHub でリクエストがキャンセルされました。",
     "err.signin.githubBusy":
@@ -266,10 +305,6 @@
     "err.signin.githubFailed":
       "GitHub に接続できませんでした。もう一度お試しください。",
     "err.signin.githubAgain": "やり直す",
-    "err.signin.githubNoOwner":
-      "GitHub でのサインインにはオーナーが必要ですが、この Den にはまだいません。Den が動いているマシンで {cmd} を実行してください。",
-    "err.signin.githubNoClient":
-      "GitHub でのサインインには GitHub App のクライアント ID が必要ですが、設定されていません。Den が動いているマシンの config/local/user.yml に {key} を設定し、サーバーを再起動してください。",
     "err.422.title": "設定が無効です",
     "err.422.sub": "ディストリビューションの設定が検証に失敗しました",
     "err.422.lead":
@@ -306,6 +341,11 @@
     "set.cli.signin": "ブラウザのサインイン",
     "set.access.owner": "オーナー",
     "set.access.devices": "リンク済みデバイス",
+    "set.access.waiting": "承認待ちのデバイス",
+    "set.access.machine_name": "マシン名",
+    "ident.local": "ローカル",
+    "ident.device": "サインイン済み · このデバイス",
+    "ident.toast": "このデバイスは {host} の {name} にサインインしました",
     "set.access.pair": "デバイスをペアリング",
     "set.distribution.brand": "製品名",
     "set.distribution.github_org": "GitHub の組織",

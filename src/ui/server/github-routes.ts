@@ -29,11 +29,17 @@ export interface GithubRouteDeps {
   flows: DeviceFlows;
   /** The configured client id ("" when none). */
   clientId: () => string;
+  /** The app issued an expiring token (its token expiry is on): a misconfiguration. */
+  tokensExpire?: () => boolean;
   cli: string;
   sendJson: (res: http.ServerResponse, body: unknown, status?: number) => void;
   readBody: (req: http.IncomingMessage) => Promise<string>;
   /** A new browser session for this request; its Set-Cookie line. */
-  signIn: (req: http.IncomingMessage, via: "github" | "link") => string;
+  signIn: (
+    req: http.IncomingMessage,
+    via: "github" | "link",
+    login?: string,
+  ) => string;
   /** The edge hostnames that route here, and the URL a browser uses for each. */
   edgeRoutes: () => { host: string; url: string }[];
   /** A one-time sign-in link at `origin` (60 s), or null with no secret. */
@@ -197,7 +203,7 @@ export async function handleGithubRoutes(
         deps.sendJson(res, { ok: false, state: "gone" }, 404);
         return true;
       }
-      res.setHeader("Set-Cookie", deps.signIn(req, "github"));
+      res.setHeader("Set-Cookie", deps.signIn(req, "github", v.login));
       deps.sendJson(res, { ok: true, state: "ok", login: v.login });
       return true;
     }
@@ -216,6 +222,8 @@ export async function handleGithubRoutes(
     deps.sendJson(res, {
       owner: o ? { id: o.owner, login: o.login, linkedAt: o.linkedAt } : null,
       clientId: deps.clientId() !== "",
+      // The app's "Expire user authorization tokens" is on (seen since start).
+      tokenExpiry: deps.tokensExpire?.() ?? false,
     });
     return true;
   }

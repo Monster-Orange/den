@@ -80,6 +80,7 @@ export class DeviceFlows {
   private readonly schedule: Schedule;
   private readonly max: number;
   private readonly minIntervalMs: number;
+  private readonly onExpiringToken?: () => void;
   private readonly decide: (
     purpose: FlowPurpose,
     identity: GithubIdentity,
@@ -97,7 +98,13 @@ export class DeviceFlows {
     max?: number;
     /** The floor between polls (GitHub's interval is never shortened). */
     minIntervalMs?: number;
+    /**
+     * A token answer carried expires_in or a refresh_token: the app has
+     * token expiry on (a misconfiguration). Called with no token.
+     */
+    onExpiringToken?: () => void;
   }) {
+    this.onExpiringToken = opts.onExpiringToken;
     this.client = opts.client;
     this.clientId = opts.clientId;
     this.decide = opts.decide;
@@ -225,6 +232,7 @@ export class DeviceFlows {
           return this.finish(f, "error", { message: r.message });
         return this.arm(f);
       case "token": {
+        if (r.expiring) this.onExpiringToken?.();
         let identity: GithubIdentity;
         try {
           // The token is used for this one call and dropped with `r`.

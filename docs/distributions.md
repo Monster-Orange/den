@@ -379,9 +379,22 @@ a ref that is not set is **not configured**, and its feature says so
 ("not configured: set secrets.provider and secrets.refs.sudo in
 config/acme.yml") instead of running a CLI. The interactive unlock always
 works; only the saved password needs `refs.sudo`.
+
+**Saving writes `refs.sudo` for you** (LK-4, 0.4.4). When `secrets.provider`
+is `1password` or `doppler`, its CLI is available, and no `refs.sudo` is
+set, the lock still offers "Save to 1Password". Saving creates the item
+(1Password: a Password item "<Product> admin password", field `password`,
+in your default vault; Doppler: the key `<PREFIX>_LOCAL_ADMIN_PWD`) and
+then writes that ref to `config/local/user.yml`, because the password is
+the person's, not the distribution's. From then on it survives restarts.
+A failed save writes nothing, and its error never carries the password.
+`env` keeps nothing past the process, so it offers no save. A `refs.sudo`
+in the distribution's config always wins over the one in user.yml.
+
 `/api/sudo-password/vault-status` reports `backend`, `label`,
-`configured`, `backendAvailable`, `reason` and `hasStored` (`opAvailable`
-is a deprecated alias of `backendAvailable`, kept for one minor).
+`configured`, `canSave` (saving works with no YAML to edit),
+`backendAvailable`, `reason` and `hasStored` (`opAvailable` is a
+deprecated alias of `backendAvailable`, kept for one minor).
 
 A `1password` distribution with no refs gets one warning, in the web
 server's startup log and in `<cli> validate`, with the YAML to add.
@@ -1187,7 +1200,8 @@ privileged actions). Through the edge, a browser the edge shows is on
 this machine asks for nothing either. Signing in is for everything else:
 the edge for a client it can't place here (0.4.4), a LAN address, or a bind
 that isn't loopback (`DEN_BIND_HOST`). From another device, sign in with
-GitHub as the Den's owner, or open a one-time link (below, and
+GitHub as the Den's owner, approve the computer with the code its page
+shows, or open a one-time link (below, and
 [Signing in with GitHub](#signing-in-with-github)).
 
 There is no password. Reading `web.secret` (32 random bytes, mode 0600 in
@@ -1196,7 +1210,10 @@ user, and the CLI does that for you:
 
 ```bash
 ./bin/acme web open        # start if needed, and sign this browser in (a new tab)
-./bin/acme web login       # print a one-time sign-in link, for another browser
+./bin/acme web login       # a one-time sign-in link and its code; waits until it's used
+./bin/acme web login --no-wait  # the link alone (asks for no code), and return
+./bin/acme web approve ABC-123  # approve the computer showing this code
+./bin/acme web approve --list   # the computers waiting with a code
 ./bin/acme web sessions    # the signed-in browsers: id, created, last seen, host, user agent
 ./bin/acme web logout <id> # sign out one browser (an id prefix from `web sessions`)
 ./bin/acme web logout      # sign out every browser
@@ -1213,7 +1230,19 @@ user, and the CLI does that for you:
   among them; its URL comes from the edge config, and a name the edge
   doesn't route here is refused, saying what to add), and
   `web login --origin http://<lan name>:<port>` for any other allowed name
-  (the signed-out page there shows the exact command).
+  (the signed-out page there shows the exact command, under "Other ways").
+- **`web login` waits** (0.4.4). Besides the link it prints an
+  8-character code ("It asks for this code: ABCD-EFGH") and blocks until
+  the link is used, then says who: "Signed in: Safari on macOS
+  (100.64.0.7) at 10:42". Nobody within the minute: "Expired: nobody used
+  the link", exit 1. The link's page asks for the code before it signs in,
+  so the link alone is useless; once opened it waits 5 minutes for the
+  code. A wrong code is refused; five burn the link ("Refused: too many
+  wrong codes", exit 1), more than 20 wrong a minute (any link) are slowed,
+  and the link still works once. The CLI asks the running server through
+  its bearer and never logs the code. `--no-wait` prints the link alone and
+  returns, as before (no code); with no server running `web login` does
+  that too, and says so.
 - **The cookie** (`den_session_<port>`) is HttpOnly, SameSite=Strict and
   Path=/, and Secure when the request came over HTTPS through the edge. The
   session lives server-side (`web-sessions.json`, 0600, in the state dir)
@@ -1231,8 +1260,48 @@ user, and the CLI does that for you:
   The Host allowlist, the Origin check and the CSRF token are what stop
   another site or a rebinding DNS name. From another machine, every page
   and call needs a signed-in browser (or a bearer). A page there shows
-  "Sign in to use <name>" with the command to run; it never asks for a
+  "Sign in to <name>" and the ways to sign in (below); it never asks for a
   secret. `/api` answers 401 `signin_required`.
+- **The signed-out page says where to act.** It names the machine Den runs
+  on ("You're opening Den from another computer. Den runs on
+  **studio**, so it needs to know this is you."), then:
+  - **Sign in with GitHub**, only when a client id is set (below);
+  - **Approve this computer**: a code (`XXX-XXX`) and the command that
+    approves it, to run on that machine (`<cli> web approve <code>`), or
+    Settings › Access › Waiting devices there. The page signs itself in
+    when it's approved and goes to the page you asked for; it counts down
+    the 10 minutes, and an expired code is a click away from a new one.
+    From a computer with SSH access to it, the page gives the one-liner
+    (`ssh <host> '<cli> web approve <code>'`) and, when the host is a name,
+    an Open Terminal (`ssh://`) link;
+  - **Other ways**, collapsed: the one-time link with
+    `web login --origin`.
+
+  Every command the page prints names the machine it runs on and has a
+  copy button. It is `<cli>` when the first `<cli>` on that machine's PATH
+  is this distribution's, else the absolute path of its bin.
+
+- **The machine's name** on the page is `web.machine_name` from
+  `config/local/user.yml` (Settings › Access › Machine name), else the short
+  host name (up to the first dot). It is never taken from the browser's
+  Host. The ssh one-liner's target is the Host the browser used, without
+  the port (the machine's host name if it had none).
+- **Codes.** About 30 bits (Crockford base32: no I, L, O or U; typed in any
+  case, the dash optional); the page polls with a separate 128-bit id. A
+  code expires after 10 minutes and works once; at most five wait at once
+  (a sixth drops the oldest). They live in the server's memory only.
+  Approving is rate-limited (10 a minute) and recorded in the activity log
+  with who approved, never the code. The new session is "approved with a
+  code". **Deny** (Settings › Access, or `web deny` through the API) tells
+  the page it was refused.
+- **Seeing that you're signed in.** The chip at the foot of the rail says
+  "Local" (this machine), "Signed in · this device" (a code or a one-time
+  link) or "@<login>" (GitHub), and opens Settings › Access. The first page
+  after a sign-in says "This device is signed in to Den on <machine>",
+  once. Linked devices lists every session (GitHub, a code, a one-time
+  link): how it signed in, when, from where (the address and the browser
+  and OS), last seen, and **Revoke**; the one you're using says "This
+  device".
 - **The edge counts as local only when it shows the client is.** A
   request for the edge hostname from the edge (an edge peer, below) is
   treated as loopback (no sign-in on any route, the agents and the
@@ -1358,20 +1427,30 @@ the account's id and login, never a token, and no other account gets in.
   (15 minutes). With no owner linked the page says to run
   `web owner link`.
 - **Settings › Access** lists the linked devices (the browser, how it
-  signed in, the client address when the edge vouched for one, first and
-  last seen), each with **Revoke**, which ends its session at once (its
+  signed in, the client address when the edge vouched for one, created and
+  last seen; "This device" on yours), each with **Revoke**, which ends its session at once (its
   open terminals included). **Pair a device** makes a one-time link and a
   QR code for an edge hostname you pick (`web login --host <name>` in the
   browser): scan it on the other device within 60 seconds.
 - **`web.github_client_id`** is the GitHub App's client id (public; no
-  secret). `config/local/user.yml`'s wins over the team's. Until one is
-  set, Den's built-in default is empty and the GitHub buttons say how to set
-  one; the one-time link works without it.
+  secret). The default is Den's own App, **Monster Orange Den**
+  (`Iv23liKL12gnN6WvRV5b`), so Sign in with GitHub works out of the box. A
+  distribution that ships its own App sets its client id here (below);
+  `config/local/user.yml`'s wins over the team's. An empty value
+  (`github_client_id: ""`) turns Sign in with GitHub off: the page then
+  offers the code and the one-time link only.
+- **Expiring tokens.** If the App hands out expiring tokens (GitHub's
+  answer carries `expires_in` or a `refresh_token`), sign-in still
+  completes, and Den says once, in the log and on stderr, to switch off
+  token expiry in the App's settings ("Expire user authorization tokens");
+  it never prints the token. `GET /api/web/owner` reports it as
+  `tokenExpiry: true`.
 
 ### The GitHub App (once, by whoever ships the Den)
 
-Sign in with GitHub needs a GitHub App with the device flow on. Create it
-once (organization or account › Settings › Developer settings › GitHub
+Den's default App is Monster Orange Den. A distribution that wants its own
+(its name on GitHub's approval page) needs a GitHub App with the device
+flow on. Create it once (organization or account › Settings › Developer settings › GitHub
 Apps › New GitHub App):
 
 1. No callback URL; untick "Request user authorization during
@@ -1381,8 +1460,12 @@ Apps › New GitHub App):
 3. **Expire user authorization tokens**: off. Den never asks for
    `offline_access`, and keeps no token either way.
 4. Account permissions: none. Den reads only `GET /user` (the id and the
-   login), which needs none.
-5. Put the **Client ID** in `web.github_client_id`. Never generate or
+   login), which needs none. Repository permissions are only for features
+   that act on a repository (Den's default App has Issues for feedback).
+5. **Where can this GitHub App be installed**: Any account. GitHub lets only
+   members of the owning organization authorize a private App, so anyone
+   else couldn't sign in.
+6. Put the **Client ID** in `web.github_client_id`. Never generate or
    share a client secret or a private key for Den: it never uses one.
 
 ## Running the web UI as a service (macOS)

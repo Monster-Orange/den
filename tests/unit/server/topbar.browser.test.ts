@@ -93,6 +93,8 @@ interface Opts {
   after?: string;
   width?: number;
   vaultStored?: boolean;
+  /** Fields of the vault status to replace (LK-4: no ref, canSave). */
+  vault?: Record<string, unknown>;
   /** /api/server-info reports a stale server (the ⚠ pill shows). */
   stale?: boolean;
 }
@@ -184,6 +186,7 @@ async function mount(o: Opts = {}): Promise<{
           configured: true,
           backendAvailable: true,
           hasStored: !!o.vaultStored,
+          ...o.vault,
         });
       case "/api/sudo-password/load-from-vault":
         if (o.vaultStored) unlocked = true;
@@ -639,6 +642,39 @@ describe("the lock chip (R8)", () => {
       { password: "wrong", saveToVault: false },
       { password: "right", saveToVault: true },
     ]);
+    await p.context().close();
+  }, 30_000);
+});
+
+describe("LK-4: the lock's save option with no secrets.refs.sudo", () => {
+  it("offers Save to 1Password with no note to edit YAML when saving can write the ref (canSave)", async () => {
+    if (!browser) return;
+    const { p } = await mount({
+      vault: { configured: false, canSave: true, configFile: "config/den.yml" },
+    });
+    await p.waitForFunction(() => !!document.querySelector("#den-lock"));
+    await p.click("#den-lock");
+    await p.waitForSelector("#den-lock-pop .den-lock-save:not([hidden])");
+    expect(await p.isVisible("#den-lock-pop .den-lock-cfg")).toBe(false);
+    expect(await text(p, "#den-lock-pop .den-lock-save")).toBe(
+      "Save to 1Password",
+    );
+    await p.context().close();
+  }, 30_000);
+
+  it("a backend that keeps nothing (canSave false): no save option, and the note says where the ref goes", async () => {
+    if (!browser) return;
+    const { p } = await mount({
+      vault: {
+        configured: false,
+        canSave: false,
+        configFile: "config/den.yml",
+      },
+    });
+    await p.waitForFunction(() => !!document.querySelector("#den-lock"));
+    await p.click("#den-lock");
+    await p.waitForSelector("#den-lock-pop .den-lock-cfg:not([hidden])");
+    expect(await p.isVisible("#den-lock-pop .den-lock-save")).toBe(false);
     await p.context().close();
   }, 30_000);
 });

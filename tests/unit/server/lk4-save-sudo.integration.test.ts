@@ -1,0 +1,370 @@
+/**
+ * LK-4 (WS-AG-UX spec, "save without editing YAML") on the real server:
+ * with `secrets.provider: 1password` and no `secrets.refs.sudo`, the lock's
+ * vault status offers saving (`canSave`), and saving the admin password
+ * creates the item and writes `secrets.refs.sudo` to the person's user.yml.
+ * After a restart the server loads it from the vault, so nobody is asked
+ * again. A distribution's own ref still wins.
+ *
+ * No real vault and no real sudo: recording fakes of `op` (items kept in a
+ * temp dir) and `sudo` (one right password) come first on PATH. The test
+ * password is a test value and is never printed; a failure says whether it
+ * leaked, not what it is.
+ */
+import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import { type ChildProcess } from "child_process";
+import * as fs from "fs";
+import * as http from "http";
+import * as net from "net";
+import type { AddressInfo } from "net";
+import * as os from "os";
+import * as path from "path";
+import * as yaml from "yaml";
+import { spawnServer, stopServer } from "../../child-servers.js";
+import { denAuth } from "./helpers/den-auth.js";
+
+const ENGINE = path.resolve(__dirname, "../../..");
+const PW = "lk4-test-admin-pw";
+let tmp = "";
+
+async function freePort(): Promise<number> {
+  const s = net.createServer();
+  await new Promise<void>((r) => s.listen(0, "localhost", r));
+  const p = (s.address() as AddressInfo).port;
+  await new Promise<void>((r) => s.close(() => r()));
+  return p;
+}
+
+/** The fakes: `op` keeps items as files; `sudo` knows one password. */
+function writeFakes(bin: string, items: string): void {
+  fs.mkdirSync(bin, { recursive: true });
+  fs.mkdirSync(items, { recursive: true });
+  fs.writeFileSync(
+    path.join(bin, "op"),
+    `#!/bin/sh
+# Fake 1Password CLI: items are files under $FAKE_OP_ITEMS (title.field).
+echo "$1 $2" >> "$FAKE_OP_ITEMS/calls.log"
+case "$1" in
+  whoami) echo "tester"; exit 0 ;;
+esac
+sub="$2"; shift 2
+title=""; vault=""; field=""; value=""; label=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --vault) vault="$2"; shift 2 ;;
+    --title) title="$2"; shift 2 ;;
+    --category) shift 2 ;;
+    --fields) label="\${2#label=}"; shift 2 ;;
+    --reveal) shift ;;
+    *\\[password\\]=*) field="\${1%%\\[password\\]=*}"; value="\${1#*\\[password\\]=}"; shift ;;
+    *) title="$1"; shift ;;
+  esac
+done
+f="$FAKE_OP_ITEMS/$vault.$title"
+case "$sub" in
+  get) [ -f "$f.$label" ] || { echo "\\"$title\\" isn't an item" >&2; exit 1; }; cat "$f.$label"; echo ;;
+  edit) [ -f "$f.item" ] || { echo "\\"$title\\" isn't an item" >&2; exit 1; }; printf %s "$value" > "$f.$field" ;;
+  create) : > "$f.item"; printf %s "$value" > "$f.$field" ;;
+  *) exit 2 ;;
+esac
+`,
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(
+    path.join(bin, "sudo"),
+    `#!/bin/sh
+# Fake sudo: never passwordless; -S takes one right password.
+case "$*" in
+  *-S*) read pw; [ "$pw" = "${PW}" ] && exit 0; exit 1 ;;
+esac
+exit 1
+`,
+    { mode: 0o755 },
+  );
+}
+
+interface Dist {
+  root: string;
+  stateDir: string;
+  items: string;
+  env: NodeJS.ProcessEnv;
+}
+
+function makeDist(name: string, refs?: Record<string, unknown>): Dist {
+  const base = path.join(tmp, name);
+  const root = path.join(base, "dist");
+  const stateDir = path.join(base, "home", ".den");
+  const bin = path.join(base, "fake-bin");
+  const items = path.join(base, "op-items");
+  fs.mkdirSync(path.join(root, "config", "local"), { recursive: true });
+  fs.writeFileSync(path.join(root, "den.yml"), "product:\n  name: den\n");
+  fs.writeFileSync(
+    path.join(root, "config", "den.yml"),
+    yaml.stringify({
+      environments: ["local"],
+      secrets: { provider: "1password", ...(refs ? { refs } : {}) },
+    }),
+  );
+  writeFakes(bin, items);
+  return {
+    root,
+    stateDir,
+    items,
+    env: {
+      ...process.env,
+      PATH: [bin, process.env.PATH ?? ""].join(path.delimiter),
+      FAKE_OP_ITEMS: items,
+      DEN_ROOT: root,
+      DEN_ENGINE_ROOT: ENGINE,
+      DEN_HOME: stateDir,
+      HOME: path.join(base, "home"),
+      DEN_NO_OPEN: "1",
+      NO_COLOR: "1",
+    },
+  };
+}
+
+interface Running {
+  port: number;
+  child: ChildProcess;
+  log: () => string;
+}
+
+async function start(d: Dist): Promise<Running> {
+  const port = await freePort();
+  let log = "";
+  const child = spawnServer(
+    path.join(ENGINE, "node_modules", ".bin", "tsx"),
+    [path.join(ENGINE, "src", "ui", "server", "index.ts")],
+    {
+      cwd: d.root,
+      env: { ...d.env, PORT: String(port) },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  child.stdout?.on("data", (b: Buffer) => (log += b.toString()));
+  child.stderr?.on("data", (b: Buffer) => (log += b.toString()));
+  const deadline = Date.now() + 40_000;
+  for (;;) {
+    try {
+      if ((await call(port, "GET", "/api/server-info")).status === 200) break;
+    } catch {
+      /* not up yet */
+    }
+    if (Date.now() > deadline) throw new Error("server did not start");
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return { port, child, log: () => log };
+}
+
+function call(
+  port: number,
+  method: string,
+  p: string,
+  headers: Record<string, string> = {},
+  body?: unknown,
+): Promise<{ status: number; json: Record<string, unknown>; text: string }> {
+  const payload = body === undefined ? undefined : JSON.stringify(body);
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      `http://localhost:${port}${p}`,
+      {
+        method,
+        agent: false,
+        headers: {
+          connection: "close",
+          ...(payload === undefined
+            ? {}
+            : {
+                "content-type": "application/json",
+                "content-length": Buffer.byteLength(payload),
+              }),
+          ...headers,
+        },
+      },
+      (res) => {
+        let buf = "";
+        res.setEncoding("utf8");
+        res.on("data", (c: string) => (buf += c));
+        res.on("end", () => {
+          let json: Record<string, unknown> = {};
+          try {
+            json = JSON.parse(buf) as Record<string, unknown>;
+          } catch {
+            /* not json */
+          }
+          resolve({ status: res.statusCode ?? 0, json, text: buf });
+        });
+        res.on("error", reject);
+      },
+    );
+    req.on("error", reject);
+    if (payload !== undefined) req.write(payload);
+    req.end();
+  });
+}
+
+const userYml = (d: Dist) => {
+  try {
+    return yaml.parse(
+      fs.readFileSync(path.join(d.root, "config", "local", "user.yml"), "utf8"),
+    ) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+};
+
+beforeAll(() => {
+  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-lk4-")));
+});
+afterAll(() => {
+  if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+describe("LK-4: saving the admin password with no secrets.refs.sudo", () => {
+  let d: Dist;
+  let s: Running | null = null;
+  beforeAll(async () => {
+    d = makeDist("no-ref");
+    s = await start(d);
+  }, 60_000);
+  afterAll(async () => {
+    if (s) await stopServer(s.child);
+  });
+
+  it("the status offers saving (canSave) without a not-configured dead end", async () => {
+    const st = (await call(s!.port, "GET", "/api/sudo-password/vault-status"))
+      .json;
+    expect(st).toMatchObject({
+      backend: "1password",
+      label: "1Password",
+      configured: false,
+      canSave: true,
+      backendAvailable: true,
+      hasStored: false,
+    });
+  });
+
+  it("a wrong password saves nothing", async () => {
+    const r = await call(
+      s!.port,
+      "POST",
+      "/api/sudo-password",
+      denAuth(d.stateDir),
+      { password: "not-it", saveToVault: true },
+    );
+    expect(r.status).toBe(401);
+    expect(userYml(d).secrets).toBeUndefined();
+    expect(fs.readdirSync(d.items).filter((f) => f !== "calls.log")).toEqual(
+      [],
+    );
+  });
+
+  it("saving creates the item and writes secrets.refs.sudo to user.yml; then it is configured and stored", async () => {
+    const r = await call(
+      s!.port,
+      "POST",
+      "/api/sudo-password",
+      denAuth(d.stateDir),
+      { password: PW, saveToVault: true },
+    );
+    expect([
+      r.status,
+      r.json.ok,
+      r.json.savedToVault,
+      r.json.refCreated,
+    ]).toEqual([200, true, true, true]);
+    expect(r.json.vaultError).toBeUndefined();
+    expect((userYml(d).secrets as Record<string, unknown>)?.refs).toEqual({
+      sudo: { item: "Den admin password", field: "password" },
+    });
+    // The fake vault holds it: the item was created (edit failed first).
+    expect(
+      fs.readFileSync(
+        path.join(d.items, ".Den admin password.password"),
+        "utf8",
+      ),
+    ).toBe(PW);
+    const calls = fs.readFileSync(path.join(d.items, "calls.log"), "utf8");
+    expect(calls).toMatch(/item edit\nitem create\n/);
+    const st = (await call(s!.port, "GET", "/api/sudo-password/vault-status"))
+      .json;
+    expect(st).toMatchObject({
+      configured: true,
+      canSave: true,
+      hasStored: true,
+    });
+  });
+
+  it("after a restart the server loads it from the vault: nobody is asked again", async () => {
+    await stopServer(s!.child);
+    s = await start(d);
+    const before = (await call(s.port, "GET", "/api/sudo-password/status"))
+      .json;
+    expect(before.set).toBe(false);
+    const r = await call(
+      s.port,
+      "POST",
+      "/api/sudo-password/load-from-vault",
+      denAuth(d.stateDir),
+    );
+    expect(r.json).toEqual({ ok: true });
+    expect(
+      (await call(s.port, "GET", "/api/sudo-password/status")).json.set,
+    ).toBe(true);
+    // The password never reached the server's output.
+    expect(s.log().includes(PW)).toBe(false);
+  }, 60_000);
+});
+
+describe("LK-4: a distribution's own ref still wins", () => {
+  let d: Dist;
+  let s: Running | null = null;
+  beforeAll(async () => {
+    d = makeDist("dist-ref", {
+      sudo: { vault: "Team", item: "Dist Keys", field: "ADMIN_PWD" },
+    });
+    // The person's ref from an earlier save, and the distribution's item.
+    fs.writeFileSync(
+      path.join(d.root, "config", "local", "user.yml"),
+      yaml.stringify({
+        secrets: {
+          refs: { sudo: { item: "Den admin password", field: "password" } },
+        },
+      }),
+    );
+    fs.writeFileSync(path.join(d.items, "Team.Dist Keys.item"), "");
+    s = await start(d);
+  }, 60_000);
+  afterAll(async () => {
+    if (s) await stopServer(s.child);
+  });
+
+  it("saving writes the distribution's item and leaves user.yml as it was", async () => {
+    const before = fs.readFileSync(
+      path.join(d.root, "config", "local", "user.yml"),
+      "utf8",
+    );
+    const r = await call(
+      s!.port,
+      "POST",
+      "/api/sudo-password",
+      denAuth(d.stateDir),
+      { password: PW, saveToVault: true },
+    );
+    expect([r.status, r.json.savedToVault, r.json.refCreated]).toEqual([
+      200,
+      true,
+      undefined,
+    ]);
+    expect(
+      fs.readFileSync(path.join(d.items, "Team.Dist Keys.ADMIN_PWD"), "utf8"),
+    ).toBe(PW);
+    expect(
+      fs.existsSync(path.join(d.items, ".Den admin password.password")),
+    ).toBe(false);
+    expect(
+      fs.readFileSync(path.join(d.root, "config", "local", "user.yml"), "utf8"),
+    ).toBe(before);
+  });
+});

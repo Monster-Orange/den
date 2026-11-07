@@ -379,6 +379,13 @@ export interface UserConfig {
    * src/shared/environment-manager/scope.ts.
    */
   view?: { scope?: string };
+  /**
+   * The web server's per-machine keys (src/shared/web-session.ts
+   * readWebAuthConfig): allow_plain_http_remote, edge_unattested,
+   * github_client_id, and (SEC-2a) machine_name, the name the signed-out
+   * page gives this machine.
+   */
+  web?: Record<string, unknown>;
 }
 
 const ALL_ENVIRONMENTS: Environment[] = [

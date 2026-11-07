@@ -140,16 +140,28 @@ export function seenAgo(iso, now = Date.now()) {
   return `${Math.round(s / 86400)} d ago`;
 }
 
-/** One linked device's line: name, how it signed in, where from, when. */
+/**
+ * One linked device's line (SEC-2a: every sign-in, whatever the method):
+ * its browser and OS, "This device" for this browser, then how it signed
+ * in, when, from where (the client address and the browser), and when it
+ * was last seen.
+ */
 export function deviceLine(d, now = Date.now()) {
-  const how = d.via === "github" ? "GitHub" : "pairing link";
-  const where = [d.host, d.client].filter(Boolean).join(" · ");
+  const how =
+    d.via === "github"
+      ? `GitHub${d.login ? ` (@${d.login})` : ""}`
+      : d.via === "code"
+        ? "approved with a code"
+        : "one-time link";
+  const name = d.name || "Unknown browser";
+  const from = d.client || d.host;
   return {
-    title: `${d.name || "Unknown browser"}${d.current ? " (this browser)" : ""}`,
+    title: name,
+    current: !!d.current,
     detail: [
       `signed in with ${how}`,
-      where,
-      `first seen ${seenAgo(d.createdAt, now)}`,
+      `created ${seenAgo(d.createdAt, now)}`,
+      from ? `from ${from} (${name})` : "",
       `last seen ${seenAgo(d.lastSeenAt, now)}`,
     ]
       .filter(Boolean)
@@ -246,7 +258,7 @@ function drawDevices(host, ctx) {
         const list = b.sessions || [];
         if (!list.length) {
           host.innerHTML =
-            '<output class="set-ro" id="set-devices">No linked devices. A browser that signs in with GitHub, or opens a pairing link, appears here.</output>';
+            '<output class="set-ro" id="set-devices">No linked devices. A browser that signs in with GitHub, is approved with a code, or opens a one-time link appears here.</output>';
           return;
         }
         const now = Date.now();
@@ -257,7 +269,11 @@ function drawDevices(host, ctx) {
               const l = deviceLine(d, now);
               return (
                 `<div class="set-device" data-id="${escHtml(d.id)}" style="${ROW_STYLE}">` +
-                `<div style="flex:1 1 220px;min-width:0"><div>${escHtml(l.title)}</div>` +
+                `<div style="flex:1 1 220px;min-width:0"><div>${escHtml(l.title)}` +
+                (l.current
+                  ? ' <b class="set-this-device" style="font-weight:600">· This device</b>'
+                  : "") +
+                `</div>` +
                 `<div class="set-note" style="overflow-wrap:anywhere">${escHtml(l.detail)}</div></div>` +
                 `<button type="button" class="btn" data-revoke="${escHtml(d.id)}">Revoke</button></div>`
               );
@@ -280,6 +296,85 @@ function drawDevices(host, ctx) {
         host.innerHTML =
           '<output class="set-ro">The devices can only be listed signed in.</output>';
       });
+  load();
+}
+
+/** One waiting device's line: its code, browser and OS, address, age. */
+export function waitingLine(w, now = Date.now()) {
+  return {
+    title: `${w.code} · ${w.device || "Unknown browser"}`,
+    detail: [w.client, `asked ${seenAgo(w.createdAt, now)}`]
+      .filter(Boolean)
+      .join(" · "),
+  };
+}
+
+/**
+ * Waiting devices (SEC-2a): the computers whose signed-out page shows a
+ * code, with Approve and Deny. Approving signs that page in by itself.
+ */
+function drawWaiting(host, ctx) {
+  let timer = null;
+  const load = () => {
+    clearTimeout(timer);
+    if (!host.isConnected && timer !== null) return;
+    fetch("/api/web/waiting", { cache: "no-store" })
+      .then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
+      )
+      .then((b) => {
+        const list = b.waiting || [];
+        const now = Date.now();
+        host.innerHTML = list.length
+          ? '<div id="set-waiting" style="width:100%">' +
+            list
+              .map((w) => {
+                const l = waitingLine(w, now);
+                return (
+                  `<div class="set-waiting" data-code="${escHtml(w.code)}" style="${ROW_STYLE}">` +
+                  `<div style="flex:1 1 220px;min-width:0"><div class="mono">${escHtml(l.title)}</div>` +
+                  `<div class="set-note" style="overflow-wrap:anywhere">${escHtml(l.detail)}</div></div>` +
+                  `<button type="button" class="btn primary" data-approve="${escHtml(w.code)}">Approve</button>` +
+                  `<button type="button" class="btn" data-deny="${escHtml(w.code)}">Deny</button></div>`
+                );
+              })
+              .join("") +
+            '</div><div id="set-waiting-out" style="flex-basis:100%" aria-live="polite"></div>'
+          : '<output class="set-ro" id="set-waiting">No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve.</output>';
+        const act = (btn, path, code) => {
+          btn.disabled = true;
+          ctx.shell
+            .api("POST", path, { code })
+            .then(load)
+            .catch((e) => {
+              btn.disabled = false;
+              const out = host.querySelector("#set-waiting-out");
+              if (out)
+                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+            });
+        };
+        host
+          .querySelectorAll("[data-approve]")
+          .forEach((b) =>
+            b.addEventListener("click", () =>
+              act(b, "/api/web/approve", b.dataset.approve),
+            ),
+          );
+        host
+          .querySelectorAll("[data-deny]")
+          .forEach((b) =>
+            b.addEventListener("click", () =>
+              act(b, "/api/web/deny", b.dataset.deny),
+            ),
+          );
+        // A new request shows up without a reload.
+        timer = setTimeout(load, 5000);
+      })
+      .catch(() => {
+        host.innerHTML =
+          '<output class="set-ro">Waiting devices can only be listed signed in, or on this machine.</output>';
+      });
+  };
   load();
 }
 
@@ -361,6 +456,31 @@ const ACCESS_ROWS = [
     scope: "user",
     control: { type: "custom", render: drawDevices },
     read: () => null,
+  },
+  {
+    id: "access.waiting",
+    category: "access",
+    label: "Waiting devices",
+    description:
+      "Computers whose signed-out page shows a code. Approve one and its page signs in by itself; the code lasts 10 minutes. __DEN_CLI__ web approve <code> does the same from the command line.",
+    keywords: ["waiting", "approve", "code", "pair", "device", "deny"],
+    scope: "user",
+    control: { type: "custom", render: drawWaiting },
+    read: () => null,
+  },
+  {
+    id: "access.machine_name",
+    category: "access",
+    label: "Machine name",
+    description:
+      'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
+    keywords: ["machine", "name", "hostname", "host", "signed out"],
+    scope: "user",
+    control: { type: "text" },
+    keys: ["machine_name"],
+    read: (ctx) => ctx.data.machine_name ?? "",
+    write: (v, ctx) =>
+      ctx.post({ machine_name: String(v ?? "").trim() || null }),
   },
   {
     id: "access.pair",

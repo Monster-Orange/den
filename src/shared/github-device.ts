@@ -13,6 +13,10 @@
  *  3. GET /user with the token: its numeric `id` and `login`, nothing else.
  *     The caller drops the token right after.
  *
+ * A token answer with `expires_in` or a `refresh_token` means the app has
+ * "Expire user authorization tokens" on: the result says so (`expiring`),
+ * for the caller's one warning; the sign-in still completes.
+ *
  * Every call is one request on a fresh connection (no keep-alive), with a
  * timeout. Nothing here logs; a token, device code or user code is never in
  * an error message.
@@ -31,7 +35,16 @@ export interface DeviceCode {
 }
 
 export type PollResult =
-  | { kind: "token"; token: string }
+  | {
+      kind: "token";
+      token: string;
+      /**
+       * The answer carried `expires_in` or a `refresh_token`: the app has
+       * "Expire user authorization tokens" on, a misconfiguration (Den
+       * never refreshes; it uses the token once). Never the token itself.
+       */
+      expiring: boolean;
+    }
   | { kind: "pending" }
   | { kind: "slow_down"; interval?: number }
   | { kind: "expired" }
@@ -159,7 +172,11 @@ export function githubDeviceClient(
       }
       const j = parse(r.body);
       if (typeof j.access_token === "string" && j.access_token)
-        return { kind: "token", token: j.access_token };
+        return {
+          kind: "token",
+          token: j.access_token,
+          expiring: j.expires_in !== undefined || j.refresh_token !== undefined,
+        };
       switch (j.error) {
         case "authorization_pending":
           return { kind: "pending" };
@@ -210,7 +227,7 @@ export function githubPrincipal(id: number): `github:${number}` {
 }
 
 export type DeviceFlowOutcome =
-  | { kind: "ok"; identity: GithubIdentity }
+  | { kind: "ok"; identity: GithubIdentity; expiringToken?: boolean }
   | { kind: "expired" }
   | { kind: "denied" }
   | { kind: "error"; message: string };
@@ -246,7 +263,11 @@ export async function runDeviceFlow(opts: {
     if (r.kind === "token") {
       // The token lives only for this one call.
       const identity = await client.user(r.token);
-      return { kind: "ok", identity };
+      return {
+        kind: "ok",
+        identity,
+        ...(r.expiring ? { expiringToken: true } : {}),
+      };
     }
     if (r.kind === "pending") continue;
     if (r.kind === "slow_down") {

@@ -507,12 +507,9 @@ describe("the route classes", () => {
     expect(edge.body).toContain('"code":"signin_required"');
     expect(edge.body).toContain('"scope":"den"');
     expect(edge.body).toContain("web login");
-    // SEC-2a: with no client id configured (the MO app's is empty until it
-    // exists), Sign in with GitHub says what to set instead.
-    expect(edge.body).toContain('"github":{"state":"no_client_id"');
-    expect(edge.body).toContain(
-      "Set web.github_client_id in config/local/user.yml",
-    );
+    // SEC-2a: the Monster Orange Den app is the default client id, so Sign
+    // in with GitHub is offered; with no owner linked yet, it says so.
+    expect(edge.body).toContain('"github":{"state":"no_owner"');
     expect(edge.body).not.toMatch(/<input[^>]*type="password"/);
     expect(edge.body).not.toMatch(/<form/i);
     // Signed in: a same-origin `next` only.
@@ -540,10 +537,11 @@ describe("the route classes", () => {
 });
 
 describe("the CLI: web login, web sessions, web logout", () => {
-  it("`web login` prints one link on stdout (localhost, /auth, a code) that signs a browser in once", async () => {
+  it("`web login --no-wait` prints one link on stdout (localhost, /auth, a code) that signs a browser in once", async () => {
     const r = cli([
       "web",
       "login",
+      "--no-wait",
       "--port",
       String(port),
       "--next",
@@ -695,7 +693,7 @@ describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_rem
     if (lan) await stopServer(lan);
   });
 
-  it("a `web login --origin http://<this machine>:<port>` link with no fetch-metadata headers: 303 and the cookie", async () => {
+  it("a `web login --no-wait --origin http://<this machine>:<port>` link with no fetch-metadata headers: 303 and the cookie", async () => {
     if (!name) return;
     const r = spawnSync(
       TSX,
@@ -703,6 +701,7 @@ describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_rem
         path.join(ENGINE, "src", "ui", "cli", "index.ts"),
         "web",
         "login",
+        "--no-wait",
         "--port",
         String(lanPort),
         "--origin",

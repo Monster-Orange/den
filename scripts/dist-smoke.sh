@@ -276,7 +276,7 @@ SEC_TOKEN=""
 [ "$code" = "200" ] && ok "POST /api/settings with \`acme web token --print\`: 200" || bad "POST /api/settings with the CLI token answered $code"
 # SEC-1b: `web login` prints a one-time link (never echoed here) that the
 # server swaps for a session cookie, once.
-SEC_LINK="$(cd "$DIST" && ./bin/acme web login --port "$PORT" 2>/dev/null)"
+SEC_LINK="$(cd "$DIST" && ./bin/acme web login --no-wait --port "$PORT" 2>/dev/null)"
 SEC_HDR="$(curl -sS -o /dev/null -D - -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 again="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 SEC_LINK=""

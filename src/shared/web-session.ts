@@ -21,6 +21,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "yaml";
+import { parseMachineName } from "./cli-command.js";
 import { getStateDir } from "./paths.js";
 
 export const LOGIN_CODE_TTL_MS = 60_000;
@@ -96,6 +97,14 @@ export function checkLoginCode(
   )
     return { ok: false, reason: "expired" };
   return { ok: true, nonce: m[2], expiresAt };
+}
+
+/** A login code's nonce, from its shape alone (unverified), or null. */
+export function loginCodeNonce(code: string): string | null {
+  const m = /^v1\.([A-Za-z0-9_-]{22})\.[0-9a-z]{1,11}\.[A-Za-z0-9_-]{43}$/.exec(
+    code,
+  );
+  return m ? m[1] : null;
 }
 
 /**
@@ -181,6 +190,11 @@ export interface WebAuthConfig {
   edgeUnattested: EdgeUnattested;
   /** The distribution config's file when it sets `web.edge_unattested`: ignored there. */
   edgeUnattestedInDistribution?: string;
+  /**
+   * `web.machine_name` (SEC-2a, user.yml only): the name the signed-out
+   * page gives this machine ("runs on <name>"). Unset: the short hostname.
+   */
+  machineName?: string;
 }
 
 /** `web.edge_unattested`'s values. */
@@ -275,7 +289,9 @@ export function readWebAuthConfig(
     );
   const clientId =
     clientIdOf(user, "config/local/user.yml") ?? clientIdOf(team, configFile);
+  const machineName = parseMachineName(user.machine_name);
   return {
+    ...(machineName ? { machineName } : {}),
     allowPlainHttpRemote: plain === true,
     ignored,
     edgeUnattested: unattested ?? "signin",
@@ -314,9 +330,13 @@ export interface SessionRecord {
   /** The Host it was issued on. */
   host: string;
   /** SEC-2a: how it signed in: a GitHub sign-in, or a one-time link (pairing). Unset: a link (before 0.4.4). */
-  via?: "github" | "link";
+  via?: "github" | "link" | "code";
   /** SEC-2a: the client's address when Den could attest it. */
   client?: string;
+  /** SEC-2a: a GitHub sign-in's login (the chip's "@login"). */
+  login?: string;
+  /** SEC-2a: not yet greeted ("This device is signed in…", once). */
+  welcome?: true;
 }
 
 interface StoreFile {
@@ -444,8 +464,9 @@ export class WebSessionStore {
   create(meta: {
     userAgent?: string;
     host?: string;
-    via?: "github" | "link";
+    via?: "github" | "link" | "code";
     client?: string;
+    login?: string;
   }): {
     id: string;
     session: SessionView;
@@ -464,6 +485,8 @@ export class WebSessionStore {
         .slice(0, 255),
       ...(meta.via ? { via: meta.via } : {}),
       ...(meta.client ? { client: String(meta.client).slice(0, 64) } : {}),
+      ...(meta.login ? { login: String(meta.login).slice(0, 64) } : {}),
+      welcome: true,
     };
     const data = structuredClone(this.load());
     this.prune(data, now);
@@ -500,6 +523,19 @@ export class WebSessionStore {
     } catch {
       /* a read-only state dir: the lookup still answers */
     }
+  }
+
+  /**
+   * Whether this session is yet to be greeted, once: true the first time
+   * after its sign-in, and never again (the flag is cleared).
+   */
+  takeWelcome(key: string): boolean {
+    const data = this.load();
+    if (!data.sessions[key]?.welcome) return false;
+    const next = structuredClone(data);
+    delete next.sessions[key].welcome;
+    this.trySave(next);
+    return true;
   }
 
   /** Every session, newest first. */

@@ -358,39 +358,71 @@
       "This server answers only on its own addresses, so a page on another name can't reach it.",
     "err.421.open": "Open on localhost",
     "err.refused.title": "Request refused",
-    "err.signin.title": "Sign in to use {name}",
     "err.signin.terminal": "Sign in to use the terminal",
     "err.signin.agents": "Sign in to start agents",
     "err.signin.sub": "This browser isn't signed in",
     "err.signin.lead": "Run {cmd} and open the link.",
     "err.signin.expiredTitle": "Sign-in link expired",
-    "err.signin.expired":
-      "That sign-in link expired or was used. Run {cmd} for a new one.",
     "err.signin.local":
       "A sign-in belongs to one address. This page is on {host}: open the same page on localhost, where this browser is signed in.",
-    "err.signin.why":
-      "There is no password: the link comes from a file only your user account can read.",
     "err.signin.copy": "Copy command",
-    "err.signin.orLead":
-      "Or, on the machine Den runs on, run {cmd} and open the link.",
+    "err.signin.title": "Sign in to {name}",
+    "err.signin.where":
+      "You're opening {name} from another computer. {name} runs on {host}, so it needs to know this is you.",
+    "err.signin.githubNote":
+      "Uses your GitHub account. The owner of this {name} has to have linked theirs.",
+    "err.signin.githubNoOwner":
+      "Sign in with GitHub needs an owner, and this {name} has none yet. On {host} (not this computer), run:",
+    "err.signin.githubRefused":
+      "@{login} isn't the owner of this {name}. Ask the owner to add you, or use 'Approve this computer'.",
+    "err.signin.approveOr": "Or approve this computer",
+    "err.signin.approve": "Approve this computer",
+    "err.signin.step1": "On {host} (not this computer), run:",
+    "err.signin.step1Or":
+      "Or open {name} on {host} itself and go to Settings › Access › Waiting devices.",
+    "err.signin.step2":
+      "This page signs you in by itself once approved. The code expires in 10 minutes.",
+    "err.signin.waiting": "Waiting for approval…",
+    "err.signin.noTerminal":
+      "Don't have a terminal on {host}? From this computer, run:",
+    "err.signin.openTerminal": "Open Terminal",
+    "err.signin.sshNote":
+      "Open Terminal opens ssh://{target} in your terminal app. It needs SSH access to {target}.",
+    "err.signin.whyTitle": "Why?",
+    "err.signin.whyText":
+      "{name} can start terminals and agents on {host}, so it only lets in people who prove they're the owner. You only do this once per computer: you stay signed in.",
+    "err.signin.other": "Other ways (the one-time link with {cmd})",
+    "err.signin.otherStep":
+      "On {host} (not this computer), run this, then open the link it prints in this browser:",
+    "err.signin.codeExpired": "This code expired.",
+    "err.signin.codeDenied": "This computer was denied on {host}.",
+    "err.signin.codeFailed": "{name} didn't give this page a code. Try again.",
+    "err.signin.newCode": "Get a new code",
+    "err.signin.youreIn": "You're in.",
+    "err.signin.expiredLead":
+      "That sign-in link expired or was used. Sign in again below.",
+    "err.signin.confirmLead":
+      "Enter the code that web login printed on {host}:",
+    "err.signin.confirmGo": "Sign in",
+    "err.signin.confirmWrong":
+      "That code isn't right. Check what web login printed and try again.",
+    "err.signin.confirmBusy": "Too many tries. Wait a minute and try again.",
+    "err.signin.confirmGone":
+      "This link no longer works. On {host}, run web login again for a new one.",
+    "err.signin.confirmWhy":
+      "The link alone isn't enough: it needs the code shown on {host} too, so a link someone else sees can't sign them in.",
     "err.signin.github": "Sign in with GitHub",
     "err.signin.githubEnter": "Enter this code at {url}:",
     "err.signin.githubOpen": "Open GitHub",
     "err.signin.githubCopy": "Copy code",
     "err.signin.githubWaiting": "Waiting for you to approve it on GitHub…",
     "err.signin.githubDone": "Signed in. Loading…",
-    "err.signin.githubRefused":
-      "@{login} isn't allowed on this Den. Ask the owner to add you.",
     "err.signin.githubExpired": "The code expired before it was approved.",
     "err.signin.githubDenied": "The request was cancelled on GitHub.",
     "err.signin.githubBusy":
       "Too many sign-ins are in progress. Try again in a few minutes.",
     "err.signin.githubFailed": "GitHub couldn't be reached. Try again.",
     "err.signin.githubAgain": "Start again",
-    "err.signin.githubNoOwner":
-      "Sign in with GitHub needs an owner, and this Den has none yet. On the machine it runs on, run {cmd}.",
-    "err.signin.githubNoClient":
-      "Sign in with GitHub needs a GitHub App client id, and none is configured. On the machine Den runs on, set {key} in config/local/user.yml and restart the server.",
     "err.422.title": "Config is invalid",
     "err.422.sub": "The distribution config fails validation",
     "err.422.lead":
@@ -429,6 +461,11 @@
     "set.cli.signin": "Browser sign-in",
     "set.access.owner": "Owner",
     "set.access.devices": "Linked devices",
+    "ident.local": "Local",
+    "ident.device": "Signed in · this device",
+    "ident.toast": "This device is signed in to {name} on {host}",
+    "set.access.waiting": "Waiting devices",
+    "set.access.machine_name": "Machine name",
     "set.access.pair": "Pair a device",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
@@ -593,6 +630,9 @@
     agents:
       '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
     edge: '<path d="M12 3l8 4v5c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V7z"/><path d="M8 12h8M12 8v8"/>',
+    // SEC-2a: who this browser is (the rail footer's identity chip).
+    person:
+      '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>',
   };
   function icon(name) {
     var d = ICONS[name] || (/^</.test(name || "") ? name : ICONS.page);
@@ -883,6 +923,9 @@
     // Whether the edge is configured (the Edge page's when): null until
     // known, the last answer cached so the rail doesn't jump.
     edge: null,
+    // SEC-2a: who this browser is (GET /api/session `identity`): local,
+    // a signed-in device, or a GitHub login. Null until known.
+    identity: null,
   };
   try {
     var cached = JSON.parse(localStorage.getItem(LS) || "{}");
@@ -1789,6 +1832,7 @@
       },
       page === SETTINGS.id,
     );
+    html += identityChip();
     html +=
       '<button class="den-ni den-collapse-btn" type="button" data-act="collapse" aria-expanded="' +
       (state.collapsed ? "false" : "true") +
@@ -1800,6 +1844,49 @@
       esc(state.collapsed ? t("expand") : t("collapse")) +
       "</span></button>";
     return html;
+  }
+
+  /**
+   * SEC-2a: the rail footer's identity chip: "Local" (this machine, no
+   * sign-in), "Signed in · this device" (a one-time link or a code) or
+   * "@login" (GitHub). A rail item like Settings (the same .den-ni
+   * metrics), opening Settings › Access.
+   */
+  function identityLabel(id) {
+    if (!id) return "";
+    if (id.kind === "local") return t("ident.local");
+    if (id.kind === "github" && id.login) return "@" + id.login;
+    if (id.kind === "github" || id.kind === "device") return t("ident.device");
+    return "";
+  }
+  function identityChip() {
+    var label = identityLabel(state.identity);
+    if (!label) return "";
+    return item(
+      {
+        id: "identity",
+        href: "/settings#access",
+        title: label,
+        icon: "person",
+      },
+      false,
+      "",
+      ' id="den-ident" data-ident="' + esc(state.identity.kind) + '"',
+    );
+  }
+  /** What GET /api/session said about this browser: the chip, and a toast once after a sign-in. */
+  function applyIdentity(b) {
+    if (!b || !b.identity) return;
+    var was = state.identity;
+    if (!was || was.kind !== b.identity.kind || was.login !== b.identity.login)
+      setState({ identity: b.identity });
+    if (b.justSignedIn)
+      toast(
+        t("ident.toast", {
+          name: b.product || "__DEN_TITLE__",
+          host: b.machine || "",
+        }),
+      );
   }
 
   // One tab stop for the rail: the current page, else the first item.
@@ -3534,6 +3621,7 @@
           function (b) {
             csrf.pending = null;
             csrf.token = b && typeof b.csrf === "string" ? b.csrf : null;
+            applyIdentity(b);
             return csrf.token;
           },
           function () {

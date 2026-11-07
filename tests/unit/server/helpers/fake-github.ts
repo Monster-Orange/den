@@ -47,6 +47,13 @@ export interface FakeGithub {
   expire(userCode: string): void;
   /** The next N polls of this code answer slow_down. */
   slowDown(userCode: string, n: number): void;
+  /**
+   * The app has "Expire user authorization tokens" on: a token answer
+   * carries expires_in and a refresh_token (a misconfiguration Den warns of).
+   */
+  expiringTokens: boolean;
+  /** Refresh tokens issued (none may reach Den's state or output). */
+  refreshTokens: string[];
   close(): Promise<void>;
 }
 
@@ -56,6 +63,8 @@ export async function startFakeGithub(
   const codes: Code[] = [];
   const tokens = new Map<string, FakeAccount>();
   const requests: FakeGithub["requests"] = [];
+  const refreshTokens: string[] = [];
+  const state = { expiring: false };
   const find = (userCode: string) => {
     const c = codes.find((x) => x.userCode === userCode);
     if (!c) throw new Error("no such user code");
@@ -116,8 +125,19 @@ export async function startFakeGithub(
           tokens.set(token, o.account);
           // A device code is good for one token.
           c.outcome = { kind: "expired" };
+          if (!state.expiring)
+            return send(200, {
+              access_token: token,
+              token_type: "bearer",
+              scope: "",
+            });
+          const refresh = `ghr_${randomBytes(30).toString("hex")}`;
+          refreshTokens.push(refresh);
           return send(200, {
             access_token: token,
+            expires_in: 28800,
+            refresh_token: refresh,
+            refresh_token_expires_in: 15897600,
             token_type: "bearer",
             scope: "",
           });
@@ -147,6 +167,13 @@ export async function startFakeGithub(
     deny: (u) => (find(u).outcome = { kind: "denied" }),
     expire: (u) => (find(u).outcome = { kind: "expired" }),
     slowDown: (u, n) => (find(u).slowDowns = n),
+    get expiringTokens() {
+      return state.expiring;
+    },
+    set expiringTokens(on: boolean) {
+      state.expiring = on;
+    },
+    refreshTokens,
     close: () =>
       new Promise<void>((r) => {
         server.closeAllConnections?.();

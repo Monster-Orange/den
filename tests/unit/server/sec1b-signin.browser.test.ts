@@ -196,11 +196,13 @@ describe("refusal pages start no polls (no /api answers 421 or 401 after load)",
     const p = await ctx.newPage();
     await p.goto(`http://${EDGE}:${port}/`);
     await p.waitForSelector("#den-signin");
-    expect(await p.textContent("#den-error-page h1")).toBe(
-      "Sign in to use Den",
-    );
-    expect(await p.textContent("#den-signin-cmd")).toBe(
-      `den web login --origin http://${EDGE}:${port}`,
+    expect(await p.textContent("#den-error-page h1")).toBe("Sign in to Den");
+    // The command that runs on this server: `den` when it is this
+    // distribution's on PATH, else the absolute path (cli-command.ts).
+    expect(await p.textContent("#den-signin-cmd")).toMatch(
+      new RegExp(
+        `^(den|/\\S*/bin/den) web login --origin http://${EDGE.replace(/\./g, "\\.")}:${port}$`,
+      ),
     );
     expect(await p.locator("#den-signin-local").count()).toBe(0);
     const r = await p.goto(signInUrl(stateDir, `http://${EDGE}:${port}`, "/"));

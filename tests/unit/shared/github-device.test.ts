@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import {
   GITHUB_DEVICE_PAGE,
   GITHUB_TEST_BASE_ENV,
+  expiringTokenWarning,
   githubClientId,
   githubEndpoints,
   MO_DEN_GITHUB_CLIENT_ID,
@@ -70,10 +71,11 @@ describe("the endpoints", () => {
       ]).toEqual([bad, false]);
   });
 
-  it("the MO app's client id is a placeholder in one place, empty until the app exists; web.github_client_id replaces it", () => {
-    expect(MO_DEN_GITHUB_CLIENT_ID).toBe("");
-    expect(githubClientId(undefined)).toBe("");
+  it("the default is the Monster Orange Den app's client id, in one place; web.github_client_id replaces it, and an empty one turns it off", () => {
+    expect(MO_DEN_GITHUB_CLIENT_ID).toBe("Iv23liKL12gnN6WvRV5b");
+    expect(githubClientId(undefined)).toBe("Iv23liKL12gnN6WvRV5b");
     expect(githubClientId(" Iv23liAcme ")).toBe("Iv23liAcme");
+    expect(githubClientId("")).toBe("");
     expect(GITHUB_DEVICE_PAGE).toBe("https://github.com/login/device");
   });
 });
@@ -120,6 +122,46 @@ describe("runDeviceFlow", () => {
       "urn:ietf:params:oauth:grant-type:device_code",
     );
     expect(mine[4].auth).toBe(true);
+  });
+
+  it("a token answer without expires_in or a refresh_token: no expiring flag", async () => {
+    gh.expiringTokens = false;
+    const s = steps((n) => {
+      if (n === 1) gh.approve(gh.codes[gh.codes.length - 1].userCode, OWNER);
+    });
+    const out = await runDeviceFlow({
+      clientId: "Iv23liAcme",
+      client: client(),
+      onCode: () => {},
+      sleep: s.sleep,
+      minIntervalMs: 0,
+    });
+    expect(out).toEqual({ kind: "ok", identity: OWNER });
+  });
+
+  it("the app has token expiry on (expires_in, refresh_token): sign-in still completes, flagged; no token in the result", async () => {
+    gh.expiringTokens = true;
+    try {
+      const s = steps((n) => {
+        if (n === 1) gh.approve(gh.codes[gh.codes.length - 1].userCode, OWNER);
+      });
+      const out = await runDeviceFlow({
+        clientId: "Iv23liAcme",
+        client: client(),
+        onCode: () => {},
+        sleep: s.sleep,
+        minIntervalMs: 0,
+      });
+      expect(out).toEqual({ kind: "ok", identity: OWNER, expiringToken: true });
+      const text = JSON.stringify(out);
+      for (const t of [...gh.tokens, ...gh.refreshTokens])
+        expect(text.includes(t)).toBe(false);
+      expect(expiringTokenWarning()).toMatch(
+        /switch off .Expire user authorization tokens. in the app's settings/,
+      );
+    } finally {
+      gh.expiringTokens = false;
+    }
   });
 
   it("slow_down raises the wait (GitHub's interval, or +5 s)", async () => {

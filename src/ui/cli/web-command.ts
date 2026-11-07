@@ -21,7 +21,9 @@ import {
   readWebSecret,
   rotateWebSecret,
 } from "../../shared/web-secret.js";
+import { newConfirmCode } from "../server/login-waits.js";
 import {
+  checkLoginCode,
   ignoredConfigWarning,
   localhostOrigin,
   loginLink,
@@ -37,6 +39,7 @@ import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
 import {
+  expiringTokenWarning,
   GITHUB_DEVICE_PAGE,
   githubClientId,
   githubEndpoints,
@@ -1138,6 +1141,7 @@ export const WEB_SUBCOMMANDS_WITH_HELP = [
   "sessions",
   "logout",
   "owner",
+  "approve",
 ] as const;
 
 export function displayWebHelp(): void {
@@ -1148,13 +1152,16 @@ export function displayWebHelp(): void {
   console.log(`  ${product().cli} web --setup-browser-access`);
   console.log(`  ${product().cli} web token --print`);
   console.log(
-    `  ${product().cli} web login [--next <path>] [--host <name> | --origin <url>] [--port <port>]`,
+    `  ${product().cli} web login [--next <path>] [--host <name> | --origin <url>] [--no-wait] [--port <port>]`,
   );
   console.log(`  ${product().cli} web sessions [--json] [--port <port>]`);
   console.log(
     `  ${product().cli} web logout [<id prefix>] [--all] [--port <port>]`,
   );
   console.log(`  ${product().cli} web owner [link|show|unlink] [--json]`);
+  console.log(
+    `  ${product().cli} web approve <code> | --list [--json] [--port <port>]`,
+  );
   console.log();
   console.log(chalk.bold("Actions:"));
   console.log(
@@ -1168,7 +1175,7 @@ export function displayWebHelp(): void {
     "  open               Start if needed, and sign this browser in (a new tab)",
   );
   console.log(
-    "  login              Print a one-time sign-in link (60 s), for another browser",
+    "  login              Print a one-time sign-in link (60 s) and its code, then wait until it's used",
   );
   console.log("  sessions           List the signed-in browsers");
   console.log(
@@ -1179,6 +1186,9 @@ export function displayWebHelp(): void {
   );
   console.log(
     "  owner link         Link your GitHub account as this Den's owner (Sign in with GitHub)",
+  );
+  console.log(
+    "  approve <code>     Let in a computer whose signed-out page shows this code",
   );
   console.log("  (start/stop remain accepted as legacy aliases for up/down)");
   console.log();
@@ -1244,7 +1254,7 @@ export async function cmdWeb(args: string[]): Promise<void> {
     return;
   }
   if (args[0] === "login") {
-    process.exitCode = cmdWebLogin(args.slice(1));
+    process.exitCode = await cmdWebLoginWait(args.slice(1));
     return;
   }
   if (args[0] === "sessions") {
@@ -1257,6 +1267,10 @@ export async function cmdWeb(args: string[]): Promise<void> {
   }
   if (args[0] === "owner") {
     process.exitCode = await cmdWebOwner(args.slice(1));
+    return;
+  }
+  if (args[0] === "approve") {
+    process.exitCode = await cmdWebApprove(args.slice(1));
     return;
   }
   if (args.includes("--help") || args.includes("-h")) {
@@ -1466,31 +1480,19 @@ function takePort(args: string[]): { port: number; rest: string[] } {
   return { port, rest };
 }
 
-/**
- * `<cli> web login [--next <path>] [--host <name> | --origin <url>]`: a fresh sign-in link
- * on stdout, alone (the only place a login code is ever printed); a note on
- * stderr. `--host` for an edge hostname (its URL from the edge config),
- * `--origin` for any allowed origin (a LAN name), where the cookie must be
- * set (the signed-out page there says which).
- */
-export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
-  const usage = `Usage: ${product().cli} web login [--next <path>] [--host <name> | --origin <url>] [--port <port>]\n`;
-  if (isHelp(args)) {
-    io.out(
-      usage +
-        "  Prints a one-time sign-in link (it works once, within 60 s) for one browser.\n" +
-        "  On localhost nothing asks for a sign-in; it is needed when this server is\n" +
-        "  reached from another machine (pass the edge hostname as --host, or a LAN\n" +
-        "  address as --origin).\n" +
-        "  --next <path>   where the browser lands after signing in (same origin only)\n" +
-        "  --host <name>   an edge hostname that routes here (an edge domain or alias,\n" +
-        "                  a VPN name among them): the link uses its edge URL\n" +
-        "  --origin <url>  the address the browser uses, http(s)://host[:port]\n",
-    );
-    return 0;
-  }
+const LOGIN_USAGE = () =>
+  `Usage: ${product().cli} web login [--next <path>] [--host <name> | --origin <url>] [--no-wait] [--port <port>]\n`;
+
+/** `web login`'s arguments, or an exit code (usage or a bad value, already said). */
+function parseLoginArgs(
+  args: string[],
+  io: CliIo,
+):
+  | { port: number; next: string; origin: string | null; noWait: boolean }
+  | number {
   let next = "/";
   let origin: string | null = null;
+  let noWait = false;
   let port: number;
   let rest: string[];
   try {
@@ -1507,6 +1509,10 @@ export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
         : a.startsWith(`${flag}=`)
           ? a.slice(flag.length + 1)
           : undefined;
+    if (a === "--no-wait") {
+      noWait = true;
+      continue;
+    }
     const n = val("--next");
     const o = val("--origin");
     const h = val("--host");
@@ -1527,14 +1533,46 @@ export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
         return 2;
       }
     } else {
-      io.err(usage);
+      io.err(LOGIN_USAGE());
       return 2;
     }
   }
+  return { port, next, origin, noWait };
+}
+
+const LOGIN_HELP = () =>
+  LOGIN_USAGE() +
+  "  Prints a one-time sign-in link (open it within 60 s) for one browser, and a\n" +
+  "  code the page behind the link asks for, then waits until the link is used:\n" +
+  '  "Signed in: <browser> (<address>) at <time>", or "Expired: nobody used the\n' +
+  '  link" (exit 1). On localhost nothing asks for a sign-in; it is needed when\n' +
+  "  this server is reached from another machine (pass the edge hostname as\n" +
+  "  --host, or a LAN address as --origin).\n" +
+  "  --next <path>   where the browser lands after signing in (same origin only)\n" +
+  "  --host <name>   an edge hostname that routes here (an edge domain or alias,\n" +
+  "                  a VPN name among them): the link uses its edge URL\n" +
+  "  --origin <url>  the address the browser uses, http(s)://host[:port]\n" +
+  "  --no-wait       print the link and exit; the link signs in by itself, no\n" +
+  "                  code (for scripts)\n";
+
+/**
+ * `<cli> web login --no-wait`: a fresh sign-in link on stdout, alone (the
+ * only place a login code is ever printed); a note on stderr. `--host` for
+ * an edge hostname (its URL from the edge config), `--origin` for any
+ * allowed origin (a LAN name), where the cookie must be set (the
+ * signed-out page there says which). The link signs in when opened.
+ */
+export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
+  if (isHelp(args)) {
+    io.out(LOGIN_HELP());
+    return 0;
+  }
+  const a = parseLoginArgs(args, io);
+  if (typeof a === "number") return a;
   const link = freshLoginLink(
-    port,
-    next,
-    origin ?? localhostOrigin(port),
+    a.port,
+    a.next,
+    a.origin ?? localhostOrigin(a.port),
     io.stateDir ?? getStateDir(),
   );
   io.err(
@@ -1542,6 +1580,121 @@ export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
   );
   io.out(`${link}\n`);
   return 0;
+}
+
+/** "10:42" in this machine's time. */
+function clockTime(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/**
+ * `<cli> web login` (SEC-2a): the link and an 8-character code, then a
+ * wait until the link is used or expires. The page behind the link asks
+ * for the code before it signs anything in. The CLI registers the link's
+ * nonce and the code with the running server (its bearer) and polls that
+ * wait; the code is shown here only, never logged. With no server running
+ * (or `--no-wait`) it prints the link alone, as before.
+ */
+export async function cmdWebLoginWait(
+  args: string[],
+  io: CliIo = stdIo,
+  opts: { pollMs?: number; maxWaitMs?: number } = {},
+): Promise<number> {
+  if (isHelp(args)) {
+    io.out(LOGIN_HELP());
+    return 0;
+  }
+  const a = parseLoginArgs(args, io);
+  if (typeof a === "number") return a;
+  if (a.noWait)
+    return cmdWebLogin(
+      args.filter((x) => x !== "--no-wait"),
+      io,
+    );
+  const stateDir = io.stateDir ?? getStateDir();
+  const secret = ensureWebSecret(stateDir);
+  const now = Date.now();
+  const loginCode = mintLoginCode(secret, now);
+  const checked = checkLoginCode(loginCode, secret, now);
+  if (!checked.ok) {
+    io.err(`${product().cli}: could not make a sign-in link\n`);
+    return 1;
+  }
+  const confirm = newConfirmCode();
+  const reg = await serverCall(stateDir, a.port, "POST", "/api/web/logins", {
+    nonce: checked.nonce,
+    code: confirm,
+    expiresAt: checked.expiresAt,
+  });
+  const link = loginLink(
+    a.origin ?? localhostOrigin(a.port),
+    loginCode,
+    a.next,
+  );
+  if (!reg) {
+    io.err(
+      `${product().cli}: no ${product().title} web server answers on port ${a.port}, so this ` +
+        "doesn't wait and the link asks for no code (as --no-wait). Start the server " +
+        `(\`${product().cli} web up\`), then open this link within 60 seconds; it signs in one browser, once.\n`,
+    );
+    io.out(`${link}\n`);
+    return 0;
+  }
+  const id = (reg.json as { id?: unknown } | null)?.id;
+  if (reg.status !== 200 || typeof id !== "string") {
+    io.err(`${product().cli}: ${apiError(reg)}\n`);
+    return 1;
+  }
+  io.err(
+    `${product().cli}: open this link within 60 seconds, in the browser to sign in. ` +
+      `It asks for this code: ${confirm}\n`,
+  );
+  io.out(`${link}\n`);
+  io.err(`${product().cli}: waiting for the link to be used…\n`);
+  const pollMs = opts.pollMs ?? 1000;
+  const deadline = Date.now() + (opts.maxWaitMs ?? 7 * 60_000);
+  for (;;) {
+    await new Promise((r) => setTimeout(r, pollMs));
+    const r = await serverCall(
+      stateDir,
+      a.port,
+      "GET",
+      `/api/web/logins/${id}`,
+    );
+    const j = (r?.json ?? {}) as {
+      state?: string;
+      device?: string;
+      client?: string;
+      usedAt?: string;
+    };
+    if (r && j.state === "used") {
+      io.out(
+        `Signed in: ${j.device ?? "a browser"}${j.client ? ` (${j.client})` : ""}` +
+          ` at ${clockTime(j.usedAt ?? new Date().toISOString())}\n`,
+      );
+      return 0;
+    }
+    if (r && j.state === "refused") {
+      io.err("Refused: too many wrong codes; the link no longer works\n");
+      return 1;
+    }
+    if (
+      (r && (j.state === "expired" || r.status === 404)) ||
+      Date.now() > deadline
+    ) {
+      io.err("Expired: nobody used the link\n");
+      return 1;
+    }
+    if (!r) {
+      io.err(
+        `${product().cli}: the server stopped answering; the link can't be used now\n`,
+      );
+      return 1;
+    }
+  }
 }
 
 /**
@@ -1815,6 +1968,125 @@ export async function cmdWebLogout(
   return 0;
 }
 
+// ── SEC-2a: approve this computer with a code (`web approve`) ──────────────
+
+interface WaitingRow {
+  code: string;
+  device: string;
+  client?: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/** "3 min ago" for a list: whole minutes, or "just now". */
+function agoText(iso: string, now = Date.now()): string {
+  const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
+  return s < 60 ? "just now" : `${Math.round(s / 60)} min ago`;
+}
+
+/**
+ * `<cli> web approve <code> | --list [--json]`: let in a computer whose
+ * signed-out page shows `<code>` (case and dashes don't matter), or list
+ * the ones waiting. It asks the running server, with this CLI's bearer:
+ * the requests live in its memory only, so with no server there is
+ * nothing to approve.
+ */
+export async function cmdWebApprove(
+  args: string[],
+  io: CliIo = stdIo,
+): Promise<number> {
+  let port: number;
+  let rest: string[];
+  try {
+    ({ port, rest } = takePort(args));
+  } catch (e) {
+    io.err(`${(e as Error).message}
+`);
+    return 2;
+  }
+  const usage = `Usage: ${product().cli} web approve <code> | --list [--json] [--port <port>]\n`;
+  if (isHelp(rest)) {
+    io.out(
+      usage +
+        "  Lets in the computer whose signed-out page shows <code> (like K7Q-42M; case\n" +
+        "  and dashes don't matter). That page then signs in by itself. A code lasts\n" +
+        "  10 minutes and works once.\n" +
+        "  --list   the computers waiting: code, browser, address, age\n" +
+        "  --json   with --list: as JSON\n",
+    );
+    return 0;
+  }
+  const list = rest.includes("--list");
+  const asJson = rest.includes("--json");
+  const codes = rest.filter((a) => a !== "--list" && a !== "--json");
+  if (
+    codes.some((a) => a.startsWith("-")) ||
+    (list ? codes.length !== 0 : codes.length !== 1 || asJson)
+  ) {
+    io.err(usage);
+    return 2;
+  }
+  const stateDir = io.stateDir ?? getStateDir();
+  const r = list
+    ? await serverCall(stateDir, port, "GET", "/api/web/waiting")
+    : await serverCall(stateDir, port, "POST", "/api/web/approve", {
+        code: codes[0],
+      });
+  if (!r) {
+    io.err(
+      `${product().cli}: no ${product().title} web server answers on port ${port}. ` +
+        "A waiting computer's code lives in the running server: start it " +
+        `(\`${product().cli} web up\`) and reload the page on the other computer.\n`,
+    );
+    return 1;
+  }
+  if (r.status !== 200) {
+    io.err(`${product().cli}: ${apiError(r)}\n`);
+    return 1;
+  }
+  if (list) {
+    const rows = ((r.json as { waiting?: WaitingRow[] }).waiting ?? []).map(
+      (w) => ({ ...w }),
+    );
+    if (asJson) {
+      io.out(`${JSON.stringify(rows, null, 2)}\n`);
+      return 0;
+    }
+    if (rows.length === 0) {
+      io.out("No computers are waiting for approval.\n");
+      return 0;
+    }
+    const table = [
+      ["CODE", "BROWSER", "ADDRESS", "WAITING"],
+      ...rows.map((w) => [
+        w.code,
+        w.device,
+        w.client ?? "",
+        agoText(w.createdAt),
+      ]),
+    ];
+    const widths = table[0].map((_, c) =>
+      Math.max(...table.map((row) => row[c].length)),
+    );
+    for (const row of table)
+      io.out(
+        `${row
+          .map((cell, c) =>
+            c === row.length - 1 ? cell : cell.padEnd(widths[c]),
+          )
+          .join("  ")
+          .trimEnd()}\n`,
+      );
+    return 0;
+  }
+  const w = r.json as WaitingRow;
+  io.out(
+    `Approved: ${w.device}${w.client ? ` (${w.client})` : ""}. ` +
+      "Its page signs in by itself.\n",
+  );
+  return 0;
+}
+
 // ── SEC-2a: the owner (`web owner link`, `show`, `unlink`) ─────────────────
 
 /**
@@ -1934,6 +2206,8 @@ export async function cmdWebOwner(
     return 1;
   }
   const rec = writeWebOwner(outcome.identity, stateDir);
+  if (outcome.expiringToken)
+    io.err(`${product().cli}: warning: ${expiringTokenWarning()}\n`);
   if (asJson) io.out(`${JSON.stringify({ owner: rec }, null, 2)}\n`);
   else
     io.out(

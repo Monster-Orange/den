@@ -652,6 +652,7 @@ export const AGENT_FORBIDDEN: readonly string[] = [
   // web.secret's management and the browser sign-in: an agent mints nothing.
   "/api/web/*",
   "/api/github/*",
+  "/api/signin/*",
   "/auth",
   "/signin",
   "/api/session/logout",
