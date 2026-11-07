@@ -58,7 +58,7 @@ setup. `doctor` warns about polling loops it sees in the local dev metrics.
   `{ path: <dir>, hooks: true, instructions: true }`. A persona's
   `den_hooks` / `den_instructions` front matter wins over its pack's.
 
-## [0.4.6] - unreleased
+## [0.4.6] - 2026-11-07
 
 Den in five minutes, set up by your own agent (ON-2, with ON-4's dry run).
 A developer pastes one line into their agent, and every command the agent
