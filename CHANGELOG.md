@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.4] - unreleased
+## [0.4.4] - 2026-11-07
 
 The admin password is for sudo, and nothing else (LK-0). An agent's
 terminal uses its pane's width, and Den knows Codex, Gemini and Grok as
