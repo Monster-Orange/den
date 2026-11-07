@@ -47,6 +47,11 @@ describe("vendorAssetFile", () => {
       ["/vendor/xterm.mjs", "@xterm/xterm/lib/xterm.mjs"],
       ["/vendor/xterm.css", "@xterm/xterm/css/xterm.css"],
       ["/vendor/addon-fit.mjs", "@xterm/addon-fit/lib/addon-fit.mjs"],
+      // AG-4b: plain URLs in a pane are links.
+      [
+        "/vendor/addon-web-links.mjs",
+        "@xterm/addon-web-links/lib/addon-web-links.mjs",
+      ],
     ]) {
       expect(VENDOR_ASSETS[url]).toBe(rel);
       expect(vendorAssetFile(url)).not.toBeNull();
@@ -57,7 +62,14 @@ describe("vendorAssetFile", () => {
     // Pinned, exact: the served bytes change only with Den itself.
     expect(pkg.dependencies["@xterm/xterm"]).toMatch(/^\d+\.\d+\.\d+$/);
     expect(pkg.dependencies["@xterm/addon-fit"]).toMatch(/^\d+\.\d+\.\d+$/);
-    for (const name of ["@xterm/xterm", "@xterm/addon-fit"])
+    expect(pkg.dependencies["@xterm/addon-web-links"]).toMatch(
+      /^\d+\.\d+\.\d+$/,
+    );
+    for (const name of [
+      "@xterm/xterm",
+      "@xterm/addon-fit",
+      "@xterm/addon-web-links",
+    ])
       expect(
         (
           JSON.parse(

@@ -2136,7 +2136,10 @@ agent of the workspaces in view, and their terminals in the browser.
   holds the open panes (`/agents?open=<id>,<id>`), so a link, a reload or
   Back reopens them. The list and the panes fill the window down to the
   runs dock.
-- **Layouts.** The switch in the page header picks one, or ⌘1, ⌘2, ⌘3:
+- **Layouts.** The switch in the page header picks one, or ⌃⇧1, ⌃⇧2, ⌃⇧3
+  (Ctrl+Shift+1/2/3 on every OS; ⌘1-9 and Ctrl+1-9 stay the browser's, for
+  its tabs), or ⌘K "Layout: Focus", "Layout: Tabs", "Layout: Tile". Inside
+  a terminal those keys switch the layout and never reach the agent:
   - **Focus** (the default) shows one pane. A click replaces it;
     Shift-click or ⌘-click adds one alongside.
   - **Tabs** shows one pane under a strip of tabs. Each tab has the
@@ -2164,6 +2167,40 @@ agent of the workspaces in view, and their terminals in the browser.
   `/agents?start=1`) starts one and opens its pane; under All it asks for
   the workspace. It says before Start whether the runtime can run, as the
   Workspaces page's form does. It never asks for the admin password.
+- **Shift+Enter** adds a soft newline instead of submitting. It sends the
+  runtime's `softNewline` from the runtime catalog: `esc-cr` (ESC CR, the
+  default; Claude Code and Gemini CLI), `lf` (Ctrl+J; Codex CLI) or `none`
+  (Enter itself). A plain session's Shift+Enter is Enter. A catalog entry
+  a distribution or `user.yml` adds may set `softNewline`.
+- **The session's name.** A runtime may name its conversation: Claude
+  Code's `/rename` writes a `custom-title` record to its transcript, and
+  Den reads the latest one (the catalog marks this source `unofficial`:
+  the format is undocumented, so a name that can't be read is simply
+  none). It reads on from where it last stopped, never the whole file at
+  once. The most recent rename wins, Den's (a tab's) or the runtime's. The
+  pane header adds ` · <name>` after the runtime, and the tab, the list and
+  ⌘K add it too, when it is not empty and says more than the agent's own
+  name or persona. `GET /api/sessions`, `agents list --json` and the start
+  and resume answers (MCP `agent_resume`) carry it as `sessionName`.
+  Codex CLI, Gemini CLI and Grok Build have no name of their own yet. A
+  catalog entry's `titleFromOsc: true` marks a runtime whose terminal
+  title (OSC 0/2) names the session; no built-in runtime sets it, and the
+  session host doesn't read titles yet.
+- **Links.** A URL in a pane, and an OSC 8 hyperlink, open on ⌘-click
+  (Ctrl-click on Windows and Linux) in a new tab, with `noopener`. Only
+  `http:` and `https:` open; an OSC 8 link with any other scheme
+  (`javascript:`, `file:`) is no link. A plain click selects text as
+  ever. A file path an agent prints (`src/foo.ts:42`, `./a/b.js:3:7`, an
+  absolute path) is a link when it exists inside the agent's workspace
+  (its directory, or the agent's own folder), resolved against the
+  agent's folder; one outside it never is. The server checks with `GET
+/api/workspaces/<ws>/agents/<id>/paths?p=<path>&p=…` (stat only, nothing
+  is read; at most 64 at once), which answers each path's absolute path
+  or null. ⌘-click opens it in the editor of Settings › Editor & terminal ›
+  "Open file links in" (`editor_open` in `config/local/user.yml` and
+  `/api/settings`: `vscode`, `cursor` or `zed`, by its URL scheme at the
+  line), or, with `none` (the default), copies its absolute path and says
+  "Copied".
 - ⌘K lists each as "Agents › <ws> / <name>", and "Start agent…".
 - Several browsers and `<cli> sessions attach` can attach to one session
   at once and each sees every byte; the terminal's size is the last
@@ -2649,6 +2686,10 @@ agents:
       dirs: [~/.local/bin, $AIDER_DIR, "{system}"]
       launch:
         argv: ["{bin}"] # "{bin}" first: the path found
+      # Optional, how it behaves in an Agents tab pane (AG-4b):
+      softNewline: esc-cr # what Shift+Enter sends: esc-cr (default), lf, none
+      titleFromOsc: false # its terminal title (OSC 0/2) names the session
+      # sessionName: official | unofficial  (built-in adapters only)
 ```
 
 **Where a runtime's CLI is found.** As your terminal would find it, not

@@ -71,6 +71,7 @@ import {
   type CatalogEntry,
 } from "../../shared/agents/catalog.js";
 import { checkRuntimeBin } from "../../shared/agents/catalog-runtime.js";
+import { agentSessionName } from "../../shared/agents/session-name.js";
 import { cliEntrypoint } from "../../shared/engine.js";
 import { getDistRoot } from "../../shared/paths.js";
 import { envKey } from "../../shared/product.js";
@@ -358,6 +359,11 @@ export interface AgentRow {
   agent: string;
   /** The name a person gave it (AG-4b), when one did. */
   displayName?: string;
+  /**
+   * Its session's name (AG-4b): the latest of Den's rename and the
+   * runtime's own (Claude Code's /rename), when there is one.
+   */
+  sessionName?: string;
   persona?: string;
   runtime?: string;
   model?: string;
@@ -463,9 +469,11 @@ export function agentRows(
       isStoppedState(st) && !resumable
         ? (resumeRefusal(rec) ?? (rot?.ready ? rotatedRefusal(rec, rot) : null))
         : null;
+    const named = stateDir ? agentSessionName(rec, stateDir) : undefined;
     return {
       agent: rec.id,
       ...recordFields(rec),
+      ...(named ? { sessionName: named } : {}),
       state: st,
       startedAt: s?.startedAt ?? rec.startedAt,
       resumable,
@@ -1178,6 +1186,9 @@ export async function startAgent(
           // AG-4b: a name given to the agent is the agent's, not its
           // conversation's: Start fresh and Relaunch keep it.
           ...(prev?.displayName ? { displayName: prev.displayName } : {}),
+          ...(prev?.displayName && prev.displayNameAt
+            ? { displayNameAt: prev.displayNameAt }
+            : {}),
           // 0.4.8: launched on this token, so a resume continues it.
           ...(out.resumeToken
             ? { resumeToken: out.resumeToken, launched: true }
@@ -1238,8 +1249,14 @@ export function renameAgent(
     throw usage((e as Error).message);
   }
   const next: AgentRecord = { ...rec };
-  if (checked) next.displayName = checked;
-  else delete next.displayName;
+  if (checked) {
+    next.displayName = checked;
+    // AG-4b: the latest rename wins, Den's or the runtime's.
+    next.displayNameAt = new Date().toISOString();
+  } else {
+    delete next.displayName;
+    delete next.displayNameAt;
+  }
   writeRecord(d.stateDir(), next);
   return next;
 }

@@ -17,6 +17,7 @@ import {
   type StrategyEntry,
 } from "../strategies/registry.js";
 import type { CatalogEntry } from "./catalog.js";
+import type { AgentRecord } from "./records.js";
 import type { Persona } from "./personas.js";
 import type { BinSource, RuntimeFind } from "./runtime-search.js";
 
@@ -157,6 +158,13 @@ export interface Runtime {
    * conversation's id is taken. Den then tries the other way, once.
    */
   launchFailures?: { noConversation?: RegExp; idInUse?: RegExp };
+  /**
+   * The name the runtime gives the agent's conversation (AG-4b: Claude
+   * Code's `/rename`), or null when it has none or can't say. Optional:
+   * a runtime without it has Den's rename only. Must be quick and never
+   * throw; its catalog entry's `sessionName` says how stable its source is.
+   */
+  sessionName?(rec: AgentRecord, env?: NodeJS.ProcessEnv): string | null;
   /** Where permission prompts surface (Q-AG-2). */
   approvals?: "terminal" | "hook";
   /**

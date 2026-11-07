@@ -877,6 +877,8 @@ function followScopeInUrl(value) {
 async function _switchScope(value, focus, inView) {
   if (value !== "all" && value !== focus && !(await _setFocus(value))) return;
   if (inView) {
+    // A ?ws= page shows the pick after the reload, not its old ?ws=.
+    followScopeInUrl(value);
     location.reload();
     return;
   }

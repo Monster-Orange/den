@@ -36,6 +36,8 @@ export const UI_MODULES: readonly string[] = [
   "/agents-page.js",
   // The Start agent form's choices, shared by both (AG-10.0).
   "/agent-start.js",
+  // AG-4b: the panes' keys and links (Shift+Enter, ⌃⇧1-3, paths).
+  "/term-input.js",
   // SEC-2a: Pair a device's QR code (a tiny encoder of Den's own).
   "/qr.js",
   // The UI's catalogs other than English (R19; en is in shell.js).
@@ -51,6 +53,9 @@ export const VENDOR_ASSETS: Readonly<Record<string, string>> = {
   "/vendor/xterm.mjs": "@xterm/xterm/lib/xterm.mjs",
   "/vendor/xterm.css": "@xterm/xterm/css/xterm.css",
   "/vendor/addon-fit.mjs": "@xterm/addon-fit/lib/addon-fit.mjs",
+  // AG-4b: plain URLs in a pane are links (⌘- or Ctrl-click opens them).
+  "/vendor/addon-web-links.mjs":
+    "@xterm/addon-web-links/lib/addon-web-links.mjs",
 };
 
 /** The installed file for a vendored URL path, or null. */

@@ -733,3 +733,67 @@ describe("POST /api/workspaces/<ws>/agents/<id>/name (AG-4b: a tab's name)", () 
     expect((await rows(a, "north"))[0]).not.toHaveProperty("displayName");
   });
 });
+
+describe("GET /api/workspaces/<ws>/agents/<id>/paths (AG-4b: path links)", () => {
+  const paths = (a: Api, ws: string, id: string, ps: string[], h = {}) =>
+    a.call(
+      "GET",
+      `/api/workspaces/${ws}/agents/${id}/paths?${ps.map((p) => `p=${encodeURIComponent(p)}`).join("&")}`,
+      undefined,
+      h,
+    );
+
+  it("says which paths exist inside the agent's workspace, resolved against its cwd; never one outside it; reads nothing", async () => {
+    const a = await api();
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    const ws = fs.realpathSync(a.r.wsDir("north"));
+    fs.mkdirSync(path.join(ws, "src"), { recursive: true });
+    fs.writeFileSync(path.join(ws, "src", "x.ts"), "secret contents\n");
+    fs.mkdirSync(path.join(a.r.dir, "elsewhere"), { recursive: true });
+    fs.writeFileSync(path.join(a.r.dir, "elsewhere", "y.ts"), "y\n");
+    // A link inside that leads out of the workspace is outside.
+    fs.symlinkSync(path.join(a.r.dir, "elsewhere"), path.join(ws, "out"));
+    const r = await paths(a, "north", "planner", [
+      "src/x.ts",
+      "./src/x.ts",
+      path.join(ws, "src", "x.ts"),
+      "src/missing.ts",
+      "../../elsewhere/y.ts",
+      path.join(a.r.dir, "elsewhere", "y.ts"),
+      "out/y.ts",
+      "/etc/hosts",
+      "src",
+    ]);
+    expect(r.status).toBe(200);
+    const abs = path.join(ws, "src", "x.ts");
+    expect(r.json.paths).toEqual({
+      "src/x.ts": abs,
+      "./src/x.ts": abs,
+      [abs]: abs,
+      "src/missing.ts": null,
+      "../../elsewhere/y.ts": null,
+      [path.join(a.r.dir, "elsewhere", "y.ts")]: null,
+      "out/y.ts": null,
+      "/etc/hosts": null,
+      // A directory is a path too.
+      src: path.join(ws, "src"),
+    });
+    // Nothing of the file is in the answer.
+    expect(JSON.stringify(r.json)).not.toContain("secret contents");
+  });
+
+  it("refuses another workspace's agent (404), too many paths (400), a POST (405)", async () => {
+    const a = await api();
+    await start(a, "north", { persona: "planner" });
+    expect((await paths(a, "south", "planner", ["src/x.ts"])).status).toBe(404);
+    const many = Array.from({ length: 65 }, (_, i) => `f${i}.ts`);
+    const big = await paths(a, "north", "planner", many);
+    expect(big.status).toBe(400);
+    expectR26(big.json);
+    const post = await a.call(
+      "POST",
+      "/api/workspaces/north/agents/planner/paths",
+    );
+    expect(post.status).toBe(405);
+  });
+});

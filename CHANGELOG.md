@@ -9,7 +9,9 @@ config and manifest changes a distribution must make to move to it under
 ### Added
 
 - **Agents tab layouts.** A switch in the page header picks Focus, Tabs or
-  Tile, and so do ⌘1, ⌘2 and ⌘3. Focus, the default, shows one pane: a
+  Tile, and so do ⌃⇧1, ⌃⇧2 and ⌃⇧3 (Ctrl+Shift+digit on every OS) and ⌘K
+  "Layout: Focus/Tabs/Tile". ⌘1-9 and Ctrl+1-9 stay the browser's, for its
+  tabs; inside a terminal the layout keys never reach the agent. Focus, the default, shows one pane: a
   click replaces it, and Shift-click or ⌘-click adds one alongside. Tabs
   shows one pane under a strip of tabs. Tile is a grid: one pane fills
   it, two sit side by side, three or four make a 2×2. At phone width,
@@ -23,12 +25,39 @@ config and manifest changes a distribution must make to move to it under
   the list, its pane, ⌘K, the Workspaces page and `agents list --json`.
   Start fresh and Relaunch keep it. The id never changes. The route is
   `POST /api/workspaces/<ws>/agents/<id>/name`.
+- **Shift+Enter is a soft newline in agent terminals.** It sends the
+  runtime's `softNewline` from the runtime catalog, not Enter: ESC CR for
+  Claude Code and Gemini CLI (and by default), Ctrl+J for Codex CLI. A
+  plain session's Shift+Enter is still Enter. Catalog entries may set
+  `softNewline: esc-cr | lf | none`.
+- **The session's name in the pane header.** Claude Code's `/rename` shows
+  after the runtime (` · api spike`), and in the tab, the list and ⌘K. Den
+  reads it from the session's transcript, following the file from where it
+  last stopped (the catalog marks this source `unofficial`; a name it
+  can't read is none). The most recent rename wins, Den's or the
+  runtime's. `GET /api/sessions`, `agents list --json` and the start and
+  resume answers carry it as `sessionName`. Catalog entries may set
+  `titleFromOsc` (no runtime does yet, and the session host doesn't read
+  titles yet).
+- **Links and paths in agent panes are clickable.** ⌘-click (Ctrl-click on
+  Windows and Linux) opens a URL or an OSC 8 link in a new tab
+  (`noopener`), http and https only; a plain click still selects. A file
+  path inside the agent's workspace (`src/foo.ts:42`, absolute paths) is
+  a link: ⌘-click opens it in the editor set in Settings › Editor &
+  terminal › "Open file links in" (`editor_open`: vscode, cursor, zed, or
+  none to copy the path, the default). The server checks a path exists
+  inside the workspace with `GET /api/workspaces/<ws>/agents/<id>/paths`
+  (stat only). Den now ships `@xterm/addon-web-links` 0.12.0, served from
+  `/vendor/`.
 
 ### Changed
 
 - **The Agents tab fills the window.** The list and the panes reach down to
   14px above the runs dock at any window height, with the dock open or
   shut. They used to stop at a fixed guess of the window less 300px.
+- **Re-picking the workspace in view on a page with `?ws=`** (Workspaces'
+  detail pane) now updates `?ws=` before the reload, so the page shows the
+  pick and not the old workspace.
 - **Every terminal fits its pane.** A terminal used to be sized for its
   pane's padding as well, so its last row could be cut off. It now fits
   the space inside the padding, in every layout, and refits when the
@@ -36,8 +65,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
-None. The record's new `displayName` is optional: records without one
-read as before. The layout pref is optional and defaults to Focus.
+None. The record's new `displayName` and `displayNameAt` are optional:
+records without them read as before. The layout pref is optional and
+defaults to Focus; `editor_open` is optional and defaults to none. The
+catalog's new `softNewline`, `sessionName` and `titleFromOsc` are
+optional.
 
 ## [0.4.11] - 2026-11-07
 

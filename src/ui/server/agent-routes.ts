@@ -27,6 +27,10 @@
  *                                                 name its tab and the lists
  *                                                 show (AG-4b); the id never
  *                                                 changes; null or "" clears
+ *   GET  /api/workspaces/<ws>/agents/<id>/paths?p=…  which printed paths are
+ *                                                 links (AG-4b): inside its
+ *                                                 workspace and there (stat
+ *                                                 only; agent-paths.ts)
  *   POST /api/workspaces/<ws>/agents/<id>/remove  forget a stopped one (Undo:
  *                                                 /api/agents/restore)
  *   POST /api/agents/clear-stopped                { workspaces: [...] }: forget
@@ -93,7 +97,9 @@ import {
   type AgentsResolved,
   type Started,
 } from "../cli/agent-ops.js";
+import { agentSessionName } from "../../shared/agents/session-name.js";
 import { recordAction } from "./audit.js";
+import { agentPathLinks, MAX_PATHS } from "./agent-paths.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -109,7 +115,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths))?$/;
 
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 /** A start's body is a few short names. */
@@ -168,10 +174,19 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
   throw e;
 }
 
+function sessionNameOf(
+  rec: Started["rec"],
+  d: AgentsResolved,
+): { sessionName?: string } {
+  const n = agentSessionName(rec, d.stateDir());
+  return n ? { sessionName: n } : {};
+}
+
 /** A started or resumed agent's answer: its record, or its early exit. */
 function sendStarted(
   res: http.ServerResponse,
   s: Started & { fresh?: boolean },
+  d: AgentsResolved,
 ): void {
   if (s.early) {
     const code =
@@ -203,6 +218,9 @@ function sendStarted(
       sessionId: s.info.ref.id,
       startedAt: s.rec.startedAt,
       ...(s.rec.displayName ? { displayName: s.rec.displayName } : {}),
+      // AG-4b: its session's name (Den's rename or the runtime's), as the
+      // lists show it (MCP agent_resume answers with this).
+      ...sessionNameOf(s.rec, d),
     },
     // A resume with nothing to continue yet started fresh (same id).
     ...(s.fresh ? { fresh: true } : {}),
@@ -301,6 +319,7 @@ export async function handleAgentRoutes(
     | "relaunch"
     | "remove"
     | "name"
+    | "paths"
     | undefined;
 
   if (!action && method === "GET") {
@@ -314,6 +333,38 @@ export async function handleAgentRoutes(
         // Asking never starts a session host: with none, nothing runs.
         agents: await listAgents(d, ws, { startHost: false }),
         maxConcurrent: d.maxConcurrent(),
+      });
+    } catch (e) {
+      sendError(res, e, ws);
+    }
+    return true;
+  }
+  // AG-4b: which paths an agent printed are links (read-only: stat only).
+  if (action === "paths") {
+    if (method !== "GET" && method !== "HEAD")
+      return methodNotAllowed(res, "GET");
+    try {
+      const rec = agentRecord(d, id!, ws);
+      const given = new URL(
+        req.url ?? "/",
+        "http://localhost",
+      ).searchParams.getAll("p");
+      if (given.length > MAX_PATHS)
+        throw new AgentError(`at most ${MAX_PATHS} paths at once`, {
+          usage: true,
+        });
+      let wsDir: string | null = null;
+      try {
+        wsDir = d.workspaceDir(ws);
+      } catch {
+        wsDir = null;
+      }
+      sendJson(res, {
+        paths: agentPathLinks(
+          given,
+          rec.cwd,
+          [wsDir, rec.cwd].filter((x): x is string => !!x),
+        ),
       });
     } catch (e) {
       sendError(res, e, ws);
@@ -361,7 +412,7 @@ export async function handleAgentRoutes(
       });
       what = `start ${s.rec.id} (${s.rec.persona}, ${s.rec.runtime}) in ${ws}`;
       audit(what, s.early ? "exited at once" : undefined);
-      sendStarted(res, s);
+      sendStarted(res, s, d);
     } else if (verb === "stop") {
       // The answer comes once the session has ended (200, stopped: true),
       // or, still running after the wait, 202 with stillStopping: true.
@@ -382,12 +433,12 @@ export async function handleAgentRoutes(
       const s = await startFresh(d, id!, ws);
       what = `start ${s.rec.id} fresh (${s.rec.persona}, ${s.rec.runtime}) in ${ws}`;
       audit(what, s.early ? "exited at once" : undefined);
-      sendStarted(res, s);
+      sendStarted(res, s, d);
     } else if (verb === "relaunch") {
       const s = await relaunchAgent(d, id!, ws);
       what = `relaunch ${s.rec.id} from its handoff (${s.why}) in ${ws}`;
       audit(what, s.early ? "exited at once" : undefined);
-      sendStarted(res, s);
+      sendStarted(res, s, d);
     } else if (verb === "name") {
       const body = await jsonBody(req);
       if (!("name" in body))
@@ -408,7 +459,7 @@ export async function handleAgentRoutes(
     } else {
       const s = await resumeAgent(d, id!, ws);
       audit(what);
-      sendStarted(res, s);
+      sendStarted(res, s, d);
     }
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));

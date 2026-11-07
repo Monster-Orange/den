@@ -44,12 +44,26 @@
  * Layouts (AG-4b): Focus (the default: one pane; a click replaces it,
  * Shift- or ⌘-click adds one alongside), Tabs (one pane under a strip of
  * named tabs) or Tile (up to four in a grid: 1 full, 2 side by side, 3-4
- * as 2x2). The page header's switch and ⌘1 / ⌘2 / ⌘3 pick one; it is the
- * person's (POST /api/settings agents_layout) and the URL's (&layout=; a
+ * as 2x2). The page header's switch, ⌃⇧1 / ⌃⇧2 / ⌃⇧3 (Ctrl+Shift+digit
+ * on every OS: ⌘1-9 and Ctrl+1-9 are the browser's tabs) and ⌘K "Layout:
+ * …" pick one; it is the person's (POST /api/settings agents_layout) and the URL's (&layout=; a
  * link's wins for that page and saves nothing). At phone width Focus and
  * Tile are Tabs. Every pane open stays attached; a pane out of sight never
  * resizes its PTY. Double-click a tab to rename the agent: the name is its
  * record's (POST …/agents/<id>/name), shown in the list, the pane, ⌘K.
+ *
+ * The terminal (AG-4b): Shift+Enter sends the runtime's soft newline (its
+ * catalog softNewline, from /api/sessions: ESC CR, Codex's Ctrl+J; a
+ * plain session's is Enter) and nothing else. The layout keys never reach
+ * the agent. Links: plain URLs (addon-web-links) and OSC 8 links open on
+ * ⌘-click (Ctrl-click elsewhere) in a new tab with noopener, http and
+ * https only; a plain click selects as ever. A file path is a link when
+ * the server says it exists inside the agent's workspace (GET …/paths,
+ * stat only): ⌘-click opens it in Settings' editor_open (vscode, cursor,
+ * zed, by URL scheme, at the line), or, with none (the default), copies
+ * its absolute path. The session's name (its runtime's /rename, or Den's
+ * rename, whichever is later) follows the runtime in the pane header and
+ * the persona in its tab, when it says more than the agent's own name.
  *
  * Session rotation (den#4): an agent whose session rotated (after
  * agents.rotate.after_compactions compactions, or its pull request merged)
@@ -61,6 +75,14 @@
  * as a tag.
  */
 import { fillStartForm } from "/agent-start.js";
+import {
+  editorUrl,
+  findPaths,
+  isWebUrl,
+  layoutKeyIndex,
+  linkModifier,
+  softNewlineKey,
+} from "/term-input.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -80,7 +102,7 @@ export const UNDO_MS = 10_000;
 /** The most panes at once (the prototype's 2x2). */
 export const MAX_PANES = 4;
 
-/** The layouts (AG-4b), in the switch's order (⌘1, ⌘2, ⌘3). */
+/** The layouts (AG-4b), in the switch's order (⌃⇧1, ⌃⇧2, ⌃⇧3). */
 export const LAYOUTS = ["focus", "tabs", "tile"];
 /** At or below this width Focus and Tile are Tabs (the shell's phone width). */
 const PHONE = "(max-width: 720px)";
@@ -105,6 +127,8 @@ const st = {
   layout: "focus",
   cur: null,
   side: new Set(),
+  // AG-4b: where a path link opens (Settings editor_open).
+  editorOpen: "none",
 };
 
 /** ?layout=, when it names one; else null. */
@@ -201,9 +225,25 @@ function displayName(r) {
  * id; else its persona, then its id (when they differ).
  */
 function nameHtml(r) {
+  const extra = sessionExtra(r);
   if (r.displayName)
-    return `${esc(r.displayName)} <span class="id">${esc([r.persona, r.label].filter(Boolean).join(" · "))}</span>`;
-  return `${esc(displayName(r))}${r.persona && r.persona !== r.label ? ` <span class="id">${esc(r.label)}</span>` : ""}`;
+    return `${esc(r.displayName)} <span class="id">${esc([r.persona, r.label, extra].filter(Boolean).join(" · "))}</span>`;
+  const id = [r.persona && r.persona !== r.label ? r.label : "", extra]
+    .filter(Boolean)
+    .join(" · ");
+  return `${esc(displayName(r))}${id ? ` <span class="id">${esc(id)}</span>` : ""}`;
+}
+
+/**
+ * The session's name (AG-4b: the runtime's /rename or Den's, the later),
+ * where it says more than the agent's own name: not empty, not the
+ * persona, not the name already shown. Else "".
+ */
+function sessionExtra(r) {
+  const n = r?.kind === "agent" ? (r.sessionName ?? "").trim() : "";
+  if (!n || n === r.persona || n === paneName(r) || n === displayName(r))
+    return "";
+  return n;
 }
 
 // A pane's title and its Close: the agent's display name (AG-10.8), else
@@ -419,7 +459,7 @@ function paintList() {
   el.innerHTML =
     notes.join("") +
     body +
-    `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))}</div>`;
+    `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))} ${esc(t("ag.hint.keys"))}</div>`;
   const clear = st.root.querySelector("#ag-clear");
   if (clear) clear.hidden = !visibleRows().some(isStopped);
   // No such workspace: nothing to start an agent in.
@@ -447,11 +487,15 @@ function paintSub() {
   if (url) url.textContent = location.pathname + location.search;
 }
 
-/** The person's layout (GET /api/settings agents_layout), else Focus. */
+/**
+ * The person's layout (GET /api/settings agents_layout), else Focus; and
+ * where a path link opens (editor_open), else none.
+ */
 async function savedLayout() {
   try {
     const r = await fetch("/api/settings", { headers: { accept: "json" } });
     const b = r.ok ? await r.json() : null;
+    if (typeof b?.editor_open === "string") st.editorOpen = b.editor_open;
     return LAYOUTS.includes(b?.agents_layout) ? b.agents_layout : "focus";
   } catch {
     return "focus";
@@ -512,7 +556,12 @@ async function loadXterm() {
   st.xterm ??= Promise.all([
     import("/vendor/xterm.mjs"),
     import("/vendor/addon-fit.mjs"),
-  ]).then(([x, f]) => ({ Terminal: x.Terminal, FitAddon: f.FitAddon }));
+    import("/vendor/addon-web-links.mjs"),
+  ]).then(([x, f, w]) => ({
+    Terminal: x.Terminal,
+    FitAddon: f.FitAddon,
+    WebLinksAddon: w.WebLinksAddon,
+  }));
   return st.xterm;
 }
 
@@ -563,7 +612,7 @@ function tabWords(id) {
     };
   return {
     name: paneName(r),
-    meta: [r.persona, r.workspace].filter(Boolean).join(" · "),
+    meta: [r.persona, r.workspace, sessionExtra(r)].filter(Boolean).join(" · "),
   };
 }
 
@@ -775,8 +824,9 @@ function paintBar(p) {
   const r = rowOf(p.id);
   const bar = p.el.querySelector(".bar2");
   const name = r ? paneName(r) : p.label || p.id;
+  // AG-4b: the session's name last, when it says more.
   const where = r
-    ? [r.workspace, r.runtime].filter(Boolean).join(" · ")
+    ? [r.workspace, r.runtime, sessionExtra(r)].filter(Boolean).join(" · ")
     : p.workspace || "";
   const tone = r ? stateTone(r) : p.exited ? "off" : "pending";
   const stop =
@@ -972,6 +1022,105 @@ async function connect(p) {
   };
 }
 
+// ── links and keys in a pane (AG-4b) ───────────────────────────────────
+
+/** What Shift+Enter sends to a pane's session (a plain session: Enter). */
+function softNewlineOf(id) {
+  const seq = rowOf(id)?.softNewline;
+  return typeof seq === "string" && seq ? seq : "\r";
+}
+
+/**
+ * A URL or an OSC 8 link clicked: with ⌘ (Ctrl elsewhere), an http or
+ * https one opens in a new tab, noopener. A plain click opens nothing
+ * (it selects); every other scheme (javascript:, data:, file:) nothing.
+ */
+function openWeb(e, uri) {
+  if (!linkModifier(e) || !isWebUrl(uri)) return;
+  e?.preventDefault?.();
+  window.open(uri, "_blank", "noopener");
+}
+
+/** The most paths asked about at once (agent-paths.ts MAX_PATHS). */
+const MAX_ASK = 64;
+
+/**
+ * Which of `paths` are links for agent row `r`: absolute path or null,
+ * each asked once per pane (GET …/agents/<id>/paths: the server resolves
+ * them against its cwd, inside its workspace; stat only).
+ */
+async function pathLinks(p, r, paths) {
+  p.paths ??= new Map();
+  const ask = [...new Set(paths)].filter((x) => !p.paths.has(x));
+  for (let i = 0; i < ask.length; i += MAX_ASK) {
+    const batch = ask.slice(i, i + MAX_ASK);
+    const q = batch.map((x) => `p=${encodeURIComponent(x)}`).join("&");
+    const got = fetch(`${agentPath(r, "paths")}?${q}`, {
+      headers: { accept: "json" },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null);
+    for (const x of batch)
+      p.paths.set(
+        x,
+        got.then((b) => {
+          const v = b?.paths?.[x];
+          return typeof v === "string" ? v : null;
+        }),
+      );
+  }
+  const out = new Map();
+  for (const x of paths) out.set(x, await p.paths.get(x));
+  return out;
+}
+
+/** xterm asks for line `y`'s links (1-based): its paths that exist. */
+async function providePathLinks(p, y, done) {
+  try {
+    const r = rowOf(p.id);
+    const line = p.term?.buffer.active.getLine(y - 1)?.translateToString(true);
+    if (r?.kind !== "agent" || !r.agent || !line) return done(undefined);
+    const found = findPaths(line);
+    if (!found.length) return done(undefined);
+    const abs = await pathLinks(
+      p,
+      r,
+      found.map((m) => m.path),
+    );
+    const links = found
+      .filter((m) => abs.get(m.path))
+      .map((m) => ({
+        text: m.text,
+        range: { start: { x: m.start + 1, y }, end: { x: m.end, y } },
+        decorations: { pointerCursor: true, underline: true },
+        activate: (e) => void openPath(e, abs.get(m.path), m.line, m.col),
+      }));
+    done(links.length ? links : undefined);
+  } catch {
+    done(undefined);
+  }
+}
+
+/**
+ * A path link clicked: with ⌘ (Ctrl elsewhere), the editor in Settings
+ * (editor_open) at the line, by its URL scheme; none copies the path.
+ */
+async function openPath(e, abs, line, col) {
+  if (!linkModifier(e) || !abs) return;
+  e?.preventDefault?.();
+  const url = editorUrl(st.editorOpen, abs, line, col);
+  if (url) {
+    window.open(url, "_self");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(abs);
+    window.denShell?.toast?.(t("ag.copied"));
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+  }
+}
+
 async function openPane(id, { front = true } = {}) {
   if (st.panes.has(id)) {
     st.panes.get(id).term?.focus();
@@ -1026,18 +1175,50 @@ async function openPane(id, { front = true } = {}) {
     scrollback: 5000,
     theme: termTheme(),
     allowProposedApi: false,
+    // OSC 8 links (AG-4b): ⌘/Ctrl-click, http and https only, no confirm.
+    linkHandler: {
+      activate: (e, uri) => void openWeb(e, uri),
+      allowNonHttpProtocols: false,
+    },
   });
   const fit = new lib.FitAddon();
   term.loadAddon(fit);
+  // Plain URLs (AG-4b): the same rule as OSC 8.
+  term.loadAddon(new lib.WebLinksAddon((e, uri) => void openWeb(e, uri)));
   term.open(el.querySelector(".term .tbox"));
   p.term = term;
   p.fit = fit;
   const enc = new TextEncoder();
-  term.onData((d) => {
+  const typeIn = (d) => {
     if (p.sock?.readyState !== WebSocket.OPEN) return;
     // The one typing wins: another viewer resized the PTY since.
     if (outOfStep(p)) claimSize(p);
     p.sock.send(enc.encode(d));
+  };
+  term.onData(typeIn);
+  // AG-4b: Shift+Enter is the runtime's soft newline, never a CR; the
+  // layout keys (⌃⇧1-3) are the page's, never the agent's.
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.ctrlKey && e.shiftKey && /^Digit[123]$/.test(e.code ?? ""))
+      return false;
+    if (
+      e.key === "Enter" &&
+      e.shiftKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.metaKey
+    ) {
+      if (e.isComposing) return true;
+      e.preventDefault();
+      if (softNewlineKey(e)) typeIn(softNewlineOf(id));
+      return false;
+    }
+    return true;
+  });
+  // File paths (AG-4b): links only where the server says they exist in
+  // the agent's workspace.
+  term.registerLinkProvider({
+    provideLinks: (y, done) => void providePathLinks(p, y, done),
   });
   term.onResize(() => sendSize(p));
   // Focused (a click, the window coming back): this pane's size.
@@ -1418,7 +1599,7 @@ function translateStatic(root) {
     b.textContent = t(`ag.l.${b.dataset.layout}`);
     b.title = t("ag.l.tip", {
       name: b.textContent,
-      key: `⌘${LAYOUTS.indexOf(b.dataset.layout) + 1}`,
+      key: `⌃⇧${LAYOUTS.indexOf(b.dataset.layout) + 1}`,
     });
   }
   root
@@ -1526,12 +1707,13 @@ export async function mountAgentsPage(root) {
     attributeFilter: ["data-mode", "data-theme", "class"],
   });
   if (!st.docWired) wireDocument();
-  // ⌘1 / ⌘2 / ⌘3 (Ctrl elsewhere): the layouts, even from a terminal.
+  // ⌃⇧1 / ⌃⇧2 / ⌃⇧3 on every OS: the layouts, even from a terminal (whose
+  // key handler never passes them to the agent). ⌘1-9 and Ctrl+1-9 are
+  // the browser's (its tabs): the page leaves them alone.
   document.addEventListener(
     "keydown",
     (e) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
-      const i = ["1", "2", "3"].indexOf(e.key);
+      const i = layoutKeyIndex(e);
       if (i < 0 || st.root.querySelector("#ag-dlg")?.open) return;
       e.preventDefault();
       e.stopPropagation();
@@ -1539,6 +1721,14 @@ export async function mountAgentsPage(root) {
     },
     true,
   );
+  // ⌘K: "Layout: Focus", "Layout: Tabs", "Layout: Tile".
+  for (const l of LAYOUTS)
+    window.denShell?.registerCommand?.({
+      id: `agents-layout:${l}`,
+      label: () => t("ag.pal.layout", { name: t(`ag.l.${l}`) }),
+      keywords: ["layout", "agents", l, t(`ag.l.${l}`)],
+      run: () => setLayout(l),
+    });
   // The phone width comes and goes: Tabs there, the person's layout here.
   window.matchMedia?.(PHONE).addEventListener?.("change", () => {
     paintLayout();

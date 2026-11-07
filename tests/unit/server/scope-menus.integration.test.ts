@@ -362,6 +362,27 @@ describe("Workspace ▾ (R4)", () => {
     await post("/api/workspaces", { name: "ws-a", action: "focus" });
     await post("/api/scope", { scope: "all" });
   }, 60_000);
+
+  it("re-picking the workspace in view on a ?ws= page follows the pick too (the reload shows ?ws=<pick>)", async () => {
+    if (!browser) return;
+    await post("/api/scope", { scope: "ws-b" });
+    await post("/api/workspaces", { name: "ws-a", action: "focus" });
+    const { p, writes } = await open("/local-dev?ws=ws-a");
+    await p.waitForSelector("#ws-pill:not([hidden])");
+    await p.click("#ws-pill");
+    await Promise.all([
+      p.waitForNavigation(),
+      p.click('.den-pop .den-mi:has-text("ws-b")'),
+    ]);
+    // In view already: the CLI default only.
+    expect(writes).toEqual([
+      'POST /api/workspaces {"name":"ws-b","action":"focus"}',
+    ]);
+    expect(new URL(p.url()).searchParams.get("ws")).toBe("ws-b");
+    await p.context().close();
+    await post("/api/workspaces", { name: "ws-a", action: "focus" });
+    await post("/api/scope", { scope: "all" });
+  }, 60_000);
 });
 
 describe("pins (a consumer's dev.17 run)", () => {

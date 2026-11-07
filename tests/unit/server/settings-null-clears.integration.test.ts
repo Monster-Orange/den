@@ -182,4 +182,30 @@ describe("POST /api/settings: null clears a pref (0.3.0-dev.32)", () => {
     expect((await post({ agents_layout: null })).status).toBe(200);
     expect(bytes().equals(before)).toBe(true);
   });
+
+  it("editor_open (AG-4b): vscode, cursor, zed or none, under editor_open; null clears it (none); anything else is refused", async () => {
+    const before = bytes();
+    const got = async () =>
+      (
+        (await (
+          await fetch(`http://localhost:${port}/api/settings`, {
+            headers: denAuth(path.join(tmp, "home", ".den")),
+          })
+        ).json()) as Record<string, unknown>
+      ).editor_open;
+    expect(await got()).toBe("none");
+    const r = await post({ editor_open: "zed" });
+    expect(r.status).toBe(200);
+    expect(JSON.parse(r.text).editor_open).toBe("zed");
+    expect(bytes().toString()).toMatch(/^editor_open: zed$/m);
+    expect(await got()).toBe("zed");
+    const bad = await post({ editor_open: "emacs" });
+    expect(bad.status).toBe(400);
+    expect(JSON.parse(bad.text).error).toContain(
+      '"vscode", "cursor", "zed", "none"',
+    );
+    expect((await post({ editor_open: null })).status).toBe(200);
+    expect(bytes().equals(before)).toBe(true);
+    expect(await got()).toBe("none");
+  });
 });

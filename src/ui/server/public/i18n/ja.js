@@ -316,6 +316,7 @@
     "set.language": "言語",
     "set.appearance.org-theme": "組織の既定テーマ",
     "set.editor": "既定の IDE",
+    "set.editor.open": "ファイルリンクを開くエディター",
     "set.editor_overrides": "言語ごとの IDE",
     "set.terminal": "既定のターミナル",
     "set.shell.pages": "ページ",
@@ -461,6 +462,10 @@
     "ag.l.tabs": "タブ",
     "ag.l.tile": "タイル",
     "ag.l.tip": "{name}（{key}）",
+    "ag.hint.keys":
+      "⌃⇧1 / ⌃⇧2 / ⌃⇧3 でレイアウトを切り替えます。⌘ クリック（Ctrl クリック）でリンクやパスを開きます。",
+    "ag.pal.layout": "レイアウト: {name}",
+    "ag.copied": "コピーしました",
     "ag.tabs": "開いているセッション",
     "ag.hint.focus":
       "クリックで 1 つのセッションを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",

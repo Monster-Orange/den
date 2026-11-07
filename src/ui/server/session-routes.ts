@@ -43,6 +43,8 @@ import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { revokedAgentIds } from "../../shared/actor-token.js";
 import { listRecords } from "../../shared/agents/records.js";
+import { softNewlineSeq } from "../../shared/agents/catalog.js";
+import { getRuntime } from "../../shared/agents/runtimes.js";
 import type { RotationInfo } from "../../shared/agents/rotation.js";
 import {
   connectHost,
@@ -134,6 +136,16 @@ export interface ListedSession {
   agent?: string;
   /** The name a person gave the agent (AG-4b), when one did. */
   displayName?: string;
+  /**
+   * Its session's name (AG-4b): the latest of Den's rename and the
+   * runtime's (Claude Code's /rename), when there is one.
+   */
+  sessionName?: string;
+  /**
+   * What Shift+Enter sends to it (AG-4b, its catalog entry's softNewline):
+   * ESC CR unless the runtime says otherwise. A plain session: none (Enter).
+   */
+  softNewline?: string;
   persona?: string;
   runtime?: string;
   model?: string;
@@ -196,6 +208,8 @@ export function listedSessions(
       label: rec.id,
       agent: rec.id,
       ...(rec.displayName ? { displayName: rec.displayName } : {}),
+      ...(r.sessionName ? { sessionName: r.sessionName } : {}),
+      softNewline: softNewlineSeq(getRuntime(rec.runtime)?.catalog),
       persona: rec.persona,
       runtime: rec.runtime,
       ...(rec.model ? { model: rec.model } : {}),

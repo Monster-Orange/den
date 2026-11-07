@@ -66,6 +66,7 @@ import { builtinEntry } from "./catalog.js";
 import { catalogFind } from "./catalog-runtime.js";
 import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
 import { claudeProjectsDir } from "../usage/paths.js";
+import { transcriptTitle } from "./transcript-follow.js";
 
 export const DEN_CLAUDE_ID = "den-claude";
 const BIN = "claude";
@@ -313,6 +314,31 @@ export function firstPromptArg(text: string | undefined): string[] {
   return [t.startsWith("-") ? `Prompt: ${t}` : t];
 }
 
+const TOKEN_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
+/**
+ * Claude Code's transcript for conversation `token`: <token>.jsonl in any
+ * project under its projects dir, or null (a bad token, none written yet).
+ */
+export function transcriptFile(
+  token: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  if (!token || !TOKEN_RE.test(token)) return null;
+  const root = claudeProjectsDir(env);
+  let projects: string[] = [];
+  try {
+    projects = fs.readdirSync(root);
+  } catch {
+    return null;
+  }
+  for (const p of projects) {
+    const file = path.join(root, p, `${token}.jsonl`);
+    if (fs.existsSync(file)) return file;
+  }
+  return null;
+}
+
 export const denClaude: Runtime = {
   id: DEN_CLAUDE_ID,
   label: DEN_CLAUDE_CATALOG.name,
@@ -355,17 +381,19 @@ export const denClaude: Runtime = {
   },
   // Its transcript, <token>.jsonl in any project under its projects dir.
   conversationExists(token, env = process.env) {
-    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(token)) return false;
-    const root = claudeProjectsDir(env);
-    let projects: string[] = [];
+    return transcriptFile(token, env) !== null;
+  },
+  // AG-4b, unofficial (catalog sessionName): `/rename` appends a
+  // {"type":"custom-title","customTitle":…} record to the transcript; the
+  // latest one, read on from the last ask (never the whole file). Null on
+  // any failure: it must never break a pane.
+  sessionName(rec, env = process.env) {
     try {
-      projects = fs.readdirSync(root);
+      const file = transcriptFile(rec.resumeToken, env);
+      return file ? transcriptTitle(file) : null;
     } catch {
-      return false;
+      return null;
     }
-    return projects.some((p) =>
-      fs.existsSync(path.join(root, p, `${token}.jsonl`)),
-    );
   },
   launchFailures: {
     noConversation: /no conversation found/i,

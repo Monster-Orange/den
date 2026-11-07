@@ -438,6 +438,7 @@
     "set.language": "Language",
     "set.appearance.org-theme": "Org default theme",
     "set.editor": "Default IDE",
+    "set.editor.open": "Open file links in",
     "set.editor_overrides": "Per-language IDE",
     "set.terminal": "Default terminal",
     "set.shell.pages": "Pages",
@@ -592,6 +593,10 @@
     "ag.l.tabs": "Tabs",
     "ag.l.tile": "Tile",
     "ag.l.tip": "{name} ({key})",
+    "ag.hint.keys":
+      "⌃⇧1 / ⌃⇧2 / ⌃⇧3 switch layout. ⌘-click (Ctrl-click) opens a link or path.",
+    "ag.pal.layout": "Layout: {name}",
+    "ag.copied": "Copied",
     "ag.tabs": "Open sessions",
     "ag.hint.focus":
       "Click shows one session. Shift- or ⌘-click adds it alongside.",

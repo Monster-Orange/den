@@ -17,6 +17,18 @@
  *             /usr/local/bin and npm's global bin)
  *   launch    argv: its interactive CLI, "{bin}" first (the path found)
  *
+ * And, optional, how it behaves in a terminal pane (AG-4b):
+ *
+ *   softNewline   what Shift+Enter sends in an Agents tab pane: "esc-cr"
+ *                 (ESC CR, the default), "lf" (Ctrl+J) or "none" (Enter
+ *                 itself: Shift+Enter submits)
+ *   sessionName   where the runtime adapter reads a session's name from:
+ *                 "official" (a documented interface) or "unofficial" (an
+ *                 undocumented file format, read defensively). None: the
+ *                 runtime has no name of its own; Den's rename still works.
+ *   titleFromOsc  the terminal title (OSC 0/2) is a session name. Off by
+ *                 default: many CLIs put a spinner or the cwd there.
+ *
  * Each built-in entry was checked against the vendor's own docs or
  * installer (the URLs beside it). A vendor with no official CLI is left
  * out (docs/distributions.md, Runtimes, says which, and why); nothing is
@@ -38,6 +50,19 @@ export interface CatalogIdentity {
   realpath_under?: string[];
 }
 
+/** What Shift+Enter sends in a pane (AG-4b). */
+export const SOFT_NEWLINES = ["esc-cr", "lf", "none"] as const;
+export type SoftNewline = (typeof SOFT_NEWLINES)[number];
+const SOFT_NEWLINE_SEQ: Record<SoftNewline, string> = {
+  "esc-cr": "\x1b\r",
+  lf: "\n",
+  // none: Shift+Enter is Enter.
+  none: "\r",
+};
+/** How stable a runtime's session-name source is (AG-4b). */
+export const SESSION_NAME_SOURCES = ["official", "unofficial"] as const;
+export type SessionNameSource = (typeof SESSION_NAME_SOURCES)[number];
+
 export interface CatalogEntry {
   id: string;
   vendor: string;
@@ -46,6 +71,19 @@ export interface CatalogEntry {
   version: { args: string[]; identity: CatalogIdentity };
   dirs: string[];
   launch: { argv: string[] };
+  /** What Shift+Enter sends (AG-4b); unset: "esc-cr". */
+  softNewline?: SoftNewline;
+  /** The adapter reads a session name, from a source this stable. */
+  sessionName?: SessionNameSource;
+  /** The terminal title (OSC 0/2) names the session. Unset: no. */
+  titleFromOsc?: boolean;
+}
+
+/** The bytes Shift+Enter sends for an entry (ESC CR when it says none). */
+export function softNewlineSeq(
+  e: Pick<CatalogEntry, "softNewline"> | undefined,
+): string {
+  return SOFT_NEWLINE_SEQ[e?.softNewline ?? "esc-cr"];
 }
 
 /** The keys an entry takes (the validator refuses any other). */
@@ -57,6 +95,9 @@ const ENTRY_KEYS = [
   "version",
   "dirs",
   "launch",
+  "softNewline",
+  "sessionName",
+  "titleFromOsc",
 ] as const;
 
 /** Den's built-in catalog, in the order lists show them. */
@@ -80,6 +121,12 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     },
     dirs: ["~/.local/bin", "~/.claude/local", "{system}"],
     launch: { argv: ["{bin}"] },
+    // https://code.claude.com/docs/en/terminal-config: Option+Enter (Meta,
+    // ESC CR) is a newline; /terminal-setup binds Shift+Enter to it.
+    softNewline: "esc-cr",
+    // `/rename` appends {"type":"custom-title","customTitle":…} to the
+    // session's transcript (<token>.jsonl). Undocumented: read defensively.
+    sessionName: "unofficial",
   },
   // Codex CLI. https://github.com/openai/codex: binary `codex`, npm
   // @openai/codex, Homebrew cask codex. The standalone installer
@@ -98,6 +145,9 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     },
     dirs: ["$CODEX_INSTALL_DIR", "~/.local/bin", "{system}"],
     launch: { argv: ["{bin}"] },
+    // The composer's insert_newline is Ctrl+J (codex-rs/tui keymap): a
+    // plain terminal's Shift+Enter and Alt+Enter submit (openai/codex#20580).
+    softNewline: "lf",
   },
   // Gemini CLI. https://github.com/google-gemini/gemini-cli: binary
   // `gemini`, npm @google/gemini-cli, Homebrew formula gemini-cli;
@@ -115,6 +165,9 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     },
     dirs: ["{system}"],
     launch: { argv: ["{bin}"] },
+    // https://geminicli.com/docs/reference/keyboard-shortcuts: Alt+Enter
+    // (ESC CR), Ctrl+J and Shift+Enter insert a newline.
+    softNewline: "esc-cr",
   },
   // Grok Build. https://docs.x.ai/build/overview: install with
   // https://x.ai/cli/install.sh, run `grok` in a project directory. The
@@ -279,6 +332,29 @@ export function validateCatalogEntry(
     throw new Error(
       `${where}.launch.argv[0]: must be "{bin}" (the path Den found)`,
     );
+  const traits: Pick<
+    CatalogEntry,
+    "softNewline" | "sessionName" | "titleFromOsc"
+  > = {};
+  if (raw.softNewline !== undefined) {
+    if (!(SOFT_NEWLINES as readonly unknown[]).includes(raw.softNewline))
+      throw new Error(
+        `${where}.softNewline: ${shown(raw.softNewline)} must be one of ${SOFT_NEWLINES.join(", ")}`,
+      );
+    traits.softNewline = raw.softNewline as SoftNewline;
+  }
+  if (raw.sessionName !== undefined) {
+    if (!(SESSION_NAME_SOURCES as readonly unknown[]).includes(raw.sessionName))
+      throw new Error(
+        `${where}.sessionName: ${shown(raw.sessionName)} must be one of ${SESSION_NAME_SOURCES.join(", ")}`,
+      );
+    traits.sessionName = raw.sessionName as SessionNameSource;
+  }
+  if (raw.titleFromOsc !== undefined) {
+    if (typeof raw.titleFromOsc !== "boolean")
+      throw new Error(`${where}.titleFromOsc: must be true or false`);
+    traits.titleFromOsc = raw.titleFromOsc;
+  }
   return {
     id,
     vendor: text(`${where}.vendor`, raw.vendor),
@@ -287,6 +363,7 @@ export function validateCatalogEntry(
     version: { args, identity },
     dirs,
     launch: { argv },
+    ...traits,
   };
 }
 

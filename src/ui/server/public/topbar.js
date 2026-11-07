@@ -878,8 +878,13 @@ function paletteItems() {
   }
   for (const x of palSessions) {
     // AG-4b: the name a person gave the agent, else its persona.
-    const name =
+    const base =
       x.kind === "agent" ? x.displayName || (x.persona ?? x.label) : x.label;
+    // AG-4b: the session's name (a /rename, or Den's), when it says more.
+    const sn = x.kind === "agent" ? (x.sessionName ?? "").trim() : "";
+    const extra =
+      sn && sn !== base && sn !== x.persona && sn !== x.label ? sn : "";
+    const name = extra ? `${base} · ${extra}` : base;
     items.push({
       key: `agent:${x.id}`,
       kind: "agent",
@@ -894,6 +899,7 @@ function paletteItems() {
         x.label,
         x.persona ?? "",
         x.displayName ?? "",
+        x.sessionName ?? "",
         "agents",
         "terminal",
       ],

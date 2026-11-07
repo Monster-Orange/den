@@ -71,6 +71,8 @@ describe("the settings inventory (R21)", () => {
         "appearance.mode",
         "appearance.theme",
         "editor",
+        // AG-4b: where a path link in an agent's pane opens.
+        "editor_open",
         "editor_overrides",
         "graph.density",
         "graph.direction",

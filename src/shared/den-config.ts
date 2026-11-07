@@ -340,6 +340,11 @@ export interface UserConfig {
    */
   editor_overrides?: Record<string, string>;
   /**
+   * Where a file path in an agent's pane opens (AG-4b): vscode, cursor or
+   * zed by URL scheme, or none (copy the path). editor-open-pref.ts.
+   */
+  editor_open?: string;
+  /**
    * Personal override of the team release config (config/den.yml `release:`).
    * Wave-assignment edits made in the Release tab are saved here so they stay
    * local and never get committed. Merged field-wise over the team base.

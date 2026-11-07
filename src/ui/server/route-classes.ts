@@ -149,6 +149,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/workspaces/:ws/agents",
   ].map((p) => R(p)),
   R(
+    "/api/workspaces/:ws/agents/:id/paths",
+    "which paths an agent printed exist in its workspace (stat only, AG-4b)",
+  ),
+  R(
     "/api/sessions",
     "lists the sessions and agents (names and states, never their output)",
   ),
@@ -413,6 +417,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/relaunch",
     "/api/workspaces/:ws/agents/:id/remove",
     "/api/workspaces/:ws/agents/:id/name",
+    "/api/workspaces/:ws/agents/:id/paths",
   ],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "session-routes.ts:IO_PATH": ["/api/sessions/:id/io"],

@@ -327,6 +327,7 @@
     "set.language": "Idioma",
     "set.appearance.org-theme": "Tema predeterminado de la org",
     "set.editor": "IDE predeterminado",
+    "set.editor.open": "Abrir enlaces de archivo en",
     "set.editor_overrides": "IDE por lenguaje",
     "set.terminal": "Terminal predeterminada",
     "set.shell.pages": "Páginas",
@@ -481,6 +482,10 @@
     "ag.l.tabs": "Pestañas",
     "ag.l.tile": "Mosaico",
     "ag.l.tip": "{name} ({key})",
+    "ag.hint.keys":
+      "⌃⇧1 / ⌃⇧2 / ⌃⇧3 cambian la disposición. ⌘ y clic (Ctrl y clic) abre un enlace o una ruta.",
+    "ag.pal.layout": "Disposición: {name}",
+    "ag.copied": "Copiado",
     "ag.tabs": "Sesiones abiertas",
     "ag.hint.focus":
       "Un clic muestra una sesión. Mayús o ⌘ y clic la añade al lado.",

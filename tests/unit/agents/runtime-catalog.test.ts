@@ -23,6 +23,7 @@ import * as path from "path";
 import {
   BUILTIN_CATALOG,
   entryDirs,
+  softNewlineSeq,
   validateCatalog,
   validateCatalogEntry,
 } from "../../../src/shared/agents/catalog.js";
@@ -129,6 +130,57 @@ describe("the catalog", () => {
     expect(() => validateCatalog({}, "agents.runtime_catalog")).toThrow(
       /must be a list/,
     );
+  });
+
+  it("each entry's terminal traits (AG-4b): Shift+Enter's soft newline, the session name's source, the OSC title (off everywhere)", () => {
+    expect(
+      BUILTIN_CATALOG.map((e) => [
+        e.id,
+        e.softNewline,
+        e.sessionName,
+        e.titleFromOsc,
+      ]),
+    ).toEqual([
+      // Claude Code: ESC CR (Option+Enter, what /terminal-setup binds);
+      // its /rename title is read from the transcript: unofficial.
+      ["den-claude", "esc-cr", "unofficial", undefined],
+      // Codex CLI: Ctrl+J (LF) inserts a newline.
+      ["codex", "lf", undefined, undefined],
+      // Gemini CLI: Alt+Enter (ESC CR) inserts a newline.
+      ["gemini", "esc-cr", undefined, undefined],
+      // Grok Build: no documented key; the default.
+      ["grok", undefined, undefined, undefined],
+    ]);
+    expect(softNewlineSeq(BUILTIN_CATALOG[0])).toBe("\x1b\r");
+    expect(softNewlineSeq(BUILTIN_CATALOG[1])).toBe("\n");
+    // The default is ESC CR; none is Enter.
+    expect(softNewlineSeq(BUILTIN_CATALOG[3])).toBe("\x1b\r");
+    expect(softNewlineSeq(undefined)).toBe("\x1b\r");
+    expect(softNewlineSeq({ softNewline: "none" })).toBe("\r");
+    const ok = {
+      id: "aider-y",
+      vendor: "Someone",
+      name: "Aider Y",
+      bins: ["aider-y"],
+      version: { args: ["--version"], identity: { output: "aider" } },
+      dirs: [],
+      launch: { argv: ["{bin}"] },
+    };
+    expect(
+      validateCatalogEntry(
+        { ...ok, softNewline: "none", titleFromOsc: true },
+        "x",
+      ),
+    ).toMatchObject({ softNewline: "none", titleFromOsc: true });
+    expect(() =>
+      validateCatalogEntry({ ...ok, softNewline: "\x1b\r" }, "x"),
+    ).toThrow(/x\.softNewline: .*esc-cr, lf, none/);
+    expect(() =>
+      validateCatalogEntry({ ...ok, titleFromOsc: "yes" }, "x"),
+    ).toThrow(/x\.titleFromOsc: must be true or false/);
+    expect(() =>
+      validateCatalogEntry({ ...ok, sessionName: "maybe" }, "x"),
+    ).toThrow(/x\.sessionName:/);
   });
 
   it("an entry's directories: ~ from HOME, $NAME only when set, {system} as given", () => {

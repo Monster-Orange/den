@@ -78,6 +78,8 @@ export interface AgentRecord {
    * checkDisplayName says what one may be.
    */
   displayName?: string;
+  /** When displayName was given (ISO 8601): the latest rename wins (AG-4b). */
+  displayNameAt?: string;
 }
 
 /** The longest name a person may give an agent (AG-4b). */

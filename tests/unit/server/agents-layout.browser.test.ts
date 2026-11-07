@@ -5,9 +5,11 @@
  *   - the page fills the window: the list and the panes end 14px above the
  *     runs dock at 1440x900 and 1440x1300, in every layout, with the dock
  *     shut or open (no 100vh guess);
- *   - Focus (the default), Tabs and Tile, from the page header's switch or
- *     ⌘1 / ⌘2 / ⌘3; the URL says it (&layout=), and it is saved for the
- *     person (POST /api/settings agents_layout), so a reload keeps it;
+ *   - Focus (the default), Tabs and Tile, from the page header's switch,
+ *     ⌃⇧1 / ⌃⇧2 / ⌃⇧3 (never ⌘1-3 or Ctrl+1-3: the browser's tabs) or ⌘K
+ *     "Layout: …"; inside a terminal the keys never reach the agent; the
+ *     URL says it (&layout=), and it is saved for the person (POST
+ *     /api/settings agents_layout), so a reload keeps it;
  *   - Focus: a click replaces the pane, Shift-click adds one alongside;
  *     Tabs: one pane under a tab strip, each tab the agent's name, then
  *     its persona and workspace, and a dot when it is waiting; Tile: a
@@ -80,6 +82,7 @@ beforeAll(async () => {
       rows: 24,
     });
     sid[id] = info.ref.id;
+    pid[id] = info.pid;
     s.seed({
       id,
       persona,
@@ -101,6 +104,9 @@ afterAll(async () => {
 });
 
 const skip = () => !browser;
+/** Agent `id`'s scripted PTY (what the page typed into it). */
+const pid: Record<string, number> = {};
+const ptyOf = (id: string) => s!.made.find((x) => x.pid === pid[id])!;
 const all = () => AGENTS.map(([id]) => sid[id]).join(",");
 
 async function page(
@@ -322,7 +328,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     120_000,
   );
 
-  it("switches Focus (the default), Tabs and Tile from the header and with ⌘1 / ⌘2 / ⌘3; the URL says it, and it is saved for the person", async () => {
+  it("switches Focus (the default), Tabs and Tile from the header, with ⌃⇧1 / ⌃⇧2 / ⌃⇧3 and from ⌘K; the URL says it, and it is saved for the person", async () => {
     if (skip()) return;
     await s!.settings({ agents_layout: null });
     const p = await page(`/agents?open=${all()}`);
@@ -342,7 +348,10 @@ describe("the Agents tab's layouts (AG-4b)", () => {
         .evaluateAll((bs) =>
           bs.map((b) => b.getAttribute("aria-keyshortcuts")),
         ),
-    ).toEqual(["Meta+1", "Meta+2", "Meta+3"]);
+    ).toEqual(["Control+Shift+1", "Control+Shift+2", "Control+Shift+3"]);
+    expect(
+      await seg.locator("button").evaluateAll((bs) => bs.map((b) => b.title)),
+    ).toEqual(["Focus (⌃⇧1)", "Tabs (⌃⇧2)", "Tile (⌃⇧3)"]);
     // Focus shows one: the last opened.
     expect(await shown(p)).toEqual([sid.scout]);
 
@@ -354,23 +363,48 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await termsUp(p, 4);
     await expectFits(p);
 
+    // ⌘2 and Ctrl+2 are the browser's (its tabs): the page leaves them.
     await p.keyboard.press("Meta+2");
+    await p.keyboard.press("Control+2");
+    expect(await layoutOf(p)).toBe("tile");
+    await p.keyboard.press("Control+Shift+Digit2");
     expect(await layoutOf(p)).toBe("tabs");
     expect(urlLayout(p)).toBe("tabs");
     await eventually(async () => (await saved()) === "tabs");
     expect(await shown(p)).toEqual([sid.scout]);
     await expectFits(p);
 
-    // ⌘ keys work with a terminal focused too.
+    // The keys work with a terminal focused too, and the agent never
+    // sees them.
     await p.click(`.pane[data-id="${sid.scout}"] .term`);
-    await p.keyboard.press("Meta+3");
+    const pty = ptyOf("scout");
+    const wrote = pty.writes.length;
+    await p.keyboard.press("Control+Shift+Digit3");
     expect(await layoutOf(p)).toBe("tile");
-    await p.keyboard.press("Meta+1");
+    await p.keyboard.press("Control+Shift+Digit1");
     expect(await layoutOf(p)).toBe("focus");
     await eventually(async () => (await saved()) === "focus");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(pty.writes.slice(wrote).map((b) => b.toString())).toEqual([]);
+
+    // ⌘K: "Layout: Tile".
+    await p.click("#den-search");
+    await p.fill("#den-pal-q", "layout");
+    await p.waitForSelector('#den-pal-list li[role="option"]');
+    expect(
+      await p
+        .locator('#den-pal-list li[role="option"] .den-pal-l')
+        .allTextContents(),
+    ).toEqual(
+      expect.arrayContaining(["Layout: Focus", "Layout: Tabs", "Layout: Tile"]),
+    );
+    await p.fill("#den-pal-q", "layout: tile");
+    await p.keyboard.press("Enter");
+    await eventually(async () => (await layoutOf(p)) === "tile");
+    await eventually(async () => (await saved()) === "tile");
 
     // Saved for the person: a page with no &layout= opens in it.
-    await p.keyboard.press("Meta+2");
+    await p.keyboard.press("Control+Shift+Digit2");
     await eventually(async () => (await saved()) === "tabs");
     await p.goto(`${s!.base}/agents?open=${sid.planner}`);
     await p.waitForSelector("#agl:not([aria-busy]) .agr");
@@ -447,7 +481,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       await p.locator(`.agr[data-id="${sid.builder}"] .den-dot.warn`).count(),
     ).toBe(1);
 
-    await p.keyboard.press("Meta+2");
+    await p.keyboard.press("Control+Shift+Digit2");
     await p.click(`.agr[data-id="${sid.scout}"]`);
     await termsUp(p, 1);
     const tabs = p.locator('#agr [role="tablist"] [role="tab"]');

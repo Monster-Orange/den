@@ -629,6 +629,33 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ editor: v || null }),
   },
   {
+    id: "editor.open",
+    category: "editor",
+    label: "Open file links in",
+    description:
+      "⌘-click (Ctrl-click on Windows and Linux) on a file path in an agent's pane opens it here, at the line. None copies the path instead.",
+    keywords: [
+      "editor",
+      "link",
+      "path",
+      "file",
+      "agents",
+      "vscode",
+      "cursor",
+      "zed",
+    ],
+    scope: "user",
+    control: seg([
+      { value: "vscode", label: "VS Code" },
+      { value: "cursor", label: "Cursor" },
+      { value: "zed", label: "Zed" },
+      { value: "none", label: "None (copy)" },
+    ]),
+    keys: ["editor_open"],
+    read: (ctx) => ctx.data.editor_open ?? "none",
+    write: (v, ctx) => ctx.post({ editor_open: v }),
+  },
+  {
     id: "editor_overrides",
     category: "editor",
     label: "Per-language IDE",
@@ -818,7 +845,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents tab layout",
     description:
-      "Focus shows one agent, Tabs shows one with a tab for each, Tile shows up to four in a grid. The Agents tab's switch and ⌘1, ⌘2, ⌘3 set it too.",
+      "Focus shows one agent, Tabs shows one with a tab for each, Tile shows up to four in a grid. The Agents tab's switch, ⌃⇧1, ⌃⇧2, ⌃⇧3 and ⌘K set it too.",
     keywords: ["agents", "layout", "focus", "tabs", "tile", "grid", "panes"],
     scope: "user",
     control: seg([
