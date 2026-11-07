@@ -242,19 +242,74 @@
       "Este servidor solo responde en sus propias direcciones, así que una página con otro nombre no puede alcanzarlo.",
     "err.421.open": "Abrir en localhost",
     "err.refused.title": "Solicitud rechazada",
-    "err.signin.title": "Inicia sesión para usar {name}",
     "err.signin.terminal": "Inicia sesión para usar la terminal",
     "err.signin.agents": "Inicia sesión para iniciar agentes",
     "err.signin.sub": "Este navegador no ha iniciado sesión",
     "err.signin.lead": "Ejecuta {cmd} y abre el enlace.",
     "err.signin.expiredTitle": "El enlace de inicio de sesión caducó",
-    "err.signin.expired":
-      "Ese enlace de inicio de sesión caducó o ya se usó. Ejecuta {cmd} para obtener uno nuevo.",
     "err.signin.local":
       "Un inicio de sesión pertenece a una sola dirección. Esta página está en {host}: abre la misma página en localhost, donde este navegador tiene la sesión iniciada.",
-    "err.signin.why":
-      "No hay contraseña: el enlace sale de un archivo que solo tu cuenta de usuario puede leer.",
     "err.signin.copy": "Copiar comando",
+    "err.signin.title": "Inicia sesión en {name}",
+    "err.signin.where":
+      "Estás abriendo {name} desde otro ordenador. {name} corre en {host}, así que necesita saber que eres tú.",
+    "err.signin.githubNote":
+      "Usa tu cuenta de GitHub. El propietario de este {name} tiene que haber vinculado la suya.",
+    "err.signin.githubNoOwner":
+      "Iniciar sesión con GitHub necesita un propietario, y este {name} aún no tiene. En {host} (no en este ordenador), ejecuta:",
+    "err.signin.githubRefused":
+      "@{login} no es el propietario de este {name}. Pide al propietario que te añada, o usa «Aprobar este ordenador».",
+    "err.signin.approveOr": "O aprueba este ordenador",
+    "err.signin.approve": "Aprueba este ordenador",
+    "err.signin.step1": "En {host} (no en este ordenador), ejecuta:",
+    "err.signin.step1Or":
+      "O abre {name} en el propio {host} y ve a Ajustes › Acceso › Dispositivos en espera.",
+    "err.signin.step2":
+      "Esta página inicia sesión sola una vez aprobada. El código caduca en 10 minutos.",
+    "err.signin.waiting": "Esperando la aprobación…",
+    "err.signin.noTerminal":
+      "¿No tienes una terminal en {host}? Desde este ordenador, ejecuta:",
+    "err.signin.openTerminal": "Abrir Terminal",
+    "err.signin.sshNote":
+      "Abrir Terminal abre ssh://{target} en tu aplicación de terminal. Necesita acceso SSH a {target}.",
+    "err.signin.whyTitle": "¿Por qué?",
+    "err.signin.whyText":
+      "{name} puede iniciar terminales y agentes en {host}, así que solo deja entrar a quien demuestra ser el propietario. Solo lo haces una vez por ordenador: la sesión se mantiene.",
+    "err.signin.other": "Otras formas (el enlace de un solo uso con {cmd})",
+    "err.signin.otherStep":
+      "En {host} (no en este ordenador), ejecuta esto y abre en este navegador el enlace que imprime:",
+    "err.signin.codeExpired": "Este código caducó.",
+    "err.signin.codeDenied": "Este ordenador fue rechazado en {host}.",
+    "err.signin.codeFailed":
+      "{name} no dio un código a esta página. Inténtalo de nuevo.",
+    "err.signin.newCode": "Obtener un código nuevo",
+    "err.signin.youreIn": "Ya estás dentro.",
+    "err.signin.expiredLead":
+      "Ese enlace de inicio de sesión caducó o ya se usó. Inicia sesión de nuevo abajo.",
+    "err.signin.confirmLead":
+      "Introduce el código que web login imprimió en {host}:",
+    "err.signin.confirmGo": "Iniciar sesión",
+    "err.signin.confirmWrong":
+      "Ese código no es correcto. Revisa lo que imprimió web login e inténtalo de nuevo.",
+    "err.signin.confirmBusy":
+      "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
+    "err.signin.confirmGone":
+      "Este enlace ya no funciona. En {host}, ejecuta web login de nuevo para obtener uno nuevo.",
+    "err.signin.confirmWhy":
+      "El enlace solo no basta: también hace falta el código que se muestra en {host}, así que alguien que vea el enlace no puede iniciar sesión.",
+    "err.signin.github": "Iniciar sesión con GitHub",
+    "err.signin.githubEnter": "Introduce este código en {url}:",
+    "err.signin.githubOpen": "Abrir GitHub",
+    "err.signin.githubCopy": "Copiar código",
+    "err.signin.githubWaiting": "Esperando a que lo apruebes en GitHub…",
+    "err.signin.githubDone": "Sesión iniciada. Cargando…",
+    "err.signin.githubExpired": "El código caducó antes de aprobarse.",
+    "err.signin.githubDenied": "La solicitud se canceló en GitHub.",
+    "err.signin.githubBusy":
+      "Hay demasiados inicios de sesión en curso. Vuelve a intentarlo en unos minutos.",
+    "err.signin.githubFailed":
+      "No se pudo contactar con GitHub. Inténtalo de nuevo.",
+    "err.signin.githubAgain": "Empezar de nuevo",
     "err.422.title": "La configuración no es válida",
     "err.422.sub": "La configuración de la distribución no pasa la validación",
     "err.422.lead":
@@ -291,6 +346,15 @@
     "set.cli.web_port": "Tu puerto web",
     "set.cli.signin": "Inicio de sesión del navegador",
     "set.cli.sudo": "Contraseña de administrador",
+    "set.access.owner": "Propietario",
+    "set.access.devices": "Dispositivos vinculados",
+    "set.access.waiting": "Dispositivos en espera",
+    "set.access.machine_name": "Nombre de la máquina",
+    "ident.local": "Local",
+    "ident.device": "Sesión iniciada · este dispositivo",
+    "ident.toast":
+      "Este dispositivo tiene la sesión iniciada en {name} en {host}",
+    "set.access.pair": "Emparejar un dispositivo",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
     "set.distribution.orgs": "Etiquetas de org",

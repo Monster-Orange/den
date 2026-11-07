@@ -36,6 +36,8 @@ export const UI_MODULES: readonly string[] = [
   "/agents-page.js",
   // The Start agent form's choices, shared by both (AG-10.0).
   "/agent-start.js",
+  // SEC-2a: Pair a device's QR code (a tiny encoder of Den's own).
+  "/qr.js",
   // The UI's catalogs other than English (R19; en is in shell.js).
   "/i18n/ja.js",
   "/i18n/es.js",

@@ -99,6 +99,8 @@ const code = () => {
 const nav = { "sec-fetch-site": "none", accept: "text/html" };
 /** The edge's X-Forwarded-For for a client on another machine (0.4.3). */
 const AWAY = { "x-forwarded-for": "203.0.113.7" };
+/** The edge's X-Forwarded-For for a browser on this machine (it attests loopback). */
+const HERE = { "x-forwarded-for": "127.0.0.1" };
 const cookieName = () => `den_session_${port}`;
 /** The Set-Cookie line for the session cookie, or "". */
 const setCookie = (r: Reply) =>
@@ -338,13 +340,20 @@ describe("/api/session", () => {
     expect(view(r)).toEqual({ csrf: null, actor: null, signedIn: false });
   });
 
-  it("the edge from this machine (no X-Forwarded-For, or loopback's): the start's token, as on loopback", async () => {
-    for (const c of [{}, { "x-forwarded-for": "127.0.0.1" }])
-      expect(view(await sessionCsrf(c, EDGE))).toEqual({
-        csrf: "<token>",
-        actor: null,
-        signedIn: false,
-      });
+  it("the edge from this machine (X-Forwarded-For loopback's): the start's token, as on loopback", async () => {
+    expect(view(await sessionCsrf(HERE, EDGE))).toEqual({
+      csrf: "<token>",
+      actor: null,
+      signedIn: false,
+    });
+  });
+
+  it("SEC-2a: a client the edge can't place (no X-Forwarded-For) has no CSRF token until it signs in", async () => {
+    expect(view(await sessionCsrf({}, EDGE))).toEqual({
+      csrf: null,
+      actor: null,
+      signedIn: false,
+    });
   });
 });
 
@@ -448,25 +457,29 @@ describe("the route classes", () => {
     ).toBe(200);
   });
 
-  it("the edge from this machine (0.4.3): no sign-in on any route, shell-grade included; Origin and CSRF still apply", async () => {
+  it("the edge from this machine (0.4.3; the edge attests it): no sign-in on any route, shell-grade included; Origin and CSRF still apply", async () => {
     for (const p of ["/api/settings", "/api/server-info"]) {
-      const r = await call("GET", p, { host: EDGE });
+      const r = await call("GET", p, { host: EDGE, ...HERE });
       expect([p, r.status]).toEqual([p, 200]);
     }
-    const page = await call("GET", "/", { host: EDGE, accept: "text/html" });
+    const page = await call("GET", "/", {
+      host: EDGE,
+      accept: "text/html",
+      ...HERE,
+    });
     expect(page.status).toBe(200);
-    const tok = String((await sessionCsrf({}, EDGE)).csrf);
+    const tok = String((await sessionCsrf(HERE, EDGE)).csrf);
     const ok = await call(
       "POST",
       start,
-      { host: EDGE, origin: `http://${EDGE}`, "x-den-csrf": tok },
+      { host: EDGE, origin: `http://${EDGE}`, "x-den-csrf": tok, ...HERE },
       startBody,
     );
     expect([401, 403].includes(ok.status)).toBe(false);
     const noCsrf = await call(
       "POST",
       start,
-      { host: EDGE, origin: `http://${EDGE}` },
+      { host: EDGE, origin: `http://${EDGE}`, ...HERE },
       startBody,
     );
     expect([noCsrf.status, json(noCsrf).code]).toEqual([403, "csrf"]);
@@ -494,6 +507,9 @@ describe("the route classes", () => {
     expect(edge.body).toContain('"code":"signin_required"');
     expect(edge.body).toContain('"scope":"den"');
     expect(edge.body).toContain("web login");
+    // SEC-2a: the Monster Orange Den app is the default client id, so Sign
+    // in with GitHub is offered; with no owner linked yet, it says so.
+    expect(edge.body).toContain('"github":{"state":"no_owner"');
     expect(edge.body).not.toMatch(/<input[^>]*type="password"/);
     expect(edge.body).not.toMatch(/<form/i);
     // Signed in: a same-origin `next` only.
@@ -521,10 +537,11 @@ describe("the route classes", () => {
 });
 
 describe("the CLI: web login, web sessions, web logout", () => {
-  it("`web login` prints one link on stdout (localhost, /auth, a code) that signs a browser in once", async () => {
+  it("`web login --no-wait` prints one link on stdout (localhost, /auth, a code) that signs a browser in once", async () => {
     const r = cli([
       "web",
       "login",
+      "--no-wait",
       "--port",
       String(port),
       "--next",
@@ -622,6 +639,208 @@ describe("nothing leaks", () => {
       expect(serverOut.includes(encodeURIComponent(m))).toBe(false);
     }
   });
+});
+
+describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_remote)", () => {
+  // Chromium sends a plain-http origin that isn't localhost no Sec-Fetch-*
+  // headers, and a top-level navigation has no Origin: the link must still
+  // sign in. The server is reached on localhost, with this machine's own
+  // name as the Host (a LAN name, so beyond loopback).
+  const name = os.hostname().toLowerCase();
+  let lanDist = "";
+  let lanHome = "";
+  let lanPort = 0;
+  let lan: ChildProcess | null = null;
+
+  beforeAll(async () => {
+    if (!name) return;
+    lanDist = path.join(tmp, "lan");
+    lanHome = path.join(tmp, "lan-home");
+    write(path.join(lanDist, "den.yml"), "product:\n  name: den\n");
+    write(path.join(lanDist, "config", "den.yml"), "environments: [local]\n");
+    write(
+      path.join(lanDist, "config", "local", "user.yml"),
+      "web:\n  allow_plain_http_remote: true\n",
+    );
+    lanPort = await freePort();
+    lan = spawnServer(
+      TSX,
+      [path.join(ENGINE, "src", "ui", "server", "index.ts")],
+      {
+        cwd: lanDist,
+        env: {
+          ...serverEnv(lanDist, lanHome, lanPort),
+          DEN_BIND_HOST: "0.0.0.0",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    lan.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
+    lan.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
+    const deadline = Date.now() + 40_000;
+    for (;;) {
+      try {
+        const r = await call("GET", "/api/server-info", {}, undefined, lanPort);
+        if (r.status === 200) break;
+      } catch {
+        /* not up yet */
+      }
+      if (Date.now() > deadline) throw new Error("LAN server did not start");
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }, 60_000);
+  afterAll(async () => {
+    if (lan) await stopServer(lan);
+  });
+
+  it("a `web login --no-wait --origin http://<this machine>:<port>` link with no fetch-metadata headers: 303 and the cookie", async () => {
+    if (!name) return;
+    const r = spawnSync(
+      TSX,
+      [
+        path.join(ENGINE, "src", "ui", "cli", "index.ts"),
+        "web",
+        "login",
+        "--no-wait",
+        "--port",
+        String(lanPort),
+        "--origin",
+        `http://${name}:${lanPort}`,
+      ],
+      {
+        cwd: lanDist,
+        encoding: "utf-8",
+        timeout: 60_000,
+        env: { ...serverEnv(lanDist, lanHome, lanPort), CI: "1" },
+      },
+    );
+    expect(r.status).toBe(0);
+    const link = r.stdout.trim();
+    minted.push(link);
+    const u = new URL(link);
+    minted.push(u.searchParams.get("c") ?? "");
+    expect([u.host, u.pathname]).toEqual([`${name}:${lanPort}`, "/auth"]);
+    {
+      const host = { host: u.host, accept: "text/html" };
+      // A foreign page's request still can't use it.
+      const cross = await call(
+        "GET",
+        `${u.pathname}${u.search}`,
+        { ...host, "sec-fetch-site": "cross-site" },
+        undefined,
+        lanPort,
+      );
+      expect([cross.status, setCookie(cross)]).toEqual([403, ""]);
+      const a = await call(
+        "GET",
+        `${u.pathname}${u.search}`,
+        host,
+        undefined,
+        lanPort,
+      );
+      const line = ([] as string[])
+        .concat(a.headers["set-cookie"] ?? [])
+        .find((c) => c.startsWith(`den_session_${lanPort}=`));
+      minted.push(line?.split(";")[0].split("=")[1] ?? "");
+      expect([a.status, a.headers.location, !!line]).toEqual([303, "/", true]);
+    }
+  }, 90_000);
+});
+
+describe("a plain-http bind to one LAN address (DEN_BIND_HOST=<LAN IPv4>)", () => {
+  // `web up`'s readiness probe asks the bound address, which is beyond
+  // loopback, so the server answers an unsigned probe 401 signin_required.
+  // The probe carries the CLI's bearer, as `web sessions` does: `web up`
+  // sees the running server as ready ("already running", exit 0) instead of
+  // starting another and reporting "did not become ready".
+  const lanV4 = Object.values(os.networkInterfaces())
+    .flatMap((l) => l ?? [])
+    .find((a) => a.family === "IPv4" && !a.internal)?.address;
+  let v4Dist = "";
+  let v4Home = "";
+  let v4Port = 0;
+  let v4: ChildProcess | null = null;
+
+  /** Any answer from the server on the LAN address, or null. */
+  function status(p: string): Promise<number | null> {
+    return new Promise((resolve) => {
+      const req = http.get(
+        {
+          host: lanV4,
+          port: v4Port,
+          path: p,
+          agent: false,
+          timeout: 1_500,
+          headers: { connection: "close" },
+        },
+        (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.statusCode ?? null));
+        },
+      );
+      req.on("timeout", () => req.destroy());
+      req.on("error", () => resolve(null));
+    });
+  }
+
+  beforeAll(async () => {
+    if (!lanV4) return;
+    v4Dist = path.join(tmp, "lan-v4");
+    v4Home = path.join(tmp, "lan-v4-home");
+    write(path.join(v4Dist, "den.yml"), "product:\n  name: den\n");
+    write(path.join(v4Dist, "config", "den.yml"), "environments: [local]\n");
+    write(
+      path.join(v4Dist, "config", "local", "user.yml"),
+      "web:\n  allow_plain_http_remote: true\n",
+    );
+    v4Port = await freePort();
+    v4 = spawnServer(
+      TSX,
+      [path.join(ENGINE, "src", "ui", "server", "index.ts")],
+      {
+        cwd: v4Dist,
+        env: { ...serverEnv(v4Dist, v4Home, v4Port), DEN_BIND_HOST: lanV4 },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    v4.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
+    v4.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
+    const deadline = Date.now() + 40_000;
+    while ((await status("/api/server-info")) === null) {
+      if (Date.now() > deadline) throw new Error("LAN v4 server did not start");
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }, 60_000);
+  afterAll(async () => {
+    if (v4) await stopServer(v4);
+  });
+
+  it("an unsigned probe is refused there, and `web up` still calls the server running", async () => {
+    if (!lanV4) return;
+    expect(await status("/api/server-info")).toBe(401);
+    const r = spawnSync(
+      TSX,
+      [
+        path.join(ENGINE, "src", "ui", "cli", "index.ts"),
+        "web",
+        "up",
+        "--port",
+        String(v4Port),
+      ],
+      {
+        cwd: v4Dist,
+        encoding: "utf-8",
+        timeout: 60_000,
+        env: {
+          ...serverEnv(v4Dist, v4Home, v4Port),
+          DEN_BIND_HOST: lanV4,
+          CI: "1",
+        },
+      },
+    );
+    expect(r.stdout).toContain(`already running at http://${lanV4}:${v4Port}`);
+    expect(r.status).toBe(0);
+  }, 90_000);
 });
 
 describe("refusing to start", () => {

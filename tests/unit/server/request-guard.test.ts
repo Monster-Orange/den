@@ -360,3 +360,67 @@ describe("GETs that run something (route-classes: shell-grade / mutating)", () =
       });
   });
 });
+
+describe("the sign-in GETs (/auth, the GitHub sign-in poll) with no fetch metadata", () => {
+  // A plain-http origin that isn't localhost (a LAN bind with
+  // web.allow_plain_http_remote) is not "potentially trustworthy": Chromium
+  // sends it no Sec-Fetch-* headers, and a top-level navigation no Origin.
+  const LAN = "192.168.1.122";
+  const lanCtx = (): GuardContext => ({
+    ...ctx(),
+    lanHosts: () => [LAN],
+    peerIsLoopback: () => false,
+  });
+  const get = (url: string, headers: Record<string, string>, host: string) =>
+    ({
+      method: "GET",
+      url,
+      headers: { host, ...headers },
+      socket: { remoteAddress: "192.168.1.50" },
+    }) as unknown as http.IncomingMessage;
+  const signinGets = [
+    "/auth?c=a-one-time-code",
+    "/api/github/signin/abcdefghijklmnopqrst",
+  ];
+  const hosts: Array<[string, () => GuardContext]> = [
+    [`${LAN}:${PORT}`, lanCtx],
+    [local, ctx],
+  ];
+
+  it.each(signinGets)(
+    "%s with neither Sec-Fetch-Site nor Origin passes (it carries its own credential)",
+    (u) => {
+      for (const [host, c] of hosts)
+        expect([host, checkRequest(get(u, {}, host), c()).ok]).toEqual([
+          host,
+          true,
+        ]);
+    },
+  );
+  it.each(signinGets)(
+    "%s with Sec-Fetch-Site cross-site or same-site, or a foreign Origin, is still refused",
+    (u) => {
+      for (const [host, c] of hosts) {
+        for (const site of ["cross-site", "same-site"])
+          expect(
+            checkRequest(get(u, { "sec-fetch-site": site }, host), c()),
+          ).toMatchObject({ ok: false, status: 403, code: "cross_site" });
+        expect(
+          checkRequest(get(u, { origin: "http://evil.example" }, host), c()),
+        ).toMatchObject({ ok: false, status: 403, code: "origin_rejected" });
+      }
+    },
+  );
+  it("another mutating GET with neither header and no bearer is still refused", () => {
+    for (const u of ["/api/run?pillar=smoke", "/api/workspace/exec"])
+      expect(checkRequest(get(u, {}, local), ctx())).toMatchObject({
+        ok: false,
+        status: 403,
+        code: "origin_rejected",
+      });
+    // Beyond loopback it never gets that far: a sign-in comes first.
+    expect(
+      checkRequest(get("/api/run", {}, `${LAN}:${PORT}`), lanCtx()),
+    ).toMatchObject({ ok: false, status: 401, code: "signin_required" });
+  });
+});

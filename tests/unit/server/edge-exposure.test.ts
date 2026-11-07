@@ -7,6 +7,7 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   EDGE_EXPOSED_MESSAGE,
+  edgeExposedMessage,
   edgeExposure,
   publishedOnAllInterfaces,
 } from "../../../src/ui/server/edge-exposure.js";
@@ -16,9 +17,14 @@ const lookupOf = (m: Record<string, string[]>) => async (h: string) =>
 const none = async () => null;
 
 describe("edgeExposure", () => {
-  it("the message is the one line the page and web.log show", () => {
+  it("the message is the one line the page and web.log show; since 0.4.5 it says who signs in", () => {
     expect(EDGE_EXPOSED_MESSAGE).toBe(
-      "Your edge is reachable from other machines; anyone who can reach it can use terminals. Auth is coming.",
+      "Your edge is reachable from other machines. A browser it can't place as this one signs in first (Sign in with GitHub, or a pairing link).",
+    );
+    expect(edgeExposedMessage("signin")).toBe(EDGE_EXPOSED_MESSAGE);
+    // web.edge_unattested: local keeps 0.4.3's allow, and says what it costs.
+    expect(edgeExposedMessage("local")).toBe(
+      "Your edge is reachable from other machines, and web.edge_unattested is local: anyone it can't place can use terminals. Remove the key to have them sign in.",
     );
   });
 

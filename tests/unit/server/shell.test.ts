@@ -124,7 +124,13 @@ describe("the shell's source", () => {
   it("lists pages only in its NAV registry (R11a)", () => {
     // Every page href in shell.js is one registry entry's `href:`, and the
     // pages themselves draw no rail links.
-    const hrefs = [...SHELL.matchAll(/href: "(\/[^"]*)"/g)].map((m) => m[1]);
+    const all = [...SHELL.matchAll(/href: "(\/[^"]*)"/g)].map((m) => m[1]);
+    // A link into a page's section (SEC-2a's identity chip opens
+    // /settings#access) is no page of its own: its page is a registry entry.
+    const hrefs = all.filter((h) => !h.includes("#"));
+    for (const h of all.filter((x) => x.includes("#")))
+      expect([h, hrefs.includes(h.split("#")[0])]).toEqual([h, true]);
+    expect(all.filter((h) => h.includes("#"))).toEqual(["/settings#access"]);
     expect(hrefs.sort()).toEqual(
       [
         "/agents",

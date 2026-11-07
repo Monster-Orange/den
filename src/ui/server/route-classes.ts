@@ -183,9 +183,9 @@ export const ROUTES: readonly RouteEntry[] = [
 
   // ── Sign-in (SEC-1b, §2) ────────────────────────────────────────────────
   M(
-    ["GET", "HEAD"],
+    ["GET", "HEAD", "POST"],
     "/auth",
-    "swaps a one-time login code for a session cookie",
+    "swaps a one-time login code for a session cookie (POST: with the code `web login` printed)",
   ),
   R(
     "/signin",
@@ -201,6 +201,71 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/web/logout",
     "ends browser sessions, and rotates web.secret (`web logout`)",
+  ),
+  // ── SEC-2a: GitHub sign-in, the owner, pairing ─────────────────────────
+  M(
+    ["POST"],
+    "/api/github/signin",
+    "starts a GitHub sign-in (a device flow the server runs)",
+  ),
+  M(
+    ["GET", "HEAD"],
+    "/api/github/signin/:id",
+    "a GitHub sign-in's outcome; once the owner approved it, sets the session cookie",
+  ),
+  R("/api/web/owner", "who the owner is (`web owner show`)"),
+  S(
+    ["POST"],
+    "/api/web/owner/link",
+    "links the owner's GitHub account (`web owner link`)",
+  ),
+  S(
+    ["GET", "HEAD"],
+    "/api/web/owner/link/:id",
+    "an owner link's device code and outcome",
+  ),
+  S(
+    ["POST"],
+    "/api/web/owner/unlink",
+    "unlinks the owner (`web owner unlink`)",
+  ),
+  R("/api/web/pair", "the edge hostnames a pairing link can be for"),
+  // ── SEC-2a: approve this computer with a code (pair-routes.ts) ─────────
+  M(
+    ["POST"],
+    "/api/signin/code",
+    "asks for a code the owner approves this browser with (in memory, 10 minutes)",
+  ),
+  M(
+    ["GET", "HEAD"],
+    "/api/signin/code/:id",
+    "a code request's state; once approved, sets the session cookie (once)",
+  ),
+  S(
+    ["GET", "HEAD"],
+    "/api/web/waiting",
+    "lists the devices waiting for approval (Settings › Access, `web approve --list`)",
+  ),
+  S(
+    ["POST"],
+    "/api/web/approve",
+    "approves a waiting device: it signs in (`web approve <code>`)",
+  ),
+  S(["POST"], "/api/web/deny", "denies a waiting device"),
+  S(
+    ["POST"],
+    "/api/web/logins",
+    "registers `web login`'s link and its code, to wait on",
+  ),
+  S(
+    ["GET", "HEAD"],
+    "/api/web/logins/:id",
+    "`web login`'s wait: whether its link was used, by which browser",
+  ),
+  S(
+    ["POST"],
+    "/api/web/pair",
+    "mints a one-time sign-in link for another device (Pair a device)",
   ),
 
   // ── Mutations (checked by method) ───────────────────────────────────────
@@ -274,6 +339,37 @@ export const SIGNIN_FREE: readonly string[] = [
   "/auth",
   "/signin",
   "/api/session",
+  // SEC-2a: Sign in with GitHub, from the signed-out page.
+  "/api/github/signin",
+  "/api/github/signin/:id",
+  // SEC-2a: approve this computer with a code, from the signed-out page.
+  "/api/signin/code",
+  "/api/signin/code/:id",
+];
+
+/**
+ * SIGNIN_FREE mutations a signed-out page makes, which holds no CSRF token:
+ * they need an allowed Origin only (SEC-2a: starting a GitHub sign-in, and
+ * asking for a code to be approved with).
+ */
+export const SIGNIN_CSRF_FREE: readonly string[] = [
+  "/api/github/signin",
+  "/api/signin/code",
+  // SEC-2a: a waited-on link's page posts the code `web login` printed.
+  "/auth",
+];
+
+/**
+ * Sign-in GETs that carry their own unguessable credential: /auth a one-time
+ * code derived from web.secret, the GitHub sign-in poll its flow id, the
+ * code request's poll its own id (never the code). They
+ * may come with no fetch metadata at all (request-guard.ts,
+ * mutatingGetRefusal): a plain-http LAN origin gets none from the browser.
+ */
+export const SIGNIN_GETS: readonly string[] = [
+  "/auth",
+  "/api/github/signin/:id",
+  "/api/signin/code/:id",
 ];
 
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
@@ -285,6 +381,10 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   ],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "session-routes.ts:IO_PATH": ["/api/sessions/:id/io"],
+  "github-routes.ts:SIGNIN_PATH": ["/api/github/signin/:id"],
+  "github-routes.ts:LINK_PATH": ["/api/web/owner/link/:id"],
+  "pair-routes.ts:POLL_PATH": ["/api/signin/code/:id"],
+  "index.ts:LOGIN_WAIT_PATH": ["/api/web/logins/:id"],
 };
 
 /** Whether `pathname` matches a table path. */

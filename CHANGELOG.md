@@ -4,6 +4,165 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.5] - unreleased
+
+Sign in with GitHub as the owner, from your other devices; approve a
+computer with a code; see that you're signed in (SEC-2a). Save the admin
+password without editing YAML (LK-4). Dev-metrics stay on this machine
+unless you opt in.
+
+### Added
+
+- **Sign in with GitHub.** A Den has one owner, a GitHub account:
+  `<cli> web owner link` runs GitHub's device flow in the terminal (a code
+  to enter at https://github.com/login/device) and stores only
+  `github:<id>` and the login (`web-owner.json`, 0600), never the token.
+  `web owner show` and `web owner unlink` too. The signed-out page then
+  has **Sign in with GitHub**: the server runs the flow, and the owner's
+  approval sets the same never-expiring session a one-time link does;
+  any other account sees "@<login> isn't allowed on this Den". At most
+  three sign-ins wait at once. Before an owner is linked the page says to
+  run `web owner link`. See docs/distributions.md, "Signing in with GitHub".
+- **Settings › Access.** The owner (link and unlink: shell-grade, so a
+  signed-in browser and never an agent's token), the
+  linked devices (browser, how it signed in, the client address the edge
+  vouched for, first and last seen) each with **Revoke**, which ends that
+  session at once, and **Pair a device**: a one-time link and its QR code
+  for an edge hostname you pick.
+- **`web.github_client_id`**: the GitHub App's client id (public). The
+  default is Den's own App, "Monster Orange Den" (`Iv23liKL12gnN6WvRV5b`);
+  a distribution sets its own App's id here, and an empty value turns Sign
+  in with GitHub off (the page then offers only the code and the link).
+  The App needs "Enable Device Flow" ticked and "Expire user authorization
+  tokens" off (docs/distributions.md, "The GitHub App").
+- **Expiring GitHub tokens are noticed.** If the App hands out expiring
+  tokens (`expires_in` or `refresh_token` in the answer), sign-in still
+  completes, and Den says once to switch off token expiry in the App's
+  settings (never with the token). `GET /api/web/owner` reports it as
+  `tokenExpiry`. Den never asks for `offline_access`.
+- **Approve this computer with a code.** The signed-out page shows a
+  six-character code (`XXX-XXX`, about 30 bits; the page polls with its own
+  128-bit id) and the command that approves it on the machine Den runs on:
+  `<cli> web approve <code>` (any case, dash optional; `--list` shows what
+  waits). The page signs itself in when it's approved, onto the page it
+  asked for. From a machine with SSH access the page gives the one-liner
+  (`ssh <host> '<cli> web approve <code>'`) and, for a host name, an Open
+  Terminal link. Codes expire after 10 minutes, are single-use, at most
+  five wait at once (the oldest drops) and are kept in memory only;
+  approvals are rate-limited and audited with who approved. The device is
+  labelled "approved with a code".
+- **Settings › Access › Waiting devices**: the computers waiting with a
+  code (browser and OS, address, when), each with **Approve** and **Deny**.
+- **`web.machine_name`** (Settings › Access › Machine name, in user.yml):
+  the name the signed-out page gives this machine. Default: the short
+  hostname. It's never taken from the browser's Host; the ssh one-liner's
+  target is the Host the browser used (without the port).
+- **The signed-out page says where to act.** "Sign in to <product>", which
+  machine Den runs on and why it asks (once per computer), Sign in with
+  GitHub (only with a client id), Approve this computer, and the one-time
+  link under "Other ways". Every command it prints names the machine it
+  runs on, has a copy button, and is `<cli>` when that's on PATH and this
+  distribution's, else the absolute path of its bin. English, Japanese and
+  Spanish.
+- **See that you're signed in.** A chip at the foot of the rail says
+  "Local", "Signed in · this device" or "@<login>" and opens Settings ›
+  Access. The first page after a sign-in says "This device is signed in
+  to <product> on <machine>", once. Linked devices lists every session
+  (GitHub, a code, a one-time link) with how it signed in, when, from
+  where, last seen and Revoke, and marks the one you're using as "This
+  device".
+- **Save the admin password without editing YAML (LK-4).** When a secrets
+  backend that keeps secrets (1Password, Doppler) is available and no
+  `secrets.refs.sudo` is set, the admin password prompt (shown when a
+  command is about to run sudo, LK-0) still offers "Save to <backend>".
+  Saving creates the item (1Password: "<Product> admin password" in your
+  default vault; Doppler: `<PREFIX>_LOCAL_ADMIN_PWD`) and writes
+  `secrets.refs.sudo` to your `config/local/user.yml`, so the password
+  survives restarts. A ref in the distribution's config still wins. The
+  vault status says so as `canSave`. A save error no longer carries the
+  backend's command line.
+- **`edge.proxy_protocol.trusted_ips`** (empty by default): the front
+  proxies (a TCP passthrough in front of the edge) whose PROXY protocol
+  every entrypoint accepts, so Den sees the real client through them.
+- **`web.edge_unattested: local | signin`** (default `signin`, read only
+  from `config/local/user.yml`): whether an edge client Den can't place
+  signs in. `local` keeps 0.4.4's (and 0.4.3's) behaviour.
+
+### Changed
+
+- **Dev-metrics are local unless you opt in.** Den sent its dev-metrics
+  whenever a DSN was present (in the env or a synced
+  `dev-metrics.config`). Sending now needs `metrics: { share: true }` in
+  `config/local/user.yml` (the boolean only); a DSN alone never sends. The
+  local `events.jsonl` is unchanged, and `CI=true` and
+  `DEV_METRICS_DISABLED=1` still stop sending.
+- **`<cli> web login` waits.** It prints the link and an 8-character code,
+  and blocks until the link is used ("Signed in: <browser> (<address>) at
+  <time>") or expires ("Expired: nobody used the link", exit 1). The link
+  asks for the code before it signs in; a wrong code is refused (five burn
+  the link, and wrong codes are rate-limited) and the link stays
+  single-use. `--no-wait` prints the link alone, as before, and asks for no
+  code; with no server running it behaves like `--no-wait` and says so.
+- **Edge visitors Den can't place sign in.** A client the edge reports
+  with no `X-Forwarded-For`, or with a Docker/VM gateway or bridge address
+  (what a TCP passthrough or Docker Desktop and OrbStack hand it), now sees
+  the signed-out page with Sign in with GitHub, unless
+  `web.edge_unattested: local`. Loopback and this machine's own addresses,
+  as the edge reports them, stay local, and localhost straight to the
+  server's port never signs in.
+- **The client is the right-most `X-Forwarded-For` entry**, the one the
+  edge appended (0.4.4 and earlier read the left-most, which a client could
+  write).
+- **The edge believes forwarded headers only from its own networks.** Den
+  renders `forwardedHeaders.trustedIPs` (loopback and the Docker ranges)
+  on every entrypoint, never `forwardedHeaders.insecure`. An `edge.args`
+  entry that sets `forwardedHeaders` or `proxyProtocol` is dropped with a
+  notice from `edge up`.
+- **"Your edge is reachable from other machines"** now reads "A browser it
+  can't place as this one signs in first (Sign in with GitHub, or a
+  pairing link)." (with `web.edge_unattested: local`, that anyone it can't
+  place can use terminals).
+- **`edge up` says when the running edge's command differs** from the one
+  it renders, and why, before recreating it.
+
+### Fixed
+
+- **A browser signs in on a plain-http LAN bind** (`DEN_BIND_HOST` with
+  `web.allow_plain_http_remote`). A `web login --origin http://<LAN IP>:<port>`
+  link got 403 `origin_rejected`: the browser sends a plain-http origin that
+  isn't localhost no `Sec-Fetch-*` headers, and a navigation sends no
+  Origin. The sign-in GETs (`/auth` and the GitHub sign-in poll), which
+  carry their own one-time credential, now pass with neither header. Either
+  header, when present, is still checked, and every other GET that runs
+  something still needs this server's page or a bearer.
+- **`web up` with `DEN_BIND_HOST` on one address is ready when it serves.**
+  Its readiness probe (and `web sessions`/`web logout`'s calls) asked
+  127.0.0.1, so a server bound to a LAN IP or `::1` printed "did not become
+  ready" and exited non-zero. They ask the bound address now (loopback for
+  0.0.0.0 and `::`), with a Host the allowlist accepts and the CLI's
+  bearer: a LAN address answers an unsigned probe 401 `signin_required`.
+  `web up` names the bound address (`http://<LAN IP>:<port>`), not
+  localhost, which a LAN-only bind doesn't answer.
+
+### Migrations
+
+- **One edge recreate.** The edge's command changes (forwarded-header
+  trust), so the first `<cli> edge up` (or `stack up`) after upgrading
+  recreates it once, and says so: "<org>-edge's settings changed
+  (forwarded-header trust): recreating it once." Routes drop only while it
+  restarts.
+- **Edge visitors now see Sign in with GitHub** where 0.4.4 let a client
+  it couldn't place in. Link an owner (`<cli> web owner link`), approve
+  the computer with its code (`<cli> web approve <code>`) or pair with
+  `<cli> web login --host <name>`;
+  or set `web.edge_unattested: local` in `config/local/user.yml` to keep
+  0.4.4's behaviour on that machine.
+- **Scripts that run `<cli> web login` and read its output** should pass
+  `--no-wait`: it now waits for the link to be used.
+- **Remove `forwardedHeaders.*` and `proxyProtocol.*` from `edge.args`.**
+  They are ignored now; use `edge.proxy_protocol.trusted_ips` for a front
+  proxy.
+
 ## [0.4.4] - unreleased
 
 The admin password is for sudo, and nothing else (LK-0). An agent's

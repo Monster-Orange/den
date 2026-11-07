@@ -293,6 +293,14 @@ export async function mountSettings(deps) {
     const v = typeof o === "function" ? o(ctx) : o;
     return Array.isArray(v) ? v : [];
   }
+  // A custom control draws itself (it may act through its own API rather
+  // than save a value: Settings › Access), so it renders whether or not the
+  // row has a write.
+  function drawsItself(r) {
+    return (
+      r.control?.type === "custom" && typeof r.control.render === "function"
+    );
+  }
   function drawRow(r) {
     const id = slug(r.id);
     const lid = `l-${id}`;
@@ -300,8 +308,7 @@ export async function mountSettings(deps) {
     const did = `d-${id}`;
     const v = value(r);
     const t = r.control?.type || "readonly";
-    // A custom control draws (and saves) itself: no write to read it by.
-    const ro = !r.write && t !== "custom";
+    const ro = !r.write && !drawsItself(r);
     const single = ["number", "select", "toggle", "text"].includes(t);
     const label = single
       ? `<label class="l" id="${lid}" for="${cid}">${esc(r.label)}</label>`
@@ -500,7 +507,7 @@ export async function mountSettings(deps) {
       }, 2000);
   }
   function wireRow(r) {
-    if (!r.write && r.control?.type !== "custom") return;
+    if (!r.write && !drawsItself(r)) return;
     const row = $(`setting-${slug(r.id)}`);
     if (!row) return;
     const t = r.control?.type;

@@ -28,6 +28,7 @@
  * config.
  */
 import { themeNotice, themeOptions } from "./appearance.js";
+import { qrSvg } from "./qr.js";
 
 export const DEN_SETTING_CATEGORIES = [
   {
@@ -72,6 +73,14 @@ export const DEN_SETTING_CATEGORIES = [
       "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one workspace (config/local/workspaces.yml), which wins.",
   },
   {
+    // SEC-2a: who may come in from other devices.
+    id: "access",
+    label: "Access",
+    order: 57,
+    description:
+      "Reach this Den from your other devices: sign in with GitHub as its owner, or pair a device with a one-time link. On localhost nothing asks.",
+  },
+  {
     id: "cli",
     label: "Command line",
     order: 60,
@@ -112,6 +121,386 @@ const distRow = (id, label, description, keywords, value) => ({
 });
 const effective = (list, chosen) =>
   chosen ?? (list || []).find((e) => e.available)?.key ?? null;
+
+// ── Access (SEC-2a) ──────────────────────────────────────────────────────
+// What these rows draw, and the routes they use (github-routes.ts). Pure
+// helpers are exported for tests.
+
+function escHtml(v) {
+  return String(v ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
+}
+
+/** "3 min ago", "2 h ago", "5 d ago", or "just now"; `now` for tests. */
+export function seenAgo(iso, now = Date.now()) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 90) return "just now";
+  if (s < 5400) return `${Math.round(s / 60)} min ago`;
+  if (s < 129600) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+}
+
+/**
+ * One linked device's line (SEC-2a: every sign-in, whatever the method):
+ * its browser and OS, "This device" for this browser, then how it signed
+ * in, when, from where (the client address and the browser), and when it
+ * was last seen.
+ */
+export function deviceLine(d, now = Date.now()) {
+  const how =
+    d.via === "github"
+      ? `GitHub${d.login ? ` (@${d.login})` : ""}`
+      : d.via === "code"
+        ? "approved with a code"
+        : "one-time link";
+  const name = d.name || "Unknown browser";
+  const from = d.client || d.host;
+  return {
+    title: name,
+    current: !!d.current,
+    detail: [
+      `signed in with ${how}`,
+      `created ${seenAgo(d.createdAt, now)}`,
+      from ? `from ${from} (${name})` : "",
+      `last seen ${seenAgo(d.lastSeenAt, now)}`,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  };
+}
+
+const ROW_STYLE =
+  "display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;padding:6px 0;border-top:1px solid var(--border)";
+const CODE_STYLE =
+  "font:22px/1.4 var(--mono);letter-spacing:0.12em;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-button);background:var(--sunken)";
+
+/** Linking the owner in the page: start, show the code, poll the server. */
+function drawOwner(host, ctx) {
+  const api = (m, p, b) => ctx.shell.api(m, p, b);
+  let timer = null;
+  const draw = (o) => {
+    clearTimeout(timer);
+    if (o.owner) {
+      host.innerHTML =
+        `<output class="set-ro" id="set-owner">Owner: <b>@${escHtml(o.owner.login)}</b> <span class="set-note">(${escHtml(o.owner.id)})</span></output> ` +
+        '<button type="button" class="btn" id="set-owner-unlink">Unlink</button>';
+      host.querySelector("#set-owner-unlink").addEventListener("click", () =>
+        api("POST", "/api/web/owner/unlink", {})
+          .then(load)
+          .catch((e) => fail(e.message)),
+      );
+      return;
+    }
+    host.innerHTML =
+      '<output class="set-ro" id="set-owner">This Den has no owner identity yet.</output> ' +
+      (o.clientId
+        ? '<button type="button" class="btn primary" id="set-owner-link">Link your GitHub account</button>'
+        : '<span class="set-note" id="set-owner-noclient" style="flex-basis:100%">Linking needs a GitHub App client id, and none is configured: set <code>web.github_client_id</code> in config/local/user.yml, then restart the server.</span>') +
+      '<div id="set-owner-flow" style="flex-basis:100%" aria-live="polite"></div>';
+    host.querySelector("#set-owner-link")?.addEventListener("click", startLink);
+  };
+  const fail = (text) => {
+    const box = host.querySelector("#set-owner-flow");
+    if (box)
+      box.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(text)}</span>`;
+    const b = host.querySelector("#set-owner-link");
+    if (b) b.disabled = false;
+  };
+  const poll = (id) =>
+    fetch(`/api/web/owner/link/${encodeURIComponent(id)}`, {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((b) => {
+        if (b.state === "pending") {
+          timer = setTimeout(() => poll(id), 1500);
+          return;
+        }
+        if (b.state === "ok") return load();
+        fail(b.error || "Linking failed. Try again.");
+      })
+      .catch(() => fail("The server didn't answer. Try again."));
+  function startLink() {
+    const b = host.querySelector("#set-owner-link");
+    if (b) b.disabled = true;
+    api("POST", "/api/web/owner/link", {})
+      .then((f) => {
+        const box = host.querySelector("#set-owner-flow");
+        const url = f.verificationUri || "https://github.com/login/device";
+        box.innerHTML =
+          `<p class="set-note" style="margin:8px 0">Enter this code at <a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">${escHtml(url.replace(/^https:\/\//, ""))}</a> and approve the app. It asks for no permissions.</p>` +
+          `<span id="set-owner-code" style="${CODE_STYLE}">${escHtml(f.userCode)}</span> ` +
+          `<a class="btn" href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">Open GitHub</a>` +
+          '<p class="set-note" style="margin:8px 0 0">Waiting for GitHub…</p>';
+        timer = setTimeout(() => poll(f.id), 1500);
+      })
+      .catch((e) => fail(e.message));
+  }
+  function load() {
+    fetch("/api/web/owner", { cache: "no-store" })
+      .then((r) => r.json())
+      .then(draw)
+      .catch(() => {
+        host.innerHTML =
+          '<output class="set-ro">The owner can only be shown signed in.</output>';
+      });
+  }
+  load();
+}
+
+function drawDevices(host, ctx) {
+  const load = () =>
+    fetch("/api/web/sessions", { cache: "no-store" })
+      .then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
+      )
+      .then((b) => {
+        const list = b.sessions || [];
+        if (!list.length) {
+          host.innerHTML =
+            '<output class="set-ro" id="set-devices">No linked devices. A browser that signs in with GitHub, is approved with a code, or opens a one-time link appears here.</output>';
+          return;
+        }
+        const now = Date.now();
+        host.innerHTML =
+          '<div id="set-devices" style="width:100%">' +
+          list
+            .map((d) => {
+              const l = deviceLine(d, now);
+              return (
+                `<div class="set-device" data-id="${escHtml(d.id)}" style="${ROW_STYLE}">` +
+                `<div style="flex:1 1 220px;min-width:0"><div>${escHtml(l.title)}` +
+                (l.current
+                  ? ' <b class="set-this-device" style="font-weight:600">· This device</b>'
+                  : "") +
+                `</div>` +
+                `<div class="set-note" style="overflow-wrap:anywhere">${escHtml(l.detail)}</div></div>` +
+                `<button type="button" class="btn" data-revoke="${escHtml(d.id)}">Revoke</button></div>`
+              );
+            })
+            .join("") +
+          "</div>";
+        host.querySelectorAll("[data-revoke]").forEach((btn) =>
+          btn.addEventListener("click", () => {
+            btn.disabled = true;
+            ctx.shell
+              .api("POST", "/api/web/logout", { id: btn.dataset.revoke })
+              .then(load)
+              .catch(() => {
+                btn.disabled = false;
+              });
+          }),
+        );
+      })
+      .catch(() => {
+        host.innerHTML =
+          '<output class="set-ro">The devices can only be listed signed in.</output>';
+      });
+  load();
+}
+
+/** One waiting device's line: its code, browser and OS, address, age. */
+export function waitingLine(w, now = Date.now()) {
+  return {
+    title: `${w.code} · ${w.device || "Unknown browser"}`,
+    detail: [w.client, `asked ${seenAgo(w.createdAt, now)}`]
+      .filter(Boolean)
+      .join(" · "),
+  };
+}
+
+/**
+ * Waiting devices (SEC-2a): the computers whose signed-out page shows a
+ * code, with Approve and Deny. Approving signs that page in by itself.
+ */
+function drawWaiting(host, ctx) {
+  let timer = null;
+  const load = () => {
+    clearTimeout(timer);
+    if (!host.isConnected && timer !== null) return;
+    fetch("/api/web/waiting", { cache: "no-store" })
+      .then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
+      )
+      .then((b) => {
+        const list = b.waiting || [];
+        const now = Date.now();
+        host.innerHTML = list.length
+          ? '<div id="set-waiting" style="width:100%">' +
+            list
+              .map((w) => {
+                const l = waitingLine(w, now);
+                return (
+                  `<div class="set-waiting" data-code="${escHtml(w.code)}" style="${ROW_STYLE}">` +
+                  `<div style="flex:1 1 220px;min-width:0"><div class="mono">${escHtml(l.title)}</div>` +
+                  `<div class="set-note" style="overflow-wrap:anywhere">${escHtml(l.detail)}</div></div>` +
+                  `<button type="button" class="btn primary" data-approve="${escHtml(w.code)}">Approve</button>` +
+                  `<button type="button" class="btn" data-deny="${escHtml(w.code)}">Deny</button></div>`
+                );
+              })
+              .join("") +
+            '</div><div id="set-waiting-out" style="flex-basis:100%" aria-live="polite"></div>'
+          : '<output class="set-ro" id="set-waiting">No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve.</output>';
+        const act = (btn, path, code) => {
+          btn.disabled = true;
+          ctx.shell
+            .api("POST", path, { code })
+            .then(load)
+            .catch((e) => {
+              btn.disabled = false;
+              const out = host.querySelector("#set-waiting-out");
+              if (out)
+                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+            });
+        };
+        host
+          .querySelectorAll("[data-approve]")
+          .forEach((b) =>
+            b.addEventListener("click", () =>
+              act(b, "/api/web/approve", b.dataset.approve),
+            ),
+          );
+        host
+          .querySelectorAll("[data-deny]")
+          .forEach((b) =>
+            b.addEventListener("click", () =>
+              act(b, "/api/web/deny", b.dataset.deny),
+            ),
+          );
+        // A new request shows up without a reload.
+        timer = setTimeout(load, 5000);
+      })
+      .catch(() => {
+        host.innerHTML =
+          '<output class="set-ro">Waiting devices can only be listed signed in, or on this machine.</output>';
+      });
+  };
+  load();
+}
+
+function drawPair(host, ctx) {
+  let timer = null;
+  fetch("/api/web/pair", { cache: "no-store" })
+    .then((r) => r.json())
+    .then((b) => {
+      const hosts = b.hosts || [];
+      if (!hosts.length) {
+        host.innerHTML =
+          '<output class="set-ro" id="set-pair">No edge hostname routes to this server, so there is no address another device could open. Add one to the config\'s edge block (edge.aliases for a VPN name), then <code>__DEN_CLI__ edge up</code>.</output>';
+        return;
+      }
+      host.innerHTML =
+        '<select id="set-pair-host" aria-label="Edge hostname">' +
+        hosts
+          .map((h) => `<option value="${escHtml(h)}">${escHtml(h)}</option>`)
+          .join("") +
+        "</select> " +
+        '<button type="button" class="btn primary" id="set-pair-go">Pair a device</button>' +
+        '<div id="set-pair-out" style="flex-basis:100%" aria-live="polite"></div>';
+      const out = host.querySelector("#set-pair-out");
+      const go = () => {
+        clearTimeout(timer);
+        ctx.shell
+          .api("POST", "/api/web/pair", {
+            host: host.querySelector("#set-pair-host").value,
+          })
+          .then((p) => {
+            out.innerHTML =
+              `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-top:8px">` +
+              `<div id="set-pair-qr" style="line-height:0">${qrSvg(p.url, { scale: 4, margin: 4 })}</div>` +
+              `<div style="flex:1 1 220px;min-width:0"><p class="set-note" style="margin:0 0 8px">Scan it with the other device, or open the link there. It works once, within 60 seconds, and signs that browser in for good.</p>` +
+              `<a id="set-pair-link" href="${escHtml(p.url)}" style="font:12px var(--mono);overflow-wrap:anywhere">${escHtml(p.url)}</a>` +
+              `<p class="set-note" id="set-pair-left" style="margin:8px 0 0"></p></div></div>`;
+            const until = Date.parse(p.expiresAt);
+            const left = out.querySelector("#set-pair-left");
+            const tick = () => {
+              const s = Math.max(0, Math.round((until - Date.now()) / 1000));
+              left.textContent = s
+                ? `Expires in ${s} s.`
+                : "This link expired. Pair again for a new one.";
+              if (s) timer = setTimeout(tick, 1000);
+            };
+            tick();
+          })
+          .catch((e) => {
+            out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+          });
+      };
+      host.querySelector("#set-pair-go").addEventListener("click", go);
+    })
+    .catch(() => {
+      host.innerHTML =
+        '<output class="set-ro">Pairing works only signed in.</output>';
+    });
+}
+
+const ACCESS_ROWS = [
+  {
+    id: "access.owner",
+    category: "access",
+    label: "Owner",
+    description:
+      "The GitHub account this Den belongs to. Linking stores only its id (the token is thrown away), and from then on that account can sign in from any device. __DEN_CLI__ web owner link does the same from the command line.",
+    keywords: ["owner", "github", "identity", "link", "account"],
+    scope: "user",
+    control: { type: "custom", render: drawOwner },
+    read: () => null,
+  },
+  {
+    id: "access.devices",
+    category: "access",
+    label: "Linked devices",
+    description:
+      "The browsers signed in to this Den. Revoke ends one at once. __DEN_CLI__ web logout --all ends them all.",
+    keywords: ["devices", "sessions", "revoke", "browsers", "signed in"],
+    scope: "user",
+    control: { type: "custom", render: drawDevices },
+    read: () => null,
+  },
+  {
+    id: "access.waiting",
+    category: "access",
+    label: "Waiting devices",
+    description:
+      "Computers whose signed-out page shows a code. Approve one and its page signs in by itself; the code lasts 10 minutes. __DEN_CLI__ web approve <code> does the same from the command line.",
+    keywords: ["waiting", "approve", "code", "pair", "device", "deny"],
+    scope: "user",
+    control: { type: "custom", render: drawWaiting },
+    read: () => null,
+  },
+  {
+    id: "access.machine_name",
+    category: "access",
+    label: "Machine name",
+    description:
+      'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
+    keywords: ["machine", "name", "hostname", "host", "signed out"],
+    scope: "user",
+    control: { type: "text" },
+    keys: ["machine_name"],
+    read: (ctx) => ctx.data.machine_name ?? "",
+    write: (v, ctx) =>
+      ctx.post({ machine_name: String(v ?? "").trim() || null }),
+  },
+  {
+    id: "access.pair",
+    category: "access",
+    label: "Pair a device",
+    description:
+      "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
+    keywords: ["pair", "qr", "device", "link", "phone", "edge"],
+    scope: "user",
+    control: { type: "custom", render: drawPair },
+    read: () => null,
+  },
+];
 
 export const DEN_SETTINGS = [
   // ── Appearance ─────────────────────────────────────────────────────────
@@ -502,7 +891,7 @@ export const DEN_SETTINGS = [
     category: "cli",
     label: "Browser sign-in",
     description:
-      "Signing in is needed only when this server is reached from another machine (through the edge, or a LAN address); on localhost, and through the edge from this machine, nothing asks for it. __DEN_CLI__ web login prints a sign-in link; __DEN_CLI__ web sessions lists signed-in browsers.",
+      "On localhost nothing asks for a sign-in. Through the edge, a browser signs in unless the edge shows it is this machine (web.edge_unattested: local counts one it can't place as local), and from another machine it always does: Sign in with GitHub, or a one-time link (__DEN_CLI__ web login). Settings › Access lists the signed-in browsers.",
     keywords: ["sign in", "sign out", "login", "logout", "session", "browser"],
     scope: "user",
     control: {
@@ -575,6 +964,8 @@ export const DEN_SETTINGS = [
     },
     read: () => null,
   },
+
+  ...ACCESS_ROWS,
 
   // ── Distribution (read-only) ───────────────────────────────────────────
   distRow(
