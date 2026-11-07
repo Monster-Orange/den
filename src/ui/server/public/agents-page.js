@@ -1575,7 +1575,7 @@ function convRowHtml(c) {
   const off = c.agent || c.open;
   return (
     `<button type="button" class="pr" role="radio" data-cid="${esc(c.id)}" aria-checked="${c.id === sd.bring.pick}"${off ? ' aria-disabled="true"' : ""}>` +
-    `<span class="rd" aria-hidden="true"></span><span class="pn">${esc(c.title || t("ag.bring.untitled"))}${taken}</span><span class="mono">${esc(agoText(c.lastAt))}</span>` +
+    `<span class="rd" aria-hidden="true"></span><span class="pn pnc"><span class="pt">${esc(c.title || t("ag.bring.untitled"))}</span>${taken}</span><span class="mono">${esc(agoText(c.lastAt))}</span>` +
     `<span class="pd mono">${esc(convFolder(c))} · ${esc(c.id.slice(0, 8))}</span></button>`
   );
 }
@@ -1591,7 +1591,8 @@ function paintConversations() {
     .map((r) => r.why);
   $d("#ag-conv-h").textContent = [
     list.length ? t("ag.bring.help") : t("ag.bring.none"),
-    ...cant,
+    // Each its own sentence (they read as one run-on line before).
+    ...cant.map((w) => (/[.!?]$/.test(w) ? w : `${w}.`)),
   ].join(" ");
   $d("#ag-conv").innerHTML = list.map(convRowHtml).join("");
   $d("#ag-conv").hidden = !list.length;
@@ -1710,6 +1711,8 @@ function paintRuntime(reset) {
   $d("#ag-r-l").hidden = plain || !!sd.bring;
   $d("#ag-task-l").hidden = plain || !!sd.bring;
   $d("#ag-adv").hidden = plain || !!sd.bring;
+  $d("#ag-name-l").hidden = plain || !!sd.bring;
+  paintStartsAs();
   if (sd.bring) {
     $d("#ag-r-miss").hidden = true;
     ready.hidden = true;
@@ -1930,13 +1933,39 @@ function startBody() {
   }
   const task = $d("#ag-task").value.trim();
   if (task) body.instruction = task;
+  const name = $d("#ag-name").value.trim();
+  if (name) body.name = name;
   return body;
 }
 
 function showStartError(err) {
   const el = $d("#ag-err");
   el.textContent = err?.message || String(err);
+  // AG-10.10: that agent is running: offer to open it.
+  const running = err?.data?.running;
+  if (running?.sessionId) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "den-btn sm";
+    b.id = "ag-open-running";
+    b.textContent = t("ag.new.openRunning");
+    b.addEventListener("click", () => {
+      $d("#ag-dlg").close?.();
+      void openPane(running.sessionId);
+    });
+    el.append(" ", b);
+  }
   el.hidden = false;
+}
+
+/** AG-10.10: the id this start takes, so two of one persona are told apart. */
+function paintStartsAs() {
+  const el = $d("#ag-as");
+  if (!el) return;
+  const p = sd.pid && sd.pid !== PLAIN && !sd.bring ? curPersona() : null;
+  el.hidden = !p;
+  if (p)
+    el.textContent = t("ag.new.as", { id: sd.data?.startsAs?.[p.id] ?? p.id });
 }
 
 async function submitStart(form) {
@@ -1971,6 +2000,9 @@ async function submitStart(form) {
       startBody(),
     );
     window.denShell?.toast?.(t("ag.started", { id: r?.agent?.id ?? sd.pid }));
+    // AG-10.10: the next start of this persona takes another id.
+    personasAsked.delete(ws);
+    $d("#ag-name").value = "";
     for (const w of r?.warnings ?? []) window.denShell?.toast?.(w);
     dlg.close?.();
     await refresh();
@@ -2198,6 +2230,7 @@ function translateStatic(root) {
   set("#ag-newp", "ag.new.newP");
   set("#ag-what-p", "pe.what");
   set("#ag-task-t", "ag.new.task");
+  set("#ag-name-t", "ag.new.name");
   set("#ag-adv-s", "ag.new.adv");
   set("#ag-note", "ag.new.note");
   const task = root.querySelector("#ag-task");

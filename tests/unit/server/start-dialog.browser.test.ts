@@ -210,6 +210,36 @@ describe("the Start dialog (AG-10.1)", () => {
     await p.context().close();
   }, 90_000);
 
+  it("AG-10.10: one persona twice: the dialog says the id each start takes, and a name tells them apart", async () => {
+    if (skip() || !PTY) return;
+    const startOnce = async (name: string) => {
+      const p = await page("/agents?ws=north&start=1");
+      await openDialog(p);
+      await p.click('#ag-persona [data-pid="reviewer"]');
+      const as = (await p.textContent("#ag-as")) ?? "";
+      await p.fill("#ag-name", name);
+      const [res] = await Promise.all([
+        p.waitForResponse(
+          (r) =>
+            r.request().method() === "POST" &&
+            new URL(r.url()).pathname === "/api/workspaces/north/agents",
+          { timeout: 20_000 },
+        ),
+        p.click("#ag-go"),
+      ]);
+      expect(res.status()).toBe(200);
+      const sent = JSON.parse(res.request().postData() ?? "{}");
+      expect(sent).toMatchObject({ persona: "reviewer", name });
+      const id = ((await res.json()) as { agent: { id: string } }).agent.id;
+      await p.context().close();
+      return { as, id };
+    };
+    const one = await startOnce("First");
+    expect(one).toEqual({ as: "Starts as reviewer", id: "reviewer" });
+    const two = await startOnce("Second");
+    expect(two).toEqual({ as: "Starts as reviewer-2", id: "reviewer-2" });
+  }, 90_000);
+
   it("finds a persona: search, the category and source chips, Plain session pinned last, Details and What's a persona?", async () => {
     if (skip()) return;
     const p = await page("/agents?ws=north&start=1");

@@ -254,11 +254,44 @@ describe("agents start", () => {
       await agents(r, "start", "-w", "south", "--persona", "planner"),
     ).toBe(0);
     expect(record(r, "planner-south").workspace).toBe("south");
-    // And the same id twice in one workspace while it runs is refused.
+    // An explicit id that is running is refused, with how to open it.
     expect(
-      await agents(r, "start", "-w", "north", "--persona", "planner"),
+      await agents(
+        r,
+        "start",
+        "-w",
+        "north",
+        "--persona",
+        "planner",
+        "--id",
+        "planner",
+      ),
     ).toBe(1);
     expect(r.err.join("\n")).toMatch(/agent planner is running/);
+  });
+
+  it("AG-10.10: one persona twice in a workspace: planner, then planner-2; a stopped one is never reused by a new start", async () => {
+    const r = await rig();
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    expect(record(r, "planner").workspace).toBe("north");
+    expect(record(r, "planner-2").workspace).toBe("north");
+    // The first one ends: a new start still takes the next free id.
+    await typeInto(r, "planner", "plan the release\r");
+    r.made[0].exit(0);
+    await settle();
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    expect(record(r, "planner-3").workspace).toBe("north");
+    // The stopped one still resumes as itself.
+    const rc = await agents(r, "resume", "planner");
+    if (rc !== 0) throw new Error(r.err.join("\n"));
+    expect(rc).toBe(0);
   });
 
   it("agents.max_concurrent counts agents only: plain sessions never block an agent", async () => {
@@ -412,7 +445,9 @@ describe("agents stop and resume", () => {
     await typeInto(r, "planner", "plan the release\r");
     r.made[0].exit(0);
     await settle();
-    expect(await agents(r, "resume", "planner")).toBe(0);
+    const rc = await agents(r, "resume", "planner");
+    if (rc !== 0) throw new Error(r.err.join("\n"));
+    expect(rc).toBe(0);
     const p = r.made[1];
     expect(p.args.slice(0, 2)).toEqual(["--resume", token]);
     expect(p.opts.cwd).toBe(r.wsDir("north"));
@@ -567,7 +602,9 @@ describe("agents resume, never prompted", () => {
     );
     r.made[0].exit(0);
     await settle();
-    expect(await agents(r, "resume", "planner")).toBe(0);
+    const rc = await agents(r, "resume", "planner");
+    if (rc !== 0) throw new Error(r.err.join("\n"));
+    expect(rc).toBe(0);
     expect(r.out.join("\n")).toMatch(/nothing to resume yet; started fresh/);
     const p = r.made[1];
     expect(p.args.slice(0, 2)).toEqual(["--session-id", token]);

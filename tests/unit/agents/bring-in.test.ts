@@ -16,6 +16,7 @@ import type { AddressInfo } from "net";
 import * as path from "path";
 import { readRecord } from "../../../src/shared/agents/records.js";
 import { claudeSlug } from "../../../src/shared/agents/conversations.js";
+import { repoFolders } from "../../../src/shared/environment-manager/workspaces.js";
 import { verifyActorToken } from "../../../src/shared/actor-token.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { handleAgentRoutes } from "../../../src/ui/server/agent-routes.js";
@@ -147,6 +148,56 @@ describe("agents import (CLI)", () => {
     );
     expect(r.made).toHaveLength(0);
     expect(readRecord(r.stateDir, "planner")).toBeNull();
+  });
+
+  it("a repo added by path outside the workspace's folder: its conversations are this workspace's (0.4.14-dev.0 gate)", async () => {
+    const r = await rig();
+    const hello = path.join(r.dir, "elsewhere", "hello");
+    fs.mkdirSync(hello, { recursive: true });
+    conversation(r, hello);
+    // What the workspaces file gives: north's folder, and its by-path repo.
+    r.deps.workspaceFolders = (ws) =>
+      ws === "north"
+        ? [
+            r.wsDir("north"),
+            ...repoFolders({
+              services: { hello: { mode: "dev-managed", path: hello } },
+            } as never),
+          ]
+        : [r.wsDir(ws)];
+    expect(await agents(r, "import", "-w", "north")).toBe(0);
+    expect(r.out.join("\n")).toContain(TOKEN);
+    expect(
+      await agents(
+        r,
+        "import",
+        "-w",
+        "north",
+        "--session",
+        TOKEN,
+        "--persona",
+        "planner",
+      ),
+    ).toBe(0);
+    expect(r.made[0].opts.cwd).toBe(hello);
+    // Not another workspace's.
+    r.out.length = 0;
+    expect(await agents(r, "import", "-w", "south")).toBe(0);
+    expect(r.out.join("\n")).not.toContain(TOKEN);
+  });
+
+  it("repoFolders: each by-path repo's folder; managed clones are not", () => {
+    expect(
+      repoFolders({
+        services: {
+          hello: { mode: "dev-managed", path: "/w/hello" },
+          "hello/api": { mode: "dev-managed", path: "/w/hello" },
+          shop: { mode: "managed", branch: "main" },
+          odd: { mode: "dev-managed", path: "relative/x" },
+        },
+      } as never),
+    ).toEqual(["/w/hello", "/w/hello"]);
+    expect(repoFolders(undefined)).toEqual([]);
   });
 
   it("another workspace's conversation is not one of this workspace's", async () => {

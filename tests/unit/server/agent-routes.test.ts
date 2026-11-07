@@ -469,7 +469,11 @@ describe("POST /api/workspaces/<ws>/agents (start)", () => {
   it("an agent already running is a conflict (409)", async () => {
     const a = await api();
     await start(a, "north", { persona: "planner" });
-    const { status, json } = await start(a, "north", { persona: "planner" });
+    // An explicit id: without one, a second start takes planner-2 (AG-10.10).
+    const { status, json } = await start(a, "north", {
+      persona: "planner",
+      id: "planner",
+    });
     expect(status).toBe(409);
     expectR26(json, "conflict");
     expect(a.r.made).toHaveLength(1);
@@ -1005,6 +1009,40 @@ describe("POST …/agents start: the Start dialog's choices (AG-10.1, AG-12, AG-
     p.emit("ready> ");
     await until(() => typed(p).endsWith("\r") && typed(p).length > 2);
     expect(typed(p)).toBe("a\x1b\rb\r");
+  });
+});
+
+describe("AG-10.10: one persona twice in a workspace", () => {
+  it("starts planner, then planner-2 with a name; says what the next start takes; an explicit running id says how to open it", async () => {
+    const a = await api();
+    const one = await start(a, "north", { persona: "planner" });
+    expect(one.status).toBe(200);
+    expect(one.json.agent).toMatchObject({ id: "planner" });
+    const two = await start(a, "north", { persona: "planner", name: "Second" });
+    expect(two.status).toBe(200);
+    expect(two.json.agent).toMatchObject({ id: "planner-2" });
+    expect(readRecord(a.r.stateDir, "planner-2")!.displayName).toBe("Second");
+    const list = await a.call("GET", "/api/personas?workspace=north");
+    expect(list.status).toBe(200);
+    expect((list.json.startsAs as Record<string, string>).planner).toBe(
+      "planner-3",
+    );
+    const busy = await start(a, "north", { persona: "planner", id: "planner" });
+    expect(busy.status).toBe(409);
+    expectR26(busy.json, "conflict");
+    expect(busy.json.running).toEqual({
+      id: "planner",
+      sessionId: (one.json.agent as { sessionId: string }).sessionId,
+    });
+  });
+
+  it("a name is checked as a rename's is", async () => {
+    const a = await api();
+    const bad = await start(a, "north", {
+      persona: "planner",
+      name: "x".repeat(500),
+    });
+    expect(bad.status).toBe(400);
   });
 });
 

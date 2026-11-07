@@ -191,6 +191,11 @@ export interface AgentsDeps extends SessionsDeps {
   distRoot?: () => string;
   /** A workspace's checkout directory: where its agents run. */
   workspaceDir?: (ws: string) => string;
+  /**
+   * AG-17.1: the folders a workspace's conversations may have run in: its
+   * own folder, and each repo's path, a repo added by path outside it too.
+   */
+  workspaceFolders?: (ws: string) => string[];
   /** The MCP server binary and its env; Den adds the scoped args. */
   mcpServer?: () => { command: string[] | string; env: Record<string, string> };
   /**
@@ -227,6 +232,7 @@ export interface AgentsResolved extends Resolved {
   agentsConfig: () => ResolvedAgentsConfig;
   distRoot: () => string;
   workspaceDir: (ws: string) => string;
+  workspaceFolders: (ws: string) => string[];
   mcpServer: () => { command: string[] | string; env: Record<string, string> };
   exitWatchMs: number;
   stopWaitMs: number;
@@ -256,6 +262,8 @@ export class AgentError extends Error {
   readonly usage: boolean;
   readonly code?: string;
   readonly hints: string[];
+  /** AG-10.10: the running agent a start collided with, so a page can open it. */
+  readonly running?: { id: string; sessionId: string };
   constructor(
     message: string,
     o: {
@@ -263,6 +271,7 @@ export class AgentError extends Error {
       usage?: boolean;
       code?: string;
       hints?: string[];
+      running?: { id: string; sessionId: string };
     } = {},
   ) {
     super(message);
@@ -271,6 +280,7 @@ export class AgentError extends Error {
     this.usage = o.usage ?? false;
     this.code = o.code;
     this.hints = o.hints ?? [];
+    if (o.running) this.running = o.running;
   }
 }
 
@@ -282,6 +292,7 @@ const refused = (message: string, hints: string[] = [], status = 409) =>
   new AgentError(message, { status, hints });
 
 let workspaceDirFn: ((ws: string) => string) | null = null;
+let repoPathsFn: ((ws: string) => string[]) | null = null;
 /** The workspaces config, for start and resume (loaded on first use). */
 export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
   await loadWorkspaces(d);
@@ -293,6 +304,9 @@ export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
     if (!cfg) throw usage(`workspace "${name}" does not exist`, 404);
     return ws.resolveWorkspaceDir(name, cfg, getReposRoot());
   };
+  // A by-path repo's own folder (repo add <path>), wherever it is.
+  repoPathsFn = (name) =>
+    ws.repoFolders(ws.readWorkspacesFile().workspaces[name]);
 }
 
 /** The distribution's bin shim (as `mcp connect` registers), else Den's CLI. */
@@ -322,6 +336,17 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       ((ws) => {
         if (!workspaceDirFn) throw new Error("workspaces not loaded");
         return workspaceDirFn(ws);
+      }),
+    workspaceFolders:
+      d.workspaceFolders ??
+      ((ws) => {
+        const dir = d.workspaceDir
+          ? d.workspaceDir(ws)
+          : (() => {
+              if (!workspaceDirFn) throw new Error("workspaces not loaded");
+              return workspaceDirFn(ws);
+            })();
+        return [dir, ...(repoPathsFn?.(ws) ?? [])];
       }),
     mcpServer: d.mcpServer ?? (() => defaultMcpServer(base.cli)),
     exitWatchMs: d.exitWatchMs ?? EXIT_WATCH_MS,
@@ -1018,13 +1043,26 @@ function sessionOf(
 }
 
 /**
- * The id an agent gets: --id, else the persona's id while it is free (or
- * this workspace's), else `<persona>-<ws>`.
+ * The id a new start gets without --id (AG-10.10): the persona's id while
+ * no agent has it; `<persona>-<ws>` when another workspace's agent has it;
+ * else the first of `<base>-2`, `<base>-3`… no agent has. A stopped agent's
+ * id is never reused by a new start: only its Resume or Start fresh.
  */
-function defaultId(stateDir: string, persona: string, ws: string): string {
+export function defaultId(
+  stateDir: string,
+  persona: string,
+  ws: string,
+): string {
   const rec = readRecord(stateDir, persona);
-  if (!rec || rec.workspace === ws) return persona;
-  return `${persona}-${ws}`.slice(0, 64);
+  if (!rec) return persona;
+  const base = rec.workspace === ws ? persona : `${persona}-${ws}`.slice(0, 64);
+  if (base !== persona && !readRecord(stateDir, base)) return base;
+  const stem = base.slice(0, 58);
+  for (let n = 2; n < 1000; n++) {
+    const id = `${stem}-${n}`;
+    if (!readRecord(stateDir, id)) return id;
+  }
+  throw refused(`no free agent id for ${persona}: give one with --id`);
 }
 
 function checkId(where: string, id: string): void {
@@ -1316,6 +1354,8 @@ export interface StartRequest {
   permission?: string;
   /** Extra allowed commands for this launch, instead of the persona's. */
   allow?: unknown;
+  /** AG-10.10: a display name for this agent (AG-4b's), to tell two apart. */
+  name?: unknown;
   /**
    * The page's start (AG-10.1): a model must be one the runtime offers,
    * never a free string (the CLI's --model for generic stays free).
@@ -1449,6 +1489,13 @@ export async function startAgent(
     );
   const id = req.id ?? defaultId(d.stateDir(), persona.id, ws);
   checkId(where, id);
+  let given: string | null = null;
+  if (req.name !== undefined)
+    try {
+      given = checkDisplayName(req.name);
+    } catch (e) {
+      throw usage(`${where}: ${(e as Error).message}`);
+    }
   syncCatalog(d);
   const rt = runtimeFor(req.runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID);
   const det = await availableOrRefuse(d, rt, ws);
@@ -1485,9 +1532,11 @@ export async function startAgent(
     const sessions = await c.list();
     const old = prev ? sessionOf(sessions, prev) : undefined;
     if (old && !old.exited)
-      throw refused(`agent ${id} is running (${old.name})`, [
-        `Attach: ${d.cli} sessions attach ${old.name}`,
-      ]);
+      throw new AgentError(`agent ${id} is running (${old.name})`, {
+        status: 409,
+        hints: [`Attach: ${d.cli} sessions attach ${old.name}`],
+        running: { id, sessionId: old.ref.id },
+      });
     const out = more.bringIn
       ? { ...broughtIn(rt, input), resumeToken: more.bringIn.token }
       : launchOrThrow(() => rt.launch(input));
@@ -1521,14 +1570,19 @@ export async function startAgent(
           // AG-4b: a name given to the agent is the agent's, not its
           // conversation's: Start fresh and Relaunch keep it. AG-10.8:
           // else its persona's name ("Rita").
-          ...(prev?.displayName
-            ? { displayName: prev.displayName }
-            : persona.displayName
-              ? { displayName: persona.displayName }
-              : {}),
-          ...(prev?.displayName && prev.displayNameAt
-            ? { displayNameAt: prev.displayNameAt }
-            : {}),
+          // AG-10.10: a name given at start wins.
+          ...(given
+            ? { displayName: given, displayNameAt: new Date().toISOString() }
+            : prev?.displayName
+              ? {
+                  displayName: prev.displayName,
+                  ...(prev.displayNameAt
+                    ? { displayNameAt: prev.displayNameAt }
+                    : {}),
+                }
+              : persona.displayName
+                ? { displayName: persona.displayName }
+                : {}),
           // 0.4.8: launched on this token, so a resume continues it.
           ...(out.resumeToken
             ? { resumeToken: out.resumeToken, launched: true }
@@ -1624,15 +1678,24 @@ export function listConversations(
     throw usage(`${where}: workspace "${ws}" does not exist`, 404);
   syncCatalog(d);
   if (runtime !== undefined) runtimeFor(runtime);
-  const dir = d.workspaceDir(ws);
+  // Its folder and every repo's (one under another is scanned once).
+  const folders = [
+    ...new Set(d.workspaceFolders(ws).map((f) => path.resolve(f))),
+  ];
+  const scan = folders.filter(
+    (f) => !folders.some((o) => o !== f && f.startsWith(o + path.sep)),
+  );
   const taken = agentByToken(d);
   const now = Date.now();
   const conversations: ListedConversation[] = [];
+  const seen = new Set<string>();
   for (const id of runtimeIds()) {
     if (runtime !== undefined && id !== runtime) continue;
     const rt = getRuntime(id);
     if (!rt?.listSessions) continue;
-    for (const c of rt.listSessions(dir, d.env)) {
+    for (const c of scan.flatMap((f) => rt.listSessions!(f, d.env))) {
+      if (seen.has(`${id} ${c.id}`)) continue;
+      seen.add(`${id} ${c.id}`);
       const agent = taken.get(`${id} ${c.id}`);
       conversations.push({
         ...c,

@@ -308,7 +308,17 @@ describe("the other trigger and the settings", () => {
     await stop(r, "planner");
     r.config.rotate = { afterCompactions: 3, standing: false };
     expect(
-      await agents(r, "start", "-w", "north", "--persona", "planner"),
+      // --id: the same agent again (a new start would take planner-2).
+      await agents(
+        r,
+        "start",
+        "-w",
+        "north",
+        "--persona",
+        "planner",
+        "--id",
+        "planner",
+      ),
     ).toBe(0);
     expect(readRotation(files(r, "planner"))?.after).toBe(0);
     compact(r, "planner", 6);
@@ -384,9 +394,18 @@ describe("Start fresh on a rotated agent", () => {
     compact(r, "be-dev", 3);
     writeHandoff(r, "be-dev");
     await stop(r);
-    expect(await agents(r, "start", "-w", "north", "--persona", "be-dev")).toBe(
-      0,
-    );
+    expect(
+      await agents(
+        r,
+        "start",
+        "-w",
+        "north",
+        "--persona",
+        "be-dev",
+        "--id",
+        "be-dev",
+      ),
+    ).toBe(0);
     expect(fs.existsSync(path.join(files(r, "be-dev"), "handoff.md"))).toBe(
       false,
     );

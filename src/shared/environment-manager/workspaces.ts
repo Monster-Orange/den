@@ -344,6 +344,17 @@ export function resolveWorkspaceDir(
   return reposRoot;
 }
 
+/**
+ * The folders of a workspace's by-path repos (`repo add <path>`), wherever
+ * they are, outside its own folder too (AG-17.1). Managed clones and a
+ * feature workspace's clones live under Den's or the workspace's folder.
+ */
+export function repoFolders(cfg: WorkspaceConfig | undefined): string[] {
+  return Object.values(cfg?.services ?? {})
+    .map((e) => (e as { path?: string }).path)
+    .filter((p): p is string => typeof p === "string" && path.isAbsolute(p));
+}
+
 export function getWorkspaceByName(name: string): {
   name: string;
   config: WorkspaceConfig;

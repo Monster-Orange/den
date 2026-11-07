@@ -9,7 +9,8 @@ config and manifest changes a distribution must make to move to it under
 ### Added
 
 - **Bring in a conversation (AG-17.1).** A Claude Code conversation you
-  started in a terminal outside Den, in the workspace's folder, can become
+  started in a terminal outside Den, in the workspace's folder or in one
+  of its repos' folders (a repo added by path outside it too), can become
   a Den agent. Agents › Bring in lists them, newest first, and asks for a
   persona; Bring in runs `claude --resume <id>` in the folder it ran in,
   with Den's token, MCP, hooks and guards from then on. Den reads only the
@@ -22,8 +23,26 @@ config and manifest changes a distribution must make to move to it under
   /api/workspaces/<ws>/conversations/<id>/import`. Only den-claude can
   bring one in for now. The dialog asks you to close the
   conversation in any other terminal first.
+- **One persona, several agents (AG-10.10).** Starting a persona that
+  already has an agent in the workspace starts another: `be-dev`, then
+  `be-dev-2`, `be-dev-3`. A stopped agent's id is never reused by a new
+  start, only by its Resume or Start fresh. The Start dialog says the id
+  it will use ("Starts as be-dev-2") and takes an optional Name. An id
+  that is running is refused, and the dialog offers "Open the running
+  one". `--id` stays exact. The start route takes `name`; `GET
+  /api/personas?workspace=<ws>` answers `startsAs`; a 409 for a running
+  agent carries `running: {id, sessionId}`.
+
+### Changed
+
+- Without `--id`, a start of a persona whose agent is stopped in that
+  workspace no longer replaces it: it starts `<persona>-2`. To continue
+  the stopped one, Resume it or Start fresh on it.
 
 ### Fixed
+
+- Bring in: a long title no longer cuts off its "Agent …" badge, and each
+  "can't bring in a conversation yet" line is its own sentence.
 
 - Start › Advanced: the Model select's default reads "Persona default
   (latest)" for a persona with no model of its own; the longer label was

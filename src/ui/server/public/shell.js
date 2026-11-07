@@ -566,6 +566,9 @@
     "ag.new.plain": "Plain session",
     "ag.new.plainP": "A terminal in the workspace folder. No agent.",
     "ag.new.task": "First instruction (optional)",
+    "ag.new.name": "Name (optional)",
+    "ag.new.as": "Starts as {id}",
+    "ag.new.openRunning": "Open the running one",
     "ag.new.taskPh":
       "e.g. Take the empty-state story. Match the design and add a test.",
     "ag.new.adv": "Advanced: model and permissions",
