@@ -27,7 +27,7 @@ import { cliEntrypoint } from "../../shared/engine.js";
 import { getDistRoot, getInvokeCwd, getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { ENV_NAME_RE, isCredentialShaped } from "../../shared/secret-env.js";
-import { allScrubEnv } from "../../shared/agents/runtimes.js";
+import { allScrubEnv, withSessionPath } from "../../shared/agents/runtimes.js";
 import {
   ensureHost,
   connectHost,
@@ -320,14 +320,19 @@ export function contractInfo(s: SessionInfo): SessionInfo {
 // ── subcommands ───────────────────────────────────────────────────────────────
 
 /**
- * A plain session's env (AG spec §5a-env): the allowlist, the names the
- * user kept, then every runtime's scrubEnv. `doctor --probe` checks it.
+ * A plain session's env (AG spec §5a-env): the allowlist (its PATH with
+ * the runtime search's directories, AG-0.1), the names the user kept, then
+ * every runtime's scrubEnv. `doctor --probe` checks it.
  */
 export function plainSessionEnv(
   caller: NodeJS.ProcessEnv,
   keep: readonly string[] = [],
 ): Record<string, string> {
-  return buildSessionEnv({ caller, keep, scrub: allScrubEnv() });
+  return buildSessionEnv({
+    caller: withSessionPath(caller),
+    keep,
+    scrub: allScrubEnv(),
+  });
 }
 
 /** Who ran the CLI, for an audit line: a login name, printable. */

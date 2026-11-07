@@ -7,7 +7,10 @@
  * what happened, or throws an AgentError saying why it didn't.
  *
  *   start   resolves the persona (Den's default pack, then
- *           agents.persona_packs) and the runtime, asks the runtime for argv,
+ *           agents.persona_packs) and the runtime (its CLI from
+ *           agents.runtimes.<id>.bin in user.yml, else the search:
+ *           runtime-search.ts, AG-0.1; unavailable, it is refused with the
+ *           fix), asks the runtime for argv,
  *           env and files (its MCP config: `<cli> mcp --workspace <ws>
  *           --actor agent:<id>`, plus a `--grant` per agents.<id>.grants),
  *           starts `<dist>-<ws>:<id>` in the workspace's dir, and writes the
@@ -38,7 +41,9 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   AGENTS_RESERVED_KEYS,
+  configuredRuntimeBin,
   readAgentsConfig,
+  userConfigPath,
   type ResolvedAgentsConfig,
 } from "../../shared/den-config.js";
 import { cliEntrypoint } from "../../shared/engine.js";
@@ -69,6 +74,12 @@ import {
   type LaunchInput,
   type Runtime,
 } from "../../shared/agents/runtimes.js";
+import type { RuntimeDetect } from "../../shared/agents/runtime.js";
+import {
+  binSettingKey,
+  runtimeVersion,
+  type BinSource,
+} from "../../shared/agents/runtime-search.js";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
 import {
   bindActorSession,
@@ -103,6 +114,10 @@ export interface AgentsDeps extends SessionsDeps {
    * exit (default 3000 ms; 0: not at all).
    */
   exitWatchMs?: number;
+  /** `agents.runtimes.<id>.bin` (default: user.yml's; undefined: unset). */
+  runtimeBin?: (id: string) => unknown;
+  /** The user.yml a person edits to set it (default: config/local/user.yml). */
+  userConfigFile?: () => string;
 }
 
 export interface AgentsResolved extends Resolved {
@@ -111,6 +126,8 @@ export interface AgentsResolved extends Resolved {
   workspaceDir: (ws: string) => string;
   mcpServer: () => { command: string[] | string; env: Record<string, string> };
   exitWatchMs: number;
+  runtimeBin: (id: string) => unknown;
+  userConfigFile: () => string;
 }
 
 /** The early-exit watch: at most this long, polling the host. */
@@ -199,6 +216,8 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       }),
     mcpServer: d.mcpServer ?? (() => defaultMcpServer(base.cli)),
     exitWatchMs: d.exitWatchMs ?? EXIT_WATCH_MS,
+    runtimeBin: d.runtimeBin ?? ((id) => configuredRuntimeBin(id)),
+    userConfigFile: d.userConfigFile ?? userConfigPath,
   };
 }
 
@@ -400,26 +419,78 @@ export interface RuntimeChoice {
   /** Why it is unavailable. */
   why?: string;
   version?: string;
+  /** The CLI it runs (AG-0.2). */
+  path?: string;
+  /** Where that path came from: setting, login-shell, well-known or PATH. */
+  source?: BinSource;
+  /** The directories searched, in order (a runtime with a CLI to find). */
+  searched?: string[];
+  /** The user.yml key that sets its path (a runtime with a CLI to find). */
+  setting?: string;
   /** It declares resume. */
   resume: boolean;
   default: boolean;
 }
 
-/** Every registered runtime, and whether it can run here (detect runs nothing). */
-export function listRuntimes(d: AgentsResolved): RuntimeChoice[] {
-  return runtimeIds().map((id) => {
-    const rt = getRuntime(id)!;
-    const det = rt.detect(d.env);
-    return {
-      id,
-      ...(rt.label ? { label: rt.label } : {}),
-      available: det.available,
-      ...(det.available ? {} : { why: det.why ?? "unavailable" }),
-      ...(det.version ? { version: det.version } : {}),
-      resume: Boolean(rt.resume),
-      default: id === DEFAULT_RUNTIME_ID,
-    };
-  });
+/**
+ * Whether runtime `rt` can run here (AG-0.1): its setting
+ * (`agents.runtimes.<id>.bin`, from d.runtimeBin), else the search. Runs
+ * nothing.
+ */
+export function detectRuntime(d: AgentsResolved, rt: Runtime): RuntimeDetect {
+  return rt.detect(d.env, { bin: d.runtimeBin(rt.id) ?? null });
+}
+
+/**
+ * Every registered runtime, and whether it can run here, with the path it
+ * runs and its version: its version command (`claude --version`), run once
+ * under a timeout and kept, else what its install says.
+ */
+export async function listRuntimes(
+  d: AgentsResolved,
+): Promise<RuntimeChoice[]> {
+  return Promise.all(
+    runtimeIds().map(async (id) => {
+      const rt = getRuntime(id)!;
+      const det = detectRuntime(d, rt);
+      const asked =
+        det.available && det.path && rt.find?.versionArgs
+          ? await runtimeVersion(det.path, rt.find.versionArgs, d.env)
+          : undefined;
+      const version = asked ?? det.version;
+      return {
+        id,
+        ...(rt.label ? { label: rt.label } : {}),
+        available: det.available,
+        ...(det.available ? {} : { why: det.why ?? "unavailable" }),
+        ...(version ? { version } : {}),
+        ...(det.path ? { path: det.path } : {}),
+        ...(det.source ? { source: det.source } : {}),
+        ...(rt.find
+          ? { searched: det.searched ?? [], setting: binSettingKey(id) }
+          : {}),
+        resume: Boolean(rt.resume),
+        default: id === DEFAULT_RUNTIME_ID,
+      };
+    }),
+  );
+}
+
+/** Refused unless `rt` can run here; its detect result when it can. */
+function availableOrRefuse(d: AgentsResolved, rt: Runtime): RuntimeDetect {
+  const det = detectRuntime(d, rt);
+  if (!det.available)
+    throw refused(
+      `${rt.id} is unavailable: ${det.why ?? "unknown"}`,
+      rt.find
+        ? [
+            `Install it, or set ${binSettingKey(rt.id)} to its absolute path in ${d.userConfigFile()}.`,
+            `\`${d.cli} agents doctor\` shows where it looked.`,
+          ]
+        : [],
+      503,
+    );
+  return det;
 }
 
 function runtimeFor(id: string): Runtime {
@@ -463,6 +534,15 @@ interface Launch {
   passthrough?: readonly string[];
   /** agents.<id>.grants, recorded with its actor token. */
   grants: readonly string[];
+  /** Added to the session's PATH: a configured CLI's own directory. */
+  binDir?: string;
+}
+
+/** A configured CLI's directory, for its session's PATH (its own tools). */
+function binDirOf(det: RuntimeDetect): { binDir?: string } {
+  return det.source === "setting" && det.path
+    ? { binDir: path.dirname(det.path) }
+    : {};
 }
 
 /** The host's cap refusal as an AgentError (its hint says what to do). */
@@ -514,6 +594,7 @@ async function startSession(
             launch.env,
             launch.rec.id,
             minted.token,
+            launch.binDir ? [launch.binDir] : [],
           ),
           cols: (tty && d.stdout.columns) || 80,
           rows: (tty && d.stdout.rows) || 24,
@@ -604,6 +685,7 @@ function launchInput(
   ws: string,
   id: string,
   model: string | undefined,
+  bin?: string,
 ): LaunchInput {
   const grants = cfg.agents[id]?.grants ?? [];
   for (const g of grants)
@@ -626,6 +708,7 @@ function launchInput(
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
     env: d.env,
+    ...(bin ? { bin } : {}),
   };
 }
 
@@ -684,9 +767,7 @@ export async function startAgent(
   const id = req.id ?? defaultId(d.stateDir(), persona.id, ws);
   checkId(where, id);
   const rt = runtimeFor(req.runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID);
-  const det = rt.detect(d.env);
-  if (!det.available)
-    throw refused(`${rt.id} is unavailable: ${det.why ?? "unknown"}`, [], 503);
+  const det = availableOrRefuse(d, rt);
   const model = req.model ?? persona.model;
 
   const prev = readRecord(d.stateDir(), id);
@@ -695,7 +776,7 @@ export async function startAgent(
       `agent ${id} belongs to workspace ${prev.workspace}; give this one another --id`,
     );
   ptyOrRefuse(d);
-  const input = launchInput(d, cfg, persona, ws, id, model);
+  const input = launchInput(d, cfg, persona, ws, id, model, det.path);
 
   return withClient(d, async (c) => {
     const sessions = await c.list();
@@ -724,6 +805,7 @@ export async function startAgent(
         env: out.env,
         passthrough: rt.envPassthrough,
         grants: cfg.agents[id]?.grants ?? [],
+        ...binDirOf(det),
       },
       old,
       {},
@@ -798,6 +880,7 @@ export async function resumeAgent(
   const persona = personas(d, cfg).get(rec.persona);
   if (!persona)
     throw refused(`agent ${rec.id}'s persona "${rec.persona}" is gone`);
+  const det = availableOrRefuse(d, rt);
   ptyOrRefuse(d);
   return withClient(d, async (c) => {
     const old = sessionOf(await c.list(), rec);
@@ -812,6 +895,7 @@ export async function resumeAgent(
       rec.workspace,
       rec.id,
       rec.model,
+      det.path,
     );
     // Resume in the cwd the agent had, wherever the workspace points now.
     const at = {
@@ -836,6 +920,7 @@ export async function resumeAgent(
         env: out.env,
         passthrough: rt.envPassthrough,
         grants: cfg.agents[rec.id]?.grants ?? [],
+        ...binDirOf(det),
       },
       old,
       fresh ? {} : { resumedAt: new Date().toISOString() },

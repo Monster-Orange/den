@@ -383,6 +383,14 @@ works; only the saved password needs `refs.sudo`.
 `configured`, `backendAvailable`, `reason` and `hasStored` (`opAvailable`
 is a deprecated alias of `backendAvailable`, kept for one minor).
 
+The lock (🔒 in the top bar) is asked for only when an action needs it,
+on any page: a page that thinks it's locked asks the server again first
+(another tab or device may have unlocked it), then, when a password is
+stored, loads it from the vault (once a page; a page view alone never
+wakes the vault), and only then shows the password field. Its popover is
+always on top, even over a dialog, and a dialog that needs the lock (Start
+agent) asks for the password itself.
+
 A `1password` distribution with no refs gets one warning, in the web
 server's startup log and in `<cli> validate`, with the YAML to add.
 
@@ -1650,6 +1658,7 @@ server scoped to its workspace.
 <cli> agents stop <id> [-w <ws>]
 <cli> agents resume <id> [-w <ws>]
 <cli> agents personas [--json]
+<cli> agents doctor [--json]            # can each runtime run here, and why not
 <cli> sessions attach <ws>:<id>         # its terminal; ctrl-] detaches
 ```
 
@@ -1688,7 +1697,14 @@ started. The workspace header counts them ("2 agents").
   not running.
 - **+ Start agent** picks a persona (Den's pack, then
   `agents.persona_packs`) and a runtime (the persona's own unless you pick
-  one; one that can't run here is listed, disabled), then Start.
+  one; one that can't run here is listed, disabled), then Start. Under the
+  runtime a line says what Start will run, with its version and path
+  ("Starts Claude Code 2.1.0 from ~/.local/bin/claude"). When that runtime
+  can't run here, Start is disabled and the line says why and how to fix
+  it: where it looked, then "Install it, or set
+  `agents.runtimes.<id>.bin` to its path in <your user.yml>, or run
+  `<cli> agents doctor`" (see [Runtimes](#runtimes)). Nothing fails only
+  after Start.
 - The page and the CLI call the same operations and read the same agent
   records, so an agent started in one is listed in the other. A workspace
   lists its own agents only.
@@ -1729,7 +1745,10 @@ agent of the workspaces in view, and their terminals in the browser.
   running, and opening it again replays what you missed. **Stop** (an
   agent only) is `agents stop`, behind the lock. **+ Start agent** (or
   `/agents?start=1`) starts one and opens its pane; under All it asks for
-  the workspace.
+  the workspace. It says before Start whether the runtime can run, as the
+  Workspaces page's form does. While the lock is closed, the dialog asks
+  for the admin password at its top, and Start unlocks, then starts, without
+  closing anything.
 - ⌘K lists each as "Agents › <ws> / <name>", and "Start agent…".
 - Several browsers and `<cli> sessions attach` can attach to one session
   at once and each sees every byte; the terminal's size is the last
@@ -1755,7 +1774,8 @@ An agent's environment starts empty and gets, in order:
 
 1. `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `TERM` (default
    `xterm-256color`), `COLORTERM`, `LANG`, `LC_*`, `TZ` and `TMPDIR` from
-   yours;
+   yours (`PATH` with the login shell's and the runtimes' install
+   directories added: [Runtimes](#runtimes));
 2. the variables its runtime names (`envPassthrough`; den-claude:
    `CLAUDE_CONFIG_DIR`);
 3. the runtime's launch env;
@@ -1866,8 +1886,9 @@ are errors naming the file or the key.
 
 `<cli> doctor` lists the runtime kind. Two are built in:
 
-- **`den-claude`** (the default) needs `claude` on PATH; doctor reads its
-  version from the install, without running it. It runs `claude --session-id
+- **`den-claude`** (the default) runs Claude Code's `claude`, found as
+  below; `<cli> doctor` reads its version from the install, without running
+  it. It runs `claude --session-id
 <id> --mcp-config <file> --strict-mcp-config --settings <file> [--model <m>]
 --append-system-prompt <role prompt>`, so Den's MCP server is the agent's
   only one, and resumes with `claude --resume <id>`. Permission prompts stay
@@ -1879,6 +1900,64 @@ are errors naming the file or the key.
   model (an error when the template uses it and there is none);
   `{mcp_config}` is the path of the agent's MCP config, written only when the
   template references it. It declares no resume.
+
+**Where a runtime's CLI is found.** As your terminal would find it, not
+only on the web server's own PATH (a launchd service's PATH leaves out
+`~/.local/bin`, where Claude Code's native installer puts `claude`). The
+first match wins:
+
+1. **`agents.runtimes.<id>.bin`** in `config/local/user.yml`: the absolute
+   path of the runtime's CLI. Paths are per machine, so it is read from
+   user.yml only, never from the distribution's config. A bad value (not
+   absolute, missing, not an executable file) makes the runtime
+   unavailable with that reason; Den doesn't fall back to a search.
+
+   ```yaml
+   # config/local/user.yml (gitignored)
+   agents:
+     runtimes:
+       den-claude:
+         bin: /Users/me/.local/bin/claude
+   ```
+
+2. **Your login shell's PATH**: the web server asks `$SHELL -lc` once at
+   start, in the background, under a 3-second timeout. On a timeout or
+   any failure it is left out.
+3. **The server's own PATH.**
+4. **The runtime's install directories.** For den-claude: `~/.local/bin`,
+   `~/.claude/local`, `/opt/homebrew/bin`, `/usr/local/bin` and npm's
+   global bin (`$npm_config_prefix/bin`, and node's own directory). Den
+   never runs npm to find it.
+
+Sessions and agents Den starts get the same directories on their PATH
+(and a configured CLI's own directory), so the runtime's own tools are
+found too. Two engine variables override the search for tests and
+diagnosis: `DEN_LOGIN_SHELL` (the shell to ask instead of `$SHELL`; `off`
+for none) and `DEN_RUNTIME_DIRS` (a PATH-style list that replaces every
+runtime's install directories; empty for none).
+
+**`<cli> agents doctor`** prints, for each runtime, its status, the CLI it
+runs and where that came from (the `agents.runtimes` setting, the login
+shell's PATH, PATH, or an install directory), its version (`claude
+--version`, run once under a timeout), the directories it searched (names
+only, never an environment value), and the fix when it's missing. It
+resolves the login shell's PATH first, as the web server does. It exits 1
+when the default runtime is unavailable; `--json` prints what the Start
+dialog gets.
+
+```
+den-claude (Claude Code)  [default]
+  status    ✗ unavailable: claude not found (searched 5 directories)
+  searched  /usr/bin
+            /bin
+            …
+  fix       install Claude Code, or set agents.runtimes.den-claude.bin to its absolute path in /…/config/local/user.yml
+            then run `<cli> agents doctor` again
+```
+
+`GET /api/personas` gives each runtime its `version`, `path`, `source`
+(`setting`, `login-shell`, `well-known` or `PATH`), `searched` and
+`setting` (the user.yml key), and `userConfig`, the user.yml to edit.
 
 ### Workspace scope and grants
 

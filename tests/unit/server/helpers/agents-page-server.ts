@@ -7,9 +7,11 @@
  *   - a session host in this process, on the distribution's state dir
  *     (ACME_HOME), with a scripted PTY: nothing an agent starts really
  *     runs, and the server finds this host instead of starting one;
- *   - PATH shims: `claude` records a run and fails (it must never run),
- *     `docker` fails, and `sudo` succeeds, so the lock (R8) reads unlocked
- *     (passwordless sudo) without a real password;
+ *   - PATH shims: `claude` answers --version and otherwise records a run
+ *     and fails (it must never run), `docker` fails, and `sudo` succeeds,
+ *     so the lock (R8) reads unlocked (passwordless sudo) without a real
+ *     password; or, with `sudoPassword`, the lock reads locked and the
+ *     shim takes only that password;
  *   - an env built from a minimal set, never this process's.
  *
  * Invented names only. The caller closes it (stop) and its temp dir goes.
@@ -32,6 +34,7 @@ import {
   type ScriptedPty,
 } from "../../sessions/helpers/fake-pty.js";
 import { denAuth } from "./den-auth.js";
+import { CLAUDE_SHIM } from "../../agents/helpers/rig.js";
 import { spawnServer, stopServer } from "../../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../../..");
@@ -83,7 +86,15 @@ function get(port: number, p: string): Promise<number> {
 }
 
 export async function startAgentsPageServer(
-  opts: { root?: string } = {},
+  opts: {
+    root?: string;
+    /** "missing": no claude on PATH or in any install directory. */
+    runtime?: "shim" | "missing";
+    /** Locked: the fake sudo takes only this password (LK). */
+    sudoPassword?: string;
+    /** config/local/user.yml's content (agents.runtimes.<id>.bin). */
+    userYml?: string;
+  } = {},
 ): Promise<AgentsPageServer> {
   const tmp = fs.realpathSync(
     opts.root
@@ -136,15 +147,31 @@ export async function startAgentsPageServer(
       ].join("\n"),
     );
   }
+  if (opts.userYml !== undefined)
+    write(path.join(root, "config", "local", "user.yml"), opts.userYml);
   const bin = path.join(tmp, "bin");
   const ran = path.join(tmp, "claude-ran");
   write(path.join(bin, "docker"), "#!/bin/sh\nexit 1\n", 0o755);
-  write(path.join(bin, "sudo"), "#!/bin/sh\nexit 0\n", 0o755);
   write(
-    path.join(bin, "claude"),
-    `#!/bin/sh\necho "$@" >> "${ran}"\nexit 1\n`,
+    path.join(bin, "sudo"),
+    opts.sudoPassword === undefined
+      ? "#!/bin/sh\nexit 0\n"
+      : // Locked (R8): no passwordless sudo; `sudo -k -S -v` takes the one
+        // password from stdin. Never a real sudo.
+        [
+          "#!/bin/sh",
+          'case "$*" in',
+          '  *-S*) IFS= read -r pw; [ "$pw" = "$DEN_TEST_SUDO_PW" ] && exit 0; exit 1;;',
+          "esac",
+          "exit 1",
+          "",
+        ].join("\n"),
     0o755,
   );
+  // `claude --version` answers (AG-0.2 asks it once); any other run is
+  // recorded and fails. runtime "missing": no claude anywhere it looks.
+  if (opts.runtime !== "missing")
+    write(path.join(bin, "claude"), CLAUDE_SHIM(ran), 0o755);
 
   const home = path.join(tmp, "home");
   const stateDir = path.join(home, ".acme");
@@ -162,7 +189,19 @@ export async function startAgentsPageServer(
   const port = await freePort();
   const env: NodeJS.ProcessEnv = {
     HOME: home,
-    PATH: `${bin}${path.delimiter}${process.env.PATH ?? "/usr/bin:/bin"}`,
+    // "missing": never this machine's own PATH (it may hold a real
+    // claude), only the system's; else the shims come first.
+    PATH:
+      opts.runtime === "missing"
+        ? `${bin}${path.delimiter}/usr/bin:/bin`
+        : `${bin}${path.delimiter}${process.env.PATH ?? "/usr/bin:/bin"}`,
+    // AG-0.1: no login shell here, and no install directory of this
+    // machine's (tests/setup.ts sets the same for in-process tests).
+    DEN_LOGIN_SHELL: "off",
+    DEN_RUNTIME_DIRS: "",
+    ...(opts.sudoPassword === undefined
+      ? {}
+      : { DEN_TEST_SUDO_PW: opts.sudoPassword }),
     TMPDIR: os.tmpdir(),
     LANG: "C",
     DEN_ROOT: root,
@@ -177,9 +216,13 @@ export async function startAgentsPageServer(
     PORT: String(port),
   };
   let out = "";
+  // node itself, by path: the env's PATH may not have it.
   const server: ChildProcess = spawnServer(
-    path.join(ENGINE, "node_modules", ".bin", "tsx"),
-    [path.join(ENGINE, "src", "ui", "server", "index.ts")],
+    process.execPath,
+    [
+      path.join(ENGINE, "node_modules", "tsx", "dist", "cli.mjs"),
+      path.join(ENGINE, "src", "ui", "server", "index.ts"),
+    ],
     { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] },
   );
   server.stdout!.on("data", (d: Buffer) => (out += d.toString()));

@@ -322,8 +322,44 @@
         color: var(--muted);
         overflow-wrap: anywhere;
       }
-      .ag-dlg .help[hidden] {
+      .ag-dlg .help[hidden],
+      .ag-dlg .ready[hidden],
+      .ag-dlg .err[hidden],
+      .ag-dlg .ag-lock[hidden] {
         display: none;
+      }
+      /* AG-0.2: the runtime it will run, or why it can't, before Start
+         (the mock's .helpl: 12px, faint, 1.4). */
+      .ag-dlg .ready {
+        margin: -6px 0 0;
+        font: 12px/1.4 var(--sans);
+        color: var(--faint);
+        overflow-wrap: anywhere;
+      }
+      .ag-dlg .ready[data-tone="warn"] {
+        color: var(--warn);
+      }
+      .ag-dlg .ready .mono {
+        font-family: var(--mono);
+      }
+      /* LK-1: locked, the password is asked here, at the top of the dialog,
+         and Start unlocks then starts. */
+      .ag-dlg .ag-lock {
+        display: grid;
+        gap: 6px;
+        padding: 10px 12px;
+        border: 1px solid
+          color-mix(in srgb, var(--warn) 45%, var(--border));
+        border-radius: var(--radius-button);
+        background: color-mix(in srgb, var(--warn) 8%, var(--raised));
+      }
+      .ag-dlg .ag-lock .help {
+        margin: 0;
+      }
+      .ag-dlg .err {
+        margin: 0;
+        font: 12.5px/1.45 var(--sans);
+        color: var(--bad);
       }
       .ag-dlg h2 {
         margin: 0;
@@ -337,6 +373,7 @@
         text-transform: uppercase;
         letter-spacing: 0.07em;
       }
+      .ag-dlg input[type="password"],
       .ag-dlg select {
         width: 100%;
         min-width: 0;
@@ -410,6 +447,17 @@
       <dialog class="ag-dlg" id="ag-dlg" aria-labelledby="ag-dlg-h">
         <form method="dialog" id="ag-form">
           <h2 id="ag-dlg-h">Start an agent</h2>
+          <div class="ag-lock" id="ag-lock" hidden>
+            <label
+              ><span id="ag-lock-t">Admin password</span>
+              <input
+                type="password"
+                id="ag-lock-pw"
+                autocomplete="current-password"
+            /></label>
+            <p class="help" id="ag-lock-note"></p>
+            <p class="err" id="ag-lock-err" role="alert" hidden></p>
+          </div>
           <label id="ag-ws-l"
             ><span id="ag-ws-t">Workspace</span>
             <select name="ws" id="ag-ws"></select
@@ -423,6 +471,13 @@
             ><span id="ag-r-t">Runtime</span>
             <select name="runtime" id="ag-runtime"></select
           ></label>
+          <p
+            class="ready"
+            id="ag-r-ready"
+            data-runtime-ready
+            role="status"
+            hidden
+          ></p>
           <div class="btns">
             <button type="button" class="den-btn" id="ag-cancel">Cancel</button>
             <button type="submit" class="den-btn primary" id="ag-go">

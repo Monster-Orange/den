@@ -24,6 +24,8 @@ import { cleanupRigs, rig, settle, type Rig } from "../agents/helpers/rig.js";
 
 interface Api {
   r: Rig;
+  /** http://localhost:<port> */
+  base: string;
   /** Whether the lock (R8) is open; tests flip it. */
   lock: { open: boolean };
   call(
@@ -83,6 +85,7 @@ async function api(): Promise<Api> {
   const port = (server.address() as AddressInfo).port;
   return {
     r,
+    base: `http://localhost:${port}`,
     lock,
     async call(method, p, body, headers = {}) {
       const res = await fetch(`http://localhost:${port}${p}`, {
@@ -137,6 +140,114 @@ describe("GET /api/personas", () => {
     expect(runtimes.find((x) => x.id === "generic")).toMatchObject({
       resume: false,
     });
+  });
+});
+
+/** GET over a fresh connection each time (Linux CI: no keep-alive reuse). */
+function getJson(
+  base: string,
+  p: string,
+): Promise<{ status: number; json: Record<string, unknown> }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      `${base}${p}`,
+      { method: "GET", agent: false, headers: { Connection: "close" } },
+      (res) => {
+        let body = "";
+        res.on("data", (d: Buffer) => (body += d.toString()));
+        res.on("end", () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            json: JSON.parse(body) as Record<string, unknown>,
+          }),
+        );
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+describe("GET /api/personas: each runtime's readiness (AG-0.2)", () => {
+  it("names the CLI each runs, where it came from and its version, and the user.yml to edit", async () => {
+    const a = await api();
+    const base = a.base;
+    const { status, json } = await getJson(base, "/api/personas");
+    expect(status).toBe(200);
+    expect(json.userConfig).toBe(
+      path.join(a.r.dir, "config", "local", "user.yml"),
+    );
+    const runtimes = json.runtimes as Record<string, unknown>[];
+    expect(runtimes.find((x) => x.id === "den-claude")).toEqual({
+      id: "den-claude",
+      label: "Claude Code",
+      available: true,
+      version: "9.9.9",
+      path: a.r.claude,
+      source: "PATH",
+      searched: [path.dirname(a.r.claude), "/usr/bin", "/bin"],
+      setting: "agents.runtimes.den-claude.bin",
+      resume: true,
+      default: true,
+    });
+    // generic has nothing to find.
+    expect(runtimes.find((x) => x.id === "generic")).not.toHaveProperty("path");
+    // Asked again: nothing but --version ever ran.
+    await getJson(base, "/api/personas");
+    expect(fs.existsSync(a.r.ran)).toBe(false);
+  });
+
+  it("missing: unavailable with why and where it looked; a refused setting says why; Start is refused with the fix", async () => {
+    const a = await api();
+    a.r.deps.env = { PATH: "/usr/bin:/bin", HOME: "/home/someone" };
+    let { json } = await getJson(a.base, "/api/personas");
+    expect(
+      (json.runtimes as Record<string, unknown>[]).find(
+        (x) => x.id === "den-claude",
+      ),
+    ).toMatchObject({
+      available: false,
+      why: "claude not found (searched 2 directories)",
+      searched: ["/usr/bin", "/bin"],
+      setting: "agents.runtimes.den-claude.bin",
+    });
+    a.r.runtimeBins["den-claude"] = path.join(a.r.dir, "nope");
+    ({ json } = await getJson(a.base, "/api/personas"));
+    expect(
+      (json.runtimes as Record<string, unknown>[]).find(
+        (x) => x.id === "den-claude",
+      ),
+    ).toMatchObject({
+      available: false,
+      why: `agents.runtimes.den-claude.bin: ${path.join(a.r.dir, "nope")} does not exist`,
+    });
+    const r = await start(a, "north", { persona: "planner" });
+    expect(r.status).toBe(503);
+    expect(r.json.hints).toEqual([
+      `Install it, or set agents.runtimes.den-claude.bin to its absolute path in ${path.join(a.r.dir, "config", "local", "user.yml")}.`,
+      "`acme agents doctor` shows where it looked.",
+    ]);
+  });
+
+  it("a configured bin wins: the agent runs it", async () => {
+    const a = await api();
+    const other = path.join(a.r.dir, "elsewhere", "claude");
+    fs.mkdirSync(path.dirname(other));
+    fs.copyFileSync(a.r.claude, other);
+    fs.chmodSync(other, 0o755);
+    a.r.runtimeBins["den-claude"] = other;
+    const { json } = await getJson(a.base, "/api/personas");
+    expect(
+      (json.runtimes as Record<string, unknown>[]).find(
+        (x) => x.id === "den-claude",
+      ),
+    ).toMatchObject({ available: true, path: other, source: "setting" });
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    expect(a.r.made[0].file).toBe(other);
+    // Its directory is on the session's PATH, for its own tools.
+    expect(String(a.r.made[0].opts.env.PATH).split(":")).toContain(
+      path.dirname(other),
+    );
   });
 });
 

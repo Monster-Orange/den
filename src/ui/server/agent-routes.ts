@@ -1,7 +1,9 @@
 /**
  * The Workspaces page's Agents section (AG-4a, AG spec §5c), its routes:
  *
- *   GET  /api/personas                            personas and runtimes
+ *   GET  /api/personas                            personas and runtimes (each
+ *                                                 with its path, where it came
+ *                                                 from and its version: AG-0.2)
  *   GET  /api/workspaces/<ws>/agents              the workspace's agents
  *   POST /api/workspaces/<ws>/agents              start { persona, runtime?, model?, id? }
  *   POST /api/workspaces/<ws>/agents/<id>/stop
@@ -204,7 +206,12 @@ export async function handleAgentRoutes(
   if (!m) {
     if (method !== "GET") return methodNotAllowed(res, "GET");
     try {
-      sendJson(res, { personas: listPersonas(d), runtimes: listRuntimes(d) });
+      sendJson(res, {
+        personas: listPersonas(d),
+        runtimes: await listRuntimes(d),
+        // AG-0.2: the file a person edits to set a runtime's path.
+        userConfig: d.userConfigFile(),
+      });
     } catch (e) {
       sendError(res, e);
     }

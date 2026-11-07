@@ -379,6 +379,13 @@ export interface UserConfig {
    * src/shared/environment-manager/scope.ts.
    */
   view?: { scope?: string };
+  /**
+   * Agents on this machine (AG-0.1): `runtimes.<id>.bin`, the absolute path
+   * of a runtime's CLI, which wins over the search (login shell PATH, PATH,
+   * install directories). Per machine, so user.yml only: the distribution's
+   * config never sets a path. See shared/agents/runtime-search.ts.
+   */
+  agents?: { runtimes?: Record<string, { bin?: unknown } | null> };
 }
 
 const ALL_ENVIRONMENTS: Environment[] = [
@@ -399,6 +406,35 @@ export function builtinEnvironments(): Environment[] {
 const DEFAULT_CONFIG: DenConfig = {
   environments: ALL_ENVIRONMENTS,
 };
+
+/** The per-engineer user config's path (config/local/user.yml), absolute. */
+export function userConfigPath(): string {
+  return USER_CONFIG_PATH;
+}
+
+/**
+ * `agents.runtimes.<id>.bin` from user.yml, as written (checked where it is
+ * used: runtime-search.ts checkBinSetting; a block that is no mapping is
+ * `{ why }`); undefined when unset or when user.yml can't be read.
+ */
+export function configuredRuntimeBin(
+  id: string,
+  read: () => UserConfig = readUserConfig,
+): unknown {
+  try {
+    const rts = read().agents?.runtimes;
+    if (!rts || typeof rts !== "object") return undefined;
+    const block = (rts as Record<string, unknown>)[id];
+    if (block === undefined || block === null) return undefined;
+    if (typeof block !== "object" || Array.isArray(block))
+      return {
+        why: `agents.runtimes.${id} must be a mapping ({ bin: <absolute path> })`,
+      };
+    return (block as { bin?: unknown }).bin;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
 export function readUserConfig(): UserConfig {

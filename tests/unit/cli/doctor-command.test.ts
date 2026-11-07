@@ -121,7 +121,11 @@ describe("doctor", () => {
       selected: "den-claude",
       implicit: true,
       available: false,
-      reason: "claude is not on PATH",
+      // AG-0.1: the search says how far it looked (no login shell or
+      // install directories in a test: tests/setup.ts).
+      reason: expect.stringMatching(
+        /^claude not found \(searched \d+ director/,
+      ),
       problem: false,
     });
     expect(spawned()).toEqual([0, 0, 0, 0]);

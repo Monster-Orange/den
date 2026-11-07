@@ -120,31 +120,40 @@ describe("registry", () => {
 describe("den-claude detect", () => {
   it("finds claude on PATH and reads its version from the install, running nothing", () => {
     const native = shim("native");
-    expect(getRuntime("den-claude")!.detect(native.env)).toEqual({
+    const found = (s: { env: NodeJS.ProcessEnv; bin: string }) => ({
       available: true,
-      version: "9.8.7",
+      path: s.bin,
+      source: "PATH",
+      searched: [path.dirname(s.bin), "/usr/bin", "/bin"],
     });
+    expect(getRuntime("den-claude")!.detect(native.env, { bin: null })).toEqual(
+      { ...found(native), version: "9.8.7" },
+    );
     const npm = shim("npm");
-    expect(getRuntime("den-claude")!.detect(npm.env)).toEqual({
-      available: true,
+    expect(getRuntime("den-claude")!.detect(npm.env, { bin: null })).toEqual({
+      ...found(npm),
       version: "1.2.3",
     });
     const plain = shim("plain");
-    expect(getRuntime("den-claude")!.detect(plain.env)).toEqual({
-      available: true,
-    });
+    expect(getRuntime("den-claude")!.detect(plain.env, { bin: null })).toEqual(
+      found(plain),
+    );
     for (const s of [native, npm, plain])
       expect(fs.existsSync(s.ran)).toBe(false);
   });
 
-  it("without claude on PATH it says so", () => {
-    expect(getRuntime("den-claude")!.detect({ PATH: tmp() })).toEqual({
-      available: false,
-      why: "claude is not on PATH",
-    });
+  it("without claude on PATH it says so, and where it looked", () => {
+    const dir = tmp();
     expect(
-      getStrategy("runtime", "den-claude")!.detect({ PATH: tmp() }),
-    ).toEqual({ available: false, reason: "claude is not on PATH" });
+      getRuntime("den-claude")!.detect({ PATH: dir }, { bin: null }),
+    ).toEqual({
+      available: false,
+      why: "claude not found (searched 1 directory)",
+      searched: [dir],
+    });
+    expect(getStrategy("runtime", "den-claude")!.detect({ PATH: dir })).toEqual(
+      { available: false, reason: "claude not found (searched 1 directory)" },
+    );
   });
 });
 
@@ -218,10 +227,10 @@ describe("den-claude launch", () => {
     expect(out.argv).not.toContain("--model");
   });
 
-  it("refuses when claude is not on PATH", () => {
+  it("refuses when claude is not found", () => {
     expect(() =>
       getRuntime("den-claude")!.launch(input({ env: { PATH: tmp() } })),
-    ).toThrow(/den-claude: claude is not on PATH/);
+    ).toThrow(/den-claude: claude not found \(searched 1 directory\)/);
   });
 
   it("resume continues the same Claude Code session, with the same MCP", () => {

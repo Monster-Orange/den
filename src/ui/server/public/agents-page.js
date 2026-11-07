@@ -15,8 +15,19 @@
  *
  * Nothing here keeps a session's state: the list is GET /api/sessions,
  * asked again every few seconds while the page is shown.
+ *
+ * Start agent (AG-0.2, LK-1): the lock is checked before the dialog opens
+ * (the server, then the vault: checkUnlock). Locked, the dialog asks for
+ * the password inline at its top, and Start unlocks, then starts, without
+ * closing anything. The runtime line says what will run, or why it
+ * can't, before Start (agent-start.js readiness).
  */
-import { requireUnlock } from "/topbar.js";
+import {
+  checkUnlock,
+  onLockChange,
+  requireUnlock,
+  unlockWith,
+} from "/topbar.js";
 import { fillStartForm } from "/agent-start.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
@@ -478,7 +489,7 @@ function closePane(id, { quiet = false } = {}) {
 
 async function stopAgent(p, button) {
   const r = rowOf(p.id);
-  if (!r?.agent || !requireUnlock()) return;
+  if (!r?.agent || !(await requireUnlock())) return;
   button.disabled = true;
   try {
     await api(
@@ -517,14 +528,66 @@ async function openStart() {
     return;
   }
   fillStartForm(st.root.querySelector("#ag-form"), data, t);
+  // LK-1: the lock before the modal. Locked, its password is asked here.
+  paintInlineLock(!(await checkUnlock()));
+  if (dlg.open) return;
   if (typeof dlg.showModal === "function") dlg.showModal();
   else dlg.setAttribute("open", "");
+  st.root.querySelector("#ag-lock:not([hidden]) input")?.focus();
+}
+
+/** Show (or hide) the dialog's inline password field (LK-1). */
+function paintInlineLock(locked) {
+  const box = st.root?.querySelector("#ag-lock");
+  if (!box) return;
+  box.hidden = !locked;
+  const err = box.querySelector("#ag-lock-err");
+  if (!locked) {
+    box.querySelector("#ag-lock-pw").value = "";
+    err.hidden = true;
+  }
+}
+
+/**
+ * The lock, for Start: the dialog's own field when it shows one (unlock,
+ * then go on), else the shell's rule (its popover is in the top layer).
+ */
+async function unlockForStart(go) {
+  const box = st.root.querySelector("#ag-lock");
+  if (box.hidden) return requireUnlock();
+  if (await checkUnlock()) {
+    paintInlineLock(false);
+    return true;
+  }
+  const input = box.querySelector("#ag-lock-pw");
+  const err = box.querySelector("#ag-lock-err");
+  if (!input.value) {
+    err.textContent = t("lock.title");
+    err.hidden = false;
+    input.focus();
+    return false;
+  }
+  go.disabled = true;
+  go.textContent = t("lock.checking");
+  const r = await unlockWith(input.value);
+  go.disabled = false;
+  go.textContent = t("ag.go");
+  if (r.ok) {
+    paintInlineLock(false);
+    return true;
+  }
+  err.textContent = r.error;
+  err.hidden = false;
+  input.value = "";
+  input.focus();
+  return false;
 }
 
 async function submitStart(form) {
-  if (!requireUnlock()) return;
   const dlg = st.root.querySelector("#ag-dlg");
   const go = st.root.querySelector("#ag-go");
+  if (go.disabled) return;
+  if (!(await unlockForStart(go))) return;
   const ws = form.querySelector("#ag-ws").value || viewWorkspaces()[0];
   const persona = form.querySelector("#ag-persona").value;
   const runtime = form.querySelector("#ag-runtime").value;
@@ -567,6 +630,8 @@ function translateStatic(root) {
   set("#ag-r-t", "ag.runtime");
   set("#ag-cancel", "ag.cancel");
   set("#ag-go", "ag.go");
+  set("#ag-lock-t", "lock.pw");
+  set("#ag-lock-note", "lock.title");
   const h = root.querySelector("#ag-dlg-h");
   if (h) h.textContent = h.textContent.replace(/^\+\s*/, "");
 }
@@ -601,6 +666,10 @@ export async function mountAgentsPage(root) {
   });
   root.querySelector("#ag-start").addEventListener("click", () => {
     void openStart();
+  });
+  // Unlocked elsewhere (the chip, another tab): the field goes.
+  onLockChange((unlocked) => {
+    if (unlocked) paintInlineLock(false);
   });
   root.querySelector("#ag-cancel").addEventListener("click", () => {
     root.querySelector("#ag-dlg").close?.();

@@ -64,6 +64,7 @@ export function agentsSectionHtml(ws) {
                 <label>${esc(t("ag.persona"))} <select class="form-sel" name="persona" required></select></label>
                 <label>${esc(t("ag.runtime"))} <select class="form-sel" name="runtime"></select></label>
                 <p class="agent-form-help" data-persona-help hidden></p>
+                <p class="agent-form-ready" data-runtime-ready role="status" hidden></p>
                 <button type="submit" class="den-btn sm primary" id="agent-start-go">${esc(t("ag.go"))}</button>
                 <button type="button" class="den-btn sm" data-agent-cancel>${esc(t("ag.cancel"))}</button>
               </form>
@@ -216,7 +217,7 @@ async function openForm(sec) {
 }
 
 async function act(ws, verb, id, button) {
-  if (!requireUnlock()) return;
+  if (!(await requireUnlock())) return;
   button.disabled = true;
   try {
     await api("POST", `${base(ws)}/${encodeURIComponent(id)}/${verb}`);
@@ -230,7 +231,7 @@ async function act(ws, verb, id, button) {
 }
 
 async function start(ws, form) {
-  if (!requireUnlock()) return;
+  if (!(await requireUnlock())) return;
   const go = form.querySelector("#agent-start-go");
   const persona = form.querySelector('select[name="persona"]').value;
   const runtime = form.querySelector('select[name="runtime"]').value;

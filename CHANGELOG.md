@@ -6,7 +6,40 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.3] - unreleased
 
-The edge counts as local.
+Agents start, and the edge counts as local.
+
+### Fixed
+
+- **The Start agent dialog can be submitted (AG-10.0).** A persona's whole
+  role sentence was in its option, so the select grew past the dialog and
+  pushed Cancel and Start out of sight. A persona option now shows its id,
+  with its role on a help line under the select that follows the pick. The
+  runtime's first option names what it resolves to ("Claude Code (persona
+  default)"), a runtime that can't run here says why, and Enter starts
+  from any field. The Workspaces page's agents form gets the same choices.
+
+- **Agents start on a Den run as a service (AG-0.1).** Starting any agent
+  failed with "den-claude is unavailable: claude is not on PATH" when the
+  web server ran under launchd: its PATH leaves out `~/.local/bin`, where
+  Claude Code's native installer puts `claude`, and Den searched only that
+  PATH. Den now finds a runtime's CLI as your terminal would:
+  `agents.runtimes.<id>.bin` in `config/local/user.yml` wins (an absolute
+  path, checked; a bad one is refused with its reason), then the login
+  shell's PATH (`$SHELL -lc`, asked once at server start in the
+  background, 3-second timeout, falling back to the current PATH), the
+  server's PATH, and the runtime's install directories (`~/.local/bin`,
+  `~/.claude/local`, `/opt/homebrew/bin`, `/usr/local/bin`, npm's global
+  bin). Agents and plain sessions get the same directories on their PATH.
+- **The lock is always reachable (LK-1 to LK-3).** Start agent opened its
+  dialog and only then asked for the lock, whose popover sat under the
+  dialog where nothing could reach it. The lock is now checked before the
+  dialog opens, and the dialog asks for the admin password at its top:
+  Start unlocks, then starts. The lock popover is in the top layer, so no
+  dialog covers it. A page that thinks it's locked asks the server before
+  asking you (another tab or device may have unlocked it), and, when a
+  password is stored in the vault, the first action that needs the lock
+  loads it from there on every page, not only Local Dev. A page view still
+  never wakes the vault.
 
 ### Changed
 
@@ -24,6 +57,22 @@ The edge counts as local.
 
 ### Added
 
+- **The Start dialog says before Start whether the agent can run
+  (AG-0.2).** Under the runtime a line names what Start will run, with its
+  version and path ("Starts Claude Code 2.1.0 from …"); the runtime's
+  option shows its version. When the runtime can't run here, Start is
+  disabled and the line says why and how to fix it: where Den looked, then
+  install it, or set `agents.runtimes.<id>.bin` in the user.yml it names,
+  or run `<cli> agents doctor`. The Workspaces page's agents form does the
+  same. `GET /api/personas` gives each runtime `version` (its version
+  command, run once under a timeout and kept), `path`, `source`
+  (`setting`, `login-shell`, `well-known` or `PATH`), `searched` and
+  `setting`, and the response a `userConfig` path.
+- **`<cli> agents doctor [--json]` (AG-0.3)**: each runtime's status, the
+  CLI it runs and where it came from, its version, the directories
+  searched (names only, never an environment value), and the fix when it
+  is missing. It exits 1 when the default runtime is unavailable.
+
 - **"Your edge is reachable from other machines".** When an edge hostname
   resolves to an address that isn't loopback, or the edge container
   publishes a port on every interface (`docker inspect`), Den says so once
@@ -38,7 +87,11 @@ The edge counts as local.
 
 ### Migrations
 
-None.
+- **A Den run as a service whose agents' CLI is somewhere unusual**: set
+  `agents.runtimes.<id>.bin` (an absolute path) in `config/local/user.yml`.
+  Nothing else changes: a runtime on the server's PATH is found as before.
+- **A page script that called `requireUnlock()`** (header.js): it now
+  returns a promise of the answer; `await` it.
 
 ## [0.4.2] - 2026-11-06
 
@@ -70,14 +123,6 @@ The 0.4.1 carry-overs.
 
 ### Fixed
 
-- **The Start agent dialog can be submitted (AG-10.0).** A persona's whole
-  role sentence was in its option, so the select grew past the dialog and
-  pushed Cancel and Start out of sight. A persona option now shows its id,
-  with its role on a help line under the select that follows the pick. The
-  runtime's first option names what it resolves to ("Claude Code (persona
-  default)"), a runtime that can't run here says why, and Enter starts
-  from any field. The Workspaces page's agents form gets the same choices.
-
 - **A distribution config's `web.allow_plain_http_remote`** (ignored: it is
   read only from `config/local/user.yml`) was warned about only in the
   in-app server log. It is now in `web.log` too (before a bind refusal it
@@ -86,6 +131,7 @@ The 0.4.1 carry-overs.
 - **`up --help`**: `-w, --workspace <ws>` ran into its text ("<ws>act in
   that…"); there are two spaces now. `down`, `restart` and `setup --help`
   were already spaced.
+
 
 ### Migrations
 

@@ -343,7 +343,10 @@ describe("the pages", () => {
     expect(local).toMatch(
       /function requireSudo\(\) \{\s*return requireUnlock\(\);/,
     );
-    expect(local.match(/if \(!requireSudo\(\)\) return;/g)?.length).toBe(6);
+    // LK-2/LK-3: the rule asks the server (and the vault) first, so it's awaited.
+    expect(
+      local.match(/if \(!\(await requireSudo\(\)\)\) return;/g)?.length,
+    ).toBe(6);
     // …and runs Start and Restart for the drawer and the palette.
     expect(local).toMatch(
       /setServiceRunner\(\(cmd, s\) =>\s*window\.runCmd\(s\.address, s\.repo, s\.service, cmd\)/,

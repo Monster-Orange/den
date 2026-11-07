@@ -28,27 +28,50 @@
  *   session Den starts (an agent is not a child of the session that
  *   started it).
  *
- * detect runs nothing: `claude` on PATH, and its version read from where it
- * is installed (a native install's versions/<version>, or the npm package's
- * package.json).
+ * detect runs nothing (AG-0.1, runtime-search.ts): agents.runtimes.den-claude.bin
+ * in user.yml when set, else `claude` on the login shell's PATH, the
+ * caller's PATH, then its install directories (~/.local/bin, the native
+ * installer's; ~/.claude/local; /opt/homebrew/bin; /usr/local/bin; npm's
+ * global bin). Its version is read from where it is installed (a native
+ * install's versions/<version>, or the npm package's package.json); the
+ * Start dialog and `agents doctor` ask `claude --version` once as well.
  */
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { configuredRuntimeBin } from "../den-config.js";
 import { rolePrompt } from "./personas.js";
 import {
   LaunchError,
   mcpConfigJson,
   mcpConfigPath,
-  whichBin,
+  type DetectOptions,
   type LaunchInput,
   type LaunchOutput,
   type Runtime,
   type RuntimeDetect,
 } from "./runtime.js";
+import {
+  locateRuntime,
+  systemBinDirs,
+  type RuntimeFind,
+} from "./runtime-search.js";
 
 export const DEN_CLAUDE_ID = "den-claude";
 const BIN = "claude";
+
+/** Where Claude Code is found, and how its version is asked. */
+export const DEN_CLAUDE_FIND: RuntimeFind = {
+  bins: [BIN],
+  dirs: (home, env) => [
+    // The native installer's, then the older local install's.
+    ...(home
+      ? [path.join(home, ".local", "bin"), path.join(home, ".claude", "local")]
+      : []),
+    ...systemBinDirs(env),
+  ],
+  versionArgs: ["--version"],
+};
 const PACKAGE = "@anthropic-ai/claude-code";
 const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
@@ -97,11 +120,27 @@ export function installedVersion(bin: string): string | undefined {
   return undefined;
 }
 
-function detect(env: NodeJS.ProcessEnv = process.env): RuntimeDetect {
-  const bin = whichBin(BIN, env);
-  if (!bin) return { available: false, why: `${BIN} is not on PATH` };
-  const version = installedVersion(bin);
-  return version ? { available: true, version } : { available: true };
+function detect(
+  env: NodeJS.ProcessEnv = process.env,
+  opts: DetectOptions = {},
+): RuntimeDetect {
+  const setting =
+    opts.bin === undefined ? configuredRuntimeBin(DEN_CLAUDE_ID) : opts.bin;
+  const found = locateRuntime(DEN_CLAUDE_ID, DEN_CLAUDE_FIND, env, setting);
+  if (!found.available || !found.path)
+    return {
+      available: false,
+      why: found.why ?? `${BIN} not found`,
+      searched: found.searched,
+    };
+  const version = installedVersion(found.path);
+  return {
+    available: true,
+    ...(version ? { version } : {}),
+    path: found.path,
+    ...(found.source ? { source: found.source } : {}),
+    searched: found.searched,
+  };
 }
 
 /**
@@ -231,14 +270,17 @@ function common(input: LaunchInput): {
 }
 
 function binFor(input: LaunchInput): string {
-  const bin = whichBin(BIN, input.env);
-  if (!bin) throw new LaunchError(`${DEN_CLAUDE_ID}: ${BIN} is not on PATH`);
-  return bin;
+  if (input.bin) return input.bin;
+  const d = detect(input.env);
+  if (!d.available || !d.path)
+    throw new LaunchError(`${DEN_CLAUDE_ID}: ${d.why ?? `${BIN} not found`}`);
+  return d.path;
 }
 
 export const denClaude: Runtime = {
   id: DEN_CLAUDE_ID,
   label: "Claude Code",
+  find: DEN_CLAUDE_FIND,
   detect,
   launch(input): LaunchOutput {
     const bin = binFor(input);

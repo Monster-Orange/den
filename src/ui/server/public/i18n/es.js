@@ -373,5 +373,15 @@
     "ag.palStart": "Iniciar agente…",
     "ag.cap":
       "Hasta 4 paneles: se cerró el de {id} para hacer sitio (sigue en marcha)",
+    "ag.rt.ready": "Inicia {name} {version} desde",
+    "ag.rt.readyNoVer": "Inicia {name} desde",
+    "ag.rt.notFound": "No se encontró {name}.",
+    "ag.rt.searched": "Se buscó en:",
+    "ag.rt.more": "y {n} más",
+    "ag.rt.nowhere": "ningún directorio",
+    "ag.rt.refused": "{name} no puede iniciarse: {why}.",
+    "ag.rt.fix":
+      "Instálalo, o pon su ruta en {key} en {file}, o ejecuta {cmd}.",
+    "ag.rt.unknown": "Aquí no hay ningún runtime {id}.",
   };
 })((window.denMessages = window.denMessages || {}));

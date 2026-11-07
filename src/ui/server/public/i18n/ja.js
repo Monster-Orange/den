@@ -358,5 +358,15 @@
     "ag.palStart": "エージェントを開始…",
     "ag.cap":
       "ペインは最大 4 つです。{id} のペインを閉じました（実行は続きます）",
+    "ag.rt.ready": "{name} {version} を起動:",
+    "ag.rt.readyNoVer": "{name} を起動:",
+    "ag.rt.notFound": "{name} が見つかりません。",
+    "ag.rt.searched": "検索した場所:",
+    "ag.rt.more": "ほか {n} 件",
+    "ag.rt.nowhere": "なし",
+    "ag.rt.refused": "{name} を起動できません: {why}。",
+    "ag.rt.fix":
+      "インストールするか、{file} の {key} にパスを設定するか、{cmd} を実行してください。",
+    "ag.rt.unknown": "ランタイム {id} はここにありません。",
   };
 })((window.denMessages = window.denMessages || {}));

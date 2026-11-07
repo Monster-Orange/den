@@ -102,6 +102,8 @@ async function mount(o: Opts = {}): Promise<{
   p: Page;
   reqs: string[];
   posts: { path: string; body: unknown }[];
+  /** The lock opens elsewhere (another tab, another device). */
+  unlockElsewhere: () => void;
 }> {
   const page = o.page ?? "services";
   const rows = o.rows ?? ROWS;
@@ -241,7 +243,14 @@ async function mount(o: Opts = {}): Promise<{
   await p.waitForFunction(
     () => (window as unknown as { __hdr?: object }).__hdr,
   );
-  return { p, reqs, posts };
+  return {
+    p,
+    reqs,
+    posts,
+    unlockElsewhere: () => {
+      unlocked = true;
+    },
+  };
 }
 
 const text = (p: Page, sel: string) =>
@@ -639,6 +648,91 @@ describe("the lock chip (R8)", () => {
       { password: "wrong", saveToVault: false },
       { password: "right", saveToVault: true },
     ]);
+    await p.context().close();
+  }, 30_000);
+});
+
+type Hdr = { requireUnlock: () => Promise<boolean> };
+
+describe("the lock is always reachable, and asks the server first (LK, 0.4.3)", () => {
+  it("LK-1: over an open modal dialog, the popover is on top and takes the password", async () => {
+    if (!browser) return;
+    const { p } = await mount();
+    await p.waitForFunction(() =>
+      document.getElementById("den-lock")!.innerText.includes("Locked"),
+    );
+    // A page's modal (the Start dialog's kind) is open when an action asks.
+    await p.evaluate(() => {
+      const d = document.createElement("dialog");
+      d.id = "some-modal";
+      d.innerHTML = "<p>a modal</p><button>ok</button>";
+      document.body.appendChild(d);
+      d.showModal();
+      void (window as unknown as { __hdr: Hdr }).__hdr.requireUnlock();
+    });
+    await p.waitForSelector("#den-lock-pop #den-lock-pw");
+    const hit = await p.evaluate(() => {
+      const r = document.getElementById("den-lock-pw")!.getBoundingClientRect();
+      return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+        ?.id;
+    });
+    expect(hit).toBe("den-lock-pw");
+    expect(await p.evaluate(() => document.activeElement?.id)).toBe(
+      "den-lock-pw",
+    );
+    await p.fill("#den-lock-pw", "right");
+    await p.keyboard.press("Enter");
+    await p.waitForFunction(() =>
+      document.getElementById("den-lock")!.innerText.includes("Unlocked"),
+    );
+    // The page's modal is still open: nothing was closed to get there.
+    expect(
+      await p.evaluate(
+        () => (document.getElementById("some-modal") as HTMLDialogElement).open,
+      ),
+    ).toBe(true);
+    await p.context().close();
+  }, 30_000);
+
+  it("LK-2: thinking it's locked, an action asks the server again before asking the person", async () => {
+    if (!browser) return;
+    const { p, reqs, unlockElsewhere } = await mount();
+    await p.waitForFunction(() =>
+      document.getElementById("den-lock")!.innerText.includes("Locked"),
+    );
+    const asked = reqs.filter(
+      (r) => r === "GET /api/sudo-password/status",
+    ).length;
+    unlockElsewhere();
+    expect(
+      await p.evaluate(() =>
+        (window as unknown as { __hdr: Hdr }).__hdr.requireUnlock(),
+      ),
+    ).toBe(true);
+    expect(
+      reqs.filter((r) => r === "GET /api/sudo-password/status").length,
+    ).toBe(asked + 1);
+    expect(await p.$("#den-lock-pop")).toBeNull();
+    expect(await text(p, "#den-lock")).toBe("🔓 Unlocked");
+    await p.context().close();
+  }, 30_000);
+
+  it("LK-3: with a password in the vault, the first gated action on any page loads it before showing the field", async () => {
+    if (!browser) return;
+    const { p, reqs } = await mount({ vaultStored: true });
+    await p.waitForFunction(() =>
+      document.getElementById("den-lock")!.innerText.includes("Locked"),
+    );
+    // A page view alone never wakes the vault.
+    expect(reqs).not.toContain("POST /api/sudo-password/load-from-vault");
+    expect(
+      await p.evaluate(() =>
+        (window as unknown as { __hdr: Hdr }).__hdr.requireUnlock(),
+      ),
+    ).toBe(true);
+    expect(reqs).toContain("POST /api/sudo-password/load-from-vault");
+    expect(await p.$("#den-lock-pop")).toBeNull();
+    expect(await text(p, "#den-lock")).toBe("🔓 Unlocked");
     await p.context().close();
   }, 30_000);
 });

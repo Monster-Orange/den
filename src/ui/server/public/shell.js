@@ -485,6 +485,16 @@
     "ag.pal": "Agents › {ws} / {name}",
     "ag.palStart": "Start agent…",
     "ag.cap": "Up to 4 panes: {id}'s closed to make room (it keeps running)",
+    "ag.rt.ready": "Starts {name} {version} from",
+    "ag.rt.readyNoVer": "Starts {name} from",
+    "ag.rt.notFound": "{name} not found.",
+    "ag.rt.searched": "Searched:",
+    "ag.rt.more": "and {n} more",
+    "ag.rt.nowhere": "no directories",
+    "ag.rt.refused": "{name} can't start: {why}.",
+    "ag.rt.fix":
+      "Install it, or set {key} to its path in {file}, or run {cmd}.",
+    "ag.rt.unknown": "No runtime {id} here.",
   };
   // The languages the UI has a catalog for, each named in itself (a name is
   // never translated). The server's list is ui-language.ts's UI_LANGUAGES.
@@ -3843,6 +3853,10 @@
     "  max-height: calc(100vh - 72px); overflow-y: auto; box-sizing: border-box;",
     "  font: 14px/1.45 var(--sans); color: var(--text); }",
     ".den-pop:focus { outline: none; }",
+    // LK-1: the lock popover is a <dialog> in the top layer (a popover, or
+    // a modal over another modal): placed by its top/left, no UA box.
+    "dialog.den-pop { margin: 0; inset: auto; max-width: none; }",
+    "dialog.den-pop::backdrop { background: transparent; }",
     ".den-pop :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
     ".den-pop .den-ml { font: 11px var(--mono); color: var(--faint); text-transform: uppercase;",
     "  letter-spacing: .07em; padding: 6px 8px 2px; }",

@@ -16,6 +16,7 @@ import {
   type StrategyEntry,
 } from "../strategies/registry.js";
 import type { Persona } from "./personas.js";
+import type { BinSource, RuntimeFind } from "./runtime-search.js";
 
 export const RUNTIME_KIND = "runtime";
 
@@ -27,6 +28,20 @@ export interface RuntimeDetect {
   version?: string;
   /** Why it is unavailable. */
   why?: string;
+  /** The CLI it runs, when found (AG-0.1). */
+  path?: string;
+  /** Where that path came from. */
+  source?: BinSource;
+  /** The directories searched, in order (names only, never values). */
+  searched?: string[];
+}
+
+export interface DetectOptions {
+  /**
+   * `agents.runtimes.<id>.bin` as configured in user.yml (undefined:
+   * read it there; null: none).
+   */
+  bin?: unknown;
 }
 
 /** The MCP server an agent acts through: Den's, scoped to its workspace. */
@@ -69,6 +84,8 @@ export interface LaunchInput {
    * run that was never prompted starts afresh with the id it had.
    */
   resumeToken?: string;
+  /** The CLI detect found (a setting, the login PATH, …); else searched again. */
+  bin?: string;
 }
 
 export interface LaunchOutput {
@@ -90,7 +107,13 @@ export interface Runtime {
   id: string;
   /** Its name for people ("Claude Code"), in the Start agent form. */
   label?: string;
-  detect(env?: NodeJS.ProcessEnv): RuntimeDetect;
+  /**
+   * How its CLI is found and its version asked (AG-0.1): the search's
+   * binary names and install directories, per runtime, so a catalog can
+   * supply them (AG-0.5). None: nothing to find (generic).
+   */
+  find?: RuntimeFind;
+  detect(env?: NodeJS.ProcessEnv, opts?: DetectOptions): RuntimeDetect;
   /** Throws LaunchError when this persona or this machine can't run it. */
   launch(input: LaunchInput): LaunchOutput;
   /** A new run that continues the last one; null when there is nothing to resume. */

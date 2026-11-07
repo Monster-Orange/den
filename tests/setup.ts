@@ -21,6 +21,14 @@ if (!process.env.DEN_HOME)
     ".den",
   );
 
+// No test asks this machine's login shell for its PATH (its startup files
+// are the developer's), and no test finds a runtime CLI installed here
+// (~/.local/bin/claude) by its install directories: AG-0.1's search is the
+// env a test builds. A suite that tests the search sets its own (a fake
+// shell script, temp dirs).
+process.env.DEN_LOGIN_SHELL ??= "off";
+process.env.DEN_RUNTIME_DIRS ??= "";
+
 // Set test environment
 process.env.NODE_ENV = "test";
 

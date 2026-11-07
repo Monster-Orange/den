@@ -15,9 +15,18 @@
  *                     form in a popover (Local Dev's sudo banner, moved)
  *
  * Exports for pages (through header.js): requireUnlock() (Local Dev's lock
- * rule: true when unlocked, else the lock popover opens), isUnlocked(),
- * onLockChange(fn), setServiceRunner(fn) (the page that runs Start and
- * Restart itself), takePendingAction().
+ * rule, async: true when unlocked, else the lock popover opens), and
+ * checkUnlock() and unlockWith(password) for a modal that asks inline
+ * (LK-1), isUnlocked(), onLockChange(fn), setServiceRunner(fn) (the page
+ * that runs Start and Restart itself), takePendingAction().
+ *
+ * The lock (LK, 0.4.3): the page's own idea of it is never the last word.
+ * When it thinks it's locked, an action asks the server again first
+ * (another tab or device may have unlocked it, LK-2), then, when a
+ * password is stored in the vault, loads it from there (LK-3, once a page,
+ * on any page; a page view alone never wakes the vault). The popover is in
+ * the top layer (a popover, or its own modal <dialog> when a modal is
+ * open), so no modal ever covers it (LK-1).
  *
  * The pure parts (statusSummary, statusChip, problemCards, drawerGroups,
  * checkLine, rankCommands, runOf) take plain data, so tests need no
@@ -745,9 +754,9 @@ export function setServiceRunner(fn) {
  * stores it for this tab (sessionStorage, not a link anyone could open)
  * and Local Dev takes it once (takePendingAction).
  */
-export function runServiceAction(cmd, svc) {
+export async function runServiceAction(cmd, svc) {
   if (serviceRunner) return serviceRunner(cmd, svc);
-  if (!requireUnlock()) return;
+  if (!(await requireUnlock())) return;
   try {
     sessionStorage.setItem(
       SS_PENDING,
@@ -1135,13 +1144,86 @@ export function onLockChange(fn) {
 }
 
 /**
- * Local Dev's lock rule, for every page: true when unlocked; otherwise the
- * lock popover opens on its password field and the action doesn't run.
+ * Whether the lock is open, asking before saying no (never prompts): the
+ * server's status (LK-2), then, when a password is stored, the vault, once
+ * a page (LK-3). Resolves true when unlocked.
  */
-export function requireUnlock() {
-  if (lock.unlocked) return true;
+let rechecking = null;
+let vaultTried = false;
+export function checkUnlock() {
+  if (lock.unlocked) return Promise.resolve(true);
+  rechecking ??= (async () => {
+    const st = await getJson("/api/sudo-password/status", null);
+    if (st && (st.set || st.passwordless)) {
+      setUnlocked(true, !!st.passwordless && !st.set);
+      return true;
+    }
+    if (!vaultTried) {
+      await checkVault();
+      if (
+        !lock.unlocked &&
+        lock.vault.backendAvailable &&
+        lock.vault.hasStored
+      ) {
+        vaultTried = true;
+        const loaded = await getJson(
+          "/api/sudo-password/load-from-vault",
+          { ok: false },
+          { method: "POST" },
+        );
+        if (loaded.ok && !lock.unlocked) setUnlocked(true);
+      }
+    }
+    return lock.unlocked;
+  })().finally(() => {
+    rechecking = null;
+  });
+  return rechecking;
+}
+
+/**
+ * Local Dev's lock rule, for every page (async): true when unlocked, after
+ * checkUnlock; otherwise the lock popover opens on its password field and
+ * the action doesn't run.
+ */
+export async function requireUnlock() {
+  if (await checkUnlock()) return true;
   openLock();
   return false;
+}
+
+/**
+ * Unlock with `password` (the popover's form, or a modal's own field):
+ * { ok, savedToVault?, vaultError?, error? }. On success every page
+ * subscriber hears it (onLockChange). Never logs the password.
+ */
+export async function unlockWith(password, { saveToVault = false } = {}) {
+  if (!password) return { ok: false, error: t("lock.wrong") };
+  try {
+    const r = await fetch("/api/sudo-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password, saveToVault }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.ok) {
+      if (data.savedToVault) lock.vault.hasStored = true;
+      setUnlocked(true);
+      return {
+        ok: true,
+        savedToVault: !!data.savedToVault,
+        ...(data.vaultError ? { vaultError: data.vaultError } : {}),
+      };
+    }
+    // A wrong password is said in the page's language; another refusal
+    // is the server's own message.
+    return {
+      ok: false,
+      error: r.status === 401 || !data.error ? t("lock.wrong") : data.error,
+    };
+  } catch {
+    return { ok: false, error: t("lock.reqFailed") };
+  }
 }
 
 function setUnlocked(unlocked, passwordless = false) {
@@ -1250,6 +1332,7 @@ async function initLock() {
   await checkVault();
   if (!lock.vault.backendAvailable || !lock.vault.hasStored || lock.unlocked)
     return;
+  vaultTried = true;
   const loaded = await getJson(
     "/api/sudo-password/load-from-vault",
     { ok: false },
@@ -1300,7 +1383,10 @@ function openLock() {
   closeOverlay(false);
   sh()?.closeMenu?.();
   if (!lock.unlocked) void checkVault();
-  const pop = document.createElement("div");
+  // LK-1: in the top layer, so no modal covers it. Under an open modal
+  // <dialog> only another modal is reachable (a popover there is inert),
+  // so it opens as its own modal; elsewhere it is a popover.
+  const pop = document.createElement("dialog");
   pop.className = "den-pop den-lock-pop";
   pop.id = "den-lock-pop";
   pop.setAttribute("role", "dialog");
@@ -1335,38 +1421,25 @@ function openLock() {
     err.hidden = true;
     const saveToVault = !!(lock.vault.backendAvailable && saveCb?.checked);
     try {
-      const r = await fetch("/api/sudo-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: pw, saveToVault }),
-      });
-      const data = await r.json();
-      if (r.ok) {
+      const res = await unlockWith(pw, { saveToVault });
+      if (res.ok) {
         input.value = "";
-        if (data.savedToVault) lock.vault.hasStored = true;
         forceForm = false;
-        setUnlocked(true);
         closeOverlay(true);
         toast(
-          saveToVault && data.vaultError
+          saveToVault && res.vaultError
             ? t("lock.saveFailed", {
                 s: lock.vault.label || lock.vault.backend,
-                err: data.vaultError,
+                err: res.vaultError,
               })
             : t("lock.session"),
         );
         return;
       }
-      // A wrong password is said in the page's language; another refusal
-      // is the server's own message.
-      err.textContent =
-        r.status === 401 || !data.error ? t("lock.wrong") : data.error;
+      err.textContent = res.error;
       err.hidden = false;
       input.value = "";
       input.focus();
-    } catch {
-      err.textContent = t("lock.reqFailed");
-      err.hidden = false;
     } finally {
       if (btn.isConnected) {
         btn.textContent = t("lock.go");
@@ -1376,6 +1449,23 @@ function openLock() {
   };
   draw();
   document.body.appendChild(pop);
+  const underModal = [...document.querySelectorAll("dialog")].some(
+    (d) => d !== pop && d.open && d.matches(":modal"),
+  );
+  try {
+    if (underModal) pop.showModal();
+    else if (typeof pop.showPopover === "function") {
+      pop.setAttribute("popover", "manual");
+      pop.showPopover();
+    } else pop.show();
+  } catch {
+    pop.setAttribute("open", "");
+  }
+  // A cancel (Escape on a modal) closes it as the chip would.
+  pop.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    closeOverlay(true);
+  });
   const r = chip.getBoundingClientRect();
   pop.style.top = `${r.bottom + 6}px`;
   pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8))}px`;
@@ -1441,6 +1531,15 @@ export function initTopbar(opts = {}) {
   $("den-lock")?.addEventListener("click", () =>
     overlay?.kind === "lock" ? closeOverlay(true) : openLock(),
   );
+  // LK-2: back on this tab, the lock may have been opened elsewhere.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || lock.unlocked) return;
+    if (sh()?.apiOff?.() === true) return;
+    void getJson("/api/sudo-password/status", null).then((st) => {
+      if (st && (st.set || st.passwordless))
+        setUnlocked(true, !!st.passwordless && !st.set);
+    });
+  });
   document.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "k") {
       e.preventDefault();

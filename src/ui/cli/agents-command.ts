@@ -24,16 +24,25 @@
  *           running: a new session, in the same cwd, continuing the last run;
  *           when that session was never prompted, a fresh start under the
  *           same conversation id (there is nothing to continue).
+ *   doctor  (AG-0.3) each runtime: its status, the CLI it runs and where
+ *           that came from (setting, login-shell, PATH, well-known), its
+ *           version (its version command, once, under a timeout), the
+ *           directories searched (names only, never an env value), and the
+ *           fix when it is missing. Exit 1 when the default runtime is
+ *           unavailable. It resolves the login shell's PATH first, as the
+ *           web server does at start.
  *
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import { DEFAULT_RUNTIME_ID } from "../../shared/agents/runtimes.js";
+import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import { HostError } from "../../shared/sessions/client.js";
 import {
   AgentError,
   listAgents,
   listPersonas as personaList,
+  listRuntimes,
   loadAgentWorkspaces,
   resolveAgentsDeps,
   resumeAgent,
@@ -42,6 +51,7 @@ import {
   type AgentsDeps,
   type AgentsResolved,
   type EarlyExit,
+  type RuntimeChoice,
   type Started,
 } from "./agent-ops.js";
 import {
@@ -63,7 +73,7 @@ export {
 } from "./agent-ops.js";
 
 export const AGENTS_HELP = {
-  usage: "agents <list|start|stop|resume|personas> ...",
+  usage: "agents <list|start|stop|resume|personas|doctor> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -78,9 +88,16 @@ export const AGENTS_HELP = {
     "    a session never prompted starts fresh under the same conversation id",
     "{cli} agents personas [--json]",
     "    Den's default pack, then agents.persona_packs (a later pack wins by id)",
+    "{cli} agents doctor [--json]",
+    "    each runtime: status, the CLI it runs and where it came from, its version,",
+    "    the directories searched, and the fix; exit 1 when the default is missing",
     "",
-    "Runtimes: den-claude (default; needs claude on PATH) and generic (the",
+    "Runtimes: den-claude (default; Claude Code's claude) and generic (the",
     "persona's argv template). Attach with `{cli} sessions attach <ws>:<id>`.",
+    "A runtime's CLI is found as your terminal finds it: agents.runtimes.<id>.bin",
+    "in config/local/user.yml (an absolute path) wins, then the login shell's PATH,",
+    "this PATH, and its install directories (~/.local/bin, ~/.claude/local,",
+    "/opt/homebrew/bin, /usr/local/bin, npm's global bin).",
     "An agent's env is PATH, HOME, USER, LOGNAME, SHELL, TERM, COLORTERM, LANG,",
     "LC_*, TZ and TMPDIR, plus what its runtime declares: nothing else of yours.",
   ],
@@ -250,10 +267,87 @@ async function listPersonas(
   return 0;
 }
 
+export interface AgentsDoctorDeps {
+  /** Resolve the login shell's PATH first (default: initLoginPath). */
+  loginPath?: () => Promise<void>;
+}
+
+const SOURCE_WORD: Record<string, string> = {
+  setting: "agents.runtimes setting",
+  "login-shell": "login shell PATH",
+  PATH: "PATH",
+  "well-known": "install directory",
+};
+
+/** `agents doctor`'s lines for one runtime (names and paths, never env values). */
+export function doctorLines(
+  r: RuntimeChoice,
+  cli: string,
+  userConfig: string,
+): string[] {
+  const lines = [
+    `${r.id}${r.label ? ` (${r.label})` : ""}${r.default ? "  [default]" : ""}`,
+    r.available
+      ? "  status    ✓ available"
+      : `  status    ✗ unavailable: ${r.why ?? "unknown"}`,
+  ];
+  if (r.path)
+    lines.push(
+      `  path      ${r.path}${r.source ? ` (${SOURCE_WORD[r.source] ?? r.source})` : ""}`,
+    );
+  if (r.available && r.setting)
+    lines.push(`  version   ${r.version ?? "unknown"}`);
+  if (!r.setting) lines.push("  path      none to find (the persona's argv)");
+  else if (r.searched?.length)
+    r.searched.forEach((dir, i) =>
+      lines.push(`  ${i === 0 ? "searched  " : "          "}${dir}`),
+    );
+  else if (r.source !== "setting") lines.push("  searched  (no directories)");
+  if (!r.available && r.setting)
+    lines.push(
+      `  fix       install ${r.label ?? r.id}, or set ${r.setting} to its absolute path in ${userConfig}`,
+      `            then run \`${cli} agents doctor\` again`,
+    );
+  return lines;
+}
+
+async function doctor(
+  args: string[],
+  d: AgentsResolved,
+  deps: AgentsDoctorDeps,
+): Promise<number> {
+  const where = "agents doctor";
+  const p = parseArgs(where, args, { "--json": false });
+  noExtra(where, p);
+  await (deps.loginPath ?? (() => initLoginPath({ env: d.env })))();
+  const rts = await listRuntimes(d);
+  const def = rts.find((r) => r.default);
+  const code = def?.available ? 0 : 1;
+  if (p.flags["--json"]) {
+    d.out(
+      JSON.stringify(
+        { runtimes: rts, userConfig: d.userConfigFile() },
+        null,
+        2,
+      ),
+    );
+    return code;
+  }
+  rts.forEach((r, i) => {
+    if (i) d.out("");
+    for (const l of doctorLines(r, d.cli, d.userConfigFile())) d.out(l);
+  });
+  d.out("");
+  d.out(
+    `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,
+  );
+  return code;
+}
+
 /** `<cli> agents ...`; returns the exit code. */
 export async function cmdAgents(
   args: string[],
-  deps: AgentsDeps = {},
+  deps: AgentsDeps & AgentsDoctorDeps = {},
 ): Promise<number> {
   const d = resolveAgentsDeps(deps);
   const sub =
@@ -274,6 +368,8 @@ export async function cmdAgents(
           return await resume(rest, d);
         case "personas":
           return await listPersonas(rest, d);
+        case "doctor":
+          return await doctor(rest, d, deps);
         default:
           throw new UsageError(`unknown agents command "${sub}"`);
       }

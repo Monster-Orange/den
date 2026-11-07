@@ -212,7 +212,14 @@ describe("agents start", () => {
       await agents(r, "start", "-w", "north", "--persona", "planner"),
     ).toBe(1);
     expect(r.err.join("\n")).toMatch(
-      /den-claude is unavailable: claude is not on PATH/,
+      /den-claude is unavailable: claude not found \(searched 2 directories\)/,
+    );
+    // AG-0.1: and how to fix it, naming the user.yml to edit.
+    expect(r.err.join("\n")).toMatch(
+      /Install it, or set agents\.runtimes\.den-claude\.bin to its absolute path in \/.*user\.yml/,
+    );
+    expect(r.err.join("\n")).toMatch(
+      /`acme agents doctor` shows where it looked/,
     );
   });
 

@@ -1380,8 +1380,25 @@
         color: var(--muted);
         overflow-wrap: anywhere;
       }
-      .agent-form-help[hidden] {
+      .agent-form-help[hidden],
+      .agent-form-ready[hidden] {
         display: none;
+      }
+      /* AG-0.2: the runtime it will run, or why it can't (the mock's .helpl). */
+      .agent-form-ready {
+        flex-basis: 100%;
+        order: 1;
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.4;
+        color: var(--faint);
+        overflow-wrap: anywhere;
+      }
+      .agent-form-ready[data-tone="warn"] {
+        color: var(--warn);
+      }
+      .agent-form-ready .mono {
+        font-family: var(--mono);
       }
       .agent-cwd {
         max-width: 280px;
@@ -1529,8 +1546,9 @@
             .replace(/"/g, "&quot;");
 
         // ── The lock (R8): the shell's lock chip and popover (topbar.js) ──────────
-        // requireSudo() is this page's lock rule, shared with every page: true
-        // when unlocked; otherwise the lock popover opens on its password
+        // requireSudo() is this page's lock rule, shared with every page
+        // (async): true when unlocked, after asking the server and the vault
+        // (LK-2, LK-3); otherwise the lock popover opens on its password
         // field and the command doesn't run.
         function requireSudo() {
           return requireUnlock();
@@ -3032,8 +3050,8 @@
 
         // ── Workspace-level command (SSE) ─────────────────────────────────────────
         // Routes output to each service's own tab as `label` events arrive.
-        window.runWorkspaceSync = function () {
-          if (!requireSudo()) return;
+        window.runWorkspaceSync = async function () {
+          if (!(await requireSudo())) return;
           setAllButtons(true);
           setWsStatus("syncing…");
           const es = new EventSource("/api/workspace/sync");
@@ -3084,8 +3102,8 @@
         // rather than a shared pane, so it sits with everything else for that
         // system. Buttons are not globally disabled: it is one repo.
         const _syncing = new Set();
-        window.runRepoSync = function (repo) {
-          if (!requireSudo()) return;
+        window.runRepoSync = async function (repo) {
+          if (!(await requireSudo())) return;
           if (_syncing.has(repo)) return; // already in flight — ignore re-entry
           _syncing.add(repo);
 
@@ -3137,8 +3155,8 @@
           };
         };
 
-        window.runWorkspaceCmd = function (cmd, addresses) {
-          if (!requireSudo()) return;
+        window.runWorkspaceCmd = async function (cmd, addresses) {
+          if (!(await requireSudo())) return;
           const only =
             Array.isArray(addresses) && addresses.length
               ? `&addresses=${encodeURIComponent(addresses.join(","))}`
@@ -3251,8 +3269,8 @@
         // is derived on the SERVER (see the `seed` param in /api/workspace/exec):
         // its rules are load-bearing, and the already-healthy skip it relies on is
         // suppressed whenever an explicit address list is sent.
-        window.runUpWithDeps = function (repo) {
-          if (!requireSudo()) return;
+        window.runUpWithDeps = async function (repo) {
+          if (!(await requireSudo())) return;
           void runWorkspaceCmdAsync("up", null, {
             seed: repo,
             undismiss: true,
@@ -3263,16 +3281,16 @@
         // same closure as "up with deps", reversed. Derived server-side for the
         // same reason as its counterpart: the already-stopped skip is suppressed
         // when an explicit address list is sent.
-        window.runDownWithDeps = function (repo) {
-          if (!requireSudo()) return;
+        window.runDownWithDeps = async function (repo) {
+          if (!(await requireSudo())) return;
           void runWorkspaceCmdAsync("down", null, {
             seed: repo,
             undismiss: true,
           });
         };
 
-        window.runCmd = function (address, repo, service, cmd) {
-          if (!requireSudo()) return;
+        window.runCmd = async function (address, repo, service, cmd) {
+          if (!(await requireSudo())) return;
           // Explicit single-service action — undo any prior dismissal so its pane returns.
           clearDismissed(address);
           // up/restart/down go through the workspace-exec runner: it uses the full

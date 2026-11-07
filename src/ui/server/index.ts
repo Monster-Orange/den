@@ -788,6 +788,7 @@ import {
   webRouteHosts,
 } from "../../shared/edge/render.js";
 import { EDGE_EXPOSED_MESSAGE, edgeExposure } from "./edge-exposure.js";
+import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import {
   linksFor,
   openUrlFor,
@@ -4612,6 +4613,11 @@ try {
 } catch (e) {
   serverLog(`  ⚠ web.secret could not be created: ${(e as Error).message}`);
 }
+// AG-0.1: the login shell's PATH, once, in the background (3 s at most),
+// so agents find their CLI as the person's terminal would: a launchd
+// service's PATH leaves out ~/.local/bin. Until (or unless) it answers, the
+// search is this PATH and the runtimes' install directories.
+void initLoginPath();
 server.listen(PORT, BIND_HOST, () => {
   const hosts = fs.existsSync("/etc/hosts")
     ? fs.readFileSync("/etc/hosts", "utf-8")

@@ -2,7 +2,8 @@
  * An in-process session host on a temp state dir with a scripted PTY (no
  * native module, nothing really runs), and the deps `<cli> agents` needs:
  * two workspaces with checkout dirs of their own, a `claude` PATH shim that
- * only records a run, and the agents config a test sets.
+ * answers --version and otherwise only records a run, and the agents config
+ * a test sets.
  */
 import * as fs from "fs";
 import * as os from "os";
@@ -30,6 +31,8 @@ export interface Rig {
   claude: string;
   wsDir: (ws: string) => string;
   config: ResolvedAgentsConfig;
+  /** `agents.runtimes.<id>.bin` as a user.yml would set it (none by default). */
+  runtimeBins: Record<string, unknown>;
 }
 
 const tmps: string[] = [];
@@ -41,6 +44,13 @@ export async function cleanupRigs(): Promise<void> {
   for (const d of tmps.splice(0))
     fs.rmSync(d, { recursive: true, force: true });
 }
+
+/**
+ * A `claude` that answers `--version` (AG-0.2: the Start dialog and `agents
+ * doctor` ask it once) and otherwise only records that it ran, and fails.
+ */
+export const CLAUDE_SHIM = (ran: string, version = "9.9.9") =>
+  `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${version} (Claude Code)"; exit 0; fi\necho "$@" >> "${ran}"\nexit 1\n`;
 
 export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
   // realpath: macOS's tmpdir is a symlink, and cwd comparisons need one form.
@@ -54,9 +64,7 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
   fs.mkdirSync(bin);
   const ran = path.join(dir, "claude-ran");
   const claude = path.join(bin, "claude");
-  fs.writeFileSync(claude, `#!/bin/sh\necho "$@" >> "${ran}"\nexit 1\n`, {
-    mode: 0o755,
-  });
+  fs.writeFileSync(claude, CLAUDE_SHIM(ran), { mode: 0o755 });
   const wsDir = (ws: string) => path.join(dir, "workspaces", ws);
   for (const ws of ["north", "south"])
     fs.mkdirSync(wsDir(ws), { recursive: true });
@@ -82,6 +90,7 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     claude,
     wsDir,
     config: { maxConcurrent: 4, personaPacks: [], agents: {} },
+    runtimeBins: {},
     deps: {},
   };
   r.deps = {
@@ -102,6 +111,9 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     invokeCwd: () => dir,
     // No early-exit watch unless a test asks for one (it waits up to 3 s).
     exitWatchMs: 0,
+    // Never this machine's user.yml.
+    runtimeBin: (id) => r.runtimeBins[id],
+    userConfigFile: () => path.join(dir, "config", "local", "user.yml"),
     env: {
       PATH: `${bin}:/usr/bin:/bin`,
       HOME: "/home/someone",
