@@ -33,6 +33,50 @@ type Line =
     }
   | { t: "end"; id: string; at: string; exitCode: number };
 
+/** What `reposOfRun` asks about the repos (index.ts gives the real ones). */
+export interface RunRepoSources {
+  /** synthetic, smoke, journeys, security: the repos the pillar reads. */
+  pillarSources(pillar: string): string[];
+  /** suites: the repos whose `tests:` suites the run will run. */
+  suiteRepos(env: string, only: string[]): string[];
+  /** performance: every module's name (a repo's is `<repo>/<module>`). */
+  perfModules(): Promise<string[]>;
+  /** Every repo's name. */
+  repoNames(): string[];
+}
+
+/**
+ * The repos a run tests, for its history (0.4.17): every run kind that
+ * runs a repo's own tests fills its Last test run. integration is Den's
+ * own: no repo. Never throws: a source it can't read gives none.
+ */
+export async function reposOfRun(
+  pillar: string,
+  env: string,
+  modules: string[],
+  src: RunRepoSources,
+): Promise<string[]> {
+  const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))];
+  try {
+    if (["synthetic", "smoke", "journeys", "security"].includes(pillar))
+      return uniq(src.pillarSources(pillar));
+    if (pillar === "suites") return uniq(src.suiteRepos(env, modules));
+    if (pillar === "performance") {
+      const repos = new Set(src.repoNames());
+      const chosen = modules.length ? modules : await src.perfModules();
+      return uniq(
+        chosen
+          .filter((n) => n.includes("/"))
+          .map((n) => n.split("/")[0])
+          .filter((r) => repos.has(r)),
+      );
+    }
+  } catch {
+    /* no repos known: the history still has the run */
+  }
+  return [];
+}
+
 export const MAX_LINES = 2000;
 export const KEEP_LINES = 1000;
 

@@ -31,6 +31,8 @@ import { moduleScanner } from "../../shared/test-discovery/module-scanner.js";
 import { resolveFieldEnv } from "../../shared/perf/optional-fields.js";
 import { testRunner } from "../cli/test-runner.js";
 import { discoverRepos } from "../../pillars/smoke/discover.js";
+import { planSuites } from "../../pillars/suites/run.js";
+import { listServicesWithManifests } from "../../shared/manifest/workspace-manifests.js";
 import {
   awsProfileEnv,
   loadAwsProfiles,
@@ -856,7 +858,12 @@ import { heldActions } from "./held-actions.js";
 import type { ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
 import { handleAgentRoutes, startAgentUpkeep } from "./agent-routes.js";
-import { lastRunsByRepo, recordRunEnd, recordRunStart } from "./run-history.js";
+import {
+  lastRunsByRepo,
+  recordRunEnd,
+  recordRunStart,
+  reposOfRun,
+} from "./run-history.js";
 import {
   CHECK_CONCURRENCY,
   CHECK_TIMEOUT_MS,
@@ -3940,19 +3947,19 @@ async function handleRequest(
     let overallExit = 0;
     // 0.4.17: the server's run history (every browser's runs, kept), which
     // Workspaces' Last test run reads per repo.
-    let tested: string[] = [];
-    if (
-      pillar === "synthetic" ||
-      pillar === "smoke" ||
-      pillar === "journeys" ||
-      pillar === "security"
-    ) {
-      try {
-        tested = collectTestSources(pillar).map((x) => x.repoName);
-      } catch {
-        /* no repos known: the history still has the run */
-      }
-    }
+    // Every run kind that runs a repo's own tests names it, the suites
+    // pillar (`tests:`) and a repo's performance modules included.
+    const tested = await reposOfRun(String(pillar), String(env), modules, {
+      pillarSources: (p) =>
+        collectTestSources(p as Pillar).map((x) => x.repoName),
+      suiteRepos: (e, only) =>
+        planSuites(listServicesWithManifests(), e as Environment, only).run.map(
+          (x) => x.repo,
+        ),
+      perfModules: async () =>
+        (await moduleScanner.scanModules("performance")).map((m) => m.name),
+      repoNames: () => discoverRepos().map((r) => r.repoName),
+    });
     LIVE_RUNS.add(runId);
     recordRunStart(getStateDir(), {
       id: runId,

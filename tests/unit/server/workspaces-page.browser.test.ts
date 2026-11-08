@@ -910,6 +910,31 @@ async function besideTrigger(
 }
 
 describe("0.4.17: menus in the top layer, Visit ↗, the favourite star", () => {
+  it("at 1280×600 the table keeps its height: a repo row and its ⋯ are in reach", async () => {
+    if (!browser) return;
+    const p = await open("main", "/", { width: 1280, height: 600 });
+    const h = await p.$eval(".tablewrap", (w) => w.clientHeight);
+    expect(h).toBeGreaterThanOrEqual(160);
+    const last = (await repoOrder(p)).at(-1)!;
+    const more = `#repo-table tr.repo[data-repo="${last}"] [data-action="toggle-svc-menu"]`;
+    await p.$eval(more, (b) => b.scrollIntoView({ block: "center" }));
+    // The ⋯ itself is what's under its own centre: nothing covers it.
+    expect(
+      await p.$eval(more, (b) => {
+        const r = b.getBoundingClientRect();
+        const at = document.elementFromPoint(
+          r.left + r.width / 2,
+          r.top + r.height / 2,
+        );
+        return r.height > 0 && !!at && (at === b || b.contains(at));
+      }),
+    ).toBe(true);
+    await p.click(more, { timeout: 8_000 });
+    const menu = `#svc-menu-${last.replace(/[^a-z0-9]/gi, "-")}`;
+    await p.waitForSelector(`${menu} [role=menuitem]`, { timeout: 8_000 });
+    await p.context().close();
+  }, 30_000);
+
   it("the last repo's ⋯ menu isn't clipped by the table: every item is on top and clickable", async () => {
     if (!browser) return;
     // The last row sits at the foot of the table's box, which clips (its

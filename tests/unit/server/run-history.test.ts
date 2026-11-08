@@ -15,6 +15,8 @@ import {
   recordRunEnd,
   recordRunStart,
   runHistoryFile,
+  reposOfRun,
+  type RunRepoSources,
 } from "../../../src/ui/server/run-history.js";
 
 let dir = "";
@@ -106,5 +108,55 @@ describe("the run history", () => {
       .filter(Boolean);
     expect(kept).toHaveLength(KEEP_LINES);
     expect(kept.at(-1)).toContain('"id":"new"');
+  });
+});
+
+describe("the repos a run tests (every run kind)", () => {
+  const src: RunRepoSources = {
+    pillarSources: (p) => (p === "smoke" ? ["web", "queue"] : []),
+    suiteRepos: (_env, only) =>
+      ["api/unit", "api/lint", "web/unit"]
+        .filter(
+          (id) =>
+            !only.length ||
+            only.includes(id) ||
+            only.includes(id.split("/")[0]),
+        )
+        .map((id) => id.split("/")[0]),
+    perfModules: async () => ["api/load", "shared-k6"],
+    repoNames: () => ["api", "web", "queue"],
+  };
+
+  it("a repo's own tests: suites (all, or the ones picked) name their repos", async () => {
+    expect(await reposOfRun("suites", "local", [], src)).toEqual([
+      "api",
+      "web",
+    ]);
+    expect(await reposOfRun("suites", "local", ["web/unit"], src)).toEqual([
+      "web",
+    ]);
+    expect(await reposOfRun("suites", "local", ["api"], src)).toEqual(["api"]);
+  });
+
+  it("smoke and its kind keep their sources; a repo's performance module names it; Den's own name none", async () => {
+    expect(await reposOfRun("smoke", "local", [], src)).toEqual([
+      "web",
+      "queue",
+    ]);
+    expect(await reposOfRun("performance", "local", [], src)).toEqual(["api"]);
+    expect(
+      await reposOfRun("performance", "local", ["shared-k6"], src),
+    ).toEqual([]);
+    expect(await reposOfRun("integration", "local", [], src)).toEqual([]);
+  });
+
+  it("a source that throws is no repos, never a failed run", async () => {
+    const bad: RunRepoSources = {
+      ...src,
+      suiteRepos: () => {
+        throw new Error("no manifests");
+      },
+    };
+    expect(await reposOfRun("suites", "local", [], bad)).toEqual([]);
   });
 });

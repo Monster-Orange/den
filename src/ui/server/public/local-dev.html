@@ -1168,6 +1168,11 @@
       }
       .tablewrap {
         overflow-x: auto;
+        /* 0.4.17: in a short window (under ~620 px tall) the column's other
+           parts squeezed it to nothing; it keeps room for rows and scrolls. */
+        min-height: 200px;
+        flex-shrink: 0;
+        overflow-y: auto;
         border: 1px solid var(--border);
         border-radius: var(--radius);
         background: var(--surface);

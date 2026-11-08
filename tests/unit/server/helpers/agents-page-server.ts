@@ -108,6 +108,8 @@ export async function startAgentsPageServer(
     bins?: Record<string, string>;
     /** More workspaces in workspaces.yml, not active (no services). */
     inactive?: string[];
+    /** A repo's service health URL for local (notes, blog), when it has one. */
+    health?: Record<string, string>;
   } = {},
 ): Promise<AgentsPageServer> {
   const tmp = fs.realpathSync(
@@ -165,6 +167,9 @@ export async function startAgentsPageServer(
         "      local:",
         `        up: ${JSON.stringify(up)}`,
         '        down: "true"',
+        ...(opts.health?.[repo]
+          ? ["    health:", "      local:", `        url: ${opts.health[repo]}`]
+          : []),
         "",
       ].join("\n"),
     );
