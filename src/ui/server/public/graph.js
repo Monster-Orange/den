@@ -501,15 +501,31 @@ function repoGroupEl(r, x, y, w, h) {
   el.innerHTML = `<div class="dg-ghead"><button class="dg-gname" data-goto-repo-panel="${esc(r)}" title="Repo details">${esc(r)}</button><span class="meta">${esc(branch)}${svcs.length} services</span><button class="dg-lnk" data-collapse="${esc(r)}">Collapse</button></div>`;
   return place(el, x, y, w, h);
 }
+/** The favourite star (0.4.17): the shell's pins, the same store as Services. */
+function starBtn(id) {
+  const sh = window.denShell;
+  if (!sh?.isPinned) return "";
+  const on = sh.isPinned(id);
+  const label = sh.t
+    ? sh.t(on ? "act.unpinX" : "act.pinX", { s: id })
+    : `${on ? "Unpin" : "Pin"} ${id}`;
+  return `<button type="button" class="dg-star" data-pin-toggle="${esc(id)}" aria-pressed="${on}" aria-label="${esc(label)}" title="${esc(label)}">${on ? "★" : "☆"}</button>`;
+}
+/** A card's actions: the first three, and Visit ↗ always when it has a URL. */
+function cardActs(s) {
+  const acts = actionsFor(s);
+  const list = [acts.primary, ...acts.common].filter(Boolean);
+  const top = list.slice(0, 3);
+  const visit = list.find((a) => a.id === "open");
+  if (visit && !top.includes(visit)) top[top.length - 1] = visit;
+  return top;
+}
 function cardInner(s) {
   const showPlace = s.runs === "remote" || M.mixed;
-  const acts = actionsFor(s);
-  return `<div class="r1"><span class="dg-dot ${status(s)}" title="${statusWord(s)}"></span><span class="nm" title="${esc(s.name)}">${esc(s.name)}</span>${showPlace ? `<span class="dg-badge ${s.runs}">${esc(placementText(s))}</span>` : ""}</div>
+  return `<div class="r1"><span class="dg-dot ${status(s)}" title="${statusWord(s)}"></span><span class="nm" title="${esc(s.name)}">${esc(s.name)}</span>${showPlace ? `<span class="dg-badge ${s.runs}">${esc(placementText(s))}</span>` : ""}${starBtn(s.id)}</div>
     <div class="r2" title="${esc(s.id)}${s.inWorkspaces.length > 1 ? `: in ${esc(s.inWorkspaces.join(", "))}` : ""}">${esc(s.repo + ownersLabel(s.inWorkspaces))}</div>
     <div class="r3">${s.entry ? '<span class="dg-tag entry">entry</span>' : ""}${s.infra ? '<span class="dg-tag">infra</span>' : ""}${s.missing.length ? `<span class="dg-tag warn" title="Missing: ${esc(s.missing.join(", "))}">⚠ missing</span>` : ""}${!s.cloned ? '<span class="dg-tag warn">not cloned</span>' : ""}<span class="h ${status(s)}">${esc(healthLine(s))}</span></div>
-    <div class="dg-acts">${[acts.primary, ...acts.common]
-      .filter(Boolean)
-      .slice(0, 3)
+    <div class="dg-acts">${cardActs(s)
       .map((a) => actBtn(a, s, "sm"))
       .join("")}</div>`;
 }
@@ -915,7 +931,8 @@ function onClick(e) {
     const id = pinT.dataset.pinToggle;
     if (window.denShell.isPinned(id)) window.denShell.unpin(id);
     else window.denShell.pin(id);
-    openDetail(st.sel, true);
+    // A card's star (0.4.17) only pins: it doesn't open the card.
+    if (!pinT.closest(".dg-card")) openDetail(st.sel, true);
     return;
   }
   if (t.closest("[data-popout]")) {

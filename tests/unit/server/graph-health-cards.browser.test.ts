@@ -154,6 +154,20 @@ async function graph(): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  // What's new stays shut: it would cover the cards.
+  const latest =
+    (
+      (await (await fetch(api("/api/changelog"))).json()) as {
+        version: string;
+      }[]
+    )[0]?.version ?? "";
+  await ctx.addInitScript((v) => {
+    try {
+      localStorage.setItem("den-changelog-seen", v);
+    } catch {
+      /* none */
+    }
+  }, latest);
   const p = await ctx.newPage();
   // Health is held back: the test plays each round.
   await p.route(/\/api\/health(\/stream)?(\?|$)/, () => {
@@ -194,6 +208,78 @@ describe("graph cards and health", () => {
     await round(p, [{ repo: "shop", service: "api", ok: true }]);
     expect(await down()).toBe(false);
     expect(await p.textContent(`${CARD("shop/api")} .h`)).toContain("healthy");
+    await p.context().close();
+  }, 45_000);
+
+  it("0.4.17: a card's favourite star sits top-right and only pins; it's the shell's pins, kept on reload", async () => {
+    if (!browser) return;
+    const p = await graph();
+    const star = `${CARD("shop/api")} [data-pin-toggle="shop/api"]`;
+    await p.waitForSelector(star);
+    const at = await p.$eval(star, (b) => {
+      const c = b.closest(".dg-card")!.getBoundingClientRect();
+      const r = b.getBoundingClientRect();
+      return { right: c.right - r.right, top: r.top - c.top };
+    });
+    expect(at.right).toBeLessThan(16);
+    expect(at.top).toBeLessThan(16);
+    expect(await p.getAttribute(star, "aria-pressed")).toBe("false");
+    const [saved] = await Promise.all([
+      p.waitForResponse(
+        (r) =>
+          r.request().method() === "POST" &&
+          new URL(r.url()).pathname === "/api/settings",
+      ),
+      p.click(star),
+    ]);
+    expect(saved.status()).toBe(200);
+    expect(await p.getAttribute(star, "aria-pressed")).toBe("true");
+    // Pinning doesn't open the card's details.
+    expect(await p.$(".dg-card.sel")).toBeNull();
+    // A health round repaints the card: the star stays on.
+    await round(p, [{ repo: "shop", service: "api", ok: true }]);
+    expect(await p.getAttribute(star, "aria-pressed")).toBe("true");
+    await p.reload();
+    await p.waitForSelector(star);
+    expect(await p.getAttribute(star, "aria-pressed")).toBe("true");
+    await Promise.all([
+      p.waitForResponse(
+        (r) =>
+          r.request().method() === "POST" &&
+          new URL(r.url()).pathname === "/api/settings",
+      ),
+      p.click(star),
+    ]);
+    expect(await p.getAttribute(star, "aria-pressed")).toBe("false");
+    await p.context().close();
+  }, 45_000);
+
+  it("0.4.17: a card with a URL has Visit ↗, which opens it in a new tab; one without has none", async () => {
+    if (!browser) return;
+    const p = await graph();
+    await round(p, [
+      {
+        repo: "shop",
+        service: "api",
+        ok: true,
+        openUrl: "http://shop.example.test/",
+      },
+      { repo: "shop", service: "worker", ok: true },
+    ]);
+    const visit = (id: string) => `${CARD(id)} .dg-acts [data-action="open"]`;
+    await p.waitForSelector(visit("shop/api"), { state: "attached" });
+    expect((await p.textContent(visit("shop/api")))?.trim()).toBe("Visit ↗");
+    expect(await p.$(visit("shop/worker"))).toBeNull();
+    await p
+      .context()
+      .route("http://shop.example.test/**", (r) => r.fulfill({ body: "shop" }));
+    await p.hover(CARD("shop/api"));
+    const [tab] = await Promise.all([
+      p.context().waitForEvent("page"),
+      p.click(visit("shop/api")),
+    ]);
+    await tab.waitForLoadState();
+    expect(tab.url()).toBe("http://shop.example.test/");
     await p.context().close();
   }, 45_000);
 });

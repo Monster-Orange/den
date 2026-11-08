@@ -77,6 +77,8 @@
  *   unregisterCommand(id), commands()
  *   openMenu(anchor, menu)           a .pop menu below anchor (the scope
  *                                    parts' and the user menu's)
+ *   topLayer.show(el, anchor, opts)  a page's own menu in the top layer
+ *                                    (0.4.17), placed by anchor; hide(el)
  *
  * Loading before shell.js: push functions onto window.denShellQueue (an
  * array); each runs with denShell once it exists, and a later push runs at
@@ -160,6 +162,8 @@
     "b.down.one": "{n} down",
     "act.pin": "Pin",
     "act.unpin": "Unpin",
+    "act.visit": "Visit",
+    "act.visitX": "Visit {s} (opens a new tab)",
     "act.pinX": "Pin {s}",
     "act.unpinX": "Unpin {s}",
     "toast.pinned": "Pinned {s}",
@@ -1416,6 +1420,113 @@
     return el;
   }
 
+  // ── the top layer (0.4.17): one placement for every menu ─────────────
+  // A menu shown with topShow is in the browser's top layer (a manual
+  // popover), placed by its anchor: below it, above when there's more room
+  // there, kept inside the window. No overflow or stacking ancestor can
+  // clip or cover it, and it stays where it is in the page, so the page's
+  // own click handlers still reach it. It closes when the page hides it
+  // (display: none), its anchor goes, or topHide.
+  var topOpen = [];
+  var TOP_MARGIN = 8;
+  function topSupported(el) {
+    return typeof el.showPopover === "function";
+  }
+  function topPlace(el, anchor, opts) {
+    var r = anchor.getBoundingClientRect();
+    var gap = opts.gap != null ? opts.gap : 4;
+    el.style.maxHeight = "";
+    var w = el.offsetWidth;
+    var h = el.offsetHeight;
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var below = vh - r.bottom - gap - TOP_MARGIN;
+    var above = r.top - gap - TOP_MARGIN;
+    var up = h > below && above > below;
+    var room = Math.max(80, up ? above : below);
+    if (h > room) {
+      el.style.maxHeight = room + "px";
+      h = room;
+    }
+    var top = up ? r.top - gap - h : r.bottom + gap;
+    var left = opts.align === "right" ? r.right - w : r.left;
+    left = Math.max(TOP_MARGIN, Math.min(left, vw - w - TOP_MARGIN));
+    el.style.top = Math.max(TOP_MARGIN, top) + "px";
+    el.style.left = left + "px";
+  }
+  function topIndex(el) {
+    for (var i = 0; i < topOpen.length; i++) if (topOpen[i].el === el) return i;
+    return -1;
+  }
+  function topShow(el, anchor, opts) {
+    if (!el || !anchor) return;
+    opts = opts || {};
+    var i = topIndex(el);
+    if (i >= 0) {
+      topOpen[i].anchor = anchor;
+      topOpen[i].opts = opts;
+    } else {
+      if (topSupported(el)) {
+        if (!el.hasAttribute("popover")) {
+          el.setAttribute("popover", "manual");
+          el.setAttribute("data-den-top-added", "");
+        }
+        try {
+          if (!el.matches(":popover-open")) el.showPopover();
+        } catch (e) {
+          /* not in the document yet: placed as fixed */
+        }
+      }
+      var o = { el: el, anchor: anchor, opts: opts, mo: null };
+      if (typeof MutationObserver === "function") {
+        o.mo = new MutationObserver(function () {
+          topCheck(o);
+        });
+        o.mo.observe(el, {
+          attributes: true,
+          attributeFilter: ["style", "class", "hidden"],
+        });
+      }
+      topOpen.push(o);
+    }
+    el.classList.add("den-toplayer");
+    topPlace(el, anchor, opts);
+  }
+  function topHide(el) {
+    var i = topIndex(el);
+    if (i < 0) return;
+    var o = topOpen.splice(i, 1)[0];
+    if (o.mo) o.mo.disconnect();
+    try {
+      if (el.matches && el.matches(":popover-open")) el.hidePopover();
+    } catch (e) {
+      /* already gone */
+    }
+    if (el.hasAttribute("data-den-top-added")) {
+      el.removeAttribute("popover");
+      el.removeAttribute("data-den-top-added");
+    }
+    el.classList.remove("den-toplayer");
+  }
+  /** The page hid it, or its anchor went: it's closed. */
+  function topCheck(o) {
+    if (
+      !o.el.isConnected ||
+      !o.anchor.isConnected ||
+      o.el.hidden ||
+      getComputedStyle(o.el).display === "none"
+    )
+      topHide(o.el);
+  }
+  function topReplace() {
+    topOpen.slice().forEach(function (o) {
+      topCheck(o);
+      if (topIndex(o.el) >= 0) topPlace(o.el, o.anchor, o.opts);
+    });
+  }
+  window.addEventListener("resize", topReplace);
+  document.addEventListener("scroll", topReplace, true);
+
   // ── menus (.pop, R18): the scope parts' popovers ─────────────────────
   // A menu is { label, items: [{ heading } | { hr: true } | { label, tag?,
   // checked?, href?, onSelect? }] }. Rows with `checked` are radios (✓ when
@@ -1427,6 +1538,7 @@
     if (!openPop) return;
     var o = openPop;
     openPop = null;
+    topHide(o.el);
     if (o.el.remove) o.el.remove();
     o.anchor.setAttribute("aria-expanded", "false");
     // aria-controls names the menu only while it exists.
@@ -1502,15 +1614,14 @@
       }
     });
     pop.innerHTML = html;
-    document.body.appendChild(pop);
+    // Inside a modal, in it: anything outside a modal is inert.
+    var host =
+      (anchor.closest && anchor.closest("dialog[open]")) || document.body;
+    host.appendChild(pop);
     openPop = { el: pop, anchor: anchor };
     anchor.setAttribute("aria-expanded", "true");
     anchor.setAttribute("aria-controls", pop.id);
-    var r = anchor.getBoundingClientRect();
-    var w = pop.offsetWidth;
-    pop.style.top = r.bottom + 6 + "px";
-    pop.style.left =
-      Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + "px";
+    topShow(pop, anchor, { gap: 6 });
     pop.addEventListener("click", function (e) {
       var row = e.target.closest ? e.target.closest(".den-mi") : null;
       if (!row) return;
@@ -4390,6 +4501,12 @@
     commands: commands,
     /** A .pop menu below `anchor` (the model as the scope menus'). */
     openMenu: openMenu,
+    /**
+     * The top layer (0.4.17): show(el, anchor, { align: "left"|"right",
+     * gap }) puts a page's own menu above everything, placed by its
+     * anchor; hide(el). The page hiding it (display: none) closes it too.
+     */
+    topLayer: { show: topShow, hide: topHide },
     closeMenu: function () {
       closeMenu(false);
     },
@@ -4549,6 +4666,11 @@
     "  max-height: calc(100vh - 72px); overflow-y: auto; box-sizing: border-box;",
     "  font: 14px/1.45 var(--sans); color: var(--text); }",
     ".den-pop:focus { outline: none; }",
+    // The top layer (0.4.17): a page's menu placed by its anchor (topShow), not
+    // where the UA puts a popover.
+    ".den-toplayer { position: fixed !important; inset: auto !important; margin: 0 !important;",
+    "  right: auto !important; bottom: auto !important; z-index: 1000; overflow-y: auto;",
+    "  color: var(--text); }",
     // LK-1: the admin-password prompt is a <dialog> in the top layer (a popover, or
     // a modal over another modal): placed by its top/left, no UA box.
     "dialog.den-pop { margin: 0; inset: auto; max-width: none; }",

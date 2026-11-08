@@ -442,6 +442,8 @@ describe("R24d: one repo table", () => {
       (b) => b.map((e) => e.getAttribute("aria-label")),
     );
     expect(names).toEqual([
+      // 0.4.17: the favourite star.
+      "Pin notes",
       "notes: use managed",
       "Start notes",
       "Stop notes",
@@ -454,6 +456,7 @@ describe("R24d: one repo table", () => {
         b.map((e) => e.getAttribute("aria-label")),
       ),
     ).toEqual([
+      "Pin queue/worker",
       "Start queue/worker",
       "Stop queue/worker",
       "Restart queue/worker",
@@ -859,4 +862,209 @@ describe("the CLI default is named, never a bare glyph", () => {
     );
     await p.context().close();
   }, 60_000);
+});
+
+/**
+ * Whether every item of `menu` is on top at its centre: in the window and
+ * the element there is the item (not a clipping ancestor's neighbour or
+ * a pane drawn over it).
+ */
+async function itemsOnTop(p: Page, items: string): Promise<boolean[]> {
+  return p.$$eval(items, (es) =>
+    es.map((e) => {
+      const r = e.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      if (r.width === 0 || y < 0 || y > window.innerHeight) return false;
+      const at = document.elementFromPoint(x, y);
+      return !!at && (at === e || e.contains(at));
+    }),
+  );
+}
+
+describe("0.4.17: menus in the top layer, Visit ↗, the favourite star", () => {
+  it("the last repo's ⋯ menu isn't clipped by the table: every item is on top and clickable", async () => {
+    if (!browser) return;
+    // The last row sits at the foot of the table's box, which clips (its
+    // overflow scrolls sideways): its menu reaches past that foot.
+    const p = await open();
+    const last = (await repoOrder(p)).at(-1)!;
+    const more = `#repo-table tr.repo[data-repo="${last}"] [data-action="toggle-svc-menu"]`;
+    await p.$eval(more, (b) => b.scrollIntoView({ block: "center" }));
+    await p.click(more, { timeout: 8_000 });
+    const menu = `#svc-menu-${last.replace(/[^a-z0-9]/gi, "-")}`;
+    await p.waitForSelector(`${menu} [role=menuitem]`, { timeout: 8_000 });
+    const on = await itemsOnTop(p, `${menu} [role=menuitem]`);
+    expect(on.length).toBeGreaterThan(1);
+    expect(on).toEqual(on.map(() => true));
+    expect(await p.$eval(menu, (m) => m.matches(":popover-open"))).toBe(true);
+    // A click outside closes it, and it leaves the top layer.
+    await p.mouse.click(5, 300);
+    expect(await p.$eval(menu, (m) => m.matches(":popover-open"))).toBe(false);
+    expect(await p.isVisible(menu)).toBe(false);
+    await p.context().close();
+  }, 30_000);
+
+  it("the shell's own menus open in the top layer too", async () => {
+    if (!browser) return;
+    const p = await open();
+    await p.click(".den-scope-btn[data-scope]");
+    await p.waitForSelector(".den-pop[role=menu]");
+    expect(
+      await p.$eval(".den-pop[role=menu]", (m) => m.matches(":popover-open")),
+    ).toBe(true);
+    await p.keyboard.press("Escape");
+    expect(await p.$(".den-pop[role=menu]")).toBeNull();
+    await p.context().close();
+  }, 30_000);
+
+  it("Visit ↗ opens a service with a URL in a new tab, and its name links there; none without a URL", async () => {
+    if (!browser) return;
+    const p = await open();
+    await healthLanded(p);
+    const visit = (row: string) => `${row} a.tbl-visit`;
+    const web = '#repo-table tr.repo[data-repo="web"]';
+    const notes = '#repo-table tr.repo[data-repo="notes"]';
+    await p.waitForSelector(visit(web));
+    const href = await p.getAttribute(visit(web), "href");
+    expect(href).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+    // At 1440 the table's box is narrow (the list beside it): its ↗, named
+    // and titled Visit; in a wider window it reads "Visit ↗".
+    expect((await p.textContent(visit(web)))?.trim()).toBe("Visit ↗");
+    expect(await p.isVisible(`${visit(web)} .tbl-visit-w`)).toBe(false);
+    expect(await p.getAttribute(visit(web), "target")).toBe("_blank");
+    expect(await p.getAttribute(visit(web), "aria-label")).toBe(
+      "Visit web (opens a new tab)",
+    );
+    expect(await p.getAttribute(`${web} th a.repo-name`, "href")).toBe(href);
+    // No URL: no Visit and a plain name; Start, Stop, Restart, Logs and
+    // ⋯ still line up with a row that has one.
+    expect(await p.$(visit(notes))).toBeNull();
+    expect(await p.$(`${notes} th a.repo-name`)).toBeNull();
+    const startX = (row: string) =>
+      p.$eval(`${row} [data-action="tbl-up"]`, (b) =>
+        Math.round(b.getBoundingClientRect().right),
+      );
+    expect(await startX(notes)).toBe(await startX(web));
+    // At 1440, with Visit in the table, nothing scrolls sideways.
+    expect(
+      await p.$eval(".tablewrap", (t) => t.scrollWidth - t.clientWidth),
+    ).toBe(0);
+    const [tab] = await Promise.all([
+      p.context().waitForEvent("page"),
+      p.click(visit(web)),
+    ]);
+    expect(tab.url()).toBe(href);
+    // A sub-row has its own (queue: api has a URL).
+    await p.click('#repo-table [data-action="tbl-exp"][data-repo="queue"]');
+    expect(
+      await p.getAttribute(
+        '#repo-table tr.sub[data-id="queue/api"] a.tbl-visit',
+        "href",
+      ),
+    ).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+    await p.context().close();
+    // A wide window: it reads "Visit ↗", and still nothing scrolls sideways.
+    const wide = await open("main", "/", { width: 1920, height: 1000 });
+    await healthLanded(wide);
+    await wide.waitForSelector(visit(web));
+    expect(await wide.isVisible(`${visit(web)} .tbl-visit-w`)).toBe(true);
+    expect(
+      await wide.$eval(".tablewrap", (t) => t.scrollWidth - t.clientWidth),
+    ).toBe(0);
+    await wide.context().close();
+  }, 45_000);
+
+  it("a repo row and a sub-row have the favourite star: the shell's pins, kept across pages", async () => {
+    if (!browser) return;
+    const p = await open();
+    const star = '#repo-table tr.repo[data-repo="web"] [data-pin-toggle="web"]';
+    await p.waitForSelector(star);
+    expect(await p.getAttribute(star, "aria-pressed")).toBe("false");
+    const [saved] = await Promise.all([
+      p.waitForResponse(
+        (r) =>
+          r.request().method() === "POST" &&
+          new URL(r.url()).pathname === "/api/settings",
+      ),
+      p.click(star),
+    ]);
+    expect(saved.status()).toBe(200);
+    expect(await p.getAttribute(star, "aria-pressed")).toBe("true");
+    expect((await p.textContent(star))?.trim()).toBe("★");
+    // The rail's Pinned group has it, as a pin from Services does.
+    expect(
+      await p.evaluate(() =>
+        (
+          window as unknown as { denShell: { isPinned(id: string): boolean } }
+        ).denShell.isPinned("web"),
+      ),
+    ).toBe(true);
+    // Services shows the same favourite.
+    const s = await p.context().newPage();
+    await s.goto(api("/services?ws=main"));
+    await s.waitForSelector('[data-pin-toggle="web"]');
+    expect(
+      await s.getAttribute('[data-pin-toggle="web"]', "aria-pressed"),
+    ).toBe("true");
+    await s.close();
+    await p.click('#repo-table [data-action="tbl-exp"][data-repo="queue"]');
+    expect(
+      await p.$(
+        '#repo-table tr.sub[data-id="queue/api"] [data-pin-toggle="queue/api"]',
+      ),
+    ).not.toBeNull();
+    // Unpinned again: the next test's rail is as it was.
+    await Promise.all([
+      p.waitForResponse(
+        (r) =>
+          r.request().method() === "POST" &&
+          new URL(r.url()).pathname === "/api/settings",
+      ),
+      p.click(star),
+    ]);
+    expect(await p.getAttribute(star, "aria-pressed")).toBe("false");
+    await p.context().close();
+  }, 45_000);
+});
+
+describe("0.4.17: the Tests module picker", () => {
+  it("opens on top of the output pane: every item is on top and clickable", async () => {
+    if (!browser) return;
+    const ctx = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+    });
+    await ctx.addInitScript((v) => {
+      try {
+        localStorage.setItem("den-changelog-seen", v);
+        localStorage.setItem("acme-changelog-seen", v);
+      } catch {
+        /* none */
+      }
+    }, latest);
+    const p = await ctx.newPage();
+    await p.goto(api("/tests"));
+    await p.waitForSelector("#module-picker-btn");
+    // Several modules, as a distribution with suites has: the list reaches
+    // past the controls into the output pane below.
+    await p.$eval("#module-check-list", (l) => {
+      l.innerHTML = Array.from(
+        { length: 8 },
+        (_, i) =>
+          `<label class="module-check-item"><input type="checkbox" checked /><span>module-${i + 1}</span></label>`,
+      ).join("");
+    });
+    await p.click("#module-picker-btn");
+    const dd = "#module-picker-dropdown";
+    const on = await itemsOnTop(p, `${dd} .module-check-item`);
+    expect(on.length).toBeGreaterThan(0);
+    expect(on).toEqual(on.map(() => true));
+    expect(await p.$eval(dd, (m) => m.matches(":popover-open"))).toBe(true);
+    // A click inside keeps it open.
+    await p.click(`${dd} .module-check-all`);
+    expect(await p.$eval(dd, (m) => m.matches(":popover-open"))).toBe(true);
+    await p.mouse.click(5, 880);
+    expect(await p.$eval(dd, (m) => m.matches(":popover-open"))).toBe(false);
+    await ctx.close();
+  }, 30_000);
 });

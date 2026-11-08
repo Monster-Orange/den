@@ -331,6 +331,24 @@
 .dg-card .r1 .dg-dot {
   margin-top: 5px;
 }
+/* The favourite star (0.4.17): top-right, the shell's pins. */
+.dg-star {
+  margin-left: auto;
+  flex: none;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.2;
+  padding: 0 3px;
+}
+.dg-star:hover,
+.dg-star[aria-pressed="true"] {
+  color: var(--accent-text);
+  background: var(--sunken);
+}
 .dg-dot {
   display: inline-block;
   width: 9px;

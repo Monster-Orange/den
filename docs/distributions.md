@@ -355,6 +355,19 @@ is never mistaken for another repo's service. An alias that names more than
 one service is an error that lists them (`"worker" is ambiguous in workspace
 "default": one/worker, two/worker`); name one of them.
 
+## Opening a service
+
+A service with a URL gets **Visit ↗**, which opens it in a new tab. It
+shows on Workspaces (beside Start, Stop, Restart and Logs, and as a link
+on the service's name), on Services and on Graph cards. Den picks the
+URL in this order: the service's `urls.<env>`; for `local`, its edge
+route when the edge serves one; else the origin of its HTTP health
+check. A service with none of these has no Visit.
+
+The ☆ star on Workspaces rows, Services and Graph cards marks a
+favourite. It is one list, saved in `shell.pins`, so a star set on one
+page shows on all of them.
+
 ## Health checks
 
 A service declares its health per environment under `health`, in one of

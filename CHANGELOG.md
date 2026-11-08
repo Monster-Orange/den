@@ -28,6 +28,26 @@ config and manifest changes a distribution must make to move to it under
   route checks the person and the agent, not the workspace's active
   flag. The pane says "Sign in" only when you're signed out; any other
   refusal gives its real reason.
+- **Menus are never clipped.** Every ⋯ menu in the shell (Workspaces
+  rows and the workspace menu, the top bar's menus) now opens in the
+  browser's top layer through one shared helper, so a scrolling table or
+  card no longer cuts it off. It stays beside its button, flips up near
+  the bottom of the window, and closes on an outside click as before.
+- **The Tests module picker is never clipped.** It uses the same
+  top-layer menu.
+- **Visit ↗ opens a service.** Workspaces (beside Start, Stop, Restart
+  and Logs, and as a link on the service's name), Services and Graph
+  cards open the service's edge URL when it is routed, else its local
+  URL, in a new tab. A service with no URL has no Visit. Below 1600 px
+  wide the Workspaces button shows only "↗". The detail panel's "Open ↗"
+  is now "Visit ↗".
+- **Favourite a service from Workspaces and Graph.** Workspaces rows and
+  Graph cards (top-right) have the ☆ star. It uses the same list as
+  Services, so a favourite set on one page shows on all of them.
+
+### Migrations
+
+None.
 
 ## [0.4.16] - 2026-11-08
 
