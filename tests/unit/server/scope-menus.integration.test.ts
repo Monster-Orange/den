@@ -394,7 +394,9 @@ describe("pins (a consumer's dev.17 run)", () => {
     await p.click(star);
     expect(await p.getAttribute(star, "aria-pressed")).toBe("true");
     await p.waitForSelector('.den-rail [data-pin="shop"]');
-    await p.click('.den-rail [data-unpin="shop"]', { force: true });
+    // 0.4.18: no hover ×: Delete on the row.
+    await p.focus('.den-rail [data-pin="shop"]');
+    await p.keyboard.press("Delete");
     expect(await p.getAttribute(star, "aria-pressed")).toBe("false");
     expect(await p.getAttribute(star, "aria-label")).toBe("Pin shop");
     await p.context().close();

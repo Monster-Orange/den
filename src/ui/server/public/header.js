@@ -17,6 +17,7 @@ import { changelogView } from "./changelog-view.js";
 import { buildRow, healthCycle, paintGate, shellHealth } from "./health-fit.js";
 import { initTopbar, paintChecking, paintStatus } from "./topbar.js";
 import { registerDenSettings } from "./settings-registry.js";
+import { initServicePanel } from "./svc-panel.js";
 
 /** The shell's message lookup (R19; shell.js MESSAGES). */
 const t = (key, vars) =>
@@ -53,6 +54,12 @@ if (typeof document !== "undefined")
     refreshHealth: (env, opts) => refreshHealth(env, opts),
     healthEnv: () => healthEnv(),
     storeOpenLog: (repo, service, env) => storeOpenLog(repo, service, env),
+  });
+// 0.4.18: the service panel (rail pins, Graph ⋯, Services names).
+if (typeof document !== "undefined")
+  initServicePanel({
+    currentEnv: () => currentEnv(),
+    refreshHealth: (env, opts) => refreshHealth(env, opts),
   });
 
 // 5s between polls — measured from each poll's COMPLETION (schedulePoll

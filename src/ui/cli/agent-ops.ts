@@ -1440,6 +1440,12 @@ export interface StartRequest {
   /** AG-10.10: a display name for this agent (AG-4b's), to tell two apart. */
   name?: unknown;
   /**
+   * 0.4.18, Start agent here: the folder it runs in, the workspace's own
+   * or one inside it (a repo's), relative to the workspace's folder or
+   * absolute. Default: the workspace's folder.
+   */
+  folder?: string;
+  /**
    * The page's start (AG-10.1): a model must be one the runtime offers,
    * never a free string (the CLI's --model for generic stays free).
    */
@@ -1554,6 +1560,39 @@ interface StartMore {
   bringIn?: { token: string; cwd: string };
 }
 
+/**
+ * 0.4.18: the folder a start runs in. Relative to the workspace's folder,
+ * or absolute; it must be a directory inside the workspace's scope (its
+ * folder, or a by-path repo's), never outside it.
+ */
+export function startFolder(
+  d: AgentsResolved,
+  ws: string,
+  folder: string,
+): string {
+  const where = "agents start";
+  if (typeof folder !== "string" || !folder.trim() || folder.length > 4096)
+    throw usage(`${where}: folder must be a path`);
+  const dir = path.resolve(d.workspaceDir(ws), folder.trim());
+  let real: string;
+  try {
+    real = fs.realpathSync(dir);
+  } catch {
+    throw usage(`${where}: folder ${dir} does not exist`, 404);
+  }
+  if (!fs.statSync(real).isDirectory())
+    throw usage(`${where}: folder ${dir} is not a directory`);
+  // The real folder only: a link inside the workspace that points out of
+  // it is outside it (the scope's own folders are compared real, too).
+  if (!inScope(real, d.workspaceFolders(ws)))
+    throw refused(
+      `${where}: folder ${dir} is not inside workspace ${ws}`,
+      [],
+      403,
+    );
+  return real;
+}
+
 export async function startAgent(
   d: AgentsResolved,
   req: StartRequest,
@@ -1601,6 +1640,10 @@ export async function startAgent(
       ...(rt.permissions ? { allow } : {}),
     }),
     ...(more.firstPrompt ? { firstPrompt: more.firstPrompt } : {}),
+    // 0.4.18: Start agent here: in a folder of the workspace's.
+    ...(req.folder !== undefined && !more.bringIn
+      ? { worktree: startFolder(d, ws, req.folder) }
+      : {}),
     // AG-17.1: the runtime's resume, in the folder the conversation ran in.
     ...(more.bringIn
       ? { worktree: more.bringIn.cwd, resumeToken: more.bringIn.token }
