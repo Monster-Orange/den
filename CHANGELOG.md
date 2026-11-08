@@ -91,6 +91,14 @@ config and manifest changes a distribution must make to move to it under
   origin, no scripts reaching Den's), with nosniff, no-store and
   no-referrer.
 - A workspace name is at most 64 characters.
+- **A Name is the agent's id (AG-10.10b).** A Name given at start (the
+  dialog's Name, the API's `name`, the CLI's new `--name`) makes the id its
+  slug: "API spike" starts `api-spike`, titled "API spike". The dialog says
+  so as you type. A Name that matches a running agent in the workspace, by
+  id or by title, is refused: the dialog says "api-spike is already
+  running · Open it" and Start is off. A stopped one offers Resume it, or
+  Start makes `api-spike-2`. No two live agents in a workspace share a
+  title. With no Name the persona's id stays the default; `--id` is exact.
 - The Den theme's light mode (2.0.1): `--ok`, `--warn`, `--bad`,
   `--remote` and `--accent-text` are darker, so a status pill (the token
   on a tint of itself) meets WCAG AA (4.5:1) on every surface, `--sunken`
@@ -104,6 +112,13 @@ config and manifest changes a distribution must make to move to it under
   Release table's loading sub-line (3.7:1), and a primary button on hover
   (4.4:1). They are full-strength now, in `--muted`; hover darkens.
 - `/reports/security/*` was always 404: the `/report` prefix shadowed it.
+- Bring in on a shared repos root (the usual layout) listed every
+  conversation under the root, so workspaces showed the same 50 and their
+  own were crowded out. A conversation is a workspace's when it ran in one
+  of its repos' folders or inside one, in its own folder, or exactly at a
+  shared root; the 50 cap applies after that. Another workspace's
+  conversation is refused by id: "This conversation belongs to <folder>,
+  not to workspace <ws>" (CLI, API and MCP).
 
 ### Migrations
 

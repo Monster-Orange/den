@@ -106,7 +106,7 @@ describe("help", () => {
     expect(r.code).toBe(0);
     expect(r.out).toMatch(/acme agents list -w <ws>/);
     expect(r.out).toMatch(
-      /acme agents start -w <ws> --persona <p> \[--runtime <r>\] \[--model <m>\] \[--id <id>\]/,
+      /acme agents start -w <ws> --persona <p> \[--runtime <r>\] \[--model <m>\] \[--name <name>\] \[--id <id>\]/,
     );
     expect(r.out).toMatch(/acme agents resume <id>/);
     expect(r.out).not.toMatch(/<cli>|\{cli\}/);

@@ -229,16 +229,57 @@ describe("the Start dialog (AG-10.1)", () => {
       ]);
       expect(res.status()).toBe(200);
       const sent = JSON.parse(res.request().postData() ?? "{}");
-      expect(sent).toMatchObject({ persona: "reviewer", name });
+      expect(sent).toMatchObject({
+        persona: "reviewer",
+        ...(name ? { name } : {}),
+      });
       const id = ((await res.json()) as { agent: { id: string } }).agent.id;
       await p.context().close();
       return { as, id };
     };
-    const one = await startOnce("First");
+    // No Name: the persona's id, then the next suffix.
+    const one = await startOnce("");
     expect(one).toEqual({ as: "Starts as reviewer", id: "reviewer" });
-    const two = await startOnce("Second");
+    const two = await startOnce("");
     expect(two).toEqual({ as: "Starts as reviewer-2", id: "reviewer-2" });
+    // A Name: its slug is the id (AG-10.10b), the title as typed.
+    const three = await startOnce("Second");
+    expect(three.id).toBe("second");
   }, 90_000);
+
+  it("AG-10.10b: the Name is the id; a running match says Open it and Start is off", async () => {
+    if (skip() || !PTY) return;
+    const p = await page("/agents?ws=north&start=1");
+    await openDialog(p);
+    await p.click('#ag-persona [data-pid="reviewer"]');
+    // "reviewer" runs (the test before), and "second", titled "Second":
+    // by id, and by a title typed another way.
+    for (const typed of ["reviewer", "SECOND"]) {
+      await p.fill("#ag-name", typed);
+      await p
+        .waitForFunction(
+          () =>
+            /already running/.test(
+              document.querySelector("#ag-as")?.textContent ?? "",
+            ),
+          undefined,
+          { timeout: 8_000 },
+        )
+        .catch(async () => {
+          throw new Error(`#ag-as said: ${await p.textContent("#ag-as")}`);
+        });
+      expect(await p.isDisabled("#ag-go")).toBe(true);
+    }
+    await p.fill("#ag-name", "API spike");
+    expect(await p.textContent("#ag-as")).toBe("Starts as api-spike");
+    expect(await p.isDisabled("#ag-go")).toBe(false);
+    // Open it opens the running one's pane.
+    await p.fill("#ag-name", "reviewer");
+    await p.click("#ag-as button");
+    await p.waitForSelector("#ag-dlg:not([open])", { state: "hidden" });
+    await p.waitForSelector(".pane .xterm-rows");
+    await p.context().close();
+  }, 60_000);
 
   it("finds a persona: search, the category and source chips, Plain session pinned last, Details and What's a persona?", async () => {
     if (skip()) return;

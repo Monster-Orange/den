@@ -442,6 +442,11 @@
     "ag.new.name": "名前（任意）",
     "ag.new.as": "{id} として開始します",
     "ag.new.openRunning": "実行中のものを開く",
+    "ag.new.isRunning": "{id} はすでに実行中です",
+    "ag.new.openIt": "開く",
+    "ag.new.isStopped": "{id} は停止しています",
+    "ag.new.resumeIt": "再開する",
+    "ag.new.orNext": "または開始で {id} を作成します",
     "ag.new.taskPh":
       "例: 空の状態のストーリーを担当。デザインに合わせ、テストを追加する。",
     "ag.new.adv": "詳細設定: モデルと権限",

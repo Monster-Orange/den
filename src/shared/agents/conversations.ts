@@ -159,13 +159,25 @@ function forms(dir: string): string[] {
  * newest first, at most MAX_CONVERSATIONS. Never throws: a history it
  * can't read is no conversations.
  */
+/**
+ * Where a workspace's conversations ran (AG-17.1): in or under one of
+ * `under`, or exactly in one of `exact` (a shared repos root: its other
+ * subfolders are other workspaces' or no repo's).
+ */
+export interface ConversationScope {
+  under: string[];
+  exact?: string[];
+}
+
 export function claudeConversations(
-  folder: string,
+  scope: string | ConversationScope,
   env: NodeJS.ProcessEnv = process.env,
 ): RuntimeConversation[] {
+  const sc = typeof scope === "string" ? { under: [scope] } : scope;
   const root = claudeProjectsDir(env);
-  const dirs = forms(folder);
-  const slugs = dirs.map(claudeSlug);
+  const dirs = sc.under.flatMap(forms);
+  const exact = (sc.exact ?? []).flatMap(forms);
+  const slugs = [...dirs, ...exact].map(claudeSlug);
   let projects: string[];
   try {
     projects = fs.readdirSync(root);
@@ -208,7 +220,16 @@ export function claudeConversations(
       continue;
     }
     const cwd = s.cwd;
-    if (!cwd || !dirs.some((d) => within(cwd, d))) continue;
+    // Filtered before the cap, so others' conversations never crowd out
+    // this workspace's.
+    if (
+      !cwd ||
+      !(
+        dirs.some((d) => within(cwd, d)) ||
+        exact.some((d) => path.resolve(cwd) === d)
+      )
+    )
+      continue;
     seen.add(f.id);
     out.push({
       id: f.id,
@@ -218,6 +239,14 @@ export function claudeConversations(
     });
   }
   return out;
+}
+
+/** Whether a conversation that ran in `cwd` is in `scope` (AG-17.1). */
+export function inScope(cwd: string, scope: ConversationScope): boolean {
+  return (
+    scope.under.flatMap(forms).some((d) => within(cwd, d)) ||
+    (scope.exact ?? []).flatMap(forms).some((d) => path.resolve(cwd) === d)
+  );
 }
 
 /** Whether a conversation last written at `lastAt` is still open elsewhere. */

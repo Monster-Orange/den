@@ -459,6 +459,11 @@
     "ag.new.name": "Nombre (opcional)",
     "ag.new.as": "Se inicia como {id}",
     "ag.new.openRunning": "Abrir el que está en ejecución",
+    "ag.new.isRunning": "{id} ya está en ejecución",
+    "ag.new.openIt": "Abrirlo",
+    "ag.new.isStopped": "{id} está detenido",
+    "ag.new.resumeIt": "Reanudarlo",
+    "ag.new.orNext": "o Iniciar crea {id}",
     "ag.new.taskPh":
       "p. ej., Toma la historia del estado vacío. Sigue el diseño y añade una prueba.",
     "ag.new.adv": "Avanzado: modelo y permisos",

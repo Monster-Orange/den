@@ -123,7 +123,7 @@ export const AGENTS_HELP = {
     "",
     "{cli} agents list -w <ws> [--stopped] [--json]",
     "    --stopped: only the stopped, interrupted and exited ones",
-    "{cli} agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--id <id>]",
+    "{cli} agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--name <name>] [--id <id>]",
     "    runs in the workspace's dir as <dist>-<ws>:<id>; its MCP is pinned to <ws>",
     "    (plus agents.<id>.grants); capped by agents.max_concurrent",
     "{cli} agents stop <id> [-w <ws>] [--no-wait]",
@@ -273,12 +273,14 @@ async function start(args: string[], d: AgentsResolved): Promise<number> {
     "--persona": true,
     "--runtime": true,
     "--model": true,
+    "--name": true,
     "--id": true,
   });
   noExtra(where, p);
   const ws = workspaceFlag(where, p);
   if (!ws) throw new UsageError(`${where} needs -w <workspace>`);
   const persona = str(p, "--persona");
+  const name = str(p, "--name");
   if (!persona) throw new UsageError(`${where} needs --persona <p>`);
   const s = await startAgent(d, {
     workspace: ws,
@@ -286,6 +288,7 @@ async function start(args: string[], d: AgentsResolved): Promise<number> {
     runtime: str(p, "--runtime"),
     model: str(p, "--model"),
     id: str(p, "--id"),
+    ...(name !== undefined ? { name } : {}),
   });
   return report(
     d,

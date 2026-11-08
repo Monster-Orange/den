@@ -355,6 +355,26 @@ export function repoFolders(cfg: WorkspaceConfig | undefined): string[] {
     .filter((p): p is string => typeof p === "string" && path.isAbsolute(p));
 }
 
+/**
+ * Where Bring in looks for a workspace's conversations (AG-17.1). Its own
+ * folder, and everything in it; each by-path repo's folder, outside it
+ * too. When its folder is only the shared repos root (no folder of its
+ * own), the root's other subfolders are other workspaces' repos or no
+ * repo at all: only its repos' folders count, and the root itself only
+ * exactly.
+ */
+export function conversationFolders(
+  name: string,
+  cfg: WorkspaceConfig,
+  reposRoot: string,
+): { under: string[]; exact: string[] } {
+  const dir = resolveWorkspaceDir(name, cfg, reposRoot);
+  const repos = repoFolders(cfg);
+  if (path.resolve(dir) === path.resolve(reposRoot))
+    return { under: repos, exact: [dir] };
+  return { under: [dir, ...repos], exact: [] };
+}
+
 export function getWorkspaceByName(name: string): {
   name: string;
   config: WorkspaceConfig;

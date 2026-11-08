@@ -2166,7 +2166,7 @@ An agent is a **persona** (who) in a **workspace** (where), run by a
 server scoped to its workspace.
 
 ```
-<cli> agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--id <id>]
+<cli> agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--name <name>] [--id <id>]
 <cli> agents list -w <ws> [--json]
 <cli> agents stop <id> [-w <ws>]
 <cli> agents resume <id> [-w <ws>]
@@ -2186,6 +2186,9 @@ server scoped to its workspace.
   agent there, running or stopped, starts another: `planner-2`,
   `planner-3`. A stopped agent is continued by Resume or Start fresh,
   never by a new start. `--id` is exact: a running id is refused.
+  `--name "API spike"` makes the id its slug, `api-spike`, titled as
+  typed; a running agent there with that id or title is refused, and a
+  stopped one makes it `api-spike-2`.
 - The **agent record**, `<stateDir>/agents/<id>.json` (0600), holds its id,
   persona, runtime, model, workspace, cwd, session and times, and what it was
   started with from the Start dialog: `version` (the model's, "latest" or
@@ -2221,8 +2224,11 @@ server scoped to its workspace.
 #### Bring in a conversation
 
 A conversation you started in a terminal outside Den (Claude Code, in the
-workspace's folder, a folder inside it, or a folder of one of its repos,
-a repo added by path outside it too) can become a Den agent. Agents ›
+workspace's own folder or one inside it, or a folder of one of its repos,
+a repo added by path outside it too) can become a Den agent. When
+workspaces share one repos root, only each one's repos' folders count,
+and the root itself only exactly; another workspace's conversation is
+refused by id. Agents ›
 **Bring in** lists them, newest first, with the persona list; `agents
 import -w <ws>` lists them too.
 

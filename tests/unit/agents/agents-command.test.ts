@@ -5,6 +5,7 @@
  * env or argv. A real host on a temp socket, a scripted PTY, and a `claude`
  * PATH shim that must never run.
  */
+import { nameSlug } from "../../../src/shared/agents/records.js";
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
@@ -292,6 +293,94 @@ describe("agents start", () => {
     const rc = await agents(r, "resume", "planner");
     if (rc !== 0) throw new Error(r.err.join("\n"));
     expect(rc).toBe(0);
+  });
+
+  it("AG-10.10b: a Name is the id as its slug; a running match is refused; a stopped one takes the next suffix; no two live titles", async () => {
+    const r = await rig();
+    expect(
+      await agents(
+        r,
+        "start",
+        "-w",
+        "north",
+        "--persona",
+        "planner",
+        "--name",
+        "API spike",
+      ),
+    ).toBe(0);
+    expect(record(r, "api-spike")).toMatchObject({
+      workspace: "north",
+      displayName: "API spike",
+    });
+    // The same Name while it runs: refused, nothing launched.
+    const made = r.made.length;
+    expect(
+      await agents(
+        r,
+        "start",
+        "-w",
+        "north",
+        "--persona",
+        "planner",
+        "--name",
+        "api-spike",
+      ),
+    ).toBe(1);
+    expect(r.err.join("\n")).toMatch(/agent api-spike is running/);
+    // Its title, typed another way, too.
+    expect(
+      await agents(
+        r,
+        "start",
+        "-w",
+        "north",
+        "--persona",
+        "planner",
+        "--name",
+        "API SPIKE",
+      ),
+    ).toBe(1);
+    expect(r.made.length).toBe(made);
+    // Once it has ended: the next suffix; Resume continues the first.
+    await typeInto(r, "api-spike", "plan\r");
+    r.made[made - 1].exit(0);
+    await settle();
+    expect(
+      await agents(
+        r,
+        "start",
+        "-w",
+        "north",
+        "--persona",
+        "planner",
+        "--name",
+        "API spike",
+      ),
+    ).toBe(0);
+    expect(record(r, "api-spike-2").displayName).toBe("API spike");
+    // A Name with no id characters: the persona's default id.
+    expect(
+      await agents(
+        r,
+        "start",
+        "-w",
+        "north",
+        "--persona",
+        "planner",
+        "--name",
+        "!!!",
+      ),
+    ).toBe(0);
+    expect(record(r, "planner").displayName).toBe("!!!");
+  });
+
+  it("nameSlug: lowercase, spaces to -, only id characters, at most 64", () => {
+    expect(nameSlug("API spike")).toBe("api-spike");
+    expect(nameSlug("  Rita's  review!  ")).toBe("ritas-review");
+    expect(nameSlug("be-dev-2")).toBe("be-dev-2");
+    expect(nameSlug("!!!")).toBeNull();
+    expect(nameSlug("x".repeat(80))).toHaveLength(64);
   });
 
   it("agents.max_concurrent counts agents only: plain sessions never block an agent", async () => {

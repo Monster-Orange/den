@@ -116,6 +116,7 @@ import {
   restoreRecord,
   writeRecord,
   checkDisplayName,
+  nameSlug,
   writeRuntimeFiles,
   type AgentRecord,
   type Override,
@@ -138,6 +139,7 @@ import type {
   RuntimePermissions,
 } from "../../shared/agents/runtime.js";
 import {
+  inScope,
   OPEN_ELSEWHERE_MESSAGE,
   openElsewhere,
   type RuntimeConversation,
@@ -195,7 +197,7 @@ export interface AgentsDeps extends SessionsDeps {
    * AG-17.1: the folders a workspace's conversations may have run in: its
    * own folder, and each repo's path, a repo added by path outside it too.
    */
-  workspaceFolders?: (ws: string) => string[];
+  workspaceFolders?: (ws: string) => { under: string[]; exact?: string[] };
   /** The MCP server binary and its env; Den adds the scoped args. */
   mcpServer?: () => { command: string[] | string; env: Record<string, string> };
   /**
@@ -232,7 +234,7 @@ export interface AgentsResolved extends Resolved {
   agentsConfig: () => ResolvedAgentsConfig;
   distRoot: () => string;
   workspaceDir: (ws: string) => string;
-  workspaceFolders: (ws: string) => string[];
+  workspaceFolders: (ws: string) => { under: string[]; exact?: string[] };
   mcpServer: () => { command: string[] | string; env: Record<string, string> };
   exitWatchMs: number;
   stopWaitMs: number;
@@ -292,7 +294,8 @@ const refused = (message: string, hints: string[] = [], status = 409) =>
   new AgentError(message, { status, hints });
 
 let workspaceDirFn: ((ws: string) => string) | null = null;
-let repoPathsFn: ((ws: string) => string[]) | null = null;
+let foldersFn: ((ws: string) => { under: string[]; exact?: string[] }) | null =
+  null;
 /** The workspaces config, for start and resume (loaded on first use). */
 export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
   await loadWorkspaces(d);
@@ -305,8 +308,11 @@ export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
     return ws.resolveWorkspaceDir(name, cfg, getReposRoot());
   };
   // A by-path repo's own folder (repo add <path>), wherever it is.
-  repoPathsFn = (name) =>
-    ws.repoFolders(ws.readWorkspacesFile().workspaces[name]);
+  foldersFn = (name) => {
+    const cfg = ws.readWorkspacesFile().workspaces[name];
+    if (!cfg) throw usage(`workspace "${name}" does not exist`, 404);
+    return ws.conversationFolders(name, cfg, getReposRoot());
+  };
 }
 
 /** The distribution's bin shim (as `mcp connect` registers), else Den's CLI. */
@@ -340,13 +346,10 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     workspaceFolders:
       d.workspaceFolders ??
       ((ws) => {
-        const dir = d.workspaceDir
-          ? d.workspaceDir(ws)
-          : (() => {
-              if (!workspaceDirFn) throw new Error("workspaces not loaded");
-              return workspaceDirFn(ws);
-            })();
-        return [dir, ...(repoPathsFn?.(ws) ?? [])];
+        // A caller that gives its own folder (a test) gives just it.
+        if (d.workspaceDir) return { under: [d.workspaceDir(ws)] };
+        if (!foldersFn) throw new Error("workspaces not loaded");
+        return foldersFn(ws);
       }),
     mcpServer: d.mcpServer ?? (() => defaultMcpServer(base.cli)),
     exitWatchMs: d.exitWatchMs ?? EXIT_WATCH_MS,
@@ -1048,6 +1051,48 @@ function sessionOf(
  * else the first of `<base>-2`, `<base>-3`… no agent has. A stopped agent's
  * id is never reused by a new start: only its Resume or Start fresh.
  */
+/**
+ * AG-10.10b: the id a Name gives: its slug while no agent has it; a
+ * running agent in the workspace with that id or that title is refused
+ * (open it instead); a stopped one, or another workspace's, makes it the
+ * next free `<slug>-2`… (Resume continues the stopped one). Null when the
+ * Name has no id characters: the persona's default then.
+ */
+async function namedId(
+  d: AgentsResolved,
+  name: string,
+  ws: string,
+): Promise<string | null> {
+  const slug = nameSlug(name);
+  const sessions = await withClient(d, (c) => c.list());
+  const live = (rec: AgentRecord) => {
+    const s = sessionOf(sessions, rec);
+    return s && !s.exited ? s : undefined;
+  };
+  // No two live agents in one workspace share a title, or this id.
+  for (const rec of listRecords(d.stateDir())) {
+    if (rec.workspace !== ws) continue;
+    const same =
+      rec.id === slug ||
+      (rec.displayName ?? "").toLowerCase() === name.toLowerCase();
+    const s = same ? live(rec) : undefined;
+    if (s)
+      throw new AgentError(`agent ${rec.id} is running (${s.name})`, {
+        status: 409,
+        hints: [`Attach: ${d.cli} sessions attach ${s.name}`],
+        running: { id: rec.id, sessionId: s.ref.id },
+      });
+  }
+  if (!slug) return null;
+  if (!readRecord(d.stateDir(), slug)) return slug;
+  const stem = slug.slice(0, 58);
+  for (let n = 2; n < 1000; n++) {
+    const id = `${stem}-${n}`;
+    if (!readRecord(d.stateDir(), id)) return id;
+  }
+  throw refused(`no free agent id for ${slug}: give one with --id`);
+}
+
 export function defaultId(
   stateDir: string,
   persona: string,
@@ -1487,8 +1532,6 @@ export async function startAgent(
     throw usage(
       `${where}: no persona "${req.persona}" (personas: ${[...all.keys()].sort().join(", ")})`,
     );
-  const id = req.id ?? defaultId(d.stateDir(), persona.id, ws);
-  checkId(where, id);
   let given: string | null = null;
   if (req.name !== undefined)
     try {
@@ -1496,6 +1539,11 @@ export async function startAgent(
     } catch (e) {
       throw usage(`${where}: ${(e as Error).message}`);
     }
+  const id =
+    req.id ??
+    (given ? await namedId(d, given, ws) : null) ??
+    defaultId(d.stateDir(), persona.id, ws);
+  checkId(where, id);
   syncCatalog(d);
   const rt = runtimeFor(req.runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID);
   const det = await availableOrRefuse(d, rt, ws);
@@ -1678,13 +1726,8 @@ export function listConversations(
     throw usage(`${where}: workspace "${ws}" does not exist`, 404);
   syncCatalog(d);
   if (runtime !== undefined) runtimeFor(runtime);
-  // Its folder and every repo's (one under another is scanned once).
-  const folders = [
-    ...new Set(d.workspaceFolders(ws).map((f) => path.resolve(f))),
-  ];
-  const scan = folders.filter(
-    (f) => !folders.some((o) => o !== f && f.startsWith(o + path.sep)),
-  );
+  // Its folder and every repo's; a shared root only exactly (AG-17.1).
+  const scope = d.workspaceFolders(ws);
   const taken = agentByToken(d);
   const now = Date.now();
   const conversations: ListedConversation[] = [];
@@ -1693,7 +1736,7 @@ export function listConversations(
     if (runtime !== undefined && id !== runtime) continue;
     const rt = getRuntime(id);
     if (!rt?.listSessions) continue;
-    for (const c of scan.flatMap((f) => rt.listSessions!(f, d.env))) {
+    for (const c of rt.listSessions(scope, d.env)) {
       if (seen.has(`${id} ${c.id}`)) continue;
       seen.add(`${id} ${c.id}`);
       const agent = taken.get(`${id} ${c.id}`);
@@ -1755,6 +1798,16 @@ export async function importAgent(
       422,
     );
   const c = conversations.find((x) => x.id === req.session);
+  // Another workspace's (or no repo's): say whose, never bring it in.
+  const elsewhere = c
+    ? null
+    : (getRuntime(runtime)?.conversationCwd?.(req.session, d.env) ?? null);
+  if (!c && elsewhere && !inScope(elsewhere, d.workspaceFolders(req.workspace)))
+    throw refused(
+      `This conversation belongs to ${elsewhere}, not to workspace ${req.workspace}`,
+      [`List this workspace's: ${d.cli} agents import -w ${req.workspace}`],
+      409,
+    );
   if (!c)
     throw refused(
       `${where}: no ${rt.label} conversation "${req.session}" in workspace ${req.workspace}'s folder`,

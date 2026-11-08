@@ -569,6 +569,11 @@
     "ag.new.name": "Name (optional)",
     "ag.new.as": "Starts as {id}",
     "ag.new.openRunning": "Open the running one",
+    "ag.new.isRunning": "{id} is already running",
+    "ag.new.openIt": "Open it",
+    "ag.new.isStopped": "{id} is stopped",
+    "ag.new.resumeIt": "Resume it",
+    "ag.new.orNext": "or Start makes {id}",
     "ag.new.taskPh":
       "e.g. Take the empty-state story. Match the design and add a test.",
     "ag.new.adv": "Advanced: model and permissions",

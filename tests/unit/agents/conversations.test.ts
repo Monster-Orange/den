@@ -12,9 +12,11 @@ import {
   claudeSlug,
   ENDS_BYTES,
   MAX_CONVERSATIONS,
+  inScope,
   openElsewhere,
   readEnds,
 } from "../../../src/shared/agents/conversations.js";
+import { conversationFolders } from "../../../src/shared/environment-manager/workspaces.js";
 
 const tmps: string[] = [];
 afterEach(() => {
@@ -152,5 +154,76 @@ describe("one writer only", () => {
     expect(openElsewhere(new Date(now - 61_000).toISOString(), now)).toBe(
       false,
     );
+  });
+});
+
+describe("a shared repos root (AG-17.1, dogfood on 0.4.14)", () => {
+  /** Three workspaces on one root, one repo each, plus a folder no repo is. */
+  function shared() {
+    const h = home();
+    const root = path.join(h.dir, "repos");
+    const repo = (n: string) => {
+      const d = path.join(root, n);
+      fs.mkdirSync(d, { recursive: true });
+      return d;
+    };
+    const ws = (r: string) =>
+      conversationFolders(
+        `no-such-ws-${path.basename(r)}`,
+        {
+          services: { [path.basename(r)]: { mode: "dev-managed", path: r } },
+        } as never,
+        root,
+      );
+    const [a, b, c] = ["alpha", "beta", "gamma"].map(repo);
+    const loose = repo("notes");
+    let n = 0;
+    for (const cwd of [a, b, c, loose, root])
+      transcript(
+        h.env,
+        cwd,
+        `id-${path.basename(cwd)}`,
+        user(cwd, "hello"),
+        ++n * 60_000,
+      );
+    return { h, root, a, b, c, ws };
+  }
+  const ids = (
+    h: ReturnType<typeof home>,
+    scope: { under: string[]; exact?: string[] },
+  ) =>
+    denClaude.listSessions!(scope, h.env)
+      .map((x) => x.id)
+      .sort();
+
+  it("each workspace lists only its own repo's, and the root's own, never another's or a loose folder's", () => {
+    const { h, a, b, c, ws } = shared();
+    expect(ids(h, ws(a))).toEqual(["id-alpha", "id-repos"]);
+    expect(ids(h, ws(b))).toEqual(["id-beta", "id-repos"]);
+    expect(ids(h, ws(c))).toEqual(["id-gamma", "id-repos"]);
+  });
+
+  it("the cap applies after the filter: others' newer conversations never crowd one out", () => {
+    const { h, root, a, ws } = shared();
+    const other = path.join(root, "beta");
+    for (let i = 0; i < MAX_CONVERSATIONS + 5; i++)
+      transcript(h.env, other, `crowd-${i}`, user(other, "x"), 1_000 + i);
+    expect(ids(h, ws(a))).toContain("id-alpha");
+  });
+
+  it("a workspace with its own folder keeps everything in it", () => {
+    const h = home();
+    const sub = path.join(h.work, "docs");
+    fs.mkdirSync(sub);
+    transcript(h.env, sub, "id-docs", user(sub, "x"));
+    expect(ids(h, { under: [h.work] })).toEqual(["id-docs"]);
+  });
+
+  it("inScope agrees with the list", () => {
+    const { root, a, b, ws } = shared();
+    expect(inScope(a, ws(a))).toBe(true);
+    expect(inScope(root, ws(a))).toBe(true);
+    expect(inScope(b, ws(a))).toBe(false);
+    expect(inScope(path.join(root, "notes"), ws(a))).toBe(false);
   });
 });

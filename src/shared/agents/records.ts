@@ -166,6 +166,24 @@ export interface AgentUsage {
 /** An agent id: the same rules as a workspace or session name. */
 export const AGENT_ID_RE = WORKSPACE_NAME_RE;
 
+/**
+ * AG-10.10b: the agent id a Name gives, so the name works in the CLI too:
+ * lowercase, spaces to "-", only id characters, at most 64. Null when
+ * nothing of it is left ("!!!"). The page's nameSlug is the same rule.
+ */
+export function nameSlug(name: string): string | null {
+  const s = name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9._-]/g, "")
+    .replace(/-{2,}/g, "-")
+    .replace(/^[^a-z0-9]+/, "")
+    .slice(0, 64)
+    .replace(/[-._]+$/, "");
+  return s && AGENT_ID_RE.test(s) ? s : null;
+}
+
 export function agentsDir(stateDir: string): string {
   return path.join(stateDir, "agents");
 }

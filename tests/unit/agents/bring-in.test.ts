@@ -158,13 +158,15 @@ describe("agents import (CLI)", () => {
     // What the workspaces file gives: north's folder, and its by-path repo.
     r.deps.workspaceFolders = (ws) =>
       ws === "north"
-        ? [
-            r.wsDir("north"),
-            ...repoFolders({
-              services: { hello: { mode: "dev-managed", path: hello } },
-            } as never),
-          ]
-        : [r.wsDir(ws)];
+        ? {
+            under: [
+              r.wsDir("north"),
+              ...repoFolders({
+                services: { hello: { mode: "dev-managed", path: hello } },
+              } as never),
+            ],
+          }
+        : { under: [r.wsDir(ws)] };
     expect(await agents(r, "import", "-w", "north")).toBe(0);
     expect(r.out.join("\n")).toContain(TOKEN);
     expect(
@@ -215,7 +217,10 @@ describe("agents import (CLI)", () => {
         "planner",
       ),
     ).toBe(1);
-    expect(r.err.join("\n")).toContain("no Claude Code conversation");
+    // AG-17.1: whose it is, by its folder (spec, dogfood on 0.4.14).
+    expect(r.err.join("\n")).toContain(
+      `This conversation belongs to ${r.wsDir("south")}, not to workspace north`,
+    );
     expect(r.made).toHaveLength(0);
   });
 

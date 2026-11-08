@@ -1013,15 +1013,14 @@ describe("POST …/agents start: the Start dialog's choices (AG-10.1, AG-12, AG-
 });
 
 describe("AG-10.10: one persona twice in a workspace", () => {
-  it("starts planner, then planner-2 with a name; says what the next start takes; an explicit running id says how to open it", async () => {
+  it("starts planner, then planner-2; says what the next start takes; an explicit running id says how to open it", async () => {
     const a = await api();
     const one = await start(a, "north", { persona: "planner" });
     expect(one.status).toBe(200);
     expect(one.json.agent).toMatchObject({ id: "planner" });
-    const two = await start(a, "north", { persona: "planner", name: "Second" });
+    const two = await start(a, "north", { persona: "planner" });
     expect(two.status).toBe(200);
     expect(two.json.agent).toMatchObject({ id: "planner-2" });
-    expect(readRecord(a.r.stateDir, "planner-2")!.displayName).toBe("Second");
     const list = await a.call("GET", "/api/personas?workspace=north");
     expect(list.status).toBe(200);
     expect((list.json.startsAs as Record<string, string>).planner).toBe(
@@ -1034,6 +1033,26 @@ describe("AG-10.10: one persona twice in a workspace", () => {
       id: "planner",
       sessionId: (one.json.agent as { sessionId: string }).sessionId,
     });
+  });
+
+  it("AG-10.10b: name is the id as its slug; a running id or title is a 409 with running", async () => {
+    const a = await api();
+    const one = await start(a, "north", {
+      persona: "planner",
+      name: "API spike",
+    });
+    expect(one.status).toBe(200);
+    expect(one.json.agent).toMatchObject({ id: "api-spike" });
+    expect(readRecord(a.r.stateDir, "api-spike")!.displayName).toBe(
+      "API spike",
+    );
+    for (const name of ["api-spike", "api SPIKE"]) {
+      const busy = await start(a, "north", { persona: "planner", name });
+      expect(busy.status).toBe(409);
+      expectR26(busy.json, "conflict");
+      expect(busy.json.running).toMatchObject({ id: "api-spike" });
+    }
+    expect(a.r.made).toHaveLength(1);
   });
 
   it("a name is checked as a rename's is", async () => {

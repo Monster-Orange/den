@@ -98,7 +98,7 @@ import {
 } from "../../shared/den-config.js";
 import {
   readWorkspacesFile,
-  repoFolders,
+  conversationFolders,
   resolveWorkspaceDir,
 } from "../../shared/environment-manager/workspaces.js";
 import { getStateDir } from "../../shared/paths.js";
@@ -195,10 +195,7 @@ function webDeps(over: AgentsDeps = {}): AgentsResolved {
           workspaceFolders: (ws: string) => {
             const cfg = readWorkspacesFile().workspaces[ws];
             if (!cfg) throw new AgentError(`workspace "${ws}" does not exist`);
-            return [
-              resolveWorkspaceDir(ws, cfg, getReposRoot()),
-              ...repoFolders(cfg),
-            ];
+            return conversationFolders(ws, cfg, getReposRoot());
           },
         }),
     stdout: NO_TTY,

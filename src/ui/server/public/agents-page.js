@@ -1702,6 +1702,12 @@ function paintDetails() {
  * and the dialog says so.
  */
 function paintRuntime(reset) {
+  paintRuntimeFields(reset);
+  // Last: a Name that names a running agent disables Start (AG-10.10b).
+  paintStartsAs();
+}
+
+function paintRuntimeFields(reset) {
   const rs = $d("#ag-runtime");
   const go = $d("#ag-go");
   const ready = $d("#ag-r-ready");
@@ -1712,7 +1718,6 @@ function paintRuntime(reset) {
   $d("#ag-task-l").hidden = plain || !!sd.bring;
   $d("#ag-adv").hidden = plain || !!sd.bring;
   $d("#ag-name-l").hidden = plain || !!sd.bring;
-  paintStartsAs();
   if (sd.bring) {
     $d("#ag-r-miss").hidden = true;
     ready.hidden = true;
@@ -1958,14 +1963,93 @@ function showStartError(err) {
   el.hidden = false;
 }
 
-/** AG-10.10: the id this start takes, so two of one persona are told apart. */
+/**
+ * AG-10.10b: the id a Name gives, as the server's nameSlug: lowercase,
+ * spaces to "-", only id characters, at most 64; null when none is left.
+ */
+export function nameSlug(name) {
+  const s = String(name)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9._-]/g, "")
+    .replace(/-{2,}/g, "-")
+    .replace(/^[^a-z0-9]+/, "")
+    .slice(0, 64)
+    .replace(/[-._]+$/, "");
+  return s && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(s) ? s : null;
+}
+
+/**
+ * The id this start takes (AG-10.10, 10.10b), said as you type: a Name is
+ * the id as its slug. A running agent here with that id or title: "is
+ * already running · Open it", Start off. A stopped one: "Resume it", or
+ * Start takes the next suffix.
+ */
 function paintStartsAs() {
   const el = $d("#ag-as");
   if (!el) return;
   const p = sd.pid && sd.pid !== PLAIN && !sd.bring ? curPersona() : null;
   el.hidden = !p;
-  if (p)
-    el.textContent = t("ag.new.as", { id: sd.data?.startsAs?.[p.id] ?? p.id });
+  el.textContent = "";
+  if (!p) return;
+  const name = ($d("#ag-name")?.value ?? "").trim();
+  const slug = name ? nameSlug(name) : null;
+  const ws = $d("#ag-ws")?.value || viewWorkspaces()[0];
+  const here = (st.data?.sessions ?? []).filter(
+    (r) => r.kind === "agent" && r.workspace === ws,
+  );
+  const live = (r) => r.state === "running" || r.state === "stopping";
+  const match = name
+    ? (here.find(
+        (r) =>
+          live(r) &&
+          (r.agent === slug ||
+            (r.displayName ?? "").toLowerCase() === name.toLowerCase()),
+      ) ?? here.find((r) => r.agent === slug))
+    : null;
+  const act = (label, fn) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "den-btn sm";
+    b.textContent = label;
+    b.addEventListener("click", fn);
+    return b;
+  };
+  if (match && live(match)) {
+    el.append(
+      t("ag.new.isRunning", { id: match.agent }) + " · ",
+      act(t("ag.new.openIt"), () => {
+        $d("#ag-dlg").close?.();
+        void openPane(match.id);
+      }),
+    );
+    $d("#ag-go").disabled = true;
+    return;
+  }
+  if (match) {
+    el.append(
+      t("ag.new.isStopped", { id: match.agent }) + " · ",
+      act(t("ag.new.resumeIt"), () => {
+        $d("#ag-dlg").close?.();
+        void restartRow(match, "resume", null);
+      }),
+      " " + t("ag.new.orNext", { id: nextFree(slug) }),
+    );
+    return;
+  }
+  el.textContent = t("ag.new.as", {
+    id: slug ?? sd.data?.startsAs?.[p.id] ?? p.id,
+  });
+}
+
+/** The first `<slug>-<n>` no agent on this page has (the server decides). */
+function nextFree(slug) {
+  const ids = new Set((st.data?.sessions ?? []).map((r) => r.agent));
+  for (let n = 2; n < 1000; n++)
+    if (!ids.has(`${slug.slice(0, 58)}-${n}`))
+      return `${slug.slice(0, 58)}-${n}`;
+  return slug;
 }
 
 async function submitStart(form) {
@@ -2131,6 +2215,9 @@ function wireStartDialog(root) {
     if (e.target.id === "ag-q") {
       sd.f.q = e.target.value;
       paintPlist(false);
+    } else if (e.target.id === "ag-name") {
+      // AG-10.10b: what the Name gives, as you type.
+      paintRuntime(false);
     } else if (e.target.id === "ag-tools") {
       sd.extras = splitCommands(e.target.value);
       syncPermBlock(form, "ag", sd.data, {

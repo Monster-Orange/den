@@ -70,7 +70,7 @@ import { catalogFind } from "./catalog-runtime.js";
 import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
 import { claudeProjectsDir } from "../usage/paths.js";
 import { cleanName, transcriptTitle } from "./transcript-follow.js";
-import { claudeConversations } from "./conversations.js";
+import { claudeConversations, transcriptSummary } from "./conversations.js";
 
 /**
  * `/rename "x"` keeps the quotes in customTitle: one matching pair around
@@ -490,11 +490,21 @@ export const denClaude: Runtime = {
     return transcriptFile(token, env) !== null;
   },
   // AG-17.1: its transcripts for the folder (conversations.ts).
-  listSessions(cwd, env = process.env) {
+  listSessions(scope, env = process.env) {
     try {
-      return claudeConversations(cwd, env);
+      return claudeConversations(scope, env);
     } catch {
       return [];
+    }
+  },
+  // AG-17.1: the folder a conversation ran in (only the ends of its file),
+  // so a foreign one is refused by name.
+  conversationCwd(token, env = process.env) {
+    try {
+      const file = transcriptFile(token, env);
+      return file ? transcriptSummary(file).cwd : null;
+    } catch {
+      return null;
     }
   },
   // AG-4b, unofficial (catalog sessionName): `/rename` appends a

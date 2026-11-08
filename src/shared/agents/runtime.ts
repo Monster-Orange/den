@@ -201,7 +201,12 @@ export interface Runtime {
    * transcript). Each id is one `resume` continues. None: this runtime
    * can't bring one in yet. Must never throw.
    */
-  listSessions?(cwd: string, env?: NodeJS.ProcessEnv): RuntimeConversation[];
+  listSessions?(
+    scope: string | { under: string[]; exact?: string[] },
+    env?: NodeJS.ProcessEnv,
+  ): RuntimeConversation[];
+  /** AG-17.1: the folder conversation `token` ran in, or null. Never throws. */
+  conversationCwd?(token: string, env?: NodeJS.ProcessEnv): string | null;
   /**
    * What the runtime prints when it exits at once (0.4.8): `noConversation`
    * when a resume finds nothing to continue, `idInUse` when a new
