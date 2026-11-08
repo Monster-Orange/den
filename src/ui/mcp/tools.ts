@@ -529,6 +529,79 @@ const READ_TOOLS: DenTool[] = [
     },
   ),
   read(
+    "onboard_status",
+    "Onboarding status",
+    "What's set up and the one next step: `checks` (distribution, node, git, docker, web, workspaces, repos, service, mcp), each `ok`, `warn` or `todo` with its `detail` and, when there is one, a `fix` command or an `ask` for the person; then `next`: the step in plain words and its `command`. Reads only. Start here when setting Den up.",
+    {},
+    (_a, { api }) => api.get("/api/onboard/status"),
+  ),
+  read(
+    "repos_detect",
+    "Find repos in a folder",
+    "Scan one folder for git repos (the folder itself, or one or two levels down) and say how each runs: `manifest` (its own, a side-car, or none), `runs` (the commands Den detected) or `ask` and `choices` when there are several ways. `workspaces` suggests a grouping: the repos in one parent folder go in a workspace named after it. `path` is required: an absolute folder (or ~/…) inside the person's home, not Den's state folder. Reads only: it never writes, runs a repo's tools or follows a symlink. Skips node_modules, vendor and dot-folders; at most `max` repos (50).",
+    {
+      path: z
+        .string()
+        .describe("The folder to scan: absolute, or starting with ~/"),
+      max: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe("At most this many repos (default and ceiling 50)"),
+    },
+    async (a, { api, scope }) => {
+      // Scanning folders is Den-wide, not one workspace's: the server's own
+      // (unscoped) agent does onboarding.
+      if (scope)
+        throw new ScopeRefusal(
+          `repos_detect: this MCP server is scoped to workspace "${scope.workspace}" (${scope.actor}), and scanning folders reaches outside any workspace; nothing was read. Den's own unscoped MCP server does onboarding.`,
+        );
+      const p = needPath("repos_detect", a);
+      return refusedOn400("repos_detect", () =>
+        api.get("/api/onboard/repos", {
+          path: p,
+          ...(typeof a.max === "number" ? { max: String(a.max) } : {}),
+        }),
+      );
+    },
+  ),
+  read(
+    "manifest_draft",
+    "Draft a side-car manifest",
+    "The side-car manifest `repo add` would write for one repo, checked by the same validator, with nothing written (`repo add --dry-run`): `draft` (the YAML), `validation`, `manifest.file` (where it would go, never in the repo) and `services`. When the repo can start in several ways it answers `ask` and `choices` instead: call again with `run` set to the one the person picks. A repo with its own manifest needs no draft (`manifest.source: repo`). `path`: the repo's absolute folder (or ~/…) inside the person's home.",
+    {
+      path: z.string().describe("The repo's folder: absolute, or ~/…"),
+      name: z
+        .string()
+        .optional()
+        .describe("The repo name (default: its folder)"),
+      run: z
+        .string()
+        .optional()
+        .describe("The start command, when detection asked which one"),
+      down: z.string().optional().describe("The stop command"),
+      health: z
+        .string()
+        .optional()
+        .describe("An http(s) URL for the health check"),
+    },
+    async (a, { api, scope }) => {
+      const p = needPath("manifest_draft", a);
+      if (scope) await assertPathInScope("manifest_draft", api, scope, p);
+      return refusedOn400("manifest_draft", () =>
+        api.get("/api/onboard/manifest", {
+          path: p,
+          name: str(a.name),
+          run: str(a.run),
+          down: str(a.down),
+          health: str(a.health),
+        }),
+      );
+    },
+  ),
+  read(
     "edge_status",
     "Edge status",
     "The HTTPS edge: up or down, its routes and its cert names. `https` says the TLS strategy, who supplies the cert (den, or the distribution under tls strategy files) and whether HTTPS is serving; `certIssuedByDen` replaces the deprecated `certIssued`.",
@@ -550,6 +623,28 @@ const READ_TOOLS: DenTool[] = [
     },
   ),
 ];
+
+/** The `path` argument, or a refusal before anything is asked. */
+function needPath(tool: string, a: Args): string {
+  const p = str(a.path)?.trim();
+  if (!p)
+    throw new Refusal(`${tool}: give a path (an absolute folder, or ~/…).`);
+  return p;
+}
+
+/** The web server's 400 (the path rule said no) as a refusal naming why. */
+async function refusedOn400(
+  tool: string,
+  call: () => Promise<unknown>,
+): Promise<unknown> {
+  try {
+    return await call();
+  } catch (e) {
+    if (e instanceof DenHttpError && e.status === 400)
+      throw new Refusal(`${tool}: ${e.body}`);
+    throw e;
+  }
+}
 
 /**
  * The /api/workspaces body a scoped answer is counted against, read at most
@@ -954,6 +1049,7 @@ const WORKSPACE_TOOLS = new Set([
   "logs_tail",
   "tests_available",
   "manifest_validate",
+  "manifest_draft",
   "stacks",
   "service_up",
   "service_down",
@@ -1006,6 +1102,9 @@ export function pinnedTool(t: DenTool, scope: McpScope): DenTool {
  * than the web server it talks to.
  */
 export const ROUTE_SINCE: Readonly<Record<string, string>> = {
+  "/api/onboard/status": "0.4.13",
+  "/api/onboard/repos": "0.4.13",
+  "/api/onboard/manifest": "0.4.13",
   "/api/stacks": "0.2.0",
   "/api/edge": "0.2.0",
   "/api/security/plan": "0.2.0",

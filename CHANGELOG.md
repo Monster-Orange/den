@@ -4,6 +4,33 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.15] - unreleased
+
+### Added
+
+- **Onboarding reads for agents, the CLI and the browser (ON-3).** Three new
+  MCP read tools, always registered, each with a CLI twin and a web API
+  route (GET, a read in the route table) that a page can show as it is:
+  - `onboard_status`, `<cli> onboard status [--json]`,
+    `/api/onboard/status`: what's set up (a distribution, Node, git, Docker,
+    the web server, workspaces, repos, a running service, Den's MCP), each
+    `ok`, `warn` or `todo`, and the one next step in plain words with its
+    command. It never runs an agent's CLI to check Den's MCP.
+  - `repos_detect`, `<cli> repo detect <folder> [--json]`,
+    `/api/onboard/repos`: the git repos in a folder, one or two levels down,
+    how each one runs (the same detection as `repo add`), and suggested
+    workspaces (the repos in one parent folder go in one workspace named
+    after it). It never writes, runs a repo's tools or follows a symlink,
+    skips dot-folders, `node_modules` and `vendor`, and stops at 50 repos.
+  - `manifest_draft`, `<cli> repo add <path> --dry-run --json`,
+    `/api/onboard/manifest`: the side-car manifest `repo add` would write,
+    checked by the same validator, with nothing written. Several ways to
+    start the repo is a question with its choices, as `repo add` asks.
+- A path for `repos_detect` or `manifest_draft` must be a folder inside the
+  person's home folder and outside Den's state folder; anything else is
+  refused with the reason. A workspace-scoped MCP server can't scan folders,
+  and drafts only inside its workspace's repos.
+
 ## [0.4.14] - unreleased
 
 ### Added

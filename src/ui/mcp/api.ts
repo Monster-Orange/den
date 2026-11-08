@@ -129,6 +129,10 @@ const READ_ROUTES = new Set([
   "/api/stacks",
   "/api/edge",
   "/api/server-info",
+  // ON-3: onboarding reads (nothing written).
+  "/api/onboard/status",
+  "/api/onboard/repos",
+  "/api/onboard/manifest",
 ]);
 
 /** Action routes and their method. Anything else is never reached. */
