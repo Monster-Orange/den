@@ -315,6 +315,8 @@ interface StartBody {
   instruction?: unknown;
   /** AG-10.10: a display name, checked as a rename's is. */
   name?: unknown;
+  /** 0.4.18: the folder it runs in (Start agent here). */
+  folder?: string;
 }
 
 const START_KEYS = [
@@ -327,6 +329,7 @@ const START_KEYS = [
   "allow",
   "instruction",
   "name",
+  "folder",
 ];
 
 async function startBody(req: http.IncomingMessage): Promise<StartBody> {
@@ -374,6 +377,11 @@ async function startBody(req: http.IncomingMessage): Promise<StartBody> {
   if (o.instruction !== undefined) out.instruction = o.instruction;
   if (o.name !== undefined && o.name !== null && o.name !== "")
     out.name = o.name;
+  if (o.folder !== undefined && o.folder !== null && o.folder !== "") {
+    if (typeof o.folder !== "string" || o.folder.length > 4096)
+      throw new AgentError("folder must be a path", { usage: true });
+    out.folder = o.folder;
+  }
   return out as StartBody;
 }
 
@@ -585,6 +593,7 @@ export async function handleAgentRoutes(
           : {}),
         ...(body.allow !== undefined ? { allow: body.allow } : {}),
         ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.folder !== undefined ? { folder: body.folder } : {}),
         strict: true,
       });
       const ov = s.rec.overrides?.length

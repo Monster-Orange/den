@@ -48,6 +48,8 @@ export const UI_MODULES: readonly string[] = [
   "/i18n/es.js",
   // 0.4.17: one org and workspace rule for Environments and Releases.
   "/view-scope.js",
+  // 0.4.18: the service panel (rail pins, Graph ⋯, Services names).
+  "/svc-panel.js",
 ];
 
 /** URL path → file inside node_modules. */

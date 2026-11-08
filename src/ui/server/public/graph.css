@@ -349,6 +349,28 @@
   color: var(--accent-text);
   background: var(--sunken);
 }
+/* 0.4.18: ⋯ opens the service panel (svc-panel.js), as a pinned row does.
+   It sits before the star, which stays top-right. */
+.dg-svp {
+  margin-left: auto;
+  flex: none;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 1px 4px;
+}
+.dg-svp + .dg-star {
+  margin-left: 0;
+}
+.dg-svp:hover,
+.dg-svp[aria-expanded="true"] {
+  color: var(--accent-text);
+  background: var(--sunken);
+}
 .dg-dot {
   display: inline-block;
   width: 9px;

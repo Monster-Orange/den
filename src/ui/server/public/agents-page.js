@@ -203,6 +203,7 @@ function writeUrl() {
   else u.searchParams.delete("open");
   u.searchParams.set("layout", st.layout);
   u.searchParams.delete("start");
+  u.searchParams.delete("folder");
   const s = u.searchParams.toString().replace(/%2C/gi, ",");
   history.replaceState(history.state, "", u.pathname + (s ? `?${s}` : ""));
   paintSub();
@@ -2101,7 +2102,15 @@ function dialogMode(bring, change = null) {
   );
   $d("#ag-go").textContent = goLabel();
   $d("#ag-conv-f").hidden = !bring;
+  // 0.4.18: a new agent's folder (Start agent here fills it).
+  for (const id of ["#ag-folder-l", "#ag-folder-h"]) {
+    const el = $d(id);
+    if (el) el.hidden = !!(bring || change);
+  }
 }
+
+/** 0.4.18: Start agent here (the service panel): ?start=1&ws=…&folder=…. */
+let startPrefill = null;
 
 /** The submit button's words for the dialog's mode. */
 function goLabel() {
@@ -2124,12 +2133,18 @@ async function openStart(bring = false, change = null) {
   const dlg = $d("#ag-dlg");
   if (!dlg || dlg.open) return;
   dialogMode(bring, change);
+  const pre = change || bring ? null : startPrefill;
+  startPrefill = null;
   const shown = change ? [change.workspace] : viewWorkspaces();
+  if (pre?.ws && !shown.includes(pre.ws)) shown.push(pre.ws);
   const wsSel = $d("#ag-ws");
   wsSel.innerHTML = shown
     .map((w) => `<option value="${esc(w)}">${esc(w)}</option>`)
     .join("");
   wsSel.disabled = shown.length <= 1;
+  if (pre?.ws) wsSel.value = pre.ws;
+  const folder = $d("#ag-folder");
+  if (folder) folder.value = pre?.folder ?? "";
   sd.f = { q: "", cat: "", src: "" };
   sd.det = false;
   sd.what = false;
@@ -2170,6 +2185,8 @@ function startBody() {
   if (task) body.instruction = task;
   const name = $d("#ag-name").value.trim();
   if (name) body.name = name;
+  const folder = $d("#ag-folder")?.value.trim();
+  if (folder) body.folder = folder;
   return body;
 }
 
@@ -2628,6 +2645,8 @@ function translateStatic(root) {
   set("#ag-what-p", "pe.what");
   set("#ag-task-t", "ag.new.task");
   set("#ag-name-t", "ag.new.name");
+  set("#ag-folder-t", "ag.new.folder");
+  set("#ag-folder-h", "ag.new.folderHelp");
   set("#ag-adv-s", "ag.new.adv");
   set("#ag-note", "ag.new.note");
   const task = root.querySelector("#ag-task");
@@ -2659,6 +2678,10 @@ export async function mountAgentsPage(root) {
   const wanted = openFromUrl(location.search);
   const linked = layoutFromUrl(location.search);
   const startAsked = new URLSearchParams(location.search).get("start") === "1";
+  if (startAsked) {
+    const q = new URLSearchParams(location.search);
+    startPrefill = { ws: q.get("ws") || "", folder: q.get("folder") || "" };
+  }
 
   root.querySelector("#agl").addEventListener("click", (e) => {
     const act = e.target.closest("button[data-act]");

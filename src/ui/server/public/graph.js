@@ -256,7 +256,24 @@ export function mountGraph(el, data, pageHooks) {
       st.fitted = true;
     } else applyView();
     if (st.sel) openDetail(st.sel, true);
+    focusFromHash();
   });
+}
+
+/** 0.4.18: the panel's Open in Graph (#focus=<repo> or <repo>/<service>), once. */
+let hashFocused = false;
+function focusFromHash() {
+  if (hashFocused || !location.hash.startsWith("#focus=")) return;
+  let id = "";
+  try {
+    id = decodeURIComponent(location.hash.slice(7));
+  } catch {
+    return;
+  }
+  if (M.byId.has(id)) focusOn({ id });
+  else if (M.byRepo.has(id)) focusOn({ repo: id, viaRepo: true });
+  else return;
+  hashFocused = true;
 }
 
 /** A /api/health update: refresh dots, health lines and the open panel in place. */
@@ -511,6 +528,13 @@ function starBtn(id) {
     : `${on ? "Unpin" : "Pin"} ${id}`;
   return `<button type="button" class="dg-star" data-pin-toggle="${esc(id)}" aria-pressed="${on}" aria-label="${esc(label)}" title="${esc(label)}">${on ? "★" : "☆"}</button>`;
 }
+/** 0.4.18: ⋯ opens the service's quick panel (svc-panel.js), the rail's. */
+function svpBtn(id) {
+  const sh = window.denShell;
+  if (!sh?.openServicePanel) return "";
+  const label = sh.t ? sh.t("svp.more", { s: id }) : id;
+  return `<button type="button" class="dg-svp" data-svpanel-open="${esc(id)}" aria-haspopup="dialog" aria-expanded="false" aria-label="${esc(label)}" title="${esc(label)}">⋯</button>`;
+}
 /** A card's actions: the first three, and Visit ↗ always when it has a URL. */
 function cardActs(s) {
   const acts = actionsFor(s);
@@ -522,7 +546,7 @@ function cardActs(s) {
 }
 function cardInner(s) {
   const showPlace = s.runs === "remote" || M.mixed;
-  return `<div class="r1"><span class="dg-dot ${status(s)}" title="${statusWord(s)}"></span><span class="nm" title="${esc(s.name)}">${esc(s.name)}</span>${showPlace ? `<span class="dg-badge ${s.runs}">${esc(placementText(s))}</span>` : ""}${starBtn(s.id)}</div>
+  return `<div class="r1"><span class="dg-dot ${status(s)}" title="${statusWord(s)}"></span><span class="nm" title="${esc(s.name)}">${esc(s.name)}</span>${showPlace ? `<span class="dg-badge ${s.runs}">${esc(placementText(s))}</span>` : ""}${svpBtn(s.id)}${starBtn(s.id)}</div>
     <div class="r2" title="${esc(s.id)}${s.inWorkspaces.length > 1 ? `: in ${esc(s.inWorkspaces.join(", "))}` : ""}">${esc(s.repo + ownersLabel(s.inWorkspaces))}</div>
     <div class="r3">${s.entry ? '<span class="dg-tag entry">entry</span>' : ""}${s.infra ? '<span class="dg-tag">infra</span>' : ""}${s.missing.length ? `<span class="dg-tag warn" title="Missing: ${esc(s.missing.join(", "))}">⚠ missing</span>` : ""}${!s.cloned ? '<span class="dg-tag warn">not cloned</span>' : ""}<span class="h ${status(s)}">${esc(healthLine(s))}</span></div>
     <div class="dg-acts">${cardActs(s)

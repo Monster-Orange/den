@@ -4,6 +4,33 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.18] - unreleased
+
+### Added
+
+- **A pinned service opens a quick panel, not a page jump.** A click on a
+  pinned service's name in the rail (or Enter on its row, or its dot in
+  the collapsed rail) opens a panel beside the row, without leaving the
+  page. It has the service's workspace, state and URL; Visit ↗, Start or
+  Stop, Restart and Logs, which call what the Services page calls; the
+  repo's last test run with Run tests; the agents working in the repo,
+  each with Open, and Start agent here; and Open in Services, Open in
+  Graph and Unpin. It stays current while open. Esc or a click outside
+  closes it and focus goes back to the row. Under 640 px it is a bottom
+  sheet. ⌘-click or a middle click still opens Services in a new tab. The
+  Services card's name and the Graph card's new ⋯ open the same panel.
+- **Visit ↗ on every pinned row.** Always shown, it opens the service's
+  URL in a new tab. It is greyed out ("Not running") while the service is
+  down, and absent when the service has no URL. The hover × is gone:
+  Unpin is in the panel, and Delete on the row still unpins.
+- **Start agent here.** The Start dialog has a Folder field (optional):
+  the agent runs in that folder of the workspace's, or in a repo's
+  folder. The route takes it as `folder`, and refuses a folder outside
+  the workspace (403). The panel's Start agent here fills the workspace
+  and the repo's folder.
+- **Open in Graph focuses the service.** `/graph#focus=<repo>` or
+  `#focus=<repo>/<service>` opens the Graph on that card.
+
 ## [0.4.17] - 2026-11-08
 
 ### Fixed

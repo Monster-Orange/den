@@ -326,7 +326,9 @@ describe("the rail", () => {
     );
     expect(await p.textContent(".den-toast")).toBe("Pinned shop");
     await p.waitForSelector('[data-pin="shop"]');
-    await p.click('[data-unpin="shop"]', { force: true });
+    // 0.4.18: no hover ×; Delete on the row (or its panel's Unpin).
+    await p.focus('[data-pin="shop"]');
+    await p.keyboard.press("Delete");
     expect(await p.$$('[data-pin="shop"]')).toHaveLength(0);
     await p.waitForTimeout(50);
     expect(posts).toEqual([
@@ -686,9 +688,10 @@ describe("pins (a consumer's dev.17 run)", () => {
         b.getAttribute("aria-label"),
       ]);
     expect(await toggle()).toEqual(["★", "true", "Unpin shop-web"]);
-    // Unpin from the rail (the ×): the page's toggle follows, no reload.
+    // Unpin from the rail (Delete): the page's toggle follows, no reload.
     await p.waitForSelector('[data-pin="shop-web"]');
-    await p.click('[data-unpin="shop-web"]', { force: true });
+    await p.focus('[data-pin="shop-web"]');
+    await p.keyboard.press("Delete");
     expect(await toggle()).toEqual(["☆", "false", "Pin shop-web"]);
     expect(
       await p.evaluate(() => (window as unknown as { seen: string[][] }).seen),
@@ -719,7 +722,7 @@ describe("pins (a consumer's dev.17 run)", () => {
     await p.context().close();
   });
 
-  it("a pinned row is named by its id; the × is its own control, 'Unpin <id>'", async () => {
+  it("a pinned row is named by its id; Visit ↗ is its own control (0.4.18: no ×)", async () => {
     if (!browser) return;
     const { p } = await mount("services", {
       shell: { pins: ["shop-web"], collapsed: false },
@@ -731,18 +734,37 @@ describe("pins (a consumer's dev.17 run)", () => {
     expect(
       await p.getAttribute('[data-pin="shop-web"]', "aria-keyshortcuts"),
     ).toBe("Delete");
+    // It opens its service panel (a dialog); the link stays for ⌘-click.
+    expect(await p.getAttribute('[data-pin="shop-web"]', "aria-haspopup")).toBe(
+      "dialog",
+    );
+    expect(await p.$$("[data-unpin], .den-pin-x")).toHaveLength(0);
+    // No URL known: no Visit ↗. With one: "Visit <id> (opens a new tab)",
+    // outside the link, out of the tab order, its glyph hidden from readers.
+    expect(await p.$$('[data-visit="shop-web"]')).toHaveLength(0);
+    await p.evaluate(() =>
+      (
+        window as unknown as {
+          denShell: { setState(s: unknown): void };
+        }
+      ).denShell.setState({ pinUrls: { "shop-web": "http://shop.test/" } }),
+    );
     expect(
       await p
-        .getByRole("button", { name: "Unpin shop-web", exact: true })
+        .getByRole("button", {
+          name: "Visit shop-web (opens a new tab)",
+          exact: true,
+        })
         .count(),
     ).toBe(1);
-    // The × glyph is hidden from readers; the control isn't inside the link.
     expect(
-      await p.$eval('[data-unpin="shop-web"]', (x) => [
+      await p.$eval('[data-visit="shop-web"]', (x) => [
         x.closest("a") === null,
+        x.getAttribute("tabindex"),
+        x.getAttribute("title"),
         x.querySelector('[aria-hidden="true"]')?.textContent,
       ]),
-    ).toEqual([true, "×"]);
+    ).toEqual([true, "-1", "http://shop.test/", "↗"]);
     await p.context().close();
   });
 });
@@ -863,28 +885,6 @@ describe("a consumer's dev.18 run (two consumers)", () => {
     const all = warnings.join("\n");
     expect(all).not.toMatch(/group "acme"/);
     expect(all).toMatch(/nav "lost": group "nowhere" is not registered/);
-    await p.context().close();
-  });
-
-  it("the rail's × moves focus as Delete does: next pin, else previous, else the first item", async () => {
-    if (!browser) return;
-    const { p } = await mount("services", {
-      shell: { pins: ["a", "b", "c"], collapsed: false },
-    });
-    await p.waitForSelector('[data-pin="c"]');
-    const active = () =>
-      p.evaluate(() => (document.activeElement as HTMLElement).dataset.nav);
-    // Keyboard: focus the × of a pin (as a screen reader user reaches it)
-    // and press Enter.
-    for (const [x, next] of [
-      ["b", "pin-c"],
-      ["c", "pin-a"],
-      ["a", "local-dev"],
-    ]) {
-      await p.focus(`[data-unpin="${x}"]`);
-      await p.keyboard.press("Enter");
-      expect([x, await active()]).toEqual([x, next]);
-    }
     await p.context().close();
   });
 

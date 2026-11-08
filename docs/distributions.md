@@ -368,6 +368,39 @@ The ☆ star on Workspaces rows, Services and Graph cards marks a
 favourite. It is one list, saved in `shell.pins`, so a star set on one
 page shows on all of them.
 
+### The service panel
+
+A pinned service in the rail has **↗** at the end of its row, always
+shown: it opens the service's URL in a new tab ("Visit <service> (opens a
+new tab)", the URL as its tooltip). It is greyed out, saying "Not
+running", while the service is down, and absent when the service has no
+URL.
+
+A click on the service's name (or Enter on its row, or its dot when the
+rail is collapsed) opens its **panel** beside the row, without leaving
+the page. ⌘-click, Ctrl-click or a middle click still opens Services in a
+new tab. Esc or a click outside closes it, and focus goes back to the
+row. Under 640 px wide it is a sheet at the bottom of the screen. The
+Services card's name and the Graph card's **⋯** open the same panel.
+
+Top to bottom, it has:
+
+- the name, workspace, health dot, state ("up 2h", "down: HTTP 502",
+  "starting…") and URL;
+- **Visit ↗**, then **Start** or **Stop**, **Restart** and **Logs**. These
+  call what the Services page calls (`/api/service/exec` with `up`,
+  `down` or `restart`, and `/api/service/logs`), each in a tab of the runs
+  dock. Logs opens the dock on that service;
+- **Last test run** (the server's run history, `GET /api/runs/last`) and
+  **Run tests**, which runs the repo's suites (`/api/run?pillar=suites`);
+- **Agents**: the agents working in the repo, each with **Open**, and
+  **+ Start agent here**, which opens the Start dialog with the workspace
+  and the repo's folder filled in;
+- **Open in Services**, **Open in Graph** and **Unpin** (or **Pin**).
+
+It stays current while it is open, from the same feeds the pages use. Delete
+on a pinned row still unpins it.
+
 ## Health checks
 
 A service declares its health per environment under `health`, in one of
@@ -2398,6 +2431,11 @@ started. The workspace header counts them ("2 agents").
   `agents.runtimes.<id>.bin` to its path in <your user.yml>, or run
   `<cli> agents doctor`" (see [Runtimes](#runtimes)). Nothing fails only
   after Start.
+- **Folder** (optional) is where the agent runs: a folder inside the
+  workspace's own, or a repo's folder of the workspace (relative to the
+  workspace's folder, or absolute). Empty, it runs in the workspace's
+  folder. A folder outside the workspace is refused (403). The service
+  panel's **Start agent here** fills it with the repo's folder.
 - The page and the CLI call the same operations and read the same agent
   records, so an agent started in one is listed in the other. A workspace
   lists its own agents only.
@@ -2412,7 +2450,7 @@ started. The workspace header counts them ("2 agents").
 
 The routes: `GET /api/workspaces/<ws>/agents`, `POST
 /api/workspaces/<ws>/agents` (`{ persona, runtime?, model?, version?,
-permission?, allow?, instruction?, id? }`, see
+permission?, allow?, instruction?, id?, folder? }`, see
 [The Start dialog](#the-start-dialog)), `POST
 /api/workspaces/<ws>/agents/<id>/stop` and `…/resume`, `POST
 /api/workspaces/<ws>/sessions` (a plain session), `GET /api/personas`

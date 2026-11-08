@@ -169,6 +169,41 @@
     "act.unpinX": "Unpin {s}",
     "toast.pinned": "Pinned {s}",
     "toast.unpinned": "Unpinned {s}",
+    // 0.4.18: the service panel (svc-panel.js) and Start's Folder.
+    "svp.label": "{s}: quick panel",
+    "svp.more": "Quick panel for {s}",
+    "svp.notRunning": "Not running",
+    "svp.up": "up {d}",
+    "svp.upNow": "up",
+    "svp.down": "down: {c}",
+    "svp.downNone": "down",
+    "svp.starting": "starting…",
+    "svp.stopped": "stopped",
+    "svp.noUrl": "No URL",
+    "svp.start": "Start",
+    "svp.stop": "Stop",
+    "svp.restart": "Restart",
+    "svp.logs": "Logs",
+    "svp.stopping": "Stopping {s}",
+    "svp.tests": "Last test run",
+    "svp.testsOk": "✓ {t}",
+    "svp.testsBad": "✗ failed {t}",
+    "svp.testsRun": "running…",
+    "svp.testsNone": "—",
+    "svp.runTests": "Run tests",
+    "svp.testsDone": "Tests passed: {s}",
+    "svp.testsFailed": "Tests failed: {s}",
+    "svp.agents": "Agents",
+    "svp.noAgents": "No agents in this repo.",
+    "svp.open": "Open",
+    "svp.openAg": "Open {s}",
+    "svp.startHere": "Start agent here",
+    "svp.openSvc": "Open in Services",
+    "svp.openGraph": "Open in Graph",
+    "svp.close": "Close",
+    "ag.new.folder": "Folder (optional)",
+    "ag.new.folderHelp":
+      "Inside the workspace's folder. Empty: the workspace's own.",
     collapse: "Collapse",
     expand: "Expand",
     menu: "Menu",
@@ -1214,6 +1249,10 @@
     // SEC-2a: who this browser is (GET /api/session `identity`): local,
     // a signed-in device, or a GitHub login. Null until known.
     identity: null,
+    // 0.4.18: each pin's URL (svc-panel.js, from the health feed) for its
+    // Visit ↗, and the pin whose service panel is open.
+    pinUrls: {},
+    svpOpen: null,
   };
   try {
     var cached = JSON.parse(localStorage.getItem(LS) || "{}");
@@ -1441,6 +1480,31 @@
     var r = anchor.getBoundingClientRect();
     var gap = opts.gap != null ? opts.gap : 4;
     el.style.maxHeight = "";
+    // 0.4.18: a bottom sheet is placed by its CSS (bottom: 0), not here.
+    if (opts.sheet) {
+      el.style.removeProperty("top");
+      el.style.removeProperty("left");
+      return;
+    }
+    // 0.4.18: beside the anchor (the rail), level with a row in it.
+    if (opts.side === "right") {
+      var row = typeof opts.row === "function" ? opts.row() : null;
+      var rr = row ? row.getBoundingClientRect() : r;
+      var bw = el.offsetWidth;
+      var bh = el.offsetHeight;
+      var bl = Math.min(r.right + gap, window.innerWidth - bw - TOP_MARGIN);
+      var bt = Math.min(
+        rr.top + (opts.dy || 0),
+        window.innerHeight - bh - TOP_MARGIN,
+      );
+      el.style.setProperty("top", Math.max(TOP_MARGIN, bt) + "px", "important");
+      el.style.setProperty(
+        "left",
+        Math.max(TOP_MARGIN, bl) + "px",
+        "important",
+      );
+      return;
+    }
     var w = el.offsetWidth;
     var h = el.offsetHeight;
     var vw = window.innerWidth;
@@ -2123,6 +2187,39 @@
             : " off";
     return '<span class="den-dot' + cls + '" aria-hidden="true"></span>';
   }
+  /** 0.4.18: a pin's Visit ↗: none without a URL, greyed out while it is down. */
+  function pinVisit(id) {
+    var url = state.pinUrls && state.pinUrls[id];
+    if (!url) return "";
+    var down = state.health[id] === "down";
+    return (
+      '<button type="button" class="den-pvisit" tabindex="-1" data-visit="' +
+      esc(id) +
+      '" data-url="' +
+      esc(url) +
+      '" aria-label="' +
+      esc(t("act.visitX", { s: id })) +
+      '" title="' +
+      esc(down ? t("svp.notRunning") : url) +
+      '"' +
+      (down ? ' aria-disabled="true"' : "") +
+      '><span aria-hidden="true">↗</span></button>'
+    );
+  }
+  function visitPin(b) {
+    if (b.getAttribute("aria-disabled") === "true") {
+      toast(t("svp.notRunning"));
+      return;
+    }
+    var url = b.getAttribute("data-url");
+    if (url && /^https?:\/\//i.test(url))
+      window.open(url, "_blank", "noopener");
+  }
+  // 0.4.18: the service panel (svc-panel.js registers it).
+  var servicePanel = null;
+  function setServicePanel(p) {
+    servicePanel = p && typeof p.open === "function" ? p : null;
+  }
   function pinHref(id) {
     var repo = id.split("/")[0];
     return "/services#repo-" + encodeURIComponent(repo);
@@ -2191,9 +2288,12 @@
         null,
         state.pins
           .map(function (p) {
-            // The row is the link (named by the id alone, Delete unpins
-            // it); the × beside it is its own control, out of the tab
-            // order, named "Unpin <id>", its glyph hidden from readers.
+            // 0.4.18: the row (named by the id alone) opens the service's
+            // panel in place (svc-panel.js); it is still the link to
+            // Services, so ⌘-click and middle-click open that in a new
+            // tab. Delete unpins it. Visit ↗ beside it opens the service's
+            // URL, out of the tab order: the panel's first button is the
+            // keyboard's Visit. Unpin is in the panel's footer.
             return (
               '<div class="den-pin-row">' +
               item(
@@ -2205,17 +2305,17 @@
                   mono: true,
                 },
                 false,
-                // Holds the ×'s place in the row, as in the prototype.
-                '<span class="den-pin-sp" aria-hidden="true">×</span>',
-                ' data-pin="' + esc(p) + '" aria-keyshortcuts="Delete"',
+                "",
+                ' data-pin="' +
+                  esc(p) +
+                  '" data-svpanel="' +
+                  esc(p) +
+                  '" aria-haspopup="dialog" aria-expanded="' +
+                  (state.svpOpen === p ? "true" : "false") +
+                  '" aria-keyshortcuts="Delete"',
               ) +
-              '<button type="button" class="den-pin-x" tabindex="-1" data-unpin="' +
-              esc(p) +
-              '" aria-label="' +
-              esc(t("act.unpinX", { s: p })) +
-              '" title="' +
-              esc(t("act.unpin")) +
-              '"><span aria-hidden="true">×</span></button></div>'
+              pinVisit(p) +
+              "</div>"
             );
           })
           .join(""),
@@ -2423,10 +2523,28 @@
   });
   nav.addEventListener("click", function (e) {
     var tgt = e.target;
-    var x = tgt && tgt.closest ? tgt.closest("[data-unpin]") : null;
-    if (x) {
+    var v = tgt && tgt.closest ? tgt.closest("[data-visit]") : null;
+    if (v) {
       e.preventDefault();
-      unpinFromRail(x.getAttribute("data-unpin"));
+      visitPin(v);
+      return;
+    }
+    // 0.4.18: a plain click (or Enter) on a pinned row opens its panel;
+    // ⌘/Ctrl-, Shift- and middle-click keep the link (Services).
+    var sp = tgt && tgt.closest ? tgt.closest("[data-svpanel]") : null;
+    if (
+      sp &&
+      servicePanel &&
+      e.button === 0 &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.shiftKey &&
+      !e.altKey
+    ) {
+      e.preventDefault();
+      servicePanel.open(sp.getAttribute("data-svpanel"), sp, {
+        fromRail: true,
+      });
       return;
     }
     var c = tgt && tgt.closest ? tgt.closest('[data-act="collapse"]') : null;
@@ -4523,6 +4641,14 @@
      * anchor; hide(el). The page hiding it (display: none) closes it too.
      */
     topLayer: { show: topShow, hide: topHide },
+    /**
+     * 0.4.18: the service panel. svc-panel.js registers { open, close,
+     * visit }; openServicePanel(id, opener) opens it beside opener.
+     */
+    setServicePanel: setServicePanel,
+    openServicePanel: function (id, opener) {
+      if (servicePanel) servicePanel.open(id, opener);
+    },
     closeMenu: function () {
       closeMenu(false);
     },
@@ -4865,18 +4991,65 @@
     "  display: inline-block; margin: 0 5px; }",
     ".den-dot.bad { background: var(--bad); } .den-dot.warn { background: var(--warn); }",
     ".den-dot.off { background: var(--faint); }",
-    ".den-pin-row { position: relative; }",
-    ".den-pin-sp { visibility: hidden; font-size: 12px; }",
-    ".den-pin-x { position: absolute; top: 0; bottom: 0; right: 10px; display: flex; align-items: center;",
-    "  padding: 0; border: 0; background: none; cursor: pointer; font: 12px var(--sans);",
-    "  opacity: 0; color: var(--faint); }",
-    ".den-pin-x:hover { color: var(--text); }",
-    ".den-pin-row:hover .den-pin-x, .den-pin-row:focus-within .den-pin-x { opacity: 1; }",
+    // 0.4.18: a pinned row is its name (opens the service panel) and Visit ↗.
+    ".den-pin-row { display: flex; align-items: center; gap: 2px; min-width: 0; }",
+    ".den-pin-row .den-ni { flex: 1; min-width: 0; }",
+    ".den-pin-row .den-ni[aria-expanded='true'] { background: var(--sunken); color: var(--text); }",
+    ".den-pvisit { flex: none; width: 26px; height: 26px; padding: 0; display: grid; place-items: center;",
+    "  background: none; border: 1px solid transparent; border-radius: var(--radius-button);",
+    "  color: var(--muted); cursor: pointer; font: 13px/1 var(--sans); }",
+    ".den-pvisit:hover { background: var(--sunken); color: var(--accent-text); border-color: var(--border); }",
+    ".den-pvisit[aria-disabled='true'], .den-svp .den-btn[aria-disabled='true'] { opacity: .45; cursor: not-allowed; }",
+    ".den-pvisit[aria-disabled='true']:hover { background: none; color: var(--muted); border-color: transparent; }",
+    "body.den-rail-collapsed .den-rail .den-pvisit { display: none; }",
+    "@media (max-width: 720px) { .den-pvisit { width: 32px; height: 32px; }",
+    "  body.den-rail-collapsed .den-rail .den-pvisit { display: grid; } }",
+    // The service panel (svc-panel.js): beside its row, a bottom sheet at phone width.
+    ".den-pop.den-svp { width: 340px; max-width: calc(100vw - 16px); box-sizing: border-box; padding: 0;",
+    "  max-height: calc(100dvh - 16px); overflow-y: auto; min-width: 0; }",
+    ".den-svp-h { display: grid; gap: 4px; padding: 12px 12px 10px; border-bottom: 1px solid var(--border); }",
+    ".den-svp-t { display: flex; align-items: center; gap: 8px; min-width: 0; }",
+    ".den-svp-t .den-dot, .den-svp-ag .den-dot, .den-svp-line .den-dot { margin: 0; }",
+    // Line heights pinned to the mock's (its mono font's normal), whatever the theme's font.
+    ".den-svp-t b { flex: 1; min-width: 0; font: 600 14px/21px var(--mono); overflow: hidden;",
+    "  text-overflow: ellipsis; white-space: nowrap; }",
+    ".den-svp-x { padding: 2px 6px; margin: -4px -6px -4px 0; }",
+    ".den-svp-meta { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }",
+    ".den-wsp { font: 11px/16px var(--mono); border-radius: 999px; padding: 0 7px; white-space: nowrap;",
+    "  border: 1px solid var(--border); color: var(--muted); }",
+    ".den-svp-st { color: var(--ok); } .den-svp-st.bad { color: var(--bad); }",
+    ".den-svp-st.off { color: var(--faint); } .den-svp-st.run { color: var(--accent-text); }",
+    ".den-svp-ms { font: 11.5px var(--mono); color: var(--faint); }",
+    ".den-svp-url { font: 12px/17px var(--mono); color: var(--faint); overflow-wrap: anywhere; }",
+    ".den-svp-acts { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; }",
+    ".den-svp-sec { display: grid; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--border); }",
+    ".den-svp-k { font: 11px/16px var(--mono); color: var(--faint); text-transform: uppercase; letter-spacing: .07em; }",
+    ".den-svp-line { display: flex; align-items: center; gap: 8px; font-size: 13px; }",
+    ".den-svp-line .den-svp-sp { margin-left: auto; }",
+    ".den-svp-ok { color: var(--ok); } .den-svp-bad { color: var(--bad); } .den-svp-none { color: var(--faint); }",
+    ".den-svp-ag { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 0 8px;",
+    "  align-items: center; font-size: 13px; }",
+    ".den-svp-nm { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+    ".den-svp-as { font: 11px var(--mono); color: var(--faint); white-space: nowrap; }",
+    ".den-wbdg { font: 10.5px var(--mono); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);",
+    "  border-radius: 999px; padding: 0 6px; }",
+    ".den-svp-help { font-size: 12px; color: var(--faint); line-height: 1.4; }",
+    ".den-svp-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 8px 12px 10px;",
+    "  border-top: 1px solid var(--border); }",
+    ".den-svp-grow { margin-left: auto; }",
+    ".den-lnk { color: var(--accent-text); cursor: pointer; font: inherit; font-size: 12.5px; text-decoration: underline;",
+    "  background: none; border: 0; padding: 0; }",
+    ".den-scrim.den-svp-scrim { z-index: 43; }",
+    ".den-pop.den-svp.den-sheet.den-toplayer { top: auto !important; left: 0 !important; right: 0 !important;",
+    "  bottom: 0 !important; width: auto; max-width: none; border-bottom: 0; border-radius: 14px 14px 0 0;",
+    "  max-height: 85dvh; padding-bottom: env(safe-area-inset-bottom, 0px); }",
+    ".den-pop.den-svp.den-sheet::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px;",
+    "  background: var(--border-strong); margin: 8px auto 0; }",
+    ".den-pop.den-svp.den-sheet .den-svp-acts .den-btn { flex: 1 1 auto; padding: 9px 12px; }",
     // Collapsed: icons only. The prototype hides headings and labels; they
     // stay here for screen readers (visually hidden, no space taken).
     "body.den-rail-collapsed .den-rail .den-lbl, body.den-rail-collapsed .den-rail .den-gh,",
-    "body.den-rail-collapsed .den-rail .den-bdg, body.den-rail-collapsed .den-rail .den-pin-x,",
-    "body.den-rail-collapsed .den-rail .den-pin-sp {",
+    "body.den-rail-collapsed .den-rail .den-bdg {",
     "  position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;",
     "  clip: rect(0 0 0 0); white-space: nowrap; border: 0; }",
     // Toast (.toast)
