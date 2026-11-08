@@ -142,6 +142,8 @@ const ACTION_ROUTES: Record<string, string> = {
   "/api/service/exec": "GET",
   "/api/run": "GET",
   "/api/workspace/sync": "POST",
+  // ON-3's writes: asks the person to allow one (held; nothing runs here).
+  "/api/approvals": "POST",
 };
 
 /**
@@ -149,6 +151,8 @@ const ACTION_ROUTES: Record<string, string> = {
  * and Bring in's list and import (MCP agent_import, AG-17.1).
  */
 const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
+  // One held request's state (its own, the server checks). Never /decide.
+  { re: /^\/api\/approvals\/[A-Za-z0-9_-]{16}$/, method: "GET" },
   {
     re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/resume$/,
     method: "POST",

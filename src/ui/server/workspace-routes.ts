@@ -344,6 +344,25 @@ const availableReposCache = singleFlight<AvailableRepos>(2_000);
  * Same contract as the original inline handlers: uses return sendJson/send400
  * to end the response. Caller checks res.writableEnded to know if handled.
  */
+
+/**
+ * Why a workspace can't be created with this name, or null: the Workspaces
+ * page's create and ON-3's held workspace_create (approval-routes.ts) both
+ * ask this.
+ */
+export function workspaceCreateRefusal(
+  name: string | undefined,
+): string | null {
+  if (!name) return "name required";
+  // eslint-disable-next-line no-control-regex
+  if (/["'\\/<>\x00-\x1f]/.test(name))
+    return "name must not contain quotes, slashes, or control characters";
+  if (name.length > 64) return "name must be 64 characters or fewer";
+  if (readWorkspacesFile().workspaces[name])
+    return `workspace "${name}" already exists`;
+  return null;
+}
+
 export async function handleWorkspaceRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -639,16 +658,8 @@ export async function handleWorkspaceRoutes(
     try {
       const body = await readBody(req);
       const { name } = JSON.parse(body) as { name?: string };
-      if (!name) return send400(res, "name required");
-      // eslint-disable-next-line no-control-regex
-      if (/["'\\/<>\x00-\x1f]/.test(name))
-        return send400(
-          res,
-          "name must not contain quotes, slashes, or control characters",
-        );
-      const file = readWorkspacesFile();
-      if (file.workspaces[name])
-        return send400(res, `workspace "${name}" already exists`);
+      const refusal = workspaceCreateRefusal(name);
+      if (refusal || !name) return send400(res, refusal ?? "name required");
       createWorkspace(name, { services: {} });
       return sendJson(res, { ok: true, name });
     } catch (e) {

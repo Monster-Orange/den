@@ -9,8 +9,9 @@
  * `<cli> agents list` does (agent-ops.ts agentRows), and adds the plain
  * sessions (`sessions start`), labelled kind "session". An agent whose
  * actor token `web logout --all` revoked is marked (tokenRevoked). The
- * host knows nothing of approvals yet, so `waiting` is never set here
- * (AG-6a adds it). Asking never starts a session host.
+ * agent with one of Den's held writes waiting for the person (ON-3,
+ * approval-routes.ts) is `waiting` (AG-6a); a runtime's own permission
+ * prompts are not seen here yet. Asking never starts a session host.
  *
  * The io route bridges one WebSocket to one attachment on the session host
  * (its own connection to the host, so a browser and the CLI, or two
@@ -78,6 +79,8 @@ export interface SessionRouteDeps {
   /** Whether workspaces.yml names `ws` (active or not). */
   workspaceExists?: (ws: string) => boolean;
   pty?: () => PtyLoad;
+  /** The agent ids with an approval waiting for the person (AG-6a, ON-3). */
+  waitingAgents?: () => ReadonlySet<string>;
 }
 
 interface Resolved {
@@ -87,6 +90,7 @@ interface Resolved {
   activeWorkspaces: () => string[];
   workspaceExists: (ws: string) => boolean;
   pty: () => PtyLoad;
+  waitingAgents: () => ReadonlySet<string>;
 }
 
 /** A workspace name as `?ws=` may give it. */
@@ -116,6 +120,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
           ws,
         )),
     pty: d.pty ?? (() => loadPty()),
+    waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
   };
 }
 
@@ -189,7 +194,8 @@ export interface ListedSession {
 /** The list, from the host's sessions and the agent records. */
 export function listedSessions(
   sessions: SessionInfo[],
-  d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces">,
+  d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
+    Partial<Pick<Resolved, "waitingAgents">>,
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
 ): ListedSession[] {
@@ -204,6 +210,7 @@ export function listedSessions(
     active.has(r.workspace),
   );
   const revoked = revokedAgentIds(d.stateDir());
+  const waiting = d.waitingAgents?.() ?? new Set<string>();
   const out: ListedSession[] = [];
   const agentSessions = new Set<string>();
   noteEnded(d.stateDir(), mine, records);
@@ -242,6 +249,7 @@ export function listedSessions(
       ...(r.interruptedAt ? { interruptedAt: r.interruptedAt } : {}),
       ...(r.rotation?.due ? { rotation: r.rotation } : {}),
       ...(revoked.has(rec.id) && s && !s.exited ? { tokenRevoked: true } : {}),
+      ...(waiting.has(rec.id) && s && !s.exited ? { waiting: true } : {}),
     });
   }
   for (const s of mine) {

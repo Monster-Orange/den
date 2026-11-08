@@ -14,6 +14,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
+import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
+import { readWebSecret } from "../../../src/shared/web-secret.js";
 import * as fs from "fs";
 import * as net from "net";
 import type { AddressInfo } from "net";
@@ -157,6 +159,24 @@ async function edgePage(): Promise<{ ctx: BrowserContext; p: Page }> {
   return { ctx, p };
 }
 
+/**
+ * 0.4.12: sign a localhost browser in with a setup link (letting another
+ * device in needs a signed-in browser holding its approval key).
+ */
+async function claimIn(page: Page): Promise<void> {
+  await page.goto(
+    claimLink(
+      `http://localhost:${port}`,
+      mintClaimCode(readWebSecret(stateDir)!),
+    ),
+  );
+  await page.waitForFunction(
+    () => localStorage.getItem("den.approveKey")?.length === 43,
+  );
+  if (new URL(page.url()).hash !== "")
+    throw new Error("the approval key stayed in the address bar");
+}
+
 describe("Sign in with GitHub on the edge's signed-out page", () => {
   it("shows the code and github.com/login/device; the owner's approval reloads the page signed in", async () => {
     if (skip()) return;
@@ -227,6 +247,7 @@ describe("Settings › Access", () => {
       viewport: { width: 1280, height: 1000 },
     });
     const p = await ctx.newPage();
+    await claimIn(p);
     await p.goto(`http://localhost:${port}/settings#access`);
     // A fresh browser has not seen What's new, so it opens once: close it.
     await p.waitForSelector("#cl-overlay.open");
@@ -239,8 +260,17 @@ describe("Settings › Access", () => {
     await p.waitForSelector(".set-device");
     const before = await p.locator(".set-device").count();
     expect(before).toBeGreaterThanOrEqual(1);
-    expect(await p.locator(".set-device").first().textContent()).toMatch(
-      /Chrome on \w+.*signed in with GitHub \(@octo-owner\) · created just now · from .* · last seen just now/,
+    const rows = await p.locator(".set-device").allTextContents();
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /Chrome on \w+.*signed in with GitHub \(@octo-owner\) · created just now · from .* · last seen just now/,
+        ),
+        // 0.4.12: this browser, signed in with the setup link, with Revoke.
+        expect.stringMatching(
+          /This device.*claimed with a setup link · created just now.*Revoke/,
+        ),
+      ]),
     );
     const section = p.locator("#setting-access-owner");
     const access = () =>

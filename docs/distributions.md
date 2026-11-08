@@ -174,6 +174,49 @@ a CLI command, an MCP read tool and a web API route, with the same answer
   Den's own state folder; anything else is refused with the reason (a 400
   from the route, `Refused:` from the tool, exit 1 from the CLI).
 
+### Onboarding writes, held for the person
+
+An agent finishes setup with three MCP write tools. None of them changes
+anything by itself: each asks Den to hold the change, and the person's
+browser opens a dialog on whatever Den page is open: "The `<agent>` agent
+wants to: … · Review · Later · Deny · Allow".
+
+| MCP tool           | What Allow runs                                         |
+| ------------------ | ------------------------------------------------------- |
+| `workspace_create` | The Workspaces page's create: an empty workspace        |
+| `repo_add`         | `repo add <path> --json`, a local folder inside home    |
+| `service_try`      | `up` for one service, as the Services page's Start does |
+
+- **Den writes the dialog.** Its line and its Review come from the action
+  and its arguments, never from the agent. `repo_add`'s Review is its dry
+  run: the folder, the workspace (new or not) and the side-car Den would
+  write. The agent's `note` is shown only quoted, as "Agent says".
+- **Bad arguments are refused before anything waits**: the same checks as
+  the page, `repo add` and the path rule of
+  [Onboarding reads](#onboarding-reads).
+- **Only the person approves.** Allow and Deny need a browser signed in on
+  this Den holding its approval key: a session cookie alone, the CLI's
+  bearer, an agent's token, or an anonymous request from this machine (an
+  agent with a shell) is refused with `signin_to_approve`. On a fresh Den,
+  `<cli> web claim-link` prints a one-time setup link that signs the
+  browser in.
+- **Allow runs it once**, from the arguments stored when it was asked,
+  checked again first. Deny, 10 minutes with no answer, or the agent being
+  stopped run nothing. An agent may have 5 requests waiting; a restart drops
+  what waits (the agent asks again).
+- **The agent waits** up to 2 minutes for the answer, then gets the request
+  id: `approval_check` says `pending`, `done` (with what the run said),
+  `denied` or `expired`. While a request waits, its agent is "waiting" on
+  the Agents page.
+- **Routes:** `POST /api/approvals` (`{ action, args, note? }`, 202 with the
+  request), `GET /api/approvals` (what waits; never an agent's token),
+  `GET /api/approvals/<id>` (the asker's own, or the person's) and
+  `POST /api/approvals/<id>/decide` (`{ decision: "allow" | "deny" }`).
+  Every ask and decision is in the activity trail.
+- The three tools are always registered (the person's Allow is the gate,
+  not `mcp.actions`). A workspace-scoped MCP server refuses
+  `workspace_create` and `repo_add`: they change Den beyond its workspace.
+
 ### up, doctor and mcp connect
 
 - `down --json` and `web down --json` are the clean-up steps. Each is safe

@@ -30,6 +30,59 @@ config and manifest changes a distribution must make to move to it under
   person's home folder and outside Den's state folder; anything else is
   refused with the reason. A workspace-scoped MCP server can't scan folders,
   and drafts only inside its workspace's repos.
+- **Onboarding writes, held for the person (ON-3).** Three MCP write
+  tools, `workspace_create`, `repo_add` and `service_try`, change nothing by
+  themselves: each asks Den to hold the change, and every Den page opens a
+  dialog in the person's browser, "The `<agent>` agent wants to: … ·
+  Review · Later · Deny · Allow". Den writes the line and the Review from
+  the action and its arguments (`repo_add`'s Review is its dry run); the
+  agent's note is only quoted. Allow runs it once, from the stored
+  arguments checked again, through the code paths the pages and the CLI
+  use (the Workspaces page's create, `repo add --json`, `up` as the
+  Services page starts it). Deny, 10 minutes with no answer, or the agent
+  being stopped run nothing. The agent waits up to 2 minutes, then
+  `approval_check` reads where its request stands; meanwhile it is
+  "waiting" on the Agents page. Routes: `POST /api/approvals`,
+  `GET /api/approvals`, `GET /api/approvals/<id>`,
+  `POST /api/approvals/<id>/decide`. See [Onboarding writes, held for the
+  person](docs/distributions.md#onboarding-writes-held-for-the-person).
+- **Only the person approves.** Allow and Deny need a browser signed in on
+  this Den and holding its approval key, even on localhost. Every sign-in
+  mints the key, handed over only in the sign-in's own answer (a 303's
+  `#ak=` fragment, or the sign-in poll); the session keeps its hash and
+  `GET /api/session` never returns it. A cookie alone (any localhost port
+  receives it), the CLI's bearer, an agent's token or an anonymous request
+  from this machine is refused with `signin_to_approve`.
+- **The setup link.** `<cli> web claim-link [--json]` prints a one-time
+  link (`/auth?claim=<code>`, 30 minutes) that signs this browser in, for
+  an install that hands the person over to the browser. Opened twice, it
+  says it was used and that someone else may have opened it.
+
+### Changed
+
+- Pairing a device, approving one, and linking or unlinking the GitHub
+  owner (`POST /api/web/pair`, `/api/web/approve`, `/api/web/owner/link`,
+  `/api/web/owner/unlink`) need the person: the CLI's bearer, or a
+  signed-in browser holding its approval key. On plain localhost,
+  Settings › Access asks you to sign in before pairing.
+- Inside an agent's session (`DEN_AGENT` or `DEN_ACTOR_TOKEN` set), the CLI
+  refuses every command that lets a browser in: `web login`, `web approve`,
+  `web owner link|unlink`, `web claim-link`; `web open` opens the plain
+  page.
+- What a test run writes and Den serves (`/report/*`, the Playwright
+  report, and `/reports/security/*`) is served sandboxed (an opaque
+  origin, no scripts reaching Den's), with nosniff, no-store and
+  no-referrer.
+- A workspace name is at most 64 characters.
+
+### Fixed
+
+- `/reports/security/*` was always 404: the `/report` prefix shadowed it.
+
+### Migrations
+
+None. Sessions signed in before 0.4.15 hold no approval key: sign in again
+to approve or to pair a device.
 
 ## [0.4.14] - unreleased
 

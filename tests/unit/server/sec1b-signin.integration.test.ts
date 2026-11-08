@@ -23,6 +23,7 @@ import {
   readWebSecret,
 } from "../../../src/shared/web-secret.js";
 import { mintLoginCode } from "../../../src/shared/web-session.js";
+import { mintClaimCode } from "../../../src/shared/claim-code.js";
 import { spawnServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
@@ -107,6 +108,8 @@ const setCookie = (r: Reply) =>
   ([] as string[])
     .concat(r.headers["set-cookie"] ?? [])
     .find((c) => c.startsWith(`${cookieName()}=`)) ?? "";
+/** A 303's Location without its fragment (a sign-in's carries the approval key). */
+const where = (r: Reply) => String(r.headers.location ?? "").split("#")[0];
 const flags = (line: string) =>
   line
     .split(";")
@@ -239,7 +242,8 @@ describe("the login link", () => {
       nav,
     );
     expect(r.status).toBe(303);
-    expect(r.headers.location).toBe("/settings?x=1");
+    expect(where(r)).toBe("/settings?x=1");
+    expect(String(r.headers.location)).toMatch(/#ak=[A-Za-z0-9_-]{43}$/);
     const line = setCookie(r);
     expect(line.length).toBeGreaterThan(0);
     expect(flags(line)).toEqual(["httponly", "max-age", "path", "samesite"]);
@@ -288,7 +292,7 @@ describe("the login link", () => {
       `/auth?c=${encodeURIComponent(code())}&next=${encodeURIComponent(n)}`,
       nav,
     );
-    expect([r.status, r.headers.location]).toEqual([303, "/"]);
+    expect([r.status, where(r)]).toEqual([303, "/"]);
   });
 
   it("another site can't sign a browser in (a cross-site /auth is a mutating GET)", async () => {
@@ -313,6 +317,130 @@ describe("the login link", () => {
     });
     expect(spoof.status).toBe(303);
     expect(flags(setCookie(spoof))).not.toContain("secure");
+  });
+});
+
+describe("the setup link (0.4.12: /auth?claim=)", () => {
+  const claim = () => {
+    const c = mintClaimCode(readWebSecret(stateDir)!);
+    minted.push(c);
+    return c;
+  };
+  /** The approval key in a sign-in 303's fragment, or "". */
+  const keyOf = (r: Reply) =>
+    /#ak=([A-Za-z0-9_-]{43})$/.exec(String(r.headers.location ?? ""))?.[1] ??
+    "";
+
+  it("opened once: a session cookie, a 303 to / with the approval key in the fragment and no claim, no referrer", async () => {
+    const r = await call(
+      "GET",
+      `/auth?claim=${encodeURIComponent(claim())}`,
+      nav,
+    );
+    expect(r.status).toBe(303);
+    const loc = String(r.headers.location ?? "");
+    expect(loc.startsWith("/#ak=")).toBe(true);
+    expect(loc.includes("claim")).toBe(false);
+    expect(keyOf(r).length).toBe(43);
+    minted.push(keyOf(r));
+    const line = setCookie(r);
+    expect(flags(line)).toEqual(["httponly", "max-age", "path", "samesite"]);
+    minted.push(line.split(";")[0].split("=")[1] ?? "");
+    expect(r.headers["referrer-policy"]).toBe("no-referrer");
+    expect(r.headers["cache-control"]).toBe("no-store");
+    // It is listed as claimed with a setup link.
+    const list = json(await call("GET", "/api/web/sessions", bearer()));
+    expect(
+      (list.sessions as { via: string }[]).some((x) => x.via === "claim"),
+    ).toBe(true);
+  });
+
+  it("opened again: no cookie, and a page that says it was used and offers the sign-in, never echoing the code", async () => {
+    const c = claim();
+    expect(
+      (await call("GET", `/auth?claim=${encodeURIComponent(c)}`, nav)).status,
+    ).toBe(303);
+    const again = await call(
+      "GET",
+      `/auth?claim=${encodeURIComponent(c)}`,
+      nav,
+    );
+    expect(again.status).toBe(401);
+    expect(setCookie(again)).toBe("");
+    expect(again.body).toContain("This setup link was used or has expired.");
+    expect(again.body).toContain("someone else may have");
+    expect(again.body.includes(c)).toBe(false);
+    expect(again.body.includes(encodeURIComponent(c))).toBe(false);
+  });
+
+  it("a changed code, a login code, or junk: no cookie", async () => {
+    const c = claim();
+    const bad = c.slice(0, -2) + (c.endsWith("AA") ? "BB" : "AA");
+    for (const q of [bad, code(), "nope", ""]) {
+      const r = await call("GET", `/auth?claim=${encodeURIComponent(q)}`, nav);
+      expect([r.status, setCookie(r)]).toEqual([401, ""]);
+    }
+  });
+
+  it("an agent's token can't use one, and another site can't open one", async () => {
+    const r = await call("GET", `/auth?claim=${encodeURIComponent(claim())}`, {
+      ...nav,
+      authorization: "Bearer den_at_not_a_real_token",
+    });
+    expect(setCookie(r)).toBe("");
+    const x = await call("GET", `/auth?claim=${encodeURIComponent(claim())}`, {
+      "sec-fetch-site": "cross-site",
+    });
+    expect([x.status, setCookie(x)]).toEqual([403, ""]);
+  });
+
+  it("end to end: the cookie and the CSRF token /api/session hands out are not enough to let a browser in; the approval key is", async () => {
+    const r = await call(
+      "GET",
+      `/auth?claim=${encodeURIComponent(claim())}`,
+      nav,
+    );
+    const key = keyOf(r);
+    minted.push(key);
+    const pair = setCookie(r).split(";")[0];
+    minted.push(pair.split("=")[1] ?? "");
+    const cookie = { cookie: pair };
+    const sess = await sessionCsrf(cookie);
+    // /api/session never returns the key.
+    expect(JSON.stringify(sess).includes(key)).toBe(false);
+    const page = {
+      ...cookie,
+      origin: `http://localhost:${port}`,
+      "x-den-csrf": String(sess.csrf),
+    };
+    const body = JSON.stringify({ host: "nope.example" });
+    // What a dev server on another localhost port could replay: refused.
+    const without = await call("POST", "/api/web/pair", page, body);
+    expect([without.status, json(without).code]).toEqual([
+      403,
+      "signin_to_approve",
+    ]);
+    // Anonymous loopback with the page's CSRF token (any agent's curl): refused.
+    const anon = json(await call("GET", "/api/session"));
+    const a = await call(
+      "POST",
+      "/api/web/pair",
+      { origin: `http://localhost:${port}`, "x-den-csrf": String(anon.csrf) },
+      body,
+    );
+    expect([a.status, json(a).code]).toEqual([403, "signin_to_approve"]);
+    // With the key the page holds: past the gate (to the route's own answer).
+    const withKey = await call(
+      "POST",
+      "/api/web/pair",
+      { ...page, "x-den-approve-key": key },
+      body,
+    );
+    expect(withKey.status).toBe(400);
+    expect(json(withKey).code).toBe("unknown_host");
+    // The person's own CLI (its bearer): past the gate too.
+    const cli = await call("POST", "/api/web/pair", bearer(), body);
+    expect(json(cli).code).toBe("unknown_host");
   });
 });
 
@@ -518,7 +646,7 @@ describe("the route classes", () => {
       ...nav,
       ...c,
     });
-    expect([evil.status, evil.headers.location]).toEqual([303, "/"]);
+    expect([evil.status, where(evil)]).toEqual([303, "/"]);
   });
 
   it("signing out ends the session and clears the cookie", async () => {
@@ -560,7 +688,7 @@ describe("the CLI: web login, web sessions, web logout", () => {
     expect(r.stderr).toMatch(/within 60 seconds/);
     expect(r.stderr.includes(u.searchParams.get("c") ?? "\0")).toBe(false);
     const a = await call("GET", `${u.pathname}${u.search}`, nav);
-    expect([a.status, a.headers.location]).toEqual([303, "/settings"]);
+    expect([a.status, where(a)]).toEqual([303, "/settings"]);
     const b = await call("GET", `${u.pathname}${u.search}`, nav);
     expect(b.status).toBe(401);
   }, 90_000);
@@ -742,7 +870,7 @@ describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_rem
         .concat(a.headers["set-cookie"] ?? [])
         .find((c) => c.startsWith(`den_session_${lanPort}=`));
       minted.push(line?.split(";")[0].split("=")[1] ?? "");
-      expect([a.status, a.headers.location, !!line]).toEqual([303, "/", true]);
+      expect([a.status, where(a), !!line]).toEqual([303, "/", true]);
     }
   }, 90_000);
 });

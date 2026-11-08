@@ -203,6 +203,20 @@ export function countdownText(ms) {
  * Where a signed-in page goes: the page that was asked for. On /signin,
  * its same-origin `next` (else `/`); anywhere else, the same URL.
  */
+/**
+ * 0.4.15: keep a sign-in's approval key (web-session.ts) in this origin's
+ * localStorage, where shell.js sends it from. It comes in the sign-in's
+ * own answer only.
+ */
+function keepApproveKey(b) {
+  if (!b || typeof b.approveKey !== "string") return;
+  try {
+    localStorage.setItem("den.approveKey", b.approveKey);
+  } catch {
+    /* storage blocked: this browser signs in again to approve */
+  }
+}
+
 export function landingAfterSignIn(loc) {
   if (loc.pathname !== "/signin") return loc.pathname + loc.search + loc.hash;
   const n = new URLSearchParams(loc.search).get("next") || "/";
@@ -263,6 +277,7 @@ function wireGithub(root, t, s) {
           return;
         }
         if (b.state === "ok") {
+          keepApproveKey(b);
           show(
             `<p class="lead" style="margin-top:12px">${esc(t("err.signin.githubDone"))}</p>`,
           );
@@ -432,6 +447,7 @@ function wirePair(root, t, s) {
                 return;
               }
               if (p.state === "ok") {
+                keepApproveKey(p);
                 stop();
                 box.innerHTML = `<p class="lead" id="den-pair-in">${esc(t("err.signin.youreIn"))}</p>`;
                 location.replace(landingAfterSignIn(location));
@@ -524,6 +540,7 @@ function mountSignedOut(root, sh, d) {
         .then((b) => {
           go.disabled = false;
           if (b.ok) {
+            keepApproveKey(b);
             err.textContent = "";
             form.innerHTML = `<p class="lead" id="den-confirm-in">${esc(t("err.signin.youreIn"))}</p>`;
             location.replace(typeof b.next === "string" ? b.next : "/");

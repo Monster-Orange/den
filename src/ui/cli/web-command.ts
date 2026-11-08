@@ -64,6 +64,12 @@ import {
 } from "./server-identity.js";
 
 import { product } from "../../shared/product.js";
+import {
+  CLAIM_CODE_TTL_MS,
+  claimLink,
+  mintClaimCode,
+  personGrantRefusal,
+} from "../../shared/claim-code.js";
 import { redactSecrets } from "../../shared/redact.js";
 interface WebCommandOptions {
   /** `open` is `up` that always opens a fresh sign-in tab (SEC-1b). */
@@ -1142,6 +1148,7 @@ export const WEB_SUBCOMMANDS_WITH_HELP = [
   "logout",
   "owner",
   "approve",
+  "claim-link",
 ] as const;
 
 export function displayWebHelp(): void {
@@ -1189,6 +1196,9 @@ export function displayWebHelp(): void {
   );
   console.log(
     "  approve <code>     Let in a computer whose signed-out page shows this code",
+  );
+  console.log(
+    "  claim-link         Print a one-time setup link (30 min) that signs this machine's browser in",
   );
   console.log("  (start/stop remain accepted as legacy aliases for up/down)");
   console.log();
@@ -1274,6 +1284,10 @@ export async function cmdWeb(args: string[]): Promise<void> {
   }
   if (args[0] === "approve") {
     process.exitCode = await cmdWebApprove(args.slice(1));
+    return;
+  }
+  if (args[0] === "claim-link") {
+    process.exitCode = cmdWebClaimLink(args.slice(1));
     return;
   }
   if (args.includes("--help") || args.includes("-h")) {
@@ -1400,7 +1414,8 @@ export async function cmdWeb(args: string[]): Promise<void> {
   // SEC-1b: what opens is a sign-in link (localhost, one-time, 60 s). It
   // is printed only when the browser couldn't be opened: the one line the
   // person then needs.
-  let link: string | null = null;
+  // Inside an agent's session: the plain page, never a sign-in link.
+  let link: string | null = personGrantRefusal(process.env) ? url : null;
   const signIn = () => (link ??= freshLoginLink(options.port));
   const browser = openOrFocusDenWebUrl(
     signIn,
@@ -1450,7 +1465,63 @@ export function freshLoginLink(
   origin: string = localhostOrigin(port),
   stateDir: string = getStateDir(),
 ): string {
+  const refused = personGrantRefusal(process.env);
+  if (refused) throw new Error(refused);
   return loginLink(origin, mintLoginCode(ensureWebSecret(stateDir)), next);
+}
+
+/**
+ * `<cli> web claim-link [--json] [--port <port>]` (0.4.15): a one-time
+ * setup link, `http://localhost:<port>/?claim=<code>` (30 minutes), on
+ * stdout alone. Opening it signs that browser in, so it can approve an
+ * agent's changes from the first page. Refused inside an agent's session:
+ * the person opens it, never an agent. Never logged.
+ */
+export function cmdWebClaimLink(args: string[], io: CliIo = stdIo): number {
+  const usage = `Usage: ${product().cli} web claim-link [--json] [--port <port>]\n`;
+  if (isHelp(args)) {
+    io.out(
+      usage +
+        "  Prints a one-time setup link (it lasts 30 minutes and works once). Open it\n" +
+        "  yourself, in the browser on this machine: it signs that browser in, so you\n" +
+        "  can approve what an agent asks to change. Don't let any agent open it.\n",
+    );
+    return 0;
+  }
+  const refused = personGrantRefusal(process.env);
+  if (refused) {
+    io.err(`${product().cli}: ${refused}\n`);
+    return 1;
+  }
+  let port: number;
+  let rest: string[];
+  try {
+    ({ port, rest } = takePort(args));
+  } catch (e) {
+    io.err(`${(e as Error).message}\n`);
+    return 2;
+  }
+  const asJson = rest.includes("--json");
+  if (rest.some((a) => a !== "--json")) {
+    io.err(usage);
+    return 2;
+  }
+  const now = Date.now();
+  const url = claimLink(
+    localhostOrigin(port),
+    mintClaimCode(ensureWebSecret(io.stateDir ?? getStateDir()), now),
+  );
+  if (asJson)
+    io.out(
+      `${JSON.stringify({ url, expiresAt: new Date(now + CLAIM_CODE_TTL_MS).toISOString() })}\n`,
+    );
+  else {
+    io.err(
+      `${product().cli}: open this link yourself within 30 minutes; it signs in one browser, once. Don't let any agent open it.\n`,
+    );
+    io.out(`${url}\n`);
+  }
+  return 0;
 }
 
 interface CliIo {
@@ -1570,6 +1641,11 @@ export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
     io.out(LOGIN_HELP());
     return 0;
   }
+  const refused = personGrantRefusal(process.env);
+  if (refused) {
+    io.err(`${product().cli}: ${refused}\n`);
+    return 1;
+  }
   const a = parseLoginArgs(args, io);
   if (typeof a === "number") return a;
   const link = freshLoginLink(
@@ -1609,6 +1685,11 @@ export async function cmdWebLoginWait(
   if (isHelp(args)) {
     io.out(LOGIN_HELP());
     return 0;
+  }
+  const refused = personGrantRefusal(process.env);
+  if (refused) {
+    io.err(`${product().cli}: ${refused}\n`);
+    return 1;
   }
   const a = parseLoginArgs(args, io);
   if (typeof a === "number") return a;
@@ -2029,6 +2110,11 @@ export async function cmdWebApprove(
     io.err(usage);
     return 2;
   }
+  const refused = list ? null : personGrantRefusal(process.env);
+  if (refused) {
+    io.err(`${product().cli}: ${refused}\n`);
+    return 1;
+  }
   const stateDir = io.stateDir ?? getStateDir();
   const r = list
     ? await serverCall(stateDir, port, "GET", "/api/web/waiting")
@@ -2133,6 +2219,11 @@ export async function cmdWebOwner(
   }
   const stateDir = io.stateDir ?? getStateDir();
   const cli = product().cli;
+  const refused = sub === "show" ? null : personGrantRefusal(process.env);
+  if (refused) {
+    io.err(`${cli}: ${refused}\n`);
+    return 1;
+  }
   if (sub === "show") {
     const o = readWebOwner(stateDir);
     if (asJson) io.out(`${JSON.stringify({ owner: o }, null, 2)}\n`);

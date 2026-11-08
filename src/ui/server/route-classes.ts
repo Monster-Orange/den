@@ -95,7 +95,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/theme-favicon",
     "/theme-favicon/*",
     "/vendor/*",
-    "/report*",
+    "/report",
+    "/report/*",
     "/reports/security/*",
   ].map((p) => R(p)),
   R("/_den/throw", "a test-only route (DEN_DEBUG_ROUTES): it throws"),
@@ -183,6 +184,20 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/onboard/manifest",
     "drafts and validates a side-car manifest; writes nothing",
+  ),
+  // ON-3's held writes (approval-routes.ts): asking runs nothing; Allow is
+  // the person's signed-in browser only (approvals.ts approverAllowed).
+  R("/api/approvals", "what waits for the person (never an agent's token)"),
+  R("/api/approvals/:id", "one held request: the asker's own, or the person's"),
+  M(
+    ["POST"],
+    "/api/approvals",
+    "holds an agent's write for the person; nothing runs until they allow it",
+  ),
+  M(
+    ["POST"],
+    "/api/approvals/:id/decide",
+    "the person's Allow runs the held write once; Deny runs nothing",
   ),
   R("/api/service/logs", "reads (and follows) a service's log"),
   R("/api/service/taillog", "tails a service's log (tail, docker logs)"),
@@ -466,6 +481,8 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "github-routes.ts:LINK_PATH": ["/api/web/owner/link/:id"],
   "pair-routes.ts:POLL_PATH": ["/api/signin/code/:id"],
   "index.ts:LOGIN_WAIT_PATH": ["/api/web/logins/:id"],
+  "approval-routes.ts:ONE_PATH": ["/api/approvals/:id"],
+  "approval-routes.ts:DECIDE_PATH": ["/api/approvals/:id/decide"],
 };
 
 /** Whether `pathname` matches a table path. */

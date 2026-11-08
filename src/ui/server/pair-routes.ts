@@ -22,8 +22,8 @@ export interface PairRouteDeps {
   pairs: PairRequests;
   sendJson: (res: http.ServerResponse, body: unknown, status?: number) => void;
   readBody: (req: http.IncomingMessage) => Promise<string>;
-  /** A new browser session for this request (via "code"); its Set-Cookie line. */
-  signIn: (req: http.IncomingMessage) => string;
+  /** A new browser session for this request (via "code"): its Set-Cookie line and approval key. */
+  signIn: (req: http.IncomingMessage) => { cookie: string; approveKey: string };
   /** The client's address for a new request's record, when Den knows it. */
   client: (req: http.IncomingMessage) => string | undefined;
   /** The commands that approve `code`: on the server, and by ssh from the browser's machine. */
@@ -132,8 +132,11 @@ export async function handlePairRoutes(
         deps.sendJson(res, { ok: false, state: "gone" }, 404);
         return true;
       }
-      res.setHeader("Set-Cookie", deps.signIn(req));
-      deps.sendJson(res, { ok: true, state: "ok" });
+      const s = deps.signIn(req);
+      res.setHeader("Set-Cookie", s.cookie);
+      res.setHeader("Cache-Control", "no-store");
+      // The approval key goes to this answer only (web-session.ts).
+      deps.sendJson(res, { ok: true, state: "ok", approveKey: s.approveKey });
       return true;
     }
     deps.sendJson(res, {
