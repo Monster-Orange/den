@@ -127,6 +127,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/release/config",
     "/api/release/status",
     "/api/release/runs",
+    // 0.4.17: each repo's last test run, from the run-history file.
+    "/api/runs/last",
     "/api/release/branches",
     "/api/release/deploy/active",
     "/api/changelog",

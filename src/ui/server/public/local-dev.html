@@ -1285,6 +1285,9 @@
       .tbl-health.ok {
         color: var(--ok);
       }
+      .tbl-up:not(:empty) {
+        margin-left: 8px;
+      }
       .tbl-muted {
         color: var(--muted);
         font-size: 12.5px;
@@ -2102,7 +2105,7 @@
                 <th scope="col">Health</th>
                 <th scope="col">Branch</th>
                 <th scope="col">Mode</th>
-                <th scope="col">Last run</th>
+                <th scope="col">Last test run</th>
                 <th scope="col"><span class="tbl-sr">Actions</span></th>
               </tr></thead>
             </table>
@@ -2272,22 +2275,60 @@
           return [{ key: "", title: null, rows }];
         }
 
-        /** The last run (the runs dock's) of a repo's tab: "✓ 12:03", "running…", "—". */
+        // 0.4.17: each repo's last test run, from the server's run history
+        // (every browser's runs, kept across restarts), and when its
+        // service started (the daemons list), shown apart from it.
+        let _lastRuns = {};
+        let _upSince = new Map();
+        async function loadLastRuns() {
+          const [last, daemons] = await Promise.all([
+            fetch("/api/runs/last")
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null),
+            fetch("/api/service/daemons")
+              .then((r) => (r.ok ? r.json() : []))
+              .catch(() => []),
+          ]);
+          _lastRuns = last?.repos ?? {};
+          _upSince = new Map();
+          for (const d of Array.isArray(daemons) ? daemons : []) {
+            const at = Date.parse(d.startedAt);
+            if (!d.repoName || !Number.isFinite(at)) continue;
+            const cur = _upSince.get(d.repoName);
+            if (cur === undefined || at < cur) _upSince.set(d.repoName, at);
+          }
+          paintLastRuns();
+        }
+
+        /** A repo's last test run: "✓ 12:03", "✗ failed 12:03", "running…", "—". */
         function lastRunText(repo) {
-          const list = runs()?.list?.() ?? [];
-          const mine = list.filter(
-            (r) => r.id === repo || r.id.split("/")[0] === repo,
-          );
-          const r = mine.sort((a, b) => (b.ranAt ?? 0) - (a.ranAt ?? 0))[0];
-          if (!r || (!r.ranAt && !r.running)) return { text: "—", cls: "" };
-          if (r.running) return { text: "running…", cls: "" };
+          const r = _lastRuns[repo];
+          if (!r) return { text: "—", cls: "", title: "" };
+          const title = [r.pillar, r.env].filter(Boolean).join(" · ");
+          if (r.running) return { text: "running…", cls: "", title };
           const t = new Intl.DateTimeFormat(undefined, {
             hour: "2-digit",
             minute: "2-digit",
-          }).format(new Date(r.endedAt ?? r.ranAt));
-          return r.error
-            ? { text: `✗ failed ${t}`, cls: "bad" }
-            : { text: `✓ ${t}`, cls: "ok" };
+          }).format(new Date(r.endedAt ?? r.startedAt));
+          return r.exitCode === 0
+            ? { text: `✓ ${t}`, cls: "ok", title }
+            : { text: `✗ failed ${t}`, cls: "bad", title };
+        }
+
+        /** How long a repo's service has run: "up 2h", or "" when it doesn't. */
+        function upText(repo) {
+          const at = _upSince.get(repo);
+          if (at === undefined) return "";
+          const s = Math.max(0, Math.round((Date.now() - at) / 1000));
+          const d =
+            s < 60
+              ? `${s}s`
+              : s < 3600
+                ? `${Math.floor(s / 60)}m`
+                : s < 86400
+                  ? `${Math.floor(s / 3600)}h`
+                  : `${Math.floor(s / 86400)}d`;
+          return `up ${d}`;
         }
 
         /** A health cell: the dot and the rollup, or the failing check. */
@@ -2408,10 +2449,10 @@
             : "";
           const head = `<tr class="repo${r.problem ? " prob" : ""}" data-repo="${escHtml(repo)}">
               <th scope="row">${exp}<span class="repo-name">${escHtml(repo)}</span>${badges}</th>
-              <td>${repoHealth(r)}</td>
+              <td>${repoHealth(r)}<span class="tbl-muted tbl-up" data-up="${escHtml(repo)}">${escHtml(upText(repo))}</span></td>
               <td class="tbl-mono tbl-muted">${escHtml(primary?.branch ?? "")}</td>
               <td>${modeCell}</td>
-              <td class="tbl-muted${run.cls ? " " + run.cls : ""}" data-last="${escHtml(repo)}">${escHtml(run.text)}</td>
+              <td class="tbl-muted${run.cls ? " " + run.cls : ""}" data-last="${escHtml(repo)}" title="${escHtml(run.title)}">${escHtml(run.text)}</td>
               <td><div class="tbl-acts">${actBtns(repo, { up: !!startOf(repo).length, restart: !!startOf(repo).length })}${repoMenu(r)}</div></td>
             </tr>`;
           const fixes = r.fixes
@@ -2516,12 +2557,16 @@
           if (keep)
             table.querySelector(`[data-k="${CSS.escape(keep)}"]`)?.focus();
         }
-        /** Only the Last run cells (the dock changed). */
+        /** Only the Last test run and "up" cells (the history changed). */
         function paintLastRuns() {
           document.querySelectorAll("#repo-table [data-last]").forEach((td) => {
             const run = lastRunText(td.dataset.last);
             td.textContent = run.text;
+            td.title = run.title;
             td.className = "tbl-muted" + (run.cls ? " " + run.cls : "");
+          });
+          document.querySelectorAll("#repo-table [data-up]").forEach((el) => {
+            el.textContent = upText(el.dataset.up);
           });
         }
 
@@ -2641,8 +2686,20 @@
           const v = localStorage.getItem(LS_GROUP);
           if (["none", "app", "org"].includes(v)) _tblGroup = v;
         } catch {}
-        // The Last run column follows the dock.
-        window.denShell?.runs?.onChange?.(paintLastRuns);
+        // The Last test run column: the server's history, read now, when a
+        // run here changes, and every 30 s for runs from elsewhere.
+        void loadLastRuns();
+        // The dock changes on every line of a run: read at most every 2 s.
+        let _lastRunsSoon = null;
+        window.denShell?.runs?.onChange?.(() => {
+          _lastRunsSoon ??= setTimeout(() => {
+            _lastRunsSoon = null;
+            void loadLastRuns();
+          }, 2_000);
+        });
+        setInterval(() => {
+          if (!document.hidden) void loadLastRuns();
+        }, 30_000);
 
         // ── Tab management (one persistent tab per service address) ───────────────
         //

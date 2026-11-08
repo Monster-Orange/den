@@ -856,6 +856,7 @@ import { heldActions } from "./held-actions.js";
 import type { ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
 import { handleAgentRoutes, startAgentUpkeep } from "./agent-routes.js";
+import { lastRunsByRepo, recordRunEnd, recordRunStart } from "./run-history.js";
 import {
   handleSessionList,
   handleSessionUpgrade,
@@ -1272,6 +1273,9 @@ function sshUserNow(): string {
   }
   return sshUser(set, osUser);
 }
+
+/** Test runs this server is running now, by id (run-history.ts). */
+const LIVE_RUNS = new Set<string>();
 
 /** The ssh target for this request: the Host it used, minus the port. */
 function sshTargetOf(req: http.IncomingMessage): string {
@@ -3415,6 +3419,13 @@ async function handleRequest(
     return;
   }
 
+  // ── API: each repo's last test run (0.4.17, run-history.ts) ─────────────────
+  if (pathname === "/api/runs/last") {
+    return sendJson(res, {
+      repos: lastRunsByRepo(getStateDir(), LIVE_RUNS),
+    });
+  }
+
   // ── API: running daemons list ──────────────────────────────────────────────
   if (pathname === "/api/service/daemons") {
     await startupPrune;
@@ -3880,8 +3891,36 @@ async function handleRequest(
 
     const startTime = Date.now();
     let overallExit = 0;
+    // 0.4.17: the server's run history (every browser's runs, kept), which
+    // Workspaces' Last test run reads per repo.
+    let tested: string[] = [];
+    if (
+      pillar === "synthetic" ||
+      pillar === "smoke" ||
+      pillar === "journeys" ||
+      pillar === "security"
+    ) {
+      try {
+        tested = collectTestSources(pillar).map((x) => x.repoName);
+      } catch {
+        /* no repos known: the history still has the run */
+      }
+    }
+    LIVE_RUNS.add(runId);
+    recordRunStart(getStateDir(), {
+      id: runId,
+      pillar: String(pillar),
+      env: String(env),
+      repos: tested,
+    });
+    let recorded = false;
 
     const finishLifecycle = (exitCode: number, note?: string): void => {
+      if (!recorded) {
+        recorded = true;
+        LIVE_RUNS.delete(runId);
+        recordRunEnd(getStateDir(), runId, exitCode);
+      }
       const dur = formatDuration(Date.now() - startTime);
       const extra = note ? ` · ${note}` : "";
       serverLog(

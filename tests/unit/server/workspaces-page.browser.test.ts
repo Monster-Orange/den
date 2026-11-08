@@ -636,6 +636,87 @@ describe("R24d: one repo table", () => {
     await p.context().close();
   }, 30_000);
 
+  it("0.4.17: Last test run comes from the server's run history (any browser's), and a running service says how long it's been up", async () => {
+    if (!browser) return;
+    // Runs another browser made, kept in the server's history.
+    const file = path.join(tmp, "home", ".acme", "run-history.jsonl");
+    const t0 = Date.now() - 10 * 60_000;
+    const iso = (ms: number) => new Date(ms).toISOString();
+    write(
+      file,
+      [
+        {
+          t: "start",
+          id: "h1",
+          pillar: "smoke",
+          env: "local",
+          repos: ["queue", "web"],
+          at: iso(t0),
+        },
+        { t: "end", id: "h1", exitCode: 0, at: iso(t0 + 60_000) },
+        {
+          t: "start",
+          id: "h2",
+          pillar: "journeys",
+          env: "local",
+          repos: ["web"],
+          at: iso(t0 + 120_000),
+        },
+        { t: "end", id: "h2", exitCode: 1, at: iso(t0 + 180_000) },
+      ]
+        .map((l) => JSON.stringify(l))
+        .join("\n") + "\n",
+    );
+    const p = await open("main", "/", undefined, async (ctx) => {
+      await ctx.route("**/api/service/daemons", (r) =>
+        r.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify([
+            {
+              address: "notes",
+              repoName: "notes",
+              subsystem: "app",
+              repoPath: "/x",
+              branch: null,
+              workspaces: ["main"],
+              logPath: "/x.log",
+              startedAt: iso(Date.now() - 2 * 3600_000 - 60_000),
+            },
+          ]),
+        }),
+      );
+    });
+    expect(await p.textContent("#repo-table thead th:nth-child(5)")).toBe(
+      "Last test run",
+    );
+    const last = (repo: string) =>
+      p.textContent(`#repo-table tr.repo[data-repo="${repo}"] [data-last]`);
+    await p.waitForFunction(
+      () =>
+        document
+          .querySelector('#repo-table tr.repo[data-repo="queue"] [data-last]')
+          ?.textContent?.startsWith("✓ ") ?? false,
+      undefined,
+      { timeout: 10_000 },
+    );
+    expect(await last("web")).toMatch(/^✗ failed /);
+    expect(
+      await p.getAttribute(
+        '#repo-table tr.repo[data-repo="web"] [data-last]',
+        "title",
+      ),
+    ).toBe("journeys · local");
+    expect(await last("notes")).toBe("—");
+    expect(
+      await p.textContent('#repo-table tr.repo[data-repo="notes"] [data-up]'),
+    ).toBe("up 2h");
+    expect(
+      await p.textContent('#repo-table tr.repo[data-repo="queue"] [data-up]'),
+    ).toBe("");
+    await p.context().close();
+    fs.rmSync(file, { force: true });
+  }, 30_000);
+
   it("a compose-stack repo's Start and Restart run what `up <repo>` starts", async () => {
     if (!browser) return;
     // The decision `up shop` makes (resolveUpTargets): the stack's up,
