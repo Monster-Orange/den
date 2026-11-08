@@ -50,6 +50,13 @@ config and manifest changes a distribution must make to move to it under
   the same conversation id, as Resume does. The CLI, the API (`note`, with
   `fresh: true`), the toast and the pane now say "nothing to resume yet;
   started fresh (same conversation id, folder and scope)".
+- **Last test run counts a repo's own suites.** A run of the suites pillar
+  (a repo's `tests:`, such as `unit`) and a repo's performance modules
+  now name the repos they test, so a repo with only `tests: unit` fills
+  its Last test run. Den's own integration tests name none.
+- **The Workspaces table keeps its height in a short window.** Under about
+  620 px tall it shrank to nothing and its rows and ⋯ were out of reach.
+  It keeps at least 200 px and scrolls.
 
 ### Migrations
 
