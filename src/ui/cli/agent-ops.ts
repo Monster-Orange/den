@@ -1552,10 +1552,9 @@ export function startFolder(
   }
   if (!fs.statSync(real).isDirectory())
     throw usage(`${where}: folder ${dir} is not a directory`);
-  if (
-    !inScope(real, d.workspaceFolders(ws)) &&
-    !inScope(dir, d.workspaceFolders(ws))
-  )
+  // The real folder only: a link inside the workspace that points out of
+  // it is outside it (the scope's own folders are compared real, too).
+  if (!inScope(real, d.workspaceFolders(ws)))
     throw refused(
       `${where}: folder ${dir} is not inside workspace ${ws}`,
       [],

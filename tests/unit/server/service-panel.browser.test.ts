@@ -85,6 +85,27 @@ afterAll(async () => {
 const skip = () => !browser || !s;
 const repo = (name: string) => path.join(s!.tmp, "repos", name);
 
+/** Start a planner in `folder` from the page; the response's status. */
+async function startIn(p: Page, folder: string): Promise<number> {
+  return p.evaluate(async (outside) => {
+    try {
+      await (
+        window as unknown as {
+          denShell: {
+            api(m: string, u: string, b: unknown): Promise<unknown>;
+          };
+        }
+      ).denShell.api("POST", "/api/workspaces/north/agents", {
+        persona: "planner",
+        folder: outside,
+      });
+      return 200;
+    } catch (e) {
+      return (e as { status?: number }).status ?? -1;
+    }
+  }, folder);
+}
+
 /** A page of the real server; `asked` records every /api stream and write. */
 async function page(
   url: string,
@@ -402,28 +423,18 @@ describe("the panel", () => {
     await p.context().close();
   }, 90_000);
 
-  it("a folder outside the workspace is refused", async () => {
+  it("a folder outside the workspace is refused, a link inside it that points out too", async () => {
     if (skip()) return;
     const { p } = await page("/agents");
     await p.waitForSelector(".den-rail .den-ni");
-    const status = await p.evaluate(async (outside) => {
-      try {
-        await (
-          window as unknown as {
-            denShell: {
-              api(m: string, u: string, b: unknown): Promise<unknown>;
-            };
-          }
-        ).denShell.api("POST", "/api/workspaces/north/agents", {
-          persona: "planner",
-          folder: outside,
-        });
-        return 200;
-      } catch (e) {
-        return (e as { status?: number }).status ?? -1;
-      }
-    }, path.dirname(s!.tmp));
-    expect(status).toBe(403);
+    const link = path.join(repo("notes"), "escape");
+    fs.symlinkSync(path.dirname(s!.tmp), link);
+    try {
+      for (const outside of [path.dirname(s!.tmp), link])
+        expect(await startIn(p, outside)).toBe(403);
+    } finally {
+      fs.unlinkSync(link);
+    }
     await p.context().close();
   }, 60_000);
 
