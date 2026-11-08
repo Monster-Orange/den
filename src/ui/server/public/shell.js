@@ -62,8 +62,9 @@
  *   setOrgs([{ id, title, workspaces? }], currentId, onSelect?)
  *                                    two or more: the Org ▾ menu; a pick
  *                                    calls onSelect(id), fires `den:org`
- *   setWorkspaces({ label, title, items, focus, onSelect })
+ *   setWorkspaces({ label, title, items, focus, names, onSelect })
  *                                    the Workspace ▾ menu (header.js)
+ *   workspaceNames()                 every workspace's name, from it
  *   syncEnv()                        repaint Env ▾ from #env-sel
  *   registerCommand({ id, label, keywords?, kind?, run })
  *                                    a ⌘K palette row (R17, dev.20). label
@@ -2063,7 +2064,14 @@
    * a link to manage them. onSelect(value, focus): choosing a workspace
    * also makes it the CLI default (header.js).
    */
+  // Every workspace's name, from the Workspace menu's model (header.js).
+  var workspaceNameList = [];
+  function workspaceNames() {
+    return workspaceNameList.slice();
+  }
   function setWorkspaces(model) {
+    workspaceNameList =
+      model && Array.isArray(model.names) ? model.names.slice() : [];
     var btn = document.getElementById("ws-pill");
     if (!btn) return;
     var sep = btn.nextElementSibling;
@@ -4497,6 +4505,7 @@
     setOrg: setOrg,
     setOrgs: setOrgs,
     setWorkspaces: setWorkspaces,
+    workspaceNames: workspaceNames,
     /** Repaint the Env part from #env-sel (after setting its value). */
     syncEnv: syncEnv,
     syncPinToggles: syncPinToggles,

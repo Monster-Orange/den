@@ -790,6 +790,7 @@ function paintLayout() {
   if (n === 0) {
     box.className = "agempty";
     delete box.dataset.layout;
+    delete box.dataset.ws;
     box.innerHTML = `<div>${esc(t("ag.empty"))}</div>`;
     return;
   }
@@ -797,6 +798,10 @@ function paintLayout() {
   const shown = visibleIds();
   box.className = `agp n${Math.max(1, shown.length)}${layout === "tabs" ? " tabs" : ""}`;
   box.dataset.layout = layout;
+  // The front agent's workspace: ⌘K lists it first (0.4.17).
+  const front = rowOf(st.cur)?.workspace;
+  if (front) box.dataset.ws = front;
+  else delete box.dataset.ws;
   const empty = box.querySelector(":scope > div:not(.pane):not(.agtabs)");
   if (empty) empty.remove();
   let strip = box.querySelector(":scope > .agtabs");

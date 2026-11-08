@@ -643,6 +643,34 @@ describe("the Agents tab", () => {
     await p.context().close();
   }, 45_000);
 
+  it("0.4.17: ⌘K Go to workspace lists every workspace, the front agent's first", async () => {
+    if (skip()) return;
+    const p = await page(`/agents?open=${id("logs")}`);
+    await p.waitForSelector(
+      `.pane[data-id="${id("logs")}"] .bar2 .where a.wslink`,
+    );
+    await p.click("#den-search");
+    await p.fill("#den-pal-q", "go to workspace");
+    // west has no agents (and isn't active): it's listed too.
+    await p.waitForFunction(() =>
+      [...document.querySelectorAll("#den-pal-list .den-pal-l")].some(
+        (e) => e.textContent === "Go to workspace west",
+      ),
+    );
+    const order = await p.$$eval("#den-pal-list .den-pal-l", (els) =>
+      els
+        .map((e) => e.textContent ?? "")
+        .filter((x) => x.startsWith("Go to workspace ")),
+    );
+    expect(order[0]).toBe("Go to workspace south");
+    expect([...order].sort()).toEqual([
+      "Go to workspace north",
+      "Go to workspace south",
+      "Go to workspace west",
+    ]);
+    await p.context().close();
+  }, 45_000);
+
   it("0.4.17: a pane in a workspace that isn't active opens; a refused one says why; Sign in only when the person is signed out", async () => {
     if (skip()) return;
     fs.mkdirSync(s!.wsDir("west"), { recursive: true });

@@ -421,4 +421,66 @@ describe("Bring in (AG-17.1)", () => {
     await p.context().close();
     expect(errors).toEqual([]);
   }, 90_000);
+
+  it("AG-18: Change persona on an agent never prompted says it started fresh, in the toast and the pane", async () => {
+    if (skip() || !PTY) return;
+    const p = await page("/agents?ws=north");
+    await p.waitForSelector("#ag-bring");
+    const started = (await p.evaluate(() =>
+      window.denShell.api("POST", "/api/workspaces/north/agents", {
+        persona: "reviewer",
+        id: "fresh-1",
+        runtime: "den-claude",
+      }),
+    )) as { agent: { sessionId: string } };
+    const sid = started.agent.sessionId;
+    const pty = s!.made[s!.made.length - 1];
+    const kill = pty.kill.bind(pty);
+    pty.kill = (sig: string) => {
+      kill(sig);
+      setTimeout(() => pty.exit(143), 5);
+    };
+    await p.goto(`${s!.base}/agents?ws=north&open=${sid}`);
+    const more = `.pane[data-id="${sid}"] [data-act="more"]`;
+    await p.waitForSelector(more);
+    await p.click(more);
+    await p.click('.den-pop .den-mi:has-text("Change persona")');
+    await p.waitForSelector("#ag-dlg[open]");
+    await p.click('#ag-persona [data-pid="planner"]');
+    const done = p.waitForResponse(
+      (r) =>
+        r.request().method() === "POST" &&
+        r.status() === 200 &&
+        new URL(r.url()).pathname ===
+          "/api/workspaces/north/agents/fresh-1/persona",
+      { timeout: 20_000 },
+    );
+    await p.click("#ag-go");
+    // Idle, it changes at once; if Den can't tell, it asks: Stop it now.
+    const asked = await p
+      .waitForSelector("#ag-pc-now", { timeout: 2_000 })
+      .catch(() => null);
+    if (asked) await p.click("#ag-pc-now");
+    const ch = await done;
+    expect(ch.status()).toBe(200);
+    expect(((await ch.json()) as { fresh?: boolean }).fresh).toBe(true);
+    await p.waitForFunction(
+      (old) => {
+        const panes = [...document.querySelectorAll(".pane")];
+        const text = panes[0]?.querySelector(".xterm-rows")?.textContent ?? "";
+        return (
+          panes.length === 1 &&
+          panes[0].getAttribute("data-id") !== old &&
+          text.includes("Switched to planner") &&
+          text.includes(
+            "Nothing to resume yet; started fresh (same conversation id, folder and scope)",
+          )
+        );
+      },
+      sid,
+      { timeout: 8_000 },
+    );
+    await p.context().close();
+    expect(errors).toEqual([]);
+  }, 60_000);
 });

@@ -93,6 +93,8 @@ export function buildScopeMenuModel(scope, data, t = enT) {
   return {
     label: active.length === 0 ? t("ws.noneLabel") : (one ?? t("ws.all")),
     items,
+    // Every workspace, active or not: ⌘K's Go to workspace (0.4.17).
+    names: Object.keys(data?.workspaces ?? {}),
     focus: focus ?? null,
     title: t(focus ? "ws.viewTitleFocus" : "ws.viewTitle", {
       ws: inView.join(", ") || t("ws.noneLabel"),

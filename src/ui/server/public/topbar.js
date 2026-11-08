@@ -914,9 +914,14 @@ function paletteItems() {
       run: () => go(`/agents?open=${encodeURIComponent(x.id)}`),
     });
   }
-  // 0.4.17: Go to workspace <ws>, for each agent's workspace; an agent's
-  // name finds its workspace too.
+  // 0.4.17: Go to workspace <ws>, for every workspace, the front agent's
+  // first (on the Agents page); an agent's name finds its workspace too.
   const byWs = new Map();
+  const front = document.querySelector("#agr")?.dataset.ws;
+  if (front) byWs.set(front, []);
+  // Every workspace: the Workspace menu's list (the header read it).
+  for (const ws of s?.workspaceNames?.() ?? [])
+    if (!byWs.has(ws)) byWs.set(ws, []);
   for (const x of palSessions) {
     if (!x.workspace) continue;
     const names = byWs.get(x.workspace) ?? [];

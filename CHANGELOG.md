@@ -10,7 +10,8 @@ config and manifest changes a distribution must make to move to it under
 
 - **An agent's workspace is a link.** The agent pane's header and the
   workspace's heading in the Agents list link to the Workspaces page
-  focused on it (`?ws=`). ⌘K has "Go to workspace <ws>", found by the
+  focused on it (`?ws=`). ⌘K has "Go to workspace <ws>" for every
+  workspace, the front agent's first on the Agents page, found by the
   workspace's name or any of its agents'.
 - **"Last test run" is the server's.** The Workspaces page's "Last run"
   column is now "Last test run", read from the server's run history
