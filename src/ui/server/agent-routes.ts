@@ -140,6 +140,7 @@ import {
   type AgentsDeps,
   type AgentsResolved,
   type Started,
+  FRESH_NOTE,
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
 import { recordAction } from "./audit.js";
@@ -714,7 +715,9 @@ export async function handleAgentRoutes(
       }
       const s = await change();
       audit(what, s.early ? "exited at once" : undefined);
-      sendStarted(res, s, d);
+      // Never prompted: nothing was resumed, so it says so (not "same
+      // conversation").
+      sendStarted(res, s, d, s.fresh ? { note: FRESH_NOTE } : {});
     } else if (verb === "remove") {
       const removed = await removeAgent(d, id!, ws);
       audit(what);

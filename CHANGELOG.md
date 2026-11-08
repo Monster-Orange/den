@@ -44,6 +44,11 @@ config and manifest changes a distribution must make to move to it under
 - **Favourite a service from Workspaces and Graph.** Workspaces rows and
   Graph cards (top-right) have the ☆ star. It uses the same list as
   Services, so a favourite set on one page shows on all of them.
+- **Change persona on an agent that was never prompted** said "same
+  conversation", though there was nothing to resume: it starts fresh under
+  the same conversation id, as Resume does. The CLI, the API (`note`, with
+  `fresh: true`), the toast and the pane now say "nothing to resume yet;
+  started fresh (same conversation id, folder and scope)".
 
 ### Migrations
 

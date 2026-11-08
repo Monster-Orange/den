@@ -95,6 +95,7 @@ import {
   type AgentsDeps,
   type AgentsResolved,
   type EarlyExit,
+  FRESH_NOTE,
   type RuntimeChoice,
   type Started,
 } from "./agent-ops.js";
@@ -420,7 +421,9 @@ async function persona(args: string[], d: AgentsResolved): Promise<number> {
   return report(
     d,
     s,
-    `agent ${s.rec.id} is now ${s.rec.persona} (was ${s.from}); same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
+    s.fresh
+      ? `agent ${s.rec.id} is now ${s.rec.persona} (was ${s.from}); ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
+      : `agent ${s.rec.id} is now ${s.rec.persona} (was ${s.from}); same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
   );
 }
 
@@ -468,10 +471,7 @@ async function resume(args: string[], d: AgentsResolved): Promise<number> {
   if (args.includes("--all-interrupted")) return resumeAll(args, d);
   const { id, ws } = idAndWorkspace("agents resume", args);
   const s = await resumeAgent(d, id, ws);
-  if (s.fresh)
-    d.out(
-      `agent ${s.rec.id}: nothing to resume yet; started fresh (same conversation id, folder and scope)`,
-    );
+  if (s.fresh) d.out(`agent ${s.rec.id}: ${FRESH_NOTE}`);
   return report(
     d,
     s,

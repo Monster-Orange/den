@@ -119,7 +119,44 @@ async function planner(r: Rig, last: unknown): Promise<string> {
   return token;
 }
 
+/** The planner never prompted: no transcript, nothing to resume yet. */
+async function unprompted(r: Rig): Promise<void> {
+  endOnTerm(r);
+  const claude = path.join(r.dir, "claude-config");
+  fs.mkdirSync(path.join(claude, "projects"), { recursive: true });
+  r.deps.env = { ...r.deps.env, CLAUDE_CONFIG_DIR: claude };
+  expect(
+    await agents(
+      r,
+      "start",
+      "-w",
+      "north",
+      "--persona",
+      "planner",
+      "--name",
+      "Release plan",
+    ),
+  ).toBe(0);
+}
+
+const FRESH_NOTE =
+  "nothing to resume yet; started fresh (same conversation id, folder and scope)";
+
 describe("agents persona (CLI)", () => {
+  it('never prompted: says it started fresh, not "same conversation"', async () => {
+    const r = await rig();
+    await unprompted(r);
+    expect(
+      await agents(r, "persona", "release-plan", "reviewer", "--now"),
+    ).toBe(0);
+    const out = r.out.join("\n");
+    expect(out).toContain(
+      `agent release-plan is now reviewer (was planner); ${FRESH_NOTE}`,
+    );
+    expect(out).not.toContain("same conversation,");
+    expect(readRecord(r.stateDir, "release-plan")!.persona).toBe("reviewer");
+  });
+
   it("idle: the same conversation resumes as the new persona; id, name, folder and model stay", async () => {
     const r = await rig();
     const token = await planner(r, ENDED);
@@ -362,6 +399,18 @@ describe("agents persona (CLI)", () => {
 });
 
 describe("POST …/agents/<id>/persona", () => {
+  it("never prompted: fresh, with the note that says so", async () => {
+    const r = await rig();
+    await unprompted(r);
+    const post = await api(r);
+    const res = await post({ persona: "reviewer", when: "now" });
+    expect([res.status, res.json.fresh, res.json.note]).toEqual([
+      200,
+      true,
+      FRESH_NOTE,
+    ]);
+  });
+
   async function api(r: Rig) {
     const server = http.createServer((req, res) => {
       jsonApiErrors(res, newRequestId());

@@ -631,6 +631,10 @@
     "ag.pc.busy": "It's working. Change after this turn, or stop it now?",
     "ag.pc.after": "After this turn",
     "ag.pc.now": "Stop it now",
+    "ag.pc.fresh":
+      "{id} is now {p}: nothing to resume yet; started fresh (same conversation id, folder and scope)",
+    "ag.freshLine":
+      "Nothing to resume yet; started fresh (same conversation id, folder and scope)",
     "ag.pc.done": "{id} is now {p}",
     "ag.pc.pending": "{id} becomes {p} when this turn ends",
     "ag.more": "More for {id}",

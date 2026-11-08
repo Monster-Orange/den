@@ -147,6 +147,9 @@ const st = {
   signedOut: false,
   open: [],
   panes: new Map(),
+  // AG-18: agents (ws\0id) whose persona change started fresh, for the
+  // pane's line once it follows them.
+  fresh: new Set(),
   timer: null,
   xterm: null,
   csrf: null,
@@ -628,6 +631,11 @@ function followAgents() {
   }
 }
 
+/** The pane's line for a resume that had nothing to continue (AG-14). */
+function freshLine(p) {
+  p.term?.write(`\x1b[2m${t("ag.freshLine")}\x1b[0m\r\n`);
+}
+
 /** Move pane `p` to session row `row`, where it was. */
 function retarget(p, row) {
   const old = p.id;
@@ -651,6 +659,7 @@ function retarget(p, row) {
   p.term?.write(
     `\r\n\x1b[2m${t("ag.switched", { p: row.persona ?? row.agent })}\x1b[0m\r\n`,
   );
+  if (st.fresh.delete(`${p.agentWs}\u0000${p.agent}`)) freshLine(p);
   paintBar(p);
   paintLayout();
   writeUrl();
@@ -2342,11 +2351,20 @@ async function submitPersonaChange(when) {
       body,
     );
     window.denShell?.toast?.(
-      t(r?.pending ? "ag.pc.pending" : "ag.pc.done", {
-        id: ch.name,
-        p: personaName(p),
-      }),
+      t(
+        r?.pending ? "ag.pc.pending" : r?.fresh ? "ag.pc.fresh" : "ag.pc.done",
+        { id: ch.name, p: personaName(p) },
+      ),
     );
+    // Never prompted: nothing was resumed. Its pane says so, now if it
+    // has already moved to the new session, else when it does.
+    if (r?.fresh) {
+      const pane = [...st.panes.values()].find(
+        (q) => q.agent === ch.id && q.agentWs === ch.workspace,
+      );
+      if (pane && pane.id === r.agent?.sessionId) freshLine(pane);
+      else st.fresh.add(`${ch.workspace}\u0000${ch.id}`);
+    }
     for (const w of r?.warnings ?? []) window.denShell?.toast?.(w);
     dlg.close?.();
     await refresh();

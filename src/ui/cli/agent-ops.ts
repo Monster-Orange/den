@@ -2212,6 +2212,13 @@ export interface PersonaChanged extends Resumed {
   from: string;
 }
 
+/**
+ * What a resume with nothing to continue yet says (AG-14, AG-18): the
+ * runtime started fresh under the same conversation id.
+ */
+export const FRESH_NOTE =
+  "nothing to resume yet; started fresh (same conversation id, folder and scope)";
+
 /** How often, and how long, "after this turn" checks its turn (AG-18). */
 export const TURN_POLL_MS = 1_000;
 export const TURN_WAIT_MS = 30 * 60_000;

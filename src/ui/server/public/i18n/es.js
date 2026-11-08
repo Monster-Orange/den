@@ -520,6 +520,10 @@
       "Está trabajando. ¿Cambiar después de este turno o detenerlo ahora?",
     "ag.pc.after": "Después de este turno",
     "ag.pc.now": "Detenerlo ahora",
+    "ag.pc.fresh":
+      "{id} ahora es {p}: aún no hay nada que reanudar; se inició de nuevo (mismo id de conversación, carpeta y alcance)",
+    "ag.freshLine":
+      "Aún no hay nada que reanudar; se inició de nuevo (mismo id de conversación, carpeta y alcance)",
     "ag.pc.done": "{id} ahora es {p}",
     "ag.pc.pending": "{id} pasará a ser {p} cuando termine este turno",
     "ag.more": "Más para {id}",
