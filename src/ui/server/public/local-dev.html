@@ -1330,6 +1330,46 @@
       .tbl-acts .tbl-more-sp {
         display: inline-block;
       }
+      /* Visit ↗ (0.4.17): before Start, so Start/Stop/Restart/Logs and ⋯
+         still line up across rows whether a service has a URL or not. */
+      .tbl-acts .tbl-visit {
+        flex: none;
+        padding-left: 6px;
+        padding-right: 6px;
+        text-decoration: none;
+      }
+      /* The table never scrolls sideways: in a window under 1600px wide
+         (the workspace list beside it) Visit is its ↗; its name and title
+         still say Visit. */
+      @media (max-width: 1599px) {
+        .tbl-visit .tbl-visit-w {
+          display: none;
+        }
+      }
+      table.svc a.repo-name {
+        text-decoration: underline;
+        text-decoration-color: var(--border-strong);
+        text-underline-offset: 2px;
+      }
+      table.svc a.repo-name:hover {
+        text-decoration-color: currentColor;
+      }
+      /* The favourite star (0.4.17): the shell's pins, as on Services. */
+      .tbl-star {
+        background: none;
+        border: 1px solid transparent;
+        border-radius: var(--radius-button);
+        color: var(--faint);
+        cursor: pointer;
+        font-size: 13px;
+        line-height: 1.2;
+        padding: 0 2px;
+      }
+      .tbl-star:hover,
+      .tbl-star[aria-pressed="true"] {
+        color: var(--accent-text);
+        background: var(--sunken);
+      }
       .tbl-btn:disabled {
         opacity: 0.45;
         cursor: not-allowed;
@@ -1769,7 +1809,11 @@
               .querySelectorAll(".ws-menu-dropdown.open")
               .forEach((d) => d.classList.remove("open"));
             const menu = document.getElementById(menuBtn.dataset.menuId);
-            menu?.classList.toggle("open");
+            if (menu?.classList.toggle("open"))
+              window.denShell?.topLayer?.show(menu, menuBtn, {
+                align: "right",
+                gap: 2,
+              });
             return;
           }
           // ↗ open in editor
@@ -1858,8 +1902,16 @@
               if (d.id !== btn.dataset.menuId) d.style.display = "none";
             });
             const menu = document.getElementById(btn.dataset.menuId);
-            if (menu)
-              menu.style.display = menu.style.display === "none" ? "" : "none";
+            if (menu) {
+              const show = menu.style.display === "none";
+              menu.style.display = show ? "" : "none";
+              // 0.4.17: in the top layer, so no row or card clips it.
+              if (show)
+                window.denShell?.topLayer?.show(menu, btn, {
+                  align: "right",
+                  gap: 3,
+                });
+            }
             e.stopPropagation();
             return;
           }
@@ -2335,6 +2387,47 @@
           );
         }
 
+        /** A service's URL to visit (its edge URL if routed, else its local one), or null. */
+        function visitUrl(svc) {
+          const u = svc?.open;
+          return typeof u === "string" && /^https?:\/\//.test(u) ? u : null;
+        }
+        /** The shell's words (its language), else English. */
+        function shT(key, vars, en) {
+          const v = window.denShell?.t?.(key, vars);
+          return v && v !== key ? v : en;
+        }
+        /** Visit ↗ (0.4.17): opens the service in a new tab; nothing without a URL. */
+        function visitBtn(svc, name) {
+          const url = visitUrl(svc);
+          if (!url) return "";
+          const label = shT(
+            "act.visitX",
+            { s: name },
+            `Visit ${name} (opens a new tab)`,
+          );
+          return `<a class="den-btn sm tbl-btn tbl-visit" href="${escHtml(url)}" target="_blank" rel="noopener" aria-label="${escHtml(label)}" title="${escHtml(url)}" data-k="visit:${escHtml(name)}"><span class="tbl-visit-w">${escHtml(shT("act.visit", {}, "Visit"))} </span>↗</a>`;
+        }
+        /** A row's name: a link to visit when the service has a URL. */
+        function nameLink(svc, text) {
+          const url = visitUrl(svc);
+          return url
+            ? `<a class="repo-name" href="${escHtml(url)}" target="_blank" rel="noopener" title="${escHtml(shT("act.visitX", { s: url }, `Visit ${url} (opens a new tab)`))}">${escHtml(text)}</a>`
+            : `<span class="repo-name">${escHtml(text)}</span>`;
+        }
+        /** The favourite star (0.4.17): the shell's pins, the same store as Services. */
+        function starBtn(id) {
+          const sh = window.denShell;
+          if (!sh?.isPinned) return "";
+          const on = sh.isPinned(id);
+          const label = shT(
+            on ? "act.unpinX" : "act.pinX",
+            { s: id },
+            `${on ? "Unpin" : "Pin"} ${id}`,
+          );
+          return `<button type="button" class="tbl-star" data-pin-toggle="${escHtml(id)}" aria-pressed="${on ? "true" : "false"}" aria-label="${escHtml(label)}" title="${escHtml(label)}" data-k="star:${escHtml(id)}">${on ? "★" : "☆"}</button>`;
+        }
+
         /** Action buttons; each one's name says what and on which repo or service. */
         function actBtns(id, o) {
           const b = (act, label, name, extra = "") =>
@@ -2407,12 +2500,12 @@
             ? `<span class="tbl-mode"><span class="badge ${escHtml(mode)}">${escHtml(mode)}</span><button type="button" class="tbl-switch" data-action="tbl-mode" data-repo="${escHtml(repo)}" data-mode="${switchTo}" aria-label="${escHtml(repo)}: use ${mode === "managed" ? "local" : "managed"}" data-k="mode:${escHtml(repo)}">use ${mode === "managed" ? "local" : "managed"}</button></span>`
             : "";
           const head = `<tr class="repo${r.problem ? " prob" : ""}" data-repo="${escHtml(repo)}">
-              <th scope="row">${exp}<span class="repo-name">${escHtml(repo)}</span>${badges}</th>
+              <th scope="row">${exp}${nameLink(primary, repo)} ${starBtn(repo)}${badges}</th>
               <td>${repoHealth(r)}</td>
               <td class="tbl-mono tbl-muted">${escHtml(primary?.branch ?? "")}</td>
               <td>${modeCell}</td>
               <td class="tbl-muted${run.cls ? " " + run.cls : ""}" data-last="${escHtml(repo)}">${escHtml(run.text)}</td>
-              <td><div class="tbl-acts">${actBtns(repo, { up: !!startOf(repo).length, restart: !!startOf(repo).length })}${repoMenu(r)}</div></td>
+              <td><div class="tbl-acts">${visitBtn(primary, repo)}${actBtns(repo, { up: !!startOf(repo).length, restart: !!startOf(repo).length })}${repoMenu(r)}</div></td>
             </tr>`;
           const fixes = r.fixes
             .map(
@@ -2434,10 +2527,10 @@
                     s,
                     i,
                   ) => `<tr class="sub" id="${subIds[i]}" data-repo="${escHtml(repo)}" data-id="${escHtml(s.id)}"${shown(s) ? "" : " hidden"}>
-              <th scope="row"><span class="repo-name">${escHtml(s.name)}</span>${s.entry ? ' <span class="badge">entry</span>' : ""}</th>
+              <th scope="row">${nameLink(s, s.name)} ${starBtn(s.id)}${s.entry ? ' <span class="badge">entry</span>' : ""}</th>
               <td>${!_lastHealthAt ? CHECKING() : healthCell(status(s), s.health.ok === false ? checkLineOf(s) : healthLine(s))}</td>
               <td></td><td></td><td></td>
-              <td><div class="tbl-acts">${actBtns(s.id, { up: s.commands.includes("up"), restart: s.commands.includes("up") || s.commands.includes("restart") })}<span class="tbl-more-sp" aria-hidden="true"></span></div></td>
+              <td><div class="tbl-acts">${visitBtn(s, s.id)}${actBtns(s.id, { up: s.commands.includes("up"), restart: s.commands.includes("up") || s.commands.includes("restart") })}<span class="tbl-more-sp" aria-hidden="true"></span></div></td>
             </tr>`,
                 )
                 .join("")
@@ -2579,6 +2672,14 @@
           const g = e.target.closest("#tbl-group [data-group]");
           if (g) {
             setTableGroup(g.dataset.group);
+            return;
+          }
+          const star = e.target.closest("#repo-table [data-pin-toggle]");
+          if (star) {
+            const sh = window.denShell;
+            const id = star.dataset.pinToggle;
+            if (sh?.isPinned(id)) sh.unpin(id);
+            else sh?.pin(id);
             return;
           }
           const b = e.target.closest("[data-action^='tbl-']");

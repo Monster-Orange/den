@@ -290,6 +290,7 @@
       }
       .module-picker-dropdown {
         display: none;
+        padding: 0;
         position: absolute;
         top: calc(100% + 4px);
         left: 0;
@@ -1568,6 +1569,11 @@
         e.stopPropagation();
         const open = pickerDropdown.classList.toggle("open");
         pickerBtn.classList.toggle("open", open);
+        // 0.4.17: in the top layer, so the output pane can't cover it.
+        if (open)
+          window.denShell?.topLayer?.show(pickerDropdown, pickerBtn, {
+            gap: 4,
+          });
       });
       document.addEventListener("click", () => {
         pickerDropdown.classList.remove("open");

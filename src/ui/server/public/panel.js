@@ -79,7 +79,7 @@ export const ACTIONS = [
   },
   {
     id: "open",
-    label: "Open ↗",
+    label: "Visit ↗",
     for: ["service"],
     tier: "common",
     when: (s) => !!(s.open || s.target?.url),

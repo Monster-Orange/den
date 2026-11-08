@@ -53,6 +53,8 @@
     "b.down.one": "{n} caído",
     "act.pin": "Fijar",
     "act.unpin": "Quitar",
+    "act.visit": "Visitar",
+    "act.visitX": "Visitar {s} (se abre en una pestaña nueva)",
     "act.pinX": "Fijar {s}",
     "act.unpinX": "Quitar {s}",
     "toast.pinned": "{s} fijado",

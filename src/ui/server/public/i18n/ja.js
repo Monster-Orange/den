@@ -50,6 +50,8 @@
     "b.down": "{n} 件停止",
     "act.pin": "ピン留め",
     "act.unpin": "ピン留めを外す",
+    "act.visit": "開く",
+    "act.visitX": "{s} を開く(新しいタブ)",
     "act.pinX": "{s} をピン留め",
     "act.unpinX": "{s} のピン留めを外す",
     "toast.pinned": "{s} をピン留めしました",
