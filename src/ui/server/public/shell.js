@@ -798,6 +798,30 @@
     "ag.ws": "Workspace",
     "ag.pal": "Agents › {ws} / {name}",
     "ag.palStart": "Start agent…",
+    // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
+    "n.serverAgent": "__DEN_TITLE__ agent",
+    "ag.server": "Server",
+    "pal.askServer": "Ask __DEN_TITLE__",
+    "sa.sub.fresh":
+      "Let's set up __DEN_TITLE__. It reads only until you allow a write.",
+    "sa.sub":
+      "For anything about this server: add a repo, fix a failing service, change a setting, or explain what's running.",
+    "sa.readsOnly":
+      "It acts only through __DEN_TITLE__'s own tools. Each change asks you first, in this browser.",
+    "sa.starting": "Starting the agent…",
+    "sa.idle": "{name} isn't running.",
+    "sa.start": "Start",
+    "sa.failed": "It didn't start: {why}. {cli} agents doctor says more.",
+    "sa.unread": "Couldn't read the agent's status. Is the web server running?",
+    "sa.none.h": "No runtime can run the agent yet",
+    "sa.none":
+      "The agent runs on an agent CLI from the runtime catalog. Install one, log in to it once, then reload this page.",
+    "sa.noTools": "can't use __DEN_TITLE__'s tools yet",
+    "sa.manual.h": "Or set it up yourself",
+    "sa.manual": "Every step the agent takes is also a command. In a terminal:",
+    "sa.runsOn": "Runs on",
+    "sa.openAgents": "Open in Agents",
+    "sa.saved": "Saved. The agent uses it from its next start.",
     "ag.cap": "Up to 4 panes: {id}'s closed to make room (it keeps running)",
     // AG-4b: the Agents tab's layouts and named tabs.
     "ag.layout": "Layout",
@@ -918,6 +942,9 @@
     agents:
       '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
     edge: '<path d="M12 3l8 4v5c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V7z"/><path d="M8 12h8M12 8v8"/>',
+    // ON-6: the server agent, a speech bubble with a spark.
+    assistant:
+      '<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M12 8v4M10 10h4"/>',
     // SEC-2a: who this browser is (the rail footer's identity chip).
     person:
       '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>',
@@ -1746,6 +1773,16 @@
       order: 17,
       href: "/agents",
       keywords: ["sessions", "terminal"],
+    },
+    // ON-6: the server agent, this Den's own: one click away, after Agents.
+    {
+      id: "server-agent",
+      label: "n.serverAgent",
+      icon: "assistant",
+      group: "develop",
+      order: 18,
+      href: "/server-agent",
+      keywords: ["server agent", "ask", "setup", "onboarding"],
     },
     {
       id: "services",

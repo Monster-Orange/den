@@ -23,6 +23,8 @@ const PAGES: Record<string, { page: string; healthEnv?: string }> = {
   "edge.html": { page: "edge" },
   // The Agents tab (AG-4a-term).
   "agents.html": { page: "agents" },
+  // The server agent's page (ON-6).
+  "server-agent.html": { page: "server-agent" },
   // The error page (R26a): a failed page request's, in the frame.
   "error.html": { page: "error" },
 };
@@ -143,6 +145,8 @@ describe("the shell's source", () => {
         "/release",
         "/services",
         "/tests",
+        // ON-6: the server agent.
+        "/server-agent",
       ].sort(),
     );
     expect(SHELL).not.toMatch(

@@ -73,6 +73,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/graph.html",
     "/agents",
     "/agents.html",
+    "/server-agent",
+    "/server-agent.html",
     "/tests",
     "/index.html",
     "/services",
@@ -173,6 +175,10 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/sessions",
     "lists the sessions and agents (names and states, never their output)",
+  ),
+  R(
+    "/api/server-agent",
+    "the server agent's name, runtime and state (ON-6): reads only",
   ),
   R("/api/health", "runs the manifests' health probes: read-only checks"),
   R("/api/test-sources", "git rev-parse in each repo: read-only"),
@@ -388,6 +394,16 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/workspaces/:ws/agents",
     "starts an agent: a runtime in a PTY",
+  ),
+  S(
+    ["POST"],
+    "/api/server-agent/start",
+    "starts the server agent (ON-6): a runtime in a PTY; never an agent's token",
+  ),
+  M(
+    ["POST"],
+    "/api/server-agent/runtime",
+    "the person's choice of the server agent's runtime (user.yml); never an agent's token",
   ),
   S(
     ["POST"],

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Mode before first paint: yours (the server fills it in below),
+      // else the system's, else the theme's default, else dark.
+      (function () {
+        var m = "@@DEN_MODE@@";
+        if (m !== "dark" && m !== "light") {
+          var q = function (s) {
+            return (
+              window.matchMedia &&
+              matchMedia("(prefers-color-scheme: " + s + ")").matches
+            );
+          };
+          m = q("light")
+            ? "light"
+            : q("dark")
+              ? "dark"
+              : "@@DEN_DEFAULT_MODE@@";
+        }
+        document.documentElement.dataset.mode =
+          m === "light" ? "light" : "dark";
+      })();
+    </script>
+    <link rel="stylesheet" href="/theme.css" id="theme-css" />
+    <link rel="stylesheet" href="/vendor/xterm.css" />
+    <title>__DEN_TITLE__ · Server agent</title>
+    <style>
+      /* The server agent's page (ON-6): the prototype's page header (.ph,
+         R20), then the agent's terminal as the page, the Agents tab's pane
+         look (.pane .term) without its list. --r is --radius. */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      html body.den-has-shell > #den-content {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        overflow: auto;
+        padding: 20px 24px 14px 24px;
+        font: 14px/1.45 var(--sans);
+        color: var(--text);
+      }
+      #den-content :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      a {
+        color: var(--accent-text);
+      }
+      .ph {
+        display: flex;
+        align-items: flex-end;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .ph h1 {
+        font: 600 22px/1.2 var(--display);
+        margin: 0;
+        text-wrap: balance;
+      }
+      .ph .sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 4px;
+      }
+      .ph .acts {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .ph label {
+        font-size: 13px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .ph select {
+        font: inherit;
+        color: var(--text);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button);
+        padding: 4px 8px;
+      }
+      .note {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0 0 10px;
+      }
+      .note.bad {
+        color: var(--bad);
+      }
+      h2.sec {
+        font: 600 13px var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+        margin: 0 0 10px;
+      }
+      section {
+        margin-bottom: 22px;
+      }
+      code {
+        font: 12.5px var(--mono);
+      }
+      .sa-steps li,
+      .sa-install li {
+        margin-bottom: 6px;
+      }
+      .sa-idle {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .sa-idle p {
+        margin: 0;
+      }
+      /* The terminal is the page: it takes what is left. */
+      #sa-pane {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+      }
+      #sa-pane:empty {
+        display: none;
+      }
+      .sa-term {
+        flex: 1 1 auto;
+        min-height: 240px;
+        min-width: 0;
+        display: grid;
+        grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+        padding: 6px 4px 4px 8px;
+        background: var(--sunken);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+      .sa-term .tbox {
+        min-height: 0;
+        min-width: 0;
+        overflow: hidden;
+      }
+      .sa-term .xterm {
+        height: 100%;
+      }
+      .sa-term .xterm .xterm-viewport {
+        background-color: var(--sunken);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The shell: top bar and rail, the same on every page (shell.js). -->
+    <div id="den-shell" data-page="server-agent"></div>
+    <script src="/shell.js"></script>
+
+    <!-- The page's one main landmark: everything after the shell. -->
+    <main id="den-content">
+      <div class="ph">
+        <div>
+          <h1 id="sa-title">__DEN_TITLE__ agent</h1>
+          <div class="sub" id="sa-sub"></div>
+        </div>
+        <div class="acts">
+          <label id="sa-runtime" hidden
+            ><span>Runs on</span> <select></select
+          ></label>
+          <a class="den-btn" id="sa-open" href="/agents" hidden
+            >Open in Agents</a
+          >
+        </div>
+      </div>
+      <div id="sa-body" aria-busy="true" aria-live="polite"></div>
+      <div id="sa-pane"></div>
+
+      <script type="module">
+        import {
+          applyDenConfig,
+          initChangelog,
+          initHealth,
+          initLogBadge,
+          initWorkspacePill,
+        } from "/header.js";
+        import { mountServerAgentPage } from "/server-agent-page.js";
+        void Promise.all([
+          initHealth(),
+          initWorkspacePill(),
+          applyDenConfig(),
+          initChangelog(),
+        ]).then(initLogBadge);
+        void mountServerAgentPage(document.getElementById("den-content"));
+      </script>
+    </main>
+  </body>
+</html>

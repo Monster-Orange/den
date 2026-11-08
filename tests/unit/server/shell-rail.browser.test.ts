@@ -102,7 +102,14 @@ describe("the rail", () => {
       {
         heading: "Develop",
         tag: null,
-        items: ["local-dev", "graph", "agents", "services", "logs"],
+        items: [
+          "local-dev",
+          "graph",
+          "agents",
+          "server-agent",
+          "services",
+          "logs",
+        ],
       },
       { heading: "Verify", tag: null, items: ["tests"] },
       { heading: "Ship", tag: null, items: ["environments", "release"] },
@@ -206,7 +213,11 @@ describe("the rail", () => {
     }[];
     expect(groups.slice(0, 5).map((g) => [g.heading, g.tag, g.items])).toEqual([
       ["First", null, ["one"]],
-      ["Develop", null, ["local-dev", "graph", "agents", "services", "logs"]],
+      [
+        "Develop",
+        null,
+        ["local-dev", "graph", "agents", "server-agent", "services", "logs"],
+      ],
       ["Verify", null, ["tests"]],
       ["Ship", null, ["environments", "release"]],
       ["Acme", "acme", ["early", "edge"]],
@@ -1010,7 +1021,14 @@ describe("Navigation prefs (R21)", () => {
       {
         heading: "Develop",
         tag: null,
-        items: ["logs", "local-dev", "graph", "agents", "services"],
+        items: [
+          "logs",
+          "local-dev",
+          "graph",
+          "agents",
+          "server-agent",
+          "services",
+        ],
       },
       { heading: "Ship", tag: null, items: ["environments", "release"] },
       "den-rail-grow",

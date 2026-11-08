@@ -48,6 +48,8 @@ export const UI_MODULES: readonly string[] = [
   "/i18n/es.js",
   // 0.4.17: one org and workspace rule for Environments and Releases.
   "/view-scope.js",
+  // ON-6: the server agent's page.
+  "/server-agent-page.js",
 ];
 
 /** URL path → file inside node_modules. */

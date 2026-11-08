@@ -672,6 +672,32 @@
     "ag.ws": "ワークスペース",
     "ag.pal": "エージェント › {ws} / {name}",
     "ag.palStart": "エージェントを開始…",
+    // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
+    "n.serverAgent": "__DEN_TITLE__ エージェント",
+    "ag.server": "サーバー",
+    "pal.askServer": "__DEN_TITLE__ に聞く",
+    "sa.sub.fresh":
+      "__DEN_TITLE__ をセットアップしましょう。変更を許可するまで、読み取りだけを行います。",
+    "sa.sub":
+      "サーバーのことなら何でも：リポジトリの追加、失敗しているサービスの修正、設定の変更、動いているものの説明。",
+    "sa.readsOnly":
+      "__DEN_TITLE__ 自身のツールだけで動きます。変更はそのたびに、このブラウザーで先に確認します。",
+    "sa.starting": "エージェントを起動しています…",
+    "sa.idle": "{name} は動いていません。",
+    "sa.start": "開始",
+    "sa.failed":
+      "起動しませんでした：{why}。詳しくは {cli} agents doctor で確認できます。",
+    "sa.unread":
+      "エージェントの状態を読めませんでした。Web サーバーは動いていますか？",
+    "sa.none.h": "エージェントを動かせるランタイムがまだありません",
+    "sa.none":
+      "エージェントはランタイムカタログのエージェント CLI で動きます。1 つインストールして一度ログインし、このページを再読み込みしてください。",
+    "sa.noTools": "まだ __DEN_TITLE__ のツールを使えません",
+    "sa.manual.h": "自分でセットアップする",
+    "sa.manual": "エージェントの各手順はコマンドでもできます。ターミナルで：",
+    "sa.runsOn": "実行するランタイム",
+    "sa.openAgents": "エージェントで開く",
+    "sa.saved": "保存しました。次回の起動から使われます。",
     "ag.cap":
       "ペインは最大 4 つです。{id} のペインを閉じました（実行は続きます）",
     "ag.layout": "レイアウト",

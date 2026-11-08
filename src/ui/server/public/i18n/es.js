@@ -689,6 +689,31 @@
     "ag.ws": "Espacio de trabajo",
     "ag.pal": "Agentes › {ws} / {name}",
     "ag.palStart": "Iniciar agente…",
+    // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
+    "n.serverAgent": "Agente de __DEN_TITLE__",
+    "ag.server": "Servidor",
+    "pal.askServer": "Preguntar a __DEN_TITLE__",
+    "sa.sub.fresh":
+      "Vamos a configurar __DEN_TITLE__. Solo lee hasta que permitas un cambio.",
+    "sa.sub":
+      "Para todo lo del servidor: añadir un repo, arreglar un servicio que falla, cambiar un ajuste o explicar qué está en marcha.",
+    "sa.readsOnly":
+      "Solo actúa con las herramientas de __DEN_TITLE__. Cada cambio te lo pregunta antes, en este navegador.",
+    "sa.starting": "Iniciando el agente…",
+    "sa.idle": "{name} no está en marcha.",
+    "sa.start": "Iniciar",
+    "sa.failed": "No se inició: {why}. {cli} agents doctor da más detalles.",
+    "sa.unread":
+      "No se pudo leer el estado del agente. ¿Está en marcha el servidor web?",
+    "sa.none.h": "Aún no hay ningún runtime para el agente",
+    "sa.none":
+      "El agente se ejecuta en una CLI de agente del catálogo de runtimes. Instala una, inicia sesión en ella una vez y vuelve a cargar esta página.",
+    "sa.noTools": "aún no puede usar las herramientas de __DEN_TITLE__",
+    "sa.manual.h": "O configúralo tú",
+    "sa.manual": "Cada paso del agente también es un comando. En un terminal:",
+    "sa.runsOn": "Se ejecuta en",
+    "sa.openAgents": "Abrir en Agentes",
+    "sa.saved": "Guardado. El agente lo usa desde su próximo inicio.",
     "ag.cap":
       "Hasta 4 paneles: se cerró el de {id} para hacer sitio (sigue en marcha)",
     "ag.layout": "Disposición",

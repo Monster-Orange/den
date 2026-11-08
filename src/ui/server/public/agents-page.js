@@ -125,6 +125,8 @@ const esc = (s) =>
 const api = (method, url, body) => window.denShell.api(method, url, body);
 const CLI = "__DEN_CLI__";
 const TITLE = "__DEN_TITLE__";
+/** ON-6: the server agent's scope (no workspace), shared/agents/server-agent.ts. */
+const SERVER_WS = "den-server";
 /** How long Remove's Undo stays offered (AG-14.1b). */
 export const UNDO_MS = 10_000;
 
@@ -338,6 +340,9 @@ function wsHref(ws) {
 
 /** Workspace `ws` as a link to it on Workspaces. */
 function wsLinkHtml(ws) {
+  // ON-6: the server agent belongs to no workspace: its group is "Server".
+  if (ws === SERVER_WS)
+    return `<span class="wslink" data-server>${esc(t("ag.server"))}</span>`;
   return `<a class="wslink" href="${esc(wsHref(ws))}" title="${esc(t("ag.goWs", { ws }))}">${esc(ws)}</a>`;
 }
 
@@ -454,7 +459,10 @@ function paintList() {
     el.innerHTML = notes.join("");
     return;
   }
-  const shown = viewWorkspaces();
+  // ON-6: the server agent's group, "Server", first, whatever the view.
+  const shown = st.data.sessions.some((s) => s.server)
+    ? [SERVER_WS, ...viewWorkspaces()]
+    : viewWorkspaces();
   // ?ws= names a workspace that isn't active: say so, and offer the switch.
   const asked = st.data.requested;
   if (asked && !asked.active)
@@ -514,6 +522,7 @@ function paintList() {
 
 function visibleRows() {
   const shown = new Set(viewWorkspaces());
+  shown.add(SERVER_WS);
   return (st.data?.sessions ?? []).filter((s) => shown.has(s.workspace));
 }
 

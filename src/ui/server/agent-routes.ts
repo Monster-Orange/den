@@ -183,7 +183,7 @@ const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 /** Never a TTY: a web start's terminal is 80×24. */
 const NO_TTY = { isTTY: false } as NodeJS.WriteStream;
 
-function webDeps(over: AgentsDeps = {}): AgentsResolved {
+export function webDeps(over: AgentsDeps = {}): AgentsResolved {
   return resolveAgentsDeps({
     stateDir: () => getStateDir(),
     workspaceExists: (ws) => Boolean(readWorkspacesFile().workspaces[ws]),

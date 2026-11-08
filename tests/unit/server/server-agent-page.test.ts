@@ -1,0 +1,108 @@
+/**
+ * The server agent's page (public/server-agent-page.js, ON-6): what it
+ * shows for each status /api/server-agent gives. Pure: HTML from JSON,
+ * with the strings' keys (no shell here, so t() gives the key).
+ *
+ *   - a fresh Den with a runtime: it starts by itself, and says it only
+ *     reads until the person allows a write;
+ *   - no runtime: how to install one, and the manual path, never a start;
+ *   - running: its terminal, and Open in Agents;
+ *   - set up, not running: a Start button, never a start by itself.
+ */
+import { describe, expect, it } from "@jest/globals";
+import {
+  runtimeOptionsHtml,
+  serverAgentView,
+} from "../../../src/ui/server/public/server-agent-page.js";
+
+const base = {
+  name: "Acme agent",
+  id: "server",
+  scope: "den-server",
+  persona: "server",
+  fresh: true,
+  runtime: { id: "den-claude", label: "Claude Code" },
+  runtimes: [
+    {
+      id: "den-claude",
+      label: "Claude Code",
+      available: true,
+      denTools: true,
+      usable: true,
+    },
+    {
+      id: "den-codex",
+      label: "Codex CLI",
+      available: true,
+      denTools: false,
+      usable: false,
+    },
+  ],
+  state: "none",
+  manual: [
+    "npm i -g @monster-orange/den",
+    "den create <name>",
+    "acme repo add <path>",
+    "acme up",
+  ],
+};
+
+describe("the server agent's page", () => {
+  it("a fresh Den with a runtime: it starts by itself and only reads until allowed", () => {
+    const v = serverAgentView(base);
+    expect(v.autoStart).toBe(true);
+    expect(v.terminal).toBeNull();
+    expect(v.sub).toBe("sa.sub.fresh");
+    expect(v.body).toContain('data-note="reads-only"');
+    expect(v.body).not.toContain('data-note="manual"');
+  });
+
+  it("no runtime: how to install one and the manual path; it never starts", () => {
+    const v = serverAgentView({
+      ...base,
+      runtime: null,
+      runtimes: [
+        {
+          id: "den-claude",
+          label: "Claude Code",
+          available: false,
+          denTools: true,
+          usable: false,
+          install: "npm i -g @anthropic-ai/claude-code",
+        },
+      ],
+    });
+    expect(v.autoStart).toBe(false);
+    expect(v.body).toContain('data-note="no-runtime"');
+    expect(v.body).toContain("<code>npm i -g @anthropic-ai/claude-code</code>");
+    const steps = [...v.body.matchAll(/<li><code>([^<]*)<\/code><\/li>/g)].map(
+      (m) => m[1],
+    );
+    expect(steps).toEqual([
+      "npm i -g @monster-orange/den",
+      "den create &lt;name&gt;",
+      "acme repo add &lt;path&gt;",
+      "acme up",
+    ]);
+  });
+
+  it("running: its terminal, never a second start", () => {
+    const v = serverAgentView({ ...base, state: "running", sessionId: "s-1" });
+    expect([v.autoStart, v.terminal]).toEqual([false, "s-1"]);
+  });
+
+  it("set up and not running: a Start button, never a start by itself", () => {
+    const v = serverAgentView({ ...base, fresh: false, state: "stopped" });
+    expect(v.autoStart).toBe(false);
+    expect(v.sub).toBe("sa.sub");
+    expect(v.body).toContain('data-act="start"');
+  });
+
+  it("the runtime picker offers only runtimes that can run it, the chosen one selected", () => {
+    const html = runtimeOptionsHtml(base);
+    expect(html).toBe(
+      '<option value="den-claude" selected>Claude Code</option>',
+    );
+    expect(runtimeOptionsHtml({ ...base, runtimes: [] })).toBe("");
+  });
+});

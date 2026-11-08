@@ -108,6 +108,8 @@ export async function startAgentsPageServer(
     bins?: Record<string, string>;
     /** More workspaces in workspaces.yml, not active (no services). */
     inactive?: string[];
+    /** ON-6: a fresh Den: north and south hold no repo yet. */
+    fresh?: boolean;
     /** A repo's service health URL for local (notes, blog), when it has one. */
     health?: Record<string, string>;
   } = {},
@@ -152,6 +154,21 @@ export async function startAgentsPageServer(
       "",
     ].join("\n"),
   );
+  if (opts.fresh)
+    write(
+      path.join(root, "config", "local", "workspaces.yml"),
+      [
+        "active: [north, south]",
+        "focus: north",
+        "workspaces:",
+        ...Object.keys(members).flatMap((ws) => [
+          `  ${ws}:`,
+          `    directory: ${wsDir(ws)}`,
+          "    services: {}",
+        ]),
+        "",
+      ].join("\n"),
+    );
   const elevated = path.join(tmp, "elevated-ran");
   for (const [ws, repo] of Object.entries(members)) {
     fs.mkdirSync(wsDir(ws), { recursive: true });

@@ -885,6 +885,8 @@ function paletteItems() {
     });
   }
   for (const x of palSessions) {
+    // ON-6: the server agent is "Ask <name>" below, not a workspace's.
+    if (x.server) continue;
     // AG-4b: the name a person gave the agent, else its persona.
     const base =
       x.kind === "agent" ? x.displayName || (x.persona ?? x.label) : x.label;
@@ -923,7 +925,7 @@ function paletteItems() {
   for (const ws of s?.workspaceNames?.() ?? [])
     if (!byWs.has(ws)) byWs.set(ws, []);
   for (const x of palSessions) {
-    if (!x.workspace) continue;
+    if (!x.workspace || x.server) continue;
     const names = byWs.get(x.workspace) ?? [];
     names.push(x.label, x.displayName ?? "", x.persona ?? "");
     byWs.set(x.workspace, names);
@@ -946,6 +948,16 @@ function paletteItems() {
       label: t("ag.palStart"),
       keywords: ["agents", "start", "persona"],
       run: () => go("/agents?start=1"),
+    });
+  // ON-6: Ask <name>, the server agent's page.
+  const ask = s?.nav?.().find((n) => n.id === "server-agent");
+  if (ask)
+    items.push({
+      key: "agent:ask-server",
+      kind: "action",
+      label: t("pal.askServer"),
+      keywords: ["ask", "server agent", "agent", "help", "setup"],
+      run: () => go(ask.href),
     });
   for (const c of s?.commands?.() ?? [])
     items.push({

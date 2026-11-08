@@ -858,6 +858,8 @@ import { heldActions } from "./held-actions.js";
 import type { ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
 import { handleAgentRoutes, startAgentUpkeep } from "./agent-routes.js";
+import { handleServerAgentRoutes } from "./server-agent-routes.js";
+import { freshDen } from "../cli/server-agent-ops.js";
 import {
   lastRunsByRepo,
   recordRunEnd,
@@ -2140,7 +2142,16 @@ async function handleRequest(
       res.end();
       return;
     }
+    // ON-6: a fresh Den's first page is its own agent (no redirect: a
+    // setup link's #ak= fragment stays on this address).
+    if (pathname === "/" && (await freshDen()))
+      return serveFile(res, path.join(PUBLIC_DIR, "server-agent.html"));
     return serveFile(res, path.join(PUBLIC_DIR, "local-dev.html"));
+  }
+
+  // The server agent's page (ON-6): this Den's own agent, in a terminal.
+  if (pathname === "/server-agent" || pathname === "/server-agent.html") {
+    return serveFile(res, path.join(PUBLIC_DIR, "server-agent.html"));
   }
 
   // The Graph page (R22): Local Dev's page in its full-width graph view.
@@ -4587,6 +4598,8 @@ async function handleRequest(
     return;
   }
 
+  // ── The server agent (ON-6, server-agent-routes.ts) ──────────────────────
+  if (await handleServerAgentRoutes(req, res, pathname)) return;
   // ── Agents on the Workspaces page (AG-4a, agent-routes.ts) ───────────────
   if (await handleAgentRoutes(req, res, pathname)) return;
   // ── The Agents tab's list (AG-4a-term, session-routes.ts) ────────────────
