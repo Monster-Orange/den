@@ -4,6 +4,31 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.17] - unreleased
+
+### Fixed
+
+- **An agent's workspace is a link.** The agent pane's header and the
+  workspace's heading in the Agents list link to the Workspaces page
+  focused on it (`?ws=`). ⌘K has "Go to workspace <ws>", found by the
+  workspace's name or any of its agents'.
+- **"Last test run" is the server's.** The Workspaces page's "Last run"
+  column is now "Last test run", read from the server's run history
+  (`<state>/run-history.jsonl`, `GET /api/runs/last`). It shows runs from
+  every browser and survives a restart. The service's own state ("up 2h")
+  is shown apart from it.
+- **One org rule.** Environments and Releases have no org picker of their
+  own. Both follow the top bar's View and say so with the same note. A
+  page shows its own org picker only when it filters by org.
+- **Environments never waits on a slow host.** Every row shows at once,
+  pulsing "checking", and each result streams into its row. The server
+  runs at most 12 checks at once, each capped at 10 s; one that runs out
+  of time says "timed out after 10 s". Re-check works while checks run.
+- **An agent in an inactive workspace opens its terminal.** The terminal
+  route checks the person and the agent, not the workspace's active
+  flag. The pane says "Sign in" only when you're signed out; any other
+  refusal gives its real reason.
+
 ## [0.4.16] - 2026-11-08
 
 ### Added

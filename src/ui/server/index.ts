@@ -2813,18 +2813,37 @@ async function handleRequest(
       ok: false,
       error: timedOutText(CHECK_TIMEOUT_MS),
     });
-    const results = await runCapped(
-      sortedEntries,
-      CHECK_CONCURRENCY,
-      (e, idx) =>
-        withTimeout(checkEntry(e), CHECK_TIMEOUT_MS, () => late(e)).then(
-          (r) => {
-            const ranked = { ...r, openUrl: e.openUrl, links: e.links, idx };
-            onResult?.(ranked);
-            return ranked;
-          },
+    const run = (e: (typeof sortedEntries)[number], idx: number) =>
+      withTimeout(checkEntry(e), CHECK_TIMEOUT_MS, () => late(e)).then((r) => {
+        const ranked = { ...r, openUrl: e.openUrl, links: e.links, idx };
+        onResult?.(ranked);
+        return ranked;
+      });
+    // Compose and container checks are answered in-process from one shared
+    // docker listing (the call in flight): they start no process, so they
+    // run outside the cap, all at once, and a cycle still lists once.
+    const inProcess = (e: (typeof sortedEntries)[number]) =>
+      (e.checkType === "container" && !!e.container) ||
+      (e.checkType === "shell" && !!e.compose && e.target === e.compose.cmd);
+    const indexed = sortedEntries.map((e, idx) => ({ e, idx }));
+    const results = new Array<HealthResult>(sortedEntries.length);
+    await Promise.all([
+      ...indexed
+        .filter(({ e }) => inProcess(e))
+        .map(({ e, idx }) =>
+          run(e, idx).then((r) => {
+            results[idx] = r;
+          }),
         ),
-    );
+      runCapped(
+        indexed.filter(({ e }) => !inProcess(e)),
+        CHECK_CONCURRENCY,
+        ({ e, idx }) =>
+          run(e, idx).then((r) => {
+            results[idx] = r;
+          }),
+      ),
+    ]);
     return results;
   }
 

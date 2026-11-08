@@ -16,7 +16,6 @@
  * skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { denAuth } from "./helpers/den-auth.js";
 import {

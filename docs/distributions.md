@@ -432,6 +432,36 @@ that a container existed, running or not).
 `service`, with both forms at once, or with a key of another type (`cmd`,
 `url`), and says which.
 
+### The Environments page
+
+The Environments page lists every service's row at once, each cell pulsing
+"checking" until its result arrives. The results stream in one at a time
+(`GET /api/health/stream`, one event per check), so a slow host holds up
+its own cell only. The server runs at most 12 checks at once, and no check
+takes longer than 10 s. A check that runs out of time says "timed out after
+10 s" in its row. Re-check and the page's other controls work while the
+checks run.
+
+The page has no org picker of its own. It follows the top bar's View (all
+active workspaces, or one), asks for that workspace only, and says so:
+"Shows workspace south, as the top bar's View. Change it there." The
+Release page follows the same rule with the same note. A page shows its own
+org picker only when it filters by org.
+
+### Last test run
+
+The Workspaces page's "Last test run" column shows each repo's latest test
+run: its result (✓ or ✗), how long ago, and the pillar and environment on
+hover. It reads the server's run history, so it shows runs started from any
+browser or tab, and it survives a restart. The service's own state ("up 2h")
+is shown apart from it, in the Health cell.
+
+The history is `<state>/run-history.jsonl` (mode 0600): one line when a run
+starts and one when it ends. Past 2000 lines it keeps the newest 1000.
+`GET /api/runs/last` (read only) gives `{ repos: { <repo>: { id, pillar,
+env, repos, startedAt, endedAt, exitCode, running } } }`. A run a restart
+cut off has no end and is not shown.
+
 ## Placement
 
 Each service says where it runs, per environment: `local` (on this machine,
@@ -2551,6 +2581,18 @@ CSRF token as `den.csrf.<token>`): binary frames are output and input, a
 text frame `{"type":"resize","cols":c,"rows":r}` resizes, and the server
 sends `{"type":"session",…}` first and `{"type":"exit","exitCode":n}` when
 the session ends.
+
+The terminal route checks the person and the agent, not whether the
+agent's workspace is active: an agent in a workspace you've switched away
+from still opens. A `GET` of the io path (not a WebSocket) says why one
+would be refused: `401` when you're signed out (the pane then says "Sign
+in"), `404` with the reason when there is no such session here, and `426`
+when the upgrade would be allowed. The pane shows that reason, not "Sign
+in", for any refusal but the first.
+
+The pane's header and the workspace's heading in the list link to the
+Workspaces page focused on that workspace (`/local-dev?ws=<ws>`), and ⌘K
+has "Go to workspace <ws>" for each workspace with agents.
 
 ### Stopped agents: Resume, Start fresh, Remove
 
