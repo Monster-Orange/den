@@ -2003,11 +2003,16 @@
     "</div>" +
     chips +
     "</header>" +
+    // The rail's box: no box of its own (display: contents). As ☰'s
+    // drawer it is the modal dialog the rail sits in, so the rail stays a
+    // nav (a <nav> may not be a dialog).
+    '<div class="den-rail-box" id="den-rail-box">' +
     '<nav class="den-rail" id="den-rail" aria-label="' +
     esc(t("pages")) +
-    '"></nav>';
+    '"></nav></div>';
 
   var nav = host.querySelector(".den-rail");
+  var railBox = host.querySelector(".den-rail-box");
 
   // ── the scope parts (R4) ───────────────────────────────────────────────
   // Each part's menu comes from its model, set by header.js: setOrgs (the
@@ -2622,8 +2627,9 @@
   function openDrawer() {
     document.body.classList.add("den-rail-open");
     if (menu) menu.setAttribute("aria-expanded", "true");
-    nav.setAttribute("role", "dialog");
-    nav.setAttribute("aria-modal", "true");
+    railBox.setAttribute("role", "dialog");
+    railBox.setAttribute("aria-modal", "true");
+    railBox.setAttribute("aria-label", t("pages"));
     if (!scrim) {
       scrim = document.createElement("div");
       scrim.className = "den-scrim";
@@ -2643,8 +2649,9 @@
     if (!drawerOpen()) return;
     document.body.classList.remove("den-rail-open");
     if (menu) menu.setAttribute("aria-expanded", "false");
-    nav.removeAttribute("role");
-    nav.removeAttribute("aria-modal");
+    railBox.removeAttribute("role");
+    railBox.removeAttribute("aria-modal");
+    railBox.removeAttribute("aria-label");
     if (scrim && scrim.remove) scrim.remove();
     setInert(false);
     if (refocus && menu) menu.focus();
@@ -4995,6 +5002,7 @@
     // ◐ ▾ (the prototype's user menu, an .ib: appearance.js)
     ".den-top .den-ib[aria-expanded='true'] { background: var(--sunken); color: var(--text); }",
     // Rail (.rail)
+    ".den-rail-box { display: contents; }",
     ".den-rail { position: fixed; left: 0; top: var(--den-top-h); bottom: 0; width: var(--den-rail-cw);",
     "  box-sizing: content-box; display: flex; flex-direction: column; padding: 10px 8px;",
     "  background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; z-index: 15;",

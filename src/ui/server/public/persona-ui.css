@@ -345,6 +345,12 @@ dialog.pe-dlg::backdrop {
   color: var(--faint);
   font-weight: 400;
 }
+/* On the chosen row's tint, faint text falls under 4.5:1 (light): the
+   role and a plain tag read in muted there. */
+.pr[aria-checked="true"] .pn .role,
+.pr[aria-checked="true"] .tagx:not(.warn, .src-local, .src-distribution, .src-hub) {
+  color: var(--muted);
+}
 .pr .pd {
   grid-column: 2 / 4;
   font-size: 12.5px;

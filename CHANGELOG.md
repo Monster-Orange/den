@@ -43,6 +43,20 @@ config and manifest changes a distribution must make to move to it under
   fresh first page, then the server agent's MCP calls, with `repo_add` and
   `service_try` each allowed from the signed-in browser. It now asserts 5
   minutes or less.
+- **An accessibility check runs with the tests.** axe-core (WCAG 2.0 and
+  2.1 A and AA, plus best practice) scans the rail, an open pinned-service
+  panel, the Start agent dialog and the server agent's page, in light and
+  dark, at 1440×900 and 390×844. Any violation fails it.
+
+### Fixed
+
+- **The phone drawer keeps the rail a nav.** Under 720 px, ☰ made the
+  rail's `<nav>` itself a dialog, which a nav may not be. The dialog is
+  now a box around the rail ("Pages"); focus, Tab, Esc and the scrim work
+  as before.
+- **The chosen persona's role and tag are readable.** On the chosen row's
+  tint, in light, they were 4.49:1, under 4.5:1. They read in the muted
+  colour there now.
 
 ### Migrations
 

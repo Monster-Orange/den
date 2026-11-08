@@ -905,6 +905,21 @@ describe("a consumer's dev.18 run (two consumers)", () => {
     await p.setViewportSize({ width: 700, height: 700 });
     await p.click("#den-menu-btn");
     expect(await p.getAttribute("#den-menu-btn", "aria-expanded")).toBe("true");
+    // The dialog is the rail's box; the rail stays a nav.
+    expect(
+      await p.evaluate(() => {
+        const box = document.getElementById("den-rail-box")!;
+        const rail = document.getElementById("den-rail")!;
+        return [
+          box.getAttribute("role"),
+          box.getAttribute("aria-modal"),
+          box.getAttribute("aria-label"),
+          rail.tagName,
+          rail.getAttribute("role"),
+          box.contains(rail),
+        ];
+      }),
+    ).toEqual(["dialog", "true", "Pages", "NAV", null, true]);
     const activeNav = () =>
       p.evaluate(() => (document.activeElement as HTMLElement).dataset?.nav);
     expect(await activeNav()).toBe("services");
