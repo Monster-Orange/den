@@ -244,6 +244,7 @@ import {
   githubClientId,
   githubEndpoints,
   noClientIdMessage,
+  GITHUB_SIGNIN_DOCS,
 } from "../../shared/github-app.js";
 import { githubDeviceClient } from "../../shared/github-device.js";
 import { readWebOwner } from "../../shared/web-owner.js";
@@ -1331,10 +1332,19 @@ function denEdgeRoutes(): { host: string; url: string }[] {
   }
 }
 
-/** What the signed-out page says about Sign in with GitHub. */
-function githubSigninState(): "ready" | "no_client_id" | "no_owner" {
-  if (!GITHUB_CLIENT_ID) return "no_client_id";
-  return readWebOwner(getStateDir()) ? "ready" : "no_owner";
+/**
+ * What the signed-out page says about Sign in with GitHub: its state, and
+ * (SEC-2a-UX) the owner's login once one is linked, for step 1's "Owner:
+ * @login".
+ */
+function githubSignin():
+  | { state: "no_client_id" | "no_owner" }
+  | { state: "ready"; ownerLogin: string } {
+  if (!GITHUB_CLIENT_ID) return { state: "no_client_id" };
+  const owner = readWebOwner(getStateDir());
+  return owner
+    ? { state: "ready", ownerLogin: owner.login }
+    : { state: "no_owner" };
 }
 
 /**
@@ -1426,6 +1436,7 @@ function sendSignedOut(
   const cmd = cliCommand(bin, "web", "login", ...loginArgs);
   const ssh = sshTargetOf(req);
   const user = sshUserNow();
+  const gh = githubSignin();
   res.setHeader("Cache-Control", "no-store");
   sendErrorPage(req, res, {
     status: 401,
@@ -1449,8 +1460,10 @@ function sendSignedOut(
       },
       // SEC-2a: Sign in with GitHub, and why it can't be offered yet.
       github: {
-        state: githubSigninState(),
+        state: gh.state,
         owner: cliCommand(bin, "web", "owner", "link"),
+        ...(gh.state === "ready" ? { ownerLogin: gh.ownerLogin } : {}),
+        learnMore: GITHUB_SIGNIN_DOCS,
         ...(GITHUB_CLIENT_ID
           ? {}
           : { message: noClientIdMessage(product().cli) }),

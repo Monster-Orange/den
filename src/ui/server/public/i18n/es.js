@@ -254,12 +254,18 @@
     "err.signin.title": "Inicia sesión en {name}",
     "err.signin.where":
       "Estás abriendo {name} desde otro ordenador. {name} corre en {host}, así que necesita saber que eres tú.",
-    "err.signin.githubNote":
-      "Usa tu cuenta de GitHub. El propietario de este {name} tiene que haber vinculado la suya.",
-    "err.signin.githubNoOwner":
-      "Iniciar sesión con GitHub necesita un propietario, y este {name} aún no tiene. En {host} (no en este ordenador), ejecuta:",
+    "err.signin.ghStep1":
+      "En {host}, ejecuta {cmd}, o usa Ajustes › Acceso allí.",
+    "err.signin.ghStep2":
+      "Muestra un código. Introdúcelo en github.com/login/device y apruébalo.",
+    "err.signin.ghStep3":
+      "Después vuelve aquí y pulsa Iniciar sesión con GitHub, con la misma cuenta de GitHub.",
+    "err.signin.ghOwner": "Propietario: @{login}",
+    "err.signin.ghOnly":
+      "Solo la cuenta de GitHub del propietario puede iniciar sesión así. Para cualquier otra persona, usa «Aprueba este ordenador».",
+    "err.signin.ghLearn": "Más información",
     "err.signin.githubRefused":
-      "@{login} no es el propietario de este {name}. Pide al propietario que te añada, o usa «Aprobar este ordenador».",
+      "@{login} no es el propietario de este {name}. Solo la cuenta del propietario puede usar Iniciar sesión con GitHub. Usa «Aprueba este ordenador» en su lugar.",
     "err.signin.approveOr": "O aprueba este ordenador",
     "err.signin.approve": "Aprueba este ordenador",
     "err.signin.step1": "En {host} (no en este ordenador), ejecuta:",

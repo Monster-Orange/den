@@ -98,7 +98,7 @@ function finishedMessage(v: FlowView, cli: string): string | undefined {
   switch (v.state) {
     case "refused":
       return v.purpose === "signin"
-        ? `@${v.login} isn't allowed on this Den. Ask the owner to add you.`
+        ? `@${v.login} isn't the owner of this Den. Only the owner's account can use Sign in with GitHub. Use Approve this computer instead.`
         : `An owner is linked already; \`${cli} web owner unlink\` first.`;
     case "expired":
       return "The code expired before it was approved. Start again.";
