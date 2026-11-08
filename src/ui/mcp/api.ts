@@ -230,6 +230,8 @@ export interface DenApi {
     query?: Query,
     method?: "GET" | "POST",
     body?: unknown,
+    /** Extra request headers (an approval's ticket). */
+    headers?: Record<string, string>,
   ): Promise<unknown>;
   /** An SSE route, read to a bound; the connection is closed after. */
   stream(path: string, query: Query, opts: StreamOpts): Promise<StreamResult>;
@@ -310,6 +312,7 @@ export function createDenApi(opts: {
     query: Query,
     signal?: AbortSignal,
     body?: unknown,
+    extra: Record<string, string> = {},
   ): Promise<Response> {
     assertAllowedRequest(method, path, query);
     await ensureOurs();
@@ -317,6 +320,7 @@ export function createDenApi(opts: {
       const res = await fetch(buildUrl(baseUrl, path, query), {
         method,
         headers: {
+          ...extra,
           ...opts.headers(),
           ...(opts.auth ?? cliAuthHeaders)(),
           ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
@@ -346,8 +350,8 @@ export function createDenApi(opts: {
   return {
     baseUrl,
 
-    async get(path, query = {}, method = "GET", body) {
-      const res = await request(method, path, query, undefined, body);
+    async get(path, query = {}, method = "GET", body, headers) {
+      const res = await request(method, path, query, undefined, body, headers);
       const text = await res.text();
       try {
         return JSON.parse(text) as unknown;

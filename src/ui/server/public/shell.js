@@ -597,7 +597,10 @@
     "ag.bring.h": "{n} h ago",
     "ap.title": "{agent} wants to:",
     "ap.agent": "The {name} agent",
-    "ap.anyAgent": "An agent",
+    "ap.noAgent": "Something on this machine (no agent identity)",
+    "ap.noAgentWarn": "If you didn't ask an agent to do this, Deny.",
+    "ap.signin.title": "Something is waiting for your approval.",
+    "ap.signin": "Sign in to see it: run {cmd} and open the link.",
     "ap.do.workspace_create": 'Create the workspace "{name}"',
     "ap.do.repo_add": 'Add the repo at {path} to workspace "{workspace}"',
     "ap.do.repo_add.new":
@@ -4047,6 +4050,7 @@
     d.innerHTML =
       '<form method="dialog">' +
       '<h2 id="den-ap-h"></h2>' +
+      '<p class="help den-ap-who" id="den-ap-who" hidden></p>' +
       '<p class="den-ap-what" id="den-ap-what"></p>' +
       '<p class="help" id="den-ap-note" hidden></p>' +
       '<pre class="den-ap-det" id="den-ap-det" hidden></pre>' +
@@ -4101,9 +4105,12 @@
     };
     var same = ap.shown && ap.shown.id === a.id;
     ap.shown = a;
+    // No agent token: say so, and what to do if no agent was asked.
     $("den-ap-h").textContent = t("ap.title", {
-      agent: a.agent ? t("ap.agent", { name: a.agent }) : t("ap.anyAgent"),
+      agent: a.agent ? t("ap.agent", { name: a.agent }) : t("ap.noAgent"),
     });
+    $("den-ap-who").hidden = !!a.agent;
+    $("den-ap-who").textContent = a.agent ? "" : t("ap.noAgentWarn");
     $("den-ap-what").textContent = apWhat(a);
     var note = $("den-ap-note");
     note.hidden = !a.note;
@@ -4179,29 +4186,72 @@
         for (var j = 0; j < btns.length; j++) btns[j].disabled = false;
       });
   }
+  // Reading what waits needs what approving needs (approvals.ts): the
+  // session's CSRF token and the approval key, on a GET too. A browser
+  // without them is told only that something waits, and to sign in.
+  function apList(fresh) {
+    var ak = approveKey();
+    // No approval key: only the count, to say "sign in to see it".
+    if (!ak)
+      return rawFetch("/api/approvals?count=1", {
+        cache: "no-store",
+        credentials: "same-origin",
+      }).then(function (r) {
+        return r.ok
+          ? r.json().then(function (b) {
+              return { code: "signin_to_approve", waiting: b && b.waiting };
+            })
+          : null;
+      });
+    return csrfToken(fresh).then(function (token) {
+      var h = { "X-Den-Approve-Key": ak };
+      if (token) h["X-Den-CSRF"] = token;
+      return rawFetch("/api/approvals", {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: h,
+      }).then(function (r) {
+        return r.json().then(
+          function (b) {
+            if (!fresh && r.status === 403 && b && b.code === "csrf")
+              return apList(true);
+            return b;
+          },
+          function () {
+            return null;
+          },
+        );
+      });
+    });
+  }
+  function apSignin(b) {
+    if (b && b.code === "signin_to_approve" && b.waiting > 0)
+      showBanner("approvals", {
+        title: t("ap.signin.title"),
+        text: t("ap.signin", { cmd: "__DEN_CLI__ web login" }),
+      });
+    else hideBanner("approvals");
+  }
   function apPoll() {
     if (document.hidden || ap.busy) return;
-    fetch("/api/approvals", { cache: "no-store", credentials: "same-origin" })
-      .then(function (r) {
-        return r.ok ? r.json() : null;
-      })
-      .then(
-        function (b) {
-          var list = (b && b.pending) || [];
-          var open = list.filter(function (a) {
-            return !ap.later[a.id];
-          });
-          if (!open.length) return apClose();
-          var cur =
-            (ap.shown &&
-              open.filter(function (a) {
-                return a.id === ap.shown.id;
-              })[0]) ||
-            open[0];
-          apShow(cur, open.length - 1);
-        },
-        function () {},
-      );
+    apList(false).then(
+      function (b) {
+        apSignin(b);
+        var list = (b && b.ok && b.pending) || [];
+        var open = list.filter(function (a) {
+          return !ap.later[a.id];
+        });
+        if (!open.length) return apClose();
+        var cur =
+          (ap.shown &&
+            open.filter(function (a) {
+              return a.id === ap.shown.id;
+            })[0]) ||
+          open[0];
+        apShow(cur, open.length - 1);
+      },
+      function () {},
+    );
   }
   if (!apiOffPage && !configBad && rawFetch) {
     setInterval(apPoll, 3000);

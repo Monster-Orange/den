@@ -23,8 +23,10 @@
 import type * as http from "http";
 import { agentTokenLive } from "../../shared/actor-token.js";
 import {
+  APPROVAL_TICKET_HEADER,
   ApprovalQueue,
   approverAllowed,
+  newApprovalTicket,
   type Approval,
   type Decision,
 } from "./approvals.js";
@@ -145,7 +147,12 @@ export async function handleApprovalRoutes(
   res: http.ServerResponse,
   pathname: string,
   guard: Extract<GuardResult, { ok: true }>,
-  deps: { queue: ApprovalQueue; actions: HeldActions },
+  deps: {
+    queue: ApprovalQueue;
+    actions: HeldActions;
+    /** `mcp.approvals` (default on); off, nothing new is held. */
+    enabled?: () => boolean;
+  },
 ): Promise<boolean> {
   if (!isApprovalPath(pathname)) return false;
   const method = (req.method ?? "GET").toUpperCase();
@@ -153,6 +160,21 @@ export async function handleApprovalRoutes(
   const agent = agentPrincipalOf(req);
 
   if (pathname === "/api/approvals" && method === "POST") {
+    let on: boolean;
+    try {
+      on = deps.enabled ? deps.enabled() : true;
+    } catch {
+      on = false;
+    }
+    if (!on) {
+      refuse(
+        res,
+        403,
+        "approvals_off",
+        "This distribution turned the held writes off (mcp.approvals: false).",
+      );
+      return true;
+    }
     const body = await jsonBody(req);
     if (!body) {
       refuse(
@@ -202,9 +224,12 @@ export async function handleApprovalRoutes(
       refuse(res, 400, "invalid_args", checked.error);
       return true;
     }
+    // An asker with no agent token proves it is the asker with a ticket.
+    const ticket = agent ? null : newApprovalTicket();
     let a: Approval;
     try {
       a = deps.queue.request({
+        ...(ticket ? { ticketHash: ticket.hash } : {}),
         actor: askerOf(req),
         ...(agent ? { agent: agent.actor.slice("agent:".length) } : {}),
         action,
@@ -223,7 +248,15 @@ export async function handleApprovalRoutes(
       { verb: "approval-ask", detail: `${action}: ${a.summary} [${a.id}]` },
       principalOf(req),
     );
-    sendJson(res, { ok: true, ...approvalView(a) }, 202);
+    sendJson(
+      res,
+      {
+        ok: true,
+        ...approvalView(a),
+        ...(ticket ? { ticket: ticket.ticket } : {}),
+      },
+      202,
+    );
     return true;
   }
 
@@ -231,12 +264,35 @@ export async function handleApprovalRoutes(
     pathname === "/api/approvals" &&
     (method === "GET" || method === "HEAD")
   ) {
+    // An agent: its own requests and their outcomes, never another's.
     if (agent) {
-      refuse(
+      sendJson(res, {
+        ok: true,
+        mine: deps.queue.ofActor(agent.actor).map(approvalView),
+      });
+      return true;
+    }
+    // `?count=1`: how many wait, and nothing else, for a page that holds no
+    // approval key (it says "sign in to see it" without a refusal a poll
+    // would log every 3 s).
+    if (new URL(req.url ?? "/", "http://x").searchParams.get("count") === "1") {
+      sendJson(res, { ok: true, waiting: deps.queue.pending().length });
+      return true;
+    }
+    const who = approverAllowed(req, guard, "read");
+    if (!who.ok) {
+      // How many wait, so a signed-out page can say "sign in to see it";
+      // never what they are.
+      sendJson(
         res,
+        {
+          ok: false,
+          code: who.code,
+          error:
+            "What waits for the person is theirs to see: a signed-in browser holding its approval key.",
+          waiting: deps.queue.pending().length,
+        },
         403,
-        "person_only",
-        "What waits for the person is theirs to see; an agent checks its own request with approval_check.",
       );
       return true;
     }
@@ -250,8 +306,18 @@ export async function handleApprovalRoutes(
   const one = ONE_PATH.exec(pathname);
   if (one && (method === "GET" || method === "HEAD")) {
     const a = deps.queue.get(one[1]);
-    // An agent sees its own requests only; another's is "no such request".
-    if (!a || (agent && a.actor !== agent.actor)) {
+    // An agent sees its own requests only; an anonymous asker the one it
+    // holds the ticket for; the person any. Anything else is "no such request".
+    const ticket = req.headers[APPROVAL_TICKET_HEADER];
+    const mayRead =
+      !!a &&
+      (agent
+        ? a.actor === agent.actor
+        : deps.queue.ticketMatches(
+            a.id,
+            typeof ticket === "string" ? ticket : undefined,
+          ) || approverAllowed(req, guard, "read").ok);
+    if (!a || !mayRead) {
       refuse(
         res,
         404,

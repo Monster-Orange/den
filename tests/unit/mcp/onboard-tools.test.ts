@@ -63,6 +63,7 @@ const cfg = (
   actions,
   runTestsEnvs: ["local"],
   logsRemote: false,
+  approvals: true,
 });
 
 const ctx = (api: DenApi, scoped = false): ToolContext => ({

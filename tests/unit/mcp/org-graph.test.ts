@@ -96,6 +96,7 @@ const cfg: ResolvedMcpConfig = {
   actions: [],
   runTestsEnvs: ["local"],
   logsRemote: false,
+  approvals: true,
 };
 const ctx = (api: DenApi, scope?: McpScope): ToolContext => ({
   api,

@@ -46,6 +46,8 @@ const actions: HeldActions = {
   },
 };
 const queue = createApprovalQueue(actions, () => stateDir);
+/** `mcp.approvals` as the handler reads it. */
+let enabled = true;
 let server: http.Server;
 let base = "";
 
@@ -84,6 +86,7 @@ beforeAll(async () => {
       {
         queue,
         actions,
+        enabled: () => enabled,
       },
     ).then((handled) => {
       if (!handled) {
@@ -132,11 +135,30 @@ describe("an agent's own token", () => {
     expect(
       (await fetch(`${base}/api/approvals/${a.id}`, as("other"))).status,
     ).toBe(404);
+    // Its list is its own requests and their outcomes; never another agent's.
+    mintActorToken(stateDir, {
+      agentId: "other",
+      workspace: "north",
+      sessionName: "acme-north:other",
+    });
+    const theirs = (await (
+      await fetch(
+        `${base}/api/approvals`,
+        as("other", {
+          action: "workspace_create",
+          args: { name: "othersecret" },
+        }),
+      )
+    ).json()) as { id: string };
     const list = await fetch(`${base}/api/approvals`, as("server"));
-    expect([
-      list.status,
-      ((await list.json()) as { code: string }).code,
-    ]).toEqual([403, "person_only"]);
+    expect(list.status).toBe(200);
+    const listText = await list.text();
+    const mineList = (JSON.parse(listText) as { mine: { id: string }[] }).mine;
+    expect(mineList.map((x) => x.id)).toEqual([a.id]);
+    expect(listText).not.toContain("othersecret");
+    expect(listText).not.toContain(theirs.id);
+    // An agent is never handed a ticket: its token says who it is.
+    expect(Object.keys(a)).not.toContain("ticket");
     const d = await fetch(
       `${base}/api/approvals/${a.id}/decide`,
       as("server", { decision: "allow" }),
@@ -145,17 +167,32 @@ describe("an agent's own token", () => {
       403,
       "signin_to_approve",
     ]);
-    // The person's list has it.
-    const people = (await (
-      await fetch(`${base}/api/approvals`, as())
-    ).json()) as {
-      pending: { id: string }[];
-    };
-    expect(people.pending.map((x) => x.id)).toContain(a.id);
+    // A browser without its approval key (none here) gets no list.
+    const people = await fetch(`${base}/api/approvals`, as());
+    expect([
+      people.status,
+      ((await people.json()) as { code: string }).code,
+    ]).toEqual([403, "signin_to_approve"]);
     // Stopped: the queue's Allow (what an approving browser reaches) runs nothing.
     revokeAgentTokens(stateDir, "server");
     const late = await queue.decide(a.id, "allow", "s1");
     expect(late).toMatchObject({ ok: false, code: "actor_gone" });
     expect(ran).toEqual([]);
+  });
+
+  it("mcp.approvals: false: the server holds nothing", async () => {
+    enabled = false;
+    try {
+      const r = await fetch(
+        `${base}/api/approvals`,
+        as("server", { action: "workspace_create", args: { name: "off" } }),
+      );
+      expect([r.status, ((await r.json()) as { code: string }).code]).toEqual([
+        403,
+        "approvals_off",
+      ]);
+    } finally {
+      enabled = true;
+    }
   });
 });

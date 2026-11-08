@@ -22,7 +22,12 @@
  * nothing is sent.
  */
 import chalk from "chalk";
-import { readDenConfig, type DenConfig } from "../../shared/den-config.js";
+import {
+  readDenConfig,
+  readMcpConfig,
+  type DenConfig,
+} from "../../shared/den-config.js";
+import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { listRecords } from "../../shared/agents/records.js";
@@ -216,6 +221,25 @@ export function agentsConfigured(
   }
 }
 
+/**
+ * The held writes' state (mcp.approvals), as doctor prints it. A bad value
+ * is a problem: the MCP server refuses to start on it.
+ */
+export function approvalsLines(read: () => boolean): {
+  lines: string[];
+  problem: boolean;
+} {
+  try {
+    const state = approvalsState({ approvals: read() });
+    return { lines: ["", `  ℹ MCP ${state}`], problem: false };
+  } catch (err) {
+    return {
+      lines: ["", chalk.red(`  ✗ MCP ${(err as Error).message}`)],
+      problem: true,
+    };
+  }
+}
+
 /** Informational lines after the rows: never a failure. */
 export function doctorNotes(cli: string, configured: boolean): string[] {
   return configured
@@ -312,6 +336,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   }
   const rows = doctorRows();
   for (const l of formatDoctor(rows, readBrand().name)) console.log(l);
+  const held = approvalsLines(() => readMcpConfig().approvals);
+  for (const l of held.lines) console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {
@@ -320,7 +346,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       agentsConfigured(readConfigOrNull(), getStateDir()),
     ))
       console.log(l);
-    return rows.some((r) => r.problem) ? 1 : 0;
+    return rows.some((r) => r.problem) || held.problem ? 1 : 0;
   }
   const { runEnvProbe, formatProbe } = await import("./env-probe.js");
   const { resolveDeps, plainSessionEnv } =
@@ -339,5 +365,5 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   console.log("");
   for (const l of formatProbe(results)) console.log(l);
   const found = results.some((r) => r.findings.length);
-  return rows.some((r) => r.problem) || found ? 1 : 0;
+  return rows.some((r) => r.problem) || held.problem || found ? 1 : 0;
 }

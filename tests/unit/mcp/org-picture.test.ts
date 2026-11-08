@@ -249,6 +249,7 @@ const cfg: ResolvedMcpConfig = {
   actions: [...ACTION_TOOL_NAMES],
   runTestsEnvs: ["local"],
   logsRemote: false,
+  approvals: true,
 };
 const NORTH: McpScope = { workspace: "north", actor: "agent:planner" };
 

@@ -28,6 +28,8 @@ import {
 import { readWebPort } from "../../shared/edge/config.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { needsDocker } from "./repo-detect.js";
+import { readMcpConfig } from "../../shared/den-config.js";
+import { approvalsState } from "../mcp/tools.js";
 import type { WebProbe } from "./mcp-connect.js";
 
 export type CheckStatus = "ok" | "warn" | "fail";
@@ -59,6 +61,8 @@ export interface OnboardDeps {
   probeWeb: (url: string) => Promise<WebProbe>;
   /** The MCP one-shot against the web server: exit 0, or why not. */
   mcpCall: () => { ok: boolean; detail?: string };
+  /** `mcp.approvals` (throws on a bad value): whether the held writes are on. */
+  approvals: () => boolean;
   /** The command an agent runs, e.g. `./bin/acme`. */
   bin: string;
 }
@@ -193,7 +197,28 @@ export async function onboardingChecks(
           },
     );
   }
+  out.push(approvalsCheck(d));
   return out;
+}
+
+/** `mcp:approvals`: which state the held writes are in. Never needs the server. */
+function approvalsCheck(d: OnboardDeps): OnboardCheck {
+  let on: boolean;
+  try {
+    on = d.approvals();
+  } catch (err) {
+    return {
+      id: "mcp:approvals",
+      status: "fail",
+      detail: (err as Error).message,
+      ask: "Set mcp.approvals in the distribution config to true or false.",
+    };
+  }
+  return {
+    id: "mcp:approvals",
+    status: "ok",
+    detail: approvalsState({ approvals: on }),
+  };
 }
 
 function onPath(bin: string): boolean {
@@ -286,6 +311,7 @@ export function defaultOnboardDeps(
               `exit ${r.status ?? "timeout"}`,
           };
     },
+    approvals: () => readMcpConfig().approvals,
     bin: runnableCli(),
   };
 }

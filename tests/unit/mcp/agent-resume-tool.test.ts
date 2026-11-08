@@ -48,6 +48,7 @@ const on = {
   actions: ["agent_resume" as const],
   runTestsEnvs: ["local" as const],
   logsRemote: false,
+  approvals: true,
 };
 const off = { ...on, actions: [] };
 const SCOPE: McpScope = {

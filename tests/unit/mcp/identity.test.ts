@@ -15,7 +15,12 @@ import type { ServerIdentity } from "../../../src/ui/cli/server-identity.js";
 
 const OWN = { root: "/srv/acme", product: "acme" };
 const OTHER_ROOT = "/srv/acme-other";
-const cfg = { actions: [], runTestsEnvs: ["local"], logsRemote: false };
+const cfg = {
+  actions: [],
+  runTestsEnvs: ["local"],
+  logsRemote: false,
+  approvals: true,
+};
 const headers = () => ({ "x-den-actor": "agent" });
 
 /** A stand-in web server: what it answers, and the data routes it served. */

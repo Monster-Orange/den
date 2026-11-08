@@ -340,9 +340,17 @@
       .set-radio:hover {
         background: var(--sunken);
       }
+      /* Not installed: the option stays readable (WCAG AA); only its
+         radio dims. */
       .set-radio.off {
-        opacity: 0.5;
+        color: var(--muted);
         cursor: default;
+      }
+      .set-radio.off:hover {
+        background: none;
+      }
+      .set-radio.off input {
+        opacity: 0.5;
       }
       .set-radio input {
         accent-color: var(--accent);

@@ -179,7 +179,10 @@ a CLI command, an MCP read tool and a web API route, with the same answer
 An agent finishes setup with three MCP write tools. None of them changes
 anything by itself: each asks Den to hold the change, and the person's
 browser opens a dialog on whatever Den page is open: "The `<agent>` agent
-wants to: … · Review · Later · Deny · Allow".
+wants to: … · Review · Later · Deny · Allow". A request with no agent
+token (an MCP server outside an agent's session, or anything else on this
+machine) reads "Something on this machine (no agent identity) wants to:",
+with "If you didn't ask an agent to do this, Deny." under it.
 
 | MCP tool           | What Allow runs                                         |
 | ------------------ | ------------------------------------------------------- |
@@ -208,14 +211,28 @@ wants to: … · Review · Later · Deny · Allow".
   id: `approval_check` says `pending`, `done` (with what the run said),
   `denied` or `expired`. While a request waits, its agent is "waiting" on
   the Agents page.
+- **Only the person sees what waits.** `GET /api/approvals` needs what
+  Allow needs: the session cookie, that session's CSRF token
+  (`X-Den-CSRF`) and the approval key. Anything else gets 403
+  `signin_to_approve` with only `waiting`, a count, so a signed-out page
+  can show "Something is waiting for your approval. Sign in to see it."
+  An agent's token lists its own requests and their outcomes (`mine`),
+  never another agent's. An ask with no agent token gets a `ticket` in the
+  reply; `X-Den-Approval-Ticket: <ticket>` reads that one request and no
+  other. Den's MCP server keeps it and never shows it to the agent.
 - **Routes:** `POST /api/approvals` (`{ action, args, note? }`, 202 with the
-  request), `GET /api/approvals` (what waits; never an agent's token),
-  `GET /api/approvals/<id>` (the asker's own, or the person's) and
+  request), `GET /api/approvals` (the person's: what waits; an agent's
+  token: its own), `GET /api/approvals/<id>` (the asking agent's own, the
+  ticket holder's, or the person's) and
   `POST /api/approvals/<id>/decide` (`{ decision: "allow" | "deny" }`).
   Every ask and decision is in the activity trail.
-- The three tools are always registered (the person's Allow is the gate,
-  not `mcp.actions`). A workspace-scoped MCP server refuses
-  `workspace_create` and `repo_add`: they change Den beyond its workspace.
+- **On by default; `mcp.approvals: false` turns them off.** The person's
+  Allow is the gate, not `mcp.actions`. Off, the three tools aren't
+  registered and `POST /api/approvals` answers 403 `approvals_off`.
+  `doctor` (and its `mcp:approvals` check in `--json`), the MCP server's
+  instructions and `mcp --list` (on stderr) say which is in effect. A
+  workspace-scoped MCP server refuses `workspace_create` and `repo_add`:
+  they change Den beyond its workspace.
 
 ### up, doctor and mcp connect
 
@@ -1956,10 +1973,12 @@ mcp:
     envs: [local] # the default; production is refused even if listed
   logs:
     remote: false # the default; true lets the log tools read non-local sources
+  approvals: true # the default: the held writes, each run on the person's Allow
 ```
 
 An unknown action or environment name is an error, so a typo never turns a
-guard off.
+guard off; so is an `approvals` that isn't `true` or `false`. See
+[Onboarding writes, held for the person](#onboarding-writes-held-for-the-person).
 
 ### Tools
 

@@ -29,6 +29,7 @@ interface Call {
   query?: Query;
   method?: string;
   body?: unknown;
+  headers?: Record<string, string>;
 }
 
 const ID = "AbCdEfGhIjKlMnOp";
@@ -46,8 +47,8 @@ function fakeApi(
   let i = 0;
   const api: DenApi = {
     baseUrl: "http://localhost:47003",
-    async get(path, query, method, body) {
-      calls.push({ path, query, method, body });
+    async get(path, query, method, body, headers) {
+      calls.push({ path, query, method, body, headers });
       if (path === "/api/workspaces")
         return { active: ["north"], workspaces: { north: {} } };
       if (path === "/api/approvals" && method === "POST") return post();
@@ -67,6 +68,7 @@ const cfg = (): ResolvedMcpConfig => ({
   actions: [],
   runTestsEnvs: ["local"],
   logsRemote: false,
+  approvals: true,
 });
 
 const ctx = (api: DenApi, scoped = false): ToolContext => ({
@@ -212,6 +214,27 @@ describe("a write asks, then waits for the person", () => {
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/^Refused: service_try: .*service/);
     expect(calls.filter((c) => c.path === "/api/approvals")).toEqual([]);
+  });
+});
+
+describe("the ticket (an ask with no agent token)", () => {
+  const TICKET = "T".repeat(32);
+  it("is sent on every read of that request, and never shown to the agent", async () => {
+    const { api, calls } = fakeApi(
+      [{ state: "pending" }, { state: "done", result: { ok: true } }],
+      () => ({ id: ID, state: "pending", ticket: TICKET }),
+    );
+    const r = await callTool("workspace_create", { name: "web" }, ctx(api));
+    expect(r.text).not.toContain(TICKET);
+    const reads = calls.filter((c) => c.path === `/api/approvals/${ID}`);
+    expect(reads.length).toBeGreaterThan(0);
+    for (const c of reads)
+      expect(c.headers).toEqual({ "X-Den-Approval-Ticket": TICKET });
+    const later = await callTool("approval_check", { id: ID }, ctx(api));
+    expect(later.text).not.toContain(TICKET);
+    expect(calls[calls.length - 1].headers).toEqual({
+      "X-Den-Approval-Ticket": TICKET,
+    });
   });
 });
 
