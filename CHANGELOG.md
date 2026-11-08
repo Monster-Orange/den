@@ -31,6 +31,22 @@ config and manifest changes a distribution must make to move to it under
 - **Open in Graph focuses the service.** `/graph#focus=<repo>` or
   `#focus=<repo>/<service>` opens the Graph on that card.
 
+### Fixed
+
+- **The panel's Logs reads the service's log.** It asks where the Logs
+  page asks (taillog for a local service), so a service with no `logs:`
+  block no longer says "Connection closed". The Services page's Logs
+  uses the same rule.
+- **"starting…" follows health.** After Start or Restart, the panel
+  leaves "starting…" once health says up, once it says down after a
+  moment, or after two minutes. Restart works again then, even when the
+  service's `up` never exits (a dev server).
+- **A pinned row's Visit ↗ greys out with the panel.** It reads the
+  panel's live state, so it greys out on the same health update, also
+  for a service outside the top bar's View.
+- **Open in Graph keeps its target.** The Graph page keeps the URL's
+  `#focus=` when it picks a workspace, so the card is focused and in view.
+
 ## [0.4.17] - 2026-11-08
 
 ### Fixed

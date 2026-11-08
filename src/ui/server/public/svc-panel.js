@@ -13,8 +13,9 @@
  * Open in Services, Open in Graph and Unpin (Pin when it isn't pinned).
  *
  * Every action calls what the pages call: Start, Stop and Restart are
- * /api/service/exec (up, down, restart) and Logs is /api/service/logs, as
- * the Services page's buttons, each a tab in the runs dock; Run tests is
+ * /api/service/exec (up, down, restart), as the Services page's buttons,
+ * and Logs reads where the Logs page reads (log-source.js: taillog for a
+ * local service), each a tab in the runs dock; Run tests is
  * /api/run (the repo's suites), as the Tests page. It stays live from the
  * same feeds the pages use: the header's health broadcast, the daemons
  * list, the run history (GET /api/runs/last) and the sessions list (GET
@@ -25,6 +26,7 @@
  * (denShell state `pinUrls`).
  */
 import { sudoRun } from "./topbar.js";
+import { logStreamUrl } from "./log-source.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -36,6 +38,15 @@ const esc = (s) =>
       ],
   );
 const REFRESH_MS = 5_000;
+/**
+ * "starting…" gives up after this long, as the server's own ready watch
+ * does (lifecycle-exec.ts, readyTimeoutMs).
+ */
+const START_TIMEOUT_MS = 120_000;
+/** A down check this soon after Start is the service still coming up. */
+const START_GRACE_MS = 10_000;
+/** Restart: an up check counts after a down one, or after this long. */
+const RESTART_MIN_MS = 5_000;
 /** Phone width: the panel is a bottom sheet. */
 const SHEET = "(max-width: 639px)";
 
@@ -47,12 +58,56 @@ const S = {
   upSince: new Map(),
   lastRuns: {},
   sessions: [],
-  /** Pin ids with a Start/Restart (or tests) in flight from here. */
-  busy: new Set(),
+  /**
+   * Pin ids starting from here (Start or Restart): id → { at, cmd, sawDown,
+   * timer }. "starting…" follows the health feed, not the exec stream: a
+   * dev server's `up` never ends.
+   */
+  busy: new Map(),
+  /** Pin ids with tests in flight from here. */
   testing: new Set(),
   /** The open panel: { id, el, opener, scrim, timer }. */
   open: null,
 };
+
+/** Start or Restart from here: "starting…" until health says, or the timeout. */
+function startBusy(id, cmd) {
+  endBusy(id);
+  S.busy.set(id, {
+    at: Date.now(),
+    cmd,
+    sawDown: false,
+    timer: setTimeout(() => {
+      endBusy(id);
+      sync();
+    }, START_TIMEOUT_MS),
+  });
+}
+function endBusy(id) {
+  const b = S.busy.get(id);
+  if (!b) return;
+  clearTimeout(b.timer);
+  S.busy.delete(id);
+}
+/**
+ * A health update for the pins starting from here: up ends "starting…"
+ * (after Restart, once the old instance went down or after a moment);
+ * down ends it once the service has had a moment to come up.
+ */
+function settleBusy() {
+  for (const [id, b] of [...S.busy]) {
+    const s = serviceOf(id);
+    const age = Date.now() - b.at;
+    if (s.ok === false) {
+      b.sawDown = true;
+      if (age >= START_GRACE_MS) endBusy(id);
+    } else if (
+      s.ok === true &&
+      (b.cmd !== "restart" || b.sawDown || age >= RESTART_MIN_MS)
+    )
+      endBusy(id);
+  }
+}
 
 /** The primary service of a repo from the health results (entrypoint first). */
 function primaryOf(repo) {
@@ -265,6 +320,7 @@ function place() {
 
 /** Repaint the open panel from the feeds, keeping focus and scroll. */
 function sync() {
+  publishUrls();
   const o = S.open;
   if (!o) return;
   const a = document.activeElement;
@@ -412,6 +468,9 @@ function stream(url, key, label, opts, done) {
     if (msg.type === "cmd") out(msg.text, "cmd");
     else if (msg.type === "line") out(msg.text, "");
     else if (msg.type === "error") out(msg.text, "err");
+    // A detached start is up (the server's ready watch); its stream stays
+    // open for the log.
+    else if (msg.type === "ready") opts.ready?.();
     else if (msg.type === "done") {
       const ok = msg.exitCode === 0;
       es.close();
@@ -439,30 +498,26 @@ function exec(s, cmd) {
     env: env(),
   });
   if (s.workspaces[0]) params.set("workspace", s.workspaces[0]);
-  if (cmd !== "down") S.busy.add(s.id);
+  if (cmd !== "down") startBusy(s.id, cmd);
   if (cmd === "down") window.denShell?.toast?.(t("svp.stopping", { s: s.id }));
   sync();
+  const settled = () => {
+    endBusy(s.id);
+    S.deps.refreshHealth?.(env(), { force: true });
+    void refresh();
+  };
   stream(
     `/api/service/exec?${params}`,
     `${s.repo}/${s.service}`,
     `${cmd} ${s.repo}/${s.service}`,
-    { again: () => exec(s, cmd) },
-    () => {
-      S.busy.delete(s.id);
-      S.deps.refreshHealth?.(env(), { force: true });
-      void refresh();
-    },
+    { again: () => exec(s, cmd), ready: settled },
+    settled,
   );
 }
 
 function logs(s) {
-  const params = new URLSearchParams({
-    repo: s.repo,
-    service: s.service,
-    env: env(),
-  });
   stream(
-    `/api/service/logs?${params}`,
+    logStreamUrl(s.repo, s.service, env()),
     `${s.repo}/${s.service}`,
     `logs ${s.repo}/${s.service}`,
     { running: false, open: true },
@@ -530,18 +585,28 @@ function act(k, btn) {
 
 // ── wiring ────────────────────────────────────────────────────────────────
 
-/** Every pin's URL, for the rail's Visit ↗. */
+/**
+ * Every pin's URL, and whether its Visit is off (down, or starting), for
+ * the rail's Visit ↗: the live state the panel shows, so the ↗ greys out
+ * on the same health update as the panel's dot (whatever the View).
+ */
 function publishUrls() {
   const sh = window.denShell;
   if (!sh?.setState) return;
   const urls = {};
+  const off = {};
   for (const id of sh.getState?.().pins ?? []) {
     const s = serviceOf(id);
-    if (s.url) urls[id] = s.url;
+    if (!s.url) continue;
+    urls[id] = s.url;
+    off[id] = !visitable(s);
   }
-  const was = sh.getState?.().pinUrls ?? {};
-  if (JSON.stringify(was) !== JSON.stringify(urls))
-    sh.setState({ pinUrls: urls });
+  const st = sh.getState?.() ?? {};
+  if (
+    JSON.stringify(st.pinUrls ?? {}) !== JSON.stringify(urls) ||
+    JSON.stringify(st.pinOff ?? {}) !== JSON.stringify(off)
+  )
+    sh.setState({ pinUrls: urls, pinOff: off });
 }
 
 let inited = false;
@@ -553,13 +618,10 @@ export function initServicePanel(deps = {}) {
   document.addEventListener("__DEN_CLI__:health-update", (e) => {
     for (const r of Array.isArray(e.detail) ? e.detail : [])
       if (r?.repo && r.service) S.results.set(`${r.repo}/${r.service}`, r);
-    publishUrls();
+    settleBusy();
     sync();
   });
-  window.addEventListener("den:pins", () => {
-    publishUrls();
-    sync();
-  });
+  window.addEventListener("den:pins", () => sync());
   document.addEventListener(
     "click",
     (e) => {

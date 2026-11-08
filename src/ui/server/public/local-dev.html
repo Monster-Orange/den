@@ -1874,7 +1874,12 @@
           if (updateUrl) {
             const params = new URLSearchParams(location.search);
             params.set("ws", name);
-            history.replaceState(null, "", "?" + params.toString());
+            // The hash stays (#focus=<id>: Open in Graph's card).
+            history.replaceState(
+              null,
+              "",
+              "?" + params.toString() + location.hash,
+            );
           }
           document
             .querySelectorAll(".ws-item")
@@ -4273,7 +4278,11 @@
               const params = new URLSearchParams(location.search);
               params.delete("ws");
               const qs = params.toString();
-              history.replaceState(null, "", qs ? "?" + qs : location.pathname);
+              history.replaceState(
+                null,
+                "",
+                (qs ? "?" + qs : location.pathname) + location.hash,
+              );
             }
             await loadWorkspaces();
           }

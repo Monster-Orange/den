@@ -50,6 +50,8 @@ export const UI_MODULES: readonly string[] = [
   "/view-scope.js",
   // 0.4.18: the service panel (rail pins, Graph ⋯, Services names).
   "/svc-panel.js",
+  // 0.4.18: where a service's live log comes from (Logs page and panel).
+  "/log-source.js",
 ];
 
 /** URL path → file inside node_modules. */

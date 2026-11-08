@@ -349,6 +349,7 @@
           envReady,
           sudoRun,
         } from "/header.js";
+        import { logStreamUrl } from "/log-source.js";
         import { ownersLabel } from "/workspace-picker.js";
 
         let es = null;
@@ -835,8 +836,8 @@
           );
           appendLine(`\n▶ ${repo}/${service} logs · ${env}\n`, "cmd");
 
-          const params = new URLSearchParams({ repo, service, env });
-          es = new EventSource(`/api/service/logs?${params}`);
+          // The Logs page's source (log-source.js): taillog for local.
+          es = new EventSource(logStreamUrl(repo, service, env));
           handleSSE(es, repo, service, { stream: true });
         }
 
