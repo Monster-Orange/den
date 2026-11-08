@@ -271,6 +271,8 @@
     "err.signin.noTerminal":
       "¿No tienes una terminal en {host}? Desde este ordenador, ejecuta:",
     "err.signin.openTerminal": "Abrir Terminal",
+    "err.signin.sshUserNote":
+      "Inicia sesión con tu cuenta de {host} ({user}) y su contraseña, o con una clave SSH.",
     "err.signin.sshNote":
       "Abrir Terminal abre ssh://{target} en tu aplicación de terminal. Necesita acceso SSH a {target}.",
     "err.signin.whyTitle": "¿Por qué?",

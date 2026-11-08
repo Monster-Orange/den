@@ -19,6 +19,9 @@ import {
   isIpLiteral,
   machineLabel,
   parseMachineName,
+  parseSshUser,
+  sshLogin,
+  sshUser,
   shellQuote,
   shortHostname,
   sshCommand,
@@ -198,6 +201,23 @@ describe("the two host values", () => {
     expect(isIpLiteral("100.64.0.1")).toBe(true);
     expect(isIpLiteral("fd00::1")).toBe(true);
     expect(isIpLiteral("box.example")).toBe(false);
+  });
+
+  it('web.ssh_user (SEC-2a-UX): an account name, or "" for none; unset is the account Den runs as', () => {
+    expect(parseSshUser(undefined)).toBeUndefined();
+    expect(parseSshUser(null)).toBeUndefined();
+    expect(parseSshUser("")).toBe("");
+    expect(parseSshUser(" ops ")).toBe("ops");
+    expect(parseSshUser("first.last_2-x")).toBe("first.last_2-x");
+    for (const bad of ["a@b", "-oProxyCommand=x", "two words", "x;y", 7, true])
+      expect(() => parseSshUser(bad)).toThrow(/web\.ssh_user must be/);
+    expect(sshUser(undefined, "alex")).toBe("alex");
+    expect(sshUser("ops", "alex")).toBe("ops");
+    expect(sshUser("", "alex")).toBe("");
+    // An account ssh couldn't take is left off, never sent.
+    expect(sshUser(undefined, "DOMAIN\\me")).toBe("");
+    expect(sshLogin("box.example", "alex")).toBe("alex@box.example");
+    expect(sshLogin("box.example", "")).toBe("box.example");
   });
 
   it("web.machine_name: one line of text, at most 64 characters; blank is unset", () => {

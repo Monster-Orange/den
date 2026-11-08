@@ -31,6 +31,7 @@ import { readWebSecret } from "../../../src/shared/web-secret.js";
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
 const SHORT = os.hostname().split(".")[0];
+const USER = os.userInfo().username;
 const SHOTS = process.env.DEN_SEC2_SHOTS ?? "";
 const CODE_RE = /web approve ([0-9A-Z]{3}-[0-9A-Z]{3})$/;
 let browser: Browser | null = null;
@@ -230,11 +231,16 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
     expect(
       lines
         .find((l) => l.id === "den-pair-ssh")
-        ?.cmd.startsWith(`ssh ${EDGE} '`),
+        ?.cmd.startsWith(`ssh ${USER}@${EDGE} '`),
     ).toBe(true);
-    // The ssh target is a name: Open Terminal is an ssh:// link to it.
+    // The ssh target is a name: Open Terminal is an ssh:// link to it, as
+    // the account Den runs as (SEC-2a-UX: an SSH app's own default
+    // account is one nobody knows), and the note says which.
     expect(await p.getAttribute("#den-pair-term", "href")).toBe(
-      `ssh://${EDGE}`,
+      `ssh://${USER}@${EDGE}`,
+    );
+    expect(await p.textContent("#den-pair-note")).toBe(
+      `Log in with your ${SHORT} account (${USER}) and its password, or an SSH key.`,
     );
     // "Other ways" starts collapsed.
     expect(await p.isVisible("#den-signin-cmd")).toBe(false);

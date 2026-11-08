@@ -263,7 +263,9 @@ import {
   machineLabel,
   parseMachineName,
   sshCommand,
+  sshLogin,
   sshTarget,
+  sshUser,
 } from "../../shared/cli-command.js";
 import { graphPrefs, patchStoredGraph } from "./graph-prefs.js";
 import { agentsLayout, patchAgentsLayout } from "./agents-layout-pref.js";
@@ -1250,6 +1252,26 @@ function loggedPath(pathname: string): string {
   );
 }
 
+/**
+ * The account the signed-out page's ssh link logs in as (SEC-2a-UX):
+ * `web.ssh_user` (read now), else the account Den runs as; "" for none.
+ */
+function sshUserNow(): string {
+  let set: string | undefined;
+  try {
+    set = readWebAuthConfig(getDistRoot(), product().configFile).sshUser;
+  } catch {
+    set = WEB_AUTH.sshUser;
+  }
+  let osUser = "";
+  try {
+    osUser = os.userInfo().username;
+  } catch {
+    /* no account name: none on the page */
+  }
+  return sshUser(set, osUser);
+}
+
 /** The ssh target for this request: the Host it used, minus the port. */
 function sshTargetOf(req: http.IncomingMessage): string {
   return sshTarget(req.headers.host, os.hostname());
@@ -1403,6 +1425,7 @@ function sendSignedOut(
     toLocal || host === `localhost:${PORT}` ? [] : ["--origin", origin];
   const cmd = cliCommand(bin, "web", "login", ...loginArgs);
   const ssh = sshTargetOf(req);
+  const user = sshUserNow();
   res.setHeader("Cache-Control", "no-store");
   sendErrorPage(req, res, {
     status: 401,
@@ -1418,9 +1441,11 @@ function sendSignedOut(
       machine: machineName(),
       ssh: {
         target: ssh,
+        // SEC-2a-UX: the account to log in as ("" for none).
+        user,
         // Open Terminal (ssh://) only for a name, never an IP literal.
         name: !isIpLiteral(ssh),
-        login: sshCommand(ssh, cmd),
+        login: sshCommand(sshLogin(ssh, user), cmd),
       },
       // SEC-2a: Sign in with GitHub, and why it can't be offered yet.
       github: {
@@ -2009,7 +2034,10 @@ async function handleRequest(
       },
       commands: (r, code) => {
         const approve = cliCommand(printedCli(), "web", "approve", code);
-        return { approve, ssh: sshCommand(sshTargetOf(r), approve) };
+        return {
+          approve,
+          ssh: sshCommand(sshLogin(sshTargetOf(r), sshUserNow()), approve),
+        };
       },
       audit: (r, verb, detail, refused) =>
         recordAction(

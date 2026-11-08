@@ -21,7 +21,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "yaml";
-import { parseMachineName } from "./cli-command.js";
+import { parseMachineName, parseSshUser } from "./cli-command.js";
 import { getStateDir } from "./paths.js";
 
 export const LOGIN_CODE_TTL_MS = 60_000;
@@ -195,6 +195,12 @@ export interface WebAuthConfig {
    * page gives this machine ("runs on <name>"). Unset: the short hostname.
    */
   machineName?: string;
+  /**
+   * `web.ssh_user` (SEC-2a-UX; user.yml, else the distribution's): the
+   * account the signed-out page's ssh link logs in as. Unset: the account
+   * Den runs as. "": no account on the page.
+   */
+  sshUser?: string;
 }
 
 /** `web.edge_unattested`'s values. */
@@ -290,8 +296,13 @@ export function readWebAuthConfig(
   const clientId =
     clientIdOf(user, "config/local/user.yml") ?? clientIdOf(team, configFile);
   const machineName = parseMachineName(user.machine_name);
+  const sshUser =
+    user.ssh_user !== undefined
+      ? parseSshUser(user.ssh_user)
+      : parseSshUser(team.ssh_user);
   return {
     ...(machineName ? { machineName } : {}),
+    ...(sshUser !== undefined ? { sshUser } : {}),
     allowPlainHttpRemote: plain === true,
     ignored,
     edgeUnattested: unattested ?? "signin",

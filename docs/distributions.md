@@ -1546,6 +1546,15 @@ user, and the CLI does that for you:
   host name (up to the first dot). It is never taken from the browser's
   Host. The ssh one-liner's target is the Host the browser used, without
   the port (the machine's host name if it had none).
+- **The ssh account.** The ssh one-liner and the Open Terminal link log in
+  as `<user>@<host>`, where user is the account the Den server runs as, so
+  an SSH app doesn't fill in its own default. The note under the button
+  says "Log in with your <machine> account (<user>) and its password, or
+  an SSH key." `web.ssh_user` names another account (`config/local/user.yml`,
+  else the distribution's `config/den.yml`; read at once). `web.ssh_user:
+""` leaves the account off, for a distribution that doesn't want it on a
+  page anyone on the network can see. It takes letters, digits, `.`, `_`
+  and `-`; anything else is refused at start, naming the key.
 - **Codes.** About 30 bits (Crockford base32: no I, L, O or U; typed in any
   case, the dash optional); the page polls with a separate 128-bit id. A
   code expires after 10 minutes and works once; at most five wait at once

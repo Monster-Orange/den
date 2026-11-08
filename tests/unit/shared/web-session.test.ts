@@ -267,6 +267,17 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
     },
   );
 
+  it('web.ssh_user (SEC-2a-UX): user.yml, else the distribution\'s; "" kept; a wrong one names the key', () => {
+    write("config/den.yml", "web:\n  ssh_user: ops\n");
+    expect(readWebAuthConfig(tmp).sshUser).toBe("ops");
+    write("config/local/user.yml", 'web:\n  ssh_user: ""\n');
+    expect(readWebAuthConfig(tmp).sshUser).toBe("");
+    write("config/local/user.yml", "web:\n  ssh_user: me\n");
+    expect(readWebAuthConfig(tmp).sshUser).toBe("me");
+    write("config/local/user.yml", "web:\n  ssh_user: a@b\n");
+    expect(() => readWebAuthConfig(tmp)).toThrow(/web\.ssh_user must be/);
+  });
+
   it("a wrong allow_plain_http_remote still names the key", () => {
     write(
       "config/local/user.yml",

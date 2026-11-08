@@ -106,6 +106,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- The signed-out page's Open Terminal link was `ssh://<host>` with no
+  account, so an SSH app filled in its own default (an iPad's asked for
+  `user@…`'s password). The link and the ssh one-liner are now
+  `<user>@<host>`, the account Den runs as, and the note says "Log in with
+  your <machine> account (<user>) and its password, or an SSH key."
+  `web.ssh_user` names another account; `web.ssh_user: ""` leaves it off.
 - Text dimmed with opacity fell under WCAG AA on the light theme. Not
   installed editors and terminals in Settings (3.1:1, their "not found"
   2.2:1), a repo already in the workspace in Add service (1.9:1), the

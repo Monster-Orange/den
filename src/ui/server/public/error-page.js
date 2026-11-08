@@ -139,7 +139,7 @@ function withCmd(text, cmd) {
 function withHost(t, key, vars) {
   const marks = {};
   const v = { ...vars };
-  for (const k of ["host", "target"])
+  for (const k of ["host", "target", "user"])
     if (k in v) {
       marks[k] = v[k];
       v[k] = `\u0001${k}\u0001`;
@@ -366,6 +366,9 @@ function wirePair(root, t, s) {
   if (!box) return;
   const host = s.machine || "";
   const target = s.ssh?.target || "";
+  // SEC-2a-UX: the account to log in as, so the SSH app doesn't guess one.
+  const user = s.ssh?.user || "";
+  const login = user ? `${user}@${target}` : target;
   let poll = null;
   let tick = null;
   let gen = 0;
@@ -391,7 +394,7 @@ function wirePair(root, t, s) {
   const show = (b) => {
     const term =
       s.ssh?.name && target
-        ? `<a class="btn" id="den-pair-term" href="ssh://${esc(target)}">${esc(t("err.signin.openTerminal"))}</a>`
+        ? `<a class="btn" id="den-pair-term" href="ssh://${esc(login)}">${esc(t("err.signin.openTerminal"))}</a>`
         : "";
     box.innerHTML =
       `<ol class="den-steps">` +
@@ -404,7 +407,11 @@ function wirePair(root, t, s) {
       `<p>${withHost(t, "err.signin.noTerminal", { host })}</p>` +
       cmdLine("den-pair-ssh", b.ssh, t, term) +
       (term
-        ? `<p class="den-pair-note">${withHost(t, "err.signin.sshNote", { target })}</p>`
+        ? `<p class="den-pair-note" id="den-pair-note">${
+            user
+              ? withHost(t, "err.signin.sshUserNote", { host, user })
+              : withHost(t, "err.signin.sshNote", { target })
+          }</p>`
         : "");
     wireCopy(box, t);
   };

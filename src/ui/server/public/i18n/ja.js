@@ -260,6 +260,8 @@
     "err.signin.noTerminal":
       "{host} のターミナルがありませんか?このコンピューターで次を実行します:",
     "err.signin.openTerminal": "ターミナルを開く",
+    "err.signin.sshUserNote":
+      "{host} のアカウント({user})とそのパスワード、または SSH キーでログインします。",
     "err.signin.sshNote":
       "「ターミナルを開く」はターミナルアプリで ssh://{target} を開きます。{target} への SSH アクセスが必要です。",
     "err.signin.whyTitle": "なぜ?",

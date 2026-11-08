@@ -383,6 +383,8 @@
     "err.signin.noTerminal":
       "Don't have a terminal on {host}? From this computer, run:",
     "err.signin.openTerminal": "Open Terminal",
+    "err.signin.sshUserNote":
+      "Log in with your {host} account ({user}) and its password, or an SSH key.",
     "err.signin.sshNote":
       "Open Terminal opens ssh://{target} in your terminal app. It needs SSH access to {target}.",
     "err.signin.whyTitle": "Why?",

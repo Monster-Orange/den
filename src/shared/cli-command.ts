@@ -143,6 +143,37 @@ export function sshTarget(
   return /^[a-z0-9._:-]+$/.test(h) && !h.startsWith("-") ? h : fallback;
 }
 
+/** An account name ssh can take before `@`: letters, digits, `.`, `_`, `-`. */
+const SSH_USER_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$/;
+
+/**
+ * `web.ssh_user` as stored (SEC-2a-UX): the account the signed-out page's
+ * ssh link and command log in as. undefined when unset (the account Den
+ * runs as); "" leaves the account off. Throws naming the key otherwise.
+ */
+export function parseSshUser(v: unknown): string | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "string" || (v.trim() !== "" && !SSH_USER_RE.test(v.trim())))
+    throw new Error(
+      `web.ssh_user must be an account name (letters, digits, ".", "_", "-"), or "" to leave it off; got ${JSON.stringify(v)}`,
+    );
+  return v.trim();
+}
+
+/**
+ * The account for the ssh link: `setting` when set ("" for none), else
+ * `osUser` when ssh can take it, else none.
+ */
+export function sshUser(setting: string | undefined, osUser: string): string {
+  if (setting !== undefined) return setting;
+  return SSH_USER_RE.test(osUser) ? osUser : "";
+}
+
+/** `user@target`, or the bare target when there's no user. */
+export function sshLogin(target: string, user: string): string {
+  return user ? `${user}@${target}` : target;
+}
+
 /** `Mac-Studio.localdomain` → `Mac-Studio`; an IP literal stays whole. */
 export function shortHostname(hostname: string): string {
   const h = hostname.trim();

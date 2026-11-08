@@ -31,6 +31,8 @@ const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
 const NAME = os.hostname().toLowerCase();
 const SHORT = os.hostname().split(".")[0];
+/** The account the server runs as: the ssh link logs in as it (SEC-2a-UX). */
+const USER = os.userInfo().username;
 const EDGE = "den.svc.example.test";
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
@@ -242,8 +244,9 @@ describe("the signed-out page names the machine and prints commands that run her
     expect(s.cmd).toBe(`${prefix()} web login --origin http://${NAME}:${port}`);
     expect(s.ssh).toEqual({
       target: NAME,
+      user: USER,
       name: true,
-      login: `ssh ${NAME} '${s.cmd as string}'`,
+      login: `ssh ${USER}@${NAME} '${s.cmd as string}'`,
     });
     // Never a bare <cli> that isn't this distribution's on PATH.
     if (prefix() !== "den")
@@ -258,6 +261,34 @@ describe("the signed-out page names the machine and prints commands that run her
         "Studio Box",
         NAME,
       ]);
+    } finally {
+      writeUser();
+    }
+  });
+
+  it('web.ssh_user names another account, "" leaves it off, a wrong one keeps the default (read at once)', async () => {
+    const sshOf = async () =>
+      signinOf(await call("GET", "/", { accept: "text/html" })).ssh as {
+        user: string;
+        login: string;
+      };
+    try {
+      writeUser("  ssh_user: ops\n");
+      let ssh = await sshOf();
+      expect([ssh.user, ssh.login.startsWith(`ssh ops@${NAME} '`)]).toEqual([
+        "ops",
+        true,
+      ]);
+      writeUser('  ssh_user: ""\n');
+      ssh = await sshOf();
+      expect([ssh.user, ssh.login.startsWith(`ssh ${NAME} '`)]).toEqual([
+        "",
+        true,
+      ]);
+      // The code's ssh line follows it too.
+      expect((await askCode()).ssh.startsWith(`ssh ${NAME} '`)).toBe(true);
+      writeUser("  ssh_user: a@b\n");
+      expect((await sshOf()).user).toBe(USER);
     } finally {
       writeUser();
     }
@@ -283,7 +314,7 @@ describe("approve this computer with a code", () => {
     const a = await askCode();
     expect(a.code).toMatch(/^[0-9A-HJKMNP-TV-Z]{3}-[0-9A-HJKMNP-TV-Z]{3}$/);
     expect(a.approve).toBe(`${prefix()} web approve ${a.code}`);
-    expect(a.ssh).toBe(`ssh ${NAME} '${a.approve}'`);
+    expect(a.ssh).toBe(`ssh ${USER}@${NAME} '${a.approve}'`);
     // Waiting: the poll (bare: a plain-http LAN origin sends no metadata).
     const wait = await call("GET", `/api/signin/code/${a.id}`);
     expect([wait.status, json(wait).state, cookieOf(wait)]).toEqual([
