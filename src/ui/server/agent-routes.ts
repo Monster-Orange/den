@@ -119,6 +119,7 @@ import {
   updatePersona,
   listRuntimes,
   markInterrupted,
+  cancelStalePersonaChanges,
   NOT_IN_WORKSPACE,
   pruneStopped,
   removeAgent,
@@ -1160,6 +1161,21 @@ export function startAgentUpkeep(
 ): void {
   const d = webDeps(deps.agents);
   const restart = async () => {
+    // AG-18: a persona change waiting for a turn's end lived in memory.
+    try {
+      for (const c of cancelStalePersonaChanges(d)) {
+        const what = `persona ${c.id} in ${c.workspace}: ${c.from} → ${c.to}, by ${c.by ?? "this machine"}`;
+        recordAction(null, {
+          verb: "agents",
+          detail: what,
+          outcome: "refused",
+          reason: "persona change cancelled: Den restarted",
+        });
+        log(`Persona change cancelled (Den restarted): ${what}`);
+      }
+    } catch (e) {
+      log(`  ⚠ persona changes after the restart: ${(e as Error).message}`);
+    }
     try {
       const f = await markInterrupted(d);
       if (f.interrupted.length)

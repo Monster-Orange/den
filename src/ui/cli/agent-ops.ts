@@ -2290,7 +2290,18 @@ export async function changePersona(
     throw refused(
       `${where}: Den can't tell when agent ${rec.id}'s turn ends; stop it now instead (--now)`,
     );
-  if (req.when === "after-turn") {
+  if (req.when !== "after-turn") return switchPersona(d, rec, req, where);
+  // Waiting: marked on the record, so a restart that drops the wait can
+  // say so (cancelStalePersonaChanges); cleared however this ends.
+  writeRecord(d.stateDir(), {
+    ...rec,
+    pendingPersona: {
+      to: req.persona,
+      since: new Date().toISOString(),
+      ...(req.by ? { by: req.by } : {}),
+    },
+  });
+  try {
     const deadline = Date.now() + (opts.maxMs ?? TURN_WAIT_MS);
     while (busy) {
       if (Date.now() >= deadline)
@@ -2300,7 +2311,56 @@ export async function changePersona(
       await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
       busy = await agentBusy(d, agentRecord(d, id, ws));
     }
+    return await switchPersona(d, rec, req, where);
+  } catch (e) {
+    clearPendingPersona(d, rec.id);
+    throw e;
   }
+}
+
+/** Drop agent `id`'s pending persona change mark, if it has one. */
+function clearPendingPersona(d: AgentsResolved, id: string): void {
+  const cur = readRecord(d.stateDir(), id);
+  if (!cur?.pendingPersona) return;
+  const { pendingPersona: _pp, ...rest } = cur;
+  writeRecord(d.stateDir(), rest);
+}
+
+/**
+ * At start (AG-18): every persona change still marked pending was dropped
+ * when Den stopped, since the wait lived in memory. Clears each mark and
+ * returns them, for the audit trail.
+ */
+export function cancelStalePersonaChanges(d: AgentsResolved): {
+  id: string;
+  workspace: string;
+  from: string;
+  to: string;
+  by?: string;
+}[] {
+  const out: ReturnType<typeof cancelStalePersonaChanges> = [];
+  for (const rec of listRecords(d.stateDir())) {
+    const p = rec.pendingPersona;
+    if (!p) continue;
+    clearPendingPersona(d, rec.id);
+    out.push({
+      id: rec.id,
+      workspace: rec.workspace,
+      from: rec.persona,
+      to: p.to,
+      ...(p.by ? { by: p.by } : {}),
+    });
+  }
+  return out;
+}
+
+/** The switch itself: stop, the new persona's settings, resume. */
+async function switchPersona(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  req: PersonaRequest,
+  where: string,
+): Promise<PersonaChanged> {
   const stopped = await stopAgent(d, rec.id, rec.workspace);
   if (stopped.stillStopping)
     throw refused(
@@ -2308,7 +2368,13 @@ export async function changePersona(
     );
   // The new persona's permissions apply: the old one's choices go. The
   // model stays (the conversation's) unless one is given.
-  const { permission: _p, allow: _a, overrides: _o, ...base } = stopped.rec;
+  const {
+    permission: _p,
+    allow: _a,
+    overrides: _o,
+    pendingPersona: _pp,
+    ...base
+  } = stopped.rec;
   const keptOverrides = (rec.overrides ?? []).filter(
     (o) => o === "runtime" || o === "model" || o === "version",
   );

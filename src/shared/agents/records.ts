@@ -108,6 +108,12 @@ export interface AgentRecord {
    * person's sign-in, or "cli").
    */
   personaChanges?: PersonaChange[];
+  /**
+   * AG-18: a persona change waiting for this agent's turn to end. The wait
+   * lives in the server's memory, so a restart drops it; the upkeep at
+   * start clears this and audits the cancel (cancelStalePersonaChanges).
+   */
+  pendingPersona?: { to: string; since: string; by?: string };
 }
 
 /** One persona change of an agent (AG-18). */

@@ -17,7 +17,9 @@ config and manifest changes a distribution must make to move to it under
   current persona and lists what changes. Mid-turn it never stops a turn
   unasked: "It's working. Change after this turn, or stop it now?" (409
   `busy`); After this turn waits for the turn to end, Stop it now stops
-  it. A person's only: an agent's token is refused (403), and there is no
+  it. The wait lives in the server's memory: if Den restarts first, the
+  change is dropped, the record no longer marks it pending, and the audit
+  trail says "persona change cancelled: Den restarted". A person's only: an agent's token is refused (403), and there is no
   MCP tool. Only a runtime that can resume offers it. The record keeps
   `personaChanges`, and the audit trail records each change. Route `POST
   /api/workspaces/<ws>/agents/<id>/persona`.

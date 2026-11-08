@@ -2317,7 +2317,11 @@ as…" line as Bring in.
   no answer yet), the change is refused: "It's working. Change after this
   turn, or stop it now?" (HTTP 409 `busy`). **After this turn**
   (`--after-turn`, `when: "after-turn"`) waits for the turn to end, up to
-  30 minutes, and then switches (the API answers 202 `pending` at once);
+  30 minutes, and then switches (the API answers 202 `pending` at once;
+  the record marks it `pendingPersona` while it waits). The wait lives in
+  the server's memory: if Den restarts first, the change is dropped, the
+  mark is cleared at start, and the audit trail records "persona change
+  cancelled: Den restarted";
   **Stop it now** (`--now`, `when: "now"`) stops it and switches.
 - **A person's only.** An agent could widen its own permissions with it,
   so an agent's token is refused (403), the CLI refuses inside an agent's

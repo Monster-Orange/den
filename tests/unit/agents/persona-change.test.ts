@@ -18,6 +18,7 @@ import { readRecord } from "../../../src/shared/agents/records.js";
 import { verifyActorToken } from "../../../src/shared/actor-token.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import {
+  cancelStalePersonaChanges,
   changePersona,
   resolveAgentsDeps,
 } from "../../../src/ui/cli/agent-ops.js";
@@ -238,6 +239,74 @@ describe("agents persona (CLI)", () => {
     expect(out.from).toBe("planner");
     expect(out.rec.persona).toBe("reviewer");
     expect(r.made[1].args.slice(0, 2)).toEqual(["--resume", token]);
+  });
+
+  it("while it waits, the record says so; done, the mark goes", async () => {
+    const r = await rig();
+    const token = await planner(r, WORKING);
+    const d = resolveAgentsDeps(r.deps);
+    const change = changePersona(
+      d,
+      "release-plan",
+      "north",
+      { persona: "reviewer", when: "after-turn", by: "@owner" },
+      { pollMs: 20 },
+    );
+    await new Promise((res) => setTimeout(res, 100));
+    expect(readRecord(r.stateDir, "release-plan")!.pendingPersona).toEqual(
+      expect.objectContaining({ to: "reviewer", by: "@owner" }),
+    );
+    transcript(r, token, ENDED);
+    await change;
+    expect(readRecord(r.stateDir, "release-plan")!.pendingPersona).toBe(
+      undefined,
+    );
+  });
+
+  it("a wait that runs out clears the mark; nothing changed", async () => {
+    const r = await rig();
+    await planner(r, WORKING);
+    const d = resolveAgentsDeps(r.deps);
+    await expect(
+      changePersona(
+        d,
+        "release-plan",
+        "north",
+        { persona: "reviewer", when: "after-turn" },
+        { pollMs: 10, maxMs: 60 },
+      ),
+    ).rejects.toThrow(/still working/);
+    const rec = readRecord(r.stateDir, "release-plan")!;
+    expect([rec.persona, rec.pendingPersona]).toEqual(["planner", undefined]);
+  });
+
+  it("a restart drops a waiting change: at start the mark is cleared and returned for the audit, once", async () => {
+    const r = await rig();
+    await planner(r, WORKING);
+    const d = resolveAgentsDeps(r.deps);
+    // What a server that stopped mid-wait leaves behind.
+    const { writeRecord } =
+      await import("../../../src/shared/agents/records.js");
+    writeRecord(r.stateDir, {
+      ...readRecord(r.stateDir, "release-plan")!,
+      pendingPersona: {
+        to: "reviewer",
+        since: new Date().toISOString(),
+        by: "@owner",
+      },
+    });
+    expect(cancelStalePersonaChanges(d)).toEqual([
+      {
+        id: "release-plan",
+        workspace: "north",
+        from: "planner",
+        to: "reviewer",
+        by: "@owner",
+      },
+    ]);
+    const rec = readRecord(r.stateDir, "release-plan")!;
+    expect([rec.persona, rec.pendingPersona]).toEqual(["planner", undefined]);
+    expect(cancelStalePersonaChanges(d)).toEqual([]);
   });
 
   it("an agent can't change its own persona (or another's) from its session", async () => {
