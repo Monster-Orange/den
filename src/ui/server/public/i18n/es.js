@@ -86,6 +86,8 @@
     "svp.startHere": "Iniciar agente aquí",
     "svp.openSvc": "Abrir en Servicios",
     "svp.openGraph": "Abrir en Grafo",
+    "graph.outside": "{s} está en {ws}, fuera de esta vista.",
+    "graph.showWs": "Mostrar {ws}",
     "svp.close": "Cerrar",
     "ag.new.folder": "Carpeta (opcional)",
     "ag.new.folderHelp":

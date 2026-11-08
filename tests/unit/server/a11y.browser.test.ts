@@ -3,11 +3,13 @@
  * demo distribution, with notes up (a stub health check on localhost) and
  * pinned.
  *
- * Four surfaces, each in light and dark, at 1440×900 and 390×844:
+ * Five surfaces, each in light and dark, at 1440×900 and 390×844:
  *
  * - the rail (at phone size, the drawer: ☰ opens it);
  * - an open pinned-service panel (a click on the rail's pinned row);
  * - the Start agent dialog on /agents;
+ * - the Graph's line for Open in Graph outside the View ("blog is in
+ *   south, outside this View.", Show south);
  * - the server agent's page (/server-agent).
  *
  * axe runs with WCAG 2.0 and 2.1 A and AA plus best practice. Any
@@ -104,6 +106,18 @@ async function openRail(p: Page, z: Size): Promise<void> {
   await p.waitForSelector('.den-rail [data-visit="notes"]', {
     timeout: 20_000,
   });
+}
+
+/** The top bar's View: "all" or one workspace (a server setting). */
+async function view(p: Page, scope: string): Promise<void> {
+  await p.waitForFunction(() => "denShell" in window);
+  await p.evaluate(async (v) => {
+    await (
+      window as unknown as {
+        denShell: { api(m: string, u: string, b: unknown): Promise<unknown> };
+      }
+    ).denShell.api("POST", "/api/scope", { scope: v });
+  }, scope);
 }
 
 interface Found {
@@ -214,6 +228,21 @@ const SURFACES: {
       const r = await scan(p, "#ag-dlg[open]");
       await p.context().close();
       return r;
+    },
+  },
+  {
+    name: "the Graph's outside-this-View line",
+    async run(scheme, z) {
+      const p = await page("/services", scheme, z);
+      await view(p, "north");
+      try {
+        await p.goto(`${s!.base}/graph#focus=blog`);
+        await p.waitForSelector(".dg-out button", { timeout: 20_000 });
+        return await scan(p, ".dg-out");
+      } finally {
+        await view(p, "all");
+        await p.context().close();
+      }
     },
   },
   {

@@ -43,8 +43,6 @@ const REFRESH_MS = 5_000;
  * does (lifecycle-exec.ts, readyTimeoutMs).
  */
 const START_TIMEOUT_MS = 120_000;
-/** A down check this soon after Start is the service still coming up. */
-const START_GRACE_MS = 10_000;
 /** Restart: an up check counts after a down one, or after this long. */
 const RESTART_MIN_MS = 5_000;
 /** Phone width: the panel is a bottom sheet. */
@@ -60,8 +58,9 @@ const S = {
   sessions: [],
   /**
    * Pin ids starting from here (Start or Restart): id → { at, cmd, sawDown,
-   * timer }. "starting…" follows the health feed, not the exec stream: a
-   * dev server's `up` never ends.
+   * ready, timer }. "starting…" follows the health feed, not the exec
+   * stream: a dev server's `up` never ends. While it is set, a down from
+   * health reads "starting…" too.
    */
   busy: new Map(),
   /** Pin ids with tests in flight from here. */
@@ -77,6 +76,7 @@ function startBusy(id, cmd) {
     at: Date.now(),
     cmd,
     sawDown: false,
+    ready: false,
     timer: setTimeout(() => {
       endBusy(id);
       sync();
@@ -91,22 +91,34 @@ function endBusy(id) {
 }
 /**
  * A health update for the pins starting from here: up ends "starting…"
- * (after Restart, once the old instance went down or after a moment);
- * down ends it once the service has had a moment to come up.
+ * (after Restart, once the old instance went down, after a moment, or once
+ * the server's ready watch said so). A down never ends it: the service is
+ * still coming up until the first up or the timeout.
  */
 function settleBusy() {
   for (const [id, b] of [...S.busy]) {
     const s = serviceOf(id);
     const age = Date.now() - b.at;
-    if (s.ok === false) {
-      b.sawDown = true;
-      if (age >= START_GRACE_MS) endBusy(id);
-    } else if (
+    if (s.ok === false) b.sawDown = true;
+    else if (
       s.ok === true &&
-      (b.cmd !== "restart" || b.sawDown || age >= RESTART_MIN_MS)
+      (b.cmd !== "restart" || b.ready || b.sawDown || age >= RESTART_MIN_MS)
     )
       endBusy(id);
   }
+}
+/**
+ * The exec stream's ready (the server's own health check passed) or its
+ * end. This page's health results can still hold a down from before (the
+ * forced refresh hasn't answered yet), so ready ends "starting…" only when
+ * they already say up, or there is no check; otherwise the next up does.
+ * An exec that ended in failure ends it now.
+ */
+function readyBusy(id, ok = true) {
+  const b = S.busy.get(id);
+  if (!b) return;
+  if (!ok || serviceOf(id).ok !== false) endBusy(id);
+  else b.ready = true;
 }
 
 /** The primary service of a repo from the health results (entrypoint first). */
@@ -501,8 +513,9 @@ function exec(s, cmd) {
   if (cmd !== "down") startBusy(s.id, cmd);
   if (cmd === "down") window.denShell?.toast?.(t("svp.stopping", { s: s.id }));
   sync();
-  const settled = () => {
-    endBusy(s.id);
+  const settled = (ok = true) => {
+    readyBusy(s.id, ok);
+    sync();
     S.deps.refreshHealth?.(env(), { force: true });
     void refresh();
   };
@@ -510,7 +523,7 @@ function exec(s, cmd) {
     `/api/service/exec?${params}`,
     `${s.repo}/${s.service}`,
     `${cmd} ${s.repo}/${s.service}`,
-    { again: () => exec(s, cmd), ready: settled },
+    { again: () => exec(s, cmd), ready: () => settled(true) },
     settled,
   );
 }

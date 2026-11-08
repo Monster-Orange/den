@@ -1544,6 +1544,7 @@
           copyToClipboard,
           computePrimaryByRepo,
           setServiceRunner,
+          switchView,
           sudoRun,
           takePendingAction,
           problemCards,
@@ -4653,6 +4654,19 @@
         });
 
         const GRAPH_HOOKS = {
+          /**
+           * Open in Graph for a service this graph doesn't draw: the
+           * workspace it is in, outside the View (#focus=, graph.js), or
+           * null when it is in no other workspace.
+           */
+          outsideView: (id) => {
+            const shown = GRAPH_ALL
+              ? GRAPH_ALL.names
+              : [document.getElementById("content")?.dataset.ws || activeWs];
+            return wsOfAddress(id).find((w) => !shown.includes(w)) ?? null;
+          },
+          /** Its Show <workspace>: the top bar's switch (header.js). */
+          showWorkspace: (ws) => switchView(ws),
           maximize: {
             isOn: () => graphMax(),
             toggle: () => setGraphMax(!graphMax()),

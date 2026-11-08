@@ -903,6 +903,18 @@ async function _switchScope(value, focus, inView) {
 }
 
 /**
+ * Switch the View to one workspace, as the top bar's Workspace menu does
+ * (the Graph page's Show <workspace>): the CLI default, then the view,
+ * then a reload (the URL's hash stays).
+ */
+export async function switchView(name) {
+  const scope = await fetch("/api/scope")
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  await _switchScope(name, scope?.focus ?? null, false);
+}
+
+/**
  * Make `name` the CLI default: Local Dev's focus action (POST
  * /api/workspaces `focus`, which writes workspaces.yml and retargets the
  * CLI). False, with the error shown, when it couldn't.

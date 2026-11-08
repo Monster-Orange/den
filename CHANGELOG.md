@@ -55,6 +55,19 @@ config and manifest changes a distribution must make to move to it under
   Enter." Elsewhere, if the page still has focus 2 seconds after the click, it says "Nothing opened? Copy the command
   below and paste it into your terminal app." The command and its copy button always show.
 
+- **No "down" flash after Start.** Starting a dev server from the
+  pinned-service panel showed "starting…", then "down: fetch failed" for
+  a second or two, then up. The server's ready event ended "starting…",
+  and the header's next health paint still held the service's down result
+  from before Start. Now, while a Start or Restart is in flight, a down
+  reads "starting…" until the first up or the 120 s timeout. The ready
+  event ends it only when health already says up.
+- **Open in Graph says when a service is outside the View.** With the View
+  on one workspace, Open in Graph for a service in another landed on a
+  Graph without its card. Now the Graph says "<service> is in
+  <workspace>, outside this View." with a Show <workspace> button. The
+  button switches the View the way the top bar does, then focuses the
+  card. The View never switches by itself.
 - **The phone drawer keeps the rail a nav.** Under 720 px, ☰ made the
   rail's `<nav>` itself a dialog, which a nav may not be. The dialog is
   now a box around the rail ("Pages"); focus, Tab, Esc and the scrim work

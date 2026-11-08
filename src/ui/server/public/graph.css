@@ -184,6 +184,27 @@
   vertical-align: middle;
   margin-right: 6px;
 }
+/* Open in Graph for a service outside the View: one line, Show <ws>. */
+.dg-out {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 960;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
 .dg-msg {
   padding: 40px;
   color: var(--muted);

@@ -83,6 +83,8 @@
     "svp.startHere": "ここでエージェントを開始",
     "svp.openSvc": "サービスで開く",
     "svp.openGraph": "グラフで開く",
+    "graph.outside": "{s} は {ws} にあり、この表示の範囲外です。",
+    "graph.showWs": "{ws} を表示",
     "svp.close": "閉じる",
     "ag.new.folder": "フォルダー（任意）",
     "ag.new.folderHelp":

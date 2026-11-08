@@ -27,7 +27,14 @@
  *   the panel says down, also with the top bar's View on another
  *   workspace;
  * - Open in Graph, and a direct /graph#focus=<id>, focus the card, also
- *   with the View on one workspace (the Graph page's ?ws=).
+ *   with the View on one workspace (the Graph page's ?ws=);
+ * - Open in Graph for a pin outside the View (View: north, blog in south)
+ *   says "blog is in south, outside this View." with Show south, which
+ *   switches the View and focuses the card; the View never switches by
+ *   itself;
+ * - blog's dev server listens 2 s after Start and answers a second late:
+ *   the panel says starting… until up, never down, after Start and after
+ *   Restart.
  *
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
@@ -71,11 +78,14 @@ beforeAll(async () => {
   deadUrl = `http://localhost:${(closed.address() as AddressInfo).port}`;
   await new Promise<void>((r) => closed.close(() => r()));
   // blog's up: a dev server on blog's health port that never exits (GET
-  // /quit stops it; it gives up by itself after 5 minutes).
+  // /quit stops it; it gives up by itself after 5 minutes). It listens 2 s
+  // after it starts, so health says down for a while after Start, and it
+  // answers a second late, so the header's refresh paints notes first,
+  // with blog's last (down) result still in it.
   const port = new URL(deadUrl).port;
   const code =
-    `const s=require("http").createServer((q,r)=>{r.end("ok");if(q.url==="/quit")process.exit(0)});` +
-    `s.listen(${port},"localhost");setTimeout(()=>process.exit(0),300000)`;
+    `const s=require("http").createServer((q,r)=>{if(q.url==="/quit"){r.end("ok");process.exit(0)}setTimeout(()=>r.end("ok"),1000)});` +
+    `setTimeout(()=>s.listen(${port},"localhost"),2000);setTimeout(()=>process.exit(0),300000)`;
   devUp = `${JSON.stringify(process.execPath)} -e '${code}'`;
   s = await startAgentsPageServer({
     health: { notes: `${stubUrl}/health`, blog: `${deadUrl}/health` },
@@ -612,6 +622,23 @@ describe("a dev server whose up never exits (blog)", () => {
     await railReady(p);
     await p.click('.den-rail [data-pin="blog"]');
     await p.waitForSelector(panel);
+    // Every state text the panel shows from Start's starting… on (each
+    // repaint; blog is down before it).
+    await p.evaluate((sel) => {
+      const w = window as unknown as { seen: string[] };
+      w.seen = [];
+      const note = () => {
+        const v = document.querySelector(sel)?.textContent ?? "";
+        if (!w.seen.length && v !== "starting…") return;
+        if (v && w.seen[w.seen.length - 1] !== v) w.seen.push(v);
+      };
+      new MutationObserver(note).observe(document.body, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      });
+      setInterval(note, 20);
+    }, st);
     await p.click(`${panel} [data-svx="start"]`);
     await asks(asked, "GET /api/service/exec?");
     await p.waitForFunction(
@@ -631,12 +658,36 @@ describe("a dev server whose up never exits (blog)", () => {
       { timeout: 30_000 },
     );
     expect(await (await fetch(`${deadUrl}/health`)).text()).toBe("ok");
+    // Health said down for its first 2 s: the panel said starting… then,
+    // never down.
+    const seen = await p.evaluate(
+      () => (window as unknown as { seen: string[] }).seen,
+    );
+    expect(seen.filter((v) => /^down/.test(v))).toEqual([]);
+    expect(seen[seen.length - 1]).toMatch(/^up\b/);
     expect(
       await p.$eval(`${panel} [data-svx="restart"]`, (b) =>
         b.hasAttribute("disabled"),
       ),
     ).toBe(false);
     expect(await text(p)).not.toBe("starting…");
+    // Restart: starting… again (the old one goes down, the new one listens
+    // 2 s later), then up, never down.
+    await p.evaluate(() => {
+      (window as unknown as { seen: string[] }).seen = [];
+    });
+    await p.click(`${panel} [data-svx="restart"]`);
+    await p.waitForFunction(
+      (sel) => /^up\b/.test(document.querySelector(sel)?.textContent ?? ""),
+      st,
+      { timeout: 30_000 },
+    );
+    const again = await p.evaluate(
+      () => (window as unknown as { seen: string[] }).seen,
+    );
+    expect(again[0]).toBe("starting…");
+    expect(again.filter((v) => /^down/.test(v))).toEqual([]);
+    expect(await (await fetch(`${deadUrl}/health`)).text()).toBe("ok");
     await p.context().close();
   }, 90_000);
 
@@ -721,6 +772,92 @@ describe("Open in Graph", () => {
         p.click(`${panel} [data-svx="graph"]`),
       ]);
       await focused(p);
+    } finally {
+      await view(p, "all");
+      await p.context().close();
+    }
+  }, 60_000);
+});
+
+describe("Open in Graph for a pin outside the View", () => {
+  const out = ".dg-out";
+  const card = (id: string) => `.dg-card:has([data-svpanel-open="${id}"])`;
+
+  it("says where it is, and Show south switches the View and focuses the card", async () => {
+    if (skip()) return;
+    const { p } = await page("/services");
+    const before = await (await fetch(`${s!.base}/api/scope`)).json();
+    await view(p, "north");
+    try {
+      await p.reload();
+      await p.waitForSelector('.den-rail [data-pin="blog"]', {
+        timeout: 20_000,
+      });
+      await p.click('.den-rail [data-pin="blog"]');
+      await p.waitForSelector(panel);
+      await Promise.all([
+        p.waitForURL(/\/graph/),
+        p.click(`${panel} [data-svx="graph"]`),
+      ]);
+      await p.waitForSelector(out, { timeout: 20_000 });
+      expect((await p.textContent(`${out} span`))?.trim()).toBe(
+        "blog is in south, outside this View.",
+      );
+      expect(await p.textContent(`${out} button`)).toBe("Show south");
+      expect(await p.$(card("blog"))).toBeNull();
+      // The View didn't switch by itself.
+      expect(
+        (
+          (await (await fetch(`${s!.base}/api/scope`)).json()) as {
+            scope: string;
+          }
+        ).scope,
+      ).toBe("north");
+      await Promise.all([p.waitForEvent("load"), p.click(`${out} button`)]);
+      await p.waitForSelector(`${card("blog")}.sel`, { timeout: 20_000 });
+      expect(
+        (
+          (await (await fetch(`${s!.base}/api/scope`)).json()) as {
+            scope: string;
+          }
+        ).scope,
+      ).toBe("south");
+      expect(await p.evaluate(() => location.hash)).toBe("#focus=blog");
+      expect(await p.$(out)).toBeNull();
+      const c = await rect(p, `${card("blog")}.sel`);
+      const vp = await rect(p, ".dg-vp");
+      expect(c.x).toBeGreaterThanOrEqual(vp.x);
+      expect(c.y).toBeGreaterThanOrEqual(vp.y);
+      expect(c.r).toBeLessThanOrEqual(vp.r);
+      expect(c.b).toBeLessThanOrEqual(vp.b);
+    } finally {
+      await p.evaluate(
+        async (name) => {
+          const sh = (
+            window as unknown as {
+              denShell: {
+                api(m: string, u: string, b: unknown): Promise<unknown>;
+              };
+            }
+          ).denShell;
+          if (name)
+            await sh.api("POST", "/api/workspaces", { name, action: "focus" });
+        },
+        (before as { focus?: string }).focus ?? "",
+      );
+      await view(p, "all");
+      await p.context().close();
+    }
+  }, 90_000);
+
+  it("a service in the View shows no line", async () => {
+    if (skip()) return;
+    const { p } = await page("/services");
+    await view(p, "north");
+    try {
+      await p.goto(`${s!.base}/graph#focus=notes`);
+      await p.waitForSelector(`${card("notes")}.sel`, { timeout: 20_000 });
+      expect(await p.$(out)).toBeNull();
     } finally {
       await view(p, "all");
       await p.context().close();

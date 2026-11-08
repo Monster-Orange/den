@@ -200,6 +200,8 @@
     "svp.startHere": "Start agent here",
     "svp.openSvc": "Open in Services",
     "svp.openGraph": "Open in Graph",
+    "graph.outside": "{s} is in {ws}, outside this View.",
+    "graph.showWs": "Show {ws}",
     "svp.close": "Close",
     "ag.new.folder": "Folder (optional)",
     "ag.new.folderHelp":

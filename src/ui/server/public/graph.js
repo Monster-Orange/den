@@ -270,10 +270,34 @@ function focusFromHash() {
   } catch {
     return;
   }
+  host.querySelector(".dg-out")?.remove();
   if (M.byId.has(id)) focusOn({ id });
   else if (M.byRepo.has(id)) focusOn({ repo: id, viaRepo: true });
-  else return;
+  else return outsideNote(id);
   hashFocused = true;
+}
+
+/**
+ * #focus= names a service in a workspace outside the View: one line that
+ * says so, and Show <workspace>, which switches the View the way the top
+ * bar does (the page's hook); the reloaded graph then focuses the card.
+ * The View never switches by itself.
+ */
+function outsideNote(id) {
+  const ws = hooks.outsideView?.(id);
+  if (!ws) return;
+  const t = (k, v) => window.denShell?.t?.(k, v) ?? k;
+  const note = document.createElement("div");
+  note.className = "dg-out";
+  note.setAttribute("role", "status");
+  note.innerHTML =
+    `<span>${esc(t("graph.outside", { s: id, ws }))}</span>` +
+    `<button type="button" class="den-btn sm" data-show-ws>${esc(t("graph.showWs", { ws }))}</button>`;
+  note.querySelector("[data-show-ws]").addEventListener("click", (e) => {
+    e.currentTarget.disabled = true;
+    void hooks.showWorkspace?.(ws);
+  });
+  $(".dg-vp")?.append(note);
 }
 
 /** A /api/health update: refresh dots, health lines and the open panel in place. */
