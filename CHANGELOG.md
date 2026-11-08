@@ -4,6 +4,51 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.19] - unreleased
+
+### Added
+
+- **The server agent (ON-6).** Every Den has its own agent, named after the
+  distribution ("Acme agent"), for anything about the server itself: set it
+  up, add a repo, fix a failing service, change a setting, explain what's
+  running. It belongs to no workspace. It is a normal Den agent underneath
+  (record, session, Resume, rotation, hooks), with Den's persona `server`
+  and the plain-writing rule, in a reserved scope, `den-server`.
+  - It acts only through Den's MCP, which serves it the whole Den. Each
+    write (`workspace_create`, `repo_add`, `service_try`) is held for the
+    person's Allow, so it only reads until they allow one. It starts in an
+    empty folder of its own (`<state_dir>/server-agent`).
+  - A fresh Den's first page (`/`, while no workspace has a repo) is that
+    agent in a terminal framed as the page, with Open in Agents. With an
+    installed runtime that carries Den's tools, it starts by itself, with
+    "Let's set up <name>. Where are your repos?". With none, the page shows
+    how to install one and the manual path (`npm i -g @monster-orange/den` →
+    `den create <name>` → `<cli> repo add` → `<cli> up`).
+  - After setup it is in the rail (`/server-agent`), ⌘K has "Ask <name>",
+    and Agents lists it first, under "Server".
+  - Its runtime: the page's Runs on picker (`agents.server_runtime` in
+    `config/local/user.yml`), else the first installed one with Den's tools.
+  - `GET /api/server-agent`, `POST /api/server-agent/start` and
+    `POST /api/server-agent/runtime`. Only a person starts it or picks its
+    runtime: an agent's token or claim gets 403.
+
+### Changed
+
+- **The install-den skill does three things only (ON-1, slimmed).** It
+  installs Den after checking Node and git, helps pick its name and folder
+  (default `~/<name>`), then runs `web up` and hands over the one-time link
+  from `web claim-link`: "Den's own agent takes it from there." It no
+  longer adds repos, starts services or connects itself to Den's MCP.
+- **The ON-4 dry run follows the two agents:** install, the setup link, the
+  fresh first page, then the server agent's MCP calls, with `repo_add` and
+  `service_try` each allowed from the signed-in browser. It now asserts 5
+  minutes or less.
+
+### Migrations
+
+- No workspace may be named `den-server`: creating one is refused. Rename a
+  workspace with that name before moving to 0.4.19.
+
 ## [0.4.17] - 2026-11-08
 
 ### Fixed
