@@ -366,12 +366,22 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   },
   repo: {
     usage:
-      'repo add <path|git-url> [--sidecar] [-w <workspace>] [--name <repo>] [--run "<cmd>"] [--health <url>] [--json]',
+      'repo add <path|git-url> [--sidecar] [-w <workspace>] [--name <repo>] [--run "<cmd>"] [--health <url>] [--dry-run] [--json] | repo detect <folder> [--json]',
     lines: [
       "Add a repo with no prompts, never writing into it. A repo with no",
       "manifest (or --sidecar) gets a side-car manifest in manifests/, detected",
       "from its Makefile, compose file or package.json scripts. Safe to re-run.",
-      "`{cli} repo add --help` says more.",
+      "--dry-run prints the side-car it would write, validated, and writes nothing.",
+      "detect: the git repos in a folder in your home, how each runs, and",
+      "suggested workspaces. `{cli} repo add --help` says more.",
+    ],
+  },
+  onboard: {
+    usage: "onboard status [--json]",
+    lines: [
+      "What's set up (a distribution, the web server, workspaces, repos, a",
+      "running service, Den's MCP) and the one next step, with its command.",
+      "Reads only; it never runs an agent's CLI.",
     ],
   },
   relocate: {
@@ -595,6 +605,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "theme",
   "plugin",
   "repo",
+  "onboard",
 ]);
 
 /**
@@ -972,6 +983,15 @@ class DenCLI {
         case "repo": {
           const { cmdRepo } = await import("./repo-command.js");
           process.exitCode = await cmdRepo(args.slice(1), validateManifest);
+          break;
+        }
+
+        case "onboard": {
+          const { cmdOnboard } = await import("./onboard-command.js");
+          const { probeWebServer } = await import("./mcp-connect.js");
+          process.exitCode = await cmdOnboard(args.slice(1), (u) =>
+            probeWebServer(u),
+          );
           break;
         }
 
@@ -5271,7 +5291,13 @@ class DenCLI {
       "  register [path]      Register a repo in the service catalog",
     );
     console.log(
-      "  repo add <path|url>  Add a repo with no prompts, never changing it (--sidecar, --json)",
+      "  repo add <path|url>  Add a repo with no prompts, never changing it (--sidecar, --dry-run, --json)",
+    );
+    console.log(
+      "  repo detect <folder> Find the repos in a folder and suggest workspaces (--json)",
+    );
+    console.log(
+      "  onboard status       What's set up, and the next step (--json)",
     );
     console.log(
       "  relocate <repo> <path>  Point a moved checkout's workspace entries at its new path",

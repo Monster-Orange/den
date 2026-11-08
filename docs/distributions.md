@@ -83,6 +83,9 @@ question for the person (`ask`, sometimes with `choices`).
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `npx @monster-orange/den create <name> [dir] --yes --json` | `{ ok, dir, cli, existed, files, port, portPicked?, next }`                  |
 | `<cli> repo add <path\|git-url> --json`                    | `{ ok, existed, repo, workspace, mode, path, manifest, services, next }`     |
+| `<cli> repo detect <folder> --json`                        | `{ ok, path, repos, workspaces, truncated, skipped, rule, next }`            |
+| `<cli> repo add <path> --dry-run --json`                   | `{ ok, dryRun, repo, workspace, path, manifest, draft, validation, next }`   |
+| `<cli> onboard status --json`                              | `{ ok, checks: [{ id, status, detail, fix?, ask? }], next }`                 |
 | `<cli> up <repo> --json`                                   | `{ ok, workspace, services: [{ address, result, health, detail? }], next }`  |
 | `<cli> web up --no-open --json`                            | `{ ok, url, port, version? }`                                                |
 | `<cli> doctor --json`                                      | `{ ok, checks: [{ id, status, detail, url?, port?, fix?, ask? }] }`          |
@@ -121,6 +124,55 @@ question for the person (`ask`, sometimes with `choices`).
   else the focused one, else a new `default` workspace.
 - The same repo again answers `ok` with `existed: true`. A different repo
   under the same name is an error that offers `relocate` or `--name`.
+- `--dry-run` (a local path only) runs the same detection and validator and
+  writes nothing: no side-car, no workspace entry, no catalog entry. The
+  answer carries the side-car as YAML (`draft`), the validator's answer
+  (`validation`), where it would go (`manifest.file`, `written: false`) and,
+  in `next`, the same command without `--dry-run`. A git URL is refused: it
+  would have to be cloned first.
+
+### Onboarding reads
+
+Three reads help a person, or an agent, finish setting Den up. Each one is
+a CLI command, an MCP read tool and a web API route, with the same answer
+(the browser can show the route's JSON as it is):
+
+| CLI                                      | MCP tool         | Web API (GET)           |
+| ---------------------------------------- | ---------------- | ----------------------- |
+| `<cli> onboard status [--json]`          | `onboard_status` | `/api/onboard/status`   |
+| `<cli> repo detect <folder> [--json]`    | `repos_detect`   | `/api/onboard/repos`    |
+| `<cli> repo add <path> --dry-run --json` | `manifest_draft` | `/api/onboard/manifest` |
+
+- **`onboard status`** says what's set up and the one next step. `checks`
+  are, in order: `distribution` (this folder has its own `bin/<cli>`),
+  `node`, `git`, `docker` and `web` (the same probes as `doctor --json`),
+  `workspaces` (how many, and the active ones), `repos` (how many are
+  added), `service` (how many services Den started are running) and `mcp`.
+  Each is `ok`, `warn` or `todo`, with a `fix` command or an `ask` for the
+  person when there is one. `next` is `{ id, step, command }`: the step in
+  plain words and the command for it, or `id: "done"` when everything is
+  set up. `mcp` never runs an agent's CLI: it is `ok` when the question
+  came through Den's MCP, or when a client's config file names this
+  distribution's server; with only Claude Code or Codex installed (they
+  keep their list behind their own CLI) it is a `warn` pointing at
+  `<cli> mcp clients`. It exits 0 whenever it answers.
+- **`repo detect <folder>`** finds the git repos in one folder: the folder
+  itself when it is a repo, else its subfolders one and two levels down (a
+  repo's own subfolders are not scanned). For each repo: `manifest` (`repo`,
+  `sidecar` or `none`), `runs` (what [`repo add`](#repo-add) would detect)
+  or `ask` and `choices`, the suggested `workspace`, and `registered` when
+  it is already in one. `workspaces` groups them by one simple rule: the
+  repos in one parent folder go in one workspace named after that folder,
+  and a repo directly in the scanned folder gets the scanned folder's name.
+  It skips dot-folders, `node_modules` and `vendor`, never follows a
+  symlink, stops at 50 repos or 5,000 folder entries (`truncated: true`),
+  and never writes or runs a repo's tools.
+- **`repo add --dry-run`** is the draft: see [`repo add`](#repo-add).
+- **The path rule** (`repos_detect`, `manifest_draft` and both routes): a
+  path is required, absolute or starting with `~/`. It is resolved with its
+  symlinks, and must be a folder inside the person's home folder and outside
+  Den's own state folder; anything else is refused with the reason (a 400
+  from the route, `Refused:` from the tool, exit 1 from the CLI).
 
 ### up, doctor and mcp connect
 
@@ -1785,13 +1837,17 @@ to one workspace for one agent:
   (`map: "org-wide"`: every active workspace's graph merged, `workspaces`
   naming them); with one, that workspace's (`map: "workspace"`).
 - **Filtered.** `workspaces` lists `<ws>` only. `logs_search` and `logs_tail`
-  take only `<ws>`'s services, `manifest_validate` takes only an absolute path
-  inside one of its repos (or the content), and `workspace_sync` syncs `<ws>`.
+  take only `<ws>`'s services, `manifest_validate` and `manifest_draft` take
+  only an absolute path inside one of its repos (or, for `manifest_validate`,
+  the content), and `workspace_sync` syncs `<ws>`. `repos_detect` is refused:
+  scanning folders reaches outside any workspace, so onboarding is for the
+  unscoped server.
   Tests run against the focused workspace, so `tests_available` and
   `run_tests` are refused unless `<ws>` is the focused one.
 - **Not workspace data**, served as unscoped: `environments`,
-  `security_latest`, `release_status`, `edge_status` and `org_summary` (the
-  org's and the distribution's, not a workspace's).
+  `security_latest`, `release_status`, `edge_status`, `onboard_status` (counts
+  and checks only) and `org_summary` (the org's and the distribution's, not
+  a workspace's).
 - **The org at a glance.** `org_summary` gives every agent every workspace
   and repo with status counts, the graph, the edge and the environments
   (see [Tools](#tools)). Detail and actions stay scoped: for workspaces
@@ -1883,6 +1939,9 @@ Read tools (always registered):
 | `stacks`            | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health; an empty list says `why`                                                                                                                                                                                              |
 | `edge_status`       | `/api/edge`                                | The edge: up or down, its routes and cert names; `https` (TLS strategy, who supplies the cert, whether HTTPS is serving)                                                                                                                                                       |
 | `org_summary`       | several (read only)                        | Every workspace and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your workspace's services                                                                                                                                          |
+| `onboard_status`    | `/api/onboard/status`                      | What's set up and the one next step: `checks` (`ok`, `warn`, `todo`) and `next` (`step`, `command`); see [Onboarding reads](#onboarding-reads)                                                                                                                                 |
+| `repos_detect`      | `/api/onboard/repos`                       | The git repos in `path` (one or two levels down), how each runs, and suggested `workspaces`; never writes or follows a symlink; refused on a scoped server                                                                                                                     |
+| `manifest_draft`    | `/api/onboard/manifest`                    | The side-car `repo add` would write for `path`, validated (`draft`, `validation`), nothing written; `ask` and `choices` when it can start in several ways (call again with `run`)                                                                                              |
 
 **Health states.** A service with no verdict says why in `why`: no health
 check in the manifest for the env, remote with no check or `target.url`
