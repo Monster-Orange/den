@@ -806,6 +806,8 @@
       "Let's set up __DEN_TITLE__. It reads only until you allow a write.",
     "sa.sub":
       "For anything about this server: add a repo, fix a failing service, change a setting, or explain what's running.",
+    "sa.login":
+      "If Claude asks you to log in, log in here. Then {name} starts.",
     "sa.readsOnly":
       "It acts only through __DEN_TITLE__'s own tools. Each change asks you first, in this browser.",
     "sa.starting": "Starting the agent…",

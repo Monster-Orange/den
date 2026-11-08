@@ -86,6 +86,64 @@ describe("the server agent's page", () => {
     ]);
   });
 
+  it("only a runtime without Den's tools (no Claude): the manual path, never a terminal", () => {
+    const v = serverAgentView({
+      ...base,
+      runtime: null,
+      runtimes: [
+        {
+          id: "codex",
+          label: "Codex",
+          available: true,
+          denTools: false,
+          usable: false,
+        },
+        {
+          id: "den-claude",
+          label: "Claude Code",
+          available: false,
+          denTools: true,
+          usable: false,
+          install: "npm i -g @anthropic-ai/claude-code",
+        },
+      ],
+    });
+    expect([v.autoStart, v.terminal]).toEqual([false, null]);
+    expect(v.body).toContain('data-note="no-runtime"');
+    expect(v.body).toContain('data-note="manual"');
+    expect(v.body).toContain(
+      '<li data-runtime="codex"><b>Codex</b> · sa.noTools</li>',
+    );
+    expect(v.body).toContain("<code>npm i -g @anthropic-ai/claude-code</code>");
+    expect(runtimeOptionsHtml({ ...base, runtime: null, runtimes: [] })).toBe(
+      "",
+    );
+  });
+
+  it("running on Claude on a fresh Den: a line says a login prompt is expected", () => {
+    const fresh = serverAgentView({
+      ...base,
+      state: "running",
+      sessionId: "s-1",
+    });
+    expect(fresh.body).toContain('data-note="login"');
+    expect(fresh.terminal).toBe("s-1");
+    const setUp = serverAgentView({
+      ...base,
+      fresh: false,
+      state: "running",
+      sessionId: "s-1",
+    });
+    expect(setUp.body).not.toContain('data-note="login"');
+    const other = serverAgentView({
+      ...base,
+      runtime: { id: "other", label: "Other" },
+      state: "running",
+      sessionId: "s-1",
+    });
+    expect(other.body).not.toContain('data-note="login"');
+  });
+
   it("running: its terminal, never a second start", () => {
     const v = serverAgentView({ ...base, state: "running", sessionId: "s-1" });
     expect([v.autoStart, v.terminal]).toEqual([false, "s-1"]);

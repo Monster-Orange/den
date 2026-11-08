@@ -8,6 +8,8 @@
  *    reads until the person allows a write (each write is held for the
  *    browser's Allow, ON-3).
  *  - No runtime: the manual path, and how to install a runtime.
+ *  - Running on Claude on a fresh Den: a line saying to log in to Claude
+ *    in the terminal if it asks (Den can't tell whether it is logged in).
  *  - Not fresh and not running: a Start button (never started by itself).
  *  - The runtime picker saves the person's choice (agents.server_runtime).
  *
@@ -39,10 +41,17 @@ export function serverAgentView(s) {
   const hasRuntime = !!s.runtime;
   const sub = s.fresh ? t("sa.sub.fresh") : t("sa.sub");
   const readsOnly = `<p class="note sa-reads" data-note="reads-only">${esc(t("sa.readsOnly"))}</p>`;
+  // Den can't tell whether Claude is logged in (ON-6). On a fresh Den's
+  // first run, one line above the terminal says a login prompt is
+  // expected, so Claude's own login screen never reads as a crash.
+  const login =
+    s.fresh && s.runtime?.id === "den-claude"
+      ? `<p class="note sa-login" data-note="login">${esc(t("sa.login", { name: s.name }))}</p>`
+      : "";
   if (running)
     return {
       sub,
-      body: readsOnly,
+      body: login + readsOnly,
       autoStart: false,
       terminal: s.sessionId,
     };

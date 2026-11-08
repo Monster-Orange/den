@@ -697,6 +697,8 @@
       "Vamos a configurar __DEN_TITLE__. Solo lee hasta que permitas un cambio.",
     "sa.sub":
       "Para todo lo del servidor: añadir un repo, arreglar un servicio que falla, cambiar un ajuste o explicar qué está en marcha.",
+    "sa.login":
+      "Si Claude te pide iniciar sesión, hazlo aquí. Después {name} empieza.",
     "sa.readsOnly":
       "Solo actúa con las herramientas de __DEN_TITLE__. Cada cambio te lo pregunta antes, en este navegador.",
     "sa.starting": "Iniciando el agente…",
