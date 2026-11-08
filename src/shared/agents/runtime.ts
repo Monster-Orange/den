@@ -208,6 +208,11 @@ export interface Runtime {
   /** AG-17.1: the folder conversation `token` ran in, or null. Never throws. */
   conversationCwd?(token: string, env?: NodeJS.ProcessEnv): string | null;
   /**
+   * AG-18: whether conversation `token` is mid-turn (den-claude: its
+   * transcript's tail). None: the runtime can't tell. Never throws.
+   */
+  turnBusy?(token: string, env?: NodeJS.ProcessEnv): boolean;
+  /**
    * What the runtime prints when it exits at once (0.4.8): `noConversation`
    * when a resume finds nothing to continue, `idInUse` when a new
    * conversation's id is taken. Den then tries the other way, once.

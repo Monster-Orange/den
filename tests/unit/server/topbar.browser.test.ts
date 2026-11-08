@@ -257,6 +257,25 @@ async function mount(o: Opts = {}): Promise<{
   };
 }
 
+/**
+ * Palette rows' words, read from their parts: the label, the sub line and
+ * the kind, upper-cased here as the stylesheet shows it. innerText follows
+ * the CSS, so a row read before the sheet applied read "WorkspacesPage"
+ * one run and "Workspaces PAGE" the next.
+ */
+const palRows = (p: Page, sel = "#den-pal-list [role=option]") =>
+  p.$$eval(sel, (o) =>
+    o.map((x) =>
+      [...x.querySelectorAll(".den-pal-l, .den-sub, .den-kind")]
+        .map((s) => {
+          const w = (s.textContent ?? "").replace(/\s+/g, " ").trim();
+          return s.classList.contains("den-kind") ? w.toUpperCase() : w;
+        })
+        .filter(Boolean)
+        .join(" "),
+    ),
+  );
+const palRow = async (p: Page, sel: string) => (await palRows(p, sel))[0];
 const text = (p: Page, sel: string) =>
   p.$eval(sel, (e) => (e as HTMLElement).innerText.replace(/\s+/g, " ").trim());
 const focused = (p: Page) =>
@@ -471,13 +490,9 @@ describe("the ⌘K palette (R17)", () => {
       "den-pal-o-0",
     );
     // Empty: the pages first.
-    expect(await text(p, "#den-pal-o-0")).toBe("Workspaces PAGE");
+    expect(await palRow(p, "#den-pal-o-0")).toBe("Workspaces PAGE");
     await p.keyboard.type("shop");
-    expect(
-      await p.$$eval("#den-pal-list [role=option]", (o) =>
-        o.map((x) => (x as HTMLElement).innerText.replace(/\s+/g, " ").trim()),
-      ),
-    ).toEqual([
+    expect(await palRows(p)).toEqual([
       "shop/shop SERVICE",
       "shop/db SERVICE",
       "Restart shop/shop ACTION",
@@ -511,7 +526,7 @@ describe("the ⌘K palette (R17)", () => {
     await p.keyboard.press("Meta+k");
     await p.waitForSelector(".den-pal");
     await p.keyboard.type("editor");
-    expect(await text(p, "#den-pal-o-0")).toBe("Default IDE SETTING");
+    expect(await palRow(p, "#den-pal-o-0")).toBe("Default IDE SETTING");
     await p.keyboard.press("Enter");
     expect(
       await p.evaluate(() => (window as unknown as { __ran: string }).__ran),
@@ -520,7 +535,7 @@ describe("the ⌘K palette (R17)", () => {
     // Appearance and Theme are commands too (appearance.js).
     await p.keyboard.press("Control+k");
     await p.keyboard.type("theme paper");
-    expect(await text(p, "#den-pal-o-0")).toBe("Theme: Paper ACTION");
+    expect(await palRow(p, "#den-pal-o-0")).toBe("Theme: Paper ACTION");
     await p.context().close();
   }, 30_000);
 
@@ -530,10 +545,7 @@ describe("the ⌘K palette (R17)", () => {
     await p.keyboard.press("Meta+k");
     await p.waitForSelector(".den-pal");
     await p.keyboard.type("terminal");
-    const opts = () =>
-      p.$$eval("#den-pal-list [role=option]", (o) =>
-        o.map((x) => (x as HTMLElement).innerText.replace(/\s+/g, " ").trim()),
-      );
+    const opts = () => palRows(p);
     expect(await opts()).toContain("Default terminal SETTING");
     // A distribution's or plugin's own row is one too.
     await p.evaluate(() =>
@@ -551,9 +563,9 @@ describe("the ⌘K palette (R17)", () => {
       }),
     );
     await p.fill("#den-pal-q", "datacenter");
-    expect(await text(p, "#den-pal-o-0")).toBe("Acme region SETTING");
+    expect(await palRow(p, "#den-pal-o-0")).toBe("Acme region SETTING");
     await p.fill("#den-pal-q", "default terminal");
-    expect(await text(p, "#den-pal-o-0")).toBe("Default terminal SETTING");
+    expect(await palRow(p, "#den-pal-o-0")).toBe("Default terminal SETTING");
     await p.keyboard.press("Enter");
     await p.waitForURL(/\/settings\?q=Default%20terminal#editor$/, {
       timeout: 5000,

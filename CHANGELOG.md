@@ -6,7 +6,40 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.16] - unreleased
 
+### Added
+
+- **Change an agent's persona (AG-18).** **Change persona…** in the
+  agent pane's ⋯ menu (running or stopped), and `<cli> agents persona
+  <id> <persona> [--model <m>] [--now | --after-turn]`. Den stops the
+  session and resumes the same conversation with the new persona's role
+  prompt, permission mode and allowed commands; the history, id, name,
+  workspace, folder, tab and the model it runs stay. The dialog marks the
+  current persona and lists what changes. Mid-turn it never stops a turn
+  unasked: "It's working. Change after this turn, or stop it now?" (409
+  `busy`); After this turn waits for the turn to end, Stop it now stops
+  it. A person's only: an agent's token is refused (403), and there is no
+  MCP tool. Only a runtime that can resume offers it. The record keeps
+  `personaChanges`, and the audit trail records each change. Route `POST
+  /api/workspaces/<ws>/agents/<id>/persona`.
+
 ### Changed
+
+- **Bring in keeps the conversation's model, and says what the persona
+  changes (AG-17.1c).** It used to switch the conversation to the
+  persona's model, and drop MCP servers the conversation had outside Den,
+  without a word. Now the model stays the one its last answer came from
+  ("Keeps <model> from the conversation"; Advanced or `--model` picks
+  another), and a short list under the persona says "From now on it works
+  as <persona>: its role, its permissions (<mode>), Den's tools and
+  guards. Its history stays.", plus "It won't have: <servers>." for MCP
+  servers seen in its transcript that Den won't load. The persona of the
+  latest agent that worked in its folder is preselected (`suggest`), never
+  submitted. The list adds `model`, `lost` and `suggest`; the import takes
+  `model` and `version`.
+- **The signed-out page shows Sign in with GitHub once the owner is
+  linked, with no reload.** With no owner yet it watches the session
+  probe (which now says `github.state` to a signed-out browser), and step 1
+  turns done and the button appears as soon as `web owner link` finishes.
 
 - **The signed-out page explains Sign in with GitHub (SEC-2a-UX).** It
   shows the same three steps whether or not an owner is linked: on the

@@ -70,7 +70,11 @@ import { catalogFind } from "./catalog-runtime.js";
 import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
 import { claudeProjectsDir } from "../usage/paths.js";
 import { cleanName, transcriptTitle } from "./transcript-follow.js";
-import { claudeConversations, transcriptSummary } from "./conversations.js";
+import {
+  claudeConversations,
+  transcriptBusy,
+  transcriptSummary,
+} from "./conversations.js";
 
 /**
  * `/rename "x"` keeps the quotes in customTitle: one matching pair around
@@ -505,6 +509,14 @@ export const denClaude: Runtime = {
       return file ? transcriptSummary(file).cwd : null;
     } catch {
       return null;
+    }
+  },
+  // AG-18: mid-turn, from its transcript's tail (never the whole file).
+  turnBusy(token, env = process.env) {
+    try {
+      return transcriptBusy(transcriptFile(token, env));
+    } catch {
+      return false;
     }
   },
   // AG-4b, unofficial (catalog sessionName): `/rename` appends a

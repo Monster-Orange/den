@@ -181,6 +181,17 @@ dialog.pe-dlg::backdrop {
 .helpl.warn {
   color: var(--warn);
 }
+/* AG-17.1c, AG-18: what a persona changes, under the list. */
+.den-keep {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.den-keep li + li {
+  margin-top: 2px;
+}
 .faint {
   color: var(--faint);
 }

@@ -871,13 +871,18 @@ function paintBar(p) {
   const reconnect = p.lost
     ? `<button type="button" class="den-btn sm" data-act="reconnect">${esc(t("ag.reconnect"))}</button>`
     : "";
+  // AG-18: ⋯, its menu: Change persona… (a runtime that can resume).
+  const more =
+    r?.kind === "agent" && r.personaChange
+      ? `<button type="button" class="den-btn sm" data-act="more" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("ag.more", { id: r.agent }))}" title="${esc(t("ag.more", { id: r.agent }))}">⋯</button>`
+      : "";
   bar.innerHTML =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
     `<b>${esc(name)}</b><span class="where mono">${esc(where)}</span>` +
     (r?.tokenRevoked
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +
-    `<span class="x">${reconnect}${stop}${resume}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
+    `<span class="x">${reconnect}${stop}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
   // Tabs: the tab's × closes it; the pane's bar has none.
   const x = bar.querySelector('[data-act="close"]');
   if (x) x.hidden = shownLayout() === "tabs";
@@ -1538,6 +1543,9 @@ const sd = {
   // AG-17.1, Bring in: null for Start; else the workspace's conversations,
   // the runtimes that can't bring one in, and the one picked.
   bring: null,
+  // AG-18, Change persona: null; else the agent's row (id, workspace,
+  // persona, model) whose persona changes.
+  change: null,
 };
 
 /** The conversation picked in Bring in, when it can be brought in. */
@@ -1625,7 +1633,38 @@ function pickConversation(id) {
   sd.bring.pick = id;
   for (const b of st.root.querySelectorAll("#ag-conv [data-cid]"))
     b.setAttribute("aria-checked", String(b.dataset.cid === id));
-  paintRuntime(false);
+  // AG-17.1c: its suggested persona, preselected (never submitted).
+  if (c.suggest && (sd.data?.personas ?? []).some((p) => p.id === c.suggest))
+    pickPersona(c.suggest);
+  else paintRuntime(false);
+}
+
+/**
+ * AG-17.1c, AG-18: what the persona changes, in one short list under it:
+ * the model kept (or the one picked), what it works as from now on, and
+ * for Bring in the MCP servers it won't have.
+ */
+function paintKeep() {
+  const el = $d("#ag-keep");
+  if (!el) return;
+  const p = curPersona();
+  const from = sd.bring ? bringPick() : sd.change;
+  el.hidden = !p || !from;
+  if (el.hidden) return void (el.innerHTML = "");
+  const items = [];
+  if (sd.model) items.push(t("ag.keep.modelNew", { m: sd.model }));
+  else if (from.model) items.push(t("ag.keep.model", { m: from.model }));
+  items.push(
+    t("ag.keep.from", {
+      p: personaName(p),
+      mode: t(`pm.${p.permission || "ask"}`),
+    }),
+  );
+  if (sd.bring && from.lost?.length)
+    items.push(t("ag.keep.lost", { s: from.lost.join(", ") }));
+  el.innerHTML = items
+    .map((x, i) => `<li data-keep="${i}">${esc(x)}</li>`)
+    .join("");
 }
 
 const $d = (sel) => st.root.querySelector(sel);
@@ -1636,6 +1675,10 @@ const curPersona = () =>
 
 /** The runtime the dialog will start: the one picked, else the persona's. */
 function chosenRuntime() {
+  // Change persona and Bring in: the agent's, or the conversation's.
+  if (sd.change?.runtime) return sd.change.runtime;
+  const conv = sd.bring ? bringPick() : null;
+  if (conv?.runtime) return conv.runtime;
   const p = curPersona();
   return $d("#ag-runtime").value || personaRuntime(sd.data, p);
 }
@@ -1657,8 +1700,9 @@ function plistHtml() {
   const rows = personaListHtml(sd.f, ps, cats, (p) =>
     personaRowHtml(p, p.id === sd.pid, sd.data),
   );
-  // Bring in continues a conversation: it needs a persona.
-  if (sd.bring) return rows;
+  // Bring in continues a conversation, and a change keeps one: each needs
+  // a persona.
+  if (sd.bring || sd.change) return rows;
   return (
     rows +
     `<div class="pgh"><span>${esc(t("ag.session"))}</span><span></span></div>` +
@@ -1670,6 +1714,18 @@ function paintPlist(keepScroll = true) {
   const l = $d("#ag-persona");
   const top = l.scrollTop;
   l.innerHTML = plistHtml();
+  // AG-18: the agent's persona now, marked.
+  const cur =
+    sd.change &&
+    [...l.querySelectorAll("[data-pid]")].find(
+      (b) => b.dataset.pid === sd.change.persona,
+    );
+  cur
+    ?.querySelector(".pn")
+    ?.insertAdjacentHTML(
+      "beforeend",
+      ` <span class="tagx" data-current>${esc(t("ag.pc.current"))}</span>`,
+    );
   l.scrollTop = keepScroll ? top : 0;
 }
 
@@ -1703,6 +1759,7 @@ function paintDetails() {
  */
 function paintRuntime(reset) {
   paintRuntimeFields(reset);
+  paintKeep();
   // Last: a Name that names a running agent disables Start (AG-10.10b).
   paintStartsAs();
 }
@@ -1714,10 +1771,22 @@ function paintRuntimeFields(reset) {
   const plain = sd.pid === PLAIN;
   // Bring in: the conversation's runtime, its own history; no first
   // instruction, no Advanced (it keeps what the persona gives).
-  $d("#ag-r-l").hidden = plain || !!sd.bring;
-  $d("#ag-task-l").hidden = plain || !!sd.bring;
-  $d("#ag-adv").hidden = plain || !!sd.bring;
-  $d("#ag-name-l").hidden = plain || !!sd.bring;
+  // Change persona: the agent's runtime and name stay. Advanced (the
+  // model) shows for both (AG-17.1c, AG-18).
+  const keeps = !!sd.bring || !!sd.change;
+  $d("#ag-r-l").hidden = plain || keeps;
+  $d("#ag-task-l").hidden = plain || keeps;
+  $d("#ag-adv").hidden = plain;
+  $d("#ag-name-l").hidden = plain || keeps;
+  if (sd.change) {
+    $d("#ag-r-miss").hidden = true;
+    ready.hidden = true;
+    const p = curPersona();
+    const ok = !!p && (p.id !== sd.change.persona || !!sd.model);
+    go.disabled = !ok;
+    go.dataset.blocked = ok ? "" : "persona";
+    return;
+  }
   if (sd.bring) {
     $d("#ag-r-miss").hidden = true;
     ready.hidden = true;
@@ -1784,6 +1853,18 @@ function paintAdvanced() {
   const name = runtimeName(sd.data?.runtimes ?? [], rt);
   const def = personaModel();
   const models = rtv?.models ?? [];
+  // AG-17.1c, AG-18: the conversation's model stays unless one is picked.
+  const from = sd.bring ? bringPick() : sd.change;
+  if (sd.bring || sd.change) {
+    const keep = from?.model
+      ? t("ag.keep.opt", { m: from.model })
+      : t("ag.keep.optNone");
+    body.innerHTML =
+      `<p>${esc(t("ag.keep.advNote"))}</p>` +
+      `<div class="two"><label class="fld"><span>${esc(t("ag.new.model"))}</span><select id="ag-model"${models.length ? "" : " disabled"}>${models.length ? modelOptionsHtml(sd.data, rt, sd.model, keep) : `<option value="">${esc(keep)}</option>`}</select></label>` +
+      `<label class="fld"><span>${esc(t("ag.new.ver"))}</span><select id="ag-ver"${models.length && sd.model ? "" : " disabled"}>${versionOptionsHtml(sd.data, rt, sd.model, sd.ver, t("ag.new.verDef", { v: versionLabel("latest") }))}</select></label></div>`;
+    return;
+  }
   const model = sd.model || def.model;
   const first = t("ag.new.modelDef", {
     // No model of its own: just the version, so the label fits the select.
@@ -1864,8 +1945,14 @@ async function fillForWorkspace(ws) {
     return false;
   }
   if (!(await fillConversations(ws))) return false;
-  if (sd.bring && sd.pid === PLAIN) sd.pid = "";
+  if ((sd.bring || sd.change) && sd.pid === PLAIN) sd.pid = "";
   const ps = sd.data?.personas ?? [];
+  // AG-17.1c: the picked conversation's suggested persona, preselected.
+  const sug = sd.bring ? bringPick()?.suggest : null;
+  if (sug && ps.some((p) => p.id === sug)) sd.pid = sug;
+  // AG-18: its persona now (marked; Change stays off until another).
+  if (sd.change && ps.some((p) => p.id === sd.change.persona))
+    sd.pid = sd.change.persona;
   if (sd.pid !== PLAIN && !ps.some((p) => p.id === sd.pid)) {
     // The first persona the list shows (grouped by category).
     const cats = (sd.data?.categories ?? []).map((c) => c.id);
@@ -1882,19 +1969,41 @@ async function fillForWorkspace(ws) {
 }
 
 /** The dialog's words for Start, or for Bring in (AG-17.1). */
-function dialogMode(bring) {
+function dialogMode(bring, change = null) {
   sd.bring = bring ? { list: [], runtimes: [], root: "", pick: "" } : null;
-  $d("#ag-dlg-h").textContent = t(bring ? "ag.bring.title" : "ag.new.title");
-  $d("#ag-note").textContent = t(bring ? "ag.bring.note" : "ag.new.note");
-  $d("#ag-go").textContent = t(bring ? "ag.bring.go" : "ag.go");
+  sd.change = change;
+  $d("#ag-dlg-h").textContent = change
+    ? t("ag.pc.title", { id: change.name })
+    : t(bring ? "ag.bring.title" : "ag.new.title");
+  $d("#ag-note").textContent = t(
+    change ? "ag.pc.note" : bring ? "ag.bring.note" : "ag.new.note",
+  );
+  $d("#ag-go").textContent = goLabel();
   $d("#ag-conv-f").hidden = !bring;
 }
 
-async function openStart(bring = false) {
+/** The submit button's words for the dialog's mode. */
+function goLabel() {
+  return t(sd.change ? "ag.pc.go" : sd.bring ? "ag.bring.go" : "ag.go");
+}
+
+/** AG-18: Change persona… for agent row `r` (its persona, model, name). */
+function openPersonaChange(r) {
+  return openStart(false, {
+    id: r.agent,
+    workspace: r.workspace,
+    persona: r.persona,
+    runtime: r.runtime,
+    model: r.model || "",
+    name: paneName(r),
+  });
+}
+
+async function openStart(bring = false, change = null) {
   const dlg = $d("#ag-dlg");
   if (!dlg || dlg.open) return;
-  dialogMode(bring);
-  const shown = viewWorkspaces();
+  dialogMode(bring, change);
+  const shown = change ? [change.workspace] : viewWorkspaces();
   const wsSel = $d("#ag-ws");
   wsSel.innerHTML = shown
     .map((w) => `<option value="${esc(w)}">${esc(w)}</option>`)
@@ -1989,7 +2098,8 @@ export function nameSlug(name) {
 function paintStartsAs() {
   const el = $d("#ag-as");
   if (!el) return;
-  const p = sd.pid && sd.pid !== PLAIN && !sd.bring ? curPersona() : null;
+  const p =
+    sd.pid && sd.pid !== PLAIN && !sd.bring && !sd.change ? curPersona() : null;
   el.hidden = !p;
   el.textContent = "";
   if (!p) return;
@@ -2059,6 +2169,7 @@ async function submitStart(form) {
   const ws = form.querySelector("#ag-ws").value || viewWorkspaces()[0];
   if (!ws || !sd.pid) return;
   if (sd.bring) return submitBringIn(ws);
+  if (sd.change) return submitPersonaChange();
   const bad = sd.extras.find((c) => commandProblem(c));
   if (sd.pid !== PLAIN && bad)
     return showStartError(new Error(t("pe.badCmd", { c: bad })));
@@ -2095,9 +2206,71 @@ async function submitStart(form) {
     showStartError(err);
   } finally {
     go.disabled = false;
-    go.textContent = t("ag.go");
+    go.textContent = goLabel();
     if (dlg.open) paintRuntime(false);
   }
+}
+
+/**
+ * AG-18: change the agent's persona (the same conversation resumes as the
+ * new one). Mid-turn the server asks: After this turn, or Stop it now.
+ */
+async function submitPersonaChange(when) {
+  const dlg = $d("#ag-dlg");
+  const go = $d("#ag-go");
+  const ch = sd.change;
+  const p = curPersona();
+  if (!ch || !p) return;
+  const body = { persona: p.id };
+  if (sd.model) body.model = sd.model;
+  if (sd.model && sd.ver) body.version = sd.ver;
+  if (when) body.when = when;
+  go.disabled = true;
+  go.textContent = t("ag.pc.going");
+  $d("#ag-err").hidden = true;
+  try {
+    const r = await api(
+      "POST",
+      `/api/workspaces/${encodeURIComponent(ch.workspace)}/agents/${encodeURIComponent(ch.id)}/persona`,
+      body,
+    );
+    window.denShell?.toast?.(
+      t(r?.pending ? "ag.pc.pending" : "ag.pc.done", {
+        id: ch.name,
+        p: personaName(p),
+      }),
+    );
+    for (const w of r?.warnings ?? []) window.denShell?.toast?.(w);
+    dlg.close?.();
+    await refresh();
+  } catch (err) {
+    if (err?.code === "busy") showBusy();
+    else showStartError(err);
+  } finally {
+    go.textContent = goLabel();
+    if (dlg.open) paintRuntime(false);
+  }
+}
+
+/** It's mid-turn: never cut silently; the person picks (AG-18). */
+function showBusy() {
+  const el = $d("#ag-err");
+  el.textContent = t("ag.pc.busy") + " ";
+  const b = (id, label, when) => {
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "den-btn sm";
+    x.id = id;
+    x.textContent = label;
+    x.addEventListener("click", () => void submitPersonaChange(when));
+    return x;
+  };
+  el.append(
+    b("ag-pc-after", t("ag.pc.after"), "after-turn"),
+    " ",
+    b("ag-pc-now", t("ag.pc.now"), "now"),
+  );
+  el.hidden = false;
 }
 
 /** Bring in (AG-17.1): the runtime's resume of the conversation picked. */
@@ -2113,7 +2286,13 @@ async function submitBringIn(ws) {
     const r = await api(
       "POST",
       `/api/workspaces/${encodeURIComponent(ws)}/conversations/${encodeURIComponent(c.id)}/import`,
-      { persona: p.id, runtime: c.runtime },
+      {
+        persona: p.id,
+        runtime: c.runtime,
+        // AG-17.1c: the conversation's own model unless one is picked.
+        ...(sd.model ? { model: sd.model } : {}),
+        ...(sd.model && sd.ver ? { version: sd.ver } : {}),
+      },
     );
     window.denShell?.toast?.(t("ag.bring.done", { id: r?.agent?.id ?? p.id }));
     for (const w of r?.warnings ?? []) window.denShell?.toast?.(w);
@@ -2248,6 +2427,7 @@ function wireStartDialog(root) {
       sd.model = e.target.value;
       sd.ver = "";
       paintAdvanced();
+      paintRuntime(false);
     } else if (id === "ag-ver") sd.ver = e.target.value;
   });
   // ↑ ↓ move through the persona list (a radio group).
@@ -2402,6 +2582,16 @@ export async function mountAgentsPage(root) {
       const r = rowOf(id);
       if (r) void restartRow(r, "resume", b);
     } else if (b.dataset.act === "reconnect") void connect(p);
+    else if (b.dataset.act === "more") {
+      const r = rowOf(id);
+      if (!r) return;
+      window.denShell?.openMenu?.(b, {
+        label: t("ag.more", { id: r.agent }),
+        items: [
+          { label: t("ag.pc.item"), onSelect: () => void openPersonaChange(r) },
+        ],
+      });
+    }
   });
   root.querySelector("#ag-start").addEventListener("click", () => {
     void openStart();

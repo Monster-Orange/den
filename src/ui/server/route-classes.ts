@@ -369,6 +369,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   S(
     ["POST"],
+    "/api/workspaces/:ws/agents/:id/persona",
+    "changes an agent's persona (AG-18): its session stops and the same conversation resumes, a runtime in a PTY; a person's only",
+  ),
+  S(
+    ["POST"],
     "/api/workspaces/:ws/agents/:id/relaunch",
     "relaunches a rotated agent from its handoff: a runtime in a PTY (den#4)",
   ),
@@ -468,6 +473,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/remove",
     "/api/workspaces/:ws/agents/:id/name",
     "/api/workspaces/:ws/agents/:id/paths",
+    "/api/workspaces/:ws/agents/:id/persona",
   ],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "agent-routes.ts:PERSONA_PATH": ["/api/personas/:id"],

@@ -4086,6 +4086,10 @@ async function handleRequest(
       actor: null,
       signedIn: false,
       ...(g && !g.beyond ? { identity: { kind: "local" } } : {}),
+      // SEC-2a-UX: the signed-out page watches this, so Sign in with
+      // GitHub appears once an owner is linked, with no reload. The
+      // owner's login is what that page shows anyway.
+      ...(g?.beyond || !g ? { github: githubSignin() } : {}),
     });
   }
   // Sign out: this browser's session ends and its cookie is cleared.

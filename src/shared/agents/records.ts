@@ -103,6 +103,19 @@ export interface AgentRecord {
    * the list tags it. Start fresh and Relaunch keep the choices.
    */
   overrides?: Override[];
+  /**
+   * AG-18: each persona change, oldest first: from, to, when, and who (a
+   * person's sign-in, or "cli").
+   */
+  personaChanges?: PersonaChange[];
+}
+
+/** One persona change of an agent (AG-18). */
+export interface PersonaChange {
+  from: string;
+  to: string;
+  at: string;
+  by?: string;
 }
 
 /** A setting a session can override for one launch (AG-10.9). */

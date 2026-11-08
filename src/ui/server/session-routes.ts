@@ -174,6 +174,8 @@ export interface ListedSession {
   /** The host has it (running, or ended with its scrollback): a pane can attach. */
   attachable: boolean;
   resumable?: boolean;
+  /** AG-18: Change persona… applies (its runtime can resume). */
+  personaChange?: boolean;
   /** Why only Start fresh applies (AG-14.2): "<runtime> can't resume a conversation". */
   noResume?: string;
   /** When it was stopped, seen to end, or found interrupted (AG-14.1). */
@@ -243,6 +245,7 @@ export function listedSessions(
       ...(r.startedAt ? { startedAt: r.startedAt } : {}),
       attachable: Boolean(s),
       resumable: r.resumable,
+      ...(r.personaChange ? { personaChange: true } : {}),
       ...(r.noResume ? { noResume: r.noResume } : {}),
       ...(r.stoppedAt ? { stoppedAt: r.stoppedAt } : {}),
       ...(r.endedAt ? { endedAt: r.endedAt } : {}),

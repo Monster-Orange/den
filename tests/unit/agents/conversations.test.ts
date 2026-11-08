@@ -15,6 +15,7 @@ import {
   inScope,
   openElsewhere,
   readEnds,
+  transcriptBusy,
 } from "../../../src/shared/agents/conversations.js";
 import { conversationFolders } from "../../../src/shared/environment-manager/workspaces.js";
 
@@ -225,5 +226,93 @@ describe("a shared repos root (AG-17.1, dogfood on 0.4.14)", () => {
     expect(inScope(root, ws(a))).toBe(true);
     expect(inScope(b, ws(a))).toBe(false);
     expect(inScope(path.join(root, "notes"), ws(a))).toBe(false);
+  });
+});
+
+/** An assistant record: its model, stop reason and tool calls. */
+const answer = (
+  model: string,
+  stop: string | null,
+  tools: string[] = [],
+  text = "Done.",
+) =>
+  line({
+    type: "assistant",
+    message: {
+      role: "assistant",
+      model,
+      stop_reason: stop,
+      content: [
+        { type: "text", text },
+        ...tools.map((name) => ({ type: "tool_use", id: name, name })),
+      ],
+    },
+  });
+
+describe("AG-17.1c: what a conversation ran with", () => {
+  it("its last answer's model, and the MCP servers its tools came from", () => {
+    const h = home();
+    transcript(
+      h.env,
+      h.work,
+      "m1",
+      user(h.work, "Plan it") +
+        answer("claude-sonnet-4-5", "tool_use", [
+          "mcp__linear__get_issue",
+          "Read",
+        ]) +
+        answer("claude-opus-4-5", "end_turn", ["mcp__acme__run_tests"]) +
+        answer("<synthetic>", "end_turn"),
+    );
+    const [c] = list(h);
+    expect(c.model).toBe("claude-opus-4-5");
+    expect(c.mcp).toEqual(["acme", "linear"]);
+  });
+
+  it("no answers: no model, no servers", () => {
+    const h = home();
+    transcript(h.env, h.work, "m2", user(h.work, "Hello"));
+    const [c] = list(h);
+    expect(c.model).toBeUndefined();
+    expect(c.mcp).toBeUndefined();
+  });
+});
+
+describe("AG-18: whether a turn is going (transcriptBusy)", () => {
+  const busy = (body: string, ageMs = 60_000) => {
+    const h = home();
+    return transcriptBusy(transcript(h.env, h.work, "b1", body, ageMs));
+  };
+  const w = "/w";
+  it("an ended answer is idle; a tool call or an unanswered prompt is busy", () => {
+    expect(busy(user(w, "go") + answer("m", "end_turn"))).toBe(false);
+    expect(busy(user(w, "go") + answer("m", "tool_use", ["Bash"]))).toBe(true);
+    expect(busy(answer("m", "end_turn") + user(w, "and now?"))).toBe(true);
+    // A tool's result came back: the model is answering.
+    expect(
+      busy(
+        answer("m", "tool_use", ["Bash"]) +
+          user(w, [{ type: "tool_result", content: "ok" }]),
+      ),
+    ).toBe(true);
+  });
+
+  it("no stop reason: busy until the file is quiet; interrupted is idle; none is idle", () => {
+    expect(busy(answer("m", null), 1_000)).toBe(true);
+    expect(busy(answer("m", null), 60_000)).toBe(false);
+    expect(
+      busy(
+        answer("m", "tool_use", ["Bash"]) +
+          user(w, [{ type: "text", text: "[Request interrupted by user]" }]),
+      ),
+    ).toBe(false);
+    expect(transcriptBusy(null)).toBe(false);
+  });
+
+  it("den-claude asks it by the conversation's id", () => {
+    const h = home();
+    transcript(h.env, h.work, "b2", answer("m", "tool_use", ["Bash"]));
+    expect(denClaude.turnBusy!("b2", h.env)).toBe(true);
+    expect(denClaude.turnBusy!("nope", h.env)).toBe(false);
   });
 });

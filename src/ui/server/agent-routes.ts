@@ -129,6 +129,7 @@ import {
   setRuntimePath,
   resolveAgentsDeps,
   importAgent,
+  changePersona,
   listConversations,
   relaunchAgent,
   resumeAgent,
@@ -159,10 +160,12 @@ export interface AgentRouteDeps {
   agents?: AgentsDeps;
   /** When a first instruction counts its session ready (tests: shorter). */
   instruction?: { quietMs?: number; maxMs?: number };
+  /** AG-18: how "after this turn" polls (tests: shorter). */
+  personaWait?: { pollMs?: number; maxMs?: number };
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona))?$/;
 
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 const PERSONA_PATH = /^\/api\/personas\/([^/]+)$/;
@@ -476,6 +479,7 @@ export async function handleAgentRoutes(
     | "remove"
     | "name"
     | "paths"
+    | "persona"
     | undefined;
 
   if (!action && method === "GET") {
@@ -550,6 +554,13 @@ export async function handleAgentRoutes(
     if (id !== undefined) agentRecord(d, id, ws);
     // AG-14.4: MCP agent_resume may resume another agent of its scope.
     const agent = agentPrincipalOf(req);
+    // AG-18: a persona is the person's choice: an agent could widen its
+    // own permissions with it. Any agent credential or claim is refused.
+    if (verb === "persona" && (agent || actor))
+      throw new AgentError(
+        "only a person can change an agent's persona (an agent can't change its own or another's)",
+        { status: 403 },
+      );
     if (verb === "resume" && agent) {
       const why = agentResumeRefusal(agent, ws, id!, mcpActions());
       if (why) throw new AgentError(why, { status: 403 });
@@ -647,6 +658,62 @@ export async function handleAgentRoutes(
         agent: rec.id,
         ...(rec.displayName ? { displayName: rec.displayName } : {}),
       });
+    } else if (verb === "persona") {
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (!PERSONA_KEYS.includes(k))
+          throw new AgentError(
+            `${k}: unknown field (a persona change takes ${PERSONA_KEYS.join(", ")})`,
+            { usage: true },
+          );
+      const str = (k: string): string | undefined => {
+        const v = body[k];
+        if (v === undefined || v === null || v === "") return undefined;
+        if (typeof v !== "string" || v.length > 128 || /[^\x21-\x7e]/.test(v))
+          throw new AgentError(`${k} must be a short name`, { usage: true });
+        return v;
+      };
+      const persona = str("persona");
+      if (!persona)
+        throw new AgentError("persona is required", { usage: true });
+      const when = str("when");
+      if (when !== undefined && when !== "now" && when !== "after-turn")
+        throw new AgentError("when must be now or after-turn", {
+          usage: true,
+        });
+      const from = agentRecord(d, id!, ws).persona;
+      const by = principalOf(req) ?? "this machine";
+      what = `persona ${id} in ${ws}: ${from} → ${persona}, by ${by}`;
+      const change = () =>
+        changePersona(
+          d,
+          id!,
+          ws,
+          {
+            persona,
+            ...(str("model") !== undefined ? { model: str("model") } : {}),
+            ...(str("version") !== undefined
+              ? { version: str("version") }
+              : {}),
+            ...(when ? { when: when as "now" | "after-turn" } : {}),
+            by,
+          },
+          deps.personaWait ?? {},
+        );
+      if (when === "after-turn") {
+        // It may wait for a long turn: answer now, audit when it's done.
+        agentRecord(d, id!, ws);
+        void change().then(
+          (s) => audit(what, s.early ? "exited at once" : undefined),
+          (e: unknown) =>
+            audit(what, e instanceof Error ? e.message : String(e)),
+        );
+        sendJson(res, { ok: true, agent: id, pending: true, persona }, 202);
+        return true;
+      }
+      const s = await change();
+      audit(what, s.early ? "exited at once" : undefined);
+      sendStarted(res, s, d);
     } else if (verb === "remove") {
       const removed = await removeAgent(d, id!, ws);
       audit(what);
@@ -663,7 +730,9 @@ export async function handleAgentRoutes(
   return true;
 }
 
-const IMPORT_KEYS = ["persona", "runtime", "id"];
+const IMPORT_KEYS = ["persona", "runtime", "id", "model", "version"];
+/** AG-18: what a persona change takes. */
+const PERSONA_KEYS = ["persona", "model", "version", "when"];
 
 /**
  * Bring in (AG-17.1): GET lists the workspace's conversations, POST
@@ -737,6 +806,8 @@ async function conversations(
       persona,
       runtime: str("runtime"),
       id: str("id"),
+      ...(str("model") !== undefined ? { model: str("model") } : {}),
+      ...(str("version") !== undefined ? { version: str("version") } : {}),
     });
     what = `bring in ${session} as ${s.rec.id} (${s.rec.persona}, ${s.rec.runtime}) in ${ws}`;
     audit(s.early ? "exited at once" : undefined);

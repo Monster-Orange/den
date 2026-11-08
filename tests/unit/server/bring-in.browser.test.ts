@@ -6,13 +6,22 @@
  *
  *   - the Agents page's Bring in opens the Start dialog's Bring in mode:
  *     the workspace's conversations, newest first, with the persona list
- *     (no Plain session, no first instruction, no Advanced);
+ *     (no Plain session, no first instruction; Advanced has the model
+ *     only, AG-17.1c);
  *   - one written in the last minute says "Open elsewhere" and can't be
  *     picked;
  *   - Bring in sends the import and the runtime's resume (`--resume <id>`)
  *     runs in the folder it ran in; its pane opens; asked again, the row
  *     says which agent continues it;
- *   - at 390 nothing is wider than the window.
+ *   - at 390 nothing is wider than the window;
+ *   - AG-17.1c: a conversation's own model stays ("Keeps <model> from the
+ *     conversation", Advanced's first choice), the MCP servers it won't
+ *     have are named, and the suggested persona is preselected, never
+ *     submitted;
+ *   - AG-18: the pane's ⋯ menu has Change persona…: the current persona
+ *     is marked and Change is off until another is picked; mid-turn the
+ *     dialog asks (After this turn, Stop it now); Stop it now resumes the
+ *     same conversation as the new persona.
  *
  * DEN_START_SHOTS=<dir> writes screenshots. Needs Playwright's chromium;
  * DEN_SKIP_BROWSER_TESTS=1 skips it.
@@ -40,18 +49,39 @@ const OLD = "1a2b3c4d-0000-4000-8000-00000000aaaa";
 const OPEN = "5e6f7a8b-0000-4000-8000-00000000bbbb";
 
 /** A Claude Code transcript under the temp HOME, last written ageMs ago. */
-function conversation(cwd: string, id: string, title: string, ageMs: number) {
+function conversation(
+  cwd: string,
+  id: string,
+  title: string,
+  ageMs: number,
+  more: unknown[] = [],
+) {
   const home = path.dirname(s!.stateDir);
   const dir = path.join(home, ".claude", "projects", claudeSlug(cwd));
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${id}.jsonl`);
   fs.writeFileSync(
     file,
-    `${JSON.stringify({ type: "user", cwd, message: { content: title } })}\n`,
+    [{ type: "user", cwd, message: { content: title } }, ...more]
+      .map((x) => `${JSON.stringify(x)}\n`)
+      .join(""),
   );
   const t = new Date(Date.now() - ageMs);
   fs.utimesSync(file, t, t);
 }
+
+/** An answer as Claude Code records it: its model, stop reason, tools. */
+const answer = (model: string, stop: string, tools: string[] = []) => ({
+  type: "assistant",
+  message: {
+    model,
+    stop_reason: stop,
+    content: [
+      { type: "text", text: "Done." },
+      ...tools.map((name) => ({ type: "tool_use", id: name, name })),
+    ],
+  },
+});
 
 beforeAll(async () => {
   try {
@@ -156,9 +186,11 @@ describe("Bring in (AG-17.1)", () => {
       "docs ·",
     );
     // A persona is needed; no Plain session, no first instruction.
+    // AG-17.1c: Advanced has the model only (the persona's permissions).
     expect(await p.$('#ag-persona [data-pid=":plain"]')).toBeNull();
     expect(await p.isHidden("#ag-task-l")).toBe(true);
-    expect(await p.isHidden("#ag-adv")).toBe(true);
+    expect(await p.isHidden("#ag-adv")).toBe(false);
+    expect(await p.$("#ag-adv-b [data-pm]")).toBeNull();
 
     await p.click('#ag-persona [data-pid="planner"]');
     await p.click(`#ag-conv [data-cid="${OLD}"]`);
@@ -234,6 +266,139 @@ describe("Bring in (AG-17.1)", () => {
     expect(await p.textContent("#ag-dlg-h")).toBe("Start an agent");
     expect(await p.isHidden("#ag-conv-f")).toBe(true);
     await p.waitForSelector('#ag-persona [data-pid=":plain"]');
+    await p.context().close();
+    expect(errors).toEqual([]);
+  }, 90_000);
+
+  it("AG-17.1c, AG-18: keeps the conversation's model, says what changes, then changes persona on the same conversation", async () => {
+    if (skip() || !PTY) return;
+    const api = path.join(s!.wsDir("north"), "api");
+    fs.mkdirSync(api, { recursive: true });
+    const p = await page("/agents?ws=north");
+    await p.waitForSelector("#ag-bring");
+    // The latest agent here is a reviewer: Bring in suggests it.
+    await p.evaluate(() =>
+      window.denShell.api("POST", "/api/workspaces/north/agents", {
+        persona: "reviewer",
+        id: "rev-1",
+      }),
+    );
+    const CONV = "9c8d7e6f-0000-4000-8000-00000000cccc";
+    conversation(api, CONV, "Shape the API", 30 * 60_000, [
+      answer("claude-opus-4-5", "end_turn", ["mcp__linear__get_issue"]),
+    ]);
+    await p.click("#ag-bring");
+    await p.waitForSelector("#ag-dlg[open]", { timeout: 20_000 });
+    await p.click(`#ag-conv [data-cid="${CONV}"]`);
+    // Suggested and preselected, not submitted.
+    await p.waitForSelector(
+      '#ag-persona [data-pid="reviewer"][aria-checked="true"]',
+    );
+    const keep = await p.$$eval("#ag-keep li", (ls) =>
+      ls.map((l) => l.textContent),
+    );
+    expect(keep).toEqual([
+      "Keeps claude-opus-4-5 from the conversation.",
+      expect.stringMatching(
+        /^From now on it works as .+: its role, its permissions \(.+\), Den's tools and guards\. Its history stays\.$/,
+      ),
+      "It won't have: linear. Den runs agents with Den's tools only.",
+    ]);
+    await p.click("#ag-adv-s");
+    expect(
+      await p.$eval(
+        "#ag-model",
+        (el) => (el as HTMLSelectElement).options[0].textContent,
+      ),
+    ).toBe("Keep claude-opus-4-5");
+    await shot(p, "bring-in-keeps");
+    const [res] = await Promise.all([
+      p.waitForResponse(
+        (r) =>
+          r.request().method() === "POST" &&
+          new URL(r.url()).pathname ===
+            `/api/workspaces/north/conversations/${CONV}/import`,
+        { timeout: 20_000 },
+      ),
+      p.click("#ag-go"),
+    ]);
+    expect(res.status()).toBe(200);
+    // The model isn't sent: the server keeps the conversation's.
+    expect(JSON.parse(res.request().postData() ?? "{}")).toEqual({
+      persona: "reviewer",
+      runtime: "den-claude",
+    });
+    const agent = (
+      (await res.json()) as { agent: { id: string; sessionId: string } }
+    ).agent;
+    const pty = s!.made[s!.made.length - 1];
+    expect(pty.args[pty.args.indexOf("--model") + 1]).toBe("claude-opus-4-5");
+    expect(readRecord(s!.stateDir, agent.id)?.model).toBe("claude-opus-4-5");
+    // Its session ends when Den stops it, as a real one does.
+    const kill = pty.kill.bind(pty);
+    pty.kill = (sig: string) => {
+      kill(sig);
+      setTimeout(() => pty.exit(143), 5);
+    };
+
+    // AG-18: the pane's ⋯ → Change persona…
+    const more = `.pane[data-id="${agent.sessionId}"] [data-act="more"]`;
+    await p.waitForSelector(more);
+    await p.click(more);
+    await p.click('.den-pop .den-mi:has-text("Change persona")');
+    await p.waitForSelector("#ag-dlg[open]");
+    expect(await p.textContent("#ag-dlg-h")).toContain("persona");
+    await p.waitForSelector(
+      '#ag-persona [data-pid="reviewer"][aria-checked="true"] [data-current]',
+    );
+    expect(await p.isDisabled("#ag-go")).toBe(true);
+    expect(await p.$('#ag-persona [data-pid=":plain"]')).toBeNull();
+    expect(await p.isHidden("#ag-name-l")).toBe(true);
+    await p.click('#ag-persona [data-pid="planner"]');
+    expect(await p.isDisabled("#ag-go")).toBe(false);
+    expect(await p.textContent("#ag-keep li")).toBe(
+      "Keeps claude-opus-4-5 from the conversation.",
+    );
+    // Mid-turn: it asks, and nothing is stopped.
+    conversation(api, CONV, "Shape the API", 30 * 60_000, [
+      answer("claude-opus-4-5", "tool_use", ["Bash"]),
+    ]);
+    const before = s!.made.length;
+    await p.click("#ag-go");
+    await p.waitForSelector("#ag-pc-now");
+    expect(await p.textContent("#ag-err")).toContain(
+      "It's working. Change after this turn, or stop it now?",
+    );
+    expect(await p.isVisible("#ag-pc-after")).toBe(true);
+    expect(pty.signals).toEqual([]);
+    expect(s!.made.length).toBe(before);
+    await shot(p, "change-persona-busy");
+    const [ch] = await Promise.all([
+      p.waitForResponse(
+        (r) =>
+          r.request().method() === "POST" &&
+          new URL(r.url()).pathname ===
+            `/api/workspaces/north/agents/${agent.id}/persona`,
+        { timeout: 20_000 },
+      ),
+      p.click("#ag-pc-now"),
+    ]);
+    expect(ch.status()).toBe(200);
+    expect(JSON.parse(ch.request().postData() ?? "{}")).toEqual({
+      persona: "planner",
+      when: "now",
+    });
+    await p.waitForSelector("#ag-dlg:not([open])", { state: "attached" });
+    expect(s!.made.length).toBe(before + 1);
+    const next = s!.made[s!.made.length - 1];
+    expect(next.args.slice(0, 2)).toEqual(["--resume", CONV]);
+    expect(readRecord(s!.stateDir, agent.id)).toMatchObject({
+      id: agent.id,
+      persona: "planner",
+      model: "claude-opus-4-5",
+      resumeToken: CONV,
+    });
+    expect(fs.existsSync(s!.ran)).toBe(false);
     await p.context().close();
     expect(errors).toEqual([]);
   }, 90_000);

@@ -417,3 +417,128 @@ describe("the routes", () => {
     );
   });
 });
+
+/** A transcript with a prompt and answers (AG-17.1c): `model`, MCP tools. */
+function answered(
+  r: Rig,
+  cwd: string,
+  model: string,
+  tools: string[] = [],
+  id = TOKEN,
+): void {
+  conversation(r, cwd, id);
+  const claude = path.join(r.dir, "claude-config");
+  const file = path.join(claude, "projects", claudeSlug(cwd), `${id}.jsonl`);
+  fs.appendFileSync(
+    file,
+    `${JSON.stringify({
+      type: "assistant",
+      message: {
+        model,
+        stop_reason: "end_turn",
+        content: [
+          { type: "text", text: "Done." },
+          ...tools.map((name) => ({ type: "tool_use", id: name, name })),
+        ],
+      },
+    })}\n`,
+  );
+  const t = new Date(Date.now() - 10 * 60_000);
+  fs.utimesSync(file, t, t);
+}
+
+/** A persona of its own pack, with `extra` front matter. */
+function ownPersona(r: Rig, name: string, extra: string): void {
+  const packs = path.join(r.dir, "personas");
+  fs.mkdirSync(packs, { recursive: true });
+  fs.writeFileSync(
+    path.join(packs, `${name}.md`),
+    `---\nname: ${name}\n${extra}---\nYou work.\n`,
+  );
+  r.config.personaPacks = ["personas"];
+}
+
+const argAfter = (args: string[], flag: string) => args[args.indexOf(flag) + 1];
+
+describe("AG-17.1c: Bring in keeps the conversation's model, and says what changes", () => {
+  it("a conversation on one model, brought in as a persona on another, stays on its own", async () => {
+    const r = await rig();
+    ownPersona(r, "fast-dev", "model: sonnet\n");
+    answered(r, r.wsDir("north"), "claude-opus-4-5");
+    expect(
+      await agents(
+        r,
+        "import",
+        "-w",
+        "north",
+        "--session",
+        TOKEN,
+        "--persona",
+        "fast-dev",
+      ),
+    ).toBe(0);
+    expect(argAfter(r.made[0].args, "--model")).toBe("claude-opus-4-5");
+    expect(readRecord(r.stateDir, "fast-dev")?.model).toBe("claude-opus-4-5");
+  });
+
+  it("--model (Advanced) changes it", async () => {
+    const r = await rig();
+    ownPersona(r, "fast-dev", "model: sonnet\n");
+    answered(r, r.wsDir("north"), "claude-opus-4-5");
+    expect(
+      await agents(
+        r,
+        "import",
+        "-w",
+        "north",
+        "--session",
+        TOKEN,
+        "--persona",
+        "fast-dev",
+        "--model",
+        "haiku",
+      ),
+    ).toBe(0);
+    expect(readRecord(r.stateDir, "fast-dev")?.model).toBe("haiku");
+    expect(r.made[0].args).not.toContain("claude-opus-4-5");
+  });
+
+  it("the list: its model, the servers it won't have (not Den's own), and a suggested persona", async () => {
+    const r = await rig();
+    // The latest agent that worked in north's folder was a reviewer.
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "reviewer"),
+    ).toBe(0);
+    const sub = path.join(r.wsDir("north"), "docs");
+    fs.mkdirSync(sub);
+    answered(r, sub, "claude-opus-4-5", [
+      "mcp__linear__get_issue",
+      "mcp__acme__run_tests",
+    ]);
+    r.out.length = 0;
+    expect(await agents(r, "import", "-w", "north", "--json")).toBe(0);
+    const { conversations } = JSON.parse(r.out.join("\n")) as {
+      conversations: Array<Record<string, unknown>>;
+    };
+    expect(conversations[0]).toMatchObject({
+      id: TOKEN,
+      model: "claude-opus-4-5",
+      lost: ["linear"],
+      suggest: "reviewer",
+    });
+    // Suggested, never submitted: nothing was brought in.
+    expect(r.made).toHaveLength(1);
+  });
+
+  it("no agent in the workspace yet: no suggestion (the page keeps its first)", async () => {
+    const r = await rig();
+    answered(r, r.wsDir("north"), "claude-opus-4-5");
+    r.out.length = 0;
+    expect(await agents(r, "import", "-w", "north", "--json")).toBe(0);
+    const { conversations } = JSON.parse(r.out.join("\n")) as {
+      conversations: Array<Record<string, unknown>>;
+    };
+    expect(conversations[0].suggest).toBeUndefined();
+    expect(conversations[0].lost).toBeUndefined();
+  });
+});

@@ -605,6 +605,29 @@
     "ag.bring.agent": "Agent {id}",
     "ag.bring.note":
       "Continues it in the folder it ran in, with Den's tools and guards from now on. It keeps running if you close the pane. Close it in any other terminal first: Den only sees a conversation as open if it was written in the last minute.",
+    "ag.keep.model": "Keeps {m} from the conversation.",
+    "ag.keep.modelNew": "Runs on {m} from now on.",
+    "ag.keep.from":
+      "From now on it works as {p}: its role, its permissions ({mode}), Den's tools and guards. Its history stays.",
+    "ag.keep.lost":
+      "It won't have: {s}. Den runs agents with Den's tools only.",
+    "ag.keep.opt": "Keep {m}",
+    "ag.keep.optNone": "Keep the model it runs",
+    "ag.keep.advNote":
+      "The model it runs stays unless you pick another here. Permissions come from the persona.",
+    "ag.pc.item": "Change persona…",
+    "ag.pc.title": "Change {id}'s persona",
+    "ag.pc.note":
+      "Den stops it and resumes the same conversation as the new persona. Its id, name, folder and tab stay.",
+    "ag.pc.go": "Change persona",
+    "ag.pc.going": "Changing…",
+    "ag.pc.current": "current",
+    "ag.pc.busy": "It's working. Change after this turn, or stop it now?",
+    "ag.pc.after": "After this turn",
+    "ag.pc.now": "Stop it now",
+    "ag.pc.done": "{id} is now {p}",
+    "ag.pc.pending": "{id} becomes {p} when this turn ends",
+    "ag.more": "More for {id}",
     "ag.bring.go": "Bring in",
     "ag.bring.going": "Bringing in…",
     "ag.bring.done": "Brought in as {id}",

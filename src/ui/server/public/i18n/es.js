@@ -495,6 +495,30 @@
     "ag.bring.agent": "Agente {id}",
     "ag.bring.note":
       "La continúa en la carpeta donde se ejecutó, con las herramientas y protecciones de Den desde ahora. Sigue en ejecución si cierras el panel. Ciérrala antes en cualquier otro terminal: Den solo la ve abierta si se escribió en el último minuto.",
+    "ag.keep.model": "Mantiene {m} de la conversación.",
+    "ag.keep.modelNew": "Usa {m} a partir de ahora.",
+    "ag.keep.from":
+      "A partir de ahora trabaja como {p}: su rol, sus permisos ({mode}), las herramientas y protecciones de Den. Su historial se mantiene.",
+    "ag.keep.lost":
+      "No tendrá: {s}. Den ejecuta los agentes solo con las herramientas de Den.",
+    "ag.keep.opt": "Mantener {m}",
+    "ag.keep.optNone": "Mantener el modelo que usa",
+    "ag.keep.advNote":
+      "El modelo que usa se mantiene salvo que elijas otro aquí. Los permisos vienen de la persona.",
+    "ag.pc.item": "Cambiar persona…",
+    "ag.pc.title": "Cambiar la persona de {id}",
+    "ag.pc.note":
+      "Den lo detiene y reanuda la misma conversación con la nueva persona. Su id, nombre, carpeta y pestaña se mantienen.",
+    "ag.pc.go": "Cambiar persona",
+    "ag.pc.going": "Cambiando…",
+    "ag.pc.current": "actual",
+    "ag.pc.busy":
+      "Está trabajando. ¿Cambiar después de este turno o detenerlo ahora?",
+    "ag.pc.after": "Después de este turno",
+    "ag.pc.now": "Detenerlo ahora",
+    "ag.pc.done": "{id} ahora es {p}",
+    "ag.pc.pending": "{id} pasará a ser {p} cuando termine este turno",
+    "ag.more": "Más para {id}",
     "ag.bring.go": "Traer",
     "ag.bring.going": "Trayendo…",
     "ag.bring.done": "Traída como {id}",

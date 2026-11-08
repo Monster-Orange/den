@@ -8,6 +8,8 @@
  *    is there.
  *  - Below them: only the owner's account signs in this way, and a Learn
  *    more link to the docs.
+ *  - With no owner, the page watches: once the owner is linked on the
+ *    machine, step 1 shows done and the button appears, with no reload.
  * At 1440 and 390 px, nothing is wider than the window.
  * DEN_SEC2_SHOTS=<dir> also saves a screenshot of each. Needs Playwright's
  * chromium; DEN_SKIP_BROWSER_TESTS=1 skips it. A fake GitHub on localhost
@@ -209,5 +211,37 @@ describe.each([1440, 390])("the signed-out page at %i px", (width) => {
     await fits(p);
     await shot(p, `gh-steps-owner-${width}`);
     await p.context().close();
+  }, 60_000);
+});
+
+describe("no owner yet, then one is linked", () => {
+  it("the page shows Sign in with GitHub by itself, with no reload", async () => {
+    if (skip()) return;
+    clearWebOwner(stateDir);
+    const ctx = await browser!.newContext({
+      viewport: { width: 1440, height: 1000 },
+    });
+    // Watch faster than the page's 5 s.
+    await ctx.addInitScript(() => {
+      (window as unknown as { __denOwnerPollMs: number }).__denOwnerPollMs =
+        100;
+    });
+    const p = await ctx.newPage();
+    let loads = 0;
+    p.on("load", () => loads++);
+    expect((await p.goto(`http://${EDGE}:${port}/`))?.status()).toBe(401);
+    await p.waitForSelector("#den-gh-steps");
+    expect(await p.locator("#den-gh-start").count()).toBe(0);
+    writeWebOwner({ id: 4242, login: "octo-owner" }, stateDir);
+    await p.waitForSelector("#den-gh-start", { timeout: 10_000 });
+    expect(await text(p, "#den-gh-owner")).toBe("Owner: @octo-owner");
+    expect(
+      await p.evaluate(() =>
+        document.querySelector("#den-gh-step1")?.classList.contains("done"),
+      ),
+    ).toBe(true);
+    await threeSteps(p);
+    expect(loads).toBe(1);
+    await ctx.close();
   }, 60_000);
 });

@@ -1699,7 +1699,10 @@ the account's id and login, never a token, and no other account gets in.
   the button follows the steps; before that there is no button. Below the
   steps the page says only the owner's GitHub account can sign in this
   way, and that anyone else uses **Approve this computer**; **Learn more**
-  opens this section.
+  opens this section. With no owner yet, the page watches (the session
+  probe, `GET /api/session`, says `github.state` to a signed-out
+  browser): once the owner is linked on the machine, step 1 shows done
+  and the button appears, with no reload.
 
 - Pressing the button shows a code and `github.com/login/device`. The
   server runs the flow, and when the owner approves it sets the same
@@ -2194,7 +2197,8 @@ server scoped to its workspace.
 <cli> agents stop <id> [-w <ws>]
 <cli> agents resume <id> [-w <ws>]
 <cli> agents import -w <ws> [--runtime <r>] [--json]          # conversations to bring in
-<cli> agents import -w <ws> --session <id> --persona <p>      # bring one in
+<cli> agents import -w <ws> --session <id> --persona <p> [--model <m>]  # bring one in
+<cli> agents persona <id> <persona> [-w <ws>] [--model <m>] [--now | --after-turn]  # change its persona
 <cli> agents personas [--json]
 <cli> agents doctor [-w <ws>] [--json]  # can each runtime run here, and why not
 <cli> agents handback-check <file|->    # is a hand-back complete and plain (see Guardrails)
@@ -2265,6 +2269,24 @@ import -w <ws>` lists them too.
   Den's token, MCP config, hooks, guards and audit trail apply. It is an
   agent like any other: stop, resume, rename. The record notes
   `broughtInAt`.
+- **What the persona changes.** The persona is the role it takes on from
+  now on: its role prompt, its permission mode and allowed commands, and
+  Den's tools and guards. The history stays. The dialog says so under the
+  persona list: "From now on it works as <persona>: its role, its
+  permissions (<mode>), Den's tools and guards. Its history stays."
+- **The model stays the conversation's own.** Den reads the model of its
+  last answer (`message.model` on the last assistant record, in the ends
+  it reads) and runs it on that: "Keeps <model> from the conversation".
+  Advanced (or `--model`) picks another. With no model in the
+  transcript, the persona's applies.
+- **The MCP servers it won't have.** An agent runs with Den's MCP only
+  (`--strict-mcp-config`). When the transcript shows tool calls from other
+  servers (`mcp__<server>__…`), the dialog names them: "It won't have:
+  <servers>." The list's `lost` field has them.
+- **A suggested persona.** The list's `suggest` is the persona of the
+  latest agent of the workspace that worked in the conversation's folder
+  (or a folder inside it, or one containing it), else the workspace's
+  latest agent's. The dialog preselects it; you confirm with Bring in.
 - **One writer only.** A conversation written in the last minute is taken
   to be still open in another terminal: "Still open in another terminal.
   Close it there first" (HTTP 409 `open_elsewhere`). A conversation an
@@ -2274,8 +2296,39 @@ import -w <ws>` lists them too.
 - Only den-claude can bring one in for now. Other runtimes say "<runtime>
   can't bring in a conversation yet".
 - Routes: `GET /api/workspaces/<ws>/conversations[?runtime=<r>]` and `POST
-/api/workspaces/<ws>/conversations/<id>/import` `{ persona, runtime?, id?
-}`. A person's only, unless MCP `agent_import` is opted in.
+/api/workspaces/<ws>/conversations/<id>/import` `{ persona, runtime?, id?,
+model?, version? }`. A person's only, unless MCP `agent_import` is opted
+  in.
+
+#### Change an agent's persona
+
+**Change persona…** (the agent pane's ⋯ menu, running or stopped) and
+`agents persona <id> <persona>` switch an agent to another persona on the
+same conversation. Den stops its session and resumes the conversation with
+the new persona's role prompt, permission mode and allowed commands (the
+old persona's mode and commands go). The history stays, and so do the
+agent's id, name, workspace, folder, grants, tab and slot, and the model it
+runs unless Advanced (`--model`) picks another. The dialog lists the
+personas with the current one marked, and the same "From now on it works
+as…" line as Bring in.
+
+- **Never mid-turn without asking.** While it works (den-claude: its
+  transcript's last record is a tool call, or a prompt or tool result with
+  no answer yet), the change is refused: "It's working. Change after this
+  turn, or stop it now?" (HTTP 409 `busy`). **After this turn**
+  (`--after-turn`, `when: "after-turn"`) waits for the turn to end, up to
+  30 minutes, and then switches (the API answers 202 `pending` at once);
+  **Stop it now** (`--now`, `when: "now"`) stops it and switches.
+- **A person's only.** An agent could widen its own permissions with it,
+  so an agent's token is refused (403), the CLI refuses inside an agent's
+  session, and there is no MCP tool.
+- Only a runtime that can resume offers it (`personaChange: true` on the
+  agent's row); others can't.
+- The record keeps each change in `personaChanges` (from, to, when, and
+  who), and the audit trail records "persona <id> in <ws>: <from> → <to>,
+  by <who>".
+- Route: `POST /api/workspaces/<ws>/agents/<id>/persona` `{ persona, model?,
+version?, when? }`.
 
 ### On the Workspaces page
 

@@ -271,6 +271,39 @@ function githubBlock(s, t) {
   );
 }
 
+/** How often, and how long, the page watches for an owner (SEC-2a-UX). */
+export const OWNER_POLL_MS = 5000;
+const OWNER_WATCH_MS = 30 * 60 * 1000;
+
+/**
+ * SEC-2a-UX: with no owner linked yet, watch the session probe; once the
+ * owner is linked on the machine, step 1 shows done and Sign in with
+ * GitHub appears, with no reload.
+ */
+function watchOwner(root, t, s, pollMs = OWNER_POLL_MS) {
+  if (s.github?.state !== "no_owner" || !root.querySelector("#den-gh")) return;
+  const until = Date.now() + OWNER_WATCH_MS;
+  const tick = () => {
+    if (Date.now() > until || !root.querySelector("#den-gh")) return;
+    fetch("/api/session", { cache: "no-store", credentials: "same-origin" })
+      .then((r) => r.json().catch(() => ({})))
+      .then((b) => {
+        const g = b?.github;
+        if (g?.state === "ready" && g.ownerLogin) {
+          s.github = { ...s.github, state: "ready", ownerLogin: g.ownerLogin };
+          const old = root.querySelector("#den-gh");
+          if (!old) return;
+          old.outerHTML = githubBlock(s, t);
+          wireGithub(root, t, s);
+          return;
+        }
+        setTimeout(tick, pollMs);
+      })
+      .catch(() => setTimeout(tick, pollMs));
+  };
+  setTimeout(tick, pollMs);
+}
+
 /** The device flow on the page: start, show the code, poll, go on. */
 function wireGithub(root, t, s) {
   const start = root.querySelector("#den-gh-start");
@@ -625,6 +658,7 @@ function mountSignedOut(root, sh, d) {
     `</div>`;
   wireCopy(root, t);
   wireGithub(root, t, s);
+  watchOwner(root, t, s, window.__denOwnerPollMs || OWNER_POLL_MS);
   wirePair(root, t, s);
   if (s.expired) return;
   let tried = false;

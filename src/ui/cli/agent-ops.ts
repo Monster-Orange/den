@@ -456,6 +456,11 @@ export interface AgentRow {
    */
   resumable: boolean;
   /**
+   * AG-18: Change persona… applies: its runtime can resume and its record
+   * has a conversation to continue (running or not), not rotated.
+   */
+  personaChange?: boolean;
+  /**
    * Why Resume doesn't apply to a stopped agent (AG-14.2), e.g. "codex
    * can't resume a conversation": only Start fresh is offered.
    */
@@ -553,6 +558,9 @@ export function agentRows(
       state: st,
       startedAt: s?.startedAt ?? rec.startedAt,
       resumable,
+      ...(!rot?.ready && !personaChangeRefusal(rec)
+        ? { personaChange: true }
+        : {}),
       ...(why ? { noResume: why } : {}),
       ...(rec.stoppedAt ? { stoppedAt: rec.stoppedAt } : {}),
       ...(rec.endedAt ? { endedAt: rec.endedAt } : {}),
@@ -1675,6 +1683,17 @@ export interface ListedConversation extends RuntimeConversation {
   open: boolean;
   /** The Den agent already continuing it, if one is. */
   agent?: string;
+  /**
+   * AG-17.1c: the persona Bring in preselects: the one of the latest Den
+   * agent that worked in its folder (or one inside it), else the
+   * workspace's latest agent's. The person confirms; never submitted.
+   */
+  suggest?: string;
+  /**
+   * AG-17.1c: the MCP servers its tools came from that Den won't load (an
+   * agent runs with Den's tools only).
+   */
+  lost?: string[];
 }
 
 /** Each runtime, and whether it can bring a conversation in. */
@@ -1729,6 +1748,7 @@ export function listConversations(
   // Its folder and every repo's; a shared root only exactly (AG-17.1).
   const scope = d.workspaceFolders(ws);
   const taken = agentByToken(d);
+  const suggestFor = personaSuggester(d, ws);
   const now = Date.now();
   const conversations: ListedConversation[] = [];
   const seen = new Set<string>();
@@ -1740,16 +1760,50 @@ export function listConversations(
       if (seen.has(`${id} ${c.id}`)) continue;
       seen.add(`${id} ${c.id}`);
       const agent = taken.get(`${id} ${c.id}`);
+      const lost = (c.mcp ?? []).filter((m) => m !== d.cli);
+      const suggest = suggestFor(c.cwd);
       conversations.push({
         ...c,
         runtime: id,
         open: openElsewhere(c.lastAt, now),
         ...(agent ? { agent } : {}),
+        ...(suggest ? { suggest } : {}),
+        ...(lost.length ? { lost } : {}),
       });
     }
   }
   conversations.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
   return { runtimes: bringInRuntimes(), conversations };
+}
+
+/**
+ * AG-17.1c: the persona to preselect for a conversation that ran in a
+ * folder: the latest agent's of this workspace that worked there (or in a
+ * folder inside it), else the workspace's latest agent's; only a persona
+ * that still exists. Undefined: none to suggest (the page's first).
+ */
+function personaSuggester(
+  d: AgentsResolved,
+  ws: string,
+): (cwd: string) => string | undefined {
+  let known: Set<string>;
+  try {
+    known = new Set(personas(d, agentsConfig(d)).keys());
+  } catch {
+    return () => undefined;
+  }
+  const recs = listRecords(d.stateDir())
+    .filter((r) => r.workspace === ws && known.has(r.persona))
+    .sort((a, b) =>
+      (b.resumedAt ?? b.startedAt).localeCompare(a.resumedAt ?? a.startedAt),
+    );
+  const inside = (p: string, dir: string) => {
+    const rel = path.relative(dir, p);
+    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  };
+  return (cwd) =>
+    (recs.find((r) => inside(r.cwd, cwd) || inside(cwd, r.cwd)) ?? recs[0])
+      ?.persona;
 }
 
 export interface ImportRequest {
@@ -1759,6 +1813,13 @@ export interface ImportRequest {
   persona: string;
   runtime?: string;
   id?: string;
+  /**
+   * AG-17.1c: a model for it (Advanced). Absent: the conversation's own
+   * (its last answer's), else the persona's.
+   */
+  model?: string;
+  /** With model: "latest" or a pinned version (AG-12.3). */
+  version?: string;
 }
 
 /** The persona's id, else the first `<persona>-<n>` no agent has. */
@@ -1831,9 +1892,23 @@ export async function importAgent(
   const id = req.id ?? freeId(d, req.persona);
   if (readRecord(d.stateDir(), id))
     throw refused(`${where}: agent ${id} exists; give this one another --id`);
+  // AG-17.1c: the conversation keeps its own model unless one is picked.
+  const model = req.model ?? c.model;
   return startAgent(
     d,
-    { workspace: req.workspace, persona: req.persona, runtime, id },
+    {
+      workspace: req.workspace,
+      persona: req.persona,
+      runtime,
+      id,
+      ...(model ? { model } : {}),
+      ...(req.model !== undefined && req.version !== undefined
+        ? { version: req.version }
+        : {}),
+      // A model picked on the page is checked against the catalog; the
+      // conversation's own is taken as it ran.
+      ...(req.model !== undefined ? { strict: true } : {}),
+    },
     { bringIn: { token: c.id, cwd: c.cwd } },
   );
 }
@@ -2111,6 +2186,161 @@ export async function resumeAgent(
       fresh,
     };
   });
+}
+
+// ── AG-18: change a running agent's persona ─────────────────────────────────
+
+/** The refusal code while its turn is going and no `when` was given. */
+export const PERSONA_BUSY = "busy";
+
+export interface PersonaRequest {
+  persona: string;
+  /** Advanced: another model. Absent: the one it runs (the conversation's). */
+  model?: string;
+  /** With model: "latest" or a pinned version. */
+  version?: string;
+  /**
+   * Mid-turn: "after-turn" waits until its turn ends, "now" stops it. None:
+   * refused (PERSONA_BUSY) while it works, so a turn is never cut silently.
+   */
+  when?: "now" | "after-turn";
+  /** Who asked (a person's sign-in, "cli"), for its record. */
+  by?: string;
+}
+
+export interface PersonaChanged extends Resumed {
+  from: string;
+}
+
+/** How often, and how long, "after this turn" checks its turn (AG-18). */
+export const TURN_POLL_MS = 1_000;
+export const TURN_WAIT_MS = 30 * 60_000;
+
+/**
+ * Whether agent `rec` is mid-turn: true or false from its runtime (den-
+ * claude: its transcript), null when it can't tell. Not running: false.
+ */
+async function agentBusy(
+  d: AgentsResolved,
+  rec: AgentRecord,
+): Promise<boolean | null> {
+  const live = await withClient(d, async (c) => {
+    const s = sessionOf(await c.list(), rec);
+    return Boolean(s && !s.exited);
+  });
+  if (!live) return false;
+  const rt = getRuntime(rec.runtime);
+  if (!rt?.turnBusy || !rec.resumeToken) return null;
+  return rt.turnBusy(rec.resumeToken, d.env);
+}
+
+/** Why agent `rec` can't change persona (it can't resume), or null. */
+export function personaChangeRefusal(rec: AgentRecord): string | null {
+  const rt = getRuntime(rec.runtime);
+  if (!rt?.resume)
+    return `${rt?.label ?? rec.runtime} can't continue a conversation, so it can't change persona`;
+  return resumeRefusal(rec);
+}
+
+/**
+ * AG-18, change persona: Den stops the agent's session and resumes the
+ * same conversation with the new persona's launch settings (its role
+ * prompt, permission mode, allowed commands). The history stays; so do the
+ * id, name, workspace, folder and grants, and the model it runs unless
+ * one is given. Mid-turn it never stops a turn unasked: refused with
+ * PERSONA_BUSY, or `when` says to wait for the turn's end or stop now.
+ * Only a runtime that can resume can. The person's only: callers refuse an
+ * agent's token before this.
+ */
+export async function changePersona(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+  req: PersonaRequest,
+  opts: { pollMs?: number; maxMs?: number } = {},
+): Promise<PersonaChanged> {
+  const where = "agents persona";
+  const rec = agentRecord(d, id, ws);
+  const cfg = agentsConfig(d);
+  const all = personas(d, cfg);
+  if (!all.get(req.persona))
+    throw usage(
+      `${where}: no persona "${req.persona}" (personas: ${[...all.keys()].sort().join(", ")})`,
+    );
+  if (req.persona === rec.persona && req.model === undefined)
+    throw usage(`${where}: agent ${rec.id} is already ${rec.persona}`);
+  const why = personaChangeRefusal(rec);
+  if (why) throw refused(why, [], 422);
+  let busy = await agentBusy(d, rec);
+  if (busy !== false && req.when === undefined)
+    throw new AgentError(
+      busy
+        ? `agent ${rec.id} is working. Change after this turn, or stop it now?`
+        : `agent ${rec.id} is running and Den can't tell whether it is mid-turn. Change after this turn, or stop it now?`,
+      {
+        status: 409,
+        code: PERSONA_BUSY,
+        hints: [
+          `After this turn: ${d.cli} agents persona ${rec.id} ${req.persona} --after-turn`,
+          `Stop it now: ${d.cli} agents persona ${rec.id} ${req.persona} --now`,
+        ],
+      },
+    );
+  if (busy === null && req.when === "after-turn")
+    throw refused(
+      `${where}: Den can't tell when agent ${rec.id}'s turn ends; stop it now instead (--now)`,
+    );
+  if (req.when === "after-turn") {
+    const deadline = Date.now() + (opts.maxMs ?? TURN_WAIT_MS);
+    while (busy) {
+      if (Date.now() >= deadline)
+        throw refused(
+          `${where}: agent ${rec.id} was still working after ${Math.round((opts.maxMs ?? TURN_WAIT_MS) / 60_000)} min; nothing changed`,
+        );
+      await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
+      busy = await agentBusy(d, agentRecord(d, id, ws));
+    }
+  }
+  const stopped = await stopAgent(d, rec.id, rec.workspace);
+  if (stopped.stillStopping)
+    throw refused(
+      `${where}: agent ${rec.id} is still stopping; try again in a moment`,
+    );
+  // The new persona's permissions apply: the old one's choices go. The
+  // model stays (the conversation's) unless one is given.
+  const { permission: _p, allow: _a, overrides: _o, ...base } = stopped.rec;
+  const keptOverrides = (rec.overrides ?? []).filter(
+    (o) => o === "runtime" || o === "model" || o === "version",
+  );
+  const next: AgentRecord = {
+    ...base,
+    persona: req.persona,
+    ...(req.model !== undefined
+      ? { model: req.model, version: req.version ?? "latest" }
+      : {}),
+    ...(keptOverrides.length || req.model !== undefined
+      ? {
+          overrides: [
+            ...new Set([
+              ...keptOverrides,
+              ...(req.model !== undefined ? (["model"] as const) : []),
+            ]),
+          ],
+        }
+      : {}),
+    personaChanges: [
+      ...(rec.personaChanges ?? []),
+      {
+        from: rec.persona,
+        to: req.persona,
+        at: new Date().toISOString(),
+        ...(req.by ? { by: req.by } : {}),
+      },
+    ],
+  };
+  writeRecord(d.stateDir(), next);
+  const r = await resumeAgent(d, rec.id, rec.workspace);
+  return { ...r, from: rec.persona };
 }
 
 // ── AG-14: start fresh, remove, restart ─────────────────────────────────────

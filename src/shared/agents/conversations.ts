@@ -32,6 +32,16 @@ export interface RuntimeConversation {
   lastAt: string;
   /** The folder it ran in. */
   cwd: string;
+  /**
+   * AG-17.1c: the model its last answer came from (the last assistant
+   * record's `message.model`), so Bring in keeps it. Absent when unknown.
+   */
+  model?: string;
+  /**
+   * AG-17.1c: the MCP servers its tools came from (`mcp__<server>__<tool>`
+   * tool calls in the ends read), sorted. Absent when none.
+   */
+  mcp?: string[];
 }
 
 /** Bytes read at each end of a transcript. */
@@ -114,22 +124,63 @@ function promptText(rec: Record<string, unknown>): string | null {
   return cleanName(text);
 }
 
-/** A transcript's cwd and title, from its two ends. */
+/** A model name as a transcript records it: short, printable, not synthetic. */
+const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/;
+/** An MCP tool's name: `mcp__<server>__<tool>`. */
+const MCP_TOOL_RE = /^mcp__([A-Za-z0-9_.-]+?)__[A-Za-z0-9_.-]+$/;
+
+/** An assistant record's tool calls' names. */
+function toolNames(rec: Record<string, unknown>): string[] {
+  const content = (rec.message as { content?: unknown } | undefined)?.content;
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((c) => {
+    const b = c as { type?: unknown; name?: unknown };
+    return b?.type === "tool_use" && typeof b.name === "string" ? [b.name] : [];
+  });
+}
+
+/** A transcript's summary from its two ends (AG-17.1, AG-17.1c). */
+export interface TranscriptSummary {
+  cwd: string | null;
+  title: string | null;
+  /** The last assistant record's model, or null. */
+  model: string | null;
+  /** The MCP servers its tool calls name, sorted. */
+  mcp: string[];
+}
+
+/** A transcript's cwd, title, last model and MCP servers, from its two ends. */
 export function transcriptSummary(
   file: string,
   bytes = ENDS_BYTES,
-): { cwd: string | null; title: string | null } {
+): TranscriptSummary {
   const { head, tail } = readEnds(file, bytes);
   let cwd: string | null = null;
   let prompt: string | null = null;
   let title: string | null = null;
+  let model: string | null = null;
+  const mcp = new Set<string>();
   const titleIn = (line: string) => {
     if (!line.includes("custom-title")) return;
     const r = parse(line);
     if (r?.type === "custom-title") title = cleanName(r.customTitle) ?? title;
   };
+  // AG-17.1c: the last answer's model, and the MCP servers its tools came from.
+  const assistantIn = (line: string) => {
+    if (!line.includes('"assistant"')) return;
+    const r = parse(line);
+    if (r?.type !== "assistant") return;
+    const m = (r.message as { model?: unknown } | undefined)?.model;
+    if (typeof m === "string" && MODEL_RE.test(m) && m !== "<synthetic>")
+      model = m;
+    for (const n of toolNames(r)) {
+      const hit = MCP_TOOL_RE.exec(n);
+      if (hit) mcp.add(hit[1]);
+    }
+  };
   for (const line of head) {
     titleIn(line);
+    assistantIn(line);
     if (cwd && prompt) continue;
     if (!line.includes('"cwd"') && !line.includes('"user"')) continue;
     const r = parse(line);
@@ -138,8 +189,73 @@ export function transcriptSummary(
       cwd = r.cwd;
     prompt ??= promptText(r);
   }
-  for (const line of tail) titleIn(line);
-  return { cwd, title: title ?? prompt };
+  for (const line of tail) {
+    titleIn(line);
+    assistantIn(line);
+  }
+  return { cwd, title: title ?? prompt, model, mcp: [...mcp].sort() };
+}
+
+/** Written this recently, a turn whose last record is an answer is still going. */
+export const TURN_QUIET_MS = 5_000;
+
+/**
+ * AG-18: whether a conversation's turn is still going, from its tail: the
+ * last user or assistant record. An answer that ended (`end_turn`, a stop
+ * sequence, the token limit) is idle; a tool call, or a prompt or tool
+ * result with no answer yet, is busy; an answer with no stop reason is busy
+ * until the file has been quiet TURN_QUIET_MS. An interrupted turn is idle.
+ * No transcript: idle (nothing was asked yet).
+ */
+export function transcriptBusy(
+  file: string | null,
+  now = Date.now(),
+  bytes = ENDS_BYTES,
+): boolean {
+  if (!file) return false;
+  let mtime: number;
+  try {
+    mtime = fs.statSync(file).mtimeMs;
+  } catch {
+    return false;
+  }
+  const { head, tail } = readEnds(file, bytes);
+  const lines = tail.length ? [...head, ...tail] : head;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line.includes('"user"') && !line.includes('"assistant"')) continue;
+    const r = parse(line);
+    if (!r || r.isSidechain === true || r.isMeta === true) continue;
+    if (r.type === "assistant") {
+      const msg = r.message as { stop_reason?: unknown } | undefined;
+      const stop = msg?.stop_reason;
+      if (stop === "tool_use" || toolNames(r).length) return true;
+      if (
+        stop === "end_turn" ||
+        stop === "stop_sequence" ||
+        stop === "max_tokens"
+      )
+        return false;
+      return now - mtime < TURN_QUIET_MS;
+    }
+    if (r.type === "user") {
+      const content = (r.message as { content?: unknown } | undefined)?.content;
+      const text =
+        typeof content === "string"
+          ? content
+          : Array.isArray(content)
+            ? ((
+                content.find(
+                  (c) => (c as { type?: unknown })?.type === "text",
+                ) as { text?: unknown } | undefined
+              )?.text ?? "")
+            : "";
+      if (typeof text === "string" && text.startsWith("[Request interrupted"))
+        return false;
+      return true;
+    }
+  }
+  return false;
 }
 
 /** A folder's absolute forms: as given and its real path. */
@@ -236,6 +352,8 @@ export function claudeConversations(
       title: s.title,
       lastAt: new Date(f.mtimeMs).toISOString(),
       cwd,
+      ...(s.model ? { model: s.model } : {}),
+      ...(s.mcp.length ? { mcp: s.mcp } : {}),
     });
   }
   return out;

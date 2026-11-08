@@ -64,6 +64,7 @@
  */
 import * as fs from "fs";
 import { DEFAULT_RUNTIME_ID } from "../../shared/agents/runtimes.js";
+import { ACTOR_TOKEN_ENV } from "../../shared/actor-token.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import { HostError } from "../../shared/sessions/client.js";
 import { checkHandback } from "../../shared/agents/handback.js";
@@ -77,6 +78,7 @@ import {
 import {
   AgentError,
   importAgent,
+  changePersona,
   listAgents,
   listConversations,
   listPersonas as personaList,
@@ -116,7 +118,7 @@ export {
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|relaunch|import|rm|personas|doctor|handback-check|handoff-check> ...",
+    "agents <list|start|stop|resume|relaunch|import|persona|rm|personas|doctor|handback-check|handoff-check> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -142,11 +144,17 @@ export const AGENTS_HELP = {
     "    passes the check, a fresh conversation (same persona, workspace, folder,",
     "    grants) whose first prompt is the handoff",
     "{cli} agents import -w <ws> [--runtime <r>] [--json]",
-    "{cli} agents import -w <ws> --session <id> --persona <p> [--runtime <r>] [--id <id>]",
+    "{cli} agents import -w <ws> --session <id> --persona <p> [--runtime <r>] [--id <id>] [--model <m>]",
     "    bring in a conversation started outside Den: the first lists the runtime's",
     "    own (default den-claude) in the workspace's folder; the second continues",
     "    one as a Den agent (its resume, in the folder it ran in). Refused while it",
-    "    is still open in another terminal: close it there first",
+    "    is still open in another terminal: close it there first. It keeps the",
+    "    conversation's own model unless --model gives one",
+    "{cli} agents persona <id> <persona> [-w <ws>] [--model <m>] [--now | --after-turn]",
+    "    change an agent's persona: the same conversation resumes with the new",
+    "    persona's role, permissions and commands; id, name, folder and model stay.",
+    "    Mid-turn it asks: --after-turn waits for the turn to end, --now stops it.",
+    "    A person's only (refused in an agent's session)",
     "{cli} agents rm <id> [-w <ws>]",
     "{cli} agents rm --stopped [-w <ws>]",
     "    forget a stopped, interrupted or exited agent (never a running one);",
@@ -306,6 +314,8 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
     "--session": true,
     "--persona": true,
     "--id": true,
+    "--model": true,
+    "--version": true,
     "--json": false,
   });
   noExtra(where, p);
@@ -355,11 +365,62 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
     persona,
     runtime,
     id: str(p, "--id"),
+    // AG-17.1c: the conversation's own model unless one is given.
+    ...(str(p, "--model") !== undefined ? { model: str(p, "--model") } : {}),
+    ...(str(p, "--version") !== undefined
+      ? { version: str(p, "--version") }
+      : {}),
   });
   return report(
     d,
     s,
     `brought in ${session} as agent ${s.rec.id} (${s.rec.persona}, ${s.rec.runtime}) as ${s.rec.sessionName} in ${s.rec.cwd}`,
+  );
+}
+
+/**
+ * `agents persona <id> <persona> [-w <ws>] [--model <m>] [--version <v>]
+ * [--now | --after-turn]` (AG-18). A person's only: refused inside an
+ * agent's session (its DEN_ACTOR_TOKEN), so an agent can't widen its own
+ * permissions.
+ */
+async function persona(args: string[], d: AgentsResolved): Promise<number> {
+  const where = "agents persona";
+  if (d.env[ACTOR_TOKEN_ENV] !== undefined)
+    throw new AgentError(
+      `${where}: only a person can change an agent's persona (this is an agent's session)`,
+    );
+  const p = parseArgs(where, args, {
+    "--workspace": true,
+    "--model": true,
+    "--version": true,
+    "--now": false,
+    "--after-turn": false,
+  });
+  noExtra(where, p, 2);
+  const [id, to] = p.positional;
+  if (!id || !to) throw new UsageError(`${where} needs <id> <persona>`);
+  if (p.flags["--now"] && p.flags["--after-turn"])
+    throw new UsageError(`${where}: --now or --after-turn, not both`);
+  const when = p.flags["--now"]
+    ? "now"
+    : p.flags["--after-turn"]
+      ? "after-turn"
+      : undefined;
+  if (when === "after-turn") d.out(`waiting for agent ${id}'s turn to end…`);
+  const s = await changePersona(d, id, workspaceFlag(where, p), {
+    persona: to,
+    ...(str(p, "--model") !== undefined ? { model: str(p, "--model") } : {}),
+    ...(str(p, "--version") !== undefined
+      ? { version: str(p, "--version") }
+      : {}),
+    ...(when ? { when } : {}),
+    by: "cli",
+  });
+  return report(
+    d,
+    s,
+    `agent ${s.rec.id} is now ${s.rec.persona} (was ${s.from}); same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
   );
 }
 
@@ -703,6 +764,9 @@ export async function cmdAgents(
         case "import":
           await loadAgentWorkspaces(deps);
           return await bringIn(rest, d);
+        case "persona":
+          await loadAgentWorkspaces(deps);
+          return await persona(rest, d);
         case "rm":
           await loadAgentWorkspaces(deps);
           return await rm(rest, d);
