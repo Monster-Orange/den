@@ -15,6 +15,8 @@
  *     stdin (`-S`), then runs the command it was given;
  *   - with `elevatedUp`, south's repo (blog) has an `up` that runs
  *     `sudo touch <tmp>/elevated-ran` (LK-0): the one elevated step;
+ *   - with `up`, a repo's `up` is the command given (a dev server that
+ *     never exits, say);
  *   - an env built from a minimal set, never this process's.
  *
  * Invented names only. The caller closes it (stop) and its temp dir goes.
@@ -112,6 +114,8 @@ export async function startAgentsPageServer(
     fresh?: boolean;
     /** A repo's service health URL for local (notes, blog), when it has one. */
     health?: Record<string, string>;
+    /** A repo's local `up` command (notes, blog); `true` when unset. */
+    up?: Record<string, string>;
   } = {},
 ): Promise<AgentsPageServer> {
   const tmp = fs.realpathSync(
@@ -173,7 +177,9 @@ export async function startAgentsPageServer(
   for (const [ws, repo] of Object.entries(members)) {
     fs.mkdirSync(wsDir(ws), { recursive: true });
     const up =
-      opts.elevatedUp && repo === "blog" ? `sudo touch ${elevated}` : "true";
+      opts.elevatedUp && repo === "blog"
+        ? `sudo touch ${elevated}`
+        : (opts.up?.[repo] ?? "true");
     write(
       path.join(repos, repo, ".acme.yml"),
       [

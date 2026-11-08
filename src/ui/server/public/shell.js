@@ -1283,8 +1283,10 @@
     // a signed-in device, or a GitHub login. Null until known.
     identity: null,
     // 0.4.18: each pin's URL (svc-panel.js, from the health feed) for its
-    // Visit ↗, and the pin whose service panel is open.
+    // Visit ↗, whether that Visit is off (down or starting: the panel's own
+    // live state), and the pin whose service panel is open.
     pinUrls: {},
+    pinOff: {},
     svpOpen: null,
   };
   try {
@@ -2235,11 +2237,19 @@
             : " off";
     return '<span class="den-dot' + cls + '" aria-hidden="true"></span>';
   }
-  /** 0.4.18: a pin's Visit ↗: none without a URL, greyed out while it is down. */
+  /**
+   * 0.4.18: a pin's Visit ↗: none without a URL, greyed out while it is
+   * down. Down is the service panel's live state (pinOff), the same as its
+   * dot, so it holds for a pin outside the View too; the rail's rollup
+   * only without it.
+   */
   function pinVisit(id) {
     var url = state.pinUrls && state.pinUrls[id];
     if (!url) return "";
-    var down = state.health[id] === "down";
+    var off = state.pinOff || {};
+    var down = Object.prototype.hasOwnProperty.call(off, id)
+      ? !!off[id]
+      : state.health[id] === "down";
     return (
       '<button type="button" class="den-pvisit" tabindex="-1" data-visit="' +
       esc(id) +

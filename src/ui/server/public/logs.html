@@ -476,6 +476,7 @@
         envReady,
         initWorkspacePill,
       } from "/header.js";
+      import { isServerLog, logStreamUrl } from "/log-source.js";
 
       // ── Safe highlight rendering ──────────────────────────────────────────────
       // Log lines are UNTRUSTED (any service can log attacker-influenced text,
@@ -550,11 +551,9 @@
       const logStreams = new Map();
 
       // "__DEN_CLI__/server" is a pseudo-service that taps the server's own log ring
-      // via /api/server-log instead of /api/service/logs. Everything else in the
-      // page treats it like a normal log stream.
-      function isServerLog(repo, service) {
-        return repo === "__DEN_CLI__" && service === "server";
-      }
+      // via /api/server-log instead of /api/service/logs (isServerLog,
+      // log-source.js). Everything else in the page treats it like a normal
+      // log stream.
       function formatServerLogEntry(entry) {
         // "14:07:41  [lifecycle]  ▶ run synthetic/local · modules=all [abcxyz]"
         // An agent's action reads "[agent]" and ends "· by agent <client> …".
@@ -1075,21 +1074,9 @@
         // ─────────────────────────────────────────────────────────────────────
 
         const serverLog = isServerLog(repo, service);
-        // Local streams go through taillog — the same endpoint the workspace
-        // page's tabs use. It has the full source-resolution chain (manifest
-        // cmd → conventional opctl container → daemon startup log), whereas
-        // /api/service/logs 404s for services with no logs block (shop-web,
-        // control-plane). Non-local envs keep /api/service/logs for
-        // cloudwatch sources + the AWS reauth flow.
-        const es = serverLog
-          ? new EventSource("/api/server-log")
-          : env === "local"
-            ? new EventSource(
-                `/api/service/taillog?${new URLSearchParams({ repo, service })}`,
-              )
-            : new EventSource(
-                `/api/service/logs?${new URLSearchParams({ repo, service, env })}`,
-              );
+        // Where the stream comes from (taillog for local, logs elsewhere):
+        // log-source.js, which the service panel's Logs uses too.
+        const es = new EventSource(logStreamUrl(repo, service, env));
 
         es.onmessage = (e) => {
           const msg = JSON.parse(e.data);
