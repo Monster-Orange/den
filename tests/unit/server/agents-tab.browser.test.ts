@@ -24,6 +24,7 @@
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
 import {
@@ -75,7 +76,8 @@ beforeAll(async () => {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
   }
-  s = await startAgentsPageServer();
+  // west: in workspaces.yml, not active.
+  s = await startAgentsPageServer({ inactive: ["west"] });
   host = await connectHost(sessionPaths(s.stateDir).socket);
   latest =
     (
@@ -608,6 +610,53 @@ describe("the Agents tab", () => {
     expect(s!.made.length).toBe(made + 1);
     expect(await p.isVisible("#ag-dlg")).toBe(false);
     await p.context().close();
+  }, 60_000);
+
+  it("0.4.17: a pane in a workspace that isn't active opens; a refused one says why; Sign in only when the person is signed out", async () => {
+    if (skip()) return;
+    fs.mkdirSync(s!.wsDir("west"), { recursive: true });
+    (await start("west", "night")).emit("from west\r\n");
+    const p = await page(`/agents?ws=west&open=${id("night")}`);
+    await waitTerm(p, id("night"), "from west");
+    await p.context().close();
+
+    // A session the list shows but the io route refuses: its real reason.
+    const url = "/agents?open=gone1";
+    const q = await page(url);
+    await q.route("**/api/sessions", async (r) => {
+      const res = await r.fetch();
+      const body = (await res.json()) as {
+        sessions: Record<string, unknown>[];
+      };
+      const shell = body.sessions.find((x) => x.id === id("shell"))!;
+      await r.fulfill({
+        response: res,
+        body: JSON.stringify({
+          ...body,
+          sessions: [
+            ...body.sessions,
+            { ...shell, id: "gone1", name: "acme-north:gone1", label: "gone1" },
+          ],
+        }),
+      });
+    });
+    await q.goto(`${s!.base}${url}`);
+    await waitTerm(q, "gone1", 'disconnected: no session "gone1" here');
+    expect(await termText(q, "gone1")).not.toContain("Sign in");
+    // Signed out (the route answers 401): then, and only then, Sign in.
+    await q.route("**/api/sessions/gone1/io", (r) =>
+      r.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "sign in", code: "signin_required" }),
+      }),
+    );
+    await q.reload();
+    await waitTerm(q, "gone1", "Sign in to open terminals: run acme web login");
+    await q.context().close();
+    // The refusals the browser logs on its own are this test's, expected.
+    for (let i = errors.length - 1; i >= 0; i--)
+      if (errors[i].startsWith(`${url}:`)) errors.splice(i, 1);
   }, 60_000);
 
   it("raised no page errors", () => {

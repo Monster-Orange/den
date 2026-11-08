@@ -653,6 +653,8 @@
     "ag.ended": "このセッションは終了しました。記録は再開か削除まで残ります。",
     "ag.switched": "{p} に切り替えました",
     "ag.exitedLine": "[セッションが終了しました{code}]",
+    "ag.refusedUnknown": "サーバーがターミナルを拒否しました",
+    "ag.refusedStatus": "サーバーがターミナルを拒否しました({status})",
     "ag.lost": "[切断: {why}]",
     "ag.reconnect": "再接続",
     "ag.noBackend":

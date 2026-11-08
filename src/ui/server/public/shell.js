@@ -776,6 +776,8 @@
       "This session has ended. Its record stays until it is resumed or removed.",
     "ag.switched": "Switched to {p}",
     "ag.exitedLine": "[the session exited{code}]",
+    "ag.refusedUnknown": "the server refused the terminal",
+    "ag.refusedStatus": "the server refused the terminal ({status})",
     "ag.lost": "[disconnected: {why}]",
     "ag.reconnect": "Reconnect",
     "ag.noBackend":

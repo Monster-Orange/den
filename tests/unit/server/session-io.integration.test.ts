@@ -20,6 +20,7 @@
  * module is needed. No token, cookie or CSRF value is printed.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
 import * as path from "path";
 import {
   bindActorSession,
@@ -60,7 +61,8 @@ const start = async (ws: string, name: string) => {
 const pty = (name: string) => s.made.find((p) => p.pid === sess[name].pid)!;
 
 beforeAll(async () => {
-  s = await startAgentsPageServer();
+  // west: in workspaces.yml, not active (0.4.17: its sessions open too).
+  s = await startAgentsPageServer({ inactive: ["west"] });
   host = await connectHost(sessionPaths(s.stateDir).socket);
   (await start("north", "shell")).emit("hello from north\r\n");
   await start("south", "logs");
@@ -373,6 +375,44 @@ describe("the io WebSocket", () => {
       sessions: { name: string }[];
     };
     expect(list.sessions.map((x) => x.name)).not.toContain("other-north:shell");
+  });
+});
+
+describe("a workspace that isn't active (0.4.17)", () => {
+  it("its session's io opens: the route checks the person and the session, not the active flag", async () => {
+    fs.mkdirSync(s.wsDir("west"), { recursive: true });
+    (await start("west", "night")).emit("from west\r\n");
+    const ws = await attach("night");
+    await ws.until(() => ws.output().includes("from west"));
+    ws.close();
+    // A plain GET says what its upgrade would get: 426, it would open.
+    const r = await fetch(`${s.base}${io("night")}`, {
+      headers: { "sec-fetch-site": "same-origin" },
+    });
+    expect(r.status).toBe(426);
+  });
+
+  it("a plain GET gives an upgrade's real refusal: 404 with why, for a session that isn't here", async () => {
+    const r = await fetch(`${s.base}/api/sessions/nope/io`, {
+      headers: { "sec-fetch-site": "same-origin" },
+    });
+    expect(r.status).toBe(404);
+    expect(await r.json()).toMatchObject({
+      code: "not_found",
+      error: 'no session "nope" here',
+    });
+    // A workspace workspaces.yml doesn't name: still not served.
+    await host.start({
+      name: "acme-gone:shell",
+      cwd: s.wsDir("north"),
+      argv: ["sh"],
+      env: {},
+      cols: 80,
+      rows: 24,
+    });
+    expect(
+      await refusal("/api/sessions/acme-gone%3Ashell/io", browser()),
+    ).toEqual([404, "not_found"]);
   });
 });
 

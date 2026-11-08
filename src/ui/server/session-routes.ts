@@ -362,18 +362,101 @@ const TEXT = (code: number) =>
         : "Service Unavailable";
 
 /**
- * A plain HTTP request to an io route: it is a WebSocket. 426 for a GET,
- * 404 for anything else under /api/sessions/.
+ * Whether a session is one the io route serves: this distribution's, in a
+ * workspace workspaces.yml names, active or not (0.4.17: an agent you can
+ * start and see, you can open). The person's and the agent's checks are
+ * the request guard's, before this.
  */
-export function sendSessionHttp(
+function servedSession(
+  s: SessionInfo,
+  target: string,
+  d: Resolved,
+  active: ReadonlySet<string>,
+): boolean {
+  const p = parseSessionName(s.name, d.dist());
+  return (
+    p !== null &&
+    (active.has(p.workspace) || d.workspaceExists(p.workspace)) &&
+    (s.ref.id === target || s.name === target)
+  );
+}
+
+/**
+ * Why the io route would refuse `target`, or null when it would open it:
+ * what a browser can't read from a refused upgrade (it sees only a close),
+ * so the page asks this with a plain GET (0.4.17).
+ */
+async function ioRefusal(
+  target: string,
+  d: Resolved,
+): Promise<{ status: number; error: string; code: string } | null> {
+  let c: HostClient | null;
+  try {
+    c = await d.connectExisting();
+  } catch (e) {
+    return {
+      status: 503,
+      error: `the session host: ${(e as Error).message}`,
+      code: "session_host",
+    };
+  }
+  if (!c)
+    return {
+      status: 404,
+      error: `no session "${target}" (no session host is running)`,
+      code: "not_found",
+    };
+  try {
+    const active = new Set(d.activeWorkspaces());
+    const found = (await c.list()).some((s) =>
+      servedSession(s, target, d, active),
+    );
+    return found
+      ? null
+      : {
+          status: 404,
+          error: `no session "${target}" here`,
+          code: "not_found",
+        };
+  } catch (e) {
+    return {
+      status: 503,
+      error: `the session host: ${(e as Error).message}`,
+      code: "session_host",
+    };
+  } finally {
+    c.close();
+  }
+}
+
+/**
+ * A plain HTTP request to an io route: it is a WebSocket. For a GET, the
+ * refusal its upgrade would get (404, 503), else 426; 404 for anything
+ * else under /api/sessions/.
+ */
+export async function sendSessionHttp(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   pathname: string,
-): void {
-  if (
-    IO_PATH.test(pathname) &&
-    (req.method === "GET" || req.method === "HEAD")
-  ) {
+  deps: SessionRouteDeps = {},
+): Promise<void> {
+  const m = IO_PATH.exec(pathname);
+  if (m && (req.method === "GET" || req.method === "HEAD")) {
+    let target = m[1];
+    try {
+      target = decodeURIComponent(target);
+    } catch {
+      /* as given */
+    }
+    const why = await ioRefusal(target, resolve(deps));
+    if (why) {
+      sendJson(
+        res,
+        { ok: false, error: why.error, code: why.code },
+        why.status,
+      );
+      return;
+    }
     res.setHeader("Upgrade", "websocket");
     res.setHeader("Connection", "Upgrade");
     sendJson(
@@ -444,16 +527,10 @@ export async function handleSessionUpgrade(
   const client = c;
   let info: SessionInfo | undefined;
   try {
-    const dist = d.dist();
     const active = new Set(d.activeWorkspaces());
-    info = (await client.list()).find((s) => {
-      const p = parseSessionName(s.name, dist);
-      return (
-        p !== null &&
-        active.has(p.workspace) &&
-        (s.ref.id === target || s.name === target)
-      );
-    });
+    info = (await client.list()).find((s) =>
+      servedSession(s, target, d, active),
+    );
   } catch (e) {
     client.close();
     return refuse(

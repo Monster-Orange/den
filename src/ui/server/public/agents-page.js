@@ -1124,19 +1124,39 @@ async function connect(p) {
     }
     p.term?.write(new Uint8Array(e.data));
   };
-  sock.onclose = (e) => {
+  sock.onclose = async (e) => {
     if (p.sock !== sock) return;
     p.sock = null;
     if (p.closed) return;
-    // Refused before it opened: beyond loopback without a session, the
-    // upgrade is 401 (a browser sees only the close).
-    if (!opened) void refresh();
-    const why =
-      e.reason || (opened ? String(e.code) : t("ag.signin", { cli: CLI }));
+    // Refused before it opened: a browser sees only the close, so ask the
+    // route why with a plain GET (0.4.17). "Sign in" only when it's 401.
+    let why = e.reason || String(e.code);
+    if (!opened) {
+      void refresh();
+      why = await refusalReason(p.id);
+      if (p.closed || p.sock) return;
+    }
     p.term?.write(`\r\n${t("ag.lost", { why })}\r\n`);
     p.lost = true;
     paintBar(p);
   };
+}
+
+/** Why session `id`'s io upgrade was refused, in words for its pane. */
+async function refusalReason(id) {
+  try {
+    const r = await fetch(`/api/sessions/${encodeURIComponent(id)}/io`, {
+      headers: { accept: "application/json" },
+      credentials: "same-origin",
+    });
+    if (r.status === 401) return t("ag.signin", { cli: CLI });
+    const b = await r.json().catch(() => null);
+    if (r.status === 426) return t("ag.refusedUnknown");
+    if (typeof b?.error === "string" && b.error) return b.error;
+    return t("ag.refusedStatus", { status: r.status });
+  } catch {
+    return t("ag.refusedUnknown");
+  }
 }
 
 // ── links and keys in a pane (AG-4b) ───────────────────────────────────

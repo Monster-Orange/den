@@ -669,6 +669,8 @@
       "Esta sesión ha terminado. Su registro se queda hasta que se reanude o se elimine.",
     "ag.switched": "Cambiado a {p}",
     "ag.exitedLine": "[la sesión terminó{code}]",
+    "ag.refusedUnknown": "el servidor rechazó la terminal",
+    "ag.refusedStatus": "el servidor rechazó la terminal ({status})",
     "ag.lost": "[desconectado: {why}]",
     "ag.reconnect": "Reconectar",
     "ag.noBackend":

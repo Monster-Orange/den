@@ -1969,8 +1969,10 @@ async function handleRequest(
   // AG-4a-term's session routes (`/api/sessions/<id>/io`): shell-grade, and
   // an agent's token reaches its own session's only (request-guard). The io
   // is a WebSocket (the server's upgrade handler): a plain GET of it is 426.
-  if (pathname.startsWith("/api/sessions/"))
-    return sendSessionHttp(req, res, pathname);
+  if (pathname.startsWith("/api/sessions/")) {
+    await sendSessionHttp(req, res, pathname);
+    return;
+  }
   // ON-3: an agent's held writes; Allow from the person's browser only.
   if (
     guard.ok &&
