@@ -7,6 +7,7 @@
  */
 
 import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
+import { reservedWorkspaceError } from "../../shared/agents/server-agent.js";
 import { loadApplicationTree } from "../../shared/environment-manager/load-applications.js";
 import { localCommandsFor } from "../../shared/stacks/manifest-commands.js";
 import * as http from "http";
@@ -358,6 +359,8 @@ export function workspaceCreateRefusal(
   if (/["'\\/<>\x00-\x1f]/.test(name))
     return "name must not contain quotes, slashes, or control characters";
   if (name.length > 64) return "name must be 64 characters or fewer";
+  const reserved = reservedWorkspaceError(name);
+  if (reserved) return reserved;
   if (readWorkspacesFile().workspaces[name])
     return `workspace "${name}" already exists`;
   return null;

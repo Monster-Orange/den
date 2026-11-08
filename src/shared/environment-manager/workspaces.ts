@@ -10,6 +10,7 @@
  */
 
 import * as fs from "fs";
+import { reservedWorkspaceError } from "../agents/server-agent.js";
 import * as path from "path";
 import * as yaml from "yaml";
 import type {
@@ -508,6 +509,9 @@ export function setActiveWorkspace(name: string): void {
 }
 
 export function createWorkspace(name: string, config: WorkspaceConfig): void {
+  // ON-6: the server agent's scope is never a workspace.
+  const reserved = reservedWorkspaceError(name);
+  if (reserved) throw new Error(reserved);
   const file = readWorkspacesFile();
   file.workspaces[name] = config;
   writeWorkspacesFile(file);

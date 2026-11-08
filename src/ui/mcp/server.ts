@@ -6,6 +6,7 @@
  * stdout carries the protocol only: diagnostics go to stderr.
  */
 import { z } from "zod";
+import { isServerScope } from "../../shared/agents/server-agent.js";
 import { randomUUID } from "crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -56,7 +57,9 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
   const log = opts.log ?? ((l: string) => process.stderr.write(`${l}\n`));
   // Scoped, each workspace tool is registered pinned (MCP-2.2): "this
   // workspace only", and no workspace parameter unless there are grants.
-  const tools = toolsFor(opts.cfg, opts.scope);
+  // ON-6: the server agent's scope is the whole Den (its tools unpinned).
+  const toolScope = workspaceScope(opts.scope);
+  const tools = toolsFor(opts.cfg, toolScope);
   const server = new McpServer(
     { name: p.name, version: engineVersion() ?? "0.0.0" },
     {
@@ -67,13 +70,17 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
           ? `Actions enabled: ${opts.cfg.actions.join(", ")}.`
           : "The org has enabled no actions (mcp.actions).") +
         ` The ${approvalsState(opts.cfg)}.` +
-        (opts.scope
-          ? ` Scoped to workspace "${opts.scope.workspace}" as ${opts.scope.actor}: ` +
-            "a call naming another workspace is refused, and lists show this one only, " +
-            "each with a `scope` block saying how much is hidden. org_summary has " +
-            "every workspace and repo (names and status counts), the graph, the " +
-            "edge and the environments: start there for the whole picture."
-          : " org_summary has the whole org at a glance: start there."),
+        (opts.scope && !toolScope
+          ? ` You are this ${p.title}'s own server agent (${opts.scope.actor}): the whole ${p.title}, ` +
+            "no workspace. Each write is held until the person allows it in the browser. " +
+            "onboard_status says what is set up: start there."
+          : opts.scope
+            ? ` Scoped to workspace "${opts.scope.workspace}" as ${opts.scope.actor}: ` +
+              "a call naming another workspace is refused, and lists show this one only, " +
+              "each with a `scope` block saying how much is hidden. org_summary has " +
+              "every workspace and repo (names and status counts), the graph, the " +
+              "edge and the environments: start there for the whole picture."
+            : " org_summary has the whole org at a glance: start there."),
     },
   );
 
@@ -99,7 +106,7 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
     api,
     cfg: opts.cfg,
     cli: opts.cli,
-    ...(opts.scope ? { scope: opts.scope } : {}),
+    ...(toolScope ? { scope: toolScope } : {}),
   };
 
   for (const t of tools) {
@@ -136,6 +143,15 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
     );
   }
   return server;
+}
+
+/**
+ * The scope the tools are pinned to: a workspace's, or none for the
+ * server agent's (ON-6), whose calls still carry its actor and scope in
+ * the audit headers.
+ */
+function workspaceScope(scope: McpScope | undefined): McpScope | undefined {
+  return scope && !isServerScope(scope.workspace) ? scope : undefined;
 }
 
 /** The audit fields a scope adds to every call's headers (none unscoped). */
@@ -260,7 +276,8 @@ export async function runOneShot(
 ): Promise<number> {
   const out = opts.out ?? ((t: string) => process.stdout.write(t));
   // The tools exactly as the stdio server registers them: pinned when scoped.
-  const tools = toolsFor(opts.cfg, opts.scope);
+  const toolScope = workspaceScope(opts.scope);
+  const tools = toolsFor(opts.cfg, toolScope);
   if (shot.kind === "list") {
     const names = tools.map((t) => t.name);
     out(names.length ? `${names.join("\n")}\n` : "");
@@ -274,7 +291,7 @@ export async function runOneShot(
     api: opts.api,
     cfg: opts.cfg,
     cli: opts.cli,
-    ...(opts.scope ? { scope: opts.scope } : {}),
+    ...(toolScope ? { scope: toolScope } : {}),
   };
   // The stdio server validates arguments against each tool's schema (the
   // SDK does it); a one-shot must too, and strictly: it is typed by hand, so
@@ -286,7 +303,7 @@ export async function runOneShot(
   const tool = tools.find((t) => t.name === shot.tool);
   if (tool) {
     const shape =
-      opts.scope && !("workspace" in tool.shape) && "workspace" in args
+      toolScope && !("workspace" in tool.shape) && "workspace" in args
         ? { ...tool.shape, workspace: z.string().optional() }
         : tool.shape;
     const parsed = z.object(shape).strict().safeParse(args);

@@ -43,6 +43,11 @@ import { checkCommands } from "./permissions.js";
 import { DEN_ROLES, REGISTRY_ID_RE } from "./roles.js";
 import { enginePath } from "../engine.js";
 import {
+  SERVER_PACK_DIR,
+  SERVER_PERSONA_ID,
+  isServerScope,
+} from "./server-agent.js";
+import {
   DEFAULT_PACK_GUARDRAILS,
   PACK_GUARDRAILS,
   sharedInstructions,
@@ -357,6 +362,23 @@ export function loadPersonas(
 }
 
 /**
+ * The server agent's persona (ON-6), from Den's own server pack, with the
+ * default pack's guardrails (the plain-writing rule among them). Only the
+ * server scope loads it, so it is never offered for a workspace.
+ */
+export function serverPersona(): Persona {
+  const p = readPack(SERVER_PACK_DIR, "builtin").find(
+    (x) => x.id === SERVER_PERSONA_ID,
+  );
+  if (!p)
+    throw new Error(`${SERVER_PACK_DIR}: no "${SERVER_PERSONA_ID}" persona`);
+  return {
+    ...p,
+    guardrails: { ...DEFAULT_PACK_GUARDRAILS, ...p.guardrailsSet },
+  };
+}
+
+/**
  * The role prompt as an agent gets it: who and where it is, what to read
  * first, the persona's own prompt, then Den's shared instructions
  * (guardrails/instructions.md) when its guardrails include them. Runtime-neutral; a runtime only
@@ -368,10 +390,15 @@ export function rolePrompt(
   workspace: string,
   mcpName: string,
 ): string {
-  const lines = [
-    `You are agent ${agentId} in workspace ${workspace}, with the ${persona.id} persona.`,
-    `Act on services, logs and tests only through the ${mcpName} MCP server; it serves this workspace.`,
-  ];
+  const lines = isServerScope(workspace)
+    ? [
+        `You are agent ${agentId}, this Den's own server agent, with the ${persona.id} persona. You belong to no workspace.`,
+        `Act only through the ${mcpName} MCP server; it serves the whole Den, and each write waits for the person's Allow.`,
+      ]
+    : [
+        `You are agent ${agentId} in workspace ${workspace}, with the ${persona.id} persona.`,
+        `Act on services, logs and tests only through the ${mcpName} MCP server; it serves this workspace.`,
+      ];
   if (persona.context.length)
     lines.push(`Read first: ${persona.context.join("; ")}.`);
   const shared = persona.guardrails?.instructions

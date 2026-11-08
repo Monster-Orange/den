@@ -78,6 +78,7 @@ import { envKey } from "../../shared/product.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   loadPersonas,
+  serverPersona,
   resolvePackDirs,
   type Persona,
 } from "../../shared/agents/personas.js";
@@ -167,6 +168,11 @@ import {
   type BinSource,
 } from "../../shared/agents/runtime-search.js";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
+import {
+  SERVER_PERSONA_ID,
+  isServerScope,
+  serverAgentDir,
+} from "../../shared/agents/server-agent.js";
 import {
   bindActorSession,
   mintActorToken,
@@ -333,7 +339,7 @@ function defaultMcpServer(cli: string): {
 
 export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
   const base = resolveDeps(d);
-  return {
+  return withServerScope({
     ...base,
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
     distRoot: d.distRoot ?? getDistRoot,
@@ -365,6 +371,26 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
           ? setWorkspaceRuntimeBin(ws, id, bin)
           : setUserRuntimeBin(id, bin)),
     userConfigFile: d.userConfigFile ?? userConfigPath,
+  });
+}
+
+/**
+ * ON-6: the server agent's scope is no workspace, but its agent is a
+ * normal one: it "exists", and its folder is an empty one under the state
+ * dir (serverAgentDir), with no workspace runtime paths.
+ */
+function withServerScope(r: AgentsResolved): AgentsResolved {
+  return {
+    ...r,
+    workspaceExists: (ws) => isServerScope(ws) || r.workspaceExists(ws),
+    workspaceDir: (ws) =>
+      isServerScope(ws) ? serverAgentDir(r.stateDir()) : r.workspaceDir(ws),
+    workspaceFolders: (ws) =>
+      isServerScope(ws)
+        ? { under: [serverAgentDir(r.stateDir())] }
+        : r.workspaceFolders(ws),
+    workspaceRuntimeBin: (ws, id) =>
+      isServerScope(ws) ? undefined : r.workspaceRuntimeBin(ws, id),
   };
 }
 
@@ -685,14 +711,18 @@ function agentsConfig(d: AgentsResolved): ResolvedAgentsConfig {
 function personas(
   d: AgentsResolved,
   cfg: ResolvedAgentsConfig,
+  /** ON-6: the server scope adds Den's own server persona (only there). */
+  ws?: string,
 ): Map<string, Persona> {
   try {
-    return loadPersonas(
+    const all = loadPersonas(
       resolvePackDirs(cfg.personaPacks, d.distRoot()),
       undefined,
       { defaultPack: cfg.defaultPackGuardrails, packs: cfg.packGuardrails },
       localPersonasDir(d.stateDir()),
     );
+    if (isServerScope(ws)) all.set(SERVER_PERSONA_ID, serverPersona());
+    return all;
   } catch (e) {
     throw refused((e as Error).message, [], 422);
   }
@@ -1534,7 +1564,7 @@ export async function startAgent(
   if (!d.workspaceExists(ws))
     throw usage(`${where}: workspace "${ws}" does not exist`, 404);
   const cfg = agentsConfig(d);
-  const all = personas(d, cfg);
+  const all = personas(d, cfg, ws);
   const persona = all.get(req.persona);
   if (!persona)
     throw usage(
@@ -2065,7 +2095,7 @@ export async function resumeAgent(
     );
   const cfg = agentsConfig(d);
   const grants = resumeGrants(rec, cfg);
-  const persona = personas(d, cfg).get(rec.persona);
+  const persona = personas(d, cfg, rec.workspace).get(rec.persona);
   if (!persona)
     throw refused(`agent ${rec.id}'s persona "${rec.persona}" is gone`);
   const det = await availableOrRefuse(d, rt, rec.workspace);
@@ -2269,7 +2299,7 @@ export async function changePersona(
   const where = "agents persona";
   const rec = agentRecord(d, id, ws);
   const cfg = agentsConfig(d);
-  const all = personas(d, cfg);
+  const all = personas(d, cfg, rec.workspace);
   if (!all.get(req.persona))
     throw usage(
       `${where}: no persona "${req.persona}" (personas: ${[...all.keys()].sort().join(", ")})`,
@@ -2704,7 +2734,9 @@ export async function markInterrupted(
     return found;
   }
   for (const rec of marked) {
-    const p = all.get(rec.persona);
+    const p = isServerScope(rec.workspace)
+      ? serverPersona()
+      : all.get(rec.persona);
     if (!p || !(p.standing || p.resumeOnRestart)) continue;
     if (resumeRefusal(rec)) continue;
     try {

@@ -35,6 +35,10 @@
  * with the actor from the credential.
  */
 import type * as http from "http";
+import {
+  SERVER_SCOPE,
+  isServerScope,
+} from "../../shared/agents/server-agent.js";
 import type { Duplex } from "stream";
 import {
   getActiveWorkspaces,
@@ -136,6 +140,8 @@ export interface ListedSession {
   /** `<dist>-<ws>:<name>`. */
   name: string;
   workspace: string;
+  /** ON-6: the server agent's row (its workspace is the server scope). */
+  server?: boolean;
   kind: "agent" | "session";
   /** The `<name>` part: an agent's id, a plain session's name. */
   label: string;
@@ -204,6 +210,8 @@ export function listedSessions(
   const dist = d.dist();
   const active = new Set(d.activeWorkspaces());
   if (also) active.add(also);
+  // ON-6: the server agent belongs to no workspace, and is always listed.
+  active.add(SERVER_SCOPE);
   const mine = sessions.filter((s) => {
     const p = parseSessionName(s.name, dist);
     return p !== null && active.has(p.workspace);
@@ -224,6 +232,7 @@ export function listedSessions(
       id: s?.ref.id ?? rec.session.id,
       name: s?.name ?? rec.sessionName,
       workspace: rec.workspace,
+      ...(isServerScope(rec.workspace) ? { server: true } : {}),
       kind: "agent",
       label: rec.id,
       agent: rec.id,
@@ -376,7 +385,9 @@ function servedSession(
   const p = parseSessionName(s.name, d.dist());
   return (
     p !== null &&
-    (active.has(p.workspace) || d.workspaceExists(p.workspace)) &&
+    (active.has(p.workspace) ||
+      isServerScope(p.workspace) ||
+      d.workspaceExists(p.workspace)) &&
     (s.ref.id === target || s.name === target)
   );
 }
