@@ -1456,8 +1456,9 @@
     var top = up ? r.top - gap - h : r.bottom + gap;
     var left = opts.align === "right" ? r.right - w : r.left;
     left = Math.max(TOP_MARGIN, Math.min(left, vw - w - TOP_MARGIN));
-    el.style.top = Math.max(TOP_MARGIN, top) + "px";
-    el.style.left = left + "px";
+    // Important, so no page or UA rule (a popover's inset) moves it.
+    el.style.setProperty("top", Math.max(TOP_MARGIN, top) + "px", "important");
+    el.style.setProperty("left", left + "px", "important");
   }
   function topIndex(el) {
     for (var i = 0; i < topOpen.length; i++) if (topOpen[i].el === el) return i;
@@ -1512,6 +1513,8 @@
       el.removeAttribute("data-den-top-added");
     }
     el.classList.remove("den-toplayer");
+    el.style.removeProperty("top");
+    el.style.removeProperty("left");
   }
   /** The page hid it, or its anchor went: it's closed. */
   function topCheck(o) {
@@ -4681,7 +4684,9 @@
     ".den-pop:focus { outline: none; }",
     // The top layer (0.4.17): a page's menu placed by its anchor (topShow), not
     // where the UA puts a popover.
-    ".den-toplayer { position: fixed !important; inset: auto !important; margin: 0 !important;",
+    // No inset here: top and left are topPlace's (an !important inset beat them,
+    // and every menu sat at the window's corner, 0.4.17-dev.0).
+    ".den-toplayer { position: fixed !important; margin: 0 !important;",
     "  right: auto !important; bottom: auto !important; z-index: 1000; overflow-y: auto;",
     "  color: var(--text); }",
     // LK-1: the admin-password prompt is a <dialog> in the top layer (a popover, or

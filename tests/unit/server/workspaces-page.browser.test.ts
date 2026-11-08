@@ -882,6 +882,33 @@ async function itemsOnTop(p: Page, items: string): Promise<boolean[]> {
   );
 }
 
+/**
+ * A menu sits beside its trigger: its box starts within a few pixels of
+ * the trigger's edge (below or above it), and overlaps it sideways, never
+ * at the window's corner (0.4.17-dev.0's regression).
+ */
+async function besideTrigger(
+  p: Page,
+  menu: string,
+  trigger: string,
+): Promise<{ near: boolean; m: number[]; t: number[] }> {
+  return p.evaluate(
+    ([menuSel, trigSel]) => {
+      const m = document.querySelector(menuSel)!.getBoundingClientRect();
+      const t = document.querySelector(trigSel)!.getBoundingClientRect();
+      const below = Math.abs(m.top - t.bottom) <= 12;
+      const above = Math.abs(m.bottom - t.top) <= 12;
+      const across = m.left <= t.right + 4 && m.right >= t.left - 4;
+      return {
+        near: (below || above) && across,
+        m: [m.left, m.top, m.width, m.height].map(Math.round),
+        t: [t.left, t.top, t.width, t.height].map(Math.round),
+      };
+    },
+    [menu, trigger],
+  );
+}
+
 describe("0.4.17: menus in the top layer, Visit ↗, the favourite star", () => {
   it("the last repo's ⋯ menu isn't clipped by the table: every item is on top and clickable", async () => {
     if (!browser) return;
@@ -898,6 +925,9 @@ describe("0.4.17: menus in the top layer, Visit ↗, the favourite star", () => 
     expect(on.length).toBeGreaterThan(1);
     expect(on).toEqual(on.map(() => true));
     expect(await p.$eval(menu, (m) => m.matches(":popover-open"))).toBe(true);
+    // Beside its ⋯, not at the window's corner.
+    const at = await besideTrigger(p, menu, more);
+    expect([at.near, at.m, at.t]).toEqual([true, at.m, at.t]);
     // A click outside closes it, and it leaves the top layer.
     await p.mouse.click(5, 300);
     expect(await p.$eval(menu, (m) => m.matches(":popover-open"))).toBe(false);
@@ -1060,6 +1090,9 @@ describe("0.4.17: the Tests module picker", () => {
     expect(on.length).toBeGreaterThan(0);
     expect(on).toEqual(on.map(() => true));
     expect(await p.$eval(dd, (m) => m.matches(":popover-open"))).toBe(true);
+    // Beside its button, not at the window's corner.
+    const at = await besideTrigger(p, dd, "#module-picker-btn");
+    expect([at.near, at.m, at.t]).toEqual([true, at.m, at.t]);
     // A click inside keeps it open.
     await p.click(`${dd} .module-check-all`);
     expect(await p.$eval(dd, (m) => m.matches(":popover-open"))).toBe(true);
