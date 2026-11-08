@@ -10,6 +10,7 @@ import {
   READ_TOOL_NAMES,
   callTool,
   toolsFor,
+  approvalsState,
   type ToolContext,
 } from "../../../src/ui/mcp/tools.js";
 import {
@@ -103,6 +104,7 @@ const cfg = (over: Partial<ResolvedMcpConfig> = {}): ResolvedMcpConfig => ({
   actions: [...ACTION_TOOL_NAMES],
   runTestsEnvs: ["local"],
   logsRemote: false,
+  approvals: true,
   ...over,
 });
 
@@ -135,6 +137,27 @@ describe("tool registration", () => {
       "service_up",
       "run_tests",
     ]);
+  });
+
+  it("mcp.approvals: false hides the three held writes, and only those", () => {
+    const on = toolsFor(cfg({ actions: [] })).map((t) => t.name);
+    const off = toolsFor(cfg({ actions: [], approvals: false })).map(
+      (t) => t.name,
+    );
+    for (const n of ["workspace_create", "repo_add", "service_try"]) {
+      expect(on).toContain(n);
+      expect(off).not.toContain(n);
+    }
+    expect(off).toEqual(READ_TOOL_NAMES);
+  });
+
+  it("approvalsState says which state is in effect", () => {
+    expect(approvalsState(cfg())).toMatch(
+      /^held writes on: workspace_create, repo_add, service_try run only after the person's Allow/,
+    );
+    expect(approvalsState(cfg({ approvals: false }))).toMatch(
+      /^held writes off \(mcp\.approvals: false\)/,
+    );
   });
 
   it("there is no deploy tool and nothing for the never-exposed routes", () => {

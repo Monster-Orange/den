@@ -474,7 +474,12 @@
     "ag.bring.h": "{n} 時間前",
     "ap.title": "{agent}が次のことを求めています:",
     "ap.agent": "エージェント {name} ",
-    "ap.anyAgent": "エージェント",
+    "ap.noAgent": "このマシン上の何か（エージェントの識別なし）",
+    "ap.noAgentWarn":
+      "エージェントにこれを頼んでいなければ、拒否してください。",
+    "ap.signin.title": "承認を待っているものがあります。",
+    "ap.signin":
+      "サインインすると表示されます: {cmd} を実行してリンクを開いてください。",
     "ap.do.workspace_create": "ワークスペース「{name}」を作成",
     "ap.do.repo_add":
       "{path} のリポジトリをワークスペース「{workspace}」に追加",

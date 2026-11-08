@@ -22,7 +22,12 @@ import { product } from "../../shared/product.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { createDenApi, type DenApi } from "./api.js";
 import { ownServer } from "../cli/server-identity.js";
-import { callTool, toolsFor, type ToolContext } from "./tools.js";
+import {
+  approvalsState,
+  callTool,
+  toolsFor,
+  type ToolContext,
+} from "./tools.js";
 import { plural } from "../../shared/plural.js";
 import {
   checkGrants,
@@ -60,7 +65,8 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
         `through the running ${p.title} web server (\`${opts.cli} web up\`). ` +
         (opts.cfg.actions.length
           ? `Actions enabled: ${opts.cfg.actions.join(", ")}.`
-          : "Read-only: the org has enabled no actions (mcp.actions).") +
+          : "The org has enabled no actions (mcp.actions).") +
+        ` The ${approvalsState(opts.cfg)}.` +
         (opts.scope
           ? ` Scoped to workspace "${opts.scope.workspace}" as ${opts.scope.actor}: ` +
             "a call naming another workspace is refused, and lists show this one only, " +
@@ -258,6 +264,10 @@ export async function runOneShot(
   if (shot.kind === "list") {
     const names = tools.map((t) => t.name);
     out(names.length ? `${names.join("\n")}\n` : "");
+    // Stdout stays one name a line; the state goes to stderr.
+    (opts.err ?? ((t: string) => process.stderr.write(t)))(
+      `${approvalsState(opts.cfg)}\n`,
+    );
     return 0;
   }
   const ctx: ToolContext = {

@@ -94,6 +94,7 @@ const ctx = (api: DenApi, scope: McpScope) => ({
     actions: [...ACTION_TOOL_NAMES],
     runTestsEnvs: ["local"],
     logsRemote: false,
+    approvals: true,
   },
   cli: "acme",
   scope,

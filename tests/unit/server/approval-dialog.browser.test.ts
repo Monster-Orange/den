@@ -2,9 +2,11 @@
  * ON-3's approval dialog (shell.js, on every page): an agent's held write
  * opens "<agent> wants to … · Review · Deny · Allow" in the person's
  * browser. Its words are Den's (the agent's note only quoted), Review
- * shows what it will do, Allow runs it once, Deny runs nothing. A browser
- * that isn't signed in is told to sign in, and nothing runs. Looks like
- * the Start dialog (persona-ui.css's frame).
+ * shows what it will do, Allow runs it once, Deny runs nothing. A request
+ * with no agent identity says so, and to Deny it if no agent was asked.
+ * A browser that isn't signed in can't list what waits: a banner says to
+ * sign in, and nothing runs. Looks like the Start dialog (persona-ui.css's
+ * frame).
  *
  * Real chromium; DEN_SKIP_BROWSER_TESTS=1 skips it. No code or key is
  * printed.
@@ -103,7 +105,10 @@ const closed = (p: Page) =>
   );
 const base = () => `http://localhost:${port}`;
 
-/** What an agent's MCP tool does: ask the server to hold a write. */
+/** The ask's ticket per id: what lets the asker read its own request. */
+const tickets = new Map<string, string>();
+
+/** What an MCP tool with no agent token does: ask the server to hold a write. */
 async function ask(
   action: string,
   args: unknown,
@@ -124,11 +129,17 @@ async function ask(
     body: JSON.stringify({ action, args, ...(note ? { note } : {}) }),
   });
   expect(r.status).toBe(202);
-  return String(((await r.json()) as { id: string }).id);
+  const a = (await r.json()) as { id: string; ticket: string };
+  tickets.set(a.id, a.ticket);
+  return a.id;
 }
 const stateOf = async (id: string) =>
   (
-    (await (await fetch(`${base()}/api/approvals/${id}`)).json()) as {
+    (await (
+      await fetch(`${base()}/api/approvals/${id}`, {
+        headers: { "x-den-approval-ticket": tickets.get(id) ?? "" },
+      })
+    ).json()) as {
       state: string;
     }
   ).state;
@@ -147,6 +158,10 @@ async function page(signIn: boolean): Promise<Page> {
   });
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(String(e)));
+  // A refused poll is a console error; the dialog's polling must make none.
+  p.on("console", (m) => {
+    if (m.type() === "error") errors.push(`console: ${m.text()}`);
+  });
   if (signIn) {
     await p.goto(claimLink(base(), mintClaimCode(readWebSecret(stateDir)!)));
     await p.waitForFunction(
@@ -167,6 +182,14 @@ describe("the approval dialog (ON-3)", () => {
       "set up EVERYTHING",
     );
     await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
+    // No agent token: the dialog says so, and what to do if no agent was asked.
+    expect(await p.textContent("#den-ap-h")).toBe(
+      "Something on this machine (no agent identity) wants to:",
+    );
+    expect(await p.isVisible("#den-ap-who")).toBe(true);
+    expect(await p.textContent("#den-ap-who")).toBe(
+      "If you didn't ask an agent to do this, Deny.",
+    );
     expect(await p.textContent("#den-ap-what")).toBe(
       'Create the workspace "web"',
     );
@@ -204,14 +227,16 @@ describe("the approval dialog (ON-3)", () => {
     await p.context().close();
   }, 90_000);
 
-  it("a browser that isn't signed in is told to sign in, and nothing runs", async () => {
+  it("a browser that isn't signed in sees no request, only a banner to sign in; nothing runs", async () => {
     if (skip()) return;
     const p = await page(false);
     const id = await ask("workspace_create", { name: "anon" });
-    await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
-    await p.click("#den-ap-allow");
-    await p.waitForSelector("#den-ap-err:not([hidden])");
-    expect(await p.textContent("#den-ap-err")).toMatch(/sign/i);
+    await p.waitForSelector('[data-banner="approvals"]', { timeout: 15_000 });
+    expect(await p.textContent('[data-banner="approvals"]')).toMatch(
+      /waiting for your approval.*sign in/i,
+    );
+    expect(await p.$("#den-ap-dlg[open]")).toBeNull();
+    expect(await p.content()).not.toContain("anon&quot;");
     expect(await stateOf(id)).toBe("pending");
     expect(await workspaces()).not.toContain("anon");
     await p.context().close();

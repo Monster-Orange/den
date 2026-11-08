@@ -251,7 +251,7 @@ function _injectChangelogStyles() {
       padding: 5px 16px; border-radius: 5px; font-size: 12px;
       font-weight: 600; cursor: pointer;
     }
-    .cl-got-it:hover { opacity: .85; }
+    .cl-got-it:hover { filter: brightness(0.92); }
   `;
   document.head.appendChild(style);
 

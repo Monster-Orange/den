@@ -344,7 +344,7 @@
         cursor: pointer;
       }
       .new-ws-form button:hover {
-        opacity: 0.85;
+        filter: brightness(0.92);
       }
       /* ── Content ──────────────────────────────────────────────────────────── */
       .content {
@@ -552,7 +552,7 @@
         cursor: pointer;
       }
       .add-btn:hover {
-        opacity: 0.85;
+        filter: brightness(0.92);
       }
       .form-msg {
         font-size: 11px;
@@ -688,8 +688,9 @@
       .add-svc-row.selected {
         background: color-mix(in srgb, var(--accent) 9%, transparent);
       }
+      /* Already in the workspace: readable (WCAG AA), not dimmed. */
       .add-svc-row.already {
-        opacity: 0.4;
+        color: var(--muted);
       }
       .add-svc-row-info {
         flex: 1;
@@ -839,7 +840,7 @@
         cursor: pointer;
       }
       .add-svc-submit:hover {
-        opacity: 0.85;
+        filter: brightness(0.92);
       }
       .add-svc-submit:disabled {
         opacity: 0.45;

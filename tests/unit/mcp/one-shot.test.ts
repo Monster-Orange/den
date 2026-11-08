@@ -40,6 +40,7 @@ const cfg = (
   actions,
   runTestsEnvs: ["local"],
   logsRemote: false,
+  approvals: true,
 });
 
 function harness(c: ResolvedMcpConfig = cfg()) {
@@ -97,6 +98,16 @@ describe("runOneShot", () => {
         "\n",
     );
     expect(h.calls).toEqual([]);
+  });
+
+  it("--list says on stderr whether the held writes are on; stdout stays names only", async () => {
+    const on = harness();
+    await runOneShot({ kind: "list" }, on.opts);
+    expect(on.err.join("")).toMatch(/held writes on/);
+    const off = harness({ ...cfg(), approvals: false });
+    await runOneShot({ kind: "list" }, off.opts);
+    expect(off.err.join("")).toMatch(/held writes off/);
+    expect(off.out.join("")).toBe(READ_TOOL_NAMES.join("\n") + "\n");
   });
 
   it("--call prints a read tool's text and exits 0", async () => {

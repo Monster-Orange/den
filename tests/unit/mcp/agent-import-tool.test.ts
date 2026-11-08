@@ -50,6 +50,7 @@ const on = {
   actions: ["agent_import" as const],
   runTestsEnvs: ["local" as const],
   logsRemote: false,
+  approvals: true,
 };
 const off = { ...on, actions: [] };
 const SCOPE: McpScope = {

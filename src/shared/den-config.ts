@@ -831,6 +831,11 @@ export interface McpConfig {
   run_tests?: { envs?: string[] };
   /** `remote: true` lets the log tools read non-local sources (e.g. CloudWatch). */
   logs?: { remote?: boolean };
+  /**
+   * The held writes (workspace_create, repo_add, service_try): on by
+   * default, each run only after the person's Allow. false hides them.
+   */
+  approvals?: boolean;
 }
 
 /** `mcp:` with its defaults applied. */
@@ -838,6 +843,8 @@ export interface ResolvedMcpConfig {
   actions: McpAction[];
   runTestsEnvs: Environment[];
   logsRemote: boolean;
+  /** Whether the held writes are registered (default true). */
+  approvals: boolean;
 }
 
 /**
@@ -865,10 +872,15 @@ export function readMcpConfig(
       return e as Environment;
     },
   );
+  if (raw.approvals !== undefined && typeof raw.approvals !== "boolean")
+    throw new Error(
+      `mcp.approvals: true or false, not ${JSON.stringify(raw.approvals)}`,
+    );
   return {
     actions: [...new Set(actions)],
     runTestsEnvs: [...new Set(runTestsEnvs)],
     logsRemote: raw.logs?.remote === true,
+    approvals: raw.approvals !== false,
   };
 }
 

@@ -510,7 +510,8 @@ export async function onboardStatus(
   const doctor = (
     await onboardingChecks({ ...d.doctor, mcpCall: () => ({ ok: true }) })
   )
-    .filter((c) => c.id !== "mcp")
+    // mcp:approvals is doctor's; the status's own mcp check is d.mcp.
+    .filter((c) => c.id !== "mcp" && c.id !== "mcp:approvals")
     .map(fromDoctor);
   const ws = d.workspaces();
   const running = d.running();

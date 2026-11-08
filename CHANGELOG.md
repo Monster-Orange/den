@@ -30,9 +30,10 @@ config and manifest changes a distribution must make to move to it under
   person's home folder and outside Den's state folder; anything else is
   refused with the reason. A workspace-scoped MCP server can't scan folders,
   and drafts only inside its workspace's repos.
-- **Onboarding writes, held for the person (ON-3).** Three MCP write
-  tools, `workspace_create`, `repo_add` and `service_try`, change nothing by
-  themselves: each asks Den to hold the change, and every Den page opens a
+- **Onboarding writes, held for the person (ON-3).** Three new MCP write
+  tools, `workspace_create`, `repo_add` and `service_try`, on by default
+  and gated by the person's Allow (not by `mcp.actions`). They change
+  nothing by themselves: each asks Den to hold the change, and every Den page opens a
   dialog in the person's browser, "The `<agent>` agent wants to: … ·
   Review · Later · Deny · Allow". Den writes the line and the Review from
   the action and its arguments (`repo_add`'s Review is its dry run); the
@@ -46,6 +47,15 @@ config and manifest changes a distribution must make to move to it under
   `GET /api/approvals`, `GET /api/approvals/<id>`,
   `POST /api/approvals/<id>/decide`. See [Onboarding writes, held for the
   person](docs/distributions.md#onboarding-writes-held-for-the-person).
+- **`mcp.approvals: false`** in the distribution config turns the three
+  held writes off: they aren't registered, and `POST /api/approvals`
+  answers 403 `approvals_off`. `doctor` (its `mcp:approvals` check in
+  `--json`), the MCP server's instructions and `mcp --list` (on stderr) say
+  which is in effect. A value that isn't `true` or `false` is an error.
+- **Who asked.** An agent's token shows its name ("The `<agent>` agent
+  wants to:"). A request with no agent identity reads "Something on this
+  machine (no agent identity) wants to:", with "If you didn't ask an agent
+  to do this, Deny." under it. In English, Spanish and Japanese.
 - **Only the person approves.** Allow and Deny need a browser signed in on
   this Den and holding its approval key, even on localhost. Every sign-in
   mints the key, handed over only in the sign-in's own answer (a 303's
@@ -53,6 +63,13 @@ config and manifest changes a distribution must make to move to it under
   `GET /api/session` never returns it. A cookie alone (any localhost port
   receives it), the CLI's bearer, an agent's token or an anonymous request
   from this machine is refused with `signin_to_approve`.
+- **Only the person sees what waits.** `GET /api/approvals` needs what
+  Allow needs: the cookie, that session's CSRF token and the approval key.
+  Anything else gets 403 `signin_to_approve` with a count (`waiting`), and
+  a signed-out page shows a banner to sign in. An agent's token lists only
+  its own requests and their outcomes. An ask with no agent token gets a
+  ticket that reads that one request (`X-Den-Approval-Ticket`); Den's MCP
+  server keeps it and never shows it to the agent.
 - **The setup link.** `<cli> web claim-link [--json]` prints a one-time
   link (`/auth?claim=<code>`, 30 minutes) that signs this browser in, for
   an install that hands the person over to the browser. Opened twice, it
@@ -74,9 +91,18 @@ config and manifest changes a distribution must make to move to it under
   origin, no scripts reaching Den's), with nosniff, no-store and
   no-referrer.
 - A workspace name is at most 64 characters.
+- The Den theme's light mode (2.0.1): `--ok`, `--warn`, `--bad`,
+  `--remote` and `--accent-text` are darker, so a status pill (the token
+  on a tint of itself) meets WCAG AA (4.5:1) on every surface, `--sunken`
+  included. They measured 3.7 to 4.4:1 there. Dark mode is unchanged.
 
 ### Fixed
 
+- Text dimmed with opacity fell under WCAG AA on the light theme. Not
+  installed editors and terminals in Settings (3.1:1, their "not found"
+  2.2:1), a repo already in the workspace in Add service (1.9:1), the
+  Release table's loading sub-line (3.7:1), and a primary button on hover
+  (4.4:1). They are full-strength now, in `--muted`; hover darkens.
 - `/reports/security/*` was always 404: the `/report` prefix shadowed it.
 
 ### Migrations

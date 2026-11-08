@@ -13,6 +13,7 @@ import {
   type OnboardDeps,
 } from "../../../src/ui/cli/doctor-onboard.js";
 import {
+  approvalsLines,
   doctorJson,
   strategyCheck,
   type DoctorRow,
@@ -28,6 +29,7 @@ function deps(over: Partial<OnboardDeps> = {}): OnboardDeps {
     webUrl: "http://localhost:47001",
     probeWeb: async () => ({ kind: "up", version: "9.9.9" }),
     mcpCall: () => ({ ok: true }),
+    approvals: () => true,
     bin: "./bin/acme",
     ...over,
   };
@@ -37,6 +39,30 @@ async function check(id: string, over: Partial<OnboardDeps> = {}) {
   const all = await onboardingChecks(deps(over));
   return all.find((c) => c.id === id) as OnboardCheck;
 }
+
+describe("mcp:approvals", () => {
+  it("says the held writes are on by default, gated by the person's Allow", async () => {
+    const c = await check("mcp:approvals");
+    expect(c.status).toBe("ok");
+    expect(c.detail).toMatch(/held writes on/);
+  });
+
+  it("says when mcp.approvals: false turned them off", async () => {
+    const c = await check("mcp:approvals", { approvals: () => false });
+    expect(c.status).toBe("ok");
+    expect(c.detail).toMatch(/held writes off \(mcp\.approvals: false\)/);
+  });
+
+  it("a bad mcp.approvals is a fail with the reason", async () => {
+    const c = await check("mcp:approvals", {
+      approvals: () => {
+        throw new Error('mcp.approvals: true or false, not "no"');
+      },
+    });
+    expect(c.status).toBe("fail");
+    expect(c.detail).toMatch(/true or false/);
+  });
+});
 
 describe("node", () => {
   it.each([
@@ -179,6 +205,20 @@ describe("web and mcp", () => {
   });
 });
 
+describe("approvalsLines (the human doctor)", () => {
+  it("says on or off; a bad value is a problem", () => {
+    expect(approvalsLines(() => true).lines.join("")).toMatch(/held writes on/);
+    expect(approvalsLines(() => false).lines.join("")).toMatch(
+      /held writes off/,
+    );
+    const bad = approvalsLines(() => {
+      throw new Error("mcp.approvals: true or false, not 1");
+    });
+    expect(bad.problem).toBe(true);
+    expect(bad.lines.join("")).toMatch(/true or false/);
+  });
+});
+
 describe("doctorJson", () => {
   const row = (over: Partial<DoctorRow>): DoctorRow => ({
     kind: "secrets",
@@ -208,6 +248,7 @@ describe("doctorJson", () => {
       "docker",
       "web",
       "mcp",
+      "mcp:approvals",
       "strategy:secrets",
     ]);
     const warnOnly = await doctorJson(deps(), [row({ available: false })]);

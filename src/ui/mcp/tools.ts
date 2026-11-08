@@ -198,7 +198,7 @@ const READ_TOOLS: DenTool[] = [
         throw new Refusal(
           "approval_check: give the request id a write tool returned.",
         );
-      return api.get(`/api/approvals/${id}`);
+      return getApproval(api, id);
     },
   ),
   read(
@@ -1055,6 +1055,31 @@ const APPROVAL_WAIT: NonNullable<ToolContext["approvalWait"]> = {
 };
 
 /**
+ * The tickets this MCP server was handed for its own asks (id → ticket):
+ * with no agent token, a ticket is what lets it read its own request.
+ * Never shown to the agent. Bounded; the oldest go first.
+ */
+const TICKETS = new Map<string, string>();
+const MAX_TICKETS = 200;
+function keepTicket(id: string, ticket: unknown): void {
+  if (typeof ticket !== "string" || !ticket) return;
+  TICKETS.set(id, ticket);
+  while (TICKETS.size > MAX_TICKETS)
+    TICKETS.delete(TICKETS.keys().next().value as string);
+}
+/** GET one approval, with its ticket when this server asked for it. */
+function getApproval(api: DenApi, id: string): Promise<unknown> {
+  const t = TICKETS.get(id);
+  return api.get(
+    `/api/approvals/${id}`,
+    {},
+    "GET",
+    undefined,
+    t ? { "X-Den-Approval-Ticket": t } : undefined,
+  );
+}
+
+/**
  * Ask the web server to hold `action` for the person (POST /api/approvals),
  * then wait for the answer. Allowed: what the server's run said (an error
  * when it failed). Denied, expired, the agent stopped: a refusal. Still
@@ -1070,25 +1095,26 @@ async function askPerson(
   const clean = Object.fromEntries(
     Object.entries(args).filter(([, v]) => v !== undefined && v !== ""),
   );
-  let asked: { id?: unknown };
+  let asked: { id?: unknown; ticket?: unknown };
   try {
     asked = (await ctx.api.get("/api/approvals", {}, "POST", {
       action,
       args: clean,
       ...(typeof note === "string" && note.trim() ? { note: note.trim() } : {}),
-    })) as { id?: unknown };
+    })) as { id?: unknown; ticket?: unknown };
   } catch (e) {
     if (e instanceof DenHttpError && [400, 403, 409, 429].includes(e.status))
       throw new Refusal(`${tool}: ${e.body}`);
     throw e;
   }
   const id = String(asked?.id ?? "");
+  keepTicket(id, asked?.ticket);
   const w = ctx.approvalWait ?? APPROVAL_WAIT;
   const sleep =
     w.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const until = Date.now() + w.waitMs;
   for (;;) {
-    const a = (await ctx.api.get(`/api/approvals/${id}`)) as {
+    const a = (await getApproval(ctx.api, id)) as {
       state?: string;
       result?: unknown;
       endedBecause?: string;
@@ -1245,16 +1271,28 @@ const APPROVAL_TOOLS: DenTool[] = [
   },
 ];
 
-/** The held writes, always registered (the person's approval is the gate). */
+/**
+ * The held writes: registered unless `mcp.approvals: false` (the person's
+ * Allow is the gate, so they are on by default).
+ */
 export const APPROVAL_TOOL_NAMES: readonly string[] = APPROVAL_TOOLS.map(
   (t) => t.name,
 );
 
-/** The tools to register: every read tool, the held writes, plus the actions the org named. */
+/** One line saying whether the held writes are on (MCP instructions, --list, doctor). */
+export function approvalsState(
+  cfg: Pick<ResolvedMcpConfig, "approvals">,
+): string {
+  return cfg.approvals
+    ? `held writes on: ${APPROVAL_TOOL_NAMES.join(", ")} run only after the person's Allow in the browser (mcp.approvals: false turns them off)`
+    : `held writes off (mcp.approvals: false): ${APPROVAL_TOOL_NAMES.join(", ")} are not registered`;
+}
+
+/** The tools to register: every read tool, the held writes (unless turned off), plus the actions the org named. */
 export function toolsFor(cfg: ResolvedMcpConfig, scope?: McpScope): DenTool[] {
   const tools = [
     ...READ_TOOLS,
-    ...APPROVAL_TOOLS,
+    ...(cfg.approvals ? APPROVAL_TOOLS : []),
     ...MCP_ACTIONS.filter((a) => cfg.actions.includes(a)).map(
       (a) => ACTION_TOOLS[a],
     ),

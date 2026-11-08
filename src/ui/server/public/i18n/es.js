@@ -490,7 +490,10 @@
     "ag.bring.h": "hace {n} h",
     "ap.title": "{agent} quiere:",
     "ap.agent": "El agente {name}",
-    "ap.anyAgent": "Un agente",
+    "ap.noAgent": "Algo en esta máquina (sin identidad de agente)",
+    "ap.noAgentWarn": "Si no le pediste esto a un agente, deniégalo.",
+    "ap.signin.title": "Algo espera tu aprobación.",
+    "ap.signin": "Inicia sesión para verlo: ejecuta {cmd} y abre el enlace.",
     "ap.do.workspace_create": 'Crear el espacio "{name}"',
     "ap.do.repo_add":
       'Añadir el repositorio de {path} al espacio "{workspace}"',

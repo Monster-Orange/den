@@ -113,6 +113,7 @@ import {
 import {
   assertDenConfigValid,
   readDenConfig,
+  readMcpConfig,
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
@@ -1694,9 +1695,17 @@ function declaredCommand<T>(
 }
 
 // ── ON-3: the writes held for the person (approval-routes.ts) ─────────────────
-let approvals: { queue: ApprovalQueue; actions: HeldActions } | null = null;
+let approvals: {
+  queue: ApprovalQueue;
+  actions: HeldActions;
+  enabled: () => boolean;
+} | null = null;
 /** The held writes and their queue, made on first use. */
-function approvalDeps(): { queue: ApprovalQueue; actions: HeldActions } {
+function approvalDeps(): {
+  queue: ApprovalQueue;
+  actions: HeldActions;
+  enabled: () => boolean;
+} {
   if (approvals) return approvals;
   const actions = heldActions({
     rules: () => processPathRules(getStateDir()),
@@ -1773,6 +1782,9 @@ function approvalDeps(): { queue: ApprovalQueue; actions: HeldActions } {
   approvals = {
     actions,
     queue: createApprovalQueue(actions, () => getStateDir()),
+    // Read per ask: a config edit takes effect without a restart. A bad
+    // value throws, and the handler holds nothing then.
+    enabled: () => readMcpConfig().approvals,
   };
   return approvals;
 }

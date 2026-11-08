@@ -132,6 +132,18 @@ const anon = async () => ({
   "x-den-csrf": await loopbackCsrf(),
 });
 
+/** The person: a signed-in browser's cookie, its session's CSRF token and its approval key. */
+const person = async () => {
+  const b = await browser();
+  return { ...page(b), "x-den-approve-key": b.key };
+};
+const pendingIds = async () =>
+  (
+    json(await call("GET", "/api/approvals", await person())).pending as {
+      id: string;
+    }[]
+  ).map((x) => x.id);
+
 const ask = async (action: string, args: unknown, note?: string) =>
   call("POST", "/api/approvals", await anon(), {
     action,
@@ -223,8 +235,7 @@ describe("held writes (ON-3)", () => {
     expect(String(a.id)).toMatch(/^[A-Za-z0-9_-]{16}$/);
     expect(await workspaces()).not.toContain("web");
     // The person's list shows it.
-    const list = json(await call("GET", "/api/approvals"));
-    expect((list.pending as { id: string }[]).map((x) => x.id)).toContain(a.id);
+    expect(await pendingIds()).toContain(a.id);
   });
 
   it("an agent with a shell can't allow it: loopback, the CLI's bearer, a cookie and CSRF without the key", async () => {
@@ -241,9 +252,9 @@ describe("held writes (ON-3)", () => {
     for (const t of tries)
       expect([t.status, json(t).code]).toEqual([403, "signin_to_approve"]);
     expect(await workspaces()).not.toContain("shellws");
-    expect(json(await call("GET", `/api/approvals/${id}`)).state).toBe(
-      "pending",
-    );
+    expect(
+      json(await call("GET", `/api/approvals/${id}`, await person())).state,
+    ).toBe("pending");
   }, 60_000);
 
   it("the signed-in browser with its key allows it: it runs once, from the stored args", async () => {
@@ -282,9 +293,7 @@ describe("held writes (ON-3)", () => {
   }, 60_000);
 
   it("bad args, an unknown action or field: refused before anything waits", async () => {
-    const before = (
-      json(await call("GET", "/api/approvals")).pending as unknown[]
-    ).length;
+    const before = (await pendingIds()).length;
     const bad = await ask("workspace_create", { name: "a/b" });
     expect([bad.status, json(bad).code]).toEqual([400, "invalid_args"]);
     const unknown = await ask("rm_rf", {});
@@ -298,9 +307,7 @@ describe("held writes (ON-3)", () => {
       summary: "something nice",
     });
     expect([extra.status, json(extra).code]).toEqual([400, "unknown_field"]);
-    expect(
-      (json(await call("GET", "/api/approvals")).pending as unknown[]).length,
-    ).toBe(before);
+    expect((await pendingIds()).length).toBe(before);
   });
 
   it("repo_add: the Review is its dry run (the side-car); Allow adds it; a folder outside home is refused", async () => {
@@ -336,4 +343,55 @@ describe("held writes (ON-3)", () => {
     const r = await ask("service_try", { service: "nope/never" });
     expect([r.status, json(r).code]).toEqual([400, "invalid_args"]);
   });
+
+  it("only the person reads what waits: anonymous loopback, the bearer, a cookie without CSRF or key get no list", async () => {
+    const r = await ask("workspace_create", { name: "secretname" });
+    const id = String(json(r).id);
+    const b = await browser();
+    const tries = [
+      await call("GET", "/api/approvals"),
+      await call("GET", "/api/approvals", await anon()),
+      await call("GET", "/api/approvals", bearer()),
+      await call("GET", "/api/approvals", page(b)),
+      await call("GET", "/api/approvals", {
+        cookie: b.cookie,
+        "sec-fetch-site": "same-origin",
+        "x-den-approve-key": b.key,
+      }),
+    ];
+    for (const t of tries) {
+      expect([t.status, json(t).code]).toEqual([403, "signin_to_approve"]);
+      expect(t.body).not.toContain("secretname");
+      expect(json(t).pending).toBeUndefined();
+      // How many wait, so a signed-out page can say "sign in to see it".
+      expect(Number(json(t).waiting)).toBeGreaterThan(0);
+    }
+    expect(await pendingIds()).toContain(id);
+    // ?count=1 answers anyone with the count alone.
+    const count = await call("GET", "/api/approvals?count=1");
+    expect(count.status).toBe(200);
+    expect(Object.keys(json(count)).sort()).toEqual(["ok", "waiting"]);
+    expect(count.body).not.toContain("secretname");
+  }, 60_000);
+
+  it("anonymous loopback reads no one's request; the asker reads its own with the ticket the ask gave it", async () => {
+    const r = json(await ask("workspace_create", { name: "ticketed" }));
+    const id = String(r.id);
+    expect(String(r.ticket)).toMatch(/^[A-Za-z0-9_-]{32}$/);
+    const none = await call("GET", `/api/approvals/${id}`);
+    expect([none.status, json(none).code]).toEqual([404, "not_found"]);
+    expect(none.body).not.toContain("ticketed");
+    const wrong = await call("GET", `/api/approvals/${id}`, {
+      "x-den-approval-ticket": "A".repeat(32),
+    });
+    expect(wrong.status).toBe(404);
+    const mine = await call("GET", `/api/approvals/${id}`, {
+      "x-den-approval-ticket": String(r.ticket),
+    });
+    expect([mine.status, json(mine).state]).toEqual([200, "pending"]);
+    // The ticket is the asker's alone: never in a view.
+    expect(mine.body).not.toContain(String(r.ticket));
+    const list = await call("GET", "/api/approvals", await person());
+    expect(list.body).not.toContain(String(r.ticket));
+  }, 60_000);
 });

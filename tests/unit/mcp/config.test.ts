@@ -34,6 +34,7 @@ describe("readMcpConfig", () => {
       actions: [],
       runTestsEnvs: ["local"],
       logsRemote: false,
+      approvals: true,
     });
   });
 
@@ -53,6 +54,7 @@ describe("readMcpConfig", () => {
       actions: ["service_up", "run_tests"],
       runTestsEnvs: ["local", "dev"],
       logsRemote: true,
+      approvals: true,
     });
   });
 
@@ -69,5 +71,17 @@ describe("readMcpConfig", () => {
   it("only an explicit true turns remote logs on", () => {
     mockOrgConfig("mcp:\n  logs:\n    remote: 'yes'\n");
     expect(readMcpConfig().logsRemote).toBe(false);
+  });
+
+  it("the held writes are on by default; mcp.approvals: false turns them off", () => {
+    mockOrgConfig("mcp:\n  approvals: false\n");
+    expect(readMcpConfig().approvals).toBe(false);
+    mockOrgConfig("mcp:\n  approvals: true\n");
+    expect(readMcpConfig().approvals).toBe(true);
+  });
+
+  it("refuses a non-boolean mcp.approvals: a typo must not silently keep them on", () => {
+    mockOrgConfig("mcp:\n  approvals: 'no'\n");
+    expect(() => readMcpConfig()).toThrow(/mcp\.approvals: true or false/);
   });
 });

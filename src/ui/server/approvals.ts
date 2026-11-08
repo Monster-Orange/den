@@ -24,31 +24,63 @@
  * requests waiting; settled ones are dropped an hour later. In memory: a
  * restart drops what waits (the agent asks again).
  *
+ * Who may read what waits (Vision 2026-11-07): the person's list needs
+ * the same proof as approving, on a GET (approverAllowed(…, "read"): the
+ * cookie, the session's CSRF token sent as X-Den-CSRF, the approval key).
+ * An agent's token reads its own requests only. An anonymous loopback
+ * asker reads only the one it holds the ticket for: the POST's reply
+ * hands it a random ticket (X-Den-Approval-Ticket), stored hashed.
+ *
  * Limit: an agent running as the same OS user could, in principle, read
  * the browser's cookie store from disk. That is the strength of Den's
  * other person-only routes; only an OS boundary is stronger.
  */
-import { randomBytes } from "crypto";
+import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import type * as http from "http";
 import {
   APPROVE_KEY_HEADER,
   approveKeyMatches,
 } from "../../shared/web-session.js";
-import type { GuardResult } from "./request-guard.js";
+import { CSRF_HEADER, type GuardResult } from "./request-guard.js";
+
+/** The header an anonymous asker reads its own request with. */
+export const APPROVAL_TICKET_HEADER = "x-den-approval-ticket";
+
+/** A new ticket and its hash (only the hash is kept). */
+export function newApprovalTicket(): { ticket: string; hash: string } {
+  const ticket = randomBytes(24).toString("base64url");
+  return { ticket, hash: ticketHash(ticket) };
+}
+function ticketHash(t: string): string {
+  return createHash("sha256").update(t).digest("base64url");
+}
 
 export type ApproverCheck =
   | { ok: true; session: string }
   | { ok: false; code: "signin_to_approve"; error: string };
 
-/** Whether this request may approve or deny an agent's change. */
+/**
+ * Whether this request may approve or deny an agent's change ("decide",
+ * a POST the guard checked CSRF on), or read what waits ("read", a GET:
+ * the session's CSRF token is checked here, as the guard checks a POST's).
+ */
 export function approverAllowed(
   req: http.IncomingMessage,
   guard: Extract<GuardResult, { ok: true }>,
+  mode: "decide" | "read" = "decide",
 ): ApproverCheck {
   const method = (req.method ?? "GET").toUpperCase();
   const p = guard.principal;
+  const csrf = req.headers[CSRF_HEADER];
+  const methodOk =
+    mode === "decide"
+      ? method === "POST"
+      : (method === "GET" || method === "HEAD") &&
+        typeof csrf === "string" &&
+        !!guard.session &&
+        same(csrf, guard.session.csrf);
   const signedIn =
-    method === "POST" &&
+    methodOk &&
     guard.session &&
     p?.kind === "person-browser" &&
     p.session === guard.session.key &&
@@ -74,6 +106,12 @@ export function approverAllowed(
         "This browser can't approve yet. Sign in again on this page, then approve.",
     };
   return { ok: true, session: guard.session.key };
+}
+
+function same(a: string, b: string): boolean {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
 }
 
 /**
@@ -145,6 +183,8 @@ export interface Approval {
   result?: unknown;
   /** Why it ended without running, when it wasn't the person (actor_gone). */
   endedBecause?: "actor_gone";
+  /** sha256 of the anonymous asker's ticket; never in a view. */
+  ticketHash?: string;
 }
 
 export type Decision = "allow" | "deny";
@@ -212,6 +252,7 @@ export class ApprovalQueue {
     params?: Record<string, string>;
     details?: string[];
     note?: string;
+    ticketHash?: string;
   }): Approval {
     this.prune();
     let waiting = 0;
@@ -248,6 +289,7 @@ export class ApprovalQueue {
       ...(r.note?.trim()
         ? { note: r.note.replace(/\s+/g, " ").trim().slice(0, 300) }
         : {}),
+      ...(r.ticketHash ? { ticketHash: r.ticketHash } : {}),
       requestedAt: t,
       expiresAt: t + this.ttlMs,
       state: "pending",
@@ -283,6 +325,23 @@ export class ApprovalQueue {
     if (!a) return null;
     this.settle(a);
     return { ...a };
+  }
+
+  /** One actor's requests, every state, oldest first (an agent's own list). */
+  ofActor(actor: string): Approval[] {
+    this.prune();
+    const out: Approval[] = [];
+    for (const a of this.items.values()) {
+      this.settle(a);
+      if (a.actor === actor) out.push({ ...a });
+    }
+    return out;
+  }
+
+  /** Whether `ticket` is the one this request's anonymous asker was given. */
+  ticketMatches(id: string, ticket: string | undefined): boolean {
+    const h = this.items.get(id)?.ticketHash;
+    return !!h && typeof ticket === "string" && same(ticketHash(ticket), h);
   }
 
   /** The actors with a request waiting (AG-6a: their agents are "waiting"). */
