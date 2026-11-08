@@ -72,8 +72,15 @@ Set up Den for me by following https://raw.githubusercontent.com/Monster-Orange/
 
 That file is the install-den skill, also in the package at
 `skills/install-den/SKILL.md`: plain Markdown any agent can follow, with
-Claude skill front matter. `den --help` prints the line. The skill runs the
-commands below. Each one takes `--json`, never prompts, and is safe to
+Claude skill front matter. `den --help` prints the line. The skill does three
+things only: it installs Den (after checking Node and git), helps the person
+pick its name and folder (default `~/<name>`), then runs `web up` and hands
+over the one-time link from `web claim-link`: "Den's own agent takes it from
+there." It adds no repo and creates no workspace: that is
+[the server agent](#the-server-agent)'s job. Every command below also stays a
+person's own: `npm i -g @monster-orange/den` → `den create <name>` →
+`<cli> repo add` → `<cli> up` skips both agents. The skill runs the first
+of the commands below, and the server agent the rest through MCP. Each one takes `--json`, never prompts, and is safe to
 re-run. With `--json`, stdout carries exactly one JSON object and the
 command's log goes to stderr. When `ok` is false the object says why
 (`error`) and carries either a command the agent can run (`fix`) or a
@@ -2227,6 +2234,51 @@ start` and `<cli> doctor` say why den-pty is unavailable.
 - A state dir whose socket path would pass 103 bytes (the unix socket
   limit) is refused with that reason; point `<PREFIX>_HOME` somewhere
   shorter.
+
+## The server agent
+
+Every Den has its own agent, named after the distribution ("Acme agent"),
+for anything about the server itself: set it up, add a repo, fix a failing
+service, change a setting, explain what's running. It belongs to no
+workspace. It is a normal Den agent underneath (its record, its session,
+Resume after a restart, rotation and Den's hooks), with Den's persona
+`server` and the plain-writing rule, in a reserved scope, `den-server`: no
+workspace may take that name.
+
+- **It acts only through Den's MCP.** Its MCP server
+  (`<cli> mcp --workspace den-server --actor agent:server`) serves the whole
+  Den, not one workspace, so it may use the onboarding tools a workspace's
+  agent is refused. Every write (`workspace_create`, `repo_add`,
+  `service_try`) is [held for the person](#onboarding-writes-held-for-the-person):
+  until they allow one in the browser, it only reads. It starts in an empty
+  folder of its own (`<state_dir>/server-agent`), with no checkout to edit,
+  and its runtime asks before every command (`permission_mode: ask`).
+- **Where it lives.** On a fresh Den (no repo in any workspace yet), the
+  first page, `/`, is that agent in a terminal framed as the page, with
+  Open in Agents as the way out. After setup it is one click away in the
+  rail ("Acme agent", `/server-agent`), and ⌘K has "Ask Acme". Agents lists
+  it first, under "Server", not under a workspace.
+- **Its onboarding:** `onboard_status`, then "Let's set up Acme. Where are
+  your repos?", `repos_detect` and suggested workspaces, `workspace_create`,
+  `manifest_draft` and `repo_add` for each repo, `service_try` (and
+  `doctor` when it fails), then "Here's what's running, and three things to
+  try next."
+- **What runs it.** A catalog runtime that is installed and carries Den's
+  tools: the person's choice (`agents.server_runtime` in
+  `config/local/user.yml`, set from the page's Runs on picker), else the
+  first one found. Den can tell a runtime is installed, not that it is
+  logged in: one that isn't asks in its own terminal, on the page. On a
+  fresh Den with such a runtime it starts by itself, once per page load;
+  after setup it starts only from its Start button. With no runtime, the
+  page shows how to install one and the manual path.
+- **Only a person starts it or picks its runtime.** An agent's token, or a
+  request claiming to be an agent, is refused (403).
+
+| Route                            | What it does                                               |
+| -------------------------------- | ---------------------------------------------------------- |
+| `GET /api/server-agent`          | Its name, runtime (or none), state, session, fresh, manual |
+| `POST /api/server-agent/start`   | `{ runtime? }`: start it, or resume or relaunch it         |
+| `POST /api/server-agent/runtime` | `{ runtime: id \| null }`: the person's choice of runtime  |
 
 ## Agents
 

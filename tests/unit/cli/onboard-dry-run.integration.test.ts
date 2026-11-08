@@ -1,30 +1,29 @@
 /**
- * ON-4's dry run: the install-den skill's steps (skills/install-den/SKILL.md),
- * as an agent runs them, on a scratch HOME and a scratch folder with one
- * tiny sample repo. Every step answers `ok` in JSON, and each is run twice
- * to show it is safe to re-run. The wall-clock time from the first step to
- * "service running, MCP connected" is recorded as the metric (R11, target
- * 5 minutes or less); it is printed, never asserted, so a slow CI machine
- * cannot fail it.
+ * ON-4's dry run, on the two-agent shape (ON-6): the slim install-den
+ * skill's steps (skills/install-den/SKILL.md), then the server agent's
+ * onboarding through Den's MCP, on a scratch HOME with one tiny sample
+ * repo. The test plays both agents (the fake runtime): nothing runs a real
+ * claude, codex, gemini or grok (tests/setup.ts puts inert stand-ins first
+ * on PATH), and nothing touches the real HOME.
  *
- * The steps:
- *   1. create <name> <dir> --yes --json       (another "Den" already holds
- *      the start port, so create picks the next free one and writes it to
- *      config/local/user.yml; DEN_WEB_PORT_START stands in for the default,
- *      so nothing here touches 7777)
- *      (then the engine linked into node_modules, standing in for
- *      `npm install`, which would download Den from the registry)
- *   2. repo add <repo> --health <url> --json  (a side-car; repo untouched)
- *   3. up <repo> --json                       (started, then already-running)
- *   4. web up --no-open --json                (url and port, twice)
- *   5. doctor --json                          (node, git, docker, web, mcp)
- *   6. mcp connect --runtime claude --dry-run --json, and
- *      mcp connect --runtime grok --json      (writes the scratch HOME only)
+ * The install agent (each step twice, to show it is safe to re-run):
+ *   1. create <name> <dir> --yes --json       (another "Den" holds the start
+ *      port, so create picks the next free one; DEN_WEB_PORT_START stands in
+ *      for the default, so nothing here touches 7777), then the engine
+ *      linked into node_modules, standing in for `npm install`
+ *   2. web up --no-open --json                (url and port)
+ *   3. web claim-link --json                  (the one-time setup link)
  *
- * The sample repo's `make up` serves http on a free localhost port; the
- * service is stopped and the web server shut down afterwards. Nothing here
- * runs a real claude, codex, gemini or grok (tests/setup.ts puts inert
- * stand-ins first on PATH) or touches the real HOME.
+ * The person opens the link: it signs the browser in, and a fresh Den's
+ * first page is its server agent. The server agent, through
+ * `<cli> mcp --workspace den-server --actor agent:server --call …`:
+ *   4. onboard_status, repos_detect           (reads)
+ *   5. repo_add                               (held: nothing changes until
+ *      the person's browser allows it)
+ *   6. service_try                            (held, then started healthy)
+ *
+ * From the paste to one repo added and one service running must take 5
+ * minutes or less (R11): asserted, and recorded as the metric.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawn, spawnSync } from "child_process";
@@ -143,7 +142,8 @@ function treeDigest(root: string): string {
 beforeAll(async () => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-on4-")));
   dist = path.join(tmp, "den");
-  repo = path.join(tmp, "sample");
+  // In the person's home: the onboarding tools read only there.
+  repo = path.join(tmp, "home", "code", "sample");
   appPort = await freePort();
   held = net.createServer((c) => c.destroy());
   await new Promise<void>((r) => held!.listen(0, "localhost", () => r()));
@@ -163,7 +163,8 @@ beforeAll(async () => {
   };
   fs.mkdirSync(path.join(tmp, "home"));
   // The sample repo: `make up` serves http on its port until stopped.
-  fs.mkdirSync(repo);
+  fs.mkdirSync(repo, { recursive: true });
+  spawnSync("git", ["init", "-q", repo]);
   fs.writeFileSync(
     path.join(repo, "Makefile"),
     [
@@ -191,8 +192,92 @@ afterAll(async () => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-describe("ON-4: the install-den skill's steps, dry run", () => {
-  it("every step answers ok and is safe to re-run; the paste-to-connected time is recorded", async () => {
+/** One request: status, headers and body (no keep-alive, as get). */
+function req(
+  method: string,
+  p: string,
+  headers: Record<string, string> = {},
+  body?: unknown,
+): Promise<{
+  status: number;
+  headers: http.IncomingHttpHeaders;
+  body: string;
+}> {
+  const data = body === undefined ? undefined : JSON.stringify(body);
+  return new Promise((resolve, reject) => {
+    const r = http.request(
+      {
+        host: "localhost",
+        port: webPort,
+        path: p,
+        method,
+        agent: false,
+        headers: {
+          Connection: "close",
+          ...headers,
+          ...(data === undefined
+            ? {}
+            : {
+                "content-type": "application/json",
+                "content-length": String(Buffer.byteLength(data)),
+              }),
+        },
+      },
+      (res) => {
+        let out = "";
+        res.on("data", (d: Buffer) => (out += d.toString()));
+        res.on("end", () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            headers: res.headers,
+            body: out,
+          }),
+        );
+      },
+    );
+    r.on("error", reject);
+    r.end(data);
+  });
+}
+
+/** The server agent's MCP one-shot, run in the background (writes wait). */
+function serverAgentCall(
+  tool: string,
+  args: Record<string, unknown>,
+): Promise<Step> {
+  return new Promise((resolve) => {
+    const c = spawn(
+      path.join(dist, "bin", "acme"),
+      [
+        "mcp",
+        "--workspace",
+        "den-server",
+        "--actor",
+        "agent:server",
+        "--call",
+        tool,
+        JSON.stringify(args),
+      ],
+      { cwd: dist, env, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let out = "";
+    let err = "";
+    c.stdout.on("data", (d: Buffer) => (out += d.toString()));
+    c.stderr.on("data", (d: Buffer) => (err += d.toString()));
+    c.on("close", (code) => {
+      let json: unknown = null;
+      try {
+        json = JSON.parse(out);
+      } catch {
+        json = { unparsed: out.slice(-2000), stderr: err.slice(-2000) };
+      }
+      resolve({ code: code ?? -1, json, out: `${out}${err}` });
+    });
+  });
+}
+
+describe("ON-4: install, hand over, and the server agent sets up one repo", () => {
+  it("every install step is ok and safe to re-run; the server agent's writes wait for the person; it takes 5 minutes or less", async () => {
     started = Date.now();
 
     // 1. create --yes --json, twice.
@@ -213,9 +298,6 @@ describe("ON-4: the install-den skill's steps, dry run", () => {
     ]);
     webPort = c1.json.port;
     expect(webPort).toBeGreaterThan(heldPort);
-    expect(
-      fs.readFileSync(path.join(dist, "config", "local", "user.yml"), "utf-8"),
-    ).toMatch(new RegExp(`^web:\n  port: ${webPort}$`, "m"));
     const c2 = run(den, ["create", "acme", dist, "--yes", "--json"], tmp);
     expect([c2.code, c2.json]).toEqual([
       0,
@@ -232,112 +314,150 @@ describe("ON-4: the install-den skill's steps, dry run", () => {
     // The share line is in --help (ON-5).
     expect(acme("--help").out).toContain(SHARE_LINE);
 
-    // 2. repo add, twice; the repo's tree never changes.
-    const repoBefore = treeDigest(repo);
-    const health = `http://localhost:${appPort}/`;
-    const [r1, r2] = twice("repo", "add", repo, "--health", health, "--json");
-    expect(r1.json).toMatchObject({
-      existed: false,
-      repo: "sample",
-      manifest: { source: "sidecar", written: true, detected: "make" },
-    });
-    expect(r2.json).toMatchObject({
-      existed: true,
-      manifest: { written: false },
-    });
-    expect(treeDigest(repo)).toBe(repoBefore);
-
-    // 3. up --json, twice: started healthy, then already running.
-    const [u1, u2] = twice("up", "sample", "--json");
-    expect(u1.json.services).toEqual([
-      { address: "sample", result: "started", health: "ok" },
-    ]);
-    expect(u2.json.services).toEqual([
-      { address: "sample", result: "already-running", health: "ok" },
-    ]);
-    expect(await get(appPort, "/")).toBe(200);
-
-    // 4. web up --json, twice (the second finds it running).
+    // 2. web up --json, twice (the second finds it running).
     const [w1, w2] = twice("web", "up", "--no-open", "--json");
     for (const w of [w1, w2])
       expect(w.json).toMatchObject({
         url: `http://localhost:${webPort}`,
         port: webPort,
       });
-    expect(await get(webPort, "/api/server-info")).toBe(200);
 
-    // 5. doctor --json, twice: every onboarding check ok, web with its URL.
-    const [d1, d2] = twice("doctor", "--json");
-    for (const d of [d1, d2]) {
-      const byId = Object.fromEntries(
-        (d.json.checks as { id: string; status: string }[]).map((c) => [
-          c.id,
-          c,
-        ]),
-      );
-      for (const id of ["node", "git", "docker", "web", "mcp"])
-        expect([id, byId[id]?.status]).toEqual([id, "ok"]);
-      expect(byId.web).toMatchObject({
-        url: `http://localhost:${webPort}`,
-        port: webPort,
-      });
-    }
+    // 3. The setup link (never printed here: it signs a browser in).
+    const cl = acme("web", "claim-link", "--json");
+    expect(cl.code).toBe(0);
+    const link = new URL(String(cl.json.url));
+    expect(link.origin).toBe(`http://localhost:${webPort}`);
+    expect(link.searchParams.has("claim")).toBe(true);
 
-    // 6. mcp connect: claude as a dry run (its CLI would run), grok for real
-    // into the scratch HOME; the second grok run changes nothing.
-    const [m1] = twice(
-      "mcp",
-      "connect",
-      "--runtime",
-      "claude",
-      "--dry-run",
-      "--json",
-    );
-    expect(m1.json.clients).toEqual([
-      expect.objectContaining({ id: "claude-code", ok: true }),
-    ]);
-    expect(m1.json.web).toEqual({
-      url: `http://localhost:${webPort}`,
-      up: true,
+    // The person opens it: a session cookie, and the approval key in the
+    // fragment of the redirect to the first page.
+    const opened = await req("GET", link.pathname + link.search, {
+      "sec-fetch-site": "none",
+      accept: "text/html",
     });
-    const [g1, g2] = twice("mcp", "connect", "--runtime", "grok", "--json");
-    const grokFile = path.join(tmp, "home", ".grok", "config.toml");
-    expect(g1.json.clients).toEqual([
-      expect.objectContaining({
-        id: "grok",
-        ok: true,
-        file: grokFile,
-        changed: true,
-      }),
-    ]);
-    expect(g2.json.clients).toEqual([
-      expect.objectContaining({ id: "grok", changed: false }),
-    ]);
-    expect(fs.readFileSync(grokFile, "utf-8")).toMatch(
-      /^\[mcp_servers\.acme\]$/m,
+    expect(opened.status).toBe(303);
+    const to = String(opened.headers.location ?? "");
+    const key = /#ak=([A-Za-z0-9_-]{43})$/.exec(to)?.[1] ?? "";
+    expect(key).not.toBe("");
+    const cookie =
+      ([] as string[])
+        .concat(opened.headers["set-cookie"] ?? [])
+        .find((x) => x.startsWith(`den_session_${webPort}=`))
+        ?.split(";")[0] ?? "";
+    expect(cookie).not.toBe("");
+    const browser = { cookie, "sec-fetch-site": "same-origin" };
+    // A fresh Den's first page is its own agent.
+    const first = await req("GET", to.split("#")[0], {
+      ...browser,
+      accept: "text/html",
+    });
+    expect(first.status).toBe(200);
+    expect(first.body).toContain('data-page="server-agent"');
+    const sa = JSON.parse(
+      (await req("GET", "/api/server-agent", browser)).body,
+    ) as Record<string, unknown>;
+    expect(sa).toMatchObject({
+      name: "Acme agent",
+      scope: "den-server",
+      fresh: true,
+    });
+    const csrf = String(
+      (
+        JSON.parse((await req("GET", "/api/session", browser)).body) as {
+          csrf?: string;
+        }
+      ).csrf ?? "",
     );
+    const person = {
+      ...browser,
+      origin: `http://localhost:${webPort}`,
+      "x-den-csrf": csrf,
+      "x-den-approve-key": key,
+    };
+    /** Allow the one request waiting (the person's dialog). */
+    const allowNext = async (): Promise<string> => {
+      const deadline = Date.now() + 30_000;
+      for (;;) {
+        const l = JSON.parse(
+          (await req("GET", "/api/approvals", person)).body,
+        ) as {
+          pending?: { id: string; action: string }[];
+        };
+        const p = l.pending?.[0];
+        if (p) {
+          const d = await req("POST", `/api/approvals/${p.id}/decide`, person, {
+            decision: "allow",
+          });
+          expect(d.status).toBe(200);
+          return p.action;
+        }
+        if (Date.now() > deadline) throw new Error("nothing waited");
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    };
+    const services = async () =>
+      (
+        JSON.parse((await req("GET", "/api/workspaces")).body) as {
+          workspaces: Record<string, { services?: Record<string, unknown> }>;
+        }
+      ).workspaces;
 
-    // The metric: paste to "service running, MCP connected". Recorded only.
+    // 4. The server agent reads.
+    const st = await serverAgentCall("onboard_status", {});
+    expect(st.code).toBe(0);
+    const det = await serverAgentCall("repos_detect", {
+      path: path.dirname(repo),
+    });
+    expect(det.code).toBe(0);
+    expect(JSON.stringify(det.json)).toContain("sample");
+
+    // 5. repo_add waits for the person; until they allow it, nothing changes.
+    const repoBefore = treeDigest(repo);
+    const health = `http://localhost:${appPort}/`;
+    const adding = serverAgentCall("repo_add", { path: repo, health });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(
+      Object.values(await services()).some(
+        (w) => "sample" in (w.services ?? {}),
+      ),
+    ).toBe(false);
+    expect(await allowNext()).toBe("repo_add");
+    const added = await adding;
+    expect([added.code, added.json.approved]).toEqual([0, true]);
+    expect(treeDigest(repo)).toBe(repoBefore);
+    expect(
+      Object.values(await services()).some(
+        (w) => "sample" in (w.services ?? {}),
+      ),
+    ).toBe(true);
+
+    // 6. service_try, held the same way, then running and healthy.
+    const trying = serverAgentCall("service_try", { service: "sample" });
+    expect(await allowNext()).toBe("service_try");
+    const tried = await trying;
+    expect([tried.code, tried.json.approved]).toEqual([0, true]);
+    const appDeadline = Date.now() + 30_000;
+    while ((await get(appPort, "/")) !== 200 && Date.now() < appDeadline)
+      await new Promise((r) => setTimeout(r, 200));
+    expect(await get(appPort, "/")).toBe(200);
+
+    // The metric: paste to one repo added and one service running.
     const seconds = (Date.now() - started) / 1000;
+    expect(seconds).toBeLessThan(300);
 
-    // 7. Clean up the way the skill does, in JSON too: down, then web down,
-    // each twice (the second finds it already stopped).
-    const [x1, x2] = twice("down", "sample", "--json");
+    // Set up: the first page is Workspaces again.
+    const after = await req("GET", "/", { ...browser, accept: "text/html" });
+    expect(after.body).not.toContain('data-page="server-agent"');
+
+    // Clean up the way a person would, in JSON too, each twice.
+    const [x1] = twice("down", "sample", "--json");
     expect(x1.json).toMatchObject({ ok: true, services: ["sample"] });
-    expect(x2.json).toMatchObject({ ok: true });
     const [y1, y2] = twice("web", "down", "--json");
-    for (const y of [y1, y2])
-      expect(y.json).toMatchObject({
-        ok: true,
-        running: false,
-        url: `http://localhost:${webPort}`,
-        port: webPort,
-      });
     expect(y1.json.stopped).toBe(true);
     expect(y2.json.stopped).toBe(false);
     expect(await get(webPort, "/api/server-info")).toBe(0);
     process.stderr.write(
-      `\n  ON-4 dry run: paste → service running, MCP connected in ${seconds.toFixed(1)}s (target ≤ 300s)\n`,
+      `\n  ON-4 dry run: paste → one repo added, one service running in ${seconds.toFixed(1)}s (target ≤ 300s)\n`,
     );
     if (process.env.DEN_ON4_METRIC_FILE)
       fs.writeFileSync(

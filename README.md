@@ -22,11 +22,12 @@ Paste this line into your coding agent (Claude Code, Codex, Gemini, Grok, …):
 Set up Den for me by following https://raw.githubusercontent.com/Monster-Orange/den/main/skills/install-den/SKILL.md
 ```
 
-The agent follows the [install-den skill](skills/install-den/SKILL.md). It asks you at most three questions,
-creates your Den, adds one of your repos without changing it, starts it, checks it, and connects itself to Den's
-MCP server. Then it tells you what's running and the URL to open. It never asks for a password in chat, never
-edits your repos and sends nothing off your machine. Every step it runs answers in JSON and is safe to re-run:
-see [Set up by your agent](docs/distributions.md#set-up-by-your-agent).
+The agent follows the [install-den skill](skills/install-den/SKILL.md). It checks Node and git, installs Den,
+asks you its name and folder, starts it, and hands you a one-time link. Open it: your Den's own agent takes it
+from there. That agent finds your repos, adds them without changing them and starts one, and each change waits
+for you to allow it in the browser. Neither agent asks for a password in chat, edits your repos or sends anything
+off your machine. Every step answers in JSON and is safe to re-run: see
+[Set up by your agent](docs/distributions.md#set-up-by-your-agent) and [The server agent](docs/distributions.md#the-server-agent).
 
 ## What Den is
 
