@@ -402,7 +402,7 @@ export function rolePrompt(
   if (persona.context.length)
     lines.push(`Read first: ${persona.context.join("; ")}.`);
   const shared = persona.guardrails?.instructions
-    ? `\n\n${sharedInstructions()}`
+    ? `\n\n${sharedInstructions(undefined, { handback: !isServerScope(workspace) })}`
     : "";
   return `${lines.join("\n")}\n\n${persona.prompt}${shared}`;
 }

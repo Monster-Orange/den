@@ -14,6 +14,10 @@
  * (stop_hook_active), it lets the turn end, so it never loops. Any error
  * lets the turn end too.
  *
+ * `--no-handback` (the server agent, ON-6): it talks with the person and
+ * hands no work back, so even a message with the Hand-back heading gets
+ * only the plain-writing check.
+ *
  * `--known <word>` (repeated): ID-shaped words in the names Den gives
  * (its title, the workspace), say "T2" in "Den T2". They are names, never
  * flagged as bare IDs.
@@ -72,6 +76,7 @@ export function stopDecision(
   input: unknown,
   rotation?: RotationHookArgs | null,
   knownNames: readonly string[] = [],
+  handbackCheck: boolean = true,
 ): string {
   const known = new Set(knownNames);
   if (!input || typeof input !== "object") return "";
@@ -89,7 +94,7 @@ export function stopDecision(
   if (typeof msg !== "string") return "";
   // A hand-back is checked whole. Any other final message is what the
   // person reads too, so it gets the plain-writing check: no bare IDs.
-  const handback = looksLikeHandback(msg);
+  const handback = handbackCheck && looksLikeHandback(msg);
   const problems = handback
     ? checkHandback(msg, known).problems
     : bareIds(msg, new Set(), known).map(
@@ -114,7 +119,12 @@ async function main(): Promise<void> {
   let out = "";
   try {
     const argv = process.argv.slice(2);
-    out = stopDecision(JSON.parse(text), parseHookArgs(argv), knownArgs(argv));
+    out = stopDecision(
+      JSON.parse(text),
+      parseHookArgs(argv),
+      knownArgs(argv),
+      !argv.includes("--no-handback"),
+    );
   } catch {
     out = "";
   }

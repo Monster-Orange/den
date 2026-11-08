@@ -81,6 +81,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **No Stop hook error at the end of setup.** The server agent was given the build agents' hand-back template, so
+  after the service came up it wrote a hand-back, and Den's Stop hook sent it back because a decision didn't end in
+  "?". The person saw "Stop hook error" and waited a turn. The server agent now has no hand-back template, and its
+  Stop hook skips the hand-back check. It still asks it to explain every ID, and session rotation is unchanged.
+
 - **The Stop hook no longer flags Den's own name.** A Den whose name looks
   like an ID (`t2` → "T2") had the server agent's first greeting rejected
   ("'T2' is not explained"), and the person saw "Stop hook error". Den now

@@ -50,9 +50,34 @@ export const GUARDRAILS_DIR = enginePath(
   "guardrails",
 );
 
-/** The shared persona instructions, as Den ships them. */
-export function sharedInstructions(dir: string = GUARDRAILS_DIR): string {
-  return fs.readFileSync(path.join(dir, "instructions.md"), "utf-8").trim();
+/** What the server agent reads in place of "Handing work back" (ON-6). */
+export const NO_HANDBACK_SECTION = `### Talking with the person
+
+You talk with the person as you go; there is no work to hand back, so don't
+write a hand-back. End each turn with a plain sentence or one question.
+Every message you end a turn with is read by a person: explain each ID in it.`;
+
+/**
+ * The shared persona instructions, as Den ships them. `handback: false`
+ * (the server agent, ON-6) swaps the "Handing work back" section, a build
+ * agent's template (URL, Branch, yes/no decisions), for NO_HANDBACK_SECTION.
+ */
+export function sharedInstructions(
+  dir: string = GUARDRAILS_DIR,
+  opts: { handback?: boolean } = {},
+): string {
+  const text = fs
+    .readFileSync(path.join(dir, "instructions.md"), "utf-8")
+    .trim();
+  if (opts.handback !== false) return text;
+  const at = text.indexOf("### Handing work back");
+  if (at < 0) return text;
+  const next = text.indexOf("\n### ", at + 1);
+  return (
+    text.slice(0, at) +
+    NO_HANDBACK_SECTION +
+    (next < 0 ? "" : `\n${text.slice(next)}`)
+  ).trim();
 }
 
 /** One argument for a POSIX shell, single-quoted when it needs it. */
@@ -90,6 +115,8 @@ export function hookCommands(
   rotation?: RotationArgs,
   /** ID-shaped words in Den's own names, for the Stop hook (stop-hook.ts). */
   known: readonly string[] = [],
+  /** false: the Stop hook never runs the hand-back check (the server agent). */
+  handback: boolean = true,
 ): HookCommands {
   const more = (c: EngineCommand): EngineCommand =>
     rotation
@@ -112,7 +139,11 @@ export function hookCommands(
     stop: commandLine(
       ((c: EngineCommand): EngineCommand => ({
         command: c.command,
-        args: [...c.args, ...known.flatMap((k) => ["--known", k])],
+        args: [
+          ...c.args,
+          ...known.flatMap((k) => ["--known", k]),
+          ...(handback ? [] : ["--no-handback"]),
+        ],
       }))(more(scriptEntrypoint("src/shared/agents/guardrails/stop-hook.ts"))),
     ),
     rotation: commandLine(

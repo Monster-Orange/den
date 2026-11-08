@@ -53,6 +53,7 @@ import { rolePrompt } from "./personas.js";
 import { GUARDRAILS_DIR, guardrailHooks, hookCommands } from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
+import { isServerScope } from "./server-agent.js";
 import { product } from "../product.js";
 import {
   LaunchError,
@@ -366,6 +367,9 @@ function common(input: LaunchInput): {
           },
           // A Den named "den-t2" says "Den T2": a name, not an ID.
           idsInNames([product().title, input.workspace.name]),
+          // ON-6: the server agent talks with the person; it hands nothing
+          // back, so its messages get the plain-writing check only.
+          !isServerScope(input.workspace.name),
         ),
       )
     : null;

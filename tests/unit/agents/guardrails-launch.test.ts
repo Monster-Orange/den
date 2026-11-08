@@ -19,8 +19,10 @@ import {
 import {
   DEFAULT_PACK_DIR,
   loadPersonas,
+  serverPersona,
   type Persona,
 } from "../../../src/shared/agents/personas.js";
+import { SERVER_SCOPE } from "../../../src/shared/agents/server-agent.js";
 import {
   getRuntime,
   type LaunchInput,
@@ -290,5 +292,87 @@ describe("a Den whose name looks like an ID", () => {
       if (saved === undefined) delete process.env.DEN_ROOT;
       else process.env.DEN_ROOT = saved;
     }
+  });
+});
+
+describe("the server agent's launch (ON-6): it talks with the person, it hands nothing back", () => {
+  // What it said after the service came up in a real run: a hand-back
+  // whose decision asks, then says what to do if yes.
+  const AFTER_UP = [
+    "Your repo ra is running at http://localhost:47511/.",
+    "",
+    "## Hand-back",
+    "- URL: http://localhost:47511/",
+    "- Machine: this computer",
+    "- Branch: none",
+    "- What changed: ra is in workspace repos, and it is running.",
+    "- What to click: open the link.",
+    "- Decisions:",
+    "  1. Should I add a health check for ra? If yes, tell me the path it answers on.",
+  ].join("\n");
+  const server = serverPersona();
+  const serverLaunch = () => {
+    const inp = {
+      ...input(server, path.join(root, "state")),
+      workspace: { name: SERVER_SCOPE, dir: root },
+      mcp: {
+        name: "acme",
+        command: ["/x/acme", "mcp"],
+        env: {},
+        scope: SERVER_SCOPE,
+      },
+    };
+    const out = getRuntime("den-claude")!.launch(inp);
+    const file = path.join(inp.filesDir, "settings.json");
+    return {
+      prompt: out.argv[out.argv.length - 1],
+      settings: JSON.parse(out.files![file]) as {
+        hooks: Record<string, { hooks: { command: string }[] }[]>;
+      },
+    };
+  };
+  const sh = (command: string, msg: string) =>
+    spawnSync("/bin/sh", ["-c", command], {
+      input: JSON.stringify({
+        hook_event_name: "Stop",
+        stop_hook_active: false,
+        session_id: "s-1",
+        last_assistant_message: msg,
+      }),
+      encoding: "utf-8",
+      env: { PATH: process.env.PATH ?? "", HOME: root },
+    });
+
+  it("its Stop hook lets its message after the service is up end the turn (no Stop hook error)", () => {
+    const stop = serverLaunch().settings.hooks.Stop[0].hooks[0].command;
+    const r = sh(stop, AFTER_UP);
+    expect([r.status, r.stdout]).toEqual([0, ""]);
+  });
+
+  it("its Stop hook still asks it to explain a bare ID", () => {
+    const stop = serverLaunch().settings.hooks.Stop[0].hooks[0].command;
+    const r = sh(stop, "ra is up. It follows AG-14 now.");
+    expect(JSON.parse(r.stdout)).toMatchObject({ decision: "block" });
+    expect(r.stdout).toContain('\\"AG-14\\" is not explained');
+  });
+
+  it("its role prompt has no hand-back template, and still says to explain each ID", () => {
+    const p = serverLaunch().prompt;
+    for (const s of ["## Hand-back", "- Branch:", "### Handing work back"])
+      expect(p).not.toContain(s);
+    expect(p).toContain("don't\nwrite a hand-back");
+    expect(p).toContain("explain each ID in it");
+    expect(p).toContain("### When your session rotates");
+  });
+
+  it("a workspace agent's Stop hook still checks the same hand-back", () => {
+    const planner = loadPersonas([]).get("planner")!;
+    const l = launch(planner, path.join(root, "state"));
+    const stop = (
+      l.settings!.hooks as Record<string, { hooks: { command: string }[] }[]>
+    ).Stop[0].hooks[0].command;
+    expect(stop).not.toContain("--no-handback");
+    const o = JSON.parse(sh(stop, AFTER_UP).stdout) as { decision: string };
+    expect(o.decision).toBe("block");
   });
 });
