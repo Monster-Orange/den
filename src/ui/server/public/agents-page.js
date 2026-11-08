@@ -565,6 +565,7 @@ async function refresh() {
   } catch {
     /* the last list stays; the next ask may answer */
   }
+  followAgents();
   st.scopeLabel = scopeLabelFor(viewWorkspaces());
   paintList();
   paintSub();
@@ -572,13 +573,77 @@ async function refresh() {
   const strip = st.root.querySelector("#agr > .agtabs");
   if (strip) paintTabs(strip);
   if (!st.root.isConnected) return;
-  st.timer = setTimeout(() => {
-    if (!document.hidden) void refresh();
-    else st.timer = setTimeout(refresh, REFRESH_MS);
-  }, REFRESH_MS);
+  // A pane whose session just ended may have a new one soon (a persona
+  // change, a resume): look again every second for a while.
+  const soon = Date.now() < (st.followUntil ?? 0);
+  st.timer = setTimeout(
+    () => {
+      if (!document.hidden) void refresh();
+      else st.timer = setTimeout(refresh, REFRESH_MS);
+    },
+    soon ? FOLLOW_MS : REFRESH_MS,
+  );
 }
 
 const rowOf = (id) => st.data?.sessions?.find((s) => s.id === id) ?? null;
+
+/** How often, and how long, the list is read after a pane's session ends. */
+const FOLLOW_MS = 1_000;
+const FOLLOW_FOR_MS = 15_000;
+
+/**
+ * A pane follows its agent, not a session (AG-18): when the agent's
+ * session changes (Change persona, Resume, a rotation), the pane moves to
+ * the new one in the same slot, its scrollback kept.
+ */
+function followAgents() {
+  for (const p of [...st.panes.values()]) {
+    const r = rowOf(p.id);
+    if (r?.kind === "agent" && r.agent) {
+      p.agent = r.agent;
+      p.agentWs = r.workspace;
+    }
+    if (!p.agent || p.closed || r?.state === "running") continue;
+    const next = st.data?.sessions?.find(
+      (x) =>
+        x.kind === "agent" &&
+        x.agent === p.agent &&
+        x.workspace === p.agentWs &&
+        x.id !== p.id &&
+        x.state === "running",
+    );
+    if (next && !st.panes.has(next.id)) retarget(p, next);
+  }
+}
+
+/** Move pane `p` to session row `row`, where it was. */
+function retarget(p, row) {
+  const old = p.id;
+  const sock = p.sock;
+  p.sock = null;
+  try {
+    sock?.close(1000, "switched");
+  } catch {
+    /* already closed */
+  }
+  st.panes.delete(old);
+  p.id = row.id;
+  st.panes.set(row.id, p);
+  st.open = st.open.map((x) => (x === old ? row.id : x));
+  if (st.side.delete(old)) st.side.add(row.id);
+  if (st.cur === old) st.cur = row.id;
+  p.el.dataset.id = row.id;
+  p.el.setAttribute("aria-label", row.label ?? row.id);
+  p.exited = false;
+  p.lost = false;
+  p.term?.write(
+    `\r\n\x1b[2m${t("ag.switched", { p: row.persona ?? row.agent })}\x1b[0m\r\n`,
+  );
+  paintBar(p);
+  paintLayout();
+  writeUrl();
+  void connect(p);
+}
 
 // ── the panes ───────────────────────────────────────────────────────────
 
@@ -1048,6 +1113,8 @@ async function connect(p) {
         paintBar(p);
       } else if (msg?.type === "exit") {
         p.exited = true;
+        // Its agent may continue in a new session (followAgents).
+        st.followUntil = Date.now() + FOLLOW_FOR_MS;
         const code =
           typeof msg.exitCode === "number" ? ` (${msg.exitCode})` : "";
         p.term?.write(`\r\n${t("ag.exitedLine", { code })}\r\n`);
@@ -1260,7 +1327,7 @@ async function openPane(id, { front = true } = {}) {
     ) {
       if (e.isComposing) return true;
       e.preventDefault();
-      if (softNewlineKey(e)) typeIn(softNewlineOf(id));
+      if (softNewlineKey(e)) typeIn(softNewlineOf(p.id));
       return false;
     }
     return true;
@@ -1354,9 +1421,13 @@ async function restartRow(r, verb, button) {
         { id: r.agent },
       ),
     );
-    if (st.panes.has(r.id)) closePane(r.id, { quiet: true });
+    // Its open pane follows it to the new session (followAgents, in
+    // refresh); one that couldn't (not running yet) is closed for it.
     await refresh();
-    if (out?.agent?.sessionId) await openPane(out.agent.sessionId);
+    const next = out?.agent?.sessionId;
+    if (next && next !== r.id && st.panes.has(r.id))
+      closePane(r.id, { quiet: true });
+    if (next) await openPane(next);
   } catch (err) {
     window.denShell?.errorToast?.(err);
     await refresh();

@@ -58,6 +58,15 @@ config and manifest changes a distribution must make to move to it under
   this computer instead." It no longer says to ask the owner to add you:
   a Den has one owner, and no one to add.
 
+### Fixed
+
+- An open agent pane stayed on the old session after Change persona, Resume
+  or a rotation, showing "[the session exited (143)]" while the list showed
+  the new one running. A pane now follows its agent: it moves to the new
+  session in the same slot, keeps its scrollback, and says "Switched to
+  <persona>". After a session ends the page looks again every second for
+  15 s, so the switch shows within about 2 s.
+
 ### Migrations
 
 - None.

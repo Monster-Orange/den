@@ -667,6 +667,7 @@
       "Su token fue revocado (web logout --all): detenlo y reanúdalo, o inícialo de nuevo, para darle uno nuevo",
     "ag.ended":
       "Esta sesión ha terminado. Su registro se queda hasta que se reanude o se elimine.",
+    "ag.switched": "Cambiado a {p}",
     "ag.exitedLine": "[la sesión terminó{code}]",
     "ag.lost": "[desconectado: {why}]",
     "ag.reconnect": "Reconectar",

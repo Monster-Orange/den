@@ -774,6 +774,7 @@
       "Its token was revoked (web logout --all): stop and resume it, or start it again, to give it a new one",
     "ag.ended":
       "This session has ended. Its record stays until it is resumed or removed.",
+    "ag.switched": "Switched to {p}",
     "ag.exitedLine": "[the session exited{code}]",
     "ag.lost": "[disconnected: {why}]",
     "ag.reconnect": "Reconnect",

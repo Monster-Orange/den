@@ -21,7 +21,8 @@
  *   - AG-18: the pane's ⋯ menu has Change persona…: the current persona
  *     is marked and Change is off until another is picked; mid-turn the
  *     dialog asks (After this turn, Stop it now); Stop it now resumes the
- *     same conversation as the new persona.
+ *     same conversation as the new persona, and the open pane follows
+ *     the agent to its new session ("Switched to <persona>").
  *
  * DEN_START_SHOTS=<dir> writes screenshots. Needs Playwright's chromium;
  * DEN_SKIP_BROWSER_TESTS=1 skips it.
@@ -399,6 +400,24 @@ describe("Bring in (AG-17.1)", () => {
       resumeToken: CONV,
     });
     expect(fs.existsSync(s!.ran)).toBe(false);
+    // The open pane follows its agent to the new session, in the same
+    // slot, and says so in its scrollback; never left on the old one.
+    await p.waitForFunction(
+      (old) => {
+        const panes = [...document.querySelectorAll(".pane")];
+        return (
+          panes.length === 1 &&
+          panes[0].getAttribute("data-id") !== old &&
+          (panes[0].querySelector(".xterm-rows")?.textContent ?? "").includes(
+            "Switched to planner",
+          )
+        );
+      },
+      agent.sessionId,
+      { timeout: 5_000 },
+    );
+    const now = await p.getAttribute(".pane", "data-id");
+    expect(new URL(p.url()).searchParams.get("open")).toBe(now);
     await p.context().close();
     expect(errors).toEqual([]);
   }, 90_000);

@@ -651,6 +651,7 @@
     "ag.revokedTip":
       "トークンが失効しました（web logout --all）。新しいトークンを渡すには停止して再開するか、もう一度開始してください",
     "ag.ended": "このセッションは終了しました。記録は再開か削除まで残ります。",
+    "ag.switched": "{p} に切り替えました",
     "ag.exitedLine": "[セッションが終了しました{code}]",
     "ag.lost": "[切断: {why}]",
     "ag.reconnect": "再接続",
