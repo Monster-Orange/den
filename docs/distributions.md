@@ -1616,7 +1616,12 @@ user, and the CLI does that for you:
     the 10 minutes, and an expired code is a click away from a new one.
     From a computer with SSH access to it, the page gives the one-liner
     (`ssh <host> '<cli> web approve <code>'`) and, when the host is a name,
-    an Open Terminal (`ssh://`) link;
+    an Open Terminal (`ssh://`) link. On Windows, which has no `ssh://`
+    app by default, there is no link: the one-liner is the step, with
+    "Open Windows Terminal or PowerShell, paste this, and press Enter."
+    Elsewhere, if the page still has focus 2 seconds after a click on Open
+    Terminal (no app took the link), it says "Nothing opened? Copy the
+    command below and paste it into your terminal app.";
   - **Other ways**, collapsed: the one-time link with
     `web login --origin`.
 

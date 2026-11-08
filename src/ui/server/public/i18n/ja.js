@@ -302,6 +302,10 @@
     "err.signin.step2":
       "承認されると、このページは自動でサインインします。コードの有効期限は 10 分です。",
     "err.signin.waiting": "承認を待っています…",
+    "err.signin.windowsSteps":
+      "Windows ターミナルか PowerShell を開き、これを貼り付けて Enter キーを押します。",
+    "err.signin.nothingOpened":
+      "何も開きませんでしたか?下のコマンドをコピーして、ターミナルアプリに貼り付けてください。",
     "err.signin.noTerminal":
       "{host} のターミナルがありませんか?このコンピューターで次を実行します:",
     "err.signin.openTerminal": "ターミナルを開く",

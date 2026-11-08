@@ -313,6 +313,10 @@
     "err.signin.step2":
       "Esta página inicia sesión sola una vez aprobada. El código caduca en 10 minutos.",
     "err.signin.waiting": "Esperando la aprobación…",
+    "err.signin.windowsSteps":
+      "Abre Windows Terminal o PowerShell, pega esto y pulsa Intro.",
+    "err.signin.nothingOpened":
+      "¿No se abrió nada? Copia el comando de abajo y pégalo en tu app de terminal.",
     "err.signin.noTerminal":
       "¿No tienes una terminal en {host}? Desde este ordenador, ejecuta:",
     "err.signin.openTerminal": "Abrir Terminal",

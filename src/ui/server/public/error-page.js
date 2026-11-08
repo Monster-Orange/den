@@ -171,6 +171,34 @@ function cmdLine(id, cmd, t, extra = "") {
   );
 }
 
+/** Whether this browser runs on Windows (no ssh:// app by default). */
+function onWindows() {
+  const nav = globalThis.navigator;
+  const platform = nav?.userAgentData?.platform || nav?.platform || "";
+  return /^win/i.test(platform) || /Windows/i.test(nav?.userAgent || "");
+}
+
+/** How long a click on Open Terminal waits for an app to take the page's focus. */
+const NOTHING_OPENED_MS = 2000;
+
+/**
+ * SEC-2a-UX.2: after a click on Open Terminal, if this page still has
+ * focus 2 s later, no app took the ssh:// link; say so under the button.
+ */
+function wireNothingOpened(root) {
+  const term = root.querySelector("#den-pair-term");
+  const note = root.querySelector("#den-pair-nothing");
+  if (!term || !note) return;
+  let timer = null;
+  term.addEventListener("click", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (!document.hidden && document.hasFocus() && note.isConnected)
+        note.hidden = false;
+    }, window.__denNothingOpenedMs || NOTHING_OPENED_MS);
+  });
+}
+
 /** Wire every copy button under `root` (each once). */
 function wireCopy(root, t) {
   root.querySelectorAll("button[data-copy-for]").forEach((b) => {
@@ -445,9 +473,12 @@ function wirePair(root, t, s) {
       `<div class="acts" style="margin-top:0"><button type="button" class="btn" id="den-pair-new">${esc(t("err.retry"))}</button></div>`;
     box.querySelector("#den-pair-new").addEventListener("click", begin);
   };
+  // SEC-2a-UX.2: Windows has no ssh:// app by default, so the link would
+  // do nothing. There the command itself is the step.
+  const windows = onWindows();
   const show = (b) => {
     const term =
-      s.ssh?.name && target
+      s.ssh?.name && target && !windows
         ? `<a class="btn" id="den-pair-term" href="ssh://${esc(login)}">${esc(t("err.signin.openTerminal"))}</a>`
         : "";
     box.innerHTML =
@@ -459,8 +490,14 @@ function wirePair(root, t, s) {
       `<p class="den-pair-wait" id="den-pair-status">${esc(t("err.signin.waiting"))} <span class="mono" id="den-pair-left"></span></p></li>` +
       `</ol>` +
       `<p>${withHost(t, "err.signin.noTerminal", { host })}</p>` +
+      (windows && b.ssh
+        ? `<p class="den-pair-win" id="den-pair-win">${esc(t("err.signin.windowsSteps"))}</p>`
+        : "") +
       cmdLine("den-pair-ssh", b.ssh, t, term) +
       (term
+        ? `<p class="den-pair-nothing" id="den-pair-nothing" role="status" hidden>${esc(t("err.signin.nothingOpened"))}</p>`
+        : "") +
+      (term || (windows && b.ssh && target)
         ? `<p class="den-pair-note" id="den-pair-note">${
             user
               ? withHost(t, "err.signin.sshUserNote", { host, user })
@@ -468,6 +505,7 @@ function wirePair(root, t, s) {
           }</p>`
         : "");
     wireCopy(box, t);
+    wireNothingOpened(box);
   };
   function begin() {
     stop();

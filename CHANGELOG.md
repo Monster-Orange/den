@@ -50,6 +50,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **Open Terminal on Windows.** On the signed-out page it did nothing on Windows. Windows has no `ssh://` app by default, so
+  there the link is gone and the ssh command is the step: "Open Windows Terminal or PowerShell, paste this, and press
+  Enter." Elsewhere, if the page still has focus 2 seconds after the click, it says "Nothing opened? Copy the command
+  below and paste it into your terminal app." The command and its copy button always show.
+
 - **The phone drawer keeps the rail a nav.** Under 720 px, ☰ made the
   rail's `<nav>` itself a dialog, which a nav may not be. The dialog is
   now a box around the rail ("Pages"); focus, Tab, Esc and the scrim work

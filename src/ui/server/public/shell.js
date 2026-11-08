@@ -428,6 +428,10 @@
     "err.signin.step2":
       "This page signs you in by itself once approved. The code expires in 10 minutes.",
     "err.signin.waiting": "Waiting for approval…",
+    "err.signin.windowsSteps":
+      "Open Windows Terminal or PowerShell, paste this, and press Enter.",
+    "err.signin.nothingOpened":
+      "Nothing opened? Copy the command below and paste it into your terminal app.",
     "err.signin.noTerminal":
       "Don't have a terminal on {host}? From this computer, run:",
     "err.signin.openTerminal": "Open Terminal",

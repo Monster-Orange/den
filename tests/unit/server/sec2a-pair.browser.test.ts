@@ -129,9 +129,11 @@ const prefix = () =>
 /** The edge's signed-out page in a fresh browser; `before` runs first (a fake clock). */
 async function edgePage(
   before?: (p: Page) => Promise<void>,
+  userAgent?: string,
 ): Promise<{ ctx: BrowserContext; p: Page; code: string }> {
   const ctx = await browser!.newContext({
     viewport: { width: 1280, height: 1000 },
+    ...(userAgent ? { userAgent } : {}),
   });
   const p = await ctx.newPage();
   if (before) await before(p);
@@ -253,6 +255,112 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
     }
     await ctx.close();
   }, 90_000);
+
+  const UA = {
+    windows:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    mac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+    // iPadOS Safari says Macintosh too.
+    ipad: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+  };
+
+  it("on Windows: no Open Terminal link; the ssh command is the step, with the PowerShell line", async () => {
+    if (skip()) return;
+    const { ctx, p } = await edgePage(undefined, UA.windows);
+    await p.waitForSelector("#den-pair-ssh");
+    expect(await p.$$('#den-pair a[href^="ssh:"]')).toHaveLength(0);
+    expect(await p.$("#den-pair-term")).toBeNull();
+    expect(await p.textContent("#den-pair-win")).toBe(
+      "Open Windows Terminal or PowerShell, paste this, and press Enter.",
+    );
+    // The command, with its copy button, right after that line.
+    expect(
+      await p.$eval(
+        "#den-pair-win",
+        (el) =>
+          `${el.nextElementSibling?.querySelector("pre")?.id} ${!!el.nextElementSibling?.querySelector("button[data-copy-for]")}`,
+      ),
+    ).toBe("den-pair-ssh true");
+    expect(await p.isVisible("#den-pair-ssh")).toBe(true);
+    // Which account to log in as still shows.
+    expect(await p.textContent("#den-pair-note")).toContain(USER);
+    await ctx.close();
+  }, 60_000);
+
+  it("on macOS and iPadOS: Open Terminal shows, and no PowerShell line", async () => {
+    if (skip()) return;
+    for (const ua of [UA.mac, UA.ipad]) {
+      const { ctx, p } = await edgePage(undefined, ua);
+      await p.waitForSelector("#den-pair-term");
+      expect(await p.getAttribute("#den-pair-term", "href")).toBe(
+        `ssh://${USER}@${EDGE}`,
+      );
+      expect(await p.$("#den-pair-win")).toBeNull();
+      expect(await p.isVisible("#den-pair-ssh")).toBe(true);
+      await ctx.close();
+    }
+  }, 60_000);
+
+  it("a click on Open Terminal that keeps the page's focus for 2 s says Nothing opened?", async () => {
+    if (skip()) return;
+    const { ctx, p } = await edgePage(async (pg) => {
+      await pg.addInitScript(() => {
+        (
+          window as unknown as { __denNothingOpenedMs: number }
+        ).__denNothingOpenedMs = 300;
+        // No ssh:// app here: the click opens nothing, as on a machine
+        // without one.
+        document.addEventListener(
+          "click",
+          (e) => {
+            if ((e.target as Element)?.closest?.("#den-pair-term"))
+              e.preventDefault();
+          },
+          true,
+        );
+      });
+    }, UA.mac);
+    await p.waitForSelector("#den-pair-term");
+    expect(await p.isVisible("#den-pair-nothing")).toBe(false);
+    await p.click("#den-pair-term");
+    await p.waitForSelector("#den-pair-nothing", {
+      state: "visible",
+      timeout: 5_000,
+    });
+    expect(await p.textContent("#den-pair-nothing")).toBe(
+      "Nothing opened? Copy the command below and paste it into your terminal app.",
+    );
+    await ctx.close();
+  }, 60_000);
+
+  it("a click on Open Terminal that an app takes (the page loses focus) says nothing", async () => {
+    if (skip()) return;
+    const { ctx, p } = await edgePage(async (pg) => {
+      await pg.addInitScript(() => {
+        (
+          window as unknown as { __denNothingOpenedMs: number }
+        ).__denNothingOpenedMs = 300;
+        document.addEventListener(
+          "click",
+          (e) => {
+            if ((e.target as Element)?.closest?.("#den-pair-term")) {
+              e.preventDefault();
+              // An app took the link: this page no longer has focus.
+              Object.defineProperty(document, "hasFocus", {
+                value: () => false,
+              });
+            }
+          },
+          true,
+        );
+      });
+    }, UA.mac);
+    await p.waitForSelector("#den-pair-term");
+    await p.click("#den-pair-term");
+    await p.waitForTimeout(900);
+    expect(await p.isVisible("#den-pair-nothing")).toBe(false);
+    await ctx.close();
+  }, 60_000);
 
   it("a copy button says Copied", async () => {
     if (skip()) return;
