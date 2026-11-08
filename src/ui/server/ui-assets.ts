@@ -46,6 +46,8 @@ export const UI_MODULES: readonly string[] = [
   // The UI's catalogs other than English (R19; en is in shell.js).
   "/i18n/ja.js",
   "/i18n/es.js",
+  // 0.4.17: one org and workspace rule for Environments and Releases.
+  "/view-scope.js",
 ];
 
 /** URL path → file inside node_modules. */

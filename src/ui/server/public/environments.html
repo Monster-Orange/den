@@ -145,6 +145,21 @@
       .dot.slow {
         background: var(--warn);
       }
+      /* 0.4.17: a check in flight; its row is there before it lands. */
+      .dot.checking {
+        animation: env-pulse 1.2s ease-in-out infinite;
+      }
+      @keyframes env-pulse {
+        50% {
+          opacity: 0.25;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .dot.checking {
+          animation: none;
+          opacity: 0.5;
+        }
+      }
       .empty {
         color: var(--muted);
         padding: 24px 0;
@@ -212,13 +227,8 @@
     <main id="den-content">
     <div class="controls">
       <button id="refresh">Re-check</button>
-      <label class="note"
-        >org
-        <select id="org-filter">
-          <option value="">all</option>
-        </select></label
-      >
-      <span class="note" id="status">checking…</span>
+      <span id="view-note"></span>
+      <span class="note" id="status" aria-live="polite">checking…</span>
       <span class="note"
         >Each repo's <code>__DEN_MANIFEST_YML__</code> health checks, run
         against every environment. ↗ opens the service in a new tab. beta and
@@ -247,6 +257,7 @@
         initLogBadge,
         initWorkspacePill,
       } from "/header.js";
+      import { viewNoteHtml, viewQuery, viewScope } from "/view-scope.js";
       void Promise.all([
         initHealth(),
         initWorkspacePill(),
@@ -306,12 +317,13 @@
             : r.ok === false
               ? "err"
               : "";
-        const what = r.status
-          ? String(r.status)
-          : r.ok
-            ? "up"
-            : r.error || "down";
-        const title = [r.label, checked, r.error].filter(Boolean).join(" — ");
+        // A check that ran out of time says how long it waited (0.4.17).
+        const why =
+          r.error === "timeout" && r.ms
+            ? `timed out after ${Math.max(1, Math.round(r.ms / 1000))} s`
+            : r.error;
+        const what = r.status ? String(r.status) : r.ok ? "up" : why || "down";
+        const title = [r.label, checked, why].filter(Boolean).join(" — ");
         const link =
           r.url && /^https?:/.test(r.url)
             ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(title)}">${esc(what)}</a>`
@@ -320,157 +332,228 @@
         return `<span class="cell"><span class="dot ${cls}"></span>${link}${ms}${openLink(r.openUrl, `${r.repo}/${r.service}`)}</span>`;
       }
 
-      async function load(refresh = false) {
-        const status = document.getElementById("status");
-        status.textContent = "checking…";
-        const envs = await fetch("/api/environments")
-          .then((r) => r.json())
-          .then((v) => (Array.isArray(v) ? v : ["local"]))
-          .catch(() => ["local"]);
-        const [results, orgs, relCfg] = await Promise.all([
-          Promise.all(
-            envs.map((env) =>
-              fetch(
-                `/api/health?env=${encodeURIComponent(env)}${refresh ? "&refresh=1" : ""}`,
+      // 0.4.17: every row at once, each cell "checking" until its result
+      // streams in (/api/health/stream, one per environment, in parallel);
+      // the page's controls never wait. The rows are the View's (the top
+      // bar's Org and Workspace): this page doesn't filter by org itself.
+      const checking = () =>
+        '<span class="cell" data-checking><span class="dot checking"></span><span class="none">checking…</span></span>';
+      const st = {
+        gen: 0,
+        envs: [],
+        rows: new Map(),
+        orgInfo: {},
+        release: {},
+        streams: [],
+        pending: new Set(),
+        view: { scope: "all", inView: [] },
+      };
+
+      function stopStreams() {
+        for (const es of st.streams) es.close();
+        st.streams = [];
+      }
+
+      function sortedRows() {
+        const orgRank = (o) => {
+          const i = Object.keys(st.orgInfo).indexOf(o);
+          return i < 0 ? 1e6 : i;
+        };
+        return [...st.rows.values()].sort(
+          (a, b) =>
+            orgRank(a.org) - orgRank(b.org) ||
+            a.idx - b.idx ||
+            a.service.localeCompare(b.service),
+        );
+      }
+
+      function cellHtml(row, env) {
+        const r = row.byEnv[env];
+        if (r) return cell(r);
+        return st.pending.has(env) ? checking() : '<span class="none">—</span>';
+      }
+
+      function render() {
+        const envs = st.envs;
+        document.getElementById("head").innerHTML =
+          `<tr><th>Service</th>${envs.map((e) => `<th>${esc(e)}</th>`).join("")}</tr>`;
+        const body = document.getElementById("body");
+        const sorted = sortedRows();
+        if (!sorted.length) {
+          body.innerHTML = st.pending.size
+            ? `<tr><td class="empty" colspan="${envs.length + 1}">Loading…</td></tr>`
+            : `<tr><td class="empty" colspan="${envs.length + 1}">No services in view have a __DEN_MANIFEST_YML__ yet.</td></tr>`;
+          return;
+        }
+        let html = "",
+          lastRepo = null,
+          lastOrg = null;
+        for (const row of sorted) {
+          if (row.org !== lastOrg) {
+            const o = st.orgInfo[row.org];
+            html += `<tr class="org" style="${o?.color ? `--org:${esc(o.color)}` : ""}"><td colspan="${envs.length + 1}"><span class="swatch"></span>${esc(o?.label || row.org || "no org")}</td></tr>`;
+            lastOrg = row.org;
+          }
+          if (row.repo !== lastRepo) {
+            const entry =
+              sorted.find((r) => r.repo === row.repo && r.isEntrypoint) || row;
+            html += `<tr class="repo" data-repo="${esc(row.repo)}"><td>${esc(row.repo)}</td>${envs
+              .map(
+                (e) =>
+                  `<td class="rel">${relCell(st.release[row.repo]?.[e])}${openLink(entry.byEnv[e]?.openUrl, `${row.repo} on ${e}`)}</td>`,
               )
-                .then((r) => r.json())
-                .catch(() => []),
-            ),
-          ),
+              .join("")}</tr>`;
+            lastRepo = row.repo;
+          }
+          html += `<tr data-svc="${esc(row.repo)}/${esc(row.service)}"><td class="svc">${esc(row.service)}</td>${envs.map((e) => `<td data-env="${esc(e)}">${cellHtml(row, e)}</td>`).join("")}</tr>`;
+        }
+        body.innerHTML = html;
+      }
+
+      // Results land many per second: paint once per frame.
+      let painting = false;
+      function paintSoon() {
+        if (painting) return;
+        painting = true;
+        requestAnimationFrame(() => {
+          painting = false;
+          render();
+          paintStatus();
+        });
+      }
+
+      function paintStatus() {
+        const status = document.getElementById("status");
+        const all = [...st.rows.values()].flatMap((r) => Object.values(r.byEnv));
+        const down = all.filter((r) => r.ok === false).length;
+        status.textContent = st.pending.size
+          ? `checking ${st.pending.size} environment${st.pending.size === 1 ? "" : "s"}…${down ? ` · ${down} failing so far` : ""}`
+          : `checked ${new Date().toLocaleTimeString()} · ${down ? down + " failing" : "nothing failing"}`;
+      }
+
+      function upsert(r, env, orgOfRepo) {
+        const key = `${r.repo}/${r.service}`;
+        let row = st.rows.get(key);
+        if (!row) {
+          row = {
+            repo: r.repo,
+            service: r.service,
+            label: r.label,
+            org: orgOfRepo[r.repo] || "",
+            isEntrypoint: !!r.isEntrypoint,
+            idx: r.idx ?? 1e9,
+            seeded: false,
+            byEnv: {},
+          };
+          st.rows.set(key, row);
+        }
+        if (!row.seeded && r.idx != null) row.idx = Math.min(row.idx, r.idx);
+        if (r.isEntrypoint) row.isEntrypoint = true;
+        if (env) row.byEnv[env] = r;
+        return row;
+      }
+
+      async function load(refresh = false) {
+        const gen = ++st.gen;
+        stopStreams();
+        st.view = await viewScope();
+        document.getElementById("view-note").innerHTML = viewNoteHtml(st.view);
+        const q = viewQuery(st.view);
+        const [envs, orgs, relCfg, seed] = await Promise.all([
+          fetch("/api/environments")
+            .then((r) => r.json())
+            .then((v) => (Array.isArray(v) && v.length ? v : ["local"]))
+            .catch(() => ["local"]),
           // The org of every repo comes from the catalog (/api/orgs?repos=1):
-          // /api/health rows never carry one, so reading r.org put every
-          // service under "no org" (0.3.0-dev.14).
+          // /api/health rows never carry one (0.3.0-dev.14).
           fetch("/api/orgs?repos=1")
             .then((r) => r.json())
             .catch(() => ({ orgs: [], repos: {} })),
           fetch("/api/release/config")
             .then((r) => r.json())
             .catch(() => ({ environments: [] })),
+          // The rows, before any check: the View's services.
+          fetch(`/api/services?env=local${q}`)
+            .then((r) => (r.ok ? r.json() : []))
+            .catch(() => []),
         ]);
-        // Deployed commit per repo for the release environments (beta, prod).
-        const relEnvs = envs.filter((e) =>
-          (relCfg.environments || []).includes(e),
-        );
-        const release = {};
-        await Promise.all(
-          relEnvs.map(async (e) => {
-            const r = await fetch(
-              `/api/release/status?env=${encodeURIComponent(e)}${refresh ? "&refresh=1" : ""}`,
-            )
-              .then((x) => (x.ok ? x.json() : null))
-              .catch(() => null);
-            for (const row of r?.rows || [])
-              (release[row.repo] ??= {})[e] = row;
-          }),
-        );
-        const orgInfo = Object.fromEntries(
+        if (gen !== st.gen) return;
+        st.envs = envs;
+        st.orgInfo = Object.fromEntries(
           (Array.isArray(orgs?.orgs) ? orgs.orgs : []).map((o) => [o.id, o]),
         );
         const orgOfRepo = orgs?.repos ?? {};
-        const filterSel = document.getElementById("org-filter");
-        const saved = (() => {
-          try {
-            return localStorage.getItem("__DEN_CLI__-env-org") || "";
-          } catch {
-            return "";
-          }
-        })();
-        filterSel.innerHTML =
-          '<option value="">all</option>' +
-          Object.values(orgInfo)
-            .map((o) => `<option value="${esc(o.id)}">${esc(o.label)}</option>`)
-            .join("");
-        filterSel.value = orgInfo[filterSel.dataset.value ?? saved]
-          ? (filterSel.dataset.value ?? saved)
-          : "";
-        const orgFilter = filterSel.value;
-
-        // One row per service, in the dependency-graph order the server ranks
-        // (idx); grouped under its repo.
-        const rows = new Map();
-        results.forEach((list, i) => {
-          for (const r of Array.isArray(list) ? list : []) {
-            const key = `${r.repo}/${r.service}`;
-            const row = rows.get(key) ?? {
-              repo: r.repo,
-              service: r.service,
-              label: r.label,
-              org: orgOfRepo[r.repo] || "",
-              isEntrypoint: r.isEntrypoint,
-              idx: r.idx ?? 1e9,
-              byEnv: {},
-            };
-            row.idx = Math.min(row.idx, r.idx ?? 1e9);
-            row.byEnv[envs[i]] = r;
-            rows.set(key, row);
+        // Every cell checks again; the rows stay.
+        for (const row of st.rows.values()) row.byEnv = {};
+        (Array.isArray(seed) ? seed : []).forEach((s, i) => {
+          if (!s?.repo || !s?.service) return;
+          const row = upsert(
+            { repo: s.repo, service: s.service, isEntrypoint: s.isEntrypoint },
+            null,
+            orgOfRepo,
+          );
+          if (!row.seeded) {
+            row.seeded = true;
+            row.idx = i;
           }
         });
-        // Org first (configured order), then the graph order within it.
-        const orgRank = (o) => {
-          const i = Object.keys(orgInfo).indexOf(o);
-          return i < 0 ? 1e6 : i;
-        };
-        const sorted = [...rows.values()]
-          .filter((r) => !orgFilter || r.org === orgFilter)
-          .sort(
-            (a, b) =>
-              orgRank(a.org) - orgRank(b.org) ||
-              a.idx - b.idx ||
-              a.service.localeCompare(b.service),
+        st.pending = new Set(envs);
+        render();
+        paintStatus();
+        for (const env of envs) {
+          const es = new EventSource(
+            `/api/health/stream?env=${encodeURIComponent(env)}${q}${refresh ? "&refresh=1" : ""}`,
           );
-
-        document.getElementById("head").innerHTML =
-          `<tr><th>Service</th>${envs.map((e) => `<th>${esc(e)}</th>`).join("")}</tr>`;
-        const body = document.getElementById("body");
-        if (!sorted.length) {
-          body.innerHTML = `<tr><td class="empty" colspan="${envs.length + 1}">No services in the active workspace have a __DEN_MANIFEST_YML__ yet.</td></tr>`;
-        } else {
-          let html = "",
-            lastRepo = null,
-            lastOrg = null;
-          for (const row of sorted) {
-            if (row.org !== lastOrg) {
-              const o = orgInfo[row.org];
-              html += `<tr class="org" style="${o?.color ? `--org:${esc(o.color)}` : ""}"><td colspan="${envs.length + 1}"><span class="swatch"></span>${esc(o?.label || row.org || "no org")}</td></tr>`;
-              lastOrg = row.org;
+          st.streams.push(es);
+          const finish = () => {
+            es.close();
+            if (gen !== st.gen) return;
+            st.pending.delete(env);
+            if (!st.pending.size)
+              // Seeded rows no check reached (a module, a library): gone.
+              for (const [k, row] of st.rows)
+                if (!Object.keys(row.byEnv).length) st.rows.delete(k);
+            paintSoon();
+          };
+          es.onmessage = (e) => {
+            if (gen !== st.gen) return es.close();
+            let m = null;
+            try {
+              m = JSON.parse(e.data);
+            } catch {
+              return;
             }
-            if (row.repo !== lastRepo) {
-              const entry =
-                sorted.find((r) => r.repo === row.repo && r.isEntrypoint) ||
-                row;
-              html += `<tr class="repo"><td>${esc(row.repo)}</td>${envs
-                .map(
-                  (e) =>
-                    `<td class="rel">${relCell(release[row.repo]?.[e])}${openLink(entry.byEnv[e]?.openUrl, `${row.repo} on ${e}`)}</td>`,
-                )
-                .join("")}</tr>`;
-              lastRepo = row.repo;
-            }
-            html += `<tr><td class="svc">${esc(row.service)}</td>${envs.map((e) => `<td>${cell(row.byEnv[e])}</td>`).join("")}</tr>`;
-          }
-          body.innerHTML = html;
+            if (m?.type === "result" && m.result) {
+              upsert(m.result, env, orgOfRepo);
+              paintSoon();
+            } else if (m?.type === "done" || m?.type === "error") finish();
+          };
+          es.onerror = finish;
         }
-        const down = sorted
-          .flatMap((r) => Object.values(r.byEnv))
-          .filter((r) => r.ok === false).length;
-        status.textContent = `checked ${new Date().toLocaleTimeString()} · ${down ? down + " failing" : "nothing failing"}`;
+        // Deployed commit per repo for the release environments, as each
+        // lands; nothing waits on it.
+        for (const e of envs.filter((x) =>
+          (relCfg.environments || []).includes(x),
+        ))
+          fetch(
+            `/api/release/status?env=${encodeURIComponent(e)}${refresh ? "&refresh=1" : ""}`,
+          )
+            .then((x) => (x.ok ? x.json() : null))
+            .catch(() => null)
+            .then((r) => {
+              if (gen !== st.gen) return;
+              for (const row of r?.rows || [])
+                (st.release[row.repo] ??= {})[e] = row;
+              paintSoon();
+            });
       }
 
       document
         .getElementById("refresh")
         .addEventListener("click", () => load(true));
-      document.getElementById("org-filter").addEventListener("change", (e) => {
-        e.target.dataset.value = e.target.value;
-        try {
-          localStorage.setItem("__DEN_CLI__-env-org", e.target.value);
-        } catch {
-          /* private window */
-        }
-        load();
-      });
       load();
       setInterval(() => {
-        if (!document.hidden) load();
+        if (!document.hidden && !st.pending.size) load();
       }, POLL_MS);
     </script>
       </main>

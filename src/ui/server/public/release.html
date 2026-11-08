@@ -134,6 +134,10 @@
         font-size: 11px;
         color: var(--muted);
       }
+      .view-note {
+        color: var(--muted);
+        font-size: 12px;
+      }
       #status-text {
         font-size: 11px;
         color: var(--muted);
@@ -678,6 +682,7 @@
         ⟳ Refresh
       </button>
       <span id="status-text">idle</span>
+      <span id="view-note"></span>
       <div class="h-spacer" style="flex: 1"></div>
       <button class="btn" id="waves-btn" title="Edit wave assignment">
         Waves…
@@ -735,6 +740,7 @@
         refreshHealth,
         initWorkspacePill,
       } from "/header.js";
+      import { viewNoteHtml, viewRepos, viewScope } from "/view-scope.js";
 
       // The header's dots report LOCAL service health here: #den-shell pins
       // data-health-env="local" (shell.js). The env picker is the shell's
@@ -818,6 +824,15 @@
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;");
+
+      // 0.4.17: the repos follow the top bar's View (Org and Workspace),
+      // as on Environments: no picker of this page's own (view-scope.js).
+      let viewIn = null;
+      const viewReady = viewScope().then(async (v) => {
+        const note = document.getElementById("view-note");
+        if (note) note.innerHTML = viewNoteHtml(v);
+        viewIn = await viewRepos(v);
+      });
 
       // ── Init ──────────────────────────────────────────────────────────────────
       async function init() {
@@ -909,7 +924,10 @@
           const data = await fetch(
             `/api/release/status?env=${encodeURIComponent(state.env)}&refresh=${refresh ? 1 : 0}`,
           ).then((r) => r.json());
-          state.rows = data.rows || [];
+          await viewReady;
+          state.rows = (data.rows || []).filter(
+            (r) => !viewIn || viewIn.has(r.repo),
+          );
           setStatus(
             data.error
               ? `error: ${data.error}`

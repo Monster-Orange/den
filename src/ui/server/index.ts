@@ -858,6 +858,13 @@ import { processPathRules } from "../cli/onboard-reads.js";
 import { handleAgentRoutes, startAgentUpkeep } from "./agent-routes.js";
 import { lastRunsByRepo, recordRunEnd, recordRunStart } from "./run-history.js";
 import {
+  CHECK_CONCURRENCY,
+  CHECK_TIMEOUT_MS,
+  runCapped,
+  timedOutText,
+  withTimeout,
+} from "./check-pool.js";
+import {
   handleSessionList,
   handleSessionUpgrade,
   isSessionIoPath,
@@ -2788,14 +2795,35 @@ async function handleRequest(
     // Streaming emits in completion order, which varies per poll (shell probes
     // finish at wildly different speeds), so without a stable key the client
     // repaints the dots in a different order every 5s.
-    const results = await Promise.all(
-      sortedEntries.map((e, idx) =>
-        checkEntry(e).then((r) => {
-          const ranked = { ...r, openUrl: e.openUrl, links: e.links, idx };
-          onResult?.(ranked);
-          return ranked;
-        }),
-      ),
+    // 0.4.17: at most CHECK_CONCURRENCY at once, each with at most
+    // CHECK_TIMEOUT_MS: a dead host's check says "timed out after 10 s" and
+    // never holds up the run (check-pool.ts).
+    const late = (e: (typeof sortedEntries)[number]): HealthResult => ({
+      repo: e.repo,
+      service: e.service,
+      label: e.label,
+      ...(e.checkType !== "none"
+        ? healthCheckFields(e.checkType, e.target)
+        : { url: null }),
+      repoPath: e.repoPath,
+      mode: e.mode,
+      isEntrypoint: e.isEntrypoint,
+      ...e.meta,
+      ms: CHECK_TIMEOUT_MS,
+      ok: false,
+      error: timedOutText(CHECK_TIMEOUT_MS),
+    });
+    const results = await runCapped(
+      sortedEntries,
+      CHECK_CONCURRENCY,
+      (e, idx) =>
+        withTimeout(checkEntry(e), CHECK_TIMEOUT_MS, () => late(e)).then(
+          (r) => {
+            const ranked = { ...r, openUrl: e.openUrl, links: e.links, idx };
+            onResult?.(ranked);
+            return ranked;
+          },
+        ),
     );
     return results;
   }
