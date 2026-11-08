@@ -224,7 +224,7 @@ describe("Sign in with GitHub on the edge's signed-out page", () => {
     gh.approve(lastCode(), { id: 777, login: "someone-else" });
     await p.waitForSelector(".den-gh-err", { timeout: 20_000 });
     expect((await p.textContent(".den-gh-err"))?.trim()).toBe(
-      "@someone-else isn't the owner of this Den. Ask the owner to add you, or use 'Approve this computer'.",
+      "@someone-else isn't the owner of this Den. Only the owner's account can use Sign in with GitHub. Use Approve this computer instead.",
     );
     expect((await p.textContent("#den-gh-start"))?.trim()).toBe("Start again");
     expect(await p.isVisible("#den-gh-start")).toBe(true);

@@ -366,12 +366,18 @@
     "err.signin.title": "Sign in to {name}",
     "err.signin.where":
       "You're opening {name} from another computer. {name} runs on {host}, so it needs to know this is you.",
-    "err.signin.githubNote":
-      "Uses your GitHub account. The owner of this {name} has to have linked theirs.",
-    "err.signin.githubNoOwner":
-      "Sign in with GitHub needs an owner, and this {name} has none yet. On {host} (not this computer), run:",
+    "err.signin.ghStep1":
+      "On {host}, run {cmd}, or use Settings › Access there.",
+    "err.signin.ghStep2":
+      "It shows a code. Enter it at github.com/login/device and approve.",
+    "err.signin.ghStep3":
+      "Then come back here and press Sign in with GitHub, with the same GitHub account.",
+    "err.signin.ghOwner": "Owner: @{login}",
+    "err.signin.ghOnly":
+      "Only the owner's GitHub account can sign in this way. For anyone else, use Approve this computer.",
+    "err.signin.ghLearn": "Learn more",
     "err.signin.githubRefused":
-      "@{login} isn't the owner of this {name}. Ask the owner to add you, or use 'Approve this computer'.",
+      "@{login} isn't the owner of this {name}. Only the owner's account can use Sign in with GitHub. Use Approve this computer instead.",
     "err.signin.approveOr": "Or approve this computer",
     "err.signin.approve": "Approve this computer",
     "err.signin.step1": "On {host} (not this computer), run:",

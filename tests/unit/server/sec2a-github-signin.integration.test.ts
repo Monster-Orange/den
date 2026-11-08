@@ -218,7 +218,7 @@ describe("before an owner is linked", () => {
     expect(r.body).toContain('"code":"signin_required"');
     // The command that runs on this server: `den`, or its absolute path.
     expect(r.body).toMatch(
-      /"github":\{"state":"no_owner","owner":"(den|\/[^"]*\/bin\/den) web owner link"\}/,
+      /"github":\{"state":"no_owner","owner":"(den|\/[^"]*\/bin\/den) web owner link","learnMore":"https:\/\/github\.com\/Monster-Orange\/den\/blob\/main\/docs\/distributions\.md#signing-in-with-github"\}/,
     );
   });
 
@@ -284,6 +284,8 @@ describe("Sign in with GitHub through the edge", () => {
     });
     expect(r.status).toBe(401);
     expect(r.body).toContain('"github":{"state":"ready"');
+    // SEC-2a-UX: step 1 is done, and names the owner.
+    expect(r.body).toContain('"ownerLogin":"octo-owner"');
   });
 
   it("the owner's approval sets the session cookie, once; the device is recorded", async () => {
@@ -359,8 +361,9 @@ describe("Sign in with GitHub through the edge", () => {
       state: "refused",
       login: "someone-else",
       error:
-        "@someone-else isn't allowed on this Den. Ask the owner to add you.",
+        "@someone-else isn't the owner of this Den. Only the owner's account can use Sign in with GitHub. Use Approve this computer instead.",
     });
+    expect(String(json(done).error)).not.toMatch(/add you/);
     expect(cookieOf(done)).toBe("");
   });
 

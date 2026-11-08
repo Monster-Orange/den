@@ -83,6 +83,13 @@ export function githubClientId(configured: string | undefined): string {
   return (configured ?? MO_DEN_GITHUB_CLIENT_ID).trim();
 }
 
+/**
+ * The docs section the signed-out page's Learn more opens (SEC-2a-UX):
+ * docs/distributions.md, "Signing in with GitHub", in the public repo.
+ */
+export const GITHUB_SIGNIN_DOCS =
+  "https://github.com/Monster-Orange/den/blob/main/docs/distributions.md#signing-in-with-github";
+
 /** What a GitHub button says while no client id is configured. */
 export function noClientIdMessage(cli: string): string {
   return (

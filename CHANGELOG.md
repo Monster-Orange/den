@@ -4,6 +4,29 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.16] - unreleased
+
+### Changed
+
+- **The signed-out page explains Sign in with GitHub (SEC-2a-UX).** It
+  shows the same three steps whether or not an owner is linked: on the
+  machine Den runs on, run `<cli> web owner link` (or use Settings ›
+  Access there); enter the code it shows at github.com/login/device and
+  approve; come back and press Sign in with GitHub with the same account.
+  Once an owner is linked, step 1 shows as done ("Owner: @login") and the
+  button follows the steps. Below them: only the owner's GitHub account
+  can sign in this way, anyone else uses Approve this computer, and Learn
+  more opens docs/distributions.md, "Signing in with GitHub". English,
+  Spanish and Japanese.
+- Another GitHub account is refused with "@login isn't the owner of this
+  Den. Only the owner's account can use Sign in with GitHub. Use Approve
+  this computer instead." It no longer says to ask the owner to add you:
+  a Den has one owner, and no one to add.
+
+### Migrations
+
+- None.
+
 ## [0.4.15] - 2026-11-07
 
 ### Added

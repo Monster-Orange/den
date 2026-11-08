@@ -242,12 +242,18 @@
     "err.signin.title": "{name} にサインイン",
     "err.signin.where":
       "別のコンピューターから {name} を開いています。{name} は {host} で動いているため、あなた本人であることを確認する必要があります。",
-    "err.signin.githubNote":
-      "あなたの GitHub アカウントを使います。この {name} のオーナーが自分のアカウントをリンクしている必要があります。",
-    "err.signin.githubNoOwner":
-      "GitHub でのサインインにはオーナーが必要ですが、この {name} にはまだいません。{host} で(このコンピューターではありません)次を実行してください:",
+    "err.signin.ghStep1":
+      "{host} で {cmd} を実行するか、そちらで 設定 › アクセス を使います。",
+    "err.signin.ghStep2":
+      "コードが表示されます。github.com/login/device で入力して承認します。",
+    "err.signin.ghStep3":
+      "ここに戻り、同じ GitHub アカウントで「GitHub でサインイン」を押します。",
+    "err.signin.ghOwner": "オーナー: @{login}",
+    "err.signin.ghOnly":
+      "この方法でサインインできるのはオーナーの GitHub アカウントだけです。それ以外の人は「このコンピューターを承認」を使ってください。",
+    "err.signin.ghLearn": "詳しく見る",
     "err.signin.githubRefused":
-      "@{login} はこの {name} のオーナーではありません。オーナーに追加を依頼するか、「このコンピューターを承認」を使ってください。",
+      "@{login} はこの {name} のオーナーではありません。GitHub でサインインを使えるのはオーナーのアカウントだけです。代わりに「このコンピューターを承認」を使ってください。",
     "err.signin.approveOr": "または、このコンピューターを承認",
     "err.signin.approve": "このコンピューターを承認",
     "err.signin.step1":

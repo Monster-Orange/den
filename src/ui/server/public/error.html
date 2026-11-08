@@ -265,6 +265,24 @@
         color: var(--text);
         font-weight: 600;
       }
+      /* SEC-2a-UX: a step already done (the owner is linked). */
+      ol.den-steps li.done::marker {
+        content: "\2713  ";
+        color: var(--ok, var(--text));
+      }
+      ol.den-steps li.done > p:first-child {
+        color: var(--muted);
+      }
+      ol.den-steps code {
+        overflow-wrap: anywhere;
+      }
+      p.den-gh-note {
+        margin-top: 8px;
+      }
+      p.den-gh-owner {
+        color: var(--text);
+        font-weight: 600;
+      }
       details.den-other {
         margin: 0 0 16px;
       }

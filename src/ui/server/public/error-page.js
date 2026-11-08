@@ -226,27 +226,48 @@ export function landingAfterSignIn(loc) {
 }
 
 /**
- * Sign in with GitHub (SEC-2a): the main button, shown only when a client
- * id is configured. The server runs GitHub's device flow; the page shows
- * the code and github.com/login/device, polls the server, and goes on once
- * the owner approved it (the server sets the cookie). Another account is
- * refused by name. With no owner linked, it says what to run on the server.
+ * Sign in with GitHub (SEC-2a): shown only when a client id is configured.
+ * The server runs GitHub's device flow; the page shows the code and
+ * github.com/login/device, polls the server, and goes on once the owner
+ * approved it (the server sets the cookie). Another account is refused by
+ * name.
+ *
+ * SEC-2a-UX: the same three steps in every state (link the owner on the
+ * machine, enter the code on GitHub, come back and press the button).
+ * Once an owner is linked, step 1 is done and names it, and the button
+ * follows the steps. Below them: only the owner's account signs in this
+ * way, and Learn more.
  */
 function githubBlock(s, t) {
   const g = s.github;
   if (!g || s.localhost || g.state === "no_client_id") return "";
   const host = s.machine || "";
-  if (g.state === "no_owner")
-    return (
-      `<div id="den-gh"><p>${withHost(t, "err.signin.githubNoOwner", { name: s.name, host })}</p>` +
-      cmdLine("den-gh-owner-cmd", g.owner, t) +
-      `</div>`
-    );
+  const ready = g.state === "ready";
+  const step1 = withHost(t, "err.signin.ghStep1", {
+    host,
+    cmd: "\u0000",
+  }).replace("\u0000", `<code class="mono">${esc(g.owner)}</code>`);
   return (
-    `<div id="den-gh"><div class="acts" style="margin-top:0">` +
-    `<button type="button" class="btn primary" id="den-gh-start">${esc(t("err.signin.github"))}</button>` +
-    `</div><p class="den-gh-note" style="margin-top:8px">${esc(t("err.signin.githubNote", { name: s.name }))}</p>` +
-    `<div id="den-gh-flow" aria-live="polite"></div></div>`
+    `<div id="den-gh">` +
+    `<ol class="den-steps" id="den-gh-steps">` +
+    `<li id="den-gh-step1"${ready ? ' class="done"' : ""}><p>${step1}</p>` +
+    (ready && g.ownerLogin
+      ? `<p class="den-gh-owner" id="den-gh-owner">${esc(t("err.signin.ghOwner", { login: g.ownerLogin }))}</p>`
+      : "") +
+    `</li>` +
+    `<li id="den-gh-step2"><p>${esc(t("err.signin.ghStep2"))}</p></li>` +
+    `<li id="den-gh-step3"><p>${esc(t("err.signin.ghStep3"))}</p></li>` +
+    `</ol>` +
+    (ready
+      ? `<div class="acts" style="margin-top:0">` +
+        `<button type="button" class="btn primary" id="den-gh-start">${esc(t("err.signin.github"))}</button>` +
+        `</div><div id="den-gh-flow" aria-live="polite"></div>`
+      : "") +
+    `<p class="den-gh-note" id="den-gh-only">${esc(t("err.signin.ghOnly"))}` +
+    (g.learnMore
+      ? ` <a id="den-gh-learn" href="${esc(g.learnMore)}" target="_blank" rel="noopener noreferrer">${esc(t("err.signin.ghLearn"))}</a>`
+      : "") +
+    `</p></div>`
   );
 }
 

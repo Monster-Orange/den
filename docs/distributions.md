@@ -1687,14 +1687,28 @@ the account's id and login, never a token, and no other account gets in.
   `web owner unlink`. Settings › Access does the same in the browser
   (Link your GitHub account, Unlink): shell-grade actions, for a signed-in
   browser and never an agent's token.
-- **Sign in with GitHub** on the signed-out page shows a code and
-  `github.com/login/device`. The server runs the flow, and when the owner
-  approves it sets the same never-expiring session cookie a one-time link
-  sets, and the page reloads signed in. Another account sees "@<login>
-  isn't allowed on this Den". The token is thrown away either way. At most
-  three sign-ins wait for GitHub at once; a code expires as GitHub says
-  (15 minutes). With no owner linked the page says to run
-  `web owner link`.
+- **Sign in with GitHub** on the signed-out page shows the same three
+  steps whether or not an owner is linked:
+  1. On the machine Den runs on, run `web owner link`, or use
+     Settings › Access there.
+  2. It shows a code. Enter it at `github.com/login/device` and approve.
+  3. Come back to the signed-out page and press **Sign in with GitHub**,
+     with the same GitHub account.
+
+  Once an owner is linked, step 1 shows as done ("Owner: @<login>") and
+  the button follows the steps; before that there is no button. Below the
+  steps the page says only the owner's GitHub account can sign in this
+  way, and that anyone else uses **Approve this computer**; **Learn more**
+  opens this section.
+
+- Pressing the button shows a code and `github.com/login/device`. The
+  server runs the flow, and when the owner approves it sets the same
+  never-expiring session cookie a one-time link sets, and the page reloads
+  signed in. Another account sees "@<login> isn't the owner of this Den.
+  Only the owner's account can use Sign in with GitHub. Use Approve this
+  computer instead." Den has one owner, so there is no one to add. The
+  token is thrown away either way. At most three sign-ins wait for GitHub
+  at once; a code expires as GitHub says (15 minutes).
 - **Settings › Access** lists the linked devices (the browser, how it
   signed in, the client address when the edge vouched for one, created and
   last seen; "This device" on yours), each with **Revoke**, which ends its session at once (its

@@ -211,3 +211,56 @@ describe("localizePage", () => {
     expect(localizePage(bare, "es")).toBe(bare);
   });
 });
+
+describe("Sign in with GitHub's words (SEC-2a-UX)", () => {
+  // The refusal never promises the owner can let another account in.
+  const addYou: Record<string, RegExp> = {
+    en: /add you/i,
+    es: /añada/i,
+    ja: /追加/,
+  };
+
+  it.each(UI_LANGUAGES)(
+    "%s: the refusal says only the owner, and to approve this computer",
+    (lang) => {
+      const refused = messages[lang]["err.signin.githubRefused"];
+      expect(refused).not.toMatch(addYou[lang]);
+      expect(refused).toContain("{login}");
+      expect(refused).toContain(messages[lang]["err.signin.approve"]);
+    },
+  );
+
+  it.each(UI_LANGUAGES)("%s: the three steps and the note", (lang) => {
+    for (const k of [
+      "err.signin.ghStep1",
+      "err.signin.ghStep2",
+      "err.signin.ghStep3",
+      "err.signin.ghOwner",
+      "err.signin.ghOnly",
+      "err.signin.ghLearn",
+    ])
+      expect(messages[lang][k]).toBeTruthy();
+    expect(messages[lang]["err.signin.ghStep1"]).toContain("{cmd}");
+    expect(messages[lang]["err.signin.ghOwner"]).toContain("@{login}");
+  });
+
+  it("en says it the way the spec does", () => {
+    const en = messages.en;
+    expect(en["err.signin.githubRefused"]).toBe(
+      "@{login} isn't the owner of this {name}. Only the owner's account can use Sign in with GitHub. Use Approve this computer instead.",
+    );
+    expect(en["err.signin.ghStep1"]).toBe(
+      "On {host}, run {cmd}, or use Settings › Access there.",
+    );
+    expect(en["err.signin.ghStep2"]).toBe(
+      "It shows a code. Enter it at github.com/login/device and approve.",
+    );
+    expect(en["err.signin.ghStep3"]).toBe(
+      "Then come back here and press Sign in with GitHub, with the same GitHub account.",
+    );
+    expect(en["err.signin.ghOwner"]).toBe("Owner: @{login}");
+    expect(en["err.signin.ghOnly"]).toBe(
+      "Only the owner's GitHub account can sign in this way. For anyone else, use Approve this computer.",
+    );
+  });
+});
