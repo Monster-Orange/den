@@ -151,10 +151,25 @@ export function isGlossed(line: string, start: number, end: number): boolean {
   return false;
 }
 
-/** Bare IDs in the text, in order, each once. */
+/**
+ * The ID-shaped words in names Den itself gives (the product's title, the
+ * workspace): a Den named "den-t2" is "Den T2", and its agent says so.
+ * They are names, not IDs to explain.
+ */
+export function idsInNames(names: readonly (string | undefined)[]): string[] {
+  const out = new Set<string>();
+  for (const n of names)
+    for (const re of ID_PATTERNS)
+      for (const m of String(n ?? "").matchAll(new RegExp(re.source, "g")))
+        out.add(m[0]);
+  return [...out];
+}
+
+/** Bare IDs in the text, in order, each once. `known` are names, never bare. */
 export function bareIds(
   text: string,
   skipLines: Set<number> = new Set(),
+  known: ReadonlySet<string> = new Set(),
 ): string[] {
   const glossed = new Set<string>();
   const bare: string[] = [];
@@ -172,7 +187,7 @@ export function bareIds(
         hits.push({ id: m[0], start: m.index!, end: m.index! + m[0].length });
     hits.sort((a, b) => a.start - b.start);
     for (const h of hits) {
-      if (glossed.has(h.id)) continue;
+      if (glossed.has(h.id) || known.has(h.id)) continue;
       if (isGlossed(line, h.start, h.end)) glossed.add(h.id);
       else if (!bare.includes(h.id)) bare.push(h.id);
     }
@@ -208,7 +223,10 @@ function decisionProblems(items: string[]): string[] {
 }
 
 /** Check a hand-back. Pure: the text in, the problems out. */
-export function checkHandback(text: string): HandbackResult {
+export function checkHandback(
+  text: string,
+  known: ReadonlySet<string> = new Set(),
+): HandbackResult {
   const lines = String(text ?? "").split(/\r?\n/);
   const { found, literal } = splitParts(lines);
   const problems: string[] = [];
@@ -233,7 +251,7 @@ export function checkHandback(text: string): HandbackResult {
         `"URL:" has no link. Give the full address, with http:// or https://, or say none if this work has no page.`,
       );
   }
-  for (const id of bareIds(lines.join("\n"), literal))
+  for (const id of bareIds(lines.join("\n"), literal, known))
     problems.push(
       `"${id}" is not explained. Say what it is, e.g. "${id} (what it is)".`,
     );

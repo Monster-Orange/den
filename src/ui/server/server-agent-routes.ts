@@ -8,6 +8,9 @@
  *                                   back (resume, relaunch); a person only
  *   POST /api/server-agent/runtime  { runtime: id | null }: the person's
  *                                   choice (user.yml agents.server_runtime)
+ *   POST /api/server-agent/model    { model: id | null }: the person's
+ *                                   model, one of the runtime's own
+ *                                   (user.yml agents.server_model)
  *
  * An agent never starts the server agent or picks its runtime: any agent
  * credential or claim is refused (403).
@@ -17,6 +20,7 @@ import { HostError } from "../../shared/sessions/client.js";
 import { AgentError, type AgentsDeps } from "../cli/agent-ops.js";
 import {
   serverAgentStatus,
+  setServerModel,
   setServerRuntime,
   startServerAgent,
   type ServerAgentDeps,
@@ -58,7 +62,9 @@ function sendError(res: http.ServerResponse, e: unknown): void {
   sendJson(res, { ok: false, error: (e as Error).message }, 500);
 }
 
-async function body(req: http.IncomingMessage): Promise<{ runtime?: unknown }> {
+async function body(
+  req: http.IncomingMessage,
+): Promise<{ runtime?: unknown; model?: unknown }> {
   const raw = await readBody(req);
   if (raw.length > MAX_BODY)
     throw new AgentError("body too large", { status: 413 });
@@ -71,7 +77,7 @@ async function body(req: http.IncomingMessage): Promise<{ runtime?: unknown }> {
   }
   if (!b || typeof b !== "object" || Array.isArray(b))
     throw new AgentError("body must be an object", { usage: true });
-  return b as { runtime?: unknown };
+  return b as { runtime?: unknown; model?: unknown };
 }
 
 export async function handleServerAgentRoutes(
@@ -83,7 +89,8 @@ export async function handleServerAgentRoutes(
   if (
     pathname !== "/api/server-agent" &&
     pathname !== "/api/server-agent/start" &&
-    pathname !== "/api/server-agent/runtime"
+    pathname !== "/api/server-agent/runtime" &&
+    pathname !== "/api/server-agent/model"
   )
     return false;
   const method = req.method ?? "GET";
@@ -107,7 +114,11 @@ export async function handleServerAgentRoutes(
     return true;
   }
   const actor = auditActorOf(req);
-  const verb = pathname.endsWith("/start") ? "start" : "runtime";
+  const verb = pathname.endsWith("/start")
+    ? "start"
+    : pathname.endsWith("/model")
+      ? "model"
+      : "runtime";
   const audit = (detail: string, reason?: string) =>
     recordAction(
       actor,
@@ -122,7 +133,7 @@ export async function handleServerAgentRoutes(
     // The person's: an agent's credential, or a claim to be one, never.
     if (agentPrincipalOf(req) || actor)
       throw new AgentError(
-        "only a person can start the server agent or pick its runtime",
+        "only a person can start the server agent or pick its runtime or model",
         { status: 403 },
       );
     const b = await body(req);
@@ -132,6 +143,17 @@ export async function handleServerAgentRoutes(
       typeof b.runtime !== "string"
     )
       throw new AgentError("runtime must be a runtime id", { usage: true });
+    if (verb === "model") {
+      if (b.model !== null && typeof b.model !== "string")
+        throw new AgentError("model must be a model id or null", {
+          usage: true,
+        });
+      const id = (b.model as string | null) ?? null;
+      await setServerModel(d, id, deps.server);
+      audit(id ? `model ${id}` : "model cleared");
+      sendJson(res, { ok: true, ...(await serverAgentStatus(d, deps.server)) });
+      return true;
+    }
     if (verb === "runtime") {
       const id = (b.runtime as string | null | undefined) ?? null;
       setServerRuntime(id, deps.server);

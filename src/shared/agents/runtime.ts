@@ -108,6 +108,14 @@ export interface LaunchInput {
    */
   allow?: string[];
   /**
+   * ON-6: the server agent's own: Den's MCP tools run without the
+   * runtime's own prompt. Den's reads only read, and its writes are held
+   * for the person's Allow in the browser, so each write asks once there.
+   * The org's immediate actions (mcp.actions) still ask in the terminal.
+   * Nothing outside Den's MCP server is allowed by it.
+   */
+  denToolsAllowed?: boolean;
+  /**
    * The new conversation's first prompt (a relaunch from handoff.md).
    * Only a runtime with `firstPrompt: true` is given one.
    */

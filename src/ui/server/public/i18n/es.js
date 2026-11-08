@@ -586,6 +586,8 @@
     "ap.do.repo_add.new":
       'Añadir el repositorio de {path} a un espacio nuevo "{workspace}"',
     "ap.do.service_try": "Iniciar {service}",
+    "ap.do.service_try.activates":
+      "Iniciar {service} (esto activa {workspace})",
     "ap.says": "El agente dice:",
     "ap.review": "Revisar",
     "ap.hide": "Ocultar detalles",
@@ -738,6 +740,8 @@
       "Vamos a configurar __DEN_TITLE__. Solo lee hasta que permitas un cambio.",
     "sa.sub":
       "Para todo lo del servidor: añadir un repo, arreglar un servicio que falla, cambiar un ajuste o explicar qué está en marcha.",
+    "sa.trust": "Claude pregunta si confías en esta carpeta. Elige Sí.",
+    "sa.model": "Modelo",
     "sa.login":
       "Si Claude te pide iniciar sesión, hazlo aquí. Después {name} empieza.",
     "sa.readsOnly":

@@ -404,8 +404,11 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
     const s = await local.newPage();
     await claimIn(s);
     await s.goto(`http://localhost:${port}/settings#access`);
-    await s.waitForSelector("#cl-overlay.open");
-    await s.keyboard.press("Escape");
+    // A brand-new Den never opens What's new: it marks it seen (ON-6).
+    await s.waitForFunction(() =>
+      Object.keys(localStorage).some((k) => k.endsWith("-changelog-seen")),
+    );
+    expect(await s.$("#cl-overlay.open")).toBeNull();
     const row = s.locator(`.set-waiting[data-code="${code}"]`);
     await row.waitFor();
     expect(await row.textContent()).toMatch(/Chrome on \w+/);

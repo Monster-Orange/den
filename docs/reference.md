@@ -7,7 +7,7 @@ The technical reference that used to be the README. It will be split into separa
 1. **Create** a distribution named after your product:
 
    ```sh
-   npx @monster-orange/den create acme      # → ./acme
+   npx @monster-orange/den@latest create acme      # → ./acme
    cd acme && npm install
    ```
 

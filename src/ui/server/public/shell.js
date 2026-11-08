@@ -697,6 +697,8 @@
     "ap.do.repo_add.new":
       'Add the repo at {path} to a new workspace "{workspace}"',
     "ap.do.service_try": "Start {service}",
+    "ap.do.service_try.activates":
+      "Start {service} (this activates {workspace})",
     "ap.says": "Agent says:",
     "ap.review": "Review",
     "ap.hide": "Hide details",
@@ -849,6 +851,8 @@
       "For anything about this server: add a repo, fix a failing service, change a setting, or explain what's running.",
     "sa.login":
       "If Claude asks you to log in, log in here. Then {name} starts.",
+    "sa.trust": "Claude asks whether to trust this folder. Choose Yes.",
+    "sa.model": "Model",
     "sa.readsOnly":
       "It acts only through __DEN_TITLE__'s own tools. Each change asks you first, in this browser.",
     "sa.starting": "Starting the agent…",
@@ -4386,7 +4390,10 @@
   }
   function apWhat(a) {
     var p = a.params || {};
-    var key = "ap.do." + a.action + (p.isNew ? ".new" : "");
+    var key =
+      "ap.do." +
+      a.action +
+      (p.isNew ? ".new" : p.activates ? ".activates" : "");
     var s = t(key, p);
     if (s !== key) return s;
     s = String(a.summary || a.action);

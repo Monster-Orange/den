@@ -44,6 +44,11 @@ beforeAll(async () => {
   const root = path.join(tmp, "den");
   write(path.join(root, "den.yml"), "product:\n  name: den\n");
   write(path.join(root, "config", "den.yml"), "environments: [local]\n");
+  // A Den with a repo: a brand-new one skips What's new (ON-6).
+  write(
+    path.join(root, "config", "local", "workspaces.yml"),
+    "active: [default]\nfocus: default\nworkspaces:\n  default:\n    services:\n      shop:\n        mode: dev-managed\n        path: /nowhere/shop\n",
+  );
   srv = await startSlowGitServer({ tmp, root, slow: [], delayS: 0 });
   browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: 1280, height: 700 } });

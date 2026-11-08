@@ -1553,7 +1553,12 @@
         } from "/header.js";
         import { checkLine } from "/topbar.js";
         import { agentsSectionHtml, mountAgents } from "/agents-section.js";
-        import { mountGraph, graphHealth, graphMaximized } from "/graph.js";
+        import {
+          mountGraph,
+          graphEmptyNote,
+          graphHealth,
+          graphMaximized,
+        } from "/graph.js";
         import {
           mergeWorkspaceViews,
           ownerOfRepos,
@@ -4715,6 +4720,8 @@
           if (!services || services.length === 0) {
             wrap.innerHTML =
               '<div class="graph-empty">No services in workspace</div>';
+            // Open in Graph for a service in another workspace: say where.
+            graphEmptyNote(wrap, GRAPH_HOOKS);
             return;
           }
           mountGraph(

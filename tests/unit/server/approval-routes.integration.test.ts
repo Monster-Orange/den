@@ -16,6 +16,7 @@ import * as net from "net";
 import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
+import * as yaml from "yaml";
 import {
   cliAuthHeaders,
   readWebSecret,
@@ -269,8 +270,16 @@ describe("held writes (ON-3)", () => {
     expect(r.status).toBe(200);
     const a = json(r);
     expect(a.state).toBe("done");
-    expect(a.result).toEqual({ ok: true, name: "allowed" });
+    expect(a.result).toEqual({ ok: true, name: "allowed", active: true });
     expect(await workspaces()).toContain("allowed");
+    // Active on the same Allow: service_try can start its services.
+    const file = yaml.parse(
+      fs.readFileSync(
+        path.join(root, "config", "local", "workspaces.yml"),
+        "utf-8",
+      ),
+    ) as { active: string[] };
+    expect(file.active).toContain("allowed");
     const again = await call("POST", `/api/approvals/${id}/decide`, h, {
       decision: "allow",
     });

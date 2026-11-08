@@ -88,6 +88,8 @@ export function hookCommands(
   dir: string = GUARDRAILS_DIR,
   node: string = process.execPath,
   rotation?: RotationArgs,
+  /** ID-shaped words in Den's own names, for the Stop hook (stop-hook.ts). */
+  known: readonly string[] = [],
 ): HookCommands {
   const more = (c: EngineCommand): EngineCommand =>
     rotation
@@ -108,7 +110,10 @@ export function hookCommands(
       args: [path.join(dir, "pretooluse.mjs")],
     }),
     stop: commandLine(
-      more(scriptEntrypoint("src/shared/agents/guardrails/stop-hook.ts")),
+      ((c: EngineCommand): EngineCommand => ({
+        command: c.command,
+        args: [...c.args, ...known.flatMap((k) => ["--known", k])],
+      }))(more(scriptEntrypoint("src/shared/agents/guardrails/stop-hook.ts"))),
     ),
     rotation: commandLine(
       more(scriptEntrypoint("src/shared/agents/guardrails/rotation-hook.ts")),

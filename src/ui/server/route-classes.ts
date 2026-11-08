@@ -405,6 +405,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/server-agent/runtime",
     "the person's choice of the server agent's runtime (user.yml); never an agent's token",
   ),
+  M(
+    ["POST"],
+    "/api/server-agent/model",
+    "the person's choice of the server agent's model (user.yml); never an agent's token",
+  ),
   S(
     ["POST"],
     "/api/workspaces/:ws/conversations/:id/import",

@@ -572,6 +572,8 @@
     "ap.do.repo_add.new":
       "{path} のリポジトリを新しいワークスペース「{workspace}」に追加",
     "ap.do.service_try": "{service} を起動",
+    "ap.do.service_try.activates":
+      "{service} を起動 ({workspace} を有効にします)",
     "ap.says": "エージェントのコメント:",
     "ap.review": "確認",
     "ap.hide": "詳細を隠す",
@@ -721,6 +723,9 @@
       "__DEN_TITLE__ をセットアップしましょう。変更を許可するまで、読み取りだけを行います。",
     "sa.sub":
       "サーバーのことなら何でも：リポジトリの追加、失敗しているサービスの修正、設定の変更、動いているものの説明。",
+    "sa.trust":
+      "Claude がこのフォルダーを信頼するか尋ねます。「はい」を選んでください。",
+    "sa.model": "モデル",
     "sa.login":
       "Claude からログインを求められたら、ここでログインしてください。そのあと {name} が始まります。",
     "sa.readsOnly":

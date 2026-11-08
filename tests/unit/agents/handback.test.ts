@@ -8,10 +8,14 @@ import { describe, expect, it } from "@jest/globals";
 import {
   bareIds,
   checkHandback,
+  idsInNames,
   isGlossed,
   looksLikeHandback,
 } from "../../../src/shared/agents/handback.js";
-import { stopDecision } from "../../../src/shared/agents/guardrails/stop-hook.js";
+import {
+  knownArgs,
+  stopDecision,
+} from "../../../src/shared/agents/guardrails/stop-hook.js";
 
 const GOOD = `Done: the hooks are in.
 
@@ -242,5 +246,42 @@ describe("the Stop hook", () => {
     ).toBe("");
     expect(stopDecision(null)).toBe("");
     expect(stopDecision({})).toBe("");
+  });
+});
+
+describe("Den's own names are not IDs", () => {
+  // A Den named "t2" is "T2", and its server agent greets with it.
+  const greeting = "Let's set up T2. Where are your repos?";
+
+  it("the ID-shaped words in Den's names are known, and never flagged", () => {
+    expect(idsInNames(["T2", "north", undefined])).toEqual(["T2"]);
+    expect(idsInNames(["Acme", "web"])).toEqual([]);
+    expect(
+      stopDecision({ last_assistant_message: greeting }, null, ["T2"]),
+    ).toBe("");
+    // Another ID in the same message is still flagged.
+    const out = stopDecision(
+      { last_assistant_message: `${greeting} See AG-14.` },
+      null,
+      ["T2"],
+    );
+    const reason = (JSON.parse(out) as { reason: string }).reason;
+    expect(reason).toMatch(/"AG-14" is not explained/);
+    expect(reason).not.toMatch(/T2/);
+  });
+
+  it("the hook reads them from its --known arguments", () => {
+    expect(
+      knownArgs([
+        "--files",
+        "/x",
+        "--after",
+        "3",
+        "--known",
+        "T2",
+        "--known",
+        "Q4",
+      ]),
+    ).toEqual(["T2", "Q4"]);
   });
 });

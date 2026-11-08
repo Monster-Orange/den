@@ -80,7 +80,7 @@ yours. Den connects them and turns on good practice from the start.
 You need Node 22.13 or later, and Docker for anything that runs in containers. mkcert is only needed if you want Den to issue local HTTPS certificates.
 
 ```sh
-npx @monster-orange/den create acme     # your own Den, named after your product
+npx @monster-orange/den@latest create acme     # your own Den, named after your product
 cd acme && npm install
 ./bin/acme register ../shop-api          # add a repo (repeat for each one)
 ./bin/acme up                            # start everything, in order

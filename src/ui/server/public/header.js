@@ -650,15 +650,15 @@ export async function initChangelog() {
   }
 
   const latest = _changelogEntries[0];
+  let info = null;
+  try {
+    info = await fetch("/api/server-info").then((r) => r.json());
+  } catch {
+    /* fall back to the changelog's newest version */
+  }
   const pill = document.getElementById("version-pill");
   if (pill) {
-    let running = null;
-    try {
-      running = (await fetch("/api/server-info").then((r) => r.json())).version;
-    } catch {
-      /* fall back to the changelog's newest version */
-    }
-    const label = versionLabel(running, _changelogEntries);
+    const label = versionLabel(info?.version ?? null, _changelogEntries);
     if (label) pill.querySelector(".v-txt").textContent = label;
   }
 
@@ -666,6 +666,16 @@ export async function initChangelog() {
   try {
     lastSeen = localStorage.getItem(LS_CHANGELOG_SEEN);
   } catch {}
+
+  // ON-6: a brand-new Den (no repo yet) opens on its agent and the
+  // approvals: no release notes over them. This version counts as seen.
+  if (info?.fresh === true) {
+    if (latest?.version)
+      try {
+        localStorage.setItem(LS_CHANGELOG_SEEN, latest.version);
+      } catch {}
+    return;
+  }
 
   if (latest?.version && lastSeen !== latest.version) {
     const pip = document.getElementById("v-pip");

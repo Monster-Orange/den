@@ -1171,7 +1171,9 @@ const APPROVAL_TOOLS: DenTool[] = [
   {
     name: "workspace_create",
     title: "Create a workspace",
-    description: "Create an empty Den workspace named `name`." + HELD,
+    description:
+      "Create an empty Den workspace named `name` and make it active, so service_try can start its services." +
+      HELD,
     action: true,
     shape: {
       name: z
@@ -1245,7 +1247,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "service_try",
     title: "Start one service",
     description:
-      "Start one service locally (`up`, as the Services page does) and report how it went: the exit code and the last lines of output." +
+      "Start one service locally (`up`, as the Services page does) and report how it went: the exit code and the last lines of output. A `workspace` that is not active is activated on the same Allow." +
       HELD,
     action: true,
     shape: {

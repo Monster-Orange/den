@@ -14,6 +14,10 @@
  * (stop_hook_active), it lets the turn end, so it never loops. Any error
  * lets the turn end too.
  *
+ * `--known <word>` (repeated): ID-shaped words in the names Den gives
+ * (its title, the workspace), say "T2" in "Den T2". They are names, never
+ * flagged as bare IDs.
+ *
  * Session rotation (den#4): run with `--files <agent files dir> --after
  * <n>`, while a rotation is due (rotation.ts) and handoff.md is missing or
  * fails the handoff check, it blocks once with what to write. Once the
@@ -54,11 +58,22 @@ function rotationBlock(
   });
 }
 
+/** The `--known <word>` values in the hook's arguments. */
+export function knownArgs(argv: readonly string[]): string[] {
+  const out: string[] = [];
+  argv.forEach((a, i) => {
+    if (a === "--known" && argv[i + 1]) out.push(argv[i + 1]);
+  });
+  return out;
+}
+
 /** The hook's stdout for one Stop input ("" lets the turn end). */
 export function stopDecision(
   input: unknown,
   rotation?: RotationHookArgs | null,
+  knownNames: readonly string[] = [],
 ): string {
+  const known = new Set(knownNames);
   if (!input || typeof input !== "object") return "";
   const i = input as {
     stop_hook_active?: unknown;
@@ -76,8 +91,8 @@ export function stopDecision(
   // person reads too, so it gets the plain-writing check: no bare IDs.
   const handback = looksLikeHandback(msg);
   const problems = handback
-    ? checkHandback(msg).problems
-    : bareIds(msg).map(
+    ? checkHandback(msg, known).problems
+    : bareIds(msg, new Set(), known).map(
         (id) =>
           `"${id}" is not explained. Say what it is, e.g. "${id} (what it is)".`,
       );
@@ -98,7 +113,8 @@ async function main(): Promise<void> {
   for await (const chunk of process.stdin) text += String(chunk);
   let out = "";
   try {
-    out = stopDecision(JSON.parse(text), parseHookArgs(process.argv.slice(2)));
+    const argv = process.argv.slice(2);
+    out = stopDecision(JSON.parse(text), parseHookArgs(argv), knownArgs(argv));
   } catch {
     out = "";
   }

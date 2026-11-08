@@ -9,6 +9,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
+  detectDevPort,
   detectRunCommands,
   needsDocker,
   repoNameFrom,
@@ -169,4 +170,30 @@ describe("repoNameFrom", () => {
     ["file:///srv/git/shop", "shop"],
     ["../repos/shop/", "shop"],
   ])("%s → %s", (spec, name) => expect(repoNameFrom(spec)).toBe(name));
+});
+
+describe("detectDevPort", () => {
+  it("reads the port a script names, or a dev server's known default", () => {
+    const cases: [string, number | undefined][] = [
+      ["vite", 5173],
+      ["vite --port 4000", 4000],
+      ["next dev", 3000],
+      ["next dev -p 3100", 3100],
+      ["NODE_ENV=development next dev", 3000],
+      ["PORT=8123 node server.js", 8123],
+      ["npx --yes vite", 5173],
+      ["ng serve", 4200],
+      ["node server.js", undefined],
+    ];
+    for (const [script, port] of cases) {
+      pkg({ dev: script });
+      expect([script, detectDevPort(dir, { up: "npm run dev" })]).toEqual([
+        script,
+        port,
+      ]);
+    }
+    pkg({ start: "react-scripts start" });
+    expect(detectDevPort(dir, { up: "npm start" })).toBe(3000);
+    expect(detectDevPort(dir, { up: "make up" })).toBeUndefined();
+  });
 });

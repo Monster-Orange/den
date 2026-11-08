@@ -113,11 +113,16 @@ const chip = (p: Page) =>
     kind: await p.getAttribute("#den-ident", "data-ident"),
     href: await p.getAttribute("#den-ident", "href"),
   }));
-/** The What's new dialog a fresh browser opens once: closed. */
+/**
+ * What's new on this Den: it has no repo yet, so the shell marks the
+ * release seen and never opens it (ON-6). Wait for that, so nothing opens
+ * over the page later.
+ */
 async function closeWhatsNew(p: Page): Promise<void> {
-  await p.waitForSelector("#cl-overlay.open");
-  await p.keyboard.press("Escape");
-  await p.waitForSelector("#cl-overlay.open", { state: "detached" });
+  await p.waitForFunction(() =>
+    Object.keys(localStorage).some((k) => k.endsWith("-changelog-seen")),
+  );
+  expect(await p.$("#cl-overlay.open")).toBeNull();
 }
 
 describe("the identity chip", () => {

@@ -271,3 +271,24 @@ describe("agents: config for guardrails", () => {
     );
   });
 });
+
+describe("a Den whose name looks like an ID", () => {
+  it("tells the Stop hook its name is a name (--known), so a greeting with it passes", () => {
+    const dist = path.join(root, "dist-t2");
+    fs.mkdirSync(dist, { recursive: true });
+    fs.writeFileSync(path.join(dist, "den.yml"), "product:\n  name: t2\n");
+    const saved = process.env.DEN_ROOT;
+    process.env.DEN_ROOT = dist;
+    try {
+      const planner = loadPersonas([]).get("planner")!;
+      const l = launch(planner);
+      const stop = JSON.stringify(
+        (l.settings!.hooks as Record<string, unknown>).Stop,
+      );
+      expect(stop).toContain("--known T2");
+    } finally {
+      if (saved === undefined) delete process.env.DEN_ROOT;
+      else process.env.DEN_ROOT = saved;
+    }
+  });
+});

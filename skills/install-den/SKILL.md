@@ -47,7 +47,7 @@ Every Den command below takes `--json`. It then prints one JSON object on stdout
 first. When `ok` is false, the object says why (`error`) and either a command to run (`fix`) or a question for the
 person (`ask`).
 
-1. `npx @monster-orange/den create <name> <dir> --yes --json`. It answers `{ok, dir, cli, existed, port}`. If the
+1. `npx @monster-orange/den@latest create <name> <dir> --yes --json`. It answers `{ok, dir, cli, existed, port}`. If the
    folder already holds this Den, it answers `ok` with `existed: true` and changes nothing. When another Den already
    uses the usual port, it picks the next free one and says so (`portPicked`).
 2. `cd <dir> && npm install`

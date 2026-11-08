@@ -21,16 +21,30 @@ config and manifest changes a distribution must make to move to it under
   - A fresh Den's first page (`/`, while no workspace has a repo) is that
     agent in a terminal framed as the page, with Open in Agents. With an
     installed runtime that carries Den's tools, it starts by itself, with
-    "Let's set up <name>. Where are your repos?". With none, the page shows
-    how to install one and the manual path (`npm i -g @monster-orange/den` →
-    `den create <name>` → `<cli> repo add` → `<cli> up`).
+    "Let's set up <name>. Where are your repos?", with the folder above the
+    Den's as the default, in its first turn. With none, the page shows how
+    to install one and the manual path for this Den, from its folder:
+    `cd <dir>` → `./bin/<cli> repo add <path>` → `./bin/<cli> up`.
   - After setup it is in the rail (`/server-agent`), ⌘K has "Ask <name>",
     and Agents lists it first, under "Server".
   - Its runtime: the page's Runs on picker (`agents.server_runtime` in
     `config/local/user.yml`), else the first installed one with Den's tools.
-  - `GET /api/server-agent`, `POST /api/server-agent/start` and
-    `POST /api/server-agent/runtime`. Only a person starts it or picks its
-    runtime: an agent's token or claim gets 403.
+  - Its model: the page's Model picker beside it (`agents.server_model`),
+    with only the runtime's own models, else Sonnet when the runtime has it.
+    A new model takes effect at the next start (a fresh conversation).
+  - Den's own MCP tools run without Claude Code's own prompt, for this
+    agent only (`mcp__<server>` in its settings file's `permissions.allow`).
+    Reads just run; each write still waits for the person's Allow in the
+    browser, so it asks once. The org's immediate actions (`mcp.actions`)
+    still ask in the terminal (`permissions.ask`). Workspace agents are
+    unchanged.
+  - On a fresh Den, one line above its terminal: "Claude asks whether to
+    trust this folder. Choose Yes." Den doesn't answer Claude's folder-trust
+    prompt for the person.
+  - `GET /api/server-agent`, `POST /api/server-agent/start`,
+    `POST /api/server-agent/runtime` and `POST /api/server-agent/model`.
+    Only a person starts it or picks its runtime or model: an agent's token
+    or claim gets 403.
 
 ### Changed
 
@@ -39,6 +53,23 @@ config and manifest changes a distribution must make to move to it under
   (default `~/<name>`), then runs `web up` and hands over the one-time link
   from `web claim-link`: "Den's own agent takes it from there." It no
   longer adds repos, starts services or connects itself to Den's MCP.
+- **`npx @monster-orange/den@latest create`.** The skill, the README, the
+  docs, `create`'s own `fix` lines and `--help` name `@latest`. A bare name
+  could reuse an older Den cached in `~/.npm/_npx`.
+- **workspace_create makes the workspace active.** On the person's Allow,
+  the MCP's `workspace_create` creates the workspace and activates it, so
+  `service_try` can start its services. `service_try` on a workspace that
+  isn't active says so in the browser ("Start <service> (this activates
+  <workspace>)") and does both on the one Allow. Before, the server agent
+  was refused with "Workspace is not active", and nothing it could call
+  activated one. `<cli> workspace create` is unchanged.
+- **The drafted manifest has a health URL when the dev server's port is
+  known.** `manifest_draft` and `repo add` draft
+  `health: { local: { url: http://localhost:<port>/ } }` when the start
+  script names a port (`--port`, `-p`, `PORT=`) or runs a dev server with a
+  fixed default (Vite 5173, Next 3000, Angular 4200, and a few
+  more). So the service gets a health check and Visit ↗. `--health` still
+  wins. With no port, nothing is guessed.
 - **The ON-4 dry run follows the two agents:** install, the setup link, the
   fresh first page, then the server agent's MCP calls, with `repo_add` and
   `service_try` each allowed from the signed-in browser. It now asserts 5
@@ -50,6 +81,27 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **The Stop hook no longer flags Den's own name.** A Den whose name looks
+  like an ID (`t2` → "T2") had the server agent's first greeting rejected
+  ("'T2' is not explained"), and the person saw "Stop hook error". Den now
+  tells the hook the ID-shaped words in its own title and the workspace's
+  name (`--known`), and it never flags those. Any other bare ID is still
+  flagged.
+- **No What's new over a brand-new Den.** On a fresh Den (no repo in any
+  workspace yet, the server agent page's `fresh`) the release notes no
+  longer open by themselves over the agent and the approvals. That version
+  counts as seen. `/api/server-info` has `fresh`.
+- **The "log in here" line shows on every fresh run.** The server agent
+  page chose the line from the runtime picker's runtime, which can read
+  none (or another one) while the agent runs. It now uses the runtime the
+  agent runs on (`runningRuntime`, from its record). And a start that isn't
+  running yet when the page reads it back is read again, a second apart, so
+  the terminal and its lines come up without a reload.
+- **The Graph's empty View says where a service is.** With the View on a
+  workspace with no services (right after onboarding), Open in Graph for
+  a service in another workspace showed "No services in workspace" only.
+  It now also says "<service> is in <workspace>, outside this View." with
+  Show <workspace>, the same line as over a drawn graph.
 - **Open Terminal on Windows.** On the signed-out page it did nothing on Windows. Windows has no `ssh://` app by default, so
   there the link is gone and the ssh command is the step: "Open Windows Terminal or PowerShell, paste this, and press
   Enter." Elsewhere, if the page still has focus 2 seconds after the click, it says "Nothing opened? Copy the command

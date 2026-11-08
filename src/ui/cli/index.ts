@@ -446,7 +446,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "create <name> [dir] [--title <title>] [--cli <cli>] [--env-prefix <PREFIX>]",
     lines: [
       "Scaffold a new distribution (den.yml, config, bin shim, Makefile) in [dir].",
-      "Also: npx @monster-orange/den create <name>. See docs/distributions.md.",
+      "Also: npx @monster-orange/den@latest create <name>. See docs/distributions.md.",
     ],
   },
   validate: {

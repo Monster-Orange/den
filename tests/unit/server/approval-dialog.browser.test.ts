@@ -199,7 +199,7 @@ describe("the approval dialog (ON-3)", () => {
     expect(await p.isVisible("#den-ap-det")).toBe(false);
     await p.click("#den-ap-review");
     expect(await p.textContent("#den-ap-det")).toContain(
-      'A new, empty workspace named "web".',
+      'A new, empty workspace named "web", made active so its services can start.',
     );
     // The Start dialog's frame and footer.
     const box = await p.$eval("#den-ap-dlg", (d) => {

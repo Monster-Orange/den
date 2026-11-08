@@ -10,6 +10,7 @@ import * as path from "path";
 import {
   listPersonas,
   resolveAgentsDeps,
+  startAgent,
   stopAgent,
 } from "../../../src/ui/cli/agent-ops.js";
 import {
@@ -31,7 +32,10 @@ import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
 afterEach(cleanupRigs);
 
-const server = (fresh: boolean, saved: { id?: string | null } = {}) =>
+const server = (
+  fresh: boolean,
+  saved: { id?: string | null; model?: string | null } = {},
+) =>
   ({
     title: () => "Acme",
     fresh: () => fresh,
@@ -39,7 +43,25 @@ const server = (fresh: boolean, saved: { id?: string | null } = {}) =>
     saveSetting: (id) => {
       saved.id = id;
     },
+    readModel: () => saved.model ?? undefined,
+    saveModel: (id) => {
+      saved.model = id;
+    },
+    root: () => "/home/x/acme",
   }) satisfies ServerAgentDeps;
+
+/** The settings file den-claude was given (its --settings file). */
+function settingsOf(
+  r: Rig,
+  i = r.made.length - 1,
+): {
+  permissions?: { allow?: string[]; ask?: string[]; deny?: string[] };
+} {
+  const p = r.made[i];
+  return JSON.parse(
+    fs.readFileSync(p.args[p.args.indexOf("--settings") + 1], "utf-8"),
+  ) as { permissions?: { allow?: string[]; ask?: string[] } };
+}
 
 const d = (r: Rig) => resolveAgentsDeps(r.deps);
 
@@ -99,6 +121,13 @@ describe("the server agent", () => {
     const last = r.made[0].args[r.made[0].args.length - 1];
     expect(last).toMatch(/^Set up Acme with me\. Start with onboard_status/);
     expect(last).toMatch(/Let's set up Acme\. Where are your repos\?/);
+    // The greeting carries the default (the folder above the Den's), so
+    // the person can answer in one word, with no extra turn.
+    expect(last).toMatch(
+      /Where are your repos\? I'll look in \/home\/x unless you name another folder\./,
+    );
+    // It is the launch's last argument: Claude acts on it at once.
+    expect(r.made[0].args.filter((a) => a === last)).toHaveLength(1);
   });
 
   it("is never a workspace's persona, and no workspace may take its scope's name", async () => {
@@ -156,10 +185,9 @@ describe("the server agent", () => {
       runtime: null,
       state: "none",
       manual: [
-        "npm i -g @monster-orange/den",
-        "den create <name>",
-        "acme repo add <path>",
-        "acme up",
+        "cd /home/x/acme",
+        "./bin/acme repo add <path>",
+        "./bin/acme up",
       ],
     });
     expect(st.runtimes.find((x) => x.id === "den-claude")).toMatchObject({
@@ -187,6 +215,63 @@ describe("the server agent", () => {
     expect(pickRuntime(rows, "c")?.id).toBe("a");
     expect(pickRuntime(rows, undefined)?.id).toBe("a");
     expect(pickRuntime([row("x", false)], undefined)).toBeNull();
+  });
+});
+
+describe("starting it fast (ON-6 gate, 0.4.19)", () => {
+  it("Den's own MCP tools are pre-allowed for it alone; the org's immediate actions still ask", async () => {
+    const r = await rig();
+    await startServerAgent(d(r), {}, server(true));
+    const perms = settingsOf(r).permissions!;
+    // Only Den's MCP server (named as in --mcp-config): nothing else.
+    expect(perms.allow).toEqual(["mcp__acme", "mcp__acme__*"]);
+    expect(perms.ask).toEqual(
+      expect.arrayContaining(["mcp__acme__service_up", "mcp__acme__run_tests"]),
+    );
+    expect(perms.ask!.every((x) => x.startsWith("mcp__acme__"))).toBe(true);
+    // A workspace agent's settings pre-allow none of Den's tools.
+    await startAgent(d(r), {
+      workspace: "north",
+      persona: "planner",
+      id: "planner-1",
+    });
+    const ws = settingsOf(r).permissions ?? {};
+    expect((ws.allow ?? []).filter((x) => x.startsWith("mcp__"))).toEqual([]);
+    expect(ws.ask).toBeUndefined();
+  });
+
+  it("runs on Sonnet by default, or the model the person saved when the runtime offers it", async () => {
+    const r = await rig();
+    await startServerAgent(d(r), {}, server(true));
+    const model = (i: number) =>
+      r.made[i].args[r.made[i].args.indexOf("--model") + 1];
+    expect(model(0)).toBe("sonnet");
+    const st = await serverAgentStatus(d(r), server(true));
+    expect(st.model).toBe("sonnet");
+    expect(st.models.map((m) => m.id)).toEqual(["opus", "sonnet", "haiku"]);
+    // Another model saved: the next start is a fresh one on it.
+    await stopAgent(d(r), "server", SERVER_SCOPE);
+    r.made[0].exit(0);
+    await settle();
+    const saved = { model: "opus" };
+    const again = await startServerAgent(d(r), {}, server(true, saved));
+    expect(again.how).toBe("started");
+    expect(model(1)).toBe("opus");
+    // A model the runtime doesn't offer is never used: Sonnet.
+    expect(
+      (await serverAgentStatus(d(r), server(true, { model: "gpt-x" }))).model,
+    ).toBe("sonnet");
+  });
+
+  it("says which runtime it runs on while it runs (its record's)", async () => {
+    const r = await rig();
+    expect(
+      (await serverAgentStatus(d(r), server(true))).runningRuntime,
+    ).toBeUndefined();
+    await startServerAgent(d(r), {}, server(true));
+    expect((await serverAgentStatus(d(r), server(true))).runningRuntime).toBe(
+      "den-claude",
+    );
   });
 });
 

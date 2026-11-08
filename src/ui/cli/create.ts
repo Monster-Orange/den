@@ -545,7 +545,7 @@ export async function createResult(
       return {
         ok: false,
         error,
-        fix: `npx ${ENGINE_PACKAGE} create ${args.name} ${path.join(path.dirname(args.dir), `${args.name}-den`)} --yes --json`,
+        fix: `npx ${ENGINE_PACKAGE}@latest create ${args.name} ${path.join(path.dirname(args.dir), `${args.name}-den`)} --yes --json`,
         ask: `${args.dir} already has files that are not a ${args.name} distribution. Which new or empty folder should the distribution go in?`,
       };
     return {
@@ -576,7 +576,7 @@ export async function runCreate(
         JSON.stringify({
           ok: false,
           error: (e as Error).message.split("\n")[0],
-          fix: `npx ${ENGINE_PACKAGE} create <name> [dir] --yes --json`,
+          fix: `npx ${ENGINE_PACKAGE}@latest create <name> [dir] --yes --json`,
         } satisfies CreateJson),
       );
     } else console.error(`create: ${(e as Error).message}`);

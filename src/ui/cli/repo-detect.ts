@@ -157,6 +157,64 @@ export function needsDocker(manifest: unknown, repoPath?: string): boolean {
   return repoPath ? composeFileOf(repoPath) !== undefined : false;
 }
 
+/**
+ * Dev servers' own default ports, by the command a package script runs.
+ * Only tools whose default is fixed and documented; anything else gets no
+ * port, and so no health URL.
+ */
+const DEV_SERVER_PORTS: ReadonlyArray<[RegExp, number]> = [
+  [/^next(\s+dev)?\b/, 3000],
+  [/^(vite|vite\s+dev|vite\s+serve)\b/, 5173],
+  [/^(nuxt|nuxi)\s+dev\b/, 3000],
+  [/^react-scripts\s+start\b/, 3000],
+  [/^ng\s+serve\b/, 4200],
+  [/^gatsby\s+develop\b/, 8000],
+  [/^remix\s+vite:dev\b/, 5173],
+  [/^webpack(-dev-server|\s+serve)\b/, 8080],
+];
+
+/** A port the command names itself: --port N, -p N, PORT=N. */
+function explicitPort(cmd: string): number | undefined {
+  const m =
+    /(?:^|\s)--port[=\s]+(\d{2,5})\b/.exec(cmd) ??
+    /(?:^|\s)-p\s+(\d{2,5})\b/.exec(cmd) ??
+    /(?:^|\s)PORT=(\d{2,5})\b/.exec(cmd);
+  const n = m ? Number(m[1]) : NaN;
+  return n > 0 && n < 65536 ? n : undefined;
+}
+
+/**
+ * The port a repo's dev server listens on, when its start command is a
+ * package script that names one or runs a dev server with a known default.
+ * Read-only: the script's text, never the running server.
+ */
+export function detectDevPort(
+  repoPath: string,
+  c: Pick<DetectedCommands, "up">,
+): number | undefined {
+  const scripts = readScripts(repoPath);
+  const m = /^npm\s+(?:run\s+(\S+)|(start))$/.exec(c.up.trim());
+  const script = m ? scripts[m[1] ?? "start"] : c.up;
+  if (!script) return undefined;
+  const own = explicitPort(script);
+  if (own) return own;
+  // The tool the script runs, after any VAR=value prefixes and npx.
+  const tool = script
+    .trim()
+    .replace(/^(?:[A-Z_][A-Z0-9_]*=\S*\s+)+/, "")
+    .replace(/^npx\s+(?:--yes\s+)?/, "");
+  return DEV_SERVER_PORTS.find(([re]) => re.test(tool))?.[1];
+}
+
+/** The health URL to draft: the dev server's own port, at `/`. */
+export function draftHealthUrl(
+  repoPath: string,
+  c: Pick<DetectedCommands, "up">,
+): string | undefined {
+  const port = detectDevPort(repoPath, c);
+  return port ? `http://localhost:${port}/` : undefined;
+}
+
 /** The side-car manifest for a repo Den detected. Validate before writing. */
 export function sidecarManifest(
   name: string,

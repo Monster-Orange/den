@@ -262,14 +262,19 @@ export function mountGraph(el, data, pageHooks) {
 
 /** 0.4.18: the panel's Open in Graph (#focus=<repo> or <repo>/<service>), once. */
 let hashFocused = false;
-function focusFromHash() {
-  if (hashFocused || !location.hash.startsWith("#focus=")) return;
-  let id = "";
+/** The id #focus= names, or "" (none, or not decodable). */
+function hashFocusId() {
+  if (!location.hash.startsWith("#focus=")) return "";
   try {
-    id = decodeURIComponent(location.hash.slice(7));
+    return decodeURIComponent(location.hash.slice(7));
   } catch {
-    return;
+    return "";
   }
+}
+function focusFromHash() {
+  if (hashFocused) return;
+  const id = hashFocusId();
+  if (!id) return;
   host.querySelector(".dg-out")?.remove();
   if (M.byId.has(id)) focusOn({ id });
   else if (M.byRepo.has(id)) focusOn({ repo: id, viaRepo: true });
@@ -281,10 +286,11 @@ function focusFromHash() {
  * #focus= names a service in a workspace outside the View: one line that
  * says so, and Show <workspace>, which switches the View the way the top
  * bar does (the page's hook); the reloaded graph then focuses the card.
- * The View never switches by itself.
+ * The View never switches by itself. `into` is where the line goes: the
+ * graph's viewport, or the empty state's box (graphEmptyNote).
  */
-function outsideNote(id) {
-  const ws = hooks.outsideView?.(id);
+function outsideNote(id, into = $(".dg-vp"), h = hooks) {
+  const ws = h.outsideView?.(id);
   if (!ws) return;
   const t = (k, v) => window.denShell?.t?.(k, v) ?? k;
   const note = document.createElement("div");
@@ -295,9 +301,22 @@ function outsideNote(id) {
     `<button type="button" class="den-btn sm" data-show-ws>${esc(t("graph.showWs", { ws }))}</button>`;
   note.querySelector("[data-show-ws]").addEventListener("click", (e) => {
     e.currentTarget.disabled = true;
-    void hooks.showWorkspace?.(ws);
+    void h.showWorkspace?.(ws);
   });
-  $(".dg-vp")?.append(note);
+  into?.append(note);
+}
+
+/**
+ * 0.4.19: the View's workspace has no services, so no graph is drawn (the
+ * page's "No services in workspace"), and #focus= names a service in
+ * another workspace (Open in Graph right after onboarding): the same line
+ * and Show <workspace> as over a drawn graph, in `el`.
+ */
+export function graphEmptyNote(el, pageHooks) {
+  const id = hashFocusId();
+  if (!el || !id) return;
+  el.querySelector(".dg-out")?.remove();
+  outsideNote(id, el, pageHooks || {});
 }
 
 /** A /api/health update: refresh dots, health lines and the open panel in place. */

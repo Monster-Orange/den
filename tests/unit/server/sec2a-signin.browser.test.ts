@@ -249,10 +249,11 @@ describe("Settings › Access", () => {
     const p = await ctx.newPage();
     await claimIn(p);
     await p.goto(`http://localhost:${port}/settings#access`);
-    // A fresh browser has not seen What's new, so it opens once: close it.
-    await p.waitForSelector("#cl-overlay.open");
-    await p.keyboard.press("Escape");
-    await p.waitForSelector("#cl-overlay.open", { state: "detached" });
+    // A brand-new Den never opens What's new: it marks it seen (ON-6).
+    await p.waitForFunction(() =>
+      Object.keys(localStorage).some((k) => k.endsWith("-changelog-seen")),
+    );
+    expect(await p.$("#cl-overlay.open")).toBeNull();
     await p.waitForSelector("#set-owner");
     expect((await p.textContent("#set-owner"))?.replace(/\s+/g, " ")).toBe(
       "Owner: @octo-owner (github:4242)",

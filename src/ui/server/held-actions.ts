@@ -5,13 +5,17 @@
  * copies:
  *
  *   workspace_create  the Workspaces page's create (workspaceCreateRefusal,
- *                     createWorkspace)
+ *                     createWorkspace), then activates it: nothing an
+ *                     agent calls activates a workspace, and service_try
+ *                     needs an active one
  *   repo_add          `repo add --json` (repo-command.ts repoAdd), a local
  *                     folder inside home only, as manifest_draft reads; its
  *                     dry run is the Review
  *   service_try       `up` through the service runner, as
  *                     /api/service/exec and service_up run it
- *                     (lifecycle-exec.ts), until it is ready or exits
+ *                     (lifecycle-exec.ts), until it is ready or exits;
+ *                     an inactive workspace is activated first, on the
+ *                     same Allow, and the Review says so
  */
 import * as path from "path";
 import { checkOnboardPath, type PathRules } from "../cli/onboard-reads.js";
@@ -35,6 +39,8 @@ export interface HeldActionDeps {
   validate: ManifestValidator;
   workspaceCreateRefusal: (name: string | undefined) => string | null;
   createWorkspace: (name: string) => void;
+  activateWorkspace: (name: string) => void;
+  workspaceActive: (name: string) => boolean;
   workspaceExists: (name: string) => boolean;
   /** Where `repo add` puts a repo with no -w: the focused one, else `default`. */
   defaultWorkspace: () => string;
@@ -84,13 +90,16 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         args: { name },
         summary: `create the workspace "${name}"`,
         params: { name },
-        details: [`A new, empty workspace named "${name}".`],
+        details: [
+          `A new, empty workspace named "${name}", made active so its services can start.`,
+        ],
       };
     },
     async run(a) {
       const name = String(a.name);
       d.createWorkspace(name);
-      return { ok: true, name };
+      d.activateWorkspace(name);
+      return { ok: true, name, active: true };
     },
   };
 
@@ -177,21 +186,40 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       if (!service)
         return { ok: false, error: "give service: <repo> or <repo>/<service>" };
       const workspace = str(a.workspace);
+      if (workspace !== undefined && !NAME_RE.test(workspace))
+        return {
+          ok: false,
+          error: `workspace "${workspace}" must use only letters, digits, ".", "_" and "-"`,
+        };
+      if (workspace !== undefined && !d.workspaceExists(workspace))
+        return { ok: false, error: `there is no workspace "${workspace}"` };
       const t = d.serviceTarget(service, workspace);
       if (!t.ok) return { ok: false, error: t.error };
+      const activates =
+        workspace !== undefined && !d.workspaceActive(workspace);
       return {
         ok: true,
         args: { service: t.address, ...(workspace ? { workspace } : {}) },
-        summary: `start ${t.address}${workspace ? ` in workspace "${workspace}"` : ""}`,
-        params: { service: t.address, ...(workspace ? { workspace } : {}) },
+        summary: `start ${t.address}${workspace ? ` in workspace "${workspace}"` : ""}${activates ? ` (this activates ${workspace})` : ""}`,
+        params: {
+          service: t.address,
+          ...(workspace ? { workspace } : {}),
+          ...(activates ? { activates: "1" } : {}),
+        },
         details: [
+          ...(activates
+            ? [`Activates the workspace "${workspace}" first, so it can run.`]
+            : []),
           `Runs the service's local "up", as the Services page's Start does.`,
           `Den reports the exit code and the last lines of its output.`,
         ],
       };
     },
     async run(a) {
-      return d.tryService(String(a.service), str(a.workspace));
+      const workspace = str(a.workspace);
+      if (workspace && !d.workspaceActive(workspace))
+        d.activateWorkspace(workspace);
+      return d.tryService(String(a.service), workspace);
     },
   };
 

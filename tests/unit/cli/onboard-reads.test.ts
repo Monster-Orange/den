@@ -246,6 +246,32 @@ describe("reposDetect", () => {
 describe("manifestDraft", () => {
   const validate = (m: unknown) => validateManifest(m);
 
+  it("drafts a health URL at the dev server's port, so the service gets a Visit link", () => {
+    const vite = repo("code/web", {
+      "package.json": JSON.stringify({ name: "web", scripts: { dev: "vite" } }),
+    });
+    const r = manifestDraft(vite, rules(), validate);
+    expect(r.ok).toBe(true);
+    expect(r.draft).toMatch(/url: http:\/\/localhost:5173\//);
+    const own = repo("code/api", {
+      "package.json": JSON.stringify({
+        name: "api",
+        scripts: { start: "node server.js --port 4410" },
+      }),
+    });
+    expect(manifestDraft(own, rules(), validate).draft).toMatch(
+      /url: http:\/\/localhost:4410\//,
+    );
+    // No port anywhere: no health URL is guessed.
+    const plain = repo("code/plain", {
+      "package.json": JSON.stringify({
+        name: "plain",
+        scripts: { dev: "node server.js" },
+      }),
+    });
+    expect(manifestDraft(plain, rules(), validate).draft).not.toMatch(/url:/);
+  });
+
   it("drafts the side-car repo add would write, validated, and writes nothing", () => {
     const dir = repo("code/acme", { Makefile: MAKE, "README.md": "acme\n" });
     const before = digest(dir);

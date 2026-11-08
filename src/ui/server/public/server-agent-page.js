@@ -8,10 +8,19 @@
  *    reads until the person allows a write (each write is held for the
  *    browser's Allow, ON-3).
  *  - No runtime: the manual path, and how to install a runtime.
- *  - Running on Claude on a fresh Den: a line saying to log in to Claude
- *    in the terminal if it asks (Den can't tell whether it is logged in).
+ *  - Running on Claude on a fresh Den: a line saying Claude asks to trust
+ *    its folder (choose Yes), and one saying to log in to Claude in the
+ *    terminal if it asks (Den can't tell whether it is logged in). Which
+ *    runtime it runs on is its record's (runningRuntime), never the
+ *    picker's: the two differ after the picker changes, or when the runtime
+ *    is not found again on a later read.
+ *  - Started by itself, but not running yet when the page reads it back:
+ *    the page reads again, a few times, until it runs (so the terminal and
+ *    its lines come up without a reload).
  *  - Not fresh and not running: a Start button (never started by itself).
- *  - The runtime picker saves the person's choice (agents.server_runtime).
+ *  - The runtime picker saves the person's choice (agents.server_runtime),
+ *    and the model picker beside it (agents.server_model), with only the
+ *    runtime's own models.
  *
  * serverAgentView(status) is pure (HTML from the status JSON), so tests
  * need no server.
@@ -44,10 +53,17 @@ export function serverAgentView(s) {
   // Den can't tell whether Claude is logged in (ON-6). On a fresh Den's
   // first run, one line above the terminal says a login prompt is
   // expected, so Claude's own login screen never reads as a crash.
-  const login =
-    s.fresh && s.runtime?.id === "den-claude"
-      ? `<p class="note sa-login" data-note="login">${esc(t("sa.login", { name: s.name }))}</p>`
-      : "";
+  // Claude Code asks once whether to trust the agent's folder, which Den
+  // made for it; Den doesn't answer for the person (that is Claude's own
+  // file, ~/.claude.json, with no documented way to pre-accept).
+  const onClaude =
+    s.fresh &&
+    (running ? (s.runningRuntime ?? s.runtime?.id) : s.runtime?.id) ===
+      "den-claude";
+  const login = onClaude
+    ? `<p class="note sa-trust" data-note="trust">${esc(t("sa.trust"))}</p>` +
+      `<p class="note sa-login" data-note="login">${esc(t("sa.login", { name: s.name }))}</p>`
+    : "";
   if (running)
     return {
       sub,
@@ -109,6 +125,18 @@ function noRuntimeHtml(s) {
   );
 }
 
+/** The model picker's options: the runtime's own models, the chosen one selected. */
+export function modelOptionsHtml(s) {
+  const models = s.models ?? [];
+  if (!models.length) return "";
+  return models
+    .map(
+      (m) =>
+        `<option value="${esc(m.id)}"${s.model === m.id ? " selected" : ""}>${esc(m.label ?? m.id)}</option>`,
+    )
+    .join("");
+}
+
 /** The runtime picker's options: the usable ones, the chosen one first. */
 export function runtimeOptionsHtml(s) {
   const usable = (s.runtimes ?? []).filter((r) => r.usable);
@@ -129,7 +157,12 @@ const st = {
   pane: null,
   starting: false,
   autoTried: false,
+  /** Reads after a start that came back not running yet. */
+  rereads: 0,
 };
+
+/** How many times, a second apart, a start is read back until it runs. */
+const REREADS = 15;
 
 async function readStatus() {
   try {
@@ -146,6 +179,7 @@ function paint() {
   const body = st.root.querySelector("#sa-body");
   const open = st.root.querySelector("#sa-open");
   const pick = st.root.querySelector("#sa-runtime");
+  const mpick = st.root.querySelector("#sa-model");
   body.removeAttribute("aria-busy");
   if (!s) {
     sub.textContent = t("sa.unread");
@@ -158,6 +192,11 @@ function paint() {
   const opts = runtimeOptionsHtml(s);
   pick.hidden = !opts;
   if (opts) pick.querySelector("select").innerHTML = opts;
+  const mopts = modelOptionsHtml(s);
+  if (mpick) {
+    mpick.hidden = !mopts;
+    if (mopts) mpick.querySelector("select").innerHTML = mopts;
+  }
   open.hidden = !v.terminal;
   if (v.terminal)
     open.setAttribute("href", `/agents?open=${encodeURIComponent(v.terminal)}`);
@@ -174,6 +213,12 @@ async function refresh() {
   if (v.autoStart && !st.autoTried) {
     st.autoTried = true;
     void start();
+    return;
+  }
+  // Started, but not running yet: read again until it is.
+  if (st.autoTried && !v.terminal && v.autoStart && st.rereads < REREADS) {
+    st.rereads++;
+    setTimeout(() => void refresh(), 1000);
   }
 }
 
@@ -190,6 +235,18 @@ async function start() {
     return;
   }
   st.starting = false;
+  await refresh();
+}
+
+async function saveModel(id) {
+  try {
+    await window.denShell.api("POST", "/api/server-agent/model", {
+      model: id,
+    });
+    window.denShell?.toast?.(t("sa.saved"));
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+  }
   await refresh();
 }
 
@@ -334,6 +391,7 @@ export async function mountServerAgentPage(root) {
   for (const [sel, key] of [
     ["#sa-title", "n.serverAgent"],
     ["#sa-runtime > span", "sa.runsOn"],
+    ["#sa-model > span", "sa.model"],
     ["#sa-open", "sa.openAgents"],
   ]) {
     const el = root.querySelector(sel);
@@ -349,6 +407,9 @@ export async function mountServerAgentPage(root) {
   });
   root.querySelector("#sa-runtime select")?.addEventListener("change", (e) => {
     void saveRuntime(e.target.value);
+  });
+  root.querySelector("#sa-model select")?.addEventListener("change", (e) => {
+    void saveModel(e.target.value);
   });
   await refresh();
 }

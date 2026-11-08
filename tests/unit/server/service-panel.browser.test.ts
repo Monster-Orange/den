@@ -850,6 +850,43 @@ describe("Open in Graph for a pin outside the View", () => {
     }
   }, 90_000);
 
+  it("a View with no services says it too, with Show south", async () => {
+    if (skip()) return;
+    const { p } = await page("/services");
+    const api = (m: string, u: string, b: unknown) =>
+      p.evaluate(
+        async ([m, u, b]) =>
+          (
+            window as unknown as {
+              denShell: {
+                api(m: string, u: string, b: unknown): Promise<unknown>;
+              };
+            }
+          ).denShell.api(m as string, u as string, b),
+        [m, u, b] as const,
+      );
+    await api("POST", "/api/workspaces/create", { name: "empty" });
+    await api("POST", "/api/workspaces", { name: "empty", action: "activate" });
+    await view(p, "empty");
+    try {
+      await p.goto(`${s!.base}/graph#focus=blog`);
+      await p.waitForSelector(".graph-empty:not(.graph-loading)", {
+        timeout: 20_000,
+      });
+      await p.waitForSelector(out, { timeout: 20_000 });
+      expect((await p.textContent(`${out} span`))?.trim()).toBe(
+        "blog is in south, outside this View.",
+      );
+      expect(await p.textContent(`${out} button`)).toBe("Show south");
+    } finally {
+      await view(p, "all");
+      await api("DELETE", "/api/workspaces", { name: "empty" }).catch(
+        () => undefined,
+      );
+      await p.context().close();
+    }
+  }, 60_000);
+
   it("a service in the View shows no line", async () => {
     if (skip()) return;
     const { p } = await page("/services");

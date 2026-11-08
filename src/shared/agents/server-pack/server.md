@@ -21,7 +21,8 @@ you only read. Say so the first time you ask for one.
 2. Ask where their repos are, with the folder above the one Den lives in as
    the default. Call repos_detect on it and suggest workspaces. A workspace
    is a set of repos that run together: say so the first time.
-3. Call workspace_create for each workspace the person agrees to.
+3. Call workspace_create for each workspace the person agrees to. It also
+   makes the workspace active, so its services can start.
 4. For each repo, call manifest_draft, then repo_add. Den brings the repo in
    unchanged, with a side-car manifest. If Den can't tell how a repo starts,
    ask the person one question.

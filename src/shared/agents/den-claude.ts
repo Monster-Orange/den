@@ -48,10 +48,12 @@
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
-import { configuredRuntimeBin } from "../den-config.js";
+import { MCP_ACTIONS, configuredRuntimeBin } from "../den-config.js";
 import { rolePrompt } from "./personas.js";
 import { GUARDRAILS_DIR, guardrailHooks, hookCommands } from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
+import { idsInNames } from "./handback.js";
+import { product } from "../product.js";
 import {
   LaunchError,
   mcpConfigJson,
@@ -139,6 +141,25 @@ export const DEN_CLAUDE_PERMISSIONS: RuntimePermissions = {
   },
   commandRules: COMMAND_RULES,
 };
+
+/**
+ * ON-6, the server agent: Den's own MCP server's tools as Claude Code
+ * permission rules (https://code.claude.com/docs/en/iam, MCP rules:
+ * `mcp__<server>` matches every tool of that server, `mcp__<server>__*`
+ * the same with a wildcard). `ask` keeps the org's immediate actions
+ * (mcp.actions: they run at once, with no browser Allow) asking in the
+ * terminal: Claude Code checks ask before allow. `server` is the name in
+ * the --mcp-config file.
+ */
+export function denToolRules(server: string): {
+  allow: string[];
+  ask: string[];
+} {
+  return {
+    allow: [`mcp__${server}`, `mcp__${server}__*`],
+    ask: MCP_ACTIONS.map((a) => `mcp__${server}__${a}`),
+  };
+}
 
 /** A command prefix's allow rules (permissions.ts checked it). */
 export function allowRules(commands: readonly string[]): string[] {
@@ -336,13 +357,21 @@ function common(input: LaunchInput): {
   const hooks = input.persona.guardrails?.hooks
     ? guardrailHooks(
         GUARDRAILS_DIR,
-        hookCommands(GUARDRAILS_DIR, process.execPath, {
-          files: input.filesDir,
-          after: input.rotateAfter ?? DEFAULT_ROTATE.afterCompactions,
-        }),
+        hookCommands(
+          GUARDRAILS_DIR,
+          process.execPath,
+          {
+            files: input.filesDir,
+            after: input.rotateAfter ?? DEFAULT_ROTATE.afterCompactions,
+          },
+          // A Den named "den-t2" says "Den T2": a name, not an ID.
+          idsInNames([product().title, input.workspace.name]),
+        ),
       )
     : null;
-  const allow = allowRules(input.allow ?? []);
+  const den = input.denToolsAllowed ? denToolRules(input.mcp.name) : null;
+  const allow = [...allowRules(input.allow ?? []), ...(den?.allow ?? [])];
+  const ask = den?.ask ?? [];
   const settings =
     input.stateDir || hooks || allow.length ? settingsPath(input) : null;
   return {
@@ -372,6 +401,7 @@ function common(input: LaunchInput): {
                   ? {
                       permissions: {
                         ...(allow.length ? { allow } : {}),
+                        ...(ask.length ? { ask } : {}),
                         ...(input.stateDir
                           ? {
                               deny: stateDirDenyRules(

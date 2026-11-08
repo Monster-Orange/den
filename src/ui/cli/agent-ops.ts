@@ -1367,6 +1367,9 @@ function launchInput(
     rotateAfter: after,
     ...(perms.permission ? { permission: perms.permission } : {}),
     ...(perms.allow?.length ? { allow: [...perms.allow] } : {}),
+    // ON-6: the server agent runs Den's own tools without the runtime's
+    // prompt; its writes wait for the person's Allow in the browser.
+    ...(isServerScope(ws) ? { denToolsAllowed: true } : {}),
   };
 }
 

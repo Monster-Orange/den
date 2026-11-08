@@ -60,6 +60,7 @@ import { ensureManagedServiceClone } from "../../shared/environment-manager/work
 import { getGitHubCoords } from "../../shared/smoke/git-remote.js";
 import {
   detectRunCommands,
+  draftHealthUrl,
   repoNameFrom,
   sidecarManifest,
   type DetectedCommands,
@@ -358,7 +359,13 @@ export function repoAdd(
           error: `cannot name a repo from the folder "${key}"`,
           fix: `${bin} repo add ${a.spec} --name <repo> --json`,
         };
-      const manifest = sidecarManifest(mName, d.commands, a.health);
+      // No --health: the dev server's own port, when its script names one,
+      // so the drafted service has a health check and a Visit link.
+      const manifest = sidecarManifest(
+        mName,
+        d.commands,
+        a.health ?? draftHealthUrl(repoPath, d.commands),
+      );
       const v = validate(manifest);
       const dry = a.dryRun
         ? {

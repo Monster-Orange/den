@@ -11,6 +11,7 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import {
+  modelOptionsHtml,
   runtimeOptionsHtml,
   serverAgentView,
 } from "../../../src/ui/server/public/server-agent-page.js";
@@ -39,12 +40,7 @@ const base = {
     },
   ],
   state: "none",
-  manual: [
-    "npm i -g @monster-orange/den",
-    "den create <name>",
-    "acme repo add <path>",
-    "acme up",
-  ],
+  manual: ["cd ~/acme", "./bin/acme repo add <path>", "./bin/acme up"],
 };
 
 describe("the server agent's page", () => {
@@ -79,10 +75,9 @@ describe("the server agent's page", () => {
       (m) => m[1],
     );
     expect(steps).toEqual([
-      "npm i -g @monster-orange/den",
-      "den create &lt;name&gt;",
-      "acme repo add &lt;path&gt;",
-      "acme up",
+      "cd ~/acme",
+      "./bin/acme repo add &lt;path&gt;",
+      "./bin/acme up",
     ]);
   });
 
@@ -142,6 +137,66 @@ describe("the server agent's page", () => {
       sessionId: "s-1",
     });
     expect(other.body).not.toContain('data-note="login"');
+  });
+
+  it("running on Claude on a fresh Den: the line follows the runtime it runs on, not the picker's", () => {
+    // Running on Claude, while the picker's runtime reads none (not found
+    // again on this read) or another one: the lines still show.
+    for (const runtime of [null, { id: "other", label: "Other" }]) {
+      const v = serverAgentView({
+        ...base,
+        runtime,
+        runningRuntime: "den-claude",
+        state: "running",
+        sessionId: "s-1",
+      });
+      expect(v.body).toContain('data-note="login"');
+      expect(v.terminal).toBe("s-1");
+    }
+    // Running on another runtime, whatever the picker says: no Claude lines.
+    const other = serverAgentView({
+      ...base,
+      runningRuntime: "other",
+      state: "running",
+      sessionId: "s-1",
+    });
+    expect(other.body).not.toContain('data-note="login"');
+    expect(other.body).not.toContain('data-note="trust"');
+  });
+
+  it("running on Claude on a fresh Den: a line above the terminal says to trust its folder", () => {
+    const v = serverAgentView({
+      ...base,
+      runningRuntime: "den-claude",
+      state: "running",
+      sessionId: "s-1",
+    });
+    expect(v.body).toContain(
+      '<p class="note sa-trust" data-note="trust">sa.trust</p>',
+    );
+    const setUp = serverAgentView({
+      ...base,
+      fresh: false,
+      runningRuntime: "den-claude",
+      state: "running",
+      sessionId: "s-1",
+    });
+    expect(setUp.body).not.toContain('data-note="trust"');
+  });
+
+  it("the model picker offers the runtime's own models, the chosen one selected", () => {
+    const html = modelOptionsHtml({
+      ...base,
+      model: "sonnet",
+      models: [
+        { id: "opus", label: "Opus" },
+        { id: "sonnet", label: "Sonnet" },
+      ],
+    });
+    expect(html).toBe(
+      '<option value="opus">Opus</option><option value="sonnet" selected>Sonnet</option>',
+    );
+    expect(modelOptionsHtml({ ...base, models: [] })).toBe("");
   });
 
   it("running: its terminal, never a second start", () => {

@@ -19,8 +19,8 @@ Den's own checkout is itself a distribution, named `den`.
 ## Create one
 
 ```sh
-npx @monster-orange/den create acme          # writes ./acme
-npx @monster-orange/den create acme ~/src/acme-dev --title "Acme Dev"
+npx @monster-orange/den@latest create acme          # writes ./acme
+npx @monster-orange/den@latest create acme ~/src/acme-dev --title "Acme Dev"
 ```
 
 From a Den checkout, `./bin/den create acme ../acme` does the same.
@@ -86,19 +86,19 @@ command's log goes to stderr. When `ok` is false the object says why
 (`error`) and carries either a command the agent can run (`fix`) or a
 question for the person (`ask`, sometimes with `choices`).
 
-| Step                                                       | Answers                                                                      |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `npx @monster-orange/den create <name> [dir] --yes --json` | `{ ok, dir, cli, existed, files, port, portPicked?, next }`                  |
-| `<cli> repo add <path\|git-url> --json`                    | `{ ok, existed, repo, workspace, mode, path, manifest, services, next }`     |
-| `<cli> repo detect <folder> --json`                        | `{ ok, path, repos, workspaces, truncated, skipped, rule, next }`            |
-| `<cli> repo add <path> --dry-run --json`                   | `{ ok, dryRun, repo, workspace, path, manifest, draft, validation, next }`   |
-| `<cli> onboard status --json`                              | `{ ok, checks: [{ id, status, detail, fix?, ask? }], next }`                 |
-| `<cli> up <repo> --json`                                   | `{ ok, workspace, services: [{ address, result, health, detail? }], next }`  |
-| `<cli> web up --no-open --json`                            | `{ ok, url, port, version? }`                                                |
-| `<cli> doctor --json`                                      | `{ ok, checks: [{ id, status, detail, url?, port?, fix?, ask? }] }`          |
-| `<cli> mcp connect --runtime <runtime> --json`             | `{ ok, server, clients: [{ id, ok, said, file?, changed? }], restart, web }` |
-| `<cli> down <repo> --json`                                 | `{ ok, workspace, services, all? }`                                          |
-| `<cli> web down --json`                                    | `{ ok, url, port, running, stopped }`                                        |
+| Step                                                              | Answers                                                                      |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `npx @monster-orange/den@latest create <name> [dir] --yes --json` | `{ ok, dir, cli, existed, files, port, portPicked?, next }`                  |
+| `<cli> repo add <path\|git-url> --json`                           | `{ ok, existed, repo, workspace, mode, path, manifest, services, next }`     |
+| `<cli> repo detect <folder> --json`                               | `{ ok, path, repos, workspaces, truncated, skipped, rule, next }`            |
+| `<cli> repo add <path> --dry-run --json`                          | `{ ok, dryRun, repo, workspace, path, manifest, draft, validation, next }`   |
+| `<cli> onboard status --json`                                     | `{ ok, checks: [{ id, status, detail, fix?, ask? }], next }`                 |
+| `<cli> up <repo> --json`                                          | `{ ok, workspace, services: [{ address, result, health, detail? }], next }`  |
+| `<cli> web up --no-open --json`                                   | `{ ok, url, port, version? }`                                                |
+| `<cli> doctor --json`                                             | `{ ok, checks: [{ id, status, detail, url?, port?, fix?, ask? }] }`          |
+| `<cli> mcp connect --runtime <runtime> --json`                    | `{ ok, server, clients: [{ id, ok, said, file?, changed? }], restart, web }` |
+| `<cli> down <repo> --json`                                        | `{ ok, workspace, services, all? }`                                          |
+| `<cli> web down --json`                                           | `{ ok, url, port, running, stopped }`                                        |
 
 ### repo add
 
@@ -126,7 +126,12 @@ question for the person (`ask`, sometimes with `choices`).
   the answer has `ask` and `choices`, nothing is written, and a re-run names
   the command with `--run "<cmd>"`. A Makefile `test` target or a
   `package.json` `test` script becomes the repo's `tests.unit`.
-  `--health <url>` adds an HTTP health check.
+  `--health <url>` adds an HTTP health check. Without it, when the start
+  script names a port (`--port`, `-p`, `PORT=`) or runs a dev server with a
+  fixed default port (Vite 5173, Next 3000, Angular 4200,
+  Gatsby 8000, webpack-dev-server 8080), the side-car gets
+  `http://localhost:<port>/` as its health URL, so the service has Visit ↗.
+  No port: no health URL is guessed.
 - The workspace is `-w <workspace>` (made and activated if it doesn't exist),
   else the focused one, else a new `default` workspace.
 - The same repo again answers `ok` with `existed: true`. A different repo
@@ -191,11 +196,11 @@ token (an MCP server outside an agent's session, or anything else on this
 machine) reads "Something on this machine (no agent identity) wants to:",
 with "If you didn't ask an agent to do this, Deny." under it.
 
-| MCP tool           | What Allow runs                                         |
-| ------------------ | ------------------------------------------------------- |
-| `workspace_create` | The Workspaces page's create: an empty workspace        |
-| `repo_add`         | `repo add <path> --json`, a local folder inside home    |
-| `service_try`      | `up` for one service, as the Services page's Start does |
+| MCP tool           | What Allow runs                                                                                                                                    |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspace_create` | The Workspaces page's create: an empty workspace, made active                                                                                      |
+| `repo_add`         | `repo add <path> --json`, a local folder inside home                                                                                               |
+| `service_try`      | `up` for one service, as the Services page's Start does; an inactive workspace is activated first ("Start <service> (this activates <workspace>)") |
 
 - **Den writes the dialog.** Its line and its Review come from the action
   and its arguments, never from the agent. `repo_add`'s Review is its dry
@@ -2291,13 +2296,20 @@ workspace may take that name.
   until they allow one in the browser, it only reads. It starts in an empty
   folder of its own (`<state_dir>/server-agent`), with no checkout to edit,
   and its runtime asks before every command (`permission_mode: ask`).
+  Den's own MCP tools are the exception, for this agent only: its settings
+  file allows `mcp__<server>` (the `--mcp-config` server), so reads just
+  run and each write asks once, in the browser. The org's immediate actions
+  (`mcp.actions`) stay in `permissions.ask`. On a fresh Den the page says
+  above its terminal: "Claude asks whether to trust this folder. Choose
+  Yes." Den doesn't answer that prompt for the person.
 - **Where it lives.** On a fresh Den (no repo in any workspace yet), the
   first page, `/`, is that agent in a terminal framed as the page, with
   Open in Agents as the way out. After setup it is one click away in the
   rail ("Acme agent", `/server-agent`), and ⌘K has "Ask Acme". Agents lists
   it first, under "Server", not under a workspace.
 - **Its onboarding:** `onboard_status`, then "Let's set up Acme. Where are
-  your repos?", `repos_detect` and suggested workspaces, `workspace_create`,
+  your repos? I'll look in <the folder above the Den's> unless you name
+  another folder." in its first turn, `repos_detect` and suggested workspaces, `workspace_create`,
   `manifest_draft` and `repo_add` for each repo, `service_try` (and
   `doctor` when it fails), then "Here's what's running, and three things to
   try next."
@@ -2308,15 +2320,21 @@ workspace may take that name.
   logged in: one that isn't asks in its own terminal, on the page. On a
   fresh Den with such a runtime it starts by itself, once per page load;
   after setup it starts only from its Start button. With no runtime, the
-  page shows how to install one and the manual path.
-- **Only a person starts it or picks its runtime.** An agent's token, or a
+  page shows how to install one and the manual path for this Den, from its
+  folder: `cd <dir>`, `./bin/<cli> repo add <path>`, `./bin/<cli> up`.
+- **Its model.** The page's Model picker, beside Runs on, offers the
+  runtime's own models (`agents.server_model`). With none saved, Sonnet
+  when the runtime has it, else the runtime's default. A new model starts
+  a fresh conversation at the next start.
+- **Only a person starts it or picks its runtime or model.** An agent's token, or a
   request claiming to be an agent, is refused (403).
 
-| Route                            | What it does                                               |
-| -------------------------------- | ---------------------------------------------------------- |
-| `GET /api/server-agent`          | Its name, runtime (or none), state, session, fresh, manual |
-| `POST /api/server-agent/start`   | `{ runtime? }`: start it, or resume or relaunch it         |
-| `POST /api/server-agent/runtime` | `{ runtime: id \| null }`: the person's choice of runtime  |
+| Route                            | What it does                                                                |
+| -------------------------------- | --------------------------------------------------------------------------- |
+| `GET /api/server-agent`          | Its name, runtime (or none), state, session, fresh, manual                  |
+| `POST /api/server-agent/start`   | `{ runtime? }`: start it, or resume or relaunch it                          |
+| `POST /api/server-agent/runtime` | `{ runtime: id \| null }`: the person's choice of runtime                   |
+| `POST /api/server-agent/model`   | `{ model: id \| null }`: the person's choice of model, one of the runtime's |
 
 ## Agents
 

@@ -50,6 +50,7 @@ import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import {
   getActiveWorkspace,
   getActiveWorkspaces,
+  activateWorkspace,
   createWorkspace,
   getFocusedWorkspaceName,
   getWorkspaceByName,
@@ -1770,6 +1771,8 @@ function approvalDeps(): {
     validate: (m) => validateManifest(m),
     workspaceCreateRefusal,
     createWorkspace: (name) => createWorkspace(name, { services: {} }),
+    activateWorkspace: (name) => activateWorkspace(name),
+    workspaceActive: (name) => isWorkspaceActive(name),
     workspaceExists: (name) =>
       Object.prototype.hasOwnProperty.call(
         readWorkspacesFile().workspaces ?? {},
@@ -1777,12 +1780,8 @@ function approvalDeps(): {
       ),
     defaultWorkspace: () => getFocusedWorkspaceName() ?? "default",
     // The exec route's checks for a local `up` (R13 placement, HITL).
+    // An inactive workspace is fine: the Allow activates it (held-actions.ts).
     serviceTarget: (service, ws) => {
-      if (ws && !isWorkspaceActive(ws))
-        return {
-          ok: false,
-          error: `Workspace "${ws}" is not active — activate it first`,
-        };
       const resolved = resolveService(service, ws);
       if (!resolved)
         return {
@@ -4295,6 +4294,9 @@ async function handleRequest(
       uptimeMs: Date.now() - SERVER_STARTED_AT,
       stale,
       scanned,
+      // ON-6: no repo in any workspace yet (the server agent page's own
+      // `fresh`): the shell skips What's new on a brand-new Den.
+      fresh: await freshDen(),
     });
   }
 

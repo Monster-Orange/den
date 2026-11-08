@@ -127,11 +127,12 @@ describe("a fresh Den with no runtime", () => {
     const p = await open(s!, "/");
     await p.waitForSelector('[data-note="manual"]', { timeout: 20_000 });
     const steps = await p.locator(".sa-steps li").allTextContents();
-    expect(steps).toEqual([
-      "npm i -g @monster-orange/den",
-      "den create <name>",
-      "acme repo add <path>",
-      "acme up",
+    // This Den exists: from its folder, its own command.
+    expect(steps).toHaveLength(3);
+    expect(steps[0]).toMatch(/^cd \S/);
+    expect(steps.slice(1)).toEqual([
+      "./bin/acme repo add <path>",
+      "./bin/acme up",
     ]);
     expect(await p.locator('[data-note="no-runtime"]').isVisible()).toBe(true);
     expect(await p.locator(".sa-term").count()).toBe(0);

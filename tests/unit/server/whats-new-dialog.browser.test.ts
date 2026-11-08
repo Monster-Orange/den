@@ -135,7 +135,34 @@ async function scrollBody(p: Page): Promise<number> {
   });
 }
 
+/** A Den with a repo in a workspace: no longer fresh (ON-6). */
+function addRepo(): void {
+  fs.writeFileSync(
+    path.join(tmp, "dist", "config", "local", "workspaces.yml"),
+    "active: [default]\nfocus: default\nworkspaces:\n  default:\n    services:\n      shop:\n        mode: dev-managed\n        path: /nowhere/shop\n",
+  );
+}
+
 describe("the What's new dialog", () => {
+  it("never opens by itself on a brand-new Den: that version counts as seen", async () => {
+    if (!browser) return;
+    const ctx = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+    });
+    const p = await ctx.newPage();
+    await p.goto(`http://127.0.0.1:${port}/services`);
+    // The pill's label comes from the same read: wait for it.
+    await p.waitForFunction(
+      () => !!localStorage.getItem("den-changelog-seen"),
+      null,
+      { timeout: 10_000 },
+    );
+    expect((await state(p)).open).toBe(false);
+    await ctx.close();
+    // Every test below runs on a Den that has a repo.
+    addRepo();
+  }, 40_000);
+
   it("is a labelled modal that takes focus, keeps Tab in, and gives it back", async () => {
     if (!browser) return;
     const ctx = await browser.newContext({

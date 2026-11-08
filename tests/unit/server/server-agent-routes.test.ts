@@ -42,7 +42,11 @@ const AGENT: Principal = {
   session: { name: `acme-${SERVER_SCOPE}:server` },
 };
 
-async function serve(r: Rig, saved: { id?: string | null }, ran: string[]) {
+async function serve(
+  r: Rig,
+  saved: { id?: string | null; model?: string | null },
+  ran: string[],
+) {
   const actions: HeldActions = {
     workspace_create: {
       check: (a) => ({
@@ -84,6 +88,11 @@ async function serve(r: Rig, saved: { id?: string | null }, ran: string[]) {
             saveSetting: (id) => {
               saved.id = id;
             },
+            readModel: () => saved.model ?? undefined,
+            saveModel: (id) => {
+              saved.model = id;
+            },
+            root: () => "/dens/acme",
           },
         })) ||
         (await handleApprovalRoutes(req, res, pathname, guard, {
@@ -184,6 +193,38 @@ describe("/api/server-agent", () => {
     });
     expect(bad.status).toBe(400);
     expect(saved.id).toBe("den-claude");
+  });
+});
+
+describe("/api/server-agent/model", () => {
+  it("offers the runtime's own models, Sonnet by default; the person's choice is saved; others refused", async () => {
+    const r = await rig();
+    const saved: { id?: string | null; model?: string | null } = {};
+    const call = await serve(r, saved, []);
+    const st = await call("GET", "/api/server-agent");
+    expect(st.json.model).toBe("sonnet");
+    expect((st.json.models as { id: string }[]).map((m) => m.id)).toEqual([
+      "opus",
+      "sonnet",
+      "haiku",
+    ]);
+    const ok = await call("POST", "/api/server-agent/model", {
+      model: "opus",
+    });
+    expect([ok.status, ok.json.model]).toEqual([200, "opus"]);
+    expect(saved.model).toBe("opus");
+    const bad = await call("POST", "/api/server-agent/model", {
+      model: "gpt-x",
+    });
+    expect(bad.status).toBe(400);
+    const agent = await call(
+      "POST",
+      "/api/server-agent/model",
+      { model: "haiku" },
+      true,
+    );
+    expect(agent.status).toBe(403);
+    expect(saved.model).toBe("opus");
   });
 });
 
