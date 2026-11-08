@@ -9,7 +9,10 @@ import {
   runOneShot,
   type OneShotOptions,
 } from "../../../src/ui/mcp/server.js";
-import { READ_TOOL_NAMES } from "../../../src/ui/mcp/tools.js";
+import {
+  APPROVAL_TOOL_NAMES,
+  READ_TOOL_NAMES,
+} from "../../../src/ui/mcp/tools.js";
 import type { DenApi, Query } from "../../../src/ui/mcp/api.js";
 import type { ResolvedMcpConfig } from "../../../src/shared/den-config.js";
 
@@ -90,7 +93,8 @@ describe("runOneShot", () => {
     const h = harness(cfg(["service_up"]));
     expect(await runOneShot({ kind: "list" }, h.opts)).toBe(0);
     expect(h.out.join("")).toBe(
-      [...READ_TOOL_NAMES, "service_up"].join("\n") + "\n",
+      [...READ_TOOL_NAMES, ...APPROVAL_TOOL_NAMES, "service_up"].join("\n") +
+        "\n",
     );
     expect(h.calls).toEqual([]);
   });

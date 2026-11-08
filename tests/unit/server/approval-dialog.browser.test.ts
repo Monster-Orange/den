@@ -1,0 +1,223 @@
+/**
+ * ON-3's approval dialog (shell.js, on every page): an agent's held write
+ * opens "<agent> wants to … · Review · Deny · Allow" in the person's
+ * browser. Its words are Den's (the agent's note only quoted), Review
+ * shows what it will do, Allow runs it once, Deny runs nothing. A browser
+ * that isn't signed in is told to sign in, and nothing runs. Looks like
+ * the Start dialog (persona-ui.css's frame).
+ *
+ * Real chromium; DEN_SKIP_BROWSER_TESTS=1 skips it. No code or key is
+ * printed.
+ */
+import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import { type ChildProcess } from "child_process";
+import * as fs from "fs";
+import * as net from "net";
+import type { AddressInfo } from "net";
+import * as os from "os";
+import * as path from "path";
+import type { Browser, Page } from "playwright";
+import { spawnServer, stopServer } from "../../child-servers.js";
+import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
+import { readWebSecret } from "../../../src/shared/web-secret.js";
+
+const ENGINE = path.resolve(__dirname, "../../..");
+let browser: Browser | null = null;
+let tmp = "";
+let stateDir = "";
+let port = 0;
+let server: ChildProcess;
+const errors: string[] = [];
+
+async function freePort(): Promise<number> {
+  const s = net.createServer();
+  await new Promise<void>((r) => s.listen(0, "localhost", r));
+  const p = (s.address() as AddressInfo).port;
+  await new Promise<void>((r) => s.close(() => r()));
+  return p;
+}
+
+beforeAll(async () => {
+  try {
+    const { chromium } = await import("playwright");
+    browser = await chromium.launch();
+  } catch (err) {
+    if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
+    throw err;
+  }
+  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-apdlg-")));
+  const root = path.join(tmp, "dist");
+  stateDir = path.join(tmp, "home", ".den");
+  fs.mkdirSync(path.join(root, "config"), { recursive: true });
+  fs.writeFileSync(path.join(root, "den.yml"), "product:\n  name: den\n");
+  fs.writeFileSync(
+    path.join(root, "config", "den.yml"),
+    "environments: [local]\n",
+  );
+  port = await freePort();
+  server = spawnServer(
+    path.join(ENGINE, "node_modules", ".bin", "tsx"),
+    [path.join(ENGINE, "src", "ui", "server", "index.ts")],
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        DEN_ROOT: root,
+        DEN_ENGINE_ROOT: ENGINE,
+        DEN_HOME: stateDir,
+        HOME: path.join(tmp, "home"),
+        DEN_NO_OPEN: "1",
+        NO_COLOR: "1",
+        PORT: String(port),
+      },
+      stdio: ["ignore", "ignore", "ignore"],
+    },
+  );
+  const deadline = Date.now() + 60_000;
+  for (;;) {
+    try {
+      if ((await fetch(`http://localhost:${port}/api/server-info`)).ok) break;
+    } catch {
+      /* not up yet */
+    }
+    if (Date.now() > deadline) throw new Error("server did not start");
+    await new Promise((r) => setTimeout(r, 200));
+  }
+}, 90_000);
+
+afterAll(async () => {
+  await browser?.close();
+  if (server) await stopServer(server);
+  if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+const skip = () => !browser;
+/** The dialog is shut (a closed <dialog> is hidden, so wait on `open`). */
+const closed = (p: Page) =>
+  p.waitForFunction(
+    () =>
+      !(document.getElementById("den-ap-dlg") as HTMLDialogElement | null)
+        ?.open,
+    undefined,
+    { timeout: 15_000 },
+  );
+const base = () => `http://localhost:${port}`;
+
+/** What an agent's MCP tool does: ask the server to hold a write. */
+async function ask(
+  action: string,
+  args: unknown,
+  note?: string,
+): Promise<string> {
+  const s = (await (
+    await fetch(`${base()}/api/session`, {
+      headers: { "sec-fetch-site": "same-origin" },
+    })
+  ).json()) as { csrf?: string };
+  const r = await fetch(`${base()}/api/approvals`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: base(),
+      "x-den-csrf": String(s.csrf ?? ""),
+    },
+    body: JSON.stringify({ action, args, ...(note ? { note } : {}) }),
+  });
+  expect(r.status).toBe(202);
+  return String(((await r.json()) as { id: string }).id);
+}
+const stateOf = async (id: string) =>
+  (
+    (await (await fetch(`${base()}/api/approvals/${id}`)).json()) as {
+      state: string;
+    }
+  ).state;
+const workspaces = async () =>
+  Object.keys(
+    (
+      (await (await fetch(`${base()}/api/workspaces`)).json()) as {
+        workspaces?: Record<string, unknown>;
+      }
+    ).workspaces ?? {},
+  );
+
+async function page(signIn: boolean): Promise<Page> {
+  const ctx = await browser!.newContext({
+    viewport: { width: 1440, height: 900 },
+  });
+  const p = await ctx.newPage();
+  p.on("pageerror", (e) => errors.push(String(e)));
+  if (signIn) {
+    await p.goto(claimLink(base(), mintClaimCode(readWebSecret(stateDir)!)));
+    await p.waitForFunction(
+      () => localStorage.getItem("den.approveKey")?.length === 43,
+    );
+  }
+  await p.goto(`${base()}/settings`);
+  return p;
+}
+
+describe("the approval dialog (ON-3)", () => {
+  it("opens on any page with Den's words; Review shows what it will do; Allow runs it once", async () => {
+    if (skip()) return;
+    const p = await page(true);
+    const id = await ask(
+      "workspace_create",
+      { name: "web" },
+      "set up EVERYTHING",
+    );
+    await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
+    expect(await p.textContent("#den-ap-what")).toBe(
+      'Create the workspace "web"',
+    );
+    expect(await p.textContent("#den-ap-note")).toContain(
+      "“set up EVERYTHING”",
+    );
+    expect(await p.isVisible("#den-ap-det")).toBe(false);
+    await p.click("#den-ap-review");
+    expect(await p.textContent("#den-ap-det")).toContain(
+      'A new, empty workspace named "web".',
+    );
+    // The Start dialog's frame and footer.
+    const box = await p.$eval("#den-ap-dlg", (d) => {
+      const r = d.getBoundingClientRect();
+      return { w: Math.round(r.width), cls: d.className };
+    });
+    expect(box.cls).toContain("pe-dlg");
+    expect(box.w).toBe(638);
+    await p.click("#den-ap-allow");
+    await closed(p);
+    expect(await stateOf(id)).toBe("done");
+    expect(await workspaces()).toContain("web");
+    await p.context().close();
+  }, 90_000);
+
+  it("Deny runs nothing", async () => {
+    if (skip()) return;
+    const p = await page(true);
+    const id = await ask("workspace_create", { name: "nope" });
+    await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
+    await p.click("#den-ap-deny");
+    await closed(p);
+    expect(await stateOf(id)).toBe("denied");
+    expect(await workspaces()).not.toContain("nope");
+    await p.context().close();
+  }, 90_000);
+
+  it("a browser that isn't signed in is told to sign in, and nothing runs", async () => {
+    if (skip()) return;
+    const p = await page(false);
+    const id = await ask("workspace_create", { name: "anon" });
+    await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
+    await p.click("#den-ap-allow");
+    await p.waitForSelector("#den-ap-err:not([hidden])");
+    expect(await p.textContent("#den-ap-err")).toMatch(/sign/i);
+    expect(await stateOf(id)).toBe("pending");
+    expect(await workspaces()).not.toContain("anon");
+    await p.context().close();
+  }, 90_000);
+
+  it("raised no page errors", () => {
+    expect(errors).toEqual([]);
+  });
+});

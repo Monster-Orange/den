@@ -64,6 +64,15 @@ export interface ToolContext {
    * behaves as it always has.
    */
   scope?: McpScope;
+  /**
+   * How a write waits for the person's answer (ON-3, approvals): poll
+   * every `intervalMs` for up to `waitMs`. Tests pass a short one.
+   */
+  approvalWait?: {
+    intervalMs: number;
+    waitMs: number;
+    sleep?: (ms: number) => Promise<void>;
+  };
 }
 
 type Args = Record<string, unknown>;
@@ -178,6 +187,20 @@ const read = (
 ): DenTool => ({ name, title, description, action: false, shape, run });
 
 const READ_TOOLS: DenTool[] = [
+  read(
+    "approval_check",
+    "Check an approval",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try): `state` pending, done (with the server's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    { id: z.string().describe("The request id a write tool returned") },
+    async (a, { api }) => {
+      const id = str(a.id)?.trim() ?? "";
+      if (!/^[A-Za-z0-9_-]{16}$/.test(id))
+        throw new Refusal(
+          "approval_check: give the request id a write tool returned.",
+        );
+      return api.get(`/api/approvals/${id}`);
+    },
+  ),
   read(
     "status",
     "Service health",
@@ -1023,10 +1046,215 @@ const ACTION_TOOLS: Record<McpAction, DenTool> = {
 export const READ_TOOL_NAMES: readonly string[] = READ_TOOLS.map((t) => t.name);
 export const ACTION_TOOL_NAMES: readonly McpAction[] = MCP_ACTIONS;
 
-/** The tools to register: every read tool, plus the actions the org named. */
+// ── Writes held for the person (ON-3, 0.4.15) ──────────────────────────────
+
+/** How long a write waits for the person by default, and how often it looks. */
+const APPROVAL_WAIT: NonNullable<ToolContext["approvalWait"]> = {
+  intervalMs: 2_000,
+  waitMs: 120_000,
+};
+
+/**
+ * Ask the web server to hold `action` for the person (POST /api/approvals),
+ * then wait for the answer. Allowed: what the server's run said (an error
+ * when it failed). Denied, expired, the agent stopped: a refusal. Still
+ * pending: a plain answer naming approval_check.
+ */
+async function askPerson(
+  tool: string,
+  action: string,
+  args: Args,
+  note: unknown,
+  ctx: ToolContext,
+): Promise<unknown> {
+  const clean = Object.fromEntries(
+    Object.entries(args).filter(([, v]) => v !== undefined && v !== ""),
+  );
+  let asked: { id?: unknown };
+  try {
+    asked = (await ctx.api.get("/api/approvals", {}, "POST", {
+      action,
+      args: clean,
+      ...(typeof note === "string" && note.trim() ? { note: note.trim() } : {}),
+    })) as { id?: unknown };
+  } catch (e) {
+    if (e instanceof DenHttpError && [400, 403, 409, 429].includes(e.status))
+      throw new Refusal(`${tool}: ${e.body}`);
+    throw e;
+  }
+  const id = String(asked?.id ?? "");
+  const w = ctx.approvalWait ?? APPROVAL_WAIT;
+  const sleep =
+    w.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const until = Date.now() + w.waitMs;
+  for (;;) {
+    const a = (await ctx.api.get(`/api/approvals/${id}`)) as {
+      state?: string;
+      result?: unknown;
+      endedBecause?: string;
+    };
+    if (a.state === "done") {
+      const result = a.result as { ok?: unknown } | undefined;
+      const out = { approved: true, id, result };
+      if (result && result.ok === false) throw new ActionFailed(out);
+      return out;
+    }
+    if (a.state === "denied")
+      throw new Refusal(
+        a.endedBecause === "actor_gone"
+          ? `${tool}: the agent that asked was stopped before the person allowed it (request ${id}); nothing ran.`
+          : `${tool}: the person denied it (request ${id}); nothing ran.`,
+      );
+    if (a.state === "expired")
+      throw new Refusal(
+        `${tool}: nobody answered in time (request ${id}); nothing ran. Ask again when the person is at Den.`,
+      );
+    if (Date.now() >= until) break;
+    await sleep(w.intervalMs);
+  }
+  return `Waiting for the person to approve in Den (request ${id}); call approval_check with this id later.`;
+}
+
+/** A required string argument, or a refusal before anything is asked. */
+function needArg(tool: string, a: Args, k: string, what: string): string {
+  const v = str(a[k])?.trim();
+  if (!v) throw new Refusal(`${tool}: give ${k} (${what}).`);
+  return v;
+}
+
+const noteArg = z
+  .string()
+  .max(500)
+  .optional()
+  .describe(
+    'One line for the person on why (shown quoted as "Agent says"; Den writes the request itself)',
+  );
+
+/** Onboarding writes are the unscoped server agent's. */
+function refuseScoped(tool: string, scope: McpScope | undefined): void {
+  if (scope)
+    throw new ScopeRefusal(
+      `${tool}: this MCP server is scoped to workspace "${scope.workspace}" (${scope.actor}), and ${tool} changes Den beyond it; nothing was asked. Den's own unscoped MCP server does onboarding.`,
+    );
+}
+
+const HELD =
+  " Nothing changes until the person allows it in Den's browser dialog: the request waits up to 10 minutes; this call waits up to 2 for the answer, then returns the request id for approval_check.";
+
+const APPROVAL_TOOLS: DenTool[] = [
+  {
+    name: "workspace_create",
+    title: "Create a workspace",
+    description: "Create an empty Den workspace named `name`." + HELD,
+    action: true,
+    shape: {
+      name: z
+        .string()
+        .describe(
+          "The workspace name (no quotes, slashes or control characters)",
+        ),
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("workspace_create", ctx.scope);
+      const name = needArg("workspace_create", a, "name", "the workspace name");
+      return askPerson(
+        "workspace_create",
+        "workspace_create",
+        { name },
+        a.note,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "repo_add",
+    title: "Add a repo",
+    description:
+      "Add the local repo at `path` to a workspace, as `repo add` does (manifest_draft first shows what it would write)." +
+      HELD,
+    action: true,
+    shape: {
+      path: z
+        .string()
+        .describe(
+          "The repo's folder: absolute, or ~/… inside the person's home",
+        ),
+      workspace: workspaceArg,
+      name: z
+        .string()
+        .optional()
+        .describe("The repo name (default: its folder)"),
+      run: z
+        .string()
+        .optional()
+        .describe("The start command, when detection asked which"),
+      down: z.string().optional().describe("The stop command"),
+      health: z
+        .string()
+        .optional()
+        .describe("An http(s) URL for the health check"),
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("repo_add", ctx.scope);
+      const p = needArg("repo_add", a, "path", "the repo's folder");
+      return askPerson(
+        "repo_add",
+        "repo_add",
+        {
+          path: p,
+          workspace: str(a.workspace),
+          name: str(a.name),
+          run: str(a.run),
+          down: str(a.down),
+          health: str(a.health),
+        },
+        a.note,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "service_try",
+    title: "Start one service",
+    description:
+      "Start one service locally (`up`, as the Services page does) and report how it went: the exit code and the last lines of output." +
+      HELD,
+    action: true,
+    shape: {
+      service: z.string().describe("The service: <repo> or <repo>/<service>"),
+      workspace: workspaceArg,
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      const service = needArg(
+        "service_try",
+        a,
+        "service",
+        "<repo> or <repo>/<service>",
+      );
+      return askPerson(
+        "service_try",
+        "service_try",
+        { service, workspace: str(a.workspace) },
+        a.note,
+        ctx,
+      );
+    },
+  },
+];
+
+/** The held writes, always registered (the person's approval is the gate). */
+export const APPROVAL_TOOL_NAMES: readonly string[] = APPROVAL_TOOLS.map(
+  (t) => t.name,
+);
+
+/** The tools to register: every read tool, the held writes, plus the actions the org named. */
 export function toolsFor(cfg: ResolvedMcpConfig, scope?: McpScope): DenTool[] {
   const tools = [
     ...READ_TOOLS,
+    ...APPROVAL_TOOLS,
     ...MCP_ACTIONS.filter((a) => cfg.actions.includes(a)).map(
       (a) => ACTION_TOOLS[a],
     ),
@@ -1050,6 +1278,7 @@ const WORKSPACE_TOOLS = new Set([
   "tests_available",
   "manifest_validate",
   "manifest_draft",
+  "service_try",
   "stacks",
   "service_up",
   "service_down",
@@ -1102,9 +1331,10 @@ export function pinnedTool(t: DenTool, scope: McpScope): DenTool {
  * than the web server it talks to.
  */
 export const ROUTE_SINCE: Readonly<Record<string, string>> = {
-  "/api/onboard/status": "0.4.13",
-  "/api/onboard/repos": "0.4.13",
-  "/api/onboard/manifest": "0.4.13",
+  "/api/approvals": "0.4.15",
+  "/api/onboard/status": "0.4.15",
+  "/api/onboard/repos": "0.4.15",
+  "/api/onboard/manifest": "0.4.15",
   "/api/stacks": "0.2.0",
   "/api/edge": "0.2.0",
   "/api/security/plan": "0.2.0",

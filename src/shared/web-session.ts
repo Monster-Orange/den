@@ -319,6 +319,43 @@ function clientIdOf(
   return v.trim();
 }
 
+// ── The approval key (0.4.15) ─────────────────────────────────────────────
+
+/**
+ * Why a cookie alone can't approve an agent's change: browsers send a
+ * localhost cookie to every localhost port (cookies ignore ports), so a
+ * dev server an agent runs on another port receives Den's session cookie,
+ * and GET /api/session gives any cookie holder the session's CSRF token.
+ * The approval key is a second secret only the signed-in page holds: it
+ * comes in the sign-in's own answer (a 303's URL fragment, which never
+ * reaches a server, or the sign-in poll's JSON), the page keeps it in its
+ * localStorage (per origin, port included), and sends it as
+ * X-Den-Approve-Key.
+ */
+export const APPROVE_KEY_HEADER = "x-den-approve-key";
+/** The fragment parameter a sign-in's 303 carries it in. */
+export const APPROVE_KEY_FRAGMENT = "ak";
+
+export function approveKeyHash(key: string): string {
+  return createHash("sha256").update(`den-approve-v1:${key}`).digest("hex");
+}
+
+/** Whether `given` is the key whose hash the session keeps (constant time). */
+export function approveKeyMatches(
+  storedHash: string | undefined,
+  given: string | undefined | null,
+): boolean {
+  if (!storedHash || !given || !/^[A-Za-z0-9_-]{43}$/.test(given)) return false;
+  const a = Buffer.from(approveKeyHash(given), "hex");
+  const b = Buffer.from(storedHash, "hex");
+  return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
+}
+
+/** `next` with the approval key in its fragment (a sign-in's 303). */
+export function withApproveKey(next: string, key: string): string {
+  return `${next.split("#")[0]}#${APPROVE_KEY_FRAGMENT}=${key}`;
+}
+
 // ── The session store ──────────────────────────────────────────────────────
 
 export interface SessionRecord {
@@ -329,14 +366,21 @@ export interface SessionRecord {
   csrf: string;
   /** The Host it was issued on. */
   host: string;
-  /** SEC-2a: how it signed in: a GitHub sign-in, or a one-time link (pairing). Unset: a link (before 0.4.5). */
-  via?: "github" | "link" | "code";
+  /** SEC-2a: how it signed in: a GitHub sign-in, a one-time link, a code (pairing), or the install's setup link (claim, 0.4.15). Unset: a link (before 0.4.5). */
+  via?: "github" | "link" | "code" | "claim";
   /** SEC-2a: the client's address when Den could attest it. */
   client?: string;
   /** SEC-2a: a GitHub sign-in's login (the chip's "@login"). */
   login?: string;
   /** SEC-2a: not yet greeted ("This device is signed in…", once). */
   welcome?: true;
+  /**
+   * 0.4.15: sha256 of this session's approval key (approvalKeyMatches).
+   * The key itself is handed over once, at the end of the sign-in, and
+   * never by GET /api/session. Unset: a session from before 0.4.15, which
+   * must sign in again to approve.
+   */
+  approveKeyHash?: string;
 }
 
 interface StoreFile {
@@ -464,14 +508,17 @@ export class WebSessionStore {
   create(meta: {
     userAgent?: string;
     host?: string;
-    via?: "github" | "link" | "code";
+    via?: "github" | "link" | "code" | "claim";
     client?: string;
     login?: string;
   }): {
     id: string;
     session: SessionView;
+    /** The approval key, for the sign-in's answer only (never stored). */
+    approveKey: string;
   } {
     const id = randomBytes(32).toString("base64url");
+    const approveKey = randomBytes(32).toString("base64url");
     const key = this.keyOf(id);
     if (!key) throw new Error("web.secret is missing: no session can be made");
     const now = this.now();
@@ -487,12 +534,13 @@ export class WebSessionStore {
       ...(meta.client ? { client: String(meta.client).slice(0, 64) } : {}),
       ...(meta.login ? { login: String(meta.login).slice(0, 64) } : {}),
       welcome: true,
+      approveKeyHash: approveKeyHash(approveKey),
     };
     const data = structuredClone(this.load());
     this.prune(data, now);
     data.sessions[key] = rec;
     this.save(data);
-    return { id, session: { key, ...rec } };
+    return { id, session: { key, ...rec }, approveKey };
   }
 
   /**

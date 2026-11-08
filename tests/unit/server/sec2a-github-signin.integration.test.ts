@@ -237,8 +237,18 @@ describe("before an owner is linked", () => {
     expect([r.status, json(r).code]).toEqual([401, "signin_required"]);
   });
 
-  it("on localhost the owner links through the server's device flow; the token is dropped", async () => {
-    const h = await localCsrf();
+  it("0.4.12: on plain localhost an anonymous page (any agent's curl) can't link the owner", async () => {
+    const r = await call(
+      "POST",
+      "/api/web/owner/link",
+      await localCsrf(),
+      "{}",
+    );
+    expect([r.status, json(r).code]).toEqual([403, "signin_to_approve"]);
+  });
+
+  it("on localhost the person (the CLI's bearer) links the owner through the server's device flow; the token is dropped", async () => {
+    const h = bearer();
     const start = await call("POST", "/api/web/owner/link", h, "{}");
     expect(start.status).toBe(200);
     const s = json(start);
@@ -480,7 +490,15 @@ describe("Settings › Access", () => {
   });
 
   it("Pair a device: a one-time link for an edge hostname, which signs a browser in there once", async () => {
-    const h = await localCsrf();
+    // 0.4.12: an anonymous localhost page can't make one; the person can.
+    const anon = await call(
+      "POST",
+      "/api/web/pair",
+      await localCsrf(),
+      JSON.stringify({ host: EDGE }),
+    );
+    expect([anon.status, json(anon).code]).toEqual([403, "signin_to_approve"]);
+    const h = bearer();
     expect(json(await call("GET", "/api/web/pair", h))).toEqual({
       hosts: [EDGE],
     });
@@ -515,7 +533,7 @@ describe("Settings › Access", () => {
   it("unlinking the owner is shell-grade too; then Sign in with GitHub says to link one", async () => {
     const r = await call("POST", "/api/web/owner/unlink", edge(), "{}");
     expect(r.status).toBe(401);
-    const h = await localCsrf();
+    const h = bearer();
     expect(json(await call("POST", "/api/web/owner/unlink", h, "{}"))).toEqual({
       ok: true,
       was: "octo-owner",

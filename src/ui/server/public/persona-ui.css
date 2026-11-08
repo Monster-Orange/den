@@ -561,3 +561,24 @@ dialog.pe-dlg::backdrop {
 .pr[aria-disabled="true"]:hover {
   background: none;
 }
+
+/* ON-3's approval dialog (shell.js, every page): the Start dialog's frame,
+   the request in the body text's size and weight, and Review's lines in
+   the mono box the persona Details use. */
+.den-ap-dlg .den-ap-what {
+  color: var(--text);
+  font: 600 14.5px/1.45 var(--sans);
+  overflow-wrap: anywhere;
+}
+.den-ap-dlg .den-ap-det {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button, 6px);
+  background: var(--surface, var(--raised));
+  font: 12px/1.5 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

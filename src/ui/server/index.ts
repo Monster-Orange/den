@@ -48,6 +48,7 @@ import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import {
   getActiveWorkspace,
   getActiveWorkspaces,
+  createWorkspace,
   getFocusedWorkspaceName,
   getWorkspaceByName,
   isWorkspaceActive,
@@ -231,9 +232,12 @@ import {
   sessionCookieName,
   sessionIdPrefix,
   WebSessionStore,
+  withApproveKey,
   type WebAuthConfig,
 } from "../../shared/web-session.js";
 import { serveUiAsset } from "./ui-assets.js";
+import { PERSON_GRANT_ROUTES, personGrantAllowed } from "./approvals.js";
+import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
   expiringTokenWarning,
   githubClientId,
@@ -797,6 +801,8 @@ import {
   readBody,
   sendJson,
   serveFile,
+  serveUntrustedFile,
+  UNTRUSTED_FILE_HEADERS,
   send400,
   send404,
   setHtmlFill,
@@ -832,7 +838,19 @@ import { parseChangelog } from "./changelog-parser.js";
 // ── Extracted services ───────────────────────────────────────────────────────
 import { GitHubService } from "./github-service.js";
 import { EditorManager, SUPPORTED_LANGUAGES } from "./editor-manager.js";
-import { handleWorkspaceRoutes } from "./workspace-routes.js";
+import {
+  handleWorkspaceRoutes,
+  workspaceCreateRefusal,
+} from "./workspace-routes.js";
+import {
+  createApprovalQueue,
+  handleApprovalRoutes,
+  isApprovalPath,
+  type HeldActions,
+} from "./approval-routes.js";
+import { heldActions } from "./held-actions.js";
+import type { ApprovalQueue } from "./approvals.js";
+import { processPathRules } from "../cli/onboard-reads.js";
 import { handleAgentRoutes, startAgentUpkeep } from "./agent-routes.js";
 import {
   handleSessionList,
@@ -841,7 +859,11 @@ import {
   sendSessionHttp,
 } from "./session-routes.js";
 import { refuseUpgrade } from "./websocket.js";
-import { isLifecycleExecCmd, streamLifecycleExec } from "./lifecycle-exec.js";
+import {
+  collectLifecycleExec,
+  isLifecycleExecCmd,
+  streamLifecycleExec,
+} from "./lifecycle-exec.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import {
   edgeHttps,
@@ -1253,22 +1275,28 @@ function closeSessionSockets(keys: Iterable<string>): void {
   }
 }
 
-/** A new session for this request and its Set-Cookie line (GitHub or a link). */
+/**
+ * A new session for this request: its Set-Cookie line, and its approval
+ * key (web-session.ts), which only this sign-in's own answer may carry.
+ */
 function startSession(
   req: http.IncomingMessage,
-  via: "github" | "link" | "code",
+  via: "github" | "link" | "code" | "claim",
   login?: string,
-): string {
+): { cookie: string; approveKey: string } {
   const g = checkRequest(req, GUARD, product().cli, product().title);
   const named = g.ok ? g.via : null;
-  const { id } = webSessions.create({
+  const { id, approveKey } = webSessions.create({
     userAgent: req.headers["user-agent"],
     host: req.headers.host,
     via,
     ...(g.ok && g.client ? { client: g.client } : {}),
     ...(login ? { login } : {}),
   });
-  return sessionSetCookie(id, requestIsHttps(req, named));
+  return {
+    cookie: sessionSetCookie(id, requestIsHttps(req, named)),
+    approveKey,
+  };
 }
 
 /** The edge hostnames that route here, and their URLs (Pair a device). */
@@ -1483,6 +1511,8 @@ async function handleAuth(
   url: URL,
   requestId: string,
 ): Promise<void> {
+  if (url.searchParams.has("claim"))
+    return handleClaim(req, res, url, requestId);
   const secret = webSecret.current();
   const c = url.searchParams.get("c") ?? "";
   const nonce = loginCodeNonce(c);
@@ -1574,21 +1604,70 @@ async function handleAuth(
       device: deviceName(req.headers["user-agent"]),
       ...(g.ok && g.client ? { client: g.client } : {}),
     });
-    res.setHeader("Set-Cookie", startSession(req, "link"));
+    const s = startSession(req, "link");
+    res.setHeader("Set-Cookie", s.cookie);
+    res.setHeader("Cache-Control", "no-store");
     return sendJson(res, {
       ok: true,
       next: safeNext(url.searchParams.get("next")),
+      approveKey: s.approveKey,
     });
   }
   // A link nobody waits on (`web login --no-wait`, or minted with no
   // server running): it signs in when opened, once, as before.
   if (post || !webSessions.consumeCode(check.nonce, check.expiresAt))
     return gone();
+  const s = startSession(req, "link");
   res.writeHead(303, {
-    Location: safeNext(url.searchParams.get("next")),
-    "Set-Cookie": startSession(req, "link"),
+    // The approval key in the fragment: it never reaches a server.
+    Location: withApproveKey(
+      safeNext(url.searchParams.get("next")),
+      s.approveKey,
+    ),
+    "Set-Cookie": s.cookie,
     "Cache-Control": "no-store",
     "Referrer-Policy": "no-referrer",
+  });
+  res.end();
+}
+
+/**
+ * `GET /auth?claim=<code>` (0.4.15): the setup link `<cli> web claim-link`
+ * prints at the end of an install. A valid, unused claim code (30 min,
+ * single use across restarts) becomes a session ("claimed with a setup
+ * link" in Linked devices), then a 303 to `/` with the session's approval
+ * key in the fragment and no claim in the address, no referrer. Anything
+ * else: the signed-out page, which says the link was used and never
+ * echoes the code. An agent's token never gets here (AGENT_FORBIDDEN).
+ */
+const CLAIM_NONCES = new ClaimNonces(getStateDir());
+function handleClaim(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  requestId: string,
+): void {
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  const secret = webSecret.current();
+  const check =
+    req.method !== "POST" && secret
+      ? checkClaimCode(url.searchParams.get("claim") ?? "", secret)
+      : null;
+  if (!check?.ok || !CLAIM_NONCES.consume(check.nonce, check.expiresAt))
+    return sendSignedOut(req, res, {
+      pathname: "/auth",
+      search: "",
+      scope: "den",
+      expired: true,
+      requestId,
+      message: `This setup link was used or has expired. If you didn't open it yourself, someone else may have: check Settings › Access › Linked devices. Sign in below, or run \`${product().cli} web claim-link\` in your own terminal for a new one.`,
+    });
+  const s = startSession(req, "claim");
+  res.writeHead(303, {
+    // The approval key in the fragment: it never reaches a server.
+    Location: withApproveKey("/", s.approveKey),
+    "Set-Cookie": s.cookie,
   });
   res.end();
 }
@@ -1612,6 +1691,98 @@ function declaredCommand<T>(
   if (!own(commands, env)) return undefined;
   const forEnv = commands![env];
   return own(forEnv, cmd) ? forEnv![cmd] : undefined;
+}
+
+// ── ON-3: the writes held for the person (approval-routes.ts) ─────────────────
+let approvals: { queue: ApprovalQueue; actions: HeldActions } | null = null;
+/** The held writes and their queue, made on first use. */
+function approvalDeps(): { queue: ApprovalQueue; actions: HeldActions } {
+  if (approvals) return approvals;
+  const actions = heldActions({
+    rules: () => processPathRules(getStateDir()),
+    validate: (m) => validateManifest(m),
+    workspaceCreateRefusal,
+    createWorkspace: (name) => createWorkspace(name, { services: {} }),
+    workspaceExists: (name) =>
+      Object.prototype.hasOwnProperty.call(
+        readWorkspacesFile().workspaces ?? {},
+        name,
+      ),
+    defaultWorkspace: () => getFocusedWorkspaceName() ?? "default",
+    // The exec route's checks for a local `up` (R13 placement, HITL).
+    serviceTarget: (service, ws) => {
+      if (ws && !isWorkspaceActive(ws))
+        return {
+          ok: false,
+          error: `Workspace "${ws}" is not active — activate it first`,
+        };
+      const resolved = resolveService(service, ws);
+      if (!resolved)
+        return {
+          ok: false,
+          error: `Den doesn't know a service "${service}"${ws ? ` in workspace "${ws}"` : ""}; the services tool lists what it runs`,
+        };
+      const manifest = readManifest(resolved.repoPath);
+      const refusal = placementRefusal(
+        resolved.address,
+        servicePlacement(manifest, resolved.subsystem, "local"),
+        (e) => isProductionEnv(e),
+        "up",
+      );
+      if (refusal) return { ok: false, error: refusal };
+      const def = manifest
+        ? declaredCommand(
+            manifest.services?.[resolved.subsystem]?.commands,
+            "local",
+            "up",
+          )
+        : undefined;
+      if (def && isInteractiveServiceCommand(def))
+        return {
+          ok: false,
+          error: `"up" for ${resolved.address} needs an interactive terminal: the person runs \`${product().cli} up ${resolved.address}\``,
+        };
+      return { ok: true, address: resolved.address };
+    },
+    // `up` as /api/service/exec runs it, collected instead of streamed.
+    tryService: async (address, ws) => {
+      const resolved = resolveService(address, ws);
+      if (!resolved)
+        return {
+          ok: false,
+          exitCode: null,
+          ready: false,
+          lines: [`Den no longer knows a service "${address}"`],
+        };
+      prewarmSudo();
+      return collectLifecycleExec(
+        {
+          resolved,
+          cmd: "up",
+          workspace: ws,
+          env: { E2E_ENVIRONMENT: "local", ...getSudoEnv() },
+        },
+        {
+          run: runServiceCommand,
+          health: (r) => checkServiceHealth(r, "local"),
+          secretEnv: (a, c, w) => prepareServiceSecretEnv(a, c, w),
+        },
+      );
+    },
+  });
+  approvals = {
+    actions,
+    queue: createApprovalQueue(actions, () => getStateDir()),
+  };
+  return approvals;
+}
+/** The agent ids with a held write waiting (their rows say "waiting"). */
+function waitingAgentIds(): Set<string> {
+  const out = new Set<string>();
+  if (!approvals) return out;
+  for (const actor of approvals.queue.waitingActors())
+    if (actor.startsWith("agent:")) out.add(actor.slice("agent:".length));
+  return out;
 }
 
 /** A test module's name as a run takes it (SEC-1 §6b.2): never a path out. */
@@ -1750,6 +1921,40 @@ async function handleRequest(
   // is a WebSocket (the server's upgrade handler): a plain GET of it is 426.
   if (pathname.startsWith("/api/sessions/"))
     return sendSessionHttp(req, res, pathname);
+  // ON-3: an agent's held writes; Allow from the person's browser only.
+  if (
+    guard.ok &&
+    isApprovalPath(pathname) &&
+    (await handleApprovalRoutes(req, res, pathname, guard, approvalDeps()))
+  )
+    return;
+  // 0.4.15: what lets another browser in needs the person, not just
+  // loopback (approvals.ts: an agent with a shell is on loopback too).
+  if (req.method === "POST" && PERSON_GRANT_ROUTES.includes(pathname)) {
+    const g = guard.ok ? guard : null;
+    const ok = g ? personGrantAllowed(req, g, printedCli()) : null;
+    if (!ok?.ok) {
+      recordAction(
+        auditActorOf(req),
+        {
+          verb: "person-grant",
+          detail: pathname,
+          outcome: "refused" as const,
+          reason: "signin_to_approve",
+        },
+        principalOf(req),
+      );
+      return sendJson(
+        res,
+        {
+          ok: false,
+          code: "signin_to_approve",
+          error: ok && !ok.ok ? ok.error : "Sign in first.",
+        },
+        403,
+      );
+    }
+  }
   // SEC-2a: Sign in with GitHub, the owner's link, Pair a device. Before
   // config validation, like the sign-in above.
   if (
@@ -1932,7 +2137,9 @@ async function handleRequest(
   }
 
   // ── Playwright report ──────────────────────────────────────────────────────
-  if (pathname.startsWith("/report")) {
+  // A test run wrote it (an agent may have): sandboxed, never Den's origin.
+  // `/report/…` only: `/reports/security/…` is ZAP's, below.
+  if (pathname === "/report" || pathname.startsWith("/report/")) {
     const relPath = pathname.slice("/report".length) || "/index.html";
     const filePath = path.resolve(path.join(REPORT_DIR, relPath));
 
@@ -1953,7 +2160,7 @@ async function handleRequest(
         ? path.join(filePath, "index.html")
         : filePath;
 
-    return serveFile(res, target);
+    return serveUntrustedFile(res, target);
   }
 
   // ── API: environments ──────────────────────────────────────────────────────
@@ -2055,9 +2262,8 @@ async function handleRequest(
         "Content-Type": file.endsWith(".html")
           ? "text/html; charset=utf-8"
           : "application/json",
-        "Cache-Control": "no-store",
         // ZAP's report pulls its own scripts; keep it away from Den's origin data.
-        "Content-Security-Policy": "sandbox allow-scripts",
+        ...UNTRUSTED_FILE_HEADERS,
       });
       return res.end(body);
     } catch {
@@ -4239,6 +4445,7 @@ async function handleRequest(
       res,
       pathname,
       guard.ok && (!guard.beyond || !!guard.session || !!guard.principal),
+      { waitingAgents: waitingAgentIds },
     )
   )
     return;

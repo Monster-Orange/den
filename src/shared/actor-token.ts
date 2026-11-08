@@ -199,6 +199,18 @@ export function revokedAgentIds(stateDir: string): Set<string> {
   return out;
 }
 
+/**
+ * Whether agent `agentId` holds a token that isn't revoked: stopping it
+ * deletes its tokens, `web logout --all` marks them revoked (ON-3: a held
+ * write of an agent that is gone never runs).
+ */
+export function agentTokenLive(stateDir: string, agentId: string): boolean {
+  const actor = `agent:${agentId}`;
+  return Object.values(load(stateDir).tokens).some(
+    (r) => r.actor === actor && !r.revokedAt,
+  );
+}
+
 /** What a presented token was minted as, live or not; null when unknown. */
 export function lookupActorToken(
   stateDir: string,

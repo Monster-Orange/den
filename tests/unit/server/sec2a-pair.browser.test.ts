@@ -25,6 +25,8 @@ import type { Browser, BrowserContext, Page } from "playwright";
 import { cliPrefix } from "../../../src/shared/cli-command.js";
 import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
 import { spawnServer, stopServer } from "../../child-servers.js";
+import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
+import { readWebSecret } from "../../../src/shared/web-secret.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
@@ -159,6 +161,24 @@ const signedIn = (p: Page) =>
     return ((await r.json()) as { signedIn?: boolean }).signedIn === true;
   });
 
+/**
+ * 0.4.12: sign a localhost browser in with a setup link (letting another
+ * device in needs a signed-in browser holding its approval key).
+ */
+async function claimIn(page: Page): Promise<void> {
+  await page.goto(
+    claimLink(
+      `http://localhost:${port}`,
+      mintClaimCode(readWebSecret(stateDir)!),
+    ),
+  );
+  await page.waitForFunction(
+    () => localStorage.getItem("den.approveKey")?.length === 43,
+  );
+  if (new URL(page.url()).hash !== "")
+    throw new Error("the approval key stayed in the address bar");
+}
+
 describe("the signed-out page through the edge, with an empty GitHub client id", () => {
   it("has no GitHub button; shows a code; every command names the machine it runs on", async () => {
     if (skip()) return;
@@ -268,6 +288,7 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
       viewport: { width: 1280, height: 1000 },
     });
     const s = await local.newPage();
+    await claimIn(s);
     await s.goto(`http://localhost:${port}/settings#access`);
     await s.waitForSelector("#cl-overlay.open");
     await s.keyboard.press("Escape");

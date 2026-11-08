@@ -598,6 +598,24 @@
     "ag.bring.now": "just now",
     "ag.bring.min": "{n} min ago",
     "ag.bring.h": "{n} h ago",
+    "ap.title": "{agent} wants to:",
+    "ap.agent": "The {name} agent",
+    "ap.anyAgent": "An agent",
+    "ap.do.workspace_create": 'Create the workspace "{name}"',
+    "ap.do.repo_add": 'Add the repo at {path} to workspace "{workspace}"',
+    "ap.do.repo_add.new":
+      'Add the repo at {path} to a new workspace "{workspace}"',
+    "ap.do.service_try": "Start {service}",
+    "ap.says": "Agent says:",
+    "ap.review": "Review",
+    "ap.hide": "Hide details",
+    "ap.later": "Later",
+    "ap.deny": "Deny",
+    "ap.allow": "Allow",
+    "ap.waits": "Nothing changes until you allow it. It waits until {time}.",
+    "ap.more": "{n} more waiting",
+    "ap.failed": "It ran, and failed: {error}",
+    "ap.done": "Done: {what}",
     "ag.new.note":
       "Starts in the workspace folder. It keeps running if you close the pane.",
     "ag.new.started": "Started {p} in {w}",
@@ -3852,6 +3870,37 @@
   // server start: a 403 `csrf` (the server restarted) fetches a fresh one
   // and retries once. Never sent to another origin.
   var CSRF_METHODS = { POST: 1, PUT: 1, PATCH: 1, DELETE: 1 };
+  // 0.4.15: the approval key (web-session.ts). A sign-in's 303 carries it
+  // in the URL fragment (#ak=…), which never reaches a server: keep it in
+  // this origin's localStorage (other localhost ports can't read it),
+  // strip it from the address bar, and send it with every same-origin
+  // change as X-Den-Approve-Key. Only approving needs it.
+  var APPROVE_KEY_STORE = "den.approveKey";
+  (function takeApproveKey() {
+    var m = /(?:^#|&)ak=([A-Za-z0-9_-]{43})(?:&|$)/.exec(location.hash || "");
+    if (!m) return;
+    try {
+      localStorage.setItem(APPROVE_KEY_STORE, m[1]);
+    } catch (e) {
+      /* storage blocked: this browser signs in again to approve */
+    }
+    try {
+      history.replaceState(
+        history.state,
+        "",
+        location.pathname + location.search,
+      );
+    } catch (e) {
+      location.hash = "";
+    }
+  })();
+  function approveKey() {
+    try {
+      return localStorage.getItem(APPROVE_KEY_STORE);
+    } catch (e) {
+      return null;
+    }
+  }
   var csrf = { token: null, pending: null };
   function csrfToken(fresh) {
     if (fresh) csrf.token = null;
@@ -3890,6 +3939,9 @@
       (init && init.headers) || (isRequest(input) ? input.headers : undefined),
     );
     headers.set("X-Den-CSRF", token);
+    var ak = approveKey();
+    if (ak && !headers.has("X-Den-Approve-Key"))
+      headers.set("X-Den-Approve-Key", ak);
     return Object.assign({}, init || {}, { headers: headers });
   }
   function csrfFetch(input, init) {
@@ -3956,6 +4008,210 @@
     window.fetch = wrapped;
     // The token is in hand before the first click needs it.
     if (!apiOffPage) csrfToken(false);
+  }
+
+  // ── ON-3: an agent's held write waits for the person ─────────────────
+  // (approval-routes.ts) Every page asks GET /api/approvals every few
+  // seconds while it is in view, and opens the oldest request: Den's own
+  // words for it (the agent's note only quoted), Review (what it will do),
+  // Later, Deny, Allow. Allow and Deny go through the wrapped fetch above,
+  // so they carry the CSRF token and the approval key; the server decides
+  // who may approve (a browser that isn't signed in is told to sign in).
+  // The frame is the Start dialog's (persona-ui.css's .pe-dlg).
+  var ap = { dlg: null, shown: null, later: {}, busy: false, css: null };
+  function apCss() {
+    if (ap.css) return ap.css;
+    ap.css = new Promise(function (done) {
+      if (document.querySelector('link[href="/persona-ui.css"]')) return done();
+      var l = document.createElement("link");
+      l.rel = "stylesheet";
+      l.href = "/persona-ui.css";
+      l.onload = l.onerror = function () {
+        done();
+      };
+      document.head.appendChild(l);
+    });
+    return ap.css;
+  }
+  function apWhat(a) {
+    var p = a.params || {};
+    var key = "ap.do." + a.action + (p.isNew ? ".new" : "");
+    var s = t(key, p);
+    if (s !== key) return s;
+    s = String(a.summary || a.action);
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  function apDialog() {
+    if (ap.dlg) return ap.dlg;
+    var d = document.createElement("dialog");
+    d.className = "pe-dlg den-ap-dlg";
+    d.id = "den-ap-dlg";
+    d.setAttribute("aria-labelledby", "den-ap-h");
+    d.innerHTML =
+      '<form method="dialog">' +
+      '<h2 id="den-ap-h"></h2>' +
+      '<p class="den-ap-what" id="den-ap-what"></p>' +
+      '<p class="help" id="den-ap-note" hidden></p>' +
+      '<pre class="den-ap-det" id="den-ap-det" hidden></pre>' +
+      '<p class="help" id="den-ap-waits"></p>' +
+      '<p class="err" id="den-ap-err" role="alert" hidden></p>' +
+      '<div class="btns">' +
+      '<button type="button" class="den-btn" id="den-ap-review" aria-expanded="false" aria-controls="den-ap-det"></button>' +
+      '<span class="sp help" id="den-ap-more"></span>' +
+      '<button type="button" class="den-btn" id="den-ap-later"></button>' +
+      '<button type="button" class="den-btn" id="den-ap-deny"></button>' +
+      '<button type="button" class="den-btn primary" id="den-ap-allow"></button>' +
+      "</div></form>";
+    document.body.appendChild(d);
+    var $ = function (id) {
+      return d.querySelector("#" + id);
+    };
+    $("den-ap-review").addEventListener("click", function () {
+      var det = $("den-ap-det");
+      det.hidden = !det.hidden;
+      $("den-ap-review").textContent = t(det.hidden ? "ap.review" : "ap.hide");
+      $("den-ap-review").setAttribute("aria-expanded", String(!det.hidden));
+    });
+    $("den-ap-later").addEventListener("click", function () {
+      apLater();
+    });
+    // Esc is Later: the request keeps waiting (and the agent with it).
+    d.addEventListener("cancel", function (e) {
+      e.preventDefault();
+      apLater();
+    });
+    $("den-ap-deny").addEventListener("click", function () {
+      apDecide("deny");
+    });
+    $("den-ap-allow").addEventListener("click", function () {
+      apDecide("allow");
+    });
+    ap.dlg = d;
+    return d;
+  }
+  function apLater() {
+    if (ap.shown) ap.later[ap.shown.id] = 1;
+    apClose();
+  }
+  function apClose() {
+    ap.shown = null;
+    if (ap.dlg && ap.dlg.open) ap.dlg.close();
+  }
+  function apShow(a, more) {
+    var d = apDialog();
+    var $ = function (id) {
+      return d.querySelector("#" + id);
+    };
+    var same = ap.shown && ap.shown.id === a.id;
+    ap.shown = a;
+    $("den-ap-h").textContent = t("ap.title", {
+      agent: a.agent ? t("ap.agent", { name: a.agent }) : t("ap.anyAgent"),
+    });
+    $("den-ap-what").textContent = apWhat(a);
+    var note = $("den-ap-note");
+    note.hidden = !a.note;
+    note.textContent = a.note ? t("ap.says") + " “" + a.note + "”" : "";
+    $("den-ap-det").textContent = (a.details || []).join("\n");
+    var time = new Date(a.expiresAt);
+    $("den-ap-waits").textContent = t("ap.waits", {
+      time: isNaN(time)
+        ? ""
+        : time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    });
+    $("den-ap-more").textContent = more ? t("ap.more", { n: more }) : "";
+    $("den-ap-later").textContent = t("ap.later");
+    $("den-ap-deny").textContent = t("ap.deny");
+    $("den-ap-allow").textContent = t("ap.allow");
+    if (!same) {
+      $("den-ap-det").hidden = true;
+      $("den-ap-review").textContent = t("ap.review");
+      $("den-ap-review").setAttribute("aria-expanded", "false");
+      $("den-ap-err").hidden = true;
+    }
+    if (!d.open)
+      apCss().then(function () {
+        if (ap.shown && ap.shown.id === a.id && !d.open) d.showModal();
+      });
+  }
+  function apError(msg) {
+    var e = apDialog().querySelector("#den-ap-err");
+    e.textContent = msg;
+    e.hidden = false;
+  }
+  function apDecide(decision) {
+    var a = ap.shown;
+    if (!a || ap.busy) return;
+    ap.busy = true;
+    var btns = ap.dlg.querySelectorAll("button");
+    for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+    fetch("/api/approvals/" + encodeURIComponent(a.id) + "/decide", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision: decision }),
+    })
+      .then(function (r) {
+        return r.json().then(
+          function (b) {
+            return { ok: r.ok, b: b || {} };
+          },
+          function () {
+            return { ok: false, b: {} };
+          },
+        );
+      })
+      .then(
+        function (x) {
+          if (!x.ok) {
+            apError(x.b.error || t("ap.failed", { error: x.b.code || "?" }));
+            return;
+          }
+          var res = x.b.result;
+          if (decision === "allow" && res && res.ok === false)
+            toast(t("ap.failed", { error: res.error || "?" }));
+          else if (decision === "allow")
+            toast(t("ap.done", { what: apWhat(a) }));
+          apClose();
+          apPoll();
+        },
+        function (e) {
+          apError(String((e && e.message) || e));
+        },
+      )
+      .then(function () {
+        ap.busy = false;
+        for (var j = 0; j < btns.length; j++) btns[j].disabled = false;
+      });
+  }
+  function apPoll() {
+    if (document.hidden || ap.busy) return;
+    fetch("/api/approvals", { cache: "no-store", credentials: "same-origin" })
+      .then(function (r) {
+        return r.ok ? r.json() : null;
+      })
+      .then(
+        function (b) {
+          var list = (b && b.pending) || [];
+          var open = list.filter(function (a) {
+            return !ap.later[a.id];
+          });
+          if (!open.length) return apClose();
+          var cur =
+            (ap.shown &&
+              open.filter(function (a) {
+                return a.id === ap.shown.id;
+              })[0]) ||
+            open[0];
+          apShow(cur, open.length - 1);
+        },
+        function () {},
+      );
+  }
+  if (!apiOffPage && !configBad && rawFetch) {
+    setInterval(apPoll, 3000);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) apPoll();
+    });
+    setTimeout(apPoll, 300);
   }
 
   // ── the UI language (R19): a user pref ───────────────────────────────

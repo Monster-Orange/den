@@ -6,6 +6,7 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   ACTION_TOOL_NAMES,
+  APPROVAL_TOOL_NAMES,
   READ_TOOL_NAMES,
   callTool,
   toolsFor,
@@ -115,9 +116,9 @@ const beyondReport = (calls: Call[]) =>
   calls.filter((c) => c.path !== "/api/activity");
 
 describe("tool registration", () => {
-  it("with no mcp: block, only the read tools", () => {
+  it("with no mcp: block, only the read tools and the held writes (0.4.15: the person's approval gates those)", () => {
     const names = toolsFor(cfg({ actions: [] })).map((t) => t.name);
-    expect(names).toEqual([...READ_TOOL_NAMES]);
+    expect(names).toEqual([...READ_TOOL_NAMES, ...APPROVAL_TOOL_NAMES]);
     expect(names).toEqual(
       expect.arrayContaining(["stacks", "edge_status", "logs_tail", "status"]),
     );
@@ -128,7 +129,12 @@ describe("tool registration", () => {
     const names = toolsFor(cfg({ actions: ["service_up", "run_tests"] })).map(
       (t) => t.name,
     );
-    expect(names).toEqual([...READ_TOOL_NAMES, "service_up", "run_tests"]);
+    expect(names).toEqual([
+      ...READ_TOOL_NAMES,
+      ...APPROVAL_TOOL_NAMES,
+      "service_up",
+      "run_tests",
+    ]);
   });
 
   it("there is no deploy tool and nothing for the never-exposed routes", () => {

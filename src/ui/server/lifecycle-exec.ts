@@ -209,3 +209,73 @@ export async function streamLifecycleExec(
     setTimeout(() => void tick(), pollMs);
   }
 }
+
+/** What a collected run said: how it ended and the end of its output. */
+export interface CollectedExec {
+  ok: boolean;
+  /** The command's exit code; null while a detached start still runs. */
+  exitCode: number | null;
+  /** Started and healthy (or, with no health check, still running). */
+  ready: boolean;
+  lines: string[];
+  error?: string;
+}
+
+/**
+ * Runs a lifecycle command as the route does, collecting its events
+ * instead of streaming them (ON-3's service_try): done at `ready`, at the
+ * launcher's exit (`service-exited`) or at `done`, whichever comes first,
+ * as service_up's stream stops. Then it lets go, as a closed stream does:
+ * a detached service keeps running; only the log tail stops.
+ */
+export function collectLifecycleExec(
+  o: Omit<LifecycleExecOptions, "emit" | "end" | "onClientClose">,
+  deps: LifecycleExecDeps,
+  keep = 30,
+): Promise<CollectedExec> {
+  return new Promise((resolve) => {
+    const lines: string[] = [];
+    const errors: string[] = [];
+    let closer: (() => void) | null = null;
+    let settled = false;
+    const settle = (r: Omit<CollectedExec, "lines" | "error">): void => {
+      if (settled) return;
+      settled = true;
+      closer?.();
+      resolve({
+        ...r,
+        lines: lines.slice(-keep),
+        ...(errors.length ? { error: errors.join("\n") } : {}),
+      });
+    };
+    void streamLifecycleExec(
+      {
+        ...o,
+        emit: (e) => {
+          if (e.type === "line" && typeof e.text === "string")
+            lines.push(e.text);
+          else if (e.type === "error" && typeof e.text === "string")
+            errors.push(e.text);
+          else if (e.type === "ready")
+            settle({ ok: true, exitCode: null, ready: true });
+          else if (e.type === "service-exited") {
+            const code = Number(e.exitCode);
+            settle({ ok: code === 0, exitCode: code, ready: false });
+          } else if (e.type === "done") {
+            const code = Number(e.exitCode);
+            settle({ ok: code === 0, exitCode: code, ready: false });
+          }
+          if (lines.length > keep * 4) lines.splice(0, lines.length - keep);
+        },
+        end: () => undefined,
+        onClientClose: (fn) => {
+          closer = fn;
+        },
+      },
+      deps,
+    ).catch((e: unknown) => {
+      errors.push(String((e as Error)?.message ?? e));
+      settle({ ok: false, exitCode: 1, ready: false });
+    });
+  });
+}
