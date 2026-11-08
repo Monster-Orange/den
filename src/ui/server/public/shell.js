@@ -583,9 +583,9 @@
     "ag.bring.title": "Bring in a conversation",
     "ag.bring.conv": "Conversation",
     "ag.bring.help":
-      "Conversations started outside Den in this workspace's folder, newest first.",
+      "Conversations started outside Den in this workspace's folder or its repos' folders, newest first.",
     "ag.bring.none":
-      "No conversations started outside Den in this workspace's folder.",
+      "No conversations started outside Den in this workspace's folder or its repos' folders.",
     "ag.bring.untitled": "Untitled conversation",
     "ag.bring.open": "Open elsewhere",
     "ag.bring.openTip": "Still open in another terminal. Close it there first",

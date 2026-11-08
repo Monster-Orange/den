@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.14] - unreleased
+## [0.4.14] - 2026-11-07
 
 ### Added
 
@@ -43,6 +43,7 @@ config and manifest changes a distribution must make to move to it under
 
 - Bring in: a long title no longer cuts off its "Agent …" badge, and each
   "can't bring in a conversation yet" line is its own sentence.
+  Its intro names the repos' folders too.
 
 - Start › Advanced: the Model select's default reads "Persona default
   (latest)" for a persona with no model of its own; the longer label was

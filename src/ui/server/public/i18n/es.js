@@ -473,9 +473,9 @@
     "ag.bring.title": "Traer una conversación",
     "ag.bring.conv": "Conversación",
     "ag.bring.help":
-      "Conversaciones iniciadas fuera de Den en la carpeta de este espacio de trabajo, la más reciente primero.",
+      "Conversaciones iniciadas fuera de Den en la carpeta de este espacio de trabajo o en las de sus repositorios, la más reciente primero.",
     "ag.bring.none":
-      "No hay conversaciones iniciadas fuera de Den en la carpeta de este espacio de trabajo.",
+      "No hay conversaciones iniciadas fuera de Den en la carpeta de este espacio de trabajo ni en las de sus repositorios.",
     "ag.bring.untitled": "Conversación sin título",
     "ag.bring.open": "Abierta en otro lugar",
     "ag.bring.openTip": "Sigue abierta en otra terminal. Ciérrala allí primero",
