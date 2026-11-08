@@ -220,6 +220,8 @@
     "kind.app": "App",
     "kind.action": "Action",
     "kind.setting": "Setting",
+    "kind.workspace": "Workspace",
+    "pal.goWs": "Go to workspace {ws}",
     "pal.repos": "{n} repos",
     "pal.repos.one": "{n} repo",
     "pal.restart": "Restart {s}",
@@ -778,6 +780,7 @@
     "ag.exitedLine": "[the session exited{code}]",
     "ag.refusedUnknown": "the server refused the terminal",
     "ag.refusedStatus": "the server refused the terminal ({status})",
+    "ag.goWs": "Open {ws} on Workspaces",
     "ag.lost": "[disconnected: {why}]",
     "ag.reconnect": "Reconnect",
     "ag.noBackend":

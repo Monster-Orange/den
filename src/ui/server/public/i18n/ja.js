@@ -101,6 +101,8 @@
     "kind.app": "アプリ",
     "kind.action": "操作",
     "kind.setting": "設定",
+    "kind.workspace": "ワークスペース",
+    "pal.goWs": "ワークスペース {ws} へ移動",
     "pal.repos": "{n} 個のリポジトリ",
     "pal.restart": "{s} を再起動",
     "pal.results": "結果",
@@ -655,6 +657,7 @@
     "ag.exitedLine": "[セッションが終了しました{code}]",
     "ag.refusedUnknown": "サーバーがターミナルを拒否しました",
     "ag.refusedStatus": "サーバーがターミナルを拒否しました({status})",
+    "ag.goWs": "ワークスペースで {ws} を開く",
     "ag.lost": "[切断: {why}]",
     "ag.reconnect": "再接続",
     "ag.noBackend":

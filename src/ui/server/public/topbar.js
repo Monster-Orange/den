@@ -421,7 +421,15 @@ export function runOf(url, base = "http://localhost/") {
 
 const LS_LAST_RUN = "__DEN_CLI__-last-run";
 const SS_PENDING = "__DEN_CLI__-pending-action";
-const KIND = ["page", "service", "app", "agent", "action", "setting"];
+const KIND = [
+  "page",
+  "service",
+  "app",
+  "agent",
+  "workspace",
+  "action",
+  "setting",
+];
 const kindLabel = (k) =>
   KIND.includes(k)
     ? t(`kind.${k}`)
@@ -906,6 +914,26 @@ function paletteItems() {
       run: () => go(`/agents?open=${encodeURIComponent(x.id)}`),
     });
   }
+  // 0.4.17: Go to workspace <ws>, for each agent's workspace; an agent's
+  // name finds its workspace too.
+  const byWs = new Map();
+  for (const x of palSessions) {
+    if (!x.workspace) continue;
+    const names = byWs.get(x.workspace) ?? [];
+    names.push(x.label, x.displayName ?? "", x.persona ?? "");
+    byWs.set(x.workspace, names);
+  }
+  const wsBase =
+    s?.nav?.().find((n) => n.id === "local-dev")?.href ?? "/local-dev";
+  for (const [ws, names] of byWs)
+    items.push({
+      key: `ws:${ws}`,
+      kind: "workspace",
+      label: t("pal.goWs", { ws }),
+      keywords: [ws, "workspace", "workspaces", ...names.filter(Boolean)],
+      hideEmpty: true,
+      run: () => go(`${wsBase}?ws=${encodeURIComponent(ws)}`),
+    });
   if (s?.nav?.().some((n) => n.id === "agents"))
     items.push({
       key: "agent:start",

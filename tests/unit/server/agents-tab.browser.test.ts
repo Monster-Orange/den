@@ -612,6 +612,37 @@ describe("the Agents tab", () => {
     await p.context().close();
   }, 60_000);
 
+  it("0.4.17: an agent links back to its workspace: the pane header, the list's group, and ⌘K Go to workspace", async () => {
+    if (skip()) return;
+    const p = await page(`/agents?open=${id("scout")}`);
+    const head = `.pane[data-id="${id("scout")}"] .bar2 .where a.wslink`;
+    await p.waitForSelector(head);
+    expect(await p.getAttribute(head, "href")).toBe("/local-dev?ws=north");
+    expect(await p.textContent(head)).toBe("north");
+    const group = '#agl .wsg[data-ws="north"] .wsh a.wslink';
+    expect(await p.getAttribute(group, "href")).toBe("/local-dev?ws=north");
+    // ⌘K: an agent's name finds its workspace.
+    await p.click("#den-search");
+    await p.fill("#den-pal-q", "scout");
+    await p.waitForFunction(() =>
+      [...document.querySelectorAll("#den-pal-list .den-pal-l")].some(
+        (e) => e.textContent === "Go to workspace north",
+      ),
+    );
+    await p.fill("#den-pal-q", "go to workspace north");
+    const opt = p
+      .locator('#den-pal-list li[role="option"]')
+      .filter({ hasText: "Go to workspace north" })
+      .first();
+    expect(await opt.locator(".den-kind").textContent()).toBe("Workspace");
+    await opt.click();
+    await p.waitForURL(
+      (u) =>
+        u.pathname === "/local-dev" && u.searchParams.get("ws") === "north",
+    );
+    await p.context().close();
+  }, 45_000);
+
   it("0.4.17: a pane in a workspace that isn't active opens; a refused one says why; Sign in only when the person is signed out", async () => {
     if (skip()) return;
     fs.mkdirSync(s!.wsDir("west"), { recursive: true });

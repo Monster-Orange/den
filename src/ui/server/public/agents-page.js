@@ -326,6 +326,18 @@ function rotationWhy(rot) {
   );
 }
 
+/** The Workspaces page, focused on workspace `ws` (0.4.17). */
+function wsHref(ws) {
+  const nav = window.denShell?.nav?.() ?? [];
+  const base = nav.find((n) => n.id === "local-dev")?.href ?? "/local-dev";
+  return `${base}?ws=${encodeURIComponent(ws)}`;
+}
+
+/** Workspace `ws` as a link to it on Workspaces. */
+function wsLinkHtml(ws) {
+  return `<a class="wslink" href="${esc(wsHref(ws))}" title="${esc(t("ag.goWs", { ws }))}">${esc(ws)}</a>`;
+}
+
 /** Its rotation, when one is due: "ready" or "due" (den#4). */
 function rotationOf(r) {
   if (!r.rotation?.due) return "";
@@ -480,7 +492,7 @@ function paintList() {
     ? groups
         .map(
           (g) =>
-            `<div class="wsg" data-ws="${esc(g.ws)}"><div class="wsh"><span>${esc(g.ws)}</span><span>${esc(g.rows.length)}</span></div>` +
+            `<div class="wsg" data-ws="${esc(g.ws)}"><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${esc(g.rows.length)}</span></div>` +
             g.rows.map(rowHtml).join("") +
             `</div>`,
         )
@@ -919,10 +931,14 @@ function paintBar(p) {
   const r = rowOf(p.id);
   const bar = p.el.querySelector(".bar2");
   const name = r ? paneName(r) : p.label || p.id;
-  // AG-4b: the session's name last, when it says more.
-  const where = r
-    ? [r.workspace, r.runtime, sessionExtra(r)].filter(Boolean).join(" · ")
-    : p.workspace || "";
+  // AG-4b: the session's name last, when it says more. The workspace is a
+  // link to it on Workspaces (0.4.17).
+  const ws = r ? r.workspace : p.workspace || "";
+  const rest = r
+    ? [r.runtime, sessionExtra(r)].filter(Boolean).join(" · ")
+    : "";
+  const where =
+    (ws ? wsLinkHtml(ws) : "") + (ws && rest ? " · " : "") + esc(rest);
   const tone = r ? stateTone(r) : p.exited ? "off" : "pending";
   const stop =
     r?.kind === "agent" && (r.state === "running" || r.state === "stopping")
@@ -943,7 +959,7 @@ function paintBar(p) {
       : "";
   bar.innerHTML =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
-    `<b>${esc(name)}</b><span class="where mono">${esc(where)}</span>` +
+    `<b>${esc(name)}</b><span class="where mono">${where}</span>` +
     (r?.tokenRevoked
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +

@@ -109,6 +109,8 @@
     "kind.app": "App",
     "kind.action": "Acción",
     "kind.setting": "Ajuste",
+    "kind.workspace": "Espacio de trabajo",
+    "pal.goWs": "Ir al espacio de trabajo {ws}",
     "pal.repos": "{n} repositorios",
     "pal.repos.one": "{n} repositorio",
     "pal.restart": "Reiniciar {s}",
@@ -671,6 +673,7 @@
     "ag.exitedLine": "[la sesión terminó{code}]",
     "ag.refusedUnknown": "el servidor rechazó la terminal",
     "ag.refusedStatus": "el servidor rechazó la terminal ({status})",
+    "ag.goWs": "Abrir {ws} en Espacios de trabajo",
     "ag.lost": "[desconectado: {why}]",
     "ag.reconnect": "Reconectar",
     "ag.noBackend":
