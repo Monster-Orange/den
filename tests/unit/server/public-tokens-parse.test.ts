@@ -8,8 +8,11 @@
  * file was a SyntaxError, and every page mounted nothing. Den's own name
  * ("den") has no hyphen, so nothing caught it.
  *
- * Each .js file is checked with `node --check` (as a script, else as a
- * module); each inline <script> in an .html file the same way.
+ * Every .js file must parse as an ES module (`node --check` on a .mjs
+ * copy): pages import them as modules, and a plain `node --check x.js` parses
+ * a file as a script, where `let _acme-denConfig` can slip by. A file a page
+ * also loads as a classic <script src> (shell.js) must parse as a script too.
+ * Each inline <script> parses as what its type says.
  */
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
@@ -56,8 +59,8 @@ function inlineScripts(html: string): { code: string; module: boolean }[] {
   return out;
 }
 
-/** Why `code` doesn't parse (as a script, else as a module), or "". */
-function parseError(code: string, tmp: string, module?: boolean): string {
+/** Why `code` doesn't parse as a module (.mjs) or a script (.cjs), or "". */
+function parseError(code: string, tmp: string, module: boolean): string {
   const tryAs = (ext: string) => {
     const f = path.join(tmp, `check${ext}`);
     fs.writeFileSync(f, code);
@@ -68,12 +71,21 @@ function parseError(code: string, tmp: string, module?: boolean): string {
       ? ""
       : (r.stderr.split("\n").find((l) => /Error/.test(l)) ?? "error");
   };
-  if (module === true) return tryAs(".mjs");
-  const asScript = tryAs(".cjs");
-  if (!asScript) return "";
-  const asModule = tryAs(".mjs");
-  // Both failed: the module error names the real fault for a module file.
-  return asModule;
+  return tryAs(module ? ".mjs" : ".cjs");
+}
+
+/** The public .js files some page loads as a classic <script src="/x.js">. */
+function classicScripts(): Set<string> {
+  const out = new Set<string>();
+  for (const rel of files().filter((f) => f.endsWith(".html"))) {
+    const html = fs.readFileSync(path.join(PUBLIC, rel), "utf-8");
+    const re = /<script\b([^>]*)>/gi;
+    for (let m = re.exec(html); m; m = re.exec(html)) {
+      const src = /\bsrc\s*=\s*["']\/?([^"']+)["']/i.exec(m[1])?.[1];
+      if (src && !/\btype\s*=\s*["']?module/i.test(m[1])) out.add(src);
+    }
+  }
+  return out;
 }
 
 const NAMES: Record<string, string>[] = [
@@ -91,6 +103,7 @@ describe("served pages parse with any product name", () => {
     (_name, raw) => {
       const p = productOf(raw);
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "den-tokens-"));
+      const classic = classicScripts();
       try {
         const bad: string[] = [];
         for (const rel of files()) {
@@ -99,11 +112,13 @@ describe("served pages parse with any product name", () => {
             p,
           );
           if (rel.endsWith(".js")) {
-            const e = parseError(text, tmp);
-            if (e) bad.push(`${rel}: ${e}`);
+            const e = parseError(text, tmp, true);
+            if (e) bad.push(`${rel} (as a module): ${e}`);
+            const c = classic.has(rel) ? parseError(text, tmp, false) : "";
+            if (c) bad.push(`${rel} (as a classic script): ${c}`);
           } else
             inlineScripts(text).forEach((s, i) => {
-              const e = parseError(s.code, tmp, s.module || undefined);
+              const e = parseError(s.code, tmp, s.module);
               if (e) bad.push(`${rel} <script #${i + 1}>: ${e}`);
             });
         }
@@ -114,6 +129,20 @@ describe("served pages parse with any product name", () => {
     },
     60_000,
   );
+
+  it("a module error a script parse misses still fails (the dev.0 header.js line)", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "den-tokens-"));
+    try {
+      const dev0 = "let _acme-denConfig = null;\nexport const x = 1;\n";
+      expect(parseError(dev0, tmp, true)).toMatch(/SyntaxError/);
+      // No import or export: a script parse alone would not catch it.
+      const bare = "let _acme-denConfig = null;\n";
+      expect(parseError(bare, tmp, true)).toMatch(/SyntaxError/);
+      expect(classicScripts().has("shell.js")).toBe(true);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 
   it("no placeholder sits inside an identifier (letters, digits or _ next to it)", () => {
     const hits: string[] = [];
