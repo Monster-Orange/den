@@ -82,6 +82,13 @@ export const DEN_SETTING_CATEGORIES = [
       "Reach this Den from your other devices: sign in with GitHub as its owner, or pair a device with a one-time link. On localhost nothing asks.",
   },
   {
+    id: "secrets",
+    label: "Secrets",
+    order: 58,
+    description:
+      "Where this machine gets the credentials Den resolves secrets with. Per machine (config/local/user.yml); only the source is shown, never a secret.",
+  },
+  {
     id: "cli",
     label: "Command line",
     order: 60,
@@ -1031,6 +1038,21 @@ export const DEN_SETTINGS = [
       },
     },
     read: () => null,
+  },
+
+  {
+    // 1Password for a Den running as a service: where its service-account
+    // token comes from (secrets.onepassword.token in user.yml). The source
+    // only, never the token.
+    id: "cli.op_token",
+    category: "secrets",
+    label: "1Password token source",
+    description:
+      "Where this machine's 1Password service-account token comes from, for a Den running as a service. Set secrets.onepassword.token in config/local/user.yml: keychain:<service>, file:<path> or env:<VAR>. The token itself is never shown.",
+    keywords: ["secrets", "1password", "op", "service account", "token"],
+    scope: "user",
+    control: { type: "readonly" },
+    read: (ctx) => ctx.data.op_token_source ?? "not set",
   },
 
   ...ACCESS_ROWS,

@@ -391,6 +391,7 @@
     "set.cli.web_port": "あなたの web ポート",
     "set.cli.signin": "ブラウザのサインイン",
     "set.cli.sudo": "管理者パスワード",
+    "set.cli.op_token": "1Password トークンの取得元",
     "set.access.owner": "オーナー",
     "set.access.devices": "リンク済みデバイス",
     "set.access.waiting": "承認待ちのデバイス",

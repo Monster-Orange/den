@@ -37,8 +37,13 @@ import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
 import { edgeTlsWarnings, tlsStrategyFor } from "../../shared/edge/tls.js";
 import {
+  describeOpTokenSource,
+  opTokenSourceProblem,
+  parseOpTokenSource,
   readSecretsConfig,
+  resolveProviderName,
   secretsStatus,
+  type SecretsConfig,
 } from "../../shared/secrets/index.js";
 import {
   DEN_PTY_ID,
@@ -77,7 +82,22 @@ type Selector = (env: NodeJS.ProcessEnv) => DoctorRow;
 
 const SELECTORS: Record<string, Selector> = {
   secrets(env) {
-    const st = secretsStatus(readSecretsConfig(), env);
+    let cfg: SecretsConfig;
+    try {
+      cfg = readSecretsConfig();
+    } catch (err) {
+      // A bad secrets.* key (naming the key): a problem, not a crash.
+      return {
+        kind: "secrets",
+        selected: "",
+        implicit: false,
+        available: false,
+        reason: (err as Error).message,
+        problem: true,
+        warnings: [],
+      };
+    }
+    const st = secretsStatus(cfg, env);
     return {
       kind: "secrets",
       selected: st.backend,
@@ -172,7 +192,7 @@ export function doctorRows(env: NodeJS.ProcessEnv = process.env): DoctorRow[] {
     ...Object.keys(SELECTORS).filter((k) => kinds.includes(k)),
     ...kinds.filter((k) => !(k in SELECTORS)),
   ];
-  return ordered.map(
+  const rows = ordered.map(
     (kind) =>
       SELECTORS[kind]?.(env) ?? {
         kind,
@@ -184,6 +204,38 @@ export function doctorRows(env: NodeJS.ProcessEnv = process.env): DoctorRow[] {
         warnings: [],
       },
   );
+  const op = onePasswordTokenRow(env);
+  if (op) rows.splice(rows.findIndex((r) => r.kind === "secrets") + 1, 0, op);
+  return rows;
+}
+
+/**
+ * The 1password row: shown only when 1Password is the configured provider
+ * (secret_env refs and the engine's own secrets resolve through it) and the
+ * configured token source yields no token. A warning, not a failure: a
+ * signed-in desktop app needs none. Checks the source without reading a
+ * keychain secret, so nothing prompts.
+ */
+function onePasswordTokenRow(env: NodeJS.ProcessEnv): DoctorRow | null {
+  try {
+    const cfg = readSecretsConfig();
+    if (resolveProviderName(cfg, env) !== "1password") return null;
+    const src = parseOpTokenSource(cfg.onepassword?.token);
+    const why = opTokenSourceProblem(src, { env });
+    if (!why) return null;
+    return {
+      kind: "1password",
+      selected: describeOpTokenSource(src),
+      implicit: false,
+      available: false,
+      reason:
+        "this process has no service-account token. Set secrets.onepassword.token.",
+      problem: false,
+      warnings: [why],
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function formatDoctor(rows: DoctorRow[], title: string): string[] {

@@ -50,6 +50,14 @@ export interface SecretsProvider {
   get(ref: SecretRef): Promise<string>;
   /** Read a secret, returning null instead of throwing. */
   tryGet(ref: SecretRef): Promise<string | null>;
+  /**
+   * Like tryGet, plus a plain-words reason when it is null (op's own: no
+   * token, no access to the vault, not found, rate limited). Optional. The
+   * reason never carries a secret value or a token.
+   */
+  tryGetWithReason?(
+    ref: SecretRef,
+  ): Promise<{ value: string | null; reason?: string }>;
   /** Write (create or overwrite) a secret. Throws on failure. */
   set(ref: SecretRef, value: string): Promise<void>;
   /** Check the backend is usable before `den up`/`restart`. */

@@ -173,6 +173,7 @@ import {
 } from "../../shared/auth/sudo-vault.js";
 import {
   notConfiguredMessage,
+  opTokenSourceSetting,
   secretsConfigWarnings,
 } from "../../shared/secrets/index.js";
 import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
@@ -4860,7 +4861,8 @@ async function handleRequest(
   // ── API: user settings ────────────────────────────────────────────────────
   // GET  /api/settings  → { editor, editors, terminal, terminals, editor_overrides, languages,
   //                         log_window_lines, graph, appearance, shell, distribution,
-  //                         user_web_port, local_dev, cli_tabs, language, ui_languages }
+  //                         user_web_port, local_dev, cli_tabs, language, ui_languages,
+  //                         op_token_source }
   // POST /api/settings  body: { editor?, terminal?, editor_overrides?, graph?, appearance?, shell?,
   //                             language? }
   //   graph: { direction, group, density, panelWidth } (see graph-prefs.ts)
@@ -4929,6 +4931,8 @@ async function handleRequest(
         // what it is when unset (the short hostname).
         machine_name: machineNameSetting(user),
         machine_name_default: machineLabel(null, os.hostname()),
+        // Where the 1Password token comes from (the source, never the token).
+        op_token_source: opTokenSourceSetting(),
       });
     }
     if (req.method === "POST") {

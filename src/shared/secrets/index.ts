@@ -17,6 +17,12 @@
  */
 import { readDenConfig, readUserConfig } from "../den-config.js";
 import type { DetectResult } from "../strategies/registry.js";
+import { ConfigError } from "../config-error.js";
+import {
+  describeOpTokenSource,
+  opTokenSourceError,
+  parseOpTokenSource,
+} from "./op-token.js";
 import { notConfiguredMessage, SecretsNotConfiguredError } from "./none.js";
 import { secretsStrategy, type SecretsStrategy } from "./strategies.js";
 import type {
@@ -37,6 +43,7 @@ export { notConfiguredMessage, SecretsNotConfiguredError } from "./none.js";
 export { secretsStrategy, secretsStrategyIds } from "./strategies.js";
 export type { SecretsStrategy, SecretsSetupContext } from "./strategies.js";
 export * from "./secret-env.js";
+export * from "./op-token.js";
 
 export interface SecretsConfig {
   provider?: SecretsProviderName;
@@ -48,7 +55,16 @@ export interface SecretsConfig {
    */
   required?: boolean;
   doppler?: { project?: string; config?: string };
-  onepassword?: { account?: string };
+  onepassword?: {
+    account?: string;
+    /**
+     * Where the service-account token comes from: `keychain:<service>`,
+     * `file:<path>` (mode 600) or `env:<VAR>` (the default,
+     * `env:OP_SERVICE_ACCOUNT_TOKEN`). Per machine: read from
+     * config/local/user.yml only, never from the distribution's config.
+     */
+    token?: string;
+  };
   /** `"vault/item/field": FLAT_KEY` overrides for doppler/env. */
   keys?: Record<string, string>;
   /**
@@ -126,11 +142,32 @@ export function readSecretsConfig(): SecretsConfig {
   } catch {
     /* no user config */
   }
+  // The token source is this machine's: the distribution's config never
+  // names one, and a bad one is refused here, naming the key.
+  const tokenErr =
+    user.onepassword?.token === undefined || user.onepassword.token === null
+      ? null
+      : opTokenSourceError(user.onepassword.token);
+  if (tokenErr) {
+    const key = "secrets.onepassword.token";
+    throw new ConfigError([
+      {
+        file: "config/local/user.yml",
+        key,
+        message: tokenErr,
+        text: `${key} ${tokenErr}`,
+      },
+    ]);
+  }
   return {
     ...team,
     ...user,
     doppler: { ...team.doppler, ...user.doppler },
-    onepassword: { ...team.onepassword, ...user.onepassword },
+    onepassword: {
+      ...team.onepassword,
+      ...user.onepassword,
+      token: user.onepassword?.token ?? undefined,
+    },
     keys: { ...team.keys, ...user.keys },
     refs: { ...team.refs, ...user.refs },
   };
@@ -251,6 +288,14 @@ class DetectedProvider implements SecretsProvider {
   async tryGet(ref: SecretRef): Promise<string | null> {
     return this.unavailable() ? null : this.inner.tryGet(ref);
   }
+  async tryGetWithReason(
+    ref: SecretRef,
+  ): Promise<{ value: string | null; reason?: string }> {
+    const why = this.unavailable();
+    if (why) return { value: null, reason: why };
+    if (this.inner.tryGetWithReason) return this.inner.tryGetWithReason(ref);
+    return { value: await this.inner.tryGet(ref) };
+  }
   async set(ref: SecretRef, value: string): Promise<void> {
     const why = this.unavailable();
     if (why) throw new Error(`${this.name} secrets backend ${why}`);
@@ -364,6 +409,24 @@ export function secretsProcessEnv(
   return strategyFor(name).capabilities.env?.(cfg, env) ?? {};
 }
 
+/**
+ * Settings › Secrets: where the 1Password token comes from, as text
+ * ("keychain: <service>", "file: <path>", "env: <VAR>") or "not set". The
+ * source only, never the token; reads nothing from the keychain or the file.
+ */
+export function opTokenSourceSetting(
+  cfg: SecretsConfig | (() => SecretsConfig) = readSecretsConfig,
+): string {
+  try {
+    const raw = (typeof cfg === "function" ? cfg() : cfg).onepassword?.token;
+    return raw === undefined || raw === null
+      ? "not set"
+      : describeOpTokenSource(parseOpTokenSource(raw));
+  } catch {
+    return "invalid: see secrets.onepassword.token";
+  }
+}
+
 /** The engine's own named refs, for the legacy warning. */
 export const ENGINE_SECRET_REFS = ["sudo", "journeys_agent_key"] as const;
 
@@ -379,9 +442,14 @@ export const IMPLICIT_PROVIDER_WARNING =
  * distribution that needs no secrets never hears about it.
  */
 export function secretsConfigWarnings(
-  cfg: SecretsConfig = readSecretsConfig(),
+  cfg?: SecretsConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {
+  try {
+    cfg ??= readSecretsConfig();
+  } catch (err) {
+    return [(err as Error).message];
+  }
   let r: ResolvedProvider;
   try {
     r = resolveProvider(cfg, env);

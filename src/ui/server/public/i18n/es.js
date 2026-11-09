@@ -402,6 +402,7 @@
     "set.cli.web_port": "Tu puerto web",
     "set.cli.signin": "Inicio de sesión del navegador",
     "set.cli.sudo": "Contraseña de administrador",
+    "set.cli.op_token": "Origen del token de 1Password",
     "set.access.owner": "Propietario",
     "set.access.devices": "Dispositivos vinculados",
     "set.access.waiting": "Dispositivos en espera",

@@ -80,6 +80,8 @@ export function assertSecretEnvSpec(
 export interface SecretEnvMissing {
   key: string;
   ref: string;
+  /** Why, in plain words, when the provider said (never a value). */
+  reason?: string;
 }
 
 export type SecretEnvResolution =
@@ -87,8 +89,10 @@ export type SecretEnvResolution =
   | { ok: false; missing: SecretEnvMissing[]; message: string };
 
 /**
- * The failure text for unresolved keys: key, ref and provider, never a value
- * and never the provider's own error output (which could echo one).
+ * The failure text for unresolved keys: key, ref and provider, and the
+ * provider's reason when it gave one (a mapped phrase such as "no access to
+ * the vault"), never a value and never its raw error output (which could
+ * echo one).
  */
 export function describeSecretEnvMissing(
   target: string,
@@ -96,7 +100,8 @@ export function describeSecretEnvMissing(
   provider: string,
 ): string {
   const lines = missing.map(
-    (m) => `  ${m.key} (ref ${m.ref}, provider ${provider}): not resolved`,
+    (m) =>
+      `  ${m.key} (ref ${m.ref}, provider ${provider}): not resolved${m.reason ? `: ${m.reason}` : ""}`,
   );
   return (
     `${target}: ${missing.length} secret_env key(s) could not be resolved; not starting it:\n` +
@@ -120,17 +125,25 @@ export async function resolveSecretEnv(
     entries.map(async ([key, raw]) => {
       if (secretEnvRefError(raw)) return { key, raw, value: null };
       let value: string | null = null;
+      let reason: string | undefined;
       try {
-        value = await provider.tryGet(parseSecretEnvRef(raw));
+        const ref = parseSecretEnvRef(raw);
+        if (provider.tryGetWithReason) {
+          ({ value, reason } = await provider.tryGetWithReason(ref));
+        } else value = await provider.tryGet(ref);
       } catch {
         value = null;
       }
-      return { key, raw, value };
+      return { key, raw, value, reason };
     }),
   );
   const missing = results
     .filter((r) => !r.value)
-    .map((r) => ({ key: r.key, ref: String(r.raw) }));
+    .map((r) => ({
+      key: r.key,
+      ref: String(r.raw),
+      ...(r.reason ? { reason: r.reason } : {}),
+    }));
   if (missing.length)
     return {
       ok: false,

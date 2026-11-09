@@ -516,6 +516,7 @@
     "set.cli.web_port": "Your web port",
     "set.cli.signin": "Browser sign-in",
     "set.cli.sudo": "Admin password",
+    "set.cli.op_token": "1Password token source",
     "set.access.owner": "Owner",
     "set.access.devices": "Linked devices",
     "ident.local": "Local",

@@ -4,6 +4,32 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.20] - unreleased
+
+### Added
+
+- **1Password works for a Den running as a service.** A Den under launchd
+  does not read your login shell, so `op` had no
+  `OP_SERVICE_ACCOUNT_TOKEN` and every 1Password `secret_env` ref failed
+  with a bare "not resolved". `secrets.onepassword.token` in
+  `config/local/user.yml` (per machine) now says where the token comes
+  from: `keychain:<service>` (macOS), `file:<path>` (mode 600 only) or
+  `env:<VAR>` (the default is `env:OP_SERVICE_ACCOUNT_TOKEN`, as before).
+  A bad value is refused at config load, naming the key. The token is read
+  when a ref is resolved, never cached, and goes only into the `op` child's
+  env; it is never logged, stored, put in an error, the activity records
+  or an API response.
+- **"Not resolved" now says why.** A 1Password ref that fails reports one
+  of: no service-account token or session, no access to the vault, item or
+  field not found, rate limited, or a short safe summary. A token source
+  that fails (keychain item missing, file mode wrong, env var unset) is
+  named, never the token.
+- **doctor** adds a `1password` row, "this process has no service-account
+  token. Set secrets.onepassword.token.", when 1Password is the provider
+  and the source yields none (a warning).
+- **Settings › Secrets** shows the token's source, never the token
+  (`GET /api/settings` gains `op_token_source`, a string).
+
 ## [0.4.19] - 2026-11-08
 
 ### Added

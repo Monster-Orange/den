@@ -27,6 +27,7 @@ import { DopplerProvider } from "./doppler.js";
 import { EnvProvider } from "./env.js";
 import { NoneProvider } from "./none.js";
 import { OnePasswordProvider } from "./onepassword.js";
+import { parseOpTokenSource } from "./op-token.js";
 import type { SecretsConfig } from "./index.js";
 import type { SecretRef, SecretsProvider } from "./types.js";
 
@@ -162,6 +163,11 @@ const onepassword: SecretsStrategy = {
         // From the distribution's config or the engineer's shell; never a
         // built-in account.
         account: c.onepassword?.account,
+        // Per machine (user.yml); validated when the config is read.
+        tokenSource:
+          c.onepassword?.token === undefined
+            ? undefined
+            : parseOpTokenSource(c.onepassword.token),
         timeoutMs: OP_CLI_TIMEOUT_MS,
       }),
     cli: { bin: "op", formula: "1password-cli" },

@@ -619,12 +619,12 @@ The backend is a strategy, chosen with `secrets.provider` in the org config
 (per engineer in `config/local/user.yml`, per shell with
 `<PREFIX>_SECRETS_PROVIDER`):
 
-| `secrets.provider` | What it is                                                                               |
-| ------------------ | ---------------------------------------------------------------------------------------- |
-| `none`             | No store. Nothing is resolved, no CLI is run; `den create` scaffolds this                |
-| `env`              | Plain environment variables of the process running Den                                   |
-| `doppler`          | The `doppler` CLI (`secrets.doppler: { project, config }` for a default scope)           |
-| `1password`        | The `op` CLI (`secrets.onepassword.account` for the account, else your own `OP_ACCOUNT`) |
+| `secrets.provider` | What it is                                                                                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`             | No store. Nothing is resolved, no CLI is run; `den create` scaffolds this                                                                                                    |
+| `env`              | Plain environment variables of the process running Den                                                                                                                       |
+| `doppler`          | The `doppler` CLI (`secrets.doppler: { project, config }` for a default scope)                                                                                               |
+| `1password`        | The `op` CLI (`secrets.onepassword.account` for the account, else your own `OP_ACCOUNT`; [a service-account token for a service](#1password-for-a-den-running-as-a-service)) |
 
 ```yaml
 # config/acme.yml
@@ -798,6 +798,49 @@ OPENAI_API_KEY (names only; not resolved in a dry run)`.
   non-empty parts and a key that is not an env var name
   (`[A-Za-z_][A-Za-z0-9_]*`). A `stacks:` entry in the org config takes
   `secret_env` too.
+
+## 1Password for a Den running as a service
+
+A Den started by launchd or systemd does not read your login shell, so
+`op` has no `OP_SERVICE_ACCOUNT_TOKEN` and every 1Password ref fails.
+`secrets.onepassword.token` says where this machine keeps the
+service-account token. It is per machine: Den reads it from
+`config/local/user.yml` only, and a value in the distribution's config is
+ignored.
+
+```yaml
+# config/local/user.yml
+secrets:
+  onepassword:
+    token: keychain:op-service-account # or file:~/.config/op/token | env:OP_SERVICE_ACCOUNT_TOKEN
+```
+
+| Value                | Where the token comes from                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `keychain:<service>` | macOS: `security find-generic-password -s <service> -w`, run with no shell. Refused on other systems                     |
+| `file:<path>`        | A file whose mode is exactly 600 (a group or other bit refuses it). `~` expands; a trailing newline is dropped           |
+| `env:<VAR>`          | The env var `<VAR>` of the process running Den. With no key set the default is `env:OP_SERVICE_ACCOUNT_TOKEN`, as before |
+
+- **Checked at config load.** A value that is none of these shapes is
+  refused, naming `secrets.onepassword.token`. The message never repeats
+  the value.
+- **Read each time.** The token is read when a ref is resolved, never
+  cached or written anywhere, and passed only in the `op` child's env as
+  `OP_SERVICE_ACCOUNT_TOKEN`. It is never in a log, an error, the activity
+  records or an API response.
+- **Why a ref failed.** A `secret_env` key that does not resolve says why,
+  in plain words: no service-account token or session; no access to the
+  vault; item or field not found; rate limited; or a short summary of
+  what `op` said. When the token source itself fails (the keychain item is
+  missing, the file's mode is wrong, the env var is unset) the message
+  names the source, never the token.
+- **doctor.** With `secrets.provider: 1password` and a source that yields
+  no token, `doctor` adds a `1password` row: "this process has no
+  service-account token. Set secrets.onepassword.token." It is a warning,
+  not a failure (a signed-in `op` app needs no token). `doctor` only looks
+  a keychain item up; it never reads the token.
+- **Settings.** Settings › Secrets shows the source (`keychain: <service>`,
+  `file: <path>`, `env: <VAR>` or "not set"), never the token.
 
 ## The edge and TLS
 
