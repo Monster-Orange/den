@@ -254,7 +254,9 @@ describe("This is my computer (/attest)", () => {
       "sec-fetch-site": "none",
       accept: "text/html",
     });
-    expect(r.status).not.toBe(303);
+    // Its own page, not the generic signed-out one (a dev.0 gate note).
+    expect(r.status).toBe(403);
+    expect(r.body).toContain("only on the computer this Den runs on");
     expect(r.body).not.toContain("den-attest=");
   });
 

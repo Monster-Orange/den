@@ -218,6 +218,19 @@ function fixture(
   return { tmp, dist, repo, calls, env, run, acme };
 }
 
+/**
+ * The vendor CLIs that ran, but D17's one question to gh: `web up` and
+ * doctor ask which login is signed in (web.owner_github). Nothing else may.
+ */
+function externalCalls(file: string): string[] {
+  return fs.existsSync(file)
+    ? fs
+        .readFileSync(file, "utf-8")
+        .split("\n")
+        .filter((l) => l && l !== "gh api user --jq .login")
+    : [];
+}
+
 const hasK6 = onRealPath("k6");
 
 describe.each([
@@ -386,15 +399,7 @@ describe.each([
   }, 120_000);
 
   it("op, doppler, mkcert and gh were never called (but D17's who-is-signed-in-to-gh)", () => {
-    // D17: `web up` asks gh which login is signed in (web.owner_github);
-    // nothing else may run.
-    const calls = fs.existsSync(f.calls)
-      ? fs
-          .readFileSync(f.calls, "utf-8")
-          .split("\n")
-          .filter((l) => l && l !== "gh api user --jq .login")
-      : [];
-    expect(calls).toEqual([]);
+    expect(externalCalls(f.calls)).toEqual([]);
   });
 });
 
@@ -437,8 +442,8 @@ describe("an edge block with no tls, and mkcert off PATH", () => {
     expect(r.out).not.toMatch(/ENOENT/);
   }, 120_000);
 
-  it("nothing external was called", () => {
-    expect(fs.existsSync(f.calls)).toBe(false);
+  it("nothing external was called (but D17's who-is-signed-in-to-gh)", () => {
+    expect(externalCalls(f.calls)).toEqual([]);
   });
 });
 

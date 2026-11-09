@@ -456,6 +456,9 @@ export const SIGNIN_FREE: readonly string[] = [
   "/auth",
   "/signin",
   "/api/session",
+  // D17: "This is my computer" answers for itself: on localhost a 303,
+  // anywhere else its own "only on this computer" page (never a code).
+  "/attest",
   // SEC-2a: Sign in with GitHub, from the signed-out page.
   "/api/github/signin",
   "/api/github/signin/:id",

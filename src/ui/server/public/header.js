@@ -686,7 +686,7 @@ export async function initChangelog() {
 
 // ── __DEN_TITLE__ config ──────────────────────────────────────────────────────────────
 
-let ___DEN_CLI__Config = null;
+let _cliConfig = null;
 
 /**
  * 0.4.1: true once the shell knows the config fails validation (shell.js
@@ -705,18 +705,16 @@ function apiOff() {
 }
 
 async function getDenConfig() {
-  if (___DEN_CLI__Config) return ___DEN_CLI__Config;
+  if (_cliConfig) return _cliConfig;
   if (configInvalid()) return { environments: ["local"] };
   try {
-    ___DEN_CLI__Config = await fetch("/api/__DEN_CLI__/config").then((r) =>
-      r.json(),
-    );
+    _cliConfig = await fetch("/api/__DEN_CLI__/config").then((r) => r.json());
   } catch {
-    ___DEN_CLI__Config = {
+    _cliConfig = {
       environments: ["local"],
     };
   }
-  return ___DEN_CLI__Config;
+  return _cliConfig;
 }
 
 /**

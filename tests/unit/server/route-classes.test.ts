@@ -138,6 +138,7 @@ describe("the classes", () => {
       "/api/session",
       "/api/signin/code",
       "/api/signin/code/:id",
+      "/attest",
       "/auth",
       "/signin",
     ]);

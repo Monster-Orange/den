@@ -312,6 +312,22 @@ describe("doctorJson", () => {
     // Only this machine reaches it: a note (ok, with the question), not a warning.
     expect(local).toMatchObject({ status: "ok" });
     expect(local.ask).toContain("web.allowed_github_org");
+    // gh signed in but nothing recorded it yet: run web restart.
+    const signedIn = await ownerCheck({
+      owner: () => null,
+      web: () => ({ ...base, allowedGithubOrg: "acme" }),
+      exposed: async () => null,
+      ghLogin: () => "octo",
+    });
+    expect(signedIn.ask).toContain("gh is signed in as @octo: run `");
+    expect(signedIn.ask).toContain("web restart` to record it");
+    const signedOut = await ownerCheck({
+      owner: () => null,
+      web: () => ({ ...base, allowedGithubOrg: "acme" }),
+      exposed: async () => null,
+      ghLogin: () => null,
+    });
+    expect(signedOut.ask).toContain("gh isn't signed in here");
     const linked = await ownerCheck({ owner: () => ({ login: "octo" }) });
     expect(linked).toMatchObject({ status: "ok" });
     expect(linked.detail).toContain("@octo");

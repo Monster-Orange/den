@@ -58,6 +58,13 @@ interface RawProduct {
 }
 
 const SLUG = /^[a-z][a-z0-9-]*$/;
+/**
+ * A path the pages show (config, manifest, services and workspaces dirs):
+ * letters, digits, ".", "_", "-" and "/". The web pages carry these
+ * names as placeholders filled when served (product.ts productTokens), so
+ * a quote, backslash, "$" or "<" in one would break a page's script.
+ */
+const SAFE_PATH = /^[A-Za-z0-9._/-]+$/;
 const PREFIX = /^[A-Z][A-Z0-9_]*$/;
 
 const str = (v: unknown): string | undefined =>
@@ -83,7 +90,7 @@ export function profileFrom(
   const name = str(raw.name) ?? "den";
   if (!SLUG.test(name))
     throw new Error(
-      `den.yml: product.name "${name}" must be lower-case letters, digits and "-"`,
+      `den.yml: product.name "${name}" must be lower-case letters, digits and "-", starting with a letter`,
     );
   const envPrefix =
     str(raw.env_prefix) ?? name.toUpperCase().replace(/-/g, "_");
@@ -91,11 +98,28 @@ export function profileFrom(
     throw new Error(
       `den.yml: product.env_prefix "${envPrefix}" must be upper-case letters, digits and "_"`,
     );
+  const cli = str(raw.cli) ?? name;
+  if (!SLUG.test(cli))
+    throw new Error(
+      `den.yml: product.cli "${cli}" must be lower-case letters, digits and "-", starting with a letter`,
+    );
+  for (const key of [
+    "config",
+    "manifest",
+    "services_dir",
+    "workspaces_dir",
+  ] as const) {
+    const v = str(raw[key]);
+    if (v !== undefined && !SAFE_PATH.test(v))
+      throw new Error(
+        `den.yml: product.${key} "${v}" may use only letters, digits, ".", "_", "-" and "/"`,
+      );
+  }
   const manifest = str(raw.manifest) ?? `.${name}.yml`;
   const json = manifest.replace(/\.ya?ml$/, ".json");
   return {
     name,
-    cli: str(raw.cli) ?? name,
+    cli,
     envPrefix,
     configFile: str(raw.config) ?? `config/${name}.yml`,
     manifestFiles: json === manifest ? [manifest] : [manifest, json],

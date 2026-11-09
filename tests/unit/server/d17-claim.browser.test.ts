@@ -27,7 +27,9 @@ import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const SHOTS = process.env.DEN_SEC2_SHOTS ?? "";
-const EDGE = "den.acme.localhost";
+// A hyphenated product name (0.4.21-dev.1): every page's scripts must
+// still parse once __DEN_CLI__ is filled with it.
+const EDGE = "acme-den.acme.localhost";
 const ENGINE_NAME = (
   ["firefox", "webkit"].includes(process.env.DEN_D17_BROWSER ?? "")
     ? process.env.DEN_D17_BROWSER
@@ -68,12 +70,13 @@ beforeAll(async () => {
     fs.mkdtempSync(path.join(os.tmpdir(), "den-d17-claim-")),
   );
   const root = path.join(tmp, "dist");
-  stateDir = path.join(tmp, "home", ".den");
+  // acme-den keeps its state in ~/.acme-den (HOME below).
+  stateDir = path.join(tmp, "home", ".acme-den");
   fs.mkdirSync(path.join(root, "config", "local"), { recursive: true });
   fs.mkdirSync(stateDir, { recursive: true });
-  fs.writeFileSync(path.join(root, "den.yml"), "product:\n  name: den\n");
+  fs.writeFileSync(path.join(root, "den.yml"), "product:\n  name: acme-den\n");
   fs.writeFileSync(
-    path.join(root, "config", "den.yml"),
+    path.join(root, "config", "acme-den.yml"),
     [
       "environments: [local]",
       "edge:",
@@ -143,6 +146,8 @@ describe("Connect your GitHub account, on this computer", () => {
       viewport: { width: 390, height: 900 },
     });
     const p = await ctx.newPage();
+    const errors: string[] = [];
+    p.on("pageerror", (e) => errors.push(e.message));
     const r = await p.goto(`http://${EDGE}:${port}/settings`);
     expect(r?.status()).toBe(401);
     await p.waitForSelector("#den-claim-title");
@@ -196,6 +201,14 @@ describe("Connect your GitHub account, on this computer", () => {
       },
     );
     expect(readWebOwner(stateDir)).toMatchObject({ login: "octo-owner" });
+    // Signed in, Settings itself loads (its categories), with no script error.
+    // (#set-body is filled by the page's scripts: empty when they failed.)
+    await p.waitForFunction(
+      () => (document.querySelector("#set-body")?.children.length ?? 0) > 0,
+      null,
+      { timeout: 15_000 },
+    );
+    expect(errors).toEqual([]);
     const cookies = await ctx.cookies(`http://${EDGE}:${port}`);
     expect(cookies.some((c) => c.name === `den_session_${port}`)).toBe(true);
     await ctx.close();

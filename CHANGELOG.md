@@ -49,13 +49,36 @@ config and manifest changes a distribution must make to move to it under
   unless set (it was 60 s, and expired while people switched windows);
   30s to 60m. `web login` shows the time left while it waits.
 
+### Fixed
+
+- **Every page was broken for a distribution whose name has a hyphen**
+  (`acme-den`), since 0.4.20 at least. `header.js` put the
+  `__DEN_CLI__` placeholder inside a variable name, so the served file
+  read `let _acme-denConfig`, a syntax error: no page mounted anything,
+  the signed-out page included ("Error / local"), and Settings showed an
+  error. A new check fills every served page and script with hyphenated,
+  digit-bearing and short names and parses each one, and no placeholder
+  may touch a name's letters.
+- `/attest` reached through the edge shows its own "only on the computer
+  this Den runs on" page, not the generic signed-out one.
+- doctor, when `web.owner_github` isn't set but `gh` is signed in, says to
+  run `web restart` to record it (not that gh isn't signed in).
+
 ### Changed
 
+- `product.cli` in den.yml must be lower-case letters, digits and `-`,
+  starting with a letter (as `product.name`). `product.config`,
+  `manifest`, `services_dir` and `workspaces_dir` may use letters, digits,
+  `.`, `_`, `-` and `/` only: the pages carry these names, and a quote or
+  `$` would break their scripts. A value outside that is refused at start,
+  naming the key.
 - The page behind a `web login` link that asks for its code is a plain
   sign-in page: no shell frame and no request id, the code field focused.
 
 ### Migrations
 
+- A `product.cli` or product path outside the characters above now stops
+  the CLI and server with a message naming the key: rename it.
 - To let your team connect GitHub from the browser, set
   `web.allowed_github_org: <your GitHub org>` in the team config (or run
   `web up` with `gh` signed in, for `web.owner_github`). The GitHub App

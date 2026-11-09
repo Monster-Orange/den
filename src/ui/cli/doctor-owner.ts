@@ -21,7 +21,7 @@ import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { edgeNames, webRouteHosts } from "../../shared/edge/render.js";
 import { edgeExposure } from "../../shared/edge/exposure.js";
 import type { OnboardCheck } from "./doctor-onboard.js";
-import { ghNotSignedInHint } from "../../shared/owner-github.js";
+import { ghLogin, ghNotSignedInHint } from "../../shared/owner-github.js";
 
 export interface OwnerCheckDeps {
   owner?: () => { login: string } | null;
@@ -29,6 +29,18 @@ export interface OwnerCheckDeps {
   /** Why the edge is reachable beyond this machine, or null. */
   exposed?: () => Promise<string | null>;
   configFile?: string;
+  /** The login gh is signed in as here, or null (default: ask gh). */
+  ghLogin?: () => string | null;
+}
+
+/**
+ * What to do when web.owner_github isn't set: gh is signed in but nothing
+ * recorded it yet (a restart does), or gh isn't signed in.
+ */
+export function ownerGithubHint(login: string | null, cli: string): string {
+  return login
+    ? `gh is signed in as @${login}: run \`${cli} web restart\` to record it as this Den's owner (web.owner_github), then connect your GitHub account from any browser.`
+    : ghNotSignedInHint(cli);
 }
 
 async function defaultExposed(): Promise<string | null> {
@@ -79,7 +91,7 @@ export async function ownerCheck(
   // private); without it, say how to get it.
   const ghHint = web.ownerGithub
     ? {}
-    : { ask: ghNotSignedInHint(product().cli) };
+    : { ask: ownerGithubHint((deps.ghLogin ?? ghLogin)(), product().cli) };
   if (who.length)
     return {
       id: "web:owner",
