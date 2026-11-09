@@ -51,6 +51,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- doctor no longer shows `usage (invalid config) ✗ unavailable: no selector
+  for this kind` on every fresh install (D9). Usage sources are all read at
+  once, so the row names them (`claude-code (implicit)`), as any strategy
+  kind with no selector of its own now does; never a failure. The state
+  column lines up past 20 characters.
 - **Every page was broken for a distribution whose name has a hyphen**
   (`acme-den`), since 0.4.20 at least. `header.js` put the
   `__DEN_CLI__` placeholder inside a variable name, so the served file
@@ -66,6 +71,9 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- The sign-in smoke runs against a remote browser with `DEN_PW_WS` (a
+  Playwright run-server): WebKit from Playwright's Linux image when the
+  shell can't start a GUI app (CONTRIBUTING.md).
 - The GitHub code on the sign-in page has its copy button right beside it,
   on its line (as every command on that page), at any width.
 - Tests put a stub `launchctl` first on PATH, as for gh and the agent

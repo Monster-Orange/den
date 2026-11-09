@@ -80,6 +80,9 @@ run() {
 expect_in() { # expect_in <label> <file> <fixed string>
   if grep -qF -- "$3" "$2"; then ok "$1"; else bad "$1: '$3' not in $(basename "$2")"; fi
 }
+expect_re() { # expect_re <label> <file> <extended regex>
+  if grep -qE -- "$3" "$2"; then ok "$1"; else bad "$1: /$3/ not in $(basename "$2")"; fi
+}
 expect_not_in() {
   if grep -qF -- "$3" "$2"; then
     bad "$1: '$3' found in $(basename "$2")"
@@ -157,9 +160,11 @@ say "sessions (den-pty)"
 # The PTY module is optional: with it doctor says den-pty is available;
 # without it (--omit=optional) doctor says why, and nothing else changes.
 run doctor ./bin/acme doctor
+# D9: a fresh install's doctor shows no false failure row.
+expect_not_in "doctor: no (invalid config) row" "$WORK/doctor.out" "invalid config"
 if [ -d "$DIST/node_modules/@lydell/node-pty" ]; then
   ok "PTY module installed (no install script, prebuilt binary)"
-  expect_in "doctor: den-pty available" "$WORK/doctor.out" "den-pty (implicit)   ✓ available"
+  expect_re "doctor: den-pty available" "$WORK/doctor.out" "den-pty \(implicit\) +✓ available"
 else
   ok "PTY module absent"
   expect_in "doctor says why den-pty is unavailable" "$WORK/doctor.out" "@lydell/node-pty is not installed"

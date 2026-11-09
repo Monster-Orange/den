@@ -41,6 +41,25 @@ DEN_ORG_NAMES_FILE=<patterns file> node scripts/org-name-gate.mjs
 
 A new test, lint rule or gate must be seen failing before it is trusted.
 
+The sign-in smoke (`tests/unit/server/d17-claim.browser.test.ts`) runs in
+Chromium by default; `DEN_D17_BROWSER=firefox` or `webkit` runs it in the
+others. WebKit on macOS needs a GUI session: when `launchctl managername`
+doesn't say `Aqua` (an ssh or background shell), the launch hangs. Run
+WebKit from Playwright's Linux image instead, at the version in
+`package-lock.json`:
+
+```bash
+docker run -d --rm --name pw --init -p 127.0.0.1:3917:3917 \
+  mcr.microsoft.com/playwright:v<version>-noble \
+  npx -y playwright@<version> run-server --port 3917 --host 0.0.0.0
+DEN_PW_WS=ws://localhost:3917/ DEN_D17_BROWSER=webkit \
+  npx jest tests/unit/server/d17-claim.browser.test.ts
+docker stop pw
+```
+
+The browser's `localhost` and `*.localhost` are this machine's
+(`exposeNetwork`), so the test runs as it would locally.
+
 ## Adding a strategy
 
 - **Secrets backend:** implement `SecretsProvider`

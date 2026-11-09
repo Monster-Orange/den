@@ -51,6 +51,7 @@ import {
 } from "../../shared/sessions/den-pty.js";
 import {
   getStrategy,
+  strategyIds,
   strategyKinds,
 } from "../../shared/strategies/registry.js";
 import {
@@ -194,20 +195,43 @@ export function doctorRows(env: NodeJS.ProcessEnv = process.env): DoctorRow[] {
     ...kinds.filter((k) => !(k in SELECTORS)),
   ];
   const rows = ordered.map(
-    (kind) =>
-      SELECTORS[kind]?.(env) ?? {
-        kind,
-        selected: "",
-        implicit: false,
-        available: false,
-        reason: "no selector for this kind",
-        problem: false,
-        warnings: [],
-      },
+    (kind) => SELECTORS[kind]?.(env) ?? everyStrategyRow(kind, env),
   );
   const op = onePasswordTokenRow(env);
   if (op) rows.splice(rows.findIndex((r) => r.kind === "secrets") + 1, 0, op);
   return rows;
+}
+
+/**
+ * A kind no config selects one of (usage sources, D9): every registered
+ * strategy is in use, so the row names them all (implicit) and is available
+ * when any is. Never a problem: nothing was configured wrong. (It said
+ * "(invalid config) ✗ no selector for this kind" on every fresh install.)
+ */
+function everyStrategyRow(kind: string, env: NodeJS.ProcessEnv): DoctorRow {
+  const ids = strategyIds(kind);
+  const found = ids.map((id) => {
+    try {
+      return getStrategy(kind, id)?.detect(env) ?? { available: false };
+    } catch (e) {
+      return { available: false, reason: (e as Error).message };
+    }
+  });
+  const available = found.some((d) => d.available);
+  return {
+    kind,
+    selected: ids.join(", "),
+    implicit: true,
+    available,
+    reason: available
+      ? undefined
+      : found
+          .map((d) => d.reason)
+          .filter(Boolean)
+          .join("; ") || undefined,
+    problem: false,
+    warnings: [],
+  };
 }
 
 /**
@@ -242,15 +266,19 @@ function onePasswordTokenRow(env: NodeJS.ProcessEnv): DoctorRow | null {
 export function formatDoctor(rows: DoctorRow[], title: string): string[] {
   const lines = [chalk.bold(`${title} doctor: strategies`), ""];
   const width = Math.max(...rows.map((r) => r.kind.length));
-  for (const r of rows) {
-    const sel = r.selected
+  const selOf = (r: DoctorRow) =>
+    r.selected
       ? `${r.selected}${r.implicit ? " (implicit)" : ""}`
       : "(invalid config)";
+  // The state column lines up even past 20 ("den-claude (implicit)").
+  const selWidth = Math.max(20, ...rows.map((r) => selOf(r).length));
+  for (const r of rows) {
+    const sel = selOf(r);
     const state = r.available
       ? chalk.green("✓ available")
       : (r.problem ? chalk.red : chalk.yellow)("✗ unavailable");
     lines.push(
-      `  ${r.kind.padEnd(width)}  ${sel.padEnd(20)} ${state}${r.reason ? `: ${r.reason}` : ""}`,
+      `  ${r.kind.padEnd(width)}  ${sel.padEnd(selWidth)} ${state}${r.reason ? `: ${r.reason}` : ""}`,
     );
     for (const w of r.warnings) lines.push(chalk.yellow(`    ⚠ ${w}`));
   }

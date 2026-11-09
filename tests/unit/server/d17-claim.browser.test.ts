@@ -55,8 +55,14 @@ beforeAll(async () => {
     const pw = await import("playwright");
     // DEN_D17_BROWSER=firefox or webkit (Safari's engine) runs the same
     // round trip there; *.localhost is loopback in both.
-    browser =
-      ENGINE_NAME === "chromium"
+    // DEN_PW_WS=ws://localhost:<port>/ uses a browser behind a Playwright
+    // run-server instead (the Linux image, when this shell can't start a
+    // GUI app: `launchctl managername` isn't Aqua). Its localhost and
+    // *.localhost are this machine's (exposeNetwork), as for a local one.
+    const ws = process.env.DEN_PW_WS;
+    browser = ws
+      ? await pw[ENGINE_NAME].connect(ws, { exposeNetwork: "<loopback>" })
+      : ENGINE_NAME === "chromium"
         ? await pw.chromium.launch({
             args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
           })

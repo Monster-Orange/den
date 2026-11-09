@@ -27,6 +27,9 @@ import {
   doctorRows,
   formatDoctor,
 } from "../../../src/ui/cli/doctor-command.js";
+// D9: the usage sources register on import, as in the CLI.
+import "../../../src/shared/usage/sources.js";
+import { registerStrategy } from "../../../src/shared/strategies/registry.js";
 
 const savedPath = process.env.PATH;
 
@@ -59,6 +62,7 @@ describe("doctor", () => {
       "tls",
       "session-backend",
       "runtime",
+      "usage",
     ]);
     expect(rows[0]).toMatchObject({
       selected: "none",
@@ -98,6 +102,44 @@ describe("doctor", () => {
       ],
     });
     expect(spawned()).toEqual([0, 0, 0, 0]);
+  });
+
+  it("D9: usage lists its sources (implicit), never an invalid config", () => {
+    const rows = doctorRows(dist("environments: [local]\n"));
+    const row = rows.find((r) => r.kind === "usage");
+    expect(row).toMatchObject({
+      selected: "claude-code",
+      implicit: true,
+      problem: false,
+    });
+    expect(row!.reason ?? "").not.toMatch(/no selector/);
+    const text = formatDoctor(rows, "Den").join("\n");
+    expect(text).not.toMatch(/invalid config|no selector/);
+    expect(spawned()).toEqual([0, 0, 0, 0]);
+  });
+
+  it("D9: a kind with no selector of its own lists every registered strategy", () => {
+    registerStrategy({
+      id: "d9-a",
+      kind: "d9-kind",
+      detect: () => ({ available: false, reason: "a is off" }),
+      capabilities: {},
+    });
+    registerStrategy({
+      id: "d9-b",
+      kind: "d9-kind",
+      detect: () => ({ available: true }),
+      capabilities: {},
+    });
+    const row = doctorRows(dist("environments: [local]\n")).find(
+      (r) => r.kind === "d9-kind",
+    );
+    expect(row).toMatchObject({
+      selected: "d9-a, d9-b",
+      implicit: true,
+      available: true,
+      problem: false,
+    });
   });
 
   it("lists the session backend (den-pty); unavailable is never a problem", () => {
