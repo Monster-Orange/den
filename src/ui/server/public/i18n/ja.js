@@ -353,7 +353,6 @@
     "err.signin.github": "GitHub でサインイン",
     "err.signin.githubEnter": "{url} でこのコードを入力してください:",
     "err.signin.githubOpen": "GitHub を開く",
-    "err.signin.githubCopy": "コードをコピー",
     "err.signin.githubWaiting": "GitHub での承認を待っています…",
     "err.signin.githubDone": "サインインしました。読み込み中…",
     "err.signin.githubExpired": "承認される前にコードの有効期限が切れました。",

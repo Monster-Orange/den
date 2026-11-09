@@ -364,7 +364,6 @@
     "err.signin.github": "Iniciar sesión con GitHub",
     "err.signin.githubEnter": "Introduce este código en {url}:",
     "err.signin.githubOpen": "Abrir GitHub",
-    "err.signin.githubCopy": "Copiar código",
     "err.signin.githubWaiting": "Esperando a que lo apruebes en GitHub…",
     "err.signin.githubDone": "Sesión iniciada. Cargando…",
     "err.signin.githubExpired": "El código caducó antes de aprobarse.",

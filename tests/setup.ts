@@ -43,7 +43,9 @@ const stubs = path.join(
 if (!(process.env.PATH ?? "").split(path.delimiter).includes(stubs)) {
   fs.mkdirSync(stubs, { recursive: true });
   // D17: and gh (`web up` asks it who is signed in): never the real one.
-  for (const bin of ["claude", "codex", "gemini", "grok", "gh"])
+  // And launchctl: no test may reach this machine's real launchd (a
+  // bootout there stops real services); tests that need it shim their own.
+  for (const bin of ["claude", "codex", "gemini", "grok", "gh", "launchctl"])
     fs.writeFileSync(path.join(stubs, bin), "#!/bin/sh\nexit 127\n", {
       mode: 0o755,
     });

@@ -66,6 +66,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- The GitHub code on the sign-in page has its copy button right beside it,
+  on its line (as every command on that page), at any width.
+- Tests put a stub `launchctl` first on PATH, as for gh and the agent
+  CLIs: no test can reach this machine's real launchd.
 - Pages, `--version`, doctor and the server agent's name say the brand's
   name (`brand.name` in the org config: "Sign in to Acme Den"), not the CLI
   name upper-cased ("Acme-den") (D11). A `brand.name` with characters that

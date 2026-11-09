@@ -192,6 +192,27 @@ describe("Connect your GitHub account, on this computer", () => {
     expect(await p.isVisible("#den-claim-here")).toBe(false);
     const userCode = await text(p, "#den-gh-code");
     expect(userCode).toBe(gh.codes[gh.codes.length - 1].userCode);
+    // The copy button sits right beside the code, on its line, at desktop
+    // and phone widths, and copies it.
+    const beside = () =>
+      p.$eval("#den-gh-code", (pre) => {
+        const btn = pre.parentElement?.querySelector("button.den-copy");
+        if (!btn) return "no copy button in the code's row";
+        const a = pre.getBoundingClientRect();
+        const b = btn.getBoundingClientRect();
+        const overlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        if (b.left < a.right) return "button not to the right of the code";
+        if (b.left - a.right > 16) return "button not next to the code";
+        if (overlap < Math.min(a.height, b.height) * 0.8)
+          return "not on one line";
+        if (document.documentElement.scrollWidth > window.innerWidth)
+          return "page scrolls sideways";
+        return "ok";
+      });
+    for (const width of [1280, 375]) {
+      await p.setViewportSize({ width, height: 800 });
+      expect(`${width}: ${await beside()}`).toBe(`${width}: ok`);
+    }
     if (SHOTS)
       await p.screenshot({
         path: path.join(SHOTS, "d17-code-390.png"),

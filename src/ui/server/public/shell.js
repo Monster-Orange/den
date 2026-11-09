@@ -477,7 +477,6 @@
     "err.signin.github": "Sign in with GitHub",
     "err.signin.githubEnter": "Enter this code at {url}:",
     "err.signin.githubOpen": "Open GitHub",
-    "err.signin.githubCopy": "Copy code",
     "err.signin.githubWaiting": "Waiting for you to approve it on GitHub…",
     "err.signin.githubDone": "Signed in. Loading…",
     "err.signin.githubExpired": "The code expired before it was approved.",

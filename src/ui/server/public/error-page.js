@@ -484,14 +484,16 @@ function wireGithub(root, t, s, attest = "") {
               url: `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(shown)}</a>`,
             },
           )}</p>` +
-            `<pre class="code" id="den-gh-code" style="font-size:22px;letter-spacing:0.12em;text-align:center">${esc(b.userCode)}</pre>` +
+            // The code and its copy button on one line, as every command.
+            cmdLine("den-gh-code", b.userCode, t).replace(
+              'class="den-cmd"',
+              'class="den-cmd den-gh-coderow"',
+            ) +
             `<div class="acts" style="margin-top:0">` +
-            `<a class="btn primary" id="den-gh-open" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t("err.signin.githubOpen"))}</a>` +
-            `<button type="button" class="btn" id="den-gh-copy">${esc(t("err.signin.githubCopy"))}</button></div>` +
+            `<a class="btn primary" id="den-gh-open" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t("err.signin.githubOpen"))}</a></div>` +
             `<p class="den-gh-wait" style="margin-top:12px">${esc(t("err.signin.githubWaiting"))}</p>`,
         );
-        const cp = box.querySelector("#den-gh-copy");
-        cp?.addEventListener("click", () => copy(b.userCode, cp, t));
+        wireCopy(box, t);
         timer = setTimeout(() => poll(b.id), 1500);
       })
       .catch(() => {
