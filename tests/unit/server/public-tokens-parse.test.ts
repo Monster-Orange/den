@@ -19,7 +19,7 @@ import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { fillProductTokens } from "../../../src/shared/product.js";
+import { fillProductTokens, titleOf } from "../../../src/shared/product.js";
 import { profileFrom } from "../../../src/shared/profile.js";
 
 const PUBLIC = path.resolve(__dirname, "../../../src/ui/server/public");
@@ -35,11 +35,12 @@ function files(dir = PUBLIC, rel = ""): string[] {
 
 /** The product a profile makes, as fillProductTokens takes it. */
 function productOf(raw: Record<string, string>) {
-  const p = profileFrom(raw, os.tmpdir());
+  const { brand, ...profile } = raw;
+  const p = profileFrom(profile, os.tmpdir());
   const yml = p.manifestFiles[0];
   return {
     ...p,
-    title: p.name.charAt(0).toUpperCase() + p.name.slice(1),
+    title: titleOf(p.name, brand),
     manifestYml: yml,
     manifestJson: p.manifestFiles[1] ?? yml.replace(/\.ya?ml$/, "") + ".json",
   };
@@ -90,6 +91,8 @@ function classicScripts(): Set<string> {
 
 const NAMES: Record<string, string>[] = [
   { name: "acme-den" },
+  { name: "globex-den", brand: "Globex Den" },
+  { name: "acme-den", brand: "Acmé Dev_2.0 - Beta" },
   { name: "globex-den" },
   { name: "a" },
   { name: "x9-2-b", cli: "x9-cli" },

@@ -8,6 +8,9 @@
  * distribution root can be found (e.g. help text printed outside a checkout).
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { parse as parseYaml } from "yaml";
 import { getDistRoot } from "./paths.js";
 import {
   loadProfile,
@@ -17,7 +20,11 @@ import {
 } from "./profile.js";
 
 export interface Product extends ProductProfile {
-  /** Display name: the name with its first letter upper-cased ("Den"). */
+  /**
+   * Display name (D11): the org config's brand.name ("Acme Den") when it is
+   * safe to show anywhere (TITLE_SAFE), else the name with its first letter
+   * upper-cased ("Acme-den").
+   */
   title: string;
   /** The YAML manifest file name (".den.yml"). */
   manifestYml: string;
@@ -25,11 +32,43 @@ export interface Product extends ProductProfile {
   manifestJson: string;
 }
 
-function withDerived(p: ProductProfile): Product {
+/**
+ * What a brand.name may hold to be the display title: letters, digits,
+ * spaces, ".", "_" and "-", up to 40. The title is filled into page scripts
+ * (inside "…" and '…' strings) and HTML attributes, so no quote, backslash,
+ * "<" or "&" may reach it (the 0.4.20 hyphen bug's kin).
+ */
+export const TITLE_SAFE = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$/u;
+
+/** The name, first letter upper-cased: "acme-den" → "Acme-den". */
+export function nameTitle(name: string): string {
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** The org config's brand.name, trimmed, or undefined. Never throws. */
+export function brandNameAt(root: string | null, configFile: string) {
+  if (!root) return undefined;
+  try {
+    const raw = parseYaml(
+      fs.readFileSync(path.join(root, configFile), "utf-8"),
+    ) as { brand?: { name?: unknown } } | null;
+    const n = raw?.brand?.name;
+    return typeof n === "string" && n.trim() ? n.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The display title: a safe brand.name, else nameTitle. */
+export function titleOf(name: string, brandName?: string): string {
+  return brandName && TITLE_SAFE.test(brandName) ? brandName : nameTitle(name);
+}
+
+function withDerived(p: ProductProfile, root: string | null = null): Product {
   const yml = p.manifestFiles[0];
   return {
     ...p,
-    title: p.name.charAt(0).toUpperCase() + p.name.slice(1),
+    title: titleOf(p.name, brandNameAt(root, p.configFile)),
     manifestYml: yml,
     manifestJson: p.manifestFiles[1] ?? yml.replace(/\.ya?ml$/, "") + ".json",
   };
@@ -40,10 +79,11 @@ let derived: { profile: ProductProfile; product: Product } | null = null;
 /** The running product. Never throws. */
 export function product(): Product {
   try {
-    const profile = loadProfile(getDistRoot());
+    const root = getDistRoot();
+    const profile = loadProfile(root);
     // Same profile object (loadProfile caches it): same derived names.
     if (derived?.profile !== profile)
-      derived = { profile, product: withDerived(profile) };
+      derived = { profile, product: withDerived(profile, root) };
     return derived.product;
   } catch {
     const pinned = process.env.DEN_PROFILE?.trim();

@@ -66,6 +66,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- Pages, `--version`, doctor and the server agent's name say the brand's
+  name (`brand.name` in the org config: "Sign in to Acme Den"), not the CLI
+  name upper-cased ("Acme-den") (D11). A `brand.name` with characters that
+  could break a page (quotes, `&`, `<`) falls back to the old title.
 - `product.cli` in den.yml must be lower-case letters, digits and `-`,
   starting with a letter (as `product.name`). `product.config`,
   `manifest`, `services_dir` and `workspaces_dir` may use letters, digits,

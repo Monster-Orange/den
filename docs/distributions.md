@@ -1004,14 +1004,20 @@ brand:
     - "  └───────────┘"
 ```
 
-| Field     | Used for                                                                     |
-| --------- | ---------------------------------------------------------------------------- |
-| `name`    | Web page `<title>`s, the banner fallback, the web route on the edge (`acme`) |
-| `tagline` | The line under the banner                                                    |
-| `banner`  | The CLI and web server startup banner                                        |
+| Field     | Used for                                                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`    | The name people see: page titles and copy ("Sign in to Acme Den"), `--version`, doctor, the server agent's name, the banner fallback, the web route on the edge (`acme`) |
+| `tagline` | The line under the banner                                                                                                                                                |
+| `banner`  | The CLI and web server startup banner                                                                                                                                    |
 
 Runtime names (env vars, files, directories) always come from `den.yml`,
 never from the brand.
+
+`brand.name` is used in pages and messages only when it is letters, digits,
+spaces, `.`, `_` and `-` (up to 40, starting with a letter or digit), so
+it can't break a page. Anything else (a quote, `&`, `<`) falls back to the
+product name with its first letter upper-cased ("Acme-den"); the page
+`<title>` still shows it.
 
 ## Plugins
 

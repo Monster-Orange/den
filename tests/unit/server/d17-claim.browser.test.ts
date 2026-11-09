@@ -79,6 +79,9 @@ beforeAll(async () => {
     path.join(root, "config", "acme-den.yml"),
     [
       "environments: [local]",
+      // D11: pages say the brand's name, not the CLI name upper-cased.
+      "brand:",
+      "  name: Acme Den",
       "edge:",
       "  org: acme",
       "  domain: acme.localhost",
@@ -154,6 +157,10 @@ describe("Connect your GitHub account, on this computer", () => {
     expect(await text(p, "#den-claim-title")).toBe(
       "Connect your GitHub account",
     );
+    expect(await text(p, "#den-claim-lead")).toBe(
+      "Acme Den has no owner yet. Connect your GitHub account to make it yours.",
+    );
+    expect(await p.title()).toMatch(/^Acme Den\b/);
     expect(await text(p, "#den-claim-org")).toBe(
       "Members of the acme-co GitHub org can claim it, in a browser on Studio.",
     );
