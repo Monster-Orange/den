@@ -22,7 +22,28 @@ import { GITHUB_DEVICE_PAGE } from "../../shared/github-app.js";
 import type {
   GithubDeviceClient,
   GithubIdentity,
+  OrgMembership,
 } from "../../shared/github-device.js";
+
+/** What `decide` may ask while the token is still held (D17). */
+export interface DecideContext {
+  /**
+   * D17: the sign-in started with this machine's proof ("This is my
+   * computer", attest-code.ts).
+   */
+  local: boolean;
+  /** Whether the approving account is a member of `org`. */
+  orgMember(org: string): Promise<OrgMembership>;
+}
+
+/** What an identity means: ok, or refused (with why, for the page). */
+export type Decision = "ok" | "refused" | { refused: string };
+
+export type Decide = (
+  purpose: FlowPurpose,
+  identity: GithubIdentity,
+  ctx: DecideContext,
+) => Decision | Promise<Decision>;
 
 export type FlowPurpose = "signin" | "link";
 export type FlowState =
@@ -43,7 +64,7 @@ export interface FlowView {
   expiresAt: number;
   /** ok or refused: the GitHub login that approved it. */
   login?: string;
-  /** error: what went wrong (no secret in it). */
+  /** error: what went wrong; refused: why, when the decision said (no secret in it). */
   message?: string;
 }
 
@@ -53,6 +74,8 @@ interface Flow extends FlowView {
   errors: number;
   /** ok: who approved it (the id, for the caller). */
   identity?: GithubIdentity;
+  /** D17: started with this machine's proof. */
+  local: boolean;
   /** When a finished flow is forgotten. */
   forgetAt?: number;
   cancel?: () => void;
@@ -81,18 +104,12 @@ export class DeviceFlows {
   private readonly max: number;
   private readonly minIntervalMs: number;
   private readonly onExpiringToken?: () => void;
-  private readonly decide: (
-    purpose: FlowPurpose,
-    identity: GithubIdentity,
-  ) => "ok" | "refused";
+  private readonly decide: Decide;
 
   constructor(opts: {
     client: GithubDeviceClient;
     clientId: () => string;
-    decide: (
-      purpose: FlowPurpose,
-      identity: GithubIdentity,
-    ) => "ok" | "refused";
+    decide: Decide;
     now?: () => number;
     schedule?: Schedule;
     max?: number;
@@ -126,6 +143,7 @@ export class DeviceFlows {
    */
   async start(
     purpose: FlowPurpose,
+    meta: { local?: boolean } = {},
   ): Promise<FlowView | { error: "busy" | "no_client_id" }> {
     const clientId = this.clientId();
     if (!clientId) return { error: "no_client_id" };
@@ -142,6 +160,7 @@ export class DeviceFlows {
       deviceCode: "",
       intervalMs: this.minIntervalMs,
       errors: 0,
+      local: meta.local === true,
     };
     this.flows.set(id, placeholder);
     let code;
@@ -240,10 +259,26 @@ export class DeviceFlows {
         } catch (e) {
           return this.finish(f, "error", { message: (e as Error).message });
         }
-        const outcome = this.decide(f.purpose, identity);
+        let decision: Decision;
+        try {
+          // The token is still only for this flow's own calls, then dropped.
+          const token = r.token;
+          decision = await this.decide(f.purpose, identity, {
+            local: f.local,
+            orgMember: (org) =>
+              this.client.orgMember(token, org, identity.login),
+          });
+        } catch (e) {
+          return this.finish(f, "error", { message: (e as Error).message });
+        }
+        if (this.flows.get(id) !== f || f.state !== "pending") return;
+        const outcome = typeof decision === "string" ? decision : "refused";
         return this.finish(f, outcome, {
           login: identity.login,
           ...(outcome === "ok" ? { identity } : {}),
+          ...(typeof decision === "object"
+            ? { message: decision.refused }
+            : {}),
         });
       }
     }

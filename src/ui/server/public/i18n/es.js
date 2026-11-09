@@ -305,6 +305,16 @@
     "err.signin.ghOnly":
       "Solo la cuenta de GitHub del propietario puede iniciar sesión así. Para cualquier otra persona, usa «Aprueba este ordenador».",
     "err.signin.ghLearn": "Más información",
+    "err.signin.claimTitle": "Conecta tu cuenta de GitHub",
+    "err.signin.claimLead":
+      "{name} aún no tiene propietario. Conecta tu cuenta de GitHub para que sea tuyo.",
+    "err.signin.claimOrg":
+      "Los miembros de la organización {org} de GitHub pueden reclamarlo, en un navegador en {host}.",
+    "err.signin.claimHere": "Este es mi ordenador: conectar GitHub",
+    "err.signin.claimAs": "Iniciar sesión como @{login}",
+    "err.signin.claimHereNote":
+      "«Este es mi ordenador» solo funciona en un navegador en {host}. En otro sitio no abre nada.",
+    "err.signin.claimChecking": "Comprobando que esto es {host}…",
     "err.signin.githubRefused":
       "@{login} no es el propietario de este {name}. Solo la cuenta del propietario puede usar Iniciar sesión con GitHub. Usa «Aprueba este ordenador» en su lugar.",
     "err.signin.approveOr": "O aprueba este ordenador",

@@ -1613,7 +1613,10 @@ user, and the CLI does that for you:
 
 - **The link** is `http://localhost:<port>/auth?c=<code>`, with `&next=<path>`
   for where to land (`web login --next /settings`). The code works once,
-  within 60 seconds, and only this server's secret makes one. It is printed
+  within `web.login_link_ttl` (5 minutes unless set; 30s to 60m, as `90s`,
+  `5m` or `1h`, in `config/local/user.yml` or the team config), and only
+  this server's secret makes one. `web login` shows the time left while it
+  waits, on a terminal. It is printed
   only on the one line you asked for (`web login`, or `web up` when it
   couldn't open the browser), never logged. Through the edge or a LAN name,
   the cookie belongs to that name: `web login --host acme.acme.localhost`
@@ -1853,7 +1856,8 @@ the account's id and login, never a token, and no other account gets in.
   last seen; "This device" on yours), each with **Revoke**, which ends its session at once (its
   open terminals included). **Pair a device** makes a one-time link and a
   QR code for an edge hostname you pick (`web login --host <name>` in the
-  browser): scan it on the other device within 60 seconds.
+  browser): scan it on the other device before it expires
+  (`web.login_link_ttl`; the page counts down).
 - **`web.github_client_id`** is the GitHub App's client id (public; no
   secret). The default is Den's own App, **Monster Orange Den**
   (`Iv23liKL12gnN6WvRV5b`), so Sign in with GitHub works out of the box. A
@@ -1867,6 +1871,61 @@ the account's id and login, never a token, and no other account gets in.
   token expiry in the App's settings ("Expire user authorization tokens");
   it never prints the token. `GET /api/web/owner` reports it as
   `tokenExpiry: true`.
+
+### A company's Den: every developer connects GitHub from the browser
+
+The common shape: a company makes its own Den repo (`create`), pushes it to
+its GitHub org, and every developer clones it and runs their own instance
+on their own machine. Everyone opens the same URL (an edge name such as
+`https://den.local.<your zone>`, whose DNS says 127.0.0.1) and connects
+their GitHub account there, with no terminal and nothing to explain.
+
+```yaml
+# config/<name>.yml (the team's, committed): who may claim an instance
+web:
+  allowed_github_org: acme
+```
+
+- **`create` writes it**: `--github-org <org>`, else the GitHub owner of the
+  repo the new folder is in. Neither: a commented line and a next step.
+- **`web.owner_github`** (`config/local/user.yml`, per machine) is the
+  GitHub login of whoever runs this instance. `web up`, `web restart` and
+  `service install` record it from `gh` (`gh api user`) when `gh` is signed
+  in, no owner is linked and it isn't set, and print it. Only the login is
+  kept. This is the path most people take: org memberships are private
+  by default. When `gh` isn't signed in, `web up` and `doctor` say so,
+  with the fix (`gh auth login`, then `web restart`; or set
+  `web.owner_github` yourself).
+- **The signed-out page leads with Connect your GitHub account** while the
+  instance has no owner and one of the two is set. Who may claim it:
+  - **A member of `allowed_github_org`, on this computer.** **This is my
+    computer** navigates to `http://localhost:<port>/attest` and straight
+    back: only a browser on the machine Den runs on reaches it there. It
+    returns with a short-lived (2 minutes), single-use code, signed with
+    `web.secret`, bound to the edge hostname, in the URL fragment (never
+    sent to a server or logged), and only to one of this Den's own edge
+    hostnames. The page then starts Sign in with GitHub with it; when
+    GitHub says the account is a member of the org, it becomes the owner
+    and the browser is signed in. This exists because Docker Desktop,
+    OrbStack and a TCP passthrough show the edge a gateway's address, so
+    Den can't tell a browser on its own machine from another one.
+  - **`owner_github`'s login, from any browser** (a devbox you reach from a
+    laptop).
+  - **Anyone else is refused, with the reason**: not a member of the org;
+    a member, but not on this computer; not the login `owner_github` names.
+    The proof alone never signs a browser in: any program on the machine
+    can reach localhost, so the GitHub approval is always the person's.
+- **Membership.** Den asks GitHub with the sign-in's own token: the
+  account's own membership (`GET /user/memberships/orgs/<org>`, which needs
+  the App to have the org's Members (read) permission), then the public
+  member list. A private membership the App can't read is refused, saying
+  so: make the membership public, give the App that permission, or set
+  `web.owner_github`.
+- **Neither set**: the page names both settings and offers no claim.
+  `doctor` shows who may claim the instance, and fails (✗) when neither is
+  set and the edge is reachable from other machines.
+- Once claimed, it is an ordinary owner: Sign in with GitHub from any
+  browser, as above.
 
 ### The GitHub App (once, by whoever ships the Den)
 

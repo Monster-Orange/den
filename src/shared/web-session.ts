@@ -1,7 +1,8 @@
 /**
  * SEC-1b (SEC-1 spec §2): the browser's sign-in.
  *
- *  - The login code: one-time, valid for 60 s, derived from web.secret.
+ *  - The login code: one-time, valid for `web.login_link_ttl` (D16: 5
+ *    minutes unless set; it was 60 s), derived from web.secret.
  *    `v1.<nonce>.<expiry>.<mac>`, the mac HMAC-SHA256(secret, the rest). The
  *    CLI mints it (it reads the secret as the same OS user); the server
  *    checks the mac in constant time and the expiry, and records the nonce
@@ -24,7 +25,12 @@ import * as yaml from "yaml";
 import { parseMachineName, parseSshUser } from "./cli-command.js";
 import { getStateDir } from "./paths.js";
 
-export const LOGIN_CODE_TTL_MS = 60_000;
+/** D16: how long a sign-in link lasts unless `web.login_link_ttl` says. */
+export const LOGIN_CODE_TTL_MS = 5 * 60_000;
+/** The longest `web.login_link_ttl` may be (and the most a code is believed). */
+export const LOGIN_CODE_MAX_TTL_MS = 60 * 60_000;
+/** The shortest `web.login_link_ttl` may be. */
+export const LOGIN_CODE_MIN_TTL_MS = 30_000;
 /** Clock skew allowed between the CLI that mints a code and the server. */
 const LOGIN_CODE_SKEW_MS = 5_000;
 const LOGIN_CONTEXT = "den-login-v1:";
@@ -57,13 +63,14 @@ function mac(secret: Buffer, body: string): Buffer {
     .digest();
 }
 
-/** A fresh login code, valid for 60 s from `now`. */
+/** A fresh login code, valid for `ttlMs` (web.login_link_ttl) from `now`. */
 export function mintLoginCode(
   secret: Buffer,
   now: number = Date.now(),
+  ttlMs: number = LOGIN_CODE_TTL_MS,
 ): string {
   const nonce = randomBytes(16).toString("base64url");
-  const body = `v1.${nonce}.${(now + LOGIN_CODE_TTL_MS).toString(36)}`;
+  const body = `v1.${nonce}.${(now + ttlMs).toString(36)}`;
   return `${body}.${mac(secret, body).toString("base64url")}`;
 }
 
@@ -72,7 +79,8 @@ export type LoginCodeCheck =
   | { ok: false; reason: "malformed" | "bad_mac" | "expired" };
 
 /**
- * Whether `code` is one this secret minted and still in its 60 s. The mac is
+ * Whether `code` is one this secret minted and still in its time (at most
+ * LOGIN_CODE_MAX_TTL_MS: web.login_link_ttl's ceiling). The mac is
  * compared in constant time. Single use is the caller's (consumeCode).
  */
 export function checkLoginCode(
@@ -93,7 +101,7 @@ export function checkLoginCode(
   if (
     !Number.isFinite(expiresAt) ||
     now >= expiresAt ||
-    expiresAt - now > LOGIN_CODE_TTL_MS + LOGIN_CODE_SKEW_MS
+    expiresAt - now > LOGIN_CODE_MAX_TTL_MS + LOGIN_CODE_SKEW_MS
   )
     return { ok: false, reason: "expired" };
   return { ok: true, nonce: m[2], expiresAt };
@@ -201,6 +209,77 @@ export interface WebAuthConfig {
    * Den runs as. "": no account on the page.
    */
   sshUser?: string;
+  /**
+   * `web.owner_github` (D17, user.yml only): the GitHub login of the person
+   * who runs this instance, recorded from `gh` at `web up` or `service
+   * install`. With no owner linked, that login's GitHub sign-in, from any
+   * machine, becomes the owner.
+   */
+  ownerGithub?: string;
+  /**
+   * `web.allowed_github_org` (D17; the distribution config, or user.yml):
+   * with no owner linked, a member of this GitHub org who proves they are
+   * at this machine ("This is my computer") becomes the owner.
+   */
+  allowedGithubOrg?: string;
+  /** The file `web.allowed_github_org` came from. */
+  allowedGithubOrgFile?: string;
+  /**
+   * `web.login_link_ttl` (D16; user.yml over the distribution config): how
+   * long a sign-in link lasts, in ms. Unset: LOGIN_CODE_TTL_MS (5 minutes).
+   */
+  loginLinkTtlMs: number;
+}
+
+/** A GitHub login (or org name): letters, digits, single dashes, ≤ 39. */
+const GITHUB_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+
+/** `web.owner_github` or `web.allowed_github_org`: a GitHub name, or unset. */
+export function parseGithubName(
+  v: unknown,
+  key: string,
+  file: string,
+): string | undefined {
+  if (v === undefined || v === null) return undefined;
+  const s = typeof v === "string" ? v.trim().replace(/^@/, "") : "";
+  if (s === "" && typeof v === "string") return undefined;
+  if (!GITHUB_NAME.test(s))
+    throw new Error(
+      `${key} (${file}) must be a GitHub name (letters, digits and dashes), got ${JSON.stringify(v)}`,
+    );
+  return s;
+}
+
+/**
+ * `web.login_link_ttl`: `90s`, `5m`, `1h`, or a number of seconds, between
+ * 30 s and 60 min. Unset: undefined. Throws naming the key otherwise.
+ */
+export function parseLoginLinkTtl(
+  v: unknown,
+  file: string,
+): number | undefined {
+  if (v === undefined || v === null) return undefined;
+  const m =
+    typeof v === "number"
+      ? [String(v), String(v), "s"]
+      : typeof v === "string"
+        ? /^\s*(\d+)\s*(s|m|h)?\s*$/i.exec(v)
+        : null;
+  const ms = m
+    ? Number(m[1]) *
+      ({ s: 1000, m: 60_000, h: 3_600_000 } as Record<string, number>)[
+        (m[2] ?? "s").toLowerCase()
+      ]
+    : NaN;
+  if (
+    !Number.isFinite(ms) ||
+    ms < LOGIN_CODE_MIN_TTL_MS ||
+    ms > LOGIN_CODE_MAX_TTL_MS
+  )
+    throw new Error(
+      `web.login_link_ttl (${file}) must be a time between 30s and 60m (such as 5m), got ${JSON.stringify(v)}`,
+    );
+  return ms;
 }
 
 /** `web.edge_unattested`'s values. */
@@ -300,7 +379,34 @@ export function readWebAuthConfig(
     user.ssh_user !== undefined
       ? parseSshUser(user.ssh_user)
       : parseSshUser(team.ssh_user);
+  const ownerGithub = parseGithubName(
+    user.owner_github,
+    "web.owner_github",
+    "config/local/user.yml",
+  );
+  const userOrg = parseGithubName(
+    user.allowed_github_org,
+    "web.allowed_github_org",
+    "config/local/user.yml",
+  );
+  const teamOrg = parseGithubName(
+    team.allowed_github_org,
+    "web.allowed_github_org",
+    configFile,
+  );
+  const allowedGithubOrg = userOrg ?? teamOrg;
+  const ttl =
+    parseLoginLinkTtl(user.login_link_ttl, "config/local/user.yml") ??
+    parseLoginLinkTtl(team.login_link_ttl, configFile);
   return {
+    ...(ownerGithub ? { ownerGithub } : {}),
+    ...(allowedGithubOrg
+      ? {
+          allowedGithubOrg,
+          allowedGithubOrgFile: userOrg ? "config/local/user.yml" : configFile,
+        }
+      : {}),
+    loginLinkTtlMs: ttl ?? LOGIN_CODE_TTL_MS,
     ...(machineName ? { machineName } : {}),
     ...(sshUser !== undefined ? { sshUser } : {}),
     allowPlainHttpRemote: plain === true,

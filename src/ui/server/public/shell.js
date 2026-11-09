@@ -420,6 +420,16 @@
     "err.signin.ghOnly":
       "Only the owner's GitHub account can sign in this way. For anyone else, use Approve this computer.",
     "err.signin.ghLearn": "Learn more",
+    "err.signin.claimTitle": "Connect your GitHub account",
+    "err.signin.claimLead":
+      "{name} has no owner yet. Connect your GitHub account to make it yours.",
+    "err.signin.claimOrg":
+      "Members of the {org} GitHub org can claim it, in a browser on {host}.",
+    "err.signin.claimHere": "This is my computer: connect GitHub",
+    "err.signin.claimAs": "Sign in as @{login}",
+    "err.signin.claimHereNote":
+      "This is my computer works only in a browser on {host}. Anywhere else it opens nothing.",
+    "err.signin.claimChecking": "Checking this is {host}…",
     "err.signin.githubRefused":
       "@{login} isn't the owner of this {name}. Only the owner's account can use Sign in with GitHub. Use Approve this computer instead.",
     "err.signin.approveOr": "Or approve this computer",

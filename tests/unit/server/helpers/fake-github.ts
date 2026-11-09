@@ -54,6 +54,14 @@ export interface FakeGithub {
   expiringTokens: boolean;
   /** Refresh tokens issued (none may reach Den's state or output). */
   refreshTokens: string[];
+  /**
+   * D17: org memberships, by org then login. `private` is read by the
+   * token's own membership call only when `readable` (the app has the
+   * org's Members permission); `public` is on the public list too.
+   */
+  orgs: Record<string, Record<string, "public" | "private">>;
+  /** The token may read its own org membership (default true). */
+  membershipReadable: boolean;
   close(): Promise<void>;
 }
 
@@ -64,7 +72,8 @@ export async function startFakeGithub(
   const tokens = new Map<string, FakeAccount>();
   const requests: FakeGithub["requests"] = [];
   const refreshTokens: string[] = [];
-  const state = { expiring: false };
+  const state = { expiring: false, readable: true };
+  const orgs: FakeGithub["orgs"] = {};
   const find = (userCode: string) => {
     const c = codes.find((x) => x.userCode === userCode);
     if (!c) throw new Error("no such user code");
@@ -150,6 +159,30 @@ export async function startFakeGithub(
         if (!a) return send(401, { message: "Bad credentials" });
         return send(200, { id: a.id, login: a.login, type: "User" });
       }
+      const mine = /^\/user\/memberships\/orgs\/([^/]+)$/.exec(req.url ?? "");
+      const pub = /^\/orgs\/([^/]+)\/members\/([^/]+)$/.exec(req.url ?? "");
+      if (req.method === "GET" && (mine || pub)) {
+        const m = /^Bearer (\S+)$/.exec(req.headers.authorization ?? "");
+        const a = m ? tokens.get(m[1]) : undefined;
+        if (!a) return send(401, { message: "Bad credentials" });
+        if (mine) {
+          if (!state.readable)
+            return send(403, {
+              message: "Resource not accessible by integration",
+            });
+          const v = orgs[decodeURIComponent(mine[1])]?.[a.login];
+          return v
+            ? send(200, { state: "active", role: "member" })
+            : send(404, { message: "Not Found" });
+        }
+        const v =
+          orgs[decodeURIComponent(pub![1])]?.[decodeURIComponent(pub![2])];
+        if (v === "public") {
+          res.writeHead(204, { connection: "close" });
+          return res.end();
+        }
+        return send(404, { message: "Not Found" });
+      }
       send(404, { message: "Not Found" });
     });
   });
@@ -174,6 +207,13 @@ export async function startFakeGithub(
       state.expiring = on;
     },
     refreshTokens,
+    orgs,
+    get membershipReadable() {
+      return state.readable;
+    },
+    set membershipReadable(on: boolean) {
+      state.readable = on;
+    },
     close: () =>
       new Promise<void>((r) => {
         server.closeAllConnections?.();

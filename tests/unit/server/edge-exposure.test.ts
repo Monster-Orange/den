@@ -10,7 +10,7 @@ import {
   edgeExposedMessage,
   edgeExposure,
   publishedOnAllInterfaces,
-} from "../../../src/ui/server/edge-exposure.js";
+} from "../../../src/shared/edge/exposure.js";
 
 const lookupOf = (m: Record<string, string[]>) => async (h: string) =>
   m[h] ?? [];

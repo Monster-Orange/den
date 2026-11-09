@@ -65,6 +65,7 @@ import {
   type OnboardDeps,
 } from "./doctor-onboard.js";
 import { printJson } from "./json-out.js";
+import { ownerCheck, ownerLine } from "./doctor-owner.js";
 
 export interface DoctorRow {
   kind: string;
@@ -347,10 +348,13 @@ export function strategyCheck(r: DoctorRow): OnboardCheck {
 export async function doctorJson(
   deps: OnboardDeps,
   rows: DoctorRow[] = doctorRows(),
+  owner: () => Promise<OnboardCheck> = () => ownerCheck(),
 ): Promise<{ ok: boolean; checks: OnboardCheck[] }> {
   const checks = [
     ...(await onboardingChecks(deps)),
     ...rows.map(strategyCheck),
+    // D17: who can connect GitHub to this instance from the browser.
+    await owner(),
   ];
   return { ok: !checks.some((c) => c.status === "fail"), checks };
 }
@@ -390,6 +394,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of formatDoctor(rows, readBrand().name)) console.log(l);
   const held = approvalsLines(() => readMcpConfig().approvals);
   for (const l of held.lines) console.log(l);
+  // D17: who can connect GitHub to this instance from the browser.
+  const owner = await ownerCheck();
+  console.log("");
+  console.log(ownerLine(owner));
+  const ownerProblem = owner.status === "fail";
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {
@@ -398,7 +407,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       agentsConfigured(readConfigOrNull(), getStateDir()),
     ))
       console.log(l);
-    return rows.some((r) => r.problem) || held.problem ? 1 : 0;
+    return rows.some((r) => r.problem) || held.problem || ownerProblem ? 1 : 0;
   }
   const { runEnvProbe, formatProbe } = await import("./env-probe.js");
   const { resolveDeps, plainSessionEnv } =
@@ -417,5 +426,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   console.log("");
   for (const l of formatProbe(results)) console.log(l);
   const found = results.some((r) => r.findings.length);
-  return rows.some((r) => r.problem) || held.problem || found ? 1 : 0;
+  return rows.some((r) => r.problem) || held.problem || ownerProblem || found
+    ? 1
+    : 0;
 }

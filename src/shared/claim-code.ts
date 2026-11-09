@@ -108,10 +108,14 @@ export function claimRefusalForAgent(env: NodeJS.ProcessEnv): string | null {
 
 /** The used claim nonces, kept until they expire (a file, 0600). */
 export class ClaimNonces {
-  constructor(private readonly stateDir: string) {}
+  constructor(
+    private readonly stateDir: string,
+    /** The file's name (D17: the attest codes keep their own). */
+    private readonly fileName: string = CLAIM_NONCES_FILE,
+  ) {}
 
   private file(): string {
-    return path.join(this.stateDir, CLAIM_NONCES_FILE);
+    return path.join(this.stateDir, this.fileName);
   }
 
   /** The used nonces; null when the file is there but won't parse (fail closed). */

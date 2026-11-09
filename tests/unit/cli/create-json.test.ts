@@ -17,6 +17,7 @@ import * as path from "path";
 import { parse as parseYaml } from "yaml";
 import {
   createResult,
+  githubOwnerOfRemote,
   existingDistribution,
   parseCreateArgs,
   runCreate,
@@ -97,9 +98,12 @@ describe("create --yes --json", () => {
       existed: false,
       files: 10,
       port: 41000,
+      // D17: no GitHub repo around it, no --github-org: not known.
+      githubOrg: null,
       next: [
         "cd acme",
         "npm install",
+        "set web.allowed_github_org: <your GitHub org> in config/acme.yml (who may claim an instance)",
         "./bin/acme repo add <path|git-url> --json",
       ],
     });
@@ -119,6 +123,55 @@ describe("create --yes --json", () => {
       existed: true,
     });
     expect(fs.readFileSync(path.join(dir, "den.yml"), "utf-8")).toBe(den);
+  });
+
+  it("D17: --github-org, else the GitHub owner of the repo it is in, becomes web.allowed_github_org", async () => {
+    const a = path.join(tmp, "org-flag");
+    const r1 = await createResult(
+      parseCreateArgs(["acme", a, "--github-org", "@Acme-Co"], tmp),
+      tmp,
+      "0.0.0",
+      { ...FREE, githubOrgOf: () => "ignored" },
+    );
+    expect(r1).toMatchObject({ ok: true, githubOrg: "Acme-Co" });
+    expect(
+      fs.readFileSync(path.join(a, "config", "acme.yml"), "utf-8"),
+    ).toContain("\nweb:\n  allowed_github_org: Acme-Co\n");
+    const b = path.join(tmp, "org-remote");
+    const r2 = await createResult(
+      parseCreateArgs(["acme", b], tmp),
+      tmp,
+      "0.0.0",
+      {
+        ...FREE,
+        githubOrgOf: () => "acme",
+      },
+    );
+    expect(r2).toMatchObject({ ok: true, githubOrg: "acme" });
+    expect(r2.next).not.toContainEqual(
+      expect.stringContaining("allowed_github_org"),
+    );
+    const bad = await createResult(
+      parseCreateArgs(
+        ["acme", path.join(tmp, "org-bad"), "--github-org", "no/slash"],
+        tmp,
+      ),
+      tmp,
+      "0.0.0",
+      FREE,
+    );
+    expect(bad.ok).toBe(false);
+  });
+
+  it.each([
+    ["git@github.com:acme/acme-den.git", "acme"],
+    ["https://github.com/Acme-Co/acme-den", "Acme-Co"],
+    ["ssh://git@github.com/acme/acme-den.git", "acme"],
+    ["https://x-token@github.com/acme/den.git", "acme"],
+    ["https://gitlab.com/acme/acme-den.git", null],
+    ["git@github.com:-bad/x.git", null],
+  ])("D17: the GitHub owner of %s is %s", (url, want) => {
+    expect(githubOwnerOfRemote(url)).toBe(want);
   });
 
   it("a non-empty dir that is not this distribution: ok false, a fix and a question", async () => {

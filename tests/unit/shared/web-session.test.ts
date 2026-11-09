@@ -56,9 +56,9 @@ describe("the login code", () => {
     expect(checkLoginCode(code, secret, T0 + 10 * MIN).ok).toBe(false);
   });
 
-  it("is refused when it claims more than 60 s (a clock far behind)", () => {
+  it("is refused when it claims more than web.login_link_ttl's ceiling (a clock far behind)", () => {
     const code = mintLoginCode(secret, T0);
-    expect(checkLoginCode(code, secret, T0 - 2 * MIN)).toEqual({
+    expect(checkLoginCode(code, secret, T0 - 61 * MIN)).toEqual({
       ok: false,
       reason: "expired",
     });
@@ -231,6 +231,52 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
     fs.writeFileSync(f, body);
   };
 
+  it("D17/D16: web.owner_github (user.yml), web.allowed_github_org (either; user.yml wins), web.login_link_ttl", () => {
+    fs.mkdirSync(path.join(tmp, "config", "local"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, "config", "den.yml"),
+      "web:\n  allowed_github_org: acme\n  owner_github: ignored-here\n  login_link_ttl: 10m\n",
+    );
+    fs.writeFileSync(
+      path.join(tmp, "config", "local", "user.yml"),
+      "web:\n  owner_github: '@octo'\n  login_link_ttl: 90\n",
+    );
+    const cfg = readWebAuthConfig(tmp);
+    expect(cfg).toMatchObject({
+      ownerGithub: "octo",
+      allowedGithubOrg: "acme",
+      allowedGithubOrgFile: path.join("config", "den.yml"),
+      loginLinkTtlMs: 90_000,
+    });
+    fs.writeFileSync(
+      path.join(tmp, "config", "local", "user.yml"),
+      "web:\n  allowed_github_org: other\n",
+    );
+    expect(readWebAuthConfig(tmp)).toMatchObject({
+      allowedGithubOrg: "other",
+      allowedGithubOrgFile: "config/local/user.yml",
+      loginLinkTtlMs: 600_000,
+    });
+  });
+
+  it.each([
+    [
+      "owner_github: 'not a login'",
+      /web.owner_github \(config\/local\/user.yml\) must be a GitHub name/,
+    ],
+    ["allowed_github_org: a/b", /web.allowed_github_org/],
+    ["login_link_ttl: 5s", /web.login_link_ttl .* between 30s and 60m/],
+    ["login_link_ttl: 2h", /web.login_link_ttl/],
+    ["login_link_ttl: soon", /web.login_link_ttl/],
+  ])("a wrong value names its key: %s", (line, want) => {
+    fs.mkdirSync(path.join(tmp, "config", "local"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, "config", "local", "user.yml"),
+      `web:\n  ${line}\n`,
+    );
+    expect(() => readWebAuthConfig(tmp)).toThrow(want);
+  });
+
   it("defaults: no plain-HTTP remote, nothing ignored, no warning", () => {
     const cfg = readWebAuthConfig(tmp);
     // SEC-2a: an edge client Den can't place signs in by default.
@@ -238,6 +284,8 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       allowPlainHttpRemote: false,
       ignored: [],
       edgeUnattested: "signin",
+      // D16: a sign-in link lasts 5 minutes unless set.
+      loginLinkTtlMs: 5 * 60_000,
     });
     expect(ignoredConfigWarning(cfg)).toBeNull();
   });

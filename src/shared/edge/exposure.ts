@@ -15,7 +15,13 @@
  */
 import { execFile } from "child_process";
 import { promises as dns } from "dns";
-import { isLoopbackAddress } from "./request-guard.js";
+import * as net from "net";
+
+/** A loopback IP (127/8, ::1, or either IPv4-mapped); request-guard.ts has the same. */
+function isLoopbackAddress(addr: string): boolean {
+  const a = addr.toLowerCase().replace(/^::ffff:/, "");
+  return a === "::1" || (net.isIPv4(a) && a.startsWith("127."));
+}
 
 /**
  * The warning, by `web.edge_unattested` (SEC-2a): with `signin` (the

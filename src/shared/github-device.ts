@@ -56,11 +56,27 @@ export interface GithubIdentity {
   login: string;
 }
 
-/** The three calls, swappable in a unit test. */
+/**
+ * Whether a login is a member of an org (D17), as far as its own token can
+ * tell: `member`, `not_member`, or `unreadable` (the membership is private
+ * and this token may not read it: the app lacks the org's Members
+ * permission, or isn't installed there).
+ */
+export type OrgMembership = "member" | "not_member" | "unreadable";
+
+/** The calls, swappable in a unit test. */
 export interface GithubDeviceClient {
   start(clientId: string): Promise<DeviceCode>;
   poll(clientId: string, deviceCode: string): Promise<PollResult>;
   user(token: string): Promise<GithubIdentity>;
+  /**
+   * D17: is `login` (the token's own account) a member of `org`? First its
+   * own membership (`GET /user/memberships/orgs/<org>`, which a GitHub App
+   * reads with the org's Members permission), then the public list (`GET
+   * /orgs/<org>/members/<login>`: 204 for a public member). A network
+   * failure throws.
+   */
+  orgMember(token: string, org: string, login: string): Promise<OrgMembership>;
 }
 
 const TIMEOUT_MS = 15_000;
@@ -217,6 +233,27 @@ export function githubDeviceClient(
       )
         throw new Error(`GitHub's /user answered ${r.status}`);
       return { id: j.id, login: j.login };
+    },
+    async orgMember(token, org, login) {
+      const headers = {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${token}`,
+        "x-github-api-version": "2022-11-28",
+      };
+      const own = await request(
+        `${ep.api}/user/memberships/orgs/${encodeURIComponent(org)}`,
+        { method: "GET", headers },
+      );
+      if (own.status === 200)
+        return parse(own.body).state === "active" ? "member" : "not_member";
+      const pub = await request(
+        `${ep.api}/orgs/${encodeURIComponent(org)}/members/${encodeURIComponent(login)}`,
+        { method: "GET", headers },
+      );
+      if (pub.status === 204) return "member";
+      // A 404 for its own membership means none; a 403 means this token
+      // may not read it, so a private membership can't be told apart.
+      return own.status === 404 ? "not_member" : "unreadable";
     },
   };
 }

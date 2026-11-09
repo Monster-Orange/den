@@ -86,7 +86,7 @@ describe("web login", () => {
     const c = u.searchParams.get("c") ?? "";
     expect(checkLoginCode(c, readWebSecret(tmp)!).ok).toBe(true);
     // The note on stderr never carries the code.
-    expect(r.err).toMatch(/within 60 seconds/);
+    expect(r.err).toMatch(/within 5 minutes/);
     expect(r.err.includes(c)).toBe(false);
     expect(fs.statSync(path.join(tmp, "web.secret")).mode & 0o777).toBe(0o600);
   });

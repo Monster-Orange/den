@@ -4,6 +4,63 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.21] - unreleased
+
+### Added
+
+- **Every developer connects GitHub from the browser (D17).** A company
+  makes its own Den repo, every developer runs their own instance, and
+  everyone opens the same edge URL (such as `https://den.local.<zone>`,
+  whose DNS says 127.0.0.1). Before, they all got the signed-out page with
+  no way in from the browser: behind Docker Desktop, OrbStack or a TCP
+  passthrough the edge sees a gateway's address, so Den couldn't tell a
+  browser on its own machine; the one-time link needed a terminal, pairing
+  needed Settings, and Sign in with GitHub needed an owner already linked.
+  Now, while an instance has no owner, the signed-out page leads with
+  **Connect your GitHub account**:
+  - **This is my computer** (for a member of `web.allowed_github_org`):
+    a top-level round trip through `http://localhost:<port>/attest`, which
+    only a browser on this machine reaches, back to the edge page with a
+    short-lived, single-use code bound to that edge hostname and signed
+    with `web.secret` (in the URL fragment, never logged; only to this
+    Den's own edge hostnames). The GitHub sign-in that follows makes a
+    member of the org the owner and signs the browser in. The proof alone
+    never makes a session (any program on the machine can reach
+    localhost), so the GitHub approval is always the person's.
+  - **Sign in as @login** (`web.owner_github`): that login claims it from
+    any browser, such as a laptop reaching a devbox.
+  - Anyone else is refused with the reason (not a member; a member but not
+    on this computer; not that login; a private membership the GitHub App
+    can't read, naming the fix). With neither set, the page names both
+    settings and offers no claim.
+- **`create --github-org <org>`** writes `web.allowed_github_org` into the
+  team config; without the flag it uses the GitHub owner of the repo the
+  new folder is in, else writes a commented line and says to set it
+  (`create --json`: `githubOrg`, null when unknown).
+- **`web up`, `web restart` and `service install` record
+  `web.owner_github`** in `config/local/user.yml` from `gh api user` when
+  `gh` is signed in, no owner is linked and it isn't set, and print it.
+  When `gh` isn't signed in, they and `doctor` say so, with the fix
+  (`gh auth login`, or set `web.owner_github`).
+- **doctor** shows who may claim the instance (`web:owner` in
+  `doctor --json`), and fails when there is no owner, neither setting, and
+  the edge is reachable from other machines.
+- **`web.login_link_ttl` (D16)**: how long a sign-in link lasts, 5 minutes
+  unless set (it was 60 s, and expired while people switched windows);
+  30s to 60m. `web login` shows the time left while it waits.
+
+### Changed
+
+- The page behind a `web login` link that asks for its code is a plain
+  sign-in page: no shell frame and no request id, the code field focused.
+
+### Migrations
+
+- To let your team connect GitHub from the browser, set
+  `web.allowed_github_org: <your GitHub org>` in the team config (or run
+  `web up` with `gh` signed in, for `web.owner_github`). The GitHub App
+  needs the org's Members (read) permission to see private memberships.
+
 ## [0.4.20] - 2026-11-09
 
 ### Added

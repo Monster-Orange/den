@@ -5,6 +5,7 @@
  * a question for the person. Every probe is injected: nothing here asks
  * this machine's Docker, Node, PATH or web server.
  */
+import { ownerCheck } from "../../../src/ui/cli/doctor-owner.js";
 import { describe, expect, it } from "@jest/globals";
 import {
   nodeOk,
@@ -240,7 +241,9 @@ describe("doctorJson", () => {
   });
 
   it("ok only when nothing fails; onboarding checks come first", async () => {
-    const good = await doctorJson(deps(), [row({})]);
+    const owned = async () =>
+      ({ id: "web:owner", status: "ok", detail: "owner" }) as const;
+    const good = await doctorJson(deps(), [row({})], owned);
     expect(good.ok).toBe(true);
     expect(good.checks.map((c) => c.id)).toEqual([
       "node",
@@ -250,10 +253,67 @@ describe("doctorJson", () => {
       "mcp",
       "mcp:approvals",
       "strategy:secrets",
+      "web:owner",
     ]);
-    const warnOnly = await doctorJson(deps(), [row({ available: false })]);
+    const warnOnly = await doctorJson(
+      deps(),
+      [row({ available: false })],
+      owned,
+    );
     expect(warnOnly.ok).toBe(true);
-    const bad = await doctorJson(deps({ nodeVersion: "18.0.0" }), [row({})]);
+    const bad = await doctorJson(
+      deps({ nodeVersion: "18.0.0" }),
+      [row({})],
+      owned,
+    );
     expect(bad.ok).toBe(false);
+  });
+
+  it("D17: no owner and no rule with an edge reachable from other machines fails", async () => {
+    const r = await doctorJson(deps(), [row({})], () =>
+      ownerCheck({
+        owner: () => null,
+        web: () => ({
+          allowPlainHttpRemote: false,
+          ignored: [],
+          edgeUnattested: "signin",
+          loginLinkTtlMs: 300_000,
+        }),
+        exposed: async () => "the edge publishes 443 on every interface",
+        configFile: "config/acme.yml",
+      }),
+    );
+    expect(r.ok).toBe(false);
+    const c = r.checks.find((x) => x.id === "web:owner");
+    expect(c?.status).toBe("fail");
+    expect(c?.ask).toContain("web.allowed_github_org in config/acme.yml");
+  });
+
+  it("D17: the owner check names who may claim, else notes it when only this machine reaches it", async () => {
+    const base = {
+      allowPlainHttpRemote: false,
+      ignored: [],
+      edgeUnattested: "signin" as const,
+      loginLinkTtlMs: 300_000,
+    };
+    const rules = await ownerCheck({
+      owner: () => null,
+      web: () => ({ ...base, ownerGithub: "octo", allowedGithubOrg: "acme" }),
+      exposed: async () => "x",
+    });
+    expect(rules).toMatchObject({ status: "ok" });
+    expect(rules.detail).toContain("@octo from any browser (web.owner_github)");
+    expect(rules.detail).toContain("a member of acme on this computer");
+    const local = await ownerCheck({
+      owner: () => null,
+      web: () => base,
+      exposed: async () => null,
+    });
+    // Only this machine reaches it: a note (ok, with the question), not a warning.
+    expect(local).toMatchObject({ status: "ok" });
+    expect(local.ask).toContain("web.allowed_github_org");
+    const linked = await ownerCheck({ owner: () => ({ login: "octo" }) });
+    expect(linked).toMatchObject({ status: "ok" });
+    expect(linked.detail).toContain("@octo");
   });
 });

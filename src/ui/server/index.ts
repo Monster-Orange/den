@@ -229,7 +229,7 @@ import {
   ignoredConfigWarning,
   localhostOrigin,
   loginLink,
-  LOGIN_CODE_TTL_MS,
+  LOGIN_CODE_MAX_TTL_MS,
   mintLoginCode,
   readWebAuthConfig,
   safeNext,
@@ -244,6 +244,14 @@ import { serveUiAsset } from "./ui-assets.js";
 import { PERSON_GRANT_ROUTES, personGrantAllowed } from "./approvals.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
+  ATTEST_NONCES_FILE,
+  attestRedirect,
+  attestReturn,
+  checkAttestCode,
+  mintAttestCode,
+} from "../../shared/attest-code.js";
+import type { ClaimRules } from "./github-routes.js";
+import {
   expiringTokenWarning,
   githubClientId,
   githubEndpoints,
@@ -252,6 +260,7 @@ import {
 } from "../../shared/github-app.js";
 import { githubDeviceClient } from "../../shared/github-device.js";
 import { readWebOwner } from "../../shared/web-owner.js";
+import { noRuleMessage, unclaimedSigninReason } from "./github-routes.js";
 import { DeviceFlows } from "./device-flows.js";
 import {
   decideFlow,
@@ -897,7 +906,7 @@ import {
   edgeExposedMessage,
   edgeExposure,
   edgeNetworkSubnets,
-} from "./edge-exposure.js";
+} from "../../shared/edge/exposure.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import {
   linksFor,
@@ -1053,6 +1062,89 @@ const WEB_AUTH: WebAuthConfig = (() => {
   }
 })();
 
+/** web's sign-in config read now (Settings may change it), else at start. */
+function webAuthNow(): WebAuthConfig {
+  try {
+    return readWebAuthConfig(getDistRoot(), product().configFile);
+  } catch {
+    return WEB_AUTH;
+  }
+}
+
+/** D17: who may claim this Den while it has no owner (read now). */
+function claimRulesNow(): ClaimRules {
+  const w = webAuthNow();
+  return {
+    ...(w.ownerGithub ? { ownerGithub: w.ownerGithub } : {}),
+    ...(w.allowedGithubOrg ? { allowedGithubOrg: w.allowedGithubOrg } : {}),
+    // Where it is, or would go: the distribution config.
+    allowedGithubOrgFile: w.allowedGithubOrgFile ?? product().configFile,
+  };
+}
+
+/** D17: the spent "This is my computer" codes (attest-code.ts). */
+const ATTEST_NONCES = new ClaimNonces(getStateDir(), ATTEST_NONCES_FILE);
+
+/** The request's Host without its port, lowercase. */
+function hostNameOf(req: http.IncomingMessage): string {
+  return String(req.headers.host ?? "")
+    .toLowerCase()
+    .replace(/:\d+$/, "");
+}
+
+/**
+ * D17: spend an attest code for this request's host: one of this server's
+ * edge hostnames, the code minted for it, unused. True once.
+ */
+function spendAttest(req: http.IncomingMessage, code: string): boolean {
+  const secret = webSecret.current();
+  const host = hostNameOf(req);
+  if (!secret || !denEdgeHosts().includes(host)) return false;
+  const c = checkAttestCode(code, secret, host);
+  return c.ok && ATTEST_NONCES.consume(c.nonce, c.expiresAt);
+}
+
+/**
+ * `GET /attest?return=<edge URL>` (D17, fix A): only on localhost (only a
+ * browser on this machine reaches it there). A 303 back to `return`, one of
+ * this server's own edge hosts, with a short-lived code in the fragment.
+ * Anything else: an error page, and no code.
+ */
+function handleAttest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  guard: GuardResult,
+  requestId: string,
+): void {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  const refuse = (status: 400 | 403, message: string) =>
+    sendErrorPage(req, res, {
+      status,
+      path: "/attest",
+      message,
+      code: status === 403 ? "not_this_computer" : "bad_return",
+      requestId,
+    });
+  if (!guard.ok || guard.via !== "loopback" || guard.beyond)
+    return refuse(
+      403,
+      "This works only on the computer this Den runs on, at localhost.",
+    );
+  const ret = attestReturn(url.searchParams.get("return"), denEdgeHosts());
+  const secret = webSecret.current();
+  if (!ret || !secret)
+    return refuse(
+      400,
+      "That address isn't one of this Den's own. Open this Den at its own address and try again.",
+    );
+  res.writeHead(303, {
+    Location: attestRedirect(ret, mintAttestCode(secret, ret.host)),
+  });
+  res.end();
+}
+
 /**
  * The loopback names, with the port: localhost (canonical), 127.0.0.1 and
  * [::1]; the product's own name when /etc/hosts maps it to 127.0.0.1 (the
@@ -1198,7 +1290,11 @@ const GITHUB = githubEndpoints();
 const DEVICE_FLOWS = new DeviceFlows({
   client: githubDeviceClient(GITHUB),
   clientId: () => GITHUB_CLIENT_ID,
-  decide: decideFlow(getStateDir, (l) => serverLog(l, "lifecycle")),
+  decide: decideFlow(
+    getStateDir,
+    (l) => serverLog(l, "lifecycle"),
+    () => claimRulesNow(),
+  ),
   // A test's fake GitHub may answer interval 0; the real one never does.
   minIntervalMs: GITHUB.fake ? 50 : 1000,
   onExpiringToken: noteExpiringToken,
@@ -1361,16 +1457,36 @@ function denEdgeRoutes(): { host: string; url: string }[] {
  */
 function githubSignin():
   | { state: "no_client_id" | "no_owner" }
-  | { state: "ready"; ownerLogin: string } {
+  | { state: "ready"; ownerLogin: string }
+  | {
+      state: "claim";
+      org?: string;
+      ownerGithub?: string;
+      /** "This is my computer"'s start, on localhost (fix A). */
+      attest?: string;
+      message: string;
+    } {
   if (!GITHUB_CLIENT_ID) return { state: "no_client_id" };
   const owner = readWebOwner(getStateDir());
-  return owner
-    ? { state: "ready", ownerLogin: owner.login }
-    : { state: "no_owner" };
+  if (owner) return { state: "ready", ownerLogin: owner.login };
+  // D17: no owner yet: who may claim it, and how.
+  const r = claimRulesNow();
+  if (!r.allowedGithubOrg && !r.ownerGithub) return { state: "no_owner" };
+  return {
+    state: "claim",
+    ...(r.allowedGithubOrg
+      ? {
+          org: r.allowedGithubOrg,
+          attest: `${localhostOrigin(PORT)}/attest`,
+        }
+      : {}),
+    ...(r.ownerGithub ? { ownerGithub: r.ownerGithub } : {}),
+    message: unclaimedSigninReason(null, r),
+  };
 }
 
 /**
- * 0.4.3: why the edge is reachable beyond this machine (edge-exposure.ts),
+ * 0.4.3: why the edge is reachable beyond this machine (shared/edge/exposure.ts),
  * once at start; null until known, or when Den can't tell.
  */
 let EDGE_EXPOSED: string | null = null;
@@ -1487,7 +1603,16 @@ function sendSignedOut(
         ...(gh.state === "ready" ? { ownerLogin: gh.ownerLogin } : {}),
         learnMore: GITHUB_SIGNIN_DOCS,
         ...(GITHUB_CLIENT_ID
-          ? {}
+          ? gh.state === "no_owner"
+            ? { message: noRuleMessage(claimRulesNow()) }
+            : gh.state === "claim"
+              ? {
+                  message: gh.message,
+                  ...(gh.org ? { org: gh.org } : {}),
+                  ...(gh.ownerGithub ? { ownerGithub: gh.ownerGithub } : {}),
+                  ...(gh.attest ? { attest: gh.attest } : {}),
+                }
+              : {}
           : { message: noClientIdMessage(product().cli) }),
       },
       ...(opts.expired ? { expired: true } : {}),
@@ -1922,6 +2047,9 @@ async function handleRequest(
     (req.method === "GET" || req.method === "HEAD" || req.method === "POST")
   )
     return handleAuth(req, res, url, requestId);
+  // D17: "This is my computer" (fix A), on localhost only.
+  if (pathname === "/attest" && (req.method === "GET" || req.method === "HEAD"))
+    return handleAttest(req, res, url, guard, requestId);
   // SEC-2a: `web login` registers its link's wait, then polls it
   // (shell-grade: the CLI's bearer).
   if (pathname === "/api/web/logins" && req.method === "POST") {
@@ -1935,7 +2063,7 @@ async function handleRequest(
     const id =
       Number.isFinite(exp) &&
       exp > Date.now() &&
-      exp - Date.now() <= LOGIN_CODE_TTL_MS + 5_000
+      exp - Date.now() <= LOGIN_CODE_MAX_TTL_MS + 5_000
         ? LOGIN_WAITS.register(
             String(body.nonce ?? ""),
             String(body.code ?? ""),
@@ -2044,13 +2172,16 @@ async function handleRequest(
         const secret = webSecret.current();
         if (!secret) return null;
         const now = Date.now();
+        const ttl = webAuthNow().loginLinkTtlMs;
         return {
-          url: loginLink(origin, mintLoginCode(secret, now)),
-          expiresAt: now + LOGIN_CODE_TTL_MS,
+          url: loginLink(origin, mintLoginCode(secret, now, ttl)),
+          expiresAt: now + ttl,
         };
       },
       log: (l) => serverLog(l, "lifecycle"),
       stateDir: getStateDir,
+      claimRules: claimRulesNow,
+      spendAttest,
     }))
   )
     return;

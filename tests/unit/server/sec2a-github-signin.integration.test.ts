@@ -218,7 +218,7 @@ describe("before an owner is linked", () => {
     expect(r.body).toContain('"code":"signin_required"');
     // The command that runs on this server: `den`, or its absolute path.
     expect(r.body).toMatch(
-      /"github":\{"state":"no_owner","owner":"(den|\/[^"]*\/bin\/den) web owner link","learnMore":"https:\/\/github\.com\/Monster-Orange\/den\/blob\/main\/docs\/distributions\.md#signing-in-with-github"\}/,
+      /"github":\{"state":"no_owner","owner":"(den|\/[^"]*\/bin\/den) web owner link","learnMore":"https:\/\/github\.com\/Monster-Orange\/den\/blob\/main\/docs\/distributions\.md#signing-in-with-github","message":"This Den has no owner yet, and nothing says who may claim it\. Set web\.allowed_github_org/,
     );
   });
 
@@ -227,7 +227,7 @@ describe("before an owner is linked", () => {
     const r = await call("POST", "/api/github/signin", edge(), "{}");
     expect([r.status, json(r).code]).toEqual([409, "no_owner"]);
     expect(json(r).error).toBe(
-      "This Den has no owner yet. On the machine it runs on, run `den web owner link`.",
+      "This Den has no owner yet, and nothing says who may claim it. Set web.allowed_github_org (your GitHub org) in config/den.yml, or web.owner_github (your GitHub login) in config/local/user.yml on the computer it runs on. Or, on that computer, run `den web owner link`.",
     );
     expect(gh.requests.length).toBe(before);
   });

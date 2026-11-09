@@ -41,6 +41,8 @@ export interface GithubEndpoints {
   deviceCode: string;
   accessToken: string;
   user: string;
+  /** The REST API's base (D17: an org's membership), no trailing slash. */
+  api: string;
   /** A test's fake GitHub is in use (GITHUB_TEST_BASE_ENV). */
   fake: boolean;
 }
@@ -68,12 +70,14 @@ export function githubEndpoints(
       deviceCode: `${fake}/login/device/code`,
       accessToken: `${fake}/login/oauth/access_token`,
       user: `${fake}/user`,
+      api: fake,
       fake: true,
     };
   return {
     deviceCode: "https://github.com/login/device/code",
     accessToken: "https://github.com/login/oauth/access_token",
     user: "https://api.github.com/user",
+    api: "https://api.github.com",
     fake: false,
   };
 }

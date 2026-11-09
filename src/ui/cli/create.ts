@@ -13,6 +13,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execFileSync } from "node:child_process";
 import { ENGINE_PACKAGE, getEngineRoot } from "../../shared/paths.js";
 import { profileFrom } from "../../shared/profile.js";
 import { parse as parseYaml } from "yaml";
@@ -31,6 +32,44 @@ export interface CreateOptions {
   envPrefix?: string;
   /** The Den version the distribution pins (exact). */
   denVersion: string;
+  /**
+   * D17: `web.allowed_github_org`: the GitHub org whose members may claim
+   * an instance of it (each developer's own). Unset: a commented line.
+   */
+  githubOrg?: string;
+}
+
+const GITHUB_ORG = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+
+/**
+ * The GitHub owner of a git remote URL (https or ssh), or null:
+ * `git@github.com:acme/acme-den.git` → `acme`.
+ */
+export function githubOwnerOfRemote(url: string): string | null {
+  const m =
+    /^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|(?:ssh:\/\/)?git@github\.com[:/])([^/]+)\//i.exec(
+      url.trim(),
+    );
+  return m && GITHUB_ORG.test(m[1]) ? m[1] : null;
+}
+
+/**
+ * The GitHub owner of the repo `dir` is in (its nearest existing folder's
+ * `origin`), or null: no repo, no origin, not GitHub.
+ */
+export function githubOrgOfDir(dir: string): string | null {
+  let d = path.resolve(dir);
+  while (!fs.existsSync(d) && path.dirname(d) !== d) d = path.dirname(d);
+  try {
+    const url = execFileSync("git", ["-C", d, "remote", "get-url", "origin"], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5_000,
+    });
+    return githubOwnerOfRemote(url);
+  } catch {
+    return null;
+  }
 }
 
 const NAME = /^[a-z][a-z0-9-]*$/;
@@ -58,6 +97,10 @@ export function validateCreateOptions(opts: CreateOptions): void {
     throw new Error("--title must not be empty");
   if (opts.title !== undefined && /[\n"\\]/.test(opts.title))
     throw new Error("--title must be one line without quotes or backslashes");
+  if (opts.githubOrg !== undefined && !GITHUB_ORG.test(opts.githubOrg))
+    throw new Error(
+      `--github-org "${opts.githubOrg}" must be a GitHub org name (letters, digits and dashes)`,
+    );
   // The profile validates the env prefix the same way den.yml would.
   profileFrom({
     name: opts.name,
@@ -151,6 +194,13 @@ export function renderDistribution(
     "# The GitHub org (or user) that owns the repos Den clones and lists.",
     "# Unset, Den lists no GitHub repos (and never calls gh for them). E.g.",
     "# github_org: example-org",
+    "",
+    "# Who may claim an instance. Each developer runs their own and opens it",
+    "# in the browser; a member of this GitHub org connects their GitHub",
+    "# account there, on their own computer, and owns that instance.",
+    ...(opts.githubOrg
+      ? ["web:", `  allowed_github_org: ${opts.githubOrg}`]
+      : ["# web:", "#   allowed_github_org: your-github-org"]),
     "",
     "# Secrets backend: none (this distribution needs no secrets store), or",
     "# env (plain environment variables), doppler or 1password. A backend's",
@@ -307,8 +357,14 @@ export interface ParsedCreateArgs extends Omit<CreateOptions, "denVersion"> {
   port?: number;
 }
 
+/** Where create finds web.allowed_github_org when --github-org isn't given. */
+export interface CreateOrgOptions {
+  /** The GitHub owner of the repo the new folder is in (default: git's). */
+  githubOrgOf?: (dir: string) => string | null;
+}
+
 const CREATE_USAGE =
-  "usage: den create <name> [dir] [--title <title>] [--cli <cli>] [--env-prefix <PREFIX>] [--port <n>] [--yes] [--json]";
+  "usage: den create <name> [dir] [--title <title>] [--cli <cli>] [--env-prefix <PREFIX>] [--port <n>] [--github-org <org>] [--yes] [--json]";
 
 /** Parse `create` argv (after the word `create`). `cwd` resolves the dir. */
 export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
@@ -326,7 +382,7 @@ export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
       json = true;
       continue;
     }
-    const m = /^--(title|cli|env-prefix|port)(?:=(.*))?$/.exec(a);
+    const m = /^--(title|cli|env-prefix|port|github-org)(?:=(.*))?$/.exec(a);
     if (m) {
       const value = m[2] ?? argv[++i];
       if (value === undefined)
@@ -345,6 +401,9 @@ export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
     title: flags.title,
     cli: flags.cli,
     envPrefix: flags["env-prefix"],
+    ...(flags["github-org"] !== undefined
+      ? { githubOrg: flags["github-org"].replace(/^@/, "") }
+      : {}),
     yes,
     json,
     ...(flags.port !== undefined ? { port: parsePortFlag(flags.port) } : {}),
@@ -370,6 +429,9 @@ config/environments/local.json, manifests/ and tests/pillars/.
   --env-prefix <PREFIX>  env-var prefix (default: <NAME>)
   --port <n>             the web UI's port (default: ${DEFAULT_PORT}, or the next
                          free one above it when that is in use)
+  --github-org <org>     web.allowed_github_org: members of this GitHub org
+                         connect their GitHub account to their own instance
+                         (default: the owner of the GitHub repo [dir] is in)
   --yes, -y              never prompt (create never does; for agents)
   --json                 print one JSON object: { ok, dir, cli, existed, port, next }
 
@@ -407,6 +469,8 @@ export interface CreateJson {
   port?: number;
   /** Set when DEFAULT_PORT was in use and `port` was picked instead. */
   portPicked?: { wanted: number; file: string };
+  /** D17: web.allowed_github_org as written, or null when it wasn't known. */
+  githubOrg?: string | null;
   next?: string[];
   error?: string;
   fix?: string;
@@ -478,12 +542,17 @@ export async function createResult(
   args: ParsedCreateArgs,
   cwd: string,
   denVersion: string = runningDenVersion(),
-  portOpts: CreatePortOptions = {},
+  portOpts: CreatePortOptions & CreateOrgOptions = {},
 ): Promise<CreateJson> {
   const cli = args.cli ?? args.name;
-  const next = (dir: string): string[] => [
+  const next = (dir: string, org?: string | null): string[] => [
     `cd ${cdPathFor(cwd, dir)}`,
     "npm install",
+    ...(org === null
+      ? [
+          `set web.allowed_github_org: <your GitHub org> in config/${args.name}.yml (who may claim an instance)`,
+        ]
+      : []),
     `./bin/${cli} repo add <path|git-url> --json`,
   ];
   try {
@@ -509,7 +578,17 @@ export async function createResult(
       args.port ??
       (await pickFreePort({ start: wanted, inUse: portOpts.inUse })) ??
       wanted;
-    const written = writeDistribution(args.dir, { ...args, denVersion });
+    // D17: the org whose members may claim an instance: --github-org, else
+    // the owner of the GitHub repo the folder is in.
+    const githubOrg =
+      args.githubOrg ??
+      (portOpts.githubOrgOf ?? githubOrgOfDir)(args.dir) ??
+      undefined;
+    const written = writeDistribution(args.dir, {
+      ...args,
+      denVersion,
+      ...(githubOrg ? { githubOrg } : {}),
+    });
     let portPicked: CreateJson["portPicked"];
     // Written when the port differs from what the distribution would use
     // anyway (an explicit --port that isn't the default, or a picked one).
@@ -537,7 +616,8 @@ export async function createResult(
       files: written.length,
       port,
       ...(portPicked ? { portPicked } : {}),
-      next: next(args.dir),
+      githubOrg: githubOrg ?? null,
+      next: next(args.dir, githubOrg ?? null),
     };
   } catch (e) {
     const error = (e as Error).message;
@@ -602,6 +682,12 @@ export async function runCreate(
       ? `Web UI port: ${r.port} (${r.portPicked.wanted} is in use here; set in ${r.portPicked.file}).`
       : `Web UI port: ${r.port}.`,
   );
+  if (!r.existed)
+    console.log(
+      r.githubOrg
+        ? `GitHub org: ${r.githubOrg} (web.allowed_github_org: its members connect their GitHub account to their own instance).`
+        : `GitHub org: not known. Set web.allowed_github_org in config/${args.name}.yml, or pass --github-org <org>, so your team can connect GitHub from the browser.`,
+    );
   console.log("");
   console.log("Next:");
   console.log(`  cd ${cdPathFor(cwd, dir)}`);

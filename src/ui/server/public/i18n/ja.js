@@ -293,6 +293,16 @@
     "err.signin.ghOnly":
       "この方法でサインインできるのはオーナーの GitHub アカウントだけです。それ以外の人は「このコンピューターを承認」を使ってください。",
     "err.signin.ghLearn": "詳しく見る",
+    "err.signin.claimTitle": "GitHub アカウントを接続",
+    "err.signin.claimLead":
+      "{name} にはまだオーナーがいません。GitHub アカウントを接続して、自分のものにします。",
+    "err.signin.claimOrg":
+      "GitHub の {org} 組織のメンバーは、{host} 上のブラウザーでこれを登録できます。",
+    "err.signin.claimHere": "これは自分のコンピューター: GitHub を接続",
+    "err.signin.claimAs": "@{login} としてサインイン",
+    "err.signin.claimHereNote":
+      "「これは自分のコンピューター」は {host} 上のブラウザーでだけ使えます。ほかの場所では何も開きません。",
+    "err.signin.claimChecking": "ここが {host} か確認しています…",
     "err.signin.githubRefused":
       "@{login} はこの {name} のオーナーではありません。GitHub でサインインを使えるのはオーナーのアカウントだけです。代わりに「このコンピューターを承認」を使ってください。",
     "err.signin.approveOr": "または、このコンピューターを承認",

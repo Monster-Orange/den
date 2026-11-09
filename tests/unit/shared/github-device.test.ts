@@ -56,6 +56,7 @@ describe("the endpoints", () => {
       deviceCode: "https://github.com/login/device/code",
       accessToken: "https://github.com/login/oauth/access_token",
       user: "https://api.github.com/user",
+      api: "https://api.github.com",
       fake: false,
     });
     expect(githubEndpoints({ [GITHUB_TEST_BASE_ENV]: gh.url }).fake).toBe(true);

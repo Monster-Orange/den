@@ -1,3 +1,7 @@
+import {
+  ownerGithubLine,
+  recordOwnerGithub,
+} from "../../shared/owner-github.js";
 import chalk from "chalk";
 import { execFileSync, spawn, spawnSync } from "child_process";
 import * as fs from "fs";
@@ -27,6 +31,7 @@ import {
   ignoredConfigWarning,
   localhostOrigin,
   loginLink,
+  LOGIN_CODE_TTL_MS,
   mintLoginCode,
   parseOrigin,
   readWebAuthConfig,
@@ -1182,7 +1187,7 @@ export function displayWebHelp(): void {
     "  open               Start if needed, and sign this browser in (a new tab)",
   );
   console.log(
-    "  login              Print a one-time sign-in link (60 s) and its code, then wait until it's used",
+    "  login              Print a one-time sign-in link (5 min; web.login_link_ttl) and its code, then wait until it's used",
   );
   console.log("  sessions           List the signed-in browsers");
   console.log(
@@ -1330,6 +1335,13 @@ export async function cmdWeb(args: string[]): Promise<void> {
     return;
   }
 
+  // D17: whoever starts it can connect their GitHub account from any
+  // browser (web.owner_github, from gh), before the server reads it.
+  if (options.action === "up" || options.action === "restart") {
+    const line = ownerGithubLine(recordOwnerGithub(), product().cli);
+    if (line) console.log(chalk.dim(`\n  ${line}`));
+  }
+
   if (options.action === "restart") {
     const stopped = await stopDenWebServer(options.port, vouched);
     if (stopped.pids.length > 0 && !stopped.stopped) {
@@ -1411,7 +1423,8 @@ export async function cmdWeb(args: string[]): Promise<void> {
     return;
   }
 
-  // SEC-1b: what opens is a sign-in link (localhost, one-time, 60 s). It
+  // SEC-1b: what opens is a sign-in link (localhost, one-time, D16:
+  // web.login_link_ttl). It
   // is printed only when the browser couldn't be opened: the one line the
   // person then needs.
   // Inside an agent's session: the plain page, never a sign-in link.
@@ -1453,7 +1466,9 @@ export async function cmdWeb(args: string[]): Promise<void> {
   } else {
     console.log(chalk.yellow("\n  Could not open a browser automatically."));
   }
-  console.log(`  Sign in (once, within 60 s): ${signIn()}\n`);
+  console.log(
+    `  Sign in (once, within ${ttlText(loginLinkTtl())}): ${signIn()}\n`,
+  );
 }
 
 // ── SEC-1b: sign-in (`web login`, `web sessions`, `web logout`) ─────────────
@@ -1467,7 +1482,11 @@ export function freshLoginLink(
 ): string {
   const refused = personGrantRefusal(process.env);
   if (refused) throw new Error(refused);
-  return loginLink(origin, mintLoginCode(ensureWebSecret(stateDir)), next);
+  return loginLink(
+    origin,
+    mintLoginCode(ensureWebSecret(stateDir), Date.now(), loginLinkTtl()),
+    next,
+  );
 }
 
 /**
@@ -1616,7 +1635,8 @@ function parseLoginArgs(
 
 const LOGIN_HELP = () =>
   LOGIN_USAGE() +
-  "  Prints a one-time sign-in link (open it within 60 s) for one browser, and a\n" +
+  "  Prints a one-time sign-in link (open it within web.login_link_ttl, 5 minutes\n" +
+  "  unless set) for one browser, and a\n" +
   "  code the page behind the link asks for, then waits until the link is used:\n" +
   '  "Signed in: <browser> (<address>) at <time>", or "Expired: nobody used the\n' +
   '  link" (exit 1). On localhost nothing asks for a sign-in; it is needed when\n' +
@@ -1655,10 +1675,34 @@ export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
     io.stateDir ?? getStateDir(),
   );
   io.err(
-    `${product().cli}: open this link within 60 seconds; it signs in one browser, once.\n`,
+    `${product().cli}: open this link within ${ttlText(loginLinkTtl())}; it signs in one browser, once.\n`,
   );
   io.out(`${link}\n`);
   return 0;
+}
+
+/** D16: web.login_link_ttl, read now (LOGIN_CODE_TTL_MS when unreadable). */
+export function loginLinkTtl(): number {
+  try {
+    return readWebAuthConfig(getDistRoot(), product().configFile)
+      .loginLinkTtlMs;
+  } catch {
+    return LOGIN_CODE_TTL_MS;
+  }
+}
+
+/** "5 minutes", "90 seconds", "1 minute". */
+export function ttlText(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s % 60 !== 0) return `${s} seconds`;
+  const m = s / 60;
+  return m === 1 ? "1 minute" : `${m} minutes`;
+}
+
+/** D16: the countdown's text, "4:59 left". */
+export function countdownLeft(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} left`;
 }
 
 /** "10:42" in this machine's time. */
@@ -1680,7 +1724,7 @@ function clockTime(iso: string): string {
 export async function cmdWebLoginWait(
   args: string[],
   io: CliIo = stdIo,
-  opts: { pollMs?: number; maxWaitMs?: number } = {},
+  opts: { pollMs?: number; maxWaitMs?: number; countdown?: boolean } = {},
 ): Promise<number> {
   if (isHelp(args)) {
     io.out(LOGIN_HELP());
@@ -1701,7 +1745,8 @@ export async function cmdWebLoginWait(
   const stateDir = io.stateDir ?? getStateDir();
   const secret = ensureWebSecret(stateDir);
   const now = Date.now();
-  const loginCode = mintLoginCode(secret, now);
+  const ttl = loginLinkTtl();
+  const loginCode = mintLoginCode(secret, now, ttl);
   const checked = checkLoginCode(loginCode, secret, now);
   if (!checked.ok) {
     io.err(`${product().cli}: could not make a sign-in link\n`);
@@ -1722,7 +1767,7 @@ export async function cmdWebLoginWait(
     io.err(
       `${product().cli}: no ${product().title} web server answers on port ${a.port}, so this ` +
         "doesn't wait and the link asks for no code (as --no-wait). Start the server " +
-        `(\`${product().cli} web up\`), then open this link within 60 seconds; it signs in one browser, once.\n`,
+        `(\`${product().cli} web up\`), then open this link within ${ttlText(ttl)}; it signs in one browser, once.\n`,
     );
     io.out(`${link}\n`);
     return 0;
@@ -1733,15 +1778,23 @@ export async function cmdWebLoginWait(
     return 1;
   }
   io.err(
-    `${product().cli}: open this link within 60 seconds, in the browser to sign in. ` +
+    `${product().cli}: open this link within ${ttlText(ttl)}, in the browser to sign in. ` +
       `It asks for this code: ${confirm}\n`,
   );
   io.out(`${link}\n`);
-  io.err(`${product().cli}: waiting for the link to be used…\n`);
+  // D16: on a terminal, the time left, in place.
+  const tty = opts.countdown ?? (io === stdIo && !!process.stderr.isTTY);
+  const waiting = `${product().cli}: waiting for the link to be used…`;
+  const tick = () =>
+    io.err(`\r${waiting} ${countdownLeft(checked.expiresAt - Date.now())} `);
+  if (tty) tick();
+  else io.err(`${waiting}\n`);
   const pollMs = opts.pollMs ?? 1000;
-  const deadline = Date.now() + (opts.maxWaitMs ?? 7 * 60_000);
+  // The link's own time, then the 5 minutes an opened link has for its code.
+  const deadline = Date.now() + (opts.maxWaitMs ?? ttl + 6 * 60_000);
   for (;;) {
     await new Promise((r) => setTimeout(r, pollMs));
+    if (tty) tick();
     const r = await serverCall(
       stateDir,
       a.port,
@@ -1754,6 +1807,15 @@ export async function cmdWebLoginWait(
       client?: string;
       usedAt?: string;
     };
+    // The countdown's line ends before the outcome's.
+    const over =
+      !r ||
+      j.state === "used" ||
+      j.state === "refused" ||
+      j.state === "expired" ||
+      r.status === 404 ||
+      Date.now() > deadline;
+    if (tty && over) io.err("\n");
     if (r && j.state === "used") {
       io.out(
         `Signed in: ${j.device ?? "a browser"}${j.client ? ` (${j.client})` : ""}` +

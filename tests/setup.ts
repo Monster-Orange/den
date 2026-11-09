@@ -42,7 +42,8 @@ const stubs = path.join(
 );
 if (!(process.env.PATH ?? "").split(path.delimiter).includes(stubs)) {
   fs.mkdirSync(stubs, { recursive: true });
-  for (const bin of ["claude", "codex", "gemini", "grok"])
+  // D17: and gh (`web up` asks it who is signed in): never the real one.
+  for (const bin of ["claude", "codex", "gemini", "grok", "gh"])
     fs.writeFileSync(path.join(stubs, bin), "#!/bin/sh\nexit 127\n", {
       mode: 0o755,
     });

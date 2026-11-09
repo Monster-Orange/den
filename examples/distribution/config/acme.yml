@@ -13,6 +13,12 @@ brand:
 # Unset, Den lists no GitHub repos (and never calls gh for them). E.g.
 # github_org: example-org
 
+# Who may claim an instance. Each developer runs their own and opens it
+# in the browser; a member of this GitHub org connects their GitHub
+# account there, on their own computer, and owns that instance.
+# web:
+#   allowed_github_org: your-github-org
+
 # Secrets backend: none (this distribution needs no secrets store), or
 # env (plain environment variables), doppler or 1password. A backend's
 # refs say where Den's own features find their secrets, e.g.

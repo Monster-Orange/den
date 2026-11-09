@@ -48,6 +48,16 @@
         flex-direction: column;
         overflow: hidden;
       }
+      /* D17: the /auth code page is a plain sign-in page: no shell frame
+         around it, the form in the middle. */
+      html body.den-plain > :not(#den-content):not(script):not(style) {
+        display: none !important;
+      }
+      html body.den-plain > #den-content {
+        max-width: 560px;
+        margin: 10vh auto 0;
+        width: 100%;
+      }
       /* .main */
       html body.den-has-shell > #den-content {
         overflow: auto;

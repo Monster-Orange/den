@@ -385,8 +385,16 @@ describe.each([
     port = 0;
   }, 120_000);
 
-  it("op, doppler, mkcert and gh were never called", () => {
-    expect(fs.existsSync(f.calls)).toBe(false);
+  it("op, doppler, mkcert and gh were never called (but D17's who-is-signed-in-to-gh)", () => {
+    // D17: `web up` asks gh which login is signed in (web.owner_github);
+    // nothing else may run.
+    const calls = fs.existsSync(f.calls)
+      ? fs
+          .readFileSync(f.calls, "utf-8")
+          .split("\n")
+          .filter((l) => l && l !== "gh api user --jq .login")
+      : [];
+    expect(calls).toEqual([]);
   });
 });
 

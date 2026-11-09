@@ -685,7 +685,7 @@ describe("the CLI: web login, web sessions, web logout", () => {
       "/auth",
       "/settings",
     ]);
-    expect(r.stderr).toMatch(/within 60 seconds/);
+    expect(r.stderr).toMatch(/within 5 minutes/);
     expect(r.stderr.includes(u.searchParams.get("c") ?? "\0")).toBe(false);
     const a = await call("GET", `${u.pathname}${u.search}`, nav);
     expect([a.status, where(a)]).toEqual([303, "/settings"]);

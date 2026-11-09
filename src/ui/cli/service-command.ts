@@ -15,6 +15,11 @@
  * port, and writes and loads nothing; exit 1 when that server is foreign.
  * `status` also names a foreign server on the port.
  */
+import {
+  ownerGithubLine,
+  recordOwnerGithub,
+  type OwnerGithubResult,
+} from "../../shared/owner-github.js";
 import { spawnSync } from "child_process";
 import * as os from "os";
 import * as path from "path";
@@ -100,6 +105,8 @@ export async function waitForServerInfo(
 
 export interface ServiceDeps {
   run?: ServiceRunner;
+  /** D17: record web.owner_github (default: from gh, unless `run` is a test's). */
+  recordOwner?: () => OwnerGithubResult;
   config?: DenConfig;
   distRoot?: string;
   engineRoot?: string;
@@ -214,6 +221,15 @@ export async function cmdService(
     return 0;
   }
 
+  // D17: whoever installs it can connect their GitHub account from any
+  // browser (web.owner_github, from gh), before the server reads it.
+  if (sub === "install") {
+    const rec =
+      deps.recordOwner ??
+      (deps.run ? () => ({ state: "linked" as const }) : recordOwnerGithub);
+    const line = ownerGithubLine(rec(), product().cli);
+    if (line) log(line);
+  }
   const code = run("bash", [script, sub!], {
     ...env,
     // The script then leaves saying "running" to us (after the poll below).

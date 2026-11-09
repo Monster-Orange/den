@@ -425,7 +425,7 @@ function drawPair(host, ctx) {
             out.innerHTML =
               `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-top:8px">` +
               `<div id="set-pair-qr" style="line-height:0">${qrSvg(p.url, { scale: 4, margin: 4 })}</div>` +
-              `<div style="flex:1 1 220px;min-width:0"><p class="set-note" style="margin:0 0 8px">Scan it with the other device, or open the link there. It works once, within 60 seconds, and signs that browser in for good.</p>` +
+              `<div style="flex:1 1 220px;min-width:0"><p class="set-note" style="margin:0 0 8px">Scan it with the other device, or open the link there. It works once, until it expires (below), and signs that browser in for good.</p>` +
               `<a id="set-pair-link" href="${escHtml(p.url)}" style="font:12px var(--mono);overflow-wrap:anywhere">${escHtml(p.url)}</a>` +
               `<p class="set-note" id="set-pair-left" style="margin:8px 0 0"></p></div></div>`;
             const until = Date.parse(p.expiresAt);

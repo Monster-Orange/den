@@ -243,6 +243,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/signin",
     "the signed-out landing page (§6b.3): it renders signed out; signed in, it goes on to `next`",
   ),
+  R(
+    "/attest",
+    'D17: "This is my computer", on localhost only: a 303 back to one of this server\'s edge hosts with a short-lived code (it never makes a session)',
+  ),
   M(["POST"], "/api/session/logout", "ends this browser's session"),
   S(
     ["GET", "HEAD"],

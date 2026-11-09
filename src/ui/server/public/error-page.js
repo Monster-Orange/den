@@ -268,7 +268,8 @@ export function landingAfterSignIn(loc) {
  */
 function githubBlock(s, t) {
   const g = s.github;
-  if (!g || s.localhost || g.state === "no_client_id") return "";
+  if (!g || s.localhost || g.state === "no_client_id" || g.state === "claim")
+    return "";
   const host = s.machine || "";
   const ready = g.state === "ready";
   const step1 = withHost(t, "err.signin.ghStep1", {
@@ -291,12 +292,66 @@ function githubBlock(s, t) {
         `<button type="button" class="btn primary" id="den-gh-start">${esc(t("err.signin.github"))}</button>` +
         `</div><div id="den-gh-flow" aria-live="polite"></div>`
       : "") +
+    (!ready && g.message
+      ? `<p class="den-gh-note" id="den-gh-norule">${esc(g.message)}</p>`
+      : "") +
     `<p class="den-gh-note" id="den-gh-only">${esc(t("err.signin.ghOnly"))}` +
     (g.learnMore
       ? ` <a id="den-gh-learn" href="${esc(g.learnMore)}" target="_blank" rel="noopener noreferrer">${esc(t("err.signin.ghLearn"))}</a>`
       : "") +
     `</p></div>`
   );
+}
+
+/**
+ * D17: a Den with no owner yet that a rule lets someone claim. It leads the
+ * page: Connect your GitHub account. "This is my computer" (with
+ * web.allowed_github_org) goes to localhost and back, which only works in a
+ * browser on the machine Den runs on, then starts the GitHub sign-in with
+ * that proof; "Sign in as @login" (web.owner_github) works from anywhere.
+ */
+function claimBlock(s, t) {
+  const g = s.github;
+  if (!g || g.state !== "claim" || s.localhost) return "";
+  const host = s.machine || "";
+  const back = location.origin + location.pathname + location.search;
+  const here = g.attest ? `${g.attest}?return=${encodeURIComponent(back)}` : "";
+  return (
+    `<div id="den-gh" class="den-claim">` +
+    `<h2 class="den-h" id="den-claim-title">${esc(t("err.signin.claimTitle"))}</h2>` +
+    `<p class="lead" id="den-claim-lead">${esc(t("err.signin.claimLead", { name: s.name || "Den" }))}</p>` +
+    (g.org
+      ? `<p id="den-claim-org">${withHost(t, "err.signin.claimOrg", { org: g.org, host })}</p>`
+      : "") +
+    `<div class="acts" style="margin-top:0">` +
+    (here
+      ? `<a class="btn primary" id="den-claim-here" href="${esc(here)}">${esc(t("err.signin.claimHere"))}</a>`
+      : "") +
+    (g.ownerGithub
+      ? `<button type="button" class="btn${here ? "" : " primary"}" id="den-gh-start">${esc(t("err.signin.claimAs", { login: g.ownerGithub }))}</button>`
+      : "") +
+    `</div><div id="den-gh-flow" aria-live="polite"></div>` +
+    (here
+      ? `<p class="den-gh-note" id="den-claim-note">${withHost(t, "err.signin.claimHereNote", { host })}</p>`
+      : "") +
+    `</div>`
+  );
+}
+
+/** D17: the "This is my computer" code /attest put in the fragment, taken once. */
+export function takeAttestCode(loc = location, hist = history) {
+  const m = /(?:^#|&)den-attest=([^&]+)/.exec(loc.hash || "");
+  if (!m) return "";
+  try {
+    hist.replaceState(null, "", loc.pathname + loc.search);
+  } catch {
+    /* the address keeps it; it is single use anyway */
+  }
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return "";
+  }
 }
 
 /** How often, and how long, the page watches for an owner (SEC-2a-UX). */
@@ -332,17 +387,23 @@ function watchOwner(root, t, s, pollMs = OWNER_POLL_MS) {
   setTimeout(tick, pollMs);
 }
 
-/** The device flow on the page: start, show the code, poll, go on. */
-function wireGithub(root, t, s) {
+/**
+ * The device flow on the page: start, show the code, poll, go on. D17: with
+ * `attest` (the code "This is my computer" brought back), it starts at once
+ * with that proof.
+ */
+function wireGithub(root, t, s, attest = "") {
   const start = root.querySelector("#den-gh-start");
   const box = root.querySelector("#den-gh-flow");
-  if (!start || !box) return;
+  if (!box || (!start && !attest)) return;
   let timer = null;
   const show = (html) => (box.innerHTML = html);
   const fail = (text) => {
     clearTimeout(timer);
-    start.hidden = false;
-    start.textContent = t("err.signin.githubAgain");
+    if (start) {
+      start.hidden = false;
+      start.textContent = t("err.signin.githubAgain");
+    }
     show(
       `<p class="den-gh-err" role="alert" style="margin-top:12px">${esc(text)}</p>`,
     );
@@ -367,29 +428,31 @@ function wireGithub(root, t, s) {
           return;
         }
         fail(
-          b.state === "refused"
-            ? t("err.signin.githubRefused", {
-                login: b.login ?? "",
-                name: s.name,
-              })
-            : b.state === "expired"
-              ? t("err.signin.githubExpired")
-              : b.state === "denied"
-                ? t("err.signin.githubDenied")
-                : t("err.signin.githubFailed"),
+          b.state === "refused" && b.error
+            ? b.error
+            : b.state === "refused"
+              ? t("err.signin.githubRefused", {
+                  login: b.login ?? "",
+                  name: s.name,
+                })
+              : b.state === "expired"
+                ? t("err.signin.githubExpired")
+                : b.state === "denied"
+                  ? t("err.signin.githubDenied")
+                  : t("err.signin.githubFailed"),
         );
       })
       .catch(() => fail(t("err.signin.githubFailed")));
   };
-  start.addEventListener("click", () => {
+  const begin = (body) => {
     clearTimeout(timer);
-    start.disabled = true;
+    if (start) start.disabled = true;
     fetch("/api/github/signin", {
       method: "POST",
       cache: "no-store",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: "{}",
+      body: JSON.stringify(body),
     })
       .then((r) =>
         r
@@ -398,7 +461,7 @@ function wireGithub(root, t, s) {
           .then((b) => [r.status, b]),
       )
       .then(([status, b]) => {
-        start.disabled = false;
+        if (start) start.disabled = false;
         if (!b.ok || !b.userCode) {
           fail(
             status === 429
@@ -407,7 +470,11 @@ function wireGithub(root, t, s) {
           );
           return;
         }
-        start.hidden = true;
+        if (start) start.hidden = true;
+        const here = root.querySelector("#den-claim-here");
+        if (here) here.style.display = "none";
+        const note = root.querySelector("#den-claim-note");
+        if (note) note.style.display = "none";
         const url = b.verificationUri || "https://github.com/login/device";
         const shown = url.replace(/^https:\/\//, "");
         show(
@@ -428,10 +495,17 @@ function wireGithub(root, t, s) {
         timer = setTimeout(() => poll(b.id), 1500);
       })
       .catch(() => {
-        start.disabled = false;
+        if (start) start.disabled = false;
         fail(t("err.signin.githubFailed"));
       });
-  });
+  };
+  start?.addEventListener("click", () => begin({}));
+  if (attest) {
+    show(
+      `<p class="den-gh-wait" style="margin-top:12px">${esc(t("err.signin.claimChecking", { host: s.machine || "" }))}</p>`,
+    );
+    begin({ attest });
+  }
 }
 
 /**
@@ -604,6 +678,8 @@ function mountSignedOut(root, sh, d) {
     `<div class="sub">${esc(t("err.signin.sub"))}</div></div></div>`;
   if (s.confirm) {
     // SEC-2a: a link `web login` waits on: the code it printed, first.
+    // D17: a plain sign-in page, no shell frame and no error wording.
+    document.body.classList.add("den-plain");
     root.innerHTML =
       `<div class="ph"><div><h1>${esc(t("err.signin.title", { name }))}</h1>` +
       `<div class="sub">${esc(t("err.signin.sub"))}</div></div></div>` +
@@ -617,7 +693,6 @@ function mountSignedOut(root, sh, d) {
       `<p class="den-confirm-err" id="den-confirm-err" role="alert" style="margin-top:12px"></p>` +
       `</form>` +
       `<p class="den-signin-why">${withHost(t, "err.signin.confirmWhy", { host })}</p>` +
-      facts +
       `</div>`;
     const form = root.querySelector("#den-confirm");
     const input = root.querySelector("#den-confirm-code");
@@ -672,15 +747,20 @@ function mountSignedOut(root, sh, d) {
       `<div class="acts"><a class="btn primary" id="den-signin-local" href="${esc(s.localhost)}">${esc(t("err.421.open"))}</a></div></div>`;
     return;
   }
-  const gh = githubBlock(s, t);
+  const claim = claimBlock(s, t);
+  const gh = claim || githubBlock(s, t);
   root.innerHTML =
     head +
     `<div class="empty" id="den-signin">` +
     (s.expired
       ? `<p class="lead" role="alert">${esc(t("err.signin.expiredLead"))}</p>`
       : "") +
-    `<p class="lead" id="den-signin-where">${withHost(t, "err.signin.where", { name, host })}</p>` +
-    gh +
+    claim +
+    // D17: with the claim first, "from another computer" may not be true.
+    (claim
+      ? ""
+      : `<p class="lead" id="den-signin-where">${withHost(t, "err.signin.where", { name, host })}</p>`) +
+    (claim ? "" : gh) +
     `<h2 class="den-h" id="den-pair-title">${esc(t(gh ? "err.signin.approveOr" : "err.signin.approve"))}</h2>` +
     `<div id="den-pair" aria-live="polite"></div>` +
     `<p class="den-signin-why"><b>${esc(t("err.signin.whyTitle"))}</b> ${withHost(t, "err.signin.whyText", { name, host })}</p>` +
@@ -695,7 +775,7 @@ function mountSignedOut(root, sh, d) {
     facts +
     `</div>`;
   wireCopy(root, t);
-  wireGithub(root, t, s);
+  wireGithub(root, t, s, claim ? takeAttestCode() : "");
   watchOwner(root, t, s, window.__denOwnerPollMs || OWNER_POLL_MS);
   wirePair(root, t, s);
   if (s.expired) return;

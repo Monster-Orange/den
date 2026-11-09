@@ -22,7 +22,7 @@ import {
 import {
   cidrToSubnet,
   edgeNetworkSubnets,
-} from "../../../src/ui/server/edge-exposure.js";
+} from "../../../src/shared/edge/exposure.js";
 
 const PORT = 41236;
 const EDGE = "den.acme.example";
