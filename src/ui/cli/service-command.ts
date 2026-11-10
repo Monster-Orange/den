@@ -306,6 +306,7 @@ export async function cmdService(
   const identify =
     deps.identify ?? ((p: number, o: OwnServer) => identifyServer(p, o));
 
+  const jobPid = deps.jobPid ?? defaultJobPid;
   if (plan) {
     const dir =
       mode === "always"
@@ -326,6 +327,15 @@ export async function cmdService(
     log(`  url:     http://localhost:${port}`);
     const id = await identify(port, own);
     log(`  server:  ${identityLine(port, id)}`);
+    // D26: what install does with a plain server of this install.
+    if (
+      id.kind === "ours" &&
+      id.pid &&
+      id.pid !== (installed ? jobPid(installed, label) : null)
+    )
+      log(
+        `           install stops this plain server (pid ${id.pid}) first; the service runs it then`,
+      );
     log(`  plist it would write:`);
     // install.sh print writes the plist to stdout only.
     const code = run("bash", [script, "print"], env);
@@ -337,7 +347,6 @@ export async function cmdService(
     return 0;
   }
 
-  const jobPid = deps.jobPid ?? defaultJobPid;
   // D26: a plain `web up` server of this install on the port would answer
   // for the job (which then crash-loops on the taken port): stop it first.
   if (sub === "install") {

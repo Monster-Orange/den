@@ -354,7 +354,7 @@ function wsLinkHtml(ws) {
  * itself a button). "" when the host didn't say (off macOS, older host).
  */
 function whereTag(r, button = false) {
-  const s = r?.session?.launchd;
+  const s = r?.launchd;
   const logout = s === "Aqua" || s === "LoginWindow";
   if (!logout && s !== "Background" && s !== "System") return "";
   const key = logout ? "ag.where.logout" : "ag.where.bg";

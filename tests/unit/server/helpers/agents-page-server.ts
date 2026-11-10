@@ -95,6 +95,8 @@ function get(port: number, p: string): Promise<number> {
 export async function startAgentsPageServer(
   opts: {
     root?: string;
+    /** D20: the launchd session the host stamps on its sessions (default: none). */
+    launchd?: string;
     /** "missing": no claude on PATH or in any install directory. */
     runtime?: "shim" | "missing";
     /** sudo needs a password: the fake sudo takes only this one (LK). */
@@ -255,6 +257,7 @@ export async function startAgentsPageServer(
     pty: () => load,
     flushMs: 0,
     log: () => undefined,
+    launchdSession: opts.launchd ?? null,
   });
   await host.listen();
 

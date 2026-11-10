@@ -143,6 +143,8 @@ export interface ListedSession {
   /** ON-6: the server agent's row (its workspace is the server scope). */
   server?: boolean;
   kind: "agent" | "session";
+  /** D20: the launchd session its host runs in (Aqua ends at logout). */
+  launchd?: string;
   /** The `<name>` part: an agent's id, a plain session's name. */
   label: string;
   agent?: string;
@@ -251,6 +253,7 @@ export function listedSessions(
       state: r.state,
       exited: !s || s.exited === true,
       ...(s?.exitCode !== undefined ? { exitCode: s.exitCode } : {}),
+      ...(s?.launchd ? { launchd: s.launchd } : {}),
       ...(r.startedAt ? { startedAt: r.startedAt } : {}),
       attachable: Boolean(s),
       resumable: r.resumable,
@@ -276,6 +279,7 @@ export function listedSessions(
       state: sessionState(s),
       exited: s.exited === true,
       ...(s.exitCode !== undefined ? { exitCode: s.exitCode } : {}),
+      ...(s.launchd ? { launchd: s.launchd } : {}),
       startedAt: s.startedAt,
       attachable: true,
     });

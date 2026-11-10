@@ -53,7 +53,8 @@ config and manifest changes a distribution must make to move to it under
   check, while the job failed to start on the taken port. Install now
   stops a plain server of this install first, and says running only when
   the server answering is the job's own process; `service status` says
-  when another process holds the port.
+  when another process holds the port. `--plan` says when install would
+  stop one.
 - **`service status` names a job whose plist is present but not loaded**,
   with the `launchctl bootstrap` that loads it (`sudo` for a LaunchDaemon);
   `doctor` shows it too.

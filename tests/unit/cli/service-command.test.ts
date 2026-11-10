@@ -318,6 +318,32 @@ describe("service install --plan", () => {
     );
   });
 
+  it("D26: says install stops a plain server of this install first", async () => {
+    const h = harness({
+      identity: { kind: "ours", version: "0.2.6", pid: 41 },
+    });
+    expect(await cmdService(["install", "--plan"], h.deps)).toBe(0);
+    expect(h.lines.join("\n")).toMatch(
+      /install stops this plain server \(pid 41\) first; the service runs it then/,
+    );
+  });
+
+  it("D26: says nothing of stopping when the job itself serves the port", async () => {
+    const always: ServiceJob = {
+      state: "loaded",
+      mode: "always",
+      plist: "/x.plist",
+      domain: "system",
+    };
+    const h = harness({
+      identity: { kind: "ours", version: "0.2.6", pid: 41 },
+      job: always,
+      jobPid: 41,
+    });
+    expect(await cmdService(["install", "--plan"], h.deps)).toBe(0);
+    expect(h.lines.join("\n")).not.toMatch(/install stops/);
+  });
+
   it("a free port: exit 0, says so", async () => {
     const h = harness({ identity: { kind: "none" } });
     expect(await cmdService(["install", "--plan"], h.deps)).toBe(0);
