@@ -331,7 +331,18 @@ describe("agents.rotate", () => {
       standing: false,
     });
     expect(() => cfg({ rotate: { after_compactions: 0 } })).toThrow(
-      /agents\.rotate\.after_compactions: must be a whole number from 1 to 100/,
+      /agents\.rotate\.after_compactions: a whole number from 1 to 100, or never/,
+    );
+    // D28: never, on_due and on_pr_merged.
+    expect(cfg({ rotate: { after_compactions: "never" } }).rotate).toEqual({
+      afterCompactions: 0,
+      standing: true,
+    });
+    expect(
+      cfg({ rotate: { on_due: "ask", on_pr_merged: false } }).rotateOrg,
+    ).toEqual({ on_due: "ask", on_pr_merged: false });
+    expect(() => cfg({ rotate: { on_due: "later" } })).toThrow(
+      /agents\.rotate\.on_due: auto, ask or off/,
     );
     expect(() => cfg({ rotate: { standing: "no" } })).toThrow(
       /agents\.rotate\.standing: must be true or false/,

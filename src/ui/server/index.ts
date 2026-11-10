@@ -868,7 +868,12 @@ import {
 import { heldActions } from "./held-actions.js";
 import type { ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
-import { handleAgentRoutes, startAgentUpkeep } from "./agent-routes.js";
+import {
+  handleAgentRoutes,
+  startAgentUpkeep,
+  webDeps as agentWebDeps,
+} from "./agent-routes.js";
+import { policyResolver } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
 import {
@@ -4748,7 +4753,10 @@ async function handleRequest(
       res,
       pathname,
       guard.ok && (!guard.beyond || !!guard.session || !!guard.principal),
-      { waitingAgents: waitingAgentIds },
+      {
+        waitingAgents: waitingAgentIds,
+        rotationPolicy: () => policyResolver(agentWebDeps()),
+      },
     )
   )
     return;

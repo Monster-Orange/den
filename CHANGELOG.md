@@ -4,6 +4,42 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.23] - unreleased
+
+### Added
+
+- **Agents relaunch from their handoff by themselves (D28).** When an
+  agent's rotation is due (after `after_compactions` compactions, or its
+  pull request merged), Den asks it for its handoff at its next idle,
+  never mid-turn, and relaunches it once the handoff passes: a fresh
+  conversation with the same name, persona, workspace and folder. A toast
+  and the audit log say so, and the old conversation is kept. Den asks
+  twice at most, then falls back to asking you.
+- **The rotation callout has buttons, running or stopped**, on the row and
+  in the pane bar: Relaunch now (asking for the handoff first if needed),
+  Write handoff, Keep this conversation (with "Don't ask again for this
+  agent") and Settings. It says what happens next and where the settings
+  come from. Before, a running agent got a message and nothing to press,
+  and Stop then Start showed the same message again.
+- **Rotation settings at every scope.** `after_compactions` (a number or
+  `never`), `on_due` (`auto`, the default, `ask` or `off`) and
+  `on_pr_merged`. The most specific wins: agent, persona in a workspace,
+  persona, workspace, service, this install, org config. Settings › Agents
+  › Rotation and `<cli> agents rotate` set them; `<cli> agents rotate <id>
+  --show` names where each value comes from. `<cli> agents keep` and
+  `<cli> agents handoff` are the callout's buttons. A change applies to
+  running agents too.
+- Resume (or Start) on a due agent follows `on_due`: `auto` relaunches it
+  from its handoff, `ask` refuses with the callout's choices, `off` goes
+  on with the same conversation.
+
+### Migrations
+
+- None required. Rotation now relaunches by itself (`on_due: auto`). To
+  keep den#4's behavior (a person relaunches), set `on_due: ask` under
+  `agents.rotate` in the org config, or `<cli> agents rotate on_due ask`.
+  `agents.rotate.standing` still works; a persona override replaces it.
+
 ## [0.4.22] - 2026-11-10
 
 ### Added

@@ -40,6 +40,7 @@ import {
   newRequestId,
 } from "../../../src/ui/server/http-errors.js";
 import { GOOD_HANDOFF } from "./helpers/handoff.js";
+import { setRotateValue } from "../../../src/shared/agents/rotate-settings.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
 const servers: http.Server[] = [];
@@ -117,6 +118,13 @@ describe("a session that rotated after 3 compactions", () => {
       after: 3,
       handoff: "missing",
       ready: false,
+      // D28: its settings, and where each comes from.
+      onDue: "auto",
+      from: {
+        after_compactions: "default",
+        on_due: "default",
+        on_pr_merged: "default",
+      },
     });
   });
 
@@ -154,12 +162,13 @@ describe("a session that rotated after 3 compactions", () => {
     expect(r.made).toHaveLength(2);
   });
 
-  it("with a handoff: Resume refuses (exit 1) naming relaunch; relaunch starts a new conversation from it", async () => {
+  it("with a handoff, on_due ask: Resume refuses (exit 1) naming relaunch; relaunch starts a new conversation from it", async () => {
     const r = await rig();
     const t1 = await started(r);
     compact(r, "be-dev", 3);
     writeHandoff(r, "be-dev");
     await stop(r);
+    setRotateValue(r.stateDir, "install", undefined, "on_due", "ask");
 
     const [row] = await listRows(r);
     expect(row).toMatchObject({
@@ -231,12 +240,14 @@ describe("a session that rotated after 3 compactions", () => {
     });
     const [after] = await listRows(r);
     expect(after.state).toBe("running");
-    expect(after.rotation).toEqual({
+    expect(after.rotation).toMatchObject({
       compactions: 0,
       after: 3,
       handoff: "missing",
       ready: false,
+      onDue: "ask",
     });
+    expect(after.rotation?.due).toBeUndefined();
     expect(after.rotations).toBe(1);
     expect(fs.existsSync(r.ran)).toBe(false);
   });
@@ -348,12 +359,53 @@ describe("the routes", () => {
     };
   }
 
-  it("resume answers 409 rotated with the relaunch hint; relaunch starts it from the handoff", async () => {
+  it("D28: with a handoff, on_due auto (the default): Resume relaunches it from the handoff", async () => {
+    const r = await rig();
+    const t1 = await started(r);
+    compact(r, "be-dev", 3);
+    writeHandoff(r, "be-dev");
+    await stop(r);
+    r.out.length = 0;
+    expect(await agents(r, "resume", "be-dev")).toBe(0);
+    expect(r.out.join("\n")).toMatch(
+      /relaunched agent be-dev from its handoff \(the last session ended after 3 compactions\)/,
+    );
+    const args = r.made[1].args;
+    expect(args).not.toContain("--resume");
+    expect(args[args.length - 1]).toContain(GOOD_HANDOFF);
+    expect(rec(r, "be-dev").resumeToken).not.toBe(t1);
+    expect(rec(r, "be-dev").rotations?.[0]).toMatchObject({
+      auto: true,
+      conversation: t1,
+      compactions: 3,
+    });
+  });
+
+  it("D28: on_due off: Resume goes on with the same conversation", async () => {
+    const r = await rig();
+    const t1 = await started(r);
+    compact(r, "be-dev", 3);
+    writeHandoff(r, "be-dev");
+    await stop(r);
+    setRotateValue(
+      r.stateDir,
+      "persona",
+      "be-dev-persona-unused",
+      "on_due",
+      "ask",
+    );
+    setRotateValue(r.stateDir, "agent", "be-dev", "on_due", "off");
+    expect(await agents(r, "resume", "be-dev")).toBe(0);
+    expect(r.made[1].args.slice(0, 2)).toEqual(["--resume", t1]);
+  });
+
+  it("resume answers 409 rotated with the relaunch hint (on_due ask); relaunch starts it from the handoff", async () => {
     const r = await rig();
     await started(r);
     compact(r, "be-dev", 3);
     writeHandoff(r, "be-dev");
     await stop(r);
+    setRotateValue(r.stateDir, "workspace", "north", "on_due", "ask");
     const post = await route(r);
     const no = await post("/api/workspaces/north/agents/be-dev/resume");
     expect(no.status).toBe(409);

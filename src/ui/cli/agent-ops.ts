@@ -149,8 +149,24 @@ import {
   type RuntimeConversation,
 } from "../../shared/agents/conversations.js";
 import {
+  OVERRIDE_SCOPES,
+  readRotateFile,
+  resolveRotate,
+  ROTATE_DEFAULTS,
+  setRotateValue,
+  sourceText,
+  type OrgRotate,
+  type OverrideScope,
+  type RotateFile,
+  type RotateValues,
+} from "../../shared/agents/rotate-settings.js";
+import {
   archiveHandoff,
-  DEFAULT_ROTATE,
+  keepConversation,
+  noteAsked,
+  noteFellBack,
+  rotationInstruction,
+  syncAfter,
   handoffFile,
   handoffPrompt,
   launchRotation,
@@ -158,9 +174,10 @@ import {
   readRotation,
   writeRotation,
   reasonText,
-  rotateAfter,
   rotationInfo,
+  type RotationEntry,
   type RotationInfo,
+  type RotationPolicy,
 } from "../../shared/agents/rotation.js";
 import {
   binSettingKey,
@@ -237,6 +254,8 @@ export interface AgentsDeps extends SessionsDeps {
   ) => void;
   /** The user.yml a person edits to set it (default: config/local/user.yml). */
   userConfigFile?: () => string;
+  /** D28: workspace `ws`'s services and their folders (the service scope). */
+  workspaceServices?: (ws: string) => { address: string; path: string }[];
 }
 
 export interface AgentsResolved extends Resolved {
@@ -252,6 +271,7 @@ export interface AgentsResolved extends Resolved {
   userCatalog: (taken: readonly string[]) => CatalogEntry[];
   saveRuntimeBin: NonNullable<AgentsDeps["saveRuntimeBin"]>;
   userConfigFile: () => string;
+  workspaceServices: (ws: string) => { address: string; path: string }[];
 }
 
 /** The early-exit watch: at most this long, polling the host. */
@@ -303,6 +323,8 @@ const refused = (message: string, hints: string[] = [], status = 409) =>
   new AgentError(message, { status, hints });
 
 let workspaceDirFn: ((ws: string) => string) | null = null;
+let servicesFn: ((ws: string) => { address: string; path: string }[]) | null =
+  null;
 let foldersFn: ((ws: string) => { under: string[]; exact?: string[] }) | null =
   null;
 /** The workspaces config, for start and resume (loaded on first use). */
@@ -321,6 +343,15 @@ export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
     const cfg = ws.readWorkspacesFile().workspaces[name];
     if (!cfg) throw usage(`workspace "${name}" does not exist`, 404);
     return ws.conversationFolders(name, cfg, getReposRoot());
+  };
+  const { readCatalog } =
+    await import("../../shared/environment-manager/catalog.js");
+  servicesFn = (name) => {
+    const cfg = ws.readWorkspacesFile().workspaces[name];
+    if (!cfg) return [];
+    return ws
+      .listWorkspaceServices(cfg, readCatalog(), name)
+      .map((r) => ({ address: r.address, path: r.repoPath }));
   };
 }
 
@@ -374,6 +405,8 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
           ? setWorkspaceRuntimeBin(ws, id, bin)
           : setUserRuntimeBin(id, bin)),
     userConfigFile: d.userConfigFile ?? userConfigPath,
+    workspaceServices:
+      d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
   });
 }
 
@@ -511,6 +544,8 @@ export interface AgentRow {
   rotation?: RotationInfo;
   /** How many times Den relaunched it from a handoff. */
   rotations?: number;
+  /** D28: the last one (when, why, the old conversation, by itself or not). */
+  lastRotation?: RotationEntry;
   session?: SessionInfo;
 }
 
@@ -566,13 +601,15 @@ export function agentRows(
   records: AgentRecord[] = [],
   /** Den's state dir: each agent's rotation is read there (den#4). */
   stateDir?: string,
+  /** D28: each agent's effective rotation settings (policyResolver). */
+  policyOf?: (rec: AgentRecord) => RotationPolicy | undefined,
 ): AgentRow[] {
   const bySession = new Map(records.map((r) => [r.session.id, r]));
   const rows: AgentRow[] = [];
   const shown = new Set<string>();
   const row = (rec: AgentRecord, s?: SessionInfo): AgentRow => {
     const st = rowState(rec, s);
-    const rot = stateDir ? rotationInfo(stateDir, rec) : null;
+    const rot = stateDir ? rotationInfo(stateDir, rec, policyOf?.(rec)) : null;
     // A rotated conversation is not resumed: it relaunches from its handoff.
     const resumable = canResume(rec, st) && !rot?.ready;
     const why =
@@ -597,7 +634,12 @@ export function agentRows(
       ...(rec.outcome ? { outcome: rec.outcome } : {}),
       ...(rec.usage ? { usage: rec.usage } : {}),
       ...(rot ? { rotation: rot } : {}),
-      ...(rec.rotations?.length ? { rotations: rec.rotations.length } : {}),
+      ...(rec.rotations?.length
+        ? {
+            rotations: rec.rotations.length,
+            lastRotation: rec.rotations[rec.rotations.length - 1],
+          }
+        : {}),
       ...(s ? { session: contractInfo(s) } : {}),
     };
   };
@@ -695,7 +737,7 @@ export async function listAgents(
   const sessions = all.filter((s) => inWorkspace(s, d.dist, ws));
   const records = listRecords(d.stateDir()).filter((r) => r.workspace === ws);
   noteEnded(d.stateDir(), sessions, records);
-  const rows = agentRows(sessions, records, d.stateDir());
+  const rows = agentRows(sessions, records, d.stateDir(), policyResolver(d));
   return opts.stopped ? rows.filter((r) => isStoppedState(r.state)) : rows;
 }
 
@@ -729,6 +771,113 @@ function personas(
   } catch (e) {
     throw refused((e as Error).message, [], 422);
   }
+}
+
+/**
+ * D28: the workspace service whose folder holds `cwd` (the deepest), for
+ * the service scope; undefined outside every service or on any error.
+ */
+function serviceAt(
+  d: AgentsResolved,
+  ws: string,
+  cwd: string | undefined,
+): string | undefined {
+  if (!cwd) return undefined;
+  try {
+    let best: { address: string; path: string } | undefined;
+    for (const svc of d.workspaceServices(ws)) {
+      const rel = path.relative(svc.path, cwd);
+      if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
+      if (!best || svc.path.length > best.path.length) best = svc;
+    }
+    return best?.address;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * D28: a resolver of each agent's rotation settings, the config and the
+ * personas read once. A config or persona that can't be read: undefined
+ * (den#4's own rules), never an error in a list.
+ */
+export function policyResolver(
+  d: AgentsResolved,
+): (rec: AgentRecord) => RotationPolicy | undefined {
+  let cfg: ResolvedAgentsConfig | null | undefined;
+  const byWs = new Map<string, Map<string, Persona> | null>();
+  return (rec) => {
+    if (cfg === undefined) {
+      try {
+        cfg = d.agentsConfig();
+      } catch {
+        cfg = null;
+      }
+    }
+    if (!cfg) return undefined;
+    const key = isServerScope(rec.workspace) ? rec.workspace : "";
+    if (!byWs.has(key)) {
+      try {
+        byWs.set(key, personas(d, cfg, rec.workspace));
+      } catch {
+        byWs.set(key, null);
+      }
+    }
+    const all = byWs.get(key);
+    if (!all) return undefined;
+    return effectiveRotation(d, cfg, rec, all.get(rec.persona));
+  };
+}
+
+/** D28: agent `rec`'s rotation under its effective settings. */
+export function rotationOf(
+  d: AgentsResolved,
+  rec: AgentRecord,
+): RotationInfo | null {
+  return rotationInfo(d.stateDir(), rec, policyResolver(d)(rec));
+}
+
+/**
+ * D28: agent `id`'s effective rotation settings and where each comes
+ * from. `persona` is its persona (standing, and whether Den's hooks count
+ * compactions: without them it never rotates).
+ */
+export function effectiveRotation(
+  d: AgentsResolved,
+  cfg: ResolvedAgentsConfig,
+  who: { id: string; persona: string; workspace: string; cwd?: string },
+  persona: Persona | undefined,
+): RotationPolicy {
+  const r = resolveRotate(
+    {
+      agent: who.id,
+      persona: who.persona,
+      workspace: who.workspace,
+      ...(serviceAt(d, who.workspace, who.cwd)
+        ? { service: serviceAt(d, who.workspace, who.cwd) }
+        : {}),
+      ...(persona?.standing ? { standing: true } : {}),
+    },
+    readRotateFile(d.stateDir()),
+    cfg.rotateOrg ??
+      (cfg.rotate
+        ? {
+            after_compactions: cfg.rotate.afterCompactions || "never",
+            ...(cfg.rotate.standing === false ? { standing: false } : {}),
+          }
+        : undefined),
+  );
+  return {
+    afterCompactions:
+      persona && !persona.guardrails?.hooks ? 0 : r.afterCompactions,
+    onDue: r.onDue,
+    onPrMerged: r.onPrMerged,
+    from: {
+      after_compactions: sourceText(r.source.after_compactions),
+      on_due: sourceText(r.source.on_due),
+      on_pr_merged: sourceText(r.source.on_pr_merged),
+    },
+  };
 }
 
 /** A persona as listed: everything but its role prompt. */
@@ -1353,9 +1502,12 @@ function launchInput(
   if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory())
     throw refused(`workspace ${ws}'s directory ${dir} does not exist`);
   // den#4: only Den's hooks count compactions; without them, no rotation.
-  const after = persona.guardrails?.hooks
-    ? rotateAfter(cfg.rotate ?? DEFAULT_ROTATE, persona)
-    : 0;
+  const after = effectiveRotation(
+    d,
+    cfg,
+    { id, persona: persona.id, workspace: ws, cwd: dir },
+    persona,
+  ).afterCompactions;
   return {
     persona,
     workspace: { name: ws, dir },
@@ -2137,8 +2289,9 @@ export async function resumeAgent(
     ]);
   // den#4: a rotated conversation ends there; its role relaunches from
   // the handoff, in a fresh one.
-  const rot = rotationInfo(d.stateDir(), rec);
-  if (rot?.ready)
+  const rot = rotationOf(d, rec);
+  // D28: on_due off: nothing happens, its conversation goes on.
+  if (rot?.ready && rot.onDue !== "off")
     throw new AgentError(
       `agent ${rec.id} rotated after ${reasonText(rot.due!, rot.compactions)}: its conversation is not resumed`,
       {
@@ -2566,12 +2719,14 @@ export async function relaunchAgent(
   d: AgentsResolved,
   id: string,
   ws?: string,
+  /** D28: Den relaunched it by itself (on_due auto). */
+  o: { auto?: boolean } = {},
 ): Promise<Relaunched> {
   const rec = agentRecord(d, id, ws);
   syncCatalog(d);
   const rt = runtimeFor(rec.runtime);
   const files = agentFilesDir(d.stateDir(), rec.id);
-  const rot = rotationInfo(d.stateDir(), rec);
+  const rot = rotationOf(d, rec);
   const fresh = `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`;
   const resume = `Resume: ${d.cli} agents resume ${rec.id}`;
   if (!rt.firstPrompt)
@@ -2604,6 +2759,7 @@ export async function relaunchAgent(
     reason: rot.due,
     compactions: rot.compactions,
     ...(rec.resumeToken ? { conversation: rec.resumeToken } : {}),
+    ...(o.auto ? { auto: true } : {}),
   };
   let kept = "";
   const before = readRotation(files);
@@ -2805,7 +2961,7 @@ export async function markInterrupted(
     if (resumeRefusal(rec)) continue;
     try {
       // den#4: a rotated one relaunches from its handoff instead.
-      const r = rotationInfo(d.stateDir(), rec)?.ready
+      const r = rotationOf(d, rec)?.ready
         ? await relaunchAgent(d, rec.id)
         : await resumeAgent(d, rec.id);
       if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
@@ -2837,7 +2993,7 @@ export async function resumeInterrupted(
   const resumed: Resumed[] = [];
   const failed: { agent: string; why: string }[] = [];
   for (const rec of recs) {
-    const rot = rotationInfo(d.stateDir(), rec);
+    const rot = rotationOf(d, rec);
     const why =
       resumeRefusal(rec) ?? (rot?.ready ? rotatedRefusal(rec, rot) : null);
     if (why) {
@@ -3018,4 +3174,280 @@ export async function startPlainSession(
       });
     return { info };
   });
+}
+
+// ── D28: rotation by itself (on_due auto), and the callout's actions ────────
+
+/** How often the server looks at due agents. */
+export const ROTATION_TICK_MS = 15_000;
+/** Between two asks for the handoff, at least this long. */
+export const ROTATION_ASK_GAP_MS = 120_000;
+/** Asks before auto falls back to ask. */
+export const ROTATION_MAX_ASKS = 2;
+
+export type RotationEvent =
+  | { kind: "asked"; agent: string; workspace: string; asked: number }
+  | { kind: "fell-back"; agent: string; workspace: string }
+  | {
+      kind: "relaunched";
+      agent: string;
+      workspace: string;
+      why: string;
+      /** The conversation that ended (kept). */
+      old?: string;
+    }
+  | { kind: "failed"; agent: string; workspace: string; why: string };
+
+/**
+ * D28, one look at every running agent whose rotation is due. Each one
+ * whose settings say `auto`, at idle (never mid-turn; unknown counts as
+ * busy): its handoff passes, so Den relaunches it; or Den asks it for the
+ * handoff (at most ROTATION_MAX_ASKS times, ROTATION_ASK_GAP_MS apart),
+ * then falls back to ask. The limit the hook counts against follows the
+ * settings. Never throws: each agent's failure is an event.
+ */
+export async function rotationTick(
+  d: AgentsResolved,
+  now: Date = new Date(),
+  o: { askGapMs?: number; send?: typeof sendFirstInstruction } = {},
+): Promise<RotationEvent[]> {
+  const events: RotationEvent[] = [];
+  let sessions: SessionInfo[];
+  try {
+    sessions = await hostSessions(d);
+  } catch {
+    return events;
+  }
+  const policyOf = policyResolver(d);
+  const gap = o.askGapMs ?? ROTATION_ASK_GAP_MS;
+  const send = o.send ?? sendFirstInstruction;
+  for (const rec of listRecords(d.stateDir())) {
+    const who = { agent: rec.id, workspace: rec.workspace };
+    try {
+      const s = rec.session ? sessionOf(sessions, rec) : undefined;
+      if (!s || s.exited) continue;
+      const pol = policyOf(rec);
+      if (!pol) continue;
+      const files = agentFilesDir(d.stateDir(), rec.id);
+      const st = readRotation(files);
+      if (!st) continue;
+      if (
+        st.conversation &&
+        rec.resumeToken &&
+        st.conversation !== rec.resumeToken
+      )
+        continue;
+      syncAfter(files, pol.afterCompactions);
+      const rot = rotationInfo(d.stateDir(), rec, pol);
+      if (!rot?.due) continue;
+      // Relaunch now, asked before the handoff, relaunches whatever on_due says.
+      const wanted = rot.relaunchWanted === true;
+      if (!wanted && (pol.onDue !== "auto" || rot.fellBack)) continue;
+      if ((await agentBusy(d, rec)) !== false) continue;
+      if (rot.handoff === "ok") {
+        const r = await relaunchAgent(d, rec.id, rec.workspace, {
+          auto: true,
+        });
+        events.push({
+          kind: "relaunched",
+          ...who,
+          why: r.why,
+          ...(rec.resumeToken ? { old: rec.resumeToken } : {}),
+        });
+        continue;
+      }
+      const last = st.askedAt ? Date.parse(st.askedAt) : 0;
+      if (now.getTime() - last < gap) continue;
+      if (wanted) continue; // asked once, by the person: no more asks
+      if ((st.asked ?? 0) >= ROTATION_MAX_ASKS) {
+        noteFellBack(files);
+        events.push({ kind: "fell-back", ...who });
+        continue;
+      }
+      const text = rotationInstruction(files, rot.due, rot.compactions);
+      if (
+        await send(d, s.ref.id, rec.runtime, text, {
+          quietMs: 500,
+          maxMs: 5000,
+        })
+      ) {
+        const n = noteAsked(files, now);
+        events.push({ kind: "asked", ...who, asked: n?.asked ?? 1 });
+      }
+    } catch (e) {
+      events.push({ kind: "failed", ...who, why: (e as Error).message });
+    }
+  }
+  return events;
+}
+
+/**
+ * D28 "Keep this conversation": its count starts again, nothing is due.
+ * `never`: also this agent's override after_compactions never ("don't ask
+ * again for this agent").
+ */
+export function keepAgentConversation(
+  d: AgentsResolved,
+  id: string,
+  ws?: string,
+  o: { never?: boolean } = {},
+): AgentRecord {
+  const rec = agentRecord(d, id, ws);
+  if (!keepConversation(agentFilesDir(d.stateDir(), rec.id)))
+    throw refused(`agent ${rec.id} has no rotation to reset`);
+  if (o.never)
+    setRotateValue(d.stateDir(), "agent", rec.id, "after_compactions", "never");
+  return rec;
+}
+
+/**
+ * D28 "Write handoff": types the handoff instruction into agent `id`'s
+ * running session, at idle. Refused while it is mid-turn or not running.
+ */
+export async function askForHandoff(
+  d: AgentsResolved,
+  id: string,
+  ws?: string,
+  send: typeof sendFirstInstruction = sendFirstInstruction,
+  /** Relaunch now: Den relaunches it once the handoff passes. */
+  o: { relaunch?: boolean } = {},
+): Promise<AgentRecord & { resumed?: boolean }> {
+  const rec = agentRecord(d, id, ws);
+  const s = sessionOf(await hostSessions(d), rec);
+  if (!s || s.exited) {
+    // Stopped, no handoff yet: its conversation resumes to write one (the
+    // resume hook gives it the instruction), then Den relaunches it.
+    const files = agentFilesDir(d.stateDir(), rec.id);
+    if (!o.relaunch)
+      throw refused(
+        `agent ${rec.id} is not running: resume it to write its handoff`,
+        [`Resume: ${d.cli} agents resume ${rec.id}`],
+      );
+    const r = await resumeAgent(d, rec.id, ws);
+    noteAsked(files, new Date(), true);
+    return { ...r.rec, resumed: true };
+  }
+  if ((await agentBusy(d, rec)) === true)
+    throw refused(`agent ${rec.id} is mid-turn: ask again when its turn ends`);
+  const rot = rotationOf(d, rec);
+  const files = agentFilesDir(d.stateDir(), rec.id);
+  const text = rotationInstruction(
+    files,
+    rot?.due ?? "compactions",
+    rot?.compactions ?? readRotation(files)?.compactions ?? 0,
+  );
+  if (
+    !(await send(d, s.ref.id, rec.runtime, text, { quietMs: 500, maxMs: 5000 }))
+  )
+    throw refused(`agent ${rec.id}'s session did not take the prompt`);
+  noteAsked(files, new Date(), o.relaunch === true);
+  return rec;
+}
+
+/**
+ * D28: Resume (or Start) on an agent follows its on_due: a due agent whose
+ * handoff passes relaunches from it under auto; ask refuses with the
+ * callout's choices (code "rotated"); off, or nothing due, resumes.
+ */
+export async function resumeOrRelaunch(
+  d: AgentsResolved,
+  id: string,
+  ws?: string,
+): Promise<
+  { kind: "resumed"; s: Resumed } | { kind: "relaunched"; s: Relaunched }
+> {
+  const rec = agentRecord(d, id, ws);
+  const rot = rotationOf(d, rec);
+  if (rot?.ready && rot.onDue === "auto")
+    return {
+      kind: "relaunched",
+      s: await relaunchAgent(d, id, ws, { auto: true }),
+    };
+  return { kind: "resumed", s: await resumeAgent(d, id, ws) };
+}
+
+/** D28: the rotation settings, and agent `agent`'s effective values. */
+export function rotationSettings(
+  d: AgentsResolved,
+  agent?: string,
+  ws?: string,
+): {
+  defaults: typeof ROTATE_DEFAULTS;
+  org: OrgRotate;
+  install: RotateValues;
+  overrides: NonNullable<RotateFile["overrides"]>;
+  effective?: RotationPolicy & { agent: string };
+} {
+  const f = readRotateFile(d.stateDir());
+  let org: OrgRotate = {};
+  try {
+    org = d.agentsConfig().rotateOrg ?? {};
+  } catch {
+    org = {};
+  }
+  let effective: (RotationPolicy & { agent: string }) | undefined;
+  if (agent) {
+    const rec = agentRecord(d, agent, ws);
+    const pol = policyResolver(d)(rec);
+    if (pol) effective = { agent: rec.id, ...pol };
+  }
+  return {
+    defaults: ROTATE_DEFAULTS,
+    org,
+    install: f.install ?? {},
+    overrides: f.overrides ?? {},
+    ...(effective ? { effective } : {}),
+  };
+}
+
+/**
+ * D28: set one rotation setting from a request body `{ scope, target?,
+ * key, value }` (value null: cleared). A target is checked to be a name
+ * (persona-workspace: `<persona>@<workspace>`).
+ */
+export function setRotationSetting(
+  d: AgentsResolved,
+  body: Record<string, unknown>,
+): { file: RotateFile } {
+  const scope = body.scope;
+  if (
+    scope !== "install" &&
+    !(OVERRIDE_SCOPES as readonly unknown[]).includes(scope)
+  )
+    throw usage(
+      `scope: one of install, ${OVERRIDE_SCOPES.join(", ")} (got ${JSON.stringify(scope)})`,
+    );
+  const target = body.target;
+  if (scope !== "install") {
+    const ok =
+      typeof target === "string" &&
+      (scope === "persona-workspace"
+        ? /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}@[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(
+            target,
+          )
+        : scope === "service"
+          ? /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/.test(target)
+          : /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(target));
+    if (!ok)
+      throw usage(
+        scope === "persona-workspace"
+          ? "target: <persona>@<workspace>"
+          : `target: the ${String(scope)} it is for`,
+      );
+  } else if (target !== undefined && target !== null)
+    throw usage("target: install takes none");
+  if (typeof body.key !== "string") throw usage("key is required");
+  try {
+    return {
+      file: setRotateValue(
+        d.stateDir(),
+        scope as OverrideScope | "install",
+        scope === "install" ? undefined : (target as string),
+        body.key,
+        body.value === null ? undefined : body.value,
+      ),
+    };
+  } catch (e) {
+    throw usage((e as Error).message);
+  }
 }

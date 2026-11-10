@@ -50,7 +50,11 @@ import { revokedAgentIds } from "../../shared/actor-token.js";
 import { listRecords } from "../../shared/agents/records.js";
 import { softNewlineSeq } from "../../shared/agents/catalog.js";
 import { getRuntime } from "../../shared/agents/runtimes.js";
-import type { RotationInfo } from "../../shared/agents/rotation.js";
+import type {
+  RotationEntry,
+  RotationInfo,
+  RotationPolicy,
+} from "../../shared/agents/rotation.js";
 import {
   connectHost,
   noHost,
@@ -61,7 +65,7 @@ import { sessionPaths } from "../../shared/sessions/paths.js";
 import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
 import { agentRows, newerOf, noteEnded } from "../cli/agent-ops.js";
-import type { Override } from "../../shared/agents/records.js";
+import type { AgentRecord, Override } from "../../shared/agents/records.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
@@ -85,6 +89,8 @@ export interface SessionRouteDeps {
   pty?: () => PtyLoad;
   /** The agent ids with an approval waiting for the person (AG-6a, ON-3). */
   waitingAgents?: () => ReadonlySet<string>;
+  /** D28: each agent's effective rotation settings (one resolver per list). */
+  rotationPolicy?: () => (rec: AgentRecord) => RotationPolicy | undefined;
 }
 
 interface Resolved {
@@ -95,6 +101,7 @@ interface Resolved {
   workspaceExists: (ws: string) => boolean;
   pty: () => PtyLoad;
   waitingAgents: () => ReadonlySet<string>;
+  rotationPolicy?: SessionRouteDeps["rotationPolicy"];
 }
 
 /** A workspace name as `?ws=` may give it. */
@@ -125,6 +132,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
         )),
     pty: d.pty ?? (() => loadPty()),
     waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
+    ...(d.rotationPolicy ? { rotationPolicy: d.rotationPolicy } : {}),
   };
 }
 
@@ -199,13 +207,16 @@ export interface ListedSession {
    * Relaunch from handoff is its action, not Resume.
    */
   rotation?: RotationInfo;
+  /** D28: the last relaunch from a handoff (the page toasts one Den did by itself). */
+  lastRotation?: RotationEntry;
 }
 
 /** The list, from the host's sessions and the agent records. */
 export function listedSessions(
   sessions: SessionInfo[],
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
-    Partial<Pick<Resolved, "waitingAgents">>,
+    Partial<Pick<Resolved, "waitingAgents">> &
+    Pick<SessionRouteDeps, "rotationPolicy">,
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
 ): ListedSession[] {
@@ -226,7 +237,12 @@ export function listedSessions(
   const out: ListedSession[] = [];
   const agentSessions = new Set<string>();
   noteEnded(d.stateDir(), mine, records);
-  for (const r of agentRows(mine, records, d.stateDir())) {
+  for (const r of agentRows(
+    mine,
+    records,
+    d.stateDir(),
+    d.rotationPolicy?.(),
+  )) {
     const rec = records.find((x) => x.id === r.agent)!;
     const s = r.session;
     if (s) agentSessions.add(s.ref.id);
@@ -262,7 +278,9 @@ export function listedSessions(
       ...(r.stoppedAt ? { stoppedAt: r.stoppedAt } : {}),
       ...(r.endedAt ? { endedAt: r.endedAt } : {}),
       ...(r.interruptedAt ? { interruptedAt: r.interruptedAt } : {}),
-      ...(r.rotation?.due ? { rotation: r.rotation } : {}),
+      // D28: always (its effective settings show), due or not.
+      ...(r.rotation ? { rotation: r.rotation } : {}),
+      ...(r.lastRotation ? { lastRotation: r.lastRotation } : {}),
       ...(revoked.has(rec.id) && s && !s.exited ? { tokenRevoked: true } : {}),
       ...(waiting.has(rec.id) && s && !s.exited ? { waiting: true } : {}),
     });

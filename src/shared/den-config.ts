@@ -21,6 +21,7 @@ import { ConfigError, isConfigError } from "./config-error.js";
 import { validateCatalog, type CatalogEntry } from "./agents/catalog.js";
 import type { Guardrails } from "./agents/guardrails.js";
 import { DEFAULT_ROTATE, type RotateSettings } from "./agents/rotation.js";
+import { checkRotateValue, type OrgRotate } from "./agents/rotate-settings.js";
 import {
   checkCategoriesConfig,
   checkRolesConfig,
@@ -965,6 +966,8 @@ export interface ResolvedAgentsConfig {
   runtimeCatalog: CatalogEntry[];
   /** agents.rotate with its defaults (den#4); unset: DEFAULT_ROTATE. */
   rotate?: RotateSettings;
+  /** D28: agents.rotate as written, the org scope. */
+  rotateOrg?: OrgRotate;
   /** agents.categories (AG-10.5): the distribution's, after Den's. */
   categories?: Category[];
   /** agents.roles (AG-11.1): new roles and Den roles' preset extensions. */
@@ -972,32 +975,41 @@ export interface ResolvedAgentsConfig {
 }
 
 /** `agents.rotate` checked; any other key, or a bad value, throws naming it. */
-function rotateBlock(v: unknown): RotateSettings {
+/**
+ * `agents.rotate` checked, both ways: den#4's settings (afterCompactions 0
+ * for never) and, for D28's scopes, the org's values as written.
+ */
+export function rotateOrgBlock(v: unknown): {
+  settings: RotateSettings;
+  org: OrgRotate;
+} {
   const out: RotateSettings = { ...DEFAULT_ROTATE };
-  if (v === undefined || v === null) return out;
+  const org: OrgRotate = {};
+  if (v === undefined || v === null) return { settings: out, org };
   if (!isMapping(v))
     throw new Error(
-      "agents.rotate: must be a mapping ({ after_compactions: <n>, standing: true|false })",
+      "agents.rotate: must be a mapping ({ after_compactions: <n>|never, on_due: auto|ask|off, on_pr_merged: true|false })",
     );
   for (const [k, x] of Object.entries(v)) {
-    if (k === "after_compactions") {
-      if (typeof x !== "number" || !Number.isInteger(x) || x < 1 || x > 100)
-        throw new Error(
-          `agents.rotate.after_compactions: must be a whole number from 1 to 100 (got ${JSON.stringify(x)})`,
-        );
-      out.afterCompactions = x;
+    if (k === "after_compactions" || k === "on_due" || k === "on_pr_merged") {
+      const bad = checkRotateValue(k, x);
+      if (bad) throw new Error(`agents.rotate.${bad}`);
+      (org as Record<string, unknown>)[k] = x;
+      if (k === "after_compactions")
+        out.afterCompactions = x === "never" ? 0 : (x as number);
     } else if (k === "standing") {
       if (typeof x !== "boolean")
         throw new Error(
           `agents.rotate.standing: must be true or false (got ${JSON.stringify(x)})`,
         );
       out.standing = x;
+      org.standing = x;
     } else
       throw new Error(
-        `agents.rotate.${k}: unknown key (takes after_compactions, standing)`,
+        `agents.rotate.${k}: unknown key (takes after_compactions, on_due, on_pr_merged)`,
       );
   }
-  return out;
+  return { settings: out, org };
 }
 
 /** An agent id or workspace name: what WORKSPACE_NAME_RE accepts. */
@@ -1060,7 +1072,10 @@ export function readAgentsConfig(
       raw.runtime_catalog,
       "agents.runtime_catalog",
     ),
-    rotate: rotateBlock(raw.rotate),
+    ...(() => {
+      const r = rotateOrgBlock(raw.rotate);
+      return { rotate: r.settings, rotateOrg: r.org };
+    })(),
   };
   out.categories = checkCategoriesConfig(raw.categories);
   out.roles = checkRolesConfig(raw.roles, [

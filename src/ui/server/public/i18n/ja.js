@@ -473,9 +473,42 @@
       "セッションは交代しました（{why}）が、handoff.md がありません。再開して書かせるか、新しく始めてください。",
     "ag.rot.badHandoff":
       "セッションは交代しました（{why}）が、handoff.md が不完全です。再開して直すか、新しく始めてください。",
-    "ag.relaunch": "引き継ぎから再起動",
-    "ag.relaunchName": "{id} を引き継ぎから再起動",
+    "ag.relaunch": "今すぐ再起動",
+    "ag.relaunchName": "{id} を今すぐ再起動",
     "ag.relaunched": "{id} を引き継ぎから再起動しました",
+    "ag.rc.autoAsk":
+      "交代の時期です（{why}）。待機中になったら Den が引き継ぎを書かせ、再起動します。",
+    "ag.rc.autoReady":
+      "交代の時期です（{why}）。引き継ぎは準備済み: 待機中になったら Den が再起動します。",
+    "ag.rc.ready": "交代の時期です（{why}）。引き継ぎは準備済みです。",
+    "ag.rc.missing": "交代の時期です（{why}）。引き継ぎがまだありません。",
+    "ag.rc.bad": "交代の時期です（{why}）。引き継ぎが不完全です。",
+    "ag.rc.fellBack":
+      "交代の時期です（{why}）。2 回頼んでも引き継ぎを書きませんでした。",
+    "ag.rc.wanted":
+      "交代の時期です（{why}）。引き継ぎが書かれたら Den が再起動します。",
+    "ag.rc.write": "引き継ぎを書かせる",
+    "ag.rc.writeName": "{id} に引き継ぎを書かせる",
+    "ag.rc.keep": "この会話を続ける",
+    "ag.rc.keepName": "{id} の会話を続ける",
+    "ag.rc.never": "このエージェントには今後たずねない",
+    "ag.rc.settings": "設定",
+    "ag.rc.from": "圧縮 {n} 回で交代（{src}）。時期が来たら: {mode}（{src2}）",
+    "ag.rc.neverN": "しない",
+    "ag.rc.mode.auto": "自動で再起動",
+    "ag.rc.mode.ask": "たずねる",
+    "ag.rc.mode.off": "何もしない",
+    "ag.rc.menu": "交代の設定",
+    "ag.rc.noState": "まだ交代の記録がありません: 次の起動から数えます。",
+    "ag.rc.asked": "{id} に引き継ぎを頼みました",
+    "ag.rc.askedRelaunch":
+      "{id} に引き継ぎを頼みました。確認が通ったら Den が再起動します。",
+    "ag.rc.askedResumed":
+      "引き継ぎを書かせるため {id} を再開しました。確認が通ったら Den が再起動します。",
+    "ag.rc.kept": "{id} の会話を続けます: 回数はやり直しです",
+    "ag.rc.keptNever": "{id} の会話を続けます: 今後は交代しません",
+    "ag.rc.autoRelaunched":
+      "{why}のあと {id} を引き継ぎから再起動しました。前の会話 {old} は残っています。",
     "ag.remove": "削除",
     "ag.removeName": "{id} を削除",
     "ag.removed": "{id} を削除しました",
@@ -691,6 +724,7 @@
     "ver.pinned": "{v} に固定",
     "ver.usedLatest": "{n} は最新バージョンに追従します",
     "set.agents.personas": "ペルソナ",
+    "set.agents.rotation": "交代",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "エージェント",
     "kind.agent": "エージェント",

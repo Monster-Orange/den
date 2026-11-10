@@ -56,6 +56,13 @@ export interface RotationState {
   /** Set when a trigger fired. */
   due?: RotateReason;
   dueAt?: string;
+  /** D28: how many times Den asked for the handoff, and the last time. */
+  asked?: number;
+  askedAt?: string;
+  /** D28: auto gave up asking (2 asks, still no handoff): ask mode. */
+  fellBack?: boolean;
+  /** D28 "Relaunch now" before a handoff: relaunch once it passes, whatever on_due says. */
+  relaunchWanted?: boolean;
 }
 
 /** `agents.rotate` with its defaults applied. */
@@ -80,6 +87,8 @@ export interface RotationEntry {
   compactions: number;
   /** The conversation that ended (its resume token). */
   conversation?: string;
+  /** D28: Den relaunched it by itself (on_due auto). */
+  auto?: boolean;
 }
 
 /** The compactions after which `persona` rotates; 0: it never does. */
@@ -119,6 +128,10 @@ export function readRotation(filesDir: string): RotationState | null {
   if (typeof o.pendingTrigger === "string") s.pendingTrigger = o.pendingTrigger;
   if (o.due === "compactions" || o.due === "pr-merged") s.due = o.due;
   if (typeof o.dueAt === "string") s.dueAt = o.dueAt;
+  if (count(o.asked)) s.asked = count(o.asked);
+  if (typeof o.askedAt === "string") s.askedAt = o.askedAt;
+  if (o.fellBack === true) s.fellBack = true;
+  if (o.relaunchWanted === true) s.relaunchWanted = true;
   return s;
 }
 
@@ -235,6 +248,51 @@ export function markDue(
   return true;
 }
 
+/**
+ * D28 "Keep this conversation": the count starts again from 0 for the
+ * conversation it has, and nothing is due. Returns false with no state.
+ */
+export function keepConversation(filesDir: string): boolean {
+  const s = readRotation(filesDir);
+  if (!s) return false;
+  writeRotation(filesDir, {
+    ...(s.conversation ? { conversation: s.conversation } : {}),
+    compactions: 0,
+    after: s.after,
+  });
+  return true;
+}
+
+/** D28: one more ask for the handoff, noted; `relaunch`: Relaunch now asked. */
+export function noteAsked(
+  filesDir: string,
+  now: Date = new Date(),
+  relaunch = false,
+): RotationState | null {
+  const s = readRotation(filesDir);
+  if (!s) return null;
+  const next: RotationState = {
+    ...s,
+    asked: (s.asked ?? 0) + 1,
+    askedAt: now.toISOString(),
+    ...(relaunch ? { relaunchWanted: true } : {}),
+  };
+  writeRotation(filesDir, next);
+  return next;
+}
+
+/** D28: auto gave up asking; the callout's buttons take over. */
+export function noteFellBack(filesDir: string): void {
+  const s = readRotation(filesDir);
+  if (s && !s.fellBack) writeRotation(filesDir, { ...s, fellBack: true });
+}
+
+/** D28: the limit the hook counts against, when the settings changed. */
+export function syncAfter(filesDir: string, after: number): void {
+  const s = readRotation(filesDir);
+  if (s && s.after !== after) writeRotation(filesDir, { ...s, after });
+}
+
 /** Clear a rotation due for `reason` (a merge mark gh no longer confirms). */
 export function clearDue(filesDir: string, reason: RotateReason): boolean {
   const s = readRotation(filesDir);
@@ -274,8 +332,31 @@ export function readHandoff(filesDir: string): {
   return { status: r.ok ? "ok" : "invalid", text, problems: r.problems };
 }
 
+/**
+ * D28: an agent's effective rotation settings (rotate-settings.ts), when
+ * the caller resolved them; without, the state's own limit and den#4's
+ * rules apply.
+ */
+export interface RotationPolicy {
+  /** 0: never rotates. */
+  afterCompactions: number;
+  onDue: "auto" | "ask" | "off";
+  onPrMerged: boolean;
+  /** Where each value comes from, in words ("persona planner"). */
+  from?: { after_compactions: string; on_due: string; on_pr_merged: string };
+}
+
 /** An agent's rotation, as the Agents page and the CLI show it. */
 export interface RotationInfo {
+  /** D28: what happens when it is due, and where the settings come from. */
+  onDue?: RotationPolicy["onDue"];
+  from?: RotationPolicy["from"];
+  /** D28: Den asked it for its handoff this many times (auto). */
+  asked?: number;
+  /** D28: auto fell back to ask (the handoff still failed after 2 asks). */
+  fellBack?: boolean;
+  /** D28: Relaunch now was asked before the handoff: Den relaunches once it passes. */
+  relaunchWanted?: boolean;
   /** Why it rotates, when a trigger fired. */
   due?: RotateReason;
   compactions: number;
@@ -295,20 +376,44 @@ export interface RotationInfo {
 export function rotationInfo(
   stateDir: string,
   rec: AgentRecord,
+  policy?: RotationPolicy,
 ): RotationInfo | null {
   const files = agentFilesDir(stateDir, rec.id);
-  const s = readRotation(files);
-  if (!s) return null;
-  if (s.conversation && rec.resumeToken && s.conversation !== rec.resumeToken)
+  const read = readRotation(files);
+  if (!read) return null;
+  if (
+    read.conversation &&
+    rec.resumeToken &&
+    read.conversation !== rec.resumeToken
+  )
     return null;
+  // D28: the limit in force now, not the one the launch counted against.
+  const s: RotationState = policy
+    ? { ...read, after: policy.afterCompactions }
+    : read;
+  if (
+    policy &&
+    s.after > 0 &&
+    s.compactions < s.after &&
+    s.due === "compactions"
+  ) {
+    delete s.due;
+  }
+  if (policy && !policy.onPrMerged && s.due === "pr-merged") delete s.due;
+  const merged = policy ? policy.onPrMerged : true;
   const due =
     dueFor(s) ??
-    (s.after > 0 && rec.outcome?.prMerged ? "pr-merged" : undefined);
+    (s.after > 0 && merged && rec.outcome?.prMerged ? "pr-merged" : undefined);
   const h = due
     ? readHandoff(files)
     : { status: "missing" as const, problems: [] };
   return {
     ...(due ? { due } : {}),
+    ...(policy ? { onDue: policy.onDue } : {}),
+    ...(policy?.from ? { from: policy.from } : {}),
+    ...(read.asked ? { asked: read.asked } : {}),
+    ...(read.fellBack ? { fellBack: true } : {}),
+    ...(read.relaunchWanted ? { relaunchWanted: true } : {}),
     compactions: s.compactions,
     after: s.after,
     handoff: h.status,

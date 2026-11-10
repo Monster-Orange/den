@@ -374,6 +374,25 @@ export const ROUTES: readonly RouteEntry[] = [
     "forgets every stopped agent of the workspaces named (AG-14.1b)",
   ),
   M(["POST"], "/api/agents/restore", "Undo: brings removed agents back"),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/agents/:id/keep",
+    "D28 Keep this conversation: resets its rotation count (and, asked, sets its override to never); a person's only",
+  ),
+  S(
+    ["POST"],
+    "/api/workspaces/:ws/agents/:id/handoff",
+    "D28 Write handoff: types the handoff prompt into the agent's running session",
+  ),
+  R(
+    "/api/agents/rotation",
+    "D28: rotation settings, the overrides and an agent's effective values",
+  ),
+  M(
+    ["PUT"],
+    "/api/agents/rotation",
+    "D28: sets or clears one rotation setting at one scope; a person's only",
+  ),
   S(
     ["POST"],
     "/api/workspaces/:ws/agents/:id/fresh",
@@ -504,6 +523,8 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/name",
     "/api/workspaces/:ws/agents/:id/paths",
     "/api/workspaces/:ws/agents/:id/persona",
+    "/api/workspaces/:ws/agents/:id/keep",
+    "/api/workspaces/:ws/agents/:id/handoff",
   ],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "agent-routes.ts:PERSONA_PATH": ["/api/personas/:id"],

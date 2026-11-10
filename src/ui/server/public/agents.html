@@ -233,6 +233,30 @@
         font: 12px/1.4 var(--sans);
         color: var(--faint);
       }
+      /* D28: the rotation callout: its message, its settings, its buttons. */
+      .agst .agcant[data-rot-msg] {
+        color: var(--warn-text, var(--text));
+      }
+      .agst .agfrom {
+        font-size: 11.5px;
+      }
+      .agnever {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font: 12px/1.4 var(--sans);
+        color: var(--muted);
+      }
+      .bar2 .agrot {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+      }
+      .bar2 .agrot .agnever {
+        display: none;
+      }
       .agst[data-review] > .agr {
         border-left-color: var(--warn);
       }

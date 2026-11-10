@@ -59,6 +59,11 @@ export function rotationHookOutput(
   now: Date = new Date(),
 ): string {
   if (!input || typeof input !== "object") return "";
+  // D28: the limit in force is the one Den keeps in rotation.json (it
+  // follows the settings); the launch's --after is the first one.
+  const stored = readRotation(args.files);
+  if (stored && stored.after !== args.after)
+    args = { ...args, after: stored.after };
   const i = input as Record<string, unknown>;
   const event = i.hook_event_name;
   const conversation =

@@ -3296,10 +3296,12 @@ report. It works on den-claude for personas with Den's hooks on.
    the turn once while the handoff is missing or fails the check. The
    instruction: write `handoff.md` in the agent's files folder, then end
    the turn.
-4. Den relaunches the role. **Relaunch from handoff** starts a fresh
-   conversation (a new conversation id) with the same persona, workspace,
-   folder and grants. Its first prompt is the handoff. The handoff moves to
-   `agent-files/<id>/handoffs/`, and the record notes the rotation.
+4. Den relaunches the role, by itself unless the settings say otherwise
+   (`on_due`, below). A relaunch starts a fresh conversation (a new
+   conversation id) with the same name, persona, workspace, folder and
+   grants. Its first prompt is the handoff. The handoff moves to
+   `agent-files/<id>/handoffs/`, the record notes the rotation, and the
+   old conversation is kept.
 
 **The handoff** has five parts, each a heading, each filled in. Write it
 plainly, and explain every ID, as in a hand-back. It must stay under 20,000
@@ -3332,38 +3334,89 @@ agent's `handoff.md` (by its id), a file, or stdin: exit 0 when
 it passes, 1 with each missing or empty part and each unexplained ID. A
 part can also be a line such as `Next step: open the PR`.
 
-**Resume after a rotation.** Once a rotation is due and `handoff.md`
-passes, Den declines a plain Resume of that conversation:
+**What happens when a rotation is due** (`on_due`):
 
-- The Agents page shows the row as "Ready to relaunch (3 compactions)" or
-  "Ready to relaunch (PR merged)". Its buttons are Relaunch from handoff
-  (the primary one), Start fresh and Remove.
-- `<cli> agents resume <id>` refuses (exit 1) and prints
-  `Relaunch from handoff: <cli> agents relaunch <id>`. The resume route
-  answers 409 with code `rotated`.
-- `<cli> agents relaunch <id> [-w <ws>]` and
-  `POST /api/workspaces/<ws>/agents/<id>/relaunch` relaunch it. A running
-  rotated agent is stopped first.
-- With `handoff.md` missing or failing the check, the row says so, and
-  Resume and Start fresh stay. Resume the agent to write or fix it.
-  Relaunch says what is wrong (409 `no_handoff`) and names Start fresh.
-- After a restart, a standing persona that rotated relaunches on its own,
-  as a standing persona resumes on its own.
+- `auto` (the default). At the agent's next idle, never mid-turn, Den
+  types the instruction into its session: write the handoff. Once the
+  handoff passes the check and the agent is idle, Den relaunches it. The
+  page shows a toast ("Relaunched <id> from its handoff after 3
+  compactions. The old conversation <id> is kept.") and the audit log
+  records it. Den asks at most twice, two minutes apart. If the handoff
+  still fails, it falls back to `ask`.
+- `ask`. Nothing happens by itself. The agent's callout has the buttons.
+- `off`. Nothing happens, and no callout shows. Resume goes on with the
+  same conversation.
 
-**Settings**, in the org config:
+**The callout** shows on a due agent's row (running or stopped) and in its
+pane bar. It says what happens next and where the settings come from
+("Rotates after 3 compactions (persona planner); when due: relaunch by
+itself (default)"). Its buttons:
+
+- **Relaunch now**: from the handoff when it passes. Otherwise Den asks
+  for it first (a stopped agent resumes to write it) and relaunches it
+  once it passes, whatever `on_due` says.
+- **Write handoff**: on a running agent without one, types the
+  instruction. It is refused mid-turn.
+- **Keep this conversation**: the compaction count starts again. With
+  "Don't ask again for this agent", that agent's `after_compactions` is
+  set to `never`. A person's only.
+- **Settings**: Settings › Agents › Rotation.
+
+**Resume and Start on a due agent** follow `on_due`. Under `auto`, Resume
+relaunches it from its handoff once the handoff passes. Under `ask`,
+`<cli> agents resume <id>` refuses (exit 1) and names
+`<cli> agents relaunch <id>`, and the resume route answers 409 with code
+`rotated`. `<cli> agents relaunch <id> [-w <ws>]` and
+`POST /api/workspaces/<ws>/agents/<id>/relaunch` relaunch it at any time
+(a running agent is stopped first; a missing or failing handoff is a 409
+`no_handoff`). After a restart, a standing persona that rotated relaunches
+on its own.
+
+**Settings.** Three keys:
+
+| Key                 | Values                 | Default |
+| ------------------- | ---------------------- | ------- |
+| `after_compactions` | 1 to 100, or `never`   | 3       |
+| `on_due`            | `auto`, `ask` or `off` | `auto`  |
+| `on_pr_merged`      | `true` or `false`      | `true`  |
+
+Each key comes from the most specific scope that sets it: the agent, the
+persona in a workspace, the persona, the workspace, the service (the
+workspace service whose folder holds the agent's folder), this install,
+the org config, then Den's default. A change applies to running agents
+too, at their next look (about every 15 seconds).
+
+The org's values go in the org config:
 
 ```yaml
 agents:
   rotate:
-    after_compactions: 3 # 1 to 100; the default is 3
-    standing: true # standing personas rotate too (the default)
+    after_compactions: 3 # 1 to 100, or never
+    on_due: auto # auto, ask or off
+    on_pr_merged: true
 ```
 
-`standing` is for standing personas, such as the planner and the
-orchestrator. With `true` (the default), they rotate like the rest: only
-their context resets, and they keep their id and workspace. With `false`,
-they never rotate. A setting takes effect at the agent's next start or
-relaunch. An unknown key, or a bad value, is an error naming the key.
+This install's values and every override are set in Settings › Agents ›
+Rotation, or from the command line, and kept in
+`<stateDir>/agent-rotation.json`:
+
+```bash
+<cli> agents rotate                                  # every value and override
+<cli> agents rotate on_due ask                       # this install
+<cli> agents rotate --persona planner after_compactions never
+<cli> agents rotate --persona planner -w notes after_compactions 5  # that persona in notes
+<cli> agents rotate --workspace notes on_due off
+<cli> agents rotate --service shop on_pr_merged false
+<cli> agents rotate --agent art --unset after_compactions
+<cli> agents rotate art --show                       # its values, and where each comes from
+<cli> agents keep <id> [--never]                     # Keep this conversation
+<cli> agents handoff <id>                            # Write handoff
+```
+
+`agents rotate` and `agents keep` are refused inside an agent's session.
+den#4's `standing: false` still works: standing personas never rotate,
+unless a persona or agent override says otherwise. Set it per persona
+instead (`--persona planner after_compactions never`).
 
 ### Runtimes
 

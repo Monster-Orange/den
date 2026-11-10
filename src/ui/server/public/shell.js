@@ -611,9 +611,42 @@
       "Its session rotated ({why}), but it wrote no handoff.md. Resume it to write one, or start fresh.",
     "ag.rot.badHandoff":
       "Its session rotated ({why}), but its handoff.md is not complete. Resume it to fix it, or start fresh.",
-    "ag.relaunch": "Relaunch from handoff",
-    "ag.relaunchName": "Relaunch {id} from handoff",
+    "ag.relaunch": "Relaunch now",
+    "ag.relaunchName": "Relaunch {id} now",
     "ag.relaunched": "Relaunched {id} from its handoff",
+    "ag.rc.autoAsk":
+      "Due ({why}). Den asks it for its handoff when it is idle, then relaunches it.",
+    "ag.rc.autoReady":
+      "Due ({why}). Its handoff is ready: Den relaunches it when it is idle.",
+    "ag.rc.ready": "Due ({why}). Its handoff is ready.",
+    "ag.rc.missing": "Due ({why}). It has no handoff yet.",
+    "ag.rc.bad": "Due ({why}). Its handoff is not complete.",
+    "ag.rc.fellBack": "Due ({why}). It wrote no handoff after 2 asks.",
+    "ag.rc.wanted":
+      "Due ({why}). Den relaunches it once its handoff is written.",
+    "ag.rc.write": "Write handoff",
+    "ag.rc.writeName": "Ask {id} to write its handoff",
+    "ag.rc.keep": "Keep this conversation",
+    "ag.rc.keepName": "Keep {id}'s conversation",
+    "ag.rc.never": "Don't ask again for this agent",
+    "ag.rc.settings": "Settings",
+    "ag.rc.from":
+      "Rotates after {n} compactions ({src}); when due: {mode} ({src2})",
+    "ag.rc.neverN": "never",
+    "ag.rc.mode.auto": "relaunch by itself",
+    "ag.rc.mode.ask": "ask",
+    "ag.rc.mode.off": "nothing",
+    "ag.rc.menu": "Rotation settings",
+    "ag.rc.noState": "No rotation yet: it counts from its next start.",
+    "ag.rc.asked": "Asked {id} for its handoff",
+    "ag.rc.askedRelaunch":
+      "Asked {id} for its handoff. Den relaunches it once it passes.",
+    "ag.rc.askedResumed":
+      "Resumed {id} to write its handoff. Den relaunches it once it passes.",
+    "ag.rc.kept": "Kept {id}'s conversation: its count starts again",
+    "ag.rc.keptNever": "Kept {id}'s conversation: it won't rotate again",
+    "ag.rc.autoRelaunched":
+      "Relaunched {id} from its handoff after {why}. The old conversation {old} is kept.",
     "ag.interrupted": "{n} agents were interrupted when {name} restarted",
     "ag.interrupted.one": "{n} agent was interrupted when {name} restarted",
     "ag.resumeAll": "Resume all",
@@ -815,6 +848,7 @@
     "ver.pinned": "pinned {v}",
     "ver.usedLatest": "{n} now tracks the latest version",
     "set.agents.personas": "Personas",
+    "set.agents.rotation": "Rotation",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "Agents",
     "kind.agent": "Agent",

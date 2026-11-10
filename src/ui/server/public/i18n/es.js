@@ -487,9 +487,43 @@
       "Su sesión rotó ({why}), pero no escribió handoff.md. Reanúdalo para que lo escriba, o empieza de cero.",
     "ag.rot.badHandoff":
       "Su sesión rotó ({why}), pero su handoff.md no está completo. Reanúdalo para arreglarlo, o empieza de cero.",
-    "ag.relaunch": "Relanzar desde el traspaso",
-    "ag.relaunchName": "Relanzar {id} desde el traspaso",
+    "ag.relaunch": "Relanzar ahora",
+    "ag.relaunchName": "Relanzar {id} ahora",
     "ag.relaunched": "{id} relanzado desde su traspaso",
+    "ag.rc.autoAsk":
+      "Toca rotar ({why}). Den le pide el traspaso cuando esté libre y luego lo relanza.",
+    "ag.rc.autoReady":
+      "Toca rotar ({why}). Su traspaso está listo: Den lo relanza cuando esté libre.",
+    "ag.rc.ready": "Toca rotar ({why}). Su traspaso está listo.",
+    "ag.rc.missing": "Toca rotar ({why}). Aún no tiene traspaso.",
+    "ag.rc.bad": "Toca rotar ({why}). Su traspaso no está completo.",
+    "ag.rc.fellBack":
+      "Toca rotar ({why}). No escribió el traspaso tras pedírselo 2 veces.",
+    "ag.rc.wanted":
+      "Toca rotar ({why}). Den lo relanza en cuanto escriba su traspaso.",
+    "ag.rc.write": "Escribir traspaso",
+    "ag.rc.writeName": "Pedir a {id} que escriba su traspaso",
+    "ag.rc.keep": "Mantener esta conversación",
+    "ag.rc.keepName": "Mantener la conversación de {id}",
+    "ag.rc.never": "No volver a preguntar para este agente",
+    "ag.rc.settings": "Ajustes",
+    "ag.rc.from":
+      "Rota tras {n} compactaciones ({src}); al tocar: {mode} ({src2})",
+    "ag.rc.neverN": "nunca",
+    "ag.rc.mode.auto": "relanzar solo",
+    "ag.rc.mode.ask": "preguntar",
+    "ag.rc.mode.off": "nada",
+    "ag.rc.menu": "Ajustes de rotación",
+    "ag.rc.noState": "Aún no rota: cuenta desde su próximo inicio.",
+    "ag.rc.asked": "Se pidió a {id} su traspaso",
+    "ag.rc.askedRelaunch":
+      "Se pidió a {id} su traspaso. Den lo relanza en cuanto pase la revisión.",
+    "ag.rc.askedResumed":
+      "{id} reanudado para escribir su traspaso. Den lo relanza en cuanto pase la revisión.",
+    "ag.rc.kept": "Conversación de {id} mantenida: su cuenta vuelve a empezar",
+    "ag.rc.keptNever": "Conversación de {id} mantenida: ya no rotará",
+    "ag.rc.autoRelaunched":
+      "{id} relanzado desde su traspaso tras {why}. La conversación anterior {old} se conserva.",
     "ag.remove": "Quitar",
     "ag.removeName": "Quitar {id}",
     "ag.removed": "{id} quitado",
@@ -705,6 +739,7 @@
     "ver.pinned": "fijada {v}",
     "ver.usedLatest": "{n} ahora sigue la versión más reciente",
     "set.agents.personas": "Personas",
+    "set.agents.rotation": "Rotación",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "Agentes",
     "kind.agent": "Agente",

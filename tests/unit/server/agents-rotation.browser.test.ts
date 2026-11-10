@@ -140,6 +140,7 @@ describe("rotated agents on the Agents page (den#4)", () => {
     );
     expect(await acts(p, "relay")).toEqual([
       "relaunch",
+      "rot-keep",
       "fresh",
       "rename",
       "remove",
@@ -149,6 +150,7 @@ describe("rotated agents on the Agents page (den#4)", () => {
     );
     expect(await acts(p, "merger")).toEqual([
       "relaunch",
+      "rot-keep",
       "fresh",
       "rename",
       "remove",
@@ -157,7 +159,7 @@ describe("rotated agents on the Agents page (den#4)", () => {
     // mock's .btn.sm (2px 9px, 12.5px).
     const btn = row(p, "relay").locator('[data-act="relaunch"]');
     expect(await btn.getAttribute("class")).toBe("den-btn sm primary");
-    expect((await btn.textContent())?.trim()).toBe("Relaunch from handoff");
+    expect((await btn.textContent())?.trim()).toBe("Relaunch now");
     expect(
       await btn.evaluate((b) => {
         const c = getComputedStyle(b);
@@ -180,17 +182,19 @@ describe("rotated agents on the Agents page (den#4)", () => {
     const p = await open("north");
     expect(await row(p, "drift").getAttribute("data-rotation")).toBe("due");
     expect(await acts(p, "drift")).toEqual([
+      "relaunch",
+      "rot-keep",
       "resume",
       "fresh",
       "rename",
       "remove",
     ]);
     expect(await text(p, "drift", '[data-handoff="missing"]')).toBe(
-      "Its session rotated (3 compactions), but it wrote no handoff.md. Resume it to write one, or start fresh.",
+      "Due (3 compactions). It has no handoff yet.",
     );
     expect(
       await row(p, "drift")
-        .locator(".agcant")
+        .locator(".agcant[data-rot-msg]")
         .evaluate((e) => getComputedStyle(e).fontSize),
     ).toBe("12px");
     await p.context().close();
@@ -206,7 +210,7 @@ describe("rotated agents on the Agents page (den#4)", () => {
         "/api/workspaces/north/agents/relay/relaunch",
     );
     await row(p, "relay")
-      .getByRole("button", { name: "Relaunch relay from handoff" })
+      .getByRole("button", { name: "Relaunch relay now" })
       .click();
     expect((await res).status()).toBe(200);
     await p.waitForSelector(".pane .xterm", { timeout: 20_000 });

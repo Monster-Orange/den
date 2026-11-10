@@ -71,6 +71,10 @@ import { checkHandback } from "../../shared/agents/handback.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
 import { handoffFile, reasonText } from "../../shared/agents/rotation.js";
 import {
+  parseRotateValue,
+  type OverrideScope,
+} from "../../shared/agents/rotate-settings.js";
+import {
   agentFilesDir,
   listRecords,
   readRecord,
@@ -85,11 +89,15 @@ import {
   listRuntimes,
   loadAgentWorkspaces,
   relaunchAgent,
+  resumeOrRelaunch,
+  keepAgentConversation,
+  askForHandoff,
+  rotationSettings,
+  setRotationSetting,
   removeAgent,
   removeStopped,
   renameAgent,
   resolveAgentsDeps,
-  resumeAgent,
   resumeInterrupted,
   startAgent,
   stopAgent,
@@ -121,7 +129,7 @@ export {
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|relaunch|import|persona|rename|rm|personas|doctor|handback-check|handoff-check> ...",
+    "agents <list|start|stop|resume|relaunch|rotate|keep|handoff|import|persona|rename|rm|personas|doctor|handback-check|handoff-check> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -146,6 +154,19 @@ export const AGENTS_HELP = {
     "    compactions (default 3) or its pull request merged, and its handoff.md",
     "    passes the check, a fresh conversation (same persona, workspace, folder,",
     "    grants) whose first prompt is the handoff",
+    "{cli} agents rotate [--agent|--persona|--workspace|--service <x>] [-w <ws>] <key> <value>",
+    "{cli} agents rotate [scope] --unset <key>   ·   {cli} agents rotate   ·   {cli} agents rotate <id> --show",
+    "    rotation settings: after_compactions <n>|never (default 3), on_due",
+    "    auto|ask|off (default auto: Den asks for the handoff at idle and",
+    "    relaunches by itself), on_pr_merged true|false. No scope: this install.",
+    "    --persona <p> -w <ws>: the persona in that workspace. The most specific",
+    "    wins: agent, persona in a workspace, persona, workspace, service,",
+    "    install, org config. --show: an agent's values and where each comes from",
+    "{cli} agents keep <id> [-w <ws>] [--never]",
+    "    keep its conversation: the compaction count starts again; --never: this",
+    "    agent never rotates. A person's only",
+    "{cli} agents handoff <id> [-w <ws>]",
+    "    ask a running agent, at idle, to write its handoff",
     "{cli} agents import -w <ws> [--runtime <r>] [--json]",
     "{cli} agents import -w <ws> --session <id> --persona <p> [--runtime <r>] [--id <id>] [--model <m>]",
     "    bring in a conversation started outside Den: the first lists the runtime's",
@@ -477,7 +498,15 @@ async function stop(args: string[], d: AgentsResolved): Promise<number> {
 async function resume(args: string[], d: AgentsResolved): Promise<number> {
   if (args.includes("--all-interrupted")) return resumeAll(args, d);
   const { id, ws } = idAndWorkspace("agents resume", args);
-  const s = await resumeAgent(d, id, ws);
+  // D28: a due agent under auto relaunches from its handoff instead.
+  const r = await resumeOrRelaunch(d, id, ws);
+  if (r.kind === "relaunched")
+    return report(
+      d,
+      r.s,
+      `relaunched agent ${r.s.rec.id} from its handoff (the last session ended after ${r.s.why}) as ${r.s.rec.sessionName} in ${r.s.rec.cwd}`,
+    );
+  const s = r.s;
   if (s.fresh) d.out(`agent ${s.rec.id}: ${FRESH_NOTE}`);
   return report(
     d,
@@ -487,6 +516,135 @@ async function resume(args: string[], d: AgentsResolved): Promise<number> {
 }
 
 /** `agents relaunch <id> [-w <ws>]` (den#4). */
+/** D28: refused in an agent's session (an agent could stop its own rotation). */
+function personOnly(where: string, d: AgentsResolved): void {
+  if (d.env[ACTOR_TOKEN_ENV] !== undefined)
+    throw new AgentError(
+      `${where}: only a person can change rotation (this is an agent's session)`,
+    );
+}
+
+const ROTATE_SCOPE_FLAGS: Record<string, OverrideScope> = {
+  "--agent": "agent",
+  "--persona": "persona",
+  "--workspace": "workspace",
+  "--service": "service",
+};
+
+/**
+ * `agents rotate` (D28): with no arguments, the settings and overrides;
+ * `[--agent|--persona|--workspace|--service <x>] [-w <ws>] <key> <value>`
+ * sets one (no scope flag: this install's), `--unset` clears it. `--persona
+ * <p> -w <ws>`: the persona in that workspace. `agents rotate <id> --show`:
+ * that agent's effective values and where each comes from.
+ */
+async function rotate(args: string[], d: AgentsResolved): Promise<number> {
+  const where = "agents rotate";
+  if (args.includes("--show")) {
+    const { id, ws } = idAndWorkspace(
+      where,
+      args.filter((a) => a !== "--show"),
+    );
+    const r = rotationSettings(d, id, ws);
+    if (!r.effective) {
+      d.err(`✗ ${where}: ${id}'s persona or the config can't be read`);
+      return 1;
+    }
+    const e = r.effective;
+    d.out(`agent ${e.agent}:`);
+    d.out(
+      `  after_compactions  ${e.afterCompactions === 0 ? "never" : e.afterCompactions}  (from ${e.from?.after_compactions})`,
+    );
+    d.out(`  on_due             ${e.onDue}  (from ${e.from?.on_due})`);
+    d.out(
+      `  on_pr_merged       ${e.onPrMerged}  (from ${e.from?.on_pr_merged})`,
+    );
+    return 0;
+  }
+  if (!args.length) {
+    const r = rotationSettings(d);
+    const vals = (v: object) =>
+      Object.entries(v)
+        .map(([k, x]) => `${k}=${String(x)}`)
+        .join(" ") || "(none)";
+    d.out(`default: ${vals(r.defaults)}`);
+    d.out(`org config: ${vals(r.org)}`);
+    d.out(`this install: ${vals(r.install)}`);
+    for (const [scope, byTarget] of Object.entries(r.overrides))
+      for (const [target, v] of Object.entries(byTarget ?? {}))
+        d.out(`${scope} ${target}: ${vals(v)}`);
+    return 0;
+  }
+  personOnly(where, d);
+  const unset = args.includes("--unset");
+  const rest = args.filter((a) => a !== "--unset");
+  let scope: OverrideScope | "install" = "install";
+  let target: string | undefined;
+  let ws: string | undefined;
+  const pos: string[] = [];
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === "-w" || a === "--ws") {
+      ws = rest[++i];
+      if (!ws) throw new UsageError(`${where}: ${a} needs a workspace`);
+    } else if (a in ROTATE_SCOPE_FLAGS) {
+      if (scope !== "install")
+        throw new UsageError(`${where}: one scope at a time`);
+      scope = ROTATE_SCOPE_FLAGS[a];
+      target = rest[++i];
+      if (!target) throw new UsageError(`${where}: ${a} needs a name`);
+    } else if (a.startsWith("--"))
+      throw new UsageError(`${where}: unknown flag ${a}`);
+    else pos.push(a);
+  }
+  if (ws) {
+    if (scope !== "persona")
+      throw new UsageError(
+        `${where}: -w goes with --persona (the persona in that workspace); use --workspace <ws> for a workspace`,
+      );
+    scope = "persona-workspace";
+    target = `${target}@${ws}`;
+  }
+  const [key, raw] = pos;
+  if (!key || (unset ? pos.length !== 1 : pos.length !== 2))
+    throw new UsageError(
+      `${where} [--agent|--persona|--workspace|--service <x>] <key> <value> (or --unset <key>)`,
+    );
+  setRotationSetting(d, {
+    scope,
+    ...(target !== undefined ? { target } : {}),
+    key,
+    value: unset ? null : parseRotateValue(key, raw!),
+  });
+  const at = scope === "install" ? "this install" : `${scope} ${target}`;
+  d.out(unset ? `${key} cleared at ${at}` : `${key} = ${raw} at ${at}`);
+  return 0;
+}
+
+/** `agents keep <id> [-w <ws>] [--never]` (D28 Keep this conversation). */
+function keep(args: string[], d: AgentsResolved): number {
+  const where = "agents keep";
+  personOnly(where, d);
+  const never = args.includes("--never");
+  const { id, ws } = idAndWorkspace(
+    where,
+    args.filter((a) => a !== "--never"),
+  );
+  const rec = keepAgentConversation(d, id, ws, { never });
+  d.out(
+    `kept ${rec.id}'s conversation: its compaction count starts again${never ? "; it never rotates (agents rotate --agent " + rec.id + " --unset after_compactions to undo)" : ""}`,
+  );
+  return 0;
+}
+
+/** `agents handoff <id> [-w <ws>]` (D28 Write handoff). */
+async function handoff(args: string[], d: AgentsResolved): Promise<number> {
+  const { id, ws } = idAndWorkspace("agents handoff", args);
+  const rec = await askForHandoff(d, id, ws);
+  d.out(`asked ${rec.id} to write its handoff; Den relaunches it from it`);
+  return 0;
+}
+
 async function relaunch(args: string[], d: AgentsResolved): Promise<number> {
   const { id, ws } = idAndWorkspace("agents relaunch", args);
   const s = await relaunchAgent(d, id, ws);
@@ -790,6 +948,14 @@ export async function cmdAgents(
         case "relaunch":
           await loadAgentWorkspaces(deps);
           return await relaunch(rest, d);
+        case "rotate":
+          await loadAgentWorkspaces(deps);
+          return await rotate(rest, d);
+        case "keep":
+          return keep(rest, d);
+        case "handoff":
+          await loadAgentWorkspaces(deps);
+          return await handoff(rest, d);
         case "import":
           await loadAgentWorkspaces(deps);
           return await bringIn(rest, d);

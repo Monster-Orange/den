@@ -372,6 +372,82 @@ function rotationOf(r) {
   return r.rotation.ready ? "ready" : "due";
 }
 
+/** D28: Settings › Agents (its Rotation row). */
+function settingsHref() {
+  const nav = window.denShell?.nav?.() ?? [];
+  const base = nav.find((n) => n.id === "settings")?.href ?? "/settings";
+  return `${base}?q=rotation#agents`;
+}
+
+/**
+ * D28: what happens to a due agent, in words, from its on_due (auto: Den
+ * asks for the handoff at idle and relaunches it; ask; auto that gave up
+ * asking). Older servers send no on_due: as ask.
+ */
+function rotMessage(r) {
+  const rot = r.rotation;
+  const why = rotationWhy(rot);
+  const auto = rot.onDue === "auto" && !rot.fellBack;
+  if (rot.relaunchWanted && !rot.ready) return t("ag.rc.wanted", { why });
+  if (auto && !isStopped(r))
+    return t(rot.ready ? "ag.rc.autoReady" : "ag.rc.autoAsk", { why });
+  if (rot.fellBack) return t("ag.rc.fellBack", { why });
+  return t(
+    rot.ready
+      ? "ag.rc.ready"
+      : rot.handoff === "invalid"
+        ? "ag.rc.bad"
+        : "ag.rc.missing",
+    { why },
+  );
+}
+
+/**
+ * D28: the rotation callout's buttons, wherever it shows (a row, the pane
+ * bar): Relaunch now (from the handoff, or asking for it first), Write
+ * handoff (a running agent without one), Keep this conversation with
+ * "don't ask again", and Settings. "" when nothing is due or on_due is off.
+ */
+function rotActionsHtml(r) {
+  const rot = r.rotation;
+  if (!rot?.due || rot.onDue === "off") return "";
+  const id = r.agent;
+  const now = `<button type="button" class="den-btn sm primary" data-act="relaunch" aria-label="${esc(t("ag.relaunchName", { id }))}">${esc(t("ag.relaunch"))}</button>`;
+  const write =
+    !isStopped(r) && !rot.ready && !rot.relaunchWanted
+      ? `<button type="button" class="den-btn sm" data-act="rot-write" aria-label="${esc(t("ag.rc.writeName", { id }))}">${esc(t("ag.rc.write"))}</button>`
+      : "";
+  const keep = `<button type="button" class="den-btn sm" data-act="rot-keep" aria-label="${esc(t("ag.rc.keepName", { id }))}">${esc(t("ag.rc.keep"))}</button>`;
+  const never = `<label class="agnever"><input type="checkbox" data-rot-never> ${esc(t("ag.rc.never"))}</label>`;
+  const settings = `<a class="lnk" data-rot-settings href="${esc(settingsHref())}">${esc(t("ag.rc.settings"))}</a>`;
+  return now + write + keep + never + settings;
+}
+
+/** D28: the effective settings and where each comes from, in words. */
+function rotFromText(rot) {
+  if (!rot?.from) return "";
+  return t("ag.rc.from", {
+    n: rot.after === 0 ? t("ag.rc.neverN") : rot.after,
+    src: rot.from.after_compactions,
+    mode: t(`ag.rc.mode.${rot.onDue}`),
+    src2: rot.from.on_due,
+  });
+}
+
+/** D28: the callout under a row: the message, its line of settings, the buttons. */
+function rotCalloutHtml(r) {
+  const acts = rotActionsHtml(r);
+  if (!acts) return "";
+  const from = rotFromText(r.rotation);
+  return (
+    `<span class="agcant" data-rot-msg data-handoff="${esc(r.rotation.handoff)}">${esc(rotMessage(r))}</span>` +
+    (from
+      ? `<span class="agcant agfrom" data-rot-from>${esc(from)}</span>`
+      : "") +
+    acts
+  );
+}
+
 /** A stopped agent's row: its button (it opens an ended pane) and actions. */
 function stoppedHtml(r) {
   const open = st.open.includes(r.id);
@@ -380,10 +456,8 @@ function stoppedHtml(r) {
   const meta = [r.runtime, r.cwd].filter(Boolean).join(" · ");
   const who = esc(r.agent);
   const rot = rotationOf(r);
-  const relaunch =
-    rot === "ready"
-      ? `<button type="button" class="den-btn sm primary" data-act="relaunch" aria-label="${esc(t("ag.relaunchName", { id: r.agent }))}">${esc(t("ag.relaunch"))}</button>`
-      : "";
+  // D28: a due agent's callout (unless on_due is off).
+  const callout = rotCalloutHtml(r);
   const resume = r.resumable
     ? `<button type="button" class="den-btn sm primary" data-act="resume" aria-label="${esc(t("ag.resumeName", { id: r.agent }))}">${esc(t("ag.resume"))}</button>`
     : "";
@@ -391,18 +465,6 @@ function stoppedHtml(r) {
   const remove = `<button type="button" class="den-btn sm" data-act="remove" aria-label="${esc(t("ag.removeName", { id: r.agent }))}">${esc(t("ag.remove"))}</button>`;
   // D25: an agent with no pane open can be renamed too.
   const rename = `<button type="button" class="den-btn sm" data-act="rename" aria-label="${esc(t("ag.renameName", { id: r.agent }))}">${esc(t("ag.rn.act"))}</button>`;
-  // A rotation due without a handoff that passes: say so (den#4).
-  const handoff =
-    rot === "due"
-      ? `<span class="agcant" data-handoff="${esc(r.rotation.handoff)}">${esc(
-          t(
-            r.rotation.handoff === "missing"
-              ? "ag.rot.noHandoff"
-              : "ag.rot.badHandoff",
-            { why: rotationWhy(r.rotation) },
-          ),
-        )}</span>`
-      : "";
   const cant =
     !r.resumable && r.noResume && rot !== "ready"
       ? `<span class="agcant" data-no-resume>${esc(r.noResume.startsWith(`${r.runtime} `) ? t("ag.noResume", { runtime: r.runtime }) : r.noResume)}</span>`
@@ -421,7 +483,7 @@ function stoppedHtml(r) {
     (meta ? `<span class="meta">${esc(meta)}</span>` : "") +
     `<span class="why">${esc(stopReason(r))}</span>` +
     `</button>` +
-    `<div class="agacts">${handoff}${cant}${relaunch}${resume}${fresh}${rename}${remove}</div>` +
+    `<div class="agacts">${callout}${cant}${resume}${fresh}${rename}${remove}</div>` +
     `</div>`
   );
 }
@@ -454,7 +516,7 @@ function rowHtml(r) {
     rotTag || revokedTag || ovTags || wTag
       ? `<span class="agtags">${revokedTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
-  return (
+  const button =
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
     ` aria-pressed="${open}"${r.attachable ? "" : ' aria-disabled="true"'}` +
     ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }))}">` +
@@ -462,7 +524,16 @@ function rowHtml(r) {
     `<span class="nm">${nm}</span>${right}` +
     (meta ? `<span class="meta">${esc(meta)}</span>` : "") +
     tags +
-    `</button>`
+    `</button>`;
+  // D28: a running agent whose rotation is due: its callout, with buttons
+  // (before, only a tag: nothing to press).
+  const callout = r.kind === "agent" ? rotCalloutHtml(r) : "";
+  if (!callout) return button;
+  return (
+    `<div class="agst" data-agent="${esc(r.agent)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}" data-rotation="${rot}">` +
+    button +
+    `<div class="agacts">${callout}</div>` +
+    `</div>`
   );
 }
 
@@ -608,6 +679,7 @@ async function refresh() {
     } else if (r.ok) {
       st.data = await r.json();
       st.signedOut = false;
+      toastAutoRelaunches(st.data?.sessions ?? []);
     }
   } catch {
     /* the last list stays; the next ask may answer */
@@ -1011,6 +1083,9 @@ function paintBar(p) {
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +
     whereTag(r, true) +
+    (r?.kind === "agent" && rotActionsHtml(r)
+      ? `<span class="agrot" data-rot-bar title="${esc(rotMessage(r))}"><span class="tagx warn" data-rotation="${rotationOf(r)}">${esc(t(rotationOf(r) === "ready" ? "ag.rot.ready" : "ag.rot.due", { why: rotationWhy(r.rotation) }))}</span>${rotActionsHtml(r)}</span>`
+      : "") +
     `<span class="x">${reconnect}${stop}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
   // Tabs: the tab's × closes it; the pane's bar has none.
   const x = bar.querySelector('[data-act="close"]');
@@ -1515,6 +1590,90 @@ async function restartRow(r, verb, button) {
   } catch (err) {
     window.denShell?.errorToast?.(err);
     await refresh();
+  }
+}
+
+/**
+ * D28 Relaunch now: from the handoff when it passes; else Den asks for it
+ * first (a stopped agent resumes to write it) and relaunches it once it
+ * passes, by itself.
+ */
+async function relaunchNow(r, button) {
+  if (r.rotation?.ready) return restartRow(r, "relaunch", button);
+  if (button) button.disabled = true;
+  try {
+    const out = await api("POST", agentPath(r, "handoff"), { relaunch: true });
+    window.denShell?.toast?.(
+      t(out?.resumed ? "ag.rc.askedResumed" : "ag.rc.askedRelaunch", {
+        id: r.agent,
+      }),
+    );
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+  }
+  await refresh();
+}
+
+/** D28 Write handoff: the prompt, typed into its session at idle. */
+async function writeHandoff(r, button) {
+  if (button) button.disabled = true;
+  try {
+    await api("POST", agentPath(r, "handoff"), {});
+    window.denShell?.toast?.(t("ag.rc.asked", { id: r.agent }));
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+  }
+  await refresh();
+}
+
+/** D28 Keep this conversation (and "don't ask again": never, for it). */
+async function keepConversation(r, button) {
+  const never = !!button
+    ?.closest(".agacts, .agrot")
+    ?.querySelector("[data-rot-never]")?.checked;
+  if (button) button.disabled = true;
+  try {
+    await api("POST", agentPath(r, "keep"), never ? { never: true } : {});
+    window.denShell?.toast?.(
+      t(never ? "ag.rc.keptNever" : "ag.rc.kept", { id: r.agent }),
+    );
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+  }
+  await refresh();
+}
+
+/**
+ * D28: a relaunch Den did by itself since the last look: a toast saying
+ * so, and that the old conversation is kept. The first look only notes
+ * what is there.
+ */
+function toastAutoRelaunches(rows) {
+  const seen = (st.rotSeen ??= new Map());
+  const first = !st.rotLooked;
+  st.rotLooked = true;
+  for (const r of rows) {
+    const last = r.kind === "agent" ? r.lastRotation : undefined;
+    if (!last) continue;
+    const key = `${r.workspace}/${r.agent}`;
+    if (seen.get(key) === last.at) continue;
+    seen.set(key, last.at);
+    if (first || !last.auto) continue;
+    window.denShell?.toast?.(
+      t("ag.rc.autoRelaunched", {
+        id: r.agent,
+        why:
+          last.reason === "pr-merged"
+            ? t("ag.rot.merged")
+            : t(
+                last.compactions === 1
+                  ? "ag.rot.compactions.one"
+                  : "ag.rot.compactions",
+                { n: last.compactions },
+              ),
+        old: last.conversation ?? "?",
+      }),
+    );
   }
 }
 
@@ -2786,7 +2945,10 @@ export async function mountAgentsPage(root) {
         (x) => x.agent === agent && x.workspace === ws,
       );
       if (!r) return;
-      if (which === "resume" || which === "fresh" || which === "relaunch")
+      if (which === "relaunch") void relaunchNow(r, act);
+      else if (which === "rot-write") void writeHandoff(r, act);
+      else if (which === "rot-keep") void keepConversation(r, act);
+      else if (which === "resume" || which === "fresh")
         void restartRow(r, which, act);
       else if (which === "remove") void removeRow(r, act);
       else if (which === "rename") openRename(r, act);
@@ -2826,7 +2988,14 @@ export async function mountAgentsPage(root) {
       return;
     }
     if (b.dataset.act === "close") closePane(id);
-    else if (b.dataset.act === "stop") void stopAgent(p, b);
+    else if (b.dataset.act === "relaunch" || b.dataset.act.startsWith("rot-")) {
+      // D28: the callout's buttons in the pane bar.
+      const r = rowOf(id);
+      if (!r) return;
+      if (b.dataset.act === "relaunch") void relaunchNow(r, b);
+      else if (b.dataset.act === "rot-write") void writeHandoff(r, b);
+      else if (b.dataset.act === "rot-keep") void keepConversation(r, b);
+    } else if (b.dataset.act === "stop") void stopAgent(p, b);
     else if (b.dataset.act === "resume") {
       const r = rowOf(id);
       if (r) void restartRow(r, "resume", b);
@@ -2840,6 +3009,14 @@ export async function mountAgentsPage(root) {
           // D25: a visible Rename, for touch and keyboard (not only a
           // double-click on a tab).
           { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
+          // D28: its rotation settings and where each comes from.
+          {
+            label: t("ag.rc.menu"),
+            onSelect: () =>
+              window.denShell?.toast?.(
+                rotFromText(r.rotation) || t("ag.rc.noState"),
+              ),
+          },
           ...(r.personaChange
             ? [
                 {

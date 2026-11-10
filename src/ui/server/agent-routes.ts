@@ -99,8 +99,10 @@ import {
 import {
   readWorkspacesFile,
   conversationFolders,
+  listWorkspaceServices,
   resolveWorkspaceDir,
 } from "../../shared/environment-manager/workspaces.js";
+import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import { getStateDir } from "../../shared/paths.js";
 import { HostError } from "../../shared/sessions/client.js";
 import {
@@ -133,7 +135,13 @@ import {
   changePersona,
   listConversations,
   relaunchAgent,
-  resumeAgent,
+  resumeOrRelaunch,
+  keepAgentConversation,
+  askForHandoff,
+  rotationSettings,
+  setRotationSetting,
+  rotationTick,
+  ROTATION_TICK_MS,
   startAgent,
   startFresh,
   stopAgent,
@@ -167,7 +175,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|handoff))?$/;
 
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 const PERSONA_PATH = /^\/api\/personas\/([^/]+)$/;
@@ -203,6 +211,15 @@ export function webDeps(over: AgentsDeps = {}): AgentsResolved {
             return conversationFolders(ws, cfg, getReposRoot());
           },
         }),
+    // D28: the service scope of rotation settings.
+    workspaceServices: (ws) => {
+      const cfg = readWorkspacesFile().workspaces[ws];
+      if (!cfg) return [];
+      return listWorkspaceServices(cfg, readCatalog(), ws).map((r) => ({
+        address: r.address,
+        path: r.repoPath,
+      }));
+    },
     stdout: NO_TTY,
     out: () => undefined,
     err: () => undefined,
@@ -406,6 +423,8 @@ export async function handleAgentRoutes(
     pathname === "/api/agents/clear-stopped" ||
     pathname === "/api/agents/restore" ||
     pathname === "/api/agents/resume-interrupted";
+  if (pathname === "/api/agents/rotation")
+    return rotationRoute(req, res, webDeps(deps.agents));
   if (
     pathname !== "/api/personas" &&
     pathname !== "/api/agents/runtimes" &&
@@ -490,6 +509,8 @@ export async function handleAgentRoutes(
     | "name"
     | "paths"
     | "persona"
+    | "keep"
+    | "handoff"
     | undefined;
 
   if (!action && method === "GET") {
@@ -569,6 +590,12 @@ export async function handleAgentRoutes(
     if (verb === "persona" && (agent || actor))
       throw new AgentError(
         "only a person can change an agent's persona (an agent can't change its own or another's)",
+        { status: 403 },
+      );
+    // D28: an agent could keep itself from ever rotating.
+    if (verb === "keep" && (agent || actor))
+      throw new AgentError(
+        "only a person can keep an agent's conversation past its rotation",
         { status: 403 },
       );
     if (verb === "resume" && agent) {
@@ -651,6 +678,38 @@ export async function handleAgentRoutes(
       what = `start ${s.rec.id} fresh (${s.rec.persona}, ${s.rec.runtime}) in ${ws}`;
       audit(what, s.early ? "exited at once" : undefined);
       sendStarted(res, s, d);
+    } else if (verb === "keep") {
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "never")
+          throw new AgentError(`${k}: unknown field (keep takes never)`, {
+            usage: true,
+          });
+      if (body.never !== undefined && typeof body.never !== "boolean")
+        throw new AgentError("never must be true or false", { usage: true });
+      const rec = keepAgentConversation(d, id!, ws, {
+        never: body.never === true,
+      });
+      what = `keep ${rec.id}'s conversation in ${ws}${body.never ? " (never rotate)" : ""}`;
+      audit(what);
+      sendJson(res, { ok: true, agent: rec.id, never: body.never === true });
+    } else if (verb === "handoff") {
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "relaunch")
+          throw new AgentError(`${k}: unknown field (handoff takes relaunch)`, {
+            usage: true,
+          });
+      const relaunch = body.relaunch === true;
+      const rec = await askForHandoff(d, id!, ws, undefined, { relaunch });
+      what = `ask ${rec.id} for its handoff in ${ws}${relaunch ? ", then relaunch" : ""}${rec.resumed ? " (resumed to write it)" : ""}`;
+      audit(what);
+      sendJson(res, {
+        ok: true,
+        agent: rec.id,
+        relaunch,
+        ...(rec.resumed ? { resumed: true } : {}),
+      });
     } else if (verb === "relaunch") {
       const s = await relaunchAgent(d, id!, ws);
       what = `relaunch ${s.rec.id} from its handoff (${s.why}) in ${ws}`;
@@ -732,9 +791,16 @@ export async function handleAgentRoutes(
       audit(what);
       sendJson(res, { ok: true, removed });
     } else {
-      const s = await resumeAgent(d, id!, ws);
-      audit(what);
-      sendStarted(res, s, d);
+      // D28: a due agent under auto relaunches from its handoff instead.
+      const r = await resumeOrRelaunch(d, id!, ws);
+      if (r.kind === "relaunched") {
+        what = `relaunch ${r.s.rec.id} from its handoff (${r.s.why}) in ${ws}, on Resume`;
+        audit(what, r.s.early ? "exited at once" : undefined);
+        sendStarted(res, r.s, d, { relaunched: true });
+      } else {
+        audit(what);
+        sendStarted(res, r.s, d);
+      }
     }
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
@@ -1209,8 +1275,86 @@ export function startAgentUpkeep(
       log(`  ⚠ agents.remove_stopped_after: ${(e as Error).message}`);
     }
   };
+  // D28: due agents under on_due auto, at idle: asked for the handoff,
+  // then relaunched from it. One look at a time.
+  let looking = false;
+  const rotate = async () => {
+    if (looking) return;
+    looking = true;
+    try {
+      for (const e of await rotationTick(d)) {
+        const who = `${e.agent} in ${e.workspace}`;
+        if (e.kind === "relaunched") {
+          const what = `relaunch ${who} from its handoff (${e.why}), by itself; the old conversation ${e.old ?? "?"} is kept`;
+          recordAction(null, { verb: "agents", detail: what });
+          log(`Relaunched ${who} from its handoff after ${e.why}`);
+        } else if (e.kind === "asked")
+          log(`Asked ${who} for its handoff (${e.asked} of 2)`);
+        else if (e.kind === "fell-back")
+          log(
+            `  ⚠ ${who} wrote no handoff after 2 asks: its callout asks the person`,
+          );
+        else log(`  ⚠ rotation of ${who}: ${e.why}`);
+      }
+    } catch (e) {
+      log(`  ⚠ agents.rotate: ${(e as Error).message}`);
+    } finally {
+      looking = false;
+    }
+  };
   setTimeout(() => {
     void restart().then(prune);
   }, deps.delayMs ?? 2000).unref();
   setInterval(() => void prune(), PRUNE_EVERY_MS).unref();
+  setInterval(() => void rotate(), ROTATION_TICK_MS).unref();
+}
+
+/**
+ * D28, `/api/agents/rotation`. GET: the settings (install, overrides,
+ * defaults) and, with `?ws=&agent=`, that agent's effective values and
+ * where each comes from. PUT `{ scope, target?, key, value }` sets one
+ * (value null clears it): a person's only.
+ */
+async function rotationRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  d: AgentsResolved,
+): Promise<boolean> {
+  const method = req.method ?? "GET";
+  try {
+    if (method === "GET" || method === "HEAD") {
+      const q = new URL(req.url ?? "/", "http://localhost").searchParams;
+      const ws = q.get("ws") ?? undefined;
+      const agent = q.get("agent") ?? undefined;
+      if ((ws && !NAME_RE.test(ws)) || (agent && !NAME_RE.test(agent)))
+        throw new AgentError("not a name", { usage: true });
+      sendJson(res, rotationSettings(d, agent, ws));
+      return true;
+    }
+    if (method !== "PUT") return methodNotAllowed(res, "GET, PUT");
+    if (agentPrincipalOf(req) || auditActorOf(req))
+      throw new AgentError("only a person can change rotation settings", {
+        status: 403,
+      });
+    const body = await jsonBody(req);
+    for (const k of Object.keys(body))
+      if (!["scope", "target", "key", "value"].includes(k))
+        throw new AgentError(
+          `${k}: unknown field (takes scope, target, key, value)`,
+          { usage: true },
+        );
+    const out = setRotationSetting(d, body);
+    recordAction(
+      null,
+      {
+        verb: "agents",
+        detail: `rotation ${String(body.scope)}${body.target ? ` ${String(body.target)}` : ""} ${String(body.key)} = ${body.value === null ? "(unset)" : JSON.stringify(body.value)}`,
+      },
+      principalOf(req),
+    );
+    sendJson(res, { ok: true, ...out });
+  } catch (e) {
+    sendError(res, e);
+  }
+  return true;
 }

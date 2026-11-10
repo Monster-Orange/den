@@ -890,6 +890,28 @@ export const DEN_SETTINGS = [
   },
 
   {
+    id: "agents.rotation",
+    category: "agents",
+    label: "Rotation",
+    description:
+      "When an agent's conversation has compacted this many times (or its pull request merged), Den starts it again from its handoff: a fresh conversation, the same name, persona, workspace and folder. Auto asks the agent for its handoff when it is idle, then relaunches it by itself; Ask shows buttons on the agent; Off does nothing. Overrides win over this install's value: agent, persona in a workspace, persona, workspace, service. __DEN_CLI__ agents rotate",
+    keywords: [
+      "rotation",
+      "rotate",
+      "relaunch",
+      "handoff",
+      "compaction",
+      "compactions",
+      "context",
+      "restart",
+      "agent",
+    ],
+    scope: "user",
+    control: { type: "custom", render: renderRotation },
+    read: () => null,
+  },
+
+  {
     id: "agents.personas",
     category: "agents",
     label: "Personas",
@@ -1250,6 +1272,188 @@ function renderRuntimes(host, ctx) {
       btns.forEach((x) => (x.disabled = false));
     }
   }
+  void load();
+}
+
+const ROT_SCOPES = [
+  ["agent", "Agent", "agent id"],
+  ["persona-workspace", "Persona in a workspace", "persona@workspace"],
+  ["persona", "Persona", "persona id"],
+  ["workspace", "Workspace", "workspace"],
+  ["service", "Service", "service, as the workspace names it"],
+];
+const ROT_KEYS = [
+  ["after_compactions", "After compactions", "a number, or never"],
+  ["on_due", "When due", "auto, ask or off"],
+  ["on_pr_merged", "When its PR merges", "true or false"],
+];
+const rotVal = (v) => (v === undefined ? "" : String(v));
+
+/** A value typed in the overrides form, as the key takes it. */
+export function rotationValue(key, raw) {
+  const v = String(raw ?? "").trim();
+  if (key === "after_compactions")
+    return v === "never" || v === "0"
+      ? "never"
+      : /^\d+$/.test(v)
+        ? Number(v)
+        : v;
+  if (key === "on_pr_merged")
+    return v === "true" ? true : v === "false" ? false : v;
+  return v;
+}
+
+/** The Rotation row's HTML (b: GET /api/agents/rotation). */
+export function rotationHtml(b) {
+  const inherited = (k) =>
+    b.org?.[k] !== undefined
+      ? `org config: ${rotVal(b.org[k])}`
+      : `default: ${rotVal(b.defaults?.[k])}`;
+  const inst = b.install || {};
+  const after = inst.after_compactions;
+  const field = (k, control) =>
+    `<div class="rot-f" data-rot-key="${k}"><label for="rot-${k}">${escR(ROT_KEYS.find((x) => x[0] === k)[1])}</label>${control}<span class="set-tag" data-rot-src>${escR(inst[k] !== undefined ? "this install" : inherited(k))}</span></div>`;
+  const sel = (k, opts) =>
+    `<select id="rot-${k}" data-focus-key="rot-${k}"><option value=""${inst[k] === undefined ? " selected" : ""}>inherit (${escR(inherited(k))})</option>` +
+    opts
+      .map(
+        ([v, l]) =>
+          `<option value="${escR(v)}"${rotVal(inst[k]) === v ? " selected" : ""}>${escR(l)}</option>`,
+      )
+      .join("") +
+    `</select>`;
+  const rows = [];
+  for (const [scope, byTarget] of Object.entries(b.overrides || {}))
+    for (const [target, vals] of Object.entries(byTarget || {}))
+      for (const [k, v] of Object.entries(vals || {}))
+        rows.push(
+          `<tr data-rot-row><td>${escR((ROT_SCOPES.find((x) => x[0] === scope) || [scope, scope])[1])}</td><td class="den-mono">${escR(target)}</td><td>${escR(k)}</td><td class="den-mono">${escR(rotVal(v))}</td>` +
+            `<td><button type="button" class="btn sm" data-rot-clear data-scope="${escR(scope)}" data-target="${escR(target)}" data-key="${escR(k)}" aria-label="Clear ${escR(k)} for ${escR(scope)} ${escR(target)}">Clear</button></td></tr>`,
+        );
+  return (
+    `<div class="rot" data-rotation-settings>` +
+    `<div class="rot-inst">` +
+    field(
+      "after_compactions",
+      `<input type="text" id="rot-after_compactions" data-focus-key="rot-after_compactions" inputmode="numeric" spellcheck="false" autocomplete="off" placeholder="${escR(inherited("after_compactions"))}" value="${escR(after === undefined ? "" : rotVal(after))}"> <button type="button" class="btn sm" data-rot-save-after>Save</button>`,
+    ) +
+    field(
+      "on_due",
+      sel("on_due", [
+        ["auto", "Auto"],
+        ["ask", "Ask"],
+        ["off", "Off"],
+      ]),
+    ) +
+    field(
+      "on_pr_merged",
+      sel("on_pr_merged", [
+        ["true", "Relaunch"],
+        ["false", "Keep going"],
+      ]),
+    ) +
+    `</div>` +
+    `<div class="tablewrap"><table class="svc rot-ov"><caption>Overrides (the most specific wins)</caption><thead><tr><th scope="col">Scope</th><th scope="col">For</th><th scope="col">Setting</th><th scope="col">Value</th><th scope="col" aria-label="Actions"></th></tr></thead><tbody>` +
+    (rows.length
+      ? rows.join("")
+      : `<tr><td colspan="5" class="set-note">No overrides: every agent uses this install's values.</td></tr>`) +
+    `</tbody></table></div>` +
+    `<form class="rot-add" data-rot-add>` +
+    `<label for="rot-a-scope">Scope</label> <select id="rot-a-scope">${ROT_SCOPES.map(([v, l]) => `<option value="${v}">${escR(l)}</option>`).join("")}</select> ` +
+    `<label for="rot-a-target">For</label> <input type="text" id="rot-a-target" class="den-mono" spellcheck="false" autocomplete="off" placeholder="agent id" required> ` +
+    `<label for="rot-a-key">Setting</label> <select id="rot-a-key">${ROT_KEYS.map(([v, l]) => `<option value="${v}">${escR(l)}</option>`).join("")}</select> ` +
+    `<label for="rot-a-value">Value</label> <input type="text" id="rot-a-value" class="den-mono" spellcheck="false" autocomplete="off" placeholder="a number, or never" required> ` +
+    `<button type="submit" class="btn sm primary">Add override</button></form>` +
+    `<div class="rt-err" role="alert" hidden></div>` +
+    `</div>`
+  );
+}
+
+/** The Rotation row: this install's values, the overrides, + Add override. */
+function renderRotation(host, ctx) {
+  const err = () => host.querySelector(".rt-err");
+  const fail = (x) => {
+    const e = err();
+    if (e) {
+      e.textContent = x?.message || "Not saved";
+      e.hidden = false;
+    }
+  };
+  const load = () => {
+    if (ctx.shell?.configInvalid?.() === true) {
+      host.innerHTML = `<div class="set-note">Fix the config first: the org's rotation is read from it.</div>`;
+      return Promise.resolve();
+    }
+    return ctx.shell
+      .api("GET", "/api/agents/rotation")
+      .then((b) => {
+        host.innerHTML = rotationHtml(b || {});
+      })
+      .catch((x) => {
+        host.innerHTML = `<div class="set-note">${escR(x?.message || "The rotation settings did not load.")}</div>`;
+      });
+  };
+  const put = async (body) => {
+    try {
+      await ctx.shell.api("PUT", "/api/agents/rotation", body);
+      await load();
+    } catch (x) {
+      fail(x);
+    }
+  };
+  host.addEventListener("change", (e) => {
+    const k = e.target.closest("[data-rot-key]")?.dataset.rotKey;
+    if (e.target.id === "rot-a-scope") {
+      const s = ROT_SCOPES.find((x) => x[0] === e.target.value);
+      const t = host.querySelector("#rot-a-target");
+      if (s && t) t.placeholder = s[2];
+      return;
+    }
+    if (e.target.id === "rot-a-key") {
+      const s = ROT_KEYS.find((x) => x[0] === e.target.value);
+      const v = host.querySelector("#rot-a-value");
+      if (s && v) v.placeholder = s[2];
+      return;
+    }
+    if (!k || k === "after_compactions" || e.target.tagName !== "SELECT")
+      return;
+    const v = e.target.value;
+    void put({
+      scope: "install",
+      key: k,
+      value: v === "" ? null : rotationValue(k, v),
+    });
+  });
+  host.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.hasAttribute("data-rot-save-after")) {
+      const v = host.querySelector("#rot-after_compactions")?.value.trim();
+      void put({
+        scope: "install",
+        key: "after_compactions",
+        value: v ? rotationValue("after_compactions", v) : null,
+      });
+    } else if (b.hasAttribute("data-rot-clear"))
+      void put({
+        scope: b.dataset.scope,
+        target: b.dataset.target,
+        key: b.dataset.key,
+        value: null,
+      });
+  });
+  host.addEventListener("submit", (e) => {
+    const f = e.target.closest("[data-rot-add]");
+    if (!f) return;
+    e.preventDefault();
+    const key = f.querySelector("#rot-a-key").value;
+    void put({
+      scope: f.querySelector("#rot-a-scope").value,
+      target: f.querySelector("#rot-a-target").value.trim(),
+      key,
+      value: rotationValue(key, f.querySelector("#rot-a-value").value),
+    });
+  });
   void load();
 }
 

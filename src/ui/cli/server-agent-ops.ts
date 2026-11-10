@@ -25,9 +25,9 @@ import {
   type AgentsResolved,
   type RuntimeChoice,
   type Started,
+  rotationOf,
 } from "./agent-ops.js";
 import { readRecord } from "../../shared/agents/records.js";
-import { rotationInfo } from "../../shared/agents/rotation.js";
 import {
   SERVER_AGENT_ID,
   SERVER_PERSONA_ID,
@@ -355,7 +355,7 @@ export async function startServerAgent(
     rec.runtime === runtime &&
     rec.model === model
   ) {
-    if (rotationInfo(d.stateDir(), rec)?.ready)
+    if (rotationOf(d, rec)?.ready)
       return done("relaunched", await relaunchAgent(d, rec.id));
     if (resumeRefusal(rec) === null)
       return done("resumed", await resumeAgent(d, rec.id, SERVER_SCOPE));
