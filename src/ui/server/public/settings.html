@@ -451,6 +451,10 @@
         min-width: 0;
         max-width: 100%;
       }
+      /* A select never cuts its own words: it wraps to its own line. */
+      .rot-f select {
+        min-width: min(100%, max-content);
+      }
       .rot-add {
         margin-top: 10px;
       }

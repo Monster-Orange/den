@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.24] - 2026-11-10
+## [0.4.25] - unreleased
 
 ### Added
 
@@ -15,8 +15,21 @@ config and manifest changes a distribution must make to move to it under
   the workspace's repos. The token stays in the agent's own 0600 MCP
   file. Agents use Hub's tools without asking (`hub.allow_tools`, default
   on; off, they ask like any tool). Settings › Agents › Hub and `doctor`
-  say whether Hub is connected, and to which team. Nothing changes without `hub.url`. See
-  docs/distributions.md, "Hub".
+  say whether Hub is connected, and to which team. Nothing changes
+  without `hub.url`. See docs/distributions.md, "Hub".
+
+### Fixed
+
+- **Rotation wording.** Add override with no target says "Pick an
+  agent", not "Pick a agent". An install select's inherit option is short
+  ("inherit (auto)"), with where it comes from in the tag beside it, and
+  a select never cuts its words at 375 px.
+- **doctor, an older session host.** A host from an earlier version, with
+  no service host behind it, is ℹ "older host (pid N)", not ⚠ "unknown":
+  it picks up this version the next time it exits, and nothing needs
+  doing.
+
+## [0.4.24] - 2026-11-10
 
 ### Fixed
 

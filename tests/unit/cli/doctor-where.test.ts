@@ -102,7 +102,7 @@ describe("whereRows", () => {
     );
   });
 
-  it("an older host with no service host behind it: ⚠, saying what it can't tell", async () => {
+  it("an older host with no service host behind it: ℹ, from before this version, nothing to do", async () => {
     const rows = await whereRows(
       base({
         host: async () => ({ launchd: null, pid: 1776 }),
@@ -110,10 +110,12 @@ describe("whereRows", () => {
       }),
     );
     const h = rows.find((r) => r.what === "session host")!;
-    expect(h.status).toBe("warn");
+    expect(h.status).toBe("info");
+    expect(h.session).toBe("older host (pid 1776)");
     expect(h.detail).toMatch(
-      /^an older session host \(pid 1776\) can't say where it runs, so whether its terminals and agents stop at logout is unknown/,
+      /^an older session host \(pid 1776\) is serving, from before this version.*picks up this version the next time it exits\. Nothing to do\./,
     );
+    expect(h.session).not.toMatch(/unknown/);
   });
 
   it("Full Disk Access granted to Den's node copy", async () => {

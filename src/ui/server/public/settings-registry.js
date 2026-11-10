@@ -1290,6 +1290,9 @@ function renderRuntimes(host, ctx) {
   void load();
 }
 
+/** "an agent", "a persona": the article for a lowercase noun. */
+export const withArticle = (w) => `${/^[aeiou]/.test(w) ? "an" : "a"} ${w}`;
+
 const ROT_SCOPES = [
   ["agent", "Agent", "agent id"],
   ["persona-workspace", "Persona in a workspace", "persona@workspace"],
@@ -1390,7 +1393,7 @@ export function rotationHtml(b) {
   const field = (k, control) =>
     `<div class="rot-f" data-rot-key="${k}"><label for="rot-${k}">${escR(ROT_KEYS.find((x) => x[0] === k)[1])}</label>${control}<span class="set-tag" data-rot-src>${escR(inst[k] !== undefined ? "this install" : inherited(k))}</span></div>`;
   const sel = (k, opts) =>
-    `<select id="rot-${k}" data-focus-key="rot-${k}"><option value=""${inst[k] === undefined ? " selected" : ""}>inherit (${escR(inherited(k))})</option>` +
+    `<select id="rot-${k}" data-focus-key="rot-${k}"><option value=""${inst[k] === undefined ? " selected" : ""}>inherit (${escR(rotVal(b.org?.[k] !== undefined ? b.org[k] : b.defaults?.[k]))})</option>` +
     opts
       .map(
         ([v, l]) =>
@@ -1638,7 +1641,7 @@ function renderRotation(host, ctx) {
         message:
           scope === "persona-workspace"
             ? "Pick a persona and a workspace."
-            : `Pick a ${(ROT_SCOPES.find((x) => x[0] === scope) || [scope, scope])[1].toLowerCase()}.`,
+            : `Pick ${withArticle((ROT_SCOPES.find((x) => x[0] === scope) || [scope, scope])[1].toLowerCase())}.`,
       });
       return;
     }

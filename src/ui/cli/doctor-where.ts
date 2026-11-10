@@ -115,11 +115,12 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
         }
       : host && !host.launchd
         ? {
-            // An older host and no service host behind it: what it lacks.
+            // An older host and no service host behind it: from an earlier
+            // version, so it can't say where it runs. Nothing is wrong.
             what: "session host",
-            session: `unknown (older host${host.pid ? `, pid ${host.pid}` : ""})`,
-            status: "warn",
-            detail: `${older} can't say where it runs, so whether its terminals and agents stop at logout is unknown. It is replaced the next time it exits. ${switchNow}`,
+            session: `older host${host.pid ? ` (pid ${host.pid})` : ""}`,
+            status: "info",
+            detail: `${older} is serving, from before this version, so it can't say whether its terminals and agents stop at logout. It picks up this version the next time it exits. Nothing to do. ${switchNow}`,
           }
         : host
           ? sessionRow("session host", host.launchd, d.cli, loginChosen)
