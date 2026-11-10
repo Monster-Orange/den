@@ -3,10 +3,13 @@
  * service, over Den's service/install.sh. The runner is injected, so nothing
  * here calls launchctl or bash.
  */
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterAll, afterEach, describe, expect, it } from "@jest/globals";
 import * as http from "http";
 import type { AddressInfo } from "net";
+import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
+import type { ServiceJob } from "../../../src/ui/cli/doctor-where.js";
 import {
   cmdService,
   waitForServerInfo,
@@ -23,6 +26,9 @@ import {
 
 const DIST = "/src/acme-dev";
 const HOME = "/home/someone";
+// Install writes the host job file here: a temp dir, never a real one.
+const STATE = fs.mkdtempSync(path.join(os.tmpdir(), "den-svc-state-"));
+afterAll(() => fs.rmSync(STATE, { recursive: true, force: true }));
 
 const config = (web?: unknown): DenConfig =>
   ({ environments: ["local"], ...(web ? { web } : {}) }) as DenConfig;
@@ -78,6 +84,14 @@ function harness(
     foreign?: string;
     /** What answers on the port, for --plan and status. */
     identity?: ServerIdentity;
+    /** What answers, call by call (then `identity`). */
+    identities?: ServerIdentity[];
+    /** D18: the job installed for the label. */
+    job?: ServiceJob | null;
+    /** D26: the job's pid. */
+    jobPid?: number | null;
+    /** D26: whether a plain server stops. */
+    stops?: boolean;
   } = {},
 ) {
   const identified: number[] = [];
@@ -89,8 +103,16 @@ function harness(
     return over.code ?? 0;
   };
   const lines: string[] = [];
+  const stopped: number[] = [];
   const deps = {
     run,
+    stateDir: STATE,
+    job: () => over.job ?? null,
+    jobPid: () => over.jobPid ?? null,
+    stopPlain: async (pid: number) => {
+      stopped.push(pid);
+      return over.stops ?? true;
+    },
     config: config(over.web),
     distRoot: DIST,
     home: HOME,
@@ -105,10 +127,10 @@ function harness(
     },
     identify: async (port: number): Promise<ServerIdentity> => {
       identified.push(port);
-      return over.identity ?? { kind: "none" };
+      return over.identities?.shift() ?? over.identity ?? { kind: "none" };
     },
   };
-  return { deps, calls, lines, polls, identified };
+  return { deps, calls, lines, polls, identified, stopped };
 }
 
 describe("cmdService", () => {
@@ -130,6 +152,13 @@ describe("cmdService", () => {
             DEN_ROOT: DIST,
             DEN_SERVICE_LABEL: "com.acme.den",
             DEN_SERVICE_LOGS: "/var/log/acme",
+            // D18: the mode, and Den's node copy for the session host.
+            ...(sub === "install" || sub === "print"
+              ? {
+                  DEN_SERVICE_MODE: "login",
+                  DEN_SERVICE_HOST_EXE: `${STATE}/bin/den-sessions-host`,
+                }
+              : {}),
             // install: the CLI, not the script, says when it is running.
             ...(sub === "install"
               ? { DEN_SERVICE_READY_CHECK: "external" }
@@ -147,6 +176,8 @@ describe("cmdService", () => {
       DEN_ROOT: DIST,
       DEN_SERVICE_LABEL: "local.acme-dev.web",
       DEN_SERVICE_LOGS: "/home/someone/Library/Logs/acme-dev",
+      DEN_SERVICE_MODE: "login",
+      DEN_SERVICE_HOST_EXE: `${STATE}/bin/den-sessions-host`,
     });
   });
 
@@ -314,7 +345,7 @@ describe("service install --plan", () => {
   it("refuses an unknown flag before running anything (a typo must not install)", async () => {
     const h = harness();
     await expect(cmdService(["install", "--paln"], h.deps)).rejects.toThrow(
-      /service install: unknown argument --paln \(takes --plan\)/,
+      /service install: unknown argument --paln \(takes --plan, --mode\)/,
     );
     await expect(cmdService(["status", "--plan"], h.deps)).rejects.toThrow(
       /service status: unknown argument --plan/,
@@ -343,5 +374,135 @@ describe("service status", () => {
       await cmdService(["status"], h.deps);
       expect(h.lines).toEqual([]);
     }
+  });
+});
+
+describe("D18: install modes", () => {
+  const always: ServiceJob = {
+    state: "loaded",
+    mode: "always",
+    plist: "/Library/LaunchDaemons/local.acme-dev.web.plist",
+    domain: "system",
+  };
+
+  it("--mode always reaches the script; a bad mode is refused before anything runs", async () => {
+    const h = harness();
+    expect(await cmdService(["install", "--mode", "always"], h.deps)).toBe(0);
+    expect(h.calls[0].env.DEN_SERVICE_MODE).toBe("always");
+    const h2 = harness();
+    await expect(
+      cmdService(["install", "--mode=sometimes"], h2.deps),
+    ).rejects.toThrow(/--mode takes login or always, not "sometimes"/);
+    expect(h2.calls).toEqual([]);
+  });
+
+  it("without --mode, keeps the mode already installed", async () => {
+    const h = harness({ job: always, jobPid: 4242 });
+    await cmdService(["install"], h.deps);
+    expect(h.calls[0].env.DEN_SERVICE_MODE).toBe("always");
+  });
+
+  it("--plan names the mode, the host job and the Full Disk Access path", async () => {
+    const h = harness();
+    expect(
+      await cmdService(["install", "--plan", "--mode", "always"], h.deps),
+    ).toBe(0);
+    const out = h.lines.join("\n");
+    expect(out).toContain(
+      "mode:    always (LaunchDaemons running as you: kept across logout; one sudo)",
+    );
+    expect(out).toContain(
+      "plist:   /Library/LaunchDaemons/local.acme-dev.web.plist",
+    );
+    expect(out).toContain(
+      `host:    local.acme-dev.sessions on ${STATE}/bin/den-sessions-host`,
+    );
+  });
+
+  it("install writes the host job file; uninstall removes it", async () => {
+    const file = path.join(STATE, "sessions-host-job.json");
+    fs.rmSync(file, { force: true });
+    await cmdService(["install", "--mode", "always"], harness().deps);
+    expect(JSON.parse(fs.readFileSync(file, "utf-8"))).toEqual({
+      label: "local.acme-dev.sessions",
+      mode: "always",
+    });
+    expect((fs.statSync(file).mode & 0o777).toString(8)).toBe("600");
+    await cmdService(["uninstall"], harness().deps);
+    expect(fs.existsSync(file)).toBe(false);
+  });
+});
+
+describe("D26: running means the job's own process", () => {
+  const job: ServiceJob = {
+    state: "loaded",
+    mode: "login",
+    plist: "/home/someone/Library/LaunchAgents/local.acme-dev.web.plist",
+    domain: "gui/501",
+  };
+
+  it("stops a plain server of this install on the port before installing", async () => {
+    const h = harness({
+      job,
+      jobPid: 30000,
+      identities: [
+        { kind: "ours", pid: 27189 },
+        { kind: "ours", pid: 30000 },
+      ],
+    });
+    expect(await cmdService(["install"], h.deps)).toBe(0);
+    expect(h.stopped).toEqual([27189]);
+    expect(h.lines.join("\n")).toContain(
+      "stopped the plain server of this install (pid 27189) on port 7001: the service runs it now",
+    );
+  });
+
+  it("a plain server that won't stop: refused, nothing installed", async () => {
+    const h = harness({ identity: { kind: "ours", pid: 27189 }, stops: false });
+    expect(await cmdService(["install"], h.deps)).toBe(1);
+    expect(h.calls).toEqual([]);
+    expect(h.lines.join("\n")).toMatch(
+      /pid 27189\) holds port 7001 and did not stop/,
+    );
+  });
+
+  it("an answer from a pid that isn't the job's is not 'running'", async () => {
+    // The job crash-loops (no pid): the old process still answers.
+    const h = harness({
+      job,
+      jobPid: null,
+      identities: [{ kind: "none" }, { kind: "ours", pid: 27189 }],
+    });
+    expect(await cmdService(["install"], h.deps)).toBe(1);
+    const out = h.lines.join("\n");
+    expect(out).toContain(
+      "port 7001 is served by pid 27189, not the job (not running)",
+    );
+    expect(out).not.toMatch(/✓ .* running/);
+  });
+
+  it("status says when a plain server, not the job, holds the port", async () => {
+    const h = harness({
+      job,
+      jobPid: 30000,
+      identity: { kind: "ours", pid: 27189 },
+    });
+    expect(await cmdService(["status"], h.deps)).toBe(1);
+    expect(h.lines.join("\n")).toContain(
+      "port 7001 is served by pid 27189, not the service (pid 30000)",
+    );
+  });
+
+  it("the job's own pid answering is running", async () => {
+    const h = harness({
+      job,
+      jobPid: 30000,
+      identity: { kind: "ours", pid: 30000 },
+    });
+    expect(await cmdService(["install"], h.deps)).toBe(0);
+    expect(h.stopped).toEqual([]);
+    expect(h.lines.join("\n")).toMatch(
+      /✓ local\.acme-dev\.web running \(login\)/,
+    );
   });
 });

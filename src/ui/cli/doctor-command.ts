@@ -67,6 +67,13 @@ import {
 } from "./doctor-onboard.js";
 import { printJson } from "./json-out.js";
 import { ownerCheck, ownerLine } from "./doctor-owner.js";
+import {
+  formatWhere,
+  serviceJobState,
+  whereRows,
+  type WhereDeps,
+  type WhereRow,
+} from "./doctor-where.js";
 
 export interface DoctorRow {
   kind: string;
@@ -387,6 +394,62 @@ export async function doctorJson(
   return { ok: !checks.some((c) => c.status === "fail"), checks };
 }
 
+/** D18/D20: the real probes for doctor's "where it runs" rows. */
+export async function defaultWhereDeps(): Promise<WhereDeps> {
+  const os = await import("os");
+  const { readDenConfig: cfg, readWebServiceConfig } =
+    await import("../../shared/den-config.js");
+  const { readWebPort } = await import("../../shared/edge/config.js");
+  const { getDistRoot } = await import("../../shared/paths.js");
+  const { connectHost } = await import("../../shared/sessions/client.js");
+  const { sessionPaths } = await import("../../shared/sessions/paths.js");
+  return {
+    cli: product().cli,
+    platform: process.platform,
+    server: async () => {
+      const port = readWebPort(getDistRoot());
+      const res = await fetch(`http://localhost:${port}/api/server-info`, {
+        signal: AbortSignal.timeout(1500),
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { launchd?: string | null };
+      return { launchd: body.launchd ?? null };
+    },
+    host: async () => {
+      const c = await connectHost(sessionPaths(getStateDir()).socket);
+      try {
+        return {
+          launchd: c.hostLaunchd,
+          access: await c.access().catch(() => null),
+        };
+      } finally {
+        c.close();
+      }
+    },
+    service: () => {
+      try {
+        const { label } = readWebServiceConfig(
+          cfg(),
+          getDistRoot(),
+          os.homedir(),
+        );
+        return serviceJobState(label, os.homedir(), process.getuid?.() ?? 0);
+      } catch {
+        return null;
+      }
+    },
+  };
+}
+
+/** A "where it runs" row as a `doctor --json` check. */
+export function whereCheck(r: WhereRow): OnboardCheck {
+  return {
+    id: `where:${r.what.replace(" ", "-")}`,
+    status: r.status,
+    detail: `${r.session}${r.detail ? `: ${r.detail}` : ""}`,
+  };
+}
+
 export async function cmdDoctor(args: string[]): Promise<number> {
   const probe = args.includes("--probe");
   const json = args.includes("--json");
@@ -415,6 +478,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const r = await doctorJson(
       defaultOnboardDeps((url) => probeWebServer(url)),
     );
+    r.checks.push(
+      ...(await whereRows(await defaultWhereDeps())).map(whereCheck),
+    );
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -427,6 +493,12 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   console.log("");
   console.log(ownerLine(owner));
   const ownerProblem = owner.status === "fail";
+  // D18/D20: where the server and the session host run (logout).
+  for (const l of formatWhere(
+    await whereRows(await defaultWhereDeps()),
+    readBrand().name,
+  ))
+    console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {

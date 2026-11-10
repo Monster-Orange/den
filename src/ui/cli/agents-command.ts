@@ -87,6 +87,7 @@ import {
   relaunchAgent,
   removeAgent,
   removeStopped,
+  renameAgent,
   resolveAgentsDeps,
   resumeAgent,
   resumeInterrupted,
@@ -99,6 +100,7 @@ import {
   type RuntimeChoice,
   type Started,
 } from "./agent-ops.js";
+import { peerSessionName } from "../../shared/agents/session-name.js";
 import {
   columns,
   guarded,
@@ -119,7 +121,7 @@ export {
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|relaunch|import|persona|rm|personas|doctor|handback-check|handoff-check> ...",
+    "agents <list|start|stop|resume|relaunch|import|persona|rename|rm|personas|doctor|handback-check|handoff-check> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -156,6 +158,11 @@ export const AGENTS_HELP = {
     "    persona's role, permissions and commands; id, name, folder and model stay.",
     "    Mid-turn it asks: --after-turn waits for the turn to end, --now stops it.",
     "    A person's only (refused in an agent's session)",
+    "{cli} agents rename <id> <name> [-w <ws>]",
+    "{cli} agents rename <id> --clear [-w <ws>]",
+    "    name an agent (its tab, row and pane header); the id never changes.",
+    "    Other sessions see it as {cli}-<ws>:<name> from its next start or resume.",
+    "    --clear: back to its id",
     "{cli} agents rm <id> [-w <ws>]",
     "{cli} agents rm --stopped [-w <ws>]",
     "    forget a stopped, interrupted or exited agent (never a running one);",
@@ -513,6 +520,28 @@ async function resumeAll(args: string[], d: AgentsResolved): Promise<number> {
 }
 
 /** `agents rm <id> [-w <ws>]`, `agents rm --stopped [-w <ws>]` (AG-14.1b). */
+/** D25: `agents rename <id> <name>|--clear [-w <ws>]`. */
+function rename(args: string[], d: AgentsResolved): number {
+  const where = "agents rename";
+  const p = parseArgs(where, args, { "--workspace": true, "--clear": false });
+  const [id, ...words] = p.positional;
+  if (!id) throw new UsageError(`${where} needs <id> and a name, or --clear`);
+  const name = words.join(" ").trim();
+  if (p.flags["--clear"] && name)
+    throw new UsageError(`${where}: give a name or --clear, not both`);
+  if (!p.flags["--clear"] && !name)
+    throw new UsageError(`${where} needs a name (or --clear)`);
+  const ws =
+    workspaceFlag(where, p) ?? readRecord(d.stateDir(), id)?.workspace ?? "";
+  const rec = renameAgent(d, id, ws, p.flags["--clear"] ? null : name);
+  d.out(
+    rec.displayName
+      ? `renamed agent ${id} to "${rec.displayName}"; others see it as ${peerSessionName(d.cli, rec.workspace, rec)} from its next start or resume`
+      : `agent ${id} has no name now; others see it as ${peerSessionName(d.cli, rec.workspace, rec)} from its next start or resume`,
+  );
+  return 0;
+}
+
 async function rm(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents rm";
   const p = parseArgs(where, args, { "--workspace": true, "--stopped": false });
@@ -767,6 +796,8 @@ export async function cmdAgents(
         case "persona":
           await loadAgentWorkspaces(deps);
           return await persona(rest, d);
+        case "rename":
+          return rename(rest, d);
         case "rm":
           await loadAgentWorkspaces(deps);
           return await rm(rest, d);

@@ -455,6 +455,11 @@ export function firstPromptArg(text: string | undefined): string[] {
   return [t.startsWith("-") ? `Prompt: ${t}` : t];
 }
 
+/** D24: `--name <label>`, so peers tell Den's agents apart; or nothing. */
+function nameArg(label: string | undefined): string[] {
+  return label ? ["--name", label] : [];
+}
+
 const TOKEN_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 /**
@@ -503,6 +508,7 @@ export const denClaude: Runtime = {
         bin,
         "--session-id",
         id,
+        ...nameArg(input.sessionLabel),
         ...c.argv,
         ...firstPromptArg(input.firstPrompt),
       ],
@@ -517,7 +523,13 @@ export const denClaude: Runtime = {
     const bin = binFor(input);
     const c = common(input);
     return {
-      argv: [bin, "--resume", input.resumeToken, ...c.argv],
+      argv: [
+        bin,
+        "--resume",
+        input.resumeToken,
+        ...nameArg(input.sessionLabel),
+        ...c.argv,
+      ],
       env: {},
       files: c.files,
       warnings: c.warnings,

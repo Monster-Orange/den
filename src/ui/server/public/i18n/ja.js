@@ -775,6 +775,20 @@
     "ag.hint.tile": "クリックでセッションをタイルに追加します（最大 4）。",
     "ag.renameTip": "ダブルクリックで名前を変更",
     "ag.renameName": "{id} の名前を変更",
+    "ag.rn.item": "名前を変更…",
+    "ag.rn.title": "{id} の名前を変更",
+    "ag.rn.name": "名前",
+    "ag.rn.help":
+      "タブ、行、ペインの見出しに表示されます。ID {id} は変わりません。ほかのセッションからは、次の開始または再開から {peer} として見えます。空にすると {id} に戻ります。",
+    "ag.rn.go": "名前を変更",
+    "ag.rn.cancel": "キャンセル",
+    "ag.rn.act": "名前を変更",
+    "ag.where.logout": "ログアウトで停止",
+    "ag.where.logoutTip":
+      "デスクトップのログインセッションで動いているため、ログアウトすると終了します。エージェントを動かし続けるには: {cli} service install --mode always",
+    "ag.where.bg": "GUI なし",
+    "ag.where.bgTip":
+      "デスクトップセッションの外で、ログアウト後も動き続けます。ログインキーチェーンと GUI アプリは使えません。1Password はサービスアカウントのトークン、ブラウザはヘッドレス、保護されたフォルダにはフルディスクアクセスが必要です ({cli} doctor)。",
     "ag.rt.ready": "{name} {version} を起動:",
     "ag.rt.readyNoVer": "{name} を起動:",
     "ag.rt.notFound": "{name} が見つかりません。",

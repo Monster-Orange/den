@@ -898,6 +898,20 @@
     "ag.hint.tile": "Click adds a session as a tile, up to 4.",
     "ag.renameTip": "Double-click to rename",
     "ag.renameName": "Rename {id}",
+    "ag.rn.item": "Rename…",
+    "ag.rn.title": "Rename {id}",
+    "ag.rn.name": "Name",
+    "ag.rn.help":
+      "Its tab, row and pane header show it; the id {id} never changes. Other sessions see it as {peer} from its next start or resume. Empty: back to {id}.",
+    "ag.rn.go": "Rename",
+    "ag.rn.cancel": "Cancel",
+    "ag.rn.act": "Rename",
+    "ag.where.logout": "Stops at logout",
+    "ag.where.logoutTip":
+      "It runs in the desktop login session, so logging out ends it. To keep agents running: {cli} service install --mode always",
+    "ag.where.bg": "No GUI",
+    "ag.where.bgTip":
+      "It keeps running after logout, outside the desktop session: no login keychain and no GUI apps. 1Password uses the service-account token, browsers run headless, and protected folders need Full Disk Access ({cli} doctor).",
     "ag.rt.ready": "Starts {name} {version} from",
     "ag.rt.readyNoVer": "Starts {name} from",
     "ag.rt.notFound": "{name} not found.",

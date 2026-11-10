@@ -347,6 +347,25 @@ function wsLinkHtml(ws) {
   return `<a class="wslink" href="${esc(wsHref(ws))}" title="${esc(t("ag.goWs", { ws }))}">${esc(ws)}</a>`;
 }
 
+/**
+ * D20: where its session runs, as a tag: "Stops at logout" (the desktop
+ * session) or "No GUI" (outside it: kept across logout). `button`: a
+ * button that says why when tapped (the pane bar); else a span (a row,
+ * itself a button). "" when the host didn't say (off macOS, older host).
+ */
+function whereTag(r, button = false) {
+  const s = r?.session?.launchd;
+  const logout = s === "Aqua" || s === "LoginWindow";
+  if (!logout && s !== "Background" && s !== "System") return "";
+  const key = logout ? "ag.where.logout" : "ag.where.bg";
+  const tip = t(`${key}Tip`, { cli: CLI });
+  const cls = `tagx${logout ? " warn" : ""}`;
+  const where = logout ? "logout" : "bg";
+  return button
+    ? `<button type="button" class="${cls}" data-act="where" data-where="${where}" title="${esc(tip)}" aria-label="${esc(`${t(key)}: ${tip}`)}">${logout ? "⚠ " : ""}${esc(t(key))}</button>`
+    : `<span class="${cls}" data-where="${where}" title="${esc(tip)}">${logout ? "⚠ " : ""}${esc(t(key))}</span>`;
+}
+
 /** Its rotation, when one is due: "ready" or "due" (den#4). */
 function rotationOf(r) {
   if (!r.rotation?.due) return "";
@@ -370,6 +389,8 @@ function stoppedHtml(r) {
     : "";
   const fresh = `<button type="button" class="den-btn sm" data-act="fresh" aria-label="${esc(t("ag.freshName", { id: r.agent }))}">${esc(t("ag.fresh"))}</button>`;
   const remove = `<button type="button" class="den-btn sm" data-act="remove" aria-label="${esc(t("ag.removeName", { id: r.agent }))}">${esc(t("ag.remove"))}</button>`;
+  // D25: an agent with no pane open can be renamed too.
+  const rename = `<button type="button" class="den-btn sm" data-act="rename" aria-label="${esc(t("ag.renameName", { id: r.agent }))}">${esc(t("ag.rn.act"))}</button>`;
   // A rotation due without a handoff that passes: say so (den#4).
   const handoff =
     rot === "due"
@@ -400,7 +421,7 @@ function stoppedHtml(r) {
     (meta ? `<span class="meta">${esc(meta)}</span>` : "") +
     `<span class="why">${esc(stopReason(r))}</span>` +
     `</button>` +
-    `<div class="agacts">${handoff}${cant}${relaunch}${resume}${fresh}${remove}</div>` +
+    `<div class="agacts">${handoff}${cant}${relaunch}${resume}${fresh}${rename}${remove}</div>` +
     `</div>`
   );
 }
@@ -428,9 +449,10 @@ function rowHtml(r) {
     ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
     : "";
   const ovTags = r.kind === "agent" ? overrideTagsHtml(r) : "";
+  const wTag = whereTag(r);
   const tags =
-    rotTag || revokedTag || ovTags
-      ? `<span class="agtags">${revokedTag}${rotTag}${ovTags}</span>`
+    rotTag || revokedTag || ovTags || wTag
+      ? `<span class="agtags">${revokedTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
   return (
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
@@ -976,9 +998,10 @@ function paintBar(p) {
   const reconnect = p.lost
     ? `<button type="button" class="den-btn sm" data-act="reconnect">${esc(t("ag.reconnect"))}</button>`
     : "";
-  // AG-18: ⋯, its menu: Change persona… (a runtime that can resume).
+  // AG-18: ⋯, its menu: Rename… (D25, every agent), Change persona… (a
+  // runtime that can resume).
   const more =
-    r?.kind === "agent" && r.personaChange
+    r?.kind === "agent"
       ? `<button type="button" class="den-btn sm" data-act="more" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("ag.more", { id: r.agent }))}" title="${esc(t("ag.more", { id: r.agent }))}">⋯</button>`
       : "";
   bar.innerHTML =
@@ -987,6 +1010,7 @@ function paintBar(p) {
     (r?.tokenRevoked
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +
+    whereTag(r, true) +
     `<span class="x">${reconnect}${stop}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
   // Tabs: the tab's × closes it; the pane's bar has none.
   const x = bar.querySelector('[data-act="close"]');
@@ -2126,6 +2150,63 @@ function goLabel() {
   return t(sd.change ? "ag.pc.go" : sd.bring ? "ag.bring.go" : "ag.go");
 }
 
+/**
+ * D25: the Rename dialog for agent row `r`: its name (empty: back to its
+ * id), and the name other sessions will see it by (D24).
+ */
+function openRename(r, opener) {
+  const dlg = $d("#ag-rn");
+  if (!dlg || dlg.open) return;
+  const input = $d("#ag-rn-name");
+  const help = $d("#ag-rn-help");
+  const err = $d("#ag-rn-err");
+  $d("#ag-rn-h").textContent = t("ag.rn.title", { id: r.agent });
+  $d("#ag-rn-t").textContent = t("ag.rn.name");
+  $d("#ag-rn-go").textContent = t("ag.rn.go");
+  $d("#ag-rn-cancel").textContent = t("ag.rn.cancel");
+  input.value = r.displayName || "";
+  input.placeholder = r.agent;
+  const paintHelp = () => {
+    const name = input.value.trim() || r.agent;
+    help.textContent = t("ag.rn.help", {
+      id: r.agent,
+      peer: `${CLI}-${r.workspace}:${name}`,
+    });
+  };
+  paintHelp();
+  err.hidden = true;
+  input.oninput = paintHelp;
+  const close = () => {
+    dlg.close?.();
+    dlg.removeAttribute("open");
+    opener?.focus?.();
+  };
+  $d("#ag-rn-cancel").onclick = close;
+  $d("#ag-rn-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    const go = $d("#ag-rn-go");
+    go.disabled = true;
+    try {
+      await api("POST", agentPath(r, "name"), {
+        name: name && name !== r.agent ? name : null,
+      });
+      close();
+      await refresh();
+      paintLayout();
+    } catch (x) {
+      err.textContent = x?.message || String(x);
+      err.hidden = false;
+    } finally {
+      go.disabled = false;
+    }
+  };
+  if (typeof dlg.showModal === "function") dlg.showModal();
+  else dlg.setAttribute("open", "");
+  input.focus();
+  input.select();
+}
+
 /** AG-18: Change persona… for agent row `r` (its persona, model, name). */
 function openPersonaChange(r) {
   return openStart(false, {
@@ -2708,6 +2789,7 @@ export async function mountAgentsPage(root) {
       if (which === "resume" || which === "fresh" || which === "relaunch")
         void restartRow(r, which, act);
       else if (which === "remove") void removeRow(r, act);
+      else if (which === "rename") openRename(r, act);
       return;
     }
     const b = e.target.closest(".agr");
@@ -2738,6 +2820,11 @@ export async function mountAgentsPage(root) {
     const id = b.closest(".pane")?.dataset.id ?? b.dataset.id;
     const p = id && st.panes.get(id);
     if (!p) return;
+    if (b.dataset.act === "where") {
+      // D20: why it stops at logout (or what it lacks), for touch too.
+      window.denShell?.toast?.(b.title);
+      return;
+    }
     if (b.dataset.act === "close") closePane(id);
     else if (b.dataset.act === "stop") void stopAgent(p, b);
     else if (b.dataset.act === "resume") {
@@ -2750,7 +2837,17 @@ export async function mountAgentsPage(root) {
       window.denShell?.openMenu?.(b, {
         label: t("ag.more", { id: r.agent }),
         items: [
-          { label: t("ag.pc.item"), onSelect: () => void openPersonaChange(r) },
+          // D25: a visible Rename, for touch and keyboard (not only a
+          // double-click on a tab).
+          { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
+          ...(r.personaChange
+            ? [
+                {
+                  label: t("ag.pc.item"),
+                  onSelect: () => void openPersonaChange(r),
+                },
+              ]
+            : []),
         ],
       });
     }

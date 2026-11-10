@@ -140,7 +140,12 @@ describe("stopped agents on the Agents page (AG-14)", () => {
     expect(
       (await row(p, "scout").locator(".why").textContent())?.trim(),
     ).toMatch(/stopped/i);
-    expect(await acts(p, "scout")).toEqual(["resume", "fresh", "remove"]);
+    expect(await acts(p, "scout")).toEqual([
+      "resume",
+      "fresh",
+      "rename",
+      "remove",
+    ]);
     // The mock's ended dot.
     expect(
       await row(p, "scout").locator(".den-dot").getAttribute("class"),
@@ -175,7 +180,7 @@ describe("stopped agents on the Agents page (AG-14)", () => {
   it("a runtime that can't resume offers Start fresh only, and says why", async () => {
     if (skip()) return;
     const p = await open("north");
-    expect(await acts(p, "lookout")).toEqual(["fresh", "remove"]);
+    expect(await acts(p, "lookout")).toEqual(["fresh", "rename", "remove"]);
     expect(
       (
         await row(p, "lookout").locator("[data-no-resume]").textContent()
@@ -326,4 +331,62 @@ describe("Clear stopped (AG-14.1b)", () => {
     expect(fs.existsSync(s!.ran)).toBe(false);
     expect(errors).toEqual([]);
   });
+});
+
+describe("D25: Rename, visible, by touch or keyboard", () => {
+  // Its own stopped agent: the tests above remove theirs.
+  beforeAll(() => {
+    s?.seed({
+      id: "namer",
+      persona: "planner",
+      workspace: "north",
+      resumeToken: "55555555-5555-4555-8555-555555555555",
+      stoppedAt: STOPPED_AT,
+    });
+  });
+
+  it("a stopped agent's Rename opens a dialog that names what peers will see, and Enter saves it", async () => {
+    if (skip()) return;
+    const p = await open("north");
+    await row(p, "namer").locator('[data-act="rename"]').click();
+    const dlg = p.locator("#ag-rn");
+    await dlg.waitFor({ state: "visible" });
+    expect(await p.locator("#ag-rn-h").textContent()).toBe("Rename namer");
+    expect(await p.locator("#ag-rn-help").textContent()).toMatch(
+      /Other sessions see it as \S+-north:namer from its next start or resume/,
+    );
+    await p.locator("#ag-rn-name").fill("Night watch");
+    expect(await p.locator("#ag-rn-help").textContent()).toMatch(
+      /\S+-north:Night watch/,
+    );
+    await p.locator("#ag-rn-name").press("Enter");
+    await dlg.waitFor({ state: "hidden" });
+    await p.waitForFunction(() =>
+      document
+        .querySelector('#agl .agst[data-agent="namer"] .nm')
+        ?.textContent?.includes("Night watch"),
+    );
+    const rec = JSON.parse(
+      fs.readFileSync(path.join(s!.stateDir, "agents", "namer.json"), "utf-8"),
+    ) as { displayName?: string };
+    expect(rec.displayName).toBe("Night watch");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("fits a 375px screen, with Cancel and Rename in view", async () => {
+    if (skip()) return;
+    const p = await open("north");
+    await p.setViewportSize({ width: 375, height: 700 });
+    await row(p, "namer").locator('[data-act="rename"]').click();
+    await p.locator("#ag-rn").waitFor({ state: "visible" });
+    for (const sel of ["#ag-rn", "#ag-rn-cancel", "#ag-rn-go", "#ag-rn-name"]) {
+      const b = (await p.locator(sel).boundingBox())!;
+      expect(b.x).toBeGreaterThanOrEqual(0);
+      expect(b.x + b.width).toBeLessThanOrEqual(375);
+    }
+    await p.locator("#ag-rn-cancel").click();
+    await p.locator("#ag-rn").waitFor({ state: "hidden" });
+    await p.context().close();
+  }, 60_000);
 });

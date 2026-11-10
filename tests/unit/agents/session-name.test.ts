@@ -345,3 +345,40 @@ describe("sessionName is the session handle; sessionTitle is the name shown (0.4
     ).not.toHaveProperty("sessionTitle");
   });
 });
+
+describe("D24: the name peers see (Claude Code's session name)", () => {
+  it("is <cli>-<workspace>:<the agent's name, else its id>", async () => {
+    const { peerSessionName } =
+      await import("../../../src/shared/agents/session-name.js");
+    expect(peerSessionName("acme", "north", rec())).toBe("acme-north:planner");
+    expect(
+      peerSessionName("acme", "north", rec({ displayName: "Night watch" })),
+    ).toBe("acme-north:Night watch");
+    // Never a control character in a process argument.
+    expect(
+      peerSessionName("acme", "north", rec({ displayName: "a\u001b[2Jb\n" })),
+    ).toBe("acme-north:a[2Jb");
+  });
+
+  it("Den's own --name, read back from the transcript, is not a rename", () => {
+    const root = tmp();
+    const stateDir = path.join(root, "state");
+    const { env, file } = claudeDir(root);
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        type: "custom-title",
+        customTitle: "acme-north:Night watch",
+        sessionId: TOKEN,
+      }) + "\n",
+    );
+    const r = rec({
+      displayName: "Night watch",
+      displayNameAt: "2026-11-07T09:30:00.000Z",
+      peerName: "acme-north:Night watch",
+    });
+    expect(agentSessionName(r, stateDir, env, () => Date.now())).toBe(
+      "Night watch",
+    );
+  });
+});

@@ -138,11 +138,21 @@ describe("rotated agents on the Agents page (den#4)", () => {
     expect(await text(p, "relay", ".agr .st")).toBe(
       "Ready to relaunch (3 compactions)",
     );
-    expect(await acts(p, "relay")).toEqual(["relaunch", "fresh", "remove"]);
+    expect(await acts(p, "relay")).toEqual([
+      "relaunch",
+      "fresh",
+      "rename",
+      "remove",
+    ]);
     expect(await text(p, "merger", ".agr .st")).toBe(
       "Ready to relaunch (PR merged)",
     );
-    expect(await acts(p, "merger")).toEqual(["relaunch", "fresh", "remove"]);
+    expect(await acts(p, "merger")).toEqual([
+      "relaunch",
+      "fresh",
+      "rename",
+      "remove",
+    ]);
     // The 0.4.8 stopped row's buttons: den-btn sm, the primary first, the
     // mock's .btn.sm (2px 9px, 12.5px).
     const btn = row(p, "relay").locator('[data-act="relaunch"]');
@@ -169,7 +179,12 @@ describe("rotated agents on the Agents page (den#4)", () => {
     if (skip()) return;
     const p = await open("north");
     expect(await row(p, "drift").getAttribute("data-rotation")).toBe("due");
-    expect(await acts(p, "drift")).toEqual(["resume", "fresh", "remove"]);
+    expect(await acts(p, "drift")).toEqual([
+      "resume",
+      "fresh",
+      "rename",
+      "remove",
+    ]);
     expect(await text(p, "drift", '[data-handoff="missing"]')).toBe(
       "Its session rotated (3 compactions), but it wrote no handoff.md. Resume it to write one, or start fresh.",
     );

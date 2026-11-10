@@ -120,6 +120,12 @@ export interface LaunchInput {
    * Only a runtime with `firstPrompt: true` is given one.
    */
   firstPrompt?: string;
+  /**
+   * D24: the name other sessions see this one by (peerSessionName:
+   * `<cli>-<ws>:<name>`). A runtime that can name its session (den-claude:
+   * `--name`) does, at launch and at resume.
+   */
+  sessionLabel?: string;
 }
 
 export interface LaunchOutput {

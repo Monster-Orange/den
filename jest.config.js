@@ -55,7 +55,8 @@ export default {
   },
   coverageDirectory: "<rootDir>/coverage",
   setupFilesAfterEnv: ["<rootDir>/tests/setup.ts"],
-  // A test's child servers never outlive the run (tests/child-servers.ts).
+  // A test's child servers never outlive the run (tests/child-servers.ts),
+  // and no spawn reaches this machine's launchctl, gh or vendor CLIs.
   globalSetup: "<rootDir>/tests/global-setup.mjs",
   globalTeardown: "<rootDir>/tests/global-teardown.mjs",
   // On 2-vCPU CI runners jest runs ONE worker (availableParallelism − 1), so

@@ -2,6 +2,7 @@ import {
   ownerGithubLine,
   recordOwnerGithub,
 } from "../../shared/owner-github.js";
+import { launchdSession, webUpWarning } from "../../shared/launchd-session.js";
 import chalk from "chalk";
 import { execFileSync, spawn, spawnSync } from "child_process";
 import * as fs from "fs";
@@ -1388,6 +1389,9 @@ export async function cmdWeb(args: string[]): Promise<void> {
   }
 
   if (!running) {
+    // D20: started from an ssh (Background) shell, it lives there.
+    const where = webUpWarning(launchdSession(), product().cli);
+    if (where) console.log(chalk.yellow(`\n  ⚠ ${where}`));
     console.log(chalk.cyan(`\n  Starting ${product().cli} web on ${url}...`));
     try {
       started = startDenWebServer(options);

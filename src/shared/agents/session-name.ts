@@ -12,7 +12,10 @@
  *     token: Start fresh forgets it). An adapter that fails or throws is no
  *     name; it never breaks the list.
  *
- * Den never writes a name back into the runtime.
+ * D24: Den names the runtime's session for other sessions to see
+ * (peerSessionName: `<cli>-<ws>:<name>`, Claude Code's `--name`) at launch
+ * and resume. That name read back is Den's own (the record's peerName),
+ * never a rename.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -71,6 +74,8 @@ function runtimeName(
   } catch {
     name = null;
   }
+  // D24: Den's own --name, read back, is not the runtime's rename.
+  if (name && name === rec.peerName) name = null;
   // null: nothing new (not caught up, not found); the last name stays.
   if (name && name !== seen?.name) {
     seen = { token, name, at: now() };
@@ -81,6 +86,21 @@ function runtimeName(
     }
   }
   return seen;
+}
+
+/**
+ * D24: the name other sessions (ListAgents) see agent `rec` by:
+ * `<cli>-<ws>:<its name, else its id>`. No control characters: it is a
+ * process argument.
+ */
+export function peerSessionName(
+  cli: string,
+  ws: string,
+  rec: Pick<AgentRecord, "id" | "displayName">,
+): string {
+  // eslint-disable-next-line no-control-regex
+  const name = (rec.displayName ?? "").replace(/[\u0000-\u001f\u007f]/g, "");
+  return `${cli}-${ws}:${name.trim() || rec.id}`;
 }
 
 /**

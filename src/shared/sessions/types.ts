@@ -30,6 +30,11 @@ export interface SessionInfo {
    * starts afresh instead. Never what was typed.
    */
   prompted?: boolean;
+  /**
+   * D20: the launchd session its host ran in (`launchctl managername`):
+   * Aqua ends at logout, Background survives it. Absent off macOS.
+   */
+  launchd?: string;
 }
 
 /**

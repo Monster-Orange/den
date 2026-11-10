@@ -71,6 +71,36 @@ describe("agents start", () => {
     expect(fs.existsSync(r.ran)).toBe(false);
   });
 
+  it("D24/D25: names the Claude session <cli>-<ws>:<name> for peers; a rename carries to the next resume", async () => {
+    const r = await rig();
+    await agents(r, "start", "-w", "north", "--persona", "planner");
+    const first = r.made[0].args;
+    expect(
+      first.slice(first.indexOf("--name"), first.indexOf("--name") + 2),
+    ).toEqual(["--name", "acme-north:planner"]);
+    expect(record(r, "planner").peerName).toBe("acme-north:planner");
+    r.out.length = 0;
+    expect(await agents(r, "rename", "planner", "Night", "watch")).toBe(0);
+    expect(r.out.join("\n")).toContain(
+      'renamed agent planner to "Night watch"; others see it as acme-north:Night watch',
+    );
+    expect(record(r, "planner").displayName).toBe("Night watch");
+    r.made[0].exit(0);
+    await settle();
+    const rc = await agents(r, "resume", "planner");
+    if (rc !== 0) throw new Error(r.err.join("\n"));
+    const again = r.made[1].args;
+    expect(
+      again.slice(again.indexOf("--name"), again.indexOf("--name") + 2),
+    ).toEqual(["--name", "acme-north:Night watch"]);
+    expect(record(r, "planner").peerName).toBe("acme-north:Night watch");
+    r.out.length = 0;
+    expect(await agents(r, "rename", "planner", "--clear")).toBe(0);
+    expect(record(r, "planner").displayName).toBeUndefined();
+    expect(await agents(r, "rename", "planner")).toBe(2);
+    expect(await agents(r, "rename", "nobody", "x")).toBe(1);
+  });
+
   it("writes the agent record, 0600, with no env and no argv", async () => {
     const r = await rig();
     await agents(
@@ -107,6 +137,8 @@ describe("agents start", () => {
         // it overrides of its persona (here: the model).
         "version",
         "overrides",
+        // D24: the name its Claude session was given, for peers.
+        "peerName",
       ].sort(),
     );
     expect(rec).toMatchObject({

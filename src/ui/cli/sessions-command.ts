@@ -133,6 +133,33 @@ export interface Resolved {
   stdout: NodeJS.WriteStream;
 }
 
+/**
+ * D18: the session host's launchd job, when `service install` set one up
+ * and its plist is still there: then the job starts the host (in the
+ * session its mode chose), never a process of ours, which would run in
+ * this caller's launchd session (D20: a desktop one ends at logout).
+ */
+export function hostJob(
+  stateDir: string,
+  home: string = process.env.HOME ?? "",
+  exists: (p: string) => boolean = fs.existsSync,
+): { label: string; mode: string } | null {
+  try {
+    const v = JSON.parse(
+      fs.readFileSync(path.join(stateDir, "sessions-host-job.json"), "utf-8"),
+    ) as { label?: unknown; mode?: unknown };
+    if (typeof v.label !== "string" || !/^[\w.-]+$/.test(v.label)) return null;
+    const plists = [
+      path.join("/Library/LaunchDaemons", `${v.label}.plist`),
+      path.join(home, "Library", "LaunchAgents", `${v.label}.plist`),
+    ];
+    if (!plists.some((p) => exists(p))) return null;
+    return { label: v.label, mode: String(v.mode ?? "") };
+  } catch {
+    return null;
+  }
+}
+
 /** Start `<cli> sessions host` in the background, detached, logging to the state dir. */
 function spawnHost(stateDir: string): void {
   const cmd = cliEntrypoint();
@@ -164,17 +191,17 @@ export function resolveDeps(d: SessionsDeps): Resolved {
     cli: d.cli ?? product().cli,
     connect:
       d.connect ??
-      (() =>
-        ensureHost({
+      (() => {
+        const job = hostJob(stateDir());
+        return ensureHost({
           socket: sessionPaths(stateDir()).socket,
-          spawnHost: () => spawnHost(stateDir()),
-          logHint: path.join(
-            stateDir(),
-            "logs",
-            product().cli,
-            "sessions-host.log",
-          ),
-        })),
+          // D18: launchd starts (and restarts) the host job; wait for it.
+          spawnHost: job ? () => undefined : () => spawnHost(stateDir()),
+          logHint: job
+            ? `its launchd job ${job.label} (${job.mode}): ${product().cli} service status`
+            : path.join(stateDir(), "logs", product().cli, "sessions-host.log"),
+        });
+      }),
     connectExisting:
       d.connectExisting ??
       (d.connect
@@ -314,6 +341,8 @@ export function contractInfo(s: SessionInfo): SessionInfo {
     startedAt: s.startedAt,
     ...(s.exited ? { exited: true } : {}),
     ...(s.exitCode !== undefined ? { exitCode: s.exitCode } : {}),
+    // D20: where its host ran (Aqua: it ends at logout).
+    ...(s.launchd ? { launchd: s.launchd } : {}),
   };
 }
 
@@ -677,10 +706,15 @@ function attachTerminal(
 
 async function host(args: string[], d: Resolved): Promise<number> {
   const where = "sessions host";
-  const p = parseArgs(where, args, { "--stop": false });
+  const p = parseArgs(where, args, { "--stop": false, "--stand-by": false });
   noExtra(where, p);
   if (!p.flags["--stop"])
-    return runSessionHost({ stateDir: d.stateDir(), pty: () => loadPty() });
+    return runSessionHost({
+      stateDir: d.stateDir(),
+      pty: () => loadPty(),
+      // D18: the launchd job's: wait out a host started before it.
+      standBy: Boolean(p.flags["--stand-by"]),
+    });
   const c = await d.connectExisting();
   if (!c) {
     d.out("no session host is running");

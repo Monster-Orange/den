@@ -158,6 +158,35 @@ describe("den-claude detect", () => {
 });
 
 describe("den-claude launch", () => {
+  it("D24: names the Claude session for peers, on launch and on resume", () => {
+    const s = shim();
+    const rt = getRuntime("den-claude")!;
+    const out = rt.launch(
+      input({ env: s.env, sessionLabel: "acme-north:planner" }),
+    );
+    expect(out.argv.slice(1, 5)).toEqual([
+      "--session-id",
+      out.resumeToken,
+      "--name",
+      "acme-north:planner",
+    ]);
+    const back = rt.resume!(
+      input({
+        env: s.env,
+        resumeToken: out.resumeToken,
+        sessionLabel: "acme-north:Night watch",
+      }),
+    )!;
+    expect(back.argv.slice(1, 5)).toEqual([
+      "--resume",
+      out.resumeToken,
+      "--name",
+      "acme-north:Night watch",
+    ]);
+    // Without a label, no --name.
+    expect(rt.launch(input({ env: s.env })).argv).not.toContain("--name");
+  });
+
   it("points Claude Code at Den's scoped MCP and passes the role prompt", () => {
     const s = shim();
     const inp = input({ env: s.env, model: "opus" });

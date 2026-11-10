@@ -790,6 +790,20 @@
     "ag.hint.tile": "Un clic añade una sesión al mosaico, hasta 4.",
     "ag.renameTip": "Doble clic para cambiar el nombre",
     "ag.renameName": "Cambiar el nombre de {id}",
+    "ag.rn.item": "Cambiar el nombre…",
+    "ag.rn.title": "Cambiar el nombre de {id}",
+    "ag.rn.name": "Nombre",
+    "ag.rn.help":
+      "Lo muestran su pestaña, su fila y la cabecera del panel; el id {id} no cambia. Las demás sesiones lo ven como {peer} desde su próximo inicio o reanudación. Vacío: vuelve a {id}.",
+    "ag.rn.go": "Cambiar el nombre",
+    "ag.rn.cancel": "Cancelar",
+    "ag.rn.act": "Renombrar",
+    "ag.where.logout": "Se detiene al cerrar sesión",
+    "ag.where.logoutTip":
+      "Se ejecuta en la sesión de escritorio, así que cerrar sesión lo termina. Para que los agentes sigan: {cli} service install --mode always",
+    "ag.where.bg": "Sin GUI",
+    "ag.where.bgTip":
+      "Sigue ejecutándose tras cerrar sesión, fuera de la sesión de escritorio: sin el llavero de inicio de sesión ni apps con GUI. 1Password usa el token de la cuenta de servicio, los navegadores van sin interfaz y las carpetas protegidas necesitan Acceso total al disco ({cli} doctor).",
     "ag.rt.ready": "Inicia {name} {version} desde",
     "ag.rt.readyNoVer": "Inicia {name} desde",
     "ag.rt.notFound": "No se encontró {name}.",

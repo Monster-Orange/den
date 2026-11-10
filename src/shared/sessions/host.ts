@@ -29,6 +29,7 @@ import {
   type Request,
 } from "./protocol.js";
 import type { PtyLoad, PtyProcess } from "./pty.js";
+import { launchdSession } from "../launchd-session.js";
 import {
   SESSION_POOLS,
   SESSION_SIGNALS,
@@ -54,6 +55,14 @@ export interface SessionHostOptions {
   log?: (line: string) => void;
   /** Called after a `shutdown` request has closed the host. */
   onShutdown?: () => void;
+  /** D20: the launchd session it runs in (default: asked; null off macOS). */
+  launchdSession?: string | null;
+  /**
+   * D18: whether this process has Full Disk Access (default: it can list
+   * macOS's TCC folder, which only such a process can; null off macOS).
+   * What it starts inherits it, so the agents have it too.
+   */
+  fullDiskAccess?: () => boolean | null;
 }
 
 interface Session {
@@ -169,6 +178,27 @@ function printableActor(v: unknown): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * D18: Full Disk Access, as macOS grants it to this executable: only such
+ * a process may list ~/Library/Application Support/com.apple.TCC. null off
+ * macOS, or when the folder is not there to ask.
+ */
+export function hasFullDiskAccess(
+  home: string = process.env.HOME ?? "",
+  platform: NodeJS.Platform = process.platform,
+): boolean | null {
+  if (platform !== "darwin" || !home) return null;
+  try {
+    fs.readdirSync(
+      path.join(home, "Library", "Application Support", "com.apple.TCC"),
+    );
+    return true;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    return code === "EPERM" || code === "EACCES" ? false : null;
+  }
+}
+
 export class SessionHost {
   readonly paths: SessionPaths;
   private readonly sessions = new Map<string, Session>();
@@ -176,9 +206,17 @@ export class SessionHost {
   private server: net.Server | null = null;
   private readonly startedAt = new Date().toISOString();
   private closed = false;
+  /** D20: where it runs; stamped on every session it starts. */
+  private readonly launchd: string | null;
 
   constructor(private readonly opts: SessionHostOptions) {
     this.paths = sessionPaths(opts.stateDir);
+    const where =
+      opts.launchdSession !== undefined
+        ? opts.launchdSession
+        : launchdSession();
+    // "unknown" (launchctl said nothing) is no stamp at all.
+    this.launchd = where === "unknown" ? null : where;
   }
 
   private log(line: string): void {
@@ -187,6 +225,34 @@ export class SessionHost {
 
   private get capacity(): number {
     return this.opts.scrollbackBytes ?? DEFAULT_SCROLLBACK_BYTES;
+  }
+
+  /**
+   * Calls `onGone` once its state dir no longer exists (checked every
+   * `everyMs`): nothing it owns can be kept any more, so the host should
+   * end. A test that deletes its temp state dir no longer leaves a host
+   * running; a real install never deletes its state dir under a running
+   * host. Returns a stop function.
+   */
+  watchStateDir(everyMs: number, onGone: () => void): () => void {
+    const t = setInterval(() => {
+      if (fs.existsSync(this.opts.stateDir)) return;
+      clearInterval(t);
+      onGone();
+    }, everyMs);
+    t.unref();
+    return () => clearInterval(t);
+  }
+
+  /**
+   * D18: serve once no other host answers on the socket, checking every
+   * `everyMs`; resolves once it listens.
+   */
+  async listenWhenFree(everyMs: number): Promise<"listening"> {
+    for (;;) {
+      if ((await this.listen()) === "listening") return "listening";
+      await sleep(everyMs);
+    }
   }
 
   /** Serve on the socket, or stand down when a host already answers there. */
@@ -293,6 +359,7 @@ export class SessionHost {
           exited?: boolean;
           exitCode?: number;
           prompted?: boolean;
+          launchd?: unknown;
         };
         if (typeof rec.id !== "string" || typeof rec.name !== "string")
           continue;
@@ -308,6 +375,10 @@ export class SessionHost {
               ? { exitCode: rec.exitCode }
               : {}),
             ...(rec.prompted === true ? { prompted: true } : {}),
+            ...(typeof rec.launchd === "string" &&
+            /^[A-Za-z]{1,32}$/.test(rec.launchd)
+              ? { launchd: rec.launchd }
+              : {}),
           },
           cwd: rec.cwd,
           pty: null,
@@ -338,6 +409,7 @@ export class SessionHost {
       ...(s.info.exited ? { exited: true } : {}),
       ...(s.info.exitCode !== undefined ? { exitCode: s.info.exitCode } : {}),
       ...(s.info.prompted ? { prompted: true } : {}),
+      ...(s.info.launchd ? { launchd: s.info.launchd } : {}),
     };
     try {
       fs.writeFileSync(
@@ -419,6 +491,7 @@ export class SessionHost {
           v: PROTOCOL_VERSION,
           pid: process.pid,
           startedAt: this.startedAt,
+          launchd: this.launchd,
         };
       case "list":
         return {
@@ -498,6 +571,12 @@ export class SessionHost {
         this.forget(s);
         return {};
       }
+      case "access":
+        // D18: what this host (and every agent in it) may reach.
+        return {
+          exe: process.execPath,
+          fullDiskAccess: (this.opts.fullDiskAccess ?? hasFullDiskAccess)(),
+        };
       default:
         throw new Refusal("bad-request", `unknown op "${String(req.op)}"`);
     }
@@ -607,6 +686,7 @@ export class SessionHost {
         name,
         pid: pty.pid,
         startedAt: new Date().toISOString(),
+        ...(this.launchd ? { launchd: this.launchd } : {}),
       },
       cwd,
       pty,
@@ -712,7 +792,19 @@ export class SessionHost {
  * already running; 1 when it cannot listen.
  */
 export async function runSessionHost(
-  opts: Omit<SessionHostOptions, "onShutdown">,
+  opts: Omit<SessionHostOptions, "onShutdown"> & {
+    /**
+     * D18: the launchd job's host. While another host answers on the
+     * socket (one started before the job, from a terminal or the web
+     * server), wait for it to end, then serve, instead of exiting at once
+     * (launchd would restart it every few seconds). Checks every
+     * standByMs (default 5 s).
+     */
+    standBy?: boolean;
+    standByMs?: number;
+    /** How often it checks its state dir still exists (default 10 s). */
+    stateDirCheckMs?: number;
+  },
 ): Promise<number> {
   const log =
     opts.log ??
@@ -729,15 +821,32 @@ export async function runSessionHost(
     log(`session host could not start: ${(e as Error).message}`);
     return 1;
   }
-  if (state === "already-running") {
+  const stop = () => void host.close().then(() => process.exit(0));
+  if (state === "already-running" && opts.standBy) {
+    process.on("SIGTERM", stop);
+    process.on("SIGINT", stop);
+    log(
+      `a session host is already running on ${host.paths.socket}: standing by until it ends (its sessions keep running there)`,
+    );
+    try {
+      state = await host.listenWhenFree(opts.standByMs ?? 5000);
+    } catch (e) {
+      log(`session host could not start: ${(e as Error).message}`);
+      return 1;
+    }
+  } else if (state === "already-running") {
     log(`a session host is already running on ${host.paths.socket}`);
     return 0;
+  } else {
+    process.on("SIGTERM", stop);
+    process.on("SIGINT", stop);
   }
-  const stop = () => void host.close().then(() => process.exit(0));
-  process.on("SIGTERM", stop);
-  process.on("SIGINT", stop);
   // No terminal to hang up on: it was started detached.
   process.on("SIGHUP", () => undefined);
   log(`session host ${process.pid} listening on ${host.paths.socket}`);
+  host.watchStateDir(opts.stateDirCheckMs ?? 10_000, () => {
+    log(`its state dir ${opts.stateDir} is gone: stopping`);
+    stop();
+  });
   return 0;
 }

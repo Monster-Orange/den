@@ -16,7 +16,10 @@ import {
   HostError,
   type HostClient,
 } from "../../../src/shared/sessions/client.js";
-import { SessionHost } from "../../../src/shared/sessions/host.js";
+import {
+  hasFullDiskAccess,
+  SessionHost,
+} from "../../../src/shared/sessions/host.js";
 import { PROTOCOL_VERSION } from "../../../src/shared/sessions/protocol.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import type { PtyLoad } from "../../../src/shared/sessions/pty.js";
@@ -35,11 +38,13 @@ function stateDir(): string {
 async function host(
   dir: string,
   pty?: () => PtyLoad,
+  launchd?: string | null,
 ): Promise<{ host: SessionHost; made: ScriptedPty[] }> {
   const { factory, made } = scriptedFactory();
   const h = new SessionHost({
     stateDir: dir,
     pty: pty ?? (() => ({ available: true, factory })),
+    ...(launchd !== undefined ? { launchdSession: launchd } : {}),
     flushMs: 0,
     log: () => undefined,
   });
@@ -95,6 +100,33 @@ describe("session host", () => {
     expect(made[0].file).toBe("sh");
     expect(made[0].args).toEqual(["-c", "true"]);
     expect(await c.list()).toEqual([info]);
+  });
+
+  it("D20: stamps the launchd session it runs in on hello and on every session, kept across a restart", async () => {
+    const dir = stateDir();
+    const first = await host(dir, undefined, "Aqua");
+    const c = await client(dir);
+    expect(c.hostLaunchd).toBe("Aqua");
+    const info = await c.start(spec("acme-north:planner"));
+    expect(info.launchd).toBe("Aqua");
+    expect(await c.list()).toEqual([info]);
+    c.close();
+    await first.host.close();
+    // The record keeps where it ran, after its host is gone.
+    await host(dir, undefined, "Background");
+    const c2 = await client(dir);
+    expect(c2.hostLaunchd).toBe("Background");
+    const [old] = await c2.list();
+    expect(old).toMatchObject({ exited: true, launchd: "Aqua" });
+  });
+
+  it("D20: off macOS, no launchd stamp at all", async () => {
+    const dir = stateDir();
+    await host(dir, undefined, null);
+    const c = await client(dir);
+    expect(c.hostLaunchd).toBeNull();
+    const info = await c.start(spec("acme-north:planner"));
+    expect(info).not.toHaveProperty("launchd");
   });
 
   it("fans output out to every attachment, across clients", async () => {
@@ -386,5 +418,88 @@ describe("a host restart", () => {
     await c.forget(ref.id);
     expect(await c.list()).toEqual([]);
     expect(fs.readdirSync(sessionPaths(dir).dir)).toEqual([]);
+  });
+});
+
+describe("D18: Full Disk Access, as the host has it", () => {
+  it("the access op names the host's executable and whether it has it", async () => {
+    const dir = stateDir();
+    const { factory } = scriptedFactory();
+    const h = new SessionHost({
+      stateDir: dir,
+      pty: () => ({ available: true, factory }),
+      flushMs: 0,
+      log: () => undefined,
+      fullDiskAccess: () => false,
+    });
+    hosts.push(h);
+    await h.listen();
+    const c = await client(dir);
+    expect(await c.access()).toEqual({
+      exe: process.execPath,
+      fullDiskAccess: false,
+    });
+  });
+
+  it("hasFullDiskAccess: listing the TCC folder is the grant", () => {
+    const home = stateDir();
+    const tcc = path.join(
+      home,
+      "Library",
+      "Application Support",
+      "com.apple.TCC",
+    );
+    // No folder: cannot tell.
+    expect(hasFullDiskAccess(home, "darwin")).toBeNull();
+    fs.mkdirSync(tcc, { recursive: true });
+    expect(hasFullDiskAccess(home, "darwin")).toBe(true);
+    fs.chmodSync(tcc, 0o000);
+    try {
+      expect(hasFullDiskAccess(home, "darwin")).toBe(false);
+    } finally {
+      fs.chmodSync(tcc, 0o700);
+    }
+    expect(hasFullDiskAccess(home, "linux")).toBeNull();
+  });
+});
+
+describe("D18: the launchd job's host stands by", () => {
+  it("while another host answers it waits, then serves once that one ends", async () => {
+    const dir = stateDir();
+    const first = await host(dir);
+    const { factory } = scriptedFactory();
+    const second = new SessionHost({
+      stateDir: dir,
+      pty: () => ({ available: true, factory }),
+      flushMs: 0,
+      log: () => undefined,
+    });
+    hosts.push(second);
+    let served = false;
+    const waiting = second.listenWhenFree(20).then((v) => {
+      served = true;
+      return v;
+    });
+    await tick(120);
+    expect(served).toBe(false);
+    await first.host.close();
+    expect(await waiting).toBe("listening");
+    const c = await client(dir);
+    expect(await c.list()).toEqual([]);
+  });
+});
+
+describe("a host whose state dir is gone", () => {
+  it("is told, so it ends (a test's temp dir no longer leaves one running)", async () => {
+    const dir = stateDir();
+    const { host: h } = await host(dir);
+    let gone = 0;
+    h.watchStateDir(20, () => gone++);
+    await tick(80);
+    expect(gone).toBe(0);
+    fs.rmSync(dir, { recursive: true, force: true });
+    await until(() => gone === 1);
+    await tick(80);
+    expect(gone).toBe(1);
   });
 });

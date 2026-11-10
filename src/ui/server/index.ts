@@ -918,6 +918,7 @@ import {
 
 import { product } from "../../shared/product.js";
 import { readBrand } from "../../shared/brand.js";
+import { launchdSession } from "../../shared/launchd-session.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -4422,6 +4423,9 @@ async function handleRequest(
       // another distribution's server (see cli/server-identity.ts).
       root: ROOT,
       product: product().name,
+      // D20: the launchd session it runs in (Aqua ends at logout); doctor
+      // shows it. null off macOS.
+      launchd: launchdSession(),
       startedAt: new Date(SERVER_STARTED_AT).toISOString(),
       uptimeMs: Date.now() - SERVER_STARTED_AT,
       stale,

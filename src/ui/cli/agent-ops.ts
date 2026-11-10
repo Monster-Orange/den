@@ -71,7 +71,10 @@ import {
   type CatalogEntry,
 } from "../../shared/agents/catalog.js";
 import { checkRuntimeBin } from "../../shared/agents/catalog-runtime.js";
-import { agentSessionName } from "../../shared/agents/session-name.js";
+import {
+  agentSessionName,
+  peerSessionName,
+} from "../../shared/agents/session-name.js";
 import { cliEntrypoint } from "../../shared/engine.js";
 import { getDistRoot } from "../../shared/paths.js";
 import { envKey } from "../../shared/product.js";
@@ -1637,11 +1640,17 @@ export async function startAgent(
     );
   ptyOrRefuse(d);
   const allow = allowedFor(d, persona, ch.extras);
+  // D24: the name peers see it by, from the name it will have (below).
+  const peerName = peerSessionName(d.cli, ws, {
+    id,
+    displayName: given ?? prev?.displayName ?? persona.displayName,
+  });
   const input = {
     ...launchInput(d, cfg, persona, ws, id, model, det.path, undefined, {
       ...(ch.permission ? { permission: ch.permission } : {}),
       ...(rt.permissions ? { allow } : {}),
     }),
+    sessionLabel: peerName,
     ...(more.firstPrompt ? { firstPrompt: more.firstPrompt } : {}),
     // 0.4.18: Start agent here: in a folder of the workspace's.
     ...(req.folder !== undefined && !more.bringIn
@@ -1699,6 +1708,7 @@ export async function startAgent(
           workspace: ws,
           cwd: input.worktree,
           sessionName: sessionName(d.dist, ws, id),
+          peerName,
           // AG-4b: a name given to the agent is the agent's, not its
           // conversation's: Start fresh and Relaunch keep it. AG-10.8:
           // else its persona's name ("Rita").
@@ -2175,8 +2185,11 @@ export async function resumeAgent(
       },
     );
     // Resume in the cwd the agent had, wherever the workspace points now.
+    // D24 (and D25: a rename since) the name peers see it by.
+    const peerName = peerSessionName(d.cli, rec.workspace, rec);
     const at = {
       ...input,
+      sessionLabel: peerName,
       worktree: rec.cwd,
       ...(rec.resumeToken ? { resumeToken: rec.resumeToken } : {}),
     };
@@ -2211,7 +2224,12 @@ export async function resumeAgent(
         d,
         c,
         {
-          rec: { ...base, cwd: rec.cwd, ...(token ? { launched: true } : {}) },
+          rec: {
+            ...base,
+            cwd: rec.cwd,
+            peerName,
+            ...(token ? { launched: true } : {}),
+          },
           argv: out.argv,
           env: out.env,
           passthrough: rt.envPassthrough,

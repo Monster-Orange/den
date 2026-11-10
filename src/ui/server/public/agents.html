@@ -412,6 +412,16 @@
         flex: none;
         white-space: nowrap;
       }
+      /* D20: the launchd tag is a button (tap: why); it looks like a tag. */
+      button.tagx {
+        background: none;
+        cursor: pointer;
+        line-height: inherit;
+      }
+      button.tagx:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
       .wslink {
         color: inherit;
         text-decoration: none;
@@ -767,6 +777,26 @@
             <button type="button" class="den-btn" id="ag-cancel">Cancel</button>
             <button type="submit" class="den-btn primary" id="ag-go">
               Start
+            </button>
+          </div>
+        </form>
+      </dialog>
+      <!-- D25: Rename, from a pane's ⋯ or a stopped agent's row. -->
+      <dialog class="ag-dlg" id="ag-rn" aria-labelledby="ag-rn-h">
+        <form method="dialog" id="ag-rn-form" novalidate>
+          <h2 id="ag-rn-h">Rename</h2>
+          <label class="fld"
+            ><span id="ag-rn-t">Name</span>
+            <input id="ag-rn-name" maxlength="40" autocomplete="off" />
+          </label>
+          <p class="help" id="ag-rn-help"></p>
+          <p class="err" id="ag-rn-err" role="alert" hidden></p>
+          <div class="btns">
+            <button type="button" class="den-btn" id="ag-rn-cancel">
+              Cancel
+            </button>
+            <button type="submit" class="den-btn primary" id="ag-rn-go">
+              Rename
             </button>
           </div>
         </form>

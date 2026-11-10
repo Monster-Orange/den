@@ -38,7 +38,8 @@ describe("web UI LaunchAgent plist", () => {
       path.join(root, "service", "install.sh"),
       "utf-8",
     );
-    const status = src.slice(src.indexOf("  status)"));
+    // status prints each job's (job_status).
+    const status = src.slice(src.indexOf("job_status() {"));
     expect(status).toMatch(/spawn type/);
   });
 });

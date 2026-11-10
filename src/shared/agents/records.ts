@@ -87,6 +87,12 @@ export interface AgentRecord {
   /** When displayName was given (ISO 8601): the latest rename wins (AG-4b). */
   displayNameAt?: string;
   /**
+   * D24: the name Den last gave its runtime session (Claude Code's
+   * `--name`, peerSessionName), so reading it back is never taken for a
+   * rename.
+   */
+  peerName?: string;
+  /**
    * The model version it runs (AG-12.3): "latest" (the model's newest), or
    * a pinned version. Absent: before AG-12, `model` as given.
    */

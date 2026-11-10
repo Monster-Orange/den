@@ -4,6 +4,71 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.22] - unreleased
+
+### Added
+
+- **Agents keep running across logout (D18, D20).** `service install
+  --mode always` installs the web server and the session host as
+  LaunchDaemons that run as you (`UserName`): they start at boot and keep
+  running when you log out of the desktop, and so do every terminal and
+  agent. It takes your admin password once (sudo); `--mode login`, the
+  default, keeps LaunchAgents in the desktop session (they stop at
+  logout). Without `--mode`, install keeps the mode already installed.
+  Switching removes the other mode's jobs.
+- **The session host is its own launchd job** (`<label>` with `.web` →
+  `.sessions`), in both modes, so it runs in the mode's session whoever
+  starts the first terminal: before, it inherited the launchd session of
+  whatever started it, and one started from the desktop ended at logout
+  with every agent in it. `<cli> sessions` and agents wait for the job.
+- **Full Disk Access for Den, not for every node program.** The host job
+  runs a copy of node Den owns, `<stateDir>/bin/<cli>-sessions-host`
+  (0700), the path to grant Full Disk Access to (protected folders: other
+  volumes, Desktop, Documents); agents inherit it. Install refreshes the
+  copy when node changes and says when the grant must be given again (a
+  new signer, an ad-hoc signed node). A node that can't be copied
+  (Homebrew's) is run directly, and install says so.
+- **Where it runs, shown honestly.** Every session records the launchd
+  session its host ran in (`launchctl managername`). The Agents page tags
+  each agent **Stops at logout** (the desktop session; tap for the fix) or
+  **No GUI** (kept across logout: no login keychain, no GUI apps; 1Password
+  through the service-account token, headless browsers, Full Disk Access
+  for protected folders). `doctor` ends with **where it runs**: the
+  server's and the host's session, Full Disk Access and the path to grant,
+  and the service's mode. `web up` from an ssh (Background) shell says what
+  a server started there means.
+- **Rename, visible (D25).** **Rename…** in an agent pane's ⋯ menu and
+  **Rename** on a stopped agent's row, by touch or keyboard, and
+  `<cli> agents rename <id> <name>` (`--clear`: back to its id). Before,
+  only a double-click on an open tab renamed one.
+- **Agents tell apart in a list of sessions (D24).** Den names each
+  Claude Code agent's session `<cli>-<ws>:<name, else id>` (`--name`) at
+  start and resume, so another session listing its peers sees which agent
+  is which, not a generic name. A rename shows at its next start or resume.
+
+### Fixed
+
+- **`service install` said running while its job crash-looped (D26).** A
+  plain `web up` server of the same install on the port answered the
+  check, while the job failed to start on the taken port. Install now
+  stops a plain server of this install first, and says running only when
+  the server answering is the job's own process; `service status` says
+  when another process holds the port.
+- **`service status` names a job whose plist is present but not loaded**,
+  with the `launchctl bootstrap` that loads it (`sudo` for a LaunchDaemon);
+  `doctor` shows it too.
+- **Tests never reach this machine's launchctl, gh or vendor CLIs**, even
+  through a spawn without `env`: the inert stand-ins are now first on the
+  real PATH (jest's globalSetup), not only on each test file's sandboxed
+  `process.env`.
+
+### Migrations
+
+- None required. To keep agents running across logout, run
+  `<cli> service install --mode always` once (one sudo), then grant Full
+  Disk Access to the path `doctor` names if agents read protected folders.
+  An existing install keeps its mode (login) until you do.
+
 ## [0.4.21] - 2026-11-09
 
 ### Added

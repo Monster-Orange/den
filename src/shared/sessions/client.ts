@@ -45,6 +45,8 @@ export class HostClient extends EventEmitter {
   private readonly attachments = new Map<string, AttachHandlers>();
   hostPid = 0;
   hostStartedAt = "";
+  /** D20: the host's launchd session (null off macOS or an older host). */
+  hostLaunchd: string | null = null;
 
   constructor(private readonly socket: net.Socket) {
     super();
@@ -117,10 +119,32 @@ export class HostClient extends EventEmitter {
     this.request(op, body).catch(() => undefined);
   }
 
+  /**
+   * D18: the host's executable and whether it has Full Disk Access (null:
+   * cannot tell). null from a host older than 0.4.22.
+   */
+  async access(): Promise<{
+    exe: string;
+    fullDiskAccess: boolean | null;
+  } | null> {
+    try {
+      const r = await this.request("access");
+      return {
+        exe: String(r.exe ?? ""),
+        fullDiskAccess:
+          typeof r.fullDiskAccess === "boolean" ? r.fullDiskAccess : null,
+      };
+    } catch (e) {
+      if (e instanceof HostError && e.code === "bad-request") return null;
+      throw e;
+    }
+  }
+
   async hello(): Promise<void> {
     const r = await this.request("hello");
     this.hostPid = Number(r.pid);
     this.hostStartedAt = String(r.startedAt ?? "");
+    this.hostLaunchd = typeof r.launchd === "string" ? r.launchd : null;
   }
 
   async start(

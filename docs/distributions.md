@@ -1957,16 +1957,84 @@ Apps › New GitHub App):
 
 ## Running the web UI as a service (macOS)
 
-Den ships a launchd installer that runs the web UI at login and restarts it if
-it exits:
+Den ships a launchd installer that runs the web UI and the session host (every
+terminal and agent) as launchd jobs, restarted if they exit:
 
 ```bash
-./bin/acme service install     # install (or refresh) and start it
+./bin/acme service install                # install (or refresh) and start them
+./bin/acme service install --mode always  # keep them running across logout
 ./bin/acme service install --plan  # what install would do; writes and loads nothing
 ./bin/acme service status      # launchd's view: state, pid, last exit code
-./bin/acme service print       # the LaunchAgent plist it would install; installs nothing
-./bin/acme service uninstall   # stop it and remove the LaunchAgent
+./bin/acme service print       # the web plist it would install; installs nothing
+./bin/acme service uninstall   # stop them and remove their plists
 ```
+
+### Login or always
+
+| `--mode`          | Jobs                                                  | At logout                   |
+| ----------------- | ----------------------------------------------------- | --------------------------- |
+| `login` (default) | LaunchAgents in the desktop session (`gui/<uid>`)     | stop, with every agent      |
+| `always`          | LaunchDaemons that run as you (`UserName`), from boot | keep running, and so agents |
+
+`always` takes your admin password once (sudo writes and loads the
+LaunchDaemons in `/Library/LaunchDaemons`); it is never asked for again.
+Without `--mode`, install keeps the mode already installed, so re-running it
+after an upgrade never changes it. Switching mode removes the other mode's
+jobs: never both. Use `always` on a machine you reach from elsewhere (ssh, a
+browser on another machine); `login` on a laptop.
+
+A process outside the desktop session has no login keychain and no GUI. So
+under `always`, agents use:
+
+- **1Password**: the service-account token (`secrets.onepassword.token`),
+  not the desktop app. `doctor` warns when this process has none.
+- **Browsers**: headless Chromium and Firefox. WebKit on macOS needs a
+  desktop session; run it from Playwright's Linux image instead
+  (CONTRIBUTING.md, `DEN_PW_WS`).
+- **Protected folders** (other volumes, Desktop, Documents): Full Disk
+  Access, granted once (below).
+
+Each session records the launchd session its host ran in, and the Agents page
+tags it: **Stops at logout** (the desktop session; tap it for the fix) or
+**No GUI** (kept across logout). `web up` from an ssh shell (a Background
+session) says the same before it starts a server there.
+
+### The session host job and Full Disk Access
+
+Both modes install the session host as its own job, `<label>` with `.web`
+replaced by `.sessions` (`local.acme.sessions`), so it runs in the mode's
+session whoever starts the first terminal; `<cli> sessions` and agents then
+wait for it rather than starting a host in the caller's session. It runs a
+copy of node Den owns, `<stateDir>/bin/<cli>-sessions-host` (0700), and
+macOS grants Full Disk Access to that path: never to the shared node, which
+would give it to every node program. To grant it: System Settings → Privacy &
+Security → Full Disk Access → + → that path (⌘⇧G to type it), then
+`<cli> sessions host --stop` (it restarts with the grant). Agents inherit it.
+
+Install refreshes the copy when node changes. An official node build
+(nodejs.org, nvm) is signed by the Node.js project, so the grant holds across
+upgrades; install says when the signer changed and it must be granted again.
+An ad-hoc signed node needs a new grant after every change, and Homebrew's
+node loads libraries beside it and can't be copied: install then runs it
+directly and says so. `doctor` shows whether the host has Full Disk Access,
+and the path to grant.
+
+### What doctor shows
+
+`doctor` ends with **where it runs**: the web server's and the session host's
+launchd session (a warning with the fix when it stops at logout), Full Disk
+Access, and the service: its mode, or `plist present, job not loaded:
+launchctl bootstrap <domain> <plist>` (`sudo` for a LaunchDaemon) when launchd
+has dropped a job whose plist is still there.
+
+### Running means the job's own process
+
+A plain `web up` server of the same install on the port would answer for the
+job, which then fails to start on the taken port and restarts forever. So
+install stops a plain server of this install first (and says so), and says
+`running` only when the server answering is the job's own process (its pid is
+launchd's). Otherwise it says `port <N> is served by pid <P>, not the job`
+and exits 1; `status` says the same.
 
 The label and log directory come from the org config:
 
@@ -2011,12 +2079,14 @@ node_modules/@monster-orange/den/service/install.sh uninstall
 node_modules/@monster-orange/den/service/install.sh print       # the plist only
 ```
 
-| Variable            | Default                                  |
-| ------------------- | ---------------------------------------- |
-| `DEN_ROOT`          | required in a distribution               |
-| `DEN_SERVICE_LABEL` | `local.<distribution dir name>.web`      |
-| `DEN_SERVICE_LOGS`  | `~/Library/Logs/<distribution dir name>` |
-| `DEN_SERVICE_NODE`  | see below                                |
+| Variable               | Default                                                                 |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `DEN_ROOT`             | required in a distribution                                              |
+| `DEN_SERVICE_LABEL`    | `local.<distribution dir name>.web`                                     |
+| `DEN_SERVICE_LOGS`     | `~/Library/Logs/<distribution dir name>`                                |
+| `DEN_SERVICE_NODE`     | see below                                                               |
+| `DEN_SERVICE_MODE`     | `login` (or `always`)                                                   |
+| `DEN_SERVICE_HOST_EXE` | none: the host runs that node (`<cli> service install` sets Den's copy) |
 
 The service runs the engine's server, from the distribution root, with the
 `node` on your `PATH` at install time. A version manager's node (nvm, fnm,
@@ -2495,6 +2565,15 @@ server scoped to its workspace.
   start and resume answers). 0.4.12 sent the name shown as `sessionName`;
   read `sessionTitle` instead. Records are unchanged, so none written
   before needs migrating.
+- **Renaming.** `agents rename <id> <name>` (or `--clear`, back to its
+  id) names an agent; so do **Rename…** in its pane's ⋯ menu and **Rename**
+  on a stopped agent's row, by touch or keyboard, as well as a double-click
+  on its tab. The id never changes.
+- **The name other sessions see.** Den names a Claude Code agent's session
+  `<cli>-<ws>:<name, else id>` (`--name`) at every start and resume, so
+  another session listing its peers tells Den's agents apart. A rename
+  shows at its next start or resume. The record's `peerName` is the name
+  last given, so reading it back is never taken for a `/rename`.
 - `list` shows agents only: sessions with an agent record. A session from
   `sessions start` is not an agent; `sessions list` shows it.
 - `stop` sends its session TERM and marks it stopped. `resume` works only
