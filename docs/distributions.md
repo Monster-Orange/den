@@ -1969,6 +1969,14 @@ terminal and agent) as launchd jobs, restarted if they exit:
 ./bin/acme service uninstall   # stop them and remove their plists
 ```
 
+With the service installed, `web` works through launchd. `web restart`
+restarts the job (`launchctl kickstart -k`) and names its new pid and the
+service's log. `web up` starts the job when it isn't answering. `web down`
+refuses, because launchd would only start it again: use `service
+uninstall` to stop it. Under `always`, restarting needs sudo, so `web
+restart` prints the `sudo launchctl kickstart -k system/<label>` line for
+you to run.
+
 ### Login or always
 
 | `--mode`          | Jobs                                                  | At logout                            |

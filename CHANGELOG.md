@@ -33,6 +33,17 @@ config and manifest changes a distribution must make to move to it under
   from its handoff, `ask` refuses with the callout's choices, `off` goes
   on with the same conversation.
 
+### Fixed
+
+- **`web restart` with the service installed** restarts the launchd job
+  and names its pid and the service's log. Before, it started a plain
+  server, said "started", and that server died seconds later because
+  launchd had brought the job back onto the port. `web up` starts a job
+  that isn't answering; `web down` refuses and names `service uninstall`.
+- The "port in use" message no longer says to kill whatever holds the
+  port, which killed the service. It names `service status` and `web
+  restart`.
+
 ### Migrations
 
 - None required. Rotation now relaunches by itself (`on_due: auto`). To

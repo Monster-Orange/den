@@ -5587,9 +5587,9 @@ server.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EADDRINUSE") {
     console.error(
       `\n  ✗ Port ${PORT} is already in use.\n` +
-        `\n  Another ${product().cli} instance may be running. To fix:\n` +
-        `\n    lsof -ti :${PORT} | xargs kill   # kill whatever is on the port` +
-        `\n    make web                          # then restart\n`,
+        `\n  Another ${product().cli} server may be running, or its service holds the port.` +
+        `\n  ${product().cli} service status   # is the service running it?` +
+        `\n  ${product().cli} web restart      # restarts the service, or the plain server\n`,
     );
     process.exit(1);
   }

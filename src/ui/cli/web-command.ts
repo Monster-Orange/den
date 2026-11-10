@@ -70,6 +70,7 @@ import {
 } from "./server-identity.js";
 
 import { product } from "../../shared/product.js";
+import { webServiceAction, type WebServiceDeps } from "./web-service.js";
 import {
   CLAIM_CODE_TTL_MS,
   claimLink,
@@ -1265,6 +1266,12 @@ export function cmdWebToken(
   return 0;
 }
 
+/** Tests: the launchd service seams (web-service.ts); never the real launchctl. */
+let webServiceDeps: WebServiceDeps | undefined;
+export function setWebServiceDepsForTest(d: WebServiceDeps | undefined): void {
+  webServiceDeps = d;
+}
+
 export async function cmdWeb(args: string[]): Promise<void> {
   // A subcommand with its own help answers its own --help (it is
   // dispatched first); the rest (up, down, restart, open) share this one.
@@ -1314,7 +1321,26 @@ export async function cmdWeb(args: string[]): Promise<void> {
   const identity = await refuseForeignServer(options.port, ownServer());
   const vouched = identity.kind === "ours" ? identity.pid : undefined;
 
-  if (options.action === "down") {
+  // With the launchd service installed, it owns the server: restart and up
+  // go through launchd, down is refused (launchd would start it again).
+  const svc = await webServiceAction(
+    options.action,
+    options.port,
+    identity.kind === "ours",
+    (p) => waitForDenWeb(p),
+    webServiceDeps,
+  );
+  if (svc.handled) {
+    if (svc.code !== 0) {
+      process.exitCode = svc.code;
+      return;
+    }
+    recordRunningDenWebServer(options.port);
+  }
+
+  if (svc.handled) {
+    /* the service runs it: on to opening the browser */
+  } else if (options.action === "down") {
     const stopped = await stopDenWebServer(options.port, vouched);
     if (stopped.stopped) {
       const mode = stopped.forced ? "force stopped" : "stopped";
@@ -1343,7 +1369,7 @@ export async function cmdWeb(args: string[]): Promise<void> {
     if (line) console.log(chalk.dim(`\n  ${line}`));
   }
 
-  if (options.action === "restart") {
+  if (options.action === "restart" && !svc.handled) {
     const stopped = await stopDenWebServer(options.port, vouched);
     if (stopped.pids.length > 0 && !stopped.stopped) {
       throw new Error(
@@ -1369,8 +1395,9 @@ export async function cmdWeb(args: string[]): Promise<void> {
   );
   if (ignored) console.log(chalk.yellow(`\n  ⚠ ${ignored}`));
 
-  const apiRunning = await isDenWebApiRunning(options.port);
-  let running = apiRunning && (await isDenWebUiReady(options.port));
+  const apiRunning = svc.handled || (await isDenWebApiRunning(options.port));
+  let running =
+    svc.handled || (apiRunning && (await isDenWebUiReady(options.port)));
   let started: StartedServer | null = null;
 
   if (apiRunning && !running) {
@@ -1415,7 +1442,7 @@ export async function cmdWeb(args: string[]): Promise<void> {
       console.log(chalk.red(`  ERROR Failed to start ${product().cli} web`));
       throw error;
     }
-  } else {
+  } else if (!svc.handled) {
     recordRunningDenWebServer(options.port);
     console.log(
       chalk.green(`\n  OK ${product().title} web is already running at ${url}`),
