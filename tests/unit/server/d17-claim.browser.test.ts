@@ -147,6 +147,62 @@ const text = async (p: Page, sel: string) =>
 
 const OWNER = { id: 4242, login: "octo-owner" };
 
+describe("Connect your GitHub account, from another machine (D29)", () => {
+  it("web.owner_github set: Sign in as @login is the primary button; the localhost one names the machine", async () => {
+    if (skip()) return;
+    const ctx = await browser!.newContext({
+      viewport: { width: 390, height: 900 },
+    });
+    const p = await ctx.newPage();
+    const errors: string[] = [];
+    p.on("pageerror", (e) => errors.push(e.message));
+    // The page's own data (script#den-error), with web.owner_github set
+    // as well.
+    await p.route(`http://${EDGE}:${port}/settings`, async (route) => {
+      const res = await route.fetch();
+      const html = await res.text();
+      const re = /(<script[^>]*id="den-error"[^>]*>)([\s\S]*?)(<\/script>)/;
+      const m = re.exec(html);
+      if (!m) throw new Error("no den-error data in the page");
+      const data = JSON.parse(m[2]) as unknown;
+      const add = (o: unknown): void => {
+        if (!o || typeof o !== "object") return;
+        const r = o as Record<string, unknown>;
+        if (r.state === "claim") r.ownerGithub = "octo-owner";
+        for (const v of Object.values(r)) add(v);
+      };
+      add(data);
+      const json = JSON.stringify(data).replace(/</g, "\\u003c");
+      await route.fulfill({
+        response: res,
+        body: html.replace(re, `$1${json}$3`),
+      });
+    });
+    await p.goto(`http://${EDGE}:${port}/settings`);
+    await p.waitForSelector("#den-claim-title");
+    const buttons = await p.$$eval("#den-gh .acts .btn", (bs) =>
+      bs.map((b) => ({
+        id: b.id,
+        text: (b.textContent ?? "").trim(),
+        primary: b.classList.contains("primary"),
+      })),
+    );
+    expect(buttons).toEqual([
+      { id: "den-gh-start", text: "Sign in as @octo-owner", primary: true },
+      {
+        id: "den-claim-here",
+        text: "On Studio itself: connect GitHub",
+        primary: false,
+      },
+    ]);
+    expect(await text(p, "#den-claim-org")).toBe(
+      "Members of the acme-co GitHub org can claim it, in a browser on Studio.",
+    );
+    expect(errors).toEqual([]);
+    await ctx.close();
+  }, 60_000);
+});
+
 describe("Connect your GitHub account, on this computer", () => {
   it("leads the signed-out page; This is my computer goes round and starts the sign-in; a member gets in", async () => {
     if (skip()) return;
@@ -168,8 +224,16 @@ describe("Connect your GitHub account, on this computer", () => {
     );
     expect(await p.title()).toMatch(/^Acme Den\b/);
     expect(await text(p, "#den-claim-org")).toBe(
-      "Members of the acme-co GitHub org can claim it, in a browser on Studio.",
+      "Members of the acme-co GitHub org can claim it, from a browser on Studio. Open this page on Studio, or set web.owner_github to sign in from anywhere.",
     );
+    // D29: the button that only works on the Den machine says so itself.
+    expect(await text(p, "#den-claim-here")).toBe(
+      "On Studio itself: connect GitHub",
+    );
+    expect(await p.getAttribute("#den-claim-here", "class")).toContain(
+      "primary",
+    );
+    expect(await p.locator("#den-claim-note").count()).toBe(0);
     // It comes first: before the where-it-runs line and Approve this computer.
     expect(
       await p.$eval("#den-signin", (el) =>

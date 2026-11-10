@@ -305,6 +305,83 @@ describe("a due agent's callout (D28)", () => {
   }, 60_000);
 });
 
+describe("the add override form (D30)", () => {
+  for (const width of [1280, 375])
+    it(`picks an agent by its name with the keyboard; the table shows names, a gone one greyed (${width} px)`, async () => {
+      if (!browser) return;
+      fs.rmSync(path.join(s!.stateDir, "agent-rotation.json"), { force: true });
+      // An agent with a name a person gave it, and an override for one
+      // that no longer exists.
+      s!.seed({
+        id: "scout",
+        persona: "builder",
+        runtime: "den-claude",
+        workspace: "north",
+        resumeToken: TOKEN,
+        session: { backend: "den-pty", id: sessionId },
+        sessionName: "acme-north:scout",
+        displayName: "Scout the builder",
+      });
+      setRotateValue(s!.stateDir, "agent", "ghost", "on_due", "off");
+      const { p, errors } = await open(width, "/settings?q=rotation#agents");
+      await p.locator("[data-rotation-settings]").waitFor({ timeout: 20_000 });
+      const gone = p.locator("[data-rot-row][data-rot-gone]");
+      await gone.waitFor();
+      expect((await gone.locator('[data-l="For"]').textContent())?.trim()).toBe(
+        "ghost (gone)",
+      );
+      expect(
+        await gone
+          .getByRole("button", { name: /^Remove When due for ghost$/ })
+          .count(),
+      ).toBe(1);
+
+      const saved = p.waitForResponse(
+        (r) =>
+          new URL(r.url()).pathname === "/api/agents/rotation" &&
+          r.request().method() === "PUT",
+      );
+      // Agent is the first scope; its picker lists names, not ids.
+      await p.focus("#rot-a-agent");
+      await p.keyboard.type("scou");
+      const opts = p.locator("#rot-a-agent-list [role=option]");
+      await opts.first().waitFor();
+      expect(
+        (await opts.first().locator(".den-combo-l").textContent())?.trim(),
+      ).toBe("Scout the builder");
+      expect(
+        (await opts.first().locator(".den-combo-s").textContent())?.trim(),
+      ).toMatch(/^north · /);
+      await p.keyboard.press("Enter");
+      expect(await p.inputValue("#rot-a-agent")).toBe("Scout the builder");
+      await p.keyboard.press("Tab");
+      // Setting: When due; the value is a choice, not free text.
+      await p.selectOption("#rot-a-key", "on_due");
+      expect(await p.isVisible("#rot-a-due")).toBe(true);
+      expect(await p.isVisible("#rot-a-n")).toBe(false);
+      await p.selectOption("#rot-a-due", "ask");
+      await p.getByRole("button", { name: "Add override" }).click();
+      expect((await saved).status()).toBe(200);
+      expect(readRotateFile(s!.stateDir).overrides?.agent?.scout).toEqual({
+        on_due: "ask",
+      });
+      const row = p.locator("[data-rot-row]:not([data-rot-gone])");
+      await row.first().waitFor();
+      expect(
+        (await row.first().locator('[data-l="For"]').textContent())?.trim(),
+      ).toBe("Scout the builder (north)");
+      expect(
+        (await row.first().locator('[data-l="Value"]').textContent())?.trim(),
+      ).toBe("Ask");
+      // No id is shown anywhere for it.
+      expect(await p.locator(".rot-ov").textContent()).not.toMatch(/\bscout\b/);
+      expect(await hScroll(p)).toBe(false);
+      expect(errors).toEqual([]);
+      await p.context().close();
+      fs.rmSync(path.join(s!.stateDir, "agent-rotation.json"), { force: true });
+    }, 60_000);
+});
+
 describe("Settings › Agents › Rotation (D28)", () => {
   for (const width of [1280, 375])
     it(`saves this install's value and an override (${width} px)`, async () => {
@@ -328,21 +405,49 @@ describe("Settings › Agents › Rotation (D28)", () => {
           hasText: "this install",
         })
         .waitFor();
+      // D30: the persona is picked by name (type, Enter), never typed as an id.
       await p.selectOption("#rot-a-scope", "persona");
-      await p.fill("#rot-a-target", "builder");
-      await p.fill("#rot-a-value", "5");
+      await p.click("#rot-a-persona");
+      await p.keyboard.type("be-d");
+      await p.keyboard.press("Enter");
+      await p.selectOption("#rot-a-key", "after_compactions");
+      await p.fill("#rot-a-n", "5");
       res = saved();
       await p.getByRole("button", { name: "Add override" }).click();
       expect((await res).status()).toBe(200);
       await p.locator("[data-rot-row]").first().waitFor();
+      // Lines of the overrides table: no word (a header, or a key like
+      // after_compactions) is split across two lines.
+      expect(
+        await p.locator(".rot-ov").evaluate((t) => {
+          const split: string[] = [];
+          const walk = document.createTreeWalker(t, NodeFilter.SHOW_TEXT);
+          for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+            const text = n.textContent ?? "";
+            for (const m of text.matchAll(/\S+/g)) {
+              const r = document.createRange();
+              r.setStart(n, m.index!);
+              r.setEnd(n, m.index! + m[0].length);
+              const tops = new Set(
+                [...r.getClientRects()]
+                  .filter((x) => x.width > 0)
+                  .map((x) => Math.round(x.top)),
+              );
+              if (tops.size > 1) split.push(m[0]);
+            }
+          }
+          // Header labels drawn by CSS (narrow cards) are checked too.
+          return split;
+        }),
+      ).toEqual([]);
       expect(readRotateFile(s!.stateDir)).toEqual({
         install: { on_due: "ask" },
-        overrides: { persona: { builder: { after_compactions: 5 } } },
+        overrides: { persona: { "be-dev": { after_compactions: 5 } } },
       });
       res = saved();
       await p
         .getByRole("button", {
-          name: "Clear after_compactions for persona builder",
+          name: "Clear After compactions for be-dev",
         })
         .click();
       expect((await res).status()).toBe(200);

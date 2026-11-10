@@ -109,8 +109,14 @@ describe("the node the LaunchAgent runs", () => {
       "utf-8",
     );
     expect(src).toMatch(
-      /if \[ "\$\{1:-\}" = install \]; then\n\s+echo "⚠ the service will run/,
+      /if \[ "\$\{1:-\}" = install \]; then\n\s+echo "⚠ the web job will run/,
     );
+    // Once per install, not once per job: only the web job's plist passes
+    // the mode (the host job runs Den's own copy of node).
+    expect(src).toContain(
+      'NODE="$(pick_node "$([ "$2" = web ] && echo "$MODE")")"',
+    );
+    expect(src.match(/pick_node "/g)).toHaveLength(1);
     fs.rmSync(t, { recursive: true, force: true });
   });
 

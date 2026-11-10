@@ -138,6 +138,7 @@ import {
   resumeOrRelaunch,
   keepAgentConversation,
   askForHandoff,
+  rotationChoices,
   rotationSettings,
   setRotationSetting,
   rotationTick,
@@ -1328,7 +1329,18 @@ async function rotationRoute(
       const agent = q.get("agent") ?? undefined;
       if ((ws && !NAME_RE.test(ws)) || (agent && !NAME_RE.test(agent)))
         throw new AgentError("not a name", { usage: true });
-      sendJson(res, rotationSettings(d, agent, ws));
+      // D30: ?choices=1 adds what the overrides form can pick, by name.
+      sendJson(res, {
+        ...rotationSettings(d, agent, ws),
+        ...(q.get("choices") === "1"
+          ? {
+              choices: await rotationChoices(
+                d,
+                Object.keys(readWorkspacesFile().workspaces ?? {}),
+              ),
+            }
+          : {}),
+      });
       return true;
     }
     if (method !== "PUT") return methodNotAllowed(res, "GET, PUT");

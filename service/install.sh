@@ -110,8 +110,9 @@ pick_node() {
   done
   # Warn when installing; `print` writes the plist and nothing else.
   if [ "${1:-}" = install ]; then
-    echo "⚠ the service will run $node, a version manager's node: it stops starting" >&2
-    echo "  when that version is removed. Re-run install after switching, or set DEN_SERVICE_NODE." >&2
+    echo "⚠ the web job will run $node, a version manager's node: it stops starting" >&2
+    echo "  when that version is removed (the session host runs Den's own copy of node)." >&2
+    echo "  Re-run install after switching, or set DEN_SERVICE_NODE." >&2
   fi
   echo "$node"
 }
@@ -165,7 +166,8 @@ host_exe() { # $1 node
 }
 
 write_plist() { # $1 = output file, $2 = web|host, $3 = mode
-  NODE="$(pick_node "$MODE")"
+  # Warned once, for the web job: the host job runs Den's node copy.
+  NODE="$(pick_node "$([ "$2" = web ] && echo "$MODE")")"
   TSX="$(find_tsx)" || { echo "✗ tsx not installed: run npm ci in $DIST" >&2; exit 1; }
   local exe="$NODE" label="$LABEL" log="web.log"
   if [ "$2" = host ]; then

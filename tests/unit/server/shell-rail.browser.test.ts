@@ -762,7 +762,7 @@ describe("pins (a consumer's dev.17 run)", () => {
     );
     expect(
       await p
-        .getByRole("button", {
+        .getByRole("link", {
           name: "Visit shop-web (opens a new tab)",
           exact: true,
         })
@@ -770,7 +770,8 @@ describe("pins (a consumer's dev.17 run)", () => {
     ).toBe(1);
     expect(
       await p.$eval('[data-visit="shop-web"]', (x) => [
-        x.closest("a") === null,
+        // D27: a link of its own, not inside the row's link.
+        x.parentElement?.closest("a") === null,
         x.getAttribute("tabindex"),
         x.getAttribute("title"),
         x.querySelector('[aria-hidden="true"]')?.textContent,

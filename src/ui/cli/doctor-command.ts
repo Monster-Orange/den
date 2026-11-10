@@ -69,11 +69,13 @@ import { printJson } from "./json-out.js";
 import { ownerCheck, ownerLine } from "./doctor-owner.js";
 import {
   formatWhere,
+  launchdJobPid,
   serviceJobState,
   whereRows,
   type WhereDeps,
   type WhereRow,
 } from "./doctor-where.js";
+import { hostLabel } from "./service-command.js";
 
 export interface DoctorRow {
   kind: string;
@@ -420,6 +422,8 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
       try {
         return {
           launchd: c.hostLaunchd,
+          pid: c.hostPid,
+          startedAt: c.hostStartedAt || undefined,
           access: await c.access().catch(() => null),
         };
       } finally {
@@ -438,6 +442,24 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
         return null;
       }
     },
+    hostJob: () => {
+      try {
+        const { label } = readWebServiceConfig(
+          cfg(),
+          getDistRoot(),
+          os.homedir(),
+        );
+        const host = hostLabel(label);
+        const job = serviceJobState(
+          host,
+          os.homedir(),
+          process.getuid?.() ?? 0,
+        );
+        return job?.state === "loaded" ? launchdJobPid(job.domain, host) : null;
+      } catch {
+        return null;
+      }
+    },
   };
 }
 
@@ -445,7 +467,8 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
 export function whereCheck(r: WhereRow): OnboardCheck {
   return {
     id: `where:${r.what.replace(" ", "-")}`,
-    status: r.status,
+    // info is as chosen: not a problem.
+    status: r.status === "info" ? "ok" : r.status,
     detail: `${r.session}${r.detail ? `: ${r.detail}` : ""}`,
   };
 }

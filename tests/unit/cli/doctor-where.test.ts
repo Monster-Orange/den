@@ -6,10 +6,12 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import {
+  formatWhere,
   serviceJobState,
   whereRows,
   type WhereDeps,
 } from "../../../src/ui/cli/doctor-where.js";
+import { whereCheck } from "../../../src/ui/cli/doctor-command.js";
 
 const base = (over: Partial<WhereDeps> = {}): WhereDeps => ({
   cli: "acme",
@@ -43,6 +45,75 @@ describe("whereRows", () => {
     expect(host.status).toBe("warn");
     expect(host.detail).toContain("stops when you log out");
     expect(host.detail).toContain("acme service install --mode always");
+  });
+
+  it("login mode as installed: the server's Aqua is ℹ, not ⚠ (it was chosen)", async () => {
+    const rows = await whereRows(
+      base({
+        server: async () => ({ launchd: "Aqua" }),
+        host: async () => ({ launchd: "Aqua", pid: 7 }),
+        service: () => ({
+          state: "loaded",
+          mode: "login",
+          plist: "/x.plist",
+          domain: "gui/501",
+        }),
+        hostJob: () => 7,
+      }),
+    );
+    expect(rows.map((r) => [r.what, r.status])).toEqual([
+      ["server", "info"],
+      ["session host", "info"],
+      ["service", "ok"],
+    ]);
+    expect(formatWhere(rows, "Acme").join("\n")).toMatch(/server\s+Aqua\s+ℹ/);
+    expect(whereCheck(rows[0]).status).toBe("ok");
+  });
+
+  it("no service: Aqua is still ⚠ (nobody chose it)", async () => {
+    const rows = await whereRows(
+      base({ server: async () => ({ launchd: "Aqua" }), service: () => null }),
+    );
+    expect(rows[0].status).toBe("warn");
+  });
+
+  it("an older host serving, the service's host standing by: ℹ, nothing to do; --stop only as optional", async () => {
+    const rows = await whereRows(
+      base({
+        host: async () => ({
+          launchd: null,
+          pid: 1776,
+          startedAt: "2026-11-09T16:51:29.000Z",
+        }),
+        hostJob: () => 29946,
+      }),
+    );
+    const h = rows.find((r) => r.what === "session host")!;
+    expect(h).toMatchObject({
+      session: "older host (pid 1776)",
+      status: "info",
+    });
+    expect(h.detail).toBe(
+      "an older session host (pid 1776, since 2026-11-09) is serving; the service's host (pid 29946) takes over when it exits. Nothing to do. To switch now (ends running terminals and agents): acme sessions host --stop",
+    );
+    expect(whereCheck(h).status).toBe("ok");
+    expect(formatWhere(rows, "Acme").join("\n")).not.toMatch(
+      /unknown|⚠ an older/,
+    );
+  });
+
+  it("an older host with no service host behind it: ⚠, saying what it can't tell", async () => {
+    const rows = await whereRows(
+      base({
+        host: async () => ({ launchd: null, pid: 1776 }),
+        hostJob: () => null,
+      }),
+    );
+    const h = rows.find((r) => r.what === "session host")!;
+    expect(h.status).toBe("warn");
+    expect(h.detail).toMatch(
+      /^an older session host \(pid 1776\) can't say where it runs, so whether its terminals and agents stop at logout is unknown/,
+    );
   });
 
   it("Full Disk Access granted to Den's node copy", async () => {

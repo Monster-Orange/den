@@ -4,6 +4,32 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.24] - unreleased
+
+### Fixed
+
+- **Visit opens in Safari (D27).** Visit, in the service panel and the
+  rail's ↗, is now a real link (`target=_blank`) instead of a button that
+  called `window.open`, which Safari's popup blocker stopped. The panel
+  also holds its 5 s repaint while a pointer is down in it, so a click
+  is never lost to a repaint between press and release.
+- **Signing in from another machine (D29).** On an unclaimed Den with
+  `web.owner_github` set, "Sign in as @login" is the primary button. The
+  button that only works on the Den machine says so: "On <host> itself:
+  connect GitHub". With only `web.allowed_github_org`, the page says to
+  open it on that machine, or to set `web.owner_github`.
+- **Rotation overrides are picked by name (D30).** Settings › Agents ›
+  Rotation's Add override form has searchable pickers (type to filter,
+  arrow keys, Enter) for the agent, persona, workspace or service, and a
+  choice for each value, never a typed id. The overrides table shows
+  names; an override for something that is gone is greyed, with Remove.
+  At 375 px the table stacks into cards, so no word breaks mid-letter.
+- **doctor, where it runs.** In login mode (as installed), the server and
+  session host in the desktop session show ℹ, not ⚠. An older session
+  host still serving, with the service's own host standing by, is ℹ
+  "Nothing to do", not "unknown ✓". The version-manager node warning at
+  `service install` prints once, for the web job.
+
 ## [0.4.23] - 2026-11-10
 
 ### Added

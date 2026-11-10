@@ -414,6 +414,33 @@ describe("the routes", () => {
     expect(readRotateFile(r.stateDir)).toEqual({});
   });
 
+  it("GET ?choices=1: what the form can pick, by name (D30); without it, none", async () => {
+    const r = await rig();
+    await started(r);
+    const call = await server(r);
+    const got = await call("GET", "/api/agents/rotation?choices=1");
+    const c = got.json.choices as {
+      agents: { id: string; name: string; workspace?: string; state: string }[];
+      personas: { id: string; name: string; category: string }[];
+      workspaces: unknown[];
+      services: unknown[];
+    };
+    expect(c.agents).toContainEqual({
+      id: "be-dev",
+      name: "be-dev",
+      workspace: "north",
+      state: "running",
+    });
+    expect(c.personas.find((p) => p.id === "be-dev")).toMatchObject({
+      name: "be-dev",
+      category: expect.any(String),
+    });
+    expect(Array.isArray(c.workspaces)).toBe(true);
+    expect(Array.isArray(c.services)).toBe(true);
+    const plain = await call("GET", "/api/agents/rotation");
+    expect(plain.json.choices).toBeUndefined();
+  });
+
   it("keep resets the count; never sets the agent's override", async () => {
     const r = await rig();
     await started(r);

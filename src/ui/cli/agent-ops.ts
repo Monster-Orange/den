@@ -3369,6 +3369,71 @@ export async function resumeOrRelaunch(
 }
 
 /** D28: the rotation settings, and agent `agent`'s effective values. */
+/** D30: what the rotation overrides can name, with names to show. */
+export interface RotationChoices {
+  agents: { id: string; name: string; workspace?: string; state: string }[];
+  personas: { id: string; name: string; category: string }[];
+  workspaces: { id: string; name: string }[];
+  services: { id: string; name: string; workspace: string }[];
+}
+
+/**
+ * D30: the overrides form's pickers: every agent (its name, workspace and
+ * state), persona (name and category), workspace and workspace service.
+ * Never starts a session host to ask (a stopped one: agents from their
+ * records). A part that can't be read is empty, not an error.
+ */
+export async function rotationChoices(
+  d: AgentsResolved,
+  workspaces: string[],
+): Promise<RotationChoices> {
+  let sessions: SessionInfo[] = [];
+  try {
+    const c = await d.connectExisting();
+    try {
+      sessions = c ? await c.list() : [];
+    } finally {
+      c?.close();
+    }
+  } catch {
+    sessions = [];
+  }
+  const records = listRecords(d.stateDir());
+  const agents = agentRows(sessions, records, d.stateDir())
+    .filter((r) => r.agent)
+    .map((r) => ({
+      id: r.agent,
+      name: r.displayName || r.sessionTitle || r.agent,
+      ...(r.workspace ? { workspace: r.workspace } : {}),
+      state: r.state,
+    }));
+  let personaList: RotationChoices["personas"] = [];
+  try {
+    personaList = listPersonas(d).map((p) => ({
+      id: p.id,
+      name: p.displayName ? `${p.displayName} (${p.id})` : p.id,
+      category: p.category,
+    }));
+  } catch {
+    personaList = [];
+  }
+  const services: RotationChoices["services"] = [];
+  for (const ws of workspaces)
+    try {
+      for (const sv of d.workspaceServices(ws))
+        if (!services.some((x) => x.id === sv.address))
+          services.push({ id: sv.address, name: sv.address, workspace: ws });
+    } catch {
+      /* a workspace whose services can't be read: none */
+    }
+  return {
+    agents,
+    personas: personaList,
+    workspaces: workspaces.map((w) => ({ id: w, name: w })),
+    services,
+  };
+}
+
 export function rotationSettings(
   d: AgentsResolved,
   agent?: string,

@@ -67,6 +67,9 @@ const S = {
   testing: new Set(),
   /** The open panel: { id, el, opener, scrim, timer }. */
   open: null,
+  /** D27: a pointer is down inside the panel: repaint after it is up. */
+  pressed: false,
+  syncLater: false,
 };
 
 /** Start or Restart from here: "starting…" until health says, or the timeout. */
@@ -228,14 +231,21 @@ function testsHtml(s) {
   return `<span class="den-svp-${ok ? "ok" : "bad"}">${esc(t(ok ? "svp.testsOk" : "svp.testsBad", { t: at }))}</span>`;
 }
 
-/** A Visit button (the rail row's ↗, or the panel's primary). */
+/**
+ * Visit: a real link, styled as a button (D27). A native target=_blank link
+ * is never popup-blocked (Safari blocked window.open from the delegated
+ * click) and works with no script. Off (down, starting): no href,
+ * aria-disabled, and a click says why (visit()).
+ */
 export function visitHtml(s, cls, label) {
   if (!s.url) return "";
-  const on = visitable(s);
+  const on = visitable(s) && /^https?:\/\//i.test(s.url);
   return (
-    `<button type="button" class="${cls}" data-visit="${esc(s.id)}" data-url="${esc(s.url)}"` +
-    ` aria-label="${esc(t("act.visitX", { s: s.id }))}" title="${esc(on ? s.url : t("svp.notRunning"))}"` +
-    `${on ? "" : ' aria-disabled="true"'}>${label}</button>`
+    `<a class="${cls}" data-visit="${esc(s.id)}" data-url="${esc(s.url)}"` +
+    (on
+      ? ` href="${esc(s.url)}" target="_blank" rel="noopener noreferrer"`
+      : ` role="link" tabindex="0" aria-disabled="true"`) +
+    ` aria-label="${esc(t("act.visitX", { s: s.id }))}" title="${esc(on ? s.url : t("svp.notRunning"))}">${label}</a>`
   );
 }
 
@@ -335,6 +345,12 @@ function sync() {
   publishUrls();
   const o = S.open;
   if (!o) return;
+  // D27: never repaint under a press: the button pressed would be replaced
+  // between pointerdown and click, and the click would land on the panel.
+  if (S.pressed) {
+    S.syncLater = true;
+    return;
+  }
   const a = document.activeElement;
   const mine = a && o.el.contains(a) && a !== o.el;
   const key = mine
@@ -451,15 +467,20 @@ export function panelOpen() {
 const env = () => S.deps.currentEnv?.() ?? "local";
 const runs = () => window.denShell?.runs;
 
-/** Visit: the service's URL in a new tab, or why not. */
+/**
+ * Visit, clicked: a live link opens by itself (the browser follows it, so
+ * true: leave the click alone); an off one says why (false: the caller
+ * prevents the click).
+ */
 export function visit(btn) {
-  if (btn.getAttribute("aria-disabled") === "true") {
+  if (
+    btn.getAttribute("aria-disabled") === "true" ||
+    !btn.hasAttribute("href")
+  ) {
     window.denShell?.toast?.(t("svp.notRunning"));
-    return;
+    return false;
   }
-  const url = btn.dataset.url;
-  if (!url || !/^https?:\/\//i.test(url)) return;
-  window.open(url, "_blank", "noopener");
+  return true;
 }
 
 /** A stream into a runs-dock tab: Start, Stop, Restart (exec), Logs, tests. */
@@ -635,6 +656,27 @@ export function initServicePanel(deps = {}) {
     sync();
   });
   window.addEventListener("den:pins", () => sync());
+  // D27: a press inside the open panel holds its repaint until it ends.
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (S.open?.el.contains(e.target)) S.pressed = true;
+    },
+    true,
+  );
+  const released = () => {
+    if (!S.pressed) return;
+    S.pressed = false;
+    // After the click this press makes, then the repaint it held.
+    setTimeout(() => {
+      if (S.syncLater) {
+        S.syncLater = false;
+        sync();
+      }
+    }, 0);
+  };
+  document.addEventListener("pointerup", released, true);
+  document.addEventListener("pointercancel", released, true);
   document.addEventListener(
     "click",
     (e) => {
@@ -643,10 +685,7 @@ export function initServicePanel(deps = {}) {
       // The panel's Visit here; the rail's ↗ is shell.js's (the same visit()).
       const v = tgt.closest?.("[data-visit]");
       if (v) {
-        if (o?.el.contains(v)) {
-          e.preventDefault();
-          visit(v);
-        }
+        if (o?.el.contains(v) && !visit(v)) e.preventDefault();
         return;
       }
       const opener = tgt.closest?.("[data-svpanel-open]");

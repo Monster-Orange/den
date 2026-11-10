@@ -305,10 +305,15 @@ function githubBlock(s, t) {
 
 /**
  * D17: a Den with no owner yet that a rule lets someone claim. It leads the
- * page: Connect your GitHub account. "This is my computer" (with
- * web.allowed_github_org) goes to localhost and back, which only works in a
- * browser on the machine Den runs on, then starts the GitHub sign-in with
- * that proof; "Sign in as @login" (web.owner_github) works from anywhere.
+ * page: Connect your GitHub account.
+ *
+ *   - "Sign in as @login" (web.owner_github) works from any browser: when
+ *     it is there, it is the primary button.
+ *   - The localhost trip (web.allowed_github_org) only works in a browser
+ *     on the machine Den runs on, so its button says so ("On <host>
+ *     itself: connect GitHub"), never a footnote (D29).
+ *   - Only the org rule: the page says to open it on <host>, or to set
+ *     web.owner_github to sign in from anywhere.
  */
 function claimBlock(s, t) {
   const g = s.github;
@@ -316,24 +321,31 @@ function claimBlock(s, t) {
   const host = s.machine || "";
   const back = location.origin + location.pathname + location.search;
   const here = g.attest ? `${g.attest}?return=${encodeURIComponent(back)}` : "";
+  const as = g.ownerGithub
+    ? `<button type="button" class="btn primary" id="den-gh-start">${esc(t("err.signin.claimAs", { login: g.ownerGithub }))}</button>`
+    : "";
+  const hereBtn = here
+    ? `<a class="btn${as ? "" : " primary"}" id="den-claim-here" href="${esc(here)}">${
+        host
+          ? withHost(t, "err.signin.claimHereOn", { host })
+          : esc(t("err.signin.claimHere"))
+      }</a>`
+    : "";
   return (
     `<div id="den-gh" class="den-claim">` +
     `<h2 class="den-h" id="den-claim-title">${esc(t("err.signin.claimTitle"))}</h2>` +
     `<p class="lead" id="den-claim-lead">${esc(t("err.signin.claimLead", { name: s.name || "Den" }))}</p>` +
     (g.org
-      ? `<p id="den-claim-org">${withHost(t, "err.signin.claimOrg", { org: g.org, host })}</p>`
+      ? `<p id="den-claim-org">${withHost(
+          t,
+          g.ownerGithub ? "err.signin.claimOrg" : "err.signin.claimOrgOnly",
+          { org: g.org, host },
+        )}</p>`
       : "") +
     `<div class="acts" style="margin-top:0">` +
-    (here
-      ? `<a class="btn primary" id="den-claim-here" href="${esc(here)}">${esc(t("err.signin.claimHere"))}</a>`
-      : "") +
-    (g.ownerGithub
-      ? `<button type="button" class="btn${here ? "" : " primary"}" id="den-gh-start">${esc(t("err.signin.claimAs", { login: g.ownerGithub }))}</button>`
-      : "") +
+    as +
+    hereBtn +
     `</div><div id="den-gh-flow" aria-live="polite"></div>` +
-    (here
-      ? `<p class="den-gh-note" id="den-claim-note">${withHost(t, "err.signin.claimHereNote", { host })}</p>`
-      : "") +
     `</div>`
   );
 }

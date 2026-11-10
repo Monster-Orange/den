@@ -30,6 +30,7 @@
 import { themeNotice, themeOptions } from "./appearance.js";
 import { qrSvg } from "./qr.js";
 import { renderPersonasSettings } from "./persona-ui.js";
+import { comboHtml, wireCombo } from "./combobox.js";
 
 export const DEN_SETTING_CATEGORIES = [
   {
@@ -1288,6 +1289,67 @@ const ROT_KEYS = [
   ["on_pr_merged", "When its PR merges", "true or false"],
 ];
 const rotVal = (v) => (v === undefined ? "" : String(v));
+/** A value as a person reads it (D30): "never", "Auto", "Relaunch". */
+function rotValText(k, v) {
+  if (k === "on_due")
+    return { auto: "Auto", ask: "Ask", off: "Off" }[v] ?? rotVal(v);
+  if (k === "on_pr_merged")
+    return v === true ? "Relaunch" : v === false ? "Keep going" : rotVal(v);
+  return rotVal(v);
+}
+
+/**
+ * D30: an override's target as a name, from the pickers' choices. One that
+ * no longer exists: its id, and gone.
+ */
+export function rotTargetName(scope, target, c = {}) {
+  const find = (list, id) => (list || []).find((x) => x.id === id);
+  if (scope === "agent") {
+    const a = find(c.agents, target);
+    return a
+      ? { name: a.workspace ? `${a.name} (${a.workspace})` : a.name }
+      : { name: target, gone: true };
+  }
+  if (scope === "persona-workspace") {
+    const [pid, ws] = String(target).split("@");
+    const p = find(c.personas, pid);
+    const w = find(c.workspaces, ws);
+    return p && w
+      ? { name: `${p.name} in ${w.name}` }
+      : { name: target, gone: true };
+  }
+  const list =
+    scope === "persona"
+      ? c.personas
+      : scope === "workspace"
+        ? c.workspaces
+        : c.services;
+  const x = find(list, target);
+  return x ? { name: x.name } : { name: target, gone: true };
+}
+
+/** D30: each picker's rows, from GET /api/agents/rotation?choices=1. */
+export function rotPickItems(kind, c = {}) {
+  if (kind === "agent")
+    return (c.agents || []).map((a) => ({
+      id: a.id,
+      label: a.name,
+      sub: [a.workspace, a.state].filter(Boolean).join(" · "),
+    }));
+  if (kind === "persona")
+    return (c.personas || []).map((p) => ({
+      id: p.id,
+      label: p.name,
+      sub: p.category,
+    }));
+  if (kind === "workspace")
+    return (c.workspaces || []).map((w) => ({ id: w.id, label: w.name }));
+  return (c.services || []).map((x) => ({
+    id: x.id,
+    label: x.name,
+    sub: x.workspace,
+  }));
+}
 
 /** A value typed in the overrides form, as the key takes it. */
 export function rotationValue(key, raw) {
@@ -1325,11 +1387,16 @@ export function rotationHtml(b) {
   const rows = [];
   for (const [scope, byTarget] of Object.entries(b.overrides || {}))
     for (const [target, vals] of Object.entries(byTarget || {}))
-      for (const [k, v] of Object.entries(vals || {}))
+      for (const [k, v] of Object.entries(vals || {})) {
+        const who = rotTargetName(scope, target, b.choices);
+        const setting = (ROT_KEYS.find((x) => x[0] === k) || [k, k])[1];
         rows.push(
-          `<tr data-rot-row><td>${escR((ROT_SCOPES.find((x) => x[0] === scope) || [scope, scope])[1])}</td><td class="den-mono">${escR(target)}</td><td>${escR(k)}</td><td class="den-mono">${escR(rotVal(v))}</td>` +
-            `<td><button type="button" class="btn sm" data-rot-clear data-scope="${escR(scope)}" data-target="${escR(target)}" data-key="${escR(k)}" aria-label="Clear ${escR(k)} for ${escR(scope)} ${escR(target)}">Clear</button></td></tr>`,
+          `<tr data-rot-row${who.gone ? " data-rot-gone" : ""}><td data-l="Scope">${escR((ROT_SCOPES.find((x) => x[0] === scope) || [scope, scope])[1])}</td>` +
+            `<td data-l="For"${who.gone ? ' class="rot-gone"' : ""}>${who.gone ? `<span class="den-mono">${escR(who.name)}</span> (gone)` : escR(who.name)}</td>` +
+            `<td data-l="Setting">${escR(setting)}</td><td data-l="Value">${escR(rotValText(k, v))}</td>` +
+            `<td class="rot-act"><button type="button" class="btn sm" data-rot-clear data-scope="${escR(scope)}" data-target="${escR(target)}" data-key="${escR(k)}" aria-label="${who.gone ? "Remove" : "Clear"} ${escR(setting)} for ${escR(who.name)}">${who.gone ? "Remove" : "Clear"}</button></td></tr>`,
         );
+      }
   return (
     `<div class="rot" data-rotation-settings>` +
     `<div class="rot-inst">` +
@@ -1359,10 +1426,16 @@ export function rotationHtml(b) {
       : `<tr><td colspan="5" class="set-note">No overrides: every agent uses this install's values.</td></tr>`) +
     `</tbody></table></div>` +
     `<form class="rot-add" data-rot-add>` +
-    `<label for="rot-a-scope">Scope</label> <select id="rot-a-scope">${ROT_SCOPES.map(([v, l]) => `<option value="${v}">${escR(l)}</option>`).join("")}</select> ` +
-    `<label for="rot-a-target">For</label> <input type="text" id="rot-a-target" class="den-mono" spellcheck="false" autocomplete="off" placeholder="agent id" required> ` +
-    `<label for="rot-a-key">Setting</label> <select id="rot-a-key">${ROT_KEYS.map(([v, l]) => `<option value="${v}">${escR(l)}</option>`).join("")}</select> ` +
-    `<label for="rot-a-value">Value</label> <input type="text" id="rot-a-value" class="den-mono" spellcheck="false" autocomplete="off" placeholder="a number, or never" required> ` +
+    `<span class="rot-pick"><label for="rot-a-scope">Scope</label> <select id="rot-a-scope">${ROT_SCOPES.map(([v, l]) => `<option value="${v}">${escR(l)}</option>`).join("")}</select></span>` +
+    // The target: picked by name, never typed as an id (D30).
+    `<span class="rot-pick" data-for="agent">${comboHtml({ id: "rot-a-agent", label: "Agent", placeholder: "Type to find an agent" })}</span>` +
+    `<span class="rot-pick" data-for="persona persona-workspace" hidden>${comboHtml({ id: "rot-a-persona", label: "Persona", placeholder: "Type to find a persona" })}</span>` +
+    `<span class="rot-pick" data-for="workspace persona-workspace" hidden>${comboHtml({ id: "rot-a-ws", label: "Workspace", placeholder: "Type to find a workspace" })}</span>` +
+    `<span class="rot-pick" data-for="service" hidden>${comboHtml({ id: "rot-a-service", label: "Service", placeholder: "Type to find a service" })}</span>` +
+    `<span class="rot-pick"><label for="rot-a-key">Setting</label> <select id="rot-a-key">${ROT_KEYS.map(([v, l]) => `<option value="${v}">${escR(l)}</option>`).join("")}</select></span>` +
+    `<span class="rot-pick" data-val="after_compactions"><label for="rot-a-n">Value</label> <input type="number" id="rot-a-n" min="1" max="100" step="1" value="3"> <label class="rot-never"><input type="checkbox" id="rot-a-never"> never</label></span>` +
+    `<span class="rot-pick" data-val="on_due" hidden><label for="rot-a-due">Value</label> <select id="rot-a-due"><option value="auto">Auto</option><option value="ask">Ask</option><option value="off">Off</option></select></span>` +
+    `<span class="rot-pick" data-val="on_pr_merged" hidden><label for="rot-a-pr">Value</label> <select id="rot-a-pr"><option value="true">Relaunch</option><option value="false">Keep going</option></select></span>` +
     `<button type="submit" class="btn sm primary">Add override</button></form>` +
     `<div class="rt-err" role="alert" hidden></div>` +
     `</div>`
@@ -1385,13 +1458,53 @@ function renderRotation(host, ctx) {
       return Promise.resolve();
     }
     return ctx.shell
-      .api("GET", "/api/agents/rotation")
+      .api("GET", "/api/agents/rotation?choices=1")
       .then((b) => {
         host.innerHTML = rotationHtml(b || {});
+        wireAdd(b?.choices || {});
       })
       .catch((x) => {
         host.innerHTML = `<div class="set-note">${escR(x?.message || "The rotation settings did not load.")}</div>`;
       });
+  };
+  // D30: the add form's pickers, filled from live data.
+  let picks = {};
+  const wireAdd = (c) => {
+    picks = {};
+    for (const [kind, id] of [
+      ["agent", "rot-a-agent"],
+      ["persona", "rot-a-persona"],
+      ["workspace", "rot-a-ws"],
+      ["service", "rot-a-service"],
+    ])
+      picks[kind] = wireCombo(host, id, { items: () => rotPickItems(kind, c) });
+    showFor();
+  };
+  const showFor = () => {
+    const scope = host.querySelector("#rot-a-scope")?.value;
+    const key = host.querySelector("#rot-a-key")?.value;
+    for (const el of host.querySelectorAll(".rot-add [data-for]"))
+      el.hidden = !el.dataset.for.split(" ").includes(scope);
+    for (const el of host.querySelectorAll(".rot-add [data-val]"))
+      el.hidden = el.dataset.val !== key;
+    const n = host.querySelector("#rot-a-n");
+    const never = host.querySelector("#rot-a-never");
+    if (n && never) n.disabled = never.checked;
+  };
+  const targetOf = (scope) => {
+    const v = (k) => picks[k]?.value() || "";
+    if (scope === "persona-workspace")
+      return v("persona") && v("workspace")
+        ? `${v("persona")}@${v("workspace")}`
+        : "";
+    return v(scope);
+  };
+  const valueOf = (key) => {
+    if (key === "on_due") return host.querySelector("#rot-a-due").value;
+    if (key === "on_pr_merged")
+      return host.querySelector("#rot-a-pr").value === "true";
+    if (host.querySelector("#rot-a-never").checked) return "never";
+    return Number(host.querySelector("#rot-a-n").value);
   };
   const put = async (body) => {
     try {
@@ -1403,16 +1516,11 @@ function renderRotation(host, ctx) {
   };
   host.addEventListener("change", (e) => {
     const k = e.target.closest("[data-rot-key]")?.dataset.rotKey;
-    if (e.target.id === "rot-a-scope") {
-      const s = ROT_SCOPES.find((x) => x[0] === e.target.value);
-      const t = host.querySelector("#rot-a-target");
-      if (s && t) t.placeholder = s[2];
-      return;
-    }
-    if (e.target.id === "rot-a-key") {
-      const s = ROT_KEYS.find((x) => x[0] === e.target.value);
-      const v = host.querySelector("#rot-a-value");
-      if (s && v) v.placeholder = s[2];
+    if (
+      ["rot-a-scope", "rot-a-key", "rot-a-never"].includes(e.target.id) ||
+      e.target.closest?.(".rot-add")
+    ) {
+      showFor();
       return;
     }
     if (!k || k === "after_compactions" || e.target.tagName !== "SELECT")
@@ -1447,12 +1555,18 @@ function renderRotation(host, ctx) {
     if (!f) return;
     e.preventDefault();
     const key = f.querySelector("#rot-a-key").value;
-    void put({
-      scope: f.querySelector("#rot-a-scope").value,
-      target: f.querySelector("#rot-a-target").value.trim(),
-      key,
-      value: rotationValue(key, f.querySelector("#rot-a-value").value),
-    });
+    const scope = f.querySelector("#rot-a-scope").value;
+    const target = targetOf(scope);
+    if (!target) {
+      fail({
+        message:
+          scope === "persona-workspace"
+            ? "Pick a persona and a workspace."
+            : `Pick a ${(ROT_SCOPES.find((x) => x[0] === scope) || [scope, scope])[1].toLowerCase()}.`,
+      });
+      return;
+    }
+    void put({ scope, target, key, value: valueOf(key) });
   });
   void load();
 }

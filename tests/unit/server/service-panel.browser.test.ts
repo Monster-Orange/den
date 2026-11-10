@@ -227,7 +227,11 @@ describe("a pinned row's Visit ↗", () => {
         title: b.getAttribute("title"),
         disabled: b.getAttribute("aria-disabled"),
         text: b.textContent,
-        inLink: b.closest("a") !== null,
+        // D27: itself a link (target=_blank), never inside the row's link.
+        inLink: b.parentElement?.closest("a") !== null,
+        tag: b.tagName,
+        href: b.getAttribute("href"),
+        target: b.getAttribute("target"),
       }));
     expect(await visit("notes")).toEqual({
       label: "Visit notes (opens a new tab)",
@@ -235,6 +239,9 @@ describe("a pinned row's Visit ↗", () => {
       disabled: null,
       text: "↗",
       inLink: false,
+      tag: "A",
+      href: `${stubUrl}/`,
+      target: "_blank",
     });
     expect(await visit("blog")).toEqual({
       label: "Visit blog (opens a new tab)",
@@ -242,6 +249,9 @@ describe("a pinned row's Visit ↗", () => {
       disabled: "true",
       text: "↗",
       inLink: false,
+      tag: "A",
+      href: null,
+      target: null,
     });
     // Always shown (touch), beside the row, 26 px square (the mock).
     const v = await rect(p, '.den-rail [data-visit="notes"]');
@@ -282,6 +292,63 @@ describe("a pinned row's Visit ↗", () => {
       (
         window as unknown as { denShell: { unpin(id: string): void } }
       ).denShell.unpin("nowhere"),
+    );
+    await p.context().close();
+  }, 60_000);
+});
+
+describe("the panel's Visit (D27)", () => {
+  it("is a link to the URL; a repaint between press and release still opens it", async () => {
+    if (skip()) return;
+    const { p } = await page("/services");
+    await railReady(p);
+    // The header's next health results, kept to send again below.
+    await p.evaluate(() => {
+      document.addEventListener("acme:health-update", (e) => {
+        (window as unknown as { last: unknown }).last = (
+          e as CustomEvent
+        ).detail;
+      });
+    });
+    await p.click('.den-rail [data-pin="notes"]');
+    await p.waitForSelector(panel);
+    const v = `${panel} [data-visit="notes"]`;
+    expect(
+      await p.$eval(v, (a) => [
+        a.tagName,
+        a.getAttribute("href"),
+        a.getAttribute("target"),
+        a.getAttribute("rel"),
+      ]),
+    ).toEqual(["A", `${stubUrl}/`, "_blank", "noopener noreferrer"]);
+    await p.waitForFunction(
+      () => (window as unknown as { last?: unknown }).last !== undefined,
+      null,
+      { timeout: 20_000 },
+    );
+    const box = (await p.locator(v).boundingBox())!;
+    await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await p.mouse.down();
+    // The 5 s refresh lands mid-press, with something new to paint.
+    await p.evaluate(() => {
+      const last = (window as unknown as { last: Record<string, unknown>[] })
+        .last;
+      document.dispatchEvent(
+        new CustomEvent("acme:health-update", {
+          detail: last.map((r) => ({ ...r, ms: Number(r.ms ?? 0) + 7 })),
+        }),
+      );
+    });
+    const [tab] = await Promise.all([
+      p.context().waitForEvent("page", { timeout: 10_000 }),
+      p.mouse.up(),
+    ]);
+    await tab.waitForLoadState();
+    expect(tab.url()).toBe(`${stubUrl}/`);
+    // The held repaint happens after the press.
+    await p.waitForFunction(
+      (sel) => document.querySelector(sel)?.textContent?.includes("ms"),
+      `${panel} .den-svp-meta`,
     );
     await p.context().close();
   }, 60_000);
@@ -592,7 +659,13 @@ describe("the panel", () => {
     ])
       expect([
         name,
-        await dlg.getByRole("button", { name, exact: true }).count(),
+        // D27: Visit is a link (it opens a page), the rest are buttons.
+        await dlg
+          .getByRole(name.startsWith("Visit ") ? "link" : "button", {
+            name,
+            exact: true,
+          })
+          .count(),
       ]).toEqual([name, 1]);
     // Unpin: the row goes, focus stays in the rail.
     await dlg.getByRole("button", { name: "Unpin", exact: true }).click();

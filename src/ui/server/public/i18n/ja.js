@@ -299,9 +299,10 @@
     "err.signin.claimOrg":
       "GitHub の {org} 組織のメンバーは、{host} 上のブラウザーでこれを登録できます。",
     "err.signin.claimHere": "これは自分のコンピューター: GitHub を接続",
+    "err.signin.claimHereOn": "{host} 上で: GitHub を接続",
+    "err.signin.claimOrgOnly":
+      "GitHub の {org} 組織のメンバーは、{host} 上のブラウザーからこれを登録できます。このページを {host} で開くか、どこからでもサインインできるよう web.owner_github を設定してください。",
     "err.signin.claimAs": "@{login} としてサインイン",
-    "err.signin.claimHereNote":
-      "「これは自分のコンピューター」は {host} 上のブラウザーでだけ使えます。ほかの場所では何も開きません。",
     "err.signin.claimChecking": "ここが {host} か確認しています…",
     "err.signin.githubRefused":
       "@{login} はこの {name} のオーナーではありません。GitHub でサインインを使えるのはオーナーのアカウントだけです。代わりに「このコンピューターを承認」を使ってください。",

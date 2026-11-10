@@ -426,9 +426,10 @@
     "err.signin.claimOrg":
       "Members of the {org} GitHub org can claim it, in a browser on {host}.",
     "err.signin.claimHere": "This is my computer: connect GitHub",
+    "err.signin.claimHereOn": "On {host} itself: connect GitHub",
+    "err.signin.claimOrgOnly":
+      "Members of the {org} GitHub org can claim it, from a browser on {host}. Open this page on {host}, or set web.owner_github to sign in from anywhere.",
     "err.signin.claimAs": "Sign in as @{login}",
-    "err.signin.claimHereNote":
-      "This is my computer works only in a browser on {host}. Anywhere else it opens nothing.",
     "err.signin.claimChecking": "Checking this is {host}…",
     "err.signin.githubRefused":
       "@{login} isn't the owner of this {name}. Only the owner's account can use Sign in with GitHub. Use Approve this computer instead.",
@@ -2320,28 +2321,31 @@
     var down = Object.prototype.hasOwnProperty.call(off, id)
       ? !!off[id]
       : state.health[id] === "down";
+    // D27: a real link (never popup-blocked, as window.open was in Safari).
+    var live = !down && /^https?:\/\//i.test(url);
     return (
-      '<button type="button" class="den-pvisit" tabindex="-1" data-visit="' +
+      '<a class="den-pvisit" tabindex="-1" data-visit="' +
       esc(id) +
       '" data-url="' +
       esc(url) +
-      '" aria-label="' +
+      '"' +
+      (live
+        ? ' href="' + esc(url) + '" target="_blank" rel="noopener noreferrer"'
+        : ' role="link" aria-disabled="true"') +
+      ' aria-label="' +
       esc(t("act.visitX", { s: id })) +
       '" title="' +
       esc(down ? t("svp.notRunning") : url) +
-      '"' +
-      (down ? ' aria-disabled="true"' : "") +
-      '><span aria-hidden="true">↗</span></button>'
+      '"><span aria-hidden="true">↗</span></a>'
     );
   }
+  /** A pin's Visit ↗ clicked: true when the link opens by itself. */
   function visitPin(b) {
-    if (b.getAttribute("aria-disabled") === "true") {
+    if (b.getAttribute("aria-disabled") === "true" || !b.hasAttribute("href")) {
       toast(t("svp.notRunning"));
-      return;
+      return false;
     }
-    var url = b.getAttribute("data-url");
-    if (url && /^https?:\/\//i.test(url))
-      window.open(url, "_blank", "noopener");
+    return true;
   }
   // 0.4.18: the service panel (svc-panel.js registers it).
   var servicePanel = null;
@@ -2653,8 +2657,7 @@
     var tgt = e.target;
     var v = tgt && tgt.closest ? tgt.closest("[data-visit]") : null;
     if (v) {
-      e.preventDefault();
-      visitPin(v);
+      if (!visitPin(v)) e.preventDefault();
       return;
     }
     // 0.4.18: a plain click (or Enter) on a pinned row opens its panel;
@@ -5018,6 +5021,9 @@
     ".den-btn.primary { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }",
     ".den-btn.sm { padding: 2px 9px; font-size: 12.5px; }",
     ".den-btn:disabled { opacity: .6; cursor: default; }",
+    // D27: Visit is a link styled as a button.
+    "a.den-btn, a.den-pvisit { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }",
+    "a.den-pvisit { display: grid; }",
     // Status drawer (.scrim, .drawer, .prob-card, .grp, .svl: R15)
     ".den-scrim { position: fixed; inset: 0; background: rgb(0 0 0 / 0.35); z-index: 40; }",
     ".den-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); z-index: 41;",

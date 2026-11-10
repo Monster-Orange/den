@@ -454,6 +454,87 @@
       .rot-add {
         margin-top: 10px;
       }
+      /* D30: the add form: each control with its label, wrapping. */
+      .rot-pick {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        flex: 1 1 200px;
+        flex-wrap: wrap;
+      }
+      .rot-pick[hidden] {
+        display: none;
+      }
+      .rot-pick input[type="number"] {
+        width: 6em;
+        flex: 0 0 auto;
+      }
+      .rot-never {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .rot-gone {
+        color: var(--muted);
+      }
+      /* The shared picker (combobox.js). */
+      .den-combo {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        flex: 1 1 200px;
+        flex-wrap: wrap;
+      }
+      .den-combo-box {
+        position: relative;
+        flex: 1 1 160px;
+        min-width: 0;
+      }
+      .den-combo-box input {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .den-combo-list {
+        position: absolute;
+        z-index: 20;
+        left: 0;
+        right: 0;
+        top: calc(100% + 2px);
+        max-height: 240px;
+        overflow-y: auto;
+        margin: 0;
+        padding: 4px;
+        list-style: none;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+      }
+      .den-combo-list[hidden] {
+        display: none;
+      }
+      .den-combo-list li {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 2px 8px;
+        padding: 5px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .den-combo-list li[aria-selected="true"] {
+        background: var(--sunken);
+      }
+      .den-combo-list li[aria-disabled="true"] {
+        color: var(--muted);
+        cursor: default;
+      }
+      .den-combo-s {
+        color: var(--muted);
+        font-size: 12px;
+      }
       .rot-ov caption {
         text-align: left;
         color: var(--muted);
@@ -464,7 +545,49 @@
       .rot-ov td {
         padding: 4px 10px 4px 0;
         text-align: left;
-        overflow-wrap: anywhere;
+        /* Break a key at its "_", never mid-word. */
+        overflow-wrap: normal;
+        word-break: normal;
+      }
+      /* Narrow: each override is a card of label/value lines, so no
+         column is squeezed into breaking words mid-letter. */
+      @media (max-width: 560px) {
+        .rot-ov thead {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+        }
+        .rot-ov,
+        .rot-ov tbody,
+        .rot-ov tr,
+        .rot-ov td {
+          display: block;
+          width: 100%;
+        }
+        .rot-ov caption {
+          display: block;
+        }
+        .rot-ov tr[data-rot-row] {
+          padding: 6px 0;
+          border-top: 1px solid var(--border);
+        }
+        .rot-ov td {
+          display: flex;
+          gap: 8px;
+          padding: 2px 0;
+          overflow-wrap: anywhere;
+        }
+        .rot-ov td[data-l]::before {
+          content: attr(data-l);
+          flex: 0 0 64px;
+          color: var(--muted);
+          font-family: inherit;
+        }
+        .rot-ov td.rot-act {
+          padding-top: 4px;
+        }
       }
       .rt-fl {
         flex-basis: 100%;
