@@ -1,6 +1,6 @@
 /**
  * D20: GET /api/sessions rows carry the launchd session their host stamped
- * (Aqua ends at logout), so the agents page can tag them. Lair's 0.4.22-dev.0
+ * (Aqua ends at logout), so the agents page can tag them. The 0.4.22-dev.0
  * gate found the tags never rendered: the rows dropped it.
  */
 import { afterAll, describe, expect, it } from "@jest/globals";

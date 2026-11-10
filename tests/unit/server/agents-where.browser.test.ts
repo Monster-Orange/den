@@ -7,7 +7,7 @@
  *   - a host outside it (Background): "No GUI";
  *   - a host that didn't say: no tag.
  *
- * Lair's 0.4.22-dev.0 gate found the tags never rendered: the rows the
+ * The 0.4.22-dev.0 gate found the tags never rendered: the rows the
  * server sent dropped the stamp. The demo distribution with a session host
  * in this process and a scripted PTY (helpers/agents-page-server.ts).
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
