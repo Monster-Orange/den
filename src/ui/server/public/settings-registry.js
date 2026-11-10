@@ -913,6 +913,18 @@ export const DEN_SETTINGS = [
   },
 
   {
+    id: "agents.hub",
+    category: "agents",
+    label: "Hub",
+    description:
+      "Every agent gets Hub's tools: search Hub, publish docs and mocks there. Its team and project come from this install's token and the workspace's repos. Set hub.url and hub.token (a secret ref in this install's store) in config/local/user.yml.",
+    keywords: ["hub", "den hub", "mcp", "team", "token", "docs", "mocks"],
+    scope: "user",
+    control: { type: "custom", render: renderHub },
+    read: () => null,
+  },
+
+  {
     id: "agents.personas",
     category: "agents",
     label: "Personas",
@@ -1440,6 +1452,48 @@ export function rotationHtml(b) {
     `<div class="rt-err" role="alert" hidden></div>` +
     `</div>`
   );
+}
+
+/** HUB-1.5: Settings › Agents › Den Hub (b: GET /api/hub). */
+export function hubHtml(b) {
+  if (!b || !b.configured) return "";
+  const rows = [
+    ["URL", `<span class="den-mono">${escR(b.url || "not set")}</span>`],
+    [
+      "Status",
+      b.connected
+        ? `<span class="set-tag ok" data-hub-state="connected">Connected</span>`
+        : `<span class="set-tag warn" data-hub-state="down">Not connected</span>`,
+    ],
+    ...(b.team ? [["Team", escR(b.team)]] : []),
+    ...(b.label ? [["This install", escR(b.label)]] : []),
+  ];
+  return (
+    `<dl class="hub-st" data-hub>` +
+    rows.map(([k, v]) => `<dt>${escR(k)}</dt><dd>${v}</dd>`).join("") +
+    `</dl>` +
+    (!b.connected && b.problem
+      ? `<p class="set-note" data-hub-problem>${escR(b.problem)}</p>`
+      : "")
+  );
+}
+
+/** HUB-1.5: the Den Hub row; with no hub.url, the row isn't shown at all. */
+function renderHub(host, ctx) {
+  const row = host.closest(".set-row");
+  if (row) row.hidden = true;
+  // Under an invalid config /api/hub answers 422: ask nothing, show nothing.
+  if (ctx.shell?.configInvalid?.() === true) return Promise.resolve();
+  return ctx.shell
+    .api("GET", "/api/hub")
+    .then((b) => {
+      const html = hubHtml(b);
+      host.innerHTML = html;
+      if (row) row.hidden = !html;
+    })
+    .catch(() => {
+      host.innerHTML = "";
+    });
 }
 
 /** The Rotation row: this install's values, the overrides, + Add override. */

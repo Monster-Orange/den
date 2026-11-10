@@ -473,6 +473,33 @@ export function whereCheck(r: WhereRow): OnboardCheck {
   };
 }
 
+/**
+ * HUB-1.5: doctor's Hub row, or none when hub.url isn't set. Never the
+ * token: hubStatus doesn't have it to give.
+ */
+export function hubLines(
+  st: import("../../shared/hub.js").HubStatus,
+  title: string,
+): { lines: string[]; problem: boolean; check?: OnboardCheck } {
+  if (!st.configured) return { lines: [], problem: false };
+  const who = [st.team && `team ${st.team}`, st.label && `install ${st.label}`]
+    .filter(Boolean)
+    .join(", ");
+  const detail = st.connected
+    ? `${st.url}: connected${who ? ` (${who})` : ""}`
+    : `${st.url || "hub.url"}: not connected: ${st.problem ?? "no answer"}`;
+  return {
+    lines: [
+      "",
+      `${title} doctor: Hub`,
+      "",
+      `  hub  ${st.connected ? "✓" : "⚠"}  ${detail}`,
+    ],
+    problem: false, // a Hub that is down never fails doctor: agents still run
+    check: { id: "hub", status: st.connected ? "ok" : "warn", detail },
+  };
+}
+
 export async function cmdDoctor(args: string[]): Promise<number> {
   const probe = args.includes("--probe");
   const json = args.includes("--json");
@@ -504,6 +531,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(
       ...(await whereRows(await defaultWhereDeps())).map(whereCheck),
     );
+    {
+      const { hubStatus } = await import("../../shared/hub.js");
+      const h = hubLines(await hubStatus(), readBrand().name);
+      if (h.check) r.checks.push(h.check);
+    }
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -522,6 +554,12 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     readBrand().name,
   ))
     console.log(l);
+  {
+    // HUB-1.5: only when hub.url is set.
+    const { hubStatus } = await import("../../shared/hub.js");
+    for (const l of hubLines(await hubStatus(), readBrand().name).lines)
+      console.log(l);
+  }
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {

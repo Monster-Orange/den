@@ -6,6 +6,17 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.24] - 2026-11-10
 
+### Added
+
+- **Agents can use Hub (HUB-1.5).** With `hub.url` and `hub.token` (a
+  secret ref in this install's own store) set, every agent Den launches
+  gets Hub's MCP server, so it can search Hub and publish docs and mocks
+  there. Hub knows the team from the install's token and the project from
+  the workspace's repos. The token stays in the agent's own 0600 MCP
+  file. Settings › Agents › Hub and `doctor` say whether Hub is
+  connected, and to which team. Nothing changes without `hub.url`. See
+  docs/distributions.md, "Hub".
+
 ### Fixed
 
 - **Visit opens in Safari (D27).** Visit, in the service panel and the

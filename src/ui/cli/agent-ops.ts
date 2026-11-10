@@ -256,6 +256,14 @@ export interface AgentsDeps extends SessionsDeps {
   userConfigFile?: () => string;
   /** D28: workspace `ws`'s services and their folders (the service scope). */
   workspaceServices?: (ws: string) => { address: string; path: string }[];
+  /**
+   * HUB-1.5: Den Hub's URL and this install's token (from its own store),
+   * or null when hub.url isn't set or the token can't be read (default:
+   * hub.* and the install's secrets backend).
+   */
+  hub?: () => Promise<{ url: string; token: string } | null>;
+  /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
+  workspaceRepos?: (ws: string) => string[];
 }
 
 export interface AgentsResolved extends Resolved {
@@ -272,6 +280,8 @@ export interface AgentsResolved extends Resolved {
   saveRuntimeBin: NonNullable<AgentsDeps["saveRuntimeBin"]>;
   userConfigFile: () => string;
   workspaceServices: (ws: string) => { address: string; path: string }[];
+  hub: () => Promise<{ url: string; token: string } | null>;
+  workspaceRepos: (ws: string) => string[];
 }
 
 /** The early-exit watch: at most this long, polling the host. */
@@ -327,6 +337,7 @@ let servicesFn: ((ws: string) => { address: string; path: string }[]) | null =
   null;
 let foldersFn: ((ws: string) => { under: string[]; exact?: string[] }) | null =
   null;
+let reposFn: ((ws: string) => string[]) | null = null;
 /** The workspaces config, for start and resume (loaded on first use). */
 export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
   await loadWorkspaces(d);
@@ -352,6 +363,49 @@ export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
     return ws
       .listWorkspaceServices(cfg, readCatalog(), name)
       .map((r) => ({ address: r.address, path: r.repoPath }));
+  };
+  const { ownerRepo } = await import("../../shared/hub.js");
+  reposFn = (name) => {
+    const cfg = ws.readWorkspacesFile().workspaces[name];
+    if (!cfg) return [];
+    const cat = readCatalog();
+    const out: string[] = [];
+    for (const r of ws.listWorkspaceServices(cfg, cat, name)) {
+      const slug = ownerRepo(cat[r.repoName]);
+      if (slug && !out.includes(slug)) out.push(slug);
+    }
+    return out;
+  };
+}
+
+/**
+ * HUB-1.5: Den Hub's MCP server for this agent, when hub.url is set and
+ * its token is readable: who calls (its name, a session id, the workspace
+ * and its repos), as headers. Hub sets the team and project from them.
+ */
+export async function agentHub(
+  d: AgentsResolved,
+  ws: string,
+  name: string,
+): Promise<AgentMcp["hub"] | undefined> {
+  const h = await d.hub().catch(() => null);
+  if (!h) return undefined;
+  const { HUB_SERVER, hubHeaders } = await import("../../shared/hub.js");
+  let repos: string[] = [];
+  try {
+    repos = d.workspaceRepos(ws);
+  } catch {
+    repos = [];
+  }
+  return {
+    name: HUB_SERVER,
+    url: h.url,
+    headers: hubHeaders(h.token, {
+      agent: name,
+      session: crypto.randomUUID(),
+      workspace: ws,
+      repos,
+    }),
   };
 }
 
@@ -407,7 +461,23 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     userConfigFile: d.userConfigFile ?? userConfigPath,
     workspaceServices:
       d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
+    hub: d.hub ?? defaultHub,
+    workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
   });
+}
+
+/** HUB-1.5: hub.* and the token from this install's store; null without. */
+async function defaultHub(): Promise<{ url: string; token: string } | null> {
+  const { readHubConfig, readHubToken } = await import("../../shared/hub.js");
+  let cfg;
+  try {
+    cfg = readHubConfig();
+  } catch {
+    return null; // a bad hub.* is doctor's and Settings' to say
+  }
+  if (!cfg) return null;
+  const token = await readHubToken(cfg);
+  return token ? { url: cfg.url, token } : null;
 }
 
 /**
@@ -1799,11 +1869,29 @@ export async function startAgent(
     id,
     displayName: given ?? prev?.displayName ?? persona.displayName,
   });
-  const input = {
-    ...launchInput(d, cfg, persona, ws, id, model, det.path, undefined, {
+  const base = launchInput(
+    d,
+    cfg,
+    persona,
+    ws,
+    id,
+    model,
+    det.path,
+    undefined,
+    {
       ...(ch.permission ? { permission: ch.permission } : {}),
       ...(rt.permissions ? { allow } : {}),
-    }),
+    },
+  );
+  // HUB-1.5: Den Hub's MCP server, when hub.url is set.
+  const hub = await agentHub(
+    d,
+    ws,
+    given ?? prev?.displayName ?? persona.displayName ?? id,
+  );
+  const input = {
+    ...base,
+    ...(hub ? { mcp: { ...base.mcp, hub } } : {}),
     sessionLabel: peerName,
     ...(more.firstPrompt ? { firstPrompt: more.firstPrompt } : {}),
     // 0.4.18: Start agent here: in a folder of the workspace's.
@@ -2342,8 +2430,10 @@ export async function resumeAgent(
     // Resume in the cwd the agent had, wherever the workspace points now.
     // D24 (and D25: a rename since) the name peers see it by.
     const peerName = peerSessionName(d.cli, rec.workspace, rec);
+    const hub = await agentHub(d, rec.workspace, rec.displayName ?? rec.id);
     const at = {
       ...input,
+      ...(hub ? { mcp: { ...input.mcp, hub } } : {}),
       sessionLabel: peerName,
       worktree: rec.cwd,
       ...(rec.resumeToken ? { resumeToken: rec.resumeToken } : {}),

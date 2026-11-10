@@ -50,6 +50,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { MCP_ACTIONS, configuredRuntimeBin } from "../den-config.js";
 import { rolePrompt } from "./personas.js";
+import { HUB_PROMPT_LINE } from "../hub.js";
 import { GUARDRAILS_DIR, guardrailHooks, hookCommands } from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
@@ -393,7 +394,7 @@ function common(input: LaunchInput): {
         input.agentId,
         input.workspace.name,
         input.mcp.name,
-      ),
+      ) + (input.mcp.hub ? `\n\n${HUB_PROMPT_LINE}` : ""),
     ],
     files: {
       [file]: mcpConfigJson(input.mcp),

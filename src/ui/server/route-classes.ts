@@ -388,6 +388,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/agents/rotation",
     "D28: rotation settings, the overrides and an agent's effective values",
   ),
+  R(
+    "/api/hub",
+    "HUB-1.5: Den Hub: its URL, connected or not, the team and the install's label (never the token)",
+  ),
   M(
     ["PUT"],
     "/api/agents/rotation",

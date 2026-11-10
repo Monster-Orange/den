@@ -730,6 +730,7 @@
     "ver.usedLatest": "{n} は最新バージョンに追従します",
     "set.agents.personas": "ペルソナ",
     "set.agents.rotation": "交代",
+    "set.agents.hub": "Hub",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "エージェント",
     "kind.agent": "エージェント",

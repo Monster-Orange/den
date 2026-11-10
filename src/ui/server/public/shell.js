@@ -856,6 +856,7 @@
     "ver.usedLatest": "{n} now tracks the latest version",
     "set.agents.personas": "Personas",
     "set.agents.rotation": "Rotation",
+    "set.agents.hub": "Hub",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "Agents",
     "kind.agent": "Agent",

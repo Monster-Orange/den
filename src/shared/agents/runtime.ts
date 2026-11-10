@@ -60,6 +60,13 @@ export interface AgentMcp {
   env: Record<string, string>;
   /** The workspace it is pinned to. */
   scope: string;
+  /**
+   * HUB-1.5: Den Hub's MCP server (Streamable HTTP), when hub.url is set:
+   * its base URL and the headers (the bearer token among them). The
+   * headers go only into the agent's own 0600 MCP file, never into argv,
+   * a record, a log or a page.
+   */
+  hub?: { name: string; url: string; headers: Record<string, string> };
 }
 
 export interface LaunchInput {
@@ -322,8 +329,8 @@ export function whichBin(
 }
 
 /**
- * A standard MCP config (`mcpServers`, the shape most MCP clients read)
- * with Den's server as the only entry.
+ * A standard MCP config (`mcpServers`, the shape most MCP clients read):
+ * Den's server, and Den Hub's when it is set (HUB-1.5).
  */
 export function mcpConfigJson(mcp: AgentMcp): string {
   const [command, ...args] = mcp.command;
@@ -336,6 +343,15 @@ export function mcpConfigJson(mcp: AgentMcp): string {
             args,
             ...(Object.keys(mcp.env).length ? { env: mcp.env } : {}),
           },
+          ...(mcp.hub && mcp.hub.name !== mcp.name
+            ? {
+                [mcp.hub.name]: {
+                  type: "http",
+                  url: `${mcp.hub.url}/mcp`,
+                  headers: mcp.hub.headers,
+                },
+              }
+            : {}),
         },
       },
       null,

@@ -136,6 +136,9 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
       env: { PATH: "/usr/bin:/bin" },
     }),
     invokeCwd: () => dir,
+    // Never this machine's Hub config or secrets store (HUB-1.5).
+    hub: async () => null,
+    workspaceRepos: () => [],
     // No early-exit watch unless a test asks for one (it waits up to 3 s).
     exitWatchMs: 0,
     // Stop doesn't wait for the session to end unless a test asks (0.4.8).

@@ -173,6 +173,8 @@ export interface AgentRouteDeps {
   instruction?: { quietMs?: number; maxMs?: number };
   /** AG-18: how "after this turn" polls (tests: shorter). */
   personaWait?: { pollMs?: number; maxMs?: number };
+  /** HUB-1.5: GET /api/hub's answer (tests: a fake Hub). */
+  hubStatus?: () => Promise<import("../../shared/hub.js").HubStatus>;
 }
 
 const AGENTS_PATH =
@@ -426,6 +428,15 @@ export async function handleAgentRoutes(
     pathname === "/api/agents/resume-interrupted";
   if (pathname === "/api/agents/rotation")
     return rotationRoute(req, res, webDeps(deps.agents));
+  // HUB-1.5: Settings › Hub. Never the token: hubStatus doesn't return it.
+  if (pathname === "/api/hub") {
+    const method = req.method ?? "GET";
+    if (method !== "GET" && method !== "HEAD")
+      return methodNotAllowed(res, "GET");
+    const { hubStatus } = await import("../../shared/hub.js");
+    sendJson(res, await (deps.hubStatus ?? (() => hubStatus()))());
+    return true;
+  }
   if (
     pathname !== "/api/personas" &&
     pathname !== "/api/agents/runtimes" &&

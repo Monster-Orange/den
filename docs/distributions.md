@@ -911,6 +911,47 @@ later plugins.
   one line per network. Stacks that are down, and projects with no routes
   file there, are left alone. (0.3.0-dev.40.)
 
+## Hub
+
+With `hub.url` set, every agent Den launches gets Hub's tools (HUB-1.5):
+it can search Hub and publish docs and mocks there. Without `hub.url`,
+nothing changes and nothing about Hub shows.
+
+```yaml
+# config/local/user.yml (or the org config; user.yml wins)
+hub:
+  url: https://hub.example.com
+  token: { vault: Private, item: Acme Hub, field: token }
+  # or the name of a secrets.refs entry: token: hub_install
+```
+
+- `hub.url` must be https. Plain http works only to this machine
+  (`localhost`, `*.localhost`).
+- `hub.token` is this install's Hub token (`hubi_…`, one per install,
+  made in Hub), as a ref in this install's own secrets store
+  (`secrets.provider`). Den never assumes a vault, item or field for it.
+- Each agent's MCP config gets a server named `hub`: Streamable HTTP at
+  `<hub.url>/mcp`, with `Authorization: Bearer <token>` and four plain
+  headers naming the caller: `X-Den-Agent` (its name), `X-Den-Session`
+  (a new opaque id per launch), `X-Den-Workspace` and `X-Den-Repos` (the
+  workspace's repos, `owner/repo`, comma-separated). Hub sets the team
+  from the token and the project from the repos.
+- Its prompt gets one line: "You can search Hub and publish docs and
+  mocks there with the hub\_\* tools; your team and project are set from
+  this Den install."
+- The token is only in the agent's own MCP file (mode 0600). It is never
+  in a command line, a record, a log, a page or an API answer.
+- Hub's tools ask before they run, like any tool, unless the agent's
+  permissions allow `mcp__hub`.
+- A Hub that is down, or a token that can't be read, never stops an
+  agent: it starts without Hub.
+
+Settings › Agents › Hub shows the URL, connected or not, the team and
+this install's label (from Hub's whoami tool), or why it can't connect.
+`GET /api/hub` answers the same. `<cli> doctor` has a Hub row: ✓ when
+connected, ⚠ with the reason when not. A Hub that is down never fails
+doctor.
+
 ## doctor
 
 `<cli> doctor` lists every strategy kind in the registry (secrets, tls,
