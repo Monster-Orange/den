@@ -18,6 +18,7 @@
  * The hooks run as Claude Code runs them: the command line from the
  * agent's settings file, through /bin/sh, JSON on stdin. Nothing real runs.
  */
+import { rotationInstruction } from "../../../src/shared/agents/rotation.js";
 import { afterAll, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
@@ -361,5 +362,13 @@ describe("agents.rotate", () => {
     expect(rotateAfter(off, planner)).toBe(0);
     expect(rotateAfter(off, dev)).toBe(3);
     expect(rotateAfter(DEFAULT_ROTATE, planner)).toBe(3);
+  });
+});
+
+describe("rotationInstruction, one compaction (D28 nit)", () => {
+  it("says once, not 1 times", () => {
+    const t = rotationInstruction("/x", "compactions", 1);
+    expect(t).toMatch(/because it has compacted once \(/);
+    expect(t).not.toMatch(/1 times/);
   });
 });

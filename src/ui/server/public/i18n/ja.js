@@ -494,6 +494,10 @@
     "ag.rc.never": "このエージェントには今後たずねない",
     "ag.rc.settings": "設定",
     "ag.rc.from": "圧縮 {n} 回で交代（{src}）。時期が来たら: {mode}（{src2}）",
+    "ag.rc.fellBackBad":
+      "交代の時期です（{why}）。2 回頼んでも引き継ぎが確認を通りません。",
+    "ag.rc.fromNever": "交代しません（{src}）。時期が来たら: {mode}（{src2}）",
+    "ag.rc.midTurn": "{id} は応答中です: ターンが終わってから頼んでください",
     "ag.rc.neverN": "しない",
     "ag.rc.mode.auto": "自動で再起動",
     "ag.rc.mode.ask": "たずねる",

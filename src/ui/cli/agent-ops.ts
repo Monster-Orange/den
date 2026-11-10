@@ -611,7 +611,9 @@ export function agentRows(
     const st = rowState(rec, s);
     const rot = stateDir ? rotationInfo(stateDir, rec, policyOf?.(rec)) : null;
     // A rotated conversation is not resumed: it relaunches from its handoff.
-    const resumable = canResume(rec, st) && !rot?.ready;
+    // D28: under on_due off, its conversation goes on: Resume stays.
+    const resumable =
+      canResume(rec, st) && !(rot?.ready && rot.onDue !== "off");
     const why =
       isStoppedState(st) && !resumable
         ? (resumeRefusal(rec) ?? (rot?.ready ? rotatedRefusal(rec, rot) : null))
@@ -624,7 +626,7 @@ export function agentRows(
       state: st,
       startedAt: s?.startedAt ?? rec.startedAt,
       resumable,
-      ...(!rot?.ready && !personaChangeRefusal(rec)
+      ...(!(rot?.ready && rot.onDue !== "off") && !personaChangeRefusal(rec)
         ? { personaChange: true }
         : {}),
       ...(why ? { noResume: why } : {}),

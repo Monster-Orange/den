@@ -247,12 +247,20 @@
         font: 12px/1.4 var(--sans);
         color: var(--muted);
       }
+      /* The callout takes a line of its own under the bar's name and
+         buttons, so it never runs under Stop (375 px). */
+      .pane .bar2:has(.agrot) {
+        flex-wrap: wrap;
+        row-gap: 4px;
+      }
       .bar2 .agrot {
-        display: inline-flex;
+        display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: 4px;
         min-width: 0;
+        order: 10;
+        flex: 1 1 100%;
       }
       .bar2 .agrot .agnever {
         display: none;

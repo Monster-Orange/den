@@ -162,6 +162,20 @@ describe("a session that rotated after 3 compactions", () => {
     expect(r.made).toHaveLength(2);
   });
 
+  it("with a handoff, on_due off: Resume stays (no noResume), and it resumes", async () => {
+    const r = await rig();
+    await started(r);
+    compact(r, "be-dev", 3);
+    writeHandoff(r, "be-dev");
+    await stop(r);
+    setRotateValue(r.stateDir, "install", undefined, "on_due", "off");
+    const [row] = await listRows(r);
+    expect(row).toMatchObject({ resumable: true, personaChange: true });
+    expect(row.noResume).toBeUndefined();
+    expect(await agents(r, "resume", "be-dev")).toBe(0);
+    expect(r.made[1].args.slice(0, 1)).toEqual(["--resume"]);
+  });
+
   it("with a handoff, on_due ask: Resume refuses (exit 1) naming relaunch; relaunch starts a new conversation from it", async () => {
     const r = await rig();
     const t1 = await started(r);

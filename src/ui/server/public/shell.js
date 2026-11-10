@@ -632,6 +632,12 @@
     "ag.rc.settings": "Settings",
     "ag.rc.from":
       "Rotates after {n} compactions ({src}); when due: {mode} ({src2})",
+    "ag.rc.fellBackBad":
+      "Due ({why}). Its handoff still fails the check after 2 asks.",
+    "ag.rc.from.one":
+      "Rotates after {n} compaction ({src}); when due: {mode} ({src2})",
+    "ag.rc.fromNever": "Never rotates ({src}); when due: {mode} ({src2})",
+    "ag.rc.midTurn": "{id} is mid-turn: ask again when its turn ends",
     "ag.rc.neverN": "never",
     "ag.rc.mode.auto": "relaunch by itself",
     "ag.rc.mode.ask": "ask",

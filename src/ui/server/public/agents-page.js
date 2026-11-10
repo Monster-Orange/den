@@ -368,7 +368,8 @@ function whereTag(r, button = false) {
 
 /** Its rotation, when one is due: "ready" or "due" (den#4). */
 function rotationOf(r) {
-  if (!r.rotation?.due) return "";
+  // D28: on_due off: nothing will happen, so nothing is shown.
+  if (!r.rotation?.due || r.rotation.onDue === "off") return "";
   return r.rotation.ready ? "ready" : "due";
 }
 
@@ -391,7 +392,11 @@ function rotMessage(r) {
   if (rot.relaunchWanted && !rot.ready) return t("ag.rc.wanted", { why });
   if (auto && !isStopped(r))
     return t(rot.ready ? "ag.rc.autoReady" : "ag.rc.autoAsk", { why });
-  if (rot.fellBack) return t("ag.rc.fellBack", { why });
+  if (rot.fellBack && !rot.ready)
+    return t(
+      rot.handoff === "invalid" ? "ag.rc.fellBackBad" : "ag.rc.fellBack",
+      { why },
+    );
   return t(
     rot.ready
       ? "ag.rc.ready"
@@ -426,12 +431,19 @@ function rotActionsHtml(r) {
 /** D28: the effective settings and where each comes from, in words. */
 function rotFromText(rot) {
   if (!rot?.from) return "";
-  return t("ag.rc.from", {
-    n: rot.after === 0 ? t("ag.rc.neverN") : rot.after,
-    src: rot.from.after_compactions,
-    mode: t(`ag.rc.mode.${rot.onDue}`),
-    src2: rot.from.on_due,
-  });
+  return t(
+    rot.after === 0
+      ? "ag.rc.fromNever"
+      : rot.after === 1
+        ? "ag.rc.from.one"
+        : "ag.rc.from",
+    {
+      n: rot.after,
+      src: rot.from.after_compactions,
+      mode: t(`ag.rc.mode.${rot.onDue}`),
+      src2: rot.from.on_due,
+    },
+  );
 }
 
 /** D28: the callout under a row: the message, its line of settings, the buttons. */
@@ -1621,7 +1633,10 @@ async function writeHandoff(r, button) {
     await api("POST", agentPath(r, "handoff"), {});
     window.denShell?.toast?.(t("ag.rc.asked", { id: r.agent }));
   } catch (err) {
-    window.denShell?.errorToast?.(err);
+    // Mid-turn is expected, not an error: say when to try again.
+    if (/mid-turn/.test(String(err?.message ?? "")))
+      window.denShell?.toast?.(t("ag.rc.midTurn", { id: r.agent }));
+    else window.denShell?.errorToast?.(err);
   }
   await refresh();
 }

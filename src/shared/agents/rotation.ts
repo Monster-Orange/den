@@ -451,7 +451,7 @@ export function rotationInstruction(
   const why =
     reason === "pr-merged"
       ? "its pull request merged"
-      : `it has compacted ${compactions} times`;
+      : `it has compacted ${compactions === 1 ? "once" : `${compactions} times`}`;
   return [
     `Den: this session is done, because ${why} (session rotation).`,
     `Write your handoff now, to ${handoffFile(filesDir)}, with these headings, each filled in:`,

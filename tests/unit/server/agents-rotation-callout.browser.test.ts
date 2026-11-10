@@ -132,11 +132,18 @@ const hScroll = (p: Page) =>
   );
 
 describe("a due agent's callout (D28)", () => {
-  for (const width of [1280, 375])
-    it(`running, auto: says what Den does, with its buttons, on the row and in the pane bar (${width} px)`, async () => {
+  for (const [width, layout] of [
+    [1280, "tabs"],
+    [375, "tabs"],
+    [375, "focus"],
+  ] as const)
+    it(`running, auto: says what Den does, with its buttons, on the row and in the pane bar (${width} px, ${layout})`, async () => {
       if (!browser) return;
       due();
-      const { p, errors } = await open(width);
+      const { p, errors } = await open(
+        width,
+        `/agents?ws=north&open=${sessionId}&layout=${layout}`,
+      );
       await row(p).waitFor({ timeout: 20_000 });
       expect(await row(p).getAttribute("data-state")).toBe("running");
       expect(
@@ -154,21 +161,89 @@ describe("a due agent's callout (D28)", () => {
       expect(
         await row(p).locator("[data-rot-settings]").getAttribute("href"),
       ).toBe("/settings?q=rotation#agents");
-      if (width === 1280) {
-        const bar = p.locator(`.pane[data-id="${sessionId}"] [data-rot-bar]`);
-        await bar.waitFor({ timeout: 10_000 });
+      const bar = p.locator(`.pane[data-id="${sessionId}"] [data-rot-bar]`);
+      await bar.waitFor({ timeout: 10_000 });
+      expect(
+        await bar
+          .locator("[data-act]")
+          .evaluateAll((bs) => bs.map((b) => (b as HTMLElement).dataset.act)),
+      ).toEqual(["relaunch", "rot-write", "rot-keep"]);
+      // At 375 px: the callout takes a line of its own below the bar's
+      // own buttons, so a long name never puts Stop over Write handoff.
+      if (width === 375)
         expect(
-          await bar
-            .locator("[data-act]")
-            .evaluateAll((bs) => bs.map((b) => (b as HTMLElement).dataset.act)),
-        ).toEqual(["relaunch", "rot-write", "rot-keep"]);
-      }
+          await p
+            .locator(`.pane[data-id="${sessionId}"] .bar2`)
+            .evaluate(
+              (b) =>
+                b.querySelector("[data-rot-bar]")!.getBoundingClientRect()
+                  .top >=
+                b.querySelector(".x")!.getBoundingClientRect().bottom - 1,
+            ),
+        ).toBe(true);
+      // At 375 px: no callout button lies under another bar control (Stop).
+      expect(
+        await p.locator(`.pane[data-id="${sessionId}"] .bar2`).evaluate((b) => {
+          const box = (e: Element) => e.getBoundingClientRect();
+          const hit = (a: DOMRect, c: DOMRect) =>
+            a.left < c.right &&
+            c.left < a.right &&
+            a.top < c.bottom &&
+            c.top < a.bottom;
+          const rot = [...b.querySelectorAll("[data-rot-bar] button")];
+          const rest = [...b.querySelectorAll("button")].filter(
+            (x) => !x.closest("[data-rot-bar]"),
+          );
+          return rot.flatMap((r) =>
+            rest
+              .filter((o) => hit(box(r), box(o)))
+              .map(
+                (o) =>
+                  `${r.textContent?.trim()} / ${o.getAttribute("aria-label") ?? o.textContent?.trim()}`,
+              ),
+          );
+        }),
+      ).toEqual([]);
       for (const b of await row(p).locator(".agacts button").all())
         expect(await b.isVisible()).toBe(true);
       expect(await hScroll(p)).toBe(false);
       expect(errors).toEqual([]);
       await p.context().close();
     }, 60_000);
+
+  it("one compaction: the from line says compaction; a fallen-back agent with a bad handoff says so", async () => {
+    if (!browser) return;
+    writeRotation(files(), {
+      conversation: TOKEN,
+      compactions: 1,
+      after: 1,
+      due: "compactions",
+      asked: 2,
+      fellBack: true,
+    });
+    setRotateValue(s!.stateDir, "agent", "scout", "after_compactions", 1);
+    fs.writeFileSync(path.join(files(), "handoff.md"), "## Objective\n");
+    const { p, errors } = await open(1280);
+    await row(p).waitFor({ timeout: 20_000 });
+    expect(
+      (await row(p).locator("[data-rot-from]").textContent())?.trim(),
+    ).toBe(
+      "Rotates after 1 compaction (agent scout); when due: relaunch by itself (default)",
+    );
+    expect((await row(p).locator("[data-rot-msg]").textContent())?.trim()).toBe(
+      "Due (1 compaction). Its handoff still fails the check after 2 asks.",
+    );
+    expect(errors).toEqual([]);
+    await p.context().close();
+    fs.rmSync(path.join(files(), "handoff.md"), { force: true });
+    setRotateValue(
+      s!.stateDir,
+      "agent",
+      "scout",
+      "after_compactions",
+      undefined,
+    );
+  }, 60_000);
 
   it("ask: says it has no handoff; Keep with don't ask again resets it and sets never", async () => {
     if (!browser) return;
@@ -216,6 +291,15 @@ describe("a due agent's callout (D28)", () => {
     await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
     expect(await row(p).count()).toBe(0);
     expect(await p.locator("[data-rot-bar]").count()).toBe(0);
+    // Nor a "Handoff due" tag: under off nothing will happen.
+    expect(
+      await p
+        .locator(
+          '#agl .agr[data-agent="scout"] .agrot, #agl .agr[data-agent="scout"] [data-rotation]',
+        )
+        .count(),
+    ).toBe(0);
+    expect(await p.locator("#agl").textContent()).not.toMatch(/Handoff due/);
     await p.context().close();
     setRotateValue(s!.stateDir, "agent", "scout", "on_due", undefined);
   }, 60_000);

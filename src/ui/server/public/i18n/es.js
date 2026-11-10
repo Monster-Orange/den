@@ -509,6 +509,13 @@
     "ag.rc.settings": "Ajustes",
     "ag.rc.from":
       "Rota tras {n} compactaciones ({src}); al tocar: {mode} ({src2})",
+    "ag.rc.fellBackBad":
+      "Toca rotar ({why}). Su traspaso sigue sin pasar la revisión tras pedírselo 2 veces.",
+    "ag.rc.from.one":
+      "Rota tras {n} compactación ({src}); al tocar: {mode} ({src2})",
+    "ag.rc.fromNever": "Nunca rota ({src}); al tocar: {mode} ({src2})",
+    "ag.rc.midTurn":
+      "{id} está a mitad de turno: pídelo de nuevo cuando termine",
     "ag.rc.neverN": "nunca",
     "ag.rc.mode.auto": "relanzar solo",
     "ag.rc.mode.ask": "preguntar",
