@@ -5317,7 +5317,7 @@ class DenCLI {
       "  mcp --call <tool>    Call one MCP tool and print its result (--list: tool names)",
     );
     console.log(
-      "  service install      Run the web UI as a launchd service (status, print, uninstall)",
+      "  service install      Run the web UI as a launchd service (status, print, uninstall, help)",
     );
     console.log(
       "  theme add <repo>@<ref> Install a web UI theme (list, validate, remove)",

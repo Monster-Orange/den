@@ -908,7 +908,7 @@
     "ag.rn.act": "Rename",
     "ag.where.logout": "Stops at logout",
     "ag.where.logoutTip":
-      "It runs in the desktop login session, so logging out ends it. To keep agents running: {cli} service install --mode always",
+      "It runs in the desktop login session, so logging out ends it. To keep agents running: {cli} service install --mode always (opt-in, not yet proven across a logout)",
     "ag.where.bg": "No GUI",
     "ag.where.bgTip":
       "It keeps running after logout, outside the desktop session: no login keychain and no GUI apps. 1Password uses the service-account token, browsers run headless, and protected folders need Full Disk Access ({cli} doctor).",

@@ -17,7 +17,11 @@
 import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import { endsAtLogout, sessionWarning } from "../../shared/launchd-session.js";
+import {
+  ALWAYS_UNPROVEN,
+  endsAtLogout,
+  sessionWarning,
+} from "../../shared/launchd-session.js";
 
 export type ServiceMode = "always" | "login";
 
@@ -118,7 +122,7 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
       what: "service",
       session: "not installed",
       status: "ok",
-      detail: `${d.cli} service install (--mode login, or --mode always to keep agents running after logout)`,
+      detail: `${d.cli} service install (login, the default; --mode always is opt-in and ${ALWAYS_UNPROVEN})`,
     });
   else if (svc.state === "not-loaded")
     rows.push({
@@ -134,7 +138,9 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
       status: "ok",
       ...(svc.state === "unknown"
         ? { detail: "launchctl could not be asked whether it is loaded" }
-        : {}),
+        : svc.mode === "always"
+          ? { detail: `opt-in: ${ALWAYS_UNPROVEN}` }
+          : {}),
     });
   return rows;
 }

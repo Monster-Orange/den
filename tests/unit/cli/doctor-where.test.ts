@@ -156,11 +156,33 @@ describe("whereRows", () => {
     );
   });
 
+  it("an always service: ok, but not yet proven across a logout", async () => {
+    const rows = await whereRows(base());
+    expect(rows.find((r) => r.what === "service")).toMatchObject({
+      session: "always (system)",
+      status: "ok",
+      detail: "opt-in: not yet proven across a logout",
+    });
+    const login = await whereRows(
+      base({
+        service: () => ({
+          state: "loaded",
+          mode: "login",
+          plist: "/x.plist",
+          domain: "gui/501",
+        }),
+      }),
+    );
+    expect(login.find((r) => r.what === "service")!.detail).toBeUndefined();
+  });
+
   it("no service installed: says how", async () => {
     const rows = await whereRows(base({ service: () => null }));
     expect(rows.find((r) => r.what === "service")).toMatchObject({
       session: "not installed",
       status: "ok",
+      detail:
+        "acme service install (login, the default; --mode always is opt-in and not yet proven across a logout)",
     });
   });
 

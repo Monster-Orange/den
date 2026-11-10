@@ -8,11 +8,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
-- **Agents keep running across logout (D18, D20).** `service install
-  --mode always` installs the web server and the session host as
-  LaunchDaemons that run as you (`UserName`): they start at boot and keep
-  running when you log out of the desktop, and so do every terminal and
-  agent. It takes your admin password once (sudo); `--mode login`, the
+- **Opt-in: agents meant to keep running across logout (D18, D20).**
+  `service install --mode always` installs the web server and the session
+  host as LaunchDaemons that run as you (`UserName`): they start at boot
+  and are meant to keep running when you log out of the desktop, and so
+  every terminal and agent. It is not yet proven across a logout: `service
+  help`, `--plan`, install, `doctor` and the agents page say so. It takes your admin password once (sudo); `--mode login`, the
   default, keeps LaunchAgents in the desktop session (they stop at
   logout). Without `--mode`, install keeps the mode already installed.
   Switching removes the other mode's jobs.
@@ -65,10 +66,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
-- None required. To keep agents running across logout, run
+- None required. An existing install keeps its mode (login). To try
+  keeping agents running across logout (not yet proven), run
   `<cli> service install --mode always` once (one sudo), then grant Full
   Disk Access to the path `doctor` names if agents read protected folders.
-  An existing install keeps its mode (login) until you do.
+- `<cli> service` with no subcommand prints its help (before, an error).
 
 ## [0.4.21] - 2026-11-09
 

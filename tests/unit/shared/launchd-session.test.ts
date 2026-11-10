@@ -68,6 +68,7 @@ describe("sessionWarning", () => {
     const w = sessionWarning("Aqua", "acme", "host");
     expect(w).toMatch(/stops? when you log out/);
     expect(w).toContain("acme service install --mode always");
+    expect(w).toContain("not yet proven across a logout");
   });
 
   it("says what a session outside the desktop lacks", () => {
@@ -87,6 +88,7 @@ describe("webUpWarning", () => {
     const w = webUpWarning("Background", "acme");
     expect(w).toMatch(/outside the desktop session \(Background, e\.g\. ssh\)/);
     expect(w).toContain("acme service install --mode always");
+    expect(w).toContain("not yet proven across a logout");
   });
   it("says nothing in the desktop session or off macOS", () => {
     expect(webUpWarning("Aqua", "acme")).toBeNull();

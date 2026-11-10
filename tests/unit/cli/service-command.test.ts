@@ -227,14 +227,12 @@ describe("cmdService", () => {
     expect(h.polls).toEqual([]);
   });
 
-  it("refuses an unknown subcommand, and no subcommand, without running anything", async () => {
+  it("refuses an unknown subcommand without running anything; none prints help", async () => {
     const h = harness();
     await expect(cmdService(["start"], h.deps)).rejects.toThrow(
       /install \| status \| print \| uninstall/,
     );
-    await expect(cmdService([], h.deps)).rejects.toThrow(
-      /install \| status \| print \| uninstall/,
-    );
+    expect(await cmdService([], h.deps)).toBe(0);
     expect(h.calls).toEqual([]);
   });
 
@@ -435,7 +433,7 @@ describe("D18: install modes", () => {
     ).toBe(0);
     const out = h.lines.join("\n");
     expect(out).toContain(
-      "mode:    always (LaunchDaemons running as you: kept across logout; one sudo)",
+      "mode:    always (LaunchDaemons running as you: meant to keep running across logout, not yet proven across a logout; opt-in; one sudo)",
     );
     expect(out).toContain(
       "plist:   /Library/LaunchDaemons/local.acme-dev.web.plist",
@@ -444,6 +442,29 @@ describe("D18: install modes", () => {
       `host:    local.acme-dev.sessions on ${STATE}/bin/den-sessions-host`,
     );
   });
+
+  it("installing always says it is not yet proven across a logout; login says nothing", async () => {
+    const h = harness();
+    await cmdService(["install", "--mode", "always"], h.deps);
+    expect(h.lines.join("\n")).toContain(
+      "--mode always is opt-in and not yet proven across a logout",
+    );
+    const h2 = harness();
+    await cmdService(["install"], h2.deps);
+    expect(h2.lines.join("\n")).not.toContain("not yet proven");
+  });
+
+  it.each([[[]], [["help"]], [["--help"]]])(
+    "service %j prints its help: login is the default, always is not yet proven",
+    async (args) => {
+      const h = harness();
+      expect(await cmdService(args as string[], h.deps)).toBe(0);
+      const out = h.lines.join("\n");
+      expect(out).toMatch(/--mode login\s+\(default\)/);
+      expect(out).toMatch(/--mode always .*not yet proven across a logout/);
+      expect(h.calls).toEqual([]);
+    },
+  );
 
   it("install writes the host job file; uninstall removes it", async () => {
     const file = path.join(STATE, "sessions-host-job.json");

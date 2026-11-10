@@ -1962,7 +1962,7 @@ terminal and agent) as launchd jobs, restarted if they exit:
 
 ```bash
 ./bin/acme service install                # install (or refresh) and start them
-./bin/acme service install --mode always  # keep them running across logout
+./bin/acme service install --mode always  # meant to keep them running across logout (opt-in, not yet proven)
 ./bin/acme service install --plan  # what install would do; writes and loads nothing
 ./bin/acme service status      # launchd's view: state, pid, last exit code
 ./bin/acme service print       # the web plist it would install; installs nothing
@@ -1971,10 +1971,14 @@ terminal and agent) as launchd jobs, restarted if they exit:
 
 ### Login or always
 
-| `--mode`          | Jobs                                                  | At logout                   |
-| ----------------- | ----------------------------------------------------- | --------------------------- |
-| `login` (default) | LaunchAgents in the desktop session (`gui/<uid>`)     | stop, with every agent      |
-| `always`          | LaunchDaemons that run as you (`UserName`), from boot | keep running, and so agents |
+| `--mode`          | Jobs                                                  | At logout                            |
+| ----------------- | ----------------------------------------------------- | ------------------------------------ |
+| `login` (default) | LaunchAgents in the desktop session (`gui/<uid>`)     | stop, with every agent               |
+| `always`          | LaunchDaemons that run as you (`UserName`), from boot | meant to keep running, and so agents |
+
+`always` is opt-in and not yet proven across a logout: no logout has
+shown it keeping an agent on the same conversation yet. Use `login` unless
+you are testing it.
 
 `always` takes your admin password once (sudo writes and loads the
 LaunchDaemons in `/Library/LaunchDaemons`); it is never asked for again.

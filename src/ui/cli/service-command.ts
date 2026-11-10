@@ -51,6 +51,7 @@ import {
 import { readWebPort } from "../../shared/edge/config.js";
 import { getDistRoot, getEngineRoot } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
+import { ALWAYS_UNPROVEN } from "../../shared/launchd-session.js";
 import {
   classifyServerInfo,
   ForeignServerError,
@@ -236,15 +237,37 @@ async function defaultStopPlain(pid: number, port: number): Promise<boolean> {
   return false;
 }
 
+/** `service help`: the subcommands and the two install modes. */
+export function serviceHelp(cli: string): string[] {
+  return [
+    `${cli} service: run the web UI and the session host as launchd jobs (macOS)`,
+    ``,
+    `  install [--mode login|always]  install (or refresh) and start them`,
+    `  install --plan                 what install would do; writes and loads nothing`,
+    `  status                         launchd's view: state, pid, last exit code`,
+    `  print                          the web plist it would install; installs nothing`,
+    `  uninstall                      stop them and remove their plists`,
+    ``,
+    `  --mode login   (default) LaunchAgents in the desktop session: stop at logout, with every agent`,
+    `  --mode always  LaunchDaemons running as you, one sudo: meant to keep agents running across logout. Opt-in, ${ALWAYS_UNPROVEN}`,
+    `  Without --mode, install keeps the mode already installed.`,
+  ];
+}
+
 /** Run `service <sub>`; returns the exit code. */
 export async function cmdService(
   args: string[],
   deps: ServiceDeps = {},
 ): Promise<number> {
-  const sub = args[0] as (typeof SUBCOMMANDS)[number] | undefined;
-  if (!(SUBCOMMANDS as readonly string[]).includes(sub ?? ""))
+  if (args[0] === undefined || ["help", "--help", "-h"].includes(args[0])) {
+    for (const l of serviceHelp(product().cli))
+      (deps.log ?? ((x: string) => console.log(x)))(l);
+    return 0;
+  }
+  const sub = args[0] as (typeof SUBCOMMANDS)[number];
+  if (!(SUBCOMMANDS as readonly string[]).includes(sub))
     throw new Error(
-      `${sub ? `Unknown service command "${sub}". ` : ""}Use: ${SUBCOMMANDS.join(" | ")}`,
+      `Unknown service command "${sub}". Use: ${SUBCOMMANDS.join(" | ")} (${product().cli} service help)`,
     );
   // A typo'd --plan must not install for real.
   const extra = (
@@ -314,7 +337,7 @@ export async function cmdService(
         : path.join(home, "Library", "LaunchAgents");
     log(`service install --plan (read-only: nothing is written or loaded)`);
     log(
-      `  mode:    ${mode}${mode === "always" ? " (LaunchDaemons running as you: kept across logout; one sudo)" : " (LaunchAgents: stop at logout)"}`,
+      `  mode:    ${mode}${mode === "always" ? ` (LaunchDaemons running as you: meant to keep running across logout, ${ALWAYS_UNPROVEN}; opt-in; one sudo)` : " (LaunchAgents: stop at logout)"}`,
     );
     log(`  label:   ${label}`);
     log(`  plist:   ${path.join(dir, `${label}.plist`)}`);
@@ -375,6 +398,8 @@ export async function cmdService(
       (deps.run ? () => ({ state: "linked" as const }) : recordOwnerGithub);
     const line = ownerGithubLine(rec(), product().cli);
     if (line) log(line);
+    if (mode === "always")
+      log(`note: --mode always is opt-in and ${ALWAYS_UNPROVEN}`);
   }
   const code = run("bash", [script, sub!], {
     ...env,

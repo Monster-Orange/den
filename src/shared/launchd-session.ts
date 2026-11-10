@@ -15,6 +15,13 @@
  */
 import { spawnSync } from "child_process";
 
+/**
+ * `service install --mode always` is opt-in: it is meant to keep the
+ * server, the host and every agent running across a logout, but no logout
+ * has proven it yet. Every place that offers it says so.
+ */
+export const ALWAYS_UNPROVEN = "not yet proven across a logout";
+
 export type LaunchctlRunner = () => { status: number | null; stdout: string };
 
 const defaultRunner: LaunchctlRunner = () => {
@@ -59,7 +66,7 @@ export function webUpWarning(
   cli: string,
 ): string | null {
   if (session !== "Background" && session !== "System") return null;
-  return `this shell runs outside the desktop session (${session}, e.g. ssh): a server started here keeps running after logout but has no login keychain and no GUI, and its agents run here too. To run it as a service: ${cli} service install --mode always (kept across logout) or --mode login`;
+  return `this shell runs outside the desktop session (${session}, e.g. ssh): a server started here keeps running after logout but has no login keychain and no GUI, and its agents run here too. To run it as a service: ${cli} service install --mode always (opt-in, ${ALWAYS_UNPROVEN}) or --mode login`;
 }
 
 /** Whether a process in this session ends when the person logs out. */
@@ -78,7 +85,7 @@ export function sessionWarning(
   what: string,
 ): string | null {
   if (endsAtLogout(session))
-    return `the ${what} runs in the desktop login session (${session}): it stops when you log out. To keep it running: ${cli} service install --mode always`;
+    return `the ${what} runs in the desktop login session (${session}): it stops when you log out. To keep it running: ${cli} service install --mode always (opt-in, ${ALWAYS_UNPROVEN})`;
   if (session === "Background" || session === "System")
     return `the ${what} keeps running after logout (${session}); it has no login keychain and no GUI, so it uses the 1Password service-account token, headless browsers and Full Disk Access instead`;
   return null;
