@@ -923,6 +923,7 @@ hub:
   url: https://hub.example.com
   token: { vault: Private, item: Acme Hub, field: token }
   # or the name of a secrets.refs entry: token: hub_install
+  allow_tools: true # the default: agents use Hub's tools without asking
 ```
 
 - `hub.url` must be https. Plain http works only to this machine
@@ -941,8 +942,13 @@ hub:
   this Den install."
 - The token is only in the agent's own MCP file (mode 0600). It is never
   in a command line, a record, a log, a page or an API answer.
-- Hub's tools ask before they run, like any tool, unless the agent's
-  permissions allow `mcp__hub`.
+- `hub.allow_tools` (default `true`): agents use Hub's tools without
+  asking (Den allows `mcp__hub` for every agent it launches). The token
+  limits writes to this install's team, and Hub keeps every version. Set
+  it to `false` and Hub's tools ask before they run, like any tool. An
+  explicit deny in the install's own Claude Code permissions still wins.
+  Settings › Agents › Hub has the checkbox (it saves to
+  `config/local/user.yml`).
 - A Hub that is down, or a token that can't be read, never stops an
   agent: it starts without Hub.
 

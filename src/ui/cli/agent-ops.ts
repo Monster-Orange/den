@@ -261,7 +261,11 @@ export interface AgentsDeps extends SessionsDeps {
    * or null when hub.url isn't set or the token can't be read (default:
    * hub.* and the install's secrets backend).
    */
-  hub?: () => Promise<{ url: string; token: string } | null>;
+  hub?: () => Promise<{
+    url: string;
+    token: string;
+    allowTools?: boolean;
+  } | null>;
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
   workspaceRepos?: (ws: string) => string[];
 }
@@ -280,7 +284,11 @@ export interface AgentsResolved extends Resolved {
   saveRuntimeBin: NonNullable<AgentsDeps["saveRuntimeBin"]>;
   userConfigFile: () => string;
   workspaceServices: (ws: string) => { address: string; path: string }[];
-  hub: () => Promise<{ url: string; token: string } | null>;
+  hub: () => Promise<{
+    url: string;
+    token: string;
+    allowTools?: boolean;
+  } | null>;
   workspaceRepos: (ws: string) => string[];
 }
 
@@ -400,6 +408,7 @@ export async function agentHub(
   return {
     name: HUB_SERVER,
     url: h.url,
+    allowTools: h.allowTools !== false,
     headers: hubHeaders(h.token, {
       agent: name,
       session: crypto.randomUUID(),
@@ -467,7 +476,11 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
 }
 
 /** HUB-1.5: hub.* and the token from this install's store; null without. */
-async function defaultHub(): Promise<{ url: string; token: string } | null> {
+async function defaultHub(): Promise<{
+  url: string;
+  token: string;
+  allowTools: boolean;
+} | null> {
   const { readHubConfig, readHubToken } = await import("../../shared/hub.js");
   let cfg;
   try {
@@ -477,7 +490,7 @@ async function defaultHub(): Promise<{ url: string; token: string } | null> {
   }
   if (!cfg) return null;
   const token = await readHubToken(cfg);
-  return token ? { url: cfg.url, token } : null;
+  return token ? { url: cfg.url, token, allowTools: cfg.allowTools } : null;
 }
 
 /**

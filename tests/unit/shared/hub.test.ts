@@ -15,6 +15,7 @@ import {
   hubUrlProblem,
   hubWhoami,
   ownerRepo,
+  patchHubAllowTools,
   readHubConfig,
   readHubToken,
   scrubToken,
@@ -46,6 +47,7 @@ describe("readHubConfig", () => {
       url: "https://mine.example.test",
       tokenRef: { vault: "", item: "i", field: "f" },
       tokenFrom: "hub.token",
+      allowTools: true,
     });
   });
 
@@ -98,6 +100,37 @@ describe("readHubConfig", () => {
   });
 });
 
+describe("hub.allow_tools", () => {
+  const url = "https://hub.example.test";
+  it("on unless set false; anything but a boolean throws naming the key", () => {
+    expect(readHubConfig({ hub: { url } }, {}, noSecrets)?.allowTools).toBe(
+      true,
+    );
+    expect(
+      readHubConfig(
+        { hub: { url, allow_tools: true } },
+        { hub: { allow_tools: false } },
+        noSecrets,
+      )?.allowTools,
+    ).toBe(false);
+    expect(() =>
+      readHubConfig({ hub: { url, allow_tools: "no" } }, {}, noSecrets),
+    ).toThrow(/hub\.allow_tools must be true or false/);
+  });
+
+  it("Settings' POST sets it in user.yml, null clears it, junk is refused", () => {
+    const user: Record<string, unknown> = { hub: { url } };
+    expect(patchHubAllowTools(user, false)).toEqual({ ok: true });
+    expect(user.hub).toEqual({ url, allow_tools: false });
+    expect(patchHubAllowTools(user, null)).toEqual({ ok: true });
+    expect(user.hub).toEqual({ url });
+    const bare: Record<string, unknown> = {};
+    patchHubAllowTools(bare, null);
+    expect(bare).toEqual({});
+    expect(patchHubAllowTools(user, "yes")).toMatchObject({ ok: false });
+  });
+});
+
 describe("headers and repos", () => {
   it("the bearer token and plain caller names, one printable line each", () => {
     expect(
@@ -134,6 +167,7 @@ describe("readHubToken", () => {
     url: "https://hub.example.test",
     tokenRef: { vault: "", item: "", field: "HUB_T", key: "HUB_T" },
     tokenFrom: "hub.token",
+    allowTools: true,
   };
   const store = (v: string | null | Error) =>
     (() =>
@@ -230,6 +264,7 @@ describe("hubStatus", () => {
     url: "https://hub.example.test",
     tokenRef: { vault: "", item: "i", field: "f" },
     tokenFrom: "hub.token",
+    allowTools: true,
   };
 
   it("not configured: nothing to show", async () => {
@@ -248,6 +283,7 @@ describe("hubStatus", () => {
     ).toEqual({
       configured: true,
       url: cfg.url,
+      allowTools: true,
       connected: true,
       team: "Acme",
       label: "north-box",

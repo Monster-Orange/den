@@ -128,6 +128,51 @@ describe("Settings › Hub (HUB-1.5)", () => {
     await p.context().close();
   }, 60_000);
 
+  it("Hub's tools: on with its note; unchecking saves hub_allow_tools false", async () => {
+    if (skip()) return;
+    const hub = {
+      configured: true,
+      url: "https://hub.example.test",
+      connected: true,
+      allowTools: true,
+    };
+    const p = await page(hub);
+    const posted: unknown[] = [];
+    await p.route("**/api/settings", (r) => {
+      const body = r.request().postDataJSON() as Record<string, unknown> | null;
+      if (
+        r.request().method() === "POST" &&
+        body &&
+        "hub_allow_tools" in body
+      ) {
+        posted.push(body);
+        hub.allowTools = body.hub_allow_tools as boolean;
+        return r.fulfill({
+          contentType: "application/json",
+          body: '{"ok":true}',
+        });
+      }
+      return r.continue();
+    });
+    await p.unroute("**/api/hub");
+    await p.route("**/api/hub", (r) =>
+      r.fulfill({ contentType: "application/json", body: JSON.stringify(hub) }),
+    );
+    expect(await p.isChecked("#hub-allow-tools")).toBe(true);
+    expect(await p.$eval("[data-hub-tools-note]", (el) => el.textContent)).toBe(
+      "Agents can publish and comment in Hub without asking; writes are versioned and stay in this install's team.",
+    );
+    await p.click("#hub-allow-tools");
+    await p.waitForFunction(() =>
+      /ask before each Hub tool/.test(
+        document.querySelector("[data-hub-tools-note]")?.textContent ?? "",
+      ),
+    );
+    expect(posted).toEqual([{ hub_allow_tools: false }]);
+    expect(await p.isChecked("#hub-allow-tools")).toBe(false);
+    await p.context().close();
+  }, 60_000);
+
   it("raised no page errors", () => {
     if (skip()) return;
     expect(errors).toEqual([]);

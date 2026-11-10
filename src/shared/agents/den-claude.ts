@@ -375,7 +375,17 @@ function common(input: LaunchInput): {
       )
     : null;
   const den = input.denToolsAllowed ? denToolRules(input.mcp.name) : null;
-  const allow = [...allowRules(input.allow ?? []), ...(den?.allow ?? [])];
+  // HUB-1.5: Hub's tools without asking, when hub.allow_tools is on (the
+  // default). Claude Code checks deny before allow: an install's deny wins.
+  const hubAllow =
+    input.mcp.hub?.allowTools === true
+      ? [`mcp__${input.mcp.hub.name}`, `mcp__${input.mcp.hub.name}__*`]
+      : [];
+  const allow = [
+    ...allowRules(input.allow ?? []),
+    ...(den?.allow ?? []),
+    ...hubAllow,
+  ];
   const ask = den?.ask ?? [];
   const settings =
     input.stateDir || hooks || allow.length ? settingsPath(input) : null;

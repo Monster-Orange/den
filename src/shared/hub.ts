@@ -43,9 +43,16 @@ export interface HubConfig {
   tokenRef: SecretRef | null;
   /** Where the ref came from, for messages (never the value). */
   tokenFrom: string;
+  /**
+   * hub.allow_tools (default true): agents use Hub's tools without asking.
+   * Off, they ask like any tool. An install's own deny rule still wins.
+   */
+  allowTools: boolean;
 }
 
-type RawHub = { url?: unknown; token?: unknown } | undefined;
+type RawHub =
+  | { url?: unknown; token?: unknown; allow_tools?: unknown }
+  | undefined;
 
 function rawHub(den: unknown, user: unknown): RawHub {
   const d = (den as { hub?: RawHub } | null)?.hub ?? {};
@@ -105,7 +112,28 @@ export function readHubConfig(
     throw new Error(
       "hub.token must be a secret ref ({ item, field } or { key }) or the name of a secrets.refs entry",
     );
-  return { url, tokenRef, tokenFrom };
+  const at = h.allow_tools;
+  if (at !== undefined && at !== null && typeof at !== "boolean")
+    throw new Error("hub.allow_tools must be true or false");
+  return { url, tokenRef, tokenFrom, allowTools: at !== false };
+}
+
+/**
+ * Apply a POSTed `hub_allow_tools` to user.yml's hub block (in place): a
+ * boolean sets hub.allow_tools, null clears it (back to the default, on).
+ */
+export function patchHubAllowTools(
+  user: Record<string, unknown>,
+  v: unknown,
+): { ok: true } | { ok: false; error: string } {
+  if (v !== null && typeof v !== "boolean")
+    return { ok: false, error: "hub_allow_tools must be true, false or null" };
+  const hub = { ...((user.hub as Record<string, unknown> | undefined) ?? {}) };
+  if (v === null) delete hub.allow_tools;
+  else hub.allow_tools = v;
+  if (Object.keys(hub).length) user.hub = hub;
+  else delete user.hub;
+  return { ok: true };
 }
 
 /** The token from this install's store, or null (none set, or unreadable). */
@@ -168,6 +196,8 @@ export type HubStatus =
       configured: true;
       url: string;
       connected: boolean;
+      /** hub.allow_tools: agents use Hub's tools without asking. */
+      allowTools?: boolean;
       team?: string;
       label?: string;
       /** Why it isn't connected, in words (never the token). */
@@ -275,6 +305,7 @@ export async function hubStatus(
     return {
       configured: true,
       url: cfg.url,
+      allowTools: cfg.allowTools,
       connected: false,
       problem:
         cfg.tokenFrom === "hub.token"
@@ -286,6 +317,7 @@ export async function hubStatus(
     return {
       configured: true,
       url: cfg.url,
+      allowTools: cfg.allowTools,
       connected: false,
       problem: `${cfg.tokenFrom} could not be read from this install's secrets store`,
     };
@@ -294,11 +326,18 @@ export async function hubStatus(
       cfg.url,
       token,
     );
-    return { configured: true, url: cfg.url, connected: true, ...who };
+    return {
+      configured: true,
+      url: cfg.url,
+      allowTools: cfg.allowTools,
+      connected: true,
+      ...who,
+    };
   } catch (e) {
     return {
       configured: true,
       url: cfg.url,
+      allowTools: cfg.allowTools,
       connected: false,
       problem: scrubToken(`Hub did not answer: ${(e as Error).message}`, token),
     };

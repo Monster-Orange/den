@@ -921,7 +921,9 @@ export const DEN_SETTINGS = [
     keywords: ["hub", "den hub", "mcp", "team", "token", "docs", "mocks"],
     scope: "user",
     control: { type: "custom", render: renderHub },
+    keys: ["hub_allow_tools"],
     read: () => null,
+    write: (v, ctx) => ctx.post({ hub_allow_tools: v }),
   },
 
   {
@@ -1468,10 +1470,18 @@ export function hubHtml(b) {
     ...(b.team ? [["Team", escR(b.team)]] : []),
     ...(b.label ? [["This install", escR(b.label)]] : []),
   ];
+  const tools =
+    `<label class="hub-tools"><input type="checkbox" id="hub-allow-tools"${b.allowTools !== false ? " checked" : ""}> Agents use Hub's tools without asking</label>` +
+    `<p class="set-note" data-hub-tools-note>${
+      b.allowTools !== false
+        ? "Agents can publish and comment in Hub without asking; writes are versioned and stay in this install's team."
+        : "Agents ask before each Hub tool runs."
+    }</p>`;
   return (
     `<dl class="hub-st" data-hub>` +
     rows.map(([k, v]) => `<dt>${escR(k)}</dt><dd>${v}</dd>`).join("") +
     `</dl>` +
+    tools +
     (!b.connected && b.problem
       ? `<p class="set-note" data-hub-problem>${escR(b.problem)}</p>`
       : "")
@@ -1490,6 +1500,18 @@ function renderHub(host, ctx) {
       const html = hubHtml(b);
       host.innerHTML = html;
       if (row) row.hidden = !html;
+      const box = host.querySelector("#hub-allow-tools");
+      if (box)
+        box.addEventListener("change", () => {
+          box.disabled = true;
+          ctx.shell
+            .api("POST", "/api/settings", { hub_allow_tools: box.checked })
+            .then(() => renderHub(host, ctx))
+            .catch(() => {
+              box.checked = !box.checked;
+              box.disabled = false;
+            });
+        });
     })
     .catch(() => {
       host.innerHTML = "";

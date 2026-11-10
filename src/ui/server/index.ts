@@ -283,6 +283,7 @@ import {
 } from "../../shared/cli-command.js";
 import { graphPrefs, patchStoredGraph } from "./graph-prefs.js";
 import { agentsLayout, patchAgentsLayout } from "./agents-layout-pref.js";
+import { patchHubAllowTools } from "../../shared/hub.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import { graphPageHtml } from "./graph-page.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
@@ -5017,6 +5018,8 @@ async function handleRequest(
   //     pane opens (AG-4b, editor-open-pref.ts); null clears it (none)
   //   language: the UI's language, en | ja | es (ui-language.ts); null or
   //     "en" clears it (English is the default)
+  //   hub_allow_tools: true | false, hub.allow_tools (HUB-1.5: agents use
+  //     Hub's tools without asking); null clears it (on)
   // It writes config/local/user.yml only. `distribution` is read-only: what
   // the org config (tracked) sets, for the Settings page's Distribution rows.
   // Every key POST accepts has a row in the Settings page's registry
@@ -5091,8 +5094,18 @@ async function handleRequest(
           machine_name?: unknown;
           agents_layout?: unknown;
           editor_open?: unknown;
+          hub_allow_tools?: unknown;
         };
         const user = readUserConfig();
+        // HUB-1.5: hub.allow_tools, Hub's tools without asking (Settings ›
+        // Agents › Hub); null clears it (the default, on).
+        if (body.hub_allow_tools !== undefined) {
+          const h = patchHubAllowTools(
+            user as Record<string, unknown>,
+            body.hub_allow_tools,
+          );
+          if (!h.ok) return send400(res, h.error);
+        }
         // AG-4b: the Agents tab's layout, a view preference only.
         if (body.agents_layout !== undefined) {
           const l = patchAgentsLayout(user, body.agents_layout);

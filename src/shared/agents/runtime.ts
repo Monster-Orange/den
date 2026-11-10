@@ -66,7 +66,13 @@ export interface AgentMcp {
    * headers go only into the agent's own 0600 MCP file, never into argv,
    * a record, a log or a page.
    */
-  hub?: { name: string; url: string; headers: Record<string, string> };
+  hub?: {
+    name: string;
+    url: string;
+    headers: Record<string, string>;
+    /** hub.allow_tools: its tools run without asking (default on). */
+    allowTools?: boolean;
+  };
 }
 
 export interface LaunchInput {

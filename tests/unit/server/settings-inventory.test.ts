@@ -80,6 +80,8 @@ describe("the settings inventory (R21)", () => {
         "graph.groupBy",
         "graph.panelWidth",
         "graph.workspaces",
+        // HUB-1.5: Hub's tools without asking.
+        "hub_allow_tools",
         // The UI's language (R19, 0.3.0-dev.39).
         "language",
         // SEC-2a: the name the signed-out page gives this machine.

@@ -13,8 +13,9 @@ config and manifest changes a distribution must make to move to it under
   gets Hub's MCP server, so it can search Hub and publish docs and mocks
   there. Hub knows the team from the install's token and the project from
   the workspace's repos. The token stays in the agent's own 0600 MCP
-  file. Settings › Agents › Hub and `doctor` say whether Hub is
-  connected, and to which team. Nothing changes without `hub.url`. See
+  file. Agents use Hub's tools without asking (`hub.allow_tools`, default
+  on; off, they ask like any tool). Settings › Agents › Hub and `doctor`
+  say whether Hub is connected, and to which team. Nothing changes without `hub.url`. See
   docs/distributions.md, "Hub".
 
 ### Fixed

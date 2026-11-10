@@ -115,6 +115,42 @@ describe("an agent's MCP config has Den Hub when hub.url is set", () => {
   });
 });
 
+describe("hub.allow_tools", () => {
+  const rules = (r: Rig) =>
+    (
+      JSON.parse(
+        fs.readFileSync(
+          path.join(r.stateDir, "agent-files", "planner", "settings.json"),
+          "utf-8",
+        ),
+      ) as { permissions?: { allow?: string[] } }
+    ).permissions?.allow ?? [];
+
+  it("on (the default): Hub's tools are allowed, so they never ask", async () => {
+    const r = await withHub();
+    expect(rules(r)).toEqual(
+      expect.arrayContaining([`mcp__${HUB_SERVER}`, `mcp__${HUB_SERVER}__*`]),
+    );
+  });
+
+  it("off: no Hub allow rule, so they ask like any tool", async () => {
+    const r = await rig({
+      hub: async () => ({
+        url: "https://hub.example.test",
+        token: TOKEN,
+        allowTools: false,
+      }),
+    });
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    expect(cfg(r).mcpServers[HUB_SERVER]).toBeTruthy();
+    expect(rules(r).some((x) => x.startsWith(`mcp__${HUB_SERVER}`))).toBe(
+      false,
+    );
+  });
+});
+
 describe("without Hub, nothing changes", () => {
   it("no hub server and no prompt line", async () => {
     const r = await rig();
