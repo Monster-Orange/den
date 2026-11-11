@@ -573,6 +573,78 @@ describe("the ⌘K palette (R17)", () => {
     await p.context().close();
   }, 30_000);
 
+  it("H4: ⌘/Ctrl-Enter opens any page row in a new tab (pages, settings, a command with an href); a row that only acts just runs; the footer says so", async () => {
+    if (!browser) return;
+    const { p } = await mount({
+      before: `<script>window.denShellQueue = [function (sh) { sh.registerCommand({ id: "h4-act", label: "Zap now", keywords: ["zzap"], run: function () { window.__ran = "act"; } }); sh.registerCommand({ id: "h4-page", label: "Plugin page", keywords: ["qqpage"], href: "/plugin-page", run: function () { location.assign("/plugin-page"); } }); }];</script>`,
+    });
+    const ctx = p.context();
+    // The new tabs' pages, answered here.
+    await ctx.route("http://den.test/**", (r) =>
+      new URL(r.request().url()).pathname.endsWith(".js") ||
+      new URL(r.request().url()).pathname.startsWith("/api/")
+        ? r.fallback()
+        : r.fulfill({ contentType: "text/html", body: "<title>t</title>t" }),
+    );
+    const here = p.url();
+    const mod = process.platform === "darwin" ? "Meta" : "Control";
+    const open = async (q: string) => {
+      await p.keyboard.press(`${mod}+k`);
+      await p.waitForSelector(".den-pal");
+      await p.fill("#den-pal-q", q);
+    };
+    await open("");
+    expect(await p.locator(".den-pal .den-foot").textContent()).toContain(
+      `${process.platform === "darwin" ? "⌘" : "Ctrl+"}↵ new tab`,
+    );
+    const wsHref = await p.evaluate(
+      () =>
+        (
+          window as unknown as {
+            denShell: { nav: () => { id: string; href: string }[] };
+          }
+        ).denShell
+          .nav()
+          .find((n) => n.id === "local-dev")!.href,
+    );
+    const cases: [string, string, RegExp][] = [
+      [
+        "workspaces",
+        "Workspaces PAGE",
+        new RegExp(`${wsHref.replace(/[?]/g, "\\?")}$`),
+      ],
+      [
+        "default terminal",
+        "Default terminal SETTING",
+        /\/settings\?q=Default%20terminal#editor$/,
+      ],
+      ["qqpage", "Plugin page ACTION", /\/plugin-page$/],
+    ];
+    for (const [q, row, url] of cases) {
+      if (!(await p.$(".den-pal"))) await open(q);
+      else await p.fill("#den-pal-q", q);
+      expect(await palRow(p, "#den-pal-o-0")).toBe(row);
+      const opened = ctx.waitForEvent("page");
+      await p.keyboard.press(`${mod}+Enter`);
+      const tab = await opened;
+      await tab.waitForLoadState();
+      expect(tab.url()).toMatch(url);
+      await tab.close();
+      expect(p.url()).toBe(here);
+      expect(await p.$(".den-pal")).toBeNull();
+    }
+    // A row that only acts: ⌘/Ctrl-Enter runs it, here.
+    await open("zzap");
+    expect(await palRow(p, "#den-pal-o-0")).toBe("Zap now ACTION");
+    await p.keyboard.press(`${mod}+Enter`);
+    expect(
+      await p.evaluate(() => (window as unknown as { __ran: string }).__ran),
+    ).toBe("act");
+    expect(ctx.pages()).toHaveLength(1);
+    expect(p.url()).toBe(here);
+    await ctx.close();
+  }, 60_000);
+
   it("Restart hands the action to Local Dev, asking for nothing first (LK-0)", async () => {
     if (!browser) return;
     const { p, reqs } = await mount();

@@ -36,6 +36,7 @@
  * route, container, daemon or server process changes. Start and Restart
  * are the explicit actions, through the page's own runner.
  */
+import { isMac } from "./term-input.js";
 
 // ── pure parts ──────────────────────────────────────────────────────────────
 
@@ -459,6 +460,15 @@ function go(href) {
   window.location.assign(href);
 }
 
+/**
+ * H4: a palette row that goes to a page: `href`, and run() going there.
+ * ⌘/Ctrl-Enter (or -click) opens `href` in a new tab instead, on every
+ * such row, as Hub's own palette does.
+ */
+function page(href) {
+  return { href, run: () => go(href) };
+}
+
 /** D51: `href` in a new tab, through a real link's click (never window.open). */
 function openNewTab(href) {
   const a = document.createElement("a");
@@ -845,8 +855,7 @@ function paletteItems() {
       sub: hub.href ? hub.team || undefined : hub.why,
       off: !hub.href,
       keywords: ["hub", "company", "docs", "comments"],
-      href: hub.href || "/settings#agents.hub",
-      run: () => go(hub.href || "/settings#agents.hub"),
+      ...page(hub.href || "/settings#agents.hub"),
     });
   for (const n of s?.nav?.() ?? []) {
     if (n.when && !n.when(st)) continue;
@@ -856,7 +865,7 @@ function paletteItems() {
       kind: "page",
       label,
       keywords: [n.id, n.group, ...(n.keywords ?? [])],
-      run: () => go(n.href),
+      ...page(n.href),
     });
   }
   const settings = document.querySelector('.den-rail [data-nav="settings"]');
@@ -866,7 +875,7 @@ function paletteItems() {
       kind: "page",
       label: settings.getAttribute("title") || t("n.settings"),
       keywords: ["settings", "preferences"],
-      run: () => go(settings.getAttribute("href")),
+      ...page(settings.getAttribute("href")),
     });
   const row = health.row;
   for (const g of health.groups ?? [])
@@ -877,7 +886,7 @@ function paletteItems() {
         label: g.app.title || g.app.name,
         sub: t("pal.repos", { n: g.repos.length }),
         keywords: [g.app.name, ...g.repos],
-        run: () => go(`/services#repo-${encodeURIComponent(g.repos[0])}`),
+        ...page(`/services#repo-${encodeURIComponent(g.repos[0])}`),
       });
   const services = [];
   for (const r of row?.flat ?? [])
@@ -890,7 +899,7 @@ function paletteItems() {
       label: id,
       dot: dotClass(serviceState(r, i)),
       keywords: [r.repo, i.service],
-      run: () => go(`/services#repo-${encodeURIComponent(r.repo)}`),
+      ...page(`/services#repo-${encodeURIComponent(r.repo)}`),
     });
   for (const { id } of services) {
     items.push({
@@ -939,7 +948,7 @@ function paletteItems() {
         "agents",
         "terminal",
       ],
-      run: () => go(`/agents?open=${encodeURIComponent(x.id)}`),
+      ...page(`/agents?open=${encodeURIComponent(x.id)}`),
     });
   }
   // 0.4.17: Go to workspace <ws>, for every workspace, the front agent's
@@ -965,7 +974,7 @@ function paletteItems() {
       label: t("pal.goWs", { ws }),
       keywords: [ws, "workspace", "workspaces", ...names.filter(Boolean)],
       hideEmpty: true,
-      run: () => go(`${wsBase}?ws=${encodeURIComponent(ws)}`),
+      ...page(`${wsBase}?ws=${encodeURIComponent(ws)}`),
     });
   if (s?.nav?.().some((n) => n.id === "agents"))
     items.push({
@@ -973,7 +982,7 @@ function paletteItems() {
       kind: "action",
       label: t("ag.palStart"),
       keywords: ["agents", "start", "persona"],
-      run: () => go("/agents?start=1"),
+      ...page("/agents?start=1"),
     });
   // ON-6: Ask <name>, the server agent's page.
   const ask = s?.nav?.().find((n) => n.id === "server-agent");
@@ -983,7 +992,7 @@ function paletteItems() {
       kind: "action",
       label: t("pal.askServer"),
       keywords: ["ask", "server agent", "agent", "help", "setup"],
-      run: () => go(ask.href),
+      ...page(ask.href),
     });
   for (const c of s?.commands?.() ?? [])
     items.push({
@@ -991,6 +1000,7 @@ function paletteItems() {
       kind: c.kind,
       label: c.label,
       keywords: c.keywords,
+      href: c.href,
       run: c.run,
     });
   return items.map((x) => ({ ...x, kindLabel: kindLabel(x.kind) }));
@@ -1014,7 +1024,7 @@ function openPalette() {
     `<div class="den-pal" role="dialog" aria-modal="true" aria-label="${esc(ph)}">` +
     `<input id="den-pal-q" role="combobox" aria-expanded="true" aria-controls="den-pal-list" aria-autocomplete="list" aria-label="${esc(ph)}" placeholder="${esc(ph)}" autocomplete="off" spellcheck="false">` +
     `<ul id="den-pal-list" role="listbox" aria-label="${esc(t("pal.results"))}"></ul>` +
-    `<div class="den-foot" aria-hidden="true"><span>${esc(t("pal.move"))}</span><span>${esc(t("pal.open"))}</span><span>${esc(t("pal.close"))}</span></div>` +
+    `<div class="den-foot" aria-hidden="true"><span>${esc(t("pal.move"))}</span><span>${esc(t("pal.open"))}</span><span>${esc(t("pal.newTab", { mod: isMac() ? "⌘" : "Ctrl+" }))}</span><span>${esc(t("pal.close"))}</span></div>` +
     '<span class="den-sr" role="status" aria-live="polite" id="den-pal-count"></span></div>';
   document.body.appendChild(wrap);
   const input = $("den-pal-q");
@@ -1050,8 +1060,9 @@ function openPalette() {
     if (!x) return;
     // Focus goes back first; then the row runs (it may navigate).
     closeOverlay(true);
-    // D51: ⌘/Ctrl-Enter (or -click) opens a page in a new tab, through a
-    // real link (D35: Safari blocks window.open outside a click).
+    // D51, H4: ⌘/Ctrl-Enter (or -click) opens any page row in a new tab,
+    // through a real link (D35: Safari blocks window.open outside a
+    // click). A row that only acts (Restart, Logs) just runs.
     if (newTab && x.href) return openNewTab(x.href);
     x.run();
   };

@@ -66,7 +66,9 @@
  *                                    the Workspace ▾ menu (header.js)
  *   workspaceNames()                 every workspace's name, from it
  *   syncEnv()                        repaint Env ▾ from #env-sel
- *   registerCommand({ id, label, keywords?, kind?, run })
+ *   registerCommand({ id, label, keywords?, kind?, run, href? })
+ *     href: the page run() goes to, if any; ⌘K's ⌘/Ctrl-Enter opens it
+ *     in a new tab (H4)
  *                                    a ⌘K palette row (R17, dev.20). label
  *                                    is a string or a function returning
  *                                    one; keywords a string or an array;
@@ -270,6 +272,7 @@
     "pal.results": "Results",
     "pal.move": "↑↓ to move",
     "pal.open": "↵ to open",
+    "pal.newTab": "{mod}↵ new tab",
     "pal.close": "esc to close",
     "pal.none": "No matches",
     "pal.count": "{n} results",
@@ -1356,6 +1359,7 @@
           : [],
       kind: typeof c.kind === "string" && c.kind ? c.kind : "action",
       run: c.run,
+      href: typeof c.href === "string" && c.href ? c.href : undefined,
       from: c.from || null,
     });
   }
@@ -1374,6 +1378,11 @@
     // a distribution or a plugin adds shows its own label. The Settings
     // search (?q=) keeps the row's own label, which that page shows.
     var key = "set." + r.id;
+    var href =
+      "/settings?q=" +
+      encodeURIComponent(r.label) +
+      "#" +
+      encodeURIComponent(cat);
     registerCommand({
       id: "setting:" + r.id,
       label:
@@ -1387,13 +1396,9 @@
         "settings",
       ]),
       kind: "setting",
+      href: href,
       run: function () {
-        location.assign(
-          "/settings?q=" +
-            encodeURIComponent(r.label) +
-            "#" +
-            encodeURIComponent(cat),
-        );
+        location.assign(href);
       },
       from: r.from || null,
     });
@@ -1415,6 +1420,7 @@
         keywords: c.keywords.slice(),
         kind: c.kind,
         run: c.run,
+        href: c.href,
         from: c.from,
       };
     });

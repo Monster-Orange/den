@@ -147,6 +147,7 @@
     "pal.results": "結果",
     "pal.move": "↑↓ で移動",
     "pal.open": "↵ で開く",
+    "pal.newTab": "{mod}↵ 新しいタブ",
     "pal.close": "esc で閉じる",
     "pal.none": "一致するものはありません",
     "pal.count": "{n} 件",

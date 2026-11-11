@@ -156,6 +156,7 @@
     "pal.results": "Resultados",
     "pal.move": "↑↓ para moverte",
     "pal.open": "↵ para abrir",
+    "pal.newTab": "{mod}↵ pestaña nueva",
     "pal.close": "esc para cerrar",
     "pal.none": "Sin coincidencias",
     "pal.count": "{n} resultados",

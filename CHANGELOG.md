@@ -22,6 +22,12 @@ config and manifest changes a distribution must make to move to it under
   new one. When Den can't open Hub, the entry is greyed, says why, and
   goes to Settings › Hub.
 
+- **⌘-Enter in ⌘K opens a new tab (H4).** Any entry that goes to a page
+  (a page, a service, a setting, an agent, a workspace) opens in a new
+  tab with ⌘-Enter (Ctrl-Enter) or ⌘-click, as in Hub's own ⌘K. The
+  footer says so. Entries that act, such as Restart, just run. A
+  command a plugin adds can give its page as `href` to get the same.
+
 ### Changed
 
 - **The rail's Hub opens in this tab (D51).** It is a plain link now, so
