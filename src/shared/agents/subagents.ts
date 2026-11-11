@@ -27,6 +27,31 @@ export interface SubagentSettings {
   model: string;
   /** Whether agents load the account's claude.ai connectors. */
   claudeAiConnectors: boolean;
+  /** The org config sets the model (even to the default's value). */
+  modelSet?: true;
+}
+
+/** Where the org's model comes from: its config, or Den's default. */
+export const orgModelFrom = (s: SubagentSettings): "org" | "default" =>
+  s.modelSet || s.model !== SUBAGENT_DEFAULTS.model ? "org" : "default";
+
+/** The oldest Claude Code that takes the subagent model forced. */
+export const SUBAGENT_FORCE_MIN = "2.1.257";
+
+/**
+ * Whether Claude Code `version` ("2.1.322 (Claude Code)" or "2.1.322")
+ * forces the subagent model: true, false (older: a fallback only), or
+ * null when it can't be read.
+ */
+export function forcesSubagentModel(
+  version: string | undefined,
+): boolean | null {
+  const m = /(\d+)\.(\d+)\.(\d+)/.exec(version ?? "");
+  if (!m) return null;
+  const want = SUBAGENT_FORCE_MIN.split(".").map(Number);
+  const have = [Number(m[1]), Number(m[2]), Number(m[3])];
+  for (let i = 0; i < 3; i++) if (have[i] !== want[i]) return have[i] > want[i];
+  return true;
 }
 
 export const SUBAGENT_DEFAULTS: SubagentSettings = {
@@ -57,8 +82,10 @@ export function subagentsBlock(
         throw new Error(
           `agents.subagents.${k}: unknown key (agents.subagents takes model)`,
         );
-    if (subagents.model !== undefined && subagents.model !== null)
+    if (subagents.model !== undefined && subagents.model !== null) {
       out.model = checkSubagentModel(subagents.model, "agents.subagents.model");
+      out.modelSet = true;
+    }
   }
   if (connectors !== undefined && connectors !== null) {
     if (typeof connectors !== "boolean")
@@ -88,7 +115,7 @@ export function effectiveSubagentModel(
   const [value, from]: [string, SubagentModelFrom] = persona.subagentModel
     ? [persona.subagentModel, "persona"]
     : org
-      ? [org.model, org.model === SUBAGENT_DEFAULTS.model ? "default" : "org"]
+      ? [org.model, orgModelFrom(org)]
       : [SUBAGENT_DEFAULTS.model, "default"];
   return value === INHERIT ? { from } : { model: value, from };
 }

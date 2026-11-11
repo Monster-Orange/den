@@ -26,6 +26,10 @@ config and manifest changes a distribution must make to move to it under
   agent's model as it last started (`--json`: `subagents`). The agents
   list and `/api/sessions` rows carry `subagentModel` and
   `subagentModelFrom`; the agent's pane bar shows "subagents: sonnet".
+- `agents doctor` warns when Claude Code is older than 2.1.257, where the
+  model is only a fallback (`--json`: `subagents.forced`). `<cli> doctor`
+  notes `agents.subagents` or `agents.claude_ai_connectors` set in
+  `config/local/user.yml`, where they do nothing (they are the org's).
 
 ### Migrations
 

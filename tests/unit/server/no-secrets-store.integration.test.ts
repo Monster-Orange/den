@@ -16,7 +16,7 @@
  * k6 on PATH that one step is skipped (the rest still runs).
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { spawn, spawnSync } from "child_process";
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as net from "net";
@@ -239,20 +239,25 @@ describe.each([
 ] as const)("%s", (label, block) => {
   let f: ReturnType<typeof fixture>;
   let port = 0;
+  /** The pid our server reported (/api/server-info): only it is ours. */
+  let ourPid = 0;
   let webLog = "";
 
   beforeAll(async () => {
     f = fixture(block, block);
-    port = await freePort();
   });
 
   afterAll(async () => {
     if (port) f.acme("web", "down", "--port", String(port));
-    // Fallback: a server this test started is still on the port.
-    spawn("sh", [
-      "-c",
-      `for p in $(lsof -nP -iTCP:${port} -sTCP:LISTEN -t 2>/dev/null); do kill $p; done`,
-    ]);
+    // Fallback: the server this test started, by the pid it reported. Never
+    // whatever listens on the port: a test running beside this one may
+    // have been given the same free port, and its server is not ours.
+    if (ourPid)
+      try {
+        process.kill(ourPid, "SIGTERM");
+      } catch {
+        /* gone */
+      }
     fs.rmSync(f.tmp, { recursive: true, force: true });
   });
 
@@ -335,13 +340,22 @@ describe.each([
   );
 
   it("web: health, the UI pages, and not-configured secret endpoints", async () => {
+    // Taken just before up, not in beforeAll: a free port isn't held, and a
+    // test beside this one may be given it in between.
+    port = await freePort();
     const up = f.acme("web", "up", "--no-open", "--port", String(port));
-    // Its output with the code: a failure says why (0.4.29-dev.1's gate).
-    expect({ code: up.code, out: up.out }).toMatchObject({ code: 0 });
+    // Its output with the code: a failure says why (0.4.29-dev.1's gate;
+    // toMatchObject shows only the keys it compares).
+    if (up.code !== 0)
+      throw new Error(`web up --port ${port} exited ${up.code}: ${up.out}`);
     const start = Date.now();
     while (Date.now() - start < 30_000) {
       try {
-        if ((await get(port, "/api/server-info")).code === 200) break;
+        const info = await get(port, "/api/server-info");
+        if (info.code === 200) {
+          ourPid = Number(JSON.parse(info.out).pid) || 0;
+          break;
+        }
       } catch {
         /* not up yet */
       }
@@ -458,7 +472,6 @@ describe("no secrets.provider, but secrets.refs.sudo configured", () => {
       path.join(f.dist, "config", "acme.yml"),
       "secrets:\n  refs:\n    sudo: { key: ACME_LOCAL_ADMIN_PWD }\n",
     );
-    port = await freePort();
   });
 
   afterAll(() => {
@@ -467,6 +480,8 @@ describe("no secrets.provider, but secrets.refs.sudo configured", () => {
   });
 
   it("resolves to doppler when the secret is asked for, and warns once", async () => {
+    // Taken just before up (see above).
+    port = await freePort();
     expect(f.acme("web", "up", "--no-open", "--port", String(port)).code).toBe(
       0,
     );

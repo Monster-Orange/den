@@ -3148,8 +3148,12 @@ agents:
 | `agents.subagents.model`      | `sonnet`, `haiku`, `opus`, a full model id, or `inherit` | `sonnet` |
 | `agents.claude_ai_connectors` | `true` or `false`                                        | `false`  |
 
-A persona's `subagent_model` wins over `agents.subagents.model`; its
-`inherit` turns Den's off for that persona. A change applies when an
+Both keys are the org's: set in a person's `config/local/user.yml` they
+do nothing, and `<cli> doctor` says so. A persona's `subagent_model` wins
+over `agents.subagents.model`; its `inherit` turns Den's off for that
+persona. On a Claude Code older than 2.1.257 the model is a fallback
+only (Explore may still run on the agent's model); `agents doctor` warns
+(`--json`: `subagents.forced`). A change applies when an
 agent next starts or resumes. `<cli> agents doctor` shows the org's model,
 connectors, each persona that overrides it, and each agent's model as it
 last started (`--json`: `subagents`). The agents list (`subagentModel`,

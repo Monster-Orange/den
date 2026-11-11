@@ -384,9 +384,11 @@ function subagentTag(r) {
   if (r?.kind !== "agent" || !r.subagentModel) return "";
   const inherit = r.subagentModel === "inherit";
   const model = inherit ? t("ag.subagents.inherit") : r.subagentModel;
-  const tip = t(`ag.subagents.from.${r.subagentModelFrom || "default"}`, {
-    model,
-  });
+  const from = r.subagentModelFrom || "default";
+  // inherit: Den sets none, said plainly (not "runs on the runtime's").
+  const tip = inherit
+    ? t(`ag.subagents.inheritFrom.${from === "persona" ? "persona" : "org"}`)
+    : t(`ag.subagents.from.${from}`, { model });
   return `<span class="tagx" data-subagents="${esc(r.subagentModel)}" title="${esc(tip)}">${esc(t("ag.subagents", { model }))}</span>`;
 }
 

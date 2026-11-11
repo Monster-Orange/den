@@ -104,7 +104,10 @@ describe("an agent's subagent model, in its pane bar (den#3)", () => {
     await tag.waitFor({ timeout: 10_000 });
     expect(await tag.getAttribute("data-subagents")).toBe("inherit");
     expect((await tag.textContent())?.trim()).toBe("subagents: the runtime's");
-    expect(await tag.getAttribute("title")).toContain("subagent_model");
+    // Said plainly: Den sets none, and why (the dev.0 gate's nit).
+    expect(await tag.getAttribute("title")).toContain(
+      "Den sets no model for its subagents: its persona's subagent_model is inherit",
+    );
     await p.context().close();
   }, 60_000);
 

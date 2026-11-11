@@ -54,6 +54,7 @@ import {
   INHERIT,
   SUBAGENT_DEFAULTS,
   effectiveSubagentModel,
+  orgModelFrom,
   type SubagentModelFrom,
 } from "../../shared/agents/subagents.js";
 import {
@@ -1257,7 +1258,7 @@ export function subagentsReport(d: AgentsResolved): SubagentsReport {
     .sort((a, b) => a.id.localeCompare(b.id));
   return {
     model: s.model,
-    from: s.model === SUBAGENT_DEFAULTS.model ? "default" : "org",
+    from: orgModelFrom(s),
     claudeAiConnectors: s.claudeAiConnectors,
     personas,
     agents,

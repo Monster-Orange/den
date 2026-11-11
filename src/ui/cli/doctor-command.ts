@@ -24,6 +24,7 @@
 import chalk from "chalk";
 import {
   readDenConfig,
+  readUserConfig,
   readMcpConfig,
   sectionConfigError,
   type DenConfig,
@@ -521,7 +522,7 @@ export function configLines(
   errorOf: (
     s: "agents" | "sessions",
   ) => ConfigError | null = sectionConfigError,
-  deprecated: () => string[] = deprecatedKeys,
+  deprecated: () => string[] = () => deprecatedKeys(),
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
@@ -546,8 +547,38 @@ export function configLines(
   return { lines, problem, checks };
 }
 
-/** 0.4.29: agents.helpers.collapse_done_minutes, set but ignored. */
-function deprecatedKeys(): string[] {
+/**
+ * Keys set where they do nothing: agents.helpers.collapse_done_minutes
+ * (0.4.29), and den#3's org-only keys in a person's user.yml.
+ */
+export function deprecatedKeys(
+  readUser: () => { agents?: unknown } = readUserConfig,
+): string[] {
+  return [...userYmlOrgKeys(readUser), ...collapseDoneKey()];
+}
+
+/**
+ * den#3: agents.subagents and agents.claude_ai_connectors are the org's
+ * (its config); set in user.yml they do nothing, which nobody would guess.
+ */
+export function userYmlOrgKeys(
+  read: () => { agents?: unknown } = readUserConfig,
+): string[] {
+  try {
+    const a = read().agents;
+    if (!a || typeof a !== "object") return [];
+    return (["subagents", "claude_ai_connectors"] as const)
+      .filter((k) => k in a)
+      .map(
+        (k) =>
+          `config/local/user.yml: agents.${k} does nothing there; it is the org's, set in ${product().configFile}`,
+      );
+  } catch {
+    return [];
+  }
+}
+
+function collapseDoneKey(): string[] {
   try {
     const h = (readDenConfig().agents as { helpers?: unknown } | undefined)
       ?.helpers;

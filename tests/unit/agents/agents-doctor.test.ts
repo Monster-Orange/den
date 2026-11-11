@@ -57,6 +57,8 @@ describe("agents doctor: subagents (den#3)", () => {
       model: "haiku",
       from: "org",
       claudeAiConnectors: true,
+      // The rig's claude answers 9.9.9: forced.
+      forced: true,
       personas: [{ id: "scout", model: "inherit" }],
       agents: [
         { id: "planner", model: "haiku", from: "org" },

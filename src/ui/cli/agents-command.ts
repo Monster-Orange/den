@@ -114,7 +114,11 @@ import {
   subagentsReport,
   type SubagentsReport,
 } from "./agent-ops.js";
-import { INHERIT } from "../../shared/agents/subagents.js";
+import {
+  INHERIT,
+  SUBAGENT_FORCE_MIN,
+  forcesSubagentModel,
+} from "../../shared/agents/subagents.js";
 import { peerSessionName } from "../../shared/agents/session-name.js";
 import {
   columns,
@@ -1023,12 +1027,24 @@ const modelWord = (m: string) =>
   m === INHERIT ? "inherit (the runtime decides)" : m;
 
 /** den#3: `agents doctor`'s subagents section. */
-export function subagentLines(s: SubagentsReport): string[] {
+export function subagentLines(
+  s: SubagentsReport,
+  /** den-claude's version (`claude --version`), when it was read. */
+  claudeVersion?: string,
+): string[] {
   const lines = [
     "subagents (den-claude: every subagent, Explore too)",
     `  model       ${modelWord(s.model)}  (${s.from === "default" ? "Den's default; " : ""}agents.subagents.model)`,
-    `  connectors  ${s.claudeAiConnectors ? "on" : "off"}  (agents.claude_ai_connectors: the account's claude.ai connectors)`,
   ];
+  // Forced needs Claude Code 2.1.257+; older takes it as a fallback only,
+  // so a subagent's own definition (Explore's) still wins there.
+  if (s.model !== INHERIT && forcesSubagentModel(claudeVersion) === false)
+    lines.push(
+      `  ⚠ forced    no: Claude Code ${claudeVersion} takes it only as a fallback (Explore may still use the agent's model); forcing it needs ${SUBAGENT_FORCE_MIN} or later`,
+    );
+  lines.push(
+    `  connectors  ${s.claudeAiConnectors ? "on" : "off"}  (agents.claude_ai_connectors: the account's claude.ai connectors)`,
+  );
   if (s.personasError)
     lines.push(`  personas    couldn't read: ${s.personasError}`);
   s.personas.forEach((p, i) =>
@@ -1064,7 +1080,13 @@ async function doctor(
       JSON.stringify(
         {
           runtimes: rts,
-          subagents: subagentsReport(d),
+          subagents: {
+            ...subagentsReport(d),
+            // den#3: forced needs Claude Code 2.1.257+ (null: unknown).
+            forced: forcesSubagentModel(
+              rts.find((r) => r.id === "den-claude")?.version,
+            ),
+          },
           ...(ws ? { workspace: ws } : {}),
           userConfig: d.userConfigFile(),
         },
@@ -1081,7 +1103,8 @@ async function doctor(
       d.out(l);
   });
   d.out("");
-  for (const l of subagentLines(subagentsReport(d))) d.out(l);
+  const claudeVersion = rts.find((r) => r.id === "den-claude")?.version;
+  for (const l of subagentLines(subagentsReport(d), claudeVersion)) d.out(l);
   d.out("");
   d.out(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,

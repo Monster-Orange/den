@@ -881,6 +881,10 @@
     "ag.linkHint": "{key}+clic para abrir",
     "ag.subagents": "subagentes: {model}",
     "ag.subagents.inherit": "el del runtime",
+    "ag.subagents.inheritFrom.persona":
+      "Den no fija modelo para sus subagentes: subagent_model de su persona es inherit. Decide Claude Code, así que Explore puede usar el modelo del propio agente.",
+    "ag.subagents.inheritFrom.org":
+      "Den no fija modelo para sus subagentes: agents.subagents.model es inherit. Decide Claude Code, así que Explore puede usar el modelo del propio agente.",
     "ag.subagents.from.persona":
       "Sus subagentes (Explore también) usan {model}: subagent_model de su persona.",
     "ag.subagents.from.org":

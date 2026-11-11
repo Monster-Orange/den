@@ -453,8 +453,10 @@ describe("ON-4: install, hand over, and the server agent sets up one repo", () =
     const [x1] = twice("down", "sample", "--json");
     expect(x1.json).toMatchObject({ ok: true, services: ["sample"] });
     const [y1, y2] = twice("web", "down", "--json");
-    // The whole answer: a failure shows it (0.4.29-dev.1's gate).
-    expect(y1.json).toMatchObject({ stopped: true });
+    // The whole answer: a failure shows it (0.4.29-dev.1's gate;
+    // toMatchObject shows only the keys it compares).
+    if (y1.json.stopped !== true)
+      throw new Error(`web down --json: ${JSON.stringify(y1)}`);
     expect(y2.json.stopped).toBe(false);
     expect(await get(webPort, "/api/server-info")).toBe(0);
     process.stderr.write(

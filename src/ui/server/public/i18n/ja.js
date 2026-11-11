@@ -860,6 +860,10 @@
     "ag.linkHint": "{key}+クリックで開く",
     "ag.subagents": "サブエージェント: {model}",
     "ag.subagents.inherit": "ランタイムの設定",
+    "ag.subagents.inheritFrom.persona":
+      "Den はサブエージェントのモデルを指定しません: ペルソナの subagent_model が inherit です。Claude Code が決めるため、Explore はエージェント自身のモデルで動くことがあります。",
+    "ag.subagents.inheritFrom.org":
+      "Den はサブエージェントのモデルを指定しません: agents.subagents.model が inherit です。Claude Code が決めるため、Explore はエージェント自身のモデルで動くことがあります。",
     "ag.subagents.from.persona":
       "サブエージェント（Explore も）は {model} で動きます: ペルソナの subagent_model。",
     "ag.subagents.from.org":

@@ -986,6 +986,10 @@
     "ag.linkHint": "{key}-click to open",
     "ag.subagents": "subagents: {model}",
     "ag.subagents.inherit": "the runtime's",
+    "ag.subagents.inheritFrom.persona":
+      "Den sets no model for its subagents: its persona's subagent_model is inherit. Claude Code decides, so Explore may run on the agent's own model.",
+    "ag.subagents.inheritFrom.org":
+      "Den sets no model for its subagents: agents.subagents.model is inherit. Claude Code decides, so Explore may run on the agent's own model.",
     "ag.subagents.from.persona":
       "Its subagents (Explore too) run on {model}: its persona's subagent_model.",
     "ag.subagents.from.org":
