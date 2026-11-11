@@ -4,15 +4,13 @@
  * commands synchronously holds the event loop for as long as they take, so
  * /api/server-info, probed meanwhile, answers late.
  */
-import { spawnSync, type ChildProcess } from "child_process";
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { denAuth } from "./den-auth.js";
-import { spawnServer, stopServer } from "../../../child-servers.js";
+import { startDenServer, stopServer } from "../../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../../..");
 
@@ -78,12 +76,6 @@ export async function startSlowGitServer(opts: {
     0o755,
   );
 
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
-  const port = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-
-  let out = "";
   const entry = path.join(ENGINE, "src", "ui", "server", "index.ts");
   const tsxLoader = path.join(
     ENGINE,
@@ -103,7 +95,7 @@ export async function startSlowGitServer(opts: {
         ],
       ]
     : [path.join(ENGINE, "node_modules", ".bin", "tsx"), [entry]];
-  const server: ChildProcess = spawnServer(cmd, args, {
+  const up = await startDenServer(cmd, args, {
     cwd: opts.root,
     env: {
       ...process.env,
@@ -111,13 +103,10 @@ export async function startSlowGitServer(opts: {
       DEN_ROOT: opts.root,
       DEN_HOME: path.join(opts.tmp, "home"),
       DEN_DAEMONS_FILE: path.join(opts.tmp, "daemons.json"),
-      PORT: String(port),
       DEN_NO_OPEN: "1",
     },
-    stdio: ["ignore", "pipe", "pipe"],
   });
-  server.stdout!.on("data", (d: Buffer) => (out += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (out += d.toString()));
+  const { server, port } = up;
 
   const timed: SlowGitServer["timed"] = (p, headers = {}) => {
     const started = Date.now();
@@ -147,17 +136,6 @@ export async function startSlowGitServer(opts: {
       req.on("timeout", () => req.destroy(new Error(`timeout: ${p}`)));
     });
   };
-
-  const deadline = Date.now() + 20_000;
-  for (;;) {
-    try {
-      if ((await timed("/api/server-info")).status === 200) break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline) throw new Error(`server did not start:\n${out}`);
-    await new Promise((r) => setTimeout(r, 200));
-  }
 
   return {
     port,

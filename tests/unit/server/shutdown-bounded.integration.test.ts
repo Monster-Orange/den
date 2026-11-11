@@ -20,13 +20,11 @@ import { afterAll, describe, expect, it } from "@jest/globals";
 import type { ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { resolveServerEntrypoint } from "../../../src/ui/cli/web-command.js";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const tmpBase = fs.realpathSync(
@@ -64,32 +62,23 @@ async function start(
     path.join(root, "config", "den.yml"),
     "environments: [local]\n",
   );
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "localhost", r));
-  const port = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
   const entry = resolveServerEntrypoint(ENGINE);
-  const server = spawnServer(entry.cmd, entry.args, {
-    cwd: root,
-    env: {
-      ...process.env,
-      DEN_ROOT: root,
-      DEN_HOME: path.join(tmp, "home"),
-      PORT: String(port),
-      DEN_NO_OPEN: "1",
-      ...env,
+  const { server, port } = await startDenServer(
+    entry.cmd,
+    entry.args,
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        DEN_ROOT: root,
+        DEN_HOME: path.join(tmp, "home"),
+        DEN_NO_OPEN: "1",
+        ...env,
+      },
     },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+    { timeoutMs: 60_000 },
+  );
   started.push(server);
-  server.stdout!.on("data", () => {});
-  server.stderr!.on("data", () => {});
-  const deadline = Date.now() + 60_000;
-  while ((await get(port, "/api/server-info")) !== 200) {
-    if (server.exitCode !== null) throw new Error("server exited at start");
-    if (Date.now() > deadline) throw new Error("server did not start");
-    await new Promise((r) => setTimeout(r, 200));
-  }
   return { server, port };
 }
 

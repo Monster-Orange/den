@@ -14,8 +14,6 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser } from "playwright";
@@ -23,7 +21,7 @@ import {
   runningDenVersion,
   writeDistribution,
 } from "../../../src/ui/cli/create.js";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const FAKES = ["gh", "op", "doppler", "mkcert"];
@@ -31,7 +29,6 @@ let tmp = "";
 let calls = "";
 let port = 0;
 let server: ChildProcess;
-let serverOut = "";
 let browser: Browser | null = null;
 
 function getBody(p: string): Promise<{ status: number; body: string }> {
@@ -66,14 +63,10 @@ beforeAll(async () => {
       { mode: 0o755 },
     );
 
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "localhost", r));
-  port = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
   const env: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries(process.env))
     if (!/^(DEN_|ACME_|OP_|DOPPLER_|GH_|GITHUB_)/.test(k)) env[k] = v;
-  server = spawnServer(
+  const started = await startDenServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -87,24 +80,12 @@ beforeAll(async () => {
         ACME_HOME: path.join(tmp, "acme-home"),
         DEN_NO_OPEN: "1",
         NO_COLOR: "1",
-        PORT: String(port),
       },
-      stdio: ["ignore", "pipe", "pipe"],
     },
+    { timeoutMs: 30_000 },
   );
-  server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  const deadline = Date.now() + 30_000;
-  for (;;) {
-    try {
-      if ((await getBody("/api/server-info")).status === 200) break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline)
-      throw new Error(`server did not start:\n${serverOut}`);
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  server = started.server;
+  port = started.port;
   try {
     const { chromium } = await import("playwright");
     browser = await chromium.launch();

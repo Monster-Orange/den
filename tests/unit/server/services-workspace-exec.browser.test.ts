@@ -11,19 +11,15 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
 import * as fs from "fs";
-import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
 let port = 0;
 let server: ChildProcess;
-let serverOut = "";
 let browser: Browser | null = null;
 let latest = "";
 
@@ -31,27 +27,6 @@ function write(file: string, content: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
 }
-function get(p: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const req = http.get(
-      {
-        host: "localhost",
-        port,
-        path: p,
-        timeout: 5_000,
-        agent: false,
-        headers: { Connection: "close" },
-      },
-      (res) => {
-        res.resume();
-        res.on("end", () => resolve(res.statusCode ?? 0));
-      },
-    );
-    req.on("error", reject);
-    req.on("timeout", () => req.destroy(new Error("timeout")));
-  });
-}
-
 const manifest = (name: string) =>
   [
     `name: ${name}`,
@@ -95,11 +70,7 @@ beforeAll(async () => {
   );
   write(path.join(repos, "shop", ".acme.yml"), manifest("shop"));
   write(path.join(repos, "bank", ".acme.yml"), manifest("bank"));
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "localhost", r));
-  port = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  server = spawnServer(
+  const started = await startDenServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -115,24 +86,11 @@ beforeAll(async () => {
         DEN_NO_OPEN: "1",
         ACME_NO_OPEN: "1",
         NO_COLOR: "1",
-        PORT: String(port),
       },
-      stdio: ["ignore", "pipe", "pipe"],
     },
   );
-  server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  const deadline = Date.now() + 20_000;
-  for (;;) {
-    try {
-      if ((await get("/api/server-info")) === 200) break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline)
-      throw new Error(`server did not start:\n${serverOut}`);
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  server = started.server;
+  port = started.port;
   latest =
     (
       (await (

@@ -28,13 +28,11 @@ import { type ChildProcess } from "child_process";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
 import { denAuth } from "./helpers/den-auth.js";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = process.cwd();
 let PORT = 0;
@@ -156,13 +154,7 @@ beforeAll(async () => {
     }),
   );
 
-  // A port the OS hands out, on localhost (as the other server tests do).
-  const probe = net.createServer();
-  await new Promise<void>((r) => probe.listen(0, "localhost", r));
-  PORT = (probe.address() as AddressInfo).port;
-  await new Promise<void>((r) => probe.close(() => r()));
-  let serverOut = "";
-  server = spawnServer(
+  const started = await startDenServer(
     process.execPath,
     [
       path.join(ENGINE, "node_modules", ".bin", "tsx"),
@@ -176,32 +168,13 @@ beforeAll(async () => {
         DEN_ENGINE_ROOT: ENGINE,
         DEN_HOME: path.join(tmp, "home", ".den"),
         HOME: path.join(tmp, "home"),
-        PORT: String(PORT),
         DEN_NO_OPEN: "1",
       },
-      stdio: ["ignore", "pipe", "pipe"],
     },
+    { timeoutMs: 40_000 },
   );
-  server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  const start = Date.now();
-  while (Date.now() - start < 40_000) {
-    if (server.exitCode !== null)
-      throw new Error(`server exited (${server.exitCode}):\n${serverOut}`);
-    try {
-      const r = await request("GET", "/api/server-info");
-      // Ours: another server on the port would name another root.
-      if (
-        r.status === 200 &&
-        (JSON.parse(r.body) as { root?: string }).root === dist
-      )
-        return;
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  throw new Error(`server did not start within 40s:\n${serverOut}`);
+  server = started.server;
+  PORT = started.port;
 }, 60_000);
 
 afterAll(async () => {

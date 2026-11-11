@@ -19,13 +19,11 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawn, spawnSync, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
 import { cliPrefix } from "../../../src/shared/cli-command.js";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -42,7 +40,7 @@ let home = "";
 let stateDir = "";
 let port = 0;
 let server: ChildProcess | null = null;
-let serverOut = "";
+let serverLog: () => string = () => "";
 /** Every code and cookie this suite saw: none may reach the server's log. */
 const secrets: string[] = [];
 
@@ -176,14 +174,6 @@ function writeUser(extra = ""): void {
   );
 }
 
-async function freePort(): Promise<number> {
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "localhost", r));
-  const p = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  return p;
-}
-
 beforeAll(async () => {
   tmp = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "den-sec2a-pair-")),
@@ -205,25 +195,15 @@ beforeAll(async () => {
     ].join("\n"),
   );
   writeUser();
-  port = await freePort();
-  server = spawnServer(
+  const started = await startDenServer(
     TSX,
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     { cwd: root, env: env(), stdio: ["ignore", "pipe", "pipe"] },
+    { timeoutMs: 40_000 },
   );
-  server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  const deadline = Date.now() + 40_000;
-  for (;;) {
-    try {
-      if ((await call("GET", "/api/server-info", bearer())).status === 200)
-        break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline) throw new Error("server did not start");
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  server = started.server;
+  port = started.port;
+  serverLog = started.out;
 }, 60_000);
 
 afterAll(async () => {
@@ -545,9 +525,11 @@ describe("`web login` waits, and its link asks for the code", () => {
 
 describe("secrets and the audit", () => {
   it("approve and deny are audited with the actor; no code, poll id, link or cookie reaches the server's output", () => {
-    expect(serverOut).toMatch(/approve a waiting device \(Safari on macOS/);
-    expect(serverOut).toMatch(/deny a waiting device/);
-    const leaked = secrets.filter(Boolean).filter((s) => serverOut.includes(s));
+    expect(serverLog()).toMatch(/approve a waiting device \(Safari on macOS/);
+    expect(serverLog()).toMatch(/deny a waiting device/);
+    const leaked = secrets
+      .filter(Boolean)
+      .filter((s) => serverLog().includes(s));
     // What leaked, by kind (never the value).
     expect(
       leaked.map((s) =>

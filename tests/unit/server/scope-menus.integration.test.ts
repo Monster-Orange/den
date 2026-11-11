@@ -20,19 +20,16 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
 let root = "";
 let port = 0;
 let server: ChildProcess;
-let serverOut = "";
 let browser: Browser | null = null;
 
 function write(file: string, content: string): void {
@@ -153,11 +150,7 @@ beforeAll(async () => {
       `name: ${n}\nservices:\n  api:\n    commands:\n      local:\n        up: "true"\n`,
     );
 
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
-  port = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  server = spawnServer(
+  const started = await startDenServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -170,24 +163,11 @@ beforeAll(async () => {
         HOME: path.join(tmp, "home"),
         DEN_NO_OPEN: "1",
         NO_COLOR: "1",
-        PORT: String(port),
       },
-      stdio: ["ignore", "pipe", "pipe"],
     },
   );
-  server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  const deadline = Date.now() + 20_000;
-  for (;;) {
-    try {
-      if ((await request("GET", "/api/server-info")).status === 200) break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline)
-      throw new Error(`server did not start:\n${serverOut}`);
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  server = started.server;
+  port = started.port;
   try {
     const { chromium } = await import("playwright");
     browser = await chromium.launch();

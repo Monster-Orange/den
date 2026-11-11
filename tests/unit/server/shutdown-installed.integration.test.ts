@@ -19,31 +19,14 @@
 import { afterAll, describe, expect, it } from "@jest/globals";
 import type { ChildProcess } from "child_process";
 import * as fs from "fs";
-import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { resolveServerEntrypoint } from "../../../src/ui/cli/web-command.js";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "den-shutdown-"));
-
-function get(port: number, p: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const req = http.get(
-      { host: "127.0.0.1", port, path: p, timeout: 30_000, agent: false },
-      (res) => {
-        res.resume();
-        res.on("end", () => resolve(res.statusCode ?? 0));
-      },
-    );
-    req.on("error", reject);
-    req.on("timeout", () => req.destroy(new Error("timeout")));
-  });
-}
 
 interface Started {
   dist: string;
@@ -68,46 +51,30 @@ async function startInstalled(nodeOptions?: string): Promise<Started> {
   for (const entry of ["package.json", "bin", "src", "node_modules"])
     fs.symlinkSync(path.join(ENGINE, entry), path.join(installed, entry));
 
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
-  const port = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-
   const env: NodeJS.ProcessEnv = { ...process.env };
   // No root from the environment: the walk from the entry script finds it.
   for (const k of Object.keys(env)) if (/_ROOT$/.test(k)) delete env[k];
   delete env.DEN_PROFILE;
   const entry = resolveServerEntrypoint(installed);
-  let out = "";
-  const server = spawnServer(entry.cmd, entry.args, {
-    cwd: dist,
-    env: {
-      ...env,
-      ACME_HOME: path.join(tmp, "home"),
-      PORT: String(port),
-      DEN_NO_OPEN: "1",
-      ...(nodeOptions ? { NODE_OPTIONS: nodeOptions } : {}),
+  const up = await startDenServer(
+    entry.cmd,
+    entry.args,
+    {
+      cwd: dist,
+      env: {
+        ...env,
+        ACME_HOME: path.join(tmp, "home"),
+        DEN_NO_OPEN: "1",
+        ...(nodeOptions ? { NODE_OPTIONS: nodeOptions } : {}),
+      },
     },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  server.stdout!.on("data", (d: Buffer) => (out += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (out += d.toString()));
+    // Generous bounds, not expectations: a loaded machine (load 40+) can take
+    // tens of seconds to boot. It returns as soon as it answers.
+    { timeoutMs: 120_000 },
+  );
+  const server = up.server;
   started.push(server);
-  // Generous bounds, not expectations: a loaded machine (load 40+) can take
-  // tens of seconds to boot. The loop returns as soon as it answers.
-  const deadline = Date.now() + 120_000;
-  for (;;) {
-    try {
-      if ((await get(port, "/api/server-info")) === 200) break;
-    } catch {
-      /* not up yet */
-    }
-    if (server.exitCode !== null)
-      throw new Error(`server exited ${server.exitCode}:\n${out}`);
-    if (Date.now() > deadline) throw new Error(`server did not start:\n${out}`);
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  return { dist, server, output: () => out };
+  return { dist, server, output: up.out };
 }
 
 /** SIGTERM `server`; its exit code, or "still running" after a minute. */

@@ -58,8 +58,10 @@ config and manifest changes a distribution must make to move to it under
   Agents tab, a click on an agent's row (or Enter on it) focuses its
   terminal as soon as it can take keys, whether its pane was already
   open or not, so you can type at once. A Shift- or ⌘-click, which adds
-  a pane alongside, leaves the keyboard in the terminal that had it. A
-  pane whose session ended never takes the keyboard.
+  a pane alongside, leaves the keyboard in the terminal that had it,
+  while that terminal is still in sight. Where only one pane shows (Tabs,
+  or a phone), the added pane comes to the front and takes the keyboard.
+  A pane whose session ended never takes the keyboard.
 
 ### Migrations
 
