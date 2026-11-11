@@ -1138,7 +1138,7 @@ function setLayout(layout) {
 function focusTerm(id) {
   const p = st.panes.get(id);
   if (!p || p.exited || p.closed) return;
-  if (p.term && p.sock?.readyState === WebSocket.OPEN) {
+  if (p.term && p.sock?.readyState === WebSocket.OPEN && p.heardSession) {
     st.focusOnOpen = null;
     // After the click that picked it has finished with the row.
     requestAnimationFrame(() => {
@@ -1184,13 +1184,16 @@ async function pick(id, add) {
   // An add: the keyboard goes back to the terminal that had it (the click
   // on the row took it).
   const back = add && st.keyPane !== id ? st.keyPane : null;
-  if (!add) st.focusOnOpen = id;
+  // A stopped agent's pane (its last output) never takes the keyboard.
+  const live = !isStopped(rowOf(id) ?? {});
+  if (!add) st.focusOnOpen = live ? id : null;
   else if (st.focusOnOpen === id) st.focusOnOpen = null;
   if (st.panes.has(id)) {
     paintLayout();
     paintList();
-    if (!add) focusTerm(id);
-    else addFocus(back, id);
+    if (!add) {
+      if (live) focusTerm(id);
+    } else addFocus(back, id);
     return;
   }
   await openPane(id, { front: !(layout === "focus" && add) });
@@ -1446,6 +1449,7 @@ async function connect(p) {
   }
   sock.binaryType = "arraybuffer";
   p.sock = sock;
+  p.heardSession = false;
   let opened = false;
   sock.onopen = () => {
     opened = true;
@@ -1453,8 +1457,6 @@ async function connect(p) {
     p.heardSize = false;
     refit(p);
     sendSize(p);
-    // D40: the pane the person picked takes the keyboard now it can type.
-    if (st.focusOnOpen === p.id) focusTerm(p.id);
   };
   sock.onmessage = (e) => {
     if (typeof e.data === "string") {
@@ -1474,7 +1476,15 @@ async function connect(p) {
         p.label = msg.label;
         p.workspace = msg.workspace;
         p.exited = !!msg.exited;
+        p.heardSession = true;
         paintBar(p);
+        // D40: the pane the person picked takes the keyboard once the
+        // server says its session is live (the first frame), never one
+        // that has ended.
+        if (st.focusOnOpen === p.id) {
+          if (p.exited) st.focusOnOpen = null;
+          else focusTerm(p.id);
+        }
       } else if (msg?.type === "exit") {
         p.exited = true;
         // Its agent may continue in a new session (followAgents).
