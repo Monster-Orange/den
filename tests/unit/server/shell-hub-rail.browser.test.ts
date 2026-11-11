@@ -165,32 +165,81 @@ describe("the rail's Hub link", () => {
     }
   }, 60_000);
 
-  it("no link: not configured, no token, unreachable, or a company URL that isn't https", async () => {
+  it("not configured: no Hub in the rail", async () => {
     if (!browser) return;
-    for (const answer of [
-      { configured: false },
-      {
-        configured: true,
-        url: "https://hub.example.test",
-        connected: false,
-        state: "no_token",
-      },
-      {
-        configured: true,
-        url: "https://hub.example.test",
-        connected: false,
-        state: "unreachable",
-      },
-      { ...CONNECTED, teamUrl: "javascript:alert(1)" },
-      { ...CONNECTED, teamUrl: "http://hub.example.test/c/acme-co" },
-      { ...CONNECTED, teamUrl: undefined },
+    const { p } = await open({ configured: false });
+    await p.locator('.den-rail [data-nav="settings"]').waitFor();
+    expect(await link(p).count()).toBe(0);
+    await p.context().close();
+  }, 60_000);
+
+  it("D49: configured but not connected is still there, greyed, to Settings › Hub, saying why", async () => {
+    if (!browser) return;
+    const base = {
+      configured: true,
+      url: "https://hub.example.test",
+      connected: false,
+    };
+    for (const [answer, why] of [
+      [{ ...base, state: "no_token" }, "Not connected to Hub yet"],
+      [{ ...base, state: "unreachable" }, "can't reach Hub right now"],
+      [{ ...base, state: "bad_config" }, "Hub settings have a problem"],
+      [{ ...base, state: "something_new" }, "can't reach Hub right now"],
+      // Connected, but no address Den will open (neither its company's nor Hub's).
+      [
+        {
+          ...CONNECTED,
+          url: "http://hub.example.test",
+          teamUrl: "javascript:alert(1)",
+        },
+        "isn't https",
+      ],
+    ] as const) {
+      const { p, errors } = await open(answer);
+      const a = link(p);
+      await a.waitFor({ timeout: 10_000 });
+      expect([answer, await a.getAttribute("href")]).toEqual([
+        answer,
+        "/settings#agents.hub",
+      ]);
+      expect(await a.getAttribute("class")).toContain("den-off");
+      expect(await a.getAttribute("title")).toContain(why);
+      expect(errors).toEqual([]);
+      await p.context().close();
+    }
+  }, 120_000);
+
+  it("D49: connected without a company page Den will open: Hub's own address", async () => {
+    if (!browser) return;
+    for (const teamUrl of [
+      undefined,
+      "javascript:alert(1)",
+      "http://hub.example.test/c/acme-co",
     ]) {
-      const { p } = await open(answer);
-      await p.locator('.den-rail [data-nav="settings"]').waitFor();
-      expect([answer, await link(p).count()]).toEqual([answer, 0]);
+      const { p } = await open({ ...CONNECTED, teamUrl });
+      const a = link(p);
+      await a.waitFor({ timeout: 10_000 });
+      expect([teamUrl, await a.getAttribute("href")]).toEqual([
+        teamUrl,
+        "https://hub.example.test/",
+      ]);
+      expect(await a.getAttribute("target")).toBe("_blank");
       await p.context().close();
     }
   }, 90_000);
+
+  it("D49: an http Hub on a .localhost name opens", async () => {
+    if (!browser) return;
+    const { p } = await open({
+      ...CONNECTED,
+      url: "http://hub.localhost",
+      teamUrl: "http://hub.localhost/acme-co",
+    });
+    const a = link(p);
+    await a.waitFor({ timeout: 10_000 });
+    expect(await a.getAttribute("href")).toBe("http://hub.localhost/acme-co");
+    await p.context().close();
+  }, 60_000);
 
   it("collapsed: the icon only, its name and count still read out; ↑/↓ reach it", async () => {
     if (!browser) return;

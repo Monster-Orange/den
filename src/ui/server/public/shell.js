@@ -926,6 +926,12 @@
       "Hub doesn't accept this install's token. Reconnect in Settings › Hub.",
     "hub.railForbidden":
       "Hub doesn't allow this install. Ask a Hub admin (Settings › Hub).",
+    "hub.railNoToken": "Not connected to Hub yet. Connect in Settings › Hub.",
+    "hub.railUnreachable": "Den can't reach Hub right now. See Settings › Hub.",
+    "hub.railBadConfig":
+      "Den's Hub settings have a problem. See Settings › Hub.",
+    "hub.railBadUrl":
+      "Hub's address isn't https, so Den won't open it. See Settings › Hub.",
     "ag.session": "session",
     "ag.empty":
       "Pick a session on the left to open its terminal. Open more to tile them (up to 4).",
@@ -2616,7 +2622,9 @@
       var x = new URL(u);
       return x.protocol === "https:" ||
         (x.protocol === "http:" &&
-          (x.hostname === "localhost" || x.hostname === "127.0.0.1"))
+          (x.hostname === "localhost" ||
+            x.hostname === "127.0.0.1" ||
+            /\.localhost$/.test(x.hostname)))
         ? x.href
         : "";
     } catch (e) {
@@ -2627,13 +2635,27 @@
     var h = state.hub;
     if (!h || !h.configured) return "";
     var label = t("hub.rail");
-    if (h.state === "rejected" || h.state === "forbidden") {
-      var why = t(
-        h.state === "rejected" ? "hub.railRejected" : "hub.railForbidden",
-      );
+    // Configured: always in the rail. Connected, it opens Hub; otherwise
+    // it is greyed, goes to Settings › Hub and says why (D49: a Hub that
+    // vanished from the rail left no way across).
+    var href =
+      h.state === "connected"
+        ? hubTarget(h.teamUrl || "") || hubTarget(h.url || "")
+        : "";
+    if (!href) {
+      var key =
+        {
+          rejected: "hub.railRejected",
+          forbidden: "hub.railForbidden",
+          no_token: "hub.railNoToken",
+          unreachable: "hub.railUnreachable",
+          bad_config: "hub.railBadConfig",
+        }[h.state] ||
+        (h.state === "connected" ? "hub.railBadUrl" : "hub.railUnreachable");
+      var why = t(key);
       return (
         '<a class="den-ni den-hub den-off" href="/settings#agents.hub" data-nav="hub" data-hub="' +
-        esc(h.state) +
+        esc(h.state || "unknown") +
         '" title="' +
         esc(why) +
         '" aria-label="' +
@@ -2645,8 +2667,6 @@
         "</span></a>"
       );
     }
-    var href = h.state === "connected" ? hubTarget(h.teamUrl || "") : "";
-    if (!href) return "";
     var tip = h.team
       ? t("hub.railTip", { team: h.team })
       : t("hub.railTipPlain");
@@ -4921,6 +4941,7 @@
                 ? {
                     configured: true,
                     state: b.state,
+                    url: b.url,
                     team: b.team,
                     teamUrl: b.teamUrl,
                     unread: b.unread,

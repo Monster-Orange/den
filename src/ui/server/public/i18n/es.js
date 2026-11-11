@@ -819,6 +819,14 @@
       "Hub no acepta el token de esta instalación. Vuelve a conectar en Ajustes › Hub.",
     "hub.railForbidden":
       "Hub no permite esta instalación. Pídeselo a un administrador de Hub (Ajustes › Hub).",
+    "hub.railNoToken":
+      "Aún no está conectado a Hub. Conéctalo en Ajustes › Hub.",
+    "hub.railUnreachable":
+      "Den no puede llegar a Hub ahora mismo. Mira Ajustes › Hub.",
+    "hub.railBadConfig":
+      "Los ajustes de Hub de Den tienen un problema. Mira Ajustes › Hub.",
+    "hub.railBadUrl":
+      "La dirección de Hub no es https, así que Den no la abre. Mira Ajustes › Hub.",
     "ag.session": "sesión",
     "ag.empty":
       "Elige una sesión a la izquierda para abrir su terminal. Abre más para verlas en mosaico (hasta 4).",

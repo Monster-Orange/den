@@ -798,6 +798,14 @@
       "Hub がこのインストールのトークンを受け付けません。設定 › Hub から再接続してください。",
     "hub.railForbidden":
       "Hub がこのインストールを許可していません。Hub の管理者に依頼してください（設定 › Hub）。",
+    "hub.railNoToken":
+      "まだ Hub に接続していません。設定 › Hub で接続してください。",
+    "hub.railUnreachable":
+      "Den は今 Hub に接続できません。設定 › Hub を確認してください。",
+    "hub.railBadConfig":
+      "Den の Hub 設定に問題があります。設定 › Hub を確認してください。",
+    "hub.railBadUrl":
+      "Hub のアドレスが https ではないため、Den は開きません。設定 › Hub を確認してください。",
     "ag.session": "セッション",
     "ag.empty":
       "左のセッションを選ぶとターミナルが開きます。複数開くと並べて表示します（最大 4）。",

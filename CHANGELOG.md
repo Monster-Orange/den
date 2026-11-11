@@ -19,6 +19,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **Hub stays in the rail (D49).** Once Hub is set up, the rail always
+  has a Hub item. Before, it vanished whenever Den couldn't reach Hub (a
+  restart, a 502) or hadn't connected yet, which left no way across. Now,
+  when Hub can't be opened, the item is greyed, goes to Settings › Hub
+  and says why: not connected yet, can't reach Hub, a settings problem, or
+  an address that isn't https. When Hub sends no company page, the item
+  opens Hub's own address. An http Hub on a `.localhost` name opens too.
 - **A stopped row keeps its name readable (D37).** In a narrow list, a
   long chip such as "Ready to relaunch (3 compactions)" squeezed the name
   to one letter and ran past the row. Now the name keeps room for six
