@@ -30,7 +30,11 @@ afterEach(async () => {
 describe("agents doctor -w, with the CLI's own workspace lookup", () => {
   it("checks the named workspace (and refuses one that does not exist) instead of failing to load workspaces", async () => {
     const r = await rig();
-    const deps = { ...r.deps, loginPath: async () => {} };
+    const deps = {
+      ...r.deps,
+      loginPath: async () => {},
+      apiOnly: () => ({ services: [] }),
+    };
     delete deps.workspaceExists;
     for (const flag of ["-w", "--workspace"]) {
       r.out.length = 0;

@@ -114,6 +114,11 @@ export interface LaunchInput {
   /** den#3: load the account's claude.ai connectors (default: not). */
   claudeAiConnectors?: boolean;
   /**
+   * D47: the rules file of services agents may reach only through their
+   * API, and the audit file; absent: none is declared.
+   */
+  apiOnly?: { rules: string; audit: string };
+  /**
    * Session rotation (den#4): the compactions after which this agent's
    * session rotates (0: never). Den's hooks count them. Default 3.
    */

@@ -62,6 +62,11 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import {
+  gatherApiOnly,
+  readApiOnlyAudit,
+  type ApiOnlyRules,
+} from "../../shared/agents/api-only.js";
 import * as fs from "fs";
 import { DEFAULT_RUNTIME_ID } from "../../shared/agents/runtimes.js";
 import { ACTOR_TOKEN_ENV } from "../../shared/actor-token.js";
@@ -912,6 +917,8 @@ export interface AgentsDoctorDeps {
   loginPath?: () => Promise<void>;
   /** Read a hand-back: a file path, or "-" for stdin (handback-check). */
   readHandback?: (src: string) => Promise<string>;
+  /** D47: the api_only services (default: every workspace's manifests). */
+  apiOnly?: () => ApiOnlyRules;
 }
 
 async function readFileOrStdin(src: string): Promise<string> {
@@ -1060,6 +1067,55 @@ export function subagentLines(
   return lines;
 }
 
+/** The runtimes that enforce D47 (a PreToolUse hook): den-claude only. */
+const API_ONLY_RUNTIMES = new Set(["den-claude"]);
+
+/** D47: `agents doctor`'s API-only section. */
+export function apiOnlyLines(
+  rules: ApiOnlyRules,
+  runtimes: readonly { id: string; available?: boolean }[],
+  denied: readonly Record<string, unknown>[],
+): string[] {
+  if (!rules.services.length)
+    return [
+      "API-only services  none declared (a service's manifest says `agents: api_only`)",
+    ];
+  const lines = [
+    "API-only services (agents reach them only through their API)",
+  ];
+  for (const s of rules.services) {
+    const parts = [
+      `containers ${[`${s.project}-*`, ...s.containers].join(", ")}`,
+      `volumes ${[`${s.project}_*`, ...s.volumes].join(", ")}`,
+      ...(s.paths.length ? [`data ${s.paths.join(", ")}`] : []),
+      ...(s.machine
+        ? [`machine ${s.machine} (and ~/OrbStack, ~/.orbstack)`]
+        : []),
+    ];
+    lines.push(`  ${s.name}: ${parts.join("; ")}`);
+  }
+  const on = runtimes
+    .filter((r) => API_ONLY_RUNTIMES.has(r.id))
+    .map((r) => r.id);
+  const off = runtimes
+    .filter((r) => !API_ONLY_RUNTIMES.has(r.id) && r.available !== false)
+    .map((r) => r.id);
+  lines.push(
+    `  enforced      ${on.join(", ") || "none"}: a guardrail, not a boundary. An agent that can reach the Docker engine can still get around it with a program of its own.`,
+  );
+  if (off.length)
+    lines.push(
+      `  not enforced  ${off.join(", ")}: API-only isn't enforced for this runtime (it has no hook Den can use)`,
+    );
+  if (denied.length) {
+    const last = denied[denied.length - 1];
+    lines.push(
+      `  denied        ${denied.length} recently; the last at ${String(last.at ?? "?")}: ${String(last.agent ?? "an agent")}, ${String(last.what ?? "")} (${String(last.service ?? "")})`,
+    );
+  } else lines.push("  denied        none recently");
+  return lines;
+}
+
 async function doctor(
   args: string[],
   d: AgentsResolved,
@@ -1075,6 +1131,13 @@ async function doctor(
   const rts = await listRuntimes(d, ws);
   const def = rts.find((r) => r.default);
   const code = def?.available ? 0 : 1;
+  let apiOnly: ApiOnlyRules = { services: [] };
+  try {
+    apiOnly = (deps.apiOnly ?? gatherApiOnly)();
+  } catch {
+    /* none readable: none shown */
+  }
+  const denied = readApiOnlyAudit(d.stateDir(), 50);
   if (p.flags["--json"]) {
     d.out(
       JSON.stringify(
@@ -1086,6 +1149,17 @@ async function doctor(
             forced: forcesSubagentModel(
               rts.find((r) => r.id === "den-claude")?.version,
             ),
+          },
+          apiOnly: {
+            ...apiOnly,
+            enforcedBy: rts
+              .filter((r) => API_ONLY_RUNTIMES.has(r.id))
+              .map((r) => r.id),
+            notEnforcedBy: rts
+              .filter((r) => !API_ONLY_RUNTIMES.has(r.id) && r.available)
+              .map((r) => r.id),
+            guardrail: true,
+            denied,
           },
           ...(ws ? { workspace: ws } : {}),
           userConfig: d.userConfigFile(),
@@ -1105,6 +1179,8 @@ async function doctor(
   d.out("");
   const claudeVersion = rts.find((r) => r.id === "den-claude")?.version;
   for (const l of subagentLines(subagentsReport(d), claudeVersion)) d.out(l);
+  d.out("");
+  for (const l of apiOnlyLines(apiOnly, rts, denied)) d.out(l);
   d.out("");
   d.out(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,

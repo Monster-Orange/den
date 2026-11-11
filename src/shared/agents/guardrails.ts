@@ -108,6 +108,21 @@ export interface RotationArgs {
   after: number;
 }
 
+/**
+ * D47: the rules file the PreToolUse hook reads on each call (services
+ * agents may reach only through their API), and the audit file it writes
+ * a denial to.
+ */
+export interface ApiOnlyArgs {
+  rules: string;
+  audit: string;
+}
+
+/** The tools the PreToolUse hook sees: with D47 rules, the file tools too. */
+export const PRETOOL_MATCHER = "Bash|Read";
+export const PRETOOL_MATCHER_API_ONLY =
+  "Bash|Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob";
+
 /** The command lines Den's hooks run: this node, Den's own scripts. */
 export function hookCommands(
   dir: string = GUARDRAILS_DIR,
@@ -117,6 +132,7 @@ export function hookCommands(
   known: readonly string[] = [],
   /** false: the Stop hook never runs the hand-back check (the server agent). */
   handback: boolean = true,
+  apiOnly?: ApiOnlyArgs,
 ): HookCommands {
   const more = (c: EngineCommand): EngineCommand =>
     rotation
@@ -134,7 +150,12 @@ export function hookCommands(
   return {
     pretooluse: commandLine({
       command: node,
-      args: [path.join(dir, "pretooluse.mjs")],
+      args: [
+        path.join(dir, "pretooluse.mjs"),
+        ...(apiOnly
+          ? ["--api-only", apiOnly.rules, "--audit", apiOnly.audit]
+          : []),
+      ],
     }),
     stop: commandLine(
       ((c: EngineCommand): EngineCommand => ({
@@ -160,6 +181,8 @@ export function hookCommands(
 export function guardrailHooks(
   dir: string = GUARDRAILS_DIR,
   cmds: HookCommands = hookCommands(dir),
+  /** D47 rules are on: the PreToolUse hook sees the file tools too. */
+  apiOnly: boolean = false,
 ): Record<string, unknown> {
   const fragment = JSON.parse(
     fs.readFileSync(path.join(dir, "hooks.json"), "utf-8"),
@@ -177,5 +200,45 @@ export function guardrailHooks(
       );
     return v;
   };
-  return fill(fragment.hooks) as Record<string, unknown>;
+  const hooks = fill(fragment.hooks) as Record<string, unknown>;
+  if (apiOnly)
+    for (const h of (hooks.PreToolUse as { matcher?: string }[]) ?? [])
+      if (h.matcher === PRETOOL_MATCHER) h.matcher = PRETOOL_MATCHER_API_ONLY;
+  return hooks;
+}
+
+/**
+ * D47 for an agent whose persona has no guardrail hooks: the PreToolUse
+ * hook with the API-only check alone (`--no-guardrails`: no log or sleep
+ * checks).
+ */
+export function apiOnlyHooks(
+  apiOnly: ApiOnlyArgs,
+  dir: string = GUARDRAILS_DIR,
+  node: string = process.execPath,
+): Record<string, unknown> {
+  return {
+    PreToolUse: [
+      {
+        matcher: PRETOOL_MATCHER_API_ONLY,
+        hooks: [
+          {
+            type: "command",
+            command: commandLine({
+              command: node,
+              args: [
+                path.join(dir, "pretooluse.mjs"),
+                "--api-only",
+                apiOnly.rules,
+                "--audit",
+                apiOnly.audit,
+                "--no-guardrails",
+              ],
+            }),
+            timeout: 10,
+          },
+        ],
+      },
+    ],
+  };
 }

@@ -57,7 +57,12 @@ import * as path from "path";
 import { MCP_ACTIONS, configuredRuntimeBin } from "../den-config.js";
 import { rolePrompt } from "./personas.js";
 import { HUB_PROMPT_LINE } from "../hub.js";
-import { GUARDRAILS_DIR, guardrailHooks, hookCommands } from "./guardrails.js";
+import {
+  apiOnlyHooks,
+  GUARDRAILS_DIR,
+  guardrailHooks,
+  hookCommands,
+} from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
 import { isServerScope } from "./server-agent.js";
@@ -378,9 +383,13 @@ function common(input: LaunchInput): {
           // ON-6: the server agent talks with the person; it hands nothing
           // back, so its messages get the plain-writing check only.
           !isServerScope(input.workspace.name),
+          input.apiOnly,
         ),
+        !!input.apiOnly,
       )
-    : null;
+    : input.apiOnly
+      ? apiOnlyHooks(input.apiOnly)
+      : null;
   const den = input.denToolsAllowed ? denToolRules(input.mcp.name) : null;
   // HUB-1.5: Hub's tools without asking, when hub.allow_tools is on (the
   // default). Claude Code checks deny before allow: an install's deny wins.

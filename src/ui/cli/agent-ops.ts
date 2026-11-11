@@ -50,6 +50,7 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import { writeApiOnlyRules } from "../../shared/agents/api-only.js";
 import {
   INHERIT,
   SUBAGENT_DEFAULTS,
@@ -1975,6 +1976,15 @@ function launchInput(
       return sub.model ? { subagentModel: sub.model } : {};
     })(),
     ...(cfg.subagents?.claudeAiConnectors ? { claudeAiConnectors: true } : {}),
+    // D47: services it may reach only through their API.
+    ...(() => {
+      try {
+        const a = writeApiOnlyRules(d.stateDir());
+        return a ? { apiOnly: a } : {};
+      } catch {
+        return {};
+      }
+    })(),
     rotateAfter: after,
     ...(perms.permission ? { permission: perms.permission } : {}),
     ...(perms.allow?.length ? { allow: [...perms.allow] } : {}),

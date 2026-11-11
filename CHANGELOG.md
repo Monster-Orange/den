@@ -8,6 +8,17 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **Services agents reach only through their API (D47).** A repo's
+  manifest can say `agents: api_only`, with `data_paths:` and an OrbStack
+  `machine:`. Every den-claude agent then gets denied, with a reason, when
+  it goes around that service's API: `docker exec` or `cp` into its
+  containers, mounting or inspecting its volumes, a `docker compose`
+  exec or run on its project, reading or writing its data, or reaching its
+  machine. Each denial is audited, and `agents doctor` lists the services
+  and the last denial. It is a guardrail, not a security boundary: an
+  agent that can reach the Docker engine can still get around it. codex
+  and gemini don't enforce it, and doctor says so.
+
 - **A link to one agent (D43).** `/agents?agent=<id>&ws=<workspace>`
   opens that agent: a running agent's pane, with the keyboard in it, or a
   stopped agent's details. Another tool can link an agent's name here. An

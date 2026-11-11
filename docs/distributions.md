@@ -3496,6 +3496,53 @@ Den never writes your `~/.claude`; your own hooks still run.
   rotation is due. See Session rotation, below. While one is
   due, the `Stop` hook also blocks once until `handoff.md` passes.
 
+**Services agents reach only through their API (D47).** A repo's manifest
+can say its service is reached through its API and nothing else:
+
+```yaml
+name: vault
+agents: api_only
+data_paths: [var/db] # relative to the repo, or absolute; ~ is home
+machine: vault-vm # when it runs in an OrbStack machine
+```
+
+Den gathers these from every workspace's checkouts into one rules file
+(`<stateDir>/agents/api-only.json`), and every den-claude agent's
+`PreToolUse` hook reads it on each call, so a change applies without a
+restart. A persona with `den_hooks: false` still gets this check, and only
+it. With rules, the hook also sees `Write`, `Edit`, `MultiEdit`,
+`NotebookEdit`, `Grep` and `Glob`. It denies, with a reason the agent sees
+("use its API or its MCP tools instead"):
+
+- `docker exec`, `attach`, `export` and `cp` into the service's containers
+  (its compose project `<project>-…`, or a `container_name` in its compose
+  files), and `docker compose exec|cp|run|attach` on its project (`-p`,
+  `COMPOSE_PROJECT_NAME`, or a compose run in its checkout);
+- `docker run|create` that mounts its volumes (`<project>_…`, or a named
+  volume in its compose files) or its data paths, `--volumes-from` its
+  containers, and `docker volume inspect|rm|cp|export` on its volumes;
+- reading or writing its data paths, with a tool or in a shell command;
+- with a `machine`: `orb`/`orbctl` on that machine (or with no machine
+  named: the default one), `ssh`/`scp`/`rsync` to `<machine>.orb.local`
+  or `<machine>@orb`, Docker on that machine's context
+  (`--context`, `DOCKER_CONTEXT`, `DOCKER_HOST`), and `~/OrbStack` and
+  `~/.orbstack`.
+
+It reads a command's words the way a shell splits them, through
+`sh -c`, `$( )`, `eval`, `env`, `sudo`, `timeout` and `xargs`. Each denial
+is written to `<stateDir>/audit/api-only.jsonl` (0600): when, which agent,
+which tool and service, and what, never the whole command.
+`agents doctor` lists the services, the runtimes that enforce it, and the
+last denial.
+
+**It is a guardrail, not a security boundary.** An agent that can reach
+the Docker engine can still get around it, for example with a program
+that calls the Docker API itself, or a container id typed in place of its
+name. The hard boundary is an agent that can't reach that engine: run the
+service in its own machine or VM, with its own Docker engine. Only
+den-claude enforces it; for codex and gemini, `agents doctor` says
+"API-only isn't enforced for this runtime".
+
 **The hand-back template**, which the check enforces:
 
 ```markdown

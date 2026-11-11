@@ -18,7 +18,11 @@ afterEach(async () => {
 });
 
 const doctor = (r: Rig, ...args: string[]) =>
-  cmdAgents(["doctor", ...args], { ...r.deps, loginPath: async () => {} });
+  cmdAgents(["doctor", ...args], {
+    ...r.deps,
+    loginPath: async () => {},
+    apiOnly: () => ({ services: [] }),
+  });
 
 describe("agents doctor: subagents (den#3)", () => {
   it("the org's model and connectors, each persona that overrides it, and each agent as it last started", async () => {
@@ -101,6 +105,8 @@ describe("agents doctor", () => {
       "subagents (den-claude: every subagent, Explore too)",
       "  model       sonnet  (Den's default; agents.subagents.model)",
       "  connectors  off  (agents.claude_ai_connectors: the account's claude.ai connectors)",
+      "",
+      "API-only services  none declared (a service's manifest says `agents: api_only`)",
       "",
       "`acme doctor --probe` checks the env each runtime's session gets.",
     ]);

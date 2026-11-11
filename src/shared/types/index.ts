@@ -570,6 +570,15 @@ export interface RawManifest {
   /** For a module or library: the repos it contributes to. */
   contributes_to?: string[];
   /**
+   * D47: agents reach this service only through its API, never its
+   * containers, volumes, `data_paths` or OrbStack `machine`.
+   */
+  agents?: "api_only";
+  /** D47: the service's data, relative to the repo or absolute (~ is home). */
+  data_paths?: string[];
+  /** D47: the OrbStack machine the service runs in. */
+  machine?: string;
+  /**
    * The repo is a Docker Compose project: den runs it with no host ports
    * behind the edge, and supplies up/down/restart/logs/health unless the
    * entrypoint service declares its own.

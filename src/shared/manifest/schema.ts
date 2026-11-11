@@ -365,6 +365,11 @@ export const v1ManifestSchema = z.object({
   contributes_to: z.array(z.string()).optional(),
   release: releaseConfig.optional(),
   tests: z.record(z.string(), testSuite).optional(),
+  // D47: agents reach this service only through its API: never its
+  // containers, volumes, data paths or machine. A guardrail, not a boundary.
+  agents: z.enum(["api_only"]).optional(),
+  data_paths: z.array(z.string().min(1)).optional(),
+  machine: z.string().min(1).optional(),
 });
 
 export type V1Manifest = z.infer<typeof v1ManifestSchema>;
