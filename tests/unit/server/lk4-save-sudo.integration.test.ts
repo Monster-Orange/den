@@ -41,32 +41,42 @@ function writeFakes(bin: string, items: string): void {
   fs.mkdirSync(items, { recursive: true });
   fs.writeFileSync(
     path.join(bin, "op"),
-    `#!/bin/sh
-# Fake 1Password CLI: items are files under $FAKE_OP_ITEMS (title.field).
-echo "$1 $2" >> "$FAKE_OP_ITEMS/calls.log"
-case "$1" in
-  whoami) echo "tester"; exit 0 ;;
-esac
-sub="$2"; shift 2
-title=""; vault=""; field=""; value=""; label=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --vault) vault="$2"; shift 2 ;;
-    --title) title="$2"; shift 2 ;;
-    --category) shift 2 ;;
-    --fields) label="\${2#label=}"; shift 2 ;;
-    --reveal) shift ;;
-    *\\[password\\]=*) field="\${1%%\\[password\\]=*}"; value="\${1#*\\[password\\]=}"; shift ;;
-    *) title="$1"; shift ;;
-  esac
-done
-f="$FAKE_OP_ITEMS/$vault.$title"
-case "$sub" in
-  get) [ -f "$f.$label" ] || { echo "\\"$title\\" isn't an item" >&2; exit 1; }; cat "$f.$label"; echo ;;
-  edit) [ -f "$f.item" ] || { echo "\\"$title\\" isn't an item" >&2; exit 1; }; printf %s "$value" > "$f.$field" ;;
-  create) : > "$f.item"; printf %s "$value" > "$f.$field" ;;
-  *) exit 2 ;;
-esac
+    `#!${process.execPath}
+// Fake 1Password CLI: items are files under $FAKE_OP_ITEMS
+// (<vault>.<title>.item marks one; <vault>.<title>.<field> holds a value).
+// A write comes as the item's JSON on stdin (op item edit / create -).
+const fs = require("fs");
+const path = require("path");
+const dir = process.env.FAKE_OP_ITEMS;
+const a = process.argv.slice(2);
+fs.appendFileSync(path.join(dir, "calls.log"), a[0] + " " + (a[1] || "") + "\\n");
+fs.appendFileSync(path.join(dir, "argv.log"), JSON.stringify(a) + "\\n");
+if (a[0] === "whoami") { console.log("tester"); process.exit(0); }
+const opt = (k) => { const i = a.indexOf(k); return i < 0 ? "" : a[i + 1]; };
+const vault = opt("--vault");
+const title = a[2] === "-" ? "" : a[2];
+const base = (t) => path.join(dir, vault + "." + t);
+const notItem = (t) => { process.stderr.write('"' + t + '" isn\\'t an item\\n'); process.exit(1); };
+if (a[1] === "get") {
+  if (!fs.existsSync(base(title) + ".item")) notItem(title);
+  const fields = fs.readdirSync(dir)
+    .filter((f) => f.startsWith(vault + "." + title + ".") && !f.endsWith(".item"))
+    .map((f) => ({ label: f.slice((vault + "." + title + ".").length),
+                   value: fs.readFileSync(path.join(dir, f), "utf8") }));
+  const label = opt("--fields").replace(/^label=/, "");
+  if (label) {
+    const f = fields.find((x) => x.label === label);
+    if (!f) notItem(title);
+    console.log(f.value);
+  } else console.log(JSON.stringify({ id: title, title, fields }));
+} else if (a[1] === "edit" || a[1] === "create") {
+  const it = JSON.parse(fs.readFileSync(0, "utf8"));
+  const t = a[1] === "edit" ? title : it.title;
+  if (a[1] === "edit" && !fs.existsSync(base(t) + ".item")) notItem(t);
+  fs.writeFileSync(base(t) + ".item", "");
+  for (const f of it.fields || [])
+    fs.writeFileSync(base(t) + "." + (f.label || f.id), f.value || "");
+} else process.exit(2);
 `,
     { mode: 0o755 },
   );
@@ -288,7 +298,11 @@ describe("LK-4: saving the admin password with no secrets.refs.sudo", () => {
       ),
     ).toBe(PW);
     const calls = fs.readFileSync(path.join(d.items, "calls.log"), "utf8");
-    expect(calls).toMatch(/item edit\nitem create\n/);
+    expect(calls).toMatch(/item get\nitem create\n/);
+    // 0.4.26: the password went on op's stdin, never in its argv.
+    expect(
+      fs.readFileSync(path.join(d.items, "argv.log"), "utf8"),
+    ).not.toContain(PW);
     const st = (await call(s!.port, "GET", "/api/sudo-password/vault-status"))
       .json;
     expect(st).toMatchObject({

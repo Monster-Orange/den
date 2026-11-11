@@ -4,6 +4,20 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.26] - unreleased
+
+### Security
+
+- **A secret saved to 1Password is never on a command line.** `op`
+  wrote the value as an argument (`field[password]=<value>`), which any
+  process on the machine can read while `op` runs. Saving the admin
+  password (and every other 1Password write) now reads the item as JSON,
+  changes the one field and passes it on `op`'s stdin (`op item edit`, or
+  `op item create -` for a new item). The item's other fields are kept.
+  Nothing to change in config. A sweep of Den's other commands found no
+  other secret in argv: sudo and Doppler already read theirs on stdin,
+  and agent keys go in the environment.
+
 ## [0.4.25] - 2026-11-10
 
 ### Added

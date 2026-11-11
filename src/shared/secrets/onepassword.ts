@@ -2,7 +2,7 @@
  * 1Password strategy — reads/writes item fields with the `op` CLI.
  * Selected with `secrets.provider: 1password`.
  */
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import type { PreflightResult, SecretRef, SecretsProvider } from "./types.js";
 import {
@@ -128,30 +128,108 @@ export class OnePasswordProvider implements SecretsProvider {
     }
   }
 
-  /** Overwrite the field; an item that isn't there yet is created (a Password item). */
+  /**
+   * Run `op` with `input` on its stdin. A secret goes this way, never in
+   * argv: any process on the machine can read another's command line.
+   */
+  private async runWithInput(args: string[], input: string): Promise<string> {
+    const { token: _t, ...opts } = await this.opOptions();
+    return new Promise((resolve, reject) => {
+      const child = spawn("op", args, {
+        env: opts.env,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let stdout = "";
+      let stderr = "";
+      let killed = false;
+      const timer = setTimeout(() => {
+        killed = true;
+        child.kill("SIGTERM");
+      }, opts.timeout);
+      child.stdout.on("data", (d) => (stdout += String(d)));
+      child.stderr.on("data", (d) => (stderr += String(d)));
+      child.on("error", (e) => {
+        clearTimeout(timer);
+        reject(e);
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve(stdout);
+        else
+          reject(
+            Object.assign(new Error(stderr.trim() || `op exited ${code}`), {
+              stderr,
+              killed,
+              code,
+            }),
+          );
+      });
+      child.stdin.on("error", () => undefined);
+      child.stdin.end(input);
+    });
+  }
+
+  /**
+   * Overwrite the field; an item that isn't there yet is created (a
+   * Password item). The value only ever travels on op's stdin, as the
+   * item's JSON (op item edit / op item create -), never in argv.
+   */
   async set(ref: SecretRef, value: string): Promise<void> {
     const vault = ref.vault ? ["--vault", ref.vault] : [];
-    const field = `${ref.field}[password]=${value}`;
+    type Field = {
+      id?: string;
+      label?: string;
+      type?: string;
+      purpose?: string;
+      value?: string;
+    };
+    let item: { id?: string; fields?: Field[] } | null = null;
+    let readErr: unknown = null;
     try {
-      await this.run(["item", "edit", ref.item, ...vault, field], true);
-    } catch (err) {
-      try {
+      item = JSON.parse(
         await this.run(
-          [
-            "item",
-            "create",
-            "--category",
-            "password",
-            "--title",
-            ref.item,
-            ...vault,
-            field,
-          ],
+          ["item", "get", ref.item, ...vault, "--format", "json", "--reveal"],
           true,
-        );
-      } catch {
-        throw err;
-      }
+        ),
+      ) as { id?: string; fields?: Field[] };
+    } catch (err) {
+      readErr = err;
+    }
+    if (item) {
+      const fields = item.fields ?? [];
+      const f = fields.find((x) => x.label === ref.field || x.id === ref.field);
+      if (f) {
+        f.value = value;
+        f.type = "CONCEALED";
+      } else fields.push({ label: ref.field, type: "CONCEALED", value });
+      item.fields = fields;
+      await this.runWithInput(
+        ["item", "edit", item.id || ref.item, ...vault],
+        JSON.stringify(item),
+      );
+      return;
+    }
+    const field: Field =
+      ref.field === "password"
+        ? {
+            id: "password",
+            type: "CONCEALED",
+            purpose: "PASSWORD",
+            label: "password",
+            value,
+          }
+        : { label: ref.field, type: "CONCEALED", value };
+    try {
+      await this.runWithInput(
+        ["item", "create", ...vault, "-"],
+        JSON.stringify({
+          title: ref.item,
+          category: "PASSWORD",
+          fields: [field],
+        }),
+      );
+    } catch {
+      throw readErr;
     }
   }
 

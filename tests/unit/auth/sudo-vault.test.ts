@@ -19,13 +19,43 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockExecFileAsync = jest.fn() as jest.MockedFunction<() => Promise<any>>;
 
+/**
+ * 1Password writes (0.4.26) go through spawn, the value on stdin: each
+ * call is recorded (bin, argv, stdin) and exits with the next queued code
+ * (default 0), printing its stderr.
+ */
+const spawned: { bin: string; args: string[]; input: string }[] = [];
+const exits: { code: number; stderr?: string }[] = [];
+const mockSpawn = jest.fn((bin: string, args: string[]) => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const { EventEmitter } = require("events");
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = () => true;
+  const call = { bin, args, input: "" };
+  spawned.push(call);
+  child.stdin = {
+    on: () => child.stdin,
+    end: (input: string) => {
+      call.input = input;
+      const e = exits.shift() ?? { code: 0 };
+      setImmediate(() => {
+        if (e.stderr) child.stderr.emit("data", e.stderr);
+        child.emit("close", e.code);
+      });
+    },
+  };
+  return child;
+});
+
 jest.mock("child_process", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
   const { promisify } = require("util");
   const execFile = jest.fn();
   (execFile as unknown as Record<symbol, unknown>)[promisify.custom] =
     mockExecFileAsync;
-  return { execFile, spawn: jest.fn() };
+  return { execFile, spawn: mockSpawn };
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,6 +101,8 @@ const onePassword = (refs?: object) => ({
 
 beforeEach(() => {
   mockExecFileAsync.mockReset();
+  spawned.length = 0;
+  exits.length = 0;
   delete process.env.DEN_SECRETS_PROVIDER;
   orgConfig = onePassword({ sudo: REF });
   userConfig = {};
@@ -115,7 +147,17 @@ describe("with secrets.refs.sudo configured (1password)", () => {
   });
 
   it("saves to the configured item and rethrows backend errors", async () => {
-    mockExecFileAsync.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    // op item get (JSON), then op item edit with the edited JSON on stdin.
+    mockExecFileAsync.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        id: "abc",
+        fields: [
+          { label: "OTHER", value: "keep" },
+          { label: "DEN_LOCAL_ADMIN_PWD", value: "old" },
+        ],
+      }),
+      stderr: "",
+    });
     await saveSudoToVault("sekret");
     const [, args] = mockExecFileAsync.mock.calls[0] as unknown as [
       string,
@@ -123,16 +165,29 @@ describe("with secrets.refs.sudo configured (1password)", () => {
     ];
     expect(args).toEqual([
       "item",
-      "edit",
+      "get",
       "Dev Keys",
       "--vault",
       "Team Vault",
-      "DEN_LOCAL_ADMIN_PWD[password]=sekret",
+      "--format",
+      "json",
+      "--reveal",
     ]);
-    // An edit that fails, then a create that fails: the edit's error.
-    mockExecFileAsync
-      .mockRejectedValueOnce(new Error("vault not found"))
-      .mockRejectedValueOnce(new Error("create failed"));
+    expect(spawned.map((c) => c.args)).toEqual([
+      ["item", "edit", "abc", "--vault", "Team Vault"],
+    ]);
+    const sent = JSON.parse(spawned[0].input) as {
+      fields: { label: string; value: string }[];
+    };
+    expect(sent.fields).toEqual([
+      { label: "OTHER", value: "keep" },
+      { label: "DEN_LOCAL_ADMIN_PWD", value: "sekret", type: "CONCEALED" },
+    ]);
+    // 0.4.26: the password is never in any argv.
+    expect(JSON.stringify(spawned.map((c) => c.args))).not.toContain("sekret");
+    // A read that fails, then a create that fails: the read's error.
+    mockExecFileAsync.mockRejectedValueOnce(new Error("vault not found"));
+    exits.push({ code: 1, stderr: "create failed" });
     await expect(saveSudoToVault("x")).rejects.toThrow("vault not found");
     expect(userWrites).toEqual([]);
   });
@@ -228,29 +283,32 @@ describe("LK-4: saving with no secrets.refs.sudo (1password)", () => {
     );
 
   it("creates the item, then writes the ref to user.yml; the ref is then configured", async () => {
-    mockExecFileAsync
-      .mockRejectedValueOnce(
-        new Error(
-          'Command failed: op item edit\n"Den admin password" isn\'t an item',
-        ),
-      )
-      .mockResolvedValueOnce({ stdout: "", stderr: "" });
+    mockExecFileAsync.mockRejectedValueOnce(
+      new Error(
+        'Command failed: op item get\n"Den admin password" isn\'t an item',
+      ),
+    );
     userConfig = { local_dev: true };
     await expect(saveSudoToVault("sekret")).resolves.toEqual({
       ref: "created",
     });
     expect(calls()).toEqual([
-      ["item", "edit", "Den admin password", "password[password]=sekret"],
-      [
-        "item",
-        "create",
-        "--category",
-        "password",
-        "--title",
-        "Den admin password",
-        "password[password]=sekret",
-      ],
+      ["item", "get", "Den admin password", "--format", "json", "--reveal"],
     ]);
+    expect(spawned.map((c) => c.args)).toEqual([["item", "create", "-"]]);
+    expect(JSON.parse(spawned[0].input)).toEqual({
+      title: "Den admin password",
+      category: "PASSWORD",
+      fields: [
+        {
+          id: "password",
+          type: "CONCEALED",
+          purpose: "PASSWORD",
+          label: "password",
+          value: "sekret",
+        },
+      ],
+    });
     // The person's user.yml, keeping what was there.
     expect(userWrites).toEqual([
       {
@@ -271,15 +329,10 @@ describe("LK-4: saving with no secrets.refs.sudo (1password)", () => {
   });
 
   it("a failed save writes no ref, and its error never carries the password", async () => {
-    mockExecFileAsync
-      .mockRejectedValueOnce(
-        new Error(
-          "Command failed: op item edit X password[password]=sekret\nnot signed in",
-        ),
-      )
-      .mockRejectedValueOnce(
-        new Error("Command failed: op item create password[password]=sekret"),
-      );
+    mockExecFileAsync.mockRejectedValueOnce(
+      new Error("Command failed: op item get X\nnot signed in"),
+    );
+    exits.push({ code: 1, stderr: "not signed in (sekret)" });
     const err = await saveSudoToVault("sekret").then(
       () => null,
       (e: Error) => e,
@@ -298,17 +351,26 @@ describe("LK-4: saving with no secrets.refs.sudo (1password)", () => {
       },
     };
     resetSecretsProviderCache();
-    mockExecFileAsync.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    mockExecFileAsync.mockResolvedValueOnce({
+      stdout: JSON.stringify({ id: "abc", fields: [] }),
+      stderr: "",
+    });
     await expect(saveSudoToVault("sekret")).resolves.toEqual({
       ref: "configured",
     });
-    expect(calls()[0]).toEqual([
+    expect(calls()[0].slice(0, 5)).toEqual([
       "item",
-      "edit",
+      "get",
       "Dev Keys",
       "--vault",
       "Team Vault",
-      "DEN_LOCAL_ADMIN_PWD[password]=sekret",
+    ]);
+    expect(spawned[0].args).toEqual([
+      "item",
+      "edit",
+      "abc",
+      "--vault",
+      "Team Vault",
     ]);
     expect(userWrites).toEqual([]);
   });

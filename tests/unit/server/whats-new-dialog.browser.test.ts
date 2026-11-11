@@ -217,7 +217,7 @@ describe("the What's new dialog", () => {
       if (!browser) return;
       // A short window so even the newest release scrolls.
       const ctx = await browser.newContext({
-        viewport: { width: 1024, height: 420 },
+        viewport: { width: 1024, height: 300 },
       });
       const p = await ctx.newPage();
       await p.goto(`http://127.0.0.1:${port}/services`);
