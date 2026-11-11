@@ -19,6 +19,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **Helper counts in words (D48).** The pane bar's Helpers button
+  showed "Helpers (5)" and then a coloured pill with a second, unlabelled
+  number, and the pill was hard to read in some themes. Now it is one
+  label: "Helpers · 2 running", after a small pulsing dot, while any run,
+  and "Helpers (5)" when none does. "All helpers" follows the same rule,
+  and an agent's row says "2 running" in place of its pill. Text on an
+  accent background now always uses the theme's on-accent colour, which
+  the theme contract holds to 4.5:1 contrast.
 - **Hub stays in the rail (D49).** Once Hub is set up, the rail always
   has a Hub item. Before, it vanished whenever Den couldn't reach Hub (a
   restart, a 502) or hadn't connected yet, which left no way across. Now,

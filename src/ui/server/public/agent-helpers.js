@@ -127,31 +127,39 @@ export function helperRowsHtml(r, selected = false) {
     `<div class="aghs" data-helpers-of="${esc(r.agent)}" data-ws="${esc(r.workspace)}" role="group" aria-label="${esc(t("hp.groupOf", { name }))}">` +
     helperListHtml(active, ctx) +
     (h.activeCount > active.length
-      ? `<button type="button" class="lnk aghs-all" aria-haspopup="dialog">${esc(t("hp.all", { n: h.activeCount }))}</button>`
+      ? `<button type="button" class="lnk aghs-all" aria-haspopup="dialog">${countLabel("hp.all", h.activeCount, h.running)}</button>`
       : "") +
     `</div>`
   );
 }
 
-/** The row's badge: how many of its helpers run now (any row). */
-export function helperBadgeHtml(r) {
-  const n = r?.helpers?.running;
-  return n
-    ? ` <span class="hpbdg agr-hp" title="${esc(t("hp.runningN", { n }))}" aria-label="${esc(t("hp.runningN", { n }))}">${esc(n)}</span>`
-    : "";
+/**
+ * D48: one label, never two bare numbers. While any helper runs it says how
+ * many run, after a pulsing dot ("Helpers · 2 running"); when none does, how
+ * many there are ("Helpers (5)"). `key` is hp.title or hp.all.
+ */
+function countLabel(key, total, running) {
+  return running
+    ? `${esc(t(`${key}Plain`))} · <span class="hp-run"><span class="hp-dot" aria-hidden="true"></span>${esc(t("hp.runningN", { n: running }))}</span>`
+    : esc(t(key, { n: total }));
 }
 
-/** "Helpers (n)" for a pane's bar: a count badge while any run. */
+/** The row's count: how many of its helpers run now (any row), in words. */
+export function helperBadgeHtml(r) {
+  const n = r?.helpers?.running;
+  if (!n) return "";
+  const said = t(n === 1 ? "hp.rowRunning.one" : "hp.rowRunning", { n });
+  return ` <span class="agr-hp hp-run" title="${esc(said)}" aria-label="${esc(said)}"><span class="hp-dot" aria-hidden="true"></span>${esc(t("hp.runningN", { n }))}</span>`;
+}
+
+/** The pane bar's Helpers button: "Helpers · 2 running", or "Helpers (5)". */
 export function helperBarButtonHtml(r) {
   const h = r?.helpers;
   if (!h || !h.total) return "";
   return (
     `<button type="button" class="den-btn sm" data-act="helpers" aria-haspopup="dialog"` +
     ` aria-label="${esc(t(h.running ? "hp.barRunning" : "hp.bar", { n: h.total, r: h.running }))}">` +
-    esc(t("hp.title", { n: h.total })) +
-    (h.running
-      ? ` <span class="hpbdg" aria-hidden="true">${esc(h.running)}</span>`
-      : "") +
+    countLabel("hp.title", h.total, h.running) +
     `</button>`
   );
 }
@@ -180,7 +188,11 @@ const CSS = `
 .hp-hd .hp-clear + .x{margin-left:8px}
 .hp-cleared{margin-top:8px}
 .hp-cleared summary{cursor:pointer;color:var(--muted);font-size:13px;padding:4px}
-.hpbdg{display:inline-block;min-width:16px;padding:0 5px;border-radius:8px;background:var(--accent);color:var(--accent-text);font-size:11px;line-height:16px;text-align:center}
+.hp-run{white-space:nowrap}
+.agr-hp{color:var(--muted);font-size:11.5px;font-weight:400}
+.hp-dot{display:inline-block;width:6px;height:6px;margin-right:4px;border-radius:50%;background:var(--ok);vertical-align:1px;animation:hp-pulse 1.6s ease-in-out infinite}
+@keyframes hp-pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion: reduce){.hp-dot{animation:none}}
 `;
 
 let dlg = null;

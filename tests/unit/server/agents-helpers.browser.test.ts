@@ -197,7 +197,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
       await p
         .locator(`#agl button.agr[data-id="${sid}"] .agr-hp`)
         .textContent(),
-    ).toBe("1");
+    ).toBe("1 running");
 
     await rows.first().click();
     const dlg = p.locator("#tx-dlg");
@@ -232,7 +232,12 @@ describe("an agent's helpers on the agents page (D32)", () => {
     const { p, errors } = await open();
     const btn = p.locator(`.pane[data-id="${sid}"] [data-act="helpers"]`);
     await btn.waitFor({ timeout: 15_000 });
-    expect(await btn.locator(".hpbdg").textContent()).toBe("1");
+    // D48: one label, no pill: "Helpers · 1 running", a dot before it.
+    expect((await btn.textContent())?.replace(/\s+/g, " ").trim()).toBe(
+      "Helpers · 1 running",
+    );
+    expect(await btn.locator(".hp-run .hp-dot").count()).toBe(1);
+    expect(await p.locator(".hpbdg").count()).toBe(0);
     await btn.click();
     const body = p.locator("#hp-body");
     await body.locator("button.agh").first().waitFor({ timeout: 10_000 });
@@ -579,7 +584,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.waitForFunction(
       (id) =>
         document.querySelector(`#agl button.agr[data-id="${id}"] .agr-hp`)
-          ?.textContent === "2",
+          ?.textContent === "2 running",
       sids.keeper,
       { timeout: 20_000 },
     );
@@ -597,13 +602,13 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p
       .locator('#agl .aghs[data-helpers-of="keeper"]')
       .waitFor({ state: "detached", timeout: 15_000 });
-    expect(await badge("keeper")).toBe("2");
-    // 6 running: 4 rows (row_max), then "All helpers (6)", which opens
+    expect(await badge("keeper")).toBe("2 running");
+    // 6 running: 4 rows (row_max), then "All helpers · 6 running", which opens
     // the Helpers list with all of them.
     const all = '#agl .aghs[data-helpers-of="crowd"] .aghs-all';
     await p.locator(all).waitFor({ timeout: 15_000 });
     expect(await rowsOf("crowd")).toBe(4);
-    expect(await p.locator(all).textContent()).toBe("All helpers (6)");
+    expect(await p.locator(all).textContent()).toBe("All helpers · 6 running");
     await p.click(all);
     await p.locator("#hp-body > button.agh").first().waitFor();
     expect(await p.locator("#hp-body > button.agh").count()).toBe(6);
