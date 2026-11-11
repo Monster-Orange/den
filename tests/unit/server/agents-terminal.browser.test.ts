@@ -552,6 +552,68 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       );
     }
 
+    /**
+     * Hold every terminal socket's open, and the frames after it, until
+     * releaseIo: a slow socket. Reload the page after.
+     */
+    async function holdIo(p: Page): Promise<void> {
+      await p.context().addInitScript(() => {
+        const W = window.WebSocket;
+        const held: { k: string; f: () => void }[] = [];
+        const go = new Set<string>();
+        // Open first, then (on a second call) the frames: a socket whose
+        // first frame comes late.
+        (
+          window as unknown as { __releaseIo: (k: string[]) => void }
+        ).__releaseIo = (ks) => {
+          for (const k of ks) go.add(k);
+          for (const h of held.splice(0))
+            if (go.has(h.k)) h.f();
+            else held.push(h);
+        };
+        class Held extends W {
+          constructor(url: string | URL, prot?: string | string[]) {
+            super(url, prot);
+            if (!String(url).endsWith("/io")) return;
+            const fns: Record<string, ((e: Event) => void) | null> = {
+              open: null,
+              message: null,
+            };
+            for (const k of ["open", "message"] as const) {
+              Object.defineProperty(this, `on${k}`, {
+                get: () => fns[k],
+                set: (f) => (fns[k] = f),
+              });
+              super.addEventListener(k, (e) => {
+                const f = () => fns[k]?.call(this, e);
+                if (go.has(k)) f();
+                else held.push({ k, f });
+              });
+            }
+            Object.defineProperty(this, "readyState", {
+              get: () => (go.has("open") ? super.readyState : W.CONNECTING),
+            });
+          }
+        }
+        window.WebSocket = Held as typeof WebSocket;
+      });
+    }
+    const releaseIo = async (p: Page, gapMs = 0) => {
+      const rel = (ks: string[]) =>
+        p.evaluate(
+          (k) =>
+            (
+              window as unknown as { __releaseIo: (k: string[]) => void }
+            ).__releaseIo(k),
+          ks,
+        );
+      await rel(gapMs ? ["open"] : ["open", "message"]);
+      if (gapMs) {
+        await new Promise((r) => setTimeout(r, gapMs));
+        await rel(["message"]);
+      }
+    };
+
     it("a new pane: click the row, type, and the agent gets it", async () => {
       if (skip()) return;
       const p = await page(`/agents?layout=focus`);
@@ -606,37 +668,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       it(`a pick whose socket opens late doesn't take the keyboard once the person has gone elsewhere (${how})`, async () => {
         if (skip()) return;
         const p = await page(`/agents?layout=focus`);
-        // Hold every terminal socket's open until the test says so.
-        await p.context().addInitScript(() => {
-          const W = window.WebSocket;
-          const held: (() => void)[] = [];
-          let go = false;
-          (window as unknown as { __releaseIo: () => void }).__releaseIo =
-            () => {
-              go = true;
-              for (const f of held.splice(0)) f();
-            };
-          class Held extends W {
-            constructor(url: string | URL, prot?: string | string[]) {
-              super(url, prot);
-              if (!String(url).endsWith("/io")) return;
-              let fn: ((e: Event) => void) | null = null;
-              Object.defineProperty(this, "onopen", {
-                get: () => fn,
-                set: (f) => (fn = f),
-              });
-              super.addEventListener("open", (e) => {
-                const fire = () => fn?.call(this, e);
-                if (go) fire();
-                else held.push(fire);
-              });
-              Object.defineProperty(this, "readyState", {
-                get: () => (go ? super.readyState : W.CONNECTING),
-              });
-            }
-          }
-          window.WebSocket = Held as typeof WebSocket;
-        });
+        await holdIo(p);
         await p.reload();
         await p.waitForSelector(row("planner"));
         await p.click(row("planner"));
@@ -645,9 +677,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
         if (how === "click")
           await p.locator("#agl").click({ position: { x: 4, y: 2 } });
         else await p.keyboard.press("Tab");
-        await p.evaluate(() =>
-          (window as unknown as { __releaseIo: () => void }).__releaseIo(),
-        );
+        await releaseIo(p);
         await new Promise((r) => setTimeout(r, 500));
         expect(
           await p.evaluate(() => !!document.activeElement?.closest(".pane")),
@@ -677,6 +707,52 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
         expect(await typedInto(p, "n3")).toEqual(["coder"]);
         await p.context().close();
       }, 60_000);
+
+    it("a stopped agent's row never puts the keyboard in its ended pane, even after a pick whose socket is slow", async () => {
+      if (skip()) return;
+      // An agent whose session has ended (its output kept).
+      const info = await host!.start({
+        name: "acme-north:ender",
+        cwd: s!.wsDir("north"),
+        argv: ["sh"],
+        env: {},
+        cols: 80,
+        rows: 24,
+      });
+      sid.ender = info.ref.id;
+      pid.ender = info.pid;
+      s!.seed({
+        id: "ender",
+        persona: "builder",
+        runtime: "den-claude",
+        workspace: "north",
+        session: { backend: "den-pty", id: info.ref.id },
+        sessionName: "acme-north:ender",
+        resumeToken: "6a0c2d1e-3a4b-4c5d-8e9f-0a1b2c3d4e5f",
+      });
+      pty("ender").emit("ender done\r\n");
+      pty("ender").exit(0);
+      for (const slow of [false, true]) {
+        const p = await page(`/agents?layout=focus`);
+        if (slow) {
+          await holdIo(p);
+          await p.reload();
+        }
+        await p.waitForSelector(row("ender"));
+        await p.click(row("planner"));
+        await p.click(row("ender"));
+        // Slow: the socket opens, and its first frame (ended) comes later.
+        if (slow) await releaseIo(p, 300);
+        await new Promise((r) => setTimeout(r, 600));
+        expect(
+          await p.evaluate(
+            (id) => !!document.activeElement?.closest(`.pane[data-id="${id}"]`),
+            sid.ender,
+          ),
+        ).toBe(false);
+        await p.context().close();
+      }
+    }, 60_000);
   });
 
   it("raised no page errors", () => {
