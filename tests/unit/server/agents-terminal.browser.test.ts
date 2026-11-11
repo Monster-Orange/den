@@ -601,6 +601,28 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       expect(await typedInto(p, "a3")).toEqual(["planner"]);
       await p.context().close();
     }, 60_000);
+
+    for (const [where, url, width] of [
+      ["at 375px (Tabs, one pane in sight)", "/agents?layout=focus", 375],
+      ["in Tabs at 1440", "/agents?layout=tabs", 1440],
+    ] as const)
+      it(`an add ${where}: the added pane is in front, and the keyboard goes there`, async () => {
+        if (skip()) return;
+        const p = await page(url);
+        await p.setViewportSize({ width, height: 800 });
+        await p.click(row("planner"));
+        await p.waitForSelector(`.pane[data-id="${sid.planner}"] .xterm-rows`);
+        await eventually(async () =>
+          (await typedInto(p, "n1")).includes("planner"),
+        );
+        await p.click(row("coder"), { modifiers: ["Shift"] });
+        await p.waitForSelector(`.pane[data-id="${sid.coder}"] .xterm-rows`);
+        await eventually(async () =>
+          (await typedInto(p, "n2")).includes("coder"),
+        );
+        expect(await typedInto(p, "n3")).toEqual(["coder"]);
+        await p.context().close();
+      }, 60_000);
   });
 
   it("raised no page errors", () => {

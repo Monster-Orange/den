@@ -1151,7 +1151,8 @@ function focusTerm(id) {
  * Open (or bring forward) the session of a row the person clicked, as the
  * layout says: Focus replaces the pane (`add`: Shift- or ⌘-click, one
  * alongside), Tabs opens a tab, Tile adds a tile. D40: a pick (not an add)
- * puts the keyboard in its terminal; an add keeps it where it was.
+ * puts the keyboard in its terminal; an add keeps it where it was, when
+ * that pane is still in sight.
  */
 async function pick(id, add) {
   const layout = shownLayout();
@@ -1171,11 +1172,22 @@ async function pick(id, add) {
     paintLayout();
     paintList();
     if (!add) focusTerm(id);
-    else if (back) focusTerm(back);
+    else addFocus(back, id);
     return;
   }
   await openPane(id, { front: !(layout === "focus" && add) });
-  if (back) focusTerm(back);
+  if (add) addFocus(back, id);
+}
+
+/**
+ * After an add, the keyboard goes back to the pane that had it, if that
+ * pane is still in sight. Where only one pane shows (tabs, a phone) the
+ * added one is in front, so the keyboard goes there.
+ */
+function addFocus(back, id) {
+  const shown = visibleIds();
+  if (back && shown.includes(back)) focusTerm(back);
+  else if (shown.includes(id)) focusTerm(id);
 }
 
 /** Double-click a tab: its name becomes an input (Enter saves, Esc doesn't). */
