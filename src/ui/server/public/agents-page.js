@@ -85,6 +85,7 @@
  */
 import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
 import { focusBack, refindKey } from "/transcript-view.js";
+import { dismissable } from "/popover.js";
 import {
   helperBadgeHtml,
   helperBarButtonHtml,
@@ -3222,7 +3223,14 @@ function stoppedMenuItems(r, opener) {
 /** Under this width the details are a bottom sheet (as the service panel). */
 const DET_SHEET = "(max-width: 639px)";
 /** The open details: the row, its opener, the pop-over and its scrim. */
-const agd = { r: null, opener: null, el: null, scrim: null, det: null };
+const agd = {
+  r: null,
+  opener: null,
+  el: null,
+  scrim: null,
+  det: null,
+  release: null,
+};
 
 function detailsHtml(r, det) {
   const name = displayName(r);
@@ -3327,43 +3335,33 @@ function closeDetails(refocus) {
   window.denShell?.topLayer?.hide(agd.el);
   agd.el.remove();
   agd.scrim?.remove();
-  document.removeEventListener("keydown", detailsKey, true);
-  document.removeEventListener("click", detailsOutside, true);
+  // D50: its outside press and Esc (popover.js).
+  agd.release?.();
+  document.removeEventListener("click", detailsAct, true);
   window.removeEventListener("resize", placeDetails);
-  agd.el = agd.scrim = agd.r = agd.det = null;
+  agd.el = agd.scrim = agd.r = agd.det = agd.release = null;
   agd.opener = null;
   back?.setAttribute("aria-expanded", "false");
   if (refocus) back?.focus();
 }
 
-function detailsKey(e) {
-  if (e.key !== "Escape" || !agd.el) return;
-  e.preventDefault();
-  e.stopPropagation();
-  closeDetails(true);
-}
-
-function detailsOutside(e) {
+/** Its buttons. Closing on a press outside or Esc is popover.js's (D50). */
+function detailsAct(e) {
   if (!agd.el) return;
   const tgt = e.target;
-  if (agd.el.contains(tgt)) {
-    const b = tgt.closest?.("[data-agd]");
-    if (!b || b.disabled) return;
-    const r = agd.r;
-    const which = b.dataset.agd;
-    if (which === "close") return closeDetails(true);
-    // The row's own actions: the same calls as its Resume and ⋯.
-    const opener = detailsOpener();
-    closeDetails(false);
-    if (which === "open") void pick(r.id, false);
-    else if (which === "resume" || which === "fresh")
-      void restartRow(r, which, opener ?? b);
-    else if (which === "remove") void removeRow(r, opener ?? b);
-    return;
-  }
-  // The row that opened it toggles it (its own click handler).
-  if (detailsOpener()?.contains(tgt)) return;
+  if (!agd.el.contains(tgt)) return;
+  const b = tgt.closest?.("[data-agd]");
+  if (!b || b.disabled) return;
+  const r = agd.r;
+  const which = b.dataset.agd;
+  if (which === "close") return closeDetails(true);
+  // The row's own actions: the same calls as its Resume and ⋯.
+  const opener = detailsOpener();
   closeDetails(false);
+  if (which === "open") void pick(r.id, false);
+  else if (which === "resume" || which === "fresh")
+    void restartRow(r, which, opener ?? b);
+  else if (which === "remove") void removeRow(r, opener ?? b);
 }
 
 /**
@@ -3371,8 +3369,8 @@ function detailsOutside(e) {
  * phone), the service panel's pop-over: who it is, how it ended (its last
  * line when it exited), what it was last asked, compactions or a due
  * handoff, where it ran; Resume (primary), Start fresh and Remove. Esc or a
- * click outside closes it and focus goes back to the row. Its row again:
- * closes it.
+ * press outside closes it and focus goes back to the row (popover.js,
+ * D50). Its row again: closes it.
  */
 async function openDetails(r, opener) {
   if (agd.r?.id === r.id) return closeDetails(true);
@@ -3387,8 +3385,11 @@ async function openDetails(r, opener) {
   opener.setAttribute("aria-expanded", "true");
   paintAgentDetails();
   (el.querySelector(".den-svp-acts .den-btn") || el).focus();
-  document.addEventListener("keydown", detailsKey, true);
-  document.addEventListener("click", detailsOutside, true);
+  document.addEventListener("click", detailsAct, true);
+  agd.release = dismissable(el, {
+    opener: detailsOpener,
+    close: (refocus) => closeDetails(refocus),
+  });
   window.addEventListener("resize", placeDetails);
   let det = { lastPrompt: null };
   try {

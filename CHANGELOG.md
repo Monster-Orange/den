@@ -19,6 +19,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **Pop-overs close when you press outside them (D50).** The helpers
+  list, a stopped agent's details and a pinned service's panel now close
+  on any press outside them, or on Esc, and the keyboard goes back to the
+  button that opened them. Before, the helpers list ignored a click
+  outside it, and the other two missed a press that a terminal took. A
+  press inside, or in a menu or confirm over them, never closes them. In
+  the helpers list, "Clear done" and Close now sit in the top-right
+  corner.
 - **Helper counts in words (D48).** The pane bar's Helpers button
   showed "Helpers (5)" and then a coloured pill with a second, unlabelled
   number, and the pill was hard to read in some themes. Now it is one

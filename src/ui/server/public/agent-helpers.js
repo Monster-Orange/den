@@ -15,6 +15,7 @@
  *   openHelperTranscript({ ws, agent, helper, opener }).
  */
 import { focusBack, openTranscript, refindKey } from "/transcript-view.js";
+import { dismissable } from "/popover.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -167,9 +168,9 @@ export function helperBarButtonHtml(r) {
 const CSS = `
 .hp-dlg{font-family:var(--sans);width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:0;border:1px solid var(--border-strong);border-radius:10px;background:var(--raised, var(--surface));color:var(--text);box-shadow:var(--shadow)}
 .hp-dlg::backdrop{background:rgba(0,0,0,.35)}
-.hp-hd{display:flex;gap:8px;align-items:baseline;padding:12px 16px;border-bottom:1px solid var(--border)}
-.hp-hd h2{font-size:15px;margin:0;outline:none;min-width:0;overflow-wrap:anywhere}
-.hp-hd .x{margin-left:auto;flex:none}
+.hp-hd{display:flex;gap:8px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)}
+.hp-hd h2{font-size:15px;margin:0;outline:none;min-width:0;flex:1 1 auto;overflow-wrap:anywhere}
+.hp-acts{display:flex;gap:8px;align-items:center;flex:none;margin-inline-start:auto}
 .hp-body{padding:8px 12px;overflow:auto;max-height:calc(100vh - 200px)}
 .hp-note{margin:0;padding:8px 16px 12px;color:var(--muted);font-size:12px;border-top:1px solid var(--border)}
 .hp-none{color:var(--muted);font-size:13px;padding:8px 4px}
@@ -184,8 +185,6 @@ const CSS = `
 .agh-m{grid-column:2 / 4;color:var(--faint);font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agh[data-status="running"] .agh-s{color:var(--text)}
 .aghs-all{align-self:flex-start;font-size:12px;margin:2px 6px}
-.hp-hd .hp-clear{flex:none}
-.hp-hd .hp-clear + .x{margin-left:8px}
 .hp-cleared{margin-top:8px}
 .hp-cleared summary{cursor:pointer;color:var(--muted);font-size:13px;padding:4px}
 .hp-run{white-space:nowrap}
@@ -196,6 +195,8 @@ const CSS = `
 `;
 
 let dlg = null;
+/** D50: a press on its backdrop closes it (popover.js); Esc is native. */
+let release = null;
 let opener = null;
 let openerKey = "";
 
@@ -216,8 +217,9 @@ function dialog() {
   dlg.setAttribute("aria-labelledby", "hp-h");
   dlg.innerHTML =
     `<div class="hp-hd"><h2 id="hp-h" tabindex="-1"></h2>` +
-    `<button type="button" class="den-btn sm hp-clear" data-hp-clear hidden></button>` +
-    `<button type="button" class="den-btn sm x" data-hp-close></button></div>` +
+    // D50: Clear done and Close at the end, in the top-right corner.
+    `<span class="hp-acts"><button type="button" class="den-btn sm hp-clear" data-hp-clear hidden></button>` +
+    `<button type="button" class="den-btn sm x" data-hp-close></button></span></div>` +
     `<div class="hp-body" id="hp-body" aria-live="polite"></div>` +
     `<p class="hp-note" id="hp-note"></p>`;
   dlg.querySelector("[data-hp-close]").addEventListener("click", () => {
@@ -245,6 +247,8 @@ function dialog() {
     dlg.querySelector("#hp-h").focus();
   });
   dlg.addEventListener("close", () => {
+    release?.();
+    release = null;
     const o = opener;
     const k = openerKey;
     opener = null;
@@ -287,6 +291,12 @@ export async function openHelpers({ ws, agent, name, opener: from = null }) {
     if (typeof d.showModal === "function") d.showModal();
     else d.setAttribute("open", "");
   }
+  release ??= dismissable(d, {
+    close: () => {
+      if (d.open && typeof d.close === "function") d.close();
+      else d.removeAttribute("open");
+    },
+  });
   d.querySelector("#hp-h").focus();
   await loadHelpers(ws, agent);
 }

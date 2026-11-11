@@ -403,9 +403,9 @@ describe("the panel", () => {
         e.map((x) => x.textContent),
       ),
     ).toEqual(["notes-helper"]);
-    // A click outside closes it.
+    // A click outside closes it (D50: a tick later, so focus goes back).
     await p.mouse.click(1200, 600);
-    expect(await p.$$(panel)).toHaveLength(0);
+    await p.waitForFunction(() => !document.querySelector(".den-svp"));
     expect(
       await p.getAttribute('.den-rail [data-pin="notes"]', "aria-expanded"),
     ).toBe("false");
@@ -432,6 +432,63 @@ describe("the panel", () => {
         () => (document.activeElement as HTMLElement).dataset.pin,
       ),
     ).toBe("notes");
+    await p.context().close();
+  }, 60_000);
+
+  it("D50: a press outside closes it, with no click after it, and focus goes back to its row; a press inside, or in a menu over it, keeps it", async () => {
+    if (skip()) return;
+    const { p } = await page("/services");
+    await railReady(p);
+    await p.click('.den-rail [data-pin="notes"]');
+    await p.waitForSelector(panel);
+    const box = (await p.locator(panel).boundingBox())!;
+    // Inside, on its header (no button): still open.
+    await p.mouse.click(box.x + 6, box.y + 4);
+    expect(await p.$$(panel)).toHaveLength(1);
+    // A menu over it (another layer): its press is its own.
+    await p.evaluate(() => {
+      const m = document.createElement("div");
+      m.className = "den-pop";
+      m.setAttribute("role", "menu");
+      m.id = "d50-menu";
+      m.style.cssText =
+        "position:fixed;right:0;bottom:0;width:120px;height:40px;z-index:2147483647;background:#888";
+      document.body.append(m);
+    });
+    const mb = (await p.locator("#d50-menu").boundingBox())!;
+    await p.mouse.click(mb.x + 10, mb.y + 10);
+    expect(await p.$$(panel)).toHaveLength(1);
+    await p.evaluate(() => document.getElementById("d50-menu")?.remove());
+    // Outside, on nothing that takes focus: a press alone closes it.
+    const at = await p.evaluate(() => {
+      const pop = document.querySelector(".den-svp")!;
+      for (let y = 300; y < innerHeight - 10; y += 23)
+        for (let x = innerWidth - 20; x > 400; x -= 37) {
+          const el = document.elementFromPoint(x, y);
+          if (
+            el &&
+            !pop.contains(el) &&
+            !el.closest(
+              "a, button, input, select, textarea, summary, [tabindex], .den-pop, dialog",
+            )
+          )
+            return { x, y };
+        }
+      return null;
+    });
+    expect(at).not.toBeNull();
+    await p.mouse.move(at!.x, at!.y);
+    await p.mouse.down();
+    await p.waitForFunction(() => !document.querySelector(".den-svp"));
+    await p.mouse.up();
+    expect(
+      await p.evaluate(
+        () => (document.activeElement as HTMLElement).dataset.pin,
+      ),
+    ).toBe("notes");
+    expect(
+      await p.getAttribute('.den-rail [data-pin="notes"]', "aria-expanded"),
+    ).toBe("false");
     await p.context().close();
   }, 60_000);
 

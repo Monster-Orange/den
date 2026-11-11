@@ -618,6 +618,70 @@ describe("an agent's helpers on the agents page (D32)", () => {
   }, 90_000);
 
   // Last: its mark stays for the rest of the file.
+  for (const width of [1280, 390])
+    it(`D50 at ${width}: Clear done and Close sit in the header's top-right corner`, async () => {
+      if (!browser) return;
+      const { p, errors } = await open(width);
+      const bar = `.pane[data-id="${sid}"] [data-act="helpers"]`;
+      await p.locator(bar).waitFor({ timeout: 15_000 });
+      await p.click(bar);
+      await p.locator("#hp-dlg [data-hp-clear]:not([hidden])").waitFor();
+      const box = (sel: string) =>
+        p.$eval(sel, (e) => {
+          const r = e.getBoundingClientRect();
+          return { l: r.left, r: r.right, t: r.top };
+        });
+      const hd = await box("#hp-dlg .hp-hd");
+      const clear = await box("#hp-dlg [data-hp-clear]");
+      const close = await box("#hp-dlg [data-hp-close]");
+      const pad = await p.$eval("#hp-dlg .hp-hd", (e) =>
+        parseFloat(getComputedStyle(e).paddingRight),
+      );
+      // Close at the end, Clear done just before it, both on the right.
+      expect(Math.abs(close.r - (hd.r - pad))).toBeLessThanOrEqual(1);
+      expect(Math.abs(close.l - 8 - clear.r)).toBeLessThanOrEqual(1);
+      expect(clear.l).toBeGreaterThan(hd.l + (hd.r - hd.l) / 2);
+      expect(Math.abs(clear.t - close.t)).toBeLessThanOrEqual(1);
+      expect(
+        await p.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width);
+      await p.keyboard.press("Escape");
+      expect(errors).toEqual([]);
+      await p.context().close();
+    }, 60_000);
+
+  it("D50: a press on the backdrop closes the list and focus goes back to Helpers; over a transcript, it closes the transcript only", async () => {
+    if (!browser) return;
+    const { p, errors } = await open();
+    const bar = `.pane[data-id="${sid}"] [data-act="helpers"]`;
+    await p.locator(bar).waitFor({ timeout: 15_000 });
+    await p.click(bar);
+    const dlg = p.locator("#hp-dlg[open]");
+    await dlg.waitFor();
+    await p.locator("#hp-body button.agh").first().waitFor();
+    // Inside, on its note: still open.
+    const nb = (await p.locator("#hp-note").boundingBox())!;
+    await p.mouse.click(nb.x + 4, nb.y + 4);
+    expect(await dlg.count()).toBe(1);
+    // A helper's transcript over it: the backdrop closes the transcript.
+    await p.click("#hp-body button.agh >> nth=0");
+    await p.locator("#tx-dlg[open]").waitFor();
+    await p.mouse.move(4, 4);
+    await p.mouse.down();
+    await p.locator("#tx-dlg[open]").waitFor({ state: "detached" });
+    await p.mouse.up();
+    expect(await dlg.count()).toBe(1);
+    // Then the list's: a press alone closes it; focus goes back.
+    await p.mouse.down();
+    await dlg.waitFor({ state: "detached" });
+    await p.mouse.up();
+    await p.waitForFunction(() =>
+      document.activeElement?.matches('[data-act="helpers"]'),
+    );
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
   it("D34 Clear done in the Helpers list; Show cleared lists them; still hidden after a reload", async () => {
     if (!browser) return;
     const { p, errors } = await open();
