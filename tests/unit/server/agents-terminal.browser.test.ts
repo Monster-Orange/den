@@ -614,6 +614,20 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       }
     };
 
+    it("D43: a link to a running agent (?agent=&ws=) opens its pane, and typing reaches it", async () => {
+      if (skip()) return;
+      const p = await page(`/agents?layout=focus&ws=north&agent=planner`);
+      await p.waitForSelector(`.pane[data-id="${sid.planner}"] .xterm-rows`);
+      await eventually(async () =>
+        (await typedInto(p, "l1")).includes("planner"),
+      );
+      expect(await typedInto(p, "l2")).toEqual(["planner"]);
+      const q = new URL(p.url()).searchParams;
+      expect(q.has("agent")).toBe(false);
+      expect(q.get("open")).toBe(sid.planner);
+      await p.context().close();
+    }, 60_000);
+
     it("a new pane: click the row, type, and the agent gets it", async () => {
       if (skip()) return;
       const p = await page(`/agents?layout=focus`);

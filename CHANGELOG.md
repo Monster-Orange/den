@@ -4,6 +4,19 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.33] - unreleased
+
+### Added
+
+- **A link to one agent (D43).** `/agents?agent=<id>&ws=<workspace>`
+  opens that agent: a running agent's pane, with the keyboard in it, or a
+  stopped agent's details. Another tool can link an agent's name here. An
+  agent that isn't there gets a short note.
+
+### Migrations
+
+- None needed.
+
 ## [0.4.32] - unreleased
 
 ### Added

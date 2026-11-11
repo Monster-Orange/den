@@ -2959,6 +2959,11 @@ agent of the workspaces in view, and their terminals in the browser.
   holds the open panes (`/agents?open=<id>,<id>`), so a link, a reload or
   Back reopens them. The list and the panes fill the window down to the
   runs dock.
+- **A link to one agent** is `/agents?agent=<id>&ws=<workspace>`, for
+  another tool to link an agent's name to (D43). A running agent's pane
+  opens and takes the keyboard. A stopped agent's details open by its row.
+  An agent that isn't there gets a short note and nothing opens. The link
+  is used once: the URL then keeps `?ws=` and `?open=`, not `?agent=`.
 - **Layouts.** The switch in the page header picks one, or ⌃⇧1, ⌃⇧2, ⌃⇧3
   (Ctrl+Shift+1/2/3 on every OS; ⌘1-9 and Ctrl+1-9 stay the browser's, for
   its tabs), or ⌘K "Layout: Focus", "Layout: Tabs", "Layout: Tile". Inside

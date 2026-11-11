@@ -624,6 +624,8 @@
     "ag.chip.stopped": "Detenido",
     "ag.chip.exited": "Terminado",
     "ag.chip.interrupted": "Interrumpido",
+    "ag.link.none":
+      "No hay ningún agente {id} aquí. Puede que se haya quitado.",
     "ag.det.label": "Detalles de {id}",
     "ag.det.close": "Cerrar",
     "ag.det.where": "Dónde",

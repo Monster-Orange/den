@@ -104,7 +104,7 @@ afterAll(async () => {
 
 const skip = () => !browser;
 
-async function open(ws: string): Promise<Page> {
+async function open(ws: string, more = ""): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
     reducedMotion: "reduce",
@@ -123,7 +123,7 @@ async function open(ws: string): Promise<Page> {
     if (m.type() === "error") errors.push(`console: ${m.text()}`);
   });
   // Resume and Start fresh are shell-grade (SEC-1b): signed in as a person.
-  await p.goto(signInUrl(s!.stateDir, s!.base, `/agents?ws=${ws}`));
+  await p.goto(signInUrl(s!.stateDir, s!.base, `/agents?ws=${ws}${more}`));
   // Attached: a closed "Stopped (n)" hides its rows (D37).
   await p.waitForSelector("#agl:not([aria-busy]) .agr", {
     state: "attached",
@@ -439,6 +439,37 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       await p.locator(".den-svp-scrim").tap({ position: { x: 10, y: 10 } });
       await det(p).waitFor({ state: "detached" });
       await ctx.close();
+    }, 60_000);
+  });
+
+  describe("D43: a link to one agent, /agents?agent=<id>&ws=<ws>", () => {
+    it("a stopped agent's link opens its details by its row; the URL keeps ?ws= and drops ?agent=", async () => {
+      if (skip()) return;
+      const p = await open("north", "&agent=scout");
+      const det = p.locator('.den-agd[role="dialog"]');
+      await det.waitFor();
+      expect(
+        await row(p, "scout").locator(".agr").getAttribute("aria-expanded"),
+      ).toBe("true");
+      expect(await det.textContent()).toContain("reviewer");
+      expect(
+        await p.evaluate(() => !!document.activeElement?.closest(".den-agd")),
+      ).toBe(true);
+      const q = new URL(p.url()).searchParams;
+      expect(q.get("ws")).toBe("north");
+      expect(q.has("agent")).toBe(false);
+      await p.context().close();
+    }, 60_000);
+
+    it("a link to an agent that isn't there says so, and opens nothing", async () => {
+      if (skip()) return;
+      const p = await open("north", "&agent=nobody");
+      await p
+        .getByText("No agent north / nobody here. It may have been removed.")
+        .waitFor();
+      expect(await p.locator(".den-agd").count()).toBe(0);
+      expect(await p.locator(".pane").count()).toBe(0);
+      await p.context().close();
     }, 60_000);
   });
 

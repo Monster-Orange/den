@@ -220,6 +220,7 @@ function writeUrl() {
   u.searchParams.set("layout", st.layout);
   u.searchParams.delete("start");
   u.searchParams.delete("folder");
+  u.searchParams.delete("agent");
   const s = u.searchParams.toString().replace(/%2C/gi, ",");
   history.replaceState(history.state, "", u.pathname + (s ? `?${s}` : ""));
   paintSub();
@@ -3643,6 +3644,40 @@ export async function mountAgentsPage(root) {
     for (const id of wanted) {
       if (!st.data || rowOf(id)) await openPane(id);
     }
+  const linkedAgent = new URLSearchParams(location.search).get("agent");
   writeUrl();
+  if (linkedAgent) await openLinkedAgent(linkedAgent, urlWorkspace());
   if (startAsked) void openStart();
+}
+
+/**
+ * D43: /agents?agent=<id>&ws=<ws>, a stable link to one agent (another
+ * tool links an agent's name here). A running agent's pane opens and takes
+ * the keyboard, as a pick does; a stopped one's details open by its row.
+ * The link is used once: the URL keeps ?open= and ?ws=, not ?agent=.
+ */
+async function openLinkedAgent(agent, ws) {
+  const r = visibleRows().find(
+    (x) =>
+      x.kind === "agent" && x.agent === agent && (!ws || x.workspace === ws),
+  );
+  if (!r) {
+    window.denShell?.toast?.(
+      t("ag.link.none", { id: ws ? `${ws} / ${agent}` : agent }),
+    );
+    return;
+  }
+  if (isStopped(r)) {
+    const row = st.root.querySelector(
+      `#agl .agr[data-id="${CSS.escape(r.id)}"]`,
+    );
+    const group = row?.closest("details[data-stopped]");
+    if (group && !group.open) group.open = true;
+    row?.scrollIntoView({ block: "nearest" });
+    row?.focus();
+    await openDetails(r, row);
+    return;
+  }
+  if (r.attachable === false) return;
+  await pick(r.id, false);
 }

@@ -604,6 +604,8 @@
     "ag.chip.stopped": "停止",
     "ag.chip.exited": "終了",
     "ag.chip.interrupted": "中断",
+    "ag.link.none":
+      "エージェント {id} はここにありません。削除された可能性があります。",
     "ag.det.label": "{id} の詳細",
     "ag.det.close": "閉じる",
     "ag.det.where": "場所",

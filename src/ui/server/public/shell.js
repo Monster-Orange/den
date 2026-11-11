@@ -733,6 +733,7 @@
     "ag.chip.stopped": "Stopped",
     "ag.chip.exited": "Exited",
     "ag.chip.interrupted": "Interrupted",
+    "ag.link.none": "No agent {id} here. It may have been removed.",
     "ag.det.label": "Details for {id}",
     "ag.det.close": "Close",
     "ag.det.where": "Where",
