@@ -86,16 +86,52 @@ export interface HelperReadOptions {
   limit?: number;
 }
 
-/** Running helpers first, then the newest. */
+/**
+ * Running helpers first, then the newest; a helper's own helpers right
+ * under it, in the same order (a tree, depth first). One whose parent
+ * isn't in the list sits at the top level.
+ */
 export function sortHelpers(hs: Helper[]): Helper[] {
   const live = (h: Helper) => (h.status === "running" ? 0 : 1);
-  return [...hs].sort(
-    (a, b) =>
-      live(a) - live(b) ||
-      (b.startedAt ?? b.lastActivityAt ?? 0) -
-        (a.startedAt ?? a.lastActivityAt ?? 0) ||
-      a.id.localeCompare(b.id),
-  );
+  const order = (a: Helper, b: Helper) =>
+    live(a) - live(b) ||
+    (b.startedAt ?? b.lastActivityAt ?? 0) -
+      (a.startedAt ?? a.lastActivityAt ?? 0) ||
+    a.id.localeCompare(b.id);
+  const ids = new Set(hs.map((h) => h.id));
+  const kids = new Map<string, Helper[]>();
+  const roots: Helper[] = [];
+  for (const h of hs)
+    if (h.parentId && h.parentId !== h.id && ids.has(h.parentId))
+      kids.set(h.parentId, [...(kids.get(h.parentId) ?? []), h]);
+    else roots.push(h);
+  const out: Helper[] = [];
+  const seen = new Set<string>();
+  const walk = (h: Helper) => {
+    if (seen.has(h.id)) return;
+    seen.add(h.id);
+    out.push(h);
+    for (const k of (kids.get(h.id) ?? []).sort(order)) walk(k);
+  };
+  for (const r of roots.sort(order)) walk(r);
+  // A loop of parents (never from Claude Code): still listed, flat.
+  for (const h of [...hs].sort(order)) if (!seen.has(h.id)) out.push(h);
+  return out;
+}
+
+/**
+ * How far each helper of `list` (in sortHelpers' order) is indented: one
+ * step under a parent shown above it, none when its parent isn't in the
+ * list. The page's twin is agent-helpers.js shownDepths.
+ */
+export function shownDepths(list: readonly Helper[]): Map<string, number> {
+  const at = new Map<string, number>();
+  for (const h of list)
+    at.set(
+      h.id,
+      h.parentId && at.has(h.parentId) ? at.get(h.parentId)! + 1 : 0,
+    );
+  return at;
 }
 
 /** {running, total}: what a badge shows. */

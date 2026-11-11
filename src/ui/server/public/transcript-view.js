@@ -85,6 +85,40 @@ const CSS = `
 
 let dlg = null;
 let opener = null;
+let openerKey = "";
+
+const q = (v) =>
+  typeof CSS !== "undefined" && CSS.escape
+    ? CSS.escape(String(v))
+    : String(v).replace(/["\\]/g, "\\$&");
+
+/**
+ * How to find `el` again once a page redraws it (the Agents page's poll
+ * replaces its rows and bars): a helper's row, an agent's "All helpers",
+ * a pane's Helpers button. "" for anything else.
+ */
+export function refindKey(el) {
+  if (!el || !el.matches) return "";
+  if (el.matches("button.agh[data-helper]"))
+    return `button.agh[data-helper="${q(el.dataset.helper)}"][data-agent="${q(el.dataset.agent)}"]`;
+  const g = el.closest?.(".aghs[data-helpers-of]");
+  if (g && el.matches(".aghs-all"))
+    return `.aghs[data-helpers-of="${q(g.dataset.helpersOf)}"][data-ws="${q(g.dataset.ws)}"] .aghs-all`;
+  const pane = el.closest?.(".pane[data-id]");
+  if (pane && el.matches('[data-act="helpers"]'))
+    return `.pane[data-id="${q(pane.dataset.id)}"] [data-act="helpers"]`;
+  return "";
+}
+
+/** Focus `el`, or, once it is gone, what `key` finds now (refindKey). */
+export function focusBack(el, key) {
+  if (el?.isConnected) return void el.focus?.();
+  if (!key) return;
+  const now = Array.from(document.querySelectorAll(key)).find(
+    (x) => !x.closest("dialog"),
+  );
+  now?.focus?.();
+}
 
 function dialog() {
   if (dlg && dlg.isConnected) return dlg;
@@ -106,8 +140,10 @@ function dialog() {
   dlg.querySelector("[data-tx-close]").addEventListener("click", () => close());
   dlg.addEventListener("close", () => {
     const o = opener;
+    const k = openerKey;
     opener = null;
-    if (o?.isConnected) o.focus?.();
+    openerKey = "";
+    focusBack(o, k);
   });
   document.body.append(dlg);
   return dlg;
@@ -132,6 +168,7 @@ export async function openTranscript({
 }) {
   const d = dialog();
   opener = from ?? document.activeElement;
+  openerKey = refindKey(opener);
   d.querySelector("#tx-h").textContent = title;
   d.querySelector("#tx-sub").textContent = subtitle;
   const x = d.querySelector("[data-tx-close]");

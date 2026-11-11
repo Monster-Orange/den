@@ -228,8 +228,12 @@ const READ_TOOLS: DenTool[] = [
         );
       const base = `/api/workspaces/${encodeURIComponent(ws)}/agents/${encodeURIComponent(agent)}/helpers`;
       if (!helper) return api.get(base);
-      const limit = typeof a.limit === "number" ? `?limit=${a.limit}` : "";
-      return api.get(`${base}/${encodeURIComponent(helper)}${limit}`);
+      // The limit as a query, never in the path (the client's allowlist
+      // matches the path alone).
+      return api.get(
+        `${base}/${encodeURIComponent(helper)}`,
+        typeof a.limit === "number" ? { limit: String(a.limit) } : {},
+      );
     },
   ),
   read(

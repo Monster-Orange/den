@@ -109,13 +109,25 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
     ...(toolScope ? { scope: toolScope } : {}),
   };
 
+  // A pinned tool with no workspace parameter (no grants) still takes a
+  // `workspace` someone names, so that Den refuses it (callTool, scope.ts)
+  // instead of the SDK dropping the key and answering about this workspace
+  // (0.4.28-dev.0's gate: agent_helpers {workspace:"west"} answered for
+  // "default"). Not advertised; the one-shot path does the same.
+  const unpinned = new Map(toolsFor(opts.cfg).map((t) => [t.name, t]));
+  const schemaOf = (t: (typeof tools)[number]) =>
+    toolScope &&
+    !("workspace" in t.shape) &&
+    "workspace" in (unpinned.get(t.name)?.shape ?? {})
+      ? z.object(t.shape).passthrough()
+      : t.shape;
   for (const t of tools) {
     server.registerTool(
       t.name,
       {
         title: t.title,
         description: t.description,
-        inputSchema: t.shape,
+        inputSchema: schemaOf(t),
         annotations: {
           readOnlyHint: !t.action,
           destructiveHint: t.action,

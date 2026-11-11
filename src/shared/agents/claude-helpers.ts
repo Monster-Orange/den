@@ -489,12 +489,17 @@ function readAll(transcript: string, opts: ReadHelpersOptions): Helper[] {
 /** A tool call in a few words: its command, file, pattern or description. */
 export function summarizeToolInput(name: string, input: unknown): string {
   const i = obj(input) ?? {};
+  // A search (Grep, Glob): what it looks for, then where.
+  const pattern = str(i.pattern, 400);
+  if (pattern) {
+    const where = str(i.path, 400);
+    return oneLine(where ? `${pattern} in ${where}` : pattern, 200);
+  }
   for (const k of [
     "description",
     "command",
     "file_path",
     "path",
-    "pattern",
     "url",
     "query",
     "prompt",

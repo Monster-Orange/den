@@ -12,7 +12,7 @@
  *     each opens its transcript (transcript-view.js).
  *   openHelperTranscript({ ws, agent, helper, opener }).
  */
-import { openTranscript } from "/transcript-view.js";
+import { focusBack, openTranscript, refindKey } from "/transcript-view.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -51,7 +51,27 @@ export function dur(ms) {
 const label = (h) => h.description || h.workflow?.label || h.id;
 
 /** One helper as a button row (opens its transcript). */
-export function helperHtml(h, { ws, agent }) {
+/**
+ * How far each helper of `list` (in sortHelpers' order) is indented: one
+ * step under a parent shown just above it, none when its parent isn't in
+ * the list (folded away, or another conversation's).
+ */
+export function shownDepths(list) {
+  const at = new Map();
+  for (const h of list || [])
+    at.set(h.id, h.parentId && at.has(h.parentId) ? at.get(h.parentId) + 1 : 0);
+  return at;
+}
+
+/** A list of helpers as rows, each indented under a parent it shows. */
+export function helperListHtml(list, ctx) {
+  const d = shownDepths(list);
+  return (list || [])
+    .map((h) => helperHtml(h, { ...ctx, depth: d.get(h.id) ?? 0 }))
+    .join("");
+}
+
+export function helperHtml(h, { ws, agent, depth }) {
   const meta = [
     h.workflow
       ? t("hp.workflow", { name: h.workflow.name || h.workflow.runId })
@@ -70,7 +90,7 @@ export function helperHtml(h, { ws, agent }) {
     .join(" · ");
   return (
     `<button type="button" class="agh" data-helper="${esc(h.id)}" data-agent="${esc(agent)}" data-ws="${esc(ws)}" data-status="${esc(h.status)}"` +
-    ` style="--hp-depth:${Math.max(0, (h.depth || 1) - 1)}"` +
+    ` style="--hp-depth:${Math.max(0, Math.min(8, depth ?? (h.depth || 1) - 1))}"` +
     ` aria-label="${esc(t("hp.open", { what: label(h), status: st }))}" title="${esc(h.statusFrom ? `${st}: ${h.statusFrom}` : st)}">` +
     `<span class="den-dot ${helperTone(h.status)}" aria-hidden="true"></span>` +
     `<span class="agh-n">${esc(label(h))}</span>` +
@@ -87,7 +107,7 @@ export function helperRowsHtml(r) {
   const ctx = { ws: r.workspace, agent: r.agent };
   return (
     `<div class="aghs" data-helpers-of="${esc(r.agent)}" data-ws="${esc(r.workspace)}" role="group" aria-label="${esc(t("hp.groupOf", { name: r.displayName || r.agent }))}">` +
-    (h.recent || []).map((x) => helperHtml(x, ctx)).join("") +
+    helperListHtml(h.recent, ctx) +
     `<button type="button" class="lnk aghs-all">` +
     esc(t("hp.all", { n: h.total })) +
     (h.running
@@ -137,6 +157,7 @@ const CSS = `
 
 let dlg = null;
 let opener = null;
+let openerKey = "";
 
 function ensureCss() {
   if (document.getElementById("hp-css")) return;
@@ -164,8 +185,11 @@ function dialog() {
   });
   dlg.addEventListener("close", () => {
     const o = opener;
+    const k = openerKey;
     opener = null;
-    if (o?.isConnected) o.focus?.();
+    openerKey = "";
+    // The Agents page's poll may have replaced it meanwhile: find it again.
+    focusBack(o, k);
   });
   // A helper opens its transcript over this list.
   dlg.addEventListener("click", (e) => {
@@ -186,6 +210,7 @@ function dialog() {
 export async function openHelpers({ ws, agent, name, opener: from = null }) {
   const d = dialog();
   opener = from ?? document.activeElement;
+  openerKey = refindKey(opener);
   d.querySelector("#hp-h").textContent = t("hp.dlg", { name: name || agent });
   d.querySelector("[data-hp-close]").textContent = t("tx.close");
   d.querySelector("#hp-note").textContent = t("hp.note");
@@ -207,11 +232,11 @@ export async function openHelpers({ ws, agent, name, opener: from = null }) {
       (r?.supported === false
         ? `<p class="hp-none">${esc(t("hp.unsupported"))}</p>`
         : now.length
-          ? now.map((h) => helperHtml(h, ctx)).join("")
+          ? helperListHtml(now, ctx)
           : `<p class="hp-none">${esc(t("hp.none"))}</p>`) +
       (before.length
         ? `<details class="hp-earlier"><summary>${esc(t("hp.earlier", { n: before.length }))}</summary>` +
-          before.map((h) => helperHtml(h, ctx)).join("") +
+          helperListHtml(before, ctx) +
           `</details>`
         : "");
   } catch (e) {

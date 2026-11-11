@@ -70,6 +70,7 @@ import { HostError } from "../../shared/sessions/client.js";
 import { checkHandback } from "../../shared/agents/handback.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
 import { handoffFile, reasonText } from "../../shared/agents/rotation.js";
+import { shownDepths } from "../../shared/agents/helpers.js";
 import {
   parseRotateValue,
   type OverrideScope,
@@ -546,10 +547,11 @@ async function helpers(args: string[], d: AgentsResolved): Promise<number> {
     );
     return 0;
   }
+  const depth = shownDepths(shown);
   for (const l of columns([
     ["HELPER", "WHAT", "TYPE", "MODEL", "STATE", "STARTED", "FOR", "BRANCH"],
     ...shown.map((h) => [
-      `${"  ".repeat(Math.max(0, h.depth - 1))}${h.id}`,
+      `${"  ".repeat(depth.get(h.id) ?? 0)}${h.id}`,
       (h.description ?? "-").slice(0, 48),
       h.workflow
         ? `${h.type ?? "-"} (${h.workflow.name ?? "workflow"})`

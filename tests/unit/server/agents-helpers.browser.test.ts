@@ -23,6 +23,11 @@ import type { Browser, Page } from "playwright";
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import {
+  shownDepths,
+  sortHelpers,
+  type Helper,
+} from "../../../src/shared/agents/helpers.js";
+import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
@@ -33,6 +38,8 @@ const FIXTURE = path.resolve(
 );
 const DONE = "a1f0c0ffee0000001";
 const LIVE = "a2f0c0ffee0000002";
+const PARENT = "a5f0c0ffee0000005";
+const CHILD = "a6f0c0ffee0000006";
 const TOKEN = "00000000-0000-4000-8000-0000000000d3";
 
 let browser: Browser | null = null;
@@ -220,7 +227,66 @@ describe("an agent's helpers on the agents page (D32)", () => {
     const rail = p.locator('[data-nav="agents"]');
     await rail.locator(".den-bdg").waitFor({ timeout: 15_000 });
     expect(await rail.locator(".den-bdg").textContent()).toBe("1");
-    expect(await rail.getAttribute("aria-label")).toContain("1");
+    expect(await rail.getAttribute("aria-label")).toBe(
+      "Agents, 1 helper running",
+    );
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("Escape gives focus back even after the page redrew the opener (its poll)", async () => {
+    if (!browser) return;
+    const { p, errors } = await open();
+    const replace = (sel: string) =>
+      p.evaluate((s) => {
+        const el = document.querySelector(s)!;
+        el.replaceWith(el.cloneNode(true));
+      }, sel);
+    // The dialog's close event comes a task after Escape: wait for focus
+    // to leave it (or a second), then say where it is.
+    const focused = async () => {
+      await p
+        .waitForFunction(
+          () =>
+            !!document.activeElement &&
+            document.activeElement !== document.body &&
+            !document.activeElement.closest("dialog"),
+          undefined,
+          { timeout: 1_000 },
+        )
+        .catch(() => undefined);
+      return p.evaluate(() => {
+        const a = document.activeElement as HTMLElement | null;
+        return a?.matches(".aghs-all")
+          ? "all"
+          : a?.matches("button.agh")
+            ? `row:${a.dataset.helper}`
+            : a?.matches('[data-act="helpers"]')
+              ? "bar"
+              : (a?.tagName ?? "none");
+      });
+    };
+    // "All helpers": the list redraws while the dialog is open.
+    const all = '#agl .aghs[data-helpers-of="scout"] .aghs-all';
+    await p.locator(all).waitFor({ timeout: 15_000 });
+    await p.click(all);
+    await p.locator("#hp-body button.agh").first().waitFor();
+    await replace(all);
+    await p.keyboard.press("Escape");
+    expect(await focused()).toBe("all");
+    // A helper's row, and the pane bar's button, the same.
+    const row = `#agl button.agh[data-helper="${LIVE}"]`;
+    await p.click(row);
+    await p.locator("#tx-dlg .tx-list").waitFor();
+    await replace(row);
+    await p.keyboard.press("Escape");
+    expect(await focused()).toBe(`row:${LIVE}`);
+    const bar = `.pane[data-id="${sid}"] [data-act="helpers"]`;
+    await p.click(bar);
+    await p.locator("#hp-body button.agh").first().waitFor();
+    await replace(bar);
+    await p.keyboard.press("Escape");
+    expect(await focused()).toBe("bar");
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);
@@ -261,6 +327,99 @@ describe("an agent's helpers on the agents page (D32)", () => {
     });
     expect(over.page).toBeLessThanOrEqual(0);
     expect(over.dlg).toBeLessThanOrEqual(0);
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  // Last: it adds helpers (a done parent and its newer done child; neither
+  // runs, so the counts above stay as they are).
+  it("a helper's own helper sits under it, indented, not above it by start time", async () => {
+    if (!browser) return;
+    const dir = path.join(
+      s.tmp,
+      "home",
+      ".claude",
+      "projects",
+      "-seeded",
+      TOKEN,
+      "subagents",
+    );
+    const at = (dt: number) => new Date(Date.now() - dt).toISOString();
+    const write = (id: string, desc: string, dt: number, parent?: string) => {
+      fs.writeFileSync(
+        path.join(dir, `agent-${id}.meta.json`),
+        JSON.stringify({
+          agentType: "general-purpose",
+          description: desc,
+          spawnDepth: parent ? 2 : 1,
+          ...(parent ? { parentAgentId: parent } : {}),
+          finished: true,
+        }),
+      );
+      fs.writeFileSync(
+        path.join(dir, `agent-${id}.jsonl`),
+        JSON.stringify({
+          type: "user",
+          isSidechain: true,
+          agentId: id,
+          timestamp: at(dt),
+          message: { role: "user", content: desc },
+        }) + "\n",
+      );
+    };
+    write(PARENT, "Plan the notes", 5 * 60_000);
+    write(CHILD, "Count one folder", 2 * 60_000, PARENT);
+    const { p, errors } = await open();
+    const group = p.locator('#agl .aghs[data-helpers-of="scout"]');
+    await group
+      .locator(`[data-helper="${CHILD}"]`)
+      .waitFor({ timeout: 20_000 });
+    const rows = await group
+      .locator("button.agh")
+      .evaluateAll((b) =>
+        b.map((x) => [
+          x.dataset.helper,
+          (x as HTMLElement).style.getPropertyValue("--hp-depth"),
+        ]),
+      );
+    expect(rows).toEqual([
+      [LIVE, "0"],
+      [PARENT, "0"],
+      [CHILD, "1"],
+    ]);
+    // The page's twin of shownDepths agrees with the server's.
+    const list: Helper[] = sortHelpers([
+      { id: "p", depth: 1, status: "done", statusFrom: "t", startedAt: 1 },
+      {
+        id: "c",
+        depth: 2,
+        status: "done",
+        statusFrom: "t",
+        startedAt: 2,
+        parentId: "p",
+      },
+      {
+        id: "g",
+        depth: 3,
+        status: "done",
+        statusFrom: "t",
+        startedAt: 3,
+        parentId: "c",
+      },
+      {
+        id: "o",
+        depth: 2,
+        status: "done",
+        statusFrom: "t",
+        startedAt: 4,
+        parentId: "gone",
+      },
+    ]);
+    // A string, so ts-jest leaves the page's own import() alone.
+    const page = (await p.evaluate(
+      `import("/agent-helpers.js").then((m) => [...m.shownDepths(${JSON.stringify(list)})])`,
+    )) as [string, number][];
+    expect(page).toEqual([...shownDepths(list)]);
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);

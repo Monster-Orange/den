@@ -432,6 +432,13 @@ describe("a helper's transcript", () => {
         description: "List files",
       }),
     ).toBe("List files");
+    // A search: what it looks for first (the gate saw "manifests", its path).
+    expect(
+      summarizeToolInput("Grep", { pattern: "TODO", path: "manifests" }),
+    ).toBe("TODO in manifests");
+    expect(summarizeToolInput("Glob", { pattern: "**/*.yml" })).toBe(
+      "**/*.yml",
+    );
     expect(summarizeToolInput("X", { foo: 1, bar: 2 })).toBe("X(foo, bar)");
     expect(summarizeToolInput("X", {})).toBe("X");
   });

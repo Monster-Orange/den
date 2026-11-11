@@ -17,11 +17,15 @@ function fakeApi(): { api: DenApi; paths: string[] } {
   const api: DenApi = {
     baseUrl: "http://localhost:7777",
     async get(path, query = {}, method = "GET") {
-      const [p] = path.split("?");
-      assertAllowedRequest(method, p, query);
+      // The raw path, as the real client checks it (0.4.28-dev.0's gate: a
+      // ?limit= inside the path was refused there).
+      assertAllowedRequest(method, path, query);
       // Only the helpers routes (callTool reads the workspaces and logs
       // refusals to /api/activity itself).
-      if (path.includes("/helpers")) paths.push(path);
+      if (path.includes("/helpers"))
+        paths.push(
+          query.limit === undefined ? path : `${path}?limit=${query.limit}`,
+        );
       if (path === "/api/workspaces")
         return { active: ["north"], focus: "north", workspaces: { north: {} } };
       return { ok: true, helpers: [] };
