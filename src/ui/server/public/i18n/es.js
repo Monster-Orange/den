@@ -816,8 +816,8 @@
     "b.helpers": "{n} ayudantes en marcha",
     "b.helpers.one": "{n} ayudante en marcha",
     "hub.rail": "Hub",
-    "hub.railTip": "{team} en Hub (se abre en otra pestaña)",
-    "hub.railTipPlain": "Hub (se abre en otra pestaña)",
+    "hub.railTip": "{team} en Hub",
+    "hub.railTipPlain": "Abrir Hub",
     "hub.railUnread": "{n} esperan tu respuesta",
     "hub.railRejected":
       "Hub no acepta el token de esta instalación. Vuelve a conectar en Ajustes › Hub.",

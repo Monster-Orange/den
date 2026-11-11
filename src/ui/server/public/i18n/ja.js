@@ -795,8 +795,8 @@
     "hp.st.stopped": "停止",
     "b.helpers": "実行中のヘルパー {n}",
     "hub.rail": "Hub",
-    "hub.railTip": "Hub の {team}（新しいタブで開く）",
-    "hub.railTipPlain": "Hub（新しいタブで開く）",
+    "hub.railTip": "Hub の {team}",
+    "hub.railTipPlain": "Hub を開く",
     "hub.railUnread": "対応待ち {n} 件",
     "hub.railRejected":
       "Hub がこのインストールのトークンを受け付けません。設定 › Hub から再接続してください。",

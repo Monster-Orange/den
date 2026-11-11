@@ -17,6 +17,17 @@ config and manifest changes a distribution must make to move to it under
   goes back to the row. On a phone it is a sheet at the bottom. The row
   keeps its own Resume button.
 
+- **Hub in ⌘K (D51).** When Hub is set up, "Hub" is the first entry in
+  ⌘K. Enter opens it in this tab, and ⌘-Enter (Ctrl-Enter) opens it in a
+  new one. When Den can't open Hub, the entry is greyed, says why, and
+  goes to Settings › Hub.
+
+### Changed
+
+- **The rail's Hub opens in this tab (D51).** It is a plain link now, so
+  you can go back and forth between Den and Hub. ⌘-click (Ctrl-click) and
+  middle-click still open a new tab.
+
 ### Fixed
 
 - **Pop-overs close when you press outside them (D50).** The helpers

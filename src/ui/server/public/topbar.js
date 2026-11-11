@@ -459,6 +459,18 @@ function go(href) {
   window.location.assign(href);
 }
 
+/** D51: `href` in a new tab, through a real link's click (never window.open). */
+function openNewTab(href) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.hidden = true;
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
 /** What paintStatus last saw: the row, the application groups, the env. */
 const health = { row: null, groups: [], env: "local", at: null };
 let hooks = {};
@@ -822,6 +834,20 @@ function paletteItems() {
   const s = sh();
   const items = [];
   const st = s?.getState?.() ?? {};
+  // D51: Hub first, when one is set up. Greyed with why when it can't be
+  // opened (D49): then it goes to Settings › Hub, as the rail's does.
+  const hub = s?.hubLink?.();
+  if (hub)
+    items.push({
+      key: "page:hub",
+      kind: "page",
+      label: t("hub.rail"),
+      sub: hub.href ? hub.team || undefined : hub.why,
+      off: !hub.href,
+      keywords: ["hub", "company", "docs", "comments"],
+      href: hub.href || "/settings#agents.hub",
+      run: () => go(hub.href || "/settings#agents.hub"),
+    });
   for (const n of s?.nav?.() ?? []) {
     if (n.when && !n.when(st)) continue;
     const label = s.t(n.label);
@@ -1002,7 +1028,7 @@ function openPalette() {
       ? list
           .map(
             (x, i) =>
-              `<li role="option" id="den-pal-o-${i}" data-i="${i}" aria-selected="${i === sel}">` +
+              `<li role="option" id="den-pal-o-${i}" data-i="${i}" aria-selected="${i === sel}"${x.off ? ' class="den-off" data-off' : ""}>` +
               (x.dot != null
                 ? `<span class="den-dot ${x.dot}" aria-hidden="true"></span>`
                 : "") +
@@ -1020,10 +1046,13 @@ function openPalette() {
       block: "nearest",
     });
   };
-  const pick = (x) => {
+  const pick = (x, newTab = false) => {
     if (!x) return;
     // Focus goes back first; then the row runs (it may navigate).
     closeOverlay(true);
+    // D51: ⌘/Ctrl-Enter (or -click) opens a page in a new tab, through a
+    // real link (D35: Safari blocks window.open outside a click).
+    if (newTab && x.href) return openNewTab(x.href);
     x.run();
   };
   input.addEventListener("input", () => {
@@ -1041,7 +1070,7 @@ function openPalette() {
       draw();
     } else if (e.key === "Enter") {
       e.preventDefault();
-      pick(list[sel]);
+      pick(list[sel], e.metaKey || e.ctrlKey);
     } else if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -1051,7 +1080,7 @@ function openPalette() {
   ul.addEventListener("mousedown", (e) => e.preventDefault());
   ul.addEventListener("click", (e) => {
     const li = e.target.closest?.("li[data-i]");
-    if (li) pick(list[+li.dataset.i]);
+    if (li) pick(list[+li.dataset.i], e.metaKey || e.ctrlKey);
   });
   wrap.addEventListener("mousedown", (e) => {
     if (e.target === wrap) closeOverlay(true);

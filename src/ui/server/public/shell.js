@@ -923,8 +923,8 @@
     "b.helpers": "{n} helpers running",
     "b.helpers.one": "{n} helper running",
     "hub.rail": "Hub",
-    "hub.railTip": "{team} on Hub (opens in a new tab)",
-    "hub.railTipPlain": "Hub (opens in a new tab)",
+    "hub.railTip": "{team} on Hub",
+    "hub.railTipPlain": "Open Hub",
     "hub.railUnread": "{n} waiting on you",
     "hub.railRejected":
       "Hub doesn't accept this install's token. Reconnect in Settings › Hub.",
@@ -2615,9 +2615,10 @@
   }
 
   /**
-   * The rail's Hub link, above Settings: only once this install is
-   * connected. It opens the company's page on Hub in a new tab, with a
-   * count of what waits on the person (whoami's unread). A token Hub
+   * The rail's Hub link, above Settings. It opens the company's page on
+   * Hub in this tab (D51: a plain link, so ⌘-, Ctrl- and middle-click
+   * still give a new one), with a count of what waits on the person
+   * (whoami's unread). A token Hub
    * rejects, or a role it forbids, greys it, and it goes to Settings ›
    * Hub, which says what to do.
    */
@@ -2635,28 +2636,41 @@
       return "";
     }
   }
-  function hubItem() {
+  /**
+   * Where Hub is, for the rail and ⌘K (D51): null when no Hub is set up;
+   * else `href` (Hub, opened in this tab) or, when it can't be opened,
+   * `why` (D49's reason; the item is greyed and goes to Settings › Hub).
+   */
+  function hubLink() {
     var h = state.hub;
-    if (!h || !h.configured) return "";
-    var label = t("hub.rail");
-    // Configured: always in the rail. Connected, it opens Hub; otherwise
-    // it is greyed, goes to Settings › Hub and says why (D49: a Hub that
+    if (!h || !h.configured) return null;
+    // Configured: always there. Connected, it opens Hub; otherwise it is
+    // greyed, goes to Settings › Hub and says why (D49: a Hub that
     // vanished from the rail left no way across).
     var href =
       h.state === "connected"
         ? hubTarget(h.teamUrl || "") || hubTarget(h.url || "")
         : "";
+    if (href) return { href: href, team: h.team || "" };
+    var key =
+      {
+        rejected: "hub.railRejected",
+        forbidden: "hub.railForbidden",
+        no_token: "hub.railNoToken",
+        unreachable: "hub.railUnreachable",
+        bad_config: "hub.railBadConfig",
+      }[h.state] ||
+      (h.state === "connected" ? "hub.railBadUrl" : "hub.railUnreachable");
+    return { href: "", why: t(key) };
+  }
+  function hubItem() {
+    var h = state.hub;
+    var link = hubLink();
+    if (!link) return "";
+    var label = t("hub.rail");
+    var href = link.href;
     if (!href) {
-      var key =
-        {
-          rejected: "hub.railRejected",
-          forbidden: "hub.railForbidden",
-          no_token: "hub.railNoToken",
-          unreachable: "hub.railUnreachable",
-          bad_config: "hub.railBadConfig",
-        }[h.state] ||
-        (h.state === "connected" ? "hub.railBadUrl" : "hub.railUnreachable");
-      var why = t(key);
+      var why = link.why;
       return (
         '<a class="den-ni den-hub den-off" href="/settings#agents.hub" data-nav="hub" data-hub="' +
         esc(h.state || "unknown") +
@@ -2679,7 +2693,7 @@
     return (
       '<a class="den-ni den-hub" href="' +
       esc(href) +
-      '" target="_blank" rel="noopener noreferrer" data-nav="hub" data-hub="connected" title="' +
+      '" data-nav="hub" data-hub="connected" title="' +
       esc(tip) +
       '" aria-label="' +
       esc(label + ", " + tip + (waiting ? ", " + waiting : "")) +
@@ -2687,7 +2701,7 @@
       icon("hub") +
       '<span class="den-lbl">' +
       esc(label) +
-      ' <span class="den-ext" aria-hidden="true">↗</span></span>' +
+      "</span>" +
       (n
         ? '<span class="den-bdg" aria-hidden="true">' +
           esc(n > 99 ? "99+" : n) +
@@ -5021,6 +5035,8 @@
     setOrgs: setOrgs,
     setWorkspaces: setWorkspaces,
     workspaceNames: workspaceNames,
+    // D51: Hub's link for ⌘K (null: none set up).
+    hubLink: hubLink,
     /** Repaint the Env part from #env-sel (after setting its value). */
     syncEnv: syncEnv,
     syncPinToggles: syncPinToggles,
@@ -5331,6 +5347,9 @@
     ".den-pal li .den-kind { margin-left: auto; font: 11px var(--mono); color: var(--faint); text-transform: uppercase;",
     "  letter-spacing: .05em; white-space: nowrap; }",
     ".den-pal li .den-sub { color: var(--faint); font: 12px var(--mono); white-space: nowrap; }",
+    // D51: Hub when it can't be opened: greyed, its reason in words.
+    ".den-pal li.den-off .den-pal-l { color: var(--muted); }",
+    ".den-pal li.den-off .den-sub { font: 12px var(--sans); white-space: normal; min-width: 0; }",
     ".den-pal li.den-pal-empty { cursor: default; color: var(--muted); }",
     ".den-pal .den-foot { display: flex; gap: 14px; padding: 8px 14px; border-top: 1px solid var(--border);",
     "  color: var(--faint); font-size: 12px; flex-wrap: wrap; }",
