@@ -602,6 +602,60 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await p.context().close();
     }, 60_000);
 
+    for (const how of ["click", "Tab"] as const)
+      it(`a pick whose socket opens late doesn't take the keyboard once the person has gone elsewhere (${how})`, async () => {
+        if (skip()) return;
+        const p = await page(`/agents?layout=focus`);
+        // Hold every terminal socket's open until the test says so.
+        await p.context().addInitScript(() => {
+          const W = window.WebSocket;
+          const held: (() => void)[] = [];
+          let go = false;
+          (window as unknown as { __releaseIo: () => void }).__releaseIo =
+            () => {
+              go = true;
+              for (const f of held.splice(0)) f();
+            };
+          class Held extends W {
+            constructor(url: string | URL, prot?: string | string[]) {
+              super(url, prot);
+              if (!String(url).endsWith("/io")) return;
+              let fn: ((e: Event) => void) | null = null;
+              Object.defineProperty(this, "onopen", {
+                get: () => fn,
+                set: (f) => (fn = f),
+              });
+              super.addEventListener("open", (e) => {
+                const fire = () => fn?.call(this, e);
+                if (go) fire();
+                else held.push(fire);
+              });
+              Object.defineProperty(this, "readyState", {
+                get: () => (go ? super.readyState : W.CONNECTING),
+              });
+            }
+          }
+          window.WebSocket = Held as typeof WebSocket;
+        });
+        await p.reload();
+        await p.waitForSelector(row("planner"));
+        await p.click(row("planner"));
+        await p.waitForSelector(`.pane[data-id="${sid.planner}"] .xterm-rows`);
+        // Elsewhere: the list's heading, not a row (a click that picks nothing).
+        if (how === "click")
+          await p.locator("#agl").click({ position: { x: 4, y: 2 } });
+        else await p.keyboard.press("Tab");
+        await p.evaluate(() =>
+          (window as unknown as { __releaseIo: () => void }).__releaseIo(),
+        );
+        await new Promise((r) => setTimeout(r, 500));
+        expect(
+          await p.evaluate(() => !!document.activeElement?.closest(".pane")),
+        ).toBe(false);
+        expect(await typedInto(p, "z1")).toEqual([]);
+        await p.context().close();
+      }, 60_000);
+
     for (const [where, url, width] of [
       ["at 375px (Tabs, one pane in sight)", "/agents?layout=focus", 375],
       ["in Tabs at 1440", "/agents?layout=tabs", 1440],
