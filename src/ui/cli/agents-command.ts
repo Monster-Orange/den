@@ -90,6 +90,9 @@ import {
   AgentError,
   importAgent,
   changePersona,
+  restartAgent,
+  staleAgents,
+  type McpStale,
   listAgents,
   agentHelpers,
   agentHelperTranscript,
@@ -145,7 +148,7 @@ export {
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|relaunch|rotate|keep|handoff|import|persona|helpers|rename|rm|personas|doctor|handback-check|handoff-check> ...",
+    "agents <list|start|stop|resume|relaunch|rotate|keep|handoff|import|persona|restart|helpers|rename|rm|personas|doctor|handback-check|handoff-check> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -203,6 +206,10 @@ export const AGENTS_HELP = {
     "    persona's role, permissions and commands; id, name, folder and model stay.",
     "    Mid-turn it asks: --after-turn waits for the turn to end, --now stops it.",
     "    A person's only (refused in an agent's session)",
+    "{cli} agents restart <id> [-w <ws>] [--now]",
+    "    stop a running agent and resume the same conversation, so it gets the",
+    "    tools it would get now (Hub's, after Connect). It waits for its turn",
+    "    to end; --now stops it at once. A person's only",
     "{cli} agents rename <id> <name> [-w <ws>]",
     "{cli} agents rename <id> --clear [-w <ws>]",
     "    name an agent (its tab, row and pane header); the id never changes.",
@@ -218,7 +225,8 @@ export const AGENTS_HELP = {
     "{cli} agents doctor [-w <ws>] [--json]",
     "    each runtime, installed first: status, the CLI it runs and where it came",
     "    from, its version, the directories searched, and the fix; exit 1 when the",
-    "    default is missing. -w: as that workspace's agents find them",
+    "    default is missing. -w: as that workspace's agents find them. Also the",
+    "    running agents whose tools are out of date (Hub changed since they started)",
     "{cli} agents handback-check <file|-> [--json]",
     "    checks a hand-back to a person: URL, machine, branch, what changed, what",
     "    to click and decisions are all there, every ID is explained, and each",
@@ -477,6 +485,54 @@ async function persona(args: string[], d: AgentsResolved): Promise<number> {
       ? `agent ${s.rec.id} is now ${s.rec.persona} (was ${s.from}); ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
       : `agent ${s.rec.id} is now ${s.rec.persona} (was ${s.from}); same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
   );
+}
+
+/**
+ * D44: `agents restart <id> [-w <ws>] [--now]`: the same conversation,
+ * launched again with what it gets now. A person's only.
+ */
+async function restart(args: string[], d: AgentsResolved): Promise<number> {
+  const where = "agents restart";
+  if (d.env[ACTOR_TOKEN_ENV] !== undefined)
+    throw new AgentError(
+      `${where}: only a person can restart an agent (this is an agent's session)`,
+    );
+  const p = parseArgs(where, args, { "--workspace": true, "--now": false });
+  noExtra(where, p, 1);
+  const [id] = p.positional;
+  if (!id) throw new UsageError(`${where} needs <id>`);
+  const now = p.flags["--now"] === true;
+  if (!now) d.out(`waiting for agent ${id}'s turn to end…`);
+  const s = await restartAgent(
+    d,
+    id,
+    workspaceFlag(where, p),
+    now ? "now" : "after-turn",
+  );
+  return report(
+    d,
+    s,
+    s.fresh
+      ? `restarted agent ${s.rec.id}; ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
+      : `restarted agent ${s.rec.id}; same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
+  );
+}
+
+/** D44: doctor's lines for the running agents with out-of-date tools. */
+export function staleLines(
+  stale: { id: string; workspace: string; stale: McpStale }[],
+  cli: string,
+): string[] {
+  if (!stale.length) return ["Agents' tools     all current"];
+  const say = (x: McpStale) =>
+    x.adds.length
+      ? `${x.adds.join(", ")} tools arrive on restart`
+      : `${x.drops.join(", ")} tools go on restart`;
+  return [
+    `Agents' tools     ${stale.length} running ${stale.length === 1 ? "agent started" : "agents started"} before the change:`,
+    ...stale.map((a) => `  ${a.id} (${a.workspace}): ${say(a.stale)}`),
+    `  \`${cli} agents restart <id>\` restarts one at its next idle, same conversation`,
+  ];
 }
 
 /** `<id> [-w <ws>]`. */
@@ -1153,6 +1209,8 @@ async function doctor(
     /* none readable: none shown */
   }
   const denied = readApiOnlyAudit(d.stateDir(), 50);
+  // D44: never fails doctor (no host: none running).
+  const stale = await staleAgents(d).catch(() => []);
   if (p.flags["--json"]) {
     d.out(
       JSON.stringify(
@@ -1176,6 +1234,7 @@ async function doctor(
             guardrail: true,
             denied,
           },
+          staleTools: stale,
           ...(ws ? { workspace: ws } : {}),
           userConfig: d.userConfigFile(),
         },
@@ -1196,6 +1255,8 @@ async function doctor(
   for (const l of subagentLines(subagentsReport(d), claudeVersion)) d.out(l);
   d.out("");
   for (const l of apiOnlyLines(apiOnly, rts, denied)) d.out(l);
+  d.out("");
+  for (const l of staleLines(stale, d.cli)) d.out(l);
   d.out("");
   d.out(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,
@@ -1242,6 +1303,9 @@ export async function cmdAgents(
         case "persona":
           await loadAgentWorkspaces(deps);
           return await persona(rest, d);
+        case "restart":
+          await loadAgentWorkspaces(deps);
+          return await restart(rest, d);
         case "helpers":
           return await helpers(rest, d);
         case "rename":

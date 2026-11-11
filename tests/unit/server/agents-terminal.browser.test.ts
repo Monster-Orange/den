@@ -802,6 +802,57 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     }
   }, 60_000);
 
+  it("D44: a running agent whose tools predate Hub's Connect says so, on its row and pane; Restart asks for it at its next idle", async () => {
+    if (skip()) return;
+    const p = await page(`/agents?open=${sid.planner}&layout=focus`);
+    await p.route("**/api/sessions*", async (r) => {
+      const res = await r.fetch();
+      const body = (await res.json()) as {
+        sessions: { agent?: string; mcpStale?: unknown }[];
+      };
+      for (const x of body.sessions)
+        if (x.agent === "planner") x.mcpStale = { adds: ["hub"], drops: [] };
+      await r.fulfill({ response: res, json: body });
+    });
+    const posted: { url: string; body: unknown }[] = [];
+    await p.route("**/agents/planner/restart", (r) => {
+      posted.push({
+        url: new URL(r.request().url()).pathname,
+        body: r.request().postDataJSON(),
+      });
+      return r.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: '{"ok":true,"agent":"planner","pending":true}',
+      });
+    });
+    await p.reload();
+    const row = (id: string) => `#agl .agr[data-id="${sid[id]}"]`;
+    const bar = `.pane[data-id="${sid.planner}"] .bar2`;
+    await p.waitForSelector(`${bar} [data-mcp-stale="adds"]`, {
+      timeout: 15_000,
+    });
+    expect(await p.textContent(`${bar} [data-mcp-stale]`)).toBe(
+      "Hub tools arrive on restart",
+    );
+    expect(await p.textContent(`${row("planner")} [data-mcp-stale]`)).toBe(
+      "Hub tools arrive on restart",
+    );
+    // Not on the codex agent, whose tools are current.
+    expect(await p.locator(`${row("coder")} [data-mcp-stale]`).count()).toBe(0);
+    await p.click(`${bar} [data-act="tools-restart"]`);
+    await p.waitForFunction(() =>
+      /restarts at its next idle/.test(document.body.textContent ?? ""),
+    );
+    expect(posted).toEqual([
+      {
+        url: "/api/workspaces/north/agents/planner/restart",
+        body: { when: "after-turn" },
+      },
+    ]);
+    await p.context().close();
+  }, 60_000);
+
   it("raised no page errors", () => {
     if (skip()) return;
     expect(errors).toEqual([]);

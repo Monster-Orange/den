@@ -79,7 +79,10 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
               "a call naming another workspace is refused, and lists show this one only, " +
               "each with a `scope` block saying how much is hidden. org_summary has " +
               "every workspace and repo (names and status counts), the graph, the " +
-              "edge and the environments: start there for the whole picture."
+              "edge and the environments: start there for the whole picture. " +
+              "whoami says whether Hub's tools are yours: if Hub is connected but " +
+              "they are missing, ask the person to restart you from Den (it keeps " +
+              "this conversation); never ask them to make a token."
             : " org_summary has the whole org at a glance: start there."),
     },
   );

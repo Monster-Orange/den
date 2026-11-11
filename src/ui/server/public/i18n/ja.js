@@ -612,6 +612,15 @@
     "ag.apiOnlyOff": "API のみは未適用",
     "ag.apiOnlyOffTip":
       "このランタイムには Den が使えるフックがないため、{names} の API に制限されません。制限が必要なエージェントには den-claude を使ってください。",
+    "ag.mcp.adds": "再起動で Hub のツールが使えます",
+    "ag.mcp.addsTip":
+      "このエージェントの起動後に Hub が接続されたため、まだ Hub のツールがありません。再起動しても会話は続き、ターンの終わりを待ちます。",
+    "ag.mcp.drops": "再起動で Hub のツールが外れます",
+    "ag.mcp.dropsTip":
+      "このエージェントの起動後に Hub が切断されたため、Hub のツールはもう動きません。再起動しても会話は続き、ターンの終わりを待ちます。",
+    "ag.mcp.restart": "再起動",
+    "ag.mcp.restartName": "{id} を次の待機時に再起動",
+    "ag.mcp.restarting": "{id} は次の待機時に同じ会話で再起動します。",
     "ag.det.label": "{id} の詳細",
     "ag.det.close": "閉じる",
     "ag.det.where": "場所",

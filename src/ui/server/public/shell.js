@@ -740,6 +740,16 @@
     "ag.apiOnlyOff": "API-only not enforced",
     "ag.apiOnlyOffTip":
       "This runtime has no hook Den can use, so it isn't held to {names}' API. Use den-claude for agents that must be.",
+    "ag.mcp.adds": "Hub tools arrive on restart",
+    "ag.mcp.addsTip":
+      "Hub was connected after this agent started, so it doesn't have Hub's tools yet. Restart keeps its conversation and waits for its turn to end.",
+    "ag.mcp.drops": "Hub tools go on restart",
+    "ag.mcp.dropsTip":
+      "Hub was disconnected after this agent started; its Hub tools no longer work. Restart keeps its conversation and waits for its turn to end.",
+    "ag.mcp.restart": "Restart",
+    "ag.mcp.restartName": "Restart {id} at its next idle",
+    "ag.mcp.restarting":
+      "{id} restarts at its next idle, in the same conversation.",
     "ag.det.label": "Details for {id}",
     "ag.det.close": "Close",
     "ag.det.where": "Where",

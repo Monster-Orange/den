@@ -148,8 +148,8 @@ const ACTION_ROUTES: Record<string, string> = {
 
 /**
  * Routes with a parameter: an agent's resume (MCP agent_resume), Bring
- * in's list and import (MCP agent_import, AG-17.1), and an agent's helpers
- * (MCP agent_helpers, D32, GET only).
+ * in's list and import (MCP agent_import, AG-17.1), an agent's helpers
+ * (MCP agent_helpers, D32, GET only) and its tools (MCP whoami, D44).
  */
 const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
   // One held request's state (its own, the server checks). Never /decide.
@@ -165,6 +165,11 @@ const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
   // D32 (MCP agent_helpers): an agent's helpers, or one's transcript. Reads.
   {
     re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/helpers(?:\/[A-Za-z0-9_-]{1,128})?$/,
+    method: "GET",
+  },
+  // D44 (MCP whoami): whether an agent's own tools are current. A read.
+  {
+    re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/tools$/,
     method: "GET",
   },
   {

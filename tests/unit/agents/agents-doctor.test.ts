@@ -108,6 +108,8 @@ describe("agents doctor", () => {
       "",
       "API-only services  none declared (a service's manifest says `agents: api_only`)",
       "",
+      "Agents' tools     all current",
+      "",
       "`acme doctor --probe` checks the env each runtime's session gets.",
     ]);
     // Never an env value (the rig's env holds a token-shaped one).

@@ -594,9 +594,10 @@ function rowHtml(r) {
     : "";
   const ovTags = r.kind === "agent" ? overrideTagsHtml(r) : "";
   const wTag = whereTag(r);
+  const mTag = mcpStaleTag(r, false);
   const tags =
-    rotTag || revokedTag || ovTags || wTag
-      ? `<span class="agtags">${revokedTag}${rotTag}${wTag}${ovTags}</span>`
+    rotTag || revokedTag || ovTags || wTag || mTag
+      ? `<span class="agtags">${revokedTag}${mTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
   const button =
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
@@ -1276,6 +1277,36 @@ function apiOnlyTag(r) {
     : `<span class="tagx warn" data-api-only="off" title="${esc(t("ag.apiOnlyOffTip", { names: list }))}">${esc(t("ag.apiOnlyOff"))}</span>`;
 }
 
+/**
+ * D44: a running agent whose MCP servers are out of date (Hub connected or
+ * disconnected since it launched): a tag, and on the pane bar Restart (at
+ * its next idle, same conversation).
+ */
+function mcpStaleTag(r, withButton) {
+  const sx = r?.kind === "agent" && !isStopped(r) ? r.mcpStale : null;
+  if (!sx || !(sx.adds?.length || sx.drops?.length)) return "";
+  const k = sx.adds?.length ? "adds" : "drops";
+  const tag = `<span class="tagx warn" data-mcp-stale="${k}" title="${esc(t(`ag.mcp.${k}Tip`))}">${esc(t(`ag.mcp.${k}`))}</span>`;
+  if (!withButton) return tag;
+  return (
+    `<span class="agstale">${tag}` +
+    `<button type="button" class="den-btn sm" data-act="tools-restart" aria-label="${esc(t("ag.mcp.restartName", { id: r.agent }))}" title="${esc(t("ag.mcp.restartName", { id: r.agent }))}">${esc(t("ag.mcp.restart"))}</button></span>`
+  );
+}
+
+/** D44: Restart at its next idle; the list shows it come back. */
+async function restartForTools(r, button) {
+  if (button) button.disabled = true;
+  try {
+    await api("POST", agentPath(r, "restart"), { when: "after-turn" });
+    window.denShell?.toast?.(t("ag.mcp.restarting", { id: r.agent }));
+  } catch (err) {
+    if (button) button.disabled = false;
+    window.denShell?.errorToast?.(err);
+  }
+  await refresh();
+}
+
 function paintBar(p) {
   const r = rowOf(p.id);
   const bar = p.el.querySelector(".bar2");
@@ -1323,6 +1354,7 @@ function paintBar(p) {
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +
     apiOnlyTag(r) +
+    mcpStaleTag(r, true) +
     whereTag(r, true) +
     subagentTag(r) +
     (r?.kind === "agent" && rotActionsHtml(r)
@@ -3530,7 +3562,10 @@ export async function mountAgentsPage(root) {
       else if (b.dataset.act === "rot-write") void writeHandoff(r, b);
       else if (b.dataset.act === "rot-keep") void keepConversation(r, b);
     } else if (b.dataset.act === "stop") void stopAgent(p, b);
-    else if (b.dataset.act === "resume") {
+    else if (b.dataset.act === "tools-restart") {
+      const r = rowOf(id);
+      if (r) void restartForTools(r, b);
+    } else if (b.dataset.act === "resume") {
       const r = rowOf(id);
       if (r) void restartRow(r, "resume", b);
     } else if (b.dataset.act === "reconnect") void connect(p);

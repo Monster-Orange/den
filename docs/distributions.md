@@ -1030,6 +1030,20 @@ hub:
   agents don't have it.
 - A Hub that is down, or a token that can't be read, never stops an
   agent: it starts without Hub.
+- A running agent keeps the MCP servers it started with. When Hub is
+  connected after it started (or disconnected), its row and pane say
+  "Hub tools arrive on restart" (or "Hub tools go on restart"), with
+  Restart on the pane. Restart waits for its turn to end, then stops it
+  and resumes the same conversation, now with Hub's tools (`agents
+restart <id>`; `--now` stops it at once). After Connect or Disconnect,
+  Settings › Agents › Hub offers "Restart N agents at their next idle".
+  `agents doctor` lists those agents. A restart is a person's: an
+  agent's token is refused.
+- An agent can ask Den about itself with the MCP tool `whoami`: its id,
+  workspace, and whether Hub is connected and its tools are loaded. When
+  Hub is connected but its tools are missing, it tells the person to
+  restart it from Den. There is no token step for the agent or the
+  person.
 
 ### Status
 
@@ -2675,6 +2689,7 @@ server scoped to its workspace.
 <cli> agents import -w <ws> [--runtime <r>] [--json]          # conversations to bring in
 <cli> agents import -w <ws> --session <id> --persona <p> [--model <m>]  # bring one in
 <cli> agents persona <id> <persona> [-w <ws>] [--model <m>] [--now | --after-turn]  # change its persona
+<cli> agents restart <id> [-w <ws>] [--now]  # the same conversation, with the tools it gets now
 <cli> agents personas [--json]
 <cli> agents doctor [-w <ws>] [--json]  # can each runtime run here, and why not
 <cli> agents handback-check <file|->    # is a hand-back complete and plain (see Guardrails)

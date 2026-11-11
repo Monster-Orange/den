@@ -243,6 +243,24 @@ const READ_TOOLS: DenTool[] = [
     },
   ),
   read(
+    "whoami",
+    "Who you are to Den, and your tools",
+    "D44: your agent id and workspace, and whether Hub's tools (hub_*) are yours: `hub.connected` (this Den is connected to Hub), `hub.loaded` (your session started with Hub's tools), `hub.restart` (a restart from Den brings them in line), and `note`, one line to tell the person. When Hub is connected but its tools are missing, say so and ask the person to restart you from Den (Restart keeps this conversation); there is no token for you or them to make. Reads only.",
+    {},
+    async (_a, { api, scope }) => {
+      const id = scope?.actor.startsWith("agent:")
+        ? scope.actor.slice("agent:".length)
+        : "";
+      if (!scope || !id)
+        throw new Refusal(
+          "whoami: this MCP server isn't an agent's (no --actor agent:<id>), so there is no agent to describe.",
+        );
+      return api.get(
+        `/api/workspaces/${encodeURIComponent(scope.workspace)}/agents/${encodeURIComponent(id)}/tools`,
+      );
+    },
+  ),
+  read(
     "approval_check",
     "Check an approval",
     "Where one of your write requests stands (workspace_create, repo_add, service_try): `state` pending, done (with the server's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",

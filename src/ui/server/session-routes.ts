@@ -70,7 +70,9 @@ import type { HelperSettings } from "../../shared/agents/helpers.js";
 import { readAgentsConfig } from "../../shared/den-config.js";
 import {
   agentRows,
+  defaultHubNow,
   isStoppedState,
+  mcpStaleOf,
   newerOf,
   noteEnded,
   rowHelpers,
@@ -104,6 +106,8 @@ export interface SessionRouteDeps {
   rotationPolicy?: () => (rec: AgentRecord) => RotationPolicy | undefined;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
+  /** D44: the Hub server URL an agent would get now (null: none). */
+  hubNow?: () => Promise<string | null>;
 }
 
 interface Resolved {
@@ -116,6 +120,7 @@ interface Resolved {
   waitingAgents: () => ReadonlySet<string>;
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
   helperSettings: () => HelperSettings | undefined;
+  hubNow: () => Promise<string | null>;
 }
 
 /** A workspace name as `?ws=` may give it. */
@@ -155,6 +160,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
         )),
     pty: d.pty ?? (() => loadPty()),
     waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
+    hubNow: d.hubNow ?? (() => defaultHubNow()),
     ...(d.rotationPolicy ? { rotationPolicy: d.rotationPolicy } : {}),
   };
 }
@@ -237,6 +243,8 @@ export interface ListedSession {
   lastRotation?: RotationEntry;
   /** D32: its helpers (counts and the recent ones). */
   helpers?: AgentRow["helpers"];
+  /** D44: running with MCP servers out of date (Hub since it launched). */
+  mcpStale?: AgentRow["mcpStale"];
 }
 
 /** The list, from the host's sessions and the agent records. */
@@ -248,6 +256,8 @@ export function listedSessions(
     Pick<SessionRouteDeps, "rotationPolicy">,
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
+  /** D44: the Hub server URL agents get now; undefined: not checked. */
+  hubUrl?: string | null,
 ): ListedSession[] {
   const dist = d.dist();
   const active = new Set(d.activeWorkspaces());
@@ -320,6 +330,11 @@ export function listedSessions(
       ...(r.lastRotation ? { lastRotation: r.lastRotation } : {}),
       ...(revoked.has(rec.id) && s && !s.exited ? { tokenRevoked: true } : {}),
       ...(waiting.has(rec.id) && s && !s.exited ? { waiting: true } : {}),
+      ...(() => {
+        if (hubUrl === undefined || r.state !== "running") return {};
+        const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), hubUrl);
+        return st ? { mcpStale: st } : {};
+      })(),
       // D32: the helpers it started in its own session.
       ...(() => {
         const h = rowHelpers(
@@ -419,6 +434,7 @@ export async function handleSessionList(
       sessions,
       d,
       wanted?.known ? wanted.workspace : undefined,
+      sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
     ),
     workspaces: d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),

@@ -114,6 +114,9 @@ import {
   deletePersona,
   listAgents,
   agentDetails,
+  agentTools,
+  restartAgent,
+  staleAgents,
   agentHelpers,
   agentHelperTranscript,
   listPersonas,
@@ -185,13 +188,15 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|handoff|clear-helpers))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|handoff|clear-helpers|restart))?$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
   /^\/api\/workspaces\/([^/]+)\/agents\/([^/]+)\/helpers(?:\/([^/]+))?$/;
 /** D45: a stopped agent's details (read-only). */
 const DETAILS_PATH = /^\/api\/workspaces\/([^/]+)\/agents\/([^/]+)\/details$/;
+/** D44: whether an agent's tools are current (read-only, for its MCP). */
+const TOOLS_PATH = /^\/api\/workspaces\/([^/]+)\/agents\/([^/]+)\/tools$/;
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 const PERSONA_PATH = /^\/api\/personas\/([^/]+)$/;
 const PLAIN_PATH = /^\/api\/workspaces\/([^/]+)\/sessions$/;
@@ -444,6 +449,13 @@ export async function handleAgentRoutes(
   if (hp) return helpersRoute(req, res, hp, webDeps(deps.agents));
   const dp = DETAILS_PATH.exec(pathname);
   if (dp) return detailsRoute(req, res, dp, webDeps(deps.agents));
+  const tp = TOOLS_PATH.exec(pathname);
+  if (tp) return toolsRoute(req, res, tp, webDeps(deps.agents));
+  if (
+    pathname === "/api/agents/stale" ||
+    pathname === "/api/agents/restart-stale"
+  )
+    return staleRoute(req, res, pathname, webDeps(deps.agents), deps);
   // HUB-1.5: Settings › Hub. Never the token: hubStatus doesn't return it.
   if (pathname === "/api/hub") {
     const method = req.method ?? "GET";
@@ -556,6 +568,7 @@ export async function handleAgentRoutes(
     | "keep"
     | "handoff"
     | "clear-helpers"
+    | "restart"
     | undefined;
 
   if (!action && method === "GET") {
@@ -643,6 +656,11 @@ export async function handleAgentRoutes(
         "only a person can keep an agent's conversation past its rotation",
         { status: 403 },
       );
+    // D44: a restart is the person's (it stops a session).
+    if (verb === "restart" && (agent || actor))
+      throw new AgentError("only a person can restart an agent", {
+        status: 403,
+      });
     // D34: clearing what a person sees is a person's.
     if (verb === "clear-helpers" && (agent || actor))
       throw new AgentError("only a person can clear an agent's helpers", {
@@ -845,6 +863,38 @@ export async function handleAgentRoutes(
       audit(what, s.early ? "exited at once" : undefined);
       // Never prompted: nothing was resumed, so it says so (not "same
       // conversation").
+      sendStarted(res, s, d, s.fresh ? { note: FRESH_NOTE } : {});
+    } else if (verb === "restart") {
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "when")
+          throw new AgentError(`${k}: unknown field (restart takes when)`, {
+            usage: true,
+          });
+      const when = body.when ?? "after-turn";
+      if (when !== "now" && when !== "after-turn")
+        throw new AgentError("when must be now or after-turn", {
+          usage: true,
+        });
+      what = `restart ${id} in ${ws} (${when === "now" ? "now" : "at its next idle"}), same conversation`;
+      if (when === "after-turn") {
+        // It may wait for a long turn: answer now, audit when it's done.
+        void restartAgent(
+          d,
+          id!,
+          ws,
+          "after-turn",
+          deps.personaWait ?? {},
+        ).then(
+          (s) => audit(what, s.early ? "exited at once" : undefined),
+          (e: unknown) =>
+            audit(what, e instanceof Error ? e.message : String(e)),
+        );
+        sendJson(res, { ok: true, agent: id, pending: true }, 202);
+        return true;
+      }
+      const s = await restartAgent(d, id!, ws, "now");
+      audit(what, s.early ? "exited at once" : undefined);
       sendStarted(res, s, d, s.fresh ? { note: FRESH_NOTE } : {});
     } else if (verb === "remove") {
       const removed = await removeAgent(d, id!, ws);
@@ -1516,6 +1566,108 @@ async function detailsRoute(
     sendJson(res, await agentDetails(d, id, ws));
   } catch (e) {
     sendError(res, e, ws);
+  }
+  return true;
+}
+
+/**
+ * D44: GET .../agents/:id/tools: whether agent :id's MCP servers are
+ * current. Hub `connected` (it would get Hub now), `loaded` (its running
+ * session has Hub's tools), and `restart` (a restart brings them in line).
+ * Read-only; an agent may read its own (its MCP's whoami).
+ */
+async function toolsRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  tp: RegExpExecArray,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD")
+    return methodNotAllowed(res, "GET");
+  const ws = safeDecode(tp[1]);
+  const id = safeDecode(tp[2]);
+  try {
+    if (!d.workspaceExists(ws))
+      throw new AgentError(`workspace "${ws}" does not exist`, { status: 404 });
+    sendJson(res, await agentTools(d, id, ws));
+  } catch (e) {
+    sendError(res, e, ws);
+  }
+  return true;
+}
+
+/**
+ * D44: GET /api/agents/stale: the running agents whose MCP servers are out
+ * of date (`?fresh=1` asks Hub's config again, after Connect or
+ * Disconnect). POST /api/agents/restart-stale: restarts each at its next
+ * idle, same conversation; a person's only, audited.
+ */
+async function staleRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: AgentsResolved,
+  deps: AgentRouteDeps,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  const post = pathname === "/api/agents/restart-stale";
+  if (post ? method !== "POST" : method !== "GET" && method !== "HEAD")
+    return methodNotAllowed(res, post ? "POST" : "GET");
+  const fresh =
+    new URL(req.url ?? "/", "http://localhost").searchParams.get("fresh") ===
+    "1";
+  if (!post) {
+    try {
+      sendJson(res, { agents: await staleAgents(d, { fresh }) });
+    } catch (e) {
+      sendError(res, e);
+    }
+    return true;
+  }
+  const actor = auditActorOf(req);
+  let what = "restart agents with out-of-date tools at their next idle";
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (agentPrincipalOf(req) || actor)
+      throw new AgentError("only a person can restart agents", {
+        status: 403,
+      });
+    guard(actor);
+    const body = await jsonBody(req);
+    for (const k of Object.keys(body))
+      throw new AgentError(`${k}: unknown field (restart-stale takes none)`, {
+        usage: true,
+      });
+    const list = await staleAgents(d, { fresh: true });
+    what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
+    audit(what);
+    for (const a of list) {
+      const one = `restart ${a.id} in ${a.workspace} (at its next idle), same conversation, for its tools`;
+      void restartAgent(
+        d,
+        a.id,
+        a.workspace,
+        "after-turn",
+        deps.personaWait ?? {},
+      ).then(
+        (s) => audit(one, s.early ? "exited at once" : undefined),
+        (e: unknown) => audit(one, e instanceof Error ? e.message : String(e)),
+      );
+    }
+    sendJson(res, { ok: true, pending: list }, 202);
+  } catch (e) {
+    audit(what, e instanceof Error ? e.message : String(e));
+    sendError(res, e);
   }
   return true;
 }

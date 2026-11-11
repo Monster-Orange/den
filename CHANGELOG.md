@@ -19,6 +19,16 @@ config and manifest changes a distribution must make to move to it under
   agent that can reach the Docker engine can still get around it. codex
   and gemini don't enforce it, and doctor says so.
 
+- **Agents started before Hub was connected get its tools on restart
+  (D44).** A running agent keeps the tools it started with. Its row and
+  pane now say "Hub tools arrive on restart", with a Restart that waits
+  for its turn to end and keeps its conversation. After Connect or
+  Disconnect, Settings › Agents › Hub offers to restart those agents at
+  their next idle. `agents restart <id>` does the same from the CLI, and
+  `agents doctor` lists them. An agent's new MCP tool `whoami` says
+  whether Hub's tools are its own, so it no longer tells the person to
+  make a token.
+
 - **Agents hear about Hub comments before they stop (D41).** When an
   agent is about to finish and more Hub comments wait on it than when it
   was last told, it is asked once to call `hub_inbox` and answer them.

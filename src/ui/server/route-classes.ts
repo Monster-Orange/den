@@ -181,6 +181,14 @@ export const ROUTES: readonly RouteEntry[] = [
     "D45: a stopped agent's details: what it was last asked (one line from its transcript) and how its session ended (exit code, last line, redacted)",
   ),
   R(
+    "/api/workspaces/:ws/agents/:id/tools",
+    "D44: whether an agent's MCP servers are current (Hub connected, loaded in its session, a restart needed); an agent may read its own",
+  ),
+  R(
+    "/api/agents/stale",
+    "D44: the running agents whose MCP servers are out of date (ids and workspaces)",
+  ),
+  R(
     "/api/workspaces/:ws/agents/:id/helpers/:helper",
     "D32: one helper's transcript, tool calls summarized, read-only (no stop or steer)",
   ),
@@ -449,6 +457,16 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   S(
     ["POST"],
+    "/api/workspaces/:ws/agents/:id/restart",
+    "D44 Restart: at its next idle (or now) an agent's session stops and the same conversation resumes, a runtime in a PTY; a person's only",
+  ),
+  S(
+    ["POST"],
+    "/api/agents/restart-stale",
+    "D44: restarts every agent with out-of-date tools at its next idle, same conversation: runtimes in PTYs; a person's only",
+  ),
+  S(
+    ["POST"],
     "/api/agents/resume-interrupted",
     "resumes interrupted agents: runtimes in PTYs (AG-14.3)",
   ),
@@ -568,7 +586,9 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/keep",
     "/api/workspaces/:ws/agents/:id/handoff",
     "/api/workspaces/:ws/agents/:id/clear-helpers",
+    "/api/workspaces/:ws/agents/:id/restart",
   ],
+  "agent-routes.ts:TOOLS_PATH": ["/api/workspaces/:ws/agents/:id/tools"],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "agent-routes.ts:PERSONA_PATH": ["/api/personas/:id"],
   "agent-routes.ts:PLAIN_PATH": ["/api/workspaces/:ws/sessions"],
