@@ -14,6 +14,7 @@ import * as http from "http";
 import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
+import { writeApiOnlyRules } from "../../../src/shared/agents/api-only.js";
 import { readRecord } from "../../../src/shared/agents/records.js";
 import { verifyActorToken } from "../../../src/shared/actor-token.js";
 import { HUB_SERVER } from "../../../src/shared/hub.js";
@@ -230,6 +231,43 @@ describe("D44: Den knows which agents have out-of-date tools", () => {
     expect(await agents(r, "doctor", "--json")).toBeGreaterThanOrEqual(0);
     const json = JSON.parse(r.out.join("\n")) as { staleTools: unknown[] };
     expect(json.staleTools).toHaveLength(1);
+    r.out.length = 0;
+    await agents(r, "doctor");
+    expect(r.out.join("\n")).toContain(
+      "  planner (north): hub tools arrive on restart",
+    );
+  });
+
+  it("D47 × D44: with a service api_only (its rules written, and dev.0's in agents/), stale agents still list", async () => {
+    const { r } = await startedBeforeHub();
+    const d = resolveAgentsDeps(r.deps);
+    // 0.4.33-dev.0 wrote the rules beside the agents' records.
+    const legacy = path.join(r.stateDir, "agents", "api-only.json");
+    fs.writeFileSync(
+      legacy,
+      JSON.stringify({ services: [{ name: "vault", project: "vault" }] }),
+    );
+    const want = [
+      {
+        id: "planner",
+        workspace: "north",
+        stale: { adds: [HUB_SERVER], drops: [] },
+      },
+    ];
+    // A file in agents/ that isn't an agent's record is not an agent.
+    expect(await staleAgents(d, { fresh: true })).toEqual(want);
+    expect((await listAgents(d, "north")).map((x) => x.agent)).toEqual([
+      "planner",
+    ]);
+    // Written now: in guardrails/, and dev.0's is gone.
+    const files = writeApiOnlyRules(r.stateDir, {
+      services: [{ name: "vault", project: "vault" } as never],
+    })!;
+    expect(files.rules).toBe(
+      path.join(r.stateDir, "guardrails", "api-only.json"),
+    );
+    expect(fs.existsSync(legacy)).toBe(false);
+    expect(await staleAgents(d, { fresh: true })).toEqual(want);
     r.out.length = 0;
     await agents(r, "doctor");
     expect(r.out.join("\n")).toContain(

@@ -322,6 +322,18 @@ export function purgeRemoved(
   }
 }
 
+/** `rec` is agent `id`'s record: its id, and the session it runs in. */
+function isRecord(rec: unknown, id: string): rec is AgentRecord {
+  const r = rec as Partial<AgentRecord> | null;
+  return (
+    !!r &&
+    typeof r === "object" &&
+    r.id === id &&
+    !!r.session &&
+    typeof r.session === "object"
+  );
+}
+
 export function listRecords(stateDir: string): AgentRecord[] {
   let names: string[];
   try {
@@ -332,8 +344,11 @@ export function listRecords(stateDir: string): AgentRecord[] {
   const out: AgentRecord[] = [];
   for (const n of names.sort()) {
     if (!n.endsWith(".json")) continue;
-    const rec = readRecord(stateDir, n.slice(0, -".json".length));
-    if (rec) out.push(rec);
+    const id = n.slice(0, -".json".length);
+    const rec = readRecord(stateDir, id);
+    // Only an agent's record: its own id and a session. Any other file
+    // here (a stray, a guardrail's rules) is not an agent.
+    if (rec && isRecord(rec, id)) out.push(rec);
   }
   return out;
 }

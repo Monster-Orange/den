@@ -137,7 +137,7 @@ function launch(persona: Persona, apiOnly?: LaunchInput["apiOnly"]) {
 
 describe("D47: every den-claude agent's hook reads the rules", () => {
   const apiOnly = {
-    rules: "/s/agents/api-only.json",
+    rules: "/s/guardrails/api-only.json",
     audit: "/s/audit/api-only.jsonl",
   };
   const planner = loadPersonas([]).get("planner")!;

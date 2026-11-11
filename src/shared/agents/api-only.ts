@@ -162,12 +162,21 @@ export function gatherApiOnly(
   return { services };
 }
 
-/** Where the rules and the audit live: Den's state, beside the agents. */
+/**
+ * Where the rules and the audit live, in Den's state. Never in agents/:
+ * every .json there is an agent's record (0.4.33-dev.0 put the rules
+ * there, and listing the agents read them as one).
+ */
 export function apiOnlyFiles(stateDir: string): ApiOnlyArgs {
   return {
-    rules: path.join(stateDir, "agents", "api-only.json"),
+    rules: path.join(stateDir, "guardrails", "api-only.json"),
     audit: path.join(stateDir, "audit", "api-only.jsonl"),
   };
+}
+
+/** Where 0.4.33-dev.0 wrote the rules; removed whenever they're written. */
+function legacyRulesFile(stateDir: string): string {
+  return path.join(stateDir, "agents", "api-only.json");
 }
 
 /**
@@ -179,6 +188,7 @@ export function writeApiOnlyRules(
   rules: ApiOnlyRules = gatherApiOnly(),
 ): ApiOnlyArgs | null {
   const files = apiOnlyFiles(stateDir);
+  fs.rmSync(legacyRulesFile(stateDir), { force: true });
   if (!rules.services.length) {
     fs.rmSync(files.rules, { force: true });
     return null;

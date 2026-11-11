@@ -139,6 +139,33 @@ describe("D47: around the API is denied, with the API offered", () => {
     expect(bash("docker compose exec api sh", other).code).toBe(0);
   });
 
+  it("a cd earlier in the same command counts: cd <dir> && …, (cd <dir>; …), pushd", () => {
+    // A folder named for the project: compose's default there is vault.
+    const up = path.join(dir, "elsewhere");
+    const named = path.join(up, "vault");
+    fs.mkdirSync(named, { recursive: true });
+    for (const command of [
+      `cd ${named} && docker compose exec api sh`,
+      `cd ${named}; docker compose exec api sh`,
+      `(cd ${named}; docker compose exec api sh)`,
+      `(cd ${named} && docker compose exec api sh) | tee /tmp/x`,
+      `cd ${up} && cd vault && docker compose exec api sh`,
+      `cd -P ${named} && docker compose exec api sh`,
+      `pushd ${named} >/dev/null && docker compose exec api sh`,
+      `sh -c 'cd ${named} && docker compose exec api sh'`,
+      `cd ${named} && echo "$(docker compose exec api cat /x)"`,
+    ])
+      expect([command, bash(command, other).code]).toEqual([command, 2]);
+    // Somewhere else: compose's default isn't vault; and a cd alone is fine.
+    for (const command of [
+      `cd ${other} && docker compose exec api sh`,
+      `cd ${named} && echo hi`,
+      `cd ${named} && docker compose -p shop exec api sh`,
+      `cd "$SOMEWHERE" && docker compose exec api sh`,
+    ])
+      expect([command, bash(command, other).code]).toEqual([command, 0]);
+  });
+
   it("another instance that shares the prefix (vault-dev) is not it", () => {
     for (const c of [
       "docker exec vault-dev-api-1 sh",
@@ -231,7 +258,8 @@ describe("D47: a denial is audited, without the command", () => {
     const r = bash(
       "docker exec vault-api-1 sh -c 'TOKEN=s3cr3t-value curl x'",
       other,
-      { DEN_CLAUDE_ID: "planner" },
+      // What an agent's session carries (runtimes.ts): DEN_AGENT=agent:<id>.
+      { DEN_AGENT: "agent:planner" },
     );
     expect(r.code).toBe(2);
     const lines = fs.readFileSync(auditFile, "utf-8").trim().split("\n");

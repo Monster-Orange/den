@@ -547,67 +547,81 @@ export function apiOnlyBash(command, rules, ctx, parseShell, depth = 0) {
   } catch {
     return null;
   }
+  // Every directory a stage may run in: where the command starts, and
+  // each place a cd or pushd before it goes (`cd svc && docker compose
+  // exec …`, `(cd svc; …)`). The splitter flattens subshells, so a stage
+  // is checked in all of them: a cd never gets a command past the rule.
+  const cwds = [ctx.cwd];
   for (const stages of pipelines)
     for (const st of stages) {
-      // Command substitutions inside any word run too.
-      for (const w of st.words) {
-        for (const m of String(w).matchAll(/\$\(([\s\S]*)\)|`([^`]*)`/g)) {
-          const r = apiOnlyBash(
-            m[1] ?? m[2],
-            rules,
-            ctx,
-            parseShell,
-            depth + 1,
-          );
-          if (r) return r;
-        }
-      }
-      const { words, env } = unwrap(st.words, st.assigns ?? []);
-      if (!words.length) continue;
-      const c = base(words[0]);
-      const envObj = { ...ctx.env };
-      for (const a of env)
-        envObj[a.slice(0, a.indexOf("="))] = a.slice(a.indexOf("=") + 1);
-      const here = { ...ctx, env: envObj };
-      if (SHELLS.has(c)) {
-        const i = words.findIndex(
-          (x, k) => k > 0 && /^-[a-z]*c[a-z]*$/.test(x),
-        );
-        if (i > 0 && words[i + 1] !== undefined) {
-          const r = apiOnlyBash(
-            words[i + 1],
-            rules,
-            here,
-            parseShell,
-            depth + 1,
-          );
-          if (r) return r;
-        }
-      }
-      if (c === "eval") {
-        const r = apiOnlyBash(
-          words.slice(1).join(" "),
-          rules,
-          here,
-          parseShell,
-          depth + 1,
-        );
+      for (const cwd of [...new Set(cwds)]) {
+        const r = stageReason(st, rules, { ...ctx, cwd }, parseShell, depth);
         if (r) return r;
       }
-      let r = null;
-      if (c === "docker" || c === "docker-compose" || c === "podman")
-        r = dockerReason(words, rules, here);
-      else if (c === "orb" || c === "orbctl") r = orbReason(words, rules);
-      else if (["ssh", "scp", "sftp", "rsync", "mosh"].includes(c))
-        r = sshReason(words, rules);
-      if (r) return r;
-      // Any word that is a path under a protected one: a read or a write.
-      for (const w of [...words.slice(1), ...st.inputs]) {
-        if (!/^[~/.$]/.test(w) && !w.includes("/")) continue;
-        const s = pathService(w.replace(/^[^=]*=(?=[~/])/, ""), rules, here);
-        if (s) return { service: s, what: `${c} on ${w}` };
-      }
+      const to = cdTarget(st.words);
+      if (to !== null)
+        for (const cwd of [...new Set(cwds)])
+          cwds.push(expand(to, cwd, ctx.home));
     }
+  return null;
+}
+
+/** Where a `cd` / `pushd` stage goes; null for anything else or `$VAR`. */
+function cdTarget(words) {
+  const c = base(words[0] ?? "");
+  if (c !== "cd" && c !== "pushd") return null;
+  const to = words.slice(1).find((w) => !/^-[LPe@]*$/.test(w));
+  if (to === undefined) return "~";
+  if (to === "-" || to.includes("$") || to.includes("`")) return null;
+  return to;
+}
+
+/** One stage's reason, in `ctx.cwd`. */
+function stageReason(st, rules, ctx, parseShell, depth) {
+  // Command substitutions inside any word run too.
+  for (const w of st.words) {
+    for (const m of String(w).matchAll(/\$\(([\s\S]*)\)|`([^`]*)`/g)) {
+      const r = apiOnlyBash(m[1] ?? m[2], rules, ctx, parseShell, depth + 1);
+      if (r) return r;
+    }
+  }
+  const { words, env } = unwrap(st.words, st.assigns ?? []);
+  if (!words.length) return null;
+  const c = base(words[0]);
+  const envObj = { ...ctx.env };
+  for (const a of env)
+    envObj[a.slice(0, a.indexOf("="))] = a.slice(a.indexOf("=") + 1);
+  const here = { ...ctx, env: envObj };
+  if (SHELLS.has(c)) {
+    const i = words.findIndex((x, k) => k > 0 && /^-[a-z]*c[a-z]*$/.test(x));
+    if (i > 0 && words[i + 1] !== undefined) {
+      const r = apiOnlyBash(words[i + 1], rules, here, parseShell, depth + 1);
+      if (r) return r;
+    }
+  }
+  if (c === "eval") {
+    const r = apiOnlyBash(
+      words.slice(1).join(" "),
+      rules,
+      here,
+      parseShell,
+      depth + 1,
+    );
+    if (r) return r;
+  }
+  let r = null;
+  if (c === "docker" || c === "docker-compose" || c === "podman")
+    r = dockerReason(words, rules, here);
+  else if (c === "orb" || c === "orbctl") r = orbReason(words, rules);
+  else if (["ssh", "scp", "sftp", "rsync", "mosh"].includes(c))
+    r = sshReason(words, rules);
+  if (r) return r;
+  // Any word that is a path under a protected one: a read or a write.
+  for (const w of [...words.slice(1), ...st.inputs]) {
+    if (!/^[~/.$]/.test(w) && !w.includes("/")) continue;
+    const s = pathService(w.replace(/^[^=]*=(?=[~/])/, ""), rules, here);
+    if (s) return { service: s, what: `${c} on ${w}` };
+  }
   return null;
 }
 
@@ -659,7 +673,8 @@ export function audit(file, r, input, env = process.env) {
       `${JSON.stringify({
         at: new Date().toISOString(),
         kind: "api_only.denied",
-        agent: env.DEN_CLAUDE_ID ?? null,
+        // The agent's id, from its session's DEN_AGENT=agent:<id>.
+        agent: /^agent:(.+)$/.exec(env.DEN_AGENT ?? "")?.[1] ?? null,
         tool: input?.tool_name ?? null,
         service: r.service,
         what: String(r.what).slice(0, 200),

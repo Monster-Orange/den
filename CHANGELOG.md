@@ -13,9 +13,10 @@ config and manifest changes a distribution must make to move to it under
   `machine:`. Every den-claude agent then gets denied, with a reason, when
   it goes around that service's API: `docker exec` or `cp` into its
   containers, mounting or inspecting its volumes, a `docker compose`
-  exec or run on its project, reading or writing its data, or reaching its
-  machine. Each denial is audited, and `agents doctor` lists the services
-  and the last denial. It is a guardrail, not a security boundary: an
+  exec or run on its project (also after a `cd` in the same command),
+  reading or writing its data, or reaching its machine. Each denial is
+  audited with the agent's id, and `agents doctor` lists the services and
+  the last denial. It is a guardrail, not a security boundary: an
   agent that can reach the Docker engine can still get around it. codex
   and gemini don't enforce it, and doctor says so.
 

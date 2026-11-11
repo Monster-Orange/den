@@ -771,7 +771,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
 
   it("D47: a den-claude pane says which services it reaches only through their API; a codex pane says it isn't held to it", async () => {
     if (skip()) return;
-    const rules = path.join(s!.stateDir, "agents", "api-only.json");
+    const rules = path.join(s!.stateDir, "guardrails", "api-only.json");
     const tag = (p: Page, id: string) =>
       p.locator(`.pane[data-id="${sid[id]}"] .bar2 [data-api-only]`);
     // None declared: no tag.
