@@ -9,6 +9,7 @@ import {
   LOOKUP_TIMEOUTS_MS,
   LookupTimeoutError,
   lookup,
+  lookupTimeouts,
 } from "../../../src/ui/cli/proc-lookup.js";
 
 type R = {
@@ -69,5 +70,17 @@ describe("lookup (proc-lookup.ts)", () => {
     expect(() => lookup("ps", [], fake(timeout(), timeout()).spawn)).toThrow(
       "ps took too long to answer",
     );
+  });
+
+  it("DEN_LOOKUP_TIMEOUTS_MS sets the tries' limits; a bad value keeps the defaults", () => {
+    expect(lookupTimeouts({})).toEqual(LOOKUP_TIMEOUTS_MS);
+    expect(lookupTimeouts({ DEN_LOOKUP_TIMEOUTS_MS: "200, 300" })).toEqual([
+      200, 300,
+    ]);
+    expect(lookupTimeouts({ DEN_LOOKUP_TIMEOUTS_MS: "1000" })).toEqual([1000]);
+    for (const bad of ["", "x", "0", "-5", "100,", "1.5"])
+      expect(lookupTimeouts({ DEN_LOOKUP_TIMEOUTS_MS: bad })).toEqual(
+        LOOKUP_TIMEOUTS_MS,
+      );
   });
 });

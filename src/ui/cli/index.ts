@@ -3395,12 +3395,15 @@ class DenCLI {
       probe = await probeWebServer(url);
     }
     const running = probe.kind === "up";
+    // After an error (a lookup that never answered, say), whether it still
+    // runs is unknown unless it answers: null, and never "stopped"
+    // (0.4.29-dev.2's gate).
     const out: Record<string, unknown> = {
       ok: !error && !running,
       url,
       port,
-      running,
-      stopped: was && !running,
+      running: error && !running ? null : running,
+      stopped: !error && was && !running,
     };
     if (!out.ok) {
       out.error = error ?? `the web server still answers at ${url}`;
@@ -3449,15 +3452,20 @@ class DenCLI {
       await new Promise((r) => setTimeout(r, 500));
       probe = await probeWebServer(url);
     }
+    // A server answering is not enough: `restart` that failed to stop the
+    // old one leaves it answering (0.4.29-dev.2's gate). The error wins.
     const out: Record<string, unknown> = {
-      ok: probe.kind === "up",
+      ok: !error && probe.kind === "up",
       url,
       port,
       ...(probe.kind === "up" && probe.version
         ? { version: probe.version }
         : {}),
     };
-    if (probe.kind === "foreign") {
+    if (error && probe.kind !== "foreign") {
+      out.error = error;
+      out.fix = `${bin} web restart --no-open --json`;
+    } else if (probe.kind === "foreign") {
       out.error = `${probe.who} answers at ${url}, not this distribution's web server`;
       out.ask = `Another Den distribution uses port ${port}. Which port should ${product().title} use? (web.port in config/local/user.yml)`;
     } else if (probe.kind !== "up") {

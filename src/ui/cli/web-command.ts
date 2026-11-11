@@ -1273,6 +1273,28 @@ export function setWebServiceDepsForTest(d: WebServiceDeps | undefined): void {
 }
 
 export async function cmdWeb(args: string[]): Promise<void> {
+  try {
+    await runWeb(args);
+  } catch (err) {
+    // A lookup that never answered (proc-lookup.ts): say so, the same way
+    // for down, restart and up (0.4.29-dev.2's gate).
+    if (!(err instanceof LookupTimeoutError)) throw err;
+    let port = DEFAULT_PORT;
+    try {
+      port = parseWebCommandArgs(args).port;
+    } catch {
+      /* the default */
+    }
+    throw new Error(couldntTell(port, err));
+  }
+}
+
+/** "Couldn't tell whether … is running on port N: lsof took too long …". */
+export function couldntTell(port: number, err: LookupTimeoutError): string {
+  return `Couldn't tell whether ${product().title} web is running on port ${port}: ${err.message}. The machine may be busy; run it again.`;
+}
+
+async function runWeb(args: string[]): Promise<void> {
   // A subcommand with its own help answers its own --help (it is
   // dispatched first); the rest (up, down, restart, open) share this one.
   if (args[0] === "token") {
@@ -1341,14 +1363,7 @@ export async function cmdWeb(args: string[]): Promise<void> {
   if (svc.handled) {
     /* the service runs it: on to opening the browser */
   } else if (options.action === "down") {
-    const stopped = await stopDenWebServer(options.port, vouched).catch(
-      (err: unknown) => {
-        if (!(err instanceof LookupTimeoutError)) throw err;
-        throw new Error(
-          `Couldn't tell whether ${product().title} web is running on port ${options.port}: ${err.message}. The machine may be busy; run it again.`,
-        );
-      },
-    );
+    const stopped = await stopDenWebServer(options.port, vouched);
     if (stopped.stopped) {
       const mode = stopped.forced ? "force stopped" : "stopped";
       console.log(

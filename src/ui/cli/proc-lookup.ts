@@ -11,6 +11,21 @@ import { CLI_SPAWN_TIMEOUT_MS } from "../../shared/constants.js";
 /** First try, then one longer one: a busy machine, not a hung tool. */
 export const LOOKUP_TIMEOUTS_MS = [CLI_SPAWN_TIMEOUT_MS, 20_000] as const;
 
+/**
+ * The tries' limits: DEN_LOOKUP_TIMEOUTS_MS (ms, comma-separated, each
+ * above 0), else LOOKUP_TIMEOUTS_MS. A bad value: the defaults.
+ */
+export function lookupTimeouts(
+  env: NodeJS.ProcessEnv = process.env,
+): readonly number[] {
+  const raw = env.DEN_LOOKUP_TIMEOUTS_MS?.trim();
+  if (!raw) return LOOKUP_TIMEOUTS_MS;
+  const ms = raw.split(",").map((x) => Number(x.trim()));
+  return ms.length > 0 && ms.every((n) => Number.isInteger(n) && n > 0)
+    ? ms
+    : LOOKUP_TIMEOUTS_MS;
+}
+
 export class LookupTimeoutError extends Error {
   constructor(readonly command: string) {
     super(`${command} took too long to answer`);
@@ -37,7 +52,7 @@ export function lookup(
   cmd: string,
   args: string[],
   spawn: Spawn = spawnSync,
-  timeouts: readonly number[] = LOOKUP_TIMEOUTS_MS,
+  timeouts: readonly number[] = lookupTimeouts(),
 ): string {
   for (const timeout of timeouts) {
     const r = spawn(cmd, args, { encoding: "utf-8", timeout });

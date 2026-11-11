@@ -250,7 +250,12 @@ with "If you didn't ask an agent to do this, Deny." under it.
 
 - `down --json` and `web down --json` are the clean-up steps. Each is safe
   to re-run: `web down` answers `stopped: false` when the server wasn't
-  running, and `ok` is true once nothing answers on its port.
+  running, and `ok` is true once nothing answers on its port. On a busy
+  machine, where `lsof` or `ps` can't say which process holds the port
+  (each lookup gets 5 s, then 20 s; `DEN_LOOKUP_TIMEOUTS_MS` sets them),
+  `web down` and `web restart` exit 1 saying they couldn't tell, and
+  their `--json` answers `ok: false` with `stopped: false` (and `running:
+null` when the server doesn't answer either). Run them again.
 
 - `up --json` runs `up` as usual, then reports each service it touched:
   `result` is `started`, `already-running`, `failed` or `skipped`, and

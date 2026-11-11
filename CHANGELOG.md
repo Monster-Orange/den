@@ -35,7 +35,15 @@ config and manifest changes a distribution must make to move to it under
   (a busy machine), `web down` read that as "no server", answered
   `stopped: false`, and left the server running. A slow lookup is now
   tried again with a longer limit; if it still can't answer, `web down`
-  exits 1 and says it couldn't tell, instead of "not running".
+  and `web restart` exit 1 and say they couldn't tell, instead of "not
+  running". `DEN_LOOKUP_TIMEOUTS_MS` (comma-separated ms) sets the tries'
+  limits; the default is 5000,20000.
+- **`web restart --json` and `web down --json` after an error.** A
+  restart that couldn't stop the old server answered `ok: true` because
+  the old one still answered; it now answers `ok: false` with the error.
+  A `down` that couldn't tell answered `stopped: true`; it now answers
+  `stopped: false`, and `running: null` when the server doesn't answer
+  either (unknown, not stopped).
 - **Links in Safari (D35).** A ⌘-click on a link in an agent's console,
   and Visit ↗ on the Services page and in its menus, open through a real
   link (`target=_blank`, `noopener noreferrer`), which Safari doesn't
