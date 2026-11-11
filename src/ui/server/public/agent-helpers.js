@@ -149,7 +149,7 @@ function countLabel(key, total, running) {
 export function helperBadgeHtml(r) {
   const n = r?.helpers?.running;
   if (!n) return "";
-  const said = t(n === 1 ? "hp.rowRunning.one" : "hp.rowRunning", { n });
+  const said = t("hp.rowRunning", { n });
   return ` <span class="agr-hp hp-run" title="${esc(said)}" aria-label="${esc(said)}"><span class="hp-dot" aria-hidden="true"></span>${esc(t("hp.runningN", { n }))}</span>`;
 }
 

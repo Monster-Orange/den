@@ -770,7 +770,6 @@
     "hp.titlePlain": "ヘルパー",
     "hp.allPlain": "すべてのヘルパー",
     "hp.rowRunning": "実行中のヘルパー {n}",
-    "hp.rowRunning.one": "実行中のヘルパー {n}",
     "hp.runningN": "実行中 {n}",
     "hp.groupOf": "{name} のヘルパー",
     "hp.open": "{what}、{status}: トランスクリプトを開く",
