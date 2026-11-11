@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den",
-  "version": "0.4.30-dev.0",
+  "version": "0.4.30",
   "description": "Den: a local multi-repo dev orchestrator, HTTPS edge and E2E harness",
   "type": "module",
   "bin": {
