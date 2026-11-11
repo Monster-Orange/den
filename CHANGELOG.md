@@ -43,7 +43,8 @@ config and manifest changes a distribution must make to move to it under
   outside it, and the other two missed a press that a terminal took. A
   press inside, or in a menu or confirm over them, never closes them. In
   the helpers list, "Clear done" and Close now sit in the top-right
-  corner.
+  corner. On a phone, a tap outside a sheet puts the keyboard back too:
+  on the row, or on ☰ when the pin that opened it is in the closed menu.
 - **Helper counts in words (D48).** The pane bar's Helpers button
   showed "Helpers (5)" and then a coloured pill with a second, unlabelled
   number, and the pill was hard to read in some themes. Now it is one

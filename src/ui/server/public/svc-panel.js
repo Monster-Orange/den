@@ -28,7 +28,7 @@
  */
 import { sudoRun } from "./topbar.js";
 import { logStreamUrl } from "./log-source.js";
-import { dismissable } from "./popover.js";
+import { dismissable, focusBack } from "./popover.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -311,7 +311,9 @@ function place() {
   if (sheet && !o.scrim) {
     o.scrim = document.createElement("div");
     o.scrim.className = "den-scrim den-svp-scrim";
-    o.scrim.addEventListener("click", () => closePanel(false));
+    // A tap on it closes the sheet, and focus goes back (to the ☰ when
+    // the pin's drawer closed).
+    o.scrim.addEventListener("click", () => closePanel(true));
     document.body.append(o.scrim);
   } else if (!sheet && o.scrim) {
     o.scrim.remove();
@@ -465,7 +467,9 @@ export function closePanel(refocus) {
   o.opener.setAttribute?.("aria-expanded", "false");
   if (!refocus) return;
   const back = o.fromRail ? railRow(o.id) : o.opener;
-  (back && back.isConnected ? back : railRow(o.id))?.focus();
+  // A pin in a closed drawer (a phone) can't take focus: the ☰ that opens
+  // the drawer does.
+  focusBack(back, railRow(o.id), document.getElementById("den-menu-btn"));
 }
 
 export function panelOpen() {

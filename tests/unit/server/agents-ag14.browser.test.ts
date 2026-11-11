@@ -495,8 +495,22 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       ).toBeLessThanOrEqual(390);
       await p.locator(".den-svp-scrim").tap({ position: { x: 10, y: 10 } });
       await det(p).waitFor({ state: "detached" });
+      // Lair (0.4.32-dev.1): after a tap on the scrim, focus is back on the
+      // row's button, every time (the tap's late mousedown never takes it).
+      for (let i = 0; i < 6; i++) {
+        await btn(p, "scout").tap();
+        await det(p).waitFor();
+        await p.locator(".den-svp-scrim").tap({ position: { x: 10, y: 10 } });
+        await det(p).waitFor({ state: "detached" });
+        await p.waitForTimeout(150);
+        expect([
+          i,
+          await btn(p, "scout").evaluate((b) => b === document.activeElement),
+        ]).toEqual([i, true]);
+      }
+      expect(errors).toEqual([]);
       await ctx.close();
-    }, 60_000);
+    }, 90_000);
   });
 
   it("Resume continues the same conversation, in the agent's own cwd, and opens its pane", async () => {

@@ -150,10 +150,12 @@ async function page(
   url: string,
   width = 1440,
   height = 900,
+  touch = false,
 ): Promise<{ p: Page; asked: string[] }> {
   const ctx = await browser!.newContext({
     viewport: { width, height },
     reducedMotion: "reduce",
+    ...(touch ? { hasTouch: true, isMobile: true } : {}),
   });
   await ctx.addInitScript((v) => {
     try {
@@ -693,6 +695,43 @@ describe("the panel", () => {
     expect(await p.$$(panel)).toHaveLength(0);
     await p.context().close();
   }, 60_000);
+
+  it("on a phone, a tap on its scrim closes it and focus goes to something on screen: the ☰ when the pin's drawer is closed", async () => {
+    if (skip()) return;
+    const { p } = await page("/services", 390, 844, true);
+    await p.waitForSelector('.den-rail [data-pin="notes"]', {
+      state: "attached",
+    });
+    for (let i = 0; i < 3; i++) {
+      await p.tap(".den-menu-btn");
+      await railReady(p);
+      await p.tap('.den-rail [data-pin="notes"]');
+      await p.waitForSelector(`${panel}.den-sheet`);
+      await p.touchscreen.tap(195, 10);
+      await p.waitForFunction(() => !document.querySelector(".den-svp"));
+      await p.waitForTimeout(150);
+      const at = await p.evaluate(() => {
+        const a = document.activeElement as HTMLElement | null;
+        const r = a?.getBoundingClientRect();
+        return {
+          tag: a?.tagName,
+          menu: a?.id === "den-menu-btn",
+          pin: a?.dataset?.pin ?? null,
+          seen:
+            !!r &&
+            r.width > 0 &&
+            r.right > 0 &&
+            r.left < innerWidth &&
+            getComputedStyle(a!).visibility !== "hidden",
+        };
+      });
+      expect([i, at.tag !== "BODY", at.seen]).toEqual([i, true, true]);
+      expect(at.menu || at.pin === "notes").toBe(true);
+      // The drawer may have closed with the panel; then it's the ☰.
+      if (at.pin === "notes") await p.keyboard.press("Escape");
+    }
+    await p.context().close();
+  }, 90_000);
 
   it("names every control plainly (the accessibility tree)", async () => {
     if (skip()) return;

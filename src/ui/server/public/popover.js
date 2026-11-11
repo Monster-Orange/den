@@ -14,6 +14,10 @@
  *   close(refocus): close it; refocus says whether to put focus back on
  *   the opener (false when the press landed on something that takes focus
  *   itself). release(): stop listening (call it when it closes by itself).
+ *
+ * A touch closes it once the tap is over: a phone sends its mousedown
+ * after the finger lifts, and that mousedown would take focus back off the
+ * opener (Lair, 0.4.32-dev.1).
  */
 
 /** What counts as another layer: its own press, its own Esc. */
@@ -39,6 +43,42 @@ export function pressInside(el, t, e) {
   return el.contains(t);
 }
 
+/** How long a touch may last before it closes the pop-over anyway. */
+export const TAP_WAIT_MS = 700;
+
+/**
+ * Run `fn` once the press `e` is over: right after a mouse's own
+ * mousedown; after a touch's click (its mousedown comes just before), or
+ * TAP_WAIT_MS when there is none (the finger moved away).
+ */
+function afterPress(e, fn) {
+  if (e.pointerType !== "touch" && e.pointerType !== "pen")
+    return void setTimeout(fn, 0);
+  let done = false;
+  const go = () => {
+    if (done) return;
+    done = true;
+    document.removeEventListener("click", go, true);
+    clearTimeout(t);
+    setTimeout(fn, 0);
+  };
+  const t = setTimeout(go, TAP_WAIT_MS);
+  document.addEventListener("click", go, true);
+}
+
+/**
+ * Put focus on the first of `els` that takes it (one that is gone, hidden
+ * or inert, such as a pin in a closed drawer, doesn't). True when one did.
+ */
+export function focusBack(...els) {
+  for (const x of els) {
+    if (!x?.isConnected || typeof x.focus !== "function") continue;
+    x.focus();
+    if (document.activeElement === x) return true;
+  }
+  return false;
+}
+
 export function dismissable(el, { opener, close, ignore } = {}) {
   const op = () => (typeof opener === "function" ? opener() : opener);
   let on = true;
@@ -61,7 +101,7 @@ export function dismissable(el, { opener, close, ignore } = {}) {
     if (t instanceof Element && t.closest(FOCUSABLE)) return close(false);
     // Else after the press's own mousedown, which moves focus to the body:
     // then focus goes back to the opener.
-    setTimeout(() => close(true), 0);
+    afterPress(e, () => close(true));
   }
   function key(e) {
     if (e.key !== "Escape" || e.defaultPrevented) return;
