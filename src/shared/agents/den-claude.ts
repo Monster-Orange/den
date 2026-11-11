@@ -367,6 +367,9 @@ function common(input: LaunchInput): {
 } {
   const file = mcpConfigPath(input);
   const mode = permissionMode(input);
+  // D41: the Stop hook asks Hub for comments waiting on this agent.
+  const inboxBase = input.mcp.hub?.inboxBase;
+  const inbox = inboxBase ? { base: inboxBase, mcp: file } : undefined;
   // den#4: the rotation hooks count this agent's compactions in its files dir.
   const hooks = input.persona.guardrails?.hooks
     ? guardrailHooks(
@@ -384,11 +387,17 @@ function common(input: LaunchInput): {
           // back, so its messages get the plain-writing check only.
           !isServerScope(input.workspace.name),
           input.apiOnly,
+          inbox,
         ),
         !!input.apiOnly,
       )
-    : input.apiOnly
-      ? apiOnlyHooks(input.apiOnly)
+    : input.apiOnly || inbox
+      ? apiOnlyHooks(
+          input.apiOnly,
+          GUARDRAILS_DIR,
+          process.execPath,
+          inbox && { ...inbox, files: input.filesDir },
+        )
       : null;
   const den = input.denToolsAllowed ? denToolRules(input.mcp.name) : null;
   // HUB-1.5: Hub's tools without asking, when hub.allow_tools is on (the

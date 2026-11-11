@@ -118,6 +118,12 @@ export interface ApiOnlyArgs {
   audit: string;
 }
 
+/** D41: what the Stop hook needs for Hub's inbox (never the token). */
+export interface InboxHookArgs {
+  base: string;
+  mcp: string;
+}
+
 /** The tools the PreToolUse hook sees: with D47 rules, the file tools too. */
 export const PRETOOL_MATCHER = "Bash|Read";
 export const PRETOOL_MATCHER_API_ONLY =
@@ -133,6 +139,8 @@ export function hookCommands(
   /** false: the Stop hook never runs the hand-back check (the server agent). */
   handback: boolean = true,
   apiOnly?: ApiOnlyArgs,
+  /** D41: Hub's base URL and the agent's mcp.json, for the inbox check. */
+  inbox?: InboxHookArgs,
 ): HookCommands {
   const more = (c: EngineCommand): EngineCommand =>
     rotation
@@ -164,6 +172,7 @@ export function hookCommands(
           ...c.args,
           ...known.flatMap((k) => ["--known", k]),
           ...(handback ? [] : ["--no-handback"]),
+          ...(inbox ? ["--hub-inbox", inbox.base, "--mcp", inbox.mcp] : []),
         ],
       }))(more(scriptEntrypoint("src/shared/agents/guardrails/stop-hook.ts"))),
     ),
@@ -213,11 +222,48 @@ export function guardrailHooks(
  * checks).
  */
 export function apiOnlyHooks(
-  apiOnly: ApiOnlyArgs,
+  apiOnly: ApiOnlyArgs | undefined,
   dir: string = GUARDRAILS_DIR,
   node: string = process.execPath,
+  /** D41: the Stop hook's inbox check alone (`--inbox-only`). */
+  inbox?: InboxHookArgs & { files: string },
 ): Record<string, unknown> {
+  const stop = inbox
+    ? {
+        Stop: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: commandLine(
+                  ((c: EngineCommand): EngineCommand => ({
+                    command: c.command,
+                    args: [
+                      ...c.args,
+                      "--inbox-only",
+                      "--files",
+                      inbox.files,
+                      "--hub-inbox",
+                      inbox.base,
+                      "--mcp",
+                      inbox.mcp,
+                    ],
+                  }))(
+                    scriptEntrypoint(
+                      "src/shared/agents/guardrails/stop-hook.ts",
+                    ),
+                  ),
+                ),
+                timeout: 30,
+              },
+            ],
+          },
+        ],
+      }
+    : {};
+  if (!apiOnly) return stop;
   return {
+    ...stop,
     PreToolUse: [
       {
         matcher: PRETOOL_MATCHER_API_ONLY,

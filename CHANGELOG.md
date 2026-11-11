@@ -19,6 +19,12 @@ config and manifest changes a distribution must make to move to it under
   agent that can reach the Docker engine can still get around it. codex
   and gemini don't enforce it, and doctor says so.
 
+- **Agents hear about Hub comments before they stop (D41).** When an
+  agent is about to finish and more Hub comments wait on it than when it
+  was last told, it is asked once to call `hub_inbox` and answer them.
+  The check takes two seconds at most and never stops an agent when Hub
+  is down. `hub.inbox_on_stop: off` turns it off.
+
 - **A link to one agent (D43).** `/agents?agent=<id>&ws=<workspace>`
   opens that agent: a running agent's pane, with the keyboard in it, or a
   stopped agent's details. Another tool can link an agent's name here. An

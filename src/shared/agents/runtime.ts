@@ -73,6 +73,11 @@ export interface AgentMcp {
     headers: Record<string, string>;
     /** hub.allow_tools: its tools run without asking (default on). */
     allowTools?: boolean;
+    /**
+     * D41: Hub's base URL for the Stop hook's inbox check; absent when
+     * hub.inbox_on_stop is off. The token stays in the MCP config file.
+     */
+    inboxBase?: string;
   };
 }
 

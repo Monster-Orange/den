@@ -289,6 +289,8 @@ export interface AgentsDeps extends SessionsDeps {
     allowTools?: boolean;
     /** HUB-1.7: Hub's MCP endpoint (default <url>/mcp). */
     mcpUrl?: string;
+    /** D41: hub.inbox_on_stop (default nudge). */
+    inboxOnStop?: "nudge" | "off";
   } | null>;
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
   workspaceRepos?: (ws: string) => string[];
@@ -313,6 +315,7 @@ export interface AgentsResolved extends Resolved {
     token: string;
     allowTools?: boolean;
     mcpUrl?: string;
+    inboxOnStop?: "nudge" | "off";
   } | null>;
   workspaceRepos: (ws: string) => string[];
 }
@@ -435,6 +438,8 @@ export async function agentHub(
     name: HUB_SERVER,
     url: h.mcpUrl || `${h.url}/mcp`,
     allowTools: h.allowTools !== false,
+    // D41: the Stop hook's inbox check (its base, never the token).
+    ...(h.inboxOnStop !== "off" ? { inboxBase: h.url } : {}),
     headers: hubHeaders(h.token, {
       agent: name,
       ...(agentId ? { agentId } : {}),
@@ -508,6 +513,7 @@ async function defaultHub(): Promise<{
   token: string;
   allowTools: boolean;
   mcpUrl: string;
+  inboxOnStop: "nudge" | "off";
 } | null> {
   const { readHubConfig, readHubToken } = await import("../../shared/hub.js");
   let cfg;
@@ -519,7 +525,13 @@ async function defaultHub(): Promise<{
   if (!cfg) return null;
   const token = await readHubToken(cfg);
   return token
-    ? { url: cfg.url, token, allowTools: cfg.allowTools, mcpUrl: cfg.mcpUrl }
+    ? {
+        url: cfg.url,
+        token,
+        allowTools: cfg.allowTools,
+        mcpUrl: cfg.mcpUrl,
+        inboxOnStop: cfg.inboxOnStop,
+      }
     : null;
 }
 

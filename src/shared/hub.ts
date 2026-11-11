@@ -63,6 +63,11 @@ export interface HubConfig {
    * Off, they ask like any tool. An install's own deny rule still wins.
    */
   allowTools: boolean;
+  /**
+   * D41 hub.inbox_on_stop (default "nudge"): an agent about to stop is
+   * asked once to call hub_inbox when more Hub comments wait on it.
+   */
+  inboxOnStop: "nudge" | "off";
 }
 
 type RawHub =
@@ -71,6 +76,7 @@ type RawHub =
       token?: unknown;
       allow_tools?: unknown;
       mcp_url?: unknown;
+      inbox_on_stop?: unknown;
     }
   | undefined;
 
@@ -148,6 +154,9 @@ export function readHubConfig(
     if (badMcp) throw new Error(badMcp.replace("hub.url", "hub.mcp_url"));
     mcpUrl = m;
   }
+  const ios = h.inbox_on_stop;
+  if (ios !== undefined && ios !== null && ios !== "nudge" && ios !== "off")
+    throw new Error('hub.inbox_on_stop must be "nudge" or "off"');
   return {
     url,
     tokenRef,
@@ -155,6 +164,7 @@ export function readHubConfig(
     tokenFrom,
     mcpUrl,
     allowTools: at !== false,
+    inboxOnStop: ios === "off" ? "off" : "nudge",
   };
 }
 

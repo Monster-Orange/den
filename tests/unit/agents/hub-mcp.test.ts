@@ -171,6 +171,38 @@ describe("hub.allow_tools", () => {
   });
 });
 
+describe("hub.inbox_on_stop (D41)", () => {
+  const stop = (r: Rig) =>
+    (
+      JSON.parse(
+        fs.readFileSync(
+          path.join(r.stateDir, "agent-files", "planner", "settings.json"),
+          "utf-8",
+        ),
+      ) as { hooks: { Stop: { hooks: { command: string }[] }[] } }
+    ).hooks.Stop[0].hooks[0].command;
+
+  it("nudge (the default): the Stop hook asks Hub's base URL, without the token", async () => {
+    const r = await withHub();
+    expect(stop(r)).toContain("--hub-inbox https://hub.example.test");
+    expect(stop(r)).not.toContain(TOKEN);
+  });
+
+  it("off: the Stop hook never asks Hub", async () => {
+    const r = await rig({
+      hub: async () => ({
+        url: "https://hub.example.test",
+        token: TOKEN,
+        inboxOnStop: "off",
+      }),
+    });
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    expect(stop(r)).not.toContain("--hub-inbox");
+  });
+});
+
 describe("without Hub, nothing changes", () => {
   it("no hub server and no prompt line", async () => {
     const r = await rig();

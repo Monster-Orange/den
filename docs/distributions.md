@@ -985,6 +985,7 @@ hub:
   # or a source: token: "file:/path/to/token" (also keychain:, env:)
   mcp_url: https://hub.example.com/mcp # default: <url>/mcp
   allow_tools: true # the default: agents use Hub's tools without asking
+  inbox_on_stop: nudge # the default; off: agents are never asked
 ```
 
 - `hub.url` must be https. Plain http works only to this machine
@@ -1015,6 +1016,18 @@ hub:
   An explicit deny in the install's own Claude Code permissions still
   wins. Settings › Agents › Hub has the checkbox (it saves to
   `config/local/user.yml`).
+- `hub.inbox_on_stop` (default `nudge`): when a den-claude agent is
+  about to stop, its Stop hook asks Hub (`GET <hub.url>/api/inbox`, two
+  seconds at most) how many comments wait on it. When that number went
+  up since it was last told, the agent is asked once to carry on: "2 Hub
+  comments wait on you: call hub_inbox, answer them (hub_comment) or say
+  why not, then finish." Answered threads drop out of the count, so a
+  new reply asks again. The hook reads the token from the agent's MCP
+  file; it is never in the hook's command line. The count it last told
+  is kept in the agent's files (`hub-inbox.json`). A Hub that is down or
+  slow lets the agent stop. Set it to `off` and agents are never asked.
+  A persona without Den's hooks still gets this check. codex and gemini
+  agents don't have it.
 - A Hub that is down, or a token that can't be read, never stops an
   agent: it starts without Hub.
 
