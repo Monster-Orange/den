@@ -163,6 +163,29 @@ describe("the rail's Hub link", () => {
     }
   }, 60_000);
 
+  it("its spot: the bottom of the rail, directly above Settings, with no header (as Hub's own rail)", async () => {
+    if (!browser) return;
+    for (const answer of [
+      CONNECTED,
+      {
+        configured: true,
+        url: "https://hub.example.test",
+        connected: false,
+        state: "unreachable",
+      },
+    ]) {
+      const { p } = await open(answer);
+      await link(p).waitFor({ timeout: 10_000 });
+      expect(
+        await link(p).evaluate((a) => [
+          a.previousElementSibling?.className,
+          (a.nextElementSibling as HTMLElement | null)?.dataset.nav,
+        ]),
+      ).toEqual(["den-rail-grow", "settings"]);
+      await p.context().close();
+    }
+  }, 60_000);
+
   it("not configured: no Hub in the rail", async () => {
     if (!browser) return;
     const { p } = await open({ configured: false });

@@ -17,7 +17,7 @@
  *
  * A touch closes it once the tap is over: a phone sends its mousedown
  * after the finger lifts, and that mousedown would take focus back off the
- * opener (Lair, 0.4.32-dev.1).
+ * opener (found in the 0.4.32-dev.1 gate).
  */
 
 /** What counts as another layer: its own press, its own Esc. */

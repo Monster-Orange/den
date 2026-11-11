@@ -32,7 +32,9 @@ config and manifest changes a distribution must make to move to it under
 
 - **The rail's Hub opens in this tab (D51).** It is a plain link now, so
   you can go back and forth between Den and Hub. ⌘-click (Ctrl-click) and
-  middle-click still open a new tab.
+  middle-click still open a new tab. The company's name in Settings ›
+  Agents › Hub is a plain link too. Hub stays at the bottom of the rail,
+  directly above Settings.
 
 ### Fixed
 

@@ -1524,7 +1524,8 @@ export function hubHtml(b, flash) {
   }[state] || ["warn", "Not connected"];
   const team = b.team
     ? b.teamUrl && /^https?:\/\//i.test(b.teamUrl)
-      ? `<a href="${escR(b.teamUrl)}" target="_blank" rel="noopener noreferrer">${escR(b.team)}</a>`
+      ? // D51: Den → Hub is a plain link, in this tab (⌘-click: a new one).
+        `<a href="${escR(b.teamUrl)}">${escR(b.team)}</a>`
       : escR(b.team)
     : "";
   const rows = [
