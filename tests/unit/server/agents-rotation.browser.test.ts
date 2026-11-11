@@ -132,6 +132,32 @@ const text = async (p: Page, id: string, sel: string) =>
   (await row(p, id).locator(sel).textContent())?.replace(/\s+/g, " ").trim();
 
 describe("rotated agents on the Agents page (den#4)", () => {
+  it("at 1280 a Ready to relaunch row keeps its name readable and its chip inside the row (D37)", async () => {
+    if (skip()) return;
+    const p = await open("north");
+    await p.setViewportSize({ width: 1280, height: 800 });
+    await p.waitForTimeout(100);
+    const m = await row(p, "relay").evaluate((r) => {
+      const b = r.querySelector(".agr")!.getBoundingClientRect();
+      const nm = r.querySelector(".agr .nm") as HTMLElement;
+      const chip = r.querySelector(".agr .stchip") as HTMLElement;
+      const c = chip.getBoundingClientRect();
+      return {
+        name: nm.getBoundingClientRect().width,
+        nameWant: Math.min(
+          nm.scrollWidth,
+          6 * parseFloat(getComputedStyle(nm).fontSize),
+        ),
+        chipIn: c.left >= b.left && c.right <= b.right + 0.5,
+        chipTitle: chip.title,
+      };
+    });
+    expect(m.name).toBeGreaterThanOrEqual(m.nameWant - 0.5);
+    expect(m.chipIn).toBe(true);
+    expect(m.chipTitle).toBe("Ready to relaunch (3 compactions)");
+    await p.context().close();
+  }, 60_000);
+
   it("read Ready to relaunch, with Relaunch from handoff as the primary button and no Resume", async () => {
     if (skip()) return;
     const p = await open("north");

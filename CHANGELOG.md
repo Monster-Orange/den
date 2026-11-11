@@ -4,6 +4,30 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.32] - unreleased
+
+### Added
+
+- **A stopped agent's details, from its row (D45).** On the Agents tab,
+  a click on a stopped agent's row (or Enter on it) opens its details
+  beside the row: its name and persona, how and when it ended, the last
+  thing it was asked, its last line of output (secrets hidden), and its
+  workspace and folder. Resume (or Start fresh), Remove and "Show its
+  output" are in it. Esc or a click outside closes it, and the keyboard
+  goes back to the row. On a phone it is a sheet at the bottom. The row
+  keeps its own Resume button.
+
+### Fixed
+
+- **A stopped row keeps its name readable (D37).** In a narrow list, a
+  long chip such as "Ready to relaunch (3 compactions)" squeezed the name
+  to one letter and ran past the row. Now the name keeps room for six
+  letters or so, and the chip ends in "…" (its tooltip has it whole).
+
+### Migrations
+
+- None needed.
+
 ## [0.4.31] - unreleased
 
 ### Changed

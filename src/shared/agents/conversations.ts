@@ -395,6 +395,35 @@ function lastTurnBusy(lines: string[]): TurnVerdict {
   return null;
 }
 
+/**
+ * D45: the last thing a person asked in a conversation, one line, and
+ * when: the last user record that starts a turn and has text (D39's
+ * notATurn rules: no compaction summary, no `!` command, no tool result,
+ * no slash command). It reads back from the end as transcriptBusy does,
+ * at most `maxBytes`. None: null.
+ */
+export function lastPrompt(
+  file: string | null,
+  bytes = ENDS_BYTES,
+  maxBytes = TURN_READ_MAX_BYTES,
+): { text: string; at?: string } | null {
+  if (!file) return null;
+  for (let want = Math.max(1, Math.min(bytes, maxBytes)); ; want *= 4) {
+    const { lines, whole } = readTail(file, Math.min(want, maxBytes));
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].includes('"user"')) continue;
+      const r = parse(lines[i]);
+      if (!r || r.isSidechain === true) continue;
+      const text = promptText(r);
+      if (!text) continue;
+      return typeof r.timestamp === "string"
+        ? { text, at: r.timestamp }
+        : { text };
+    }
+    if (whole || want >= maxBytes) return null;
+  }
+}
+
 /** A folder's absolute forms: as given and its real path. */
 function forms(dir: string): string[] {
   const out = [path.resolve(dir)];

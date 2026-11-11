@@ -551,13 +551,14 @@ function stoppedHtml(r, wsTag = false) {
   const more = `<button type="button" class="den-btn sm" data-act="row-more" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("ag.more", { id: r.agent }))}" title="${esc(t("ag.more", { id: r.agent }))}">⋯</button>`;
   return (
     `<div class="agst agst1" data-agent="${who}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}"` +
-    ` aria-pressed="${open}"${r.attachable ? "" : ' aria-disabled="true"'}` +
+    // D45: a click (or Enter) opens its details, with Resume in them.
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}" data-details=""` +
+    ` aria-haspopup="dialog" aria-expanded="${agd.r?.id === r.id}"` +
     ` title="${esc(stoppedTip(r))}"` +
-    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${name}` }))}">` +
+    ` aria-label="${esc(t("ag.det.label", { id: `${r.workspace} / ${name}` }))}">` +
     `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
     `<span class="nm">${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
-    `<span class="stchip">${esc(chip)}</span>` +
+    `<span class="stchip" title="${esc(chip)}">${esc(chip)}</span>` +
     (at ? `<span class="when">${esc(at)}</span>` : "") +
     `</button>` +
     `<span class="agacts">${first}${more}</span>` +
@@ -3176,6 +3177,194 @@ function stoppedMenuItems(r, opener) {
   ];
 }
 
+// ── D45: a stopped agent's details ─────────────────────────────────────────
+
+/** Under this width the details are a bottom sheet (as the service panel). */
+const DET_SHEET = "(max-width: 639px)";
+/** The open details: the row, its opener, the pop-over and its scrim. */
+const agd = { r: null, opener: null, el: null, scrim: null, det: null };
+
+function detailsHtml(r, det) {
+  const name = displayName(r);
+  const rot = rotationOf(r);
+  const runtime = [r.runtime, r.model].filter(Boolean).join(" · ");
+  const ended = stopReason(r);
+  const sec = (k, body) =>
+    `<div class="den-svp-sec"><div class="den-svp-k">${esc(t(k))}</div>${body}</div>`;
+  const ask =
+    det === null
+      ? `<div class="den-svp-help">${esc(t("ag.det.reading"))}</div>`
+      : det?.lastPrompt?.text
+        ? `<div class="den-agd-v">${esc(det.lastPrompt.text)}</div>` +
+          (det.lastPrompt.at
+            ? `<div class="den-svp-ms">${esc(when(det.lastPrompt.at))}</div>`
+            : "")
+        : `<div class="den-svp-help">${esc(t("ag.det.noAsk"))}</div>`;
+  const comp = r.rotation?.compactions
+    ? `<div class="den-svp-line">${esc(t("ag.det.compactions", { n: r.rotation.compactions }))}</div>`
+    : "";
+  const due = rot
+    ? `<div class="den-svp-line"><span class="tagx warn">${esc(t("ag.det.handoffDue", { why: rotationWhy(r.rotation) }))}</span></div>`
+    : "";
+  const first = r.resumable
+    ? `<button type="button" class="den-btn primary" data-agd="resume">${esc(t("ag.resume"))}</button>` +
+      `<button type="button" class="den-btn" data-agd="fresh">${esc(t("ag.fresh"))}</button>`
+    : `<button type="button" class="den-btn primary" data-agd="fresh">${esc(t("ag.fresh"))}</button>`;
+  return (
+    `<div class="den-svp-h"><div class="den-svp-t"><span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
+    `<b title="${esc(name)}">${esc(name)}</b>` +
+    `<button type="button" class="den-ib den-svp-x" data-agd="close" aria-label="${esc(t("ag.det.close"))}" title="${esc(t("ag.det.close"))}">✕</button></div>` +
+    `<div class="den-svp-meta">${r.persona ? `<span>${esc(r.persona)}</span>` : ""}` +
+    (runtime ? `<span class="den-svp-ms">${esc(runtime)}</span>` : "") +
+    `</div></div>` +
+    `<div class="den-svp-acts">${first}<button type="button" class="den-btn" data-agd="remove">${esc(t("ag.remove"))}</button>` +
+    // Its session ended but is still there: its output, in its pane.
+    (r.attachable
+      ? `<button type="button" class="den-btn" data-agd="open">${esc(t("ag.det.output"))}</button>`
+      : "") +
+    `</div>` +
+    sec(
+      "ag.det.ended",
+      `<div class="den-svp-line"><span class="stchip">${esc(stoppedChip(r))}</span> <span>${esc(ended)}</span></div>` +
+        (det?.lastLine
+          ? `<div class="den-svp-k">${esc(t("ag.det.lastLine"))}</div><div class="den-svp-url">${esc(det.lastLine)}</div>`
+          : "") +
+        comp +
+        due,
+    ) +
+    sec("ag.det.lastAsk", ask) +
+    sec(
+      "ag.det.where",
+      `<div><span class="den-wsp">${esc(r.workspace ?? "")}</span></div>` +
+        (r.cwd ? `<div class="den-svp-url">${esc(r.cwd)}</div>` : ""),
+    )
+  );
+}
+
+function placeDetails() {
+  if (!agd.el) return;
+  const sheet = !!window.matchMedia?.(DET_SHEET).matches;
+  agd.el.classList.toggle("den-sheet", sheet);
+  if (sheet && !agd.scrim) {
+    agd.scrim = document.createElement("div");
+    agd.scrim.className = "den-scrim den-svp-scrim";
+    agd.scrim.addEventListener("click", () => closeDetails(true));
+    document.body.append(agd.scrim);
+  } else if (!sheet && agd.scrim) {
+    agd.scrim.remove();
+    agd.scrim = null;
+  }
+  const top = window.denShell?.topLayer;
+  if (!top) return;
+  if (sheet) top.show(agd.el, document.body, { sheet: true });
+  else
+    top.show(agd.el, agd.opener?.isConnected ? agd.opener : document.body, {
+      gap: 6,
+    });
+}
+
+function paintAgentDetails() {
+  if (!agd.el || !agd.r) return;
+  const a = document.activeElement;
+  const key = a && agd.el.contains(a) ? a.dataset?.agd : null;
+  agd.el.innerHTML = detailsHtml(agd.r, agd.det);
+  placeDetails();
+  if (key) agd.el.querySelector(`[data-agd="${key}"]`)?.focus();
+}
+
+/** The row's button again, once the list was drawn again. */
+function detailsOpener() {
+  const id = agd.r?.id;
+  if (agd.opener?.isConnected) return agd.opener;
+  return id
+    ? st.root?.querySelector(`#agl .agr[data-id="${CSS.escape(id)}"]`)
+    : null;
+}
+
+function closeDetails(refocus) {
+  if (!agd.el) return;
+  const back = detailsOpener();
+  window.denShell?.topLayer?.hide(agd.el);
+  agd.el.remove();
+  agd.scrim?.remove();
+  document.removeEventListener("keydown", detailsKey, true);
+  document.removeEventListener("click", detailsOutside, true);
+  window.removeEventListener("resize", placeDetails);
+  agd.el = agd.scrim = agd.r = agd.det = null;
+  agd.opener = null;
+  back?.setAttribute("aria-expanded", "false");
+  if (refocus) back?.focus();
+}
+
+function detailsKey(e) {
+  if (e.key !== "Escape" || !agd.el) return;
+  e.preventDefault();
+  e.stopPropagation();
+  closeDetails(true);
+}
+
+function detailsOutside(e) {
+  if (!agd.el) return;
+  const tgt = e.target;
+  if (agd.el.contains(tgt)) {
+    const b = tgt.closest?.("[data-agd]");
+    if (!b || b.disabled) return;
+    const r = agd.r;
+    const which = b.dataset.agd;
+    if (which === "close") return closeDetails(true);
+    // The row's own actions: the same calls as its Resume and ⋯.
+    const opener = detailsOpener();
+    closeDetails(false);
+    if (which === "open") void pick(r.id, false);
+    else if (which === "resume" || which === "fresh")
+      void restartRow(r, which, opener ?? b);
+    else if (which === "remove") void removeRow(r, opener ?? b);
+    return;
+  }
+  // The row that opened it toggles it (its own click handler).
+  if (detailsOpener()?.contains(tgt)) return;
+  closeDetails(false);
+}
+
+/**
+ * D45: a stopped agent's details beside its row (a bottom sheet on a
+ * phone), the service panel's pop-over: who it is, how it ended (its last
+ * line when it exited), what it was last asked, compactions or a due
+ * handoff, where it ran; Resume (primary), Start fresh and Remove. Esc or a
+ * click outside closes it and focus goes back to the row. Its row again:
+ * closes it.
+ */
+async function openDetails(r, opener) {
+  if (agd.r?.id === r.id) return closeDetails(true);
+  closeDetails(false);
+  const el = document.createElement("div");
+  el.className = "den-pop den-svp den-agd";
+  el.tabIndex = -1;
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-label", t("ag.det.label", { id: displayName(r) }));
+  document.body.append(el);
+  Object.assign(agd, { r, opener, el, det: null });
+  opener.setAttribute("aria-expanded", "true");
+  paintAgentDetails();
+  (el.querySelector(".den-svp-acts .den-btn") || el).focus();
+  document.addEventListener("keydown", detailsKey, true);
+  document.addEventListener("click", detailsOutside, true);
+  window.addEventListener("resize", placeDetails);
+  let det = { lastPrompt: null };
+  try {
+    const res = await fetch(
+      `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/details`,
+      { headers: { accept: "application/json" } },
+    );
+    if (res.ok) det = await res.json();
+  } catch {
+    /* no details: the row's own facts */
+  }
+  if (agd.r !== r) return;
+  agd.det = det;
+  paintAgentDetails();
+}
+
 function openStoppedMenu(r, opener) {
   window.denShell?.openMenu?.(opener, {
     label: t("ag.more", { id: r.agent }),
@@ -3241,6 +3430,11 @@ export async function mountAgentsPage(root) {
     }
     const b = e.target.closest(".agr");
     if (!b) return;
+    if (b.hasAttribute("data-details")) {
+      const r = visibleRows().find((x) => x.id === b.dataset.id);
+      if (r) void openDetails(r, b);
+      return;
+    }
     if (b.getAttribute("aria-disabled") === "true") return;
     void pick(b.dataset.id, e.shiftKey || e.metaKey || e.ctrlKey);
   });

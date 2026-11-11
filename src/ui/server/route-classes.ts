@@ -177,6 +177,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "D32: the helpers an agent started in its own session, read from the runtime's files (never written)",
   ),
   R(
+    "/api/workspaces/:ws/agents/:id/details",
+    "D45: a stopped agent's details: what it was last asked (one line from its transcript) and how its session ended (exit code, last line, redacted)",
+  ),
+  R(
     "/api/workspaces/:ws/agents/:id/helpers/:helper",
     "D32: one helper's transcript, tool calls summarized, read-only (no stop or steer)",
   ),
@@ -568,6 +572,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "agent-routes.ts:PERSONA_PATH": ["/api/personas/:id"],
   "agent-routes.ts:PLAIN_PATH": ["/api/workspaces/:ws/sessions"],
+  "agent-routes.ts:DETAILS_PATH": ["/api/workspaces/:ws/agents/:id/details"],
   "agent-routes.ts:HELPERS_PATH": [
     "/api/workspaces/:ws/agents/:id/helpers",
     "/api/workspaces/:ws/agents/:id/helpers/:helper",

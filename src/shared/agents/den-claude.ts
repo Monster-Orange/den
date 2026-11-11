@@ -83,6 +83,7 @@ import { cleanName, transcriptTitle } from "./transcript-follow.js";
 import {
   claudeConversations,
   transcriptBusy,
+  lastPrompt,
   transcriptSummary,
 } from "./conversations.js";
 
@@ -624,6 +625,18 @@ export const denClaude: Runtime = {
       );
     } catch {
       return false;
+    }
+  },
+  // D45: what it was last asked, by D39's rules (never a summary or a `!`).
+  lastPrompt(token, env = process.env, opts = {}) {
+    try {
+      return lastPrompt(
+        transcriptFile(token, env),
+        undefined,
+        opts.readMaxBytes,
+      );
+    } catch {
+      return null;
     }
   },
   // AG-4b, unofficial (catalog sessionName): `/rename` appends a

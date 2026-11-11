@@ -113,6 +113,7 @@ import {
   createPersona,
   deletePersona,
   listAgents,
+  agentDetails,
   agentHelpers,
   agentHelperTranscript,
   listPersonas,
@@ -189,6 +190,8 @@ const AGENTS_PATH =
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
   /^\/api\/workspaces\/([^/]+)\/agents\/([^/]+)\/helpers(?:\/([^/]+))?$/;
+/** D45: a stopped agent's details (read-only). */
+const DETAILS_PATH = /^\/api\/workspaces\/([^/]+)\/agents\/([^/]+)\/details$/;
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 const PERSONA_PATH = /^\/api\/personas\/([^/]+)$/;
 const PLAIN_PATH = /^\/api\/workspaces\/([^/]+)\/sessions$/;
@@ -439,6 +442,8 @@ export async function handleAgentRoutes(
     return rotationRoute(req, res, webDeps(deps.agents));
   const hp = HELPERS_PATH.exec(pathname);
   if (hp) return helpersRoute(req, res, hp, webDeps(deps.agents));
+  const dp = DETAILS_PATH.exec(pathname);
+  if (dp) return detailsRoute(req, res, dp, webDeps(deps.agents));
   // HUB-1.5: Settings › Hub. Never the token: hubStatus doesn't return it.
   if (pathname === "/api/hub") {
     const method = req.method ?? "GET";
@@ -1487,6 +1492,31 @@ async function hubConnectRoute(
   }
   const r = await hc.disconnect(body.force === true);
   sendJson(res, r, r.ok ? 200 : 502);
+  return true;
+}
+
+/**
+ * D45: GET .../agents/:id/details: what agent :id was last asked and how
+ * its session ended (agentDetails). Read-only.
+ */
+async function detailsRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  dp: RegExpExecArray,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD")
+    return methodNotAllowed(res, "GET");
+  const ws = safeDecode(dp[1]);
+  const id = safeDecode(dp[2]);
+  try {
+    if (!d.workspaceExists(ws))
+      throw new AgentError(`workspace "${ws}" does not exist`, { status: 404 });
+    sendJson(res, await agentDetails(d, id, ws));
+  } catch (e) {
+    sendError(res, e, ws);
+  }
   return true;
 }
 

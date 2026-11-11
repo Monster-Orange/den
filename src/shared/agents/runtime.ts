@@ -253,6 +253,15 @@ export interface Runtime {
     opts?: { readMaxBytes?: number },
   ): boolean | null;
   /**
+   * D45: the last thing a person asked in conversation `token`, one line,
+   * and when; null when there is none or it can't be read. Never throws.
+   */
+  lastPrompt?(
+    token: string,
+    env?: NodeJS.ProcessEnv,
+    opts?: { readMaxBytes?: number },
+  ): { text: string; at?: string } | null;
+  /**
    * What the runtime prints when it exits at once (0.4.8): `noConversation`
    * when a resume finds nothing to continue, `idInUse` when a new
    * conversation's id is taken. Den then tries the other way, once.

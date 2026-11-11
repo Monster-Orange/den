@@ -1003,6 +1003,70 @@ export async function agentHelpers(
   };
 }
 
+/** D45: how many characters of a session's last line the details show. */
+const LAST_LINE_MAX = 300;
+
+/** D45: a stopped agent's details beyond its row (read-only). */
+export interface AgentDetails {
+  agent: string;
+  workspace: string;
+  /** What a person last asked it, one line, and when. */
+  lastPrompt: { text: string; at?: string } | null;
+  /** Its session ended on its own: the code and its last line (redacted). */
+  exitCode?: number;
+  lastLine?: string;
+}
+
+/**
+ * D45: what the stopped agent's details pop-over shows beyond its row:
+ * what it was last asked (its runtime's transcript, D39's turn rules) and,
+ * when its session ended on its own, the exit code and the last line it
+ * printed, secrets redacted. Nothing here starts, stops or sends anything.
+ */
+export async function agentDetails(
+  d: AgentsResolved,
+  id: string,
+  ws?: string,
+): Promise<AgentDetails> {
+  const rec = agentRecord(d, id, ws);
+  const rt = getRuntime(rec.runtime);
+  let readMaxBytes: number | undefined;
+  try {
+    readMaxBytes = d.agentsConfig().turnReadMaxBytes;
+  } catch {
+    /* unreadable config: the default */
+  }
+  const prompt = rec.resumeToken
+    ? (rt?.lastPrompt?.(rec.resumeToken, d.env, { readMaxBytes }) ?? null)
+    : null;
+  const out: AgentDetails = {
+    agent: rec.id,
+    workspace: rec.workspace,
+    lastPrompt: prompt,
+  };
+  let c: HostClient | null = null;
+  try {
+    c = await d.connectExisting();
+    const s = c ? sessionOf(await c.list(), rec) : undefined;
+    if (c && s?.exited) {
+      if (s.exitCode !== undefined) out.exitCode = s.exitCode;
+      const lines = plainLines(
+        (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8"),
+      ).filter((l) => l.trim());
+      const last = lines[lines.length - 1];
+      if (last)
+        out.lastLine = [...redactSecrets(last.trim())]
+          .slice(0, LAST_LINE_MAX)
+          .join("");
+    }
+  } catch {
+    /* no session host: no session facts */
+  } finally {
+    c?.close();
+  }
+  return out;
+}
+
 /**
  * D34 "Clear done": hides every helper of agent `id` that has ended (done,
  * failed, stopped), in this conversation and earlier ones, by setting its

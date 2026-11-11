@@ -259,7 +259,9 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     expect(
       (await row(p, "ender").locator(".stchip").textContent())?.trim(),
     ).toBe("Exited");
+    // D45: the row opens its details; its output is one click from there.
     await row(p, "ender").locator(".agr").click();
+    await p.locator('.den-agd [data-agd="open"]').click();
     const bar = p.locator(".pane .bar2", { hasText: "ender" }).first();
     await bar.locator('[data-act="resume"]').waitFor({ timeout: 15_000 });
     expect(await bar.locator(".where").textContent()).toContain(
@@ -286,6 +288,159 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     await row(p, "ender").waitFor({ state: "detached" });
     await p.context().close();
   }, 60_000);
+
+  describe("D45: a stopped agent's details, from its row", () => {
+    const det = (p: Page) => p.locator('.den-agd[role="dialog"]');
+    const btn = (p: Page, id: string) => row(p, id).locator(".agr");
+    async function shown(p: Page): Promise<void> {
+      const g = p.locator("#agl details[data-stopped]");
+      if ((await g.count()) && (await g.getAttribute("open")) === null)
+        await g.locator("summary").click();
+    }
+
+    it("a click opens them beside the row: who, how it ended, what it was last asked, where; Resume first", async () => {
+      if (skip()) return;
+      // What scout was last asked: its transcript, by D39's rules (the
+      // summary after it is no ask).
+      const dir = path.join(s!.tmp, "home", ".claude", "projects", "-seeded");
+      fs.mkdirSync(dir, { recursive: true });
+      const line = (o: unknown) => `${JSON.stringify(o)}\n`;
+      fs.writeFileSync(
+        path.join(dir, `${TOKEN.scout}.jsonl`),
+        line({
+          type: "user",
+          timestamp: "2026-11-06T09:30:00.000Z",
+          message: { role: "user", content: "Review the north release notes" },
+        }) +
+          line({
+            type: "assistant",
+            message: {
+              role: "assistant",
+              stop_reason: "end_turn",
+              content: [],
+            },
+          }) +
+          line({
+            type: "user",
+            isCompactSummary: true,
+            isVisibleInTranscriptOnly: true,
+            message: {
+              role: "user",
+              content: "This session is being continued",
+            },
+          }),
+      );
+      const p = await open("north");
+      await shown(p);
+      await btn(p, "scout").click();
+      await det(p).waitFor();
+      expect(await btn(p, "scout").getAttribute("aria-expanded")).toBe("true");
+      const text = (await det(p).textContent()) ?? "";
+      for (const want of ["reviewer", "den-claude", "Stopped", "north"])
+        expect(text).toContain(want);
+      await det(p)
+        .getByText("Review the north release notes")
+        .waitFor({ timeout: 10_000 });
+      expect(text).not.toContain("This session is being continued");
+      const actions = await det(p)
+        .locator(".den-svp-acts .den-btn")
+        .evaluateAll((bs) =>
+          bs.map((b) => [
+            (b as HTMLElement).dataset.agd,
+            b.classList.contains("primary"),
+          ]),
+        );
+      expect(actions.slice(0, 3)).toEqual([
+        ["resume", true],
+        ["fresh", false],
+        ["remove", false],
+      ]);
+      // Focus is in it: its first action.
+      expect(
+        await p.evaluate(
+          () => (document.activeElement as HTMLElement)?.dataset?.agd,
+        ),
+      ).toBe("resume");
+      // The row keeps its own Resume.
+      expect(await acts(p, "scout")).toContain("resume");
+      await p.context().close();
+    }, 60_000);
+
+    it("Esc closes them and focus goes back to the row; a click outside closes them; Enter on the row opens them", async () => {
+      if (skip()) return;
+      const p = await open("north");
+      await shown(p);
+      await btn(p, "scout").click();
+      await det(p).waitFor();
+      await p.keyboard.press("Escape");
+      await det(p).waitFor({ state: "detached" });
+      expect(
+        await p.evaluate(() =>
+          (document.activeElement as HTMLElement)
+            ?.closest(".agst")
+            ?.getAttribute("data-agent"),
+        ),
+      ).toBe("scout");
+      expect(await btn(p, "scout").getAttribute("aria-expanded")).toBe("false");
+      // Enter on the focused row opens them again.
+      await p.keyboard.press("Enter");
+      await det(p).waitFor();
+      await p.mouse.click(5, 5);
+      await det(p).waitFor({ state: "detached" });
+      await p.context().close();
+    }, 60_000);
+
+    it("a runtime that can't resume: Start fresh is first, and there is no Resume", async () => {
+      if (skip()) return;
+      const p = await open("north");
+      await shown(p);
+      await btn(p, "lookout").click();
+      await det(p).waitFor();
+      const first = det(p).locator(".den-svp-acts .den-btn").first();
+      expect(await first.getAttribute("data-agd")).toBe("fresh");
+      expect(await first.getAttribute("class")).toContain("primary");
+      expect(await det(p).locator('[data-agd="resume"]').count()).toBe(0);
+      await p.context().close();
+    }, 60_000);
+
+    it("at 390px they are a bottom sheet inside the window, and touch closes them", async () => {
+      if (skip()) return;
+      const ctx = await browser!.newContext({
+        viewport: { width: 390, height: 800 },
+        hasTouch: true,
+        isMobile: true,
+        reducedMotion: "reduce",
+      });
+      await ctx.addInitScript((v) => {
+        try {
+          for (const k of ["den-changelog-seen", "acme-changelog-seen"])
+            localStorage.setItem(k, v);
+        } catch {
+          /* none */
+        }
+      }, latest);
+      const p = await ctx.newPage();
+      p.on("pageerror", (e) => errors.push(e.message));
+      await p.goto(signInUrl(s!.stateDir, s!.base, "/agents?ws=north"));
+      await p.waitForSelector("#agl:not([aria-busy]) .agr", {
+        state: "attached",
+        timeout: 20_000,
+      });
+      await shown(p);
+      await btn(p, "scout").tap();
+      await det(p).waitFor();
+      expect(await det(p).getAttribute("class")).toContain("den-sheet");
+      const box = (await det(p).boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(390);
+      expect(
+        await p.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(390);
+      await p.locator(".den-svp-scrim").tap({ position: { x: 10, y: 10 } });
+      await det(p).waitFor({ state: "detached" });
+      await ctx.close();
+    }, 60_000);
+  });
 
   it("Resume continues the same conversation, in the agent's own cwd, and opens its pane", async () => {
     if (skip() || !PTY) return;

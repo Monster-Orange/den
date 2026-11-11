@@ -275,8 +275,9 @@
       .agst1 > .agr {
         flex: 1 1 0;
         min-width: 0;
-        /* The name gives way (ellipsis); the chip and time stay whole. */
-        grid-template-columns: auto minmax(2em, 1fr) auto auto;
+        /* The name keeps 6em, then the chip gives way (ellipsis; its
+           title has it whole); the time stays whole. */
+        grid-template-columns: auto minmax(6em, 1fr) minmax(0, max-content) auto;
         column-gap: 6px;
         padding-right: 4px;
       }
@@ -291,6 +292,9 @@
         border-radius: 999px;
         padding: 0 5px;
         white-space: nowrap;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       .agst1 > .agr .when {
         font: 11.5px var(--mono);
