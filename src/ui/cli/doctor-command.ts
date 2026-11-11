@@ -25,8 +25,10 @@ import chalk from "chalk";
 import {
   readDenConfig,
   readMcpConfig,
+  sectionConfigError,
   type DenConfig,
 } from "../../shared/den-config.js";
+import type { ConfigError } from "../../shared/config-error.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
@@ -509,6 +511,37 @@ export function hubLines(
   };
 }
 
+/**
+ * `agents:` and `sessions:` (0.4.29): a bad key there stops only the agent
+ * and session commands, so doctor names it, with its file and key path,
+ * and carries on with every other row. Nothing is shown when both are fine.
+ */
+export function configLines(
+  title: string,
+  errorOf: (
+    s: "agents" | "sessions",
+  ) => ConfigError | null = sectionConfigError,
+): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
+  const lines: string[] = [];
+  const checks: OnboardCheck[] = [];
+  for (const section of ["agents", "sessions"] as const) {
+    const e = errorOf(section);
+    const issues = e
+      ? e.issues.length
+        ? e.issues.map((i) => `${i.file}: ${i.text}`)
+        : [e.message]
+      : [];
+    checks.push({
+      id: `config:${section}`,
+      status: issues.length ? "fail" : "ok",
+      detail: issues.length ? issues.join("; ") : `${section}: valid`,
+    });
+    for (const l of issues) lines.push(`  ${section}  ✗  ${l}`);
+  }
+  if (lines.length) lines.unshift("", `${title} doctor: config`, "");
+  return { lines, problem: lines.length > 0, checks };
+}
+
 export async function cmdDoctor(args: string[]): Promise<number> {
   const probe = args.includes("--probe");
   const json = args.includes("--json");
@@ -545,6 +578,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const h = hubLines(await hubStatus(), readBrand().name);
       if (h.check) r.checks.push(h.check);
     }
+    const cfg = configLines(readBrand().name);
+    r.checks.push(...cfg.checks);
+    if (cfg.problem) r.ok = false;
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -569,6 +605,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     for (const l of hubLines(await hubStatus(), readBrand().name).lines)
       console.log(l);
   }
+  const cfg = configLines(readBrand().name);
+  for (const l of cfg.lines) console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {
@@ -577,7 +615,12 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       agentsConfigured(readConfigOrNull(), getStateDir()),
     ))
       console.log(l);
-    return rows.some((r) => r.problem) || held.problem || ownerProblem ? 1 : 0;
+    return rows.some((r) => r.problem) ||
+      held.problem ||
+      ownerProblem ||
+      cfg.problem
+      ? 1
+      : 0;
   }
   const { runEnvProbe, formatProbe } = await import("./env-probe.js");
   const { resolveDeps, plainSessionEnv } =
@@ -596,7 +639,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   console.log("");
   for (const l of formatProbe(results)) console.log(l);
   const found = results.some((r) => r.findings.length);
-  return rows.some((r) => r.problem) || held.problem || ownerProblem || found
+  return rows.some((r) => r.problem) ||
+    held.problem ||
+    ownerProblem ||
+    cfg.problem ||
+    found
     ? 1
     : 0;
 }

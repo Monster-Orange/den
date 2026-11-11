@@ -23,6 +23,7 @@ import * as path from "path";
 import * as os from "os";
 import {
   agentsConfigured,
+  configLines,
   doctorNotes,
   doctorRows,
   formatDoctor,
@@ -274,5 +275,31 @@ describe("doctor's agents note", () => {
       null,
     ])
       expect(doctorNotes("acme", agentsConfigured(cfg, state))).toEqual([]);
+  });
+});
+
+describe("doctor names a bad agents: or sessions: key and carries on", () => {
+  it("one ✗ line per section, with file and key; no values", () => {
+    dist(
+      "environments: [local]\nagents:\n  helpers:\n    collapse_done: 5\nsessions:\n  max_concurrent: hunter2\n",
+    );
+    const r = configLines("Acme");
+    expect(r.problem).toBe(true);
+    expect(r.lines.filter((l) => l.includes("✗"))).toEqual([
+      "  agents  ✗  config/den.yml: agents.helpers.collapse_done: unknown key (agents.helpers takes active_minutes, collapse_done_minutes)",
+      "  sessions  ✗  config/den.yml: sessions.max_concurrent: must be a whole number of at least 1",
+    ]);
+    expect(r.lines.join("\n")).not.toContain("hunter2");
+    expect(r.checks.map((c) => [c.id, c.status])).toEqual([
+      ["config:agents", "fail"],
+      ["config:sessions", "fail"],
+    ]);
+  });
+
+  it("nothing shown when both are fine", () => {
+    dist("environments: [local]\nagents:\n  max_concurrent: 2\n");
+    const r = configLines("Acme");
+    expect([r.problem, r.lines]).toEqual([false, []]);
+    expect(r.checks.map((c) => c.status)).toEqual(["ok", "ok"]);
   });
 });

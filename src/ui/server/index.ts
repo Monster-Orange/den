@@ -115,6 +115,7 @@ import {
 } from "../../shared/process/spawn-streaming.js";
 import {
   assertDenConfigValid,
+  sectionConfigError,
   readDenConfig,
   readMcpConfig,
   isProductionEnv,
@@ -2314,6 +2315,10 @@ async function handleRequest(
 
   // The Agents tab (AG-4a-term, AG spec §5d): sessions and terminal panes.
   if (pathname === "/agents" || pathname === "/agents.html") {
+    // A typo under agents: is the 422 config page here (only here: the
+    // rest of the UI still works).
+    const bad = sectionConfigError("agents");
+    if (bad && wantsHtmlPage(req, pathname)) throw bad;
     return serveFile(res, path.join(PUBLIC_DIR, "agents.html"));
   }
 

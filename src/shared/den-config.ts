@@ -604,6 +604,51 @@ export function requireGithubOrg(config: DenConfig = readDenConfig()): string {
   return org;
 }
 
+/**
+ * Run a section reader (agents:, sessions:) whose checks throw a plain
+ * Error "<key>: <what is wrong>", and throw that as a ConfigError instead:
+ * the user's to fix, so the web server answers 422 with the config page,
+ * not a 500. A trailing "(got …)" is left out: issues name keys, never
+ * values.
+ */
+function asConfigError<T>(read: () => T): T {
+  try {
+    return read();
+  } catch (e) {
+    if (isConfigError(e) || !(e instanceof Error)) throw e;
+    const text = e.message.replace(/\s*\(got [\s\S]*\)$/, "");
+    const at = text.indexOf(": ");
+    const key = at > 0 ? text.slice(0, at) : text.split(/\s/)[0];
+    const message = at > 0 ? text.slice(at + 2) : text;
+    throw new ConfigError([{ file: product().configFile, key, message, text }]);
+  }
+}
+
+/**
+ * The ConfigError of one section (`agents:` or `sessions:`), or null.
+ * Scoped to it: a typo there stops only the agent and session commands
+ * and routes (and the Agents page), never services, logs, tests or the
+ * edge. A file that can't be read is left to readDenConfig's callers.
+ */
+export function sectionConfigError(
+  section: "agents" | "sessions",
+): ConfigError | null {
+  let config: DenConfig;
+  try {
+    config = readDenConfig();
+  } catch {
+    return null;
+  }
+  try {
+    if (section === "agents") readAgentsConfig(config);
+    else readSessionsConfig(config);
+    return null;
+  } catch (e) {
+    if (isConfigError(e)) return e;
+    throw e;
+  }
+}
+
 let checked: { key: string; error: ConfigError | null } | null = null;
 
 /**
@@ -1095,6 +1140,10 @@ function guardrailsBlock(
 export function readAgentsConfig(
   config: DenConfig = readDenConfig(),
 ): ResolvedAgentsConfig {
+  return asConfigError(() => parseAgentsConfig(config));
+}
+
+function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
   const raw = (config.agents ?? {}) as unknown;
   if (!isMapping(raw))
     throw new Error(`agents: must be a mapping (got ${JSON.stringify(raw)})`);
@@ -1197,6 +1246,10 @@ export interface ResolvedSessionsConfig {
 export function readSessionsConfig(
   config: DenConfig = readDenConfig(),
 ): ResolvedSessionsConfig {
+  return asConfigError(() => parseSessionsConfig(config));
+}
+
+function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
   const raw = (config.sessions ?? {}) as unknown;
   if (!isMapping(raw))
     throw new Error(`sessions: must be a mapping (got ${JSON.stringify(raw)})`);

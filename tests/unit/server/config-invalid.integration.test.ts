@@ -24,16 +24,27 @@ import {
 let tmp = "";
 let invalid: SlowGitServer;
 let valid: SlowGitServer;
+let badAgents: SlowGitServer;
 let checkout = "";
 
-function distribution(name: string, orgs: string[], services: string[]) {
+function distribution(
+  name: string,
+  orgs: string[],
+  services: string[],
+  more: string[] = [],
+) {
   const root = path.join(tmp, name);
   write(path.join(root, "den.yml"), "product:\n  name: den\n");
   write(
     path.join(root, "config", "den.yml"),
-    ["environments: [local]", "github_org: acme", "orgs:", ...orgs, ""].join(
-      "\n",
-    ),
+    [
+      "environments: [local]",
+      "github_org: acme",
+      "orgs:",
+      ...orgs,
+      ...more,
+      "",
+    ].join("\n"),
   );
   write(
     path.join(root, "config", "local", "service-catalog.yml"),
@@ -91,9 +102,22 @@ beforeAll(async () => {
     slow: [],
     delayS: 0,
   });
+  // Valid orgs, a typo under agents: (it answered the agents routes 500).
+  badAgents = await startSlowGitServer({
+    tmp,
+    root: distribution(
+      "bad-agents",
+      ["  initech: { repos: [widget] }"],
+      services,
+      ["agents:", "  helpers:", "    collapse_done: 5"],
+    ),
+    slow: [],
+    delayS: 0,
+  });
 }, 90_000);
 
 afterAll(async () => {
+  await badAgents?.stop();
   await invalid?.stop();
   await valid?.stop();
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -198,6 +222,49 @@ describe("a config that fails validation is a JSON error naming its keys", () =>
 
   it("the identity probe still answers", async () => {
     expect((await request(invalid, "/api/server-info")).status).toBe(200);
+  }, 30_000);
+});
+
+describe("a typo under agents: is a 422 naming its key, on agent routes only", () => {
+  const ISSUE = {
+    file: "config/den.yml",
+    key: "agents.helpers.collapse_done",
+    message:
+      "unknown key (agents.helpers takes active_minutes, collapse_done_minutes)",
+  };
+
+  it("GET /api/workspaces/lab/agents is 422 config_invalid, not a 500", async () => {
+    const r = await request(badAgents, "/api/workspaces/lab/agents");
+    expect(r.status).toBe(422);
+    const body = JSON.parse(r.body) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      ok: false,
+      code: "config_invalid",
+      issues: [ISSUE],
+    });
+    expect(body.error).toBe(`config/den.yml: ${ISSUE.key}: ${ISSUE.message}`);
+  }, 30_000);
+
+  it.each(["/api/services", "/api/workspaces", "/api/sessions/helpers"])(
+    "only there: GET %s still answers",
+    async (p) => {
+      const r = await request(badAgents, p);
+      expect([p, r.status]).toEqual([p, 200]);
+    },
+    30_000,
+  );
+
+  it("the Agents page is the 422 error page", async () => {
+    const r = await request(badAgents, "/agents", {
+      headers: { accept: "text/html" },
+    });
+    expect(r.status).toBe(422);
+    expect(r.body).toContain("agents.helpers.collapse_done");
+    // Other pages still load.
+    const home = await request(badAgents, "/", {
+      headers: { accept: "text/html" },
+    });
+    expect(home.status).toBe(200);
   }, 30_000);
 });
 

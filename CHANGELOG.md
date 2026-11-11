@@ -4,6 +4,18 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.29] - unreleased
+
+### Fixed
+
+- A bad key or value under `agents:` or `sessions:` in the config (a
+  typo such as `agents.helpers.collapse_done`) made the Agents page's
+  routes answer 500. They now answer 422 `config_invalid` naming the
+  key, and the Agents page shows the config error page. Only the agent
+  and session commands and routes stop: services, logs, tests and the
+  edge carry on. `<cli> doctor` names the bad key with its file and path
+  (a ✗ row, and `config:agents` / `config:sessions` in `--json`).
+
 ## [0.4.28] - 2026-11-10
 
 ### Added

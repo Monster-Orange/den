@@ -1555,7 +1555,12 @@ keys. Such an error stops every command that touches orgs, the catalog,
 clones or releases (exit 1, before any git call or write), and every web
 API route that reads the config answers it as 422 `{ "ok": false, "error":
 "<message>", "code": "config_invalid", "requestId": "<id>" }` (0.3: with
-the `X-Request-Id` header; a page request gets the error page). Without the new keys nothing
+the `X-Request-Id` header; a page request gets the error page). A bad key
+or value under `agents:` or `sessions:` (0.4.29) is the same 422 error,
+naming its key (`agents.helpers.collapse_done: unknown key …`), but only
+for the agent and session commands and routes, and the Agents page shows
+the error page. Everything else carries on, and `<cli> doctor` names the
+key. Without the new keys nothing
 changes: `/api/orgs` is byte for byte what 0.2.7 answered. They need Den
 0.2.8 or later.
 
