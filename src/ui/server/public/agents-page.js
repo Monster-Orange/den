@@ -1148,6 +1148,24 @@ function focusTerm(id) {
 }
 
 /**
+ * D40: a pick waiting for its socket is the person's latest choice only
+ * until they choose something else. Their press or Tab outside that pane
+ * (another row, a stopped row, a field) cancels it, so a socket that opens
+ * late never takes the keyboard from where they went. Only their input
+ * counts: the page moving focus back to a row it redrew does not.
+ */
+function dropStalePick(e) {
+  const id = st.focusOnOpen;
+  if (!id || !e.isTrusted) return;
+  // Typing straight after a pick is for the picked agent; Tab moves away.
+  if (e.type === "keydown" && e.key !== "Tab") return;
+  const at = e.type === "keydown" ? document.activeElement : e.target;
+  if (!st.panes.get(id)?.el?.contains(at)) st.focusOnOpen = null;
+}
+document.addEventListener("pointerdown", dropStalePick, true);
+document.addEventListener("keydown", dropStalePick, true);
+
+/**
  * Open (or bring forward) the session of a row the person clicked, as the
  * layout says: Focus replaces the pane (`add`: Shift- or ⌘-click, one
  * alongside), Tabs opens a tab, Tile adds a tile. D40: a pick (not an add)

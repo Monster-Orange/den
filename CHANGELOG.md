@@ -37,7 +37,9 @@ config and manifest changes a distribution must make to move to it under
   a pane alongside, leaves the keyboard in the terminal that had it,
   while that terminal is still in sight. Where only one pane shows (Tabs,
   or a phone), the added pane comes to the front and takes the keyboard.
-  A pane whose session ended never takes the keyboard.
+  If you click or Tab somewhere else before the terminal is ready, it
+  doesn't take the keyboard when it connects. A pane whose session ended
+  never takes the keyboard.
 
 ### Migrations
 
