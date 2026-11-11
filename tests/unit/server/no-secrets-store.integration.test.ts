@@ -336,7 +336,8 @@ describe.each([
 
   it("web: health, the UI pages, and not-configured secret endpoints", async () => {
     const up = f.acme("web", "up", "--no-open", "--port", String(port));
-    expect(up.code).toBe(0);
+    // Its output with the code: a failure says why (0.4.29-dev.1's gate).
+    expect({ code: up.code, out: up.out }).toMatchObject({ code: 0 });
     const start = Date.now();
     while (Date.now() - start < 30_000) {
       try {

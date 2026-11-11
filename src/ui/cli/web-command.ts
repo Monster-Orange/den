@@ -11,6 +11,7 @@ import * as net from "net";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { CLI_SPAWN_TIMEOUT_MS, DEFAULT_PORT } from "../../shared/constants.js";
+import { LookupTimeoutError, lookup } from "./proc-lookup.js";
 import {
   readSecretsConfig,
   secretsProcessEnv,
@@ -672,15 +673,12 @@ function removeWebServerState(): void {
   }
 }
 
+/** Throws LookupTimeoutError when lsof can't answer (proc-lookup.ts). */
 function listListeningPids(port: number): number[] {
-  const result = spawnSync("lsof", [`-tiTCP:${port}`, "-sTCP:LISTEN"], {
-    encoding: "utf-8",
-    timeout: CLI_SPAWN_TIMEOUT_MS,
-  });
-  if (result.status !== 0) return [];
+  const out = lookup("lsof", [`-tiTCP:${port}`, "-sTCP:LISTEN"]);
   return Array.from(
     new Set(
-      result.stdout
+      out
         .split(/\r?\n/)
         .map((line) => Number(line.trim()))
         .filter((pid) => Number.isInteger(pid) && pid > 0),
@@ -688,12 +686,9 @@ function listListeningPids(port: number): number[] {
   );
 }
 
+/** Throws LookupTimeoutError when ps can't answer (proc-lookup.ts). */
 function commandForPid(pid: number): string {
-  const result = spawnSync("ps", ["-p", String(pid), "-o", "command="], {
-    encoding: "utf-8",
-    timeout: CLI_SPAWN_TIMEOUT_MS,
-  });
-  return result.status === 0 ? result.stdout.trim() : "";
+  return lookup("ps", ["-p", String(pid), "-o", "command="]).trim();
 }
 
 /**
@@ -725,7 +720,12 @@ function webRoots(root: string = getDistRoot()): string[] {
 async function waitForPortRelease(port: number): Promise<boolean> {
   const deadline = Date.now() + CLI_SPAWN_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (listListeningPids(port).length === 0) return true;
+    try {
+      if (listListeningPids(port).length === 0) return true;
+    } catch (err) {
+      // Couldn't tell: not released yet, as far as we know.
+      if (!(err instanceof LookupTimeoutError)) throw err;
+    }
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
   return false;
@@ -1341,7 +1341,14 @@ export async function cmdWeb(args: string[]): Promise<void> {
   if (svc.handled) {
     /* the service runs it: on to opening the browser */
   } else if (options.action === "down") {
-    const stopped = await stopDenWebServer(options.port, vouched);
+    const stopped = await stopDenWebServer(options.port, vouched).catch(
+      (err: unknown) => {
+        if (!(err instanceof LookupTimeoutError)) throw err;
+        throw new Error(
+          `Couldn't tell whether ${product().title} web is running on port ${options.port}: ${err.message}. The machine may be busy; run it again.`,
+        );
+      },
+    );
     if (stopped.stopped) {
       const mode = stopped.forced ? "force stopped" : "stopped";
       console.log(

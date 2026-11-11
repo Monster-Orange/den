@@ -31,6 +31,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **`web down` under load.** When `lsof` or `ps` took longer than 5 s
+  (a busy machine), `web down` read that as "no server", answered
+  `stopped: false`, and left the server running. A slow lookup is now
+  tried again with a longer limit; if it still can't answer, `web down`
+  exits 1 and says it couldn't tell, instead of "not running".
 - **Links in Safari (D35).** A ⌘-click on a link in an agent's console,
   and Visit ↗ on the Services page and in its menus, open through a real
   link (`target=_blank`, `noopener noreferrer`), which Safari doesn't
