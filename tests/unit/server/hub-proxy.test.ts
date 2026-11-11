@@ -251,6 +251,7 @@ describe("D52: which paths", () => {
       "/hub/api/import/ds/dry-run",
       "/hub/api/reports/imports",
       "/hub/api/admin/fixtures/demo/dry-run",
+      "/hub/api/admin/fold/dry-run",
     ]) {
       const res = await fetch(`${base}${p}`, { headers: auth });
       expect([p, res.status]).toEqual([p, 200]);
@@ -264,6 +265,7 @@ describe("D52: which paths", () => {
       "/api/import/ds/dry-run",
       "/api/reports/imports",
       "/api/admin/fixtures/demo/dry-run",
+      "/api/admin/fold/dry-run",
     ]);
     hub.seen.length = 0;
     for (const p of [
@@ -278,6 +280,7 @@ describe("D52: which paths", () => {
       "/hub/api/admin/users",
       "/hub/api/import/other",
       "/hub/api/import/ds",
+      "/hub/api/admin/fold",
     ]) {
       const res = await fetch(`${base}${p}`, { headers: auth });
       expect([p, res.status]).toEqual([p, 404]);
@@ -301,6 +304,7 @@ describe("D52: which paths", () => {
       "/api/import/ds/*",
       "/api/reports/*",
       "/api/admin/fixtures/*",
+      "/api/admin/fold/*",
     ]);
     expect(hubProxyPath("/hub/callback")).toBeNull();
     expect(hubProxyPath("/hubx/mcp")).toBeNull();

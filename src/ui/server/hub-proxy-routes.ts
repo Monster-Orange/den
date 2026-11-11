@@ -37,6 +37,7 @@ export const HUB_PROXY_PATHS: readonly string[] = [
   "/api/import/ds/*",
   "/api/reports/*",
   "/api/admin/fixtures/*",
+  "/api/admin/fold/*",
 ];
 
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "DELETE"]);

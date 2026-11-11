@@ -56,8 +56,8 @@ config and manifest changes a distribution must make to move to it under
   Den puts in the Hub token and who is calling (the agent, its workspace
   and its session) from its own records. Whatever the agent claims about
   itself is dropped. Only Hub's paths for agents pass: MCP, the inbox,
-  notifications, imports (packs and design systems), reports and fixture
-  removal. Anything else gets
+  notifications, imports (packs and design systems), reports, and
+  asking to remove a test company or fold one company into another. Anything else gets
   a 404. People and browsers are refused, and they use Hub itself. The
   Stop hook's inbox check (D41) goes through Den the same way. Agents
   started before this get the change when they restart: their row says

@@ -1012,8 +1012,8 @@ hub:
   person's token or a browser gets 403: people use Hub itself. It passes
   only Hub's paths for agents: `/mcp`, `/api/inbox`,
   `/api/notifications…`, `/api/import/packs…`, `/api/import/ds/…`
-  (a design system), `/api/reports/…` and
-  `/api/admin/fixtures/…`. Anything else gets 404. The agent's own
+  (a design system), `/api/reports/…`, `/api/admin/fixtures/…` and
+  `/api/admin/fold/…` (asking to fold one company into another). Anything else gets 404. The agent's own
   `Authorization` and any `X-Den-*` it sends are dropped. Redirects are
   passed back, never followed, and Hub's status and errors come back as
   they are. Bodies stream both ways, and Hub enforces its own size
