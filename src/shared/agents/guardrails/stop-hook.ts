@@ -27,7 +27,7 @@
  * fails the handoff check, it blocks once with what to write. Once the
  * handoff passes, the turn ends as usual.
  *
- * Hub's inbox (D41): with `--hub-inbox <hub url> --mcp <mcp.json>`, when
+ * Hub's inbox (D41): with `--hub-inbox <Den's proxy to Hub>`, when
  * nothing else blocks, it asks Hub how many comments wait on this agent
  * and blocks once when that went up (hub-inbox.ts). `--inbox-only`: that
  * check alone (a persona without Den's other hooks).

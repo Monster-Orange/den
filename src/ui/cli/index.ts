@@ -197,6 +197,7 @@ import { cmdDoctor } from "./doctor-command.js";
 import { cmdSessions, SESSIONS_HELP } from "./sessions-command.js";
 import { AGENTS_HELP, cmdAgents } from "./agents-command.js";
 import { USAGE_HELP, cmdUsage } from "./usage-command.js";
+import { HUB_HELP, cmdHub } from "./hub-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
 import { cmdTheme } from "./theme-command.js";
@@ -548,6 +549,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   sessions: SESSIONS_HELP,
   agents: AGENTS_HELP,
   usage: USAGE_HELP,
+  hub: HUB_HELP,
 };
 
 function resolveCliBaseApiUrl(explicitBaseApiUrl?: string): string | undefined {
@@ -601,6 +603,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "sessions",
   "agents",
   "usage",
+  "hub",
   "service",
   "theme",
   "plugin",
@@ -632,6 +635,8 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "agents",
   // den#6: reads local transcripts and agent records, no org data.
   "usage",
+  // D52: calls Den's own proxy to Hub, no org data.
+  "hub",
 ]);
 
 function configCheckedCommand(command: string): boolean {
@@ -1109,6 +1114,10 @@ class DenCLI {
 
         case "usage":
           process.exitCode = await cmdUsage(args.slice(1));
+          break;
+
+        case "hub":
+          process.exitCode = await cmdHub(args.slice(1));
           break;
 
         case "mcp": {

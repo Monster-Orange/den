@@ -63,6 +63,9 @@ export async function cleanupRigs(): Promise<void> {
 export const CLAUDE_SHIM = (ran: string, version = "9.9.9") =>
   `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${version} (Claude Code)"; exit 0; fi\necho "$@" >> "${ran}"\nexit 1\n`;
 
+/** D52: the Den web server address agents are given in tests. */
+export const DEN_BASE = "http://localhost:4100";
+
 export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
   // realpath: macOS's tmpdir is a symlink, and cwd comparisons need one form.
   const dir = fs.realpathSync(
@@ -139,6 +142,8 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     // Never this machine's Hub config or secrets store (HUB-1.5).
     hub: async () => null,
     workspaceRepos: () => [],
+    // D52: Den's own address as agents reach it (never this machine's port).
+    denBase: () => DEN_BASE,
     // No early-exit watch unless a test asks for one (it waits up to 3 s).
     exitWatchMs: 0,
     // Stop doesn't wait for the session to end unless a test asks (0.4.8).

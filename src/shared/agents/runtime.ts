@@ -62,10 +62,10 @@ export interface AgentMcp {
   /** The workspace it is pinned to. */
   scope: string;
   /**
-   * HUB-1.5: Den Hub's MCP server (Streamable HTTP), when hub.url is set:
-   * its MCP endpoint (HUB-1.7: Hub's mcp_url, default <hub.url>/mcp) and the headers (the bearer token among them). The
-   * headers go only into the agent's own 0600 MCP file, never into argv,
-   * a record, a log or a page.
+   * HUB-1.5: Den Hub's MCP server (Streamable HTTP), when hub.url is set.
+   * D52: Den's proxy to it (<den>/hub/mcp), with the agent's own Den token
+   * as `Bearer ${DEN_ACTOR_TOKEN}` (expanded from the session's env). The
+   * install's Hub token stays in Den's server: never the agent's.
    */
   hub?: {
     name: string;
@@ -74,8 +74,9 @@ export interface AgentMcp {
     /** hub.allow_tools: its tools run without asking (default on). */
     allowTools?: boolean;
     /**
-     * D41: Hub's base URL for the Stop hook's inbox check; absent when
-     * hub.inbox_on_stop is off. The token stays in the MCP config file.
+     * D41: Den's proxy to Hub (<den>/hub) for the Stop hook's inbox check;
+     * absent when hub.inbox_on_stop is off. No token: the hook sends the
+     * agent's own Den token, from its env.
      */
     inboxBase?: string;
   };

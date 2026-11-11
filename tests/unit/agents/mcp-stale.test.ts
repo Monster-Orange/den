@@ -37,7 +37,7 @@ import {
 } from "../../../src/ui/server/http-errors.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import { listedSessions } from "../../../src/ui/server/session-routes.js";
-import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { DEN_BASE, cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
 const servers: http.Server[] = [];
 afterEach(async () => {
@@ -47,7 +47,8 @@ afterEach(async () => {
 });
 
 const HUB = "https://hub.example.test";
-const HUB_MCP = `${HUB}/mcp`;
+/** D52: the Hub server an agent gets: Den's proxy. */
+const HUB_MCP = `${DEN_BASE}/hub/mcp`;
 const TOKEN = "hubi_TESTONLY_d44_token";
 const agents = (r: Rig, ...args: string[]) => cmdAgents(args, r.deps);
 
@@ -81,6 +82,12 @@ describe("D44: an agent's MCP servers against Hub now", () => {
     ).toEqual({ adds: [HUB_SERVER], drops: [] });
   });
 
+  it("D52: launched straight to Hub (before Den's proxy): its restart gets the proxy", () => {
+    expect(
+      mcpStaleOf(files({ ...den, hub: { url: `${HUB}/mcp` } }), HUB_MCP),
+    ).toEqual({ adds: [HUB_SERVER], drops: [] });
+  });
+
   it("launched with Hub, Hub disconnected now: Hub goes on restart", () => {
     expect(mcpStaleOf(files({ ...den, hub: { url: HUB_MCP } }), null)).toEqual({
       adds: [],
@@ -103,22 +110,28 @@ describe("D44: an agent's MCP servers against Hub now", () => {
         calls++;
         return { url: HUB, token: TOKEN };
       },
+      denBase: () => DEN_BASE,
     };
     expect(await hubNow(d)).toBe(HUB_MCP);
     expect(await hubNow(d)).toBe(HUB_MCP);
     expect(calls).toBe(1);
     await hubNow(d, true);
     expect(calls).toBe(2);
+    // Hub's own mcp_url is where Den's proxy goes; the agent calls Den.
     const custom = {
       hub: async () => ({ url: HUB, token: TOKEN, mcpUrl: `${HUB}/m2` }),
+      denBase: () => DEN_BASE,
     };
-    expect(await hubNow(custom)).toBe(`${HUB}/m2`);
-    expect(await hubNow({ hub: async () => null })).toBe(null);
+    expect(await hubNow(custom)).toBe(HUB_MCP);
+    expect(
+      await hubNow({ hub: async () => null, denBase: () => DEN_BASE }),
+    ).toBe(null);
     expect(
       await hubNow({
         hub: async () => {
           throw new Error("store locked");
         },
+        denBase: () => DEN_BASE,
       }),
     ).toBe(null);
   });

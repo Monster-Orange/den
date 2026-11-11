@@ -369,7 +369,7 @@ function common(input: LaunchInput): {
   const mode = permissionMode(input);
   // D41: the Stop hook asks Hub for comments waiting on this agent.
   const inboxBase = input.mcp.hub?.inboxBase;
-  const inbox = inboxBase ? { base: inboxBase, mcp: file } : undefined;
+  const inbox = inboxBase ? { base: inboxBase } : undefined;
   // den#4: the rotation hooks count this agent's compactions in its files dir.
   const hooks = input.persona.guardrails?.hooks
     ? guardrailHooks(

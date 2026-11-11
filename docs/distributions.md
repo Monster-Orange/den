@@ -996,19 +996,39 @@ hub:
 
 ### What agents get
 
-- Each agent's MCP config gets a server named `hub`: Streamable HTTP at
-  `hub.mcp_url` (default `<hub.url>/mcp`), with
-  `Authorization: Bearer <token>` and plain headers naming the caller:
+- Agents reach Hub through Den, never straight. Each agent's MCP config
+  gets a server named `hub`: Streamable HTTP at Den's own
+  `http://localhost:<port>/hub/mcp`, with
+  `Authorization: Bearer ${DEN_ACTOR_TOKEN}`. That is the agent's own Den
+  token, which Claude Code fills in from the session's env. Den's proxy
+  then calls `hub.mcp_url` (default `<hub.url>/mcp`) with the install's
+  token and plain headers naming the caller, taken from Den's records:
   `X-Den-Agent` (its name), `X-Den-Agent-Id` (its stable id, which Hub
-  keys attribution on), `X-Den-Session` (a new opaque id per launch),
-  `X-Den-Workspace` and `X-Den-Repos` (the workspace's repos,
-  `owner/repo`, comma-separated). Hub sets the company from the token
-  and the project from the repos.
+  keys attribution on), `X-Den-Session` (its session), `X-Den-Workspace`
+  and `X-Den-Repos` (the workspace's repos, `owner/repo`,
+  comma-separated). Hub sets the company from the token and the project
+  from the repos.
+- The proxy (`/hub/<path>`) takes only an agent's own Den token. A
+  person's token or a browser gets 403: people use Hub itself. It passes
+  only Hub's paths for agents: `/mcp`, `/api/inbox`,
+  `/api/notifications…`, `/api/import/packs…`, `/api/reports/…` and
+  `/api/admin/fixtures/…`. Anything else gets 404. The agent's own
+  `Authorization` and any `X-Den-*` it sends are dropped. Redirects are
+  passed back, never followed, and Hub's status and errors come back as
+  they are. Bodies stream both ways, and Hub enforces its own size
+  limits.
 - Its prompt gets one line: "You can search Hub and publish docs and
   mocks there with the hub\_\* tools; your team and project are set from
   this Den install."
-- The token is only in the agent's own MCP file (mode 0600). It is never
-  in a command line, a record, a log, a page or an API answer.
+- The install's token stays in Den's server. It is never in an agent's
+  files (its MCP config included), its env, a command line, a record, a
+  log, a page or an API answer.
+- `<cli> hub push <dir> [--request "<why>"]`, run by an agent, sends an
+  import pack to Hub through the proxy. `<dir>` holds `pack.json` and
+  `blobs/<sha256>`. It stages the pack, uploads the files Hub lacks (four
+  at a time), and prints Hub's dry run. With `--request`, it asks a
+  person to apply it and prints the link where they approve it in Hub.
+  Outside an agent's session it is refused.
 - `hub.allow_tools` (default `true`): agents use Hub's tools without
   asking (Den allows `mcp__hub` for every agent it launches). The token
   limits writes to this install's company, and Hub keeps every version.
@@ -1017,13 +1037,14 @@ hub:
   wins. Settings › Agents › Hub has the checkbox (it saves to
   `config/local/user.yml`).
 - `hub.inbox_on_stop` (default `nudge`): when a den-claude agent is
-  about to stop, its Stop hook asks Hub (`GET <hub.url>/api/inbox`, two
-  seconds at most) how many comments wait on it. When that number went
+  about to stop, its Stop hook asks Hub through Den
+  (`GET <den>/hub/api/inbox`, two seconds at most) how many comments wait
+  on it. When that number went
   up since it was last told, the agent is asked once to carry on: "2 Hub
   comments wait on you: call hub_inbox, answer them (hub_comment) or say
   why not, then finish." Answered threads drop out of the count, so a
-  new reply asks again. The hook reads the token from the agent's MCP
-  file; it is never in the hook's command line. The count it last told
+  new reply asks again. The hook sends the agent's own Den token from its
+  env; no token is in the hook's command line. The count it last told
   is kept in the agent's files (`hub-inbox.json`). A Hub that is down or
   slow lets the agent stop. Set it to `off` and agents are never asked.
   A persona without Den's hooks still gets this check. codex and gemini

@@ -432,6 +432,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "HUB-1.7: revoke this install's Hub token on Hub, then remove it here",
   ),
   R(
+    "/hub/*",
+    "D52: Hub's read paths, for an agent, through Den (hub-proxy-routes.ts): its own Den token only, Hub's agent paths only; Den attaches the install token",
+  ),
+  M(
+    ["POST", "PUT", "DELETE"],
+    "/hub/*",
+    "D52: Hub's MCP and import calls, for an agent, through Den: its own Den token only, Hub's agent paths only; Den attaches the install token",
+  ),
+  R(
     "/hub/callback",
     "HUB-1.7: Hub sends the person back here. Sign-in free: the session cookie is SameSite=Strict, so Hub's redirect doesn't carry it. It acts only for a state this server issued to a signed-in Connect (single-use, 10 min), with the PKCE verifier only this server holds; anything else changes nothing",
   ),

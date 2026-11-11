@@ -118,10 +118,12 @@ export interface ApiOnlyArgs {
   audit: string;
 }
 
-/** D41: what the Stop hook needs for Hub's inbox (never the token). */
+/**
+ * D41: what the Stop hook needs for Hub's inbox: Den's proxy to Hub (D52).
+ * Never a token: the hook sends the agent's own, from its env.
+ */
 export interface InboxHookArgs {
   base: string;
-  mcp: string;
 }
 
 /** The tools the PreToolUse hook sees: with D47 rules, the file tools too. */
@@ -139,7 +141,7 @@ export function hookCommands(
   /** false: the Stop hook never runs the hand-back check (the server agent). */
   handback: boolean = true,
   apiOnly?: ApiOnlyArgs,
-  /** D41: Hub's base URL and the agent's mcp.json, for the inbox check. */
+  /** D41: Den's proxy to Hub, for the inbox check. */
   inbox?: InboxHookArgs,
 ): HookCommands {
   const more = (c: EngineCommand): EngineCommand =>
@@ -172,7 +174,7 @@ export function hookCommands(
           ...c.args,
           ...known.flatMap((k) => ["--known", k]),
           ...(handback ? [] : ["--no-handback"]),
-          ...(inbox ? ["--hub-inbox", inbox.base, "--mcp", inbox.mcp] : []),
+          ...(inbox ? ["--hub-inbox", inbox.base] : []),
         ],
       }))(more(scriptEntrypoint("src/shared/agents/guardrails/stop-hook.ts"))),
     ),
@@ -245,8 +247,6 @@ export function apiOnlyHooks(
                       inbox.files,
                       "--hub-inbox",
                       inbox.base,
-                      "--mcp",
-                      inbox.mcp,
                     ],
                   }))(
                     scriptEntrypoint(

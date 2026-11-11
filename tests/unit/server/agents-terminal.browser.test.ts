@@ -806,13 +806,19 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     if (skip()) return;
     const p = await page(`/agents?open=${sid.planner}&layout=focus`);
     await p.route("**/api/sessions*", async (r) => {
-      const res = await r.fetch();
-      const body = (await res.json()) as {
-        sessions: { agent?: string; mcpStale?: unknown }[];
-      };
-      for (const x of body.sessions)
-        if (x.agent === "planner") x.mcpStale = { adds: ["hub"], drops: [] };
-      await r.fulfill({ response: res, json: body });
+      // A poll in flight when the page reloads is dropped (its response is
+      // disposed); the next one carries it.
+      try {
+        const res = await r.fetch();
+        const body = (await res.json()) as {
+          sessions: { agent?: string; mcpStale?: unknown }[];
+        };
+        for (const x of body.sessions)
+          if (x.agent === "planner") x.mcpStale = { adds: ["hub"], drops: [] };
+        await r.fulfill({ response: res, json: body });
+      } catch {
+        await r.abort().catch(() => undefined);
+      }
     });
     const posted: { url: string; body: unknown }[] = [];
     await p.route("**/agents/planner/restart", (r) => {

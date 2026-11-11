@@ -870,12 +870,13 @@ import {
 import { heldActions } from "./held-actions.js";
 import type { ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
+import { handleHubProxy } from "./hub-proxy-routes.js";
 import {
   handleAgentRoutes,
   startAgentUpkeep,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
-import { policyResolver } from "../cli/agent-ops.js";
+import { hubUpstream, policyResolver } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
 import {
@@ -4753,6 +4754,13 @@ async function handleRequest(
     return;
   }
 
+  // ── D52: Hub, for agents, through Den (hub-proxy.ts) ────────────────────
+  if (
+    await handleHubProxy(req, res, pathname, {
+      upstream: (who) => hubUpstream(agentWebDeps(), who),
+    })
+  )
+    return;
   // ── The server agent (ON-6, server-agent-routes.ts) ──────────────────────
   if (await handleServerAgentRoutes(req, res, pathname)) return;
   // ── Agents on the Workspaces page (AG-4a, agent-routes.ts) ───────────────

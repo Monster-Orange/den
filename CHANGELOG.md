@@ -41,9 +41,30 @@ config and manifest changes a distribution must make to move to it under
   stopped agent's details. Another tool can link an agent's name here. An
   agent that isn't there gets a short note.
 
+- **An agent sends an import pack to Hub (D52).** `<cli> hub push <dir>`
+  runs inside an agent Den started. It stages the pack (pack.json and
+  blobs/), uploads the files Hub lacks, and prints Hub's dry run.
+  `--request "<why>"` also asks a person to apply it, and prints the link
+  where they approve it in Hub. Hub's own limits and errors are shown as
+  Hub words them.
+
+### Security
+
+- **Hub's token never reaches an agent (D52).** Agents used to get the
+  install's Hub token in their own MCP config file. Now an agent calls
+  Hub through Den, at `/hub/…` on Den's own port, with its own Den token.
+  Den puts in the Hub token and who is calling (the agent, its workspace
+  and its session) from its own records. Whatever the agent claims about
+  itself is dropped. Only Hub's paths for agents pass: MCP, the inbox,
+  notifications, imports, reports and fixture removal. Anything else gets
+  a 404. People and browsers are refused, and they use Hub itself. The
+  Stop hook's inbox check (D41) goes through Den the same way. Agents
+  started before this get the change when they restart: their row says
+  "Hub tools arrive on restart" (D44).
+
 ### Migrations
 
-- None needed.
+- None needed. Running agents pick up Den's proxy on restart.
 
 ## [0.4.32] - unreleased
 

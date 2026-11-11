@@ -5,58 +5,41 @@
  * hub_inbox". Answered threads drop out of `yours`, so a new reply brings
  * the nudge back.
  *
- * The install token is read from the agent's own MCP config file (the Hub
- * server's Authorization header), never from argv, env or a log. Two
- * seconds at most; any failure lets the agent stop (fails open).
+ * D52: it asks through Den's proxy (`<den>/hub`), with the agent's own Den
+ * token from its session's env (DEN_ACTOR_TOKEN); Den attaches the install's
+ * Hub token, which the agent never holds. Two seconds at most; any failure
+ * lets the agent stop (fails open).
  */
 import * as fs from "fs";
 import * as path from "path";
+import { ACTOR_TOKEN_ENV } from "../../actor-token.js";
 
 export interface InboxArgs {
-  /** Hub's base URL (hub.url). */
+  /** Den's proxy to Hub (`<den>/hub`). */
   base: string;
-  /** The agent's MCP config file (mcp.json), holding Hub's headers. */
-  mcp: string;
   /** The agent's files dir: where the last nudged count is kept. */
   files: string;
 }
 
-/** `--hub-inbox <base> --mcp <file>` (with `--files <dir>`), or null. */
+/** `--hub-inbox <base>` (with `--files <dir>`), or null. */
 export function inboxArgs(argv: readonly string[]): InboxArgs | null {
   const val = (k: string) => {
     const i = argv.indexOf(k);
     return i >= 0 && argv[i + 1] ? argv[i + 1] : "";
   };
   const base = val("--hub-inbox");
-  const mcp = val("--mcp");
   const files = val("--files");
-  return base && mcp && files ? { base, mcp, files } : null;
+  return base && files ? { base, files } : null;
 }
 
-/** Hub's headers from the MCP config: the server whose URL is on Hub. */
-function hubHeaders(
-  mcpFile: string,
-  base: string,
+/** The agent's own Den token (its session's env), as a bearer; or null. */
+function denBearer(
+  env: Record<string, string | undefined>,
 ): Record<string, string> | null {
-  try {
-    const cfg = JSON.parse(fs.readFileSync(mcpFile, "utf-8")) as {
-      mcpServers?: Record<string, { url?: unknown; headers?: unknown }>;
-    };
-    const origin = new URL(base).origin;
-    for (const s of Object.values(cfg.mcpServers ?? {})) {
-      if (typeof s?.url !== "string") continue;
-      if (new URL(s.url).origin !== origin) continue;
-      const h = s.headers as Record<string, unknown> | undefined;
-      if (!h || typeof h.Authorization !== "string") return null;
-      const out: Record<string, string> = { Authorization: h.Authorization };
-      if (typeof h["X-Den-Agent-Id"] === "string")
-        out["X-Den-Agent-Id"] = h["X-Den-Agent-Id"];
-      return out;
-    }
-  } catch {
-    /* no file, no Hub server: nothing to ask */
-  }
-  return null;
+  const t = env[ACTOR_TOKEN_ENV];
+  return t && /^[\x21-\x7e]+$/.test(t)
+    ? { Authorization: `Bearer ${t}` }
+    : null;
 }
 
 const stateFile = (files: string) => path.join(files, "hub-inbox.json");
@@ -90,9 +73,13 @@ type FetchFn = (url: string, init: RequestInit) => Promise<Response>;
 /** The Stop hook's output for the inbox check ("" lets the agent stop). */
 export async function inboxBlock(
   a: InboxArgs,
-  opts: { fetch?: FetchFn; timeoutMs?: number } = {},
+  opts: {
+    fetch?: FetchFn;
+    timeoutMs?: number;
+    env?: Record<string, string | undefined>;
+  } = {},
 ): Promise<string> {
-  const headers = hubHeaders(a.mcp, a.base);
+  const headers = denBearer(opts.env ?? process.env);
   if (!headers) return "";
   let yours: number;
   try {
