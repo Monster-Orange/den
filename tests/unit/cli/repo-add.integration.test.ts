@@ -57,6 +57,41 @@ function git(cwd: string, ...args: string[]): void {
   if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
 }
 
+/**
+ * Each path under `root` with its mode, size, mtime and a hash of its
+ * bytes: what a failed "untouched" check names (the 0.4.29 release run saw
+ * one change it couldn't name).
+ */
+function treeEntries(root: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const walk = (rel: string) => {
+    const abs = path.join(root, rel);
+    const st = fs.lstatSync(abs);
+    const sum = st.isFile()
+      ? createHash("sha256")
+          .update(fs.readFileSync(abs))
+          .digest("hex")
+          .slice(0, 12)
+      : "-";
+    out.set(
+      rel || ".",
+      `mode ${st.mode.toString(8)} size ${st.size} mtime ${st.mtime.toISOString()} sha ${sum}`,
+    );
+    if (st.isDirectory())
+      for (const e of fs.readdirSync(abs).sort()) walk(path.join(rel, e));
+  };
+  walk("");
+  return out;
+}
+
+/** What changed between two treeEntries: one line per path. */
+function treeChanges(a: Map<string, string>, b: Map<string, string>): string[] {
+  const keys = [...new Set([...a.keys(), ...b.keys()])].sort();
+  return keys
+    .filter((k) => a.get(k) !== b.get(k))
+    .map((k) => `${k}: ${a.get(k) ?? "(none)"} -> ${b.get(k) ?? "(none)"}`);
+}
+
 /** Every path, mode and byte under `root`: equal digests, identical trees. */
 function treeDigest(root: string): string {
   const h = createHash("sha256");
@@ -70,6 +105,23 @@ function treeDigest(root: string): string {
   };
   walk("");
   return h.digest("hex");
+}
+
+interface Snapshot {
+  digest: string;
+  entries: Map<string, string>;
+}
+const snapshot = (root: string): Snapshot => ({
+  digest: treeDigest(root),
+  entries: treeEntries(root),
+});
+
+/** The tree is byte for byte as it was; a failure names each changed path. */
+function expectUntouched(root: string, before: Snapshot): void {
+  const after = treeDigest(root);
+  if (after !== before.digest)
+    expect(treeChanges(before.entries, treeEntries(root))).toEqual([]);
+  expect(after).toBe(before.digest);
 }
 
 function makeRepo(name: string, files: Record<string, string>): string {
@@ -135,7 +187,7 @@ describe("repo add", () => {
     git(repo, "remote", "add", "origin", "https://example.com/acme/shop.git");
     git(repo, "add", "-A");
     git(repo, "commit", "-qm", "init");
-    const before = treeDigest(repo);
+    const before = snapshot(repo);
     expect(
       fs.existsSync(path.join(dist, "config", "local", "workspaces.yml")),
     ).toBe(false);
@@ -189,7 +241,7 @@ describe("repo add", () => {
       mode: "dev-managed",
       path: repo,
     });
-    expect(treeDigest(repo)).toBe(before);
+    expectUntouched(repo, before);
 
     // The same manifest the validator checks, as `validate` sees it.
     const v = spawnSync(path.join(dist, "bin", "acme"), ["validate", repo], {
@@ -203,7 +255,7 @@ describe("repo add", () => {
 
   it("is safe to re-run: existed: true, nothing rewritten, the repo still untouched", () => {
     const repo = path.join(tmp, "repos", "shop");
-    const before = treeDigest(repo);
+    const before = snapshot(repo);
     const side = path.join(dist, "manifests", "shop.acme.yml");
     const sideText = fs.readFileSync(side, "utf-8");
     const wsText = fs.readFileSync(
@@ -225,7 +277,7 @@ describe("repo add", () => {
         "utf-8",
       ),
     ).toBe(wsText);
-    expect(treeDigest(repo)).toBe(before);
+    expectUntouched(repo, before);
   }, 120_000);
 
   it("can't decide: ask + choices, nothing written; --run adds it", () => {
@@ -233,7 +285,7 @@ describe("repo add", () => {
       "compose.yaml": "services: {}\n",
       "package.json": JSON.stringify({ name: "web", scripts: { dev: "vite" } }),
     });
-    const before = treeDigest(repo);
+    const before = snapshot(repo);
     const r = acme("repo", "add", repo, "--json");
     expect(r.code).toBe(1);
     expect(r.json).toEqual({
@@ -260,7 +312,7 @@ describe("repo add", () => {
         fs.readFileSync(path.join(dist, "manifests", "web.acme.yml"), "utf-8"),
       ).services.web.commands.local,
     ).toEqual({ up: "npm run dev" });
-    expect(treeDigest(repo)).toBe(before);
+    expectUntouched(repo, before);
   }, 120_000);
 
   it("a repo's own manifest is used; --sidecar on it is an error with a fix", () => {
@@ -268,7 +320,7 @@ describe("repo add", () => {
       ".acme.yml":
         "name: api\nservices:\n  api:\n    commands:\n      local:\n        up: echo up\n",
     });
-    const before = treeDigest(repo);
+    const before = snapshot(repo);
     const side = acme("repo", "add", repo, "--sidecar", "--json");
     expect(side.code).toBe(1);
     expect(side.json).toMatchObject({
@@ -292,7 +344,7 @@ describe("repo add", () => {
     expect(fs.existsSync(path.join(dist, "manifests", "api.acme.yml"))).toBe(
       false,
     );
-    expect(treeDigest(repo)).toBe(before);
+    expectUntouched(repo, before);
   }, 120_000);
 
   it("a git URL is cloned into the managed clones and added managed; a re-run is existed", () => {
