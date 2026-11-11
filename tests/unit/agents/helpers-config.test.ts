@@ -70,3 +70,27 @@ describe("agents.helpers", () => {
       );
   });
 });
+
+describe("agents.turn_read_max_mb (D39)", () => {
+  const turn = (v: unknown) =>
+    readAgentsConfig({
+      agents: { turn_read_max_mb: v },
+    } as unknown as DenConfig).turnReadMaxBytes;
+
+  it("unset: the default; set: in bytes; it is no agent id", () => {
+    expect(readAgentsConfig({} as DenConfig).turnReadMaxBytes).toBeUndefined();
+    expect(turn(2)).toBe(2 * 1024 * 1024);
+    expect(turn(0.5)).toBe(512 * 1024);
+    expect(AGENTS_RESERVED_KEYS).toContain("turn_read_max_mb");
+    expect(
+      readAgentsConfig({
+        agents: { turn_read_max_mb: 2 },
+      } as unknown as DenConfig).agents,
+    ).toEqual({});
+  });
+
+  it("a bad value fails naming the key", () => {
+    for (const bad of [0, -1, 5000, "8", true])
+      expect(() => turn(bad)).toThrow(/agents\.turn_read_max_mb: must be/);
+  });
+});

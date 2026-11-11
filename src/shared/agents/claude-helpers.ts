@@ -25,6 +25,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { notATurn } from "./conversations.js";
 import {
   HELPER_DEFAULTS,
   sortHelpers,
@@ -158,8 +159,9 @@ function fileEnds(file: string): {
             break;
           }
         }
-    } else if (e.type === "user" && !sawLast && m) {
-      // A user turn after the last answer: it is working on it.
+    } else if (e.type === "user" && !sawLast && m && !notATurn(e)) {
+      // A user turn after the last answer: it is working on it. Not one
+      // that starts no turn (D39: a compaction's summary).
       sawLast = true;
       endTurn = false;
     }

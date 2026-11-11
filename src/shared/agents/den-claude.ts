@@ -594,9 +594,14 @@ export const denClaude: Runtime = {
     }
   },
   // AG-18: mid-turn, from its transcript's tail (never the whole file).
-  turnBusy(token, env = process.env) {
+  turnBusy(token, env = process.env, opts = {}) {
     try {
-      return transcriptBusy(transcriptFile(token, env));
+      return transcriptBusy(
+        transcriptFile(token, env),
+        Date.now(),
+        undefined,
+        opts.readMaxBytes,
+      );
     } catch {
       return false;
     }

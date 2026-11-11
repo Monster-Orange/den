@@ -4,6 +4,38 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.30] - unreleased
+
+### Added
+
+- **`agents.turn_read_max_mb` (D39).** How far back from its end Den
+  reads an agent's transcript to tell whether it is mid-turn, in MB
+  (default 8). Past it, Den can't tell: a persona change asks first,
+  Write handoff goes ahead, and an automatic relaunch waits. Each
+  verdict is kept while the transcript's size and modification time
+  stay the same.
+
+### Fixed
+
+- **An agent that compacted no longer reads as mid-turn forever (D39).**
+  After a compaction, Claude Code writes the summary as a user record.
+  Den took it for a prompt with no answer yet, so an agent that compacted
+  and then sat idle stayed "mid-turn": **Write handoff** got 409 every
+  time. Den now passes over records that start no turn when it decides
+  whether a turn is going: a compaction's summary, a person's `!` command
+  and its output, and a local command (`/cost`) with its output. It also
+  reads further back from the end of the transcript until it finds a
+  turn. A compaction is followed by its attachments, often more than the
+  64 KB Den read, and Den then read the conversation's first prompt
+  instead. A compaction in the middle of a turn still reads as busy, and
+  a prompt after the summary is a turn as before. The same records no longer
+  count as a conversation's title, keep a helper "running", or count as
+  prompts or corrections in `<cli> usage`.
+
+### Migrations
+
+None.
+
 ## [0.4.29] - 2026-11-11
 
 ### Added

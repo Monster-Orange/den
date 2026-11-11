@@ -2811,7 +2811,13 @@ async function agentBusy(
   if (!live) return false;
   const rt = getRuntime(rec.runtime);
   if (!rt?.turnBusy || !rec.resumeToken) return null;
-  return rt.turnBusy(rec.resumeToken, d.env);
+  let readMaxBytes: number | undefined;
+  try {
+    readMaxBytes = d.agentsConfig().turnReadMaxBytes;
+  } catch {
+    /* unreadable config: the default */
+  }
+  return rt.turnBusy(rec.resumeToken, d.env, { readMaxBytes });
 }
 
 /** Why agent `rec` can't change persona (it can't resume), or null. */

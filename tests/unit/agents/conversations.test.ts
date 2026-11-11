@@ -15,6 +15,7 @@ import {
   inScope,
   openElsewhere,
   readEnds,
+  resetTurnCache,
   transcriptBusy,
 } from "../../../src/shared/agents/conversations.js";
 import { conversationFolders } from "../../../src/shared/environment-manager/workspaces.js";
@@ -307,6 +308,164 @@ describe("AG-18: whether a turn is going (transcriptBusy)", () => {
       ),
     ).toBe(false);
     expect(transcriptBusy(null)).toBe(false);
+  });
+
+  describe("D39: records that start no turn", () => {
+    const summary = (text: string) =>
+      line({
+        type: "user",
+        isCompactSummary: true,
+        isVisibleInTranscriptOnly: true,
+        message: { role: "user", content: text },
+      });
+    const ended = user(w, "go") + answer("m", "end_turn");
+
+    it("an agent idle after compacting is idle, however the summary starts", () => {
+      expect(
+        busy(ended + summary("This session is being continued from …")),
+      ).toBe(false);
+      expect(busy(ended + summary("<earlier-context/>\nThis session …"))).toBe(
+        false,
+      );
+      // Only the flag that hides it from the model: still no turn.
+      expect(
+        busy(
+          ended +
+            line({
+              type: "user",
+              isVisibleInTranscriptOnly: true,
+              message: { role: "user", content: "a note" },
+            }),
+        ),
+      ).toBe(false);
+    });
+
+    it("the summary's attachments run past the end it reads: it reads further back, never the start", () => {
+      // As Claude Code writes it: the summary, then files, listings and
+      // notes as attachments, often more than the end Den reads.
+      const attachments = Array.from({ length: 12 }, (_, i) =>
+        line({
+          type: "attachment",
+          attachment: { type: "file", content: "x".repeat(100), n: i },
+          message: "user",
+        }),
+      ).join("");
+      const h = home();
+      const file = transcript(
+        h.env,
+        h.work,
+        "b39",
+        user(w, "the first ask") +
+          "y".repeat(400) +
+          "\n" +
+          answer("m", "tool_use", ["Bash"]) +
+          answer("m", "end_turn") +
+          summary("This session is being continued") +
+          attachments,
+      );
+      expect(transcriptBusy(file, Date.now(), 300)).toBe(false);
+      // Without the summary's flag it would be a prompt: busy, read as far.
+      const g = home();
+      const plain = transcript(
+        g.env,
+        g.work,
+        "b40",
+        answer("m", "end_turn") + user(w, "and now?") + attachments,
+      );
+      expect(transcriptBusy(plain, Date.now(), 300)).toBe(true);
+    });
+
+    it("reads back at most its limit: past it, can't tell (null), never busy or idle", () => {
+      const filler = Array.from({ length: 40 }, (_, i) =>
+        line({ type: "attachment", attachment: { n: i, x: "z".repeat(100) } }),
+      ).join("");
+      const h = home();
+      const file = transcript(
+        h.env,
+        h.work,
+        "b41",
+        answer("m", "end_turn") + filler,
+      );
+      expect(transcriptBusy(file, Date.now(), 300, 1_000)).toBeNull();
+      expect(transcriptBusy(file, Date.now(), 300, 100_000)).toBe(false);
+      // den-claude passes agents.turn_read_max_mb through.
+      expect(denClaude.turnBusy!("b41", h.env, { readMaxBytes: 1_000 })).toBe(
+        null,
+      );
+      expect(denClaude.turnBusy!("b41", h.env)).toBe(false);
+    });
+
+    it("keeps a verdict while the file's size and mtime stay the same", () => {
+      resetTurnCache();
+      const h = home();
+      const a = answer("m", "end_turn");
+      const file = transcript(h.env, h.work, "b42", user(w, "go") + a);
+      expect(transcriptBusy(file)).toBe(false);
+      // Same length, same mtime: the kept verdict, the file not read.
+      const st = fs.statSync(file);
+      const same = (user(w, "go") + a).replace("end_turn", "tool_use");
+      expect(same.length).toBe(st.size);
+      fs.writeFileSync(file, same);
+      fs.utimesSync(file, st.atime, st.mtime);
+      expect(transcriptBusy(file)).toBe(false);
+      // A new mtime: read again.
+      fs.utimesSync(file, st.atime, new Date(st.mtimeMs + 2_000));
+      expect(transcriptBusy(file)).toBe(true);
+    });
+
+    it("compacting mid-turn stays busy, and a prompt after the summary is busy", () => {
+      expect(
+        busy(
+          answer("m", "tool_use", ["Bash"]) +
+            user(w, [{ type: "tool_result", content: "ok" }]) +
+            summary("This session is being continued …"),
+        ),
+      ).toBe(true);
+      expect(busy(ended + summary("…") + user(w, "and now?"))).toBe(true);
+    });
+
+    it("a person's ! command and a local command's output are no turn", () => {
+      expect(
+        busy(
+          ended +
+            user(w, "<bash-input>ls</bash-input>") +
+            user(
+              w,
+              "<bash-stdout>a b</bash-stdout><bash-stderr></bash-stderr>",
+            ),
+        ),
+      ).toBe(false);
+      expect(
+        busy(
+          ended +
+            user(w, "<command-name>/cost</command-name>") +
+            user(w, "<local-command-stdout>$0.12</local-command-stdout>"),
+        ),
+      ).toBe(false);
+      // A command the model answers (a skill) is a turn until it does.
+      expect(
+        busy(
+          ended +
+            user(w, "<command-name>/review</command-name>") +
+            line({
+              type: "user",
+              isMeta: true,
+              message: { role: "user", content: "Review the diff." },
+            }),
+        ),
+      ).toBe(true);
+    });
+
+    it("a summary is never a conversation's title", () => {
+      const h = home();
+      transcript(
+        h.env,
+        h.work,
+        "c39",
+        summary("This session is being continued") + user(h.work, "Real ask"),
+      );
+      expect(list(h)[0].title).toBe("Real ask");
+    });
   });
 
   it("den-claude asks it by the conversation's id", () => {
