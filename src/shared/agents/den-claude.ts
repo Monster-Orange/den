@@ -45,6 +45,12 @@
  * install's versions/<version>, or the npm package's package.json); the
  * Start dialog and `agents doctor` ask `claude --version` once as well.
  */
+import {
+  readClaudeHelperTranscript,
+  readClaudeHelpers,
+} from "./claude-helpers.js";
+import { sortHelpers, type Helper } from "./helpers.js";
+import type { AgentRecord } from "./records.js";
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -473,6 +479,25 @@ function nameArg(label: string | undefined): string[] {
 
 const TOKEN_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
+/** D32: an agent's conversations: those before each relaunch, then its current one. */
+function conversationsOf(
+  rec: AgentRecord,
+): { token: string; current: boolean }[] {
+  const seen = new Set<string>();
+  const out: { token: string; current: boolean }[] = [];
+  for (const r of rec.rotations ?? [])
+    if (
+      r.conversation &&
+      r.conversation !== rec.resumeToken &&
+      !seen.has(r.conversation)
+    ) {
+      seen.add(r.conversation);
+      out.push({ token: r.conversation, current: false });
+    }
+  if (rec.resumeToken) out.push({ token: rec.resumeToken, current: true });
+  return out;
+}
+
 /**
  * Claude Code's transcript for conversation `token`: <token>.jsonl in any
  * project under its projects dir, or null (a bad token, none written yet).
@@ -588,6 +613,35 @@ export const denClaude: Runtime = {
     } catch {
       return null;
     }
+  },
+  // D32: its helpers, from Claude Code's subagent files beside each of its
+  // conversations' transcripts (the current one and those before a
+  // relaunch). Read-only; never throws.
+  helpers(rec, opts = {}) {
+    const out: Helper[] = [];
+    for (const c of conversationsOf(rec)) {
+      const file = transcriptFile(c.token, opts.env);
+      if (!file) continue;
+      for (const h of readClaudeHelpers(file, {
+        ...opts,
+        agentLive: c.current ? opts.agentLive : false,
+      }))
+        out.push(c.current ? h : { ...h, earlier: true });
+    }
+    return sortHelpers(out);
+  },
+  helperTranscript(rec, id, opts = {}) {
+    for (const c of conversationsOf(rec)) {
+      const file = transcriptFile(c.token, opts.env);
+      if (!file) continue;
+      const t = readClaudeHelperTranscript(file, id, {
+        ...opts,
+        agentLive: c.current ? opts.agentLive : false,
+      });
+      if (t)
+        return c.current ? t : { ...t, helper: { ...t.helper, earlier: true } };
+    }
+    return null;
   },
   launchFailures: {
     noConversation: /no conversation found/i,

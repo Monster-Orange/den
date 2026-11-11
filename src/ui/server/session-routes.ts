@@ -64,7 +64,16 @@ import { parseSessionName } from "../../shared/sessions/names.js";
 import { sessionPaths } from "../../shared/sessions/paths.js";
 import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
-import { agentRows, newerOf, noteEnded } from "../cli/agent-ops.js";
+import type { HelperSettings } from "../../shared/agents/helpers.js";
+import { readAgentsConfig } from "../../shared/den-config.js";
+import {
+  agentRows,
+  isStoppedState,
+  newerOf,
+  noteEnded,
+  rowHelpers,
+  type AgentRow,
+} from "../cli/agent-ops.js";
 import type { AgentRecord, Override } from "../../shared/agents/records.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
@@ -91,6 +100,8 @@ export interface SessionRouteDeps {
   waitingAgents?: () => ReadonlySet<string>;
   /** D28: each agent's effective rotation settings (one resolver per list). */
   rotationPolicy?: () => (rec: AgentRecord) => RotationPolicy | undefined;
+  /** D32: agents.helpers (default: the agents config's, else its defaults). */
+  helperSettings?: () => HelperSettings | undefined;
 }
 
 interface Resolved {
@@ -102,6 +113,7 @@ interface Resolved {
   pty: () => PtyLoad;
   waitingAgents: () => ReadonlySet<string>;
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
+  helperSettings: () => HelperSettings | undefined;
 }
 
 /** A workspace name as `?ws=` may give it. */
@@ -120,6 +132,15 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
         } catch (e) {
           if (noHost(e)) return null;
           throw e;
+        }
+      }),
+    helperSettings:
+      d.helperSettings ??
+      (() => {
+        try {
+          return readAgentsConfig().helpers;
+        } catch {
+          return undefined;
         }
       }),
     activeWorkspaces: d.activeWorkspaces ?? (() => getActiveWorkspaces()),
@@ -209,6 +230,8 @@ export interface ListedSession {
   rotation?: RotationInfo;
   /** D28: the last relaunch from a handoff (the page toasts one Den did by itself). */
   lastRotation?: RotationEntry;
+  /** D32: its helpers (counts and the recent ones). */
+  helpers?: AgentRow["helpers"];
 }
 
 /** The list, from the host's sessions and the agent records. */
@@ -216,6 +239,7 @@ export function listedSessions(
   sessions: SessionInfo[],
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
     Partial<Pick<Resolved, "waitingAgents">> &
+    Partial<Pick<Resolved, "helperSettings">> &
     Pick<SessionRouteDeps, "rotationPolicy">,
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
@@ -237,6 +261,7 @@ export function listedSessions(
   const out: ListedSession[] = [];
   const agentSessions = new Set<string>();
   noteEnded(d.stateDir(), mine, records);
+  const helperSettings = d.helperSettings?.();
   for (const r of agentRows(
     mine,
     records,
@@ -283,6 +308,11 @@ export function listedSessions(
       ...(r.lastRotation ? { lastRotation: r.lastRotation } : {}),
       ...(revoked.has(rec.id) && s && !s.exited ? { tokenRevoked: true } : {}),
       ...(waiting.has(rec.id) && s && !s.exited ? { waiting: true } : {}),
+      // D32: the helpers it started in its own session.
+      ...(() => {
+        const h = rowHelpers(rec, !isStoppedState(r.state), helperSettings);
+        return h ? { helpers: h } : {};
+      })(),
     });
   }
   for (const s of mine) {
@@ -311,6 +341,9 @@ export function listedSessions(
   );
 }
 
+/** D32: the helpers count, under /api/sessions/ but no session's route. */
+export const SESSION_HELPERS_PATH = "/api/sessions/helpers";
+
 /**
  * `GET /api/sessions`; false when `pathname` isn't it. `ioAllowed` is what
  * the request checks say about this browser: beyond loopback without a
@@ -323,6 +356,8 @@ export async function handleSessionList(
   ioAllowed: boolean,
   deps: SessionRouteDeps = {},
 ): Promise<boolean> {
+  if (pathname === "/api/sessions/helpers")
+    return helpersRunning(req, res, deps);
   if (pathname !== "/api/sessions") return false;
   if (req.method !== "GET" && req.method !== "HEAD") {
     res.setHeader("Allow", "GET");
@@ -659,4 +694,39 @@ export async function handleSessionUpgrade(
     if (ws.open) ws.close(WS_CLOSE.goingAway, "the session host went away");
     detach();
   });
+}
+
+/**
+ * D32: `GET /api/sessions/helpers`: how many helpers the active
+ * workspaces' agents have running now, `{ running }` (the rail's Agents
+ * badge on every page). Names and counts only, never a transcript.
+ */
+async function helpersRunning(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  deps: SessionRouteDeps,
+): Promise<true> {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.setHeader("Allow", "GET");
+    sendJson(res, { ok: false, error: "method not allowed" }, 405);
+    return true;
+  }
+  const d = resolve(deps);
+  let sessions: SessionInfo[] = [];
+  try {
+    const c = await d.connectExisting();
+    if (c)
+      try {
+        sessions = await c.list();
+      } finally {
+        c.close();
+      }
+  } catch {
+    /* no host: nothing runs, so no helper runs */
+  }
+  let running = 0;
+  for (const r of listedSessions(sessions, d))
+    running += r.helpers?.running ?? 0;
+  sendJson(res, { running });
+  return true;
 }

@@ -7,6 +7,7 @@
  * Built-ins register here exactly as a runtime plugin would (AG-8a):
  * den-claude and generic.
  */
+import type { Helper, HelperReadOptions, HelperTranscript } from "./helpers.js";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -252,6 +253,18 @@ export interface Runtime {
    * throw; its catalog entry's `sessionName` says how stable its source is.
    */
   sessionName?(rec: AgentRecord, env?: NodeJS.ProcessEnv): string | null;
+  /**
+   * D32: the helpers the agent started inside its own session (Claude
+   * Code's Agent and Workflow subagents), in every conversation it has had,
+   * running first. Read-only. None: the runtime can't tell. Never throws.
+   */
+  helpers?(rec: AgentRecord, opts?: HelperReadOptions): Helper[];
+  /** D32: one helper's transcript, tool calls summarized; null if none. Never throws. */
+  helperTranscript?(
+    rec: AgentRecord,
+    id: string,
+    opts?: HelperReadOptions,
+  ): HelperTranscript | null;
   /** Where permission prompts surface (Q-AG-2). */
   approvals?: "terminal" | "hook";
   /**

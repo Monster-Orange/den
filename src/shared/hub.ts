@@ -243,6 +243,8 @@ export interface HubWhoami {
   company?: { slug?: string; name?: string; url?: string };
   /** Hub's MCP endpoint; opaque. */
   mcpUrl?: string;
+  /** Threads on Hub waiting on the person (the rail's badge). */
+  unread?: number;
 }
 
 /**
@@ -287,6 +289,8 @@ export type HubStatus =
       label?: string;
       role?: string;
       login?: string;
+      /** Hub threads waiting on the person (whoami's unread). */
+      unread?: number;
       /** Why it isn't connected, in words (never the token). */
       problem?: string;
     };
@@ -379,6 +383,11 @@ export async function hubWhoami(
     ...(str(b.login) ? { login: str(b.login)! } : {}),
     ...(Object.keys(company).length ? { company } : {}),
     ...(str(b.mcp_url) ? { mcpUrl: str(b.mcp_url)! } : {}),
+    ...(typeof b.unread === "number" &&
+    Number.isInteger(b.unread) &&
+    b.unread >= 0
+      ? { unread: Math.min(b.unread, 1_000_000) }
+      : {}),
   };
 }
 
@@ -542,6 +551,7 @@ export async function hubStatus(
       ...(who.install ? { label: who.install } : {}),
       ...(who.role ? { role: who.role } : {}),
       ...(who.login ? { login: who.login } : {}),
+      ...(who.unread !== undefined ? { unread: who.unread } : {}),
     };
   } catch (e) {
     const kind = e instanceof HubCallError ? e.kind : "unreachable";

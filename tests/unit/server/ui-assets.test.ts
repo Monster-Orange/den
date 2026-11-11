@@ -103,3 +103,34 @@ describe("UI_MODULES", () => {
     for (const m of UI_MODULES) expect(fs.existsSync(pub + m)).toBe(true);
   });
 });
+
+describe("UI_MODULES: what the served modules import", () => {
+  // D32's first cut imported two new modules (agent-helpers.js,
+  // transcript-view.js) that weren't listed: the server answered 404, the
+  // Agents page's import failed, and its list never drew.
+  it("every same-origin import of a served module is served too", () => {
+    const pub = path.resolve("src/ui/server/public");
+    // Also served: the vendored libraries, and a page script with a
+    // route of its own in index.ts (`pathname === "/x.js"`).
+    const own = fs
+      .readFileSync(path.resolve("src/ui/server/index.ts"), "utf8")
+      .matchAll(/pathname === "(\/[\w.-]+\.m?js)"/g);
+    const served = new Set([
+      ...UI_MODULES,
+      ...Object.keys(VENDOR_ASSETS),
+      ...[...own].map((x) => x[1]),
+    ]);
+    const missing: string[] = [];
+    for (const m of UI_MODULES) {
+      if (!m.endsWith(".js")) continue;
+      const src = fs.readFileSync(pub + m, "utf8");
+      const re =
+        /(?:^|[\s;])(?:import|export)\s[^'"`]*?from\s*["'](\.?\/[^/"'][^"']*)["']|import\(\s*["'](\.?\/[^/"'][^"']*)["']\s*\)/gm;
+      for (const x of src.matchAll(re)) {
+        const spec = (x[1] ?? x[2]).replace(/^\./, "").split("?")[0];
+        if (!served.has(spec)) missing.push(`${m} imports ${spec}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+});

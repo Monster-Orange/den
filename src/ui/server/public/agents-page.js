@@ -85,6 +85,12 @@
  */
 import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
 import {
+  helperBarButtonHtml,
+  helperRowsHtml,
+  openHelpers,
+  wireHelperRows,
+} from "/agent-helpers.js";
+import {
   commandProblem,
   filterBarHtml,
   modelOptionsHtml,
@@ -496,7 +502,8 @@ function stoppedHtml(r) {
     `<span class="why">${esc(stopReason(r))}</span>` +
     `</button>` +
     `<div class="agacts">${callout}${cant}${resume}${fresh}${rename}${remove}</div>` +
-    `</div>`
+    `</div>` +
+    helperRowsHtml(r)
   );
 }
 
@@ -540,12 +547,15 @@ function rowHtml(r) {
   // D28: a running agent whose rotation is due: its callout, with buttons
   // (before, only a tag: nothing to press).
   const callout = r.kind === "agent" ? rotCalloutHtml(r) : "";
-  if (!callout) return button;
+  // D32: the helpers it started in its own session, under it.
+  const helpers = r.kind === "agent" ? helperRowsHtml(r) : "";
+  if (!callout) return button + helpers;
   return (
     `<div class="agst" data-agent="${esc(r.agent)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}" data-rotation="${rot}">` +
     button +
     `<div class="agacts">${callout}</div>` +
-    `</div>`
+    `</div>` +
+    helpers
   );
 }
 
@@ -697,6 +707,13 @@ async function refresh() {
     /* the last list stays; the next ask may answer */
   }
   followAgents();
+  // D32: the rail's Agents badge: helpers running now.
+  window.denShell?.setState?.({
+    helpersRunning: (st.data?.sessions ?? []).reduce(
+      (n, r) => n + (r.helpers?.running ?? 0),
+      0,
+    ),
+  });
   st.scopeLabel = scopeLabelFor(viewWorkspaces());
   paintList();
   paintSub();
@@ -1098,7 +1115,7 @@ function paintBar(p) {
     (r?.kind === "agent" && rotActionsHtml(r)
       ? `<span class="agrot" data-rot-bar title="${esc(rotMessage(r))}"><span class="tagx warn" data-rotation="${rotationOf(r)}">${esc(t(rotationOf(r) === "ready" ? "ag.rot.ready" : "ag.rot.due", { why: rotationWhy(r.rotation) }))}</span>${rotActionsHtml(r)}</span>`
       : "") +
-    `<span class="x">${reconnect}${stop}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
+    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${stop}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
   // Tabs: the tab's × closes it; the pane's bar has none.
   const x = bar.querySelector('[data-act="close"]');
   if (x) x.hidden = shownLayout() === "tabs";
@@ -2947,6 +2964,13 @@ export async function mountAgentsPage(root) {
     startPrefill = { ws: q.get("ws") || "", folder: q.get("folder") || "" };
   }
 
+  // D32: helper rows open their transcript; "All helpers" the full list.
+  wireHelperRows(root.querySelector("#agl"), (agent, ws) => {
+    const r = visibleRows().find(
+      (x) => x.agent === agent && x.workspace === ws,
+    );
+    return r ? displayName(r) : agent;
+  });
   root.querySelector("#agl").addEventListener("click", (e) => {
     const act = e.target.closest("button[data-act]");
     if (act) {
@@ -3015,7 +3039,16 @@ export async function mountAgentsPage(root) {
       const r = rowOf(id);
       if (r) void restartRow(r, "resume", b);
     } else if (b.dataset.act === "reconnect") void connect(p);
-    else if (b.dataset.act === "more") {
+    else if (b.dataset.act === "helpers") {
+      const r = rowOf(id);
+      if (r?.kind === "agent")
+        void openHelpers({
+          ws: r.workspace,
+          agent: r.agent,
+          name: paneName(r),
+          opener: b,
+        });
+    } else if (b.dataset.act === "more") {
       const r = rowOf(id);
       if (!r) return;
       window.denShell?.openMenu?.(b, {

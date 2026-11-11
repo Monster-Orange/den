@@ -224,6 +224,37 @@ describe("Settings › Hub and doctor", () => {
     expect((await fetch(url, { method: "POST" })).status).toBe(405);
   });
 
+  it("the rail's look (?rail=1) leaves Connect's one-time result for Settings", async () => {
+    const st = { configured: false as const };
+    let last: { ok: boolean; message: string } | null = {
+      ok: true,
+      message: "Connected to Hub (Acme).",
+    };
+    const hubConnect = {
+      lastResult: () => {
+        const l = last;
+        last = null;
+        return l;
+      },
+    } as unknown as import("../../../src/ui/server/hub-connect.js").HubConnect;
+    const s = http.createServer((req, res) => {
+      const p = new URL(req.url ?? "/", "http://localhost").pathname;
+      void handleAgentRoutes(req, res, p, {
+        hubStatus: async () => st,
+        hubConnect,
+      });
+    });
+    servers.push(s);
+    await new Promise<void>((r) => s.listen(0, "localhost", () => r()));
+    const url = `http://localhost:${(s.address() as AddressInfo).port}/api/hub`;
+    expect(await (await fetch(`${url}?rail=1`)).json()).toEqual(st);
+    expect(await (await fetch(url)).json()).toEqual({
+      ...st,
+      connect: { ok: true, message: "Connected to Hub (Acme)." },
+    });
+    expect(await (await fetch(url)).json()).toEqual(st);
+  });
+
   it("doctor: no row without Hub; a down Hub warns and never fails", () => {
     expect(hubLines({ configured: false }, "Acme")).toEqual({
       lines: [],

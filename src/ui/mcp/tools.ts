@@ -188,6 +188,51 @@ const read = (
 
 const READ_TOOLS: DenTool[] = [
   read(
+    "agent_helpers",
+    "An agent's helpers",
+    "D32: the helpers an agent started inside its own session (Claude Code's Agent and Workflow subagents), running first: id, description, type, model, branch, status (running, idle, done, failed, stopped), statusFrom (how that was told), startedAt, lastActivityAt, durationMs, workflow, and `earlier` for those from a conversation before a relaunch. With `helper`, that one helper's transcript, tool calls summarized (`items`, the last `limit` lines). Reads only: helpers belong to the agent's session, so nothing here stops or steers one.",
+    {
+      agent: z.string().describe("The agent's id"),
+      helper: z
+        .string()
+        .optional()
+        .describe("A helper's id: its transcript instead of the list"),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(5000)
+        .optional()
+        .describe("With helper: how many of its last lines (default 500)"),
+      workspace: workspaceArg,
+    },
+    async (a, { api, scope }) => {
+      const agent = str(a.agent);
+      if (!agent || !NAME_RE.test(agent))
+        throw new Refusal("agent_helpers: agent must be an agent id");
+      const helper = str(a.helper);
+      if (helper !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(helper))
+        throw new Refusal("agent_helpers: helper must be a helper id");
+      let ws = str(a.workspace) ?? scope?.workspace;
+      if (!ws) {
+        const focused = (await api.get("/api/workspaces")) as {
+          focus?: unknown;
+        };
+        ws = typeof focused?.focus === "string" ? focused.focus : undefined;
+      }
+      if (!ws || !NAME_RE.test(ws))
+        throw new Refusal("agent_helpers: name the agent's workspace");
+      if (scope && ws !== scope.workspace && !(scope.grants ?? []).includes(ws))
+        throw new ScopeRefusal(
+          `agent_helpers: workspace "${ws}" is outside this agent's scope ("${scope.workspace}")`,
+        );
+      const base = `/api/workspaces/${encodeURIComponent(ws)}/agents/${encodeURIComponent(agent)}/helpers`;
+      if (!helper) return api.get(base);
+      const limit = typeof a.limit === "number" ? `?limit=${a.limit}` : "";
+      return api.get(`${base}/${encodeURIComponent(helper)}${limit}`);
+    },
+  ),
+  read(
     "approval_check",
     "Check an approval",
     "Where one of your write requests stands (workspace_create, repo_add, service_try): `state` pending, done (with the server's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
@@ -1327,6 +1372,7 @@ const WORKSPACE_TOOLS = new Set([
   "run_tests",
   "agent_resume",
   "agent_import",
+  "agent_helpers",
 ]);
 
 /**

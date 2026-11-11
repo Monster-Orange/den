@@ -895,6 +895,7 @@ import {
   handleSessionUpgrade,
   isSessionIoPath,
   sendSessionHttp,
+  SESSION_HELPERS_PATH,
 } from "./session-routes.js";
 import { refuseUpgrade } from "./websocket.js";
 import {
@@ -2124,7 +2125,12 @@ async function handleRequest(
   // AG-4a-term's session routes (`/api/sessions/<id>/io`): shell-grade, and
   // an agent's token reaches its own session's only (request-guard). The io
   // is a WebSocket (the server's upgrade handler): a plain GET of it is 426.
-  if (pathname.startsWith("/api/sessions/")) {
+  // D32's /api/sessions/helpers (a count, read-grade) is not a session's:
+  // the list's handler below answers it.
+  if (
+    pathname.startsWith("/api/sessions/") &&
+    pathname !== SESSION_HELPERS_PATH
+  ) {
     await sendSessionHttp(req, res, pathname);
     return;
   }

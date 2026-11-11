@@ -34,6 +34,9 @@ export const UI_MODULES: readonly string[] = [
   "/error-page.js",
   "/agents-section.js",
   "/agents-page.js",
+  // D32: an agent's helpers, and the shared read-only transcript view.
+  "/agent-helpers.js",
+  "/transcript-view.js",
   // The Start agent form's choices, shared by both (AG-10.0).
   "/agent-start.js",
   // AG-10.4-10.7: the persona picker, editor and Settings › Personas.

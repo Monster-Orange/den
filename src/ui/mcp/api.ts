@@ -147,8 +147,9 @@ const ACTION_ROUTES: Record<string, string> = {
 };
 
 /**
- * Action routes with a parameter: an agent's resume (MCP agent_resume),
- * and Bring in's list and import (MCP agent_import, AG-17.1).
+ * Routes with a parameter: an agent's resume (MCP agent_resume), Bring
+ * in's list and import (MCP agent_import, AG-17.1), and an agent's helpers
+ * (MCP agent_helpers, D32, GET only).
  */
 const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
   // One held request's state (its own, the server checks). Never /decide.
@@ -159,6 +160,11 @@ const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
   },
   {
     re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/conversations$/,
+    method: "GET",
+  },
+  // D32 (MCP agent_helpers): an agent's helpers, or one's transcript. Reads.
+  {
+    re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/helpers(?:\/[A-Za-z0-9_-]{1,128})?$/,
     method: "GET",
   },
   {

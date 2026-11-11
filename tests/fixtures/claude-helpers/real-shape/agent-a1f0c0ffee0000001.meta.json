@@ -1,0 +1,13 @@
+{
+  "agentType": "general-purpose",
+  "worktreePath": "/work/north/.claude/worktrees/agent-a1f0c0ffee0000001",
+  "spawnedWithWorktree": true,
+  "worktreeBranch": "worktree-agent-a1f0c0ffee0000001",
+  "description": "Write the north report",
+  "toolUseId": "toolu_FIXTURE01",
+  "spawnDepth": 1,
+  "requestShape": "background",
+  "requestNonInteractive": true,
+  "model": "sonnet",
+  "finished": true
+}

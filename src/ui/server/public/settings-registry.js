@@ -1565,6 +1565,12 @@ export function hubHtml(b, flash) {
       : "") +
     `<button type="button" class="btn sm" data-hub-action="disconnect">Disconnect</button>` +
     `</div>` +
+    // Disconnect asks first, saying what it does (Hub revokes the key).
+    `<div class="hub-confirm" data-hub-confirm hidden>` +
+    `<p class="set-note set-warn">This revokes this Den's Hub key on Hub. Agents lose Hub until you Connect again.</p>` +
+    `<button type="button" class="btn sm primary" data-hub-action="disconnect-yes">Disconnect</button> ` +
+    `<button type="button" class="btn sm" data-hub-action="disconnect-no">Cancel</button>` +
+    `</div>` +
     `<div class="rt-err" role="alert" hidden></div>` +
     tools
   );
@@ -1667,9 +1673,39 @@ function wireHub(host, ctx) {
     .forEach(
       (x) => x.type === "button" && x.addEventListener("click", connect),
     );
+  const acts = host.querySelector(".hub-acts");
+  const ask = host.querySelector("[data-hub-confirm]");
+  const asking = (on) => {
+    if (!acts || !ask) return;
+    acts.hidden = on;
+    ask.hidden = !on;
+    host
+      .querySelector(
+        on
+          ? '[data-hub-action="disconnect-no"]'
+          : '[data-hub-action="disconnect"]',
+      )
+      ?.focus();
+  };
   host
     .querySelector('[data-hub-action="disconnect"]')
-    ?.addEventListener("click", () => disconnect(false));
+    ?.addEventListener("click", () => asking(true));
+  host
+    .querySelector('[data-hub-action="disconnect-no"]')
+    ?.addEventListener("click", () => asking(false));
+  ask?.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      asking(false);
+    }
+  });
+  host
+    .querySelector('[data-hub-action="disconnect-yes"]')
+    ?.addEventListener("click", () => {
+      if (ask) ask.hidden = true;
+      if (acts) acts.hidden = false;
+      disconnect(false);
+    });
   const box = host.querySelector("#hub-allow-tools");
   if (box)
     box.addEventListener("change", () => {

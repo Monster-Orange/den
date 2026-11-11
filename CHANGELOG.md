@@ -4,6 +4,46 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.28] - unreleased
+
+### Added
+
+- **An agent's helpers (D32).** When an agent starts helpers of its own
+  (Claude Code's Agent and Workflow subagents), Den shows them, read-only:
+  under the agent's row on the Agents tab, in a **Helpers (n)** list from
+  the pane's bar, and as a count on the rail's Agents item on every page.
+  Click one to read its transcript: what it was asked, its answers, and
+  its tool calls in a few words. Den can't stop or steer a helper, and
+  says so; to change what one does, tell the agent. Helpers from the
+  agent's earlier conversations are folded under "Earlier (n)". Also
+  `<cli> agents helpers <id> [<helper>]` (`--all`, `--limit`, `--json`),
+  the MCP tool `agent_helpers`, and the routes `GET
+  /api/workspaces/<ws>/agents/<id>/helpers[/<helper>]` and `GET
+  /api/sessions/helpers`.
+- **Hub in the rail.** Once this install is connected, the rail has a
+  **Hub ↗** link above Settings: the company's page on Hub, in a new tab,
+  with a count of the threads waiting on you. When Hub rejects the token
+  or forbids the role, the link is greyed and goes to Settings › Hub.
+- **Connect sends `den_url`:** this Den's https edge address, when it has
+  one, so Hub can link back to it.
+- **`agents.helpers` settings:** `active_minutes` (default 10: no activity
+  this long and not known done shows idle) and `collapse_done_minutes`
+  (default 30: done helpers fold away after this).
+
+### Changed
+
+- **Connect to Hub from a `.localhost` address.** An edge on this machine
+  reached over http (`http://<name>.localhost`) now counts as this
+  machine, like localhost.
+- **Disconnect asks first,** saying it revokes this Den's Hub key on Hub
+  and that agents lose Hub until you Connect again.
+
+### Migrations
+
+- `helpers` under `agents:` is now a reserved key (D32's settings). A
+  distribution with an agent whose id is `helpers` must rename it.
+  Nothing else: `agents.helpers` is optional.
+
 ## [0.4.27] - 2026-11-10
 
 ### Added

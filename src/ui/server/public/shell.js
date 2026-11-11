@@ -865,6 +865,43 @@
     "ag.sub.one": "{n} session · {w} waiting · {scope}",
     "ag.all": "all workspaces",
     "ag.waiting": "waiting",
+    "tx.asked": "Asked",
+    "tx.result": "Result",
+    "tx.error": "Error",
+    "tx.omitted": "{n} earlier lines not shown",
+    "tx.empty": "Nothing yet.",
+    "tx.close": "Close",
+    "tx.loading": "Loading…",
+    "tx.failed": "Couldn't read it: {err}",
+    "hp.title": "Helpers ({n})",
+    "hp.bar": "Helpers: {n}",
+    "hp.barRunning": "Helpers: {n}, {r} running",
+    "hp.all": "All helpers ({n})",
+    "hp.runningN": "{n} running",
+    "hp.groupOf": "Helpers of {name}",
+    "hp.open": "{what}, {status}: open its transcript",
+    "hp.dlg": "{name}'s helpers",
+    "hp.earlier": "Earlier conversations ({n})",
+    "hp.none": "No helpers in this conversation.",
+    "hp.unsupported":
+      "This agent's runtime can't tell which helpers it started.",
+    "hp.workflow": "workflow {name}",
+    "hp.note":
+      "Helpers run inside this agent's own session, so Den shows them but can't stop or steer them. To change what they do, tell the agent.",
+    "hp.st.running": "running",
+    "hp.st.idle": "idle",
+    "hp.st.done": "done",
+    "hp.st.failed": "failed",
+    "hp.st.stopped": "stopped",
+    "b.helpers": "{n} helpers running",
+    "hub.rail": "Hub",
+    "hub.railTip": "{team} on Hub (opens in a new tab)",
+    "hub.railTipPlain": "Hub (opens in a new tab)",
+    "hub.railUnread": "{n} waiting on you",
+    "hub.railRejected":
+      "Hub doesn't accept this install's token. Reconnect in Settings › Hub.",
+    "hub.railForbidden":
+      "Hub doesn't allow this install. Ask a Hub admin (Settings › Hub).",
     "ag.session": "session",
     "ag.empty":
       "Pick a session on the left to open its terminal. Open more to tile them (up to 4).",
@@ -1059,6 +1096,8 @@
     // ON-6: the server agent, a speech bubble with a spark.
     assistant:
       '<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M12 8v4M10 10h4"/>',
+    // Hub: a node joined to three (the company's shared place).
+    hub: '<circle cx="12" cy="12" r="2.5"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="20" r="2"/><path d="M6.6 7.2l3.5 3.2M17.4 7.2l-3.5 3.2M12 14.5V18"/>',
     // SEC-2a: who this browser is (the rail footer's identity chip).
     person:
       '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>',
@@ -1341,6 +1380,9 @@
     health: {},
     down: 0,
     openLogs: 0,
+    helpersRunning: 0,
+    // The rail's Hub link: GET /api/hub?rail=1, or null (not connected).
+    hub: null,
     pins: [],
     collapsed: false,
     hidden: [],
@@ -1918,6 +1960,15 @@
       order: 17,
       href: "/agents",
       keywords: ["sessions", "terminal"],
+      // D32: helpers the agents started that run now.
+      badge: function (s) {
+        return s.helpersRunning > 0
+          ? {
+              n: s.helpersRunning,
+              label: t("b.helpers", { n: s.helpersRunning }),
+            }
+          : null;
+      },
     },
     // ON-6: the server agent, this Den's own: one click away, after Agents.
     {
@@ -2493,6 +2544,7 @@
         );
       });
     html += '<div class="den-rail-grow"></div>';
+    html += hubItem();
     html += item(
       {
         id: SETTINGS.id,
@@ -2514,6 +2566,75 @@
       esc(state.collapsed ? t("expand") : t("collapse")) +
       "</span></button>";
     return html;
+  }
+
+  /**
+   * The rail's Hub link, above Settings: only once this install is
+   * connected. It opens the company's page on Hub in a new tab, with a
+   * count of what waits on the person (whoami's unread). A token Hub
+   * rejects, or a role it forbids, greys it, and it goes to Settings ›
+   * Hub, which says what to do.
+   */
+  function hubTarget(u) {
+    try {
+      var x = new URL(u);
+      return x.protocol === "https:" ||
+        (x.protocol === "http:" &&
+          (x.hostname === "localhost" || x.hostname === "127.0.0.1"))
+        ? x.href
+        : "";
+    } catch (e) {
+      return "";
+    }
+  }
+  function hubItem() {
+    var h = state.hub;
+    if (!h || !h.configured) return "";
+    var label = t("hub.rail");
+    if (h.state === "rejected" || h.state === "forbidden") {
+      var why = t(
+        h.state === "rejected" ? "hub.railRejected" : "hub.railForbidden",
+      );
+      return (
+        '<a class="den-ni den-hub den-off" href="/settings#agents.hub" data-nav="hub" data-hub="' +
+        esc(h.state) +
+        '" title="' +
+        esc(why) +
+        '" aria-label="' +
+        esc(label + ": " + why) +
+        '">' +
+        icon("hub") +
+        '<span class="den-lbl">' +
+        esc(label) +
+        "</span></a>"
+      );
+    }
+    var href = h.state === "connected" ? hubTarget(h.teamUrl || "") : "";
+    if (!href) return "";
+    var tip = h.team
+      ? t("hub.railTip", { team: h.team })
+      : t("hub.railTipPlain");
+    var n = typeof h.unread === "number" && h.unread > 0 ? h.unread : 0;
+    var waiting = n ? t("hub.railUnread", { n: n }) : "";
+    return (
+      '<a class="den-ni den-hub" href="' +
+      esc(href) +
+      '" target="_blank" rel="noopener noreferrer" data-nav="hub" data-hub="connected" title="' +
+      esc(tip) +
+      '" aria-label="' +
+      esc(label + ", " + tip + (waiting ? ", " + waiting : "")) +
+      '">' +
+      icon("hub") +
+      '<span class="den-lbl">' +
+      esc(label) +
+      ' <span class="den-ext" aria-hidden="true">↗</span></span>' +
+      (n
+        ? '<span class="den-bdg" aria-hidden="true">' +
+          esc(n > 99 ? "99+" : n) +
+          "</span>"
+        : "") +
+      "</a>"
+    );
   }
 
   /**
@@ -4710,6 +4831,80 @@
       document.title = title.slice(0, at) + " · " + t(label);
   })();
 
+  // D32: the rail's Agents badge on every page: helpers running now
+  // (GET /api/sessions/helpers, a count). The Agents page sets it itself
+  // from its own list. Quiet on any failure: the badge just isn't there.
+  (function () {
+    if (page === "agents" || typeof rawFetch !== "function") return;
+    function poll() {
+      // A refusal page or a bad config: no polls (each would be refused).
+      if (configInvalid()) return;
+      if (document.hidden) return void setTimeout(poll, 15000);
+      rawFetch("/api/sessions/helpers", {
+        cache: "no-store",
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.ok ? r.json() : null;
+        })
+        .then(
+          function (b) {
+            var n = b && typeof b.running === "number" ? b.running : 0;
+            if (n !== state.helpersRunning) setState({ helpersRunning: n });
+          },
+          function () {},
+        )
+        .then(function () {
+          setTimeout(poll, 15000);
+        });
+    }
+    setTimeout(poll, 1500);
+  })();
+
+  // The rail's Hub link (hubItem): GET /api/hub?rail=1 (which leaves
+  // Connect's one-time result for Settings) at load and every minute while
+  // the page shows. Quiet on any failure: the link just isn't there.
+  (function () {
+    if (typeof rawFetch !== "function") return;
+    var last = "";
+    function poll() {
+      // A refusal page or a bad config: no polls (each would be refused).
+      if (configInvalid()) return;
+      if (document.hidden) return void setTimeout(poll, 60000);
+      rawFetch("/api/hub?rail=1", {
+        cache: "no-store",
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.ok ? r.json() : null;
+        })
+        .then(
+          function (b) {
+            var h =
+              b && b.configured
+                ? {
+                    configured: true,
+                    state: b.state,
+                    team: b.team,
+                    teamUrl: b.teamUrl,
+                    unread: b.unread,
+                  }
+                : null;
+            var k = JSON.stringify(h);
+            if (k !== last) {
+              last = k;
+              setState({ hub: h });
+            }
+          },
+          function () {},
+        )
+        .then(function () {
+          setTimeout(poll, 60000);
+        });
+    }
+    setTimeout(poll, 800);
+  })();
+
   window.denShell = {
     registerGroup: registerGroup,
     registerNav: registerNav,
@@ -5114,6 +5309,9 @@
     "  text-align: left; background: none; border: 0; padding: 6px 10px; border-radius: var(--radius-button);",
     "  cursor: pointer; color: var(--muted); text-decoration: none; position: relative; font: inherit; }",
     ".den-ni:hover { background: var(--sunken); color: var(--text); }",
+    // The rail's Hub link: ↗ (a new tab); greyed when Hub refuses it.
+    ".den-ni .den-ext { color: var(--faint); font-size: 12px; }",
+    ".den-ni.den-off { opacity: .55; }",
     ".den-ni[aria-current='page'] { background: color-mix(in srgb, var(--accent) 13%, transparent);",
     "  color: var(--text); font-weight: 500; }",
     ".den-ni[aria-current='page']::before { content: ''; position: absolute; left: -8px; top: 6px;",

@@ -8,6 +8,7 @@
  * The user file can toggle local_dev on/off without touching the shared config.
  */
 
+import { HELPER_DEFAULTS, type HelperSettings } from "./agents/helpers.js";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -917,6 +918,13 @@ export interface AgentsConfig {
    */
   rotate?: { after_compactions?: unknown; standing?: unknown };
   /**
+   * D32, the helpers an agent starts in its own session:
+   * `{ active_minutes, collapse_done_minutes }`. A helper with no activity
+   * for `active_minutes` (default 10) and not known done shows idle; done
+   * ones fold away after `collapse_done_minutes` (default 30).
+   */
+  helpers?: { active_minutes?: unknown; collapse_done_minutes?: unknown };
+  /**
    * Any other key is an agent id: `agents.<id>.grants` widens that agent's
    * MCP scope to other workspaces (AG spec §5b). Config only: an agent
    * never grants itself one.
@@ -940,6 +948,8 @@ export const AGENTS_RESERVED_KEYS = [
   "runtime_catalog",
   "default_pack",
   "rotate",
+  // D32: how helpers show.
+  "helpers",
   // AG-10.5, AG-11.1: the distribution's persona categories and roles.
   "categories",
   "roles",
@@ -968,10 +978,40 @@ export interface ResolvedAgentsConfig {
   rotate?: RotateSettings;
   /** D28: agents.rotate as written, the org scope. */
   rotateOrg?: OrgRotate;
+  /** agents.helpers (D32) with its defaults. */
+  helpers?: HelperSettings;
   /** agents.categories (AG-10.5): the distribution's, after Den's. */
   categories?: Category[];
   /** agents.roles (AG-11.1): new roles and Den roles' preset extensions. */
   roles?: RolesConfig;
+}
+
+/** `agents.helpers` (D32) checked; a bad key or value throws naming it. */
+export function helpersBlock(v: unknown): HelperSettings {
+  const out = { ...HELPER_DEFAULTS };
+  if (v === undefined || v === null) return out;
+  if (!isMapping(v))
+    throw new Error(
+      `agents.helpers: must be a mapping of active_minutes, collapse_done_minutes (got ${JSON.stringify(v)})`,
+    );
+  for (const [k, x] of Object.entries(v)) {
+    const key =
+      k === "active_minutes"
+        ? "activeMinutes"
+        : k === "collapse_done_minutes"
+          ? "collapseDoneMinutes"
+          : null;
+    if (!key)
+      throw new Error(
+        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, collapse_done_minutes)`,
+      );
+    if (typeof x !== "number" || !Number.isFinite(x) || x <= 0 || x > 100_000)
+      throw new Error(
+        `agents.helpers.${k}: must be a number of minutes, above 0 and at most 100000 (got ${JSON.stringify(x)})`,
+      );
+    out[key] = x;
+  }
+  return out;
 }
 
 /** `agents.rotate` checked; any other key, or a bad value, throws naming it. */
@@ -1077,6 +1117,7 @@ export function readAgentsConfig(
       return { rotate: r.settings, rotateOrg: r.org };
     })(),
   };
+  out.helpers = helpersBlock(raw.helpers);
   out.categories = checkCategoriesConfig(raw.categories);
   out.roles = checkRolesConfig(raw.roles, [
     ...DEN_CATEGORIES.map((c) => c.id),
@@ -1114,7 +1155,7 @@ export function readAgentsConfig(
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(
-        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, default_pack, rotate, categories, roles, ` +
+        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, default_pack, rotate, helpers, categories, roles, ` +
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))

@@ -21,6 +21,7 @@ import {
   callbackPage,
   defaultInstallLabel,
   hubTokenFile,
+  plainHttpsOrigin,
   storeRefFor,
   type HubConnectDeps,
   type StoredToken,
@@ -127,8 +128,40 @@ describe("start: Hub's /connect URL", () => {
     );
     expect(harness().hc.start("http://den.example.test", HUB)).toMatchObject({
       ok: false,
-      error: /https or to localhost/,
+      error: /https or to this machine/,
     });
+  });
+});
+
+describe("start: den_url, this Den's https edge address", () => {
+  it("sent when there is one, as its origin; a reconnect sends it again", () => {
+    const h = harness({ denUrl: () => "https://den.north.example.test/" });
+    expect(start(h).q.den_url).toBe("https://den.north.example.test");
+    expect(start(h).q.den_url).toBe("https://den.north.example.test");
+  });
+
+  it("left out with no edge address, or one Hub would refuse (a 400)", () => {
+    for (const d of [
+      undefined,
+      "",
+      "http://den.north.example.test",
+      "https://den.north.example.test/settings",
+      "https://den.north.example.test/?x=1",
+      "https://someone:pw@den.north.example.test",
+      "not a url",
+    ]) {
+      const { q } = start(harness({ denUrl: () => d }));
+      expect([d, q.den_url]).toEqual([d, undefined]);
+    }
+    expect(start(harness()).q.den_url).toBeUndefined();
+  });
+
+  it("plainHttpsOrigin: an https origin only", () => {
+    expect(plainHttpsOrigin("https://a.example.test:8443")).toBe(
+      "https://a.example.test:8443",
+    );
+    expect(plainHttpsOrigin("https://a.example.test#x")).toBeNull();
+    expect(plainHttpsOrigin("ftp://a.example.test")).toBeNull();
   });
 });
 
@@ -350,6 +383,13 @@ describe("the pieces", () => {
     expect(callbackOriginProblem("https://den.example.test")).toBeNull();
     expect(callbackOriginProblem("http://localhost:7000")).toBeNull();
     expect(callbackOriginProblem("http://127.0.0.1:7000")).toBeNull();
+    // RFC 6761: a .localhost name is this machine (an edge reached over http).
+    expect(callbackOriginProblem("http://den.north.localhost")).toBeNull();
+    expect(callbackOriginProblem("http://DEN.North.Localhost:8080")).toBeNull();
+    expect(callbackOriginProblem("http://localhost.example.test")).toMatch(
+      /https/,
+    );
+    expect(callbackOriginProblem("http://notlocalhost")).toMatch(/https/);
     expect(callbackOriginProblem("http://den.example.test")).toMatch(/https/);
     expect(callbackOriginProblem("nonsense")).toMatch(/isn't one Hub/);
   });

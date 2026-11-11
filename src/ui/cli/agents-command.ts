@@ -84,6 +84,8 @@ import {
   importAgent,
   changePersona,
   listAgents,
+  agentHelpers,
+  agentHelperTranscript,
   listConversations,
   listPersonas as personaList,
   listRuntimes,
@@ -129,7 +131,7 @@ export {
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|relaunch|rotate|keep|handoff|import|persona|rename|rm|personas|doctor|handback-check|handoff-check> ...",
+    "agents <list|start|stop|resume|relaunch|rotate|keep|handoff|import|persona|helpers|rename|rm|personas|doctor|handback-check|handoff-check> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -167,6 +169,13 @@ export const AGENTS_HELP = {
     "    agent never rotates. A person's only",
     "{cli} agents handoff <id> [-w <ws>]",
     "    ask a running agent, at idle, to write its handoff",
+    "{cli} agents helpers <id> [-w <ws>] [--all] [--json]",
+    "    the helpers it started in its own session (Claude Code's Agent and",
+    "    Workflow subagents): what each does, its type, model, branch, state and",
+    "    times; running first. --all: its earlier conversations' too. Read-only:",
+    "    they belong to the agent's session, so Den can't stop or steer them",
+    "{cli} agents helpers <id> <helper> [-w <ws>] [--limit <n>] [--json]",
+    "    one helper's transcript, tool calls summarized (the last 500 lines)",
     "{cli} agents import -w <ws> [--runtime <r>] [--json]",
     "{cli} agents import -w <ws> --session <id> --persona <p> [--runtime <r>] [--id <id>] [--model <m>]",
     "    bring in a conversation started outside Den: the first lists the runtime's",
@@ -456,6 +465,119 @@ async function persona(args: string[], d: AgentsResolved): Promise<number> {
 }
 
 /** `<id> [-w <ws>]`. */
+/** D32: `agents helpers <id> [<helper>]`, read-only. */
+async function helpers(args: string[], d: AgentsResolved): Promise<number> {
+  const where = "agents helpers";
+  const p = parseArgs(where, args, {
+    "--workspace": true,
+    "--json": false,
+    "--all": false,
+    "--limit": true,
+  });
+  noExtra(where, p, 2);
+  const [id, helperId] = p.positional;
+  if (!id) throw new UsageError(`${where} needs <id>`);
+  const ws = workspaceFlag(where, p);
+  const ago = (ms?: number) =>
+    ms === undefined ? "-" : `${duration(Date.now() - ms)} ago`;
+  if (helperId) {
+    const raw = p.flags["--limit"];
+    const limit = raw === undefined ? undefined : Number(raw);
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1))
+      throw new UsageError(
+        `${where}: --limit must be a whole number of at least 1`,
+      );
+    const t = await agentHelperTranscript(d, id, helperId, ws, limit);
+    if (p.flags["--json"]) {
+      d.out(JSON.stringify(t, null, 2));
+      return 0;
+    }
+    d.out(
+      `${t.helper.description ?? t.helper.id} (${t.helper.status}, ${t.helper.type ?? "helper"})`,
+    );
+    if (t.omitted) d.out(`… ${t.omitted} earlier lines`);
+    for (const i of t.items) {
+      const lead =
+        i.kind === "tool"
+          ? `→ ${i.tool}: `
+          : i.kind === "result"
+            ? i.error
+              ? "  ✗ "
+              : "  ← "
+            : i.kind === "prompt"
+              ? "asked: "
+              : i.kind === "note"
+                ? "… "
+                : "";
+      d.out(`${lead}${i.text}`);
+    }
+    d.out("");
+    d.out(t.note);
+    return 0;
+  }
+  const r = await agentHelpers(d, id, ws);
+  const shown = p.flags["--all"]
+    ? r.helpers
+    : r.helpers.filter((h) => !h.earlier);
+  if (p.flags["--json"]) {
+    d.out(
+      JSON.stringify(
+        {
+          agent: r.rec.id,
+          supported: r.supported,
+          live: r.live,
+          helpers: shown,
+          note: r.note,
+        },
+        null,
+        2,
+      ),
+    );
+    return 0;
+  }
+  if (!r.supported) {
+    d.out(`${r.rec.runtime} can't tell which helpers ${r.rec.id} started`);
+    return 0;
+  }
+  const earlier = r.helpers.length - r.helpers.filter((h) => !h.earlier).length;
+  if (!shown.length) {
+    d.out(
+      `${r.rec.id} has started no helpers${earlier && !p.flags["--all"] ? ` in this conversation (${earlier} earlier: --all)` : ""}`,
+    );
+    return 0;
+  }
+  for (const l of columns([
+    ["HELPER", "WHAT", "TYPE", "MODEL", "STATE", "STARTED", "FOR", "BRANCH"],
+    ...shown.map((h) => [
+      `${"  ".repeat(Math.max(0, h.depth - 1))}${h.id}`,
+      (h.description ?? "-").slice(0, 48),
+      h.workflow
+        ? `${h.type ?? "-"} (${h.workflow.name ?? "workflow"})`
+        : (h.type ?? "-"),
+      h.model ?? "-",
+      `${h.status}${h.earlier ? " (earlier)" : ""}`,
+      ago(h.startedAt),
+      h.durationMs === undefined ? "-" : duration(h.durationMs),
+      h.branch ?? "-",
+    ]),
+  ]))
+    d.out(l);
+  if (earlier && !p.flags["--all"])
+    d.out(`${earlier} more from earlier conversations: --all`);
+  d.out("");
+  d.out(r.note);
+  return 0;
+}
+
+/** 65 s → "1m 5s"; 2 h → "2h 0m". */
+function duration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
 function idAndWorkspace(
   where: string,
   args: string[],
@@ -962,6 +1084,8 @@ export async function cmdAgents(
         case "persona":
           await loadAgentWorkspaces(deps);
           return await persona(rest, d);
+        case "helpers":
+          return await helpers(rest, d);
         case "rename":
           return rename(rest, d);
         case "rm":

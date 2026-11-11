@@ -40,6 +40,8 @@ import {
   type HubGrant,
 } from "../../shared/hub.js";
 import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
+import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
+import { webRouteHosts } from "../../shared/edge/render.js";
 import { getStateDir } from "../../shared/paths.js";
 import { envKey, product } from "../../shared/product.js";
 import {
@@ -81,6 +83,47 @@ export interface HubConnectDeps {
   writeUser: (u: Record<string, unknown>) => void;
   /** This install's label on Hub (1–40 characters). */
   installLabel: () => string;
+  /**
+   * This Den's https edge address, when it has one (Connect's den_url:
+   * where Hub links back to it when the browser came over loopback).
+   */
+  denUrl?: () => string | undefined;
+}
+
+/** `u` as a plain https origin (no user, path, query or hash), else null. */
+export function plainHttpsOrigin(u: string): string | null {
+  let x: URL;
+  try {
+    x = new URL(u);
+  } catch {
+    return null;
+  }
+  if (
+    x.protocol !== "https:" ||
+    x.username ||
+    x.password ||
+    (x.pathname !== "/" && x.pathname !== "") ||
+    x.search ||
+    x.hash
+  )
+    return null;
+  return x.origin;
+}
+
+/** The first edge route to this server that is a plain https address. */
+export function edgeDenUrl(
+  port = Number(process.env.PORT) || 0,
+): string | undefined {
+  try {
+    const ports = new Set([readWebPort(), ...(port ? [port] : [])]);
+    for (const r of webRouteHosts(readEdgeConfig(), ports)) {
+      const o = plainHttpsOrigin(r.url);
+      if (o) return o;
+    }
+  } catch {
+    /* no edge config: none */
+  }
+  return undefined;
 }
 
 /** `<cli> on <machine>`: how Hub lists this install (Hub's label rule). */
@@ -199,10 +242,11 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     readUser: () => readUserConfig() as Record<string, unknown>,
     writeUser: (u) => writeUserConfig(u as never),
     installLabel: () => defaultInstallLabel(),
+    denUrl: () => edgeDenUrl(),
   };
 }
 
-/** An origin Hub will send the person back to: https, or loopback http. */
+/** An origin Hub will send the person back to: https, or loopback http (incl. *.localhost). */
 export function callbackOriginProblem(origin: string): string | null {
   let u: URL;
   try {
@@ -210,9 +254,14 @@ export function callbackOriginProblem(origin: string): string | null {
   } catch {
     return "this page's address isn't one Hub can send you back to";
   }
-  const loop = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+  // Loopback: localhost, 127.0.0.1, and any <name>.localhost (RFC 6761:
+  // it never leaves this machine, and browsers count it a secure context),
+  // which is how an edge on this machine is often reached over http.
+  const h = u.hostname.toLowerCase();
+  const loop =
+    h === "localhost" || h === "127.0.0.1" || h.endsWith(".localhost");
   if (u.protocol === "https:" || (u.protocol === "http:" && loop)) return null;
-  return `Hub can only send you back to https or to localhost; open ${product().title} over https (its edge address) or on this machine, then Connect`;
+  return `Hub can only send you back to https or to this machine (localhost or a .localhost name); open ${product().title} over https (its edge address) or on this machine, then Connect`;
 }
 
 export type ConnectResult =
@@ -268,6 +317,10 @@ export class HubConnect {
       code_challenge: challenge,
       code_challenge_method: "S256",
     });
+    // Hub takes only a plain https address (anything else is a 400), and
+    // uses it only when redirect_uri is loopback. A reconnect sends it again.
+    const denUrl = plainHttpsOrigin(this.deps.denUrl?.() ?? "");
+    if (denUrl) q.set("den_url", denUrl);
     return { ok: true, location: `${hubUrl}/connect?${q}` };
   }
 

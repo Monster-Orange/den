@@ -113,6 +113,8 @@ import {
   createPersona,
   deletePersona,
   listAgents,
+  agentHelpers,
+  agentHelperTranscript,
   listPersonas,
   personaDetail,
   registries,
@@ -183,6 +185,9 @@ export interface AgentRouteDeps {
 const AGENTS_PATH =
   /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|handoff))?$/;
 
+/** D32: an agent's helpers, and one helper's transcript (read-only). */
+const HELPERS_PATH =
+  /^\/api\/workspaces\/([^/]+)\/agents\/([^/]+)\/helpers(?:\/([^/]+))?$/;
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 const PERSONA_PATH = /^\/api\/personas\/([^/]+)$/;
 const PLAIN_PATH = /^\/api\/workspaces\/([^/]+)\/sessions$/;
@@ -431,6 +436,8 @@ export async function handleAgentRoutes(
     pathname === "/api/agents/resume-interrupted";
   if (pathname === "/api/agents/rotation")
     return rotationRoute(req, res, webDeps(deps.agents));
+  const hp = HELPERS_PATH.exec(pathname);
+  if (hp) return helpersRoute(req, res, hp, webDeps(deps.agents));
   // HUB-1.5: Settings › Hub. Never the token: hubStatus doesn't return it.
   if (pathname === "/api/hub") {
     const method = req.method ?? "GET";
@@ -438,8 +445,14 @@ export async function handleAgentRoutes(
       return methodNotAllowed(res, "GET");
     const { hubStatus } = await import("../../shared/hub.js");
     const st = await (deps.hubStatus ?? (() => hubStatus()))();
-    // HUB-1.7: what the last Connect came to, once (words only).
-    const last = (deps.hubConnect ?? defaultConnect)?.lastResult();
+    // HUB-1.7: what the last Connect came to, once (words only). The
+    // rail's look (?rail=1) leaves it for Settings, which shows it.
+    const rail =
+      new URL(req.url ?? "/", "http://localhost").searchParams.get("rail") ===
+      "1";
+    const last = rail
+      ? null
+      : (deps.hubConnect ?? defaultConnect)?.lastResult();
     sendJson(res, last ? { ...st, connect: last } : st);
     return true;
   }
@@ -1457,5 +1470,46 @@ async function hubConnectRoute(
   }
   const r = await hc.disconnect(body.force === true);
   sendJson(res, r, r.ok ? 200 : 502);
+  return true;
+}
+
+/**
+ * D32: GET .../agents/:id/helpers: the helpers agent :id started in its
+ * own session; .../helpers/:helper: one helper's transcript (?limit=).
+ * Read-only: nothing here stops or steers a helper.
+ */
+async function helpersRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  hp: RegExpExecArray,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD")
+    return methodNotAllowed(res, "GET");
+  const ws = safeDecode(hp[1]);
+  const id = safeDecode(hp[2]);
+  const helper = hp[3] === undefined ? undefined : safeDecode(hp[3]);
+  try {
+    if (!d.workspaceExists(ws))
+      throw new AgentError(`workspace "${ws}" does not exist`, { status: 404 });
+    if (helper === undefined) {
+      const r = await agentHelpers(d, id, ws);
+      sendJson(res, {
+        agent: r.rec.id,
+        workspace: ws,
+        supported: r.supported,
+        live: r.live,
+        helpers: r.helpers,
+        note: r.note,
+      });
+      return true;
+    }
+    const q = new URL(req.url ?? "/", "http://localhost").searchParams;
+    const limit = Number(q.get("limit") ?? "") || undefined;
+    sendJson(res, await agentHelperTranscript(d, id, helper, ws, limit));
+  } catch (e) {
+    sendError(res, e, ws);
+  }
   return true;
 }

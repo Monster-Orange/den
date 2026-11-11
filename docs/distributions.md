@@ -935,7 +935,12 @@ Settings, connected. Nobody copies a token or edits config.
   what protect it. It then moves on to Settings by script, which carries
   the cookie again.
 - Hub can only send the person back to https or to this machine, so
-  open Den over https (its edge address) or on localhost to Connect.
+  open Den over https (its edge address), on localhost, or on a
+  `<name>.localhost` address (an edge on this machine over http; RFC 6761
+  keeps it on this machine) to Connect.
+- When this Den has an https edge address, Connect sends it as
+  `den_url`. Hub links back to Den with it when the browser came over
+  loopback. A Reconnect sends it again.
 - This install's label on Hub is `<cli> on <machine>`.
 - The token is the install's (SEC-0), kept in the install's own secrets
   store when it keeps secrets: a 1Password item `<Product> Hub token`
@@ -947,7 +952,8 @@ Settings, connected. Nobody copies a token or edits config.
 - Connect writes `hub.url` (Hub's own address), `hub.token` (the store
   ref, or `file:<path>`) and `hub.mcp_url` (Hub's MCP address, as given)
   to `config/local/user.yml`.
-- **Disconnect** revokes the token on Hub (`POST <hub>/connect/revoke`),
+- **Disconnect** asks first: "This revokes this Den's Hub key on Hub.
+  Agents lose Hub until you Connect again." Then it revokes the token on Hub (`POST <hub>/connect/revoke`),
   then removes it here and clears `hub.token` and `hub.mcp_url`;
   `hub.url` stays, so Connect is one click. If Hub can't be reached,
   nothing is removed; **Remove it here anyway** removes it, and says the
@@ -955,6 +961,11 @@ Settings, connected. Nobody copies a token or edits config.
 - A token Hub no longer accepts (revoked, or replaced by a newer
   connect) shows **Reconnect**. A role that may no longer connect Den
   installs says to ask a Hub admin; Den never retries it.
+- Once connected, the rail has a **Hub ↗** link above Settings. It opens
+  the company's page on Hub in a new tab, with the company in its tooltip
+  and a count of the threads waiting on you (Hub's `unread`). A token Hub
+  rejects, or a role it forbids, greys it, and it goes to Settings › Hub
+  instead. Den looks at Hub for it once a minute while a page shows.
 
 ### Config
 
@@ -3019,6 +3030,66 @@ in", for any refusal but the first.
 The pane's header and the workspace's heading in the list link to the
 Workspaces page focused on that workspace (`/local-dev?ws=<ws>`), and ⌘K
 has "Go to workspace <ws>" for each workspace with agents.
+
+### Helpers: what an agent started in its own session
+
+An agent can start helpers of its own: Claude Code's Agent and Workflow
+subagents (D32). They run inside the agent's session, so Den shows them
+but can't stop or steer them. To change what they do, tell the agent.
+
+Where they show:
+
+- **The Agents tab.** Under a running or stopped agent's row, its recent
+  helpers, running ones first, each with what it was asked to do, its
+  state and when. "All helpers (n)" opens the full list. Done, failed and
+  stopped helpers fold away after a while (`collapse_done_minutes`).
+- **A pane's bar.** **Helpers (n)** opens the list, with a count while any
+  run. Helpers from the agent's earlier conversations (before a relaunch)
+  are folded under "Earlier (n)".
+- **A helper's transcript.** Click a helper: what it was asked, its
+  answers, and its tool calls in a few words, the newest at the bottom.
+  Never its thinking.
+- **The rail.** The Agents item counts the helpers running now, on every
+  page.
+
+A helper's state comes from Claude Code's files, best evidence first: the
+person stopped it, its workflow said, the agent was told it ended, its
+result is in the agent's transcript, its own files say it finished, its
+last answer went quiet, or recent activity. A helper with no activity for
+`active_minutes` that isn't known to be done shows **idle**. When the
+agent isn't running, none of its helpers are. Hover a state to see which
+evidence it came from.
+
+From the CLI and MCP:
+
+```sh
+<cli> agents helpers <id>              # this conversation's helpers
+<cli> agents helpers <id> --all        # earlier conversations' too
+<cli> agents helpers <id> <helper>     # one helper's transcript
+<cli> agents helpers <id> <helper> --limit 50 --json
+```
+
+The MCP tool `agent_helpers` reads the same, in the agent's own workspace
+or one it is granted. The routes are `GET
+/api/workspaces/<ws>/agents/<id>/helpers[/<helper>]` and `GET
+/api/sessions/helpers` (the running count). All of them only read.
+
+Settings, under `agents.helpers` in the org config:
+
+```yaml
+agents:
+  helpers:
+    active_minutes: 10 # no activity this long, not known done: idle
+    collapse_done_minutes: 30 # done helpers fold away after this
+```
+
+| Key                     | Values                     | Default |
+| ----------------------- | -------------------------- | ------- |
+| `active_minutes`        | minutes, above 0 to 100000 | 10      |
+| `collapse_done_minutes` | minutes, above 0 to 100000 | 30      |
+
+A runtime other than Claude Code shows no helpers: Den says it can't tell
+which helpers that agent started.
 
 ### Stopped agents: Resume, Start fresh, Remove
 

@@ -317,6 +317,25 @@ describe("hubWhoami (GET /connect/whoami)", () => {
     ]);
   });
 
+  it("unread (threads waiting on the person): a whole number of at least 0, else left out", async () => {
+    const base = {
+      install: "north-box",
+      company: { name: "Acme", url: "https://hub.example.test/c/acme" },
+    };
+    for (const [v, want] of [
+      [4, 4],
+      [0, 0],
+      [-1, undefined],
+      [2.5, undefined],
+      ["3", undefined],
+      [null, undefined],
+      [5_000_000, 1_000_000],
+    ] as const) {
+      const h = await fakeHub({ ...base, unread: v });
+      expect([v, (await hubWhoami(h.url, TOKEN)).unread]).toEqual([v, want]);
+    }
+  });
+
   it("401 is rejected (connect again); 403 is forbidden (ask an admin), with Hub's words", async () => {
     const h = await fakeHub();
     await expect(hubWhoami(h.url, "hubi_wrong")).rejects.toMatchObject({
@@ -468,6 +487,21 @@ describe("hubStatus", () => {
       role: "member",
       login: "pat",
     });
+  });
+
+  it("carries whoami's unread for the rail's badge", async () => {
+    const st = await hubStatus({
+      config: () => cfg,
+      token: async () => TOKEN,
+      whoami: async () => ({ unread: 2 }),
+    });
+    expect(st).toMatchObject({ state: "connected", unread: 2 });
+    const none = await hubStatus({
+      config: () => cfg,
+      token: async () => TOKEN,
+      whoami: async () => ({}),
+    });
+    expect("unread" in none).toBe(false);
   });
 
   it("each problem in words, and never the token", async () => {

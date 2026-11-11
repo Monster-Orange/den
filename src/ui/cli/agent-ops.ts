@@ -50,6 +50,14 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import {
+  HELPER_DEFAULTS,
+  HELPERS_READ_ONLY_NOTE,
+  helperCounts,
+  type Helper,
+  type HelperSettings,
+  type HelperTranscript,
+} from "../../shared/agents/helpers.js";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -638,6 +646,12 @@ export interface AgentRow {
   /** D28: the last one (when, why, the old conversation, by itself or not). */
   lastRotation?: RotationEntry;
   session?: SessionInfo;
+  /**
+   * D32: the helpers it started in its own session: how many, how many
+   * run now, and the ones worth showing under it (running, or ended
+   * within agents.helpers.collapse_done_minutes; at most 8).
+   */
+  helpers?: { running: number; total: number; recent: Helper[] };
 }
 
 /** Its state as a row shows it (AG-14.1: stopped, exited or interrupted). */
@@ -831,7 +845,138 @@ export async function listAgents(
   const records = listRecords(d.stateDir()).filter((r) => r.workspace === ws);
   noteEnded(d.stateDir(), sessions, records);
   const rows = agentRows(sessions, records, d.stateDir(), policyResolver(d));
+  addHelperCounts(d, rows, records);
   return opts.stopped ? rows.filter((r) => isStoppedState(r.state)) : rows;
+}
+
+/** At most this many helpers ride along on an agent's row. */
+const ROW_HELPERS = 8;
+
+/** D32: agents.helpers, or its defaults when the config can't be read. */
+function helperSettings(d: AgentsResolved): HelperSettings {
+  try {
+    return d.agentsConfig().helpers ?? HELPER_DEFAULTS;
+  } catch {
+    return HELPER_DEFAULTS;
+  }
+}
+
+/** D32: each row's helper counts and recent helpers (never fails a list). */
+function addHelperCounts(
+  d: AgentsResolved,
+  rows: AgentRow[],
+  records: AgentRecord[],
+): void {
+  const settings = helperSettings(d);
+  const byId = new Map(records.map((r) => [r.id, r]));
+  for (const row of rows) {
+    const rec = byId.get(row.agent);
+    if (!rec) continue;
+    const h = rowHelpers(rec, !isStoppedState(row.state), settings, d.env);
+    if (h) row.helpers = h;
+  }
+}
+
+/**
+ * D32: what an agent's row shows of its helpers: counts, and the ones
+ * worth showing (running, or this conversation's ended within
+ * collapse_done_minutes; at most 8). Undefined: none, or its runtime
+ * can't tell. Never throws.
+ */
+export function rowHelpers(
+  rec: AgentRecord,
+  live: boolean,
+  settings: HelperSettings = HELPER_DEFAULTS,
+  env: NodeJS.ProcessEnv = process.env,
+  now = Date.now(),
+): AgentRow["helpers"] {
+  const rt = getRuntime(rec.runtime);
+  if (!rt?.helpers) return undefined;
+  let hs: Helper[] = [];
+  try {
+    hs = rt.helpers(rec, { env, now, settings, agentLive: live });
+  } catch {
+    return undefined;
+  }
+  if (!hs.length) return undefined;
+  const keep = settings.collapseDoneMinutes * 60_000;
+  const recent = hs
+    .filter(
+      (h) =>
+        h.status === "running" ||
+        (!h.earlier && now - (h.lastActivityAt ?? h.startedAt ?? 0) <= keep),
+    )
+    .slice(0, ROW_HELPERS);
+  return { ...helperCounts(hs), recent };
+}
+
+/** D32: an agent's helpers, read-only, and whether its runtime can tell. */
+export async function agentHelpers(
+  d: AgentsResolved,
+  id: string,
+  ws?: string,
+): Promise<{
+  rec: AgentRecord;
+  supported: boolean;
+  live: boolean;
+  helpers: Helper[];
+  note: string;
+}> {
+  const rec = agentRecord(d, id, ws);
+  const rt = getRuntime(rec.runtime);
+  const live = await agentLive(d, rec);
+  const helpers =
+    rt?.helpers?.(rec, {
+      env: d.env,
+      settings: helperSettings(d),
+      agentLive: live,
+    }) ?? [];
+  return {
+    rec,
+    supported: !!rt?.helpers,
+    live,
+    helpers,
+    note: HELPERS_READ_ONLY_NOTE,
+  };
+}
+
+/** D32: one of agent `id`'s helpers' transcript; a 404 when there's none. */
+export async function agentHelperTranscript(
+  d: AgentsResolved,
+  id: string,
+  helperId: string,
+  ws?: string,
+  limit?: number,
+): Promise<HelperTranscript & { note: string }> {
+  const rec = agentRecord(d, id, ws);
+  const rt = getRuntime(rec.runtime);
+  const t = rt?.helperTranscript?.(rec, helperId, {
+    env: d.env,
+    settings: helperSettings(d),
+    agentLive: await agentLive(d, rec),
+    ...(limit ? { limit } : {}),
+  });
+  if (!t) throw refused(`agent ${id} has no helper "${helperId}"`, [], 404);
+  return { ...t, note: HELPERS_READ_ONLY_NOTE };
+}
+
+/** Whether agent `rec`'s session runs now (an unreachable host: no). */
+async function agentLive(
+  d: AgentsResolved,
+  rec: AgentRecord,
+): Promise<boolean> {
+  try {
+    const c = await d.connectExisting();
+    if (!c) return false;
+    try {
+      const s = sessionOf(await c.list(), rec);
+      return Boolean(s && !s.exited);
+    } finally {
+      c.close();
+    }
+  } catch {
+    return false;
+  }
 }
 
 // ── personas, runtimes ──────────────────────────────────────────────────────

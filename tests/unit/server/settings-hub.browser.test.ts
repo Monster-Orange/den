@@ -320,7 +320,33 @@ describe("Settings › Hub (HUB-1.7)", () => {
             }),
           });
     });
+    // Disconnect asks first, saying what it does; Cancel and Escape do
+    // nothing, and focus goes back to Disconnect.
     await p.click('[data-hub-action="disconnect"]');
+    const ask = p.locator("[data-hub-confirm]");
+    await ask.waitFor();
+    expect(await ask.textContent()).toContain(
+      "This revokes this Den's Hub key on Hub. Agents lose Hub until you Connect again.",
+    );
+    expect(
+      await p.evaluate(() =>
+        document.activeElement?.getAttribute("data-hub-action"),
+      ),
+    ).toBe("disconnect-no");
+    await p.click('[data-hub-action="disconnect-no"]');
+    expect(await ask.isHidden()).toBe(true);
+    expect(
+      await p.evaluate(() =>
+        document.activeElement?.getAttribute("data-hub-action"),
+      ),
+    ).toBe("disconnect");
+    await p.click('[data-hub-action="disconnect"]');
+    await ask.waitFor();
+    await p.keyboard.press("Escape");
+    expect(await ask.isHidden()).toBe(true);
+    expect(posted).toEqual([]);
+    await p.click('[data-hub-action="disconnect"]');
+    await p.click('[data-hub-action="disconnect-yes"]');
     await p.waitForSelector('[data-hub-action="force"]');
     expect(await p.textContent('[data-setting="agents.hub"] .rt-err')).toMatch(
       /Nothing was removed/,
@@ -460,6 +486,7 @@ describe("Settings › Hub (HUB-1.7)", () => {
     expect(await p.content()).not.toContain(TOKEN);
     // Disconnect: revoked on Hub, gone here, back to Connect.
     await p.click('[data-hub-action="disconnect"]');
+    await p.click('[data-hub-action="disconnect-yes"]');
     await p.waitForSelector("[data-hub-connect]");
     expect(await p.textContent("[data-hub-flash]")).toMatch(
       /Hub revoked this install's token/,

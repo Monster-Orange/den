@@ -173,6 +173,18 @@ export const ROUTES: readonly RouteEntry[] = [
     "which paths an agent printed exist in its workspace (stat only, AG-4b)",
   ),
   R(
+    "/api/workspaces/:ws/agents/:id/helpers",
+    "D32: the helpers an agent started in its own session, read from the runtime's files (never written)",
+  ),
+  R(
+    "/api/workspaces/:ws/agents/:id/helpers/:helper",
+    "D32: one helper's transcript, tool calls summarized, read-only (no stop or steer)",
+  ),
+  R(
+    "/api/sessions/helpers",
+    "D32: how many helpers the agents have running (a count, for the rail's badge)",
+  ),
+  R(
     "/api/sessions",
     "lists the sessions and agents (names and states, never their output)",
   ),
@@ -550,6 +562,10 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "agent-routes.ts:PERSONA_PATH": ["/api/personas/:id"],
   "agent-routes.ts:PLAIN_PATH": ["/api/workspaces/:ws/sessions"],
+  "agent-routes.ts:HELPERS_PATH": [
+    "/api/workspaces/:ws/agents/:id/helpers",
+    "/api/workspaces/:ws/agents/:id/helpers/:helper",
+  ],
   "agent-routes.ts:CONVERSATIONS_PATH": [
     "/api/workspaces/:ws/conversations",
     "/api/workspaces/:ws/conversations/:id/import",

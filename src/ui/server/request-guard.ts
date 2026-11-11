@@ -707,7 +707,9 @@ export function agentRefusal(
       AGENT_READ_ONLY.some((r) => pathMatches(r, pathname)))
   )
     return `${p.actor} can't use ${pathname}: signing in, web.secret and the admin password are a person's.`;
-  const m = SESSION_ROUTE.exec(pathname);
+  // D32's helpers count is the list's, no session's: read-grade.
+  const m =
+    pathname === "/api/sessions/helpers" ? null : SESSION_ROUTE.exec(pathname);
   if (m) {
     let id = m[1];
     try {
