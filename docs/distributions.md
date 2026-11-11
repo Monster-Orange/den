@@ -2796,6 +2796,22 @@ as…" line as Bring in.
   mark is cleared at start, and the audit trail records "persona change
   cancelled: Den restarted";
   **Stop it now** (`--now`, `when: "now"`) stops it and switches.
+
+  How Den reads "mid-turn" (D39): from the end of the transcript, the
+  last user or assistant record that starts a turn. Records that start
+  none are passed over: a compaction's summary, a person's `!` command
+  and its output, and a local command such as `/cost` with its output.
+  Den reads back 64 KB first and four times more each try, at most
+  `agents.turn_read_max_mb` (default 8). If it finds no turn within that,
+  it can't tell: a persona change asks first, Write handoff goes ahead,
+  and an automatic relaunch waits. Each verdict is kept while the
+  transcript's size and modification time stay the same.
+
+  ```yaml
+  agents:
+    turn_read_max_mb: 8 # a number of MB, above 0 and at most 4096
+  ```
+
 - **A person's only.** An agent could widen its own permissions with it,
   so an agent's token is refused (403), the CLI refuses inside an agent's
   session, and there is no MCP tool.

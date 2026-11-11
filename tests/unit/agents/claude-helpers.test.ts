@@ -217,6 +217,23 @@ describe("status, strongest evidence first", () => {
     });
   });
 
+  it("D39: a compaction's summary after its last answer starts no turn: still done", () => {
+    helper("cs", without("finished"), (l) => [
+      ...l,
+      JSON.stringify({
+        type: "user",
+        isCompactSummary: true,
+        isVisibleInTranscriptOnly: true,
+        message: { role: "user", content: "This session is being continued" },
+        timestamp: new Date(T_LAST).toISOString(),
+      }),
+    ]);
+    expect(one("cs")).toMatchObject({
+      status: "done",
+      statusFrom: "its last answer",
+    });
+  });
+
   it("no word from anyone: a finished answer gone quiet is done; mid-turn is running while recent, then idle", () => {
     helper("quiet", without("finished"));
     helper("busy", without("finished"), midTurn);

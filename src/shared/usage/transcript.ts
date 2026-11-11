@@ -305,6 +305,8 @@ export async function mineTranscript(
       }
     }
     if (d.isMeta || d.isSidechain || r.subagent) continue;
+    // D39: a compaction's summary is no prompt (nor a correction).
+    if (d.isCompactSummary || d.isVisibleInTranscriptOnly) continue;
     const text = textOf(content).trim();
     if (text.includes("[Request interrupted")) {
       r.interrupts++;

@@ -127,6 +127,32 @@ describe("one transcript", () => {
     expect(polled.testsGreen).toBeUndefined();
   });
 
+  it("D39: a compaction's summary is no prompt and no correction", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-usage-d39-"));
+    try {
+      const file = path.join(dir, "t.jsonl");
+      const u = (content: string, extra: Record<string, unknown> = {}) =>
+        JSON.stringify({ type: "user", message: { role: "user", content }, ...extra });
+      fs.writeFileSync(
+        file,
+        [
+          u("Write the report"),
+          u("This session is being continued. No, that's wrong: redo it", {
+            isCompactSummary: true,
+            isVisibleInTranscriptOnly: true,
+          }),
+        ].join("\n") + "\n",
+      );
+      const s = await mineTranscript(file);
+      expect({ prompts: s.prompts, corrections: s.corrections }).toEqual({
+        prompts: 1,
+        corrections: 0,
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps counts, never text: no prompt or output reaches what it returns", async () => {
     const f = fixture();
     const s = await mineTranscript(

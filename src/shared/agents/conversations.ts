@@ -107,9 +107,44 @@ function parse(line: string): Record<string, unknown> | null {
   }
 }
 
+/** A user record's text: its string, or its first text block's; else "". */
+function userText(rec: Record<string, unknown>): string {
+  const content = (rec.message as { content?: unknown } | undefined)?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  const first = content.find(
+    (c) => (c as { type?: unknown })?.type === "text",
+  ) as { text?: unknown } | undefined;
+  return typeof first?.text === "string" ? first.text : "";
+}
+
+/** A person's `!` command and its output, as Claude Code records them. */
+const SHELL_ECHO_RE = /^<(bash-input|bash-stdout|bash-stderr)>/;
+/** A local command's output (`/cost`, `/model`): it follows its `<command-name>`. */
+const LOCAL_OUTPUT_RE = /^<(local-command-stdout|local-command-stderr)>/;
+
+/**
+ * D39: a user record that starts no turn: Claude Code's own notes
+ * (isMeta), a compaction's summary (isCompactSummary, shown in the
+ * transcript only), a person's `!` command and its output, a local
+ * command's output. An agent that compacted and then went quiet ends in a
+ * summary; read as a prompt, it looked mid-turn forever.
+ */
+export function notATurn(rec: Record<string, unknown>): boolean {
+  if (rec.type !== "user") return false;
+  if (
+    rec.isMeta === true ||
+    rec.isCompactSummary === true ||
+    rec.isVisibleInTranscriptOnly === true
+  )
+    return true;
+  const text = userText(rec).trimStart();
+  return SHELL_ECHO_RE.test(text) || LOCAL_OUTPUT_RE.test(text);
+}
+
 /** The text a person typed in a user record, or null (tool results, meta). */
 function promptText(rec: Record<string, unknown>): string | null {
-  if (rec.type !== "user" || rec.isMeta === true) return null;
+  if (rec.type !== "user" || notATurn(rec)) return null;
   const msg = rec.message as { content?: unknown } | undefined;
   let text: unknown = msg?.content;
   if (Array.isArray(text)) {
@@ -200,32 +235,149 @@ export function transcriptSummary(
 export const TURN_QUIET_MS = 5_000;
 
 /**
+ * D39: how far back from its end a transcript is read for its last turn
+ * (agents.turn_read_max_mb). Past it: can't tell (null).
+ */
+export const TURN_READ_MAX_BYTES = 8 * 1024 * 1024;
+
+/** A turn's verdict from the file: "quiet" is busy until it has been quiet. */
+type TurnVerdict = boolean | "quiet" | null;
+
+/** The last verdicts, by file, while its size and mtime stay the same. */
+const turnCache = new Map<
+  string,
+  { size: number; mtimeMs: number; bytes: number; max: number; v: TurnVerdict }
+>();
+const TURN_CACHE_MAX = 256;
+
+/** Forget the cached verdicts (tests). */
+export function resetTurnCache(): void {
+  turnCache.clear();
+}
+
+/**
  * AG-18: whether a conversation's turn is still going, from its tail: the
  * last user or assistant record. An answer that ended (`end_turn`, a stop
  * sequence, the token limit) is idle; a tool call, or a prompt or tool
  * result with no answer yet, is busy; an answer with no stop reason is busy
  * until the file has been quiet TURN_QUIET_MS. An interrupted turn is idle.
- * No transcript: idle (nothing was asked yet).
+ * No transcript: idle (nothing was asked yet). Records that start no turn
+ * (notATurn: a compaction's summary, a `!` command, a local command and its
+ * output) are passed over, so an agent idle after compacting reads idle.
+ *
+ * D39: it reads back from the end, `bytes` at first and four times more
+ * each try, until a turn's record shows; never the file's start (that is
+ * the conversation's first turn). None in the last `maxBytes`: null, can't
+ * tell. A verdict is kept while the file's size and mtime stay the same.
  */
 export function transcriptBusy(
   file: string | null,
   now = Date.now(),
   bytes = ENDS_BYTES,
-): boolean {
+  maxBytes = TURN_READ_MAX_BYTES,
+): boolean | null {
   if (!file) return false;
-  let mtime: number;
+  let st: fs.Stats;
   try {
-    mtime = fs.statSync(file).mtimeMs;
+    st = fs.statSync(file);
   } catch {
     return false;
   }
-  const { head, tail } = readEnds(file, bytes);
-  const lines = tail.length ? [...head, ...tail] : head;
+  const hit = turnCache.get(file);
+  const v =
+    hit &&
+    hit.size === st.size &&
+    hit.mtimeMs === st.mtimeMs &&
+    hit.bytes === bytes &&
+    hit.max === maxBytes
+      ? hit.v
+      : turnVerdict(file, bytes, maxBytes);
+  if (
+    !hit ||
+    hit.v !== v ||
+    hit.size !== st.size ||
+    hit.mtimeMs !== st.mtimeMs
+  ) {
+    turnCache.delete(file);
+    turnCache.set(file, {
+      size: st.size,
+      mtimeMs: st.mtimeMs,
+      bytes,
+      max: maxBytes,
+      v,
+    });
+    if (turnCache.size > TURN_CACHE_MAX)
+      turnCache.delete(turnCache.keys().next().value as string);
+  }
+  return v === "quiet" ? now - st.mtimeMs < TURN_QUIET_MS : v;
+}
+
+/** The verdict from the file, reading back at most `maxBytes`. */
+function turnVerdict(
+  file: string,
+  bytes: number,
+  maxBytes: number,
+): TurnVerdict {
+  for (let want = Math.max(1, Math.min(bytes, maxBytes)); ; want *= 4) {
+    const { lines, whole } = readTail(file, Math.min(want, maxBytes));
+    const v = lastTurnBusy(lines);
+    if (v !== null) return v;
+    if (whole) return false;
+    if (want >= maxBytes) return null;
+  }
+}
+
+/** The complete lines in the last `bytes` of `file`; `whole`: all of it. */
+function readTail(
+  file: string,
+  bytes: number,
+): { lines: string[]; whole: boolean } {
+  let fd: number;
+  try {
+    fd = fs.openSync(file, "r");
+  } catch {
+    return { lines: [], whole: true };
+  }
+  try {
+    const size = fs.fstatSync(fd).size;
+    const start = Math.max(0, size - bytes);
+    const buf = Buffer.alloc(size - start);
+    const got = fs.readSync(fd, buf, 0, buf.length, start);
+    const lines = buf.subarray(0, got).toString("utf-8").split("\n");
+    // The first piece was cut.
+    if (start > 0) lines.shift();
+    return { lines: lines.filter(Boolean), whole: start === 0 };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * The verdict from the last turn's record in `lines`, or null when they
+ * hold none.
+ */
+function lastTurnBusy(lines: string[]): TurnVerdict {
+  // A local command's output was passed over: its `<command-name>` is next.
+  let localCommand = false;
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
     if (!line.includes('"user"') && !line.includes('"assistant"')) continue;
     const r = parse(line);
-    if (!r || r.isSidechain === true || r.isMeta === true) continue;
+    if (!r || r.isSidechain === true) continue;
+    if (r.type !== "user" && r.type !== "assistant") continue;
+    if (notATurn(r)) {
+      if (LOCAL_OUTPUT_RE.test(userText(r).trimStart())) localCommand = true;
+      continue;
+    }
+    if (
+      localCommand &&
+      r.type === "user" &&
+      userText(r).trimStart().startsWith("<command-name>")
+    ) {
+      localCommand = false;
+      continue;
+    }
+    localCommand = false;
     if (r.type === "assistant") {
       const msg = r.message as { stop_reason?: unknown } | undefined;
       const stop = msg?.stop_reason;
@@ -236,26 +388,11 @@ export function transcriptBusy(
         stop === "max_tokens"
       )
         return false;
-      return now - mtime < TURN_QUIET_MS;
+      return "quiet";
     }
-    if (r.type === "user") {
-      const content = (r.message as { content?: unknown } | undefined)?.content;
-      const text =
-        typeof content === "string"
-          ? content
-          : Array.isArray(content)
-            ? ((
-                content.find(
-                  (c) => (c as { type?: unknown })?.type === "text",
-                ) as { text?: unknown } | undefined
-              )?.text ?? "")
-            : "";
-      if (typeof text === "string" && text.startsWith("[Request interrupted"))
-        return false;
-      return true;
-    }
+    return !userText(r).startsWith("[Request interrupted");
   }
-  return false;
+  return null;
 }
 
 /** A folder's absolute forms: as given and its real path. */

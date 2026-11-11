@@ -244,9 +244,14 @@ export interface Runtime {
   conversationCwd?(token: string, env?: NodeJS.ProcessEnv): string | null;
   /**
    * AG-18: whether conversation `token` is mid-turn (den-claude: its
-   * transcript's tail). None: the runtime can't tell. Never throws.
+   * transcript's tail). None, or null: the runtime can't tell. Never
+   * throws. `readMaxBytes`: how far back it may read (D39).
    */
-  turnBusy?(token: string, env?: NodeJS.ProcessEnv): boolean;
+  turnBusy?(
+    token: string,
+    env?: NodeJS.ProcessEnv,
+    opts?: { readMaxBytes?: number },
+  ): boolean | null;
   /**
    * What the runtime prints when it exits at once (0.4.8): `noConversation`
    * when a resume finds nothing to continue, `idInUse` when a new

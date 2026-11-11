@@ -984,6 +984,11 @@ export interface AgentsConfig {
   /** den#3: load the account's claude.ai connectors (default false). */
   claude_ai_connectors?: unknown;
   /**
+   * D39: how far back from its end an agent's transcript is read to tell
+   * whether it is mid-turn, in MB (default 8). Past it, Den can't tell.
+   */
+  turn_read_max_mb?: unknown;
+  /**
    * Any other key is an agent id: `agents.<id>.grants` widens that agent's
    * MCP scope to other workspaces (AG spec §5b). Config only: an agent
    * never grants itself one.
@@ -1009,6 +1014,8 @@ export const AGENTS_RESERVED_KEYS = [
   "rotate",
   // D32: how helpers show.
   "helpers",
+  // D39: how far back the mid-turn check reads.
+  "turn_read_max_mb",
   // AG-10.5, AG-11.1: the distribution's persona categories and roles.
   "categories",
   "roles",
@@ -1042,6 +1049,8 @@ export interface ResolvedAgentsConfig {
   rotateOrg?: OrgRotate;
   /** agents.helpers (D32) with its defaults. */
   helpers?: HelperSettings;
+  /** agents.turn_read_max_mb (D39) in bytes; unset: the default. */
+  turnReadMaxBytes?: number;
   /** agents.categories (AG-10.5): the distribution's, after Den's. */
   categories?: Category[];
   /** agents.roles (AG-11.1): new roles and Den roles' preset extensions. */
@@ -1196,6 +1205,19 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
   };
   out.helpers = helpersBlock(raw.helpers);
   out.subagents = subagentsBlock(raw.subagents, raw.claude_ai_connectors);
+  const turnMb = raw.turn_read_max_mb;
+  if (turnMb !== undefined && turnMb !== null) {
+    if (
+      typeof turnMb !== "number" ||
+      !Number.isFinite(turnMb) ||
+      turnMb <= 0 ||
+      turnMb > 4096
+    )
+      throw new Error(
+        `agents.turn_read_max_mb: must be a number of MB, above 0 and at most 4096 (got ${JSON.stringify(turnMb)})`,
+      );
+    out.turnReadMaxBytes = Math.round(turnMb * 1024 * 1024);
+  }
   out.categories = checkCategoriesConfig(raw.categories);
   out.roles = checkRolesConfig(raw.roles, [
     ...DEN_CATEGORIES.map((c) => c.id),
