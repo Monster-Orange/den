@@ -757,6 +757,12 @@
     "hp.dlg": "{name} のヘルパー",
     "hp.earlier": "以前の会話 ({n})",
     "hp.none": "この会話にヘルパーはいません。",
+    "hp.clear": "完了をクリア",
+    "hp.clearTip":
+      "{name} の終了したヘルパー (完了・失敗・停止) をすべて隠します。実行中のものは残ります。",
+    "hp.clearFailed": "クリアできませんでした: {err}",
+    "hp.cleared": "クリア済みを表示 ({n})",
+    "hp.allCleared": "終了したヘルパーはすべてクリア済みです。",
     "hp.unsupported":
       "このエージェントのランタイムは、起動したヘルパーを示せません。",
     "hp.workflow": "ワークフロー {name}",

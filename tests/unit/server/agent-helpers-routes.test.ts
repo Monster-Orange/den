@@ -14,11 +14,24 @@ import {
   jsonApiErrors,
   newRequestId,
 } from "../../../src/ui/server/http-errors.js";
-import { writeRecord } from "../../../src/shared/agents/records.js";
+import * as fs from "fs";
+import {
+  agentFilesDir,
+  writeRecord,
+} from "../../../src/shared/agents/records.js";
+import { recentActions } from "../../../src/ui/server/audit.js";
+import { agentRefusal } from "../../../src/ui/server/request-guard.js";
+import { routeClass } from "../../../src/ui/server/route-classes.js";
 import { HELPERS_READ_ONLY_NOTE } from "../../../src/shared/agents/helpers.js";
 import { resetHelperCache } from "../../../src/shared/agents/claude-helpers.js";
 import { cleanupRigs, rig, type Rig } from "../agents/helpers/rig.js";
-import { H1, seedScout } from "../agents/helpers/seed-helpers.js";
+import {
+  H0,
+  H1,
+  TOKEN,
+  seedScout,
+  writeHelper,
+} from "../agents/helpers/seed-helpers.js";
 
 const servers: http.Server[] = [];
 afterEach(async () => {
@@ -49,8 +62,15 @@ async function api() {
   return {
     r,
     home,
-    async call(method: string, p: string) {
-      const res = await fetch(`http://localhost:${port}${p}`, { method });
+    async call(
+      method: string,
+      p: string,
+      headers: Record<string, string> = {},
+    ) {
+      const res = await fetch(`http://localhost:${port}${p}`, {
+        method,
+        headers,
+      });
       const text = await res.text();
       return {
         status: res.status,
@@ -178,5 +198,153 @@ describe("GET /api/workspaces/:ws/agents/:id/helpers/:helper", () => {
       "/api/workspaces/north/agents/scout/helpers/..%2F..%2Fsecret",
     );
     expect(r.status).toBe(404);
+  });
+});
+
+describe("D34: POST .../agents/:id/clear-helpers (Clear done)", () => {
+  const LIST = "/api/workspaces/north/agents/scout/helpers";
+  const CLEAR = "/api/workspaces/north/agents/scout/clear-helpers";
+  const ids = (j: Record<string, unknown>, k = "helpers") =>
+    ((j[k] as { id: string }[] | undefined) ?? []).map((h) => h.id);
+
+  it("hides every finished helper, this conversation's and earlier ones'; ?all=1 lists them", async () => {
+    const a = await api();
+    seedScout(a.r.stateDir, a.r.wsDir("north"), a.home, { earlier: true });
+    const before = (await a.call("GET", LIST)).json;
+    expect([ids(before).sort(), before.clearedCount]).toEqual([
+      [H0, H1].sort(),
+      0,
+    ]);
+    const r = await a.call("POST", CLEAR);
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({ ok: true, agent: "scout" });
+    const after = (await a.call("GET", LIST)).json;
+    expect([ids(after), after.clearedCount, "cleared" in after]).toEqual([
+      [],
+      2,
+      false,
+    ]);
+    const all = (await a.call("GET", `${LIST}?all=1`)).json;
+    expect([ids(all), ids(all, "cleared").sort()]).toEqual([
+      [],
+      [H0, H1].sort(),
+    ]);
+    // A cleared helper's transcript still reads (read-only, as now).
+    expect((await a.call("GET", `${LIST}/${H1}`)).status).toBe(200);
+  });
+
+  it("a mark in the agent's own files; Claude Code's are untouched; it survives a restart", async () => {
+    const a = await api();
+    seedScout(a.r.stateDir, a.r.wsDir("north"), a.home);
+    const sub = path.join(
+      a.home,
+      ".claude",
+      "projects",
+      "-work-north",
+      TOKEN,
+      "subagents",
+    );
+    const snap = () =>
+      fs
+        .readdirSync(sub)
+        .sort()
+        .map((f) => [f, fs.readFileSync(path.join(sub, f), "utf-8")]);
+    const was = snap();
+    await a.call("POST", CLEAR);
+    expect(snap()).toEqual(was);
+    const mark = path.join(
+      agentFilesDir(a.r.stateDir, "scout"),
+      "helpers-cleared.json",
+    );
+    expect(fs.statSync(mark).mode & 0o777).toBe(0o600);
+    // A new server over the same state: still cleared.
+    resetHelperCache();
+    expect((await a.call("GET", LIST)).json.clearedCount).toBe(1);
+  });
+
+  it("a helper that ends after the mark shows as usual", async () => {
+    const a = await api();
+    seedScout(a.r.stateDir, a.r.wsDir("north"), a.home);
+    await a.call("POST", CLEAR);
+    const later = "a7f0c0ffee0000007";
+    writeHelper(a.home, TOKEN, later, "Count again", 3, Date.now() + 60_000);
+    resetHelperCache();
+    const j = (await a.call("GET", LIST)).json;
+    expect([ids(j), j.clearedCount]).toEqual([[later], 1]);
+  });
+
+  it("a person's only: an agent's claim is refused, nothing written; audited either way", async () => {
+    const a = await api();
+    seedScout(a.r.stateDir, a.r.wsDir("north"), a.home);
+    const r = await a.call("POST", CLEAR, {
+      "content-type": "application/json",
+      "x-den-actor": "agent",
+      "x-den-mcp-client": "jest",
+      "x-den-mcp-agent": "agent:scout",
+      "x-den-mcp-workspace": "north",
+    });
+    expect(r.status).toBe(403);
+    expect(String(r.json.error)).toMatch(/only a person can clear/);
+    expect(
+      fs.existsSync(
+        path.join(agentFilesDir(a.r.stateDir, "scout"), "helpers-cleared.json"),
+      ),
+    ).toBe(false);
+    expect(
+      recentActions().filter(
+        (e) =>
+          e.detail === "clear-helpers scout in north" &&
+          e.outcome === "refused",
+      ).length,
+    ).toBeGreaterThan(0);
+    expect((await a.call("POST", CLEAR)).status).toBe(200);
+    const mine = recentActions().filter((e) =>
+      e.detail.includes("clear scout's finished helpers"),
+    );
+    expect(mine.at(-1)).toMatchObject({ verb: "agents", actor: "user" });
+    expect(mine.at(-1)?.outcome).toBeUndefined();
+  });
+
+  it("the agent's row: no helpers area once nothing is left to show", async () => {
+    const a = await api();
+    seedScout(a.r.stateDir, a.r.wsDir("north"), a.home);
+    const row = async () =>
+      (
+        (await a.call("GET", "/api/workspaces/north/agents")).json.agents as {
+          agent: string;
+          helpers?: Record<string, unknown>;
+        }[]
+      ).find((x) => x.agent === "scout");
+    expect((await row())?.helpers).toMatchObject({
+      total: 1,
+      ended: 1,
+      cleared: 0,
+    });
+    await a.call("POST", CLEAR);
+    resetHelperCache();
+    expect((await row())?.helpers).toBeUndefined();
+  });
+
+  it("an agent's token is refused it at the guard, saying why", () => {
+    const why = agentRefusal(
+      {
+        kind: "agent",
+        actor: "agent:scout",
+        workspace: "north",
+        grants: [],
+        session: { id: "s1", name: "acme-north:scout" },
+      },
+      "POST",
+      CLEAR,
+      "mutating",
+    );
+    expect(why).toMatch(/clearing an agent's helpers is a person's/);
+    expect(routeClass("POST", CLEAR)).toBe("mutating");
+  });
+
+  it("takes no fields; GET is 405", async () => {
+    const a = await api();
+    seedScout(a.r.stateDir, a.r.wsDir("north"), a.home);
+    expect((await a.call("GET", CLEAR)).status).toBe(405);
   });
 });

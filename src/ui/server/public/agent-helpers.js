@@ -24,8 +24,21 @@ const esc = (s) =>
       ],
   );
 const api = (method, url) => window.denShell.api(method, url);
-const base = (ws, agent) =>
-  `/api/workspaces/${encodeURIComponent(ws)}/agents/${encodeURIComponent(agent)}/helpers`;
+const agentUrl = (ws, agent) =>
+  `/api/workspaces/${encodeURIComponent(ws)}/agents/${encodeURIComponent(agent)}`;
+const base = (ws, agent) => `${agentUrl(ws, agent)}/helpers`;
+
+/** D34: what the page does once a person cleared (set by wireHelperRows). */
+let onClearedHook = null;
+
+/** D34 Clear done: hide agent `agent`'s finished helpers; then the hook. */
+export async function clearHelpers(ws, agent) {
+  // Where focus was when asked: a poll may redraw the list meanwhile.
+  const was = document.activeElement;
+  const fromRow = !!was?.closest?.(".aghs");
+  await window.denShell.api("POST", `${agentUrl(ws, agent)}/clear-helpers`, {});
+  await onClearedHook?.(agent, ws, { was, fromRow });
+}
 
 /** A dot's tone for a helper's status (the shell's .den-dot tones). */
 export function helperTone(status) {
@@ -100,10 +113,15 @@ export function helperHtml(h, { ws, agent, depth }) {
   );
 }
 
-/** Under an agent's row: its recent helpers and "All helpers (n)". */
+/**
+ * Under an agent's row: its recent helpers, "All helpers (n)" and, when
+ * any shown one has ended, "Clear done" (D34). Nothing at all when it has
+ * nothing to show.
+ */
 export function helperRowsHtml(r) {
   const h = r?.helpers;
   if (!h || !h.total) return "";
+  const name = r.displayName || r.agent;
   const ctx = { ws: r.workspace, agent: r.agent };
   return (
     `<div class="aghs" data-helpers-of="${esc(r.agent)}" data-ws="${esc(r.workspace)}" role="group" aria-label="${esc(t("hp.groupOf", { name: r.displayName || r.agent }))}">` +
@@ -113,7 +131,11 @@ export function helperRowsHtml(r) {
     (h.running
       ? ` <span class="hpbdg" aria-label="${esc(t("hp.runningN", { n: h.running }))}">${esc(h.running)}</span>`
       : "") +
-    `</button></div>`
+    `</button>` +
+    (h.ended
+      ? `<button type="button" class="lnk aghs-clear" title="${esc(t("hp.clearTip", { name }))}">${esc(t("hp.clear"))}</button>`
+      : "") +
+    `</div>`
   );
 }
 
@@ -151,7 +173,11 @@ const CSS = `
 .agh-s{color:var(--muted);white-space:nowrap}
 .agh-m{grid-column:2 / 4;color:var(--faint);font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agh[data-status="running"] .agh-s{color:var(--text)}
-.aghs-all{align-self:flex-start;font-size:12px;margin:2px 6px}
+.aghs-all,.aghs-clear{align-self:flex-start;font-size:12px;margin:2px 6px}
+.hp-hd .hp-clear{flex:none}
+.hp-hd .hp-clear + .x{margin-left:8px}
+.hp-cleared{margin-top:8px}
+.hp-cleared summary{cursor:pointer;color:var(--muted);font-size:13px;padding:4px}
 .hpbdg{display:inline-block;min-width:16px;padding:0 5px;border-radius:8px;background:var(--accent);color:var(--accent-text);font-size:11px;line-height:16px;text-align:center}
 `;
 
@@ -176,12 +202,33 @@ function dialog() {
   dlg.setAttribute("aria-labelledby", "hp-h");
   dlg.innerHTML =
     `<div class="hp-hd"><h2 id="hp-h" tabindex="-1"></h2>` +
+    `<button type="button" class="den-btn sm hp-clear" data-hp-clear hidden></button>` +
     `<button type="button" class="den-btn sm x" data-hp-close></button></div>` +
     `<div class="hp-body" id="hp-body" aria-live="polite"></div>` +
     `<p class="hp-note" id="hp-note"></p>`;
   dlg.querySelector("[data-hp-close]").addEventListener("click", () => {
     if (dlg.open && typeof dlg.close === "function") dlg.close();
     else dlg.removeAttribute("open");
+  });
+  // D34: Clear done, from the list: cleared, then the list again.
+  dlg.querySelector("[data-hp-clear]").addEventListener("click", async (e) => {
+    const b = e.currentTarget;
+    const at = dlg.dataset;
+    b.disabled = true;
+    try {
+      await clearHelpers(at.ws, at.agent);
+    } catch (err) {
+      const body = dlg.querySelector("#hp-body");
+      body.insertAdjacentHTML(
+        "afterbegin",
+        `<p class="hp-none" role="alert">${esc(t("hp.clearFailed", { err: err?.message || String(err) }))}</p>`,
+      );
+      b.disabled = false;
+      return;
+    }
+    b.disabled = false;
+    await loadHelpers(at.ws, at.agent);
+    dlg.querySelector("#hp-h").focus();
   });
   dlg.addEventListener("close", () => {
     const o = opener;
@@ -211,32 +258,55 @@ export async function openHelpers({ ws, agent, name, opener: from = null }) {
   const d = dialog();
   opener = from ?? document.activeElement;
   openerKey = refindKey(opener);
+  d.dataset.ws = ws;
+  d.dataset.agent = agent;
   d.querySelector("#hp-h").textContent = t("hp.dlg", { name: name || agent });
   d.querySelector("[data-hp-close]").textContent = t("tx.close");
+  const clear = d.querySelector("[data-hp-clear]");
+  clear.textContent = t("hp.clear");
+  clear.title = t("hp.clearTip", { name: name || agent });
+  clear.hidden = true;
   d.querySelector("#hp-note").textContent = t("hp.note");
   const body = d.querySelector("#hp-body");
-  body.setAttribute("aria-busy", "true");
   body.innerHTML = `<p class="hp-none">${esc(t("tx.loading"))}</p>`;
   if (!d.open) {
     if (typeof d.showModal === "function") d.showModal();
     else d.setAttribute("open", "");
   }
   d.querySelector("#hp-h").focus();
+  await loadHelpers(ws, agent);
+}
+
+const ENDED = new Set(["done", "failed", "stopped"]);
+
+/** The list's body: this conversation's, earlier ones', cleared ones'. */
+async function loadHelpers(ws, agent) {
+  const d = dialog();
+  const body = d.querySelector("#hp-body");
+  const clear = d.querySelector("[data-hp-clear]");
+  body.setAttribute("aria-busy", "true");
   try {
-    const r = await api("GET", base(ws, agent));
+    const r = await api("GET", `${base(ws, agent)}?all=1`);
     const all = Array.isArray(r?.helpers) ? r.helpers : [];
+    const cleared = Array.isArray(r?.cleared) ? r.cleared : [];
     const now = all.filter((h) => !h.earlier);
     const before = all.filter((h) => h.earlier);
     const ctx = { ws, agent };
+    clear.hidden = !all.some((h) => ENDED.has(h.status));
     body.innerHTML =
       (r?.supported === false
         ? `<p class="hp-none">${esc(t("hp.unsupported"))}</p>`
         : now.length
           ? helperListHtml(now, ctx)
-          : `<p class="hp-none">${esc(t("hp.none"))}</p>`) +
+          : `<p class="hp-none">${esc(t(cleared.length && !before.length ? "hp.allCleared" : "hp.none"))}</p>`) +
       (before.length
         ? `<details class="hp-earlier"><summary>${esc(t("hp.earlier", { n: before.length }))}</summary>` +
           helperListHtml(before, ctx) +
+          `</details>`
+        : "") +
+      (cleared.length
+        ? `<details class="hp-cleared"><summary>${esc(t("hp.cleared", { n: cleared.length }))}</summary>` +
+          helperListHtml(cleared, ctx) +
           `</details>`
         : "");
   } catch (e) {
@@ -282,8 +352,9 @@ export function openHelperTranscript({ ws, agent, helper, opener: from }) {
 }
 
 /** Wire helper rows and "All helpers" inside `root` (a list's container). */
-export function wireHelperRows(root, nameOf = (a) => a) {
+export function wireHelperRows(root, nameOf = (a) => a, onCleared = null) {
   ensureCss();
+  if (onCleared) onClearedHook = onCleared;
   root.addEventListener("click", (e) => {
     const row = e.target.closest("button.agh");
     if (row && root.contains(row)) {
@@ -293,6 +364,22 @@ export function wireHelperRows(root, nameOf = (a) => a) {
         agent: row.dataset.agent,
         helper: row.dataset.helper,
         opener: row,
+      });
+      return;
+    }
+    // D34: Clear done under the row.
+    const clr = e.target.closest(".aghs-clear");
+    if (clr && root.contains(clr)) {
+      e.stopPropagation();
+      const g = clr.closest(".aghs");
+      // Asked first: it notes where focus is, which disabling would move.
+      const asked = clearHelpers(g.dataset.ws, g.dataset.helpersOf);
+      clr.disabled = true;
+      void asked.catch((err) => {
+        clr.disabled = false;
+        window.denShell?.toast?.(
+          t("hp.clearFailed", { err: err?.message || String(err) }),
+        );
       });
       return;
     }

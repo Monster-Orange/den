@@ -6,6 +6,21 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.29] - unreleased
 
+### Added
+
+- **Clear done for an agent's helpers (D34).** Under an agent's row on
+  the Agents tab and in its helpers list: hides every helper that is
+  done, failed or stopped, in this conversation and earlier ones.
+  Running and idle ones stay, and one that ends later shows as usual.
+  **Show cleared (n)** in the list shows them again. The clear is kept
+  per agent in its own files, so it survives restarts, relaunches and
+  rotations; Claude Code's files are never touched. An agent with
+  nothing left to show has no helpers area under its row. Clearing is a
+  person's (an agent's token is refused) and is audited. `<cli> agents
+  helpers --all` and MCP `agent_helpers {all: true}` list cleared ones
+  too; by default they are only counted (`clearedCount`). The route is
+  `POST /api/workspaces/<ws>/agents/<id>/clear-helpers`.
+
 ### Fixed
 
 - A bad key or value under `agents:` or `sessions:` in the config (a
@@ -15,6 +30,13 @@ config and manifest changes a distribution must make to move to it under
   and session commands and routes stop: services, logs, tests and the
   edge carry on. `<cli> doctor` names the bad key with its file and path
   (a ✗ row, and `config:agents` / `config:sessions` in `--json`).
+
+### Changed
+
+- Those errors now start with the config file and leave the value out
+  (`config/den.yml: agents.max_concurrent: must be a whole number of at
+  least 1`, no longer `… (got 0)`), as the other config errors do: they
+  name keys, never values. `<cli> validate` prints them that way.
 
 ## [0.4.28] - 2026-11-10
 

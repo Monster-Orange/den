@@ -190,7 +190,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "agent_helpers",
     "An agent's helpers",
-    "D32: the helpers an agent started inside its own session (Claude Code's Agent and Workflow subagents), running first: id, description, type, model, branch, status (running, idle, done, failed, stopped), statusFrom (how that was told), startedAt, lastActivityAt, durationMs, workflow, and `earlier` for those from a conversation before a relaunch. With `helper`, that one helper's transcript, tool calls summarized (`items`, the last `limit` lines). Reads only: helpers belong to the agent's session, so nothing here stops or steers one.",
+    "D32: the helpers an agent started inside its own session (Claude Code's Agent and Workflow subagents), running first: id, description, type, model, branch, status (running, idle, done, failed, stopped), statusFrom (how that was told), startedAt, lastActivityAt, durationMs, workflow, and `earlier` for those from a conversation before a relaunch. Finished helpers a person cleared are left out (`clearedCount`; `all: true` lists them as `cleared`). With `helper`, that one helper's transcript, tool calls summarized (`items`, the last `limit` lines). Reads only: helpers belong to the agent's session, so nothing here stops or steers one.",
     {
       agent: z.string().describe("The agent's id"),
       helper: z
@@ -204,6 +204,12 @@ const READ_TOOLS: DenTool[] = [
         .max(5000)
         .optional()
         .describe("With helper: how many of its last lines (default 500)"),
+      all: z
+        .boolean()
+        .optional()
+        .describe(
+          "Also list the finished helpers a person cleared (`cleared`); by default only their count (`clearedCount`)",
+        ),
       workspace: workspaceArg,
     },
     async (a, { api, scope }) => {
@@ -227,7 +233,7 @@ const READ_TOOLS: DenTool[] = [
           `agent_helpers: workspace "${ws}" is outside this agent's scope ("${scope.workspace}")`,
         );
       const base = `/api/workspaces/${encodeURIComponent(ws)}/agents/${encodeURIComponent(agent)}/helpers`;
-      if (!helper) return api.get(base);
+      if (!helper) return api.get(base, a.all === true ? { all: "1" } : {});
       // The limit as a query, never in the path (the client's allowlist
       // matches the path alone).
       return api.get(

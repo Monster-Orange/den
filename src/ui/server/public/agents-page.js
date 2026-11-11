@@ -566,6 +566,9 @@ function listFocusKey(el) {
   const key = refindKey(el);
   if (key) return key;
   const q = (v) => CSS.escape(String(v ?? ""));
+  const g = el.closest(".aghs[data-helpers-of]");
+  if (g && el.matches(".aghs-clear"))
+    return `#agl .aghs[data-helpers-of="${q(g.dataset.helpersOf)}"][data-ws="${q(g.dataset.ws)}"] .aghs-clear`;
   if (el.matches("button.agr[data-id]"))
     return `#agl button.agr[data-id="${q(el.dataset.id)}"]`;
   if (el.matches("[data-act]")) {
@@ -2999,12 +3002,37 @@ export async function mountAgentsPage(root) {
   }
 
   // D32: helper rows open their transcript; "All helpers" the full list.
-  wireHelperRows(root.querySelector("#agl"), (agent, ws) => {
-    const r = visibleRows().find(
-      (x) => x.agent === agent && x.workspace === ws,
-    );
-    return r ? displayName(r) : agent;
-  });
+  wireHelperRows(
+    root.querySelector("#agl"),
+    (agent, ws) => {
+      const r = visibleRows().find(
+        (x) => x.agent === agent && x.workspace === ws,
+      );
+      return r ? displayName(r) : agent;
+    },
+    // D34: after Clear done, the list again. Focus was on Clear done
+    // (now gone): "All helpers", or the agent's row once it has none.
+    async (agent, ws, { fromRow } = {}) => {
+      await refresh();
+      if (!fromRow) return;
+      // Still there (focus kept across the redraw): nothing to move.
+      const now = document.activeElement;
+      if (now && now !== document.body && st.root.contains(now)) return;
+      const q = (v) => CSS.escape(String(v ?? ""));
+      const all = st.root.querySelector(
+        `#agl .aghs[data-helpers-of="${q(agent)}"][data-ws="${q(ws)}"] .aghs-all`,
+      );
+      const r = visibleRows().find(
+        (x) => x.agent === agent && x.workspace === ws,
+      );
+      (
+        all ??
+        (r
+          ? st.root.querySelector(`#agl button.agr[data-id="${q(r.id)}"]`)
+          : null)
+      )?.focus();
+    },
+  );
   root.querySelector("#agl").addEventListener("click", (e) => {
     const act = e.target.closest("button[data-act]");
     if (act) {

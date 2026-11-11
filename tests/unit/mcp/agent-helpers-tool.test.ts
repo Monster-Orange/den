@@ -24,7 +24,11 @@ function fakeApi(): { api: DenApi; paths: string[] } {
       // refusals to /api/activity itself).
       if (path.includes("/helpers"))
         paths.push(
-          query.limit === undefined ? path : `${path}?limit=${query.limit}`,
+          query.limit !== undefined
+            ? `${path}?limit=${query.limit}`
+            : query.all !== undefined
+              ? `${path}?all=${query.all}`
+              : path,
         );
       if (path === "/api/workspaces")
         return { active: ["north"], focus: "north", workspaces: { north: {} } };
@@ -50,6 +54,22 @@ const call = (a: Record<string, unknown>, api: DenApi, scope?: McpScope) =>
 describe("the agent_helpers tool", () => {
   it("is a read tool, there with no mcp.actions", () => {
     expect(toolsFor(cfg).map((t) => t.name)).toContain("agent_helpers");
+  });
+
+  it("D34: all: true asks for the cleared ones too; never the clear itself", async () => {
+    const { api, paths } = fakeApi();
+    expect(
+      (await call({ agent: "scout", all: true }, api, SCOPE)).isError,
+    ).toBe(false);
+    expect(paths).toEqual(["/api/workspaces/north/agents/scout/helpers?all=1"]);
+    // The clear is a person's: the client never lets an agent's POST it.
+    expect(() =>
+      assertAllowedRequest(
+        "POST",
+        "/api/workspaces/north/agents/scout/clear-helpers",
+        {},
+      ),
+    ).toThrow();
   });
 
   it("lists an agent's helpers in the caller's workspace", async () => {

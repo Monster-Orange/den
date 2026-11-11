@@ -391,6 +391,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/workspaces/:ws/agents/:id/keep",
     "D28 Keep this conversation: resets its rotation count (and, asked, sets its override to never); a person's only",
   ),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/agents/:id/clear-helpers",
+    "D34 Clear done: hides an agent's finished helpers (a mark in its files; Claude Code's are never touched); a person's only",
+  ),
   S(
     ["POST"],
     "/api/workspaces/:ws/agents/:id/handoff",
@@ -558,6 +563,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/persona",
     "/api/workspaces/:ws/agents/:id/keep",
     "/api/workspaces/:ws/agents/:id/handoff",
+    "/api/workspaces/:ws/agents/:id/clear-helpers",
   ],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "agent-routes.ts:PERSONA_PATH": ["/api/personas/:id"],

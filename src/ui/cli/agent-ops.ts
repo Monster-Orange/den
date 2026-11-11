@@ -59,6 +59,12 @@ import {
   type HelperSettings,
   type HelperTranscript,
 } from "../../shared/agents/helpers.js";
+import {
+  isEnded,
+  readClearedAt,
+  splitCleared,
+  writeClearedAt,
+} from "../../shared/agents/helpers-cleared.js";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -652,7 +658,15 @@ export interface AgentRow {
    * run now, and the ones worth showing under it (running, or ended
    * within agents.helpers.collapse_done_minutes; at most 8).
    */
-  helpers?: { running: number; total: number; recent: Helper[] };
+  helpers?: {
+    running: number;
+    total: number;
+    recent: Helper[];
+    /** D34: shown ones that ended (what "Clear done" would hide). */
+    ended: number;
+    /** D34: hidden by its last "Clear done". */
+    cleared: number;
+  };
 }
 
 /** Its state as a row shows it (AG-14.1: stopped, exited or interrupted). */
@@ -873,7 +887,14 @@ function addHelperCounts(
   for (const row of rows) {
     const rec = byId.get(row.agent);
     if (!rec) continue;
-    const h = rowHelpers(rec, !isStoppedState(row.state), settings, d.env);
+    const h = rowHelpers(
+      rec,
+      !isStoppedState(row.state),
+      settings,
+      d.env,
+      Date.now(),
+      readClearedAt(agentFilesDir(d.stateDir(), rec.id)),
+    );
     if (h) row.helpers = h;
   }
 }
@@ -881,8 +902,9 @@ function addHelperCounts(
 /**
  * D32: what an agent's row shows of its helpers: counts, and the ones
  * worth showing (running, or this conversation's ended within
- * collapse_done_minutes; at most 8). Undefined: none, or its runtime
- * can't tell. Never throws.
+ * collapse_done_minutes; at most 8). D34: those its last "Clear done"
+ * hid (`clearedAt`) are left out, counts included. Undefined: nothing to
+ * show (none, all cleared), or its runtime can't tell. Never throws.
  */
 export function rowHelpers(
   rec: AgentRecord,
@@ -890,23 +912,30 @@ export function rowHelpers(
   settings: HelperSettings = HELPER_DEFAULTS,
   env: NodeJS.ProcessEnv = process.env,
   now = Date.now(),
+  clearedAt?: number,
 ): AgentRow["helpers"] {
   const rt = getRuntime(rec.runtime);
   if (!rt?.helpers) return undefined;
-  let hs: Helper[] = [];
+  let all: Helper[] = [];
   try {
-    hs = rt.helpers(rec, { env, now, settings, agentLive: live });
+    all = rt.helpers(rec, { env, now, settings, agentLive: live });
   } catch {
     return undefined;
   }
+  const { shown: hs, cleared } = splitCleared(all, clearedAt);
   if (!hs.length) return undefined;
   const keep = settings.collapseDoneMinutes * 60_000;
-  const shown = hs.filter(
+  const recent = hs.filter(
     (h) =>
       h.status === "running" ||
       (!h.earlier && now - (h.lastActivityAt ?? h.startedAt ?? 0) <= keep),
   );
-  return { ...helperCounts(hs), recent: capHelpers(shown, ROW_HELPERS) };
+  return {
+    ...helperCounts(hs),
+    recent: capHelpers(recent, ROW_HELPERS),
+    ended: hs.filter((h) => isEnded(h)).length,
+    cleared: cleared.length,
+  };
 }
 
 /** D32: an agent's helpers, read-only, and whether its runtime can tell. */
@@ -918,25 +947,50 @@ export async function agentHelpers(
   rec: AgentRecord;
   supported: boolean;
   live: boolean;
+  /** D34: without those its last "Clear done" hid. */
   helpers: Helper[];
+  /** D34: the ones it hid (read-only, as the rest), and when. */
+  cleared: Helper[];
+  clearedAt?: number;
   note: string;
 }> {
   const rec = agentRecord(d, id, ws);
   const rt = getRuntime(rec.runtime);
   const live = await agentLive(d, rec);
-  const helpers =
+  const all =
     rt?.helpers?.(rec, {
       env: d.env,
       settings: helperSettings(d),
       agentLive: live,
     }) ?? [];
+  const clearedAt = readClearedAt(agentFilesDir(d.stateDir(), rec.id));
+  const { shown, cleared } = splitCleared(all, clearedAt);
   return {
     rec,
     supported: !!rt?.helpers,
     live,
-    helpers,
+    helpers: shown,
+    cleared,
+    ...(clearedAt !== undefined ? { clearedAt } : {}),
     note: HELPERS_READ_ONLY_NOTE,
   };
+}
+
+/**
+ * D34 "Clear done": hides every helper of agent `id` that has ended (done,
+ * failed, stopped), in this conversation and earlier ones, by setting its
+ * cleared-at mark to now. Running and idle ones stay; Claude Code's files
+ * are never touched. A person's only (the route refuses an agent).
+ */
+export function clearAgentHelpers(
+  d: AgentsResolved,
+  id: string,
+  ws?: string,
+  now = Date.now(),
+): { rec: AgentRecord; clearedAt: number } {
+  const rec = agentRecord(d, id, ws);
+  writeClearedAt(agentFilesDir(d.stateDir(), rec.id), now);
+  return { rec, clearedAt: now };
 }
 
 /** D32: one of agent `id`'s helpers' transcript; a 404 when there's none. */

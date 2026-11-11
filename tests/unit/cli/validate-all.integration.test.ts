@@ -180,12 +180,14 @@ describe("the caps (0.4.2)", () => {
     try {
       const r = den(["validate"]);
       expect(r.code).toBe(1);
+      // 0.4.29: with its file, and naming the key, never the value.
       expect(r.out).toMatch(
-        /✗\s+agents\.max_concurrent: must be a whole number of at least 1 \(got 0\)/,
+        /✗\s+config\/den\.yml: agents\.max_concurrent: must be a whole number of at least 1$/m,
       );
       expect(r.out).toMatch(
-        /✗\s+sessions\.max_concurrent: must be a whole number of at least 1 \(got "lots"\)/,
+        /✗\s+config\/den\.yml: sessions\.max_concurrent: must be a whole number of at least 1$/m,
       );
+      expect(r.out).not.toContain("lots");
       expect(r.out).toMatch(/✓\s+shop\s/);
     } finally {
       write(file, before);

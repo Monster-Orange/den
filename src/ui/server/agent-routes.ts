@@ -139,6 +139,7 @@ import {
   relaunchAgent,
   resumeOrRelaunch,
   keepAgentConversation,
+  clearAgentHelpers,
   askForHandoff,
   rotationChoices,
   rotationSettings,
@@ -183,7 +184,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|handoff))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|handoff|clear-helpers))?$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -549,6 +550,7 @@ export async function handleAgentRoutes(
     | "persona"
     | "keep"
     | "handoff"
+    | "clear-helpers"
     | undefined;
 
   if (!action && method === "GET") {
@@ -636,6 +638,11 @@ export async function handleAgentRoutes(
         "only a person can keep an agent's conversation past its rotation",
         { status: 403 },
       );
+    // D34: clearing what a person sees is a person's.
+    if (verb === "clear-helpers" && (agent || actor))
+      throw new AgentError("only a person can clear an agent's helpers", {
+        status: 403,
+      });
     if (verb === "resume" && agent) {
       const why = agentResumeRefusal(agent, ws, id!, mcpActions());
       if (why) throw new AgentError(why, { status: 403 });
@@ -731,6 +738,16 @@ export async function handleAgentRoutes(
       what = `keep ${rec.id}'s conversation in ${ws}${body.never ? " (never rotate)" : ""}`;
       audit(what);
       sendJson(res, { ok: true, agent: rec.id, never: body.never === true });
+    } else if (verb === "clear-helpers") {
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        throw new AgentError(`${k}: unknown field (clear-helpers takes none)`, {
+          usage: true,
+        });
+      const r = clearAgentHelpers(d, id!, ws);
+      what = `clear ${r.rec.id}'s finished helpers in ${ws}`;
+      audit(what);
+      sendJson(res, { ok: true, agent: r.rec.id, clearedAt: r.clearedAt });
     } else if (verb === "handoff") {
       const body = await jsonBody(req);
       for (const k of Object.keys(body))
@@ -1475,7 +1492,8 @@ async function hubConnectRoute(
 
 /**
  * D32: GET .../agents/:id/helpers: the helpers agent :id started in its
- * own session; .../helpers/:helper: one helper's transcript (?limit=).
+ * own session (D34: less those "Clear done" hid; ?all=1 lists them as
+ * `cleared`); .../helpers/:helper: one helper's transcript (?limit=).
  * Read-only: nothing here stops or steers a helper.
  */
 async function helpersRoute(
@@ -1495,12 +1513,19 @@ async function helpersRoute(
       throw new AgentError(`workspace "${ws}" does not exist`, { status: 404 });
     if (helper === undefined) {
       const r = await agentHelpers(d, id, ws);
+      // D34: those "Clear done" hid are a count; ?all=1 lists them too.
+      const all =
+        new URL(req.url ?? "/", "http://localhost").searchParams.get("all") ===
+        "1";
       sendJson(res, {
         agent: r.rec.id,
         workspace: ws,
         supported: r.supported,
         live: r.live,
         helpers: r.helpers,
+        clearedCount: r.cleared.length,
+        ...(r.clearedAt !== undefined ? { clearedAt: r.clearedAt } : {}),
+        ...(all ? { cleared: r.cleared } : {}),
         note: r.note,
       });
       return true;

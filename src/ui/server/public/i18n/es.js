@@ -777,6 +777,12 @@
     "hp.dlg": "Ayudantes de {name}",
     "hp.earlier": "Conversaciones anteriores ({n})",
     "hp.none": "Sin ayudantes en esta conversación.",
+    "hp.clear": "Borrar terminados",
+    "hp.clearTip":
+      "Oculta todos los ayudantes terminados de {name} (hechos, fallidos o detenidos). Los que corren se quedan.",
+    "hp.clearFailed": "No se pudo borrar: {err}",
+    "hp.cleared": "Ver borrados ({n})",
+    "hp.allCleared": "Todos los ayudantes terminados están borrados.",
     "hp.unsupported":
       "El runtime de este agente no puede decir qué ayudantes inició.",
     "hp.workflow": "flujo {name}",

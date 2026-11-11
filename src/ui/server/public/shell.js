@@ -884,6 +884,12 @@
     "hp.dlg": "{name}'s helpers",
     "hp.earlier": "Earlier conversations ({n})",
     "hp.none": "No helpers in this conversation.",
+    "hp.clear": "Clear done",
+    "hp.clearTip":
+      "Hide every finished helper of {name} (done, failed or stopped). Running ones stay.",
+    "hp.clearFailed": "Couldn't clear: {err}",
+    "hp.cleared": "Show cleared ({n})",
+    "hp.allCleared": "Every finished helper is cleared.",
     "hp.unsupported":
       "This agent's runtime can't tell which helpers it started.",
     "hp.workflow": "workflow {name}",

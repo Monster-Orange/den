@@ -47,7 +47,8 @@ import {
 import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { revokedAgentIds } from "../../shared/actor-token.js";
-import { listRecords } from "../../shared/agents/records.js";
+import { agentFilesDir, listRecords } from "../../shared/agents/records.js";
+import { readClearedAt } from "../../shared/agents/helpers-cleared.js";
 import { softNewlineSeq } from "../../shared/agents/catalog.js";
 import { getRuntime } from "../../shared/agents/runtimes.js";
 import type {
@@ -310,7 +311,14 @@ export function listedSessions(
       ...(waiting.has(rec.id) && s && !s.exited ? { waiting: true } : {}),
       // D32: the helpers it started in its own session.
       ...(() => {
-        const h = rowHelpers(rec, !isStoppedState(r.state), helperSettings);
+        const h = rowHelpers(
+          rec,
+          !isStoppedState(r.state),
+          helperSettings,
+          process.env,
+          Date.now(),
+          readClearedAt(agentFilesDir(d.stateDir(), rec.id)),
+        );
         return h ? { helpers: h } : {};
       })(),
     });

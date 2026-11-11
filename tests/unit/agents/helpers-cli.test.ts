@@ -9,6 +9,7 @@ import * as path from "path";
 import { HELPERS_READ_ONLY_NOTE } from "../../../src/shared/agents/helpers.js";
 import { resetHelperCache } from "../../../src/shared/agents/claude-helpers.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
+import { clearAgentHelpers } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig, type Rig } from "./helpers/rig.js";
 import { H0, H1, seedScout } from "./helpers/seed-helpers.js";
 
@@ -109,5 +110,35 @@ describe("agents helpers <id> <helper>", () => {
       await agents(r, "helpers", "scout", "a9f0c0ffee0000009", "-w", "north"),
     ).toBe(1);
     expect(r.err.join("\n")).toContain('no helper "a9f0c0ffee0000009"');
+  });
+});
+
+describe("D34: after Clear done", () => {
+  it("hides the cleared ones, says how to see them; --all marks them", async () => {
+    const r = await scout({ earlier: true });
+    clearAgentHelpers(r.deps, "scout", "north");
+    resetHelperCache();
+    expect(await agents(r, "helpers", "scout", "-w", "north")).toBe(0);
+    expect(out(r)).not.toContain(H1);
+    expect(out(r)).toContain(
+      "scout has no helpers to show (2 cleared or earlier: --all)",
+    );
+    r.out.length = 0;
+    expect(await agents(r, "helpers", "scout", "-w", "north", "--all")).toBe(0);
+    expect(r.out.find((l) => l.includes(H1))).toContain("done (cleared)");
+    expect(r.out.find((l) => l.includes(H0))).toContain("done (cleared)");
+  });
+
+  it("--json: clearedCount; with --all, the cleared list", async () => {
+    const r = await scout();
+    clearAgentHelpers(r.deps, "scout", "north");
+    resetHelperCache();
+    await agents(r, "helpers", "scout", "-w", "north", "--json");
+    const j = JSON.parse(out(r)) as Record<string, unknown>;
+    expect([j.helpers, j.clearedCount, "cleared" in j]).toEqual([[], 1, false]);
+    r.out.length = 0;
+    await agents(r, "helpers", "scout", "-w", "north", "--json", "--all");
+    const all = JSON.parse(out(r)) as { cleared: { id: string }[] };
+    expect(all.cleared.map((h) => h.id)).toEqual([H1]);
   });
 });

@@ -25,6 +25,8 @@ export function writeHelper(
   id: string,
   description: string,
   lines = 3,
+  /** When its first line was written (default 2026-11-01 10:00 UTC). */
+  at = AT,
 ): void {
   const proj = path.join(home, ".claude", "projects", "-work-north");
   const sub = path.join(proj, token, "subagents");
@@ -43,7 +45,7 @@ export function writeHelper(
     {
       type: "user",
       isSidechain: true,
-      timestamp: new Date(AT).toISOString(),
+      timestamp: new Date(at).toISOString(),
       message: { role: "user", content: description },
     },
   ];
@@ -51,7 +53,7 @@ export function writeHelper(
     out.push({
       type: "assistant",
       isSidechain: true,
-      timestamp: new Date(AT + i * 1000).toISOString(),
+      timestamp: new Date(at + i * 1000).toISOString(),
       message: {
         role: "assistant",
         content: [{ type: "text", text: `step ${i}` }],

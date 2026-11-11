@@ -70,7 +70,7 @@ import { HostError } from "../../shared/sessions/client.js";
 import { checkHandback } from "../../shared/agents/handback.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
 import { handoffFile, reasonText } from "../../shared/agents/rotation.js";
-import { shownDepths } from "../../shared/agents/helpers.js";
+import { shownDepths, sortHelpers } from "../../shared/agents/helpers.js";
 import {
   parseRotateValue,
   type OverrideScope,
@@ -173,7 +173,8 @@ export const AGENTS_HELP = {
     "{cli} agents helpers <id> [-w <ws>] [--all] [--json]",
     "    the helpers it started in its own session (Claude Code's Agent and",
     "    Workflow subagents): what each does, its type, model, branch, state and",
-    "    times; running first. --all: its earlier conversations' too. Read-only:",
+    "    times; running first. --all: its earlier conversations' too, and those",
+    "    a person cleared (Clear done on the Agents page). Read-only:",
     "    they belong to the agent's session, so Den can't stop or steer them",
     "{cli} agents helpers <id> <helper> [-w <ws>] [--limit <n>] [--json]",
     "    one helper's transcript, tool calls summarized (the last 500 lines)",
@@ -517,8 +518,10 @@ async function helpers(args: string[], d: AgentsResolved): Promise<number> {
     return 0;
   }
   const r = await agentHelpers(d, id, ws);
+  // D34: --all lists those a person cleared too, marked.
+  const clearedIds = new Set(r.cleared.map((h) => h.id));
   const shown = p.flags["--all"]
-    ? r.helpers
+    ? sortHelpers([...r.helpers, ...r.cleared])
     : r.helpers.filter((h) => !h.earlier);
   if (p.flags["--json"]) {
     d.out(
@@ -527,7 +530,9 @@ async function helpers(args: string[], d: AgentsResolved): Promise<number> {
           agent: r.rec.id,
           supported: r.supported,
           live: r.live,
-          helpers: shown,
+          helpers: shown.filter((h) => !clearedIds.has(h.id)),
+          clearedCount: r.cleared.length,
+          ...(p.flags["--all"] ? { cleared: r.cleared } : {}),
           note: r.note,
         },
         null,
@@ -541,9 +546,12 @@ async function helpers(args: string[], d: AgentsResolved): Promise<number> {
     return 0;
   }
   const earlier = r.helpers.length - r.helpers.filter((h) => !h.earlier).length;
+  const hidden = p.flags["--all"] ? 0 : earlier + r.cleared.length;
   if (!shown.length) {
     d.out(
-      `${r.rec.id} has started no helpers${earlier && !p.flags["--all"] ? ` in this conversation (${earlier} earlier: --all)` : ""}`,
+      r.cleared.length && !p.flags["--all"]
+        ? `${r.rec.id} has no helpers to show (${hidden} cleared or earlier: --all)`
+        : `${r.rec.id} has started no helpers${earlier && !p.flags["--all"] ? ` in this conversation (${earlier} earlier: --all)` : ""}`,
     );
     return 0;
   }
@@ -557,7 +565,7 @@ async function helpers(args: string[], d: AgentsResolved): Promise<number> {
         ? `${h.type ?? "-"} (${h.workflow.name ?? "workflow"})`
         : (h.type ?? "-"),
       h.model ?? "-",
-      `${h.status}${h.earlier ? " (earlier)" : ""}`,
+      `${h.status}${clearedIds.has(h.id) ? " (cleared)" : h.earlier ? " (earlier)" : ""}`,
       ago(h.startedAt),
       h.durationMs === undefined ? "-" : duration(h.durationMs),
       h.branch ?? "-",
@@ -566,6 +574,8 @@ async function helpers(args: string[], d: AgentsResolved): Promise<number> {
     d.out(l);
   if (earlier && !p.flags["--all"])
     d.out(`${earlier} more from earlier conversations: --all`);
+  if (r.cleared.length && !p.flags["--all"])
+    d.out(`${r.cleared.length} cleared: --all`);
   d.out("");
   d.out(r.note);
   return 0;

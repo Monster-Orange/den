@@ -3057,6 +3057,16 @@ Where they show:
 - **The rail.** The Agents item counts the helpers running now, on every
   page.
 
+**Clear done** (D34), under an agent's row and in its helpers list, hides
+every helper of that agent that is done, failed or stopped, in this
+conversation and earlier ones. Running and idle helpers stay, and a helper
+that ends later shows as usual. **Show cleared (n)** in the list shows
+them again, read-only. Den keeps one mark per agent,
+`agent-files/<id>/helpers-cleared.json` under its state, so the clear
+survives restarts, relaunches and rotations; Claude Code's own files are
+never touched. An agent with nothing left to show has no helpers area
+under its row. Clearing is a person's: an agent's token is refused it.
+
 A helper's state comes from Claude Code's files, best evidence first: the
 person stopped it, its workflow said, the agent was told it ended, its
 result is in the agent's transcript, its own files say it finished, its
@@ -3069,15 +3079,19 @@ From the CLI and MCP:
 
 ```sh
 <cli> agents helpers <id>              # this conversation's helpers
-<cli> agents helpers <id> --all        # earlier conversations' too
+<cli> agents helpers <id> --all        # earlier conversations' and cleared ones too
 <cli> agents helpers <id> <helper>     # one helper's transcript
 <cli> agents helpers <id> <helper> --limit 50 --json
 ```
 
 The MCP tool `agent_helpers` reads the same, in the agent's own workspace
-or one it is granted. The routes are `GET
-/api/workspaces/<ws>/agents/<id>/helpers[/<helper>]` and `GET
-/api/sessions/helpers` (the running count). All of them only read.
+or one it is granted; cleared helpers are only counted (`clearedCount`)
+unless it asks with `all: true`. The routes are `GET
+/api/workspaces/<ws>/agents/<id>/helpers[/<helper>]` (`?all=1` lists the
+cleared ones as `cleared`) and `GET /api/sessions/helpers` (the running
+count). All of them only read. `POST
+/api/workspaces/<ws>/agents/<id>/clear-helpers` is Clear done, a person's
+only, and audited.
 
 Settings, under `agents.helpers` in the org config:
 

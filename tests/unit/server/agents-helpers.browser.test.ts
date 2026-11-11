@@ -483,4 +483,82 @@ describe("an agent's helpers on the agents page (D32)", () => {
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);
+
+  // Last: its mark stays for the rest of the file.
+  it("D34 Clear done: under the row and in the list; Show cleared lists them again", async () => {
+    if (!browser) return;
+    const dir = path.join(
+      s.tmp,
+      "home",
+      ".claude",
+      "projects",
+      "-seeded",
+      TOKEN,
+      "subagents",
+    );
+    const { p, errors } = await open();
+    const group = '#agl .aghs[data-helpers-of="scout"]';
+    const clear = `${group} .aghs-clear`;
+    await p.locator(clear).waitFor({ timeout: 15_000 });
+    await p.focus(clear);
+    await p.keyboard.press("Enter");
+    // Redrawn with nothing finished left: Clear done goes, the running
+    // one stays, focus to All helpers.
+    await p.locator(clear).waitFor({ state: "detached", timeout: 15_000 });
+    expect(await p.locator(`${group} [data-helper="${LIVE}"]`).count()).toBe(1);
+    await p.waitForFunction(
+      () => document.activeElement?.matches(".aghs-all") ?? false,
+      undefined,
+      { timeout: 5_000 },
+    );
+    // A helper that ends after the mark shows, and the list's Clear done
+    // hides it too.
+    const late = "abf0c0ffee000000b";
+    fs.writeFileSync(
+      path.join(dir, `agent-${late}.meta.json`),
+      JSON.stringify({
+        agentType: "Explore",
+        description: "Late one",
+        finished: true,
+      }),
+    );
+    fs.writeFileSync(
+      path.join(dir, `agent-${late}.jsonl`),
+      JSON.stringify({
+        type: "user",
+        isSidechain: true,
+        agentId: late,
+        timestamp: new Date().toISOString(),
+        message: { role: "user", content: "late" },
+      }) + "\n",
+    );
+    await p
+      .locator(`${group} [data-helper="${late}"]`)
+      .waitFor({ timeout: 15_000 });
+    await p.click(`${group} .aghs-all`);
+    const listClear = "#hp-dlg [data-hp-clear]";
+    await p.locator(`${listClear}:not([hidden])`).waitFor();
+    await p.click(listClear);
+    await p
+      .locator(`#hp-body > button.agh[data-helper="${late}"]`)
+      .waitFor({ state: "detached", timeout: 10_000 });
+    expect(await p.locator(listClear).isHidden()).toBe(true);
+    const shown = p.locator("#hp-body details.hp-cleared");
+    await shown.locator("summary").click();
+    const cleared = await shown
+      .locator("button.agh")
+      .evaluateAll((b) => b.map((x) => (x as HTMLElement).dataset.helper));
+    expect(cleared).toEqual(expect.arrayContaining([DONE, late]));
+    expect(cleared).not.toContain(LIVE);
+    expect(await shown.locator("summary").textContent()).toContain(
+      `(${cleared.length})`,
+    );
+    // The running one is still in the list itself.
+    expect(
+      await p.locator(`#hp-body > button.agh[data-helper="${LIVE}"]`).count(),
+    ).toBe(1);
+    await p.keyboard.press("Escape");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
 });

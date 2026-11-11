@@ -671,6 +671,8 @@ export const AGENT_FORBIDDEN: readonly string[] = [
   "/auth",
   "/signin",
   "/api/session/logout",
+  // D34: what a person sees of an agent's helpers is the person's to clear.
+  "/api/workspaces/:ws/agents/:id/clear-helpers",
 ];
 
 /**
@@ -700,6 +702,8 @@ export function agentRefusal(
   pathname: string,
   cls: RouteClass,
 ): string | null {
+  if (pathMatches("/api/workspaces/:ws/agents/:id/clear-helpers", pathname))
+    return `${p.actor} can't use ${pathname}: clearing an agent's helpers is a person's.`;
   if (
     AGENT_FORBIDDEN.some((r) => pathMatches(r, pathname)) ||
     (method !== "GET" &&
