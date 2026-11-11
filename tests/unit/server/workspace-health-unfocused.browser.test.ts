@@ -21,13 +21,12 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
 let port = 0;
 let server: ChildProcess | undefined;
-let serverOut = "";
 let okServer: http.Server;
 let browser: Browser | null = null;
 let latest = "";
@@ -105,9 +104,8 @@ beforeAll(async () => {
     );
   write(path.join(tmp, "bin", "docker"), "#!/bin/sh\nexit 1\n", 0o755);
 
-  port = await freePort();
   const home = path.join(tmp, "home");
-  server = spawnServer(
+  const started = await startDenServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -126,24 +124,12 @@ beforeAll(async () => {
         DEN_NO_OPEN: "1",
         ACME_NO_OPEN: "1",
         NO_COLOR: "1",
-        PORT: String(port),
       },
-      stdio: ["ignore", "pipe", "pipe"],
     },
+    { timeoutMs: 30_000 },
   );
-  server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  const deadline = Date.now() + 30_000;
-  for (;;) {
-    try {
-      if ((await fetch(api("/api/server-info"))).status === 200) break;
-    } catch {
-      /* not up yet */
-    }
-    if (server.exitCode !== null || Date.now() > deadline)
-      throw new Error(`the web server did not start:\n${serverOut}`);
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  server = started.server;
+  port = started.port;
   latest =
     (
       (await (await fetch(api("/api/changelog"))).json()) as {

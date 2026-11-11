@@ -24,7 +24,11 @@ import {
 } from "../../../src/shared/web-secret.js";
 import { mintLoginCode } from "../../../src/shared/web-session.js";
 import { mintClaimCode } from "../../../src/shared/claim-code.js";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import {
+  spawnServer,
+  startDenServer,
+  stopServer,
+} from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -205,28 +209,17 @@ beforeAll(async () => {
       "",
     ].join("\n"),
   );
-  port = await freePort();
-  server = spawnServer(
+  const started = await startDenServer(
     TSX,
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
       cwd: root,
-      env: serverEnv(root, path.join(tmp, "home"), port),
-      stdio: ["ignore", "pipe", "pipe"],
+      env: serverEnv(root, path.join(tmp, "home"), 0),
     },
+    { timeoutMs: 40_000 },
   );
-  server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  const deadline = Date.now() + 40_000;
-  for (;;) {
-    try {
-      if ((await call("GET", "/api/server-info")).status === 200) break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline) throw new Error("server did not start");
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  server = started.server;
+  port = started.port;
 }, 60_000);
 
 afterAll(async () => {

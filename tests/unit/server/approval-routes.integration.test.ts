@@ -12,8 +12,6 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { execFileSync, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
@@ -22,7 +20,7 @@ import {
   readWebSecret,
 } from "../../../src/shared/web-secret.js";
 import { mintClaimCode } from "../../../src/shared/claim-code.js";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -163,14 +161,6 @@ function write(file: string, content: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
 }
-async function freePort(): Promise<number> {
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "localhost", r));
-  const p = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  return p;
-}
-
 beforeAll(async () => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-approve-")));
   root = path.join(tmp, "dist");
@@ -185,8 +175,7 @@ beforeAll(async () => {
     JSON.stringify({ name: "shop", scripts: { dev: "node server.js" } }),
   );
   execFileSync("git", ["init", "-q", repo]);
-  port = await freePort();
-  server = spawnServer(
+  const started = await startDenServer(
     TSX,
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -199,21 +188,12 @@ beforeAll(async () => {
         HOME: home,
         DEN_NO_OPEN: "1",
         NO_COLOR: "1",
-        PORT: String(port),
       },
-      stdio: ["ignore", "ignore", "ignore"],
     },
+    { timeoutMs: 60_000 },
   );
-  const deadline = Date.now() + 60_000;
-  for (;;) {
-    try {
-      if ((await call("GET", "/api/server-info")).status === 200) break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline) throw new Error("server did not start");
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  server = started.server;
+  port = started.port;
 }, 90_000);
 
 afterAll(async () => {

@@ -15,25 +15,15 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 import { denAuth } from "./helpers/den-auth.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const PW = "lk4-test-admin-pw";
 let tmp = "";
-
-async function freePort(): Promise<number> {
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "localhost", r));
-  const p = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  return p;
-}
 
 /** The fakes: `op` keeps items as files; `sudo` knows one password. */
 function writeFakes(bin: string, items: string): void {
@@ -143,30 +133,13 @@ interface Running {
 }
 
 async function start(d: Dist): Promise<Running> {
-  const port = await freePort();
-  let log = "";
-  const child = spawnServer(
+  const started = await startDenServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
-    {
-      cwd: d.root,
-      env: { ...d.env, PORT: String(port) },
-      stdio: ["ignore", "pipe", "pipe"],
-    },
+    { cwd: d.root, env: d.env },
+    { timeoutMs: 40_000 },
   );
-  child.stdout?.on("data", (b: Buffer) => (log += b.toString()));
-  child.stderr?.on("data", (b: Buffer) => (log += b.toString()));
-  const deadline = Date.now() + 40_000;
-  for (;;) {
-    try {
-      if ((await call(port, "GET", "/api/server-info")).status === 200) break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline) throw new Error("server did not start");
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  return { port, child, log: () => log };
+  return { port: started.port, child: started.server, log: started.out };
 }
 
 function call(

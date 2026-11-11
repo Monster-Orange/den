@@ -18,12 +18,10 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
@@ -35,7 +33,7 @@ let tmp = "";
 let stateDir = "";
 let port = 0;
 let server: ChildProcess;
-let serverOut = "";
+let serverLog: () => string = () => "";
 let gh: FakeGithub;
 /** Every cookie and link this suite saw: none may reach the server's log. */
 const secrets: string[] = [];
@@ -125,14 +123,6 @@ async function settle(
 }
 const lastCode = () => gh.codes[gh.codes.length - 1].userCode;
 
-async function freePort(): Promise<number> {
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "localhost", r));
-  const p = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  return p;
-}
-
 beforeAll(async () => {
   gh = await startFakeGithub({ interval: 0 });
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-d17-")));
@@ -157,8 +147,7 @@ beforeAll(async () => {
     path.join(root, "config", "local", "user.yml"),
     "web:\n  github_client_id: Iv23liAcmeTest\n",
   );
-  port = await freePort();
-  server = spawnServer(
+  const started = await startDenServer(
     TSX,
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -172,24 +161,14 @@ beforeAll(async () => {
         HOME: path.join(tmp, "home"),
         DEN_NO_OPEN: "1",
         NO_COLOR: "1",
-        PORT: String(port),
         DEN_TEST_GITHUB_URL: gh.url,
       },
-      stdio: ["ignore", "pipe", "pipe"],
     },
+    { timeoutMs: 40_000 },
   );
-  server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  const deadline = Date.now() + 40_000;
-  for (;;) {
-    try {
-      if ((await call("GET", "/api/server-info")).status === 200) break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline) throw new Error("server did not start");
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  server = started.server;
+  port = started.port;
+  serverLog = started.out;
 }, 60_000);
 
 afterAll(async () => {
@@ -362,7 +341,7 @@ describe("web.allowed_github_org, no owner yet", () => {
     expect(o).toMatchObject({
       owner: { id: "github:4242", login: "octo-owner" },
     });
-    expect(serverOut).toContain(
+    expect(serverLog()).toContain(
       "owner linked: @octo-owner (member of acme-co)",
     );
     // Now the owner signs in from anywhere, no proof needed.
@@ -401,8 +380,8 @@ describe("web.owner_github, no owner yet", () => {
 
 describe("secrets", () => {
   it("no code, token or cookie reaches the server's output", () => {
-    for (const t of gh.tokens) expect(serverOut.includes(t)).toBe(false);
+    for (const t of gh.tokens) expect(serverLog().includes(t)).toBe(false);
     for (const s of secrets.filter(Boolean))
-      expect(serverOut.includes(s)).toBe(false);
+      expect(serverLog().includes(s)).toBe(false);
   });
 });
