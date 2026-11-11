@@ -34,6 +34,7 @@ export const HUB_PROXY_PATHS: readonly string[] = [
   "/api/notifications/*",
   "/api/import/packs",
   "/api/import/packs/*",
+  "/api/import/ds/*",
   "/api/reports/*",
   "/api/admin/fixtures/*",
 ];

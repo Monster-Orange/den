@@ -248,6 +248,7 @@ describe("D52: which paths", () => {
       "/hub/api/notifications/3/read",
       "/hub/api/import/packs",
       "/hub/api/import/packs/p1/dry-run",
+      "/hub/api/import/ds/dry-run",
       "/hub/api/reports/imports",
       "/hub/api/admin/fixtures/demo/dry-run",
     ]) {
@@ -260,6 +261,7 @@ describe("D52: which paths", () => {
       "/api/notifications/3/read",
       "/api/import/packs",
       "/api/import/packs/p1/dry-run",
+      "/api/import/ds/dry-run",
       "/api/reports/imports",
       "/api/admin/fixtures/demo/dry-run",
     ]);
@@ -274,6 +276,8 @@ describe("D52: which paths", () => {
       "/hub/api/import/packs%2f..%2f..%2fapi%2fprojects",
       "/hub/",
       "/hub/api/admin/users",
+      "/hub/api/import/other",
+      "/hub/api/import/ds",
     ]) {
       const res = await fetch(`${base}${p}`, { headers: auth });
       expect([p, res.status]).toEqual([p, 404]);
@@ -294,6 +298,7 @@ describe("D52: which paths", () => {
       "/api/notifications/*",
       "/api/import/packs",
       "/api/import/packs/*",
+      "/api/import/ds/*",
       "/api/reports/*",
       "/api/admin/fixtures/*",
     ]);

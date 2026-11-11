@@ -1011,7 +1011,8 @@ hub:
 - The proxy (`/hub/<path>`) takes only an agent's own Den token. A
   person's token or a browser gets 403: people use Hub itself. It passes
   only Hub's paths for agents: `/mcp`, `/api/inbox`,
-  `/api/notifications…`, `/api/import/packs…`, `/api/reports/…` and
+  `/api/notifications…`, `/api/import/packs…`, `/api/import/ds/…`
+  (a design system), `/api/reports/…` and
   `/api/admin/fixtures/…`. Anything else gets 404. The agent's own
   `Authorization` and any `X-Den-*` it sends are dropped. Redirects are
   passed back, never followed, and Hub's status and errors come back as
