@@ -3539,7 +3539,8 @@ It reads a command's words the way a shell splits them, through
 is written to `<stateDir>/audit/api-only.jsonl` (0600): when, which agent,
 which tool and service, and what, never the whole command.
 `agents doctor` lists the services, the runtimes that enforce it, and the
-last denial.
+last denial. A running den-claude agent's pane says "API only: <names>";
+a codex or gemini agent's pane says "API-only not enforced".
 
 **It is a guardrail, not a security boundary.** An agent that can reach
 the Docker engine can still get around it, for example with a program

@@ -606,6 +606,12 @@
     "ag.chip.interrupted": "中断",
     "ag.link.none":
       "エージェント {id} はここにありません。削除された可能性があります。",
+    "ag.apiOnly": "API のみ: {names}",
+    "ag.apiOnlyTip":
+      "このエージェントは {names} に API を通してのみアクセスします。Den は docker exec、ボリューム、データへのアクセスをブロックし、試行ごとに記録します。セキュリティ境界ではなくガードレールです。",
+    "ag.apiOnlyOff": "API のみは未適用",
+    "ag.apiOnlyOffTip":
+      "このランタイムには Den が使えるフックがないため、{names} の API に制限されません。制限が必要なエージェントには den-claude を使ってください。",
     "ag.det.label": "{id} の詳細",
     "ag.det.close": "閉じる",
     "ag.det.where": "場所",

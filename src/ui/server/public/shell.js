@@ -734,6 +734,12 @@
     "ag.chip.exited": "Exited",
     "ag.chip.interrupted": "Interrupted",
     "ag.link.none": "No agent {id} here. It may have been removed.",
+    "ag.apiOnly": "API only: {names}",
+    "ag.apiOnlyTip":
+      "This agent reaches {names} only through its API. Den blocks docker exec into it, its volumes and its data, and logs each try. A guardrail, not a security boundary.",
+    "ag.apiOnlyOff": "API-only not enforced",
+    "ag.apiOnlyOffTip":
+      "This runtime has no hook Den can use, so it isn't held to {names}' API. Use den-claude for agents that must be.",
     "ag.det.label": "Details for {id}",
     "ag.det.close": "Close",
     "ag.det.where": "Where",

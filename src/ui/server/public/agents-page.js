@@ -1263,6 +1263,19 @@ function renameTab(tab) {
   input.addEventListener("click", (e) => e.stopPropagation());
 }
 
+/**
+ * D47: on a running agent's pane, the services it reaches only through
+ * their API; on a runtime that can't be held to it, that it isn't.
+ */
+function apiOnlyTag(r) {
+  const names = Array.isArray(st.data?.apiOnly) ? st.data.apiOnly : [];
+  if (!names.length || r?.kind !== "agent" || isStopped(r)) return "";
+  const list = names.join(", ");
+  return r.runtime === "den-claude"
+    ? `<span class="tagx" data-api-only title="${esc(t("ag.apiOnlyTip", { names: list }))}">${esc(t("ag.apiOnly", { names: list }))}</span>`
+    : `<span class="tagx warn" data-api-only="off" title="${esc(t("ag.apiOnlyOffTip", { names: list }))}">${esc(t("ag.apiOnlyOff"))}</span>`;
+}
+
 function paintBar(p) {
   const r = rowOf(p.id);
   const bar = p.el.querySelector(".bar2");
@@ -1309,6 +1322,7 @@ function paintBar(p) {
     (r?.tokenRevoked
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +
+    apiOnlyTag(r) +
     whereTag(r, true) +
     subagentTag(r) +
     (r?.kind === "agent" && rotActionsHtml(r)

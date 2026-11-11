@@ -769,6 +769,39 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     }, 60_000);
   });
 
+  it("D47: a den-claude pane says which services it reaches only through their API; a codex pane says it isn't held to it", async () => {
+    if (skip()) return;
+    const rules = path.join(s!.stateDir, "agents", "api-only.json");
+    const tag = (p: Page, id: string) =>
+      p.locator(`.pane[data-id="${sid[id]}"] .bar2 [data-api-only]`);
+    // None declared: no tag.
+    let p = await page(`/agents?open=${sid.planner}&layout=focus`);
+    await p.waitForSelector(`.pane[data-id="${sid.planner}"] .bar2 b`);
+    expect(await tag(p, "planner").count()).toBe(0);
+    await p.context().close();
+    fs.mkdirSync(path.dirname(rules), { recursive: true });
+    fs.writeFileSync(
+      rules,
+      JSON.stringify({ services: [{ name: "vault", project: "vault" }] }),
+    );
+    try {
+      p = await page(`/agents?open=${sid.planner}&layout=focus`);
+      await tag(p, "planner").waitFor({ timeout: 15_000 });
+      expect(await tag(p, "planner").textContent()).toBe("API only: vault");
+      expect(await tag(p, "planner").getAttribute("title")).toContain(
+        "A guardrail, not a security boundary",
+      );
+      await p.context().close();
+      p = await page(`/agents?open=${sid.coder}&layout=focus`);
+      await tag(p, "coder").waitFor({ timeout: 15_000 });
+      expect(await tag(p, "coder").textContent()).toBe("API-only not enforced");
+      expect(await tag(p, "coder").getAttribute("data-api-only")).toBe("off");
+      await p.context().close();
+    } finally {
+      fs.rmSync(rules, { force: true });
+    }
+  }, 60_000);
+
   it("raised no page errors", () => {
     if (skip()) return;
     expect(errors).toEqual([]);

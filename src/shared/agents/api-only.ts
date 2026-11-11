@@ -192,6 +192,23 @@ export function writeApiOnlyRules(
   return files;
 }
 
+/**
+ * The service names in the rules file agents read now (what is enforced),
+ * or none.
+ */
+export function apiOnlyNames(stateDir: string): string[] {
+  try {
+    const r = JSON.parse(
+      fs.readFileSync(apiOnlyFiles(stateDir).rules, "utf-8"),
+    ) as { services?: { name?: unknown }[] };
+    return (r.services ?? [])
+      .map((s) => s?.name)
+      .filter((n): n is string => typeof n === "string" && n.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 /** The audit's denials, newest last (for doctor and the page). */
 export function readApiOnlyAudit(
   stateDir: string,

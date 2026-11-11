@@ -626,6 +626,12 @@
     "ag.chip.interrupted": "Interrumpido",
     "ag.link.none":
       "No hay ningún agente {id} aquí. Puede que se haya quitado.",
+    "ag.apiOnly": "Solo API: {names}",
+    "ag.apiOnlyTip":
+      "Este agente llega a {names} solo por su API. Den bloquea docker exec en él, sus volúmenes y sus datos, y registra cada intento. Es una barandilla, no una barrera de seguridad.",
+    "ag.apiOnlyOff": "Solo API sin aplicar",
+    "ag.apiOnlyOffTip":
+      "Este runtime no tiene un hook que Den pueda usar, así que no se le limita a la API de {names}. Usa den-claude para los agentes que deban estarlo.",
     "ag.det.label": "Detalles de {id}",
     "ag.det.close": "Cerrar",
     "ag.det.where": "Dónde",

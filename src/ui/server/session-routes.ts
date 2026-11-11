@@ -34,6 +34,7 @@
  * an agent token's own session only. The attach and the detach are audited
  * with the actor from the credential.
  */
+import { apiOnlyNames } from "../../shared/agents/api-only.js";
 import type * as http from "http";
 import {
   SERVER_SCOPE,
@@ -427,6 +428,8 @@ export async function handleSessionList(
       ? { id: "den-pty", available: true }
       : { id: "den-pty", available: false, reason: pty.reason },
     io: { allowed: ioAllowed },
+    // D47: the services agents reach only through their API (den-claude).
+    apiOnly: apiOnlyNames(d.stateDir()),
   });
   return true;
 }
