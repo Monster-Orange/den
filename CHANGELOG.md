@@ -30,6 +30,12 @@ config and manifest changes a distribution must make to move to it under
   model is only a fallback (`--json`: `subagents.forced`). `<cli> doctor`
   notes `agents.subagents` or `agents.claude_ai_connectors` set in
   `config/local/user.yml`, where they do nothing (they are the org's).
+- **Picking an agent puts the keyboard in its terminal (D40).** On the
+  Agents tab, a click on an agent's row (or Enter on it) focuses its
+  terminal as soon as it can take keys, whether its pane was already
+  open or not, so you can type at once. A Shift- or ⌘-click, which adds
+  a pane alongside, leaves the keyboard in the terminal that had it. A
+  pane whose session ended never takes the keyboard.
 
 ### Migrations
 

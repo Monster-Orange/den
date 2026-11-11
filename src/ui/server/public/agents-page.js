@@ -171,6 +171,10 @@ const st = {
   layout: "focus",
   cur: null,
   side: new Set(),
+  // D40: the pane whose terminal takes the keyboard once its socket opens,
+  // and the one whose terminal last had it.
+  focusOnOpen: null,
+  keyPane: null,
   // AG-4b: where a path link opens (Settings editor_open).
   editorOpen: "none",
 };
@@ -1127,9 +1131,27 @@ function setLayout(layout) {
 }
 
 /**
+ * D40: put the keyboard in pane `id`'s terminal once it can take keys: now
+ * when its socket is open, else when it opens (connect). Never a pane
+ * whose session ended.
+ */
+function focusTerm(id) {
+  const p = st.panes.get(id);
+  if (!p || p.exited || p.closed) return;
+  if (p.term && p.sock?.readyState === WebSocket.OPEN) {
+    st.focusOnOpen = null;
+    // After the click that picked it has finished with the row.
+    requestAnimationFrame(() => {
+      if (!p.closed && !p.exited) p.term?.focus();
+    });
+  } else st.focusOnOpen = id;
+}
+
+/**
  * Open (or bring forward) the session of a row the person clicked, as the
  * layout says: Focus replaces the pane (`add`: Shift- or ⌘-click, one
- * alongside), Tabs opens a tab, Tile adds a tile.
+ * alongside), Tabs opens a tab, Tile adds a tile. D40: a pick (not an add)
+ * puts the keyboard in its terminal; an add keeps it where it was.
  */
 async function pick(id, add) {
   const layout = shownLayout();
@@ -1140,13 +1162,20 @@ async function pick(id, add) {
   } else if (layout === "focus" && add && st.cur && st.cur !== id)
     st.side.add(id);
   if (!(layout === "focus" && add)) st.cur = id;
+  // An add: the keyboard goes back to the terminal that had it (the click
+  // on the row took it).
+  const back = add && st.keyPane !== id ? st.keyPane : null;
+  if (!add) st.focusOnOpen = id;
+  else if (st.focusOnOpen === id) st.focusOnOpen = null;
   if (st.panes.has(id)) {
     paintLayout();
     paintList();
-    st.panes.get(id).term?.focus();
+    if (!add) focusTerm(id);
+    else if (back) focusTerm(back);
     return;
   }
   await openPane(id, { front: !(layout === "focus" && add) });
+  if (back) focusTerm(back);
 }
 
 /** Double-click a tab: its name becomes an input (Enter saves, Esc doesn't). */
@@ -1394,6 +1423,8 @@ async function connect(p) {
     p.heardSize = false;
     refit(p);
     sendSize(p);
+    // D40: the pane the person picked takes the keyboard now it can type.
+    if (st.focusOnOpen === p.id) focusTerm(p.id);
   };
   sock.onmessage = (e) => {
     if (typeof e.data === "string") {
@@ -1704,7 +1735,11 @@ async function openPane(id, { front = true } = {}) {
   });
   term.onResize(() => sendSize(p));
   // Focused (a click, the window coming back): this pane's size.
-  el.addEventListener("focusin", () => claimSize(p));
+  el.addEventListener("focusin", () => {
+    claimSize(p);
+    // D40: the terminal that last had the keyboard (an add gives it back).
+    st.keyPane = p.id;
+  });
   p.ro = new ResizeObserver(() => refit(p));
   p.ro.observe(el.querySelector(".term"));
   refit(p);

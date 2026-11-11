@@ -538,6 +538,71 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await p.context().close();
   }, 60_000);
 
+  describe("D40: picking an agent puts the keyboard in its terminal", () => {
+    const row = (id: string) => `#agl .agr[data-id="${sid[id]}"]`;
+    /** Type `text` where the keyboard is, and say which pty got it. */
+    async function typedInto(p: Page, text: string): Promise<string[]> {
+      const from = Object.fromEntries(
+        Object.keys(sid).map((id) => [id, pty(id).writes.length]),
+      );
+      await p.keyboard.type(text);
+      await new Promise((r) => setTimeout(r, 400));
+      return Object.keys(sid).filter((id) =>
+        typed(id, from[id]).includes(text),
+      );
+    }
+
+    it("a new pane: click the row, type, and the agent gets it", async () => {
+      if (skip()) return;
+      const p = await page(`/agents?layout=focus`);
+      await p.click(row("planner"));
+      await p.waitForSelector(`.pane[data-id="${sid.planner}"] .xterm-rows`);
+      await eventually(async () => (await typedInto(p, "q1")).length > 0);
+      expect(await typedInto(p, "q2")).toEqual(["planner"]);
+      await p.context().close();
+    }, 60_000);
+
+    it("a pane already open: picking its row takes the keyboard there", async () => {
+      if (skip()) return;
+      const p = await page(
+        `/agents?open=${sid.planner},${sid.coder}&layout=tabs`,
+      );
+      for (const id of ["planner", "coder"])
+        await p.waitForSelector(`.pane[data-id="${sid[id]}"] .xterm-rows`, {
+          state: "attached",
+        });
+      await p.click(row("coder"));
+      await eventually(async () =>
+        (await typedInto(p, "c1")).includes("coder"),
+      );
+      await p.click(row("planner"));
+      await eventually(async () =>
+        (await typedInto(p, "p1")).includes("planner"),
+      );
+      expect(await typedInto(p, "p2")).toEqual(["planner"]);
+      await p.context().close();
+    }, 60_000);
+
+    it("an add (Shift-click) keeps the keyboard where it was", async () => {
+      if (skip()) return;
+      const p = await page(`/agents?layout=focus`);
+      await p.click(row("planner"));
+      await p.waitForSelector(`.pane[data-id="${sid.planner}"] .xterm-rows`);
+      await eventually(async () =>
+        (await typedInto(p, "a1")).includes("planner"),
+      );
+      await p.click(row("coder"), { modifiers: ["Shift"] });
+      await p.waitForSelector(`.pane[data-id="${sid.coder}"] .xterm-rows`);
+      await new Promise((r) => setTimeout(r, 300));
+      expect(await typedInto(p, "a2")).toEqual(["planner"]);
+      // Its pane already open: the same.
+      await p.click(row("coder"), { modifiers: ["Shift"] });
+      await new Promise((r) => setTimeout(r, 300));
+      expect(await typedInto(p, "a3")).toEqual(["planner"]);
+      await p.context().close();
+    }, 60_000);
+  });
+
   it("raised no page errors", () => {
     if (skip()) return;
     expect(errors).toEqual([]);
