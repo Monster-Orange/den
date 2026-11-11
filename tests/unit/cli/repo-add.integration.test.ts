@@ -58,70 +58,63 @@ function git(cwd: string, ...args: string[]): void {
 }
 
 /**
- * Each path under `root` with its mode, size, mtime and a hash of its
- * bytes: what a failed "untouched" check names (the 0.4.29 release run saw
- * one change it couldn't name).
+ * One walk of `root`: the digest (every path, mode and byte: equal
+ * digests, identical trees) and, from the same reads, each path's mode,
+ * size, mtime and a hash of its bytes, which a failed check names. One
+ * walk, so a path that is there for a moment shows in both or neither:
+ * the 0.4.30-dev.1 CI run's digests differed while two later walks
+ * matched, a change that came and went between separate walks.
  */
-function treeEntries(root: string): Map<string, string> {
-  const out = new Map<string, string>();
+interface Snapshot {
+  digest: string;
+  entries: Map<string, string>;
+}
+function snapshot(root: string): Snapshot {
+  const h = createHash("sha256");
+  const entries = new Map<string, string>();
   const walk = (rel: string) => {
     const abs = path.join(root, rel);
     const st = fs.lstatSync(abs);
-    const sum = st.isFile()
-      ? createHash("sha256")
-          .update(fs.readFileSync(abs))
-          .digest("hex")
-          .slice(0, 12)
-      : "-";
-    out.set(
+    h.update(`${rel}\0${st.mode}\0`);
+    const bytes = st.isFile() ? fs.readFileSync(abs) : null;
+    if (bytes) h.update(bytes);
+    entries.set(
       rel || ".",
-      `mode ${st.mode.toString(8)} size ${st.size} mtime ${st.mtime.toISOString()} sha ${sum}`,
+      `mode ${st.mode.toString(8)} size ${st.size} mtime ${st.mtime.toISOString()} sha ${
+        bytes
+          ? createHash("sha256").update(bytes).digest("hex").slice(0, 12)
+          : "-"
+      }`,
     );
     if (st.isDirectory())
       for (const e of fs.readdirSync(abs).sort()) walk(path.join(rel, e));
   };
   walk("");
-  return out;
+  return { digest: h.digest("hex"), entries };
 }
 
-/** What changed between two treeEntries: one line per path. */
-function treeChanges(a: Map<string, string>, b: Map<string, string>): string[] {
-  const keys = [...new Set([...a.keys(), ...b.keys()])].sort();
+/** What changed between two snapshots: one line per path. */
+function treeChanges(a: Snapshot, b: Snapshot): string[] {
+  const keys = [...new Set([...a.entries.keys(), ...b.entries.keys()])].sort();
   return keys
-    .filter((k) => a.get(k) !== b.get(k))
-    .map((k) => `${k}: ${a.get(k) ?? "(none)"} -> ${b.get(k) ?? "(none)"}`);
+    .filter((k) => a.entries.get(k) !== b.entries.get(k))
+    .map(
+      (k) =>
+        `${k}: ${a.entries.get(k) ?? "(none)"} -> ${b.entries.get(k) ?? "(none)"}`,
+    );
 }
-
-/** Every path, mode and byte under `root`: equal digests, identical trees. */
-function treeDigest(root: string): string {
-  const h = createHash("sha256");
-  const walk = (rel: string) => {
-    const abs = path.join(root, rel);
-    const st = fs.lstatSync(abs);
-    h.update(`${rel}\0${st.mode}\0`);
-    if (st.isDirectory())
-      for (const e of fs.readdirSync(abs).sort()) walk(path.join(rel, e));
-    else if (st.isFile()) h.update(fs.readFileSync(abs));
-  };
-  walk("");
-  return h.digest("hex");
-}
-
-interface Snapshot {
-  digest: string;
-  entries: Map<string, string>;
-}
-const snapshot = (root: string): Snapshot => ({
-  digest: treeDigest(root),
-  entries: treeEntries(root),
-});
 
 /** The tree is byte for byte as it was; a failure names each changed path. */
 function expectUntouched(root: string, before: Snapshot): void {
-  const after = treeDigest(root);
-  if (after !== before.digest)
-    expect(treeChanges(before.entries, treeEntries(root))).toEqual([]);
-  expect(after).toBe(before.digest);
+  const after = snapshot(root);
+  if (after.digest !== before.digest)
+    expect({
+      changed: treeChanges(before, after),
+      // Settled since? A second look, to tell a change that stays from
+      // one that came and went.
+      now: treeChanges(before, snapshot(root)),
+    }).toEqual({ changed: [], now: [] });
+  expect(after.digest).toBe(before.digest);
 }
 
 function makeRepo(name: string, files: Record<string, string>): string {
