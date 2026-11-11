@@ -223,6 +223,8 @@ describe("den-claude launch", () => {
     // sessions/.
     expect(JSON.parse(out.files![settingsFile])).toEqual({
       permissions: { deny: stateDirDenyRules("/home/someone/.acme") },
+      // den#3: the account's claude.ai connectors stay out.
+      disableClaudeAiConnectors: true,
     });
     expect(stateDirDenyRules("/home/someone/.acme")).toEqual(
       expect.arrayContaining([

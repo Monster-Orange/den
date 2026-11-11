@@ -879,6 +879,14 @@
     "ag.pal.layout": "Disposición: {name}",
     "ag.copied": "Copiado",
     "ag.linkHint": "{key}+clic para abrir",
+    "ag.subagents": "subagentes: {model}",
+    "ag.subagents.inherit": "el del runtime",
+    "ag.subagents.from.persona":
+      "Sus subagentes (Explore también) usan {model}: subagent_model de su persona.",
+    "ag.subagents.from.org":
+      "Sus subagentes (Explore también) usan {model}: agents.subagents.model.",
+    "ag.subagents.from.default":
+      "Sus subagentes (Explore también) usan {model}: el valor por defecto de Den. Lo cambian agents.subagents.model o subagent_model de una persona.",
     "ag.tabs": "Sesiones abiertas",
     "ag.hint.focus":
       "Un clic muestra una sesión. Mayús o ⌘ y clic la añade al lado.",

@@ -137,6 +137,8 @@ describe("agents start", () => {
         // it overrides of its persona (here: the model).
         "version",
         "overrides",
+        // den#3: what its subagents ran on, and where that came from.
+        "subagents",
         // D24: the name its Claude session was given, for peers.
         "peerName",
       ].sort(),
@@ -637,7 +639,85 @@ describe("an agent's environment", () => {
     ).toEqual([]);
     for (const k of ["PATH", "HOME", "TERM", "LANG", "LC_ALL"])
       expect(keys).toContain(k);
-    expect(keys.filter((k) => k.startsWith("CLAUDE_CODE_"))).toEqual([]);
+    // Only Den's own (den#3: its subagents' model), never the caller's.
+    expect(
+      keys.filter(
+        (k) =>
+          k.startsWith("CLAUDE_CODE_") &&
+          k !== "CLAUDE_CODE_SUBAGENT_MODEL" &&
+          k !== "CLAUDE_CODE_SUBAGENT_MODEL_FORCE",
+      ),
+    ).toEqual([]);
+  });
+
+  it("den#3: its subagents run on sonnet, forced, by default", async () => {
+    const r = await rig();
+    await agents(r, "start", "-w", "north", "--persona", "planner");
+    const env = r.made[0].opts.env;
+    expect(env.CLAUDE_CODE_SUBAGENT_MODEL).toBe("sonnet");
+    expect(env.CLAUDE_CODE_SUBAGENT_MODEL_FORCE).toBe("1");
+    // The list says so, and where it came from.
+    expect(await listRows(r, "north")).toEqual([
+      expect.objectContaining({
+        agent: "planner",
+        subagentModel: "sonnet",
+        subagentModelFrom: "default",
+      }),
+    ]);
+  });
+
+  it("den#3: the org's agents.subagents.model, and a persona's subagent_model wins", async () => {
+    const r = await rig();
+    r.config.subagents = { model: "haiku", claudeAiConnectors: false };
+    await agents(r, "start", "-w", "north", "--persona", "planner");
+    expect(r.made[0].opts.env.CLAUDE_CODE_SUBAGENT_MODEL).toBe("haiku");
+    persona(r, "reviewer", "subagent_model: opus\n");
+    await agents(r, "start", "-w", "north", "--persona", "reviewer");
+    expect(r.made[1].opts.env.CLAUDE_CODE_SUBAGENT_MODEL).toBe("opus");
+  });
+
+  it("den#3: claude.ai connectors off unless agents.claude_ai_connectors is true", async () => {
+    const r = await rig();
+    const settings = (i: number) => {
+      const a = r.made[i].args;
+      return JSON.parse(
+        fs.readFileSync(a[a.indexOf("--settings") + 1], "utf-8"),
+      ) as Record<string, unknown>;
+    };
+    await agents(r, "start", "-w", "north", "--persona", "planner");
+    expect(settings(0).disableClaudeAiConnectors).toBe(true);
+    r.config.subagents = { model: "sonnet", claudeAiConnectors: true };
+    await agents(r, "start", "-w", "north", "--persona", "reviewer");
+    expect(r.made[1].args).toContain("--settings");
+    expect("disableClaudeAiConnectors" in settings(1)).toBe(false);
+  });
+
+  it("den#3: inherit (org or persona) sets none, and the caller's never leaks in", async () => {
+    const r = await rig();
+    r.deps.env = {
+      ...r.deps.env,
+      CLAUDE_CODE_SUBAGENT_MODEL: "caller-model",
+      CLAUDE_CODE_SUBAGENT_MODEL_FORCE: "1",
+    };
+    r.config.subagents = { model: "inherit", claudeAiConnectors: false };
+    await agents(r, "start", "-w", "north", "--persona", "planner");
+    persona(r, "reviewer", "subagent_model: inherit\n");
+    r.config.subagents = { model: "haiku", claudeAiConnectors: false };
+    await agents(r, "start", "-w", "north", "--persona", "reviewer");
+    for (const m of r.made) {
+      const keys = Object.keys(m.opts.env);
+      expect(keys).not.toContain("CLAUDE_CODE_SUBAGENT_MODEL");
+      expect(keys).not.toContain("CLAUDE_CODE_SUBAGENT_MODEL_FORCE");
+    }
+    const rows = await listRows(r, "north");
+    expect(rows.find((x) => x.agent === "planner")).toMatchObject({
+      subagentModel: "inherit",
+      subagentModelFrom: "org",
+    });
+    expect(rows.find((x) => x.agent === "reviewer")).toMatchObject({
+      subagentModel: "inherit",
+      subagentModelFrom: "persona",
+    });
   });
 
   it("carries Den's marker DEN_AGENT=agent:<id>, and agents start takes no --keep-env", async () => {

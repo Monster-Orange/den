@@ -376,6 +376,20 @@ function whereTag(r, button = false) {
     : `<span class="${cls}" data-where="${where}" title="${esc(tip)}">${logout ? "⚠ " : ""}${esc(t(key))}</span>`;
 }
 
+/**
+ * den#3: what its subagents run on, and where that came from: the pane
+ * bar's tag. Nothing for a runtime that takes no subagent model.
+ */
+function subagentTag(r) {
+  if (r?.kind !== "agent" || !r.subagentModel) return "";
+  const inherit = r.subagentModel === "inherit";
+  const model = inherit ? t("ag.subagents.inherit") : r.subagentModel;
+  const tip = t(`ag.subagents.from.${r.subagentModelFrom || "default"}`, {
+    model,
+  });
+  return `<span class="tagx" data-subagents="${esc(r.subagentModel)}" title="${esc(tip)}">${esc(t("ag.subagents", { model }))}</span>`;
+}
+
 /** Its rotation, when one is due: "ready" or "due" (den#4). */
 function rotationOf(r) {
   // D28: on_due off: nothing will happen, so nothing is shown.
@@ -1230,6 +1244,7 @@ function paintBar(p) {
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +
     whereTag(r, true) +
+    subagentTag(r) +
     (r?.kind === "agent" && rotActionsHtml(r)
       ? `<span class="agrot" data-rot-bar title="${esc(rotMessage(r))}"><span class="tagx warn" data-rotation="${rotationOf(r)}">${esc(t(rotationOf(r) === "ready" ? "ag.rot.ready" : "ag.rot.due", { why: rotationWhy(r.rotation) }))}</span>${rotActionsHtml(r)}</span>`
       : "") +

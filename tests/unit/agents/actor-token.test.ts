@@ -167,6 +167,38 @@ describe("the §5a-env allowlist and the scrub", () => {
     expect(isPersonCredentialEnv("X", "/a/web.secret.bak")).toBe(false);
     expect(isPersonCredentialEnv("X", "a:/b/web.secret")).toBe(true);
   });
+
+  it("den#3: past the scrub only the names a runtime declares, and only from its launch env", () => {
+    const env = buildSessionEnv({
+      caller: {
+        PATH: "/bin",
+        CLAUDECODE: "1",
+        CLAUDE_CODE_SESSION_ID: "parent",
+        CLAUDE_CODE_SUBAGENT_MODEL_FORCE: "1",
+      },
+      passthrough: [
+        "CLAUDECODE",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CODE_SUBAGENT_MODEL_FORCE",
+      ],
+      launch: {
+        CLAUDE_CODE_SUBAGENT_MODEL: "sonnet",
+        CLAUDE_CODE_ENTRYPOINT: "z",
+      },
+      extra: { CLAUDE_CODE_Y: "c" },
+      scrub: ["CLAUDECODE", "CLAUDE_CODE_*"],
+      ownLaunch: [
+        "CLAUDE_CODE_SUBAGENT_MODEL",
+        "CLAUDE_CODE_SUBAGENT_MODEL_FORCE",
+      ],
+    });
+    expect(Object.keys(env).sort()).toEqual([
+      "CLAUDE_CODE_SUBAGENT_MODEL",
+      "PATH",
+      "TERM",
+    ]);
+    expect(env.CLAUDE_CODE_SUBAGENT_MODEL).toBe("sonnet");
+  });
 });
 
 describe("the CLI's credential inside an agent (cliAuthHeaders)", () => {

@@ -9,6 +9,7 @@
  */
 
 import { HELPER_DEFAULTS, type HelperSettings } from "./agents/helpers.js";
+import { subagentsBlock, type SubagentSettings } from "./agents/subagents.js";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -975,6 +976,14 @@ export interface AgentsConfig {
     collapse_done_minutes?: unknown;
   };
   /**
+   * den#3: `{ model }`, the model agents' subagents run on (default
+   * sonnet; `inherit`: the runtime decides). A persona's `subagent_model`
+   * wins (agents/subagents.ts).
+   */
+  subagents?: { model?: unknown };
+  /** den#3: load the account's claude.ai connectors (default false). */
+  claude_ai_connectors?: unknown;
+  /**
    * Any other key is an agent id: `agents.<id>.grants` widens that agent's
    * MCP scope to other workspaces (AG spec §5b). Config only: an agent
    * never grants itself one.
@@ -1003,6 +1012,9 @@ export const AGENTS_RESERVED_KEYS = [
   // AG-10.5, AG-11.1: the distribution's persona categories and roles.
   "categories",
   "roles",
+  // den#3: subagents' model; the account's claude.ai connectors.
+  "subagents",
+  "claude_ai_connectors",
 ];
 
 /** One agent's own block, `agents.<id>`. */
@@ -1034,6 +1046,8 @@ export interface ResolvedAgentsConfig {
   categories?: Category[];
   /** agents.roles (AG-11.1): new roles and Den roles' preset extensions. */
   roles?: RolesConfig;
+  /** den#3: agents.subagents and agents.claude_ai_connectors, defaults applied. */
+  subagents?: SubagentSettings;
 }
 
 /** `agents.helpers` (D32) checked; a bad key or value throws naming it. */
@@ -1181,6 +1195,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     })(),
   };
   out.helpers = helpersBlock(raw.helpers);
+  out.subagents = subagentsBlock(raw.subagents, raw.claude_ai_connectors);
   out.categories = checkCategoriesConfig(raw.categories);
   out.roles = checkRolesConfig(raw.roles, [
     ...DEN_CATEGORIES.map((c) => c.id),
@@ -1218,7 +1233,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(
-        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, default_pack, rotate, helpers, categories, roles, ` +
+        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, default_pack, rotate, helpers, subagents, claude_ai_connectors, categories, roles, ` +
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))

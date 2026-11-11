@@ -4,6 +4,35 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.30] - unreleased
+
+### Changed
+
+- **Agents' subagents run on Sonnet (den#3).** Every subagent a
+  den-claude agent starts runs on Sonnet by default. **That includes
+  Explore**, which before ran on the agent's own model. Den passes the
+  model forced, so a subagent's own definition can't choose a costlier
+  one (Claude Code 2.1.257 or later). Set `agents.subagents.model` to
+  change it for the org, or a persona's `subagent_model` for one
+  persona; `inherit` means Den sets none, as before.
+- **No claude.ai connectors in agents by default (den#3).** An agent
+  loads Den's MCP only, not the connectors the account added on
+  claude.ai. `agents.claude_ai_connectors: true` brings them back.
+
+### Added
+
+- `<cli> agents doctor` shows the subagent model, where it comes from,
+  the connectors setting, each persona that overrides it and each
+  agent's model as it last started (`--json`: `subagents`). The agents
+  list and `/api/sessions` rows carry `subagentModel` and
+  `subagentModelFrom`; the agent's pane bar shows "subagents: sonnet".
+
+### Migrations
+
+- None needed. To keep subagents on the agent's own model, set
+  `agents.subagents.model: inherit`. To keep claude.ai connectors in
+  agents, set `agents.claude_ai_connectors: true`.
+
 ## [0.4.29] - 2026-11-11
 
 ### Added

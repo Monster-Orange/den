@@ -858,6 +858,14 @@
     "ag.pal.layout": "レイアウト: {name}",
     "ag.copied": "コピーしました",
     "ag.linkHint": "{key}+クリックで開く",
+    "ag.subagents": "サブエージェント: {model}",
+    "ag.subagents.inherit": "ランタイムの設定",
+    "ag.subagents.from.persona":
+      "サブエージェント（Explore も）は {model} で動きます: ペルソナの subagent_model。",
+    "ag.subagents.from.org":
+      "サブエージェント（Explore も）は {model} で動きます: agents.subagents.model。",
+    "ag.subagents.from.default":
+      "サブエージェント（Explore も）は {model} で動きます: Den の既定値。agents.subagents.model かペルソナの subagent_model で変えられます。",
     "ag.tabs": "開いているセッション",
     "ag.hint.focus":
       "クリックで 1 つのセッションを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",

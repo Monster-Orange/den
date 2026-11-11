@@ -107,6 +107,13 @@ export interface LaunchInput {
   /** The CLI detect found (a setting, the login PATH, …); else searched again. */
   bin?: string;
   /**
+   * den#3: the model its subagents run on, forced (subagents.ts); absent:
+   * the runtime decides.
+   */
+  subagentModel?: string;
+  /** den#3: load the account's claude.ai connectors (default: not). */
+  claudeAiConnectors?: boolean;
+  /**
    * Session rotation (den#4): the compactions after which this agent's
    * session rotates (0: never). Den's hooks count them. Default 3.
    */
@@ -280,6 +287,14 @@ export interface Runtime {
    * whatever put them there (sessions/env.ts).
    */
   scrubEnv: readonly string[];
+  /**
+   * den#3: exact names in scrubEnv that this runtime's own launch env
+   * (LaunchOutput.env) may still set: den-claude's subagent model. From
+   * anywhere else (the caller, a passthrough) they are still removed.
+   */
+  launchEnv?: readonly string[];
+  /** den#3: it runs its subagents on LaunchInput.subagentModel. */
+  subagentModel?: boolean;
 }
 
 /** A runtime cannot launch this agent here: a refusal, not a crash. */

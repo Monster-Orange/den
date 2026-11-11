@@ -28,6 +28,12 @@ export interface AgentRecord {
   persona: string;
   runtime: string;
   model?: string;
+  /**
+   * den#3: the model its subagents ran on when it last started, and where
+   * that came from (no model: inherit, the runtime decided). Only for a
+   * runtime that takes one (Runtime.subagentModel).
+   */
+  subagents?: { model?: string; from: "persona" | "org" | "default" };
   workspace: string;
   cwd: string;
   /** The session it runs in now (or last ran in). */

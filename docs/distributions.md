@@ -3122,6 +3122,39 @@ agents:
 stay in the list until a person clears them. It is still accepted, so a
 config that sets it keeps working, and `<cli> doctor` notes it.
 
+### Subagents' model and claude.ai connectors
+
+Claude Code's subagents (the Agent tool's, Explore and general-purpose
+among them) otherwise run on whatever their definition or the call says,
+often the agent's own model. Den runs every subagent of a den-claude
+agent on Sonnet by default, Explore included. It passes the model forced
+(`CLAUDE_CODE_SUBAGENT_MODEL` with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`,
+Claude Code 2.1.257 or later), so a subagent's own definition can't pick
+a costlier one.
+
+Den's agents also leave out the account's claude.ai connectors by
+default: an agent has Den's MCP and nothing the account added on
+claude.ai.
+
+```yaml
+agents:
+  subagents:
+    model: sonnet # every subagent, Explore too; `inherit`: the runtime decides
+  claude_ai_connectors: false # true: agents load the account's claude.ai connectors
+```
+
+| Key                           | Values                                                   | Default  |
+| ----------------------------- | -------------------------------------------------------- | -------- |
+| `agents.subagents.model`      | `sonnet`, `haiku`, `opus`, a full model id, or `inherit` | `sonnet` |
+| `agents.claude_ai_connectors` | `true` or `false`                                        | `false`  |
+
+A persona's `subagent_model` wins over `agents.subagents.model`; its
+`inherit` turns Den's off for that persona. A change applies when an
+agent next starts or resumes. `<cli> agents doctor` shows the org's model,
+connectors, each persona that overrides it, and each agent's model as it
+last started (`--json`: `subagents`). The agents list (`subagentModel`,
+`subagentModelFrom`) and the agent's pane bar show it too.
+
 A bad key under `agents:` stops listing agents and reading their helpers,
 on the CLI and the web, until it is fixed; stopping an agent still works.
 A bad key under `sessions:` matters only when a plain session starts (its
@@ -3309,6 +3342,7 @@ category: engineering # see Categories; default: the role's
 description: Writes stories and their acceptance criteria. # one line
 model: some-model # optional; `inherit` means none
 version: latest # or a pinned version of the model
+subagent_model: haiku # its subagents' model, over agents.subagents.model; `inherit`: the runtime decides
 allowed_commands: [npm test] # extra plain prefixes allowed without asking
 tools: Read, Grep # hints for the runtime; Den restricts nothing with them
 standing: true # starts with its workspace (later slices)

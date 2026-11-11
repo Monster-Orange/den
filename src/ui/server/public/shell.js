@@ -984,6 +984,14 @@
     "ag.pal.layout": "Layout: {name}",
     "ag.copied": "Copied",
     "ag.linkHint": "{key}-click to open",
+    "ag.subagents": "subagents: {model}",
+    "ag.subagents.inherit": "the runtime's",
+    "ag.subagents.from.persona":
+      "Its subagents (Explore too) run on {model}: its persona's subagent_model.",
+    "ag.subagents.from.org":
+      "Its subagents (Explore too) run on {model}: agents.subagents.model.",
+    "ag.subagents.from.default":
+      "Its subagents (Explore too) run on {model}: Den's default. agents.subagents.model or a persona's subagent_model changes it.",
     "ag.tabs": "Open sessions",
     "ag.hint.focus":
       "Click shows one session. Shift- or ⌘-click adds it alongside.",

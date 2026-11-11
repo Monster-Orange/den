@@ -393,8 +393,12 @@ function common(input: LaunchInput): {
     ...hubAllow,
   ];
   const ask = den?.ask ?? [];
+  // den#3: no claude.ai connectors unless the org lets them in.
+  const noConnectors = input.claudeAiConnectors !== true;
   const settings =
-    input.stateDir || hooks || allow.length ? settingsPath(input) : null;
+    input.stateDir || hooks || allow.length || noConnectors
+      ? settingsPath(input)
+      : null;
   return {
     argv: [
       "--mcp-config",
@@ -435,6 +439,7 @@ function common(input: LaunchInput): {
                     }
                   : {}),
                 ...(hooks ? { hooks } : {}),
+                ...(noConnectors ? { disableClaudeAiConnectors: true } : {}),
               },
               null,
               2,
@@ -451,6 +456,21 @@ function common(input: LaunchInput): {
           ]
         : [],
   };
+}
+
+/**
+ * den#3: its subagents' model, forced: every subagent (Explore and
+ * general-purpose too, whatever their definition or the call says) runs
+ * on it. Claude Code 2.1.257 or later; an older one takes the model as a
+ * fallback only.
+ */
+export function subagentEnv(input: LaunchInput): Record<string, string> {
+  return input.subagentModel
+    ? {
+        CLAUDE_CODE_SUBAGENT_MODEL: input.subagentModel,
+        CLAUDE_CODE_SUBAGENT_MODEL_FORCE: "1",
+      }
+    : {};
 }
 
 function binFor(input: LaunchInput): string {
@@ -548,7 +568,7 @@ export const denClaude: Runtime = {
         ...c.argv,
         ...firstPromptArg(input.firstPrompt),
       ],
-      env: {},
+      env: subagentEnv(input),
       files: c.files,
       resumeToken: id,
       warnings: c.warnings,
@@ -566,7 +586,7 @@ export const denClaude: Runtime = {
         ...nameArg(input.sessionLabel),
         ...c.argv,
       ],
-      env: {},
+      env: subagentEnv(input),
       files: c.files,
       warnings: c.warnings,
     };
@@ -653,4 +673,7 @@ export const denClaude: Runtime = {
   // token, the child-session marker (which turns transcripts off). An agent
   // is not part of the session that started it.
   scrubEnv: ["CLAUDECODE", "CLAUDE_CODE_*"],
+  // den#3: its own launch env's subagent model (subagentEnv), past the scrub.
+  subagentModel: true,
+  launchEnv: ["CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL_FORCE"],
 };

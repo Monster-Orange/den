@@ -10,6 +10,8 @@
  *   name         the id (Den's `id` wins when both are given)
  *   description  the one-line role (Den's `role` wins)
  *   model        the default model; `inherit` means none of its own
+ *   subagent_model  den#3: its subagents' model, over agents.subagents.model;
+ *                `inherit` means none of Den's (subagents.ts)
  *   tools        "Read, Grep" or a list: hints, never a restriction Den applies
  *
  * Den's own keys sit beside them (AG-10.2): `display_name` ("Rita", shown
@@ -35,6 +37,7 @@
  * Of two with one id, local wins over distribution, and distribution over
  * built-in. Hub comes later; only its origin value exists now.
  */
+import { checkSubagentModel } from "./subagents.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "yaml";
@@ -85,6 +88,11 @@ export interface Persona {
   runtime?: string;
   /** The model it runs unless an agent says otherwise. */
   model?: string;
+  /**
+   * den#3 `subagent_model`: the model its subagents run on, over the
+   * org's agents.subagents.model; "inherit": none of Den's.
+   */
+  subagentModel?: string;
   /** Started with its workspace (planner, orchestrator). */
   standing: boolean;
   /**
@@ -203,6 +211,11 @@ export function parsePersona(
     argv = f.argv as string[];
   }
   const model = optString(f, "model", file);
+  const subagentRaw = f.subagent_model;
+  const subagentModel =
+    subagentRaw === undefined || subagentRaw === null
+      ? undefined
+      : checkSubagentModel(subagentRaw, `${file}: subagent_model`);
   const displayName = optString(f, "display_name", file);
   if (
     displayName &&
@@ -263,6 +276,7 @@ export function parsePersona(
     prompt: text.slice(m[0].length).trim(),
     ...(runtime ? { runtime } : {}),
     ...(model && model !== "inherit" ? { model } : {}),
+    ...(subagentModel ? { subagentModel } : {}),
     standing,
     ...(resumeOnRestart ? { resumeOnRestart } : {}),
     tools: stringList(f, "tools", file),

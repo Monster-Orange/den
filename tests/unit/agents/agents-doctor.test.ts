@@ -20,6 +20,52 @@ afterEach(async () => {
 const doctor = (r: Rig, ...args: string[]) =>
   cmdAgents(["doctor", ...args], { ...r.deps, loginPath: async () => {} });
 
+describe("agents doctor: subagents (den#3)", () => {
+  it("the org's model and connectors, each persona that overrides it, and each agent as it last started", async () => {
+    const r = await rig();
+    const packs = path.join(r.dir, "personas");
+    fs.mkdirSync(packs, { recursive: true });
+    fs.writeFileSync(
+      path.join(packs, "scout.md"),
+      "---\nname: scout\nsubagent_model: inherit\n---\nYou look.\n",
+    );
+    r.config.personaPacks = ["personas"];
+    r.config.subagents = { model: "haiku", claudeAiConnectors: true };
+    expect(
+      await cmdAgents(["start", "-w", "north", "--persona", "planner"], r.deps),
+    ).toBe(0);
+    expect(
+      await cmdAgents(["start", "-w", "north", "--persona", "scout"], r.deps),
+    ).toBe(0);
+    r.out.length = 0;
+    await doctor(r);
+    const at = r.out.indexOf(
+      "subagents (den-claude: every subagent, Explore too)",
+    );
+    expect(r.out.slice(at, at + 6)).toEqual([
+      "subagents (den-claude: every subagent, Explore too)",
+      "  model       haiku  (agents.subagents.model)",
+      "  connectors  on  (agents.claude_ai_connectors: the account's claude.ai connectors)",
+      "  personas    scout: inherit (the runtime decides)  (subagent_model)",
+      "  agents      planner: haiku  (org, when it last started)",
+      "              scout: inherit (the runtime decides)  (persona, when it last started)",
+    ]);
+    r.out.length = 0;
+    await doctor(r, "--json");
+    const j = JSON.parse(r.out.join("\n")) as { subagents: unknown };
+    expect(j.subagents).toEqual({
+      model: "haiku",
+      from: "org",
+      claudeAiConnectors: true,
+      personas: [{ id: "scout", model: "inherit" }],
+      agents: [
+        { id: "planner", model: "haiku", from: "org" },
+        { id: "scout", model: "inherit", from: "persona" },
+      ],
+    });
+  });
+});
+
 describe("agents doctor", () => {
   it("prints each runtime's status, path and source, version and the directories searched; exit 0", async () => {
     const r = await rig();
@@ -49,6 +95,10 @@ describe("agents doctor", () => {
       "generic (Generic command)",
       "  status    ✓ available",
       "  path      none to find (the persona's argv)",
+      "",
+      "subagents (den-claude: every subagent, Explore too)",
+      "  model       sonnet  (Den's default; agents.subagents.model)",
+      "  connectors  off  (agents.claude_ai_connectors: the account's claude.ai connectors)",
       "",
       "`acme doctor --probe` checks the env each runtime's session gets.",
     ]);

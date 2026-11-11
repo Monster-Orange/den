@@ -194,6 +194,9 @@ export interface ListedSession {
   persona?: string;
   runtime?: string;
   model?: string;
+  /** den#3: its subagents' model ("inherit": the runtime decides). */
+  subagentModel?: string;
+  subagentModelFrom?: "persona" | "org" | "default";
   /** A pinned model version (AG-12), and the newer one when there is. */
   version?: string;
   newer?: string;
@@ -286,6 +289,13 @@ export function listedSessions(
       persona: rec.persona,
       runtime: rec.runtime,
       ...(rec.model ? { model: rec.model } : {}),
+      // den#3: its subagents' model and where it came from.
+      ...(r.subagentModel
+        ? {
+            subagentModel: r.subagentModel,
+            subagentModelFrom: r.subagentModelFrom,
+          }
+        : {}),
       ...(rec.version ? { version: rec.version } : {}),
       ...newerOf(rec),
       ...(rec.permission ? { permission: rec.permission } : {}),

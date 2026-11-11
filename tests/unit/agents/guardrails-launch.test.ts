@@ -116,7 +116,10 @@ describe("a default-pack persona's launch", () => {
   it("writes the settings file for the hooks even with no state dir", () => {
     const l = launch(planner);
     expect(l.argv).toContain("--settings");
-    expect(l.settings).toEqual({ hooks: agentHooks("planner") });
+    expect(l.settings).toEqual({
+      hooks: agentHooks("planner"),
+      disableClaudeAiConnectors: true,
+    });
   });
 
   it("appends the shared persona instructions to the role prompt", () => {
@@ -192,7 +195,7 @@ describe("turning guardrails off and on", () => {
       hooks: false,
       instructions: false,
     });
-    expect(launch(all.get("writer")!).settings).toBeNull();
+    expect(launch(all.get("writer")!).settings?.hooks).toBeUndefined();
     expect(launch(all.get("writer")!).prompt).not.toContain("Hand-back");
     expect(all.get("tester")!.guardrails).toEqual({
       hooks: true,
@@ -208,7 +211,7 @@ describe("turning guardrails off and on", () => {
       hooks: false,
       instructions: true,
     });
-    expect(launch(all.get("loose")!).settings).toBeNull();
+    expect(launch(all.get("loose")!).settings?.hooks).toBeUndefined();
   });
 
   it("agents.default_pack turns them off for Den's pack", () => {
@@ -219,7 +222,7 @@ describe("turning guardrails off and on", () => {
       hooks: false,
       instructions: true,
     });
-    expect(launch(all.get("planner")!).settings).toBeNull();
+    expect(launch(all.get("planner")!).settings?.hooks).toBeUndefined();
   });
 
   it("a persona_packs entry that overrides a default persona has its pack's", () => {

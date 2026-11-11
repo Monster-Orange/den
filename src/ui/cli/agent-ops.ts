@@ -51,6 +51,12 @@
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import {
+  INHERIT,
+  SUBAGENT_DEFAULTS,
+  effectiveSubagentModel,
+  type SubagentModelFrom,
+} from "../../shared/agents/subagents.js";
+import {
   capHelpers,
   HELPER_DEFAULTS,
   HELPERS_READ_ONLY_NOTE,
@@ -591,6 +597,12 @@ export interface AgentRow {
   /** The name a person gave it (AG-4b), when one did. */
   displayName?: string;
   /**
+   * den#3: the model its subagents run on ("inherit": the runtime
+   * decides), and where that came from; for a runtime that takes one.
+   */
+  subagentModel?: string;
+  subagentModelFrom?: SubagentModelFrom;
+  /**
    * The name its session shows (AG-4b): the latest of Den's rename and the
    * runtime's own (Claude Code's /rename), when there is one. 0.4.12 called
    * this sessionName; sessionName is the record's session handle
@@ -783,6 +795,12 @@ function recordFields(rec: AgentRecord): Partial<AgentRow> {
     persona: rec.persona,
     runtime: rec.runtime,
     ...(rec.model ? { model: rec.model } : {}),
+    ...(rec.subagents
+      ? {
+          subagentModel: rec.subagents.model ?? INHERIT,
+          subagentModelFrom: rec.subagents.from,
+        }
+      : {}),
     ...(rec.version ? { version: rec.version } : {}),
     ...(rec.permission ? { permission: rec.permission } : {}),
     ...(rec.allow ? { allow: [...rec.allow] } : {}),
@@ -1197,6 +1215,54 @@ export function listPersonas(d: AgentsResolved): ListedPersona[] {
   return [...personas(d, agentsConfig(d)).values()]
     .sort((a, b) => a.id.localeCompare(b.id))
     .map(listed);
+}
+
+/** den#3: what agents' subagents run on, for `agents doctor`. */
+export interface SubagentsReport {
+  /** The org's: a model, or "inherit". */
+  model: string;
+  from: "org" | "default";
+  claudeAiConnectors: boolean;
+  /** Personas whose subagent_model overrides it. */
+  personas: Array<{ id: string; model: string }>;
+  /** Each agent, as it last started (a runtime that takes one). */
+  agents: Array<{ id: string; model: string; from: SubagentModelFrom }>;
+  /** The personas couldn't be read: why. */
+  personasError?: string;
+}
+
+export function subagentsReport(d: AgentsResolved): SubagentsReport {
+  const s = agentsConfig(d).subagents ?? SUBAGENT_DEFAULTS;
+  let personas: SubagentsReport["personas"] = [];
+  let personasError: string | undefined;
+  try {
+    personas = listPersonas(d).flatMap((p) =>
+      p.subagentModel ? [{ id: p.id, model: p.subagentModel }] : [],
+    );
+  } catch (e) {
+    personasError = (e as Error).message;
+  }
+  const agents = listRecords(d.stateDir())
+    .flatMap((r) =>
+      r.subagents
+        ? [
+            {
+              id: r.id,
+              model: r.subagents.model ?? INHERIT,
+              from: r.subagents.from,
+            },
+          ]
+        : [],
+    )
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return {
+    model: s.model,
+    from: s.model === SUBAGENT_DEFAULTS.model ? "default" : "org",
+    claudeAiConnectors: s.claudeAiConnectors,
+    personas,
+    agents,
+    ...(personasError ? { personasError } : {}),
+  };
 }
 
 /** A persona with its instructions (Details, Edit: AG-10.6). */
@@ -1614,6 +1680,8 @@ interface Launch {
   env: Record<string, string>;
   /** The runtime's envPassthrough. */
   passthrough?: readonly string[];
+  /** den#3: Runtime.launchEnv, names its launch env sets past the scrub. */
+  launchEnv?: readonly string[];
   /** agents.<id>.grants, recorded with its actor token. */
   grants: readonly string[];
   /** Added to the session's PATH: a configured CLI's own directory. */
@@ -1678,7 +1746,7 @@ async function startSession(
           // Never the caller's whole env: the allowlist, then the runtime's.
           env: agentSessionEnv(
             d.env,
-            { envPassthrough: launch.passthrough },
+            { envPassthrough: launch.passthrough, launchEnv: launch.launchEnv },
             launch.env,
             launch.rec.id,
             minted.token,
@@ -1777,6 +1845,22 @@ async function exitedAtOnce(
   return null;
 }
 
+/**
+ * den#3: what an agent's record says its subagents run on, for a runtime
+ * that takes a subagent model; nothing for one that doesn't.
+ */
+function subagentsField(
+  rt: Runtime,
+  persona: Persona,
+  cfg: ResolvedAgentsConfig,
+): Pick<AgentRecord, "subagents"> {
+  if (!rt.subagentModel) return {};
+  const e = effectiveSubagentModel(persona, cfg.subagents);
+  return {
+    subagents: { ...(e.model ? { model: e.model } : {}), from: e.from },
+  };
+}
+
 function launchInput(
   d: AgentsResolved,
   cfg: ResolvedAgentsConfig,
@@ -1819,6 +1903,13 @@ function launchInput(
     stateDir: d.stateDir(),
     env: d.env,
     ...(bin ? { bin } : {}),
+    // den#3: its subagents' model (the persona's, else the org's), and
+    // whether it loads the account's claude.ai connectors.
+    ...(() => {
+      const sub = effectiveSubagentModel(persona, cfg.subagents);
+      return sub.model ? { subagentModel: sub.model } : {};
+    })(),
+    ...(cfg.subagents?.claudeAiConnectors ? { claudeAiConnectors: true } : {}),
     rotateAfter: after,
     ...(perms.permission ? { permission: perms.permission } : {}),
     ...(perms.allow?.length ? { allow: [...perms.allow] } : {}),
@@ -2176,6 +2267,7 @@ export async function startAgent(
           ...(ch.permission ? { permission: ch.permission } : {}),
           ...(req.allow !== undefined ? { allow: ch.extras } : {}),
           ...(ch.overrides.length ? { overrides: ch.overrides } : {}),
+          ...subagentsField(rt, persona, cfg),
           workspace: ws,
           cwd: input.worktree,
           sessionName: sessionName(d.dist, ws, id),
@@ -2205,6 +2297,7 @@ export async function startAgent(
         argv: out.argv,
         env: out.env,
         passthrough: rt.envPassthrough,
+        launchEnv: rt.launchEnv,
         grants: cfg.agents[id]?.grants ?? [],
         ...binDirOf(det),
       },
@@ -2705,6 +2798,7 @@ export async function resumeAgent(
         {
           rec: {
             ...base,
+            ...subagentsField(rt, persona, cfg),
             cwd: rec.cwd,
             peerName,
             ...(token ? { launched: true } : {}),
@@ -2712,6 +2806,7 @@ export async function resumeAgent(
           argv: out.argv,
           env: out.env,
           passthrough: rt.envPassthrough,
+          launchEnv: rt.launchEnv,
           grants,
           ...binDirOf(det),
         },

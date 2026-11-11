@@ -111,7 +111,10 @@ import {
   FRESH_NOTE,
   type RuntimeChoice,
   type Started,
+  subagentsReport,
+  type SubagentsReport,
 } from "./agent-ops.js";
+import { INHERIT } from "../../shared/agents/subagents.js";
 import { peerSessionName } from "../../shared/agents/session-name.js";
 import {
   columns,
@@ -1016,6 +1019,31 @@ export function doctorLines(
   return lines;
 }
 
+const modelWord = (m: string) =>
+  m === INHERIT ? "inherit (the runtime decides)" : m;
+
+/** den#3: `agents doctor`'s subagents section. */
+export function subagentLines(s: SubagentsReport): string[] {
+  const lines = [
+    "subagents (den-claude: every subagent, Explore too)",
+    `  model       ${modelWord(s.model)}  (${s.from === "default" ? "Den's default; " : ""}agents.subagents.model)`,
+    `  connectors  ${s.claudeAiConnectors ? "on" : "off"}  (agents.claude_ai_connectors: the account's claude.ai connectors)`,
+  ];
+  if (s.personasError)
+    lines.push(`  personas    couldn't read: ${s.personasError}`);
+  s.personas.forEach((p, i) =>
+    lines.push(
+      `  ${i === 0 ? "personas    " : "            "}${p.id}: ${modelWord(p.model)}  (subagent_model)`,
+    ),
+  );
+  s.agents.forEach((a, i) =>
+    lines.push(
+      `  ${i === 0 ? "agents      " : "            "}${a.id}: ${modelWord(a.model)}  (${a.from}, when it last started)`,
+    ),
+  );
+  return lines;
+}
+
 async function doctor(
   args: string[],
   d: AgentsResolved,
@@ -1036,6 +1064,7 @@ async function doctor(
       JSON.stringify(
         {
           runtimes: rts,
+          subagents: subagentsReport(d),
           ...(ws ? { workspace: ws } : {}),
           userConfig: d.userConfigFile(),
         },
@@ -1051,6 +1080,8 @@ async function doctor(
     for (const l of doctorLines(r, d.cli, d.userConfigFile(), printed))
       d.out(l);
   });
+  d.out("");
+  for (const l of subagentLines(subagentsReport(d))) d.out(l);
   d.out("");
   d.out(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,

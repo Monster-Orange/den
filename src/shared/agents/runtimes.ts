@@ -80,7 +80,7 @@ export function withSessionPath(
  */
 export function agentSessionEnv(
   caller: NodeJS.ProcessEnv,
-  rt: Pick<Runtime, "envPassthrough">,
+  rt: Pick<Runtime, "envPassthrough" | "launchEnv">,
   launch: Record<string, string>,
   agentId: string,
   /** SEC-1c: the agent's actor token (`agents start` mints it; the probe has none). */
@@ -99,5 +99,6 @@ export function agentSessionEnv(
       ...(actorToken ? { [ACTOR_TOKEN_ENV]: actorToken } : {}),
     },
     scrub: allScrubEnv(),
+    ownLaunch: rt.launchEnv ?? [],
   });
 }
