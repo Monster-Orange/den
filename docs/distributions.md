@@ -3515,18 +3515,24 @@ it. With rules, the hook also sees `Write`, `Edit`, `MultiEdit`,
 ("use its API or its MCP tools instead"):
 
 - `docker exec`, `attach`, `export` and `cp` into the service's containers
-  (its compose project `<project>-…`, or a `container_name` in its compose
-  files), and `docker compose exec|cp|run|attach` on its project (`-p`,
-  `COMPOSE_PROJECT_NAME`, or a compose run in its checkout);
-- `docker run|create` that mounts its volumes (`<project>_…`, or a named
-  volume in its compose files) or its data paths, `--volumes-from` its
-  containers, and `docker volume inspect|rm|cp|export` on its volumes;
+  (`<project>-<service>-<n>` for each service in its compose files, or a
+  `container_name` there), and `docker compose exec|cp|run|attach` on its
+  project, picked as compose picks it (`-p`, `COMPOSE_PROJECT_NAME`, the
+  compose file's `name:`, then the folder's name);
+- `docker run|create` that mounts its volumes (`<project>_<volume>`, or a
+  volume's `name:`) or its data paths, `--volumes-from` its containers,
+  and `docker volume inspect|rm|cp|export` on its volumes;
 - reading or writing its data paths, with a tool or in a shell command;
 - with a `machine`: `orb`/`orbctl` on that machine (or with no machine
   named: the default one), `ssh`/`scp`/`rsync` to `<machine>.orb.local`
   or `<machine>@orb`, Docker on that machine's context
   (`--context`, `DOCKER_CONTEXT`, `DOCKER_HOST`), and `~/OrbStack` and
   `~/.orbstack`.
+
+It is about the service instance, matched by name, never by where a
+command runs. Another instance from the same repo under its own compose
+project (`vault-dev` beside `vault`, with its own data) is not held to it:
+declare only the instance whose data must go through the API.
 
 It reads a command's words the way a shell splits them, through
 `sh -c`, `$( )`, `eval`, `env`, `sudo`, `timeout` and `xargs`. Each denial

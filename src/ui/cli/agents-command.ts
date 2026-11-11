@@ -1084,9 +1084,24 @@ export function apiOnlyLines(
     "API-only services (agents reach them only through their API)",
   ];
   for (const s of rules.services) {
+    const svc = s.composeServices.length
+      ? [`${s.project}-{${s.composeServices.join(",")}}-N`]
+      : s.composeVolumes.length
+        ? []
+        : [`${s.project}-*`];
+    const vol = s.composeVolumes.length
+      ? [`${s.project}_{${s.composeVolumes.join(",")}}`]
+      : s.composeServices.length
+        ? []
+        : [`${s.project}_*`];
     const parts = [
-      `containers ${[`${s.project}-*`, ...s.containers].join(", ")}`,
-      `volumes ${[`${s.project}_*`, ...s.volumes].join(", ")}`,
+      `project ${s.project}`,
+      ...([...svc, ...s.containers].length
+        ? [`containers ${[...svc, ...s.containers].join(", ")}`]
+        : []),
+      ...([...vol, ...s.volumes].length
+        ? [`volumes ${[...vol, ...s.volumes].join(", ")}`]
+        : []),
       ...(s.paths.length ? [`data ${s.paths.join(", ")}`] : []),
       ...(s.machine
         ? [`machine ${s.machine} (and ~/OrbStack, ~/.orbstack)`]

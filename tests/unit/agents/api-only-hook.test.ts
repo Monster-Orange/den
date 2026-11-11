@@ -36,9 +36,10 @@ fs.writeFileSync(
         project: "vault",
         containers: ["vaultdb"],
         volumes: ["vault-store"],
+        composeServices: ["api", "db"],
+        composeVolumes: ["data"],
         paths: [data],
         machine: "vaultvm",
-        dirs: [repo],
       },
     ],
   }),
@@ -122,9 +123,30 @@ describe("D47: around the API is denied, with the API offered", () => {
     expect(r.stderr).toMatch(/Use its API or its MCP tools instead/);
   });
 
-  it("a compose call in its checkout is its project", () => {
-    expect(bash("docker compose exec api sh", repo).code).toBe(2);
+  it("a compose call is matched by its project, as compose picks it, never by where it runs", () => {
+    // A folder named for the project, with no -p: compose's own default.
+    const named = path.join(dir, "elsewhere", "vault");
+    fs.mkdirSync(named, { recursive: true });
+    expect(bash("docker compose exec api sh", named).code).toBe(2);
+    // The service's checkout, its compose file naming another project.
+    fs.writeFileSync(
+      path.join(repo, "compose.yaml"),
+      "name: vault-dev\nservices: {}\n",
+    );
+    expect(bash("docker compose exec api sh", repo).code).toBe(0);
+    expect(bash("docker compose -p vault exec api sh", repo).code).toBe(2);
+    fs.rmSync(path.join(repo, "compose.yaml"));
     expect(bash("docker compose exec api sh", other).code).toBe(0);
+  });
+
+  it("another instance that shares the prefix (vault-dev) is not it", () => {
+    for (const c of [
+      "docker exec vault-dev-api-1 sh",
+      "docker compose -p vault-dev exec api sh",
+      "docker run --rm -v vault-dev_data:/d alpine ls",
+      "docker volume inspect vault-dev_data",
+    ])
+      expect([c, bash(c).code]).toEqual([c, 0]);
   });
 
   it("DOCKER_CONTEXT from the agent's own environment counts", () => {

@@ -64,9 +64,10 @@ describe("D47: a manifest's api_only becomes a rule", () => {
       project: "vault",
       containers: ["vaultdb"],
       volumes: ["vault-store"],
+      composeServices: ["db", "api"],
+      composeVolumes: ["data"],
       paths: [path.join(repo, "var", "db"), "/home/x/vault-data"],
       machine: "vaultvm",
-      dirs: [repo],
     });
   });
 
@@ -202,9 +203,10 @@ describe("D47: agents doctor says what is API-only, where it's enforced, and tha
             project: "vault",
             containers: ["vaultdb"],
             volumes: [],
+            composeServices: ["api", "db"],
+            composeVolumes: ["data"],
             paths: ["/srv/vault"],
             machine: "vaultvm",
-            dirs: [],
           },
         ],
       },
@@ -225,7 +227,7 @@ describe("D47: agents doctor says what is API-only, where it's enforced, and tha
     );
     const text = lines.join("\n");
     expect(lines[1]).toBe(
-      "  vault: containers vault-*, vaultdb; volumes vault_*; data /srv/vault; machine vaultvm (and ~/OrbStack, ~/.orbstack)",
+      "  vault: project vault; containers vault-{api,db}-N, vaultdb; volumes vault_{data}; data /srv/vault; machine vaultvm (and ~/OrbStack, ~/.orbstack)",
     );
     expect(text).toMatch(/enforced +den-claude: a guardrail, not a boundary/);
     expect(text).toMatch(

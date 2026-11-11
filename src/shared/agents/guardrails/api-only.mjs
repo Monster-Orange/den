@@ -17,11 +17,13 @@
  * Rules file (JSON):
  *   { "services": [ { "name": "hub", "project": "hub",
  *       "containers": ["hub-db"], "volumes": ["hub_data"],
- *       "paths": ["/abs/data"], "machine": "hub-vm",
- *       "dirs": ["/abs/repo"] } ] }
- * `name` is what the agent is told; `project` is its compose project (its
- * containers are `<project>-…`, its volumes `<project>_…`); `dirs` are the
- * service's checkouts (a `docker compose` run there is its project).
+ *       "composeServices": ["api", "db"], "composeVolumes": ["data"],
+ *       "paths": ["/abs/data"], "machine": "hub-vm" } ] }
+ * `name` is what the agent is told; `project` is its compose project: its
+ * containers are `<project>-<service>-<n>` and its volumes
+ * `<project>_<volume>` for the compose services and volumes listed, and
+ * `containers`/`volumes` are names its compose files give outright. It is
+ * the service instance, matched by name, never by where a command runs.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -75,17 +77,78 @@ export function pathService(p, rules, opts = {}) {
   return null;
 }
 
-/** Does a container, volume or project name belong to service `s`? */
+const reEsc = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Does a container, volume or project name belong to service `s`? By name
+ * only, never by where a command runs: the project itself, its compose
+ * services' containers (`<project>-<service>-<n>`), its compose volumes
+ * (`<project>_<volume>`), and names its compose files give outright. A
+ * project that only shares the prefix (`vault-dev` beside `vault`) is not
+ * it. With no compose services known, any `<project>-…`/`<project>_…`.
+ */
 function owns(s, name) {
   const n = String(name).replace(/^\//, "");
   if (!n) return false;
   const proj = String(s.project || s.name || "");
+  if (list(s.containers).includes(n) || list(s.volumes).includes(n))
+    return true;
+  if (!proj) return false;
+  if (n === proj) return true;
+  const svcs = list(s.composeServices);
+  const vols = list(s.composeVolumes);
+  if (!svcs.length && !vols.length)
+    return n.startsWith(`${proj}-`) || n.startsWith(`${proj}_`);
+  const p = reEsc(proj);
   if (
-    proj &&
-    (n === proj || n.startsWith(`${proj}-`) || n.startsWith(`${proj}_`))
+    svcs.length &&
+    new RegExp(`^${p}[-_](?:${svcs.map(reEsc).join("|")})(?:[-_]\\d+)?$`).test(
+      n,
+    )
   )
     return true;
-  return list(s.containers).includes(n) || list(s.volumes).includes(n);
+  return (
+    vols.length > 0 &&
+    new RegExp(`^${p}_(?:${vols.map(reEsc).join("|")})$`).test(n)
+  );
+}
+
+/** The service whose compose project is exactly `project`. */
+const projectOwner = (rules, project) =>
+  rules.services.find((s) => String(s.project || s.name) === project)?.name ??
+  null;
+
+/**
+ * The project a `docker compose` call acts on, as compose picks it: -p,
+ * then COMPOSE_PROJECT_NAME, then the compose file's top-level `name:`,
+ * then the project directory's name.
+ */
+function composeProject(project, dir, files, ctx) {
+  if (project) return project;
+  const where = expand(dir || ".", ctx.cwd, ctx.home);
+  const candidates = files.length
+    ? files.map((f) => expand(f, ctx.cwd, ctx.home))
+    : [
+        "compose.yaml",
+        "compose.yml",
+        "docker-compose.yaml",
+        "docker-compose.yml",
+      ].map((f) => path.join(where, f));
+  for (const f of candidates) {
+    let text;
+    try {
+      text = fs.readFileSync(f, "utf-8");
+    } catch {
+      continue;
+    }
+    const m = /^name:\s*["']?([^"'\s#]+)/m.exec(text);
+    if (m) return m[1];
+    break;
+  }
+  return path
+    .basename(where)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "");
 }
 
 const ownerOf = (rules, name) =>
@@ -317,6 +380,7 @@ function dockerReason(words, rules, ctx) {
 function composeReason(args, rules, ctx) {
   let project = ctx.env.COMPOSE_PROJECT_NAME ?? "";
   let dir = "";
+  const files = [];
   let j = 0;
   for (; j < args.length; j++) {
     const a = args[j];
@@ -340,20 +404,17 @@ function composeReason(args, rules, ctx) {
       const v = eq ?? args[++j] ?? "";
       if (flag === "-p" || flag === "--project-name") project = v;
       if (flag === "--project-directory") dir = v;
-      if ((flag === "-f" || flag === "--file") && !dir) dir = path.dirname(v);
+      if (flag === "-f" || flag === "--file") {
+        files.push(v);
+        if (!dir) dir = path.dirname(v);
+      }
     }
   }
   const sub = args[j];
   if (!["exec", "cp", "run", "attach"].includes(sub)) return null;
-  let s = project ? ownerOf(rules, project) : null;
-  if (!s && !project) {
-    const where = expand(dir || ".", ctx.cwd, ctx.home);
-    s =
-      rules.services.find((x) =>
-        list(x.dirs).some((d) => under(where, expand(d, "/", ctx.home))),
-      )?.name ?? null;
-  }
-  return s ? { service: s, what: `docker compose ${sub}` } : null;
+  const p = composeProject(project, dir, files, ctx);
+  const s = p ? projectOwner(rules, p) : null;
+  return s ? { service: s, what: `docker compose ${sub} on ${p}` } : null;
 }
 
 /** `orb` / `orbctl` aimed at a declared machine (or at none: the default). */

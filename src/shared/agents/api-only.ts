@@ -33,12 +33,13 @@ export interface ApiOnlyService {
   /** Containers and volumes named outright in its compose files. */
   containers: string[];
   volumes: string[];
+  /** Its compose services and volumes: `<project>-<service>-<n>`, `<project>_<volume>`. */
+  composeServices: string[];
+  composeVolumes: string[];
   /** Its data paths, absolute. */
   paths: string[];
   /** Its OrbStack machine, when it runs in one. */
   machine?: string;
-  /** Its checkouts: `docker compose` run there is its project. */
-  dirs: string[];
 }
 
 export interface ApiOnlyRules {
@@ -56,9 +57,16 @@ const COMPOSE_FILES = [
 function composeNames(
   repo: string,
   m: RawManifest,
-): { containers: string[]; volumes: string[] } {
+): {
+  containers: string[];
+  volumes: string[];
+  composeServices: string[];
+  composeVolumes: string[];
+} {
   const containers: string[] = [];
   const volumes: string[] = [];
+  const composeServices: string[] = [];
+  const composeVolumes: string[] = [];
   const dir = path.resolve(repo, m.compose?.dir ?? ".");
   const files = m.compose?.files?.length
     ? m.compose.files.map((f) => path.resolve(dir, f))
@@ -74,13 +82,17 @@ function composeNames(
       services?: Record<string, { container_name?: unknown }>;
       volumes?: Record<string, { name?: unknown } | null>;
     };
-    for (const svc of Object.values(d.services ?? {}))
+    for (const [key, svc] of Object.entries(d.services ?? {})) {
+      composeServices.push(key);
       if (typeof svc?.container_name === "string")
         containers.push(svc.container_name);
-    for (const v of Object.values(d.volumes ?? {}))
+    }
+    for (const [key, v] of Object.entries(d.volumes ?? {})) {
       if (typeof v?.name === "string") volumes.push(v.name);
+      else composeVolumes.push(key);
+    }
   }
-  return { containers, volumes };
+  return { containers, volumes, composeServices, composeVolumes };
 }
 
 const expandHome = (p: string, home: string): string =>
@@ -103,7 +115,6 @@ export function apiOnlyService(
       path.resolve(repo, expandHome(p, home)),
     ),
     ...(m.machine ? { machine: m.machine } : {}),
-    dirs: [repo],
   };
 }
 
@@ -118,7 +129,8 @@ function add(list: ApiOnlyService[], s: ApiOnlyService): void {
   had.containers = u(had.containers, s.containers);
   had.volumes = u(had.volumes, s.volumes);
   had.paths = u(had.paths, s.paths);
-  had.dirs = u(had.dirs, s.dirs);
+  had.composeServices = u(had.composeServices, s.composeServices);
+  had.composeVolumes = u(had.composeVolumes, s.composeVolumes);
   had.machine ??= s.machine;
 }
 
