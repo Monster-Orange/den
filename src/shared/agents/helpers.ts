@@ -92,12 +92,6 @@ export interface HelperReadOptions {
  * isn't in the list sits at the top level.
  */
 export function sortHelpers(hs: Helper[]): Helper[] {
-  const live = (h: Helper) => (h.status === "running" ? 0 : 1);
-  const order = (a: Helper, b: Helper) =>
-    live(a) - live(b) ||
-    (b.startedAt ?? b.lastActivityAt ?? 0) -
-      (a.startedAt ?? a.lastActivityAt ?? 0) ||
-    a.id.localeCompare(b.id);
   const ids = new Set(hs.map((h) => h.id));
   const kids = new Map<string, Helper[]>();
   const roots: Helper[] = [];
@@ -105,6 +99,27 @@ export function sortHelpers(hs: Helper[]): Helper[] {
     if (h.parentId && h.parentId !== h.id && ids.has(h.parentId))
       kids.set(h.parentId, [...(kids.get(h.parentId) ?? []), h]);
     else roots.push(h);
+  // Running counts for the whole branch: a done helper with a running
+  // helper under it sorts with the running ones (0.4.28-dev.1's gate).
+  const busy = new Map<string, boolean>();
+  const runs = (h: Helper, path = new Set<string>()): boolean => {
+    const known = busy.get(h.id);
+    if (known !== undefined) return known;
+    if (path.has(h.id)) return h.status === "running";
+    path.add(h.id);
+    const r =
+      h.status === "running" ||
+      (kids.get(h.id) ?? []).some((k) => runs(k, path));
+    path.delete(h.id);
+    busy.set(h.id, r);
+    return r;
+  };
+  const live = (h: Helper) => (runs(h) ? 0 : 1);
+  const order = (a: Helper, b: Helper) =>
+    live(a) - live(b) ||
+    (b.startedAt ?? b.lastActivityAt ?? 0) -
+      (a.startedAt ?? a.lastActivityAt ?? 0) ||
+    a.id.localeCompare(b.id);
   const out: Helper[] = [];
   const seen = new Set<string>();
   const walk = (h: Helper) => {
@@ -117,6 +132,20 @@ export function sortHelpers(hs: Helper[]): Helper[] {
   // A loop of parents (never from Claude Code): still listed, flat.
   for (const h of [...hs].sort(order)) if (!seen.has(h.id)) out.push(h);
   return out;
+}
+
+/**
+ * At most `n` of `list`, in its order: the running ones first to stay,
+ * then the rest (a running helper is never cut for a done one).
+ */
+export function capHelpers(list: readonly Helper[], n: number): Helper[] {
+  const kept = new Set(
+    [
+      ...list.filter((h) => h.status === "running"),
+      ...list.filter((h) => h.status !== "running"),
+    ].slice(0, Math.max(0, n)),
+  );
+  return list.filter((h) => kept.has(h));
 }
 
 /**

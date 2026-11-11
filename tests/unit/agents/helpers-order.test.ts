@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import {
+  capHelpers,
   shownDepths,
   sortHelpers,
   type Helper,
@@ -40,6 +41,26 @@ const ORDER_CASES: { name: string; list: Helper[]; ids: string[] }[] = [
       h("g", 250, { parentId: "c1", depth: 3 }),
     ],
     ids: ["p", "c2", "c1", "g"],
+  },
+  {
+    name: "a done parent with a running child: the branch sorts as running",
+    list: [
+      h("p", 100),
+      h("q", 300),
+      h("c", 150, { parentId: "p", status: "running" }),
+    ],
+    ids: ["p", "c", "q"],
+  },
+  {
+    name: "a running grandchild lifts its branch at every level",
+    list: [
+      h("p", 100),
+      h("q", 300),
+      h("c1", 200, { parentId: "p" }),
+      h("c2", 120, { parentId: "p" }),
+      h("g", 250, { parentId: "c2", depth: 3, status: "running" }),
+    ],
+    ids: ["p", "c2", "g", "c1", "q"],
   },
   {
     name: "a parent not listed: the child at the top level",
@@ -79,5 +100,23 @@ describe("shownDepths: indent only under a parent shown above", () => {
     const all = sortHelpers([h("p", 100), h("c", 200, { parentId: "p" })]);
     const shown = all.filter((x) => x.id !== "p");
     expect(shownDepths(shown).get("c")).toBe(0);
+  });
+});
+
+describe("capHelpers: a running helper is never cut for a done one", () => {
+  it("keeps the running child of a done parent past the cap, in order", () => {
+    const list = [
+      ...Array.from({ length: 9 }, (_, i) => h(`d${i}`, 900 - i)),
+      h("kid", 50, { parentId: "d8", status: "running" }),
+    ];
+    const out = capHelpers(list, 8).map((x) => x.id);
+    expect(out).toHaveLength(8);
+    expect(out.at(-1)).toBe("kid");
+    expect(out.slice(0, 7)).toEqual(list.slice(0, 7).map((x) => x.id));
+  });
+
+  it("under the cap: all of them, unchanged", () => {
+    const list = [h("a", 2), h("b", 1, { status: "running" })];
+    expect(capHelpers(list, 8)).toEqual(list);
   });
 });

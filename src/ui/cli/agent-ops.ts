@@ -51,6 +51,7 @@
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import {
+  capHelpers,
   HELPER_DEFAULTS,
   HELPERS_READ_ONLY_NOTE,
   helperCounts,
@@ -900,14 +901,12 @@ export function rowHelpers(
   }
   if (!hs.length) return undefined;
   const keep = settings.collapseDoneMinutes * 60_000;
-  const recent = hs
-    .filter(
-      (h) =>
-        h.status === "running" ||
-        (!h.earlier && now - (h.lastActivityAt ?? h.startedAt ?? 0) <= keep),
-    )
-    .slice(0, ROW_HELPERS);
-  return { ...helperCounts(hs), recent };
+  const shown = hs.filter(
+    (h) =>
+      h.status === "running" ||
+      (!h.earlier && now - (h.lastActivityAt ?? h.startedAt ?? 0) <= keep),
+  );
+  return { ...helperCounts(hs), recent: capHelpers(shown, ROW_HELPERS) };
 }
 
 /** D32: an agent's helpers, read-only, and whether its runtime can tell. */

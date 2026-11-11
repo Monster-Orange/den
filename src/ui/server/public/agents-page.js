@@ -84,6 +84,7 @@
  * as a tag.
  */
 import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
+import { focusBack, refindKey } from "/transcript-view.js";
 import {
   helperBarButtonHtml,
   helperRowsHtml,
@@ -559,6 +560,37 @@ function rowHtml(r) {
   );
 }
 
+/** Where focus was in the list, as a selector that finds it again once
+ * the list is redrawn: a helper row or button, an agent's row, a link. */
+function listFocusKey(el) {
+  const key = refindKey(el);
+  if (key) return key;
+  const q = (v) => CSS.escape(String(v ?? ""));
+  if (el.matches("button.agr[data-id]"))
+    return `#agl button.agr[data-id="${q(el.dataset.id)}"]`;
+  if (el.matches("[data-act]")) {
+    const row = el.closest(".agst[data-agent]");
+    const act = `[data-act="${q(el.dataset.act)}"]`;
+    return row
+      ? `#agl .agst[data-agent="${q(row.dataset.agent)}"][data-ws="${q(row.dataset.ws)}"] ${act}`
+      : `#agl ${act}`;
+  }
+  return "";
+}
+
+/** The list's HTML, written only when it changed; focus inside it is kept
+ * (the refresh poll redraws it every few seconds). */
+function setList(el, html) {
+  if (el.denHtml === html) return;
+  el.denHtml = html;
+  const had = el.contains(document.activeElement)
+    ? document.activeElement
+    : null;
+  const key = had ? listFocusKey(had) : "";
+  el.innerHTML = html;
+  if (had) focusBack(had, key);
+}
+
 function paintList() {
   const el = st.root.querySelector("#agl");
   el.removeAttribute("aria-busy");
@@ -572,7 +604,7 @@ function paintList() {
       `<div class="agnote" data-note="backend">${esc(t("ag.noBackend", { cli: CLI }))}</div>`,
     );
   if (!st.data) {
-    el.innerHTML = notes.join("");
+    setList(el, notes.join(""));
     return;
   }
   // ON-6: the server agent's group, "Server", first, whatever the view.
@@ -625,10 +657,12 @@ function paintList() {
         )
         .join("")
     : `<div class="none">${esc(t("ag.none.scope", { scope: st.scopeLabel }))}</div>`;
-  el.innerHTML =
+  setList(
+    el,
     notes.join("") +
-    body +
-    `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))} ${esc(t("ag.hint.keys"))}</div>`;
+      body +
+      `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))} ${esc(t("ag.hint.keys"))}</div>`,
+  );
   const clear = st.root.querySelector("#ag-clear");
   if (clear) clear.hidden = !visibleRows().some(isStopped);
   // No such workspace: nothing to start an agent in.

@@ -15,7 +15,9 @@ config and manifest changes a distribution must make to move to it under
   Click one to read its transcript: what it was asked, its answers, and
   its tool calls in a few words. Den can't stop or steer a helper, and
   says so; to change what one does, tell the agent. Helpers from the
-  agent's earlier conversations are folded under "Earlier (n)". Also
+  agent's earlier conversations are folded under "Earlier (n)". A
+  helper's own helpers sit under it, and a running one is listed first,
+  with the helper it belongs to. Also
   `<cli> agents helpers <id> [<helper>]` (`--all`, `--limit`, `--json`),
   the MCP tool `agent_helpers`, and the routes `GET
   /api/workspaces/<ws>/agents/<id>/helpers[/<helper>]` and `GET
@@ -37,6 +39,11 @@ config and manifest changes a distribution must make to move to it under
   machine, like localhost.
 - **Disconnect asks first,** saying it revokes this Den's Hub key on Hub
   and that agents lose Hub until you Connect again.
+
+### Fixed
+
+- The Agents list no longer drops keyboard focus every few seconds: its
+  refresh kept redrawing it. Focus stays on the row or button it was on.
 
 ### Migrations
 

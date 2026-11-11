@@ -423,4 +423,64 @@ describe("an agent's helpers on the agents page (D32)", () => {
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);
+
+  it("focus in the list stays put through its refresh poll, changed or not", async () => {
+    if (!browser) return;
+    const dir = path.join(
+      s.tmp,
+      "home",
+      ".claude",
+      "projects",
+      "-seeded",
+      TOKEN,
+      "subagents",
+    );
+    const add = (id: string) => {
+      fs.writeFileSync(
+        path.join(dir, `agent-${id}.meta.json`),
+        JSON.stringify({ agentType: "Explore", description: `Look ${id}` }),
+      );
+      fs.writeFileSync(
+        path.join(dir, `agent-${id}.jsonl`),
+        JSON.stringify({
+          type: "user",
+          isSidechain: true,
+          agentId: id,
+          timestamp: new Date().toISOString(),
+          message: { role: "user", content: "look" },
+        }) + "\n",
+      );
+    };
+    const { p, errors } = await open();
+    const where = () =>
+      p.evaluate(() => {
+        const a = document.activeElement as HTMLElement | null;
+        return a?.matches("button.agh")
+          ? `row:${a.dataset.helper}`
+          : a?.matches("button.agr")
+            ? "agent"
+            : (a?.tagName ?? "none");
+      });
+    const row = `#agl button.agh[data-helper="${LIVE}"]`;
+    await p.locator(row).waitFor({ timeout: 15_000 });
+    await p.focus(row);
+    // Nothing changed: a poll later, the same row, focused.
+    await p.waitForTimeout(6_000);
+    expect(await where()).toBe(`row:${LIVE}`);
+    // The list changed (a new helper): redrawn, focus found again.
+    add("a8f0c0ffee0000008");
+    await p
+      .locator('#agl [data-helper="a8f0c0ffee0000008"]')
+      .waitFor({ timeout: 15_000 });
+    expect(await where()).toBe(`row:${LIVE}`);
+    // An agent's own row, the same.
+    await p.focus(`#agl button.agr[data-id="${sid}"]`);
+    add("a9f0c0ffee0000009");
+    await p
+      .locator('#agl [data-helper="a9f0c0ffee0000009"]')
+      .waitFor({ timeout: 15_000 });
+    expect(await where()).toBe("agent");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
 });
