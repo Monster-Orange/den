@@ -21,7 +21,8 @@ import {
   callbackPage,
   defaultInstallLabel,
   hubTokenFile,
-  plainHttpsOrigin,
+  denUrlOrigin,
+  pickDenUrl,
   storeRefFor,
   type HubConnectDeps,
   type StoredToken,
@@ -138,6 +139,8 @@ describe("start: den_url, this Den's https edge address", () => {
     const h = harness({ denUrl: () => "https://den.north.example.test/" });
     expect(start(h).q.den_url).toBe("https://den.north.example.test");
     expect(start(h).q.den_url).toBe("https://den.north.example.test");
+    const local = harness({ denUrl: () => "http://den.north.localhost" });
+    expect(start(local).q.den_url).toBe("http://den.north.localhost");
   });
 
   it("left out with no edge address, or one Hub would refuse (a 400)", () => {
@@ -156,12 +159,31 @@ describe("start: den_url, this Den's https edge address", () => {
     expect(start(harness()).q.den_url).toBeUndefined();
   });
 
-  it("plainHttpsOrigin: an https origin only", () => {
-    expect(plainHttpsOrigin("https://a.example.test:8443")).toBe(
+  it("of this Den's edge addresses: https first, else a .localhost one, else none", () => {
+    expect(
+      pickDenUrl([
+        "http://den.north.localhost",
+        "https://den.north.example.test/",
+      ]),
+    ).toBe("https://den.north.example.test");
+    expect(
+      pickDenUrl(["http://den.lan.example.test", "http://den.north.localhost"]),
+    ).toBe("http://den.north.localhost");
+    expect(pickDenUrl(["http://den.lan.example.test"])).toBeUndefined();
+    expect(pickDenUrl([])).toBeUndefined();
+  });
+
+  it("denUrlOrigin: an https origin, or http to a .localhost name (Hub takes both)", () => {
+    expect(denUrlOrigin("https://a.example.test:8443")).toBe(
       "https://a.example.test:8443",
     );
-    expect(plainHttpsOrigin("https://a.example.test#x")).toBeNull();
-    expect(plainHttpsOrigin("ftp://a.example.test")).toBeNull();
+    expect(denUrlOrigin("http://den.north.localhost:8080/")).toBe(
+      "http://den.north.localhost:8080",
+    );
+    expect(denUrlOrigin("http://localhost:7000")).toBeNull();
+    expect(denUrlOrigin("http://localhost.example.test")).toBeNull();
+    expect(denUrlOrigin("https://a.example.test#x")).toBeNull();
+    expect(denUrlOrigin("ftp://a.example.test")).toBeNull();
   });
 });
 

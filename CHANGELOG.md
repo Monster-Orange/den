@@ -24,8 +24,8 @@ config and manifest changes a distribution must make to move to it under
   **Hub ↗** link above Settings: the company's page on Hub, in a new tab,
   with a count of the threads waiting on you. When Hub rejects the token
   or forbids the role, the link is greyed and goes to Settings › Hub.
-- **Connect sends `den_url`:** this Den's https edge address, when it has
-  one, so Hub can link back to it.
+- **Connect sends `den_url`:** this Den's edge address, when it has one
+  (https, else `http://<name>.localhost`), so Hub can link back to it.
 - **`agents.helpers` settings:** `active_minutes` (default 10: no activity
   this long and not known done shows idle) and `collapse_done_minutes`
   (default 30: done helpers fold away after this).

@@ -90,8 +90,15 @@ export interface HubConnectDeps {
   denUrl?: () => string | undefined;
 }
 
-/** `u` as a plain https origin (no user, path, query or hash), else null. */
-export function plainHttpsOrigin(u: string): string | null {
+/** A `<name>.localhost` host: this machine (RFC 6761). */
+export const isDotLocalhost = (host: string) =>
+  host.toLowerCase().endsWith(".localhost");
+
+/**
+ * `u` as an origin Hub takes for den_url, else null: plain (no user, path,
+ * query or hash), and https or http to a `<name>.localhost`.
+ */
+export function denUrlOrigin(u: string): string | null {
   let x: URL;
   try {
     x = new URL(u);
@@ -99,7 +106,10 @@ export function plainHttpsOrigin(u: string): string | null {
     return null;
   }
   if (
-    x.protocol !== "https:" ||
+    !(
+      x.protocol === "https:" ||
+      (x.protocol === "http:" && isDotLocalhost(x.hostname))
+    ) ||
     x.username ||
     x.password ||
     (x.pathname !== "/" && x.pathname !== "") ||
@@ -110,16 +120,19 @@ export function plainHttpsOrigin(u: string): string | null {
   return x.origin;
 }
 
-/** The first edge route to this server that is a plain https address. */
+/** Of edge addresses, the den_url to send: https first, else a .localhost one. */
+export function pickDenUrl(urls: readonly string[]): string | undefined {
+  const all = urls.map((u) => denUrlOrigin(u)).filter((o): o is string => !!o);
+  return all.find((o) => o.startsWith("https:")) ?? all[0];
+}
+
+/** This server's edge address for den_url (pickDenUrl of its edge routes). */
 export function edgeDenUrl(
   port = Number(process.env.PORT) || 0,
 ): string | undefined {
   try {
     const ports = new Set([readWebPort(), ...(port ? [port] : [])]);
-    for (const r of webRouteHosts(readEdgeConfig(), ports)) {
-      const o = plainHttpsOrigin(r.url);
-      if (o) return o;
-    }
+    return pickDenUrl(webRouteHosts(readEdgeConfig(), ports).map((r) => r.url));
   } catch {
     /* no edge config: none */
   }
@@ -258,8 +271,7 @@ export function callbackOriginProblem(origin: string): string | null {
   // it never leaves this machine, and browsers count it a secure context),
   // which is how an edge on this machine is often reached over http.
   const h = u.hostname.toLowerCase();
-  const loop =
-    h === "localhost" || h === "127.0.0.1" || h.endsWith(".localhost");
+  const loop = h === "localhost" || h === "127.0.0.1" || isDotLocalhost(h);
   if (u.protocol === "https:" || (u.protocol === "http:" && loop)) return null;
   return `Hub can only send you back to https or to this machine (localhost or a .localhost name); open ${product().title} over https (its edge address) or on this machine, then Connect`;
 }
@@ -317,9 +329,10 @@ export class HubConnect {
       code_challenge: challenge,
       code_challenge_method: "S256",
     });
-    // Hub takes only a plain https address (anything else is a 400), and
-    // uses it only when redirect_uri is loopback. A reconnect sends it again.
-    const denUrl = plainHttpsOrigin(this.deps.denUrl?.() ?? "");
+    // Hub takes only a plain https or <name>.localhost address (anything
+    // else is a 400), and uses it only when redirect_uri is loopback. A
+    // reconnect sends it again.
+    const denUrl = denUrlOrigin(this.deps.denUrl?.() ?? "");
     if (denUrl) q.set("den_url", denUrl);
     return { ok: true, location: `${hubUrl}/connect?${q}` };
   }

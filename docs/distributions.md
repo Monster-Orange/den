@@ -938,8 +938,8 @@ Settings, connected. Nobody copies a token or edits config.
   open Den over https (its edge address), on localhost, or on a
   `<name>.localhost` address (an edge on this machine over http; RFC 6761
   keeps it on this machine) to Connect.
-- When this Den has an https edge address, Connect sends it as
-  `den_url`. Hub links back to Den with it when the browser came over
+- When this Den has an edge address, Connect sends it as `den_url`:
+  its https one, else an `http://<name>.localhost` one. Hub links back to Den with it when the browser came over
   loopback. A Reconnect sends it again.
 - This install's label on Hub is `<cli> on <machine>`.
 - The token is the install's (SEC-0), kept in the install's own secrets
