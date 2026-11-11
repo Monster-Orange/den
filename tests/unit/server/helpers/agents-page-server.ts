@@ -21,11 +21,7 @@
  *
  * Invented names only. The caller closes it (stop) and its temp dir goes.
  */
-import type { ChildProcess } from "child_process";
 import * as fs from "fs";
-import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { SessionHost } from "../../../../src/shared/sessions/host.js";
@@ -40,7 +36,11 @@ import {
 } from "../../sessions/helpers/fake-pty.js";
 import { denAuth } from "./den-auth.js";
 import { CLAUDE_SHIM } from "../../agents/helpers/rig.js";
-import { spawnServer, stopServer } from "../../../child-servers.js";
+import {
+  startDenServer,
+  stopServer,
+  type StartedServer,
+} from "../../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../../..");
 
@@ -68,28 +68,6 @@ export interface AgentsPageServer {
 function write(file: string, content: string, mode?: number): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content, mode ? { mode } : undefined);
-}
-
-async function freePort(): Promise<number> {
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "localhost", r));
-  const p = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  return p;
-}
-
-function get(port: number, p: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const req = http.get(
-      { host: "localhost", port, path: p, timeout: 5_000, agent: false },
-      (res) => {
-        res.resume();
-        res.on("end", () => resolve(res.statusCode ?? 0));
-      },
-    );
-    req.on("error", reject);
-    req.on("timeout", () => req.destroy(new Error("timeout")));
-  });
 }
 
 export async function startAgentsPageServer(
@@ -261,7 +239,6 @@ export async function startAgentsPageServer(
   });
   await host.listen();
 
-  const port = await freePort();
   const env: NodeJS.ProcessEnv = {
     HOME: home,
     // Never this machine's own PATH (it may hold a real claude, codex,
@@ -289,34 +266,24 @@ export async function startAgentsPageServer(
     DEN_NO_OPEN: "1",
     ACME_NO_OPEN: "1",
     NO_COLOR: "1",
-    PORT: String(port),
   };
-  let out = "";
   // node itself, by path: the env's PATH may not have it.
-  const server: ChildProcess = spawnServer(
-    process.execPath,
-    [
-      path.join(ENGINE, "node_modules", "tsx", "dist", "cli.mjs"),
-      path.join(ENGINE, "src", "ui", "server", "index.ts"),
-    ],
-    { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] },
-  );
-  server.stdout!.on("data", (d: Buffer) => (out += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (out += d.toString()));
-  const deadline = Date.now() + 30_000;
-  for (;;) {
-    try {
-      if ((await get(port, "/api/server-info")) === 200) break;
-    } catch {
-      /* not up yet */
-    }
-    if (server.exitCode !== null || Date.now() > deadline) {
-      await stopServer(server);
-      await host.close();
-      throw new Error("the web server did not start");
-    }
-    await new Promise((r) => setTimeout(r, 200));
+  let started: StartedServer;
+  try {
+    started = await startDenServer(
+      process.execPath,
+      [
+        path.join(ENGINE, "node_modules", "tsx", "dist", "cli.mjs"),
+        path.join(ENGINE, "src", "ui", "server", "index.ts"),
+      ],
+      { cwd: root, env },
+      { timeoutMs: 30_000 },
+    );
+  } catch (err) {
+    await host.close();
+    throw err;
   }
+  const { server, port } = started;
   const base = `http://localhost:${port}`;
   return {
     port,
@@ -353,7 +320,7 @@ export async function startAgentsPageServer(
       });
       return r.status;
     },
-    log: () => out,
+    log: started.out,
     async stop() {
       await stopServer(server);
       await host.close();

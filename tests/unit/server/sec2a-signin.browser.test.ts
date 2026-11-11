@@ -17,13 +17,11 @@ import { type ChildProcess } from "child_process";
 import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
 import { readWebSecret } from "../../../src/shared/web-secret.js";
 import * as fs from "fs";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { writeWebOwner } from "../../../src/shared/web-owner.js";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
@@ -35,14 +33,6 @@ let tmp = "";
 let stateDir = "";
 let port = 0;
 let server: ChildProcess;
-
-async function freePort(): Promise<number> {
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "localhost", r));
-  const p = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  return p;
-}
 
 beforeAll(async () => {
   try {
@@ -78,8 +68,7 @@ beforeAll(async () => {
     "web:\n  github_client_id: Iv23liAcmeTest\n",
   );
   writeWebOwner({ id: 4242, login: "octo-owner" }, stateDir);
-  port = await freePort();
-  server = spawnServer(
+  const started = await startDenServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -93,22 +82,13 @@ beforeAll(async () => {
         HOME: path.join(tmp, "home"),
         DEN_NO_OPEN: "1",
         NO_COLOR: "1",
-        PORT: String(port),
         DEN_TEST_GITHUB_URL: gh.url,
       },
-      stdio: ["ignore", "ignore", "ignore"],
     },
+    { timeoutMs: 40_000 },
   );
-  const deadline = Date.now() + 40_000;
-  for (;;) {
-    try {
-      if ((await fetch(`http://localhost:${port}/api/server-info`)).ok) break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline) throw new Error("server did not start");
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  server = started.server;
+  port = started.port;
 }, 60_000);
 
 afterAll(async () => {

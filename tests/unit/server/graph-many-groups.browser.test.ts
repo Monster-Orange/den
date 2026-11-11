@@ -23,12 +23,10 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import * as net from "net";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 // org → its repos' service counts (31 services, 15 repos).
@@ -68,7 +66,6 @@ const shape = (names: string[]): [number, number] => {
 let tmp = "";
 let port = 0;
 let server: ChildProcess;
-let serverOut = "";
 let browser: Browser | null = null;
 let latest = "";
 
@@ -158,11 +155,7 @@ beforeAll(async () => {
     );
   }
 
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "localhost", r));
-  port = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  server = spawnServer(
+  const started = await startDenServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -176,27 +169,12 @@ beforeAll(async () => {
         HOME: path.join(tmp, "home"),
         DEN_NO_OPEN: "1",
         NO_COLOR: "1",
-        PORT: String(port),
       },
-      stdio: ["ignore", "pipe", "pipe"],
     },
+    { timeoutMs: 40_000 },
   );
-  server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  const deadline = Date.now() + 40_000;
-  for (;;) {
-    if (server.exitCode !== null)
-      throw new Error(`server exited:\n${serverOut}`);
-    try {
-      const r = await get("/api/server-info");
-      if (r.status === 200 && JSON.parse(r.body).root === root) break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline)
-      throw new Error(`server did not start:\n${serverOut}`);
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  server = started.server;
+  port = started.port;
   latest =
     (JSON.parse((await get("/api/changelog")).body) as { version: string }[])[0]
       ?.version ?? "";

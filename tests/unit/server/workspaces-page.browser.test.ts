@@ -27,14 +27,13 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
 let root = "";
 let port = 0;
 let server: ChildProcess;
-let serverOut = "";
 let okServer: http.Server;
 let browser: Browser | null = null;
 let latest = "";
@@ -43,19 +42,6 @@ let envBase: NodeJS.ProcessEnv = {};
 function write(file: string, content: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
-}
-function get(p: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const req = http.get(
-      { host: "localhost", port, path: p, timeout: 5_000, agent: false },
-      (res) => {
-        res.resume();
-        res.on("end", () => resolve(res.statusCode ?? 0));
-      },
-    );
-    req.on("error", reject);
-    req.on("timeout", () => req.destroy(new Error("timeout")));
-  });
 }
 async function freePort(): Promise<number> {
   const s = net.createServer();
@@ -158,7 +144,6 @@ beforeAll(async () => {
   write(path.join(shim, "docker"), "#!/bin/sh\nexit 1\n");
   fs.chmodSync(path.join(shim, "docker"), 0o755);
 
-  port = await freePort();
   envBase = {
     ...process.env,
     PATH: `${path.join(tmp, "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
@@ -173,28 +158,16 @@ beforeAll(async () => {
     ACME_NO_OPEN: "1",
     NO_COLOR: "1",
   };
-  server = spawnServer(
+  const started = await startDenServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
       cwd: root,
-      env: { ...envBase, PORT: String(port) },
-      stdio: ["ignore", "pipe", "pipe"],
+      env: envBase,
     },
   );
-  server.stdout!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  server.stderr!.on("data", (d: Buffer) => (serverOut += d.toString()));
-  const deadline = Date.now() + 20_000;
-  for (;;) {
-    try {
-      if ((await get("/api/server-info")) === 200) break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline)
-      throw new Error(`server did not start:\n${serverOut}`);
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  server = started.server;
+  port = started.port;
   latest =
     (
       (await (await fetch(api("/api/changelog"))).json()) as {

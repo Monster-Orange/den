@@ -17,7 +17,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser } from "playwright";
-import { spawnServer, stopServer } from "../../child-servers.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let browser: Browser | null = null;
@@ -57,8 +57,7 @@ beforeAll(async () => {
     "environments: [local]\n",
   );
   userYml = path.join(root, "config", "local", "user.yml");
-  port = await freePort();
-  server = spawnServer(
+  const started = await startDenServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
@@ -72,21 +71,12 @@ beforeAll(async () => {
         HOME: path.join(tmp, "home"),
         DEN_NO_OPEN: "1",
         NO_COLOR: "1",
-        PORT: String(port),
       },
-      stdio: ["ignore", "ignore", "ignore"],
     },
+    { timeoutMs: 30_000 },
   );
-  const deadline = Date.now() + 30_000;
-  for (;;) {
-    try {
-      if ((await fetch(`http://localhost:${port}/api/server-info`)).ok) break;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline) throw new Error("server did not start");
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  server = started.server;
+  port = started.port;
 
   // The attacker: another origin (another port), its page aimed at Den.
   evilPort = await freePort();
