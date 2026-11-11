@@ -535,7 +535,6 @@
     "ag.rc.autoRelaunched":
       "{id} relanzado desde su traspaso tras {why}. La conversación anterior {old} se conserva.",
     "ag.remove": "Quitar",
-    "ag.removeName": "Quitar {id}",
     "ag.removed": "{id} quitado",
     "ag.removedMany": "{n} agentes detenidos quitados",
     "ag.removedMany.one": "{n} agente detenido quitado",
@@ -622,6 +621,12 @@
     "ag.pc.done": "{id} ahora es {p}",
     "ag.pc.pending": "{id} pasará a ser {p} cuando termine este turno",
     "ag.more": "Más para {id}",
+    "ag.chip.stopped": "Detenido",
+    "ag.chip.exited": "Terminado",
+    "ag.chip.interrupted": "Interrumpido",
+    "ag.stoppedGroup": "Detenidos ({n})",
+    "ag.stoppedGroupTip":
+      "Agentes que no están en marcha. Abre uno para ver sus detalles.",
     "ag.bring.go": "Traer",
     "ag.bring.going": "Trayendo…",
     "ag.bring.done": "Traída como {id}",
@@ -873,6 +878,7 @@
       "⌃⇧1 / ⌃⇧2 / ⌃⇧3 cambian la disposición. ⌘ y clic (Ctrl y clic) abre un enlace o una ruta.",
     "ag.pal.layout": "Disposición: {name}",
     "ag.copied": "Copiado",
+    "ag.linkHint": "{key}+clic para abrir",
     "ag.tabs": "Sesiones abiertas",
     "ag.hint.focus":
       "Un clic muestra una sesión. Mayús o ⌘ y clic la añade al lado.",
@@ -888,7 +894,6 @@
       "Lo muestran su pestaña, su fila y la cabecera del panel; el id {id} no cambia. Las demás sesiones lo ven como {peer} desde su próximo inicio o reanudación. Vacío: vuelve a {id}.",
     "ag.rn.go": "Cambiar el nombre",
     "ag.rn.cancel": "Cancelar",
-    "ag.rn.act": "Renombrar",
     "ag.where.logout": "Se detiene al cerrar sesión",
     "ag.where.logoutTip":
       "Se ejecuta en la sesión de escritorio, así que cerrar sesión lo termina. Para que los agentes sigan: {cli} service install --mode always (opcional, aún no probado tras cerrar sesión)",

@@ -37,6 +37,23 @@ export function isMac(nav = globalThis.navigator) {
   return /mac|iphone|ipad/i.test(p);
 }
 
+/**
+ * D35: open http(s) `url` in a new tab through a real link, clicked while
+ * the person's gesture lasts: Safari lets a link through where it blocks
+ * window.open. noopener noreferrer. Anything else: nothing.
+ */
+export function linkOpen(url, doc = globalThis.document) {
+  if (!isWebUrl(url) || !doc?.body) return;
+  const a = doc.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.hidden = true;
+  doc.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 /** The click opens a link: ⌘-click on a Mac, Ctrl-click elsewhere. */
 export function linkModifier(e, mac = isMac()) {
   if (!e) return false;

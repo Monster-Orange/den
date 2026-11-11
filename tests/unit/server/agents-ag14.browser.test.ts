@@ -1,13 +1,14 @@
 /**
  * AG-14 on the Agents page, in a real browser:
  *
- *   - stopped agents stay listed, after the running ones, each with why it
- *     stopped, and Resume, Start fresh and Remove (the mock's .btn.sm,
- *     starting under the row's name; the mock's ended dot);
+ *   - stopped agents stay listed, in "Stopped (n)" after the running ones,
+ *     one line each (D37): a hollow dot, the name, a chip, when, Resume
+ *     and ⋯ (Start fresh, Remove); why it stopped and the rest in its
+ *     tooltip; no Rename;
  *   - Resume continues the same conversation (`--resume <token>`, in the
  *     agent's own cwd) and opens its pane;
  *   - Remove is one click, with Undo in its toast;
- *   - a runtime that can't resume offers Start fresh only, and says why;
+ *   - a runtime that can't resume offers Start fresh, and says why;
  *   - after a restart, one line: "N agents were interrupted when … restarted
  *     · Resume all · Review"; Review marks them, Resume all resumes each;
  *   - Clear stopped removes every stopped agent in view, never a running one;
@@ -22,6 +23,8 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { connectHost } from "../../../src/shared/sessions/client.js";
+import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
 import { signInUrl } from "./helpers/den-auth.js";
 import {
@@ -121,7 +124,11 @@ async function open(ws: string): Promise<Page> {
   });
   // Resume and Start fresh are shell-grade (SEC-1b): signed in as a person.
   await p.goto(signInUrl(s!.stateDir, s!.base, `/agents?ws=${ws}`));
-  await p.waitForSelector("#agl:not([aria-busy]) .agst", { timeout: 20_000 });
+  // Attached: a closed "Stopped (n)" hides its rows (D37).
+  await p.waitForSelector("#agl:not([aria-busy]) .agr", {
+    state: "attached",
+    timeout: 20_000,
+  });
   return p;
 }
 
@@ -132,27 +139,53 @@ const acts = (p: Page, id: string) =>
     .locator(".agacts [data-act]")
     .evaluateAll((bs) => bs.map((b) => (b as HTMLElement).dataset.act));
 
-describe("stopped agents on the Agents page (AG-14)", () => {
-  it("are listed with why they stopped and their actions, laid out as the mock's", async () => {
+/** The ⋯ menu of a stopped row: its items' names. */
+async function menuOf(p: Page, id: string): Promise<string[]> {
+  await row(p, id).locator('[data-act="row-more"]').click();
+  const menu = p.locator('.den-pop[role="menu"]');
+  await menu.waitFor();
+  const items = await menu
+    .locator(".den-mi")
+    .evaluateAll((xs) => xs.map((x) => (x.textContent ?? "").trim()));
+  await p.keyboard.press("Escape");
+  await menu.waitFor({ state: "detached" }).catch(() => undefined);
+  return items;
+}
+
+describe("stopped agents on the Agents page (AG-14, D37)", () => {
+  it("are listed one line each: a hollow dot, the name, a chip, when; Resume and ⋯", async () => {
     if (skip()) return;
     const p = await open("north");
     expect(await row(p, "scout").getAttribute("data-state")).toBe("stopped");
+    expect(await acts(p, "scout")).toEqual(["resume", "row-more"]);
+    expect(await menuOf(p, "scout")).toEqual(["Start fresh", "Remove"]);
     expect(
-      (await row(p, "scout").locator(".why").textContent())?.trim(),
-    ).toMatch(/stopped/i);
-    expect(await acts(p, "scout")).toEqual([
-      "resume",
-      "fresh",
-      "rename",
-      "remove",
-    ]);
-    // The mock's ended dot.
+      (await row(p, "scout").locator(".stchip").textContent())?.trim(),
+    ).toBe("Stopped");
+    expect(
+      (await row(p, "scout").locator(".when").textContent())?.trim(),
+    ).not.toBe("");
+    // Its persona, id, runtime, folder and why: the tooltip, not lines.
+    const tip = (await row(p, "scout").locator(".agr").getAttribute("title"))!;
+    expect(tip).toContain("reviewer · scout");
+    expect(tip).toMatch(/stopped/i);
+    expect(await row(p, "scout").locator(".meta, .why").count()).toBe(0);
+    // No Rename on an agent that isn't running.
+    expect(await row(p, "scout").locator('[data-act="rename"]').count()).toBe(
+      0,
+    );
+    // The ended dot, hollow.
     expect(
       await row(p, "scout").locator(".den-dot").getAttribute("class"),
-    ).toMatch(/\boff\b/);
-    // The mock's .btn.sm: 2px 9px, 12.5px; Resume is the primary one.
+    ).toMatch(/\boff\b.*\bhollow\b/);
+    expect(
+      await row(p, "scout")
+        .locator(".den-dot")
+        .evaluate((d) => getComputedStyle(d).backgroundColor),
+    ).toBe("rgba(0, 0, 0, 0)");
+    // The mock's .btn.sm; Resume is the primary one.
     const btn = await row(p, "scout")
-      .locator('[data-act="fresh"]')
+      .locator('[data-act="resume"]')
       .evaluate((b) => {
         const c = getComputedStyle(b);
         return { padding: c.padding, size: c.fontSize };
@@ -163,33 +196,94 @@ describe("stopped agents on the Agents page (AG-14)", () => {
         .locator('[data-act="resume"]')
         .getAttribute("class"),
     ).toMatch(/\bprimary\b/);
-    // The actions start under the name: the row's 12px padding, 2px
-    // border, the 8px dot and its 5px margins, the 8px gap.
-    const [nm, first, agr] = await Promise.all([
-      row(p, "scout").locator(".agr .nm").boundingBox(),
-      row(p, "scout").locator(".agacts [data-act]").first().boundingBox(),
-      row(p, "scout").locator(".agr").boundingBox(),
+    // One line: its row, its buttons, on the same line.
+    const [r1, b1] = await Promise.all([
+      row(p, "scout").boundingBox(),
+      row(p, "scout").locator('[data-act="resume"]').boundingBox(),
     ]);
-    expect(Math.abs(first!.x - nm!.x)).toBeLessThanOrEqual(1);
-    expect(Math.round(nm!.x - agr!.x)).toBe(40);
+    expect(r1!.height).toBeLessThanOrEqual(40);
+    expect(b1!.y).toBeGreaterThanOrEqual(r1!.y);
+    expect(b1!.y + b1!.height).toBeLessThanOrEqual(r1!.y + r1!.height);
+    // In "Stopped (3)", open (3 or fewer).
+    const group = p.locator("#agl details[data-stopped]");
+    expect((await group.locator("summary").textContent())?.trim()).toBe(
+      "Stopped (3)",
+    );
+    expect(await group.getAttribute("open")).not.toBeNull();
     // Clear stopped shows while anything stopped is in view.
     expect(await p.locator("#ag-clear").isVisible()).toBe(true);
     await p.context().close();
   }, 60_000);
 
-  it("a runtime that can't resume offers Start fresh only, and says why", async () => {
+  it("a runtime that can't resume offers Start fresh, and says why in its tooltip", async () => {
     if (skip()) return;
     const p = await open("north");
-    expect(await acts(p, "lookout")).toEqual(["fresh", "rename", "remove"]);
+    expect(await acts(p, "lookout")).toEqual(["fresh", "row-more"]);
+    expect(await menuOf(p, "lookout")).toEqual(["Remove"]);
     expect(
-      (
-        await row(p, "lookout").locator("[data-no-resume]").textContent()
-      )?.trim(),
-    ).toBe("codex can't resume a conversation");
-    const cant = await row(p, "lookout")
-      .locator(".agcant")
-      .evaluate((e) => getComputedStyle(e).fontSize);
-    expect(cant).toBe("12px");
+      await row(p, "lookout").locator(".agr").getAttribute("title"),
+    ).toContain("codex can't resume a conversation");
+    await p.context().close();
+  }, 60_000);
+
+  it("its pane has the details the row leaves out, and Resume, Start fresh and Remove", async () => {
+    if (skip() || !PTY) return;
+    // Its session ended on its own (exited 3): its pane opens, ended.
+    const before = s!.made.length;
+    const host = await connectHost(sessionPaths(s!.stateDir).socket);
+    const info = await host.start({
+      name: "acme-north:ender",
+      cwd: s!.wsDir("north"),
+      argv: ["sh"],
+      env: {},
+      cols: 80,
+      rows: 24,
+    });
+    host.close();
+    s!.made[before].exit(3);
+    s!.seed({
+      id: "ender",
+      persona: "reviewer",
+      workspace: "north",
+      session: { backend: "den-pty", id: info.ref.id },
+      sessionName: "acme-north:ender",
+      resumeToken: "88888888-8888-4888-8888-888888888888",
+    });
+    const p = await open("north");
+    // 4 stopped: "Stopped (4)" starts closed.
+    const group = p.locator("#agl details[data-stopped]");
+    await group.waitFor();
+    if ((await group.getAttribute("open")) === null)
+      await group.locator("summary").click();
+    await row(p, "ender").waitFor({ timeout: 15_000 });
+    expect(
+      (await row(p, "ender").locator(".stchip").textContent())?.trim(),
+    ).toBe("Exited");
+    await row(p, "ender").locator(".agr").click();
+    const bar = p.locator(".pane .bar2", { hasText: "ender" }).first();
+    await bar.locator('[data-act="resume"]').waitFor({ timeout: 15_000 });
+    expect(await bar.locator(".where").textContent()).toContain(
+      "reviewer · ender",
+    );
+    expect((await bar.locator("[data-why]").textContent())?.trim()).toMatch(
+      /exited/i,
+    );
+    await bar.locator('[data-act="more"]').click();
+    const menu = p.locator('.den-pop[role="menu"]');
+    await menu.waitFor();
+    const items = await menu
+      .locator(".den-mi")
+      .evaluateAll((xs) => xs.map((x) => (x.textContent ?? "").trim()));
+    expect(items).toContain("Start fresh");
+    expect(items).toContain("Remove");
+    expect(items.some((x) => /^Rename/.test(x))).toBe(false);
+    await p.keyboard.press("Escape");
+    // Gone for the tests after it (their counts).
+    await row(p, "ender").locator('[data-act="row-more"]').click();
+    await p
+      .locator('.den-pop[role="menu"] .den-mi', { hasText: "Remove" })
+      .click();
+    await row(p, "ender").waitFor({ state: "detached" });
     await p.context().close();
   }, 60_000);
 
@@ -226,8 +320,9 @@ describe("stopped agents on the Agents page (AG-14)", () => {
   it("Remove is one click; Undo in its toast brings the agent back", async () => {
     if (skip()) return;
     const p = await open("north");
-    await row(p, "keeper")
-      .getByRole("button", { name: "Remove keeper" })
+    await row(p, "keeper").locator('[data-act="row-more"]').click();
+    await p
+      .locator('.den-pop[role="menu"] .den-mi', { hasText: "Remove" })
       .click();
     const toast = p.locator(".den-toast.den-toast-act");
     await toast.waitFor();
@@ -333,22 +428,50 @@ describe("Clear stopped (AG-14.1b)", () => {
   });
 });
 
-describe("D25: Rename, visible, by touch or keyboard", () => {
-  // Its own stopped agent: the tests above remove theirs.
-  beforeAll(() => {
-    s?.seed({
+describe("D25: Rename, visible, by touch or keyboard (D37: a running agent's)", () => {
+  // Its own running agent: the tests above remove theirs.
+  beforeAll(async () => {
+    if (!s) return;
+    const host = await connectHost(sessionPaths(s.stateDir).socket);
+    const info = await host.start({
+      name: "acme-north:namer",
+      cwd: s.wsDir("north"),
+      argv: ["sh"],
+      env: {},
+      cols: 80,
+      rows: 24,
+    });
+    host.close();
+    s.seed({
       id: "namer",
       persona: "planner",
       workspace: "north",
+      session: { backend: "den-pty", id: info.ref.id },
+      sessionName: "acme-north:namer",
       resumeToken: "55555555-5555-4555-8555-555555555555",
-      stoppedAt: STOPPED_AT,
     });
   });
 
-  it("a stopped agent's Rename opens a dialog that names what peers will see, and Enter saves it", async () => {
-    if (skip()) return;
+  /** namer's pane, then ⋯ › Rename…. */
+  async function rename(p: Page) {
+    const agr = p
+      .locator('#agl .agr[data-kind="agent"][data-state="running"]', {
+        hasText: "namer",
+      })
+      .first();
+    const id = await agr.getAttribute("data-id");
+    await agr.click();
+    const bar = p.locator(`.pane[data-id="${id}"] .bar2`);
+    await bar.locator('[data-act="more"]').click();
+    await p
+      .locator('.den-pop[role="menu"] .den-mi', { hasText: "Rename…" })
+      .click();
+  }
+
+  it("a running agent's Rename opens a dialog that names what peers will see, and Enter saves it", async () => {
+    if (skip() || !PTY) return;
     const p = await open("north");
-    await row(p, "namer").locator('[data-act="rename"]').click();
+    await rename(p);
     const dlg = p.locator("#ag-rn");
     await dlg.waitFor({ state: "visible" });
     expect(await p.locator("#ag-rn-h").textContent()).toBe("Rename namer");
@@ -362,9 +485,9 @@ describe("D25: Rename, visible, by touch or keyboard", () => {
     await p.locator("#ag-rn-name").press("Enter");
     await dlg.waitFor({ state: "hidden" });
     await p.waitForFunction(() =>
-      document
-        .querySelector('#agl .agst[data-agent="namer"] .nm')
-        ?.textContent?.includes("Night watch"),
+      [...document.querySelectorAll("#agl .agr .nm")].some((n) =>
+        n.textContent?.includes("Night watch"),
+      ),
     );
     const rec = JSON.parse(
       fs.readFileSync(path.join(s!.stateDir, "agents", "namer.json"), "utf-8"),
@@ -375,10 +498,10 @@ describe("D25: Rename, visible, by touch or keyboard", () => {
   }, 60_000);
 
   it("fits a 375px screen, with Cancel and Rename in view", async () => {
-    if (skip()) return;
+    if (skip() || !PTY) return;
     const p = await open("north");
     await p.setViewportSize({ width: 375, height: 700 });
-    await row(p, "namer").locator('[data-act="rename"]').click();
+    await rename(p);
     await p.locator("#ag-rn").waitFor({ state: "visible" });
     for (const sel of ["#ag-rn", "#ag-rn-cancel", "#ag-rn-go", "#ag-rn-name"]) {
       const b = (await p.locator(sel).boundingBox())!;
@@ -387,6 +510,119 @@ describe("D25: Rename, visible, by touch or keyboard", () => {
     }
     await p.locator("#ag-rn-cancel").click();
     await p.locator("#ag-rn").waitFor({ state: "hidden" });
+    await p.context().close();
+  }, 60_000);
+});
+
+describe("D37: Stopped (n), one line each, at the bottom", () => {
+  // 1 running (namer, above) and 3 stopped.
+  beforeAll(() => {
+    for (const [i, id] of ["east", "west", "mid"].entries())
+      s?.seed({
+        id,
+        persona: "reviewer",
+        workspace: "north",
+        resumeToken: `6666666${i}-6666-4666-8666-666666666666`,
+        stoppedAt: STOPPED_AT,
+      });
+  });
+  const group = (p: Page) => p.locator("#agl details[data-stopped]");
+
+  it("below the running ones; open for 3; a person's close or open is kept across a reload", async () => {
+    if (skip()) return;
+    const p = await open("north");
+    await group(p).waitFor();
+    expect((await group(p).locator("summary").textContent())?.trim()).toBe(
+      "Stopped (3)",
+    );
+    // Last in the list, after every workspace's running ones.
+    expect(
+      await p.evaluate(() => {
+        const g = document.querySelector("#agl details[data-stopped]")!;
+        return [...document.querySelectorAll("#agl .wsg")].pop() === g;
+      }),
+    ).toBe(true);
+    for (const id of ["east", "west", "mid"]) {
+      const b = (await row(p, id).boundingBox())!;
+      expect(b.height).toBeLessThanOrEqual(40);
+    }
+    expect(await group(p).getAttribute("open")).not.toBeNull();
+    if (process.env.DEN_AGENTS_SHOTS)
+      await p.locator("#agl").screenshot({
+        path: path.join(process.env.DEN_AGENTS_SHOTS, "d37-stopped.png"),
+      });
+    // Closed by a person: still closed after a reload.
+    await group(p).locator("summary").click();
+    expect(await group(p).getAttribute("open")).toBeNull();
+    expect(await row(p, "east").isVisible()).toBe(false);
+    await p.reload();
+    await group(p).waitFor();
+    expect(await group(p).getAttribute("open")).toBeNull();
+    // A refresh poll later, still closed.
+    await p.waitForTimeout(5_000);
+    expect(await group(p).getAttribute("open")).toBeNull();
+    // By keyboard: the summary is one focus stop; Enter opens it.
+    await group(p).locator("summary").focus();
+    await p.keyboard.press("Enter");
+    expect(await group(p).getAttribute("open")).not.toBeNull();
+    await p.reload();
+    await group(p).waitFor();
+    expect(await group(p).getAttribute("open")).not.toBeNull();
+    // Tab from a row reaches Resume, then ⋯.
+    await row(p, "east").locator(".agr").focus();
+    await p.keyboard.press("Tab");
+    expect(
+      await p.evaluate(
+        () => (document.activeElement as HTMLElement)?.dataset.act,
+      ),
+    ).toBe("resume");
+    await p.keyboard.press("Tab");
+    expect(
+      await p.evaluate(
+        () => (document.activeElement as HTMLElement)?.dataset.act,
+      ),
+    ).toBe("row-more");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("closed by default for more than 3", async () => {
+    if (skip()) return;
+    s?.seed({
+      id: "late",
+      persona: "reviewer",
+      workspace: "north",
+      resumeToken: "77777777-7777-4777-8777-777777777777",
+      stoppedAt: STOPPED_AT,
+    });
+    const p = await open("north");
+    await p.waitForFunction(
+      () =>
+        document
+          .querySelector("#agl details[data-stopped] summary")
+          ?.textContent?.includes("(4)"),
+      undefined,
+      { timeout: 15_000 },
+    );
+    expect(await group(p).getAttribute("open")).toBeNull();
+    await p.context().close();
+  }, 60_000);
+
+  it("Resume works from the row", async () => {
+    if (skip() || !PTY) return;
+    const p = await open("north");
+    await group(p).waitFor();
+    if ((await group(p).getAttribute("open")) === null)
+      await group(p).locator("summary").click();
+    const res = p.waitForResponse(
+      (r) =>
+        new URL(r.url()).pathname ===
+        "/api/workspaces/north/agents/east/resume",
+    );
+    await row(p, "east").getByRole("button", { name: "Resume east" }).click();
+    expect((await res).status()).toBe(200);
+    await row(p, "east").waitFor({ state: "detached", timeout: 15_000 });
+    expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);
 });

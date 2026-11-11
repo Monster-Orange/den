@@ -286,7 +286,7 @@ describe("doctor names a bad agents: or sessions: key and carries on", () => {
     const r = configLines("Acme");
     expect(r.problem).toBe(true);
     expect(r.lines.filter((l) => l.includes("✗"))).toEqual([
-      "  agents  ✗  config/den.yml: agents.helpers.collapse_done: unknown key (agents.helpers takes active_minutes, collapse_done_minutes)",
+      "  agents  ✗  config/den.yml: agents.helpers.collapse_done: unknown key (agents.helpers takes active_minutes, row_max)",
       "  sessions  ✗  config/den.yml: sessions.max_concurrent: must be a whole number of at least 1",
     ]);
     expect(r.lines.join("\n")).not.toContain("hunter2");
@@ -301,5 +301,18 @@ describe("doctor names a bad agents: or sessions: key and carries on", () => {
     const r = configLines("Acme");
     expect([r.problem, r.lines]).toEqual([false, []]);
     expect(r.checks.map((c) => c.status)).toEqual(["ok", "ok"]);
+  });
+});
+
+describe("doctor notes agents.helpers.collapse_done_minutes (0.4.29: ignored)", () => {
+  it("an ℹ line, not a problem", () => {
+    dist(
+      "environments: [local]\nagents:\n  helpers:\n    collapse_done_minutes: 60\n",
+    );
+    const r = configLines("Acme");
+    expect(r.problem).toBe(false);
+    expect(r.lines.filter((l) => l.includes("ℹ"))).toEqual([
+      "  agents  ℹ  agents.helpers.collapse_done_minutes no longer does anything (0.4.29): remove it. Finished helpers stay until a person clears them (Clear done).",
+    ]);
   });
 });

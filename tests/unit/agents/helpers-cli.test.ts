@@ -10,6 +10,7 @@ import { HELPERS_READ_ONLY_NOTE } from "../../../src/shared/agents/helpers.js";
 import { resetHelperCache } from "../../../src/shared/agents/claude-helpers.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { clearAgentHelpers } from "../../../src/ui/cli/agent-ops.js";
+import { ConfigError } from "../../../src/shared/config-error.js";
 import { cleanupRigs, rig, type Rig } from "./helpers/rig.js";
 import { H0, H1, seedScout } from "./helpers/seed-helpers.js";
 
@@ -140,5 +141,32 @@ describe("D34: after Clear done", () => {
     await agents(r, "helpers", "scout", "-w", "north", "--json", "--all");
     const all = JSON.parse(out(r)) as { cleared: { id: string }[] };
     expect(all.cleared.map((h) => h.id)).toEqual([H1]);
+  });
+});
+
+describe("a bad agents: key stops listing and helpers, naming it", () => {
+  it("agents list and agents helpers exit 1 with the key", async () => {
+    const r = await scout();
+    r.deps.agentsConfig = () => {
+      throw new ConfigError([
+        {
+          file: "config/den.yml",
+          key: "agents.helpers.collapse_done",
+          message: "unknown key",
+          text: "agents.helpers.collapse_done: unknown key",
+        },
+      ]);
+    };
+    for (const args of [
+      ["list", "-w", "north"],
+      ["helpers", "scout", "-w", "north"],
+    ]) {
+      r.out.length = 0;
+      r.err.length = 0;
+      expect([args[0], await agents(r, ...args)]).toEqual([args[0], 1]);
+      expect(r.err.join("\n")).toContain(
+        "config/den.yml: agents.helpers.collapse_done: unknown key",
+      );
+    }
   });
 });

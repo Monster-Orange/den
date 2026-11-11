@@ -54,7 +54,6 @@ import {
   capHelpers,
   HELPER_DEFAULTS,
   HELPERS_READ_ONLY_NOTE,
-  helperCounts,
   type Helper,
   type HelperSettings,
   type HelperTranscript,
@@ -654,18 +653,21 @@ export interface AgentRow {
   lastRotation?: RotationEntry;
   session?: SessionInfo;
   /**
-   * D32: the helpers it started in its own session: how many, how many
-   * run now, and the ones worth showing under it (running, or ended
-   * within agents.helpers.collapse_done_minutes; at most 8).
+   * D32/D34: the helpers it started in its own session, less those its
+   * last "Clear done" hid: counts by state, and its active ones (running
+   * or idle; running first, nested) for the row, at most row_max.
    */
   helpers?: {
     running: number;
-    total: number;
-    recent: Helper[];
-    /** D34: shown ones that ended (what "Clear done" would hide). */
+    idle: number;
+    /** Done, failed or stopped (what "Clear done" would hide). */
     ended: number;
-    /** D34: hidden by its last "Clear done". */
+    total: number;
+    /** Hidden by its last "Clear done". */
     cleared: number;
+    /** Running or idle: how many, and the first row_max of them. */
+    activeCount: number;
+    active: Helper[];
   };
 }
 
@@ -847,6 +849,7 @@ export async function listAgents(
   opts: { startHost?: boolean; stopped?: boolean } = {},
 ): Promise<AgentRow[]> {
   checkWorkspaceName("agents list", ws);
+  agentsConfigValid(d);
   let all: SessionInfo[];
   if (opts.startHost === false) {
     const c = await d.connectExisting();
@@ -864,10 +867,16 @@ export async function listAgents(
   return opts.stopped ? rows.filter((r) => isStoppedState(r.state)) : rows;
 }
 
-/** At most this many helpers ride along on an agent's row. */
-const ROW_HELPERS = 8;
-
 /** D32: agents.helpers, or its defaults when the config can't be read. */
+/**
+ * A bad `agents:` key (a ConfigError naming it) stops listing agents and
+ * reading their helpers, on the CLI as on the web (422), never with
+ * defaults. Stopping an agent doesn't read it, so it is never stranded.
+ */
+function agentsConfigValid(d: AgentsResolved): void {
+  d.agentsConfig();
+}
+
 function helperSettings(d: AgentsResolved): HelperSettings {
   try {
     return d.agentsConfig().helpers ?? HELPER_DEFAULTS;
@@ -900,11 +909,11 @@ function addHelperCounts(
 }
 
 /**
- * D32: what an agent's row shows of its helpers: counts, and the ones
- * worth showing (running, or this conversation's ended within
- * collapse_done_minutes; at most 8). D34: those its last "Clear done"
- * hid (`clearedAt`) are left out, counts included. Undefined: nothing to
- * show (none, all cleared), or its runtime can't tell. Never throws.
+ * D32/D34: what an agent's row shows of its helpers: its counts by state
+ * and its active ones (running or idle; at most row_max, running kept),
+ * less those its last "Clear done" hid (`clearedAt`). Done ones are only
+ * counted: the Helpers list has them. Undefined: nothing to show (none,
+ * or all cleared), or its runtime can't tell. Never throws.
  */
 export function rowHelpers(
   rec: AgentRecord,
@@ -924,17 +933,15 @@ export function rowHelpers(
   }
   const { shown: hs, cleared } = splitCleared(all, clearedAt);
   if (!hs.length) return undefined;
-  const keep = settings.collapseDoneMinutes * 60_000;
-  const recent = hs.filter(
-    (h) =>
-      h.status === "running" ||
-      (!h.earlier && now - (h.lastActivityAt ?? h.startedAt ?? 0) <= keep),
-  );
+  const active = hs.filter((h) => !isEnded(h));
   return {
-    ...helperCounts(hs),
-    recent: capHelpers(recent, ROW_HELPERS),
+    running: hs.filter((h) => h.status === "running").length,
+    idle: hs.filter((h) => h.status === "idle").length,
     ended: hs.filter((h) => isEnded(h)).length,
+    total: hs.length,
     cleared: cleared.length,
+    activeCount: active.length,
+    active: capHelpers(active, settings.rowMax),
   };
 }
 
@@ -954,6 +961,7 @@ export async function agentHelpers(
   clearedAt?: number;
   note: string;
 }> {
+  agentsConfigValid(d);
   const rec = agentRecord(d, id, ws);
   const rt = getRuntime(rec.runtime);
   const live = await agentLive(d, rec);
@@ -1001,6 +1009,7 @@ export async function agentHelperTranscript(
   ws?: string,
   limit?: number,
 ): Promise<HelperTranscript & { note: string }> {
+  agentsConfigValid(d);
   const rec = agentRecord(d, id, ws);
   const rt = getRuntime(rec.runtime);
   const t = rt?.helperTranscript?.(rec, helperId, {

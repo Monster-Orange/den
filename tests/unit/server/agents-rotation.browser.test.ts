@@ -125,7 +125,8 @@ const row = (p: Page, id: string) =>
   p.locator(`#agl .agst[data-agent="${id}"]`);
 const acts = (p: Page, id: string) =>
   row(p, id)
-    .locator(".agacts [data-act]")
+    // D37: the one-line row's buttons, then its callout's.
+    .locator(".agacts [data-act], .agcallout [data-act]")
     .evaluateAll((bs) => bs.map((b) => (b as HTMLElement).dataset.act));
 const text = async (p: Page, id: string, sel: string) =>
   (await row(p, id).locator(sel).textContent())?.replace(/\s+/g, " ").trim();
@@ -135,25 +136,23 @@ describe("rotated agents on the Agents page (den#4)", () => {
     if (skip()) return;
     const p = await open("north");
     expect(await row(p, "relay").getAttribute("data-rotation")).toBe("ready");
-    expect(await text(p, "relay", ".agr .st")).toBe(
+    expect(await text(p, "relay", ".agr .stchip")).toBe(
       "Ready to relaunch (3 compactions)",
     );
     expect(await acts(p, "relay")).toEqual([
+      "fresh",
+      "row-more",
       "relaunch",
       "rot-keep",
-      "fresh",
-      "rename",
-      "remove",
     ]);
-    expect(await text(p, "merger", ".agr .st")).toBe(
+    expect(await text(p, "merger", ".agr .stchip")).toBe(
       "Ready to relaunch (PR merged)",
     );
     expect(await acts(p, "merger")).toEqual([
+      "fresh",
+      "row-more",
       "relaunch",
       "rot-keep",
-      "fresh",
-      "rename",
-      "remove",
     ]);
     // The 0.4.8 stopped row's buttons: den-btn sm, the primary first, the
     // mock's .btn.sm (2px 9px, 12.5px).
@@ -182,12 +181,10 @@ describe("rotated agents on the Agents page (den#4)", () => {
     const p = await open("north");
     expect(await row(p, "drift").getAttribute("data-rotation")).toBe("due");
     expect(await acts(p, "drift")).toEqual([
+      "resume",
+      "row-more",
       "relaunch",
       "rot-keep",
-      "resume",
-      "fresh",
-      "rename",
-      "remove",
     ]);
     expect(await text(p, "drift", '[data-handoff="missing"]')).toBe(
       "Due (3 compactions). It has no handoff yet.",

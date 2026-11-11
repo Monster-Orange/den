@@ -15,6 +15,7 @@
  *
  * graph.js binds the context (model, hooks, view helpers) with bindPanel().
  */
+import { linkOpen } from "/term-input.js";
 import {
   commandTier,
   connections,
@@ -84,7 +85,10 @@ export const ACTIONS = [
     tier: "common",
     when: (s) => !!(s.open || s.target?.url),
     primaryWhen: (s) => s.health.ok !== false || !isLocal(s),
-    run: (s) => window.open(s.open || s.target.url, "_blank", "noopener"),
+    // D35: a real link (actBtn, the menu), never window.open: Safari
+    // blocks that from a delegated click. run is for ⌘K and the like.
+    href: (s) => s.open || s.target?.url,
+    run: (s) => linkOpen(s.open || s.target.url),
   },
   {
     id: "logs",
@@ -578,9 +582,18 @@ export const SECTIONS = [
   },
 ];
 
+/** An http(s) URL for action `a` on `x` (D35), else "". */
+function actionHref(a, x) {
+  const url = a.href?.(x);
+  return typeof url === "string" && /^https?:\/\//i.test(url) ? url : "";
+}
+
 function actBtn(a, x, cls = "") {
   const why = a.disabled?.(x);
   const label = a.labelFor ? a.labelFor(x) : a.label;
+  const href = !why && actionHref(a, x);
+  if (href)
+    return `<a class="dg-btn ${cls}" data-action-link="${esc(a.id)}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`;
   return `<button class="dg-btn ${cls}" data-action="${esc(a.id)}" data-key="${esc(x.services ? "repo:" + x.repo : x.id)}" ${a.confirm ? "data-confirm" : ""} ${why ? `disabled title="${esc(why)}"` : ""}>${esc(label)}</button>`;
 }
 export { actBtn };
@@ -601,6 +614,9 @@ function actionBar(x) {
             `<div class="dg-mg ${t}" role="group" aria-label="${GROUP_LABEL[t]}"><div class="dg-ml">${GROUP_LABEL[t]}</div>${l
               .map((a) => {
                 const why = a.disabled?.(x);
+                const href = !why && actionHref(a, x);
+                if (href)
+                  return `<a role="menuitem" data-action-link="${esc(a.id)}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(a.labelFor ? a.labelFor(x) : a.label)}</a>`;
                 return `<button role="menuitem" data-action="${esc(a.id)}" data-key="${key}" ${a.confirm ? "data-confirm" : ""} ${why ? `disabled title="${esc(why)}"` : ""}>${esc(a.labelFor ? a.labelFor(x) : a.label)}</button>`;
               })
               .join("")}</div>`,

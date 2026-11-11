@@ -86,6 +86,7 @@
 import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import {
+  helperBadgeHtml,
   helperBarButtonHtml,
   helperRowsHtml,
   openHelpers,
@@ -114,9 +115,11 @@ import {
 import {
   editorUrl,
   findPaths,
+  isMac,
   isWebUrl,
   layoutKeyIndex,
   linkModifier,
+  linkOpen,
   softNewlineKey,
 } from "/term-input.js";
 
@@ -467,44 +470,79 @@ function rotCalloutHtml(r) {
   );
 }
 
-/** A stopped agent's row: its button (it opens an ended pane) and actions. */
-function stoppedHtml(r) {
+/** D37: "22:13" today, else "Nov 6": short, for a one-line row. */
+function whenShort(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Date().toDateString() === d.toDateString()
+    ? d.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    : d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+/** D37: a not-running agent's chip: Stopped, Exited or Interrupted. */
+function stoppedChip(r) {
+  if (r.state === "interrupted") return t("ag.chip.interrupted");
+  if (/^exited\b/.test(r.state)) return t("ag.chip.exited");
+  return t("ag.chip.stopped");
+}
+
+/** D37: what a stopped row leaves out, for its tooltip. */
+function stoppedTip(r) {
+  const who = [r.persona, r.agent].filter(Boolean).join(" · ");
+  const meta = [r.runtime, r.cwd].filter(Boolean).join(" · ");
+  const cant =
+    !r.resumable && r.noResume
+      ? r.noResume.startsWith(`${r.runtime} `)
+        ? t("ag.noResume", { runtime: r.runtime })
+        : r.noResume
+      : "";
+  return [who, meta, stopReason(r), cant].filter(Boolean).join("\n");
+}
+
+/**
+ * A stopped agent's row (D37): one line. A hollow dot, its name, a chip
+ * (Stopped, Exited, Interrupted), when, then Resume and ⋯ (Start fresh,
+ * Remove). Its persona, id, runtime and folder are in its tooltip and its
+ * pane. No Rename (a running agent's), no helpers (D34: only a running
+ * agent's active ones). A runtime that can't resume: Start fresh instead
+ * of Resume, and ⋯ has Remove. D28: a due rotation's callout stays.
+ */
+function stoppedHtml(r, wsTag = false) {
   const open = st.open.includes(r.id);
   const name = displayName(r);
-  const nm = nameHtml(r);
-  const meta = [r.runtime, r.cwd].filter(Boolean).join(" · ");
+  // Its own name, else its id: short, and unique (the persona is in the
+  // tooltip; several stopped agents often share one).
+  const label = r.displayName || r.agent || name;
   const who = esc(r.agent);
   const rot = rotationOf(r);
-  // D28: a due agent's callout (unless on_due is off).
   const callout = rotCalloutHtml(r);
-  const resume = r.resumable
-    ? `<button type="button" class="den-btn sm primary" data-act="resume" aria-label="${esc(t("ag.resumeName", { id: r.agent }))}">${esc(t("ag.resume"))}</button>`
-    : "";
-  const fresh = `<button type="button" class="den-btn sm" data-act="fresh" aria-label="${esc(t("ag.freshName", { id: r.agent }))}">${esc(t("ag.fresh"))}</button>`;
-  const remove = `<button type="button" class="den-btn sm" data-act="remove" aria-label="${esc(t("ag.removeName", { id: r.agent }))}">${esc(t("ag.remove"))}</button>`;
-  // D25: an agent with no pane open can be renamed too.
-  const rename = `<button type="button" class="den-btn sm" data-act="rename" aria-label="${esc(t("ag.renameName", { id: r.agent }))}">${esc(t("ag.rn.act"))}</button>`;
-  const cant =
-    !r.resumable && r.noResume && rot !== "ready"
-      ? `<span class="agcant" data-no-resume>${esc(r.noResume.startsWith(`${r.runtime} `) ? t("ag.noResume", { runtime: r.runtime }) : r.noResume)}</span>`
-      : "";
-  const stText =
+  const at = whenShort(r.stoppedAt ?? r.endedAt ?? "");
+  const chip =
     rot === "ready"
       ? t("ag.rot.ready", { why: rotationWhy(r.rotation) })
-      : stateText(r.state);
+      : stoppedChip(r);
+  const first = r.resumable
+    ? `<button type="button" class="den-btn sm primary" data-act="resume" aria-label="${esc(t("ag.resumeName", { id: r.agent }))}">${esc(t("ag.resume"))}</button>`
+    : `<button type="button" class="den-btn sm" data-act="fresh" aria-label="${esc(t("ag.freshName", { id: r.agent }))}">${esc(t("ag.fresh"))}</button>`;
+  const more = `<button type="button" class="den-btn sm" data-act="row-more" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("ag.more", { id: r.agent }))}" title="${esc(t("ag.more", { id: r.agent }))}">⋯</button>`;
   return (
-    `<div class="agst" data-agent="${who}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
+    `<div class="agst agst1" data-agent="${who}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}"` +
     ` aria-pressed="${open}"${r.attachable ? "" : ' aria-disabled="true"'}` +
+    ` title="${esc(stoppedTip(r))}"` +
     ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${name}` }))}">` +
-    `<span class="den-dot ${stateTone(r)}" aria-hidden="true"></span>` +
-    `<span class="nm">${nm}</span><span class="st">${esc(stText)}</span>` +
-    (meta ? `<span class="meta">${esc(meta)}</span>` : "") +
-    `<span class="why">${esc(stopReason(r))}</span>` +
+    `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
+    `<span class="nm">${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
+    `<span class="stchip">${esc(chip)}</span>` +
+    (at ? `<span class="when">${esc(at)}</span>` : "") +
     `</button>` +
-    `<div class="agacts">${callout}${cant}${resume}${fresh}${rename}${remove}</div>` +
-    `</div>` +
-    helperRowsHtml(r)
+    `<span class="agacts">${first}${more}</span>` +
+    (callout ? `<div class="agcallout">${callout}</div>` : "") +
+    `</div>`
   );
 }
 
@@ -515,9 +553,11 @@ function rowHtml(r) {
     r.kind === "agent"
       ? nameHtml(r)
       : `${esc(r.label)} <span class="sbdg">${esc(t("ag.session"))}</span>`;
-  const right = r.waiting
-    ? `<span class="wbdg">${esc(t("ag.waiting"))}</span>`
-    : `<span class="st">${esc(stateText(r.state))}</span>`;
+  const right =
+    (r.waiting
+      ? `<span class="wbdg">${esc(t("ag.waiting"))}</span>`
+      : `<span class="st">${esc(stateText(r.state))}</span>`) +
+    (r.kind === "agent" ? helperBadgeHtml(r) : "");
   const meta = [r.runtime, r.cwd].filter(Boolean).join(" · ");
   const rot = rotationOf(r);
   const rotTag = rot
@@ -549,7 +589,8 @@ function rowHtml(r) {
   // (before, only a tag: nothing to press).
   const callout = r.kind === "agent" ? rotCalloutHtml(r) : "";
   // D32: the helpers it started in its own session, under it.
-  const helpers = r.kind === "agent" ? helperRowsHtml(r) : "";
+  // D34: only under the agent in front.
+  const helpers = r.kind === "agent" ? helperRowsHtml(r, r.id === st.cur) : "";
   if (!callout) return button + helpers;
   return (
     `<div class="agst" data-agent="${esc(r.agent)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}" data-rotation="${rot}">` +
@@ -566,9 +607,6 @@ function listFocusKey(el) {
   const key = refindKey(el);
   if (key) return key;
   const q = (v) => CSS.escape(String(v ?? ""));
-  const g = el.closest(".aghs[data-helpers-of]");
-  if (g && el.matches(".aghs-clear"))
-    return `#agl .aghs[data-helpers-of="${q(g.dataset.helpersOf)}"][data-ws="${q(g.dataset.ws)}"] .aghs-clear`;
   if (el.matches("button.agr[data-id]"))
     return `#agl button.agr[data-id="${q(el.dataset.id)}"]`;
   if (el.matches("[data-act]")) {
@@ -636,30 +674,29 @@ function paintList() {
           : "") +
         ` · <button type="button" class="lnk" data-act="review">${esc(t("ag.review"))}</button></div>`,
     );
+  // D37: running ones (and plain sessions) under their workspace; the
+  // agents that aren't running in one "Stopped (n)" group at the bottom.
+  const inView = shown.flatMap((ws) =>
+    st.data.sessions.filter((s) => s.workspace === ws),
+  );
+  const stopped = inView.filter(isStopped);
   const groups = shown
     .map((ws) => ({
       ws,
-      // Running ones (and plain sessions) first, then the stopped agents.
-      rows: st.data.sessions
-        .filter((s) => s.workspace === ws)
-        .map((s, i) => ({ s, i }))
-        .sort(
-          (a, b) =>
-            Number(isStopped(a.s)) - Number(isStopped(b.s)) || a.i - b.i,
-        )
-        .map((x) => x.s),
+      rows: inView.filter((s) => s.workspace === ws && !isStopped(s)),
     }))
     .filter((g) => g.rows.length > 0);
-  const body = groups.length
-    ? groups
-        .map(
-          (g) =>
-            `<div class="wsg" data-ws="${esc(g.ws)}"><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${esc(g.rows.length)}</span></div>` +
-            g.rows.map(rowHtml).join("") +
-            `</div>`,
-        )
-        .join("")
-    : `<div class="none">${esc(t("ag.none.scope", { scope: st.scopeLabel }))}</div>`;
+  const body =
+    groups.length || stopped.length
+      ? groups
+          .map(
+            (g) =>
+              `<div class="wsg" data-ws="${esc(g.ws)}"><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${esc(g.rows.length)}</span></div>` +
+              g.rows.map(rowHtml).join("") +
+              `</div>`,
+          )
+          .join("") + stoppedGroupHtml(stopped)
+      : `<div class="none">${esc(t("ag.none.scope", { scope: st.scopeLabel }))}</div>`;
   setList(
     el,
     notes.join("") +
@@ -671,6 +708,41 @@ function paintList() {
   // No such workspace: nothing to start an agent in.
   const start = st.root.querySelector("#ag-start");
   if (start) start.hidden = st.data.requested?.known === false;
+}
+
+const STOPPED_OPEN_KEY = "den-agents-stopped-open";
+
+/** D37: whether "Stopped (n)" is open: as a person left it, else open
+ * for 3 or fewer. */
+function stoppedOpen(n) {
+  try {
+    const v = localStorage.getItem(STOPPED_OPEN_KEY);
+    if (v === "1" || v === "0") return v === "1";
+  } catch {
+    /* none: the default */
+  }
+  return n <= 3;
+}
+
+function saveStoppedOpen(open) {
+  try {
+    localStorage.setItem(STOPPED_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    /* none: this page only */
+  }
+}
+
+/** D37: the agents that aren't running, one line each, in one group. */
+function stoppedGroupHtml(rows) {
+  if (!rows.length) return "";
+  // More than one workspace among them: each row names its own.
+  const wsTag = new Set(rows.map((r) => r.workspace)).size > 1;
+  return (
+    `<details class="wsg agstg" data-stopped${stoppedOpen(rows.length) ? " open" : ""}>` +
+    `<summary class="wsh" title="${esc(t("ag.stoppedGroupTip"))}"><span>${esc(t("ag.stoppedGroup", { n: rows.length }))}</span></summary>` +
+    rows.map((r) => stoppedHtml(r, wsTag)).join("") +
+    `</details>`
+  );
 }
 
 function visibleRows() {
@@ -1118,8 +1190,14 @@ function paintBar(p) {
   // AG-4b: the session's name last, when it says more. The workspace is a
   // link to it on Workspaces (0.4.17).
   const ws = r ? r.workspace : p.workspace || "";
+  // D37: a stopped agent's pane has what its one-line row leaves out.
   const rest = r
-    ? [r.runtime, sessionExtra(r)].filter(Boolean).join(" · ")
+    ? (isStopped(r)
+        ? [r.persona, r.agent, r.runtime, r.cwd]
+        : [r.runtime, sessionExtra(r)]
+      )
+        .filter(Boolean)
+        .join(" · ")
     : "";
   const where =
     (ws ? wsLinkHtml(ws) : "") + (ws && rest ? " · " : "") + esc(rest);
@@ -1145,6 +1223,9 @@ function paintBar(p) {
   bar.innerHTML =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
     `<b>${esc(name)}</b><span class="where mono">${where}</span>` +
+    (r && isStopped(r)
+      ? `<span class="why" data-why title="${esc(stoppedTip(r))}">${esc(stopReason(r))}</span>`
+      : "") +
     (r?.tokenRevoked
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +
@@ -1376,11 +1457,40 @@ function softNewlineOf(id) {
  * A URL or an OSC 8 link clicked: with ⌘ (Ctrl elsewhere), an http or
  * https one opens in a new tab, noopener. A plain click opens nothing
  * (it selects); every other scheme (javascript:, data:, file:) nothing.
+ *
+ * D35: xterm tells on mouseup; Safari blocks window.open there. The link
+ * waits for the click that follows (a gesture Safari honours) and opens
+ * as a real link (linkOpen); no click within a moment: it opens anyway.
  */
+let pendingWeb = null;
 function openWeb(e, uri) {
   if (!linkModifier(e) || !isWebUrl(uri)) return;
   e?.preventDefault?.();
-  window.open(uri, "_blank", "noopener");
+  if (pendingWeb) clearTimeout(pendingWeb.timer);
+  pendingWeb = {
+    uri,
+    timer: setTimeout(() => {
+      const p = pendingWeb;
+      pendingWeb = null;
+      if (p) linkOpen(p.uri);
+    }, 300),
+  };
+}
+
+function takePendingWeb() {
+  const p = pendingWeb;
+  if (!p) return;
+  pendingWeb = null;
+  clearTimeout(p.timer);
+  linkOpen(p.uri);
+}
+
+/** D35: how to open a console link, on its hover: "⌘-click to open". */
+function linkHint(p, on) {
+  const el = p.el.querySelector(".term");
+  if (!el) return;
+  if (on) el.title = t("ag.linkHint", { key: isMac() ? "⌘" : "Ctrl" });
+  else el.removeAttribute("title");
 }
 
 /** The most paths asked about at once (agent-paths.ts MAX_PATHS). */
@@ -1436,6 +1546,8 @@ async function providePathLinks(p, y, done) {
         range: { start: { x: m.start + 1, y }, end: { x: m.end, y } },
         decorations: { pointerCursor: true, underline: true },
         activate: (e) => void openPath(e, abs.get(m.path), m.line, m.col),
+        hover: () => linkHint(p, true),
+        leave: () => linkHint(p, false),
       }));
     done(links.length ? links : undefined);
   } catch {
@@ -1452,6 +1564,8 @@ async function openPath(e, abs, line, col) {
   e?.preventDefault?.();
   const url = editorUrl(st.editorOpen, abs, line, col);
   if (url) {
+    // D35: the same tab, to the editor's own scheme (zed://, vscode://):
+    // a navigation, not a new window, so no popup blocker stands in it.
     window.open(url, "_self");
     return;
   }
@@ -1520,13 +1634,22 @@ async function openPane(id, { front = true } = {}) {
     // OSC 8 links (AG-4b): ⌘/Ctrl-click, http and https only, no confirm.
     linkHandler: {
       activate: (e, uri) => void openWeb(e, uri),
+      hover: () => linkHint(p, true),
+      leave: () => linkHint(p, false),
       allowNonHttpProtocols: false,
     },
   });
   const fit = new lib.FitAddon();
   term.loadAddon(fit);
   // Plain URLs (AG-4b): the same rule as OSC 8.
-  term.loadAddon(new lib.WebLinksAddon((e, uri) => void openWeb(e, uri)));
+  term.loadAddon(
+    new lib.WebLinksAddon((e, uri) => void openWeb(e, uri), {
+      hover: () => linkHint(p, true),
+      leave: () => linkHint(p, false),
+    }),
+  );
+  // D35: the click after xterm's mouseup opens a waiting link.
+  el.querySelector(".term").addEventListener("click", takePendingWeb, true);
   term.open(el.querySelector(".term .tbox"));
   p.term = term;
   p.fit = fit;
@@ -2986,6 +3109,28 @@ function translateStatic(root) {
     ?.setAttribute("aria-label", t("ag.layout"));
 }
 
+/** D37: a stopped agent's ⋯: Start fresh (when Resume is its button), Remove. */
+function stoppedMenuItems(r, opener) {
+  return [
+    ...(r.resumable
+      ? [
+          {
+            label: t("ag.fresh"),
+            onSelect: () => void restartRow(r, "fresh", opener),
+          },
+        ]
+      : []),
+    { label: t("ag.remove"), onSelect: () => void removeRow(r, opener) },
+  ];
+}
+
+function openStoppedMenu(r, opener) {
+  window.denShell?.openMenu?.(opener, {
+    label: t("ag.more", { id: r.agent }),
+    items: stoppedMenuItems(r, opener),
+  });
+}
+
 /** Fill the page drawn by agents.html and wire it. */
 export async function mountAgentsPage(root) {
   if (!root) return;
@@ -3010,30 +3155,16 @@ export async function mountAgentsPage(root) {
       );
       return r ? displayName(r) : agent;
     },
-    // D34: after Clear done, the list again. Focus was on Clear done
-    // (now gone): "All helpers", or the agent's row once it has none.
-    async (agent, ws, { fromRow } = {}) => {
-      await refresh();
-      if (!fromRow) return;
-      // Still there (focus kept across the redraw): nothing to move.
-      const now = document.activeElement;
-      if (now && now !== document.body && st.root.contains(now)) return;
-      const q = (v) => CSS.escape(String(v ?? ""));
-      const all = st.root.querySelector(
-        `#agl .aghs[data-helpers-of="${q(agent)}"][data-ws="${q(ws)}"] .aghs-all`,
-      );
-      const r = visibleRows().find(
-        (x) => x.agent === agent && x.workspace === ws,
-      );
-      (
-        all ??
-        (r
-          ? st.root.querySelector(`#agl button.agr[data-id="${q(r.id)}"]`)
-          : null)
-      )?.focus();
-    },
+    // D34: after Clear done (the Helpers list), the list again.
+    () => refresh(),
   );
   root.querySelector("#agl").addEventListener("click", (e) => {
+    // D37: a person's open or closed "Stopped (n)" is kept.
+    const sum = e.target.closest("details[data-stopped] > summary");
+    if (sum) {
+      saveStoppedOpen(!sum.parentElement.open);
+      return;
+    }
     const act = e.target.closest("button[data-act]");
     if (act) {
       const which = act.dataset.act;
@@ -3053,6 +3184,7 @@ export async function mountAgentsPage(root) {
         void restartRow(r, which, act);
       else if (which === "remove") void removeRow(r, act);
       else if (which === "rename") openRename(r, act);
+      else if (which === "row-more") openStoppedMenu(r, act);
       return;
     }
     const b = e.target.closest(".agr");
@@ -3117,8 +3249,10 @@ export async function mountAgentsPage(root) {
         label: t("ag.more", { id: r.agent }),
         items: [
           // D25: a visible Rename, for touch and keyboard (not only a
-          // double-click on a tab).
-          { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
+          // double-click on a tab). D37: a running agent's only.
+          ...(isStopped(r)
+            ? stoppedMenuItems(r, b)
+            : [{ label: t("ag.rn.item"), onSelect: () => openRename(r, b) }]),
           // D28: its rotation settings and where each comes from.
           {
             label: t("ag.rc.menu"),

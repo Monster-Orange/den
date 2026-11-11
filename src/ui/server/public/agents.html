@@ -265,6 +265,89 @@
       .bar2 .agrot .agnever {
         display: none;
       }
+      /* D37: a stopped agent's row, one line: hollow dot, dimmed name, a
+         chip, when; then Resume and ⋯. In "Stopped (n)", at the bottom. */
+      .agst1 {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .agst1 > .agr {
+        flex: 1 1 0;
+        min-width: 0;
+        /* The name gives way (ellipsis); the chip and time stay whole. */
+        grid-template-columns: auto minmax(2em, 1fr) auto auto;
+        column-gap: 6px;
+        padding-right: 4px;
+      }
+      .agst1 > .agr .nm {
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .agst1 > .agr .stchip {
+        font: 10.5px var(--mono);
+        color: var(--faint);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 0 5px;
+        white-space: nowrap;
+      }
+      .agst1 > .agr .when {
+        font: 11.5px var(--mono);
+        color: var(--faint);
+        white-space: nowrap;
+      }
+      .agst1 > .agacts {
+        flex: none;
+        flex-wrap: nowrap;
+        gap: 4px;
+        padding: 0 8px 0 0;
+      }
+      .agst1 > .agcallout {
+        flex: 1 1 100%;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 0 12px 8px 40px;
+      }
+      .agst1 .den-dot.hollow {
+        background: transparent;
+        box-shadow: inset 0 0 0 1.5px var(--faint);
+      }
+      .agst1 .den-dot.hollow.bad {
+        box-shadow: inset 0 0 0 1.5px var(--bad);
+      }
+      .agl .agstg > summary {
+        justify-content: flex-start;
+        gap: 4px;
+        cursor: pointer;
+        list-style: none;
+        border-top: 1px solid var(--border);
+        margin-top: 4px;
+      }
+      .agstg > summary::-webkit-details-marker {
+        display: none;
+      }
+      .agstg > summary::before {
+        content: "▸";
+      }
+      .agstg[open] > summary::before {
+        content: "▾";
+      }
+      .agstg > summary:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: -2px;
+      }
+      .pane .bar2 .why {
+        flex: 0 1 auto;
+        min-width: 0;
+        color: var(--faint);
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       .agst[data-review] > .agr {
         border-left-color: var(--warn);
       }

@@ -2695,9 +2695,10 @@ server scoped to its workspace.
   read `sessionTitle` instead. Records are unchanged, so none written
   before needs migrating.
 - **Renaming.** `agents rename <id> <name>` (or `--clear`, back to its
-  id) names an agent; so do **Rename…** in its pane's ⋯ menu and **Rename**
-  on a stopped agent's row, by touch or keyboard, as well as a double-click
-  on its tab. The id never changes.
+  id) names a running or stopped agent; on the Agents tab, **Rename…** in a
+  running agent's pane ⋯ menu, by touch or keyboard, or a double-click on
+  its tab. A stopped agent's row and pane don't offer it (0.4.29); the CLI
+  still does. The id never changes.
 - **The name other sessions see.** Den names a Claude Code agent's session
   `<cli>-<ws>:<name, else id>` (`--name`) at every start and resume, so
   another session listing its peers tells Den's agents apart. A rename
@@ -3044,10 +3045,14 @@ but can't stop or steer them. To change what they do, tell the agent.
 
 Where they show:
 
-- **The Agents tab.** Under a running or stopped agent's row, its recent
-  helpers, running ones first, each with what it was asked to do, its
-  state and when. "All helpers (n)" opens the full list. Done, failed and
-  stopped helpers fold away after a while (`collapse_done_minutes`).
+- **The Agents tab.** Every running agent's row counts its running
+  helpers. Under the agent in front (its pane showing), its active
+  helpers, running and idle, are listed: running first, a helper's own
+  helpers under it, each with what it was asked to do, its state and
+  when; at most `row_max` (4), then **All helpers (n)**, which opens the
+  Helpers list. Done, failed and stopped helpers are never listed under
+  the row; they are in the Helpers list. Select another agent and the
+  first one's rows go.
 - **A pane's bar.** **Helpers (n)** opens the list, with a count while any
   run. Helpers from the agent's earlier conversations (before a relaunch)
   are folded under "Earlier (n)".
@@ -3057,15 +3062,14 @@ Where they show:
 - **The rail.** The Agents item counts the helpers running now, on every
   page.
 
-**Clear done** (D34), under an agent's row and in its helpers list, hides
+**Clear done** (D34), in an agent's Helpers list, hides
 every helper of that agent that is done, failed or stopped, in this
 conversation and earlier ones. Running and idle helpers stay, and a helper
 that ends later shows as usual. **Show cleared (n)** in the list shows
 them again, read-only. Den keeps one mark per agent,
 `agent-files/<id>/helpers-cleared.json` under its state, so the clear
 survives restarts, relaunches and rotations; Claude Code's own files are
-never touched. An agent with nothing left to show has no helpers area
-under its row. Clearing is a person's: an agent's token is refused it.
+never touched. Clearing is a person's: an agent's token is refused it.
 
 A helper's state comes from Claude Code's files, best evidence first: the
 person stopped it, its workflow said, the agent was told it ended, its
@@ -3099,13 +3103,24 @@ Settings, under `agents.helpers` in the org config:
 agents:
   helpers:
     active_minutes: 10 # no activity this long, not known done: idle
-    collapse_done_minutes: 30 # done helpers fold away after this
+    row_max: 4 # active helpers under the agent in front
+    collapse_done_minutes: 30 # deprecated (0.4.29): ignored
 ```
 
 | Key                     | Values                     | Default |
 | ----------------------- | -------------------------- | ------- |
 | `active_minutes`        | minutes, above 0 to 100000 | 10      |
-| `collapse_done_minutes` | minutes, above 0 to 100000 | 30      |
+| `row_max`               | a whole number, 1 to 1000  | 4       |
+| `collapse_done_minutes` | deprecated, ignored        | 30      |
+
+`collapse_done_minutes` no longer does anything (0.4.29): finished helpers
+stay in the list until a person clears them. It is still accepted, so a
+config that sets it keeps working, and `<cli> doctor` notes it.
+
+A bad key under `agents:` stops listing agents and reading their helpers,
+on the CLI and the web, until it is fixed; stopping an agent still works.
+A bad key under `sessions:` matters only when a plain session starts (its
+cap); `validate` and `doctor` name it.
 
 A runtime other than Claude Code shows no helpers: Den says it can't tell
 which helpers that agent started.
@@ -3113,9 +3128,15 @@ which helpers that agent started.
 ### Stopped agents: Resume, Start fresh, Remove
 
 An agent that stops stays in the list, below the running ones (AG-14, the
-stopped-agents slice). Its row says why it stopped: "Stopped by you",
-"Exited (code n)", or "Interrupted" when Den or the machine restarted under
-it. Each row has three buttons:
+stopped-agents slice), in one **Stopped (n)** group at the bottom. The
+group starts open with 3 or fewer and closed with more, and stays as a
+person left it (in this browser). Each row is one line: a hollow dot, the
+name, a chip (**Stopped**, **Exited** or **Interrupted**, when Den or the
+machine restarted under it), when, **Resume**, and **⋯** with Start fresh
+and Remove. Its persona, id, runtime, folder and why it stopped ("Stopped
+by you 22:13", "Exited (code 1)") are in its tooltip, and in its pane,
+which opens as before with Resume and the same ⋯. A stopped agent shows no
+helpers. What the actions do:
 
 - **Resume** continues the same conversation. Den runs the runtime's own
   resume with the conversation id it saved (Claude Code: `--resume <id>`).
@@ -3149,7 +3170,8 @@ with `{ ok, agent, wasRunning, stopped: true }` once the session has
 ended, or 202 with `stopped: false, stillStopping: true`.
 
 A runtime that can't resume (codex, gemini, grok), or an agent with no
-saved conversation id, shows only Start fresh, and says why. **Clear
+saved conversation id, shows Start fresh in Resume's place (⋯ has
+Remove), and says why in its tooltip. **Clear
 stopped**, beside + Start agent, removes every stopped agent in view. A
 running agent is never removed: stop it first. None of this asks for the
 admin password.

@@ -71,6 +71,7 @@ import { checkHandback } from "../../shared/agents/handback.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
 import { handoffFile, reasonText } from "../../shared/agents/rotation.js";
 import { shownDepths, sortHelpers } from "../../shared/agents/helpers.js";
+import { isConfigError } from "../../shared/config-error.js";
 import {
   parseRotateValue,
   type OverrideScope,
@@ -1123,7 +1124,7 @@ export async function cmdAgents(
         for (const h of e.hints) d.err(`  ${h}`);
         return 1;
       }
-      if (e instanceof HostError) {
+      if (e instanceof HostError || isConfigError(e)) {
         d.err(`✗ ${e.message}`);
         return 1;
       }

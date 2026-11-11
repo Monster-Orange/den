@@ -3,8 +3,9 @@
  * from Claude Code's files on disk through the real routes (no mocked
  * route):
  *
- *   - under the agent's row: one row per recent helper, the running one
- *     first, and "All helpers (n)" with a running count;
+ *   - under the agent in front only, its active helpers (running first,
+ *     at most row_max, then "All helpers (n)"); every agent's row counts
+ *     its running ones (D34);
  *   - a helper's row opens its transcript, read-only, in a dialog that
  *     says why Den can't steer it, and Escape gives focus back;
  *   - the pane bar's "Helpers (n)" opens the list;
@@ -106,8 +107,20 @@ function writeHelpers(): void {
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    const pw = await import("playwright");
+    // DEN_HELPERS_BROWSER=webkit (Safari's engine) or firefox runs the
+    // same tests there. DEN_PW_WS=ws://localhost:<port>/ uses a browser
+    // behind a Playwright run-server (when this shell can't start a GUI
+    // app); its localhost is this machine's (exposeNetwork).
+    const engine = (
+      ["firefox", "webkit"].includes(process.env.DEN_HELPERS_BROWSER ?? "")
+        ? process.env.DEN_HELPERS_BROWSER
+        : "chromium"
+    ) as "chromium" | "firefox" | "webkit";
+    const ws = process.env.DEN_PW_WS;
+    browser = ws
+      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
+      : await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -173,14 +186,18 @@ describe("an agent's helpers on the agents page (D32)", () => {
     const group = p.locator('#agl .aghs[data-helpers-of="scout"]');
     await group.waitFor({ timeout: 15_000 });
     const rows = group.locator("button.agh");
-    // The finished one is long done: folded away (collapse_done_minutes),
-    // still counted under "All helpers".
+    // D34: under the agent in front, its active helpers only; the done
+    // one is in the Helpers list. Its row's badge counts the running one.
     expect(
       await rows.evaluateAll((b) => b.map((x) => x.dataset.helper)),
     ).toEqual([LIVE]);
     expect(await rows.first().getAttribute("data-status")).toBe("running");
-    expect(await group.locator(".aghs-all").textContent()).toContain("2");
-    expect(await group.locator(".aghs-all .hpbdg").textContent()).toBe("1");
+    expect(await group.locator(".aghs-all").count()).toBe(0);
+    expect(
+      await p
+        .locator(`#agl button.agr[data-id="${sid}"] .agr-hp`)
+        .textContent(),
+    ).toBe("1");
 
     await rows.first().click();
     const dlg = p.locator("#tx-dlg");
@@ -266,14 +283,6 @@ describe("an agent's helpers on the agents page (D32)", () => {
               : (a?.tagName ?? "none");
       });
     };
-    // "All helpers": the list redraws while the dialog is open.
-    const all = '#agl .aghs[data-helpers-of="scout"] .aghs-all';
-    await p.locator(all).waitFor({ timeout: 15_000 });
-    await p.click(all);
-    await p.locator("#hp-body button.agh").first().waitFor();
-    await replace(all);
-    await p.keyboard.press("Escape");
-    expect(await focused()).toBe("all");
     // A helper's row, and the pane bar's button, the same.
     const row = `#agl button.agh[data-helper="${LIVE}"]`;
     await p.click(row);
@@ -353,7 +362,6 @@ describe("an agent's helpers on the agents page (D32)", () => {
           description: desc,
           spawnDepth: parent ? 2 : 1,
           ...(parent ? { parentAgentId: parent } : {}),
-          finished: true,
         }),
       );
       fs.writeFileSync(
@@ -484,79 +492,165 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.context().close();
   }, 60_000);
 
-  // Last: its mark stays for the rest of the file.
-  it("D34 Clear done: under the row and in the list; Show cleared lists them again", async () => {
+  it("D34: rows only under the agent in front; at most row_max, then All helpers (n)", async () => {
     if (!browser) return;
-    const dir = path.join(
-      s.tmp,
-      "home",
-      ".claude",
-      "projects",
-      "-seeded",
-      TOKEN,
-      "subagents",
-    );
+    const host = await connectHost(sessionPaths(s.stateDir).socket);
+    // keeper: 2 running, 5 done. crowd: 6 running.
+    const agents = [
+      {
+        id: "keeper",
+        running: 2,
+        done: 5,
+        token: "00000000-0000-4000-8000-0000000000d4",
+      },
+      {
+        id: "crowd",
+        running: 6,
+        done: 0,
+        token: "00000000-0000-4000-8000-0000000000d5",
+      },
+    ];
+    const sids: Record<string, string> = {};
+    let n = 0;
+    for (const a of agents) {
+      sids[a.id] = (
+        await host.start({
+          name: `acme-north:${a.id}`,
+          cwd: s.wsDir("north"),
+          argv: ["sh"],
+          env: {},
+          cols: 80,
+          rows: 24,
+        })
+      ).ref.id;
+      s.seed({
+        id: a.id,
+        persona: "builder",
+        runtime: "den-claude",
+        workspace: "north",
+        session: { backend: "den-pty", id: sids[a.id] },
+        sessionName: `acme-north:${a.id}`,
+        resumeToken: a.token,
+      });
+      const dir = path.join(
+        s.tmp,
+        "home",
+        ".claude",
+        "projects",
+        "-seeded",
+        a.token,
+        "subagents",
+      );
+      fs.mkdirSync(dir, { recursive: true });
+      for (let i = 0; i < a.running + a.done; i++) {
+        const id = `acf0c0ffee0000${String(10 + n++).padStart(3, "0")}`;
+        const done = i >= a.running;
+        fs.writeFileSync(
+          path.join(dir, `agent-${id}.meta.json`),
+          JSON.stringify({
+            agentType: "Explore",
+            description: `${a.id} ${i}`,
+            ...(done ? { finished: true } : {}),
+          }),
+        );
+        fs.writeFileSync(
+          path.join(dir, `agent-${id}.jsonl`),
+          JSON.stringify({
+            type: "user",
+            isSidechain: true,
+            agentId: id,
+            timestamp: new Date(
+              Date.now() - (done ? 60 : 1) * 60_000 - i * 1000,
+            ).toISOString(),
+            message: { role: "user", content: `${a.id} ${i}` },
+          }) + "\n",
+        );
+      }
+    }
+    host.close();
     const { p, errors } = await open();
-    const group = '#agl .aghs[data-helpers-of="scout"]';
-    const clear = `${group} .aghs-clear`;
-    await p.locator(clear).waitFor({ timeout: 15_000 });
-    await p.focus(clear);
-    await p.keyboard.press("Enter");
-    // Redrawn with nothing finished left: Clear done goes, the running
-    // one stays, focus to All helpers.
-    await p.locator(clear).waitFor({ state: "detached", timeout: 15_000 });
-    expect(await p.locator(`${group} [data-helper="${LIVE}"]`).count()).toBe(1);
+    const rowsOf = (agent: string) =>
+      p.locator(`#agl .aghs[data-helpers-of="${agent}"] button.agh`).count();
+    const badge = (agent: string) =>
+      p
+        .locator(`#agl button.agr[data-id="${sids[agent]}"] .agr-hp`)
+        .textContent();
+    // Not in front: no rows; its badge still counts its running ones.
     await p.waitForFunction(
-      () => document.activeElement?.matches(".aghs-all") ?? false,
-      undefined,
-      { timeout: 5_000 },
+      (id) =>
+        document.querySelector(`#agl button.agr[data-id="${id}"] .agr-hp`)
+          ?.textContent === "2",
+      sids.keeper,
+      { timeout: 20_000 },
     );
-    // A helper that ends after the mark shows, and the list's Clear done
-    // hides it too.
-    const late = "abf0c0ffee000000b";
-    fs.writeFileSync(
-      path.join(dir, `agent-${late}.meta.json`),
-      JSON.stringify({
-        agentType: "Explore",
-        description: "Late one",
-        finished: true,
-      }),
-    );
-    fs.writeFileSync(
-      path.join(dir, `agent-${late}.jsonl`),
-      JSON.stringify({
-        type: "user",
-        isSidechain: true,
-        agentId: late,
-        timestamp: new Date().toISOString(),
-        message: { role: "user", content: "late" },
-      }) + "\n",
-    );
+    expect(await rowsOf("keeper")).toBe(0);
+    // In front: its 2 running ones, none of its 5 done ones.
+    await p.click(`#agl button.agr[data-id="${sids.keeper}"]`);
     await p
-      .locator(`${group} [data-helper="${late}"]`)
+      .locator('#agl .aghs[data-helpers-of="keeper"] button.agh')
+      .first()
       .waitFor({ timeout: 15_000 });
-    await p.click(`${group} .aghs-all`);
-    const listClear = "#hp-dlg [data-hp-clear]";
-    await p.locator(`${listClear}:not([hidden])`).waitFor();
-    await p.click(listClear);
+    expect(await rowsOf("keeper")).toBe(2);
+    expect(await rowsOf("scout")).toBe(0);
+    // Another in front: keeper's rows go, its badge stays.
+    await p.click(`#agl button.agr[data-id="${sids.crowd}"]`);
     await p
-      .locator(`#hp-body > button.agh[data-helper="${late}"]`)
-      .waitFor({ state: "detached", timeout: 10_000 });
-    expect(await p.locator(listClear).isHidden()).toBe(true);
+      .locator('#agl .aghs[data-helpers-of="keeper"]')
+      .waitFor({ state: "detached", timeout: 15_000 });
+    expect(await badge("keeper")).toBe("2");
+    // 6 running: 4 rows (row_max), then "All helpers (6)", which opens
+    // the Helpers list with all of them.
+    const all = '#agl .aghs[data-helpers-of="crowd"] .aghs-all';
+    await p.locator(all).waitFor({ timeout: 15_000 });
+    expect(await rowsOf("crowd")).toBe(4);
+    expect(await p.locator(all).textContent()).toBe("All helpers (6)");
+    await p.click(all);
+    await p.locator("#hp-body > button.agh").first().waitFor();
+    expect(await p.locator("#hp-body > button.agh").count()).toBe(6);
+    await p.keyboard.press("Escape");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
+  // Last: its mark stays for the rest of the file.
+  it("D34 Clear done in the Helpers list; Show cleared lists them; still hidden after a reload", async () => {
+    if (!browser) return;
+    const { p, errors } = await open();
+    const bar = `.pane[data-id="${sid}"] [data-act="helpers"]`;
+    const shownDone = `#hp-body > button.agh[data-helper="${DONE}"]`;
+    await p.locator(bar).waitFor({ timeout: 15_000 });
+    await p.click(bar);
+    const clear = "#hp-dlg [data-hp-clear]";
+    await p.locator(`${clear}:not([hidden])`).waitFor();
+    expect(await p.locator(shownDone).count()).toBe(1);
+    await p.click(clear);
+    await p.locator(shownDone).waitFor({ state: "detached", timeout: 10_000 });
+    expect(await p.locator(clear).isHidden()).toBe(true);
     const shown = p.locator("#hp-body details.hp-cleared");
     await shown.locator("summary").click();
     const cleared = await shown
       .locator("button.agh")
       .evaluateAll((b) => b.map((x) => (x as HTMLElement).dataset.helper));
-    expect(cleared).toEqual(expect.arrayContaining([DONE, late]));
+    expect(cleared).toContain(DONE);
     expect(cleared).not.toContain(LIVE);
     expect(await shown.locator("summary").textContent()).toContain(
       `(${cleared.length})`,
     );
-    // The running one is still in the list itself.
+    // The running one is still listed.
     expect(
       await p.locator(`#hp-body > button.agh[data-helper="${LIVE}"]`).count(),
     ).toBe(1);
+    // After a reload: still hidden.
+    await p.keyboard.press("Escape");
+    await p.reload();
+    await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
+    await p.evaluate(() =>
+      (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
+    );
+    await p.locator(bar).waitFor({ timeout: 15_000 });
+    await p.click(bar);
+    await p.locator("#hp-body details.hp-cleared").waitFor();
+    expect(await p.locator(shownDone).count()).toBe(0);
     await p.keyboard.press("Escape");
     expect(errors).toEqual([]);
     await p.context().close();

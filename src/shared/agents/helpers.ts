@@ -66,13 +66,19 @@ export const HELPERS_READ_ONLY_NOTE =
 export interface HelperSettings {
   /** No activity for this long and not known done: idle, not running. */
   activeMinutes: number;
-  /** Done, failed and stopped helpers fold away after this long. */
+  /**
+   * Deprecated (0.4.29): accepted and ignored. The row no longer folds
+   * finished helpers by time; a person clears them (D34).
+   */
   collapseDoneMinutes: number;
+  /** D34: at most this many active helpers under the selected agent's row. */
+  rowMax: number;
 }
 
 export const HELPER_DEFAULTS: HelperSettings = {
   activeMinutes: 10,
   collapseDoneMinutes: 30,
+  rowMax: 4,
 };
 
 /** What a runtime's helpers hooks are given. */

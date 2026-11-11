@@ -4,9 +4,11 @@
  * agent's session, so nothing here stops or steers one (and the views say
  * so).
  *
- *   helperRowsHtml(row): under an agent's row on the Agents page, its
- *     recent helpers (the row's `helpers.recent`: running, or ended a short
- *     while ago) and "All helpers (n)".
+ *   helperRowsHtml(row, selected): under the selected agent's row (its
+ *     pane in front) only, its active helpers (running or idle, nested,
+ *     running first; at most agents.helpers.row_max) and, when it has
+ *     more, "All helpers (n)" (D34). Done ones never list there: the
+ *     Helpers list has them, with Clear done.
  *   openHelpers({ ws, agent, name, opener }): every helper, this
  *     conversation's first and earlier ones folded under "Earlier (n)";
  *     each opens its transcript (transcript-view.js).
@@ -31,13 +33,10 @@ const base = (ws, agent) => `${agentUrl(ws, agent)}/helpers`;
 /** D34: what the page does once a person cleared (set by wireHelperRows). */
 let onClearedHook = null;
 
-/** D34 Clear done: hide agent `agent`'s finished helpers; then the hook. */
+/** D34 Clear done (the Helpers list): hide `agent`'s finished helpers. */
 export async function clearHelpers(ws, agent) {
-  // Where focus was when asked: a poll may redraw the list meanwhile.
-  const was = document.activeElement;
-  const fromRow = !!was?.closest?.(".aghs");
   await window.denShell.api("POST", `${agentUrl(ws, agent)}/clear-helpers`, {});
-  await onClearedHook?.(agent, ws, { was, fromRow });
+  await onClearedHook?.(agent, ws);
 }
 
 /** A dot's tone for a helper's status (the shell's .den-dot tones). */
@@ -114,29 +113,32 @@ export function helperHtml(h, { ws, agent, depth }) {
 }
 
 /**
- * Under an agent's row: its recent helpers, "All helpers (n)" and, when
- * any shown one has ended, "Clear done" (D34). Nothing at all when it has
- * nothing to show.
+ * Under the selected agent's row: its active helpers, and "All helpers
+ * (n)" when it has more than the row shows. Nothing for any other row, or
+ * when none is active (the row's badge still counts the running ones).
  */
-export function helperRowsHtml(r) {
+export function helperRowsHtml(r, selected = false) {
   const h = r?.helpers;
-  if (!h || !h.total) return "";
+  if (!selected || !h || !h.activeCount) return "";
   const name = r.displayName || r.agent;
   const ctx = { ws: r.workspace, agent: r.agent };
+  const active = Array.isArray(h.active) ? h.active : [];
   return (
-    `<div class="aghs" data-helpers-of="${esc(r.agent)}" data-ws="${esc(r.workspace)}" role="group" aria-label="${esc(t("hp.groupOf", { name: r.displayName || r.agent }))}">` +
-    helperListHtml(h.recent, ctx) +
-    `<button type="button" class="lnk aghs-all">` +
-    esc(t("hp.all", { n: h.total })) +
-    (h.running
-      ? ` <span class="hpbdg" aria-label="${esc(t("hp.runningN", { n: h.running }))}">${esc(h.running)}</span>`
-      : "") +
-    `</button>` +
-    (h.ended
-      ? `<button type="button" class="lnk aghs-clear" title="${esc(t("hp.clearTip", { name }))}">${esc(t("hp.clear"))}</button>`
+    `<div class="aghs" data-helpers-of="${esc(r.agent)}" data-ws="${esc(r.workspace)}" role="group" aria-label="${esc(t("hp.groupOf", { name }))}">` +
+    helperListHtml(active, ctx) +
+    (h.activeCount > active.length
+      ? `<button type="button" class="lnk aghs-all" aria-haspopup="dialog">${esc(t("hp.all", { n: h.activeCount }))}</button>`
       : "") +
     `</div>`
   );
+}
+
+/** The row's badge: how many of its helpers run now (any row). */
+export function helperBadgeHtml(r) {
+  const n = r?.helpers?.running;
+  return n
+    ? ` <span class="hpbdg agr-hp" title="${esc(t("hp.runningN", { n }))}" aria-label="${esc(t("hp.runningN", { n }))}">${esc(n)}</span>`
+    : "";
 }
 
 /** "Helpers (n)" for a pane's bar: a count badge while any run. */
@@ -173,7 +175,7 @@ const CSS = `
 .agh-s{color:var(--muted);white-space:nowrap}
 .agh-m{grid-column:2 / 4;color:var(--faint);font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agh[data-status="running"] .agh-s{color:var(--text)}
-.aghs-all,.aghs-clear{align-self:flex-start;font-size:12px;margin:2px 6px}
+.aghs-all{align-self:flex-start;font-size:12px;margin:2px 6px}
 .hp-hd .hp-clear{flex:none}
 .hp-hd .hp-clear + .x{margin-left:8px}
 .hp-cleared{margin-top:8px}
@@ -364,22 +366,6 @@ export function wireHelperRows(root, nameOf = (a) => a, onCleared = null) {
         agent: row.dataset.agent,
         helper: row.dataset.helper,
         opener: row,
-      });
-      return;
-    }
-    // D34: Clear done under the row.
-    const clr = e.target.closest(".aghs-clear");
-    if (clr && root.contains(clr)) {
-      e.stopPropagation();
-      const g = clr.closest(".aghs");
-      // Asked first: it notes where focus is, which disabling would move.
-      const asked = clearHelpers(g.dataset.ws, g.dataset.helpersOf);
-      clr.disabled = true;
-      void asked.catch((err) => {
-        clr.disabled = false;
-        window.denShell?.toast?.(
-          t("hp.clearFailed", { err: err?.message || String(err) }),
-        );
       });
       return;
     }

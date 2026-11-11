@@ -957,10 +957,15 @@ function onClick(e) {
     m.hidden = false;
     more.setAttribute("aria-expanded", "true");
     placeMenu(more, m);
-    m.querySelector("button:not(:disabled)")?.focus();
+    m.querySelector("button:not(:disabled), a[role=menuitem]")?.focus();
     return;
   }
   if (!t.closest(".dg-more, .dg-layer")) closeMenus();
+  // D35: Visit is a real link: the browser opens it; only close the menu.
+  if (t.closest("a[data-action-link]")) {
+    closeMenus();
+    return;
+  }
   const act = t.closest("[data-action]");
   if (act) {
     if (act.disabled) return;

@@ -229,8 +229,7 @@ describe("a typo under agents: is a 422 naming its key, on agent routes only", (
   const ISSUE = {
     file: "config/den.yml",
     key: "agents.helpers.collapse_done",
-    message:
-      "unknown key (agents.helpers takes active_minutes, collapse_done_minutes)",
+    message: "unknown key (agents.helpers takes active_minutes, row_max)",
   };
 
   it("GET /api/workspaces/lab/agents is 422 config_invalid, not a 500", async () => {
@@ -243,6 +242,15 @@ describe("a typo under agents: is a 422 naming its key, on agent routes only", (
       issues: [ISSUE],
     });
     expect(body.error).toBe(`config/den.yml: ${ISSUE.key}: ${ISSUE.message}`);
+  }, 30_000);
+
+  it("an agent's helpers are the same 422, never answered with defaults", async () => {
+    const r = await request(
+      badAgents,
+      "/api/workspaces/lab/agents/scout/helpers",
+    );
+    expect(r.status).toBe(422);
+    expect(JSON.parse(r.body)).toMatchObject({ issues: [ISSUE] });
   }, 30_000);
 
   it.each(["/api/services", "/api/workspaces", "/api/sessions/helpers"])(

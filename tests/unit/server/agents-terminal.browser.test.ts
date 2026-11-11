@@ -44,12 +44,26 @@ const errors: string[] = [];
 const TOKEN = "5f0c2d1e-3a4b-4c5d-8e9f-0a1b2c3d4e5f";
 const sid: Record<string, string> = {};
 const pid: Record<string, number> = {};
-const MOD = process.platform === "darwin" ? "Meta" : "Control";
+// The page's own rule (term-input.js isMac): a browser in a Linux
+// container is "elsewhere" even on a Mac.
+let MOD: "Meta" | "Control" = "Control";
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    const pw = await import("playwright");
+    // DEN_TERMINAL_BROWSER=webkit (Safari's engine) or firefox runs the
+    // same tests there. DEN_PW_WS=ws://localhost:<port>/ uses a browser
+    // behind a Playwright run-server (when this shell can't start a GUI
+    // app); its localhost is this machine's (exposeNetwork).
+    const engine = (
+      ["firefox", "webkit"].includes(process.env.DEN_TERMINAL_BROWSER ?? "")
+        ? process.env.DEN_TERMINAL_BROWSER
+        : "chromium"
+    ) as "chromium" | "firefox" | "webkit";
+    const ws = process.env.DEN_PW_WS;
+    browser = ws
+      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
+      : await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -123,39 +137,47 @@ async function eventually(
   }
 }
 
-async function page(url: string): Promise<Page> {
+async function page(url: string, stub = true): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
     reducedMotion: "reduce",
   });
-  await ctx.addInitScript((v) => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, v);
-    } catch {
-      /* none */
-    }
-    // What a modifier-click opens or copies, recorded instead.
-    const w = window as unknown as {
-      __opened: unknown[][];
-      __copied: string[];
-    };
-    w.__opened = [];
-    w.__copied = [];
-    window.open = (...a: unknown[]) => {
-      w.__opened.push(a);
-      return null;
-    };
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: {
-        writeText: (t: string) => {
-          w.__copied.push(t);
-          return Promise.resolve();
+  await ctx.addInitScript(
+    ([v, stubbed]) => {
+      try {
+        for (const k of ["den-changelog-seen", "acme-changelog-seen"])
+          localStorage.setItem(k, v);
+      } catch {
+        /* none */
+      }
+      if (!stubbed) return;
+      // What a modifier-click opens or copies, recorded instead.
+      const w = window as unknown as {
+        __opened: unknown[][];
+        __copied: string[];
+      };
+      w.__opened = [];
+      w.__copied = [];
+      window.open = (...a: unknown[]) => {
+        w.__opened.push(a);
+        return null;
+      };
+      // D35: a web link opens through a real link (term-input.js linkOpen).
+      HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+        w.__opened.push([this.href, this.target, this.rel]);
+      };
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: (t: string) => {
+            w.__copied.push(t);
+            return Promise.resolve();
+          },
         },
-      },
-    });
-  }, latest);
+      });
+    },
+    [latest, stub] as const,
+  );
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(`${url}: ${e.message}`));
   p.on("console", (m) => {
@@ -163,6 +185,16 @@ async function page(url: string): Promise<Page> {
   });
   await p.goto(`${s!.base}${url}`);
   await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
+  MOD = (await p.evaluate(() => {
+    const n = navigator as Navigator & {
+      userAgentData?: { platform?: string };
+    };
+    return /mac|iphone|ipad/i.test(
+      n.userAgentData?.platform || n.platform || "",
+    );
+  }))
+    ? "Meta"
+    : "Control";
   return p;
 }
 
@@ -398,8 +430,8 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await modClick(p, "planner", 6, 1);
     await eventually(async () => (await opened(p)).length === 2);
     expect(await opened(p)).toEqual([
-      ["https://example.test/docs", "_blank", "noopener"],
-      ["https://example.test/osc", "_blank", "noopener"],
+      ["https://example.test/docs", "_blank", "noopener noreferrer"],
+      ["https://example.test/osc", "_blank", "noopener noreferrer"],
     ]);
     // javascript: does nothing.
     await modClick(p, "planner", 6, 2);
@@ -441,6 +473,70 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await q.context().close();
     await s!.settings({ editor_open: null });
   }, 90_000);
+
+  it("D35: a ⌘/Ctrl-click on a URL opens a real new tab, noopener (no stub: Safari's engine too)", async () => {
+    if (skip()) return;
+    const p = await page(`/agents?open=${sid.planner}&layout=tabs`, false);
+    await p.waitForSelector(`.pane[data-id="${sid.planner}"] .xterm-screen`);
+    // Sent again until the pane shows it (its socket may still be opening).
+    await eventually(async () => {
+      pty("planner").emit(
+        `\u001b[2J\u001b[Hurl ${s!.base}/d35 here\r\n` +
+          `osc \u001b]8;;${s!.base}/d35-osc\u0007OSC LINK\u001b]8;;\u0007 end\r\n`,
+      );
+      await new Promise((r) => setTimeout(r, 500));
+      return p.evaluate(
+        (i) =>
+          (
+            document.querySelector(`.pane[data-id="${i}"] .xterm-rows`)
+              ?.textContent ?? ""
+          )
+            .replace(/\u00a0/g, " ")
+            .includes("OSC LINK"),
+        sid.planner,
+      );
+    }, 20_000);
+    for (const [row, want] of [
+      [0, `${s!.base}/d35`],
+      [1, `${s!.base}/d35-osc`],
+    ] as const) {
+      expect(await linkAt(p, "planner", 10, row)).toBe(true);
+      const popup = p.context().waitForEvent("page", { timeout: 5_000 });
+      await modClick(p, "planner", 10, row);
+      const tab = await popup;
+      // Where it went (Den answers 404 there: the navigation is enough).
+      await eventually(() => tab.url() !== "about:blank", 5_000).catch(
+        () => undefined,
+      );
+      expect(tab.url()).toBe(want);
+      // noopener: the new tab has no handle back to Den.
+      expect(
+        await tab.evaluate(() => window.opener === null).catch(() => true),
+      ).toBe(true);
+      await tab.close();
+    }
+    // The hover hint says how.
+    const at = await cell(p, "planner", 10, 0);
+    await p.mouse.move(at.x, at.y + 400);
+    await p.mouse.move(at.x, at.y, { steps: 2 });
+    await eventually(
+      async () =>
+        (await p
+          .locator(`.pane[data-id="${sid.planner}"] .term`)
+          .getAttribute("title")) ===
+        (MOD === "Meta" ? "⌘-click to open" : "Ctrl-click to open"),
+      3_000,
+    );
+    await p.mouse.move(at.x, at.y + 400);
+    await eventually(
+      async () =>
+        !(await p
+          .locator(`.pane[data-id="${sid.planner}"] .term`)
+          .getAttribute("title")),
+      3_000,
+    );
+    await p.context().close();
+  }, 60_000);
 
   it("raised no page errors", () => {
     if (skip()) return;

@@ -1,6 +1,7 @@
 /**
- * `agents.helpers` (D32): how helpers show. Permissive defaults (active 10
- * minutes, done ones fold after 30); a bad key or value fails naming it.
+ * `agents.helpers` (D32/D34): how helpers show. Permissive defaults (idle
+ * after 10 minutes, 4 under the selected row); collapse_done_minutes is
+ * deprecated and ignored (0.4.29); a bad key or value fails naming it.
  */
 import { describe, expect, it } from "@jest/globals";
 import { HELPER_DEFAULTS } from "../../../src/shared/agents/helpers.js";
@@ -19,6 +20,7 @@ describe("agents.helpers", () => {
     expect(HELPER_DEFAULTS).toEqual({
       activeMinutes: 10,
       collapseDoneMinutes: 30,
+      rowMax: 4,
     });
     expect(readAgentsConfig({} as DenConfig).helpers).toEqual(HELPER_DEFAULTS);
     expect(helpersBlock(null)).toEqual(HELPER_DEFAULTS);
@@ -28,10 +30,17 @@ describe("agents.helpers", () => {
     expect(readAgentsConfig(cfg({ active_minutes: 2.5 })).helpers).toEqual({
       activeMinutes: 2.5,
       collapseDoneMinutes: 30,
+      rowMax: 4,
     });
+    expect(readAgentsConfig(cfg({ row_max: 12 })).helpers).toEqual({
+      activeMinutes: 10,
+      collapseDoneMinutes: 30,
+      rowMax: 12,
+    });
+    // Deprecated: still accepted, so a config that sets it keeps working.
     expect(
       readAgentsConfig(cfg({ collapse_done_minutes: 1440 })).helpers,
-    ).toEqual({ activeMinutes: 10, collapseDoneMinutes: 1440 });
+    ).toMatchObject({ activeMinutes: 10, rowMax: 4 });
   });
 
   it("is a reserved key, never an agent id", () => {
@@ -55,5 +64,9 @@ describe("agents.helpers", () => {
     expect(helpersBlock({ collapse_done_minutes: 100_000 })).toMatchObject({
       collapseDoneMinutes: 100_000,
     });
+    for (const bad of [0, 1.5, "4", 1001])
+      expect(() => helpersBlock({ row_max: bad })).toThrow(
+        "agents.helpers.row_max: must be a whole number from 1 to 1000",
+      );
   });
 });

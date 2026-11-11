@@ -817,7 +817,12 @@ path.dg-flow.cross {
   color: var(--dg-faint);
   padding: 2px 8px 4px;
 }
-.dg-menu button {
+.dg-menu a[role="menuitem"] {
+  color: inherit;
+  text-decoration: none;
+}
+.dg-menu button,
+.dg-menu a[role="menuitem"] {
   display: block;
   width: 100%;
   text-align: left;
@@ -829,7 +834,9 @@ path.dg-flow.cross {
   cursor: pointer;
 }
 .dg-menu button:hover:not(:disabled),
-.dg-menu button:focus-visible {
+.dg-menu button:focus-visible,
+.dg-menu a[role="menuitem"]:hover,
+.dg-menu a[role="menuitem"]:focus-visible {
   background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 .dg-menu button:disabled {

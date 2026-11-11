@@ -595,7 +595,6 @@
     "ag.freshName": "Start {id} fresh",
     "ag.startedFresh": "Started {id} fresh",
     "ag.remove": "Remove",
-    "ag.removeName": "Remove {id}",
     "ag.removed": "Removed {id}",
     "ag.removedMany": "Removed {n} stopped agents",
     "ag.removedMany.one": "Removed {n} stopped agent",
@@ -731,6 +730,12 @@
     "ag.pc.done": "{id} is now {p}",
     "ag.pc.pending": "{id} becomes {p} when this turn ends",
     "ag.more": "More for {id}",
+    "ag.chip.stopped": "Stopped",
+    "ag.chip.exited": "Exited",
+    "ag.chip.interrupted": "Interrupted",
+    "ag.stoppedGroup": "Stopped ({n})",
+    "ag.stoppedGroupTip":
+      "Agents that aren't running. Open one for its details.",
     "ag.bring.go": "Bring in",
     "ag.bring.going": "Bringing in…",
     "ag.bring.done": "Brought in as {id}",
@@ -978,6 +983,7 @@
       "⌃⇧1 / ⌃⇧2 / ⌃⇧3 switch layout. ⌘-click (Ctrl-click) opens a link or path.",
     "ag.pal.layout": "Layout: {name}",
     "ag.copied": "Copied",
+    "ag.linkHint": "{key}-click to open",
     "ag.tabs": "Open sessions",
     "ag.hint.focus":
       "Click shows one session. Shift- or ⌘-click adds it alongside.",
@@ -993,7 +999,6 @@
       "Its tab, row and pane header show it; the id {id} never changes. Other sessions see it as {peer} from its next start or resume. Empty: back to {id}.",
     "ag.rn.go": "Rename",
     "ag.rn.cancel": "Cancel",
-    "ag.rn.act": "Rename",
     "ag.where.logout": "Stops at logout",
     "ag.where.logoutTip":
       "It runs in the desktop login session, so logging out ends it. To keep agents running: {cli} service install --mode always (opt-in, not yet proven across a logout)",

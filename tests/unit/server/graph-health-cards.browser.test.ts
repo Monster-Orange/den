@@ -266,10 +266,17 @@ describe("graph cards and health", () => {
       },
       { repo: "shop", service: "worker", ok: true },
     ]);
-    const visit = (id: string) => `${CARD(id)} .dg-acts [data-action="open"]`;
+    // D35: a real link (Safari blocks window.open from a delegated click).
+    const visit = (id: string) =>
+      `${CARD(id)} .dg-acts a[data-action-link="open"]`;
     await p.waitForSelector(visit("shop/api"), { state: "attached" });
     expect((await p.textContent(visit("shop/api")))?.trim()).toBe("Visit ↗");
     expect(await p.$(visit("shop/worker"))).toBeNull();
+    expect(await p.getAttribute(visit("shop/api"), "target")).toBe("_blank");
+    expect(await p.getAttribute(visit("shop/api"), "rel")).toBe(
+      "noopener noreferrer",
+    );
+    expect(await p.$(`${CARD("shop/worker")} [data-action="open"]`)).toBeNull();
     await p
       .context()
       .route("http://shop.example.test/**", (r) => r.fulfill({ body: "shop" }));

@@ -521,9 +521,12 @@ export function configLines(
   errorOf: (
     s: "agents" | "sessions",
   ) => ConfigError | null = sectionConfigError,
+  deprecated: () => string[] = deprecatedKeys,
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
+  // Keys still accepted that no longer do anything: a note, not a problem.
+  for (const l of deprecated()) lines.push(`  agents  ℹ  ${l}`);
   for (const section of ["agents", "sessions"] as const) {
     const e = errorOf(section);
     const issues = e
@@ -538,8 +541,24 @@ export function configLines(
     });
     for (const l of issues) lines.push(`  ${section}  ✗  ${l}`);
   }
+  const problem = checks.some((c) => c.status === "fail");
   if (lines.length) lines.unshift("", `${title} doctor: config`, "");
-  return { lines, problem: lines.length > 0, checks };
+  return { lines, problem, checks };
+}
+
+/** 0.4.29: agents.helpers.collapse_done_minutes, set but ignored. */
+function deprecatedKeys(): string[] {
+  try {
+    const h = (readDenConfig().agents as { helpers?: unknown } | undefined)
+      ?.helpers;
+    return h && typeof h === "object" && "collapse_done_minutes" in h
+      ? [
+          "agents.helpers.collapse_done_minutes no longer does anything (0.4.29): remove it. Finished helpers stay until a person clears them (Clear done).",
+        ]
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function cmdDoctor(args: string[]): Promise<number> {

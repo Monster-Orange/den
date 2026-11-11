@@ -964,11 +964,16 @@ export interface AgentsConfig {
   rotate?: { after_compactions?: unknown; standing?: unknown };
   /**
    * D32, the helpers an agent starts in its own session:
-   * `{ active_minutes, collapse_done_minutes }`. A helper with no activity
-   * for `active_minutes` (default 10) and not known done shows idle; done
-   * ones fold away after `collapse_done_minutes` (default 30).
+   * `{ active_minutes, row_max }`. A helper with no activity for
+   * `active_minutes` (default 10) and not known done shows idle; at most
+   * `row_max` (default 4) active ones list under the selected agent's row
+   * (D34). `collapse_done_minutes` is deprecated (0.4.29) and ignored.
    */
-  helpers?: { active_minutes?: unknown; collapse_done_minutes?: unknown };
+  helpers?: {
+    active_minutes?: unknown;
+    row_max?: unknown;
+    collapse_done_minutes?: unknown;
+  };
   /**
    * Any other key is an agent id: `agents.<id>.grants` widens that agent's
    * MCP scope to other workspaces (AG spec §5b). Config only: an agent
@@ -1037,9 +1042,18 @@ export function helpersBlock(v: unknown): HelperSettings {
   if (v === undefined || v === null) return out;
   if (!isMapping(v))
     throw new Error(
-      `agents.helpers: must be a mapping of active_minutes, collapse_done_minutes (got ${JSON.stringify(v)})`,
+      `agents.helpers: must be a mapping of active_minutes, row_max (got ${JSON.stringify(v)})`,
     );
   for (const [k, x] of Object.entries(v)) {
+    if (k === "row_max") {
+      if (typeof x !== "number" || !Number.isInteger(x) || x < 1 || x > 1000)
+        throw new Error(
+          `agents.helpers.row_max: must be a whole number from 1 to 1000 (got ${JSON.stringify(x)})`,
+        );
+      out.rowMax = x;
+      continue;
+    }
+    // collapse_done_minutes: deprecated (0.4.29), still checked, ignored.
     const key =
       k === "active_minutes"
         ? "activeMinutes"
@@ -1048,7 +1062,7 @@ export function helpersBlock(v: unknown): HelperSettings {
           : null;
     if (!key)
       throw new Error(
-        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, collapse_done_minutes)`,
+        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max)`,
       );
     if (typeof x !== "number" || !Number.isFinite(x) || x <= 0 || x > 100_000)
       throw new Error(

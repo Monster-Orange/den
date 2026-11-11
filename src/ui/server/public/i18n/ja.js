@@ -517,7 +517,6 @@
     "ag.rc.autoRelaunched":
       "{why}のあと {id} を引き継ぎから再起動しました。前の会話 {old} は残っています。",
     "ag.remove": "削除",
-    "ag.removeName": "{id} を削除",
     "ag.removed": "{id} を削除しました",
     "ag.removedMany": "停止中のエージェント {n} 件を削除しました",
     "ag.undo": "元に戻す",
@@ -602,6 +601,12 @@
     "ag.pc.done": "{id} は {p} になりました",
     "ag.pc.pending": "このターンが終わると {id} は {p} になります",
     "ag.more": "{id} のその他の操作",
+    "ag.chip.stopped": "停止",
+    "ag.chip.exited": "終了",
+    "ag.chip.interrupted": "中断",
+    "ag.stoppedGroup": "停止中 ({n})",
+    "ag.stoppedGroupTip":
+      "実行していないエージェント。開くと詳細が表示されます。",
     "ag.bring.go": "取り込む",
     "ag.bring.going": "取り込み中…",
     "ag.bring.done": "{id} として取り込みました",
@@ -852,6 +857,7 @@
       "⌃⇧1 / ⌃⇧2 / ⌃⇧3 でレイアウトを切り替えます。⌘ クリック（Ctrl クリック）でリンクやパスを開きます。",
     "ag.pal.layout": "レイアウト: {name}",
     "ag.copied": "コピーしました",
+    "ag.linkHint": "{key}+クリックで開く",
     "ag.tabs": "開いているセッション",
     "ag.hint.focus":
       "クリックで 1 つのセッションを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",
@@ -867,7 +873,6 @@
       "タブ、行、ペインの見出しに表示されます。ID {id} は変わりません。ほかのセッションからは、次の開始または再開から {peer} として見えます。空にすると {id} に戻ります。",
     "ag.rn.go": "名前を変更",
     "ag.rn.cancel": "キャンセル",
-    "ag.rn.act": "名前を変更",
     "ag.where.logout": "ログアウトで停止",
     "ag.where.logoutTip":
       "デスクトップのログインセッションで動いているため、ログアウトすると終了します。エージェントを動かし続けるには: {cli} service install --mode always (任意。ログアウトをまたいだ動作はまだ未検証)",

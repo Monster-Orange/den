@@ -98,7 +98,7 @@ const listed = (p: Page) =>
         .filter((e) => e.matches(".agst") || !e.closest(".agst"))
         .map(
           (e) =>
-            `${(e.closest(".wsg") as HTMLElement | null)?.dataset.ws}/${(e as HTMLElement).dataset.agent ?? (e as HTMLElement).dataset.id}`,
+            `${((e.closest(".agst") ?? e.closest(".wsg")) as HTMLElement | null)?.dataset.ws}/${(e as HTMLElement).dataset.agent ?? (e as HTMLElement).dataset.id}`,
         ),
     );
 

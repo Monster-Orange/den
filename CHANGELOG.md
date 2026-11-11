@@ -8,21 +8,33 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
-- **Clear done for an agent's helpers (D34).** Under an agent's row on
-  the Agents tab and in its helpers list: hides every helper that is
-  done, failed or stopped, in this conversation and earlier ones.
-  Running and idle ones stay, and one that ends later shows as usual.
-  **Show cleared (n)** in the list shows them again. The clear is kept
-  per agent in its own files, so it survives restarts, relaunches and
-  rotations; Claude Code's files are never touched. An agent with
-  nothing left to show has no helpers area under its row. Clearing is a
-  person's (an agent's token is refused) and is audited. `<cli> agents
-  helpers --all` and MCP `agent_helpers {all: true}` list cleared ones
-  too; by default they are only counted (`clearedCount`). The route is
-  `POST /api/workspaces/<ws>/agents/<id>/clear-helpers`.
+- **Helpers under the agent in front (D34).** On the Agents tab, the
+  agent whose pane is showing lists its active helpers (running and
+  idle) under its row: running first, nested, at most
+  `agents.helpers.row_max` (default 4), then **All helpers (n)**, which
+  opens the Helpers list. Every running agent's row counts its running
+  helpers. Done, failed and stopped helpers are never listed under a
+  row; they are in the Helpers list.
+- **Clear done for an agent's helpers (D34).** In an agent's Helpers
+  list: hides every helper that is done, failed or stopped, in this
+  conversation and earlier ones. Running and idle ones stay, and one
+  that ends later shows as usual. **Show cleared (n)** shows them
+  again. The clear is kept per agent in its own files, so it survives
+  restarts, relaunches and rotations; Claude Code's files are never
+  touched. Clearing is a person's (an agent's token is refused) and is
+  audited. `<cli> agents helpers --all` and MCP `agent_helpers {all:
+  true}` list cleared ones too; by default they are only counted
+  (`clearedCount`). The route is `POST
+  /api/workspaces/<ws>/agents/<id>/clear-helpers`.
+- **Console links: "⌘-click to open" (D35).** Hovering a link in an
+  agent's console says how to open it (Ctrl-click off a Mac).
 
 ### Fixed
 
+- **Links in Safari (D35).** A ⌘-click on a link in an agent's console,
+  and Visit ↗ on the Services page and in its menus, open through a real
+  link (`target=_blank`, `noopener noreferrer`), which Safari doesn't
+  block as it did `window.open`.
 - A bad key or value under `agents:` or `sessions:` in the config (a
   typo such as `agents.helpers.collapse_done`) made the Agents page's
   routes answer 500. They now answer 422 `config_invalid` naming the
@@ -31,8 +43,28 @@ config and manifest changes a distribution must make to move to it under
   edge carry on. `<cli> doctor` names the bad key with its file and path
   (a ✗ row, and `config:agents` / `config:sessions` in `--json`).
 
+### Deprecated
+
+- `agents.helpers.collapse_done_minutes` no longer does anything: the row
+  doesn't fold helpers by time any more (a person clears them). It is
+  still accepted so configs keep working; `<cli> doctor` notes it.
+  `active_minutes` is unchanged.
+
 ### Changed
 
+- **Stopped agents take one line each (D37).** They sit in one
+  **Stopped (n)** group at the bottom of the Agents list, open with 3 or
+  fewer and closed with more, kept as a person leaves it. Each row: a
+  hollow dot, the name, a Stopped, Exited or Interrupted chip, when,
+  **Resume**, and **⋯** with Start fresh and Remove. The persona, id,
+  runtime, folder and why are in the row's tooltip and in its pane. A
+  stopped agent no longer offers Rename on the page (the CLI still does)
+  and shows no helpers.
+- With a bad `agents:` key, `<cli> agents list` and `agents helpers`
+  refuse too, naming it, and so does the helpers route (422), as the
+  Agents page does; before, they ran with defaults. Stopping an agent
+  still works. A bad `sessions:` key matters only when a plain session
+  starts; `validate` and `doctor` name it.
 - Those errors now start with the config file and leave the value out
   (`config/den.yml: agents.max_concurrent: must be a whole number of at
   least 1`, no longer `… (got 0)`), as the other config errors do: they
