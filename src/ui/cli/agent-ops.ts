@@ -265,6 +265,8 @@ export interface AgentsDeps extends SessionsDeps {
     url: string;
     token: string;
     allowTools?: boolean;
+    /** HUB-1.7: Hub's MCP endpoint (default <url>/mcp). */
+    mcpUrl?: string;
   } | null>;
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
   workspaceRepos?: (ws: string) => string[];
@@ -288,6 +290,7 @@ export interface AgentsResolved extends Resolved {
     url: string;
     token: string;
     allowTools?: boolean;
+    mcpUrl?: string;
   } | null>;
   workspaceRepos: (ws: string) => string[];
 }
@@ -395,6 +398,7 @@ export async function agentHub(
   d: AgentsResolved,
   ws: string,
   name: string,
+  agentId?: string,
 ): Promise<AgentMcp["hub"] | undefined> {
   const h = await d.hub().catch(() => null);
   if (!h) return undefined;
@@ -407,10 +411,11 @@ export async function agentHub(
   }
   return {
     name: HUB_SERVER,
-    url: h.url,
+    url: h.mcpUrl || `${h.url}/mcp`,
     allowTools: h.allowTools !== false,
     headers: hubHeaders(h.token, {
       agent: name,
+      ...(agentId ? { agentId } : {}),
       session: crypto.randomUUID(),
       workspace: ws,
       repos,
@@ -480,6 +485,7 @@ async function defaultHub(): Promise<{
   url: string;
   token: string;
   allowTools: boolean;
+  mcpUrl: string;
 } | null> {
   const { readHubConfig, readHubToken } = await import("../../shared/hub.js");
   let cfg;
@@ -490,7 +496,9 @@ async function defaultHub(): Promise<{
   }
   if (!cfg) return null;
   const token = await readHubToken(cfg);
-  return token ? { url: cfg.url, token, allowTools: cfg.allowTools } : null;
+  return token
+    ? { url: cfg.url, token, allowTools: cfg.allowTools, mcpUrl: cfg.mcpUrl }
+    : null;
 }
 
 /**
@@ -1901,6 +1909,7 @@ export async function startAgent(
     d,
     ws,
     given ?? prev?.displayName ?? persona.displayName ?? id,
+    id,
   );
   const input = {
     ...base,
@@ -2443,7 +2452,12 @@ export async function resumeAgent(
     // Resume in the cwd the agent had, wherever the workspace points now.
     // D24 (and D25: a rename since) the name peers see it by.
     const peerName = peerSessionName(d.cli, rec.workspace, rec);
-    const hub = await agentHub(d, rec.workspace, rec.displayName ?? rec.id);
+    const hub = await agentHub(
+      d,
+      rec.workspace,
+      rec.displayName ?? rec.id,
+      rec.id,
+    );
     const at = {
       ...input,
       ...(hub ? { mcp: { ...input.mcp, hub } } : {}),

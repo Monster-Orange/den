@@ -917,8 +917,19 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Hub",
     description:
-      "Every agent gets Hub's tools: search Hub, publish docs and mocks there. Its team and project come from this install's token and the workspace's repos. Set hub.url and hub.token (a secret ref in this install's store) in config/local/user.yml.",
-    keywords: ["hub", "den hub", "mcp", "team", "token", "docs", "mocks"],
+      "Connect this install to your company's Hub: sign in there and approve it. Every agent then gets Hub's tools: search Hub, publish docs and mocks there. Its team comes from this install's token, its project from the workspace's repos.",
+    keywords: [
+      "hub",
+      "den hub",
+      "connect",
+      "disconnect",
+      "mcp",
+      "team",
+      "company",
+      "token",
+      "docs",
+      "mocks",
+    ],
     scope: "user",
     control: { type: "custom", render: renderHub },
     keys: ["hub_allow_tools"],
@@ -1459,20 +1470,82 @@ export function rotationHtml(b) {
   );
 }
 
-/** HUB-1.5: Settings › Agents › Den Hub (b: GET /api/hub). */
-export function hubHtml(b) {
-  if (!b || !b.configured) return "";
+/** HUB-1.7: what came back from Hub's redirect (?hub=…), when the server has no words for it. */
+const HUB_FLASH = {
+  connected: [true, "Connected to Hub."],
+  denied: [false, "Not connected: the request was declined on Hub."],
+  expired: [
+    false,
+    "That connect link was used or too old: press Connect again.",
+  ],
+  failed: [false, "Connect didn't finish: press Connect again."],
+};
+
+/**
+ * HUB-1.5/1.7: Settings › Agents › Hub (b: GET /api/hub; flash: what the
+ * last Connect came to). Not connected: Hub's address and Connect.
+ * Connected: the company (a link), role, who signed in, this install,
+ * Disconnect. A token Hub refuses offers Reconnect; a role that no longer
+ * may connect says to ask an admin (never a retry).
+ */
+export function hubHtml(b, flash) {
+  b = b || { configured: false };
+  const state = b.configured
+    ? b.state || (b.connected ? "connected" : "no_token")
+    : "no_token";
+  const note = (t, attr) => `<p class="set-note" ${attr}>${escR(t)}</p>`;
+  const flashHtml = flash
+    ? `<p class="set-note hub-flash ${flash.ok ? "ok" : "warn"}" role="status" data-hub-flash="${flash.ok ? "ok" : "failed"}">${escR(flash.message)}</p>`
+    : "";
+  if (state === "bad_config")
+    return (
+      flashHtml +
+      note(b.problem || "hub in user.yml is not valid", "data-hub-problem")
+    );
+  if (state === "no_token")
+    return (
+      flashHtml +
+      `<form class="hub-connect" data-hub-connect>` +
+      `<label for="hub-url">Hub's address</label> ` +
+      `<input type="url" id="hub-url" class="den-mono" spellcheck="false" autocomplete="url" placeholder="https://hub.example.com" value="${escR(b.url || "")}">` +
+      ` <button type="submit" class="btn sm primary" data-hub-action="connect">Connect</button>` +
+      `</form>` +
+      `<p class="set-note">Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown.</p>` +
+      (b.problem && b.url && !/^not connected yet/.test(b.problem)
+        ? note(b.problem, "data-hub-problem")
+        : "") +
+      `<div class="rt-err" role="alert" hidden></div>`
+    );
+  const status = {
+    connected: ["ok", "Connected"],
+    rejected: ["warn", "Token not accepted"],
+    forbidden: ["warn", "Not allowed"],
+    unreachable: ["warn", "Can't reach Hub"],
+  }[state] || ["warn", "Not connected"];
+  const team = b.team
+    ? b.teamUrl && /^https?:\/\//i.test(b.teamUrl)
+      ? `<a href="${escR(b.teamUrl)}" target="_blank" rel="noopener noreferrer">${escR(b.team)}</a>`
+      : escR(b.team)
+    : "";
   const rows = [
-    ["URL", `<span class="den-mono">${escR(b.url || "not set")}</span>`],
+    ["Hub", `<span class="den-mono">${escR(b.url || "")}</span>`],
     [
       "Status",
-      b.connected
-        ? `<span class="set-tag ok" data-hub-state="connected">Connected</span>`
-        : `<span class="set-tag warn" data-hub-state="down">Not connected</span>`,
+      `<span class="set-tag ${status[0]}" data-hub-state="${escR(state)}">${status[1]}</span>`,
     ],
-    ...(b.team ? [["Team", escR(b.team)]] : []),
+    ...(team ? [["Company", team]] : []),
+    ...(b.role ? [["Role", escR(b.role)]] : []),
+    ...(b.login ? [["Signed in as", escR(b.login)]] : []),
     ...(b.label ? [["This install", escR(b.label)]] : []),
   ];
+  const why =
+    state === "rejected"
+      ? "Hub no longer accepts this install's token (revoked or expired). Reconnect signs you in again."
+      : state === "forbidden"
+        ? "Your role on Hub no longer allows Den installs. Ask a Hub admin to change your role, then Reconnect."
+        : state === "unreachable"
+          ? b.problem || "Hub didn't answer."
+          : "";
   const tools =
     `<label class="hub-tools"><input type="checkbox" id="hub-allow-tools"${b.allowTools !== false ? " checked" : ""}> Agents use Hub's tools without asking</label>` +
     `<p class="set-note" data-hub-tools-note>${
@@ -1481,43 +1554,133 @@ export function hubHtml(b) {
         : "Agents ask before each Hub tool runs."
     }</p>`;
   return (
+    flashHtml +
     `<dl class="hub-st" data-hub>` +
     rows.map(([k, v]) => `<dt>${escR(k)}</dt><dd>${v}</dd>`).join("") +
     `</dl>` +
-    tools +
-    (!b.connected && b.problem
-      ? `<p class="set-note" data-hub-problem>${escR(b.problem)}</p>`
-      : "")
+    (why ? note(why, "data-hub-problem") : "") +
+    `<div class="hub-acts">` +
+    (state === "rejected"
+      ? `<button type="button" class="btn sm primary" data-hub-action="connect">Reconnect</button> `
+      : "") +
+    `<button type="button" class="btn sm" data-hub-action="disconnect">Disconnect</button>` +
+    `</div>` +
+    `<div class="rt-err" role="alert" hidden></div>` +
+    tools
   );
 }
 
-/** HUB-1.5: the Den Hub row; with no hub.url, the row isn't shown at all. */
+/** Read and clear ?hub=… (set by Hub's redirect back through /hub/callback). */
+function takeHubFlash() {
+  try {
+    const u = new URL(location.href);
+    const v = u.searchParams.get("hub");
+    if (!v) return null;
+    u.searchParams.delete("hub");
+    history.replaceState(history.state, "", u.pathname + u.search + u.hash);
+    return v;
+  } catch {
+    return null;
+  }
+}
+
+/** HUB-1.5/1.7: the Hub row: always shown, so a person can Connect. */
 function renderHub(host, ctx) {
-  const row = host.closest(".set-row");
-  if (row) row.hidden = true;
+  return drawHub(host, ctx, takeHubFlash(), null);
+}
+
+/** Draw the row; `back` is ?hub=… from Hub's redirect, `flash` words to show. */
+function drawHub(host, ctx, back, flash) {
   // Under an invalid config /api/hub answers 422: ask nothing, show nothing.
-  if (ctx.shell?.configInvalid?.() === true) return Promise.resolve();
+  if (ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
   return ctx.shell
     .api("GET", "/api/hub")
     .then((b) => {
-      const html = hubHtml(b);
-      host.innerHTML = html;
-      if (row) row.hidden = !html;
-      const box = host.querySelector("#hub-allow-tools");
-      if (box)
-        box.addEventListener("change", () => {
-          box.disabled = true;
-          ctx.shell
-            .api("POST", "/api/settings", { hub_allow_tools: box.checked })
-            .then(() => renderHub(host, ctx))
-            .catch(() => {
-              box.checked = !box.checked;
-              box.disabled = false;
-            });
-        });
+      let f = flash;
+      if (!f && b && b.connect) f = b.connect;
+      else if (!f && back && HUB_FLASH[back])
+        f = { ok: HUB_FLASH[back][0], message: HUB_FLASH[back][1] };
+      host.innerHTML = hubHtml(b, f);
+      wireHub(host, ctx);
     })
     .catch(() => {
       host.innerHTML = "";
+    });
+}
+
+function wireHub(host, ctx) {
+  const err = (msg, retry) => {
+    const e = host.querySelector(".rt-err");
+    if (!e) return;
+    e.hidden = !msg;
+    e.textContent = msg || "";
+    if (retry) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn sm";
+      btn.dataset.hubAction = "force";
+      btn.textContent = "Remove it here anyway";
+      btn.addEventListener("click", () => disconnect(true, btn));
+      e.append(" ", btn);
+    }
+  };
+  const busy = (on) =>
+    host.querySelectorAll("button, input").forEach((x) => (x.disabled = on));
+  const connect = () => {
+    const typed = host.querySelector("#hub-url");
+    busy(true);
+    err("");
+    ctx.shell
+      .api("POST", "/api/hub/connect", typed ? { url: typed.value } : {})
+      .then((r) => {
+        // Off to Hub: sign in and approve there; Hub sends the person back.
+        location.assign(r.location);
+      })
+      .catch((e) => {
+        busy(false);
+        err(e?.message || "Connect didn't start");
+      });
+  };
+  const disconnect = (force, btn) => {
+    busy(true);
+    err("");
+    ctx.shell
+      .api("POST", "/api/hub/disconnect", force ? { force: true } : {})
+      .then((r) => drawHub(host, ctx, null, { ok: true, message: r.message }))
+      .catch((e) => {
+        busy(false);
+        if (btn) btn.remove();
+        err(e?.message || "Not disconnected", !force);
+      });
+  };
+  const form = host.querySelector("[data-hub-connect]");
+  if (form)
+    form.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      connect();
+    });
+  host
+    .querySelectorAll('button[data-hub-action="connect"]')
+    .forEach(
+      (x) => x.type === "button" && x.addEventListener("click", connect),
+    );
+  host
+    .querySelector('[data-hub-action="disconnect"]')
+    ?.addEventListener("click", () => disconnect(false));
+  const box = host.querySelector("#hub-allow-tools");
+  if (box)
+    box.addEventListener("change", () => {
+      box.disabled = true;
+      ctx.shell
+        .api("POST", "/api/settings", { hub_allow_tools: box.checked })
+        .then(() => drawHub(host, ctx, null, null))
+        .catch(() => {
+          box.checked = !box.checked;
+          box.disabled = false;
+        });
     });
 }
 

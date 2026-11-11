@@ -19,6 +19,7 @@
  * workspace's name, then the team's default). The token is never logged,
  * never in a page or an API answer: only in the agent's own 0600 MCP file.
  */
+import * as crypto from "crypto";
 import { readDenConfig, readUserConfig, type DenConfig } from "./den-config.js";
 import {
   getSecretsProvider,
@@ -28,6 +29,12 @@ import {
   type SecretsConfig,
   type SecretsProvider,
 } from "./secrets/index.js";
+import {
+  describeOpTokenSource,
+  parseOpTokenSource,
+  readOpToken,
+  type OpTokenSource,
+} from "./secrets/op-token.js";
 
 /** The server's name in an agent's MCP config. */
 export const HUB_SERVER = "hub";
@@ -41,8 +48,16 @@ export interface HubConfig {
   url: string;
   /** The token's ref in this install's store, or null when none is set. */
   tokenRef: SecretRef | null;
+  /**
+   * HUB-1.7: or a token source, `file:<path>` (mode 600), `keychain:<service>`
+   * or `env:<VAR>`: where Connect keeps a token when the install's store
+   * can't, or a distribution's own choice.
+   */
+  tokenSource?: OpTokenSource;
   /** Where the ref came from, for messages (never the value). */
   tokenFrom: string;
+  /** HUB-1.7: Hub's MCP endpoint, as Hub gave it (default `<url>/mcp`). */
+  mcpUrl: string;
   /**
    * hub.allow_tools (default true): agents use Hub's tools without asking.
    * Off, they ask like any tool. An install's own deny rule still wins.
@@ -51,7 +66,12 @@ export interface HubConfig {
 }
 
 type RawHub =
-  | { url?: unknown; token?: unknown; allow_tools?: unknown }
+  | {
+      url?: unknown;
+      token?: unknown;
+      allow_tools?: unknown;
+      mcp_url?: unknown;
+    }
   | undefined;
 
 function rawHub(den: unknown, user: unknown): RawHub {
@@ -94,7 +114,11 @@ export function readHubConfig(
   const t = h.token;
   let tokenRef: SecretRef | null = null;
   let tokenFrom = "hub.token";
-  if (typeof t === "string" && t.trim()) {
+  let tokenSource: OpTokenSource | undefined;
+  if (typeof t === "string" && /^(keychain|file|env):/.test(t.trim())) {
+    tokenSource = parseOpTokenSource(t.trim(), "hub.token");
+    tokenFrom = `hub.token (${describeOpTokenSource(tokenSource)})`;
+  } else if (typeof t === "string" && t.trim()) {
     // The name of a secrets.refs entry.
     tokenFrom = `secrets.refs.${t.trim()}`;
     tokenRef = namedSecretRef(t.trim(), secrets());
@@ -110,12 +134,28 @@ export function readHubConfig(
     tokenRef = ref.item || ref.key || ref.field ? ref : null;
   } else if (t !== undefined && t !== null)
     throw new Error(
-      "hub.token must be a secret ref ({ item, field } or { key }) or the name of a secrets.refs entry",
+      "hub.token must be a secret ref ({ item, field } or { key }), the name of a secrets.refs entry, or file:<path> / keychain:<service> / env:<VAR>",
     );
   const at = h.allow_tools;
   if (at !== undefined && at !== null && typeof at !== "boolean")
     throw new Error("hub.allow_tools must be true or false");
-  return { url, tokenRef, tokenFrom, allowTools: at !== false };
+  let mcpUrl = `${url}/mcp`;
+  if (h.mcp_url !== undefined && h.mcp_url !== null && h.mcp_url !== "") {
+    if (typeof h.mcp_url !== "string")
+      throw new Error("hub.mcp_url must be a string");
+    const m = h.mcp_url.trim();
+    const badMcp = hubUrlProblem(m);
+    if (badMcp) throw new Error(badMcp.replace("hub.url", "hub.mcp_url"));
+    mcpUrl = m;
+  }
+  return {
+    url,
+    tokenRef,
+    ...(tokenSource ? { tokenSource } : {}),
+    tokenFrom,
+    mcpUrl,
+    allowTools: at !== false,
+  };
 }
 
 /**
@@ -141,6 +181,10 @@ export async function readHubToken(
   cfg: HubConfig,
   provider: () => SecretsProvider = getSecretsProvider,
 ): Promise<string | null> {
+  if (cfg.tokenSource) {
+    const r = await readOpToken(cfg.tokenSource).catch(() => null);
+    return r?.ok && r.token.trim() ? r.token.trim() : null;
+  }
   if (!cfg.tokenRef) return null;
   try {
     const v = await provider().tryGet(cfg.tokenRef);
@@ -152,7 +196,10 @@ export async function readHubToken(
 
 /** Who calls, as Hub reads it: plain names, never a secret. */
 export interface HubCaller {
+  /** The display name: Hub shows the latest one. */
   agent: string;
+  /** HUB-1.7: the agent's stable id: Hub keys attribution on it. */
+  agentId?: string;
   session: string;
   workspace: string;
   repos: string[];
@@ -168,6 +215,7 @@ export function hubHeaders(
   return {
     Authorization: `Bearer ${token}`,
     "X-Den-Agent": headerSafe(who.agent),
+    ...(who.agentId ? { "X-Den-Agent-Id": headerSafe(who.agentId) } : {}),
     "X-Den-Session": headerSafe(who.session),
     "X-Den-Workspace": headerSafe(who.workspace),
     "X-Den-Repos": headerSafe(who.repos.join(",")),
@@ -185,10 +233,41 @@ export function ownerRepo(
   return m ? `${m[1]}/${m[2]}` : null;
 }
 
+/** HUB-1.7: who this install is, as Hub's GET /connect/whoami says. */
 export interface HubWhoami {
-  team?: string;
-  label?: string;
+  /** The install's label (Hub's `install`). */
+  install?: string;
+  role?: string;
+  /** The person who connected it. */
+  login?: string;
+  company?: { slug?: string; name?: string; url?: string };
+  /** Hub's MCP endpoint; opaque. */
+  mcpUrl?: string;
 }
+
+/**
+ * Why a call to Hub failed: `rejected` (401: the token isn't accepted:
+ * connect again), `forbidden` (403: Hub's own words; ask an admin, never
+ * retry), `refused` (another 4xx with Hub's error code), `unreachable`.
+ * The message never carries the token.
+ */
+export class HubCallError extends Error {
+  constructor(
+    readonly kind: "rejected" | "forbidden" | "refused" | "unreachable",
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+  }
+}
+
+export type HubState =
+  | "connected"
+  | "no_token"
+  | "rejected"
+  | "forbidden"
+  | "unreachable"
+  | "bad_config";
 
 export type HubStatus =
   | { configured: false }
@@ -196,85 +275,209 @@ export type HubStatus =
       configured: true;
       url: string;
       connected: boolean;
+      /** HUB-1.7: what Settings shows and offers (Connect, Reconnect, …). */
+      state: HubState;
       /** hub.allow_tools: agents use Hub's tools without asking. */
       allowTools?: boolean;
+      /** The company's name (Hub's company.name). */
       team?: string;
+      /** Its page on Hub, for the deep link. */
+      teamUrl?: string;
+      /** This install's label on Hub. */
       label?: string;
+      role?: string;
+      login?: string;
       /** Why it isn't connected, in words (never the token). */
       problem?: string;
     };
 
-/** The first object in a tool result: structured content, else JSON text. */
-function resultObject(r: unknown): Record<string, unknown> | null {
-  const o = r as {
-    structuredContent?: unknown;
-    content?: { type?: string; text?: string }[];
-  };
-  if (o?.structuredContent && typeof o.structuredContent === "object")
-    return o.structuredContent as Record<string, unknown>;
-  for (const c of o?.content ?? [])
-    if (c?.type === "text" && c.text)
-      try {
-        const v = JSON.parse(c.text) as unknown;
-        if (v && typeof v === "object") return v as Record<string, unknown>;
-      } catch {
-        /* not JSON */
-      }
-  return null;
+type FetchFn = typeof fetch;
+const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+
+/** One JSON call to Hub, bounded; its answer, or a HubCallError. */
+async function hubCall(
+  url: string,
+  init: RequestInit,
+  opts: { timeoutMs?: number; fetch?: FetchFn },
+): Promise<Record<string, unknown>> {
+  const timeout = opts.timeoutMs ?? 5000;
+  let res: Response;
+  try {
+    res = await (opts.fetch ?? fetch)(url, {
+      ...init,
+      redirect: "error",
+      signal: AbortSignal.timeout(timeout),
+    });
+  } catch (e) {
+    const name = (e as Error)?.name;
+    throw new HubCallError(
+      "unreachable",
+      name === "TimeoutError" || name === "AbortError"
+        ? `Hub did not answer in ${timeout} ms`
+        : `Hub could not be reached: ${(e as Error)?.message ?? e}`,
+    );
+  }
+  let body: Record<string, unknown> = {};
+  try {
+    const v = (await res.json()) as unknown;
+    if (v && typeof v === "object") body = v as Record<string, unknown>;
+  } catch {
+    /* not JSON */
+  }
+  if (res.ok) return body;
+  const said =
+    str(body.error_description) ?? str(body.message) ?? str(body.error);
+  if (res.status === 401)
+    throw new HubCallError(
+      "rejected",
+      "Hub doesn't accept this install's token (revoked, or replaced by a newer connect): connect again",
+      str(body.error),
+    );
+  if (res.status === 403)
+    throw new HubCallError(
+      "forbidden",
+      `${said ?? "Hub refused this install"}: ask an admin of the company on Hub`,
+      str(body.error),
+    );
+  if (res.status >= 400 && res.status < 500)
+    throw new HubCallError(
+      "refused",
+      `Hub refused it (${res.status}${said ? `: ${said}` : ""})`,
+      str(body.error),
+    );
+  throw new HubCallError(
+    "unreachable",
+    `Hub answered ${res.status}${said ? `: ${said}` : ""}`,
+  );
 }
 
-/**
- * Ask Hub who this install is: its whoami tool (the first tool whose name
- * ends in "whoami"), over Streamable HTTP with the token. Bounded by
- * `timeoutMs`; a failure is said in words, without the token.
- */
+const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+/** Ask Hub who this install is: GET <url>/connect/whoami with the token. */
 export async function hubWhoami(
   url: string,
   token: string,
-  opts: { timeoutMs?: number; fetch?: typeof fetch } = {},
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
 ): Promise<HubWhoami> {
-  // Loaded here: only Settings › Hub and doctor ask Hub anything.
-  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-  const { StreamableHTTPClientTransport } =
-    await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
-  const transport = new StreamableHTTPClientTransport(new URL(`${url}/mcp`), {
-    requestInit: { headers: { Authorization: `Bearer ${token}` } },
-    ...(opts.fetch ? { fetch: opts.fetch } : {}),
-  });
-  const client = new Client({ name: "den", version: "1" });
-  const timeout = opts.timeoutMs ?? 5000;
-  let timer: NodeJS.Timeout | undefined;
-  const bounded = <T>(p: Promise<T>) =>
-    Promise.race([
-      p,
-      new Promise<never>((_r, rej) => {
-        timer = setTimeout(
-          () => rej(new Error(`Hub did not answer in ${timeout} ms`)),
-          timeout,
-        );
+  const b = await hubCall(
+    `${url}/connect/whoami`,
+    {
+      method: "GET",
+      headers: { ...bearer(token), Accept: "application/json" },
+    },
+    opts,
+  );
+  const c = (b.company ?? {}) as Record<string, unknown>;
+  const company = {
+    ...(str(c.slug) ? { slug: str(c.slug)! } : {}),
+    ...(str(c.name) ? { name: str(c.name)! } : {}),
+    ...(str(c.url) ? { url: str(c.url)! } : {}),
+  };
+  return {
+    ...(str(b.install) ? { install: str(b.install)! } : {}),
+    ...(str(b.role) ? { role: str(b.role)! } : {}),
+    ...(str(b.login) ? { login: str(b.login)! } : {}),
+    ...(Object.keys(company).length ? { company } : {}),
+    ...(str(b.mcp_url) ? { mcpUrl: str(b.mcp_url)! } : {}),
+  };
+}
+
+/** What POST /connect/token gives: the token, and where Hub is. */
+export interface HubGrant {
+  token: string;
+  install?: string;
+  role?: string;
+  company?: { slug?: string; name?: string; url?: string };
+  /** Hub's canonical origin: kept as hub.url. */
+  hubUrl?: string;
+  mcpUrl?: string;
+}
+
+/** Trade the one-time code for the install's token, server to server. */
+export async function hubExchange(
+  url: string,
+  grant: { code: string; redirectUri: string; verifier: string },
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<HubGrant> {
+  const b = await hubCall(
+    `${url}/connect/token`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        grant_type: "authorization_code",
+        code: grant.code,
+        redirect_uri: grant.redirectUri,
+        code_verifier: grant.verifier,
       }),
-    ]).finally(() => clearTimeout(timer));
+    },
+    { timeoutMs: 15_000, ...opts },
+  );
+  const token = str(b.token);
+  if (!token || !/^\S{8,}$/.test(token))
+    throw new HubCallError("refused", "Hub's answer had no token");
+  const c = (b.company ?? {}) as Record<string, unknown>;
+  return {
+    token,
+    ...(str(b.install) ? { install: str(b.install)! } : {}),
+    ...(str(b.role) ? { role: str(b.role)! } : {}),
+    company: {
+      ...(str(c.slug) ? { slug: str(c.slug)! } : {}),
+      ...(str(c.name) ? { name: str(c.name)! } : {}),
+      ...(str(c.url) ? { url: str(c.url)! } : {}),
+    },
+    ...(str(b.hub_url) ? { hubUrl: str(b.hub_url)!.replace(/\/+$/, "") } : {}),
+    ...(str(b.mcp_url) ? { mcpUrl: str(b.mcp_url)! } : {}),
+  };
+}
+
+/**
+ * Revoke the install's token on Hub: POST <url>/connect/revoke with it.
+ * True when Hub revoked it now, false when it was already dead (401).
+ */
+export async function hubRevoke(
+  url: string,
+  token: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<boolean> {
   try {
-    await bounded(client.connect(transport));
-    const tools = await bounded(client.listTools());
-    const who = tools.tools.find((t) => /whoami$/.test(t.name));
-    if (!who) return {};
-    const r = resultObject(
-      await bounded(client.callTool({ name: who.name, arguments: {} })),
+    await hubCall(
+      `${url}/connect/revoke`,
+      {
+        method: "POST",
+        headers: { ...bearer(token), Accept: "application/json" },
+      },
+      opts,
     );
-    const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
-    return {
-      ...(str(r?.team ?? (r?.team_name as unknown))
-        ? { team: str(r?.team ?? r?.team_name)! }
-        : {}),
-      ...(str(r?.label ?? r?.install ?? r?.install_label)
-        ? { label: str(r?.label ?? r?.install ?? r?.install_label)! }
-        : {}),
-    };
-  } finally {
-    await client.close().catch(() => undefined);
+    return true;
+  } catch (e) {
+    if (e instanceof HubCallError && e.kind === "rejected") return false;
+    throw e;
   }
 }
+
+/** base64url without padding. */
+const b64url = (b: Buffer) =>
+  b
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+/** PKCE (S256): a fresh verifier and its challenge. */
+export function newPkce(): { verifier: string; challenge: string } {
+  const verifier = b64url(crypto.randomBytes(32));
+  const challenge = b64url(
+    crypto.createHash("sha256").update(verifier).digest(),
+  );
+  return { verifier, challenge };
+}
+
+/** An opaque, single-use state value. */
+export const newHubState = () => b64url(crypto.randomBytes(24));
 
 /** A message that is safe to show: the token, if it slipped in, cut out. */
 export function scrubToken(msg: string, token: string | null): string {
@@ -297,28 +500,32 @@ export async function hubStatus(
       configured: true,
       url: "",
       connected: false,
+      state: "bad_config",
       problem: (e as Error).message,
     };
   }
   if (!cfg) return { configured: false };
-  if (!cfg.tokenRef)
+  const base = {
+    configured: true as const,
+    url: cfg.url,
+    allowTools: cfg.allowTools,
+  };
+  if (!cfg.tokenRef && !cfg.tokenSource)
     return {
-      configured: true,
-      url: cfg.url,
-      allowTools: cfg.allowTools,
+      ...base,
       connected: false,
+      state: "no_token",
       problem:
         cfg.tokenFrom === "hub.token"
-          ? "no hub.token: set it to the install token's secret ref (Hub › Settings › Den installs makes one)"
+          ? "not connected yet: Connect signs you in to Hub and sets this install up"
           : `hub.token names ${cfg.tokenFrom}, which is not set for this install's secrets backend`,
     };
   const token = await (deps.token ?? ((c) => readHubToken(c)))(cfg);
   if (!token)
     return {
-      configured: true,
-      url: cfg.url,
-      allowTools: cfg.allowTools,
+      ...base,
       connected: false,
+      state: "no_token",
       problem: `${cfg.tokenFrom} could not be read from this install's secrets store`,
     };
   try {
@@ -327,19 +534,34 @@ export async function hubStatus(
       token,
     );
     return {
-      configured: true,
-      url: cfg.url,
-      allowTools: cfg.allowTools,
+      ...base,
       connected: true,
-      ...who,
+      state: "connected",
+      ...(who.company?.name ? { team: who.company.name } : {}),
+      ...(who.company?.url ? { teamUrl: who.company.url } : {}),
+      ...(who.install ? { label: who.install } : {}),
+      ...(who.role ? { role: who.role } : {}),
+      ...(who.login ? { login: who.login } : {}),
     };
   } catch (e) {
+    const kind = e instanceof HubCallError ? e.kind : "unreachable";
     return {
-      configured: true,
-      url: cfg.url,
-      allowTools: cfg.allowTools,
+      ...base,
       connected: false,
-      problem: scrubToken(`Hub did not answer: ${(e as Error).message}`, token),
+      state:
+        kind === "rejected"
+          ? "rejected"
+          : kind === "forbidden"
+            ? "forbidden"
+            : "unreachable",
+      // A HubCallError's words stand on their own; anything else is
+      // something that kept Hub from answering.
+      problem: scrubToken(
+        e instanceof HubCallError
+          ? e.message
+          : `Hub did not answer: ${(e as Error)?.message ?? e}`,
+        token,
+      ),
     };
   }
 }

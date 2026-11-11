@@ -197,6 +197,8 @@
     "lock.note":
       "Den la usa solo para sudo. Los agentes no pueden introducirla.",
     "lock.saved": "Contraseña de administrador guardada para esta sesión",
+    "lock.savedTo":
+      "Contraseña de administrador guardada para esta sesión y en {s}",
     "lock.saveFailed":
       "Guardada para esta sesión, pero no se pudo guardar en {s}: {err}",
     "lock.wrong": "Contraseña incorrecta; inténtalo de nuevo",

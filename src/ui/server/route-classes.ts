@@ -393,6 +393,20 @@ export const ROUTES: readonly RouteEntry[] = [
     "HUB-1.5: Den Hub: its URL, connected or not, the team and the install's label (never the token)",
   ),
   M(
+    ["POST"],
+    "/api/hub/connect",
+    "HUB-1.7: start Connect to Hub: a PKCE verifier and single-use state kept here; answers Hub's /connect URL",
+  ),
+  M(
+    ["POST"],
+    "/api/hub/disconnect",
+    "HUB-1.7: revoke this install's Hub token on Hub, then remove it here",
+  ),
+  R(
+    "/hub/callback",
+    "HUB-1.7: Hub sends the person back here. Sign-in free: the session cookie is SameSite=Strict, so Hub's redirect doesn't carry it. It acts only for a state this server issued to a signed-in Connect (single-use, 10 min), with the PKCE verifier only this server holds; anything else changes nothing",
+  ),
+  M(
     ["PUT"],
     "/api/agents/rotation",
     "D28: sets or clears one rotation setting at one scope; a person's only",
@@ -488,6 +502,9 @@ export const SIGNIN_FREE: readonly string[] = [
   // SEC-2a: approve this computer with a code, from the signed-out page.
   "/api/signin/code",
   "/api/signin/code/:id",
+  // HUB-1.7: Hub's redirect back (no session cookie on it): the state
+  // this server issued is the proof (hub-connect.ts).
+  "/hub/callback",
 ];
 
 /**

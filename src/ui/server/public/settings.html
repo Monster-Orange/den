@@ -473,6 +473,29 @@
         min-width: 0;
         overflow-wrap: anywhere;
       }
+      /* HUB-1.7: Connect / Disconnect. */
+      .hub-connect {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 8px;
+        align-items: center;
+      }
+      .hub-connect input {
+        flex: 1 1 240px;
+        min-width: 0;
+      }
+      .hub-acts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .hub-flash.ok {
+        color: var(--ok, inherit);
+      }
+      .hub-flash.warn {
+        color: var(--warn, inherit);
+      }
       .hub-tools {
         display: flex;
         gap: 8px;

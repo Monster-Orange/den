@@ -62,7 +62,7 @@ export interface AgentMcp {
   scope: string;
   /**
    * HUB-1.5: Den Hub's MCP server (Streamable HTTP), when hub.url is set:
-   * its base URL and the headers (the bearer token among them). The
+   * its MCP endpoint (HUB-1.7: Hub's mcp_url, default <hub.url>/mcp) and the headers (the bearer token among them). The
    * headers go only into the agent's own 0600 MCP file, never into argv,
    * a record, a log or a page.
    */
@@ -353,7 +353,7 @@ export function mcpConfigJson(mcp: AgentMcp): string {
             ? {
                 [mcp.hub.name]: {
                   type: "http",
-                  url: `${mcp.hub.url}/mcp`,
+                  url: mcp.hub.url,
                   headers: mcp.hub.headers,
                 },
               }

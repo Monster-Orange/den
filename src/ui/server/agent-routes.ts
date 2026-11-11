@@ -164,6 +164,7 @@ import {
   agentResumeRefusal,
 } from "./agent-resume-grant.js";
 import { readBody, sendJson } from "./http-helpers.js";
+import { product } from "../../shared/product.js";
 import type { Actor } from "../../shared/agent-actor.js";
 
 export interface AgentRouteDeps {
@@ -175,6 +176,8 @@ export interface AgentRouteDeps {
   personaWait?: { pollMs?: number; maxMs?: number };
   /** HUB-1.5: GET /api/hub's answer (tests: a fake Hub). */
   hubStatus?: () => Promise<import("../../shared/hub.js").HubStatus>;
+  /** HUB-1.7: Connect to Hub's state (tests: fake Hub calls and store). */
+  hubConnect?: import("./hub-connect.js").HubConnect;
 }
 
 const AGENTS_PATH =
@@ -434,9 +437,19 @@ export async function handleAgentRoutes(
     if (method !== "GET" && method !== "HEAD")
       return methodNotAllowed(res, "GET");
     const { hubStatus } = await import("../../shared/hub.js");
-    sendJson(res, await (deps.hubStatus ?? (() => hubStatus()))());
+    const st = await (deps.hubStatus ?? (() => hubStatus()))();
+    // HUB-1.7: what the last Connect came to, once (words only).
+    const last = (deps.hubConnect ?? defaultConnect)?.lastResult();
+    sendJson(res, last ? { ...st, connect: last } : st);
     return true;
   }
+  // HUB-1.7: Connect to Hub, and its callback (see hub-connect.ts).
+  if (
+    pathname === "/api/hub/connect" ||
+    pathname === "/api/hub/disconnect" ||
+    pathname === "/hub/callback"
+  )
+    return hubConnectRoute(req, res, pathname, deps);
   if (
     pathname !== "/api/personas" &&
     pathname !== "/api/agents/runtimes" &&
@@ -1379,5 +1392,70 @@ async function rotationRoute(
   } catch (e) {
     sendError(res, e);
   }
+  return true;
+}
+
+let defaultConnect: import("./hub-connect.js").HubConnect | null = null;
+
+/** HUB-1.7: start a connect, finish it (Hub's redirect), or disconnect. */
+async function hubConnectRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  deps: AgentRouteDeps,
+): Promise<true> {
+  const m = await import("./hub-connect.js");
+  const hc = deps.hubConnect ?? (defaultConnect ??= new m.HubConnect());
+  res.setHeader("Cache-Control", "no-store");
+  const method = req.method ?? "GET";
+  if (pathname === "/hub/callback") {
+    if (method !== "GET") return methodNotAllowed(res, "GET");
+    const q = new URL(req.url ?? "/", "http://localhost").searchParams;
+    const r = await hc.finish(q);
+    res.writeHead(r.ok ? 200 : 400, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Referrer-Policy": "no-referrer",
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      m.callbackPage(product().title, {
+        ok: r.ok,
+        ...(r.ok ? {} : { reason: r.reason }),
+        message: r.ok
+          ? `Connected to Hub${r.team ? ` (${r.team})` : ""}. Going back to Settings…`
+          : r.message,
+      }),
+    );
+    return true;
+  }
+  if (method !== "POST") return methodNotAllowed(res, "POST");
+  let body: Record<string, unknown> = {};
+  try {
+    const raw = await readBody(req);
+    body = raw ? ((JSON.parse(raw) as Record<string, unknown>) ?? {}) : {};
+  } catch {
+    sendJson(res, { ok: false, error: "the body must be JSON" }, 400);
+    return true;
+  }
+  if (pathname === "/api/hub/connect") {
+    // The browser's Origin (request-guard checked it is this Den's).
+    const origin = String(req.headers.origin ?? "");
+    if (!origin) {
+      sendJson(
+        res,
+        {
+          ok: false,
+          error: "Connect from Settings › Agents › Hub in a browser",
+        },
+        400,
+      );
+      return true;
+    }
+    const r = hc.start(origin, body.url);
+    sendJson(res, r, r.ok ? 200 : 400);
+    return true;
+  }
+  const r = await hc.disconnect(body.force === true);
+  sendJson(res, r, r.ok ? 200 : 502);
   return true;
 }

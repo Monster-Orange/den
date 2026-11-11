@@ -32,6 +32,39 @@ export interface OnePasswordOptions {
   timeoutMs?: number;
 }
 
+/** op's own words from a failed run (stderr), without its "[ERROR] date time" prefix. */
+function opText(err: unknown): string {
+  const e = err as { stderr?: unknown; message?: unknown };
+  const raw = String(e?.stderr ?? "").trim() || String(e?.message ?? err);
+  return (
+    raw
+      .split(/\r?\n/)
+      .map((l) =>
+        l.replace(/^\[\w+\]\s*\d{4}\/\d\d\/\d\d \d\d:\d\d:\d\d\s*/, "").trim(),
+      )
+      // execFile's message starts with the command line it ran: never shown.
+      .filter((l) => l && !/^Command failed:/.test(l))
+      .join(" ")
+  );
+}
+
+/** The same failure, its message op's words (set's callers strip the value). */
+function opError(err: unknown): Error {
+  const e = err as { killed?: boolean; code?: unknown };
+  if (e?.killed) return new Error("op timed out");
+  if (e?.code === "ENOENT") return new Error("op is not installed");
+  return new Error(opText(err) || "op failed (no detail)");
+}
+
+/** True only when op said the item isn't there (not "more than one item"). */
+export function opItemMissing(err: unknown): boolean {
+  const t = opText(err);
+  if (/more than one item/i.test(t)) return false;
+  return /isn't an item|is not an item|(?:could not|couldn't) find (?:the )?item|no item (?:found|matches)/i.test(
+    t,
+  );
+}
+
 export class OnePasswordProvider implements SecretsProvider {
   readonly name = "1password" as const;
   private readonly timeout: number;
@@ -184,7 +217,6 @@ export class OnePasswordProvider implements SecretsProvider {
       value?: string;
     };
     let item: { id?: string; fields?: Field[] } | null = null;
-    let readErr: unknown = null;
     try {
       item = JSON.parse(
         await this.run(
@@ -193,7 +225,10 @@ export class OnePasswordProvider implements SecretsProvider {
         ),
       ) as { id?: string; fields?: Field[] };
     } catch (err) {
-      readErr = err;
+      // Create only when op says the item isn't there. Any other failure
+      // (a timeout, no access, two items by that title) is shown as it is:
+      // creating then would make a second item with the same title.
+      if (!opItemMissing(err)) throw opError(err);
     }
     if (item) {
       const fields = item.fields ?? [];
@@ -206,7 +241,9 @@ export class OnePasswordProvider implements SecretsProvider {
       await this.runWithInput(
         ["item", "edit", item.id || ref.item, ...vault],
         JSON.stringify(item),
-      );
+      ).catch((err) => {
+        throw opError(err);
+      });
       return;
     }
     const field: Field =
@@ -219,18 +256,18 @@ export class OnePasswordProvider implements SecretsProvider {
             value,
           }
         : { label: ref.field, type: "CONCEALED", value };
-    try {
-      await this.runWithInput(
-        ["item", "create", ...vault, "-"],
-        JSON.stringify({
-          title: ref.item,
-          category: "PASSWORD",
-          fields: [field],
-        }),
-      );
-    } catch {
-      throw readErr;
-    }
+    // A failed create shows create's own reason (a vault that isn't
+    // there, no access), never the get's "isn't an item".
+    await this.runWithInput(
+      ["item", "create", ...vault, "-"],
+      JSON.stringify({
+        title: ref.item,
+        category: "PASSWORD",
+        fields: [field],
+      }),
+    ).catch((err) => {
+      throw opError(err);
+    });
   }
 
   async preflight(): Promise<PreflightResult> {

@@ -482,12 +482,21 @@ export function hubLines(
   title: string,
 ): { lines: string[]; problem: boolean; check?: OnboardCheck } {
   if (!st.configured) return { lines: [], problem: false };
-  const who = [st.team && `team ${st.team}`, st.label && `install ${st.label}`]
+  const who = [
+    st.team && `company ${st.team}`,
+    st.label && `install ${st.label}`,
+    st.role && `role ${st.role}`,
+  ]
     .filter(Boolean)
     .join(", ");
+  // HUB-1.7: what to do about it is in Settings (Connect, Reconnect).
+  const fix =
+    st.state === "no_token" || st.state === "rejected"
+      ? ` (Settings › Agents › Hub: ${st.state === "rejected" ? "Reconnect" : "Connect"})`
+      : "";
   const detail = st.connected
     ? `${st.url}: connected${who ? ` (${who})` : ""}`
-    : `${st.url || "hub.url"}: not connected: ${st.problem ?? "no answer"}`;
+    : `${st.url || "hub.url"}: not connected: ${st.problem ?? "no answer"}${fix}`;
   return {
     lines: [
       "",

@@ -140,8 +140,14 @@ describe("the classes", () => {
       "/api/signin/code/:id",
       "/attest",
       "/auth",
+      "/hub/callback",
       "/signin",
     ]);
+    // HUB-1.7: Hub's redirect back carries no session cookie; the state
+    // this server issued is the proof, so the route is sign-in free.
+    expect(routeClass("GET", "/hub/callback")).toBe("readonly");
+    expect(routeClass("POST", "/api/hub/connect")).toBe("mutating");
+    expect(routeClass("POST", "/api/hub/disconnect")).toBe("mutating");
   });
 
   it("SEC-2a's routes: a GitHub sign-in is sign-in free (its poll a mutating GET: it sets the cookie); the owner and pairing are shell-grade", () => {

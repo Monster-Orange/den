@@ -31,6 +31,13 @@ const stdin = () => fs.readFileSync(0, "utf-8");
 // The old way: an assignment in argv (label[type]=value), no stdin.
 const asg = a.find((x) => /^[^-][^=]*\\[[a-z]+\\]=/.test(x));
 const fromAsg = () => { const m = /^([^\\[]+)\\[[a-z]+\\]=(.*)$/s.exec(asg); return { label: m[1], type: "CONCEALED", value: m[2] }; };
+// Failure modes: a file next to the fake holds op's stderr for that verb.
+const failFile = (verb) => require("path").join(require("path").dirname(store), "fail-" + verb);
+for (const verb of ["get", "create", "edit"])
+  if (a[1] === verb && fs.existsSync(failFile(verb))) {
+    process.stderr.write(fs.readFileSync(failFile(verb), "utf-8"));
+    process.exit(1);
+  }
 if (a[0] === "item" && a[1] === "get") {
   const it = Object.values(items).find((i) => i.title === a[2] || i.id === a[2]);
   if (!it) { process.stderr.write('"' + a[2] + '" isn\\'t an item.\\n'); process.exit(1); }
@@ -60,13 +67,17 @@ if (a[0] === "item" && a[1] === "get") {
 const savedPath = process.env.PATH;
 beforeEach(() => {
   process.env.PATH = `${BIN}:/usr/bin:/bin`;
-  for (const f of [STORE, ARGV]) fs.rmSync(f, { force: true });
+  for (const f of [STORE, ARGV, ...["get", "create", "edit"].map(fail)])
+    fs.rmSync(f, { force: true });
 });
 afterAll(() => {
   process.env.PATH = savedPath;
   fs.rmSync(BIN, { recursive: true, force: true });
 });
 
+const fail = (verb: string) => path.join(BIN, `fail-${verb}`);
+const failWith = (verb: string, stderr: string) =>
+  fs.writeFileSync(fail(verb), stderr);
 const op = () =>
   new OnePasswordProvider({
     tokenDeps: { env: {} } as never,
@@ -133,5 +144,61 @@ describe("op set: the value never in argv", () => {
     expect(items().i1.fields.find((x) => x.label === "HUB_TOKEN")?.value).toBe(
       SECRET,
     );
+  });
+});
+
+describe("op set: only a missing item is created; op's own reason otherwise (0.4.27)", () => {
+  const one = {
+    i1: {
+      id: "i1",
+      title: "Acme admin password",
+      fields: [{ id: "password", label: "password", value: "old" }],
+    },
+  };
+  const ref = {
+    vault: "Private",
+    item: "Acme admin password",
+    field: "password",
+  };
+
+  it("a get that fails for another reason (a timeout) creates nothing and says why, without op's [ERROR] prefix", async () => {
+    fs.writeFileSync(STORE, JSON.stringify(one));
+    failWith("get", "[ERROR] 2026/11/10 12:00:00 Request timed out\n");
+    await expect(op().set(ref, SECRET)).rejects.toThrow(/^Request timed out$/);
+    expect(argvs().some((x) => x[1] === "create")).toBe(false);
+    expect(Object.keys(items())).toEqual(["i1"]);
+  });
+
+  it("two items by that title: no third one", async () => {
+    failWith(
+      "get",
+      '[ERROR] 2026/11/10 12:00:00 More than one item matches "Acme admin password".\n',
+    );
+    await expect(op().set(ref, SECRET)).rejects.toThrow(/More than one item/);
+    expect(argvs().some((x) => x[1] === "create")).toBe(false);
+  });
+
+  it("a missing item whose create fails shows create's reason, not get's", async () => {
+    failWith(
+      "create",
+      '[ERROR] 2026/11/10 12:00:00 Vault "Private" is not available.\n',
+    );
+    const e = (await op()
+      .set(ref, SECRET)
+      .catch((x: unknown) => x)) as Error;
+    expect(e.message).toBe('Vault "Private" is not available.');
+    expect(e.message).not.toContain(SECRET);
+  });
+
+  it("a failed edit says op's reason, without the value", async () => {
+    fs.writeFileSync(STORE, JSON.stringify(one));
+    failWith(
+      "edit",
+      "[ERROR] 2026/11/10 12:00:00 You do not have permission\n",
+    );
+    const e = (await op()
+      .set(ref, SECRET)
+      .catch((x: unknown) => x)) as Error;
+    expect(e.message).toBe("You do not have permission");
   });
 });

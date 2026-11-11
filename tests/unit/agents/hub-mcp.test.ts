@@ -73,6 +73,8 @@ describe("an agent's MCP config has Den Hub when hub.url is set", () => {
       "X-Den-Repos": "acme/north,acme/kit",
     });
     expect(s.headers!["X-Den-Agent"]).toBeTruthy();
+    // HUB-1.7: Hub keys attribution on the agent's stable id.
+    expect(s.headers!["X-Den-Agent-Id"]).toBe("planner");
     expect(s.headers!["X-Den-Session"]).toMatch(/^[0-9a-f-]{36}$/);
     // Den's own server is still there, first.
     expect(Object.keys(cfg(r).mcpServers)[0]).not.toBe(HUB_SERVER);
@@ -112,6 +114,24 @@ describe("an agent's MCP config has Den Hub when hub.url is set", () => {
     const s = cfg(r).mcpServers[HUB_SERVER];
     expect(s.headers!.Authorization).toBe(`Bearer ${TOKEN}`);
     expect(s.headers!["X-Den-Session"]).not.toBe(first);
+    expect(s.headers!["X-Den-Agent-Id"]).toBe("planner");
+  });
+
+  it("HUB-1.7: Hub's own mcp_url (from Connect), as given, when there is one", async () => {
+    const r = await rig({
+      hub: async () => ({
+        url: "https://hub.example.test",
+        mcpUrl: "https://mcp.hub.example.test/t/acme",
+        token: TOKEN,
+      }),
+      workspaceRepos: () => [],
+    });
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    expect(cfg(r).mcpServers[HUB_SERVER].url).toBe(
+      "https://mcp.hub.example.test/t/acme",
+    );
   });
 });
 
@@ -216,11 +236,12 @@ describe("Settings › Hub and doctor", () => {
         connected: true,
         team: "Acme",
         label: "north-box",
+        role: "member",
       },
       "Acme",
     );
     expect(up.lines.join("\n")).toContain(
-      "hub  ✓  https://hub.example.test: connected (team Acme, install north-box)",
+      "hub  ✓  https://hub.example.test: connected (company Acme, install north-box, role member)",
     );
     expect(up.check?.status).toBe("ok");
     const down = hubLines(
@@ -236,6 +257,19 @@ describe("Settings › Hub and doctor", () => {
     expect(down.check?.status).toBe("warn");
     expect(down.lines.join("\n")).toContain(
       "not connected: Hub did not answer: 401",
+    );
+    const revoked = hubLines(
+      {
+        configured: true,
+        url: "https://hub.example.test",
+        connected: false,
+        state: "rejected",
+        problem: "Hub doesn't accept this install's token",
+      },
+      "Acme",
+    );
+    expect(revoked.check?.detail).toMatch(
+      /Settings › Agents › Hub: Reconnect\)$/,
     );
   });
 });

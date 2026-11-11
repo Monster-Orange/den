@@ -309,6 +309,7 @@
     "lock.checking": "Checking…",
     "lock.note": "Den uses it only for sudo. Agents can't enter it.",
     "lock.saved": "Admin password kept for this session",
+    "lock.savedTo": "Admin password kept for this session and saved to {s}",
     "lock.saveFailed": "Kept for this session, but saving to {s} failed: {err}",
     "lock.wrong": "Incorrect password — try again",
     "lock.reqFailed": "Request failed — is the server running?",

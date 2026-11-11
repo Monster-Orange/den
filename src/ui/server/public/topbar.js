@@ -1459,7 +1459,11 @@ function openLock() {
                 s: sudo.vault.label || sudo.vault.backend,
                 err: res.vaultError,
               })
-            : t("lock.saved"),
+            : saveToVault
+              ? t("lock.savedTo", {
+                  s: sudo.vault.label || sudo.vault.backend,
+                })
+              : t("lock.saved"),
         );
         settleSudo(true);
         return;

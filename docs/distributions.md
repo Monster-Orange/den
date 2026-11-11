@@ -913,9 +913,52 @@ later plugins.
 
 ## Hub
 
-With `hub.url` set, every agent Den launches gets Hub's tools (HUB-1.5):
-it can search Hub and publish docs and mocks there. Without `hub.url`,
-nothing changes and nothing about Hub shows.
+Connect an install to your company's Hub and every agent Den launches
+gets Hub's tools: it can search Hub and publish docs and mocks there.
+Without it, nothing about agents changes.
+
+### Connect to Hub (HUB-1.7)
+
+Settings › Agents › Hub: type Hub's address (or keep the one the
+distribution set in `hub.url`) and press **Connect**. Hub opens; sign
+in, pick the company and approve this install. Hub sends you back to
+Settings, connected. Nobody copies a token or edits config.
+
+- Den makes a PKCE verifier (S256) and a single-use state and keeps both
+  in memory for 10 minutes. Hub's answer comes back to
+  `<this Den>/hub/callback`, which trades the one-time code for the
+  install's token server to server (`POST <hub>/connect/token`). A
+  replayed or old state changes nothing.
+- `/hub/callback` needs no sign-in: the session cookie is SameSite
+  Strict, so Hub's redirect doesn't carry it. The state this server
+  issued to a signed-in Connect, and the verifier only it holds, are
+  what protect it. It then moves on to Settings by script, which carries
+  the cookie again.
+- Hub can only send the person back to https or to this machine, so
+  open Den over https (its edge address) or on localhost to Connect.
+- This install's label on Hub is `<cli> on <machine>`.
+- The token is the install's (SEC-0), kept in the install's own secrets
+  store when it keeps secrets: a 1Password item `<Product> Hub token`
+  (field `token`), or a Doppler key `<PREFIX>_HUB_TOKEN`. Otherwise Den
+  keeps it in `<state dir>/hub/token` (mode 0600, folder 0700). It goes
+  to the store on stdin or into the file, never in a command line, and
+  never to a page, a log or an API answer. If it can't be kept, Den
+  revokes it on Hub at once.
+- Connect writes `hub.url` (Hub's own address), `hub.token` (the store
+  ref, or `file:<path>`) and `hub.mcp_url` (Hub's MCP address, as given)
+  to `config/local/user.yml`.
+- **Disconnect** revokes the token on Hub (`POST <hub>/connect/revoke`),
+  then removes it here and clears `hub.token` and `hub.mcp_url`;
+  `hub.url` stays, so Connect is one click. If Hub can't be reached,
+  nothing is removed; **Remove it here anyway** removes it, and says the
+  token still works on Hub until an admin revokes the install.
+- A token Hub no longer accepts (revoked, or replaced by a newer
+  connect) shows **Reconnect**. A role that may no longer connect Den
+  installs says to ask a Hub admin; Den never retries it.
+
+### Config
+
+A distribution can preset Hub's address, or set everything by hand:
 
 ```yaml
 # config/local/user.yml (or the org config; user.yml wins)
@@ -923,20 +966,27 @@ hub:
   url: https://hub.example.com
   token: { vault: Private, item: Acme Hub, field: token }
   # or the name of a secrets.refs entry: token: hub_install
+  # or a source: token: "file:/path/to/token" (also keychain:, env:)
+  mcp_url: https://hub.example.com/mcp # default: <url>/mcp
   allow_tools: true # the default: agents use Hub's tools without asking
 ```
 
 - `hub.url` must be https. Plain http works only to this machine
-  (`localhost`, `*.localhost`).
-- `hub.token` is this install's Hub token (`hubi_…`, one per install,
-  made in Hub), as a ref in this install's own secrets store
-  (`secrets.provider`). Den never assumes a vault, item or field for it.
+  (`localhost`, `127.0.0.1`, `*.localhost`).
+- `hub.token` is this install's Hub token (one per install), as a ref in
+  this install's own secrets store (`secrets.provider`) or a source. Den
+  never assumes a vault, item or field for it.
+
+### What agents get
+
 - Each agent's MCP config gets a server named `hub`: Streamable HTTP at
-  `<hub.url>/mcp`, with `Authorization: Bearer <token>` and four plain
-  headers naming the caller: `X-Den-Agent` (its name), `X-Den-Session`
-  (a new opaque id per launch), `X-Den-Workspace` and `X-Den-Repos` (the
-  workspace's repos, `owner/repo`, comma-separated). Hub sets the team
-  from the token and the project from the repos.
+  `hub.mcp_url` (default `<hub.url>/mcp`), with
+  `Authorization: Bearer <token>` and plain headers naming the caller:
+  `X-Den-Agent` (its name), `X-Den-Agent-Id` (its stable id, which Hub
+  keys attribution on), `X-Den-Session` (a new opaque id per launch),
+  `X-Den-Workspace` and `X-Den-Repos` (the workspace's repos,
+  `owner/repo`, comma-separated). Hub sets the company from the token
+  and the project from the repos.
 - Its prompt gets one line: "You can search Hub and publish docs and
   mocks there with the hub\_\* tools; your team and project are set from
   this Den install."
@@ -944,18 +994,22 @@ hub:
   in a command line, a record, a log, a page or an API answer.
 - `hub.allow_tools` (default `true`): agents use Hub's tools without
   asking (Den allows `mcp__hub` for every agent it launches). The token
-  limits writes to this install's team, and Hub keeps every version. Set
-  it to `false` and Hub's tools ask before they run, like any tool. An
-  explicit deny in the install's own Claude Code permissions still wins.
-  Settings › Agents › Hub has the checkbox (it saves to
+  limits writes to this install's company, and Hub keeps every version.
+  Set it to `false` and Hub's tools ask before they run, like any tool.
+  An explicit deny in the install's own Claude Code permissions still
+  wins. Settings › Agents › Hub has the checkbox (it saves to
   `config/local/user.yml`).
 - A Hub that is down, or a token that can't be read, never stops an
   agent: it starts without Hub.
 
-Settings › Agents › Hub shows the URL, connected or not, the team and
-this install's label (from Hub's whoami tool), or why it can't connect.
-`GET /api/hub` answers the same. `<cli> doctor` has a Hub row: ✓ when
-connected, ⚠ with the reason when not. A Hub that is down never fails
+### Status
+
+Settings › Agents › Hub shows Hub's address, connected or not, the
+company (a link to it on Hub), your role, who signed in and this
+install's label (from `GET <hub>/connect/whoami`), or why it can't
+connect. `GET /api/hub` answers the same (never the token). `<cli>
+doctor` has a Hub row: ✓ when connected, ⚠ with the reason when not,
+and where to Connect or Reconnect. A Hub that is down never fails
 doctor.
 
 ## doctor

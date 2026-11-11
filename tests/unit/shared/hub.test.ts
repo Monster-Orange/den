@@ -1,19 +1,23 @@
 /**
- * HUB-1.5: hub.* config, the caller headers, owner/repo from a catalog
- * entry, whoami over Streamable HTTP, and the status Settings and doctor
- * show. Never this machine's config or secrets store; a local MCP server
- * on localhost plays Hub. Invented names only.
+ * HUB-1.5/1.7: hub.* config, the caller headers, owner/repo from a catalog
+ * entry, Hub's /connect REST calls (whoami, token, revoke), PKCE, and the
+ * status Settings and doctor show. Never this machine's config or secrets
+ * store; a local HTTP server on localhost plays Hub. Invented names only.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as http from "http";
 import type { AddressInfo } from "net";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import * as crypto from "crypto";
 import {
+  HubCallError,
+  hubExchange,
   hubHeaders,
+  hubRevoke,
   hubStatus,
   hubUrlProblem,
   hubWhoami,
+  newHubState,
+  newPkce,
   ownerRepo,
   patchHubAllowTools,
   readHubConfig,
@@ -48,6 +52,34 @@ describe("readHubConfig", () => {
       tokenRef: { vault: "", item: "i", field: "f" },
       tokenFrom: "hub.token",
       allowTools: true,
+      mcpUrl: "https://mine.example.test/mcp",
+    });
+  });
+
+  it("hub.mcp_url (Connect writes Hub's own, kept as given) wins over <url>/mcp; a bad one throws", () => {
+    const url = "https://hub.example.test";
+    expect(
+      readHubConfig(
+        { hub: { url, mcp_url: "https://mcp.example.test/v2/" } },
+        {},
+        noSecrets,
+      )?.mcpUrl,
+    ).toBe("https://mcp.example.test/v2/");
+    expect(() =>
+      readHubConfig({ hub: { url, mcp_url: "ftp://x" } }, {}, noSecrets),
+    ).toThrow(/hub\.mcp_url/);
+  });
+
+  it("hub.token as file:, keychain: or env: (what Connect writes without a store)", () => {
+    const c = readHubConfig(
+      { hub: { url: "https://hub.example.test", token: "file:/tmp/x/token" } },
+      {},
+      noSecrets,
+    );
+    expect(c?.tokenRef).toBeNull();
+    expect(c?.tokenSource).toMatchObject({
+      kind: "file",
+      path: "/tmp/x/token",
     });
   });
 
@@ -189,62 +221,132 @@ describe("readHubToken", () => {
   });
 });
 
-/** A Hub on localhost: one whoami tool, the bearer token required. */
+/** A Hub on localhost: /connect/whoami, /connect/token, /connect/revoke. */
 const servers: http.Server[] = [];
 afterEach(async () => {
-  for (const s of servers.splice(0))
+  for (const s of servers.splice(0)) {
+    s.closeAllConnections();
     await new Promise<void>((res) => s.close(() => res()));
+  }
 });
+interface Seen {
+  method: string;
+  path: string;
+  auth: string;
+  agentId: string;
+  body: string;
+}
 async function fakeHub(
-  who: Record<string, unknown> = { team: "Acme", label: "north-box" },
-): Promise<{ url: string; auths: string[] }> {
-  const auths: string[] = [];
+  who: Record<string, unknown> = {
+    install: "north-box",
+    role: "member",
+    login: "pat",
+    company: {
+      slug: "acme",
+      name: "Acme",
+      url: "https://hub.example.test/c/acme",
+    },
+    mcp_url: "https://hub.example.test/mcp",
+  },
+  answer: (r: Seen) => [number, unknown] | null = () => null,
+): Promise<{ url: string; seen: Seen[] }> {
+  const seen: Seen[] = [];
   const s = http.createServer((req, res) => {
-    auths.push(String(req.headers.authorization ?? ""));
-    if (req.url !== "/mcp") return void res.writeHead(404).end();
-    if (req.headers.authorization !== `Bearer ${TOKEN}`)
-      return void res.writeHead(401).end("unauthorized");
-    const mcp = new McpServer({ name: "fake-hub", version: "1" });
-    mcp.registerTool("hub_whoami", { description: "who" }, async () => ({
-      content: [{ type: "text", text: JSON.stringify(who) }],
-    }));
-    const t = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
+    let body = "";
+    req.on("data", (c: Buffer) => (body += c.toString()));
+    req.on("end", () => {
+      const r: Seen = {
+        method: req.method ?? "",
+        path: req.url ?? "",
+        auth: String(req.headers.authorization ?? ""),
+        agentId: String(req.headers["x-den-agent-id"] ?? ""),
+        body,
+      };
+      seen.push(r);
+      const send = (code: number, v: unknown) => {
+        res.writeHead(code, { "content-type": "application/json" });
+        res.end(JSON.stringify(v));
+      };
+      const forced = answer(r);
+      if (forced) return send(forced[0], forced[1]);
+      if (r.path === "/connect/whoami" && r.method === "GET")
+        return r.auth === `Bearer ${TOKEN}`
+          ? send(200, who)
+          : send(401, { error: "unauthorized" });
+      if (r.path === "/connect/revoke" && r.method === "POST")
+        return r.auth === `Bearer ${TOKEN}`
+          ? send(200, { revoked: true })
+          : send(401, { error: "unauthorized" });
+      if (r.path === "/connect/token" && r.method === "POST") {
+        const b = JSON.parse(body) as Record<string, string>;
+        return b.code === "good-code"
+          ? send(200, {
+              token: TOKEN,
+              install: "north-box",
+              role: "member",
+              company: who.company,
+              hub_url: "https://hub.example.test/",
+              mcp_url: "https://hub.example.test/mcp",
+            })
+          : send(400, { error: "invalid_grant" });
+      }
+      res.writeHead(404).end();
     });
-    res.on("close", () => void t.close());
-    void mcp.connect(t).then(() => t.handleRequest(req, res));
   });
   servers.push(s);
   await new Promise<void>((r) => s.listen(0, "localhost", () => r()));
-  return {
-    url: `http://localhost:${(s.address() as AddressInfo).port}`,
-    auths,
-  };
+  return { url: `http://localhost:${(s.address() as AddressInfo).port}`, seen };
 }
 
-describe("hubWhoami", () => {
-  it("calls Hub's whoami with the bearer token and reads team and label", async () => {
+describe("hubWhoami (GET /connect/whoami)", () => {
+  it("sends the bearer token and reads install, role, login, company, mcp_url", async () => {
     const h = await fakeHub();
     expect(await hubWhoami(h.url, TOKEN)).toEqual({
-      team: "Acme",
-      label: "north-box",
+      install: "north-box",
+      role: "member",
+      login: "pat",
+      company: {
+        slug: "acme",
+        name: "Acme",
+        url: "https://hub.example.test/c/acme",
+      },
+      mcpUrl: "https://hub.example.test/mcp",
     });
-    expect(h.auths.length).toBeGreaterThan(0);
-    expect(h.auths.every((a) => a === `Bearer ${TOKEN}`)).toBe(true);
+    expect(h.seen.map((r) => [r.method, r.path, r.auth])).toEqual([
+      ["GET", "/connect/whoami", `Bearer ${TOKEN}`],
+    ]);
   });
 
-  it("team_name and install_label work too", async () => {
-    const h = await fakeHub({ team_name: "Acme", install_label: "kit-box" });
-    expect(await hubWhoami(h.url, TOKEN)).toEqual({
-      team: "Acme",
-      label: "kit-box",
-    });
-  });
-
-  it("a wrong token fails", async () => {
+  it("401 is rejected (connect again); 403 is forbidden (ask an admin), with Hub's words", async () => {
     const h = await fakeHub();
-    await expect(hubWhoami(h.url, "hubi_wrong")).rejects.toThrow();
+    await expect(hubWhoami(h.url, "hubi_wrong")).rejects.toMatchObject({
+      kind: "rejected",
+    });
+    const f = await fakeHub(undefined, () => [
+      403,
+      { error: "your role (viewer) no longer allows Den installs" },
+    ]);
+    const e = (await hubWhoami(f.url, TOKEN).catch((x) => x)) as HubCallError;
+    expect(e).toBeInstanceOf(HubCallError);
+    expect(e.kind).toBe("forbidden");
+    expect(e.message).toMatch(/role \(viewer\) no longer allows.*ask an admin/);
+  });
+
+  it("never follows a redirect (the token stays with Hub)", async () => {
+    const h = await fakeHub(undefined, () => null);
+    const other = await fakeHub();
+    const r = http.createServer((_q, res) => {
+      res.writeHead(302, { location: `${other.url}/connect/whoami` });
+      res.end();
+    });
+    servers.push(r);
+    await new Promise<void>((ok) => r.listen(0, "localhost", () => ok()));
+    const url = `http://localhost:${(r.address() as AddressInfo).port}`;
+    await expect(hubWhoami(url, TOKEN)).rejects.toMatchObject({
+      kind: "unreachable",
+    });
+    expect(other.seen).toEqual([]);
+    expect(h.seen).toEqual([]);
   });
 
   it("no answer in time fails, saying so", async () => {
@@ -255,7 +357,76 @@ describe("hubWhoami", () => {
     await expect(hubWhoami(url, TOKEN, { timeoutMs: 200 })).rejects.toThrow(
       /did not answer in 200 ms/,
     );
-    s.closeAllConnections();
+  });
+});
+
+describe("hubExchange (POST /connect/token) and hubRevoke", () => {
+  it("trades the code with the verifier for the token, Hub's url and mcp_url", async () => {
+    const h = await fakeHub();
+    const g = await hubExchange(h.url, {
+      code: "good-code",
+      redirectUri: "http://localhost:7000/hub/callback",
+      verifier: "v".repeat(43),
+    });
+    expect(g).toMatchObject({
+      token: TOKEN,
+      install: "north-box",
+      role: "member",
+      company: { name: "Acme" },
+      hubUrl: "https://hub.example.test",
+      mcpUrl: "https://hub.example.test/mcp",
+    });
+    expect(JSON.parse(h.seen[0].body)).toEqual({
+      grant_type: "authorization_code",
+      code: "good-code",
+      redirect_uri: "http://localhost:7000/hub/callback",
+      code_verifier: "v".repeat(43),
+    });
+  });
+
+  it("a bad code is refused with Hub's error code", async () => {
+    const h = await fakeHub();
+    await expect(
+      hubExchange(h.url, {
+        code: "x",
+        redirectUri: "http://localhost/hub/callback",
+        verifier: "v",
+      }),
+    ).rejects.toMatchObject({ kind: "refused", code: "invalid_grant" });
+  });
+
+  it("an answer with no token is refused", async () => {
+    const h = await fakeHub(undefined, (r) =>
+      r.path === "/connect/token" ? [200, { install: "x" }] : null,
+    );
+    await expect(
+      hubExchange(h.url, {
+        code: "good-code",
+        redirectUri: "http://localhost/hub/callback",
+        verifier: "v",
+      }),
+    ).rejects.toThrow(/no token/);
+  });
+
+  it("revoke: true when Hub revoked it, false when it was already invalid (401)", async () => {
+    const h = await fakeHub();
+    expect(await hubRevoke(h.url, TOKEN)).toBe(true);
+    expect(await hubRevoke(h.url, "hubi_dead")).toBe(false);
+    expect(h.seen.map((r) => [r.method, r.path])).toEqual([
+      ["POST", "/connect/revoke"],
+      ["POST", "/connect/revoke"],
+    ]);
+  });
+
+  it("PKCE S256: a 43-character verifier and its sha256 challenge; states are fresh", () => {
+    const { verifier, challenge } = newPkce();
+    expect(verifier).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(challenge).toBe(
+      crypto.createHash("sha256").update(verifier).digest("base64url"),
+    );
+    expect(challenge).toHaveLength(43);
+    expect(newHubState()).not.toBe(newHubState());
+    expect(newHubState().length).toBeGreaterThanOrEqual(8);
   });
 });
 
@@ -278,15 +449,24 @@ describe("hubStatus", () => {
       await hubStatus({
         config: () => cfg,
         token: async () => TOKEN,
-        whoami: async () => ({ team: "Acme", label: "north-box" }),
+        whoami: async () => ({
+          install: "north-box",
+          role: "member",
+          login: "pat",
+          company: { name: "Acme", url: "https://hub.example.test/c/acme" },
+        }),
       }),
     ).toEqual({
       configured: true,
       url: cfg.url,
       allowTools: true,
       connected: true,
+      state: "connected",
       team: "Acme",
+      teamUrl: "https://hub.example.test/c/acme",
       label: "north-box",
+      role: "member",
+      login: "pat",
     });
   });
 
@@ -296,10 +476,18 @@ describe("hubStatus", () => {
         throw new Error("hub.url must be https (http only to this machine): x");
       },
     });
-    expect(bad).toMatchObject({ connected: false, problem: /must be https/ });
+    expect(bad).toMatchObject({
+      connected: false,
+      state: "bad_config",
+      problem: /must be https/,
+    });
     expect(
       await hubStatus({ config: () => ({ ...cfg, tokenRef: null }) }),
-    ).toMatchObject({ connected: false, problem: /no hub\.token/ });
+    ).toMatchObject({
+      connected: false,
+      state: "no_token",
+      problem: /not connected yet: Connect signs you in/,
+    });
     expect(
       await hubStatus({
         config: () => ({
@@ -327,9 +515,39 @@ describe("hubStatus", () => {
     });
     expect(down).toMatchObject({
       connected: false,
-      problem: /Hub did not answer/,
+      state: "unreachable",
+      problem: /Hub did not answer: 401 for Bearer \[token\]/,
     });
     expect(JSON.stringify(down)).not.toContain(TOKEN);
+  });
+
+  it("Hub's own answers map to a state Settings acts on", async () => {
+    const st = (e: Error) =>
+      hubStatus({
+        config: () => cfg,
+        token: async () => TOKEN,
+        whoami: async () => {
+          throw e;
+        },
+      });
+    expect(
+      await st(
+        new HubCallError("rejected", "Hub doesn't accept this install's token"),
+      ),
+    ).toMatchObject({ state: "rejected", problem: /doesn't accept/ });
+    expect(
+      await st(
+        new HubCallError(
+          "forbidden",
+          "your role (viewer) no longer allows Den installs: ask an admin",
+        ),
+      ),
+    ).toMatchObject({ state: "forbidden", problem: /ask an admin/ });
+    const late = await st(
+      new HubCallError("unreachable", "Hub did not answer in 5000 ms"),
+    );
+    expect(late).toMatchObject({ state: "unreachable" });
+    expect(late.problem).toBe("Hub did not answer in 5000 ms");
   });
 
   it("scrubToken cuts the token out of any message", () => {

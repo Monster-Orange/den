@@ -4,6 +4,47 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.27] - unreleased
+
+### Added
+
+- **Connect to Hub (HUB-1.7).** Settings › Agents › Hub has **Connect**:
+  type Hub's address, sign in on Hub, pick the company and approve this
+  install, and you come back connected. Nobody copies a token or edits
+  config. Den uses PKCE and a single-use state; the token goes to the
+  install's own secrets store (1Password or Doppler), else to a 0600
+  file in Den's state dir, and never to a page, log or command line.
+  **Disconnect** revokes it on Hub first. A token Hub no longer accepts
+  shows **Reconnect**; a role that may no longer connect says to ask a
+  Hub admin. The row shows the company (a link), your role, who signed
+  in and this install. Doctor's Hub row names the company and role.
+- Agents' Hub MCP server uses Hub's own `mcp_url` from Connect, and
+  sends `X-Den-Agent-Id` (the agent's stable id) for attribution.
+
+### Changed
+
+- Hub status comes from Hub's `GET /connect/whoami` (it was the
+  `hub_whoami` MCP tool).
+
+### Fixed
+
+- **Saving to 1Password never makes a second item.** A save created a
+  new item whenever reading the old one failed, even for a timeout, so a
+  slow `op` could leave two items with one title (which `op` then
+  refuses). It now creates only when `op` says the item isn't there, and
+  otherwise shows `op`'s reason. A failed create shows create's own
+  reason (say, a vault that isn't available), not "isn't an item".
+- `op`'s `[ERROR] <date> <time>` prefix is gone from the messages Den
+  shows.
+- After the admin password is saved to the install's store, the note
+  says so: "Admin password kept for this session and saved to <store>".
+
+### Migrations
+
+- None. A `hub.token` set by hand keeps working. `hub.token` may now
+  also be a source (`file:`, `keychain:`, `env:`), and `hub.mcp_url` is
+  new and optional.
+
 ## [0.4.26] - 2026-11-10
 
 ### Security
