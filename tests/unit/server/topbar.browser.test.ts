@@ -98,6 +98,11 @@ interface Opts {
   vault?: Record<string, unknown>;
   /** /api/server-info reports a stale server (the ⚠ pill shows). */
   stale?: boolean;
+  /**
+   * D64: POST /api/web/restart "restarts" the stub: server-info then fails
+   * `down` times (503), then answers as a new server (pid 2).
+   */
+  restart?: { down: number; waitSeconds?: number };
 }
 
 /** A page on a stub origin; records every request. */
@@ -107,6 +112,8 @@ async function mount(o: Opts = {}): Promise<{
   posts: { path: string; body: unknown }[];
   /** The password is set elsewhere (another tab, another device). */
   unlockElsewhere: () => void;
+  /** D64: when the stub first answered as the new server (ms), or 0. */
+  backAt: () => number;
 }> {
   const page = o.page ?? "services";
   const rows = o.rows ?? ROWS;
@@ -117,6 +124,9 @@ async function mount(o: Opts = {}): Promise<{
   const reqs: string[] = [];
   const posts: { path: string; body: unknown }[] = [];
   let unlocked = o.unlocked ?? false;
+  let restarted = false;
+  let down = o.restart?.down ?? 0;
+  let backAt = 0;
   let prefs = { shell: { pins: [] as string[], collapsed: false } };
   p.on("request", (r) => {
     const u = new URL(r.url());
@@ -213,12 +223,23 @@ async function mount(o: Opts = {}): Promise<{
                 ])
               : sse([{ type: "line", text: "x" }]),
         });
+      case "/api/web/restart":
+        restarted = true;
+        return json({ restarting: true, pid: 1 });
       case "/api/server-info":
+        if (restarted && down > 0) {
+          down--;
+          return json({ error: "down" }, 503);
+        }
+        if (restarted && !backAt) backAt = Date.now();
         return json({
           version: "0.3.0-dev.20",
-          pid: 1,
-          startedAt: 1,
-          stale: o.stale ?? false,
+          pid: restarted ? 2 : 1,
+          startedAt: restarted ? 2 : 1,
+          stale: restarted ? false : (o.stale ?? false),
+          ...(o.restart?.waitSeconds
+            ? { restartWaitSeconds: o.restart.waitSeconds }
+            : {}),
         });
       case "/api/changelog":
         return json([]);
@@ -254,6 +275,7 @@ async function mount(o: Opts = {}): Promise<{
     unlockElsewhere: () => {
       unlocked = true;
     },
+    backAt: () => backAt,
   };
 }
 
@@ -961,6 +983,7 @@ describe("the user menu (R10) and Runs (R7)", () => {
       "English ✓",
       "日本語",
       "Español",
+      "Restart Den…",
       "All settings",
     ]);
     await p.click('.den-pop .den-mi:has-text("Light")');
@@ -1084,4 +1107,108 @@ describe("criterion 5: the overlays only read", () => {
     ).toEqual([]);
     await p.context().close();
   }, 30_000);
+});
+
+describe("D64: Restart Den from the browser, in place", () => {
+  const dlgOpen = (p: Page) =>
+    p.evaluate(
+      () =>
+        (document.getElementById("rd-dlg") as HTMLDialogElement | null)?.open ??
+        false,
+    );
+
+  it("the header menu's Restart Den asks first, then waits in a dialog that closes by itself; no reload, a typed draft stays", async () => {
+    if (!browser) return;
+    const { p, posts, backAt } = await mount({
+      restart: { down: 2 },
+      after: '<textarea id="draft"></textarea>',
+    });
+    await p.evaluate(() => {
+      (window as unknown as { __mark: number }).__mark = 7;
+      (window as unknown as { __backs: number }).__backs = 0;
+      window.addEventListener("den:server-back", () => {
+        (window as unknown as { __backs: number }).__backs++;
+      });
+    });
+    await p.fill("#draft", "half a thought");
+    await p.click("#appearance-btn");
+    await p.click('.den-pop .den-mi:has-text("Restart Den…")');
+    await p.waitForSelector('#rd-dlg[data-state="confirm"]');
+    expect(await text(p, "#rd-dlg")).toContain("Agents and their terminals");
+    // Cancel: nothing asked of the server.
+    await p.click('[data-rd="cancel"]');
+    expect(await dlgOpen(p)).toBe(false);
+    expect(posts.some((x) => x.path === "/api/web/restart")).toBe(false);
+
+    await p.click("#appearance-btn");
+    await p.click('.den-pop .den-mi:has-text("Restart Den…")');
+    await p.click('[data-rd="go"]');
+    await p.waitForSelector('#rd-dlg[data-state="waiting"]');
+    expect(await text(p, "#rd-dlg .rd-msg")).toMatch(/^Restarting Den… \d+s$/);
+    await p.waitForFunction(
+      () =>
+        document.querySelector("#rd-dlg .rd-msg")?.textContent ===
+        "Den is back",
+      undefined,
+      { timeout: 15_000 },
+    );
+    await p.waitForFunction(
+      () => !(document.getElementById("rd-dlg") as HTMLDialogElement).open,
+      undefined,
+      { timeout: 5_000 },
+    );
+    const closedIn = Date.now() - backAt();
+    expect(backAt()).toBeGreaterThan(0);
+    expect(closedIn).toBeLessThan(2_500);
+    expect(posts.filter((x) => x.path === "/api/web/restart")).toHaveLength(1);
+    // In place: same page, same draft, and the page was told.
+    expect(
+      await p.evaluate(() => (window as unknown as { __mark: number }).__mark),
+    ).toBe(7);
+    expect(await p.inputValue("#draft")).toBe("half a thought");
+    expect(
+      await p.evaluate(
+        () => (window as unknown as { __backs: number }).__backs,
+      ),
+    ).toBe(1);
+    await p.context().close();
+  }, 40_000);
+
+  it("the stale pill restarts with the same dialog, without asking", async () => {
+    if (!browser) return;
+    const { p } = await mount({ stale: true, restart: { down: 1 } });
+    await p.evaluate(() => {
+      (window as unknown as { __mark: number }).__mark = 9;
+    });
+    await p.waitForSelector("#stale-pill", { state: "visible" });
+    await p.click("#stale-pill");
+    await p.waitForSelector('#rd-dlg[data-state="waiting"]');
+    await p.waitForFunction(
+      () => !(document.getElementById("rd-dlg") as HTMLDialogElement).open,
+      undefined,
+      { timeout: 15_000 },
+    );
+    expect(
+      await p.evaluate(() => (window as unknown as { __mark: number }).__mark),
+    ).toBe(9);
+    await p.waitForSelector("#stale-pill", { state: "hidden" });
+    await p.context().close();
+  }, 40_000);
+
+  it("a slow restart shows the command line and Keep waiting, and never closes while the server is down", async () => {
+    if (!browser) return;
+    const { p } = await mount({ restart: { down: 1000, waitSeconds: 2 } });
+    await p.click("#appearance-btn");
+    await p.click('.den-pop .den-mi:has-text("Restart Den…")');
+    await p.click('[data-rd="go"]');
+    await p.waitForSelector("#rd-dlg .rd-slow:not([hidden])", {
+      timeout: 10_000,
+    });
+    expect(await text(p, "#rd-dlg .rd-slow")).toContain("web restart");
+    await p.click('[data-rd="keep"]');
+    expect(await p.isHidden("#rd-dlg .rd-slow")).toBe(true);
+    await p.keyboard.press("Escape");
+    expect(await dlgOpen(p)).toBe(true);
+    await p.context().close();
+  }, 40_000);
 });

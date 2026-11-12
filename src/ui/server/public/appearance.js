@@ -21,6 +21,8 @@
  * change, from either, fires `den:appearance` on window and both repaint.
  */
 
+import { restartDen } from "./restart-den.js";
+
 /**
  * The en strings of this module's pure exports, for where there is no
  * shell (a unit test). In a page every lookup is the shell's t (R19), whose
@@ -44,6 +46,7 @@ export const EN_FALLBACK = {
   "theme.notInstalled": "Your theme {id} isn't installed, so {inUse} is in use",
   "theme.invalid": "Your theme {id} isn't valid ({why}), so {inUse} is in use",
   "theme.invalidBare": "Your theme {id} isn't valid, so {inUse} is in use",
+  "rd.menu": "Restart Den…",
 };
 function t(key, vars) {
   const sh = typeof window !== "undefined" ? window.denShell : null;
@@ -417,6 +420,8 @@ export function userMenu() {
           ]
         : []),
       { hr: true },
+      // D64: always here, not only when the server is stale.
+      { label: t("rd.menu"), onSelect: () => void restartDen() },
       { label: t("um.all"), href: settings },
     ],
   };

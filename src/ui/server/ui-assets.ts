@@ -63,6 +63,8 @@ export const UI_MODULES: readonly string[] = [
   "/log-source.js",
   // D50: how every pop-over closes (a press outside, Esc).
   "/popover.js",
+  // D64: Restart Den from the browser, in place.
+  "/restart-den.js",
 ];
 
 /** URL path → file inside node_modules. */

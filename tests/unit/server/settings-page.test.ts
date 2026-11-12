@@ -37,6 +37,7 @@ describe("search", () => {
       "agents",
       "access",
       "secrets",
+      "server",
       "cli",
       "distribution",
     ]);

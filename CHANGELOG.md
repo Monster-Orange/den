@@ -6,6 +6,22 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.36] - unreleased
 
+### Added
+
+- **Restart Den from the browser, any time (D64).** Settings › Server
+  has a Restart Den button, and so does the header menu (◐ ▾). Before,
+  the only button was the "stale server" pill, shown only when Den was
+  out of date. A confirm says what keeps running (agents and their
+  terminals, services, deploys) and what pauses for a few seconds.
+- **The page stays put while Den restarts.** A small dialog counts
+  "Restarting Den… 4s", checks every second, and counts Den as back only
+  when a new server answers. It shows "Den is back", closes by itself
+  about a second later, and terminals reconnect in place: no reload, so
+  what you typed stays. If Den isn't back after
+  `ui.restart_wait_seconds` (default 90, in config/local/user.yml), it
+  shows the command to run and Keep waiting. The stale pill uses the
+  same dialog.
+
 ### Fixed
 
 - **The agents list lines up again when helpers run (D62).** The count

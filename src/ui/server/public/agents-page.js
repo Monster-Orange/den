@@ -3552,6 +3552,12 @@ function wireStartDialog(root) {
 function wireDocument() {
   st.docWired = true;
   document.fonts?.addEventListener?.("loadingdone", remeasureAll);
+  // D64: Den restarted in place (restart-den.js): lost panes reconnect,
+  // no reload, so what was typed stays.
+  window.addEventListener("den:server-back", () => {
+    for (const p of st.panes.values()) if (p.lost || !p.sock) void connect(p);
+    void refresh();
+  });
   window.addEventListener("den:appearance", () => {
     for (const p of st.panes.values())
       if (p.term) p.term.options.theme = termTheme();

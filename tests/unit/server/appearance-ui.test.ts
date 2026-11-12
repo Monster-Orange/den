@@ -420,6 +420,8 @@ describe("the user menu (initAppearance, R10)", () => {
       "English ✓",
       "日本語",
       "--",
+      // D64: Restart Den, always here.
+      "Restart Den…",
       // The Settings page (R21), at Appearance.
       "All settings → /settings#appearance",
     ]);

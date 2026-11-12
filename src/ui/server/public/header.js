@@ -18,6 +18,7 @@ import { buildRow, healthCycle, paintGate, shellHealth } from "./health-fit.js";
 import { initTopbar, paintChecking, paintStatus } from "./topbar.js";
 import { registerDenSettings } from "./settings-registry.js";
 import { initServicePanel } from "./svc-panel.js";
+import { restartDen } from "./restart-den.js";
 
 /** The shell's message lookup (R19; shell.js MESSAGES). */
 const t = (key, vars) =>
@@ -1214,23 +1215,6 @@ function _injectStaleStyles() {
     .stale-pill:hover { color: var(--bg); background: var(--warn); }
     .stale-pill b { font-weight: 700; }
     @keyframes stale-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-    .restart-overlay {
-      position: fixed; inset: 0; z-index: 2000; background: color-mix(in srgb, var(--bg) 90%, transparent);
-      display: flex; align-items: center; justify-content: center;
-      flex-direction: column; gap: 16px;
-      color: var(--text); font-family: var(--mono);
-    }
-    .restart-overlay .spinner {
-      width: 30px; height: 30px; border-radius: 50%;
-      border: 3px solid var(--border); border-top-color: var(--accent);
-      animation: stale-spin .8s linear infinite;
-    }
-    @keyframes stale-spin { to { transform: rotate(360deg); } }
-    .restart-overlay .msg { font-size: 13px; }
-    .restart-overlay .hint {
-      font-size: 11px; color: var(--muted);
-      max-width: 380px; text-align: center; line-height: 1.5;
-    }
   `;
   document.head.appendChild(s);
 }
@@ -1275,8 +1259,7 @@ async function _fetchServerInfo() {
 async function _staleTick() {
   if (apiOff()) return;
   const info = await _fetchServerInfo();
-  if (info && info.pid != null)
-    _lastServerInfo = { pid: info.pid, startedAt: info.startedAt };
+  if (info && info.pid != null) _lastServerInfo = info;
   _renderStalePill(info);
   // MD-2: a newer engine on disk than the one this server runs.
   if (info && "engineStale" in info)
@@ -1289,55 +1272,14 @@ async function _staleTick() {
 }
 
 async function _requestRestart() {
-  // No confirm(): the pill exists only when the server IS stale, and clicking
-  // it is already the statement of intent. The restart is cheap and reversible
-  // — running deploys continue on GitHub regardless; only an open deploy LOG in
-  // this tab is lost, and it reattaches on reload.
-  const before = _lastServerInfo;
-  _showRestartOverlay();
-  try {
-    await fetch("/api/web/restart", {
-      method: "POST",
-      signal: AbortSignal.timeout(4000),
-    });
-  } catch {
-    // The server usually dies before it can answer — expected; poll for the new one.
+  // No confirm: the pill exists only when the server IS stale, and a click
+  // on it is the ask. D64: the same in-place dialog as Restart Den (no page
+  // reload; live connections reconnect).
+  const info = await restartDen({ confirm: false, before: _lastServerInfo });
+  if (info) {
+    _lastServerInfo = info;
+    _renderStalePill(info);
   }
-  _pollForNewServer(before, Date.now());
-}
-
-function _showRestartOverlay() {
-  _injectStaleStyles();
-  if (document.getElementById("restart-overlay")) return;
-  const o = document.createElement("div");
-  o.id = "restart-overlay";
-  o.className = "restart-overlay";
-  o.innerHTML =
-    '<div class="spinner"></div>' +
-    `<div class="msg">${escT("restart.msg", { cli: "__DEN_CLI__" })}</div>` +
-    `<div class="hint" id="restart-hint">${escT("restart.hint")}</div>`;
-  document.body.appendChild(o);
-}
-
-async function _pollForNewServer(before, startedAt) {
-  const info = await _fetchServerInfo();
-  const isNew =
-    info &&
-    info.pid != null &&
-    (!before || info.pid !== before.pid || info.startedAt !== before.startedAt);
-  if (isNew) {
-    location.reload();
-    return;
-  }
-  if (Date.now() - startedAt > 90_000) {
-    const hint = document.getElementById("restart-hint");
-    if (hint)
-      hint.innerHTML = escT("restart.still", { cmd: "\u0000" }).replace(
-        "\u0000",
-        "<b>__DEN_CLI__ web restart</b>",
-      );
-  }
-  setTimeout(() => _pollForNewServer(before, startedAt), 1500);
 }
 
 // Self-init: begin watching once there's a <header> to anchor the pill into.

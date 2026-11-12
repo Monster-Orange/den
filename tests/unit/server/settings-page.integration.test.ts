@@ -255,6 +255,7 @@ describe("the Settings page writes only what you change (R21)", () => {
       "agents",
       "access",
       "secrets",
+      "server",
       "cli",
       "distribution",
     ]);

@@ -336,6 +336,11 @@ export interface UserConfig {
    */
   log_window_lines?: number;
   /**
+   * Browser settings. restart_wait_seconds (D64, default 90): how long the
+   * Restart Den dialog waits before it shows the command line way.
+   */
+  ui?: { restart_wait_seconds?: number };
+  /**
    * Key of the preferred editor for "open in editor" actions (e.g. "vscode", "cursor").
    * Stored as a key; the server resolves the actual executable path at open time.
    */

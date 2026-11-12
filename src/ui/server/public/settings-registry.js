@@ -31,6 +31,7 @@ import { themeNotice, themeOptions } from "./appearance.js";
 import { qrSvg } from "./qr.js";
 import { renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
+import { restartDen } from "./restart-den.js";
 
 export const DEN_SETTING_CATEGORIES = [
   {
@@ -88,6 +89,14 @@ export const DEN_SETTING_CATEGORIES = [
     order: 58,
     description:
       "Where this machine gets the credentials Den resolves secrets with. Per machine (config/local/user.yml); only the source is shown, never a secret.",
+  },
+  {
+    // D64: the server this page talks to; Restart Den is always here.
+    id: "server",
+    label: "Server",
+    order: 59,
+    description:
+      "The Den web server this page talks to. A restart keeps agents and services running.",
   },
   {
     id: "cli",
@@ -513,7 +522,27 @@ const ACCESS_ROWS = [
   },
 ];
 
+/** D64: Settings › Server's Restart Den button. */
+function drawRestart(host) {
+  const label = window.denShell?.t?.("rd.setButton") ?? "Restart Den";
+  host.innerHTML = `<button type="button" class="btn sm" id="set-restart-den">${escR(label)}</button>`;
+  host
+    .querySelector("#set-restart-den")
+    .addEventListener("click", () => void restartDen());
+}
+
 export const DEN_SETTINGS = [
+  {
+    id: "server.restart",
+    category: "server",
+    label: "Restart Den",
+    description:
+      "Restarts the web server on the same port. Agents, services and deploys keep running; this page reconnects in place. Same as __DEN_CLI__ web restart.",
+    keywords: ["restart", "server", "reload", "web", "den"],
+    scope: "user",
+    control: { type: "custom", render: drawRestart },
+    read: () => null,
+  },
   // ── Appearance ─────────────────────────────────────────────────────────
   {
     id: "appearance.mode",

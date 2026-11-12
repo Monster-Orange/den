@@ -876,7 +876,11 @@ import {
   startAgentUpkeep,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
-import { hubUpstream, policyResolver, restartResolver } from "../cli/agent-ops.js";
+import {
+  hubUpstream,
+  policyResolver,
+  restartResolver,
+} from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
 import {
@@ -2075,8 +2079,7 @@ async function handleRequest(
       (guard.code === "misdirected" || guard.code === "signin_required") &&
       isPublicAsset(req, pathname)
     )
-  )
-  {
+  ) {
     auditGuardRefusal(req, pathname, guard);
     return sendGuardRefusal(req, res, pathname, guard, requestId, url.search);
   }
@@ -4485,6 +4488,9 @@ async function handleRequest(
       // ON-6: no repo in any workspace yet (the server agent page's own
       // `fresh`): the shell skips What's new on a brand-new Den.
       fresh: await freshDen(),
+      // D64: how long the browser's Restart Den waits before it shows the
+      // CLI line (ui.restart_wait_seconds in config/local/user.yml).
+      restartWaitSeconds: restartWaitSeconds(),
     });
   }
 
@@ -5988,3 +5994,13 @@ process.on("SIGINT", () => {
 process.on("SIGTERM", () => {
   beginShutdown("SIGTERM");
 });
+
+/** D64: ui.restart_wait_seconds, a positive number, else 90. */
+function restartWaitSeconds(): number {
+  try {
+    const v = Number(readUserConfig().ui?.restart_wait_seconds);
+    return Number.isFinite(v) && v > 0 ? v : 90;
+  } catch {
+    return 90;
+  }
+}
