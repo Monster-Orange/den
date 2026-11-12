@@ -283,6 +283,13 @@
     "runs.aria": "Runs, {n} running",
     "runs.last": "Last run: {s}",
     "runs.none": "No runs",
+    "runs.stop": "Stop",
+    "runs.resumed":
+      "Still running on the server. Its output so far, then the rest:",
+    "runs.ended": "It ended while no page was watching. Its output:",
+    "runs.ok": "Done",
+    "runs.stopped": "Stopped",
+    "runs.failed": "Failed (exit {code})",
     "runs.empty": "Nothing has run yet. Output from any page lands here.",
     "runs.toast": "Nothing has run yet. A page's output shows here.",
     "runs.all": "All runs",
@@ -297,6 +304,7 @@
     "dock.clear": "Clear",
     "dock.closeRun": "Close {s}",
     "dock.err": "failed",
+    "dock.stopped": "stopped",
     "dock.last": "Last run: {s} ↗",
     "dock.resize": "Drag to resize",
     // The admin password, asked only when a command needs sudo (R8, LK-0).
@@ -3278,7 +3286,9 @@
   //   runs.append(id, text, cls?, { key }?)  one line (cls: cmd, err, warn,
   //                                 done-ok, done-fail, ok, phase); a `key`
   //                                 replaces that line in place (progress)
-  //   runs.finish(id, { ok })       stops the pulse; ok false is an error.
+  //   runs.finish(id, { ok, stopped }) stops the pulse; ok false is an
+  //                                 error; stopped (D55: someone pressed
+  //                                 Stop) is neither done nor failed
   //                                 A run with opts.doneLine (the default
   //                                 for new callers) gets "✓ done in {s}s"
   //   runs.set(id, { label, running, error, actions })
@@ -3395,11 +3405,14 @@
   function dotClass(r) {
     if (r.running) return "run";
     if (r.error) return "bad";
+    // D55: stopped is neither done nor failed: the faint dot.
+    if (r.stopped) return "off";
     if (r.done) return "";
     return "off";
   }
   function runTitle(r) {
     if (r.running) return r.label;
+    if (r.stopped) return r.label + " · " + t("dock.stopped");
     if (r.done && r.endedAt)
       return (
         r.label +
@@ -3454,7 +3467,11 @@
                   "</span>"
                 : r.error
                   ? '<span class="den-sr">, ' + esc(t("dock.err")) + "</span>"
-                  : "") +
+                  : r.stopped
+                    ? '<span class="den-sr">, ' +
+                      esc(t("dock.stopped")) +
+                      "</span>"
+                    : "") +
               "</button>" +
               (r.closable
                 ? '<button type="button" class="den-rtab-x" tabindex="-1" data-rclose="' +
@@ -3709,6 +3726,7 @@
       r.running = opts.running !== false;
       r.done = false;
       r.error = false;
+      r.stopped = false;
       r.startedAt = Date.now();
       r.ranAt = r.startedAt;
       r.endedAt = null;
@@ -3758,9 +3776,10 @@
       var ok = !(o && o.ok === false);
       r.running = false;
       r.done = true;
-      r.error = !ok;
+      r.stopped = !!(o && o.stopped);
+      r.error = !ok && !r.stopped;
       r.endedAt = Date.now();
-      if (r.doneLine)
+      if (r.doneLine && !r.stopped)
         runsApi.append(
           r.id,
           (ok ? "✓ " : "✗ ") +
@@ -3841,6 +3860,7 @@
           running: r.running,
           done: r.done,
           error: r.error,
+          stopped: !!r.stopped,
           lines: r.lines.length,
           ws: r.ws.slice(),
           ranAt: r.ranAt,

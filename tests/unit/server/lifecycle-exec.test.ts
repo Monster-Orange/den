@@ -66,7 +66,7 @@ function harness(
             ended++;
             done();
           },
-          onClientClose: () => {},
+          onStop: () => {},
         },
         deps,
       );
@@ -193,7 +193,7 @@ describe("ready after a detached start (B1 follow-up)", () => {
         env: {},
         emit: (e) => h.events.push(e),
         end: () => {},
-        onClientClose: () => {},
+        onStop: () => {},
       },
       h.deps,
     );
@@ -239,6 +239,64 @@ describe("ready after a detached start (B1 follow-up)", () => {
     await wait(100);
     expect(types(h)).toEqual(["started", "service-exited"]);
   });
+
+  // D55: a closed stream never stops a run; its log tail stops once the
+  // service has started and nobody watches.
+  function tailed(watched: { now: boolean }) {
+    // Down for the first ten polls (about 50 ms), then up.
+    const h = detached([...Array<"error">(11).fill("error"), "ok"]);
+    let kills = 0;
+    const run = h.deps.run;
+    h.deps.run = (o) => {
+      const r = run(o);
+      (r.proc as unknown as { kill: () => boolean }).kill = () => {
+        kills++;
+        return true;
+      };
+      return r;
+    };
+    let unwatched: (() => void) | null = null;
+    void streamLifecycleExec(
+      {
+        resolved,
+        cmd: "up",
+        env: {},
+        emit: (e) => h.events.push(e),
+        end: () => {},
+        onStop: () => {},
+        watched: () => watched.now,
+        onUnwatched: (fn) => {
+          unwatched = fn;
+        },
+      },
+      h.deps,
+    );
+    return { h, kills: () => kills, leave: () => unwatched?.() };
+  }
+
+  it("watched: the tail stays after ready, and goes when the last page leaves", async () => {
+    const w = { now: true };
+    const t = tailed(w);
+    await wait(100);
+    expect(types(t.h)).toEqual(["started", "ready"]);
+    expect(t.kills()).toBe(0);
+    w.now = false;
+    t.leave();
+    expect(t.kills()).toBe(1);
+  });
+
+  it("nobody watching: the tail goes at ready, never before", async () => {
+    const w = { now: false };
+    const t = tailed(w);
+    for (let i = 0; i < 50 && !types(t.h).includes("started"); i++)
+      await wait(1);
+    expect(types(t.h)).toEqual(["started"]);
+    t.leave();
+    expect(t.kills()).toBe(0);
+    await wait(150);
+    expect(types(t.h)).toEqual(["started", "ready"]);
+    expect(t.kills()).toBe(1);
+  });
 });
 
 describe("secret_env (R16)", () => {
@@ -258,7 +316,7 @@ describe("secret_env (R16)", () => {
           env: {},
           emit: (e) => h.events.push(e),
           end: done,
-          onClientClose: () => {},
+          onStop: () => {},
         },
         {
           ...depsOf(h),
@@ -283,7 +341,7 @@ describe("secret_env (R16)", () => {
           env: {},
           emit: (e) => h.events.push(e),
           end: done,
-          onClientClose: () => {},
+          onStop: () => {},
         },
         {
           ...depsOf(h),

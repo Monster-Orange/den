@@ -904,6 +904,15 @@ import {
   isLifecycleExecCmd,
   streamLifecycleExec,
 } from "./lifecycle-exec.js";
+import {
+  attachJob,
+  getJob,
+  listJobs,
+  sseHead,
+  startJob,
+  stopJob,
+  TAIL_GRACE_MS,
+} from "./exec-jobs.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import {
   edgeHttps,
@@ -1868,6 +1877,8 @@ function handleClaim(
 }
 
 /** `web login`'s wait (login-waits.ts), by the CLI's id. */
+/** D55: one run job, its events, or its Stop. */
+const EXEC_JOB_PATH = /^\/api\/exec\/jobs\/([A-Za-z0-9_]+)(\/events|\/stop)?$/;
 const LOGIN_WAIT_PATH = /^\/api\/web\/logins\/([A-Za-z0-9_-]{16,64})$/;
 const LOGIN_WAITS = new LoginWaits();
 
@@ -3142,6 +3153,45 @@ async function handleRequest(
   }
 
   // ── API: service exec (SSE) — catalog-aware ────────────────────────────────
+  // ── API: run jobs (D55) ───────────────────────────────────────────────────
+  // A run (service or workspace exec) goes on when its page goes. A page
+  // that comes back lists the jobs, attaches to one (the events so far,
+  // then live), or stops it: Stop is its own request.
+  if (pathname === "/api/exec/jobs" && req.method === "GET") {
+    res.setHeader("Cache-Control", "no-store");
+    return sendJson(res, { jobs: listJobs() });
+  }
+  {
+    const m = EXEC_JOB_PATH.exec(pathname);
+    if (m) {
+      const [, id, sub] = m;
+      if (!sub && req.method === "GET") {
+        const j = getJob(id);
+        if (!j) return sendJson(res, { error: "no such run", id }, 404);
+        res.setHeader("Cache-Control", "no-store");
+        return sendJson(res, j);
+      }
+      if (sub === "/events" && req.method === "GET") {
+        if (!getJob(id))
+          return sendJson(res, { error: "no such run", id }, 404);
+        sseHead(res);
+        attachJob(id, res);
+        return;
+      }
+      if (sub === "/stop" && req.method === "POST") {
+        const r = stopJob(id);
+        if (r === "missing")
+          return sendJson(res, { error: "no such run", id }, 404);
+        recordAction(
+          auditActorOf(req),
+          { verb: "exec", detail: `stop [${id}] (${r})` },
+          principalOf(req),
+        );
+        return sendJson(res, { ok: true, id, outcome: r });
+      }
+    }
+  }
+
   if (pathname === "/api/service/exec") {
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
@@ -3153,15 +3203,12 @@ async function handleRequest(
 
     // Open the SSE stream immediately so any resolution errors are visible
     // in the output pane rather than triggering onerror ("Connection closed").
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
+    sseHead(res);
+    // D55: the run is a job; a page's stream closing only stops it watching.
+    const job = startJob(pathname, url.searchParams, res);
     // LK-0: the command's sudo without the password is a needs-sudo event.
     const emit = watchSudo((obj: unknown): void => {
-      res.write(`data: ${JSON.stringify(obj)}\n\n`);
+      job.write(obj as Record<string, unknown>);
     }, `${repoName}/${svcName} ${cmdName}`);
     // Every fail here is before anything ran: a refusal or a lookup miss.
     // Recorded, so failed attempts show in the activity trail (F2).
@@ -3178,7 +3225,7 @@ async function handleRequest(
       );
       emit({ type: "error", text: msg });
       emit({ type: "done", exitCode: 1, duration: 0 });
-      res.end();
+      job.end();
     };
 
     const wsParam = url.searchParams.get("workspace");
@@ -3249,8 +3296,11 @@ async function handleRequest(
                 mirrorLine(execId, e.text);
               emit(e);
             },
-            end: () => res.end(),
-            onClientClose: (fn) => res.on("close", fn),
+            end: () => job.end(),
+            onStop: (fn) => job.onStop(fn),
+            watched: () => job.watchers() > 0,
+            onUnwatched: (fn) =>
+              job.onUnwatched(() => setTimeout(fn, TAIL_GRACE_MS)),
             onExit: (exitCode, duration) => {
               serverLog(
                 `■ exec ${execDesc} · exit=${exitCode} · ${formatDuration(duration)} [${execId}]${actorSuffix(execActor)}`,
@@ -3358,7 +3408,7 @@ async function handleRequest(
     const logPath = detached ? getServiceLogPath(repoName, svcName) : undefined;
     if (logPath) emit({ type: "line", text: `→ log: ${logPath}` });
 
-    let active = true; // false once client disconnects
+    let active = true; // false once the run let go (stopped, or a tail nobody watches)
 
     prewarmSudo();
     const svcProc = spawnStreaming(
@@ -3405,7 +3455,7 @@ async function handleRequest(
         if (exitCode !== 0)
           emit({ type: "error", text: `Command failed (exit ${exitCode})` });
         emit({ type: "done", exitCode, duration });
-        res.end();
+        job.end();
       },
       repoPath,
       detached,
@@ -3426,19 +3476,35 @@ async function handleRequest(
         : undefined,
     );
 
+    const letGo = (): void => {
+      active = false;
+      try {
+        svcProc.kill();
+      } catch {
+        /* already exited */
+      }
+      job.end();
+    };
+    // Stop kills the command; for a daemon, only its tail (D55).
+    job.onStop(() => {
+      active = false;
+      try {
+        svcProc.kill();
+      } catch {
+        /* already exited */
+      }
+    });
     if (detached) {
       // Tell the client the daemon is up; keep the tail proc (svcProc) alive
-      // so startup output keeps streaming until `make up` finishes.
-      // Kill the tail proc only when the client disconnects (tab closed).
+      // so startup output keeps streaming until `make up` finishes. The
+      // daemon runs on its own: once nobody has watched for a while, the
+      // tail goes and the run ends.
       emit({ type: "started", detached: true });
-      res.on("close", () => {
-        active = false;
-        try {
-          svcProc.kill();
-        } catch {
-          /* already exited */
-        }
-      });
+      job.onUnwatched(() =>
+        setTimeout(() => {
+          if (job.watchers() === 0 && !job.ended) letGo();
+        }, TAIL_GRACE_MS),
+      );
     }
     return;
   }

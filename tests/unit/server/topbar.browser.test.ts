@@ -98,6 +98,10 @@ interface Opts {
   vault?: Record<string, unknown>;
   /** /api/server-info reports a stale server (the ⚠ pill shows). */
   stale?: boolean;
+  /** D55: the run ids this browser kept (localStorage) before the page loads. */
+  kept?: string[];
+  /** D55: /api/exec/jobs's runs, and each one's events stream. */
+  jobs?: { info: Record<string, unknown>; events: unknown[] }[];
 }
 
 /** A page on a stub origin; records every request. */
@@ -113,6 +117,10 @@ async function mount(o: Opts = {}): Promise<{
   const ctx = await browser!.newContext({
     viewport: { width: o.width ?? 1440, height: 800 },
   });
+  if (o.kept)
+    await ctx.addInitScript((ids) => {
+      localStorage.setItem("__DEN_CLI__-runs", JSON.stringify(ids));
+    }, o.kept);
   const p = await ctx.newPage();
   const reqs: string[] = [];
   const posts: { path: string; body: unknown }[] = [];
@@ -211,8 +219,15 @@ async function mount(o: Opts = {}): Promise<{
                   { type: "line", text: "x" },
                   { type: "done", exitCode: 0 },
                 ])
-              : sse([{ type: "line", text: "x" }]),
+              : url.searchParams.get("cmd") === "job"
+                ? sse([
+                    { type: "job", id: "run_y" },
+                    { type: "line", text: "x" },
+                  ])
+                : sse([{ type: "line", text: "x" }]),
         });
+      case "/api/exec/jobs":
+        return json({ jobs: (o.jobs ?? []).map((j) => j.info) });
       case "/api/server-info":
         return json({
           version: "0.3.0-dev.20",
@@ -225,6 +240,17 @@ async function mount(o: Opts = {}): Promise<{
       // SEC-1a: the shell's CSRF token, as the server hands it out.
       case "/api/session":
         return json({ csrf: "stub-csrf", actor: null });
+    }
+    const jobEvents = /^\/api\/exec\/jobs\/(\w+)\/events$/.exec(url.pathname);
+    if (jobEvents) {
+      const j = (o.jobs ?? []).find((x) => x.info.id === jobEvents[1]);
+      return j
+        ? r.fulfill({
+            status: 200,
+            contentType: "text/event-stream",
+            body: sse(j.events),
+          })
+        : json({ error: "no such run" }, 404);
     }
     if (url.pathname.startsWith("/api/")) return json({});
     const which =
@@ -972,6 +998,177 @@ describe("the user menu (R10) and Runs (R7)", () => {
       body: { appearance: { mode: "light" } },
     });
     expect(await focused(p)).toBe("appearance-btn");
+    await p.context().close();
+  }, 30_000);
+
+  it("D55: a run this browser started and didn't see end shows in the dock after a reload: its output, then how it ended", async () => {
+    if (!browser) return;
+    const { p, reqs } = await mount({
+      kept: ["run_x", "run_gone"],
+      jobs: [
+        {
+          info: {
+            id: "run_x",
+            path: "/api/workspace/exec",
+            params: { cmd: "restart", workspace: "ws-a" },
+            status: "running",
+          },
+          events: [
+            { type: "job", id: "run_x" },
+            { type: "line", text: "── restart: stopping ──" },
+            { type: "line", text: "  shop: up started" },
+            { type: "done", exitCode: 0 },
+          ],
+        },
+      ],
+    });
+    await p.waitForFunction(() =>
+      (
+        window as unknown as {
+          denShell: { runs: { has(id: string): boolean } };
+        }
+      ).denShell.runs.has("job:run_x"),
+    );
+    await p.waitForFunction(() =>
+      /Done/.test(
+        (
+          window as unknown as {
+            denShell: { runs: { text(id: string): string } };
+          }
+        ).denShell.runs.text("job:run_x"),
+      ),
+    );
+    const out = await p.evaluate(() =>
+      (
+        window as unknown as {
+          denShell: { runs: { text(id: string): string } };
+        }
+      ).denShell.runs.text("job:run_x"),
+    );
+    expect(out).toContain("Still running on the server");
+    expect(out).toContain("── restart: stopping ──");
+    expect(out).toContain("shop: up started");
+    const tab = await p.evaluate(() =>
+      (
+        window as unknown as {
+          denShell: {
+            runs: { list(): { id: string; label: string; running: boolean }[] };
+          };
+        }
+      ).denShell.runs
+        .list()
+        .find((r) => r.id === "job:run_x"),
+    );
+    expect(tab).toMatchObject({ label: "restart ws-a", running: false });
+    // Seen to its end, and the one the server no longer has: both let go.
+    await p.waitForFunction(
+      () => localStorage.getItem("__DEN_CLI__-runs") === null,
+    );
+    expect(reqs).toContain("GET /api/exec/jobs");
+    await p.context().close();
+  }, 30_000);
+
+  it("D55: a run someone stopped, picked up after a reload, reads stopped (not failed)", async () => {
+    if (!browser) return;
+    const { p } = await mount({
+      kept: ["run_s"],
+      jobs: [
+        {
+          info: {
+            id: "run_s",
+            path: "/api/service/exec",
+            params: { repo: "shop", service: "web", cmd: "down" },
+            status: "done",
+          },
+          events: [
+            { type: "job", id: "run_s" },
+            { type: "line", text: "stopping shop" },
+            { type: "error", text: "Stopped" },
+            { type: "done", exitCode: 130, stopped: true },
+          ],
+        },
+      ],
+    });
+    const tab = () =>
+      p.evaluate(() =>
+        (
+          window as unknown as {
+            denShell: {
+              runs: {
+                list(): {
+                  id: string;
+                  running: boolean;
+                  error: boolean;
+                  stopped: boolean;
+                }[];
+              };
+            };
+          }
+        ).denShell.runs
+          .list()
+          .find((r) => r.id === "job:run_s"),
+      );
+    for (let i = 0; i < 100 && !(await tab())?.stopped; i++)
+      await new Promise((r) => setTimeout(r, 50));
+    expect(await tab()).toMatchObject({
+      running: false,
+      error: false,
+      stopped: true,
+    });
+    await p.context().close();
+  }, 30_000);
+
+  it("D55: with no run kept, a page never asks about runs", async () => {
+    if (!browser) return;
+    const { p, reqs } = await mount();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(reqs.filter((r) => r.includes("/api/exec/jobs"))).toEqual([]);
+    await p.context().close();
+  }, 30_000);
+
+  it("D55: a run's stream keeps its job; Stop stops the job on the server, closing only stops watching", async () => {
+    if (!browser) return;
+    const { p, posts } = await mount();
+    await p.evaluate(() => {
+      (window as unknown as { __es: EventSource }).__es = new EventSource(
+        "/api/service/exec?repo=shop&service=web&cmd=job",
+      );
+    });
+    await p.waitForFunction(
+      () => localStorage.getItem("__DEN_CLI__-runs") === '["run_y"]',
+    );
+    await p.evaluate(() =>
+      (window as unknown as { __es: EventSource }).__es.close(),
+    );
+    // Closed: still kept (the run goes on), and nothing was stopped.
+    expect(
+      await p.evaluate(() => localStorage.getItem("__DEN_CLI__-runs")),
+    ).toBe('["run_y"]');
+    expect(posts.filter((x) => x.path.startsWith("/api/exec/"))).toEqual([]);
+    await p.evaluate(() => {
+      const es = new EventSource(
+        "/api/service/exec?repo=shop&service=web&cmd=job",
+      );
+      (window as unknown as { __es: EventSource }).__es = es;
+      return new Promise<void>((r) =>
+        es.addEventListener("message", (e) => {
+          if (JSON.parse((e as MessageEvent).data).type === "job") r();
+        }),
+      );
+    });
+    await p.evaluate(() =>
+      (window as unknown as { __es: { stopRun(): void } }).__es.stopRun(),
+    );
+    await p.waitForFunction(
+      () => localStorage.getItem("__DEN_CLI__-runs") === null,
+    );
+    for (
+      let i = 0;
+      i < 50 && !posts.some((x) => x.path === "/api/exec/jobs/run_y/stop");
+      i++
+    )
+      await new Promise((r) => setTimeout(r, 50));
+    expect(posts.map((x) => x.path)).toContain("/api/exec/jobs/run_y/stop");
     await p.context().close();
   }, 30_000);
 

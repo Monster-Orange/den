@@ -15,8 +15,8 @@
  *     stdin (`-S`), then runs the command it was given;
  *   - with `elevatedUp`, south's repo (blog) has an `up` that runs
  *     `sudo touch <tmp>/elevated-ran` (LK-0): the one elevated step;
- *   - with `up`, a repo's `up` is the command given (a dev server that
- *     never exits, say);
+ *   - with `up` (or `down`), a repo's `up` (`down`) is the command given
+ *     (a dev server that never exits, a slow stop);
  *   - an env built from a minimal set, never this process's.
  *
  * Invented names only. The caller closes it (stop) and its temp dir goes.
@@ -96,6 +96,14 @@ export async function startAgentsPageServer(
     health?: Record<string, string>;
     /** A repo's local `up` command (notes, blog); `true` when unset. */
     up?: Record<string, string>;
+    /** A repo's local `down` command (notes, blog); `true` when unset. */
+    down?: Record<string, string>;
+    /**
+     * Repos that are managed clones (under the services dir, from their
+     * own remote) instead of dev-managed checkouts; the caller makes the
+     * clone, and its manifest, before the server starts.
+     */
+    managed?: string[];
   } = {},
 ): Promise<AgentsPageServer> {
   const tmp = fs.realpathSync(
@@ -127,8 +135,12 @@ export async function startAgentsPageServer(
         `    directory: ${wsDir(ws)}`,
         "    services:",
         `      ${repo}:`,
-        "        mode: dev-managed",
-        `        path: ${path.join(repos, repo)}`,
+        ...(opts.managed?.includes(repo)
+          ? ["        mode: managed"]
+          : [
+              "        mode: dev-managed",
+              `        path: ${path.join(repos, repo)}`,
+            ]),
       ]),
       ...(opts.inactive ?? []).flatMap((ws) => [
         `  ${ws}:`,
@@ -169,7 +181,7 @@ export async function startAgentsPageServer(
         "    commands:",
         "      local:",
         `        up: ${JSON.stringify(up)}`,
-        '        down: "true"',
+        `        down: ${JSON.stringify(opts.down?.[repo] ?? "true")}`,
         ...(opts.health?.[repo]
           ? ["    health:", "      local:", `        url: ${opts.health[repo]}`]
           : []),

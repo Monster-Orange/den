@@ -66,8 +66,16 @@ export interface LifecycleExecOptions {
   emit: (e: Record<string, unknown>) => void;
   /** Called once, after the final `done` event. */
   end: () => void;
-  /** Registers a callback for the client going away. */
-  onClientClose: (fn: () => void) => void;
+  /** Registers a callback for someone stopping the run (D55: Stop, never a closed stream). */
+  onStop: (fn: () => void) => void;
+  /**
+   * D55: true while a page watches the run. With onUnwatched, a run whose
+   * service has started (ready, or its launcher exited) lets go of its log
+   * tail once nobody watches; before that it goes on to its end.
+   */
+  watched?: () => boolean;
+  /** Registers a callback for the last page to stop watching. */
+  onUnwatched?: (fn: () => void) => void;
   /** Called with the exit code when the command completes. */
   onExit?: (exitCode: number, durationMs: number) => void;
 }
@@ -79,7 +87,8 @@ export async function streamLifecycleExec(
   const { resolved, cmd, emit } = o;
   const start = Date.now();
   let finished = false;
-  let clientGone = false;
+  let clientGone = false; // stopped: nothing more is said
+  let launched = false; // the service started: only its log tail is left
   const finish = (exitCode: number, explained = false): void => {
     if (finished) return;
     finished = true;
@@ -94,7 +103,7 @@ export async function streamLifecycleExec(
 
   let proc: ChildProcess | null = null;
   let onServiceExitHook: (() => void) | undefined;
-  o.onClientClose(() => {
+  o.onStop(() => {
     clientGone = true;
     try {
       proc?.kill();
@@ -102,6 +111,18 @@ export async function streamLifecycleExec(
       /* already exited */
     }
   });
+  // Killing the tail never stops the service (the runner's contract); its
+  // close ends the run with done.
+  const letGo = (): void => {
+    if (!launched || finished || clientGone || !o.watched || o.watched())
+      return;
+    try {
+      proc?.kill();
+    } catch {
+      /* already exited */
+    }
+  };
+  o.onUnwatched?.(letGo);
 
   // Up on a healthy service is a no-op: starting a second copy only fails on
   // its port (and an agent waits out the detach window to learn that).
@@ -148,6 +169,8 @@ export async function streamLifecycleExec(
         repoName: resolved.repoName,
         subsystem: resolved.subsystem,
       });
+      launched = true;
+      letGo();
     },
   });
   proc = result.proc;
@@ -189,12 +212,19 @@ export async function streamLifecycleExec(
     const tick = async (): Promise<void> => {
       if (finished || clientGone || exited) return;
       const elapsed = Date.now() - t0;
-      if (elapsed > timeoutMs) return;
+      if (elapsed > timeoutMs) {
+        // Never healthy in time: the health dot says so from here.
+        launched = true;
+        letGo();
+        return;
+      }
       const h = await deps.health(resolved).catch(() => null);
       if (finished || clientGone || exited) return;
       if (h?.health === "ok") {
         if (cmd !== "restart" || sawDown || elapsed >= restartMinMs) {
           emit({ type: "ready", checked: true });
+          launched = true;
+          letGo();
           return;
         }
       } else if (h?.health === "error") {
@@ -202,6 +232,8 @@ export async function streamLifecycleExec(
       } else if (elapsed >= settleMs) {
         // No health check to wait for: still running after the settle window.
         emit({ type: "ready", checked: false });
+        launched = true;
+        letGo();
         return;
       }
       setTimeout(() => void tick(), pollMs);
@@ -229,7 +261,7 @@ export interface CollectedExec {
  * a detached service keeps running; only the log tail stops.
  */
 export function collectLifecycleExec(
-  o: Omit<LifecycleExecOptions, "emit" | "end" | "onClientClose">,
+  o: Omit<LifecycleExecOptions, "emit" | "end" | "onStop">,
   deps: LifecycleExecDeps,
   keep = 30,
 ): Promise<CollectedExec> {
@@ -268,7 +300,7 @@ export function collectLifecycleExec(
           if (lines.length > keep * 4) lines.splice(0, lines.length - keep);
         },
         end: () => undefined,
-        onClientClose: (fn) => {
+        onStop: (fn) => {
           closer = fn;
         },
       },

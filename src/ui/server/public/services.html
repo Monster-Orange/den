@@ -794,11 +794,18 @@
 
           disableAllButtons();
           setDot(repo, service, "running");
+          // D55: the run goes on when this page goes; Stop stops it.
+          const stop = {
+            id: "stop",
+            label: window.denShell?.t?.("runs.stop") ?? "Stop",
+            run: () => stopExec(repo, service),
+          };
           runId = runs().start(
             `${repo}/${service}`,
             `${cmd} ${repo}/${service}`,
             {
               doneLine: false,
+              actions: [stop],
             },
           );
           appendLine(`\n▶ ${repo}/${service} · ${cmd} · ${env}\n`, "cmd");
@@ -813,7 +820,20 @@
           });
         }
 
-        function runLogs(repo, service, btn) {
+        /** Stop: the run itself, on the server (D55), then the tab. */
+        function stopExec(repo, service) {
+          const id = runId;
+          if (es?.stopRun) es.stopRun();
+          else es?.close();
+          es = null;
+          runs().append(id, window.denShell?.t?.("runs.stopped") ?? "Stopped", "err");
+          runs().set(id, { actions: [] });
+          runs().finish(id, { ok: false, stopped: true });
+          setDot(repo, service, "err");
+          enableAllButtons();
+        }
+
+                function runLogs(repo, service, btn) {
           endStream();
           const env = document.getElementById("env-sel").value;
 
@@ -868,6 +888,7 @@
               if (!isStream) {
                 setDot(repo, service, ok ? "ok" : "err");
                 enableAllButtons();
+                runs().set(id, { actions: [] });
                 runs().finish(id, { ok });
               } else runs().set(id, { running: false });
               evtSrc.close();
@@ -881,6 +902,7 @@
             if (!isStream) {
               setDot(repo, service, "err");
               enableAllButtons();
+              runs().set(id, { actions: [] });
               runs().finish(id, { ok: false });
             } else runs().set(id, { running: false });
             evtSrc?.close();

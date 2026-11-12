@@ -156,6 +156,12 @@
     "runs.aria": "実行、{n} 件実行中",
     "runs.last": "前回の実行: {s}",
     "runs.none": "実行なし",
+    "runs.stop": "停止",
+    "runs.resumed": "サーバーで実行中です。これまでの出力と、この先の出力:",
+    "runs.ended": "ページが開いていない間に終了しました。出力:",
+    "runs.ok": "完了",
+    "runs.stopped": "停止しました",
+    "runs.failed": "失敗 (終了コード {code})",
     "runs.empty":
       "まだ何も実行していません。どのページの出力もここに表示されます。",
     "runs.toast":
@@ -172,6 +178,7 @@
     "dock.clear": "クリア",
     "dock.closeRun": "{s} を閉じる",
     "dock.err": "失敗",
+    "dock.stopped": "停止",
     "dock.last": "前回の実行: {s} ↗",
     "dock.resize": "ドラッグしてサイズを変更",
     "lock.waiting": "管理者パスワードが必要です",
