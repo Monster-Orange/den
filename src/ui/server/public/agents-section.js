@@ -44,6 +44,7 @@ export function agentsSectionHtml(ws) {
               <h2 class="den-sec" id="agents-h">${esc(t("ag.title"))}</h2>
               <a href="/agents?ws=${encodeURIComponent(ws)}" id="agents-open-all">${esc(t("ws.openAgents"))}</a>
             </div>
+            <p class="agents-err" id="agents-err" role="alert" hidden></p>
             <div class="tablewrap">
               <table class="svc" id="agent-table">
                 <caption>${esc(t("ag.caption", { ws }))}</caption>
@@ -169,14 +170,25 @@ async function refresh(ws) {
   try {
     const data = await api("GET", base(ws));
     rows = Array.isArray(data?.agents) ? data.agents : [];
+    if (current) current.error = "";
   } catch (err) {
-    // A failed list keeps the last one; the first failure says so.
-    if (!current.failed) window.denShell?.errorToast?.(err);
-    if (current) current.failed = true;
+    // A failed list keeps the last one. D70: it says so here, in this
+    // workspace's section, never over the whole page.
+    if (current) {
+      current.failed = true;
+      current.error = t("ag.listFailed", {
+        err: err?.message || String(err),
+      });
+    }
   }
   if (!current || current.ws !== ws) return;
   current.rows = rows;
   paint(ws, rows);
+  const errEl = document.getElementById("agents-err");
+  if (errEl) {
+    errEl.textContent = current.error || "";
+    errEl.hidden = !current.error;
+  }
   if (!document.getElementById("agents-section")) return;
   const soon = rows.some((r) => r.state === "stopping");
   current.timer = setTimeout(
@@ -275,7 +287,7 @@ export function mountAgents(ws) {
   const sec = document.getElementById("agents-section");
   if (!sec || sec.dataset.ws !== ws) return;
   if (current) clearTimeout(current.timer);
-  current = { ws, rows: [], timer: null, failed: false };
+  current = { ws, rows: [], timer: null, failed: false, error: "" };
   sec.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b || !sec.contains(b)) return;

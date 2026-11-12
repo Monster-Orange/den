@@ -9,6 +9,12 @@
  *   Mono-repo subsystem:   "shop/api"             → repoName="shop", subsystem="api"
  */
 
+import {
+  migrateWorkspaceKeys,
+  resolveWorkspaceKey,
+  workspaceNameRefusal,
+  workspaceSlug,
+} from "../workspace-name.js";
 import * as fs from "fs";
 import { reservedWorkspaceError } from "../agents/server-agent.js";
 import * as path from "path";
@@ -106,10 +112,24 @@ export function normalizeWorkspacesFileShape(parsed: {
   workspaces?: Record<string, WorkspaceConfig>;
 }): { file: WorkspacesFile; changed: boolean } {
   let changed = false;
-  const workspaces =
+  // D70: a key written before slugs ("back office") moves to its slug, the
+  // old key kept as its name.
+  const mig = migrateWorkspaceKeys(
     parsed.workspaces && typeof parsed.workspaces === "object"
       ? parsed.workspaces
-      : {};
+      : {},
+  );
+  const workspaces = mig.workspaces;
+  if (mig.moved.size) {
+    changed = true;
+    const to = (n: string) => mig.moved.get(n) ?? n;
+    if (typeof parsed.active === "string") parsed.active = to(parsed.active);
+    else if (Array.isArray(parsed.active))
+      parsed.active = parsed.active.map((n) =>
+        typeof n === "string" ? to(n) : n,
+      );
+    if (typeof parsed.focus === "string") parsed.focus = to(parsed.focus);
+  }
 
   let active: string[];
   if (typeof parsed.active === "string") {
@@ -508,12 +528,38 @@ export function setActiveWorkspace(name: string): void {
   writeWorkspacesFile(file);
 }
 
-export function createWorkspace(name: string, config: WorkspaceConfig): void {
-  // ON-6: the server agent's scope is never a workspace.
-  const reserved = reservedWorkspaceError(name);
-  if (reserved) throw new Error(reserved);
+/**
+ * Create workspace `name` (what the person typed) under its slug (D70),
+ * the name kept when it differs. Returns the slug. Throws what
+ * workspaceNameRefusal says, so nothing is made the next step refuses.
+ */
+export function createWorkspace(name: string, config: WorkspaceConfig): string {
   const file = readWorkspacesFile();
-  file.workspaces[name] = config;
+  const refusal = workspaceNameRefusal(name, file.workspaces);
+  if (refusal) throw new Error(refusal);
+  const typed = name.trim();
+  const slug = workspaceSlug(typed)!;
+  // ON-6: the server agent's scope is never a workspace.
+  const reserved =
+    reservedWorkspaceError(slug) ?? reservedWorkspaceError(typed);
+  if (reserved) throw new Error(reserved);
+  file.workspaces[slug] = typed === slug ? config : { ...config, name: typed };
+  writeWorkspacesFile(file);
+  return slug;
+}
+
+/** D70: rename workspace `slug` (its name only; the slug stays). */
+export function renameWorkspace(slug: string, name: string): void {
+  const file = readWorkspacesFile();
+  const cfg = file.workspaces[slug];
+  if (!cfg) throw new Error(`no workspace "${slug}"`);
+  const others = { ...file.workspaces };
+  delete others[slug];
+  const typed = String(name ?? "").trim();
+  const refusal = workspaceNameRefusal(typed, others);
+  if (refusal) throw new Error(refusal);
+  if (typed === slug) delete cfg.name;
+  else cfg.name = typed;
   writeWorkspacesFile(file);
 }
 
@@ -1007,4 +1053,17 @@ export function setWorkspaceAgentPermission(
   else delete next.agents;
   file.workspaces[ws] = next;
   writeWorkspacesFile(file);
+}
+
+/**
+ * D70: the workspace key (slug) `input` names: a key, a workspace's name
+ * (any case) or the slug of what was typed. Unchanged when none matches, or
+ * when the file can't be read: the caller's own check then says why.
+ */
+export function resolveWorkspaceInput(input: string): string {
+  try {
+    return resolveWorkspaceKey(input, readWorkspacesFile().workspaces) ?? input;
+  } catch {
+    return input;
+  }
 }

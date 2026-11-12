@@ -50,6 +50,7 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { writeApiOnlyRules } from "../../shared/agents/api-only.js";
@@ -959,9 +960,11 @@ export function noteEnded(
 
 /** A workspace name as given, checked (a usage error otherwise). */
 export function checkWorkspaceName(where: string, ws: unknown): string {
-  if (typeof ws !== "string" || !WORKSPACE_NAME_RE.test(ws))
-    throw usage(`${where}: "${String(ws)}" is not a workspace name`);
-  return ws;
+  // D70: a workspace's name ("back office") or its slug.
+  const k = typeof ws === "string" ? resolveWorkspaceInput(ws) : ws;
+  if (typeof k !== "string" || !WORKSPACE_NAME_RE.test(k))
+    throw usage(`${where}: "${String(ws)}" is not a workspace`);
+  return k;
 }
 
 /**

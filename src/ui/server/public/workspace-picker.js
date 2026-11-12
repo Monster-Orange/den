@@ -60,6 +60,12 @@ function focusName(data) {
  * "All active" is offered with two or more active workspaces; with one,
  * it and that workspace are the same view.
  */
+/** D70: a workspace's name as the person typed it, else its slug. */
+export function wsLabel(data, slug) {
+  const n = data?.workspaces?.[slug]?.name;
+  return typeof n === "string" && n.trim() ? n.trim() : slug;
+}
+
 export function buildScopeMenuModel(scope, data, t = enT) {
   const active = activeNames(data);
   const focus = scope?.focus ?? focusName(data);
@@ -84,21 +90,26 @@ export function buildScopeMenuModel(scope, data, t = enT) {
       : []),
     ...active.map((n) => ({
       value: n,
-      label: n,
+      label: wsLabel(data, n),
       checked: n === one,
       focused: n === focus,
       title: t("ws.pickTip"),
     })),
   ];
   return {
-    label: active.length === 0 ? t("ws.noneLabel") : (one ?? t("ws.all")),
+    label:
+      active.length === 0
+        ? t("ws.noneLabel")
+        : one
+          ? wsLabel(data, one)
+          : t("ws.all"),
     items,
     // Every workspace, active or not: ⌘K's Go to workspace (0.4.17).
     names: Object.keys(data?.workspaces ?? {}),
     focus: focus ?? null,
     title: t(focus ? "ws.viewTitleFocus" : "ws.viewTitle", {
-      ws: inView.join(", ") || t("ws.noneLabel"),
-      focus,
+      ws: inView.map((n) => wsLabel(data, n)).join(", ") || t("ws.noneLabel"),
+      focus: focus ? wsLabel(data, focus) : focus,
     }),
   };
 }

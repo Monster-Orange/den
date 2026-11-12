@@ -677,6 +677,11 @@ export interface WorkspaceServiceEntry {
 
 export interface WorkspaceConfig {
   /**
+   * D70: the name the person typed ("back office"), when it isn't the key.
+   * The key is its slug ("back-office"): paths, URLs and the CLI use it.
+   */
+  name?: string;
+  /**
    * Agents in this workspace, on this machine (AG-0.5):
    * `agents.runtimes.<id>.bin`, a runtime's CLI for this workspace's
    * agents, which wins over user.yml's and the search. den#48:

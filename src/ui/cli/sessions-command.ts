@@ -16,6 +16,7 @@
  * these. sessions.max_concurrent caps the plain sessions running at once;
  * agents count against agents.max_concurrent instead, never this one.
  */
+import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -307,9 +308,10 @@ export function noExtra(where: string, p: Parsed, maxPositional = 0): void {
 export function workspaceFlag(where: string, p: Parsed): string | undefined {
   const ws = p.flags["--workspace"];
   if (ws === undefined) return undefined;
-  const name = String(ws);
+  // D70: a workspace's name or its slug.
+  const name = resolveWorkspaceInput(String(ws));
   if (!WORKSPACE_NAME_RE.test(name))
-    throw new UsageError(`${where}: "${name}" is not a workspace name`);
+    throw new UsageError(`${where}: "${String(ws)}" is not a workspace`);
   return name;
 }
 

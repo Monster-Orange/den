@@ -807,11 +807,13 @@ describe("activateWorkspace / deactivateWorkspace", () => {
 
 describe("createWorkspace", () => {
   let createWorkspace: typeof import("../../../src/shared/environment-manager/workspaces.js").createWorkspace;
+  let renameWorkspace: typeof import("../../../src/shared/environment-manager/workspaces.js").renameWorkspace;
 
   beforeEach(async () => {
     const mod =
       await import("../../../src/shared/environment-manager/workspaces.js");
     createWorkspace = mod.createWorkspace;
+    renameWorkspace = mod.renameWorkspace;
   });
 
   it("adds the new workspace to the file and writes it", () => {
@@ -830,22 +832,62 @@ describe("createWorkspace", () => {
     expect(capture.get().workspaces["new-ws"].services).toHaveProperty("api");
   });
 
-  it("overwrites an existing workspace when the same name is given", () => {
+  // D70: one check before any create; an existing workspace is never
+  // overwritten (it was, silently, before).
+  it("refuses a workspace that exists, by its name or its slug", () => {
     stubFile({
       active: ["default"],
-      workspaces: { default: { services: { old: { mode: "dev-managed" } } } },
+      workspaces: {
+        default: { services: { old: { mode: "dev-managed" } } },
+        "back-office": { name: "back office", services: {} },
+      },
+    });
+    expect(() =>
+      createWorkspace(
+        "default",
+        makeWorkspace({ neo: { mode: "managed", branch: "main" } }),
+      ),
+    ).toThrow(/"default" already exists/);
+    expect(() => createWorkspace("Back Office", makeWorkspace({}))).toThrow(
+      /"back office" already exists/,
+    );
+  });
+
+  it("D70: a rename changes the name only; the slug stays", () => {
+    stubFile({
+      active: ["back-office"],
+      focus: "back-office",
+      workspaces: {
+        "back-office": { name: "back office", services: {} },
+        web: { services: {} },
+      },
     });
     const capture = captureFile();
-
-    createWorkspace(
-      "default",
-      makeWorkspace({ neo: { mode: "managed", branch: "main" } }),
+    renameWorkspace("back-office", "Front Office");
+    expect(capture.get().workspaces["back-office"]).toMatchObject({
+      name: "Front Office",
+    });
+    expect(Object.keys(capture.get().workspaces).sort()).toEqual([
+      "back-office",
+      "web",
+    ]);
+    expect(() => renameWorkspace("back-office", "WEB")).toThrow(
+      /"web" already exists/,
     );
+  });
 
-    expect(capture.get().workspaces["default"].services).toHaveProperty("neo");
-    expect(capture.get().workspaces["default"].services).not.toHaveProperty(
-      "old",
+  it("makes a name with spaces under its slug, the name kept", () => {
+    stubFile({
+      active: ["default"],
+      workspaces: { default: { services: {} } },
+    });
+    const capture = captureFile();
+    expect(createWorkspace("back office", makeWorkspace({}))).toBe(
+      "back-office",
     );
+    expect(capture.get().workspaces["back-office"]).toMatchObject({
+      name: "back office",
+    });
   });
 });
 

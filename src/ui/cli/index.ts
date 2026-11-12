@@ -5,6 +5,7 @@
  * Main entry point for the interactive CLI
  */
 
+import { workspaceNameRefusal } from "../../shared/workspace-name.js";
 import { composeStacksNotice } from "./workspace-notes.js";
 import {
   runningComposeProjects,
@@ -1655,12 +1656,12 @@ class DenCLI {
           const name = await cliPrompts.promptForWorkspaceName(
             Object.keys(file.workspaces),
           );
-          createWorkspace(name, { services: {} });
+          const slug = createWorkspace(name, { services: {} });
           const activate = await cliPrompts.confirm(
             `Switch to workspace "${name}" now?`,
             true,
           );
-          if (activate) setActiveWorkspace(name);
+          if (activate) setActiveWorkspace(slug);
           console.log(
             chalk.green(`\n  ✓ Created workspace: ${chalk.bold(name)}\n`),
           );
@@ -4813,15 +4814,17 @@ class DenCLI {
           (await cliPrompts.promptForWorkspaceName(
             Object.keys(file.workspaces),
           ));
-        if (file.workspaces[name]) {
-          console.log(
-            chalk.yellow(`\n  Workspace "${name}" already exists.\n`),
-          );
+        // D70: the one check (a name, its slug, already there).
+        const refusal = workspaceNameRefusal(name, file.workspaces);
+        if (refusal) {
+          console.log(chalk.yellow(`\n  ${refusal}.\n`));
           return;
         }
-        createWorkspace(name, { services: {} });
+        const slug = createWorkspace(name, { services: {} });
         console.log(
-          chalk.green(`\n  ✓ Created workspace: ${chalk.bold(name)}`),
+          chalk.green(
+            `\n  ✓ Created workspace: ${chalk.bold(name)}${slug !== name ? ` (${slug})` : ""}`,
+          ),
         );
         console.log(
           chalk.gray(`    Edit config/local/workspaces.yml to add services\n`),

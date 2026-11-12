@@ -444,6 +444,8 @@
     "ag.col.cwd": "ディレクトリ",
     "ag.col.started": "開始",
     "ag.col.actions": "操作",
+    "ag.listFailed":
+      "このワークスペースのエージェントを一覧できませんでした: {err}",
     "ag.loading": "エージェントを読み込み中…",
     "ag.none": "このワークスペースにはまだエージェントがありません",
     "ag.personaOf": "ペルソナ {persona}",

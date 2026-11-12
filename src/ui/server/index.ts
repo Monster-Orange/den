@@ -10,6 +10,7 @@
  *   GET /api/run?pillar=X&...    — SSE stream: runs tests, emits output line-by-line
  */
 
+import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
   composeHealthTarget,
   containerCheckLabel,
@@ -52,6 +53,7 @@ import {
   getActiveWorkspaces,
   activateWorkspace,
   createWorkspace,
+  resolveWorkspaceInput,
   getFocusedWorkspaceName,
   getWorkspaceByName,
   isWorkspaceActive,
@@ -1942,6 +1944,7 @@ function approvalDeps(): {
     validate: (m) => validateManifest(m),
     workspaceCreateRefusal,
     createWorkspace: (name) => createWorkspace(name, { services: {} }),
+    resolveWorkspace: resolveWorkspaceInput,
     activateWorkspace: (name) => activateWorkspace(name),
     workspaceActive: (name) => isWorkspaceActive(name),
     workspaceExists: (name) =>
@@ -2034,6 +2037,15 @@ async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): Promise<void> {
+  // D70: a workspace by its name ("back office") reaches its slug's routes.
+  try {
+    req.url = workspaceUrlIn(
+      req.url ?? "/",
+      () => readWorkspacesFile().workspaces,
+    );
+  } catch {
+    /* unreadable config: the routes say so */
+  }
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const pathname = url.pathname;
   // R26: one id per request, on every response and on its failure's log line.

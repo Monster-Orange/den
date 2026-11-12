@@ -33,6 +33,8 @@ import {
   isWorkspaceActive,
   createWorkspace,
   deleteWorkspaceConfig,
+  renameWorkspace,
+  resolveWorkspaceInput,
   listWorkspaceServices,
   resolveServiceSource,
   parseAddress,
@@ -59,7 +61,6 @@ import {
   ensureManagedServiceCloneNewBranch,
   ensureDevManagedClone,
   deleteWorkspaceDirectory,
-  renameWorkspaceDirectory,
   checkManagedCloneBehind,
   pullManagedClone,
   runSetupHidden,
@@ -95,6 +96,10 @@ import {
   upsertCatalogEntry,
 } from "../../shared/environment-manager/catalog.js";
 import { getReposRoot, readUserConfig } from "../../shared/den-config.js";
+import {
+  workspaceNameRefusal,
+  workspaceSlug,
+} from "../../shared/workspace-name.js";
 import { redactRemote } from "../../shared/environment-manager/git-remote.js";
 import { getDistRoot } from "../../shared/paths.js";
 import { recordRemovedFromWorkspace } from "../../shared/environment-manager/default-workspace.js";
@@ -354,16 +359,11 @@ const availableReposCache = singleFlight<AvailableRepos>(2_000);
 export function workspaceCreateRefusal(
   name: string | undefined,
 ): string | null {
-  if (!name) return "name required";
-  // eslint-disable-next-line no-control-regex
-  if (/["'\\/<>\x00-\x1f]/.test(name))
-    return "name must not contain quotes, slashes, or control characters";
-  if (name.length > 64) return "name must be 64 characters or fewer";
-  const reserved = reservedWorkspaceError(name);
-  if (reserved) return reserved;
-  if (readWorkspacesFile().workspaces[name])
-    return `workspace "${name}" already exists`;
-  return null;
+  // D70: the one check every create runs (createWorkspace runs it too).
+  const refusal = workspaceNameRefusal(name, readWorkspacesFile().workspaces);
+  if (refusal) return refusal;
+  const slug = workspaceSlug(name!.trim())!;
+  return reservedWorkspaceError(slug) ?? reservedWorkspaceError(name!.trim());
 }
 
 export async function handleWorkspaceRoutes(
@@ -440,13 +440,28 @@ export async function handleWorkspaceRoutes(
     if (req.method === "POST") {
       try {
         const body = await readBody(req);
-        const { name, action } = JSON.parse(body) as {
+        const parsed = JSON.parse(body) as {
           name?: string;
-          /** activate | deactivate | focus | use (default: use = activate+focus) */
-          action?: "activate" | "deactivate" | "focus" | "use";
+          /** activate | deactivate | focus | use (default: use = activate+focus) | rename */
+          action?: "activate" | "deactivate" | "focus" | "use" | "rename";
+          /** D70: rename's new name (the slug stays). */
+          to?: string;
         };
-        if (!name) return send400(res, "name required");
-        const act = action ?? "use";
+        if (!parsed.name) return send400(res, "name required");
+        // D70: by its name or its slug.
+        const name = resolveWorkspaceInput(parsed.name);
+        const act = parsed.action ?? "use";
+        if (act === "rename") {
+          if (!readWorkspacesFile().workspaces[name])
+            return send400(res, `no workspace "${parsed.name}"`);
+          renameWorkspace(name, String(parsed.to ?? ""));
+          const file = readWorkspacesFile();
+          return sendJson(res, {
+            ok: true,
+            slug: name,
+            name: file.workspaces[name]?.name ?? name,
+          });
+        }
         let released: Awaited<ReturnType<typeof releaseWorkspaceDaemons>> = [];
         switch (act) {
           case "activate":
@@ -483,15 +498,16 @@ export async function handleWorkspaceRoutes(
     if (req.method === "DELETE") {
       try {
         const body = await readBody(req);
-        const { name, cleanupDirectory, cleanupDev, cleanupDen } = JSON.parse(
-          body,
-        ) as {
+        const parsed = JSON.parse(body) as {
           name?: string;
           cleanupDirectory?: boolean;
           cleanupDev?: boolean;
           cleanupDen?: boolean;
         };
-        if (!name) return send400(res, "name required");
+        const { cleanupDirectory, cleanupDev, cleanupDen } = parsed;
+        if (!parsed.name) return send400(res, "name required");
+        // D70: by its name or its slug.
+        const name = resolveWorkspaceInput(parsed.name);
         if (name === "default")
           return send400(res, "cannot delete the default workspace");
 
@@ -583,6 +599,9 @@ export async function handleWorkspaceRoutes(
   }
 
   // ── API: rename workspace ─────────────────────────────────────────────────
+  // D70: a rename changes the name only. The slug (the config key, its
+  // folder, its agents' records, URLs) stays, so nothing that points at the
+  // workspace breaks.
   if (pathname === "/api/workspaces/rename" && req.method === "POST") {
     try {
       const { oldName, newName } = JSON.parse(await readBody(req)) as {
@@ -591,58 +610,11 @@ export async function handleWorkspaceRoutes(
       };
       if (!oldName || !newName)
         return send400(res, "oldName and newName required");
-      // eslint-disable-next-line no-control-regex
-      if (/["'\\/<>\x00-\x1f]/.test(newName))
-        return send400(
-          res,
-          "newName must not contain quotes, slashes, or control characters",
-        );
-      const file = readWorkspacesFile();
-      if (!file.workspaces[oldName])
+      const slug = resolveWorkspaceInput(oldName);
+      if (!readWorkspacesFile().workspaces[slug])
         return send400(res, `Workspace "${oldName}" not found`);
-      if (file.workspaces[newName])
-        return send400(res, `Workspace "${newName}" already exists`);
-
-      // Rename workspace config entry
-      file.workspaces[newName] = file.workspaces[oldName];
-      delete file.workspaces[oldName];
-      file.active = file.active.map((n) => (n === oldName ? newName : n));
-      if (file.focus === oldName) file.focus = newName;
-
-      // Rename the local directory on disk if one exists, then update paths.
-      // Read location priority: ws.directory → den-workspaces/<oldName> → legacy reposRoot/<oldName>.
-      const ws = file.workspaces[newName];
-      const reposRoot = getReposRoot();
-      let oldDir: string;
-      if (ws.directory) {
-        oldDir = path.resolve(ROOT, ws.directory);
-      } else {
-        const gwOld = path.join(DEN_WORKSPACES_DIR, oldName);
-        const legacyOld = path.join(reposRoot, oldName);
-        oldDir = fs.existsSync(gwOld)
-          ? gwOld
-          : fs.existsSync(legacyOld)
-            ? legacyOld
-            : gwOld;
-      }
-      const newDir = renameWorkspaceDirectory(oldDir, newName);
-      if (newDir) {
-        if (ws.directory) {
-          ws.directory = path.relative(ROOT, newDir);
-        }
-        for (const svc of Object.values(ws.services ?? {})) {
-          const entry = svc as { path?: string };
-          if (
-            entry.path?.startsWith(oldDir + path.sep) ||
-            entry.path === oldDir
-          ) {
-            entry.path = newDir + entry.path.slice(oldDir.length);
-          }
-        }
-      }
-
-      writeWorkspacesFile(file);
-      return sendJson(res, { ok: true });
+      renameWorkspace(slug, newName);
+      return sendJson(res, { ok: true, slug, name: newName.trim() });
     } catch (e) {
       return send400(res, `Rename failed: ${(e as Error).message}`);
     }
@@ -663,8 +635,8 @@ export async function handleWorkspaceRoutes(
       const { name } = JSON.parse(body) as { name?: string };
       const refusal = workspaceCreateRefusal(name);
       if (refusal || !name) return send400(res, refusal ?? "name required");
-      createWorkspace(name, { services: {} });
-      return sendJson(res, { ok: true, name });
+      const slug = createWorkspace(name, { services: {} });
+      return sendJson(res, { ok: true, name: name.trim(), slug });
     } catch (e) {
       return send400(res, `Invalid request: ${(e as Error).message}`);
     }

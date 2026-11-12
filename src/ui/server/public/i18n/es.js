@@ -457,6 +457,8 @@
     "ag.col.cwd": "Directorio",
     "ag.col.started": "Inicio",
     "ag.col.actions": "Acciones",
+    "ag.listFailed":
+      "No se pudieron listar los agentes de este espacio de trabajo: {err}",
     "ag.loading": "Cargando agentes…",
     "ag.none": "Aún no hay agentes en este workspace",
     "ag.personaOf": "persona {persona}",

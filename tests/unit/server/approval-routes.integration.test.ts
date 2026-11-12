@@ -250,7 +250,12 @@ describe("held writes (ON-3)", () => {
     expect(r.status).toBe(200);
     const a = json(r);
     expect(a.state).toBe("done");
-    expect(a.result).toEqual({ ok: true, name: "allowed", active: true });
+    expect(a.result).toEqual({
+      ok: true,
+      name: "allowed",
+      slug: "allowed",
+      active: true,
+    });
     expect(await workspaces()).toContain("allowed");
     // Active on the same Allow: service_try can start its services.
     const file = yaml.parse(

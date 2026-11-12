@@ -24,6 +24,19 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **A workspace's name is what you type (D70).** A workspace now has a
+  name ("back office") and a slug made from it ("back-office"). The slug
+  is what folders, links, session names and the command line use, and
+  every place that takes a workspace takes either: creating one, adding
+  a repo to it, starting an agent in it, its pages and its API. Before,
+  a name with a space could be created, and then adding a repo, starting
+  an agent, or opening its Local dev page refused it. Workspaces already
+  made with spaces move to their slug when Den next reads the config,
+  keeping what you typed as their name. Creating one that already
+  exists, by name or by slug, is refused (it was overwritten). Rename
+  changes only the name, so nothing that points at the workspace breaks.
+  When one workspace's agents can't be listed, its section says so in
+  place instead of over the whole page.
 - **Shift+Enter adds a new line in an agent's pane, and never sends
   (D66).** When the agents list didn't carry the pane's agent (another
   workspace in scope, or for a moment during a restart), Shift+Enter

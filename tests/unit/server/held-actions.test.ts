@@ -23,7 +23,10 @@ function fakes(): {
     rules: () => ({ home: "/home/x" }) as never,
     validate: () => ({ ok: true }) as never,
     workspaceCreateRefusal: () => null,
-    createWorkspace: (n) => void made.add(n),
+    createWorkspace: (n) => {
+      made.add(n);
+      return n;
+    },
     activateWorkspace: (n) => void active.add(n),
     workspaceActive: (n) => active.has(n),
     workspaceExists: (n) => made.has(n),
@@ -48,7 +51,7 @@ describe("held actions activate the workspace they need", () => {
     const r = await a.run({ name: "web" });
     expect(f.made.has("web")).toBe(true);
     expect(f.active.has("web")).toBe(true);
-    expect(r).toEqual({ ok: true, name: "web", active: true });
+    expect(r).toEqual({ ok: true, name: "web", slug: "web", active: true });
   });
 
   it("service_try on an inactive workspace: the Review says it activates it, and the Allow does both", async () => {

@@ -1399,6 +1399,12 @@
         margin-top: 10px;
         flex-wrap: wrap;
       }
+      /* D70: this workspace's list failed: said here, not over the page. */
+      .agents .agents-err {
+        margin: 4px 0 8px;
+        font-size: 12px;
+        color: var(--bad);
+      }
       .agents .ag-head {
         display: flex;
         align-items: baseline;
@@ -4295,15 +4301,11 @@
         };
 
         // ── Rename workspace ─────────────────────────────────────────────────────
+        // D70: the name changes; the slug (oldName here) stays.
         async function renameWorkspace(oldName) {
-          const newName = prompt(`Rename workspace "${oldName}" to:`, oldName);
-          if (!newName || newName === oldName) return;
-          if (/["'\\/<>\x00-\x1f]/.test(newName)) {
-            alert(
-              "Workspace name must not contain quotes, slashes, or control characters.",
-            );
-            return;
-          }
+          const shown = wsData?.workspaces?.[oldName]?.name || oldName;
+          const newName = prompt(`Rename workspace "${shown}" to:`, shown);
+          if (!newName || newName === shown) return;
           try {
             await window.denShell.api("POST", "/api/workspaces/rename", {
               oldName,
@@ -4313,7 +4315,6 @@
             window.denShell.errorToast(err);
             return;
           }
-          if (activeWs === oldName) activeWs = newName;
           await loadWorkspaces();
           if (activeWs) selectWorkspace(activeWs, { updateUrl: true });
         }

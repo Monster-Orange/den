@@ -17,6 +17,7 @@
  *                     an inactive workspace is activated first, on the
  *                     same Allow, and the Review says so
  */
+import { workspaceSlug } from "../../shared/workspace-name.js";
 import * as path from "path";
 import { checkOnboardPath, type PathRules } from "../cli/onboard-reads.js";
 import {
@@ -38,7 +39,10 @@ export interface HeldActionDeps {
   rules: () => PathRules;
   validate: ManifestValidator;
   workspaceCreateRefusal: (name: string | undefined) => string | null;
-  createWorkspace: (name: string) => void;
+  /** D70: the workspace key a name or slug names (unchanged: none). */
+  resolveWorkspace?: (input: string) => string;
+  /** D70: makes it under its slug; returns the slug. */
+  createWorkspace: (name: string) => string;
   activateWorkspace: (name: string) => void;
   workspaceActive: (name: string) => boolean;
   workspaceExists: (name: string) => boolean;
@@ -79,6 +83,16 @@ function draftError(r: RepoAddResult): string {
 }
 
 export function heldActions(d: HeldActionDeps): HeldActions {
+  /**
+   * D70: a workspace given by name ("back office") or slug, as its key; a
+   * new one by the slug of what was typed. Undefined: none given.
+   */
+  const wsArg = (v: unknown): string | undefined => {
+    const given = str(v);
+    if (given === undefined) return undefined;
+    const k = d.resolveWorkspace?.(given) ?? given;
+    return NAME_RE.test(k) ? k : (workspaceSlug(k) ?? k);
+  };
   const workspaceCreate: HeldAction = {
     check(a): HeldCheck {
       const name = str(a.name);
@@ -97,9 +111,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     },
     async run(a) {
       const name = String(a.name);
-      d.createWorkspace(name);
-      d.activateWorkspace(name);
-      return { ok: true, name, active: true };
+      // D70: made under its slug; the name is what was typed.
+      const slug = d.createWorkspace(name);
+      d.activateWorkspace(slug);
+      return { ok: true, name, slug, active: true };
     },
   };
 
@@ -108,11 +123,11 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       const rules = d.rules();
       const where = checkOnboardPath(str(a.path), rules);
       if (!where.ok) return { ok: false, error: where.error };
-      const workspace = str(a.workspace);
+      const workspace = wsArg(a.workspace);
       if (workspace !== undefined && !NAME_RE.test(workspace))
         return {
           ok: false,
-          error: `workspace "${workspace}" must use only letters, digits, ".", "_" and "-"`,
+          error: `workspace "${str(a.workspace)}" needs at least one letter or digit`,
         };
       const opts = {
         name: str(a.name),
@@ -168,7 +183,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           spec: dir,
           sidecar: false,
           json: true,
-          workspace: str(a.workspace),
+          workspace: wsArg(a.workspace),
           name: str(a.name),
           run: str(a.run),
           down: str(a.down),
@@ -185,11 +200,11 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       const service = str(a.service);
       if (!service)
         return { ok: false, error: "give service: <repo> or <repo>/<service>" };
-      const workspace = str(a.workspace);
+      const workspace = wsArg(a.workspace);
       if (workspace !== undefined && !NAME_RE.test(workspace))
         return {
           ok: false,
-          error: `workspace "${workspace}" must use only letters, digits, ".", "_" and "-"`,
+          error: `workspace "${str(a.workspace)}" needs at least one letter or digit`,
         };
       if (workspace !== undefined && !d.workspaceExists(workspace))
         return { ok: false, error: `there is no workspace "${workspace}"` };
@@ -216,7 +231,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       };
     },
     async run(a) {
-      const workspace = str(a.workspace);
+      const workspace = wsArg(a.workspace);
       if (workspace && !d.workspaceActive(workspace))
         d.activateWorkspace(workspace);
       return d.tryService(String(a.service), workspace);

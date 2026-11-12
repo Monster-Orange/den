@@ -572,6 +572,7 @@
     "ag.col.cwd": "Directory",
     "ag.col.started": "Started",
     "ag.col.actions": "Actions",
+    "ag.listFailed": "Couldn't list this workspace's agents: {err}",
     "ag.loading": "Loading agents…",
     "ag.none": "No agents in this workspace yet",
     "ag.personaOf": "persona {persona}",
