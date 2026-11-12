@@ -31,6 +31,13 @@ config and manifest changes a distribution must make to move to it under
   conversation in the new workspace with that workspace's tools. Before,
   the only way was stop, remove and import, which cut off a turn in
   progress. Only a person can move an agent.
+- **Approve from another computer, in browsers only (D67).** A browser
+  signed in to Den now asks "Allow this computer?" with the code another
+  browser shows, and Allow there signs that browser in. The signed-out
+  page leads with this and shows the code big; the commands moved under
+  Other ways. When something waits for your approval in a browser that
+  can't see it, the banner has a Sign in button instead of a command.
+  It brings you back to the same page, where the approval opens.
 
 ### Fixed
 

@@ -467,6 +467,9 @@
     "err.signin.step2":
       "This page signs you in by itself once approved. The code expires in 10 minutes.",
     "err.signin.waiting": "Waiting for approval…",
+    "err.signin.allowFrom":
+      "Open {name} in a browser that is signed in, on {host} or another computer. It asks “Allow this computer?” with this code. Allow it there.",
+    "err.signin.pairOther": "Other ways: a command on the Den computer",
     "err.signin.windowsSteps":
       "Open Windows Terminal or PowerShell, paste this, and press Enter.",
     "err.signin.nothingOpened":
@@ -806,7 +809,14 @@
     "ap.noAgent": "Something on this machine (no agent identity)",
     "ap.noAgentWarn": "If you didn't ask an agent to do this, Deny.",
     "ap.signin.title": "Something is waiting for your approval.",
-    "ap.signin": "Sign in to see it: run {cmd} and open the link.",
+    "ap.signin": "Sign in on this browser to see it and approve it.",
+    "ap.signin.btn": "Sign in",
+    "pair.title": "Allow this computer?",
+    "pair.what": "{device} {client} wants to sign in to Den.",
+    "pair.aDevice": "A browser",
+    "pair.help": "Allow it only if this code is on that computer's screen.",
+    "pair.allow": "Allow",
+    "pair.allowed": "That computer is signed in.",
     "ap.do.workspace_create": 'Create the workspace "{name}"',
     "ap.do.repo_add": 'Add the repo at {path} to workspace "{workspace}"',
     "ap.do.repo_add.new":
@@ -4937,9 +4947,23 @@
   }
   function apSignin(b) {
     if (b && b.code === "signin_to_approve" && b.waiting > 0)
+      // D67: a Sign in button, to Den's own sign-in page (GitHub, or a
+      // code another signed-in browser allows); back here after it. The
+      // command line is only under its Other ways.
       showBanner("approvals", {
         title: t("ap.signin.title"),
-        text: t("ap.signin", { cmd: "__DEN_CLI__ web login" }),
+        text: t("ap.signin"),
+        action: {
+          label: t("ap.signin.btn"),
+          run: function () {
+            location.assign(
+              "/signin?again=1&next=" +
+                encodeURIComponent(
+                  location.pathname + location.search + location.hash,
+                ),
+            );
+          },
+        },
       });
     else hideBanner("approvals");
   }
@@ -4964,12 +4988,126 @@
       function () {},
     );
   }
+  // D67: another computer's signed-out page shows a code and asks to be
+  // let in: a signed-in browser asks "Allow this computer?" here, with the
+  // code to compare (Settings › Access lists them too). Not signed in, the
+  // list is refused and nothing shows.
+  var pr = { dlg: null, shown: null, later: {} };
+  function prDialog() {
+    if (pr.dlg) return pr.dlg;
+    var d = document.createElement("dialog");
+    d.className = "pe-dlg den-ap-dlg";
+    d.id = "den-pair-dlg";
+    d.setAttribute("aria-labelledby", "den-pair-h");
+    d.innerHTML =
+      '<form method="dialog">' +
+      '<h2 id="den-pair-h"></h2>' +
+      '<p class="den-ap-what" id="den-pair-what"></p>' +
+      '<p class="den-pair-code" id="den-pair-dlg-code" style="font:600 22px var(--mono);letter-spacing:.08em;margin:0"></p>' +
+      '<p class="help" id="den-pair-help"></p>' +
+      '<p class="err" id="den-pair-err" role="alert" hidden></p>' +
+      '<div class="btns">' +
+      '<span class="sp"></span>' +
+      '<button type="button" class="den-btn" id="den-pair-later"></button>' +
+      '<button type="button" class="den-btn" id="den-pair-deny"></button>' +
+      '<button type="button" class="den-btn primary" id="den-pair-allow"></button>' +
+      "</div></form>";
+    document.body.appendChild(d);
+    var later = function () {
+      if (pr.shown) pr.later[pr.shown.code] = true;
+      pr.shown = null;
+      if (d.open) d.close();
+    };
+    d.querySelector("#den-pair-later").addEventListener("click", later);
+    d.addEventListener("cancel", function (e) {
+      e.preventDefault();
+      later();
+    });
+    var decide = function (verb) {
+      var w = pr.shown;
+      if (!w) return;
+      var err = d.querySelector("#den-pair-err");
+      api("POST", "/api/web/" + verb, { code: w.code }).then(
+        function () {
+          pr.shown = null;
+          if (d.open) d.close();
+          if (verb === "approve") toast(t("pair.allowed"));
+        },
+        function (e) {
+          err.textContent = (e && e.message) || String(e);
+          err.hidden = false;
+        },
+      );
+    };
+    d.querySelector("#den-pair-deny").addEventListener("click", function () {
+      decide("deny");
+    });
+    d.querySelector("#den-pair-allow").addEventListener("click", function () {
+      decide("approve");
+    });
+    pr.dlg = d;
+    return d;
+  }
+  function prShow(w) {
+    var d = prDialog();
+    var $ = function (id) {
+      return d.querySelector("#" + id);
+    };
+    pr.shown = w;
+    $("den-pair-h").textContent = t("pair.title");
+    $("den-pair-what").textContent = t("pair.what", {
+      device: w.device || t("pair.aDevice"),
+      client: w.client || "",
+    });
+    $("den-pair-dlg-code").textContent = w.code;
+    $("den-pair-help").textContent = t("pair.help");
+    $("den-pair-err").hidden = true;
+    $("den-pair-later").textContent = t("ap.later");
+    $("den-pair-deny").textContent = t("ap.deny");
+    $("den-pair-allow").textContent = t("pair.allow");
+    if (!d.open) d.showModal();
+  }
+  function prPoll() {
+    if (document.hidden) return;
+    // One question at a time: an approval's dialog first.
+    if (ap.dlg && ap.dlg.open) return;
+    rawFetch("/api/web/waiting", {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then(function (r) {
+        return r.ok ? r.json() : null;
+      })
+      .then(
+        function (b) {
+          var list = ((b && b.waiting) || []).filter(function (w) {
+            return w && w.code && !pr.later[w.code];
+          });
+          if (!list.length) {
+            pr.shown = null;
+            if (pr.dlg && pr.dlg.open) pr.dlg.close();
+            return;
+          }
+          if (
+            pr.shown &&
+            list.some(function (w) {
+              return w.code === pr.shown.code;
+            })
+          )
+            return;
+          prShow(list[0]);
+        },
+        function () {},
+      );
+  }
   if (!apiOffPage && !configBad && rawFetch) {
     setInterval(apPoll, 3000);
     document.addEventListener("visibilitychange", function () {
       if (!document.hidden) apPoll();
     });
     setTimeout(apPoll, 300);
+    setInterval(prPoll, 3000);
+    setTimeout(prPoll, 600);
   }
 
   // ── the UI language (R19): a user pref ───────────────────────────────

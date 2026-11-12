@@ -569,13 +569,19 @@ function wirePair(root, t, s) {
       s.ssh?.name && target && !windows
         ? `<a class="btn" id="den-pair-term" href="ssh://${esc(login)}">${esc(t("err.signin.openTerminal"))}</a>`
         : "";
+    // D67: first the way a person at a browser has: a browser already
+    // signed in to Den (on the Den machine or another) asks "Allow this
+    // computer?" with this code. The commands are Other ways.
     box.innerHTML =
+      `<p id="den-pair-browser">${withHost(t, "err.signin.allowFrom", { name: s.name, host })}</p>` +
+      `<p class="den-pair-code mono" id="den-pair-code">${esc(b.code || "")}</p>` +
+      `<p>${esc(t("err.signin.step2"))}</p>` +
+      `<p class="den-pair-wait" id="den-pair-status">${esc(t("err.signin.waiting"))} <span class="mono" id="den-pair-left"></span></p>` +
+      `<details class="den-other" id="den-pair-other"><summary>${esc(t("err.signin.pairOther"))}</summary>` +
       `<ol class="den-steps">` +
       `<li><p>${withHost(t, "err.signin.step1", { host })}</p>` +
       cmdLine("den-pair-cmd", b.approve, t) +
       `<p>${withHost(t, "err.signin.step1Or", { name: s.name, host })}</p></li>` +
-      `<li><p>${esc(t("err.signin.step2"))}</p>` +
-      `<p class="den-pair-wait" id="den-pair-status">${esc(t("err.signin.waiting"))} <span class="mono" id="den-pair-left"></span></p></li>` +
       `</ol>` +
       `<p>${withHost(t, "err.signin.noTerminal", { host })}</p>` +
       (windows && b.ssh
@@ -591,7 +597,8 @@ function wirePair(root, t, s) {
               ? withHost(t, "err.signin.sshUserNote", { host, user })
               : withHost(t, "err.signin.sshNote", { target })
           }</p>`
-        : "");
+        : "") +
+      `</details>`;
     wireCopy(box, t);
     wireNothingOpened(box);
   };
@@ -793,6 +800,9 @@ function mountSignedOut(root, sh, d) {
   watchOwner(root, t, s, window.__denOwnerPollMs || OWNER_POLL_MS);
   wirePair(root, t, s);
   if (s.expired) return;
+  // D67: Sign in again (the approvals banner) has a session on purpose:
+  // it wants the approval key. Reloading would only make a second code.
+  if (new URLSearchParams(location.search).get("again") === "1") return;
   let tried = false;
   try {
     tried = sessionStorage.getItem("den-signin-reload") === location.href;

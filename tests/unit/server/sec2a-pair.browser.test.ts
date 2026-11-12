@@ -119,9 +119,16 @@ async function edgePage(
   if (before) await before(p);
   const r = await p.goto(`http://${EDGE}:${port}/settings?x=1`);
   expect(r?.status()).toBe(401);
+  // D67: the browser way leads, with the code shown big; the commands
+  // wait under "Other ways", closed. Open it for the checks below.
+  await p.waitForSelector("#den-pair-code");
+  expect(await p.isVisible("#den-pair-browser")).toBe(true);
+  expect(await p.isVisible("#den-pair-cmd")).toBe(false);
+  await p.click("#den-pair-other > summary");
   await p.waitForSelector("#den-pair-cmd");
   const code = CODE_RE.exec((await p.textContent("#den-pair-cmd")) ?? "")?.[1];
   expect(!!code).toBe(true);
+  expect((await p.textContent("#den-pair-code"))?.trim()).toBe(code);
   return { ctx, p, code: code! };
 }
 
@@ -425,10 +432,8 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
     );
     expect(await p.locator("#den-pair-cmd").count()).toBe(0);
     await p.click("#den-pair-new");
-    await p.waitForSelector("#den-pair-cmd");
-    const next = CODE_RE.exec(
-      (await p.textContent("#den-pair-cmd")) ?? "",
-    )?.[1];
+    await p.waitForSelector("#den-pair-code");
+    const next = (await p.textContent("#den-pair-code"))?.trim();
     expect([!!next, next === code]).toEqual([true, false]);
     await ctx.close();
   }, 90_000);

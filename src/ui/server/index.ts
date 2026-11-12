@@ -2157,7 +2157,12 @@ async function handleRequest(
     // Signed in, or on loopback (no sign-in there), it goes on to a
     // same-origin `next`; signed out beyond loopback, it is the signed-out
     // page (the `web login` hint, never a form for the secret).
-    if (guard.ok && (guard.session || !guard.beyond)) {
+    // D67: `again=1` (the approvals banner's Sign in): the sign-in page
+    // even with a session, or on loopback: approving needs a signed-in
+    // browser with an approval key, which a browser without one (signed
+    // in before 0.4.15, its storage cleared, or never) gets here.
+    const again = url.searchParams.get("again") === "1";
+    if (guard.ok && (guard.session || !guard.beyond) && !again) {
       res.writeHead(303, {
         Location: safeNext(url.searchParams.get("next")),
         "Cache-Control": "no-store",

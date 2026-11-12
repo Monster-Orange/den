@@ -339,6 +339,9 @@
     "err.signin.step2":
       "承認されると、このページは自動でサインインします。コードの有効期限は 10 分です。",
     "err.signin.waiting": "承認を待っています…",
+    "err.signin.allowFrom":
+      "サインイン済みのブラウザ（{host} または別のコンピュータ）で {name} を開いてください。このコードで「このコンピュータを許可しますか？」と表示されます。そこで許可してください。",
+    "err.signin.pairOther": "その他の方法：Den のコンピュータでコマンドを実行",
     "err.signin.windowsSteps":
       "Windows ターミナルか PowerShell を開き、これを貼り付けて Enter キーを押します。",
     "err.signin.nothingOpened":
@@ -676,8 +679,15 @@
     "ap.noAgentWarn":
       "エージェントにこれを頼んでいなければ、拒否してください。",
     "ap.signin.title": "承認を待っているものがあります。",
-    "ap.signin":
-      "サインインすると表示されます: {cmd} を実行してリンクを開いてください。",
+    "ap.signin": "このブラウザでサインインすると、内容を確認して承認できます。",
+    "ap.signin.btn": "サインイン",
+    "pair.title": "このコンピューターを許可しますか?",
+    "pair.what": "{device} {client} が Den にサインインしようとしています。",
+    "pair.aDevice": "ブラウザー",
+    "pair.help":
+      "このコードがそのコンピューターの画面に表示されている場合のみ許可してください。",
+    "pair.allow": "許可",
+    "pair.allowed": "そのコンピューターはサインインしました。",
     "ap.do.workspace_create": "ワークスペース「{name}」を作成",
     "ap.do.repo_add":
       "{path} のリポジトリをワークスペース「{workspace}」に追加",

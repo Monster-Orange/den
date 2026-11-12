@@ -351,6 +351,9 @@
     "err.signin.step2":
       "Esta página inicia sesión sola una vez aprobada. El código caduca en 10 minutos.",
     "err.signin.waiting": "Esperando la aprobación…",
+    "err.signin.allowFrom":
+      "Abre {name} en un navegador con la sesión iniciada, en {host} u otro equipo. Pregunta «¿Permitir este equipo?» con este código. Permítelo allí.",
+    "err.signin.pairOther": "Otras formas: un comando en el equipo de Den",
     "err.signin.windowsSteps":
       "Abre Windows Terminal o PowerShell, pega esto y pulsa Intro.",
     "err.signin.nothingOpened":
@@ -697,7 +700,15 @@
     "ap.noAgent": "Algo en esta máquina (sin identidad de agente)",
     "ap.noAgentWarn": "Si no le pediste esto a un agente, deniégalo.",
     "ap.signin.title": "Algo espera tu aprobación.",
-    "ap.signin": "Inicia sesión para verlo: ejecuta {cmd} y abre el enlace.",
+    "ap.signin": "Inicia sesión en este navegador para verlo y aprobarlo.",
+    "ap.signin.btn": "Iniciar sesión",
+    "pair.title": "¿Permitir este equipo?",
+    "pair.what": "{device} {client} quiere iniciar sesión en Den.",
+    "pair.aDevice": "Un navegador",
+    "pair.help":
+      "Permítelo solo si este código aparece en la pantalla de ese equipo.",
+    "pair.allow": "Permitir",
+    "pair.allowed": "Ese equipo ya inició sesión.",
     "ap.do.workspace_create": 'Crear el espacio "{name}"',
     "ap.do.repo_add":
       'Añadir el repositorio de {path} al espacio "{workspace}"',
