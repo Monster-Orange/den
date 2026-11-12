@@ -37,7 +37,10 @@ config and manifest changes a distribution must make to move to it under
 - A download sends only a regular file inside the agent's workspace,
   its own folder or its uploads (links followed, then checked). Anything
   else is a 404 that sends nothing. Each download, and each refusal, is
-  audited.
+  audited. Den's state folder (but the agent's own uploads) and the home
+  folder's secrets (dotfiles, `.ssh`, `.aws`, `.config` and the like) are
+  never reachable, even through a link, or for an agent whose folder is
+  the home folder. Path links follow the same rule.
 
 ## [0.4.33] - unreleased
 

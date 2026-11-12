@@ -33,15 +33,78 @@ function realOrNull(p: string): string | null {
 const inside = (p: string, root: string) =>
   p === root || p.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
 
+/**
+ * What a path link and a download may never reach (AG-DROP-2), whatever
+ * the roots are: Den's state folder (but this session's uploads), and the
+ * person's secrets in their home folder.
+ */
+export interface PathFence {
+  home: string;
+  stateDir: string;
+  /** The one part of the state folder that is the agent's: its uploads. */
+  uploads?: string;
+}
+
+/** Folders and files in a home folder that hold secrets: never a link. */
+const HOME_SECRETS = [
+  ".ssh",
+  ".gnupg",
+  ".aws",
+  ".azure",
+  ".kube",
+  ".docker",
+  ".claude",
+  ".claude.json",
+  ".config",
+  ".local/share",
+  ".netrc",
+  ".npmrc",
+  ".pypirc",
+  ".git-credentials",
+  "Library/Keychains",
+  "Library/Application Support",
+];
+
+/**
+ * A root that would open too much is dropped: `/`, the home folder, or a
+ * folder holding the home or state folder (an agent whose folder is ~).
+ */
+function rootAllowed(root: string, f: PathFence): boolean {
+  const home = realOrNull(f.home) ?? f.home;
+  const state = realOrNull(f.stateDir) ?? f.stateDir;
+  return (
+    root !== path.parse(root).root &&
+    !inside(home, root) &&
+    !inside(state, root)
+  );
+}
+
+/** Whether the real path `r` is fenced off (see PathFence). */
+function fenced(r: string, f: PathFence): boolean {
+  const home = realOrNull(f.home) ?? f.home;
+  const state = realOrNull(f.stateDir) ?? f.stateDir;
+  const uploads = f.uploads ? (realOrNull(f.uploads) ?? f.uploads) : null;
+  if (inside(r, state)) return !(uploads && inside(r, uploads));
+  if (inside(r, home)) {
+    const rel = path.relative(home, r);
+    // A dotfile right in home (~/.zshenv, ~/.bash_history).
+    if (!rel.includes(path.sep) && rel.startsWith(".")) return true;
+    if (HOME_SECRETS.some((s) => inside(r, path.join(home, s)))) return true;
+  }
+  return false;
+}
+
 /** Each path's absolute path when it is a link, else null. */
 export function agentPathLinks(
   given: readonly string[],
   cwd: string,
   roots: readonly string[],
+  fence?: PathFence,
 ): Record<string, string | null> {
   const real = roots
     .map((r) => realOrNull(r))
-    .filter((r): r is string => r !== null);
+    .filter((r): r is string => r !== null)
+    .filter((r) => !fence || rootAllowed(r, fence));
   const base = realOrNull(cwd) ?? path.resolve(cwd);
   const out: Record<string, string | null> = {};
   for (const p of given) {
@@ -50,7 +113,12 @@ export function agentPathLinks(
     if (!p || p.length > MAX_PATH_LEN || p.includes("\0")) continue;
     const abs = path.resolve(base, p);
     const r = realOrNull(abs);
-    if (r && real.some((root) => inside(r, root))) out[p] = r;
+    if (
+      r &&
+      real.some((root) => inside(r, root)) &&
+      !(fence && fenced(r, fence))
+    )
+      out[p] = r;
   }
   return out;
 }
@@ -63,8 +131,9 @@ export function agentFile(
   given: string,
   cwd: string,
   roots: readonly string[],
+  fence?: PathFence,
 ): string | null {
-  const abs = agentPathLinks([given], cwd, roots)[given];
+  const abs = agentPathLinks([given], cwd, roots, fence)[given];
   if (!abs) return null;
   try {
     return fs.statSync(abs).isFile() ? abs : null;

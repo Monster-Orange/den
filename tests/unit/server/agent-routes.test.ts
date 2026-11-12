@@ -20,7 +20,7 @@ import {
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { verifyActorToken } from "../../../src/shared/actor-token.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
-import { readRecord } from "../../../src/shared/agents/records.js";
+import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import { hasSudoPassword } from "../../../src/ui/server/sudo-store.js";
 import { cleanupRigs, rig, settle, type Rig } from "../agents/helpers/rig.js";
 
@@ -880,6 +880,92 @@ describe("GET /api/workspaces/<ws>/agents/<id>/file (AG-DROP-2: a file back to t
     expect(
       audit.filter((e) => e.outcome === "refused").map((e) => e.reason),
     ).toContain("not_found");
+  });
+
+  it("never Den's state folder (but its uploads) or the home folder's secrets: not through a link in the workspace, not for an agent whose folder is home", async () => {
+    const a = await api();
+    const home = path.join(a.r.dir, "home");
+    for (const d of [".ssh", ".config/op", "notes"])
+      fs.mkdirSync(path.join(home, d), { recursive: true });
+    fs.writeFileSync(path.join(home, ".zshenv"), "export TOKEN=S3CRET-MARK\n");
+    fs.writeFileSync(
+      path.join(home, ".ssh", "id_ed25519"),
+      "S3CRET-MARK key\n",
+    );
+    fs.writeFileSync(
+      path.join(home, ".config", "op", "c.json"),
+      "S3CRET-MARK\n",
+    );
+    fs.writeFileSync(path.join(home, "notes", "plan.md"), "plan\n");
+    a.r.deps.env = { ...a.r.deps.env, HOME: home };
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    const ws = fs.realpathSync(a.r.wsDir("north"));
+    const state = fs.realpathSync(a.r.stateDir);
+    fs.writeFileSync(path.join(state, "web.secret"), "S3CRET-MARK\n");
+    // Links inside the workspace that lead to them: refused.
+    fs.symlinkSync(path.join(home, ".zshenv"), path.join(ws, "env"));
+    fs.symlinkSync(path.join(home, ".ssh"), path.join(ws, "keys"));
+    fs.symlinkSync(state, path.join(ws, "st"));
+    fs.symlinkSync(path.join(home, "notes"), path.join(ws, "notes"));
+    const sid = readRecord(a.r.stateDir, "planner")!.session.id;
+    const up = path.join(state, "uploads", sid);
+    fs.mkdirSync(up, { recursive: true });
+    fs.writeFileSync(path.join(up, "x-ok.txt"), "ok");
+    for (const bad of [
+      "env",
+      "keys/id_ed25519",
+      "st/web.secret",
+      path.join(state, "web.secret"),
+      path.join(home, ".zshenv"),
+      path.join(home, ".config", "op", "c.json"),
+    ]) {
+      const x = await get(a, "north", "planner", bad);
+      expect([bad, x.status]).toEqual([bad, 404]);
+      expect(await x.text()).not.toContain("S3CRET-MARK");
+    }
+    // A link out to any other folder (one of home's, no secret in it) is an
+    // escape too: refused. Its uploads still work.
+    expect((await get(a, "north", "planner", "notes/plan.md")).status).toBe(
+      404,
+    );
+    expect(
+      (await get(a, "north", "planner", path.join(up, "x-ok.txt"))).status,
+    ).toBe(200);
+    // /paths says the same: no link to any of them.
+    const links = await a.call(
+      "GET",
+      `/api/workspaces/north/agents/planner/paths?p=env&p=st/web.secret&p=notes/plan.md`,
+    );
+    expect(links.json.paths).toEqual({
+      env: null,
+      "st/web.secret": null,
+      "notes/plan.md": null,
+    });
+    // An agent whose folder is home (brought in from there): home is no
+    // root, so nothing in it is reachable through its cwd.
+    const rec = readRecord(a.r.stateDir, "planner")!;
+    writeRecord(a.r.stateDir, { ...rec, cwd: home });
+    for (const bad of [
+      path.join(home, "notes", "plan.md"),
+      ".zshenv",
+      ".ssh/id_ed25519",
+    ]) {
+      const x = await get(a, "north", "planner", bad);
+      expect([bad, x.status]).toEqual([bad, 404]);
+    }
+    // An agent whose folder is inside a secret one, or inside Den's state
+    // folder: still nothing there.
+    fs.mkdirSync(path.join(state, "agents-x"), { recursive: true });
+    fs.writeFileSync(path.join(state, "agents-x", "t.json"), "S3CRET-MARK");
+    for (const [cwd, bad] of [
+      [path.join(home, ".config"), "op/c.json"],
+      [path.join(state, "agents-x"), "t.json"],
+    ]) {
+      writeRecord(a.r.stateDir, { ...rec, cwd });
+      const x = await get(a, "north", "planner", bad);
+      expect([cwd, x.status]).toEqual([cwd, 404]);
+      expect(await x.text()).not.toContain("S3CRET-MARK");
+    }
   });
 
   it("refuses another workspace's agent (404) and a POST (405)", async () => {

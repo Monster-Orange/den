@@ -3084,6 +3084,16 @@ agent of the workspaces in view, and their terminals in the browser.
     inside the same folders, or the agent's uploads, as an attachment.
     Anything else gets 404, and nothing of it is sent. Every download,
     and every refusal, is audited.
+  - The rule, for links and downloads alike: the path is resolved
+    against the agent's folder and every link in it followed, and the
+    real path must be inside the workspace's folder, the agent's own
+    folder or its uploads. A folder that would open too much is no
+    root: `/`, the home folder, or one holding the home or Den's state
+    folder (an agent whose folder is `~`). Whatever the roots, Den's state
+    folder (but the session's uploads) and the home folder's secrets
+    (its dotfiles, `.ssh`, `.gnupg`, `.aws`, `.config`, `.claude`,
+    `.docker`, `.kube`, `.netrc`, `Library/Keychains` and the like) are
+    never a link and never sent.
   - **Open in <editor>**, when Settings › Editor & terminal › "Open file
     links in" names one (`editor_open` in `config/local/user.yml` and
     `/api/settings`: `vscode`, `cursor` or `zed`): its URL scheme, at the

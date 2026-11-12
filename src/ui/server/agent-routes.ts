@@ -92,6 +92,7 @@
  */
 import * as fs from "fs";
 import * as http from "http";
+import * as os from "os";
 import * as path from "path";
 import {
   configuredRemoveStoppedAfter,
@@ -169,6 +170,7 @@ import {
   agentPathLinks,
   attachmentHeader,
   MAX_PATHS,
+  type PathFence,
 } from "./agent-paths.js";
 import {
   uploadsRoot,
@@ -618,7 +620,12 @@ export async function handleAgentRoutes(
           usage: true,
         });
       sendJson(res, {
-        paths: agentPathLinks(given, rec.cwd, agentRoots(d, rec, ws)),
+        paths: agentPathLinks(
+          given,
+          rec.cwd,
+          agentRoots(d, rec, ws),
+          agentFence(d, rec),
+        ),
       });
     } catch (e) {
       sendError(res, e, ws);
@@ -635,7 +642,7 @@ export async function handleAgentRoutes(
       const given =
         new URL(req.url ?? "/", "http://localhost").searchParams.get("p") ?? "";
       const file = given
-        ? agentFile(given, rec.cwd, agentRoots(d, rec, ws))
+        ? agentFile(given, rec.cwd, agentRoots(d, rec, ws), agentFence(d, rec))
         : null;
       const audit = (detail: string, reason?: string) =>
         recordAction(
@@ -1783,6 +1790,29 @@ async function helpersRoute(
   return true;
 }
 
+/** The agent's session's uploads folder, when it has one. */
+function agentUploads(d: AgentsResolved, rec: AgentRecord): string | null {
+  const sid = rec.session?.id;
+  if (!sid || !UPLOAD_SESSION_RE.test(sid)) return null;
+  let set = UPLOAD_DEFAULTS;
+  try {
+    set = readAgentsConfig().uploads ?? UPLOAD_DEFAULTS;
+  } catch {
+    /* the defaults */
+  }
+  return path.join(uploadsRoot(set, d.stateDir()), sid);
+}
+
+/** What its paths may never reach (agent-paths.ts PathFence). */
+function agentFence(d: AgentsResolved, rec: AgentRecord): PathFence {
+  const up = agentUploads(d, rec);
+  return {
+    home: d.env.HOME || os.homedir(),
+    stateDir: d.stateDir(),
+    ...(up ? { uploads: up } : {}),
+  };
+}
+
 /**
  * The folders an agent's paths may point into (AG-4b, AG-DROP-2): its
  * workspace's, its own cwd, and its session's uploads folder.
@@ -1795,15 +1825,7 @@ function agentRoots(d: AgentsResolved, rec: AgentRecord, ws: string): string[] {
     /* no folder */
   }
   roots.push(rec.cwd);
-  const sid = rec.session?.id;
-  if (sid && UPLOAD_SESSION_RE.test(sid)) {
-    let set = UPLOAD_DEFAULTS;
-    try {
-      set = readAgentsConfig().uploads ?? UPLOAD_DEFAULTS;
-    } catch {
-      /* the defaults */
-    }
-    roots.push(path.join(uploadsRoot(set, d.stateDir()), sid));
-  }
+  const up = agentUploads(d, rec);
+  if (up) roots.push(up);
   return roots.filter(Boolean);
 }
