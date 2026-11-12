@@ -14,10 +14,11 @@ config and manifest changes a distribution must make to move to it under
   width, so each redraw of Claude Code's prompt left another copy of it
   behind. Now every other view draws at the session's size (scrolling
   sideways when it is wider than the pane) and says "Sized by another
-  view", with Take over. Only typing (or Take over) sets the size:
-  opening, focusing or showing a tab never does, so tabs no longer take
-  it from each other. A lone view always sizes it, and when the view in
-  use closes, the one left takes over.
+  view", with Take over. Typing, Take over, or picking the agent from
+  the list sets the size. Loading or reloading a page on it, focusing
+  or showing a tab never does, so tabs no longer take it from each
+  other. A lone view always sizes it, and when the view in use closes,
+  the one left takes over.
 
 ## [0.4.32] - unreleased
 
