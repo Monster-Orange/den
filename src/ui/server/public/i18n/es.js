@@ -855,6 +855,8 @@
     "ag.goWs": "Abrir {ws} en Espacios de trabajo",
     "ag.lost": "[desconectado: {why}]",
     "ag.reconnect": "Reconectar",
+    "ag.size.follow": "Tamaño de otra vista ({cols}×{rows})",
+    "ag.size.take": "Usar este tamaño",
     "ag.noBackend":
       "Los terminales necesitan el módulo PTY opcional (den-pty no está disponible): {cli} doctor explica por qué",
     "ag.noHost":

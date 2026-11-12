@@ -15,10 +15,14 @@
  *
  * The size. A session has one PTY size and every viewer shares it (the
  * last resize wins: another browser, a CLI attach). The server says the
- * PTY's size on attach and whenever anyone changes it (a `size` frame), so
- * a pane knows when it is out of step, and the pane in use wins: it says
- * its own size when it is focused, when the page is shown again, and
- * before the first keystroke after the PTY's size changed under it. A
+ * PTY's size on attach and whenever anyone changes it (a `size` frame),
+ * and how many browsers view it (D54). One view sizes it: a lone one,
+ * the one the person just opened, or the one typed in (or Take over).
+ * Every other view draws at the PTY's size, never its own box's, with a
+ * "Sized by another view" chip: an agent redraws its prompt at the PTY's
+ * width, so a view at another width keeps a copy of it per redraw.
+ * Opening, focusing or showing a view never takes the size. When the
+ * view that sized it goes, a lone one left takes it. A
  * hidden pane never resizes the PTY, nor does one under 2x2. The cells
  * are measured again once the theme's fonts have loaded (a web font
  * arriving after the first fit would leave the cell width the fallback
@@ -1372,12 +1376,64 @@ function paneShown(p) {
 function refit(p) {
   const box = p.el.querySelector(".term");
   if (!p.fit || !p.el.isConnected || !box || box.clientWidth <= 0) return;
+  // D54: a pane another view sizes draws at the PTY's size, never its own
+  // box's: Claude Code redraws its prompt by moving the cursor up as many
+  // lines as it wrapped at the PTY's width, so any other width leaves a
+  // copy of the prompt behind on each redraw.
+  if (p.following && p.pty) {
+    followPty(p);
+    return;
+  }
   try {
     p.fit.fit();
   } catch {
     /* not laid out yet */
   }
   markSize(p);
+}
+
+/** D54: this pane at the PTY's size (another view sets it). */
+function followPty(p) {
+  const term = p.term;
+  if (!term || !p.pty) return;
+  if (term.cols !== p.pty.cols || term.rows !== p.pty.rows)
+    term.resize(p.pty.cols, p.pty.rows);
+  markSize(p);
+  paintFollow(p);
+}
+
+/**
+ * D54: the chip on a pane another view sizes: "Sized by another view",
+ * and Take over (this pane's size, as typing does).
+ */
+function paintFollow(p) {
+  const box = p.el.querySelector(".term");
+  if (!box) return;
+  p.el.classList.toggle("following", !!p.following);
+  let chip = box.querySelector(".agfollow");
+  if (!p.following) {
+    chip?.remove();
+    return;
+  }
+  if (!chip) {
+    chip = document.createElement("div");
+    chip.className = "agfollow";
+    chip.setAttribute("role", "status");
+    chip.innerHTML =
+      `<span class="agfollow-t"></span>` +
+      `<button type="button" class="den-btn sm" data-act="take-size"></button>`;
+    chip.querySelector("button").addEventListener("click", (e) => {
+      e.preventDefault();
+      claimSize(p);
+      p.term?.focus();
+    });
+    box.append(chip);
+  }
+  chip.querySelector(".agfollow-t").textContent = t("ag.size.follow", {
+    cols: p.pty?.cols ?? "?",
+    rows: p.pty?.rows ?? "?",
+  });
+  chip.querySelector("button").textContent = t("ag.size.take");
 }
 
 /**
@@ -1428,7 +1484,16 @@ function sendSize(p) {
   if (!term || p.sock?.readyState !== WebSocket.OPEN || !paneShown(p))
     return false;
   if (term.cols < MIN_COLS || term.rows < MIN_ROWS) return false;
+  // D54: a following pane never sizes the PTY (no ping-pong between views).
+  if (p.following) return false;
   send(p, { type: "resize", cols: term.cols, rows: term.rows });
+  // D54: until the host says this size back, an older frame (the size on
+  // attach) is not another view taking it. The host says a size only when
+  // it changes, so an unchanged one is never said back: that is no wait.
+  p.awaiting =
+    p.pty && p.pty.cols === term.cols && p.pty.rows === term.rows
+      ? null
+      : { cols: term.cols, rows: term.rows, until: Date.now() + 3000 };
   // What the PTY will be: the server's frame follows (or another
   // viewer's, if it resized after).
   p.pty = { cols: term.cols, rows: term.rows };
@@ -1436,8 +1501,13 @@ function sendSize(p) {
   return true;
 }
 
-/** This pane is in use: fit it and make the PTY its size. */
+/**
+ * This pane is in use (typed in, Take over, just opened): it leads. Fit it
+ * to its box and make the PTY its size; any other view follows.
+ */
 function claimSize(p) {
+  p.following = false;
+  paintFollow(p);
   refit(p);
   sendSize(p);
 }
@@ -1487,8 +1557,11 @@ async function connect(p) {
     opened = true;
     p.pty = null;
     p.heardSize = false;
+    // D54: who sizes the PTY is decided on the session frame (it says
+    // how many view it); until then, this pane waits.
+    p.following = false;
+    p.decided = false;
     refit(p);
-    sendSize(p);
   };
   sock.onmessage = (e) => {
     if (typeof e.data === "string") {
@@ -1501,8 +1574,29 @@ async function connect(p) {
       if (msg?.type === "size") {
         if (Number.isInteger(msg.cols) && Number.isInteger(msg.rows)) {
           p.heardSize = true;
+          const said = (z) => !!z && z.cols === msg.cols && z.rows === msg.rows;
+          const w =
+            p.awaiting && Date.now() < p.awaiting.until ? p.awaiting : null;
           p.pty = { cols: msg.cols, rows: msg.rows };
-          markSize(p);
+          let mine = false;
+          if (p.following) p.awaiting = null;
+          else if (w) {
+            // Still waiting for this pane's own size: an older frame. The
+            // PTY will be this pane's.
+            mine = true;
+            if (said(w)) p.awaiting = null;
+            else p.pty = { cols: w.cols, rows: w.rows };
+          } else {
+            p.awaiting = null;
+            mine = said(p.term);
+          }
+          // D54: another view set it: draw at its size until typed in.
+          // Alone, a size this pane didn't say is only an older one (a
+          // hidden pane that couldn't say its own yet): never a reason to
+          // follow.
+          if (!mine && (p.viewers ?? 1) > 1) p.following = true;
+          if (p.following) followPty(p);
+          else markSize(p);
         }
       } else if (msg?.type === "session") {
         p.label = msg.label;
@@ -1510,12 +1604,34 @@ async function connect(p) {
         p.exited = !!msg.exited;
         p.heardSession = true;
         paintBar(p);
+        if (!p.decided) {
+          p.decided = true;
+          // D54: a lone viewer, or the pane the person just opened, sizes
+          // the PTY; another view of a session already in use follows
+          // its size until typed in, so opening one never redraws the
+          // other. An older server says no count: this pane leads.
+          p.viewers = Number.isInteger(msg.viewers) ? msg.viewers : 1;
+          const alone = p.viewers <= 1;
+          if (alone || st.focusOnOpen === p.id) claimSize(p);
+          else {
+            p.following = true;
+            if (p.pty) followPty(p);
+            else paintFollow(p);
+          }
+        }
         // D40: the pane the person picked takes the keyboard once the
         // server says its session is live (the first frame), never one
         // that has ended.
         if (st.focusOnOpen === p.id) {
           if (p.exited) st.focusOnOpen = null;
           else focusTerm(p.id);
+        }
+      } else if (msg?.type === "viewers") {
+        // D54: the view that sized the PTY went away: this one, alone now,
+        // sizes it.
+        if (Number.isInteger(msg.n)) {
+          p.viewers = msg.n;
+          if (msg.n <= 1 && p.following) claimSize(p);
         }
       } else if (msg?.type === "exit") {
         p.exited = true;
@@ -1777,7 +1893,7 @@ async function openPane(id, { front = true } = {}) {
   const typeIn = (d) => {
     if (p.sock?.readyState !== WebSocket.OPEN) return;
     // The one typing wins: another viewer resized the PTY since.
-    if (outOfStep(p)) claimSize(p);
+    if (p.following || outOfStep(p)) claimSize(p);
     p.sock.send(enc.encode(d));
   };
   term.onData(typeIn);
@@ -1806,10 +1922,11 @@ async function openPane(id, { front = true } = {}) {
     provideLinks: (y, done) => void providePathLinks(p, y, done),
   });
   term.onResize(() => sendSize(p));
-  // Focused (a click, the window coming back): this pane's size.
+  // Focused: the keyboard's pane (D40). D54: focus alone never takes the
+  // PTY's size (a look at another tab must not redraw the one in use);
+  // the first keystroke does.
   el.addEventListener("focusin", () => {
-    claimSize(p);
-    // D40: the terminal that last had the keyboard (an add gives it back).
+    if (!p.following) claimSize(p);
     st.keyPane = p.id;
   });
   p.ro = new ResizeObserver(() => refit(p));
@@ -3181,11 +3298,11 @@ function wireDocument() {
     },
     true,
   );
-  // Shown again: each pane says its size (another viewer may have taken
-  // the PTY while this page was hidden).
+  // Shown again: a pane that leads says its size again (an older host
+  // sends no size frames); one another view sizes keeps following (D54).
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
-    for (const p of st.panes.values()) claimSize(p);
+    for (const p of st.panes.values()) if (!p.following) claimSize(p);
   });
 }
 

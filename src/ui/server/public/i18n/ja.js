@@ -832,6 +832,8 @@
     "ag.goWs": "ワークスペースで {ws} を開く",
     "ag.lost": "[切断: {why}]",
     "ag.reconnect": "再接続",
+    "ag.size.follow": "別の表示のサイズ ({cols}×{rows})",
+    "ag.size.take": "このサイズにする",
     "ag.noBackend":
       "ターミナルにはオプションの PTY モジュールが必要です（den-pty は使えません）。理由は {cli} doctor で確認できます",
     "ag.noHost": "セッションホストは動いていません。まだ何も開始されていません",

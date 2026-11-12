@@ -4,6 +4,21 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.33] - unreleased
+
+### Fixed
+
+- **An agent's terminal no longer repeats and garbles text when several
+  tabs show it (D54).** A session has one terminal size, set by the view
+  in use. A view at another width drew the agent's redraws at its own
+  width, so each redraw of Claude Code's prompt left another copy of it
+  behind. Now every other view draws at the session's size (scrolling
+  sideways when it is wider than the pane) and says "Sized by another
+  view", with Take over. Only typing (or Take over) sets the size:
+  opening, focusing or showing a tab never does, so tabs no longer take
+  it from each other. A lone view always sizes it, and when the view in
+  use closes, the one left takes over.
+
 ## [0.4.32] - unreleased
 
 ### Added

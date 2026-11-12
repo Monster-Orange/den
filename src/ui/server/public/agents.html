@@ -586,6 +586,34 @@
         min-width: 0;
         overflow: hidden;
       }
+      /* D54: a pane another view sizes draws at the PTY's size: wider than
+         its box, it scrolls sideways; never re-wrapped at its own width. */
+      .pane .term {
+        position: relative;
+      }
+      .pane.following .term .tbox {
+        /* Its rows and cols are the PTY's: it scrolls inside the pane and
+           never makes the pane (or the page) bigger. */
+        position: absolute;
+        inset: 6px 4px 4px 8px;
+        overflow: auto;
+      }
+      .pane .agfollow {
+        position: absolute;
+        right: 8px;
+        bottom: 6px;
+        z-index: 3;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 6px 4px 10px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        color: var(--muted);
+        font: 12px/1.3 var(--sans);
+        max-width: calc(100% - 16px);
+      }
       .pane .term .xterm {
         height: 100%;
       }

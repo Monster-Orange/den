@@ -173,18 +173,6 @@ const termSize = (p: Page) =>
     ).__terms[0];
     return [t.cols, t.rows] as [number, number];
   });
-/** The size frames the page has had, in order. */
-const sizeFrames = (p: Page) =>
-  p.evaluate(() =>
-    (
-      window as unknown as {
-        __frames: { type: string; cols: number; rows: number }[];
-      }
-    ).__frames
-      .filter((f) => f.type === "size")
-      .map((f) => [f.cols, f.rows]),
-  );
-
 async function eventually(
   pred: () => Promise<boolean> | boolean,
   ms = 10_000,
@@ -196,76 +184,159 @@ async function eventually(
   }
 }
 const last = (pty: ScriptedPty) => pty.resizes.at(-1) ?? [0, 0];
-const same = (a: readonly number[], b: readonly number[]) =>
-  a[0] === b[0] && a[1] === b[1];
-
-describe("the Agents tab's terminal size", () => {
-  it("two viewers at different widths: the one focused or typing wins, the other hears the size; a hidden pane never resizes", async () => {
-    if (skip()) return;
-    const [sid, pty] = await session("pair");
-    const wide = await viewer(sid, 1440);
-    await eventually(async () => same(last(pty), await termSize(wide.p)));
-    const wideSize = await termSize(wide.p);
-
-    // A narrower viewer opens the same session: it takes the PTY.
-    const narrow = await viewer(sid, 900);
-    await eventually(async () => same(last(pty), await termSize(narrow.p)));
-    const narrowSize = await termSize(narrow.p);
-    expect(narrowSize[0]).toBeLessThan(wideSize[0]);
-    // The wide one heard it (the server's size frame).
-    await eventually(async () =>
-      same((await sizeFrames(wide.p)).at(-1) ?? [], narrowSize),
-    );
-
-    // Focus the wide pane: its size again, and the narrow one hears it.
-    await wide.p.bringToFront();
-    await wide.p.click(`.pane[data-id="${sid}"] .term`);
-    await eventually(() => same(last(pty), wideSize));
-    await eventually(async () =>
-      same((await sizeFrames(narrow.p)).at(-1) ?? [], wideSize),
-    );
-
-    // Type in the narrow one (no focus first): its size goes before the key.
-    const writes = pty.writes.length;
-    await narrow.p.evaluate(() =>
+/** Type `d` into the page's terminal, as a person's keystroke. */
+const type = (v: { p: Page }, d: string) =>
+  v.p.evaluate(
+    (ch) =>
       (
         window as unknown as {
           __terms: { input(d: string, user: boolean): void }[];
         }
-      ).__terms[0].input("x", true),
-    );
-    await eventually(() => pty.writes.length > writes);
-    expect(last(pty)).toEqual(narrowSize);
-    expect(await termSize(narrow.p)).toEqual(narrowSize);
+      ).__terms[0].input(ch, true),
+    d,
+  );
+const same = (a: readonly number[], b: readonly number[]) =>
+  a[0] === b[0] && a[1] === b[1];
 
-    // Shown again (visibilitychange): the wide one says its size.
-    await wide.p.evaluate(() =>
+describe("the Agents tab's terminal size", () => {
+  it("two viewers at different widths: the one typing sizes the PTY, the other draws at the PTY's size (D54); focus, a look or a hidden pane never resize it", async () => {
+    if (skip()) return;
+    const [sid, pty] = await session("pair");
+    // Alone: the first viewer sizes the PTY.
+    const wide = await viewer(sid, 1440);
+    await eventually(async () => same(last(pty), await termSize(wide.p)));
+    const wideSize = await termSize(wide.p);
+
+    // A narrower viewer opens the same session: it follows the PTY's size
+    // (the wide one's), and says so; the PTY stays as it was.
+    const narrow = await viewer(sid, 900);
+    await eventually(async () => same(await termSize(narrow.p), wideSize));
+    expect(last(pty)).toEqual(wideSize);
+    await narrow.p
+      .locator(`.pane[data-id="${sid}"] .agfollow`)
+      .waitFor({ timeout: 10_000 });
+
+    // Focusing it, or showing it again, is a look: still the wide size.
+    const resizes = pty.resizes.length;
+    await narrow.p.click(`.pane[data-id="${sid}"] .term .xterm-screen`, {
+      position: { x: 20, y: 20 },
+    });
+    await narrow.p.evaluate(() =>
       document.dispatchEvent(new Event("visibilitychange")),
     );
+    await new Promise((r) => setTimeout(r, 300));
+    expect(pty.resizes.length).toBe(resizes);
+
+    // Typing in it: its own size goes before the key, and the wide one
+    // now draws at that size (term.cols equals the PTY's).
+    const writes = pty.writes.length;
+    await type(narrow, "x");
+    await eventually(() => pty.writes.length > writes);
+    const narrowSize = last(pty);
+    expect(narrowSize[0]).toBeLessThan(wideSize[0]);
+    expect(await termSize(narrow.p)).toEqual(narrowSize);
+    await eventually(async () => same(await termSize(wide.p), narrowSize));
+    await wide.p
+      .locator(`.pane[data-id="${sid}"] .agfollow`)
+      .waitFor({ timeout: 10_000 });
+
+    // Take over: the wide one's size again; the narrow one follows.
+    await wide.p.click(`.pane[data-id="${sid}"] [data-act="take-size"]`);
     await eventually(() => same(last(pty), wideSize));
+    await eventually(async () => same(await termSize(narrow.p), wideSize));
+    expect(await wide.p.locator(".agfollow").count()).toBe(0);
 
     // A hidden page's pane never resizes the PTY, even typing.
-    const resizes = pty.resizes.length;
+    const before = pty.resizes.length;
     await narrow.p.evaluate(() => {
       Object.defineProperty(document, "hidden", { get: () => true });
       Object.defineProperty(document, "visibilityState", {
         get: () => "hidden",
       });
       document.dispatchEvent(new Event("visibilitychange"));
-      (
-        window as unknown as {
-          __terms: { input(d: string, user: boolean): void }[];
-        }
-      ).__terms[0].input("y", true);
     });
+    await type(narrow, "y");
     await eventually(() => Buffer.concat(pty.writes).toString().includes("y"));
     await new Promise((r) => setTimeout(r, 200));
-    expect(pty.resizes.length).toBe(resizes);
+    expect(pty.resizes.length).toBe(before);
     expect(last(pty)).toEqual(wideSize);
     // Never under 2x2, whatever was measured.
     expect(pty.resizes.every(([c, r]) => c >= 2 && r >= 2)).toBe(true);
     await narrow.ctx.close();
     await wide.ctx.close();
+  }, 60_000);
+
+  it("D54: a prompt the agent redraws at the PTY's width shows once in every view, not once per redraw", async () => {
+    if (skip()) return;
+    const [sid, pty] = await session("redraw");
+    const wide = await viewer(sid, 1440);
+    await eventually(async () => same(last(pty), await termSize(wide.p)));
+    const narrow = await viewer(sid, 700);
+    await new Promise((r) => setTimeout(r, 500));
+    // The person types in the wide one: the PTY is its width.
+    const writes = pty.writes.length;
+    await type(wide, "x");
+    await eventually(() => pty.writes.length > writes);
+    const [W] = last(pty);
+    expect(W).toBe((await termSize(wide.p))[0]);
+    await new Promise((r) => setTimeout(r, 300));
+    // Claude Code's input box: the prompt hard-wrapped at the PTY's
+    // width; each redraw moves up as many lines as it drew, clears them,
+    // and draws again (Ink's log-update).
+    const prompt = `> MARK-${"word ".repeat(70)}end`;
+    const lines: string[] = [];
+    for (let i = 0; i < prompt.length; i += W)
+      lines.push(prompt.slice(i, i + W));
+    const draw = lines.join("\r\n");
+    const erase =
+      Array.from({ length: lines.length }, (_, i) =>
+        i < lines.length - 1 ? "\x1b[2K\x1b[1A" : "\x1b[2K",
+      ).join("") + "\x1b[G";
+    pty.emit(`\x1b[2J\x1b[H${draw}`);
+    for (let i = 0; i < 3; i++) pty.emit(erase + draw);
+    const marks = (v: { p: Page }) =>
+      v.p.evaluate(() => {
+        const t = (
+          window as unknown as {
+            __terms: {
+              buffer: {
+                active: {
+                  length: number;
+                  getLine(
+                    y: number,
+                  ): { translateToString(trim: boolean): string } | undefined;
+                };
+              };
+            }[];
+          }
+        ).__terms[0];
+        const b = t.buffer.active;
+        let text = "";
+        for (let y = 0; y < b.length; y++)
+          text += b.getLine(y)?.translateToString(true) ?? "";
+        return text.split("MARK-").length - 1;
+      });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await marks(wide)).toBe(1);
+    expect(await marks(narrow)).toBe(1);
+    // The narrow view draws at the PTY's width (D54).
+    expect((await termSize(narrow.p))[0]).toBe(W);
+    // DEN_AGENTS_SHOTS=<dir>: both views, the narrow one with its chip.
+    const shots = process.env.DEN_AGENTS_SHOTS;
+    if (shots) {
+      await wide.p.screenshot({ path: `${shots}/d54-wide.png` });
+      await narrow.p.screenshot({ path: `${shots}/d54-narrow.png` });
+    }
+    // The view that sized it goes away: the one left sizes the PTY to its
+    // own pane.
+    expect(await narrow.p.locator(".agfollow").count()).toBe(1);
+    await wide.ctx.close();
+    await eventually(async () => {
+      const [c] = last(pty);
+      return c < W && c === (await termSize(narrow.p))[0];
+    });
+    expect(await narrow.p.locator(".agfollow").count()).toBe(0);
+    await narrow.ctx.close();
   }, 60_000);
 
   it("with an older host (no size frames), typing in the wide viewer again takes the PTY back from the narrow one", async () => {
@@ -274,20 +345,14 @@ describe("the Agents tab's terminal size", () => {
     const wide = await viewer(sid, 1440, { noSizeFrames: true });
     await eventually(async () => same(last(pty), await termSize(wide.p)));
     const wideSize = await termSize(wide.p);
+    // A second view never takes the PTY by opening (D54); with no size
+    // frames it can't follow it either, so it keeps its own fit until
+    // typed in.
     const narrow = await viewer(sid, 900, { noSizeFrames: true });
-    await eventually(async () => same(last(pty), await termSize(narrow.p)));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(last(pty)).toEqual(wideSize);
     const narrowSize = await termSize(narrow.p);
     expect(narrowSize[0]).toBeLessThan(wideSize[0]);
-    const type = (v: { p: Page }, d: string) =>
-      v.p.evaluate(
-        (ch) =>
-          (
-            window as unknown as {
-              __terms: { input(d: string, user: boolean): void }[];
-            }
-          ).__terms[0].input(ch, true),
-        d,
-      );
     for (let round = 0; round < 3; round++) {
       // The narrow one types: its size.
       let writes = pty.writes.length;

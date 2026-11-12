@@ -962,6 +962,8 @@
     "ag.goWs": "Open {ws} on Workspaces",
     "ag.lost": "[disconnected: {why}]",
     "ag.reconnect": "Reconnect",
+    "ag.size.follow": "Sized by another view ({cols}×{rows})",
+    "ag.size.take": "Take over",
     "ag.noBackend":
       "Terminals need the optional PTY module (den-pty is unavailable): {cli} doctor says why",
     "ag.noHost": "No session host is running: nothing has started yet",
