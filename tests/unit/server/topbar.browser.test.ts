@@ -1145,6 +1145,9 @@ describe("D64: Restart Den from the browser, in place", () => {
     await p.click('[data-rd="go"]');
     await p.waitForSelector('#rd-dlg[data-state="waiting"]');
     expect(await text(p, "#rd-dlg .rd-msg")).toMatch(/^Restarting Den… \d+s$/);
+    // Keep waiting and the CLI line only after restart_wait_seconds.
+    expect(await p.isVisible('[data-rd="keep"]')).toBe(false);
+    expect(await p.isVisible("#rd-dlg .rd-slow")).toBe(false);
     await p.waitForFunction(
       () =>
         document.querySelector("#rd-dlg .rd-msg")?.textContent ===
@@ -1205,8 +1208,10 @@ describe("D64: Restart Den from the browser, in place", () => {
       timeout: 10_000,
     });
     expect(await text(p, "#rd-dlg .rd-slow")).toContain("web restart");
+    expect(await p.isVisible('[data-rd="keep"]')).toBe(true);
     await p.click('[data-rd="keep"]');
     expect(await p.isHidden("#rd-dlg .rd-slow")).toBe(true);
+    expect(await p.isVisible('[data-rd="keep"]')).toBe(false);
     await p.keyboard.press("Escape");
     expect(await dlgOpen(p)).toBe(true);
     await p.context().close();

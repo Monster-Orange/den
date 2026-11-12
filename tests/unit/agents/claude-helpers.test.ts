@@ -400,6 +400,48 @@ describe("format drift", () => {
     expect(one("synth").model).toBe("claude-sonnet-5-5");
   });
 
+  it("a big transcript: the model from its first answer, though neither 64 KB end holds one; never the meta's pick", () => {
+    // As a helper reading many files: big tool results at both ends.
+    const big = (ts: string) =>
+      JSON.stringify({
+        type: "user",
+        timestamp: ts,
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "t",
+              content: "x".repeat(70_000),
+            },
+          ],
+        },
+      });
+    helper(
+      "wide",
+      { model: undefined, pickedEffortModel: "claude-opus-5-5" },
+      (l) => {
+        const answers = l.filter(
+          (x) => (JSON.parse(x) as { type?: string }).type === "assistant",
+        );
+        const rest = l.filter(
+          (x) => (JSON.parse(x) as { type?: string }).type !== "assistant",
+        );
+        return [
+          ...rest,
+          big("2026-11-12T09:00:01.000Z"),
+          big("2026-11-12T09:00:02.000Z"),
+          ...answers.map((a) =>
+            a.split("claude-sonnet-5-5").join("claude-haiku-5-5"),
+          ),
+          big("2026-11-12T09:00:03.000Z"),
+          big("2026-11-12T09:00:04.000Z"),
+        ];
+      },
+    );
+    expect(one("wide").model).toBe("claude-haiku-5-5");
+  });
+
   it("a helper's helpers: parentId and depth", () => {
     helper("top", {});
     helper("kid", { spawnDepth: 2, parentAgentId: "top" });

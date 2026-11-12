@@ -47,6 +47,7 @@ const CSS = `
 .rd-dlg[data-state="back"] .rd-spin{animation:none;border-color:var(--ok)}
 .rd-slow code{font-family:var(--mono);font-size:12px}
 .rd-acts{display:flex;gap:8px;justify-content:flex-end}
+.rd-dlg [hidden]{display:none}
 @keyframes rd-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion: reduce){.rd-spin{animation:none}}
 `;

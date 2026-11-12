@@ -34,6 +34,15 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **A big helper shows the model it ran on.** A helper with big tool
+  results at both ends of its transcript (one reading many files) showed
+  its agent's model, not its own. Den read only 64 KB at each end and
+  then fell back to the model Claude Code had picked for the agent. Now
+  it scans for the helper's first answer, once, and never falls back to
+  that pick.
+- **Restart Den's Keep waiting shows only when it should.** It showed
+  from the first second. It now appears only after
+  `ui.restart_wait_seconds`, with the command line.
 - **Import right after Den stopped an agent (D72).** Stopping an agent
   writes a last line to its conversation. Stop, remove and import within
   a minute was refused as "still open in another terminal". A write that

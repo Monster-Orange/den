@@ -116,6 +116,57 @@ function modelOf(m: Record<string, unknown>): string | undefined {
   return v && !v.startsWith("<") ? v : undefined;
 }
 
+/** How much a model scan reads at a time (at most VIEW_BYTES in all). */
+const SCAN_CHUNK = 256 * 1024;
+/** A helper's first model never changes: each file's, once found. */
+const FIRST_MODEL = new Map<string, string>();
+const FIRST_MODEL_MAX = 2048;
+
+/**
+ * The model of the first answer in `file` from byte `from` on (whole
+ * lines), read a chunk at a time up to VIEW_BYTES. For a helper whose
+ * ends hold no answer: big tool results at both ends (0.4.36-dev.0 gate).
+ */
+function firstModel(file: string, from: number): string | undefined {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(file, "r");
+    const size = fs.fstatSync(fd).size;
+    const buf = Buffer.alloc(SCAN_CHUNK);
+    let carry = "";
+    let pos = from;
+    let first = from > 0;
+    while (pos < size && pos - from < VIEW_BYTES) {
+      const n = fs.readSync(fd, buf, 0, SCAN_CHUNK, pos);
+      if (n <= 0) break;
+      pos += n;
+      const lines = (carry + buf.subarray(0, n).toString("utf-8")).split("\n");
+      carry = lines.pop() ?? "";
+      if (first) {
+        lines.shift(); // a cut line
+        first = false;
+      }
+      for (const l of lines) {
+        if (!l.includes('"assistant"')) continue;
+        try {
+          const e = obj(JSON.parse(l));
+          const m = e && e.type === "assistant" ? obj(e.message) : null;
+          const v = m ? modelOf(m) : undefined;
+          if (v) return v;
+        } catch {
+          /* not JSON: skipped */
+        }
+      }
+      if (carry.length > MAX_LINE) carry = "";
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
 /** What the ends of a helper's file say: when, the model, the last entry. */
 function fileEnds(file: string): {
   startedAt?: number;
@@ -181,6 +232,17 @@ function fileEnds(file: string): {
         break;
       }
     }
+  // Neither end holds an answer: its first one, found once and kept.
+  if (!model && size > END_BYTES) {
+    model = FIRST_MODEL.get(file);
+    if (!model) {
+      model = firstModel(file, 0);
+      if (model) {
+        if (FIRST_MODEL.size >= FIRST_MODEL_MAX) FIRST_MODEL.clear();
+        FIRST_MODEL.set(file, model);
+      }
+    }
+  }
   return { startedAt, lastAt, model, endTurn, lastTool, mtime };
 }
 
@@ -443,20 +505,11 @@ function readAll(transcript: string, opts: ReadHelpersOptions): Helper[] {
         ? { description: str(meta.description, 200) ?? w?.label }
         : {}),
       ...(str(meta.agentType, 120) ? { type: str(meta.agentType, 120) } : {}),
-      // The model it ran on: its transcript's first. Claude Code can write
-      // pickedEffortModel as the agent's own model when a forced subagent
-      // model (den#3) ran it on another: that one comes last.
-      ...((ends.model ??
-      str(meta.model, 80) ??
-      w?.model ??
-      str(meta.pickedEffortModel, 80))
-        ? {
-            model:
-              ends.model ??
-              str(meta.model, 80) ??
-              w?.model ??
-              str(meta.pickedEffortModel, 80),
-          }
+      // The model it ran on: its transcript's. Never the meta's
+      // pickedEffortModel: Claude Code writes the agent's own model there
+      // when a forced subagent model (den#3) ran it on another.
+      ...((ends.model ?? str(meta.model, 80) ?? w?.model)
+        ? { model: ends.model ?? str(meta.model, 80) ?? w?.model }
         : {}),
       ...(str(meta.worktreeBranch, 200)
         ? { branch: str(meta.worktreeBranch, 200) }
