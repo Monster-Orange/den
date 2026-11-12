@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.32] - unreleased
+## [0.4.32] - 2026-11-12
 
 ### Added
 
@@ -78,7 +78,7 @@ config and manifest changes a distribution must make to move to it under
 
 - None needed.
 
-## [0.4.31] - unreleased
+## [0.4.31] - 2026-11-12
 
 ### Changed
 
