@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.33] - unreleased
+## [0.4.33] - 2026-11-12
 
 ### Fixed
 
@@ -20,7 +20,7 @@ config and manifest changes a distribution must make to move to it under
   other. A lone view always sizes it, and when the view in use closes,
   the one left takes over.
 
-## [0.4.32] - unreleased
+## [0.4.32] - 2026-11-12
 
 ### Added
 
@@ -94,7 +94,7 @@ config and manifest changes a distribution must make to move to it under
 
 - None needed.
 
-## [0.4.31] - unreleased
+## [0.4.31] - 2026-11-12
 
 ### Changed
 
