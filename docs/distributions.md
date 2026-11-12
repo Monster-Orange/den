@@ -3263,6 +3263,22 @@ them and moves to the first. Agents whose persona is `standing: true`, or
 has `resume_on_restart: true`, resume on their own when the web server
 starts.
 
+**One agent's own setting.** In an agent's ⋯ menu, **Resume after a
+restart** turns this on or off for that agent only, over its persona's.
+Until you set it, the menu shows the persona's setting, tagged
+"persona's". From the CLI:
+
+```sh
+<cli> agents set <id> resume_on_restart on    # or off, or default (the persona's)
+```
+
+Only a person can change it, never an agent.
+
+**The same permission mode on every resume.** An agent resumes in the
+mode it started in: from its Resume button, from Resume all, and on its
+own after a restart. Changing its persona's mode, or the workspace's,
+later changes only the agents that start after that.
+
 **Removed on their own.** Stopped agents can go after a while:
 
 ```yaml

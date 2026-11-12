@@ -140,6 +140,7 @@ import {
   relaunchAgent,
   resumeOrRelaunch,
   keepAgentConversation,
+  setAgentResumeOnRestart,
   clearAgentHelpers,
   askForHandoff,
   rotationChoices,
@@ -186,7 +187,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|handoff|clear-helpers))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|handoff|clear-helpers))?$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -557,6 +558,7 @@ export async function handleAgentRoutes(
     | "paths"
     | "persona"
     | "keep"
+    | "settings"
     | "handoff"
     | "clear-helpers"
     | undefined;
@@ -646,6 +648,11 @@ export async function handleAgentRoutes(
         "only a person can keep an agent's conversation past its rotation",
         { status: 403 },
       );
+    // D59: an agent could keep itself running across every restart.
+    if (verb === "settings" && (agent || actor))
+      throw new AgentError("only a person can change an agent's settings", {
+        status: 403,
+      });
     // D34: clearing what a person sees is a person's.
     if (verb === "clear-helpers" && (agent || actor))
       throw new AgentError("only a person can clear an agent's helpers", {
@@ -746,6 +753,24 @@ export async function handleAgentRoutes(
       what = `keep ${rec.id}'s conversation in ${ws}${body.never ? " (never rotate)" : ""}`;
       audit(what);
       sendJson(res, { ok: true, agent: rec.id, never: body.never === true });
+    } else if (verb === "settings") {
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "resumeOnRestart")
+          throw new AgentError(
+            `${k}: unknown field (settings takes resumeOnRestart)`,
+            { usage: true },
+          );
+      const v = body.resumeOnRestart;
+      if (v !== null && typeof v !== "boolean")
+        throw new AgentError(
+          "resumeOnRestart must be true, false or null (its persona's)",
+          { usage: true },
+        );
+      const rec = setAgentResumeOnRestart(d, id!, ws, v);
+      what = `set ${rec.id}'s resume after a restart to ${v === null ? "its persona's" : v ? "on" : "off"} in ${ws}`;
+      audit(what);
+      sendJson(res, { ok: true, agent: rec.id, resumeOnRestart: v });
     } else if (verb === "clear-helpers") {
       const body = await jsonBody(req);
       for (const k of Object.keys(body))

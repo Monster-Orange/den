@@ -141,6 +141,8 @@ describe("agents start", () => {
         "subagents",
         // D24: the name its Claude session was given, for peers.
         "peerName",
+        // den#48: the mode it started in, for every resume.
+        "permission",
       ].sort(),
     );
     expect(rec).toMatchObject({

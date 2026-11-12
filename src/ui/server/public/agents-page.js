@@ -179,6 +179,8 @@ const st = {
   // D40: the pane whose terminal takes the keyboard once its socket opens,
   // and the one whose terminal last had it.
   focusOnOpen: null,
+  // D58: whether that focus is a link's: only for a keyboard on nothing yet.
+  focusIfIdle: false,
   // D54/D58: whether that pick also sizes the PTY (a pick from the list
   // does; a link that opens the page only puts the keyboard there).
   claimOnOpen: false,
@@ -1144,15 +1146,22 @@ function setLayout(layout) {
  * when its socket is open, else when it opens (connect). Never a pane
  * whose session ended.
  */
-function focusTerm(id, claim = true) {
+function focusTerm(id, claim = true, { ifIdle = false } = {}) {
   const p = st.panes.get(id);
   if (!p || p.exited || p.closed) return;
   st.claimOnOpen = claim;
+  st.focusIfIdle = ifIdle;
   if (p.term && p.sock?.readyState === WebSocket.OPEN && p.heardSession) {
     st.focusOnOpen = null;
-    // After the click that picked it has finished with the row.
+    // After the click that picked it has finished with the row; never
+    // over a field the person went to since (a double-click's rename).
+    const idle = st.focusIfIdle;
+    st.focusIfIdle = false;
     requestAnimationFrame(() => {
-      if (!p.closed && !p.exited) p.term?.focus();
+      if (p.closed || p.exited || inField()) return;
+      // D58: a link's focus is only for a keyboard that went nowhere yet.
+      if (idle && !keyboardIdle()) return;
+      p.term?.focus();
     });
   } else st.focusOnOpen = id;
 }
@@ -1224,10 +1233,27 @@ function addFocus(back, id) {
 }
 
 /** Double-click a tab: its name becomes an input (Enter saves, Esc doesn't). */
+/** Whether the keyboard is still on nothing (the page as it loaded). */
+function keyboardIdle() {
+  const a = document.activeElement;
+  return !a || a === document.body || a === document.documentElement;
+}
+
+/** Whether the keyboard is in a field on the page (not a terminal's). */
+function inField() {
+  const a = document.activeElement;
+  return !!a?.matches?.(
+    'input, select, textarea:not(.xterm-helper-textarea), [contenteditable="true"]',
+  );
+}
+
 function renameTab(tab) {
   const id = tab.dataset.id;
   const r = rowOf(id);
   if (r?.kind !== "agent" || tab.querySelector("input")) return;
+  // D58: the clicks of this double-click picked the tab: their terminal
+  // focus, still to come, is for this field now.
+  if (st.focusOnOpen === id) st.focusOnOpen = null;
   const input = document.createElement("input");
   input.type = "text";
   input.className = "agtab-in";
@@ -1642,7 +1668,7 @@ async function connect(p) {
         // that has ended.
         if (st.focusOnOpen === p.id) {
           if (p.exited) st.focusOnOpen = null;
-          else focusTerm(p.id);
+          else focusTerm(p.id, st.claimOnOpen, { ifIdle: st.focusIfIdle });
         }
       } else if (msg?.type === "viewers") {
         // D54: the view that sized the PTY went away: this one, alone now,
@@ -2092,6 +2118,32 @@ async function writeHandoff(r, button) {
     if (/mid-turn/.test(String(err?.message ?? "")))
       window.denShell?.toast?.(t("ag.rc.midTurn", { id: r.agent }));
     else window.denShell?.errorToast?.(err);
+  }
+  await refresh();
+}
+
+/**
+ * D59: "Resume after a restart", a check in an agent's ⋯ (its persona's,
+ * tagged "default", until a person sets it).
+ */
+function restartResumeItem(r) {
+  const on = !!r.resumesOnRestart;
+  return {
+    label: t("ag.rr.item"),
+    checked: on,
+    ...(r.resumeOnRestart === undefined ? { tag: t("ag.rr.default") } : {}),
+    onSelect: () => void setRestartResume(r, !on),
+  };
+}
+
+async function setRestartResume(r, on) {
+  try {
+    await api("POST", agentPath(r, "settings"), { resumeOnRestart: on });
+    window.denShell?.toast?.(
+      t(on ? "ag.rr.on" : "ag.rr.off", { id: displayName(r) }),
+    );
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
   }
   await refresh();
 }
@@ -3407,6 +3459,7 @@ function stoppedMenuItems(r, opener) {
           },
         ]
       : []),
+    restartResumeItem(r),
     { label: t("ag.remove"), onSelect: () => void removeRow(r, opener) },
   ];
 }
@@ -3749,7 +3802,10 @@ export async function mountAgentsPage(root) {
           // double-click on a tab). D37: a running agent's only.
           ...(isStopped(r)
             ? stoppedMenuItems(r, b)
-            : [{ label: t("ag.rn.item"), onSelect: () => openRename(r, b) }]),
+            : [
+                { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
+                restartResumeItem(r),
+              ]),
           // D28: its rotation settings and where each comes from.
           {
             label: t("ag.rc.menu"),
@@ -3858,7 +3914,7 @@ export async function mountAgentsPage(root) {
   // its terminal. Never its size: that is the person's typing (D54).
   const front = st.cur && st.open.includes(st.cur) ? st.cur : st.open.at(-1);
   if (wanted.length && front && !isStopped(rowOf(front) ?? {}))
-    focusTerm(front, false);
+    focusTerm(front, false, { ifIdle: true });
   writeUrl();
   if (startAsked) void openStart();
 }

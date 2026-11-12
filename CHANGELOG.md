@@ -21,6 +21,12 @@ config and manifest changes a distribution must make to move to it under
   names none, over their persona's (`<ws>.agents.permission` in
   config/local/workspaces.yml). Start picks it first and says so. No mode
   shows it; `--clear` removes it. A person's command only.
+- **Resume after a restart, per agent (D59).** An agent's ⋯ menu has
+  "Resume after a restart": on, the agent resumes on its own when Den
+  restarts; off, it waits for your click. Until you set it, the agent
+  follows its persona (standing personas resume; others wait). From the
+  CLI: `<cli> agents set <id> resume_on_restart on|off|default`. A
+  person's setting only.
 - **`agents doctor`** now lists the permission modes, what each one means,
   whether this Claude Code takes auto, and (with `-w`) the workspace's
   mode.
@@ -34,6 +40,17 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **An agent keeps its permission mode on every resume.** An agent that
+  took its persona's mode resumed in whatever that mode was at the time,
+  so a persona or workspace changed later changed it too. Den now records
+  the mode an agent starts in, and every resume uses it: a click, Resume
+  all, and the resume on its own after a restart.
+- **A link to an agent no longer takes the keyboard back.** When a page
+  opened from a link and you moved to the list before the terminal
+  connected, the terminal took the keyboard from where you went.
+- **Double-clicking an agent's tab renames it again.** The click that
+  picked the tab moved the keyboard to its terminal just after the name
+  field opened, and the field closed.
 - **A window opened from an agent's link no longer takes its size.** With
   a real Claude Code, a second window opened on the same agent sized the
   terminal to itself at once, and the first window redrew. Claude Code

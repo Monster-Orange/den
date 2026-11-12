@@ -647,6 +647,10 @@
     "ag.rc.mode.ask": "ask",
     "ag.rc.mode.off": "nothing",
     "ag.rc.menu": "Rotation settings",
+    "ag.rr.item": "Resume after a restart",
+    "ag.rr.default": "persona's",
+    "ag.rr.on": "{id} resumes on its own after a restart",
+    "ag.rr.off": "{id} stays stopped after a restart",
     "ag.rc.noState": "No rotation yet: it counts from its next start.",
     "ag.rc.asked": "Asked {id} for its handoff",
     "ag.rc.askedRelaunch":

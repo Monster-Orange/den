@@ -397,6 +397,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/workspaces/:ws/agents/:id/settings",
+    "D59 an agent's own settings (resumeOnRestart: on, off, or null for its persona's); a person's only",
+  ),
+  M(
+    ["POST"],
     "/api/workspaces/:ws/agents/:id/clear-helpers",
     "D34 Clear done: hides an agent's finished helpers (a mark in its files; Claude Code's are never touched); a person's only",
   ),
@@ -566,6 +571,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/paths",
     "/api/workspaces/:ws/agents/:id/persona",
     "/api/workspaces/:ws/agents/:id/keep",
+    "/api/workspaces/:ws/agents/:id/settings",
     "/api/workspaces/:ws/agents/:id/handoff",
     "/api/workspaces/:ws/agents/:id/clear-helpers",
   ],

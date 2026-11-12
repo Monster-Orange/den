@@ -676,6 +676,10 @@ export interface AgentRow {
   interruptedAt?: string;
   /** Its persona resumes on its own after a restart (AG-14.3). */
   autoResume?: boolean;
+  /** D59: this agent's own "Resume after a restart" (unset: its persona's). */
+  resumeOnRestart?: boolean;
+  /** D59: whether it resumes on its own after a restart, all told. */
+  resumesOnRestart?: boolean;
   outcome?: AgentRecord["outcome"];
   usage?: AgentRecord["usage"];
   /**
@@ -829,6 +833,9 @@ function recordFields(rec: AgentRecord): Partial<AgentRow> {
     ...(rec.permission ? { permission: rec.permission } : {}),
     ...(rec.allow ? { allow: [...rec.allow] } : {}),
     ...(rec.overrides?.length ? { overrides: [...rec.overrides] } : {}),
+    ...(rec.resumeOnRestart !== undefined
+      ? { resumeOnRestart: rec.resumeOnRestart }
+      : {}),
     ...newerOf(rec),
     workspace: rec.workspace,
     cwd: rec.cwd,
@@ -906,7 +913,53 @@ export async function listAgents(
   noteEnded(d.stateDir(), sessions, records);
   const rows = agentRows(sessions, records, d.stateDir(), policyResolver(d));
   addHelperCounts(d, rows, records);
+  addRestartResume(d, rows, records);
   return opts.stopped ? rows.filter((r) => isStoppedState(r.state)) : rows;
+}
+
+/** D59: whether each agent resumes on its own after a restart. */
+function addRestartResume(
+  d: AgentsResolved,
+  rows: AgentRow[],
+  records: AgentRecord[],
+): void {
+  const of = restartResolver(d);
+  const byId = new Map(records.map((r) => [r.id, r]));
+  for (const row of rows) {
+    const rec = byId.get(row.agent);
+    if (rec) row.resumesOnRestart = of(rec);
+  }
+}
+
+/**
+ * D59: whether an agent resumes on its own after a restart, the personas
+ * read once (one resolver per list).
+ */
+export function restartResolver(
+  d: AgentsResolved,
+): (rec: AgentRecord) => boolean {
+  let all: Map<string, Persona> | undefined;
+  try {
+    all = personas(d, agentsConfig(d));
+  } catch {
+    all = undefined;
+  }
+  return (rec) => resumesOnRestart(rec, personaOfRecord(rec, all));
+}
+
+function personaOfRecord(
+  rec: AgentRecord,
+  all: Map<string, Persona> | undefined,
+): Persona | undefined {
+  return isServerScope(rec.workspace) ? serverPersona() : all?.get(rec.persona);
+}
+
+/**
+ * D59: the agent's own setting, over its persona's (`resume_on_restart`,
+ * or a standing persona's). Off by default.
+ */
+export function resumesOnRestart(rec: AgentRecord, p?: Persona): boolean {
+  return rec.resumeOnRestart ?? Boolean(p && (p.standing || p.resumeOnRestart));
 }
 
 /** D32: agents.helpers, or its defaults when the config can't be read. */
@@ -2182,6 +2235,11 @@ function startChoices(
     permission = wsPermission;
     if (permission !== intentOf(persona.permissionMode))
       overrides.push("permission");
+  } else if (rt.permissions) {
+    // den#48: the persona's mode, recorded, so every resume (a click,
+    // Resume all, after a restart) runs in the mode it started in, even
+    // when the persona or the workspace changes later.
+    permission = intentOf(persona.permissionMode);
   }
   let extras = persona.allowedCommands;
   if (req.allow !== undefined) {
@@ -3493,10 +3551,8 @@ export async function markInterrupted(
     return found;
   }
   for (const rec of marked) {
-    const p = isServerScope(rec.workspace)
-      ? serverPersona()
-      : all.get(rec.persona);
-    if (!p || !(p.standing || p.resumeOnRestart)) continue;
+    const p = personaOfRecord(rec, all);
+    if (!p || !resumesOnRestart(rec, p)) continue;
     if (resumeRefusal(rec)) continue;
     try {
       // den#4: a rotated one relaunches from its handoff instead.
@@ -3825,6 +3881,24 @@ export async function rotationTick(
  * `never`: also this agent's override after_compactions never ("don't ask
  * again for this agent").
  */
+/**
+ * D59: whether agent `id` resumes on its own after a restart: on, off, or
+ * null for its persona's (`resume_on_restart`, `standing`).
+ */
+export function setAgentResumeOnRestart(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+  value: boolean | null,
+): AgentRecord {
+  const rec = agentRecord(d, id, ws);
+  const next = { ...rec };
+  if (value === null) delete next.resumeOnRestart;
+  else next.resumeOnRestart = value;
+  writeRecord(d.stateDir(), next);
+  return next;
+}
+
 export function keepAgentConversation(
   d: AgentsResolved,
   id: string,

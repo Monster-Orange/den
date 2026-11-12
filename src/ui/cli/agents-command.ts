@@ -95,6 +95,7 @@ import {
   relaunchAgent,
   resumeOrRelaunch,
   keepAgentConversation,
+  setAgentResumeOnRestart,
   askForHandoff,
   rotationSettings,
   setRotationSetting,
@@ -187,6 +188,9 @@ export const AGENTS_HELP = {
     "{cli} agents keep <id> [-w <ws>] [--never]",
     "    keep its conversation: the compaction count starts again; --never: this",
     "    agent never rotates. A person's only",
+    "{cli} agents set <id> [-w <ws>] resume_on_restart on|off|default",
+    "    whether it resumes on its own after a restart (default: its persona's;",
+    "    a standing persona's is on). A person's only",
     "{cli} agents handoff <id> [-w <ws>]",
     "    ask a running agent, at idle, to write its handoff",
     "{cli} agents helpers <id> [-w <ws>] [--all] [--json]",
@@ -795,6 +799,30 @@ function keep(args: string[], d: AgentsResolved): number {
   return 0;
 }
 
+/** `agents set <id> [-w <ws>] resume_on_restart on|off|default` (D59). */
+function setAgent(args: string[], d: AgentsResolved): number {
+  const where = "agents set";
+  personOnly(where, d);
+  const at = args.indexOf("resume_on_restart");
+  const raw = at >= 0 ? args[at + 1] : undefined;
+  if (at < 0 || !raw || !["on", "off", "default"].includes(raw))
+    throw new AgentError(`${where}: takes resume_on_restart on|off|default`, {
+      usage: true,
+    });
+  const { id, ws } = idAndWorkspace(where, [
+    ...args.slice(0, at),
+    ...args.slice(at + 2),
+  ]);
+  const value = raw === "default" ? null : raw === "on";
+  const rec = setAgentResumeOnRestart(d, id, ws, value);
+  d.out(
+    value === null
+      ? `${rec.id} resumes after a restart as its persona says`
+      : `${rec.id} ${value ? "resumes" : "doesn't resume"} on its own after a restart`,
+  );
+  return 0;
+}
+
 /** `agents handoff <id> [-w <ws>]` (D28 Write handoff). */
 async function handoff(args: string[], d: AgentsResolved): Promise<number> {
   const { id, ws } = idAndWorkspace("agents handoff", args);
@@ -1262,6 +1290,8 @@ export async function cmdAgents(
           return await rotate(rest, d);
         case "keep":
           return keep(rest, d);
+        case "set":
+          return setAgent(rest, d);
         case "handoff":
           await loadAgentWorkspaces(deps);
           return await handoff(rest, d);

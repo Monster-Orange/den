@@ -139,6 +139,8 @@ const acts = (p: Page, id: string) =>
     .locator(".agacts [data-act]")
     .evaluateAll((bs) => bs.map((b) => (b as HTMLElement).dataset.act));
 
+const RR = "Resume after a restart";
+
 /** The ⋯ menu of a stopped row: its items' names. */
 async function menuOf(p: Page, id: string): Promise<string[]> {
   await row(p, id).locator('[data-act="row-more"]').click();
@@ -158,7 +160,12 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     const p = await open("north");
     expect(await row(p, "scout").getAttribute("data-state")).toBe("stopped");
     expect(await acts(p, "scout")).toEqual(["resume", "row-more"]);
-    expect(await menuOf(p, "scout")).toEqual(["Start fresh", "Remove"]);
+    expect(await menuOf(p, "scout")).toEqual([
+      "Start fresh",
+      // D59: off, its persona's (tagged so).
+      `${RR}persona's`,
+      "Remove",
+    ]);
     expect(
       (await row(p, "scout").locator(".stchip").textContent())?.trim(),
     ).toBe("Stopped");
@@ -215,11 +222,48 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     await p.context().close();
   }, 60_000);
 
+  it("D59: Resume after a restart, in ⋯: a check that sets this agent's own, over its persona's", async () => {
+    if (skip()) return;
+    const p = await open("north");
+    const rec = () =>
+      JSON.parse(
+        fs.readFileSync(
+          path.join(s!.stateDir, "agents", "scout.json"),
+          "utf-8",
+        ),
+      ) as Record<string, unknown>;
+    const item = () =>
+      p.locator('.den-pop[role="menu"] .den-mi', { hasText: RR });
+    await row(p, "scout").locator('[data-act="row-more"]').click();
+    expect(await item().getAttribute("aria-checked")).toBe("false");
+    await item().click();
+    for (let i = 0; i < 50 && rec().resumeOnRestart !== true; i++)
+      await p.waitForTimeout(100);
+    expect(rec().resumeOnRestart).toBe(true);
+    // Its own now: checked, no "persona's" tag.
+    await p.waitForFunction(() => !document.querySelector(".den-pop"));
+    for (let i = 0; i < 50; i++) {
+      await row(p, "scout").locator('[data-act="row-more"]').click();
+      await item().waitFor();
+      if ((await item().getAttribute("aria-checked")) === "true") break;
+      await p.keyboard.press("Escape");
+      await p.waitForTimeout(100);
+    }
+    expect(await item().getAttribute("aria-checked")).toBe("true");
+    expect((await item().textContent())?.trim()).toBe(RR);
+    // Off again.
+    await item().click();
+    for (let i = 0; i < 50 && rec().resumeOnRestart !== false; i++)
+      await p.waitForTimeout(100);
+    expect(rec().resumeOnRestart).toBe(false);
+    await p.context().close();
+  }, 60_000);
+
   it("a runtime that can't resume offers Start fresh, and says why in its tooltip", async () => {
     if (skip()) return;
     const p = await open("north");
     expect(await acts(p, "lookout")).toEqual(["fresh", "row-more"]);
-    expect(await menuOf(p, "lookout")).toEqual(["Remove"]);
+    expect(await menuOf(p, "lookout")).toEqual([`${RR}persona's`, "Remove"]);
     expect(
       await row(p, "lookout").locator(".agr").getAttribute("title"),
     ).toContain("codex can't resume a conversation");

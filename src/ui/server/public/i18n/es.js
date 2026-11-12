@@ -525,6 +525,10 @@
     "ag.rc.mode.ask": "preguntar",
     "ag.rc.mode.off": "nada",
     "ag.rc.menu": "Ajustes de rotación",
+    "ag.rr.item": "Reanudar tras un reinicio",
+    "ag.rr.default": "del perfil",
+    "ag.rr.on": "{id} se reanuda solo tras un reinicio",
+    "ag.rr.off": "{id} queda detenido tras un reinicio",
     "ag.rc.noState": "Aún no rota: cuenta desde su próximo inicio.",
     "ag.rc.asked": "Se pidió a {id} su traspaso",
     "ag.rc.askedRelaunch":

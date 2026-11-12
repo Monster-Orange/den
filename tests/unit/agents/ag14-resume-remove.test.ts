@@ -251,6 +251,98 @@ describe("after a restart (AG-14.3)", () => {
     for (const p of resumed) expect(p.args[0]).toBe("--resume");
   });
 
+  it("D59: an agent's own Resume after a restart is over its persona's; default goes back to the persona's", async () => {
+    const r = await rig();
+    persona(r, "planner", "standing: true\n");
+    persona(r, "reviewer", "");
+    for (const id of ["planner", "reviewer"]) {
+      expect(await agents(r, "start", "-w", "north", "--persona", id)).toBe(0);
+      await typeInto(r, id, "go\r");
+    }
+    let rows = await listRows(r, "north");
+    const of = (id: string) => rows.find((x) => x.agent === id)!;
+    expect(of("planner").resumesOnRestart).toBe(true);
+    expect(of("reviewer").resumesOnRestart).toBe(false);
+    expect(of("reviewer").resumeOnRestart).toBeUndefined();
+    expect(await agents(r, "set", "reviewer", "resume_on_restart", "on")).toBe(
+      0,
+    );
+    expect(
+      await agents(
+        r,
+        "set",
+        "planner",
+        "-w",
+        "north",
+        "resume_on_restart",
+        "off",
+      ),
+    ).toBe(0);
+    rows = await listRows(r, "north");
+    expect(of("reviewer")).toMatchObject({
+      resumeOnRestart: true,
+      resumesOnRestart: true,
+    });
+    expect(of("planner").resumesOnRestart).toBe(false);
+    await r.restartHost();
+    const found = await markInterrupted(ops(r));
+    expect(found.resumed).toEqual(["reviewer"]);
+    // Default: the persona's again (standing: on).
+    expect(
+      await agents(r, "set", "planner", "resume_on_restart", "default"),
+    ).toBe(0);
+    expect(record(r, "planner").resumeOnRestart).toBeUndefined();
+    expect(
+      (await listRows(r, "north")).find((x) => x.agent === "planner")!
+        .resumesOnRestart,
+    ).toBe(true);
+  });
+
+  it("D59: `agents set` takes only resume_on_restart on|off|default, and only from a person", async () => {
+    const r = await rig();
+    await prompted(r);
+    expect(await agents(r, "set", "planner", "resume_on_restart", "yes")).toBe(
+      2,
+    );
+    expect(await agents(r, "set", "planner", "colour", "on")).toBe(2);
+    r.deps.env = { ...r.deps.env, DEN_ACTOR_TOKEN: "x" };
+    expect(
+      await agents(r, "set", "planner", "resume_on_restart", "on"),
+    ).not.toBe(0);
+    expect(record(r, "planner").resumeOnRestart).toBeUndefined();
+  });
+
+  it("den#48: an agent resumes in the mode it started in, after its persona and workspace change, by a click, Resume all, and on its own after a restart", async () => {
+    const r = await rig();
+    persona(r, "planner", "permission_mode: auto\nstanding: true\n");
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    await typeInto(r, "planner", "go\r");
+    const modeOf = (args: string[]) =>
+      args[args.indexOf("--permission-mode") + 1];
+    expect(modeOf(r.made[0].args)).toBe("auto");
+    // Later, the persona asks and the workspace says edits.
+    persona(r, "planner", "permission_mode: ask\nstanding: true\n");
+    r.wsPermission.north = "edits";
+    // On its own after a restart of the session host.
+    await r.restartHost();
+    expect((await markInterrupted(ops(r))).resumed).toEqual(["planner"]);
+    expect(modeOf(r.made.at(-1)!.args)).toBe("auto");
+    // Resume all.
+    await r.restartHost();
+    await markInterrupted(ops(r), { autoResume: false });
+    expect(await agents(r, "resume", "--all-interrupted")).toBe(0);
+    expect(modeOf(r.made.at(-1)!.args)).toBe("auto");
+    // A click.
+    expect(await agents(r, "stop", "planner")).toBe(0);
+    r.made.at(-1)!.exit(0);
+    await settle();
+    expect(await agents(r, "resume", "planner")).toBe(0);
+    expect(r.made.at(-1)!.args[0]).toBe("--resume");
+    expect(modeOf(r.made.at(-1)!.args)).toBe("auto");
+  });
+
   it("`agents resume --all-interrupted` resumes each interrupted agent that can", async () => {
     const r = await rig();
     await prompted(r);

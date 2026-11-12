@@ -875,7 +875,7 @@ import {
   startAgentUpkeep,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
-import { policyResolver } from "../cli/agent-ops.js";
+import { policyResolver, restartResolver } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
 import {
@@ -4768,6 +4768,7 @@ async function handleRequest(
       {
         waitingAgents: waitingAgentIds,
         rotationPolicy: () => policyResolver(agentWebDeps()),
+        restartResume: () => restartResolver(agentWebDeps()),
       },
     )
   )

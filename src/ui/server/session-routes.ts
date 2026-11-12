@@ -101,6 +101,8 @@ export interface SessionRouteDeps {
   waitingAgents?: () => ReadonlySet<string>;
   /** D28: each agent's effective rotation settings (one resolver per list). */
   rotationPolicy?: () => (rec: AgentRecord) => RotationPolicy | undefined;
+  /** D59: whether each agent resumes on its own after a restart. */
+  restartResume?: () => (rec: AgentRecord) => boolean;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
 }
@@ -114,6 +116,7 @@ interface Resolved {
   pty: () => PtyLoad;
   waitingAgents: () => ReadonlySet<string>;
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
+  restartResume?: SessionRouteDeps["restartResume"];
   helperSettings: () => HelperSettings | undefined;
 }
 
@@ -155,6 +158,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     pty: d.pty ?? (() => loadPty()),
     waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
     ...(d.rotationPolicy ? { rotationPolicy: d.rotationPolicy } : {}),
+    ...(d.restartResume ? { restartResume: d.restartResume } : {}),
   };
 }
 
@@ -221,6 +225,10 @@ export interface ListedSession {
   allow?: string[];
   /** What it overrides of its persona (AG-10.9): its row's tags. */
   overrides?: Override[];
+  /** D59: its own Resume after a restart (unset: its persona's). */
+  resumeOnRestart?: boolean;
+  /** D59: whether it resumes on its own after a restart, all told. */
+  resumesOnRestart?: boolean;
   cwd?: string;
   /** running, stopping, exited (<code>), stopped, interrupted (AG-14). */
   state: string;
@@ -259,7 +267,7 @@ export function listedSessions(
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
     Partial<Pick<Resolved, "waitingAgents">> &
     Partial<Pick<Resolved, "helperSettings">> &
-    Pick<SessionRouteDeps, "rotationPolicy">,
+    Pick<SessionRouteDeps, "rotationPolicy" | "restartResume">,
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
 ): ListedSession[] {
@@ -281,6 +289,7 @@ export function listedSessions(
   const agentSessions = new Set<string>();
   noteEnded(d.stateDir(), mine, records);
   const helperSettings = d.helperSettings?.();
+  const restartOf = d.restartResume?.();
   for (const r of agentRows(
     mine,
     records,
@@ -316,6 +325,11 @@ export function listedSessions(
       ...(rec.permission ? { permission: rec.permission } : {}),
       ...(rec.allow?.length ? { allow: [...rec.allow] } : {}),
       ...(rec.overrides?.length ? { overrides: [...rec.overrides] } : {}),
+      // D59: its own Resume after a restart, and the setting all told.
+      ...(rec.resumeOnRestart !== undefined
+        ? { resumeOnRestart: rec.resumeOnRestart }
+        : {}),
+      ...(restartOf ? { resumesOnRestart: restartOf(rec) } : {}),
       cwd: rec.cwd,
       state: r.state,
       exited: !s || s.exited === true,

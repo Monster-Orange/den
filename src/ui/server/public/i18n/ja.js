@@ -507,6 +507,10 @@
     "ag.rc.mode.ask": "たずねる",
     "ag.rc.mode.off": "何もしない",
     "ag.rc.menu": "交代の設定",
+    "ag.rr.item": "再起動後に再開",
+    "ag.rr.default": "ペルソナの設定",
+    "ag.rr.on": "{id} は再起動後に自動で再開します",
+    "ag.rr.off": "{id} は再起動後も停止したままです",
     "ag.rc.noState": "まだ交代の記録がありません: 次の起動から数えます。",
     "ag.rc.asked": "{id} に引き継ぎを頼みました",
     "ag.rc.askedRelaunch":

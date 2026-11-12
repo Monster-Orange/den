@@ -93,6 +93,12 @@ export interface AgentRecord {
   /** When displayName was given (ISO 8601): the latest rename wins (AG-4b). */
   displayNameAt?: string;
   /**
+   * D59: whether it resumes on its own after a restart, set on this agent
+   * (over its persona's `resume_on_restart` and `standing`); unset: the
+   * persona's.
+   */
+  resumeOnRestart?: boolean;
+  /**
    * D24: the name Den last gave its runtime session (Claude Code's
    * `--name`, peerSessionName), so reading it back is never taken for a
    * rename.
