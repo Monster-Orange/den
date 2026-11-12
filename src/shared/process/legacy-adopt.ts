@@ -16,32 +16,24 @@
  *      that pid's group: adopted the same way.
  *   3. else the record is stale: nothing is signalled. A listener on the
  *      port from outside repoPath is reported (`busy`), never touched.
+ *   4. a lookup that never answered (D38: lsof or ps too slow on a busy
+ *      machine, after a longer retry): `unknown`. Never read as "nothing
+ *      there": `up` starts nothing and `down` keeps the record.
  *
- * Nothing here signals a process. `ps` and `lsof` run under LC_ALL=C.
+ * Nothing here signals a process. `ps` and `lsof` run under LC_ALL=C
+ * (shared/process/lookup.ts).
  */
-import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { LookupTimeoutError, lookup } from "./lookup.js";
 import type { RecordedProcessGroup } from "./process-group.js";
 
-const C_ENV = { ...process.env, LC_ALL: "C", LANG: "C" };
+const run = (cmd: string, args: string[]): string => lookup(cmd, args);
 
-function run(cmd: string, args: string[]): string | null {
-  try {
-    return execFileSync(cmd, args, {
-      env: C_ENV,
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 5000,
-    });
-  } catch (e) {
-    // lsof and ps exit 1 when nothing matches; what they printed still counts.
-    const out = (e as { stdout?: unknown }).stdout;
-    return typeof out === "string" ? out : null;
-  }
-}
-
-/** The host tools, injectable for tests of the decision alone. */
+/**
+ * The host tools, injectable for tests of the decision alone. Each throws
+ * LookupTimeoutError when its tool never answered.
+ */
 export interface LegacyProbe {
   /** Pids listening on TCP `port`. */
   listeners(port: number): number[];
@@ -60,7 +52,7 @@ export interface ProcRow {
 
 export const hostProbe: LegacyProbe = {
   listeners(port) {
-    const out = run("lsof", ["-nP", `-tiTCP:${port}`, "-sTCP:LISTEN"]) ?? "";
+    const out = run("lsof", ["-nP", `-tiTCP:${port}`, "-sTCP:LISTEN"]);
     return out
       .split("\n")
       .map((l) => Number(l.trim()))
@@ -68,14 +60,14 @@ export const hostProbe: LegacyProbe = {
   },
   cwd(pid) {
     const out = run("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"]);
-    const line = out?.split("\n").find((l) => l.startsWith("n"));
+    const line = out.split("\n").find((l) => l.startsWith("n"));
     return line ? line.slice(1) : null;
   },
   processes() {
     // lstart is five words in the C locale: "Thu Nov  5 10:00:00 2026".
     const out = run("ps", ["-A", "-o", "pid=,pgid=,stat=,lstart=,command="]);
     const rows: ProcRow[] = [];
-    for (const line of (out ?? "").split("\n")) {
+    for (const line of out.split("\n")) {
       const m = line
         .trim()
         .match(
@@ -194,7 +186,26 @@ export type LegacyVerdict =
       kind: "stale";
       /** A listener on the port Den won't adopt: left alone. */
       busy?: LegacyBusy;
+    }
+  | {
+      /** D38: a lookup never answered: couldn't tell what runs. */
+      kind: "unknown";
+      /** "lsof took too long to answer". */
+      why: string;
+      port: number | null;
     };
+
+/** What a caller says for an `unknown` verdict. */
+export function unknownText(
+  v: { why: string; port: number | null },
+  address: string,
+): string {
+  return (
+    `couldn't tell whether ${address} is running` +
+    (v.port ? ` (port ${v.port})` : "") +
+    `: ${v.why}`
+  );
+}
 
 /**
  * A listener on the service's port that is not adopted: its cwd is outside
@@ -250,6 +261,19 @@ export function adoptLegacyProcess(
     upCommand: string | null;
   },
   probe: LegacyProbe = hostProbe,
+): LegacyVerdict {
+  try {
+    return decide(rec, probe);
+  } catch (e) {
+    if (e instanceof LookupTimeoutError)
+      return { kind: "unknown", why: e.message, port: rec.port };
+    throw e;
+  }
+}
+
+function decide(
+  rec: Parameters<typeof adoptLegacyProcess>[0],
+  probe: LegacyProbe,
 ): LegacyVerdict {
   let rows: ProcRow[] | null = null;
   const procs = (): ProcRow[] => (rows ??= probe.processes());

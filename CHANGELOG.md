@@ -4,6 +4,20 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.36] - unreleased
+
+### Fixed
+
+- **A slow process lookup is "couldn't tell", never "nothing there"
+  (D38).** On a busy machine `lsof` or `ps` could time out, and Den read
+  the silence as no process: it could adopt the wrong one, or drop a
+  service's record while it still ran. Every lookup now goes through one
+  helper that tries again with a longer limit (`DEN_LOOKUP_TIMEOUTS_MS`,
+  default 5 s then 20 s). If it still can't tell, `up` starts nothing,
+  `down` keeps the record and stops nothing, each says it couldn't tell,
+  and the command exits 1. The web server's identity check and process
+  groups use the same helper.
+
 ## [0.4.35] - unreleased
 
 ### Security

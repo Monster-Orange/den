@@ -82,3 +82,38 @@ describe("classifyServerInfo", () => {
     );
   });
 });
+
+describe("processCwd when lsof never answers in time (D38)", () => {
+  it("is null (unknown), never a throw or another folder", async () => {
+    const { execFileSync } = await import("child_process");
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const { processCwd } =
+      await import("../../../src/ui/cli/server-identity.js");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-cwd-slow-"));
+    const real = execFileSync("sh", ["-c", "command -v lsof"], {
+      encoding: "utf-8",
+    }).trim();
+    fs.writeFileSync(
+      path.join(dir, "lsof"),
+      `#!/bin/sh\nsleep 1\nexec ${real} "$@"\n`,
+      { mode: 0o755 },
+    );
+    const saved = {
+      P: process.env.PATH,
+      T: process.env.DEN_LOOKUP_TIMEOUTS_MS,
+    };
+    try {
+      expect(processCwd(process.pid)).toBe(process.cwd());
+      process.env.PATH = `${dir}${path.delimiter}${saved.P ?? ""}`;
+      process.env.DEN_LOOKUP_TIMEOUTS_MS = "200,300";
+      expect(processCwd(process.pid)).toBeNull();
+    } finally {
+      process.env.PATH = saved.P;
+      if (saved.T === undefined) delete process.env.DEN_LOOKUP_TIMEOUTS_MS;
+      else process.env.DEN_LOOKUP_TIMEOUTS_MS = saved.T;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+});

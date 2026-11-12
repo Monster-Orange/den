@@ -13,12 +13,11 @@
  * runs with its distribution root as its working directory (`web up` and
  * the launchd service both start it there), so that decides instead.
  */
-import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
-import { CLI_SPAWN_TIMEOUT_MS } from "../../shared/constants.js";
 import { getDistRoot } from "../../shared/paths.js";
+import { LookupError, lookup } from "../../shared/process/lookup.js";
 import { product } from "../../shared/product.js";
 
 /** The distribution a command acts for. */
@@ -63,14 +62,20 @@ export function samePath(a: string, b: string): boolean {
   return canonical(a) === canonical(b);
 }
 
-/** A process's working directory (lsof), or null when it can't be read. */
+/**
+ * A process's working directory (lsof), or null when it can't be read:
+ * none, or lsof never answered (D38: shared/process/lookup.ts retries a
+ * slow one first). Null never claims a server as ours.
+ */
 export function processCwd(pid: number): string | null {
-  const r = spawnSync("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"], {
-    encoding: "utf-8",
-    timeout: CLI_SPAWN_TIMEOUT_MS,
-  });
-  if (r.status !== 0 || typeof r.stdout !== "string") return null;
-  const line = r.stdout.split(/\r?\n/).find((l) => l.startsWith("n"));
+  let out: string;
+  try {
+    out = lookup("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"]);
+  } catch (e) {
+    if (e instanceof LookupError) return null;
+    throw e;
+  }
+  const line = out.split(/\r?\n/).find((l) => l.startsWith("n"));
   return line ? line.slice(1) : null;
 }
 

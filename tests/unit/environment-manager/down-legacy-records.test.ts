@@ -411,6 +411,87 @@ describe("the service's port held by a process outside the repo", () => {
   });
 });
 
+// D38: lsof never answers in time (a busy machine). A timed-out lookup was
+// read as "no process": up started a second copy, down dropped the record.
+// Now it is "couldn't tell": nothing started, nothing dropped or signalled.
+describe("lsof never answers in time (D38)", () => {
+  const slowBin = path.join(tmp, "slow-bin");
+  const realLsof = execFileSync("sh", ["-c", "command -v lsof"], {
+    encoding: "utf-8",
+  }).trim();
+  fs.mkdirSync(slowBin, { recursive: true });
+  fs.writeFileSync(
+    path.join(slowBin, "lsof"),
+    `#!/bin/sh\nsleep 1\nexec ${realLsof} "$@"\n`,
+    { mode: 0o755 },
+  );
+  const saved = {
+    PATH: process.env.PATH,
+    DEN_LOOKUP_TIMEOUTS_MS: process.env.DEN_LOOKUP_TIMEOUTS_MS,
+  };
+  beforeEach(() => {
+    process.env.PATH = `${slowBin}${path.delimiter}${saved.PATH ?? ""}`;
+    process.env.DEN_LOOKUP_TIMEOUTS_MS = "200,300";
+  });
+  afterEach(() => {
+    process.env.PATH = saved.PATH;
+    if (saved.DEN_LOOKUP_TIMEOUTS_MS === undefined)
+      delete process.env.DEN_LOOKUP_TIMEOUTS_MS;
+    else process.env.DEN_LOOKUP_TIMEOUTS_MS = saved.DEN_LOOKUP_TIMEOUTS_MS;
+  });
+
+  /** The service, running in the repo on its port (no health URL). */
+  async function running(): Promise<{ port: number; pid: number }> {
+    const port = await freePort();
+    manifest({ commands: { local: { up: `${IDLE_UP} --port ${port}` } } });
+    const pid = leader(server(port), repoPath);
+    for (let i = 0; i < 100 && !(await listening(port)); i++)
+      await new Promise((r) => setTimeout(r, 50));
+    return { port, pid };
+  }
+
+  it("up with a pre-dev.37 record: couldn't tell, the record kept, nothing started; exit 1", async () => {
+    const { port, pid } = await running();
+    legacyRecord();
+    const r = await run("up");
+    const text = r.lines.join("\n");
+    expect(text).toContain(
+      `couldn't tell whether repo/api is running (port ${port}): lsof took too long to answer`,
+    );
+    expect(text).toContain("its record is kept and nothing was signalled");
+    expect(text).toContain("repo/api not started");
+    expect(r.exitCode).toBe(1);
+    expect(findDaemonByAddress("repo/api")).toBeDefined();
+    expect(findDaemonByAddress("repo/api")?.pgid).toBeUndefined();
+    expect(alive(pid)).toBe(true);
+  }, 30_000);
+
+  it("up with no record: couldn't tell whose the port is, nothing started; exit 1", async () => {
+    const { port, pid } = await running();
+    const r = await run("up");
+    const text = r.lines.join("\n");
+    expect(text).toContain(
+      `Warning: couldn't tell whether repo/api is running (port ${port}): lsof took too long to answer; repo/api not started`,
+    );
+    expect(r.exitCode).toBe(1);
+    expect(findDaemonByAddress("repo/api")).toBeUndefined();
+    expect(alive(pid)).toBe(true);
+  }, 30_000);
+
+  it("down with a pre-dev.37 record: couldn't tell, the record kept, nothing signalled; not a success", async () => {
+    const { pid } = await running();
+    legacyRecord();
+    const r = await run("down");
+    expect(r.lines.join("\n")).toContain(
+      "its record is kept and nothing was signalled",
+    );
+    expect(r.outcome).toBe("unstoppable");
+    expect(r.exitCode).toBe(1);
+    expect(findDaemonByAddress("repo/api")).toBeDefined();
+    expect(alive(pid)).toBe(true);
+  }, 30_000);
+});
+
 describe("restart", () => {
   it("records only the up's process group, not the down's", async () => {
     manifest({ commands: { local: { up: IDLE_UP, down: "true" } } });
