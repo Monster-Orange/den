@@ -2214,7 +2214,12 @@
           detachable ? "--- Detached ---" : "--- Stopped ---",
           "err",
         );
-        if (execRun) runs().set(execRun, { running: false, actions: [] });
+        if (execRun) {
+          runs().set(execRun, { actions: [] });
+          // D55: Stop ends the run as stopped; Detach only stops watching.
+          if (detachable) runs().set(execRun, { running: false });
+          else runs().finish(execRun, { ok: false, stopped: true });
+        }
       }
 
       // ── Service exec ──────────────────────────────────────────────────────────

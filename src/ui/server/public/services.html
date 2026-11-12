@@ -828,7 +828,7 @@
           es = null;
           runs().append(id, window.denShell?.t?.("runs.stopped") ?? "Stopped", "err");
           runs().set(id, { actions: [] });
-          runs().finish(id, { ok: false });
+          runs().finish(id, { ok: false, stopped: true });
           setDot(repo, service, "err");
           enableAllButtons();
         }

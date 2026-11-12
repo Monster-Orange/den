@@ -178,6 +178,7 @@
     "dock.clear": "クリア",
     "dock.closeRun": "{s} を閉じる",
     "dock.err": "失敗",
+    "dock.stopped": "停止",
     "dock.last": "前回の実行: {s} ↗",
     "dock.resize": "ドラッグしてサイズを変更",
     "lock.waiting": "管理者パスワードが必要です",

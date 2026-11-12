@@ -119,6 +119,32 @@ describe("D55: Stop in the runs dock", () => {
       for (let i = 0; i < 50 && !stops.length; i++) await sleep(50);
       expect(stops).toHaveLength(1);
       expect(await tabText(p, "notes/notes")).toMatch(/Stop/);
+      // The tab says stopped: not failed, not done.
+      const tab = await p.evaluate(() =>
+        (
+          window as unknown as {
+            denShell: {
+              runs: {
+                list(): { id: string; error: boolean; stopped: boolean }[];
+              };
+            };
+          }
+        ).denShell.runs
+          .list()
+          .find((r) => r.id === "notes/notes"),
+      );
+      expect(tab).toMatchObject({ error: false, stopped: true });
+      const label = await p
+        .locator('#den-dock .den-rtab:has-text("down notes")')
+        .first()
+        .innerText();
+      expect(label).not.toMatch(/failed/);
+      expect(
+        await p
+          .locator('#den-dock .den-rtab:has-text("down notes") .den-sr')
+          .first()
+          .textContent(),
+      ).toBe(", stopped");
       // Longer than the down's sleep: it was stopped, not left to finish.
       await sleep(4000);
       expect(fs.existsSync(marker())).toBe(false);

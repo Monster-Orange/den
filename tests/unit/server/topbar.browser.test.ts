@@ -1068,6 +1068,56 @@ describe("the user menu (R10) and Runs (R7)", () => {
     await p.context().close();
   }, 30_000);
 
+  it("D55: a run someone stopped, picked up after a reload, reads stopped (not failed)", async () => {
+    if (!browser) return;
+    const { p } = await mount({
+      kept: ["run_s"],
+      jobs: [
+        {
+          info: {
+            id: "run_s",
+            path: "/api/service/exec",
+            params: { repo: "shop", service: "web", cmd: "down" },
+            status: "done",
+          },
+          events: [
+            { type: "job", id: "run_s" },
+            { type: "line", text: "stopping shop" },
+            { type: "error", text: "Stopped" },
+            { type: "done", exitCode: 130, stopped: true },
+          ],
+        },
+      ],
+    });
+    const tab = () =>
+      p.evaluate(() =>
+        (
+          window as unknown as {
+            denShell: {
+              runs: {
+                list(): {
+                  id: string;
+                  running: boolean;
+                  error: boolean;
+                  stopped: boolean;
+                }[];
+              };
+            };
+          }
+        ).denShell.runs
+          .list()
+          .find((r) => r.id === "job:run_s"),
+      );
+    for (let i = 0; i < 100 && !(await tab())?.stopped; i++)
+      await new Promise((r) => setTimeout(r, 50));
+    expect(await tab()).toMatchObject({
+      running: false,
+      error: false,
+      stopped: true,
+    });
+    await p.context().close();
+  }, 30_000);
+
   it("D55: with no run kept, a page never asks about runs", async () => {
     if (!browser) return;
     const { p, reqs } = await mount();

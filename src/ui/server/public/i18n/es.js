@@ -190,6 +190,7 @@
     "dock.clear": "Borrar",
     "dock.closeRun": "Cerrar {s}",
     "dock.err": "falló",
+    "dock.stopped": "detenida",
     "dock.last": "Última ejecución: {s} ↗",
     "dock.resize": "Arrastra para cambiar el tamaño",
     "lock.waiting": "Se necesita la contraseña de administrador",

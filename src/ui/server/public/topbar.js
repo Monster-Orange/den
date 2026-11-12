@@ -1338,12 +1338,12 @@ function showJob(j) {
     `/api/exec/jobs/${encodeURIComponent(j.id)}/events`,
   );
   let over = false;
-  const finish = (ok) => {
+  const finish = (ok, stopped = false) => {
     if (over) return;
     over = true;
     es.close();
     runs.set(tab, { actions: [] });
-    runs.finish(tab, { ok });
+    runs.finish(tab, { ok, stopped });
   };
   es.onmessage = (e) => {
     let msg;
@@ -1368,7 +1368,7 @@ function showJob(j) {
           ok ? t("runs.ok") : t("runs.failed", { code: msg.exitCode }),
           ok ? "done-ok" : "done-fail",
         );
-      finish(ok);
+      finish(ok, !!msg.stopped);
     }
   };
   es.onerror = () => {
