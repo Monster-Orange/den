@@ -98,6 +98,7 @@ import {
 } from "/term-drop.js";
 import {
   helperBadgeHtml,
+  helperCountSaid,
   helperBarButtonHtml,
   helperRowsHtml,
   openHelpers,
@@ -591,12 +592,14 @@ function rowHtml(r) {
     r.kind === "agent"
       ? nameHtml(r)
       : `${esc(r.label)} <span class="sbdg">${esc(t("ag.session"))}</span>`;
-  const right =
-    (r.waiting
-      ? `<span class="wbdg">${esc(t("ag.waiting"))}</span>`
-      : `<span class="st">${esc(stateText(r.state))}</span>`) +
-    (r.kind === "agent" ? helperBadgeHtml(r) : "");
+  const right = r.waiting
+    ? `<span class="wbdg">${esc(t("ag.waiting"))}</span>`
+    : `<span class="st">${esc(stateText(r.state))}</span>`;
   const meta = [r.runtime, r.cwd].filter(Boolean).join(" · ");
+  // D62: the helpers chip is on line 2, before the meta, never in the dot's
+  // column (it pushed this row's name right of the others').
+  const chip = r.kind === "agent" ? helperBadgeHtml(r) : "";
+  const said = r.kind === "agent" ? helperCountSaid(r) : "";
   const rot = rotationOf(r);
   const rotTag = rot
     ? `<span class="tagx warn" data-rotation="${rot}">${esc(
@@ -618,10 +621,14 @@ function rowHtml(r) {
   const button =
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
     ` aria-pressed="${open}"${r.attachable ? "" : ' aria-disabled="true"'}` +
-    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }))}">` +
+    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }) + (said ? ` · ${said}` : ""))}">` +
     `<span class="den-dot ${r.waiting ? "warn" : stateTone(r)}" aria-hidden="true"></span>` +
     `<span class="nm">${nm}</span>${right}` +
-    (meta ? `<span class="meta">${esc(meta)}</span>` : "") +
+    (chip
+      ? `<span class="agl2">${chip}${meta ? `<span class="meta">${esc(meta)}</span>` : ""}</span>`
+      : meta
+        ? `<span class="meta">${esc(meta)}</span>`
+        : "") +
     tags +
     `</button>`;
   // D28: a running agent whose rotation is due: its callout, with buttons
@@ -3882,6 +3889,18 @@ export async function mountAgentsPage(root) {
     }
     const b = e.target.closest(".agr");
     if (!b) return;
+    // D62: the helpers chip opens the list (D50), not the agent.
+    if (e.target.closest('[data-act="helpers-chip"]')) {
+      const r = rowOf(b.dataset.id);
+      if (r?.kind === "agent")
+        void openHelpers({
+          ws: r.workspace,
+          agent: r.agent,
+          name: displayName(r),
+          opener: b,
+        });
+      return;
+    }
     if (b.hasAttribute("data-details")) {
       const r = visibleRows().find((x) => x.id === b.dataset.id);
       if (r) void openDetails(r, b);

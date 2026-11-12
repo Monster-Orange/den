@@ -926,6 +926,8 @@
     "hp.rowRunning": "{n} helpers running",
     "hp.rowRunning.one": "{n} helper running",
     "hp.runningN": "{n} running",
+    "hp.chip": "{n} helpers",
+    "hp.chip.one": "{n} helper",
     "hp.groupOf": "Helpers of {name}",
     "hp.open": "{what}, {status}: open its transcript",
     "hp.dlg": "{name}'s helpers",

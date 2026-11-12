@@ -818,6 +818,8 @@
     "hp.rowRunning": "{n} ayudantes en marcha",
     "hp.rowRunning.one": "{n} ayudante en marcha",
     "hp.runningN": "{n} en marcha",
+    "hp.chip": "{n} ayudantes",
+    "hp.chip.one": "{n} ayudante",
     "hp.groupOf": "Ayudantes de {name}",
     "hp.open": "{what}, {status}: abrir su transcripción",
     "hp.dlg": "Ayudantes de {name}",

@@ -107,8 +107,10 @@ export function helperHtml(h, { ws, agent, depth }) {
     ` aria-label="${esc(t("hp.open", { what: label(h), status: st }))}" title="${esc(h.statusFrom ? `${st}: ${h.statusFrom}` : st)}">` +
     `<span class="den-dot ${helperTone(h.status)}" aria-hidden="true"></span>` +
     `<span class="agh-n">${esc(label(h))}</span>` +
-    `<span class="agh-s">${esc(st)}${when ? ` · ${esc(when)}` : ""}</span>` +
+    // D62: the title has line 1 to itself; status, time, tool, model: 2.
+    `<span class="agh-l2"><span class="agh-s">${esc(st)}${when ? ` · ${esc(when)}` : ""}</span>` +
     (meta ? `<span class="agh-m mono">${esc(meta)}</span>` : "") +
+    `</span>` +
     `</button>`
   );
 }
@@ -145,12 +147,21 @@ function countLabel(key, total, running) {
     : esc(t(key, { n: total }));
 }
 
-/** The row's count: how many of its helpers run now (any row), in words. */
+/**
+ * D62: the row's count of helpers running now (any row), a chip on its
+ * second line ("2 helpers"); a click on it opens the list. Said once: the
+ * row's own label carries it (helperCountSaid).
+ */
 export function helperBadgeHtml(r) {
   const n = r?.helpers?.running;
   if (!n) return "";
-  const said = t("hp.rowRunning", { n });
-  return ` <span class="agr-hp hp-run" title="${esc(said)}" aria-label="${esc(said)}"><span class="hp-dot" aria-hidden="true"></span>${esc(t("hp.runningN", { n }))}</span>`;
+  return `<span class="agr-hp hp-run" data-act="helpers-chip"><span class="hp-dot" aria-hidden="true"></span>${esc(t("hp.chip", { n }))}</span>`;
+}
+
+/** D62: "2 helpers running", for the row's label; "" when none run. */
+export function helperCountSaid(r) {
+  const n = r?.helpers?.running;
+  return n ? t("hp.rowRunning", { n }) : "";
 }
 
 /** The pane bar's Helpers button: "Helpers · 2 running", or "Helpers (5)". */
@@ -177,18 +188,20 @@ const CSS = `
 .hp-earlier{margin-top:8px}
 .hp-earlier summary{cursor:pointer;color:var(--muted);font-size:13px;padding:4px}
 .aghs{display:flex;flex-direction:column;gap:2px;margin:2px 0 6px 18px;padding-left:8px;border-left:2px solid var(--border)}
-.agh{all:unset;box-sizing:border-box;display:grid;grid-template-columns:auto 1fr auto;gap:2px 8px;align-items:center;width:100%;padding:4px 6px 4px calc(6px + var(--hp-depth,0) * 14px);border-radius:var(--radius-button,6px);cursor:pointer;font-size:12px;color:var(--text)}
+.agh{all:unset;box-sizing:border-box;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-items:center;width:100%;padding:4px 6px 4px calc(6px + var(--hp-depth,0) * 14px);border-radius:var(--radius-button,6px);cursor:pointer;font-size:12px;color:var(--text)}
 .agh:hover{background:var(--sunken)}
 .agh:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .agh-n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.agh-s{color:var(--muted);white-space:nowrap}
-.agh-m{grid-column:2 / 4;color:var(--faint);font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.agh-l2{grid-column:2;display:flex;align-items:baseline;gap:8px;min-width:0}
+.agh-s{color:var(--muted);white-space:nowrap;flex:none}
+.agh-m{color:var(--faint);font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agh[data-status="running"] .agh-s{color:var(--text)}
 .aghs-all{align-self:flex-start;font-size:12px;margin:2px 6px}
 .hp-cleared{margin-top:8px}
 .hp-cleared summary{cursor:pointer;color:var(--muted);font-size:13px;padding:4px}
 .hp-run{white-space:nowrap}
-.agr-hp{color:var(--muted);font-size:11.5px;font-weight:400}
+.agr-hp{flex:none;display:inline-flex;align-items:center;padding:0 6px;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:11px;line-height:16px;font-weight:400;cursor:pointer}
+.agr-hp:hover{color:var(--text);border-color:var(--border-strong)}
 .hp-dot{display:inline-block;width:6px;height:6px;margin-right:4px;border-radius:50%;background:var(--ok);vertical-align:1px;animation:hp-pulse 1.6s ease-in-out infinite}
 @keyframes hp-pulse{50%{opacity:.35}}
 @media (prefers-reduced-motion: reduce){.hp-dot{animation:none}}

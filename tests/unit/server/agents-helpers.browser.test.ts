@@ -197,7 +197,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
       await p
         .locator(`#agl button.agr[data-id="${sid}"] .agr-hp`)
         .textContent(),
-    ).toBe("1 running");
+    ).toBe("1 helper");
 
     await rows.first().click();
     const dlg = p.locator("#tx-dlg");
@@ -618,7 +618,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.waitForFunction(
       (id) =>
         document.querySelector(`#agl button.agr[data-id="${id}"] .agr-hp`)
-          ?.textContent === "2 running",
+          ?.textContent === "2 helpers",
       sids.keeper,
       { timeout: 20_000 },
     );
@@ -636,7 +636,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p
       .locator('#agl .aghs[data-helpers-of="keeper"]')
       .waitFor({ state: "detached", timeout: 15_000 });
-    expect(await badge("keeper")).toBe("2 running");
+    expect(await badge("keeper")).toBe("2 helpers");
     // 6 running: 4 rows (row_max), then "All helpers · 6 running", which opens
     // the Helpers list with all of them.
     const all = '#agl .aghs[data-helpers-of="crowd"] .aghs-all';
@@ -646,6 +646,125 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.click(all);
     await p.locator("#hp-body > button.agh").first().waitFor();
     expect(await p.locator("#hp-body > button.agh").count()).toBe(6);
+    await p.keyboard.press("Escape");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
+  it("D62: every row's name starts at the same x; the helper count is a chip on line 2 that opens the list; a helper's title is never cut", async () => {
+    if (!browser) return;
+    const host = await connectHost(sessionPaths(s.stateDir).socket);
+    const ids: Record<string, string> = {};
+    const tokens: Record<string, string> = {
+      plain: "00000000-0000-4000-8000-0000000000d6",
+      wide: "00000000-0000-4000-8000-0000000000d7",
+    };
+    for (const id of ["plain", "wide"]) {
+      ids[id] = (
+        await host.start({
+          name: `acme-north:${id}`,
+          cwd: s.wsDir("north"),
+          argv: ["sh"],
+          env: {},
+          cols: 80,
+          rows: 24,
+        })
+      ).ref.id;
+      s.seed({
+        id,
+        persona: "builder",
+        runtime: "den-claude",
+        workspace: "north",
+        session: { backend: "den-pty", id: ids[id] },
+        sessionName: `acme-north:${id}`,
+        resumeToken: tokens[id],
+      });
+    }
+    host.close();
+    const dir = path.join(
+      s.tmp,
+      "home",
+      ".claude",
+      "projects",
+      "-seeded",
+      tokens.wide,
+      "subagents",
+    );
+    fs.mkdirSync(dir, { recursive: true });
+    const hid = "a9f0c0ffee0000062";
+    fs.writeFileSync(
+      path.join(dir, `agent-${hid}.meta.json`),
+      JSON.stringify({
+        agentType: "principal-engineer",
+        description: "Backend fixes: the queue",
+        model: "claude-opus-5-5",
+      }),
+    );
+    fs.writeFileSync(
+      path.join(dir, `agent-${hid}.jsonl`),
+      JSON.stringify({
+        type: "user",
+        isSidechain: true,
+        agentId: hid,
+        timestamp: new Date(Date.now() - 24 * 60_000).toISOString(),
+        message: { role: "user", content: "Backend fixes" },
+      }) +
+        "\n" +
+        JSON.stringify({
+          type: "assistant",
+          isSidechain: true,
+          agentId: hid,
+          timestamp: new Date(Date.now() - 5_000).toISOString(),
+          message: {
+            role: "assistant",
+            content: [
+              { type: "tool_use", id: "toolu_D62", name: "Bash", input: {} },
+            ],
+          },
+        }) +
+        "\n",
+    );
+    const { p, errors } = await open();
+    const chip = `#agl button.agr[data-id="${ids.wide}"] .agr-hp`;
+    await p.waitForSelector(chip, { timeout: 20_000 });
+    // The dot column is one width on every row: names line up.
+    const lefts = await p.$$eval(
+      "#agl button.agr[data-kind=agent]:not([data-details]) .nm",
+      (els) => els.map((e) => Math.round(e.getBoundingClientRect().left)),
+    );
+    expect(lefts.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(lefts).size).toBe(1);
+    // The count is a chip under the name, said once ("1 helper").
+    expect((await p.textContent(chip))?.trim()).toBe("1 helper");
+    const below = await p.$eval(chip, (c) => {
+      const nm = c.closest(".agr")!.querySelector(".nm")!;
+      return (
+        c.getBoundingClientRect().top >= nm.getBoundingClientRect().bottom - 1
+      );
+    });
+    expect(below).toBe(true);
+    // In front: the helper's title has line 1 to itself, never cut;
+    // its status, time, tool and model are line 2.
+    await p.click(`#agl button.agr[data-id="${ids.wide}"]`);
+    const h = p.locator('#agl .aghs[data-helpers-of="wide"] button.agh');
+    await h.first().waitFor({ timeout: 15_000 });
+    const geo = await h.first().evaluate((b) => {
+      const n = b.querySelector(".agh-n") as HTMLElement;
+      const st = b.querySelector(".agh-s") as HTMLElement;
+      return {
+        cut: n.scrollWidth > n.clientWidth,
+        stBelow:
+          st.getBoundingClientRect().top >=
+          n.getBoundingClientRect().bottom - 1,
+      };
+    });
+    expect(geo).toEqual({ cut: false, stBelow: true });
+    // A click on the chip opens the list of its helpers (D50).
+    await p.click(chip);
+    await p.locator("#hp-body button.agh").first().waitFor({ timeout: 10_000 });
+    expect(await p.textContent("#hp-body")).toContain(
+      "Backend fixes: the queue",
+    );
     await p.keyboard.press("Escape");
     expect(errors).toEqual([]);
     await p.context().close();

@@ -4,6 +4,21 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.36] - unreleased
+
+### Fixed
+
+- **The agents list lines up again when helpers run (D62).** The count
+  of an agent's running helpers sat in the status-dot column, so that
+  row's name moved right and was cut. The count is now a small chip on
+  the agent's second line ("2 helpers"), and a click on it opens the
+  list of its helpers. A helper's row gives its title the first line,
+  with its status, time, tool and model on the second.
+
+### Migrations
+
+- None needed.
+
 ## [0.4.35] - 2026-11-12
 
 ### Added
