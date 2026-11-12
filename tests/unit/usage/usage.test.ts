@@ -132,7 +132,11 @@ describe("one transcript", () => {
     try {
       const file = path.join(dir, "t.jsonl");
       const u = (content: string, extra: Record<string, unknown> = {}) =>
-        JSON.stringify({ type: "user", message: { role: "user", content }, ...extra });
+        JSON.stringify({
+          type: "user",
+          message: { role: "user", content },
+          ...extra,
+        });
       fs.writeFileSync(
         file,
         [
@@ -219,6 +223,9 @@ describe("joined on resumeToken (the scorecard metric)", () => {
   });
 });
 
+/** The fixture's first turn (fixture.ts T0). */
+const FIXTURE_T0 = "2026-11-05T09:00:00.000Z";
+
 describe("the weekly report", () => {
   it("computes the numbers to move and writes <date>.json and .md, compared with the last", async () => {
     const f = fixture();
@@ -229,12 +236,13 @@ describe("the weekly report", () => {
       JSON.stringify({ polls: 4, attributed_pct: 0, calls: 10 }),
     );
     const out: string[] = [];
-    // Its transcripts' files were written now: a window ending now holds them.
+    // The week that holds the fixture's turns (its timestamps are fixed:
+    // a week ending at the clock would lose them as the date moves on).
     expect(
       await cmdUsage(["report", "--days", "7"], {
         stateDir: () => f.stateDir,
         env: f.env,
-        now: () => new Date(Date.now() + 1000),
+        now: () => new Date(Date.parse(FIXTURE_T0) + 86_400_000),
         out: (l) => out.push(l),
         err: () => undefined,
         prState: async () => undefined,
