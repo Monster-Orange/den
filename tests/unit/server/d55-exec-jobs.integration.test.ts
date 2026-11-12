@@ -49,11 +49,16 @@ beforeAll(async () => {
     // A stop that takes a moment.
     down: { notes: `sleep 2; rm -f ${running}` },
   });
-  // Running, so a restart has a down to do.
-  await stream(
+  // Running, so a restart has a down to do. When it isn't, the tests
+  // below can't say anything: say what the up saw instead.
+  const upEvs = await stream(
     "/api/workspace/exec?cmd=up&workspace=north&addresses=notes",
     (ev) => ev.type === "done",
   );
+  if (!(await waitFor(() => fs.existsSync(running))))
+    throw new Error(
+      `notes never came up: ${JSON.stringify(upEvs)}\n${s.log().slice(-3000)}`,
+    );
 }, 60_000);
 
 afterAll(async () => {
