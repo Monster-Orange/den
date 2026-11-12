@@ -36,6 +36,8 @@ export interface Rig {
   runtimeBins: Record<string, unknown>;
   /** Per workspace: `<ws>.agents.runtimes.<id>.bin` (AG-0.5). */
   wsBins: Record<string, Record<string, unknown>>;
+  /** den#48: each workspace's agents.permission, as written. */
+  wsPermission: Record<string, unknown>;
   /** user.yml's `agents.runtime_catalog`, as written. */
   userCatalog: unknown;
   /**
@@ -60,8 +62,24 @@ export async function cleanupRigs(): Promise<void> {
  * A `claude` that answers `--version` (AG-0.2: the Start dialog and `agents
  * doctor` ask it once) and otherwise only records that it ran, and fails.
  */
-export const CLAUDE_SHIM = (ran: string, version = "9.9.9") =>
-  `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${version} (Claude Code)"; exit 0; fi\necho "$@" >> "${ran}"\nexit 1\n`;
+export const CLAUDE_SHIM = (
+  ran: string,
+  version = "9.9.9",
+  /** den#48: the --permission-mode choices its --help lists (null: none). */
+  modes: string[] | null = [
+    "acceptEdits",
+    "auto",
+    "bypassPermissions",
+    "manual",
+    "dontAsk",
+    "plan",
+  ],
+) =>
+  `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${version} (Claude Code)"; exit 0; fi\n` +
+  (modes
+    ? `if [ "$1" = "--help" ]; then printf '%s\\n' 'Options:' '  --permission-mode <mode>   Permission mode to use for the session' '                             (choices: ${modes.map((m) => `"${m}"`).join(", ")})' '  --plugin-dir <path>        Load plugins'; exit 0; fi\n`
+    : "") +
+  `echo "$@" >> "${ran}"\nexit 1\n`;
 
 export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
   // realpath: macOS's tmpdir is a symlink, and cwd comparisons need one form.
@@ -112,6 +130,7 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     },
     runtimeBins: {},
     wsBins: {},
+    wsPermission: {},
     userCatalog: undefined,
     deps: {},
     async restartHost() {
@@ -146,6 +165,11 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     // Never this machine's user.yml.
     runtimeBin: (id) => r.runtimeBins[id],
     workspaceRuntimeBin: (ws, id) => r.wsBins[ws]?.[id],
+    workspacePermission: (ws) => r.wsPermission[ws],
+    saveWorkspacePermission: (ws, intent) => {
+      if (intent === null) delete r.wsPermission[ws];
+      else r.wsPermission[ws] = intent;
+    },
     userCatalog: (taken) =>
       validateCatalog(
         r.userCatalog,

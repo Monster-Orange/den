@@ -4,6 +4,58 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.36] - unreleased
+
+### Added
+
+- **Auto mode for agents (den#48).** A fourth permission mode beside Ask
+  for everything, Auto-approve edits and Auto-approve all: Claude Code's
+  own `auto` mode, where its own check runs routine actions and blocks
+  risky ones without asking. Pick it in Start's Advanced, or set it on a
+  persona (`permission_mode: auto`). An agent in auto mode is tagged "auto
+  mode" in its row. Use it when an agent works beside sessions that run
+  in auto mode: Claude Code holds a message from a session in another mode
+  until a person approves it.
+- **A workspace's permission mode.** `<cli> agents permission -w <ws>
+  auto` sets the mode that workspace's agents start in when the start
+  names none, over their persona's (`<ws>.agents.permission` in
+  config/local/workspaces.yml). Start picks it first and says so. No mode
+  shows it; `--clear` removes it. A person's command only.
+- **`agents doctor`** now lists the permission modes, what each one means,
+  whether this Claude Code takes auto, and (with `-w`) the workspace's
+  mode.
+
+### Changed
+
+- **Auto mode needs a Claude Code that has it.** Before an agent starts or
+  resumes in auto, Den reads the modes the installed Claude Code lists.
+  Where auto isn't one, the start is refused, naming the modes it takes:
+  update Claude Code, or pick another mode.
+
+### Fixed
+
+- **A window opened from an agent's link no longer takes its size.** With
+  a real Claude Code, a second window opened on the same agent sized the
+  terminal to itself at once, and the first window redrew. Claude Code
+  asks the terminal questions when it starts (what kind it is, where the
+  cursor is), and the new window's terminal answered them as if someone
+  had typed. Now only your own keys, paste or IME input take the size; the
+  answers still reach the agent. A newly opened window follows the size
+  until you type in it or press Take over.
+- **Clicking an agent puts the keyboard in its terminal, wherever you
+  click it (D58).** Picking an agent from the list already did (0.4.31).
+  Now a click on its tab, on a tile's bar (off its buttons), or a link to
+  it (⌘K, another page's Open) does too, so the next key goes to the
+  agent. Enter or Space on a tab keeps the keyboard on the tabs. A link
+  puts the keyboard there without taking the terminal's size.
+- **A helper's row shows the model it ran on.** With agents' subagents on
+  Sonnet or Haiku (0.4.31), a helper's row could still say the agent's own
+  model. It now reads the model from the helper's own transcript first.
+
+### Migrations
+
+- None needed.
+
 ## [0.4.33] - unreleased
 
 ### Fixed

@@ -61,7 +61,7 @@ describe("permissions as intent (AG-13)", () => {
     expect(intentOf("plan")).toBeUndefined();
     expect(checkIntent("all", "p")).toBe("all");
     expect(() => checkIntent("yolo", "p")).toThrow(
-      /p: "yolo" must be one of ask, edits, all/,
+      /p: "yolo" must be one of ask, edits, auto, all/,
     );
   });
 
@@ -156,7 +156,7 @@ describe("roles and categories (AG-10.5, AG-11)", () => {
     );
     expect(() =>
       checkRolesConfig({ x: { description: "d", mode: "bypassPermissions" } }),
-    ).toThrow(/mode: "bypassPermissions" must be one of ask, edits, all/);
+    ).toThrow(/mode: "bypassPermissions" must be one of ask, edits, auto, all/);
   });
 });
 

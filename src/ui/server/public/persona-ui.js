@@ -31,8 +31,8 @@ export const esc = (s) =>
   );
 const api = (method, url, body) => window.denShell.api(method, url, body);
 
-/** Den's three permission intents (permissions.ts), in the switch's order. */
-export const INTENTS = ["ask", "edits", "all"];
+/** Den's permission intents (permissions.ts), in the switch's order. */
+export const INTENTS = ["ask", "edits", "auto", "all"];
 /** The sources a filter offers (hub: later, once Den Hub exists). */
 export const ORIGINS = ["builtin", "distribution", "local"];
 
@@ -416,6 +416,9 @@ export function overrideTagsHtml(r) {
     ]);
   if (r.permission === "all")
     tags.push(["warn", t("pm.tag.all"), "permission"]);
+  // den#48: auto mode always shows: its peers' mode, not the persona's.
+  else if (r.permission === "auto")
+    tags.push(["", t("pm.tag.auto"), "permission"]);
   else if (ov.includes("permission") && r.permission)
     tags.push([
       r.permission === "ask" ? "" : "warn",

@@ -931,7 +931,7 @@ describe("POST …/agents start: the Start dialog's choices (AG-10.1, AG-12, AG-
       [{ version: "claude-opus-4-8" }, /version needs a model/],
       [
         { permission: "yolo" },
-        /permission: "yolo" must be one of ask, edits, all/,
+        /permission: "yolo" must be one of ask, edits, auto, all/,
       ],
       [{ allow: "npm test" }, /must be a list of command prefixes/],
       [{ allow: ["npm test; rm"] }, /must be a plain prefix/],
@@ -1191,7 +1191,7 @@ describe("the persona routes (AG-10.6, AG-10.7)", () => {
       [{ version: "claude-sonnet-1" }, /version: "claude-sonnet-1"/],
       [
         { permission: "bypassPermissions" },
-        /permission: .* must be one of ask, edits, all/,
+        /permission: .* must be one of ask, edits, auto, all/,
       ],
       [{ allowedCommands: ["rm -rf /; x"] }, /allowedCommands\[0\]/],
       [{ description: "" }, /description is required/],

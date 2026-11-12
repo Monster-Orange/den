@@ -154,6 +154,7 @@ import {
   type AgentsResolved,
   type Started,
   FRESH_NOTE,
+  workspacePermissionOf,
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
 import { recordAction } from "./audit.js";
@@ -527,6 +528,8 @@ export async function handleAgentRoutes(
           : {}),
         runtimes,
         ...(ws ? { workspace: ws } : {}),
+        // den#48: the workspace's default mode, Start's first choice.
+        ...(ws ? workspacePermissionField(d, ws) : {}),
         // AG-0.2: the file a person edits to set a runtime's path.
         userConfig: d.userConfigFile(),
       });
@@ -1567,4 +1570,17 @@ async function helpersRoute(
     sendError(res, e, ws);
   }
   return true;
+}
+
+/** den#48: `{ workspacePermission }` when the workspace sets a good one. */
+function workspacePermissionField(
+  d: AgentsResolved,
+  ws: string,
+): { workspacePermission?: string } {
+  try {
+    const p = workspacePermissionOf(d, ws);
+    return p ? { workspacePermission: p } : {};
+  } catch {
+    return {}; // a bad value: the start says so
+  }
 }

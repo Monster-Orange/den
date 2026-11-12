@@ -86,6 +86,9 @@ import {
   setWorkspaceRuntimeBin,
   workspaceBinKey,
   workspaceRuntimeBin,
+  workspaceAgentPermission,
+  setWorkspaceAgentPermission,
+  workspacePermissionKey,
 } from "../../shared/environment-manager/workspaces.js";
 import {
   BUILTIN_CATALOG,
@@ -264,6 +267,16 @@ export interface AgentsDeps extends SessionsDeps {
    * undefined: unset). It wins over runtimeBin (AG-0.5).
    */
   workspaceRuntimeBin?: (ws: string, id: string) => unknown;
+  /**
+   * den#48: workspace `ws`'s `agents.permission` (default: workspaces.yml's;
+   * undefined: unset), as written.
+   */
+  workspacePermission?: (ws: string) => unknown;
+  /** den#48: save a checked intent as workspace `ws`'s (null clears it). */
+  saveWorkspacePermission?: (
+    ws: string,
+    intent: PermissionIntent | null,
+  ) => void;
   /** user.yml's runtime catalog entries, checked (default: user.yml's). */
   userCatalog?: (taken: readonly string[]) => CatalogEntry[];
   /** Save a checked path (null clears it): global or the workspace's. */
@@ -303,6 +316,11 @@ export interface AgentsResolved extends Resolved {
   stopWaitMs: number;
   runtimeBin: (id: string) => unknown;
   workspaceRuntimeBin: (ws: string, id: string) => unknown;
+  workspacePermission: (ws: string) => unknown;
+  saveWorkspacePermission: (
+    ws: string,
+    intent: PermissionIntent | null,
+  ) => void;
   userCatalog: (taken: readonly string[]) => CatalogEntry[];
   saveRuntimeBin: NonNullable<AgentsDeps["saveRuntimeBin"]>;
   userConfigFile: () => string;
@@ -486,6 +504,11 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     runtimeBin: d.runtimeBin ?? ((id) => configuredRuntimeBin(id)),
     workspaceRuntimeBin:
       d.workspaceRuntimeBin ?? ((ws, id) => workspaceRuntimeBin(ws, id)),
+    workspacePermission:
+      d.workspacePermission ?? ((ws) => workspaceAgentPermission(ws)),
+    saveWorkspacePermission:
+      d.saveWorkspacePermission ??
+      ((ws, intent) => setWorkspaceAgentPermission(ws, intent)),
     userCatalog: d.userCatalog ?? ((taken) => configuredRuntimeCatalog(taken)),
     saveRuntimeBin:
       d.saveRuntimeBin ??
@@ -2066,6 +2089,23 @@ export interface StartRequest {
   strict?: boolean;
 }
 
+/**
+ * den#48: workspace `ws`'s default permission mode, checked; undefined when
+ * unset. A bad value is refused, naming the key: never quietly "ask".
+ */
+export function workspacePermissionOf(
+  d: AgentsResolved,
+  ws: string,
+): PermissionIntent | undefined {
+  const v = d.workspacePermission(ws);
+  if (v === undefined || v === null) return undefined;
+  try {
+    return checkIntent(v, workspacePermissionKey(ws));
+  } catch (e) {
+    throw usage(`agents start: ${(e as Error).message}`);
+  }
+}
+
 /** What a start resolved, checked, before it launches. */
 interface Choices {
   model?: string;
@@ -2085,6 +2125,8 @@ function startChoices(
   req: StartRequest,
   persona: Persona,
   rt: Runtime,
+  /** den#48: the workspace's default mode, for a start that names none. */
+  wsPermission?: PermissionIntent,
 ): Choices {
   const where = "agents start";
   const models = rt.models?.() ?? [];
@@ -2133,6 +2175,11 @@ function startChoices(
       throw usage(
         `${where}: ${rt.id} can't take a permission mode from Den yet`,
       );
+    if (permission !== intentOf(persona.permissionMode))
+      overrides.push("permission");
+  } else if (wsPermission !== undefined && rt.permissions) {
+    // den#48: the workspace's mode, over the persona's.
+    permission = wsPermission;
     if (permission !== intentOf(persona.permissionMode))
       overrides.push("permission");
   }
@@ -2238,7 +2285,7 @@ export async function startAgent(
   syncCatalog(d);
   const rt = runtimeFor(req.runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID);
   const det = await availableOrRefuse(d, rt, ws);
-  const ch = startChoices(req, persona, rt);
+  const ch = startChoices(req, persona, rt, workspacePermissionOf(d, ws));
   const model = launchModel(ch.model, ch.version);
 
   const prev = readRecord(d.stateDir(), id);

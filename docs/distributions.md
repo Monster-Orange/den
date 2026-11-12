@@ -2903,7 +2903,9 @@ dialog:
   its length only.
 - **Advanced** (collapsed): **Model** and **Version** (the runtime's own
   list; "Persona default" first), the **Permission mode** (Ask for
-  everything, Auto-approve edits in the worktree, Auto-approve all), the
+  everything, Auto-approve edits in the worktree, Auto mode, Auto-approve
+  all; the workspace's own mode is picked first, and the dialog says so),
+  the
   role's command preset as chips, **Extra allowed commands** (plain command
   prefixes, one per line, no patterns), and a preview of exactly what the
   runtime will be given. A command a runtime can't take says "not supported
@@ -2912,13 +2914,13 @@ dialog:
 
 What you change in Advanced applies to that launch only, and the session's
 row is tagged: "model: haiku", "pinned claude-opus-4-8", "auto-approve
-edits", "custom tools", the runtime, and always "auto-approve all" for an
-agent started so. An agent pinned to an older version says "newer
+edits", "custom tools", the runtime, and always "auto mode" or
+"auto-approve all" for an agent started so. An agent pinned to an older version says "newer
 available".
 
 Every field is checked on the server, not only in the page. The model and
 version must be ones the runtime lists, the permission one of `ask`,
-`edits` or `all`, and `allow` a list of at most 32 plain prefixes (letters,
+`edits`, `auto` or `all`, and `allow` a list of at most 32 plain prefixes (letters,
 digits, single spaces and `. _ / : = @ % + , -`, at most 120 characters
 each). An unknown field is refused. A person's start only: an agent's
 token gets 403.
@@ -2927,12 +2929,32 @@ token gets 403.
 `--model <alias>` (`opus`, `sonnet`, `haiku`), a pinned version is `--model
 <full id>`. The model list is a catalog shipped with each Den release,
 because `claude` can't list its models. The permission mode is
-`--permission-mode` (`default`, `acceptEdits`, `bypassPermissions`), and
+`--permission-mode` (`default`, `acceptEdits`, `auto`, `bypassPermissions`), and
 each command prefix becomes two allow rules, `Bash(<prefix>)` and
 `Bash(<prefix> *)`, in the agent's settings file beside Den's deny rules
 (deny wins). Codex CLI, Gemini CLI, Grok Build and generic take no model,
 mode or commands from Den yet: the dialog says "not supported on <runtime>"
 and the start is refused if you set one.
+
+**Auto mode (den#48).** `auto` is Claude Code's own mode: its own check
+runs routine actions and blocks risky ones, without asking. Choose it when
+an agent works beside sessions that run in auto mode: Claude Code holds a
+message from a session in another permission mode until a person approves
+it, so a Den agent in "ask" would have its peers' messages held. Before an
+agent starts or resumes in auto, Den reads the modes the installed Claude
+Code lists (`claude --help`, once per binary). Where auto isn't listed, the
+start is refused, naming the modes it does take: update Claude Code, or
+pick another mode. Where the list can't be read, it starts with a warning.
+`agents doctor` says what each mode means and whether this Claude Code
+takes auto.
+
+**A workspace's mode.** `<cli> agents permission -w <ws> auto` (or `ask`,
+`edits`, `all`; `--clear` removes it; no mode shows it) sets
+`<ws>.agents.permission` in `config/local/workspaces.yml`. Agents started
+in that workspace take it when the start names no mode, over their
+persona's; a start's own choice still wins. It changes the next start or
+resume, never a running agent. A person's command only: an agent's session
+is refused. A value that isn't a mode refuses the start, naming the key.
 
 ### The Agents tab
 
@@ -3368,7 +3390,7 @@ tools: Read, Grep # hints for the runtime; Den restricts nothing with them
 standing: true # starts with its workspace (later slices)
 context: [docs/specs, the design system] # what to read first
 runtime: generic # default den-claude
-permission_mode: ask # ask, edits or all (Claude Code's own modes still read)
+permission_mode: ask # ask, edits, auto or all (Claude Code's own modes still read)
 den_hooks: false # Den's guardrail hooks for this persona (see Guardrails)
 den_instructions: false # Den's shared instructions for this persona
 argv: ["some-cli", "--model", "{model}", "--mcp-config", "{mcp_config}"]
@@ -3710,8 +3732,8 @@ instead (`--persona planner after_compactions never`).
 --append-system-prompt <role prompt>`, so Den's MCP server is the agent's
   only one, and resumes with `claude --resume <id>`. Permission prompts stay
   in the agent's terminal: it passes `--permission-mode default` unless the
-  persona's `permission_mode` sets one of `default`, `acceptEdits`, `plan` or
-  `bypassPermissions` (anything else is an error naming the key).
+  persona's `permission_mode` sets one of `default`, `acceptEdits`, `auto`,
+  `plan` or `bypassPermissions` (anything else is an error naming the key).
   `bypassPermissions` prints a one-line warning at every start.
 - **`generic`** runs the persona's `argv` template. `{model}` is the agent's
   model (an error when the template uses it and there is none);

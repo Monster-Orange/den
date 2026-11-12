@@ -113,7 +113,18 @@ import {
   type Started,
   subagentsReport,
   type SubagentsReport,
+  workspacePermissionOf,
 } from "./agent-ops.js";
+import {
+  checkIntent,
+  PERMISSION_INTENTS,
+  type PermissionIntent,
+} from "../../shared/agents/permissions.js";
+import {
+  DEN_CLAUDE_PERMISSIONS,
+  permissionModesOf,
+} from "../../shared/agents/den-claude.js";
+import { workspacePermissionKey } from "../../shared/environment-manager/workspaces.js";
 import {
   INHERIT,
   SUBAGENT_FORCE_MIN,
@@ -140,7 +151,7 @@ export {
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|relaunch|rotate|keep|handoff|import|persona|helpers|rename|rm|personas|doctor|handback-check|handoff-check> ...",
+    "agents <list|start|stop|resume|relaunch|rotate|keep|handoff|import|persona|helpers|rename|rm|permission|personas|doctor|handback-check|handoff-check> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -208,6 +219,11 @@ export const AGENTS_HELP = {
     "    forget a stopped, interrupted or exited agent (never a running one);",
     "    the runtime keeps its own history. agents.remove_stopped_after in",
     "    user.yml (never, 1d, 7d) forgets stopped ones on its own",
+    "{cli} agents permission -w <ws> [ask|edits|auto|all|--clear]",
+    "    the permission mode the workspace's agents start with when the start",
+    "    names none (over their persona's); none given: shows it. auto: Claude",
+    "    Code's own check runs routine actions and blocks risky ones, without",
+    "    asking (needs a Claude Code that lists it: see doctor). A person's only",
     "{cli} agents personas [--json]",
     "    Den's default pack, then agents.persona_packs (a later pack wins by id)",
     "{cli} agents doctor [-w <ws>] [--json]",
@@ -821,6 +837,80 @@ async function resumeAll(args: string[], d: AgentsResolved): Promise<number> {
 
 /** `agents rm <id> [-w <ws>]`, `agents rm --stopped [-w <ws>]` (AG-14.1b). */
 /** D25: `agents rename <id> <name>|--clear [-w <ws>]`. */
+/**
+ * `agents permission -w <ws> [<mode>|--clear]` (den#48): the mode the
+ * workspace's agents start with when the start names none.
+ */
+function permission(args: string[], d: AgentsResolved): number {
+  const where = "agents permission";
+  const p = parseArgs(where, args, { "--workspace": true, "--clear": false });
+  noExtra(where, p, 1);
+  const ws = workspaceFlag(where, p);
+  if (!ws) throw new UsageError(`${where} needs -w <ws>`);
+  if (!d.workspaceExists(ws))
+    throw new UsageError(`${where}: workspace "${ws}" does not exist`);
+  const given = p.positional[0];
+  if (given === undefined && !p.flags["--clear"]) {
+    const now = workspacePermissionOf(d, ws);
+    d.out(
+      now
+        ? `${ws}: agents start in ${now} unless the start names a mode (${workspacePermissionKey(ws)})`
+        : `${ws}: no default; agents start in their persona's mode (ask unless it says)`,
+    );
+    return 0;
+  }
+  personOnly(where, d);
+  if (given !== undefined && p.flags["--clear"])
+    throw new UsageError(`${where}: give a mode or --clear, not both`);
+  let intent: PermissionIntent | null = null;
+  if (given !== undefined)
+    try {
+      intent = checkIntent(given, where);
+    } catch (e) {
+      throw new UsageError((e as Error).message);
+    }
+  d.saveWorkspacePermission(ws, intent);
+  d.out(
+    intent
+      ? `${ws}: agents now start in ${intent} unless the start names a mode; running agents keep theirs until they start again`
+      : `${ws}: no default now; agents start in their persona's mode`,
+  );
+  return 0;
+}
+
+/** den#48: `agents doctor`'s permission modes, for den-claude. */
+export function permissionLines(
+  claude: { available: boolean; path?: string; version?: string } | undefined,
+  modes: string[] | null,
+  ws?: { name: string; mode?: PermissionIntent; error?: string },
+): string[] {
+  const text = (m: PermissionIntent) =>
+    DEN_CLAUDE_PERMISSIONS.modes[m]?.replace(/^--permission-mode \S+: /, "") ??
+    "";
+  const lines = ["permission modes (den-claude)"];
+  for (const m of PERMISSION_INTENTS) {
+    let mark = "";
+    if (m === "auto")
+      mark = !claude?.available
+        ? ""
+        : modes === null
+          ? "  ? couldn't read the modes this Claude Code takes"
+          : modes.includes("auto")
+            ? "  ✓ this Claude Code takes it"
+            : `  ✗ this Claude Code${claude.version ? ` (${claude.version})` : ""} doesn't: update it to use auto`;
+    lines.push(`  ${m.padEnd(6)}${text(m)}${mark}`);
+  }
+  if (ws)
+    lines.push(
+      ws.error
+        ? `  ${ws.name}: ${ws.error}`
+        : ws.mode
+          ? `  ${ws.name}: agents start in ${ws.mode}  (${workspacePermissionKey(ws.name)})`
+          : `  ${ws.name}: no default (each persona's own mode)`,
+    );
+  return lines;
+}
+
 function rename(args: string[], d: AgentsResolved): number {
   const where = "agents rename";
   const p = parseArgs(where, args, { "--workspace": true, "--clear": false });
@@ -1075,6 +1165,21 @@ async function doctor(
   const rts = await listRuntimes(d, ws);
   const def = rts.find((r) => r.default);
   const code = def?.available ? 0 : 1;
+  // den#48: whether this Claude Code takes auto, and the workspace's mode.
+  const claude = rts.find((r) => r.id === "den-claude");
+  const modes =
+    claude?.available && claude.path
+      ? permissionModesOf(claude.path, d.env)
+      : null;
+  let wsMode:
+    | { name: string; mode?: PermissionIntent; error?: string }
+    | undefined;
+  if (ws)
+    try {
+      wsMode = { name: ws, mode: workspacePermissionOf(d, ws) };
+    } catch (e) {
+      wsMode = { name: ws, error: (e as Error).message };
+    }
   if (p.flags["--json"]) {
     d.out(
       JSON.stringify(
@@ -1086,6 +1191,19 @@ async function doctor(
             forced: forcesSubagentModel(
               rts.find((r) => r.id === "den-claude")?.version,
             ),
+          },
+          permissionModes: {
+            auto: claude?.available
+              ? modes === null
+                ? null
+                : modes.includes("auto")
+              : false,
+            ...(wsMode
+              ? {
+                  workspace: wsMode.mode ?? null,
+                  ...(wsMode.error ? { workspaceError: wsMode.error } : {}),
+                }
+              : {}),
           },
           ...(ws ? { workspace: ws } : {}),
           userConfig: d.userConfigFile(),
@@ -1105,6 +1223,8 @@ async function doctor(
   d.out("");
   const claudeVersion = rts.find((r) => r.id === "den-claude")?.version;
   for (const l of subagentLines(subagentsReport(d), claudeVersion)) d.out(l);
+  d.out("");
+  for (const l of permissionLines(claude, modes, wsMode)) d.out(l);
   d.out("");
   d.out(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,
@@ -1158,6 +1278,9 @@ export async function cmdAgents(
         case "rm":
           await loadAgentWorkspaces(deps);
           return await rm(rest, d);
+        case "permission":
+          await loadAgentWorkspaces(deps);
+          return permission(rest, d);
         case "personas":
           return await listPersonas(rest, d);
         case "doctor":

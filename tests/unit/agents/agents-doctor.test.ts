@@ -102,6 +102,12 @@ describe("agents doctor", () => {
       "  model       sonnet  (Den's default; agents.subagents.model)",
       "  connectors  off  (agents.claude_ai_connectors: the account's claude.ai connectors)",
       "",
+      "permission modes (den-claude)",
+      "  ask   asks before edits and commands",
+      "  edits file edits run without asking; commands ask",
+      "  auto  Claude Code's own check runs routine actions and blocks risky ones, without asking  ✓ this Claude Code takes it",
+      "  all   nothing asks",
+      "",
       "`acme doctor --probe` checks the env each runtime's session gets.",
     ]);
     // Never an env value (the rig's env holds a token-shaped one).

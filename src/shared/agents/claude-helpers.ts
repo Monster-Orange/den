@@ -110,6 +110,12 @@ function readLines(
   }
 }
 
+/** An assistant turn's model; none for Claude Code's stand-ins ("<synthetic>"). */
+function modelOf(m: Record<string, unknown>): string | undefined {
+  const v = str(m.model, 80);
+  return v && !v.startsWith("<") ? v : undefined;
+}
+
 /** What the ends of a helper's file say: when, the model, the last entry. */
 function fileEnds(file: string): {
   startedAt?: number;
@@ -146,7 +152,7 @@ function fileEnds(file: string): {
     lastAt ??= time(e.timestamp);
     const m = obj(e.message);
     if (e.type === "assistant" && m) {
-      model ??= str(m.model, 80);
+      model ??= modelOf(m);
       if (!sawLast) {
         sawLast = true;
         endTurn = m.stop_reason === "end_turn";
@@ -170,8 +176,8 @@ function fileEnds(file: string): {
   if (!model)
     for (const e of head) {
       const m = obj(e.message);
-      if (e.type === "assistant" && m && str(m.model, 80)) {
-        model = str(m.model, 80);
+      if (e.type === "assistant" && m && modelOf(m)) {
+        model = modelOf(m);
         break;
       }
     }
@@ -437,16 +443,19 @@ function readAll(transcript: string, opts: ReadHelpersOptions): Helper[] {
         ? { description: str(meta.description, 200) ?? w?.label }
         : {}),
       ...(str(meta.agentType, 120) ? { type: str(meta.agentType, 120) } : {}),
-      ...(str(meta.model, 80) ||
-      str(meta.pickedEffortModel, 80) ||
-      w?.model ||
-      ends.model
+      // The model it ran on: its transcript's first. Claude Code can write
+      // pickedEffortModel as the agent's own model when a forced subagent
+      // model (den#3) ran it on another: that one comes last.
+      ...((ends.model ??
+      str(meta.model, 80) ??
+      w?.model ??
+      str(meta.pickedEffortModel, 80))
         ? {
             model:
+              ends.model ??
               str(meta.model, 80) ??
-              str(meta.pickedEffortModel, 80) ??
               w?.model ??
-              ends.model,
+              str(meta.pickedEffortModel, 80),
           }
         : {}),
       ...(str(meta.worktreeBranch, 200)

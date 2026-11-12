@@ -670,9 +670,14 @@ export interface WorkspaceConfig {
   /**
    * Agents in this workspace, on this machine (AG-0.5):
    * `agents.runtimes.<id>.bin`, a runtime's CLI for this workspace's
-   * agents, which wins over user.yml's and the search.
+   * agents, which wins over user.yml's and the search. den#48:
+   * `agents.permission`, the permission mode (ask, edits, auto, all) its
+   * agents start with when the start names none, over their persona's.
    */
-  agents?: { runtimes?: Record<string, { bin?: unknown } | null> };
+  agents?: {
+    runtimes?: Record<string, { bin?: unknown } | null>;
+    permission?: unknown;
+  };
   /**
    * Service entries keyed by service address.
    * Single-service repos: "tasks-runner"

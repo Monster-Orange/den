@@ -126,6 +126,14 @@ async function viewer(
         constructor(url: string | URL, protocols?: string | string[]) {
           super(url, protocols);
           ((w.__socks ??= []) as WebSocket[]).push(this);
+          const send = this.send.bind(this);
+          this.send = (
+            data: string | ArrayBufferLike | Blob | ArrayBufferView,
+          ) => {
+            if (typeof data === "string" && data.includes('"resize"'))
+              ((w.__sent ??= []) as string[]).push(data);
+            send(data);
+          };
           this.addEventListener("message", (e) => {
             if (typeof e.data !== "string") return;
             const f = JSON.parse(e.data) as { type?: string };
@@ -199,17 +207,15 @@ async function eventually(
   }
 }
 const last = (pty: ScriptedPty) => pty.resizes.at(-1) ?? [0, 0];
-/** Type `d` into the page's terminal, as a person's keystroke. */
-const type = (v: { p: Page }, d: string) =>
-  v.p.evaluate(
-    (ch) =>
-      (
-        window as unknown as {
-          __terms: { input(d: string, user: boolean): void }[];
-        }
-      ).__terms[0].input(ch, true),
-    d,
-  );
+/**
+ * Type `d` into the page's terminal as a person does: real key presses in
+ * its textarea. (Not term.input: that is the path xterm's own replies to
+ * the agent's queries take too.)
+ */
+const type = async (v: { p: Page }, d: string) => {
+  await v.p.focus(".pane .xterm-helper-textarea");
+  await v.p.keyboard.type(d);
+};
 const same = (a: readonly number[], b: readonly number[]) =>
   a[0] === b[0] && a[1] === b[1];
 
@@ -313,6 +319,46 @@ describe("the Agents tab's terminal size", () => {
     expect(last(pty)).toEqual(wideSize);
     // Never under 2x2, whatever was measured.
     expect(pty.resizes.every(([c, r]) => c >= 2 && r >= 2)).toBe(true);
+    await narrow.ctx.close();
+    await wide.ctx.close();
+  }, 60_000);
+
+  it("D54: a window opened from the agent's link follows, though the agent asks the terminal questions (a real Claude Code does): xterm's answers reach the agent, and never take the size", async () => {
+    if (skip()) return;
+    const [sid, pty] = await session("asks");
+    const wide = await viewer(sid, 1440);
+    await eventually(async () => same(last(pty), await termSize(wide.p)));
+    const wideSize = last(pty);
+    // What a TUI asks on start: the terminal's kind (DA1), the cursor's
+    // place (DSR), focus reports on. A view that opens replays them, and
+    // its xterm answers each.
+    pty.emit("\x1b[c\x1b[6n\x1b[?1004h> ready\r\n");
+    await new Promise((r) => setTimeout(r, 300));
+    const resizes = pty.resizes.length;
+    const writes = pty.writes.length;
+    const narrow = await viewer(sid, 900);
+    await narrow.p
+      .locator(`.pane[data-id="${sid}"] .agfollow`)
+      .waitFor({ timeout: 10_000 });
+    // Its answers reached the agent…
+    await eventually(() =>
+      Buffer.concat(pty.writes.slice(writes)).toString().includes("\x1b[?"),
+    );
+    await new Promise((r) => setTimeout(r, 500));
+    // …and the size stayed the wide one's: no redraw there.
+    const sent = await narrow.p.evaluate(
+      () => (window as unknown as { __sent?: string[] }).__sent ?? [],
+    );
+    expect({ resizes: pty.resizes.slice(resizes), sent }).toEqual({
+      resizes: [],
+      sent: [],
+    });
+    expect(await termSize(narrow.p)).toEqual(wideSize);
+    expect(await wide.p.locator(".agfollow").count()).toBe(0);
+    // The person types in it: now it leads.
+    await type(narrow, "x");
+    await eventually(() => !same(last(pty), wideSize));
+    expect(last(pty)).toEqual(await termSize(narrow.p));
     await narrow.ctx.close();
     await wide.ctx.close();
   }, 60_000);

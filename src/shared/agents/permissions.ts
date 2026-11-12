@@ -4,6 +4,8 @@
  *
  *   ask    Ask for everything (the default)
  *   edits  Auto-approve edits in the worktree
+ *   auto   The runtime's own check decides each action (den#48): routine
+ *          ones run, risky ones are blocked; nothing waits on a person
  *   all    Auto-approve all (a session started so is always tagged)
  *
  * And extra allowed commands: plain command prefixes ("npm test"), one per
@@ -13,7 +15,7 @@
  * only, never vendor syntax.
  */
 
-export const PERMISSION_INTENTS = ["ask", "edits", "all"] as const;
+export const PERMISSION_INTENTS = ["ask", "edits", "auto", "all"] as const;
 export type PermissionIntent = (typeof PERMISSION_INTENTS)[number];
 export const DEFAULT_INTENT: PermissionIntent = "ask";
 

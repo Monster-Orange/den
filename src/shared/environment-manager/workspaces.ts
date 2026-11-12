@@ -966,3 +966,45 @@ export function setWorkspaceRuntimeBin(
   file.workspaces[ws] = next;
   writeWorkspacesFile(file);
 }
+
+/** The key of workspace `ws`'s default permission mode, as a refusal names it. */
+export const workspacePermissionKey = (ws: string) =>
+  `workspaces.${ws}.agents.permission`;
+
+/**
+ * den#48: `<ws>.agents.permission` in config/local/workspaces.yml, the
+ * permission mode an agent started in this workspace takes when its start
+ * names none (over its persona's), as written (checked where it is used);
+ * undefined when unset or when the file can't be read.
+ */
+export function workspaceAgentPermission(
+  ws: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): unknown {
+  try {
+    return read().workspaces[ws]?.agents?.permission ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Set (an intent) or clear (null) workspace `ws`'s `agents.permission`.
+ * The caller checks the intent first.
+ */
+export function setWorkspaceAgentPermission(
+  ws: string,
+  intent: string | null,
+): void {
+  const file = readWorkspacesFile();
+  const cfg = file.workspaces[ws];
+  if (!cfg) throw new Error(`workspace "${ws}" does not exist`);
+  const agents = { ...(cfg.agents ?? {}) };
+  if (intent === null) delete agents.permission;
+  else agents.permission = intent;
+  const next = { ...cfg };
+  if (Object.keys(agents).length) next.agents = agents;
+  else delete next.agents;
+  file.workspaces[ws] = next;
+  writeWorkspacesFile(file);
+}

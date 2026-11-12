@@ -773,7 +773,7 @@ describe("den-claude's permission mode", () => {
     persona(r, "odd", "permission_mode: yolo\n");
     expect(await agents(r, "start", "-w", "north", "--persona", "odd")).toBe(1);
     expect(r.err.join("\n")).toMatch(
-      /permission_mode "yolo" must be one of ask, edits, all, default, acceptEdits, plan, bypassPermissions/,
+      /permission_mode "yolo" must be one of ask, edits, auto, all, default, acceptEdits, plan, bypassPermissions/,
     );
     expect(r.made).toHaveLength(0);
   });

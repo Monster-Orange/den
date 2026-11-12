@@ -127,7 +127,8 @@ describe("the real shape", () => {
       id: REAL_ID,
       description: "Write the north report",
       type: "general-purpose",
-      model: "sonnet",
+      // The model it ran on (its transcript's), not the alias it was asked for.
+      model: "claude-sonnet-5-5",
       branch: `worktree-agent-${REAL_ID}`,
       worktree: `/work/north/.claude/worktrees/agent-${REAL_ID}`,
       background: true,
@@ -373,7 +374,30 @@ describe("format drift", () => {
     const odd = one("odd");
     expect(odd.description).toBeUndefined();
     expect(odd.depth).toBe(1);
-    expect(odd.model).toBe("claude-opus-5-5");
+    // A forced subagent model (den#3): the meta's pickedEffortModel says
+    // the agent's own model, the transcript what it ran on.
+    expect(odd.model).toBe("claude-sonnet-5-5");
+    // No answer yet: the model its agent's call asked for, not the meta's pick.
+    helper("fresh", { pickedEffortModel: "claude-opus-5-5" }, (l) =>
+      l.filter(
+        (x) => (JSON.parse(x) as { type?: string }).type !== "assistant",
+      ),
+    );
+    expect(one("fresh").model).toBe("sonnet");
+    // Claude Code's own stand-in turns (an API error) name no model.
+    helper(
+      "synth",
+      { model: undefined, pickedEffortModel: "claude-opus-5-5" },
+      (l) => [
+        ...l,
+        JSON.stringify({
+          type: "assistant",
+          timestamp: "2026-11-12T10:00:00.000Z",
+          message: { role: "assistant", model: "<synthetic>", content: [] },
+        }),
+      ],
+    );
+    expect(one("synth").model).toBe("claude-sonnet-5-5");
   });
 
   it("a helper's helpers: parentId and depth", () => {

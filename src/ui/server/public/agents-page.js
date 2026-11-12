@@ -179,6 +179,9 @@ const st = {
   // D40: the pane whose terminal takes the keyboard once its socket opens,
   // and the one whose terminal last had it.
   focusOnOpen: null,
+  // D54/D58: whether that pick also sizes the PTY (a pick from the list
+  // does; a link that opens the page only puts the keyboard there).
+  claimOnOpen: false,
   keyPane: null,
   // AG-4b: where a path link opens (Settings editor_open).
   editorOpen: "none",
@@ -1141,9 +1144,10 @@ function setLayout(layout) {
  * when its socket is open, else when it opens (connect). Never a pane
  * whose session ended.
  */
-function focusTerm(id) {
+function focusTerm(id, claim = true) {
   const p = st.panes.get(id);
   if (!p || p.exited || p.closed) return;
+  st.claimOnOpen = claim;
   if (p.term && p.sock?.readyState === WebSocket.OPEN && p.heardSession) {
     st.focusOnOpen = null;
     // After the click that picked it has finished with the row.
@@ -1192,8 +1196,10 @@ async function pick(id, add) {
   const back = add && st.keyPane !== id ? st.keyPane : null;
   // A stopped agent's pane (its last output) never takes the keyboard.
   const live = !isStopped(rowOf(id) ?? {});
-  if (!add) st.focusOnOpen = live ? id : null;
-  else if (st.focusOnOpen === id) st.focusOnOpen = null;
+  if (!add) {
+    st.focusOnOpen = live ? id : null;
+    st.claimOnOpen = live;
+  } else if (st.focusOnOpen === id) st.focusOnOpen = null;
   if (st.panes.has(id)) {
     paintLayout();
     paintList();
@@ -1504,6 +1510,14 @@ function sendSize(p) {
   return true;
 }
 
+/** D54: whether the data xterm just gave came from the person (a key, a paste). */
+const PERSON_INPUT_MS = 1000;
+function personTyped(p) {
+  return (
+    p.inputAt !== undefined && performance.now() - p.inputAt < PERSON_INPUT_MS
+  );
+}
+
 /**
  * This pane is in use (typed in, Take over, just opened): it leads. Fit it
  * to its box and make the PTY its size; any other view follows.
@@ -1615,7 +1629,8 @@ async function connect(p) {
           // other. An older server says no count: this pane leads.
           p.viewers = Number.isInteger(msg.viewers) ? msg.viewers : 1;
           const alone = p.viewers <= 1;
-          if (alone || st.focusOnOpen === p.id) claimSize(p);
+          if (alone || (st.focusOnOpen === p.id && st.claimOnOpen))
+            claimSize(p);
           else {
             p.following = true;
             if (p.pty) followPty(p);
@@ -1895,10 +1910,29 @@ async function openPane(id, { front = true } = {}) {
   const enc = new TextEncoder();
   const typeIn = (d) => {
     if (p.sock?.readyState !== WebSocket.OPEN) return;
-    // The one typing wins: another viewer resized the PTY since.
-    if (p.following || outOfStep(p)) claimSize(p);
+    // The one typing wins: another viewer resized the PTY since. Only a
+    // person's typing: xterm's own answers to the agent's questions (its
+    // kind, the cursor's place: a TUI asks on start, and a view that
+    // opens replays them) come here too, and go to the agent as they are.
+    if (personTyped(p) && (p.following || outOfStep(p))) claimSize(p);
     p.sock.send(enc.encode(d));
   };
+  // D54: what a person did in this pane (a key, a paste, IME), heard
+  // before xterm turns it into data.
+  for (const ev of [
+    "keydown",
+    "paste",
+    "beforeinput",
+    "compositionend",
+    "drop",
+  ])
+    el.addEventListener(
+      ev,
+      (e) => {
+        if (e.isTrusted) p.inputAt = performance.now();
+      },
+      true,
+    );
   term.onData(typeIn);
   // AG-4b: Shift+Enter is the runtime's soft newline, never a CR; the
   // layout keys (⌃⇧1-3) are the page's, never the agent's.
@@ -2627,8 +2661,12 @@ function paintAdvanced() {
       sd.model && sd.model !== def.model ? "latest" : def.version,
     ),
   });
+  const wsPm = sd.data?.workspacePermission;
   body.innerHTML =
     `<p>${esc(t("ag.new.advNote"))}</p>` +
+    (wsPm
+      ? `<p class="faint" id="ag-wspm">${esc(t("pm.wsDefault", { m: t(`pm.${wsPm}`) }))}</p>`
+      : "") +
     `<div class="two"><label class="fld"><span>${esc(t("ag.new.model"))}</span><select id="ag-model"${models.length ? "" : " disabled"}>${models.length ? modelOptionsHtml(sd.data, rt, sd.model, first) : `<option value="">${esc(t("pe.nsModel", { r: name }))}</option>`}</select></label>` +
     `<label class="fld"><span>${esc(t("ag.new.ver"))}</span><select id="ag-ver"${models.length && model ? "" : " disabled"}>${versionOptionsHtml(sd.data, rt, model, sd.ver, verFirst)}</select></label></div>` +
     permBlockHtml("ag", sd.data, {
@@ -2649,7 +2687,8 @@ function pickPersona(id) {
   const p = curPersona();
   sd.model = "";
   sd.ver = "";
-  sd.intent = p?.permission || "ask";
+  // den#48: the workspace's mode first, then the persona's.
+  sd.intent = sd.data?.workspacePermission || p?.permission || "ask";
   sd.extras = [...(p?.allowedCommands ?? [])];
   sd.extrasOpen = sd.extras.length > 0;
   for (const b of st.root.querySelectorAll("#ag-persona [data-pid]"))
@@ -2862,7 +2901,11 @@ function startBody() {
   if (rtv?.permissions) {
     // A persona's own mode Den doesn't name (Claude Code's plan) stays its
     // own unless a mode is picked.
-    if (p.permission !== undefined || sd.intent !== "ask")
+    if (
+      p.permission !== undefined ||
+      sd.data?.workspacePermission ||
+      sd.intent !== "ask"
+    )
       body.permission = sd.intent;
     body.allow = sd.extras;
   }
@@ -3640,11 +3683,28 @@ export async function mountAgentsPage(root) {
   root.querySelector("#agr").addEventListener("click", (e) => {
     const tab = e.target.closest('[role="tab"]');
     if (tab) {
-      if (st.cur === tab.dataset.id) return;
-      st.cur = tab.dataset.id;
-      paintLayout();
-      paintList();
-      tab.focus();
+      // D58: a pointer's pick puts the keyboard in its terminal; Enter or
+      // Space on the tab (a click with no pointer) keeps it on the tab.
+      const pointer = e.detail > 0;
+      if (st.cur !== tab.dataset.id) {
+        st.cur = tab.dataset.id;
+        paintLayout();
+        paintList();
+      }
+      if (pointer && !isStopped(rowOf(tab.dataset.id) ?? {}))
+        focusTerm(tab.dataset.id, false);
+      else tab.focus();
+      return;
+    }
+    // D58: a click on a pane's bar, off its controls, is a pick of it too.
+    const bar = e.target.closest(".pane .bar2");
+    if (
+      bar &&
+      e.detail > 0 &&
+      !e.target.closest("button, a, input, select, textarea, [contenteditable]")
+    ) {
+      const id = bar.closest(".pane")?.dataset.id;
+      if (id && !isStopped(rowOf(id) ?? {})) focusTerm(id, false);
       return;
     }
     const b = e.target.closest("button[data-act]");
@@ -3794,6 +3854,11 @@ export async function mountAgentsPage(root) {
     for (const id of wanted) {
       if (!st.data || rowOf(id)) await openPane(id);
     }
+  // D58: a link to an agent (⌘K, another page's Open) puts the keyboard in
+  // its terminal. Never its size: that is the person's typing (D54).
+  const front = st.cur && st.open.includes(st.cur) ? st.cur : st.open.at(-1);
+  if (wanted.length && front && !isStopped(rowOf(front) ?? {}))
+    focusTerm(front, false);
   writeUrl();
   if (startAsked) void openStart();
 }

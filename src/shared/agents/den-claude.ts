@@ -51,6 +51,7 @@ import {
 } from "./claude-helpers.js";
 import { sortHelpers, type Helper } from "./helpers.js";
 import type { AgentRecord } from "./records.js";
+import { spawnSync } from "child_process";
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -115,6 +116,7 @@ const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 export const PERMISSION_MODES = [
   "default",
   "acceptEdits",
+  "auto",
   "plan",
   "bypassPermissions",
 ] as const;
@@ -124,11 +126,15 @@ export const DEFAULT_PERMISSION_MODE = "default";
  * Den's permission intents (AG-13) as Claude Code's modes:
  * https://code.claude.com/docs/en/iam (permission modes): `default` asks
  * on first use of each tool, `acceptEdits` accepts file edits for the
- * session, `bypassPermissions` skips every prompt.
+ * session, `auto` lets Claude Code's own check approve routine actions
+ * and block risky ones (den#48: so a Den agent can run in the same mode
+ * as peers that do; Claude Code holds a message from a session in another
+ * mode), `bypassPermissions` skips every prompt.
  */
 export const INTENT_MODE: Record<PermissionIntent, string> = {
   ask: "default",
   edits: "acceptEdits",
+  auto: "auto",
   all: "bypassPermissions",
 };
 
@@ -146,6 +152,7 @@ export const DEN_CLAUDE_PERMISSIONS: RuntimePermissions = {
     ask: "--permission-mode default: asks before edits and commands",
     edits:
       "--permission-mode acceptEdits: file edits run without asking; commands ask",
+    auto: "--permission-mode auto: Claude Code's own check runs routine actions and blocks risky ones, without asking",
     all: "--permission-mode bypassPermissions: nothing asks",
   },
   commandRules: COMMAND_RULES,
@@ -223,9 +230,89 @@ function permissionMode(input: LaunchInput): string {
     return INTENT_MODE[m as PermissionIntent];
   if (!(PERMISSION_MODES as readonly string[]).includes(m))
     throw new LaunchError(
-      `${input.persona.source}: permission_mode "${m.replace(/[^\x20-\x7e]/g, "?").slice(0, 40)}" must be one of ${[...PERMISSION_INTENTS, ...PERMISSION_MODES].join(", ")}`,
+      `${input.persona.source}: permission_mode "${m.replace(/[^\x20-\x7e]/g, "?").slice(0, 40)}" must be one of ${[...new Set([...PERMISSION_INTENTS, ...PERMISSION_MODES])].join(", ")}`,
     );
   return m;
+}
+
+/**
+ * den#48: the modes `--permission-mode` takes, as `<bin> --help` lists
+ * them ("(choices: "acceptEdits", "auto", …)"); null when they can't be
+ * read (no such line, a failed or slow run). Kept per binary (its real
+ * path, size and time), so an update is asked again.
+ */
+export function permissionModesOf(
+  bin: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] | null {
+  let key: string;
+  try {
+    const real = fs.realpathSync(bin);
+    const st = fs.statSync(real);
+    key = `${real}\0${st.size}\0${st.mtimeMs}`;
+  } catch {
+    return null;
+  }
+  const hit = helpModes.get(key);
+  if (hit !== undefined) return hit;
+  let modes: string[] | null = null;
+  try {
+    const r = spawnSync(bin, ["--help"], {
+      env,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: HELP_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+    });
+    if (r.status === 0) modes = parseModes(r.stdout ?? "");
+  } catch {
+    modes = null;
+  }
+  helpModes.set(key, modes);
+  return modes;
+}
+
+const HELP_TIMEOUT_MS = 10_000;
+const helpModes = new Map<string, string[] | null>();
+
+/** Forget the modes asked (tests). */
+export function clearPermissionModesCache(): void {
+  helpModes.clear();
+}
+
+/** The choices on `--help`'s --permission-mode entry, or null. */
+export function parseModes(help: string): string[] | null {
+  const at = help.indexOf("--permission-mode");
+  if (at < 0) return null;
+  // The entry runs to the next option's line.
+  const rest = help.slice(at);
+  const next = rest.slice(1).search(/\n\s*-/);
+  const entry = next < 0 ? rest : rest.slice(0, next + 1);
+  const m = /choices:\s*([^)]*)\)/.exec(entry);
+  if (!m) return null;
+  const modes = [...m[1].matchAll(/"([A-Za-z]+)"/g)].map((x) => x[1]);
+  return modes.length ? modes : null;
+}
+
+/**
+ * den#48: refuse auto where this Claude Code doesn't list it, naming its
+ * modes. Where they can't be read, it goes ahead with a warning: Claude
+ * Code itself refuses a mode it doesn't take.
+ */
+function modeCheck(input: LaunchInput, bin: string): string[] {
+  if (permissionMode(input) !== "auto") return [];
+  const modes = permissionModesOf(bin, input.env ?? process.env);
+  if (modes === null)
+    return [
+      `⚠ couldn't read the permission modes ${bin} takes: if it has no auto mode, it will refuse to start`,
+    ];
+  if (!modes.includes("auto")) {
+    const v = installedVersion(bin);
+    throw new LaunchError(
+      `${DEN_CLAUDE_ID}: this Claude Code${v ? ` (${v})` : ""} has no auto permission mode (it takes ${modes.join(", ")}). Update Claude Code, or start the agent with another mode.`,
+    );
+  }
+  return [];
 }
 
 /** The installed version, from the install's own files; undefined when unknown. */
@@ -558,6 +645,7 @@ export const denClaude: Runtime = {
     const bin = binFor(input);
     const id = input.resumeToken ?? randomUUID();
     const c = common(input);
+    const modeWarnings = modeCheck(input, bin);
     // A relaunch from handoff (den#4): the handoff is the first prompt,
     // the last argument (firstPromptArg: never read as a flag).
     return {
@@ -572,13 +660,14 @@ export const denClaude: Runtime = {
       env: subagentEnv(input),
       files: c.files,
       resumeToken: id,
-      warnings: c.warnings,
+      warnings: [...c.warnings, ...modeWarnings],
     };
   },
   resume(input) {
     if (!input.resumeToken) return null;
     const bin = binFor(input);
     const c = common(input);
+    const modeWarnings = modeCheck(input, bin);
     return {
       argv: [
         bin,
@@ -589,7 +678,7 @@ export const denClaude: Runtime = {
       ],
       env: subagentEnv(input),
       files: c.files,
-      warnings: c.warnings,
+      warnings: [...c.warnings, ...modeWarnings],
     };
   },
   // Its transcript, <token>.jsonl in any project under its projects dir.
