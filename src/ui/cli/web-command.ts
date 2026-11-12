@@ -11,7 +11,7 @@ import * as net from "net";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { CLI_SPAWN_TIMEOUT_MS, DEFAULT_PORT } from "../../shared/constants.js";
-import { LookupTimeoutError, lookup } from "./proc-lookup.js";
+import { LookupTimeoutError, lookup } from "../../shared/process/lookup.js";
 import {
   readSecretsConfig,
   secretsProcessEnv,
@@ -673,7 +673,7 @@ function removeWebServerState(): void {
   }
 }
 
-/** Throws LookupTimeoutError when lsof can't answer (proc-lookup.ts). */
+/** Throws LookupTimeoutError when lsof can't answer (shared/process/lookup.ts). */
 function listListeningPids(port: number): number[] {
   const out = lookup("lsof", [`-tiTCP:${port}`, "-sTCP:LISTEN"]);
   return Array.from(
@@ -686,7 +686,7 @@ function listListeningPids(port: number): number[] {
   );
 }
 
-/** Throws LookupTimeoutError when ps can't answer (proc-lookup.ts). */
+/** Throws LookupTimeoutError when ps can't answer (shared/process/lookup.ts). */
 function commandForPid(pid: number): string {
   return lookup("ps", ["-p", String(pid), "-o", "command="]).trim();
 }
@@ -1276,7 +1276,7 @@ export async function cmdWeb(args: string[]): Promise<void> {
   try {
     await runWeb(args);
   } catch (err) {
-    // A lookup that never answered (proc-lookup.ts): say so, the same way
+    // A lookup that never answered (shared/process/lookup.ts): say so, the same way
     // for down, restart and up (0.4.29-dev.2's gate).
     if (!(err instanceof LookupTimeoutError)) throw err;
     let port = DEFAULT_PORT;

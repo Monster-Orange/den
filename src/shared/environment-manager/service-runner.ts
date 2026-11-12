@@ -75,6 +75,7 @@ import { getDistRoot, getStateDir } from "../paths.js";
 import { product } from "../product.js";
 import {
   adoptLegacyProcess,
+  unknownText,
   busyListenerText,
   servicePort,
 } from "../process/legacy-adopt.js";
@@ -708,6 +709,8 @@ export function claimHealthyService(
   const settled = settleDaemonRecord(resolved, workspace, onLine);
   // Dropped with its port held from outside the repo: said by the settle.
   if (settled.outcome === "busy") return "busy";
+  // D38: couldn't tell what runs (said by the settle): kept, not claimed.
+  if (settled.outcome === "unknown") return "untracked";
   const existing = settled.record;
   if (existing) {
     if (!sameDaemonIdentity(existing, resolved.repoPath, resolved.branch)) {
@@ -728,7 +731,8 @@ export function claimHealthyService(
     onLine,
     `${resolved.address} not started`,
   );
-  return holder ?? "untracked";
+  // D38: couldn't tell whose it is (said): skipped, never claimed.
+  return holder === "unknown" ? "untracked" : (holder ?? "untracked");
 }
 
 /**
@@ -1574,7 +1578,7 @@ function settleDaemonRecord(
   onLine: (line: string) => void,
 ): {
   record: DaemonRecord | undefined;
-  outcome: "adopted" | "dropped" | "busy" | null;
+  outcome: "adopted" | "dropped" | "busy" | "unknown" | null;
 } {
   reconcileDaemonAddress(resolved);
   const record = findDaemonByAddress(resolved.address);
@@ -1627,7 +1631,7 @@ function settleUntrackedListener(
   onLine: (line: string) => void,
   /** What the caller does about a busy port, said after the warning. */
   then: string,
-): "adopted" | "busy" | null {
+): "adopted" | "busy" | "unknown" | null {
   const facts = serviceProcessFacts(resolved, workspace);
   if (!facts.plain || !facts.port) return null;
   const verdict = adoptLegacyProcess({
@@ -1653,6 +1657,11 @@ function settleUntrackedListener(
     );
     return "adopted";
   }
+  // D38: a lookup never answered: never read as a free port.
+  if (verdict.kind === "unknown") {
+    onLine(`Warning: ${unknownText(verdict, resolved.address)}; ${then}`);
+    return "unknown";
+  }
   if (!verdict.busy) return null;
   onLine(
     `Warning: ${busyListenerText(verdict.busy, resolved.repoPath, resolved.address)}; ${then}`,
@@ -1673,7 +1682,7 @@ function settleLegacyRecord(
   resolved: ResolvedService,
   workspace: string,
   onLine: (line: string) => void,
-): "adopted" | "dropped" | "busy" {
+): "adopted" | "dropped" | "busy" | "unknown" {
   const { port, upCommand } = serviceProcessFacts(resolved, workspace);
   const verdict = adoptLegacyProcess({
     repoPath: record.repoPath,
@@ -1689,6 +1698,13 @@ function settleLegacyRecord(
         `) for ${record.address}`,
     );
     return "adopted";
+  }
+  // D38: a lookup never answered: the record is kept, nothing decided.
+  if (verdict.kind === "unknown") {
+    onLine(
+      `Warning: ${unknownText(verdict, record.address)}; its record is kept and nothing was signalled`,
+    );
+    return "unknown";
   }
   onLine(
     `Warning: ${record.address} was recorded before 0.3.0-dev.37 and ` +
@@ -1985,6 +2001,13 @@ export function previewUpSettle(
         (verdict.port ? ` (port ${verdict.port})` : "") +
         ", nothing started",
     };
+  // D38: a lookup never answered.
+  if (verdict.kind === "unknown")
+    return {
+      kind: "error",
+      address,
+      note: `${resolved.address} (${what}): ${unknownText(verdict, resolved.address)}: would not start`,
+    };
   if (verdict.busy)
     return {
       kind: "error",
@@ -2168,7 +2191,15 @@ export function runServiceCommand(
       return dummy();
     }
     // A record from before 0.3.0-dev.37: adopt what runs, or drop it.
-    const record = settledDaemonRecord(resolved, workspace, onLine);
+    const settled = settleDaemonRecord(resolved, workspace, onLine);
+    // D38: couldn't tell what runs (said): the record kept, nothing
+    // signalled, and the down is not a success.
+    if (settled.outcome === "unknown") {
+      reportDown("unstoppable");
+      closeAsync(unstoppableExit());
+      return dummy();
+    }
+    const record = settled.record;
     if (hasProcessGroup(record)) {
       void stopDaemonProcessGroup(record, onLine).then((outcome) => {
         reportDown(outcome);
@@ -2220,6 +2251,12 @@ export function runServiceCommand(
   // EADDRINUSE first).
   if (upSettle?.outcome === "busy") {
     onLine(`${resolved.address} not started: its port is in use`);
+    closeAsync(1);
+    return dummy();
+  }
+  // D38: couldn't tell whether it already runs (said): never a second copy.
+  if (upSettle?.outcome === "unknown") {
+    onLine(`${resolved.address} not started`);
     closeAsync(1);
     return dummy();
   }
@@ -2309,7 +2346,8 @@ export function runServiceCommand(
           closeAsync(0);
           return dummy();
         }
-        if (holder === "busy") {
+        // D38: "unknown" (couldn't tell, said) refuses as "busy" does.
+        if (holder === "busy" || holder === "unknown") {
           closeAsync(1);
           return dummy();
         }

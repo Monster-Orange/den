@@ -256,6 +256,11 @@ with "If you didn't ask an agent to do this, Deny." under it.
   `web down` and `web restart` exit 1 saying they couldn't tell, and
   their `--json` answers `ok: false` with `stopped: false` (and `running:
 null` when the server doesn't answer either). Run them again.
+  A service's `up`, `down` and `restart` do the same when they need a
+  lookup to decide (a service Den has no process group for, or a port
+  held by a process it hasn't adopted): `up` starts nothing, `down`
+  keeps the service's record and stops nothing, each says it couldn't
+  tell, and the command exits 1.
 
 - `up --json` runs `up` as usual, then reports each service it touched:
   `result` is `started`, `already-running`, `failed` or `skipped`, and

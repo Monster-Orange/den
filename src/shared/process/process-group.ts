@@ -19,7 +19,7 @@
  *  - nothing carries the pgid: the group has exited.
  */
 
-import { execFile, execFileSync } from "child_process";
+import { LookupError, lookup, lookupAsync } from "./lookup.js";
 
 export interface RecordedProcessGroup {
   /** The group id: the detached leader's pid. */
@@ -48,8 +48,6 @@ interface PsRow {
 }
 
 const PS = "ps";
-// lstart is printed in the C locale's fixed format, whatever the user's.
-const PS_ENV = { ...process.env, LC_ALL: "C", LANG: "C" };
 
 function parsePs(out: string): PsRow[] {
   const rows: PsRow[] = [];
@@ -69,30 +67,28 @@ function parsePs(out: string): PsRow[] {
 const PS_COLUMNS = ["-o", "pid=,pgid=,stat=,lstart="];
 const PS_ARGS = ["-A", ...PS_COLUMNS];
 
+/**
+ * ps's rows, in the C locale (lstart's fixed format, whatever the user's),
+ * through the shared lookup (D38): a slow ps is retried with a longer
+ * limit. Null when it still can't answer or can't run: "couldn't tell",
+ * never "no such group", so nothing is signalled or forgotten on it.
+ */
 function psRowsSync(args: string[]): PsRow[] | null {
   try {
-    return parsePs(
-      execFileSync(PS, args, {
-        env: PS_ENV,
-        encoding: "utf-8",
-        stdio: ["ignore", "pipe", "ignore"],
-        timeout: 5000,
-      }),
-    );
-  } catch {
-    return null;
+    return parsePs(lookup(PS, args, undefined, { strict: true }));
+  } catch (e) {
+    if (e instanceof LookupError) return null;
+    throw e;
   }
 }
 
-function psRows(): Promise<PsRow[] | null> {
-  return new Promise((resolve) => {
-    execFile(
-      PS,
-      PS_ARGS,
-      { env: PS_ENV, encoding: "utf-8", timeout: 5000 },
-      (err, stdout) => resolve(err ? null : parsePs(stdout)),
-    );
-  });
+async function psRows(): Promise<PsRow[] | null> {
+  try {
+    return parsePs(await lookupAsync(PS, PS_ARGS, undefined, { strict: true }));
+  } catch (e) {
+    if (e instanceof LookupError) return null;
+    throw e;
+  }
 }
 
 /**
