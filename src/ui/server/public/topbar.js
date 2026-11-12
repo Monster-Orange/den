@@ -1203,15 +1203,37 @@ function trackRuns() {
       const end = () => runEnded(id);
       this.__denEnd = end;
       this.addEventListener("message", (e) => {
+        let msg = null;
         try {
-          if (JSON.parse(e.data)?.type === "done") end();
+          msg = JSON.parse(e.data);
         } catch {
-          /* not JSON: not the end */
+          return; /* not JSON: not the end */
+        }
+        // D55: the server's job for this run, so a page that comes back
+        // can pick it up, and Stop can stop it.
+        if (msg?.type === "job" && typeof msg.id === "string") {
+          this.__denJob = msg.id;
+          keepRun(msg.id);
+        } else if (msg?.type === "done") {
+          end();
+          if (this.__denJob) forgetRun(this.__denJob);
         }
       });
       this.addEventListener("error", () => {
         if (this.readyState === 2) end();
       });
+    }
+    /**
+     * D55: stop the run itself (closing the stream only stops watching
+     * it: the run goes on to its end on the server).
+     */
+    stopRun() {
+      const job = this.__denJob;
+      if (job) {
+        forgetRun(job);
+        void stopJob(job);
+      }
+      this.close();
     }
     close() {
       this.__denEnd?.();
@@ -1220,6 +1242,138 @@ function trackRuns() {
   }
   DenEventSource.__denRuns = true;
   window.EventSource = DenEventSource;
+}
+
+// ── D55: runs that outlive their page ──────────────────────────────────────
+// A run is a job on the server: it goes on when its page goes (a reload,
+// another page, a closed tab). This browser keeps the ids of the runs it
+// started until it sees each one's done; a page that loads asks the server
+// about them and shows each in the runs dock: still running (its output
+// so far, then live, with Stop), or how it ended while nobody watched.
+
+const LS_RUNS = "__DEN_CLI__-runs";
+/** Runs this browser started and hasn't seen end: at most this many. */
+const MAX_KEPT_RUNS = 20;
+
+function keptRuns() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_RUNS) || "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function saveRuns(ids) {
+  try {
+    if (ids.length) localStorage.setItem(LS_RUNS, JSON.stringify(ids));
+    else localStorage.removeItem(LS_RUNS);
+  } catch {
+    /* a convenience only */
+  }
+}
+function keepRun(id) {
+  saveRuns([...keptRuns().filter((x) => x !== id), id].slice(-MAX_KEPT_RUNS));
+}
+function forgetRun(id) {
+  const ids = keptRuns();
+  if (ids.includes(id)) saveRuns(ids.filter((x) => x !== id));
+}
+
+async function stopJob(id) {
+  try {
+    await fetch(`/api/exec/jobs/${encodeURIComponent(id)}/stop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+  } catch {
+    /* the server is away: the run's own end says how it went */
+  }
+}
+
+/** Show each run this browser started that it hasn't seen end (D55). */
+async function resumeRuns() {
+  const ids = keptRuns();
+  if (!ids.length || !sh()?.runs) return;
+  let jobs;
+  try {
+    const r = await fetch("/api/exec/jobs");
+    if (!r.ok) return;
+    jobs = (await r.json())?.jobs;
+  } catch {
+    return;
+  }
+  if (!Array.isArray(jobs)) return;
+  const byId = new Map(jobs.map((j) => [j.id, j]));
+  for (const id of ids) {
+    const j = byId.get(id);
+    if (j) showJob(j);
+    else forgetRun(id); // the server no longer has it (a restart)
+  }
+}
+
+function showJob(j) {
+  const runs = sh()?.runs;
+  if (!runs) return;
+  const tab = `job:${j.id}`;
+  if (runs.has?.(tab)) return;
+  const qs = new URLSearchParams(j.params ?? {}).toString();
+  const label = runOf(`${j.path}?${qs}`, location.href) ?? j.path;
+  const live = j.status === "running";
+  const stop = {
+    id: "stop",
+    label: t("runs.stop"),
+    run: () => {
+      forgetRun(j.id);
+      void stopJob(j.id);
+    },
+  };
+  runs.start(tab, label, {
+    doneLine: false,
+    actions: live ? [stop] : [],
+    ...(j.params?.workspace ? { ws: j.params.workspace } : {}),
+  });
+  runs.append(tab, t(live ? "runs.resumed" : "runs.ended"), "phase");
+  const es = new EventSource(
+    `/api/exec/jobs/${encodeURIComponent(j.id)}/events`,
+  );
+  let over = false;
+  const finish = (ok) => {
+    if (over) return;
+    over = true;
+    es.close();
+    runs.set(tab, { actions: [] });
+    runs.finish(tab, { ok });
+  };
+  es.onmessage = (e) => {
+    let msg;
+    try {
+      msg = JSON.parse(e.data);
+    } catch {
+      return;
+    }
+    const text = typeof msg?.text === "string" ? msg.text : null;
+    if (msg?.type === "line" && text) runs.append(tab, text);
+    else if (msg?.type === "cmd" && text) runs.append(tab, text, "cmd");
+    else if (msg?.type === "error" && text) runs.append(tab, text, "err");
+    else if (msg?.type === "label" && text) runs.append(tab, text, "phase");
+    else if (msg?.type === "done") {
+      const ok = msg.exitCode === 0;
+      forgetRun(j.id);
+      // A stopped run's own line says so.
+      if (!msg.stopped)
+        runs.append(
+          tab,
+          ok ? t("runs.ok") : t("runs.failed", { code: msg.exitCode }),
+          ok ? "done-ok" : "done-fail",
+        );
+      finish(ok);
+    }
+  };
+  es.onerror = () => {
+    // The stream ended without a done (the server went away): over.
+    if (es.readyState === 2) finish(false);
+  };
 }
 
 // ── the admin password, for sudo (R8, LK-0) ───────────────────────────────
@@ -1584,6 +1738,7 @@ export function initTopbar(opts = {}) {
   if (inited || typeof document === "undefined") return;
   inited = true;
   trackRuns();
+  void resumeRuns();
   // R26d: while the server doesn't answer, the chip reads unknown (never a
   // stale green); it repaints from the last health once it is back.
   serverDown = sh()?.serverUp ? !sh().serverUp() : false;

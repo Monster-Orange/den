@@ -111,6 +111,7 @@ import {
 } from "../../shared/constants.js";
 
 import { product } from "../../shared/product.js";
+import { sseHead, startJob } from "./exec-jobs.js";
 // Anchored to the den root, NOT process.cwd(): ws.directory values are
 // stored relative to this and written back via path.relative below — a
 // cwd-started-elsewhere server would resolve and persist garbage paths.
@@ -1139,21 +1140,16 @@ export async function handleWorkspaceRoutes(
     const cmd = url.searchParams.get("cmd");
     if (!cmd) return send400(res, "cmd required");
 
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
-
-    // Client disconnect cleanup — set when the browser closes the SSE stream
-    // (tab close, navigation, refresh mid-operation). The flag is polled by
-    // the sequential runner and the readiness poller so in-flight work bails
-    // out instead of writing to a dead socket and leaking descriptors.
+    sseHead(res);
+    // D55: the run is a job. The page's stream closing (a tab closed, a
+    // reload, another page) only stops it watching; the run goes on to its
+    // done. `cancelled` is set by Stop (POST /api/exec/jobs/:id/stop), and
+    // is polled by the sequential runner and the readiness poller.
+    const job = startJob(pathname, url.searchParams, res);
     let cancelled = false;
     let activeProc: ReturnType<typeof runServiceCommand>["proc"] | null = null;
     let activeDetachTimer: ReturnType<typeof setTimeout> | null = null;
-    req.on("close", () => {
+    job.onStop(() => {
       cancelled = true;
       if (activeDetachTimer !== null) {
         clearTimeout(activeDetachTimer);
@@ -1173,12 +1169,7 @@ export async function handleWorkspaceRoutes(
     // naming the command and the service (the last label).
     const emit = watchSudo((obj: unknown): void => {
       if (cancelled) return;
-      try {
-        res.write(`data: ${JSON.stringify(obj)}\n\n`);
-      } catch {
-        // Socket closed mid-write — mark cancelled so subsequent loops bail.
-        cancelled = true;
-      }
+      job.write(obj as Record<string, unknown>);
     });
 
     const wsParam = url.searchParams.get("workspace");
@@ -1188,14 +1179,14 @@ export async function handleWorkspaceRoutes(
         text: `Workspace "${wsParam}" is not active — activate it first`,
       });
       emit({ type: "done", exitCode: 1, duration: 0 });
-      res.end();
+      job.end();
       return;
     }
     const ws = wsParam ? getWorkspaceByName(wsParam) : getActiveWorkspace();
     if (!ws) {
       emit({ type: "error", text: "No active workspace" });
       emit({ type: "done", exitCode: 1, duration: 0 });
-      res.end();
+      job.end();
       return;
     }
 
@@ -1209,7 +1200,7 @@ export async function handleWorkspaceRoutes(
     if (allServices.length === 0) {
       emit({ type: "error", text: "No services in active workspace" });
       emit({ type: "done", exitCode: 1, duration: 0 });
-      res.end();
+      job.end();
       return;
     }
 
@@ -1295,7 +1286,7 @@ export async function handleWorkspaceRoutes(
           text: `${seedRepo} has no derived dependency closure — is it in this workspace?`,
         });
         emit({ type: "done", exitCode: 1, duration: 0 });
-        res.end();
+        job.end();
         return;
       }
       // A system the user switched auto-start OFF is still skipped here — but
@@ -1350,7 +1341,7 @@ export async function handleWorkspaceRoutes(
 
     if (addresses.length === 0) {
       emit({ type: "done", exitCode: 0, duration: 0 });
-      res.end();
+      job.end();
       return;
     }
 
@@ -1372,7 +1363,7 @@ export async function handleWorkspaceRoutes(
     } catch (e) {
       emit({ type: "error", text: (e as Error).message });
       emit({ type: "done", exitCode: 1, duration: 0 });
-      res.end();
+      job.end();
       return;
     }
 
@@ -1420,7 +1411,7 @@ export async function handleWorkspaceRoutes(
             return r ? `${r.repoName}/${r.subsystem}` : addr;
           },
           isFailing: async (addr) => {
-            if (cancelled) return false; // client gone — stop probing
+            if (cancelled) return false; // stopped — stop probing
             const depResolved = resolveCached(addr);
             if (!depResolved) return false;
             // Announce on the FIRST real probe only: when every manifest
@@ -1510,11 +1501,9 @@ export async function handleWorkspaceRoutes(
     // Run services sequentially in dependency order
     const runNext = (i: number): void => {
       if (cancelled) {
-        // Client disconnected — drop further work silently. res.end() on a
-        // dead socket is a no-op; don't emit anything that could retrigger
-        // the try/catch guard in `emit`.
+        // Stopped (D55): Stop already wrote the job's done.
         try {
-          res.end();
+          job.end();
         } catch {
           /* already closed */
         }
@@ -1532,7 +1521,7 @@ export async function handleWorkspaceRoutes(
           exitCode: overallExit,
           duration: Date.now() - startTime,
         });
-        res.end();
+        job.end();
         return;
       }
 
@@ -1665,8 +1654,8 @@ export async function handleWorkspaceRoutes(
           secretEnv: preparedSecrets.get(i),
           onLine: (line) => emit({ type: "line", text: line }),
           onClose: (exitCode) => {
-            // Release outer-scope refs so the disconnect handler no longer
-            // tries to kill a process/timer that's already gone.
+            // Release outer-scope refs so Stop no longer tries to kill a
+            // process/timer that's already gone.
             if (activeProc === proc) activeProc = null;
             if (detachFired) return; // detach timer already emitted svc-done for this service
             // Command finished before the detach window — cancel the timer and complete normally.
@@ -1689,7 +1678,7 @@ export async function handleWorkspaceRoutes(
           },
         });
 
-        // Track current proc so req.on('close') can kill it on disconnect.
+        // Track current proc so Stop can kill it.
         activeProc = proc;
 
         if (interactive) {
@@ -1919,7 +1908,7 @@ export async function handleWorkspaceRoutes(
               if (activeProc === downProc) activeProc = null;
               if (cancelled) {
                 try {
-                  res.end();
+                  job.end();
                 } catch {
                   /* already closed */
                 }

@@ -237,6 +237,13 @@ export const ROUTES: readonly RouteEntry[] = [
     "runs a service's lifecycle command (up, down, restart, …)",
   ),
   M(["GET", "HEAD"], "/api/run", "starts a test run (playwright, k6, ZAP)"),
+  R("/api/exec/jobs", "D55: the runs kept (running, or ended lately)"),
+  R("/api/exec/jobs/:id", "D55: one run: how it stands"),
+  R(
+    "/api/exec/jobs/:id/events",
+    "D55: attaches to a run's output (so far, then live); it starts nothing",
+  ),
+  M(["POST"], "/api/exec/jobs/:id/stop", "D55: stops a run (Stop)"),
   M(
     ["GET", "HEAD"],
     "/api/workspace/exec",
@@ -555,6 +562,11 @@ export const SIGNIN_GETS: readonly string[] = [
 
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
+  "index.ts:EXEC_JOB_PATH": [
+    "/api/exec/jobs/:id",
+    "/api/exec/jobs/:id/events",
+    "/api/exec/jobs/:id/stop",
+  ],
   "agent-routes.ts:AGENTS_PATH": [
     "/api/workspaces/:ws/agents",
     "/api/workspaces/:ws/agents/:id/stop",

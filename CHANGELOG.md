@@ -4,6 +4,19 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.38] - unreleased
+
+### Fixed
+
+- **A restart always finishes, whatever its page does (D55).** Closing
+  the tab, reloading or moving to another page in the middle of a
+  service's or a workspace's up, down or restart used to stop it: a
+  workspace restart cut off between its down and its up left the
+  services down. The run now goes on to its end on the server. The next
+  page you open shows it in the runs dock: still running (its output so
+  far, then live, with Stop), or how it ended. Stop is the only thing
+  that stops it.
+
 ## [0.4.33] - unreleased
 
 ### Fixed

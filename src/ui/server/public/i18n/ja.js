@@ -156,6 +156,11 @@
     "runs.aria": "実行、{n} 件実行中",
     "runs.last": "前回の実行: {s}",
     "runs.none": "実行なし",
+    "runs.stop": "停止",
+    "runs.resumed": "サーバーで実行中です。これまでの出力と、この先の出力:",
+    "runs.ended": "ページが開いていない間に終了しました。出力:",
+    "runs.ok": "完了",
+    "runs.failed": "失敗 (終了コード {code})",
     "runs.empty":
       "まだ何も実行していません。どのページの出力もここに表示されます。",
     "runs.toast":

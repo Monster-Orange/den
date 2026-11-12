@@ -415,6 +415,24 @@ Top to bottom, it has:
   and the repo's folder filled in;
 - **Open in Services**, **Open in Graph** and **Unpin** (or **Pin**).
 
+**A run finishes on the server.** A service's or a workspace's up, down or
+restart is a job on the server (D55). Closing the tab, reloading or going to
+another page only stops watching it: the run goes on to its end. Its stream
+says the job first (`{"type":"job","id":"run_…"}`). The browser keeps the ids
+of runs it started and hasn't seen end; the next page it loads shows each one
+in the runs dock: still running (its output so far, then live, with **Stop**),
+or how it ended. **Stop** is its own request. The routes:
+
+- `GET /api/exec/jobs`: the runs kept, newest first (`id`, `path`, `params`,
+  `status`, `exitCode`, `stopped`, `startedAt`, `endedAt`). Every running run,
+  and the last 20 that ended, each with its last 5,000 events;
+- `GET /api/exec/jobs/<id>/events`: the run's events so far, then live (SSE);
+- `POST /api/exec/jobs/<id>/stop`: stops it (exit 130, `"stopped": true`).
+
+A started service's log tail is the exception: once the service is up and no
+page has watched for 15 seconds, the tail stops and the run ends. The service
+keeps running.
+
 It stays current while it is open, from the same feeds the pages use. Delete
 on a pinned row still unpins it.
 

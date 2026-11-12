@@ -283,6 +283,12 @@
     "runs.aria": "Runs, {n} running",
     "runs.last": "Last run: {s}",
     "runs.none": "No runs",
+    "runs.stop": "Stop",
+    "runs.resumed":
+      "Still running on the server. Its output so far, then the rest:",
+    "runs.ended": "It ended while no page was watching. Its output:",
+    "runs.ok": "Done",
+    "runs.failed": "Failed (exit {code})",
     "runs.empty": "Nothing has run yet. Output from any page lands here.",
     "runs.toast": "Nothing has run yet. A page's output shows here.",
     "runs.all": "All runs",
