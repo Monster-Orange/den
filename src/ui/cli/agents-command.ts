@@ -117,6 +117,7 @@ import {
   removeAgent,
   removeStopped,
   renameAgent,
+  moveAgent,
   setAgentServices,
   checkServiceList,
   resolveAgentsDeps,
@@ -234,6 +235,10 @@ export const AGENTS_HELP = {
     "    stop a running agent and resume the same conversation, so it gets the",
     "    tools it would get now (Hub's, after Connect). It waits for its turn",
     "    to end; --now stops it at once. A person's only",
+    "{cli} agents move <id> -w <ws> [--now]",
+    "    move an agent to another workspace; same conversation, folder and name.",
+    "    A running one waits for its turn to end (--now: at once), then resumes",
+    "    there, with that workspace's tools. A person's only",
     "{cli} agents rename <id> <name> [-w <ws>]",
     "{cli} agents rename <id> --clear [-w <ws>]",
     "    name an agent (its tab, row and pane header); the id never changes.",
@@ -552,6 +557,37 @@ async function restart(args: string[], d: AgentsResolved): Promise<number> {
     s.fresh
       ? `restarted agent ${s.rec.id}; ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
       : `restarted agent ${s.rec.id}; same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
+  );
+}
+
+/**
+ * D72: `agents move <id> -w <ws> [--now]`: to another workspace, same
+ * conversation. A running agent waits for its turn to end. A person's only.
+ */
+async function move(args: string[], d: AgentsResolved): Promise<number> {
+  const where = "agents move";
+  if (d.env[ACTOR_TOKEN_ENV] !== undefined)
+    throw new AgentError(
+      `${where}: only a person can move an agent (this is an agent's session)`,
+    );
+  const p = parseArgs(where, args, { "--workspace": true, "--now": false });
+  noExtra(where, p, 1);
+  const [id] = p.positional;
+  const to = workspaceFlag(where, p);
+  if (!id || !to)
+    throw new UsageError(
+      `${where} needs <id> and -w <workspace to move it to>`,
+    );
+  const now = p.flags["--now"] === true;
+  const m = await moveAgent(d, id, undefined, to, now ? "now" : "after-turn");
+  if (!m.resumed) {
+    d.out(`moved agent ${m.rec.id} from ${m.from} to ${to}; it was stopped`);
+    return 0;
+  }
+  return report(
+    d,
+    m.resumed,
+    `moved agent ${m.rec.id} from ${m.from} to ${to}; same conversation, restarted at its idle so its tools are ${to}'s, as ${m.rec.sessionName} in ${m.rec.cwd}`,
   );
 }
 
@@ -1567,6 +1603,9 @@ export async function cmdAgents(
           return await helpers(rest, d);
         case "rename":
           return rename(rest, d);
+        case "move":
+          await loadAgentWorkspaces(deps);
+          return await move(rest, d);
         case "link":
           return link(rest, d, "add");
         case "unlink":

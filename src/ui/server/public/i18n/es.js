@@ -988,6 +988,18 @@
       "Lo muestran su pestaña, su fila y la cabecera del panel; el id {id} no cambia. Las demás sesiones lo ven como {peer} desde su próximo inicio o reanudación. Vacío: vuelve a {id}.",
     "ag.rn.go": "Cambiar el nombre",
     "ag.rn.cancel": "Cancelar",
+    "ag.mv.item": "Mover a otro espacio de trabajo…",
+    "ag.mv.title": "Mover {id}",
+    "ag.mv.to": "Al espacio de trabajo",
+    "ag.mv.helpStopped":
+      "Conserva su conversación, carpeta, nombre y servicios. Se reanuda en el nuevo espacio de trabajo.",
+    "ag.mv.helpRunning":
+      "Conserva su conversación, carpeta, nombre y servicios. Den espera a que termine su turno y lo reanuda allí con las herramientas de ese espacio de trabajo.",
+    "ag.mv.now": "Mover ahora, aunque esté a mitad de un turno",
+    "ag.mv.go": "Mover",
+    "ag.mv.none": "No hay otro espacio de trabajo al que moverlo.",
+    "ag.mv.pending": "{id} se moverá a {ws} cuando termine su turno.",
+    "ag.mv.done": "{id} se movió a {ws}.",
     "ag.where.logout": "Se detiene al cerrar sesión",
     "ag.where.logoutTip":
       "Se ejecuta en la sesión de escritorio, así que cerrar sesión lo termina. Para que los agentes sigan: {cli} service install --mode always (opcional, aún no probado tras cerrar sesión)",

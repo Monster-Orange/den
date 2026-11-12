@@ -366,6 +366,31 @@ export function listRecords(stateDir: string): AgentRecord[] {
   return out;
 }
 
+/** Removed records still waiting for Undo (D72: who Den stopped last). */
+export function listRemovedRecords(stateDir: string): AgentRecord[] {
+  let names: string[];
+  try {
+    names = fs.readdirSync(removedDir(stateDir));
+  } catch {
+    return [];
+  }
+  const out: AgentRecord[] = [];
+  for (const n of names.sort()) {
+    if (!n.endsWith(".json")) continue;
+    const id = n.slice(0, -".json".length);
+    if (!AGENT_ID_RE.test(id)) continue;
+    try {
+      const rec = JSON.parse(
+        fs.readFileSync(path.join(removedDir(stateDir), n), "utf-8"),
+      ) as AgentRecord;
+      if (isRecord(rec, id)) out.push(rec);
+    } catch {
+      /* a stray or half-written file: not a record */
+    }
+  }
+  return out;
+}
+
 /**
  * Write a runtime's files, each 0600 and only inside `dir`: a runtime
  * names where in its own directory, never elsewhere.

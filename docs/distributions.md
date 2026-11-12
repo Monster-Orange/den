@@ -2754,6 +2754,16 @@ server scoped to its workspace.
   running agent's pane ⋯ menu, by touch or keyboard, or a double-click on
   its tab. A stopped agent's row and pane don't offer it (0.4.29); the CLI
   still does. The id never changes.
+- **Moving (D72).** `agents move <id> -w <ws> [--now]`, Move to
+  workspace… in the ⋯ menu, or `POST /api/workspaces/:ws/agents/:id/move
+  {to, when}`. Only a person can move an agent. A stopped agent's record
+  changes (workspace, session name). A running agent waits for its turn
+  to end, unless you pass `--now` or `when: "now"`. Den then stops it and
+  resumes the same conversation in the new workspace, because an agent's
+  tools and token are scoped to a workspace. Its folder, name and
+  services stay the same. An import of a conversation whose last write
+  came from Den's own stop of a removed agent (within 15 s) is not taken
+  as open in another terminal.
 - **Services it works on (D65).** `agents link <id> <service>...` and
   `agents unlink <id> <service>...` (a service is `repo` or
   `repo/service`). The API is `POST

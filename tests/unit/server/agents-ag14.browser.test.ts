@@ -23,6 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { readRecord } from "../../../src/shared/agents/records.js";
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
@@ -164,6 +165,8 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       "Start fresh",
       // D59: off, its persona's (tagged so).
       `${RR}persona's`,
+      // D72.
+      "Move to workspace…",
       "Remove",
     ]);
     expect(
@@ -263,7 +266,11 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     if (skip()) return;
     const p = await open("north");
     expect(await acts(p, "lookout")).toEqual(["fresh", "row-more"]);
-    expect(await menuOf(p, "lookout")).toEqual([`${RR}persona's`, "Remove"]);
+    expect(await menuOf(p, "lookout")).toEqual([
+      `${RR}persona's`,
+      "Move to workspace…",
+      "Remove",
+    ]);
     expect(
       await row(p, "lookout").locator(".agr").getAttribute("title"),
     ).toContain("codex can't resume a conversation");
@@ -923,6 +930,58 @@ describe("D37: Stopped (n), one line each, at the bottom", () => {
     await row(p, "east").getByRole("button", { name: "Resume east" }).click();
     expect((await res).status()).toBe(200);
     await row(p, "east").waitFor({ state: "detached", timeout: 15_000 });
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+});
+
+describe("D72: Move to workspace…", () => {
+  it("moves a stopped agent from its ⋯ menu; it leaves this workspace's list and keeps its name", async () => {
+    if (skip()) return;
+    s!.seed({
+      id: "rover",
+      persona: "planner",
+      workspace: "north",
+      displayName: "Rover",
+      resumeToken: "55555555-5555-4555-8555-555555555555",
+      stoppedAt: STOPPED_AT,
+    });
+    const p = await open("north");
+    const group = p.locator("#agl details[data-stopped]");
+    if ((await group.getAttribute("open")) === null)
+      await group.locator("summary").click();
+    await row(p, "rover").locator('[data-act="row-more"]').click();
+    await p
+      .locator('.den-pop[role="menu"] .den-mi', {
+        hasText: "Move to workspace…",
+      })
+      .click();
+    const dlg = p.locator("#ag-mv[open]");
+    await dlg.waitFor();
+    expect(await p.textContent("#ag-mv-h")).toBe("Move Rover");
+    expect(
+      await p.$$eval("#ag-mv-ws option", (os) =>
+        os.map((o) => (o as HTMLOptionElement).value),
+      ),
+    ).toEqual(["south"]);
+    expect(await p.textContent("#ag-mv-help")).toMatch(
+      /keeps its conversation, folder, name and services/,
+    );
+    // A stopped agent moves at once: no "now" choice.
+    expect(await p.isVisible("#ag-mv-now")).toBe(false);
+    const res = p.waitForResponse(
+      (r) =>
+        new URL(r.url()).pathname === "/api/workspaces/north/agents/rover/move",
+    );
+    await p.click("#ag-mv-go");
+    expect((await res).status()).toBe(200);
+    await dlg.waitFor({ state: "detached" }).catch(() => undefined);
+    await p.waitForFunction(() => !document.querySelector("#ag-mv[open]"));
+    await row(p, "rover").waitFor({ state: "detached", timeout: 15_000 });
+    expect(readRecord(s!.stateDir, "rover")).toMatchObject({
+      workspace: "south",
+      displayName: "Rover",
+    });
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);

@@ -806,6 +806,18 @@
         text-transform: uppercase;
         letter-spacing: 0.07em;
       }
+      .ag-dlg label.chk {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font: 13px var(--sans);
+        color: var(--text);
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      .ag-dlg label[hidden] {
+        display: none;
+      }
       .ag-dlg input[type="password"],
       .ag-dlg select {
         width: 100%;
@@ -1028,6 +1040,29 @@
             </button>
             <button type="submit" class="den-btn primary" id="ag-rn-go">
               Rename
+            </button>
+          </div>
+        </form>
+      </dialog>
+      <dialog class="ag-dlg" id="ag-mv" aria-labelledby="ag-mv-h">
+        <form method="dialog" id="ag-mv-form" novalidate>
+          <h2 id="ag-mv-h">Move</h2>
+          <label class="fld"
+            ><span id="ag-mv-t">To workspace</span>
+            <select id="ag-mv-ws"></select>
+          </label>
+          <p class="help" id="ag-mv-help"></p>
+          <label class="chk" id="ag-mv-now-l" hidden
+            ><input type="checkbox" id="ag-mv-now" />
+            <span id="ag-mv-now-t">Move now</span></label
+          >
+          <p class="err" id="ag-mv-err" role="alert" hidden></p>
+          <div class="btns">
+            <button type="button" class="den-btn" id="ag-mv-cancel">
+              Cancel
+            </button>
+            <button type="submit" class="den-btn primary" id="ag-mv-go">
+              Move
             </button>
           </div>
         </form>

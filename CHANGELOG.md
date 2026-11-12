@@ -22,8 +22,22 @@ config and manifest changes a distribution must make to move to it under
   shows the command to run and Keep waiting. The stale pill uses the
   same dialog.
 
+- **Move an agent to another workspace (D72).** Use `agents move <id>
+  -w <ws>`, Move to workspace… in an agent's ⋯ menu, or `POST
+  /api/workspaces/:ws/agents/:id/move {to, when}`. The agent keeps its
+  conversation, folder, name and service links. A stopped agent's record
+  just moves. A running agent waits for its turn to end (`--now`, or
+  Move now in the dialog, moves it at once), then resumes the same
+  conversation in the new workspace with that workspace's tools. Before,
+  the only way was stop, remove and import, which cut off a turn in
+  progress. Only a person can move an agent.
+
 ### Fixed
 
+- **Import right after Den stopped an agent (D72).** Stopping an agent
+  writes a last line to its conversation. Stop, remove and import within
+  a minute was refused as "still open in another terminal". A write that
+  comes from Den's own stop of a removed agent no longer counts.
 - **An agent stays under the service it works on (D65).** A service's
   quick panel listed an agent only when the agent's folder was the
   service's repo. An agent started in the folder above the repos was

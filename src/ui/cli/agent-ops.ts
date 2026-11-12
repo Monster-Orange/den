@@ -142,6 +142,7 @@ import {
   AGENT_ID_RE,
   agentFilesDir,
   listRecords,
+  listRemovedRecords,
   purgeRemoved,
   readRecord,
   removeRecord,
@@ -2780,6 +2781,39 @@ function bringInRuntimes(): BringInRuntime[] {
 }
 
 /** The conversation id each agent of this state dir continues. */
+/**
+ * D72: how close a conversation's last write may be to Den's own stop of
+ * it and still be that stop's (the runtime writes as it exits).
+ */
+export const DEN_STOP_WRITE_MS = 15_000;
+
+/**
+ * D72: when Den last stopped each conversation of an agent since removed
+ * (runtime + token → stoppedAt). A removed agent never runs, so a write
+ * that close to its stop is the stop's, not another terminal's.
+ */
+function stoppedByDen(d: AgentsResolved): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const r of listRemovedRecords(d.stateDir())) {
+    const at = r.stoppedAt ? Date.parse(r.stoppedAt) : NaN;
+    if (r.resumeToken && Number.isFinite(at))
+      m.set(`${r.runtime} ${r.resumeToken}`, at);
+  }
+  return m;
+}
+
+/** Still open in another terminal: written lately, and not by Den's stop. */
+export function openOutsideDen(
+  lastAt: string,
+  stoppedAt: number | undefined,
+  now = Date.now(),
+): boolean {
+  if (!openElsewhere(lastAt, now)) return false;
+  if (stoppedAt === undefined) return true;
+  const t = Date.parse(lastAt);
+  return !(Number.isFinite(t) && Math.abs(t - stoppedAt) <= DEN_STOP_WRITE_MS);
+}
+
 function agentByToken(d: AgentsResolved): Map<string, string> {
   const m = new Map<string, string>();
   for (const r of listRecords(d.stateDir()))
@@ -2807,6 +2841,7 @@ export function listConversations(
   // Its folder and every repo's; a shared root only exactly (AG-17.1).
   const scope = d.workspaceFolders(ws);
   const taken = agentByToken(d);
+  const denStops = stoppedByDen(d);
   const suggestFor = personaSuggester(d, ws);
   const now = Date.now();
   const conversations: ListedConversation[] = [];
@@ -2824,7 +2859,7 @@ export function listConversations(
       conversations.push({
         ...c,
         runtime: id,
-        open: openElsewhere(c.lastAt, now),
+        open: openOutsideDen(c.lastAt, denStops.get(`${id} ${c.id}`), now),
         ...(agent ? { agent } : {}),
         ...(suggest ? { suggest } : {}),
         ...(lost.length ? { lost } : {}),
@@ -3486,6 +3521,88 @@ export async function restartAgent(
       `${where}: agent ${rec.id} is still stopping; try again in a moment`,
     );
   return resumeAgent(d, rec.id, rec.workspace);
+}
+
+export interface Moved {
+  rec: AgentRecord;
+  from: string;
+  /** Set when it was running: resumed, same conversation, in `to`. */
+  resumed?: Resumed;
+}
+
+/**
+ * D72: move agent `id` to workspace `to`, keeping its conversation, its
+ * folder, its name and its link to services. A stopped agent's record
+ * just changes. A running one waits for its turn to end (or `now`), then
+ * Den resumes the same conversation in `to`: its tools and token are a
+ * workspace's, so they must be the new one's. Nothing typed mid-turn is
+ * cut off. Its record from a deleted workspace (D71) moves the same way.
+ */
+export async function moveAgent(
+  d: AgentsResolved,
+  id: string,
+  from: string | undefined,
+  to: string,
+  when: "now" | "after-turn" = "after-turn",
+  opts: { pollMs?: number; maxMs?: number } = {},
+): Promise<Moved> {
+  const where = "agents move";
+  const rec = agentRecord(d, id, from);
+  if (rec.workspace === to)
+    throw usage(`${where}: agent ${rec.id} is already in ${to}`);
+  if (isServerScope(to) || isServerScope(rec.workspace))
+    throw usage(`${where}: Den's own agents stay in its own scope`);
+  if (!d.workspaceExists(to))
+    throw refused(`${where}: there is no workspace "${to}"`, [], 404);
+  const live = await withClient(d, async (c) => {
+    const s = sessionOf(await c.list(), rec);
+    return Boolean(s && !s.exited);
+  });
+  const moveRecord = (cur: AgentRecord): AgentRecord => {
+    const next: AgentRecord = {
+      ...cur,
+      workspace: to,
+      sessionName: sessionName(d.dist, to, cur.id),
+    };
+    delete next.peerName;
+    writeRecord(d.stateDir(), next);
+    return next;
+  };
+  if (!live) return { rec: moveRecord(rec), from: rec.workspace };
+  const why = personaChangeRefusal(rec);
+  if (why)
+    throw refused(
+      why.replace(
+        "change persona",
+        "move while it runs; stop it first, then move it",
+      ),
+      [],
+      422,
+    );
+  let busy = await agentBusy(d, rec);
+  if (busy === null && when === "after-turn")
+    throw refused(
+      `${where}: Den can't tell when agent ${rec.id}'s turn ends; move it now instead (--now)`,
+    );
+  if (when === "after-turn") {
+    const deadline = Date.now() + (opts.maxMs ?? TURN_WAIT_MS);
+    while (busy) {
+      if (Date.now() >= deadline)
+        throw refused(
+          `${where}: agent ${rec.id} was still working after ${Math.round((opts.maxMs ?? TURN_WAIT_MS) / 60_000)} min; not moved`,
+        );
+      await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
+      busy = await agentBusy(d, agentRecord(d, id, rec.workspace));
+    }
+  }
+  const stopped = await stopAgent(d, rec.id, rec.workspace);
+  if (stopped.stillStopping)
+    throw refused(
+      `${where}: agent ${rec.id} is still stopping; try again in a moment`,
+    );
+  moveRecord(agentRecord(d, rec.id, rec.workspace));
+  const resumed = await resumeAgent(d, rec.id, to);
+  return { rec: resumed.rec, from: rec.workspace, resumed };
 }
 
 /** Drop agent `id`'s pending persona change mark, if it has one. */

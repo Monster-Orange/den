@@ -110,6 +110,7 @@ import {
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import { getStateDir } from "../../shared/paths.js";
 import { HostError } from "../../shared/sessions/client.js";
+import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import {
   AgentError,
   defaultId,
@@ -137,6 +138,7 @@ import {
   pruneStopped,
   removeAgent,
   renameAgent,
+  moveAgent,
   setAgentServices,
   checkServiceList,
   removeStopped,
@@ -209,7 +211,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|handoff|clear-helpers|restart|services|file))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|handoff|clear-helpers|restart|services|move|file))?$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -598,6 +600,7 @@ export async function handleAgentRoutes(
     | "handoff"
     | "clear-helpers"
     | "services"
+    | "move"
     | "restart"
     | "file"
     | undefined;
@@ -747,6 +750,11 @@ export async function handleAgentRoutes(
     // D44: a restart is the person's (it stops a session).
     if (verb === "restart" && (agent || actor))
       throw new AgentError("only a person can restart an agent", {
+        status: 403,
+      });
+    // D72: an agent could move itself out of its scope.
+    if (verb === "move" && (agent || actor))
+      throw new AgentError("only a person can move an agent", {
         status: 403,
       });
     // D65: what an agent is listed under is the person's call.
@@ -1026,6 +1034,49 @@ export async function handleAgentRoutes(
       const s = await restartAgent(d, id!, ws, "now");
       audit(what, s.early ? "exited at once" : undefined);
       sendStarted(res, s, d, s.fresh ? { note: FRESH_NOTE } : {});
+    } else if (verb === "move") {
+      // D72: {to, when}: to another workspace, same conversation.
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "to" && k !== "when")
+          throw new AgentError(`${k}: unknown field (move takes to, when)`, {
+            usage: true,
+          });
+      if (typeof body.to !== "string" || !body.to.trim())
+        throw new AgentError("to is required (the workspace to move it to)", {
+          usage: true,
+        });
+      const to = resolveWorkspaceInput(body.to.trim());
+      const when = body.when ?? "after-turn";
+      if (when !== "now" && when !== "after-turn")
+        throw new AgentError("when must be now or after-turn", {
+          usage: true,
+        });
+      what = `move ${id} from ${ws} to ${to} (${when === "now" ? "now" : "at its next idle"}), same conversation`;
+      const go = () => moveAgent(d, id!, ws, to, when, deps.personaWait ?? {});
+      if (when === "after-turn") {
+        // Checks first, so a bad move answers now; then it may wait.
+        if (!d.workspaceExists(to))
+          throw new AgentError(`there is no workspace "${to}"`, {
+            status: 404,
+          });
+        void go().then(
+          (m) => audit(what, m.resumed?.early ? "exited at once" : undefined),
+          (e: unknown) =>
+            audit(what, e instanceof Error ? e.message : String(e)),
+        );
+        sendJson(res, { ok: true, agent: id, to, pending: true }, 202);
+        return true;
+      }
+      const m = await go();
+      audit(what, m.resumed?.early ? "exited at once" : undefined);
+      sendJson(res, {
+        ok: true,
+        agent: m.rec.id,
+        from: m.from,
+        to,
+        ...(m.resumed ? { resumed: true } : {}),
+      });
     } else if (verb === "remove") {
       const removed = await removeAgent(d, id!, ws);
       audit(what);

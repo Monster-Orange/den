@@ -1092,6 +1092,18 @@
       "Its tab, row and pane header show it; the id {id} never changes. Other sessions see it as {peer} from its next start or resume. Empty: back to {id}.",
     "ag.rn.go": "Rename",
     "ag.rn.cancel": "Cancel",
+    "ag.mv.item": "Move to workspace…",
+    "ag.mv.title": "Move {id}",
+    "ag.mv.to": "To workspace",
+    "ag.mv.helpStopped":
+      "It keeps its conversation, folder, name and services. Its next resume is in the new workspace.",
+    "ag.mv.helpRunning":
+      "It keeps its conversation, folder, name and services. Den waits for its turn to end, then resumes it there with that workspace's tools.",
+    "ag.mv.now": "Move now, even mid-turn",
+    "ag.mv.go": "Move",
+    "ag.mv.none": "There is no other workspace to move it to.",
+    "ag.mv.pending": "{id} moves to {ws} when its turn ends.",
+    "ag.mv.done": "{id} moved to {ws}.",
     "ag.where.logout": "Stops at logout",
     "ag.where.logoutTip":
       "It runs in the desktop login session, so logging out ends it. To keep agents running: {cli} service install --mode always (opt-in, not yet proven across a logout)",

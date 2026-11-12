@@ -3083,6 +3083,73 @@ function openRename(r, opener) {
   input.select();
 }
 
+/**
+ * D72: Move to workspace… for agent row `r`. Stopped: its record moves.
+ * Running: Den waits for its turn to end (or Move now), then resumes the
+ * same conversation there.
+ */
+function openMove(r, opener) {
+  const dlg = $d("#ag-mv");
+  if (!dlg || dlg.open) return;
+  const sel = $d("#ag-mv-ws");
+  const err = $d("#ag-mv-err");
+  const go = $d("#ag-mv-go");
+  const running = !isStopped(r);
+  const others = (st.data?.workspaces ?? []).filter((w) => w !== r.workspace);
+  $d("#ag-mv-h").textContent = t("ag.mv.title", { id: displayName(r) });
+  $d("#ag-mv-t").textContent = t("ag.mv.to");
+  $d("#ag-mv-go").textContent = t("ag.mv.go");
+  $d("#ag-mv-cancel").textContent = t("ag.rn.cancel");
+  $d("#ag-mv-now-t").textContent = t("ag.mv.now");
+  $d("#ag-mv-now-l").hidden = !running;
+  $d("#ag-mv-now").checked = false;
+  $d("#ag-mv-help").textContent = others.length
+    ? t(running ? "ag.mv.helpRunning" : "ag.mv.helpStopped")
+    : t("ag.mv.none");
+  sel.innerHTML = others
+    .map((w) => `<option value="${esc(w)}">${esc(w)}</option>`)
+    .join("");
+  sel.disabled = !others.length;
+  go.disabled = !others.length;
+  err.hidden = true;
+  const close = () => {
+    dlg.close?.();
+    dlg.removeAttribute("open");
+    opener?.focus?.();
+  };
+  $d("#ag-mv-cancel").onclick = close;
+  $d("#ag-mv-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const to = sel.value;
+    if (!to) return;
+    const now = !running || $d("#ag-mv-now").checked;
+    go.disabled = true;
+    try {
+      const out = await api("POST", agentPath(r, "move"), {
+        to,
+        when: now ? "now" : "after-turn",
+      });
+      close();
+      window.denShell?.toast?.(
+        t(out?.pending ? "ag.mv.pending" : "ag.mv.done", {
+          id: displayName(r),
+          ws: to,
+        }),
+      );
+      await refresh();
+      paintLayout();
+    } catch (x) {
+      err.textContent = x?.message || String(x);
+      err.hidden = false;
+    } finally {
+      go.disabled = false;
+    }
+  };
+  if (typeof dlg.showModal === "function") dlg.showModal();
+  else dlg.setAttribute("open", "");
+  sel.focus();
+}
+
 /** AG-18: Change persona… for agent row `r` (its persona, model, name). */
 function openPersonaChange(r) {
   return openStart(false, {
@@ -3659,6 +3726,7 @@ function stoppedMenuItems(r, opener) {
         ]
       : []),
     restartResumeItem(r),
+    { label: t("ag.mv.item"), onSelect: () => openMove(r, opener) },
     { label: t("ag.remove"), onSelect: () => void removeRow(r, opener) },
   ];
 }
@@ -4027,6 +4095,7 @@ export async function mountAgentsPage(root) {
             : [
                 { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
                 restartResumeItem(r),
+                { label: t("ag.mv.item"), onSelect: () => openMove(r, b) },
               ]),
           // D28: its rotation settings and where each comes from.
           {

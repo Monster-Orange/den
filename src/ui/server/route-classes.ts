@@ -419,6 +419,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/workspaces/:ws/agents/:id/move",
+    "D72 move an agent to another workspace ({to, when}): same conversation, at its next idle by default; a person's only",
+  ),
+  M(
+    ["POST"],
     "/api/workspaces/:ws/agents/:id/services",
     "D65 link an agent to the services it works on ({add, remove}: repo or repo/service), kept through every restart; a person's only",
   ),
@@ -618,6 +623,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/clear-helpers",
     "/api/workspaces/:ws/agents/:id/restart",
     "/api/workspaces/:ws/agents/:id/services",
+    "/api/workspaces/:ws/agents/:id/move",
   ],
   "agent-routes.ts:TOOLS_PATH": ["/api/workspaces/:ws/agents/:id/tools"],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],

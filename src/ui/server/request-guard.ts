@@ -678,6 +678,8 @@ export const AGENT_FORBIDDEN: readonly string[] = [
   "/api/workspaces/:ws/agents/:id/clear-helpers",
   // D65: what an agent is listed under is the person's to say.
   "/api/workspaces/:ws/agents/:id/services",
+  // D72: an agent never moves itself (or another) out of its scope.
+  "/api/workspaces/:ws/agents/:id/move",
 ];
 
 /**
