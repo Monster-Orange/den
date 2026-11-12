@@ -1263,6 +1263,20 @@ function renameTab(tab) {
   input.addEventListener("click", (e) => e.stopPropagation());
 }
 
+/** Which of the bar's controls `el` is: its data-act, or its place. */
+function barKey(bar, el) {
+  const c = el.closest("button, a, [tabindex]");
+  if (!c || !bar.contains(c)) return null;
+  if (c.dataset.act) return { act: c.dataset.act };
+  const all = Array.from(bar.querySelectorAll("button, a, [tabindex]"));
+  return { at: all.indexOf(c) };
+}
+
+function barFind(bar, k) {
+  if (k.act) return bar.querySelector(`[data-act="${CSS.escape(k.act)}"]`);
+  return bar.querySelectorAll("button, a, [tabindex]")[k.at] ?? null;
+}
+
 function paintBar(p) {
   const r = rowOf(p.id);
   const bar = p.el.querySelector(".bar2");
@@ -1300,7 +1314,7 @@ function paintBar(p) {
     r?.kind === "agent"
       ? `<button type="button" class="den-btn sm" data-act="more" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("ag.more", { id: r.agent }))}" title="${esc(t("ag.more", { id: r.agent }))}">⋯</button>`
       : "";
-  bar.innerHTML =
+  const html =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
     `<b>${esc(name)}</b><span class="where mono">${where}</span>` +
     (r && isStopped(r)
@@ -1315,6 +1329,17 @@ function paintBar(p) {
       ? `<span class="agrot" data-rot-bar title="${esc(rotMessage(r))}"><span class="tagx warn" data-rotation="${rotationOf(r)}">${esc(t(rotationOf(r) === "ready" ? "ag.rot.ready" : "ag.rot.due", { why: rotationWhy(r.rotation) }))}</span>${rotActionsHtml(r)}</span>`
       : "") +
     `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${stop}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
+  // A refresh (a helper's update, the list's poll) redraws only what
+  // changed, and never takes the keyboard off the bar: a button there that
+  // had focus has it again after a redraw.
+  if (p.barHtml !== html) {
+    const had = bar.contains(document.activeElement)
+      ? barKey(bar, document.activeElement)
+      : null;
+    bar.innerHTML = html;
+    p.barHtml = html;
+    if (had) barFind(bar, had)?.focus();
+  }
   // Tabs: the tab's × closes it; the pane's bar has none.
   const x = bar.querySelector('[data-act="close"]');
   if (x) x.hidden = shownLayout() === "tabs";

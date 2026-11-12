@@ -682,6 +682,73 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.context().close();
   }, 60_000);
 
+  it("a refresh keeps focus on the pane bar's Helpers button, when its label changes and when it doesn't, and after Esc closes the list", async () => {
+    if (!browser) return;
+    const { p, errors } = await open();
+    const bar = `.pane[data-id="${sid}"] [data-act="helpers"]`;
+    await p.locator(bar).waitFor({ timeout: 15_000 });
+    const onBar = () =>
+      p.evaluate(() => document.activeElement?.matches('[data-act="helpers"]'));
+    // Opened and closed from the keyboard: focus back on Helpers.
+    await p.focus(bar);
+    await p.keyboard.press("Enter");
+    await p.locator("#hp-dlg[open]").waitFor();
+    await p.keyboard.press("Escape");
+    await p.waitForFunction(() =>
+      document.activeElement?.matches('[data-act="helpers"]'),
+    );
+    // Two polls with nothing new: the button is the same one, still focused.
+    await p.$eval(bar, (b) => ((b as HTMLElement & { _k?: 1 })._k = 1));
+    await p.waitForTimeout(11_000);
+    expect(await onBar()).toBe(true);
+    expect(
+      await p.$eval(bar, (b) => (b as HTMLElement & { _k?: 1 })._k ?? 0),
+    ).toBe(1);
+    // A new running helper: the label changes, focus stays on Helpers.
+    const dir = path.join(
+      s.tmp,
+      "home",
+      ".claude",
+      "projects",
+      "-seeded",
+      TOKEN,
+      "subagents",
+    );
+    const extra = [
+      path.join(dir, "agent-a7f0c0ffee0000007.meta.json"),
+      path.join(dir, "agent-a7f0c0ffee0000007.jsonl"),
+    ];
+    const n = Number(
+      /(\d+) running/.exec((await p.textContent(bar)) ?? "")?.[1] ?? 0,
+    );
+    try {
+      fs.copyFileSync(path.join(dir, `agent-${LIVE}.meta.json`), extra[0]);
+      fs.writeFileSync(
+        extra[1],
+        fs
+          .readFileSync(path.join(dir, `agent-${LIVE}.jsonl`), "utf8")
+          .replaceAll(LIVE, "a7f0c0ffee0000007")
+          .replace(
+            /"timestamp":"[^"]+"/g,
+            `"timestamp":"${new Date().toISOString()}"`,
+          ),
+      );
+      await p.waitForFunction(
+        ([sel, want]) =>
+          new RegExp(`\\b${want} running`).test(
+            document.querySelector(sel as string)?.textContent ?? "",
+          ),
+        [bar, n + 1] as const,
+        { timeout: 20_000 },
+      );
+      expect(await onBar()).toBe(true);
+    } finally {
+      for (const f of extra) fs.rmSync(f, { force: true });
+    }
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
   it("D34 Clear done in the Helpers list; Show cleared lists them; still hidden after a reload", async () => {
     if (!browser) return;
     const { p, errors } = await open();
