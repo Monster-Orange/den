@@ -422,6 +422,76 @@ describe("Settings › Hub (HUB-1.7)", () => {
     await p.context().close();
   }, 60_000);
 
+  it("D44: agents started before Hub connected: the offer to restart them at their next idle", async () => {
+    if (skip()) return;
+    const p = await page(
+      {
+        configured: true,
+        url: "https://hub.example.test",
+        connected: true,
+        state: "connected",
+        allowTools: true,
+        connect: { ok: true, message: "Connected to Hub." },
+      },
+      375,
+    );
+    const asked: string[] = [];
+    const stale = [
+      {
+        id: "planner",
+        workspace: "north",
+        stale: { adds: ["hub"], drops: [] },
+      },
+      { id: "scout", workspace: "south", stale: { adds: ["hub"], drops: [] } },
+    ];
+    await p.route("**/api/agents/stale*", (r) => {
+      asked.push(new URL(r.request().url()).search);
+      return r.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ agents: stale }),
+      });
+    });
+    let restarts = 0;
+    await p.route("**/api/agents/restart-stale", (r) => {
+      restarts++;
+      return r.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, pending: stale }),
+      });
+    });
+    await p.reload();
+    await p.waitForSelector('[data-hub-restart="2"]');
+    // Right after Connect: Den asks Hub's config again (fresh).
+    expect(asked).toEqual(["?fresh=1"]);
+    expect(await p.textContent("[data-hub-restart]")).toContain(
+      "2 agents started before Hub was connected, so they don't have Hub's tools yet.",
+    );
+    expect(await p.textContent('[data-hub-action="restart-stale"]')).toBe(
+      "Restart 2 agents at their next idle",
+    );
+    expect(await fits(p)).toBeLessThanOrEqual(0);
+    await p.click('[data-hub-action="restart-stale"]');
+    await p.waitForSelector('[data-hub-restarting="2"]');
+    expect(restarts).toBe(1);
+    await p.context().close();
+  }, 60_000);
+
+  it("D44: no agent out of date, no offer", async () => {
+    if (skip()) return;
+    const p = await page({
+      configured: true,
+      url: "https://hub.example.test",
+      connected: true,
+      state: "connected",
+      allowTools: true,
+    });
+    await p.waitForSelector('[data-hub-state="connected"]');
+    await p.waitForTimeout(300);
+    expect(await p.$("[data-hub-restart]")).toBeNull();
+    await p.context().close();
+  }, 60_000);
+
   it("the real path: declined on Hub comes back saying so, and connects nothing", async () => {
     if (skip()) return;
     hub.deny = true;

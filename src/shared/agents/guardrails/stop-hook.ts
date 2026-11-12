@@ -26,6 +26,11 @@
  * <n>`, while a rotation is due (rotation.ts) and handoff.md is missing or
  * fails the handoff check, it blocks once with what to write. Once the
  * handoff passes, the turn ends as usual.
+ *
+ * Hub's inbox (D41): with `--hub-inbox <Den's proxy to Hub>`, when
+ * nothing else blocks, it asks Hub how many comments wait on this agent
+ * and blocks once when that went up (hub-inbox.ts). `--inbox-only`: that
+ * check alone (a persona without Den's other hooks).
  */
 import { bareIds, checkHandback, looksLikeHandback } from "../handback.js";
 import {
@@ -35,6 +40,7 @@ import {
   rotationInstruction,
 } from "../rotation.js";
 import { parseHookArgs, type RotationHookArgs } from "./rotation-hook.js";
+import { inboxArgs, inboxBlock } from "./hub-inbox.js";
 
 /** A due rotation's block, or "" (no rotation due, or the handoff passes). */
 function rotationBlock(
@@ -113,21 +119,35 @@ export function stopDecision(
   });
 }
 
+/** The whole hook: stdin's JSON and argv in, what to print out ("" = stop). */
+export async function stopHook(
+  text: string,
+  argv: readonly string[],
+  inbox: typeof inboxBlock = inboxBlock,
+): Promise<string> {
+  try {
+    const input = JSON.parse(text) as { stop_hook_active?: unknown };
+    const out = argv.includes("--inbox-only")
+      ? ""
+      : stopDecision(
+          input,
+          parseHookArgs(argv),
+          knownArgs(argv),
+          !argv.includes("--no-handback"),
+        );
+    if (out) return out;
+    // D41: nothing else to fix: Hub comments waiting on this agent, once.
+    const a = inboxArgs(argv);
+    return a && input.stop_hook_active !== true ? await inbox(a) : "";
+  } catch {
+    return "";
+  }
+}
+
 async function main(): Promise<void> {
   let text = "";
   for await (const chunk of process.stdin) text += String(chunk);
-  let out = "";
-  try {
-    const argv = process.argv.slice(2);
-    out = stopDecision(
-      JSON.parse(text),
-      parseHookArgs(argv),
-      knownArgs(argv),
-      !argv.includes("--no-handback"),
-    );
-  } catch {
-    out = "";
-  }
+  const out = await stopHook(text, process.argv.slice(2));
   if (out) process.stdout.write(`${out}\n`);
 }
 

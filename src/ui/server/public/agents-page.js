@@ -91,6 +91,12 @@ import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { dismissable } from "/popover.js";
 import {
+  attachFiles,
+  guardPageDrops,
+  pickFiles,
+  wireDrop,
+} from "/term-drop.js";
+import {
   helperBadgeHtml,
   helperBarButtonHtml,
   helperRowsHtml,
@@ -230,6 +236,7 @@ function writeUrl() {
   u.searchParams.set("layout", st.layout);
   u.searchParams.delete("start");
   u.searchParams.delete("folder");
+  u.searchParams.delete("agent");
   const s = u.searchParams.toString().replace(/%2C/gi, ",");
   history.replaceState(history.state, "", u.pathname + (s ? `?${s}` : ""));
   paintSub();
@@ -603,9 +610,10 @@ function rowHtml(r) {
     : "";
   const ovTags = r.kind === "agent" ? overrideTagsHtml(r) : "";
   const wTag = whereTag(r);
+  const mTag = mcpStaleTag(r, false);
   const tags =
-    rotTag || revokedTag || ovTags || wTag
-      ? `<span class="agtags">${revokedTag}${rotTag}${wTag}${ovTags}</span>`
+    rotTag || revokedTag || ovTags || wTag || mTag
+      ? `<span class="agtags">${revokedTag}${mTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
   const button =
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
@@ -1299,6 +1307,49 @@ function renameTab(tab) {
   input.addEventListener("click", (e) => e.stopPropagation());
 }
 
+/**
+ * D47: on a running agent's pane, the services it reaches only through
+ * their API; on a runtime that can't be held to it, that it isn't.
+ */
+function apiOnlyTag(r) {
+  const names = Array.isArray(st.data?.apiOnly) ? st.data.apiOnly : [];
+  if (!names.length || r?.kind !== "agent" || isStopped(r)) return "";
+  const list = names.join(", ");
+  return r.runtime === "den-claude"
+    ? `<span class="tagx" data-api-only title="${esc(t("ag.apiOnlyTip", { names: list }))}">${esc(t("ag.apiOnly", { names: list }))}</span>`
+    : `<span class="tagx warn" data-api-only="off" title="${esc(t("ag.apiOnlyOffTip", { names: list }))}">${esc(t("ag.apiOnlyOff"))}</span>`;
+}
+
+/**
+ * D44: a running agent whose MCP servers are out of date (Hub connected or
+ * disconnected since it launched): a tag, and on the pane bar Restart (at
+ * its next idle, same conversation).
+ */
+function mcpStaleTag(r, withButton) {
+  const sx = r?.kind === "agent" && !isStopped(r) ? r.mcpStale : null;
+  if (!sx || !(sx.adds?.length || sx.drops?.length)) return "";
+  const k = sx.adds?.length ? "adds" : "drops";
+  const tag = `<span class="tagx warn" data-mcp-stale="${k}" title="${esc(t(`ag.mcp.${k}Tip`))}">${esc(t(`ag.mcp.${k}`))}</span>`;
+  if (!withButton) return tag;
+  return (
+    `<span class="agstale">${tag}` +
+    `<button type="button" class="den-btn sm" data-act="tools-restart" aria-label="${esc(t("ag.mcp.restartName", { id: r.agent }))}" title="${esc(t("ag.mcp.restartName", { id: r.agent }))}">${esc(t("ag.mcp.restart"))}</button></span>`
+  );
+}
+
+/** D44: Restart at its next idle; the list shows it come back. */
+async function restartForTools(r, button) {
+  if (button) button.disabled = true;
+  try {
+    await api("POST", agentPath(r, "restart"), { when: "after-turn" });
+    window.denShell?.toast?.(t("ag.mcp.restarting", { id: r.agent }));
+  } catch (err) {
+    if (button) button.disabled = false;
+    window.denShell?.errorToast?.(err);
+  }
+  await refresh();
+}
+
 /** Which of the bar's controls `el` is: its data-act, or its place. */
 function barKey(bar, el) {
   const c = el.closest("button, a, [tabindex]");
@@ -1344,6 +1395,11 @@ function paintBar(p) {
   const reconnect = p.lost
     ? `<button type="button" class="den-btn sm" data-act="reconnect">${esc(t("ag.reconnect"))}</button>`
     : "";
+  // AG-DROP: Attach (a touch screen has no drop): a live session's only.
+  const attach =
+    !p.lost && !p.exited && !(r && isStopped(r))
+      ? `<button type="button" class="den-btn sm" data-act="attach" aria-label="${esc(t("ag.up.attachName", { id: name }))}" title="${esc(t("ag.up.attachTip"))}">${esc(t("ag.up.attach"))}</button>`
+      : "";
   // AG-18: ⋯, its menu: Rename… (D25, every agent), Change persona… (a
   // runtime that can resume).
   const more =
@@ -1359,12 +1415,14 @@ function paintBar(p) {
     (r?.tokenRevoked
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +
+    apiOnlyTag(r) +
+    mcpStaleTag(r, true) +
     whereTag(r, true) +
     subagentTag(r) +
     (r?.kind === "agent" && rotActionsHtml(r)
       ? `<span class="agrot" data-rot-bar title="${esc(rotMessage(r))}"><span class="tagx warn" data-rotation="${rotationOf(r)}">${esc(t(rotationOf(r) === "ready" ? "ag.rot.ready" : "ag.rot.due", { why: rotationWhy(r.rotation) }))}</span>${rotActionsHtml(r)}</span>`
       : "") +
-    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${stop}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
+    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
   // A refresh (a helper's update, the list's poll) redraws only what
   // changed, and never takes the keyboard off the bar: a button there that
   // had focus has it again after a redraw.
@@ -1825,7 +1883,7 @@ async function providePathLinks(p, y, done) {
         text: m.text,
         range: { start: { x: m.start + 1, y }, end: { x: m.end, y } },
         decorations: { pointerCursor: true, underline: true },
-        activate: (e) => void openPath(e, abs.get(m.path), m.line, m.col),
+        activate: (e) => void openPath(e, p, r, abs.get(m.path), m.line, m.col),
         hover: () => linkHint(p, true),
         leave: () => linkHint(p, false),
       }));
@@ -1835,26 +1893,98 @@ async function providePathLinks(p, y, done) {
   }
 }
 
+const EDITOR_NAMES = { vscode: "VS Code", cursor: "Cursor", zed: "Zed" };
+
 /**
- * A path link clicked: with ⌘ (Ctrl elsewhere), the editor in Settings
- * (editor_open) at the line, by its URL scheme; none copies the path.
+ * A path link clicked with ⌘ (Ctrl elsewhere): a menu at the pointer.
+ * Download (AG-DROP-2: the file to this browser's machine, which may not
+ * be the agent's), Open in the editor set in Settings (editor_open, at
+ * the line, by its URL scheme), Copy path.
  */
-async function openPath(e, abs, line, col) {
-  if (!linkModifier(e) || !abs) return;
+function openPath(e, p, r, abs, line, col) {
+  if (!linkModifier(e) || !abs || !r?.agent) return;
   e?.preventDefault?.();
   const url = editorUrl(st.editorOpen, abs, line, col);
-  if (url) {
-    // D35: the same tab, to the editor's own scheme (zed://, vscode://):
-    // a navigation, not a new window, so no popup blocker stands in it.
-    window.open(url, "_self");
-    return;
-  }
+  window.denShell?.openMenu?.(pathAnchor(p, e), {
+    label: abs,
+    items: [
+      {
+        label: t("ag.path.download"),
+        onSelect: () => void downloadPath(r, abs),
+      },
+      ...(url
+        ? [
+            {
+              label: t("ag.path.open", {
+                ed: EDITOR_NAMES[st.editorOpen] ?? st.editorOpen,
+              }),
+              // D35: the same tab, to the editor's own scheme (zed://,
+              // vscode://): a navigation, not a new window, so no popup
+              // blocker stands in it.
+              onSelect: () => window.open(url, "_self"),
+            },
+          ]
+        : []),
+      { label: t("ag.path.copy"), onSelect: () => void copyPath(abs) },
+    ],
+  });
+}
+
+async function copyPath(abs) {
   try {
     await navigator.clipboard.writeText(abs);
     window.denShell?.toast?.(t("ag.copied"));
   } catch (err) {
     window.denShell?.errorToast?.(err);
   }
+}
+
+/**
+ * AG-DROP-2: the file at `abs` downloads to this browser, from the agent's
+ * workspace, cwd or uploads (the server checks; it says so when not).
+ */
+async function downloadPath(r, abs) {
+  const url = `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/file?p=${encodeURIComponent(abs)}`;
+  const name = abs.split("/").pop() || abs;
+  try {
+    const h = await fetch(url, { method: "HEAD", credentials: "same-origin" });
+    if (!h.ok) throw new Error(t("ag.path.noFile", { name }));
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.hidden = true;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  window.denShell?.toast?.(t("ag.path.downloading", { name }));
+}
+
+/**
+ * Where a path's menu opens: a point at the click, made once. Focus that
+ * comes back to it (Esc) goes on to the pane's terminal.
+ */
+function pathAnchor(p, e) {
+  let a = document.getElementById("ag-path-anchor");
+  if (!a) {
+    a = document.createElement("span");
+    a.id = "ag-path-anchor";
+    a.tabIndex = -1;
+    a.setAttribute("aria-hidden", "true");
+    a.style.cssText =
+      "position:fixed;width:1px;height:1px;pointer-events:none;opacity:0";
+    a.addEventListener("focus", () =>
+      st.panes.get(a.dataset.pane)?.term?.focus(),
+    );
+    document.body.append(a);
+  }
+  a.dataset.pane = p.id;
+  a.style.left = `${Math.round(e?.clientX ?? 0)}px`;
+  a.style.top = `${Math.round(e?.clientY ?? 0)}px`;
+  return a;
 }
 
 async function openPane(id, { front = true } = {}) {
@@ -1960,6 +2090,10 @@ async function openPane(id, { front = true } = {}) {
       true,
     );
   term.onData(typeIn);
+  p.typeIn = typeIn;
+  // AG-DROP: a file dropped or pasted here goes to the server; its path is
+  // typed at the cursor.
+  wireDrop(el, dropOpts(p));
   // AG-4b: Shift+Enter is the runtime's soft newline, never a CR; the
   // layout keys (⌃⇧1-3) are the page's, never the agent's.
   term.attachCustomKeyEventHandler((e) => {
@@ -2000,6 +2134,37 @@ async function openPane(id, { front = true } = {}) {
     if (!p.closed) remeasure(p);
   });
   void connect(p);
+}
+
+/** AG-DROP: what a pane's drop, paste and Attach need. */
+function dropOpts(p) {
+  return {
+    id: p.id,
+    t,
+    csrf,
+    name: () => {
+      const r = rowOf(p.id);
+      return r ? paneName(r) : p.label || p.id;
+    },
+    // A live session only: its terminal is open and it is running.
+    can: () => attachable(p),
+    typeIn: (text) => {
+      p.typeIn?.(text);
+      p.term?.focus();
+    },
+  };
+}
+
+/** A pane that takes a file now: connected, its session not ended. */
+function attachable(p) {
+  const r = rowOf(p.id);
+  return (
+    !p.closed &&
+    !p.lost &&
+    !p.exited &&
+    p.sock?.readyState === WebSocket.OPEN &&
+    !(r && isStopped(r))
+  );
 }
 
 function closePane(id, { quiet = false } = {}) {
@@ -3733,6 +3898,8 @@ export async function mountAgentsPage(root) {
     const tab = e.target.closest('[role="tab"]');
     if (tab) renameTab(tab);
   });
+  // AG-DROP: a file dropped beside a pane never replaces the page.
+  guardPageDrops();
   root.querySelector("#agr").addEventListener("click", (e) => {
     const tab = e.target.closest('[role="tab"]');
     if (tab) {
@@ -3779,10 +3946,15 @@ export async function mountAgentsPage(root) {
       else if (b.dataset.act === "rot-write") void writeHandoff(r, b);
       else if (b.dataset.act === "rot-keep") void keepConversation(r, b);
     } else if (b.dataset.act === "stop") void stopAgent(p, b);
-    else if (b.dataset.act === "resume") {
+    else if (b.dataset.act === "tools-restart") {
+      const r = rowOf(id);
+      if (r) void restartForTools(r, b);
+    } else if (b.dataset.act === "resume") {
       const r = rowOf(id);
       if (r) void restartRow(r, "resume", b);
     } else if (b.dataset.act === "reconnect") void connect(p);
+    else if (b.dataset.act === "attach")
+      pickFiles((files) => void attachFiles(p.el, files, dropOpts(p)));
     else if (b.dataset.act === "helpers") {
       const r = rowOf(id);
       if (r?.kind === "agent")
@@ -3915,6 +4087,40 @@ export async function mountAgentsPage(root) {
   const front = st.cur && st.open.includes(st.cur) ? st.cur : st.open.at(-1);
   if (wanted.length && front && !isStopped(rowOf(front) ?? {}))
     focusTerm(front, false, { ifIdle: true });
+  const linkedAgent = new URLSearchParams(location.search).get("agent");
   writeUrl();
+  if (linkedAgent) await openLinkedAgent(linkedAgent, urlWorkspace());
   if (startAsked) void openStart();
+}
+
+/**
+ * D43: /agents?agent=<id>&ws=<ws>, a stable link to one agent (another
+ * tool links an agent's name here). A running agent's pane opens and takes
+ * the keyboard, as a pick does; a stopped one's details open by its row.
+ * The link is used once: the URL keeps ?open= and ?ws=, not ?agent=.
+ */
+async function openLinkedAgent(agent, ws) {
+  const r = visibleRows().find(
+    (x) =>
+      x.kind === "agent" && x.agent === agent && (!ws || x.workspace === ws),
+  );
+  if (!r) {
+    window.denShell?.toast?.(
+      t("ag.link.none", { id: ws ? `${ws} / ${agent}` : agent }),
+    );
+    return;
+  }
+  if (isStopped(r)) {
+    const row = st.root.querySelector(
+      `#agl .agr[data-id="${CSS.escape(r.id)}"]`,
+    );
+    const group = row?.closest("details[data-stopped]");
+    if (group && !group.open) group.open = true;
+    row?.scrollIntoView({ block: "nearest" });
+    row?.focus();
+    await openDetails(r, row);
+    return;
+  }
+  if (r.attachable === false) return;
+  await pick(r.id, false);
 }

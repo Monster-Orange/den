@@ -50,6 +50,9 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import { readWebPort } from "../../shared/edge/config.js";
+import { DEFAULT_PORT } from "../../shared/constants.js";
+import { writeApiOnlyRules } from "../../shared/agents/api-only.js";
 import {
   INHERIT,
   SUBAGENT_DEFAULTS,
@@ -220,6 +223,7 @@ import {
 import {
   bindActorSession,
   mintActorToken,
+  ACTOR_TOKEN_ENV,
   revokeActorToken,
   revokeAgentTokens,
 } from "../../shared/actor-token.js";
@@ -228,6 +232,7 @@ import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
 import { inWorkspace, sessionName } from "../../shared/sessions/names.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
 import { serverSpec } from "../mcp/connect.js";
+import { HUB_SERVER } from "../../shared/hub.js";
 import {
   contractInfo,
   loadWorkspaces,
@@ -301,9 +306,16 @@ export interface AgentsDeps extends SessionsDeps {
     allowTools?: boolean;
     /** HUB-1.7: Hub's MCP endpoint (default <url>/mcp). */
     mcpUrl?: string;
+    /** D41: hub.inbox_on_stop (default nudge). */
+    inboxOnStop?: "nudge" | "off";
   } | null>;
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
   workspaceRepos?: (ws: string) => string[];
+  /**
+   * D52: Den's web server as an agent reaches it (http://localhost:<port>):
+   * its Hub calls go through Den's proxy there.
+   */
+  denBase?: () => string;
 }
 
 export interface AgentsResolved extends Resolved {
@@ -330,8 +342,10 @@ export interface AgentsResolved extends Resolved {
     token: string;
     allowTools?: boolean;
     mcpUrl?: string;
+    inboxOnStop?: "nudge" | "off";
   } | null>;
   workspaceRepos: (ws: string) => string[];
+  denBase: () => string;
 }
 
 /** The early-exit watch: at most this long, polling the host. */
@@ -429,34 +443,83 @@ export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
 }
 
 /**
- * HUB-1.5: Den Hub's MCP server for this agent, when hub.url is set and
- * its token is readable: who calls (its name, a session id, the workspace
- * and its repos), as headers. Hub sets the team and project from them.
+ * HUB-1.5: Den Hub's MCP server for an agent, when hub.url is set and its
+ * token is readable. D52: through Den's proxy, with the agent's own Den
+ * token; the proxy says who calls (its name and id, its session, the
+ * workspace and its repos) from Den's records (hubUpstream).
  */
 export async function agentHub(
   d: AgentsResolved,
-  ws: string,
-  name: string,
-  agentId?: string,
 ): Promise<AgentMcp["hub"] | undefined> {
   const h = await d.hub().catch(() => null);
   if (!h) return undefined;
-  const { HUB_SERVER, hubHeaders } = await import("../../shared/hub.js");
+  const proxy = denHubProxy(d);
+  return {
+    name: HUB_SERVER,
+    url: `${proxy}/mcp`,
+    allowTools: h.allowTools !== false,
+    // D41: the Stop hook's inbox check, through Den's proxy too.
+    ...(h.inboxOnStop !== "off" ? { inboxBase: proxy } : {}),
+    // D52: the agent's own Den token (Claude Code expands it from the
+    // session's env). Den's proxy swaps it for the install's Hub token
+    // and says who is calling; the Hub token is never in the agent's files.
+    headers: { Authorization: `Bearer \${${ACTOR_TOKEN_ENV}}` },
+  };
+}
+
+/** D52: Den's proxy to Hub, as an agent reaches it. */
+export function denHubProxy(d: Pick<AgentsResolved, "denBase">): string {
+  return `${d.denBase().replace(/\/+$/, "")}/hub`;
+}
+
+/** Den's web server on this machine (the MCP server's own rule). */
+function defaultDenBase(): string {
+  let port: number;
+  try {
+    port = readWebPort();
+  } catch {
+    port = DEFAULT_PORT;
+  }
+  return `http://localhost:${port}`;
+}
+
+/**
+ * D52: Hub as Den's proxy calls it for agent `agentId` (its actor token
+ * proved it): Hub's base URL, its MCP endpoint, and the headers Den sets
+ * from its own records. The install token is among them; it never leaves
+ * Den's server. Null when Hub isn't set up or its token can't be read.
+ */
+export async function hubUpstream(
+  d: AgentsResolved,
+  who: { agentId: string; workspace: string; session: string },
+): Promise<{
+  base: string;
+  mcpUrl: string;
+  headers: Record<string, string>;
+} | null> {
+  const h = await d.hub().catch(() => null);
+  if (!h) return null;
+  const { hubHeaders } = await import("../../shared/hub.js");
   let repos: string[] = [];
   try {
-    repos = d.workspaceRepos(ws);
+    repos = d.workspaceRepos(who.workspace);
   } catch {
     repos = [];
   }
+  let name = who.agentId;
+  try {
+    name = readRecord(d.stateDir(), who.agentId)?.displayName || name;
+  } catch {
+    /* the id names it */
+  }
   return {
-    name: HUB_SERVER,
-    url: h.mcpUrl || `${h.url}/mcp`,
-    allowTools: h.allowTools !== false,
+    base: h.url,
+    mcpUrl: h.mcpUrl || `${h.url}/mcp`,
     headers: hubHeaders(h.token, {
       agent: name,
-      ...(agentId ? { agentId } : {}),
-      session: crypto.randomUUID(),
-      workspace: ws,
+      agentId: who.agentId,
+      session: who.session,
+      workspace: who.workspace,
       repos,
     }),
   };
@@ -521,6 +584,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
     hub: d.hub ?? defaultHub,
     workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
+    denBase: d.denBase ?? defaultDenBase,
   });
 }
 
@@ -530,6 +594,7 @@ async function defaultHub(): Promise<{
   token: string;
   allowTools: boolean;
   mcpUrl: string;
+  inboxOnStop: "nudge" | "off";
 } | null> {
   const { readHubConfig, readHubToken } = await import("../../shared/hub.js");
   let cfg;
@@ -541,7 +606,13 @@ async function defaultHub(): Promise<{
   if (!cfg) return null;
   const token = await readHubToken(cfg);
   return token
-    ? { url: cfg.url, token, allowTools: cfg.allowTools, mcpUrl: cfg.mcpUrl }
+    ? {
+        url: cfg.url,
+        token,
+        allowTools: cfg.allowTools,
+        mcpUrl: cfg.mcpUrl,
+        inboxOnStop: cfg.inboxOnStop,
+      }
     : null;
 }
 
@@ -692,6 +763,12 @@ export interface AgentRow {
   /** D28: the last one (when, why, the old conversation, by itself or not). */
   lastRotation?: RotationEntry;
   session?: SessionInfo;
+  /**
+   * D44: a running agent whose MCP servers differ from what it would get
+   * now (Hub connected or disconnected since it launched). A restart that
+   * keeps its conversation brings them in line.
+   */
+  mcpStale?: McpStale;
   /**
    * D32/D34: the helpers it started in its own session, less those its
    * last "Clear done" hid: counts by state, and its active ones (running
@@ -914,6 +991,7 @@ export async function listAgents(
   const rows = agentRows(sessions, records, d.stateDir(), policyResolver(d));
   addHelperCounts(d, rows, records);
   addRestartResume(d, rows, records);
+  await addMcpStale(d, rows);
   return opts.stopped ? rows.filter((r) => isStoppedState(r.state)) : rows;
 }
 
@@ -960,6 +1038,152 @@ function personaOfRecord(
  */
 export function resumesOnRestart(rec: AgentRecord, p?: Persona): boolean {
   return rec.resumeOnRestart ?? Boolean(p && (p.standing || p.resumeOnRestart));
+}
+
+// ── D44: an agent's MCP servers, as launched and as now ────────────────────
+
+/** Servers a restart would add to a running agent, or take away. */
+export interface McpStale {
+  adds: string[];
+  drops: string[];
+}
+
+/** How long what Hub gives agents now is trusted (the token read is slow). */
+export const HUB_NOW_TTL_MS = 30_000;
+const hubNowCache = new WeakMap<
+  AgentsResolved["hub"],
+  { at: number; v: Promise<string | null> }
+>();
+
+/**
+ * The URL of the Hub server an agent would get if it launched now, or null
+ * (no Hub, or its token can't be read: agentHub's rule). Cached briefly
+ * per Hub source; `fresh` asks again (after Connect or Disconnect).
+ */
+export function hubNow(
+  d: Pick<AgentsResolved, "hub" | "denBase">,
+  fresh = false,
+): Promise<string | null> {
+  const had = hubNowCache.get(d.hub);
+  if (!fresh && had && Date.now() - had.at < HUB_NOW_TTL_MS) return had.v;
+  // D52: an agent's Hub server is Den's proxy (one launched before it,
+  // straight to Hub, is out of date and gets it on restart).
+  const v = d
+    .hub()
+    .then((h) => (h ? `${denHubProxy(d)}/mcp` : null))
+    .catch(() => null);
+  hubNowCache.set(d.hub, { at: Date.now(), v });
+  return v;
+}
+
+/** hubNow from this install's own config (the web server's lists). */
+export const defaultHubNow = (fresh = false): Promise<string | null> =>
+  hubNow({ hub: defaultHub, denBase: defaultDenBase }, fresh);
+
+/**
+ * What agent `id`'s MCP config (as it launched) lacks or has extra against
+ * Hub now (`hubUrl`, null: none). Undefined: in line, or no config file
+ * (a runtime that writes none).
+ */
+export function mcpStaleOf(
+  filesDir: string,
+  hubUrl: string | null,
+): McpStale | undefined {
+  let servers: Record<string, { url?: unknown }>;
+  try {
+    servers =
+      (
+        JSON.parse(
+          fs.readFileSync(path.join(filesDir, "mcp.json"), "utf-8"),
+        ) as { mcpServers?: Record<string, { url?: unknown }> }
+      ).mcpServers ?? {};
+  } catch {
+    return undefined;
+  }
+  const had = servers[HUB_SERVER];
+  const adds: string[] = [];
+  const drops: string[] = [];
+  if (hubUrl && (!had || had.url !== hubUrl)) adds.push(HUB_SERVER);
+  if (!hubUrl && had) drops.push(HUB_SERVER);
+  return adds.length || drops.length ? { adds, drops } : undefined;
+}
+
+/** D44: each running row whose MCP servers are out of date says so. */
+async function addMcpStale(d: AgentsResolved, rows: AgentRow[]): Promise<void> {
+  const running = rows.filter((r) => r.state === "running");
+  if (!running.length) return;
+  const url = await hubNow(d);
+  for (const r of running) {
+    const st = mcpStaleOf(agentFilesDir(d.stateDir(), r.agent), url);
+    if (st) r.mcpStale = st;
+  }
+}
+
+/** D44: every running agent whose MCP servers are out of date. */
+export async function staleAgents(
+  d: AgentsResolved,
+  opts: { fresh?: boolean } = {},
+): Promise<{ id: string; workspace: string; stale: McpStale }[]> {
+  const url = await hubNow(d, opts.fresh);
+  let live: SessionInfo[] = [];
+  const c = await d.connectExisting();
+  try {
+    live = c ? (await c.list()).filter((s) => !s.exited) : [];
+  } finally {
+    c?.close();
+  }
+  const out: { id: string; workspace: string; stale: McpStale }[] = [];
+  for (const rec of listRecords(d.stateDir())) {
+    if (!live.some((s) => sessionOf([s], rec))) continue;
+    const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), url);
+    if (st) out.push({ id: rec.id, workspace: rec.workspace, stale: st });
+  }
+  return out;
+}
+
+/** D44: what agent `id` is told of its own tools (MCP whoami, the pane). */
+export interface AgentTools {
+  agent: string;
+  workspace: string;
+  hub: {
+    /** It would get Hub's tools if it launched now. */
+    connected: boolean;
+    /** Its running session has them (as it launched). */
+    loaded: boolean;
+    /** A restart (same conversation) brings them in line. */
+    restart: boolean;
+  };
+  /** One plain line saying so, for the agent to tell the person. */
+  note: string;
+}
+
+export async function agentTools(
+  d: AgentsResolved,
+  id: string,
+  ws: string,
+): Promise<AgentTools> {
+  const rec = agentRecord(d, id, ws);
+  const url = await hubNow(d);
+  const files = agentFilesDir(d.stateDir(), rec.id);
+  const st = mcpStaleOf(files, url);
+  const connected = url !== null;
+  const loaded = connected
+    ? !st?.adds.includes(HUB_SERVER)
+    : Boolean(st?.drops.includes(HUB_SERVER));
+  const restart = Boolean(st);
+  const note = !connected
+    ? loaded
+      ? "Hub was disconnected; its tools go when the person restarts you from Den."
+      : "This Den is not connected to Hub. A person connects it in Settings › Agents › Hub."
+    : restart
+      ? "Hub is connected, but your session started without its tools. Ask the person to restart you from Den (Restart keeps this conversation); no token step is needed."
+      : "Hub is connected and its tools (hub_*) are yours.";
+  return {
+    agent: rec.id,
+    workspace: rec.workspace,
+    hub: { connected, loaded, restart },
+    note,
+  };
 }
 
 /** D32: agents.helpers, or its defaults when the config can't be read. */
@@ -2051,6 +2275,15 @@ function launchInput(
       return sub.model ? { subagentModel: sub.model } : {};
     })(),
     ...(cfg.subagents?.claudeAiConnectors ? { claudeAiConnectors: true } : {}),
+    // D47: services it may reach only through their API.
+    ...(() => {
+      try {
+        const a = writeApiOnlyRules(d.stateDir());
+        return a ? { apiOnly: a } : {};
+      } catch {
+        return {};
+      }
+    })(),
     rotateAfter: after,
     ...(perms.permission ? { permission: perms.permission } : {}),
     ...(perms.allow?.length ? { allow: [...perms.allow] } : {}),
@@ -2373,12 +2606,7 @@ export async function startAgent(
     },
   );
   // HUB-1.5: Den Hub's MCP server, when hub.url is set.
-  const hub = await agentHub(
-    d,
-    ws,
-    given ?? prev?.displayName ?? persona.displayName ?? id,
-    id,
-  );
+  const hub = await agentHub(d);
   const input = {
     ...base,
     ...(hub ? { mcp: { ...base.mcp, hub } } : {}),
@@ -2922,12 +3150,7 @@ export async function resumeAgent(
     // Resume in the cwd the agent had, wherever the workspace points now.
     // D24 (and D25: a rename since) the name peers see it by.
     const peerName = peerSessionName(d.cli, rec.workspace, rec);
-    const hub = await agentHub(
-      d,
-      rec.workspace,
-      rec.displayName ?? rec.id,
-      rec.id,
-    );
+    const hub = await agentHub(d);
     const at = {
       ...input,
       ...(hub ? { mcp: { ...input.mcp, hub } } : {}),
@@ -3167,6 +3390,53 @@ export async function changePersona(
     clearPendingPersona(d, rec.id);
     throw e;
   }
+}
+
+/**
+ * D44, Restart: stop agent `id` and resume the same conversation, so it
+ * launches with what it gets now (Hub's tools, for one). `after-turn` (the
+ * default) waits for its turn to end; `now` stops it at once. Never cuts a
+ * turn otherwise: Den that can't tell when a turn ends refuses after-turn.
+ * A stopped agent just resumes. The person's only (callers refuse agents).
+ */
+export async function restartAgent(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+  when: "now" | "after-turn" = "after-turn",
+  opts: { pollMs?: number; maxMs?: number } = {},
+): Promise<Resumed> {
+  const where = "agents restart";
+  const rec = agentRecord(d, id, ws);
+  const why = personaChangeRefusal(rec);
+  if (why)
+    throw refused(
+      why.replace("change persona", "restart and keep its conversation"),
+      [],
+      422,
+    );
+  let busy = await agentBusy(d, rec);
+  if (busy === null && when === "after-turn")
+    throw refused(
+      `${where}: Den can't tell when agent ${rec.id}'s turn ends; restart it now instead (--now)`,
+    );
+  if (when === "after-turn") {
+    const deadline = Date.now() + (opts.maxMs ?? TURN_WAIT_MS);
+    while (busy) {
+      if (Date.now() >= deadline)
+        throw refused(
+          `${where}: agent ${rec.id} was still working after ${Math.round((opts.maxMs ?? TURN_WAIT_MS) / 60_000)} min; not restarted`,
+        );
+      await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
+      busy = await agentBusy(d, agentRecord(d, id, ws));
+    }
+  }
+  const stopped = await stopAgent(d, rec.id, rec.workspace);
+  if (stopped.stillStopping)
+    throw refused(
+      `${where}: agent ${rec.id} is still stopping; try again in a moment`,
+    );
+  return resumeAgent(d, rec.id, rec.workspace);
 }
 
 /** Drop agent `id`'s pending persona change mark, if it has one. */

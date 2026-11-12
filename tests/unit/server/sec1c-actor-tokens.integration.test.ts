@@ -232,6 +232,39 @@ describe("what an agent's token can't do (403 agent_forbidden)", () => {
     expect(await upgrade(`/api/sessions/${sessionId}/io`, agent())).toBe(101);
   });
 
+  it("refused uploads are audited: an agent's to another session (agent_forbidden), a page's without its CSRF token", async () => {
+    const r = await call(
+      "POST",
+      "/api/sessions/someone-else/uploads?name=x.png",
+      agent(),
+      {},
+    );
+    expect([r.status, r.json.code]).toEqual([403, "agent_forbidden"]);
+    const c = await call(
+      "POST",
+      `/api/sessions/${sessionId}/uploads?name=y.png`,
+      { origin: s.base, "sec-fetch-site": "same-origin" },
+      {},
+    );
+    expect([c.status, c.json.code]).toEqual([403, "csrf"]);
+    const lines = async (re: RegExp) => {
+      for (let i = 0; i < 50; i++) {
+        const l = s
+          .log()
+          .split("\n")
+          .filter((x) => re.test(x));
+        if (l.length) return l;
+        await new Promise((res) => setTimeout(res, 100));
+      }
+      return [];
+    };
+    const forbidden = await lines(/✗ upload.*someone-else\/uploads/);
+    expect(forbidden[0]).toMatch(/agent_forbidden/);
+    expect(forbidden[0]).toMatch(/· by agent:planner/);
+    const csrf = await lines(new RegExp(`✗ upload.*${sessionId}/uploads`));
+    expect(csrf[0]).toMatch(/csrf/);
+  });
+
   it("mint tokens: agent start and resume", async () => {
     for (const p of [
       "/api/workspaces/north/agents",

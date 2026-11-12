@@ -870,12 +870,13 @@ import {
 import { heldActions } from "./held-actions.js";
 import type { ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
+import { handleHubProxy } from "./hub-proxy-routes.js";
 import {
   handleAgentRoutes,
   startAgentUpkeep,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
-import { policyResolver, restartResolver } from "../cli/agent-ops.js";
+import { hubUpstream, policyResolver, restartResolver } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
 import {
@@ -1653,6 +1654,37 @@ function isPublicAsset(req: http.IncomingMessage, pathname: string): boolean {
 }
 
 /** A refused request: R26 JSON for /api, the error page for a page. */
+/**
+ * A refused write is audited (AG-DROP): an agent's token past its scope
+ * (agent_forbidden), and a browser's write without its CSRF token. The
+ * other refusals carry no credential to name, and the request log has them.
+ */
+function auditGuardRefusal(
+  req: http.IncomingMessage,
+  pathname: string,
+  g: Extract<GuardResult, { ok: false }>,
+): void {
+  if (g.code !== "agent_forbidden" && g.code !== "csrf") return;
+  if (g.principal) setPrincipal(req, g.principal);
+  const method = (req.method ?? "GET").toUpperCase();
+  try {
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: /^\/api\/sessions\/[^/]+\/uploads$/.test(pathname)
+          ? "upload"
+          : "request",
+        detail: `${method} ${pathname.slice(0, 300)}`,
+        outcome: "refused",
+        reason: g.code,
+      },
+      principalOf(req),
+    );
+  } catch {
+    /* the audit is best-effort here */
+  }
+}
+
 function sendGuardRefusal(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -2044,7 +2076,10 @@ async function handleRequest(
       isPublicAsset(req, pathname)
     )
   )
+  {
+    auditGuardRefusal(req, pathname, guard);
     return sendGuardRefusal(req, res, pathname, guard, requestId, url.search);
+  }
   if (guard.ok) setPrincipal(req, guard.principal);
   // SEC-1c (R8): an agent's request never passes the lock.
   if (guard.ok && guard.principal?.kind === "agent") closeLockForThisRequest();
@@ -4753,6 +4788,13 @@ async function handleRequest(
     return;
   }
 
+  // ── D52: Hub, for agents, through Den (hub-proxy.ts) ────────────────────
+  if (
+    await handleHubProxy(req, res, pathname, {
+      upstream: (who) => hubUpstream(agentWebDeps(), who),
+    })
+  )
+    return;
   // ── The server agent (ON-6, server-agent-routes.ts) ──────────────────────
   if (await handleServerAgentRoutes(req, res, pathname)) return;
   // ── Agents on the Workspaces page (AG-4a, agent-routes.ts) ───────────────
@@ -5588,6 +5630,7 @@ server.on(
           dim(`  req ${requestId}`),
         "request",
       );
+      auditGuardRefusal(req, pathname, guard);
       return refuse(guard.status, guard.error, guard.code);
     }
     setPrincipal(req, guard.principal);

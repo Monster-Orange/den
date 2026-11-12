@@ -629,6 +629,24 @@
     "ag.chip.stopped": "Detenido",
     "ag.chip.exited": "Terminado",
     "ag.chip.interrupted": "Interrumpido",
+    "ag.link.none":
+      "No hay ningún agente {id} aquí. Puede que se haya quitado.",
+    "ag.apiOnly": "Solo API: {names}",
+    "ag.apiOnlyTip":
+      "Este agente llega a {names} solo por su API. Den bloquea docker exec en él, sus volúmenes y sus datos, y registra cada intento. Es una barandilla, no una barrera de seguridad.",
+    "ag.apiOnlyOff": "Solo API sin aplicar",
+    "ag.apiOnlyOffTip":
+      "Este runtime no tiene un hook que Den pueda usar, así que no se le limita a la API de {names}. Usa den-claude para los agentes que deban estarlo.",
+    "ag.mcp.adds": "Las herramientas de Hub llegan al reiniciar",
+    "ag.mcp.addsTip":
+      "Hub se conectó después de que este agente empezó, así que aún no tiene las herramientas de Hub. Reiniciar mantiene su conversación y espera a que termine su turno.",
+    "ag.mcp.drops": "Las herramientas de Hub se van al reiniciar",
+    "ag.mcp.dropsTip":
+      "Hub se desconectó después de que este agente empezó; sus herramientas de Hub ya no funcionan. Reiniciar mantiene su conversación y espera a que termine su turno.",
+    "ag.mcp.restart": "Reiniciar",
+    "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
+    "ag.mcp.restarting":
+      "{id} se reinicia cuando quede libre, en la misma conversación.",
     "ag.det.label": "Detalles de {id}",
     "ag.det.close": "Cerrar",
     "ag.det.where": "Dónde",
@@ -862,6 +880,20 @@
     "ag.goWs": "Abrir {ws} en Espacios de trabajo",
     "ag.lost": "[desconectado: {why}]",
     "ag.reconnect": "Reconectar",
+    "ag.path.download": "Descargar",
+    "ag.path.open": "Abrir en {ed}",
+    "ag.path.copy": "Copiar ruta",
+    "ag.path.downloading": "Descargando {name}",
+    "ag.path.noFile":
+      "No se puede descargar {name}: no es un archivo del espacio de trabajo ni de las subidas del agente",
+    "ag.up.drop": "Suelta para adjuntar a {name}",
+    "ag.up.sending": "enviando…",
+    "ag.up.pct": "{n} %",
+    "ag.up.done": "adjuntado",
+    "ag.up.attach": "Adjuntar",
+    "ag.up.attachName": "Adjuntar un archivo a {id}",
+    "ag.up.attachTip":
+      "Adjuntar un archivo: va a la máquina del agente y su ruta se escribe aquí",
     "ag.size.follow": "Tamaño de otra vista ({cols}×{rows})",
     "ag.size.take": "Usar este tamaño",
     "ag.noBackend":

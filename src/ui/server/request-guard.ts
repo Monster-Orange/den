@@ -202,6 +202,8 @@ export type GuardResult =
       scope?: SigninScope;
       via?: Via;
       beyond?: boolean;
+      /** agent_forbidden: the agent refused, for the audit. */
+      principal?: Principal;
     };
 
 /** A fresh per-start CSRF token. */
@@ -582,6 +584,7 @@ export function checkRequest(
         status: 403,
         code: "agent_forbidden",
         error: refused,
+        principal,
       };
   }
 

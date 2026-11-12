@@ -173,12 +173,24 @@ export const ROUTES: readonly RouteEntry[] = [
     "which paths an agent printed exist in its workspace (stat only, AG-4b)",
   ),
   R(
+    "/api/workspaces/:ws/agents/:id/file",
+    "AG-DROP-2: a file in an agent's workspace, cwd or uploads, as a download (audited)",
+  ),
+  R(
     "/api/workspaces/:ws/agents/:id/helpers",
     "D32: the helpers an agent started in its own session, read from the runtime's files (never written)",
   ),
   R(
     "/api/workspaces/:ws/agents/:id/details",
     "D45: a stopped agent's details: what it was last asked (one line from its transcript) and how its session ended (exit code, last line, redacted)",
+  ),
+  R(
+    "/api/workspaces/:ws/agents/:id/tools",
+    "D44: whether an agent's MCP servers are current (Hub connected, loaded in its session, a restart needed); an agent may read its own",
+  ),
+  R(
+    "/api/agents/stale",
+    "D44: the running agents whose MCP servers are out of date (ids and workspaces)",
   ),
   R(
     "/api/workspaces/:ws/agents/:id/helpers/:helper",
@@ -429,6 +441,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "HUB-1.7: revoke this install's Hub token on Hub, then remove it here",
   ),
   R(
+    "/hub/*",
+    "D52: Hub's read paths, for an agent, through Den (hub-proxy-routes.ts): its own Den token only, Hub's agent paths only; Den attaches the install token",
+  ),
+  M(
+    ["POST", "PUT", "DELETE"],
+    "/hub/*",
+    "D52: Hub's MCP and import calls, for an agent, through Den: its own Den token only, Hub's agent paths only; Den attaches the install token",
+  ),
+  R(
     "/hub/callback",
     "HUB-1.7: Hub sends the person back here. Sign-in free: the session cookie is SameSite=Strict, so Hub's redirect doesn't carry it. It acts only for a state this server issued to a signed-in Connect (single-use, 10 min), with the PKCE verifier only this server holds; anything else changes nothing",
   ),
@@ -451,6 +472,16 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/workspaces/:ws/agents/:id/relaunch",
     "relaunches a rotated agent from its handoff: a runtime in a PTY (den#4)",
+  ),
+  S(
+    ["POST"],
+    "/api/workspaces/:ws/agents/:id/restart",
+    "D44 Restart: at its next idle (or now) an agent's session stops and the same conversation resumes, a runtime in a PTY; a person's only",
+  ),
+  S(
+    ["POST"],
+    "/api/agents/restart-stale",
+    "D44: restarts every agent with out-of-date tools at its next idle, same conversation: runtimes in PTYs; a person's only",
   ),
   S(
     ["POST"],
@@ -501,6 +532,11 @@ export const ROUTES: readonly RouteEntry[] = [
     ["GET", "HEAD"],
     "/api/sessions/:id/io",
     "a session's terminal (AG-4a-term): a WebSocket, its input a shell's",
+  ),
+  S(
+    ["POST"],
+    "/api/sessions/:id/uploads",
+    "writes a file dropped or pasted onto a session's terminal (AG-DROP), for its path to be typed there",
   ),
   S(
     ["GET", "HEAD", "POST", "DELETE"],
@@ -569,12 +605,15 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/remove",
     "/api/workspaces/:ws/agents/:id/name",
     "/api/workspaces/:ws/agents/:id/paths",
+    "/api/workspaces/:ws/agents/:id/file",
     "/api/workspaces/:ws/agents/:id/persona",
     "/api/workspaces/:ws/agents/:id/keep",
     "/api/workspaces/:ws/agents/:id/settings",
     "/api/workspaces/:ws/agents/:id/handoff",
     "/api/workspaces/:ws/agents/:id/clear-helpers",
+    "/api/workspaces/:ws/agents/:id/restart",
   ],
+  "agent-routes.ts:TOOLS_PATH": ["/api/workspaces/:ws/agents/:id/tools"],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
   "agent-routes.ts:PERSONA_PATH": ["/api/personas/:id"],
   "agent-routes.ts:PLAIN_PATH": ["/api/workspaces/:ws/sessions"],
@@ -588,6 +627,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/conversations/:id/import",
   ],
   "session-routes.ts:IO_PATH": ["/api/sessions/:id/io"],
+  "session-routes.ts:UPLOAD_PATH": ["/api/sessions/:id/uploads"],
   "github-routes.ts:SIGNIN_PATH": ["/api/github/signin/:id"],
   "github-routes.ts:LINK_PATH": ["/api/web/owner/link/:id"],
   "pair-routes.ts:POLL_PATH": ["/api/signin/code/:id"],

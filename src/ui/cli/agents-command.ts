@@ -62,7 +62,19 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import {
+  gatherApiOnly,
+  readApiOnlyAudit,
+  type ApiOnlyRules,
+} from "../../shared/agents/api-only.js";
 import * as fs from "fs";
+import * as path from "path";
+import { readAgentsConfig } from "../../shared/den-config.js";
+import {
+  listUploads,
+  uploadsRoot,
+  UPLOAD_DEFAULTS,
+} from "../../shared/agents/uploads.js";
 import { DEFAULT_RUNTIME_ID } from "../../shared/agents/runtimes.js";
 import { ACTOR_TOKEN_ENV } from "../../shared/actor-token.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
@@ -85,6 +97,9 @@ import {
   AgentError,
   importAgent,
   changePersona,
+  restartAgent,
+  staleAgents,
+  type McpStale,
   listAgents,
   agentHelpers,
   agentHelperTranscript,
@@ -152,7 +167,7 @@ export {
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|relaunch|rotate|keep|handoff|import|persona|helpers|rename|rm|permission|personas|doctor|handback-check|handoff-check> ...",
+    "agents <list|start|stop|resume|relaunch|rotate|keep|handoff|import|persona|restart|helpers|rename|rm|permission|personas|doctor|handback-check|handoff-check> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -213,11 +228,19 @@ export const AGENTS_HELP = {
     "    persona's role, permissions and commands; id, name, folder and model stay.",
     "    Mid-turn it asks: --after-turn waits for the turn to end, --now stops it.",
     "    A person's only (refused in an agent's session)",
+    "{cli} agents restart <id> [-w <ws>] [--now]",
+    "    stop a running agent and resume the same conversation, so it gets the",
+    "    tools it would get now (Hub's, after Connect). It waits for its turn",
+    "    to end; --now stops it at once. A person's only",
     "{cli} agents rename <id> <name> [-w <ws>]",
     "{cli} agents rename <id> --clear [-w <ws>]",
     "    name an agent (its tab, row and pane header); the id never changes.",
     "    Other sessions see it as {cli}-<ws>:<name> from its next start or resume.",
     "    --clear: back to its id",
+    "{cli} agents files <id> [-w <ws>] [--json]",
+    "    the files dropped, pasted or attached onto the agent's terminal (its",
+    "    uploads), newest first: when, size and path. agents.uploads sets the",
+    "    cap, how long they're kept and where",
     "{cli} agents rm <id> [-w <ws>]",
     "{cli} agents rm --stopped [-w <ws>]",
     "    forget a stopped, interrupted or exited agent (never a running one);",
@@ -233,7 +256,8 @@ export const AGENTS_HELP = {
     "{cli} agents doctor [-w <ws>] [--json]",
     "    each runtime, installed first: status, the CLI it runs and where it came",
     "    from, its version, the directories searched, and the fix; exit 1 when the",
-    "    default is missing. -w: as that workspace's agents find them",
+    "    default is missing. -w: as that workspace's agents find them. Also the",
+    "    running agents whose tools are out of date (Hub changed since they started)",
     "{cli} agents handback-check <file|-> [--json]",
     "    checks a hand-back to a person: URL, machine, branch, what changed, what",
     "    to click and decisions are all there, every ID is explained, and each",
@@ -492,6 +516,54 @@ async function persona(args: string[], d: AgentsResolved): Promise<number> {
       ? `agent ${s.rec.id} is now ${s.rec.persona} (was ${s.from}); ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
       : `agent ${s.rec.id} is now ${s.rec.persona} (was ${s.from}); same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
   );
+}
+
+/**
+ * D44: `agents restart <id> [-w <ws>] [--now]`: the same conversation,
+ * launched again with what it gets now. A person's only.
+ */
+async function restart(args: string[], d: AgentsResolved): Promise<number> {
+  const where = "agents restart";
+  if (d.env[ACTOR_TOKEN_ENV] !== undefined)
+    throw new AgentError(
+      `${where}: only a person can restart an agent (this is an agent's session)`,
+    );
+  const p = parseArgs(where, args, { "--workspace": true, "--now": false });
+  noExtra(where, p, 1);
+  const [id] = p.positional;
+  if (!id) throw new UsageError(`${where} needs <id>`);
+  const now = p.flags["--now"] === true;
+  if (!now) d.out(`waiting for agent ${id}'s turn to end…`);
+  const s = await restartAgent(
+    d,
+    id,
+    workspaceFlag(where, p),
+    now ? "now" : "after-turn",
+  );
+  return report(
+    d,
+    s,
+    s.fresh
+      ? `restarted agent ${s.rec.id}; ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
+      : `restarted agent ${s.rec.id}; same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
+  );
+}
+
+/** D44: doctor's lines for the running agents with out-of-date tools. */
+export function staleLines(
+  stale: { id: string; workspace: string; stale: McpStale }[],
+  cli: string,
+): string[] {
+  if (!stale.length) return ["Agents' tools     all current"];
+  const say = (x: McpStale) =>
+    x.adds.length
+      ? `${x.adds.join(", ")} tools arrive on restart`
+      : `${x.drops.join(", ")} tools go on restart`;
+  return [
+    `Agents' tools     ${stale.length} running ${stale.length === 1 ? "agent started" : "agents started"} before the change:`,
+    ...stale.map((a) => `  ${a.id} (${a.workspace}): ${say(a.stale)}`),
+    `  \`${cli} agents restart <id>\` restarts one at its next idle, same conversation`,
+  ];
 }
 
 /** `<id> [-w <ws>]`. */
@@ -863,6 +935,64 @@ async function resumeAll(args: string[], d: AgentsResolved): Promise<number> {
   return r.failed.length ? 1 : 0;
 }
 
+/** AG-DROP-2: `agents files <id> [-w <ws>] [--json]`: its uploads. */
+function files(args: string[], d: AgentsResolved): number {
+  const where = "agents files";
+  const p = parseArgs(where, args, { "--workspace": true, "--json": false });
+  noExtra(where, p, 1);
+  const id = p.positional[0];
+  if (!id) throw new UsageError(`${where} needs <id>`);
+  const rec = readRecord(d.stateDir(), id);
+  const ws = workspaceFlag(where, p);
+  if (!rec || (ws && rec.workspace !== ws))
+    throw new AgentError(`no agent "${id}"${ws ? ` in ${ws}` : ""}`, {
+      hints: [`\`${d.cli} agents list\` lists them`],
+    });
+  const set = readAgentsConfig().uploads ?? UPLOAD_DEFAULTS;
+  const root = uploadsRoot(set, d.stateDir());
+  const list = listUploads(root, rec.session.id);
+  if (p.flags["--json"]) {
+    d.out(
+      JSON.stringify(
+        {
+          agent: rec.id,
+          workspace: rec.workspace,
+          folder: path.join(root, rec.session.id),
+          keepDays: set.keepDays,
+          files: list.map((f) => ({
+            path: f.path,
+            bytes: f.bytes,
+            at: new Date(f.at).toISOString(),
+          })),
+        },
+        null,
+        2,
+      ),
+    );
+    return 0;
+  }
+  if (!list.length) {
+    d.out(
+      `no files for ${rec.id} yet: drop, paste or attach one onto its terminal on the Agents page`,
+    );
+    return 0;
+  }
+  const size = (n: number) =>
+    n >= 1024 * 1024
+      ? `${(n / (1024 * 1024)).toFixed(1)} MB`
+      : n >= 1024
+        ? `${Math.ceil(n / 1024)} KB`
+        : `${n} B`;
+  for (const f of list)
+    d.out(
+      `${duration(Date.now() - f.at)} ago  ${size(f.bytes).padStart(8)}  ${f.path}`,
+    );
+  d.out(
+    `${list.length} ${list.length === 1 ? "file" : "files"}; each is removed ${set.keepDays} ${set.keepDays === 1 ? "day" : "days"} after it came (agents.uploads.keep_days)`,
+  );
+  return 0;
+}
+
 /** `agents rm <id> [-w <ws>]`, `agents rm --stopped [-w <ws>]` (AG-14.1b). */
 /** D25: `agents rename <id> <name>|--clear [-w <ws>]`. */
 /**
@@ -1030,6 +1160,8 @@ export interface AgentsDoctorDeps {
   loginPath?: () => Promise<void>;
   /** Read a hand-back: a file path, or "-" for stdin (handback-check). */
   readHandback?: (src: string) => Promise<string>;
+  /** D47: the api_only services (default: every workspace's manifests). */
+  apiOnly?: () => ApiOnlyRules;
 }
 
 async function readFileOrStdin(src: string): Promise<string> {
@@ -1178,6 +1310,70 @@ export function subagentLines(
   return lines;
 }
 
+/** The runtimes that enforce D47 (a PreToolUse hook): den-claude only. */
+const API_ONLY_RUNTIMES = new Set(["den-claude"]);
+
+/** D47: `agents doctor`'s API-only section. */
+export function apiOnlyLines(
+  rules: ApiOnlyRules,
+  runtimes: readonly { id: string; available?: boolean }[],
+  denied: readonly Record<string, unknown>[],
+): string[] {
+  if (!rules.services.length)
+    return [
+      "API-only services  none declared (a service's manifest says `agents: api_only`)",
+    ];
+  const lines = [
+    "API-only services (agents reach them only through their API)",
+  ];
+  for (const s of rules.services) {
+    const svc = s.composeServices.length
+      ? [`${s.project}-{${s.composeServices.join(",")}}-N`]
+      : s.composeVolumes.length
+        ? []
+        : [`${s.project}-*`];
+    const vol = s.composeVolumes.length
+      ? [`${s.project}_{${s.composeVolumes.join(",")}}`]
+      : s.composeServices.length
+        ? []
+        : [`${s.project}_*`];
+    const parts = [
+      `project ${s.project}`,
+      ...([...svc, ...s.containers].length
+        ? [`containers ${[...svc, ...s.containers].join(", ")}`]
+        : []),
+      ...([...vol, ...s.volumes].length
+        ? [`volumes ${[...vol, ...s.volumes].join(", ")}`]
+        : []),
+      ...(s.paths.length ? [`data ${s.paths.join(", ")}`] : []),
+      ...(s.machine
+        ? [`machine ${s.machine} (and ~/OrbStack, ~/.orbstack)`]
+        : []),
+    ];
+    lines.push(`  ${s.name}: ${parts.join("; ")}`);
+  }
+  const on = runtimes
+    .filter((r) => API_ONLY_RUNTIMES.has(r.id))
+    .map((r) => r.id);
+  const off = runtimes
+    .filter((r) => !API_ONLY_RUNTIMES.has(r.id) && r.available !== false)
+    .map((r) => r.id);
+  lines.push(
+    `  enforced      ${on.join(", ") || "none"}: a guardrail, not a boundary. An agent that can reach the Docker engine can still get around it with a program of its own.`,
+  );
+  if (off.length)
+    lines.push(
+      `  not enforced  ${off.join(", ")}: API-only isn't enforced for this runtime (it has no hook Den can use)`,
+    );
+  if (denied.length) {
+    const last = denied[denied.length - 1];
+    lines.push(
+      `  denied        ${denied.length} recently; the last at ${String(last.at ?? "?")}: ${String(last.agent ?? "an agent")}, ${String(last.what ?? "")} (${String(last.service ?? "")})`,
+    );
+  } else lines.push("  denied        none recently");
+  return lines;
+}
+
 async function doctor(
   args: string[],
   d: AgentsResolved,
@@ -1208,6 +1404,15 @@ async function doctor(
     } catch (e) {
       wsMode = { name: ws, error: (e as Error).message };
     }
+  let apiOnly: ApiOnlyRules = { services: [] };
+  try {
+    apiOnly = (deps.apiOnly ?? gatherApiOnly)();
+  } catch {
+    /* none readable: none shown */
+  }
+  const denied = readApiOnlyAudit(d.stateDir(), 50);
+  // D44: never fails doctor (no host: none running).
+  const stale = await staleAgents(d).catch(() => []);
   if (p.flags["--json"]) {
     d.out(
       JSON.stringify(
@@ -1233,6 +1438,18 @@ async function doctor(
                 }
               : {}),
           },
+          apiOnly: {
+            ...apiOnly,
+            enforcedBy: rts
+              .filter((r) => API_ONLY_RUNTIMES.has(r.id))
+              .map((r) => r.id),
+            notEnforcedBy: rts
+              .filter((r) => !API_ONLY_RUNTIMES.has(r.id) && r.available)
+              .map((r) => r.id),
+            guardrail: true,
+            denied,
+          },
+          staleTools: stale,
           ...(ws ? { workspace: ws } : {}),
           userConfig: d.userConfigFile(),
         },
@@ -1253,6 +1470,10 @@ async function doctor(
   for (const l of subagentLines(subagentsReport(d), claudeVersion)) d.out(l);
   d.out("");
   for (const l of permissionLines(claude, modes, wsMode)) d.out(l);
+  d.out("");
+  for (const l of apiOnlyLines(apiOnly, rts, denied)) d.out(l);
+  d.out("");
+  for (const l of staleLines(stale, d.cli)) d.out(l);
   d.out("");
   d.out(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,
@@ -1301,10 +1522,15 @@ export async function cmdAgents(
         case "persona":
           await loadAgentWorkspaces(deps);
           return await persona(rest, d);
+        case "restart":
+          await loadAgentWorkspaces(deps);
+          return await restart(rest, d);
         case "helpers":
           return await helpers(rest, d);
         case "rename":
           return rename(rest, d);
+        case "files":
+          return files(rest, d);
         case "rm":
           await loadAgentWorkspaces(deps);
           return await rm(rest, d);

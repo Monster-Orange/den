@@ -1577,6 +1577,60 @@ export function hubHtml(b, flash) {
   );
 }
 
+/**
+ * D44: running agents whose tools predate Hub's Connect or Disconnect
+ * (from GET /api/agents/stale), and the offer to restart them at their
+ * next idle, each keeping its conversation. "" when there are none.
+ */
+export function restartOfferHtml(agents) {
+  const n = Array.isArray(agents) ? agents.length : 0;
+  if (!n) return "";
+  const adds = agents.some((a) => a?.stale?.adds?.length);
+  const who = n === 1 ? "1 agent" : `${n} agents`;
+  const what = adds
+    ? `${who} started before Hub was connected, so ${n === 1 ? "it doesn't" : "they don't"} have Hub's tools yet.`
+    : `${who} started while Hub was connected, so ${n === 1 ? "it still lists" : "they still list"} Hub's tools.`;
+  return (
+    `<div class="hub-restart" data-hub-restart="${n}">` +
+    `<p class="set-note">${escR(what)} A restart keeps each conversation and never cuts a turn.</p>` +
+    `<button type="button" class="btn sm primary" data-hub-action="restart-stale">Restart ${escR(who)} at ${n === 1 ? "its" : "their"} next idle</button>` +
+    `</div>`
+  );
+}
+
+function offerRestart(host, ctx, fresh) {
+  return ctx.shell
+    .api("GET", `/api/agents/stale${fresh ? "?fresh=1" : ""}`)
+    .then((r) => {
+      const html = restartOfferHtml(r?.agents);
+      if (!html) return;
+      host.insertAdjacentHTML("beforeend", html);
+      const box = host.querySelector("[data-hub-restart]");
+      const btn = box?.querySelector('[data-hub-action="restart-stale"]');
+      btn?.addEventListener("click", () => {
+        btn.disabled = true;
+        ctx.shell
+          .api("POST", "/api/agents/restart-stale", {})
+          .then((x) => {
+            const k = Array.isArray(x?.pending) ? x.pending.length : 0;
+            box.innerHTML = `<p class="set-note" role="status" data-hub-restarting="${k}">${escR(
+              k === 1
+                ? "1 agent restarts at its next idle, in the same conversation."
+                : `${k} agents restart at their next idle, each in the same conversation.`,
+            )}</p>`;
+          })
+          .catch((e) => {
+            btn.disabled = false;
+            box.insertAdjacentHTML(
+              "beforeend",
+              `<p class="set-note set-warn" role="alert">${escR(e?.message || "Not restarted")}</p>`,
+            );
+          });
+      });
+    })
+    .catch(() => undefined);
+}
+
 /** Read and clear ?hub=… (set by Hub's redirect back through /hub/callback). */
 function takeHubFlash() {
   try {
@@ -1612,6 +1666,8 @@ function drawHub(host, ctx, back, flash) {
         f = { ok: HUB_FLASH[back][0], message: HUB_FLASH[back][1] };
       host.innerHTML = hubHtml(b, f);
       wireHub(host, ctx);
+      // D44: agents started before Hub changed keep their old tools.
+      return offerRestart(host, ctx, Boolean(f || back));
     })
     .catch(() => {
       host.innerHTML = "";

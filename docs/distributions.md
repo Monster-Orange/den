@@ -985,6 +985,7 @@ hub:
   # or a source: token: "file:/path/to/token" (also keychain:, env:)
   mcp_url: https://hub.example.com/mcp # default: <url>/mcp
   allow_tools: true # the default: agents use Hub's tools without asking
+  inbox_on_stop: nudge # the default; off: agents are never asked
 ```
 
 - `hub.url` must be https. Plain http works only to this machine
@@ -995,19 +996,40 @@ hub:
 
 ### What agents get
 
-- Each agent's MCP config gets a server named `hub`: Streamable HTTP at
-  `hub.mcp_url` (default `<hub.url>/mcp`), with
-  `Authorization: Bearer <token>` and plain headers naming the caller:
+- Agents reach Hub through Den, never straight. Each agent's MCP config
+  gets a server named `hub`: Streamable HTTP at Den's own
+  `http://localhost:<port>/hub/mcp`, with
+  `Authorization: Bearer ${DEN_ACTOR_TOKEN}`. That is the agent's own Den
+  token, which Claude Code fills in from the session's env. Den's proxy
+  then calls `hub.mcp_url` (default `<hub.url>/mcp`) with the install's
+  token and plain headers naming the caller, taken from Den's records:
   `X-Den-Agent` (its name), `X-Den-Agent-Id` (its stable id, which Hub
-  keys attribution on), `X-Den-Session` (a new opaque id per launch),
-  `X-Den-Workspace` and `X-Den-Repos` (the workspace's repos,
-  `owner/repo`, comma-separated). Hub sets the company from the token
-  and the project from the repos.
+  keys attribution on), `X-Den-Session` (its session), `X-Den-Workspace`
+  and `X-Den-Repos` (the workspace's repos, `owner/repo`,
+  comma-separated). Hub sets the company from the token and the project
+  from the repos.
+- The proxy (`/hub/<path>`) takes only an agent's own Den token. A
+  person's token or a browser gets 403: people use Hub itself. It passes
+  only Hub's paths for agents: `/mcp`, `/api/inbox`,
+  `/api/notifications…`, `/api/import/packs…`, `/api/import/ds/…`
+  (a design system), `/api/reports/…`, `/api/admin/fixtures/…` and
+  `/api/admin/fold/…` (asking to fold one company into another). Anything else gets 404. The agent's own
+  `Authorization` and any `X-Den-*` it sends are dropped. Redirects are
+  passed back, never followed, and Hub's status and errors come back as
+  they are. Bodies stream both ways, and Hub enforces its own size
+  limits.
 - Its prompt gets one line: "You can search Hub and publish docs and
   mocks there with the hub\_\* tools; your team and project are set from
   this Den install."
-- The token is only in the agent's own MCP file (mode 0600). It is never
-  in a command line, a record, a log, a page or an API answer.
+- The install's token stays in Den's server. It is never in an agent's
+  files (its MCP config included), its env, a command line, a record, a
+  log, a page or an API answer.
+- `<cli> hub push <dir> [--request "<why>"]`, run by an agent, sends an
+  import pack to Hub through the proxy. `<dir>` holds `pack.json` and
+  `blobs/<sha256>`. It stages the pack, uploads the files Hub lacks (four
+  at a time), and prints Hub's dry run. With `--request`, it asks a
+  person to apply it and prints the link where they approve it in Hub.
+  Outside an agent's session it is refused.
 - `hub.allow_tools` (default `true`): agents use Hub's tools without
   asking (Den allows `mcp__hub` for every agent it launches). The token
   limits writes to this install's company, and Hub keeps every version.
@@ -1015,8 +1037,35 @@ hub:
   An explicit deny in the install's own Claude Code permissions still
   wins. Settings › Agents › Hub has the checkbox (it saves to
   `config/local/user.yml`).
+- `hub.inbox_on_stop` (default `nudge`): when a den-claude agent is
+  about to stop, its Stop hook asks Hub through Den
+  (`GET <den>/hub/api/inbox`, two seconds at most) how many comments wait
+  on it. When that number went
+  up since it was last told, the agent is asked once to carry on: "2 Hub
+  comments wait on you: call hub_inbox, answer them (hub_comment) or say
+  why not, then finish." Answered threads drop out of the count, so a
+  new reply asks again. The hook sends the agent's own Den token from its
+  env; no token is in the hook's command line. The count it last told
+  is kept in the agent's files (`hub-inbox.json`). A Hub that is down or
+  slow lets the agent stop. Set it to `off` and agents are never asked.
+  A persona without Den's hooks still gets this check. codex and gemini
+  agents don't have it.
 - A Hub that is down, or a token that can't be read, never stops an
   agent: it starts without Hub.
+- A running agent keeps the MCP servers it started with. When Hub is
+  connected after it started (or disconnected), its row and pane say
+  "Hub tools arrive on restart" (or "Hub tools go on restart"), with
+  Restart on the pane. Restart waits for its turn to end, then stops it
+  and resumes the same conversation, now with Hub's tools (`agents
+restart <id>`; `--now` stops it at once). After Connect or Disconnect,
+  Settings › Agents › Hub offers "Restart N agents at their next idle".
+  `agents doctor` lists those agents. A restart is a person's: an
+  agent's token is refused.
+- An agent can ask Den about itself with the MCP tool `whoami`: its id,
+  workspace, and whether Hub is connected and its tools are loaded. When
+  Hub is connected but its tools are missing, it tells the person to
+  restart it from Den. There is no token step for the agent or the
+  person.
 
 ### Status
 
@@ -2662,6 +2711,7 @@ server scoped to its workspace.
 <cli> agents import -w <ws> [--runtime <r>] [--json]          # conversations to bring in
 <cli> agents import -w <ws> --session <id> --persona <p> [--model <m>]  # bring one in
 <cli> agents persona <id> <persona> [-w <ws>] [--model <m>] [--now | --after-turn]  # change its persona
+<cli> agents restart <id> [-w <ws>] [--now]  # the same conversation, with the tools it gets now
 <cli> agents personas [--json]
 <cli> agents doctor [-w <ws>] [--json]  # can each runtime run here, and why not
 <cli> agents handback-check <file|->    # is a hand-back complete and plain (see Guardrails)
@@ -2981,6 +3031,11 @@ agent of the workspaces in view, and their terminals in the browser.
   holds the open panes (`/agents?open=<id>,<id>`), so a link, a reload or
   Back reopens them. The list and the panes fill the window down to the
   runs dock.
+- **A link to one agent** is `/agents?agent=<id>&ws=<workspace>`, for
+  another tool to link an agent's name to (D43). A running agent's pane
+  opens and takes the keyboard. A stopped agent's details open by its row.
+  An agent that isn't there gets a short note and nothing opens. The link
+  is used once: the URL then keeps `?ws=` and `?open=`, not `?agent=`.
 - **Layouts.** The switch in the page header picks one, or ⌃⇧1, ⌃⇧2, ⌃⇧3
   (Ctrl+Shift+1/2/3 on every OS; ⌘1-9 and Ctrl+1-9 stay the browser's, for
   its tabs), or ⌘K "Layout: Focus", "Layout: Tabs", "Layout: Tile". Inside
@@ -3040,15 +3095,32 @@ agent of the workspaces in view, and their terminals in the browser.
   (`javascript:`, `file:`) is no link. A plain click selects text as
   ever. A file path an agent prints (`src/foo.ts:42`, `./a/b.js:3:7`, an
   absolute path) is a link when it exists inside the agent's workspace
-  (its directory, or the agent's own folder), resolved against the
-  agent's folder; one outside it never is. The server checks with `GET
+  (its directory, or the agent's own folder) or its uploads, resolved
+  against the agent's folder; one outside it never is. The server checks with `GET
 /api/workspaces/<ws>/agents/<id>/paths?p=<path>&p=…` (stat only, nothing
   is read; at most 64 at once), which answers each path's absolute path
-  or null. ⌘-click opens it in the editor of Settings › Editor & terminal ›
-  "Open file links in" (`editor_open` in `config/local/user.yml` and
-  `/api/settings`: `vscode`, `cursor` or `zed`, by its URL scheme at the
-  line), or, with `none` (the default), copies its absolute path and says
-  "Copied".
+  or null. ⌘-click opens a menu at the pointer:
+  - **Download** brings the file to the browser's machine, which may not
+    be the agent's (AG-DROP-2). `GET
+/api/workspaces/<ws>/agents/<id>/file?p=<path>` sends a regular file
+    inside the same folders, or the agent's uploads, as an attachment.
+    Anything else gets 404, and nothing of it is sent. Every download,
+    and every refusal, is audited.
+  - The rule, for links and downloads alike: the path is resolved
+    against the agent's folder and every link in it followed, and the
+    real path must be inside the workspace's folder, the agent's own
+    folder or its uploads. A folder that would open too much is no
+    root: `/`, the home folder, or one holding the home or Den's state
+    folder (an agent whose folder is `~`). Whatever the roots, Den's state
+    folder (but the session's uploads) and the home folder's secrets
+    (its dotfiles, `.ssh`, `.gnupg`, `.aws`, `.config`, `.claude`,
+    `.docker`, `.kube`, `.netrc`, `Library/Keychains` and the like) are
+    never a link and never sent.
+  - **Open in <editor>**, when Settings › Editor & terminal › "Open file
+    links in" names one (`editor_open` in `config/local/user.yml` and
+    `/api/settings`: `vscode`, `cursor` or `zed`): its URL scheme, at the
+    line.
+  - **Copy path** copies its absolute path and says "Copied".
 - ⌘K lists each as "Agents › <ws> / <name>", and "Start agent…".
 - Several browsers and `<cli> sessions attach` can attach to one session
   at once and each sees every byte; the terminal's size is the last
@@ -3159,6 +3231,77 @@ agents:
 `collapse_done_minutes` no longer does anything (0.4.29): finished helpers
 stay in the list until a person clears them. It is still accepted, so a
 config that sets it keeps working, and `<cli> doctor` notes it.
+
+### Files dropped onto an agent's terminal
+
+Drag one or more files onto an agent's terminal pane, paste a copied file
+or screenshot into it, or press **Attach** in its pane bar (the way in on
+a touch screen). The browser may be on another machine than Den: the file
+travels over Den's own HTTPS, with no shared folder or file sync. Den
+writes it on the agent's machine and types its absolute path at the
+cursor, as a native terminal's drop does. Several files are typed
+space-separated, each shell-quoted when it needs to be, with a trailing
+space and no Enter. A paste of plain text stays a normal paste.
+
+- Each file goes to `<state>/uploads/<session id>/<time>-<name>`: the
+  file 0600, its folder 0700, outside every repo. The name keeps only
+  letters, digits, spaces and `._+@()-`, never a folder part.
+- While a file is over the pane, it says "Drop to attach to <agent>". Each
+  file gets a chip with its progress, then "attached" or the reason it
+  wasn't (too big, the session ended, the upload failed).
+- The route is `POST /api/sessions/<id>/uploads?name=<file>`, the body the
+  file's bytes. It answers `{ ok, path, bytes }`. It is shell-grade, with
+  the terminal's own checks: CSRF, a signed-in person beyond loopback, and
+  an agent's token for its own session only. Every upload, and every
+  refusal, is audited with the actor and the reason: `too_large`,
+  `not_found`, `exited`, `bad_request`, and the request checks'
+  `agent_forbidden` (another session's) and `csrf`.
+- Files older than `keep_days` are removed (checked at most once an hour,
+  on an upload).
+- `<cli> agents files <id> [-w <ws>] [--json]` lists an agent's uploads,
+  newest first: when, size and path. A path the agent prints, an upload's
+  among them, downloads from its ⌘-click menu (see Links, above).
+
+```yaml
+agents:
+  uploads:
+    max_bytes: 26214400 # 25 MB; a bigger file is refused, naming this key
+    keep_days: 7 # then pruned
+    # dir: /absolute/path # default <state>/uploads
+```
+
+| Key         | Values                            | Default           |
+| ----------- | --------------------------------- | ----------------- |
+| `max_bytes` | bytes, a whole number, 1 to 4 GiB | 26214400 (25 MB)  |
+| `keep_days` | days, above 0 to 3650             | 7                 |
+| `dir`       | an absolute path                  | `<state>/uploads` |
+
+A repo's own secrets are inside the agent's workspace, so the fence alone
+would serve them. `agents.files.deny` lists globs that are never a link
+or a download, applied after the fence, with the same 404 and audit:
+
+```yaml
+agents:
+  files:
+    deny: # replaces the defaults; [] turns it off
+      - .env
+      - .env.*
+      - "*.pem"
+      - "*.key"
+      - config/secrets/**
+```
+
+- A glob without `/` matches any one part of the path below the root:
+  `.env` refuses `app/.env`, and a folder named `.env` with all inside it.
+- A glob with `/` matches the whole path below the root.
+- `*` is any run within one part, `**` any run of parts, `?` one
+  character. Case never counts (`.ENV` is `.env`): macOS disks ignore it.
+- The defaults: `.env`, `.env.*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`,
+  `id_rsa*`, `id_dsa*`, `id_ecdsa*`, `id_ed25519*`. To add to them, list
+  them with yours.
+- A file a repo merely ignores in git is not refused: build output and
+  logs are ignored too, and are what a person most often downloads. Name
+  a secret's pattern here.
 
 ### Subagents' model and claude.ai connectors
 
@@ -3528,6 +3671,60 @@ Den never writes your `~/.claude`; your own hooks still run.
   `SessionStart` after a compaction only) and ask for a handoff once a
   rotation is due. See Session rotation, below. While one is
   due, the `Stop` hook also blocks once until `handoff.md` passes.
+
+**Services agents reach only through their API (D47).** A repo's manifest
+can say its service is reached through its API and nothing else:
+
+```yaml
+name: vault
+agents: api_only
+data_paths: [var/db] # relative to the repo, or absolute; ~ is home
+machine: vault-vm # when it runs in an OrbStack machine
+```
+
+Den gathers these from every workspace's checkouts into one rules file
+(`<stateDir>/agents/api-only.json`), and every den-claude agent's
+`PreToolUse` hook reads it on each call, so a change applies without a
+restart. A persona with `den_hooks: false` still gets this check, and only
+it. With rules, the hook also sees `Write`, `Edit`, `MultiEdit`,
+`NotebookEdit`, `Grep` and `Glob`. It denies, with a reason the agent sees
+("use its API or its MCP tools instead"):
+
+- `docker exec`, `attach`, `export` and `cp` into the service's containers
+  (`<project>-<service>-<n>` for each service in its compose files, or a
+  `container_name` there), and `docker compose exec|cp|run|attach` on its
+  project, picked as compose picks it (`-p`, `COMPOSE_PROJECT_NAME`, the
+  compose file's `name:`, then the folder's name);
+- `docker run|create` that mounts its volumes (`<project>_<volume>`, or a
+  volume's `name:`) or its data paths, `--volumes-from` its containers,
+  and `docker volume inspect|rm|cp|export` on its volumes;
+- reading or writing its data paths, with a tool or in a shell command;
+- with a `machine`: `orb`/`orbctl` on that machine (or with no machine
+  named: the default one), `ssh`/`scp`/`rsync` to `<machine>.orb.local`
+  or `<machine>@orb`, Docker on that machine's context
+  (`--context`, `DOCKER_CONTEXT`, `DOCKER_HOST`), and `~/OrbStack` and
+  `~/.orbstack`.
+
+It is about the service instance, matched by name, never by where a
+command runs. Another instance from the same repo under its own compose
+project (`vault-dev` beside `vault`, with its own data) is not held to it:
+declare only the instance whose data must go through the API.
+
+It reads a command's words the way a shell splits them, through
+`sh -c`, `$( )`, `eval`, `env`, `sudo`, `timeout` and `xargs`. Each denial
+is written to `<stateDir>/audit/api-only.jsonl` (0600): when, which agent,
+which tool and service, and what, never the whole command.
+`agents doctor` lists the services, the runtimes that enforce it, and the
+last denial. A running den-claude agent's pane says "API only: <names>";
+a codex or gemini agent's pane says "API-only not enforced".
+
+**It is a guardrail, not a security boundary.** An agent that can reach
+the Docker engine can still get around it, for example with a program
+that calls the Docker API itself, or a container id typed in place of its
+name. The hard boundary is an agent that can't reach that engine: run the
+service in its own machine or VM, with its own Docker engine. Only
+den-claude enforces it; for codex and gemini, `agents doctor` says
+"API-only isn't enforced for this runtime".
 
 **The hand-back template**, which the check enforces:
 

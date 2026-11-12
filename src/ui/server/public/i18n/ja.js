@@ -609,6 +609,23 @@
     "ag.chip.stopped": "停止",
     "ag.chip.exited": "終了",
     "ag.chip.interrupted": "中断",
+    "ag.link.none":
+      "エージェント {id} はここにありません。削除された可能性があります。",
+    "ag.apiOnly": "API のみ: {names}",
+    "ag.apiOnlyTip":
+      "このエージェントは {names} に API を通してのみアクセスします。Den は docker exec、ボリューム、データへのアクセスをブロックし、試行ごとに記録します。セキュリティ境界ではなくガードレールです。",
+    "ag.apiOnlyOff": "API のみは未適用",
+    "ag.apiOnlyOffTip":
+      "このランタイムには Den が使えるフックがないため、{names} の API に制限されません。制限が必要なエージェントには den-claude を使ってください。",
+    "ag.mcp.adds": "再起動で Hub のツールが使えます",
+    "ag.mcp.addsTip":
+      "このエージェントの起動後に Hub が接続されたため、まだ Hub のツールがありません。再起動しても会話は続き、ターンの終わりを待ちます。",
+    "ag.mcp.drops": "再起動で Hub のツールが外れます",
+    "ag.mcp.dropsTip":
+      "このエージェントの起動後に Hub が切断されたため、Hub のツールはもう動きません。再起動しても会話は続き、ターンの終わりを待ちます。",
+    "ag.mcp.restart": "再起動",
+    "ag.mcp.restartName": "{id} を次の待機時に再起動",
+    "ag.mcp.restarting": "{id} は次の待機時に同じ会話で再起動します。",
     "ag.det.label": "{id} の詳細",
     "ag.det.close": "閉じる",
     "ag.det.where": "場所",
@@ -839,6 +856,20 @@
     "ag.goWs": "ワークスペースで {ws} を開く",
     "ag.lost": "[切断: {why}]",
     "ag.reconnect": "再接続",
+    "ag.path.download": "ダウンロード",
+    "ag.path.open": "{ed} で開く",
+    "ag.path.copy": "パスをコピー",
+    "ag.path.downloading": "{name} をダウンロード中",
+    "ag.path.noFile":
+      "{name} はダウンロードできません: エージェントのワークスペースやアップロードにあるファイルではありません",
+    "ag.up.drop": "ドロップして {name} に添付",
+    "ag.up.sending": "送信中…",
+    "ag.up.pct": "{n}%",
+    "ag.up.done": "添付しました",
+    "ag.up.attach": "添付",
+    "ag.up.attachName": "{id} にファイルを添付",
+    "ag.up.attachTip":
+      "ファイルを添付: エージェントのマシンに送られ、そのパスがここに入力されます",
     "ag.size.follow": "別の表示のサイズ ({cols}×{rows})",
     "ag.size.take": "このサイズにする",
     "ag.noBackend":

@@ -53,6 +53,7 @@ describe("readHubConfig", () => {
       tokenFrom: "hub.token",
       allowTools: true,
       mcpUrl: "https://mine.example.test/mcp",
+      inboxOnStop: "nudge",
     });
   });
 
@@ -129,6 +130,25 @@ describe("readHubConfig", () => {
     expect(hubUrlProblem("https://hub.example.test")).toBeNull();
     expect(hubUrlProblem("http://hub.example.test")).toMatch(/https/);
     expect(hubUrlProblem("not a url")).toMatch(/not a URL/);
+  });
+});
+
+describe("hub.inbox_on_stop (D41)", () => {
+  const url = "https://hub.example.test";
+  it("nudge unless set off; anything else throws naming the key", () => {
+    expect(readHubConfig({ hub: { url } }, {}, noSecrets)?.inboxOnStop).toBe(
+      "nudge",
+    );
+    expect(
+      readHubConfig(
+        { hub: { url } },
+        { hub: { inbox_on_stop: "off" } },
+        noSecrets,
+      )?.inboxOnStop,
+    ).toBe("off");
+    expect(() =>
+      readHubConfig({ hub: { url, inbox_on_stop: false } }, {}, noSecrets),
+    ).toThrow(/hub\.inbox_on_stop must be "nudge" or "off"/);
   });
 });
 

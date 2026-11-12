@@ -62,10 +62,10 @@ export interface AgentMcp {
   /** The workspace it is pinned to. */
   scope: string;
   /**
-   * HUB-1.5: Den Hub's MCP server (Streamable HTTP), when hub.url is set:
-   * its MCP endpoint (HUB-1.7: Hub's mcp_url, default <hub.url>/mcp) and the headers (the bearer token among them). The
-   * headers go only into the agent's own 0600 MCP file, never into argv,
-   * a record, a log or a page.
+   * HUB-1.5: Den Hub's MCP server (Streamable HTTP), when hub.url is set.
+   * D52: Den's proxy to it (<den>/hub/mcp), with the agent's own Den token
+   * as `Bearer ${DEN_ACTOR_TOKEN}` (expanded from the session's env). The
+   * install's Hub token stays in Den's server: never the agent's.
    */
   hub?: {
     name: string;
@@ -73,6 +73,12 @@ export interface AgentMcp {
     headers: Record<string, string>;
     /** hub.allow_tools: its tools run without asking (default on). */
     allowTools?: boolean;
+    /**
+     * D41: Den's proxy to Hub (<den>/hub) for the Stop hook's inbox check;
+     * absent when hub.inbox_on_stop is off. No token: the hook sends the
+     * agent's own Den token, from its env.
+     */
+    inboxBase?: string;
   };
 }
 
@@ -113,6 +119,11 @@ export interface LaunchInput {
   subagentModel?: string;
   /** den#3: load the account's claude.ai connectors (default: not). */
   claudeAiConnectors?: boolean;
+  /**
+   * D47: the rules file of services agents may reach only through their
+   * API, and the audit file; absent: none is declared.
+   */
+  apiOnly?: { rules: string; audit: string };
   /**
    * Session rotation (den#4): the compactions after which this agent's
    * session rotates (0: never). Den's hooks count them. Default 3.

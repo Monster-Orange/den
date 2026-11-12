@@ -20,7 +20,7 @@ import {
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { verifyActorToken } from "../../../src/shared/actor-token.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
-import { readRecord } from "../../../src/shared/agents/records.js";
+import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import { hasSudoPassword } from "../../../src/ui/server/sudo-store.js";
 import { cleanupRigs, rig, settle, type Rig } from "../agents/helpers/rig.js";
 
@@ -817,6 +817,266 @@ describe("GET /api/workspaces/<ws>/agents/<id>/paths (AG-4b: path links)", () =>
       "/api/workspaces/north/agents/planner/paths",
     );
     expect(post.status).toBe(405);
+  });
+});
+
+describe("GET /api/workspaces/<ws>/agents/<id>/file (AG-DROP-2: a file back to the browser)", () => {
+  const get = (a: Api, ws: string, id: string, p: string, method = "GET") =>
+    fetch(
+      `${a.base}/api/workspaces/${ws}/agents/${id}/file?p=${encodeURIComponent(p)}`,
+      { method },
+    );
+
+  it("sends a file inside the agent's workspace or its uploads as an attachment, audited; never one outside, a folder, or through a link out", async () => {
+    const a = await api();
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    const ws = fs.realpathSync(a.r.wsDir("north"));
+    fs.mkdirSync(path.join(ws, "out"), { recursive: true });
+    fs.writeFileSync(path.join(ws, "out", "report é.txt"), "the report\n");
+    const sid = readRecord(a.r.stateDir, "planner")!.session.id;
+    const up = path.join(a.r.stateDir, "uploads", sid);
+    fs.mkdirSync(up, { recursive: true });
+    fs.writeFileSync(path.join(up, "20261111-000000-000-shot.png"), "png");
+    fs.mkdirSync(path.join(a.r.dir, "elsewhere"), { recursive: true });
+    fs.writeFileSync(path.join(a.r.dir, "elsewhere", "y.txt"), "secret\n");
+    fs.symlinkSync(path.join(a.r.dir, "elsewhere"), path.join(ws, "link"));
+
+    const r = await get(a, "north", "planner", "out/report é.txt");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toBe("application/octet-stream");
+    expect(r.headers.get("content-disposition")).toBe(
+      `attachment; filename="report _.txt"; filename*=UTF-8''${encodeURIComponent("report é.txt")}`,
+    );
+    expect(r.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await r.text()).toBe("the report\n");
+    const h = await get(a, "north", "planner", "out/report é.txt", "HEAD");
+    expect([h.status, h.headers.get("content-length")]).toEqual([200, "11"]);
+    // Its uploads, by the path typed into its terminal.
+    const u = await get(
+      a,
+      "north",
+      "planner",
+      path.join(up, "20261111-000000-000-shot.png"),
+    );
+    expect([u.status, await u.text()]).toEqual([200, "png"]);
+    // Outside, through a link out, a folder, missing, none: 404, nothing sent.
+    for (const bad of [
+      path.join(a.r.dir, "elsewhere", "y.txt"),
+      "link/y.txt",
+      "../../elsewhere/y.txt",
+      "out",
+      "out/missing.txt",
+      "/etc/hosts",
+      "",
+    ]) {
+      const x = await get(a, "north", "planner", bad);
+      expect([bad, x.status]).toEqual([bad, 404]);
+      expect(await x.text()).not.toContain("secret");
+    }
+    const audit = recentActions().filter((e) => e.verb === "download");
+    expect(
+      audit.some((e) => e.detail.endsWith("report é.txt (11 bytes)")),
+    ).toBe(true);
+    expect(
+      audit.filter((e) => e.outcome === "refused").map((e) => e.reason),
+    ).toContain("not_found");
+  });
+
+  it("never Den's state folder (but its uploads) or the home folder's secrets: not through a link in the workspace, not for an agent whose folder is home", async () => {
+    const a = await api();
+    const home = path.join(a.r.dir, "home");
+    for (const d of [".ssh", ".config/op", "notes"])
+      fs.mkdirSync(path.join(home, d), { recursive: true });
+    fs.writeFileSync(path.join(home, ".zshenv"), "export TOKEN=S3CRET-MARK\n");
+    fs.writeFileSync(
+      path.join(home, ".ssh", "id_ed25519"),
+      "S3CRET-MARK key\n",
+    );
+    fs.writeFileSync(
+      path.join(home, ".config", "op", "c.json"),
+      "S3CRET-MARK\n",
+    );
+    fs.writeFileSync(path.join(home, "notes", "plan.md"), "plan\n");
+    a.r.deps.env = { ...a.r.deps.env, HOME: home };
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    const ws = fs.realpathSync(a.r.wsDir("north"));
+    const state = fs.realpathSync(a.r.stateDir);
+    fs.writeFileSync(path.join(state, "web.secret"), "S3CRET-MARK\n");
+    // Links inside the workspace that lead to them: refused.
+    fs.symlinkSync(path.join(home, ".zshenv"), path.join(ws, "env"));
+    fs.symlinkSync(path.join(home, ".ssh"), path.join(ws, "keys"));
+    fs.symlinkSync(state, path.join(ws, "st"));
+    fs.symlinkSync(path.join(home, "notes"), path.join(ws, "notes"));
+    const sid = readRecord(a.r.stateDir, "planner")!.session.id;
+    const up = path.join(state, "uploads", sid);
+    fs.mkdirSync(up, { recursive: true });
+    fs.writeFileSync(path.join(up, "x-ok.txt"), "ok");
+    for (const bad of [
+      "env",
+      "keys/id_ed25519",
+      "st/web.secret",
+      path.join(state, "web.secret"),
+      path.join(home, ".zshenv"),
+      path.join(home, ".config", "op", "c.json"),
+    ]) {
+      const x = await get(a, "north", "planner", bad);
+      expect([bad, x.status]).toEqual([bad, 404]);
+      expect(await x.text()).not.toContain("S3CRET-MARK");
+    }
+    // A link out to any other folder (one of home's, no secret in it) is an
+    // escape too: refused. Its uploads still work.
+    expect((await get(a, "north", "planner", "notes/plan.md")).status).toBe(
+      404,
+    );
+    expect(
+      (await get(a, "north", "planner", path.join(up, "x-ok.txt"))).status,
+    ).toBe(200);
+    // /paths says the same: no link to any of them.
+    const links = await a.call(
+      "GET",
+      `/api/workspaces/north/agents/planner/paths?p=env&p=st/web.secret&p=notes/plan.md`,
+    );
+    expect(links.json.paths).toEqual({
+      env: null,
+      "st/web.secret": null,
+      "notes/plan.md": null,
+    });
+    // An agent whose folder is home (brought in from there): home is no
+    // root, so nothing in it is reachable through its cwd.
+    const rec = readRecord(a.r.stateDir, "planner")!;
+    writeRecord(a.r.stateDir, { ...rec, cwd: home });
+    for (const bad of [
+      path.join(home, "notes", "plan.md"),
+      ".zshenv",
+      ".ssh/id_ed25519",
+    ]) {
+      const x = await get(a, "north", "planner", bad);
+      expect([bad, x.status]).toEqual([bad, 404]);
+    }
+    // An agent whose folder is ~/Library: its secret folders in any case.
+    for (const d of ["Keychains", "Application Support/app"])
+      fs.mkdirSync(path.join(home, "Library", d), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, "Library", "Keychains", "login.keychain-db"),
+      "S3CRET-MARK",
+    );
+    fs.writeFileSync(
+      path.join(home, "Library", "Application Support", "app", "t.json"),
+      "S3CRET-MARK",
+    );
+    writeRecord(a.r.stateDir, { ...rec, cwd: path.join(home, "Library") });
+    for (const bad of [
+      "Keychains/login.keychain-db",
+      "KEYCHAINS/login.keychain-db",
+      "keychains/login.keychain-db",
+      "APPLICATION SUPPORT/app/t.json",
+    ]) {
+      const x = await get(a, "north", "planner", bad);
+      expect([bad, x.status]).toEqual([bad, 404]);
+      expect(await x.text()).not.toContain("S3CRET-MARK");
+    }
+    // An agent whose folder is inside a secret one, or inside Den's state
+    // folder: still nothing there.
+    fs.mkdirSync(path.join(state, "agents-x"), { recursive: true });
+    fs.writeFileSync(path.join(state, "agents-x", "t.json"), "S3CRET-MARK");
+    for (const [cwd, bad] of [
+      [path.join(home, ".config"), "op/c.json"],
+      [path.join(state, "agents-x"), "t.json"],
+    ]) {
+      writeRecord(a.r.stateDir, { ...rec, cwd });
+      const x = await get(a, "north", "planner", bad);
+      expect([cwd, x.status]).toEqual([cwd, 404]);
+      expect(await x.text()).not.toContain("S3CRET-MARK");
+    }
+  });
+
+  it("never a repo's secrets inside its roots (agents.files.deny defaults): .env, .env.*, keys; not through a link either; audited", async () => {
+    const a = await api();
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    const ws = fs.realpathSync(a.r.wsDir("north"));
+    for (const d of ["app", "certs", "deploy", "src", ".env.d"])
+      fs.mkdirSync(path.join(ws, d), { recursive: true });
+    const put = (rel: string, body: string) =>
+      fs.writeFileSync(path.join(ws, rel), body);
+    put(".env", "TOKEN=S3CRET-MARK\n");
+    put("app/.env.local", "S3CRET-MARK\n");
+    put("certs/server.pem", "S3CRET-MARK\n");
+    put("certs/server.key", "S3CRET-MARK\n");
+    put("deploy/id_ed25519", "S3CRET-MARK\n");
+    put(".env.d/x.txt", "S3CRET-MARK\n");
+    put("src/id_utils.ts", "export {};\n");
+    put("app/env.ts", "export {};\n");
+    fs.symlinkSync(path.join(ws, ".env"), path.join(ws, "settings.txt"));
+    for (const bad of [
+      ".env",
+      "app/.env.local",
+      "certs/server.pem",
+      "certs/server.key",
+      "deploy/id_ed25519",
+      ".env.d/x.txt",
+      "settings.txt",
+      path.join(ws, "certs", "server.pem"),
+    ]) {
+      const x = await get(a, "north", "planner", bad);
+      expect([bad, x.status]).toEqual([bad, 404]);
+      expect(await x.text()).not.toContain("S3CRET-MARK");
+    }
+    // In another case: the same file on a case-insensitive disk (macOS),
+    // and a name the globs match whatever its case on any disk.
+    put("certs/UPPER.PEM", "S3CRET-MARK\n");
+    for (const bad of [
+      ".ENV",
+      "App/.Env.local",
+      "certs/SERVER.PEM",
+      "Deploy/ID_ED25519",
+      "certs/UPPER.PEM",
+    ]) {
+      const x = await get(a, "north", "planner", bad);
+      expect([bad, x.status]).toEqual([bad, 404]);
+      expect(await x.text()).not.toContain("S3CRET-MARK");
+    }
+    // A link is the file's path in the disk's own case, not the case typed.
+    if (fs.existsSync(path.join(ws, "APP"))) {
+      const cased = await a.call(
+        "GET",
+        `/api/workspaces/north/agents/planner/paths?p=APP/ENV.TS`,
+      );
+      expect(cased.json.paths).toEqual({
+        "APP/ENV.TS": path.join(ws, "app", "env.ts"),
+      });
+    }
+    // Files that only look alike stay reachable.
+    for (const ok of ["src/id_utils.ts", "app/env.ts"])
+      expect([ok, (await get(a, "north", "planner", ok)).status]).toEqual([
+        ok,
+        200,
+      ]);
+    const links = await a.call(
+      "GET",
+      `/api/workspaces/north/agents/planner/paths?p=.env&p=certs/server.pem&p=app/env.ts`,
+    );
+    expect(links.json.paths).toEqual({
+      ".env": null,
+      "certs/server.pem": null,
+      "app/env.ts": path.join(ws, "app", "env.ts"),
+    });
+    const refused = recentActions().filter(
+      (e) => e.verb === "download" && e.outcome === "refused",
+    );
+    expect(refused.some((e) => e.detail.includes("certs/server.pem"))).toBe(
+      true,
+    );
+  });
+
+  it("refuses another workspace's agent (404) and a POST (405)", async () => {
+    const a = await api();
+    await start(a, "north", { persona: "planner" });
+    const ws = fs.realpathSync(a.r.wsDir("north"));
+    fs.writeFileSync(path.join(ws, "x.txt"), "x");
+    expect((await get(a, "south", "planner", "x.txt")).status).toBe(404);
+    expect((await get(a, "north", "planner", "x.txt", "POST")).status).toBe(
+      405,
+    );
   });
 });
 

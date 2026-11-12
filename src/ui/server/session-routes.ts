@@ -4,6 +4,14 @@
  *   GET /api/sessions            every session and agent in the active
  *                                workspaces (read-only class)
  *   WS  /api/sessions/<id>/io    a session's terminal (shell-grade)
+ *   POST /api/sessions/<id>/uploads?name=<file>
+ *                                AG-DROP: a file dropped or pasted onto
+ *                                its terminal (shell-grade, the same
+ *                                principal and checks as the io route).
+ *                                The body is the file's bytes; the answer
+ *                                is { ok, path }, the absolute path the
+ *                                page types at the cursor. Past
+ *                                agents.uploads.max_bytes: 413, naming it.
  *
  * The list joins the session host's sessions to the agent records, as
  * `<cli> agents list` does (agent-ops.ts agentRows), and adds the plain
@@ -34,7 +42,17 @@
  * an agent token's own session only. The attach and the detach are audited
  * with the actor from the credential.
  */
+import { apiOnlyNames } from "../../shared/agents/api-only.js";
+import * as fs from "fs";
 import type * as http from "http";
+import * as path from "path";
+import {
+  pruneUploads,
+  uploadPath,
+  uploadsRoot,
+  UPLOAD_DEFAULTS,
+  type UploadSettings,
+} from "../../shared/agents/uploads.js";
 import {
   SERVER_SCOPE,
   isServerScope,
@@ -69,7 +87,9 @@ import type { HelperSettings } from "../../shared/agents/helpers.js";
 import { readAgentsConfig } from "../../shared/den-config.js";
 import {
   agentRows,
+  defaultHubNow,
   isStoppedState,
+  mcpStaleOf,
   newerOf,
   noteEnded,
   rowHelpers,
@@ -105,6 +125,11 @@ export interface SessionRouteDeps {
   restartResume?: () => (rec: AgentRecord) => boolean;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
+  /** D44: the Hub server URL an agent would get now (null: none). */
+  hubNow?: () => Promise<string | null>;
+  /** AG-DROP: agents.uploads (default: the agents config's). */
+  uploadSettings?: () => UploadSettings;
+  now?: () => Date;
 }
 
 interface Resolved {
@@ -118,6 +143,9 @@ interface Resolved {
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
   restartResume?: SessionRouteDeps["restartResume"];
   helperSettings: () => HelperSettings | undefined;
+  hubNow: () => Promise<string | null>;
+  uploadSettings: () => UploadSettings;
+  now: () => Date;
 }
 
 /** A workspace name as `?ws=` may give it. */
@@ -157,6 +185,11 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
         )),
     pty: d.pty ?? (() => loadPty()),
     waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
+    hubNow: d.hubNow ?? (() => defaultHubNow()),
+    uploadSettings:
+      d.uploadSettings ??
+      (() => readAgentsConfig().uploads ?? { ...UPLOAD_DEFAULTS }),
+    now: d.now ?? (() => new Date()),
     ...(d.rotationPolicy ? { rotationPolicy: d.rotationPolicy } : {}),
     ...(d.restartResume ? { restartResume: d.restartResume } : {}),
   };
@@ -166,6 +199,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
 export const IO_PROTOCOL = "den.io";
 
 const IO_PATH = /^\/api\/sessions\/([^/]+)\/io$/;
+const UPLOAD_PATH = /^\/api\/sessions\/([^/]+)\/uploads$/;
 /**
  * D54: the browsers viewing each session now (by session id). Each hears
  * how many there are when that changes: one left alone sizes the PTY.
@@ -259,6 +293,8 @@ export interface ListedSession {
   lastRotation?: RotationEntry;
   /** D32: its helpers (counts and the recent ones). */
   helpers?: AgentRow["helpers"];
+  /** D44: running with MCP servers out of date (Hub since it launched). */
+  mcpStale?: AgentRow["mcpStale"];
 }
 
 /** The list, from the host's sessions and the agent records. */
@@ -270,6 +306,8 @@ export function listedSessions(
     Pick<SessionRouteDeps, "rotationPolicy" | "restartResume">,
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
+  /** D44: the Hub server URL agents get now; undefined: not checked. */
+  hubUrl?: string | null,
 ): ListedSession[] {
   const dist = d.dist();
   const active = new Set(d.activeWorkspaces());
@@ -348,6 +386,11 @@ export function listedSessions(
       ...(r.lastRotation ? { lastRotation: r.lastRotation } : {}),
       ...(revoked.has(rec.id) && s && !s.exited ? { tokenRevoked: true } : {}),
       ...(waiting.has(rec.id) && s && !s.exited ? { waiting: true } : {}),
+      ...(() => {
+        if (hubUrl === undefined || r.state !== "running") return {};
+        const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), hubUrl);
+        return st ? { mcpStale: st } : {};
+      })(),
       // D32: the helpers it started in its own session.
       ...(() => {
         const h = rowHelpers(
@@ -447,6 +490,7 @@ export async function handleSessionList(
       sessions,
       d,
       wanted?.known ? wanted.workspace : undefined,
+      sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
     ),
     workspaces: d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
@@ -456,6 +500,8 @@ export async function handleSessionList(
       ? { id: "den-pty", available: true }
       : { id: "den-pty", available: false, reason: pty.reason },
     io: { allowed: ioAllowed },
+    // D47: the services agents reach only through their API (den-claude).
+    apiOnly: apiOnlyNames(d.stateDir()),
   });
   return true;
 }
@@ -544,6 +590,231 @@ async function ioRefusal(
   }
 }
 
+/** The served session `target` names, or why there is none. */
+async function servedTarget(
+  target: string,
+  d: Resolved,
+): Promise<
+  { s: SessionInfo } | { status: number; error: string; code: string }
+> {
+  let c: HostClient | null;
+  try {
+    c = await d.connectExisting();
+  } catch (e) {
+    return {
+      status: 503,
+      error: `the session host: ${(e as Error).message}`,
+      code: "session_host",
+    };
+  }
+  if (!c)
+    return {
+      status: 404,
+      error: `no session "${target}" (no session host is running)`,
+      code: "not_found",
+    };
+  try {
+    const active = new Set(d.activeWorkspaces());
+    const s = (await c.list()).find((x) => servedSession(x, target, d, active));
+    return s
+      ? { s }
+      : {
+          status: 404,
+          error: `no session "${target}" here`,
+          code: "not_found",
+        };
+  } catch (e) {
+    return {
+      status: 503,
+      error: `the session host: ${(e as Error).message}`,
+      code: "session_host",
+    };
+  } finally {
+    c.close();
+  }
+}
+
+/** When uploads were last pruned (once an hour at most). */
+let lastPrune = 0;
+
+const mb = (n: number) =>
+  n >= 1024 * 1024
+    ? `${Math.round((n / (1024 * 1024)) * 10) / 10} MB`
+    : `${Math.ceil(n / 1024)} KB`;
+
+/**
+ * AG-DROP: `POST /api/sessions/<id>/uploads?name=<file>`. The request
+ * checks ran before (CSRF, sign-in, an agent's own session only). The body
+ * streams to a 0600 file in a 0700 folder; past max_bytes it stops and
+ * answers 413. Audited with the credential's actor.
+ */
+async function handleUpload(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  target: string,
+  d: Resolved,
+): Promise<void> {
+  const nameAsked = (() => {
+    try {
+      return new URL(req.url ?? "/", "http://localhost").searchParams.get(
+        "name",
+      );
+    } catch {
+      return null;
+    }
+  })();
+  let sessionName = target;
+  let ws: string | undefined = undefined;
+  // Every upload is audited, a refusal too (its reason the code sent).
+  const audit = (detail: string, refused?: string) =>
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "upload",
+        detail: detail.slice(0, 400),
+        ...(refused ? { outcome: "refused" as const, reason: refused } : {}),
+        ...(ws ? { targetWorkspace: ws } : {}),
+      },
+      principalOf(req),
+    );
+  const refuse = (
+    status: number,
+    error: string,
+    code: string,
+    audited = false,
+  ) => {
+    if (!audited) audit(`${sessionName}: ${nameAsked ?? "(no name)"}`, code);
+    // A refusal before the body is read: the browser still sends it, so
+    // drop it rather than leave the connection to time out.
+    req.resume();
+    sendJson(res, { ok: false, error, code }, status);
+  };
+  let set: UploadSettings;
+  try {
+    set = d.uploadSettings();
+  } catch (e) {
+    return refuse(500, (e as Error).message, "config");
+  }
+  const tooBig = (n?: number, audited = false) =>
+    refuse(
+      413,
+      `${n ? `${mb(n)} is` : "That file is"} over agents.uploads.max_bytes (${mb(set.maxBytes)}). ` +
+        `Raise it in ${product().configFile}, or send a smaller file.`,
+      "too_large",
+      audited,
+    );
+  const len = Number(req.headers["content-length"]);
+  if (Number.isFinite(len) && len > set.maxBytes) return tooBig(len);
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const name = url.searchParams.get("name") ?? "";
+  if (!name.trim())
+    return refuse(400, "name: the file's name is missing", "bad_request");
+  const found = await servedTarget(target, d);
+  if (!("s" in found)) return refuse(found.status, found.error, found.code);
+  const s = found.s;
+  sessionName = s.name;
+  ws = parseSessionName(s.name, d.dist())?.workspace;
+  if (s.exited)
+    return refuse(
+      409,
+      `${s.name} has ended: nothing to attach a file to`,
+      "exited",
+    );
+  const root = uploadsRoot(set, d.stateDir());
+  const now = d.now();
+  let file: string;
+  try {
+    file = uploadPath(root, s.ref.id, name, now);
+  } catch (e) {
+    return refuse(400, (e as Error).message, "bad_request");
+  }
+  const dir = path.dirname(file);
+  const part = `${file}.part`;
+  let fd: number;
+  try {
+    fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // A folder or link in the way is never written through.
+    if (!fs.lstatSync(dir).isDirectory())
+      throw new Error(`${dir} is not a folder`);
+    fd = fs.openSync(
+      part,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
+      0o600,
+    );
+  } catch (e) {
+    return refuse(
+      500,
+      `couldn't write the file: ${(e as Error).message}`,
+      "write_failed",
+    );
+  }
+  let bytes = 0;
+  let over = false;
+  const ok = await new Promise<boolean>((done) => {
+    req.on("data", (chunk: Buffer) => {
+      if (over) return;
+      bytes += chunk.length;
+      if (bytes > set.maxBytes) {
+        over = true;
+        req.pause();
+        return done(false);
+      }
+      try {
+        fs.writeSync(fd, chunk);
+      } catch {
+        done(false);
+      }
+    });
+    req.on("end", () => done(!over));
+    req.on("error", () => done(false));
+    req.on("aborted", () => done(false));
+  });
+  try {
+    fs.closeSync(fd);
+  } catch {
+    /* closed */
+  }
+  if (!ok) {
+    try {
+      fs.unlinkSync(part);
+    } catch {
+      /* none */
+    }
+    audit(`${s.name}: ${path.basename(file)}`, over ? "too_large" : "aborted");
+    if (over) {
+      res.setHeader("Connection", "close");
+      return tooBig(undefined, true);
+    }
+    if (!res.headersSent)
+      sendJson(
+        res,
+        { ok: false, error: "the upload didn't finish", code: "aborted" },
+        400,
+      );
+    return;
+  }
+  try {
+    fs.renameSync(part, file);
+  } catch (e) {
+    return refuse(
+      500,
+      `couldn't write the file: ${(e as Error).message}`,
+      "write_failed",
+    );
+  }
+  audit(`${s.name}: ${path.basename(file)} (${bytes} bytes)`);
+  if (now.getTime() - lastPrune > 60 * 60 * 1000) {
+    lastPrune = now.getTime();
+    try {
+      pruneUploads(root, set.keepDays, now.getTime());
+    } catch {
+      /* next time */
+    }
+  }
+  sendJson(res, { ok: true, path: file, bytes });
+}
+
 /**
  * A plain HTTP request to an io route: it is a WebSocket. For a GET, the
  * refusal its upgrade would get (404, 503), else 426; 404 for anything
@@ -555,6 +826,17 @@ export async function sendSessionHttp(
   pathname: string,
   deps: SessionRouteDeps = {},
 ): Promise<void> {
+  const up = UPLOAD_PATH.exec(pathname);
+  if (up && req.method === "POST") {
+    let target = up[1];
+    try {
+      target = decodeURIComponent(target);
+    } catch {
+      /* as given */
+    }
+    await handleUpload(req, res, target, resolve(deps));
+    return;
+  }
   const m = IO_PATH.exec(pathname);
   if (m && (req.method === "GET" || req.method === "HEAD")) {
     let target = m[1];

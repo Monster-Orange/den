@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.36] - unreleased
+## [0.4.35] - unreleased
 
 ### Added
 
@@ -73,7 +73,119 @@ config and manifest changes a distribution must make to move to it under
 
 - None needed.
 
-## [0.4.33] - unreleased
+## [0.4.34] - 2026-11-12
+
+### Added
+
+- **Drop or paste a file into an agent's terminal (AG-DROP).** Drag files
+  onto an agent's terminal pane, paste a copied file or screenshot, or
+  press Attach in its pane bar (the way in on an iPad). The browser can
+  be on another machine: the file travels over Den's own HTTPS, with no
+  shared folder. Den writes it on the agent's machine, under
+  `<state>/uploads/<session>/`, and types its path at the cursor, as a
+  terminal's drop does (quoted when needed, no Enter). Pasted text still
+  pastes as text. Each file shows its progress, then "attached" or why it
+  wasn't. Settings: `agents.uploads.max_bytes` (default 25 MB),
+  `keep_days` (default 7, then removed) and `dir`.
+- **Files back to your browser (AG-DROP-2).** ⌘-click (Ctrl-click) on a
+  file path an agent prints now opens a menu: Download, Open in your
+  editor (when Settings names one), and Copy path. Download brings the
+  file to the machine your browser is on, from the agent's workspace or
+  its uploads. Before, ⌘-click only opened the editor or copied the path,
+  which doesn't help from another machine. `<cli> agents files <id>`
+  lists an agent's uploads.
+
+- **Services agents reach only through their API (D47).** A repo's
+  manifest can say `agents: api_only`, with `data_paths:` and an OrbStack
+  `machine:`. Every den-claude agent then gets denied, with a reason, when
+  it goes around that service's API: `docker exec` or `cp` into its
+  containers, mounting or inspecting its volumes, a `docker compose`
+  exec or run on its project (also after a `cd` in the same command),
+  reading or writing its data, or reaching its machine. Each denial is
+  audited with the agent's id, and `agents doctor` lists the services and
+  the last denial. It is a guardrail, not a security boundary: an
+  agent that can reach the Docker engine can still get around it. codex
+  and gemini don't enforce it, and doctor says so.
+
+- **Agents started before Hub was connected get its tools on restart
+  (D44).** A running agent keeps the tools it started with. Its row and
+  pane now say "Hub tools arrive on restart", with a Restart that waits
+  for its turn to end and keeps its conversation. After Connect or
+  Disconnect, Settings › Agents › Hub offers to restart those agents at
+  their next idle. `agents restart <id>` does the same from the CLI, and
+  `agents doctor` lists them. An agent's new MCP tool `whoami` says
+  whether Hub's tools are its own, so it no longer tells the person to
+  make a token.
+
+- **Agents hear about Hub comments before they stop (D41).** When an
+  agent is about to finish and more Hub comments wait on it than when it
+  was last told, it is asked once to call `hub_inbox` and answer them.
+  The check takes two seconds at most and never stops an agent when Hub
+  is down. `hub.inbox_on_stop: off` turns it off.
+
+- **A link to one agent (D43).** `/agents?agent=<id>&ws=<workspace>`
+  opens that agent: a running agent's pane, with the keyboard in it, or a
+  stopped agent's details. Another tool can link an agent's name here. An
+  agent that isn't there gets a short note.
+
+- **An agent sends an import pack to Hub (D52).** `<cli> hub push <dir>`
+  runs inside an agent Den started. It stages the pack (pack.json and
+  blobs/), uploads the files Hub lacks, and prints Hub's dry run.
+  `--request "<why>"` also asks a person to apply it, and prints the link
+  where they approve it in Hub. Hub's own limits and errors are shown as
+  Hub words them.
+
+### Security
+
+- An upload goes only to a session the person can already type into:
+  the terminal's own checks, CSRF, sign-in beyond loopback, and an
+  agent's token for its own session only. The file is 0600 in a 0700
+  folder, its name is cleaned (never a folder part), a link in place of
+  its folder is never written through, and every upload or refusal is
+  audited.
+- A download sends only a regular file inside the agent's workspace,
+  its own folder or its uploads (links followed, then checked). Anything
+  else is a 404 that sends nothing. Each download, and each refusal, is
+  audited. Den's state folder (but the agent's own uploads) and the home
+  folder's secrets (dotfiles, `.ssh`, `.aws`, `.config` and the like) are
+  never reachable, even through a link, or for an agent whose folder is
+  the home folder. Path links follow the same rule.
+- A repo's secrets inside the workspace are never a link or a download
+  either: `agents.files.deny`, globs, by default `.env`, `.env.*`,
+  `*.pem`, `*.key`, `*.p12`, `*.pfx` and SSH keys (`id_rsa*` and the
+  like). A list of your own replaces it; `[]` turns it off. Names are
+  matched in any case, and a path is resolved to the disk's own case, so
+  on macOS `.ENV` or `KEYCHAINS` never slips past the rule.
+- Every refused upload is audited, the ones refused before the file is
+  read too (too big by its size, an ended or unknown session), and so is
+  any agent's call refused for its token's scope (`agent_forbidden`) or a
+  page's write without its CSRF token.
+
+- **Hub's token never reaches an agent (D52).** Agents used to get the
+  install's Hub token in their own MCP config file. Now an agent calls
+  Hub through Den, at `/hub/…` on Den's own port, with its own Den token.
+  Den puts in the Hub token and who is calling (the agent, its workspace
+  and its session) from its own records. Whatever the agent claims about
+  itself is dropped. Only Hub's paths for agents pass: MCP, the inbox,
+  notifications, imports (packs and design systems), reports, and
+  asking to remove a test company or fold one company into another. Anything else gets
+  a 404. People and browsers are refused, and they use Hub itself. The
+  Stop hook's inbox check (D41) goes through Den the same way. Agents
+  started before this get the change when they restart: their row says
+  "Hub tools arrive on restart" (D44).
+
+### Fixed
+
+- At 375 px, an agent pane's bar with Helpers and Attach ran past the
+  pane's edge, and tapping Attach slid the pane sideways. Its buttons now
+  take a line of their own and wrap.
+- A too-big upload's message names the distribution's own config file.
+
+### Migrations
+
+- None needed. Running agents pick up Den's proxy on restart.
+
+## [0.4.33] - 2026-11-12
 
 ### Fixed
 
@@ -89,7 +201,7 @@ config and manifest changes a distribution must make to move to it under
   other. A lone view always sizes it, and when the view in use closes,
   the one left takes over.
 
-## [0.4.32] - unreleased
+## [0.4.32] - 2026-11-12
 
 ### Added
 
@@ -163,7 +275,7 @@ config and manifest changes a distribution must make to move to it under
 
 - None needed.
 
-## [0.4.31] - unreleased
+## [0.4.31] - 2026-11-12
 
 ### Changed
 

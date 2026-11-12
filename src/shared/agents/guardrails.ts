@@ -108,6 +108,29 @@ export interface RotationArgs {
   after: number;
 }
 
+/**
+ * D47: the rules file the PreToolUse hook reads on each call (services
+ * agents may reach only through their API), and the audit file it writes
+ * a denial to.
+ */
+export interface ApiOnlyArgs {
+  rules: string;
+  audit: string;
+}
+
+/**
+ * D41: what the Stop hook needs for Hub's inbox: Den's proxy to Hub (D52).
+ * Never a token: the hook sends the agent's own, from its env.
+ */
+export interface InboxHookArgs {
+  base: string;
+}
+
+/** The tools the PreToolUse hook sees: with D47 rules, the file tools too. */
+export const PRETOOL_MATCHER = "Bash|Read";
+export const PRETOOL_MATCHER_API_ONLY =
+  "Bash|Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob";
+
 /** The command lines Den's hooks run: this node, Den's own scripts. */
 export function hookCommands(
   dir: string = GUARDRAILS_DIR,
@@ -117,6 +140,9 @@ export function hookCommands(
   known: readonly string[] = [],
   /** false: the Stop hook never runs the hand-back check (the server agent). */
   handback: boolean = true,
+  apiOnly?: ApiOnlyArgs,
+  /** D41: Den's proxy to Hub, for the inbox check. */
+  inbox?: InboxHookArgs,
 ): HookCommands {
   const more = (c: EngineCommand): EngineCommand =>
     rotation
@@ -134,7 +160,12 @@ export function hookCommands(
   return {
     pretooluse: commandLine({
       command: node,
-      args: [path.join(dir, "pretooluse.mjs")],
+      args: [
+        path.join(dir, "pretooluse.mjs"),
+        ...(apiOnly
+          ? ["--api-only", apiOnly.rules, "--audit", apiOnly.audit]
+          : []),
+      ],
     }),
     stop: commandLine(
       ((c: EngineCommand): EngineCommand => ({
@@ -143,6 +174,7 @@ export function hookCommands(
           ...c.args,
           ...known.flatMap((k) => ["--known", k]),
           ...(handback ? [] : ["--no-handback"]),
+          ...(inbox ? ["--hub-inbox", inbox.base] : []),
         ],
       }))(more(scriptEntrypoint("src/shared/agents/guardrails/stop-hook.ts"))),
     ),
@@ -160,6 +192,8 @@ export function hookCommands(
 export function guardrailHooks(
   dir: string = GUARDRAILS_DIR,
   cmds: HookCommands = hookCommands(dir),
+  /** D47 rules are on: the PreToolUse hook sees the file tools too. */
+  apiOnly: boolean = false,
 ): Record<string, unknown> {
   const fragment = JSON.parse(
     fs.readFileSync(path.join(dir, "hooks.json"), "utf-8"),
@@ -177,5 +211,80 @@ export function guardrailHooks(
       );
     return v;
   };
-  return fill(fragment.hooks) as Record<string, unknown>;
+  const hooks = fill(fragment.hooks) as Record<string, unknown>;
+  if (apiOnly)
+    for (const h of (hooks.PreToolUse as { matcher?: string }[]) ?? [])
+      if (h.matcher === PRETOOL_MATCHER) h.matcher = PRETOOL_MATCHER_API_ONLY;
+  return hooks;
+}
+
+/**
+ * D47 for an agent whose persona has no guardrail hooks: the PreToolUse
+ * hook with the API-only check alone (`--no-guardrails`: no log or sleep
+ * checks).
+ */
+export function apiOnlyHooks(
+  apiOnly: ApiOnlyArgs | undefined,
+  dir: string = GUARDRAILS_DIR,
+  node: string = process.execPath,
+  /** D41: the Stop hook's inbox check alone (`--inbox-only`). */
+  inbox?: InboxHookArgs & { files: string },
+): Record<string, unknown> {
+  const stop = inbox
+    ? {
+        Stop: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: commandLine(
+                  ((c: EngineCommand): EngineCommand => ({
+                    command: c.command,
+                    args: [
+                      ...c.args,
+                      "--inbox-only",
+                      "--files",
+                      inbox.files,
+                      "--hub-inbox",
+                      inbox.base,
+                    ],
+                  }))(
+                    scriptEntrypoint(
+                      "src/shared/agents/guardrails/stop-hook.ts",
+                    ),
+                  ),
+                ),
+                timeout: 30,
+              },
+            ],
+          },
+        ],
+      }
+    : {};
+  if (!apiOnly) return stop;
+  return {
+    ...stop,
+    PreToolUse: [
+      {
+        matcher: PRETOOL_MATCHER_API_ONLY,
+        hooks: [
+          {
+            type: "command",
+            command: commandLine({
+              command: node,
+              args: [
+                path.join(dir, "pretooluse.mjs"),
+                "--api-only",
+                apiOnly.rules,
+                "--audit",
+                apiOnly.audit,
+                "--no-guardrails",
+              ],
+            }),
+            timeout: 10,
+          },
+        ],
+      },
+    ],
+  };
 }

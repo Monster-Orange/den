@@ -383,7 +383,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await p.context().close();
   }, 60_000);
 
-  it("links: URLs and OSC 8 http links open with ⌘/Ctrl-click (noopener); javascript: never; paths inside the workspace copy or open the editor; outside ones aren't links", async () => {
+  it("links: URLs and OSC 8 http links open with ⌘/Ctrl-click (noopener); javascript: never; paths inside the workspace open a menu (Download, the editor, Copy path); outside ones aren't links", async () => {
     if (skip()) return;
     await s!.settings({ editor_open: null });
     const p = await page(`/agents?open=${sid.planner}&layout=tabs`);
@@ -437,8 +437,16 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await modClick(p, "planner", 6, 2);
     await p.waitForTimeout(300);
     expect((await opened(p)).length).toBe(2);
-    // A path, with editor_open none: its absolute path is copied.
+    // A path: its menu (AG-DROP-2). With editor_open none: Download and
+    // Copy path, no editor; Copy path copies its absolute path.
     await modClick(p, "planner", 6, 3);
+    const menu = p.locator('.den-pop[role="menu"]');
+    await menu.waitFor();
+    expect(await menu.locator(".den-mi").allTextContents()).toEqual([
+      "Download",
+      "Copy path",
+    ]);
+    await menu.getByRole("menuitem", { name: "Copy path" }).click();
     const abs = fs.realpathSync(path.join(s!.wsDir("north"), "src", "x.ts"));
     await eventually(async () => (await copied(p)).length === 1);
     expect(await copied(p)).toEqual([abs]);
@@ -467,6 +475,14 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     );
     expect(await linkAt(q, "planner", 6, 0)).toBe(true);
     await modClick(q, "planner", 6, 0);
+    const qm = q.locator('.den-pop[role="menu"]');
+    await qm.waitFor();
+    expect(await qm.locator(".den-mi").allTextContents()).toEqual([
+      "Download",
+      "Open in Zed",
+      "Copy path",
+    ]);
+    await qm.getByRole("menuitem", { name: "Open in Zed" }).click();
     await eventually(async () => (await opened(q)).length === 1);
     expect(await opened(q)).toEqual([[`zed://file${abs}:10`, "_self"]]);
     expect(await copied(q)).toEqual([]);
@@ -676,6 +692,20 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await p.context().close();
     }, 60_000);
 
+    it("D43: a link to a running agent (?agent=&ws=) opens its pane, and typing reaches it", async () => {
+      if (skip()) return;
+      const p = await page(`/agents?layout=focus&ws=north&agent=planner`);
+      await p.waitForSelector(`.pane[data-id="${sid.planner}"] .xterm-rows`);
+      await eventually(async () =>
+        (await typedInto(p, "l1")).includes("planner"),
+      );
+      expect(await typedInto(p, "l2")).toEqual(["planner"]);
+      const q = new URL(p.url()).searchParams;
+      expect(q.has("agent")).toBe(false);
+      expect(q.get("open")).toBe(sid.planner);
+      await p.context().close();
+    }, 60_000);
+
     it("a new pane: click the row, type, and the agent gets it", async () => {
       if (skip()) return;
       const p = await page(`/agents?layout=focus`);
@@ -816,6 +846,96 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       }
     }, 60_000);
   });
+
+  it("D47: a den-claude pane says which services it reaches only through their API; a codex pane says it isn't held to it", async () => {
+    if (skip()) return;
+    const rules = path.join(s!.stateDir, "guardrails", "api-only.json");
+    const tag = (p: Page, id: string) =>
+      p.locator(`.pane[data-id="${sid[id]}"] .bar2 [data-api-only]`);
+    // None declared: no tag.
+    let p = await page(`/agents?open=${sid.planner}&layout=focus`);
+    await p.waitForSelector(`.pane[data-id="${sid.planner}"] .bar2 b`);
+    expect(await tag(p, "planner").count()).toBe(0);
+    await p.context().close();
+    fs.mkdirSync(path.dirname(rules), { recursive: true });
+    fs.writeFileSync(
+      rules,
+      JSON.stringify({ services: [{ name: "vault", project: "vault" }] }),
+    );
+    try {
+      p = await page(`/agents?open=${sid.planner}&layout=focus`);
+      await tag(p, "planner").waitFor({ timeout: 15_000 });
+      expect(await tag(p, "planner").textContent()).toBe("API only: vault");
+      expect(await tag(p, "planner").getAttribute("title")).toContain(
+        "A guardrail, not a security boundary",
+      );
+      await p.context().close();
+      p = await page(`/agents?open=${sid.coder}&layout=focus`);
+      await tag(p, "coder").waitFor({ timeout: 15_000 });
+      expect(await tag(p, "coder").textContent()).toBe("API-only not enforced");
+      expect(await tag(p, "coder").getAttribute("data-api-only")).toBe("off");
+      await p.context().close();
+    } finally {
+      fs.rmSync(rules, { force: true });
+    }
+  }, 60_000);
+
+  it("D44: a running agent whose tools predate Hub's Connect says so, on its row and pane; Restart asks for it at its next idle", async () => {
+    if (skip()) return;
+    const p = await page(`/agents?open=${sid.planner}&layout=focus`);
+    await p.route("**/api/sessions*", async (r) => {
+      // A poll in flight when the page reloads is dropped (its response is
+      // disposed); the next one carries it.
+      try {
+        const res = await r.fetch();
+        const body = (await res.json()) as {
+          sessions: { agent?: string; mcpStale?: unknown }[];
+        };
+        for (const x of body.sessions)
+          if (x.agent === "planner") x.mcpStale = { adds: ["hub"], drops: [] };
+        await r.fulfill({ response: res, json: body });
+      } catch {
+        await r.abort().catch(() => undefined);
+      }
+    });
+    const posted: { url: string; body: unknown }[] = [];
+    await p.route("**/agents/planner/restart", (r) => {
+      posted.push({
+        url: new URL(r.request().url()).pathname,
+        body: r.request().postDataJSON(),
+      });
+      return r.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: '{"ok":true,"agent":"planner","pending":true}',
+      });
+    });
+    await p.reload();
+    const row = (id: string) => `#agl .agr[data-id="${sid[id]}"]`;
+    const bar = `.pane[data-id="${sid.planner}"] .bar2`;
+    await p.waitForSelector(`${bar} [data-mcp-stale="adds"]`, {
+      timeout: 15_000,
+    });
+    expect(await p.textContent(`${bar} [data-mcp-stale]`)).toBe(
+      "Hub tools arrive on restart",
+    );
+    expect(await p.textContent(`${row("planner")} [data-mcp-stale]`)).toBe(
+      "Hub tools arrive on restart",
+    );
+    // Not on the codex agent, whose tools are current.
+    expect(await p.locator(`${row("coder")} [data-mcp-stale]`).count()).toBe(0);
+    await p.click(`${bar} [data-act="tools-restart"]`);
+    await p.waitForFunction(() =>
+      /restarts at its next idle/.test(document.body.textContent ?? ""),
+    );
+    expect(posted).toEqual([
+      {
+        url: "/api/workspaces/north/agents/planner/restart",
+        body: { when: "after-turn" },
+      },
+    ]);
+    await p.context().close();
+  }, 60_000);
 
   it("raised no page errors", () => {
     if (skip()) return;

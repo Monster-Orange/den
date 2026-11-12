@@ -740,6 +740,23 @@
     "ag.chip.stopped": "Stopped",
     "ag.chip.exited": "Exited",
     "ag.chip.interrupted": "Interrupted",
+    "ag.link.none": "No agent {id} here. It may have been removed.",
+    "ag.apiOnly": "API only: {names}",
+    "ag.apiOnlyTip":
+      "This agent reaches {names} only through its API. Den blocks docker exec into it, its volumes and its data, and logs each try. A guardrail, not a security boundary.",
+    "ag.apiOnlyOff": "API-only not enforced",
+    "ag.apiOnlyOffTip":
+      "This runtime has no hook Den can use, so it isn't held to {names}' API. Use den-claude for agents that must be.",
+    "ag.mcp.adds": "Hub tools arrive on restart",
+    "ag.mcp.addsTip":
+      "Hub was connected after this agent started, so it doesn't have Hub's tools yet. Restart keeps its conversation and waits for its turn to end.",
+    "ag.mcp.drops": "Hub tools go on restart",
+    "ag.mcp.dropsTip":
+      "Hub was disconnected after this agent started; its Hub tools no longer work. Restart keeps its conversation and waits for its turn to end.",
+    "ag.mcp.restart": "Restart",
+    "ag.mcp.restartName": "Restart {id} at its next idle",
+    "ag.mcp.restarting":
+      "{id} restarts at its next idle, in the same conversation.",
     "ag.det.label": "Details for {id}",
     "ag.det.close": "Close",
     "ag.det.where": "Where",
@@ -969,6 +986,21 @@
     "ag.goWs": "Open {ws} on Workspaces",
     "ag.lost": "[disconnected: {why}]",
     "ag.reconnect": "Reconnect",
+    // AG-DROP: a file dropped, pasted or attached onto an agent's terminal.
+    "ag.path.download": "Download",
+    "ag.path.open": "Open in {ed}",
+    "ag.path.copy": "Copy path",
+    "ag.path.downloading": "Downloading {name}",
+    "ag.path.noFile":
+      "{name} can't be downloaded: it isn't a file in the agent's workspace or uploads",
+    "ag.up.drop": "Drop to attach to {name}",
+    "ag.up.sending": "sending…",
+    "ag.up.pct": "{n}%",
+    "ag.up.done": "attached",
+    "ag.up.attach": "Attach",
+    "ag.up.attachName": "Attach a file to {id}",
+    "ag.up.attachTip":
+      "Attach a file: it goes to the agent's machine and its path is typed here",
     "ag.size.follow": "Sized by another view ({cols}×{rows})",
     "ag.size.take": "Take over",
     "ag.noBackend":

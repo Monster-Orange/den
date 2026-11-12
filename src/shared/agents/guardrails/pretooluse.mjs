@@ -31,6 +31,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  apiOnlyDecision,
+  apiOnlyMessage,
+  audit,
+  loadRules,
+} from "./api-only.mjs";
 
 /** Over this many bytes, a file is large (Claude Code's own Read cap). */
 export const LARGE_BYTES = 256 * 1024;
@@ -269,11 +275,14 @@ const PREFIX = new Set([
 /** One stage: its command and arguments, with redirections taken out. */
 function stage(raw) {
   let k = 0;
+  const assigns = [];
   while (
     k < raw.length &&
     (PREFIX.has(raw[k]) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(raw[k]))
-  )
+  ) {
+    if (!PREFIX.has(raw[k])) assigns.push(raw[k]);
     k++;
+  }
   const words = [];
   const inputs = [];
   let stdoutRedirected = false;
@@ -300,7 +309,7 @@ function stage(raw) {
     }
     words.push(w);
   }
-  return { words, inputs, stdoutRedirected, background: false };
+  return { words, inputs, stdoutRedirected, background: false, assigns };
 }
 
 const base = (w) => String(w).slice(String(w).lastIndexOf("/") + 1);
@@ -399,12 +408,37 @@ export function decide(input, env = process.env) {
   return null;
 }
 
+/** `--name value` from the hook's own arguments, or null. */
+function arg(name, argv = process.argv) {
+  const i = argv.indexOf(name);
+  return i > 0 && argv[i + 1] !== undefined ? argv[i + 1] : null;
+}
+
 async function main() {
   let text = "";
   for await (const chunk of process.stdin) text += chunk;
   let reason = null;
   try {
-    reason = decide(JSON.parse(text));
+    const input = JSON.parse(text);
+    // D47 first: a service agents may reach only through its API.
+    const rules = loadRules(arg("--api-only"));
+    if (rules) {
+      const r = apiOnlyDecision(
+        input,
+        rules,
+        {
+          cwd: typeof input.cwd === "string" ? input.cwd : process.cwd(),
+          home: process.env.HOME,
+          env: process.env,
+        },
+        parseShell,
+      );
+      if (r) {
+        audit(arg("--audit"), r, input);
+        reason = apiOnlyMessage(r);
+      }
+    }
+    if (!process.argv.includes("--no-guardrails")) reason ??= decide(input);
   } catch {
     reason = null;
   }

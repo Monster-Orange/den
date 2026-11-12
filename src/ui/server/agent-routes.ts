@@ -90,12 +90,17 @@
  * There is no terminal here: the Agents tab's io (session-routes.ts) is
  * the only route that writes to a session or streams its output.
  */
+import * as fs from "fs";
 import * as http from "http";
+import * as os from "os";
+import * as path from "path";
 import {
   configuredRemoveStoppedAfter,
   getReposRoot,
+  readAgentsConfig,
   readMcpConfig,
 } from "../../shared/den-config.js";
+import type { AgentRecord } from "../../shared/agents/records.js";
 import {
   readWorkspacesFile,
   conversationFolders,
@@ -114,6 +119,9 @@ import {
   deletePersona,
   listAgents,
   agentDetails,
+  agentTools,
+  restartAgent,
+  staleAgents,
   agentHelpers,
   agentHelperTranscript,
   listPersonas,
@@ -159,7 +167,19 @@ import {
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
 import { recordAction } from "./audit.js";
-import { agentPathLinks, MAX_PATHS } from "./agent-paths.js";
+import {
+  agentFile,
+  agentPathLinks,
+  attachmentHeader,
+  MAX_PATHS,
+  type PathFence,
+} from "./agent-paths.js";
+import {
+  uploadsRoot,
+  UPLOAD_DEFAULTS,
+  UPLOAD_SESSION_RE,
+} from "../../shared/agents/uploads.js";
+import { FILE_DENY_DEFAULTS } from "../../shared/agents/file-deny.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -187,13 +207,15 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|handoff|clear-helpers))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|handoff|clear-helpers|restart|file))?$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
   /^\/api\/workspaces\/([^/]+)\/agents\/([^/]+)\/helpers(?:\/([^/]+))?$/;
 /** D45: a stopped agent's details (read-only). */
 const DETAILS_PATH = /^\/api\/workspaces\/([^/]+)\/agents\/([^/]+)\/details$/;
+/** D44: whether an agent's tools are current (read-only, for its MCP). */
+const TOOLS_PATH = /^\/api\/workspaces\/([^/]+)\/agents\/([^/]+)\/tools$/;
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 const PERSONA_PATH = /^\/api\/personas\/([^/]+)$/;
 const PLAIN_PATH = /^\/api\/workspaces\/([^/]+)\/sessions$/;
@@ -446,6 +468,13 @@ export async function handleAgentRoutes(
   if (hp) return helpersRoute(req, res, hp, webDeps(deps.agents));
   const dp = DETAILS_PATH.exec(pathname);
   if (dp) return detailsRoute(req, res, dp, webDeps(deps.agents));
+  const tp = TOOLS_PATH.exec(pathname);
+  if (tp) return toolsRoute(req, res, tp, webDeps(deps.agents));
+  if (
+    pathname === "/api/agents/stale" ||
+    pathname === "/api/agents/restart-stale"
+  )
+    return staleRoute(req, res, pathname, webDeps(deps.agents), deps);
   // HUB-1.5: Settings › Hub. Never the token: hubStatus doesn't return it.
   if (pathname === "/api/hub") {
     const method = req.method ?? "GET";
@@ -561,6 +590,8 @@ export async function handleAgentRoutes(
     | "settings"
     | "handoff"
     | "clear-helpers"
+    | "restart"
+    | "file"
     | undefined;
 
   if (!action && method === "GET") {
@@ -594,19 +625,71 @@ export async function handleAgentRoutes(
         throw new AgentError(`at most ${MAX_PATHS} paths at once`, {
           usage: true,
         });
-      let wsDir: string | null = null;
-      try {
-        wsDir = d.workspaceDir(ws);
-      } catch {
-        wsDir = null;
-      }
       sendJson(res, {
         paths: agentPathLinks(
           given,
           rec.cwd,
-          [wsDir, rec.cwd].filter((x): x is string => !!x),
+          agentRoots(d, rec, ws),
+          agentFence(d, rec),
         ),
       });
+    } catch (e) {
+      sendError(res, e, ws);
+    }
+    return true;
+  }
+  // AG-DROP-2: a file the agent printed (or was given), back to the
+  // browser's machine: inside its workspace, its cwd or its uploads.
+  if (action === "file") {
+    if (method !== "GET" && method !== "HEAD")
+      return methodNotAllowed(res, "GET");
+    try {
+      const rec = agentRecord(d, id!, ws);
+      const given =
+        new URL(req.url ?? "/", "http://localhost").searchParams.get("p") ?? "";
+      const file = given
+        ? agentFile(given, rec.cwd, agentRoots(d, rec, ws), agentFence(d, rec))
+        : null;
+      const audit = (detail: string, reason?: string) =>
+        recordAction(
+          auditActorOf(req),
+          {
+            verb: "download",
+            detail,
+            targetWorkspace: ws,
+            ...(reason ? { outcome: "refused" as const, reason } : {}),
+          },
+          principalOf(req),
+        );
+      if (!file) {
+        audit(`${rec.id}: ${given.slice(0, 300)}`, "not_found");
+        sendJson(
+          res,
+          {
+            ok: false,
+            error: `${given || "(no path)"} is not a file in ${rec.id}'s workspace or uploads`,
+            code: "not_found",
+          },
+          404,
+        );
+        return true;
+      }
+      const size = fs.statSync(file).size;
+      audit(`${rec.id}: ${file} (${size} bytes)`);
+      res.writeHead(200, {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": attachmentHeader(file),
+        "Content-Length": String(size),
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      });
+      if (method === "HEAD") {
+        res.end();
+        return true;
+      }
+      const stream = fs.createReadStream(file);
+      stream.on("error", () => res.destroy());
+      stream.pipe(res);
     } catch (e) {
       sendError(res, e, ws);
     }
@@ -651,6 +734,11 @@ export async function handleAgentRoutes(
     // D59: an agent could keep itself running across every restart.
     if (verb === "settings" && (agent || actor))
       throw new AgentError("only a person can change an agent's settings", {
+        status: 403,
+      });
+    // D44: a restart is the person's (it stops a session).
+    if (verb === "restart" && (agent || actor))
+      throw new AgentError("only a person can restart an agent", {
         status: 403,
       });
     // D34: clearing what a person sees is a person's.
@@ -873,6 +961,38 @@ export async function handleAgentRoutes(
       audit(what, s.early ? "exited at once" : undefined);
       // Never prompted: nothing was resumed, so it says so (not "same
       // conversation").
+      sendStarted(res, s, d, s.fresh ? { note: FRESH_NOTE } : {});
+    } else if (verb === "restart") {
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "when")
+          throw new AgentError(`${k}: unknown field (restart takes when)`, {
+            usage: true,
+          });
+      const when = body.when ?? "after-turn";
+      if (when !== "now" && when !== "after-turn")
+        throw new AgentError("when must be now or after-turn", {
+          usage: true,
+        });
+      what = `restart ${id} in ${ws} (${when === "now" ? "now" : "at its next idle"}), same conversation`;
+      if (when === "after-turn") {
+        // It may wait for a long turn: answer now, audit when it's done.
+        void restartAgent(
+          d,
+          id!,
+          ws,
+          "after-turn",
+          deps.personaWait ?? {},
+        ).then(
+          (s) => audit(what, s.early ? "exited at once" : undefined),
+          (e: unknown) =>
+            audit(what, e instanceof Error ? e.message : String(e)),
+        );
+        sendJson(res, { ok: true, agent: id, pending: true }, 202);
+        return true;
+      }
+      const s = await restartAgent(d, id!, ws, "now");
+      audit(what, s.early ? "exited at once" : undefined);
       sendStarted(res, s, d, s.fresh ? { note: FRESH_NOTE } : {});
     } else if (verb === "remove") {
       const removed = await removeAgent(d, id!, ws);
@@ -1549,6 +1669,108 @@ async function detailsRoute(
 }
 
 /**
+ * D44: GET .../agents/:id/tools: whether agent :id's MCP servers are
+ * current. Hub `connected` (it would get Hub now), `loaded` (its running
+ * session has Hub's tools), and `restart` (a restart brings them in line).
+ * Read-only; an agent may read its own (its MCP's whoami).
+ */
+async function toolsRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  tp: RegExpExecArray,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD")
+    return methodNotAllowed(res, "GET");
+  const ws = safeDecode(tp[1]);
+  const id = safeDecode(tp[2]);
+  try {
+    if (!d.workspaceExists(ws))
+      throw new AgentError(`workspace "${ws}" does not exist`, { status: 404 });
+    sendJson(res, await agentTools(d, id, ws));
+  } catch (e) {
+    sendError(res, e, ws);
+  }
+  return true;
+}
+
+/**
+ * D44: GET /api/agents/stale: the running agents whose MCP servers are out
+ * of date (`?fresh=1` asks Hub's config again, after Connect or
+ * Disconnect). POST /api/agents/restart-stale: restarts each at its next
+ * idle, same conversation; a person's only, audited.
+ */
+async function staleRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: AgentsResolved,
+  deps: AgentRouteDeps,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  const post = pathname === "/api/agents/restart-stale";
+  if (post ? method !== "POST" : method !== "GET" && method !== "HEAD")
+    return methodNotAllowed(res, post ? "POST" : "GET");
+  const fresh =
+    new URL(req.url ?? "/", "http://localhost").searchParams.get("fresh") ===
+    "1";
+  if (!post) {
+    try {
+      sendJson(res, { agents: await staleAgents(d, { fresh }) });
+    } catch (e) {
+      sendError(res, e);
+    }
+    return true;
+  }
+  const actor = auditActorOf(req);
+  let what = "restart agents with out-of-date tools at their next idle";
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (agentPrincipalOf(req) || actor)
+      throw new AgentError("only a person can restart agents", {
+        status: 403,
+      });
+    guard(actor);
+    const body = await jsonBody(req);
+    for (const k of Object.keys(body))
+      throw new AgentError(`${k}: unknown field (restart-stale takes none)`, {
+        usage: true,
+      });
+    const list = await staleAgents(d, { fresh: true });
+    what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
+    audit(what);
+    for (const a of list) {
+      const one = `restart ${a.id} in ${a.workspace} (at its next idle), same conversation, for its tools`;
+      void restartAgent(
+        d,
+        a.id,
+        a.workspace,
+        "after-turn",
+        deps.personaWait ?? {},
+      ).then(
+        (s) => audit(one, s.early ? "exited at once" : undefined),
+        (e: unknown) => audit(one, e instanceof Error ? e.message : String(e)),
+      );
+    }
+    sendJson(res, { ok: true, pending: list }, 202);
+  } catch (e) {
+    audit(what, e instanceof Error ? e.message : String(e));
+    sendError(res, e);
+  }
+  return true;
+}
+
+/**
  * D32: GET .../agents/:id/helpers: the helpers agent :id started in its
  * own session (D34: less those "Clear done" hid; ?all=1 lists them as
  * `cleared`); .../helpers/:helper: one helper's transcript (?limit=).
@@ -1608,4 +1830,51 @@ function workspacePermissionField(
   } catch {
     return {}; // a bad value: the start says so
   }
+}
+
+/** The agent's session's uploads folder, when it has one. */
+function agentUploads(d: AgentsResolved, rec: AgentRecord): string | null {
+  const sid = rec.session?.id;
+  if (!sid || !UPLOAD_SESSION_RE.test(sid)) return null;
+  let set = UPLOAD_DEFAULTS;
+  try {
+    set = readAgentsConfig().uploads ?? UPLOAD_DEFAULTS;
+  } catch {
+    /* the defaults */
+  }
+  return path.join(uploadsRoot(set, d.stateDir()), sid);
+}
+
+/** What its paths may never reach (agent-paths.ts PathFence). */
+function agentFence(d: AgentsResolved, rec: AgentRecord): PathFence {
+  const up = agentUploads(d, rec);
+  let deny: readonly string[] = FILE_DENY_DEFAULTS;
+  try {
+    deny = readAgentsConfig().files?.deny ?? FILE_DENY_DEFAULTS;
+  } catch {
+    /* the defaults */
+  }
+  return {
+    home: d.env.HOME || os.homedir(),
+    stateDir: d.stateDir(),
+    ...(up ? { uploads: up } : {}),
+    deny,
+  };
+}
+
+/**
+ * The folders an agent's paths may point into (AG-4b, AG-DROP-2): its
+ * workspace's, its own cwd, and its session's uploads folder.
+ */
+function agentRoots(d: AgentsResolved, rec: AgentRecord, ws: string): string[] {
+  const roots: string[] = [];
+  try {
+    roots.push(d.workspaceDir(ws));
+  } catch {
+    /* no folder */
+  }
+  roots.push(rec.cwd);
+  const up = agentUploads(d, rec);
+  if (up) roots.push(up);
+  return roots.filter(Boolean);
 }

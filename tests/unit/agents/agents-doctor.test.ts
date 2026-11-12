@@ -18,7 +18,11 @@ afterEach(async () => {
 });
 
 const doctor = (r: Rig, ...args: string[]) =>
-  cmdAgents(["doctor", ...args], { ...r.deps, loginPath: async () => {} });
+  cmdAgents(["doctor", ...args], {
+    ...r.deps,
+    loginPath: async () => {},
+    apiOnly: () => ({ services: [] }),
+  });
 
 describe("agents doctor: subagents (den#3)", () => {
   it("the org's model and connectors, each persona that overrides it, and each agent as it last started", async () => {
@@ -107,6 +111,10 @@ describe("agents doctor", () => {
       "  edits file edits run without asking; commands ask",
       "  auto  Claude Code's own check runs routine actions and blocks risky ones, without asking  ✓ this Claude Code takes it",
       "  all   nothing asks",
+      "",
+      "API-only services  none declared (a service's manifest says `agents: api_only`)",
+      "",
+      "Agents' tools     all current",
       "",
       "`acme doctor --probe` checks the env each runtime's session gets.",
     ]);
