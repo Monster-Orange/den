@@ -28,26 +28,49 @@ import {
 
 let s: AgentsPageServer;
 let tmp: string;
-let health: http.Server;
+let healthUrl = "";
 const upRan = () => path.join(tmp, "up-ran");
+
+/** notes answers its health check (its own process, on its own port). */
+async function healthy(): Promise<boolean> {
+  try {
+    return (await fetch(healthUrl)).ok;
+  } catch {
+    return false;
+  }
+}
 
 beforeAll(async () => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-d55-")));
-  const running = path.join(tmp, "running");
-  // notes' health check: up while its `running` file is there.
-  health = http.createServer((_req, res) => {
-    res.writeHead(fs.existsSync(running) ? 200 : 503);
-    res.end();
-  });
-  await new Promise<void>((r) => health.listen(0, "127.0.0.1", () => r()));
-  const port = (health.address() as { port: number }).port;
+  // A free port for notes, as a dev server would pick one.
+  const probe = http.createServer();
+  await new Promise<void>((r) => probe.listen(0, "127.0.0.1", () => r()));
+  const port = (probe.address() as { port: number }).port;
+  await new Promise((r) => probe.close(r));
+  healthUrl = `http://127.0.0.1:${port}/health`;
+  // The dev server: it marks that it started, keeps its pid, and answers
+  // its health check until it is stopped.
+  const svc = path.join(tmp, "svc.js");
+  const pid = path.join(tmp, "svc.pid");
+  fs.writeFileSync(
+    svc,
+    [
+      'const fs = require("fs");',
+      `fs.writeFileSync(${JSON.stringify(pid)}, String(process.pid));`,
+      'require("http")',
+      '  .createServer((_q, r) => r.end("ok"))',
+      `  .listen(${port}, "127.0.0.1");`,
+      "",
+    ].join("\n"),
+  );
   s = await startAgentsPageServer({
     root: tmp,
-    health: { notes: `http://127.0.0.1:${port}/health` },
-    // A dev server: it marks that it started, then runs until stopped.
-    up: { notes: `touch ${upRan()} ${running}; exec sleep 300` },
-    // A stop that takes a moment.
-    down: { notes: `sleep 2; rm -f ${running}` },
+    health: { notes: healthUrl },
+    up: {
+      notes: `touch ${upRan()}; exec ${process.execPath} ${svc}`,
+    },
+    // A stop that takes a moment, then stops it.
+    down: { notes: `sleep 2; kill $(cat ${pid}) 2>/dev/null; true` },
   });
   // Running, so a restart has a down to do. When it isn't, the tests
   // below can't say anything: say what the up saw instead.
@@ -55,7 +78,7 @@ beforeAll(async () => {
     "/api/workspace/exec?cmd=up&workspace=north&addresses=notes",
     (ev) => ev.type === "done",
   );
-  if (!(await waitFor(() => fs.existsSync(running))))
+  if (!(await waitFor(healthy)))
     throw new Error(
       `notes never came up: ${JSON.stringify(upEvs)}\n${s.log().slice(-3000)}`,
     );
@@ -67,7 +90,6 @@ afterAll(async () => {
     (ev) => ev.type === "done",
   ).catch(() => []);
   await s?.stop();
-  await new Promise((r) => health?.close(r));
 });
 
 type Ev = Record<string, unknown>;
@@ -258,15 +280,14 @@ describe("D55: a workspace restart goes on when its page goes", () => {
 
 describe("D55: a service's own run goes on the same way", () => {
   it("its down: the stream closes while it stops; the stop still finishes", async () => {
-    const running = path.join(tmp, "running");
-    expect(fs.existsSync(running)).toBe(true);
+    expect(await healthy()).toBe(true);
     const seen = await stream(
       "/api/service/exec?repo=notes&service=notes&cmd=down&workspace=north",
       (ev) => ev.type === "job",
     );
     const id = String(seen[0]?.id);
-    expect(fs.existsSync(running)).toBe(true);
-    expect(await waitFor(() => !fs.existsSync(running))).toBe(true);
+    expect(await healthy()).toBe(true);
+    expect(await waitFor(async () => !(await healthy()))).toBe(true);
     expect(
       await waitFor(
         async () =>
