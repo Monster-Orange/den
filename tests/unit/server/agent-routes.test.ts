@@ -953,6 +953,28 @@ describe("GET /api/workspaces/<ws>/agents/<id>/file (AG-DROP-2: a file back to t
       const x = await get(a, "north", "planner", bad);
       expect([bad, x.status]).toEqual([bad, 404]);
     }
+    // An agent whose folder is ~/Library: its secret folders in any case.
+    for (const d of ["Keychains", "Application Support/app"])
+      fs.mkdirSync(path.join(home, "Library", d), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, "Library", "Keychains", "login.keychain-db"),
+      "S3CRET-MARK",
+    );
+    fs.writeFileSync(
+      path.join(home, "Library", "Application Support", "app", "t.json"),
+      "S3CRET-MARK",
+    );
+    writeRecord(a.r.stateDir, { ...rec, cwd: path.join(home, "Library") });
+    for (const bad of [
+      "Keychains/login.keychain-db",
+      "KEYCHAINS/login.keychain-db",
+      "keychains/login.keychain-db",
+      "APPLICATION SUPPORT/app/t.json",
+    ]) {
+      const x = await get(a, "north", "planner", bad);
+      expect([bad, x.status]).toEqual([bad, 404]);
+      expect(await x.text()).not.toContain("S3CRET-MARK");
+    }
     // An agent whose folder is inside a secret one, or inside Den's state
     // folder: still nothing there.
     fs.mkdirSync(path.join(state, "agents-x"), { recursive: true });
@@ -998,6 +1020,30 @@ describe("GET /api/workspaces/<ws>/agents/<id>/file (AG-DROP-2: a file back to t
       const x = await get(a, "north", "planner", bad);
       expect([bad, x.status]).toEqual([bad, 404]);
       expect(await x.text()).not.toContain("S3CRET-MARK");
+    }
+    // In another case: the same file on a case-insensitive disk (macOS),
+    // and a name the globs match whatever its case on any disk.
+    put("certs/UPPER.PEM", "S3CRET-MARK\n");
+    for (const bad of [
+      ".ENV",
+      "App/.Env.local",
+      "certs/SERVER.PEM",
+      "Deploy/ID_ED25519",
+      "certs/UPPER.PEM",
+    ]) {
+      const x = await get(a, "north", "planner", bad);
+      expect([bad, x.status]).toEqual([bad, 404]);
+      expect(await x.text()).not.toContain("S3CRET-MARK");
+    }
+    // A link is the file's path in the disk's own case, not the case typed.
+    if (fs.existsSync(path.join(ws, "APP"))) {
+      const cased = await a.call(
+        "GET",
+        `/api/workspaces/north/agents/planner/paths?p=APP/ENV.TS`,
+      );
+      expect(cased.json.paths).toEqual({
+        "APP/ENV.TS": path.join(ws, "app", "env.ts"),
+      });
     }
     // Files that only look alike stay reachable.
     for (const ok of ["src/id_utils.ts", "app/env.ts"])

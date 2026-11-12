@@ -58,7 +58,9 @@ config and manifest changes a distribution must make to move to it under
 - A repo's secrets inside the workspace are never a link or a download
   either: `agents.files.deny`, globs, by default `.env`, `.env.*`,
   `*.pem`, `*.key`, `*.p12`, `*.pfx` and SSH keys (`id_rsa*` and the
-  like). A list of your own replaces it; `[]` turns it off.
+  like). A list of your own replaces it; `[]` turns it off. Names are
+  matched in any case, and a path is resolved to the disk's own case, so
+  on macOS `.ENV` or `KEYCHAINS` never slips past the rule.
 - Every refused upload is audited, the ones refused before the file is
   read too (too big by its size, an ended or unknown session), and so is
   any agent's call refused for its token's scope (`agent_forbidden`) or a
