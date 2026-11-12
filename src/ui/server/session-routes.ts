@@ -244,6 +244,8 @@ export interface ListedSession {
    * ESC CR unless the runtime says otherwise. A plain session: Enter (CR).
    */
   softNewline?: string;
+  /** D65: the services it works on, as a person linked them. */
+  services?: string[];
   persona?: string;
   runtime?: string;
   model?: string;
@@ -348,6 +350,7 @@ export function listedSessions(
       ...(rec.displayName ? { displayName: rec.displayName } : {}),
       ...(r.sessionTitle ? { sessionTitle: r.sessionTitle } : {}),
       softNewline: softNewlineSeq(getRuntime(rec.runtime)?.catalog),
+      ...(rec.services?.length ? { services: [...rec.services] } : {}),
       persona: rec.persona,
       runtime: rec.runtime,
       ...(rec.model ? { model: rec.model } : {}),

@@ -36,6 +36,13 @@ export interface AgentRecord {
   subagents?: { model?: string; from: "persona" | "org" | "default" };
   workspace: string;
   cwd: string;
+  /**
+   * D36/D65: the services it works on ("repo" or "repo/service"), as a
+   * person linked them (Start agent here, `agents link`). Kept through
+   * every resume, relaunch, rotation and persona change; the service card
+   * lists it by this first, by its folder only when it has none.
+   */
+  services?: string[];
   /** The session it runs in now (or last ran in). */
   session: SessionRef;
   /** `<dist>-<ws>:<id>`. */

@@ -198,17 +198,30 @@ const running = (s) =>
   S.busy.has(s.id) || s.ok === true || s.upSince !== undefined;
 
 /** The agents working in its repo: in its workspace, or in a folder inside the repo. */
-function agentsOf(s) {
-  return S.sessions.filter(
-    (a) =>
-      a.kind === "agent" &&
-      ((s.repoPath &&
+/**
+ * The agents that work on service `s`. D65: an agent a person linked
+ * (Start agent here, `agents link`) is listed by its link alone, through
+ * every restart; one with no link by its folder (the repo's, or a folder
+ * named for the repo in the service's workspace).
+ */
+export function agentsOf(s, sessions = S.sessions) {
+  const addr = `${s.repo}/${s.service}`;
+  return sessions.filter((a) => {
+    if (a.kind !== "agent") return false;
+    if (Array.isArray(a.services) && a.services.length)
+      return (
+        (a.services.includes(addr) || a.services.includes(s.repo)) &&
+        (!s.workspaces.length || s.workspaces.includes(a.workspace))
+      );
+    return Boolean(
+      (s.repoPath &&
         a.cwd &&
         (a.cwd === s.repoPath || a.cwd.startsWith(`${s.repoPath}/`))) ||
-        (s.workspaces.includes(a.workspace) &&
-          a.cwd &&
-          a.cwd.split("/").includes(s.repo))),
-  );
+      (s.workspaces.includes(a.workspace) &&
+        a.cwd &&
+        a.cwd.split("/").includes(s.repo)),
+    );
+  });
 }
 const agentName = (a) => a.displayName || a.agent || a.label || a.id;
 const agentTone = (a) =>
@@ -616,6 +629,8 @@ function act(k, btn) {
     const ws = s.workspaces[0];
     if (ws) q.set("ws", ws);
     if (s.repoPath) q.set("folder", s.repoPath);
+    // D65: the agent is this service's, by link, not only by folder.
+    q.set("service", s.service === s.repo ? s.repo : `${s.repo}/${s.service}`);
     go(`/agents?${q}`);
   } else if (k === "services")
     go(`/services#repo-${encodeURIComponent(s.repo)}`);

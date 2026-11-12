@@ -237,6 +237,7 @@ function writeUrl() {
   u.searchParams.set("layout", st.layout);
   u.searchParams.delete("start");
   u.searchParams.delete("folder");
+  u.searchParams.delete("service");
   u.searchParams.delete("agent");
   const s = u.searchParams.toString().replace(/%2C/gi, ",");
   history.replaceState(history.state, "", u.pathname + (s ? `?${s}` : ""));
@@ -3110,6 +3111,8 @@ async function openStart(bring = false, change = null) {
   if (pre?.ws) wsSel.value = pre.ws;
   const folder = $d("#ag-folder");
   if (folder) folder.value = pre?.folder ?? "";
+  // D65: Start agent here links the new agent to its service.
+  sd.service = pre?.service || "";
   sd.f = { q: "", cat: "", src: "" };
   sd.det = false;
   sd.what = false;
@@ -3156,6 +3159,7 @@ function startBody() {
   if (name) body.name = name;
   const folder = $d("#ag-folder")?.value.trim();
   if (folder) body.folder = folder;
+  if (sd.service) body.services = [sd.service];
   return body;
 }
 
@@ -3866,7 +3870,11 @@ export async function mountAgentsPage(root) {
   const startAsked = new URLSearchParams(location.search).get("start") === "1";
   if (startAsked) {
     const q = new URLSearchParams(location.search);
-    startPrefill = { ws: q.get("ws") || "", folder: q.get("folder") || "" };
+    startPrefill = {
+      ws: q.get("ws") || "",
+      folder: q.get("folder") || "",
+      service: q.get("service") || "",
+    };
   }
 
   // D32: helper rows open their transcript; "All helpers" the full list.

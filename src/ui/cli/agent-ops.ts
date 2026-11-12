@@ -2376,6 +2376,8 @@ export interface StartRequest {
    * never a free string (the CLI's --model for generic stays free).
    */
   strict?: boolean;
+  /** D65: the services it works on; a relaunch keeps the last ones. */
+  services?: string[];
 }
 
 /**
@@ -2671,6 +2673,12 @@ export async function startAgent(
           ...subagentsField(rt, persona, cfg),
           workspace: ws,
           cwd: input.worktree,
+          // D65: the link to its services outlives every new conversation.
+          ...(req.services?.length
+            ? { services: [...req.services] }
+            : prev?.services?.length
+              ? { services: [...prev.services] }
+              : {}),
           sessionName: sessionName(d.dist, ws, id),
           peerName,
           // AG-4b: a name given to the agent is the agent's, not its
@@ -3013,6 +3021,44 @@ export function renameAgent(
     delete next.displayName;
     delete next.displayNameAt;
   }
+  writeRecord(d.stateDir(), next);
+  return next;
+}
+
+const SERVICE_ADDRESS_RE =
+  /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$/;
+
+/** D65: a list of service addresses ("repo" or "repo/service"), checked. */
+export function checkServiceList(v: unknown): string[] {
+  if (
+    !Array.isArray(v) ||
+    v.length > 32 ||
+    !v.every((x) => typeof x === "string" && SERVICE_ADDRESS_RE.test(x))
+  )
+    throw usage(
+      'services must be a list of service names ("repo" or "repo/service")',
+    );
+  return [...new Set(v as string[])];
+}
+
+/**
+ * D65: link the agent to services, or unlink it. The link is the agent's
+ * own (its record), so every restart path keeps it.
+ */
+export function setAgentServices(
+  d: AgentsResolved,
+  id: string,
+  ws: string,
+  change: { add: string[]; remove: string[] },
+): AgentRecord {
+  const rec = agentRecord(d, id, ws);
+  const drop = new Set(change.remove);
+  const list = [...new Set([...(rec.services ?? []), ...change.add])].filter(
+    (s) => !drop.has(s),
+  );
+  const next: AgentRecord = { ...rec };
+  if (list.length) next.services = list;
+  else delete next.services;
   writeRecord(d.stateDir(), next);
   return next;
 }

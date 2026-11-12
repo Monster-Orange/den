@@ -24,6 +24,18 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **An agent stays under the service it works on (D65).** A service's
+  quick panel listed an agent only when the agent's folder was the
+  service's repo. An agent started in the folder above the repos was
+  never listed, and it could look like a restart had dropped the link.
+  Now an agent can be linked to services ("repo" or "repo/service").
+  Start agent here links it. You can also run `agents link <id>
+  <service>...` and `agents unlink`, or call `POST
+  /api/workspaces/:ws/agents/:id/services` with `{add, remove}`. The
+  link is kept in the agent's record, so resume, Start fresh, rotation,
+  persona changes and Restart all keep it. A linked agent is listed by
+  its link wherever its folder is. An agent with no link is still
+  listed by its folder. Only a person can link an agent.
 - **A workspace's name is what you type (D70).** A workspace now has a
   name ("back office") and a slug made from it ("back-office"). The slug
   is what folders, links, session names and the command line use, and

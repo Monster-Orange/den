@@ -117,6 +117,8 @@ import {
   removeAgent,
   removeStopped,
   renameAgent,
+  setAgentServices,
+  checkServiceList,
   resolveAgentsDeps,
   resumeInterrupted,
   startAgent,
@@ -236,6 +238,10 @@ export const AGENTS_HELP = {
     "{cli} agents rename <id> --clear [-w <ws>]",
     "    name an agent (its tab, row and pane header); the id never changes.",
     "    Other sessions see it as {cli}-<ws>:<name> from its next start or resume.",
+    "{cli} agents link <id> <service>... [-w <ws>]",
+    "{cli} agents unlink <id> <service>... [-w <ws>]",
+    "    the services it works on (repo or repo/service): their card lists it,",
+    "    through every restart. Without a link its folder decides.",
     "    --clear: back to its id",
     "{cli} agents files <id> [-w <ws>] [--json]",
     "    the files dropped, pasted or attached onto the agent's terminal (its",
@@ -1090,6 +1096,38 @@ function rename(args: string[], d: AgentsResolved): number {
   return 0;
 }
 
+/**
+ * D65: `agents link <id> <service…>` / `agents unlink <id> <service…>`:
+ * which services it works on ("repo" or "repo/service"). The service card
+ * lists it under them, through every restart.
+ */
+function link(
+  args: string[],
+  d: AgentsResolved,
+  how: "add" | "remove",
+): number {
+  const where = how === "add" ? "agents link" : "agents unlink";
+  const p = parseArgs(where, args, { "--workspace": true });
+  const [id, ...given] = p.positional;
+  if (!id || !given.length)
+    throw new UsageError(
+      `${where} needs <id> and one or more services (repo or repo/service)`,
+    );
+  const ws =
+    workspaceFlag(where, p) ?? readRecord(d.stateDir(), id)?.workspace ?? "";
+  const list = checkServiceList(given);
+  const rec = setAgentServices(d, id, ws, {
+    add: how === "add" ? list : [],
+    remove: how === "remove" ? list : [],
+  });
+  d.out(
+    rec.services?.length
+      ? `agent ${id} works on ${rec.services.join(", ")}`
+      : `agent ${id} is linked to no services now (its folder decides)`,
+  );
+  return 0;
+}
+
 async function rm(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents rm";
   const p = parseArgs(where, args, { "--workspace": true, "--stopped": false });
@@ -1529,6 +1567,10 @@ export async function cmdAgents(
           return await helpers(rest, d);
         case "rename":
           return rename(rest, d);
+        case "link":
+          return link(rest, d, "add");
+        case "unlink":
+          return link(rest, d, "remove");
         case "files":
           return files(rest, d);
         case "rm":

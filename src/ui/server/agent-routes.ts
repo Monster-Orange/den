@@ -137,6 +137,8 @@ import {
   pruneStopped,
   removeAgent,
   renameAgent,
+  setAgentServices,
+  checkServiceList,
   removeStopped,
   restoreAgents,
   resumeInterrupted,
@@ -207,7 +209,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|handoff|clear-helpers|restart|file))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|handoff|clear-helpers|restart|services|file))?$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -373,6 +375,8 @@ interface StartBody {
   name?: unknown;
   /** 0.4.18: the folder it runs in (Start agent here). */
   folder?: string;
+  /** D65: the services it works on (Start agent here's). */
+  services?: string[];
 }
 
 const START_KEYS = [
@@ -386,6 +390,7 @@ const START_KEYS = [
   "instruction",
   "name",
   "folder",
+  "services",
 ];
 
 async function startBody(req: http.IncomingMessage): Promise<StartBody> {
@@ -438,6 +443,8 @@ async function startBody(req: http.IncomingMessage): Promise<StartBody> {
       throw new AgentError("folder must be a path", { usage: true });
     out.folder = o.folder;
   }
+  if (o.services !== undefined && o.services !== null)
+    out.services = checkServiceList(o.services);
   return out as StartBody;
 }
 
@@ -590,6 +597,7 @@ export async function handleAgentRoutes(
     | "settings"
     | "handoff"
     | "clear-helpers"
+    | "services"
     | "restart"
     | "file"
     | undefined;
@@ -741,6 +749,11 @@ export async function handleAgentRoutes(
       throw new AgentError("only a person can restart an agent", {
         status: 403,
       });
+    // D65: what an agent is listed under is the person's call.
+    if (verb === "services" && (agent || actor))
+      throw new AgentError("only a person can link an agent to services", {
+        status: 403,
+      });
     // D34: clearing what a person sees is a person's.
     if (verb === "clear-helpers" && (agent || actor))
       throw new AgentError("only a person can clear an agent's helpers", {
@@ -769,6 +782,7 @@ export async function handleAgentRoutes(
         ...(body.allow !== undefined ? { allow: body.allow } : {}),
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.folder !== undefined ? { folder: body.folder } : {}),
+        ...(body.services?.length ? { services: body.services } : {}),
         strict: true,
       });
       const ov = s.rec.overrides?.length
@@ -904,6 +918,24 @@ export async function handleAgentRoutes(
         agent: rec.id,
         ...(rec.displayName ? { displayName: rec.displayName } : {}),
       });
+    } else if (verb === "services") {
+      // D65: which services it works on. Body {add?: [...], remove?: [...]}.
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "add" && k !== "remove")
+          throw new AgentError(
+            `${k}: unknown field (services takes add, remove)`,
+            {
+              usage: true,
+            },
+          );
+      const rec = setAgentServices(d, id!, ws, {
+        add: body.add === undefined ? [] : checkServiceList(body.add),
+        remove: body.remove === undefined ? [] : checkServiceList(body.remove),
+      });
+      what = `services ${rec.id} in ${ws}: ${(rec.services ?? []).join(", ") || "none"}`;
+      audit(what);
+      sendJson(res, { ok: true, agent: rec.id, services: rec.services ?? [] });
     } else if (verb === "persona") {
       const body = await jsonBody(req);
       for (const k of Object.keys(body))

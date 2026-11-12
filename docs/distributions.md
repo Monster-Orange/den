@@ -2754,6 +2754,14 @@ server scoped to its workspace.
   running agent's pane ⋯ menu, by touch or keyboard, or a double-click on
   its tab. A stopped agent's row and pane don't offer it (0.4.29); the CLI
   still does. The id never changes.
+- **Services it works on (D65).** `agents link <id> <service>...` and
+  `agents unlink <id> <service>...` (a service is `repo` or
+  `repo/service`). The API is `POST
+  /api/workspaces/:ws/agents/:id/services {add, remove}`, and only a
+  person can call it. A service's quick panel lists a linked agent by
+  its link alone, and an agent with no link by its folder. Start agent
+  here links the agent it starts. The link is the record's `services`.
+  Every restart path keeps it.
 - **The name other sessions see.** Den names a Claude Code agent's session
   `<cli>-<ws>:<name, else id>` (`--name`) at every start and resume, so
   another session listing its peers tells Den's agents apart. A rename

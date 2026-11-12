@@ -580,8 +580,10 @@ describe("the panel", () => {
       p.click("#ag-go"),
     ]);
     expect(res.status()).toBe(200);
+    // D65: and it is linked to notes, not only in its folder.
     expect(JSON.parse(res.request().postData() ?? "{}")).toMatchObject({
       folder: repo("notes"),
+      services: ["notes"],
     });
     const agent = ((await res.json()) as { agent: { id: string; cwd: string } })
       .agent;
@@ -589,6 +591,7 @@ describe("the panel", () => {
     expect(readRecord(s!.stateDir, agent.id)?.cwd).toBe(
       fs.realpathSync(repo("notes")),
     );
+    expect(readRecord(s!.stateDir, agent.id)?.services).toEqual(["notes"]);
     await p.context().close();
   }, 90_000);
 
@@ -1072,6 +1075,49 @@ describe("Open in Graph for a pin outside the View", () => {
 });
 
 describe("the page", () => {
+  it("D65: an agent linked to a service is listed under it wherever its folder is; one linked elsewhere isn't, even in its repo", async () => {
+    if (skip()) return;
+    // The folder above every repo, as an org's agents often run.
+    s!.seed({
+      id: "linked-notes",
+      workspace: "north",
+      cwd: path.join(s!.tmp, "repos"),
+      services: ["notes"],
+    });
+    // In notes' repo, but a person linked it to another service.
+    s!.seed({
+      id: "moved-off",
+      workspace: "north",
+      cwd: repo("notes"),
+      services: ["notes-docs"],
+    });
+    const files = ["linked-notes", "moved-off"].map((id) =>
+      path.join(s!.stateDir, "agents", `${id}.json`),
+    );
+    try {
+      const { p } = await page("/services");
+      await railReady(p);
+      await p.click('.den-rail [data-pin="notes"]');
+      await p.waitForSelector(panel);
+      await p.waitForFunction(
+        (sel) => document.querySelectorAll(sel).length >= 2,
+        `${panel} .den-svp-nm`,
+        { timeout: 10_000 },
+      );
+      // (An earlier test's Start agent here may have added its own.)
+      const listed = await p.$$eval(`${panel} .den-svp-nm`, (e) =>
+        e.map((x) => x.textContent),
+      );
+      expect(listed).toEqual(
+        expect.arrayContaining(["linked-notes", "notes-helper"]),
+      );
+      expect(listed).not.toContain("moved-off");
+      await p.context().close();
+    } finally {
+      for (const f of files) fs.unlinkSync(f);
+    }
+  }, 60_000);
+
   it("raised no page errors", () => {
     expect(errors).toEqual([]);
   });

@@ -417,6 +417,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/workspaces/:ws/agents/:id/clear-helpers",
     "D34 Clear done: hides an agent's finished helpers (a mark in its files; Claude Code's are never touched); a person's only",
   ),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/agents/:id/services",
+    "D65 link an agent to the services it works on ({add, remove}: repo or repo/service), kept through every restart; a person's only",
+  ),
   S(
     ["POST"],
     "/api/workspaces/:ws/agents/:id/handoff",
@@ -612,6 +617,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/handoff",
     "/api/workspaces/:ws/agents/:id/clear-helpers",
     "/api/workspaces/:ws/agents/:id/restart",
+    "/api/workspaces/:ws/agents/:id/services",
   ],
   "agent-routes.ts:TOOLS_PATH": ["/api/workspaces/:ws/agents/:id/tools"],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],
