@@ -4,7 +4,8 @@
  * dot), the Graph card's ⋯ and the Services card's name. It never
  * navigates: it opens beside its opener in the top layer (the shell's
  * topLayer), and at phone width (under 640 px) it is a bottom sheet. Esc
- * or a click outside closes it, and focus goes back to the opener.
+ * or a press outside closes it, and focus goes back to the opener
+ * (popover.js, D50).
  *
  * What it shows, top to bottom: the name, workspace, health dot, state
  * ("up 2h", "down: …", "starting…") and URL; Visit ↗ (primary), Start or
@@ -27,6 +28,7 @@
  */
 import { sudoRun } from "./topbar.js";
 import { logStreamUrl } from "./log-source.js";
+import { dismissable, focusBack } from "./popover.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -309,7 +311,9 @@ function place() {
   if (sheet && !o.scrim) {
     o.scrim = document.createElement("div");
     o.scrim.className = "den-scrim den-svp-scrim";
-    o.scrim.addEventListener("click", () => closePanel(false));
+    // A tap on it closes the sheet, and focus goes back (to the ☰ when
+    // the pin's drawer closed).
+    o.scrim.addEventListener("click", () => closePanel(true));
     document.body.append(o.scrim);
   } else if (!sheet && o.scrim) {
     o.scrim.remove();
@@ -437,6 +441,13 @@ export function openPanel(id, opener, opts = {}) {
     timer: setInterval(() => void refresh(), REFRESH_MS),
   };
   opener.setAttribute?.("aria-expanded", "true");
+  // D50: a press outside or Esc closes it (popover.js). The rail redraws
+  // its rows: a press on this pin's row is the opener's.
+  S.open.release = dismissable(el, {
+    opener: () => S.open?.opener,
+    ignore: (tgt) => !!S.open?.fromRail && !!tgt.closest?.("[data-svpanel]"),
+    close: (refocus) => closePanel(refocus),
+  });
   window.denShell?.setState?.({ svpOpen: id });
   sync();
   (el.querySelector(".den-svp-acts .den-btn:not([disabled])") || el).focus();
@@ -447,6 +458,7 @@ export function closePanel(refocus) {
   const o = S.open;
   if (!o) return;
   S.open = null;
+  o.release?.();
   clearInterval(o.timer);
   window.denShell?.topLayer?.hide(o.el);
   o.el.remove();
@@ -455,7 +467,9 @@ export function closePanel(refocus) {
   o.opener.setAttribute?.("aria-expanded", "false");
   if (!refocus) return;
   const back = o.fromRail ? railRow(o.id) : o.opener;
-  (back && back.isConnected ? back : railRow(o.id))?.focus();
+  // A pin in a closed drawer (a phone) can't take focus: the ☰ that opens
+  // the drawer does.
+  focusBack(back, railRow(o.id), document.getElementById("den-menu-btn"));
 }
 
 export function panelOpen() {
@@ -701,18 +715,10 @@ export function initServicePanel(deps = {}) {
         if (!b.disabled) act(b.dataset.svx, b);
         return;
       }
-      if (o.el.contains(tgt) || o.opener.contains?.(tgt)) return;
-      if (o.fromRail && tgt.closest?.("[data-svpanel]")) return;
-      closePanel(false);
+      // A press outside, and Esc, are popover.js's (D50).
     },
     true,
   );
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && S.open && !e.defaultPrevented) {
-      e.preventDefault();
-      closePanel(true);
-    }
-  });
   window.addEventListener("resize", () => place());
   const sh = window.denShell;
   if (sh?.setServicePanel)

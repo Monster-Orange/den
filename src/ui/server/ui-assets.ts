@@ -59,6 +59,8 @@ export const UI_MODULES: readonly string[] = [
   "/combobox.js",
   // 0.4.18: where a service's live log comes from (Logs page and panel).
   "/log-source.js",
+  // D50: how every pop-over closes (a press outside, Esc).
+  "/popover.js",
 ];
 
 /** URL path → file inside node_modules. */

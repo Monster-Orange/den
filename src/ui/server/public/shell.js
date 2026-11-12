@@ -66,7 +66,9 @@
  *                                    the Workspace ▾ menu (header.js)
  *   workspaceNames()                 every workspace's name, from it
  *   syncEnv()                        repaint Env ▾ from #env-sel
- *   registerCommand({ id, label, keywords?, kind?, run })
+ *   registerCommand({ id, label, keywords?, kind?, run, href? })
+ *     href: the page run() goes to, if any; ⌘K's ⌘/Ctrl-Enter opens it
+ *     in a new tab (H4)
  *                                    a ⌘K palette row (R17, dev.20). label
  *                                    is a string or a function returning
  *                                    one; keywords a string or an array;
@@ -270,6 +272,7 @@
     "pal.results": "Results",
     "pal.move": "↑↓ to move",
     "pal.open": "↵ to open",
+    "pal.newTab": "{mod}↵ new tab",
     "pal.close": "esc to close",
     "pal.none": "No matches",
     "pal.count": "{n} results",
@@ -911,6 +914,10 @@
     "hp.bar": "Helpers: {n}",
     "hp.barRunning": "Helpers: {n}, {r} running",
     "hp.all": "All helpers ({n})",
+    "hp.titlePlain": "Helpers",
+    "hp.allPlain": "All helpers",
+    "hp.rowRunning": "{n} helpers running",
+    "hp.rowRunning.one": "{n} helper running",
     "hp.runningN": "{n} running",
     "hp.groupOf": "Helpers of {name}",
     "hp.open": "{what}, {status}: open its transcript",
@@ -936,13 +943,19 @@
     "b.helpers": "{n} helpers running",
     "b.helpers.one": "{n} helper running",
     "hub.rail": "Hub",
-    "hub.railTip": "{team} on Hub (opens in a new tab)",
-    "hub.railTipPlain": "Hub (opens in a new tab)",
+    "hub.railTip": "{team} on Hub",
+    "hub.railTipPlain": "Open Hub",
     "hub.railUnread": "{n} waiting on you",
     "hub.railRejected":
       "Hub doesn't accept this install's token. Reconnect in Settings › Hub.",
     "hub.railForbidden":
       "Hub doesn't allow this install. Ask a Hub admin (Settings › Hub).",
+    "hub.railNoToken": "Not connected to Hub yet. Connect in Settings › Hub.",
+    "hub.railUnreachable": "Den can't reach Hub right now. See Settings › Hub.",
+    "hub.railBadConfig":
+      "Den's Hub settings have a problem. See Settings › Hub.",
+    "hub.railBadUrl":
+      "Hub's address isn't https, so Den won't open it. See Settings › Hub.",
     "ag.session": "session",
     "ag.empty":
       "Pick a session on the left to open its terminal. Open more to tile them (up to 4).",
@@ -1363,6 +1376,7 @@
           : [],
       kind: typeof c.kind === "string" && c.kind ? c.kind : "action",
       run: c.run,
+      href: typeof c.href === "string" && c.href ? c.href : undefined,
       from: c.from || null,
     });
   }
@@ -1381,6 +1395,11 @@
     // a distribution or a plugin adds shows its own label. The Settings
     // search (?q=) keeps the row's own label, which that page shows.
     var key = "set." + r.id;
+    var href =
+      "/settings?q=" +
+      encodeURIComponent(r.label) +
+      "#" +
+      encodeURIComponent(cat);
     registerCommand({
       id: "setting:" + r.id,
       label:
@@ -1394,13 +1413,9 @@
         "settings",
       ]),
       kind: "setting",
+      href: href,
       run: function () {
-        location.assign(
-          "/settings?q=" +
-            encodeURIComponent(r.label) +
-            "#" +
-            encodeURIComponent(cat),
-        );
+        location.assign(href);
       },
       from: r.from || null,
     });
@@ -1422,6 +1437,7 @@
         keywords: c.keywords.slice(),
         kind: c.kind,
         run: c.run,
+        href: c.href,
         from: c.from,
       };
     });
@@ -2622,9 +2638,10 @@
   }
 
   /**
-   * The rail's Hub link, above Settings: only once this install is
-   * connected. It opens the company's page on Hub in a new tab, with a
-   * count of what waits on the person (whoami's unread). A token Hub
+   * The rail's Hub link, above Settings. It opens the company's page on
+   * Hub in this tab (D51: a plain link, so ⌘-, Ctrl- and middle-click
+   * still give a new one), with a count of what waits on the person
+   * (whoami's unread). A token Hub
    * rejects, or a role it forbids, greys it, and it goes to Settings ›
    * Hub, which says what to do.
    */
@@ -2633,24 +2650,53 @@
       var x = new URL(u);
       return x.protocol === "https:" ||
         (x.protocol === "http:" &&
-          (x.hostname === "localhost" || x.hostname === "127.0.0.1"))
+          (x.hostname === "localhost" ||
+            x.hostname === "127.0.0.1" ||
+            /\.localhost$/.test(x.hostname)))
         ? x.href
         : "";
     } catch (e) {
       return "";
     }
   }
+  /**
+   * Where Hub is, for the rail and ⌘K (D51): null when no Hub is set up;
+   * else `href` (Hub, opened in this tab) or, when it can't be opened,
+   * `why` (D49's reason; the item is greyed and goes to Settings › Hub).
+   */
+  function hubLink() {
+    var h = state.hub;
+    if (!h || !h.configured) return null;
+    // Configured: always there. Connected, it opens Hub; otherwise it is
+    // greyed, goes to Settings › Hub and says why (D49: a Hub that
+    // vanished from the rail left no way across).
+    var href =
+      h.state === "connected"
+        ? hubTarget(h.teamUrl || "") || hubTarget(h.url || "")
+        : "";
+    if (href) return { href: href, team: h.team || "" };
+    var key =
+      {
+        rejected: "hub.railRejected",
+        forbidden: "hub.railForbidden",
+        no_token: "hub.railNoToken",
+        unreachable: "hub.railUnreachable",
+        bad_config: "hub.railBadConfig",
+      }[h.state] ||
+      (h.state === "connected" ? "hub.railBadUrl" : "hub.railUnreachable");
+    return { href: "", why: t(key) };
+  }
   function hubItem() {
     var h = state.hub;
-    if (!h || !h.configured) return "";
+    var link = hubLink();
+    if (!link) return "";
     var label = t("hub.rail");
-    if (h.state === "rejected" || h.state === "forbidden") {
-      var why = t(
-        h.state === "rejected" ? "hub.railRejected" : "hub.railForbidden",
-      );
+    var href = link.href;
+    if (!href) {
+      var why = link.why;
       return (
         '<a class="den-ni den-hub den-off" href="/settings#agents.hub" data-nav="hub" data-hub="' +
-        esc(h.state) +
+        esc(h.state || "unknown") +
         '" title="' +
         esc(why) +
         '" aria-label="' +
@@ -2662,8 +2708,6 @@
         "</span></a>"
       );
     }
-    var href = h.state === "connected" ? hubTarget(h.teamUrl || "") : "";
-    if (!href) return "";
     var tip = h.team
       ? t("hub.railTip", { team: h.team })
       : t("hub.railTipPlain");
@@ -2672,7 +2716,7 @@
     return (
       '<a class="den-ni den-hub" href="' +
       esc(href) +
-      '" target="_blank" rel="noopener noreferrer" data-nav="hub" data-hub="connected" title="' +
+      '" data-nav="hub" data-hub="connected" title="' +
       esc(tip) +
       '" aria-label="' +
       esc(label + ", " + tip + (waiting ? ", " + waiting : "")) +
@@ -2680,7 +2724,7 @@
       icon("hub") +
       '<span class="den-lbl">' +
       esc(label) +
-      ' <span class="den-ext" aria-hidden="true">↗</span></span>' +
+      "</span>" +
       (n
         ? '<span class="den-bdg" aria-hidden="true">' +
           esc(n > 99 ? "99+" : n) +
@@ -4938,6 +4982,7 @@
                 ? {
                     configured: true,
                     state: b.state,
+                    url: b.url,
                     team: b.team,
                     teamUrl: b.teamUrl,
                     unread: b.unread,
@@ -5013,6 +5058,8 @@
     setOrgs: setOrgs,
     setWorkspaces: setWorkspaces,
     workspaceNames: workspaceNames,
+    // D51: Hub's link for ⌘K (null: none set up).
+    hubLink: hubLink,
     /** Repaint the Env part from #env-sel (after setting its value). */
     syncEnv: syncEnv,
     syncPinToggles: syncPinToggles,
@@ -5323,6 +5370,9 @@
     ".den-pal li .den-kind { margin-left: auto; font: 11px var(--mono); color: var(--faint); text-transform: uppercase;",
     "  letter-spacing: .05em; white-space: nowrap; }",
     ".den-pal li .den-sub { color: var(--faint); font: 12px var(--mono); white-space: nowrap; }",
+    // D51: Hub when it can't be opened: greyed, its reason in words.
+    ".den-pal li.den-off .den-pal-l { color: var(--muted); }",
+    ".den-pal li.den-off .den-sub { font: 12px var(--sans); white-space: normal; min-width: 0; }",
     ".den-pal li.den-pal-empty { cursor: default; color: var(--muted); }",
     ".den-pal .den-foot { display: flex; gap: 14px; padding: 8px 14px; border-top: 1px solid var(--border);",
     "  color: var(--faint); font-size: 12px; flex-wrap: wrap; }",

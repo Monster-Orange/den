@@ -197,7 +197,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
       await p
         .locator(`#agl button.agr[data-id="${sid}"] .agr-hp`)
         .textContent(),
-    ).toBe("1");
+    ).toBe("1 running");
 
     await rows.first().click();
     const dlg = p.locator("#tx-dlg");
@@ -232,7 +232,12 @@ describe("an agent's helpers on the agents page (D32)", () => {
     const { p, errors } = await open();
     const btn = p.locator(`.pane[data-id="${sid}"] [data-act="helpers"]`);
     await btn.waitFor({ timeout: 15_000 });
-    expect(await btn.locator(".hpbdg").textContent()).toBe("1");
+    // D48: one label, no pill: "Helpers · 1 running", a dot before it.
+    expect((await btn.textContent())?.replace(/\s+/g, " ").trim()).toBe(
+      "Helpers · 1 running",
+    );
+    expect(await btn.locator(".hp-run .hp-dot").count()).toBe(1);
+    expect(await p.locator(".hpbdg").count()).toBe(0);
     await btn.click();
     const body = p.locator("#hp-body");
     await body.locator("button.agh").first().waitFor({ timeout: 10_000 });
@@ -579,7 +584,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.waitForFunction(
       (id) =>
         document.querySelector(`#agl button.agr[data-id="${id}"] .agr-hp`)
-          ?.textContent === "2",
+          ?.textContent === "2 running",
       sids.keeper,
       { timeout: 20_000 },
     );
@@ -597,13 +602,13 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p
       .locator('#agl .aghs[data-helpers-of="keeper"]')
       .waitFor({ state: "detached", timeout: 15_000 });
-    expect(await badge("keeper")).toBe("2");
-    // 6 running: 4 rows (row_max), then "All helpers (6)", which opens
+    expect(await badge("keeper")).toBe("2 running");
+    // 6 running: 4 rows (row_max), then "All helpers · 6 running", which opens
     // the Helpers list with all of them.
     const all = '#agl .aghs[data-helpers-of="crowd"] .aghs-all';
     await p.locator(all).waitFor({ timeout: 15_000 });
     expect(await rowsOf("crowd")).toBe(4);
-    expect(await p.locator(all).textContent()).toBe("All helpers (6)");
+    expect(await p.locator(all).textContent()).toBe("All helpers · 6 running");
     await p.click(all);
     await p.locator("#hp-body > button.agh").first().waitFor();
     expect(await p.locator("#hp-body > button.agh").count()).toBe(6);
@@ -613,6 +618,165 @@ describe("an agent's helpers on the agents page (D32)", () => {
   }, 90_000);
 
   // Last: its mark stays for the rest of the file.
+  for (const width of [1280, 390])
+    it(`D50 at ${width}: Clear done and Close sit in the header's top-right corner`, async () => {
+      if (!browser) return;
+      const { p, errors } = await open(width);
+      const bar = `.pane[data-id="${sid}"] [data-act="helpers"]`;
+      await p.locator(bar).waitFor({ timeout: 15_000 });
+      await p.click(bar);
+      await p.locator("#hp-dlg [data-hp-clear]:not([hidden])").waitFor();
+      const box = (sel: string) =>
+        p.$eval(sel, (e) => {
+          const r = e.getBoundingClientRect();
+          return { l: r.left, r: r.right, t: r.top };
+        });
+      const hd = await box("#hp-dlg .hp-hd");
+      const clear = await box("#hp-dlg [data-hp-clear]");
+      const close = await box("#hp-dlg [data-hp-close]");
+      const pad = await p.$eval("#hp-dlg .hp-hd", (e) =>
+        parseFloat(getComputedStyle(e).paddingRight),
+      );
+      // Close at the end, Clear done just before it, both on the right.
+      expect(Math.abs(close.r - (hd.r - pad))).toBeLessThanOrEqual(1);
+      expect(Math.abs(close.l - 8 - clear.r)).toBeLessThanOrEqual(1);
+      expect(clear.l).toBeGreaterThan(hd.l + (hd.r - hd.l) / 2);
+      expect(Math.abs(clear.t - close.t)).toBeLessThanOrEqual(1);
+      expect(
+        await p.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width);
+      await p.keyboard.press("Escape");
+      expect(errors).toEqual([]);
+      await p.context().close();
+    }, 60_000);
+
+  it("D50: a press on the backdrop closes the list and focus goes back to Helpers; over a transcript, it closes the transcript only", async () => {
+    if (!browser) return;
+    const { p, errors } = await open();
+    const bar = `.pane[data-id="${sid}"] [data-act="helpers"]`;
+    await p.locator(bar).waitFor({ timeout: 15_000 });
+    await p.click(bar);
+    const dlg = p.locator("#hp-dlg[open]");
+    await dlg.waitFor();
+    await p.locator("#hp-body button.agh").first().waitFor();
+    // Inside, on its note: still open.
+    const nb = (await p.locator("#hp-note").boundingBox())!;
+    await p.mouse.click(nb.x + 4, nb.y + 4);
+    expect(await dlg.count()).toBe(1);
+    // A helper's transcript over it: the backdrop closes the transcript.
+    await p.click("#hp-body button.agh >> nth=0");
+    await p.locator("#tx-dlg[open]").waitFor();
+    await p.mouse.move(4, 4);
+    await p.mouse.down();
+    await p.locator("#tx-dlg[open]").waitFor({ state: "detached" });
+    await p.mouse.up();
+    expect(await dlg.count()).toBe(1);
+    // Then the list's: a press alone closes it; focus goes back.
+    await p.mouse.down();
+    await dlg.waitFor({ state: "detached" });
+    await p.mouse.up();
+    await p.waitForFunction(() =>
+      document.activeElement?.matches('[data-act="helpers"]'),
+    );
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("a refresh keeps focus on the pane bar's Helpers button, when its label changes and when it doesn't, and after Esc closes the list", async () => {
+    if (!browser) return;
+    const { p, errors } = await open();
+    const bar = `.pane[data-id="${sid}"] [data-act="helpers"]`;
+    await p.locator(bar).waitFor({ timeout: 15_000 });
+    const onBar = () =>
+      p.evaluate(() => document.activeElement?.matches('[data-act="helpers"]'));
+    // Opened and closed from the keyboard: focus back on Helpers.
+    await p.focus(bar);
+    await p.keyboard.press("Enter");
+    await p.locator("#hp-dlg[open]").waitFor();
+    await p.keyboard.press("Escape");
+    await p.waitForFunction(() =>
+      document.activeElement?.matches('[data-act="helpers"]'),
+    );
+    // Two polls with nothing new: the button is the same one, still focused.
+    await p.$eval(bar, (b) => ((b as HTMLElement & { _k?: 1 })._k = 1));
+    await p.waitForTimeout(11_000);
+    expect(await onBar()).toBe(true);
+    expect(
+      await p.$eval(bar, (b) => (b as HTMLElement & { _k?: 1 })._k ?? 0),
+    ).toBe(1);
+    // A new running helper: the label changes, focus stays on Helpers.
+    const dir = path.join(
+      s.tmp,
+      "home",
+      ".claude",
+      "projects",
+      "-seeded",
+      TOKEN,
+      "subagents",
+    );
+    const extra = [
+      path.join(dir, "agent-a7f0c0ffee0000007.meta.json"),
+      path.join(dir, "agent-a7f0c0ffee0000007.jsonl"),
+    ];
+    const n = Number(
+      /(\d+) running/.exec((await p.textContent(bar)) ?? "")?.[1] ?? 0,
+    );
+    try {
+      fs.copyFileSync(path.join(dir, `agent-${LIVE}.meta.json`), extra[0]);
+      fs.writeFileSync(
+        extra[1],
+        fs
+          .readFileSync(path.join(dir, `agent-${LIVE}.jsonl`), "utf8")
+          .replaceAll(LIVE, "a7f0c0ffee0000007")
+          .replace(
+            /"timestamp":"[^"]+"/g,
+            `"timestamp":"${new Date().toISOString()}"`,
+          ),
+      );
+      await p.waitForFunction(
+        ([sel, want]) =>
+          new RegExp(`\\b${want} running`).test(
+            document.querySelector(sel as string)?.textContent ?? "",
+          ),
+        [bar, n + 1] as const,
+        { timeout: 20_000 },
+      );
+      expect(await onBar()).toBe(true);
+    } finally {
+      for (const f of extra) fs.rmSync(f, { force: true });
+    }
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
+  it("a pane bar button whose action failed comes back on the next refresh (Stop, refused)", async () => {
+    if (!browser) return;
+    const { p, errors } = await open();
+    const stop = `.pane[data-id="${sid}"] [data-act="stop"]`;
+    await p.locator(stop).waitFor({ timeout: 15_000 });
+    await p.route("**/agents/scout/stop", (r) =>
+      r.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "refused here" }),
+      }),
+    );
+    await p.click(stop);
+    // Off while it runs, then back: no stuck button after a failed Stop.
+    await p.waitForFunction(
+      (sel) => {
+        const b = document.querySelector(sel) as HTMLButtonElement | null;
+        return !!b && !b.disabled;
+      },
+      stop,
+      { timeout: 15_000 },
+    );
+    expect(await p.locator(stop).isEnabled()).toBe(true);
+    await p.unroute("**/agents/scout/stop");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
   it("D34 Clear done in the Helpers list; Show cleared lists them; still hidden after a reload", async () => {
     if (!browser) return;
     const { p, errors } = await open();

@@ -15,6 +15,7 @@
  *   openHelperTranscript({ ws, agent, helper, opener }).
  */
 import { focusBack, openTranscript, refindKey } from "/transcript-view.js";
+import { dismissable } from "/popover.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -127,31 +128,39 @@ export function helperRowsHtml(r, selected = false) {
     `<div class="aghs" data-helpers-of="${esc(r.agent)}" data-ws="${esc(r.workspace)}" role="group" aria-label="${esc(t("hp.groupOf", { name }))}">` +
     helperListHtml(active, ctx) +
     (h.activeCount > active.length
-      ? `<button type="button" class="lnk aghs-all" aria-haspopup="dialog">${esc(t("hp.all", { n: h.activeCount }))}</button>`
+      ? `<button type="button" class="lnk aghs-all" aria-haspopup="dialog">${countLabel("hp.all", h.activeCount, h.running)}</button>`
       : "") +
     `</div>`
   );
 }
 
-/** The row's badge: how many of its helpers run now (any row). */
-export function helperBadgeHtml(r) {
-  const n = r?.helpers?.running;
-  return n
-    ? ` <span class="hpbdg agr-hp" title="${esc(t("hp.runningN", { n }))}" aria-label="${esc(t("hp.runningN", { n }))}">${esc(n)}</span>`
-    : "";
+/**
+ * D48: one label, never two bare numbers. While any helper runs it says how
+ * many run, after a pulsing dot ("Helpers · 2 running"); when none does, how
+ * many there are ("Helpers (5)"). `key` is hp.title or hp.all.
+ */
+function countLabel(key, total, running) {
+  return running
+    ? `${esc(t(`${key}Plain`))} · <span class="hp-run"><span class="hp-dot" aria-hidden="true"></span>${esc(t("hp.runningN", { n: running }))}</span>`
+    : esc(t(key, { n: total }));
 }
 
-/** "Helpers (n)" for a pane's bar: a count badge while any run. */
+/** The row's count: how many of its helpers run now (any row), in words. */
+export function helperBadgeHtml(r) {
+  const n = r?.helpers?.running;
+  if (!n) return "";
+  const said = t("hp.rowRunning", { n });
+  return ` <span class="agr-hp hp-run" title="${esc(said)}" aria-label="${esc(said)}"><span class="hp-dot" aria-hidden="true"></span>${esc(t("hp.runningN", { n }))}</span>`;
+}
+
+/** The pane bar's Helpers button: "Helpers · 2 running", or "Helpers (5)". */
 export function helperBarButtonHtml(r) {
   const h = r?.helpers;
   if (!h || !h.total) return "";
   return (
     `<button type="button" class="den-btn sm" data-act="helpers" aria-haspopup="dialog"` +
     ` aria-label="${esc(t(h.running ? "hp.barRunning" : "hp.bar", { n: h.total, r: h.running }))}">` +
-    esc(t("hp.title", { n: h.total })) +
-    (h.running
-      ? ` <span class="hpbdg" aria-hidden="true">${esc(h.running)}</span>`
-      : "") +
+    countLabel("hp.title", h.total, h.running) +
     `</button>`
   );
 }
@@ -159,9 +168,9 @@ export function helperBarButtonHtml(r) {
 const CSS = `
 .hp-dlg{font-family:var(--sans);width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:0;border:1px solid var(--border-strong);border-radius:10px;background:var(--raised, var(--surface));color:var(--text);box-shadow:var(--shadow)}
 .hp-dlg::backdrop{background:rgba(0,0,0,.35)}
-.hp-hd{display:flex;gap:8px;align-items:baseline;padding:12px 16px;border-bottom:1px solid var(--border)}
-.hp-hd h2{font-size:15px;margin:0;outline:none;min-width:0;overflow-wrap:anywhere}
-.hp-hd .x{margin-left:auto;flex:none}
+.hp-hd{display:flex;gap:8px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)}
+.hp-hd h2{font-size:15px;margin:0;outline:none;min-width:0;flex:1 1 auto;overflow-wrap:anywhere}
+.hp-acts{display:flex;gap:8px;align-items:center;flex:none;margin-inline-start:auto}
 .hp-body{padding:8px 12px;overflow:auto;max-height:calc(100vh - 200px)}
 .hp-note{margin:0;padding:8px 16px 12px;color:var(--muted);font-size:12px;border-top:1px solid var(--border)}
 .hp-none{color:var(--muted);font-size:13px;padding:8px 4px}
@@ -176,14 +185,18 @@ const CSS = `
 .agh-m{grid-column:2 / 4;color:var(--faint);font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agh[data-status="running"] .agh-s{color:var(--text)}
 .aghs-all{align-self:flex-start;font-size:12px;margin:2px 6px}
-.hp-hd .hp-clear{flex:none}
-.hp-hd .hp-clear + .x{margin-left:8px}
 .hp-cleared{margin-top:8px}
 .hp-cleared summary{cursor:pointer;color:var(--muted);font-size:13px;padding:4px}
-.hpbdg{display:inline-block;min-width:16px;padding:0 5px;border-radius:8px;background:var(--accent);color:var(--accent-text);font-size:11px;line-height:16px;text-align:center}
+.hp-run{white-space:nowrap}
+.agr-hp{color:var(--muted);font-size:11.5px;font-weight:400}
+.hp-dot{display:inline-block;width:6px;height:6px;margin-right:4px;border-radius:50%;background:var(--ok);vertical-align:1px;animation:hp-pulse 1.6s ease-in-out infinite}
+@keyframes hp-pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion: reduce){.hp-dot{animation:none}}
 `;
 
 let dlg = null;
+/** D50: a press on its backdrop closes it (popover.js); Esc is native. */
+let release = null;
 let opener = null;
 let openerKey = "";
 
@@ -204,8 +217,9 @@ function dialog() {
   dlg.setAttribute("aria-labelledby", "hp-h");
   dlg.innerHTML =
     `<div class="hp-hd"><h2 id="hp-h" tabindex="-1"></h2>` +
-    `<button type="button" class="den-btn sm hp-clear" data-hp-clear hidden></button>` +
-    `<button type="button" class="den-btn sm x" data-hp-close></button></div>` +
+    // D50: Clear done and Close at the end, in the top-right corner.
+    `<span class="hp-acts"><button type="button" class="den-btn sm hp-clear" data-hp-clear hidden></button>` +
+    `<button type="button" class="den-btn sm x" data-hp-close></button></span></div>` +
     `<div class="hp-body" id="hp-body" aria-live="polite"></div>` +
     `<p class="hp-note" id="hp-note"></p>`;
   dlg.querySelector("[data-hp-close]").addEventListener("click", () => {
@@ -233,6 +247,8 @@ function dialog() {
     dlg.querySelector("#hp-h").focus();
   });
   dlg.addEventListener("close", () => {
+    release?.();
+    release = null;
     const o = opener;
     const k = openerKey;
     opener = null;
@@ -275,6 +291,12 @@ export async function openHelpers({ ws, agent, name, opener: from = null }) {
     if (typeof d.showModal === "function") d.showModal();
     else d.setAttribute("open", "");
   }
+  release ??= dismissable(d, {
+    close: () => {
+      if (d.open && typeof d.close === "function") d.close();
+      else d.removeAttribute("open");
+    },
+  });
   d.querySelector("#hp-h").focus();
   await loadHelpers(ws, agent);
 }

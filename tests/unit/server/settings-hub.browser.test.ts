@@ -216,7 +216,7 @@ describe("Settings › Hub (HUB-1.7)", () => {
     await p.context().close();
   }, 60_000);
 
-  it("connected: Connected, the company as a link, role, who signed in, this install, Disconnect", async () => {
+  it("connected: Connected, the company as a plain link (this tab, D51), role, who signed in, this install, Disconnect", async () => {
     if (skip()) return;
     const p = await page({
       configured: true,
@@ -241,11 +241,13 @@ describe("Settings › Hub (HUB-1.7)", () => {
       "den on north-box",
     ])
       expect(text).toContain(t);
+    // D51: like the rail's Hub, a plain link: this tab, no new window.
     expect(
-      await p.$eval('[data-hub] a[href*="/c/acme-co"]', (a) =>
-        a.getAttribute("rel"),
-      ),
-    ).toContain("noopener");
+      await p.$eval('[data-hub] a[href*="/c/acme-co"]', (a) => [
+        a.getAttribute("target"),
+        a.getAttribute("href"),
+      ]),
+    ).toEqual([null, "https://hub.example.test/c/acme-co"]);
     expect(await p.$('[data-hub-action="disconnect"]')).not.toBeNull();
     expect(await p.$('button[data-hub-action="connect"]')).toBeNull();
     await p.context().close();

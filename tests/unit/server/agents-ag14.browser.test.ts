@@ -390,6 +390,63 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       await p.context().close();
     }, 60_000);
 
+    it("D50: a press outside closes them, with no click after it (a terminal eats clicks), and focus goes back to the row; a press inside, or in a menu over them, keeps them", async () => {
+      if (skip()) return;
+      const p = await open("north");
+      await shown(p);
+      await btn(p, "scout").click();
+      await det(p).waitFor();
+      // Inside, on no button: still open.
+      const box = (await det(p).boundingBox())!;
+      await p.mouse.click(box.x + box.width - 12, box.y + box.height - 8);
+      expect(await det(p).count()).toBe(1);
+      // A menu over them (another layer): its press is its own.
+      await p.evaluate(() => {
+        const m = document.createElement("div");
+        m.className = "den-pop";
+        m.setAttribute("role", "menu");
+        m.id = "d50-menu";
+        m.style.cssText =
+          "position:fixed;left:0;bottom:0;width:120px;height:40px;z-index:2147483647;background:#888";
+        document.body.append(m);
+      });
+      const mb = (await p.locator("#d50-menu").boundingBox())!;
+      await p.mouse.click(mb.x + 10, mb.y + 10);
+      expect(await det(p).count()).toBe(1);
+      await p.evaluate(() => document.getElementById("d50-menu")?.remove());
+      // Outside, on nothing that takes focus: a press alone closes them.
+      const at = await p.evaluate(() => {
+        const pop = document.querySelector(".den-agd")!;
+        for (let y = 200; y < innerHeight - 10; y += 23)
+          for (let x = innerWidth - 20; x > 20; x -= 37) {
+            const el = document.elementFromPoint(x, y);
+            if (
+              el &&
+              !pop.contains(el) &&
+              !el.closest(
+                "a, button, input, select, textarea, summary, [tabindex], .den-pop, dialog",
+              )
+            )
+              return { x, y };
+          }
+        return null;
+      });
+      expect(at).not.toBeNull();
+      await p.mouse.move(at!.x, at!.y);
+      await p.mouse.down();
+      await det(p).waitFor({ state: "detached" });
+      await p.mouse.up();
+      expect(
+        await p.evaluate(() =>
+          (document.activeElement as HTMLElement)
+            ?.closest(".agst")
+            ?.getAttribute("data-agent"),
+        ),
+      ).toBe("scout");
+      expect(await btn(p, "scout").getAttribute("aria-expanded")).toBe("false");
+      await p.context().close();
+    }, 60_000);
+
     it("a runtime that can't resume: Start fresh is first, and there is no Resume", async () => {
       if (skip()) return;
       const p = await open("north");
@@ -438,8 +495,22 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       ).toBeLessThanOrEqual(390);
       await p.locator(".den-svp-scrim").tap({ position: { x: 10, y: 10 } });
       await det(p).waitFor({ state: "detached" });
+      // 0.4.32-dev.1's gate: after a tap on the scrim, focus is back on the
+      // row's button, every time (the tap's late mousedown never takes it).
+      for (let i = 0; i < 6; i++) {
+        await btn(p, "scout").tap();
+        await det(p).waitFor();
+        await p.locator(".den-svp-scrim").tap({ position: { x: 10, y: 10 } });
+        await det(p).waitFor({ state: "detached" });
+        await p.waitForTimeout(150);
+        expect([
+          i,
+          await btn(p, "scout").evaluate((b) => b === document.activeElement),
+        ]).toEqual([i, true]);
+      }
+      expect(errors).toEqual([]);
       await ctx.close();
-    }, 60_000);
+    }, 90_000);
   });
 
   describe("D43: a link to one agent, /agents?agent=<id>&ws=<ws>", () => {

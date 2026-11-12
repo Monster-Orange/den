@@ -9,6 +9,7 @@
  * its heading, Escape or Close gives focus back to the opener. `load()`
  * resolves { items, omitted } (or rejects with an Error to show).
  */
+import { dismissable } from "/popover.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -139,6 +140,8 @@ function dialog() {
     `<p class="tx-note" id="tx-note" hidden></p>`;
   dlg.querySelector("[data-tx-close]").addEventListener("click", () => close());
   dlg.addEventListener("close", () => {
+    release?.();
+    release = null;
     const o = opener;
     const k = openerKey;
     opener = null;
@@ -148,6 +151,9 @@ function dialog() {
   document.body.append(dlg);
   return dlg;
 }
+
+/** D50: a press on its backdrop closes it (popover.js); Esc is native. */
+let release = null;
 
 function close() {
   if (!dlg) return;
@@ -183,6 +189,7 @@ export async function openTranscript({
     if (typeof d.showModal === "function") d.showModal();
     else d.setAttribute("open", "");
   }
+  release ??= dismissable(d, { close: () => close() });
   d.querySelector("#tx-h").focus();
   try {
     const r = await load();

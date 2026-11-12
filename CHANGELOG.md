@@ -80,8 +80,58 @@ config and manifest changes a distribution must make to move to it under
   goes back to the row. On a phone it is a sheet at the bottom. The row
   keeps its own Resume button.
 
+- **Hub in ⌘K (D51).** When Hub is set up, "Hub" is the first entry in
+  ⌘K. Enter opens it in this tab, and ⌘-Enter (Ctrl-Enter) opens it in a
+  new one. When Den can't open Hub, the entry is greyed, says why, and
+  goes to Settings › Hub.
+
+- **⌘-Enter in ⌘K opens a new tab (H4).** Any entry that goes to a page
+  (a page, a service, a setting, an agent, a workspace) opens in a new
+  tab with ⌘-Enter (Ctrl-Enter) or ⌘-click, as in Hub's own ⌘K. The
+  footer says so. Entries that act, such as Restart, just run. A
+  command a plugin adds can give its page as `href` to get the same.
+
+### Changed
+
+- **The rail's Hub opens in this tab (D51).** It is a plain link now, so
+  you can go back and forth between Den and Hub. ⌘-click (Ctrl-click) and
+  middle-click still open a new tab. The company's name in Settings ›
+  Agents › Hub is a plain link too. Hub stays at the bottom of the rail,
+  directly above Settings.
+
 ### Fixed
 
+- **Pop-overs close when you press outside them (D50).** The helpers
+  list, a stopped agent's details and a pinned service's panel now close
+  on any press outside them, or on Esc, and the keyboard goes back to the
+  button that opened them. Before, the helpers list ignored a click
+  outside it, and the other two missed a press that a terminal took. A
+  press inside, or in a menu or confirm over them, never closes them. In
+  the helpers list, "Clear done" and Close now sit in the top-right
+  corner. On a phone, a tap outside a sheet puts the keyboard back too:
+  on the row, or on ☰ when the pin that opened it is in the closed menu.
+- **The keyboard stays on the pane bar.** When an agent's pane bar
+  refreshed (a helper started or finished, or the list's regular check),
+  it redrew every button, and a focused button such as Helpers lost
+  focus. The same happened just after Esc closed the helpers list. Now
+  the bar redraws only when something on it changed, and the button you
+  were on keeps focus. A button whose action failed (a refused Stop)
+  still comes back on at the next refresh.
+- **Helper counts in words (D48).** The pane bar's Helpers button
+  showed "Helpers (5)" and then a coloured pill with a second, unlabelled
+  number, and the pill was hard to read in some themes. Now it is one
+  label: "Helpers · 2 running", after a small pulsing dot, while any run,
+  and "Helpers (5)" when none does. "All helpers" follows the same rule,
+  and an agent's row says "2 running" in place of its pill. Text on an
+  accent background now always uses the theme's on-accent colour, which
+  the theme contract holds to 4.5:1 contrast.
+- **Hub stays in the rail (D49).** Once Hub is set up, the rail always
+  has a Hub item. Before, it vanished whenever Den couldn't reach Hub (a
+  restart, a 502) or hadn't connected yet, which left no way across. Now,
+  when Hub can't be opened, the item is greyed, goes to Settings › Hub
+  and says why: not connected yet, can't reach Hub, a settings problem, or
+  an address that isn't https. When Hub sends no company page, the item
+  opens Hub's own address. An http Hub on a `.localhost` name opens too.
 - **A stopped row keeps its name readable (D37).** In a narrow list, a
   long chip such as "Ready to relaunch (3 compactions)" squeezed the name
   to one letter and ran past the row. Now the name keeps room for six

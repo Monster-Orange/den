@@ -156,6 +156,7 @@
     "pal.results": "Resultados",
     "pal.move": "↑↓ para moverte",
     "pal.open": "↵ para abrir",
+    "pal.newTab": "{mod}↵ pestaña nueva",
     "pal.close": "esc para cerrar",
     "pal.none": "Sin coincidencias",
     "pal.count": "{n} resultados",
@@ -805,6 +806,10 @@
     "hp.bar": "Ayudantes: {n}",
     "hp.barRunning": "Ayudantes: {n}, {r} en marcha",
     "hp.all": "Todos los ayudantes ({n})",
+    "hp.titlePlain": "Ayudantes",
+    "hp.allPlain": "Todos los ayudantes",
+    "hp.rowRunning": "{n} ayudantes en marcha",
+    "hp.rowRunning.one": "{n} ayudante en marcha",
     "hp.runningN": "{n} en marcha",
     "hp.groupOf": "Ayudantes de {name}",
     "hp.open": "{what}, {status}: abrir su transcripción",
@@ -830,13 +835,21 @@
     "b.helpers": "{n} ayudantes en marcha",
     "b.helpers.one": "{n} ayudante en marcha",
     "hub.rail": "Hub",
-    "hub.railTip": "{team} en Hub (se abre en otra pestaña)",
-    "hub.railTipPlain": "Hub (se abre en otra pestaña)",
+    "hub.railTip": "{team} en Hub",
+    "hub.railTipPlain": "Abrir Hub",
     "hub.railUnread": "{n} esperan tu respuesta",
     "hub.railRejected":
       "Hub no acepta el token de esta instalación. Vuelve a conectar en Ajustes › Hub.",
     "hub.railForbidden":
       "Hub no permite esta instalación. Pídeselo a un administrador de Hub (Ajustes › Hub).",
+    "hub.railNoToken":
+      "Aún no está conectado a Hub. Conéctalo en Ajustes › Hub.",
+    "hub.railUnreachable":
+      "Den no puede llegar a Hub ahora mismo. Mira Ajustes › Hub.",
+    "hub.railBadConfig":
+      "Los ajustes de Hub de Den tienen un problema. Mira Ajustes › Hub.",
+    "hub.railBadUrl":
+      "La dirección de Hub no es https, así que Den no la abre. Mira Ajustes › Hub.",
     "ag.session": "sesión",
     "ag.empty":
       "Elige una sesión a la izquierda para abrir su terminal. Abre más para verlas en mosaico (hasta 4).",

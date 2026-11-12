@@ -147,6 +147,7 @@
     "pal.results": "結果",
     "pal.move": "↑↓ で移動",
     "pal.open": "↵ で開く",
+    "pal.newTab": "{mod}↵ 新しいタブ",
     "pal.close": "esc で閉じる",
     "pal.none": "一致するものはありません",
     "pal.count": "{n} 件",
@@ -784,6 +785,9 @@
     "hp.bar": "ヘルパー: {n}",
     "hp.barRunning": "ヘルパー: {n}、実行中 {r}",
     "hp.all": "すべてのヘルパー ({n})",
+    "hp.titlePlain": "ヘルパー",
+    "hp.allPlain": "すべてのヘルパー",
+    "hp.rowRunning": "実行中のヘルパー {n}",
     "hp.runningN": "実行中 {n}",
     "hp.groupOf": "{name} のヘルパー",
     "hp.open": "{what}、{status}: トランスクリプトを開く",
@@ -808,13 +812,21 @@
     "hp.st.stopped": "停止",
     "b.helpers": "実行中のヘルパー {n}",
     "hub.rail": "Hub",
-    "hub.railTip": "Hub の {team}（新しいタブで開く）",
-    "hub.railTipPlain": "Hub（新しいタブで開く）",
+    "hub.railTip": "Hub の {team}",
+    "hub.railTipPlain": "Hub を開く",
     "hub.railUnread": "対応待ち {n} 件",
     "hub.railRejected":
       "Hub がこのインストールのトークンを受け付けません。設定 › Hub から再接続してください。",
     "hub.railForbidden":
       "Hub がこのインストールを許可していません。Hub の管理者に依頼してください（設定 › Hub）。",
+    "hub.railNoToken":
+      "まだ Hub に接続していません。設定 › Hub で接続してください。",
+    "hub.railUnreachable":
+      "Den は今 Hub に接続できません。設定 › Hub を確認してください。",
+    "hub.railBadConfig":
+      "Den の Hub 設定に問題があります。設定 › Hub を確認してください。",
+    "hub.railBadUrl":
+      "Hub のアドレスが https ではないため、Den は開きません。設定 › Hub を確認してください。",
     "ag.session": "セッション",
     "ag.empty":
       "左のセッションを選ぶとターミナルが開きます。複数開くと並べて表示します（最大 4）。",
