@@ -5316,6 +5316,10 @@
     "  color: var(--text); }",
     // LK-1: the admin-password prompt is a <dialog> in the top layer (a popover, or
     // a modal over another modal): placed by its top/left, no UA box.
+    // D68: every other modal dialog centred, as the browser centres it: a
+    // page's `* { margin: 0 }` reset took away the UA's margin: auto, and
+    // the dialog sat in the window's top-left corner. One rule, every page.
+    "dialog:modal:not(.den-pop):not(.den-toplayer) { margin: auto; }",
     "dialog.den-pop { margin: 0; inset: auto; max-width: none; }",
     "dialog.den-pop::backdrop { background: transparent; }",
     ".den-pop :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",

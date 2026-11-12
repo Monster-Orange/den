@@ -34,6 +34,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **Pop-ups open in the middle of the window (D68).** On Home,
+  Services, Local dev and Graph, every dialog (an approval, Restart Den,
+  a helper's list, a transcript) opened in the top-left corner. Those
+  pages reset every element's margin, which removed the browser's own
+  centring. One shared rule now centres every modal dialog on every
+  page, at any size and scroll position. A dialog taller than the
+  window sits 16 px from the top.
 - **Deleting a workspace never leaves its agents behind (D71).** Before,
   its agents kept running with no workspace and dropped out of the
   Agents page. Now a workspace with agents asks first. You can move them
