@@ -294,6 +294,46 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     60_000,
   );
 
+  it("D66: Shift+Enter in Claude Code's pane stays ESC CR, in one write, when the list no longer has its row (another workspace in scope)", async () => {
+    if (skip()) return;
+    const p = await page(`/agents?open=${sid.planner}&layout=tabs`);
+    await termUp(p, "planner");
+    // The list from now on: everything but this agent's row.
+    await p.route("**/api/sessions*", async (r) => {
+      const res = await r.fetch();
+      const body = (await res.json()) as { sessions?: { id: string }[] };
+      body.sessions = (body.sessions ?? []).filter((x) => x.id !== sid.planner);
+      await r.fulfill({ response: res, json: body });
+    });
+    await p.evaluate(() =>
+      (
+        window as unknown as { denAgentsRefresh?: () => Promise<void> }
+      ).denAgentsRefresh?.(),
+    );
+    await p.waitForFunction(
+      (i) => !document.querySelector(`#agl button.agr[data-id="${i}"]`),
+      sid.planner,
+      { timeout: 15_000 },
+    );
+    await p.click(`.pane[data-id="${sid.planner}"] .term`);
+    const from = pty("planner").writes.length;
+    await p.keyboard.type("a");
+    await p.keyboard.press("Shift+Enter");
+    await p.keyboard.type("b");
+    await eventually(() => typed("planner", from).includes("b"));
+    await new Promise((r) => setTimeout(r, 200));
+    expect(JSON.stringify(typed("planner", from))).toBe(
+      JSON.stringify("a\u001b\rb"),
+    );
+    // ESC and CR in one write: split, Claude Code reads Esc, then Enter.
+    expect(
+      pty("planner")
+        .writes.slice(from)
+        .some((w) => w.toString("latin1") === "\u001b\r"),
+    ).toBe(true);
+    await p.context().close();
+  }, 60_000);
+
   it("the session's name: Claude Code's /rename shows in the header, the tab, the list and ⌘K; a Den rename after it wins", async () => {
     if (skip()) return;
     const p = await page(`/agents?open=${sid.planner}&layout=tabs`);

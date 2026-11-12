@@ -24,6 +24,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **Shift+Enter adds a new line in an agent's pane, and never sends
+  (D66).** When the agents list didn't carry the pane's agent (another
+  workspace in scope, or for a moment during a restart), Shift+Enter
+  sent a plain Enter, and Claude Code sent the prompt. Now a pane keeps
+  its runtime's soft newline, and one it never learned is Claude Code's
+  ESC CR, never Enter. Every row from the server says what Shift+Enter
+  sends; a plain session's is Enter.
 - **The agents list lines up again when helpers run (D62).** The count
   of an agent's running helpers sat in the status-dot column, so that
   row's name moved right and was cut. The count is now a small chip on

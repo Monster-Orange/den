@@ -872,7 +872,12 @@ async function refresh() {
   st.scopeLabel = scopeLabelFor(viewWorkspaces());
   paintList();
   paintSub();
-  for (const p of st.panes.values()) paintBar(p);
+  for (const p of st.panes.values()) {
+    // D66: each pane keeps its soft newline for when its row is gone.
+    const seq = rowOf(p.id)?.softNewline;
+    if (typeof seq === "string" && seq) p.softNewline = seq;
+    paintBar(p);
+  }
   const strip = st.root.querySelector("#agr > .agtabs");
   if (strip) paintTabs(strip);
   if (!st.root.isConnected) return;
@@ -1792,10 +1797,22 @@ async function refusalReason(id) {
 
 // ── links and keys in a pane (AG-4b) ───────────────────────────────────
 
-/** What Shift+Enter sends to a pane's session (a plain session: Enter). */
+/**
+ * What Shift+Enter sends to a pane's session: its row's (the server sends
+ * every kind's; a plain session's is Enter). D66: a pane whose row the list
+ * no longer has (another workspace in scope, mid-restart) keeps the one it
+ * last had, and never knowing one, gets the catalog default, ESC CR. Never
+ * a bare CR: that sent the prompt.
+ */
+const SOFT_NEWLINE_DEFAULT = "\u001b\r";
 function softNewlineOf(id) {
   const seq = rowOf(id)?.softNewline;
-  return typeof seq === "string" && seq ? seq : "\r";
+  const p = st.panes.get(id);
+  if (typeof seq === "string" && seq) {
+    if (p) p.softNewline = seq;
+    return seq;
+  }
+  return p?.softNewline || SOFT_NEWLINE_DEFAULT;
 }
 
 /**

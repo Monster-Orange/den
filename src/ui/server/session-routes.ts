@@ -241,7 +241,7 @@ export interface ListedSession {
   sessionTitle?: string;
   /**
    * What Shift+Enter sends to it (AG-4b, its catalog entry's softNewline):
-   * ESC CR unless the runtime says otherwise. A plain session: none (Enter).
+   * ESC CR unless the runtime says otherwise. A plain session: Enter (CR).
    */
   softNewline?: string;
   persona?: string;
@@ -414,6 +414,9 @@ export function listedSessions(
       workspace: p.workspace,
       kind: "session",
       label: p.name,
+      // D66: every row says what Shift+Enter sends; a plain session's is
+      // Enter.
+      softNewline: "\r",
       state: sessionState(s),
       exited: s.exited === true,
       ...(s.exitCode !== undefined ? { exitCode: s.exitCode } : {}),
