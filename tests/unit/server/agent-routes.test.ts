@@ -968,6 +968,60 @@ describe("GET /api/workspaces/<ws>/agents/<id>/file (AG-DROP-2: a file back to t
     }
   });
 
+  it("never a repo's secrets inside its roots (agents.files.deny defaults): .env, .env.*, keys; not through a link either; audited", async () => {
+    const a = await api();
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    const ws = fs.realpathSync(a.r.wsDir("north"));
+    for (const d of ["app", "certs", "deploy", "src", ".env.d"])
+      fs.mkdirSync(path.join(ws, d), { recursive: true });
+    const put = (rel: string, body: string) =>
+      fs.writeFileSync(path.join(ws, rel), body);
+    put(".env", "TOKEN=S3CRET-MARK\n");
+    put("app/.env.local", "S3CRET-MARK\n");
+    put("certs/server.pem", "S3CRET-MARK\n");
+    put("certs/server.key", "S3CRET-MARK\n");
+    put("deploy/id_ed25519", "S3CRET-MARK\n");
+    put(".env.d/x.txt", "S3CRET-MARK\n");
+    put("src/id_utils.ts", "export {};\n");
+    put("app/env.ts", "export {};\n");
+    fs.symlinkSync(path.join(ws, ".env"), path.join(ws, "settings.txt"));
+    for (const bad of [
+      ".env",
+      "app/.env.local",
+      "certs/server.pem",
+      "certs/server.key",
+      "deploy/id_ed25519",
+      ".env.d/x.txt",
+      "settings.txt",
+      path.join(ws, "certs", "server.pem"),
+    ]) {
+      const x = await get(a, "north", "planner", bad);
+      expect([bad, x.status]).toEqual([bad, 404]);
+      expect(await x.text()).not.toContain("S3CRET-MARK");
+    }
+    // Files that only look alike stay reachable.
+    for (const ok of ["src/id_utils.ts", "app/env.ts"])
+      expect([ok, (await get(a, "north", "planner", ok)).status]).toEqual([
+        ok,
+        200,
+      ]);
+    const links = await a.call(
+      "GET",
+      `/api/workspaces/north/agents/planner/paths?p=.env&p=certs/server.pem&p=app/env.ts`,
+    );
+    expect(links.json.paths).toEqual({
+      ".env": null,
+      "certs/server.pem": null,
+      "app/env.ts": path.join(ws, "app", "env.ts"),
+    });
+    const refused = recentActions().filter(
+      (e) => e.verb === "download" && e.outcome === "refused",
+    );
+    expect(refused.some((e) => e.detail.includes("certs/server.pem"))).toBe(
+      true,
+    );
+  });
+
   it("refuses another workspace's agent (404) and a POST (405)", async () => {
     const a = await api();
     await start(a, "north", { persona: "planner" });

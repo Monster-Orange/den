@@ -625,7 +625,36 @@ async function handleUpload(
   target: string,
   d: Resolved,
 ): Promise<void> {
-  const refuse = (status: number, error: string, code: string) => {
+  const nameAsked = (() => {
+    try {
+      return new URL(req.url ?? "/", "http://localhost").searchParams.get(
+        "name",
+      );
+    } catch {
+      return null;
+    }
+  })();
+  let sessionName = target;
+  let ws: string | undefined = undefined;
+  // Every upload is audited, a refusal too (its reason the code sent).
+  const audit = (detail: string, refused?: string) =>
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "upload",
+        detail: detail.slice(0, 400),
+        ...(refused ? { outcome: "refused" as const, reason: refused } : {}),
+        ...(ws ? { targetWorkspace: ws } : {}),
+      },
+      principalOf(req),
+    );
+  const refuse = (
+    status: number,
+    error: string,
+    code: string,
+    audited = false,
+  ) => {
+    if (!audited) audit(`${sessionName}: ${nameAsked ?? "(no name)"}`, code);
     // A refusal before the body is read: the browser still sends it, so
     // drop it rather than leave the connection to time out.
     req.resume();
@@ -637,12 +666,13 @@ async function handleUpload(
   } catch (e) {
     return refuse(500, (e as Error).message, "config");
   }
-  const tooBig = (n?: number) =>
+  const tooBig = (n?: number, audited = false) =>
     refuse(
       413,
       `${n ? `${mb(n)} is` : "That file is"} over agents.uploads.max_bytes (${mb(set.maxBytes)}). ` +
-        "Raise it in den.config.yml, or send a smaller file.",
+        `Raise it in ${product().configFile}, or send a smaller file.`,
       "too_large",
+      audited,
     );
   const len = Number(req.headers["content-length"]);
   if (Number.isFinite(len) && len > set.maxBytes) return tooBig(len);
@@ -653,6 +683,8 @@ async function handleUpload(
   const found = await servedTarget(target, d);
   if (!("s" in found)) return refuse(found.status, found.error, found.code);
   const s = found.s;
+  sessionName = s.name;
+  ws = parseSessionName(s.name, d.dist())?.workspace;
   if (s.exited)
     return refuse(
       409,
@@ -714,18 +746,6 @@ async function handleUpload(
   } catch {
     /* closed */
   }
-  const ws = parseSessionName(s.name, d.dist())?.workspace;
-  const audit = (detail: string, refused?: string) =>
-    recordAction(
-      auditActorOf(req),
-      {
-        verb: "upload",
-        detail,
-        ...(refused ? { outcome: "refused" as const, reason: refused } : {}),
-        ...(ws ? { targetWorkspace: ws } : {}),
-      },
-      principalOf(req),
-    );
   if (!ok) {
     try {
       fs.unlinkSync(part);
@@ -735,7 +755,7 @@ async function handleUpload(
     audit(`${s.name}: ${path.basename(file)}`, over ? "too_large" : "aborted");
     if (over) {
       res.setHeader("Connection", "close");
-      return tooBig();
+      return tooBig(undefined, true);
     }
     if (!res.headersSent)
       sendJson(

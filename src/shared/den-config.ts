@@ -10,6 +10,7 @@
 
 import { HELPER_DEFAULTS, type HelperSettings } from "./agents/helpers.js";
 import { uploadsBlock, type UploadSettings } from "./agents/uploads.js";
+import { filesBlock, type FileSettings } from "./agents/file-deny.js";
 import { subagentsBlock, type SubagentSettings } from "./agents/subagents.js";
 import * as fs from "fs";
 import * as os from "os";
@@ -1025,6 +1026,8 @@ export const AGENTS_RESERVED_KEYS = [
   "turn_read_max_mb",
   // AG-DROP: files dropped onto an agent's terminal.
   "uploads",
+  // AG-DROP-2: files an agent's links and downloads never reach.
+  "files",
   // AG-10.5, AG-11.1: the distribution's persona categories and roles.
   "categories",
   "roles",
@@ -1062,6 +1065,8 @@ export interface ResolvedAgentsConfig {
   turnReadMaxBytes?: number;
   /** agents.uploads (AG-DROP) with its defaults. */
   uploads?: UploadSettings;
+  /** agents.files (AG-DROP-2) with its defaults. */
+  files?: FileSettings;
   /** agents.categories (AG-10.5): the distribution's, after Den's. */
   categories?: Category[];
   /** agents.roles (AG-11.1): new roles and Den roles' preset extensions. */
@@ -1216,6 +1221,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
   };
   out.helpers = helpersBlock(raw.helpers);
   out.uploads = uploadsBlock(raw.uploads);
+  out.files = filesBlock(raw.files);
   out.subagents = subagentsBlock(raw.subagents, raw.claude_ai_connectors);
   const turnMb = raw.turn_read_max_mb;
   if (turnMb !== undefined && turnMb !== null) {

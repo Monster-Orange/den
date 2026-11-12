@@ -345,6 +345,40 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.context().close();
   }, 60_000);
 
+  for (const width of [375, 390])
+    it(`at ${width} px: the pane's bar with Helpers and Attach keeps every button inside the pane`, async () => {
+      if (!browser) return;
+      const { p, errors } = await open(width);
+      const pane = p.locator(`.pane[data-id="${sid}"]`);
+      await pane.locator('.bar2 [data-act="helpers"]').waitFor();
+      await pane.locator('.bar2 [data-act="attach"]').waitFor();
+      const out = await pane.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        const bar = el.querySelector(".bar2")!;
+        return {
+          spill: Array.from(bar.querySelectorAll("button"))
+            .filter((b) => b.offsetParent)
+            .map((b) => ({ act: b.dataset.act, r: b.getBoundingClientRect() }))
+            .filter(
+              ({ r }) => r.left < box.left - 0.5 || r.right > box.right + 0.5,
+            )
+            .map(({ act }) => act),
+          bar: bar.scrollWidth - bar.clientWidth,
+          pane: el.scrollWidth - el.clientWidth,
+        };
+      });
+      expect(out).toEqual({ spill: [], bar: 0, pane: 0 });
+      // Tapping Attach never slides the pane sideways.
+      const [fc] = await Promise.all([
+        p.waitForEvent("filechooser"),
+        pane.locator('.bar2 [data-act="attach"]').click(),
+      ]);
+      expect(fc.isMultiple()).toBe(true);
+      expect(await pane.evaluate((el) => el.scrollLeft)).toBe(0);
+      expect(errors).toEqual([]);
+      await p.context().close();
+    }, 60_000);
+
   // Last: it adds helpers (a done parent and its newer done child; neither
   // runs, so the counts above stay as they are).
   it("a helper's own helper sits under it, indented, not above it by start time", async () => {

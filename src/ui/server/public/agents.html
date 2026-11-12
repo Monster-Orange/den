@@ -518,6 +518,10 @@
         background: var(--surface);
         font-size: 13px;
         min-width: 0;
+        /* A narrow pane (375 px, Helpers and Attach): the buttons take a
+           line of their own, and wrap, rather than run past its edge. */
+        flex-wrap: wrap;
+        row-gap: 6px;
       }
       .pane .bar2 b {
         white-space: nowrap;
@@ -551,7 +555,8 @@
         text-decoration: underline;
       }
       .pane .bar2 .where {
-        flex: 0 1 auto;
+        /* No width of its own to wrap on: it takes what's left, cut. */
+        flex: 1 1 0;
         min-width: 0;
         color: var(--faint);
         white-space: nowrap;
@@ -562,8 +567,11 @@
       .pane .bar2 .x {
         margin-left: auto;
         display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
         gap: 6px;
-        flex: none;
+        flex: 0 1 auto;
+        max-width: 100%;
       }
       .pane .bar2 .x [hidden] {
         display: none;

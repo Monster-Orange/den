@@ -177,6 +177,7 @@ import {
   UPLOAD_DEFAULTS,
   UPLOAD_SESSION_RE,
 } from "../../shared/agents/uploads.js";
+import { FILE_DENY_DEFAULTS } from "../../shared/agents/file-deny.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -1806,10 +1807,17 @@ function agentUploads(d: AgentsResolved, rec: AgentRecord): string | null {
 /** What its paths may never reach (agent-paths.ts PathFence). */
 function agentFence(d: AgentsResolved, rec: AgentRecord): PathFence {
   const up = agentUploads(d, rec);
+  let deny: readonly string[] = FILE_DENY_DEFAULTS;
+  try {
+    deny = readAgentsConfig().files?.deny ?? FILE_DENY_DEFAULTS;
+  } catch {
+    /* the defaults */
+  }
   return {
     home: d.env.HOME || os.homedir(),
     stateDir: d.stateDir(),
     ...(up ? { uploads: up } : {}),
+    deny,
   };
 }
 

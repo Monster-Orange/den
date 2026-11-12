@@ -41,6 +41,21 @@ config and manifest changes a distribution must make to move to it under
   folder's secrets (dotfiles, `.ssh`, `.aws`, `.config` and the like) are
   never reachable, even through a link, or for an agent whose folder is
   the home folder. Path links follow the same rule.
+- A repo's secrets inside the workspace are never a link or a download
+  either: `agents.files.deny`, globs, by default `.env`, `.env.*`,
+  `*.pem`, `*.key`, `*.p12`, `*.pfx` and SSH keys (`id_rsa*` and the
+  like). A list of your own replaces it; `[]` turns it off.
+- Every refused upload is audited, the ones refused before the file is
+  read too (too big by its size, an ended or unknown session), and so is
+  any agent's call refused for its token's scope (`agent_forbidden`) or a
+  page's write without its CSRF token.
+
+### Fixed
+
+- At 375 px, an agent pane's bar with Helpers and Attach ran past the
+  pane's edge, and tapping Attach slid the pane sideways. Its buttons now
+  take a line of their own and wrap.
+- A too-big upload's message names the distribution's own config file.
 
 ## [0.4.33] - unreleased
 

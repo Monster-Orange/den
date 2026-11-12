@@ -3231,7 +3231,9 @@ space and no Enter. A paste of plain text stays a normal paste.
   file's bytes. It answers `{ ok, path, bytes }`. It is shell-grade, with
   the terminal's own checks: CSRF, a signed-in person beyond loopback, and
   an agent's token for its own session only. Every upload, and every
-  refusal, is audited with the actor.
+  refusal, is audited with the actor and the reason: `too_large`,
+  `not_found`, `exited`, `bad_request`, and the request checks'
+  `agent_forbidden` (another session's) and `csrf`.
 - Files older than `keep_days` are removed (checked at most once an hour,
   on an upload).
 - `<cli> agents files <id> [-w <ws>] [--json]` lists an agent's uploads,
@@ -3251,6 +3253,33 @@ agents:
 | `max_bytes` | bytes, a whole number, 1 to 4 GiB | 26214400 (25 MB)  |
 | `keep_days` | days, above 0 to 3650             | 7                 |
 | `dir`       | an absolute path                  | `<state>/uploads` |
+
+A repo's own secrets are inside the agent's workspace, so the fence alone
+would serve them. `agents.files.deny` lists globs that are never a link
+or a download, applied after the fence, with the same 404 and audit:
+
+```yaml
+agents:
+  files:
+    deny: # replaces the defaults; [] turns it off
+      - .env
+      - .env.*
+      - "*.pem"
+      - "*.key"
+      - config/secrets/**
+```
+
+- A glob without `/` matches any one part of the path below the root:
+  `.env` refuses `app/.env`, and a folder named `.env` with all inside it.
+- A glob with `/` matches the whole path below the root.
+- `*` is any run within one part, `**` any run of parts, `?` one
+  character. Case counts.
+- The defaults: `.env`, `.env.*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`,
+  `id_rsa*`, `id_dsa*`, `id_ecdsa*`, `id_ed25519*`. To add to them, list
+  them with yours.
+- A file a repo merely ignores in git is not refused: build output and
+  logs are ignored too, and are what a person most often downloads. Name
+  a secret's pattern here.
 
 ### Subagents' model and claude.ai connectors
 

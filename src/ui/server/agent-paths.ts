@@ -16,6 +16,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { denied } from "../../shared/agents/file-deny.js";
 
 /** The most paths one ask takes (a screen's worth). */
 export const MAX_PATHS = 64;
@@ -43,6 +44,8 @@ export interface PathFence {
   stateDir: string;
   /** The one part of the state folder that is the agent's: its uploads. */
   uploads?: string;
+  /** agents.files.deny: globs below a root that are never reached. */
+  deny?: readonly string[];
 }
 
 /** Folders and files in a home folder that hold secrets: never a link. */
@@ -113,12 +116,17 @@ export function agentPathLinks(
     if (!p || p.length > MAX_PATH_LEN || p.includes("\0")) continue;
     const abs = path.resolve(base, p);
     const r = realOrNull(abs);
+    if (!r) continue;
+    const within = real.filter((root) => inside(r, root));
+    if (!within.length || (fence && fenced(r, fence))) continue;
     if (
-      r &&
-      real.some((root) => inside(r, root)) &&
-      !(fence && fenced(r, fence))
+      fence?.deny?.length &&
+      within.some((root) =>
+        denied(path.relative(root, r).split(path.sep).join("/"), fence.deny!),
+      )
     )
-      out[p] = r;
+      continue;
+    out[p] = r;
   }
   return out;
 }

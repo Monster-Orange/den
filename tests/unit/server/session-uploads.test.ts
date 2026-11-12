@@ -182,6 +182,16 @@ describe("POST /api/sessions/<id>/uploads (AG-DROP)", () => {
       /^3 KB is over agents\.uploads\.max_bytes \(1 KB\)/,
     );
     expect(fs.existsSync(path.join(tmp, "uploads", "d00dfeed"))).toBe(false);
+    // Refused before the body: audited all the same, naming the file.
+    expect(
+      recentActions().some(
+        (e) =>
+          e.verb === "upload" &&
+          e.outcome === "refused" &&
+          e.reason === "too_large" &&
+          e.detail === "d00dfeed: big.bin",
+      ),
+    ).toBe(true);
   });
 
   it("refuses an unknown session (404), an ended one (409), and no name (400)", async () => {
@@ -189,6 +199,12 @@ describe("POST /api/sessions/<id>/uploads (AG-DROP)", () => {
     expect((await post("e5f6a7b8", "x.png", "x")).status).toBe(409);
     expect((await post("a1b2c3d4", null, "x")).status).toBe(400);
     expect(fs.existsSync(path.join(tmp, "uploads", "e5f6a7b8"))).toBe(false);
+    // Each refusal is audited with the code it sent.
+    const reasons = recentActions()
+      .filter((e) => e.verb === "upload" && e.outcome === "refused")
+      .map((e) => e.reason);
+    for (const code of ["not_found", "exited", "bad_request"])
+      expect([code, reasons.includes(code)]).toEqual([code, true]);
   });
 
   it("never writes through a link in place of the session's folder", async () => {
