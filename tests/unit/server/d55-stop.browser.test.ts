@@ -139,6 +139,13 @@ describe("D55: Stop in the runs dock", () => {
         .first()
         .innerText();
       expect(label).not.toMatch(/failed/);
+      // Not the green dot of a run that ended well.
+      expect(
+        await p
+          .locator('#den-dock .den-rtab:has-text("down notes") .den-dot')
+          .first()
+          .getAttribute("class"),
+      ).toBe("den-dot off");
       expect(
         await p
           .locator('#den-dock .den-rtab:has-text("down notes") .den-sr')

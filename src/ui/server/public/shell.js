@@ -3405,6 +3405,8 @@
   function dotClass(r) {
     if (r.running) return "run";
     if (r.error) return "bad";
+    // D55: stopped is neither done nor failed: the faint dot.
+    if (r.stopped) return "off";
     if (r.done) return "";
     return "off";
   }
