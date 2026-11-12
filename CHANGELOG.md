@@ -52,7 +52,8 @@ config and manifest changes a distribution must make to move to it under
   it redrew every button, and a focused button such as Helpers lost
   focus. The same happened just after Esc closed the helpers list. Now
   the bar redraws only when something on it changed, and the button you
-  were on keeps focus.
+  were on keeps focus. A button whose action failed (a refused Stop)
+  still comes back on at the next refresh.
 - **Helper counts in words (D48).** The pane bar's Helpers button
   showed "Helpers (5)" and then a coloured pill with a second, unlabelled
   number, and the pill was hard to read in some themes. Now it is one

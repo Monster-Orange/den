@@ -1339,6 +1339,11 @@ function paintBar(p) {
     bar.innerHTML = html;
     p.barHtml = html;
     if (had) barFind(bar, had)?.focus();
+  } else {
+    // Unchanged: a button an action turned off while it ran (Stop, Write
+    // handoff) comes back, as a redraw used to bring it back. The bar's
+    // own HTML never turns one off.
+    for (const b of bar.querySelectorAll("button:disabled")) b.disabled = false;
   }
   // Tabs: the tab's × closes it; the pane's bar has none.
   const x = bar.querySelector('[data-act="close"]');

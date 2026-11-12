@@ -749,6 +749,34 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.context().close();
   }, 90_000);
 
+  it("a pane bar button whose action failed comes back on the next refresh (Stop, refused)", async () => {
+    if (!browser) return;
+    const { p, errors } = await open();
+    const stop = `.pane[data-id="${sid}"] [data-act="stop"]`;
+    await p.locator(stop).waitFor({ timeout: 15_000 });
+    await p.route("**/agents/scout/stop", (r) =>
+      r.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "refused here" }),
+      }),
+    );
+    await p.click(stop);
+    // Off while it runs, then back: no stuck button after a failed Stop.
+    await p.waitForFunction(
+      (sel) => {
+        const b = document.querySelector(sel) as HTMLButtonElement | null;
+        return !!b && !b.disabled;
+      },
+      stop,
+      { timeout: 15_000 },
+    );
+    expect(await p.locator(stop).isEnabled()).toBe(true);
+    await p.unroute("**/agents/scout/stop");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
   it("D34 Clear done in the Helpers list; Show cleared lists them; still hidden after a reload", async () => {
     if (!browser) return;
     const { p, errors } = await open();
