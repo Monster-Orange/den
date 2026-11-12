@@ -196,6 +196,21 @@ export const IO_PROTOCOL = "den.io";
 
 const IO_PATH = /^\/api\/sessions\/([^/]+)\/io$/;
 const UPLOAD_PATH = /^\/api\/sessions\/([^/]+)\/uploads$/;
+/**
+ * D54: the browsers viewing each session now (by session id). Each hears
+ * how many there are when that changes: one left alone sizes the PTY.
+ */
+const VIEWERS = new Map<
+  string,
+  Set<{ open: boolean; send(d: string): void }>
+>();
+
+function tellViewers(id: string): void {
+  const set = VIEWERS.get(id);
+  if (!set) return;
+  const frame = JSON.stringify({ type: "viewers", n: set.size });
+  for (const v of set) if (v.open) v.send(frame);
+}
 
 /** One row of the Agents tab's list. */
 export interface ListedSession {
@@ -925,6 +940,12 @@ export async function handleSessionUpgrade(
   const since = Date.now();
   audit(`attach ${s.name} (browser)`);
   const p = parseSessionName(s.name, d.dist())!;
+  // D54: how many browsers view this session now, this one included: a
+  // lone viewer sizes the PTY; another one follows the size in use.
+  const set = VIEWERS.get(s.ref.id) ?? new Set();
+  VIEWERS.set(s.ref.id, set);
+  set.add(ws);
+  const viewers = set.size;
   ws.send(
     JSON.stringify({
       type: "session",
@@ -932,10 +953,13 @@ export async function handleSessionUpgrade(
       name: s.name,
       workspace: p.workspace,
       label: p.name,
+      viewers,
       exited: s.exited === true,
       ...(s.exitCode !== undefined ? { exitCode: s.exitCode } : {}),
     }),
   );
+  // The others hear there's one more (it follows: D54).
+  tellViewers(s.ref.id);
   let exited = s.exited === true;
   const att = client.attach(s.ref.id, {
     onData: (data) => ws.send(data),
@@ -982,6 +1006,10 @@ export async function handleSessionUpgrade(
   const detach = () => {
     if (done) return;
     done = true;
+    const viewing = VIEWERS.get(s.ref.id);
+    viewing?.delete(ws);
+    if (viewing?.size) tellViewers(s.ref.id);
+    else VIEWERS.delete(s.ref.id);
     // Detach only: the session keeps running in the host.
     att.detach();
     client.close();

@@ -887,6 +887,8 @@
     "ag.up.attachName": "Adjuntar un archivo a {id}",
     "ag.up.attachTip":
       "Adjuntar un archivo: va a la máquina del agente y su ruta se escribe aquí",
+    "ag.size.follow": "Tamaño de otra vista ({cols}×{rows})",
+    "ag.size.take": "Usar este tamaño",
     "ag.noBackend":
       "Los terminales necesitan el módulo PTY opcional (den-pty no está disponible): {cli} doctor explica por qué",
     "ag.noHost":

@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.34] - unreleased
+## [0.4.34] - 2026-11-12
 
 ### Added
 
@@ -25,43 +25,6 @@ config and manifest changes a distribution must make to move to it under
   its uploads. Before, ⌘-click only opened the editor or copied the path,
   which doesn't help from another machine. `<cli> agents files <id>`
   lists an agent's uploads.
-
-### Security
-
-- An upload goes only to a session the person can already type into:
-  the terminal's own checks, CSRF, sign-in beyond loopback, and an
-  agent's token for its own session only. The file is 0600 in a 0700
-  folder, its name is cleaned (never a folder part), a link in place of
-  its folder is never written through, and every upload or refusal is
-  audited.
-- A download sends only a regular file inside the agent's workspace,
-  its own folder or its uploads (links followed, then checked). Anything
-  else is a 404 that sends nothing. Each download, and each refusal, is
-  audited. Den's state folder (but the agent's own uploads) and the home
-  folder's secrets (dotfiles, `.ssh`, `.aws`, `.config` and the like) are
-  never reachable, even through a link, or for an agent whose folder is
-  the home folder. Path links follow the same rule.
-- A repo's secrets inside the workspace are never a link or a download
-  either: `agents.files.deny`, globs, by default `.env`, `.env.*`,
-  `*.pem`, `*.key`, `*.p12`, `*.pfx` and SSH keys (`id_rsa*` and the
-  like). A list of your own replaces it; `[]` turns it off. Names are
-  matched in any case, and a path is resolved to the disk's own case, so
-  on macOS `.ENV` or `KEYCHAINS` never slips past the rule.
-- Every refused upload is audited, the ones refused before the file is
-  read too (too big by its size, an ended or unknown session), and so is
-  any agent's call refused for its token's scope (`agent_forbidden`) or a
-  page's write without its CSRF token.
-
-### Fixed
-
-- At 375 px, an agent pane's bar with Helpers and Attach ran past the
-  pane's edge, and tapping Attach slid the pane sideways. Its buttons now
-  take a line of their own and wrap.
-- A too-big upload's message names the distribution's own config file.
-
-## [0.4.33] - unreleased
-
-### Added
 
 - **Services agents reach only through their API (D47).** A repo's
   manifest can say `agents: api_only`, with `data_paths:` and an OrbStack
@@ -105,6 +68,30 @@ config and manifest changes a distribution must make to move to it under
 
 ### Security
 
+- An upload goes only to a session the person can already type into:
+  the terminal's own checks, CSRF, sign-in beyond loopback, and an
+  agent's token for its own session only. The file is 0600 in a 0700
+  folder, its name is cleaned (never a folder part), a link in place of
+  its folder is never written through, and every upload or refusal is
+  audited.
+- A download sends only a regular file inside the agent's workspace,
+  its own folder or its uploads (links followed, then checked). Anything
+  else is a 404 that sends nothing. Each download, and each refusal, is
+  audited. Den's state folder (but the agent's own uploads) and the home
+  folder's secrets (dotfiles, `.ssh`, `.aws`, `.config` and the like) are
+  never reachable, even through a link, or for an agent whose folder is
+  the home folder. Path links follow the same rule.
+- A repo's secrets inside the workspace are never a link or a download
+  either: `agents.files.deny`, globs, by default `.env`, `.env.*`,
+  `*.pem`, `*.key`, `*.p12`, `*.pfx` and SSH keys (`id_rsa*` and the
+  like). A list of your own replaces it; `[]` turns it off. Names are
+  matched in any case, and a path is resolved to the disk's own case, so
+  on macOS `.ENV` or `KEYCHAINS` never slips past the rule.
+- Every refused upload is audited, the ones refused before the file is
+  read too (too big by its size, an ended or unknown session), and so is
+  any agent's call refused for its token's scope (`agent_forbidden`) or a
+  page's write without its CSRF token.
+
 - **Hub's token never reaches an agent (D52).** Agents used to get the
   install's Hub token in their own MCP config file. Now an agent calls
   Hub through Den, at `/hub/…` on Den's own port, with its own Den token.
@@ -118,11 +105,34 @@ config and manifest changes a distribution must make to move to it under
   started before this get the change when they restart: their row says
   "Hub tools arrive on restart" (D44).
 
+### Fixed
+
+- At 375 px, an agent pane's bar with Helpers and Attach ran past the
+  pane's edge, and tapping Attach slid the pane sideways. Its buttons now
+  take a line of their own and wrap.
+- A too-big upload's message names the distribution's own config file.
+
 ### Migrations
 
 - None needed. Running agents pick up Den's proxy on restart.
 
-## [0.4.32] - unreleased
+## [0.4.33] - 2026-11-12
+
+### Fixed
+
+- **An agent's terminal no longer repeats and garbles text when several
+  tabs show it (D54).** A session has one terminal size, set by the view
+  in use. A view at another width drew the agent's redraws at its own
+  width, so each redraw of Claude Code's prompt left another copy of it
+  behind. Now every other view draws at the session's size (scrolling
+  sideways when it is wider than the pane) and says "Sized by another
+  view", with Take over. Typing, Take over, or picking the agent from
+  the list sets the size. Loading or reloading a page on it, focusing
+  or showing a tab never does, so tabs no longer take it from each
+  other. A lone view always sizes it, and when the view in use closes,
+  the one left takes over.
+
+## [0.4.32] - 2026-11-12
 
 ### Added
 
@@ -196,7 +206,7 @@ config and manifest changes a distribution must make to move to it under
 
 - None needed.
 
-## [0.4.31] - unreleased
+## [0.4.31] - 2026-11-12
 
 ### Changed
 

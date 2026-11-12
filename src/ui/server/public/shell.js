@@ -994,6 +994,8 @@
     "ag.up.attachName": "Attach a file to {id}",
     "ag.up.attachTip":
       "Attach a file: it goes to the agent's machine and its path is typed here",
+    "ag.size.follow": "Sized by another view ({cols}×{rows})",
+    "ag.size.take": "Take over",
     "ag.noBackend":
       "Terminals need the optional PTY module (den-pty is unavailable): {cli} doctor says why",
     "ag.noHost": "No session host is running: nothing has started yet",

@@ -863,6 +863,8 @@
     "ag.up.attachName": "{id} にファイルを添付",
     "ag.up.attachTip":
       "ファイルを添付: エージェントのマシンに送られ、そのパスがここに入力されます",
+    "ag.size.follow": "別の表示のサイズ ({cols}×{rows})",
+    "ag.size.take": "このサイズにする",
     "ag.noBackend":
       "ターミナルにはオプションの PTY モジュールが必要です（den-pty は使えません）。理由は {cli} doctor で確認できます",
     "ag.noHost": "セッションホストは動いていません。まだ何も開始されていません",
