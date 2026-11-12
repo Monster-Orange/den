@@ -8,7 +8,7 @@
  *   - A glob with `/` matches the whole path below the root:
  *     `config/secrets/**`.
  *   - `*` is any run within one part, `**` any run of parts, `?` one
- *     character. Case counts.
+ *     character. Case never counts: `.ENV` is `.env`.
  *
  * The list replaces the defaults; `deny: []` turns it off.
  */
@@ -74,7 +74,8 @@ function globRe(glob: string): RegExp {
     else if (c === "?") re += "[^/]";
     else re += c.replace(/[\\^$.|+()[\]{}]/g, "\\$&");
   }
-  return new RegExp(`^${re}$`);
+  // Any case: a case-insensitive disk (macOS) opens `.ENV` as `.env`.
+  return new RegExp(`^${re}$`, "i");
 }
 
 /** Whether `rel` (a path below a root, `/`-separated) is denied. */

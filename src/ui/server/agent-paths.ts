@@ -23,9 +23,14 @@ export const MAX_PATHS = 64;
 /** The longest path taken. */
 const MAX_PATH_LEN = 1024;
 
+/**
+ * The real path, in the disk's own case: `realpathSync` keeps the case it
+ * was given, so on a case-insensitive disk (macOS) `.ENV` would pass a
+ * check for `.env` and still open it. The native one asks the disk.
+ */
 function realOrNull(p: string): string | null {
   try {
-    return fs.realpathSync(p);
+    return fs.realpathSync.native(p);
   } catch {
     return null;
   }
@@ -33,6 +38,13 @@ function realOrNull(p: string): string | null {
 
 const inside = (p: string, root: string) =>
   p === root || p.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
+
+/**
+ * `inside`, whatever the case: for what is refused only (more is refused,
+ * never less), so a disk that ignores case can't slip a name past.
+ */
+const insideAnyCase = (p: string, root: string) =>
+  inside(p.toLowerCase(), root.toLowerCase());
 
 /**
  * What a path link and a download may never reach (AG-DROP-2), whatever
@@ -87,12 +99,13 @@ function fenced(r: string, f: PathFence): boolean {
   const home = realOrNull(f.home) ?? f.home;
   const state = realOrNull(f.stateDir) ?? f.stateDir;
   const uploads = f.uploads ? (realOrNull(f.uploads) ?? f.uploads) : null;
-  if (inside(r, state)) return !(uploads && inside(r, uploads));
-  if (inside(r, home)) {
-    const rel = path.relative(home, r);
+  if (insideAnyCase(r, state)) return !(uploads && inside(r, uploads));
+  if (insideAnyCase(r, home)) {
+    const rel = path.relative(home.toLowerCase(), r.toLowerCase());
     // A dotfile right in home (~/.zshenv, ~/.bash_history).
     if (!rel.includes(path.sep) && rel.startsWith(".")) return true;
-    if (HOME_SECRETS.some((s) => inside(r, path.join(home, s)))) return true;
+    if (HOME_SECRETS.some((s) => insideAnyCase(r, path.join(home, s))))
+      return true;
   }
   return false;
 }

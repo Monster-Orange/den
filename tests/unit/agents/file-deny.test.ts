@@ -23,6 +23,10 @@ describe("agents.files.deny (AG-DROP-2)", () => {
       "deploy/id_rsa",
       "deploy/id_ed25519.pub",
       ".env/inner.txt",
+      // Any case: macOS opens .ENV as .env.
+      "APP/.ENV",
+      "certs/A.PEM",
+      "ID_RSA",
     ])
       expect([rel, denied(rel, FILE_DENY_DEFAULTS)]).toEqual([rel, true]);
     for (const rel of [

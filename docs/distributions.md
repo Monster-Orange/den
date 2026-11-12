@@ -3273,7 +3273,7 @@ agents:
   `.env` refuses `app/.env`, and a folder named `.env` with all inside it.
 - A glob with `/` matches the whole path below the root.
 - `*` is any run within one part, `**` any run of parts, `?` one
-  character. Case counts.
+  character. Case never counts (`.ENV` is `.env`): macOS disks ignore it.
 - The defaults: `.env`, `.env.*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`,
   `id_rsa*`, `id_dsa*`, `id_ecdsa*`, `id_ed25519*`. To add to them, list
   them with yours.
