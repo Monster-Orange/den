@@ -115,6 +115,12 @@ async function viewer(
       }
       const w = window as unknown as Record<string, unknown>;
       w.__frames = [];
+      w.__releaseSize = () => {
+        w.__holdSize = false;
+        for (const [sock, data] of (w.__held ?? []) as [WebSocket, string][])
+          sock.dispatchEvent(new MessageEvent("message", { data }));
+        w.__held = [];
+      };
       const Real = window.WebSocket;
       window.WebSocket = class extends Real {
         constructor(url: string | URL, protocols?: string | string[]) {
@@ -127,6 +133,14 @@ async function viewer(
             // size frames: drop them before the page sees one.
             if (w.__dropSize && f.type === "size") {
               e.stopImmediatePropagation();
+              return;
+            }
+            // A slow link: the host's size frames held back until released
+            // (window.__releaseSize); an injected frame passes.
+            const inj = (f as { injected?: boolean }).injected;
+            if (w.__holdSize && f.type === "size" && !inj) {
+              e.stopImmediatePropagation();
+              ((w.__held ??= []) as [WebSocket, string][]).push([this, e.data]);
               return;
             }
             (w.__frames as unknown[]).push(f);
@@ -244,17 +258,31 @@ describe("the Agents tab's terminal size", () => {
     // Take over: the wide one's size again; the narrow one follows. A
     // size frame from before the take-over that lands after it (a slow
     // link) is an older one, not another view taking the size back.
+    await wide.p.evaluate(() => {
+      (window as unknown as { __holdSize: boolean }).__holdSize = true;
+    });
     await wide.p.click(`.pane[data-id="${sid}"] [data-act="take-size"]`);
+    await eventually(() => same(last(pty), wideSize));
+    // The older frame lands while the host's answer to the take-over is
+    // still on its way; then the answer.
     await wide.p.evaluate(
       ([c, r]) =>
         (window as unknown as { __socks: WebSocket[] }).__socks
           .at(-1)!
           .dispatchEvent(
             new MessageEvent("message", {
-              data: JSON.stringify({ type: "size", cols: c, rows: r }),
+              data: JSON.stringify({
+                type: "size",
+                cols: c,
+                rows: r,
+                injected: true,
+              }),
             }),
           ),
       narrowSize,
+    );
+    await wide.p.evaluate(() =>
+      (window as unknown as { __releaseSize: () => void }).__releaseSize(),
     );
     await eventually(() => same(last(pty), wideSize));
     await eventually(async () => same(await termSize(narrow.p), wideSize));
