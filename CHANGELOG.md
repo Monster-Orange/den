@@ -4,6 +4,20 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.35] - unreleased
+
+### Security
+
+- **Den acts only on the Compose projects it started (D53).** A repo's
+  manifest could render to a project something else runs, and a stack's
+  Restart (in ⌘K too) would then have restarted that project's
+  containers. Each container Den starts now carries its owner label;
+  `stack up`, `down` and `restart` refuse a project holding any
+  container without this stack's mark, naming it, and run nothing.
+  Containers an older Den started still count as its own. `doctor` warns
+  on a project name two stacks share, and on a project already running
+  containers Den didn't start.
+
 ## [0.4.34] - unreleased
 
 ### Added
