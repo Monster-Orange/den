@@ -3605,6 +3605,97 @@ export async function moveAgent(
   return { rec: resumed.rec, from: rec.workspace, resumed };
 }
 
+/** D71: a workspace's agents, for its delete to name. */
+export interface WorkspaceAgent {
+  id: string;
+  name?: string;
+  running: boolean;
+}
+
+/** D71: what a workspace delete did with its agents. */
+export interface WorkspaceAgentsDone {
+  stopped: string[];
+  /** Moved now (stopped ones), or once their turn ends (`pending`). */
+  moved: { id: string; pending: boolean }[];
+}
+
+/** D71: workspace `ws`'s agents, running or not. */
+export async function workspaceAgents(
+  d: AgentsResolved,
+  ws: string,
+): Promise<WorkspaceAgent[]> {
+  const recs = listRecords(d.stateDir()).filter((r) => r.workspace === ws);
+  if (!recs.length) return [];
+  const sessions = await hostSessions(d);
+  return recs.map((r) => ({
+    id: r.id,
+    ...(r.displayName ? { name: r.displayName } : {}),
+    running: !isStoppedState(rowState(r, sessionOf(sessions, r))),
+  }));
+}
+
+/**
+ * D71: before workspace `ws` is deleted, its agents: never left running
+ * with no workspace. With none, nothing. Otherwise the person chose:
+ *   stop  each running one stops; all are removed (Undo brings one back)
+ *   move  each moves to `to` (moveAgent): a stopped one now, a running
+ *         one once its turn ends, the same conversation
+ * No choice: refused (409, code has_agents), naming them.
+ */
+export async function disposeWorkspaceAgents(
+  d: AgentsResolved,
+  ws: string,
+  how: "stop" | "move" | undefined,
+  to?: string,
+): Promise<WorkspaceAgentsDone> {
+  const done: WorkspaceAgentsDone = { stopped: [], moved: [] };
+  const list = await workspaceAgents(d, ws);
+  if (!list.length) return done;
+  if (how === undefined) {
+    const names = list.map((a) => a.name ?? a.id).join(", ");
+    throw new AgentError(
+      `workspace "${ws}" has ${list.length} ${list.length === 1 ? "agent" : "agents"} (${names}): stop them, or move them to another workspace`,
+      { status: 409, code: "has_agents" },
+    );
+  }
+  if (how === "move") {
+    if (!to) throw usage("give the workspace to move its agents to");
+    if (to === ws)
+      throw usage(`move its agents to another workspace, not ${ws}`);
+    if (!d.workspaceExists(to))
+      throw refused(`there is no workspace "${to}"`, [], 404);
+    for (const a of list) {
+      if (!a.running) {
+        await moveAgent(d, a.id, ws, to, "now");
+        done.moved.push({ id: a.id, pending: false });
+      } else {
+        // Its turn may be long: it moves when it ends.
+        // Never left behind: if Den can't wait for it, it stops and moves.
+        void moveAgent(d, a.id, ws, to, "after-turn").catch(async () => {
+          try {
+            await stopAgent(d, a.id, ws);
+            await moveAgent(d, a.id, ws, to, "now");
+          } catch {
+            /* it shows under No workspace, with Move */
+          }
+        });
+        done.moved.push({ id: a.id, pending: true });
+      }
+    }
+    return done;
+  }
+  for (const a of list)
+    if (a.running) {
+      await stopAgent(d, a.id, ws);
+      done.stopped.push(a.id);
+    }
+  await removeRecords(
+    d,
+    listRecords(d.stateDir()).filter((r) => r.workspace === ws),
+  );
+  return done;
+}
+
 /** Drop agent `id`'s pending persona change mark, if it has one. */
 function clearPendingPersona(d: AgentsResolved, id: string): void {
   const cur = readRecord(d.stateDir(), id);

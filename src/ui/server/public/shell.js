@@ -338,6 +338,16 @@
     // D64: Restart Den, in place.
     "rd.menu": "Restart Den…",
     "rd.title": "Restart Den?",
+    "wsd.title": "“{ws}” has agents ({n})",
+    "wsd.running": "running",
+    "wsd.move": "Move them to",
+    "wsd.moveRunning":
+      "A running one moves when its turn ends, with the same conversation.",
+    "wsd.stop": "Stop them and remove them",
+    "wsd.stopHelp":
+      "Their conversations stay. Undo brings one back for an hour.",
+    "wsd.cancel": "Cancel",
+    "wsd.go": "Delete workspace",
     "rd.keepsHead": "Keeps running:",
     "rd.keepsAgents": "Agents and their terminals",
     "rd.keepsServices": "Services, and deploys on GitHub",
@@ -1093,6 +1103,10 @@
     "ag.rn.go": "Rename",
     "ag.rn.cancel": "Cancel",
     "ag.mv.item": "Move to workspace…",
+    "ag.orphan.one":
+      "{names} has no workspace: its workspace was deleted. Give it one with ⋯ › Move to workspace….",
+    "ag.orphan.many":
+      "{n} agents have no workspace ({names}): their workspace was deleted. Give each one with ⋯ › Move to workspace….",
     "ag.mv.title": "Move {id}",
     "ag.mv.to": "To workspace",
     "ag.mv.helpStopped":

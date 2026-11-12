@@ -5,6 +5,8 @@
  * Main entry point for the interactive CLI
  */
 
+import { getStateDir } from "../../shared/paths.js";
+import { listRecords } from "../../shared/agents/records.js";
 import { workspaceNameRefusal } from "../../shared/workspace-name.js";
 import { composeStacksNotice } from "./workspace-notes.js";
 import {
@@ -1720,6 +1722,11 @@ class DenCLI {
             false,
           );
           if (!confirmed) break;
+          const kept = workspaceAgentsRefusal(name);
+          if (kept) {
+            console.log(chalk.red(`\n  ${kept}\n`));
+            break;
+          }
           deleteWorkspaceDirectory(name);
           deleteWorkspaceConfig(name);
           console.log(chalk.green(`\n  ✓ Deleted workspace: ${name}\n`));
@@ -4847,6 +4854,12 @@ class DenCLI {
             false,
           ));
         if (!confirmed) return;
+        const kept = workspaceAgentsRefusal(name);
+        if (kept) {
+          console.log(chalk.red(`\n  ${kept}\n`));
+          process.exitCode = 1;
+          return;
+        }
         deleteWorkspaceDirectory(name);
         deleteWorkspaceConfig(name);
         console.log(chalk.green(`\n  ✓ Deleted workspace: ${name}\n`));
@@ -5458,3 +5471,26 @@ cli.run().catch((error) => {
   console.error(chalk.red(`\n❌ Fatal error: ${error.message}`));
   process.exit(1);
 });
+
+/**
+ * D71: why workspace `name` can't be deleted from the command line yet:
+ * it has agents, which would be left with no workspace. Null when none.
+ * (The Local dev page asks to stop or move them instead.)
+ */
+function workspaceAgentsRefusal(name: string): string | null {
+  let ids: string[];
+  try {
+    ids = listRecords(getStateDir())
+      .filter((r) => r.workspace === name)
+      .map((r) => r.id);
+  } catch {
+    return null;
+  }
+  if (!ids.length) return null;
+  const cli = product().cli;
+  return (
+    `Workspace "${name}" has ${ids.length === 1 ? "an agent" : `${ids.length} agents`} (${ids.join(", ")}). ` +
+    `Move ${ids.length === 1 ? "it" : "them"} first (${cli} agents move <id> -w <workspace>), ` +
+    `or stop and remove ${ids.length === 1 ? "it" : "them"} (${cli} agents stop <id>, ${cli} agents rm <id>).`
+  );
+}

@@ -65,6 +65,7 @@ export const UI_MODULES: readonly string[] = [
   "/popover.js",
   // D64: Restart Den from the browser, in place.
   "/restart-den.js",
+  "/ws-delete-agents.js",
 ];
 
 /** URL path → file inside node_modules. */

@@ -2764,6 +2764,14 @@ server scoped to its workspace.
   services stay the same. An import of a conversation whose last write
   came from Den's own stop of a removed agent (within 15 s) is not taken
   as open in another terminal.
+- **When its workspace is deleted (D71).** A workspace delete with
+  agents is refused until the person chooses: `agents: "move"` with
+  `agentsTo` (each moves as `agents move` does), or `agents: "stop"`
+  (each stops and is removed; Undo keeps it an hour).
+  `GET /api/workspaces/cleanup-preview` lists the agents
+  (`{id, name?, running}`) so a page can ask. An agent whose workspace
+  is gone anyway is listed by `/api/sessions` with `orphan: true`, so it
+  can be moved.
 - **Services it works on (D65).** `agents link <id> <service>...` and
   `agents unlink <id> <service>...` (a service is `repo` or
   `repo/service`). The API is `POST

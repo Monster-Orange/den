@@ -34,6 +34,17 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **Deleting a workspace never leaves its agents behind (D71).** Before,
+  its agents kept running with no workspace and dropped out of the
+  Agents page. Now a workspace with agents asks first. You can move them
+  to another workspace (a running one moves when its turn ends, with
+  the same conversation), or stop and remove them (Undo brings one back
+  for an hour). The API refuses the delete until you choose
+  (`DELETE /api/workspaces {name, agents: "stop" | "move", agentsTo}`;
+  409 `has_agents` names them). `workspace delete` on the command line
+  says how to move or remove them first. Agents whose workspace is
+  already gone show again on the Agents page, under its old name, with a
+  note that Move to workspace… gives them one.
 - **A big helper shows the model it ran on.** A helper with big tool
   results at both ends of its transcript (one reading many files) showed
   its agent's model, not its own. Den read only 64 KB at each end and

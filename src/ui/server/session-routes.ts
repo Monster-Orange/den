@@ -246,6 +246,8 @@ export interface ListedSession {
   softNewline?: string;
   /** D65: the services it works on, as a person linked them. */
   services?: string[];
+  /** D71: its workspace was deleted; Move gives it one. */
+  orphan?: boolean;
   persona?: string;
   runtime?: string;
   model?: string;
@@ -303,7 +305,7 @@ export interface ListedSession {
 export function listedSessions(
   sessions: SessionInfo[],
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
-    Partial<Pick<Resolved, "waitingAgents">> &
+    Partial<Pick<Resolved, "waitingAgents" | "workspaceExists">> &
     Partial<Pick<Resolved, "helperSettings">> &
     Pick<SessionRouteDeps, "rotationPolicy" | "restartResume">,
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
@@ -316,13 +318,24 @@ export function listedSessions(
   if (also) active.add(also);
   // ON-6: the server agent belongs to no workspace, and is always listed.
   active.add(SERVER_SCOPE);
+  // D71: an agent whose workspace was deleted is listed too (orphan), so
+  // it can be moved; it never runs unseen.
+  const all = listRecords(d.stateDir());
+  const orphanWs = new Set<string>();
+  if (d.workspaceExists)
+    for (const r of all)
+      if (
+        !active.has(r.workspace) &&
+        !isServerScope(r.workspace) &&
+        !d.workspaceExists(r.workspace)
+      )
+        orphanWs.add(r.workspace);
+  for (const w of orphanWs) active.add(w);
   const mine = sessions.filter((s) => {
     const p = parseSessionName(s.name, dist);
     return p !== null && active.has(p.workspace);
   });
-  const records = listRecords(d.stateDir()).filter((r) =>
-    active.has(r.workspace),
-  );
+  const records = all.filter((r) => active.has(r.workspace));
   const revoked = revokedAgentIds(d.stateDir());
   const waiting = d.waitingAgents?.() ?? new Set<string>();
   const out: ListedSession[] = [];
@@ -351,6 +364,7 @@ export function listedSessions(
       ...(r.sessionTitle ? { sessionTitle: r.sessionTitle } : {}),
       softNewline: softNewlineSeq(getRuntime(rec.runtime)?.catalog),
       ...(rec.services?.length ? { services: [...rec.services] } : {}),
+      ...(orphanWs.has(rec.workspace) ? { orphan: true } : {}),
       persona: rec.persona,
       runtime: rec.runtime,
       ...(rec.model ? { model: rec.model } : {}),

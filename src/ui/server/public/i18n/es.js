@@ -224,6 +224,16 @@
     "stale.restart": "Reiniciar",
     "rd.menu": "Reiniciar Den…",
     "rd.title": "¿Reiniciar Den?",
+    "wsd.title": "“{ws}” tiene agentes ({n})",
+    "wsd.running": "en marcha",
+    "wsd.move": "Moverlos a",
+    "wsd.moveRunning":
+      "Uno en marcha se mueve cuando termina su turno, con la misma conversación.",
+    "wsd.stop": "Detenerlos y quitarlos",
+    "wsd.stopHelp":
+      "Sus conversaciones se conservan. Deshacer recupera uno durante una hora.",
+    "wsd.cancel": "Cancelar",
+    "wsd.go": "Eliminar el espacio de trabajo",
     "rd.keepsHead": "Sigue en marcha:",
     "rd.keepsAgents": "Los agentes y sus terminales",
     "rd.keepsServices": "Los servicios y los despliegues en GitHub",
@@ -989,6 +999,10 @@
     "ag.rn.go": "Cambiar el nombre",
     "ag.rn.cancel": "Cancelar",
     "ag.mv.item": "Mover a otro espacio de trabajo…",
+    "ag.orphan.one":
+      "{names} no tiene espacio de trabajo: se eliminó. Asígnale uno con ⋯ › Mover a otro espacio de trabajo….",
+    "ag.orphan.many":
+      "{n} agentes no tienen espacio de trabajo ({names}): se eliminó. Asigna uno a cada uno con ⋯ › Mover a otro espacio de trabajo….",
     "ag.mv.title": "Mover {id}",
     "ag.mv.to": "Al espacio de trabajo",
     "ag.mv.helpStopped":

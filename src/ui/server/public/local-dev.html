@@ -4238,6 +4238,21 @@
             .then((r) => r.json())
             .catch(() => ({ devManaged: [], denManaged: [] }));
 
+          // D71: its agents: stop them or move them, never left behind.
+          let agentsChoice = {};
+          if (preview.agents?.length) {
+            const { askWorkspaceAgents } = await import("/ws-delete-agents.js");
+            const picked = await askWorkspaceAgents({
+              ws: name,
+              agents: preview.agents,
+              others: Object.keys(wsData?.workspaces ?? {}).filter(
+                (w) => w !== name,
+              ),
+            });
+            if (!picked) return;
+            agentsChoice = picked;
+          }
+
           // Step 2: workspace directory (__DEN_WORKSPACES_DIR__/<name>)
           let cleanupDirectory = false;
           const wsDir = wsData?.resolvedDirs?.[name];
@@ -4276,6 +4291,7 @@
               cleanupDirectory,
               cleanupDev,
               cleanupDen,
+              ...agentsChoice,
             });
           } catch (err) {
             deleted = false;

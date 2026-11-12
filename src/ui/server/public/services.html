@@ -487,8 +487,30 @@
             return;
           }
           if (!confirm(`Delete workspace "${name}"?`)) return;
+          // D71: its agents: stop them or move them, never left behind.
+          let agentsChoice = {};
+          const preview = await fetch(
+            `/api/workspaces/cleanup-preview?name=${encodeURIComponent(name)}`,
+          )
+            .then((r) => r.json())
+            .catch(() => ({}));
+          if (preview.agents?.length) {
+            const { askWorkspaceAgents } = await import("/ws-delete-agents.js");
+            const picked = await askWorkspaceAgents({
+              ws: name,
+              agents: preview.agents,
+              others: Object.keys(data.workspaces ?? {}).filter(
+                (w) => w !== name,
+              ),
+            });
+            if (!picked) return;
+            agentsChoice = picked;
+          }
           try {
-            await window.denShell.api("DELETE", "/api/workspaces", { name });
+            await window.denShell.api("DELETE", "/api/workspaces", {
+              name,
+              ...agentsChoice,
+            });
           } catch (err) {
             // R26c: the server's message (its JSON error), inline.
             msg.textContent = err.message;
@@ -766,8 +788,7 @@
           pane.querySelectorAll(".cmd-btn").forEach((btn) => {
             btn.addEventListener("click", () => {
               const { repo, service, cmd, type, workspace } = btn.dataset;
-              if (type === "exec")
-                runExec(repo, service, cmd, btn, workspace);
+              if (type === "exec") runExec(repo, service, cmd, btn, workspace);
               else runLogs(repo, service, btn);
             });
           });

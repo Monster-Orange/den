@@ -15,6 +15,13 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFile, execSync } from "child_process";
 import { singleFlight } from "./single-flight.js";
+import {
+  AgentError,
+  disposeWorkspaceAgents,
+  workspaceAgents,
+  type AgentsResolved,
+} from "../cli/agent-ops.js";
+import { webDeps } from "./agent-routes.js";
 import { readBody, sendJson, send400 } from "./http-helpers.js";
 import type { ResolvedService } from "../../shared/types/index.js";
 import type { EditorManager } from "./editor-manager.js";
@@ -366,6 +373,14 @@ export function workspaceCreateRefusal(
   return reservedWorkspaceError(slug) ?? reservedWorkspaceError(name!.trim());
 }
 
+/** D71: the agents a workspace delete reads and disposes of (tests: a rig's). */
+let wsAgentsOver: (() => AgentsResolved) | null = null;
+export function setWorkspaceAgentsDeps(f: (() => AgentsResolved) | null): void {
+  wsAgentsOver = f;
+}
+const wsAgentsDeps = (): AgentsResolved =>
+  (wsAgentsOver ?? (() => webDeps()))();
+
 export async function handleWorkspaceRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -503,6 +518,9 @@ export async function handleWorkspaceRoutes(
           cleanupDirectory?: boolean;
           cleanupDev?: boolean;
           cleanupDen?: boolean;
+          /** D71: what happens to its agents: stop them, or move them. */
+          agents?: string;
+          agentsTo?: string;
         };
         const { cleanupDirectory, cleanupDev, cleanupDen } = parsed;
         if (!parsed.name) return send400(res, "name required");
@@ -510,6 +528,38 @@ export async function handleWorkspaceRoutes(
         const name = resolveWorkspaceInput(parsed.name);
         if (name === "default")
           return send400(res, "cannot delete the default workspace");
+        if (
+          parsed.agents !== undefined &&
+          parsed.agents !== "stop" &&
+          parsed.agents !== "move"
+        )
+          return send400(res, "agents must be stop or move");
+        // D71: never leaves its agents running with no workspace.
+        let agentsDone: Awaited<ReturnType<typeof disposeWorkspaceAgents>>;
+        try {
+          agentsDone = await disposeWorkspaceAgents(
+            wsAgentsDeps(),
+            name,
+            parsed.agents as "stop" | "move" | undefined,
+            parsed.agentsTo
+              ? resolveWorkspaceInput(parsed.agentsTo)
+              : undefined,
+          );
+        } catch (e) {
+          if (!(e instanceof AgentError)) throw e;
+          return sendJson(
+            res,
+            {
+              ok: false,
+              error: e.message,
+              ...(e.code ? { code: e.code } : {}),
+              ...(e.code === "has_agents"
+                ? { agents: await workspaceAgents(wsAgentsDeps(), name) }
+                : {}),
+            },
+            e.status,
+          );
+        }
 
         // Delete workspace directory (den-workspaces/<name>)
         if (cleanupDirectory) {
@@ -546,7 +596,7 @@ export async function handleWorkspaceRoutes(
         }
 
         deleteWorkspaceConfig(name);
-        return sendJson(res, { ok: true });
+        return sendJson(res, { ok: true, ...agentsDone });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);
       }
@@ -625,7 +675,15 @@ export async function handleWorkspaceRoutes(
   if (pathname === "/api/workspaces/cleanup-preview" && req.method === "GET") {
     const wsName = url.searchParams.get("name");
     if (!wsName) return send400(res, "name required");
-    return sendJson(res, computeCleanupTargets(wsName));
+    const name = resolveWorkspaceInput(wsName);
+    // D71: its agents too, so the delete can ask what happens to them.
+    let agents: Awaited<ReturnType<typeof workspaceAgents>> = [];
+    try {
+      agents = await workspaceAgents(wsAgentsDeps(), name);
+    } catch {
+      /* none readable: the delete itself still checks */
+    }
+    return sendJson(res, { ...computeCleanupTargets(name), agents });
   }
 
   // ── API: create workspace ─────────────────────────────────────────────────

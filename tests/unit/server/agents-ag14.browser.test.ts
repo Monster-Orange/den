@@ -985,4 +985,44 @@ describe("D72: Move to workspace…", () => {
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);
+
+  it("D71: an agent whose workspace was deleted shows, says why, and Move gives it one", async () => {
+    if (skip()) return;
+    s!.seed({
+      id: "stray",
+      persona: "planner",
+      displayName: "Stray",
+      workspace: "gone",
+      resumeToken: "66666666-6666-4666-8666-666666666666",
+      stoppedAt: STOPPED_AT,
+    });
+    const p = await open("north");
+    const note = '#agl .agnote[data-note="orphan"]';
+    await p.waitForSelector(note, { timeout: 15_000 });
+    expect(await p.textContent(note)).toBe(
+      "Stray has no workspace: its workspace was deleted. Give it one with ⋯ › Move to workspace….",
+    );
+    const group = p.locator("#agl details[data-stopped]");
+    if ((await group.getAttribute("open")) === null)
+      await group.locator("summary").click();
+    const stray = p.locator('#agl .agst[data-agent="stray"]');
+    await stray.locator('[data-act="row-more"]').click();
+    await p
+      .locator('.den-pop[role="menu"] .den-mi', {
+        hasText: "Move to workspace…",
+      })
+      .click();
+    await p.waitForSelector("#ag-mv[open]");
+    await p.selectOption("#ag-mv-ws", "south");
+    const res = p.waitForResponse(
+      (r) =>
+        new URL(r.url()).pathname === "/api/workspaces/gone/agents/stray/move",
+    );
+    await p.click("#ag-mv-go");
+    expect((await res).status()).toBe(200);
+    await p.waitForSelector(note, { state: "detached", timeout: 15_000 });
+    expect(readRecord(s!.stateDir, "stray")?.workspace).toBe("south");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
 });

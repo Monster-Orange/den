@@ -696,9 +696,24 @@ function paintList() {
     return;
   }
   // ON-6: the server agent's group, "Server", first, whatever the view.
-  const shown = st.data.sessions.some((s) => s.server)
-    ? [SERVER_WS, ...viewWorkspaces()]
-    : viewWorkspaces();
+  // D71: agents whose workspace was deleted, under its old name.
+  const orphans = st.data.sessions.filter((s) => s.orphan);
+  const shown = [
+    ...(st.data.sessions.some((s) => s.server) ? [SERVER_WS] : []),
+    ...viewWorkspaces(),
+    ...new Set(orphans.map((s) => s.workspace)),
+  ];
+  if (orphans.length)
+    notes.push(
+      `<div class="agnote" data-note="orphan" role="status">` +
+        esc(
+          t(orphans.length === 1 ? "ag.orphan.one" : "ag.orphan.many", {
+            n: orphans.length,
+            names: orphans.map((r) => displayName(r)).join(", "),
+          }),
+        ) +
+        `</div>`,
+    );
   // ?ws= names a workspace that isn't active: say so, and offer the switch.
   const asked = st.data.requested;
   if (asked && !asked.active)
@@ -795,11 +810,15 @@ function stoppedGroupHtml(rows) {
 function visibleRows() {
   const shown = new Set(viewWorkspaces());
   shown.add(SERVER_WS);
-  return (st.data?.sessions ?? []).filter((s) => shown.has(s.workspace));
+  // D71: an agent whose workspace was deleted shows in every view.
+  return (st.data?.sessions ?? []).filter(
+    (s) => shown.has(s.workspace) || s.orphan,
+  );
 }
 
 function paintSub() {
   const rows = visibleRows();
+
   const waiting = rows.filter((r) => r.waiting).length;
   const n = rows.length;
   const count = st.root.querySelector("#ag-count");

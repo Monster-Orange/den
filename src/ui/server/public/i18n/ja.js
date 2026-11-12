@@ -212,6 +212,15 @@
     "stale.restart": "再起動",
     "rd.menu": "Den を再起動…",
     "rd.title": "Den を再起動しますか?",
+    "wsd.title": "「{ws}」にはエージェントがあります ({n})",
+    "wsd.running": "実行中",
+    "wsd.move": "移動先",
+    "wsd.moveRunning":
+      "実行中のエージェントはターンの終了後、同じ会話のまま移動します。",
+    "wsd.stop": "停止して削除する",
+    "wsd.stopHelp": "会話は残ります。元に戻すと 1 時間以内なら復元できます。",
+    "wsd.cancel": "キャンセル",
+    "wsd.go": "ワークスペースを削除",
     "rd.keepsHead": "動き続けるもの:",
     "rd.keepsAgents": "エージェントとそのターミナル",
     "rd.keepsServices": "サービスと GitHub 上のデプロイ",
@@ -965,6 +974,10 @@
     "ag.rn.go": "名前を変更",
     "ag.rn.cancel": "キャンセル",
     "ag.mv.item": "別のワークスペースへ移動…",
+    "ag.orphan.one":
+      "{names} にはワークスペースがありません (削除されました)。⋯ › 別のワークスペースへ移動… で割り当ててください。",
+    "ag.orphan.many":
+      "{n} 個のエージェントにワークスペースがありません ({names})。削除されました。それぞれ ⋯ › 別のワークスペースへ移動… で割り当ててください。",
     "ag.mv.title": "{id} を移動",
     "ag.mv.to": "移動先のワークスペース",
     "ag.mv.helpStopped":
