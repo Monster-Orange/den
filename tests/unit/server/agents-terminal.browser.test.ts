@@ -383,7 +383,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await p.context().close();
   }, 60_000);
 
-  it("links: URLs and OSC 8 http links open with ⌘/Ctrl-click (noopener); javascript: never; paths inside the workspace copy or open the editor; outside ones aren't links", async () => {
+  it("links: URLs and OSC 8 http links open with ⌘/Ctrl-click (noopener); javascript: never; paths inside the workspace open a menu (Download, the editor, Copy path); outside ones aren't links", async () => {
     if (skip()) return;
     await s!.settings({ editor_open: null });
     const p = await page(`/agents?open=${sid.planner}&layout=tabs`);
@@ -437,8 +437,16 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await modClick(p, "planner", 6, 2);
     await p.waitForTimeout(300);
     expect((await opened(p)).length).toBe(2);
-    // A path, with editor_open none: its absolute path is copied.
+    // A path: its menu (AG-DROP-2). With editor_open none: Download and
+    // Copy path, no editor; Copy path copies its absolute path.
     await modClick(p, "planner", 6, 3);
+    const menu = p.locator('.den-pop[role="menu"]');
+    await menu.waitFor();
+    expect(await menu.locator(".den-mi").allTextContents()).toEqual([
+      "Download",
+      "Copy path",
+    ]);
+    await menu.getByRole("menuitem", { name: "Copy path" }).click();
     const abs = fs.realpathSync(path.join(s!.wsDir("north"), "src", "x.ts"));
     await eventually(async () => (await copied(p)).length === 1);
     expect(await copied(p)).toEqual([abs]);
@@ -467,6 +475,14 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     );
     expect(await linkAt(q, "planner", 6, 0)).toBe(true);
     await modClick(q, "planner", 6, 0);
+    const qm = q.locator('.den-pop[role="menu"]');
+    await qm.waitFor();
+    expect(await qm.locator(".den-mi").allTextContents()).toEqual([
+      "Download",
+      "Open in Zed",
+      "Copy path",
+    ]);
+    await qm.getByRole("menuitem", { name: "Open in Zed" }).click();
     await eventually(async () => (await opened(q)).length === 1);
     expect(await opened(q)).toEqual([[`zed://file${abs}:10`, "_self"]]);
     expect(await copied(q)).toEqual([]);

@@ -980,6 +980,12 @@
     "ag.lost": "[disconnected: {why}]",
     "ag.reconnect": "Reconnect",
     // AG-DROP: a file dropped, pasted or attached onto an agent's terminal.
+    "ag.path.download": "Download",
+    "ag.path.open": "Open in {ed}",
+    "ag.path.copy": "Copy path",
+    "ag.path.downloading": "Downloading {name}",
+    "ag.path.noFile":
+      "{name} can't be downloaded: it isn't a file in the agent's workspace or uploads",
     "ag.up.drop": "Drop to attach to {name}",
     "ag.up.sending": "sending…",
     "ag.up.pct": "{n}%",

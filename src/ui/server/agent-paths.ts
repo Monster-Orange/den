@@ -9,6 +9,10 @@
  * own cwd (a worktree of it). Anything else is null, so a path outside
  * the workspace is never a link and the page never learns whether it
  * exists. Only stat is used: nothing is read, nothing is opened.
+ *
+ * AG-DROP-2: the same roots, plus the agent's uploads folder, say which
+ * file `GET /api/workspaces/<ws>/agents/<id>/file?p=<path>` sends back to
+ * the browser (agentFile): a regular file inside them, else nothing.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -49,4 +53,29 @@ export function agentPathLinks(
     if (r && real.some((root) => inside(r, root))) out[p] = r;
   }
   return out;
+}
+
+/**
+ * AG-DROP-2: `given` as a file the browser may download: inside `roots`
+ * (symlinks followed) and a regular file; else null.
+ */
+export function agentFile(
+  given: string,
+  cwd: string,
+  roots: readonly string[],
+): string | null {
+  const abs = agentPathLinks([given], cwd, roots)[given];
+  if (!abs) return null;
+  try {
+    return fs.statSync(abs).isFile() ? abs : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `attachment` with the file's name, plain and UTF-8 (RFC 6266). */
+export function attachmentHeader(file: string): string {
+  const name = path.basename(file);
+  const plain = name.replace(/[^\x20-\x7e]|["\\]/g, "_");
+  return `attachment; filename="${plain}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }

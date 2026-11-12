@@ -68,6 +68,13 @@ import {
   type ApiOnlyRules,
 } from "../../shared/agents/api-only.js";
 import * as fs from "fs";
+import * as path from "path";
+import { readAgentsConfig } from "../../shared/den-config.js";
+import {
+  listUploads,
+  uploadsRoot,
+  UPLOAD_DEFAULTS,
+} from "../../shared/agents/uploads.js";
 import { DEFAULT_RUNTIME_ID } from "../../shared/agents/runtimes.js";
 import { ACTOR_TOKEN_ENV } from "../../shared/actor-token.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
@@ -215,6 +222,10 @@ export const AGENTS_HELP = {
     "    name an agent (its tab, row and pane header); the id never changes.",
     "    Other sessions see it as {cli}-<ws>:<name> from its next start or resume.",
     "    --clear: back to its id",
+    "{cli} agents files <id> [-w <ws>] [--json]",
+    "    the files dropped, pasted or attached onto the agent's terminal (its",
+    "    uploads), newest first: when, size and path. agents.uploads sets the",
+    "    cap, how long they're kept and where",
     "{cli} agents rm <id> [-w <ws>]",
     "{cli} agents rm --stopped [-w <ws>]",
     "    forget a stopped, interrupted or exited agent (never a running one);",
@@ -880,6 +891,64 @@ async function resumeAll(args: string[], d: AgentsResolved): Promise<number> {
   return r.failed.length ? 1 : 0;
 }
 
+/** AG-DROP-2: `agents files <id> [-w <ws>] [--json]`: its uploads. */
+function files(args: string[], d: AgentsResolved): number {
+  const where = "agents files";
+  const p = parseArgs(where, args, { "--workspace": true, "--json": false });
+  noExtra(where, p, 1);
+  const id = p.positional[0];
+  if (!id) throw new UsageError(`${where} needs <id>`);
+  const rec = readRecord(d.stateDir(), id);
+  const ws = workspaceFlag(where, p);
+  if (!rec || (ws && rec.workspace !== ws))
+    throw new AgentError(`no agent "${id}"${ws ? ` in ${ws}` : ""}`, {
+      hints: [`\`${d.cli} agents list\` lists them`],
+    });
+  const set = readAgentsConfig().uploads ?? UPLOAD_DEFAULTS;
+  const root = uploadsRoot(set, d.stateDir());
+  const list = listUploads(root, rec.session.id);
+  if (p.flags["--json"]) {
+    d.out(
+      JSON.stringify(
+        {
+          agent: rec.id,
+          workspace: rec.workspace,
+          folder: path.join(root, rec.session.id),
+          keepDays: set.keepDays,
+          files: list.map((f) => ({
+            path: f.path,
+            bytes: f.bytes,
+            at: new Date(f.at).toISOString(),
+          })),
+        },
+        null,
+        2,
+      ),
+    );
+    return 0;
+  }
+  if (!list.length) {
+    d.out(
+      `no files for ${rec.id} yet: drop, paste or attach one onto its terminal on the Agents page`,
+    );
+    return 0;
+  }
+  const size = (n: number) =>
+    n >= 1024 * 1024
+      ? `${(n / (1024 * 1024)).toFixed(1)} MB`
+      : n >= 1024
+        ? `${Math.ceil(n / 1024)} KB`
+        : `${n} B`;
+  for (const f of list)
+    d.out(
+      `${duration(Date.now() - f.at)} ago  ${size(f.bytes).padStart(8)}  ${f.path}`,
+    );
+  d.out(
+    `${list.length} ${list.length === 1 ? "file" : "files"}; each is removed ${set.keepDays} ${set.keepDays === 1 ? "day" : "days"} after it came (agents.uploads.keep_days)`,
+  );
+  return 0;
+}
+
 /** `agents rm <id> [-w <ws>]`, `agents rm --stopped [-w <ws>]` (AG-14.1b). */
 /** D25: `agents rename <id> <name>|--clear [-w <ws>]`. */
 function rename(args: string[], d: AgentsResolved): number {
@@ -1310,6 +1379,8 @@ export async function cmdAgents(
           return await helpers(rest, d);
         case "rename":
           return rename(rest, d);
+        case "files":
+          return files(rest, d);
         case "rm":
           await loadAgentWorkspaces(deps);
           return await rm(rest, d);

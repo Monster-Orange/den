@@ -193,3 +193,35 @@ export function pruneUploads(
   }
   return gone;
 }
+
+export interface UploadEntry {
+  path: string;
+  name: string;
+  bytes: number;
+  /** ms since the epoch. */
+  at: number;
+}
+
+/** The files in session `sessionId`'s uploads folder, newest first. */
+export function listUploads(root: string, sessionId: string): UploadEntry[] {
+  if (!UPLOAD_SESSION_RE.test(sessionId)) return [];
+  const dir = path.join(root, sessionId);
+  let names: fs.Dirent[];
+  try {
+    names = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: UploadEntry[] = [];
+  for (const d of names) {
+    if (!d.isFile() || d.name.endsWith(".part")) continue;
+    const file = path.join(dir, d.name);
+    try {
+      const st = fs.lstatSync(file);
+      out.push({ path: file, name: d.name, bytes: st.size, at: st.mtimeMs });
+    } catch {
+      /* gone */
+    }
+  }
+  return out.sort((a, b) => b.at - a.at);
+}

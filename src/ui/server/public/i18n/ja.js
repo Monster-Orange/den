@@ -849,6 +849,12 @@
     "ag.goWs": "ワークスペースで {ws} を開く",
     "ag.lost": "[切断: {why}]",
     "ag.reconnect": "再接続",
+    "ag.path.download": "ダウンロード",
+    "ag.path.open": "{ed} で開く",
+    "ag.path.copy": "パスをコピー",
+    "ag.path.downloading": "{name} をダウンロード中",
+    "ag.path.noFile":
+      "{name} はダウンロードできません: エージェントのワークスペースやアップロードにあるファイルではありません",
     "ag.up.drop": "ドロップして {name} に添付",
     "ag.up.sending": "送信中…",
     "ag.up.pct": "{n}%",

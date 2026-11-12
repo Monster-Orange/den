@@ -873,6 +873,12 @@
     "ag.goWs": "Abrir {ws} en Espacios de trabajo",
     "ag.lost": "[desconectado: {why}]",
     "ag.reconnect": "Reconectar",
+    "ag.path.download": "Descargar",
+    "ag.path.open": "Abrir en {ed}",
+    "ag.path.copy": "Copiar ruta",
+    "ag.path.downloading": "Descargando {name}",
+    "ag.path.noFile":
+      "No se puede descargar {name}: no es un archivo del espacio de trabajo ni de las subidas del agente",
     "ag.up.drop": "Suelta para adjuntar a {name}",
     "ag.up.sending": "enviando…",
     "ag.up.pct": "{n} %",

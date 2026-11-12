@@ -1723,7 +1723,7 @@ async function providePathLinks(p, y, done) {
         text: m.text,
         range: { start: { x: m.start + 1, y }, end: { x: m.end, y } },
         decorations: { pointerCursor: true, underline: true },
-        activate: (e) => void openPath(e, abs.get(m.path), m.line, m.col),
+        activate: (e) => void openPath(e, p, r, abs.get(m.path), m.line, m.col),
         hover: () => linkHint(p, true),
         leave: () => linkHint(p, false),
       }));
@@ -1733,26 +1733,98 @@ async function providePathLinks(p, y, done) {
   }
 }
 
+const EDITOR_NAMES = { vscode: "VS Code", cursor: "Cursor", zed: "Zed" };
+
 /**
- * A path link clicked: with ⌘ (Ctrl elsewhere), the editor in Settings
- * (editor_open) at the line, by its URL scheme; none copies the path.
+ * A path link clicked with ⌘ (Ctrl elsewhere): a menu at the pointer.
+ * Download (AG-DROP-2: the file to this browser's machine, which may not
+ * be the agent's), Open in the editor set in Settings (editor_open, at
+ * the line, by its URL scheme), Copy path.
  */
-async function openPath(e, abs, line, col) {
-  if (!linkModifier(e) || !abs) return;
+function openPath(e, p, r, abs, line, col) {
+  if (!linkModifier(e) || !abs || !r?.agent) return;
   e?.preventDefault?.();
   const url = editorUrl(st.editorOpen, abs, line, col);
-  if (url) {
-    // D35: the same tab, to the editor's own scheme (zed://, vscode://):
-    // a navigation, not a new window, so no popup blocker stands in it.
-    window.open(url, "_self");
-    return;
-  }
+  window.denShell?.openMenu?.(pathAnchor(p, e), {
+    label: abs,
+    items: [
+      {
+        label: t("ag.path.download"),
+        onSelect: () => void downloadPath(r, abs),
+      },
+      ...(url
+        ? [
+            {
+              label: t("ag.path.open", {
+                ed: EDITOR_NAMES[st.editorOpen] ?? st.editorOpen,
+              }),
+              // D35: the same tab, to the editor's own scheme (zed://,
+              // vscode://): a navigation, not a new window, so no popup
+              // blocker stands in it.
+              onSelect: () => window.open(url, "_self"),
+            },
+          ]
+        : []),
+      { label: t("ag.path.copy"), onSelect: () => void copyPath(abs) },
+    ],
+  });
+}
+
+async function copyPath(abs) {
   try {
     await navigator.clipboard.writeText(abs);
     window.denShell?.toast?.(t("ag.copied"));
   } catch (err) {
     window.denShell?.errorToast?.(err);
   }
+}
+
+/**
+ * AG-DROP-2: the file at `abs` downloads to this browser, from the agent's
+ * workspace, cwd or uploads (the server checks; it says so when not).
+ */
+async function downloadPath(r, abs) {
+  const url = `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/file?p=${encodeURIComponent(abs)}`;
+  const name = abs.split("/").pop() || abs;
+  try {
+    const h = await fetch(url, { method: "HEAD", credentials: "same-origin" });
+    if (!h.ok) throw new Error(t("ag.path.noFile", { name }));
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.hidden = true;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  window.denShell?.toast?.(t("ag.path.downloading", { name }));
+}
+
+/**
+ * Where a path's menu opens: a point at the click, made once. Focus that
+ * comes back to it (Esc) goes on to the pane's terminal.
+ */
+function pathAnchor(p, e) {
+  let a = document.getElementById("ag-path-anchor");
+  if (!a) {
+    a = document.createElement("span");
+    a.id = "ag-path-anchor";
+    a.tabIndex = -1;
+    a.setAttribute("aria-hidden", "true");
+    a.style.cssText =
+      "position:fixed;width:1px;height:1px;pointer-events:none;opacity:0";
+    a.addEventListener("focus", () =>
+      st.panes.get(a.dataset.pane)?.term?.focus(),
+    );
+    document.body.append(a);
+  }
+  a.dataset.pane = p.id;
+  a.style.left = `${Math.round(e?.clientX ?? 0)}px`;
+  a.style.top = `${Math.round(e?.clientY ?? 0)}px`;
+  return a;
 }
 
 async function openPane(id, { front = true } = {}) {

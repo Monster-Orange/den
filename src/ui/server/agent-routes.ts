@@ -90,12 +90,16 @@
  * There is no terminal here: the Agents tab's io (session-routes.ts) is
  * the only route that writes to a session or streams its output.
  */
+import * as fs from "fs";
 import * as http from "http";
+import * as path from "path";
 import {
   configuredRemoveStoppedAfter,
   getReposRoot,
+  readAgentsConfig,
   readMcpConfig,
 } from "../../shared/den-config.js";
+import type { AgentRecord } from "../../shared/agents/records.js";
 import {
   readWorkspacesFile,
   conversationFolders,
@@ -160,7 +164,17 @@ import {
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
 import { recordAction } from "./audit.js";
-import { agentPathLinks, MAX_PATHS } from "./agent-paths.js";
+import {
+  agentFile,
+  agentPathLinks,
+  attachmentHeader,
+  MAX_PATHS,
+} from "./agent-paths.js";
+import {
+  uploadsRoot,
+  UPLOAD_DEFAULTS,
+  UPLOAD_SESSION_RE,
+} from "../../shared/agents/uploads.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -188,7 +202,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|handoff|clear-helpers|restart))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|handoff|clear-helpers|restart|file))?$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -569,6 +583,7 @@ export async function handleAgentRoutes(
     | "handoff"
     | "clear-helpers"
     | "restart"
+    | "file"
     | undefined;
 
   if (!action && method === "GET") {
@@ -602,19 +617,66 @@ export async function handleAgentRoutes(
         throw new AgentError(`at most ${MAX_PATHS} paths at once`, {
           usage: true,
         });
-      let wsDir: string | null = null;
-      try {
-        wsDir = d.workspaceDir(ws);
-      } catch {
-        wsDir = null;
-      }
       sendJson(res, {
-        paths: agentPathLinks(
-          given,
-          rec.cwd,
-          [wsDir, rec.cwd].filter((x): x is string => !!x),
-        ),
+        paths: agentPathLinks(given, rec.cwd, agentRoots(d, rec, ws)),
       });
+    } catch (e) {
+      sendError(res, e, ws);
+    }
+    return true;
+  }
+  // AG-DROP-2: a file the agent printed (or was given), back to the
+  // browser's machine: inside its workspace, its cwd or its uploads.
+  if (action === "file") {
+    if (method !== "GET" && method !== "HEAD")
+      return methodNotAllowed(res, "GET");
+    try {
+      const rec = agentRecord(d, id!, ws);
+      const given =
+        new URL(req.url ?? "/", "http://localhost").searchParams.get("p") ?? "";
+      const file = given
+        ? agentFile(given, rec.cwd, agentRoots(d, rec, ws))
+        : null;
+      const audit = (detail: string, reason?: string) =>
+        recordAction(
+          auditActorOf(req),
+          {
+            verb: "download",
+            detail,
+            targetWorkspace: ws,
+            ...(reason ? { outcome: "refused" as const, reason } : {}),
+          },
+          principalOf(req),
+        );
+      if (!file) {
+        audit(`${rec.id}: ${given.slice(0, 300)}`, "not_found");
+        sendJson(
+          res,
+          {
+            ok: false,
+            error: `${given || "(no path)"} is not a file in ${rec.id}'s workspace or uploads`,
+            code: "not_found",
+          },
+          404,
+        );
+        return true;
+      }
+      const size = fs.statSync(file).size;
+      audit(`${rec.id}: ${file} (${size} bytes)`);
+      res.writeHead(200, {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": attachmentHeader(file),
+        "Content-Length": String(size),
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      });
+      if (method === "HEAD") {
+        res.end();
+        return true;
+      }
+      const stream = fs.createReadStream(file);
+      stream.on("error", () => res.destroy());
+      stream.pipe(res);
     } catch (e) {
       sendError(res, e, ws);
     }
@@ -1719,4 +1781,29 @@ async function helpersRoute(
     sendError(res, e, ws);
   }
   return true;
+}
+
+/**
+ * The folders an agent's paths may point into (AG-4b, AG-DROP-2): its
+ * workspace's, its own cwd, and its session's uploads folder.
+ */
+function agentRoots(d: AgentsResolved, rec: AgentRecord, ws: string): string[] {
+  const roots: string[] = [];
+  try {
+    roots.push(d.workspaceDir(ws));
+  } catch {
+    /* no folder */
+  }
+  roots.push(rec.cwd);
+  const sid = rec.session?.id;
+  if (sid && UPLOAD_SESSION_RE.test(sid)) {
+    let set = UPLOAD_DEFAULTS;
+    try {
+      set = readAgentsConfig().uploads ?? UPLOAD_DEFAULTS;
+    } catch {
+      /* the defaults */
+    }
+    roots.push(path.join(uploadsRoot(set, d.stateDir()), sid));
+  }
+  return roots.filter(Boolean);
 }

@@ -173,6 +173,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "which paths an agent printed exist in its workspace (stat only, AG-4b)",
   ),
   R(
+    "/api/workspaces/:ws/agents/:id/file",
+    "AG-DROP-2: a file in an agent's workspace, cwd or uploads, as a download (audited)",
+  ),
+  R(
     "/api/workspaces/:ws/agents/:id/helpers",
     "D32: the helpers an agent started in its own session, read from the runtime's files (never written)",
   ),
@@ -596,6 +600,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/remove",
     "/api/workspaces/:ws/agents/:id/name",
     "/api/workspaces/:ws/agents/:id/paths",
+    "/api/workspaces/:ws/agents/:id/file",
     "/api/workspaces/:ws/agents/:id/persona",
     "/api/workspaces/:ws/agents/:id/keep",
     "/api/workspaces/:ws/agents/:id/handoff",

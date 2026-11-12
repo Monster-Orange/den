@@ -18,6 +18,13 @@ config and manifest changes a distribution must make to move to it under
   pastes as text. Each file shows its progress, then "attached" or why it
   wasn't. Settings: `agents.uploads.max_bytes` (default 25 MB),
   `keep_days` (default 7, then removed) and `dir`.
+- **Files back to your browser (AG-DROP-2).** ⌘-click (Ctrl-click) on a
+  file path an agent prints now opens a menu: Download, Open in your
+  editor (when Settings names one), and Copy path. Download brings the
+  file to the machine your browser is on, from the agent's workspace or
+  its uploads. Before, ⌘-click only opened the editor or copied the path,
+  which doesn't help from another machine. `<cli> agents files <id>`
+  lists an agent's uploads.
 
 ### Security
 
@@ -26,6 +33,10 @@ config and manifest changes a distribution must make to move to it under
   agent's token for its own session only. The file is 0600 in a 0700
   folder, its name is cleaned (never a folder part), a link in place of
   its folder is never written through, and every upload or refusal is
+  audited.
+- A download sends only a regular file inside the agent's workspace,
+  its own folder or its uploads (links followed, then checked). Anything
+  else is a 404 that sends nothing. Each download, and each refusal, is
   audited.
 
 ## [0.4.33] - unreleased

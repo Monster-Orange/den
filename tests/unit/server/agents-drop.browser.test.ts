@@ -311,6 +311,53 @@ describe("AG-DROP: a file onto an agent's terminal", () => {
     }
   }, 90_000);
 
+  it("AG-DROP-2: ⌘/Ctrl-click on a path the agent printed: its menu's Download brings the file to this browser", async () => {
+    if (!browser) return;
+    const dir = path.join(s.wsDir("north"), "out");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "r.txt"), "the agent's report\n");
+    const { p, errors } = await open();
+    pty.emit("\u001b[2J\u001b[Hsee out/r.txt here\r\n");
+    await p.waitForFunction(() =>
+      document
+        .querySelector(".pane .xterm-rows")
+        ?.textContent?.includes("see out/r.txt here"),
+    );
+    const at = await p.$eval(`.pane[data-id="${sid}"]`, (el) => {
+      const scr = el.querySelector(".xterm-screen")!.getBoundingClientRect();
+      const cols = Number((el as HTMLElement).dataset.cols);
+      const rows = Number((el as HTMLElement).dataset.rows);
+      return {
+        x: scr.left + 6.5 * (scr.width / cols),
+        y: scr.top + 0.5 * (scr.height / rows),
+      };
+    });
+    const mod = (await p.evaluate(() => /mac/i.test(navigator.platform)))
+      ? "Meta"
+      : "Control";
+    await p.mouse.move(at.x, at.y + 300);
+    await p.mouse.move(at.x, at.y, { steps: 3 });
+    await p
+      .locator(`.pane[data-id="${sid}"] .xterm-cursor-pointer`)
+      .waitFor({ timeout: 10_000 });
+    await p.keyboard.down(mod);
+    await p.mouse.click(at.x, at.y);
+    await p.keyboard.up(mod);
+    const menu = p.locator('.den-pop[role="menu"]');
+    await menu.waitFor();
+    const [dl] = await Promise.all([
+      p.waitForEvent("download"),
+      menu.getByRole("menuitem", { name: "Download" }).click(),
+    ]);
+    expect(dl.suggestedFilename()).toBe("r.txt");
+    const got = await dl.path();
+    expect(fs.readFileSync(got!, "utf8")).toBe("the agent's report\n");
+    // The page stays.
+    expect(new URL(p.url()).pathname).toBe("/agents");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
   it("a drop beside the panes never replaces the page", async () => {
     if (!browser) return;
     const { p, errors } = await open();

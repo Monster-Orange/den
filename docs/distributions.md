@@ -3073,15 +3073,22 @@ agent of the workspaces in view, and their terminals in the browser.
   (`javascript:`, `file:`) is no link. A plain click selects text as
   ever. A file path an agent prints (`src/foo.ts:42`, `./a/b.js:3:7`, an
   absolute path) is a link when it exists inside the agent's workspace
-  (its directory, or the agent's own folder), resolved against the
-  agent's folder; one outside it never is. The server checks with `GET
+  (its directory, or the agent's own folder) or its uploads, resolved
+  against the agent's folder; one outside it never is. The server checks with `GET
 /api/workspaces/<ws>/agents/<id>/paths?p=<path>&p=…` (stat only, nothing
   is read; at most 64 at once), which answers each path's absolute path
-  or null. ⌘-click opens it in the editor of Settings › Editor & terminal ›
-  "Open file links in" (`editor_open` in `config/local/user.yml` and
-  `/api/settings`: `vscode`, `cursor` or `zed`, by its URL scheme at the
-  line), or, with `none` (the default), copies its absolute path and says
-  "Copied".
+  or null. ⌘-click opens a menu at the pointer:
+  - **Download** brings the file to the browser's machine, which may not
+    be the agent's (AG-DROP-2). `GET
+/api/workspaces/<ws>/agents/<id>/file?p=<path>` sends a regular file
+    inside the same folders, or the agent's uploads, as an attachment.
+    Anything else gets 404, and nothing of it is sent. Every download,
+    and every refusal, is audited.
+  - **Open in <editor>**, when Settings › Editor & terminal › "Open file
+    links in" names one (`editor_open` in `config/local/user.yml` and
+    `/api/settings`: `vscode`, `cursor` or `zed`): its URL scheme, at the
+    line.
+  - **Copy path** copies its absolute path and says "Copied".
 - ⌘K lists each as "Agents › <ws> / <name>", and "Start agent…".
 - Several browsers and `<cli> sessions attach` can attach to one session
   at once and each sees every byte; the terminal's size is the last
@@ -3217,6 +3224,9 @@ space and no Enter. A paste of plain text stays a normal paste.
   refusal, is audited with the actor.
 - Files older than `keep_days` are removed (checked at most once an hour,
   on an upload).
+- `<cli> agents files <id> [-w <ws>] [--json]` lists an agent's uploads,
+  newest first: when, size and path. A path the agent prints, an upload's
+  among them, downloads from its ⌘-click menu (see Links, above).
 
 ```yaml
 agents:

@@ -820,6 +820,80 @@ describe("GET /api/workspaces/<ws>/agents/<id>/paths (AG-4b: path links)", () =>
   });
 });
 
+describe("GET /api/workspaces/<ws>/agents/<id>/file (AG-DROP-2: a file back to the browser)", () => {
+  const get = (a: Api, ws: string, id: string, p: string, method = "GET") =>
+    fetch(
+      `${a.base}/api/workspaces/${ws}/agents/${id}/file?p=${encodeURIComponent(p)}`,
+      { method },
+    );
+
+  it("sends a file inside the agent's workspace or its uploads as an attachment, audited; never one outside, a folder, or through a link out", async () => {
+    const a = await api();
+    expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
+    const ws = fs.realpathSync(a.r.wsDir("north"));
+    fs.mkdirSync(path.join(ws, "out"), { recursive: true });
+    fs.writeFileSync(path.join(ws, "out", "report é.txt"), "the report\n");
+    const sid = readRecord(a.r.stateDir, "planner")!.session.id;
+    const up = path.join(a.r.stateDir, "uploads", sid);
+    fs.mkdirSync(up, { recursive: true });
+    fs.writeFileSync(path.join(up, "20261111-000000-000-shot.png"), "png");
+    fs.mkdirSync(path.join(a.r.dir, "elsewhere"), { recursive: true });
+    fs.writeFileSync(path.join(a.r.dir, "elsewhere", "y.txt"), "secret\n");
+    fs.symlinkSync(path.join(a.r.dir, "elsewhere"), path.join(ws, "link"));
+
+    const r = await get(a, "north", "planner", "out/report é.txt");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toBe("application/octet-stream");
+    expect(r.headers.get("content-disposition")).toBe(
+      `attachment; filename="report _.txt"; filename*=UTF-8''${encodeURIComponent("report é.txt")}`,
+    );
+    expect(r.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await r.text()).toBe("the report\n");
+    const h = await get(a, "north", "planner", "out/report é.txt", "HEAD");
+    expect([h.status, h.headers.get("content-length")]).toEqual([200, "11"]);
+    // Its uploads, by the path typed into its terminal.
+    const u = await get(
+      a,
+      "north",
+      "planner",
+      path.join(up, "20261111-000000-000-shot.png"),
+    );
+    expect([u.status, await u.text()]).toEqual([200, "png"]);
+    // Outside, through a link out, a folder, missing, none: 404, nothing sent.
+    for (const bad of [
+      path.join(a.r.dir, "elsewhere", "y.txt"),
+      "link/y.txt",
+      "../../elsewhere/y.txt",
+      "out",
+      "out/missing.txt",
+      "/etc/hosts",
+      "",
+    ]) {
+      const x = await get(a, "north", "planner", bad);
+      expect([bad, x.status]).toEqual([bad, 404]);
+      expect(await x.text()).not.toContain("secret");
+    }
+    const audit = recentActions().filter((e) => e.verb === "download");
+    expect(
+      audit.some((e) => e.detail.endsWith("report é.txt (11 bytes)")),
+    ).toBe(true);
+    expect(
+      audit.filter((e) => e.outcome === "refused").map((e) => e.reason),
+    ).toContain("not_found");
+  });
+
+  it("refuses another workspace's agent (404) and a POST (405)", async () => {
+    const a = await api();
+    await start(a, "north", { persona: "planner" });
+    const ws = fs.realpathSync(a.r.wsDir("north"));
+    fs.writeFileSync(path.join(ws, "x.txt"), "x");
+    expect((await get(a, "south", "planner", "x.txt")).status).toBe(404);
+    expect((await get(a, "north", "planner", "x.txt", "POST")).status).toBe(
+      405,
+    );
+  });
+});
+
 /** The args after `flag` in a PTY's argv. */
 const argAfter = (args: string[], flag: string) => args[args.indexOf(flag) + 1];
 
