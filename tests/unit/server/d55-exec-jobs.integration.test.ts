@@ -189,6 +189,9 @@ const isDown = (ev: Ev) =>
 
 describe("D55: a workspace restart goes on when its page goes", () => {
   it("the stream closes during the down; the up still runs", async () => {
+    // Up and answering (the last test's restart may still be starting
+    // it), so this restart has a down to do.
+    expect(await waitFor(healthy)).toBe(true);
     fs.rmSync(upRan(), { force: true });
     const seen = await stream(restart, isDown);
     expect(seen.some(isDown)).toBe(true);
@@ -197,8 +200,12 @@ describe("D55: a workspace restart goes on when its page goes", () => {
   }, 40_000);
 
   it("a page that comes back finds the run and attaches: so far, then to its done", async () => {
+    // Up and answering (the last test's restart may still be starting
+    // it), so this restart has a down to do.
+    expect(await waitFor(healthy)).toBe(true);
     fs.rmSync(upRan(), { force: true });
     const first = await stream(restart, isDown);
+    expect(first.some(isDown)).toBe(true);
     const id = first.find((e) => e.type === "job")?.id;
     expect(typeof id).toBe("string");
     const list = await call("GET", "/api/exec/jobs");
@@ -239,8 +246,12 @@ describe("D55: a workspace restart goes on when its page goes", () => {
   }, 20_000);
 
   it("Stop stops it: no up, and a done that says stopped", async () => {
+    // Up and answering (the last test's restart may still be starting
+    // it), so this restart has a down to do.
+    expect(await waitFor(healthy)).toBe(true);
     fs.rmSync(upRan(), { force: true });
     const first = await stream(restart, isDown);
+    expect(first.some(isDown)).toBe(true);
     const id = String(first.find((e) => e.type === "job")?.id);
     const watching = stream(
       `/api/exec/jobs/${id}/events`,
@@ -280,7 +291,7 @@ describe("D55: a workspace restart goes on when its page goes", () => {
 
 describe("D55: a service's own run goes on the same way", () => {
   it("its down: the stream closes while it stops; the stop still finishes", async () => {
-    expect(await healthy()).toBe(true);
+    expect(await waitFor(healthy)).toBe(true);
     const seen = await stream(
       "/api/service/exec?repo=notes&service=notes&cmd=down&workspace=north",
       (ev) => ev.type === "job",
