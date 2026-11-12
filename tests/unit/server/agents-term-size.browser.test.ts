@@ -119,6 +119,7 @@ async function viewer(
       window.WebSocket = class extends Real {
         constructor(url: string | URL, protocols?: string | string[]) {
           super(url, protocols);
+          ((w.__socks ??= []) as WebSocket[]).push(this);
           this.addEventListener("message", (e) => {
             if (typeof e.data !== "string") return;
             const f = JSON.parse(e.data) as { type?: string };
@@ -240,11 +241,33 @@ describe("the Agents tab's terminal size", () => {
       .locator(`.pane[data-id="${sid}"] .agfollow`)
       .waitFor({ timeout: 10_000 });
 
-    // Take over: the wide one's size again; the narrow one follows.
+    // Take over: the wide one's size again; the narrow one follows. A
+    // size frame from before the take-over that lands after it (a slow
+    // link) is an older one, not another view taking the size back.
     await wide.p.click(`.pane[data-id="${sid}"] [data-act="take-size"]`);
+    await wide.p.evaluate(
+      ([c, r]) =>
+        (window as unknown as { __socks: WebSocket[] }).__socks
+          .at(-1)!
+          .dispatchEvent(
+            new MessageEvent("message", {
+              data: JSON.stringify({ type: "size", cols: c, rows: r }),
+            }),
+          ),
+      narrowSize,
+    );
     await eventually(() => same(last(pty), wideSize));
     await eventually(async () => same(await termSize(narrow.p), wideSize));
-    expect(await wide.p.locator(".agfollow").count()).toBe(0);
+    const chips = await wide.p.locator(".agfollow").count();
+    if (chips)
+      throw new Error(
+        `the wide one follows after Take over: ${JSON.stringify(
+          await wide.p.evaluate(
+            () => (window as unknown as { __frames: unknown[] }).__frames,
+          ),
+        )} pty resizes ${JSON.stringify(pty.resizes)}`,
+      );
+    expect(await termSize(wide.p)).toEqual(wideSize);
 
     // A hidden page's pane never resizes the PTY, even typing.
     const before = pty.resizes.length;

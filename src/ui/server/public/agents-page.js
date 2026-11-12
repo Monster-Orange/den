@@ -1490,8 +1490,11 @@ function sendSize(p) {
   // D54: until the host says this size back, an older frame (the size on
   // attach) is not another view taking it. The host says a size only when
   // it changes, so an unchanged one is never said back: that is no wait.
-  p.awaiting =
-    p.pty && p.pty.cols === term.cols && p.pty.rows === term.rows
+  // The same size said again (a claim's refit says it, then the claim)
+  // keeps the wait the first one started.
+  const at = (z) => !!z && z.cols === term.cols && z.rows === term.rows;
+  if (!(at(p.awaiting) && Date.now() < p.awaiting.until))
+    p.awaiting = at(p.pty)
       ? null
       : { cols: term.cols, rows: term.rows, until: Date.now() + 3000 };
   // What the PTY will be: the server's frame follows (or another
