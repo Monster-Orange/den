@@ -98,6 +98,12 @@ export async function startAgentsPageServer(
     up?: Record<string, string>;
     /** A repo's local `down` command (notes, blog); `true` when unset. */
     down?: Record<string, string>;
+    /**
+     * Repos that are managed clones (under the services dir, from their
+     * own remote) instead of dev-managed checkouts; the caller makes the
+     * clone, and its manifest, before the server starts.
+     */
+    managed?: string[];
   } = {},
 ): Promise<AgentsPageServer> {
   const tmp = fs.realpathSync(
@@ -129,8 +135,12 @@ export async function startAgentsPageServer(
         `    directory: ${wsDir(ws)}`,
         "    services:",
         `      ${repo}:`,
-        "        mode: dev-managed",
-        `        path: ${path.join(repos, repo)}`,
+        ...(opts.managed?.includes(repo)
+          ? ["        mode: managed"]
+          : [
+              "        mode: dev-managed",
+              `        path: ${path.join(repos, repo)}`,
+            ]),
       ]),
       ...(opts.inactive ?? []).flatMap((ws) => [
         `  ${ws}:`,

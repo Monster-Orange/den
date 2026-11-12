@@ -416,12 +416,13 @@ Top to bottom, it has:
 - **Open in Services**, **Open in Graph** and **Unpin** (or **Pin**).
 
 **A run finishes on the server.** A service's or a workspace's up, down or
-restart is a job on the server (D55). Closing the tab, reloading or going to
+restart, and a workspace sync, is a job on the server (D55). Closing the tab, reloading or going to
 another page only stops watching it: the run goes on to its end. Its stream
 says the job first (`{"type":"job","id":"run_…"}`). The browser keeps the ids
 of runs it started and hasn't seen end; the next page it loads shows each one
 in the runs dock: still running (its output so far, then live, with **Stop**),
-or how it ended. **Stop** is its own request. The routes:
+or how it ended. **Stop** is its own request: a run's tab in the dock
+carries it on the Services page and the Tests page. The routes:
 
 - `GET /api/exec/jobs`: the runs kept, newest first (`id`, `path`, `params`,
   `status`, `exitCode`, `stopped`, `startedAt`, `endedAt`). Every running run,

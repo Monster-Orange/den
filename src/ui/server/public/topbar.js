@@ -1358,7 +1358,8 @@ function showJob(j) {
     else if (msg?.type === "error" && text) runs.append(tab, text, "err");
     else if (msg?.type === "label" && text) runs.append(tab, text, "phase");
     else if (msg?.type === "done") {
-      const ok = msg.exitCode === 0;
+      // A sync's done says no exit code: it ended as it should.
+      const ok = !msg.stopped && (msg.exitCode ?? 0) === 0;
       forgetRun(j.id);
       // A stopped run's own line says so.
       if (!msg.stopped)

@@ -2040,32 +2040,26 @@ export async function handleWorkspaceRoutes(
   }
 
   if (pathname === "/api/workspace/sync") {
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
-
+    sseHead(res);
+    // D55: a sync is a job, as a workspace's exec is: the page's stream
+    // closing only stops it watching; the clones and pulls go on to the
+    // done. `cancelled` is set by Stop, and polled by each git step.
+    const job = startJob(pathname, url.searchParams, res);
     let cancelled = false;
-    req.on("close", () => {
+    job.onStop(() => {
       cancelled = true;
     });
 
     const emit = (obj: unknown): void => {
       if (cancelled) return;
-      try {
-        res.write(`data: ${JSON.stringify(obj)}\n\n`);
-      } catch {
-        cancelled = true;
-      }
+      job.write(obj as Record<string, unknown>);
     };
 
     const ws = getActiveWorkspace();
     if (!ws) {
       emit({ type: "error", text: "No active workspace" });
       emit({ type: "done" });
-      res.end();
+      job.end();
       return;
     }
 
@@ -2104,7 +2098,7 @@ export async function handleWorkspaceRoutes(
           : "No managed services to sync.",
       });
       emit({ type: "done" });
-      res.end();
+      job.end();
       return;
     }
 
@@ -2330,7 +2324,7 @@ export async function handleWorkspaceRoutes(
     }
 
     emit({ type: "done" });
-    res.end();
+    job.end();
     return;
   }
 }

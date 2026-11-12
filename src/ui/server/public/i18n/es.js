@@ -171,6 +171,7 @@
       "Sigue en marcha en el servidor. Su salida hasta ahora, y luego el resto:",
     "runs.ended": "Terminó sin ninguna página mirando. Su salida:",
     "runs.ok": "Hecho",
+    "runs.stopped": "Detenido",
     "runs.failed": "Falló (salida {code})",
     "runs.empty":
       "Aún no se ha ejecutado nada. La salida de cualquier página aparece aquí.",
