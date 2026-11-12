@@ -4,6 +4,30 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.34] - unreleased
+
+### Added
+
+- **Drop or paste a file into an agent's terminal (AG-DROP).** Drag files
+  onto an agent's terminal pane, paste a copied file or screenshot, or
+  press Attach in its pane bar (the way in on an iPad). The browser can
+  be on another machine: the file travels over Den's own HTTPS, with no
+  shared folder. Den writes it on the agent's machine, under
+  `<state>/uploads/<session>/`, and types its path at the cursor, as a
+  terminal's drop does (quoted when needed, no Enter). Pasted text still
+  pastes as text. Each file shows its progress, then "attached" or why it
+  wasn't. Settings: `agents.uploads.max_bytes` (default 25 MB),
+  `keep_days` (default 7, then removed) and `dir`.
+
+### Security
+
+- An upload goes only to a session the person can already type into:
+  the terminal's own checks, CSRF, sign-in beyond loopback, and an
+  agent's token for its own session only. The file is 0600 in a 0700
+  folder, its name is cleaned (never a folder part), a link in place of
+  its folder is never written through, and every upload or refusal is
+  audited.
+
 ## [0.4.33] - unreleased
 
 ### Added

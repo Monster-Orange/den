@@ -9,6 +9,7 @@
  */
 
 import { HELPER_DEFAULTS, type HelperSettings } from "./agents/helpers.js";
+import { uploadsBlock, type UploadSettings } from "./agents/uploads.js";
 import { subagentsBlock, type SubagentSettings } from "./agents/subagents.js";
 import * as fs from "fs";
 import * as os from "os";
@@ -989,6 +990,12 @@ export interface AgentsConfig {
    */
   turn_read_max_mb?: unknown;
   /**
+   * AG-DROP: files dropped or pasted onto an agent's terminal,
+   * `{ max_bytes, keep_days, dir }` (defaults 25 MB, 7 days,
+   * `<state>/uploads`).
+   */
+  uploads?: { max_bytes?: unknown; keep_days?: unknown; dir?: unknown };
+  /**
    * Any other key is an agent id: `agents.<id>.grants` widens that agent's
    * MCP scope to other workspaces (AG spec §5b). Config only: an agent
    * never grants itself one.
@@ -1016,6 +1023,8 @@ export const AGENTS_RESERVED_KEYS = [
   "helpers",
   // D39: how far back the mid-turn check reads.
   "turn_read_max_mb",
+  // AG-DROP: files dropped onto an agent's terminal.
+  "uploads",
   // AG-10.5, AG-11.1: the distribution's persona categories and roles.
   "categories",
   "roles",
@@ -1051,6 +1060,8 @@ export interface ResolvedAgentsConfig {
   helpers?: HelperSettings;
   /** agents.turn_read_max_mb (D39) in bytes; unset: the default. */
   turnReadMaxBytes?: number;
+  /** agents.uploads (AG-DROP) with its defaults. */
+  uploads?: UploadSettings;
   /** agents.categories (AG-10.5): the distribution's, after Den's. */
   categories?: Category[];
   /** agents.roles (AG-11.1): new roles and Den roles' preset extensions. */
@@ -1204,6 +1215,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     })(),
   };
   out.helpers = helpersBlock(raw.helpers);
+  out.uploads = uploadsBlock(raw.uploads);
   out.subagents = subagentsBlock(raw.subagents, raw.claude_ai_connectors);
   const turnMb = raw.turn_read_max_mb;
   if (turnMb !== undefined && turnMb !== null) {
@@ -1255,7 +1267,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(
-        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, default_pack, rotate, helpers, subagents, claude_ai_connectors, categories, roles, ` +
+        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, default_pack, rotate, helpers, uploads, subagents, claude_ai_connectors, categories, roles, ` +
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))

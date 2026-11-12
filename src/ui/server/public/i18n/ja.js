@@ -849,6 +849,14 @@
     "ag.goWs": "ワークスペースで {ws} を開く",
     "ag.lost": "[切断: {why}]",
     "ag.reconnect": "再接続",
+    "ag.up.drop": "ドロップして {name} に添付",
+    "ag.up.sending": "送信中…",
+    "ag.up.pct": "{n}%",
+    "ag.up.done": "添付しました",
+    "ag.up.attach": "添付",
+    "ag.up.attachName": "{id} にファイルを添付",
+    "ag.up.attachTip":
+      "ファイルを添付: エージェントのマシンに送られ、そのパスがここに入力されます",
     "ag.noBackend":
       "ターミナルにはオプションの PTY モジュールが必要です（den-pty は使えません）。理由は {cli} doctor で確認できます",
     "ag.noHost": "セッションホストは動いていません。まだ何も開始されていません",

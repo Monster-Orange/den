@@ -525,6 +525,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "a session's terminal (AG-4a-term): a WebSocket, its input a shell's",
   ),
   S(
+    ["POST"],
+    "/api/sessions/:id/uploads",
+    "writes a file dropped or pasted onto a session's terminal (AG-DROP), for its path to be typed there",
+  ),
+  S(
     ["GET", "HEAD", "POST", "DELETE"],
     "/api/sessions/*",
     "a session's own routes (AG-4a-term's io): an agent's token reaches its own session's only",
@@ -611,6 +616,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/conversations/:id/import",
   ],
   "session-routes.ts:IO_PATH": ["/api/sessions/:id/io"],
+  "session-routes.ts:UPLOAD_PATH": ["/api/sessions/:id/uploads"],
   "github-routes.ts:SIGNIN_PATH": ["/api/github/signin/:id"],
   "github-routes.ts:LINK_PATH": ["/api/web/owner/link/:id"],
   "pair-routes.ts:POLL_PATH": ["/api/signin/code/:id"],

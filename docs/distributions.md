@@ -3193,6 +3193,45 @@ agents:
 stay in the list until a person clears them. It is still accepted, so a
 config that sets it keeps working, and `<cli> doctor` notes it.
 
+### Files dropped onto an agent's terminal
+
+Drag one or more files onto an agent's terminal pane, paste a copied file
+or screenshot into it, or press **Attach** in its pane bar (the way in on
+a touch screen). The browser may be on another machine than Den: the file
+travels over Den's own HTTPS, with no shared folder or file sync. Den
+writes it on the agent's machine and types its absolute path at the
+cursor, as a native terminal's drop does. Several files are typed
+space-separated, each shell-quoted when it needs to be, with a trailing
+space and no Enter. A paste of plain text stays a normal paste.
+
+- Each file goes to `<state>/uploads/<session id>/<time>-<name>`: the
+  file 0600, its folder 0700, outside every repo. The name keeps only
+  letters, digits, spaces and `._+@()-`, never a folder part.
+- While a file is over the pane, it says "Drop to attach to <agent>". Each
+  file gets a chip with its progress, then "attached" or the reason it
+  wasn't (too big, the session ended, the upload failed).
+- The route is `POST /api/sessions/<id>/uploads?name=<file>`, the body the
+  file's bytes. It answers `{ ok, path, bytes }`. It is shell-grade, with
+  the terminal's own checks: CSRF, a signed-in person beyond loopback, and
+  an agent's token for its own session only. Every upload, and every
+  refusal, is audited with the actor.
+- Files older than `keep_days` are removed (checked at most once an hour,
+  on an upload).
+
+```yaml
+agents:
+  uploads:
+    max_bytes: 26214400 # 25 MB; a bigger file is refused, naming this key
+    keep_days: 7 # then pruned
+    # dir: /absolute/path # default <state>/uploads
+```
+
+| Key         | Values                            | Default           |
+| ----------- | --------------------------------- | ----------------- |
+| `max_bytes` | bytes, a whole number, 1 to 4 GiB | 26214400 (25 MB)  |
+| `keep_days` | days, above 0 to 3650             | 7                 |
+| `dir`       | an absolute path                  | `<state>/uploads` |
+
 ### Subagents' model and claude.ai connectors
 
 Claude Code's subagents (the Agent tool's, Explore and general-purpose

@@ -979,6 +979,15 @@
     "ag.goWs": "Open {ws} on Workspaces",
     "ag.lost": "[disconnected: {why}]",
     "ag.reconnect": "Reconnect",
+    // AG-DROP: a file dropped, pasted or attached onto an agent's terminal.
+    "ag.up.drop": "Drop to attach to {name}",
+    "ag.up.sending": "sending…",
+    "ag.up.pct": "{n}%",
+    "ag.up.done": "attached",
+    "ag.up.attach": "Attach",
+    "ag.up.attachName": "Attach a file to {id}",
+    "ag.up.attachTip":
+      "Attach a file: it goes to the agent's machine and its path is typed here",
     "ag.noBackend":
       "Terminals need the optional PTY module (den-pty is unavailable): {cli} doctor says why",
     "ag.noHost": "No session host is running: nothing has started yet",

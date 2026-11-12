@@ -87,6 +87,12 @@ import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { dismissable } from "/popover.js";
 import {
+  attachFiles,
+  guardPageDrops,
+  pickFiles,
+  wireDrop,
+} from "/term-drop.js";
+import {
   helperBadgeHtml,
   helperBarButtonHtml,
   helperRowsHtml,
@@ -1353,6 +1359,11 @@ function paintBar(p) {
   const reconnect = p.lost
     ? `<button type="button" class="den-btn sm" data-act="reconnect">${esc(t("ag.reconnect"))}</button>`
     : "";
+  // AG-DROP: Attach (a touch screen has no drop): a live session's only.
+  const attach =
+    !p.lost && !p.exited && !(r && isStopped(r))
+      ? `<button type="button" class="den-btn sm" data-act="attach" aria-label="${esc(t("ag.up.attachName", { id: name }))}" title="${esc(t("ag.up.attachTip"))}">${esc(t("ag.up.attach"))}</button>`
+      : "";
   // AG-18: ⋯, its menu: Rename… (D25, every agent), Change persona… (a
   // runtime that can resume).
   const more =
@@ -1375,7 +1386,7 @@ function paintBar(p) {
     (r?.kind === "agent" && rotActionsHtml(r)
       ? `<span class="agrot" data-rot-bar title="${esc(rotMessage(r))}"><span class="tagx warn" data-rotation="${rotationOf(r)}">${esc(t(rotationOf(r) === "ready" ? "ag.rot.ready" : "ag.rot.due", { why: rotationWhy(r.rotation) }))}</span>${rotActionsHtml(r)}</span>`
       : "") +
-    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${stop}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
+    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
   // A refresh (a helper's update, the list's poll) redraws only what
   // changed, and never takes the keyboard off the bar: a button there that
   // had focus has it again after a redraw.
@@ -1828,6 +1839,10 @@ async function openPane(id, { front = true } = {}) {
     p.sock.send(enc.encode(d));
   };
   term.onData(typeIn);
+  p.typeIn = typeIn;
+  // AG-DROP: a file dropped or pasted here goes to the server; its path is
+  // typed at the cursor.
+  wireDrop(el, dropOpts(p));
   // AG-4b: Shift+Enter is the runtime's soft newline, never a CR; the
   // layout keys (⌃⇧1-3) are the page's, never the agent's.
   term.attachCustomKeyEventHandler((e) => {
@@ -1867,6 +1882,37 @@ async function openPane(id, { front = true } = {}) {
     if (!p.closed) remeasure(p);
   });
   void connect(p);
+}
+
+/** AG-DROP: what a pane's drop, paste and Attach need. */
+function dropOpts(p) {
+  return {
+    id: p.id,
+    t,
+    csrf,
+    name: () => {
+      const r = rowOf(p.id);
+      return r ? paneName(r) : p.label || p.id;
+    },
+    // A live session only: its terminal is open and it is running.
+    can: () => attachable(p),
+    typeIn: (text) => {
+      p.typeIn?.(text);
+      p.term?.focus();
+    },
+  };
+}
+
+/** A pane that takes a file now: connected, its session not ended. */
+function attachable(p) {
+  const r = rowOf(p.id);
+  return (
+    !p.closed &&
+    !p.lost &&
+    !p.exited &&
+    p.sock?.readyState === WebSocket.OPEN &&
+    !(r && isStopped(r))
+  );
 }
 
 function closePane(id, { quiet = false } = {}) {
@@ -3564,6 +3610,8 @@ export async function mountAgentsPage(root) {
     const tab = e.target.closest('[role="tab"]');
     if (tab) renameTab(tab);
   });
+  // AG-DROP: a file dropped beside a pane never replaces the page.
+  guardPageDrops();
   root.querySelector("#agr").addEventListener("click", (e) => {
     const tab = e.target.closest('[role="tab"]');
     if (tab) {
@@ -3600,6 +3648,8 @@ export async function mountAgentsPage(root) {
       const r = rowOf(id);
       if (r) void restartRow(r, "resume", b);
     } else if (b.dataset.act === "reconnect") void connect(p);
+    else if (b.dataset.act === "attach")
+      pickFiles((files) => void attachFiles(p.el, files, dropOpts(p)));
     else if (b.dataset.act === "helpers") {
       const r = rowOf(id);
       if (r?.kind === "agent")

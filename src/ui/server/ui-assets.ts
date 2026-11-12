@@ -44,6 +44,8 @@ export const UI_MODULES: readonly string[] = [
   "/persona-ui.css",
   // AG-4b: the panes' keys and links (Shift+Enter, ⌃⇧1-3, paths).
   "/term-input.js",
+  // AG-DROP: a file dropped, pasted or attached onto an agent's terminal.
+  "/term-drop.js",
   // SEC-2a: Pair a device's QR code (a tiny encoder of Den's own).
   "/qr.js",
   // The UI's catalogs other than English (R19; en is in shell.js).

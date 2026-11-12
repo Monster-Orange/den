@@ -873,6 +873,14 @@
     "ag.goWs": "Abrir {ws} en Espacios de trabajo",
     "ag.lost": "[desconectado: {why}]",
     "ag.reconnect": "Reconectar",
+    "ag.up.drop": "Suelta para adjuntar a {name}",
+    "ag.up.sending": "enviando…",
+    "ag.up.pct": "{n} %",
+    "ag.up.done": "adjuntado",
+    "ag.up.attach": "Adjuntar",
+    "ag.up.attachName": "Adjuntar un archivo a {id}",
+    "ag.up.attachTip":
+      "Adjuntar un archivo: va a la máquina del agente y su ruta se escribe aquí",
     "ag.noBackend":
       "Los terminales necesitan el módulo PTY opcional (den-pty no está disponible): {cli} doctor explica por qué",
     "ag.noHost":
