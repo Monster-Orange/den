@@ -54,8 +54,8 @@ let root = "";
 let repos = "";
 const saved = { ...process.env };
 
-/** Compose projects the fake docker has running. */
-const up = new Set<string>();
+/** Compose projects the fake docker has running, and each one's owner label. */
+const up = new Map<string, string>();
 /** Every docker argv, in order. */
 let calls: string[][] = [];
 
@@ -73,7 +73,16 @@ function fakeDocker(_cmd: unknown, a: unknown) {
     const project = p >= 0 ? args[p + 1] : "";
     if (args.includes("config"))
       return ok(JSON.stringify({ name: project, services: { web: {} } }));
-    if (args.includes("up") && project) up.add(project);
+    if (args.includes("up") && project) {
+      // D53: the owner label Den's override puts on its containers.
+      const override = args.find((x) => x.endsWith("override.yml")) ?? "";
+      const owner = fs.existsSync(override)
+        ? (/"den\.stack\.owner": "([0-9a-f]+)"/.exec(
+            fs.readFileSync(override, "utf-8"),
+          )?.[1] ?? "")
+        : "";
+      up.set(project, owner);
+    }
     if (args.includes("down") && project) up.delete(project);
     return ok();
   }
@@ -83,6 +92,10 @@ function fakeDocker(_cmd: unknown, a: unknown) {
     );
     const project = f?.split("=")[2] ?? "";
     if (args.includes("-q")) return ok(up.has(project) ? "c0ffee\n" : "");
+    if (args.some((x) => x.includes("den.stack.owner")))
+      return ok(
+        up.has(project) ? `${project}-web-1\t${up.get(project)}\t\n` : "",
+      );
     return ok(up.has(project) ? "web\trunning\tUp 1 minute\n" : "");
   }
   return ok();
@@ -227,7 +240,7 @@ describe("two workspaces with stack_namespace: main", () => {
     await stackCmd("ws-a", ["up", "shop"]);
     const second = await stackCmd("ws-b", ["up", "shop"]);
     expect(composeProjects("up")).toEqual(["shop-main", "shop-main"]);
-    expect([...up]).toEqual(["shop-main"]);
+    expect([...up.keys()]).toEqual(["shop-main"]);
     expect(second).toMatch(/shared with \[ws-a\] \(stack namespace main\)/);
     expect(
       status

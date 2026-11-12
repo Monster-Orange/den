@@ -480,6 +480,48 @@ export function whereCheck(r: WhereRow): OnboardCheck {
  * HUB-1.5: doctor's Hub row, or none when hub.url isn't set. Never the
  * token: hubStatus doesn't have it to give.
  */
+/** The stacks' project clashes; none when the stacks can't be read. */
+async function safeStackClashes(): Promise<
+  import("../../shared/stacks/status.js").ProjectClash[]
+> {
+  try {
+    const { stackProjectClashes } = await import(
+      "../../shared/stacks/status.js"
+    );
+    return stackProjectClashes();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * D53: Compose projects Den's stacks can't call their own: a name two
+ * stacks render to, or one already running containers Den didn't start
+ * (its up, down and restart are refused). A warning: nothing is broken
+ * until one of them is acted on.
+ */
+export function stackClashLines(
+  clashes: import("../../shared/stacks/status.js").ProjectClash[],
+  title: string,
+  cli: string,
+): { lines: string[]; check?: OnboardCheck } {
+  if (!clashes.length) return { lines: [] };
+  const each = clashes.map((c) =>
+    c.stacks.length > 1
+      ? `Compose project "${c.project}" is the name of ${c.stacks.length} stacks: ${c.stacks.join(", ")}. Give each a compose.name of its own in its repo's .den.yml.`
+      : `Compose project "${c.project}" (stack ${c.stacks[0]}) is running containers ${cli} didn't start: ${c.foreign.slice(0, 5).join(", ")}${c.foreign.length > 5 ? ` and ${c.foreign.length - 5} more` : ""}. Its up, down and restart are refused. Give the stack a compose.name of its own in its repo's .den.yml.`,
+  );
+  return {
+    lines: [
+      "",
+      `${title} doctor: stacks`,
+      "",
+      ...each.map((l) => `  stacks  ⚠  ${l}`),
+    ],
+    check: { id: "stacks:projects", status: "warn", detail: each.join(" ") },
+  };
+}
+
 export function hubLines(
   st: import("../../shared/hub.js").HubStatus,
   title: string,
@@ -628,6 +670,14 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const h = hubLines(await hubStatus(), readBrand().name);
       if (h.check) r.checks.push(h.check);
     }
+    {
+      const st = stackClashLines(
+        await safeStackClashes(),
+        readBrand().name,
+        product().cli,
+      );
+      if (st.check) r.checks.push(st.check);
+    }
     const cfg = configLines(readBrand().name);
     r.checks.push(...cfg.checks);
     if (cfg.problem) r.ok = false;
@@ -655,6 +705,12 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     for (const l of hubLines(await hubStatus(), readBrand().name).lines)
       console.log(l);
   }
+  for (const l of stackClashLines(
+    await safeStackClashes(),
+    readBrand().name,
+    product().cli,
+  ).lines)
+    console.log(l);
   const cfg = configLines(readBrand().name);
   for (const l of cfg.lines) console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);

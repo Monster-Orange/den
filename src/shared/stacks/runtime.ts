@@ -1,13 +1,16 @@
 /** Side effects for stacks: docker compose, link networks, edge routes. */
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { getReposRoot } from "../den-config.js";
+import { getStateDir } from "../paths.js";
+import { product } from "../product.js";
 import { edgeNames } from "../edge/render.js";
 import type { EdgeConfig } from "../edge/types.js";
 import {
   containerName,
+  DEN_OWNER_LABEL,
   expandEnv,
   linkNetwork,
   projectName,
@@ -74,6 +77,113 @@ export function stackDir(ctx: StackContext, s: StackConfig): string {
     ctx.edge.stateDir,
     "stacks",
     projectName(s.name, ctx.workspace),
+  );
+}
+
+/**
+ * D53: the label Den puts on every container of a stack it starts, and
+ * the value that marks this install's stack. A Compose project's name is
+ * only a name: a repo's manifest can name one that something else runs
+ * (another tool's, or another install's). Den acts only on containers
+ * carrying its own mark for that stack and checkout.
+ */
+export { DEN_OWNER_LABEL };
+
+/** This install's mark for stack `s` in its project: install, stack, checkout. */
+export function stackOwner(ctx: StackContext, s: StackConfig): string {
+  const checkout = path.resolve(
+    s.repoPath ?? path.join(getReposRoot(), s.repo),
+    s.dir ?? "",
+  );
+  return createHash("sha256")
+    .update(
+      [
+        getStateDir(),
+        projectName(s.name, ctx.workspace),
+        s.name,
+        checkout,
+      ].join("\0"),
+    )
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/** Who runs a stack's Compose project now (see projectOwnership). */
+export interface ProjectOwnership {
+  project: string;
+  /** Containers in the project that aren't this stack's: their names. */
+  foreign: string[];
+  /** Containers that are. */
+  ours: number;
+  /** False when docker couldn't be asked. */
+  known: boolean;
+}
+
+/**
+ * The containers of `s`'s project, sorted into this stack's and anything
+ * else's. Ours: Den's owner label with this stack's mark; or, for a
+ * container Den started before the label (0.4.34 and older), Compose's
+ * own record of its files naming this stack's override and compose file.
+ */
+export function projectOwnership(
+  ctx: StackContext,
+  s: StackConfig,
+): ProjectOwnership {
+  const project = projectName(s.name, ctx.workspace);
+  let r: ReturnType<typeof run>;
+  try {
+    r = run("docker", [
+      "ps",
+      "-a",
+      "--filter",
+      `label=com.docker.compose.project=${project}`,
+      "--format",
+      `{{.Names}}\t{{.Label "${DEN_OWNER_LABEL}"}}\t{{.Label "com.docker.compose.project.config_files"}}`,
+    ]);
+  } catch {
+    return { project, foreign: [], ours: 0, known: false };
+  }
+  if (r.code !== 0) return { project, foreign: [], ours: 0, known: false };
+  const mine = stackOwner(ctx, s);
+  const override = path.join(stackDir(ctx, s), "override.yml");
+  const base = path.resolve(
+    s.repoPath ?? path.join(getReposRoot(), s.repo),
+    s.dir ?? "",
+    s.files[0] ?? "docker-compose.yml",
+  );
+  const foreign: string[] = [];
+  let ours = 0;
+  for (const line of r.out.split("\n").filter(Boolean)) {
+    const [name = "", label = "", files = ""] = line.split("\t");
+    const list = files.split(",").map((f) => f.trim());
+    const isOurs = label
+      ? label === mine
+      : list.includes(override) && list.includes(base);
+    if (isOurs) ours++;
+    else foreign.push(name);
+  }
+  return { project, foreign, ours, known: true };
+}
+
+/**
+ * D53: refuse to act on a project with containers this stack didn't
+ * start: `up`, `down` and `restart` would otherwise stop, replace or
+ * restart them.
+ */
+export function assertStackOwned(
+  ctx: StackContext,
+  s: StackConfig,
+  verb: "up" | "down" | "restart",
+): void {
+  const o = projectOwnership(ctx, s);
+  if (!o.foreign.length) return;
+  const shown = o.foreign.slice(0, 5).join(", ");
+  const more = o.foreign.length > 5 ? ` and ${o.foreign.length - 5} more` : "";
+  throw new Error(
+    `stack ${s.name}: Compose project "${o.project}" has containers ${product().cli} ` +
+      `didn't start for this stack (${shown}${more}). \`stack ${verb}\` is refused: it ` +
+      `would act on them. Give the stack a project of its own (compose.name in ` +
+      `the repo's .den.yml), or stop that project yourself.`,
   );
 }
 
@@ -321,11 +431,12 @@ export function stackUp(
       connect(net, c);
     }
   }
+  assertStackOwned(ctx, s, "up");
   const dir = stackDir(ctx, s);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(
     path.join(dir, "override.yml"),
-    renderOverride(s, resolved, ctx.workspace),
+    renderOverride(s, resolved, ctx.workspace, stackOwner(ctx, s)),
   );
   must(
     "docker",
@@ -361,6 +472,7 @@ export function stackUp(
 }
 
 export function stackDown(ctx: StackContext, s: StackConfig): void {
+  assertStackOwned(ctx, s, "down");
   fs.rmSync(stackRoutesFile(ctx.edge, projectName(s.name, ctx.workspace)), {
     force: true,
   });
@@ -406,6 +518,7 @@ export function stackRestartService(
   service: string,
   opts: { secretEnv?: Record<string, string> } = {},
 ): void {
+  assertStackOwned(ctx, s, "restart");
   const secrets = secretComposeEnv(s, opts.secretEnv);
   const override = path.join(stackDir(ctx, s), "override.yml");
   const args = fs.existsSync(override)
