@@ -458,6 +458,27 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/hub/github",
     "H5: how many of the company's GitHub repos Den Hub's GitHub App can read, live from Hub, with Hub's github.com install or change link",
   ),
+  R(
+    "/api/notifications",
+    "NT-3: the bell: notifications grouped by project then agent, and who waits now",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/self/attention",
+    "NT-1: an agent (its own token only) says it waits for its person or finished its turn",
+  ),
+  M(["POST"], "/api/notifications/read", "NT-3: mark notifications read"),
+  M(["POST"], "/api/notifications/clear", "NT-3: clear the read ones"),
+  M(
+    ["POST"],
+    "/api/notifications/mute",
+    "NT-3: mute an agent or a project for a time",
+  ),
+  M(
+    ["POST"],
+    "/api/notifications/looking",
+    "NT-2: a page shows these agents now, so they don't notify",
+  ),
   M(
     ["POST"],
     "/api/hub/sync",

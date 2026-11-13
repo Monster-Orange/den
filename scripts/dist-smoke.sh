@@ -187,7 +187,7 @@ expect_in "agents personas: planner is listed" "$WORK/agents-personas.out" "plan
 expect_in "doctor: the runtime kind is listed" "$WORK/doctor.out" "den-claude (implicit)"
 # Den's guardrails (den#5) ship in the package: the default pack's hooks,
 # their settings fragment and the shared persona instructions.
-for f in pretooluse.mjs stop-hook.ts hooks.json instructions.md; do
+for f in pretooluse.mjs stop-hook.ts attention-hook.ts hooks.json instructions.md; do
   [ -f "$ENGINE/src/shared/agents/guardrails/$f" ] && ok "guardrails ship: $f" || bad "guardrails missing from the package: $f"
 done
 # The PreToolUse hook runs from the install and blocks a polling loop.

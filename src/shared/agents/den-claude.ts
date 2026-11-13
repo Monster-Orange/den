@@ -60,9 +60,11 @@ import { rolePrompt } from "./personas.js";
 import { HUB_PROMPT_LINE } from "../hub.js";
 import {
   apiOnlyHooks,
+  attentionHooks,
   GUARDRAILS_DIR,
   guardrailHooks,
   hookCommands,
+  mergeHooks,
 } from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
@@ -463,7 +465,7 @@ function common(input: LaunchInput): {
   const inboxBase = input.mcp.hub?.inboxBase;
   const inbox = inboxBase ? { base: inboxBase } : undefined;
   // den#4: the rotation hooks count this agent's compactions in its files dir.
-  const hooks = input.persona.guardrails?.hooks
+  const baseHooks = input.persona.guardrails?.hooks
     ? guardrailHooks(
         GUARDRAILS_DIR,
         hookCommands(
@@ -491,6 +493,11 @@ function common(input: LaunchInput): {
           inbox && { ...inbox, files: input.filesDir },
         )
       : null;
+  // NT-1: every agent tells Den when it waits for its person.
+  const hooks = mergeHooks(
+    baseHooks,
+    input.attention ? attentionHooks(input.attention.base) : null,
+  );
   const den = input.denToolsAllowed ? denToolRules(input.mcp.name) : null;
   // HUB-1.5: Hub's tools without asking, when hub.allow_tools is on (the
   // default). Claude Code checks deny before allow: an install's deny wins.

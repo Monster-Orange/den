@@ -2327,6 +2327,8 @@ function launchInput(
     // ON-6: the server agent runs Den's own tools without the runtime's
     // prompt; its writes wait for the person's Allow in the browser.
     ...(isServerScope(ws) ? { denToolsAllowed: true } : {}),
+    // NT-1: it tells Den when it waits for its person (the bell).
+    attention: { base: d.denBase() },
   };
 }
 

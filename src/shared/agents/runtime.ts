@@ -100,6 +100,12 @@ export interface LaunchInput {
    */
   stateDir?: string;
   /**
+   * NT-1: Den's web server as the agent reaches it, for the attention
+   * hooks (Notification: waiting; Stop: finished). No token: the hook
+   * sends the agent's own, from its env.
+   */
+  attention?: { base: string };
+  /**
    * The caller's environment, for finding the runtime's CLI on PATH. The
    * agent does not get it: it starts from an allowlist (sessions/env.ts),
    * plus envPassthrough and LaunchOutput.env.

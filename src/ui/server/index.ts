@@ -12,6 +12,14 @@
 
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
+  handleNotificationRoutes,
+  isNotificationPath,
+} from "./notification-routes.js";
+import {
+  attentionWaiting,
+  notificationDeps,
+} from "./notification-service.js";
+import {
   composeHealthTarget,
   containerCheckLabel,
   type ComposeHealthTarget,
@@ -2030,7 +2038,8 @@ function approvalDeps(): {
 }
 /** The agent ids with a held write waiting (their rows say "waiting"). */
 function waitingAgentIds(): Set<string> {
-  const out = new Set<string>();
+  // NT-3b: one "needs you" state: a held Allow, or the attention hooks.
+  const out = new Set<string>(attentionWaiting().keys());
   if (!approvals) return out;
   for (const actor of approvals.queue.waitingActors())
     if (actor.startsWith("agent:")) out.add(actor.slice("agent:".length));
@@ -2197,6 +2206,11 @@ async function handleRequest(
     pathname !== SESSION_HELPERS_PATH
   ) {
     await sendSessionHttp(req, res, pathname);
+    return;
+  }
+  // NT: the bell, and agents saying they wait for their person.
+  if (guard.ok && isNotificationPath(pathname)) {
+    await handleNotificationRoutes(req, res, pathname, notificationDeps());
     return;
   }
   // ON-3: an agent's held writes; Allow from the person's browser only.

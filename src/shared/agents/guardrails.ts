@@ -219,6 +219,35 @@ export function guardrailHooks(
 }
 
 /**
+ * NT-1: the attention hooks every agent gets (whatever its persona):
+ * Notification → waiting, Stop → finished, posted to Den
+ * (attention-hook.ts). Merged beside Den's other hooks.
+ */
+export function attentionHooks(base: string): Record<string, unknown[]> {
+  const cmd = commandLine(
+    ((c: EngineCommand): EngineCommand => ({
+      command: c.command,
+      args: [...c.args, "--den", base],
+    }))(scriptEntrypoint("src/shared/agents/guardrails/attention-hook.ts")),
+  );
+  const entry = { hooks: [{ type: "command", command: cmd, timeout: 10 }] };
+  return { Notification: [entry], Stop: [entry] };
+}
+
+/** Two `hooks` blocks as one: each event's entries, the first's first. */
+export function mergeHooks(
+  a: Record<string, unknown> | null,
+  b: Record<string, unknown[]> | null,
+): Record<string, unknown> | null {
+  if (!a) return b;
+  if (!b) return a;
+  const out: Record<string, unknown> = { ...a };
+  for (const [k, v] of Object.entries(b))
+    out[k] = [...((out[k] as unknown[] | undefined) ?? []), ...v];
+  return out;
+}
+
+/**
  * D47 for an agent whose persona has no guardrail hooks: the PreToolUse
  * hook with the API-only check alone (`--no-guardrails`: no log or sleep
  * checks).
