@@ -460,6 +460,9 @@
     "hubp.failed": "Den は Hub のプロジェクトを取得できませんでした。",
     "hubp.cantSee": "Den Hub は {repo} を参照できません。",
     "hubp.giveAccess": "{org} へのアクセスを Den Hub に許可",
+    "hub.legacy":
+      "このインストールは古い Hub トークンを使っています。Den が置き換えられない場所に保存されています。新しいトークンに移すには再接続してください。",
+    "hub.reconnect": "再接続",
     "hubgh.offline": "このインストールはまだ Hub に接続されていません。",
     "hubgh.failed":
       "Den は GitHub へのアクセスについて Hub に問い合わせできませんでした。",

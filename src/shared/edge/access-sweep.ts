@@ -179,6 +179,23 @@ export function rawAccessWarning(
  * `--accesslog` (Traefik's own log: every path and query, unmasked, past
  * Den), and the raw file not being swept.
  */
+/**
+ * #63: doctor's line when the access log is on and nothing is wrong with
+ * it (no warnings): where the masked log is. Null otherwise.
+ */
+export function edgeAccessHealthy(
+  cfg: {
+    args: string[];
+    stateDir: string;
+    accessLog?: { enabled: boolean };
+  },
+  now: number = Date.now(),
+): string | null {
+  if (cfg.accessLog?.enabled !== true) return null;
+  if (edgeAccessWarnings(cfg, now).length) return null;
+  return `access log on: masked into ${accessPaths(cfg.stateDir).log}, and kept up with`;
+}
+
 export function edgeAccessWarnings(
   cfg: { args: string[]; stateDir: string },
   now: number = Date.now(),

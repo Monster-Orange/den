@@ -39,7 +39,9 @@ import {
   readHubToken,
   type HubConfig,
   type HubGrant,
+  type HubTokenRotation,
 } from "../../shared/hub.js";
+import { recordAction } from "./audit.js";
 import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
@@ -215,27 +217,73 @@ async function defaultStore(token: string): Promise<StoredToken> {
   return { kind: "file", source: `file:${file}`, where: file };
 }
 
+/** Connect's own store item for this backend, when `cfg` points at it. */
+function isOwnStoreRef(cfg: HubConfig): boolean {
+  if (!cfg.tokenRef) return false;
+  const st = secretsStatus(readSecretsConfig(), process.env);
+  const ours = storeRefFor(st.backend);
+  return (
+    !!ours &&
+    (ours.item
+      ? cfg.tokenRef.item === ours.item
+      : cfg.tokenRef.key === ours.key)
+  );
+}
+
+/** Connect's own file, when `cfg` points at it (never a distribution's path). */
+function isOwnFile(cfg: HubConfig, file = hubTokenFile()): boolean {
+  return (
+    cfg.tokenSource?.kind === "file" &&
+    path.resolve(cfg.tokenSource.path) === path.resolve(file)
+  );
+}
+
+/**
+ * #71: Den rewrites only the Hub token Connect stored (its file, or its
+ * item in the install's store). A secret ref, file, keychain entry or env
+ * var a distribution chose is never written: Settings says to reconnect.
+ */
+export function hubTokenRotation(
+  deps: {
+    file?: string;
+    setRef?: (ref: SecretRef, v: string) => Promise<void>;
+    record?: HubTokenRotation["record"];
+  } = {},
+): HubTokenRotation {
+  const file = deps.file ?? hubTokenFile();
+  return {
+    owns: (cfg) => isOwnFile(cfg, file) || isOwnStoreRef(cfg),
+    write: async (cfg, token) => {
+      if (isOwnFile(cfg, file)) return writeTokenFile(file, token);
+      if (cfg.tokenRef && isOwnStoreRef(cfg))
+        return (deps.setRef ?? ((r, v) => getSecretsProvider().set(r, v)))(
+          cfg.tokenRef,
+          token,
+        );
+      throw new Error("not a token Den stored");
+    },
+    record:
+      deps.record ??
+      ((detail, refused) =>
+        recordAction(null, {
+          verb: "hub-token",
+          detail,
+          ...(refused ? { outcome: "refused" as const, reason: refused } : {}),
+        })),
+  };
+}
+
 async function defaultForget(cfg: HubConfig): Promise<void> {
   if (cfg.tokenSource?.kind === "file") {
     // Only the file Connect made: never a path a distribution chose.
-    if (path.resolve(cfg.tokenSource.path) === path.resolve(hubTokenFile()))
-      fs.rmSync(hubTokenFile(), { force: true });
+    if (isOwnFile(cfg)) fs.rmSync(hubTokenFile(), { force: true });
     return;
   }
-  if (cfg.tokenRef) {
-    // Stores have no delete here: blank the value (the token is revoked).
-    const st = secretsStatus(readSecretsConfig(), process.env);
-    const ours = storeRefFor(st.backend);
-    const same =
-      !!ours &&
-      (ours.item
-        ? cfg.tokenRef.item === ours.item
-        : cfg.tokenRef.key === ours.key);
-    if (same)
-      await getSecretsProvider()
-        .set(cfg.tokenRef, " ")
-        .catch(() => undefined);
-  }
+  // Stores have no delete here: blank the value (the token is revoked).
+  if (cfg.tokenRef && isOwnStoreRef(cfg))
+    await getSecretsProvider()
+      .set(cfg.tokenRef, " ")
+      .catch(() => undefined);
 }
 
 export function defaultHubConnectDeps(): HubConnectDeps {

@@ -975,6 +975,19 @@ Settings, connected. Nobody copies a token or edits config.
   `hub.url` stays, so Connect is one click. If Hub can't be reached,
   nothing is removed; **Remove it here anyway** removes it, and says the
   token still works on Hub until an admin revokes the install.
+- **Hub rotates tokens, and Den keeps up.** When Den keeps the token
+  itself (Connect's file, or the item Connect made in the install's
+  store), it asks Hub for a new one: `GET <hub>/connect/whoami?rotate=true`.
+  When Hub answers a `rotated_token`, Den writes it in place of the old
+  one and checks it with a second whoami, the new token's first use. If
+  the write fails, or Hub refuses the new token, the old one stays (Hub
+  keeps it good until the new one is used). Each step is an audit row
+  (`hub-token`), never with a token in it. Den does this when Settings or
+  the rail looks at Hub, so about once a minute while a page shows.
+  Doctor and the CLI only report. A token a distribution points at (its
+  own secret ref, file, keychain entry or env var) is never written. If
+  Hub says it is a `legacy` token, Settings and doctor say so and offer
+  **Reconnect**, which moves it to a new one.
 - A token Hub no longer accepts (revoked, or replaced by a newer
   connect) shows **Reconnect**. A role that may no longer connect Den
   installs says to ask a Hub admin; Den never retries it.
@@ -2010,7 +2023,8 @@ user, and the CLI does that for you:
   0600, in a 0700 dir). Den's server masks each line into
   `<edge state>/edge-access.log` (0600, rotated past `max_mb`, default 20)
   every second and empties the raw file. Masked always: the query keys
-  `token`, `code`, `key`, `secret`, `password` and the path `/auth/link/*`;
+  `token`, `code`, `key`, `secret`, `password`, `state` and the path
+  `/auth/link/*`;
   the lists add to those. Only the request's fields are kept, never its
   headers. Each line has `request_id`: the trace id the edge also sends
   the service in `traceparent`, and the id Den's own log, error pages and

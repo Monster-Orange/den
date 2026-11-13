@@ -583,7 +583,12 @@ export async function handleAgentRoutes(
     if (method !== "GET" && method !== "HEAD")
       return methodNotAllowed(res, "GET");
     const { hubStatus } = await import("../../shared/hub.js");
-    const st = await (deps.hubStatus ?? (() => hubStatus()))();
+    // #71: this is where Den takes a token Hub rotates (Settings, and the
+    // rail's look every minute); doctor and the CLI only report.
+    const { hubTokenRotation } = await import("./hub-connect.js");
+    const st = await (
+      deps.hubStatus ?? (() => hubStatus({ rotation: hubTokenRotation() }))
+    )();
     // HUB-1.7: what the last Connect came to, once (words only). The
     // rail's look (?rail=1) leaves it for Settings, which shows it.
     const rail =

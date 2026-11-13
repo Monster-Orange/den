@@ -312,6 +312,18 @@ export interface HubWhoami {
   mcpUrl?: string;
   /** Threads on Hub waiting on the person (the rail's badge). */
   unread?: number;
+  /**
+   * #71: which kind of token this install is on. `legacy`: one Hub carried
+   * over from before its new token format; Den rewrites it when Den keeps
+   * it, else the person reconnects.
+   */
+  token?: "legacy" | "current";
+  /**
+   * #71: the new token, only when Den asked (`rotate`) and Hub has one for
+   * this install. Pending on Hub until it is first used. Never logged,
+   * never shown, never sent anywhere but Hub.
+   */
+  rotatedToken?: string;
 }
 
 /**
@@ -362,6 +374,13 @@ export type HubStatus =
       login?: string;
       /** Hub threads waiting on the person (whoami's unread). */
       unread?: number;
+      /**
+       * #71: still on a legacy token Den can't rewrite (it lives in a
+       * store Den didn't make, or an env var): Reconnect moves it over.
+       */
+      legacy?: boolean;
+      /** #71: Den just replaced the token with the one Hub rotated to. */
+      rotated?: boolean;
       /** Why it isn't connected, in words (never the token). */
       problem?: string;
     };
@@ -434,10 +453,11 @@ const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 export async function hubWhoami(
   url: string,
   token: string,
-  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+  opts: { timeoutMs?: number; fetch?: FetchFn; rotate?: boolean } = {},
 ): Promise<HubWhoami> {
   const b = await hubCall(
-    `${url}/connect/whoami`,
+    // #71: ask for a new token only when Den keeps this one itself.
+    `${url}/connect/whoami${opts.rotate ? "?rotate=true" : ""}`,
     {
       method: "GET",
       headers: { ...bearer(token), Accept: "application/json" },
@@ -464,8 +484,38 @@ export async function hubWhoami(
     b.unread >= 0
       ? { unread: Math.min(b.unread, 1_000_000) }
       : {}),
+    ...(b.token === "legacy" || b.token === "current"
+      ? { token: b.token }
+      : {}),
+    // A header-safe value, not the one in use: anything else is ignored.
+    ...(opts.rotate &&
+    typeof b.rotated_token === "string" &&
+    ROTATED_TOKEN_RE.test(b.rotated_token) &&
+    b.rotated_token !== token
+      ? { rotatedToken: b.rotated_token }
+      : {}),
   };
 }
+
+/** #71: a token Den will store: printable, no spaces, 16 to 512 long. */
+const ROTATED_TOKEN_RE = /^[\x21-\x7e]{16,512}$/;
+
+/**
+ * #71: how Den rewrites the Hub token it keeps itself (Connect's file, or
+ * the item Connect made in the install's store). `owns` is false for a
+ * token a distribution points at (a secret ref, file, keychain or env it
+ * chose): Den never writes those, and the person reconnects instead.
+ */
+export interface HubTokenRotation {
+  owns: (cfg: HubConfig) => boolean;
+  /** Write `token` in place of the current one. Throws when it can't. */
+  write: (cfg: HubConfig, token: string) => Promise<void>;
+  /** An audit row: words only, never a token. */
+  record?: (detail: string, refused?: string) => void;
+}
+
+/** One rotation at a time in this process (each status call waits its turn). */
+let rotationTurn: Promise<unknown> = Promise.resolve();
 
 /**
  * H5: the Hub projects of this install's company, and Hub's suggestions
@@ -783,13 +833,82 @@ export function scrubToken(msg: string, token: string | null): string {
   return token ? msg.split(token).join("[token]") : msg;
 }
 
+/**
+ * #71: store the token Hub rotated to, then confirm it with a second
+ * whoami. Hub keeps the old one good until the new one is first used, so a
+ * write that fails, or a new token Hub refuses, leaves the old one in place
+ * (written back). Hub not answering the confirm keeps the new one: Hub may
+ * have taken it, and the next status call tries it again. Whoami as the new
+ * token, or null when the old one stays.
+ */
+async function rotateHubToken(
+  cfg: HubConfig,
+  old: string,
+  fresh: string,
+  owner: HubTokenRotation,
+  ask: (url: string, token: string) => Promise<HubWhoami>,
+): Promise<HubWhoami | null> {
+  const note = (d: string, refused?: string) => {
+    try {
+      owner.record?.(d, refused);
+    } catch {
+      /* the audit is best effort */
+    }
+  };
+  try {
+    await owner.write(cfg, fresh);
+  } catch (e) {
+    note(
+      `Hub offered a new token, and Den couldn't store it (${scrubToken(
+        scrubToken((e as Error)?.message ?? String(e), fresh),
+        old,
+      )}); the old one stays`,
+      "store_failed",
+    );
+    return null;
+  }
+  try {
+    const who = await ask(cfg.url, fresh);
+    note("Den stored the new token Hub rotated to, and Hub took it");
+    return who;
+  } catch (e) {
+    if (e instanceof HubCallError && e.kind !== "unreachable") {
+      await owner.write(cfg, old).catch(() => undefined);
+      note(
+        "Hub refused the new token it offered; Den put the old one back",
+        "rotated_refused",
+      );
+      return null;
+    }
+    note(
+      "Den stored the new token Hub rotated to; Hub didn't answer the check, so the next one confirms it",
+    );
+    return null;
+  }
+}
+
 /** Settings › Hub and doctor: set, connected, and to whom. */
 export async function hubStatus(
   deps: {
     config?: () => HubConfig | null;
     token?: (c: HubConfig) => Promise<string | null>;
-    whoami?: (url: string, token: string) => Promise<HubWhoami>;
+    whoami?: (
+      url: string,
+      token: string,
+      opts?: { rotate?: boolean },
+    ) => Promise<HubWhoami>;
+    /** #71: the server passes it; doctor and the CLI only report. */
+    rotation?: HubTokenRotation | null;
   } = {},
+): Promise<HubStatus> {
+  if (!deps.rotation) return hubStatusOnce(deps);
+  const turn = rotationTurn.then(() => hubStatusOnce(deps));
+  rotationTurn = turn.catch(() => undefined);
+  return turn;
+}
+
+async function hubStatusOnce(
+  deps: Parameters<typeof hubStatus>[0] & object,
 ): Promise<HubStatus> {
   let cfg: HubConfig | null;
   try {
@@ -827,11 +946,23 @@ export async function hubStatus(
       state: "no_token",
       problem: `${cfg.tokenFrom} could not be read from this install's secrets store`,
     };
+  const ask = deps.whoami ?? ((u, t, o) => hubWhoami(u, t, o));
+  let owner: HubTokenRotation | null = null;
   try {
-    const who = await (deps.whoami ?? ((u, t) => hubWhoami(u, t)))(
-      cfg.url,
-      token,
-    );
+    owner = deps.rotation?.owns(cfg) ? deps.rotation : null;
+  } catch {
+    owner = null;
+  }
+  try {
+    let who = await ask(cfg.url, token, owner ? { rotate: true } : undefined);
+    let rotated = false;
+    if (owner && who.rotatedToken) {
+      const r = await rotateHubToken(cfg, token, who.rotatedToken, owner, ask);
+      if (r) {
+        who = r;
+        rotated = true;
+      }
+    }
     return {
       ...base,
       connected: true,
@@ -842,6 +973,8 @@ export async function hubStatus(
       ...(who.role ? { role: who.role } : {}),
       ...(who.login ? { login: who.login } : {}),
       ...(who.unread !== undefined ? { unread: who.unread } : {}),
+      ...(who.token === "legacy" && !rotated ? { legacy: true } : {}),
+      ...(rotated ? { rotated: true } : {}),
     };
   } catch (e) {
     const kind = e instanceof HubCallError ? e.kind : "unreachable";

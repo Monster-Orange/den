@@ -43,6 +43,7 @@ const SHOTS = process.env.DEN_AGENTS_SHOTS;
 const errors: string[] = [];
 const TOKEN = "5f0c2d1e-3a4b-4c5d-8e9f-0a1b2c3d4e5f";
 const sid: Record<string, string> = {};
+/** Each session's scripted PTY, by start order (their pids are all this process's). */
 const pid: Record<string, number> = {};
 // The page's own rule (term-input.js isMac): a browser in a Linux
 // container is "elsewhere" even on a Mac.
@@ -91,7 +92,7 @@ beforeAll(async () => {
       rows: 24,
     });
     sid[id] = info.ref.id;
-    pid[id] = info.pid;
+    pid[id] = s.made.length - 1;
     // "shell" is a plain session: no record.
     if (runtime)
       s.seed({
@@ -120,7 +121,7 @@ afterAll(async () => {
 });
 
 const skip = () => !browser;
-const pty = (id: string) => s!.made.find((x) => x.pid === pid[id])!;
+const pty = (id: string) => s!.made[pid[id]]!;
 const typed = (id: string, from: number) =>
   Buffer.concat(pty(id).writes.slice(from)).toString("latin1");
 const transcript = () =>
@@ -852,7 +853,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
         rows: 24,
       });
       sid.ender = info.ref.id;
-      pid.ender = info.pid;
+      pid.ender = s!.made.length - 1;
       s!.seed({
         id: "ender",
         persona: "builder",

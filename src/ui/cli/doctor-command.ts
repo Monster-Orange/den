@@ -39,7 +39,10 @@ import { eventsFile } from "../../shared/dev-metrics/emit.js";
 import { pollingWarnings } from "../../shared/dev-metrics/polling.js";
 import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
-import { edgeAccessWarnings } from "../../shared/edge/access-sweep.js";
+import {
+  edgeAccessHealthy,
+  edgeAccessWarnings,
+} from "../../shared/edge/access-sweep.js";
 import { edgeTlsWarnings, tlsStrategyFor } from "../../shared/edge/tls.js";
 import {
   describeOpTokenSource,
@@ -92,6 +95,8 @@ export interface DoctorRow {
   /** True when it will be used and cannot work: doctor exits 1. */
   problem: boolean;
   warnings: string[];
+  /** #63: what's healthy and worth saying (a ✓ line each). */
+  notes?: string[];
 }
 
 type Selector = (env: NodeJS.ProcessEnv) => DoctorRow;
@@ -147,6 +152,7 @@ const SELECTORS: Record<string, Selector> = {
         reason: d.reason,
         problem: !d.available,
         warnings: [...edgeTlsWarnings(cfg), ...edgeAccessWarnings(cfg)],
+        notes: [edgeAccessHealthy(cfg)].filter((n): n is string => !!n),
       };
     } catch (err) {
       return {
@@ -294,6 +300,7 @@ export function formatDoctor(rows: DoctorRow[], title: string): string[] {
     lines.push(
       `  ${r.kind.padEnd(width)}  ${sel.padEnd(selWidth)} ${state}${r.reason ? `: ${r.reason}` : ""}`,
     );
+    for (const n of r.notes ?? []) lines.push(chalk.green(`    ✓ ${n}`));
     for (const w of r.warnings) lines.push(chalk.yellow(`    ⚠ ${w}`));
   }
   return lines;
@@ -499,18 +506,24 @@ export function hubLines(
     st.state === "no_token" || st.state === "rejected"
       ? ` (Settings › Agents › Hub: ${st.state === "rejected" ? "Reconnect" : "Connect"})`
       : "";
+  // #71: connected, on an older token Den can't replace itself.
+  const legacy =
+    st.connected && st.legacy
+      ? "; on an older Hub token kept where Den can't replace it (Settings › Agents › Hub: Reconnect)"
+      : "";
   const detail = st.connected
-    ? `${st.url}: connected${who ? ` (${who})` : ""}`
+    ? `${st.url}: connected${who ? ` (${who})` : ""}${legacy}`
     : `${st.url || "hub.url"}: not connected: ${st.problem ?? "no answer"}${fix}`;
+  const good = st.connected && !legacy;
   return {
     lines: [
       "",
       `${title} doctor: Hub`,
       "",
-      `  hub  ${st.connected ? "✓" : "⚠"}  ${detail}`,
+      `  hub  ${good ? "✓" : "⚠"}  ${detail}`,
     ],
     problem: false, // a Hub that is down never fails doctor: agents still run
-    check: { id: "hub", status: st.connected ? "ok" : "warn", detail },
+    check: { id: "hub", status: good ? "ok" : "warn", detail },
   };
 }
 

@@ -472,6 +472,9 @@
     "hubp.failed": "Den no pudo obtener los proyectos de Hub.",
     "hubp.cantSee": "Den Hub no puede ver {repo}.",
     "hubp.giveAccess": "Dar acceso a Den Hub a {org}",
+    "hub.legacy":
+      "Esta instalación usa un token antiguo de Hub, guardado donde Den no puede reemplazarlo. Vuelve a conectar para pasar a uno nuevo.",
+    "hub.reconnect": "Volver a conectar",
     "hubgh.offline": "Esta instalación aún no está conectada a Hub.",
     "hubgh.failed": "Den no pudo preguntar a Hub por el acceso a GitHub.",
     "hubgh.noOrgs": "Aún no se han enviado repos a Hub.",

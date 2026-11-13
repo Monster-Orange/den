@@ -63,9 +63,12 @@ const start = async (ws: string, name: string) => {
     rows: 24,
   });
   sess[name] = info;
-  return s!.made[s!.made.length - 1];
+  ptyAt[name] = s!.made.length - 1;
+  return s!.made[ptyAt[name]];
 };
-const pty = (name: string) => s!.made.find((p) => p.pid === sess[name].pid)!;
+/** By start order: every scripted PTY's pid is this process's. */
+const ptyAt: Record<string, number> = {};
+const pty = (name: string) => s!.made[ptyAt[name]]!;
 const id = (name: string) => sess[name].ref.id;
 
 beforeAll(async () => {

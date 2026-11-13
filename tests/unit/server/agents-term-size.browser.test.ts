@@ -73,7 +73,8 @@ async function session(name: string): Promise<[string, ScriptedPty]> {
     cols: 80,
     rows: 24,
   });
-  return [info.ref.id, s!.made.find((p) => p.pid === info.pid)!];
+  // By start order: every scripted PTY's pid is this process's.
+  return [info.ref.id, s!.made.at(-1)!];
 }
 
 /**

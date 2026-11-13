@@ -1574,7 +1574,7 @@ const HUB_FLASH = {
  * Disconnect. A token Hub refuses offers Reconnect; a role that no longer
  * may connect says to ask an admin (never a retry).
  */
-export function hubHtml(b, flash) {
+export function hubHtml(b, flash, t = (k) => k) {
   b = b || { configured: false };
   const state = b.configured
     ? b.state || (b.connected ? "connected" : "no_token")
@@ -1632,7 +1632,10 @@ export function hubHtml(b, flash) {
         ? "Your role on Hub no longer allows connecting installs. Ask a Hub admin to change your role, then Reconnect."
         : state === "unreachable"
           ? b.problem || "Hub didn't answer."
-          : "";
+          : // #71: a token Den can't replace itself; Reconnect moves it over.
+            b.legacy
+            ? t("hub.legacy")
+            : "";
   const tools =
     `<label class="hub-tools"><input type="checkbox" id="hub-allow-tools"${b.allowTools !== false ? " checked" : ""}> Agents use Hub's tools without asking</label>` +
     `<p class="set-note" data-hub-tools-note>${
@@ -1647,8 +1650,8 @@ export function hubHtml(b, flash) {
     `</dl>` +
     (why ? note(why, "data-hub-problem") : "") +
     `<div class="hub-acts">` +
-    (state === "rejected"
-      ? `<button type="button" class="btn sm primary" data-hub-action="connect">Reconnect</button> `
+    (state === "rejected" || b.legacy
+      ? `<button type="button" class="btn sm primary" data-hub-action="connect">${escR(t("hub.reconnect"))}</button> `
       : "") +
     `<button type="button" class="btn sm" data-hub-action="disconnect">Disconnect</button>` +
     `</div>` +
@@ -2087,7 +2090,7 @@ function drawHub(host, ctx, back, flash) {
       if (!f && b && b.connect) f = b.connect;
       else if (!f && back && HUB_FLASH[back])
         f = { ok: HUB_FLASH[back][0], message: HUB_FLASH[back][1] };
-      host.innerHTML = hubHtml(b, f);
+      host.innerHTML = hubHtml(b, f, (k, v) => ctx.shell.t(k, v));
       wireHub(host, ctx);
       // D44: agents started before Hub changed keep their old tools.
       return offerRestart(host, ctx, Boolean(f || back));

@@ -8,7 +8,7 @@
  * request on the log write. A log must never stall traffic.)
  *
  * Masked by default: the query keys token, code, key, secret, password,
- * and the path /auth/link/*. `edge.access_log.mask_query` and `mask_paths`
+ * state, and the path /auth/link/*. `edge.access_log.mask_query` and `mask_paths`
  * add to those. The request id is Traefik's trace id (it sends the same
  * one upstream in `traceparent`).
  *
@@ -21,6 +21,8 @@ export const DEFAULT_MASK_QUERY: readonly string[] = [
   "key",
   "secret",
   "password",
+  // An OAuth or connect `state` is single-use and guards the callback.
+  "state",
 ];
 export const DEFAULT_MASK_PATHS: readonly string[] = ["/auth/link/*"];
 export const REDACTED = "[redacted]";

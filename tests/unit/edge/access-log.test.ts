@@ -15,6 +15,7 @@ import {
 } from "../../../src/shared/edge/access-log.js";
 import {
   accessPaths,
+  edgeAccessHealthy,
   edgeAccessWarnings,
   prepareAccessRaw,
   rawAccessWarning,
@@ -60,7 +61,15 @@ describe("edge.access_log config", () => {
     });
     expect(c).toEqual({
       enabled: true,
-      maskQuery: ["token", "code", "key", "secret", "password", "invite"],
+      maskQuery: [
+        "token",
+        "code",
+        "key",
+        "secret",
+        "password",
+        "state",
+        "invite",
+      ],
       maskPaths: ["/auth/link/*", "/invite/*"],
       maxMb: 5,
     });
@@ -80,8 +89,11 @@ describe("edge.access_log config", () => {
 describe("masking", () => {
   it("masks the default query keys and /auth/link/*, keeps the rest", () => {
     expect(
-      maskRequestPath(`/cb?code=${SECRET}&state=ok&Token=${SECRET}`, on),
-    ).toBe("/cb?code=[redacted]&state=ok&Token=[redacted]");
+      maskRequestPath(
+        `/cb?code=${SECRET}&state=${SECRET}&page=ok&Token=${SECRET}`,
+        on,
+      ),
+    ).toBe("/cb?code=[redacted]&state=[redacted]&page=ok&Token=[redacted]");
     expect(maskRequestPath(`/auth/link/${SECRET}/go`, on)).toBe(
       "/auth/link/[redacted]",
     );
@@ -238,11 +250,20 @@ describe("the sweep", () => {
     expect(edgeAccessWarnings({ args: [], stateDir: dir }, now)).toHaveLength(
       1,
     );
+    // #63: doctor's healthy line only when nothing is wrong.
+    const cfg = { args: [], stateDir: dir, accessLog: { enabled: true } };
+    expect(edgeAccessHealthy(cfg, now)).toBeNull();
     // The server starts: its first act is a sweep.
     expect(sweepAccessLog(dir, on).kept).toBe(80);
     expect(fs.statSync(raw()).size).toBe(0);
     expect(kept()).not.toContain(SECRET);
     expect(rawAccessWarning(dir, now + 60_000)).toBeNull();
+    expect(edgeAccessHealthy(cfg, now + 60_000)).toBe(
+      `access log on: masked into ${accessPaths(dir).log}, and kept up with`,
+    );
+    expect(
+      edgeAccessHealthy({ ...cfg, accessLog: { enabled: false } }, now),
+    ).toBeNull();
   });
 
   it("warns on an edge.args --accesslog, and not otherwise", () => {

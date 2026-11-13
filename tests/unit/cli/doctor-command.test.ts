@@ -214,6 +214,9 @@ describe("doctor", () => {
           reason: "mkcert is not installed",
           problem: true,
           warnings: ["edge.tls is not set; …"],
+          notes: [
+            "access log on: masked into /x/edge-access.log, and kept up with",
+          ],
         },
       ],
       "Acme",
@@ -223,6 +226,7 @@ describe("doctor", () => {
       "",
       "  secrets  none                 ✓ available: no secrets backend configured",
       "  tls      mkcert (implicit)    ✗ unavailable: mkcert is not installed",
+      "    ✓ access log on: masked into /x/edge-access.log, and kept up with",
       "    ⚠ edge.tls is not set; …",
     ]);
   });
