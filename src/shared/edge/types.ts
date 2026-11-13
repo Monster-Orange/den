@@ -85,4 +85,11 @@ export interface EdgeConfig {
    * passthrough in front can pass on the real client. Empty: none.
    */
   proxyProtocolTrustedIps?: string[];
+  /**
+   * `edge.upstream_idle_seconds` (#67, default 1): how long the edge keeps
+   * an idle connection to an upstream. Below the upstream's own keep-alive
+   * (Node 5 s, gunicorn 2 s), so the edge never sends a request on one the
+   * upstream has just closed (a 502 with no retry).
+   */
+  upstreamIdleSeconds?: number;
 }

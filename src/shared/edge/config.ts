@@ -31,6 +31,7 @@
  *     args: [--accesslog=true]
  *     proxy_protocol:               # a TCP-passthrough front proxy that
  *       trusted_ips: [172.18.0.5]   # sends the PROXY protocol (SEC-2a)
+ *     upstream_idle_seconds: 1      # idle upstream connections kept (#67)
  *   web:
  *     port: 7777             # the web UI; routed as `<brand name>`
  */
@@ -73,6 +74,7 @@ interface RawEdge {
   networks?: string[];
   args?: string[];
   proxy_protocol?: { trusted_ips?: unknown } | null;
+  upstream_idle_seconds?: unknown;
 }
 
 function readYaml(file: string): Record<string, unknown> {
@@ -374,7 +376,20 @@ function computeEdgeConfig(root: string): EdgeConfig {
     proxyProtocolTrustedIps: proxyProtocolIps(
       user.proxy_protocol ?? team.proxy_protocol,
     ),
+    upstreamIdleSeconds: upstreamIdle(
+      user.upstream_idle_seconds ?? team.upstream_idle_seconds,
+    ),
   };
+}
+
+/** `edge.upstream_idle_seconds` (#67): a whole number, 1 to 600; default 1. */
+export function upstreamIdle(v: unknown): number {
+  if (v === undefined || v === null) return 1;
+  if (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 600)
+    return v;
+  throw new Error(
+    "edge.upstream_idle_seconds must be a whole number of seconds, 1 to 600",
+  );
 }
 
 /**

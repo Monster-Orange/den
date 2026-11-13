@@ -17,3 +17,25 @@ export function withoutOwnerLabels(compose: string): string {
     throw new Error("the edge's forwarded-header trust is missing");
   return compose.replace(OWNER_LABELS, "").replace(EDGE_TRUST, "");
 }
+
+/**
+ * #67 (0.4.42): every generated service names the `den-upstream` servers
+ * transport, defined once, after the golden files too. Byte comparisons of
+ * the dynamic config drop exactly those lines; render.test.ts asserts them.
+ */
+const SERVICE_TRANSPORT = /^ {8}serversTransport: den-upstream\n/gm;
+const TRANSPORTS =
+  /^ {2}serversTransports:\n {4}den-upstream:\n {6}forwardingTimeouts:\n {8}idleConnTimeout: \d+s\n/m;
+
+export function withoutUpstreamTransport(dynamic: string): string {
+  const uses = dynamic.match(SERVICE_TRANSPORT)?.length ?? 0;
+  const services =
+    dynamic.match(/^ {4}route-[^\n]*:\n {6}loadBalancer:\n/gm)?.length ?? 0;
+  if (uses !== services)
+    throw new Error(
+      `${services} routes but ${uses} name the den-upstream transport`,
+    );
+  if (services && !TRANSPORTS.test(dynamic))
+    throw new Error("the den-upstream transport is missing");
+  return dynamic.replace(SERVICE_TRANSPORT, "").replace(TRANSPORTS, "");
+}

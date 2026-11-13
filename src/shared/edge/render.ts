@@ -117,6 +117,9 @@ export function certNames(cfg: EdgeConfig): string[] {
   ]);
 }
 
+/** The servers transport every generated route's service uses (#67). */
+export const UPSTREAM_TRANSPORT = "den-upstream";
+
 /**
  * Dynamic config: TLS cert, HTTP→HTTPS redirect, dashboard, routes. With
  * `tls: none` every router is on the http entrypoint, with no TLS and no
@@ -163,7 +166,12 @@ export function renderEdgeDynamic(cfg: EdgeConfig): string {
       service: key,
       ...routerTls(cfg),
     };
-    services[key] = { loadBalancer: { servers: [{ url }] } };
+    services[key] = {
+      loadBalancer: {
+        servers: [{ url }],
+        serversTransport: UPSTREAM_TRANSPORT,
+      },
+    };
   }
   const cert = {
     certFile: "/etc/edge/certs/edge.pem",
@@ -187,7 +195,19 @@ export function renderEdgeDynamic(cfg: EdgeConfig): string {
               },
             }
           : {}),
-        ...(Object.keys(services).length ? { services } : {}),
+        ...(Object.keys(services).length
+          ? {
+              services,
+              // #67: drop idle upstream connections before the upstream does.
+              serversTransports: {
+                [UPSTREAM_TRANSPORT]: {
+                  forwardingTimeouts: {
+                    idleConnTimeout: `${cfg.upstreamIdleSeconds ?? 1}s`,
+                  },
+                },
+              },
+            }
+          : {}),
       },
       ...(cfg.tls.strategy === "mkcert"
         ? {

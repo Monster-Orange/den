@@ -13,7 +13,10 @@ import {
   renderEdgeDynamic,
 } from "../../../src/shared/edge/render.js";
 import type { EdgeConfig } from "../../../src/shared/edge/types.js";
-import { withoutOwnerLabels } from "./helpers/owner-labels.js";
+import {
+  withoutOwnerLabels,
+  withoutUpstreamTransport,
+} from "./helpers/owner-labels.js";
 
 const golden = JSON.parse(
   fs.readFileSync(
@@ -53,9 +56,13 @@ const pub = { ...cfg, ports: { http: 80, https: 443 } } as EdgeConfig;
 describe("edge with no opt-ins", () => {
   it("renders byte-identical to the pre-opt-in engine", () => {
     expect(certNames(cfg)).toEqual(golden.certNames);
-    expect(renderEdgeDynamic(cfg)).toBe(golden.dynamic);
+    expect(withoutUpstreamTransport(renderEdgeDynamic(cfg))).toBe(
+      golden.dynamic,
+    );
     expect(withoutOwnerLabels(renderEdgeCompose(cfg))).toBe(golden.compose);
-    expect(renderEdgeDynamic(pub)).toBe(golden.dynamicPublished);
+    expect(withoutUpstreamTransport(renderEdgeDynamic(pub))).toBe(
+      golden.dynamicPublished,
+    );
     expect(withoutOwnerLabels(renderEdgeCompose(pub))).toBe(
       golden.composePublished,
     );
@@ -76,9 +83,11 @@ describe("edge with no opt-ins and dotted routes", () => {
     const c = { ...dotted.config, ...defaults } as unknown as EdgeConfig;
     const p = { ...c, ports: { http: 80, https: 443 } } as EdgeConfig;
     expect(certNames(c)).toEqual(dotted.certNames);
-    expect(renderEdgeDynamic(c)).toBe(dotted.dynamic);
+    expect(withoutUpstreamTransport(renderEdgeDynamic(c))).toBe(dotted.dynamic);
     expect(withoutOwnerLabels(renderEdgeCompose(c))).toBe(dotted.compose);
-    expect(renderEdgeDynamic(p)).toBe(dotted.dynamicPublished);
+    expect(withoutUpstreamTransport(renderEdgeDynamic(p))).toBe(
+      dotted.dynamicPublished,
+    );
     expect(withoutOwnerLabels(renderEdgeCompose(p))).toBe(
       dotted.composePublished,
     );

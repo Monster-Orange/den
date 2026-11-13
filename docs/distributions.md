@@ -1984,6 +1984,14 @@ user, and the CLI does that for you:
   the client it carries is what Den sees. Configuring the gateway is the
   gateway's job.
 
+- **Idle upstream connections are dropped first** (#67). Each generated
+  route's service uses the `den-upstream` servers transport, which closes
+  an idle upstream connection after `edge.upstream_idle_seconds` (default
+  1, from 1 to 600). That's below a server's own keep-alive (Node 5 s,
+  gunicorn 2 s), so the edge never sends a POST on a connection the
+  upstream has just closed: that was an intermittent 502. It is in the
+  dynamic config, so a running edge picks it up with no restart.
+
 - **`edge up` recreates the edge when its command changed.** It compares
   the running edge's command with the one it renders and says why ("acme-edge's
   settings changed (forwarded-header trust): recreating it once. Routes

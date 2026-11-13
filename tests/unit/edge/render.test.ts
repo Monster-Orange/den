@@ -94,6 +94,28 @@ describe("renderEdgeDynamic", () => {
     ).toBe("http://host.docker.internal:3000");
     expect(doc.http.routers.dashboard.rule).toContain("edge.acme.internal");
   });
+  it("#67: every route's service uses one transport that drops idle upstream connections first", () => {
+    const doc = yaml.parse(
+      renderEdgeDynamic({
+        ...edge,
+        routes: { a: "http://a:1", b: "http://b:2" },
+        upstreamIdleSeconds: 3,
+      }),
+    );
+    for (const k of ["route-a", "route-b"])
+      expect(doc.http.services[k].loadBalancer.serversTransport).toBe(
+        "den-upstream",
+      );
+    expect(doc.http.serversTransports).toEqual({
+      "den-upstream": { forwardingTimeouts: { idleConnTimeout: "3s" } },
+    });
+    // The default: 1 s, below Node's 5 s and gunicorn's 2 s keep-alive.
+    expect(
+      yaml.parse(renderEdgeDynamic({ ...edge, routes: { a: "http://a:1" } }))
+        .http.serversTransports["den-upstream"].forwardingTimeouts
+        .idleConnTimeout,
+    ).toBe("1s");
+  });
   it("keeps a non-443 published port in the HTTPS redirect", () => {
     const redirect = (ports: EdgeConfig["ports"]) =>
       yaml.parse(renderEdgeDynamic({ ...edge, ports })).http.middlewares[
@@ -244,6 +266,21 @@ describe("readEdgeConfig", () => {
     expect(cfg.tls).toEqual({ strategy: "mkcert", ca: null });
     expect(cfg.tlsFrom).toBe("implicit");
     expect(cfg.httpsRedirect).toBe(true);
+  });
+  it("#67: edge.upstream_idle_seconds, 1 by default, user over team; a bad value names its key", () => {
+    expect(readEdgeConfig(root(team)).upstreamIdleSeconds).toBe(1);
+    expect(
+      readEdgeConfig(
+        root(
+          team + "  upstream_idle_seconds: 4\n",
+          "edge:\n  upstream_idle_seconds: 2\n",
+        ),
+      ).upstreamIdleSeconds,
+    ).toBe(2);
+    for (const bad of ["0", "1.5", "601", "soon"])
+      expect(() =>
+        readEdgeConfig(root(team + `  upstream_idle_seconds: ${bad}\n`)),
+      ).toThrow("edge.upstream_idle_seconds");
   });
   it("names the web UI route after the brand", () => {
     const cfg = readEdgeConfig(root("brand:\n  name: Acme\n" + team));
