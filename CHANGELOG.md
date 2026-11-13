@@ -41,6 +41,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **No "Allow this computer?" for a code nobody is waiting on (D67).** A
+  signed-out page shows a code as soon as it opens. When that page signed
+  in another way (Sign in with GitHub) or was closed, its code stayed
+  waiting for ten minutes, and every signed-in browser, that one too, asked
+  to allow it. Now the page withdraws its code as it goes, a code whose
+  page stopped asking drops off within 15 seconds, and a browser is never
+  asked about its own code.
 - **Pop-ups open in the middle of the window (D68).** On Home,
   Services, Local dev and Graph, every dialog (an approval, Restart Den,
   a helper's list, a transcript) opened in the top-left corner. Those

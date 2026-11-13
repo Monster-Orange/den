@@ -542,11 +542,37 @@ function wirePair(root, t, s) {
   let poll = null;
   let tick = null;
   let gen = 0;
+  // D67: this page's pending request (its poll id), withdrawn as the page
+  // goes, so no signed-in browser asks to let a closed tab in.
+  let mine = null;
+  const withdraw = () => {
+    const id = mine;
+    mine = null;
+    if (!id) return;
+    try {
+      fetch(`/api/signin/code/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        keepalive: true,
+        cache: "no-store",
+        credentials: "same-origin",
+      }).catch(() => {});
+    } catch {
+      /* going anyway: it stops being polled, and drops off the list */
+    }
+  };
   const stop = () => {
     clearTimeout(poll);
     clearTimeout(tick);
     gen++;
   };
+  window.addEventListener("pagehide", () => {
+    withdraw();
+    stop();
+  });
+  // Back from the back-forward cache: its request is gone, so a new one.
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) begin();
+  });
   const ended = (key) => {
     stop();
     box.innerHTML =
@@ -604,7 +630,8 @@ function wirePair(root, t, s) {
   };
   function begin() {
     stop();
-    const mine = gen;
+    withdraw();
+    const now = gen;
     fetch("/api/signin/code", {
       method: "POST",
       cache: "no-store",
@@ -614,14 +641,22 @@ function wirePair(root, t, s) {
     })
       .then((r) => r.json().catch(() => ({})))
       .then((b) => {
-        if (mine !== gen) return;
+        if (now !== gen) return;
         if (!b.ok || !b.id || !b.approve) return failed();
+        mine = b.id;
+        // D67: this browser's own code, so once it is in (another way),
+        // its pop-up never asks to let itself in.
+        try {
+          sessionStorage.setItem("den-pair-mine", String(b.code || ""));
+        } catch {
+          /* no storage */
+        }
         // The page's own clock, from what is left: no server clock skew.
         const deadline = Date.now() + Number(b.expiresIn ?? 600_000);
         show(b);
         const left = box.querySelector("#den-pair-left");
         const count = () => {
-          if (mine !== gen) return;
+          if (now !== gen) return;
           const ms = deadline - Date.now();
           if (ms <= 0) return ended("err.signin.codeExpired");
           left.textContent = countdownText(ms);
@@ -635,12 +670,13 @@ function wirePair(root, t, s) {
           })
             .then((r) => r.json().catch(() => ({})))
             .then((p) => {
-              if (mine !== gen) return;
+              if (now !== gen) return;
               if (p.state === "pending") {
                 poll = setTimeout(ask, 1500);
                 return;
               }
               if (p.state === "ok") {
+                mine = null;
                 keepApproveKey(p);
                 stop();
                 box.innerHTML = `<p class="lead" id="den-pair-in">${esc(t("err.signin.youreIn"))}</p>`;
@@ -654,12 +690,12 @@ function wirePair(root, t, s) {
               );
             })
             .catch(() => {
-              if (mine === gen) poll = setTimeout(ask, 3000);
+              if (now === gen) poll = setTimeout(ask, 3000);
             });
         poll = setTimeout(ask, 1500);
       })
       .catch(() => {
-        if (mine === gen) failed();
+        if (now === gen) failed();
       });
   }
   begin();

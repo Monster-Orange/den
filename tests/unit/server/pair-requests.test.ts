@@ -12,6 +12,7 @@ import {
   normalizePairCode,
   PAIR_ALPHABET,
   PAIR_TTL_MS,
+  PAIR_UNSEEN_MS,
   PairRequests,
 } from "../../../src/ui/server/pair-requests.js";
 
@@ -161,5 +162,35 @@ describe("the cap and the rate limit", () => {
     expect(pairs.get(r.id)?.state).toBe("pending");
     c.advance(60_000);
     expect(pairs.approve(r.code)).toMatchObject({ ok: true });
+  });
+});
+
+describe("D67: only codes a page still waits on", () => {
+  it("a page that stops asking (its tab closed) drops off the waiting list; asking again brings it back", () => {
+    const c = clock();
+    const pairs = new PairRequests({ now: c.now });
+    const kept = pairs.create({ userAgent: UA });
+    const left = pairs.create({ userAgent: UA });
+    c.advance(PAIR_UNSEEN_MS - 1000);
+    pairs.get(kept.id);
+    c.advance(2000);
+    expect(pairs.waiting().map((w) => w.code)).toEqual([kept.code]);
+    // It still approves by code (the CLI's `web approve`), and a poll shows it again.
+    expect(pairs.get(left.id)?.state).toBe("pending");
+    expect(pairs.waiting().map((w) => w.code)).toEqual([kept.code, left.code]);
+  });
+
+  it("withdraw ends a pending request by its poll id at once; not one already approved", () => {
+    const c = clock();
+    const pairs = new PairRequests({ now: c.now });
+    const r = pairs.create({ userAgent: UA });
+    expect(pairs.withdraw(r.id)).toBe(true);
+    expect(pairs.waiting()).toEqual([]);
+    expect(pairs.get(r.id)).toBeNull();
+    expect(pairs.withdraw(r.id)).toBe(false);
+    const ok = pairs.create({ userAgent: UA });
+    expect(pairs.approve(ok.code)).toMatchObject({ ok: true });
+    expect(pairs.withdraw(ok.id)).toBe(false);
+    expect(pairs.claim(ok.id)?.state).toBe("approved");
   });
 });

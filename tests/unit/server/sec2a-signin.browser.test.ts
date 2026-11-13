@@ -208,6 +208,8 @@ describe("Sign in with GitHub on the edge's signed-out page", () => {
     );
     expect((await p.textContent("#den-gh-start"))?.trim()).toBe("Start again");
     expect(await p.isVisible("#den-gh-start")).toBe(true);
+    // Left as a person leaves it (its pagehide runs): its code goes.
+    await p.goto("about:blank");
     await ctx.close();
   }, 90_000);
 });
@@ -234,6 +236,10 @@ describe("Settings › Access", () => {
       Object.keys(localStorage).some((k) => k.endsWith("-changelog-seen")),
     );
     expect(await p.$("#cl-overlay.open")).toBeNull();
+    // D67: the signed-out pages the tests above opened and closed (one
+    // signed in with GitHub) leave no code for this browser to allow.
+    await p.waitForTimeout(4000);
+    expect(await p.$("#den-pair-dlg[open]")).toBeNull();
     await p.waitForSelector("#set-owner");
     expect((await p.textContent("#set-owner"))?.replace(/\s+/g, " ")).toBe(
       "Owner: @octo-owner (github:4242)",

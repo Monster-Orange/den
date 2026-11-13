@@ -325,6 +325,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/signin/code/:id",
     "a code request's state; once approved, sets the session cookie (once)",
   ),
+  M(
+    ["DELETE"],
+    "/api/signin/code/:id",
+    "D67: the signed-out page is going; its pending code request ends",
+  ),
   S(
     ["GET", "HEAD"],
     "/api/web/waiting",
@@ -603,6 +608,14 @@ export const SIGNIN_GETS: readonly string[] = [
   "/api/github/signin/:id",
   "/api/signin/code/:id",
 ];
+
+/**
+ * D67: DELETEs whose path carries their own unguessable proof (the code
+ * request's poll id, which only its page holds): an allowed Origin, no
+ * CSRF token, signed in or not. The page withdraws its request as it
+ * goes, and by then it may have signed in another way.
+ */
+export const SIGNIN_ID_DELETES: readonly string[] = ["/api/signin/code/:id"];
 
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {

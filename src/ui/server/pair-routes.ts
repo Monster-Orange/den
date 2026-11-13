@@ -7,6 +7,8 @@
  *                                  expiry, and the commands that approve it
  *   GET  /api/signin/code/<id>     its state; approved: the session cookie,
  *                                  once (the request is consumed)
+ *   DELETE /api/signin/code/<id>  D67: its page is going; a pending
+ *                                  request ends (signed-out, Origin only)
  *   GET  /api/web/waiting          the requests waiting (shell-grade)
  *   POST /api/web/approve {code}   approve one (shell-grade: `<cli> web
  *                                  approve`, Settings › Access)
@@ -112,6 +114,10 @@ export async function handlePairRoutes(
     return true;
   }
   const p = POLL_PATH.exec(pathname);
+  if (p && method === "DELETE") {
+    deps.sendJson(res, { ok: true, withdrawn: deps.pairs.withdraw(p[1]) });
+    return true;
+  }
   if (p && (method === "GET" || method === "HEAD")) {
     const v = deps.pairs.get(p[1]);
     if (!v) {

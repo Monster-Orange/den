@@ -26,6 +26,13 @@ import { deviceName } from "../../shared/web-session.js";
 
 /** How long a request waits for its approval. */
 export const PAIR_TTL_MS = 10 * 60_000;
+/**
+ * D67: a pending request whose page hasn't polled for this long isn't
+ * waiting for anyone (its tab closed, or signed in another way): the
+ * signed-in browsers' "Allow this computer?" leaves it out. The page polls
+ * every 1.5 s; a background tab, at worst once a minute after five.
+ */
+export const PAIR_UNSEEN_MS = 15_000;
 /** The most pending requests at once; a new one drops the oldest. */
 export const MAX_PENDING_PAIRS = 5;
 /** How long an ended request still answers its page (denied, expired). */
@@ -84,6 +91,8 @@ interface PairRequest extends PairView {
   userAgent: string;
   /** When an ended request is forgotten. */
   forgetAt?: number;
+  /** D67: when its page last asked for it (create, poll). */
+  seenAt: number;
 }
 
 export type ApproveResult =
@@ -97,6 +106,7 @@ export class PairRequests {
   private readonly ttlMs: number;
   private readonly maxAttempts: number;
   private readonly windowMs: number;
+  private readonly unseenMs: number;
   private attempts: number[] = [];
 
   constructor(
@@ -106,6 +116,7 @@ export class PairRequests {
       ttlMs?: number;
       maxAttempts?: number;
       windowMs?: number;
+      unseenMs?: number;
     } = {},
   ) {
     this.now = opts.now ?? Date.now;
@@ -113,6 +124,7 @@ export class PairRequests {
     this.ttlMs = opts.ttlMs ?? PAIR_TTL_MS;
     this.maxAttempts = opts.maxAttempts ?? MAX_APPROVE_ATTEMPTS;
     this.windowMs = opts.windowMs ?? APPROVE_WINDOW_MS;
+    this.unseenMs = opts.unseenMs ?? PAIR_UNSEEN_MS;
   }
 
   /** A new request: its poll id (the page's only), code and expiry. */
@@ -143,6 +155,7 @@ export class PairRequests {
       ...(meta.client ? { client: String(meta.client).slice(0, 64) } : {}),
       createdAt: now,
       expiresAt: now + this.ttlMs,
+      seenAt: now,
     };
     this.byId.set(r.id, r);
     return { id: r.id, code: formatPairCode(code), expiresAt: r.expiresAt };
@@ -152,14 +165,31 @@ export class PairRequests {
   get(id: string): PairView | null {
     this.sweep();
     const r = this.byId.get(id);
+    if (r) r.seenAt = this.now();
     return r ? view(r) : null;
   }
 
-  /** The requests waiting for approval, oldest first. */
+  /**
+   * D67: its page is going (closed, or signed in another way): a pending
+   * request ends at once, by its poll id. Whether there was one.
+   */
+  withdraw(id: string): boolean {
+    this.sweep();
+    const r = this.byId.get(id);
+    if (!r || r.state !== "pending") return false;
+    this.byId.delete(id);
+    return true;
+  }
+
+  /**
+   * The requests waiting for approval, oldest first: pending, and its page
+   * still asking (D67: none a closed tab left).
+   */
   waiting(): PairView[] {
     this.sweep();
+    const now = this.now();
     return [...this.byId.values()]
-      .filter((r) => r.state === "pending")
+      .filter((r) => r.state === "pending" && now - r.seenAt < this.unseenMs)
       .sort((a, b) => a.createdAt - b.createdAt)
       .map(view);
   }

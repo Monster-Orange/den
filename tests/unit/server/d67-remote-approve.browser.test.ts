@@ -181,8 +181,10 @@ describe("D67: approve from another computer, in browsers only", () => {
 
     // B loses its approval key (another tab, cleared storage): signed in,
     // but it can't see what waits.
-    await b.evaluate(() => localStorage.removeItem("den.approveKey"));
+    // (Navigated first: the landing page may still be settling.)
     await b.goto(`${edge()}/settings?tab=access#top`);
+    await b.evaluate(() => localStorage.removeItem("den.approveKey"));
+    await b.reload();
     const id = await ask("workspace_create", { name: "far" });
     // A shows the approval too; Later there, as if no one is at it.
     await a.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });

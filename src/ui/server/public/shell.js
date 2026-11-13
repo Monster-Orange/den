@@ -5096,8 +5096,15 @@
       })
       .then(
         function (b) {
+          // Never this browser's own code (it signed in another way).
+          var own = "";
+          try {
+            own = sessionStorage.getItem("den-pair-mine") || "";
+          } catch (e) {
+            /* no storage */
+          }
           var list = ((b && b.waiting) || []).filter(function (w) {
-            return w && w.code && !pr.later[w.code];
+            return w && w.code && w.code !== own && !pr.later[w.code];
           });
           if (!list.length) {
             pr.shown = null;

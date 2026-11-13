@@ -80,6 +80,7 @@ import {
   pathMatches,
   routeClass,
   SIGNIN_CSRF_FREE,
+  SIGNIN_ID_DELETES,
   SIGNIN_FREE,
   SIGNIN_GETS,
   type RouteClass,
@@ -646,6 +647,12 @@ export function checkRequest(
   // Starting a GitHub sign-in from the signed-out page (which holds no
   // CSRF token): the allowed Origin above is the check.
   if (!session && SIGNIN_CSRF_FREE.some((r) => pathMatches(r, pathname)))
+    return ok(null);
+  // D67: a code request's page withdraws it by its poll id (the proof).
+  if (
+    method === "DELETE" &&
+    SIGNIN_ID_DELETES.some((r) => pathMatches(r, pathname))
+  )
     return ok(null);
   // A browser's WebSocket can't send a header: on an upgrade the token
   // rides as a subprotocol, `den.csrf.<token>` (AG-4a-term's io).

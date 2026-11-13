@@ -94,6 +94,53 @@ describe("asking for a code (the signed-out page)", () => {
   });
 });
 
+describe("D67: its page withdraws its code as it goes", () => {
+  const signedIn = (): GuardContext => ({
+    ...ctx(),
+    session: () => ({ key: "k".repeat(64), csrf: "session-csrf" }),
+  });
+
+  it("by its poll id, an allowed Origin, no CSRF token: signed out, or signed in another way since", () => {
+    for (const c of [ctx(), signedIn()])
+      expect(
+        checkRequest(req("DELETE", POLL, { origin: `https://${EDGE}` }), c),
+      ).toMatchObject({ ok: true });
+  });
+
+  it("another site's, or one with no Origin, is refused; so is an agent's token", () => {
+    for (const c of [ctx(), signedIn()]) {
+      expect(
+        checkRequest(
+          req("DELETE", POLL, { origin: "https://evil.example" }),
+          c,
+        ),
+      ).toMatchObject({ ok: false, status: 403, code: "origin_rejected" });
+      expect(checkRequest(req("DELETE", POLL, {}), c)).toMatchObject({
+        ok: false,
+        status: 403,
+      });
+    }
+    expect(
+      checkRequest(
+        req("DELETE", POLL, {
+          origin: `https://${EDGE}`,
+          authorization: "Bearer den_at_agent",
+        }),
+        ctx(),
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("only DELETE: a signed-in POST to a sign-in route still needs its CSRF token", () => {
+    expect(
+      checkRequest(
+        req("POST", "/api/signin/code", { origin: `https://${EDGE}` }),
+        signedIn(),
+      ),
+    ).toMatchObject({ ok: false, status: 403, code: "csrf" });
+  });
+});
+
 describe("approving (someone already in)", () => {
   const routes = [
     ["GET", "/api/web/waiting"],
