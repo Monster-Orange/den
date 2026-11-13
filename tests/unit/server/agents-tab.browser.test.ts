@@ -683,21 +683,34 @@ describe("the Agents tab", () => {
     const url = "/agents?open=gone1";
     const q = await page(url);
     await q.route("**/api/sessions", async (r) => {
-      const res = await r.fetch();
-      const body = (await res.json()) as {
-        sessions: Record<string, unknown>[];
-      };
+      // The goto below navigates away from a page whose own list call may
+      // still be in flight: its response is then disposed (CI, dev.6).
+      let res: Awaited<ReturnType<typeof r.fetch>>;
+      let body: { sessions: Record<string, unknown>[] };
+      try {
+        res = await r.fetch();
+        body = (await res.json()) as typeof body;
+      } catch {
+        return r.continue().catch(() => {});
+      }
       const shell = body.sessions.find((x) => x.id === id("shell"))!;
-      await r.fulfill({
-        response: res,
-        body: JSON.stringify({
-          ...body,
-          sessions: [
-            ...body.sessions,
-            { ...shell, id: "gone1", name: "acme-north:gone1", label: "gone1" },
-          ],
-        }),
-      });
+      await r
+        .fulfill({
+          response: res,
+          body: JSON.stringify({
+            ...body,
+            sessions: [
+              ...body.sessions,
+              {
+                ...shell,
+                id: "gone1",
+                name: "acme-north:gone1",
+                label: "gone1",
+              },
+            ],
+          }),
+        })
+        .catch(() => {});
     });
     await q.goto(`${s!.base}${url}`);
     await waitTerm(q, "gone1", 'disconnected: no session "gone1" here');
