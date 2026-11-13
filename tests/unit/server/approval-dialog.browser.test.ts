@@ -195,28 +195,6 @@ describe("the approval dialog (ON-3)", () => {
     await p.context().close();
   }, 90_000);
 
-  it("SRV-1a: Allow on a restart: the dialog says why; then Den's in-place restart wait, not a toast", async () => {
-    if (skip()) return;
-    const p = await page(true);
-    const id = await ask("den_restart", { reason: "pick up the new pin" });
-    await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
-    expect(await p.textContent("#den-ap-what")).toBe(
-      "Restart Den (pick up the new pin)",
-    );
-    await p.click("#den-ap-review");
-    expect(await p.textContent("#den-ap-det")).toContain(
-      "Agents and terminals carry on where they were",
-    );
-    await p.click("#den-ap-allow");
-    await closed(p);
-    expect(await stateOf(id)).toBe("done");
-    // The restart is under way: the page waits for the new server in place.
-    await p.waitForSelector('#rd-dlg[open][data-state="waiting"]', {
-      timeout: 15_000,
-    });
-    await p.context().close();
-  }, 90_000);
-
   it("Deny runs nothing", async () => {
     if (skip()) return;
     const p = await page(true);
@@ -241,6 +219,48 @@ describe("the approval dialog (ON-3)", () => {
     expect(await p.content()).not.toContain("anon&quot;");
     expect(await stateOf(id)).toBe("pending");
     expect(await workspaces()).not.toContain("anon");
+    await p.context().close();
+  }, 90_000);
+
+  it("SRV-1a: Allow on a restart: the dialog says why; then Den's in-place restart wait, not a toast", async () => {
+    if (skip()) return;
+    const p = await page(true);
+    const id = await ask("den_restart", { reason: "pick up the new pin" });
+    const want = "Restart Den (pick up the new pin)";
+    // An earlier test's request may still wait: Deny it, until this one shows.
+    for (let i = 0; i < 5; i++) {
+      await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
+      if ((await p.textContent("#den-ap-what")) === want) break;
+      await p.click("#den-ap-deny");
+      await closed(p);
+    }
+    expect(await p.textContent("#den-ap-what")).toBe(want);
+    await p.click("#den-ap-review");
+    expect(await p.textContent("#den-ap-det")).toContain(
+      "Agents and terminals carry on where they were",
+    );
+    // The page's part only: the decide answers as a restart's run does,
+    // and this server stays up for the other tests (a real restart is
+    // srv1a-restart.integration's).
+    await p.route(`**/api/approvals/${id}/decide`, (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          id,
+          action: "den_restart",
+          state: "done",
+          result: { ok: true, restarting: true, pid: 1 },
+        }),
+      }),
+    );
+    await p.click("#den-ap-allow");
+    await closed(p);
+    // The restart is under way: the page waits for the new server in place.
+    await p.waitForSelector('#rd-dlg[open][data-state="waiting"]', {
+      timeout: 15_000,
+    });
     await p.context().close();
   }, 90_000);
 
