@@ -736,16 +736,15 @@ export const denClaude: Runtime = {
     }
   },
   // AG-18: mid-turn, from its transcript's tail (never the whole file).
+  // No transcript Den can read is "can't tell" (null), never "idle": a
+  // move or restart that waits for the turn's end refuses rather than cut it.
   turnBusy(token, env = process.env, opts = {}) {
     try {
-      return transcriptBusy(
-        transcriptFile(token, env),
-        Date.now(),
-        undefined,
-        opts.readMaxBytes,
-      );
+      const file = transcriptFile(token, env);
+      if (!file) return null;
+      return transcriptBusy(file, Date.now(), undefined, opts.readMaxBytes);
     } catch {
-      return false;
+      return null;
     }
   },
   // D45: what it was last asked, by D39's rules (never a summary or a `!`).

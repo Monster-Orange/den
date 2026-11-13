@@ -172,7 +172,7 @@ export {
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|relaunch|rotate|keep|handoff|import|persona|restart|helpers|rename|rm|permission|personas|doctor|handback-check|handoff-check> ...",
+    "agents <list|start|stop|resume|relaunch|rotate|keep|set|handoff|import|persona|restart|helpers|rename|move|link|unlink|files|rm|permission|personas|doctor|handback-check|handoff-check> ...",
   lines: [
     "Agents: a persona and a workspace, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -626,7 +626,7 @@ async function move(args: string[], d: AgentsResolved): Promise<number> {
   return report(
     d,
     m.resumed,
-    `moved agent ${m.rec.id} from ${m.from} to ${to}; same conversation, restarted at its idle so its tools are ${to}'s, as ${m.rec.sessionName} in ${m.rec.cwd}`,
+    `moved agent ${m.rec.id} from ${m.from} to ${to}; same conversation, restarted ${now ? "now (mid-turn if it was working)" : "at its idle"} so its tools are ${to}'s, as ${m.rec.sessionName} in ${m.rec.cwd}`,
   );
 }
 
@@ -1687,8 +1687,11 @@ export async function cmdAgents(
           await loadAgentWorkspaces(deps);
           return await move(rest, d);
         case "link":
+          // D65: the project's repos come from its services, loaded here.
+          await loadAgentWorkspaces(deps);
           return link(rest, d, "add");
         case "unlink":
+          await loadAgentWorkspaces(deps);
           return link(rest, d, "remove");
         case "files":
           return files(rest, d);

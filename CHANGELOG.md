@@ -58,6 +58,26 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **`repo add -w` takes a project's name, not just its slug (D70).**
+  `repo add <path> -w "Proj Gate"` made a second project keyed
+  "Proj Gate" next to `proj-gate`, and made it active. Now `-w` finds a
+  project by its name (any case) or its slug, so both reach one project.
+  A project that isn't there yet is made under the slug of what was
+  typed, keeping that as its name. A name that can't be one is refused
+  before anything is written: no clone, no side-car. MCP `repo_add`
+  goes the same way.
+- **`agents link` saw no repos (D65).** `agents link <id> --repo <repo>`
+  always said the project "has no repo", because it didn't load the
+  project's services first. `agents unlink` had the same gap. Both now
+  load them, like every other agents command.
+- **A move or restart that waits for the turn's end never guesses
+  (D72).** When Den can't read an agent's transcript at all (another
+  config folder, say), it used to treat the agent as idle and cut its
+  turn. Now that is "can't tell", and a move, restart or persona change
+  without `--now` is refused with the `--now` hint. `agents move --now`
+  now says it restarted now, mid-turn if the agent was working, not
+  "at its idle".
+
 - **No "Allow this computer?" for a code nobody is waiting on (D67).** A
   signed-out page shows a code as soon as it opens. When that page signed
   in another way (Sign in with GitHub) or was closed, its code stayed

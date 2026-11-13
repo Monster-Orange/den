@@ -472,6 +472,14 @@ describe("AG-18: whether a turn is going (transcriptBusy)", () => {
     const h = home();
     transcript(h.env, h.work, "b2", answer("m", "tool_use", ["Bash"]));
     expect(denClaude.turnBusy!("b2", h.env)).toBe(true);
-    expect(denClaude.turnBusy!("nope", h.env)).toBe(false);
+    // No transcript Den can read (another config folder, or none yet):
+    // it can't tell, so nothing waiting on the turn's end goes ahead.
+    expect(denClaude.turnBusy!("nope", h.env)).toBeNull();
+    expect(
+      denClaude.turnBusy!("b2", {
+        ...h.env,
+        CLAUDE_CONFIG_DIR: "/nonexistent-den-test",
+      }),
+    ).toBeNull();
   });
 });

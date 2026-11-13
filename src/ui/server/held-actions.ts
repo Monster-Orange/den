@@ -123,12 +123,9 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       const rules = d.rules();
       const where = checkOnboardPath(str(a.path), rules);
       if (!where.ok) return { ok: false, error: where.error };
-      const workspace = wsArg(a.workspace);
-      if (workspace !== undefined && !NAME_RE.test(workspace))
-        return {
-          ok: false,
-          error: `workspace "${str(a.workspace)}" needs at least one letter or digit`,
-        };
+      // D70: as typed; repo add takes a name or a slug, and makes a new one
+      // under its slug with this as its name.
+      const workspace = str(a.workspace);
       const opts = {
         name: str(a.name),
         run: str(a.run),
@@ -136,12 +133,22 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         health: str(a.health),
       };
       const draft = repoAdd(
-        { spec: where.dir, sidecar: false, json: true, dryRun: true, ...opts },
+        {
+          spec: where.dir,
+          sidecar: false,
+          json: true,
+          dryRun: true,
+          workspace,
+          ...opts,
+        },
         d.validate,
         where.dir,
       );
       if (!draft.ok) return { ok: false, error: draftError(draft) };
-      const ws = workspace ?? d.defaultWorkspace();
+      const ws =
+        workspace !== undefined
+          ? (wsArg(workspace) ?? workspace)
+          : d.defaultWorkspace();
       const isNew = !d.workspaceExists(ws);
       const folder = shown(where.dir, rules.home);
       const details = [
@@ -183,7 +190,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           spec: dir,
           sidecar: false,
           json: true,
-          workspace: wsArg(a.workspace),
+          workspace: str(a.workspace),
           name: str(a.name),
           run: str(a.run),
           down: str(a.down),

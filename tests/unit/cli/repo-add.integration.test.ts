@@ -405,6 +405,83 @@ describe("repo add", () => {
   }, 120_000);
 });
 
+describe("repo add -w takes a workspace's name or its slug (D70); agents link sees its repos (D65)", () => {
+  it("one workspace, whichever is typed; a new one gets the slug and keeps the name", () => {
+    const made = spawnSync(
+      path.join(dist, "bin", "acme"),
+      ["workspace", "create", "Proj Gate"],
+      { cwd: dist, env, encoding: "utf-8", timeout: 90_000 },
+    );
+    expect(made.status).toBe(0);
+    const alpha = makeRepo("alpha", { Makefile: "up:\n\t@echo up\n" });
+    const beta = makeRepo("beta", { Makefile: "up:\n\t@echo up\n" });
+    const byName = acme("repo", "add", alpha, "-w", "Proj Gate", "--json");
+    expect(byName.code).toBe(0);
+    expect(byName.json).toMatchObject({ ok: true, workspace: "proj-gate" });
+    const bySlug = acme("repo", "add", beta, "-w", "proj-gate", "--json");
+    expect(bySlug.code).toBe(0);
+    expect(bySlug.json).toMatchObject({ ok: true, workspace: "proj-gate" });
+    const byCase = acme("repo", "add", alpha, "-w", "proj gate", "--json");
+    expect(byCase.json).toMatchObject({
+      ok: true,
+      existed: true,
+      workspace: "proj-gate",
+    });
+    let ws = readWs();
+    expect(Object.keys(ws.workspaces)).not.toContain("Proj Gate");
+    expect(ws.active).not.toContain("Proj Gate");
+    const pg = ws.workspaces["proj-gate"] as unknown as {
+      name?: string;
+      services: Record<string, unknown>;
+    };
+    expect(pg.name).toBe("Proj Gate");
+    expect(Object.keys(pg.services).sort()).toEqual(["alpha", "beta"]);
+
+    // D65: agents link sees the project's repos (by name or slug). No
+    // agent g1 here, so it gets past the repo check to "no agent".
+    for (const w of ["Proj Gate", "proj-gate"]) {
+      const lk = spawnSync(
+        path.join(dist, "bin", "acme"),
+        ["agents", "link", "g1", "--repo", "alpha", "-w", w],
+        { cwd: dist, env, encoding: "utf-8", timeout: 90_000 },
+      );
+      expect(lk.stderr).not.toMatch(/has no repo/);
+      expect(lk.stderr).toMatch(/no agent "g1"/);
+    }
+
+    // A workspace that isn't there yet: made under its slug, named as typed.
+    const gamma = makeRepo("gamma", { Makefile: "up:\n\t@echo up\n" });
+    const fresh = acme("repo", "add", gamma, "-w", "Back Office", "--json");
+    expect(fresh.code).toBe(0);
+    expect(fresh.json).toMatchObject({ ok: true, workspace: "back-office" });
+    ws = readWs();
+    expect(Object.keys(ws.workspaces)).not.toContain("Back Office");
+    expect(
+      (ws.workspaces["back-office"] as unknown as { name?: string }).name,
+    ).toBe("Back Office");
+    expect(ws.active).toContain("back-office");
+
+    // A name that can't be one: refused before anything is written.
+    const before = fs.readFileSync(
+      path.join(dist, "config", "local", "workspaces.yml"),
+      "utf-8",
+    );
+    const delta = makeRepo("delta", { Makefile: "up:\n\t@echo up\n" });
+    const bad = acme("repo", "add", delta, "-w", "a/b", "--json");
+    expect(bad.code).toBe(1);
+    expect(bad.json).toMatchObject({ ok: false, error: expect.any(String) });
+    expect(
+      fs.readFileSync(
+        path.join(dist, "config", "local", "workspaces.yml"),
+        "utf-8",
+      ),
+    ).toBe(before);
+    expect(fs.existsSync(path.join(dist, "manifests", "delta.acme.yml"))).toBe(
+      false,
+    );
+  }, 180_000);
+});
+
 describe("doctor --json over the repos added above", () => {
   it("Docker is checked because a registered repo has a compose file; no web server is a fail with its fix", () => {
     // A stand-in docker whose daemon never answers, first on PATH: the

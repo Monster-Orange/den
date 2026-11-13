@@ -48,6 +48,12 @@ import {
   writeWorkspacesFile,
 } from "../../shared/environment-manager/workspaces.js";
 import {
+  resolveWorkspaceKey,
+  workspaceNameRefusal,
+  workspaceSlug,
+} from "../../shared/workspace-name.js";
+import { reservedWorkspaceError } from "../../shared/agents/server-agent.js";
+import {
   readCatalog,
   upsertCatalogEntry,
 } from "../../shared/environment-manager/catalog.js";
@@ -210,15 +216,36 @@ function defaultBranchOf(url: string): string {
   }
 }
 
-/** The workspace to write: -w (made when missing), the focus, or `default`. */
-function targetWorkspace(named: string | undefined): {
+/**
+ * The workspace to write: -w (made when missing), the focus, or `default`.
+ * D70: -w takes a workspace's name ("Back Office") or its slug; a new one
+ * is made under the slug of what was typed, with that as its name.
+ */
+function workspaceTarget(
+  named: string | undefined,
+): { key: string; typed: string; exists: boolean } | { error: string } {
+  const file = readWorkspacesFile();
+  const typed = (named ?? getFocusedWorkspaceName() ?? "default").trim();
+  const key = resolveWorkspaceKey(typed, file.workspaces);
+  if (key) return { key, typed, exists: true };
+  const refusal = workspaceNameRefusal(typed, file.workspaces);
+  if (refusal) return { error: `workspace "${typed}": ${refusal}` };
+  const slug = workspaceSlug(typed)!;
+  const reserved =
+    reservedWorkspaceError(slug) ?? reservedWorkspaceError(typed);
+  if (reserved) return { error: reserved };
+  return { key: slug, typed, exists: false };
+}
+
+function targetWorkspace(t: { key: string; typed: string }): {
   name: string;
   created: boolean;
 } {
   const file = readWorkspacesFile();
-  const name = named ?? getFocusedWorkspaceName() ?? "default";
+  const name = t.key;
   if (file.workspaces[name]) return { name, created: false };
-  file.workspaces[name] = { services: {} };
+  file.workspaces[name] =
+    t.typed === name ? { services: {} } : { name: t.typed, services: {} };
   if (!file.active.includes(name)) file.active.push(name);
   if (!file.focus || !file.workspaces[file.focus]) file.focus = name;
   writeWorkspacesFile(file);
@@ -258,6 +285,15 @@ export function repoAdd(
       ok: false,
       error: `--health "${a.health}" must be an http(s) URL`,
       fix: `${bin} repo add ${a.spec} --health http://localhost:<port>/ --json`,
+    };
+
+  // D70: the workspace first, so a bad one writes nothing (no clone, no side-car).
+  const wsTarget = workspaceTarget(a.workspace);
+  if ("error" in wsTarget)
+    return {
+      ok: false,
+      error: wsTarget.error,
+      fix: `${bin} workspace list`,
     };
 
   if (a.dryRun && url)
@@ -430,13 +466,13 @@ export function repoAdd(
       a.run !== undefined ? ` --run "${a.run}"` : "",
       a.down !== undefined ? ` --down "${a.down}"` : "",
       a.health !== undefined ? ` --health ${a.health}` : "",
-      a.workspace !== undefined ? ` -w ${a.workspace}` : "",
+      a.workspace !== undefined ? ` -w ${JSON.stringify(a.workspace)}` : "",
     ].join("");
     return {
       ok: true,
       dryRun: true,
       repo: name,
-      workspace: a.workspace ?? getFocusedWorkspaceName() ?? "default",
+      workspace: wsTarget.key,
       mode,
       path: repoPath,
       manifest: manifestInfo,
@@ -452,7 +488,7 @@ export function repoAdd(
   }
 
   // ── The workspace entry ──────────────────────────────────────────────────
-  const ws = targetWorkspace(a.workspace);
+  const ws = targetWorkspace(wsTarget);
   const file = readWorkspacesFile();
   const entries = file.workspaces[ws.name].services;
   const mine = Object.keys(entries).filter(
