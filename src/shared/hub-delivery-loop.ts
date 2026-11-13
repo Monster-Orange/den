@@ -55,6 +55,11 @@ export interface DeliveryLoopDeps {
   /** How often the list is read when Hub has no stream (404). */
   pollMs?: number;
   log?: (line: string) => void;
+  /** NT: the agent finished its Hub comments (done, not failed). */
+  finished?: (
+    agent: string,
+    w: { count: number; artifact?: string; url?: string },
+  ) => void;
 }
 
 /** What an agent's card shows: "Working on N Hub comments · <artifact>". */
@@ -172,6 +177,15 @@ export class DeliveryLoop {
       if (s === "idle" && (act.sawBusy || now - act.typedAt >= NO_START_MS)) {
         this.active.delete(agent);
         for (const id of act.ids) await this.ack(id, "done");
+        try {
+          this.d.finished?.(agent, {
+            count: act.ids.length,
+            ...(act.artifact ? { artifact: act.artifact } : {}),
+            ...(act.url ? { url: act.url } : {}),
+          });
+        } catch {
+          // The bell's trouble never stops delivery.
+        }
       } else if (s === "stopped" || s === "missing") {
         this.active.delete(agent);
         for (const id of act.ids)

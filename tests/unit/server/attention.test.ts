@@ -132,6 +132,35 @@ describe("attention", () => {
   });
 });
 
+describe("Hub comments finished", () => {
+  it("one bell item: how many, on what, linking to the comment; plain for one", () => {
+    const { store, a } = mk();
+    a.hubFinished("ag-1", "web", {
+      count: 2,
+      artifact: "Pricing page",
+      url: "https://hub.example.test/a/doc#th_1",
+    });
+    const [n] = store.list();
+    expect(n).toMatchObject({
+      kind: "finished",
+      subject: "agent:ag-1",
+      scope: "workspace/web",
+      text: "Planner finished 2 Hub comments on Pricing page",
+      link: "https://hub.example.test/a/doc#th_1",
+    });
+    a.hubFinished("ag-1", "web", { count: 1 });
+    expect(store.list()[0].text).toBe("Planner finished 1 Hub comment");
+    expect(store.list()[0].link).toBe("/agents?ws=web&agent=ag-1");
+  });
+
+  it("on screen: nothing", () => {
+    const { store, a } = mk();
+    a.lookingAt(["ag-1"]);
+    a.hubFinished("ag-1", "web", { count: 1 });
+    expect(store.list()).toEqual([]);
+  });
+});
+
 describe("NT-1 bell: which agents rang", () => {
   const info = (id: string, bellAt?: string, exited = false) => ({
     ref: { backend: "den-pty", id },

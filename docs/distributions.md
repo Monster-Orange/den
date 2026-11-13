@@ -2645,6 +2645,9 @@ agent and kind.
   Claude Code) counts as waiting for input when its output rings: a bare
   BEL, OSC 9 (not OSC 9;4, a progress bar) or OSC 777;notify. A BEL that
   ends a title or a link doesn't count.
+- **Hub comments finished.** When an agent finishes the Hub comments it
+  was given (done, not failed), the bell says "<agent> finished N Hub
+  comments on <artifact>", linking to the comment in Hub.
 - **Not while you look** (NT-2). The Agents page says which agents are on
   screen, in a visible, focused tab. Those don't notify; they are still
   marked waiting.

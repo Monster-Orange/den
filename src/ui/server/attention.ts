@@ -111,6 +111,32 @@ export class Attention {
   }
 
   /**
+   * 0.4.40 delivery: the agent finished Hub comments (done, not failed).
+   * One "finished" item, linking to the comment in Hub when known; none
+   * while its person looks at it. The artifact's title is Hub's, and the
+   * store makes it plain text.
+   */
+  hubFinished(
+    agent: string,
+    workspace: string,
+    w: { count: number; artifact?: string; url?: string },
+  ): void {
+    if (this.onScreen(agent)) return;
+    const name = this.d.nameOf(agent);
+    const what = w.count === 1 ? "1 Hub comment" : `${w.count} Hub comments`;
+    this.d.store.add({
+      kind: "finished",
+      subject: `agent:${agent}`,
+      scope: `workspace/${workspace}`,
+      text: `${name} finished ${what}${w.artifact ? ` on ${w.artifact}` : ""}`,
+      link:
+        w.url && /^https?:\/\//.test(w.url)
+          ? w.url
+          : `/agents?ws=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+    });
+  }
+
+  /**
    * NT-1 (3): the sessions' last bells (a bare BEL, OSC 9, OSC 777). A new
    * one marks its agent waiting for input, unless it already waits (it
    * keeps why). A bell first seen more than 10 s old happened before this

@@ -15,6 +15,7 @@ import {
   DeliveryLoop,
   type AgentHubWork,
 } from "../../shared/hub-delivery-loop.js";
+import { readRecord } from "../../shared/agents/records.js";
 import { getStateDir } from "../../shared/paths.js";
 
 const PUMP_MS = 2000;
@@ -123,6 +124,14 @@ export async function startDeliveries(o: {
     heartbeatMs: o.heartbeatSeconds * 1000,
     pollMs: o.pollSeconds * 1000,
     log: o.log,
+    // NT: the bell says it, from the agent's own record's project.
+    finished: (agent, w) => {
+      void import("./notification-service.js").then(({ notificationDeps }) => {
+        const rec = readRecord(getStateDir(), agent);
+        if (rec)
+          notificationDeps().attention.hubFinished(agent, rec.workspace, w);
+      });
+    },
   });
   const l = loop;
   const c = (ctl = new AbortController());

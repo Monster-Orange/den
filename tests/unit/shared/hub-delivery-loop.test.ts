@@ -50,6 +50,7 @@ const dv = (
 function setup(o: { states?: Record<string, AgentState> } = {}) {
   const acks: { id: string; state: string; reason?: unknown }[] = [];
   const typed: { agent: string; text: string }[] = [];
+  const finished: { agent: string; count: number; artifact?: string }[] = [];
   const states: Record<string, AgentState> = { "ag-1": "idle", ...o.states };
   let clock = 1_000_000;
   const hub: DeliveryHub = {
@@ -75,12 +76,15 @@ function setup(o: { states?: Record<string, AgentState> } = {}) {
     seen: new SeenDeliveries(seenFile),
     heartbeatMs: 15_000,
     now: () => clock,
+    finished: (agent, w) =>
+      finished.push({ agent, count: w.count, artifact: w.artifact }),
   });
   return {
     loop,
     hub,
     acks,
     typed,
+    finished,
     states,
     seenFile,
     tick: (ms: number) => (clock += ms),
@@ -174,6 +178,10 @@ describe("progress (§4b)", () => {
     await s.loop.pump();
     expect(s.of("d1").at(-1)).toBe("done");
     expect(s.loop.work("ag-1")).toBeNull();
+    // NT: the bell hears it once, with the count and the artifact.
+    expect(s.finished).toEqual([
+      { agent: "ag-1", count: 1, artifact: "Pricing page" },
+    ]);
     // The turn ended: no more heartbeats.
     const n = s.acks.length;
     s.tick(60_000);
@@ -195,6 +203,8 @@ describe("progress (§4b)", () => {
     expect(last.state).toBe("failed");
     expect(String(last.reason)).toContain("stopped");
     expect(s.loop.work("ag-1")).toBeNull();
+    // Failed isn't finished: the bell hears nothing.
+    expect(s.finished).toEqual([]);
   });
 
   it("idle before the turn shows as started: waits, then done after 2 min", async () => {

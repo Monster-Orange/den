@@ -224,6 +224,24 @@ describe("0.4.40: Hub comments reach the agent", () => {
     // Its turn ends (quiet): done.
     await until(() => states("d-1").includes("done"), 20_000);
     expect(states("d-1").at(-1)).toBe("done");
+    // NT: the bell says it finished, linking to the comment.
+    const end = Date.now() + 10_000;
+    let texts: string[] = [];
+    while (Date.now() < end) {
+      const g = (await call("GET", "/api/notifications")).json.groups as {
+        subjects: { items: { text: string; kind: string }[] }[];
+      }[];
+      texts = g.flatMap((x) =>
+        x.subjects.flatMap((y) => y.items.map((i) => `${i.kind}: ${i.text}`)),
+      );
+      if (texts.some((t) => t.includes("Hub comment"))) break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    expect(texts).toContainEqual(
+      expect.stringMatching(
+        /^finished: .+ finished 1 Hub comment on Pricing page$/,
+      ),
+    );
   }, 90_000);
 
   it("a repeat of the same comment is never typed twice", async () => {
