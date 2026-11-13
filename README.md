@@ -11,7 +11,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/0.4.21/hero-dark.png">
-  <img src="docs/images/0.4.21/hero-light.png" width="100%" alt="Den's Graph page: the demo workspace's services grouped by application, all healthy, with the status chip and the left rail">
+  <img src="docs/images/0.4.21/hero-light.png" width="100%" alt="Den's Graph page: the demo project's services grouped by application, all healthy, with the status chip and the left rail">
 </picture>
 
 ## Set up by your agent
@@ -51,12 +51,12 @@ yours. Den connects them and turns on good practice from the start.
 - **Real hostnames locally.** Every service gets a proper hostname behind a local edge, over HTTPS when you
   turn it on (a local CA with mkcert, or certificates you bring). Cookies, OAuth redirects and CORS behave as
   they do in production.
-- **Several workspaces at once.** Keep feature branches side by side as workspaces. Health covers every active
+- **Several projects at once.** Keep feature branches side by side, one project each. Health covers every active
   one, and `up`, `down`, `restart` and `setup` take `-w <workspace>`, or find the service you name across them.
 - **Tests are part of the loop.** Smoke, browser, API, user journeys, security and performance suites run against
   the environments you declare.
 - **Agents work by the same rules as you.** Start an agent from a persona (planner, orchestrator, developers,
-  devops, reviewer, UX designer, or your own) in a workspace. Its terminal opens in the Agents tab and keeps
+  devops, reviewer, UX designer, or your own) in a project. Its terminal opens in the Agents tab and keeps
   running when you close the page or restart the web server. Over MCP it sees your stack with the same guards
   and audit trail as a person, under a token of its own. Agents can read and investigate, and acting is opt-in.
   Starting an agent never asks for your admin password: Den asks for it only when a command it runs needs sudo.
@@ -69,9 +69,9 @@ yours. Den connects them and turns on good practice from the start.
   lives in your own repo.
 
 <p align="center">
-  <img src="docs/images/0.4.21/agents.png" width="49%" alt="The Agents tab: the demo workspace's sessions on the left, and one open in a terminal pane on the right, running demo-api's test and then the service">
-  <img src="docs/images/0.4.21/workspaces.png" width="49%" alt="The Workspaces page: the demo workspace's repos with their health, mode and Start, Stop, Restart and Logs actions">
-  <img src="docs/images/0.4.21/status-drawer.png" width="49%" alt="The status drawer: nothing needs attention, and every service in the demo workspace, by application, with its latency">
+  <img src="docs/images/0.4.21/agents.png" width="49%" alt="The Agents tab: the demo project's sessions on the left, and one open in a terminal pane on the right, running demo-api's test and then the service">
+  <img src="docs/images/0.4.21/workspaces.png" width="49%" alt="The Projects page: the demo project's repos with their health, mode and Start, Stop, Restart and Logs actions">
+  <img src="docs/images/0.4.21/status-drawer.png" width="49%" alt="The status drawer: nothing needs attention, and every service in the demo project, by application, with its latency">
   <img src="docs/images/0.4.21/edge.png" width="49%" alt="The Edge page: the edge container up, its ports and TLS, and every route it serves, Den's own and each stack's, with its upstream">
 </p>
 
@@ -92,17 +92,17 @@ That's it: `acme` is now your tool, with your name, your CLI and your config, in
 
 ## How it fits together
 
-<p align="center"><img src="docs/images/preview/how-it-fits.svg" width="100%" alt="Den, the engine, runs your distribution, which holds your config; the distribution groups repos into workspaces, and each repo declares its services"></p>
+<p align="center"><img src="docs/images/preview/how-it-fits.svg" width="100%" alt="Den, the engine, runs your distribution, which holds your config; the distribution groups repos into projects, and each repo declares its services"></p>
 
 - **Den** is the engine, from npm. It knows nothing about your company.
 - **Your distribution** (`acme`) is a small repo you own. It holds your product name, brand, environments,
   hosts and secrets setup.
-- **Workspaces** group the repos you work on together. **Manifests** in each repo say how its services start,
+- **Projects** group the repos you work on together. **Manifests** in each repo say how its services start,
   connect and get checked.
 
 ## Coming next
 
-One workspace focus with Switch, agent pane layouts, and a Start dialog with personas, roles and a choice of
+One project focus with Switch, agent pane layouts, and a Start dialog with personas, roles and a choice of
 runtime and model.
 
 ## Docs
