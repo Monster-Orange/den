@@ -373,12 +373,18 @@ describe("/graph with many groups (0.3.0-dev.34)", () => {
 
   // The org frames come from /api/orgs, which lands after the first
   // draw: the graph is drawn again with ten groups where it had one. Held
-  // back here, so the second draw is surely the later one.
-  const lateOrgs = async (p: Page) =>
-    p.route("**/api/orgs*", async (route) => {
-      await new Promise((r) => setTimeout(r, 1_500));
+  // back here until the test lets it go, so the second draw is surely the
+  // later one. (A fixed 1.5 s hold raced a slow CI runner's first draw:
+  // the orgs landed before all the cards did.)
+  const lateOrgs = async (p: Page) => {
+    let release = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    await p.route("**/api/orgs*", async (route) => {
+      await gate;
       await route.continue();
     });
+    return release;
+  };
   async function lateContext() {
     const ctx = await browser!.newContext({
       viewport: { width: 1440, height: 900 },
@@ -391,7 +397,7 @@ describe("/graph with many groups (0.3.0-dev.34)", () => {
       }
     }, latest);
     const p = await ctx.newPage();
-    await lateOrgs(p);
+    const release = await lateOrgs(p);
     await p.goto(api("/graph"));
     await p.waitForFunction(
       (c) => document.querySelectorAll(".dg-card").length === c,
@@ -400,13 +406,14 @@ describe("/graph with many groups (0.3.0-dev.34)", () => {
     );
     // Before the orgs land: one frame, the org-less group.
     expect(await p.$$(".dg-grp.dg-org")).toHaveLength(1);
-    return p;
+    return { p, release };
   }
 
   it("the org frames landing after the first draw: an untouched view re-fits to the new layout", async () => {
     if (!browser) return;
     await setScope("all");
-    const p = await lateContext();
+    const { p, release } = await lateContext();
+    release();
     await settled(p);
     const r = await outside(p);
     expect({ cards: r.cards, groups: r.groups }).toEqual({
@@ -419,13 +426,13 @@ describe("/graph with many groups (0.3.0-dev.34)", () => {
   it("a view the user zoomed before the org frames landed stays as they left it", async () => {
     if (!browser) return;
     await setScope("all");
-    const p = await lateContext();
-    await p.waitForTimeout(200);
+    const { p, release } = await lateContext();
     await p.click('[data-z="in"]');
     const before = await p.$eval(
       ".dg-world",
       (e) => (e as HTMLElement).style.transform,
     );
+    release();
     await settled(p);
     expect(
       await p.$eval(".dg-world", (e) => (e as HTMLElement).style.transform),
