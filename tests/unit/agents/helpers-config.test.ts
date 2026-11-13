@@ -21,6 +21,7 @@ describe("agents.helpers", () => {
       activeMinutes: 10,
       collapseDoneMinutes: 30,
       rowMax: 4,
+      readMaxMb: 64,
     });
     expect(readAgentsConfig({} as DenConfig).helpers).toEqual(HELPER_DEFAULTS);
     expect(helpersBlock(null)).toEqual(HELPER_DEFAULTS);
@@ -31,12 +32,18 @@ describe("agents.helpers", () => {
       activeMinutes: 2.5,
       collapseDoneMinutes: 30,
       rowMax: 4,
+      readMaxMb: 64,
     });
     expect(readAgentsConfig(cfg({ row_max: 12 })).helpers).toEqual({
       activeMinutes: 10,
       collapseDoneMinutes: 30,
       rowMax: 12,
+      readMaxMb: 64,
     });
+    // D76: how much of an agent's transcript its helpers are read from.
+    expect(readAgentsConfig(cfg({ read_max_mb: 512 })).helpers.readMaxMb).toBe(
+      512,
+    );
     // Deprecated: still accepted, so a config that sets it keeps working.
     expect(
       readAgentsConfig(cfg({ collapse_done_minutes: 1440 })).helpers,
@@ -67,6 +74,10 @@ describe("agents.helpers", () => {
     for (const bad of [0, 1.5, "4", 1001])
       expect(() => helpersBlock({ row_max: bad })).toThrow(
         "agents.helpers.row_max: must be a whole number from 1 to 1000",
+      );
+    for (const bad of [0, -1, "64", Number.NaN, 4097])
+      expect(() => helpersBlock({ read_max_mb: bad })).toThrow(
+        "agents.helpers.read_max_mb: must be a number of MB",
       );
   });
 });

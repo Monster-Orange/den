@@ -3219,6 +3219,7 @@ agents:
   helpers:
     active_minutes: 10 # no activity this long, not known done: idle
     row_max: 4 # active helpers under the agent in front
+    read_max_mb: 64 # the most of an agent's transcript read for them
     collapse_done_minutes: 30 # deprecated (0.4.29): ignored
 ```
 
@@ -3226,7 +3227,14 @@ agents:
 | ----------------------- | -------------------------- | ------- |
 | `active_minutes`        | minutes, above 0 to 100000 | 10      |
 | `row_max`               | a whole number, 1 to 1000  | 4       |
+| `read_max_mb`           | MB, above 0 to 4096        | 64      |
 | `collapse_done_minutes` | deprecated, ignored        | 30      |
+
+`read_max_mb` (0.4.36): a helper's state comes partly from its agent's own
+transcript (its notification, its result). Den reads only that much of the
+transcript's end, then only what is added, so a transcript of gigabytes
+costs what a 64 MB one does. A helper whose notification is further back
+gets its state from its own files.
 
 `collapse_done_minutes` no longer does anything (0.4.29): finished helpers
 stay in the list until a person clears them. It is still accepted, so a

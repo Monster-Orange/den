@@ -195,11 +195,37 @@ const parentCache = new Map<
   string,
   { offset: number; rest: string; facts: ParentFacts; ino: number }
 >();
+/** D76: the most helper ids kept per transcript (the oldest go first). */
+const MAX_FACTS = 50_000;
+/** D76: the most transcripts followed at once (the oldest go first). */
+const MAX_FOLLOWED = 64;
+const READ_CHUNK = 8 * 1024 * 1024;
 
 const NOTE_RE =
   /<tool-use-id>([A-Za-z0-9_-]{1,128})<\/tool-use-id>[\s\S]*?<status>([a-z_]{1,32})<\/status>/g;
 
-function parentFacts(file: string): ParentFacts {
+/**
+ * D76: a copy of `s` that shares no memory with the text it came from. A
+ * match or a split piece is a slice of its whole chunk, and keeping one
+ * keeps the chunk (8 MB) alive with it.
+ */
+function own(s: string): string {
+  return Buffer.from(s, "utf-8").toString("utf-8");
+}
+
+function keep<V>(m: Map<string, V>, k: string, v: V): void {
+  m.delete(k);
+  m.set(own(k), v);
+  if (m.size > MAX_FACTS) m.delete(m.keys().next().value as string);
+}
+
+/**
+ * The facts from the agent's transcript. D76: never more than `maxBytes`
+ * of it per read: the first read starts that far from its end, and a read
+ * that falls further behind skips ahead to that far from the end. So a
+ * 4 GB transcript costs what a 64 MB one does.
+ */
+function parentFacts(file: string, maxBytes: number): ParentFacts {
   let st: fs.Stats;
   try {
     st = fs.statSync(file);
@@ -214,28 +240,42 @@ function parentFacts(file: string): ParentFacts {
       ino: st.ino,
       facts: { notified: new Map(), results: new Map() },
     };
+    parentCache.delete(file);
+    if (parentCache.size >= MAX_FOLLOWED)
+      parentCache.delete(parentCache.keys().next().value as string);
     parentCache.set(file, c);
   }
   if (st.size === c.offset) return c.facts;
+  // Too far behind: only the end; the line cut there is skipped.
+  let cut = false;
+  if (st.size - c.offset > maxBytes) {
+    c.offset = st.size - maxBytes;
+    c.rest = "";
+    cut = c.offset > 0;
+  }
   let fd: number | null = null;
   try {
     fd = fs.openSync(file, "r");
-    const chunk = 8 * 1024 * 1024;
-    const buf = Buffer.alloc(chunk);
+    const buf = Buffer.alloc(Math.min(READ_CHUNK, st.size - c.offset));
     while (c.offset < st.size) {
       const n = fs.readSync(
         fd,
         buf,
         0,
-        Math.min(chunk, st.size - c.offset),
+        Math.min(buf.length, st.size - c.offset),
         c.offset,
       );
       if (n <= 0) break;
       c.offset += n;
       const text = c.rest + buf.subarray(0, n).toString("utf-8");
       const lines = text.split("\n");
-      c.rest = lines.pop() ?? "";
-      if (c.rest.length > MAX_LINE) c.rest = "";
+      const last = lines.pop() ?? "";
+      c.rest = last.length > MAX_LINE ? "" : own(last);
+      if (cut) {
+        cut = false;
+        if (lines.length) lines.shift();
+        else c.rest = "";
+      }
       for (const l of lines) scanParentLine(l, c.facts);
     }
   } catch {
@@ -249,7 +289,7 @@ function parentFacts(file: string): ParentFacts {
 function scanParentLine(l: string, f: ParentFacts): void {
   if (l.length > MAX_LINE) return;
   if (l.includes("<task-notification>"))
-    for (const m of l.matchAll(NOTE_RE)) f.notified.set(m[1], m[2]);
+    for (const m of l.matchAll(NOTE_RE)) keep(f.notified, m[1], own(m[2]));
   if (!l.includes('"tool_result"')) return;
   let e: Record<string, unknown> | null = null;
   try {
@@ -262,7 +302,8 @@ function scanParentLine(l: string, f: ParentFacts): void {
   for (const x of content) {
     const o = obj(x);
     const id = str(o?.tool_use_id, 128);
-    if (o?.type === "tool_result" && id) f.results.set(id, o.is_error === true);
+    if (o?.type === "tool_result" && id)
+      keep(f.results, id, o.is_error === true);
   }
 }
 
@@ -375,7 +416,10 @@ function readAll(transcript: string, opts: ReadHelpersOptions): Helper[] {
   }
   if (!ids.size) return [];
   const wf = workflowAgents(path.join(base, "workflows"));
-  const facts = parentFacts(transcript);
+  const facts = parentFacts(
+    transcript,
+    Math.max(1, Math.round(s.readMaxMb * 1024 * 1024)),
+  );
   const out: Helper[] = [];
   for (const id of ids) {
     const meta = readJson(path.join(sub, `agent-${id}.meta.json`)) ?? {};

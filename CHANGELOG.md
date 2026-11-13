@@ -4,6 +4,29 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.36] - 2026-11-12
+
+### Fixed
+
+- **A very large agent transcript no longer crashes Den (D76).** With an
+  agent whose conversation had grown to gigabytes, `agents list` and the
+  web server ran out of memory (about 4 GB) and died; the server crashed
+  again on every start. Reading an agent's helpers read its whole
+  transcript, and what it kept held on to every piece it read. Now it
+  reads only the transcript's end, then only what is added, and keeps
+  nothing that holds the rest. A transcript of gigabytes costs what a
+  64 MB one does.
+
+### Added
+
+- **`agents.helpers.read_max_mb`** (default 64): how much of an agent's
+  transcript its helpers' states are read from. A helper whose
+  notification is further back gets its state from its own files.
+
+### Migrations
+
+None.
+
 ## [0.4.35] - 2026-11-12
 
 ### Added
