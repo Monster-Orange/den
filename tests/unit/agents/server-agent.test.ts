@@ -111,6 +111,15 @@ describe("the server agent", () => {
     expect(prompt).toMatch(/You belong to no workspace/);
     expect(prompt).toMatch(/Write plainly\. Use short sentences\./);
     expect(prompt).toMatch(/repos_detect/);
+    // SRV-1b: its folder is the distribution's repo; it updates Den and
+    // commits only the distribution's own files, as server_agent.git says.
+    expect(prompt).toMatch(/Your folder is the distribution's own repo/);
+    expect(prompt).toMatch(/package\.json, package-lock\.json\), config\/, manifests\/ and\s+plugins\.lock\.json/);
+    expect(prompt).toMatch(/never the person's service\s+repos/);
+    expect(prompt).toMatch(/den_update installs another Den version/);
+    expect(prompt).toMatch(/Rolled back: the line says why\. Commit nothing/);
+    expect(prompt).toMatch(/server_agent\.git/);
+    expect(prompt).not.toMatch(/You have no checkout/);
     // Asks before every write: the runtime's own permission prompt too.
     expect(p.args[p.args.indexOf("--permission-mode") + 1]).toBe("default");
     // Not a fresh Den: no onboarding prompt.

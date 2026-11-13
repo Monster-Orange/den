@@ -1177,7 +1177,7 @@
     "sa.trust.wait": "The agent waits until you answer, here or in its terminal.",
     "sa.model": "Model",
     "sa.readsOnly":
-      "It acts only through __DEN_TITLE__'s own tools. Each change asks you first, in this browser.",
+      "It changes __DEN_TITLE__ through its own tools, and commits only the distribution's own files. Each change asks you first, in this browser.",
     "sa.starting": "Starting the agent…",
     "sa.idle": "{name} isn't running.",
     "sa.start": "Start",

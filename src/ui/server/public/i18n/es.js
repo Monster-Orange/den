@@ -1073,7 +1073,7 @@
     "sa.login":
       "Si Claude te pide iniciar sesión, hazlo aquí. Después {name} empieza.",
     "sa.readsOnly":
-      "Solo actúa con las herramientas de __DEN_TITLE__. Cada cambio te lo pregunta antes, en este navegador.",
+      "Cambia __DEN_TITLE__ con sus propias herramientas y solo hace commit de los archivos de la distribución. Cada cambio te lo pregunta antes, en este navegador.",
     "sa.starting": "Iniciando el agente…",
     "sa.idle": "{name} no está en marcha.",
     "sa.start": "Iniciar",
