@@ -244,7 +244,7 @@ describe("the old settings entry points go to the Settings page (R21)", () => {
     expect(local).not.toContain("sidebar-settings-btn");
     expect(local).toMatch(
       // 0.4.45: its words through the catalog.
-      /<a role="menuitem" href="\/settings\?ws=\$\{enc\}#workspace">\$\{escHtml\(pT\("pj\.setup", "Project setup"\)\)\}<\/a>/,
+      /<a role="menuitem" href="\/settings\?project=\$\{enc\}#workspace">\$\{escHtml\(pT\("pj\.setup", "Project setup"\)\)\}<\/a>/,
     );
     expect(local).toContain("const enc = encodeURIComponent(wsName);");
     // No editor or terminal set: the open actions send you there too.

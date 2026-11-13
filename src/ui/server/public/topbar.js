@@ -974,7 +974,7 @@ function paletteItems() {
       label: t("pal.goWs", { ws }),
       keywords: [ws, "workspace", "workspaces", ...names.filter(Boolean)],
       hideEmpty: true,
-      ...page(`${wsBase}?ws=${encodeURIComponent(ws)}`),
+      ...page(`${wsBase}?project=${encodeURIComponent(ws)}`),
     });
   if (s?.nav?.().some((n) => n.id === "agents"))
     items.push({

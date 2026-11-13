@@ -147,7 +147,9 @@ function sourceProse(
 function markdownProse(md: string): string {
   return withoutCode(
     md
-      .replace(/^(```|~~~)[\s\S]*?^\1/gm, (m) => "\n".repeat(m.split("\n").length - 1))
+      .replace(/^(```|~~~)[\s\S]*?^\1/gm, (m) =>
+        "\n".repeat(m.split("\n").length - 1),
+      )
       .replace(/\]\([^)]*\)/g, "]")
       .replace(/^\[[^\]]+\]:\s*\S+.*$/gm, " ")
       .replace(/\b(?:src|href|id|name)="[^"]*"/g, " "),
@@ -443,7 +445,11 @@ describe("no 'session' for an agent or a terminal (LOGICAL-ERD)", () => {
     const found = Object.entries(cat)
       .filter(([k]) => !(k in SESSION_KEPT))
       .flatMap(([k, v]) =>
-        hits(k, lang === "es" ? String(v).replace(SIGN_IN_ES, " ") : String(v), word),
+        hits(
+          k,
+          lang === "es" ? String(v).replace(SIGN_IN_ES, " ") : String(v),
+          word,
+        ),
       );
     expect(found).toEqual([]);
   });
@@ -461,5 +467,40 @@ describe("no 'session' for an agent or a terminal (LOGICAL-ERD)", () => {
     const en = catalogs().en ?? {};
     for (const k of Object.keys(SESSION_KEPT))
       expect(`${k}: ${en[k]}`).toMatch(SESSION.en);
+  });
+});
+
+/**
+ * #80 (0.4.45): a page's address names its project with ?project=, never
+ * ?ws= (still read, as an alias, so old links and bookmarks work). Every
+ * page link Den builds, in the pages and in the server's notification
+ * links. Comments, and calls to the API (/api/…?ws=), are left out.
+ */
+describe("links say ?project=, never ?ws= (#80)", () => {
+  it("no page link Den builds names ?ws=", () => {
+    const files = [
+      ...fs
+        .readdirSync(PUBLIC)
+        .filter((f) => /\.(js|html)$/.test(f))
+        .map((f) => path.join(PUBLIC, f)),
+      ...fs
+        .readdirSync(path.join(ENGINE, "src", "ui", "server"))
+        .filter((f) => f.endsWith(".ts"))
+        .map((f) => path.join(ENGINE, "src", "ui", "server", f)),
+    ];
+    const found: string[] = [];
+    for (const f of files)
+      fs.readFileSync(f, "utf-8")
+        .split("\n")
+        .forEach((line, i) => {
+          if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;
+          const code = line.replace(/\/\/.*$/, "");
+          // a link that builds ?ws= or &ws=, or sets/deletes the "ws" param
+          const builds =
+            /[?&]ws=/.test(code.replace(/\/api\/[^"'`\s]*[?&]ws=/g, "")) ||
+            /searchParams\.set\(\s*["']ws["']/.test(code);
+          if (builds) found.push(`${path.relative(ENGINE, f)}:${i + 1}`);
+        });
+    expect(found).toEqual([]);
   });
 });

@@ -97,7 +97,7 @@ export class Attention {
     const subject = `agent:${agent}`;
     const scope = `workspace/${workspace}`;
     const name = this.d.nameOf(agent);
-    const link = `/agents?ws=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`;
+    const link = `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`;
     if (ev.event === "resumed") {
       const w = this.waiting.get(agent);
       if (!w || this.now() - w.at < RESUME_AFTER_MS) return;
@@ -189,7 +189,7 @@ export class Attention {
       link:
         w.url && /^https?:\/\//.test(w.url)
           ? w.url
-          : `/agents?ws=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
     });
   }
 

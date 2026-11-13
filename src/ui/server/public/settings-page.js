@@ -280,7 +280,9 @@ export async function mountSettings(deps) {
   // The Workspace rows follow the view; with All active, they ask which.
   ctx.workspaces = scope?.inView || [];
   const askWs = !scope || scope.scope === "all";
-  const wanted = new URLSearchParams(location.search).get("ws");
+  const q = new URLSearchParams(location.search);
+  // #80: ?project=, with ?ws= read as its old name.
+  const wanted = q.get("project") || q.get("ws");
   ctx.workspace = !askWs
     ? scope.scope
     : ctx.workspaces.includes(wanted)

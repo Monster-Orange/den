@@ -1803,7 +1803,8 @@
           // is one workspace (the top bar's View), then focus. This page edits
           // one workspace at a time; the logs and health cover the whole view.
           if (!activeWs && !GRAPH_ALL) {
-            const urlWs = new URLSearchParams(location.search).get("ws");
+            const urlQ = new URLSearchParams(location.search);
+            const urlWs = urlQ.get("project") || urlQ.get("ws");
             const view = await fetch("/api/scope")
               .then((r) => (r.ok ? r.json() : null))
               .catch(() => null);
@@ -2229,12 +2230,12 @@
               ? hubP.name
               : "";
           const hubChip = hubName
-            ? `<a class="ws-head-link" id="ws-hub-project" href="/settings?ws=${encodeURIComponent(wsName)}#workspace" title="${escHtml(wsT("ws.hubTip", "This project's agents file their Hub work in this Hub project. Change it in Project setup."))}">${escHtml(wsT("ws.hubChip", "Hub: {name}").replace("{name}", hubName))}</a>`
+            ? `<a class="ws-head-link" id="ws-hub-project" href="/settings?project=${encodeURIComponent(wsName)}#workspace" title="${escHtml(wsT("ws.hubTip", "This project's agents file their Hub work in this Hub project. Change it in Project setup."))}">${escHtml(wsT("ws.hubChip", "Hub: {name}").replace("{name}", hubName))}</a>`
             : "";
           // H5: repos Den Hub's GitHub App can't see: a warning, to Project setup.
           const unseen = wsData?.hubUncovered?.[wsName] ?? [];
           const hubWarn = unseen.length
-            ? `<a class="badge warn" id="ws-hub-unseen" href="/settings?ws=${encodeURIComponent(wsName)}#workspace" title="${escHtml(unseen.map((u) => wsT("hubp.cantSee", "Den Hub can't see {repo}.").replace("{repo}", u.repo)).join(" "))}">${escHtml(wsT("ws.hubUnseen", "Den Hub can't see {n} repos").replace("{n}", String(unseen.length)))}</a>`
+            ? `<a class="badge warn" id="ws-hub-unseen" href="/settings?project=${encodeURIComponent(wsName)}#workspace" title="${escHtml(unseen.map((u) => wsT("hubp.cantSee", "Den Hub can't see {repo}.").replace("{repo}", u.repo)).join(" "))}">${escHtml(wsT("ws.hubUnseen", "Den Hub can't see {n} repos").replace("{n}", String(unseen.length)))}</a>`
             : "";
           content.innerHTML = `
         <div class="content-header">
@@ -2252,11 +2253,11 @@
           ${hubChip}
           ${hubWarn}
           <a class="ws-head-link" id="ws-term-here" href="/agents?terminal=1&amp;ws=${enc}" title="${escHtml(wsT("n.terminalTip", "Open a shell in this project's folder, in Den"))}">${escHtml(wsT("ws.termHere", "Terminal here"))}</a>
-          <a class="ws-head-link" id="ws-open-graph" href="/graph?ws=${enc}">${escHtml(pT("pj.openGraph", "Open in Graph →"))}</a>
+          <a class="ws-head-link" id="ws-open-graph" href="/graph?project=${enc}">${escHtml(pT("pj.openGraph", "Open in Graph →"))}</a>
           <div class="action-menu-wrap ws-more">
             <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="${escHtml(pT("pj.moreFor", "More for {ws}", { ws: projectLabel(wsData, wsName) }))}" title="${escHtml(pT("pj.moreProject", "More for this project"))}">⋯</button>
             <div class="action-dropdown" id="ws-more-menu" role="menu" style="display:none">
-              <a role="menuitem" href="/settings?ws=${enc}#workspace">${escHtml(pT("pj.setup", "Project setup"))}</a>
+              <a role="menuitem" href="/settings?project=${enc}#workspace">${escHtml(pT("pj.setup", "Project setup"))}</a>
               <button type="button" role="menuitem" data-action="rename-ws">${escHtml(pT("pj.renameDots", "Rename…"))}</button>
               ${wsName !== "default" ? `<button type="button" role="menuitem" class="danger" data-action="delete-ws">${escHtml(pT("pj.deleteDots", "Delete…"))}</button>` : ""}
             </div>
@@ -3091,6 +3092,7 @@
         function _dismissKey() {
           const ws =
             activeWs ||
+            new URLSearchParams(location.search).get("project") ||
             new URLSearchParams(location.search).get("ws") ||
             "default";
           return `__DEN_CLI__:dismissedTabs:${ws}`;
@@ -4458,6 +4460,7 @@
               // Remove the ?ws= param so a reload doesn't try to open the deleted workspace
               const params = new URLSearchParams(location.search);
               params.delete("ws");
+              params.delete("project");
               const qs = params.toString();
               history.replaceState(
                 null,

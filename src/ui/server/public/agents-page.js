@@ -273,7 +273,11 @@ function writeUrl() {
 // ── the list ────────────────────────────────────────────────────────────
 
 /** ?ws=: the one workspace the page was asked for, or null. */
-const urlWorkspace = () => new URLSearchParams(location.search).get("ws");
+const urlWorkspace = () => {
+  // #80: ?project=, with ?ws= read as its old name.
+  const q = new URLSearchParams(location.search);
+  return q.get("project") || q.get("ws");
+};
 
 /**
  * The workspaces to show: ?ws= (always that one, even when it isn't active
@@ -395,7 +399,7 @@ function rotationWhy(rot) {
 function wsHref(ws) {
   const nav = window.denShell?.nav?.() ?? [];
   const base = nav.find((n) => n.id === "local-dev")?.href ?? "/local-dev";
-  return `${base}?ws=${encodeURIComponent(ws)}`;
+  return `${base}?project=${encodeURIComponent(ws)}`;
 }
 
 /** Workspace `ws` as a link to it on Workspaces. */
@@ -961,8 +965,8 @@ async function showAllActive() {
 async function switchToProjectOf(r) {
   if (!r || inView(r)) return;
   const u = new URL(location.href);
-  u.searchParams.delete("project");
-  u.searchParams.set("ws", r.workspace);
+  u.searchParams.delete("ws");
+  u.searchParams.set("project", r.workspace);
   history.replaceState(history.state, "", u.pathname + u.search);
   await refresh();
 }
@@ -4365,7 +4369,8 @@ export async function mountAgentsPage(root) {
   // every project (?ws= names only where the shell starts), so tabs from
   // other projects stay.
   const q0 = new URLSearchParams(location.search);
-  const termWs = q0.get("terminal") === "1" ? q0.get("ws") || "" : null;
+  const termWs =
+    q0.get("terminal") === "1" ? q0.get("project") || q0.get("ws") || "" : null;
   const wanted =
     termWs !== null && !q0.get("open")
       ? rememberedOpen()
@@ -4373,6 +4378,7 @@ export async function mountAgentsPage(root) {
   if (termWs !== null && termWs) {
     const u = new URL(location.href);
     u.searchParams.delete("ws");
+    u.searchParams.delete("project");
     history.replaceState(history.state, "", u.pathname + u.search);
   }
   const linked = layoutFromUrl(location.search);
@@ -4380,7 +4386,7 @@ export async function mountAgentsPage(root) {
   if (startAsked) {
     const q = new URLSearchParams(location.search);
     startPrefill = {
-      ws: q.get("ws") || "",
+      ws: q.get("project") || q.get("ws") || "",
       folder: q.get("folder") || "",
       repo: q.get("repo") || null,
     };

@@ -3436,11 +3436,14 @@
   function terminalHref() {
     var ws = "";
     try {
-      ws = new URLSearchParams(location.search).get("ws") || "";
+      var q = new URLSearchParams(location.search);
+      ws = q.get("project") || q.get("ws") || "";
     } catch (_) {
       ws = "";
     }
-    return "/agents?terminal=1" + (ws ? "&ws=" + encodeURIComponent(ws) : "");
+    return (
+      "/agents?terminal=1" + (ws ? "&project=" + encodeURIComponent(ws) : "")
+    );
   }
   function item(n, current, extra, attrs) {
     return (

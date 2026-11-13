@@ -52,7 +52,7 @@ describe("attention", () => {
       subject: "agent:ag-1",
       scope: "workspace/web",
       text: "Planner needs your permission",
-      link: "/agents?ws=web&agent=ag-1",
+      link: "/agents?project=web&agent=ag-1",
       read: false,
     });
   });
@@ -278,7 +278,7 @@ describe("Hub comments finished", () => {
     });
     a.hubFinished("ag-1", "web", { count: 1 });
     expect(store.list()[0].text).toBe("Planner finished 1 Hub comment");
-    expect(store.list()[0].link).toBe("/agents?ws=web&agent=ag-1");
+    expect(store.list()[0].link).toBe("/agents?project=web&agent=ag-1");
   });
 
   it("on screen: nothing", () => {

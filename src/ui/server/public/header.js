@@ -867,7 +867,8 @@ const WS_URL_PAGES = new Set(["/graph", "/agents"]);
  */
 function pageScope(scope, data) {
   if (!WS_URL_PAGES.has(location.pathname)) return scope;
-  const ws = new URLSearchParams(location.search).get("ws");
+  const q = new URLSearchParams(location.search);
+  const ws = q.get("project") || q.get("ws");
   const active = Array.isArray(data?.active)
     ? data.active
     : data?.active
@@ -885,9 +886,16 @@ function pageScope(scope, data) {
  */
 function followScopeInUrl(value) {
   const u = new URL(location.href);
-  if (!WS_URL_PAGES.has(location.pathname) && !u.searchParams.has("ws")) return;
-  if (value === "all") u.searchParams.delete("ws");
-  else u.searchParams.set("ws", value);
+  if (
+    !WS_URL_PAGES.has(location.pathname) &&
+    !u.searchParams.has("ws") &&
+    !u.searchParams.has("project")
+  )
+    return;
+  // #80: ?project=; an old ?ws= goes.
+  u.searchParams.delete("ws");
+  if (value === "all") u.searchParams.delete("project");
+  else u.searchParams.set("project", value);
   history.replaceState(history.state, "", u.pathname + u.search + u.hash);
 }
 

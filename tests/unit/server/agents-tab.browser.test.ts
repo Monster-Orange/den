@@ -620,10 +620,10 @@ describe("the Agents tab", () => {
     const p = await page(`/agents?open=${id("scout")}`);
     const head = `.pane[data-id="${id("scout")}"] .bar2 .where a.wslink`;
     await p.waitForSelector(head);
-    expect(await p.getAttribute(head, "href")).toBe("/local-dev?ws=north");
+    expect(await p.getAttribute(head, "href")).toBe("/local-dev?project=north");
     expect(await p.textContent(head)).toBe("north");
     const group = '#agl .wsg[data-ws="north"] .wsh a.wslink';
-    expect(await p.getAttribute(group, "href")).toBe("/local-dev?ws=north");
+    expect(await p.getAttribute(group, "href")).toBe("/local-dev?project=north");
     // ⌘K: an agent's name finds its workspace.
     await p.click("#den-search");
     await p.fill("#den-pal-q", "scout");

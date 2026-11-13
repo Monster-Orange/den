@@ -42,7 +42,7 @@ export function agentsSectionHtml(ws) {
   return `<section class="agents" id="agents-section" data-ws="${esc(ws)}" aria-labelledby="agents-h">
             <div class="ag-head">
               <h2 class="den-sec" id="agents-h">${esc(t("ag.title"))}</h2>
-              <a href="/agents?ws=${encodeURIComponent(ws)}" id="agents-open-all">${esc(t("ws.openAgents"))}</a>
+              <a href="/agents?project=${encodeURIComponent(ws)}" id="agents-open-all">${esc(t("ws.openAgents"))}</a>
             </div>
             <p class="agents-err" id="agents-err" role="alert" hidden></p>
             <div class="tablewrap">

@@ -270,14 +270,14 @@ describe("R24a/b: the page is Workspaces", () => {
 });
 
 describe("R24c: the workspace header", () => {
-  it('"Open in Graph →" lands on /graph?ws=<name> with that workspace\'s cards', async () => {
+  it('"Open in Graph →" lands on /graph?project=<name> with that workspace\'s cards', async () => {
     if (!browser) return;
     const p = await open();
     expect(await p.getAttribute("#ws-open-graph", "href")).toBe(
-      "/graph?ws=main",
+      "/graph?project=main",
     );
     await p.click("#ws-open-graph");
-    await p.waitForURL(/\/graph\?ws=main$/);
+    await p.waitForURL(/\/graph\?project=main$/);
     await p.waitForSelector(".dg-card", { timeout: 15_000 });
     const ids = await p.$$eval(".dg-card", (cs) =>
       [
@@ -288,7 +288,7 @@ describe("R24c: the workspace header", () => {
     await p.context().close();
   }, 45_000);
 
-  it("the ⋯ menu holds Project setup (to /settings?ws=<name>#workspace), Rename and Delete", async () => {
+  it("the ⋯ menu holds Project setup (to /settings?project=<name>#workspace), Rename and Delete", async () => {
     if (!browser) return;
     const p = await open();
     const more = '#content .ws-more [data-action="toggle-svc-menu"]';
@@ -301,7 +301,7 @@ describe("R24c: the workspace header", () => {
       })),
     );
     expect(items).toEqual([
-      { text: "Project setup", href: "/settings?ws=main#workspace" },
+      { text: "Project setup", href: "/settings?project=main#workspace" },
       { text: "Rename…", href: null },
       { text: "Delete…", href: null },
     ]);

@@ -330,7 +330,7 @@ describe("Workspace ▾ (R4)", () => {
       p.waitForNavigation(),
       p.click('.den-pop .den-mi:has-text("ws-b")'),
     ]);
-    expect(new URL(p.url()).searchParams.get("ws")).toBe("ws-b");
+    expect(new URL(p.url()).searchParams.get("project")).toBe("ws-b");
     await p.waitForSelector("#ws-pill:not([hidden])");
     await p.click("#ws-pill");
     await Promise.all([
@@ -358,7 +358,7 @@ describe("Workspace ▾ (R4)", () => {
     expect(writes).toEqual([
       'POST /api/workspaces {"name":"ws-b","action":"focus"}',
     ]);
-    expect(new URL(p.url()).searchParams.get("ws")).toBe("ws-b");
+    expect(new URL(p.url()).searchParams.get("project")).toBe("ws-b");
     await p.context().close();
     await post("/api/workspaces", { name: "ws-a", action: "focus" });
     await post("/api/scope", { scope: "all" });

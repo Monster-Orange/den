@@ -181,7 +181,7 @@ describe("the Agents section", () => {
     const p = await open("north");
     const sec = p.locator("#agents-section");
     const all = sec.getByRole("link", { name: "Open in Agents →" });
-    expect(await all.getAttribute("href")).toBe("/agents?ws=north");
+    expect(await all.getAttribute("href")).toBe("/agents?project=north");
     // scout's session is gone: nothing to open.
     expect(await row(p, "scout").getByRole("link").count()).toBe(0);
     expect(

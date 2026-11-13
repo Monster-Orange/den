@@ -262,7 +262,7 @@ describe("Settings › Project setup › Hub project (H5)", () => {
     await p.waitForSelector(".content-header #ws-hub-project");
     expect(await p.textContent("#ws-hub-project")).toBe("Hub: Back office");
     expect(await p.getAttribute("#ws-hub-project", "href")).toBe(
-      "/settings?ws=north#workspace",
+      "/settings?project=north#workspace",
     );
     // south isn't linked: no chip.
     await p.goto(`${s!.base}/?ws=south`);

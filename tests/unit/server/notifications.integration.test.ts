@@ -86,7 +86,7 @@ describe("NT: the bell on the real server", () => {
     expect(g[0].subjects[0].subject).toBe("agent:planner");
     expect(g[0].subjects[0].items[0].text).toMatch(/needs your permission$/);
     expect(g[0].subjects[0].items[0].link).toBe(
-      "/agents?ws=north&agent=planner",
+      "/agents?project=north&agent=planner",
     );
     expect((await planner())?.waiting).toBe(true);
     // NT-3b: and why.

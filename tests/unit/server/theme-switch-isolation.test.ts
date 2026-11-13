@@ -413,6 +413,8 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       // The runs dock's prefs (R16a): their defaults, unwritten.
       dock: false,
       dockHeight: 0,
+      // Manage projects' order (0.4.45): none set, unwritten.
+      projectOrder: [],
     });
     // A bad pin or page id is refused and writes nothing.
     for (const shell of [

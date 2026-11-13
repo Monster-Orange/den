@@ -109,7 +109,7 @@ describe("NT-3: the bell", () => {
     const row = sec.locator('.den-bell-row[data-kind="waiting"] a');
     expect(await row.textContent()).toMatch(/is waiting for you$/);
     expect(await row.getAttribute("href")).toBe(
-      "/agents?ws=north&agent=planner",
+      "/agents?project=north&agent=planner",
     );
     await p.click('#den-bell-pop [data-bell="all"]');
     await p.waitForFunction(
