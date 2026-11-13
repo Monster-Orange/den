@@ -100,7 +100,7 @@ export function backMessage(
 ): string {
   const was = m.fromVersion === version ? "" : ` (it was ${m.fromVersion})`;
   return (
-    `Server is back on ${version} (pid ${pid})${was}. ` +
+    `Server is back on ${version} (pid ${pid})${was}. ` + // words-ok: SRV-1 spec's own line, typed to the agent
     `You restarted it: ${m.reason}. Carry on from where you were.`
   );
 }
