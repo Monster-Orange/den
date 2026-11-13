@@ -174,6 +174,7 @@ import {
   type Runtime,
 } from "../../shared/agents/runtimes.js";
 import { agentGitEnv } from "../../shared/agents/git-signing.js";
+import { readHubMcpInit } from "../../shared/agents/hub-mcp-connect.js";
 import type {
   RuntimeDetect,
   RuntimeModel,
@@ -1221,17 +1222,30 @@ export async function agentTools(
   const files = agentFilesDir(d.stateDir(), rec.id);
   const st = mcpStaleOf(files, url);
   const connected = url !== null;
-  const loaded = connected
+  let loaded = connected
     ? !st?.adds.includes(HUB_SERVER)
     : Boolean(st?.drops.includes(HUB_SERVER));
-  const restart = Boolean(st);
-  const note = !connected
-    ? loaded
-      ? "Hub was disconnected; its tools go when the person restarts you from Den."
-      : "This Den is not connected to Hub. A person connects it in Settings › Agents › Hub."
-    : restart
-      ? "Hub is connected, but your session started without its tools. Ask the person to restart you from Den (Restart keeps this conversation); no token step is needed."
-      : "Hub is connected and its tools (hub_*) are yours.";
+  let restart = Boolean(st);
+  // What its session actually got: a connect that failed in this session
+  // (the proxy's note) means no hub_* tools until it connects again.
+  const init = loaded ? readHubMcpInit(d.stateDir(), rec.id) : null;
+  const failed =
+    init && !init.ok && Date.parse(init.at) >= Date.parse(rec.startedAt)
+      ? (init.error ?? "an error")
+      : null;
+  if (failed) {
+    loaded = false;
+    restart = true;
+  }
+  const note = failed
+    ? `${connected ? "Hub is connected, but" : "Hub was disconnected, and"} you couldn't load its tools when you started (${failed}). Ask the person to restart you from Den (Restart keeps this conversation); no token step is needed.`
+    : !connected
+      ? loaded
+        ? "Hub was disconnected; its tools go when the person restarts you from Den."
+        : "This Den is not connected to Hub. A person connects it in Settings › Agents › Hub."
+      : restart
+        ? "Hub is connected, but you started without its tools. Ask the person to restart you from Den (Restart keeps this conversation); no token step is needed."
+        : "Hub is connected and its tools (hub_*) are yours.";
   return {
     agent: rec.id,
     workspace: rec.workspace,

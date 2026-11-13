@@ -62,6 +62,27 @@ describe("agents.git.signing_key: the setting", () => {
     expect(readAgentsConfig({} as never).git).toBeUndefined();
   });
 
+  it("gate 0.4.44-dev.0: user.yml's (per machine) is read, and wins over the org's; a bad one names user.yml", () => {
+    const org = { agents: { git: { signing_key: "/org/key" } } } as never;
+    expect(readAgentsConfig({} as never, { agents: { git: { signing_key: key } } }).git).toEqual({
+      signingKey: key,
+    });
+    expect(readAgentsConfig(org, { agents: { git: { signing_key: key } } }).git).toEqual({
+      signingKey: key,
+    });
+    expect(readAgentsConfig(org, {}).git).toEqual({ signingKey: "/org/key" });
+    let err: unknown;
+    try {
+      readAgentsConfig({} as never, { agents: { git: { signing_key: "rel/x" } } });
+    } catch (e) {
+      err = e;
+    }
+    expect((err as { issues: { file: string; key: string }[] }).issues[0]).toMatchObject({
+      file: "config/local/user.yml",
+      key: "agents.git.signing_key",
+    });
+  });
+
   it("gh's line names the .pub, as a signing key", () => {
     expect(signingKeyAddLine({ signingKey: "/k/den_agents" })).toBe(
       'gh ssh-key add "/k/den_agents.pub" --type signing --title "Den agents"',

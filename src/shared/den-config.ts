@@ -422,6 +422,11 @@ export interface UserConfig {
    */
   agents?: {
     runtimes?: Record<string, { bin?: unknown } | null>;
+    /**
+     * agents.git.signing_key: per machine, so user.yml's wins over the
+     * distribution's (gate 0.4.44-dev.0: it was ignored here).
+     */
+    git?: unknown;
     /** More runtime catalog entries (AG-0.5, agents/catalog.ts). */
     runtime_catalog?: unknown;
     /**
@@ -629,7 +634,10 @@ export function requireGithubOrg(config: DenConfig = readDenConfig()): string {
  * not a 500. A trailing "(got …)" is left out: issues name keys, never
  * values.
  */
-function asConfigError<T>(read: () => T): T {
+function asConfigError<T>(
+  read: () => T,
+  file: string = product().configFile,
+): T {
   try {
     return read();
   } catch (e) {
@@ -638,7 +646,7 @@ function asConfigError<T>(read: () => T): T {
     const at = text.indexOf(": ");
     const key = at > 0 ? text.slice(0, at) : text.split(/\s/)[0];
     const message = at > 0 ? text.slice(at + 2) : text;
-    throw new ConfigError([{ file: product().configFile, key, message, text }]);
+    throw new ConfigError([{ file, key, message, text }]);
   }
 }
 
@@ -658,7 +666,7 @@ export function sectionConfigError(
     return null;
   }
   try {
-    if (section === "agents") readAgentsConfig(config);
+    if (section === "agents") readAgentsConfig(config, readUserConfigQuiet());
     else readSessionsConfig(config);
     return null;
   } catch (e) {
@@ -1301,9 +1309,32 @@ function guardrailsBlock(
  * a typo must not lift the cap, drop a pack or widen a grant.
  */
 export function readAgentsConfig(
-  config: DenConfig = readDenConfig(),
+  config?: DenConfig,
+  /** user.yml (default: read only when `config` is Den's own, unpassed). */
+  user?: UserConfig,
 ): ResolvedAgentsConfig {
-  return asConfigError(() => parseAgentsConfig(config));
+  const c = config ?? readDenConfig();
+  const u = user ?? (config ? {} : readUserConfigQuiet());
+  const out = asConfigError(() => parseAgentsConfig(c));
+  // A signing key is per machine: user.yml's agents.git wins.
+  const mine = u.agents?.git;
+  if (mine !== undefined && mine !== null) {
+    const g = asConfigError(
+      () => gitSigningBlock(mine),
+      path.relative(ROOT, USER_CONFIG_PATH),
+    );
+    if (g) out.git = g;
+  }
+  return out;
+}
+
+/** user.yml, or {} when it can't be read (a bad one is its own row). */
+function readUserConfigQuiet(): UserConfig {
+  try {
+    return readUserConfig();
+  } catch {
+    return {};
+  }
 }
 
 function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {

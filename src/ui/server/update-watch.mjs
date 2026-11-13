@@ -72,12 +72,17 @@ function info() {
   });
 }
 
-/** Until `deadline`: the server answers `version` from a pid other than `notPid`. */
+/**
+ * Until `deadline`: the server answers `version` from a pid other than
+ * `notPid`. `last` is the last answer from a new pid only: the old server
+ * answering before it stops says nothing about the new one (gate
+ * 0.4.44-dev.0).
+ */
 async function upOn(version, notPid, deadline) {
   let last = null;
   while (Date.now() < deadline) {
     const i = await info();
-    if (i) last = i;
+    if (i && i.pid !== notPid) last = i;
     if (i && i.version === version && i.pid !== notPid) return { ok: true, i };
     await sleep(plan.pollMs ?? 1000);
   }
@@ -110,7 +115,7 @@ if (up.ok) {
 
 const seen = up.last
   ? `it answered ${up.last.version ?? "?"} (pid ${up.last.pid ?? "?"})`
-  : "it never answered";
+  : "nothing new answered on its port";
 const why = `Den ${plan.to} wasn't up within ${Math.round(plan.waitMs / 1000)} s (${seen})`;
 say("rolling_back", { why });
 for (const b of plan.backups) {
@@ -129,6 +134,8 @@ writeJson(plan.restartMarker.path, {
   ...plan.restartMarker.marker,
   reason: `${why}, so Den rolled back to ${plan.from}`,
   fromVersion: plan.to,
+  // The new Den's pid, when it answered at all; never the old one's.
+  fromPid: up.last?.pid ?? 0,
   rolledBack: true,
   at: new Date().toISOString(),
 });

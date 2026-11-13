@@ -76,6 +76,11 @@ export interface HubProxyDeps {
     workspace: string;
     session: string;
   }) => Promise<HubUpstream | null>;
+  /**
+   * An agent's MCP initialize (a POST to /mcp with no Mcp-Session-Id) and
+   * what it got: whoami reports a failed one (hub-mcp-connect.ts).
+   */
+  onMcpInit?: (agentId: string, o: { ok: boolean; error?: string }) => void;
 }
 
 /**
@@ -124,14 +129,26 @@ export async function handleHubProxy(
     sendJson(res, { error: `Den doesn't pass ${sub} to Hub.` }, 404);
     return true;
   }
+  const agentId = p.actor.slice("agent:".length);
+  const init =
+    sub === "/mcp" && method === "POST" && !req.headers["mcp-session-id"];
+  const noteInit = (ok: boolean, error?: string) => {
+    if (!init || !deps.onMcpInit) return;
+    try {
+      deps.onMcpInit(agentId, ok ? { ok } : { ok, ...(error ? { error } : {}) });
+    } catch {
+      // A note never changes the agent's answer.
+    }
+  };
   const up = await deps
     .upstream({
-      agentId: p.actor.slice("agent:".length),
+      agentId,
       workspace: p.workspace,
       session: p.session.id ?? p.session.name,
     })
     .catch(() => null);
   if (!up) {
+    noteInit(false, "hub isn't connected here");
     sendJson(
       res,
       {
@@ -149,6 +166,7 @@ export async function handleHubProxy(
   );
   if (sub !== "/mcp") target.search = query;
   if (target.protocol !== "http:" && target.protocol !== "https:") {
+    noteInit(false, "hub's address isn't http(s)");
     sendJson(res, { error: "Hub's address isn't http(s)." }, 502);
     return true;
   }
@@ -169,7 +187,12 @@ export async function handleHubProxy(
       }
       if (/^text\/event-stream/i.test(String(back["content-type"] ?? "")))
         back["x-accel-buffering"] = "no";
-      res.writeHead(hubRes.statusCode ?? 502, back);
+      const status = hubRes.statusCode ?? 502;
+      noteInit(
+        status >= 200 && status < 300,
+        `hub (${status}): ${http.STATUS_CODES[status] ?? "error"}`,
+      );
+      res.writeHead(status, back);
       res.flushHeaders?.();
       hubRes.pipe(res);
       hubRes.on("end", resolve);
@@ -179,6 +202,7 @@ export async function handleHubProxy(
       });
     });
     out.on("error", () => {
+      if (!res.headersSent) noteInit(false, "hub didn't answer");
       if (!res.headersSent)
         sendJson(
           res,

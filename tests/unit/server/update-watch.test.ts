@@ -115,17 +115,32 @@ describe("update-watch.mjs (SRV-1b)", () => {
     expect(fs.existsSync(path.join(tmp, "npm-ran"))).toBe(true);
     expect(fs.existsSync(restarted)).toBe(true);
     expect(state()).toMatchObject({ state: "rolled_back", pid: 3333 });
+    // Gate 0.4.44-dev.0: the old server answering is not the new one.
     expect(state().why).toMatch(
-      /^Den 1\.1\.0 wasn't up within 2 s \(it answered 1\.0\.0 \(pid 1111\)\)$/,
+      /^Den 1\.1\.0 wasn't up within 2 s \(nothing new answered on its port\)$/,
     );
     const marker = JSON.parse(fs.readFileSync(p.restartMarker.path, "utf8"));
     expect(marker).toMatchObject({
       id: "ap_1",
       agent: "server",
       fromVersion: "1.1.0",
+      fromPid: 0,
       rolledBack: true,
     });
     expect(marker.reason).toMatch(/, so Den rolled back to 1\.0\.0$/);
+  });
+
+  it("a new server that answers another version: named, with its own pid", async () => {
+    const restarted = path.join(tmp, "restarted");
+    answer = () =>
+      fs.existsSync(restarted)
+        ? { pid: 3333, version: "1.0.0" }
+        : { pid: 2222, version: "1.0.9" };
+    const { file, p } = plan();
+    expect(await runWatch(file)).toBe(0);
+    expect(state().why).toMatch(/\(it answered 1\.0\.9 \(pid 2222\)\)$/);
+    const marker = JSON.parse(fs.readFileSync(p.restartMarker.path, "utf8"));
+    expect(marker.fromPid).toBe(2222);
   });
 
   it("npm can't put the old one back: rollback_failed, saying why, and no restart", async () => {
@@ -133,7 +148,7 @@ describe("update-watch.mjs (SRV-1b)", () => {
     const { file } = plan({ npm: touch(path.join(tmp, "npm-ran"), 3) });
     expect(await runWatch(file)).toBe(1);
     expect(state().state).toBe("rollback_failed");
-    expect(state().why).toMatch(/it never answered\); npm install of 1\.0\.0 failed/);
+    expect(state().why).toMatch(/nothing new answered on its port\); npm install of 1\.0\.0 failed/);
     expect(fs.existsSync(path.join(tmp, "restarted"))).toBe(false);
   });
 

@@ -898,6 +898,7 @@ import {
 import type { ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
 import { handleHubProxy } from "./hub-proxy-routes.js";
+import { noteHubMcpInit } from "../../shared/agents/hub-mcp-connect.js";
 import {
   handleAgentRoutes,
   startAgentUpkeep,
@@ -5049,6 +5050,7 @@ async function handleRequest(
   if (
     await handleHubProxy(req, res, pathname, {
       upstream: (who) => hubUpstream(agentWebDeps(), who),
+      onMcpInit: (agentId, o) => noteHubMcpInit(getStateDir(), agentId, o),
     })
   )
     return;
@@ -6175,7 +6177,7 @@ async function serverBack(): Promise<void> {
     null,
     {
       verb: "server-back",
-      detail: `on ${version} (pid ${process.pid}), was ${m.fromVersion} (pid ${m.fromPid}): ${m.reason} [${m.id}]; ${m.agent ? `agent:${m.agent}` : "the asker"} ${told}`,
+      detail: `on ${version} (pid ${process.pid}), was ${m.fromVersion}${m.fromPid ? ` (pid ${m.fromPid})` : ""}: ${m.reason} [${m.id}]; ${m.agent ? `agent:${m.agent}` : "the asker"} ${told}`,
     },
     m.agent ? `agent:${m.agent}` : undefined,
   );

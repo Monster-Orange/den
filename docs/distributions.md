@@ -3770,7 +3770,9 @@ adds a note to run `<cli> doctor --probe`.
 
 ### Agents' commit signing
 
-Agents Den starts can sign their git commits with an SSH key of their own:
+Agents Den starts can sign their git commits with an SSH key of their own.
+A key is per machine, so it usually goes in `config/local/user.yml`; the
+org config can set one too, and user.yml's wins:
 
 ```yaml
 agents:

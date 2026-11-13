@@ -45,6 +45,17 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **whoami says what the agent actually got.** When an agent's Hub
+  connection failed at start (Hub answered 502, or didn't answer), it had
+  no `hub_*` tools, but whoami said they were loaded. Den's Hub proxy now
+  notes each agent's MCP connect, and whoami reports `loaded: false`,
+  `restart: true` and the error until a connect works.
+- The trust step ignores a prompt that has left the screen: only output
+  after the last screen clear counts, and the prompt must end it.
+- A rolled-back update names the new Den's answer, or that nothing new
+  answered, never the old server's version and pid.
+- `agents.git.signing_key` in `config/local/user.yml` was ignored; it is
+  read there now (per machine) and wins over the org config's.
 - **Agents: the agent you type to is the one named.** Only the row of
   the tab in front is marked in the list; the bar says
   "<agent> · <project>"; a "To <agent> · <project>" line in the
@@ -62,8 +73,12 @@ config and manifest changes a distribution must make to move to it under
 ### Migrations
 
 - None needed. To have agents sign commits, set
-  `agents.git.signing_key` and run `doctor`. A distribution whose server
-  agent should stay out of its root sets `server_agent.folder`.
+  `agents.git.signing_key` (in `config/local/user.yml`) and run
+  `doctor`. A distribution whose server agent should stay out of its root
+  sets `server_agent.folder`.
+- A running or resumed server agent keeps the folder it was started in;
+  it moves to the distribution root (or `server_agent.folder`) on its
+  next fresh start.
 
 ## [0.4.43] - 2026-11-13
 
