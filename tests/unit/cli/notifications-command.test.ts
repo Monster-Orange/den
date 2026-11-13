@@ -74,6 +74,38 @@ describe("notifications list", () => {
     ]);
   });
 
+  it("Hub's items: under Hub's name for each project, else its slug; two projects, two headings", async () => {
+    new NotificationStore(dir, () => new Date(NOW)).syncHub(
+      [
+        {
+          id: "h1",
+          kind: "mention",
+          subject: "thread:th_1",
+          scope: "hub/e2e/main",
+          scopeName: "E2E fixtures",
+          text: "Kim mentioned you",
+          at: new Date(NOW).toISOString(),
+          readBy: [],
+        },
+        {
+          id: "h2",
+          kind: "mention",
+          subject: "thread:th_2",
+          scope: "hub/shop/main",
+          text: "Kim replied",
+          at: new Date(NOW).toISOString(),
+          readBy: [],
+        },
+      ],
+      "pat",
+    );
+    expect(await run(["list"])).toBe(0);
+    expect(out.filter((l) => l.startsWith("Hub"))).toEqual([
+      "Hub · E2E fixtures",
+      "Hub · shop",
+    ]);
+  });
+
   it("--json: the bell's own answer", async () => {
     seed();
     expect(await run(["list", "--json"])).toBe(0);

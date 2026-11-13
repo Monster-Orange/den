@@ -43,11 +43,17 @@ function ago(iso: string, now: number): string {
   return h < 48 ? `${h} h` : iso.slice(0, 10);
 }
 
-function scopeLabel(scope: string): string {
-  // The bell says it the same way: "<title> agent".
+/**
+ * A group's heading, as the bell says it: "<title> agent", a project, or
+ * "Hub · <project>" (the name Hub gives it, else its slug).
+ */
+function scopeLabel(scope: string, name = ""): string {
   if (scope === "workspace/den-server") return `${product().title} agent`;
   if (scope.startsWith("workspace/")) return scope.slice("workspace/".length);
-  if (scope.startsWith("hub/")) return `Hub · ${scope.slice("hub/".length)}`;
+  if (scope.startsWith("hub/")) {
+    const project = name || scope.slice("hub/".length).split("/")[0];
+    return project ? `Hub · ${project}` : "Hub";
+  }
   return scope;
 }
 
@@ -88,7 +94,10 @@ export async function cmdNotifications(
     out(`${unread} unread`);
     out("");
     for (const g of groups) {
-      out(scopeLabel(g.scope));
+      const name =
+        g.subjects.flatMap((x) => x.items).find((n) => n.scopeName)
+          ?.scopeName ?? "";
+      out(scopeLabel(g.scope, name));
       for (const s of g.subjects)
         for (const n of s.items)
           out(`  ${n.read ? "○" : "●"} ${n.text} · ${ago(n.at, now())}`);
