@@ -255,7 +255,10 @@ export class NotificationStore {
       const id = `hub:${n.id}`;
       listed.add(id);
       const hubRead = !!me && n.readBy.some((l) => l.toLowerCase() === me);
-      const scope = `hub/${n.scope}`;
+      // Hub's own scope: "hub/<project>/<space>".
+      const scope = n.scope.startsWith("hub/")
+        ? n.scope
+        : `hub/${n.scope}`.replace(/\/$/, "");
       const x = byId.get(id);
       if (!x) {
         if (this.muted(n.subject, scope)) continue;

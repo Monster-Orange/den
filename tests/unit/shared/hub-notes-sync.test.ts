@@ -23,7 +23,7 @@ const note = (id: string, over: Record<string, unknown> = {}) => ({
   source: "hub",
   kind: "mention",
   subject: `thread:th_${id}`,
-  scope: "project:web",
+  scope: "hub/web/main",
   text: `Kim mentioned you on Pricing page (${id})`,
   link: `https://hub.example.test/a/pricing#th_${id}`,
   at: "2026-11-13T10:00:00Z",
@@ -72,13 +72,13 @@ describe("NT-6: Hub's notifications in the bell", () => {
       [
         "hub:n1",
         false,
-        "hub/project:web",
+        "hub/web/main",
         "https://hub.example.test/a/pricing#th_n1",
       ],
       [
         "hub:n2",
         true,
-        "hub/project:web",
+        "hub/web/main",
         "https://hub.example.test/a/pricing#th_n2",
       ],
     ]);
@@ -148,7 +148,7 @@ describe("NT-6: Hub's notifications in the bell", () => {
 
   it("a muted Hub project's new items are left out", async () => {
     const r = rig(() => [note("n1")]);
-    r.store.mute("hub/project:web", 60);
+    r.store.mute("hub/web/main", 60);
     await r.pass();
     expect(hubItems(r.store)).toEqual([]);
   });

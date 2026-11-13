@@ -214,7 +214,7 @@ describe("NT-3: the bell", () => {
           id: "n1",
           kind: "mention",
           subject: "thread:th_1",
-          scope: "project:web",
+          scope: "hub/web/main",
           text: "Kim mentioned you on Pricing page",
           link: "https://hub.example.test/a/pricing#th_1",
           at: new Date().toISOString(),
@@ -226,7 +226,7 @@ describe("NT-3: the bell", () => {
     const p = await open("/services");
     await p.click("#den-bell");
     const sec = p.locator(
-      '#den-bell-pop section[data-scope="hub/project:web"]',
+      '#den-bell-pop section[data-scope="hub/web/main"]',
     );
     await sec.waitFor({ timeout: 15_000 });
     expect(await sec.locator(".den-bell-sc span").textContent()).toBe(

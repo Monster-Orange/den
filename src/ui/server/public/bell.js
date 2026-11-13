@@ -36,8 +36,8 @@ function scopeLabel(scope) {
   if (scope === "workspace/den-server") return tr("bell.server");
   if (scope.startsWith("workspace/")) return scope.slice("workspace/".length);
   if (scope.startsWith("hub/")) {
-    // NT-6: Hub's own scope, "project:<slug>" or nothing.
-    const project = scope.slice("hub/".length).replace(/^project:/, "");
+    // NT-6: Hub's scope is "hub/<project>/<space>": the project names it.
+    const project = scope.slice("hub/".length).split("/")[0];
     return project ? tr("bell.hub", { project }) : tr("bell.hubAll");
   }
   return scope;
