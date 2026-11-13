@@ -79,6 +79,16 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- **Bring in marks a conversation open in a terminal, however old (D56).**
+  The list (and `agents import --json`'s `open`) said "Open elsewhere"
+  only for one written in the last minute, so a conversation live in a
+  terminal for days was a plain row you could pick. Now a conversation
+  another live process holds, by Claude Code's own process records, is
+  marked open too, and importing it names that process's pid.
+- **An earlier session's helper no longer shows as idle under a running
+  agent (D62).** A helper with no activity since the agent's running
+  session started belonged to the session before: it shows as stopped,
+  as the CLI already said.
 - **`repo add -w` takes a project's name, not just its slug (D70).**
   `repo add <path> -w "Proj Gate"` made a second project keyed
   "Proj Gate" next to `proj-gate`, and made it active. Now `-w` finds a

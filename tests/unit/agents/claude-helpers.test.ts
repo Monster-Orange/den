@@ -267,6 +267,27 @@ describe("status, strongest evidence first", () => {
     });
   });
 
+  // the dev.2 gate: a 4-hour-old helper of an earlier session showed as
+  // "idle · 4h 35m" under the running agent; the CLI said stopped.
+  it("a helper quiet since before the agent's running session started is that earlier session's: stopped", () => {
+    helper("old", without("finished"), midTurn);
+    const later = T_LAST + 4 * 60 * 60_000;
+    expect(one("old", { now: later, agentLive: true })).toMatchObject({
+      status: "idle",
+    });
+    expect(
+      one("old", { now: later, agentLive: true, liveSince: later - 60_000 }),
+    ).toMatchObject({
+      status: "stopped",
+      statusFrom: "an earlier session's (the agent restarted since)",
+    });
+    // Active since the session started: still this session's.
+    expect(
+      one("old", { now: T_LAST + 1_000, agentLive: true, liveSince: T0 })
+        .status,
+    ).toBe("running");
+  });
+
   it("a running helper's duration runs to now; an ended one's to its last activity", () => {
     helper("busy", without("finished"), midTurn);
     const now = T_LAST + 60_000;

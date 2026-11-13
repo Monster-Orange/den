@@ -95,6 +95,11 @@ export interface HelperReadOptions {
   settings?: Partial<HelperSettings>;
   /** Whether the agent itself is running now. */
   agentLive?: boolean;
+  /**
+   * When the agent's running session started (ms). A helper with no
+   * activity since then was an earlier session's: it can't be running.
+   */
+  liveSince?: number;
   /** A transcript's last lines (default 500). */
   limit?: number;
 }

@@ -56,20 +56,22 @@ function alive(pid: number): boolean {
 }
 
 /**
- * The pid of a live process (not one of `exclude`) that has conversation
- * `token` open, by Claude Code's own records; null: none. Never throws.
+ * Every conversation a live process has open, by Claude Code's own
+ * records: conversation id → pid (not one of `exclude`). One read of the
+ * records for a whole list (D56: Bring in marks them). Never throws.
  */
-export function claudeOpenPid(
-  token: string,
+export function claudeOpenPids(
   env: NodeJS.ProcessEnv = process.env,
   exclude: readonly number[] = [],
-): number | null {
+  only?: string,
+): Map<string, number> {
+  const out = new Map<string, number>();
   const dir = claudeSessionsDir(env);
   let names: string[];
   try {
     names = fs.readdirSync(dir);
   } catch {
-    return null;
+    return out;
   }
   for (const n of names) {
     const m = /^(\d{1,10})\.json$/.exec(n);
@@ -84,7 +86,9 @@ export function claudeOpenPid(
     } catch {
       continue;
     }
-    if (!rec || rec.sessionId !== token) continue;
+    if (!rec || typeof rec.sessionId !== "string") continue;
+    if (only !== undefined && rec.sessionId !== only) continue;
+    if (out.has(rec.sessionId)) continue;
     const pid = typeof rec.pid === "number" ? rec.pid : Number(m[1]);
     if (!Number.isInteger(pid) || pid <= 0 || exclude.includes(pid)) continue;
     if (!alive(pid)) continue;
@@ -96,9 +100,21 @@ export function claudeOpenPid(
       norm(started) !== norm(rec.procStart)
     )
       continue;
-    return pid;
+    out.set(rec.sessionId, pid);
   }
-  return null;
+  return out;
+}
+
+/**
+ * The pid of a live process (not one of `exclude`) that has conversation
+ * `token` open, by Claude Code's own records; null: none. Never throws.
+ */
+export function claudeOpenPid(
+  token: string,
+  env: NodeJS.ProcessEnv = process.env,
+  exclude: readonly number[] = [],
+): number | null {
+  return claudeOpenPids(env, exclude, token).get(token) ?? null;
 }
 
 /** The refusal's words (D56 item 8). */

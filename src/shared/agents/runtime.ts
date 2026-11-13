@@ -268,6 +268,14 @@ export interface Runtime {
     env?: NodeJS.ProcessEnv,
     exclude?: readonly number[],
   ): number | null;
+  /**
+   * D56: every conversation another live process has open (id → pid), in
+   * one read, for a list to mark. Never throws.
+   */
+  openPids?(
+    env?: NodeJS.ProcessEnv,
+    exclude?: readonly number[],
+  ): Map<string, number>;
   /** AG-17.1: the folder conversation `token` ran in, or null. Never throws. */
   conversationCwd?(token: string, env?: NodeJS.ProcessEnv): string | null;
   /**

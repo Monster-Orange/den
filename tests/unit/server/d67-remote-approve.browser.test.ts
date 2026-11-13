@@ -182,7 +182,18 @@ describe("D67: approve from another computer, in browsers only", () => {
     // B loses its approval key (another tab, cleared storage): signed in,
     // but it can't see what waits.
     // (Navigated first: the landing page may still be settling.)
-    await b.goto(`${edge()}/settings?tab=access#top`);
+    // CI, dev.3: the landing page's own move to /settings can interrupt
+    // this one; go again once it has.
+    for (let i = 0; ; i++) {
+      try {
+        await b.goto(`${edge()}/settings?tab=access#top`);
+        break;
+      } catch (e) {
+        if (i >= 2 || !/interrupted by another navigation/.test(String(e)))
+          throw e;
+        await b.waitForLoadState("load");
+      }
+    }
     await b.evaluate(() => localStorage.removeItem("den.approveKey"));
     await b.reload();
     const id = await ask("workspace_create", { name: "far" });

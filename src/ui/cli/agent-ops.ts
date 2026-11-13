@@ -1237,6 +1237,7 @@ function addHelperCounts(
       d.env,
       Date.now(),
       readClearedAt(agentFilesDir(d.stateDir(), rec.id)),
+      row.startedAt,
     );
     if (h) row.helpers = h;
   }
@@ -1256,12 +1257,20 @@ export function rowHelpers(
   env: NodeJS.ProcessEnv = process.env,
   now = Date.now(),
   clearedAt?: number,
+  /** When its running session started (ISO), when it runs. */
+  liveSince?: string,
 ): AgentRow["helpers"] {
   const rt = getRuntime(rec.runtime);
   if (!rt?.helpers) return undefined;
   let all: Helper[] = [];
   try {
-    all = rt.helpers(rec, { env, now, settings, agentLive: live });
+    all = rt.helpers(rec, {
+      env,
+      now,
+      settings,
+      agentLive: live,
+      ...(live && liveSince ? { liveSince: Date.parse(liveSince) } : {}),
+    });
   } catch {
     return undefined;
   }
@@ -1298,12 +1307,13 @@ export async function agentHelpers(
   agentsConfigValid(d);
   const rec = agentRecord(d, id, ws);
   const rt = getRuntime(rec.runtime);
-  const live = await agentLive(d, rec);
+  const state = await agentLive(d, rec);
+  const live = state.agentLive;
   const all =
     rt?.helpers?.(rec, {
       env: d.env,
       settings: helperSettings(d),
-      agentLive: live,
+      ...state,
     }) ?? [];
   const clearedAt = readClearedAt(agentFilesDir(d.stateDir(), rec.id));
   const { shown, cleared } = splitCleared(all, clearedAt);
@@ -1413,29 +1423,36 @@ export async function agentHelperTranscript(
   const t = rt?.helperTranscript?.(rec, helperId, {
     env: d.env,
     settings: helperSettings(d),
-    agentLive: await agentLive(d, rec),
+    ...(await agentLive(d, rec)),
     ...(limit ? { limit } : {}),
   });
   if (!t) throw refused(`agent ${id} has no helper "${helperId}"`, [], 404);
   return { ...t, note: HELPERS_READ_ONLY_NOTE };
 }
 
-/** Whether agent `rec`'s session runs now (an unreachable host: no). */
+/**
+ * Whether agent `rec`'s session runs now (an unreachable host: no), and
+ * since when (ms), for its helpers' states.
+ */
 async function agentLive(
   d: AgentsResolved,
   rec: AgentRecord,
-): Promise<boolean> {
+): Promise<{ agentLive: boolean; liveSince?: number }> {
   try {
     const c = await d.connectExisting();
-    if (!c) return false;
+    if (!c) return { agentLive: false };
     try {
       const s = sessionOf(await c.list(), rec);
-      return Boolean(s && !s.exited);
+      if (!s || s.exited) return { agentLive: false };
+      const since = Date.parse(s.startedAt);
+      return Number.isFinite(since)
+        ? { agentLive: true, liveSince: since }
+        : { agentLive: true };
     } finally {
       c.close();
     }
   } catch {
-    return false;
+    return { agentLive: false };
   }
 }
 
@@ -2752,7 +2769,10 @@ function broughtIn(
 /** A runtime's conversation as Bring in lists it. */
 export interface ListedConversation extends RuntimeConversation {
   runtime: string;
-  /** Written in the last minute: still open in another terminal. */
+  /**
+   * Open in another process: a live one holds it (the runtime's own
+   * records, D56), or it was written in the last minute.
+   */
   open: boolean;
   /** The Den agent already continuing it, if one is. */
   agent?: string;
@@ -2930,6 +2950,16 @@ export function listConversations(
   const denStops = stoppedByDen(d);
   const suggestFor = personaSuggester(d, ws);
   const now = Date.now();
+  // D56: who holds each conversation now, one read per runtime.
+  const holders = new Map<string, Map<string, number>>();
+  const heldBy = (id: string): Map<string, number> => {
+    let m = holders.get(id);
+    if (!m) {
+      m = getRuntime(id)?.openPids?.(d.env) ?? new Map<string, number>();
+      holders.set(id, m);
+    }
+    return m;
+  };
   const conversations: ListedConversation[] = [];
   const outside: ListedConversation[] = [];
   const seen = new Set<string>();
@@ -2940,7 +2970,9 @@ export function listConversations(
     return {
       ...c,
       runtime: id,
-      open: openOutsideDen(c.lastAt, denStops.get(`${id} ${c.id}`), now),
+      open:
+        heldBy(id).has(c.id) ||
+        openOutsideDen(c.lastAt, denStops.get(`${id} ${c.id}`), now),
       ...(agent ? { agent } : {}),
       ...(suggest ? { suggest } : {}),
       ...(lost.length ? { lost } : {}),
@@ -3110,15 +3142,16 @@ export async function importAgent(
         ],
       },
     );
-  if (c.open)
-    throw new AgentError(OPEN_ELSEWHERE_MESSAGE, { code: "open_elsewhere" });
-  // D56 item 8: never two writers on one conversation.
+  // D56 item 8: never two writers on one conversation; the holder, by
+  // pid, when the runtime's records name one.
   const holder = getRuntime(runtime)?.openPid?.(c.id, d.env) ?? null;
   if (holder !== null)
     throw new AgentError(openInMessage(holder), {
       code: "open_elsewhere",
       status: 409,
     });
+  if (c.open)
+    throw new AgentError(OPEN_ELSEWHERE_MESSAGE, { code: "open_elsewhere" });
   if (!fs.statSync(c.cwd, { throwIfNoEntry: false })?.isDirectory())
     throw refused(`${where}: the folder it ran in, ${c.cwd}, is gone`);
   const id = req.id ?? freeId(d, req.persona);
@@ -3958,8 +3991,7 @@ export async function disposeWorkspaceAgents(
   }
   if (how === "move") {
     if (!to) throw usage("give the project to move its agents to");
-    if (to === ws)
-      throw usage(`move its agents to another project, not ${ws}`);
+    if (to === ws) throw usage(`move its agents to another project, not ${ws}`);
     if (!d.workspaceExists(to))
       throw refused(`there is no project "${to}"`, [], 404);
     for (const a of list) {

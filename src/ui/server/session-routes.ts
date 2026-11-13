@@ -455,6 +455,7 @@ export function listedSessions(
           process.env,
           Date.now(),
           readClearedAt(agentFilesDir(d.stateDir(), rec.id)),
+          r.startedAt,
         );
         return h ? { helpers: h } : {};
       })(),

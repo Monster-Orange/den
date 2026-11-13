@@ -255,6 +255,22 @@ describe("D56 item 8: never two writers on one conversation", () => {
     expect(s.r.err.join("\n")).toContain(`(pid ${process.pid})`);
   });
 
+  // the dev.2 gate: a conversation live in a terminal for days was a plain,
+  // pickable row; only one written in the last minute said "open".
+  it("Bring in's list marks one a live process holds as open, however old its last write", async () => {
+    const s = await setup();
+    conversation(s, s.home); // last written 10 minutes ago
+    const d = resolveAgentsDeps(s.r.deps);
+    const openOf = () =>
+      listConversations(d, "north").outside.find((c) => c.id === TOKEN)?.open;
+    expect(openOf()).toBe(false);
+    sessionRecord(s, process.pid);
+    expect(openOf()).toBe(true);
+    // A record whose process is gone, or reused, doesn't count.
+    sessionRecord(s, process.pid, TOKEN, "Thu Jan  1 00:00:00 1970");
+    expect(openOf()).toBe(false);
+  });
+
   it("a dead pid, or a pid reused by another process (its start time differs), doesn't count", async () => {
     const s = await setup();
     conversation(s, s.home);

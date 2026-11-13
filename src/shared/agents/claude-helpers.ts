@@ -21,7 +21,8 @@
  *   5. the meta says finished;
  *   6. its last entry is a finished answer (end_turn) and it went quiet;
  *   7. otherwise, by its last activity: running if recent, else idle.
- * A helper of an agent that isn't running any more can't be running.
+ * A helper of an agent that isn't running any more can't be running, nor
+ * one with no activity since the agent's running session started.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -51,6 +52,8 @@ export interface ReadHelpersOptions {
   settings?: Partial<HelperSettings>;
   /** Whether the agent itself is running (its helpers can't outlive it). */
   agentLive?: boolean;
+  /** When its running session started (ms): older helpers were another's. */
+  liveSince?: number;
 }
 
 const str = (v: unknown, max = 300): string | undefined =>
@@ -538,6 +541,16 @@ function readAll(transcript: string, opts: ReadHelpersOptions): Helper[] {
     ) {
       status = "stopped";
       from = "its agent isn't running";
+    } else if (
+      (status === "running" || status === "idle") &&
+      opts.liveSince !== undefined &&
+      Number.isFinite(opts.liveSince) &&
+      (lastAt ?? 0) < opts.liveSince
+    ) {
+      // the dev.2 gate: a 4-hour-old helper of an earlier session showed as
+      // "idle" under the running agent. A helper ends with its session.
+      status = "stopped";
+      from = "an earlier session's (the agent restarted since)";
     }
     const ended = status !== "running" && status !== "idle";
     const end = ended ? (lastAt ?? now) : now;

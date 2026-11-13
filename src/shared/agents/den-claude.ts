@@ -93,7 +93,7 @@ import {
   lastPrompt,
   transcriptSummary,
 } from "./conversations.js";
-import { claudeOpenPid } from "./open-check.js";
+import { claudeOpenPid, claudeOpenPids } from "./open-check.js";
 
 /**
  * `/rename "x"` keeps the quotes in customTitle: one matching pair around
@@ -725,6 +725,9 @@ export const denClaude: Runtime = {
   openPid(token, env = process.env, exclude = []) {
     return claudeOpenPid(token, env, exclude);
   },
+  openPids(env = process.env, exclude = []) {
+    return claudeOpenPids(env, exclude);
+  },
   // AG-17.1: the folder a conversation ran in (only the ends of its file),
   // so a foreign one is refused by name.
   conversationCwd(token, env = process.env) {
@@ -783,6 +786,7 @@ export const denClaude: Runtime = {
       for (const h of readClaudeHelpers(file, {
         ...opts,
         agentLive: c.current ? opts.agentLive : false,
+        liveSince: c.current ? opts.liveSince : undefined,
       }))
         out.push(c.current ? h : { ...h, earlier: true });
     }
@@ -795,6 +799,7 @@ export const denClaude: Runtime = {
       const t = readClaudeHelperTranscript(file, id, {
         ...opts,
         agentLive: c.current ? opts.agentLive : false,
+        liveSince: c.current ? opts.liveSince : undefined,
       });
       if (t)
         return c.current ? t : { ...t, helper: { ...t.helper, earlier: true } };

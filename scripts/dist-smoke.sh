@@ -159,6 +159,10 @@ expect_in "version is Den's ($DEN_VERSION)" "$WORK/version.out" "v$DEN_VERSION"
 say "sessions (den-pty)"
 # The PTY module is optional: with it doctor says den-pty is available;
 # without it (--omit=optional) doctor says why, and nothing else changes.
+# D80: an install has one address (doctor fails without it); set it as a
+# person does.
+run web-url ./bin/acme web url http://acme.localhost
+expect_in "web url sets the address" "$WORK/web-url.out" "http://acme.localhost"
 run doctor ./bin/acme doctor
 # D9: a fresh install's doctor shows no false failure row.
 expect_not_in "doctor: no (invalid config) row" "$WORK/doctor.out" "invalid config"
@@ -307,6 +311,8 @@ SEC_TOKEN=""
 [ "$code" = "200" ] && ok "POST /api/settings with \`acme web token --print\`: 200" || bad "POST /api/settings with the CLI token answered $code"
 # SEC-1b: `web login` prints a one-time link (never echoed here) that the
 # server swaps for a session cookie, once.
+# D80: the link is on the install's address; here, this server's port.
+(cd "$DIST" && ./bin/acme web url "http://acme.acme.localhost:$PORT" >/dev/null)
 SEC_LINK="$(cd "$DIST" && ./bin/acme web login --no-wait --port "$PORT" 2>/dev/null)"
 SEC_HDR="$(curl -sS -o /dev/null -D - -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 again="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Sec-Fetch-Site: none' "$SEC_LINK")"

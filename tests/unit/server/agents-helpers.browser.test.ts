@@ -43,6 +43,16 @@ const PARENT = "a5f0c0ffee0000005";
 const CHILD = "a6f0c0ffee0000006";
 const TOKEN = "00000000-0000-4000-8000-0000000000d3";
 
+/**
+ * When the sessions under test started: a helper's activity is never
+ * before its agent's running session (one from before is an earlier
+ * session's, shown stopped: the dev.2 gate), so fixture times are "dt ago",
+ * but not before then.
+ */
+let sessionsFrom = 0;
+const ago = (dt: number) =>
+  new Date(Math.max(Date.now() - dt, sessionsFrom)).toISOString();
+
 let browser: Browser | null = null;
 let s: AgentsPageServer;
 let sid = "";
@@ -74,7 +84,7 @@ function writeHelpers(): void {
       model: "haiku",
     }),
   );
-  const at = (dt: number) => new Date(Date.now() - dt).toISOString();
+  const at = ago;
   const line = (o: object) => JSON.stringify(o) + "\n";
   fs.writeFileSync(
     path.join(dir, `agent-${LIVE}.jsonl`),
@@ -136,6 +146,7 @@ beforeAll(async () => {
     rows: 24,
   });
   host.close();
+  sessionsFrom = Math.max(sessionsFrom, Date.parse(info.startedAt) + 1);
   sid = info.ref.id;
   s.seed({
     id: "scout",
@@ -392,7 +403,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
       TOKEN,
       "subagents",
     );
-    const at = (dt: number) => new Date(Date.now() - dt).toISOString();
+    const at = ago;
     const write = (id: string, desc: string, dt: number, parent?: string) => {
       fs.writeFileSync(
         path.join(dir, `agent-${id}.meta.json`),
@@ -552,16 +563,21 @@ describe("an agent's helpers on the agents page (D32)", () => {
     const sids: Record<string, string> = {};
     let n = 0;
     for (const a of agents) {
-      sids[a.id] = (
-        await host.start({
+      {
+        const started = await host.start({
           name: `acme-north:${a.id}`,
           cwd: s.wsDir("north"),
           argv: ["sh"],
           env: {},
           cols: 80,
           rows: 24,
-        })
-      ).ref.id;
+        });
+        sessionsFrom = Math.max(
+          sessionsFrom,
+          Date.parse(started.startedAt) + 1,
+        );
+        sids[a.id] = started.ref.id;
+      }
       s.seed({
         id: a.id,
         persona: "builder",
@@ -598,9 +614,9 @@ describe("an agent's helpers on the agents page (D32)", () => {
             type: "user",
             isSidechain: true,
             agentId: id,
-            timestamp: new Date(
-              Date.now() - (done ? 60 : 1) * 60_000 - i * 1000,
-            ).toISOString(),
+            timestamp: done
+              ? new Date(Date.now() - 60 * 60_000 - i * 1000).toISOString()
+              : ago(60_000 + i * 1000),
             message: { role: "user", content: `${a.id} ${i}` },
           }) + "\n",
         );
@@ -660,16 +676,21 @@ describe("an agent's helpers on the agents page (D32)", () => {
       wide: "00000000-0000-4000-8000-0000000000d7",
     };
     for (const id of ["plain", "wide"]) {
-      ids[id] = (
-        await host.start({
+      {
+        const started = await host.start({
           name: `acme-north:${id}`,
           cwd: s.wsDir("north"),
           argv: ["sh"],
           env: {},
           cols: 80,
           rows: 24,
-        })
-      ).ref.id;
+        });
+        sessionsFrom = Math.max(
+          sessionsFrom,
+          Date.parse(started.startedAt) + 1,
+        );
+        ids[id] = started.ref.id;
+      }
       s.seed({
         id,
         persona: "builder",
@@ -706,7 +727,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
         type: "user",
         isSidechain: true,
         agentId: hid,
-        timestamp: new Date(Date.now() - 24 * 60_000).toISOString(),
+        timestamp: ago(24 * 60_000),
         message: { role: "user", content: "Backend fixes" },
       }) +
         "\n" +
@@ -714,7 +735,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
           type: "assistant",
           isSidechain: true,
           agentId: hid,
-          timestamp: new Date(Date.now() - 5_000).toISOString(),
+          timestamp: ago(5_000),
           message: {
             role: "assistant",
             content: [
