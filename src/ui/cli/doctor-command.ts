@@ -726,7 +726,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (h.check) r.checks.push(h.check);
       r.checks.push(
         ...hubProjectLines(
-          st.connected,
+          st.configured && st.connected,
           await projectsWithHubProject(),
           product().cli,
         ).checks,
@@ -762,7 +762,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const st = await hubStatus();
     for (const l of hubLines(st, readBrand().name).lines) console.log(l);
     for (const l of hubProjectLines(
-      st.connected,
+      st.configured && st.connected,
       await projectsWithHubProject(),
       product().cli,
     ).lines)
