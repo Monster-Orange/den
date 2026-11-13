@@ -304,6 +304,7 @@ describe("its folder (SRV-1b)", () => {
         folder: root,
         git: "pr",
         updateWaitMs: 180_000,
+        promptCheckMs: 2_000,
       });
       expect(
         readServerAgentConfig(
@@ -313,6 +314,7 @@ describe("its folder (SRV-1b)", () => {
               git: "push",
               self_update: "auto",
               update_wait_seconds: 600,
+              prompt_check_seconds: 0.5,
             },
           },
           root,
@@ -322,7 +324,15 @@ describe("its folder (SRV-1b)", () => {
         folder: path.join(root, "ops"),
         git: "push",
         updateWaitMs: 600_000,
+        promptCheckMs: 500,
       });
+      for (const bad of [0, 0.4, 61, "2", Number.NaN])
+        expect(() =>
+          readServerAgentConfig(
+            { server_agent: { prompt_check_seconds: bad as never } },
+            root,
+          ),
+        ).toThrow(/server_agent\.prompt_check_seconds: seconds, 0\.5 to 60/);
       for (const bad of [0, 5, "60", Number.NaN])
         expect(() =>
           readServerAgentConfig(
