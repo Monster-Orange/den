@@ -205,9 +205,13 @@ describe("den#48: agents permission", () => {
   it("one agent's: shows where it comes from; a person sets it, and it stays; --clear follows the project again", async () => {
     const r = await rig();
     persona(r, "careful", "permission_mode: ask\n");
-    expect(await agents(r, "start", "-w", "north", "--persona", "careful")).toBe(0);
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "careful"),
+    ).toBe(0);
     expect(await agents(r, "permission", "careful")).toBe(0);
-    expect(r.out.at(-1)).toContain("careful: follows its persona's mode (ask when it last started)");
+    expect(r.out.at(-1)).toContain(
+      "careful: follows its persona's mode (ask when it last started)",
+    );
     r.wsPermission.north = "auto";
     expect(await agents(r, "permission", "careful")).toBe(0);
     expect(r.out.at(-1)).toContain("careful: follows its project's mode, auto");
@@ -237,6 +241,45 @@ describe("den#48: agents permission", () => {
     expect(await agents(r, "resume", "careful")).toBe(0);
     expect(modeOf(r.made.at(-1)!.args)).toBe("auto");
     expect(await agents(r, "permission", "nobody", "auto")).not.toBe(0);
+  });
+
+  // 0.4.44 on a consumer install: `agents permission shift -w shift`, from an
+  // agent's own session, was refused as "only a person can change
+  // rotation": the id read as the project's mode, the wrong word named.
+  it("<id> with -w: an agent may ask which mode it runs in; a change says permission mode, never rotation", async () => {
+    const r = await rig();
+    persona(r, "careful", "permission_mode: ask\n");
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "careful"),
+    ).toBe(0);
+    r.wsPermission.north = "auto";
+    const env = r.deps.env;
+    r.deps.env = { ...env, [ACTOR_TOKEN_ENV]: "x" };
+    expect(await agents(r, "permission", "careful", "-w", "north")).toBe(0);
+    expect(r.out.at(-1)).toContain("careful: follows its project's mode, auto");
+    expect(await agents(r, "permission", "careful")).toBe(0);
+    expect(await agents(r, "permission", "-w", "north")).toBe(0);
+    expect(await agents(r, "permission", "careful", "edits")).not.toBe(0);
+    expect(
+      await agents(r, "permission", "careful", "edits", "-w", "north"),
+    ).not.toBe(0);
+    expect(await agents(r, "permission", "-w", "north", "ask")).not.toBe(0);
+    const errs = r.err.join("\n");
+    expect(errs).toContain(
+      "only a person can change an agent's permission mode",
+    );
+    expect(errs).toContain(
+      "only a person can change a project's permission mode",
+    );
+    expect(errs).not.toContain("rotation");
+    expect(record(r, "careful").overrides ?? []).not.toContain("permission");
+    expect(r.wsPermission.north).toBe("auto");
+    // -w that isn't the agent's project: said, not guessed.
+    r.deps.env = env;
+    expect(await agents(r, "permission", "careful", "-w", "south")).not.toBe(0);
+    expect(r.err.join("\n")).toContain(
+      "careful is in project north, not south",
+    );
   });
 
   it("refuses a mode Den doesn't have, a missing workspace, and an agent's session", async () => {

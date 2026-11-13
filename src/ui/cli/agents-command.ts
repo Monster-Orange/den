@@ -437,7 +437,7 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
   // D56: bringing in from outside the project is a person's ask only.
   if (outside !== undefined && isAgentTokenEnv(d.env))
     throw new AgentError(
-      `${where}: only a person can bring in a conversation from outside the project (this is an agent's session)`,
+      `${where}: only a person can bring in a conversation from outside the project (this is an agent)`,
     );
   if (!session) {
     if (str(p, "--persona") || str(p, "--id"))
@@ -534,7 +534,7 @@ async function persona(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents persona";
   if (isAgentTokenEnv(d.env))
     throw new AgentError(
-      `${where}: only a person can change an agent's persona (this is an agent's session)`,
+      `${where}: only a person can change an agent's persona (this is an agent)`,
     );
   const p = parseArgs(where, args, {
     "--workspace": true,
@@ -634,7 +634,7 @@ async function restart(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents restart";
   if (isAgentTokenEnv(d.env))
     throw new AgentError(
-      `${where}: only a person can restart an agent (this is an agent's session)`,
+      `${where}: only a person can restart an agent (this is an agent)`,
     );
   const p = parseArgs(where, args, { "--workspace": true, "--now": false });
   noExtra(where, p, 1);
@@ -666,7 +666,7 @@ async function move(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents move";
   if (isAgentTokenEnv(d.env))
     throw new AgentError(
-      `${where}: only a person can move an agent (this is an agent's session)`,
+      `${where}: only a person can move an agent (this is an agent)`,
     );
   const p = parseArgs(where, args, { "--workspace": true, "--now": false });
   noExtra(where, p, 1);
@@ -889,10 +889,10 @@ async function resume(args: string[], d: AgentsResolved): Promise<number> {
 
 /** `agents relaunch <id> [-w <ws>]` (den#4). */
 /** D28: refused in an agent's session (an agent could stop its own rotation). */
-function personOnly(where: string, d: AgentsResolved): void {
+function personOnly(where: string, d: AgentsResolved, what = "rotation"): void {
   if (isAgentTokenEnv(d.env))
     throw new AgentError(
-      `${where}: only a person can change rotation (this is an agent's session)`,
+      `${where}: only a person can change ${what} (this is an agent)`,
     );
 }
 
@@ -1012,7 +1012,7 @@ function keep(args: string[], d: AgentsResolved): number {
 /** `agents set <id> [-w <ws>] resume_on_restart on|off|default` (D59). */
 function setAgent(args: string[], d: AgentsResolved): number {
   const where = "agents set";
-  personOnly(where, d);
+  personOnly(where, d, "whether an agent resumes after a restart");
   const at = args.indexOf("resume_on_restart");
   const raw = at >= 0 ? args[at + 1] : undefined;
   if (at < 0 || !raw || !["on", "off", "default"].includes(raw))
@@ -1143,6 +1143,21 @@ function permission(args: string[], d: AgentsResolved): number {
   const ws = workspaceFlag(where, p);
   // Without -w: one agent's (`agents permission <id> [<mode>|--clear]`).
   if (!ws) return agentPermission(where, p, d);
+  // With -w, an agent's id first is still that agent's: -w only says
+  // which project it is in.
+  const first = p.positional[0];
+  if (
+    first !== undefined &&
+    !isIntent(first) &&
+    readRecord(d.stateDir(), first)
+  ) {
+    const rec = readRecord(d.stateDir(), first)!;
+    if (rec.workspace !== ws)
+      throw new UsageError(
+        `${where}: ${first} is in project ${rec.workspace}, not ${ws}`,
+      );
+    return agentPermission(where, p, d);
+  }
   noExtra(where, p, 1);
   if (!d.workspaceExists(ws))
     throw new UsageError(`${where}: project "${ws}" does not exist`);
@@ -1156,7 +1171,7 @@ function permission(args: string[], d: AgentsResolved): number {
     );
     return 0;
   }
-  personOnly(where, d);
+  personOnly(where, d, "a project's permission mode");
   if (given !== undefined && p.flags["--clear"])
     throw new UsageError(`${where}: give a mode or --clear, not both`);
   let intent: PermissionIntent | null = null;
@@ -1173,6 +1188,16 @@ function permission(args: string[], d: AgentsResolved): number {
       : `${ws}: no default now; agents start in their persona's mode`,
   );
   return 0;
+}
+
+/** Whether `s` names a permission mode (ask, edits, auto, all). */
+function isIntent(s: string): boolean {
+  try {
+    checkIntent(s, "mode");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1205,7 +1230,7 @@ function agentPermission(
     );
     return 0;
   }
-  personOnly(where, d);
+  personOnly(where, d, "an agent's permission mode");
   if (given !== undefined && p.flags["--clear"])
     throw new UsageError(`${where}: give a mode or --clear, not both`);
   let intent: PermissionIntent | null = null;

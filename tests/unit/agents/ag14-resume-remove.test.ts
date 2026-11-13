@@ -357,6 +357,9 @@ describe("after a restart (AG-14.3)", () => {
     expect(
       await agents(r, "set", "planner", "resume_on_restart", "on"),
     ).not.toBe(0);
+    expect(r.err.join("\n")).toContain(
+      "only a person can change whether an agent resumes after a restart",
+    );
     expect(record(r, "planner").resumeOnRestart).toBeUndefined();
   });
 

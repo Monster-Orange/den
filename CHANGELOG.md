@@ -4,6 +4,15 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.45] - unreleased
+
+### Fixed
+
+- `agents permission <id> -w <project>` asks about that agent: an agent may
+  ask which mode it runs in, and the id is no longer read as a mode. A
+  refusal names what it guards (an agent's or a project's permission
+  mode, whether an agent resumes after a restart), not "rotation".
+
 ## [0.4.44] - 2026-11-13
 
 ### Added

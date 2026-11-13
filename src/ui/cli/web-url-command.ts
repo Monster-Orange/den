@@ -66,7 +66,7 @@ export function cmdWebUrl(args: string[], io: Io = stdIo): number {
   }
   if (isAgentTokenEnv(io.env)) {
     io.err(
-      `${cli}: only a person sets this install's address (this is an agent's session)\n`,
+      `${cli}: only a person sets this install's address (this is an agent)\n`,
     );
     return 1;
   }
