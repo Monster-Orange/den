@@ -125,6 +125,7 @@ import {
   sectionConfigError,
   readDenConfig,
   readMcpConfig,
+  readServerAgentConfig,
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
@@ -875,7 +876,14 @@ import {
   isApprovalPath,
   type HeldActions,
 } from "./approval-routes.js";
+import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
+import {
+  backMessage,
+  takeRestartMarker,
+  tellBack,
+  writeRestartMarker,
+} from "./server-restart.js";
 import type { ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
 import { handleHubProxy } from "./hub-proxy-routes.js";
@@ -1953,17 +1961,15 @@ function declaredCommand<T>(
 }
 
 // ── ON-3: the writes held for the person (approval-routes.ts) ─────────────────
-let approvals: {
+type ApprovalDeps = {
   queue: ApprovalQueue;
   actions: HeldActions;
   enabled: () => boolean;
-} | null = null;
+  autoAllow: (action: string, agent: string) => string | null;
+};
+let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
-function approvalDeps(): {
-  queue: ApprovalQueue;
-  actions: HeldActions;
-  enabled: () => boolean;
-} {
+function approvalDeps(): ApprovalDeps {
   if (approvals) return approvals;
   const actions = heldActions({
     rules: () => processPathRules(getStateDir()),
@@ -2035,6 +2041,45 @@ function approvalDeps(): {
         },
       );
     },
+    // SRV-1a: the marker the next server takes, then D64's restart.
+    restartDen: async (reason, asked) => {
+      const auto = !!asked?.decidedBy?.startsWith("auto:");
+      try {
+        writeRestartMarker(getStateDir(), {
+          id: asked?.id ?? "",
+          reason,
+          ...(asked?.agent ? { agent: asked.agent } : {}),
+          allowed: auto ? "auto" : "person",
+          fromVersion: engineVersion() ?? "?",
+          fromPid: process.pid,
+          at: new Date().toISOString(),
+        });
+      } catch (e) {
+        return {
+          ok: false,
+          error: `Den couldn't leave its restart note: ${(e as Error).message}`,
+        };
+      }
+      const by = asked?.agent ? `agent:${asked.agent}` : "the person";
+      recordAction(
+        null,
+        {
+          verb: "server-restart",
+          detail: `asked by ${by}, allowed ${auto ? "by server_agent.self_update: auto" : "by the person"}: ${reason}${asked?.id ? ` [${asked.id}]` : ""}`,
+        },
+        asked?.agent ? `agent:${asked.agent}` : undefined,
+      );
+      serverLog(`↻ web restart asked by ${by}: ${reason}`, "lifecycle");
+      // After this answer (and the decide's) has gone out.
+      setTimeout(() => {
+        try {
+          spawnDetachedWebRestart(PORT);
+        } catch (e) {
+          serverLog(`  ⚠ web restart failed to spawn: ${(e as Error).message}`);
+        }
+      }, 250);
+      return { ok: true, restarting: true, pid: process.pid };
+    },
   });
   approvals = {
     actions,
@@ -2042,6 +2087,13 @@ function approvalDeps(): {
     // Read per ask: a config edit takes effect without a restart. A bad
     // value throws, and the handler holds nothing then.
     enabled: () => readMcpConfig().approvals,
+    // SRV-1a: the server agent's own restart, per server_agent.self_update.
+    autoAllow: (action, agent) =>
+      action === "den_restart" &&
+      agent === SERVER_AGENT_ID &&
+      readServerAgentConfig().selfUpdate === "auto"
+        ? "server_agent.self_update: auto"
+        : null,
   };
   return approvals;
 }
@@ -5908,6 +5960,8 @@ const ADDRESS = migrateWebUrl(() => {
 });
 server.listen(PORT, BIND_HOST, () => {
   printBanner(ADDRESS ?? readWebUrl());
+  // SRV-1a: back from a restart the server agent asked for: tell it.
+  void serverBack();
   // #57: agents whose record names a project by its pre-D70 key follow it.
   void import("../../shared/agents/heal-workspace.js").then(async (m) => {
     const { isServerScope } =
@@ -5951,6 +6005,42 @@ server.listen(PORT, BIND_HOST, () => {
     });
   });
 });
+
+/**
+ * SRV-1a: the restart marker the last server left. An audit row says the
+ * server is back; the agent that asked is told in its session, once it is
+ * at its prompt (up to ui.restart_wait_seconds).
+ */
+async function serverBack(): Promise<void> {
+  const m = takeRestartMarker(getStateDir());
+  if (!m) return;
+  const version = engineVersion() ?? "?";
+  const text = backMessage(m, version, process.pid);
+  let told = "nobody to tell";
+  if (m.agent === SERVER_AGENT_ID) {
+    try {
+      const ops = await import("../cli/agent-ops.js");
+      const { webDeps } = await import("./agent-routes.js");
+      const d = webDeps();
+      told = await tellBack(text, {
+        state: () => ops.serverAgentInputState(d),
+        type: (t) => ops.typeIntoAgent(d, SERVER_AGENT_ID, t),
+        waitMs: restartWaitSeconds() * 1000,
+      });
+    } catch (e) {
+      told = `not told: ${(e as Error).message}`;
+    }
+  }
+  recordAction(
+    null,
+    {
+      verb: "server-back",
+      detail: `on ${version} (pid ${process.pid}), was ${m.fromVersion} (pid ${m.fromPid}): ${m.reason} [${m.id}]; ${m.agent ? `agent:${m.agent}` : "the asker"} ${told}`,
+    },
+    m.agent ? `agent:${m.agent}` : undefined,
+  );
+  serverLog(`  Back from a restart: ${m.reason} (${told})`, "lifecycle");
+}
 
 /** The start banner: the install's address (D80), never localhost. */
 function printBanner(address: { url: string } | null): void {

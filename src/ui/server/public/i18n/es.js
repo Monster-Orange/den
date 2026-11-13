@@ -788,6 +788,7 @@
     "ap.do.repo_add.new":
       'Añadir el repositorio de {path} a un proyecto nuevo "{workspace}"',
     "ap.do.service_try": "Iniciar {service}",
+    "ap.do.den_restart": "Reiniciar Den ({reason})",
     "ap.do.service_try.activates":
       "Iniciar {service} (esto activa el proyecto {workspace})",
     "ap.says": "El agente dice:",

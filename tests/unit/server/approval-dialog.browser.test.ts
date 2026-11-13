@@ -195,6 +195,28 @@ describe("the approval dialog (ON-3)", () => {
     await p.context().close();
   }, 90_000);
 
+  it("SRV-1a: Allow on a restart: the dialog says why; then Den's in-place restart wait, not a toast", async () => {
+    if (skip()) return;
+    const p = await page(true);
+    const id = await ask("den_restart", { reason: "pick up the new pin" });
+    await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
+    expect(await p.textContent("#den-ap-what")).toBe(
+      "Restart Den (pick up the new pin)",
+    );
+    await p.click("#den-ap-review");
+    expect(await p.textContent("#den-ap-det")).toContain(
+      "Agents and terminals carry on where they were",
+    );
+    await p.click("#den-ap-allow");
+    await closed(p);
+    expect(await stateOf(id)).toBe("done");
+    // The restart is under way: the page waits for the new server in place.
+    await p.waitForSelector('#rd-dlg[open][data-state="waiting"]', {
+      timeout: 15_000,
+    });
+    await p.context().close();
+  }, 90_000);
+
   it("Deny runs nothing", async () => {
     if (skip()) return;
     const p = await page(true);

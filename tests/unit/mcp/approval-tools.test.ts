@@ -278,3 +278,77 @@ describe("a scoped server", () => {
     });
   });
 });
+
+describe("SRV-1a: den_restart_server", () => {
+  it("asks for den_restart with its reason; allowed at once (auto): no wait, and it says to end the turn", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, restarting: true },
+    }));
+    const r = await callTool(
+      "den_restart_server",
+      { reason: "new pin" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls[0].body).toEqual({
+      action: "den_restart",
+      args: { reason: "new pin" },
+    });
+    // The ask's own answer was the outcome: no read of the request.
+    expect(calls.some((c) => c.path === `/api/approvals/${ID}`)).toBe(false);
+    expect(JSON.parse(r.text)).toMatchObject({
+      approved: true,
+      result: { restarting: true },
+      next: expect.stringMatching(/End your turn now.*Server is back on/),
+    });
+  });
+
+  it("Den stops answering after the ask (it restarted): not an error, the same next step", async () => {
+    const { api } = fakeApi([]);
+    const get = api.get.bind(api);
+    api.get = async (p, q, m, b, h) => {
+      if (p === `/api/approvals/${ID}`) throw new TypeError("fetch failed");
+      return get(p, q, m, b, h);
+    };
+    const r = await callTool(
+      "den_restart_server",
+      { reason: "new pin" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(r.text).toMatch(/Den is restarting\. End your turn now/);
+    expect(r.text).toContain(ID);
+  });
+
+  it('Den down before the ask: an error, never "restarting"', async () => {
+    const api: DenApi = {
+      baseUrl: "http://localhost:47003",
+      async get() {
+        throw new TypeError("fetch failed");
+      },
+      async stream() {
+        throw new Error("no streams here");
+      },
+    };
+    const r = await callTool(
+      "den_restart_server",
+      { reason: "new pin" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(true);
+    expect(r.text).not.toMatch(/restarting/);
+  });
+
+  it("a project's agent can't restart Den: refused before anything is asked", async () => {
+    const { api, calls } = fakeApi([]);
+    const r = await callTool(
+      "den_restart_server",
+      { reason: "x" },
+      ctx(api, true),
+    );
+    expect(r.isError).toBe(true);
+    expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
+  });
+});

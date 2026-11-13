@@ -16,6 +16,9 @@
  *                     (lifecycle-exec.ts), until it is ready or exits;
  *                     an inactive workspace is activated first, on the
  *                     same Allow, and the Review says so
+ *   den_restart       SRV-1a: restart this Den's web server, in place
+ *                     (server-restart.ts); the agent that asked is told
+ *                     when it is back
  */
 import { workspaceSlug } from "../../shared/workspace-name.js";
 import * as path from "path";
@@ -26,6 +29,7 @@ import {
   type RepoAddResult,
 } from "../cli/repo-command.js";
 import type { HeldAction, HeldActions, HeldCheck } from "./approval-routes.js";
+import type { AskedBy } from "./approvals.js";
 
 export interface TryResult {
   ok: boolean;
@@ -54,7 +58,15 @@ export interface HeldActionDeps {
     workspace?: string,
   ) => { ok: true; address: string } | { ok: false; error: string };
   tryService: (address: string, workspace?: string) => Promise<TryResult>;
+  /** SRV-1a: leave the marker, then restart this server (after answering). */
+  restartDen?: (
+    reason: string,
+    asked?: AskedBy,
+  ) => Promise<{ ok: boolean; restarting?: boolean; error?: string }>;
 }
+
+/** The longest reason a restart may give (one line). */
+export const RESTART_REASON_MAX = 300;
 
 const str = (v: unknown): string | undefined =>
   typeof v === "string" && v.trim() ? v.trim() : undefined;
@@ -245,9 +257,38 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     },
   };
 
+  const denRestart: HeldAction = {
+    check(a): HeldCheck {
+      const reason = str(a.reason)?.replace(/\s+/g, " ");
+      if (!reason) return { ok: false, error: "give reason (one line: why)" };
+      if (reason.length > RESTART_REASON_MAX)
+        return {
+          ok: false,
+          error: `reason is at most ${RESTART_REASON_MAX} characters`,
+        };
+      if (!d.restartDen)
+        return { ok: false, error: "this Den can't restart itself" };
+      return {
+        ok: true,
+        args: { reason },
+        summary: `restart Den (${reason})`,
+        params: { reason },
+        details: [
+          "Den stops and starts again at the same address, on the version installed now.",
+          "Agents and terminals carry on where they were; open pages reconnect.",
+          "The agent that asked is told when Den is back.",
+        ],
+      };
+    },
+    async run(a, asked) {
+      return d.restartDen!(String(a.reason), asked);
+    },
+  };
+
   return {
     workspace_create: workspaceCreate,
     repo_add: repoAddHeld,
     service_try: serviceTry,
+    den_restart: denRestart,
   };
 }

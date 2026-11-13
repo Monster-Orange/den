@@ -223,6 +223,7 @@ import {
 } from "../../shared/agents/runtime-search.js";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
 import {
+  SERVER_AGENT_ID,
   SERVER_PERSONA_ID,
   isServerScope,
   serverAgentDir,
@@ -4643,9 +4644,32 @@ export async function agentInputState(
   waiting: ReadonlySet<string> = new Set(),
   quietMs = 3000,
 ): Promise<"missing" | "stopped" | "busy" | "idle"> {
+  const rec = readRecord(d.stateDir(), id);
+  if (!rec || isServerScope(rec.workspace)) return "missing";
+  return inputState(d, rec, waiting, quietMs);
+}
+
+/**
+ * SRV-1a: the server agent's input state, for Den's own "Server is back"
+ * line. (agentInputState skips it: Hub's comments never reach it.)
+ */
+export async function serverAgentInputState(
+  d: AgentsResolved,
+  quietMs = 3000,
+): Promise<"missing" | "stopped" | "busy" | "idle"> {
+  const rec = readRecord(d.stateDir(), SERVER_AGENT_ID);
+  if (!rec || !isServerScope(rec.workspace)) return "missing";
+  return inputState(d, rec, new Set(), quietMs);
+}
+
+async function inputState(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  waiting: ReadonlySet<string>,
+  quietMs: number,
+): Promise<"missing" | "stopped" | "busy" | "idle"> {
+  const id = rec.id;
   try {
-    const rec = readRecord(d.stateDir(), id);
-    if (!rec || isServerScope(rec.workspace)) return "missing";
     if (rec.stoppedAt) return "stopped";
     // Never starts a session host: none running means it isn't either.
     const c = await d.connectExisting();

@@ -896,6 +896,7 @@
     "ap.do.repo_add.new":
       'Add the repo at {path} to a new project "{workspace}"',
     "ap.do.service_try": "Start {service}",
+    "ap.do.den_restart": "Restart Den ({reason})",
     "ap.do.service_try.activates":
       "Start {service} (this activates project {workspace})",
     "ap.says": "Agent says:",
@@ -5048,7 +5049,19 @@
           var res = x.b.result;
           if (decision === "allow" && res && res.ok === false)
             toast(t("ap.failed", { error: res.error || "?" }));
-          else if (decision === "allow")
+          else if (decision === "allow" && res && res.restarting) {
+            // SRV-1a: Den restarts now: the in-place wait, as Restart Den.
+            apClose();
+            (window.denRestart
+              ? Promise.resolve(window.denRestart)
+              : import("/restart-den.js").then(function (m) {
+                  return m.restartDen;
+                })
+            ).then(function (f) {
+              f({ confirm: false, post: false });
+            });
+            return;
+          } else if (decision === "allow")
             toast(t("ap.done", { what: apWhat(a) }));
           apClose();
           apPoll();

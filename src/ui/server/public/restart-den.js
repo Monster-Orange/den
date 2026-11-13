@@ -131,7 +131,12 @@ let running = null;
  * Restart this Den's web server and wait for the new one, in place.
  * Resolves with the new server's info, or null when the person cancelled.
  */
-export function restartDen({ confirm = true, before = null } = {}) {
+export function restartDen({
+  confirm = true,
+  before = null,
+  // SRV-1a: false when the restart is already under way (an Allow ran it).
+  post = true,
+} = {}) {
   if (running) return running;
   running = (async () => {
     const d = dialog();
@@ -169,7 +174,9 @@ export function restartDen({ confirm = true, before = null } = {}) {
     });
     try {
       const api = window.denShell?.api;
-      if (api) await api("POST", "/api/web/restart", {});
+      if (!post) {
+        /* already asked: wait for the new one */
+      } else if (api) await api("POST", "/api/web/restart", {});
       else
         await fetch("/api/web/restart", {
           method: "POST",

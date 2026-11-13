@@ -73,6 +73,7 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
         (opts.scope && !toolScope
           ? ` You are this ${p.title}'s own server agent (${opts.scope.actor}): the whole ${p.title}, ` +
             "no project. Each write is held until the person allows it in the browser. " +
+            "den_restart_server restarts this Den; Den tells you when it is back. " +
             "onboard_status says what is set up: start there."
           : opts.scope
             ? ` Scoped to project "${opts.scope.workspace}" as ${opts.scope.actor}: ` +

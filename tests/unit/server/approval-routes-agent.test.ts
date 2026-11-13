@@ -30,7 +30,21 @@ import {
 
 const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "den-apagent-"));
 const ran: string[] = [];
+const restarts: unknown[] = [];
 const actions: HeldActions = {
+  den_restart: {
+    check: (a) => ({
+      ok: true,
+      args: { reason: String(a.reason) },
+      summary: `restart Den (${String(a.reason)})`,
+      params: { reason: String(a.reason) },
+      details: [],
+    }),
+    run: async (a, asked) => {
+      restarts.push({ reason: a.reason, ...asked });
+      return { ok: true, restarting: true };
+    },
+  },
   workspace_create: {
     check: (a) => ({
       ok: true,
@@ -48,6 +62,8 @@ const actions: HeldActions = {
 const queue = createApprovalQueue(actions, () => stateDir);
 /** `mcp.approvals` as the handler reads it. */
 let enabled = true;
+/** SRV-1a: server_agent.self_update as the handler reads it. */
+let selfUpdate: "ask" | "auto" = "ask";
 let server: http.Server;
 let base = "";
 
@@ -87,6 +103,12 @@ beforeAll(async () => {
         queue,
         actions,
         enabled: () => enabled,
+        autoAllow: (action, agent) =>
+          action === "den_restart" &&
+          agent === "server" &&
+          selfUpdate === "auto"
+            ? "server_agent.self_update: auto"
+            : null,
       },
     ).then((handled) => {
       if (!handled) {
@@ -193,6 +215,55 @@ describe("an agent's own token", () => {
       ]);
     } finally {
       enabled = true;
+    }
+  });
+});
+
+describe("SRV-1a: server_agent.self_update", () => {
+  const ask = (agent?: string) =>
+    fetch(
+      `${base}/api/approvals`,
+      as(agent, { action: "den_restart", args: { reason: "new pin" } }),
+    ).then(async (r) => ({
+      status: r.status,
+      body: (await r.json()) as { id: string; state: string; result?: unknown },
+    }));
+
+  it("ask (the default): the server agent's restart is held", async () => {
+    mintActorToken(stateDir, {
+      agentId: "server",
+      workspace: "north",
+      sessionName: "acme-north:server",
+    });
+    const r = await ask("server");
+    expect([r.status, r.body.state]).toEqual([202, "pending"]);
+    expect(restarts).toEqual([]);
+  });
+
+  it("auto: its own ask runs at once, and says who allowed it; another agent's and a token-less ask are still held", async () => {
+    selfUpdate = "auto";
+    try {
+      const r = await ask("server");
+      expect(r.body.state).toBe("done");
+      expect(r.body.result).toEqual({ ok: true, restarting: true });
+      expect(restarts).toEqual([
+        {
+          reason: "new pin",
+          id: r.body.id,
+          agent: "server",
+          decidedBy: "auto:server_agent.self_update: auto",
+        },
+      ]);
+      mintActorToken(stateDir, {
+        agentId: "other",
+        workspace: "north",
+        sessionName: "acme-north:other",
+      });
+      expect((await ask("other")).body.state).toBe("pending");
+      expect((await ask()).body.state).toBe("pending");
+      expect(restarts).toHaveLength(1);
+    } finally {
+      selfUpdate = "ask";
     }
   });
 });

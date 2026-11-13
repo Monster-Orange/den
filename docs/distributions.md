@@ -238,6 +238,18 @@ with "If you didn't ask an agent to do this, Deny." under it.
   ticket holder's, or the person's) and
   `POST /api/approvals/<id>/decide` (`{ decision: "allow" | "deny" }`).
   Every ask and decision is in the activity trail.
+- **The server agent restarts its own Den** (`den_restart_server
+  { reason }`, the held action `den_restart`). Den restarts in place on
+  the version installed now, as Settings › Restart Den does; agents and
+  terminals carry on. When the new Den is up, it types
+  `Server is back on <version> (pid …)` into the server agent's
+  terminal, once it is at its prompt (up to `ui.restart_wait_seconds`),
+  so its turn carries on. `server_agent.self_update` in the org config
+  says who allows it: `ask` (the default) holds it for the person;
+  `auto` runs the server agent's own ask at once. Another agent's, or an
+  ask with no agent token, is always held. The trail has each step:
+  `approval-ask`, `approval-decide` (`auto-allow …` under auto),
+  `server-restart` and, from the new Den, `server-back`.
 - **On by default; `mcp.approvals: false` turns them off.** The person's
   Allow is the gate, not `mcp.actions`. Off, the three tools aren't
   registered and `POST /api/approvals` answers 403 `approvals_off`.

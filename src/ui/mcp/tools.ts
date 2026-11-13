@@ -294,7 +294,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try): `state` pending, done (with the server's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -1195,6 +1195,8 @@ async function askPerson(
   args: Args,
   note: unknown,
   ctx: ToolContext,
+  /** SRV-1a: the answer when Den stops answering after the ask (it restarted). */
+  lostAfterAsk?: string,
 ): Promise<unknown> {
   const clean = Object.fromEntries(
     Object.entries(args).filter(([, v]) => v !== undefined && v !== ""),
@@ -1213,16 +1215,43 @@ async function askPerson(
   }
   const id = String(asked?.id ?? "");
   keepTicket(id, asked?.ticket);
+  try {
+    return await waitForPerson(tool, id, asked, ctx);
+  } catch (e) {
+    if (
+      lostAfterAsk &&
+      !(e instanceof Refusal) &&
+      !(e instanceof ActionFailed) &&
+      !(e instanceof DenHttpError)
+    )
+      return `${lostAfterAsk} (request ${id})`;
+    throw e;
+  }
+}
+
+async function waitForPerson(
+  tool: string,
+  id: string,
+  asked: unknown,
+  ctx: ToolContext,
+): Promise<unknown> {
   const w = ctx.approvalWait ?? APPROVAL_WAIT;
   const sleep =
     w.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const until = Date.now() + w.waitMs;
+  // SRV-1a: a request the setting allowed at once answers in the ask.
+  let first: unknown = ["done", "denied", "expired"].includes(
+    String((asked as { state?: unknown })?.state),
+  )
+    ? asked
+    : null;
   for (;;) {
-    const a = (await getApproval(ctx.api, id)) as {
+    const a = (first ?? (await getApproval(ctx.api, id))) as {
       state?: string;
       result?: unknown;
       endedBecause?: string;
     };
+    first = null;
     if (a.state === "done") {
       const result = a.result as { ok?: unknown } | undefined;
       const out = { approved: true, id, result };
@@ -1267,6 +1296,10 @@ function refuseScoped(tool: string, scope: McpScope | undefined): void {
       `${tool}: this MCP server is scoped to project "${scope.workspace}" (${scope.actor}), and ${tool} changes Den beyond it; nothing was asked. Den's own unscoped MCP server does onboarding.`,
     );
 }
+
+/** SRV-1a: what the agent does after den_restart_server. */
+const RESTART_NEXT =
+  'End your turn now. When Den is back it types "Server is back on <version> (pid …)" to you.'; // words-ok: SRV-1's own line, for the agent
 
 const HELD =
   " Nothing changes until the person allows it in Den's browser dialog: the request waits up to 10 minutes; this call waits up to 2 for the answer, then returns the request id for approval_check.";
@@ -1345,6 +1378,41 @@ const APPROVAL_TOOLS: DenTool[] = [
         a.note,
         ctx,
       );
+    },
+  },
+  {
+    name: "den_restart_server",
+    title: "Restart Den",
+    description:
+      'Restart this Den in place, on the version installed now: after an update, or when Den misbehaves. This Den only. Agents and terminals carry on where they were. When Den is up again it types "Server is back on <version> (pid …)" to you: end your turn after this call, and carry on when that line comes. With server_agent.self_update: auto (the distribution\'s choice) your own ask runs at once; with ask (the default) it is held for the person.' + // words-ok: SRV-1's own line
+      HELD,
+    action: true,
+    shape: {
+      reason: z
+        .string()
+        .max(300)
+        .describe("One line for the person and the audit trail: why restart"),
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("den_restart_server", ctx.scope);
+      const reason = needArg(
+        "den_restart_server",
+        a,
+        "reason",
+        "one line: why restart",
+      );
+      const r = await askPerson(
+        "den_restart_server",
+        "den_restart",
+        { reason },
+        a.note,
+        ctx,
+        `Den stopped answering after the ask: if it was allowed, Den is restarting. ${RESTART_NEXT}`,
+      );
+      return typeof r === "string"
+        ? r
+        : { ...(r as object), next: RESTART_NEXT };
     },
   },
   {

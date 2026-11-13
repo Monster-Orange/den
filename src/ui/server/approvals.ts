@@ -198,16 +198,24 @@ export type DecideResult =
       error: string;
     };
 
+/** The request an allowed action runs for: its id, the agent that asked, who allowed it. */
+export interface AskedBy {
+  id: string;
+  agent?: string;
+  decidedBy?: string;
+}
+
 export interface ApprovalQueueDeps {
   now?: () => number;
   /** How long a request waits for a person (default 10 minutes). */
   ttlMs?: number;
   /** Whether the agent that asked still runs (its token not revoked). */
   actorLive?: (actor: string) => boolean;
-  /** Runs an allowed action from its stored args. */
+  /** Runs an allowed action from its stored args; `asked`: which request, whose. */
   run: (
     action: string,
     args: Readonly<Record<string, unknown>>,
+    asked: AskedBy,
   ) => Promise<unknown>;
 }
 
@@ -443,7 +451,11 @@ export class ApprovalQueue {
     }
     a.state = "running";
     try {
-      a.result = await this.deps.run(a.action, a.args);
+      a.result = await this.deps.run(a.action, a.args, {
+        id: a.id,
+        ...(a.agent ? { agent: a.agent } : {}),
+        decidedBy: by,
+      });
     } catch (e) {
       a.result = { ok: false, error: String((e as Error)?.message ?? e) };
     }

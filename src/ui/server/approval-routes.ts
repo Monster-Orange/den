@@ -28,6 +28,7 @@ import {
   approverAllowed,
   newApprovalTicket,
   type Approval,
+  type AskedBy,
   type Decision,
 } from "./approvals.js";
 import { recordAction } from "./audit.js";
@@ -56,7 +57,7 @@ export type HeldCheck =
 export interface HeldAction {
   check(args: Record<string, unknown>): Promise<HeldCheck> | HeldCheck;
   /** Runs it from checked args; answers like the CLI's --json ({ ok, … }). */
-  run(args: Record<string, unknown>): Promise<unknown>;
+  run(args: Record<string, unknown>, asked?: AskedBy): Promise<unknown>;
 }
 
 export type HeldActions = Readonly<Record<string, HeldAction>>;
@@ -73,12 +74,12 @@ export function createApprovalQueue(
     actorLive: (actor) =>
       !actor.startsWith("agent:") ||
       agentTokenLive(stateDir(), actor.slice("agent:".length)),
-    run: async (action, args) => {
+    run: async (action, args, asked) => {
       const a = actions[action];
       if (!a) return { ok: false, error: `no action ${action}` };
       const again = await a.check({ ...args });
       if (!again.ok) return { ok: false, error: again.error };
-      return a.run(again.args);
+      return a.run(again.args, asked);
     },
   });
 }
@@ -152,6 +153,12 @@ export async function handleApprovalRoutes(
     actions: HeldActions;
     /** `mcp.approvals` (default on); off, nothing new is held. */
     enabled?: () => boolean;
+    /**
+     * SRV-1a: the setting that lets this agent's `action` run without the
+     * person's Allow ("server_agent.self_update: auto"), or null. Asked
+     * only for an agent its token proves, never a claim.
+     */
+    autoAllow?: (action: string, agent: string) => string | null;
   },
 ): Promise<boolean> {
   if (!isApprovalPath(pathname)) return false;
@@ -248,6 +255,31 @@ export async function handleApprovalRoutes(
       { verb: "approval-ask", detail: `${action}: ${a.summary} [${a.id}]` },
       principalOf(req),
     );
+    let auto: string | null = null;
+    try {
+      auto = a.agent ? (deps.autoAllow?.(action, a.agent) ?? null) : null;
+    } catch {
+      auto = null; // a bad setting: held, as with ask
+    }
+    if (auto) {
+      const r = await deps.queue.decide(a.id, "allow", `auto:${auto}`);
+      recordAction(
+        auditActorOf(req),
+        r.ok
+          ? {
+              verb: "approval-decide",
+              detail: `auto-allow ${action}: ${a.summary} [${a.id}] (${auto})`,
+            }
+          : {
+              verb: "approval-decide",
+              detail: `auto-allow ${action} [${a.id}] (${auto})`,
+              outcome: "refused",
+              reason: r.code,
+            },
+        principalOf(req),
+      );
+      if (r.ok) a = r.approval;
+    }
     sendJson(
       res,
       {

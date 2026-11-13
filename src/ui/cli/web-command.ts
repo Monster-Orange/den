@@ -601,9 +601,17 @@ export function spawnDetachedWebRestart(port: number): number | undefined {
 
   let cmd: string;
   let baseArgs: string[];
+  // SRV-1a: this node, with tsx's loader, as resolveServerEntrypoint runs
+  // the server: never the tsx bin, whose `#!/usr/bin/env node` needs node
+  // on PATH (a launchd service's PATH may not have it; the restart then
+  // died at once and Den stayed down).
+  const loader = engineModuleFile("tsx/dist/loader.mjs", engine);
   if (process.env.DEN_USE_DIST === "1" && fs.existsSync(builtCli)) {
     cmd = process.execPath;
     baseArgs = [builtCli];
+  } else if (loader && fs.existsSync(srcCli)) {
+    cmd = process.execPath;
+    baseArgs = ["--import", pathToFileURL(loader).href, srcCli];
   } else if (fs.existsSync(tsxBin) && fs.existsSync(srcCli)) {
     cmd = tsxBin;
     baseArgs = [srcCli];

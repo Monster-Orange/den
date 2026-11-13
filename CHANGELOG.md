@@ -4,6 +4,58 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.42] - Unreleased
+
+### Added
+
+- **The server agent restarts its own Den, and carries on.** Its MCP tool
+  `den_restart_server { reason }` restarts this Den in place on the
+  version installed now, as Settings › Restart Den does. Agents and
+  terminals carry on. When the new Den is up, it types `Server is back
+  on <version> (pid …)` into the server agent's terminal once it is at
+  its prompt (up to `ui.restart_wait_seconds`), so its turn goes on in
+  the same conversation. `server_agent.self_update` in the org config
+  says who allows it: `ask` (the default) holds it for the person's
+  Allow, and the page then waits for the new Den in place; `auto` runs
+  the server agent's own ask at once. Another agent's ask is always
+  held. The activity trail has each step: the ask, the Allow (or
+  `auto-allow`), `server-restart` and `server-back`.
+- **A masked edge access log.** `edge.access_log` (off by default;
+  `true`, or `{ mask_query, mask_paths, max_mb }`) has the edge log each
+  request. Den masks each line into `edge-access.log` (0600, rotated past
+  `max_mb`, default 20) every second. Always masked: the query keys
+  token, code, key, secret and password, and the path `/auth/link/*`.
+  Headers are never kept. A 502 the edge made itself says why. `doctor`
+  and `edge status` warn when unmasked lines wait too long, and when
+  `edge.args` has its own `--accesslog`.
+- **One request id end to end.** With the access log on, the edge's
+  trace id is the request id: in `X-Request-Id`, Den's log, error pages,
+  JSON errors and MCP error text ("request id").
+- Hub calls from the server agent say `X-Den-Scope: server`.
+
+### Fixed
+
+- **Edge 502s on a reused connection.** The edge kept idle upstream
+  connections for 90 s, far past most servers' own keep-alive, so a POST
+  on one the upstream had just closed got a 502. It now drops them after
+  `edge.upstream_idle_seconds` (default 1, 1 to 600), picked up live.
+- **Restart Den no longer needs node on PATH.** The restart ran the tsx
+  launcher, which looks up `node` on PATH; where PATH has none (a
+  service's), the restart died and Den stayed down. It now runs the node
+  Den runs on.
+- **Hub's Try again is typed once.** A delivery that repeats one Den
+  still holds takes its place, and its acks carry the old id too. An ack
+  Hub answers 410 (sent again, or withdrawn) drops it for good.
+- `notifications` in the CLI heads Hub's items with Hub's project name,
+  as the bell does.
+- A graph test no longer races a slow runner's first draw.
+
+### Migrations
+
+- None. `server_agent.self_update` defaults to `ask`; a distribution
+  that wants its server agent to restart Den by itself sets
+  `server_agent: { self_update: auto }` in its org config.
+
 ## [0.4.41] - 2026-11-13
 
 ### Added

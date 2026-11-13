@@ -259,6 +259,12 @@ export interface DenConfig {
    */
   mcp?: McpConfig;
   /**
+   * SRV-1a: the server agent. `self_update: ask | auto` (default ask):
+   * with ask, each restart it asks for is held for the person's Allow;
+   * auto, it runs at once. See readServerAgentConfig.
+   */
+  server_agent?: ServerAgentConfig;
+  /**
    * Agents: `max_concurrent` caps the agents running at once in this
    * distribution (default 4); plain sessions never count. See
    * readAgentsConfig.
@@ -744,6 +750,7 @@ export function readDenConfig(): DenConfig {
       env_health_urls: parsed?.env_health_urls,
       security: parsed?.security,
       mcp: parsed?.mcp,
+      server_agent: parsed?.server_agent,
       agents: parsed?.agents,
       sessions: parsed?.sessions,
       web: parsed?.web,
@@ -878,6 +885,28 @@ export const MCP_ACTIONS = [
 ] as const;
 export type McpAction = (typeof MCP_ACTIONS)[number];
 
+/** SRV-1a: `server_agent:` in the org config. */
+export interface ServerAgentConfig {
+  self_update?: "ask" | "auto";
+}
+
+export interface ResolvedServerAgentConfig {
+  /** ask: held for the person's Allow; auto: runs at once. */
+  selfUpdate: "ask" | "auto";
+}
+
+/** SRV-1a: `server_agent`, checked. A bad value throws naming its key. */
+export function readServerAgentConfig(
+  config: DenConfig = readDenConfig(),
+): ResolvedServerAgentConfig {
+  const v = config.server_agent?.self_update;
+  if (v !== undefined && v !== "ask" && v !== "auto")
+    throw new Error(
+      `server_agent.self_update: ask or auto, not ${JSON.stringify(v)}`,
+    );
+  return { selfUpdate: v ?? "ask" };
+}
+
 /** `mcp:` in the org config. */
 export interface McpConfig {
   /** Action tools to register; none when absent. */
@@ -887,7 +916,8 @@ export interface McpConfig {
   /** `remote: true` lets the log tools read non-local sources (e.g. CloudWatch). */
   logs?: { remote?: boolean };
   /**
-   * The held writes (workspace_create, repo_add, service_try): on by
+   * The held writes (workspace_create, repo_add, service_try,
+   * den_restart_server): on by
    * default, each run only after the person's Allow. false hides them.
    */
   approvals?: boolean;

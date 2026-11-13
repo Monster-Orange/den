@@ -767,6 +767,7 @@
     "ap.do.repo_add.new":
       "{path} のリポジトリを新しいプロジェクト「{workspace}」に追加",
     "ap.do.service_try": "{service} を起動",
+    "ap.do.den_restart": "Den を再起動 ({reason})",
     "ap.do.service_try.activates":
       "{service} を起動 ({workspace} を有効にします)",
     "ap.says": "エージェントのコメント:",
