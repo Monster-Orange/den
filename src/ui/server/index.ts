@@ -143,6 +143,7 @@ import {
 } from "../../shared/config-error.js";
 import { readOrgView } from "../../shared/org.js";
 import {
+  ENGINE_PACKAGE,
   engineVersion,
   getDistRoot,
   getEngineRoot,
@@ -157,8 +158,10 @@ import {
 } from "./release-service.js";
 import { deploySessions } from "./release-deploy-session.js";
 import {
+  denCliCommand,
   hasDenHostsEntry,
   spawnDetachedWebRestart,
+  webServerEnv,
 } from "../cli/web-command.js";
 import { recordInvocation } from "../../shared/dev-metrics/emit.js";
 import {
@@ -887,6 +890,7 @@ import { heldActions } from "./held-actions.js";
 import { callerPid, tokenCaller } from "./token-binding.js";
 import {
   backMessage,
+  restartMarkerPath,
   takeRestartMarker,
   tellBack,
   writeRestartMarker,
@@ -2122,6 +2126,88 @@ function approvalDeps(): ApprovalDeps {
         }
       }, 250);
       return { ok: true, restarting: true, pid: process.pid };
+    },
+    // SRV-1b: update from npm, the watch to roll back, then the restart.
+    updateDen: async (version, reason, asked) => {
+      const u = await import("./den-update.js");
+      const auto = !!asked?.decidedBy?.startsWith("auto:");
+      const by = asked?.agent ? `agent:${asked.agent}` : "the person";
+      const root = getDistRoot();
+      const engine = getEngineRoot();
+      let waitMs: number;
+      try {
+        waitMs = readServerAgentConfig().updateWaitMs;
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+      const npm = u.npmCommand();
+      const cli = denCliCommand();
+      const env = webServerEnv(PORT);
+      const stateDir = getStateDir();
+      const audit = (detail: string) =>
+        recordAction(
+          null,
+          { verb: "server-update", detail: detail.slice(0, 400) },
+          asked?.agent ? `agent:${asked.agent}` : undefined,
+        );
+      audit(
+        `asked by ${by}, allowed ${auto ? "by server_agent.self_update: auto" : "by the person"}: to ${version}: ${reason}${asked?.id ? ` [${asked.id}]` : ""}`,
+      );
+      const res = await u.updateDen(version, {
+        root,
+        engine,
+        stateDir,
+        pkg: {
+          name: ENGINE_PACKAGE,
+          version: engineVersion() ?? "0.0.0",
+        },
+        npmView: (spec) => u.npmViewVersion(npm, spec, root),
+        npm,
+        cli: [cli.cmd, ...cli.baseArgs],
+        run: (argv, cwd) => u.runCommand(argv, cwd, env),
+        watch: (script, plan) =>
+          u.spawnWatch(
+            script,
+            plan,
+            root,
+            env,
+            path.join(stateDir, "logs", product().cli, "update-watch.log"),
+          ),
+        note: (why) => {
+          const marker = {
+            id: asked?.id ?? "",
+            reason: why,
+            ...(asked?.agent ? { agent: asked.agent } : {}),
+            allowed: (auto ? "auto" : "person") as "auto" | "person",
+            fromVersion: engineVersion() ?? "?",
+            fromPid: process.pid,
+            at: new Date().toISOString(),
+          };
+          writeRestartMarker(stateDir, marker);
+          return { path: restartMarkerPath(stateDir), marker };
+        },
+        restart: () => {
+          serverLog(`↻ update restart asked by ${by}: ${reason}`, "lifecycle");
+          setTimeout(() => {
+            try {
+              spawnDetachedWebRestart(PORT);
+            } catch (e) {
+              serverLog(
+                `  ⚠ web restart failed to spawn: ${(e as Error).message}`,
+              );
+            }
+          }, 250);
+        },
+        port: PORT,
+        pid: process.pid,
+        waitMs,
+      });
+      audit(
+        res.ok
+          ? `Den ${res.from} → ${res.to}: installed, doctor ran, restarting (the watch rolls back if ${res.to} isn't up in ${Math.round(waitMs / 1000)} s)`
+          : `not updated: ${res.error}`,
+      );
+      return res;
     },
   });
   approvals = {

@@ -279,6 +279,34 @@ describe("a scoped server", () => {
   });
 });
 
+describe("SRV-1b: den_update", () => {
+  it("asks for den_update with the version (latest by default) and reason; says to end the turn", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, from: "1.0.0", to: "1.1.0", restarting: true },
+    }));
+    const r = await callTool("den_update", { reason: "new release" }, ctx(api));
+    expect(r.isError).toBe(false);
+    expect(calls[0].body).toEqual({
+      action: "den_update",
+      args: { version: "latest", reason: "new release" },
+    });
+    expect(JSON.parse(r.text)).toMatchObject({
+      approved: true,
+      result: { to: "1.1.0", restarting: true },
+      next: expect.stringMatching(/End your turn now.*Server is back on.*commit/),
+    });
+  });
+
+  it("a project's agent can't update Den: refused before anything is asked", async () => {
+    const { api, calls } = fakeApi([]);
+    const r = await callTool("den_update", { reason: "x" }, ctx(api, true));
+    expect(r.isError).toBe(true);
+    expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
+  });
+});
+
 describe("SRV-1a: den_restart_server", () => {
   it("asks for den_restart with its reason; allowed at once (auto): no wait, and it says to end the turn", async () => {
     const { api, calls } = fakeApi([], () => ({

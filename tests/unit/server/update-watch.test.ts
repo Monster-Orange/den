@@ -123,6 +123,7 @@ describe("update-watch.mjs (SRV-1b)", () => {
       id: "ap_1",
       agent: "server",
       fromVersion: "1.1.0",
+      rolledBack: true,
     });
     expect(marker.reason).toMatch(/, so Den rolled back to 1\.0\.0$/);
   });

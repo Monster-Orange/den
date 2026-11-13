@@ -7,7 +7,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
+  npmCommand,
+  npmViewVersion,
   readUpdateState,
+  runCommand,
   updateDen,
   updateDir,
   updateProblem,
@@ -191,5 +194,39 @@ describe("updateDen (SRV-1b)", () => {
       /not from the distribution's own node_modules .*: update it with git there, then den_restart_server/,
     );
     expect(updateProblem(root, engine, NAME)).toBeNull();
+  });
+});
+
+describe("the real commands, faked by node scripts (SRV-1b)", () => {
+  it("npm beside this node when it is there, else npm from PATH", () => {
+    const bin = path.join(tmp, "node", "bin");
+    const cli = path.join(tmp, "node", "lib/node_modules/npm/bin/npm-cli.js");
+    fs.mkdirSync(path.dirname(cli), { recursive: true });
+    fs.mkdirSync(bin, { recursive: true });
+    expect(npmCommand(path.join(bin, "node"))).toEqual(["npm"]);
+    fs.writeFileSync(cli, "");
+    expect(npmCommand(path.join(bin, "node"))).toEqual([path.join(bin, "node"), cli]);
+  });
+
+  it("npm view: an exact version, the last of a list, or null", async () => {
+    const fake = (out: string, code = 0) => {
+      const f = path.join(tmp, `npm-${Math.random().toString(36).slice(2)}.js`);
+      fs.writeFileSync(f, `process.stdout.write(${JSON.stringify(out)}); process.exit(${code})`);
+      return [process.execPath, f];
+    };
+    expect(await npmViewVersion(fake('"1.2.3"\n'), "x@latest", tmp)).toBe("1.2.3");
+    expect(await npmViewVersion(fake('["1.2.3","1.2.4"]'), "x@^1", tmp)).toBe("1.2.4");
+    expect(await npmViewVersion(fake("", 1), "x@9", tmp)).toBeNull();
+    expect(await npmViewVersion(fake('"not a version; rm"'), "x", tmp)).toBeNull();
+  });
+
+  it("runCommand: exit code and both streams", async () => {
+    const r = await runCommand(
+      [process.execPath, "-e", "console.log('a'); console.error('b'); process.exit(4)"],
+      tmp,
+    );
+    expect(r.code).toBe(4);
+    expect(r.out).toContain("a");
+    expect(r.out).toContain("b");
   });
 });

@@ -129,6 +129,7 @@ writeJson(plan.restartMarker.path, {
   ...plan.restartMarker.marker,
   reason: `${why}, so Den rolled back to ${plan.from}`,
   fromVersion: plan.to,
+  rolledBack: true,
   at: new Date().toISOString(),
 });
 const before = (await info())?.pid ?? 0;

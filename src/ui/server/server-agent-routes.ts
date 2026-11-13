@@ -26,6 +26,8 @@ import {
   type ServerAgentDeps,
 } from "../cli/server-agent-ops.js";
 import { webDeps } from "./agent-routes.js";
+import { readUpdateState } from "./den-update.js";
+import { getStateDir } from "../../shared/paths.js";
 import { recordAction } from "./audit.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import {
@@ -37,6 +39,8 @@ import {
 export interface ServerAgentRouteDeps {
   agents?: AgentsDeps;
   server?: ServerAgentDeps;
+  /** Where den_update keeps its state (default: this Den's state dir). */
+  stateDir?: () => string;
 }
 
 const MAX_BODY = 4 * 1024;
@@ -102,7 +106,9 @@ export async function handleServerAgentRoutes(
       return true;
     }
     try {
-      sendJson(res, await serverAgentStatus(d, deps.server));
+      // SRV-1b: the last den_update, for the page (null: none).
+      const update = readUpdateState((deps.stateDir ?? getStateDir)());
+      sendJson(res, { ...(await serverAgentStatus(d, deps.server)), update });
     } catch (e) {
       sendError(res, e);
     }

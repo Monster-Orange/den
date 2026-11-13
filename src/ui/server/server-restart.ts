@@ -28,6 +28,8 @@ export interface RestartMarker {
   fromVersion: string;
   fromPid: number;
   at: string;
+  /** SRV-1b: den_update's watch rolled back; `reason` says why. */
+  rolledBack?: boolean;
 }
 
 /** A marker older than this is a restart that never came back: ignored. */
@@ -86,6 +88,7 @@ export function takeRestartMarker(
       fromVersion: String(m.fromVersion ?? "?"),
       fromPid: Number(m.fromPid) || 0,
       at: m.at,
+      ...(m.rolledBack === true ? { rolledBack: true } : {}),
     };
   } catch {
     return null;
@@ -98,6 +101,11 @@ export function backMessage(
   version: string,
   pid: number,
 ): string {
+  if (m.rolledBack)
+    return (
+      `Server is back on ${version} (pid ${pid}), rolled back: ${m.reason}. ` + // words-ok: SRV-1 spec's own line, typed to the agent
+      "Your update didn't take: commit no pin change, and tell your person why."
+    );
   const was = m.fromVersion === version ? "" : ` (it was ${m.fromVersion})`;
   return (
     `Server is back on ${version} (pid ${pid})${was}. ` + // words-ok: SRV-1 spec's own line, typed to the agent

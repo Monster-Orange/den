@@ -84,6 +84,52 @@ describe("den_restart, the held action", () => {
   });
 });
 
+describe("SRV-1b: den_update, the held action", () => {
+  const deps = (asked: unknown[]): HeldActionDeps =>
+    ({
+      updateDen: async (version: string, reason: string, who: unknown) => {
+        asked.push({ version, reason, who });
+        return { ok: true, from: "1.0.0", to: "1.1.0", restarting: true };
+      },
+    }) as unknown as HeldActionDeps;
+
+  it("a version (latest by default) and a one-line reason; the Review says it rolls back by itself", async () => {
+    const a = heldActions(deps([])).den_update;
+    expect(await a.check({ version: "latest" })).toMatchObject({ ok: false });
+    expect(await a.check({ version: "1.0", reason: "x" })).toMatchObject({
+      ok: false,
+      error: "version: latest, or one like 0.4.44",
+    });
+    const c = await a.check({ reason: " new\n release " });
+    expect(c).toMatchObject({
+      ok: true,
+      args: { version: "latest", reason: "new release" },
+      summary: "update Den to latest (new release)",
+      params: { version: "latest", reason: "new release" },
+    });
+    expect(c.ok && c.details.join(" ")).toMatch(/rolls back by itself/);
+    expect(
+      await a.check({ version: "0.4.44-dev.1", reason: "try it" }),
+    ).toMatchObject({ ok: true, args: { version: "0.4.44-dev.1" } });
+  });
+
+  it("its run hands version, reason and who asked to the update", async () => {
+    const asked: unknown[] = [];
+    const a = heldActions(deps(asked)).den_update;
+    expect(
+      await a.run({ version: "latest", reason: "r" }, { id: "r1", agent: "server" }),
+    ).toMatchObject({ ok: true, restarting: true });
+    expect(asked).toEqual([
+      { version: "latest", reason: "r", who: { id: "r1", agent: "server" } },
+    ]);
+  });
+
+  it("a server that can't update itself refuses before anything waits", async () => {
+    const a = heldActions({} as HeldActionDeps).den_update;
+    expect(await a.check({ reason: "x" })).toMatchObject({ ok: false });
+  });
+});
+
 describe("the restart marker", () => {
   it("written 0600, in a 0700 folder", () => {
     writeRestartMarker(dir, marker());
@@ -119,6 +165,29 @@ describe("the restart marker", () => {
     );
     expect(backMessage(marker(), "0.4.41", 222)).toMatch(
       /^Server is back on 0.4.41 \(pid 222\)\. /,
+    );
+  });
+
+  it("SRV-1b: a rollback's marker keeps rolledBack through the take", () => {
+    writeRestartMarker(dir, marker({ rolledBack: true }));
+    expect(takeRestartMarker(dir)).toMatchObject({ rolledBack: true });
+    writeRestartMarker(dir, marker());
+    expect(takeRestartMarker(dir)).not.toHaveProperty("rolledBack");
+  });
+
+  it("SRV-1b: after a rollback it says so, and why, and to commit nothing", () => {
+    expect(
+      backMessage(
+        marker({
+          rolledBack: true,
+          fromVersion: "0.4.42",
+          reason: "Den 0.4.42 wasn't up within 180 s (it never answered), so Den rolled back to 0.4.41",
+        }),
+        "0.4.41",
+        222,
+      ),
+    ).toBe(
+      "Server is back on 0.4.41 (pid 222), rolled back: Den 0.4.42 wasn't up within 180 s (it never answered), so Den rolled back to 0.4.41. Your update didn't take: commit no pin change, and tell your person why.",
     );
   });
 });

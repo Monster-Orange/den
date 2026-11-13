@@ -19,7 +19,11 @@
  *   den_restart       SRV-1a: restart this Den's web server, in place
  *                     (server-restart.ts); the agent that asked is told
  *                     when it is back
+ *   den_update        SRV-1b: install another Den version from npm and
+ *                     restart on it (den-update.ts); a version that
+ *                     doesn't come up is rolled back by itself
  */
+import { UPDATE_SPEC_RE } from "./den-update.js";
 import { workspaceSlug } from "../../shared/workspace-name.js";
 import * as path from "path";
 import { checkOnboardPath, type PathRules } from "../cli/onboard-reads.js";
@@ -60,6 +64,12 @@ export interface HeldActionDeps {
   tryService: (address: string, workspace?: string) => Promise<TryResult>;
   /** SRV-1a: leave the marker, then restart this server (after answering). */
   restartDen?: (
+    reason: string,
+    asked?: AskedBy,
+  ) => Promise<{ ok: boolean; restarting?: boolean; error?: string }>;
+  /** SRV-1b: update Den to `version` (latest or x.y.z) and restart on it. */
+  updateDen?: (
+    version: string,
     reason: string,
     asked?: AskedBy,
   ) => Promise<{ ok: boolean; restarting?: boolean; error?: string }>;
@@ -285,10 +295,42 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     },
   };
 
+  const denUpdate: HeldAction = {
+    check(a): HeldCheck {
+      const reason = str(a.reason)?.replace(/\s+/g, " ");
+      if (!reason) return { ok: false, error: "give reason (one line: why)" };
+      if (reason.length > RESTART_REASON_MAX)
+        return {
+          ok: false,
+          error: `reason is at most ${RESTART_REASON_MAX} characters`,
+        };
+      const version = str(a.version) ?? "latest";
+      if (!UPDATE_SPEC_RE.test(version))
+        return { ok: false, error: "version: latest, or one like 0.4.44" };
+      if (!d.updateDen)
+        return { ok: false, error: "this Den can't update itself" };
+      return {
+        ok: true,
+        args: { version, reason },
+        summary: `update Den to ${version} (${reason})`,
+        params: { version, reason },
+        details: [
+          `Den gets ${version === "latest" ? "the latest version" : `version ${version}`} from npm for this distribution, checks it with doctor, and restarts on it.`,
+          "If the new version isn't up in time, Den rolls back by itself to the version it runs now, and says why.",
+          "Agents and terminals carry on where they were; open pages reconnect.",
+        ],
+      };
+    },
+    async run(a, asked) {
+      return d.updateDen!(String(a.version), String(a.reason), asked);
+    },
+  };
+
   return {
     workspace_create: workspaceCreate,
     repo_add: repoAddHeld,
     service_try: serviceTry,
     den_restart: denRestart,
+    den_update: denUpdate,
   };
 }

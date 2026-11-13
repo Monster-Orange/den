@@ -21,6 +21,7 @@
  * started, and the agent is told why. The commit of the new pin is the
  * agent's own (its folder is the distribution's repo, server_agent.git).
  */
+import { execFile, spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -278,3 +279,90 @@ export async function updateDen(
 
 const tail = (s: string) =>
   s.trim().split("\n").slice(-3).join(" / ").slice(0, 400);
+
+/**
+ * npm as this node runs it: the npm beside this node binary (a launchd
+ * service's PATH may have none), else `npm` from PATH.
+ */
+export function npmCommand(execPath: string = process.execPath): string[] {
+  const cli = path.join(
+    path.dirname(execPath),
+    "..",
+    "lib",
+    "node_modules",
+    "npm",
+    "bin",
+    "npm-cli.js",
+  );
+  return fs.existsSync(cli) ? [execPath, cli] : ["npm"];
+}
+
+/** A command, its output (both streams), exit code; 10 minutes at most. */
+export function runCommand(
+  argv: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<Ran> {
+  return new Promise((resolve) => {
+    execFile(
+      argv[0],
+      argv.slice(1),
+      { cwd, env, timeout: 10 * 60_000, maxBuffer: 16 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        const code =
+          err && typeof (err as { code?: unknown }).code === "number"
+            ? ((err as { code: number }).code)
+            : err
+              ? null
+              : 0;
+        resolve({
+          code,
+          out: `${stdout ?? ""}${stderr ?? ""}${err && code === null ? String(err) : ""}`,
+        });
+      },
+    );
+  });
+}
+
+/** `npm view <spec> version --json`: the exact version, or null. */
+export async function npmViewVersion(
+  npm: string[],
+  spec: string,
+  cwd: string,
+): Promise<string | null> {
+  const r = await runCommand([...npm, "view", spec, "version", "--json"], cwd);
+  if (r.code !== 0) return null;
+  try {
+    const v = JSON.parse(r.out.trim()) as unknown;
+    const last = Array.isArray(v) ? v.at(-1) : v;
+    return typeof last === "string" && UPDATE_SPEC_RE.test(last) && last !== "latest"
+      ? last
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Start the watch, detached from this server (it outlives it). */
+export function spawnWatch(
+  script: string,
+  plan: string,
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  log: string,
+): number | undefined {
+  fs.mkdirSync(path.dirname(log), { recursive: true });
+  const fd = fs.openSync(log, "a");
+  try {
+    const c = spawn(process.execPath, [script, plan], {
+      cwd,
+      env,
+      detached: true,
+      stdio: ["ignore", fd, fd],
+    });
+    c.unref();
+    return c.pid;
+  } finally {
+    fs.closeSync(fd);
+  }
+}

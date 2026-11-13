@@ -9,7 +9,9 @@
  * the principal set as request-guard sets it. Invented names only.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
 import * as http from "http";
+import * as path from "path";
 import type { AddressInfo } from "net";
 import { handleServerAgentRoutes } from "../../../src/ui/server/server-agent-routes.js";
 import {
@@ -94,6 +96,7 @@ async function serve(
             },
             root: () => "/dens/acme",
           },
+          stateDir: () => r.stateDir,
         })) ||
         (await handleApprovalRoutes(req, res, pathname, guard, {
           queue,
@@ -131,6 +134,23 @@ async function serve(
 }
 
 describe("/api/server-agent", () => {
+  it("SRV-1b: the last den_update's state, or none", async () => {
+    const r = await rig();
+    const call = await serve(r, {}, []);
+    expect((await call("GET", "/api/server-agent")).json.update).toBeNull();
+    const f = path.join(r.stateDir, "server-agent", "update", "state.json");
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    const st = {
+      state: "rolled_back",
+      from: "1.0.0",
+      to: "1.1.0",
+      at: "2026-11-13T12:00:00.000Z",
+      why: "Den 1.1.0 wasn't up within 180 s (it never answered)",
+    };
+    fs.writeFileSync(f, JSON.stringify(st));
+    expect((await call("GET", "/api/server-agent")).json.update).toEqual(st);
+  });
+
   it("says what it is, that this Den is fresh, its runtime, and that it hasn't started", async () => {
     const r = await rig();
     const call = await serve(r, {}, []);

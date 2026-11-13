@@ -294,7 +294,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -1301,6 +1301,10 @@ function refuseScoped(tool: string, scope: McpScope | undefined): void {
 const RESTART_NEXT =
   'End your turn now. When Den is back it types "Server is back on <version> (pid …)" to you.'; // words-ok: SRV-1's own line, for the agent
 
+/** SRV-1b: what the agent does after den_update. */
+const UPDATE_NEXT =
+  'End your turn now. When Den is back it types "Server is back on <version> (pid …)" to you. On the new version: commit the new pin (package.json, package-lock.json) in your folder, as server_agent.git says (a pull request, or a push). If Den says it rolled back, commit nothing and tell your person why.'; // words-ok: SRV-1's own line, for the agent
+
 const HELD =
   " Nothing changes until the person allows it in Den's browser dialog: the request waits up to 10 minutes; this call waits up to 2 for the answer, then returns the request id for approval_check.";
 
@@ -1413,6 +1417,41 @@ const APPROVAL_TOOLS: DenTool[] = [
       return typeof r === "string"
         ? r
         : { ...(r as object), next: RESTART_NEXT };
+    },
+  },
+  {
+    name: "den_update",
+    title: "Update Den",
+    description:
+      'Update this Den to another version from npm (`latest` by default, or one like 0.4.44), then restart on it. Den saves the pin, installs, checks the new version with doctor, and restarts; if the new version isn\'t up in time it rolls back by itself and tells you why. Only for a Den installed from npm in the distribution; a Den run from a checkout is updated with git. When Den is up again it types "Server is back on <version> (pid …)" to you: end your turn after this call. With server_agent.self_update: auto your own ask runs at once; with ask (the default) it is held for the person.' + // words-ok: SRV-1's own line
+      HELD,
+    action: true,
+    shape: {
+      version: z
+        .string()
+        .max(64)
+        .optional()
+        .describe("latest (the default), or an exact version like 0.4.44"),
+      reason: z
+        .string()
+        .max(300)
+        .describe("One line for the person and the audit trail: why update"),
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("den_update", ctx.scope);
+      const reason = needArg("den_update", a, "reason", "one line: why update");
+      const r = await askPerson(
+        "den_update",
+        "den_update",
+        { version: str(a.version) ?? "latest", reason },
+        a.note,
+        ctx,
+        `Den stopped answering after the ask: if it was allowed, Den is updating and restarting. ${UPDATE_NEXT}`,
+      );
+      return typeof r === "string"
+        ? r
+        : { ...(r as object), next: UPDATE_NEXT };
     },
   },
   {
