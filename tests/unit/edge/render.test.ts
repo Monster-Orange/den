@@ -5,6 +5,7 @@ import * as path from "path";
 import * as yaml from "yaml";
 import {
   certNames,
+  edgeCommand,
   renderEdgeCompose,
   renderEdgeDynamic,
   routeUrl,
@@ -115,6 +116,14 @@ describe("renderEdgeDynamic", () => {
         .http.serversTransports["den-upstream"].forwardingTimeouts
         .idleConnTimeout,
     ).toBe("1s");
+  });
+  it("#67: the edge's default transport has the same idle limit, for routes Den didn't write (Docker labels)", () => {
+    expect(edgeCommand({ ...edge, upstreamIdleSeconds: 3 })).toContain(
+      "--serversTransport.forwardingTimeouts.idleConnTimeout=3s",
+    );
+    expect(edgeCommand(edge)).toContain(
+      "--serversTransport.forwardingTimeouts.idleConnTimeout=1s",
+    );
   });
   it("keeps a non-443 published port in the HTTPS redirect", () => {
     const redirect = (ports: EdgeConfig["ports"]) =>

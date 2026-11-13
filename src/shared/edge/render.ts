@@ -287,6 +287,10 @@ export function edgeCommand(cfg: EdgeConfig): string[] {
     ...edgeTrustArgs(cfg),
     "--providers.file.directory=/etc/edge/dynamic",
     "--providers.file.watch=true",
+    // #67: every route's default transport, Docker-label routes too (theirs
+    // aren't Den's to give den-upstream): drop idle upstream connections
+    // before the upstream does.
+    `--serversTransport.forwardingTimeouts.idleConnTimeout=${cfg.upstreamIdleSeconds ?? 1}s`,
     ...(labels
       ? [
           "--providers.docker=true",
@@ -350,7 +354,9 @@ export function edgeCommandDrift(
         ? "forwarded-header trust"
         : /proxyprotocol/i.test(c)
           ? "PROXY protocol"
-          : "its command",
+          : /^--serverstransport\./i.test(c)
+            ? "upstream idle limit"
+            : "its command",
     );
   return [...what];
 }

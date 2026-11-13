@@ -33,7 +33,7 @@ const IDLE_CLOSE_MS = 1500;
 const NAME = `den-test-edge-idle-${process.pid}-${crypto.randomBytes(3).toString("hex")}`;
 
 let ok = false;
-let upstream: net.Server | null = null;
+const upstreams: net.Server[] = [];
 let dir = "";
 let edgePort = 0;
 /** What the upstream did: answered, or dropped a request after idle. */
@@ -49,7 +49,7 @@ function wholeRequest(buf: Buffer): number {
 }
 
 function startUpstream(): Promise<number> {
-  upstream = net.createServer((sock) => {
+  const upstream = net.createServer((sock) => {
     let buf = Buffer.alloc(0);
     let lastAnswer = 0;
     sock.on("data", (d) => {
@@ -71,15 +71,18 @@ function startUpstream(): Promise<number> {
     });
     sock.on("error", () => undefined);
   });
+  upstreams.push(upstream);
   return new Promise((r) =>
-    upstream!.listen(0, "0.0.0.0", () =>
-      r((upstream!.address() as AddressInfo).port),
+    upstream.listen(0, "0.0.0.0", () =>
+      r((upstream.address() as AddressInfo).port),
     ),
   );
 }
 
 /** A POST to the route; fetch can't set Host, so plain http (no agent reuse). */
-const post = (): Promise<{ status: number; body: string }> =>
+const post = (
+  host = "app.idle.localhost",
+): Promise<{ status: number; body: string }> =>
   new Promise((resolve, reject) => {
     const body = JSON.stringify({ ping: 1 });
     const req = http.request(
@@ -90,7 +93,7 @@ const post = (): Promise<{ status: number; body: string }> =>
         method: "POST",
         agent: false,
         headers: {
-          host: "app.idle.localhost",
+          host,
           "content-type": "application/json",
           "content-length": Buffer.byteLength(body),
         },
@@ -131,6 +134,27 @@ beforeAll(async () => {
     args: [],
   };
   fs.writeFileSync(path.join(dir, "edge.yml"), renderEdgeDynamic(cfg));
+  // A route Den didn't write: no serversTransport, as Traefik makes one
+  // from a container's Docker labels (Hub's, #67's gap). Its own upstream
+  // port, so the two routes never share a connection.
+  const up2 = await startUpstream();
+  fs.writeFileSync(
+    path.join(dir, "labels.yml"),
+    [
+      "http:",
+      "  routers:",
+      "    from-labels:",
+      "      entryPoints: [web]",
+      "      rule: Host(`labels.idle.localhost`)",
+      "      service: from-labels",
+      "  services:",
+      "    from-labels:",
+      "      loadBalancer:",
+      "        servers:",
+      `          - url: http://host.docker.internal:${up2}`,
+      "",
+    ].join("\n"),
+  );
   execFileSync(
     "docker",
     [
@@ -169,11 +193,24 @@ afterAll(async () => {
     } catch {
       /* already gone */
     }
-  await new Promise<void>((r) => (upstream ? upstream.close(() => r()) : r()));
+  for (const u of upstreams) await new Promise<void>((r) => u.close(() => r()));
   if (dir) fs.rmSync(dir, { recursive: true, force: true });
 });
 
 describe("#67: a POST through the edge after idle", () => {
+  it("not a 502 on a route Den didn't write either (Docker labels): the edge's idle limit is every route's", async () => {
+    if (!ok) return;
+    const until = Date.now() + 30_000;
+    while ((await post("labels.idle.localhost").catch(() => null))?.status !== 200)
+      if (Date.now() > until) throw new Error("the labels route never routed");
+      else await new Promise((r) => setTimeout(r, 300));
+    seen.length = 0;
+    expect((await post("labels.idle.localhost")).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 3000));
+    const r = await post("labels.idle.localhost");
+    expect([r.status, seen]).toEqual([200, ["answered", "answered"]]);
+  }, 60_000);
+
   it("is not a 502: the edge drops an idle upstream connection before the upstream does", async () => {
     if (!ok) return;
     seen.length = 0;

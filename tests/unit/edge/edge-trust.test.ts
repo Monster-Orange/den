@@ -162,10 +162,18 @@ describe("edge up detects the drift (the one recreate 0.4.5 needs)", () => {
     };
     expect(edgeCommandDrift(old, edgeCommand(cfg))).toEqual([
       "forwarded-header trust",
+      "upstream idle limit",
     ]);
     expect(edgeUpNotices(cfg, old)[1]).toBe(
-      "acme-edge's settings changed (forwarded-header trust): recreating it once. Routes drop only while it restarts.",
+      "acme-edge's settings changed (forwarded-header trust, upstream idle limit): recreating it once. Routes drop only while it restarts.",
     );
+  });
+
+  it("#67: an edge from before the default idle limit: recreated once, saying so", () => {
+    const now = edgeCommand(edge);
+    const before = now.filter((a) => !a.startsWith("--serversTransport."));
+    expect(before.length).toBe(now.length - 1);
+    expect(edgeCommandDrift(before, now)).toEqual(["upstream idle limit"]);
   });
 
   it("nothing changed, or no edge running: no notice", () => {

@@ -2015,7 +2015,11 @@ user, and the CLI does that for you:
   1, from 1 to 600). That's below a server's own keep-alive (Node 5 s,
   gunicorn 2 s), so the edge never sends a POST on a connection the
   upstream has just closed: that was an intermittent 502. It is in the
-  dynamic config, so a running edge picks it up with no restart.
+  dynamic config, so a running edge picks it up with no restart. Since
+  0.4.44 the same limit is also the edge's default transport (its static
+  config), so routes Den didn't write, such as those from Docker labels,
+  get it too. An edge from an earlier version is recreated once by
+  `edge up` ("upstream idle limit").
 
 - **A masked access log** (#63, off by default). `edge.access_log: true`
   (or a map: `mask_query`, `mask_paths`, `max_mb`) has the edge log every
