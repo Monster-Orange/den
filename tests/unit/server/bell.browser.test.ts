@@ -123,6 +123,67 @@ describe("NT-3: the bell", () => {
     await p.context().close();
   }, 90_000);
 
+  it("0.4.44: the panel is in the shell's font, even on a page whose body has none", async () => {
+    if (skip()) return;
+    expect((await say({ event: "waiting", why: "input" })).status).toBe(200);
+    const p = await open("/services");
+    // The panel hangs off body, outside the top bar: a body with no font
+    // of its own gives it the browser's (a serif).
+    await p.evaluate(() => {
+      document.body.style.font = "initial";
+    });
+    await p.waitForFunction(
+      () => document.querySelector(".den-bell-n")?.textContent === "1",
+      null,
+      { timeout: 15_000 },
+    );
+    await p.click("#den-bell");
+    await p.locator('#den-bell-pop [data-bell="scope"]').waitFor();
+    const f = await p.evaluate(() => {
+      const ff = (sel: string) => {
+        const el = document.querySelector(sel);
+        return el ? getComputedStyle(el) : null;
+      };
+      const probe = document.createElement("span");
+      probe.style.fontFamily = "var(--sans)";
+      document.body.appendChild(probe);
+      const sans = getComputedStyle(probe).fontFamily;
+      probe.remove();
+      const pick = (sel: string) => {
+        const c = ff(sel);
+        return c
+          ? {
+              family: c.fontFamily,
+              transform: c.textTransform,
+              spacing: c.letterSpacing,
+              size: c.fontSize,
+            }
+          : null;
+      };
+      return {
+        sans,
+        title: pick("#den-bell-h"),
+        row: pick(".den-bell-row a"),
+        all: pick('#den-bell-pop [data-bell="all"]'),
+        scope: pick('#den-bell-pop [data-bell="scope"]'),
+      };
+    });
+    expect(f.sans).toBeTruthy();
+    for (const k of ["title", "row", "all", "scope"] as const)
+      expect([k, f[k]?.family]).toEqual([k, f.sans]);
+    // "Mark read" reads like "Mark all read".
+    expect(f.scope).toMatchObject({ transform: "none", spacing: "normal", size: "12px" });
+    expect(f.all?.size).toBe("12px");
+    // Leave nothing unread for the tests after this one.
+    await p.click('#den-bell-pop [data-bell="all"]');
+    await p.waitForFunction(
+      () =>
+        (document.querySelector(".den-bell-n") as HTMLElement | null)
+          ?.hidden === true,
+    );
+    await p.context().close();
+  }, 90_000);
+
   it("NT-2: the agent open on screen doesn't notify", async () => {
     if (skip()) return;
     // Clear what's there.

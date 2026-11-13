@@ -5702,13 +5702,16 @@
     ".den-bell-pop { position: fixed; top: 52px; right: 12px; width: min(420px, calc(100vw - 32px));",
     "  max-height: min(70vh, 640px); overflow: auto; background: var(--surface); color: var(--text);",
     "  border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 8px 28px color-mix(in srgb, var(--text) 25%, transparent);",
-    "  z-index: 60; padding: 8px 0; font-size: 13px; }",
+    // On body, outside .den-top: its own font, or a page's default (a serif).
+    "  z-index: 60; padding: 8px 0; font: 13px/1.45 var(--sans); }",
     ".den-bell-pop[hidden] { display: none; }",
     ".den-bell-hd { display: flex; gap: 8px; align-items: center; padding: 4px 12px 8px;",
     "  border-bottom: 1px solid var(--border); }",
     ".den-bell-hd h2 { font-size: 13px; margin: 0; flex: 1; }",
     ".den-bell-hd button, .den-bell-sc button { font: inherit; font-size: 12px; background: none; border: 0;",
     "  color: var(--accent-text); cursor: pointer; padding: 2px 4px; }",
+    // "Mark read" as "Mark all read": not the scope line's mono capitals.
+    ".den-bell-sc button { font: 500 12px var(--sans); text-transform: none; letter-spacing: normal; }",
     ".den-bell-sc { display: flex; align-items: center; padding: 8px 12px 2px; color: var(--muted);",
     "  font: 11px var(--mono); text-transform: uppercase; letter-spacing: .04em; }",
     ".den-bell-sc span { flex: 1; }",
