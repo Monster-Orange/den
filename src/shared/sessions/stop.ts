@@ -3,8 +3,12 @@
  * shell ignores TERM, not HUP), then, if it is still running after
  * `graceMs`, KILL. Used by `sessions kill` (no --signal) and the page's
  * Close.
+ *
+ * A session host started before 0.4.40 doesn't know HUP and refuses it
+ * (bad-request): it gets TERM instead, then KILL after the same grace, so
+ * an upgrade needs no host restart (the 0.4.40 gate's item g).
  */
-import type { HostClient } from "./client.js";
+import { HostError, type HostClient } from "./client.js";
 
 export type StopResult = "stopped" | "killed" | "gone";
 
@@ -18,7 +22,12 @@ export async function stopSession(
   const running = async () =>
     (await c.list()).some((s) => s.ref.id === id && !s.exited);
   if (!(await running())) return "gone";
-  await c.kill(id, "HUP");
+  try {
+    await c.kill(id, "HUP");
+  } catch (e) {
+    if (!(e instanceof HostError && e.code === "bad-request")) throw e;
+    await c.kill(id, "TERM");
+  }
   const end = Date.now() + graceMs;
   while (Date.now() < end) {
     await sleep(Math.min(100, Math.max(1, end - Date.now())));

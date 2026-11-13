@@ -2339,8 +2339,9 @@ async function closeShell(p, button) {
   button.disabled = true;
   try {
     await api("POST", `/api/sessions/${encodeURIComponent(r.id)}/close`);
+    // Quiet: the pane's own "it keeps running" toast would be wrong here.
+    closePane(p.id, { quiet: true });
     window.denShell?.toast?.(t("ag.shellClosed", { id: r.label ?? r.name }));
-    closePane(p.id);
   } catch (err) {
     button.disabled = false;
     window.denShell?.errorToast?.(err);
