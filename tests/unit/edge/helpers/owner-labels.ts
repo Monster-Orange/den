@@ -9,13 +9,24 @@ const OWNER_LABELS =
   /^ {4}labels:\n {6}den\.edge\.root: [^\n]*\n {6}den\.edge\.org: [^\n]*\n/m;
 const EDGE_TRUST =
   /^ {6}- --entrypoints\.[a-z]+\.forwardedHeaders\.trustedIPs=[^\n]*\n/gm;
+/**
+ * #67 (0.4.44): the edge's default upstream idle limit, for routes Den
+ * didn't write (Docker labels), also came after the golden files.
+ */
+const EDGE_IDLE =
+  /^ {6}- --serversTransport\.forwardingTimeouts\.idleConnTimeout=\d+s\n/m;
 
 export function withoutOwnerLabels(compose: string): string {
   if (!OWNER_LABELS.test(compose))
     throw new Error("the edge's owner labels are missing");
   if (!compose.match(EDGE_TRUST))
     throw new Error("the edge's forwarded-header trust is missing");
-  return compose.replace(OWNER_LABELS, "").replace(EDGE_TRUST, "");
+  if (!EDGE_IDLE.test(compose))
+    throw new Error("the edge's upstream idle limit is missing");
+  return compose
+    .replace(OWNER_LABELS, "")
+    .replace(EDGE_TRUST, "")
+    .replace(EDGE_IDLE, "");
 }
 
 /**

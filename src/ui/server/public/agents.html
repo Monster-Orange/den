@@ -544,7 +544,9 @@
       .pane .agto {
         padding: 3px 10px;
         border-top: 1px solid var(--border);
-        border-left: 3px solid hsl(var(--ws-h, 210) 65% 50%);
+        /* The theme's accent, turned to the project's hue (wsHue). */
+        border-left: 3px solid var(--accent);
+        border-left-color: oklch(from var(--accent) l c var(--ws-h, 210));
         background: var(--surface);
         color: var(--muted);
         font-size: 12px;
