@@ -2189,7 +2189,7 @@ async function openPane(id, { front = true } = {}) {
   // xterm opens in .tbox, the .term's content box: the fit measures its
   // parent's height and width as they are, so the .term's padding must
   // not be in it (AG-4b: every terminal fits its pane).
-  el.innerHTML = `<div class="bar2"></div><div class="term"><div class="tbox"></div></div><div class="agto" data-to></div>`;
+  el.innerHTML = `<div class="bar2"></div><div class="term"><div class="tbox"></div></div><div class="agto" data-to data-toast-clear></div>`;
   const p = {
     id,
     el,

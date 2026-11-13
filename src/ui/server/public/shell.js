@@ -425,6 +425,8 @@
     "pj.useManagedX": "{repo}: use managed",
     "pj.useLocal": "use local",
     "pj.useManaged": "use managed",
+    "pj.mode.dev-managed": "dev-managed",
+    "pj.mode.managed": "managed",
     "set.ui.justNow": "just now",
     "set.ui.minAgo": "{n} min ago",
     "set.ui.hAgo": "{n} h ago",
@@ -2198,6 +2200,7 @@
       keys: Array.isArray(r.keys) ? r.keys.slice() : [],
       order: orderOf("setting", r),
       from: r.from || null,
+      helpInControl: r.helpInControl === true,
     });
     settingCommand(r);
     checkOrphansSoon();
@@ -2480,6 +2483,41 @@
     return out;
   }
   var toastTimer = null;
+  /**
+   * 0.4.45: a toast never covers a line a page marks data-toast-clear
+   * (the terminal's "To" line: who the keyboard types to). It moves up
+   * until it sits above every such line it would cover. A page may draw
+   * that line just after the toast shows, so it looks again a moment later.
+   */
+  function clearOfMarked(el, again) {
+    if (!el || !el.getBoundingClientRect || !document.querySelectorAll)
+      return;
+    if (!again)
+      [120, 500].forEach(function (ms) {
+        setTimeout(function () {
+          if (el.isConnected) clearOfMarked(el, true);
+        }, ms);
+      });
+    var marks = document.querySelectorAll("[data-toast-clear]");
+    for (var pass = 0; pass < 4; pass++) {
+      var r = el.getBoundingClientRect();
+      var moved = false;
+      for (var i = 0; i < marks.length; i++) {
+        var m = marks[i].getBoundingClientRect();
+        if (!m.width || !m.height) continue;
+        var hit =
+          r.left < m.right &&
+          r.right > m.left &&
+          r.top < m.bottom &&
+          r.bottom > m.top;
+        if (hit) {
+          el.style.bottom = Math.ceil(window.innerHeight - m.top + 8) + "px";
+          moved = true;
+        }
+      }
+      if (!moved) return;
+    }
+  }
   function toast(msg) {
     if (!document.body || !document.createElement) return;
     var old = document.querySelector && document.querySelector(".den-toast");
@@ -2489,6 +2527,7 @@
     if (el.setAttribute) el.setAttribute("role", "status");
     el.textContent = msg;
     if (document.body.appendChild) document.body.appendChild(el);
+    clearOfMarked(el);
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
       if (el.remove) el.remove();
@@ -2523,6 +2562,7 @@
     el.appendChild(text);
     el.appendChild(b);
     document.body.appendChild(el);
+    clearOfMarked(el);
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
       done = true;
@@ -5150,6 +5190,7 @@
       }
     });
     document.body.appendChild(el);
+    clearOfMarked(el);
     arm();
   }
   if (typeof window.addEventListener === "function")
@@ -6494,6 +6535,9 @@
     "  color: var(--muted); font-variant-numeric: tabular-nums; }",
     ".den-bdg.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }",
     ".den-rail-grow { flex: 1; }",
+    // 0.4.45: a heading never breaks inside a word (ja has no spaces, so
+    // ブランチ broke into single characters in a narrow column).
+    "h1, h2, h3, th { word-break: keep-all; overflow-wrap: break-word; }",
     ".den-sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;",
     "  clip: rect(0 0 0 0); white-space: nowrap; border: 0; }",
     // Pinned row: the dot in place of the icon (.dot, margin 0 5px)

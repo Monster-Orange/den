@@ -1452,6 +1452,8 @@
     "pj.useManagedX": "{repo}: usar gestionado",
     "pj.useLocal": "usar local",
     "pj.useManaged": "usar gestionado",
+    "pj.mode.dev-managed": "local",
+    "pj.mode.managed": "gestionado",
     "set.ui.justNow": "ahora mismo",
     "set.ui.minAgo": "hace {n} min",
     "set.ui.hAgo": "hace {n} h",

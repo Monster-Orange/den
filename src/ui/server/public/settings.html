@@ -142,7 +142,8 @@
       .set-count:empty {
         display: none;
       }
-      .den-sr {
+      .den-sr,
+      .set-row .d.den-sr {
         position: absolute;
         width: 1px;
         height: 1px;
@@ -614,6 +615,9 @@
         /* Break a key at its "_", never mid-word. */
         overflow-wrap: normal;
         word-break: normal;
+      }
+      .rot-ov th {
+        word-break: keep-all;
       }
       /* Narrow: each override is a card of label/value lines, so no
          column is squeezed into breaking words mid-letter. */

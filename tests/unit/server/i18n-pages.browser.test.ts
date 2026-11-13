@@ -95,7 +95,6 @@ const NAMES = [
   "Chrome",
   "macOS",
   "Acme",
-  "dev-managed",
   "accent",
   "ok",
   "warn",
