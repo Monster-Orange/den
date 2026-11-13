@@ -136,6 +136,11 @@ async function post(path, body) {
 export function initBell(doc = document) {
   const btn = doc.getElementById("den-bell");
   if (!btn || btn.dataset.wired) return;
+  // SEC-1b: a refusal page (421, signed out) makes no /api call.
+  if (window.denShell?.apiOff?.() === true) {
+    btn.hidden = true;
+    return;
+  }
   btn.dataset.wired = "1";
   const pop = doc.createElement("div");
   pop.className = "den-bell-pop";

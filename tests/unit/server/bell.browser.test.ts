@@ -4,6 +4,7 @@
  * page shows 1; its panel groups by project then agent; the row links to
  * the agent; Mark all read clears the count; Esc closes and focus goes
  * back. NT-2: the agent open on screen in the Agents page doesn't notify.
+ * NT-3b: its row says why it waits.
  * Translated; fits 390 px. The demo distribution, the scripted PTY.
  * Invented names only.
  */
@@ -162,6 +163,23 @@ describe("NT-3: the bell", () => {
     expect(b.unread).toBe(0);
     // Still marked waiting: just not a notification.
     expect(b.waiting.map((w) => w.agent)).toContain("planner");
+    await p.context().close();
+  }, 60_000);
+
+  it("NT-3b: the agent's row says why it waits", async () => {
+    if (skip()) return;
+    expect(
+      (await say({ event: "waiting", why: "asked", text: "Ship it?" })).status,
+    ).toBe(200);
+    const p = await open("/agents?ws=north");
+    await p.waitForFunction(
+      () =>
+        [...document.querySelectorAll(".wbdg")].some(
+          (e) => e.textContent === "asked you",
+        ),
+      null,
+      { timeout: 15_000 },
+    );
     await p.context().close();
   }, 60_000);
 

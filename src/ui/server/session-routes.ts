@@ -123,6 +123,11 @@ export interface SessionRouteDeps {
   pty?: () => PtyLoad;
   /** The agent ids with an approval waiting for the person (AG-6a, ON-3). */
   waitingAgents?: () => ReadonlySet<string>;
+  /**
+   * NT-3b: why each waiting agent waits: "approval" (a held Allow),
+   * "permission", "input" or "asked" (its hooks, ask_human).
+   */
+  waitingWhy?: () => ReadonlyMap<string, string>;
   /** D28: each agent's effective rotation settings (one resolver per list). */
   rotationPolicy?: () => (rec: AgentRecord) => RotationPolicy | undefined;
   /** D59: whether each agent resumes on its own after a restart. */
@@ -146,6 +151,7 @@ interface Resolved {
   workspaceExists: (ws: string) => boolean;
   pty: () => PtyLoad;
   waitingAgents: () => ReadonlySet<string>;
+  waitingWhy: () => ReadonlyMap<string, string>;
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
   restartResume?: SessionRouteDeps["restartResume"];
   helperSettings: () => HelperSettings | undefined;
@@ -192,6 +198,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
         )),
     pty: d.pty ?? (() => loadPty()),
     waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
+    waitingWhy: d.waitingWhy ?? (() => new Map<string, string>()),
     hubNow: d.hubNow ?? (() => defaultHubNow()),
     uploadSettings:
       d.uploadSettings ??
@@ -314,6 +321,8 @@ export interface ListedSession {
   tokenRevoked?: boolean;
   /** An approval is pending (AG-6a; only when the host knows). */
   waiting?: boolean;
+  /** NT-3b: why ("approval", "permission", "input", "asked"), when known. */
+  waitingWhy?: string;
   /** 0.4.40: the Hub comments it's working on or has waiting (its card line). */
   hubWork?: import("../../shared/hub-delivery-loop.js").AgentHubWork;
   /**
@@ -333,7 +342,9 @@ export interface ListedSession {
 export function listedSessions(
   sessions: SessionInfo[],
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
-    Partial<Pick<Resolved, "waitingAgents" | "workspaceExists">> &
+    Partial<
+      Pick<Resolved, "waitingAgents" | "waitingWhy" | "workspaceExists">
+    > &
     Partial<Pick<Resolved, "helperSettings" | "repoNames">> &
     Pick<SessionRouteDeps, "rotationPolicy" | "restartResume"> & {
       /** #57 (tests): the projects, by key; default the workspaces file. */
@@ -392,6 +403,7 @@ export function listedSessions(
   const records = all.filter((r) => active.has(r.workspace));
   const revoked = revokedAgentIds(d.stateDir());
   const waiting = d.waitingAgents?.() ?? new Set<string>();
+  const why = d.waitingWhy?.() ?? new Map<string, string>();
   const out: ListedSession[] = [];
   const agentSessions = new Set<string>();
   noteEnded(d.stateDir(), mine, records);
@@ -470,7 +482,12 @@ export function listedSessions(
       ...(r.rotation ? { rotation: r.rotation } : {}),
       ...(r.lastRotation ? { lastRotation: r.lastRotation } : {}),
       ...(revoked.has(rec.id) && s && !s.exited ? { tokenRevoked: true } : {}),
-      ...(waiting.has(rec.id) && s && !s.exited ? { waiting: true } : {}),
+      ...(waiting.has(rec.id) && s && !s.exited
+        ? {
+            waiting: true,
+            ...(why.has(rec.id) ? { waitingWhy: why.get(rec.id) } : {}),
+          }
+        : {}),
       ...(() => {
         const w = (d.hubWork ?? agentHubWork)(rec.id);
         return w ? { hubWork: w } : {};

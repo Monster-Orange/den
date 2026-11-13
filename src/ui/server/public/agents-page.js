@@ -630,6 +630,13 @@ export function hubWorkHtml(r, tr = t) {
   );
 }
 
+/** NT-3b: what the "waiting" badge says: why, when the server knows. */
+function waitingText(r) {
+  const k = r.waitingWhy ? `ag.waiting.${r.waitingWhy}` : "";
+  const s = k ? t(k) : "";
+  return s && s !== k ? s : t("ag.waiting");
+}
+
 function rowHtml(r) {
   if (isStopped(r)) return stoppedHtml(r);
   const open = st.open.includes(r.id);
@@ -638,7 +645,7 @@ function rowHtml(r) {
       ? nameHtml(r)
       : `${esc(r.label)} <span class="sbdg">${esc(t("ag.session"))}</span>`;
   const right = r.waiting
-    ? `<span class="wbdg">${esc(t("ag.waiting"))}</span>`
+    ? `<span class="wbdg">${esc(waitingText(r))}</span>`
     : `<span class="st">${esc(stateText(r.state))}</span>`;
   const meta = [r.runtime, cwdText(r)].filter(Boolean).join(" · ");
   // D62: the helpers chip is on line 2, before the meta, never in the dot's
@@ -1114,7 +1121,10 @@ function paintTabs(strip) {
       tab.querySelector(".tn").textContent = words.name;
       tab.querySelector(".tm").textContent = words.meta;
       const sr = tab.querySelector(".den-sr");
-      if (sr) sr.hidden = !r?.waiting;
+      if (sr) {
+        sr.hidden = !r?.waiting;
+        if (r?.waiting) sr.textContent = `${waitingText(r)}: `;
+      }
       w.querySelector(".agtab-x").setAttribute(
         "aria-label",
         t("ag.detachName", { id: words.name }),
@@ -1134,7 +1144,7 @@ function paintTabs(strip) {
         `<span class="agtab-w" data-id="${esc(id)}">` +
         `<button type="button" role="tab" class="agtab" data-id="${esc(id)}" aria-selected="${on}" tabindex="${on ? 0 : -1}"${rename}>` +
         `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
-        `<span class="den-sr"${r?.waiting ? "" : " hidden"}>${esc(t("ag.waiting"))}: </span>` +
+        `<span class="den-sr"${r?.waiting ? "" : " hidden"}>${esc(r?.waiting ? waitingText(r) : t("ag.waiting"))}: </span>` +
         `<span class="tn">${esc(w.name)}</span><span class="tm mono">${esc(w.meta)}</span></button>` +
         `<button type="button" class="agtab-x" data-act="close" data-id="${esc(id)}" aria-label="${esc(t("ag.detachName", { id: w.name }))}" title="${esc(t("ag.detach"))}">×</button>` +
         `</span>`

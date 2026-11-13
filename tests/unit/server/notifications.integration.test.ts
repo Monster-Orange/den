@@ -96,6 +96,8 @@ describe("NT: the bell on the real server", () => {
       "/agents?ws=north&agent=planner",
     );
     expect((await planner())?.waiting).toBe(true);
+    // NT-3b: and why.
+    expect((await planner())?.waitingWhy).toBe("permission");
   }, 60_000);
 
   it("its output moves: no longer waiting, the notification withdrawn", async () => {
@@ -162,6 +164,7 @@ describe("NT: the bell on the real server", () => {
     expect(g[0].subjects[0].items[0].text).toMatch(
       /asked: Ship the north fix today\?$/,
     );
+    expect((await planner())?.waitingWhy).toBe("asked");
     expect((await ask("And the south one?")).status).toBe(200);
     const held = await ask("A third?");
     expect(held.status).toBe(429);

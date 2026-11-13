@@ -15,10 +15,7 @@ import {
   handleNotificationRoutes,
   isNotificationPath,
 } from "./notification-routes.js";
-import {
-  attentionWaiting,
-  notificationDeps,
-} from "./notification-service.js";
+import { attentionWaiting, notificationDeps } from "./notification-service.js";
 import {
   composeHealthTarget,
   containerCheckLabel,
@@ -2043,6 +2040,16 @@ function waitingAgentIds(): Set<string> {
   if (!approvals) return out;
   for (const actor of approvals.queue.waitingActors())
     if (actor.startsWith("agent:")) out.add(actor.slice("agent:".length));
+  return out;
+}
+
+/** NT-3b: why each one waits; a held Allow over what the hooks said. */
+function waitingReasons(): Map<string, string> {
+  const out = new Map<string, string>(attentionWaiting());
+  if (approvals)
+    for (const actor of approvals.queue.waitingActors())
+      if (actor.startsWith("agent:"))
+        out.set(actor.slice("agent:".length), "approval");
   return out;
 }
 
@@ -4855,6 +4862,7 @@ async function handleRequest(
       guard.ok && (!guard.beyond || !!guard.session || !!guard.principal),
       {
         waitingAgents: waitingAgentIds,
+        waitingWhy: waitingReasons,
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
       },
