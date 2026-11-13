@@ -251,6 +251,16 @@ describe("headers and repos", () => {
     });
   });
 
+  it("the server agent's scope says so (X-Den-Scope: server); a project's doesn't", () => {
+    const who = { agent: "a", session: "s", repos: [] as string[] };
+    expect(
+      hubHeaders(TOKEN, { ...who, workspace: "den-server" })["X-Den-Scope"],
+    ).toBe("server");
+    expect(
+      hubHeaders(TOKEN, { ...who, workspace: "north" })["X-Den-Scope"],
+    ).toBeUndefined();
+  });
+
   it("owner/repo from a gh slug, else the git remote", () => {
     expect(ownerRepo({ gh: "acme/north" })).toBe("acme/north");
     expect(ownerRepo({ remote: "git@github.com:acme/kit.git" })).toBe(

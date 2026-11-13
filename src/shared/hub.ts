@@ -20,6 +20,7 @@
  * never by a guess. The token is never logged,
  * never in a page or an API answer: only in the agent's own 0600 MCP file.
  */
+import { isServerScope } from "./agents/server-agent.js";
 import * as crypto from "crypto";
 import { readDenConfig, readUserConfig, type DenConfig } from "./den-config.js";
 import { readHubProjectChoices } from "./hub-project-link.js";
@@ -278,6 +279,8 @@ export function hubHeaders(
     "X-Den-Workspace": headerSafe(who.workspace),
     "X-Den-Repos": headerSafe(who.repos.join(",")),
     "X-Den-Project": headerSafe(who.project || "none"),
+    // The server agent's scope is never a project: Hub's drift skips it.
+    ...(isServerScope(who.workspace) ? { "X-Den-Scope": "server" } : {}),
   };
 }
 
