@@ -91,7 +91,7 @@ That is `examples/demo/demo-api/.den.yml`; the other demo repos are in
 
 ## What it does
 
-- **Workspaces.** A workspace is a set of repos. Each is either
+- **Projects.** A project is a set of repos. Each is either
   _dev-managed_ (your checkout, your branch) or _managed_ (cloned by Den and
   kept on a tracking branch).
 - **Derived dependency graph.** Start and stop order comes from real signals in
@@ -99,7 +99,7 @@ That is `examples/demo/demo-api/.den.yml`; the other demo repos are in
   readiness probes — tuned in config with `graph.aliases`, `graph.edges` and
   an optional shared local-infra repo (`graph.infra`).
 - **Local HTTPS edge.** One local proxy routes `https://<route>.<domain>` to
-  each service, with an optional project CA.
+  each service, with an optional CA of its own.
 - **Test pillars.** `smoke`, `browser` (synthetic Playwright), `api`,
   `journeys` (agent-driven), `perf` (k6), `security` (OWASP ZAP against hosts
   you own) and `suites` (a repo's own commands).
@@ -107,7 +107,7 @@ That is `examples/demo/demo-api/.den.yml`; the other demo repos are in
   lists.
 - **Agents and sessions.** `sessions start` runs a terminal that outlives the
   web server; `agents start` runs a persona (Den ships a default pack) in a
-  workspace's checkout, with an MCP server pinned to that workspace and a
+  project's checkout, with an MCP server pinned to that project and a
   token of its own. The web UI's Agents tab lists them and opens their
   terminals.
 - **Browser sign-in beyond loopback.** On localhost no route needs a sign-in,
@@ -156,8 +156,8 @@ den --help             # everything else
 ```
 
 `up`, `down`, `restart` and `setup` take `-w <workspace>`. Without it, a
-service you name is found in the focused workspace first, then across the
-other active workspaces; when it is in several, the error lists the `-w`
+service you name is found in the focused project first, then across the
+other active projects; when it is in several, the error lists the `-w`
 command for each.
 
 In a distribution the command is that distribution's `cli` name.

@@ -139,6 +139,21 @@ function sourceProse(
   return out;
 }
 
+/**
+ * Markdown as a person reads it, line for line: fenced code blocked out,
+ * link targets and anchors (`](…#workspace-blueprint)`), and an HTML tag's
+ * src/href, taken out; then {@link withoutCode}.
+ */
+function markdownProse(md: string): string {
+  return withoutCode(
+    md
+      .replace(/^(```|~~~)[\s\S]*?^\1/gm, (m) => "\n".repeat(m.split("\n").length - 1))
+      .replace(/\]\([^)]*\)/g, "]")
+      .replace(/^\[[^\]]+\]:\s*\S+.*$/gm, " ")
+      .replace(/\b(?:src|href|id|name)="[^"]*"/g, " "),
+  );
+}
+
 function hits(where: string, text: string, word: RegExp): string[] {
   return withoutCode(text)
     .split("\n")
@@ -293,6 +308,27 @@ describe("no 'workspace' where people read (H5 wording)", () => {
           WORD.en,
         ),
       );
+    expect(found).toEqual([]);
+  });
+
+  // Vision: "README.md still says workspace". The README and docs/*.md, as
+  // a person reads them: fenced code, link targets and image paths are
+  // code, and stay; an image's alt text is read, and is checked.
+  it("the README and docs' prose", () => {
+    const files = [
+      "README.md",
+      ...fs
+        .readdirSync(path.join(ENGINE, "docs"))
+        .filter((f) => f.endsWith(".md"))
+        .map((f) => `docs/${f}`),
+    ];
+    const found = files.flatMap((f) =>
+      markdownProse(fs.readFileSync(path.join(ENGINE, f), "utf-8"))
+        .split("\n")
+        .map((l, i) => [i + 1, l] as const)
+        .filter(([, l]) => WORD.en.test(l))
+        .map(([n, l]) => `${f}:${n}: ${l.trim().slice(0, 160)}`),
+    );
     expect(found).toEqual([]);
   });
 
