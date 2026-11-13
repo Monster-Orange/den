@@ -139,6 +139,40 @@ describe("Linux: /proc, as a fake tree", () => {
     // A parent it can't read: not proved.
     expect(descendsFrom(999, 200, d)).toBe(false);
   });
+
+  it("a lookup that fails or races refuses, never allows", () => {
+    // The caller's parent exits mid-walk (its stat is gone): not proved.
+    const gone = {
+      ...d,
+      read: (p: string) => {
+        if (p === "/proc/300/stat") throw new Error("ENOENT");
+        return d.read(p);
+      },
+    };
+    expect(descendsFrom(400, 200, gone)).toBe(false);
+    // A stat that doesn't parse: not proved.
+    const junk = {
+      ...d,
+      read: (p: string) => (p.endsWith("/stat") ? "garbage" : d.read(p)),
+    };
+    expect(descendsFrom(400, 200, junk)).toBe(false);
+    // The socket's inode is in no process's fds (it closed): no pid.
+    const closed = {
+      ...d,
+      readlink: () => {
+        throw new Error("ENOENT");
+      },
+    };
+    expect(loopbackPeerPid(0xce2a, closed)).toBeNull();
+    // /proc/net/tcp unreadable: no pid.
+    const noNet = {
+      ...d,
+      read: () => {
+        throw new Error("EACCES");
+      },
+    };
+    expect(loopbackPeerPid(0xce2a, noNet)).toBeNull();
+  });
 });
 
 describe("macOS: lsof's rows", () => {
