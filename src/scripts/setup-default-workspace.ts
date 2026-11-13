@@ -176,7 +176,11 @@ async function main() {
   }
 
   const wsFile = readWorkspacesFile();
-  wsFile.workspaces[WORKSPACE_KEY] = { services };
+  // Its services only: its other keys (hub_project, name, …) stay.
+  wsFile.workspaces[WORKSPACE_KEY] = {
+    ...wsFile.workspaces[WORKSPACE_KEY],
+    services,
+  };
   writeWorkspacesFile(wsFile);
 
   console.log(
