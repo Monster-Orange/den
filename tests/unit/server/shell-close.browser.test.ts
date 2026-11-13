@@ -115,6 +115,10 @@ describe("Close shell", () => {
     await btn.click();
     await pane.waitFor({ state: "detached", timeout: 15_000 });
     expect(pty.signals).toEqual(["SIGHUP"]);
+    // The gate's copy note: not the × toast ("it keeps running").
+    const toast = (await p.locator(".den-toast").textContent()) ?? "";
+    expect(toast).toMatch(/^Closed /);
+    expect(toast).not.toMatch(/keeps running/);
     const after = (
       (await (
         await fetch(`${s!.base}/api/sessions?ws=north`, {

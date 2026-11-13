@@ -28,6 +28,8 @@ config and manifest changes a distribution must make to move to it under
   `sessions.close_grace_seconds`, default 5) and forgets it, so closed
   shells never count toward `sessions.max_concurrent`. An agent's pane
   keeps Stop.
+  A session host started before this release doesn't know HUP; it gets
+  TERM, then KILL after the same grace, so no host restart is needed.
 
 ### Fixed
 
