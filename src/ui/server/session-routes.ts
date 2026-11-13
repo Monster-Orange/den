@@ -102,6 +102,7 @@ import type { AgentRecord, Override } from "../../shared/agents/records.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
+import { agentHubWork } from "./hub-delivery-service.js";
 import { auditActorOf, principalOf } from "./request-guard.js";
 import {
   acceptWebSocket,
@@ -313,6 +314,8 @@ export interface ListedSession {
   tokenRevoked?: boolean;
   /** An approval is pending (AG-6a; only when the host knows). */
   waiting?: boolean;
+  /** 0.4.40: the Hub comments it's working on or has waiting (its card line). */
+  hubWork?: import("../../shared/hub-delivery-loop.js").AgentHubWork;
   /**
    * Session rotation (den#4): why it rotates and its handoff.md. `ready`:
    * Relaunch from handoff is its action, not Resume.
@@ -335,6 +338,10 @@ export function listedSessions(
     Pick<SessionRouteDeps, "rotationPolicy" | "restartResume"> & {
       /** #57 (tests): the projects, by key; default the workspaces file. */
       workspaces?: () => Record<string, { name?: unknown }>;
+      /** 0.4.40: an agent's Hub comments (hub-delivery-service.ts). */
+      hubWork?: (
+        id: string,
+      ) => import("../../shared/hub-delivery-loop.js").AgentHubWork | null;
     },
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
@@ -464,6 +471,10 @@ export function listedSessions(
       ...(r.lastRotation ? { lastRotation: r.lastRotation } : {}),
       ...(revoked.has(rec.id) && s && !s.exited ? { tokenRevoked: true } : {}),
       ...(waiting.has(rec.id) && s && !s.exited ? { waiting: true } : {}),
+      ...(() => {
+        const w = (d.hubWork ?? agentHubWork)(rec.id);
+        return w ? { hubWork: w } : {};
+      })(),
       ...(() => {
         if (hubUrl === undefined || r.state !== "running") return {};
         const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), hubUrl);

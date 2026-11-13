@@ -215,6 +215,8 @@ export interface AgentRouteDeps {
     | null
   >;
   projectSync?: import("../../shared/hub-project-sync.js").ProjectSync;
+  /** 0.4.40 (tests): comment delivery, restarted on connect, stopped on disconnect. */
+  hubDeliveries?: { restart(): void; stop(): void };
   /** HUB-1.7: Connect to Hub's state (tests: fake Hub calls and store). */
   hubConnect?: import("./hub-connect.js").HubConnect;
   /** H5: Settings › Project setup › Hub project (tests swap Hub and the store). */
@@ -258,6 +260,12 @@ const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 /** Never a TTY: a web start's terminal is 80×24. */
 const NO_TTY = { isTTY: false } as NodeJS.WriteStream;
+
+/** 0.4.40: the server's comment delivery (hub-delivery-service.ts). */
+async function deliveriesService(): Promise<{ restart(): void; stop(): void }> {
+  const m = await import("./hub-delivery-service.js");
+  return { restart: m.restartDeliveries, stop: m.stopDeliveries };
+}
 
 export function webDeps(over: AgentsDeps = {}): AgentsResolved {
   return resolveAgentsDeps({
@@ -1819,6 +1827,9 @@ async function hubConnectRoute(
         deps.projectSync ??
         (await import("./hub-sync-service.js")).projectSync();
       sync.request();
+      // 0.4.40: comments reach agents over the new connection.
+      const dl = deps.hubDeliveries ?? (await deliveriesService());
+      dl.restart();
     }
     res.writeHead(r.ok ? 200 : 400, {
       "Content-Type": "text/html; charset=utf-8",
@@ -1864,6 +1875,7 @@ async function hubConnectRoute(
     return true;
   }
   const r = await hc.disconnect(body.force === true);
+  if (r.ok) (deps.hubDeliveries ?? (await deliveriesService())).stop();
   sendJson(res, r, r.ok ? 200 : 502);
   return true;
 }

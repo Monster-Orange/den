@@ -876,6 +876,8 @@
     "ag.sub": "{n} セッション · 承認待ち {w} · {scope}",
     "ag.all": "すべてのプロジェクト",
     "ag.waiting": "承認待ち",
+    "ag.hub.working": "Hub のコメント {n} 件に対応中",
+    "ag.hub.queued": "Hub のコメント {n} 件が待っています",
     "tx.asked": "依頼",
     "tx.result": "結果",
     "tx.error": "エラー",

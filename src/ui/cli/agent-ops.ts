@@ -4629,6 +4629,55 @@ export async function sendFirstInstruction(
   }
 }
 
+/**
+ * 0.4.40 comment delivery: whether agent `id` can take a Hub comment now.
+ * missing: no such agent here (or the server agent, which Hub never
+ * addresses); stopped: not running; busy: mid-turn, waiting on an approval,
+ * or Den can't tell; idle: waiting for its person. Never throws.
+ */
+export async function agentInputState(
+  d: AgentsResolved,
+  id: string,
+  waiting: ReadonlySet<string> = new Set(),
+): Promise<"missing" | "stopped" | "busy" | "idle"> {
+  try {
+    const rec = readRecord(d.stateDir(), id);
+    if (!rec || isServerScope(rec.workspace)) return "missing";
+    // Never starts a session host: none running means it isn't either.
+    const c = await d.connectExisting();
+    if (!c) return "stopped";
+    let live = false;
+    try {
+      const s = sessionOf(await c.list(), rec);
+      live = Boolean(s && !s.exited);
+    } finally {
+      c.close();
+    }
+    if (!live) return "stopped";
+    if (waiting.has(id)) return "busy";
+    return (await agentBusy(d, rec)) === false ? "idle" : "busy";
+  } catch {
+    return "busy";
+  }
+}
+
+/**
+ * 0.4.40: type a Hub comment into agent `id`'s session, once its output is
+ * quiet (as a first instruction is, AG-10.1). False when it isn't running.
+ */
+export async function typeIntoAgent(
+  d: AgentsResolved,
+  id: string,
+  text: string,
+): Promise<boolean> {
+  const rec = readRecord(d.stateDir(), id);
+  if (!rec) return false;
+  return sendFirstInstruction(d, rec.session.id, rec.runtime, text, {
+    quietMs: 1500,
+    maxMs: 10_000,
+  });
+}
+
 /** A plain session started from the page (AG-10.1 "Plain session"). */
 export interface PlainStarted {
   info: SessionInfo;

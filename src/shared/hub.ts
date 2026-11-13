@@ -75,6 +75,16 @@ export interface HubConfig {
    * checks whether its project list changed, to send it to Hub.
    */
   syncCheckSeconds: number;
+  /**
+   * 0.4.40 hub.delivery_heartbeat_seconds (default 15, at least 5): how
+   * often Den tells Hub an agent is still working on a comment.
+   */
+  deliveryHeartbeatSeconds: number;
+  /**
+   * 0.4.40 hub.delivery_poll_seconds (default 30, at least 5): how often
+   * Den reads Hub's list of comments when Hub has no stream.
+   */
+  deliveryPollSeconds: number;
 }
 
 type RawHub =
@@ -85,6 +95,8 @@ type RawHub =
       mcp_url?: unknown;
       inbox_on_stop?: unknown;
       sync_check_seconds?: unknown;
+      delivery_heartbeat_seconds?: unknown;
+      delivery_poll_seconds?: unknown;
     }
   | undefined;
 
@@ -172,6 +184,17 @@ export function readHubConfig(
     !(typeof scs === "number" && Number.isFinite(scs) && scs >= 5)
   )
     throw new Error("hub.sync_check_seconds must be a number, at least 5");
+  const secs = (v: unknown, key: string, dflt: number): number => {
+    if (v === undefined || v === null) return dflt;
+    if (typeof v === "number" && Number.isFinite(v) && v >= 5) return v;
+    throw new Error(`hub.${key} must be a number, at least 5`);
+  };
+  const beat = secs(
+    h.delivery_heartbeat_seconds,
+    "delivery_heartbeat_seconds",
+    15,
+  );
+  const poll = secs(h.delivery_poll_seconds, "delivery_poll_seconds", 30);
   return {
     url,
     tokenRef,
@@ -181,6 +204,8 @@ export function readHubConfig(
     allowTools: at !== false,
     inboxOnStop: ios === "off" ? "off" : "nudge",
     syncCheckSeconds: typeof scs === "number" ? scs : 30,
+    deliveryHeartbeatSeconds: beat,
+    deliveryPollSeconds: poll,
   };
 }
 

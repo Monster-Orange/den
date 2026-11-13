@@ -5873,6 +5873,22 @@ server.listen(PORT, BIND_HOST, () => {
     }
     m.startProjectSync(every);
   });
+  // 0.4.40: Hub comments reach this install's agents.
+  void import("./hub-delivery-service.js").then((m) => {
+    // Always registered: a later Connect starts it (no token: it waits).
+    let cfg: ReturnType<typeof readHubConfig> = null;
+    try {
+      cfg = readHubConfig();
+    } catch {
+      /* a bad hub block: doctor says so; the defaults here */
+    }
+    void m.startDeliveries({
+      heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
+      pollSeconds: cfg?.deliveryPollSeconds ?? 30,
+      waiting: waitingAgentIds,
+      log: (l) => serverLog(`  ${l}`, "warn"),
+    });
+  });
 });
 
 /** The start banner: the install's address (D80), never localhost. */

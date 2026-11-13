@@ -601,7 +601,32 @@ function stoppedHtml(r, wsTag = false) {
     `</button>` +
     `<span class="agacts">${first}${more}</span>` +
     (callout ? `<div class="agcallout">${callout}</div>` : "") +
+    hubWorkHtml(r) +
     `</div>`
+  );
+}
+
+/**
+ * 0.4.40: "Working on N Hub comments · <artifact>" (its turn has them), or
+ * "N Hub comments wait for it" (stopped, or mid-turn); the artifact links
+ * to Hub. Under the row (never inside its button).
+ */
+export function hubWorkHtml(r, tr = t) {
+  const w = r?.kind === "agent" ? r.hubWork : null;
+  if (!w || !(w.working > 0 || w.queued > 0)) return "";
+  const n = w.working > 0 ? w.working : w.queued;
+  const key = w.working > 0 ? "ag.hub.working" : "ag.hub.queued";
+  const url =
+    typeof w.url === "string" && /^https?:\/\//.test(w.url) ? w.url : "";
+  const art = w.artifact
+    ? url
+      ? ` · <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(w.artifact)}</a>`
+      : ` · ${esc(w.artifact)}`
+    : "";
+  return (
+    `<div class="aghub" data-hubwork="${w.working > 0 ? "working" : "queued"}">` +
+    `<span class="den-dot ${w.working > 0 ? "ok" : "warn"}" aria-hidden="true"></span> ` +
+    `${esc(tr(key, { n }))}${art}</div>`
   );
 }
 
@@ -657,11 +682,13 @@ function rowHtml(r) {
   // D32: the helpers it started in its own session, under it.
   // D34: only under the agent in front.
   const helpers = r.kind === "agent" ? helperRowsHtml(r, r.id === st.cur) : "";
-  if (!callout) return button + helpers;
+  const hub = hubWorkHtml(r);
+  if (!callout) return button + hub + helpers;
   return (
     `<div class="agst" data-agent="${esc(r.agent)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}" data-rotation="${rot}">` +
     button +
     `<div class="agacts">${callout}</div>` +
+    hub +
     `</div>` +
     helpers
   );

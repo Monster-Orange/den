@@ -55,6 +55,8 @@ describe("readHubConfig", () => {
       mcpUrl: "https://mine.example.test/mcp",
       inboxOnStop: "nudge",
       syncCheckSeconds: 30,
+      deliveryHeartbeatSeconds: 15,
+      deliveryPollSeconds: 30,
     });
   });
 
@@ -166,6 +168,35 @@ describe("hub.inbox_on_stop (D41)", () => {
     expect(() =>
       readHubConfig({ hub: { url, sync_check_seconds: 1 } }, {}, noSecrets),
     ).toThrow(/hub\.sync_check_seconds must be a number, at least 5/);
+  });
+
+  it("0.4.40 delivery heartbeat (15) and poll (30): settings, at least 5", () => {
+    const c = readHubConfig({ hub: { url } }, {}, noSecrets)!;
+    expect([c.deliveryHeartbeatSeconds, c.deliveryPollSeconds]).toEqual([
+      15, 30,
+    ]);
+    const d = readHubConfig(
+      { hub: { url } },
+      { hub: { delivery_heartbeat_seconds: 20, delivery_poll_seconds: 60 } },
+      noSecrets,
+    )!;
+    expect([d.deliveryHeartbeatSeconds, d.deliveryPollSeconds]).toEqual([
+      20, 60,
+    ]);
+    expect(() =>
+      readHubConfig(
+        { hub: { url, delivery_heartbeat_seconds: 2 } },
+        {},
+        noSecrets,
+      ),
+    ).toThrow(/hub\.delivery_heartbeat_seconds must be a number, at least 5/);
+    expect(() =>
+      readHubConfig(
+        { hub: { url, delivery_poll_seconds: "x" } },
+        {},
+        noSecrets,
+      ),
+    ).toThrow(/hub\.delivery_poll_seconds must be a number, at least 5/);
   });
 });
 
