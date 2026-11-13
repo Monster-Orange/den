@@ -272,6 +272,11 @@ export interface HubWhoami {
   role?: string;
   /** The person who connected it. */
   login?: string;
+  /**
+   * 0.4.40: that person's Hub id (whoami's `person.id`), so Den can tell a
+   * comment from the agent's own person; Den falls back to the login.
+   */
+  personId?: string;
   company?: { slug?: string; name?: string; url?: string };
   /** Hub's MCP endpoint; opaque. */
   mcpUrl?: string;
@@ -413,6 +418,9 @@ export async function hubWhoami(
     ...(str(b.install) ? { install: str(b.install)! } : {}),
     ...(str(b.role) ? { role: str(b.role)! } : {}),
     ...(str(b.login) ? { login: str(b.login)! } : {}),
+    ...(str((b.person as Record<string, unknown> | undefined)?.id)
+      ? { personId: str((b.person as Record<string, unknown>).id)! }
+      : {}),
     ...(Object.keys(company).length ? { company } : {}),
     ...(str(b.mcp_url) ? { mcpUrl: str(b.mcp_url)! } : {}),
     ...(typeof b.unread === "number" &&
@@ -489,6 +497,105 @@ export async function hubGithubCoverage(
     },
     opts,
   );
+}
+
+/**
+ * 0.4.40: deliveries after `after` (uuidv7, time-ordered), at most 50:
+ * GET <url>/api/installs/self/deliveries, the stream's fallback.
+ */
+export async function hubListDeliveries(
+  url: string,
+  token: string,
+  after: string | null,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<unknown[]> {
+  const q = new URLSearchParams({ limit: "50" });
+  if (after) q.set("after", after);
+  const b = await hubCall(
+    `${url}/api/installs/self/deliveries?${q}`,
+    {
+      method: "GET",
+      headers: { ...bearer(token), Accept: "application/json" },
+    },
+    { timeoutMs: 10_000, ...opts },
+  );
+  const list = b.deliveries ?? b.items;
+  return Array.isArray(list) ? list.slice(0, 50) : [];
+}
+
+/** 0.4.40: a delivery's state: POST <url>/api/installs/self/deliveries/<id>/ack. */
+export async function hubAckDelivery(
+  url: string,
+  token: string,
+  id: string,
+  body: Record<string, unknown>,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<Record<string, unknown>> {
+  return hubCall(
+    `${url}/api/installs/self/deliveries/${encodeURIComponent(id)}/ack`,
+    {
+      method: "POST",
+      headers: {
+        ...bearer(token),
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    },
+    opts,
+  );
+}
+
+/**
+ * 0.4.40: open the delivery stream (SSE), from Last-Event-ID when given.
+ * The response, or a HubCallError (401 rejected, 403 forbidden, 404 and
+ * other 4xx refused: this Hub has no stream yet). No timeout on the body:
+ * the caller aborts with `signal`.
+ */
+export async function hubOpenDeliveryStream(
+  url: string,
+  token: string,
+  lastId: string | null,
+  opts: { signal?: AbortSignal; fetch?: FetchFn; connectMs?: number } = {},
+): Promise<Response> {
+  const ctl = new AbortController();
+  const stop = () => ctl.abort();
+  opts.signal?.addEventListener("abort", stop, { once: true });
+  const t = setTimeout(stop, opts.connectMs ?? 10_000);
+  let res: Response;
+  try {
+    res = await (opts.fetch ?? fetch)(
+      `${url}/api/installs/self/deliveries/stream`,
+      {
+        method: "GET",
+        headers: {
+          ...bearer(token),
+          Accept: "text/event-stream",
+          ...(lastId ? { "Last-Event-ID": lastId } : {}),
+        },
+        redirect: "error",
+        signal: ctl.signal,
+      },
+    );
+  } catch (e) {
+    throw new HubCallError(
+      "unreachable",
+      `Hub could not be reached: ${(e as Error)?.message ?? e}`,
+    );
+  } finally {
+    clearTimeout(t);
+  }
+  if (res.status === 401)
+    throw new HubCallError("rejected", "Hub did not accept the token");
+  if (res.status === 403)
+    throw new HubCallError("forbidden", "Hub refused the delivery stream");
+  if (!res.ok || !res.body)
+    throw new HubCallError(
+      res.status >= 500 ? "unreachable" : "refused",
+      `Hub answered ${res.status} for the delivery stream`,
+      String(res.status),
+    );
+  return res;
 }
 
 /** What POST /connect/token gives: the token, and where Hub is. */
