@@ -102,7 +102,10 @@ That is `examples/demo/demo-api/.den.yml`; the other demo repos are in
   each service, with an optional CA of its own.
 - **Test pillars.** `smoke`, `browser` (synthetic Playwright), `api`,
   `journeys` (agent-driven), `perf` (k6), `security` (OWASP ZAP against hosts
-  you own) and `suites` (a repo's own commands).
+  you own) and `suites` (a repo's own commands). A `suites` run where every
+  suite was skipped, or none matched, says "Nothing ran" and is not a pass:
+  the CLI exits 3, the page shows it, and MCP's `run_tests` returns an error
+  with `outcome: "nothing ran"`.
 - **Releases.** A release view over the repos and deploy workflows your config
   lists.
 - **Agents and sessions.** `sessions start` runs a terminal that outlives the

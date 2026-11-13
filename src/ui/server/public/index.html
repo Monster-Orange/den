@@ -96,6 +96,9 @@
       .dot.failed {
         background: var(--bad);
       }
+      .dot.nothing-ran {
+        background: var(--warn);
+      }
       @keyframes pulse {
         0%,
         100% {
@@ -1856,13 +1859,22 @@
             } else if (msg.type === "done") {
               const ok = msg.exitCode === 0;
               const dur = fmtDuration(msg.duration);
+              // Every suite skipped: nothing ran, never a pass (0.4.45).
+              const none = !!msg.nothingRan;
+              const tr = (k, v) => window.denShell?.t?.(k, v) ?? k;
               testAppendLine(
-                `\n${ok ? "\u2713 Passed" : "\u2717 Failed"} in ${dur}\n`,
-                ok ? "done-ok" : "done-fail",
+                none
+                  ? `\n${tr("run.nothingRan", { d: dur })}\n`
+                  : `\n${ok ? "\u2713 Passed" : "\u2717 Failed"} in ${dur}\n`,
+                none ? "done-none" : ok ? "done-ok" : "done-fail",
               );
               setRunStatus(
-                ok ? "passed" : "failed",
-                ok ? `passed (${dur})` : `failed (${dur})`,
+                none ? "nothing-ran" : ok ? "passed" : "failed",
+                none
+                  ? tr("run.nothingRanShort", { d: dur })
+                  : ok
+                    ? `passed (${dur})`
+                    : `failed (${dur})`,
               );
               runs().finish(TEST_RUN, { ok });
               document.getElementById("run-btn").disabled = false;

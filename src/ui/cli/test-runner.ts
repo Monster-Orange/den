@@ -25,6 +25,7 @@ import {
   type EngineCommand,
 } from "../../shared/engine.js";
 import { product } from "../../shared/product.js";
+import { nothingRan } from "../../shared/run-outcome.js";
 
 /** Remediation when test sessions cannot be created (no vendor assumed). */
 const SETUP_SECRETS_HINT = `  make ${product().cli}-setup-secrets  - Set up the selected secrets.provider`;
@@ -72,6 +73,8 @@ export interface TestRunResult {
   success: boolean;
   exitCode: number;
   duration: number;
+  /** Every suite was skipped: not a pass, and not a test that failed. */
+  nothingRan?: boolean;
 }
 
 export class TestRunner {
@@ -100,7 +103,14 @@ export class TestRunner {
 
     const duration = Date.now() - startTime;
 
-    if (result.success) {
+    const none = nothingRan(options.pillar, result.exitCode);
+    if (none) {
+      console.log(
+        chalk.yellow(
+          `\n– Nothing ran in ${this.formatDuration(duration)}. No test passed or failed.\n`,
+        ),
+      );
+    } else if (result.success) {
       console.log(
         chalk.green(
           `\n✅ Tests completed successfully in ${this.formatDuration(duration)}\n`,
@@ -114,6 +124,7 @@ export class TestRunner {
 
     return {
       ...result,
+      ...(none ? { success: false, nothingRan: true } : {}),
       duration,
     };
   }

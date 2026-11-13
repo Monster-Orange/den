@@ -12,6 +12,12 @@ config and manifest changes a distribution must make to move to it under
   ask which mode it runs in, and the id is no longer read as a mode. A
   refusal names what it guards (an agent's or a project's permission
   mode, whether an agent resumes after a restart), not "rotation".
+- A test run where every suite was skipped no longer reports success. It
+  says "Nothing ran", a result of its own that is not a pass, in the CLI
+  (exit 3, where it used to print "Tests completed successfully" and exit
+  0), on the page, and in MCP's `run_tests` (an error with
+  `outcome: "nothing ran"`). The CLI's `run` now also exits non-zero when
+  tests fail.
 
 ## [0.4.44] - 2026-11-13
 

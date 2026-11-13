@@ -1140,7 +1140,13 @@ const ACTION_TOOLS: Record<McpAction, DenTool> = {
         },
         { method: "GET", maxLines: 20_000, timeoutMs: 60 * 60_000 },
       );
-      return actionResult(r, 300, { pillar, env });
+      // Every suite skipped is its own result, never a pass (0.4.45).
+      const none = r.events.some((e) => e.type === "done" && e.nothingRan);
+      return actionResult(r, 300, {
+        pillar,
+        env,
+        ...(none ? { outcome: "nothing ran", nothingRan: true } : {}),
+      });
     },
   },
   agent_resume: agentResumeTool,

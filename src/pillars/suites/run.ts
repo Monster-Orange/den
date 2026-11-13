@@ -15,6 +15,7 @@ import { listServicesWithManifests } from "../../shared/manifest/workspace-manif
 import type { Environment, TestSuiteConfig } from "../../shared/types/index.js";
 
 import { product } from "../../shared/product.js";
+import { NOTHING_RAN_EXIT } from "../../shared/run-outcome.js";
 export interface PlannedSuite {
   id: string;
   repo: string;
@@ -111,11 +112,16 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 
   const { run, skipped } = planSuites(listServicesWithManifests(), env, only);
   for (const s of skipped) console.log(`– ${s.id}: skipped (${s.why})`);
+  // Nothing ran is its own result, never a pass (0.4.45).
   if (run.length === 0) {
     console.log(
-      `No repo suite to run on ${env}. Declare them under tests: in ${product().manifestYml}.`,
+      skipped.length
+        ? `\nNothing ran: every suite was skipped on ${env}.`
+        : only.length
+          ? `\nNothing ran: no suite matches ${only.join(", ")}.`
+          : `\nNothing ran: no repo suite to run on ${env}. Declare them under tests: in ${product().manifestYml}.`,
     );
-    return skipped.length && only.length ? 2 : 0;
+    return NOTHING_RAN_EXIT;
   }
   const results: Array<{ id: string; code: number; ms: number }> = [];
   for (const s of run) {

@@ -311,6 +311,9 @@
     "runs.allOn": "Showing every run; press for {ws}'s only",
     "dock.done": "done in {s}s",
     "dock.failed": "failed in {s}s",
+    "run.nothingRan":
+      "– Nothing ran in {d}: every suite was skipped. No test passed or failed.",
+    "run.nothingRanShort": "nothing ran ({d})",
     "dock.close": "Hide runs",
     "dock.show": "Show runs",
     "dock.copy": "Copy",
@@ -5985,7 +5988,7 @@
     // The panes' line classes, kept.
     ".den-dock pre .cmd { color: var(--accent-text); }",
     ".den-dock pre .err, .den-dock pre .done-fail { color: var(--bad); }",
-    ".den-dock pre .warn { color: var(--warn); }",
+    ".den-dock pre .warn, .den-dock pre .done-none { color: var(--warn); }",
     ".den-dock pre .ok, .den-dock pre .done-ok { color: var(--ok); }",
     ".den-dock pre .phase { color: var(--text); font-weight: 600; }",
     ".den-dock-grip { display: none; position: absolute; left: 0; right: 0; top: -3px; height: 6px;",

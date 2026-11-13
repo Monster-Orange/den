@@ -1319,13 +1319,15 @@ class DenCLI {
 
       // Run tests
       try {
-        await testRunner.runTests({
+        const r = await testRunner.runTests({
           pillar,
           environment,
           modules,
           baseApiUrl: resolveCliBaseApiUrl(baseApiUrl),
           useLocalCheckout,
         });
+        // A failed run, or one where nothing ran, is not a success (0.4.45).
+        if (!r.success) process.exitCode = r.exitCode || 1;
       } catch (error) {
         console.error(
           chalk.red(
