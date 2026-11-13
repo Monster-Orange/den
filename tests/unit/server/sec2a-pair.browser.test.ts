@@ -399,7 +399,10 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
     const row = s.locator(`.set-waiting[data-code="${code}"]`);
     await row.waitFor();
     expect(await row.textContent()).toMatch(/Chrome on \w+/);
-    await row.locator("[data-approve]").click();
+    // The shell's own "a device is waiting" dialog can open over the page
+    // at the same moment (a CI flake): this checks Settings' Approve, so the
+    // click goes to it directly.
+    await row.locator("[data-approve]").dispatchEvent("click");
     await p.waitForFunction(
       () => !document.querySelector("#den-signin"),
       null,

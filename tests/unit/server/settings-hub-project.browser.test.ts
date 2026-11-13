@@ -194,6 +194,23 @@ describe("Settings › Project setup › Hub project (H5)", () => {
     await p.context().close();
   }, 60_000);
 
+  it("linked, the only project: no 'no Hub projects yet' (the 0.4.39 gate)", async () => {
+    if (skip()) return;
+    const { p } = await page(() => ({
+      ok: true,
+      project: "north",
+      hub: BACK,
+      connected: true,
+      suggestions: [],
+      projects: [BACK],
+    }));
+    const text = await rowText(p);
+    expect(text).toContain("Linked to Hub project");
+    expect(text).not.toContain("no Hub projects yet");
+    expect(text).toContain("no other Hub projects to switch to");
+    await p.context().close();
+  }, 60_000);
+
   it("in Spanish, the row is Spanish", async () => {
     if (skip()) return;
     const { p } = await page(

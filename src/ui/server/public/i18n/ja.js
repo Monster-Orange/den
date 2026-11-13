@@ -456,6 +456,7 @@
     "hubp.change": "変更",
     "hubp.unlink": "リンクを解除",
     "hubp.none": "あなたの会社にはまだ Hub のプロジェクトがありません。",
+    "hubp.noOther": "切り替えられる Hub のプロジェクトはほかにありません。",
     "hubp.failed": "Den は Hub のプロジェクトを取得できませんでした。",
     "hubp.cantSee": "Den Hub は {repo} を参照できません。",
     "hubp.giveAccess": "{org} へのアクセスを Den Hub に許可",

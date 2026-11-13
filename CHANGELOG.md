@@ -4,7 +4,38 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.39] - unreleased
+## [0.4.40] - unreleased
+
+### Added
+
+- **Hub comments reach the agent.** A comment on an artifact goes to
+  the artifact's agent, and so does an "@agent" mention. Den reads Hub's
+  stream of comments for this install (its list every
+  `hub.delivery_poll_seconds`, default 30, when the stream is down) and
+  types each one into the agent's session when it waits for its person,
+  never mid-turn. A stopped agent's comments wait and go in when it
+  runs. Den writes the first line itself, from Hub's verified author:
+  `from: <name> (your person | someone else in <company> | an agent ·
+  verified by Hub) · via: Hub comment <url> · at <time>`. Lines in the
+  body that look like it are dropped, and a forwarded comment is quoted.
+  The agent acts on a comment only when that line says it is from its
+  own person. Hub sees each state: queued, delivered, working (again
+  every `hub.delivery_heartbeat_seconds`, default 15), done, or failed.
+  The agent's card says "Working on N Hub comments · <artifact>". Needs
+  Hub's deliveries routes and whoami's `person.id`.
+- **Close shell.** A shell's pane on the Agents page has Close shell. It
+  ends the shell as closing a terminal does (HUP, then KILL after
+  `sessions.close_grace_seconds`, default 5) and forgets it, so closed
+  shells never count toward `sessions.max_concurrent`. An agent's pane
+  keeps Stop.
+
+### Fixed
+
+- `sessions kill` with no `--signal` ended nothing in an interactive
+  shell, which ignores TERM. It now sends HUP, then KILL after
+  `--grace` seconds. `--signal` takes HUP too.
+
+## [0.4.39] - 2026-11-13
 
 ### Added
 
@@ -12,7 +43,7 @@ config and manifest changes a distribution must make to move to it under
   full project list (each project's key, name, repos, Hub project and
   agents) at start, on connect, after a link, and whenever it changes:
   checked every `hub.sync_check_seconds` (default 30, at least 5), retried
-  with backoff, never blocking the change. The server agent's scope is
+  with backoff up to 5 minutes, never blocking the change. The server agent's scope is
   never in it. Needs Hub's `PUT /api/installs/self/projects`.
 - **Den Hub's GitHub access.** When Hub says Den Hub's GitHub App can't
   see a project's repo, Project setup › Hub project and the project's
@@ -28,7 +59,9 @@ config and manifest changes a distribution must make to move to it under
   project's folder, in the same pane agents use, signed in like the rest
   of the page; agents never get it. Each project's header has Terminal
   here. Open several; a reload keeps them, and a shell outlives a Den
-  restart.
+  restart. A second Terminal adds a tab next to the ones open, even from
+  another project's Terminal here. The rail's Terminal opens in the
+  project in view.
 - **Link a project to its Hub project (H5).** Each project records the
   Hub project its agents file their Hub work in (docs, mocks, comments),
   as `hub_project: {id, slug, name}` in `config/local/workspaces.yml`.
@@ -66,8 +99,11 @@ config and manifest changes a distribution must make to move to it under
   come back. The server answers the same action on one agent, while the
   first runs, with the first one's result.
 - **A second Allow on an approval gets the first one's result** (200),
-  instead of 409 "already decided"; it still runs once. A different
-  decision is still refused.
+  instead of 409 "already decided"; it still runs once, with one audit
+  line. A different decision is still refused.
+- Project setup › Hub project: a linked project with nothing else to
+  switch to says "Your company has no other Hub projects to switch to",
+  not "no Hub projects yet".
 - **`agents restart` (and `agents persona`) check the agent first.** An id
   that isn't there says so at once, with the closest agent in that
   project ("did you mean …?"), instead of waiting for a turn to end.

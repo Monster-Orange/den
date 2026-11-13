@@ -467,6 +467,7 @@
     "hubp.change": "Cambiar",
     "hubp.unlink": "Desvincular",
     "hubp.none": "Tu empresa aún no tiene proyectos en Hub.",
+    "hubp.noOther": "Tu empresa no tiene otros proyectos en Hub a los que cambiar.",
     "hubp.failed": "Den no pudo obtener los proyectos de Hub.",
     "hubp.cantSee": "Den Hub no puede ver {repo}.",
     "hubp.giveAccess": "Dar acceso a Den Hub a {org}",
