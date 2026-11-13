@@ -784,8 +784,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         ).checks,
       );
       if (st.configured && st.connected) {
-        const { githubCoverage } =
-          await import("../server/hub-sync-service.js");
+        const { githubCoverage } = await import("../../shared/hub-github.js");
         r.checks.push(...hubGithubLines(await githubCoverage()).checks);
       }
     }
@@ -825,7 +824,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     ).lines)
       console.log(l);
     if (st.configured && st.connected) {
-      const { githubCoverage } = await import("../server/hub-sync-service.js");
+      const { githubCoverage } = await import("../../shared/hub-github.js");
       for (const l of hubGithubLines(await githubCoverage()).lines)
         console.log(l);
     }

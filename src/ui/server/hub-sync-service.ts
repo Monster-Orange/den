@@ -8,8 +8,6 @@ import {
   ProjectSync,
   projectList,
   syncAgents,
-  readCoverage,
-  type OrgCoverage,
 } from "../../shared/hub-project-sync.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import { projectRepos } from "../../shared/project-repos.js";
@@ -56,20 +54,5 @@ export function startProjectSync(checkSeconds: number): void {
   setInterval(() => s.check(), ms).unref();
 }
 
-/** How much of each org Den Hub can read, live; null when Hub isn't connected. */
-export async function githubCoverage(): Promise<
-  { orgs: OrgCoverage[] } | { error: string } | null
-> {
-  const at = await hubAndToken();
-  if (!at) return null;
-  const hub = await import("../../shared/hub.js");
-  try {
-    return {
-      orgs: readCoverage(await hub.hubGithubCoverage(at.url, at.token)),
-    };
-  } catch (e) {
-    return {
-      error: hub.scrubToken(String((e as Error)?.message ?? e), at.token),
-    };
-  }
-}
+/** How much of each org Den Hub can read, live (shared/hub-github.ts). */
+export { githubCoverage } from "../../shared/hub-github.js";

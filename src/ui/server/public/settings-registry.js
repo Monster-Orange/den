@@ -1910,6 +1910,11 @@ let hubBackFromInstall = (() => {
 let hubResync = null;
 
 function renderHubGithub(host, ctx) {
+  // A config Den can't read: no Hub to ask (its routes answer 422).
+  if (ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
   const t = (k, v) => ctx.shell.t(k, v);
   const draw = () =>
     ctx.shell
