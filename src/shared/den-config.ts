@@ -34,6 +34,10 @@ import {
   type RolesConfig,
 } from "./agents/roles.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
+import {
+  gitSigningBlock,
+  type AgentGitSettings,
+} from "./agents/git-signing.js";
 
 import { product } from "./product.js";
 const ROOT = getDistRoot();
@@ -1117,6 +1121,16 @@ export const AGENTS_RESERVED_KEYS = [
   "claude_ai_connectors",
 ];
 
+/**
+ * `agents.git` is the git settings when it isn't an agent's block: any
+ * key other than grants (signing_key, or a typo gitSigningBlock names).
+ */
+function isGitSettings(block: unknown): boolean {
+  return (
+    isMapping(block) && Object.keys(block).some((k) => k !== "grants")
+  );
+}
+
 /** One agent's own block, `agents.<id>`. */
 export interface AgentGrantsConfig {
   /** Workspaces beyond its own that its MCP serves. */
@@ -1145,6 +1159,8 @@ export interface ResolvedAgentsConfig {
   rotate?: RotateSettings;
   /** D28: agents.rotate as written, the org scope. */
   rotateOrg?: OrgRotate;
+  /** agents.git: the key agents Den starts sign commits with (unset: none). */
+  git?: AgentGitSettings;
   /** agents.helpers (D32) with its defaults. */
   helpers?: HelperSettings;
   /** agents.turn_read_max_mb (D39) in bytes; unset: the default. */
@@ -1320,6 +1336,10 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     })(),
   };
   out.helpers = helpersBlock(raw.helpers);
+  // agents.git, unless it is an agent called git (a block with grants).
+  const gitBlock = isGitSettings(raw.git) ? raw.git : undefined;
+  out.git = gitSigningBlock(gitBlock);
+  if (!out.git) delete out.git;
   out.uploads = uploadsBlock(raw.uploads);
   out.files = filesBlock(raw.files);
   out.subagents = subagentsBlock(raw.subagents, raw.claude_ai_connectors);
@@ -1370,6 +1390,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
   }
   for (const [id, block] of Object.entries(raw)) {
     if (AGENTS_RESERVED_KEYS.includes(id)) continue;
+    if (id === "git" && isGitSettings(block)) continue;
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(

@@ -91,13 +91,15 @@ export function agentSessionEnv(
   actorTokenFile?: string,
   /** Added to its PATH: the directory of the CLI it runs. */
   extraDirs: readonly string[] = [],
+  /** The distribution's env for its agents: agents.git's GIT_CONFIG_*. */
+  declared: Record<string, string> = {},
 ): Record<string, string> {
   return buildSessionEnv({
     caller: withSessionPath(caller, extraDirs),
     passthrough: rt.envPassthrough,
     launch,
-    // The seam for a persona's or runtime's declared env: none yet.
-    extra: {},
+    // The distribution's declared env (agents.git's GIT_CONFIG_*).
+    extra: declared,
     den: {
       [AGENT_ACTOR_ENV]: `agent:${agentId}`,
       ...(actorTokenFile ? { [ACTOR_TOKEN_FILE_ENV]: actorTokenFile } : {}),

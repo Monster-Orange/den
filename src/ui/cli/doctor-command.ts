@@ -24,6 +24,7 @@
 import { readWebUrl } from "../../shared/web-url.js";
 import chalk from "chalk";
 import {
+  readAgentsConfig,
   readDenConfig,
   readUserConfig,
   readMcpConfig,
@@ -31,6 +32,12 @@ import {
   type DenConfig,
 } from "../../shared/den-config.js";
 import type { ConfigError } from "../../shared/config-error.js";
+import {
+  checkAgentSigning,
+  signingKeyAddLine,
+  type AgentGitSettings,
+  type SigningCheck,
+} from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
@@ -707,6 +714,49 @@ export function addressLines(
 }
 
 /**
+ * agents.git.signing_key: whether agents' commits sign and verify with the
+ * key (a commit in a temp repo, checkAgentSigning), and the line that adds
+ * its .pub to GitHub as a signing key. Nothing when unset.
+ */
+export function signingLines(
+  title: string,
+  readGit: () => AgentGitSettings | undefined = () => {
+    try {
+      return readAgentsConfig().git;
+    } catch {
+      // A bad agents: block is configLines' row.
+      return undefined;
+    }
+  },
+  check: (g: AgentGitSettings) => SigningCheck = (g) => checkAgentSigning(g),
+): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
+  const git = readGit();
+  if (!git) return { lines: [], problem: false, checks: [] };
+  const r = check(git);
+  const add = signingKeyAddLine(git);
+  const lines = [
+    "",
+    `${title} doctor: agents' commit signing`,
+    "",
+    `  signing  ${r.ok ? "✓" : "✗"}  ${r.detail}`,
+    `  signing  ℹ  GitHub shows them Verified once its .pub is a signing key there: ${add}`,
+    "             (gh needs the admin:ssh_signing_key scope: gh auth refresh -s admin:ssh_signing_key)",
+  ];
+  return {
+    lines,
+    problem: !r.ok,
+    checks: [
+      {
+        id: "agents:signing",
+        status: r.ok ? "ok" : "fail",
+        detail: r.detail,
+        fix: add,
+      },
+    ],
+  };
+}
+
+/**
  * `agents:` and `sessions:` (0.4.29): a bad key there stops only the agent
  * and session commands, so doctor names it, with its file and key path,
  * and carries on with every other row. Nothing is shown when both are fine.
@@ -837,6 +887,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const cfg = configLines(readBrand().name);
     r.checks.push(...cfg.checks);
     if (cfg.problem) r.ok = false;
+    const sign = signingLines(readBrand().name);
+    r.checks.push(...sign.checks);
+    if (sign.problem) r.ok = false;
     const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
@@ -877,6 +930,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   }
   const cfg = configLines(readBrand().name);
   for (const l of cfg.lines) console.log(l);
+  const sign = signingLines(readBrand().name);
+  for (const l of sign.lines) console.log(l);
   const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
   for (const l of addr.lines) console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
@@ -891,6 +946,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       held.problem ||
       ownerProblem ||
       cfg.problem ||
+      sign.problem ||
       addr.problem
       ? 1
       : 0;

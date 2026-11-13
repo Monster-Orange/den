@@ -173,6 +173,7 @@ import {
   type LaunchOutput,
   type Runtime,
 } from "../../shared/agents/runtimes.js";
+import { agentGitEnv } from "../../shared/agents/git-signing.js";
 import type {
   RuntimeDetect,
   RuntimeModel,
@@ -2192,6 +2193,8 @@ async function startSession(
             launch.rec.id,
             tokenFile,
             launch.binDir ? [launch.binDir] : [],
+            // agents.git.signing_key: its commits signed with that key.
+            agentGitEnv(d.agentsConfig().git),
           ),
           cols: (tty && d.stdout.columns) || 80,
           rows: (tty && d.stdout.rows) || 24,

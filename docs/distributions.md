@@ -3685,7 +3685,9 @@ An agent's environment starts empty and gets, in order:
 2. the variables its runtime names (`envPassthrough`; den-claude:
    `CLAUDE_CONFIG_DIR`);
 3. the runtime's launch env;
-4. `DEN_AGENT=agent:<id>` and `DEN_ACTOR_TOKEN_FILE` (below).
+4. the distribution's: `GIT_CONFIG_*` when `agents.git.signing_key` is set
+   ([Agents' commit signing](#agents-commit-signing));
+5. `DEN_AGENT=agent:<id>` and `DEN_ACTOR_TOKEN_FILE` (below).
 
 Then every runtime's `scrubEnv` is removed (den-claude: `CLAUDECODE` and
 `CLAUDE_CODE_*`), whatever put it there. Nothing else of yours reaches it:
@@ -3703,8 +3705,42 @@ the runtime's CLI). The probe prints key names and whether each is
 credential-shaped, never values. Doctor exits 1, one row per finding, when a
 runtime's `scrubEnv` name or a credential-shaped variable reaches either.
 Without the PTY module it says the probe is unavailable; that is not a
-failure. Plain `doctor` never spawns anything; when agents are configured it
+failure. Plain `doctor` never starts a session; when agents are configured it
 adds a note to run `<cli> doctor --probe`.
+
+### Agents' commit signing
+
+Agents Den starts can sign their git commits with an SSH key of their own:
+
+```yaml
+agents:
+  git:
+    signing_key: ~/.ssh/den_agents   # absolute, or ~/; no passphrase
+```
+
+Each agent gets it as git's own `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` /
+`GIT_CONFIG_VALUE_n` in its environment: `gpg.format ssh`,
+`user.signingkey <the key>`, `commit.gpgsign true`. These sit above every
+config file and write none, so your `~/.gitconfig` (and your own GPG or SSH
+signing) is never changed, and nothing you run yourself signs with the
+agents' key. An agent can't type a passphrase, so make the key without one:
+
+```sh
+ssh-keygen -t ed25519 -N "" -C "Den agents" -f ~/.ssh/den_agents
+```
+
+`<cli> doctor` proves it: a commit in a temp repo, signed with the key and
+checked with `git verify-commit` against its `.pub` (a ✗ row, exit 1, when
+it doesn't verify, naming the step). It also prints the line that makes
+GitHub show the agents' commits as Verified, once:
+
+```sh
+gh ssh-key add ~/.ssh/den_agents.pub --type signing --title "Den agents"
+```
+
+`gh` needs the `admin:ssh_signing_key` scope for it
+(`gh auth refresh -s admin:ssh_signing_key`). An agent called `git` (an
+`agents.git` block with only `grants`) is still an agent.
 
 ### An agent's token
 
