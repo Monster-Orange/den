@@ -737,6 +737,12 @@ export interface WorkspaceConfig {
    * the blueprint's `stack_namespace`. See stacks/namespace.ts.
    */
   stack_namespace?: string;
+  /**
+   * H5: the Hub project this project works on, as the person linked it
+   * (`hub link`, Settings › Project setup): {id, slug, name}. Den sends the
+   * id on every Hub call (X-Den-Project). See shared/hub-project-link.ts.
+   */
+  hub_project?: unknown;
 }
 
 export interface WorkspacesFile {

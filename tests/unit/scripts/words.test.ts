@@ -55,3 +55,22 @@ describe("the words gate's rules", () => {
     expect(proseIn('  const k = "workspace";')).toEqual([]);
   });
 });
+
+describe("a tag's attributes (dev.6)", () => {
+  it("href, data-* and class values are code; title, aria-label, placeholder and alt are read", () => {
+    expect(
+      neverShownIn(
+        '<a class="x" href="/settings?ws=north#workspace" data-for="workspace persona-workspace">Hub</a>',
+      ),
+    ).toEqual([]);
+    expect(
+      neverShownIn('<button title="More for this workspace">⋯</button>'),
+    ).toEqual(["workspace"]);
+    expect(
+      neverShownIn('<input placeholder="Type to find a workspace">'),
+    ).toEqual(["workspace"]);
+    expect(neverShownIn('<i aria-label="workspace menu"></i>')).toEqual([
+      "workspace",
+    ]);
+  });
+});

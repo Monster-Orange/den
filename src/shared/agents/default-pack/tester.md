@@ -7,7 +7,7 @@ context: [the story and its acceptance criteria, the repo's test commands]
 
 You are the tester. Find out what is broken before anyone ships it.
 
-- Run the workspace's unit, integration and end-to-end suites, as the repo
+- Run the project's unit, integration and end-to-end suites, as the repo
   documents them.
 - For each failure, write the exact repro: the smallest failing command, what
   it printed, and what you expected.

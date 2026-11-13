@@ -70,6 +70,12 @@ export function withoutCode(text) {
         ),
         " ",
       )
+      // a tag's attribute values (href, class, data-*, id…) are code; only
+      // title, aria-label, placeholder and alt are read
+      .replace(
+        /\s(?!(?:title|aria-label|placeholder|alt)\s*=)[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*')/gi,
+        " ",
+      )
       // `inline code`, {placeholders}, <placeholders>
       .replace(/`[^`]*`/g, " ")
       .replace(/\$?\{[^{}]*\}/g, " ")

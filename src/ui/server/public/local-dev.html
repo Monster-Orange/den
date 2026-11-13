@@ -1674,7 +1674,7 @@
                   ? `<button class="danger" data-action="delete">Delete</button>`
                   : "";
               return `<div class="ws-item ${n === activeWs ? "active" : ""}" data-name="${escHtml(n)}" data-action="select">
-          <span>${escHtml(n)}${isWsActive(n) ? ' <span style="font-size:10px;color:var(--muted)">(active)</span>' : ""}${n === focusName() ? ` <span class="ws-cli-default" title="${escHtml(wsT("ws.focusTip", "CLI commands run here when you don't name a workspace. Picking a workspace in the top bar also makes it the CLI default."))}">${escHtml(wsT("ws.focus", "CLI default"))}</span>` : ""}</span>
+          <span>${escHtml(n)}${isWsActive(n) ? ' <span style="font-size:10px;color:var(--muted)">(active)</span>' : ""}${n === focusName() ? ` <span class="ws-cli-default" title="${escHtml(wsT("ws.focusTip", "CLI commands run here when you don't name a project. Picking a project in the top bar also makes it the CLI default."))}">${escHtml(wsT("ws.focus", "CLI default"))}</span>` : ""}</span>
           <span class="ws-item-right">
             <button class="ws-term-btn" title="Open in terminal" data-open-term="${escHtml(dirPath)}">&#62;_</button>
             <button class="ws-open-btn" title="Open in editor" data-open-path="${escHtml(wsData.codeWorkspacePaths?.[n] || dirPath)}">↗</button>
@@ -2106,6 +2106,15 @@
           const stackNsChip = stackNs?.differs
             ? `<span class="badge stack-ns" id="ws-stack-ns" title="Compose projects run as &lt;stack&gt;-${escHtml(stackNs.stack_namespace)} (stack_namespace from ${escHtml(stackNs.source)}; default ${escHtml(stackNs.default)})">stacks: ${escHtml(stackNs.stack_namespace)}</span>`
             : "";
+          // H5: the Hub project this project's agents file their Hub work in.
+          const hubP = wsData?.workspaces?.[wsName]?.hub_project;
+          const hubName =
+            hubP && typeof hubP === "object" && typeof hubP.name === "string"
+              ? hubP.name
+              : "";
+          const hubChip = hubName
+            ? `<a class="ws-head-link" id="ws-hub-project" href="/settings?ws=${encodeURIComponent(wsName)}#workspace" title="${escHtml(wsT("ws.hubTip", "This project's agents file their Hub work in this Hub project. Change it in Project setup."))}">${escHtml(wsT("ws.hubChip", "Hub: {name}").replace("{name}", hubName))}</a>`
+            : "";
           content.innerHTML = `
         <div class="content-header">
           <h2>${escHtml(wsName)}</h2>
@@ -2119,9 +2128,10 @@
           }
           ${stackNsChip}
           <span class="badge ws-agents" id="ws-agents-count" hidden></span>
+          ${hubChip}
           <a class="ws-head-link" id="ws-open-graph" href="/graph?ws=${enc}">Open in Graph →</a>
           <div class="action-menu-wrap ws-more">
-            <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${escHtml(wsName)}" title="More for this workspace">⋯</button>
+            <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${escHtml(wsName)}" title="More for this project">⋯</button>
             <div class="action-dropdown" id="ws-more-menu" role="menu" style="display:none">
               <a role="menuitem" href="/settings?ws=${enc}#workspace">Project setup</a>
               <button type="button" role="menuitem" data-action="rename-ws">Rename…</button>
@@ -2145,7 +2155,7 @@
           svcList.length === 0
             ? `
         <div class="ws-empty-state">
-          <div class="ws-empty-msg">No services in this workspace yet</div>
+          <div class="ws-empty-msg">${escHtml(wsT("ws.noServices", "No services in this project yet"))}</div>
           <button class="add-svc-open-btn ws-empty-add-btn" onclick="openAddSvcModal('${escHtml(wsName)}')">+ Add Service</button>
           <span class="form-msg" id="add-msg"></span>
         </div>
@@ -2521,7 +2531,7 @@
               <button type="button" class="den-btn sm tbl-btn tbl-more" data-action="toggle-svc-menu" data-menu-id="${menuId}" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${escHtml(repo)}" data-k="more:${escHtml(repo)}">⋯</button>
               <div class="action-dropdown" id="${menuId}" role="menu" style="display:none">
                 ${local ? `<button role="menuitem" data-open-term="${escHtml(primary.path)}">&gt;_ open in terminal</button><button role="menuitem" data-open-path="${escHtml(primary.path)}">↗ open in editor</button>` : ""}
-                <button role="menuitem" title="start / don't start with workspace" onclick="toggleAutostart('${q(repo)}', ${isAutoOff})">${isAutoOff ? "⏸ auto-start: off" : "▶ auto-start: on"}</button>
+                <button role="menuitem" title="start / don't start with the project" onclick="toggleAutostart('${q(repo)}', ${isAutoOff})">${isAutoOff ? "⏸ auto-start: off" : "▶ auto-start: on"}</button>
                 ${isUncloned ? `<button role="menuitem" title="Clone this managed repo now" onclick="runRepoSync('${q(repo)}')">⬇ clone now</button>` : ""}
                 <button role="menuitem" onclick="validateServiceManifest('${safe}','${q(repoPath)}','${q(repo)}')">validate<span class="validate-inline" id="vr-${safe}"></span></button>
                 <button role="menuitem" class="danger" data-action="remove-svc" data-address="${escHtml(repo)}">remove</button>
@@ -2547,7 +2557,7 @@
           const run = lastRunText(repo);
           const badges =
             (isAutoOff
-              ? ` <span class="badge" title="start / don't start with workspace" style="border-color:var(--warn);color:var(--warn)">⏸ off</span>`
+              ? ` <span class="badge" title="start / don't start with the project" style="border-color:var(--warn);color:var(--warn)">⏸ off</span>`
               : "") +
             (isUncloned
               ? ` <span class="badge uncloned" title="Not cloned yet — run Sync to clone it">⬇ not cloned</span>`

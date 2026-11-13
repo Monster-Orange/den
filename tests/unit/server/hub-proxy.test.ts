@@ -9,6 +9,7 @@
  * front of a real agent (a scripted PTY), with its real actor token.
  * Invented names only.
  */
+import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
 import { afterEach, describe, expect, it } from "@jest/globals";
 import { createHash } from "crypto";
 import * as fs from "fs";
@@ -94,6 +95,7 @@ async function fakeHub(answer?: HubAnswer) {
 async function den(
   hubUrl: string | null,
   more: { mcpUrl?: string } = {},
+  hubProject: (ws: string) => HubProjectLink | null = () => null,
 ): Promise<{
   r: Rig;
   agentToken: string;
@@ -104,6 +106,7 @@ async function den(
   const r = await rig({
     hub: async () => (hubUrl ? { url: hubUrl, token: TOKEN, ...more } : null),
     workspaceRepos: (ws) => (ws === "north" ? ["acme/north", "acme/kit"] : []),
+    workspaceHubProject: (ws) => hubProject(ws),
   });
   // The agent starts with Hub there, so it has a Hub server at all.
   const real = r.deps.hub!;
@@ -207,6 +210,32 @@ describe("D52: who reaches Hub through Den", () => {
     expect(h["x-den-session"]).not.toBe("forged");
     expect(h.cookie).toBeUndefined();
     expect(h["x-forwarded-for"]).toBeUndefined();
+  });
+
+  // H5 (Ward: "how do I reconnect a project ... with the project in den
+  // hub?!"): Hub files by the project Den sends, never by a guess.
+  it("H5: the Hub project the person linked goes on every call; none when unlinked; the agent can't claim one", async () => {
+    const linked = await fakeHub();
+    const a = await den(linked.url, {}, (ws) =>
+      ws === "north"
+        ? { id: "proj_backoffice", slug: "back-office", name: "Back Office" }
+        : null,
+    );
+    await fetch(`${a.base}/hub/api/inbox`, {
+      headers: {
+        authorization: `Bearer ${a.agentToken}`,
+        "x-den-project": "proj_elsewhere",
+      },
+    });
+    expect(linked.seen[0].headers["x-den-project"]).toBe("proj_backoffice");
+    // The repo still sits in another Hub project: Hub files by this one.
+    expect(linked.seen[0].headers["x-den-repos"]).toBe("acme/north,acme/kit");
+    const unlinked = await fakeHub();
+    const b = await den(unlinked.url);
+    await fetch(`${b.base}/hub/api/inbox`, {
+      headers: { authorization: `Bearer ${b.agentToken}` },
+    });
+    expect(unlinked.seen[0].headers["x-den-project"]).toBe("none");
   });
 
   it("no agent token: 403, and Hub hears nothing (a person, a browser, a bad token)", async () => {

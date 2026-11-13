@@ -144,7 +144,12 @@ describe("the registry's rules", () => {
     for (const r of DEN_SETTINGS) {
       const writes = "write" in r && typeof r.write === "function";
       const stores = (("keys" in r && r.keys) || []).length > 0;
-      expect([r.id, writes]).toEqual([r.id, stores || r.scope === "workspace"]);
+      // A custom row saves through its own route (H5's Hub project).
+      const ownRoute = r.control.type === "custom";
+      expect([r.id, writes]).toEqual([
+        r.id,
+        stores || (r.scope === "workspace" && !ownRoute),
+      ]);
     }
   });
 

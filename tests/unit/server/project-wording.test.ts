@@ -79,7 +79,10 @@ function codeForms(s: string): string {
     .replace(/\bmcp --call workspaces?\b/g, " ")
     .replace(/\bworkspace_\w+/g, " ")
     .replace(/^workspace seed$/, " ")
-    .replace(/<stack> ?-<stack workspace>|\(config\/local\/workspaces\.yml\)/g, " ")
+    .replace(
+      /<stack> ?-<stack workspace>|\(config\/local\/workspaces\.yml\)/g,
+      " ",
+    )
     .replace(/^# .*$/, " ");
 }
 
@@ -89,19 +92,24 @@ function codeForms(s: string): string {
  * CLI's name, `${cli} workspace use`, reads as "den"). Not imports, type
  * literals or object keys.
  */
-function sourceProse(file: string): { line: number; text: string }[] {
+function sourceProse(
+  file: string,
+  src = fs.readFileSync(file, "utf-8"),
+  firstLine = 1,
+): { line: number; text: string }[] {
   const sf = ts.createSourceFile(
     file,
-    fs.readFileSync(file, "utf-8"),
+    src,
     ts.ScriptTarget.Latest,
     true,
+    file.endsWith(".ts") ? ts.ScriptKind.TS : ts.ScriptKind.JS,
   );
   const out: { line: number; text: string }[] = [];
   const push = (n: ts.Node, text: string) => {
     const t = withoutCode(text).trim();
     if (!/[A-Za-z]+\s+[A-Za-z]+/.test(t) && !/^[A-Z][a-z]+$/.test(t)) return;
     out.push({
-      line: sf.getLineAndCharacterOfPosition(n.getStart()).line + 1,
+      line: sf.getLineAndCharacterOfPosition(n.getStart()).line + firstLine,
       text,
     });
   };
@@ -174,31 +182,38 @@ function visible(html: string): string {
 }
 
 /**
- * Text the page scripts build: every string literal in them (and in the
- * pages' inline scripts) with its interpolations, its code attributes and
- * its tags taken out. What is left with two words in a row is prose.
+ * Text the page scripts build, read by the same parser as Den's source
+ * (a regex scan lost strings nested in `${…}` and broke on apostrophes):
+ * each string with its code attributes and tags taken out. The pages'
+ * inline scripts are read one by one.
  */
-function scriptProse(src: string): { line: number; text: string }[] {
-  const code = src
-    .replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " "))
-    .replace(/^\s*\/\/.*$/gm, "");
-  const out: { line: number; text: string }[] = [];
-  const lit =
-    /"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|`((?:[^`\\]|\\.)*)`/g;
-  for (const m of code.matchAll(lit)) {
-    const text = (m[1] ?? m[2] ?? m[3] ?? "")
-      .replace(/\$\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g, " ")
-      .replace(
-        /\s(?!(?:title|aria-label|placeholder|alt)=)[\w-]+="[^"]*"/g,
-        " ",
-      )
-      .replace(/<[^>]*>/g, " ");
-    // Two words in a row, or one capitalized word alone (a label).
-    const t = withoutCode(text).trim();
-    if (!/[A-Za-z]+\s+[A-Za-z]+/.test(t) && !/^[A-Z][a-z]+$/.test(t)) continue;
-    out.push({ line: code.slice(0, m.index).split("\n").length, text });
-  }
-  return out;
+function scriptProse(
+  file: string,
+  src: string,
+): { line: number; text: string }[] {
+  const scripts = file.endsWith(".html")
+    ? [...src.matchAll(/(<script\b[^>]*>)([\s\S]*?)<\/script>/gi)].map((m) => ({
+        code: m[2],
+        line: src.slice(0, (m.index ?? 0) + m[1].length).split("\n").length,
+      }))
+    : [{ code: src, line: 1 }];
+  return scripts.flatMap(({ code, line }) =>
+    sourceProse(file.replace(/\.html$/, ".js"), code, line).map((p) => ({
+      line: p.line,
+      // A tag is replaced by the attributes people read on it.
+      text: p.text.replace(
+        /<[^>]*>/g,
+        (tag) =>
+          ` ${[
+            ...tag.matchAll(
+              /\s(?:title|aria-label|placeholder|alt)\s*=\s*"([^"]*)"/gi,
+            ),
+          ]
+            .map((m) => m[1])
+            .join(" ")} `,
+      ),
+    })),
+  );
 }
 
 describe("no 'workspace' where people read (H5 wording)", () => {
@@ -256,17 +271,28 @@ describe("no 'workspace' where people read (H5 wording)", () => {
       .filter(
         (f) => (f.endsWith(".js") && f !== "shell.js") || f.endsWith(".html"),
       )
-      .flatMap((f) => {
-        const src = read(f);
-        const js = f.endsWith(".html")
-          ? [...src.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
-              .map((m) => m[1])
-              .join("\n")
-          : src;
-        return scriptProse(js).flatMap((p) =>
+      .flatMap((f) =>
+        scriptProse(f, read(f)).flatMap((p) =>
           hits(`${f}:${p.line}`, p.text.replace(/\n/g, " "), WORD.en),
-        );
-      });
+        ),
+      );
+    expect(found).toEqual([]);
+  });
+
+  // The built-in personas' descriptions and instructions: shown on the
+  // Agents page and in each agent's brief.
+  it("the built-in personas", () => {
+    const pack = path.join(ENGINE, "src", "shared", "agents", "default-pack");
+    const found = fs
+      .readdirSync(pack)
+      .filter((f) => f.endsWith(".md"))
+      .flatMap((f) =>
+        hits(
+          `default-pack/${f}`,
+          fs.readFileSync(path.join(pack, f), "utf-8"),
+          WORD.en,
+        ),
+      );
     expect(found).toEqual([]);
   });
 

@@ -27,6 +27,7 @@ import {
   doctorNotes,
   doctorRows,
   formatDoctor,
+  hubProjectLines,
 } from "../../../src/ui/cli/doctor-command.js";
 // D9: the usage sources register on import, as in the CLI.
 import "../../../src/shared/usage/sources.js";
@@ -314,5 +315,45 @@ describe("doctor notes agents.helpers.collapse_done_minutes (0.4.29: ignored)", 
     expect(r.lines.filter((l) => l.includes("ℹ"))).toEqual([
       "  agents  ℹ  agents.helpers.collapse_done_minutes no longer does anything (0.4.29): remove it. Finished helpers stay until a person clears them (Clear done).",
     ]);
+  });
+});
+
+describe("hubProjectLines (H5)", () => {
+  it("Hub not connected, or no projects: nothing", () => {
+    expect(
+      hubProjectLines(false, [{ ws: "north", link: null }], "acme"),
+    ).toEqual({ lines: [], checks: [] });
+    expect(hubProjectLines(true, [], "acme")).toEqual({
+      lines: [],
+      checks: [],
+    });
+  });
+
+  it("linked is ok; not linked warns with the command that shows Hub's suggestions", () => {
+    const r = hubProjectLines(
+      true,
+      [
+        { ws: "north", link: { slug: "back-office", name: "Back office" } },
+        { ws: "south", link: null },
+      ],
+      "acme",
+    );
+    expect(r.checks).toEqual([
+      {
+        id: "hub:project:north",
+        status: "ok",
+        detail: "north: linked to Hub project Back office (back-office)",
+      },
+      {
+        id: "hub:project:south",
+        status: "warn",
+        detail:
+          "south: not linked to a Hub project, so Hub files its agents' work in Unfiled",
+        fix: "acme hub link -p south",
+      },
+    ]);
+    expect(r.lines[0]).toMatch(/^ {2}hub project {2}✓ {2}north: linked/);
+    expect(r.lines[1]).toContain("`acme hub link -p south`");
+    expect(r.lines[1]).toContain("⚠");
   });
 });

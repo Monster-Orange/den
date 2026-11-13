@@ -442,6 +442,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "D28: rotation settings, the overrides and an agent's effective values",
   ),
   R(
+    "/api/workspaces/:ws/hub-project",
+    "H5: the Hub project a project works on, and Hub's suggestions and projects for it (names only)",
+  ),
+  M(
+    ["PUT"],
+    "/api/workspaces/:ws/hub-project",
+    "H5: link a project to one of the company's Hub projects, or unlink it; a person's only",
+  ),
+  R(
     "/api/hub",
     "HUB-1.5: Den Hub: its URL, connected or not, the team and the install's label (never the token)",
   ),
@@ -643,6 +652,9 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:PERSONA_PATH": ["/api/personas/:id"],
   "agent-routes.ts:PLAIN_PATH": ["/api/workspaces/:ws/sessions"],
   "agent-routes.ts:DETAILS_PATH": ["/api/workspaces/:ws/agents/:id/details"],
+  "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
+    "/api/workspaces/:ws/hub-project",
+  ],
   "agent-routes.ts:HELPERS_PATH": [
     "/api/workspaces/:ws/agents/:id/helpers",
     "/api/workspaces/:ws/agents/:id/helpers/:helper",

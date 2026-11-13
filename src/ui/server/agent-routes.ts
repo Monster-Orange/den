@@ -210,6 +210,8 @@ export interface AgentRouteDeps {
   hubStatus?: () => Promise<import("../../shared/hub.js").HubStatus>;
   /** HUB-1.7: Connect to Hub's state (tests: fake Hub calls and store). */
   hubConnect?: import("./hub-connect.js").HubConnect;
+  /** H5: Settings › Project setup › Hub project (tests swap Hub and the store). */
+  hubProject?: Partial<import("./hub-project-routes.js").HubProjectRouteDeps>;
 }
 
 const AGENTS_PATH =
@@ -486,6 +488,13 @@ export async function handleAgentRoutes(
     pathname === "/api/agents/restart-stale"
   )
     return staleRoute(req, res, pathname, webDeps(deps.agents), deps);
+  // H5: the Hub project a project works on.
+  if (pathname.endsWith("/hub-project")) {
+    const { HUB_PROJECT_ROUTE, hubProjectRoute } =
+      await import("./hub-project-routes.js");
+    const hub = HUB_PROJECT_ROUTE.exec(pathname);
+    if (hub) return hubProjectRoute(req, res, hub[1], deps.hubProject);
+  }
   // HUB-1.5: Settings › Hub. Never the token: hubStatus doesn't return it.
   if (pathname === "/api/hub") {
     const method = req.method ?? "GET";

@@ -8,6 +8,27 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **Link a project to its Hub project (H5).** Each project records the
+  Hub project its agents file their Hub work in (docs, mocks, comments),
+  as `hub_project: {id, slug, name}` in `config/local/workspaces.yml`.
+  Den sends it on every Hub call as `X-Den-Project` (`none` when not
+  linked), so Hub files the work there; it takes effect from the next
+  call, with no agent restart. Den never links on its own: Settings ›
+  Project setup › Hub project lists Hub's suggestions (the same repos,
+  then the same name) first, picks the first one, and links when you
+  press Link. `<cli> hub link -p <project>` shows the same, and
+  `<cli> hub link -p <project> <hub project>` (or `--none`) sets it.
+  Only a person can link or unlink: an agent's token is refused. The
+  project's header shows "Hub: <name>". With Hub connected, doctor has a
+  row per project: linked is ok, not linked warns with the command that
+  shows Hub's suggestions. Needs Hub's `/api/projects/suggest`.
+- **Leftover "workspace" wording, fixed.** The project header's ⋯ menu,
+  the start toggles' tips, Settings › Rotation's project picker, the
+  empty project ("No services in this project yet") and four built-in
+  personas' descriptions. The wording test now reads the pages' scripts
+  with the TypeScript parser (it missed strings nested in `${…}`) and
+  checks the built-in personas too.
+
 - **The words gate.** CI fails a patch that adds a string people read
   (en, es, ja; pages, CLI help, MCP text, errors) using a word they
   never see: team, tenant or org (say company), server or "Den install"

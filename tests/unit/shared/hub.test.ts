@@ -198,6 +198,8 @@ describe("headers and repos", () => {
       "X-Den-Session": "s-1",
       "X-Den-Workspace": "north",
       "X-Den-Repos": "acme/north,acme/kit",
+      // H5: not linked to a Hub project.
+      "X-Den-Project": "none",
     });
   });
 

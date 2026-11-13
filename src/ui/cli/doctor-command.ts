@@ -514,6 +514,61 @@ export function hubLines(
 }
 
 /**
+ * H5: with Hub connected, each project's Hub project. Linked is ok; not
+ * linked warns (Hub files that project's agents' work in Unfiled), with
+ * the command that shows Hub's suggestions and links one. Doctor doesn't
+ * ask Hub for the suggestions itself: one call per project is too slow.
+ */
+export function hubProjectLines(
+  connected: boolean,
+  projects: { ws: string; link: { slug: string; name: string } | null }[],
+  cli: string,
+): { lines: string[]; checks: OnboardCheck[] } {
+  if (!connected || !projects.length) return { lines: [], checks: [] };
+  const lines: string[] = [];
+  const checks: OnboardCheck[] = [];
+  for (const { ws, link } of projects) {
+    const name = link
+      ? link.name === link.slug
+        ? link.slug
+        : `${link.name} (${link.slug})`
+      : "";
+    const detail = link
+      ? `${ws}: linked to Hub project ${name}`
+      : `${ws}: not linked to a Hub project, so Hub files its agents' work in Unfiled`;
+    const fix = link ? undefined : `${cli} hub link -p ${ws}`;
+    lines.push(
+      `  hub project  ${link ? "✓" : "⚠"}  ${detail}${fix ? `. See Hub's suggestions: \`${fix}\`` : ""}`,
+    );
+    checks.push({
+      id: `hub:project:${ws}`,
+      status: link ? "ok" : "warn",
+      detail,
+      ...(fix ? { fix } : {}),
+    });
+  }
+  return { lines, checks };
+}
+
+/** H5: every project here, with its Hub project (or null). */
+async function projectsWithHubProject(): Promise<
+  { ws: string; link: { slug: string; name: string } | null }[]
+> {
+  const { readWorkspacesFile } =
+    await import("../../shared/environment-manager/workspaces.js");
+  const { parseHubProjectLink } =
+    await import("../../shared/hub-project-link.js");
+  try {
+    return Object.entries(readWorkspacesFile().workspaces).map(([ws, c]) => ({
+      ws,
+      link: parseHubProjectLink(c?.hub_project),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * D80: doctor's Address row. The install's address (web.url) is the one
  * people are given; unset fails doctor with its one-line fix. One a
  * migration took from what the install had is shown for the person to
@@ -666,8 +721,16 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     );
     {
       const { hubStatus } = await import("../../shared/hub.js");
-      const h = hubLines(await hubStatus(), readBrand().name);
+      const st = await hubStatus();
+      const h = hubLines(st, readBrand().name);
       if (h.check) r.checks.push(h.check);
+      r.checks.push(
+        ...hubProjectLines(
+          st.connected,
+          await projectsWithHubProject(),
+          product().cli,
+        ).checks,
+      );
     }
     const cfg = configLines(readBrand().name);
     r.checks.push(...cfg.checks);
@@ -696,7 +759,13 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   {
     // HUB-1.5: only when hub.url is set.
     const { hubStatus } = await import("../../shared/hub.js");
-    for (const l of hubLines(await hubStatus(), readBrand().name).lines)
+    const st = await hubStatus();
+    for (const l of hubLines(st, readBrand().name).lines) console.log(l);
+    for (const l of hubProjectLines(
+      st.connected,
+      await projectsWithHubProject(),
+      product().cli,
+    ).lines)
       console.log(l);
   }
   const cfg = configLines(readBrand().name);

@@ -879,6 +879,19 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.saveWorkspace({ editor: v || null }),
   },
 
+  {
+    // H5: the Hub project this project's agents file their Hub work in.
+    id: "workspace.hub",
+    category: "workspace",
+    label: "Hub project",
+    description:
+      "The Hub project this project's agents file their Hub work in: docs, mocks, comments. Den never links on its own: Hub suggests one with the same repos or name, and you confirm. Not linked, Hub files the work in Unfiled. __DEN_CLI__ hub link -p <project>",
+    keywords: ["hub", "hub project", "link", "unfiled", "company", "project"],
+    scope: "workspace",
+    control: { type: "custom", render: renderHubProject },
+    read: () => null,
+  },
+
   // ── Agents ─────────────────────────────────────────────────────────────
   {
     id: "agents.layout",
@@ -946,7 +959,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Hub",
     description:
-      "Connect this install to your company's Hub: sign in there and approve it. Every agent then gets Hub's tools: search Hub, publish docs and mocks there. Its team comes from this install's token, its project from the project's repos.",
+      "Connect this install to your company's Hub: sign in there and approve it. Every agent then gets Hub's tools: search Hub, publish docs and mocks there. Its company comes from this install's token, its Hub project from Project setup › Hub project.",
     keywords: [
       "hub",
       "den hub",
@@ -1487,7 +1500,7 @@ export function rotationHtml(b) {
     // The target: picked by name, never typed as an id (D30).
     `<span class="rot-pick" data-for="agent">${comboHtml({ id: "rot-a-agent", label: "Agent", placeholder: "Type to find an agent" })}</span>` +
     `<span class="rot-pick" data-for="persona persona-workspace" hidden>${comboHtml({ id: "rot-a-persona", label: "Persona", placeholder: "Type to find a persona" })}</span>` +
-    `<span class="rot-pick" data-for="workspace persona-workspace" hidden>${comboHtml({ id: "rot-a-ws", label: "Workspace", placeholder: "Type to find a workspace" })}</span>` +
+    `<span class="rot-pick" data-for="workspace persona-workspace" hidden>${comboHtml({ id: "rot-a-ws", label: "Project", placeholder: "Type to find a project" })}</span>` +
     `<span class="rot-pick" data-for="service" hidden>${comboHtml({ id: "rot-a-service", label: "Service", placeholder: "Type to find a service" })}</span>` +
     `<span class="rot-pick"><label for="rot-a-key">Setting</label> <select id="rot-a-key">${ROT_KEYS.map(([v, l]) => `<option value="${v}">${escR(l)}</option>`).join("")}</select></span>` +
     `<span class="rot-pick" data-val="after_compactions"><label for="rot-a-n">Value</label> <input type="number" id="rot-a-n" min="1" max="100" step="1" value="3"> <label class="rot-never"><input type="checkbox" id="rot-a-never"> never</label></span>` +
@@ -1675,6 +1688,112 @@ function takeHubFlash() {
 }
 
 /** HUB-1.5/1.7: the Hub row: always shown, so a person can Connect. */
+/**
+ * H5: Settings › Project setup › Hub project. Linked: its name, Change and
+ * Unlink. Not linked: says so, with Hub's suggestions first in the list
+ * and the first one picked; nothing is linked until the person presses
+ * Link. Not connected to Hub: says where to connect.
+ */
+function renderHubProject(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  const url = `/api/workspaces/${encodeURIComponent(ws)}/hub-project`;
+  const name = (p) =>
+    p.name === p.slug ? escR(p.slug) : `${escR(p.name)} (${escR(p.slug)})`;
+  return ctx.shell
+    .api("GET", url)
+    .then((b) => {
+      host.innerHTML = hubProjectHtml(b, t, name);
+      wireHubProject(host, ctx, url, t);
+    })
+    .catch((e) => {
+      host.innerHTML = `<p class="set-note" data-hubp-error>${escR(e?.message || t("hubp.failed"))}</p>`;
+    });
+}
+
+function hubProjectHtml(b, t, name) {
+  if (!b.connected)
+    return (
+      `<div data-hubp data-hubp-state="offline">` +
+      `<p class="set-note">${escR(t("hubp.offline"))} <a href="/settings#agents.hub">${escR(t("hubp.connect"))}</a></p></div>`
+    );
+  const linked = b.hub;
+  const why = (w) => (w === "repo" ? t("hubp.whyRepo") : t("hubp.whyName"));
+  const sugg = (b.suggestions || []).filter((p) => p.id !== linked?.id);
+  const rest = (b.projects || []).filter(
+    (p) => p.id !== linked?.id && !sugg.some((x) => x.id === p.id),
+  );
+  const opts =
+    (sugg.length
+      ? `<optgroup label="${escR(t("hubp.suggested"))}">${sugg
+          .map(
+            (p, i) =>
+              `<option value="${escR(p.id)}"${!linked && i === 0 ? " selected" : ""}>${name(p)}: ${escR(why(p.why))}</option>`,
+          )
+          .join("")}</optgroup>`
+      : "") +
+    (rest.length
+      ? `<optgroup label="${escR(t("hubp.others"))}">${rest
+          .map((p) => `<option value="${escR(p.id)}">${name(p)}</option>`)
+          .join("")}</optgroup>`
+      : "");
+  const status = linked
+    ? `<p class="set-status"><span class="rt-dot ok"></span> ${t("hubp.linked", { name: `<strong data-hubp-name>${name(linked)}</strong>` })}</p>`
+    : `<p class="set-status"><span class="rt-dot warn"></span> ${escR(t("hubp.unlinked"))}</p>`;
+  const picker = opts
+    ? `<form class="hubp-pick" data-hubp-form>` +
+      `<label for="hubp-sel">${escR(t(linked ? "hubp.changeTo" : "hubp.linkTo"))}</label> ` +
+      `<select id="hubp-sel">${opts}</select> ` +
+      `<button type="submit" class="btn sm${linked ? "" : " primary"}" data-hubp-action="link">${escR(t(linked ? "hubp.change" : "hubp.link"))}</button>` +
+      `</form>`
+    : `<p class="set-note">${escR(t("hubp.none"))}</p>`;
+  const unlink = linked
+    ? ` <button type="button" class="btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button>`
+    : "";
+  return (
+    `<div data-hubp data-hubp-state="${linked ? "linked" : "unlinked"}">` +
+    status +
+    (b.error ? `<p class="set-note">${escR(b.error)}</p>` : "") +
+    picker +
+    unlink +
+    `<div class="rt-err" role="alert" hidden></div></div>`
+  );
+}
+
+function wireHubProject(host, ctx, url, t) {
+  const err = (msg) => {
+    const e = host.querySelector(".rt-err");
+    if (!e) return;
+    e.hidden = !msg;
+    e.textContent = msg || "";
+  };
+  const put = (hub) => {
+    host.querySelectorAll("button, select").forEach((x) => (x.disabled = true));
+    err("");
+    return ctx.shell
+      .api("PUT", url, { hub })
+      .then(() => renderHubProject(host, ctx))
+      .catch((e) => {
+        host
+          .querySelectorAll("button, select")
+          .forEach((x) => (x.disabled = false));
+        err(e?.message || t("hubp.failed"));
+      });
+  };
+  host.querySelector("[data-hubp-form]")?.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const v = host.querySelector("#hubp-sel")?.value;
+    if (v) put(v);
+  });
+  host
+    .querySelector('[data-hubp-action="unlink"]')
+    ?.addEventListener("click", () => put(null));
+}
+
 function renderHub(host, ctx) {
   return drawHub(host, ctx, takeHubFlash(), null);
 }

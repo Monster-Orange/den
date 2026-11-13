@@ -25,8 +25,14 @@ import { readWebPort } from "../../shared/edge/config.js";
 import { product } from "../../shared/product.js";
 
 export const HUB_HELP = {
-  usage: 'hub push <dir> [--request "<why>"]',
+  usage: 'hub <push|link> …',
   lines: [
+    "{cli} hub link -p <project> [<hub project> | --none] [--json]",
+    "    The Hub project this project works on: Hub files its agents' work",
+    "    there. With no Hub project named, shows the link and Hub's",
+    "    suggestions (the same repo, then the same name). --none unlinks.",
+    "    A person's ask only. Also in Settings › Project setup.",
+    "",
     "Send an import pack to Hub, from an agent Den started: through Den, with",
     "that agent's own Den token (Den adds Hub's). Never a Hub token here.",
     "",
@@ -81,6 +87,10 @@ export async function cmdHub(
     err(`usage: ${cli} ${HUB_HELP.usage}`);
     return 2;
   };
+  if (args[0] === "link") {
+    const { cmdHubLink } = await import("./hub-link-command.js");
+    return cmdHubLink(args.slice(1), { env, out, err });
+  }
   if (args[0] !== "push") return usage();
   let dir: string | undefined;
   let reason: string | undefined;

@@ -14,13 +14,15 @@
  *
  * Every agent gets Hub's MCP server (Streamable HTTP at `<url>/mcp`, with
  * `Authorization: Bearer <token>`) and plain headers naming who calls:
- * X-Den-Agent, X-Den-Session, X-Den-Workspace, X-Den-Repos. Hub picks the
- * team (from the token) and the project (from the repos, then the
- * workspace's name, then the team's default). The token is never logged,
+ * X-Den-Agent, X-Den-Session, X-Den-Workspace, X-Den-Repos and (H5)
+ * X-Den-Project, the Hub project the person linked this project to, or
+ * `none`. Hub picks the company from the token and files by that project,
+ * never by a guess. The token is never logged,
  * never in a page or an API answer: only in the agent's own 0600 MCP file.
  */
 import * as crypto from "crypto";
 import { readDenConfig, readUserConfig, type DenConfig } from "./den-config.js";
+import { readHubProjectChoices } from "./hub-project-link.js";
 import {
   getSecretsProvider,
   namedSecretRef,
@@ -213,6 +215,11 @@ export interface HubCaller {
   session: string;
   workspace: string;
   repos: string[];
+  /**
+   * H5: the Hub project the person linked this project to (proj_…); null
+   * or missing: not linked, sent as `none` (Hub files it in Unfiled).
+   */
+  project?: string | null;
 }
 
 /** A header value: one line, printable, bounded. */
@@ -229,6 +236,7 @@ export function hubHeaders(
     "X-Den-Session": headerSafe(who.session),
     "X-Den-Workspace": headerSafe(who.workspace),
     "X-Den-Repos": headerSafe(who.repos.join(",")),
+    "X-Den-Project": headerSafe(who.project || "none"),
   };
 }
 
@@ -399,6 +407,32 @@ export async function hubWhoami(
       ? { unread: Math.min(b.unread, 1_000_000) }
       : {}),
   };
+}
+
+/**
+ * H5: the Hub projects of this install's company, and Hub's suggestions
+ * for project `workspace` (the same repo, then the same name): GET
+ * <url>/api/projects/suggest. Hub records nothing; the person picks.
+ */
+export async function hubProjectChoices(
+  url: string,
+  token: string,
+  ask: { workspace: string; repos: string[] },
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<ReturnType<typeof readHubProjectChoices>> {
+  const q = new URLSearchParams({
+    workspace: ask.workspace,
+    repos: ask.repos.join(","),
+  });
+  const b = await hubCall(
+    `${url}/api/projects/suggest?${q}`,
+    {
+      method: "GET",
+      headers: { ...bearer(token), Accept: "application/json" },
+    },
+    opts,
+  );
+  return readHubProjectChoices(b);
 }
 
 /** What POST /connect/token gives: the token, and where Hub is. */

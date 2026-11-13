@@ -50,6 +50,10 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import {
+  hubProjectOf,
+  type HubProjectLink,
+} from "../../shared/hub-project-link.js";
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
@@ -316,6 +320,8 @@ export interface AgentsDeps extends SessionsDeps {
   } | null>;
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
   workspaceRepos?: (ws: string) => string[];
+  /** H5: the Hub project the person linked project `ws` to (X-Den-Project). */
+  workspaceHubProject?: (ws: string) => HubProjectLink | null;
   /**
    * D52: Den's web server as an agent reaches it (http://localhost:<port>):
    * its Hub calls go through Den's proxy there.
@@ -351,6 +357,7 @@ export interface AgentsResolved extends Resolved {
     inboxOnStop?: "nudge" | "off";
   } | null>;
   workspaceRepos: (ws: string) => string[];
+  workspaceHubProject: (ws: string) => HubProjectLink | null;
   denBase: () => string;
 }
 
@@ -436,18 +443,8 @@ export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
       .listWorkspaceServices(cfg, readCatalog(), name)
       .map((r) => ({ address: r.address, path: r.repoPath }));
   };
-  const { ownerRepo } = await import("../../shared/hub.js");
-  reposFn = (name) => {
-    const cfg = ws.readWorkspacesFile().workspaces[name];
-    if (!cfg) return [];
-    const cat = readCatalog();
-    const out: string[] = [];
-    for (const r of ws.listWorkspaceServices(cfg, cat, name)) {
-      const slug = ownerRepo(cat[r.repoName]);
-      if (slug && !out.includes(slug)) out.push(slug);
-    }
-    return out;
-  };
+  const { projectRepos } = await import("../../shared/project-repos.js");
+  reposFn = projectRepos;
 }
 
 /**
@@ -529,6 +526,13 @@ export async function hubUpstream(
       session: who.session,
       workspace: who.workspace,
       repos,
+      project: (() => {
+        try {
+          return d.workspaceHubProject(who.workspace)?.id ?? null;
+        } catch {
+          return null;
+        }
+      })(),
     }),
   };
 }
@@ -593,6 +597,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
     hub: d.hub ?? defaultHub,
     workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
+    workspaceHubProject: d.workspaceHubProject ?? ((ws) => hubProjectOf(ws)),
     denBase: d.denBase ?? defaultDenBase,
   });
 }
