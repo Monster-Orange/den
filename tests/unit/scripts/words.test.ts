@@ -4,6 +4,8 @@
  * words; code a person may see (flags, `code`, command names, paths, keys)
  * and the protocol's name ("MCP server") stay.
  */
+import { execFileSync } from "node:child_process";
+
 import { describe, expect, it } from "@jest/globals";
 import { languageOf, neverShownIn, proseIn } from "../../../scripts/words.js";
 
@@ -88,5 +90,25 @@ describe("a tag's attributes (dev.6)", () => {
     expect(neverShownIn('<i aria-label="workspace menu"></i>')).toEqual([
       "workspace",
     ]);
+  });
+});
+
+/**
+ * The words-ok ratchet (0.4.45): each exemption under src/ is counted, so a
+ * new one is a one-line change here that review sees. Lower it when you
+ * remove one; raise it only with the exemption it pays for.
+ */
+const WORDS_OK_MAX = 79;
+
+describe("the words-ok ratchet", () => {
+  it(`src/ has at most ${WORDS_OK_MAX} words-ok markers`, () => {
+    const out = execFileSync("git", ["grep", "-c", "words-ok:", "--", "src"], {
+      encoding: "utf-8",
+    });
+    const total = out
+      .split("\n")
+      .filter(Boolean)
+      .reduce((n, l) => n + Number(l.slice(l.lastIndexOf(":") + 1)), 0);
+    expect(total).toBeLessThanOrEqual(WORDS_OK_MAX);
   });
 });
