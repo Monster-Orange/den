@@ -12,7 +12,9 @@ config and manifest changes a distribution must make to move to it under
   name.** An agent brought in from a conversation kept the transcript's
   model ("claude-opus-5-5"), and Relaunch then refused it: `model:
   "claude-opus-5-5" is not one of den-claude's (opus, sonnet, haiku)`.
-  Den now takes a full model name: one its catalog knows is its alias,
+  `agents start --model claude-opus-5-5` (the CLI keeps `--model` as
+  given) wrote the same. Den now takes a full model name: one its catalog
+  knows is its alias,
   pinned to that version (opus, claude-opus-5-5); another one is kept as
   given. Every start stores it that way, and a record written before is
   fixed the next time the agent is used. The model it runs on is the
