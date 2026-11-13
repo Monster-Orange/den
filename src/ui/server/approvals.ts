@@ -190,7 +190,8 @@ export interface Approval {
 export type Decision = "allow" | "deny";
 
 export type DecideResult =
-  | { ok: true; approval: Approval }
+  /** repeat: a second click's replay of the first answer (one audit line). */
+  | { ok: true; approval: Approval; repeat?: true }
   | {
       ok: false;
       code: "not_found" | "already_decided" | "expired" | "actor_gone";
@@ -377,7 +378,8 @@ export class ApprovalQueue {
     by: string,
   ): Promise<DecideResult> {
     const inFlight = this.deciding.get(id);
-    if (inFlight && inFlight.decision === decision) return inFlight.done;
+    if (inFlight && inFlight.decision === decision)
+      return inFlight.done.then((r) => (r.ok ? { ...r, repeat: true } : r));
     const a0 = this.items.get(id);
     // Decided already, the same way: its answer again.
     if (
@@ -387,7 +389,7 @@ export class ApprovalQueue {
         (a0.state === "denied" && decision === "deny")) &&
       a0.endedBecause === undefined
     )
-      return { ok: true, approval: { ...a0 } };
+      return { ok: true, approval: { ...a0 }, repeat: true };
     const done = this.decideOnce(id, decision, by);
     this.deciding.set(id, { decision, done });
     try {

@@ -307,7 +307,12 @@ describe("the queue", () => {
       q.decide(a.id, "allow", "s"),
     ]);
     expect(both.filter((d) => d.ok)).toHaveLength(2);
-    expect(both[0]).toEqual(both[1]);
+    // The same answer; the second is marked a repeat (no second audit line).
+    const { repeat, ...second } = both[1] as (typeof both)[1] & {
+      repeat?: true;
+    };
+    expect(both[0]).toEqual(second);
+    expect(repeat).toBe(true);
     expect(runs).toHaveLength(1);
   });
 

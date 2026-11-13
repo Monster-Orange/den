@@ -271,6 +271,12 @@ describe("held writes (ON-3)", () => {
     // A second Allow (a double-click): the first answer, nothing more ran.
     expect(again.status).toBe(200);
     expect(await workspaces()).toContain("allowed");
+    // One decision, one audit line (the 0.4.39 gate: a replay wrote another).
+    const lines = fs
+      .readFileSync(path.join(stateDir, "audit.jsonl"), "utf-8")
+      .split("\n")
+      .filter((l) => l.includes('"approval-decide"') && l.includes(id));
+    expect(lines).toHaveLength(1);
   }, 60_000);
 
   it("Deny runs nothing", async () => {

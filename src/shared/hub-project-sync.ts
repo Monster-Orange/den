@@ -224,6 +224,8 @@ export class ProjectSync {
   private sending = false;
   private again = false;
   private failures = 0;
+  /** A retry after a failure is pending: check() leaves its timer alone. */
+  private backoff = false;
   private sentKey: string | null = null;
   private refusedKey: string | null = null;
   private result: SyncResult | null = null;
@@ -258,6 +260,10 @@ export class ProjectSync {
 
   /** Send soon only when the list differs from the last one Hub took. */
   check(): void {
+    // the 0.4.39 gate: the periodic check replaced the longer retry timer, so
+    // a Hub that can't be reached was tried every 30 s, never backing off.
+    // The retry sends the list as it is then.
+    if (this.backoff) return;
     const key = JSON.stringify(this.safeList());
     if (key === this.sentKey || key === this.refusedKey) return;
     this.schedule(this.deps.debounceMs ?? 1500);
@@ -265,6 +271,7 @@ export class ProjectSync {
 
   /** Stop any pending send (server shutdown, tests). */
   stop(): void {
+    this.backoff = false;
     if (this.timer !== null)
       (this.deps.clearTimer ?? clearTimeout)(this.timer as never);
     this.timer = null;
@@ -278,11 +285,13 @@ export class ProjectSync {
     }
   }
 
-  private schedule(ms: number): void {
+  private schedule(ms: number, backoff = false): void {
     this.stop();
+    this.backoff = backoff;
     this.timer = (this.deps.setTimer ?? ((f, m) => setTimeout(f, m).unref()))(
       () => {
         this.timer = null;
+        this.backoff = false;
         void this.run();
       },
       ms,
@@ -322,7 +331,7 @@ export class ProjectSync {
         this.failures++;
         const first = this.deps.firstRetryMs ?? 5000;
         const max = this.deps.maxRetryMs ?? 5 * 60_000;
-        this.schedule(Math.min(max, first * 2 ** (this.failures - 1)));
+        this.schedule(Math.min(max, first * 2 ** (this.failures - 1)), true);
       }
     } finally {
       this.sending = false;

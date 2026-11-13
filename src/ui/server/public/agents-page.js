@@ -230,7 +230,23 @@ export function openFromUrl(search) {
   return ids.slice(-MAX_PANES);
 }
 
+/** D73: the panes this browser has open, so a Terminal link adds a tab. */
+const OPEN_KEY = "den-agents-open";
+
+function rememberedOpen() {
+  try {
+    return openFromUrl(`?open=${localStorage.getItem(OPEN_KEY) ?? ""}`);
+  } catch {
+    return [];
+  }
+}
+
 function writeUrl() {
+  try {
+    localStorage.setItem(OPEN_KEY, st.open.join(","));
+  } catch {
+    /* none: the URL alone */
+  }
   const u = new URL(location.href);
   if (st.open.length) u.searchParams.set("open", st.open.join(","));
   else u.searchParams.delete("open");
@@ -4148,7 +4164,21 @@ export async function mountAgentsPage(root) {
   translateStatic(root);
   if (window.denShell?.apiOff?.()) return;
   st.open = [];
-  const wanted = openFromUrl(location.search);
+  // D73: a Terminal link (the rail's, a project's Terminal here) adds a
+  // tab: the panes this browser had open come along, and the page shows
+  // every project (?ws= names only where the shell starts), so tabs from
+  // other projects stay.
+  const q0 = new URLSearchParams(location.search);
+  const termWs = q0.get("terminal") === "1" ? q0.get("ws") || "" : null;
+  const wanted =
+    termWs !== null && !q0.get("open")
+      ? rememberedOpen()
+      : openFromUrl(location.search);
+  if (termWs !== null && termWs) {
+    const u = new URL(location.href);
+    u.searchParams.delete("ws");
+    history.replaceState(history.state, "", u.pathname + u.search);
+  }
   const linked = layoutFromUrl(location.search);
   const startAsked = new URLSearchParams(location.search).get("start") === "1";
   if (startAsked) {
@@ -4425,11 +4455,9 @@ export async function mountAgentsPage(root) {
   if (wanted.length && front && !isStopped(rowOf(front) ?? {}))
     focusTerm(front, false, { ifIdle: true });
   const linkedAgent = new URLSearchParams(location.search).get("agent");
-  const termAsked =
-    new URLSearchParams(location.search).get("terminal") === "1";
   writeUrl();
   if (linkedAgent) await openLinkedAgent(linkedAgent, urlWorkspace());
-  if (termAsked) await openTerminal();
+  if (termWs !== null) await openTerminal(termWs);
   if (startAsked) void openStart();
 }
 
@@ -4440,9 +4468,10 @@ export async function mountAgentsPage(root) {
  * keeps it, and the shell outlives a Den restart (the sessions host).
  * Used once: the URL drops ?terminal=.
  */
-async function openTerminal() {
+async function openTerminal(asked = "") {
   const all = st.data?.workspaces ?? [];
   const ws =
+    asked ||
     urlWorkspace() ||
     (st.scope && st.scope !== "all" && all.includes(st.scope)
       ? st.scope

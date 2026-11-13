@@ -12,7 +12,7 @@ config and manifest changes a distribution must make to move to it under
   full project list (each project's key, name, repos, Hub project and
   agents) at start, on connect, after a link, and whenever it changes:
   checked every `hub.sync_check_seconds` (default 30, at least 5), retried
-  with backoff, never blocking the change. The server agent's scope is
+  with backoff up to 5 minutes, never blocking the change. The server agent's scope is
   never in it. Needs Hub's `PUT /api/installs/self/projects`.
 - **Den Hub's GitHub access.** When Hub says Den Hub's GitHub App can't
   see a project's repo, Project setup › Hub project and the project's
@@ -28,7 +28,9 @@ config and manifest changes a distribution must make to move to it under
   project's folder, in the same pane agents use, signed in like the rest
   of the page; agents never get it. Each project's header has Terminal
   here. Open several; a reload keeps them, and a shell outlives a Den
-  restart.
+  restart. A second Terminal adds a tab next to the ones open, even from
+  another project's Terminal here. The rail's Terminal opens in the
+  project in view.
 - **Link a project to its Hub project (H5).** Each project records the
   Hub project its agents file their Hub work in (docs, mocks, comments),
   as `hub_project: {id, slug, name}` in `config/local/workspaces.yml`.
@@ -66,8 +68,11 @@ config and manifest changes a distribution must make to move to it under
   come back. The server answers the same action on one agent, while the
   first runs, with the first one's result.
 - **A second Allow on an approval gets the first one's result** (200),
-  instead of 409 "already decided"; it still runs once. A different
-  decision is still refused.
+  instead of 409 "already decided"; it still runs once, with one audit
+  line. A different decision is still refused.
+- Project setup › Hub project: a linked project with nothing else to
+  switch to says "Your company has no other Hub projects to switch to",
+  not "no Hub projects yet".
 - **`agents restart` (and `agents persona`) check the agent first.** An id
   that isn't there says so at once, with the closest agent in that
   project ("did you mean …?"), instead of waiting for a turn to end.

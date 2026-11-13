@@ -1807,7 +1807,7 @@ function hubProjectHtml(b, t, name) {
       `<select id="hubp-sel">${opts}</select> ` +
       `<button type="submit" class="btn sm${linked ? "" : " primary"}" data-hubp-action="link">${escR(t(linked ? "hubp.change" : "hubp.link"))}</button>` +
       `</form>`
-    : `<p class="set-note">${escR(t("hubp.none"))}</p>`;
+    : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>`;
   const unlink = linked
     ? ` <button type="button" class="btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button>`
     : "";
