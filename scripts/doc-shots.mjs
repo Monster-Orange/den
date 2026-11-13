@@ -387,7 +387,7 @@ const STILLS = [
   {
     file: "agents.png",
     needsSession: true,
-    alt: "The Agents tab: the demo project's agents and shells on the left, and one shell open in a terminal pane on the right, running demo-api's test and then the service",
+    alt: "The Agents tab: a shell in the demo project on the left, and open in a terminal pane on the right, running demo-api's test and then the service",
     budget: "thumb",
     go: async (p, c) => {
       await p.goto(`${c.base}/agents?open=${encodeURIComponent(c.session)}`);
