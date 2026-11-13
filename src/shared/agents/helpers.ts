@@ -73,12 +73,19 @@ export interface HelperSettings {
   collapseDoneMinutes: number;
   /** D34: at most this many active helpers under the selected agent's row. */
   rowMax: number;
+  /**
+   * D76: the most of an agent's own transcript its helpers' states are read
+   * from, in MB: its end, then only what it appends. A helper whose
+   * notification or result is further back reads from its own files.
+   */
+  readMaxMb: number;
 }
 
 export const HELPER_DEFAULTS: HelperSettings = {
   activeMinutes: 10,
   collapseDoneMinutes: 30,
   rowMax: 4,
+  readMaxMb: 64,
 };
 
 /** What a runtime's helpers hooks are given. */

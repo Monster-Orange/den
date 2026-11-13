@@ -286,7 +286,7 @@ describe("doctor names a bad agents: or sessions: key and carries on", () => {
     const r = configLines("Acme");
     expect(r.problem).toBe(true);
     expect(r.lines.filter((l) => l.includes("✗"))).toEqual([
-      "  agents  ✗  config/den.yml: agents.helpers.collapse_done: unknown key (agents.helpers takes active_minutes, row_max)",
+      "  agents  ✗  config/den.yml: agents.helpers.collapse_done: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb)",
       "  sessions  ✗  config/den.yml: sessions.max_concurrent: must be a whole number of at least 1",
     ]);
     expect(r.lines.join("\n")).not.toContain("hunter2");
