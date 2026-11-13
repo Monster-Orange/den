@@ -143,6 +143,8 @@ describe("agents start", () => {
         "peerName",
         // den#48: the mode it started in, for every resume.
         "permission",
+        // D65 v2: the project it belongs to (no repo: its own folder).
+        "project",
       ].sort(),
     );
     expect(rec).toMatchObject({

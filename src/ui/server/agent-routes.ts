@@ -139,8 +139,10 @@ import {
   removeAgent,
   renameAgent,
   moveAgent,
-  setAgentServices,
-  checkServiceList,
+  setAgentRepo,
+  checkRepoName,
+  workspaceRepoFolders,
+  migrateAgentLinks,
   removeStopped,
   restoreAgents,
   resumeInterrupted,
@@ -211,7 +213,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|handoff|clear-helpers|restart|services|move|file))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|handoff|clear-helpers|restart|link|move|file))?$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -377,8 +379,8 @@ interface StartBody {
   name?: unknown;
   /** 0.4.18: the folder it runs in (Start agent here). */
   folder?: string;
-  /** D65: the services it works on (Start agent here's). */
-  services?: string[];
+  /** D65 v2: the repo it works on (a service card's); null: none. */
+  repo?: string | null;
 }
 
 const START_KEYS = [
@@ -392,7 +394,7 @@ const START_KEYS = [
   "instruction",
   "name",
   "folder",
-  "services",
+  "repo",
 ];
 
 async function startBody(req: http.IncomingMessage): Promise<StartBody> {
@@ -445,8 +447,8 @@ async function startBody(req: http.IncomingMessage): Promise<StartBody> {
       throw new AgentError("folder must be a path", { usage: true });
     out.folder = o.folder;
   }
-  if (o.services !== undefined && o.services !== null)
-    out.services = checkServiceList(o.services);
+  if (o.repo === null || o.repo === "") out.repo = null;
+  else if (o.repo !== undefined) out.repo = checkRepoName(o.repo);
   return out as StartBody;
 }
 
@@ -566,6 +568,10 @@ export async function handleAgentRoutes(
             }
           : {}),
         runtimes,
+        // D65 v2: the repos the Start dialog's Repo offers.
+        ...(pathname === "/api/personas" && ws
+          ? { repos: [...workspaceRepoFolders(d, ws).keys()].sort() }
+          : {}),
         ...(ws ? { workspace: ws } : {}),
         // den#48: the workspace's default mode, Start's first choice.
         ...(ws ? workspacePermissionField(d, ws) : {}),
@@ -599,7 +605,7 @@ export async function handleAgentRoutes(
     | "settings"
     | "handoff"
     | "clear-helpers"
-    | "services"
+    | "link"
     | "move"
     | "restart"
     | "file"
@@ -758,8 +764,8 @@ export async function handleAgentRoutes(
         status: 403,
       });
     // D65: what an agent is listed under is the person's call.
-    if (verb === "services" && (agent || actor))
-      throw new AgentError("only a person can link an agent to services", {
+    if (verb === "link" && (agent || actor))
+      throw new AgentError("only a person can link an agent to a repo", {
         status: 403,
       });
     // D34: clearing what a person sees is a person's.
@@ -790,7 +796,7 @@ export async function handleAgentRoutes(
         ...(body.allow !== undefined ? { allow: body.allow } : {}),
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.folder !== undefined ? { folder: body.folder } : {}),
-        ...(body.services?.length ? { services: body.services } : {}),
+        ...(body.repo !== undefined ? { repo: body.repo } : {}),
         strict: true,
       });
       const ov = s.rec.overrides?.length
@@ -926,24 +932,38 @@ export async function handleAgentRoutes(
         agent: rec.id,
         ...(rec.displayName ? { displayName: rec.displayName } : {}),
       });
-    } else if (verb === "services") {
-      // D65: which services it works on. Body {add?: [...], remove?: [...]}.
+    } else if (verb === "link") {
+      // D65 v2: the repo of its project it works on. Body {repo: <name>|null}.
       const body = await jsonBody(req);
       for (const k of Object.keys(body))
-        if (k !== "add" && k !== "remove")
-          throw new AgentError(
-            `${k}: unknown field (services takes add, remove)`,
-            {
-              usage: true,
-            },
-          );
-      const rec = setAgentServices(d, id!, ws, {
-        add: body.add === undefined ? [] : checkServiceList(body.add),
-        remove: body.remove === undefined ? [] : checkServiceList(body.remove),
-      });
-      what = `services ${rec.id} in ${ws}: ${(rec.services ?? []).join(", ") || "none"}`;
+        if (k !== "repo")
+          throw new AgentError(`${k}: unknown field (link takes repo)`, {
+            usage: true,
+          });
+      if (body.repo === undefined)
+        throw new AgentError(
+          "repo is required (a repo's name, or null for none)",
+          {
+            usage: true,
+          },
+        );
+      const repo =
+        body.repo === null || body.repo === ""
+          ? null
+          : checkRepoName(body.repo);
+      if (repo && !workspaceRepoFolders(d, ws).has(repo))
+        throw new AgentError(`project ${ws} has no repo "${repo}"`, {
+          status: 404,
+        });
+      const rec = setAgentRepo(d, id!, ws, repo);
+      what = `link ${rec.id} in ${ws}: ${rec.repo ?? "no repo"}`;
       audit(what);
-      sendJson(res, { ok: true, agent: rec.id, services: rec.services ?? [] });
+      sendJson(res, {
+        ok: true,
+        agent: rec.id,
+        project: rec.project,
+        repo: rec.repo ?? null,
+      });
     } else if (verb === "persona") {
       const body = await jsonBody(req);
       for (const k of Object.keys(body))
@@ -1530,6 +1550,19 @@ export function startAgentUpkeep(
 ): void {
   const d = webDeps(deps.agents);
   const restart = async () => {
+    // D65 v2: once, agents from before the link get it from their folder.
+    try {
+      const m = migrateAgentLinks(d);
+      if (m.linked.length || m.unlinked.length)
+        log(
+          `Agents linked to their project: ${[...m.linked, ...m.unlinked].join(", ")}` +
+            (m.unlinked.length
+              ? ` · on no one repo: ${m.unlinked.join(", ")} (agents doctor)`
+              : ""),
+        );
+    } catch (e) {
+      log(`  ⚠ agent links: ${(e as Error).message}`);
+    }
     // AG-18: a persona change waiting for a turn's end lived in memory.
     try {
       for (const c of cancelStalePersonaChanges(d)) {

@@ -197,31 +197,35 @@ export function visitable(s) {
 const running = (s) =>
   S.busy.has(s.id) || s.ok === true || s.upSince !== undefined;
 
-/** The agents working in its repo: in its workspace, or in a folder inside the repo. */
 /**
- * The agents that work on service `s`. D65: an agent a person linked
- * (Start agent here, `agents link`) is listed by its link alone, through
- * every restart; one with no link by its folder (the repo's, or a folder
- * named for the repo in the service's workspace).
+ * D65 v2: the agents of service `s`, from their records alone (never
+ * their folder): `here`, those whose repo is this one; `also`, those of
+ * its project on no one repo. Stopped ones too (dimmed, with Start). A
+ * project is its workspace until H5's projects.
  */
 export function agentsOf(s, sessions = S.sessions) {
-  const addr = `${s.repo}/${s.service}`;
-  return sessions.filter((a) => {
-    if (a.kind !== "agent") return false;
-    if (Array.isArray(a.services) && a.services.length)
-      return (
-        (a.services.includes(addr) || a.services.includes(s.repo)) &&
-        (!s.workspaces.length || s.workspaces.includes(a.workspace))
-      );
-    return Boolean(
-      (s.repoPath &&
-        a.cwd &&
-        (a.cwd === s.repoPath || a.cwd.startsWith(`${s.repoPath}/`))) ||
-      (s.workspaces.includes(a.workspace) &&
-        a.cwd &&
-        a.cwd.split("/").includes(s.repo)),
-    );
-  });
+  const inProject = (a) =>
+    !s.workspaces.length || s.workspaces.includes(a.project || a.workspace);
+  const ags = sessions.filter(
+    (a) => a.kind === "agent" && !a.server && inProject(a),
+  );
+  return {
+    here: ags.filter((a) => a.repo === s.repo),
+    also: ags.filter((a) => !a.repo),
+  };
+}
+const stoppedAg = (a) => a.exited === true || a.state !== "running";
+function agRow(a) {
+  const off = stoppedAg(a) && a.state !== "stopping";
+  return (
+    `<div class="den-svp-ag${off ? " den-svp-off" : ""}" data-agent="${esc(a.agent || a.id)}"><span class="den-dot ${agentTone(a)}" aria-hidden="true"></span>` +
+    `<span class="den-svp-nm" title="${esc(a.persona || "")}">${esc(agentName(a))}</span>` +
+    `<span class="den-svp-as">${a.waiting ? `<span class="den-wbdg">${esc(t("ag.waiting"))}</span>` : esc(a.state || "")}</span>` +
+    (off && a.resumable !== false
+      ? `<button type="button" class="den-btn sm" data-svx="agstart" data-ws="${esc(a.workspace)}" data-id="${esc(a.agent || a.id)}" aria-label="${esc(t("svp.startAg", { s: agentName(a) }))}">${esc(t("svp.start"))}</button>`
+      : `<button type="button" class="den-btn sm" data-svx="ag" data-id="${esc(a.agent || a.id)}" aria-label="${esc(t("svp.openAg", { s: agentName(a) }))}">${esc(t("svp.open"))}</button>`) +
+    `</div>`
+  );
 }
 const agentName = (a) => a.displayName || a.agent || a.label || a.id;
 const agentTone = (a) =>
@@ -264,6 +268,9 @@ export function visitHtml(s, cls, label) {
   );
 }
 
+/** The service's project, as its card names it (its workspace for now). */
+const project = (s) => s.workspaces[0] || "—";
+
 export function panelHtml(s) {
   const st = stateOf(s);
   const ags = agentsOf(s);
@@ -288,18 +295,16 @@ export function panelHtml(s) {
     `<button type="button" class="den-btn" data-svx="logs">${esc(t("svp.logs"))}</button></div>` +
     `<div class="den-svp-sec"><div class="den-svp-k">${esc(t("svp.tests"))}</div>` +
     `<div class="den-svp-line">${testsHtml(s)}<button type="button" class="den-btn sm den-svp-sp" data-svx="tests"${testing ? " disabled" : ""}>${esc(t("svp.runTests"))}</button></div></div>` +
-    `<div class="den-svp-sec"><div class="den-svp-k">${esc(t("svp.agents"))}${ags.length ? ` · ${ags.length}` : ""}</div>` +
-    (ags.length
-      ? ags
-          .map(
-            (a) =>
-              `<div class="den-svp-ag"><span class="den-dot ${agentTone(a)}" aria-hidden="true"></span>` +
-              `<span class="den-svp-nm" title="${esc(a.persona || "")}">${esc(agentName(a))}</span>` +
-              `<span class="den-svp-as">${a.waiting ? `<span class="den-wbdg">${esc(t("ag.waiting"))}</span>` : esc(a.state || "")}</span>` +
-              `<button type="button" class="den-btn sm" data-svx="ag" data-id="${esc(a.id)}" aria-label="${esc(t("svp.openAg", { s: agentName(a) }))}">${esc(t("svp.open"))}</button></div>`,
-          )
-          .join("")
+    `<div class="den-svp-sec"><div class="den-svp-k">${esc(t("svp.agents"))}${ags.here.length + ags.also.length ? ` · ${ags.here.length + ags.also.length}` : ""}</div>` +
+    `<div class="den-svp-sub" id="den-svp-here">${esc(t("svp.onRepo"))}</div>` +
+    (ags.here.length
+      ? ags.here.map(agRow).join("")
       : `<div class="den-svp-help">${esc(t("svp.noAgents"))}</div>`) +
+    (ags.also.length
+      ? `<details class="den-svp-also" id="den-svp-also"><summary>${esc(t("svp.alsoIn", { p: project(s), n: ags.also.length }))}</summary>` +
+        ags.also.map(agRow).join("") +
+        `</details>`
+      : "") +
     `<div><button type="button" class="den-btn sm" data-svx="startag">+ ${esc(t("svp.startHere"))}</button></div></div>` +
     `<div class="den-svp-foot"><button type="button" class="den-lnk" data-svx="services">${esc(t("svp.openSvc"))}</button>` +
     `<button type="button" class="den-lnk" data-svx="graph">${esc(t("svp.openGraph"))}</button><span class="den-svp-grow"></span>` +
@@ -624,13 +629,29 @@ function act(k, btn) {
   else if (k === "logs") logs(s);
   else if (k === "tests") runTests(s);
   else if (k === "ag") go(`/agents?open=${encodeURIComponent(btn.dataset.id)}`);
-  else if (k === "startag") {
+  else if (k === "agstart") {
+    // D65 v2: a stopped agent starts again here, same conversation.
+    btn.disabled = true;
+    window.denShell
+      .api(
+        "POST",
+        `/api/workspaces/${encodeURIComponent(btn.dataset.ws)}/agents/${encodeURIComponent(btn.dataset.id)}/resume`,
+        {},
+      )
+      .then(
+        () => void refresh(),
+        (e) => {
+          btn.disabled = false;
+          window.denShell?.toast?.((e && e.message) || String(e));
+        },
+      );
+  } else if (k === "startag") {
     const q = new URLSearchParams({ start: "1" });
     const ws = s.workspaces[0];
     if (ws) q.set("ws", ws);
     if (s.repoPath) q.set("folder", s.repoPath);
-    // D65: the agent is this service's, by link, not only by folder.
-    q.set("service", s.service === s.repo ? s.repo : `${s.repo}/${s.service}`);
+    // D65 v2: the agent is this repo's, by its record, not its folder.
+    q.set("repo", s.repo);
     go(`/agents?${q}`);
   } else if (k === "services")
     go(`/services#repo-${encodeURIComponent(s.repo)}`);

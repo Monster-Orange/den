@@ -37,12 +37,16 @@ export interface AgentRecord {
   workspace: string;
   cwd: string;
   /**
-   * D36/D65: the services it works on ("repo" or "repo/service"), as a
-   * person linked them (Start agent here, `agents link`). Kept through
-   * every resume, relaunch, rotation and persona change; the service card
-   * lists it by this first, by its folder only when it has none.
+   * D65 v2: the project it belongs to, by id (the local slug until H5)
+   * and the repo it works on, if one (rarely, a folder inside it). Set
+   * once at start or bring-in, proposed from its folder; a person changes
+   * them (the pane's Change, `agents link`). Every restart, rotation,
+   * relaunch, bring-in and move keeps them. What shows an agent under a
+   * service reads these, never its folder.
    */
-  services?: string[];
+  project?: string;
+  repo?: string;
+  subpath?: string;
   /** The session it runs in now (or last ran in). */
   session: SessionRef;
   /** `<dist>-<ws>:<id>`. */

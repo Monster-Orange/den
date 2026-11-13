@@ -2756,7 +2756,7 @@ server scoped to its workspace.
   still does. The id never changes.
 - **Moving (D72).** `agents move <id> -w <ws> [--now]`, Move to
   workspace… in the ⋯ menu, or `POST /api/workspaces/:ws/agents/:id/move
-  {to, when}`. Only a person can move an agent. A stopped agent's record
+{to, when}`. Only a person can move an agent. A stopped agent's record
   changes (workspace, session name). A running agent waits for its turn
   to end, unless you pass `--now` or `when: "now"`. Den then stops it and
   resumes the same conversation in the new workspace, because an agent's
@@ -2772,14 +2772,17 @@ server scoped to its workspace.
   (`{id, name?, running}`) so a page can ask. An agent whose workspace
   is gone anyway is listed by `/api/sessions` with `orphan: true`, so it
   can be moved.
-- **Services it works on (D65).** `agents link <id> <service>...` and
-  `agents unlink <id> <service>...` (a service is `repo` or
-  `repo/service`). The API is `POST
-  /api/workspaces/:ws/agents/:id/services {add, remove}`, and only a
-  person can call it. A service's quick panel lists a linked agent by
-  its link alone, and an agent with no link by its folder. Start agent
-  here links the agent it starts. The link is the record's `services`.
-  Every restart path keeps it.
+- **Its project and repo (D65).** The record's `project` (its
+  workspace until projects come from Hub) and `repo` (optional). Den
+  proposes the repo from the agent's folder once, at start or bring-in,
+  and again only in the one-time migration of older records. Nothing
+  that shows an agent reads its folder. `agents link <id> --repo
+<repo>` and `agents unlink <id>` change it. The API is `POST
+/api/workspaces/:ws/agents/:id/link {repo: <name>|null}`, a person's
+  only. `GET /api/personas?workspace=<ws>` lists the repos to choose
+  from. Every restart path keeps it, and a move keeps the repo when the
+  new workspace has it. `agents doctor` lists agents on no repo and
+  those whose repo is missing.
 - **The name other sessions see.** Den names a Claude Code agent's session
   `<cli>-<ws>:<name, else id>` (`--name`) at every start and resume, so
   another session listing its peers tells Den's agents apart. A rename

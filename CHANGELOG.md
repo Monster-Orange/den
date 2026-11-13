@@ -72,18 +72,24 @@ config and manifest changes a distribution must make to move to it under
   writes a last line to its conversation. Stop, remove and import within
   a minute was refused as "still open in another terminal". A write that
   comes from Den's own stop of a removed agent no longer counts.
-- **An agent stays under the service it works on (D65).** A service's
-  quick panel listed an agent only when the agent's folder was the
-  service's repo. An agent started in the folder above the repos was
-  never listed, and it could look like a restart had dropped the link.
-  Now an agent can be linked to services ("repo" or "repo/service").
-  Start agent here links it. You can also run `agents link <id>
-  <service>...` and `agents unlink`, or call `POST
-  /api/workspaces/:ws/agents/:id/services` with `{add, remove}`. The
-  link is kept in the agent's record, so resume, Start fresh, rotation,
-  persona changes and Restart all keep it. A linked agent is listed by
-  its link wherever its folder is. An agent with no link is still
-  listed by its folder. Only a person can link an agent.
+- **An agent belongs to a project and a repo, stored, never guessed
+  (D65).** A service's quick panel used to guess an agent's repo from
+  its folder. An agent started in the workspace's own folder, in a
+  worktree, or one that was stopped, dropped off its service. Now each
+  agent's record holds its project (its workspace, for now) and,
+  usually, one repo. Den proposes the repo from the folder when the
+  agent starts or is brought in. The Start dialog has a Repo field
+  (Start agent here picks the card's repo; None means the whole
+  project). The agent's pane shows "<project> › <repo>" with Change.
+  Under Agents, the quick panel lists "On this repo" first, then "Also
+  in <project>" (closed, with a count). Stopped agents show dimmed,
+  with Start. A repo that is gone shows "repo missing" with Re-link.
+  The link survives a Den restart, Restart, Start fresh, rotation,
+  a persona change, bring-in and a move. `agents link <id> --repo
+  <repo>` and `agents unlink <id>` set it, as does `POST
+  /api/workspaces/:ws/agents/:id/link {repo}`; only a person can.
+  Existing agents are linked once from their folder. `agents doctor`
+  lists any on no repo, or whose repo is missing.
 - **A workspace's name is what you type (D70).** A workspace now has a
   name ("back office") and a slug made from it ("back-office"). The slug
   is what folders, links, session names and the command line use, and

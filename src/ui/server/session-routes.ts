@@ -46,6 +46,7 @@ import { apiOnlyNames } from "../../shared/agents/api-only.js";
 import * as fs from "fs";
 import type * as http from "http";
 import * as path from "path";
+import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import {
   pruneUploads,
   uploadPath,
@@ -61,6 +62,7 @@ import type { Duplex } from "stream";
 import {
   getActiveWorkspaces,
   readWorkspacesFile,
+  listWorkspaceServices,
 } from "../../shared/environment-manager/workspaces.js";
 import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
@@ -129,6 +131,8 @@ export interface SessionRouteDeps {
   hubNow?: () => Promise<string | null>;
   /** AG-DROP: agents.uploads (default: the agents config's). */
   uploadSettings?: () => UploadSettings;
+  /** D65 v2: workspace `ws`'s repo names (null: it can't be read). */
+  repoNames?: (ws: string) => ReadonlySet<string> | null;
   now?: () => Date;
 }
 
@@ -145,6 +149,7 @@ interface Resolved {
   helperSettings: () => HelperSettings | undefined;
   hubNow: () => Promise<string | null>;
   uploadSettings: () => UploadSettings;
+  repoNames: (ws: string) => ReadonlySet<string> | null;
   now: () => Date;
 }
 
@@ -189,6 +194,21 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     uploadSettings:
       d.uploadSettings ??
       (() => readAgentsConfig().uploads ?? { ...UPLOAD_DEFAULTS }),
+    repoNames:
+      d.repoNames ??
+      ((ws) => {
+        try {
+          const cfg = readWorkspacesFile().workspaces?.[ws];
+          if (!cfg) return null;
+          return new Set(
+            listWorkspaceServices(cfg, readCatalog(), ws).map(
+              (r) => r.address.split("/")[0],
+            ),
+          );
+        } catch {
+          return null;
+        }
+      }),
     now: d.now ?? (() => new Date()),
     ...(d.rotationPolicy ? { rotationPolicy: d.rotationPolicy } : {}),
     ...(d.restartResume ? { restartResume: d.restartResume } : {}),
@@ -244,8 +264,10 @@ export interface ListedSession {
    * ESC CR unless the runtime says otherwise. A plain session: Enter (CR).
    */
   softNewline?: string;
-  /** D65: the services it works on, as a person linked them. */
-  services?: string[];
+  /** D65 v2: its project and the repo it works on (its record's). */
+  project?: string;
+  repo?: string;
+  repoMissing?: boolean;
   /** D71: its workspace was deleted; Move gives it one. */
   orphan?: boolean;
   persona?: string;
@@ -306,7 +328,7 @@ export function listedSessions(
   sessions: SessionInfo[],
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
     Partial<Pick<Resolved, "waitingAgents" | "workspaceExists">> &
-    Partial<Pick<Resolved, "helperSettings">> &
+    Partial<Pick<Resolved, "helperSettings" | "repoNames">> &
     Pick<SessionRouteDeps, "rotationPolicy" | "restartResume">,
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
@@ -343,6 +365,13 @@ export function listedSessions(
   noteEnded(d.stateDir(), mine, records);
   const helperSettings = d.helperSettings?.();
   const restartOf = d.restartResume?.();
+  const repoSets = new Map<string, ReadonlySet<string> | null>();
+  const repoGone = (ws: string, repo: string): boolean => {
+    if (!d.repoNames) return false;
+    if (!repoSets.has(ws)) repoSets.set(ws, d.repoNames(ws));
+    const set = repoSets.get(ws);
+    return set ? !set.has(repo) : false;
+  };
   for (const r of agentRows(
     mine,
     records,
@@ -363,7 +392,13 @@ export function listedSessions(
       ...(rec.displayName ? { displayName: rec.displayName } : {}),
       ...(r.sessionTitle ? { sessionTitle: r.sessionTitle } : {}),
       softNewline: softNewlineSeq(getRuntime(rec.runtime)?.catalog),
-      ...(rec.services?.length ? { services: [...rec.services] } : {}),
+      ...(rec.project ? { project: rec.project } : {}),
+      ...(rec.repo ? { repo: rec.repo } : {}),
+      // D65 v2: its repo is no longer one of its project's: never dropped
+      // silently, the row says so and offers a re-link.
+      ...(rec.repo && repoGone(rec.workspace, rec.repo)
+        ? { repoMissing: true }
+        : {}),
       ...(orphanWs.has(rec.workspace) ? { orphan: true } : {}),
       persona: rec.persona,
       runtime: rec.runtime,

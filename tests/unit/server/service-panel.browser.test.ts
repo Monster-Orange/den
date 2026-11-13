@@ -92,9 +92,15 @@ beforeAll(async () => {
     up: { blog: devUp },
   });
   expect(await s.settings({ shell: { pins: ["notes", "blog"] } })).toBe(200);
-  // An agent working in notes' repo, and one elsewhere in the workspace.
-  s.seed({ id: "notes-helper", workspace: "north", cwd: repo("notes") });
-  s.seed({ id: "elsewhere", workspace: "north" });
+  // D65 v2: an agent on notes' repo, and one of north on no one repo.
+  s.seed({
+    id: "notes-helper",
+    workspace: "north",
+    cwd: repo("notes"),
+    project: "north",
+    repo: "notes",
+  });
+  s.seed({ id: "elsewhere", workspace: "north", project: "north" });
   latest =
     (
       (await (await fetch(`${s.base}/api/changelog`)).json()) as {
@@ -398,13 +404,19 @@ describe("the panel", () => {
         bs.map((x) => x.textContent),
       ),
     ).toEqual(["Open in Services", "Open in Graph", "Unpin"]);
-    // The agents working in notes' repo, with Open.
+    // The agents on notes' repo, then the project's others (closed).
     await p.waitForSelector(`${panel} .den-svp-ag`);
     expect(
-      await p.$$eval(`${panel} .den-svp-nm`, (e) =>
-        e.map((x) => x.textContent),
+      await p.$$eval(
+        `${panel} .den-svp-ag:not(.den-svp-also *) .den-svp-nm`,
+        (e) => e.map((x) => x.textContent),
       ),
     ).toEqual(["notes-helper"]);
+    expect(
+      await p.$$eval(`${panel} .den-svp-also .den-svp-nm`, (e) =>
+        e.map((x) => x.textContent),
+      ),
+    ).toEqual(["elsewhere"]);
     // A click outside closes it (D50: a tick later, so focus goes back).
     await p.mouse.click(1200, 600);
     await p.waitForFunction(() => !document.querySelector(".den-svp"));
@@ -566,6 +578,12 @@ describe("the panel", () => {
     await p.waitForSelector("#ag-dlg[open]", { timeout: 20_000 });
     expect(await p.inputValue("#ag-ws")).toBe("north");
     expect(await p.inputValue("#ag-folder")).toBe(repo("notes"));
+    // D65 v2: the card's repo is picked in Repo.
+    await p.waitForFunction(
+      () =>
+        (document.querySelector("#ag-repo") as HTMLSelectElement)?.value ===
+        "notes",
+    );
     expect(await p.textContent("#ag-folder-t")).toBe("Folder (optional)");
     if (!PTY) return void (await p.context().close());
     await p.waitForSelector('#ag-persona [data-pid="planner"]');
@@ -580,10 +598,10 @@ describe("the panel", () => {
       p.click("#ag-go"),
     ]);
     expect(res.status()).toBe(200);
-    // D65: and it is linked to notes, not only in its folder.
+    // D65 v2: and it is linked to notes, not only in its folder.
     expect(JSON.parse(res.request().postData() ?? "{}")).toMatchObject({
       folder: repo("notes"),
-      services: ["notes"],
+      repo: "notes",
     });
     const agent = ((await res.json()) as { agent: { id: string; cwd: string } })
       .agent;
@@ -591,7 +609,10 @@ describe("the panel", () => {
     expect(readRecord(s!.stateDir, agent.id)?.cwd).toBe(
       fs.realpathSync(repo("notes")),
     );
-    expect(readRecord(s!.stateDir, agent.id)?.services).toEqual(["notes"]);
+    expect(readRecord(s!.stateDir, agent.id)).toMatchObject({
+      project: "north",
+      repo: "notes",
+    });
     await p.context().close();
   }, 90_000);
 
@@ -1075,48 +1096,195 @@ describe("Open in Graph for a pin outside the View", () => {
 });
 
 describe("the page", () => {
-  it("D65: an agent linked to a service is listed under it wherever its folder is; one linked elsewhere isn't, even in its repo", async () => {
+  /** The names under the panel's "On this repo", and under "Also in". */
+  const listedIn = (p: Page) =>
+    p.evaluate((sel) => {
+      const box = document.querySelector(sel)!;
+      const names = (root: Element | null, inAlso: boolean) =>
+        [...(root?.querySelectorAll(".den-svp-ag") ?? [])]
+          .filter((a) => inAlso === Boolean(a.closest(".den-svp-also")))
+          .map((a) => ({
+            name: a.querySelector(".den-svp-nm")?.textContent,
+            off: a.classList.contains("den-svp-off"),
+            start: !!a.querySelector('[data-svx="agstart"]'),
+          }));
+      return {
+        here: names(box, false),
+        also: names(box.querySelector(".den-svp-also"), true),
+        alsoSays: box.querySelector(".den-svp-also > summary")?.textContent,
+        alsoOpen: (
+          box.querySelector(".den-svp-also") as HTMLDetailsElement | null
+        )?.open,
+      };
+    }, panel);
+  const openNotes = async () => {
+    const { p } = await page("/services");
+    await railReady(p);
+    await p.click('.den-rail [data-pin="notes"]');
+    await p.waitForSelector(`${panel} .den-svp-sec`);
+    return p;
+  };
+
+  it("D65 v2: the panel lists by record, never folder: On this repo, then Also in <project> (closed, a count); stopped ones dimmed, with Start", async () => {
     if (skip()) return;
-    // The folder above every repo, as an org's agents often run.
+    // Ward's case: in the workspace's own folder, linked to notes; stopped.
     s!.seed({
-      id: "linked-notes",
+      id: "top-linked",
       workspace: "north",
-      cwd: path.join(s!.tmp, "repos"),
-      services: ["notes"],
+      cwd: s!.wsDir("north"),
+      project: "north",
+      repo: "notes",
+      stoppedAt: "2026-11-12T10:00:00.000Z",
+      resumeToken: "11111111-2222-4333-8444-555555555555",
     });
-    // In notes' repo, but a person linked it to another service.
+    // In notes' repo folder, but linked to no repo: the project's.
     s!.seed({
-      id: "moved-off",
+      id: "project-only",
       workspace: "north",
       cwd: repo("notes"),
-      services: ["notes-docs"],
+      project: "north",
     });
-    const files = ["linked-notes", "moved-off"].map((id) =>
-      path.join(s!.stateDir, "agents", `${id}.json`),
-    );
+    // Another project's agent on a repo named notes: never here.
+    s!.seed({
+      id: "south-notes",
+      workspace: "south",
+      cwd: repo("notes"),
+      project: "south",
+      repo: "notes",
+    });
+    const ids = ["top-linked", "project-only", "south-notes"];
     try {
-      const { p } = await page("/services");
-      await railReady(p);
-      await p.click('.den-rail [data-pin="notes"]');
-      await p.waitForSelector(panel);
+      const p = await openNotes();
       await p.waitForFunction(
-        (sel) => document.querySelectorAll(sel).length >= 2,
-        `${panel} .den-svp-nm`,
+        (sel) =>
+          [...document.querySelectorAll(`${sel} .den-svp-nm`)].some(
+            (x) => x.textContent === "top-linked",
+          ),
+        panel,
         { timeout: 10_000 },
       );
-      // (An earlier test's Start agent here may have added its own.)
-      const listed = await p.$$eval(`${panel} .den-svp-nm`, (e) =>
-        e.map((x) => x.textContent),
+      const l = await listedIn(p);
+      expect(l.here).toEqual(
+        expect.arrayContaining([
+          { name: "top-linked", off: true, start: true },
+        ]),
       );
-      expect(listed).toEqual(
-        expect.arrayContaining(["linked-notes", "notes-helper"]),
+      expect(l.here.map((x) => x.name)).not.toContain("project-only");
+      expect(l.also.map((x) => x.name)).toContain("project-only");
+      expect(l.alsoOpen).toBe(false);
+      expect(l.alsoSays).toMatch(/^Also in north · \d+$/);
+      expect([...l.here, ...l.also].map((x) => x.name)).not.toContain(
+        "south-notes",
       );
-      expect(listed).not.toContain("moved-off");
+      expect(await p.textContent(`${panel} #den-svp-here`)).toBe(
+        "On this repo",
+      );
       await p.context().close();
     } finally {
-      for (const f of files) fs.unlinkSync(f);
+      for (const id of ids)
+        fs.unlinkSync(path.join(s!.stateDir, "agents", `${id}.json`));
     }
   }, 60_000);
+
+  it("D65 v2, Ward's case for real: started in the workspace's folder, linked by Change in its pane, it stays on notes' card through Restart and Stop", async () => {
+    if (skip() || !PTY) return;
+    // Its PTY ends on TERM, as a real one does (Restart, Stop).
+    const push = s!.made.push.bind(s!.made);
+    s!.made.push = (...ps) => {
+      for (const x of ps) {
+        const kill = x.kill.bind(x);
+        x.kill = (sig: string) => {
+          kill(sig);
+          setTimeout(() => x.exit(143), 5);
+        };
+      }
+      return push(...ps);
+    };
+    const { p } = await page("/agents?ws=north");
+    // Start a planner in the workspace's own folder, Repo: None.
+    const started = await p.evaluate(async () => {
+      const r = await window.denShell.api(
+        "POST",
+        "/api/workspaces/north/agents",
+        {
+          persona: "planner",
+          id: "ward-case",
+          repo: null,
+        },
+      );
+      return r.agent as { id: string; cwd: string };
+    });
+    expect(started.cwd).toBe(fs.realpathSync(s!.wsDir("north")));
+    expect(readRecord(s!.stateDir, "ward-case")).toMatchObject({
+      project: "north",
+    });
+    expect(readRecord(s!.stateDir, "ward-case")?.repo).toBeUndefined();
+    try {
+      const sid = readRecord(s!.stateDir, "ward-case")!.session.id;
+      await p.goto(`${s!.base}/agents?ws=north&open=${sid}`);
+      await p.waitForSelector(".pane[data-id] [data-link]", {
+        timeout: 20_000,
+      });
+      expect(await p.textContent(".pane [data-link] .mono")).toBe("north");
+      await p.click('.pane [data-act="link"]');
+      await p.waitForSelector("#ag-ln[open]");
+      await p.waitForSelector('#ag-ln-repo option[value="notes"]', {
+        state: "attached",
+      });
+      await p.selectOption("#ag-ln-repo", "notes");
+      await p.click("#ag-ln-go");
+      await p.waitForFunction(
+        () =>
+          document.querySelector(".pane [data-link] .mono")?.textContent ===
+          "north › notes",
+        undefined,
+        { timeout: 15_000 },
+      );
+      const onCard = async () => {
+        const c = await openNotes();
+        await c.waitForFunction(
+          (sel) =>
+            [...document.querySelectorAll(`${sel} .den-svp-ag`)].some(
+              (a) =>
+                !a.closest(".den-svp-also") &&
+                a.querySelector(".den-svp-nm")?.textContent === "ward-case",
+            ),
+          panel,
+          { timeout: 15_000 },
+        );
+        await c.context().close();
+      };
+      await onCard();
+      // Restart (now): a new session, the same record.
+      expect(
+        await p.evaluate(async () => {
+          await window.denShell.api(
+            "POST",
+            "/api/workspaces/north/agents/ward-case/restart",
+            { when: "now" },
+          );
+          return true;
+        }),
+      ).toBe(true);
+      expect(readRecord(s!.stateDir, "ward-case")?.repo).toBe("notes");
+      await onCard();
+      await p.evaluate(() =>
+        window.denShell.api(
+          "POST",
+          "/api/workspaces/north/agents/ward-case/stop",
+          {},
+        ),
+      );
+      expect(readRecord(s!.stateDir, "ward-case")?.repo).toBe("notes");
+      await onCard();
+      await p.context().close();
+    } finally {
+      s!.made.push = push;
+      fs.rmSync(path.join(s!.stateDir, "agents", "ward-case.json"), {
+        force: true,
+      });
+    }
+  }, 120_000);
 
   it("raised no page errors", () => {
     expect(errors).toEqual([]);

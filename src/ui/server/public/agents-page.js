@@ -400,6 +400,24 @@ function whereTag(r, button = false) {
 }
 
 /**
+ * D65 v2: "<project> › <repo>" in the pane bar, with Change; a repo that
+ * is no longer its project's says so, with Re-link. Read from its record,
+ * never its folder.
+ */
+function linkTag(r) {
+  if (r?.kind !== "agent" || r.server) return "";
+  const project = r.project || r.workspace;
+  const path = r.repo ? `${project} › ${r.repo}` : project;
+  return (
+    `<span class="aglink" data-link><span class="mono">${esc(path)}</span>` +
+    (r.repoMissing
+      ? `<span class="tagx warn" data-repo-missing>${esc(t("ag.link.missing"))}</span>`
+      : "") +
+    `<button type="button" class="den-lnk" data-act="link" aria-label="${esc(t("ag.link.changeName", { id: r.agent }))}">${esc(t(r.repoMissing ? "ag.link.relink" : "ag.link.change"))}</button></span>`
+  );
+}
+
+/**
  * den#3: what its subagents run on, and where that came from: the pane
  * bar's tag. Nothing for a runtime that takes no subagent model.
  */
@@ -1450,6 +1468,7 @@ function paintBar(p) {
     apiOnlyTag(r) +
     mcpStaleTag(r, true) +
     whereTag(r, true) +
+    linkTag(r) +
     subagentTag(r) +
     (r?.kind === "agent" && rotActionsHtml(r)
       ? `<span class="agrot" data-rot-bar title="${esc(rotMessage(r))}"><span class="tagx warn" data-rotation="${rotationOf(r)}">${esc(t(rotationOf(r) === "ready" ? "ag.rot.ready" : "ag.rot.due", { why: rotationWhy(r.rotation) }))}</span>${rotActionsHtml(r)}</span>`
@@ -3015,7 +3034,26 @@ async function fillForWorkspace(ws) {
   }
   paintPersonaField();
   pickPersona(sd.pid);
+  paintRepoField();
   return true;
+}
+
+/**
+ * D65 v2: the Start dialog's Repo: its workspace's repos, None (the whole
+ * project), or From its folder (Den proposes; the pane's Change fixes it).
+ * A service card's Start agent here picks its repo.
+ */
+function paintRepoField() {
+  const sel = $d("#ag-repo");
+  if (!sel) return;
+  const repos = sd.data?.repos ?? [];
+  const lbl = $d("#ag-repo-l");
+  if (lbl) lbl.hidden = Boolean(sd.change);
+  sel.innerHTML =
+    `<option value="auto">${esc(t("ag.repo.auto"))}</option>` +
+    `<option value="">${esc(t("ag.repo.none"))}</option>` +
+    repos.map((r) => `<option value="${esc(r)}">${esc(r)}</option>`).join("");
+  sel.value = sd.repo && repos.includes(sd.repo) ? sd.repo : "auto";
 }
 
 /** The dialog's words for Start, or for Bring in (AG-17.1). */
@@ -3043,6 +3081,60 @@ let startPrefill = null;
 /** The submit button's words for the dialog's mode. */
 function goLabel() {
   return t(sd.change ? "ag.pc.go" : sd.bring ? "ag.bring.go" : "ag.go");
+}
+
+/**
+ * D65 v2: Change: which repo of its project agent `r` works on (or none).
+ * The same choices as the Start dialog's Repo.
+ */
+async function openLink(r, opener) {
+  const dlg = $d("#ag-ln");
+  if (!dlg || dlg.open) return;
+  const sel = $d("#ag-ln-repo");
+  const err = $d("#ag-ln-err");
+  const project = r.project || r.workspace;
+  $d("#ag-ln-h").textContent = t("ag.link.title", { id: paneName(r) });
+  $d("#ag-ln-t").textContent = t("ag.repo");
+  $d("#ag-ln-help").textContent = t("ag.link.help", { p: project });
+  $d("#ag-ln-go").textContent = t("ag.link.save");
+  $d("#ag-ln-cancel").textContent = t("ag.rn.cancel");
+  let repos = [];
+  try {
+    repos = normalizeData(await personasFor(r.workspace)).repos ?? [];
+  } catch (e) {
+    window.denShell?.errorToast?.(e);
+    return;
+  }
+  sel.innerHTML =
+    `<option value="">${esc(t("ag.repo.none"))}</option>` +
+    repos.map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join("");
+  sel.value = r.repo && repos.includes(r.repo) ? r.repo : "";
+  err.hidden = true;
+  const close = () => {
+    dlg.close?.();
+    dlg.removeAttribute("open");
+    opener?.focus?.();
+  };
+  $d("#ag-ln-cancel").onclick = close;
+  $d("#ag-ln-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const go = $d("#ag-ln-go");
+    go.disabled = true;
+    try {
+      await api("POST", agentPath(r, "link"), { repo: sel.value || null });
+      close();
+      await refresh();
+      paintLayout();
+    } catch (x) {
+      err.textContent = x?.message ?? String(x);
+      err.hidden = false;
+    } finally {
+      go.disabled = false;
+    }
+  };
+  if (typeof dlg.showModal === "function") dlg.showModal();
+  else dlg.setAttribute("open", "");
+  sel.focus();
 }
 
 /**
@@ -3197,8 +3289,8 @@ async function openStart(bring = false, change = null) {
   if (pre?.ws) wsSel.value = pre.ws;
   const folder = $d("#ag-folder");
   if (folder) folder.value = pre?.folder ?? "";
-  // D65: Start agent here links the new agent to its service.
-  sd.service = pre?.service || "";
+  // D65 v2: a service card's Start agent here names its repo.
+  sd.repo = pre?.repo ?? null;
   sd.f = { q: "", cat: "", src: "" };
   sd.det = false;
   sd.what = false;
@@ -3245,7 +3337,9 @@ function startBody() {
   if (name) body.name = name;
   const folder = $d("#ag-folder")?.value.trim();
   if (folder) body.folder = folder;
-  if (sd.service) body.services = [sd.service];
+  // D65 v2: "" none; "auto" Den proposes from the folder; else a repo.
+  const repo = $d("#ag-repo")?.value ?? "auto";
+  if (repo !== "auto") body.repo = repo || null;
   return body;
 }
 
@@ -3712,6 +3806,8 @@ function translateStatic(root) {
   set("#ag-name-t", "ag.new.name");
   set("#ag-folder-t", "ag.new.folder");
   set("#ag-folder-h", "ag.new.folderHelp");
+  set("#ag-repo-t", "ag.repo");
+  set("#ag-repo-h", "ag.repo.help");
   set("#ag-adv-s", "ag.new.adv");
   set("#ag-note", "ag.new.note");
   const task = root.querySelector("#ag-task");
@@ -3960,7 +4056,7 @@ export async function mountAgentsPage(root) {
     startPrefill = {
       ws: q.get("ws") || "",
       folder: q.get("folder") || "",
-      service: q.get("service") || "",
+      repo: q.get("repo") || null,
     };
   }
 
@@ -4082,6 +4178,9 @@ export async function mountAgentsPage(root) {
       if (b.dataset.act === "relaunch") void relaunchNow(r, b);
       else if (b.dataset.act === "rot-write") void writeHandoff(r, b);
       else if (b.dataset.act === "rot-keep") void keepConversation(r, b);
+    } else if (b.dataset.act === "link") {
+      const r = rowOf(id);
+      if (r) void openLink(r, b);
     } else if (b.dataset.act === "stop") void stopAgent(p, b);
     else if (b.dataset.act === "tools-restart") {
       const r = rowOf(id);

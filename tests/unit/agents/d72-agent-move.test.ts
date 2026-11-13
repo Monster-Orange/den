@@ -83,7 +83,14 @@ function transcript(r: Rig, token: string, last: unknown, ageMs = 60_000) {
 async function started(
   last: unknown = ENDED,
 ): Promise<{ r: Rig; token: string }> {
-  const r = await rig();
+  // D65 v2: both workspaces have a notes repo.
+  let ws: (w: string) => string = () => "";
+  const r = await rig({
+    workspaceServices: (w) => [
+      { address: "notes/api", path: path.join(ws(w), "notes") },
+    ],
+  });
+  ws = r.wsDir;
   endOnTerm(r);
   expect(
     await agents(
@@ -97,7 +104,7 @@ async function started(
       "Release plan",
     ),
   ).toBe(0);
-  expect(await agents(r, "link", "release-plan", "notes")).toBe(0);
+  expect(await agents(r, "link", "release-plan", "--repo", "notes")).toBe(0);
   const token = readRecord(r.stateDir, "release-plan")!.resumeToken!;
   transcript(r, token, last);
   return { r, token };
@@ -128,7 +135,7 @@ describe("D72: agents move", () => {
     expect(rec.workspace).toBe("south");
     expect(rec.sessionName).toMatch(/south/);
     expect(rec.displayName).toBe("Release plan");
-    expect(rec.services).toEqual(["notes"]);
+    expect([rec.project, rec.repo]).toEqual(["south", "notes"]);
     expect(r.made).toHaveLength(before);
   });
 
@@ -146,7 +153,8 @@ describe("D72: agents move", () => {
       resumeToken: token,
       cwd: r.wsDir("north"),
       displayName: "Release plan",
-      services: ["notes"],
+      project: "south",
+      repo: "notes",
     });
     expect(mcpArgs(r, "release-plan").join(" ")).toContain("south");
     expect(mcpArgs(r, "release-plan").join(" ")).not.toContain("north");

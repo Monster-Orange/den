@@ -547,6 +547,16 @@
         flex: none;
         white-space: nowrap;
       }
+      /* D65 v2: project › repo, with Change. */
+      .pane .bar2 .aglink {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex: none;
+        white-space: nowrap;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
       /* D20: the launchd tag is a button (tap: why); it looks like a tag. */
       button.tagx {
         background: none;
@@ -1005,6 +1015,14 @@
           <p class="helpl" id="ag-folder-h">
             Inside the workspace's folder. Empty: the workspace's own.
           </p>
+          <label class="fld" id="ag-repo-l"
+            ><span id="ag-repo-t">Repo</span>
+            <select id="ag-repo" aria-describedby="ag-repo-h"></select>
+          </label>
+          <p class="helpl" id="ag-repo-h">
+            Its repo's service cards list it. None: it shows under the whole
+            project.
+          </p>
           <p class="helpl" id="ag-as" role="status"></p>
           <details id="ag-adv">
             <summary id="ag-adv-s">Advanced: model and permissions</summary>
@@ -1040,6 +1058,25 @@
             </button>
             <button type="submit" class="den-btn primary" id="ag-rn-go">
               Rename
+            </button>
+          </div>
+        </form>
+      </dialog>
+      <dialog class="ag-dlg" id="ag-ln" aria-labelledby="ag-ln-h">
+        <form method="dialog" id="ag-ln-form" novalidate>
+          <h2 id="ag-ln-h">Repo</h2>
+          <label class="fld"
+            ><span id="ag-ln-t">Repo</span>
+            <select id="ag-ln-repo"></select>
+          </label>
+          <p class="help" id="ag-ln-help"></p>
+          <p class="err" id="ag-ln-err" role="alert" hidden></p>
+          <div class="btns">
+            <button type="button" class="den-btn" id="ag-ln-cancel">
+              Cancel
+            </button>
+            <button type="submit" class="den-btn primary" id="ag-ln-go">
+              Save
             </button>
           </div>
         </form>

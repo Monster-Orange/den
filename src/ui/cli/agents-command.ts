@@ -118,8 +118,10 @@ import {
   removeStopped,
   renameAgent,
   moveAgent,
-  setAgentServices,
-  checkServiceList,
+  setAgentRepo,
+  checkRepoName,
+  agentLinkReport,
+  workspaceRepoFolders,
   resolveAgentsDeps,
   resumeInterrupted,
   startAgent,
@@ -243,10 +245,10 @@ export const AGENTS_HELP = {
     "{cli} agents rename <id> --clear [-w <ws>]",
     "    name an agent (its tab, row and pane header); the id never changes.",
     "    Other sessions see it as {cli}-<ws>:<name> from its next start or resume.",
-    "{cli} agents link <id> <service>... [-w <ws>]",
-    "{cli} agents unlink <id> <service>... [-w <ws>]",
-    "    the services it works on (repo or repo/service): their card lists it,",
-    "    through every restart. Without a link its folder decides.",
+    "{cli} agents link <id> --repo <repo> [-w <ws>]",
+    "{cli} agents unlink <id> [-w <ws>]",
+    "    the repo of its project it works on: that repo's service cards list it,",
+    "    through every restart. Unlinked, it shows under Also in <project>.",
     "    --clear: back to its id",
     "{cli} agents files <id> [-w <ws>] [--json]",
     "    the files dropped, pasted or attached onto the agent's terminal (its",
@@ -1133,9 +1135,10 @@ function rename(args: string[], d: AgentsResolved): number {
 }
 
 /**
- * D65: `agents link <id> <service…>` / `agents unlink <id> <service…>`:
- * which services it works on ("repo" or "repo/service"). The service card
- * lists it under them, through every restart.
+ * D65 v2: `agents link <id> --repo <repo>` / `agents unlink <id>`: the
+ * repo of its project it works on. Its service cards list it under "On
+ * this repo"; unlinked, under "Also in <project>". Kept through every
+ * restart.
  */
 function link(
   args: string[],
@@ -1143,23 +1146,28 @@ function link(
   how: "add" | "remove",
 ): number {
   const where = how === "add" ? "agents link" : "agents unlink";
-  const p = parseArgs(where, args, { "--workspace": true });
-  const [id, ...given] = p.positional;
-  if (!id || !given.length)
-    throw new UsageError(
-      `${where} needs <id> and one or more services (repo or repo/service)`,
-    );
+  const p = parseArgs(where, args, { "--workspace": true, "--repo": true });
+  const [id, positional] = p.positional;
+  if (!id) throw new UsageError(`${where} needs <id>`);
   const ws =
     workspaceFlag(where, p) ?? readRecord(d.stateDir(), id)?.workspace ?? "";
-  const list = checkServiceList(given);
-  const rec = setAgentServices(d, id, ws, {
-    add: how === "add" ? list : [],
-    remove: how === "remove" ? list : [],
-  });
+  let repo: string | null = null;
+  if (how === "add") {
+    const given = p.flags["--repo"] ?? positional;
+    if (typeof given !== "string" || !given)
+      throw new UsageError(`${where} needs --repo <repo>`);
+    repo = checkRepoName(given);
+    const repos = workspaceRepoFolders(d, ws);
+    if (!repos.has(repo))
+      throw new UsageError(
+        `${where}: project ${ws} has no repo "${repo}"${repos.size ? ` (it has ${[...repos.keys()].join(", ")})` : ""}`,
+      );
+  }
+  const rec = setAgentRepo(d, id, ws, repo);
   d.out(
-    rec.services?.length
-      ? `agent ${id} works on ${rec.services.join(", ")}`
-      : `agent ${id} is linked to no services now (its folder decides)`,
+    rec.repo
+      ? `agent ${id} works on ${rec.project} › ${rec.repo}`
+      : `agent ${id} is in ${rec.project}, on no one repo`,
   );
   return 0;
 }
@@ -1487,6 +1495,13 @@ async function doctor(
   const denied = readApiOnlyAudit(d.stateDir(), 50);
   // D44: never fails doctor (no host: none running).
   const stale = await staleAgents(d).catch(() => []);
+  // D65 v2: never fails doctor.
+  let links: ReturnType<typeof agentLinkReport> | null = null;
+  try {
+    links = agentLinkReport(d);
+  } catch {
+    /* records unreadable: nothing to say */
+  }
   if (p.flags["--json"]) {
     d.out(
       JSON.stringify(
@@ -1524,6 +1539,7 @@ async function doctor(
             denied,
           },
           staleTools: stale,
+          ...(links ? { links } : {}),
           ...(ws ? { workspace: ws } : {}),
           userConfig: d.userConfigFile(),
         },
@@ -1549,10 +1565,37 @@ async function doctor(
   d.out("");
   for (const l of staleLines(stale, d.cli)) d.out(l);
   d.out("");
+  if (links) {
+    for (const l of linkLines(links, d.cli)) d.out(l);
+    d.out("");
+  }
   d.out(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,
   );
   return code;
+}
+
+/** D65 v2: doctor's lines on which repo each agent works on. */
+export function linkLines(
+  r: ReturnType<typeof agentLinkReport>,
+  cli: string,
+): string[] {
+  const out = ["Agents and their repos"];
+  if (r.migrated.length)
+    out.push(`  linked from their folder (once): ${r.migrated.join(", ")}`);
+  if (!r.noRepo.length && !r.missing.length) {
+    out.push("  every agent is linked to a repo");
+    return out;
+  }
+  for (const x of r.missing)
+    out.push(
+      `  ${x.id} (${x.project}): repo missing: ${x.repo} · re-link: ${cli} agents link ${x.id} --repo <repo>`,
+    );
+  for (const x of r.noRepo)
+    out.push(
+      `  ${x.id} (${x.project}): on no one repo (shows under Also in ${x.project}) · link: ${cli} agents link ${x.id} --repo <repo>`,
+    );
+  return out;
 }
 
 /** `<cli> agents ...`; returns the exit code. */

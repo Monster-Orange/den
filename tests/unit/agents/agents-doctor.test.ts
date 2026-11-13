@@ -116,6 +116,9 @@ describe("agents doctor", () => {
       "",
       "Agents' tools     all current",
       "",
+      "Agents and their repos",
+      "  every agent is linked to a repo",
+      "",
       "`acme doctor --probe` checks the env each runtime's session gets.",
     ]);
     // Never an env value (the rig's env holds a token-shaped one).

@@ -2377,8 +2377,11 @@ export interface StartRequest {
    * never a free string (the CLI's --model for generic stays free).
    */
   strict?: boolean;
-  /** D65: the services it works on; a relaunch keeps the last ones. */
-  services?: string[];
+  /**
+   * D65 v2: the repo it works on; null: none. Unset: the last record's
+   * (a relaunch, Start fresh), else proposed from its folder.
+   */
+  repo?: string | null;
 }
 
 /**
@@ -2674,12 +2677,8 @@ export async function startAgent(
           ...subagentsField(rt, persona, cfg),
           workspace: ws,
           cwd: input.worktree,
-          // D65: the link to its services outlives every new conversation.
-          ...(req.services?.length
-            ? { services: [...req.services] }
-            : prev?.services?.length
-              ? { services: [...prev.services] }
-              : {}),
+          // D65 v2: its project and repo outlive every new conversation.
+          ...linkFields(d, ws, input.worktree, req.repo, prev),
           sessionName: sessionName(d.dist, ws, id),
           peerName,
           // AG-4b: a name given to the agent is the agent's, not its
@@ -2914,6 +2913,8 @@ export interface ImportRequest {
   model?: string;
   /** With model: "latest" or a pinned version (AG-12.3). */
   version?: string;
+  /** D65 v2: its repo (null: none); unset: proposed from its folder. */
+  repo?: string | null;
 }
 
 /** The persona's id, else the first `<persona>-<n>` no agent has. */
@@ -2988,6 +2989,10 @@ export async function importAgent(
     throw refused(`${where}: agent ${id} exists; give this one another --id`);
   // AG-17.1c: the conversation keeps its own model unless one is picked.
   const model = req.model ?? c.model;
+  // D65 v2: bringing back a conversation Den removed keeps its link.
+  const was = listRemovedRecords(d.stateDir()).find(
+    (r) => r.resumeToken === c.id && r.workspace === req.workspace,
+  );
   return startAgent(
     d,
     {
@@ -3002,6 +3007,11 @@ export async function importAgent(
       // A model picked on the page is checked against the catalog; the
       // conversation's own is taken as it ran.
       ...(req.model !== undefined ? { strict: true } : {}),
+      ...(req.repo !== undefined
+        ? { repo: req.repo }
+        : was?.project !== undefined
+          ? { repo: was.repo ?? null }
+          : {}),
     },
     { bringIn: { token: c.id, cwd: c.cwd } },
   );
@@ -3060,42 +3070,147 @@ export function renameAgent(
   return next;
 }
 
-const SERVICE_ADDRESS_RE =
-  /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$/;
+const REPO_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 
-/** D65: a list of service addresses ("repo" or "repo/service"), checked. */
-export function checkServiceList(v: unknown): string[] {
-  if (
-    !Array.isArray(v) ||
-    v.length > 32 ||
-    !v.every((x) => typeof x === "string" && SERVICE_ADDRESS_RE.test(x))
-  )
-    throw usage(
-      'services must be a list of service names ("repo" or "repo/service")',
-    );
-  return [...new Set(v as string[])];
+/** D65 v2: a repo name (as Den's services list it), checked. */
+export function checkRepoName(v: unknown): string {
+  if (typeof v !== "string" || !REPO_RE.test(v.trim()))
+    throw usage("repo must be a repo's name (as the Services page shows it)");
+  return v.trim();
+}
+
+/** D65 v2: workspace `ws`'s repos, by name, with their folders. */
+export function workspaceRepoFolders(
+  d: AgentsResolved,
+  ws: string,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  try {
+    for (const s of d.workspaceServices(ws)) {
+      const repo = s.address.split("/")[0];
+      if (!out.has(repo)) out.set(repo, s.path);
+    }
+  } catch {
+    /* a workspace whose services can't be read: none */
+  }
+  return out;
 }
 
 /**
- * D65: link the agent to services, or unlink it. The link is the agent's
- * own (its record), so every restart path keeps it.
+ * D65 v2: the repo a folder proposes: the repo whose folder holds it (the
+ * deepest), else a repo of the workspace whose name is one of its folder
+ * names (a worktree, a clone elsewhere). Only a proposal, made once at
+ * start, bring-in or the one-time migration: display never asks it.
  */
-export function setAgentServices(
+export function proposeRepo(
+  d: AgentsResolved,
+  ws: string,
+  cwd: string | undefined,
+): string | undefined {
+  if (!cwd) return undefined;
+  const repos = workspaceRepoFolders(d, ws);
+  let best: { repo: string; len: number } | undefined;
+  for (const [repo, dir] of repos) {
+    const rel = path.relative(dir, cwd);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
+    if (!best || dir.length > best.len) best = { repo, len: dir.length };
+  }
+  if (best) return best.repo;
+  const parts = new Set(cwd.split(path.sep));
+  return [...repos.keys()].find((r) => parts.has(r));
+}
+
+/** D65 v2: a new record's project and repo (see StartRequest.repo). */
+function linkFields(
+  d: AgentsResolved,
+  ws: string,
+  cwd: string,
+  asked: string | null | undefined,
+  prev: AgentRecord | null | undefined,
+): Pick<AgentRecord, "project" | "repo" | "subpath"> {
+  const repo =
+    asked === null
+      ? undefined
+      : asked !== undefined
+        ? asked
+        : prev?.project !== undefined
+          ? prev.repo
+          : proposeRepo(d, ws, cwd);
+  return {
+    project: ws,
+    ...(repo ? { repo } : {}),
+    ...(repo && asked === undefined && prev?.repo === repo && prev.subpath
+      ? { subpath: prev.subpath }
+      : {}),
+  };
+}
+
+/**
+ * D65 v2: link the agent to a repo of its project, or to none (null).
+ * Its own record, so every restart path keeps it.
+ */
+export function setAgentRepo(
   d: AgentsResolved,
   id: string,
   ws: string,
-  change: { add: string[]; remove: string[] },
+  repo: string | null,
 ): AgentRecord {
   const rec = agentRecord(d, id, ws);
-  const drop = new Set(change.remove);
-  const list = [...new Set([...(rec.services ?? []), ...change.add])].filter(
-    (s) => !drop.has(s),
-  );
-  const next: AgentRecord = { ...rec };
-  if (list.length) next.services = list;
-  else delete next.services;
+  const next: AgentRecord = { ...rec, project: rec.workspace };
+  if (repo) next.repo = repo;
+  else delete next.repo;
+  delete next.subpath;
   writeRecord(d.stateDir(), next);
   return next;
+}
+
+/** D65 v2, `agents doctor`: agents on no repo, and those whose repo is gone. */
+export function agentLinkReport(d: AgentsResolved): {
+  migrated: string[];
+  noRepo: { id: string; project: string }[];
+  missing: { id: string; project: string; repo: string }[];
+} {
+  const m = migrateAgentLinks(d);
+  const noRepo: { id: string; project: string }[] = [];
+  const missing: { id: string; project: string; repo: string }[] = [];
+  const repos = new Map<string, Map<string, string>>();
+  for (const rec of listRecords(d.stateDir())) {
+    if (isServerScope(rec.workspace)) continue;
+    const project = rec.project ?? rec.workspace;
+    if (!rec.repo) {
+      noRepo.push({ id: rec.id, project });
+      continue;
+    }
+    if (!repos.has(rec.workspace))
+      repos.set(rec.workspace, workspaceRepoFolders(d, rec.workspace));
+    if (!repos.get(rec.workspace)!.has(rec.repo))
+      missing.push({ id: rec.id, project, repo: rec.repo });
+  }
+  return { migrated: m.linked, noRepo, missing };
+}
+
+/**
+ * D65 v2's one-time migration: every agent with no project gets its
+ * workspace, and the repo its folder proposes. Those it couldn't give a
+ * repo are listed (`agents doctor`). Writes only records that change.
+ */
+export function migrateAgentLinks(d: AgentsResolved): {
+  linked: string[];
+  unlinked: string[];
+} {
+  const linked: string[] = [];
+  const unlinked: string[] = [];
+  for (const rec of listRecords(d.stateDir())) {
+    if (rec.project !== undefined || isServerScope(rec.workspace)) continue;
+    const repo = proposeRepo(d, rec.workspace, rec.cwd);
+    writeRecord(d.stateDir(), {
+      ...rec,
+      project: rec.workspace,
+      ...(repo ? { repo } : {}),
+    });
+    (repo ? linked : unlinked).push(rec.id);
+  }
+  return { linked, unlinked };
 }
 
 export interface Stopped {
@@ -3563,8 +3678,15 @@ export async function moveAgent(
       ...cur,
       workspace: to,
       sessionName: sessionName(d.dist, to, cur.id),
+      // D65 v2: its project is its workspace's (until H5's projects). Its
+      // repo stays only if the new one has it too.
+      project: to,
     };
     delete next.peerName;
+    if (next.repo && !workspaceRepoFolders(d, to).has(next.repo)) {
+      delete next.repo;
+      delete next.subpath;
+    }
     writeRecord(d.stateDir(), next);
     return next;
   };
