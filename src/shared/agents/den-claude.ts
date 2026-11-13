@@ -821,6 +821,12 @@ export const denClaude: Runtime = {
     noConversation: /no conversation found/i,
     idInUse: /already in use/i,
   },
+  // SRV-1b: its folder-trust question (two wordings seen), first choice Yes.
+  trustPrompt: {
+    match:
+      /(Do you trust the files in this folder\?|Is this a project you created or one you trust\?)[\s\S]*1\.\s*Yes/i,
+    accept: "\r",
+  },
   approvals: "terminal",
   envPassthrough: ["CLAUDE_CONFIG_DIR"],
   // Claude Code's session plumbing: the session id, its messaging socket and

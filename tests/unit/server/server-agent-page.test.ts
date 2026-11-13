@@ -161,27 +161,34 @@ describe("the server agent's page", () => {
       sessionId: "s-1",
     });
     expect(other.body).not.toContain('data-note="login"');
-    expect(other.body).not.toContain('data-note="trust"');
   });
 
-  it("running on Claude on a fresh Den: a line above the terminal says to trust its folder", () => {
-    const v = serverAgentView({
+  it("SRV-1b: its runtime asks to trust the folder: Trust and Not now; Not now says it waits", () => {
+    const running = {
       ...base,
       runningRuntime: "den-claude",
       state: "running",
       sessionId: "s-1",
-    });
-    expect(v.body).toContain(
-      '<p class="note sa-trust" data-note="trust">sa.trust</p>',
-    );
-    const setUp = serverAgentView({
-      ...base,
-      fresh: false,
-      runningRuntime: "den-claude",
-      state: "running",
-      sessionId: "s-1",
-    });
-    expect(setUp.body).not.toContain('data-note="trust"');
+    };
+    // No prompt seen: no trust line (Den no longer guesses it).
+    expect(serverAgentView(running).body).not.toContain('data-note="trust"');
+    const asking = { ...running, prompt: { kind: "trust", folder: "/dens/acme" } };
+    for (const s of [asking, { ...asking, fresh: false }]) {
+      const v = serverAgentView(s);
+      expect(v.body).toContain('data-note="trust"');
+      expect(v.body).toContain('data-act="trust-yes"');
+      expect(v.body).toContain('data-act="trust-no"');
+      expect(v.terminal).toBe("s-1");
+    }
+    const later = serverAgentView(asking, { trustLater: true });
+    expect(later.body).toContain('data-note="trust-wait"');
+    expect(later.body).toContain('data-act="trust-yes"');
+    expect(later.body).not.toContain('data-act="trust-no"');
+    // The folder is escaped.
+    expect(
+      serverAgentView({ ...asking, prompt: { kind: "trust", folder: "<b>x" } })
+        .body,
+    ).not.toContain("<b>x");
   });
 
   it("the model picker offers the runtime's own models, the chosen one selected", () => {

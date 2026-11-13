@@ -48,6 +48,7 @@ async function serve(
   r: Rig,
   saved: { id?: string | null; model?: string | null },
   ran: string[],
+  trust?: { asking: boolean; typed: number },
 ) {
   const actions: HeldActions = {
     workspace_create: {
@@ -97,6 +98,20 @@ async function serve(
             root: () => "/dens/acme",
           },
           stateDir: () => r.stateDir,
+          ...(trust
+            ? {
+                trust: {
+                  detect: async () =>
+                    trust.asking ? { folder: "/dens/acme" } : null,
+                  answer: async () => {
+                    if (!trust.asking) return false;
+                    trust.typed++;
+                    trust.asking = false;
+                    return true;
+                  },
+                },
+              }
+            : {}),
         })) ||
         (await handleApprovalRoutes(req, res, pathname, guard, {
           queue,
@@ -132,6 +147,44 @@ async function serve(
     };
   };
 }
+
+describe("SRV-1b: the trust step", () => {
+  it("GET says the runtime asks to trust the folder; Trust answers it once; Not now types nothing", async () => {
+    const r = await rig();
+    const trust = { asking: true, typed: 0 };
+    const call = await serve(r, {}, [], trust);
+    expect((await call("GET", "/api/server-agent")).json.prompt).toEqual({
+      kind: "trust",
+      folder: "/dens/acme",
+    });
+    const no = await call("POST", "/api/server-agent/trust", { answer: "no" });
+    expect(no).toMatchObject({ status: 200, json: { ok: true, typed: false } });
+    expect(trust.typed).toBe(0);
+    const yes = await call("POST", "/api/server-agent/trust", { answer: "yes" });
+    expect(yes).toMatchObject({ status: 200, json: { ok: true, typed: true } });
+    expect(trust.typed).toBe(1);
+    // Answered: no prompt now, and a second Trust types nothing.
+    expect((await call("GET", "/api/server-agent")).json.prompt).toBeNull();
+    const again = await call("POST", "/api/server-agent/trust", { answer: "yes" });
+    expect(again).toMatchObject({ status: 409, json: { ok: false } });
+    expect(trust.typed).toBe(1);
+  });
+
+  it("an agent can't answer it; a bad answer is refused", async () => {
+    const r = await rig();
+    const trust = { asking: true, typed: 0 };
+    const call = await serve(r, {}, [], trust);
+    expect(
+      (await call("POST", "/api/server-agent/trust", { answer: "yes" }, true))
+        .status,
+    ).toBe(403);
+    expect(
+      (await call("POST", "/api/server-agent/trust", { answer: "maybe" }))
+        .status,
+    ).toBe(400);
+    expect(trust.typed).toBe(0);
+  });
+});
 
 describe("/api/server-agent", () => {
   it("SRV-1b: the last den_update's state, or none", async () => {

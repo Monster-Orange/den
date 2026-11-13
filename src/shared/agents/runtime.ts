@@ -321,6 +321,11 @@ export interface Runtime {
    */
   launchFailures?: { noConversation?: RegExp; idInUse?: RegExp };
   /**
+   * SRV-1b: the runtime's "trust this folder?" prompt, and what answers
+   * yes. None: it never asks. See trust-prompt.ts.
+   */
+  trustPrompt?: import("./trust-prompt.js").TrustPrompt;
+  /**
    * The name the runtime gives the agent's conversation (AG-4b: Claude
    * Code's `/rename`), or null when it has none or can't say. Optional:
    * a runtime without it has Den's rename only. Must be quick and never

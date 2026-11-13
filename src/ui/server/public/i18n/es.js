@@ -1065,7 +1065,10 @@
       "Vamos a configurar __DEN_TITLE__. Solo lee hasta que permitas un cambio.",
     "sa.sub":
       "Para todo lo del servidor: añadir un repo, arreglar un servicio que falla, cambiar un ajuste o explicar qué está en marcha.",
-    "sa.trust": "Claude pregunta si confías en esta carpeta. Elige Sí.",
+    "sa.trust": "El agente pregunta si confías en su carpeta, {folder}.",
+    "sa.trust.yes": "Confiar",
+    "sa.trust.no": "Ahora no",
+    "sa.trust.wait": "El agente espera hasta que respondas, aquí o en su terminal.",
     "sa.model": "Modelo",
     "sa.login":
       "Si Claude te pide iniciar sesión, hazlo aquí. Después {name} empieza.",

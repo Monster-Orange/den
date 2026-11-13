@@ -1171,7 +1171,10 @@
       "For anything about this server: add a repo, fix a failing service, change a setting, or explain what's running.",
     "sa.login":
       "If Claude asks you to log in, log in here. Then {name} starts.",
-    "sa.trust": "Claude asks whether to trust this folder. Choose Yes.",
+    "sa.trust": "The agent asks whether to trust its folder, {folder}.",
+    "sa.trust.yes": "Trust",
+    "sa.trust.no": "Not now",
+    "sa.trust.wait": "The agent waits until you answer, here or in its terminal.",
     "sa.model": "Model",
     "sa.readsOnly":
       "It acts only through __DEN_TITLE__'s own tools. Each change asks you first, in this browser.",

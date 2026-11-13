@@ -50,6 +50,7 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import { trustPromptIn } from "../../shared/agents/trust-prompt.js";
 import {
   hubProjectOf,
   type HubProjectLink,
@@ -4744,6 +4745,57 @@ async function outputQuiet(
     await new Promise((r) => setTimeout(r, ms));
     const b = (await c.scrollback(sessionId, 64 * 1024)).toString("utf-8");
     return a.length > 0 && a === b;
+  } catch {
+    return false;
+  } finally {
+    c.close();
+  }
+}
+
+/**
+ * SRV-1b: the server agent's runtime asks whether to trust its folder
+ * (the end of its output is that prompt): the folder, or null.
+ */
+export async function serverAgentTrustPrompt(
+  d: AgentsResolved,
+): Promise<{ folder: string; sessionId: string; accept: string } | null> {
+  const rec = readRecord(d.stateDir(), SERVER_AGENT_ID);
+  if (!rec || !isServerScope(rec.workspace) || rec.stoppedAt) return null;
+  const tp = getRuntime(rec.runtime)?.trustPrompt;
+  if (!tp) return null;
+  const c = await d.connectExisting();
+  if (!c) return null;
+  try {
+    const s = sessionOf(await c.list(), rec);
+    if (!s || s.exited) return null;
+    const out = (await c.scrollback(s.ref.id, 16 * 1024)).toString("utf-8");
+    return trustPromptIn(out, tp)
+      ? { folder: rec.cwd, sessionId: s.ref.id, accept: tp.accept }
+      : null;
+  } catch {
+    return null;
+  } finally {
+    c.close();
+  }
+}
+
+/**
+ * SRV-1b: the person's Trust. Den looks again first, and types the
+ * runtime's accept key only while its prompt is still there. False: no
+ * prompt (answered already, or gone).
+ */
+export async function answerServerAgentTrust(
+  d: AgentsResolved,
+): Promise<boolean> {
+  const p = await serverAgentTrustPrompt(d);
+  if (!p) return false;
+  const c = await d.connectExisting();
+  if (!c) return false;
+  try {
+    c.write(p.sessionId, Buffer.from(p.accept, "utf-8"));
+    // Let the host take the bytes before the connection closes.
+    await c.list();
+    return true;
   } catch {
     return false;
   } finally {

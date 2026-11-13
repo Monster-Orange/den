@@ -11,6 +11,10 @@
  *   POST /api/server-agent/model    { model: id | null }: the person's
  *                                   model, one of the runtime's own
  *                                   (user.yml agents.server_model)
+ *   POST /api/server-agent/trust    { answer: "yes" | "no" } (SRV-1b): the
+ *                                   person's answer to the runtime's
+ *                                   "trust this folder?". Den looks again
+ *                                   before typing; "no" types nothing
  *
  * An agent never starts the server agent or picks its runtime: any agent
  * credential or claim is refused (403).
@@ -18,6 +22,10 @@
 import type * as http from "http";
 import { HostError } from "../../shared/sessions/client.js";
 import { AgentError, type AgentsDeps } from "../cli/agent-ops.js";
+import {
+  answerServerAgentTrust,
+  serverAgentTrustPrompt,
+} from "../cli/agent-ops.js";
 import {
   serverAgentStatus,
   setServerModel,
@@ -41,6 +49,11 @@ export interface ServerAgentRouteDeps {
   server?: ServerAgentDeps;
   /** Where den_update keeps its state (default: this Den's state dir). */
   stateDir?: () => string;
+  /** SRV-1b: the runtime's trust prompt (default: the agent's own output). */
+  trust?: {
+    detect: () => Promise<{ folder: string } | null>;
+    answer: () => Promise<boolean>;
+  };
 }
 
 const MAX_BODY = 4 * 1024;
@@ -68,7 +81,7 @@ function sendError(res: http.ServerResponse, e: unknown): void {
 
 async function body(
   req: http.IncomingMessage,
-): Promise<{ runtime?: unknown; model?: unknown }> {
+): Promise<{ runtime?: unknown; model?: unknown; answer?: unknown }> {
   const raw = await readBody(req);
   if (raw.length > MAX_BODY)
     throw new AgentError("body too large", { status: 413 });
@@ -81,7 +94,7 @@ async function body(
   }
   if (!b || typeof b !== "object" || Array.isArray(b))
     throw new AgentError("body must be an object", { usage: true });
-  return b as { runtime?: unknown; model?: unknown };
+  return b as { runtime?: unknown; model?: unknown; answer?: unknown };
 }
 
 export async function handleServerAgentRoutes(
@@ -94,11 +107,16 @@ export async function handleServerAgentRoutes(
     pathname !== "/api/server-agent" &&
     pathname !== "/api/server-agent/start" &&
     pathname !== "/api/server-agent/runtime" &&
-    pathname !== "/api/server-agent/model"
+    pathname !== "/api/server-agent/model" &&
+    pathname !== "/api/server-agent/trust"
   )
     return false;
   const method = req.method ?? "GET";
   const d = webDeps(deps.agents);
+  const trust = deps.trust ?? {
+    detect: () => serverAgentTrustPrompt(d),
+    answer: () => answerServerAgentTrust(d),
+  };
   if (pathname === "/api/server-agent") {
     if (method !== "GET" && method !== "HEAD") {
       res.setHeader("Allow", "GET");
@@ -108,7 +126,14 @@ export async function handleServerAgentRoutes(
     try {
       // SRV-1b: the last den_update, for the page (null: none).
       const update = readUpdateState((deps.stateDir ?? getStateDir)());
-      sendJson(res, { ...(await serverAgentStatus(d, deps.server)), update });
+      const status = await serverAgentStatus(d, deps.server);
+      // SRV-1b: its runtime asks to trust the folder (the page offers Trust).
+      const p = await trust.detect().catch(() => null);
+      sendJson(res, {
+        ...status,
+        update,
+        prompt: p ? { kind: "trust", folder: p.folder } : null,
+      });
     } catch (e) {
       sendError(res, e);
     }
@@ -124,7 +149,9 @@ export async function handleServerAgentRoutes(
     ? "start"
     : pathname.endsWith("/model")
       ? "model"
-      : "runtime";
+      : pathname.endsWith("/trust")
+        ? "trust"
+        : "runtime";
   const audit = (detail: string, reason?: string) =>
     recordAction(
       actor,
@@ -149,6 +176,23 @@ export async function handleServerAgentRoutes(
       typeof b.runtime !== "string"
     )
       throw new AgentError("runtime must be a runtime id", { usage: true });
+    if (verb === "trust") {
+      if (b.answer !== "yes" && b.answer !== "no")
+        throw new AgentError('answer must be "yes" or "no"', { usage: true });
+      if (b.answer === "no") {
+        audit("trust: not now (nothing typed)");
+        sendJson(res, { ok: true, typed: false });
+        return true;
+      }
+      if (!(await trust.answer()))
+        throw new AgentError(
+          "the agent isn't asking to trust its folder now (answered already, or not running)",
+          { status: 409 },
+        );
+      audit("trust: yes (typed the runtime's accept)");
+      sendJson(res, { ok: true, typed: true });
+      return true;
+    }
     if (verb === "model") {
       if (b.model !== null && typeof b.model !== "string")
         throw new AgentError("model must be a model id or null", {

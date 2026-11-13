@@ -8,9 +8,12 @@
  *    reads until the person allows a write (each write is held for the
  *    browser's Allow, ON-3).
  *  - No runtime: the manual path, and how to install a runtime.
- *  - Running on Claude on a fresh Den: a line saying Claude asks to trust
- *    its folder (choose Yes), and one saying to log in to Claude in the
- *    terminal if it asks (Den can't tell whether it is logged in). Which
+ *  - Its runtime asks to trust its folder (SRV-1b: the server sees the
+ *    prompt in its output, status.prompt): Trust and Not now. Trust types
+ *    the runtime's yes; Not now types nothing, and the line says the agent
+ *    waits for an answer, here or in its terminal.
+ *  - Running on Claude on a fresh Den: a line saying to log in to Claude in
+ *    the terminal if it asks (Den can't tell whether it is logged in). Which
  *    runtime it runs on is its record's (runningRuntime), never the
  *    picker's: the two differ after the picker changes, or when the runtime
  *    is not found again on a later read.
@@ -45,7 +48,7 @@ const RUNNING = new Set(["running", "stopping"]);
  *
  *   { sub, body, autoStart, terminal }
  */
-export function serverAgentView(s) {
+export function serverAgentView(s, o = {}) {
   const running = RUNNING.has(s.state) && !!s.sessionId;
   const hasRuntime = !!s.runtime;
   const sub = s.fresh ? t("sa.sub.fresh") : t("sa.sub");
@@ -53,17 +56,30 @@ export function serverAgentView(s) {
   // Den can't tell whether Claude is logged in (ON-6). On a fresh Den's
   // first run, one line above the terminal says a login prompt is
   // expected, so Claude's own login screen never reads as a crash.
-  // Claude Code asks once whether to trust the agent's folder, which Den
-  // made for it; Den doesn't answer for the person (that is Claude's own
-  // file, ~/.claude.json, with no documented way to pre-accept).
+  // SRV-1b: the runtime asks once whether to trust the agent's folder.
+  // Den never answers for the person (that is the runtime's own file):
+  // the person's Trust here types the runtime's yes.
+  const trust =
+    s.prompt?.kind === "trust"
+      ? `<div class="note sa-trust" data-note="trust"><p>${esc(t("sa.trust", { folder: s.prompt.folder }))}</p>` +
+        (o.trustLater
+          ? `<p data-note="trust-wait">${esc(t("sa.trust.wait"))}</p>`
+          : "") +
+        `<button type="button" class="den-btn primary" data-act="trust-yes">${esc(t("sa.trust.yes"))}</button>` +
+        (o.trustLater
+          ? ""
+          : ` <button type="button" class="den-btn" data-act="trust-no">${esc(t("sa.trust.no"))}</button>`) +
+        `</div>`
+      : "";
   const onClaude =
     s.fresh &&
     (running ? (s.runningRuntime ?? s.runtime?.id) : s.runtime?.id) ===
       "den-claude";
-  const login = onClaude
-    ? `<p class="note sa-trust" data-note="trust">${esc(t("sa.trust"))}</p>` +
-      `<p class="note sa-login" data-note="login">${esc(t("sa.login", { name: s.name }))}</p>`
-    : "";
+  const login =
+    trust +
+    (onClaude
+      ? `<p class="note sa-login" data-note="login">${esc(t("sa.login", { name: s.name }))}</p>`
+      : "");
   if (running)
     return {
       sub,
@@ -159,7 +175,14 @@ const st = {
   autoTried: false,
   /** Reads after a start that came back not running yet. */
   rereads: 0,
+  /** SRV-1b: the person chose Not now on the trust prompt. */
+  trustLater: false,
+  /** Reads while running, to see the trust prompt come and go. */
+  looks: 0,
 };
+
+/** How many times, two seconds apart, a running agent is read for its prompt. */
+const LOOKS = 45;
 
 /** How many times, a second apart, a start is read back until it runs. */
 const REREADS = 15;
@@ -186,7 +209,7 @@ function paint() {
     body.innerHTML = "";
     return null;
   }
-  const v = serverAgentView(s);
+  const v = serverAgentView(s, { trustLater: st.trustLater });
   sub.textContent = v.sub;
   body.innerHTML = v.body;
   const opts = runtimeOptionsHtml(s);
@@ -215,6 +238,13 @@ async function refresh() {
     void start();
     return;
   }
+  // SRV-1b: running: read again for a while, so its trust prompt shows
+  // (and goes once answered in the terminal).
+  if (v.terminal && st.looks < LOOKS) {
+    st.looks++;
+    clearTimeout(st.lookTimer);
+    st.lookTimer = setTimeout(() => void refresh(), 2000);
+  }
   // Started, but not running yet: read again until it is.
   if (st.autoTried && !v.terminal && v.autoStart && st.rereads < REREADS) {
     st.rereads++;
@@ -235,6 +265,16 @@ async function start() {
     return;
   }
   st.starting = false;
+  await refresh();
+}
+
+async function answerTrust(answer) {
+  try {
+    await window.denShell.api("POST", "/api/server-agent/trust", { answer });
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+  }
+  st.trustLater = answer === "no";
   await refresh();
 }
 
@@ -403,6 +443,10 @@ export async function mountServerAgentPage(root) {
     if (b?.dataset.act === "start") {
       b.disabled = true;
       void start();
+    }
+    if (b?.dataset.act === "trust-yes" || b?.dataset.act === "trust-no") {
+      b.disabled = true;
+      void answerTrust(b.dataset.act === "trust-yes" ? "yes" : "no");
     }
   });
   root.querySelector("#sa-runtime select")?.addEventListener("change", (e) => {
