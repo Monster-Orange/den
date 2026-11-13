@@ -586,14 +586,11 @@ function startDenWebServer(options: WebCommandOptions): StartedServer {
 }
 
 /**
- * Spawn `den web restart` as a DETACHED child so a running server can
- * restart ITSELF (e.g. from the "stale server" UI): the child stops whatever is
- * listening on `port` — the current server — then starts a fresh daemon,
- * surviving the current process's death. Returns the short-lived driver pid.
- * Mirrors resolveServerEntrypoint's preference for live tsx source.
+ * How to run this Den's CLI, as the server runs it: this node with tsx's
+ * loader (or the built CLI). SRV-1b's update reuses it for doctor and the
+ * rollback's restart.
  */
-export function spawnDetachedWebRestart(port: number): number | undefined {
-  const root = getDistRoot();
+export function denCliCommand(): { cmd: string; baseArgs: string[] } {
   const engine = getEngineRoot();
   const tsxBin = engineBin(process.platform === "win32" ? "tsx.cmd" : "tsx");
   const srcCli = path.join(engine, "src/ui/cli/index.ts");
@@ -622,6 +619,19 @@ export function spawnDetachedWebRestart(port: number): number | undefined {
     cmd = tsxBin;
     baseArgs = [srcCli];
   }
+  return { cmd, baseArgs };
+}
+
+/**
+ * Spawn `den web restart` as a DETACHED child so a running server can
+ * restart ITSELF (e.g. from the "stale server" UI): the child stops whatever is
+ * listening on `port` — the current server — then starts a fresh daemon,
+ * surviving the current process's death. Returns the short-lived driver pid.
+ * Mirrors resolveServerEntrypoint's preference for live tsx source.
+ */
+export function spawnDetachedWebRestart(port: number): number | undefined {
+  const root = getDistRoot();
+  const { cmd, baseArgs } = denCliCommand();
 
   const logDir = path.join(getStateDir(), "logs", `${product().cli}`);
   fs.mkdirSync(logDir, { recursive: true });

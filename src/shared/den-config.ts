@@ -888,23 +888,47 @@ export type McpAction = (typeof MCP_ACTIONS)[number];
 /** SRV-1a: `server_agent:` in the org config. */
 export interface ServerAgentConfig {
   self_update?: "ask" | "auto";
+  /**
+   * SRV-1b: the server agent's folder, relative to the distribution root
+   * (default: the root itself, the distribution's own repo).
+   */
+  folder?: string;
+  /** SRV-1b: how its commits leave: a pull request (default) or a push. */
+  git?: "pr" | "push";
 }
 
 export interface ResolvedServerAgentConfig {
   /** ask: held for the person's Allow; auto: runs at once. */
   selfUpdate: "ask" | "auto";
+  /** SRV-1b: its folder, absolute (an existing directory). */
+  folder: string;
+  /** SRV-1b: pr (the default) or push. */
+  git: "pr" | "push";
 }
 
-/** SRV-1a: `server_agent`, checked. A bad value throws naming its key. */
+/** SRV-1a/1b: `server_agent`, checked. A bad value throws naming its key. */
 export function readServerAgentConfig(
   config: DenConfig = readDenConfig(),
+  root: string = getDistRoot(),
 ): ResolvedServerAgentConfig {
-  const v = config.server_agent?.self_update;
+  const sa = config.server_agent ?? {};
+  const v = sa.self_update;
   if (v !== undefined && v !== "ask" && v !== "auto")
     throw new Error(
       `server_agent.self_update: ask or auto, not ${JSON.stringify(v)}`,
     );
-  return { selfUpdate: v ?? "ask" };
+  const g = sa.git;
+  if (g !== undefined && g !== "pr" && g !== "push")
+    throw new Error(`server_agent.git: pr or push, not ${JSON.stringify(g)}`);
+  const f = sa.folder;
+  if (f !== undefined && (typeof f !== "string" || !f.trim()))
+    throw new Error(
+      `server_agent.folder: a folder, relative to the distribution root (got ${JSON.stringify(f)})`,
+    );
+  const folder = path.resolve(root, f?.trim() || ".");
+  if (!fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory())
+    throw new Error(`server_agent.folder: ${folder} is not a folder`);
+  return { selfUpdate: v ?? "ask", folder, git: g ?? "pr" };
 }
 
 /** `mcp:` in the org config. */

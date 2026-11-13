@@ -88,11 +88,12 @@ describe("a fresh Den", () => {
     const href = await p.locator("#sa-open").getAttribute("href");
     expect(href).toMatch(/^\/agents\?open=/);
     expect(await p.locator("#sa-open").isVisible()).toBe(true);
-    // It runs as the server agent: in its own empty folder, Den's MCP for
-    // the whole Den, and Den's onboarding prompt.
+    // It runs as the server agent: in the distribution's own repo (SRV-1b:
+    // server_agent.folder, the root by default), Den's MCP for the whole
+    // Den, and Den's onboarding prompt.
     expect(s!.made).toHaveLength(1);
     const pty = s!.made[0];
-    expect(pty.opts.cwd).toBe(path.join(s!.stateDir, "server-agent"));
+    expect(pty.opts.cwd).toBe(path.join(s!.tmp, "dist"));
     expect(pty.args[pty.args.length - 1]).toMatch(
       /Let's set up Acme\. Where are your repos\?/,
     );

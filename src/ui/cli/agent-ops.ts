@@ -86,6 +86,8 @@ import {
   configuredRuntimeBin,
   configuredRuntimeCatalog,
   readAgentsConfig,
+  readDenConfig,
+  readServerAgentConfig,
   setUserRuntimeBin,
   userConfigPath,
   type ResolvedAgentsConfig,
@@ -226,7 +228,6 @@ import {
   SERVER_AGENT_ID,
   SERVER_PERSONA_ID,
   isServerScope,
-  serverAgentDir,
 } from "../../shared/agents/server-agent.js";
 import {
   bindActorSession,
@@ -256,6 +257,8 @@ import {
 export interface AgentsDeps extends SessionsDeps {
   agentsConfig?: () => ResolvedAgentsConfig;
   distRoot?: () => string;
+  /** SRV-1b: the server agent's folder (server_agent.folder, resolved). */
+  serverAgentFolder?: () => string;
   /** A workspace's checkout directory: where its agents run. */
   workspaceDir?: (ws: string) => string;
   /**
@@ -335,6 +338,7 @@ export interface AgentsDeps extends SessionsDeps {
 export interface AgentsResolved extends Resolved {
   agentsConfig: () => ResolvedAgentsConfig;
   distRoot: () => string;
+  serverAgentFolder: () => string;
   workspaceDir: (ws: string) => string;
   workspaceFolders: (ws: string) => { under: string[]; exact?: string[] };
   workspaceNames: () => string[];
@@ -568,6 +572,11 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     ...base,
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
     distRoot: d.distRoot ?? getDistRoot,
+    serverAgentFolder:
+      d.serverAgentFolder ??
+      (() =>
+        readServerAgentConfig(readDenConfig(), (d.distRoot ?? getDistRoot)())
+          .folder),
     workspaceDir:
       d.workspaceDir ??
       ((ws) => {
@@ -641,18 +650,21 @@ async function defaultHub(): Promise<{
 
 /**
  * ON-6: the server agent's scope is no workspace, but its agent is a
- * normal one: it "exists", and its folder is an empty one under the state
- * dir (serverAgentDir), with no workspace runtime paths.
+ * normal one: it "exists", with no workspace runtime paths. SRV-1b: its
+ * folder is `server_agent.folder`, the distribution's own repo by default
+ * (a bad value refuses the start, naming the key). One started before
+ * keeps the folder in its record (its conversation lives there) until a
+ * fresh start.
  */
 function withServerScope(r: AgentsResolved): AgentsResolved {
   return {
     ...r,
     workspaceExists: (ws) => isServerScope(ws) || r.workspaceExists(ws),
     workspaceDir: (ws) =>
-      isServerScope(ws) ? serverAgentDir(r.stateDir()) : r.workspaceDir(ws),
+      isServerScope(ws) ? r.serverAgentFolder() : r.workspaceDir(ws),
     workspaceFolders: (ws) =>
       isServerScope(ws)
-        ? { under: [serverAgentDir(r.stateDir())] }
+        ? { under: [r.serverAgentFolder()] }
         : r.workspaceFolders(ws),
     workspaceRuntimeBin: (ws, id) =>
       isServerScope(ws) ? undefined : r.workspaceRuntimeBin(ws, id),

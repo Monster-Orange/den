@@ -2128,13 +2128,24 @@ function approvalDeps(): ApprovalDeps {
     enabled: () => readMcpConfig().approvals,
     // SRV-1a: the server agent's own restart, per server_agent.self_update.
     autoAllow: (action, agent) =>
-      action === "den_restart" &&
+      (action === "den_restart" || action === "den_update") &&
       agent === SERVER_AGENT_ID &&
-      readServerAgentConfig().selfUpdate === "auto"
+      selfUpdateAuto()
         ? "server_agent.self_update: auto"
         : null,
   };
   return approvals;
+}
+/**
+ * SRV-1a/1b: server_agent.self_update is auto. Read per ask; a config Den
+ * can't read holds the ask for the person (never runs it unasked).
+ */
+function selfUpdateAuto(): boolean {
+  try {
+    return readServerAgentConfig().selfUpdate === "auto";
+  } catch {
+    return false;
+  }
 }
 /** The agent ids with a held write waiting (their rows say "waiting"). */
 function waitingAgentIds(): Set<string> {

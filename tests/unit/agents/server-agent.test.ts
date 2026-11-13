@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import {
   listPersonas,
@@ -24,6 +25,7 @@ import {
   serverAgentDir,
 } from "../../../src/shared/agents/server-agent.js";
 import { readRecord } from "../../../src/shared/agents/records.js";
+import { readServerAgentConfig } from "../../../src/shared/den-config.js";
 import { workspaceCreateRefusal } from "../../../src/ui/server/workspace-routes.js";
 import { listedSessions } from "../../../src/ui/server/session-routes.js";
 import { connectHost } from "../../../src/shared/sessions/client.js";
@@ -76,7 +78,7 @@ function mcpOf(r: Rig): { command: string; args: string[] } {
 }
 
 describe("the server agent", () => {
-  it("starts as agent server, persona server, in no workspace: an empty folder of its own, Den's MCP for the whole Den", async () => {
+  it("starts as agent server, persona server, in no workspace: in the distribution's own repo (SRV-1b), Den's MCP for the whole Den", async () => {
     const r = await rig();
     const s = await startServerAgent(d(r), {}, server(false));
     expect(s.how).toBe("started");
@@ -90,8 +92,9 @@ describe("the server agent", () => {
       sessionName: `acme-${SERVER_SCOPE}:server`,
     });
     const p = r.made[0];
-    expect(p.opts.cwd).toBe(serverAgentDir(r.stateDir));
-    expect(fs.readdirSync(p.opts.cwd!)).toEqual([]);
+    // SRV-1b: server_agent.folder, the distribution root by default.
+    expect(p.opts.cwd).toBe(d(r).distRoot());
+    expect(rec.cwd).toBe(d(r).distRoot());
     const mcp = mcpOf(r);
     expect(mcp.args).toEqual(
       expect.arrayContaining([
@@ -275,11 +278,63 @@ describe("starting it fast (ON-6 gate, 0.4.19)", () => {
   });
 });
 
-describe("its folder", () => {
-  it("is under the state dir, the person's alone", async () => {
+describe("its folder (SRV-1b)", () => {
+  it("Den's own files stay under the state dir, the person's alone", async () => {
     const r = await rig();
     const dir = serverAgentDir(r.stateDir);
     expect(dir).toBe(path.join(r.stateDir, "server-agent"));
     expect(fs.statSync(dir).mode & 0o777).toBe(0o700);
+  });
+
+  it("server_agent.folder: relative to the distribution root, the root by default; a bad one names the key", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "den-saf-"));
+    try {
+      fs.mkdirSync(path.join(root, "ops"));
+      expect(readServerAgentConfig({}, root)).toEqual({
+        selfUpdate: "ask",
+        folder: root,
+        git: "pr",
+      });
+      expect(
+        readServerAgentConfig(
+          { server_agent: { folder: "ops", git: "push", self_update: "auto" } },
+          root,
+        ),
+      ).toEqual({
+        selfUpdate: "auto",
+        folder: path.join(root, "ops"),
+        git: "push",
+      });
+      expect(() =>
+        readServerAgentConfig({ server_agent: { folder: "nope" } }, root),
+      ).toThrow(/server_agent\.folder: .*nope is not a folder/);
+      expect(() =>
+        readServerAgentConfig({ server_agent: { folder: "" } }, root),
+      ).toThrow(/server_agent\.folder/);
+      expect(() =>
+        readServerAgentConfig(
+          { server_agent: { git: "merge" as never } },
+          root,
+        ),
+      ).toThrow(/server_agent\.git: pr or push/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("it starts in that folder; one started before keeps its own (its conversation lives there)", async () => {
+    const r = await rig();
+    const ops = path.join(d(r).distRoot(), "ops");
+    fs.mkdirSync(ops, { recursive: true });
+    const deps = { ...r.deps, serverAgentFolder: () => ops };
+    await startServerAgent(resolveAgentsDeps(deps), {}, server(false));
+    expect(r.made[0].opts.cwd).toBe(ops);
+    expect(readRecord(r.stateDir, "server")!.cwd).toBe(ops);
+    // The setting moves; the running one, stopped and started, stays put.
+    const moved = { ...r.deps, serverAgentFolder: () => d(r).distRoot() };
+    await stopAgent(resolveAgentsDeps(moved), "server");
+    await settle();
+    await startServerAgent(resolveAgentsDeps(moved), {}, server(false));
+    expect(r.made.at(-1)!.opts.cwd).toBe(ops);
   });
 });
