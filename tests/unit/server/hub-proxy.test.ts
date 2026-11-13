@@ -37,6 +37,7 @@ import {
 } from "../../../src/ui/server/request-guard.js";
 import { routeClass } from "../../../src/ui/server/route-classes.js";
 import { cleanupRigs, rig, settle, type Rig } from "../agents/helpers/rig.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 const TOKEN = "hubi_TESTONLY_d52_install_token";
 
@@ -119,7 +120,7 @@ async function den(
   ).toBe(0);
   r.deps.hub = real;
   await settle();
-  const agentToken = r.made[0].opts.env!.DEN_ACTOR_TOKEN!;
+  const agentToken = actorTokenOf(r.made[0].opts.env) ?? "";
   const agentId = verifyActorToken(r.stateDir, agentToken)!.actor.slice(
     "agent:".length,
   );

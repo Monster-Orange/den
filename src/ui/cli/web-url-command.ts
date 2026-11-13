@@ -5,7 +5,7 @@
  * only: an agent's session can read it, never set it.
  */
 import { product } from "../../shared/product.js";
-import { ACTOR_TOKEN_ENV } from "../../shared/actor-token.js";
+import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import {
   notSetLine,
   readWebUrl,
@@ -64,7 +64,7 @@ export function cmdWebUrl(args: string[], io: Io = stdIo): number {
       );
     return 0;
   }
-  if (io.env[ACTOR_TOKEN_ENV] !== undefined) {
+  if (isAgentTokenEnv(io.env)) {
     io.err(
       `${cli}: only a person sets this install's address (this is an agent's session)\n`,
     );

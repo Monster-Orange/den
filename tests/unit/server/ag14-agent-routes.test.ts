@@ -23,6 +23,7 @@ import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import { hasSudoPassword } from "../../../src/ui/server/sudo-store.js";
 import { cleanupRigs, rig, settle, type Rig } from "../agents/helpers/rig.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 const servers: http.Server[] = [];
 afterEach(async () => {
@@ -241,7 +242,7 @@ describe("an agent's token (SEC-1c)", () => {
     ) as unknown;
     expect(tokens).toBeTruthy();
     const env = a.r.made[0].opts.env as Record<string, string>;
-    const auth = { authorization: `Bearer ${env.DEN_ACTOR_TOKEN}` };
+    const auth = { authorization: `Bearer ${actorTokenOf(env) ?? ""}` };
     for (const [p, body] of [
       ["/api/workspaces/north/agents/planner/remove", undefined],
       ["/api/workspaces/north/agents/planner/fresh", undefined],

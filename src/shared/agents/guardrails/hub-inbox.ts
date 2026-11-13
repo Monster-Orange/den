@@ -12,7 +12,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { ACTOR_TOKEN_ENV } from "../../actor-token.js";
+import { actorTokenOf } from "../../actor-token.js";
 
 export interface InboxArgs {
   /** Den's proxy to Hub (`<den>/hub`). */
@@ -36,7 +36,7 @@ export function inboxArgs(argv: readonly string[]): InboxArgs | null {
 function denBearer(
   env: Record<string, string | undefined>,
 ): Record<string, string> | null {
-  const t = env[ACTOR_TOKEN_ENV];
+  const t = actorTokenOf(env);
   return t && /^[\x21-\x7e]+$/.test(t)
     ? { Authorization: `Bearer ${t}` }
     : null;

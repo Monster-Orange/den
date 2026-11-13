@@ -203,7 +203,7 @@ describe("D41: at launch", () => {
         hub: {
           name: "hub",
           url: "http://localhost:4100/hub/mcp",
-          headers: { Authorization: "Bearer ${DEN_ACTOR_TOKEN}" },
+          headersHelper: "printf {}",
           ...(inbox ? { inboxBase: "http://localhost:4100/hub" } : {}),
         },
       },

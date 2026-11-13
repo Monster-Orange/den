@@ -18,7 +18,12 @@ import {
 } from "../../shared/den-config.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import { engineVersion, getStateDir } from "../../shared/paths.js";
-import { ACTOR_TOKEN_ENV, lookupActorToken } from "../../shared/actor-token.js";
+import {
+  ACTOR_TOKEN_FILE_ENV,
+  actorTokenOf,
+  isAgentTokenEnv,
+  lookupActorToken,
+} from "../../shared/actor-token.js";
 import { product } from "../../shared/product.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { createDenApi, type DenApi } from "./api.js";
@@ -345,7 +350,8 @@ export async function runOneShot(
 
 /**
  * SEC-1c: the MCP server Den starts for an agent carries the agent's actor
- * token (DEN_ACTOR_TOKEN, inherited from the agent's session) as the
+ * token (#70: the file DEN_ACTOR_TOKEN_FILE names, inherited from the
+ * agent's session; DEN_ACTOR_TOKEN from an older session) as the
  * credential of every call (cliAuthHeaders), and the web server records
  * that token's agent as the actor. Why it must not start, or null: a token
  * minted for another agent than `--actor`, or one this distribution never
@@ -357,17 +363,19 @@ export function actorTokenRefusal(
   env: NodeJS.ProcessEnv,
   stateDir: string,
 ): string | null {
-  const token = env[ACTOR_TOKEN_ENV];
-  if (token === undefined) return null;
+  if (!isAgentTokenEnv(env)) return null;
+  const token = actorTokenOf(env);
+  if (token === undefined)
+    return `the agent's token can't be read (${ACTOR_TOKEN_FILE_ENV}): restart or resume the agent`;
   const rec = lookupActorToken(stateDir, token);
   if (!rec)
-    return `${ACTOR_TOKEN_ENV} is not a live actor token of this distribution (stopped, resumed, or never minted here)`;
+    return "the agent's token is not a live actor token of this distribution (stopped, resumed, or never minted here)";
   if (rec.revokedAt)
-    return `${ACTOR_TOKEN_ENV} was revoked (\`web logout --all\`): restart or resume the agent to get a new one`;
+    return "the agent's token was revoked (`web logout --all`): restart or resume the agent to get a new one";
   if (scope && scope.actor !== rec.actor)
-    return `--actor ${scope.actor} does not match ${ACTOR_TOKEN_ENV}, which is ${rec.actor}'s`;
+    return `--actor ${scope.actor} does not match the agent's token, which is ${rec.actor}'s`;
   if (scope && scope.workspace !== rec.workspace)
-    return `--workspace ${scope.workspace} does not match ${ACTOR_TOKEN_ENV}, which is project ${rec.workspace}'s`;
+    return `--workspace ${scope.workspace} does not match the agent's token, which is project ${rec.workspace}'s`;
   return null;
 }
 
@@ -389,7 +397,7 @@ export function mcpStartupLine(o: {
   const actor = scope
     ? o.verified
       ? scope.actor
-      : `${scope.actor} (unverified: no ${ACTOR_TOKEN_ENV})`
+      : `${scope.actor} (unverified: no agent token)`
     : "";
   return (
     `${o.cli} mcp: ${plural(o.tools, "tool")} ` +
@@ -508,7 +516,7 @@ export async function runMcp(rawArgv: string[]): Promise<void> {
       baseUrl,
       scope,
       // actorTokenRefusal passed: a token, if any, is this scope's.
-      verified: process.env[ACTOR_TOKEN_ENV] !== undefined,
+      verified: isAgentTokenEnv(process.env),
     }),
   );
 }

@@ -19,7 +19,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { ACTOR_TOKEN_ENV } from "../../shared/actor-token.js";
+import { actorTokenOf } from "../../shared/actor-token.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import { product } from "../../shared/product.js";
@@ -114,7 +114,7 @@ export async function cmdHub(
   }
   if (!dir) return usage();
 
-  const token = env[ACTOR_TOKEN_ENV];
+  const token = actorTokenOf(env);
   if (!token) {
     err(
       `${cli} hub push runs inside an agent Den started: it calls Hub as that agent, with its own Den token. ` +

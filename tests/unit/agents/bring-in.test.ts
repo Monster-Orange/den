@@ -30,6 +30,7 @@ import {
 } from "../../../src/ui/server/http-errors.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 const servers: http.Server[] = [];
 afterEach(async () => {
@@ -89,7 +90,7 @@ describe("agents import (CLI)", () => {
     expect(r.made[0].args).not.toContain("--session-id");
     expect(r.made[0].opts.cwd).toBe(sub);
     // Den's own token and MCP, as any agent it starts.
-    expect(String(r.made[0].opts.env.DEN_ACTOR_TOKEN)).toMatch(/^den_at_/);
+    expect(String(actorTokenOf(r.made[0].opts.env))).toMatch(/^den_at_/);
     expect(r.made[0].args).toContain("--mcp-config");
     const rec = readRecord(r.stateDir, "planner")!;
     expect(rec).toMatchObject({
@@ -383,7 +384,7 @@ describe("the routes", () => {
     ).toBe(200);
     conversation(a.r, a.r.wsDir("north"));
     const env = a.r.made[0].opts.env as Record<string, string>;
-    const auth = { authorization: `Bearer ${env.DEN_ACTOR_TOKEN}` };
+    const auth = { authorization: `Bearer ${actorTokenOf(env) ?? ""}` };
     expect(
       (
         await a.call(

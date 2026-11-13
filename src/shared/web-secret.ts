@@ -18,7 +18,11 @@ import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { ACTOR_TOKEN_ENV, isActorTokenShape } from "./actor-token.js";
+import {
+  actorTokenOf,
+  isActorTokenShape,
+  isAgentTokenEnv,
+} from "./actor-token.js";
 import { getStateDir } from "./paths.js";
 import { AGENT_ACTOR_ENV } from "./sessions/env.js";
 
@@ -138,10 +142,10 @@ export function cliAuthHeaders(
   stateDir: string = getStateDir(),
   env: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
-  const actorToken = env[ACTOR_TOKEN_ENV];
+  const actorToken = actorTokenOf(env);
   if (isActorTokenShape(actorToken))
     return { Authorization: `Bearer ${actorToken}` };
-  if (env[AGENT_ACTOR_ENV] !== undefined || actorToken !== undefined) return {};
+  if (env[AGENT_ACTOR_ENV] !== undefined || isAgentTokenEnv(env)) return {};
   const secret = readWebSecret(stateDir);
   return secret ? { Authorization: `Bearer ${personToken(secret)}` } : {};
 }

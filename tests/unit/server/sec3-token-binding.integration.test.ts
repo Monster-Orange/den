@@ -19,6 +19,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { denAuth } from "./helpers/den-auth.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 let s: AgentsPageServer;
 let token = "";
@@ -31,7 +32,7 @@ beforeAll(async () => {
     body: JSON.stringify({ persona: "planner" }),
   });
   expect(r.status).toBe(200);
-  token = s.made.at(-1)!.opts.env.DEN_ACTOR_TOKEN ?? "";
+  token = actorTokenOf(s.made.at(-1)!.opts.env) ?? "";
   expect(token).toBeTruthy();
 }, 60_000);
 afterAll(async () => {

@@ -1010,9 +1010,9 @@ hub:
 
 - Agents reach Hub through Den, never straight. Each agent's MCP config
   gets a server named `hub`: Streamable HTTP at Den's own
-  `http://localhost:<port>/hub/mcp`, with
-  `Authorization: Bearer ${DEN_ACTOR_TOKEN}`. That is the agent's own Den
-  token, which Claude Code fills in from the session's env. Den's proxy
+  `http://localhost:<port>/hub/mcp`, whose `headersHelper` sends
+  `Authorization: Bearer <the agent's own Den token>`, read from the
+  agent's token file at each connect (never from its env). Den's proxy
   then calls `hub.mcp_url` (default `<hub.url>/mcp`) with the install's
   token and plain headers naming the caller, taken from Den's records:
   `X-Den-Agent` (its name), `X-Den-Agent-Id` (its stable id, which Hub
@@ -3667,7 +3667,7 @@ An agent's environment starts empty and gets, in order:
 2. the variables its runtime names (`envPassthrough`; den-claude:
    `CLAUDE_CONFIG_DIR`);
 3. the runtime's launch env;
-4. `DEN_AGENT=agent:<id>` and `DEN_ACTOR_TOKEN` (below).
+4. `DEN_AGENT=agent:<id>` and `DEN_ACTOR_TOKEN_FILE` (below).
 
 Then every runtime's `scrubEnv` is removed (den-claude: `CLAUDECODE` and
 `CLAUDE_CODE_*`), whatever put it there. Nothing else of yours reaches it:
@@ -3691,14 +3691,26 @@ adds a note to run `<cli> doctor --probe`.
 ### An agent's token
 
 `agents start` (the CLI or the Workspaces page) mints a random `den_at_…`
-token for the agent and puts it in the session as `DEN_ACTOR_TOKEN`. Den
-keeps only its hash (`actor-tokens.json`, 0600, in the state dir) with the
+token for the agent and writes it to a file of the agent's own
+(`<state>/actor-token/<id>/token`, 0600, in a 0700 folder). The session's
+environment names the file (`DEN_ACTOR_TOKEN_FILE`), never the token, so
+`ps` never shows it. Den keeps only its hash (`actor-tokens.json`, 0600, in the state dir) with the
 agent, its workspace, its grants and its session. Stop revokes it, and so
 does the session's end; resume mints a new one and the old one stops
 working. The `<cli>` and the MCP server Den starts for the agent send it, so
 the server audits their calls as the agent, from the token, never from a
 header (agent headers without the token are recorded as an unverified
 claim).
+
+**The token counts only from the agent's own processes.** For each
+connection, Den finds the process on the other end (macOS: `lsof`;
+Linux: `/proc`). It then checks that process runs inside the agent's
+session (the session's own pid, as the session host recorded it). The
+same token from any other process, even one running as you, is refused
+(403 `agent_token_elsewhere`), with an audit row naming the agent, the
+pid and the route. So is a caller Den can't place, and one that isn't on
+loopback. `agents.token_binding: false` turns this off, for a host where
+the lookup can't work.
 
 An agent's token reaches only its own session's routes, and never a
 shell-grade route, `/api/web/*`, sign-in or sign-out, or the admin

@@ -18,6 +18,11 @@ import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { hubLines } from "../../../src/ui/cli/doctor-command.js";
 import { handleAgentRoutes } from "../../../src/ui/server/agent-routes.js";
 import { DEN_BASE, cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
+import { HUB_HEADERS_HELPER } from "../../../src/ui/cli/agent-ops.js";
+import { spawnSync } from "child_process";
+import * as os from "os";
+import { ACTOR_TOKEN_FILE_ENV } from "../../../src/shared/actor-token.js";
 
 const servers: http.Server[] = [];
 afterEach(async () => {
@@ -52,7 +57,8 @@ function filesIn(dir: string): string[] {
 const PROXY = {
   type: "http",
   url: `${DEN_BASE}/hub/mcp`,
-  headers: { Authorization: "Bearer ${DEN_ACTOR_TOKEN}" },
+  // #70: the agent's token read from its file at each connect.
+  headersHelper: HUB_HEADERS_HELPER,
 };
 
 async function withHub(): Promise<Rig> {
@@ -67,12 +73,12 @@ async function withHub(): Promise<Rig> {
 }
 
 describe("an agent's MCP config has Den Hub when hub.url is set", () => {
-  it("D52: the hub server is Streamable HTTP at Den's proxy, with the agent's own Den token (from its env) and nothing else", async () => {
+  it("D52: the hub server is Streamable HTTP at Den's proxy, with the agent's own Den token (from its file) and nothing else", async () => {
     const r = await withHub();
     // Exactly: no Hub token, no X-Den-* (Den's proxy sets those).
     expect(cfg(r).mcpServers[HUB_SERVER]).toEqual(PROXY);
-    // The session has the token the header names (SEC-1c's).
-    expect(r.made[0].opts.env?.DEN_ACTOR_TOKEN).toMatch(/^den_at_/);
+    // The session's file has the token the helper reads (SEC-1c's).
+    expect(String(actorTokenOf(r.made[0].opts.env))).toMatch(/^den_at_/);
     // Den's own server is still there, first.
     expect(Object.keys(cfg(r).mcpServers)[0]).not.toBe(HUB_SERVER);
     expect(fs.statSync(mcpFile(r)).mode & 0o077).toBe(0);
@@ -103,13 +109,13 @@ describe("an agent's MCP config has Den Hub when hub.url is set", () => {
 
   it("a resume gets Hub again, through Den, with the new session's token", async () => {
     const r = await withHub();
-    const first = r.made[0].opts.env?.DEN_ACTOR_TOKEN;
+    const first = actorTokenOf(r.made[0].opts.env) ?? "";
     expect(await agents(r, "stop", "planner")).toBe(0);
     r.made[r.made.length - 1].exit(143);
     await settle();
     expect(await agents(r, "resume", "planner")).toBe(0);
     expect(cfg(r).mcpServers[HUB_SERVER]).toEqual(PROXY);
-    const now = r.made[r.made.length - 1].opts.env?.DEN_ACTOR_TOKEN;
+    const now = actorTokenOf(r.made[r.made.length - 1].opts.env);
     expect(now).toMatch(/^den_at_/);
     expect(now).not.toBe(first);
   });
@@ -330,5 +336,28 @@ describe("Settings › Hub and doctor", () => {
     expect(revoked.check?.detail).toMatch(
       /Settings › Agents › Hub: Reconnect\)$/,
     );
+  });
+});
+
+describe("#70: the Hub server's headers helper", () => {
+  it("prints the agent's own token from its file, as JSON; no file, no token", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-hh-"));
+    try {
+      const file = path.join(dir, "token");
+      const tok = "den_at_" + "A".repeat(43);
+      fs.writeFileSync(file, tok + "\n", { mode: 0o600 });
+      const run = (env: Record<string, string>) =>
+        spawnSync("/bin/sh", ["-c", HUB_HEADERS_HELPER], {
+          encoding: "utf8",
+          env: { PATH: "/usr/bin:/bin", ...env },
+        });
+      const r = run({ [ACTOR_TOKEN_FILE_ENV]: file });
+      expect(JSON.parse(r.stdout)).toEqual({ Authorization: `Bearer ${tok}` });
+      expect(HUB_HEADERS_HELPER).not.toContain(tok);
+      const none = run({});
+      expect(none.stdout).not.toContain("den_at_");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

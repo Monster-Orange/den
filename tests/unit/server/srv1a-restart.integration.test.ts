@@ -18,6 +18,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 let s: AgentsPageServer;
 let agentToken = "";
@@ -107,7 +108,7 @@ describe("SRV-1a: the server agent restarts its own Den", () => {
   it("started by the person; with ask (the default) its restart waits for the Allow", async () => {
     const st = await call("POST", "/api/server-agent/start", {});
     expect(st.status).toBe(200);
-    agentToken = s.made.at(-1)!.opts.env.DEN_ACTOR_TOKEN ?? "";
+    agentToken = actorTokenOf(s.made.at(-1)!.opts.env) ?? "";
     // Its prompt, as Claude Code draws it.
     s.made.at(-1)!.emit("> ");
     expect(agentToken).toBeTruthy();

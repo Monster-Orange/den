@@ -38,6 +38,7 @@ import {
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import { listedSessions } from "../../../src/ui/server/session-routes.js";
 import { DEN_BASE, cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 const servers: http.Server[] = [];
 afterEach(async () => {
@@ -476,7 +477,7 @@ describe("D44: the routes", () => {
     const { r } = await startedBeforeHub();
     const call = await api(r);
     const env = r.made[0].opts.env as Record<string, string>;
-    const auth = { authorization: `Bearer ${env.DEN_ACTOR_TOKEN}` };
+    const auth = { authorization: `Bearer ${actorTokenOf(env) ?? ""}` };
     const one = await call(
       "POST",
       "/api/workspaces/north/agents/planner/restart",

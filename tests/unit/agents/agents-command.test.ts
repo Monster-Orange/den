@@ -285,9 +285,7 @@ describe("agents start", () => {
         "planner",
       ),
     ).toBe(1);
-    expect(r.err.join("\n")).toMatch(
-      /agent planner belongs to project north/,
-    );
+    expect(r.err.join("\n")).toMatch(/agent planner belongs to project north/);
     // Without --id, the default id makes room for it.
     expect(
       await agents(r, "start", "-w", "south", "--persona", "planner"),

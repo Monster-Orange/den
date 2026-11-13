@@ -14,10 +14,13 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   ACTOR_TOKEN_ENV,
+  ACTOR_TOKEN_FILE_ENV,
+  actorTokenOf,
   actorTokensPath,
   isPersonCredentialEnv,
   mintActorToken,
   verifyActorToken,
+  writeActorTokenFile,
 } from "../../../src/shared/actor-token.js";
 import { buildSessionEnv } from "../../../src/shared/sessions/env.js";
 import { agentSessionEnv } from "../../../src/shared/agents/runtimes.js";
@@ -32,9 +35,9 @@ import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 afterEach(cleanupRigs);
 
 const agents = (r: Rig, ...args: string[]) => cmdAgents(args, r.deps);
-/** The token the i-th session was started with (never printed). */
+/** The token the i-th session was started with, from its file (never printed). */
 const tokenOf = (r: Rig, i: number): string =>
-  r.made[i].opts.env[ACTOR_TOKEN_ENV] ?? "";
+  actorTokenOf(r.made[i].opts.env) ?? "";
 /** A token as a failure may show it. */
 const mask = (t: string | null | undefined) =>
   typeof t === "string" && /^den_at_[A-Za-z0-9_-]{43}$/.test(t)
@@ -77,13 +80,31 @@ describe("agents start mints an actor token", () => {
     expect([...r.out, ...r.err].join("\n").includes(token)).toBe(false);
   });
 
-  it("stop revokes it", async () => {
+  it("#70: never in the session's environment: a file (0600, in a 0700 folder of the agent's own) the environment names", async () => {
+    const r = await rig();
+    await agents(r, "start", "-w", "north", "--persona", "planner");
+    const env = r.made[0].opts.env;
+    expect(ACTOR_TOKEN_ENV in env).toBe(false);
+    // No value in it is a token (what ps would show).
+    expect(Object.values(env).some((v) => /den_at_/.test(String(v)))).toBe(
+      false,
+    );
+    const file = env[ACTOR_TOKEN_FILE_ENV]!;
+    expect(file.startsWith(r.stateDir)).toBe(true);
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    expect(fs.statSync(path.dirname(file)).mode & 0o777).toBe(0o700);
+    expect(mask(tokenOf(r, 0))).toBe("<token>");
+  });
+
+  it("stop revokes it, and removes its file", async () => {
     const r = await rig();
     await agents(r, "start", "-w", "north", "--persona", "planner");
     const token = tokenOf(r, 0);
+    const file = r.made[0].opts.env[ACTOR_TOKEN_FILE_ENV]!;
     expect(verified(r, token)).not.toBeNull();
     expect(await agents(r, "stop", "planner")).toBe(0);
     expect(verified(r, token)).toBeNull();
+    expect(fs.existsSync(file)).toBe(false);
   });
 
   it("its session's end revokes it (an exit, a crash: not only stop)", async () => {
@@ -132,21 +153,32 @@ describe("agents start mints an actor token", () => {
 });
 
 describe("the §5a-env allowlist and the scrub", () => {
-  it("DEN_ACTOR_TOKEN reaches a session only from Den: a caller's, a runtime's or a kept one is dropped", () => {
+  it("the token's file reaches a session only from Den: a caller's, a runtime's or a kept one is dropped (and a token, ever)", () => {
     const env = buildSessionEnv({
-      caller: { PATH: "/bin", [ACTOR_TOKEN_ENV]: "den_at_caller" },
-      keep: [ACTOR_TOKEN_ENV],
-      launch: { [ACTOR_TOKEN_ENV]: "den_at_runtime" },
+      caller: {
+        PATH: "/bin",
+        [ACTOR_TOKEN_ENV]: "den_at_caller",
+        [ACTOR_TOKEN_FILE_ENV]: "/elsewhere/token",
+      },
+      keep: [ACTOR_TOKEN_ENV, ACTOR_TOKEN_FILE_ENV],
+      launch: {
+        [ACTOR_TOKEN_ENV]: "den_at_runtime",
+        [ACTOR_TOKEN_FILE_ENV]: "/runtime/token",
+      },
     });
     expect(ACTOR_TOKEN_ENV in env).toBe(false);
+    expect(ACTOR_TOKEN_FILE_ENV in env).toBe(false);
     const agent = agentSessionEnv(
       { PATH: "/bin" },
       {},
       {},
       "planner",
-      "den_at_minted",
+      "/state/actor-token/planner/token",
     );
-    expect(agent[ACTOR_TOKEN_ENV] === "den_at_minted").toBe(true);
+    expect(agent[ACTOR_TOKEN_FILE_ENV]).toBe(
+      "/state/actor-token/planner/token",
+    );
+    expect(ACTOR_TOKEN_ENV in agent).toBe(false);
   });
 
   it("strips a person's credential always: DEN_PERSON_TOKEN, a person token's value, a path to web.secret, whatever put it there", () => {
@@ -214,6 +246,16 @@ describe("the CLI's credential inside an agent (cliAuthHeaders)", () => {
     });
     const asAgent = cliAuthHeaders(r.stateDir, { [ACTOR_TOKEN_ENV]: token });
     expect(asAgent.Authorization === `Bearer ${token}`).toBe(true);
+    // #70: from the file its session names (0.4.43 sessions).
+    const file = writeActorTokenFile(r.stateDir, "planner", token);
+    expect(
+      cliAuthHeaders(r.stateDir, { [ACTOR_TOKEN_FILE_ENV]: file })
+        .Authorization === `Bearer ${token}`,
+    ).toBe(true);
+    // A file it can't read: no credential, never the person's.
+    expect(
+      cliAuthHeaders(r.stateDir, { [ACTOR_TOKEN_FILE_ENV]: file + ".gone" }),
+    ).toEqual({});
     expect(cliAuthHeaders(r.stateDir, { DEN_AGENT: "agent:planner" })).toEqual(
       {},
     );

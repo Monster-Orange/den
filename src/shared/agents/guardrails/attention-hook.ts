@@ -14,7 +14,7 @@
  * token, never from anything here. Two seconds at most; it never blocks
  * the agent and prints nothing (fails open).
  */
-import { ACTOR_TOKEN_ENV } from "../../actor-token.js";
+import { actorTokenOf } from "../../actor-token.js";
 
 export type AttentionEvent =
   | {
@@ -84,7 +84,7 @@ export async function sendAttention(
     timeoutMs?: number;
   } = {},
 ): Promise<boolean> {
-  const t = (opts.env ?? process.env)[ACTOR_TOKEN_ENV];
+  const t = actorTokenOf(opts.env ?? process.env);
   if (!t || !/^[\x21-\x7e]+$/.test(t)) return false;
   try {
     const r = await (opts.fetch ?? fetch)(

@@ -32,6 +32,12 @@ import { sessionPaths } from "./sessions/paths.js";
 export const ACTOR_TOKEN_PREFIX = "den_at_";
 /** The agent's session carries its token here (AG spec §5a-env). */
 export const ACTOR_TOKEN_ENV = "DEN_ACTOR_TOKEN";
+/**
+ * #70: where the agent's session finds its token: a file (0600, in a 0700
+ * folder per agent), never the token itself in the environment, which a
+ * same-user process could read with ps. The path is no secret.
+ */
+export const ACTOR_TOKEN_FILE_ENV = "DEN_ACTOR_TOKEN_FILE";
 /** A person's token in an env: never forwarded to any session. */
 export const PERSON_TOKEN_ENV = "DEN_PERSON_TOKEN";
 export const ACTOR_TOKENS_FILE = "actor-tokens.json";
@@ -166,6 +172,12 @@ export function revokeAgentTokens(stateDir: string, agentId: string): number {
       n++;
     }
   if (n) save(stateDir, data);
+  // #70: and its token file, so nothing is left to read.
+  try {
+    removeActorTokenFile(stateDir, agentId);
+  } catch {
+    /* a read-only state dir: the record is gone all the same */
+  }
   return n;
 }
 
@@ -302,4 +314,67 @@ export function isPersonCredentialEnv(
   return v
     .split(/[:;,\s]+/)
     .some((part) => path.basename(part.replace(/[/\\]+$/, "")) === SECRET_FILE);
+}
+
+/** #70: the folder that holds agent `agentId`'s token file. */
+export function actorTokenDir(stateDir: string, agentId: string): string {
+  return path.join(stateDir, "actor-token", agentId);
+}
+
+/**
+ * #70: write agent `agentId`'s token where its session reads it (0600, in
+ * a 0700 folder of its own); the path, for DEN_ACTOR_TOKEN_FILE.
+ */
+export function writeActorTokenFile(
+  stateDir: string,
+  agentId: string,
+  token: string,
+): string {
+  if (!AGENT_ACTOR_RE.test(`agent:${agentId}`))
+    throw new Error(`"${agentId}" is not an agent id`);
+  const dir = actorTokenDir(stateDir, agentId);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.chmodSync(dir, 0o700);
+  const file = path.join(dir, "token");
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, token + "\n", { mode: 0o600 });
+  fs.renameSync(tmp, file);
+  return file;
+}
+
+/** #70: remove agent `agentId`'s token file (stopped, removed); quiet when gone. */
+export function removeActorTokenFile(stateDir: string, agentId: string): void {
+  if (!AGENT_ACTOR_RE.test(`agent:${agentId}`)) return;
+  fs.rmSync(path.join(actorTokenDir(stateDir, agentId), "token"), {
+    force: true,
+  });
+}
+
+/**
+ * #70: the agent's token, as its helpers (MCP server, hooks, the CLI)
+ * find it: DEN_ACTOR_TOKEN_FILE's file; else DEN_ACTOR_TOKEN (a session
+ * started before 0.4.43). Undefined: not an agent's environment, or no
+ * readable token.
+ */
+export function actorTokenOf(
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const file = env[ACTOR_TOKEN_FILE_ENV];
+  if (file) {
+    try {
+      const t = fs.readFileSync(file, "utf8").trim();
+      return t || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return env[ACTOR_TOKEN_ENV] || undefined;
+}
+
+/** #70: whether `env` is an agent session's (it names a token, either way). */
+export function isAgentTokenEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (
+    env[ACTOR_TOKEN_FILE_ENV] !== undefined ||
+    env[ACTOR_TOKEN_ENV] !== undefined
+  );
 }

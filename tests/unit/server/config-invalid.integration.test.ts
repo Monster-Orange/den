@@ -229,7 +229,8 @@ describe("a typo under agents: is a 422 naming its key, on agent routes only", (
   const ISSUE = {
     file: "config/den.yml",
     key: "agents.helpers.collapse_done",
-    message: "unknown key (agents.helpers takes active_minutes, row_max, read_max_mb)",
+    message:
+      "unknown key (agents.helpers takes active_minutes, row_max, read_max_mb)",
   };
 
   it("GET /api/workspaces/lab/agents is 422 config_invalid, not a 500", async () => {

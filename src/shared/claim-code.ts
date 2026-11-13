@@ -24,7 +24,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
-import { ACTOR_TOKEN_ENV } from "./actor-token.js";
+import { isAgentTokenEnv } from "./actor-token.js";
 import { AGENT_ACTOR_ENV } from "./sessions/env.js";
 
 export const CLAIM_CODE_TTL_MS = 30 * 60_000;
@@ -94,7 +94,7 @@ export function claimLink(origin: string, code: string): string {
  * an agent's session (DEN_AGENT or DEN_ACTOR_TOKEN set) it never does.
  */
 export function personGrantRefusal(env: NodeJS.ProcessEnv): string | null {
-  if (env[AGENT_ACTOR_ENV] !== undefined || env[ACTOR_TOKEN_ENV] !== undefined)
+  if (env[AGENT_ACTOR_ENV] !== undefined || isAgentTokenEnv(env))
     return "An agent can't do this: it lets a browser in as you. Run it in your own terminal.";
   return null;
 }

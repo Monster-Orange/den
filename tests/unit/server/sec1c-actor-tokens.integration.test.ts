@@ -25,6 +25,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 let s: AgentsPageServer;
 let token = "";
@@ -141,7 +142,7 @@ describe("agents start (the page) mints the agent's actor token", () => {
     });
     expect(r.status).toBe(200);
     expect(s.made).toHaveLength(1);
-    token = s.made[0].opts.env.DEN_ACTOR_TOKEN ?? "";
+    token = actorTokenOf(s.made[0].opts.env) ?? "";
     expect(mask(token)).toBe("<token>");
     const file = path.join(s.stateDir, "actor-tokens.json");
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
@@ -337,10 +338,10 @@ describe("§6b.2: the streaming GETs take a declared command's id, never free-fo
       const r = await stream(
         `/api/workspace/exec?workspace=north&cmd=${encodeURIComponent(cmd)}`,
       );
-      expect([
+      expect([cmd, /No services in this project have a/.test(r.body)]).toEqual([
         cmd,
-        /No services in this project have a/.test(r.body),
-      ]).toEqual([cmd, true]);
+        true,
+      ]);
     }
     expect(fs.existsSync(marker())).toBe(false);
   });
@@ -436,7 +437,7 @@ describe("the stdio MCP server Den starts for an agent (item 5: --actor)", () =>
     const r = mcp({ DEN_ACTOR_TOKEN: token }, "agent:someone-else");
     expect(r.status).toBe(2);
     expect(r.stderr).toMatch(
-      /--actor agent:someone-else does not match DEN_ACTOR_TOKEN, which is agent:planner's/,
+      /--actor agent:someone-else does not match the agent's token, which is agent:planner's/,
     );
     expect(`${r.stdout}${r.stderr}`.includes(token)).toBe(false);
   }, 90_000);
@@ -481,7 +482,7 @@ describe("the stdio MCP server's startup line (SEC-1 §6c.3)", () => {
 
   it("says unverified with no DEN_ACTOR_TOKEN (the actor is a claim); as agent:<id> with the agent's token", () => {
     expect(startLine(stdio({}))).toMatch(
-      /scoped to north as agent:planner \(unverified: no DEN_ACTOR_TOKEN\)/,
+      /scoped to north as agent:planner \(unverified: no agent token\)/,
     );
     const r = stdio({ DEN_ACTOR_TOKEN: token });
     const line = startLine(r);

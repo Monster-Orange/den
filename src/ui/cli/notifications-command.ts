@@ -8,7 +8,7 @@
  * Inside an agent's session only list runs: the bell is the person's to
  * change.
  */
-import { ACTOR_TOKEN_ENV } from "../../shared/actor-token.js";
+import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import {
   groupNotifications,
   NotificationStore,
@@ -106,7 +106,7 @@ export async function cmdNotifications(
   }
 
   if (sub !== "read" && sub !== "clear") return usage();
-  if (env[ACTOR_TOKEN_ENV]) {
+  if (isAgentTokenEnv(env)) {
     err(
       `${cli} notifications ${sub}: the bell is the person's to change; an agent reads it (list).`,
     );

@@ -18,7 +18,7 @@ import {
   type Runtime,
 } from "./runtime.js";
 import { sessionPath, type RuntimeFind } from "./runtime-search.js";
-import { ACTOR_TOKEN_ENV } from "../actor-token.js";
+import { ACTOR_TOKEN_FILE_ENV } from "../actor-token.js";
 import { AGENT_ACTOR_ENV, buildSessionEnv } from "../sessions/env.js";
 
 registerRuntime(denClaude);
@@ -83,8 +83,12 @@ export function agentSessionEnv(
   rt: Pick<Runtime, "envPassthrough" | "launchEnv">,
   launch: Record<string, string>,
   agentId: string,
-  /** SEC-1c: the agent's actor token (`agents start` mints it; the probe has none). */
-  actorToken?: string,
+  /**
+   * SEC-1c, #70: the file holding the agent's actor token (`agents start`
+   * mints it and writes the file; the probe has none). Only the path is in
+   * the environment, never the token.
+   */
+  actorTokenFile?: string,
   /** Added to its PATH: the directory of the CLI it runs. */
   extraDirs: readonly string[] = [],
 ): Record<string, string> {
@@ -96,7 +100,7 @@ export function agentSessionEnv(
     extra: {},
     den: {
       [AGENT_ACTOR_ENV]: `agent:${agentId}`,
-      ...(actorToken ? { [ACTOR_TOKEN_ENV]: actorToken } : {}),
+      ...(actorTokenFile ? { [ACTOR_TOKEN_FILE_ENV]: actorTokenFile } : {}),
     },
     scrub: allScrubEnv(),
     ownLaunch: rt.launchEnv ?? [],

@@ -26,7 +26,11 @@
  * here logs or returns a value other than the env itself.
  */
 
-import { ACTOR_TOKEN_ENV, isPersonCredentialEnv } from "../actor-token.js";
+import {
+  ACTOR_TOKEN_ENV,
+  ACTOR_TOKEN_FILE_ENV,
+  isPersonCredentialEnv,
+} from "../actor-token.js";
 
 export const DEFAULT_TERM = "xterm-256color";
 
@@ -86,6 +90,7 @@ export function buildSessionEnv(i: SessionEnvInput): Record<string, string> {
   if (!env.TERM) env.TERM = DEFAULT_TERM;
   Object.assign(env, i.launch ?? {}, i.extra ?? {});
   delete env[ACTOR_TOKEN_ENV];
+  delete env[ACTOR_TOKEN_FILE_ENV];
   Object.assign(env, i.den ?? {});
   const scrub = i.scrub ?? [];
   for (const [k, v] of Object.entries(env))

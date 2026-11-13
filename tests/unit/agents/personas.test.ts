@@ -239,9 +239,7 @@ describe("agents.persona_packs", () => {
     ).toThrow(/agents\.planner\.grants: must be a list of project names/);
     expect(() =>
       readAgentsConfig(cfg({ planner: { grants: ["../x"] } })),
-    ).toThrow(
-      /agents\.planner\.grants\[0\]: "\.\.\/x" is not a project name/,
-    );
+    ).toThrow(/agents\.planner\.grants\[0\]: "\.\.\/x" is not a project name/);
     expect(() => readAgentsConfig(cfg({ planner: { grant: ["x"] } }))).toThrow(
       /agents\.planner\.grant: unknown key \(an agent takes grants\)/,
     );

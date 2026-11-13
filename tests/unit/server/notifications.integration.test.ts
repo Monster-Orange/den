@@ -13,6 +13,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 let s: AgentsPageServer;
 let agentToken = "";
@@ -49,7 +50,6 @@ async function call(
   };
 }
 
-
 const planner = async () =>
   (
     (await call("GET", "/api/sessions?ws=north")).json.sessions as Record<
@@ -65,7 +65,7 @@ describe("NT: the bell on the real server", () => {
     });
     expect(start.status).toBe(200);
     const pty = s.made.at(-1)!;
-    agentToken = pty.opts.env.DEN_ACTOR_TOKEN ?? "";
+    agentToken = actorTokenOf(pty.opts.env) ?? "";
     expect(agentToken).toBeTruthy();
     pty.emit("> ");
     await new Promise((r) => setTimeout(r, 300));

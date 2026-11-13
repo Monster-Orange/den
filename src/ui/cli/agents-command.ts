@@ -76,7 +76,7 @@ import {
   UPLOAD_DEFAULTS,
 } from "../../shared/agents/uploads.js";
 import { DEFAULT_RUNTIME_ID } from "../../shared/agents/runtimes.js";
-import { ACTOR_TOKEN_ENV } from "../../shared/actor-token.js";
+import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import { HostError } from "../../shared/sessions/client.js";
 import { checkHandback } from "../../shared/agents/handback.js";
@@ -431,7 +431,7 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
   const session = str(p, "--session");
   const outside = str(p, "--outside");
   // D56: bringing in from outside the project is a person's ask only.
-  if (outside !== undefined && d.env[ACTOR_TOKEN_ENV] !== undefined)
+  if (outside !== undefined && isAgentTokenEnv(d.env))
     throw new AgentError(
       `${where}: only a person can bring in a conversation from outside the project (this is an agent's session)`,
     );
@@ -528,7 +528,7 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
  */
 async function persona(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents persona";
-  if (d.env[ACTOR_TOKEN_ENV] !== undefined)
+  if (isAgentTokenEnv(d.env))
     throw new AgentError(
       `${where}: only a person can change an agent's persona (this is an agent's session)`,
     );
@@ -628,7 +628,7 @@ export function mustBeAgent(
  */
 async function restart(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents restart";
-  if (d.env[ACTOR_TOKEN_ENV] !== undefined)
+  if (isAgentTokenEnv(d.env))
     throw new AgentError(
       `${where}: only a person can restart an agent (this is an agent's session)`,
     );
@@ -660,7 +660,7 @@ async function restart(args: string[], d: AgentsResolved): Promise<number> {
  */
 async function move(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents move";
-  if (d.env[ACTOR_TOKEN_ENV] !== undefined)
+  if (isAgentTokenEnv(d.env))
     throw new AgentError(
       `${where}: only a person can move an agent (this is an agent's session)`,
     );
@@ -886,7 +886,7 @@ async function resume(args: string[], d: AgentsResolved): Promise<number> {
 /** `agents relaunch <id> [-w <ws>]` (den#4). */
 /** D28: refused in an agent's session (an agent could stop its own rotation). */
 function personOnly(where: string, d: AgentsResolved): void {
-  if (d.env[ACTOR_TOKEN_ENV] !== undefined)
+  if (isAgentTokenEnv(d.env))
     throw new AgentError(
       `${where}: only a person can change rotation (this is an agent's session)`,
     );

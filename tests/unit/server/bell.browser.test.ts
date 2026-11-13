@@ -16,6 +16,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -44,7 +45,7 @@ beforeAll(async () => {
     body: JSON.stringify({ persona: "planner" }),
   });
   expect(r.status).toBe(200);
-  token = s.made.at(-1)!.opts.env.DEN_ACTOR_TOKEN ?? "";
+  token = actorTokenOf(s.made.at(-1)!.opts.env) ?? "";
   s.made.at(-1)!.emit("> ");
 }, 90_000);
 

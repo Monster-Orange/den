@@ -9,7 +9,7 @@
  * with Hub's suggestion and gives the Settings link that links the ticked
  * ones in one go. It never links by itself.
  */
-import { ACTOR_TOKEN_ENV } from "../../shared/actor-token.js";
+import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import {
   hubProjectOf,
   pickHubProject,
@@ -118,7 +118,7 @@ export async function cmdHubLink(
     return suggestedAll(json, deps, { cli, where, out, err });
   }
   if (!typedProject?.trim() || (none && hubTyped !== undefined)) return usage();
-  if (env[ACTOR_TOKEN_ENV] && (hubTyped !== undefined || none)) {
+  if (isAgentTokenEnv(env) && (hubTyped !== undefined || none)) {
     err(
       `${where}: linking a project to Hub is a person's ask; an agent can't. Ask your person to run it, or to pick it in Settings › Project setup.`,
     );

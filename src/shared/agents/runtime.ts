@@ -70,7 +70,12 @@ export interface AgentMcp {
   hub?: {
     name: string;
     url: string;
-    headers: Record<string, string>;
+    /**
+     * #70: a shell command that prints the call's headers as JSON (Claude
+     * Code's headersHelper, run at each connect): the agent's own Den token,
+     * read from its file. Never the token in the config or the env.
+     */
+    headersHelper: string;
     /** hub.allow_tools: its tools run without asking (default on). */
     allowTools?: boolean;
     /**
@@ -444,7 +449,7 @@ export function mcpConfigJson(mcp: AgentMcp): string {
                 [mcp.hub.name]: {
                   type: "http",
                   url: mcp.hub.url,
-                  headers: mcp.hub.headers,
+                  headersHelper: mcp.hub.headersHelper,
                 },
               }
             : {}),

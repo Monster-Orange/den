@@ -23,6 +23,7 @@ import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import { hasSudoPassword } from "../../../src/ui/server/sudo-store.js";
 import { cleanupRigs, rig, settle, type Rig } from "../agents/helpers/rig.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 interface Api {
   r: Rig;
@@ -408,7 +409,7 @@ describe("POST /api/workspaces/<ws>/agents (start)", () => {
   it("refuses an agent (its actor token, SEC-1c: 403): agents use MCP agent_spawn", async () => {
     const a = await api();
     expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
-    const token = a.r.made[0].opts.env.DEN_ACTOR_TOKEN ?? "";
+    const token = actorTokenOf(a.r.made[0].opts.env) ?? "";
     const auth = { authorization: `Bearer ${token}` };
     for (const [p, body] of [
       ["/api/workspaces/north/agents", { persona: "planner", id: "p2" }],
@@ -659,7 +660,7 @@ describe("the runtime catalog's routes (AG-0.5)", () => {
     ).toBe(405);
     // An agent (its actor token) can't set one.
     expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
-    const token = a.r.made[0].opts.env.DEN_ACTOR_TOKEN ?? "";
+    const token = actorTokenOf(a.r.made[0].opts.env) ?? "";
     r = await post(
       { scope: "global", bin: good },
       { authorization: `Bearer ${token}` },
@@ -743,7 +744,7 @@ describe("POST /api/workspaces/<ws>/agents/<id>/name (AG-4b: a tab's name)", () 
     const other = await rename(a, "south", "planner", { name: "x" });
     expect(other.status).toBe(404);
     expect(String(other.json.error)).not.toContain("north");
-    const token = a.r.made[0].opts.env.DEN_ACTOR_TOKEN ?? "";
+    const token = actorTokenOf(a.r.made[0].opts.env) ?? "";
     const agent = await rename(
       a,
       "north",
@@ -1487,7 +1488,7 @@ describe("the persona routes (AG-10.6, AG-10.7)", () => {
     const a = await api();
     await a.call("POST", "/api/personas", mine);
     expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
-    const token = a.r.made[0].opts.env.DEN_ACTOR_TOKEN ?? "";
+    const token = actorTokenOf(a.r.made[0].opts.env) ?? "";
     const auth = { authorization: `Bearer ${token}` };
     for (const [m, p, body] of [
       ["POST", "/api/personas", { ...mine, displayName: "Sneaky" }],

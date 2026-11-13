@@ -231,9 +231,11 @@ import {
 import {
   bindActorSession,
   mintActorToken,
-  ACTOR_TOKEN_ENV,
+  ACTOR_TOKEN_FILE_ENV,
+  removeActorTokenFile,
   revokeActorToken,
   revokeAgentTokens,
+  writeActorTokenFile,
 } from "../../shared/actor-token.js";
 import { HostError, type HostClient } from "../../shared/sessions/client.js";
 import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
@@ -466,12 +468,18 @@ export async function agentHub(
     allowTools: h.allowTools !== false,
     // D41: the Stop hook's inbox check, through Den's proxy too.
     ...(h.inboxOnStop !== "off" ? { inboxBase: proxy } : {}),
-    // D52: the agent's own Den token (Claude Code expands it from the
-    // session's env). Den's proxy swaps it for the install's Hub token
-    // and says who is calling; the Hub token is never in the agent's files.
-    headers: { Authorization: `Bearer \${${ACTOR_TOKEN_ENV}}` },
+    // D52: the agent's own Den token. Den's proxy swaps it for the
+    // install's Hub token and says who is calling; the Hub token is never
+    // in the agent's files. #70: read from its file at each connect.
+    headersHelper: HUB_HEADERS_HELPER,
   };
 }
+
+/**
+ * #70: Claude Code's headersHelper for Den's Hub proxy: the agent's token,
+ * from the file its session names (base64url: no JSON escaping needed).
+ */
+export const HUB_HEADERS_HELPER = `printf '{"Authorization":"Bearer %s"}' "$(cat "$${ACTOR_TOKEN_FILE_ENV}")"`;
 
 /** D52: Den's proxy to Hub, as an agent reaches it. */
 export function denHubProxy(d: Pick<AgentsResolved, "denBase">): string {
@@ -2140,6 +2148,12 @@ async function startSession(
   });
   let info: SessionInfo;
   try {
+    // #70: the token in a file of the agent's own; the env names the file.
+    const tokenFile = writeActorTokenFile(
+      d.stateDir(),
+      launch.rec.id,
+      minted.token,
+    );
     info = await c
       .start(
         {
@@ -2152,7 +2166,7 @@ async function startSession(
             { envPassthrough: launch.passthrough, launchEnv: launch.launchEnv },
             launch.env,
             launch.rec.id,
-            minted.token,
+            tokenFile,
             launch.binDir ? [launch.binDir] : [],
           ),
           cols: (tty && d.stdout.columns) || 80,
@@ -2163,6 +2177,7 @@ async function startSession(
       .catch((e: unknown) => capOrThrow(d, e));
   } catch (e) {
     revokeActorToken(d.stateDir(), minted.key);
+    removeActorTokenFile(d.stateDir(), launch.rec.id);
     throw e;
   }
   bindActorSession(d.stateDir(), minted.key, info.ref.id);

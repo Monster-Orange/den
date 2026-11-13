@@ -12,6 +12,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 let s: AgentsPageServer;
 
@@ -99,7 +100,7 @@ describe("Close a shell", () => {
     );
     expect(start.status).toBe(200);
     const pty = s.made.at(-1)!;
-    const token = pty.opts.env.DEN_ACTOR_TOKEN ?? "";
+    const token = actorTokenOf(pty.opts.env) ?? "";
     const id =
       (
         (await call("GET", "/api/sessions?ws=north")).json.sessions as {

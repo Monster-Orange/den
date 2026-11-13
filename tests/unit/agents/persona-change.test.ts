@@ -29,6 +29,7 @@ import {
 } from "../../../src/ui/server/http-errors.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 const servers: http.Server[] = [];
 afterEach(async () => {
@@ -486,7 +487,7 @@ describe("POST …/agents/<id>/persona", () => {
     const env = r.made[0].opts.env as Record<string, string>;
     const res = await post(
       { persona: "reviewer", when: "now" },
-      { authorization: `Bearer ${env.DEN_ACTOR_TOKEN}` },
+      { authorization: `Bearer ${actorTokenOf(env) ?? ""}` },
     );
     expect(res.status).toBe(403);
     expect(r.made[0].signals).toEqual([]);

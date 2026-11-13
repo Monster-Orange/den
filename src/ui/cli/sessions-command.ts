@@ -39,6 +39,7 @@ import {
 } from "../../shared/sessions/client.js";
 import {
   ACTOR_TOKEN_ENV,
+  ACTOR_TOKEN_FILE_ENV,
   isPersonCredentialEnv,
 } from "../../shared/actor-token.js";
 import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
@@ -449,7 +450,10 @@ async function start(args: string[], d: Resolved): Promise<number> {
   // path to web.secret) or an actor token is never forwarded. Refused, and
   // audited by the session host (names only).
   const forbidden = keep.filter(
-    (k) => k === ACTOR_TOKEN_ENV || isPersonCredentialEnv(k, d.env[k]),
+    (k) =>
+      k === ACTOR_TOKEN_ENV ||
+      k === ACTOR_TOKEN_FILE_ENV ||
+      isPersonCredentialEnv(k, d.env[k]),
   );
   if (forbidden.length) {
     d.err(
