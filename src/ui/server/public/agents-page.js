@@ -1086,11 +1086,24 @@ async function loadXterm() {
     import("/vendor/xterm.mjs"),
     import("/vendor/addon-fit.mjs"),
     import("/vendor/addon-web-links.mjs"),
-  ]).then(([x, f, w]) => ({
-    Terminal: x.Terminal,
-    FitAddon: f.FitAddon,
-    WebLinksAddon: w.WebLinksAddon,
-  }));
+  ]).then(([x, f, w]) => {
+    // 0.4.45: xterm's own words (its input's label, the screen reader's
+    // overflow note) through the catalog, xterm's English when it has none.
+    const tE = (key, en) => {
+      const v = t(key);
+      return v && v !== key ? v : en;
+    };
+    x.Terminal.strings.promptLabel = tE("term.input", "Terminal input");
+    x.Terminal.strings.tooMuchOutput = tE(
+      "term.tooMuch",
+      "Too much output to announce, navigate to rows manually to read",
+    );
+    return {
+      Terminal: x.Terminal,
+      FitAddon: f.FitAddon,
+      WebLinksAddon: w.WebLinksAddon,
+    };
+  });
   return st.xterm;
 }
 

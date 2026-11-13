@@ -19,7 +19,7 @@ describe("the words gate's rules", () => {
     ["the bot answered", ["bot"]],
     ["each tenant's data", ["tenant"]],
     ["El espacio de trabajo no existe", ["espacio de trabajo"]],
-    ["Inicia sesión con tu cuenta", ["cuenta", "sesión"]],
+    ["Abre una sesión con tu cuenta", ["cuenta", "sesión"]],
     ["ワークスペースがありません", ["ワークスペース"]],
     ["ユーザーのセッション", ["ユーザー", "セッション"]],
   ])("%j says %j", (text, words) => {
@@ -39,6 +39,22 @@ describe("the words gate's rules", () => {
     "agents.<id>.grants names projects",
   ])("%j is clean", (text) => {
     expect(neverShownIn(text)).toEqual([]);
+  });
+
+  it("es: signing in says sesión, and botón is no bot (0.4.45)", () => {
+    for (const text of [
+      "Sesión iniciada como",
+      "Cerrar sesión",
+      "Inicia sesión allí y aprueba esta instalación",
+      "No es un inicio de sesión: nada más lo necesita.",
+      "Los navegadores con la sesión iniciada en este Den.",
+      "El botón propio de la barra lateral hace lo mismo.",
+    ])
+      expect([text, neverShownIn(text, "es")]).toEqual([text, []]);
+    expect(neverShownIn("La sesión del agente sigue abierta", "es")).toEqual([
+      "sesión",
+    ]);
+    expect(neverShownIn("Un bot de la empresa", "es")).toEqual(["bot"]);
   });
 
   it("tells the language by its script and words", () => {

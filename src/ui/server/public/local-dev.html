@@ -198,8 +198,6 @@
       }
       .ws-order button {
         margin-left: auto;
-        font-size: 11px;
-        min-height: 28px;
       }
       .ws-grip {
         cursor: grab;
@@ -234,6 +232,24 @@
         background: color-mix(in srgb, var(--accent) 4%, var(--surface));
       }
       /* The CLI default (focus): a word, never a bare glyph. */
+      /* 0.4.45: the project's name never wraps; its tags wrap under it. */
+      .ws-item > span:first-child {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        column-gap: 4px;
+        min-width: 0;
+      }
+      .ws-name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+      }
+      .ws-active-tag {
+        font-size: 10px;
+        color: var(--muted);
+      }
       .ws-cli-default {
         font-size: 10px;
         color: var(--accent-text);
@@ -1517,7 +1533,9 @@
         <!-- Sidebar: workspace list -->
         <aside class="sidebar">
           <div class="sidebar-header">
-            <span class="sidebar-title" id="ws-title">Projects</span>
+            <span class="sidebar-title" id="ws-title" data-t="pj.title"
+              >Projects</span
+            >
             <button
               type="button"
               class="ws-toggle"
@@ -1526,16 +1544,25 @@
               aria-expanded="true"
               aria-label="Collapse the project list"
               title="Collapse the project list"
+              data-t-attr="aria-label:pj.collapse title:pj.collapse"
             >
               «
             </button>
           </div>
           <div class="ws-order" id="ws-order" hidden>
             <span id="ws-order-state"></span>
-            <button type="button" id="ws-order-reset" hidden></button>
+            <button
+              type="button"
+              id="ws-order-reset"
+              class="den-btn sm"
+              hidden
+            ></button>
           </div>
           <div class="ws-list" id="ws-list">
-            <div style="padding: 14px; color: var(--muted); font-size: 12px">
+            <div
+              style="padding: 14px; color: var(--muted); font-size: 12px"
+              data-t="pj.loading"
+            >
               Loading…
             </div>
           </div>
@@ -1543,6 +1570,8 @@
             <input
               id="new-ws-name"
               placeholder="new-project"
+              data-t-attr="placeholder:pj.newPh aria-label:pj.newLabel"
+              aria-label="New project's name"
               autocomplete="off"
             />
             <button type="submit">+</button>
@@ -1640,6 +1669,17 @@
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;");
+        /**
+         * 0.4.45: a catalog string with {vars}, the English when the shell
+         * isn't up yet (or has no such key).
+         */
+        const pT = (key, en, vars) => {
+          const v = window.denShell?.t?.(key, vars);
+          if (v && v !== key) return v;
+          return String(en).replace(/\{(\w+)\}/g, (m, k) =>
+            vars && vars[k] != null ? String(vars[k]) : m,
+          );
+        };
         /** A shell string, with the English when the shell isn't up yet. */
         const wsT = (key, fallback) => {
           const v = window.denShell?.t?.(key);
@@ -1721,23 +1761,23 @@
               const menuId = `ws-menu-${n.replace(/[^a-z0-9]/gi, "-")}`;
               const deleteItem =
                 n !== "default"
-                  ? `<button class="danger" data-action="delete">Delete</button>`
+                  ? `<button class="danger" data-action="delete">${escHtml(pT("pj.delete", "Delete"))}</button>`
                   : "";
               return `<div class="ws-item ${n === activeWs ? "active" : ""}" data-name="${escHtml(n)}" data-action="select">
-          <span>${moves}<span title="${escHtml(fromHub ? wsT("ws.named.hub", "Named in Hub") + " · " + n : n)}">${escHtml(shown)}</span>${isWsActive(n) ? ' <span style="font-size:10px;color:var(--muted)">(active)</span>' : ""}${n === focusName() ? ` <span class="ws-cli-default" title="${escHtml(wsT("ws.focusTip", "CLI commands run here when you don't name a project. Picking a project in the top bar also makes it the CLI default."))}">${escHtml(wsT("ws.focus", "CLI default"))}</span>` : ""}</span>
+          <span>${moves}<span class="ws-name" title="${escHtml(fromHub ? wsT("ws.named.hub", "Named in Hub") + " · " + n : n)}">${escHtml(shown)}</span>${isWsActive(n) ? ` <span class="ws-active-tag">${escHtml(pT("pj.activeTag", "(active)"))}</span>` : ""}${n === focusName() ? ` <span class="ws-cli-default" title="${escHtml(wsT("ws.focusTip", "CLI commands run here when you don't name a project. Picking a project in the top bar also makes it the CLI default."))}">${escHtml(wsT("ws.focus", "CLI default"))}</span>` : ""}</span>
           <span class="ws-item-right">
-            <button class="ws-term-btn" title="Open in terminal" data-open-term="${escHtml(dirPath)}">&#62;_</button>
-            <button class="ws-open-btn" title="Open in editor" data-open-path="${escHtml(wsData.codeWorkspacePaths?.[n] || dirPath)}">↗</button>
+            <button class="ws-term-btn" title="${escHtml(pT("pj.openTerm", "Open in terminal"))}" data-open-term="${escHtml(dirPath)}">&#62;_</button>
+            <button class="ws-open-btn" title="${escHtml(pT("pj.openEditor", "Open in editor"))}" data-open-path="${escHtml(wsData.codeWorkspacePaths?.[n] || dirPath)}">↗</button>
             <div class="ws-menu-wrap">
-              <button class="ws-menu-btn" title="More actions" data-menu-id="${escHtml(menuId)}">⋮</button>
+              <button class="ws-menu-btn" title="${escHtml(pT("pj.moreActions", "More actions"))}" aria-label="${escHtml(pT("pj.moreFor", "More for {ws}", { ws: shown }))}" data-menu-id="${escHtml(menuId)}">⋮</button>
               <div class="ws-menu-dropdown" id="${escHtml(menuId)}">
                 ${
                   isWsActive(n)
-                    ? `<button data-action="deactivate">Deactivate</button>`
-                    : `<button data-action="activate">Activate</button>`
+                    ? `<button data-action="deactivate">${escHtml(pT("pj.deactivate", "Deactivate"))}</button>`
+                    : `<button data-action="activate">${escHtml(pT("pj.activate", "Activate"))}</button>`
                 }
                 ${moveBtns}
-                <button data-action="rename">Rename</button>
+                <button data-action="rename">${escHtml(pT("pj.rename", "Rename"))}</button>
                 ${deleteItem}
               </div>
             </div>
@@ -2061,8 +2101,9 @@
           }
 
           // The page header's scope line names the workspace shown (R20).
+          // 0.4.45 (Vision): the name shown, not the slug.
           window.denShell?.pageHeader?.()?.setScope({
-            ws: wsName,
+            ws: projectLabel(wsData, wsName),
             env: "local",
           });
           // R24e: the runs dock shows this workspace's runs ("All runs"
@@ -2149,7 +2190,7 @@
 
           const masterDisabled = isActive
             ? ""
-            : 'disabled title="Activate this project first"';
+            : `disabled title="${escHtml(pT("pj.activateFirst", "Activate this project first"))}"`;
           // Membership is config-driven, not disk-driven: a managed entry
           // whose clone doesn't exist yet must still ENABLE Sync — Sync is the
           // control that creates the clone. Deriving this from svcList alone
@@ -2159,7 +2200,7 @@
           );
           const syncDisabled =
             !isActive || !hasManagedServices
-              ? 'disabled title="No managed services in this project"'
+              ? `disabled title="${escHtml(pT("pj.noManaged", "No managed services in this project"))}"`
               : "";
           const enc = encodeURIComponent(wsName);
           // "stacks: <ns>" only when this workspace's stacks run under a
@@ -2187,35 +2228,35 @@
           <h2 title="${escHtml(wsName)}">${escHtml(projectLabel(wsData, wsName))}</h2>
           ${
             isActive
-              ? `<span class="badge active-ws"${isFocus ? ` title="${escHtml(wsT("ws.focusTip", ""))}"` : ""}>active${isFocus ? ` · ${escHtml(wsT("ws.focus", "CLI default"))}` : ""}</span>
-               ${!isFocus ? `<button class="switch-btn" data-action="focus-ws" title="${escHtml(wsT("ws.setFocusTip", ""))}">Make CLI default</button>` : ""}
-               <button class="switch-btn" data-action="deactivate-ws">deactivate</button>`
-              : `<button class="switch-btn" data-action="activate-ws">activate</button>
-               <button class="switch-btn" data-action="switch-ws">activate + make CLI default</button>`
+              ? `<span class="badge active-ws"${isFocus ? ` title="${escHtml(wsT("ws.focusTip", ""))}"` : ""}>${escHtml(pT("pj.active", "active"))}${isFocus ? ` · ${escHtml(wsT("ws.focus", "CLI default"))}` : ""}</span>
+               ${!isFocus ? `<button class="switch-btn" data-action="focus-ws" title="${escHtml(wsT("ws.setFocusTip", ""))}">${escHtml(pT("pj.makeDefault", "Make CLI default"))}</button>` : ""}
+               <button class="switch-btn" data-action="deactivate-ws">${escHtml(pT("pj.deactivateLc", "deactivate"))}</button>`
+              : `<button class="switch-btn" data-action="activate-ws">${escHtml(pT("pj.activateLc", "activate"))}</button>
+               <button class="switch-btn" data-action="switch-ws">${escHtml(pT("pj.activateDefault", "activate + make CLI default"))}</button>`
           }
           ${stackNsChip}
           <span class="badge ws-agents" id="ws-agents-count" hidden></span>
           ${hubChip}
           ${hubWarn}
           <a class="ws-head-link" id="ws-term-here" href="/agents?terminal=1&amp;ws=${enc}" title="${escHtml(wsT("n.terminalTip", "Open a shell in this project's folder, in Den"))}">${escHtml(wsT("ws.termHere", "Terminal here"))}</a>
-          <a class="ws-head-link" id="ws-open-graph" href="/graph?ws=${enc}">Open in Graph →</a>
+          <a class="ws-head-link" id="ws-open-graph" href="/graph?ws=${enc}">${escHtml(pT("pj.openGraph", "Open in Graph →"))}</a>
           <div class="action-menu-wrap ws-more">
-            <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${escHtml(wsName)}" title="More for this project">⋯</button>
+            <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="${escHtml(pT("pj.moreFor", "More for {ws}", { ws: projectLabel(wsData, wsName) }))}" title="${escHtml(pT("pj.moreProject", "More for this project"))}">⋯</button>
             <div class="action-dropdown" id="ws-more-menu" role="menu" style="display:none">
-              <a role="menuitem" href="/settings?ws=${enc}#workspace">Project setup</a>
-              <button type="button" role="menuitem" data-action="rename-ws">Rename…</button>
-              ${wsName !== "default" ? `<button type="button" role="menuitem" class="danger" data-action="delete-ws">Delete…</button>` : ""}
+              <a role="menuitem" href="/settings?ws=${enc}#workspace">${escHtml(pT("pj.setup", "Project setup"))}</a>
+              <button type="button" role="menuitem" data-action="rename-ws">${escHtml(pT("pj.renameDots", "Rename…"))}</button>
+              ${wsName !== "default" ? `<button type="button" role="menuitem" class="danger" data-action="delete-ws">${escHtml(pT("pj.deleteDots", "Delete…"))}</button>` : ""}
             </div>
           </div>
         </div>
 
         <div class="cmd-bar">
-          <span class="cmd-bar-label">Project</span>
-          <button class="master-btn up"      ${masterDisabled} onclick="runWorkspaceCmd('up')">▶ Up</button>
-          <button class="master-btn down"    ${masterDisabled} onclick="runWorkspaceCmd('down')">⏹ Down</button>
-          <button class="master-btn restart" ${masterDisabled} onclick="runWorkspaceCmd('restart')">↺ Restart</button>
-          <button class="master-btn"         ${masterDisabled} onclick="runWorkspaceCmd('setup')">⚙ Setup</button>
-          <button class="master-btn"         ${syncDisabled} onclick="runWorkspaceSync()">⟳ Sync</button>
+          <span class="cmd-bar-label">${escHtml(pT("pj.project", "Project"))}</span>
+          <button class="master-btn up"      ${masterDisabled} onclick="runWorkspaceCmd('up')">▶ ${escHtml(pT("pj.up", "Up"))}</button>
+          <button class="master-btn down"    ${masterDisabled} onclick="runWorkspaceCmd('down')">⏹ ${escHtml(pT("pj.down", "Down"))}</button>
+          <button class="master-btn restart" ${masterDisabled} onclick="runWorkspaceCmd('restart')">↺ ${escHtml(pT("pj.restart", "Restart"))}</button>
+          <button class="master-btn"         ${masterDisabled} onclick="runWorkspaceCmd('setup')">⚙ ${escHtml(pT("pj.setupBtn", "Setup"))}</button>
+          <button class="master-btn"         ${syncDisabled} onclick="runWorkspaceSync()">⟳ ${escHtml(pT("pj.sync", "Sync"))}</button>
           <div class="cmd-bar-spacer"></div>
           <span class="cmd-bar-status" id="ws-cmd-status"></span>
         </div>
@@ -2225,7 +2266,7 @@
             ? `
         <div class="ws-empty-state">
           <div class="ws-empty-msg">${escHtml(wsT("ws.noServices", "No services in this project yet"))}</div>
-          <button class="add-svc-open-btn ws-empty-add-btn" onclick="openAddSvcModal('${escHtml(wsName)}')">+ Add Service</button>
+          <button class="add-svc-open-btn ws-empty-add-btn" onclick="openAddSvcModal('${escHtml(wsName)}')">+ ${escHtml(pT("pj.addService", "Add Service"))}</button>
           <span class="form-msg" id="add-msg"></span>
         </div>
         <div class="content-body ws-agents-only">
@@ -2235,36 +2276,36 @@
             : `
         <div class="content-body">
           <div class="tbl-tools">
-            <label>Find <input type="search" class="tbl-find" id="tbl-find" placeholder="repo, service…" autocomplete="off" value="${escHtml(_tblQuery)}"></label>
-            <span class="tbl-muted" id="tbl-group-l">Group by</span>
+            <label>${escHtml(pT("pj.find", "Find"))} <input type="search" class="tbl-find" id="tbl-find" placeholder="${escHtml(pT("pj.findPh", "repo, service…"))}" autocomplete="off" value="${escHtml(_tblQuery)}"></label>
+            <span class="tbl-muted" id="tbl-group-l">${escHtml(pT("pj.groupBy", "Group by"))}</span>
             <div class="tbl-seg" role="group" aria-labelledby="tbl-group-l" id="tbl-group">
               ${[
-                ["none", "None"],
-                ["app", "Application"],
-                ["org", "Org"],
+                ["none", pT("pj.group.none", "None")],
+                ["app", pT("pj.group.app", "Application")],
+                ["org", pT("pj.group.org", "Org")],
               ]
                 .map(
                   ([v, l]) =>
-                    `<button type="button" data-group="${v}" aria-pressed="${_tblGroup === v}">${l}</button>`,
+                    `<button type="button" data-group="${v}" aria-pressed="${_tblGroup === v}">${escHtml(l)}</button>`,
                 )
                 .join("")}
             </div>
           </div>
           <div class="tablewrap">
             <table class="svc" id="repo-table">
-              <caption>Repos in ${escHtml(projectLabel(wsData, wsName))}</caption>
+              <caption>${escHtml(pT("pj.reposIn", "Repos in {ws}", { ws: projectLabel(wsData, wsName) }))}</caption>
               <thead><tr>
-                <th scope="col">Repo</th>
-                <th scope="col">Health</th>
-                <th scope="col">Branch</th>
-                <th scope="col">Mode</th>
-                <th scope="col">Last test run</th>
-                <th scope="col"><span class="tbl-sr">Actions</span></th>
+                <th scope="col">${escHtml(pT("pj.th.repo", "Repo"))}</th>
+                <th scope="col">${escHtml(pT("pj.th.health", "Health"))}</th>
+                <th scope="col">${escHtml(pT("pj.th.branch", "Branch"))}</th>
+                <th scope="col">${escHtml(pT("pj.th.mode", "Mode"))}</th>
+                <th scope="col">${escHtml(pT("pj.th.lastRun", "Last test run"))}</th>
+                <th scope="col"><span class="tbl-sr">${escHtml(pT("pj.th.actions", "Actions"))}</span></th>
               </tr></thead>
             </table>
           </div>
           <div class="tbl-foot">
-            <button class="add-svc-open-btn" onclick="openAddSvcModal('${escHtml(wsName)}')">+ Add repo</button>
+            <button class="add-svc-open-btn" onclick="openAddSvcModal('${escHtml(wsName)}')">+ ${escHtml(pT("pj.addRepo", "Add repo"))}</button>
             <span class="form-msg" id="add-msg"></span>
           </div>
 
@@ -2273,14 +2314,14 @@
 
           <!-- Validate a manifest (by path, or pasted) -->
           <details class="validate-details">
-            <summary>Validate a manifest</summary>
+            <summary>${escHtml(pT("pj.validate.title", "Validate a manifest"))}</summary>
             <div class="validate-form">
               <div class="row" style="margin-bottom:8px">
-                <label style="white-space:nowrap">Path or dir</label>
-                <input class="form-inp" id="validate-path-inp" placeholder="/absolute/path/to/repo  or  /path/to/__DEN_MANIFEST_YML__" style="flex:1">
-                <button class="add-btn" onclick="validateManifestInput()">Validate</button>
+                <label style="white-space:nowrap" for="validate-path-inp">${escHtml(pT("pj.validate.path", "Path or dir"))}</label>
+                <input class="form-inp" id="validate-path-inp" placeholder="${escHtml(pT("pj.validate.pathPh", "/absolute/path/to/repo  or  /path/to/{file}", { file: "__DEN_MANIFEST_YML__" }))}" style="flex:1">
+                <button class="add-btn" onclick="validateManifestInput()">${escHtml(pT("pj.validate.go", "Validate"))}</button>
               </div>
-              <textarea id="validate-textarea" placeholder="…or paste __DEN_MANIFEST_YML__ content here"></textarea>
+              <textarea id="validate-textarea" aria-label="${escHtml(pT("pj.validate.paste", "…or paste {file} content here", { file: "__DEN_MANIFEST_YML__" }))}" placeholder="${escHtml(pT("pj.validate.paste", "…or paste {file} content here", { file: "__DEN_MANIFEST_YML__" }))}"></textarea>
               <div id="validate-result-panel" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
             </div>
           </details>
@@ -2502,8 +2543,8 @@
         const CHECKING = () =>
           healthCell(
             "pending",
-            "checking…",
-            "waiting for the first health check",
+            pT("pj.checking", "checking…"),
+            pT("pj.checkingTip", "waiting for the first health check"),
           );
         function repoHealth(r) {
           if (!_lastHealthAt) return CHECKING();
@@ -2576,12 +2617,32 @@
             `<button type="button" class="den-btn sm tbl-btn" data-action="tbl-${act}" data-id="${escHtml(id)}"${extra} aria-label="${escHtml(name)}" data-k="${act}:${escHtml(id)}">${label}</button>`;
           // (A title keeps setAllButtons from re-enabling it.)
           const off = (on) =>
-            on ? "" : ` disabled title="${escHtml(id)} has no up command"`;
+            on
+              ? ""
+              : ` disabled title="${escHtml(pT("pj.noUp", "{id} has no up command", { id }))}"`;
           return (
-            b("up", "Start", `Start ${id}`, off(o.up)) +
-            b("down", "Stop", `Stop ${id}`) +
-            b("restart", "Restart", `Restart ${id}`, off(o.restart)) +
-            b("logs", "Logs", `Logs of ${id}`)
+            b(
+              "up",
+              escHtml(pT("pj.start", "Start")),
+              pT("pj.startX", "Start {id}", { id }),
+              off(o.up),
+            ) +
+            b(
+              "down",
+              escHtml(pT("pj.stop", "Stop")),
+              pT("pj.stopX", "Stop {id}", { id }),
+            ) +
+            b(
+              "restart",
+              escHtml(pT("pj.restart", "Restart")),
+              pT("pj.restartX", "Restart {id}", { id }),
+              off(o.restart),
+            ) +
+            b(
+              "logs",
+              escHtml(pT("pj.logs", "Logs")),
+              pT("pj.logsX", "Logs of {id}", { id }),
+            )
           );
         }
 
@@ -2597,7 +2658,7 @@
           const repoPath = wsEntry.path || primary?.path || "";
           const local = primary?.mode === "dev-managed" && primary?.path;
           return `<div class="action-menu-wrap">
-              <button type="button" class="den-btn sm tbl-btn tbl-more" data-action="toggle-svc-menu" data-menu-id="${menuId}" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${escHtml(repo)}" data-k="more:${escHtml(repo)}">⋯</button>
+              <button type="button" class="den-btn sm tbl-btn tbl-more" data-action="toggle-svc-menu" data-menu-id="${menuId}" aria-haspopup="menu" aria-expanded="false" aria-label="${escHtml(pT("pj.moreFor", "More for {ws}", { ws: repo }))}" data-k="more:${escHtml(repo)}">⋯</button>
               <div class="action-dropdown" id="${menuId}" role="menu" style="display:none">
                 ${local ? `<button role="menuitem" data-open-term="${escHtml(primary.path)}">&gt;_ open in terminal</button><button role="menuitem" data-open-path="${escHtml(primary.path)}">↗ open in editor</button>` : ""}
                 <button role="menuitem" title="start / don't start with the project" onclick="toggleAutostart('${q(repo)}', ${isAutoOff})">${isAutoOff ? "⏸ auto-start: off" : "▶ auto-start: on"}</button>
@@ -2639,7 +2700,7 @@
               : "");
           const switchTo = mode === "managed" ? "dev-managed" : "managed";
           const modeCell = mode
-            ? `<span class="tbl-mode"><span class="badge ${escHtml(mode)}">${escHtml(mode)}</span><button type="button" class="tbl-switch" data-action="tbl-mode" data-repo="${escHtml(repo)}" data-mode="${switchTo}" aria-label="${escHtml(repo)}: use ${mode === "managed" ? "local" : "managed"}" data-k="mode:${escHtml(repo)}">use ${mode === "managed" ? "local" : "managed"}</button></span>`
+            ? `<span class="tbl-mode"><span class="badge ${escHtml(mode)}">${escHtml(mode)}</span><button type="button" class="tbl-switch" data-action="tbl-mode" data-repo="${escHtml(repo)}" data-mode="${switchTo}" aria-label="${escHtml(pT(mode === "managed" ? "pj.useLocalX" : "pj.useManagedX", mode === "managed" ? "{repo}: use local" : "{repo}: use managed", { repo }))}" data-k="mode:${escHtml(repo)}">${escHtml(pT(mode === "managed" ? "pj.useLocal" : "pj.useManaged", mode === "managed" ? "use local" : "use managed"))}</button></span>`
             : "";
           const head = `<tr class="repo${r.problem ? " prob" : ""}" data-repo="${escHtml(repo)}">
               <th scope="row">${exp}${nameLink(primary, repo)} ${starBtn(repo)}${badges}</th>
@@ -4738,8 +4799,8 @@
           const b = document.getElementById("ws-toggle");
           b.setAttribute("aria-expanded", String(!collapsed));
           const what = collapsed
-            ? "Expand the project list"
-            : "Collapse the project list";
+            ? pT("pj.expand", "Expand the project list")
+            : pT("pj.collapse", "Collapse the project list");
           b.setAttribute("aria-label", what);
           b.title = what;
           b.textContent = collapsed ? "»" : "«";

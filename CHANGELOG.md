@@ -40,6 +40,15 @@ config and manifest changes a distribution must make to move to it under
   0), on the page, and in MCP's `run_tests` (an error with
   `outcome: "nothing ran"`).
 
+### Known
+
+- Some pages still show English words in Spanish and Japanese. They are
+  fixed in 0.4.46, with their dialogs, menus and error states. Counted
+  in each page's first view: Edge 26, Tests 19, Release 17, Services 13,
+  Logs 10, Environments 6. Settings, Projects, Graph, Agents, the
+  terminal, the server agent's page and the bell are translated, and a
+  test checks them in a pseudo-locale.
+
 ## [0.4.44] - 2026-11-13
 
 ### Added

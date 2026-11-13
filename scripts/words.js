@@ -39,7 +39,8 @@ export const NEVER_SHOWN = {
     ["espacio de trabajo", /\bespacios? de trabajo\b/i],
     ["usuario", /\busuari[oa]s?\b/i],
     ["cuenta", /\bcuentas?\b/i],
-    ["bot", /\bbots?\b/i],
+    // \b is ASCII: "botón" would end a word at "bot"
+    ["bot", /\bbots?(?![\wÀ-ɏ])/i],
     ["sesión", /\bsesi(?:ón|ones)\b/i],
   ],
   ja: [
@@ -100,9 +101,17 @@ export function languageOf(text) {
   return "en";
 }
 
+/**
+ * Spanish says sesión to sign in (iniciar sesión, cerrar sesión, sesión
+ * iniciada): that is a person signing in, not a session.
+ */
+export const SIGN_IN_ES =
+  /\b(?:inici[a-záéíóú]*|cerrar|cierre)(?: de)?(?: la)? sesi[oó]n(?:es)?\b|\bsesi[oó]n iniciada\b|\bla sesi[oó]n se mantiene\b/gi;
+
 /** The "never shown" words in `text`, by name (none: []). */
 export function neverShownIn(text, lang = languageOf(text)) {
-  const t = withoutCode(text);
+  let t = withoutCode(text);
+  if (lang === "es") t = t.replace(SIGN_IN_ES, " ");
   return NEVER_SHOWN[lang].filter(([, re]) => re.test(t)).map(([w]) => w);
 }
 

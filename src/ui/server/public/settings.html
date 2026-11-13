@@ -29,6 +29,24 @@
     <link rel="stylesheet" href="/persona-ui.css" />
     <title>__DEN_TITLE__ · Settings</title>
     <style>
+      /* 0.4.45 mock v6: where the project's name comes from, in words. */
+      .pname-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font: 11.5px var(--mono);
+        color: var(--accent-text);
+        border: 1px solid var(--border-strong);
+        border-radius: 999px;
+        padding: 2px 9px;
+        white-space: nowrap;
+      }
+      .pname-chip i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
       /* The Settings page (R21): the prototype's (den-shell.html) page
          header, sections, rows, segmented buttons, swatches and navigation
          list, ported as they are; --r is --radius, --r-btn is
@@ -830,21 +848,29 @@
     <main id="den-content">
       <div class="ph">
         <div>
-          <h1>Settings</h1>
-          <div class="sub">
+          <h1 data-t="n.settings">Settings</h1>
+          <div class="sub" data-t="set.ui.sub">
             Saved to your __DEN_TITLE__ preferences and remembered on every page
           </div>
         </div>
         <div class="act" role="search">
-          <label class="den-sr" for="set-q">Search settings</label>
+          <label class="den-sr" for="set-q" data-t="set.ui.search"
+            >Search settings</label
+          >
           <input
             type="search"
             id="set-q"
+            data-t-attr="placeholder:set.ui.search"
             placeholder="Search settings"
             autocomplete="off"
             aria-keyshortcuts="/"
           />
-          <kbd aria-hidden="true" title="Press / to search">/</kbd>
+          <kbd
+            aria-hidden="true"
+            title="Press / to search"
+            data-t-attr="title:set.ui.slashTip"
+            >/</kbd
+          >
         </div>
       </div>
       <p class="set-count" id="set-count" aria-live="polite"></p>

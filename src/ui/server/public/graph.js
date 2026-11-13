@@ -22,6 +22,7 @@ import {
   edgeModel,
   entryOf,
   findHit,
+  gw,
   healthLine,
   isCollapsed,
   neighbours,
@@ -34,6 +35,7 @@ import {
   repoStatus,
   repoStatusWord,
   routeCross,
+  setGraphWords,
   splitTopLevel,
   status,
   statusWord,
@@ -48,6 +50,20 @@ import {
   runAction,
 } from "/panel.js";
 import { ownersLabel } from "/workspace-picker.js";
+
+/**
+ * 0.4.45: the page's words through the shell's catalog, the English (with
+ * {vars} filled) when it has no such key. graph-model.js and panel.js use
+ * the same lookup (setGraphWords / gw).
+ */
+function gT(key, en, vars) {
+  const v = window.denShell?.t?.(key, vars);
+  if (v && v !== key) return v;
+  return String(en).replace(/\{(\w+)\}/g, (m, k) =>
+    vars && vars[k] != null ? String(vars[k]) : m,
+  );
+}
+setGraphWords(gT);
 
 const LS = "__DEN_CLI__-graph:";
 const store = {
@@ -198,14 +214,16 @@ function maxButton() {
   const m = hooks.maximize;
   if (!m) return "";
   const on = !!m.isOn?.();
-  return `<button data-z="max" aria-pressed="${on}" aria-keyshortcuts="F" aria-label="Maximize graph" title="${on ? "Restore (Esc)" : "Maximize graph (F)"}">${on ? "⤡" : "⤢"}</button>`;
+  return `<button data-z="max" aria-pressed="${on}" aria-keyshortcuts="F" aria-label="${esc(gw("gr.max", "Maximize graph"))}" title="${esc(on ? gw("gr.restoreTip", "Restore (Esc)") : gw("gr.maxTip", "Maximize graph (F)"))}">${on ? "⤡" : "⤢"}</button>`;
 }
 /** Repaint the Maximize button after the page changed the layout. */
 export function graphMaximized(on) {
   const b = $('[data-z="max"]');
   if (!b) return;
   b.setAttribute("aria-pressed", String(!!on));
-  b.title = on ? "Restore (Esc)" : "Maximize graph (F)";
+  b.title = on
+    ? gw("gr.restoreTip", "Restore (Esc)")
+    : gw("gr.maxTip", "Maximize graph (F)");
   b.textContent = on ? "⤡" : "⤢";
 }
 
@@ -223,21 +241,21 @@ export function mountGraph(el, data, pageHooks) {
   )
     st.sel = null;
   el.innerHTML = `<div class="dg">
-    <div class="dg-bar" role="toolbar" aria-label="Graph view options">
-      <div class="dg-ctl"><span>Layout</span><div class="dg-seg" data-seg="dir"><button data-v="down">Top-down</button><button data-v="right">Left-right</button></div></div>
-      <div class="dg-ctl"><span>Group</span><div class="dg-seg" data-seg="group"><button data-v="org">Org</button><button data-v="app">Application</button></div></div>
-      <div class="dg-ctl"><span>Cards</span><div class="dg-seg" data-seg="density"><button data-v="detailed">Detailed</button><button data-v="compact">Compact</button></div></div>
-      <div class="dg-ctl"><div class="dg-seg" data-expand><button data-v="all">Expand all</button><button data-v="none">Collapse all</button></div></div>
+    <div class="dg-bar" role="toolbar" aria-label="${esc(gT("gr.bar", "Graph view options"))}">
+      <div class="dg-ctl"><span>${esc(gT("gr.layout", "Layout"))}</span><div class="dg-seg" data-seg="dir"><button data-v="down">${esc(gT("gr.dir.down", "Top-down"))}</button><button data-v="right">${esc(gT("gr.dir.right", "Left-right"))}</button></div></div>
+      <div class="dg-ctl"><span>${esc(gT("gr.group", "Group"))}</span><div class="dg-seg" data-seg="group"><button data-v="org">${esc(gT("gr.group.org", "Org"))}</button><button data-v="app">${esc(gT("gr.group.app", "Application"))}</button></div></div>
+      <div class="dg-ctl"><span>${esc(gT("gr.cards", "Cards"))}</span><div class="dg-seg" data-seg="density"><button data-v="detailed">${esc(gT("gr.cards.detailed", "Detailed"))}</button><button data-v="compact">${esc(gT("gr.cards.compact", "Compact"))}</button></div></div>
+      <div class="dg-ctl"><div class="dg-seg" data-expand><button data-v="all">${esc(gT("gr.expandAll", "Expand all"))}</button><button data-v="none">${esc(gT("gr.collapseAll", "Collapse all"))}</button></div></div>
       <div class="dg-spacer"></div>
-      <label class="dg-ctl"><span>Find</span><input type="search" data-find placeholder="service, repo…" autocomplete="off" value="${esc(st.q)}"></label>
+      <label class="dg-ctl"><span>${esc(gT("gr.find", "Find"))}</span><input type="search" data-find placeholder="${esc(gT("gr.findPh", "service, repo…"))}" autocomplete="off" value="${esc(st.q)}"></label>
     </div>
     <div class="dg-stage">
-      <div class="dg-vp" tabindex="0" aria-label="Service graph. Drag to pan, scroll to move, Ctrl or Cmd + scroll to zoom.">
+      <div class="dg-vp" tabindex="0" aria-label="${esc(gT("gr.vp", "Service graph. Drag to pan, scroll to move, Ctrl or Cmd + scroll to zoom."))}">
         <div class="dg-world"><svg aria-hidden="true"></svg></div>
         <div class="dg-legend"></div>
-        <div class="dg-zoom" role="group" aria-label="Zoom"><button data-z="out" aria-label="Zoom out">−</button><button data-z="100" aria-label="Reset zoom to 100%">100%</button><button data-z="in" aria-label="Zoom in">+</button><button data-z="fit">Fit</button>${maxButton()}</div>
+        <div class="dg-zoom" role="group" aria-label="${esc(gT("gr.zoom", "Zoom"))}"><button data-z="out" aria-label="${esc(gT("gr.zoomOut", "Zoom out"))}">−</button><button data-z="100" aria-label="${esc(gT("gr.zoomReset", "Reset zoom to 100%"))}">100%</button><button data-z="in" aria-label="${esc(gT("gr.zoomIn", "Zoom in"))}">+</button><button data-z="fit">${esc(gT("gr.fit", "Fit"))}</button>${maxButton()}</div>
       </div>
-      <aside class="dg-panel" hidden aria-label="Details"></aside>
+      <aside class="dg-panel" hidden aria-label="${esc(gT("gr.details", "Details"))}"></aside>
     </div>
   </div>`;
   wire();
@@ -358,7 +376,7 @@ async function render() {
       .forEach((n) => n.remove());
     world.insertAdjacentHTML(
       "beforeend",
-      '<div class="dg-msg">The graph layout library did not load. Reload the page; if it persists, reinstall __DEN_CLI__.</div>',
+      `<div class="dg-msg">${esc(gT("gr.noElk", "The graph layout library did not load. Reload the page; if it persists, reinstall {cli}.", { cli: "__DEN_CLI__" }))}</div>`,
     );
     return;
   }
@@ -528,7 +546,10 @@ const groupServices = (key) =>
     st.group === "org" ? (s.org || "") === key : s.app === key,
   );
 const rollup = (svcs) =>
-  `${svcs.filter((s) => s.health.ok).length}/${svcs.length} healthy`;
+  gT("gr.okOf", "{ok}/{n} healthy", {
+    ok: svcs.filter((s) => s.health.ok).length,
+    n: svcs.length,
+  });
 function groupEl(key, x, y, w, h) {
   const el = document.createElement("div");
   el.className = "dg-grp dg-org";
@@ -546,8 +567,10 @@ function groupEl(key, x, y, w, h) {
   const sub =
     st.group === "app"
       ? repos.map((r) => r + (M.mixed ? glyph(r) || " ⌂" : "")).join(" · ")
-      : `${repos.length} repo${repos.length === 1 ? "" : "s"}`;
-  el.innerHTML = `<div class="dg-ghead"><b>${esc(o.label)}</b><span class="meta">${esc(sub)}</span>${where.size > 1 ? '<span class="dg-badge hybrid">⇄ hybrid</span>' : ""}<span class="roll">${rollup(svcs)}</span></div>`;
+      : repos.length === 1
+        ? gT("gr.repos.one", "{n} repo", { n: 1 })
+        : gT("gr.repos", "{n} repos", { n: repos.length });
+  el.innerHTML = `<div class="dg-ghead"><b>${esc(o.label)}</b><span class="meta">${esc(sub)}</span>${where.size > 1 ? `<span class="dg-badge hybrid">⇄ ${esc(gT("gr.pl.hybrid", "hybrid"))}</span>` : ""}<span class="roll">${rollup(svcs)}</span></div>`;
   return place(el, x, y, w, h);
 }
 function repoGroupEl(r, x, y, w, h) {
@@ -558,7 +581,7 @@ function repoGroupEl(r, x, y, w, h) {
     (svcs.some((s) => s.runs === "remote") ? " has-remote" : "");
   el.dataset.repo = r;
   const branch = svcs[0].branch ? `⎇ ${svcs[0].branch} · ` : "";
-  el.innerHTML = `<div class="dg-ghead"><button class="dg-gname" data-goto-repo-panel="${esc(r)}" title="Repo details">${esc(r)}</button><span class="meta">${esc(branch)}${svcs.length} services</span><button class="dg-lnk" data-collapse="${esc(r)}">Collapse</button></div>`;
+  el.innerHTML = `<div class="dg-ghead"><button class="dg-gname" data-goto-repo-panel="${esc(r)}" title="${esc(gT("gr.repoDetails", "Repo details"))}">${esc(r)}</button><span class="meta">${esc(branch)}${esc(gT("gr.services", "{n} services", { n: svcs.length }))}</span><button class="dg-lnk" data-collapse="${esc(r)}">${esc(gT("gr.collapse", "Collapse"))}</button></div>`;
   return place(el, x, y, w, h);
 }
 /** The favourite star (0.4.17): the shell's pins, the same store as Services. */
@@ -568,7 +591,9 @@ function starBtn(id) {
   const on = sh.isPinned(id);
   const label = sh.t
     ? sh.t(on ? "act.unpinX" : "act.pinX", { s: id })
-    : `${on ? "Unpin" : "Pin"} ${id}`;
+    : gT(on ? "gr.unpinX" : "gr.pinX", on ? "Unpin {s}" : "Pin {s}", {
+        s: id,
+      });
   return `<button type="button" class="dg-star" data-pin-toggle="${esc(id)}" aria-pressed="${on}" aria-label="${esc(label)}" title="${esc(label)}">${on ? "★" : "☆"}</button>`;
 }
 /** 0.4.18: ⋯ opens the service's quick panel (svc-panel.js), the rail's. */
@@ -589,9 +614,9 @@ function cardActs(s) {
 }
 function cardInner(s) {
   const showPlace = s.runs === "remote" || M.mixed;
-  return `<div class="r1"><span class="dg-dot ${status(s)}" title="${statusWord(s)}"></span><span class="nm" title="${esc(s.name)}">${esc(s.name)}</span>${showPlace ? `<span class="dg-badge ${s.runs}">${esc(placementText(s))}</span>` : ""}${svpBtn(s.id)}${starBtn(s.id)}</div>
-    <div class="r2" title="${esc(s.id)}${s.inWorkspaces.length > 1 ? `: in ${esc(s.inWorkspaces.join(", "))}` : ""}">${esc(s.repo + ownersLabel(s.inWorkspaces))}</div>
-    <div class="r3">${s.entry ? '<span class="dg-tag entry">entry</span>' : ""}${s.infra ? '<span class="dg-tag">infra</span>' : ""}${s.missing.length ? `<span class="dg-tag warn" title="Missing: ${esc(s.missing.join(", "))}">⚠ missing</span>` : ""}${!s.cloned ? '<span class="dg-tag warn">not cloned</span>' : ""}<span class="h ${status(s)}">${esc(healthLine(s))}</span></div>
+  return `<div class="r1"><span class="dg-dot ${status(s)}" title="${esc(statusWord(s))}"></span><span class="nm" title="${esc(s.name)}">${esc(s.name)}</span>${showPlace ? `<span class="dg-badge ${s.runs}">${esc(placementText(s))}</span>` : ""}${svpBtn(s.id)}${starBtn(s.id)}</div>
+    <div class="r2" title="${esc(s.inWorkspaces.length > 1 ? gT("gr.inProjects", "{id}: in {list}", { id: s.id, list: s.inWorkspaces.join(", ") }) : s.id)}">${esc(s.repo + ownersLabel(s.inWorkspaces))}</div>
+    <div class="r3">${s.entry ? `<span class="dg-tag entry">${esc(gT("gr.tag.entry", "entry"))}</span>` : ""}${s.infra ? `<span class="dg-tag">${esc(gT("gr.tag.infra", "infra"))}</span>` : ""}${s.missing.length ? `<span class="dg-tag warn" title="${esc(gT("gr.missingTip", "Missing: {list}", { list: s.missing.join(", ") }))}">⚠ ${esc(gT("gr.tag.missing", "missing"))}</span>` : ""}${!s.cloned ? `<span class="dg-tag warn">${esc(gT("gr.tag.notCloned", "not cloned"))}</span>` : ""}<span class="h ${status(s)}">${esc(healthLine(s))}</span></div>
     <div class="dg-acts">${cardActs(s)
       .map((a) => actBtn(a, s, "sm"))
       .join("")}</div>`;
@@ -604,7 +629,13 @@ function card(s, x, y, w, h) {
   el.setAttribute("role", "button");
   el.setAttribute(
     "aria-label",
-    `${s.name} in ${s.repo}, ${statusWord(s)}${s.runs === "remote" ? ", runs remotely" : ""}. Open details.`,
+    gT(
+      s.runs === "remote" ? "gr.cardLabelRemote" : "gr.cardLabel",
+      s.runs === "remote"
+        ? "{name} in {repo}, {status}, runs remotely. Open details."
+        : "{name} in {repo}, {status}. Open details.",
+      { name: s.name, repo: s.repo, status: statusWord(s) },
+    ),
   );
   el.innerHTML = cardInner(s);
   return place(el, x, y, w, h);
@@ -614,10 +645,10 @@ function repoCardInner(r) {
     ok = svcs.filter((s) => s.health.ok).length,
     pl = repoPlacement(M, r),
     roll = repoRollup(M, r);
-  return `<div class="r1"><span class="dg-dot ${repoStatus(roll)}" title="${esc(repoStatusWord(roll))}"></span><span class="nm">${esc(r)}</span>${pl !== "local" || M.mixed ? `<span class="dg-badge ${pl}">${pl === "hybrid" ? "⇄ hybrid" : pl === "remote" ? "☁ remote" : "⌂ local"}</span>` : ""}</div>
-    <div class="r2">${svcs.length} services · ${ok}/${svcs.length} healthy</div>
-    <div class="r3 sum">${svcs.map((s) => `<span class="dg-dot ${status(s)}" title="${esc(s.name)}: ${statusWord(s)}"></span>`).join("")}</div>
-    <div class="dg-acts"><button class="dg-btn sm" data-expand="${esc(r)}">Expand</button></div>`;
+  return `<div class="r1"><span class="dg-dot ${repoStatus(roll)}" title="${esc(repoStatusWord(roll))}"></span><span class="nm">${esc(r)}</span>${pl !== "local" || M.mixed ? `<span class="dg-badge ${pl}">${pl === "hybrid" ? `⇄ ${esc(gT("gr.pl.hybrid", "hybrid"))}` : pl === "remote" ? `☁ ${esc(gT("gr.pl.remote", "remote"))}` : `⌂ ${esc(gT("gr.pl.local", "local"))}`}</span>` : ""}</div>
+    <div class="r2">${esc(gT("gr.services", "{n} services", { n: svcs.length }))} · ${esc(gT("gr.okOf", "{ok}/{n} healthy", { ok, n: svcs.length }))}</div>
+    <div class="r3 sum">${svcs.map((s) => `<span class="dg-dot ${status(s)}" title="${esc(s.name)}: ${esc(statusWord(s))}"></span>`).join("")}</div>
+    <div class="dg-acts"><button class="dg-btn sm" data-expand="${esc(r)}">${esc(gT("gr.expand", "Expand"))}</button></div>`;
 }
 function repoCard(r, x, y, w, h) {
   const svcs = M.byRepo.get(r);
@@ -629,7 +660,16 @@ function repoCard(r, x, y, w, h) {
   el.setAttribute("role", "button");
   el.setAttribute(
     "aria-label",
-    `${r}, ${repoStatusWord(roll)}, ${svcs.length} services, ${svcs.filter((s) => s.health.ok).length} healthy. Open details.`,
+    gT(
+      "gr.repoLabel",
+      "{repo}, {status}, {n} services, {ok} healthy. Open details.",
+      {
+        repo: r,
+        status: repoStatusWord(roll),
+        n: svcs.length,
+        ok: svcs.filter((s) => s.health.ok).length,
+      },
+    ),
   );
   el.innerHTML = repoCardInner(r);
   return place(el, x, y, w, h);
@@ -638,21 +678,28 @@ function repoCard(r, x, y, w, h) {
 function legend() {
   const kinds = new Set(edges.map((e) => (e.cross ? "cross" : e.kind)));
   const items = [
-    ["hard", "var(--accent)", "solid", "hard dependency"],
-    ["soft", "var(--muted)", "dashed", "soft"],
-    ["event", "var(--dg-event)", "dotted", "event"],
-    ["intra", "var(--muted)", "solid", "within a repo"],
-    ["cross", "var(--dg-remote)", "dashed", "local → remote"],
+    ["hard", "var(--accent)", "solid", gT("gr.lg.hard", "hard dependency")],
+    ["soft", "var(--muted)", "dashed", gT("gr.lg.soft", "soft")],
+    ["event", "var(--dg-event)", "dotted", gT("gr.lg.event", "event")],
+    ["intra", "var(--muted)", "solid", gT("gr.lg.intra", "within a repo")],
+    [
+      "cross",
+      "var(--dg-remote)",
+      "dashed",
+      gT("gr.lg.cross", "local → remote"),
+    ],
   ].filter(([k]) => kinds.has(k));
   $(".dg-legend").innerHTML =
     items
       .map(
         ([, c, s, l]) =>
-          `<span><i style="border-top-color:${c};border-top-style:${s}"></i>${l}</span>`,
+          `<span><i style="border-top-color:${c};border-top-style:${s}"></i>${esc(l)}</span>`,
       )
       .join("") +
-    (M.mixed ? "<span>⌂ local · ☁ remote · ⇄ hybrid</span>" : "") +
-    "<span>click a card for details</span>";
+    (M.mixed
+      ? `<span>⌂ ${esc(gT("gr.pl.local", "local"))} · ☁ ${esc(gT("gr.pl.remote", "remote"))} · ⇄ ${esc(gT("gr.pl.hybrid", "hybrid"))}</span>`
+      : "") +
+    `<span>${esc(gT("gr.lg.click", "click a card for details"))}</span>`;
 }
 
 // ── focus, find ──────────────────────────────────────────────────────────
@@ -736,8 +783,7 @@ function openDetail(sel, keepTab) {
     if (!back) {
       back = document.createElement("div");
       back.className = "dg dg-modal-back";
-      back.innerHTML =
-        '<aside class="dg-panel" role="dialog" aria-modal="true" aria-label="Details"></aside>';
+      back.innerHTML = `<aside class="dg-panel" role="dialog" aria-modal="true" aria-label="${esc(gT("gr.details", "Details"))}"></aside>`;
       document.body.appendChild(back);
       back.addEventListener("click", (e) => {
         if (e.target === back) closeDetail();
@@ -882,7 +928,9 @@ async function recheck(services) {
   );
   graphHealth(rows.flat());
   toast(
-    `Checked ${services.length === 1 ? services[0].id : services.length + " services"}`,
+    services.length === 1
+      ? gT("gr.checkedOne", "Checked {id}", { id: services[0].id })
+      : gT("gr.checkedN", "Checked {n} services", { n: services.length }),
   );
 }
 // An open More menu moves to a layer on <body>: inside the panel, WebKit
@@ -939,7 +987,9 @@ function placeMenu(more, m) {
 function arm(btn) {
   if (btn.dataset.armed) return true;
   btn.dataset.armed = "1";
-  btn.textContent = "Confirm: " + btn.textContent;
+  btn.textContent = gT("gr.confirm", "Confirm: {label}", {
+    label: btn.textContent,
+  });
   btn.classList.add("armed");
   return false;
 }

@@ -247,7 +247,9 @@ describe("LK-0: the admin password is asked for only when sudo needs it", () => 
     expect(await api("POST", "/api/sudo-password", { password: PW })).toBe(200);
     await p.reload();
     await p.waitForSelector("#set-sudo-forget");
-    expect(await text(p, "#set-sudo")).toBe("Saved for this session");
+    expect(await text(p, "#set-sudo")).toBe(
+      "Held in memory until Den restarts",
+    );
     if (SHOTS)
       await p.screenshot({ path: path.join(SHOTS, "lk0-settings.png") });
     await p.click("#set-sudo-forget");

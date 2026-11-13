@@ -90,6 +90,30 @@ function inScript(f, at) {
   return scriptLines.get(f).has(at);
 }
 
+/** A page's lines inside <style>…</style>: CSS, which no one reads as words. */
+const styleLines = new Map();
+function inStyle(f, at) {
+  if (!styleLines.has(f)) {
+    const set = new Set();
+    let text = "";
+    try {
+      text = readFileSync(f, "utf-8");
+    } catch {
+      /* gone: none */
+    }
+    let open = false;
+    text.split("\n").forEach((l, i) => {
+      const starts = /<style\b[^>]*>/i.test(l);
+      const ends = /<\/style>/i.test(l);
+      if (open || starts) set.add(i + 1);
+      if (starts && !ends) open = true;
+      else if (ends) open = false;
+    });
+    styleLines.set(f, set);
+  }
+  return styleLines.get(f).has(at);
+}
+
 let file = "";
 let lineNo = 0;
 let hits = 0;
@@ -108,6 +132,7 @@ for (const raw of diff.split("\n")) {
   const at = lineNo++;
   if (/\.test\.|\.d\.ts$/.test(file)) continue;
   if (/words-ok:/.test(line)) continue;
+  if (file.endsWith(".html") && inStyle(file, at)) continue;
   const strings =
     file.endsWith(".html") && !inScript(file, at)
       ? [

@@ -22,6 +22,8 @@
  */
 
 /** The search's terms: lower-case words, every one of which must match. */
+import { projectLabel } from "./workspace-picker.js";
+
 export function terms(q) {
   return String(q || "")
     .toLowerCase()
@@ -33,10 +35,59 @@ export function terms(q) {
 export function rowMatches(row, q) {
   const ts = terms(q);
   if (!ts.length) return true;
-  const hay = [row.label, row.description, ...(row.keywords || [])]
+  const hay = [
+    row.label,
+    row.description,
+    // The English too: the palette's ?q= is a row's English label.
+    row.en?.label,
+    row.en?.description,
+    ...(row.keywords || []),
+  ]
     .join(" ")
     .toLowerCase();
   return ts.every((t) => hay.includes(t));
+}
+
+/**
+ * A row in the page's language (0.4.45): its label (set.<id>), description
+ * (set.<id>.d) and option labels (set.<id>.o.<value>) through `tr`
+ * (window.denShell.tr): a built-in row reads the catalogs; a row a
+ * distribution or plugin adds may bring its own as `messages`
+ * ({ es: { "set.<id>": … }, ja: … }), else it shows its English. The
+ * English stays on `en` for search.
+ */
+export function localizeRow(r, tr) {
+  if (typeof tr !== "function") return r;
+  const k = `set.${r.id}`;
+  const own = r.messages;
+  const control =
+    r.control && Array.isArray(r.control.options)
+      ? {
+          ...r.control,
+          options: r.control.options.map((o) => ({
+            ...o,
+            label: tr(`${k}.o.${o.value}`, o.label, own),
+          })),
+        }
+      : r.control;
+  return {
+    ...r,
+    en: { label: r.label, description: r.description },
+    label: tr(k, r.label, own),
+    description: tr(`${k}.d`, r.description, own),
+    control,
+  };
+}
+
+/** A category in the page's language: setc.<id> and setc.<id>.d. */
+export function localizeCategory(c, tr) {
+  if (typeof tr !== "function") return c;
+  const k = `setc.${c.id}`;
+  return {
+    ...c,
+    label: tr(k, c.label, c.messages),
+    description: tr(`${k}.d`, c.description, c.messages),
+  };
 }
 
 /**
@@ -77,18 +128,41 @@ export function settingsUrl(loc, { category, q }) {
   );
 }
 
-/** "3 settings match" / "1 setting matches" / "No settings match". */
-export function countText(n) {
-  if (!n) return "No settings match";
-  return n === 1 ? "1 setting matches" : `${n} settings match`;
+/** The page's own en words, for where there is no shell (a unit test). */
+const EN_FALLBACK = {
+  "set.ui.countNone": "No settings match",
+  "set.ui.count": "{n} settings match",
+  "set.ui.count.one": "{n} setting matches",
+  "set.ui.scopeDist": "Distribution · read-only",
+  "set.ui.scopeWs": "Project setup · {ws}",
+  "set.ui.scopeWsNone": "Project setup",
+  "set.ui.scopeUser": "User",
+};
+function enT(key, vars) {
+  const k =
+    vars && vars.n === 1 && EN_FALLBACK[`${key}.one`] ? `${key}.one` : key;
+  return String(EN_FALLBACK[k] ?? key).replace(/\{(\w+)\}/g, (m, x) =>
+    vars && vars[x] != null ? String(vars[x]) : m,
+  );
 }
 
-/** The scope tag's text: User, Workspace · <ws>, Distribution · read-only. */
-export function scopeText(row, workspace) {
-  if (row.scope === "distribution") return "Distribution · read-only";
+/** "3 settings match" / "1 setting matches" / "No settings match". */
+export function countText(n, t = enT) {
+  if (!n) return t("set.ui.countNone");
+  return t("set.ui.count", { n });
+}
+
+/**
+ * The scope tag's text: User, Project setup · <project>, Distribution ·
+ * read-only. `workspace` is the name the project shows (0.4.45).
+ */
+export function scopeText(row, workspace, t = enT) {
+  if (row.scope === "distribution") return t("set.ui.scopeDist");
   if (row.scope === "workspace")
-    return workspace ? `Project setup · ${workspace}` : "Project setup";
-  return "User";
+    return workspace
+      ? t("set.ui.scopeWs", { ws: workspace })
+      : t("set.ui.scopeWsNone");
+  return t("set.ui.scopeUser");
 }
 
 // ── the page ──────────────────────────────────────────────────────────────
@@ -110,9 +184,15 @@ const SWATCHES = ["accent", "ok", "warn", "bad", "bg", "surface", "text"];
  */
 export async function mountSettings(deps) {
   const shell = deps.shell;
+  /** A catalog word (0.4.45: the page's own words go through it). */
+  const L = (k, v) => shell.t(k, v);
+  /** A project's name as it shows (Hub's when linked; 0.4.45). */
+  let wsPayload = null;
+  const wsName = (slug) => (wsPayload ? projectLabel(wsPayload, slug) : slug);
   const $ = (id) => document.getElementById(id);
   const body = $("set-body");
   const navEl = $("set-nav");
+  navEl.setAttribute("aria-label", shell.t("set.ui.cats"));
   const search = $("set-q");
   const count = $("set-count");
   const scroller = $("den-content");
@@ -185,9 +265,13 @@ export async function mountSettings(deps) {
     deps.appearance.ensureAppearance().catch(() => ({})),
     getJson("/api/scope").catch(() => null),
   ]);
+  // 0.4.1: under an invalid config /api/workspaces answers 422; slugs then.
+  wsPayload =
+    shell.configInvalid?.() === true
+      ? null
+      : await getJson("/api/workspaces").catch(() => null);
   if (!data) {
-    body.innerHTML =
-      '<div class="empty"><b>Settings did not load.</b> Reload to try again.</div>';
+    body.innerHTML = `<div class="empty"><b>${esc(L("set.ui.loadFailed"))}</b> ${esc(L("set.ui.reload"))}</div>`;
     return;
   }
   ctx.data = data;
@@ -213,7 +297,7 @@ export async function mountSettings(deps) {
   // ── drawing ─────────────────────────────────────────────────────────
   function tag(from) {
     return from
-      ? ` <span class="den-tagx" title="from ${esc(from)}">${esc(from)}</span>`
+      ? ` <span class="den-tagx" title="${esc(L("set.ui.from", { from }))}">${esc(from)}</span>`
       : "";
   }
   function currentCategory(list) {
@@ -228,44 +312,49 @@ export async function mountSettings(deps) {
           `<a class="set-ni" href="#${esc(c.id)}" data-cat="${esc(c.id)}"${c.id === cur ? ' aria-current="true"' : ""}>` +
           `<span class="set-ni-l">${esc(c.label)}</span>${tag(c.from)}` +
           (state.q
-            ? `<span class="den-bdg" aria-label="${rows.length} matching">${rows.length}</span>`
+            ? `<span class="den-bdg" aria-label="${esc(L("set.ui.matching", { n: rows.length }))}">${rows.length}</span>`
             : "") +
           "</a>",
       )
       .join("");
   }
-  function draw() {
-    const list = sections(
-      shell.settingsCategories(),
-      shell.settings(),
+  /** The sections, in the page's language (0.4.45). */
+  function localSections() {
+    const tr = shell.tr;
+    return sections(
+      shell.settingsCategories().map((c) => localizeCategory(c, tr)),
+      shell.settings().map((r) => localizeRow(r, tr)),
       state.q,
     );
+  }
+  function draw() {
+    const list = localSections();
     const total = list.reduce((n, s) => n + s.rows.length, 0);
-    count.textContent = state.q ? countText(total) : "";
+    count.textContent = state.q ? countText(total, L) : "";
     drawNav(list);
     const keep = document.activeElement?.dataset?.focusKey || null;
     body.innerHTML = list.length
       ? list.map(drawSection).join("")
-      : `<div class="empty" id="set-empty"><b>No settings match “${esc(state.q)}”.</b>` +
-        ` <button type="button" class="btn sm" data-clear>Clear search</button></div>`;
+      : `<div class="empty" id="set-empty"><b>${esc(L("set.ui.noMatch", { q: state.q }))}</b>` +
+        ` <button type="button" class="btn sm" data-clear>${esc(L("set.ui.clearSearch"))}</button></div>`;
     for (const { rows } of list) for (const r of rows) wireRow(r);
     if (keep) body.querySelector(`[data-focus-key="${keep}"]`)?.focus();
   }
   function drawSection({ category: c, rows }) {
     const ws =
       rows.some((r) => r.scope === "workspace") && ctx.askWorkspace
-        ? `<div class="row set-ask"><label class="l" for="set-ws">Project</label>` +
+        ? `<div class="row set-ask"><label class="l" for="set-ws">${esc(L("set.ui.project"))}</label>` +
           `<select id="set-ws" data-focus-key="set-ws">${ctx.workspaces
             .map(
               (w) =>
-                `<option value="${esc(w)}"${w === ctx.workspace ? " selected" : ""}>${esc(w)}</option>`,
+                `<option value="${esc(w)}"${w === ctx.workspace ? " selected" : ""}>${esc(wsName(w))}</option>`,
             )
             .join("")}</select>` +
-          `<span class="set-note">You view All active: pick the project these are for.</span></div>`
+          `<span class="set-note">${esc(L("set.ui.pickProject"))}</span></div>`
         : "";
     const none =
       rows.some((r) => r.scope === "workspace") && !ctx.workspace
-        ? '<p class="set-note">No active projects.</p>'
+        ? `<p class="set-note">${esc(L("set.ui.noActive"))}</p>`
         : "";
     return (
       `<section id="cat-${esc(c.id)}" data-cat="${esc(c.id)}" aria-labelledby="h-${esc(c.id)}">` +
@@ -328,7 +417,7 @@ export async function mountSettings(deps) {
           (notice
             ? `<p class="set-warn" role="status">${esc(notice)}</p>`
             : "") +
-          `<div class="swatches" aria-label="The theme's colors" role="img">${swatches()}</div>`;
+          `<div class="swatches" aria-label="${esc(L("set.ui.swatches"))}" role="img">${swatches()}</div>`;
       }
     } else if (t === "radio") {
       ctl =
@@ -380,7 +469,7 @@ export async function mountSettings(deps) {
             return (
               `<div class="set-lang"><label for="${sid}">${esc(l.name)}</label>` +
               `<select id="${sid}" data-lang="${esc(l.key)}" data-focus-key="${sid}">` +
-              `<option value="">Default (inherit)</option>` +
+              `<option value="">${esc(L("set.ui.inherit"))}</option>` +
               eds
                 .map(
                   (e) =>
@@ -402,13 +491,13 @@ export async function mountSettings(deps) {
             .map(
               (p, i) =>
                 `<div class="it" role="listitem"><span class="nm den-mono">${esc(p)}</span>` +
-                `<button type="button" class="btn sm" data-pin-move="${esc(p)}" data-d="-1" data-focus-key="pin-up-${esc(p)}"${i === 0 ? " disabled" : ""} aria-label="Move ${esc(p)} up">↑</button>` +
-                `<button type="button" class="btn sm" data-pin-move="${esc(p)}" data-d="1" data-focus-key="pin-down-${esc(p)}"${i === pins.length - 1 ? " disabled" : ""} aria-label="Move ${esc(p)} down">↓</button>` +
-                `<button type="button" class="btn sm" data-pin-remove="${esc(p)}" data-focus-key="pin-x-${esc(p)}" aria-label="Unpin ${esc(p)}">Unpin</button></div>`,
+                `<button type="button" class="btn sm" data-pin-move="${esc(p)}" data-d="-1" data-focus-key="pin-up-${esc(p)}"${i === 0 ? " disabled" : ""} aria-label="${esc(L("set.ui.moveUp", { name: p }))}">↑</button>` +
+                `<button type="button" class="btn sm" data-pin-move="${esc(p)}" data-d="1" data-focus-key="pin-down-${esc(p)}"${i === pins.length - 1 ? " disabled" : ""} aria-label="${esc(L("set.ui.moveDown", { name: p }))}">↓</button>` +
+                `<button type="button" class="btn sm" data-pin-remove="${esc(p)}" data-focus-key="pin-x-${esc(p)}" aria-label="${esc(L("set.ui.unpinX", { name: p }))}">${esc(L("act.unpin"))}</button></div>`,
             )
             .join("") +
           "</div>"
-        : `<output class="set-ro" aria-labelledby="${lid}" ${desc}>Nothing pinned</output>`;
+        : `<output class="set-ro" aria-labelledby="${lid}" ${desc}>${esc(L("set.ui.noPins"))}</output>`;
     } else if (t === "workspace-editor") {
       ctl = wsEditor(v, lid, cid, desc);
     } else if (t === "custom") {
@@ -416,13 +505,19 @@ export async function mountSettings(deps) {
     }
     const dist = r.scope === "distribution";
     const note = dist
-      ? ` Set by the distribution in ${esc(ctx.data.distribution?.file || "its config")}.`
+      ? ` ${esc(
+          ctx.data.distribution?.file
+            ? L("set.ui.setByIn", { file: ctx.data.distribution.file })
+            : L("set.ui.setBy"),
+        )}`
       : "";
     return (
       `<div class="set-row" id="setting-${id}" data-setting="${esc(r.id)}" data-scope="${esc(r.scope)}">` +
       `<div class="row">${label}<div class="ctl">${ctl}</div>` +
-      `<span class="set-scope" data-scope="${esc(r.scope)}">${esc(scopeText(r, ctx.workspace))}</span></div>` +
-      `<div class="d" id="${did}">${esc(r.description)}${note}${tag(r.from)}</div>` +
+      `<span class="set-scope" data-scope="${esc(r.scope)}">${esc(scopeText(r, ctx.workspace ? wsName(ctx.workspace) : null, L))}</span></div>` +
+      // helpInControl: the control shows its own help line (mock v6);
+      // the description stays for screen readers.
+      `<div class="d${r.helpInControl ? " den-sr" : ""}" id="${did}">${esc(r.description)}${note}${tag(r.from)}</div>` +
       `<span class="set-saved" role="status" id="s-${id}"></span>` +
       "</div>"
     );
@@ -444,9 +539,9 @@ export async function mountSettings(deps) {
           const sameGroup = (j) => items[j] && items[j].group === n.group;
           return (
             `<div class="it${off ? " off" : ""}" role="listitem"><span class="nm">${esc(name)} <span class="set-grp">· ${esc(gl(n.group))}</span>${tag(n.from)}</span>` +
-            `<button type="button" class="btn sm" data-move="${esc(n.id)}" data-d="-1" data-focus-key="nav-up-${esc(n.id)}"${sameGroup(i - 1) ? "" : " disabled"} aria-label="Move ${esc(name)} up">↑</button>` +
-            `<button type="button" class="btn sm" data-move="${esc(n.id)}" data-d="1" data-focus-key="nav-down-${esc(n.id)}"${sameGroup(i + 1) ? "" : " disabled"} aria-label="Move ${esc(name)} down">↓</button>` +
-            `<button type="button" class="btn sm" data-hide="${esc(n.id)}" data-focus-key="nav-hide-${esc(n.id)}" aria-pressed="${off}" aria-label="${off ? "Show" : "Hide"} ${esc(name)}">${off ? "Show" : "Hide"}</button></div>`
+            `<button type="button" class="btn sm" data-move="${esc(n.id)}" data-d="-1" data-focus-key="nav-up-${esc(n.id)}"${sameGroup(i - 1) ? "" : " disabled"} aria-label="${esc(L("set.ui.moveUp", { name }))}">↑</button>` +
+            `<button type="button" class="btn sm" data-move="${esc(n.id)}" data-d="1" data-focus-key="nav-down-${esc(n.id)}"${sameGroup(i + 1) ? "" : " disabled"} aria-label="${esc(L("set.ui.moveDown", { name }))}">↓</button>` +
+            `<button type="button" class="btn sm" data-hide="${esc(n.id)}" data-focus-key="nav-hide-${esc(n.id)}" aria-pressed="${off}" aria-label="${esc(L(off ? "set.ui.showX" : "set.ui.hideX", { name }))}">${esc(L(off ? "set.ui.show" : "set.ui.hide"))}</button></div>`
           );
         })
         .join("") +
@@ -455,21 +550,23 @@ export async function mountSettings(deps) {
   }
   function wsEditor(v, lid, cid, desc) {
     if (!ctx.workspace)
-      return `<output class="set-ro" aria-labelledby="${lid}" ${desc}>No project</output>`;
+      return `<output class="set-ro" aria-labelledby="${lid}" ${desc}>${esc(L("set.ui.noProject"))}</output>`;
     const eds = ctx.data.editors || [];
     const def =
       eds.find(
         (e) => e.key === (ctx.data.editor ?? eds.find((x) => x.available)?.key),
-      )?.name || "none";
+      )?.name || L("set.ui.none");
     const radio = (val, name, tagText) =>
       `<label class="set-radio"><input type="radio" name="${cid}" value="${esc(val)}" data-focus-key="ws-ed-${esc(val)}"${(v || "") === val ? " checked" : ""}>` +
       `<span>${esc(name)}</span>${tagText ? `<span class="set-tag">${esc(tagText)}</span>` : ""}</label>`;
     return (
       `<div class="set-radios" role="radiogroup" aria-labelledby="${lid}" ${desc}>` +
-      radio("", "Default", def) +
+      radio("", L("set.ui.default"), def) +
       eds
         .filter((e) => e.available)
-        .map((e) => radio(e.key, e.name, e.terminal ? "terminal" : null))
+        .map((e) =>
+          radio(e.key, e.name, e.terminal ? L("set.ui.terminalTag") : null),
+        )
         .join("") +
       "</div>"
     );
@@ -495,7 +592,7 @@ export async function mountSettings(deps) {
     const again = $(`s-${slug(r.id)}`) || el;
     if (!again) return;
     again.className = "set-saved " + (ok ? "ok" : "bad");
-    again.textContent = ok ? "✓ Saved" : "✗ Save failed";
+    again.textContent = L(ok ? "set.ui.saved" : "set.ui.saveFailed");
     if (ok)
       setTimeout(() => {
         if (again.isConnected) again.textContent = "";
@@ -664,9 +761,7 @@ export async function mountSettings(deps) {
     h.focus({ preventScroll: true });
   }
   const arrive = () => {
-    const cur = currentCategory(
-      sections(shell.settingsCategories(), shell.settings(), state.q),
-    );
+    const cur = currentCategory(localSections());
     markCurrent(cur);
     // Plain /settings stays at the top: the title and the search box are
     // what you land on. Only a URL that names a category moves you to it.

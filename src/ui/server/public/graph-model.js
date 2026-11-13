@@ -13,7 +13,24 @@
  */
 
 /** Real card sizes; there is no shrink-to-fit. */
-import { describeRollup, rollupRepo } from "./health-rollup.js";
+import { rollupRepo } from "./health-rollup.js";
+
+/**
+ * 0.4.45: the words this module returns, in the page's language. graph.js
+ * passes the shell's lookup (setGraphWords); without one (a node test),
+ * the English with its {vars} filled. Nothing here reads window.
+ */
+const fillEn = (en, v) =>
+  String(en).replace(/\{(\w+)\}/g, (m, k) =>
+    v && v[k] != null ? String(v[k]) : m,
+  );
+let W = (_key, en, v) => fillEn(en, v);
+/** `fn(key, en, vars)` → the words; null puts English back. */
+export function setGraphWords(fn) {
+  W = typeof fn === "function" ? fn : (_key, en, v) => fillEn(en, v);
+}
+/** The current lookup, for panel.js and graph.js. */
+export const gw = (key, en, vars) => W(key, en, vars);
 
 export const SIZE = {
   detailed: { w: 236, h: 104 },
@@ -174,14 +191,18 @@ export function applyHealth(m, results) {
 export const orgOf = (m, id) =>
   m.orgs.get(id) || {
     id,
-    label: id || m.workspace || "Project",
+    label: id || m.workspace || W("gr.project", "Project"),
     color: "var(--muted)",
   };
 export const isLocal = (s) => s.runs !== "remote";
 export const status = (s) =>
   s.health.ok === true ? "ok" : s.health.ok === false ? "bad" : "unk";
 export const statusWord = (s) =>
-  s.health.ok === true ? "healthy" : s.health.ok === false ? "down" : "unknown";
+  s.health.ok === true
+    ? W("gr.st.healthy", "healthy")
+    : s.health.ok === false
+      ? W("gr.st.down", "down")
+      : W("gr.st.unknown", "unknown");
 
 /** local | remote | hybrid | none for a repo's services. */
 export function repoPlacement(m, repo) {
@@ -191,34 +212,47 @@ export function repoPlacement(m, repo) {
 
 export function placementText(s) {
   if (s.runs === "remote")
-    return `☁ ${s.target?.env || "remote"}${s.target?.account ? " · " + s.target.account : ""}`;
-  if (s.runs === "none") return "no runtime";
-  return "⌂ local";
+    return `☁ ${s.target?.env || W("gr.pl.remote", "remote")}${s.target?.account ? " · " + s.target.account : ""}`;
+  if (s.runs === "none") return W("gr.pl.none", "no runtime");
+  return `⌂ ${W("gr.pl.local", "local")}`;
 }
 
 export const placeGlyph = (p) =>
   p === "remote" ? "☁" : p === "hybrid" ? "⇄" : p === "local" ? "⌂" : "";
 
 export const remoteWhy = (s) =>
-  `runs in ${s.target?.env || "a remote env"}${s.target?.account ? " (" + s.target.account + ")" : ""}; nothing to start here`;
+  s.target?.account
+    ? W(
+        "gr.remoteWhyAcct",
+        "runs in {env} ({account}); nothing to start here",
+        {
+          env: s.target?.env || W("gr.remoteEnv", "a remote env"),
+          account: s.target.account,
+        },
+      )
+    : W("gr.remoteWhy", "runs in {env}; nothing to start here", {
+        env: s.target?.env || W("gr.remoteEnv", "a remote env"),
+      });
 
 export const fmtMs = (ms) =>
   ms == null ? "" : ms >= 1000 ? (ms / 1000).toFixed(1) + " s" : ms + " ms";
 
 export function healthLine(s) {
   // Before the first health round, as the Workspaces table says (dev.37).
-  if (s.health.checked === false) return "checking…";
+  if (s.health.checked === false) return W("gr.h.checking", "checking…");
   const ms = s.health.ms != null ? " · " + fmtMs(s.health.ms) : "";
   if (s.runs === "remote")
     return (
       (s.health.ok === false
-        ? "unreachable"
+        ? W("gr.h.unreachable", "unreachable")
         : s.health.ok
-          ? "reachable"
-          : "not checked") + ms
+          ? W("gr.h.reachable", "reachable")
+          : W("gr.h.notChecked", "not checked")) + ms
     );
-  if (s.health.ok == null) return "no health check";
-  return (s.health.ok ? "healthy" : "down") + ms;
+  if (s.health.ok == null) return W("gr.h.none", "no health check");
+  return (
+    (s.health.ok ? W("gr.st.healthy", "healthy") : W("gr.st.down", "down")) + ms
+  );
 }
 
 /**
@@ -241,7 +275,32 @@ export function repoRollup(m, repo) {
 /** The rollup as a .dg-dot class, and in words. */
 export const repoStatus = (r) =>
   ({ down: "bad", degraded: "warn", ok: "ok", unknown: "unk" })[r.state];
-export const repoStatusWord = (r) => describeRollup(r);
+/** health-rollup.js describeRollup's words, through the lookup (0.4.45). */
+export function repoStatusWord(r) {
+  const extra = [
+    r.redirected
+      ? W("gr.roll.redirect", "{n} redirect", { n: r.redirected })
+      : "",
+    r.unchecked > 0
+      ? W("gr.roll.unchecked", "{n} not checked", { n: r.unchecked })
+      : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  if (r.awaiting) return W("gr.roll.awaiting", "unknown (still checking)");
+  if (r.state === "unknown")
+    return r.redirected
+      ? W("gr.roll.unknownWhy", "unknown ({why})", { why: extra })
+      : W("gr.roll.unknown", "unknown (not checked)");
+  if (r.state === "ok")
+    return extra
+      ? W("gr.roll.okExtra", "healthy, {extra}", { extra })
+      : W("gr.st.healthy", "healthy");
+  return W("gr.roll.state", "{state} ({down} down)", {
+    state: W(`gr.state.${r.state}`, r.state),
+    down: r.down.join(", "),
+  });
+}
 
 /** A repo's representative service: entrypoint, root-named, else first. */
 export function entryOf(m, repo) {

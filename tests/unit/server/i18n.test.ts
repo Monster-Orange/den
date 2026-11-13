@@ -20,7 +20,10 @@ import {
 import { EN_FALLBACK as TOPBAR_EN } from "../../../src/ui/server/public/topbar.js";
 import { EN_FALLBACK as APPEARANCE_EN } from "../../../src/ui/server/public/appearance.js";
 import { EN_FALLBACK as PICKER_EN } from "../../../src/ui/server/public/workspace-picker.js";
-import { DEN_SETTINGS } from "../../../src/ui/server/public/settings-registry.js";
+import {
+  DEN_SETTINGS,
+  DEN_SETTING_CATEGORIES,
+} from "../../../src/ui/server/public/settings-registry.js";
 
 type Table = Record<string, string>;
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
@@ -167,6 +170,63 @@ describe("the Settings rows in the palette", () => {
     const off = (DEN_SETTINGS as { id: string; label: string }[])
       .filter((r) => EN[`set.${r.id}`] !== r.label)
       .map((r) => r.id);
+    expect(off).toEqual([]);
+  });
+});
+
+describe("the Settings page in every language (0.4.45)", () => {
+  // The page draws each row through the catalog (settings-page.js
+  // localizeRow), so a row's words must be en's, word for word; the
+  // parity test then holds es and ja to every one of them.
+  type Row = {
+    id: string;
+    description?: string;
+    control?: { options?: unknown };
+  };
+  it("every built-in row's description and option labels are in en", () => {
+    const off: string[] = [];
+    for (const r of DEN_SETTINGS as Row[]) {
+      if (r.description && EN[`set.${r.id}.d`] !== r.description)
+        off.push(`set.${r.id}.d`);
+      const opts = r.control?.options;
+      if (Array.isArray(opts))
+        for (const o of opts as { value: string; label: string }[])
+          if (EN[`set.${r.id}.o.${o.value}`] !== o.label)
+            off.push(`set.${r.id}.o.${o.value}`);
+    }
+    expect(off).toEqual([]);
+  });
+  it("a page's static data-t words are en's, word for word", () => {
+    // shell.js localize(): <el data-t="k">English</el> and
+    // data-t-attr="placeholder:k" next to placeholder="English".
+    const off: string[] = [];
+    const norm = (x: string) => x.replace(/\s+/g, " ").trim();
+    for (const f of fs.readdirSync(PUBLIC).filter((x) => x.endsWith(".html"))) {
+      const html = read(f);
+      for (const m of html.matchAll(/data-t="([\w.-]+)"[^>]*>([^<]*)</g))
+        if (EN[m[1]] === undefined || norm(EN[m[1]]) !== norm(m[2]))
+          off.push(`${f}: ${m[1]}`);
+      for (const tag of html.matchAll(/<[^>]*data-t-attr="([^"]+)"[^>]*>/g))
+        for (const pair of tag[1].split(/\s+/)) {
+          const [attr, key] = pair.split(":");
+          const own = new RegExp(`\\s${attr}="([^"]*)"`).exec(tag[0]);
+          if (EN[key] === undefined || !own || norm(own[1]) !== norm(EN[key]))
+            off.push(`${f}: ${attr}:${key}`);
+        }
+    }
+    expect(off).toEqual([]);
+  });
+  it("every category's label and description are in en", () => {
+    const off: string[] = [];
+    for (const c of DEN_SETTING_CATEGORIES as {
+      id: string;
+      label: string;
+      description?: string;
+    }[]) {
+      if (EN[`setc.${c.id}`] !== c.label) off.push(`setc.${c.id}`);
+      if (c.description && EN[`setc.${c.id}.d`] !== c.description)
+        off.push(`setc.${c.id}.d`);
+    }
     expect(off).toEqual([]);
   });
 });

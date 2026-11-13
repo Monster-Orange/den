@@ -154,15 +154,30 @@ function escHtml(v) {
   );
 }
 
+/**
+ * A built-in word in the page's language (0.4.45): the catalog's when its
+ * en is `en` word for word (denShell.tr), else `en` (and in a unit test,
+ * where there is no shell). {name} placeholders filled from `vars`.
+ */
+function L(key, en, vars) {
+  const sh = typeof window !== "undefined" ? window.denShell : null;
+  const s = sh && typeof sh.tr === "function" ? sh.tr(key, en) : en;
+  return String(s).replace(/\{(\w+)\}/g, (m, k) =>
+    vars && vars[k] != null ? String(vars[k]) : m,
+  );
+}
+
 /** "3 min ago", "2 h ago", "5 d ago", or "just now"; `now` for tests. */
 export function seenAgo(iso, now = Date.now()) {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "";
   const s = Math.max(0, Math.round((now - t) / 1000));
-  if (s < 90) return "just now";
-  if (s < 5400) return `${Math.round(s / 60)} min ago`;
-  if (s < 129600) return `${Math.round(s / 3600)} h ago`;
-  return `${Math.round(s / 86400)} d ago`;
+  if (s < 90) return L("set.ui.justNow", "just now");
+  if (s < 5400)
+    return L("set.ui.minAgo", "{n} min ago", { n: Math.round(s / 60) });
+  if (s < 129600)
+    return L("set.ui.hAgo", "{n} h ago", { n: Math.round(s / 3600) });
+  return L("set.ui.dAgo", "{n} d ago", { n: Math.round(s / 86400) });
 }
 
 /**
@@ -174,22 +189,28 @@ export function seenAgo(iso, now = Date.now()) {
 export function deviceLine(d, now = Date.now()) {
   const how =
     d.via === "github"
-      ? `signed in with GitHub${d.login ? ` (@${d.login})` : ""}`
+      ? d.login
+        ? L("set.ui.viaGithubAs", "signed in with GitHub (@{login})", {
+            login: d.login,
+          })
+        : L("set.ui.viaGithub", "signed in with GitHub")
       : d.via === "code"
-        ? "approved with a code"
+        ? L("set.ui.viaCode", "approved with a code")
         : d.via === "claim"
-          ? "claimed with a setup link"
-          : "signed in with a one-time link";
-  const name = d.name || "Unknown browser";
+          ? L("set.ui.viaClaim", "claimed with a setup link")
+          : L("set.ui.viaLink", "signed in with a one-time link");
+  const name = d.name || L("set.ui.unknownBrowser", "Unknown browser");
   const from = d.client || d.host;
   return {
     title: name,
     current: !!d.current,
     detail: [
       how,
-      `created ${seenAgo(d.createdAt, now)}`,
-      from ? `from ${from} (${name})` : "",
-      `last seen ${seenAgo(d.lastSeenAt, now)}`,
+      L("set.ui.created", "created {ago}", { ago: seenAgo(d.createdAt, now) }),
+      from ? L("set.ui.fromAt", "from {from} ({name})", { from, name }) : "",
+      L("set.ui.lastSeen", "last seen {ago}", {
+        ago: seenAgo(d.lastSeenAt, now),
+      }),
     ]
       .filter(Boolean)
       .join(" · "),
@@ -209,8 +230,8 @@ function drawOwner(host, ctx) {
     clearTimeout(timer);
     if (o.owner) {
       host.innerHTML =
-        `<output class="set-ro" id="set-owner">Owner: <b>@${escHtml(o.owner.login)}</b> <span class="set-note">(${escHtml(o.owner.id)})</span></output> ` +
-        '<button type="button" class="btn" id="set-owner-unlink">Unlink</button>';
+        `<output class="set-ro" id="set-owner">${escHtml(L("set.ui.ownerIs", "Owner:"))} <b>@${escHtml(o.owner.login)}</b> <span class="set-note">(${escHtml(o.owner.id)})</span></output> ` +
+        `<button type="button" class="btn" id="set-owner-unlink">${escHtml(L("set.ui.unlink", "Unlink"))}</button>`;
       host.querySelector("#set-owner-unlink").addEventListener("click", () =>
         api("POST", "/api/web/owner/unlink", {})
           .then(load)
@@ -219,10 +240,14 @@ function drawOwner(host, ctx) {
       return;
     }
     host.innerHTML =
-      '<output class="set-ro" id="set-owner">This Den has no owner identity yet.</output> ' +
+      `<output class="set-ro" id="set-owner">${escHtml(L("set.ui.noOwner", "This Den has no owner identity yet."))}</output> ` +
       (o.clientId
-        ? '<button type="button" class="btn primary" id="set-owner-link">Link your GitHub account</button>'
-        : '<span class="set-note" id="set-owner-noclient" style="flex-basis:100%">Linking needs a GitHub App client id, and none is configured: set <code>web.github_client_id</code> in config/local/user.yml, then restart the server.</span>') +
+        ? `<button type="button" class="btn primary" id="set-owner-link">${escHtml(L("set.ui.linkGithub", "Link your GitHub account"))}</button>`
+        : `<span class="set-note" id="set-owner-noclient" style="flex-basis:100%">${L(
+            "set.ui.noClient",
+            "Linking needs a GitHub App client id, and none is configured: set {key} in config/local/user.yml, then restart the server.", // words-ok: moved word for word into the catalog (0.4.45)
+            { key: "<code>web.github_client_id</code>" },
+          )}</span>`) +
       '<div id="set-owner-flow" style="flex-basis:100%" aria-live="polite"></div>';
     host.querySelector("#set-owner-link")?.addEventListener("click", startLink);
   };
@@ -244,9 +269,12 @@ function drawOwner(host, ctx) {
           return;
         }
         if (b.state === "ok") return load();
-        fail(b.error || "Linking failed. Try again.");
+        fail(b.error || L("set.ui.linkFailed", "Linking failed. Try again."));
       })
-      .catch(() => fail("The server didn't answer. Try again."));
+      .catch(
+        () =>
+          fail(L("set.ui.noAnswer", "The server didn't answer. Try again.")), // words-ok: moved word for word into the catalog (0.4.45)
+      );
   function startLink() {
     const b = host.querySelector("#set-owner-link");
     if (b) b.disabled = true;
@@ -255,10 +283,16 @@ function drawOwner(host, ctx) {
         const box = host.querySelector("#set-owner-flow");
         const url = f.verificationUri || "https://github.com/login/device";
         box.innerHTML =
-          `<p class="set-note" style="margin:8px 0">Enter this code at <a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">${escHtml(url.replace(/^https:\/\//, ""))}</a> and approve the app. It asks for no permissions.</p>` +
+          `<p class="set-note" style="margin:8px 0">${L(
+            "set.ui.enterCode",
+            "Enter this code at {link} and approve the app. It asks for no permissions.",
+            {
+              link: `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">${escHtml(url.replace(/^https:\/\//, ""))}</a>`,
+            },
+          )}</p>` +
           `<span id="set-owner-code" style="${CODE_STYLE}">${escHtml(f.userCode)}</span> ` +
-          `<a class="btn" href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">Open GitHub</a>` +
-          '<p class="set-note" style="margin:8px 0 0">Waiting for GitHub…</p>';
+          `<a class="btn" href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">${escHtml(L("set.ui.openGithub", "Open GitHub"))}</a>` +
+          `<p class="set-note" style="margin:8px 0 0">${escHtml(L("set.ui.waitingGithub", "Waiting for GitHub…"))}</p>`;
         timer = setTimeout(() => poll(f.id), 1500);
       })
       .catch((e) => fail(e.message));
@@ -268,8 +302,7 @@ function drawOwner(host, ctx) {
       .then((r) => r.json())
       .then(draw)
       .catch(() => {
-        host.innerHTML =
-          '<output class="set-ro">The owner can only be shown signed in.</output>';
+        host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.ownerSignedIn", "The owner can only be shown signed in."))}</output>`;
       });
   }
   load();
@@ -284,8 +317,7 @@ function drawDevices(host, ctx) {
       .then((b) => {
         const list = b.sessions || [];
         if (!list.length) {
-          host.innerHTML =
-            '<output class="set-ro" id="set-devices">No linked devices. A browser that signs in with GitHub, is approved with a code, or opens a one-time link appears here.</output>';
+          host.innerHTML = `<output class="set-ro" id="set-devices">${escHtml(L("set.ui.noDevices", "No linked devices. A browser that signs in with GitHub, is approved with a code, or opens a one-time link appears here."))}</output>`;
           return;
         }
         const now = Date.now();
@@ -298,11 +330,11 @@ function drawDevices(host, ctx) {
                 `<div class="set-device" data-id="${escHtml(d.id)}" style="${ROW_STYLE}">` +
                 `<div style="flex:1 1 220px;min-width:0"><div>${escHtml(l.title)}` +
                 (l.current
-                  ? ' <b class="set-this-device" style="font-weight:600">· This device</b>'
+                  ? ` <b class="set-this-device" style="font-weight:600">· ${escHtml(L("set.ui.thisDevice", "This device"))}</b>`
                   : "") +
                 `</div>` +
                 `<div class="set-note" style="overflow-wrap:anywhere">${escHtml(l.detail)}</div></div>` +
-                `<button type="button" class="btn" data-revoke="${escHtml(d.id)}">Revoke</button></div>`
+                `<button type="button" class="btn" data-revoke="${escHtml(d.id)}">${escHtml(L("set.ui.revoke", "Revoke"))}</button></div>`
               );
             })
             .join("") +
@@ -320,8 +352,7 @@ function drawDevices(host, ctx) {
         );
       })
       .catch(() => {
-        host.innerHTML =
-          '<output class="set-ro">The devices can only be listed signed in.</output>';
+        host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.devicesSignedIn", "The devices can only be listed signed in."))}</output>`;
       });
   load();
 }
@@ -329,8 +360,11 @@ function drawDevices(host, ctx) {
 /** One waiting device's line: its code, browser and OS, address, age. */
 export function waitingLine(w, now = Date.now()) {
   return {
-    title: `${w.code} · ${w.device || "Unknown browser"}`,
-    detail: [w.client, `asked ${seenAgo(w.createdAt, now)}`]
+    title: `${w.code} · ${w.device || L("set.ui.unknownBrowser", "Unknown browser")}`,
+    detail: [
+      w.client,
+      L("set.ui.asked", "asked {ago}", { ago: seenAgo(w.createdAt, now) }),
+    ]
       .filter(Boolean)
       .join(" · "),
   };
@@ -361,13 +395,13 @@ function drawWaiting(host, ctx) {
                   `<div class="set-waiting" data-code="${escHtml(w.code)}" style="${ROW_STYLE}">` +
                   `<div style="flex:1 1 220px;min-width:0"><div class="mono">${escHtml(l.title)}</div>` +
                   `<div class="set-note" style="overflow-wrap:anywhere">${escHtml(l.detail)}</div></div>` +
-                  `<button type="button" class="btn primary" data-approve="${escHtml(w.code)}">Approve</button>` +
-                  `<button type="button" class="btn" data-deny="${escHtml(w.code)}">Deny</button></div>`
+                  `<button type="button" class="btn primary" data-approve="${escHtml(w.code)}">${escHtml(L("set.ui.approve", "Approve"))}</button>` +
+                  `<button type="button" class="btn" data-deny="${escHtml(w.code)}">${escHtml(L("set.ui.deny", "Deny"))}</button></div>`
                 );
               })
               .join("") +
             '</div><div id="set-waiting-out" style="flex-basis:100%" aria-live="polite"></div>'
-          : '<output class="set-ro" id="set-waiting">No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve.</output>';
+          : `<output class="set-ro" id="set-waiting">${escHtml(L("set.ui.noWaiting", "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve."))}</output>`;
         const act = (btn, path, code) => {
           btn.disabled = true;
           ctx.shell
@@ -398,8 +432,7 @@ function drawWaiting(host, ctx) {
         timer = setTimeout(load, 5000);
       })
       .catch(() => {
-        host.innerHTML =
-          '<output class="set-ro">Waiting devices can only be listed signed in, or on this machine.</output>';
+        host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.waitingSignedIn", "Waiting devices can only be listed signed in, or on this machine."))}</output>`;
       });
   };
   load();
@@ -412,17 +445,20 @@ function drawPair(host, ctx) {
     .then((b) => {
       const hosts = b.hosts || [];
       if (!hosts.length) {
-        host.innerHTML =
-          '<output class="set-ro" id="set-pair">No edge hostname routes to this server, so there is no address another device could open. Add one to the config\'s edge block (edge.aliases for a VPN name), then <code>__DEN_CLI__ edge up</code>.</output>';
+        host.innerHTML = `<output class="set-ro" id="set-pair">${L(
+          "set.ui.noPairHost",
+          "No edge hostname routes to this server, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then {cmd}.", // words-ok: moved word for word into the catalog (0.4.45)
+          { cmd: "<code>__DEN_CLI__ edge up</code>" },
+        )}</output>`;
         return;
       }
       host.innerHTML =
-        '<select id="set-pair-host" aria-label="Edge hostname">' +
+        `<select id="set-pair-host" aria-label="${escHtml(L("set.ui.edgeHost", "Edge hostname"))}">` +
         hosts
           .map((h) => `<option value="${escHtml(h)}">${escHtml(h)}</option>`)
           .join("") +
         "</select> " +
-        '<button type="button" class="btn primary" id="set-pair-go">Pair a device</button>' +
+        `<button type="button" class="btn primary" id="set-pair-go">${escHtml(L("set.access.pair", "Pair a device"))}</button>` +
         '<div id="set-pair-out" style="flex-basis:100%" aria-live="polite"></div>';
       const out = host.querySelector("#set-pair-out");
       const go = () => {
@@ -435,7 +471,7 @@ function drawPair(host, ctx) {
             out.innerHTML =
               `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-top:8px">` +
               `<div id="set-pair-qr" style="line-height:0">${qrSvg(p.url, { scale: 4, margin: 4 })}</div>` +
-              `<div style="flex:1 1 220px;min-width:0"><p class="set-note" style="margin:0 0 8px">Scan it with the other device, or open the link there. It works once, until it expires (below), and signs that browser in for good.</p>` +
+              `<div style="flex:1 1 220px;min-width:0"><p class="set-note" style="margin:0 0 8px">${escHtml(L("set.ui.pairScan", "Scan it with the other device, or open the link there. It works once, until it expires (below), and signs that browser in for good."))}</p>` +
               `<a id="set-pair-link" href="${escHtml(p.url)}" style="font:12px var(--mono);overflow-wrap:anywhere">${escHtml(p.url)}</a>` +
               `<p class="set-note" id="set-pair-left" style="margin:8px 0 0"></p></div></div>`;
             const until = Date.parse(p.expiresAt);
@@ -443,8 +479,11 @@ function drawPair(host, ctx) {
             const tick = () => {
               const s = Math.max(0, Math.round((until - Date.now()) / 1000));
               left.textContent = s
-                ? `Expires in ${s} s.`
-                : "This link expired. Pair again for a new one.";
+                ? L("set.ui.expiresIn", "Expires in {s} s.", { s })
+                : L(
+                    "set.ui.pairExpired",
+                    "This link expired. Pair again for a new one.",
+                  );
               if (s) timer = setTimeout(tick, 1000);
             };
             tick();
@@ -456,8 +495,7 @@ function drawPair(host, ctx) {
       host.querySelector("#set-pair-go").addEventListener("click", go);
     })
     .catch(() => {
-      host.innerHTML =
-        '<output class="set-ro">Pairing works only signed in.</output>';
+      host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.pairSignedIn", "Pairing works only signed in."))}</output>`;
     });
 }
 
@@ -638,7 +676,11 @@ export const DEN_SETTINGS = [
       const d = ctx.data.distribution || {};
       const org = ctx.appearance.orgDefault;
       if (d.theme) return org ? `${org.name} (${d.theme})` : d.theme;
-      return org ? `${org.name} (not set: Den's own)` : "not set";
+      return org
+        ? L("set.ui.themeUnset", "{name} (not set: Den's own)", {
+            name: org.name,
+          })
+        : L("set.ui.notSet", "not set");
     },
   },
 
@@ -659,8 +701,8 @@ export const DEN_SETTINGS = [
           label: e.name,
           disabled: !e.available,
           tags: [
-            e.terminal ? "terminal" : null,
-            e.available ? null : "not found",
+            e.terminal ? L("set.ui.terminalTag", "terminal") : null,
+            e.available ? null : L("set.ui.notFound", "not found"),
           ],
         })),
     },
@@ -741,7 +783,7 @@ export const DEN_SETTINGS = [
           value: t.key,
           label: t.name,
           disabled: !t.available,
-          tags: [t.available ? null : "not found"],
+          tags: [t.available ? null : L("set.ui.notFound", "not found")],
         })),
     },
     keys: ["terminal"],
@@ -889,7 +931,10 @@ export const DEN_SETTINGS = [
     label: "Name",
     description:
       "The name Den shows for this project in the header, lists and pages. Linked to a Hub project, it is Hub's name. The slug never changes.",
-    keywords: ["name", "rename", "project", "hub", "slug"],
+    // Mock v6: one help line on screen, the state's own (the control
+    // draws it); this one is for search and screen readers.
+    helpInControl: true,
+    keywords: ["name", "rename", "project", "hub", "slug", "title"],
     scope: "workspace",
     control: { type: "custom", render: renderProjectName },
     read: () => null,
@@ -1062,7 +1107,10 @@ export const DEN_SETTINGS = [
     keywords: ["local", "local dev", "environment", "disable"],
     scope: "user",
     control: { type: "readonly" },
-    read: (ctx) => (ctx.data.local_dev === false ? "Off" : "On"),
+    read: (ctx) =>
+      ctx.data.local_dev === false
+        ? L("set.ui.off", "Off")
+        : L("set.ui.on", "On"),
   },
   {
     id: "cli.cli_tabs",
@@ -1073,7 +1121,8 @@ export const DEN_SETTINGS = [
     keywords: ["tabs", "terminal", "up", "restart", "cli"],
     scope: "user",
     control: { type: "readonly" },
-    read: (ctx) => (ctx.data.cli_tabs ? "On" : "Off"),
+    read: (ctx) =>
+      ctx.data.cli_tabs ? L("set.ui.on", "On") : L("set.ui.off", "Off"),
   },
   {
     id: "cli.log_window_lines",
@@ -1085,7 +1134,9 @@ export const DEN_SETTINGS = [
     scope: "user",
     control: { type: "readonly" },
     read: (ctx) =>
-      `${Number(ctx.data.log_window_lines ?? 20000).toLocaleString()} lines`,
+      L("set.ui.nLines", "{n} lines", {
+        n: Number(ctx.data.log_window_lines ?? 20000).toLocaleString(),
+      }),
   },
   {
     id: "cli.web_port",
@@ -1099,7 +1150,7 @@ export const DEN_SETTINGS = [
     read: (ctx) =>
       ctx.data.user_web_port != null
         ? String(ctx.data.user_web_port)
-        : "Not set: the distribution's applies",
+        : L("set.ui.portUnset", "Not set: the distribution's applies"),
   },
   {
     // SEC-1b: whether this browser is signed in, and Sign out. Signing in
@@ -1116,9 +1167,9 @@ export const DEN_SETTINGS = [
       render(host, ctx) {
         const draw = (signedIn) => {
           host.innerHTML = signedIn
-            ? '<output class="set-ro">Signed in</output> ' +
-              '<button type="button" class="btn" id="set-signout">Sign out</button>'
-            : '<output class="set-ro">Not signed in: run <code>__DEN_CLI__ web login</code></output>';
+            ? `<output class="set-ro">${escR(L("set.ui.signedIn", "Signed in"))}</output> ` +
+              `<button type="button" class="btn" id="set-signout">${escR(L("set.ui.signOut", "Sign out"))}</button>`
+            : `<output class="set-ro">${L("set.ui.notSignedIn", "Not signed in: run {cmd}", { cmd: "<code>__DEN_CLI__ web login</code>" })}</output>`;
           host.querySelector("#set-signout")?.addEventListener("click", () =>
             ctx.shell
               .api("POST", "/api/session/logout", {})
@@ -1152,14 +1203,16 @@ export const DEN_SETTINGS = [
           const saved = st?.saved;
           const where =
             saved === "vault"
-              ? `Saved in ${st.vault?.label || "the vault"}`
+              ? L("set.ui.savedIn", "Saved in {vault}", {
+                  vault: st.vault?.label || L("set.ui.theVault", "the vault"),
+                })
               : saved === "session"
-                ? "Saved for this session"
-                : "Not saved";
+                ? L("set.ui.savedMemory", "Held in memory until Den restarts")
+                : L("set.ui.notSaved", "Not saved");
           host.innerHTML =
             '<output class="set-ro" id="set-sudo"></output>' +
             (saved
-              ? ' <button type="button" class="btn" id="set-sudo-forget">Forget</button>'
+              ? ` <button type="button" class="btn" id="set-sudo-forget">${escR(L("set.ui.forget", "Forget"))}</button>`
               : "");
           host.querySelector("output").textContent = where;
           host
@@ -1194,7 +1247,10 @@ export const DEN_SETTINGS = [
     keywords: ["secrets", "1password", "op", "service account", "token"],
     scope: "user",
     control: { type: "readonly" },
-    read: (ctx) => ctx.data.op_token_source ?? "not set",
+    read: (ctx) =>
+      ctx.data.op_token_source && ctx.data.op_token_source !== "not set"
+        ? ctx.data.op_token_source
+        : L("set.ui.notSet", "not set"),
   },
 
   ...ACCESS_ROWS,
@@ -1205,14 +1261,14 @@ export const DEN_SETTINGS = [
     "Product name",
     "brand.name: the name on pages, the CLI banner and help.",
     ["brand", "name", "product", "title"],
-    (d) => d.brand || "not set",
+    (d) => d.brand || L("set.ui.notSet", "not set"),
   ),
   distRow(
     "github_org",
     "GitHub org",
     "github_org: the org whose repos Den clones and lists.",
     ["github", "repos", "clone"],
-    (d) => d.github_org || "not set",
+    (d) => d.github_org || L("set.ui.notSet", "not set"),
   ),
   {
     // H5: how much of the org Den Hub's GitHub App can read, live from Hub.
@@ -1241,7 +1297,9 @@ export const DEN_SETTINGS = [
     ["orgs", "labels", "names"],
     (d) => {
       const e = Object.entries(d.orgs || {});
-      return e.length ? e.map(([id, l]) => `${id}: ${l}`).join(", ") : "none";
+      return e.length
+        ? e.map(([id, l]) => `${id}: ${l}`).join(", ")
+        : L("set.ui.none", "none");
     },
   ),
   distRow(
@@ -1249,21 +1307,27 @@ export const DEN_SETTINGS = [
     "Web port",
     "web.port: the port the web UI listens on, unless yours overrides it.",
     ["port", "web", "server", "url"],
-    (d) => (d.web_port != null ? String(d.web_port) : "not set (7777)"),
+    (d) =>
+      d.web_port != null
+        ? String(d.web_port)
+        : L("set.ui.portDefault", "not set ({port})", { port: 7777 }),
   ),
   distRow(
     "environments",
     "Environments",
     "environments: the envs the Env menu offers.",
     ["environments", "env", "local", "dev", "prod"],
-    (d) => (d.environments ? d.environments.join(", ") : "not set: all"),
+    (d) =>
+      d.environments
+        ? d.environments.join(", ")
+        : L("set.ui.envsAll", "not set: all"),
   ),
   distRow(
     "domain",
     "Edge domain",
     "edge.domain: services are served at https://<service>.<domain>.",
     ["edge", "domain", "https", "routes"],
-    (d) => d.domain || "not set",
+    (d) => d.domain || L("set.ui.notSet", "not set"),
   ),
 ];
 
@@ -1405,7 +1469,7 @@ function renderRuntimes(host, ctx) {
     } catch (x) {
       // Its refusal is shown here, under the field, not as a toast.
       if (err) {
-        err.textContent = x?.message || "Not saved";
+        err.textContent = x?.message || L("set.ui.notSaved", "Not saved");
         err.hidden = false;
       }
     } finally {
@@ -1431,12 +1495,26 @@ const ROT_KEYS = [
   ["on_pr_merged", "When its PR merges", "true or false"],
 ];
 const rotVal = (v) => (v === undefined ? "" : String(v));
+/** A rotation scope's or setting's name in the page's language (0.4.45). */
+const rotScope = (v) => {
+  const x = ROT_SCOPES.find((r) => r[0] === v);
+  return x ? L(`set.ui.rot.scope.${v}`, x[1]) : v;
+};
+const rotKey = (k) => {
+  const x = ROT_KEYS.find((r) => r[0] === k);
+  return x ? L(`set.ui.rot.key.${k}`, x[1]) : k;
+};
+const rotAuto = () => L("set.ui.rot.auto", "Auto");
+const rotAsk = () => L("set.ui.rot.ask", "Ask");
+const rotOff = () => L("set.ui.off", "Off");
+const rotRelaunch = () => L("set.ui.rot.relaunch", "Relaunch");
+const rotKeep = () => L("set.ui.rot.keep", "Keep going");
 /** A value as a person reads it (D30): "never", "Auto", "Relaunch". */
 function rotValText(k, v) {
   if (k === "on_due")
-    return { auto: "Auto", ask: "Ask", off: "Off" }[v] ?? rotVal(v);
+    return { auto: rotAuto, ask: rotAsk, off: rotOff }[v]?.() ?? rotVal(v);
   if (k === "on_pr_merged")
-    return v === true ? "Relaunch" : v === false ? "Keep going" : rotVal(v);
+    return v === true ? rotRelaunch() : v === false ? rotKeep() : rotVal(v);
   return rotVal(v);
 }
 
@@ -1511,14 +1589,16 @@ export function rotationValue(key, raw) {
 export function rotationHtml(b) {
   const inherited = (k) =>
     b.org?.[k] !== undefined
-      ? `org config: ${rotVal(b.org[k])}`
-      : `default: ${rotVal(b.defaults?.[k])}`;
+      ? L("set.ui.rot.org", "org config: {v}", { v: rotVal(b.org[k]) }) // words-ok: moved word for word into the catalog (0.4.45)
+      : L("set.ui.rot.default", "default: {v}", {
+          v: rotVal(b.defaults?.[k]),
+        });
   const inst = b.install || {};
   const after = inst.after_compactions;
   const field = (k, control) =>
-    `<div class="rot-f" data-rot-key="${k}"><label for="rot-${k}">${escR(ROT_KEYS.find((x) => x[0] === k)[1])}</label>${control}<span class="set-tag" data-rot-src>${escR(inst[k] !== undefined ? "this install" : inherited(k))}</span></div>`;
+    `<div class="rot-f" data-rot-key="${k}"><label for="rot-${k}">${escR(rotKey(k))}</label>${control}<span class="set-tag" data-rot-src>${escR(inst[k] !== undefined ? L("set.ui.rot.install", "this install") : inherited(k))}</span></div>`;
   const sel = (k, opts) =>
-    `<select id="rot-${k}" data-focus-key="rot-${k}"><option value=""${inst[k] === undefined ? " selected" : ""}>inherit (${escR(rotVal(b.org?.[k] !== undefined ? b.org[k] : b.defaults?.[k]))})</option>` +
+    `<select id="rot-${k}" data-focus-key="rot-${k}"><option value=""${inst[k] === undefined ? " selected" : ""}>${escR(L("set.ui.rot.inherit", "inherit ({v})", { v: rotVal(b.org?.[k] !== undefined ? b.org[k] : b.defaults?.[k]) }))}</option>` +
     opts
       .map(
         ([v, l]) =>
@@ -1531,12 +1611,12 @@ export function rotationHtml(b) {
     for (const [target, vals] of Object.entries(byTarget || {}))
       for (const [k, v] of Object.entries(vals || {})) {
         const who = rotTargetName(scope, target, b.choices);
-        const setting = (ROT_KEYS.find((x) => x[0] === k) || [k, k])[1];
+        const setting = rotKey(k);
         rows.push(
-          `<tr data-rot-row${who.gone ? " data-rot-gone" : ""}><td data-l="Scope">${escR((ROT_SCOPES.find((x) => x[0] === scope) || [scope, scope])[1])}</td>` +
-            `<td data-l="For"${who.gone ? ' class="rot-gone"' : ""}>${who.gone ? `<span class="den-mono">${escR(who.name)}</span> (gone)` : escR(who.name)}</td>` +
-            `<td data-l="Setting">${escR(setting)}</td><td data-l="Value">${escR(rotValText(k, v))}</td>` +
-            `<td class="rot-act"><button type="button" class="btn sm" data-rot-clear data-scope="${escR(scope)}" data-target="${escR(target)}" data-key="${escR(k)}" aria-label="${who.gone ? "Remove" : "Clear"} ${escR(setting)} for ${escR(who.name)}">${who.gone ? "Remove" : "Clear"}</button></td></tr>`,
+          `<tr data-rot-row${who.gone ? " data-rot-gone" : ""}><td data-l="${escR(L("set.ui.rot.thScope", "Scope"))}">${escR(rotScope(scope))}</td>` +
+            `<td data-l="${escR(L("set.ui.rot.thFor", "For"))}"${who.gone ? ' class="rot-gone"' : ""}>${who.gone ? L("set.ui.rot.gone", "{name} (gone)", { name: `<span class="den-mono">${escR(who.name)}</span>` }) : escR(who.name)}</td>` +
+            `<td data-l="${escR(L("set.ui.rot.thSetting", "Setting"))}">${escR(setting)}</td><td data-l="${escR(L("set.ui.rot.thValue", "Value"))}">${escR(rotValText(k, v))}</td>` +
+            `<td class="rot-act"><button type="button" class="btn sm" data-rot-clear data-scope="${escR(scope)}" data-target="${escR(target)}" data-key="${escR(k)}" aria-label="${escR(L(who.gone ? "set.ui.rot.removeX" : "set.ui.rot.clearX", who.gone ? "Remove {setting} for {name}" : "Clear {setting} for {name}", { setting, name: who.name }))}">${escR(who.gone ? L("set.ui.rot.remove", "Remove") : L("set.ui.rot.clear", "Clear"))}</button></td></tr>`,
         );
       }
   return (
@@ -1544,41 +1624,41 @@ export function rotationHtml(b) {
     `<div class="rot-inst">` +
     field(
       "after_compactions",
-      `<input type="text" id="rot-after_compactions" data-focus-key="rot-after_compactions" inputmode="numeric" spellcheck="false" autocomplete="off" placeholder="${escR(inherited("after_compactions"))}" value="${escR(after === undefined ? "" : rotVal(after))}"> <button type="button" class="btn sm" data-rot-save-after>Save</button>`,
+      `<input type="text" id="rot-after_compactions" data-focus-key="rot-after_compactions" inputmode="numeric" spellcheck="false" autocomplete="off" placeholder="${escR(inherited("after_compactions"))}" value="${escR(after === undefined ? "" : rotVal(after))}"> <button type="button" class="btn sm" data-rot-save-after>${escR(L("set.ui.save", "Save"))}</button>`,
     ) +
     field(
       "on_due",
       sel("on_due", [
-        ["auto", "Auto"],
-        ["ask", "Ask"],
-        ["off", "Off"],
+        ["auto", rotAuto()],
+        ["ask", rotAsk()],
+        ["off", rotOff()],
       ]),
     ) +
     field(
       "on_pr_merged",
       sel("on_pr_merged", [
-        ["true", "Relaunch"],
-        ["false", "Keep going"],
+        ["true", rotRelaunch()],
+        ["false", rotKeep()],
       ]),
     ) +
     `</div>` +
-    `<div class="tablewrap"><table class="svc rot-ov"><caption>Overrides (the most specific wins)</caption><thead><tr><th scope="col">Scope</th><th scope="col">For</th><th scope="col">Setting</th><th scope="col">Value</th><th scope="col" aria-label="Actions"></th></tr></thead><tbody>` +
+    `<div class="tablewrap"><table class="svc rot-ov"><caption>${escR(L("set.ui.rot.caption", "Overrides (the most specific wins)"))}</caption><thead><tr><th scope="col">${escR(L("set.ui.rot.thScope", "Scope"))}</th><th scope="col">${escR(L("set.ui.rot.thFor", "For"))}</th><th scope="col">${escR(L("set.ui.rot.thSetting", "Setting"))}</th><th scope="col">${escR(L("set.ui.rot.thValue", "Value"))}</th><th scope="col" aria-label="${escR(L("set.ui.rot.thActions", "Actions"))}"></th></tr></thead><tbody>` +
     (rows.length
       ? rows.join("")
-      : `<tr><td colspan="5" class="set-note">No overrides: every agent uses this install's values.</td></tr>`) +
+      : `<tr><td colspan="5" class="set-note">${escR(L("set.ui.rot.none", "No overrides: every agent uses this install's values."))}</td></tr>`) +
     `</tbody></table></div>` +
     `<form class="rot-add" data-rot-add>` +
-    `<span class="rot-pick"><label for="rot-a-scope">Scope</label> <select id="rot-a-scope">${ROT_SCOPES.map(([v, l]) => `<option value="${v}">${escR(l)}</option>`).join("")}</select></span>` +
+    `<span class="rot-pick"><label for="rot-a-scope">${escR(L("set.ui.rot.thScope", "Scope"))}</label> <select id="rot-a-scope">${ROT_SCOPES.map(([v]) => `<option value="${v}">${escR(rotScope(v))}</option>`).join("")}</select></span>` +
     // The target: picked by name, never typed as an id (D30).
-    `<span class="rot-pick" data-for="agent">${comboHtml({ id: "rot-a-agent", label: "Agent", placeholder: "Type to find an agent" })}</span>` +
-    `<span class="rot-pick" data-for="persona persona-workspace" hidden>${comboHtml({ id: "rot-a-persona", label: "Persona", placeholder: "Type to find a persona" })}</span>` +
-    `<span class="rot-pick" data-for="workspace persona-workspace" hidden>${comboHtml({ id: "rot-a-ws", label: "Project", placeholder: "Type to find a project" })}</span>` +
-    `<span class="rot-pick" data-for="service" hidden>${comboHtml({ id: "rot-a-service", label: "Service", placeholder: "Type to find a service" })}</span>` +
-    `<span class="rot-pick"><label for="rot-a-key">Setting</label> <select id="rot-a-key">${ROT_KEYS.map(([v, l]) => `<option value="${v}">${escR(l)}</option>`).join("")}</select></span>` +
-    `<span class="rot-pick" data-val="after_compactions"><label for="rot-a-n">Value</label> <input type="number" id="rot-a-n" min="1" max="100" step="1" value="3"> <label class="rot-never"><input type="checkbox" id="rot-a-never"> never</label></span>` +
-    `<span class="rot-pick" data-val="on_due" hidden><label for="rot-a-due">Value</label> <select id="rot-a-due"><option value="auto">Auto</option><option value="ask">Ask</option><option value="off">Off</option></select></span>` +
-    `<span class="rot-pick" data-val="on_pr_merged" hidden><label for="rot-a-pr">Value</label> <select id="rot-a-pr"><option value="true">Relaunch</option><option value="false">Keep going</option></select></span>` +
-    `<button type="submit" class="btn sm primary">Add override</button></form>` +
+    `<span class="rot-pick" data-for="agent">${comboHtml({ id: "rot-a-agent", label: rotScope("agent"), placeholder: L("set.ui.rot.findAgent", "Type to find an agent") })}</span>` +
+    `<span class="rot-pick" data-for="persona persona-workspace" hidden>${comboHtml({ id: "rot-a-persona", label: rotScope("persona"), placeholder: L("set.ui.rot.findPersona", "Type to find a persona") })}</span>` +
+    `<span class="rot-pick" data-for="workspace persona-workspace" hidden>${comboHtml({ id: "rot-a-ws", label: rotScope("workspace"), placeholder: L("set.ui.rot.findProject", "Type to find a project") })}</span>` +
+    `<span class="rot-pick" data-for="service" hidden>${comboHtml({ id: "rot-a-service", label: rotScope("service"), placeholder: L("set.ui.rot.findService", "Type to find a service") })}</span>` +
+    `<span class="rot-pick"><label for="rot-a-key">${escR(L("set.ui.rot.thSetting", "Setting"))}</label> <select id="rot-a-key">${ROT_KEYS.map(([v]) => `<option value="${v}">${escR(rotKey(v))}</option>`).join("")}</select></span>` +
+    `<span class="rot-pick" data-val="after_compactions"><label for="rot-a-n">${escR(L("set.ui.rot.thValue", "Value"))}</label> <input type="number" id="rot-a-n" min="1" max="100" step="1" value="3"> <label class="rot-never"><input type="checkbox" id="rot-a-never"> ${escR(L("set.ui.rot.never", "never"))}</label></span>` +
+    `<span class="rot-pick" data-val="on_due" hidden><label for="rot-a-due">${escR(L("set.ui.rot.thValue", "Value"))}</label> <select id="rot-a-due"><option value="auto">${escR(rotAuto())}</option><option value="ask">${escR(rotAsk())}</option><option value="off">${escR(rotOff())}</option></select></span>` +
+    `<span class="rot-pick" data-val="on_pr_merged" hidden><label for="rot-a-pr">${escR(L("set.ui.rot.thValue", "Value"))}</label> <select id="rot-a-pr"><option value="true">${escR(rotRelaunch())}</option><option value="false">${escR(rotKeep())}</option></select></span>` +
+    `<button type="submit" class="btn sm primary">${escR(L("set.ui.rot.add", "Add override"))}</button></form>` +
     `<div class="rt-err" role="alert" hidden></div>` +
     `</div>`
   );
@@ -1614,28 +1694,31 @@ export function hubHtml(b, flash, t = (k) => k) {
   if (state === "bad_config")
     return (
       flashHtml +
-      note(b.problem || "hub in user.yml is not valid", "data-hub-problem")
+      note(
+        b.problem || L("set.ui.hub.badConfig", "hub in user.yml is not valid"),
+        "data-hub-problem",
+      )
     );
   if (state === "no_token")
     return (
       flashHtml +
       `<form class="hub-connect" data-hub-connect>` +
-      `<label for="hub-url">Hub's address</label> ` +
+      `<label for="hub-url">${escR(L("set.ui.hub.address", "Hub's address"))}</label> ` +
       `<input type="url" id="hub-url" class="den-mono" spellcheck="false" autocomplete="url" placeholder="https://hub.example.com" value="${escR(b.url || "")}">` +
-      ` <button type="submit" class="btn sm primary" data-hub-action="connect">Connect</button>` +
+      ` <button type="submit" class="btn sm primary" data-hub-action="connect">${escR(L("set.ui.hub.connect", "Connect"))}</button>` +
       `</form>` +
-      `<p class="set-note">Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown.</p>` +
+      `<p class="set-note">${escR(L("set.ui.hub.connectNote", "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown."))}</p>` +
       (b.problem && b.url && !/^not connected yet/.test(b.problem)
         ? note(b.problem, "data-hub-problem")
         : "") +
       `<div class="rt-err" role="alert" hidden></div>`
     );
   const status = {
-    connected: ["ok", "Connected"],
-    rejected: ["warn", "Token not accepted"],
-    forbidden: ["warn", "Not allowed"],
-    unreachable: ["warn", "Can't reach Hub"],
-  }[state] || ["warn", "Not connected"];
+    connected: ["ok", L("set.ui.hub.connected", "Connected")],
+    rejected: ["warn", L("set.ui.hub.rejected", "Token not accepted")],
+    forbidden: ["warn", L("set.ui.hub.forbidden", "Not allowed")],
+    unreachable: ["warn", L("set.ui.hub.unreachable", "Can't reach Hub")],
+  }[state] || ["warn", L("set.ui.hub.notConnected", "Not connected")];
   const team = b.team
     ? b.teamUrl && /^https?:\/\//i.test(b.teamUrl)
       ? // D51: Den → Hub is a plain link, in this tab (⌘-click: a new one).
@@ -1645,32 +1728,45 @@ export function hubHtml(b, flash, t = (k) => k) {
   const rows = [
     ["Hub", `<span class="den-mono">${escR(b.url || "")}</span>`],
     [
-      "Status",
-      `<span class="set-tag ${status[0]}" data-hub-state="${escR(state)}">${status[1]}</span>`,
+      L("set.ui.hub.status", "Status"),
+      `<span class="set-tag ${status[0]}" data-hub-state="${escR(state)}">${escR(status[1])}</span>`,
     ],
-    ...(team ? [["Company", team]] : []),
-    ...(b.role ? [["Role", escR(b.role)]] : []),
-    ...(b.login ? [["Signed in as", escR(b.login)]] : []),
-    ...(b.label ? [["This install", escR(b.label)]] : []),
+    ...(team ? [[L("set.ui.hub.company", "Company"), team]] : []),
+    ...(b.role ? [[L("set.ui.hub.role", "Role"), escR(b.role)]] : []),
+    ...(b.login
+      ? [[L("set.ui.hub.signedInAs", "Signed in as"), escR(b.login)]]
+      : []),
+    ...(b.label
+      ? [[L("set.ui.hub.thisInstall", "This install"), escR(b.label)]]
+      : []),
   ];
   const why =
     state === "rejected"
-      ? "Hub no longer accepts this install's token (revoked or expired). Reconnect signs you in again."
+      ? L(
+          "set.ui.hub.whyRejected",
+          "Hub no longer accepts this install's token (revoked or expired). Reconnect signs you in again.",
+        )
       : state === "forbidden"
-        ? "Your role on Hub no longer allows connecting installs. Ask a Hub admin to change your role, then Reconnect."
+        ? L(
+            "set.ui.hub.whyForbidden",
+            "Your role on Hub no longer allows connecting installs. Ask a Hub admin to change your role, then Reconnect.",
+          )
         : state === "unreachable"
-          ? b.problem || "Hub didn't answer."
+          ? b.problem || L("set.ui.hub.noAnswer", "Hub didn't answer.")
           : // #71: a token Den can't replace itself; Reconnect moves it over.
             b.legacy
             ? t("hub.legacy")
             : "";
   const tools =
-    `<label class="hub-tools"><input type="checkbox" id="hub-allow-tools"${b.allowTools !== false ? " checked" : ""}> Agents use Hub's tools without asking</label>` +
-    `<p class="set-note" data-hub-tools-note>${
+    `<label class="hub-tools"><input type="checkbox" id="hub-allow-tools"${b.allowTools !== false ? " checked" : ""}> ${escR(L("set.ui.hub.tools", "Agents use Hub's tools without asking"))}</label>` +
+    `<p class="set-note" data-hub-tools-note>${escR(
       b.allowTools !== false
-        ? "Agents can publish and comment in Hub without asking; writes are versioned and stay in this install's team."
-        : "Agents ask before each Hub tool runs."
-    }</p>`;
+        ? L(
+            "set.ui.hub.toolsOn",
+            "Agents can publish and comment in Hub without asking; writes are versioned and stay in this install's team.", // words-ok: moved word for word into the catalog (0.4.45)
+          )
+        : L("set.ui.hub.toolsOff", "Agents ask before each Hub tool runs."),
+    )}</p>`;
   return (
     flashHtml +
     `<dl class="hub-st" data-hub>` +
@@ -1681,13 +1777,13 @@ export function hubHtml(b, flash, t = (k) => k) {
     (state === "rejected" || b.legacy
       ? `<button type="button" class="btn sm primary" data-hub-action="connect">${escR(t("hub.reconnect"))}</button> `
       : "") +
-    `<button type="button" class="btn sm" data-hub-action="disconnect">Disconnect</button>` +
+    `<button type="button" class="btn sm" data-hub-action="disconnect">${escR(L("set.ui.hub.disconnect", "Disconnect"))}</button>` +
     `</div>` +
     // Disconnect asks first, saying what it does (Hub revokes the key).
     `<div class="hub-confirm" data-hub-confirm hidden>` +
-    `<p class="set-note set-warn">This revokes this Den's Hub key on Hub. Agents lose Hub until you Connect again.</p>` +
-    `<button type="button" class="btn sm primary" data-hub-action="disconnect-yes">Disconnect</button> ` +
-    `<button type="button" class="btn sm" data-hub-action="disconnect-no">Cancel</button>` +
+    `<p class="set-note set-warn">${escR(L("set.ui.hub.disconnectWarn", "This revokes this Den's Hub key on Hub. Agents lose Hub until you Connect again."))}</p>` +
+    `<button type="button" class="btn sm primary" data-hub-action="disconnect-yes">${escR(L("set.ui.hub.disconnect", "Disconnect"))}</button> ` +
+    `<button type="button" class="btn sm" data-hub-action="disconnect-no">${escR(L("set.ui.cancel", "Cancel"))}</button>` +
     `</div>` +
     `<div class="rt-err" role="alert" hidden></div>` +
     tools
@@ -1854,7 +1950,7 @@ export function projectNameHtml(p, t) {
     return (
       `<div data-pname data-pname-state="hub">` +
       `<p class="set-status"><strong data-pname-value>${escR(hub.trim())}</strong> ` +
-      `<span class="chip" data-pname-chip>${escR(t("pname.hubChip"))}</span></p>` +
+      `<span class="pname-chip" data-pname-chip><i aria-hidden="true"></i>${escR(t("pname.hubChip"))}</span></p>` +
       `<p class="set-note">${escR(t("pname.hubHelp"))}</p></div>`
     );
   const own =
@@ -2383,13 +2479,13 @@ function renderRotation(host, ctx) {
   const fail = (x) => {
     const e = err();
     if (e) {
-      e.textContent = x?.message || "Not saved";
+      e.textContent = x?.message || L("set.ui.notSaved", "Not saved");
       e.hidden = false;
     }
   };
   const load = () => {
     if (ctx.shell?.configInvalid?.() === true) {
-      host.innerHTML = `<div class="set-note">Fix the config first: the org's rotation is read from it.</div>`;
+      host.innerHTML = `<div class="set-note">${escR(L("set.ui.rot.fixConfig", "Fix the config first: the org's rotation is read from it."))}</div>`;
       return Promise.resolve();
     }
     return ctx.shell
@@ -2399,7 +2495,7 @@ function renderRotation(host, ctx) {
         wireAdd(b?.choices || {});
       })
       .catch((x) => {
-        host.innerHTML = `<div class="set-note">${escR(x?.message || "The rotation settings did not load.")}</div>`;
+        host.innerHTML = `<div class="set-note">${escR(x?.message || L("set.ui.rot.loadFailed", "The rotation settings did not load."))}</div>`;
       });
   };
   // D30: the add form's pickers, filled from live data.
@@ -2496,8 +2592,11 @@ function renderRotation(host, ctx) {
       fail({
         message:
           scope === "persona-workspace"
-            ? "Pick a persona and a project."
-            : `Pick ${withArticle((ROT_SCOPES.find((x) => x[0] === scope) || [scope, scope])[1].toLowerCase())}.`,
+            ? L("set.ui.rot.pickPW", "Pick a persona and a project.")
+            : L(
+                `set.ui.rot.pick.${scope}`,
+                `Pick ${withArticle((ROT_SCOPES.find((x) => x[0] === scope) || [scope, scope])[1].toLowerCase())}.`,
+              ),
       });
       return;
     }

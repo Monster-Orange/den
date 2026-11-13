@@ -169,6 +169,583 @@
     "pname.empty": "Enter a name. It can't be empty.",
     "pname.failed": "The name wasn't saved.",
     "set.workspace.name": "Name",
+    "pj.expand": "Expand the project list",
+    "gr.act.autostartOff": "Auto-start: off (turn on)",
+    "gr.act.autostartOn": "Auto-start: on (turn off)",
+    "gr.act.clone": "Clone",
+    "gr.act.cmd": "Run {cmd}",
+    "gr.act.copy": "Copy address",
+    "gr.act.downDeps": "Stop with dependencies",
+    "gr.act.editor": "Open in editor",
+    "gr.act.logs": "Logs",
+    "gr.act.logsPage": "Open in Logs",
+    "gr.act.open": "Visit ↗",
+    "gr.act.output": "Show output pane",
+    "gr.act.recheck": "Re-check health",
+    "gr.act.restart": "Restart",
+    "gr.act.start": "Start",
+    "gr.act.stop": "Stop",
+    "gr.act.syncFull": "Sync (down, pull, setup)",
+    "gr.act.terminal": "Terminal in repo",
+    "gr.act.upDeps": "Start with dependencies",
+    "gr.act.useLocal": "Use my local checkout",
+    "gr.act.useManaged": "Use a managed clone",
+    "gr.add": "Add",
+    "gr.bar": "Graph view options",
+    "gr.cardLabel": "{name} in {repo}, {status}. Open details.",
+    "gr.cardLabelRemote":
+      "{name} in {repo}, {status}, runs remotely. Open details.",
+    "gr.cards": "Cards",
+    "gr.cards.compact": "Compact",
+    "gr.cards.detailed": "Detailed",
+    "gr.checkedN": "Checked {n} services",
+    "gr.checkedOne": "Checked {id}",
+    "gr.closeDetails": "Close details",
+    "gr.collapse": "Collapse",
+    "gr.collapseAll": "Collapse all",
+    "gr.confirm": "Confirm: {label}",
+    "gr.copied": "Copied {id}",
+    "gr.dependsOn": "Depends on",
+    "gr.details": "Details",
+    "gr.dir.down": "Top-down",
+    "gr.dir.right": "Left-right",
+    "gr.dock": "Dock as side panel",
+    "gr.expand": "Expand",
+    "gr.expandAll": "Expand all",
+    "gr.find": "Find",
+    "gr.findPh": "service, repo…",
+    "gr.fit": "Fit",
+    "gr.group": "Group",
+    "gr.group.app": "Application",
+    "gr.group.org": "Org",
+    "gr.grp.commands": "Manifest commands",
+    "gr.grp.common": "More actions",
+    "gr.grp.danger": "Careful",
+    "gr.grp.tools": "Tools",
+    "gr.h.checking": "checking…",
+    "gr.h.none": "no health check",
+    "gr.h.notChecked": "not checked",
+    "gr.h.reachable": "reachable",
+    "gr.h.unreachable": "unreachable",
+    "gr.inProjects": "{id}: in {list}",
+    "gr.k.application": "Application",
+    "gr.k.branch": "Branch",
+    "gr.k.check": "Check",
+    "gr.k.healthCheck": "Health check",
+    "gr.k.logsFrom": "Logs from",
+    "gr.k.manifest": "Manifest",
+    "gr.k.mode": "Mode",
+    "gr.k.onDisk": "On disk",
+    "gr.k.opens": "Opens",
+    "gr.k.placement": "Placement",
+    "gr.k.repo": "Repo",
+    "gr.k.role": "Role",
+    "gr.k.services": "Services",
+    "gr.k.starts": "Starts",
+    "gr.k.status": "Status",
+    "gr.layout": "Layout",
+    "gr.lg.click": "click a card for details",
+    "gr.lg.cross": "local → remote",
+    "gr.lg.event": "event",
+    "gr.lg.hard": "hard dependency",
+    "gr.lg.intra": "within a repo",
+    "gr.lg.soft": "soft",
+    "gr.location": "Location",
+    "gr.log.ended": "The log stream ended.",
+    "gr.log.filter": "Filter log lines",
+    "gr.log.filterPh": "Filter lines",
+    "gr.log.pause": "Pause",
+    "gr.log.resume": "Resume",
+    "gr.log.waiting": "Waiting for log lines…",
+    "gr.log.wrap": "Wrap",
+    "gr.max": "Maximize graph",
+    "gr.maxTip": "Maximize graph (F)",
+    "gr.missingTip": "Missing: {list}",
+    "gr.missingWhy": "Declared but not in this project.",
+    "gr.more": "More",
+    "gr.n.loading": "Loading…",
+    "gr.n.noActivity":
+      "No actions yet. Starts, restarts and syncs, yours and agents', show here.",
+    "gr.n.noneDeclared": "none declared",
+    "gr.n.noneFound": "none found",
+    "gr.n.noneRemote": "none here: it runs remotely",
+    "gr.n.nothing": "nothing",
+    "gr.n.nothingHere": "nothing in this project",
+    "gr.n.ownLog": "the service's own log file",
+    "gr.n.remoteEnv": "the remote env",
+    "gr.n.unknown": "unknown",
+    "gr.noElk":
+      "The graph layout library did not load. Reload the page; if it persists, reinstall {cli}.",
+    "gr.notClonedYet": "not cloned yet: Sync clones it",
+    "gr.okOf": "{ok}/{n} healthy",
+    "gr.pinX": "Pin {s}",
+    "gr.pl.allLocal": "all local",
+    "gr.pl.allRemote": "all remote",
+    "gr.pl.hybrid": "hybrid",
+    "gr.pl.hybridList": "hybrid: {list}",
+    "gr.pl.local": "local",
+    "gr.pl.none": "no runtime",
+    "gr.pl.remote": "remote",
+    "gr.pl.svcRuns": "{name} {runs}",
+    "gr.popout": "Expand to pop-up",
+    "gr.project": "Project",
+    "gr.refused": "refused: {reason}",
+    "gr.remoteEnv": "a remote env",
+    "gr.remoteNote":
+      "Runs in {env}. Start, stop and logs happen there, not on this machine.",
+    "gr.remoteNoteAcct":
+      "Runs in {env} · {account}. Start, stop and logs happen there, not on this machine.",
+    "gr.remoteWhy": "runs in {env}; nothing to start here",
+    "gr.remoteWhyAcct": "runs in {env} ({account}); nothing to start here",
+    "gr.repoDetails": "Repo details",
+    "gr.repoLabel":
+      "{repo}, {status}, {n} services, {ok} healthy. Open details.",
+    "gr.repos": "{n} repos",
+    "gr.repos.one": "{n} repo",
+    "gr.resize": "Drag to resize",
+    "gr.restoreTip": "Restore (Esc)",
+    "gr.role.entry": "entry point",
+    "gr.role.infra": "infrastructure",
+    "gr.role.service": "service",
+    "gr.roll.awaiting": "unknown (still checking)",
+    "gr.roll.okExtra": "healthy, {extra}",
+    "gr.roll.redirect": "{n} redirect",
+    "gr.roll.state": "{state} ({down} down)",
+    "gr.roll.unchecked": "{n} not checked",
+    "gr.roll.unknown": "unknown (not checked)",
+    "gr.roll.unknownWhy": "unknown ({why})",
+    "gr.run": "Run",
+    "gr.runs.local": "local",
+    "gr.runs.none": "none",
+    "gr.runs.remote": "remote",
+    "gr.sec.about": "About",
+    "gr.sec.aboutRepo": "About",
+    "gr.sec.commands": "Commands",
+    "gr.sec.connections": "Connections",
+    "gr.sec.health": "Health",
+    "gr.sec.healthRoll": "Health",
+    "gr.sec.missing": "Missing dependencies",
+    "gr.sec.source": "Where it comes from",
+    "gr.services": "{n} services",
+    "gr.st.down": "down",
+    "gr.st.healthy": "healthy",
+    "gr.st.unknown": "unknown",
+    "gr.starts.auto": "with the project",
+    "gr.starts.demand": "on demand (auto-start off)",
+    "gr.state.degraded": "degraded",
+    "gr.state.down": "down",
+    "gr.state.ok": "ok",
+    "gr.state.unknown": "unknown",
+    "gr.tab.activity": "Activity",
+    "gr.tab.config": "Config",
+    "gr.tab.logs": "Logs",
+    "gr.tab.overview": "Overview",
+    "gr.tab.services": "Services",
+    "gr.tag.entry": "entry",
+    "gr.tag.infra": "infra",
+    "gr.tag.missing": "missing",
+    "gr.tag.notCloned": "not cloned",
+    "gr.unpinX": "Unpin {s}",
+    "gr.usedBy": "Used by",
+    "gr.vp":
+      "Service graph. Drag to pan, scroll to move, Ctrl or Cmd + scroll to zoom.",
+    "gr.who.agent": "agent",
+    "gr.who.you": "you",
+    "gr.who.youVia": "you · {client} (unverified)",
+    "gr.zoom": "Zoom",
+    "gr.zoomIn": "Zoom in",
+    "gr.zoomOut": "Zoom out",
+    "gr.zoomReset": "Reset zoom to 100%",
+    "term.input": "Terminal input",
+    "term.tooMuch":
+      "Too much output to announce, navigate to rows manually to read",
+    "pj.title": "Projects",
+    "pj.collapse": "Collapse the project list",
+    "pj.loading": "Loading…",
+    "pj.newPh": "new-project",
+    "pj.newLabel": "New project's name",
+    "pj.delete": "Delete",
+    "pj.activeTag": "(active)",
+    "pj.openTerm": "Open in terminal",
+    "pj.openEditor": "Open in editor",
+    "pj.moreActions": "More actions",
+    "pj.moreFor": "More for {ws}",
+    "pj.deactivate": "Deactivate",
+    "pj.activate": "Activate",
+    "pj.rename": "Rename",
+    "pj.activateFirst": "Activate this project first",
+    "pj.noManaged": "No managed services in this project",
+    "pj.active": "active",
+    "pj.makeDefault": "Make CLI default",
+    "pj.deactivateLc": "deactivate",
+    "pj.activateLc": "activate",
+    "pj.activateDefault": "activate + make CLI default",
+    "pj.openGraph": "Open in Graph →",
+    "pj.moreProject": "More for this project",
+    "pj.setup": "Project setup",
+    "pj.renameDots": "Rename…",
+    "pj.deleteDots": "Delete…",
+    "pj.project": "Project",
+    "pj.up": "Up",
+    "pj.down": "Down",
+    "pj.restart": "Restart",
+    "pj.setupBtn": "Setup",
+    "pj.sync": "Sync",
+    "pj.addService": "Add Service",
+    "pj.find": "Find",
+    "pj.findPh": "repo, service…",
+    "pj.groupBy": "Group by",
+    "pj.group.none": "None",
+    "pj.group.app": "Application",
+    "pj.group.org": "Org",
+    "pj.reposIn": "Repos in {ws}",
+    "pj.th.repo": "Repo",
+    "pj.th.health": "Health",
+    "pj.th.branch": "Branch",
+    "pj.th.mode": "Mode",
+    "pj.th.lastRun": "Last test run",
+    "pj.th.actions": "Actions",
+    "pj.addRepo": "Add repo",
+    "pj.validate.title": "Validate a manifest",
+    "pj.validate.path": "Path or dir",
+    "pj.validate.pathPh": "/absolute/path/to/repo  or  /path/to/{file}",
+    "pj.validate.go": "Validate",
+    "pj.validate.paste": "…or paste {file} content here",
+    "pj.checking": "checking…",
+    "pj.checkingTip": "waiting for the first health check",
+    "pj.noUp": "{id} has no up command",
+    "pj.start": "Start",
+    "pj.startX": "Start {id}",
+    "pj.stop": "Stop",
+    "pj.stopX": "Stop {id}",
+    "pj.restartX": "Restart {id}",
+    "pj.logs": "Logs",
+    "pj.logsX": "Logs of {id}",
+    "pj.useLocalX": "{repo}: use local",
+    "pj.useManagedX": "{repo}: use managed",
+    "pj.useLocal": "use local",
+    "pj.useManaged": "use managed",
+    "set.ui.justNow": "just now",
+    "set.ui.minAgo": "{n} min ago",
+    "set.ui.hAgo": "{n} h ago",
+    "set.ui.dAgo": "{n} d ago",
+    "set.ui.viaGithubAs": "signed in with GitHub (@{login})",
+    "set.ui.viaGithub": "signed in with GitHub",
+    "set.ui.viaCode": "approved with a code",
+    "set.ui.viaClaim": "claimed with a setup link",
+    "set.ui.viaLink": "signed in with a one-time link",
+    "set.ui.unknownBrowser": "Unknown browser",
+    "set.ui.created": "created {ago}",
+    "set.ui.fromAt": "from {from} ({name})",
+    "set.ui.lastSeen": "last seen {ago}",
+    "set.ui.ownerIs": "Owner:",
+    "set.ui.unlink": "Unlink",
+    "set.ui.noOwner": "This Den has no owner identity yet.",
+    "set.ui.linkGithub": "Link your GitHub account", // words-ok: moved word for word into the catalog (0.4.45)
+    "set.ui.noClient":
+      "Linking needs a GitHub App client id, and none is configured: set {key} in config/local/user.yml, then restart the server.", // words-ok: moved word for word into the catalog (0.4.45)
+    "set.ui.linkFailed": "Linking failed. Try again.",
+    "set.ui.noAnswer": "The server didn't answer. Try again.", // words-ok: moved word for word into the catalog (0.4.45)
+    "set.ui.enterCode":
+      "Enter this code at {link} and approve the app. It asks for no permissions.",
+    "set.ui.openGithub": "Open GitHub",
+    "set.ui.waitingGithub": "Waiting for GitHub…",
+    "set.ui.ownerSignedIn": "The owner can only be shown signed in.",
+    "set.ui.noDevices":
+      "No linked devices. A browser that signs in with GitHub, is approved with a code, or opens a one-time link appears here.",
+    "set.ui.thisDevice": "This device",
+    "set.ui.revoke": "Revoke",
+    "set.ui.devicesSignedIn": "The devices can only be listed signed in.",
+    "set.ui.asked": "asked {ago}",
+    "set.ui.approve": "Approve",
+    "set.ui.deny": "Deny",
+    "set.ui.noWaiting":
+      "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve.",
+    "set.ui.waitingSignedIn":
+      "Waiting devices can only be listed signed in, or on this machine.",
+    "set.ui.noPairHost":
+      "No edge hostname routes to this server, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then {cmd}.", // words-ok: moved word for word into the catalog (0.4.45)
+    "set.ui.edgeHost": "Edge hostname",
+    "set.ui.pairScan":
+      "Scan it with the other device, or open the link there. It works once, until it expires (below), and signs that browser in for good.",
+    "set.ui.expiresIn": "Expires in {s} s.",
+    "set.ui.pairExpired": "This link expired. Pair again for a new one.",
+    "set.ui.pairSignedIn": "Pairing works only signed in.",
+    "set.ui.themeUnset": "{name} (not set: Den's own)",
+    "set.ui.notSet": "not set",
+    "set.ui.terminalTag": "terminal",
+    "set.ui.notFound": "not found",
+    "set.ui.off": "Off",
+    "set.ui.on": "On",
+    "set.ui.nLines": "{n} lines",
+    "set.ui.portUnset": "Not set: the distribution's applies",
+    "set.ui.signedIn": "Signed in",
+    "set.ui.signOut": "Sign out",
+    "set.ui.notSignedIn": "Not signed in: run {cmd}",
+    "set.ui.savedIn": "Saved in {vault}",
+    "set.ui.theVault": "the vault",
+    "set.ui.savedMemory": "Held in memory until Den restarts",
+    "set.ui.notSaved": "Not saved",
+    "set.ui.forget": "Forget",
+    "set.ui.none": "none",
+    "set.ui.portDefault": "not set ({port})",
+    "set.ui.envsAll": "not set: all",
+    "set.ui.rot.auto": "Auto",
+    "set.ui.rot.ask": "Ask",
+    "set.ui.rot.relaunch": "Relaunch",
+    "set.ui.rot.keep": "Keep going",
+    "set.ui.rot.org": "org config: {v}", // words-ok: moved word for word into the catalog (0.4.45)
+    "set.ui.rot.default": "default: {v}",
+    "set.ui.rot.install": "this install",
+    "set.ui.rot.inherit": "inherit ({v})",
+    "set.ui.rot.thScope": "Scope",
+    "set.ui.rot.thFor": "For",
+    "set.ui.rot.gone": "{name} (gone)",
+    "set.ui.rot.thSetting": "Setting",
+    "set.ui.rot.thValue": "Value",
+    "set.ui.rot.remove": "Remove",
+    "set.ui.rot.clear": "Clear",
+    "set.ui.save": "Save",
+    "set.ui.rot.caption": "Overrides (the most specific wins)",
+    "set.ui.rot.thActions": "Actions",
+    "set.ui.rot.none": "No overrides: every agent uses this install's values.",
+    "set.ui.rot.findAgent": "Type to find an agent",
+    "set.ui.rot.findPersona": "Type to find a persona",
+    "set.ui.rot.findProject": "Type to find a project",
+    "set.ui.rot.findService": "Type to find a service",
+    "set.ui.rot.never": "never",
+    "set.ui.rot.add": "Add override",
+    "set.ui.hub.badConfig": "hub in user.yml is not valid",
+    "set.ui.hub.address": "Hub's address",
+    "set.ui.hub.connect": "Connect",
+    "set.ui.hub.connectNote":
+      "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown.",
+    "set.ui.hub.connected": "Connected",
+    "set.ui.hub.rejected": "Token not accepted",
+    "set.ui.hub.forbidden": "Not allowed",
+    "set.ui.hub.unreachable": "Can't reach Hub",
+    "set.ui.hub.notConnected": "Not connected",
+    "set.ui.hub.status": "Status",
+    "set.ui.hub.company": "Company",
+    "set.ui.hub.role": "Role",
+    "set.ui.hub.signedInAs": "Signed in as",
+    "set.ui.hub.thisInstall": "This install",
+    "set.ui.hub.whyRejected":
+      "Hub no longer accepts this install's token (revoked or expired). Reconnect signs you in again.",
+    "set.ui.hub.whyForbidden":
+      "Your role on Hub no longer allows connecting installs. Ask a Hub admin to change your role, then Reconnect.",
+    "set.ui.hub.noAnswer": "Hub didn't answer.",
+    "set.ui.hub.tools": "Agents use Hub's tools without asking",
+    "set.ui.hub.toolsOn":
+      "Agents can publish and comment in Hub without asking; writes are versioned and stay in this install's team.", // words-ok: moved word for word into the catalog (0.4.45)
+    "set.ui.hub.toolsOff": "Agents ask before each Hub tool runs.",
+    "set.ui.hub.disconnect": "Disconnect",
+    "set.ui.hub.disconnectWarn":
+      "This revokes this Den's Hub key on Hub. Agents lose Hub until you Connect again.",
+    "set.ui.cancel": "Cancel",
+    "set.ui.rot.fixConfig":
+      "Fix the config first: the org's rotation is read from it.", // words-ok: moved word for word into the catalog (0.4.45)
+    "set.ui.rot.loadFailed": "The rotation settings did not load.",
+    "set.ui.rot.pickPW": "Pick a persona and a project.",
+    "set.ui.countNone": "No settings match",
+    "set.ui.count": "{n} settings match",
+    "set.ui.count.one": "{n} setting matches",
+    "set.ui.scopeDist": "Distribution · read-only",
+    "set.ui.scopeWs": "Project setup · {ws}",
+    "set.ui.scopeWsNone": "Project setup",
+    "set.ui.scopeUser": "User",
+    "set.ui.noMatch": "No settings match “{q}”.",
+    "set.ui.clearSearch": "Clear search",
+    "set.ui.project": "Project",
+    "set.ui.pickProject":
+      "You view All active: pick the project these are for.",
+    "set.ui.noActive": "No active projects.",
+    "set.ui.swatches": "The theme's colors",
+    "set.ui.inherit": "Default (inherit)",
+    "set.ui.moveUp": "Move {name} up",
+    "set.ui.moveDown": "Move {name} down",
+    "set.ui.unpinX": "Unpin {name}",
+    "set.ui.noPins": "Nothing pinned",
+    "set.ui.setByIn": "Set by the distribution in {file}.",
+    "set.ui.setBy": "Set by the distribution in its config.",
+    "set.ui.showX": "Show {name}",
+    "set.ui.hideX": "Hide {name}",
+    "set.ui.show": "Show",
+    "set.ui.hide": "Hide",
+    "set.ui.noProject": "No project",
+    "set.ui.default": "Default",
+    "set.ui.saved": "✓ Saved",
+    "set.ui.saveFailed": "✗ Save failed",
+    "set.ui.loadFailed": "Settings did not load.",
+    "set.ui.reload": "Reload to try again.",
+    "set.ui.matching": "{n} matching",
+    "set.ui.from": "from {from}",
+    "set.ui.sub":
+      "Saved to your __DEN_TITLE__ preferences and remembered on every page",
+    "set.ui.search": "Search settings",
+    "set.ui.slashTip": "Press / to search",
+    "set.ui.cats": "Settings categories",
+    "set.ui.rot.scope.agent": "Agent",
+    "set.ui.rot.scope.persona-workspace": "Persona in a project",
+    "set.ui.rot.scope.persona": "Persona",
+    "set.ui.rot.scope.workspace": "Project",
+    "set.ui.rot.scope.service": "Service",
+    "set.ui.rot.key.after_compactions": "After compactions",
+    "set.ui.rot.key.on_due": "When due",
+    "set.ui.rot.key.on_pr_merged": "When its PR merges",
+    "set.ui.rot.pick.agent": "Pick an agent.",
+    "set.ui.rot.pick.persona": "Pick a persona.",
+    "set.ui.rot.pick.workspace": "Pick a project.",
+    "set.ui.rot.pick.service": "Pick a service.",
+    "setc.appearance": "Appearance",
+    "setc.appearance.d": "Mode follows your system unless you pick one.",
+    "setc.editor": "Editor & terminal",
+    "setc.editor.d":
+      "Where ↗ opens a repository and >_ opens a terminal to a service.",
+    "setc.navigation": "Navigation",
+    "setc.navigation.d":
+      "Hide pages you never use and choose their order. Pins sit at the top of the rail.",
+    "setc.graph": "Graph",
+    "setc.graph.d":
+      "How the graph is laid out, and how the Projects page shows its projects. The pages' own controls set these too.",
+    "setc.workspace": "Project setup",
+    "setc.workspace.d":
+      "Settings for one project. They follow the project you view in the top bar.",
+    "setc.agents": "Agents",
+    "setc.agents.d":
+      "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one project (config/local/workspaces.yml), which wins.",
+    "setc.access": "Access",
+    "setc.access.d":
+      "Reach this Den from your other devices: sign in with GitHub as its owner, or pair a device with a one-time link. On localhost nothing asks.",
+    "setc.secrets": "Secrets",
+    "setc.secrets.d":
+      "Where this machine gets the credentials Den resolves secrets with. Per machine (config/local/user.yml); only the source is shown, never a secret.",
+    "setc.server": "Server",
+    "setc.server.d":
+      "The Den web server this page talks to. A restart keeps agents and services running.", // words-ok: the Settings row's text, moved word for word
+    "setc.cli": "Command line",
+    "setc.cli.d":
+      "Also yours (config/local/user.yml), set from the command line: __DEN_CLI__ config <key>=<value>.",
+    "setc.distribution": "Distribution",
+    "setc.distribution.d":
+      "What the distribution sets for everyone. Read-only here: it lives in the distribution's tracked config.",
+    "set.server.restart.d":
+      "Restarts the web server on the same port. Agents, services and deploys keep running; this page reconnects in place. Same as __DEN_CLI__ web restart.", // words-ok: the Settings row's text, moved word for word
+    "set.appearance.mode.d":
+      "System follows your computer's light or dark setting.",
+    "set.appearance.mode.o.system": "System",
+    "set.appearance.mode.o.dark": "Dark",
+    "set.appearance.mode.o.light": "Light",
+    "set.appearance.theme.d":
+      "Org default follows the distribution's theme. Picking a theme by name keeps it, even when the distribution changes its own.", // words-ok: the Settings row's text, moved word for word
+    "set.language.d":
+      "The language of Den's own words. Names, logs and command output stay as they are. Changing it reloads the page.",
+    "set.appearance.org-theme.d":
+      "The theme everyone gets until they pick one (brand.theme).",
+    "set.editor.d":
+      "__DEN_TITLE__ opens repositories in this editor when you click ↗.",
+    "set.editor.open.d":
+      "⌘-click (Ctrl-click on Windows and Linux) on a file path in an agent's pane opens it here, at the line. None copies the path instead.",
+    "set.editor.open.o.vscode": "VS Code",
+    "set.editor.open.o.cursor": "Cursor",
+    "set.editor.open.o.zed": "Zed",
+    "set.editor.open.o.none": "None (copy)",
+    "set.editor_overrides.d":
+      "For repos whose stack.yml names a language, open this editor instead of the default.",
+    "set.terminal.d":
+      "__DEN_TITLE__ opens a terminal to the service directory when you click >_.",
+    "set.shell.pages.d":
+      "Show or hide each page, and move it within its group.",
+    "set.shell.projectOrder.d":
+      "The order of projects in the header's picker and Manage projects. A to Z by the name shown unless you move them in Manage projects. Yours only: never shared and never sent to Hub.",
+    "set.shell.pins.d":
+      "Services and repos at the top of the rail. Pin them from Services, the graph or the health row.",
+    "set.shell.collapsed.d":
+      "Icons only. The rail's own button at the bottom does the same.",
+    "set.shell.dock.d":
+      "The output of runs, at the foot of every page. Off, it is just its bar: a run's tab appears and the Runs chip pulses, and you open it. Drag its top edge to resize it, up to half the window.",
+    "set.graph.workspaces.d":
+      "The Projects page's project list, open or collapsed to a strip so the table gets the width.",
+    "set.graph.workspaces.o.open": "Open",
+    "set.graph.workspaces.o.collapsed": "Collapsed",
+    "set.graph.groupBy.d":
+      "The Projects page's repo table: one list, or grouped by application (as __DEN_CLI__ apps) or by org.", // words-ok: the Settings row's text, moved word for word
+    "set.graph.groupBy.o.none": "None",
+    "set.graph.groupBy.o.app": "Application",
+    "set.graph.groupBy.o.org": "Org",
+    "set.graph.direction.d": "Lay the graph out top-down or left to right.",
+    "set.graph.direction.o.down": "Top-down",
+    "set.graph.direction.o.right": "Left to right",
+    "set.graph.group.d": "The outer frames: by org or by application.", // words-ok: the Settings row's text, moved word for word
+    "set.graph.group.o.org": "By org", // words-ok: the Settings row's text, moved word for word
+    "set.graph.group.o.app": "By application",
+    "set.graph.density.d":
+      "Detailed cards show more; compact ones fit more on screen.",
+    "set.graph.density.o.detailed": "Detailed",
+    "set.graph.density.o.compact": "Compact",
+    "set.graph.panelWidth.d":
+      "The width of the graph's details panel, in pixels (360 to 760).",
+    "set.workspace.name.d":
+      "The name Den shows for this project in the header, lists and pages. Linked to a Hub project, it is Hub's name. The slug never changes.",
+    "set.workspace.editor.d":
+      "Opening this project, or a repo in it without a per-language override, uses this editor instead of your default.",
+    "set.workspace.hub.d":
+      "The Hub project this project's agents file their Hub work in: docs, mocks, comments. Den never links on its own: Hub suggests one with the same repos or name, and you confirm. Not linked, Hub files the work in Unfiled. __DEN_CLI__ hub link -p <project>",
+    "set.agents.layout.d":
+      "Focus shows one agent, Tabs shows one with a tab for each, Tile shows up to four in a grid. The Agents tab's switch, ⌃⇧1, ⌃⇧2, ⌃⇧3 and ⌘K set it too.",
+    "set.agents.layout.o.focus": "Focus",
+    "set.agents.layout.o.tabs": "Tabs",
+    "set.agents.layout.o.tile": "Tile",
+    "set.agents.runtimes.d":
+      "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",
+    "set.agents.rotation.d":
+      "When an agent's conversation has compacted this many times (or its pull request merged), Den starts it again from its handoff: a fresh conversation, the same name, persona, project and folder. Auto asks the agent for its handoff when it is idle, then relaunches it by itself; Ask shows buttons on the agent; Off does nothing. Overrides win over this install's value: agent, persona in a project, persona, project, service. __DEN_CLI__ agents rotate",
+    "set.agents.hub.d":
+      "Connect this install to your company's Hub: sign in there and approve it. Every agent then gets Hub's tools: search Hub, publish docs and mocks there. Its company comes from this install's token, its Hub project from Project setup › Hub project.",
+    "set.agents.hub_link_all.d":
+      "Every project here with Hub's suggestion for it (the same repos, or the same name). Tick the ones to link and link them in one go; each one can still be changed in Project setup › Hub project.",
+    "set.agents.hub_github.d":
+      "How many of your company's GitHub repos Den Hub can read, asked live from Hub, with GitHub's link to give it access or change its repos.",
+    "set.agents.personas.d":
+      "Agent setups you can start from. Built-in ones ship with Den, distribution ones with your distribution, and yours live on this machine. View or Edit, Duplicate, + New persona; only your own can be edited or deleted.",
+    "set.cli.local_dev.d":
+      "Off hides Projects and the project APIs for you. __DEN_CLI__ config local_dev=false",
+    "set.cli.cli_tabs.d":
+      "Whether up and restart open terminal tabs by default. __DEN_CLI__ config cli_tabs=true",
+    "set.cli.log_window_lines.d":
+      "How many lines a Logs pane keeps loaded; full-history search is unaffected. __DEN_CLI__ config log_window_lines=50000",
+    "set.cli.web_port.d":
+      "web.port in config/local/user.yml overrides the distribution's. It applies when the web server next starts.", // words-ok: the Settings row's text, moved word for word
+    "set.cli.signin.d":
+      "On localhost nothing asks for a sign-in. Through the edge, a browser signs in unless the edge shows it is this machine (web.edge_unattested: local counts one it can't place as local), and from another machine it always does: Sign in with GitHub, or a one-time link (__DEN_CLI__ web login). Settings › Access lists the signed-in browsers.",
+    "set.cli.sudo.d":
+      "Used only when a command Den runs needs sudo, and asked for only then. It is no sign-in: nothing else needs it.",
+    "set.cli.op_token.d":
+      "Where this machine's 1Password service-account token comes from, for a Den running as a service. Set secrets.onepassword.token in config/local/user.yml: keychain:<service>, file:<path> or env:<VAR>. The token itself is never shown.", // words-ok: the Settings row's text, moved word for word
+    "set.access.owner.d":
+      "The GitHub account this Den belongs to. Linking stores only its id (the token is thrown away), and from then on that account can sign in from any device. __DEN_CLI__ web owner link does the same from the command line.", // words-ok: the Settings row's text, moved word for word
+    "set.access.devices.d":
+      "The browsers signed in to this Den. Revoke ends one at once. __DEN_CLI__ web logout --all ends them all.",
+    "set.access.waiting.d":
+      "Computers whose signed-out page shows a code. Approve one and its page signs in by itself; the code lasts 10 minutes. __DEN_CLI__ web approve <code> does the same from the command line.",
+    "set.access.machine_name.d":
+      'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
+    "set.access.pair.d":
+      "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
+    "set.distribution.brand.d":
+      "brand.name: the name on pages, the CLI banner and help.",
+    "set.distribution.github_org.d":
+      "github_org: the org whose repos Den clones and lists.", // words-ok: the Settings row's text, moved word for word
+    "set.distribution.hub_github.d":
+      "How many of your company's GitHub repos Den Hub can read, asked live from Hub. Den Hub reads a repo only through your company's GitHub App install; the button opens GitHub to install it or change its repos. When you come back, Den sends its projects to Hub again and the repos link by themselves.",
+    "set.distribution.orgs.d":
+      "orgs: display names for the GitHub orgs repos belong to.", // words-ok: the Settings row's text, moved word for word
+    "set.distribution.web_port.d":
+      "web.port: the port the web UI listens on, unless yours overrides it.",
+    "set.distribution.environments.d":
+      "environments: the envs the Env menu offers.",
+    "set.distribution.domain.d":
+      "edge.domain: services are served at https://<service>.<domain>.",
     "set.shell.projectOrder": "Project order",
     "ws.allN": "All active ({n})",
     "ws.allTip":
@@ -1349,6 +1926,48 @@
       return typeof vars[k] === "number" ? num(vars[k]) : String(vars[k]);
     });
   }
+
+  /**
+   * A built-in text's words in this page's language (0.4.45): `en` is the
+   * registry's English. A built-in key whose en is word for word `en` reads
+   * the catalog; otherwise `own` (a row a distribution or plugin adds:
+   * { es: { key: text }, ja: … }, the catalogs' shape) has it, else `en`.
+   */
+  function tr(key, en, own) {
+    if (en == null || en === "") return en;
+    if (has(MESSAGES.en, key) && MESSAGES.en[key] === en) return t(key);
+    var mine = own && own[lang];
+    if (mine && typeof mine[key] === "string" && mine[key]) return mine[key];
+    return en;
+  }
+
+  /**
+   * A page's own static words (0.4.45): an element with data-t="key" shows
+   * t(key); data-t-attr="placeholder:key title:key" sets those attributes.
+   * The English in the HTML is the fallback (and en's words, held equal by
+   * tests/unit/server/i18n.test.ts). Runs once the page is parsed, and on
+   * any root a page passes (denShell.localize(root)).
+   */
+  function localize(root) {
+    var scope = root || document;
+    if (!scope.querySelectorAll) return;
+    var els = scope.querySelectorAll("[data-t], [data-t-attr]");
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var k = el.getAttribute("data-t");
+      if (k && has(MESSAGES.en, k)) el.textContent = t(k);
+      var pairs = (el.getAttribute("data-t-attr") || "").split(/\s+/);
+      for (var j = 0; j < pairs.length; j++) {
+        var m = /^([\w-]+):([\w.-]+)$/.exec(pairs[j]);
+        if (m && has(MESSAGES.en, m[2])) el.setAttribute(m[1], t(m[2]));
+      }
+    }
+  }
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", function () {
+      localize(document);
+    });
+  else localize(document);
 
   var host = document.getElementById("den-shell");
   if (!host || host.dataset.mounted) return;
@@ -5427,6 +6046,8 @@
       renderRail();
     },
     t: t,
+    tr: tr,
+    localize: localize,
     /** R19: the page's language, the ones with a catalog, and a switch. */
     lang: function () {
       return lang;
