@@ -583,6 +583,8 @@
     "ag.stillStopping": "{id} はまだ停止中です",
     "ag.resumedFresh": "{id}: まだ再開するものがないため、新しく開始しました",
     "ag.inactive": "プロジェクト {ws} はアクティブではありません",
+    "ag.otherTabs": "他のプロジェクトのタブ {n} 件を非表示",
+    "ag.showAllActive": "すべてのアクティブで表示",
     "ag.switchWs": "{ws} に切り替え",
     "ag.unknownWs": "（その名前のプロジェクトはありません）",
     "ag.resumed": "エージェント {id} を再開しました",

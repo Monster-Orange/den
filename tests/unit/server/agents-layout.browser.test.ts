@@ -640,12 +640,13 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     60_000,
   );
 
-  it("0.4.44: the list, the bar and the input all name the tab in front, never ?ws='s project", async () => {
+  it("0.4.44: the list, the bar and the input all name the tab in front", async () => {
     if (skip()) return;
-    // ?ws=north, with a south agent's tab open too: a message once went to
-    // the tab in front while the list marked the URL's project's agent.
+    // All active, a north and a south agent's tab open: a message once went
+    // to the tab in front while the list marked another project's agent.
+    // (#80: a project's own view no longer holds another project's tab.)
     const p = await page(
-      `/agents?layout=tabs&ws=north&open=${sid.planner},${sid.builder}`,
+      `/agents?layout=tabs&open=${sid.planner},${sid.builder}`,
     );
     await termsUp(p, 1);
     const front = async () => ({
@@ -685,8 +686,9 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     expect((await front()).marked).toEqual([sid.planner]);
     // The input's line has the project's colour, a different one per project.
     const hue = (id: string) =>
-      p.$eval(`#agr .pane[data-id="${sid[id]}"] .agto`, (e) =>
-        getComputedStyle(e).borderLeftColor,
+      p.$eval(
+        `#agr .pane[data-id="${sid[id]}"] .agto`,
+        (e) => getComputedStyle(e).borderLeftColor,
       );
     expect(await hue("planner")).not.toBe(await hue("builder"));
     await p.context().close();
@@ -698,9 +700,13 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     if (skip() || !SHOTS) return;
     try {
       for (const lang of ["en", "ja", "es"] as const) {
-        expect(await s!.settings({ language: lang === "en" ? null : lang })).toBe(200);
+        expect(
+          await s!.settings({ language: lang === "en" ? null : lang }),
+        ).toBe(200);
         // es once, at 390 in light: the longest words, on a phone.
-        for (const scheme of lang === "es" ? (["light"] as const) : (["light", "dark"] as const))
+        for (const scheme of lang === "es"
+          ? (["light"] as const)
+          : (["light", "dark"] as const))
           for (const width of lang === "es" ? [390] : [1440, 390]) {
             const ctx = await browser!.newContext({
               viewport: { width, height: width > 400 ? 900 : 844 },
@@ -719,7 +725,9 @@ describe("the Agents tab's layouts (AG-4b)", () => {
             await p.goto(
               `${s!.base}/agents?layout=tabs&ws=north&open=${sid.planner},${sid.builder}`,
             );
-            await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
+            await p.waitForSelector("#agl:not([aria-busy]) .agr", {
+              timeout: 20_000,
+            });
             await termsUp(p, 1);
             for (const id of ["planner", "builder"]) {
               await p.click(`#agr [role="tab"][data-id="${sid[id]}"]`);
@@ -730,9 +738,9 @@ describe("the Agents tab's layouts (AG-4b)", () => {
               if (width < 400) {
                 // Narrow: the tabs, the bar and the To line, scrolled into sight.
                 await p.evaluate(() => {
-                  const to = [...document.querySelectorAll("#agr .pane .agto")].find(
-                    (x) => (x as HTMLElement).offsetWidth > 0,
-                  );
+                  const to = [
+                    ...document.querySelectorAll("#agr .pane .agto"),
+                  ].find((x) => (x as HTMLElement).offsetWidth > 0);
                   to?.scrollIntoView({ block: "end" });
                 });
                 await shot(p, `front-${id}-${width}-${scheme}-${lang}-to`);
@@ -753,23 +761,29 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       width: 900,
     });
     await termsUp(p, 1);
-    const cut = await p.$eval(`#agr [role="tab"][data-id="${sid.planner}"]`, (tab) => {
-      const tn = tab.querySelector(".tn") as HTMLElement;
-      const tm = tab.querySelector(".tm") as HTMLElement;
-      tm.textContent = "a-very-long-persona-name · a-very-long-project-name-indeed";
-      return {
-        name: tn.scrollWidth <= tn.clientWidth,
-        meta: tm.scrollWidth > tm.clientWidth,
-      };
-    });
+    const cut = await p.$eval(
+      `#agr [role="tab"][data-id="${sid.planner}"]`,
+      (tab) => {
+        const tn = tab.querySelector(".tn") as HTMLElement;
+        const tm = tab.querySelector(".tm") as HTMLElement;
+        tm.textContent =
+          "a-very-long-persona-name · a-very-long-project-name-indeed";
+        return {
+          name: tn.scrollWidth <= tn.clientWidth,
+          meta: tm.scrollWidth > tm.clientWidth,
+        };
+      },
+    );
     expect(cut).toEqual({ name: true, meta: true });
     await p.context().close();
   }, 60_000);
 
-  it("0.4.44: at 390 the bar keeps \"agent · project\" whole and shows the project once; at 1440 both", async () => {
+  it('0.4.44: at 390 the bar keeps "agent · project" whole and shows the project once; at 1440 both', async () => {
     if (skip()) return;
     const look = async (width: number) => {
-      const p = await page(`/agents?layout=tabs&ws=south&open=${sid.builder}`, { width });
+      const p = await page(`/agents?layout=tabs&ws=south&open=${sid.builder}`, {
+        width,
+      });
       await termsUp(p, 1);
       const r = await p.$eval("#agr .pane:not([hidden]) .bar2", (bar) => {
         const wsn = bar.querySelector(".where .wsn") as HTMLElement | null;
@@ -785,7 +799,11 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       return r;
     };
     const narrow = await look(390);
-    expect(narrow).toMatchObject({ project: "south", whole: true, beside: false });
+    expect(narrow).toMatchObject({
+      project: "south",
+      whole: true,
+      beside: false,
+    });
     expect(narrow.where).toMatch(/^south · /);
     const wide = await look(1440);
     expect(wide).toMatchObject({ project: "south", whole: true, beside: true });

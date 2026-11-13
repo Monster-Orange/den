@@ -192,6 +192,9 @@ const st = {
   // does; a link that opens the page only puts the keyboard there).
   claimOnOpen: false,
   keyPane: null,
+  // #80: ?open= ids of other projects' sessions, left out of this
+  // project's tabs (one line offers them in All active).
+  hiddenOpen: [],
   // AG-4b: where a path link opens (Settings editor_open).
   editorOpen: "none",
 };
@@ -243,7 +246,13 @@ function rememberedOpen() {
 
 function writeUrl() {
   try {
-    localStorage.setItem(OPEN_KEY, st.open.join(","));
+    // #80: the browser's tabs, every project's: a project's view only
+    // leaves the others out (st.hiddenOpen), so a Terminal link brings
+    // them back in All active.
+    localStorage.setItem(
+      OPEN_KEY,
+      [...new Set([...st.hiddenOpen, ...st.open])].join(","),
+    );
   } catch {
     /* none: the URL alone */
   }
@@ -771,7 +780,6 @@ function paintList() {
     ...new Set([
       ...(st.data.sessions.some((s) => s.server) ? [SERVER_WS] : []),
       ...viewWorkspaces(),
-      ...openWorkspaces(),
       ...orphans.map((s) => s.workspace),
     ]),
   ];
@@ -786,6 +794,17 @@ function paintList() {
           }),
         ) +
         `</div>`,
+    );
+  // #80: tabs ?open= named from other projects, left out of this view.
+  if (st.hiddenOpen.length)
+    notes.push(
+      `<div class="agnote" data-note="other-tabs" role="status">` +
+        esc(
+          t("ag.otherTabs", {
+            n: st.hiddenOpen.length,
+          }),
+        ) +
+        ` · <button type="button" class="lnk" data-act="show-all">${esc(t("ag.showAllActive"))}</button></div>`,
     );
   // ?ws= names a workspace that isn't active: say so, and offer the switch.
   const asked = st.data.requested;
@@ -881,23 +900,71 @@ function stoppedGroupHtml(rows) {
 }
 
 /**
- * 0.4.44: the workspaces of the open tabs, so the list always has the
- * session in front (a message once went to a tab whose row ?ws= hid).
+ * #80: whether session `s` belongs in this view: the view's projects, the
+ * server agent (it spans projects) and an agent whose project was deleted
+ * (D71). 0.4.44 added the open tabs' projects too, which mixed another
+ * project's agents into a project's list; a tab from another project is
+ * now left out instead (hideOtherProjects), so the list always has the
+ * session in front.
  */
-function openWorkspaces() {
-  const ws = st.open
-    .map((id) => (st.data?.sessions ?? []).find((s) => s.id === id)?.workspace)
-    .filter(Boolean);
-  return [...new Set(ws)];
+function inView(s) {
+  if (!s) return false;
+  if (s.server || s.workspace === SERVER_WS || s.orphan) return true;
+  return viewWorkspaces().includes(s.workspace);
 }
 
 function visibleRows() {
-  const shown = new Set([...viewWorkspaces(), ...openWorkspaces()]);
-  shown.add(SERVER_WS);
-  // D71: an agent whose workspace was deleted shows in every view.
-  return (st.data?.sessions ?? []).filter(
-    (s) => shown.has(s.workspace) || s.orphan,
+  return (st.data?.sessions ?? []).filter(inView);
+}
+
+/**
+ * #80: the open panes of sessions outside this view leave the tabs (and
+ * ?open=), kept in st.hiddenOpen for "Show in All active".
+ */
+function hideOtherProjects() {
+  if (!st.data) return;
+  const out = st.open.filter((id) => {
+    const r = rowOf(id);
+    return r && !inView(r);
+  });
+  if (!out.length) return;
+  st.hiddenOpen = [...new Set([...st.hiddenOpen, ...out])];
+  for (const id of out)
+    if (st.panes.has(id)) closePane(id, { quiet: true });
+    else st.open = st.open.filter((x) => x !== id);
+  writeUrl();
+}
+
+/** #80: All active, with the hidden tabs back. */
+async function showAllActive() {
+  try {
+    await window.denShell?.api?.("POST", "/api/scope", { scope: "all" });
+  } catch {
+    /* the link below still shows every project for this page */
+  }
+  const u = new URL(location.href);
+  u.searchParams.delete("ws");
+  u.searchParams.delete("project");
+  u.searchParams.set(
+    "open",
+    [...new Set([...st.open, ...st.hiddenOpen])].join(","),
   );
+  location.assign(
+    u.pathname + "?" + u.searchParams.toString().replace(/%2C/gi, ","),
+  );
+}
+
+/**
+ * #80: opening another project's session from elsewhere (a link, ⌘K, a
+ * bell item) switches this page to that project first.
+ */
+async function switchToProjectOf(r) {
+  if (!r || inView(r)) return;
+  const u = new URL(location.href);
+  u.searchParams.delete("project");
+  u.searchParams.set("ws", r.workspace);
+  history.replaceState(history.state, "", u.pathname + u.search);
+  await refresh();
 }
 
 /**
@@ -996,6 +1063,7 @@ async function refresh() {
     ),
   });
   st.scopeLabel = scopeLabelFor(viewWorkspaces());
+  hideOtherProjects();
   paintList();
   paintSub();
   for (const p of st.panes.values()) {
@@ -4343,6 +4411,7 @@ export async function mountAgentsPage(root) {
       if (which === "resume-all") return void resumeAll(act);
       if (which === "review") return review();
       if (which === "switch-ws") return void switchWorkspace(act);
+      if (which === "show-all") return void showAllActive();
       const agent = act.closest(".agst")?.dataset.agent;
       const ws = act.closest(".agst")?.dataset.ws;
       const r = visibleRows().find(
@@ -4593,8 +4662,14 @@ export async function mountAgentsPage(root) {
   // dropped from the URL rather than opened onto a refusal.
   if (!st.signedOut && st.data?.io?.allowed !== false)
     for (const id of wanted) {
+      // #80: another project's session stays out of this view's tabs.
+      if (st.data && rowOf(id) && !inView(rowOf(id))) {
+        if (!st.hiddenOpen.includes(id)) st.hiddenOpen.push(id);
+        continue;
+      }
       if (!st.data || rowOf(id)) await openPane(id);
     }
+  if (st.hiddenOpen.length) paintList();
   // D58: a link to an agent (⌘K, another page's Open) puts the keyboard in
   // its terminal. Never its size: that is the person's typing (D54).
   const front = st.cur && st.open.includes(st.cur) ? st.cur : st.open.at(-1);
@@ -4633,6 +4708,8 @@ async function openTerminal(asked = "") {
     );
     window.denShell?.toast?.(t("ag.term.started", { w: ws }));
     await refresh();
+    // #80: a shell in another project: this page switches to it first.
+    if (r?.session?.id) await switchToProjectOf(rowOf(r.session.id));
     if (r?.session?.id) await openPane(r.session.id);
   } catch (err) {
     window.denShell?.toast?.(
@@ -4648,10 +4725,16 @@ async function openTerminal(asked = "") {
  * The link is used once: the URL keeps ?open= and ?ws=, not ?agent=.
  */
 async function openLinkedAgent(agent, ws) {
-  const r = visibleRows().find(
-    (x) =>
-      x.kind === "agent" && x.agent === agent && (!ws || x.workspace === ws),
-  );
+  // #80: in this view, else in any project (and then switch to it).
+  const all = st.data?.sessions ?? [];
+  const named = (x) => x.kind === "agent" && x.agent === agent;
+  let r =
+    visibleRows().find((x) => named(x) && (!ws || x.workspace === ws)) ??
+    all.find(named);
+  if (r && !inView(r)) {
+    await switchToProjectOf(r);
+    r = visibleRows().find((x) => x.id === r.id) ?? r;
+  }
   if (!r) {
     window.denShell?.toast?.(
       t("ag.link.none", { id: ws ? `${ws} / ${agent}` : agent }),
