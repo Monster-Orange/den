@@ -39,6 +39,7 @@ import { eventsFile } from "../../shared/dev-metrics/emit.js";
 import { pollingWarnings } from "../../shared/dev-metrics/polling.js";
 import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
+import { edgeAccessWarnings } from "../../shared/edge/access-sweep.js";
 import { edgeTlsWarnings, tlsStrategyFor } from "../../shared/edge/tls.js";
 import {
   describeOpTokenSource,
@@ -145,7 +146,7 @@ const SELECTORS: Record<string, Selector> = {
         available: d.available,
         reason: d.reason,
         problem: !d.available,
-        warnings: edgeTlsWarnings(cfg),
+        warnings: [...edgeTlsWarnings(cfg), ...edgeAccessWarnings(cfg)],
       };
     } catch (err) {
       return {

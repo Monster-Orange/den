@@ -144,6 +144,11 @@ describe("edgeStatus", () => {
       certIssuedByDen: true,
       certIssued: true,
       caTrusted: true,
+      accessLog: {
+        enabled: false,
+        log: "/nonexistent/edge-state/edge-access.log",
+        warnings: [],
+      },
       https: {
         strategy: "mkcert",
         certs: "den",

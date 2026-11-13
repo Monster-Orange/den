@@ -130,6 +130,12 @@ export async function cmdEdge(args: string[]): Promise<void> {
       console.log(
         `  https      ${st.https.serving === null ? "not probed" : st.https.serving ? "serving" : "NOT serving"} — ${st.https.detail}`,
       );
+      // #63: the masked access log, and whether Den is keeping up with it.
+      console.log(
+        `  access log ${st.accessLog.enabled ? `on — masked into ${st.accessLog.log}` : "off (edge.access_log)"}`,
+      );
+      for (const w of st.accessLog.warnings)
+        console.log(chalk.yellow(`  ⚠  ${w}`));
       return;
     }
     default:

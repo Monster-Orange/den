@@ -214,6 +214,23 @@ describe("R26a: a failed page request gets the shell frame", () => {
       `✗ GET /_den/throw failed (req ${String(d.requestId)}): Error: a debug route threw`,
     );
   });
+
+  it("#63: through the edge, the request id is the edge's trace id", async () => {
+    const trace = "4bf92f3577b34da6a3ce929d0e0e4736";
+    const r = await s!.req("GET", "/_den/throw", {
+      headers: { ...HTML, traceparent: `00-${trace}-00f067aa0ba902b7-01` },
+    });
+    expect(r.status).toBe(500);
+    expect(r.headers["x-request-id"]).toBe(trace);
+    expect(errorData(r).requestId).toBe(trace);
+    await new Promise((res) => setTimeout(res, 100));
+    expect(s!.log()).toContain(`✗ GET /_den/throw failed (req ${trace})`);
+    // Not a valid traceparent: a short id of Den's own.
+    const bad = await s!.req("GET", "/_den/throw", {
+      headers: { ...HTML, traceparent: "nope" },
+    });
+    expect(bad.headers["x-request-id"]).toMatch(/^[0-9a-f]{8}$/);
+  });
 });
 
 describe("MD-2: the engine on disk is newer than the one running", () => {

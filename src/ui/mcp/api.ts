@@ -90,7 +90,7 @@ export class DenHttpError extends Error {
  * An error body as a line: the server's R26b JSON ({ ok: false, error,
  * code, requestId }) as its message and request id, anything else as is.
  */
-export function errorText(body: string): string {
+export function errorText(body: string, requestId?: string | null): string {
   try {
     const j = JSON.parse(body) as {
       error?: unknown;
@@ -100,12 +100,15 @@ export function errorText(body: string): string {
     if (j && typeof j.error === "string")
       return (
         j.error +
-        (typeof j.requestId === "string" ? ` (request ${j.requestId})` : "")
+        (typeof j.requestId === "string" ? ` (request id ${j.requestId})` : "")
       );
   } catch {
     /* not JSON */
   }
-  return body;
+  // #63: the id from the response header, so the log line can be found.
+  return requestId && !body.includes(requestId)
+    ? `${body} (request id ${requestId})`
+    : body;
 }
 
 /** Read routes: GET only. */
@@ -348,7 +351,10 @@ export function createDenApi(opts: {
           method,
           path,
           res.status,
-          errorText((await res.text()).slice(0, 2000)),
+          errorText(
+            (await res.text()).slice(0, 2000),
+            res.headers.get("x-request-id"),
+          ),
         );
       }
       return res;

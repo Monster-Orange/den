@@ -27,19 +27,10 @@ import {
   renderEdgeDynamic,
 } from "../../../src/shared/edge/render.js";
 import type { EdgeConfig } from "../../../src/shared/edge/types.js";
+import { dockerOk, freePort } from "./helpers/docker-edge.js";
 
 const IDLE_CLOSE_MS = 1500;
 const NAME = `den-test-edge-idle-${process.pid}-${crypto.randomBytes(3).toString("hex")}`;
-
-function dockerOk(): boolean {
-  if (process.env.DEN_SKIP_DOCKER_TESTS === "1") return false;
-  try {
-    execFileSync("docker", ["info"], { stdio: "ignore", timeout: 15_000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 let ok = false;
 let upstream: net.Server | null = null;
@@ -85,14 +76,6 @@ function startUpstream(): Promise<number> {
       r((upstream!.address() as AddressInfo).port),
     ),
   );
-}
-
-async function freePort(): Promise<number> {
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
-  const p = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  return p;
 }
 
 /** A POST to the route; fetch can't set Host, so plain http (no agent reuse). */

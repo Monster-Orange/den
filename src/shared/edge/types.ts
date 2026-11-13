@@ -15,6 +15,8 @@ export interface EdgePorts {
   https: number;
 }
 
+import type { AccessLogConfig } from "./access-log.js";
+
 export type EdgeTls =
   | { strategy: "none" }
   | { strategy: "mkcert"; ca: string | null }
@@ -92,4 +94,9 @@ export interface EdgeConfig {
    * upstream has just closed (a 502 with no retry).
    */
   upstreamIdleSeconds?: number;
+  /**
+   * `edge.access_log` (#63, off by default): Traefik's access log, masked
+   * by Den into `edge-access.log` before it is kept.
+   */
+  accessLog?: AccessLogConfig;
 }

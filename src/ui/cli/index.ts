@@ -5085,6 +5085,10 @@ class DenCLI {
           if (edge.tlsFrom !== "implicit") warn(w);
         const d = tlsStrategyFor(edge).detect();
         if (!d.available) warn(`edge.tls ${edge.tls.strategy}: ${d.reason}`);
+        // #63: Traefik's own unmasked log, or Den not sweeping its raw file.
+        const { edgeAccessWarnings } =
+          await import("../../shared/edge/access-sweep.js");
+        for (const w of edgeAccessWarnings(edge)) warn(w);
       }
     }
     // The web keys: a wrong value would stop `web up`; one read and

@@ -3,6 +3,7 @@
  * it; the web server serves it at /api/edge (and through it the MCP
  * `edge_status` tool).
  */
+import { accessPaths, edgeAccessWarnings } from "./access-sweep.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as tls from "tls";
@@ -69,6 +70,12 @@ export interface EdgeStatus {
   stacks: IncludedRouters["routers"];
   /** Stack route files that could not be parsed (listed, never fatal). */
   stackErrors: IncludedRouters["errors"];
+  /**
+   * #63: whether the masked access log is on, where Den keeps it, and
+   * warnings (an unmasked `--accesslog` in edge.args; the raw file not
+   * being swept).
+   */
+  accessLog: { enabled: boolean; log: string; warnings: string[] };
 }
 
 export interface EdgeHttps {
@@ -180,6 +187,11 @@ export function edgeStatus(
     includedErrors: inc.errors,
     stacks: stk.routers,
     stackErrors: stk.errors,
+    accessLog: {
+      enabled: cfg.accessLog?.enabled === true,
+      log: accessPaths(cfg.stateDir).log,
+      warnings: edgeAccessWarnings(cfg),
+    },
   };
 }
 

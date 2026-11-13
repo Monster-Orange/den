@@ -32,6 +32,8 @@
  *     proxy_protocol:               # a TCP-passthrough front proxy that
  *       trusted_ips: [172.18.0.5]   # sends the PROXY protocol (SEC-2a)
  *     upstream_idle_seconds: 1      # idle upstream connections kept (#67)
+ *     access_log: true              # or { mask_query, mask_paths, max_mb }:
+ *                                   # masked into edge-access.log (#63)
  *   web:
  *     port: 7777             # the web UI; routed as `<brand name>`
  */
@@ -48,6 +50,7 @@ import { readManifestStacks } from "../stacks/config.js";
 import { getActiveWorkspaces } from "../environment-manager/workspaces.js";
 import { assertDomain } from "./render.js";
 import { tlsStrategyIds } from "./tls.js";
+import { readAccessLogConfig } from "./access-log.js";
 import type { EdgeConfig, EdgeTls } from "./types.js";
 
 import { product } from "../product.js";
@@ -75,6 +78,7 @@ interface RawEdge {
   args?: string[];
   proxy_protocol?: { trusted_ips?: unknown } | null;
   upstream_idle_seconds?: unknown;
+  access_log?: unknown;
 }
 
 function readYaml(file: string): Record<string, unknown> {
@@ -379,6 +383,7 @@ function computeEdgeConfig(root: string): EdgeConfig {
     upstreamIdleSeconds: upstreamIdle(
       user.upstream_idle_seconds ?? team.upstream_idle_seconds,
     ),
+    accessLog: readAccessLogConfig(user.access_log ?? team.access_log),
   };
 }
 

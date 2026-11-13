@@ -298,7 +298,31 @@ export function edgeCommand(cfg: EdgeConfig): string[] {
     "--api.dashboard=true",
     "--ping=true",
     "--log.level=WARN",
+    ...accessLogArgs(cfg),
     ...cfg.args.filter((a) => !OWNED_ARG.test(a)),
+  ];
+}
+
+/** Where Traefik writes its raw access log, in the container (#63). */
+export const EDGE_ACCESS_DIR = "/var/log/edge";
+export const EDGE_ACCESS_RAW = `${EDGE_ACCESS_DIR}/access.json`;
+
+/**
+ * `edge.access_log` (#63): Traefik's JSON access log into the raw file Den
+ * masks, and tracing so each line (and the upstream, in `traceparent`)
+ * has the request id. The OTLP exporter points at a closed local port:
+ * the trace ids are wanted, the spans are not.
+ */
+export function accessLogArgs(cfg: EdgeConfig): string[] {
+  if (!cfg.accessLog?.enabled) return [];
+  return [
+    "--accesslog=true",
+    "--accesslog.format=json",
+    `--accesslog.filepath=${EDGE_ACCESS_RAW}`,
+    "--accesslog.bufferingsize=0",
+    "--tracing=true",
+    "--tracing.otlp=true",
+    "--tracing.otlp.http.endpoint=http://127.0.0.1:1/v1/traces",
   ];
 }
 
@@ -368,6 +392,7 @@ export function renderEdgeCompose(
         ...Object.entries(cfg.mounts)
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([host, target]) => `${host}:${target}:ro`),
+        ...(cfg.accessLog?.enabled ? [`./access:${EDGE_ACCESS_DIR}`] : []),
       ],
       networks: edgeNets,
     },

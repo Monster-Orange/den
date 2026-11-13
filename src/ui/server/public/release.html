@@ -1458,7 +1458,7 @@
         } catch (e) {
           if (e.denApi && !e.network) {
             appendLine(
-              e.message + (e.requestId ? ` (request ${e.requestId})` : ""),
+              e.message + (e.requestId ? ` (request id ${e.requestId})` : ""),
               "err",
             );
             runs().finish(REQUEST_RUN, { ok: false });

@@ -1992,6 +1992,23 @@ user, and the CLI does that for you:
   upstream has just closed: that was an intermittent 502. It is in the
   dynamic config, so a running edge picks it up with no restart.
 
+- **A masked access log** (#63, off by default). `edge.access_log: true`
+  (or a map: `mask_query`, `mask_paths`, `max_mb`) has the edge log every
+  request as JSON to a raw file Den makes (`<edge state>/access/access.json`,
+  0600, in a 0700 dir). Den's server masks each line into
+  `<edge state>/edge-access.log` (0600, rotated past `max_mb`, default 20)
+  every second and empties the raw file. Masked always: the query keys
+  `token`, `code`, `key`, `secret`, `password` and the path `/auth/link/*`;
+  the lists add to those. Only the request's fields are kept, never its
+  headers. Each line has `request_id`: the trace id the edge also sends
+  the service in `traceparent`, and the id Den's own log, error pages and
+  MCP error text show as "request id". A 502 the edge made itself says
+  why. The server sweeps a leftover raw file first when it starts; doctor
+  and `edge status` warn when unmasked lines are more than 10 s old or
+  more than 16 KB. An `edge.args` `--accesslog` logs past the masking:
+  doctor warns, use `edge.access_log`. Not a named pipe: Traefik would
+  block every request on a full pipe while Den's server is down.
+
 - **`edge up` recreates the edge when its command changed.** It compares
   the running edge's command with the one it renders and says why ("acme-edge's
   settings changed (forwarded-header trust): recreating it once. Routes

@@ -917,7 +917,19 @@ import {
   isLifecycleExecCmd,
   streamLifecycleExec,
 } from "./lifecycle-exec.js";
-import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
+import {
+  hasEdgeBlock,
+  readEdgeConfig,
+  readWebPort,
+} from "../../shared/edge/config.js";
+import {
+  readAccessLogConfig,
+  requestIdOf as traceRequestId,
+} from "../../shared/edge/access-log.js";
+import { sweepAccessLog } from "../../shared/edge/access-sweep.js";
+
+/** #63: how often the edge's raw access log is masked and emptied. */
+const EDGE_ACCESS_SWEEP_MS = 1000;
 import {
   edgeHttps,
   edgeNames,
@@ -1743,7 +1755,7 @@ function sendGuardRefusal(
       requestId,
     });
   res.writeHead(refusal.status, { "Content-Type": "text/plain" });
-  res.end(`${refusal.error} (${refusal.code}, request ${requestId})`);
+  res.end(`${refusal.error} (${refusal.code}, request id ${requestId})`);
 }
 
 /**
@@ -5562,12 +5574,16 @@ function sendNotFound(
   res.end("Not found");
 }
 
-/** The request's id: assigned once (the handler and its catch share it). */
+/**
+ * The request's id: assigned once (the handler and its catch share it).
+ * Through the edge it is the trace id in `traceparent` (#63), the one the
+ * edge's access log has, so one id finds both lines; else a short one.
+ */
 const REQUEST_IDS = new WeakMap<http.IncomingMessage, string>();
 function requestIdOf(req: http.IncomingMessage): string {
   let id = REQUEST_IDS.get(req);
   if (!id) {
-    id = newRequestId();
+    id = traceRequestId(req.headers.traceparent) ?? newRequestId();
     REQUEST_IDS.set(req, id);
   }
   return id;
@@ -5614,7 +5630,7 @@ const server = http.createServer((req, res) => {
           return;
         }
         res.writeHead(CONFIG_ERROR_STATUS, { "Content-Type": "text/plain" });
-        res.end(`${err.message} (request ${requestId})`);
+        res.end(`${err.message} (request id ${requestId})`);
       } catch {
         /* socket already gone */
       }
@@ -5653,7 +5669,7 @@ const server = http.createServer((req, res) => {
         return;
       }
       res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end(`internal server error (request ${requestId})`);
+      res.end(`Den hit an error (request id ${requestId})`);
     } catch {
       /* socket already gone */
     }
@@ -5769,6 +5785,29 @@ const prunedSnapshots = pruneDeadSnapshots();
 if (prunedSnapshots > 0) {
   serverLog(`Pruned ${prunedSnapshots} orphaned log-history snapshot(s)`);
 }
+
+// #63: the edge's raw access log holds unmasked one-time tokens until Den
+// masks it into edge-access.log. Swept first at startup (lines left while
+// the server was down), then every second. Also swept when the access log
+// was turned off since: a leftover raw file is still masked, never kept.
+function sweepEdgeAccess(): void {
+  try {
+    if (!hasEdgeBlock()) return;
+    const cfg = readEdgeConfig();
+    const r = sweepAccessLog(
+      cfg.stateDir,
+      cfg.accessLog ?? readAccessLogConfig(undefined),
+    );
+    if (r.dropped)
+      serverLog(
+        `Edge access log: dropped ${r.dropped} line(s) that weren't the edge's`,
+      );
+  } catch (e) {
+    serverLog(`Edge access log sweep failed: ${(e as Error).message}`);
+  }
+}
+sweepEdgeAccess();
+setInterval(sweepEdgeAccess, EDGE_ACCESS_SWEEP_MS).unref();
 
 // Cap service logs. Long-lived daemons never respawn (a localstack tail reached
 // 8.6 GB), so the spawn-time check alone is not enough — sweep on startup and

@@ -2,6 +2,7 @@
  * Side effects for the edge: docker, files, and the TLS strategy's (tls.ts).
  * Thin on purpose — every routing decision lives in render.ts.
  */
+import { prepareAccessRaw } from "./access-sweep.js";
 import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
@@ -311,6 +312,8 @@ export async function edgeUp(
       throw new Error(`edge.mounts: ${host} does not exist on this machine`);
   const certs = ensureCerts(cfg);
   const included = syncIncluded(cfg);
+  // #63: Den makes the raw access file (0600) so Traefik never does.
+  if (cfg.accessLog?.enabled) prepareAccessRaw(cfg.stateDir);
   write(path.join(cfg.stateDir, "dynamic", GENERATED), renderEdgeDynamic(cfg));
   const compose = path.join(cfg.stateDir, "compose.yml");
   // SEC-2a: say what changed before compose recreates the edge for it.
