@@ -31,14 +31,22 @@ const nap = async () => {};
 describe("stopSession", () => {
   it("a shell that ends on HUP: stopped, no KILL", async () => {
     const h = fakeHost({ knowsHup: true, endsOn: ["HUP"] });
-    expect(await stopSession(h.c, "s1", 50, nap)).toBe("stopped");
+    const first: string[] = [];
+    expect(
+      await stopSession(h.c, "s1", 50, nap, (sig) => first.push(sig)),
+    ).toBe("stopped");
     expect(h.sent).toEqual(["HUP"]);
+    expect(first).toEqual(["HUP"]);
   });
 
   it("a host from before 0.4.40 refuses HUP: TERM, then KILL after the grace", async () => {
     const h = fakeHost({ knowsHup: false, endsOn: ["KILL"] });
-    expect(await stopSession(h.c, "s1", 20, nap)).toBe("killed");
+    const first: string[] = [];
+    expect(
+      await stopSession(h.c, "s1", 20, nap, (sig) => first.push(sig)),
+    ).toBe("killed");
     expect(h.sent).toEqual(["TERM", "KILL"]);
+    expect(first).toEqual(["TERM"]);
   });
 
   it("an older host, a process that ends on TERM: stopped", async () => {

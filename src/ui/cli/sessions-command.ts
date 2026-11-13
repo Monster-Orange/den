@@ -630,10 +630,22 @@ async function kill(args: string[], d: Resolved): Promise<number> {
     try {
       if (sig === null) {
         // As closing its terminal does: HUP, then KILL if it ignores it.
-        const r = await stopSession(c, s.ref.id, grace * 1000);
+        const first: { sig: "HUP" | "TERM" } = { sig: "HUP" };
+        const r = await stopSession(
+          c,
+          s.ref.id,
+          grace * 1000,
+          undefined,
+          (sig) => (first.sig = sig),
+        );
+        // An older host can't send HUP: say what went (the 0.4.40 gate).
+        const ignored =
+          first.sig === "TERM"
+            ? `ignored TERM for ${grace} s (this host can't send HUP)`
+            : `ignored HUP for ${grace} s`;
         d.out(
           r === "killed"
-            ? `${s.name} ignored HUP for ${grace} s: sent KILL (pid ${s.pid})`
+            ? `${s.name} ${ignored}: sent KILL (pid ${s.pid})`
             : `stopped ${s.name} (pid ${s.pid})`,
         );
         return 0;

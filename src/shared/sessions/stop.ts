@@ -18,15 +18,19 @@ export async function stopSession(
   graceMs: number,
   sleep: (ms: number) => Promise<void> = (ms) =>
     new Promise((r) => setTimeout(r, ms)),
+  /** Told which signal went first: HUP, or TERM on an older host. */
+  onSent?: (signal: "HUP" | "TERM") => void,
 ): Promise<StopResult> {
   const running = async () =>
     (await c.list()).some((s) => s.ref.id === id && !s.exited);
   if (!(await running())) return "gone";
   try {
     await c.kill(id, "HUP");
+    onSent?.("HUP");
   } catch (e) {
     if (!(e instanceof HostError && e.code === "bad-request")) throw e;
     await c.kill(id, "TERM");
+    onSent?.("TERM");
   }
   const end = Date.now() + graceMs;
   while (Date.now() < end) {
