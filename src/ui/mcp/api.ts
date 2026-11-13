@@ -133,6 +133,8 @@ const READ_ROUTES = new Set([
   "/api/onboard/status",
   "/api/onboard/repos",
   "/api/onboard/manifest",
+  // NT (MCP notifications_list): the bell, read as the agent sees it.
+  "/api/notifications",
 ]);
 
 /** Action routes and their method. Anything else is never reached. */
@@ -144,6 +146,8 @@ const ACTION_ROUTES: Record<string, string> = {
   "/api/workspace/sync": "POST",
   // ON-3's writes: asks the person to allow one (held; nothing runs here).
   "/api/approvals": "POST",
+  // NT-1 (MCP ask_human): the agent's own waiting mark, nothing more.
+  "/api/agents/self/attention": "POST",
 };
 
 /**

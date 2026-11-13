@@ -6,9 +6,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  AskLimit,
   groupNotifications,
   MAX_NOTIFICATIONS,
   NotificationStore,
+  readNotificationConfig,
 } from "../../../src/shared/notifications";
 
 let dir = "";
@@ -142,5 +144,36 @@ describe("the bell's groups", () => {
       "agent:c",
       "agent:a",
     ]);
+  });
+});
+
+describe("ask_human's limit", () => {
+  it("notifications.asks_per_hour: 30 by default; user.yml over the org's; a bad value names its key", () => {
+    expect(readNotificationConfig({}, {})).toEqual({ asksPerHour: 30 });
+    expect(
+      readNotificationConfig(
+        { notifications: { asks_per_hour: 10 } },
+        { notifications: { asks_per_hour: 4 } },
+      ),
+    ).toEqual({ asksPerHour: 4 });
+    expect(() =>
+      readNotificationConfig({}, { notifications: { asks_per_hour: 0 } }),
+    ).toThrow("notifications.asks_per_hour");
+    expect(() =>
+      readNotificationConfig({}, { notifications: { asks_per_hour: "x" } }),
+    ).toThrow("notifications.asks_per_hour");
+  });
+
+  it("per agent, in the last hour: the next one is held back until the oldest is an hour old", () => {
+    const l = new AskLimit(() => clock);
+    expect(l.take("a", 2)).toBe(true);
+    tick(60_000);
+    expect(l.take("a", 2)).toBe(true);
+    expect(l.take("a", 2)).toBe(false);
+    // Another agent has its own.
+    expect(l.take("b", 2)).toBe(true);
+    tick(3_600_000 - 60_000);
+    expect(l.take("a", 2)).toBe(true);
+    expect(l.take("a", 2)).toBe(false);
   });
 });

@@ -15,6 +15,7 @@
  */
 import type * as http from "http";
 import {
+  type AskLimit,
   groupNotifications,
   type NotificationStore,
   type Which,
@@ -38,6 +39,8 @@ export const isNotificationPath = (p: string) =>
 export interface NotificationRouteDeps {
   store: NotificationStore;
   attention: Attention;
+  /** ask_human's limit (notifications.asks_per_hour); absent, none. */
+  asks?: { limit: AskLimit; perHour: () => number };
 }
 
 async function jsonBody(
@@ -112,6 +115,24 @@ export async function handleNotificationRoutes(
       return true;
     }
     const id = agent.actor.slice("agent:".length);
+    if (ev === "waiting" && why === "asked" && deps.asks) {
+      let perHour: number;
+      try {
+        perHour = deps.asks.perHour();
+      } catch (err) {
+        refuse(res, 500, "bad_config", (err as Error).message);
+        return true;
+      }
+      if (!deps.asks.limit.take(id, perHour)) {
+        refuse(
+          res,
+          429,
+          "ask_limit",
+          `You asked ${perHour} questions in the last hour (notifications.asks_per_hour). Put the rest in your reply and end your turn.`,
+        );
+        return true;
+      }
+    }
     await deps.attention.event(
       id,
       agent.workspace,

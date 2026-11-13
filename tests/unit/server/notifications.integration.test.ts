@@ -3,6 +3,8 @@
  * waits; the bell has it, grouped by project; the agents list marks it
  * waiting; its output moving clears both; the turn's end is "finished".
  * A person can't say an agent waits; an agent can't change the bell.
+ * ask_human's question is the bell's text; past notifications.asks_per_hour
+ * the next one is held back (429).
  * The demo distribution, the scripted PTY. Invented names only.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
@@ -16,7 +18,10 @@ let s: AgentsPageServer;
 let agentToken = "";
 
 beforeAll(async () => {
-  s = await startAgentsPageServer();
+  // ask_human's limit, low enough to reach.
+  s = await startAgentsPageServer({
+    userYml: "notifications:\n  asks_per_hour: 2\n",
+  });
 }, 60_000);
 afterAll(async () => {
   await s?.stop();
@@ -139,6 +144,41 @@ describe("NT: the bell on the real server", () => {
         )
       ).status,
     ).toBe(400);
+  }, 30_000);
+
+  it("ask_human: the question is in the bell; past the limit, held back", async () => {
+    await call("POST", "/api/notifications/clear", {});
+    const ask = (text: string) =>
+      call(
+        "POST",
+        "/api/agents/self/attention",
+        { event: "waiting", why: "asked", text },
+        "agent",
+      );
+    expect((await ask("Ship the north fix today?")).status).toBe(200);
+    const g = (await call("GET", "/api/notifications")).json.groups as {
+      subjects: { items: { text: string }[] }[];
+    }[];
+    expect(g[0].subjects[0].items[0].text).toMatch(
+      /asked: Ship the north fix today\?$/,
+    );
+    expect((await ask("And the south one?")).status).toBe(200);
+    const held = await ask("A third?");
+    expect(held.status).toBe(429);
+    expect(held.json.code).toBe("ask_limit");
+    // Other signals aren't limited.
+    expect(
+      (
+        await call(
+          "POST",
+          "/api/agents/self/attention",
+          { event: "waiting", why: "input" },
+          "agent",
+        )
+      ).status,
+    ).toBe(200);
+    await call("POST", "/api/notifications/read", { all: true });
+    await call("POST", "/api/notifications/clear", {});
   }, 30_000);
 
   it("muted: nothing new for that agent", async () => {

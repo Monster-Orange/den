@@ -6,13 +6,19 @@
  */
 import crypto from "node:crypto";
 import { readRecord } from "../../shared/agents/records.js";
-import { NotificationStore } from "../../shared/notifications.js";
+import { readDenConfig, readUserConfig } from "../../shared/den-config.js";
+import {
+  AskLimit,
+  NotificationStore,
+  readNotificationConfig,
+} from "../../shared/notifications.js";
 import { getStateDir } from "../../shared/paths.js";
 import { Attention } from "./attention.js";
 
 let store: NotificationStore | null = null;
 let attention: Attention | null = null;
 let timer: NodeJS.Timeout | null = null;
+const askLimit = new AskLimit();
 
 async function outputMark(agent: string): Promise<string | null> {
   const rec = readRecord(getStateDir(), agent);
@@ -37,6 +43,7 @@ async function outputMark(agent: string): Promise<string | null> {
 export function notificationDeps(): {
   store: NotificationStore;
   attention: Attention;
+  asks: { limit: AskLimit; perHour: () => number };
 } {
   store ??= new NotificationStore(getStateDir());
   attention ??= new Attention({
@@ -56,7 +63,16 @@ export function notificationDeps(): {
     }, 2000);
     timer.unref();
   }
-  return { store, attention };
+  return {
+    store,
+    attention,
+    asks: {
+      limit: askLimit,
+      // Read each time: a change to user.yml counts at once.
+      perHour: () =>
+        readNotificationConfig(readDenConfig(), readUserConfig()).asksPerHour,
+    },
+  };
 }
 
 /** NT-3b: the agents the hooks say wait for their person, and why. */

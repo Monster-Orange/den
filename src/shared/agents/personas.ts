@@ -413,6 +413,10 @@ export function rolePrompt(
         `You are agent ${agentId} in project ${workspace}, with the ${persona.id} persona.`,
         `Act on services, logs and tests only through the ${mcpName} MCP server; it serves this project.`,
       ];
+  // NT-1: every runtime that speaks MCP has ask_human.
+  lines.push(
+    "When you need your person's decision, call ask_human with the question, then end your turn: their answer comes as your next input.",
+  );
   if (persona.context.length)
     lines.push(`Read first: ${persona.context.join("; ")}.`);
   const shared = persona.guardrails?.instructions

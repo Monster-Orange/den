@@ -216,6 +216,8 @@ describe("den-claude launch", () => {
     const prompt = out.argv[out.argv.length - 1];
     expect(prompt).toMatch(/agent planner in project north/);
     expect(prompt).toMatch(/docs\/specs/);
+    // NT-1: how it asks its person for a decision.
+    expect(prompt).toMatch(/call ask_human .* then end your turn/);
     expect(out.env).toEqual({});
     expect(Object.keys(out.files ?? {})).toEqual([mcpFile, settingsFile]);
     // SEC-1 §6c.1: Den's state dir is denied to the agent (binds a

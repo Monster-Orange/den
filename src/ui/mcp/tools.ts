@@ -261,6 +261,37 @@ const READ_TOOLS: DenTool[] = [
     },
   ),
   read(
+    "ask_human",
+    "Ask your person",
+    "NT-1: ask your person a question that needs their decision. Den marks you waiting (every list shows it) and puts the question in their bell, unless they are looking at you now. Their answer comes as your next input: end your turn after asking. The mark clears itself when your output moves again. Changes nothing but your own waiting mark. A question is at most 300 characters; too many in an hour are held back (notifications.asks_per_hour).",
+    {
+      question: z
+        .string()
+        .describe("The question, plainly, at most 300 characters"),
+    },
+    async (a, { api }) => {
+      const question = (str(a.question) ?? "").trim();
+      if (!question) throw new Refusal("ask_human: say what you need to ask.");
+      if (question.length > 300)
+        throw new Refusal(
+          "ask_human: a question is at most 300 characters; put the detail in your reply.",
+        );
+      await api.get("/api/agents/self/attention", {}, "POST", {
+        event: "waiting",
+        why: "asked",
+        text: question,
+      });
+      return "Asked. Your person has it in their bell; end your turn, and their answer comes as your next input.";
+    },
+  ),
+  read(
+    "notifications_list",
+    "Your person's bell",
+    "NT: what is in your person's bell now: `unread`, `waiting` (the agents waiting for them, and why), `groups` (by project, then agent, newest first: text, link, at, read) and `mutes`. Reads only: an agent can't mark or clear these.",
+    {},
+    async (_a, { api }) => api.get("/api/notifications"),
+  ),
+  read(
     "approval_check",
     "Check an approval",
     "Where one of your write requests stands (workspace_create, repo_add, service_try): `state` pending, done (with the server's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",

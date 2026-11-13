@@ -282,3 +282,50 @@ export function groupNotifications(
       ),
   }));
 }
+
+/**
+ * notifications.* (the org's den.yml, then user.yml):
+ *   asks_per_hour (default 30, at least 1): how many ask_human questions
+ *   one agent may put in the bell in an hour; the next is held back.
+ * A bad value throws naming its key.
+ */
+export interface NotificationConfig {
+  asksPerHour: number;
+}
+
+export function readNotificationConfig(
+  den: unknown,
+  user: unknown,
+): NotificationConfig {
+  const pick = (c: unknown) =>
+    ((c as { notifications?: { asks_per_hour?: unknown } } | null)
+      ?.notifications ?? {}) as { asks_per_hour?: unknown };
+  const v = pick(user).asks_per_hour ?? pick(den).asks_per_hour;
+  if (v === undefined || v === null) return { asksPerHour: 30 };
+  if (typeof v === "number" && Number.isInteger(v) && v >= 1)
+    return { asksPerHour: v };
+  throw new Error(
+    "notifications.asks_per_hour must be a whole number, at least 1",
+  );
+}
+
+/** ask_human's limit: per agent, the questions of the last hour. */
+export class AskLimit {
+  private readonly asked = new Map<string, number[]>();
+  constructor(private readonly now: () => number = Date.now) {}
+
+  /** True, and counted, when this agent may ask now. */
+  take(agent: string, perHour: number): boolean {
+    const t = this.now();
+    const recent = (this.asked.get(agent) ?? []).filter(
+      (at) => t - at < 3_600_000,
+    );
+    if (recent.length >= perHour) {
+      this.asked.set(agent, recent);
+      return false;
+    }
+    recent.push(t);
+    this.asked.set(agent, recent);
+    return true;
+  }
+}
