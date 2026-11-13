@@ -322,6 +322,8 @@ export class HubCallError extends Error {
     readonly kind: "rejected" | "forbidden" | "refused" | "unreachable",
     message: string,
     readonly code?: string,
+    /** Hub's HTTP status, when it answered one. */
+    readonly status?: number,
   ) {
     super(message);
   }
@@ -412,6 +414,7 @@ async function hubCall(
       "refused",
       `Hub refused it (${res.status}${said ? `: ${said}` : ""})`,
       str(body.error),
+      res.status,
     );
   throw new HubCallError(
     "unreachable",
