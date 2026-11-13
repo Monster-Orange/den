@@ -658,6 +658,7 @@
     "ag.unavailable": "unavailable",
     "ag.go": "Start",
     "ag.starting": "Starting…",
+    "ag.working": "Working…",
     "ag.cancel": "Cancel",
     "ag.started": "Started agent {id}",
     "ag.stopped": "Stopped agent {id}",

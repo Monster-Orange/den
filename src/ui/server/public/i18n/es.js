@@ -543,6 +543,7 @@
     "ag.unavailable": "no disponible",
     "ag.go": "Iniciar",
     "ag.starting": "Iniciando…",
+    "ag.working": "Procesando…",
     "ag.cancel": "Cancelar",
     "ag.started": "Agente {id} iniciado",
     "ag.stopped": "Agente {id} detenido",

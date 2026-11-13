@@ -234,6 +234,20 @@ const TOOLS_PATH = /^\/api\/workspaces\/([^/]+)\/agents\/([^/]+)\/tools$/;
 const RUNTIME_PATH = /^\/api\/agents\/runtimes\/([^/]+)\/path$/;
 const PERSONA_PATH = /^\/api\/personas\/([^/]+)$/;
 const PLAIN_PATH = /^\/api\/workspaces\/([^/]+)\/sessions$/;
+
+/** The double-click fix: agent actions answered once per agent at a time. */
+const ONCE_ACTIONS = new Set([
+  "stop",
+  "resume",
+  "fresh",
+  "relaunch",
+  "restart",
+  "handoff",
+]);
+const inFlightActions = new Map<
+  string,
+  Promise<{ status: number; body: string }>
+>();
 const CONVERSATIONS_PATH =
   /^\/api\/workspaces\/([^/]+)\/conversations(?:\/([^/]+)\/import)?$/;
 /** A start's body: a few names, commands and a first instruction. */
@@ -645,6 +659,37 @@ export async function handleAgentRoutes(
     | "restart"
     | "file"
     | undefined;
+
+  // The double-click fix: the same start, resume, fresh, relaunch,
+  // restart or stop of one agent while the first is still running gets
+  // the first one's answer; it never runs twice.
+  if (method === "POST" && id && action && ONCE_ACTIONS.has(action)) {
+    const key = `${ws}\0${id}\0${action}`;
+    const first = inFlightActions.get(key);
+    if (first) {
+      const r = await first;
+      sendJson(res, JSON.parse(r.body || "{}"), r.status);
+      return true;
+    }
+    let settle!: (r: { status: number; body: string }) => void;
+    inFlightActions.set(key, new Promise((r) => (settle = r)));
+    const end = res.end.bind(res) as (...a: unknown[]) => http.ServerResponse;
+    let done = false;
+    const finish = (body: string) => {
+      if (done) return;
+      done = true;
+      inFlightActions.delete(key);
+      settle({ status: res.statusCode, body });
+    };
+    res.end = ((...a: unknown[]) => {
+      const c = a[0];
+      finish(
+        typeof c === "string" ? c : Buffer.isBuffer(c) ? c.toString() : "",
+      );
+      return end(...a);
+    }) as typeof res.end;
+    res.on("close", () => finish("{}"));
+  }
 
   if (!action && method === "GET") {
     try {

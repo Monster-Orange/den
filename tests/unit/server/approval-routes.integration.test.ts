@@ -268,7 +268,9 @@ describe("held writes (ON-3)", () => {
     const again = await call("POST", `/api/approvals/${id}/decide`, h, {
       decision: "allow",
     });
-    expect([again.status, json(again).code]).toEqual([409, "already_decided"]);
+    // A second Allow (a double-click): the first answer, nothing more ran.
+    expect(again.status).toBe(200);
+    expect(await workspaces()).toContain("allowed");
   }, 60_000);
 
   it("Deny runs nothing", async () => {

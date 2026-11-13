@@ -531,6 +531,7 @@
     "ag.unavailable": "利用不可",
     "ag.go": "開始",
     "ag.starting": "開始中…",
+    "ag.working": "処理中…",
     "ag.cancel": "キャンセル",
     "ag.started": "エージェント {id} を開始しました",
     "ag.stopped": "エージェント {id} を停止しました",

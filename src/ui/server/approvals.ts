@@ -235,6 +235,15 @@ const KEEP_SETTLED_MS = 60 * 60_000;
 
 export class ApprovalQueue {
   private readonly items = new Map<string, Approval>();
+  /**
+   * The double-click fix: a decide in flight, by id. The same decision
+   * again (a second click, a retried request) gets the first one's answer,
+   * never "already decided".
+   */
+  private readonly deciding = new Map<
+    string,
+    { decision: Decision; done: Promise<DecideResult> }
+  >();
   private readonly now: () => number;
   private readonly ttlMs: number;
 
@@ -363,6 +372,32 @@ export class ApprovalQueue {
   }
 
   async decide(
+    id: string,
+    decision: Decision,
+    by: string,
+  ): Promise<DecideResult> {
+    const inFlight = this.deciding.get(id);
+    if (inFlight && inFlight.decision === decision) return inFlight.done;
+    const a0 = this.items.get(id);
+    // Decided already, the same way: its answer again.
+    if (
+      a0 &&
+      !inFlight &&
+      ((a0.state === "done" && decision === "allow") ||
+        (a0.state === "denied" && decision === "deny")) &&
+      a0.endedBecause === undefined
+    )
+      return { ok: true, approval: { ...a0 } };
+    const done = this.decideOnce(id, decision, by);
+    this.deciding.set(id, { decision, done });
+    try {
+      return await done;
+    } finally {
+      this.deciding.delete(id);
+    }
+  }
+
+  private async decideOnce(
     id: string,
     decision: Decision,
     by: string,

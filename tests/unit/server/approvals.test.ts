@@ -237,8 +237,13 @@ describe("the queue", () => {
       decidedBy: "sess-key-1",
       result: { ok: true, said: "ran workspace_create" },
     });
-    // A second decision is refused and runs nothing.
+    // The same decision again (a double-click): the first answer, run once.
     expect(await q.decide(a.id, "allow", "sess-key-1")).toMatchObject({
+      ok: true,
+      approval: { state: "done", result: { ok: true } },
+    });
+    // The other decision is refused and runs nothing.
+    expect(await q.decide(a.id, "deny", "sess-key-1")).toMatchObject({
       ok: false,
       code: "already_decided",
     });
@@ -289,7 +294,7 @@ describe("the queue", () => {
     expect(runs).toEqual([]);
   });
 
-  it("two Allows at once still run it once", async () => {
+  it("two Allows at once (a double-click) run it once and both get its answer", async () => {
     const { q, runs } = queue();
     const a = q.request({
       actor: "agent:server",
@@ -301,7 +306,8 @@ describe("the queue", () => {
       q.decide(a.id, "allow", "s"),
       q.decide(a.id, "allow", "s"),
     ]);
-    expect(both.filter((d) => d.ok)).toHaveLength(1);
+    expect(both.filter((d) => d.ok)).toHaveLength(2);
+    expect(both[0]).toEqual(both[1]);
     expect(runs).toHaveLength(1);
   });
 

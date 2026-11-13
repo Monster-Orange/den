@@ -2257,9 +2257,13 @@ function closePane(id, { quiet = false } = {}) {
   paintList();
 }
 
-async function stopAgent(p, button) {
+function stopAgent(p, button) {
   const r = rowOf(p.id);
   if (!r?.agent) return;
+  return oneAtATime(r, "stop", () => stopAgentNow(r, button));
+}
+
+async function stopAgentNow(r, button) {
   button.disabled = true;
   try {
     const out = await api(
@@ -2282,12 +2286,70 @@ async function stopAgent(p, button) {
 const agentPath = (r, verb) =>
   `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/${verb}`;
 
+// ── the double-click fix: one action per agent at a time ───────────────
+// Held while the server answers. Every redraw (the list's poll, a pane's
+// header) paints the agent's buttons disabled, the pressed one "Working…",
+// so a second click can't send it again; the server answers a repeat
+// with the first result anyway. Success clears it; an error is shown and
+// the buttons come back.
+const busyActs = new Map();
+const busyKey = (r) => `${r.workspace}/${r.agent}`;
+const BUSY_ACTS = ["resume", "fresh", "relaunch", "rot-write", "stop"];
+
+async function oneAtATime(r, verb, fn) {
+  const k = busyKey(r);
+  if (busyActs.has(k)) return;
+  busyActs.set(k, verb);
+  paintBusy();
+  try {
+    await fn();
+  } finally {
+    busyActs.delete(k);
+    paintBusy();
+  }
+}
+
+/** Paint every busy agent's buttons: disabled, the pressed one "Working…". */
+function paintBusy() {
+  const root = st.root;
+  if (!root) return;
+  const keyOf = (el) => {
+    const row = el.closest(".agst, .agr, [data-agent][data-ws]");
+    if (row?.dataset.agent && row.dataset.ws)
+      return `${row.dataset.ws}/${row.dataset.agent}`;
+    const pane = el.closest(".pane[data-id]");
+    const r = pane ? rowOf(pane.dataset.id) : null;
+    return r?.agent ? busyKey(r) : null;
+  };
+  const sel = BUSY_ACTS.map((a) => `button[data-act="${a}"]`).join(",");
+  for (const b of root.querySelectorAll(sel)) {
+    const verb = busyActs.get(keyOf(b));
+    if (verb) {
+      if (!b.disabled) b.disabled = true;
+      b.setAttribute("aria-busy", verb === b.dataset.act ? "true" : "false");
+      if (verb === b.dataset.act && b.dataset.busyWas === undefined) {
+        b.dataset.busyWas = b.textContent;
+        b.textContent = t("ag.working");
+      }
+    } else if (b.dataset.busyWas !== undefined) {
+      b.textContent = b.dataset.busyWas;
+      delete b.dataset.busyWas;
+      b.removeAttribute("aria-busy");
+      b.disabled = false;
+    }
+  }
+}
+
 /**
  * Resume (the same conversation), Start fresh, or Relaunch from handoff
  * (den#4: a new conversation that starts from handoff.md); its pane opens
  * on it.
  */
-async function restartRow(r, verb, button) {
+function restartRow(r, verb, button) {
+  return oneAtATime(r, verb, () => restartRowNow(r, verb, button));
+}
+
+async function restartRowNow(r, verb, button) {
   if (button) button.disabled = true;
   try {
     const out = await api("POST", agentPath(r, verb));
@@ -2321,8 +2383,12 @@ async function restartRow(r, verb, button) {
  * first (a stopped agent resumes to write it) and relaunches it once it
  * passes, by itself.
  */
-async function relaunchNow(r, button) {
+function relaunchNow(r, button) {
   if (r.rotation?.ready) return restartRow(r, "relaunch", button);
+  return oneAtATime(r, "relaunch", () => askRelaunch(r, button));
+}
+
+async function askRelaunch(r, button) {
   if (button) button.disabled = true;
   try {
     const out = await api("POST", agentPath(r, "handoff"), { relaunch: true });
@@ -2338,7 +2404,11 @@ async function relaunchNow(r, button) {
 }
 
 /** D28 Write handoff: the prompt, typed into its session at idle. */
-async function writeHandoff(r, button) {
+function writeHandoff(r, button) {
+  return oneAtATime(r, "rot-write", () => writeHandoffNow(r, button));
+}
+
+async function writeHandoffNow(r, button) {
   if (button) button.disabled = true;
   try {
     await api("POST", agentPath(r, "handoff"), {});
@@ -4070,6 +4140,11 @@ function openStoppedMenu(r, opener) {
 export async function mountAgentsPage(root) {
   if (!root) return;
   st.root = root;
+  // The double-click fix: a redraw keeps a busy agent's buttons held.
+  if (typeof MutationObserver === "function")
+    new MutationObserver(() => {
+      if (busyActs.size || root.querySelector("[data-busy-was]")) paintBusy();
+    }).observe(root, { childList: true, subtree: true });
   translateStatic(root);
   if (window.denShell?.apiOff?.()) return;
   st.open = [];
