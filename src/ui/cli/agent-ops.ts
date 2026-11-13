@@ -2334,6 +2334,53 @@ export function launchModel(
 }
 
 /**
+ * A stored model as runtime `runtimeId`'s catalog names it: a full model
+ * name that is one of its versions becomes that alias, pinned to it
+ * ("claude-opus-5-5" → opus, claude-opus-5-5). Null when it is already in
+ * that form, or isn't one Den can name (kept as given).
+ */
+export function catalogModel(
+  runtimeId: string,
+  model: string | undefined,
+  version: string | undefined,
+): { model: string; version: string } | null {
+  if (!model) return null;
+  const rt = getRuntime(runtimeId);
+  const models = rt?.models?.() ?? [];
+  if (!rt?.fullModel || models.some((m) => m.id === model)) return null;
+  try {
+    const c = checkModelChoice(
+      { id: rt.id, models, fullModel: rt.fullModel },
+      model,
+      version ?? "latest",
+    );
+    return c.model && c.model !== model
+      ? { model: c.model, version: c.version }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A record written before 0.4.38 with a full model name where its runtime
+ * has an alias (Bring in kept the transcript's): stored again in the
+ * catalog's form, so Relaunch and Start fresh take it. The launch is the
+ * same model either way.
+ */
+function healModel(d: AgentsResolved, rec: AgentRecord): AgentRecord {
+  const c = catalogModel(rec.runtime, rec.model, rec.version);
+  if (!c) return rec;
+  const next = { ...rec, ...c };
+  try {
+    writeRecord(d.stateDir(), next);
+  } catch {
+    // Read-only state: the healed record is still used for this call.
+  }
+  return next;
+}
+
+/**
  * The commands an agent may run without asking (AG-13.3, 13.4): its
  * persona role's preset, then its extra commands.
  */
@@ -2478,12 +2525,23 @@ function startChoices(
     (req.model !== undefined || req.version !== undefined)
   )
     try {
-      const c = checkModelChoice({ id: rt.id, models }, model, version);
+      const c = checkModelChoice(
+        { id: rt.id, models, fullModel: rt.fullModel },
+        model,
+        version,
+      );
       model = c.model;
       version = c.version;
     } catch (e) {
       throw usage(`${where}: ${(e as Error).message}`);
     }
+  // A full model name its catalog knows (a transcript's, `--model`'s) is
+  // stored as the alias, pinned: Relaunch and Start fresh then take it.
+  const named = catalogModel(rt.id, model, version);
+  if (named) {
+    model = named.model;
+    version = named.version;
+  }
   if (req.model !== undefined && req.model !== personaModel)
     overrides.push("model");
   if (version !== personaVersion) overrides.push("version");
@@ -3200,9 +3258,10 @@ export function agentRecord(
   id: string,
   ws?: string,
 ): AgentRecord {
-  const rec = readRecord(d.stateDir(), id);
+  const found = readRecord(d.stateDir(), id);
   // Another workspace's agent is, from this one, no agent at all.
-  if (!rec) throw refused(`no agent "${id}"`, [], 404);
+  if (!found) throw refused(`no agent "${id}"`, [], 404);
+  const rec = healModel(d, found);
   if (ws && ws !== rec.workspace)
     throw new AgentError(
       `agent ${id} is in project ${rec.workspace}, not ${ws}`,

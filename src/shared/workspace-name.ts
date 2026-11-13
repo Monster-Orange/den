@@ -113,7 +113,12 @@ export function migrateWorkspaceKeys<T extends Named>(
       out[key] = cfg;
       continue;
     }
-    const slug = workspaceSlug(key);
+    // A slug already taken gets -2, -3, …: a key left as it was is a
+    // project every page refuses (0.4.36, "den hub").
+    const base = workspaceSlug(key);
+    let slug = base;
+    for (let n = 2; slug && taken.has(slug) && n < 100; n++)
+      slug = `${base!.slice(0, 60)}-${n}`;
     if (!slug || taken.has(slug)) {
       out[key] = cfg;
       continue;

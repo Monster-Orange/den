@@ -4,6 +4,26 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.38] - unreleased
+
+### Fixed
+
+- **Relaunch, Start fresh and Resume take an agent's stored full model
+  name.** An agent brought in from a conversation kept the transcript's
+  model ("claude-opus-5-5"), and Relaunch then refused it: `model:
+  "claude-opus-5-5" is not one of den-claude's (opus, sonnet, haiku)`.
+  Den now takes a full model name: one its catalog knows is its alias,
+  pinned to that version (opus, claude-opus-5-5); another one is kept as
+  given. Every start stores it that way, and a record written before is
+  fixed the next time the agent is used. The model it runs on is the
+  same.
+- **A project whose key has a space works.** A project made before
+  0.4.37 by the web's New project could have a key with a space ("den
+  hub"), which every page refused. 0.4.37 moved such keys to their slug
+  on read; now a slug already taken gets the next free one (`den-hub-2`)
+  instead of staying broken, and a folder found by the old key stays the
+  project's folder. The name people see keeps its space.
+
 ## [0.4.37] - 2026-11-12
 
 ### Added

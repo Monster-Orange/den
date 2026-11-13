@@ -198,6 +198,9 @@ export function allowRules(commands: readonly string[]): string[] {
  * ships with each Den release (https://code.claude.com/docs/en/model-config:
  * aliases opus, sonnet, haiku, or a full model name). Newest first.
  */
+/** A full Claude model name, as `claude --model` takes it and transcripts record it. */
+export const DEN_CLAUDE_FULL_MODEL = /^claude-[a-z0-9][a-z0-9.-]{0,63}$/;
+
 export const DEN_CLAUDE_MODELS: readonly RuntimeModel[] = [
   {
     id: "opus",
@@ -659,6 +662,7 @@ export const denClaude: Runtime = {
   find: DEN_CLAUDE_FIND,
   models: () =>
     DEN_CLAUDE_MODELS.map((m) => ({ ...m, versions: [...m.versions] })),
+  fullModel: DEN_CLAUDE_FULL_MODEL,
   permissions: DEN_CLAUDE_PERMISSIONS,
   detect,
   launch(input): LaunchOutput {

@@ -115,7 +115,7 @@ function oneOf(key: string, v: unknown, list: readonly string[]): string {
  * (none: no model), the version "latest" or one of that model's.
  */
 export function checkModelChoice(
-  rt: { id: string; models: readonly RuntimeModel[] },
+  rt: { id: string; models: readonly RuntimeModel[]; fullModel?: RegExp },
   model: unknown,
   version: unknown,
 ): { model?: string; version: string } {
@@ -129,6 +129,20 @@ export function checkModelChoice(
   }
   if (!rt.models.length)
     throw new PersonaInputError(`${rt.id} takes no model choice from Den`);
+  // A full model name (what a transcript records, or `--model` took): a
+  // known version is its alias, pinned to it; another one stays as given.
+  if (
+    typeof model === "string" &&
+    !rt.models.some((x) => x.id === model) &&
+    rt.fullModel?.test(model)
+  ) {
+    const of = rt.models.find((x) => x.versions.includes(model));
+    if (ver !== "latest" && ver !== model)
+      throw new PersonaInputError(
+        `version: ${shown(ver)} doesn't go with the full model name ${shown(model)}`,
+      );
+    return of ? { model: of.id, version: model } : { model, version: "latest" };
+  }
   const m = rt.models.find((x) => x.id === model);
   if (!m)
     throw new PersonaInputError(

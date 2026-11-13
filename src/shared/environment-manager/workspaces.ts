@@ -122,6 +122,13 @@ export function normalizeWorkspacesFileShape(parsed: {
   const workspaces = mig.workspaces;
   if (mig.moved.size) {
     changed = true;
+    // Its folder was found by its old key: keep it, by path.
+    for (const [from, to] of mig.moved) {
+      const cfg = workspaces[to];
+      const old = path.join(DEN_WORKSPACES_DIR, from);
+      if (cfg && !cfg.directory && fs.existsSync(old))
+        workspaces[to] = { ...cfg, directory: old };
+    }
     const to = (n: string) => mig.moved.get(n) ?? n;
     if (typeof parsed.active === "string") parsed.active = to(parsed.active);
     else if (Array.isArray(parsed.active))

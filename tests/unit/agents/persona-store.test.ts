@@ -197,6 +197,25 @@ describe("a person's own personas (AG-10.7)", () => {
     ).toThrow(/generic takes no model choice/);
   });
 
+  it("a full model name: a known version is its alias, pinned; another stays as given (0.4.36 relaunch)", () => {
+    const rt = { ...CHOICES.runtimes[0], fullModel: /^claude-[a-z0-9.-]+$/ };
+    expect(checkModelChoice(rt, "claude-opus-4-8", "latest")).toEqual({
+      model: "opus",
+      version: "claude-opus-4-8",
+    });
+    expect(checkModelChoice(rt, "claude-opus-4-1", undefined)).toEqual({
+      model: "claude-opus-4-1",
+      version: "latest",
+    });
+    expect(() =>
+      checkModelChoice(rt, "claude-opus-4-8", "claude-opus-4-7"),
+    ).toThrow(/doesn't go with/);
+    // Without fullModel (the page's strict check), a full name is refused.
+    expect(() =>
+      checkModelChoice(CHOICES.runtimes[0], "claude-opus-4-8", undefined),
+    ).toThrow(/is not one of/);
+  });
+
   it("a checked persona round-trips through its file, read as the person's own", () => {
     const input = checkPersonaInput(INPUT, CHOICES);
     expect(input.instructions).toBe("Read it.\nReport problems.");

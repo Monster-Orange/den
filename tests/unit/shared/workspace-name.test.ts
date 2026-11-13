@@ -105,16 +105,17 @@ describe("workspaces written before slugs move to them", () => {
     expect(file.active).toEqual(["default", "jane-doe"]);
     expect(file.focus).toBe("jane-doe");
   });
-  it("a slug already taken: the old key stays", () => {
+  // 0.4.36: a key left as it was ("den hub") is a project every page
+  // refuses; it moves to the next free slug instead.
+  it("a slug already taken: the next free one, -2, -3", () => {
     const { workspaces, moved } = migrateWorkspaceKeys({
       "back-office": {},
+      "back-office-2": {},
       "back office": {},
     });
-    expect(moved.size).toBe(0);
-    expect(Object.keys(workspaces).sort()).toEqual([
-      "back office",
-      "back-office",
-    ]);
+    expect([...moved]).toEqual([["back office", "back-office-3"]]);
+    expect(workspaces["back-office-3"]).toEqual({ name: "back office" });
+    expect(workspaces["back-office"]).toEqual({});
   });
 });
 
