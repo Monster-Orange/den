@@ -4,6 +4,47 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.43] - Unreleased
+
+### Security
+
+- **An agent's Den token works only from that agent's own processes.**
+  For each call with an agent token, Den finds the process on the other
+  end of the connection (macOS `lsof`, Linux `/proc`). It then checks
+  that process runs inside the agent's session. The same token from any
+  other process, even one of yours, is refused: 403
+  `agent_token_elsewhere`, and an audit row naming the agent, the pid and
+  the route. So is a caller Den can't place. `agents.token_binding:
+  false` turns it off for a host where the lookup can't work.
+- **The token is no longer in the agent's environment.** Den writes it
+  to a file of the agent's own (`<state>/actor-token/<id>/token`, 0600,
+  in a 0700 folder) and the session gets `DEN_ACTOR_TOKEN_FILE`, the
+  file's path. `ps` no longer shows it. Stopping the agent removes the
+  file. The Hub tools' connection reads it at each connect (a
+  `headersHelper`). Sessions started before this keep working with
+  `DEN_ACTOR_TOKEN` until they restart.
+
+### Added
+
+- **Den keeps up when Hub rotates its token.** When Den keeps the Hub
+  token itself (Connect's file, or the item Connect made in the
+  install's store), it asks Hub for a new one (`whoami?rotate=true`),
+  writes it in place, and checks it with a second whoami. A failed write
+  or a new token Hub refuses keeps the old one. Each step is an audit
+  row, never with the token. A token a distribution points at is never
+  written. When Hub says it is a legacy one, Settings and doctor say so
+  and offer Reconnect.
+- `doctor` says when the edge's access log is on and healthy.
+
+### Changed
+
+- The edge's access log also masks the query key `state` by default.
+
+### Migrations
+
+- None needed. A distribution that starts agents with its own env should
+  read the token from `DEN_ACTOR_TOKEN_FILE` (Den's own commands do).
+
 ## [0.4.42] - 2026-11-13
 
 ### Added
