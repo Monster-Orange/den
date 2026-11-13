@@ -548,7 +548,12 @@ export async function handleAgentRoutes(
       },
       choices: hp.defaultChoices,
       read: (ws) => link.hubProjectOf(ws),
-      write: (ws, l) => link.setHubProject(ws, l),
+      write: (ws, l) =>
+        link.setHubProject(
+          ws,
+          l,
+          `Link projects to Hub (${guard.principalOf(req) ?? "person"})`,
+        ),
       changed: hp.defaultChanged,
       audit: (line) =>
         audit.recordAction(

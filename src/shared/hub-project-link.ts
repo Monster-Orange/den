@@ -15,6 +15,8 @@ import {
   writeWorkspacesFile,
 } from "./environment-manager/workspaces.js";
 import type { WorkspacesFile } from "./types/index.js";
+import { callerName } from "./config-audit.js";
+import { forgetLinkSeen } from "./hub-links-seen.js";
 
 export interface HubProjectLink {
   /** Hub's project id (proj_…). */
@@ -61,8 +63,15 @@ export function hubProjectOf(
   }
 }
 
-/** Link project `ws` to a Hub project, or unlink it (null). */
-export function setHubProject(ws: string, link: HubProjectLink | null): void {
+/**
+ * Link project `ws` to a Hub project, or unlink it (null). `by` names who
+ * asked, for the audit row (0.4.44): "Settings (person:…)", "cli hub link".
+ */
+export function setHubProject(
+  ws: string,
+  link: HubProjectLink | null,
+  by: string = callerName(),
+): void {
   const file = readWorkspacesFile();
   const cfg = file.workspaces[ws];
   if (!cfg) throw new Error(`project "${ws}" does not exist`);
@@ -73,7 +82,9 @@ export function setHubProject(ws: string, link: HubProjectLink | null): void {
     next.hub_project = ok;
   } else delete next.hub_project;
   file.workspaces[ws] = next;
-  writeWorkspacesFile(file);
+  writeWorkspacesFile(file, by);
+  // An unlink the person asked for: doctor doesn't call it lost.
+  if (!link) forgetLinkSeen(ws);
 }
 
 /** What Hub's /api/projects/suggest answers (projects of the token's company). */

@@ -62,7 +62,13 @@ describe("hub link (H5)", () => {
   });
 
   it("links by the Hub project's slug, name or id; --none unlinks", async () => {
-    const r = rig();
+    const by: string[] = [];
+    const r = rig({
+      write: (ws, l, who) => {
+        by.push(who ?? "");
+        r.store.set(ws, l);
+      },
+    });
     expect(await cmdHubLink(["-p", "back-office", "Site"], r.deps)).toBe(0);
     expect(r.store.get("back-office")).toEqual(SITE);
     expect(
@@ -78,6 +84,12 @@ describe("hub link (H5)", () => {
     });
     expect(await cmdHubLink(["-p", "back-office", "--none"], r.deps)).toBe(0);
     expect(r.store.get("back-office")).toBeNull();
+    // 0.4.44: each write names who asked, for the audit row.
+    expect(by).toEqual([
+      expect.stringMatching(/ hub link$/),
+      expect.stringMatching(/ hub link$/),
+      expect.stringMatching(/ hub link --none$/),
+    ]);
   });
 
   it("refuses a Hub project the company doesn't have, a project that doesn't exist, and an agent", async () => {

@@ -20,7 +20,11 @@ import {
 } from "../../shared/hub-project-link.js";
 import type { Uncovered } from "../../shared/hub-project-sync.js";
 import { readBody, sendJson } from "./http-helpers.js";
-import { agentPrincipalOf, auditActorOf } from "./request-guard.js";
+import {
+  agentPrincipalOf,
+  auditActorOf,
+  principalOf,
+} from "./request-guard.js";
 
 export const HUB_PROJECT_ROUTE = /^\/api\/workspaces\/([^/]+)\/hub-project$/;
 
@@ -33,7 +37,8 @@ export interface HubProjectRouteDeps {
     projects: HubProjectChoice[];
   } | null>;
   read: (ws: string) => HubProjectLink | null;
-  write: (ws: string, link: HubProjectLink | null) => void;
+  /** `by`: who asked, for the audit row (0.4.44). */
+  write: (ws: string, link: HubProjectLink | null, by?: string) => void;
   /** Repos in `ws` Den Hub's GitHub App can't see, from the last sync. */
   uncovered: (ws: string) => Uncovered[];
   /** After a link or unlink: send the project list again. */
@@ -154,8 +159,9 @@ export async function hubProjectRoute(
     sendJson(res, { ok: false, error: "the body must be JSON" }, 400);
     return true;
   }
+  const by = `Settings › Hub project (${principalOf(req) ?? "person"})`;
   if (body.hub === null) {
-    write(ws, null);
+    write(ws, null, by);
     changed();
     sendJson(res, { ok: true, project: ws, hub: null });
     return true;
@@ -206,7 +212,7 @@ export async function hubProjectRoute(
     return true;
   }
   const link = { id: pick.id, slug: pick.slug, name: pick.name };
-  write(ws, link);
+  write(ws, link, by);
   changed();
   sendJson(res, { ok: true, project: ws, hub: link });
   return true;

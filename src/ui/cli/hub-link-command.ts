@@ -37,7 +37,8 @@ export interface HubLinkDeps {
     projects: HubProjectChoice[];
   } | null>;
   read?: (ws: string) => HubProjectLink | null;
-  write?: (ws: string, link: HubProjectLink | null) => void;
+  /** `by`: who asked, for the audit row (0.4.44). */
+  write?: (ws: string, link: HubProjectLink | null, by?: string) => void;
   /** Every project here, for --suggested (the server agent's scope isn't one). */
   projects?: () => string[] | Promise<string[]>;
   /** This install's page for `path`, or null when its address isn't set. */
@@ -136,7 +137,7 @@ export async function cmdHubLink(
   const now = read(ws);
 
   if (none) {
-    write(ws, null);
+    write(ws, null, `${cli} hub link --none`);
     if (json) out(JSON.stringify({ ok: true, project: ws, hub: null }));
     else
       out(
@@ -207,7 +208,7 @@ export async function cmdHubLink(
     return 1;
   }
   const link = { id: pick.id, slug: pick.slug, name: pick.name };
-  write(ws, link);
+  write(ws, link, `${cli} hub link`);
   if (json) out(JSON.stringify({ ok: true, project: ws, hub: link }));
   else
     out(

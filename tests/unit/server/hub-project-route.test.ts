@@ -78,7 +78,13 @@ describe("H5: /api/workspaces/:ws/hub-project", () => {
   });
 
   it("PUT links to a company project by slug, name or id; null unlinks; anything else is refused", async () => {
-    const { base, store } = await serve();
+    const by: string[] = [];
+    const { base, store } = await serve({
+      write: (ws, l, who) => {
+        by.push(who ?? "");
+        store.set(ws, l);
+      },
+    });
     const u = `${base}/back-office/hub-project`;
     expect((await put(u, { hub: "Back Office" })).status).toBe(200);
     expect(store.get("back-office")).toEqual(BACK);
@@ -95,6 +101,9 @@ describe("H5: /api/workspaces/:ws/hub-project", () => {
     expect(
       (await put(`${base}/ghost/hub-project`, { hub: "site" })).status,
     ).toBe(404);
+    // 0.4.44: each write names who asked, for the audit row.
+    expect(by).toHaveLength(3);
+    for (const b of by) expect(b).toMatch(/^Settings › Hub project \(/);
   });
 
   it("an agent's ask is refused, and nothing changes", async () => {

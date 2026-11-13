@@ -198,6 +198,7 @@ import {
   setAuditFile,
   AUDIT_FILE,
 } from "./audit.js";
+import { setConfigAuditSink } from "../../shared/config-audit.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import {
   defaultOnboardRouteDeps,
@@ -724,6 +725,9 @@ try {
 } catch (e) {
   console.error(`[server] the audit file could not be read: ${String(e)}`);
 }
+// 0.4.44: workspaces.yml writes and Hub link changes made in this process
+// go through the server's own audit (activity, the log, audit.jsonl).
+setConfigAuditSink((row) => void recordAction(null, row));
 
 /** ANSI helpers (no chalk dependency in the server) */
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;

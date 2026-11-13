@@ -536,12 +536,26 @@ export function hubLines(
  */
 export function hubProjectLines(
   connected: boolean,
-  projects: { ws: string; link: { slug: string; name: string } | null }[],
+  projects: {
+    ws: string;
+    link: { slug: string; name: string } | null;
+    /** 0.4.44: the link it had, when it lost it with no unlink asked. */
+    lost?: { slug: string; at: string };
+  }[],
   cli: string,
 ): { lines: string[]; checks: OnboardCheck[] } {
-  if (!connected || !projects.length) return { lines: [], checks: [] };
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
+  // 0.4.44: a lost link warns even with Hub down: the config lost it.
+  for (const { ws, link, lost } of projects) {
+    if (link || !lost) continue;
+    const detail = `${ws}: was linked to Hub project ${lost.slug} (seen ${lost.at}) and has no link now, with no unlink asked. The audit (audit.jsonl, verb hub-link and config-write) says which writer dropped it`;
+    const fix = `${cli} hub link -p ${ws} ${lost.slug}`;
+    lines.push(`  hub project  ⚠  ${detail}. Link it again: \`${fix}\``);
+    checks.push({ id: `hub:project:${ws}`, status: "warn", detail, fix });
+  }
+  if (!connected || !projects.length) return { lines, checks };
+  projects = projects.filter((p) => p.link || !p.lost);
   for (const { ws, link } of projects) {
     const name = link
       ? link.name === link.slug
@@ -625,17 +639,28 @@ export function hubGithubLines(
 
 /** H5: every project here, with its Hub project (or null). */
 async function projectsWithHubProject(): Promise<
-  { ws: string; link: { slug: string; name: string } | null }[]
+  {
+    ws: string;
+    link: { slug: string; name: string } | null;
+    lost?: { slug: string; at: string };
+  }[]
 > {
   const { readWorkspacesFile } =
     await import("../../shared/environment-manager/workspaces.js");
   const { parseHubProjectLink } =
     await import("../../shared/hub-project-link.js");
+  const { lostHubLinks } = await import("../../shared/hub-links-seen.js");
   try {
-    return Object.entries(readWorkspacesFile().workspaces).map(([ws, c]) => ({
-      ws,
-      link: parseHubProjectLink(c?.hub_project),
-    }));
+    const all = readWorkspacesFile().workspaces;
+    const lost = new Map(lostHubLinks(all).map((l) => [l.ws, l.was]));
+    return Object.entries(all).map(([ws, c]) => {
+      const was = lost.get(ws);
+      return {
+        ws,
+        link: parseHubProjectLink(c?.hub_project),
+        ...(was ? { lost: { slug: was.slug, at: was.at } } : {}),
+      };
+    });
   } catch {
     return [];
   }

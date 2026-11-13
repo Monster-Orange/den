@@ -31,6 +31,8 @@ import { readManifest } from "../manifest/read-manifest.js";
 import { depService } from "../manifest/deps.js";
 import { getDistRoot } from "../paths.js";
 import { readCatalog } from "./catalog.js";
+import { auditConfig, callerName } from "../config-audit.js";
+import { noteLinksSeen } from "../hub-links-seen.js";
 
 import { product } from "../product.js";
 const ROOT = getDistRoot();
@@ -323,8 +325,13 @@ export function noAutostartRepos(
   return off;
 }
 
-export function writeWorkspacesFile(file: WorkspacesFile): void {
+export function writeWorkspacesFile(
+  file: WorkspacesFile,
+  /** Who writes it, for the audit row (default: the calling function). */
+  by: string = callerName(),
+): void {
   const dir = path.dirname(WORKSPACES_PATH);
+  const before = readRawWorkspaces();
   fs.mkdirSync(dir, { recursive: true });
   // Self-heal to first-class repo entries on persist. Best-effort catalog read —
   // if it fails (e.g. none yet), normalize without it (still correct for the
@@ -350,6 +357,7 @@ export function writeWorkspacesFile(file: WorkspacesFile): void {
   try {
     fs.writeFileSync(tmp, yaml.stringify(out), "utf-8");
     fs.renameSync(tmp, WORKSPACES_PATH);
+    auditWorkspacesWrite(before, out, by);
   } catch (err) {
     // Don't leave an orphaned temp file behind when the write/rename fails.
     try {
@@ -358,6 +366,67 @@ export function writeWorkspacesFile(file: WorkspacesFile): void {
       /* ignore cleanup failure */
     }
     throw err;
+  }
+}
+
+/** workspaces.yml as it is on disk now (for the audit's diff); {} if none. */
+function readRawWorkspaces(): Partial<WorkspacesFile> {
+  try {
+    const v = yaml.parse(fs.readFileSync(WORKSPACES_PATH, "utf-8")) as unknown;
+    return v && typeof v === "object" ? (v as Partial<WorkspacesFile>) : {};
+  } catch {
+    return {};
+  }
+}
+
+type LinkLike = { id?: unknown; slug?: unknown; name?: unknown } | undefined;
+const linkWords = (l: LinkLike) =>
+  l && typeof l === "object" && typeof l.id === "string"
+    ? `${typeof l.slug === "string" ? l.slug : l.id} (${l.id})`
+    : "none";
+
+/**
+ * 0.4.44: what a write changed, as audit rows: each Hub link that moved
+ * (old → new), then one row for the rest, naming the writer. Nothing
+ * changed: no row.
+ */
+function auditWorkspacesWrite(
+  before: Partial<WorkspacesFile>,
+  after: WorkspacesFile,
+  by: string,
+): void {
+  try {
+    const was = (before.workspaces ?? {}) as Record<string, WorkspaceConfig>;
+    const now = after.workspaces ?? {};
+    const names = [...new Set([...Object.keys(was), ...Object.keys(now)])].sort();
+    const changed: string[] = [];
+    for (const ws of names) {
+      const a = was[ws];
+      const b = now[ws];
+      if (!a) changed.push(`+${ws}`);
+      else if (!b) changed.push(`-${ws}`);
+      else if (JSON.stringify(a) !== JSON.stringify(b)) changed.push(ws);
+      const la = linkWords(a?.hub_project as LinkLike);
+      const lb = linkWords(b?.hub_project as LinkLike);
+      if (la !== lb)
+        auditConfig({
+          verb: "hub-link",
+          detail: `project ${ws}: Hub project ${la} → ${lb}, by ${by}`,
+        });
+    }
+    if (JSON.stringify(before.focus) !== JSON.stringify(after.focus))
+      changed.push(`focus ${String(before.focus ?? "none")} → ${after.focus}`);
+    if (JSON.stringify(before.active) !== JSON.stringify(after.active))
+      changed.push(`active ${JSON.stringify(after.active)}`);
+    if (changed.length)
+      auditConfig({
+        verb: "config-write",
+        detail: `workspaces.yml by ${by}: ${changed.join(", ").slice(0, 400)}`,
+      });
+    noteLinksSeen(was);
+    noteLinksSeen(now);
+  } catch {
+    /* best effort: the write itself already happened */
   }
 }
 

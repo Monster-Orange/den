@@ -364,6 +364,28 @@ describe("hubProjectLines (H5)", () => {
     expect(r.lines).toHaveLength(2);
   });
 
+  it("0.4.44: a project that lost its link (no unlink asked) warns, connected or not", () => {
+    const lost = { slug: "back-office", at: "2026-11-12T10:00:00.000Z" };
+    for (const connected of [true, false]) {
+      const r = hubProjectLines(
+        connected,
+        [{ ws: "north", link: null, lost }],
+        "acme",
+      );
+      expect(r.checks).toEqual([
+        {
+          id: "hub:project:north",
+          status: "warn",
+          detail:
+            "north: was linked to Hub project back-office (seen 2026-11-12T10:00:00.000Z) and has no link now, with no unlink asked. The audit (audit.jsonl, verb hub-link and config-write) says which writer dropped it",
+          fix: "acme hub link -p north back-office",
+        },
+      ]);
+      expect(r.lines[0]).toContain("⚠");
+      expect(r.lines[0]).toContain("`acme hub link -p north back-office`");
+    }
+  });
+
   it("#68: two or more unlinked: one line names hub link --suggested", () => {
     const r = hubProjectLines(
       true,
