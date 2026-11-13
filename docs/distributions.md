@@ -1062,11 +1062,15 @@ hub:
   `reply_with`: a short list of `{ tool, args, when }`, where `when` is
   `changed` (the agent edited the artifact) or `answer` (it only replies).
   Den takes only `hub_*` tool names and flat one-line arguments, at most
-  eight entries, and writes the agent's instruction from them: "save the
-  new version with <tool> <args>. If you can't, say why with <answer>"
-  when it changes something, "Do it, then say what you did with <answer>"
-  otherwise. Anything else in the field is ignored. A Hub that sends no
-  `reply_with` gets the earlier instruction.
+  eight entries with at most eight arguments each, and writes the agent's
+  instruction from them. For an edit request with a `changed` entry:
+  "save the new version with <tool> <args>. If you can't, say why with
+  <answer>", and "if you don't have <tool>, reply with <answer> instead".
+  For an edit request with no `changed` entry: "Do it, then say what you
+  did with <answer>". A comment that isn't an edit request is passed as
+  information, not a request: the agent changes nothing unless its person
+  asks, and may answer with <answer>. Anything else in the field is
+  ignored. A Hub that sends no `reply_with` gets the earlier instruction.
 - The install's token stays in Den's server. It is never in an agent's
   files (its MCP config included), its env, a command line, a record, a
   log, a page or an API answer.
@@ -2862,7 +2866,13 @@ workspace may take that name.
   action `den_update`). Held for the person like `den_restart`, under
   the same `server_agent.self_update`. Allowed, Den saves the version it
   runs now, installs `<version>` exactly from npm in the distribution
-  (`npm install --save-exact`), runs `doctor --json`, and restarts. A
+  (`npm install --save-exact`), runs `doctor --json`, and restarts.
+  `version` is `latest` or an exact version such as `0.4.44` (default
+  `latest`). It needs a Den installed from npm in the distribution's own
+  `node_modules`; a Den run from a checkout is updated with git. When the
+  install fails, or `doctor` doesn't run, Den puts the saved pin back at
+  once and answers with the error: no restart, no watcher
+  (`state: rolled_back`). A
   watcher outside the server waits for the new Den to answer
   `/api/server-info`, up to `server_agent.update_wait_seconds` (default
   180, at least 10). When it doesn't, the watcher puts the saved version
@@ -2901,7 +2911,7 @@ workspace may take that name.
 
 | Route                            | What it does                                                                |
 | -------------------------------- | --------------------------------------------------------------------------- |
-| `GET /api/server-agent`          | Its name, runtime (or none), state, session, fresh, manual                  |
+| `GET /api/server-agent`          | Its name, runtime (or none), state, session, fresh, manual, `update` (the last `den_update`, or null), `prompt` (`{ kind: "trust", folder }` while its runtime asks to trust the folder, else null) |
 | `POST /api/server-agent/start`   | `{ runtime? }`: start it, or resume or relaunch it                          |
 | `POST /api/server-agent/runtime` | `{ runtime: id \| null }`: the person's choice of runtime                   |
 | `POST /api/server-agent/model`   | `{ model: id \| null }`: the person's choice of model, one of the runtime's |

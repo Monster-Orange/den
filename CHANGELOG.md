@@ -10,9 +10,12 @@ config and manifest changes a distribution must make to move to it under
 
 - **The server agent updates its own Den** (`den_update { version,
   reason }`). Held for the person like `den_restart`, under
-  `server_agent.self_update`. Allowed, Den saves the version it runs,
-  installs the new one exactly from npm, runs `doctor --json` and
-  restarts. A watcher outside the server waits for it to come up
+  `server_agent.self_update`. `version` is `latest` (the default) or an
+  exact version; it needs a Den installed from npm, and a checkout is
+  updated with git. Allowed, Den saves the version it runs, installs the
+  new one exactly from npm, runs `doctor --json` and restarts; if the
+  install fails or `doctor` doesn't run, it puts the old version back at
+  once, with no restart. A watcher outside the server waits for it to come up
   (`server_agent.update_wait_seconds`, default 180) and otherwise puts
   the old version back and restarts on it; the agent is told it was
   rolled back. Each step is a `server-update` row in the trail.
@@ -33,7 +36,8 @@ config and manifest changes a distribution must make to move to it under
   `config-write` row naming the writer and the change; every change of a
   project's Hub project is a `hub-link` row with who made it. `doctor`
   warns when a project's Hub link disappeared without an unlink.
-- **Hub says how to answer a comment** (`reply_with` on each delivery).
+- **Hub says how to answer a comment** (`reply_with` on each delivery:
+  `hub_*` tools only, at most eight entries and eight arguments each).
   Den writes the agent's instruction from the tools Hub names, and keeps
   the earlier one for a Hub that sends none.
 - The release job stops when a gated candidate (`v<version>-dev.N`) is
