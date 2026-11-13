@@ -479,6 +479,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/notifications/looking",
     "NT-2: a page shows these agents now, so they don't notify",
   ),
+  R(
+    "/api/hub/link-suggestions",
+    "#68: each project, its Hub project, and Hub's first suggestion for an unlinked one (names only)",
+  ),
+  M(
+    ["POST"],
+    "/api/hub/link-suggestions",
+    "#68: link the ticked projects to Hub's suggestions in one confirm; a person's only",
+  ),
   M(
     ["POST"],
     "/api/hub/sync",

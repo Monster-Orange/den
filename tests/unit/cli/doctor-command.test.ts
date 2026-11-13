@@ -356,6 +356,23 @@ describe("hubProjectLines (H5)", () => {
     expect(r.lines[0]).toMatch(/^ {2}hub project {2}✓ {2}north: linked/);
     expect(r.lines[1]).toContain("`acme hub link -p south`");
     expect(r.lines[1]).toContain("⚠");
+    // One unlinked: no "in one go" line.
+    expect(r.lines).toHaveLength(2);
+  });
+
+  it("#68: two or more unlinked: one line names hub link --suggested", () => {
+    const r = hubProjectLines(
+      true,
+      [
+        { ws: "north", link: null },
+        { ws: "south", link: null },
+      ],
+      "acme",
+    );
+    expect(r.lines).toHaveLength(3);
+    expect(r.lines[2]).toContain("2 projects aren't linked");
+    expect(r.lines[2]).toContain("`acme hub link --suggested`");
+    expect(r.checks).toHaveLength(2);
   });
 });
 

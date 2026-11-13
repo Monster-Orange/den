@@ -516,7 +516,8 @@ export function hubLines(
 /**
  * H5: with Hub connected, each project's Hub project. Linked is ok; not
  * linked warns (Hub files that project's agents' work in Unfiled), with
- * the command that shows Hub's suggestions and links one. Doctor doesn't
+ * the command that shows Hub's suggestions and links one; with two or
+ * more unlinked, one more line names `hub link --suggested`. Doctor doesn't
  * ask Hub for the suggestions itself: one call per project is too slow.
  */
 export function hubProjectLines(
@@ -547,6 +548,12 @@ export function hubProjectLines(
       ...(fix ? { fix } : {}),
     });
   }
+  // #68: two or more unlinked: one place links every suggestion at once.
+  const unlinked = projects.filter((p) => !p.link).length;
+  if (unlinked > 1)
+    lines.push(
+      `  hub project  ⚠  ${unlinked} projects aren't linked. Link Hub's suggestions in one go: \`${cli} hub link --suggested\``,
+    );
   return { lines, checks };
 }
 

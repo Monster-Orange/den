@@ -98,3 +98,60 @@ describe("hub link (H5)", () => {
     expect(r.err.join("\n")).toContain("isn't connected to Hub");
   });
 });
+
+describe("hub link --suggested (#68)", () => {
+  const sug = (over: Partial<HubLinkDeps> = {}) =>
+    rig({
+      projects: () => ["back-office", "lone", "site"],
+      choices: async (ws) =>
+        ws === "lone"
+          ? { suggestions: [], projects: [BACK, SITE] }
+          : {
+              suggestions: [{ ...BACK, why: "repo" as const }],
+              projects: [BACK, SITE],
+            },
+      link: (p) => `https://den.example.test${p}`,
+      ...over,
+    });
+
+  it("lists each unlinked project's suggestion and the page that links them; writes nothing", async () => {
+    const r = sug();
+    r.store.set("site", { id: SITE.id, slug: SITE.slug, name: SITE.name });
+    expect(await cmdHubLink(["--suggested"], r.deps)).toBe(0);
+    const text = r.out.join("\n");
+    expect(text).toContain("Hub suggests (1):");
+    expect(text).toContain("back-office → Back Office (back-office)");
+    expect(text).toContain(
+      "Link them in one go: https://den.example.test/settings#agents.hub_link_all",
+    );
+    expect(text).toContain("lone: no suggestion");
+    expect(text).not.toContain("site →");
+    expect(r.store.get("back-office")).toBeUndefined();
+  });
+
+  it("--json: every row and the page", async () => {
+    const r = sug();
+    expect(await cmdHubLink(["--suggested", "--json"], r.deps)).toBe(0);
+    const j = JSON.parse(r.out[0]) as {
+      projects: { project: string; suggestion: { slug: string } | null }[];
+      page: string;
+    };
+    expect(
+      j.projects.map((p) => [p.project, p.suggestion?.slug ?? null]),
+    ).toEqual([
+      ["back-office", "back-office"],
+      ["lone", null],
+      ["site", "back-office"],
+    ]);
+    expect(j.page).toBe(
+      "https://den.example.test/settings#agents.hub_link_all",
+    );
+  });
+
+  it("Hub not connected: says so, exit 1; with -p or a Hub project: usage", async () => {
+    const r = sug({ choices: async () => null });
+    expect(await cmdHubLink(["--suggested"], r.deps)).toBe(1);
+    expect(r.err.join("\n")).toContain("isn't connected to Hub");
+    expect(await cmdHubLink(["--suggested", "-p", "site"], sug().deps)).toBe(2);
+  });
+});

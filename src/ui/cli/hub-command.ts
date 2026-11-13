@@ -25,13 +25,17 @@ import { readWebPort } from "../../shared/edge/config.js";
 import { product } from "../../shared/product.js";
 
 export const HUB_HELP = {
-  usage: 'hub <push|link> …',
+  usage: "hub <push|link> …",
   lines: [
     "{cli} hub link -p <project> [<hub project> | --none] [--json]",
     "    The Hub project this project works on: Hub files its agents' work",
     "    there. With no Hub project named, shows the link and Hub's",
     "    suggestions (the same repo, then the same name). --none unlinks.",
     "    A person's ask only. Also in Settings › Project setup.",
+    "",
+    "{cli} hub link --suggested [--json]",
+    "    Every unlinked project with Hub's suggestion, and the Settings page",
+    "    that links the ticked ones in one go. Links nothing itself.",
     "",
     "Send an import pack to Hub, from an agent Den started: through Den, with",
     "that agent's own Den token (Den adds Hub's). Never a Hub token here.",

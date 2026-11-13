@@ -980,6 +980,18 @@ export const DEN_SETTINGS = [
   },
 
   {
+    id: "agents.hub_link_all",
+    category: "agents",
+    label: "Link projects to Hub",
+    description:
+      "Every project here with Hub's suggestion for it (the same repos, or the same name). Tick the ones to link and link them in one go; each one can still be changed in Project setup › Hub project.",
+    keywords: ["hub", "link", "projects", "suggested", "all", "bulk"],
+    scope: "user",
+    control: { type: "custom", render: renderHubLinkAll },
+    read: () => null,
+  },
+
+  {
     id: "agents.hub_github",
     category: "agents",
     label: "Den Hub's GitHub access",
@@ -1850,6 +1862,110 @@ function wireHubProject(host, ctx, url, t) {
   host
     .querySelector('[data-hubp-action="unlink"]')
     ?.addEventListener("click", () => put(null));
+}
+
+/**
+ * #68: every project with Hub's suggestion; the unlinked ones with a
+ * suggestion are ticked; Link ticked links them in one POST and says what
+ * was skipped and why.
+ */
+export function hubLinkAllHtml(b, t) {
+  if (!b || !b.connected)
+    return (
+      `<div data-hubla data-hubla-state="offline">` +
+      `<p class="set-note">${escR(t("hubp.offline"))} <a href="/settings#agents.hub">${escR(t("hubp.connect"))}</a></p></div>`
+    );
+  const rows = Array.isArray(b.projects) ? b.projects : [];
+  const name = (p) =>
+    p.name === p.slug ? escR(p.slug) : `${escR(p.name)} (${escR(p.slug)})`;
+  const why = (w) => (w === "repo" ? t("hubp.whyRepo") : t("hubp.whyName"));
+  const todo = rows.filter((r) => !r.hub && r.suggestion);
+  if (!rows.length)
+    return `<div data-hubla data-hubla-state="none"><p class="set-note">${escR(t("hubla.noProjects"))}</p></div>`;
+  const line = (r) => {
+    if (r.hub)
+      return `<li data-hubla-row="${escR(r.project)}" data-hubla-linked><span class="rt-dot ok"></span> ${escR(r.project)}: ${escR(t("hubla.linkedTo"))} ${name(r.hub)}</li>`;
+    if (!r.suggestion)
+      return `<li data-hubla-row="${escR(r.project)}"><span class="rt-dot warn"></span> ${escR(r.project)}: ${escR(t("hubla.noSuggestion"))}</li>`;
+    const id = `hubla-${escR(r.project)}`;
+    return (
+      `<li data-hubla-row="${escR(r.project)}"><label for="${id}">` +
+      `<input type="checkbox" id="${id}" data-hubla-pick="${escR(r.project)}" data-hubla-hub="${escR(r.suggestion.id)}" checked> ` +
+      `${escR(r.project)} → ${name(r.suggestion)}` +
+      (r.suggestion.why ? `: ${escR(why(r.suggestion.why))}` : "") +
+      `</label></li>`
+    );
+  };
+  return (
+    `<div data-hubla data-hubla-state="${todo.length ? "todo" : "done"}">` +
+    `<ul class="hubla-list">${rows.map(line).join("")}</ul>` +
+    (todo.length
+      ? `<button type="button" class="btn sm primary" data-hubla-action="link">${escR(t("hubla.linkTicked"))}</button>`
+      : `<p class="set-note">${escR(t("hubla.nothing"))}</p>`) +
+    `<div class="set-note" data-hubla-result hidden></div>` +
+    `<div class="rt-err" role="alert" hidden></div></div>`
+  );
+}
+
+function renderHubLinkAll(host, ctx) {
+  return drawHubLinkAll(host, ctx, null);
+}
+
+/** `result`: the last Link ticked's answer, shown under the list. */
+function drawHubLinkAll(host, ctx, result) {
+  if (ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  const url = "/api/hub/link-suggestions";
+  return ctx.shell
+    .api("GET", url)
+    .then((b) => {
+      host.innerHTML = hubLinkAllHtml(b, t);
+      const out = host.querySelector("[data-hubla-result]");
+      if (out && result && Array.isArray(result.linked)) {
+        const parts = [t("hubla.linked", { n: result.linked.length })];
+        for (const s of result.skipped ?? [])
+          parts.push(
+            t("hubla.skipped", {
+              project: s.project,
+              why: t(`hubla.why.${s.code}`),
+            }),
+          );
+        out.textContent = parts.join(" ");
+        out.hidden = false;
+      }
+      const btn = host.querySelector('[data-hubla-action="link"]');
+      btn?.addEventListener("click", () => {
+        const links = [...host.querySelectorAll("[data-hubla-pick]")]
+          .filter((c) => c.checked)
+          .map((c) => ({
+            project: c.dataset.hublaPick,
+            hub: c.dataset.hublaHub,
+          }));
+        if (!links.length) return;
+        host
+          .querySelectorAll("button, input")
+          .forEach((x) => (x.disabled = true));
+        ctx.shell
+          .api("POST", url, { links })
+          .then((r) => drawHubLinkAll(host, ctx, r))
+          .catch((e) => {
+            host
+              .querySelectorAll("button, input")
+              .forEach((x) => (x.disabled = false));
+            const err = host.querySelector(".rt-err");
+            if (err) {
+              err.hidden = false;
+              err.textContent = e?.message || t("hubp.failed");
+            }
+          });
+      });
+    })
+    .catch((e) => {
+      host.innerHTML = `<p class="set-note" data-hubla data-hubla-state="error">${escR(e?.message || t("hubp.failed"))}</p>`;
+    });
 }
 
 /**

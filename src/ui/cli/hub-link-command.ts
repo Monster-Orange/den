@@ -4,6 +4,10 @@
  * project named, it shows the link and Hub's suggestions (the same repo,
  * then the same name). Den never links on its own: the person names one.
  * A person's ask only: refused inside an agent's session.
+ *
+ * #68: `<cli> hub link --suggested [--json]` lists every unlinked project
+ * with Hub's suggestion and gives the Settings link that links the ticked
+ * ones in one go. It never links by itself.
  */
 import { ACTOR_TOKEN_ENV } from "../../shared/actor-token.js";
 import {
@@ -16,7 +20,10 @@ import {
 import { product } from "../../shared/product.js";
 
 export const HUB_LINK_USAGE =
-  "hub link -p <project> [<hub project> | --none] [--json]";
+  "hub link -p <project> [<hub project> | --none] [--json] | hub link --suggested [--json]";
+
+/** Where Settings links every suggestion in one confirm (#68). */
+export const HUB_LINK_ALL_PAGE = "/settings#agents.hub_link_all";
 
 export interface HubLinkDeps {
   env?: Record<string, string | undefined>;
@@ -31,6 +38,18 @@ export interface HubLinkDeps {
   } | null>;
   read?: (ws: string) => HubProjectLink | null;
   write?: (ws: string, link: HubProjectLink | null) => void;
+  /** Every project here, for --suggested (the server agent's scope isn't one). */
+  projects?: () => string[] | Promise<string[]>;
+  /** This install's page for `path`, or null when its address isn't set. */
+  link?: (path: string) => string | null;
+}
+
+async function defaultProjects(): Promise<string[]> {
+  const w = await import("../../shared/environment-manager/workspaces.js");
+  const sa = await import("../../shared/agents/server-agent.js");
+  return Object.keys(w.readWorkspacesFile().workspaces ?? {})
+    .filter((k) => !sa.isServerScope(k))
+    .sort();
 }
 
 async function defaultChoices(ws: string) {
@@ -76,9 +95,11 @@ export async function cmdHubLink(
   let hubTyped: string | undefined;
   let none = false;
   let json = false;
+  let suggested = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--json") json = true;
+    else if (a === "--suggested") suggested = true;
     else if (a === "--none") none = true;
     else if (
       a === "-p" ||
@@ -90,6 +111,11 @@ export async function cmdHubLink(
     else if (a.startsWith("--project=")) typedProject = a.slice(10);
     else if (a.startsWith("-") || hubTyped !== undefined) return usage();
     else hubTyped = a;
+  }
+  if (suggested) {
+    if (typedProject !== undefined || hubTyped !== undefined || none)
+      return usage();
+    return suggestedAll(json, deps, { cli, where, out, err });
   }
   if (!typedProject?.trim() || (none && hubTyped !== undefined)) return usage();
   if (env[ACTOR_TOKEN_ENV] && (hubTyped !== undefined || none)) {
@@ -187,5 +213,74 @@ export async function cmdHubLink(
     out(
       `✓ ${ws} is linked to Hub project ${label(link)}. Its agents' Hub work is filed there from their next call.`,
     );
+  return 0;
+}
+
+/** #68: every unlinked project and Hub's suggestion; the page links them. */
+async function suggestedAll(
+  json: boolean,
+  deps: HubLinkDeps,
+  io: {
+    cli: string;
+    where: string;
+    out: (l: string) => void;
+    err: (l: string) => void;
+  },
+): Promise<number> {
+  const { cli, where, out, err } = io;
+  const read = deps.read ?? ((w: string) => hubProjectOf(w));
+  const choicesOf = deps.choices ?? defaultChoices;
+  const projects = await (deps.projects ?? defaultProjects)();
+  const rows: {
+    project: string;
+    hub: HubProjectLink | null;
+    suggestion: HubProjectChoice | null;
+  }[] = [];
+  for (const project of projects) {
+    const hub = read(project);
+    if (hub) {
+      rows.push({ project, hub, suggestion: null });
+      continue;
+    }
+    let c: Awaited<ReturnType<typeof choicesOf>>;
+    try {
+      c = await choicesOf(project);
+    } catch (e) {
+      err(`${where}: Hub didn't list its projects: ${(e as Error).message}`);
+      return 1;
+    }
+    if (!c) {
+      err(
+        `${where}: this install isn't connected to Hub. Connect it first: Settings › Hub › Connect.`,
+      );
+      return 1;
+    }
+    rows.push({ project, hub: null, suggestion: c.suggestions[0] ?? null });
+  }
+  const page = deps.link
+    ? deps.link(HUB_LINK_ALL_PAGE)
+    : (await import("../../shared/web-url.js")).publicLink(HUB_LINK_ALL_PAGE);
+  if (json) {
+    out(JSON.stringify({ ok: true, projects: rows, page }));
+    return 0;
+  }
+  const todo = rows.filter((r) => !r.hub && r.suggestion);
+  const lone = rows.filter((r) => !r.hub && !r.suggestion);
+  if (!todo.length) {
+    out(
+      rows.length
+        ? "Nothing to link: every project is linked, or Hub has no suggestion for it."
+        : "No projects here yet.",
+    );
+  } else {
+    out(`Hub suggests (${todo.length}):`);
+    for (const r of todo) out(`  ${r.project} → ${label(r.suggestion!)}`);
+    out(
+      `Link them in one go: ${page ?? "Settings › Agents › Link projects to Hub"}`,
+    );
+    out(`Or one at a time: ${cli} hub link -p <project> <hub project>`);
+  }
+  for (const r of lone)
+    out(`  ${r.project}: no suggestion; see ${cli} hub link -p ${r.project}`);
   return 0;
 }

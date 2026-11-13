@@ -45,11 +45,11 @@ async function defaultUncovered(ws: string): Promise<Uncovered[]> {
   return s.projectSync().uncoveredFor(ws);
 }
 
-function defaultChanged(): void {
+export function defaultChanged(): void {
   void import("./hub-sync-service.js").then((s) => s.projectSync().request());
 }
 
-async function defaultChoices(ws: string) {
+export async function defaultChoices(ws: string) {
   const hub = await import("../../shared/hub.js");
   const cfg = hub.readHubConfig();
   if (!cfg) return null;

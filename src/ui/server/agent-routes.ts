@@ -524,6 +524,40 @@ export async function handleAgentRoutes(
     const hub = HUB_PROJECT_ROUTE.exec(pathname);
     if (hub) return hubProjectRoute(req, res, hub[1], deps.hubProject);
   }
+  // #68: link every project to Hub's suggestion in one confirm.
+  if (pathname === "/api/hub/link-suggestions") {
+    const [{ hubLinkAllRoute }, hp, link, w, audit, guard, sa] =
+      await Promise.all([
+        import("./hub-link-all-routes.js"),
+        import("./hub-project-routes.js"),
+        import("../../shared/hub-project-link.js"),
+        import("../../shared/environment-manager/workspaces.js"),
+        import("./audit.js"),
+        import("./request-guard.js"),
+        import("../../shared/agents/server-agent.js"),
+      ]);
+    return hubLinkAllRoute(req, res, {
+      projects: () => {
+        try {
+          return Object.keys(w.readWorkspacesFile().workspaces ?? {})
+            .filter((k) => !sa.isServerScope(k))
+            .sort();
+        } catch {
+          return [];
+        }
+      },
+      choices: hp.defaultChoices,
+      read: (ws) => link.hubProjectOf(ws),
+      write: (ws, l) => link.setHubProject(ws, l),
+      changed: hp.defaultChanged,
+      audit: (line) =>
+        audit.recordAction(
+          guard.auditActorOf(req),
+          { verb: "hub-link", detail: line.slice(0, 400) },
+          guard.principalOf(req),
+        ),
+    });
+  }
   // H5: Den Hub's GitHub App coverage, and a sync on demand.
   if (pathname === "/api/hub/github" || pathname === "/api/hub/sync") {
     const svc = await import("./hub-sync-service.js");
