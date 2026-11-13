@@ -1004,6 +1004,20 @@
     "ag.sub.one": "{n} session · {w} waiting · {scope}",
     "ag.all": "all projects",
     "ag.waiting": "waiting",
+    "bell.title": "Notifications",
+    "bell.n": "Notifications: {n} unread",
+    "bell.n.one": "Notifications: {n} unread",
+    "bell.empty": "Nothing needs you.",
+    "bell.markAll": "Mark all read",
+    "bell.clearRead": "Clear read",
+    "bell.read": "Mark read",
+    "bell.mute": "Mute for 1 hour",
+    "bell.muted": "Muted for 1 hour",
+    "bell.server": "__DEN_TITLE__ agent",
+    "bell.hub": "Hub · {project}",
+    "bell.now": "now",
+    "bell.min": "{n} min",
+    "bell.h": "{n} h",
     "ag.hub.working.one": "Working on {n} Hub comment",
     "ag.hub.working": "Working on {n} Hub comments",
     "ag.hub.queued.one": "{n} Hub comment waits for it",
@@ -2321,6 +2335,13 @@
     '<span class="den-lock-ic" aria-hidden="true">🔑</span><span class="den-lbl-l">' +
     esc(t("lock.waiting")) +
     "</span></button>" +
+    // NT-3: the bell (bell.js paints its count and opens its panel).
+    '<button type="button" class="den-ib den-bell" id="den-bell" aria-haspopup="dialog" aria-expanded="false" aria-label="' +
+    esc(t("bell.title")) +
+    '" title="' +
+    esc(t("bell.title")) +
+    '"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>' +
+    '<span class="den-bell-n" hidden></span></button>' +
     '<button class="den-ib v-pill" id="version-pill" onclick="openChangelog()" title="' +
     esc(t("v.title")) +
     '">' +
@@ -5609,6 +5630,30 @@
     ".den-chip .den-dot, .den-drawer .den-dot, .den-pal .den-dot { margin: 0; }",
     ".den-chip[aria-expanded='true'] { border-color: var(--border-strong); }",
     ".den-chip[hidden] { display: none; }",
+    ".den-bell { position: relative; }",
+    ".den-bell-n { position: absolute; top: -4px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px;",
+    "  border-radius: 999px; background: var(--warn); color: var(--bg); font: 600 10px/16px var(--mono);",
+    "  text-align: center; }",
+    ".den-bell-n[hidden] { display: none; }",
+    ".den-bell-pop { position: fixed; top: 52px; right: 12px; width: min(420px, calc(100vw - 32px));",
+    "  max-height: min(70vh, 640px); overflow: auto; background: var(--surface); color: var(--text);",
+    "  border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 8px 28px color-mix(in srgb, var(--text) 25%, transparent);",
+    "  z-index: 60; padding: 8px 0; font-size: 13px; }",
+    ".den-bell-pop[hidden] { display: none; }",
+    ".den-bell-hd { display: flex; gap: 8px; align-items: center; padding: 4px 12px 8px;",
+    "  border-bottom: 1px solid var(--border); }",
+    ".den-bell-hd h2 { font-size: 13px; margin: 0; flex: 1; }",
+    ".den-bell-hd button, .den-bell-sc button { font: inherit; font-size: 12px; background: none; border: 0;",
+    "  color: var(--accent); cursor: pointer; padding: 2px 4px; }",
+    ".den-bell-sc { display: flex; align-items: center; padding: 8px 12px 2px; color: var(--muted);",
+    "  font: 11px var(--mono); text-transform: uppercase; letter-spacing: .04em; }",
+    ".den-bell-sc span { flex: 1; }",
+    ".den-bell-row { display: flex; gap: 8px; align-items: flex-start; padding: 6px 12px; }",
+    ".den-bell-row:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }",
+    ".den-bell-row a { flex: 1; color: inherit; text-decoration: none; overflow-wrap: anywhere; }",
+    ".den-bell-row.read a { color: var(--muted); }",
+    ".den-bell-row time { color: var(--faint); font-size: 11px; white-space: nowrap; }",
+    ".den-bell-empty { padding: 16px 12px; color: var(--muted); }",
     "#den-lock { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }",
     ".den-dot.run { background: var(--accent); animation: den-pulse 1.2s infinite; }",
     ".den-dot.pending { background: var(--faint); animation: den-pulse 1.2s infinite; }",

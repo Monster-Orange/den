@@ -4435,6 +4435,23 @@ export async function mountAgentsPage(root) {
     }
   });
 
+  // NT-2: while this tab is visible and focused, the agents in its panes
+  // don't notify (the bell); Den forgets it 10 s after the last word.
+  const looking = () => {
+    if (document.visibilityState !== "visible" || !document.hasFocus()) return;
+    const agents = visibleIds()
+      .map((id) => rowOf(id))
+      .filter((r) => r?.kind === "agent")
+      .map((r) => r.agent);
+    if (agents.length)
+      void api("POST", "/api/notifications/looking", { agents }).catch(
+        () => {},
+      );
+  };
+  setInterval(looking, 4000);
+  window.addEventListener("focus", looking);
+  document.addEventListener("visibilitychange", looking);
+
   const [, saved] = await Promise.all([loadScope(), savedLayout()]);
   // A link's &layout= wins for this page; else the person's.
   st.layout = linked ?? saved;

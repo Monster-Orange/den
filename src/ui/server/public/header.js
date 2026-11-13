@@ -16,6 +16,7 @@ import { versionLabel } from "./version-label.js";
 import { changelogView } from "./changelog-view.js";
 import { buildRow, healthCycle, paintGate, shellHealth } from "./health-fit.js";
 import { initTopbar, paintChecking, paintStatus } from "./topbar.js";
+import { initBell } from "./bell.js";
 import { registerDenSettings } from "./settings-registry.js";
 import { initServicePanel } from "./svc-panel.js";
 import { restartDen } from "./restart-den.js";
@@ -50,6 +51,8 @@ if (typeof window !== "undefined")
   (window.denShellQueue = window.denShellQueue || []).push((sh) => {
     if (sh?.registerSetting) registerDenSettings(sh);
   });
+// NT-3: the bell.
+if (typeof document !== "undefined") initBell();
 if (typeof document !== "undefined")
   initTopbar({
     refreshHealth: (env, opts) => refreshHealth(env, opts),
