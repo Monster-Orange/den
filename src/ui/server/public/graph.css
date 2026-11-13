@@ -439,6 +439,13 @@
   color: var(--warn);
   border-color: color-mix(in srgb, var(--warn) 55%, transparent);
 }
+/* the text rows keep their height; a long label (es, ja) shortens the
+   actions row instead of clipping the repo line */
+.dg-card .r1,
+.dg-card .r2,
+.dg-card .r3 {
+  flex: none;
+}
 .dg-card .r2 {
   font-family: var(--mono);
   font-size: 12px;
@@ -483,6 +490,8 @@
 .dg-acts {
   display: flex;
   gap: 6px;
+  min-height: 0;
+  overflow: hidden;
   margin-top: auto;
   opacity: 0;
   transition: opacity 0.12s;
