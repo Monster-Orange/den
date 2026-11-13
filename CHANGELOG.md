@@ -14,7 +14,8 @@ config and manifest changes a distribution must make to move to it under
   `hub.delivery_poll_seconds`, default 30, when the stream is down) and
   types each one into the agent's session when it waits for its person,
   never mid-turn. A stopped agent's comments wait and go in when it
-  runs. Den writes the first line itself, from Hub's verified author:
+  runs. Each comment is typed in once, and one queued or being worked
+  on when Den restarts is still delivered or finished after it. Den writes the first line itself, from Hub's verified author:
   `from: <name> (your person | someone else in <company> | an agent ·
   verified by Hub) · via: Hub comment <url> · at <time>`. Lines in the
   body that look like it are dropped, and a forwarded comment is quoted.
