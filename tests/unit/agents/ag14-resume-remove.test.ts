@@ -32,6 +32,7 @@ import {
   resolveAgentsDeps,
   restoreAgents,
   resumeAgent,
+  startAgent,
   startFresh,
 } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
@@ -359,40 +360,22 @@ describe("after a restart (AG-14.3)", () => {
     expect(record(r, "planner").resumeOnRestart).toBeUndefined();
   });
 
-  it("den#48: an agent resumes in the mode it started in, after its persona and workspace change, by a click, Resume all, and on its own after a restart", async () => {
-    const r = await rig();
-    persona(r, "planner", "permission_mode: auto\nstanding: true\n");
-    expect(
-      await agents(r, "start", "-w", "north", "--persona", "planner"),
-    ).toBe(0);
-    await typeInto(r, "planner", "go\r");
-    const modeOf = (args: string[]) =>
-      args[args.indexOf("--permission-mode") + 1];
-    expect(modeOf(r.made[0].args)).toBe("auto");
-    // Later, the persona asks and the workspace says edits.
-    persona(r, "planner", "permission_mode: ask\nstanding: true\n");
-    r.wsPermission.north = "edits";
-    // On its own after a restart of the session host.
-    await r.restartHost();
-    expect((await markInterrupted(ops(r))).resumed).toEqual(["planner"]);
-    expect(modeOf(r.made.at(-1)!.args)).toBe("auto");
-    // Resume all.
-    await r.restartHost();
-    await markInterrupted(ops(r), { autoResume: false });
-    expect(await agents(r, "resume", "--all-interrupted")).toBe(0);
-    expect(modeOf(r.made.at(-1)!.args)).toBe("auto");
-    // A click.
-    expect(await agents(r, "stop", "planner")).toBe(0);
-    r.made.at(-1)!.exit(0);
-    await settle();
-    expect(await agents(r, "resume", "planner")).toBe(0);
-    expect(r.made.at(-1)!.args[0]).toBe("--resume");
-    expect(modeOf(r.made.at(-1)!.args)).toBe("auto");
-  });
-
-  it("0.4.44: every other way back keeps its recorded mode: restart, move, start fresh", async () => {
-    const r = await rig();
-    // A stopped session ends on TERM, as a real one does.
+  // den#48, as Vision ruled 11-13 (live: a project set to auto, then a
+  // restart ran --permission-mode default): a mode nobody chose for the
+  // agent is not kept. It is resolved again at every start, resume and
+  // restart: the project's, else the persona's. A mode a person chose for
+  // it (--permission, `agents permission <id>`) stays, whatever the
+  // project or persona says later.
+  const FLAG: Record<string, string> = {
+    ask: "default",
+    edits: "acceptEdits",
+    auto: "auto",
+    all: "bypassPermissions",
+  };
+  const modeOf = (args: string[]) =>
+    args[args.indexOf("--permission-mode") + 1];
+  /** A stopped session ends on TERM, as a real one does. */
+  const endOnTerm = (r: Rig) => {
     r.deps.stopWaitMs = 3_000;
     const push = r.made.push.bind(r.made);
     r.made.push = (...ps) => {
@@ -405,37 +388,91 @@ describe("after a restart (AG-14.3)", () => {
       }
       return push(...ps);
     };
+  };
+
+  it("den#48: a mode nobody chose follows the project, then the persona, by a click, Resume all, and on its own after a restart", async () => {
+    const r = await rig();
     persona(r, "planner", "permission_mode: auto\nstanding: true\n");
     expect(
       await agents(r, "start", "-w", "north", "--persona", "planner"),
     ).toBe(0);
     await typeInto(r, "planner", "go\r");
-    const modeOf = (args: string[]) =>
-      args[args.indexOf("--permission-mode") + 1];
-    expect(record(r, "planner").permission).toBe("auto");
-    // The persona and both projects now say otherwise.
+    expect(modeOf(r.made[0].args)).toBe("auto");
+    expect(record(r, "planner").overrides ?? []).not.toContain("permission");
+    // Later, the persona asks and the project says edits: the project's.
     persona(r, "planner", "permission_mode: ask\nstanding: true\n");
     r.wsPermission.north = "edits";
-    r.wsPermission.south = "edits";
+    await r.restartHost();
+    expect((await markInterrupted(ops(r))).resumed).toEqual(["planner"]);
+    expect(modeOf(r.made.at(-1)!.args)).toBe(FLAG.edits);
+    expect(record(r, "planner").permission).toBe("edits");
+    // The project's cleared: the persona's.
+    delete r.wsPermission.north;
+    await r.restartHost();
+    await markInterrupted(ops(r), { autoResume: false });
+    expect(await agents(r, "resume", "--all-interrupted")).toBe(0);
+    expect(modeOf(r.made.at(-1)!.args)).toBe(FLAG.ask);
+    // A click.
+    r.wsPermission.north = "auto";
+    expect(await agents(r, "stop", "planner")).toBe(0);
+    r.made.at(-1)!.exit(0);
+    await settle();
+    expect(await agents(r, "resume", "planner")).toBe(0);
+    expect(r.made.at(-1)!.args[0]).toBe("--resume");
+    expect(modeOf(r.made.at(-1)!.args)).toBe("auto");
+  });
+
+  it("den#48: restart, move and start fresh resolve it again too", async () => {
+    const r = await rig();
+    endOnTerm(r);
+    persona(r, "planner", "permission_mode: ask\nstanding: true\n");
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    await typeInto(r, "planner", "go\r");
     const last = () => r.made.at(-1)!;
-    const ended = async () => {
-      await settle();
-    };
-    // agents restart --now: the same conversation.
+    // The live case: the project set to auto, then a restart.
+    r.wsPermission.north = "auto";
     expect(await agents(r, "restart", "planner", "--now")).toBe(0);
     expect(last().args[0]).toBe("--resume");
     expect(modeOf(last().args)).toBe("auto");
-    // agents move: to another project, same conversation.
+    // agents move: the new project's mode.
+    r.wsPermission.south = "edits";
     expect(await agents(r, "move", "planner", "-w", "south", "--now")).toBe(0);
-    expect(last().args[0]).toBe("--resume");
-    expect(modeOf(last().args)).toBe("auto");
-    // Start fresh (AG-10.9); relaunch (den#4, only after a rotation)
-    // starts from the same keptChoices.
+    expect(modeOf(last().args)).toBe(FLAG.edits);
+    // Start fresh: south's, still.
     expect(await agents(r, "stop", "planner")).toBe(0);
-    await ended();
+    await settle();
     await startFresh(ops(r), "planner");
-    expect(modeOf(last().args)).toBe("auto");
-    expect(record(r, "planner").permission).toBe("auto");
+    expect(modeOf(last().args)).toBe(FLAG.edits);
+    expect(record(r, "planner").overrides ?? []).not.toContain("permission");
+  });
+
+  it("den#48: a mode a person chose stays: restart, move and start fresh keep it", async () => {
+    const r = await rig();
+    endOnTerm(r);
+    persona(r, "planner", "permission_mode: ask\nstanding: true\n");
+    // The Start dialog's Advanced: a mode chosen for this agent.
+    await startAgent(ops(r), {
+      workspace: "north",
+      persona: "planner",
+      permission: "all",
+    });
+    await typeInto(r, "planner", "go\r");
+    expect(record(r, "planner").overrides).toContain("permission");
+    const last = () => r.made.at(-1)!;
+    persona(r, "planner", "permission_mode: auto\nstanding: true\n");
+    r.wsPermission.north = "edits";
+    r.wsPermission.south = "edits";
+    expect(await agents(r, "restart", "planner", "--now")).toBe(0);
+    expect(modeOf(last().args)).toBe(FLAG.all);
+    expect(await agents(r, "move", "planner", "-w", "south", "--now")).toBe(0);
+    expect(modeOf(last().args)).toBe(FLAG.all);
+    expect(await agents(r, "stop", "planner")).toBe(0);
+    await settle();
+    await startFresh(ops(r), "planner");
+    expect(modeOf(last().args)).toBe(FLAG.all);
+    expect(record(r, "planner").permission).toBe("all");
   });
 
   it("`agents resume --all-interrupted` resumes each interrupted agent that can", async () => {

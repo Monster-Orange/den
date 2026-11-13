@@ -10,7 +10,7 @@
  *     instruction is typed into its session once it is ready (bracketed
  *     paste, then Enter), never an argument, and its row says "model: …";
  *   - finding a persona: search and the category and source chips;
- *     Plain session pinned last; Details; What's a persona?;
+ *     Plain shell pinned last; Details; What's a persona?;
  *   - Advanced: the permission preview follows the mode and the extra
  *     commands, and a pattern says "use a plain prefix";
  *   - + New persona writes a persona of your own, and the dialog picks it;
@@ -281,15 +281,15 @@ describe("the Start dialog (AG-10.1)", () => {
     await p.context().close();
   }, 60_000);
 
-  it("finds a persona: search, the category and source chips, Plain session pinned last, Details and What's a persona?", async () => {
+  it("finds a persona: search, the category and source chips, Plain shell pinned last, Details and What's a persona?", async () => {
     if (skip()) return;
     const p = await page("/agents?ws=north&start=1");
     await openDialog(p);
-    // Grouped by category with no filter; Plain session last.
+    // Grouped by category with no filter; Plain shell last.
     const heads = await p.$$eval("#ag-persona .pgh span:first-child", (xs) =>
       xs.map((x) => (x.textContent ?? "").toLowerCase()),
     );
-    expect(heads).toEqual(["engineering", "design", "session"]);
+    expect(heads).toEqual(["engineering", "design", "shell"]);
     expect((await pids(p)).at(-1)).toBe(":plain");
     // Every option has its one-line description.
     for (const d of await p.$$eval("#ag-persona .pr .pd", (xs) =>
@@ -322,7 +322,7 @@ describe("the Start dialog (AG-10.1)", () => {
     );
     expect(await p.textContent("#ag-det")).toMatch(/Ask for everything/);
     expect(await p.textContent("#ag-det")).toMatch(/gh pr diff/);
-    // Plain session hides the agent's fields.
+    // Plain shell hides the agent's fields.
     await p.click('#ag-persona [data-pid=":plain"]');
     expect(await p.isHidden("#ag-adv")).toBe(true);
     expect(await p.isHidden("#ag-task-l")).toBe(true);

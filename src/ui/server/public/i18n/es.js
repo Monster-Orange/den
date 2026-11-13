@@ -589,9 +589,9 @@
     "ag.rot.compactions.one": "{n} compactación",
     "ag.rot.merged": "PR fusionado",
     "ag.rot.noHandoff":
-      "Su sesión rotó ({why}), pero no escribió handoff.md. Reanúdalo para que lo escriba, o empieza de cero.",
+      "Rotó ({why}), pero no escribió handoff.md. Reanúdalo para que lo escriba, o empieza de cero.",
     "ag.rot.badHandoff":
-      "Su sesión rotó ({why}), pero su handoff.md no está completo. Reanúdalo para arreglarlo, o empieza de cero.",
+      "Rotó ({why}), pero su handoff.md no está completo. Reanúdalo para arreglarlo, o empieza de cero.",
     "ag.relaunch": "Relanzar ahora",
     "ag.relaunchName": "Relanzar {id} ahora",
     "ag.relaunched": "{id} relanzado desde su traspaso",
@@ -664,7 +664,7 @@
     "ag.new.details": "Detalles: {n}",
     "ag.new.hide": "Ocultar detalles",
     "ag.new.newP": "+ Nueva persona",
-    "ag.new.plain": "Sesión simple",
+    "ag.new.plain": "Shell simple",
     "ag.new.plainP": "Una terminal en la carpeta del proyecto. Sin agente.",
     "ag.new.task": "Primera instrucción (opcional)",
     "ag.new.name": "Nombre (opcional)",
@@ -679,7 +679,7 @@
       "p. ej., Toma la historia del estado vacío. Sigue el diseño y añade una prueba.",
     "ag.new.adv": "Avanzado: modelo y permisos",
     "ag.new.advNote":
-      "Los valores predeterminados vienen de la persona. Los cambios aquí solo afectan a esta sesión, y la sesión queda marcada en la lista.",
+      "Los valores predeterminados vienen de la persona. Los cambios aquí solo afectan a este agente, y el agente queda marcado en la lista.",
     "ag.new.model": "Modelo",
     "ag.new.modelDef": "Predeterminado de la persona ({m})",
     "ag.new.ver": "Versión",
@@ -916,8 +916,11 @@
     "ag.term.noWs": "no hay ningún proyecto activo. Activa uno primero.",
     "ws.termHere": "Terminal aquí",
     "kind.agent": "Agente",
-    "ag.sub": "{n} sesiones · {w} en espera · {scope}",
-    "ag.sub.one": "{n} sesión · {w} en espera · {scope}",
+    "ag.sub.agents": "{n} agentes",
+    "ag.sub.agent": "{n} agente",
+    "ag.sub.shells": "{n} shells",
+    "ag.sub.shell": "{n} shell",
+    "ag.sub.waiting": "{w} en espera",
     "ag.all": "todos los proyectos",
     "ag.waiting": "en espera",
     "ag.waiting.approval": "necesita tu Permitir",
@@ -987,7 +990,7 @@
       "El runtime de este agente no puede decir qué ayudantes inició.",
     "hp.workflow": "flujo {name}",
     "hp.note":
-      "Los ayudantes corren dentro de la sesión del propio agente: Den los muestra, pero no puede detenerlos ni dirigirlos. Para cambiar lo que hacen, díselo al agente.",
+      "Los ayudantes corren dentro del propio agente: Den los muestra, pero no puede detenerlos ni dirigirlos. Para cambiar lo que hacen, díselo al agente.",
     "hp.st.running": "en marcha",
     "hp.st.idle": "inactivo",
     "hp.st.done": "terminado",
@@ -1011,10 +1014,10 @@
       "Los ajustes de Hub de Den tienen un problema. Mira Ajustes › Hub.",
     "hub.railBadUrl":
       "La dirección de Hub no es https, así que Den no la abre. Mira Ajustes › Hub.",
-    "ag.session": "sesión",
+    "ag.session": "shell",
     "ag.empty":
-      "Elige una sesión a la izquierda para abrir su terminal. Abre más para verlas en mosaico (hasta 4).",
-    "ag.none.scope": "Aún no hay sesiones ni agentes en {scope}",
+      "Elige un agente o un shell a la izquierda para abrir su terminal. Abre más para verlos en mosaico (hasta 4).",
+    "ag.none.scope": "Aún no hay agentes ni shells en {scope}",
     "ag.detach": "Cerrar panel",
     "ag.to": "Para {name} · {ws}",
     "ag.toName": "Para {name}",
@@ -1028,9 +1031,9 @@
     "ag.revokedTip":
       "Su token fue revocado (web logout --all): detenlo y reanúdalo, o inícialo de nuevo, para darle uno nuevo",
     "ag.ended":
-      "Esta sesión ha terminado. Su registro se queda hasta que se reanude o se elimine.",
+      "Esta terminal se cerró. Su registro se queda hasta que se reanude o se elimine.",
     "ag.switched": "Cambiado a {p}",
-    "ag.exitedLine": "[la sesión terminó{code}]",
+    "ag.exitedLine": "[la terminal se cerró{code}]",
     "ag.refusedUnknown": "el servidor rechazó la terminal",
     "ag.refusedStatus": "el servidor rechazó la terminal ({status})",
     "ag.goWs": "Abrir {ws} en Proyectos",
@@ -1070,7 +1073,8 @@
     "sa.trust": "El agente pregunta si confías en su carpeta, {folder}.",
     "sa.trust.yes": "Confiar",
     "sa.trust.no": "Ahora no",
-    "sa.trust.wait": "El agente espera hasta que respondas, aquí o en su terminal.",
+    "sa.trust.wait":
+      "El agente espera hasta que respondas, aquí o en su terminal.",
     "sa.model": "Modelo",
     "sa.login":
       "Si Claude te pide iniciar sesión, hazlo aquí. Después {name} empieza.",
@@ -1115,19 +1119,19 @@
       "Sus subagentes (Explore también) usan {model}: agents.subagents.model.",
     "ag.subagents.from.default":
       "Sus subagentes (Explore también) usan {model}: el valor por defecto de Den. Lo cambian agents.subagents.model o subagent_model de una persona.",
-    "ag.tabs": "Sesiones abiertas",
+    "ag.tabs": "Terminales abiertas",
     "ag.hint.focus":
-      "Un clic muestra una sesión. Mayús o ⌘ y clic la añade al lado.",
+      "Un clic muestra una terminal. Mayús o ⌘ y clic la añade al lado.",
     "ag.hint.tabs":
-      "Un clic abre una sesión en una pestaña. Doble clic en una pestaña para cambiarle el nombre.",
-    "ag.hint.tile": "Un clic añade una sesión al mosaico, hasta 4.",
+      "Un clic abre una terminal en una pestaña. Doble clic en una pestaña para cambiarle el nombre.",
+    "ag.hint.tile": "Un clic añade una terminal al mosaico, hasta 4.",
     "ag.renameTip": "Doble clic para cambiar el nombre",
     "ag.renameName": "Cambiar el nombre de {id}",
     "ag.rn.item": "Cambiar el nombre…",
     "ag.rn.title": "Cambiar el nombre de {id}",
     "ag.rn.name": "Nombre",
     "ag.rn.help":
-      "Lo muestran su pestaña, su fila y la cabecera del panel; el id {id} no cambia. Las demás sesiones lo ven como {peer} desde su próximo inicio o reanudación. Vacío: vuelve a {id}.",
+      "Lo muestran su pestaña, su fila y la cabecera del panel; el id {id} no cambia. Los demás agentes lo ven como {peer} desde su próximo inicio o reanudación. Vacío: vuelve a {id}.",
     "ag.rn.go": "Cambiar el nombre",
     "ag.rn.cancel": "Cancelar",
     "ag.mv.item": "Mover a otro proyecto…",

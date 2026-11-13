@@ -227,7 +227,8 @@ describe("agents persona (CLI)", () => {
     transcript(r, rec.resumeToken as string, ENDED);
     expect(await agents(r, "persona", "p1", "reviewer")).toBe(0);
     const after = readRecord(r.stateDir, "p1")!;
-    expect(after.permission).toBeUndefined();
+    // den#48: the record says the mode it runs with now, never the old one.
+    expect(after.permission).not.toBe("all");
     expect(after.allow).toBeUndefined();
     expect(after.overrides).toBeUndefined();
     expect(argAfter(r.made[1].args, "--permission-mode")).not.toBe(

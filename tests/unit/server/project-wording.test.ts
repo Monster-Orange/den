@@ -369,3 +369,61 @@ describe("no 'workspace' where people read (H5 wording)", () => {
     );
   });
 });
+
+/**
+ * LOGICAL-ERD's words people see: an agent is never called a "session"
+ * (es "sesión", ja "セッション"). The Agents page said "1 session ·
+ * 0 waiting" and tagged a plain terminal "session"; the H5 check above
+ * looked only for "workspace". A plain terminal is a "shell".
+ *
+ * Kept, because they mean something else: Den's own run (the admin
+ * password kept "for this session"), the macOS desktop login session, and
+ * the session host (a process, named as the CLI's `sessions host` does).
+ * In es, signing in and out ("iniciar sesión", "cerrar sesión") is the
+ * language's own phrase. Commands, flags, API paths and JSON fields keep
+ * "session" too: they are taken out as code, as above.
+ */
+const SESSION: Record<string, RegExp> = {
+  en: /\bsessions?\b/i,
+  es: /\bsesi[oó]n(?:es)?\b/i,
+  ja: /セッション/,
+};
+const SESSION_KEPT: Record<string, string> = {
+  "lock.saved": "Den's own run",
+  "lock.savedTo": "Den's own run",
+  "lock.saveFailed": "Den's own run",
+  "ag.noHost": "the session host, a process",
+  "ag.where.logoutTip": "the macOS desktop login session",
+  "ag.where.bgTip": "the macOS desktop login session",
+};
+// (\w misses accents: "inició sesión".) "La sesión se mantiene": you stay signed in.
+const SIGN_IN_ES =
+  /\b(?:inici[a-záéíóú]*|cerrar|cierre)(?: de)?(?: la)? sesi[oó]n(?:es)?\b|\bsesi[oó]n iniciada\b|\bla sesi[oó]n se mantiene\b/gi;
+
+describe("no 'session' for an agent or a terminal (LOGICAL-ERD)", () => {
+  it.each(UI_LANGUAGES)("the %s catalog", (lang) => {
+    const cat = catalogs()[lang] ?? {};
+    const word = SESSION[lang] ?? SESSION.en;
+    const found = Object.entries(cat)
+      .filter(([k]) => !(k in SESSION_KEPT))
+      .flatMap(([k, v]) =>
+        hits(k, lang === "es" ? String(v).replace(SIGN_IN_ES, " ") : String(v), word),
+      );
+    expect(found).toEqual([]);
+  });
+
+  it("the modules' English fallbacks", () => {
+    const found = Object.entries({
+      ...TOPBAR_EN,
+      ...APPEARANCE_EN,
+      ...PICKER_EN,
+    }).flatMap(([k, v]) => hits(k, String(v), SESSION.en));
+    expect(found).toEqual([]);
+  });
+
+  it("what's kept still says it, so the list stays honest", () => {
+    const en = catalogs().en ?? {};
+    for (const k of Object.keys(SESSION_KEPT))
+      expect(`${k}: ${en[k]}`).toMatch(SESSION.en);
+  });
+});

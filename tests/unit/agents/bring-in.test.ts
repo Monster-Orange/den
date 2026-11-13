@@ -64,6 +64,53 @@ function conversation(
 const agents = (r: Rig, ...args: string[]) => cmdAgents(args, r.deps);
 
 describe("agents import (CLI)", () => {
+  // Vision 11-13, live: agents brought in before their project was set to
+  // auto restarted with --permission-mode default.
+  it("den#48: one brought in follows its project's mode later: import, then the project set, then a restart and a resume", async () => {
+    const r = await rig();
+    r.deps.stopWaitMs = 3_000;
+    const push = r.made.push.bind(r.made);
+    r.made.push = (...ps) => {
+      for (const p of ps) {
+        const kill = p.kill.bind(p);
+        p.kill = (sig: string) => {
+          kill(sig);
+          setTimeout(() => p.exit(143), 5);
+        };
+      }
+      return push(...ps);
+    };
+    conversation(r, r.wsDir("north"));
+    expect(
+      await agents(
+        r,
+        "import",
+        "-w",
+        "north",
+        "--session",
+        TOKEN,
+        "--persona",
+        "planner",
+      ),
+    ).toBe(0);
+    const modeOf = (args: string[]) =>
+      args[args.indexOf("--permission-mode") + 1];
+    expect(modeOf(r.made[0].args)).toBe("default");
+    expect(readRecord(r.stateDir, "planner")!.overrides ?? []).not.toContain(
+      "permission",
+    );
+    r.wsPermission.north = "auto";
+    expect(await agents(r, "restart", "planner", "--now")).toBe(0);
+    expect(r.made.at(-1)!.args.slice(0, 2)).toEqual(["--resume", TOKEN]);
+    expect(modeOf(r.made.at(-1)!.args)).toBe("auto");
+    expect(readRecord(r.stateDir, "planner")!.permission).toBe("auto");
+    r.wsPermission.north = "edits";
+    expect(await agents(r, "stop", "planner")).toBe(0);
+    await settle();
+    expect(await agents(r, "resume", "planner")).toBe(0);
+    expect(modeOf(r.made.at(-1)!.args)).toBe("acceptEdits");
+  });
+
   it("lists the workspace's conversations, then brings one in with --resume in its folder", async () => {
     const r = await rig();
     const sub = path.join(r.wsDir("north"), "docs");

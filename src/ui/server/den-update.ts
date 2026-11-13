@@ -8,13 +8,12 @@
  *
  *   1. finds the exact version (`latest`, or one named) on npm;
  *   2. saves the pin files (package.json, package-lock.json) in
- *      <state>/server-agent/update/;
+ *      <state>/server-agent/update/, and copies this version's watch
+ *      (update-watch.mjs) there: the running version judges the new one;
  *   3. `npm install --save-exact <pkg>@<to>` in the distribution root (a
  *      failure puts the pin back and installs the old one again);
  *   4. runs the new Den's `doctor --json`, and says what it found;
- *   5. starts the watch (update-watch.mjs, copied out of the engine first:
- *      npm is replacing the engine's files), leaves SRV-1a's restart note,
- *      and restarts.
+ *   5. starts that watch, leaves SRV-1a's restart note, and restarts.
  *
  * The watch waits `server_agent.update_wait_seconds` for the new version.
  * If it isn't up, the pin goes back, the old version is installed and
@@ -206,6 +205,15 @@ export async function updateDen(
     await d.run([...d.npm, "install", "--no-audit", "--no-fund"], d.root);
   };
 
+  // The watch that judges the new version, and rolls it back, is this
+  // version's: copied out of the engine before npm replaces it, so a new
+  // release with a broken watch (or none) still rolls back.
+  const script = path.join(dir, "watch.mjs");
+  fs.copyFileSync(
+    path.join(d.engine, "src/ui/server/update-watch.mjs"),
+    script,
+  );
+
   state("installing");
   const inst = await d.run(
     [
@@ -244,12 +252,6 @@ export async function updateDen(
     };
   }
 
-  // The watch runs from the state dir: npm replaces the engine's files.
-  const script = path.join(dir, "watch.mjs");
-  fs.copyFileSync(
-    path.join(d.engine, "src/ui/server/update-watch.mjs"),
-    script,
-  );
   const plan = path.join(dir, "plan.json");
   writeJson(plan, {
     port: d.port,
@@ -311,7 +313,7 @@ export function runCommand(
       (err, stdout, stderr) => {
         const code =
           err && typeof (err as { code?: unknown }).code === "number"
-            ? ((err as { code: number }).code)
+            ? (err as { code: number }).code
             : err
               ? null
               : 0;
@@ -335,7 +337,9 @@ export async function npmViewVersion(
   try {
     const v = JSON.parse(r.out.trim()) as unknown;
     const last = Array.isArray(v) ? v.at(-1) : v;
-    return typeof last === "string" && UPDATE_SPEC_RE.test(last) && last !== "latest"
+    return typeof last === "string" &&
+      UPDATE_SPEC_RE.test(last) &&
+      last !== "latest"
       ? last
       : null;
   } catch {

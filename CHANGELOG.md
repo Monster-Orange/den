@@ -42,9 +42,28 @@ config and manifest changes a distribution must make to move to it under
   the earlier one for a Hub that sends none.
 - The release job stops when a gated candidate (`v<version>-dev.N`) is
   not in the release's history.
+- **One agent's permission mode** (`agents permission <id> ask|edits|auto|all`).
+  A mode a person chose stays through every restart. `--clear` gives it
+  back to the project's mode, else the persona's; no mode says which one
+  it runs with and where that comes from. A person's command only.
 
 ### Fixed
 
+- **An agent follows its project's permission mode.** A restart, resume,
+  move or Start fresh reused the mode recorded when the agent started,
+  so setting a project to `auto` didn't reach agents already there, or
+  ones brought in with `agents import`. A mode nobody chose for the
+  agent is now read again each time: the project's, else the persona's.
+  Taking the project's mode is no longer marked as the agent's own
+  choice.
+- **An update is judged by the Den that is running.** `den_update`
+  copied its rollback watch out of the new release after installing it,
+  so a release whose watch was broken, or missing, couldn't roll itself
+  back. The running version's watch is now copied before the install.
+- **The Agents page says agent, shell and terminal, never session.** The
+  count reads "2 agents · 1 shell · 0 waiting" (a part that is 0 is left
+  out, except waiting); a plain terminal is tagged "shell", and "Plain
+  shell" in the Start dialog. In en, es and ja.
 - **whoami says what the agent actually got.** When an agent's Hub
   connection failed at start (Hub answered 502, or didn't answer), it had
   no `hub_*` tools, but whoami said they were loaded. Den's Hub proxy now

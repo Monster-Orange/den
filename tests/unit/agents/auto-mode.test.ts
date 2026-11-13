@@ -111,7 +111,8 @@ describe("den#48: auto mode", () => {
     expect(modeOf(r.made[0].args)).toBe("auto");
     const rec = record(r, "careful");
     expect(rec.permission).toBe("auto");
-    expect(rec.overrides).toContain("permission");
+    // The project's, not chosen for the agent: it follows the project later.
+    expect(rec.overrides ?? []).not.toContain("permission");
     expect(
       await agents(r, "start", "-w", "south", "--persona", "careful"),
     ).toBe(0);
@@ -198,6 +199,44 @@ describe("den#48: agents permission", () => {
     expect(r.out.at(-1)).toContain("agents start in auto");
     expect(await agents(r, "permission", "-w", "north", "--clear")).toBe(0);
     expect(r.wsPermission.north).toBeUndefined();
+  });
+
+  // Vision 11-13: there was no way to set one agent's mode.
+  it("one agent's: shows where it comes from; a person sets it, and it stays; --clear follows the project again", async () => {
+    const r = await rig();
+    persona(r, "careful", "permission_mode: ask\n");
+    expect(await agents(r, "start", "-w", "north", "--persona", "careful")).toBe(0);
+    expect(await agents(r, "permission", "careful")).toBe(0);
+    expect(r.out.at(-1)).toContain("careful: follows its persona's mode (ask when it last started)");
+    r.wsPermission.north = "auto";
+    expect(await agents(r, "permission", "careful")).toBe(0);
+    expect(r.out.at(-1)).toContain("careful: follows its project's mode, auto");
+    // An agent's own token can't widen its mode.
+    const env = r.deps.env;
+    r.deps.env = { ...env, [ACTOR_TOKEN_ENV]: "x" };
+    expect(await agents(r, "permission", "careful", "all")).not.toBe(0);
+    expect(record(r, "careful").overrides ?? []).not.toContain("permission");
+    r.deps.env = env;
+    expect(await agents(r, "permission", "careful", "edits")).toBe(0);
+    expect(record(r, "careful")).toMatchObject({ permission: "edits" });
+    expect(record(r, "careful").overrides).toContain("permission");
+    expect(await agents(r, "permission", "careful")).toBe(0);
+    expect(r.out.at(-1)).toContain("careful: edits, chosen for it");
+    // It stays over the project's at the next start.
+    expect(await agents(r, "stop", "careful")).toBe(0);
+    r.made[0].exit(0);
+    await settle();
+    expect(await agents(r, "resume", "careful")).toBe(0);
+    expect(modeOf(r.made.at(-1)!.args)).toBe("acceptEdits");
+    // Cleared: the project's again.
+    expect(await agents(r, "permission", "careful", "--clear")).toBe(0);
+    expect(record(r, "careful").overrides ?? []).not.toContain("permission");
+    expect(await agents(r, "stop", "careful")).toBe(0);
+    r.made.at(-1)!.exit(0);
+    await settle();
+    expect(await agents(r, "resume", "careful")).toBe(0);
+    expect(modeOf(r.made.at(-1)!.args)).toBe("auto");
+    expect(await agents(r, "permission", "nobody", "auto")).not.toBe(0);
   });
 
   it("refuses a mode Den doesn't have, a missing workspace, and an agent's session", async () => {

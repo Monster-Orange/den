@@ -318,7 +318,7 @@ const WIDE = { width: 1280, height: 640 };
 const STILLS = [
   {
     file: "hero-dark.png",
-    alt: "Den's Graph page in dark mode: the demo workspace's services grouped by application, all healthy, with the status chip and the left rail",
+    alt: "Den's Graph page in dark mode: the demo project's services grouped by application, all healthy, with the status chip and the left rail",
     budget: "hero",
     scheme: "dark",
     viewport: WIDE,
@@ -326,7 +326,7 @@ const STILLS = [
   },
   {
     file: "hero-light.png",
-    alt: "Den's Graph page in light mode: the demo workspace's services grouped by application, all healthy, with the status chip and the left rail",
+    alt: "Den's Graph page in light mode: the demo project's services grouped by application, all healthy, with the status chip and the left rail",
     budget: "hero",
     scheme: "light",
     viewport: WIDE,
@@ -334,7 +334,7 @@ const STILLS = [
   },
   {
     file: "social-preview.png",
-    alt: "Den's Graph page: the demo workspace, all services healthy",
+    alt: "Den's Graph page: the demo project, all services healthy",
     budget: "thumb",
     scheme: "dark",
     viewport: WIDE,
@@ -343,7 +343,7 @@ const STILLS = [
   },
   {
     file: "workspaces.png",
-    alt: "The Workspaces page: the demo workspace's repos with their health, mode and Start, Stop, Restart and Logs actions",
+    alt: "The Projects page: the demo project's repos with their health, mode and Start, Stop, Restart and Logs actions",
     budget: "thumb",
     // Wider: at 1280 the table wraps the repo names.
     viewport: { width: 1440, height: 810 },
@@ -365,7 +365,7 @@ const STILLS = [
   },
   {
     file: "status-drawer.png",
-    alt: "The status drawer: nothing needs attention, and every service in the demo workspace, by application, with its latency",
+    alt: "The status drawer: nothing needs attention, and every service in the demo project, by application, with its latency",
     budget: "thumb",
     go: async (p, c) => {
       await graph(p, c, { dir: "right", group: "app" });
@@ -387,7 +387,7 @@ const STILLS = [
   {
     file: "agents.png",
     needsSession: true,
-    alt: "The Agents tab: the demo workspace's sessions on the left, and one open in a terminal pane on the right, running demo-api's test and then the service",
+    alt: "The Agents tab: the demo project's agents and shells on the left, and one shell open in a terminal pane on the right, running demo-api's test and then the service",
     budget: "thumb",
     go: async (p, c) => {
       await p.goto(`${c.base}/agents?open=${encodeURIComponent(c.session)}`);

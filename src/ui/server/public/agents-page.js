@@ -900,18 +900,34 @@ function visibleRows() {
   );
 }
 
+/**
+ * The Agents page's count: "2 agents · 1 shell · 0 waiting · <scope>". A
+ * plain terminal is a shell, not an agent; a part that is 0 is left out,
+ * except waiting (and agents, when there is nothing at all).
+ */
+export function subText(rows, waiting, scope) {
+  const agents = rows.filter((r) => r.kind === "agent").length;
+  const shells = rows.length - agents;
+  const parts = [];
+  if (agents || !shells)
+    parts.push(
+      t(agents === 1 ? "ag.sub.agent" : "ag.sub.agents", { n: agents }),
+    );
+  if (shells)
+    parts.push(
+      t(shells === 1 ? "ag.sub.shell" : "ag.sub.shells", { n: shells }),
+    );
+  parts.push(t("ag.sub.waiting", { w: waiting }));
+  if (scope) parts.push(scope);
+  return parts.join(" · ");
+}
+
 function paintSub() {
   const rows = visibleRows();
 
   const waiting = rows.filter((r) => r.waiting).length;
-  const n = rows.length;
   const count = st.root.querySelector("#ag-count");
-  if (count)
-    count.textContent = t(n === 1 ? "ag.sub.one" : "ag.sub", {
-      n,
-      w: waiting,
-      scope: st.scopeLabel,
-    });
+  if (count) count.textContent = subText(rows, waiting, st.scopeLabel);
   const url = st.root.querySelector("#ag-url");
   if (url) url.textContent = location.pathname + location.search;
 }
@@ -1570,9 +1586,7 @@ function paintBar(p) {
   // project's colour (a message once went to the wrong agent's tab).
   const to = p.el.querySelector(".agto");
   if (to) {
-    const said = ws
-      ? t("ag.to", { name, ws })
-      : t("ag.toName", { name });
+    const said = ws ? t("ag.to", { name, ws }) : t("ag.toName", { name });
     if (to.textContent !== said) to.textContent = said;
     to.style.setProperty("--ws-h", String(wsHue(ws)));
   }

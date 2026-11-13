@@ -118,6 +118,7 @@ import {
   removeStopped,
   renameAgent,
   moveAgent,
+  setAgentPermission,
   setAgentRepo,
   checkRepoName,
   agentLinkReport,
@@ -259,6 +260,9 @@ export const AGENTS_HELP = {
     "    forget a stopped, interrupted or exited agent (never a running one);",
     "    the runtime keeps its own history. agents.remove_stopped_after in",
     "    user.yml (never, 1d, 7d) forgets stopped ones on its own",
+    "{cli} agents permission <id> [ask|edits|auto|all|--clear]",
+    "    one agent's mode: given, it stays through every restart; cleared, it",
+    "    follows its project's mode, else its persona's. A person's only",
     "{cli} agents permission -w <ws> [ask|edits|auto|all|--clear]",
     "    the permission mode the project's agents start with when the start",
     "    names none (over their persona's); none given: shows it. auto: Claude",
@@ -1136,9 +1140,10 @@ function files(args: string[], d: AgentsResolved): number {
 function permission(args: string[], d: AgentsResolved): number {
   const where = "agents permission";
   const p = parseArgs(where, args, { "--workspace": true, "--clear": false });
-  noExtra(where, p, 1);
   const ws = workspaceFlag(where, p);
-  if (!ws) throw new UsageError(`${where} needs -w <ws>`);
+  // Without -w: one agent's (`agents permission <id> [<mode>|--clear]`).
+  if (!ws) return agentPermission(where, p, d);
+  noExtra(where, p, 1);
   if (!d.workspaceExists(ws))
     throw new UsageError(`${where}: project "${ws}" does not exist`);
   const given = p.positional[0];
@@ -1166,6 +1171,55 @@ function permission(args: string[], d: AgentsResolved): number {
     intent
       ? `${ws}: agents now start in ${intent} unless the start names a mode; running agents keep theirs until they start again`
       : `${ws}: no default now; agents start in their persona's mode`,
+  );
+  return 0;
+}
+
+/**
+ * `agents permission <id> [<mode>|--clear]` (den#48, Vision 11-13): the
+ * mode one agent runs with. Given, it stays through every restart; cleared,
+ * the agent follows its project's mode, else its persona's.
+ */
+function agentPermission(
+  where: string,
+  p: ReturnType<typeof parseArgs>,
+  d: AgentsResolved,
+): number {
+  noExtra(where, p, 2);
+  const [id, given] = p.positional;
+  if (!id)
+    throw new UsageError(
+      `${where} needs -w <ws> (a project's mode) or <id> (one agent's)`,
+    );
+  const rec = readRecord(d.stateDir(), id);
+  if (!rec) throw new UsageError(`${where}: no agent "${id}"`);
+  if (given === undefined && !p.flags["--clear"]) {
+    const chosen = rec.overrides?.includes("permission") && rec.permission;
+    const proj = workspacePermissionOf(d, rec.workspace);
+    d.out(
+      chosen
+        ? `${id}: ${chosen}, chosen for it; it stays until cleared (${d.cli} agents permission ${id} --clear)`
+        : proj
+          ? `${id}: follows its project's mode, ${proj} (${workspacePermissionKey(rec.workspace)})`
+          : `${id}: follows its persona's mode${rec.permission ? ` (${rec.permission} when it last started)` : ""}`,
+    );
+    return 0;
+  }
+  personOnly(where, d);
+  if (given !== undefined && p.flags["--clear"])
+    throw new UsageError(`${where}: give a mode or --clear, not both`);
+  let intent: PermissionIntent | null = null;
+  if (given !== undefined)
+    try {
+      intent = checkIntent(given, where);
+    } catch (e) {
+      throw new UsageError((e as Error).message);
+    }
+  setAgentPermission(d, id, rec.workspace, intent);
+  d.out(
+    intent
+      ? `${id}: ${intent} from its next start, resume or restart, whatever its project or persona says`
+      : `${id}: follows its project's mode, else its persona's, from its next start, resume or restart`,
   );
   return 0;
 }

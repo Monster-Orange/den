@@ -210,7 +210,7 @@ describe("the Agents tab", () => {
     await p.context().close();
   }, 45_000);
 
-  it("lists sessions and agents by workspace: plain ones labelled session, the revoked token marked; ?ws= narrows it", async () => {
+  it("lists sessions and agents by workspace: plain ones labelled shell, the count says agents and shells, the revoked token marked; ?ws= narrows it", async () => {
     if (skip()) return;
     const p = await page("/agents");
     expect(
@@ -219,7 +219,7 @@ describe("the Agents tab", () => {
       ),
     ).toEqual(["north", "south"]);
     const shell = p.locator(`.agr[data-id="${id("shell")}"]`);
-    expect(await shell.locator(".sbdg").textContent()).toBe("session");
+    expect(await shell.locator(".sbdg").textContent()).toBe("shell");
     expect(await shell.locator(".st").textContent()).toBe("running");
     const scout = p.locator(`.agr[data-id="${id("scout")}"]`);
     expect(await scout.getAttribute("data-kind")).toBe("agent");
@@ -230,7 +230,7 @@ describe("the Agents tab", () => {
       "token revoked",
     );
     expect(await p.textContent("#ag-count")).toBe(
-      "5 sessions · 0 waiting · all projects",
+      "1 agent · 4 shells · 0 waiting · all projects",
     );
     await p.goto(`${s!.base}/agents?ws=south`);
     await p.waitForSelector("#agl:not([aria-busy]) .agr");
@@ -240,7 +240,7 @@ describe("the Agents tab", () => {
       ),
     ).toEqual(["south"]);
     expect(await p.textContent("#ag-count")).toBe(
-      "2 sessions · 0 waiting · south",
+      "2 shells · 0 waiting · south",
     );
     await p.context().close();
   }, 45_000);
@@ -550,7 +550,7 @@ describe("the Agents tab", () => {
         await p.$$eval("#ag-persona .pr .pn", (os) =>
           os.map((o) => o.textContent),
         ),
-      ).toEqual(["reviewer", "builder", "Plain session"]);
+      ).toEqual(["reviewer", "builder", "Plain shell"]);
       expect(await p.textContent('#ag-persona [data-pid="reviewer"] .pd')).toBe(
         role,
       );

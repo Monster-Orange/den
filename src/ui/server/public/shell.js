@@ -712,9 +712,9 @@
     "ag.rot.compactions.one": "{n} compaction",
     "ag.rot.merged": "PR merged",
     "ag.rot.noHandoff":
-      "Its session rotated ({why}), but it wrote no handoff.md. Resume it to write one, or start fresh.",
+      "It rotated ({why}), but it wrote no handoff.md. Resume it to write one, or start fresh.",
     "ag.rot.badHandoff":
-      "Its session rotated ({why}), but its handoff.md is not complete. Resume it to fix it, or start fresh.",
+      "It rotated ({why}), but its handoff.md is not complete. Resume it to fix it, or start fresh.",
     "ag.relaunch": "Relaunch now",
     "ag.relaunchName": "Relaunch {id} now",
     "ag.relaunched": "Relaunched {id} from its handoff",
@@ -776,7 +776,7 @@
     "ag.new.details": "Details: {n}",
     "ag.new.hide": "Hide details",
     "ag.new.newP": "+ New persona",
-    "ag.new.plain": "Plain session",
+    "ag.new.plain": "Plain shell",
     "ag.new.plainP": "A terminal in the project folder. No agent.",
     "ag.new.task": "First instruction (optional)",
     "ag.new.name": "Name (optional)",
@@ -791,7 +791,7 @@
       "e.g. Take the empty-state story. Match the design and add a test.",
     "ag.new.adv": "Advanced: model and permissions",
     "ag.new.advNote":
-      "Defaults come from the persona. Changes here apply to this session only, and the session is marked in the list.",
+      "Defaults come from the persona. Changes here apply to this agent only, and the agent is marked in the list.",
     "ag.new.model": "Model",
     "ag.new.modelDef": "Persona default ({m})",
     "ag.new.ver": "Version",
@@ -1022,8 +1022,11 @@
     "ag.term.noWs": "no project is active. Activate one first.",
     "ws.termHere": "Terminal here",
     "kind.agent": "Agent",
-    "ag.sub": "{n} sessions · {w} waiting · {scope}",
-    "ag.sub.one": "{n} session · {w} waiting · {scope}",
+    "ag.sub.agents": "{n} agents",
+    "ag.sub.agent": "{n} agent",
+    "ag.sub.shells": "{n} shells",
+    "ag.sub.shell": "{n} shell",
+    "ag.sub.waiting": "{w} waiting",
     "ag.all": "all projects",
     "ag.waiting": "waiting",
     "ag.waiting.approval": "needs your Allow",
@@ -1093,7 +1096,7 @@
       "This agent's runtime can't tell which helpers it started.",
     "hp.workflow": "workflow {name}",
     "hp.note":
-      "Helpers run inside this agent's own session, so Den shows them but can't stop or steer them. To change what they do, tell the agent.",
+      "Helpers run inside this agent itself, so Den shows them but can't stop or steer them. To change what they do, tell the agent.",
     "hp.st.running": "running",
     "hp.st.idle": "idle",
     "hp.st.done": "done",
@@ -1115,10 +1118,10 @@
       "Den's Hub settings have a problem. See Settings › Hub.",
     "hub.railBadUrl":
       "Hub's address isn't https, so Den won't open it. See Settings › Hub.",
-    "ag.session": "session",
+    "ag.session": "shell",
     "ag.empty":
-      "Pick a session on the left to open its terminal. Open more to tile them (up to 4).",
-    "ag.none.scope": "No sessions or agents in {scope} yet",
+      "Pick an agent or shell on the left to open its terminal. Open more to tile them (up to 4).",
+    "ag.none.scope": "No agents or shells in {scope} yet",
     "ag.detach": "Close pane",
     "ag.to": "To {name} · {ws}",
     "ag.toName": "To {name}",
@@ -1132,9 +1135,9 @@
     "ag.revokedTip":
       "Its token was revoked (web logout --all): stop and resume it, or start it again, to give it a new one",
     "ag.ended":
-      "This session has ended. Its record stays until it is resumed or removed.",
+      "This terminal has ended. Its record stays until it is resumed or removed.",
     "ag.switched": "Switched to {p}",
-    "ag.exitedLine": "[the session exited{code}]",
+    "ag.exitedLine": "[the terminal exited{code}]",
     "ag.refusedUnknown": "the server refused the terminal",
     "ag.refusedStatus": "the server refused the terminal ({status})",
     "ag.goWs": "Open {ws} on Projects",
@@ -1176,7 +1179,8 @@
     "sa.trust": "The agent asks whether to trust its folder, {folder}.",
     "sa.trust.yes": "Trust",
     "sa.trust.no": "Not now",
-    "sa.trust.wait": "The agent waits until you answer, here or in its terminal.",
+    "sa.trust.wait":
+      "The agent waits until you answer, here or in its terminal.",
     "sa.model": "Model",
     "sa.readsOnly":
       "It changes __DEN_TITLE__ through its own tools, and commits only the distribution's own files. Each change asks you first, in this browser.",
@@ -1218,19 +1222,19 @@
       "Its subagents (Explore too) run on {model}: agents.subagents.model.",
     "ag.subagents.from.default":
       "Its subagents (Explore too) run on {model}: Den's default. agents.subagents.model or a persona's subagent_model changes it.",
-    "ag.tabs": "Open sessions",
+    "ag.tabs": "Open terminals",
     "ag.hint.focus":
-      "Click shows one session. Shift- or ⌘-click adds it alongside.",
+      "Click shows one terminal. Shift- or ⌘-click adds it alongside.",
     "ag.hint.tabs":
-      "Click opens a session as a tab. Double-click a tab to rename it.",
-    "ag.hint.tile": "Click adds a session as a tile, up to 4.",
+      "Click opens a terminal as a tab. Double-click a tab to rename it.",
+    "ag.hint.tile": "Click adds a terminal as a tile, up to 4.",
     "ag.renameTip": "Double-click to rename",
     "ag.renameName": "Rename {id}",
     "ag.rn.item": "Rename…",
     "ag.rn.title": "Rename {id}",
     "ag.rn.name": "Name",
     "ag.rn.help":
-      "Its tab, row and pane header show it; the id {id} never changes. Other sessions see it as {peer} from its next start or resume. Empty: back to {id}.",
+      "Its tab, row and pane header show it; the id {id} never changes. Other agents see it as {peer} from its next start or resume. Empty: back to {id}.",
     "ag.rn.go": "Rename",
     "ag.rn.cancel": "Cancel",
     "ag.mv.item": "Move to project…",

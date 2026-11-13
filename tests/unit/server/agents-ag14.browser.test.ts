@@ -784,7 +784,7 @@ describe("D25: Rename, visible, by touch or keyboard (D37: a running agent's)", 
     await dlg.waitFor({ state: "visible" });
     expect(await p.locator("#ag-rn-h").textContent()).toBe("Rename namer");
     expect(await p.locator("#ag-rn-help").textContent()).toMatch(
-      /Other sessions see it as \S+-north:namer from its next start or resume/,
+      /Other agents see it as \S+-north:namer from its next start or resume/,
     );
     await p.locator("#ag-rn-name").fill("Night watch");
     expect(await p.locator("#ag-rn-help").textContent()).toMatch(

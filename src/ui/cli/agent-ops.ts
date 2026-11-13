@@ -2623,14 +2623,12 @@ function startChoices(
     if (permission !== intentOf(persona.permissionMode))
       overrides.push("permission");
   } else if (wsPermission !== undefined && rt.permissions) {
-    // den#48: the workspace's mode, over the persona's.
+    // den#48: the project's mode, over the persona's. Not an override:
+    // nobody chose it for this agent, so it follows the project later.
     permission = wsPermission;
-    if (permission !== intentOf(persona.permissionMode))
-      overrides.push("permission");
   } else if (rt.permissions) {
-    // den#48: the persona's mode, recorded, so every resume (a click,
-    // Resume all, after a restart) runs in the mode it started in, even
-    // when the persona or the workspace changes later.
+    // den#48: the persona's mode. Recorded to show it; every resume and
+    // restart reads the project's and the persona's again (permissionNow).
     permission = intentOf(persona.permissionMode);
   }
   let extras = persona.allowedCommands;
@@ -3459,6 +3457,35 @@ export function setAgentRepo(
   return next;
 }
 
+/**
+ * den#48 (Vision 11-13): `agents permission <id> <mode>`, a mode a person
+ * chose for one agent. It is an override, so it stays through every
+ * restart, whatever its project or persona says later; null clears it,
+ * and the agent follows its project's mode, else its persona's, again.
+ * A running agent takes it at its next start, resume or restart.
+ */
+export function setAgentPermission(
+  d: AgentsResolved,
+  id: string,
+  ws: string,
+  intent: PermissionIntent | null,
+): AgentRecord {
+  const rec = agentRecord(d, id, ws);
+  if (!runtimeFor(rec.runtime).permissions)
+    throw usage(
+      `agents permission: ${rec.runtime} can't take a permission mode from Den yet`,
+    );
+  const rest = (rec.overrides ?? []).filter((o) => o !== "permission");
+  const next: AgentRecord = { ...rec };
+  if (intent) {
+    next.permission = intent;
+    next.overrides = [...rest, "permission"];
+  } else if (rest.length) next.overrides = rest;
+  else delete next.overrides;
+  writeRecord(d.stateDir(), next);
+  return next;
+}
+
 /** D65 v2, `agents doctor`: agents on no repo, and those whose repo is gone. */
 export function agentLinkReport(d: AgentsResolved): {
   migrated: string[];
@@ -3656,6 +3683,7 @@ export async function resumeAgent(
       sessions.filter((s) => !s.exited).map((s) => s.pid),
     );
     if (no) throw refused(no.message, [], no.status);
+    const permission = permissionNow(d, rec, persona, rt);
     const input = launchInput(
       d,
       cfg,
@@ -3666,7 +3694,7 @@ export async function resumeAgent(
       det.path,
       grants,
       {
-        ...(rec.permission ? { permission: rec.permission } : {}),
+        ...(permission ? { permission } : {}),
         ...(rt.permissions
           ? {
               allow: allowedFor(
@@ -3722,6 +3750,7 @@ export async function resumeAgent(
         {
           rec: {
             ...base,
+            ...(permission ? { permission } : {}),
             ...subagentsField(rt, persona, cfg),
             cwd: rec.cwd,
             peerName,
@@ -4270,9 +4299,32 @@ function keptChoices(rec: AgentRecord): Partial<StartRequest> {
   return {
     ...(rec.model ? { model: rec.model } : {}),
     ...(rec.version ? { version: rec.version } : {}),
-    ...(rec.permission ? { permission: rec.permission } : {}),
+    ...(rec.permission && rec.overrides?.includes("permission")
+      ? { permission: rec.permission }
+      : {}),
     ...(rec.allow ? { allow: [...rec.allow] } : {}),
   };
+}
+
+/**
+ * den#48 (Vision 11-13): the mode an agent runs with, at every start,
+ * resume and restart. A mode a person chose for it (an override: the
+ * Start dialog, `agents permission <id>`) stays. Otherwise it is read
+ * again now: its project's, else its persona's. Live, a project set to
+ * auto and then a restart ran the mode recorded at start.
+ */
+export function permissionNow(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  persona: Persona,
+  rt: Runtime,
+): PermissionIntent | undefined {
+  if (!rt.permissions) return rec.permission;
+  if (rec.permission && rec.overrides?.includes("permission"))
+    return rec.permission;
+  return (
+    workspacePermissionOf(d, rec.workspace) ?? intentOf(persona.permissionMode)
+  );
 }
 
 // ── den#4: relaunch from handoff ────────────────────────────────────────────
