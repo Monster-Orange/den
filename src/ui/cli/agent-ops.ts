@@ -525,11 +525,20 @@ export async function hubUpstream(
     repos = [];
   }
   let name = who.agentId;
+  let linked: string | undefined;
   try {
-    name = readRecord(d.stateDir(), who.agentId)?.displayName || name;
+    const rec = readRecord(d.stateDir(), who.agentId);
+    name = rec?.displayName || name;
+    linked = rec?.project;
   } catch {
     /* the id names it */
   }
+  // Which project's Hub link files its work: the agent's own project link
+  // (D65 v2) first, then its session's project. The server scope is never
+  // a project: with no link of its own, none (Hub's Unfiled).
+  const projectWs = [linked, who.workspace].find(
+    (w): w is string => !!w && !isServerScope(w),
+  );
   return {
     base: h.url,
     mcpUrl: h.mcpUrl || `${h.url}/mcp`,
@@ -541,7 +550,9 @@ export async function hubUpstream(
       repos,
       project: (() => {
         try {
-          return d.workspaceHubProject(who.workspace)?.id ?? null;
+          return projectWs
+            ? (d.workspaceHubProject(projectWs)?.id ?? null)
+            : null;
         } catch {
           return null;
         }

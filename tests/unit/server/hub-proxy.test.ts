@@ -18,7 +18,8 @@ import * as path from "path";
 import * as http from "http";
 import type { AddressInfo } from "net";
 import { verifyActorToken } from "../../../src/shared/actor-token.js";
-import { readRecord } from "../../../src/shared/agents/records.js";
+import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
+import { SERVER_SCOPE } from "../../../src/shared/agents/server-agent.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { cmdHub } from "../../../src/ui/cli/hub-command.js";
 import {
@@ -237,6 +238,38 @@ describe("D52: who reaches Hub through Den", () => {
       headers: { authorization: `Bearer ${b.agentToken}` },
     });
     expect(unlinked.seen[0].headers["x-den-project"]).toBe("none");
+  });
+
+  it("the agent's own project link wins over its session's project; the server scope never is one", async () => {
+    const links = (ws: string) =>
+      ws === "north"
+        ? { id: "proj_north", slug: "north", name: "North" }
+        : ws === "south"
+          ? { id: "proj_south", slug: "south", name: "South" }
+          : ws === SERVER_SCOPE
+            ? { id: "proj_server", slug: "den-server", name: "den-server" }
+            : null;
+    const a = await den("http://hub.example.test", {}, links);
+    const d = resolveAgentsDeps(a.r.deps);
+    const who = (workspace: string) => ({
+      agentId: a.agentId,
+      workspace,
+      session: a.sessionId,
+    });
+    const proj = async (workspace: string) =>
+      (await hubUpstream(d, who(workspace)))!.headers["X-Den-Project"];
+    // Linked to its session's project only: that one.
+    expect(await proj("north")).toBe("proj_north");
+    // Linked (the pane's Change, agents link) to another: that one.
+    const rec = readRecord(a.r.stateDir, a.agentId)!;
+    writeRecord(a.r.stateDir, { ...rec, project: "south" });
+    expect(await proj("north")).toBe("proj_south");
+    // The server scope: its linked project, else none, never itself.
+    expect(await proj(SERVER_SCOPE)).toBe("proj_south");
+    writeRecord(a.r.stateDir, { ...rec, project: undefined });
+    expect(await proj(SERVER_SCOPE)).toBe("none");
+    writeRecord(a.r.stateDir, { ...rec, project: SERVER_SCOPE });
+    expect(await proj(SERVER_SCOPE)).toBe("none");
   });
 
   it("no agent token: 403, and Hub hears nothing (a person, a browser, a bad token)", async () => {
