@@ -166,7 +166,7 @@ describe("#63: the edge's access log through a real Traefik", () => {
     );
     sweepAccessLog(dir, on);
     traceparents.length = 0;
-    expect(await get(`/cb?code=${SECRET}&state=x`)).toBe(200);
+    expect(await get(`/cb?code=${SECRET}&state=${SECRET}&page=x`)).toBe(200);
     expect(await get(`/auth/link/${SECRET}`)).toBe(200);
     await until("Traefik wrote both lines", () => rawLines() >= 2);
     // The raw lines do have it: what Den is there to take out.
@@ -182,7 +182,7 @@ describe("#63: the edge's access log through a real Traefik", () => {
       .map((l) => JSON.parse(l) as Record<string, string>)
       .filter((l) => l.RequestPath !== "/ready"); // a late probe line
     expect(lines.map((l) => l.RequestPath)).toEqual([
-      "/cb?code=[redacted]&state=x",
+      "/cb?code=[redacted]&state=[redacted]&page=x",
       "/auth/link/[redacted]",
     ]);
     expect(lines.map((l) => l.request_id)).toEqual(

@@ -12,6 +12,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import {
+  HubCallError,
   hubStatus,
   hubWhoami,
   readHubToken,
@@ -267,5 +268,70 @@ describe("#71 hubStatus with rotation (the server's /api/hub)", () => {
         (x) => x.path.endsWith("rotate=true") && x.auth.includes(OLD),
       ),
     ).toHaveLength(1);
+  });
+});
+
+describe("#71 two processes (Hub replaces a pending token when asked again)", () => {
+  const T2 = "hubi_TESTONLYother.333333";
+  const rejected = () =>
+    new HubCallError("rejected", "Hub doesn't accept this install's token");
+
+  it("a 401 on the old token: Den reads the store again and uses the newer one before saying Reconnect", async () => {
+    const f = denFile(OLD);
+    const { r } = rotation(f);
+    // Another process rotated and wrote T2 after this read the file.
+    let reads = 0;
+    const st = await hubStatus({
+      config: () => cfgFor("http://localhost:9", f),
+      token: async () => (reads++ === 0 ? OLD : T2),
+      whoami: async (_u, t) => {
+        if (t === T2) return { login: "pat", token: "current" };
+        throw rejected();
+      },
+      rotation: r,
+    });
+    expect(st).toMatchObject({ connected: true, state: "connected" });
+    expect(reads).toBe(2);
+  });
+
+  it("this one's pending token refused because another process's newer one replaced it: Den keeps the newer one", async () => {
+    const f = denFile(OLD);
+    const { r, rows } = rotation(f);
+    const st = await hubStatus({
+      config: () => cfgFor("http://localhost:9", f),
+      token: async () => readFile(f),
+      whoami: async (_u, t, o) => {
+        if (t === OLD && o?.rotate)
+          return { token: "legacy", rotatedToken: NEW };
+        if (t === NEW) {
+          // Meanwhile the other process stored T2, and Hub took it.
+          fs.writeFileSync(f, `${T2}\n`, { mode: 0o600 });
+          throw rejected();
+        }
+        throw rejected();
+      },
+      rotation: r,
+    });
+    expect(readFile(f)).toBe(T2);
+    expect(st).toMatchObject({ connected: true, legacy: true });
+    expect(rows).toEqual([
+      {
+        detail:
+          "Hub refused the new token it offered; another process stored a newer one, which Den keeps",
+        refused: "rotated_refused",
+      },
+    ]);
+  });
+
+  it("no token field (Hub before its cutover): current, nothing said", async () => {
+    const f = denFile(OLD);
+    const st = await hubStatus({
+      config: () => cfgFor("http://localhost:9", f),
+      token: async () => OLD,
+      whoami: async () => ({ login: "pat" }),
+      rotation: rotation(f).r,
+    });
+    expect(st).toMatchObject({ connected: true });
+    expect("legacy" in st || "rotated" in st).toBe(false);
   });
 });

@@ -847,6 +847,8 @@ async function rotateHubToken(
   fresh: string,
   owner: HubTokenRotation,
   ask: (url: string, token: string) => Promise<HubWhoami>,
+  /** The store as it is now (another process may have written it). */
+  reread: () => Promise<string | null>,
 ): Promise<HubWhoami | null> {
   const note = (d: string, refused?: string) => {
     try {
@@ -873,11 +875,20 @@ async function rotateHubToken(
     return who;
   } catch (e) {
     if (e instanceof HubCallError && e.kind !== "unreachable") {
-      await owner.write(cfg, old).catch(() => undefined);
-      note(
-        "Hub refused the new token it offered; Den put the old one back",
-        "rotated_refused",
-      );
+      // Hub replaces a pending token when asked again, so another process
+      // may hold the newer one: put the old one back only over our own.
+      const now = await reread().catch(() => null);
+      if (now === fresh) {
+        await owner.write(cfg, old).catch(() => undefined);
+        note(
+          "Hub refused the new token it offered; Den put the old one back",
+          "rotated_refused",
+        );
+      } else
+        note(
+          "Hub refused the new token it offered; another process stored a newer one, which Den keeps",
+          "rotated_refused",
+        );
       return null;
     }
     note(
@@ -938,7 +949,8 @@ async function hubStatusOnce(
           ? "not connected yet: Connect signs you in to Hub and sets this install up"
           : `hub.token names ${cfg.tokenFrom}, which is not set for this install's secrets backend`,
     };
-  const token = await (deps.token ?? ((c) => readHubToken(c)))(cfg);
+  const readTok = deps.token ?? ((c) => readHubToken(c));
+  let token = await readTok(cfg);
   if (!token)
     return {
       ...base,
@@ -954,10 +966,29 @@ async function hubStatusOnce(
     owner = null;
   }
   try {
-    let who = await ask(cfg.url, token, owner ? { rotate: true } : undefined);
+    let who: HubWhoami;
+    try {
+      who = await ask(cfg.url, token, owner ? { rotate: true } : undefined);
+    } catch (e) {
+      // #71: a 401 may mean another process rotated the token and wrote
+      // the new one here: read the store again before saying Reconnect.
+      if (!(e instanceof HubCallError && e.kind === "rejected")) throw e;
+      const again = await readTok(cfg).catch(() => null);
+      if (!again || again === token) throw e;
+      token = again;
+      who = await ask(cfg.url, token, owner ? { rotate: true } : undefined);
+    }
     let rotated = false;
     if (owner && who.rotatedToken) {
-      const r = await rotateHubToken(cfg, token, who.rotatedToken, owner, ask);
+      const t0 = token;
+      const r = await rotateHubToken(
+        cfg,
+        t0,
+        who.rotatedToken,
+        owner,
+        ask,
+        () => readTok(cfg),
+      );
       if (r) {
         who = r;
         rotated = true;

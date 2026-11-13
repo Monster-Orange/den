@@ -93,6 +93,10 @@ describe("agents start mints an actor token", () => {
     expect(file.startsWith(r.stateDir)).toBe(true);
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     expect(fs.statSync(path.dirname(file)).mode & 0o777).toBe(0o700);
+    // Both owned by the user the agent runs as (Den's own).
+    const uid = process.getuid!();
+    expect(fs.statSync(file).uid).toBe(uid);
+    expect(fs.statSync(path.dirname(file)).uid).toBe(uid);
     expect(mask(tokenOf(r, 0))).toBe("<token>");
   });
 
