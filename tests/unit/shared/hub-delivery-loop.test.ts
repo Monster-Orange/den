@@ -439,3 +439,77 @@ describe("the 0.4.40 gate's delivery bugs", () => {
     expect(typed[0]).toContain("your person");
   });
 });
+
+describe("Hub's Try again (a new delivery id for the same comment)", () => {
+  /** Hub's 410 for an id it sent again (hub.ts's HubCallError shape). */
+  const gone = (to: string) =>
+    Object.assign(new Error("Hub refused it (410)"), {
+      kind: "refused",
+      status: 410,
+      body: {
+        error: "that delivery was sent again; ack the new one",
+        superseded_by: to,
+      },
+    });
+
+  it("held for a stopped agent: the new copy takes its place, typed once; the old id is dropped on Hub's 410", async () => {
+    const s = setup({ states: { "ag-1": "stopped" } });
+    await s.loop.take(dv("d1"));
+    expect(s.of("d1")).toEqual(["queued"]);
+    const ack = s.hub.ack;
+    s.hub.ack = async (id, body) => {
+      if (id === "d1") {
+        s.acks.push({ id, state: `${String(body.state)}:410` });
+        throw gone("d2");
+      }
+      return ack(id, body);
+    };
+    // Same thread, author and words, a new id.
+    await s.loop.take(
+      dv("d2", "ag-1", {
+        thread: dv("d1").thread,
+        body: "comment d1",
+      }),
+    );
+    expect(s.loop.work("ag-1")).toMatchObject({ queued: 1 });
+    s.states["ag-1"] = "idle";
+    await s.loop.pump();
+    expect(s.typed).toHaveLength(1);
+    expect(s.typed[0].text.split("comment d1")).toHaveLength(2);
+    expect(s.typed[0].text).not.toContain("2 Hub comments");
+    expect(s.of("d2")).toEqual(["queued", "delivered", "working"]);
+    // The old id: one ack, Hub's 410, then never again.
+    s.states["ag-1"] = "busy";
+    s.tick(16_000);
+    await s.loop.pump();
+    expect(s.of("d1")).toEqual(["queued", "queued:410"]);
+    expect(s.of("d2")).toEqual(["queued", "delivered", "working", "working"]);
+  });
+
+  it("mid-turn: the old id's next heartbeat gets 410, and it's dropped from the turn", async () => {
+    const s = setup();
+    const lines: string[] = [];
+    (s.loop as unknown as { d: Record<string, unknown> }).d.log = (l: string) =>
+      lines.push(l);
+    await s.loop.take(dv("d1"));
+    s.states["ag-1"] = "busy";
+    await s.loop.pump();
+    s.hub.ack = async (id) => {
+      if (id === "d1") throw gone("withdrawn");
+    };
+    s.tick(16_000);
+    await s.loop.pump();
+    expect(s.loop.work("ag-1")).toBeNull();
+    expect(lines.join("\n")).toContain("d1: withdrawn on Hub: dropped");
+    s.tick(16_000);
+    await s.loop.pump();
+    expect(lines.filter((l) => l.includes("d1"))).toHaveLength(1);
+  });
+
+  it("a different comment on the same thread is not a repeat", async () => {
+    const s = setup({ states: { "ag-1": "stopped" } });
+    await s.loop.take(dv("d1"));
+    await s.loop.take(dv("d2", "ag-1", { thread: dv("d1").thread }));
+    expect(s.loop.work("ag-1")).toMatchObject({ queued: 2 });
+  });
+});

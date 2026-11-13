@@ -89,6 +89,14 @@ export class DeliveryLoop {
   private readonly active = new Map<string, Active>();
   /** The last state each delivery was acked with (a repeat is re-acked). */
   private readonly states = new Map<string, AckState>();
+  /** Ids Hub answered 410 for (sent again, or withdrawn): never acked again. */
+  private readonly superseded = new Set<string>();
+  /**
+   * A held delivery a new one repeats (the same agent, thread, author and
+   * words: Hub's Try again): new id → the old ids it took the place of.
+   * Their acks follow the new one's; Hub answers 410 for a superseded one.
+   */
+  private readonly replaced = new Map<string, string[]>();
   /**
    * Agents being typed into right now. take() and the tick both pump; one
    * typing must not let the other type the same comments again while the
@@ -181,15 +189,51 @@ export class DeliveryLoop {
     state: AckState,
     o: { reason?: string; version?: number } = {},
   ): Promise<void> {
+    if (this.superseded.has(id)) return;
+    for (const old of this.replaced.get(id) ?? [])
+      await this.ack(old, state, o);
     this.states.set(id, state);
     try {
       await this.d.hub.ack(id, ackBody(state, o));
     } catch (e) {
+      // Hub sent it again under a new id (Try again), or withdrew it: this
+      // id is done with. Dropped from what's held, so a held one isn't
+      // typed as well as its new copy; never acked again.
+      const sup = (e as { status?: number; body?: Record<string, unknown> })
+        ?.body?.superseded_by;
+      if (
+        (e as { status?: number })?.status === 410 &&
+        typeof sup === "string"
+      ) {
+        this.drop(id);
+        this.d.log?.(
+          `hub delivery ${id}: ${sup === "withdrawn" ? "withdrawn on Hub" : `sent again as ${sup.slice(0, 64)}`}: dropped`,
+        );
+        return;
+      }
       // Unacked: Hub sends it again, and the repeat is re-acked.
       this.d.log?.(
         `hub delivery ${id}: ack ${state} failed: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
       );
     }
+  }
+
+  /** Forget a delivery Hub superseded: out of every queue and turn. */
+  private drop(id: string): void {
+    this.superseded.add(id);
+    for (const [agent, q] of this.queue) {
+      const left = q.filter((dv) => dv.id !== id);
+      if (left.length === q.length) continue;
+      if (left.length) this.queue.set(agent, left);
+      else this.queue.delete(agent);
+    }
+    for (const [agent, act] of this.active) {
+      if (!act.ids.includes(id)) continue;
+      // A new array: a loop acking the old one goes on undisturbed.
+      act.ids = act.ids.filter((x) => x !== id);
+      if (!act.ids.length) this.active.delete(agent);
+    }
+    this.persist();
   }
 
   /** One delivery from Hub (the stream or the list). */
@@ -210,7 +254,18 @@ export class DeliveryLoop {
       });
       return;
     }
-    const q = this.queue.get(dv.agent) ?? [];
+    // Hub's Try again on one still held here: the new copy takes its
+    // place, so the comment is typed once.
+    const same = (a: Delivery) =>
+      a.thread.id === dv.thread.id &&
+      a.author.id === dv.author.id &&
+      a.body === dv.body &&
+      (a.forwarded?.body ?? "") === (dv.forwarded?.body ?? "");
+    const q = (this.queue.get(dv.agent) ?? []).filter((a) => {
+      if (!same(a)) return true;
+      this.replaced.set(dv.id, [...(this.replaced.get(dv.id) ?? []), a.id]);
+      return false;
+    });
     q.push(dv);
     this.queue.set(dv.agent, q);
     this.persist();
