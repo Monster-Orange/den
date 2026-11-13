@@ -98,7 +98,7 @@ describe("a tag's attributes (dev.6)", () => {
  * new one is a one-line change here that review sees. Lower it when you
  * remove one; raise it only with the exemption it pays for.
  */
-const WORDS_OK_MAX = 79;
+const WORDS_OK_MAX = 67;
 
 describe("the words-ok ratchet", () => {
   it(`src/ has at most ${WORDS_OK_MAX} words-ok markers`, () => {

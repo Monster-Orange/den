@@ -1210,7 +1210,7 @@
     "gr.fit": "全体表示",
     "gr.group": "グループ",
     "gr.group.app": "アプリケーション",
-    "gr.group.org": "組織", // words-ok: the en string's own word, translated
+    "gr.group.org": "会社",
     "gr.grp.commands": "マニフェストのコマンド",
     "gr.grp.common": "その他の操作",
     "gr.grp.danger": "注意",
@@ -1390,7 +1390,7 @@
     "pj.groupBy": "グループ分け",
     "pj.group.none": "なし",
     "pj.group.app": "アプリケーション",
-    "pj.group.org": "組織", // words-ok: the en string's own word, translated
+    "pj.group.org": "会社",
     "pj.reposIn": "{ws} のリポジトリ",
     "pj.th.repo": "リポジトリ",
     "pj.th.health": "状態",
@@ -1667,16 +1667,16 @@
     "set.graph.workspaces.o.open": "開く",
     "set.graph.workspaces.o.collapsed": "折りたたむ",
     "set.graph.groupBy.d":
-      "プロジェクトページのリポジトリ表です。1 つの一覧にするか、アプリケーション別 (__DEN_CLI__ apps と同じ) または組織別にグループ分けします。", // words-ok: the en string's own word, translated
+      "プロジェクトページのリポジトリ表です。1 つの一覧にするか、アプリケーション別 (__DEN_CLI__ apps と同じ) または会社別にグループ分けします。",
     "set.graph.groupBy.o.none": "なし",
     "set.graph.groupBy.o.app": "アプリケーション",
-    "set.graph.groupBy.o.org": "組織", // words-ok: the en string's own word, translated
+    "set.graph.groupBy.o.org": "会社",
     "set.graph.direction.d": "グラフを上から下、または左から右に配置します。",
     "set.graph.direction.o.down": "上から下",
     "set.graph.direction.o.right": "左から右",
     "set.graph.group.d":
-      "外側の枠を組織別にするか、アプリケーション別にするかです。", // words-ok: the en string's own word, translated
-    "set.graph.group.o.org": "組織別", // words-ok: the en string's own word, translated
+      "外側の枠を会社別にするか、アプリケーション別にするかです。",
+    "set.graph.group.o.org": "会社別",
     "set.graph.group.o.app": "アプリケーション別",
     "set.graph.density.d":
       "詳細カードは情報が多く、コンパクトカードは画面に多く収まります。",
@@ -1745,5 +1745,25 @@
       "edge.domain: サービスは https://<service>.<domain> で提供されます。",
     "set.workspace.name.d":
       "Den がこのプロジェクトをヘッダー、一覧、ページで表示する名前です。Hub のプロジェクトにリンクしている場合は Hub の名前です。スラッグは変わりません。",
+    "set.ui.rt.toolsComing": "Den ツール: 対応予定",
+    "set.ui.rt.installed": "インストール済み",
+    "set.ui.rt.notInstalled": "未インストール",
+    "set.ui.rt.src.workspace": "プロジェクト",
+    "set.ui.rt.src.setting": "全体",
+    "set.ui.rt.src.login-shell": "検出 · ログインシェル",
+    "set.ui.rt.src.PATH": "検出 · PATH",
+    "set.ui.rt.src.well-known": "検出 · インストール先",
+    "set.ui.rt.src.interactive-shell": "検出 · 対話シェル",
+    "set.ui.rt.setPath": "パスを設定…",
+    "set.ui.rt.clear": "解除",
+    "set.ui.rt.pathToIn": "{ws} での {name} のパス",
+    "set.ui.rt.pathToAll": "{name} のパス (すべてのプロジェクト)",
+    "set.ui.rt.save": "保存",
+    "set.ui.rt.cancel": "キャンセル",
+    "set.ui.rt.pathsFor": "パスの対象",
+    "set.ui.rt.everyProject": "すべてのプロジェクト (user.yml)",
+    "set.ui.rt.fixConfig":
+      "先に設定を直してください。ランタイムは設定から読み込まれます。",
+    "set.ui.rt.noLoad": "ランタイムを読み込めませんでした。",
   };
 })((window.denMessages = window.denMessages || {}));

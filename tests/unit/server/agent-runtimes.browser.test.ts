@@ -153,7 +153,7 @@ describe("Settings › Agents › Runtimes (AG-0.5)", () => {
     await p.click(`${row} .rt-f [type=submit]`);
     await p.waitForSelector(`${row} [data-clear-path]`);
     expect(await text(p, `${row} .rt-s`)).toBe("✓ 0.52.0");
-    expect(await text(p, `${row} .rt-w`)).toBe(`${north} workspace`);
+    expect(await text(p, `${row} .rt-w`)).toBe(`${north} project`);
     const wsYml = fs.readFileSync(
       path.join(s!.tmp, "dist", "config", "local", "workspaces.yml"),
       "utf-8",

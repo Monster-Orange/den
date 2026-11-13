@@ -155,7 +155,11 @@ async function open(next: string): Promise<Page> {
 }
 
 /** Unwrapped text in <main>: each visible text node and title/label/placeholder. */
-function leaks(p: Page, root = "#den-content"): Promise<string[]> {
+async function leaks(p: Page, root = "#den-content"): Promise<string[]> {
+  // Sections that draw after a fetch (Settings' runtimes, personas) draw
+  // first, or the check races them and passes on a slow-to-draw literal.
+  await p.waitForLoadState("networkidle").catch(() => {});
+  await p.waitForTimeout(300);
   return p.evaluate(
     ([names, root]) => {
       const out = new Set<string>();
@@ -186,7 +190,7 @@ function leaks(p: Page, root = "#den-content"): Promise<string[]> {
       const visible = (e: Element) => !!(e as HTMLElement).offsetParent;
       const skip = (e: Element) =>
         !!e.closest(
-          "script, style, code, pre, kbd, [hidden], [aria-hidden=true], input, textarea",
+          "script, style, code, pre, kbd, [hidden], [aria-hidden=true], input, textarea, [translate=no]",
         );
       const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
       for (let n = walker.nextNode(); n; n = walker.nextNode()) {

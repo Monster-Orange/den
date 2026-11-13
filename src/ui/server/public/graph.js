@@ -243,7 +243,7 @@ export function mountGraph(el, data, pageHooks) {
   el.innerHTML = `<div class="dg">
     <div class="dg-bar" role="toolbar" aria-label="${esc(gT("gr.bar", "Graph view options"))}">
       <div class="dg-ctl"><span>${esc(gT("gr.layout", "Layout"))}</span><div class="dg-seg" data-seg="dir"><button data-v="down">${esc(gT("gr.dir.down", "Top-down"))}</button><button data-v="right">${esc(gT("gr.dir.right", "Left-right"))}</button></div></div>
-      <div class="dg-ctl"><span>${esc(gT("gr.group", "Group"))}</span><div class="dg-seg" data-seg="group"><button data-v="org">${esc(gT("gr.group.org", "Org"))}</button><button data-v="app">${esc(gT("gr.group.app", "Application"))}</button></div></div>
+      <div class="dg-ctl"><span>${esc(gT("gr.group", "Group"))}</span><div class="dg-seg" data-seg="group"><button data-v="org">${esc(gT("gr.group.org", "Company"))}</button><button data-v="app">${esc(gT("gr.group.app", "Application"))}</button></div></div>
       <div class="dg-ctl"><span>${esc(gT("gr.cards", "Cards"))}</span><div class="dg-seg" data-seg="density"><button data-v="detailed">${esc(gT("gr.cards.detailed", "Detailed"))}</button><button data-v="compact">${esc(gT("gr.cards.compact", "Compact"))}</button></div></div>
       <div class="dg-ctl"><div class="dg-seg" data-expand><button data-v="all">${esc(gT("gr.expandAll", "Expand all"))}</button><button data-v="none">${esc(gT("gr.collapseAll", "Collapse all"))}</button></div></div>
       <div class="dg-spacer"></div>

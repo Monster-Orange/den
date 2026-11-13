@@ -877,12 +877,21 @@ export const DEN_SETTINGS = [
   graphRow(
     "groupBy",
     "Group repos by",
-    "The Projects page's repo table: one list, or grouped by application (as __DEN_CLI__ apps) or by org.",
-    ["workspaces", "group", "application", "apps", "org", "table", "local dev"],
+    "The Projects page's repo table: one list, or grouped by application (as __DEN_CLI__ apps) or by company.",
+    [
+      "workspaces",
+      "group",
+      "application",
+      "apps",
+      "org",
+      "company",
+      "table",
+      "local dev",
+    ],
     seg([
       { value: "none", label: "None" },
       { value: "app", label: "Application" },
-      { value: "org", label: "Org" },
+      { value: "org", label: "Company" },
     ]),
   ),
   graphRow(
@@ -898,10 +907,10 @@ export const DEN_SETTINGS = [
   graphRow(
     "group",
     "Frames",
-    "The outer frames: by org or by application.",
-    ["group", "frames", "org", "application", "cluster"],
+    "The outer frames: by company or by application.",
+    ["group", "frames", "org", "company", "application", "cluster"],
     seg([
-      { value: "org", label: "By org" },
+      { value: "org", label: "By company" },
       { value: "app", label: "By application" },
     ]),
   ),
@@ -1342,9 +1351,9 @@ const escR = (s) =>
       ],
   );
 
-/** Where a runtime's path came from, as the row says it. */
+/** Where a runtime's path came from, as the row says it (en; see rtSource). */
 export const RUNTIME_SOURCE = {
-  workspace: "workspace",
+  workspace: "project",
   setting: "global",
   "login-shell": "detected · login shell",
   PATH: "detected · PATH",
@@ -1352,23 +1361,32 @@ export const RUNTIME_SOURCE = {
   "interactive-shell": "detected · interactive shell",
 };
 
+/** Where a runtime's path came from, in the page's language. */
+const rtSource = (src) =>
+  RUNTIME_SOURCE[src]
+    ? L(`set.ui.rt.src.${src}`, RUNTIME_SOURCE[src])
+    : src || "";
+
 /** One runtime's row (r: GET /api/agents/runtimes' entry). */
 export function runtimeRowHtml(r, scopeWs) {
   const id = escR(r.id);
+  // A runtime's and its maker's names are names (translate="no").
   const name =
-    `<b>${escR(r.label || r.id)}</b>` +
-    (r.vendor ? ` <span class="rt-v">${escR(r.vendor)}</span>` : "") +
+    `<b translate="no">${escR(r.label || r.id)}</b>` +
+    (r.vendor
+      ? ` <span class="rt-v" translate="no">${escR(r.vendor)}</span>`
+      : "") +
     (r.denTools === false
-      ? ` <span class="set-tag" data-den-tools="coming">Den tools: coming</span>`
+      ? ` <span class="set-tag" data-den-tools="coming">${escR(L("set.ui.rt.toolsComing", "Den tools: coming"))}</span>`
       : "");
   const set = r.source === "workspace" || r.source === "setting";
   const status = r.available
-    ? `<span class="rt-ok">✓ ${escR(r.version ? r.version : "installed")}</span>`
-    : `<span class="rt-bad">${escR(set ? r.why : "Not installed")}</span>`;
+    ? `<span class="rt-ok">✓ ${escR(r.version ? r.version : L("set.ui.rt.installed", "installed"))}</span>`
+    : `<span class="rt-bad">${escR(set ? r.why : L("set.ui.rt.notInstalled", "Not installed"))}</span>`;
   const where = r.path
-    ? `<span class="den-mono rt-p">${escR(r.path)}</span> <span class="set-tag" data-src="${escR(r.source || "")}">${escR(RUNTIME_SOURCE[r.source] || r.source || "")}</span>`
+    ? `<span class="den-mono rt-p">${escR(r.path)}</span> <span class="set-tag" data-src="${escR(r.source || "")}">${escR(rtSource(r.source))}</span>`
     : set
-      ? `<span class="set-tag" data-src="${escR(r.source)}">${escR(RUNTIME_SOURCE[r.source])}</span>`
+      ? `<span class="set-tag" data-src="${escR(r.source)}">${escR(rtSource(r.source))}</span>`
       : "";
   // A path set at the scope shown can be cleared from here.
   const mine = scopeWs ? r.source === "workspace" : r.source === "setting";
@@ -1377,15 +1395,15 @@ export function runtimeRowHtml(r, scopeWs) {
     `<div class="rt-n">${name}</div>` +
     `<div class="rt-s">${status}</div>` +
     `<div class="rt-w">${where}</div>` +
-    `<div class="rt-a"><button type="button" class="btn sm" data-set-path="${id}">Set path…</button>` +
+    `<div class="rt-a"><button type="button" class="btn sm" data-set-path="${id}">${escR(L("set.ui.rt.setPath", "Set path…"))}</button>` +
     (mine
-      ? ` <button type="button" class="btn sm" data-clear-path="${id}">Clear</button>`
+      ? ` <button type="button" class="btn sm" data-clear-path="${id}">${escR(L("set.ui.rt.clear", "Clear"))}</button>`
       : "") +
     `</div>` +
     `<form class="rt-f" data-path-form="${id}" hidden>` +
-    `<label class="rt-fl" for="rt-in-${id}">Path to ${escR(r.label || r.id)}${scopeWs ? ` for ${escR(scopeWs)}` : " (every project)"}</label>` +
+    `<label class="rt-fl" for="rt-in-${id}">${escR(scopeWs ? L("set.ui.rt.pathToIn", "Path to {name} for {ws}", { name: r.label || r.id, ws: scopeWs }) : L("set.ui.rt.pathToAll", "Path to {name} (every project)", { name: r.label || r.id }))}</label>` +
     `<input type="text" id="rt-in-${id}" class="den-mono" spellcheck="false" autocomplete="off" placeholder="/absolute/path/to/${escR(r.id === "den-claude" ? "claude" : r.id)}" value="${escR(mine ? r.path || "" : "")}">` +
-    `<button type="submit" class="btn sm primary">Save</button> <button type="button" class="btn sm" data-cancel-path>Cancel</button>` +
+    `<button type="submit" class="btn sm primary">${escR(L("set.ui.rt.save", "Save"))}</button> <button type="button" class="btn sm" data-cancel-path>${escR(L("set.ui.rt.cancel", "Cancel"))}</button>` +
     `<div class="rt-err" role="alert" hidden></div></form>` +
     `</div>`
   );
@@ -1397,8 +1415,8 @@ function renderRuntimes(host, ctx) {
   let ws = "";
   const draw = (rows, note) => {
     host.innerHTML =
-      `<div class="rt-scope"><label for="rt-ws">Paths for</label> <select id="rt-ws" data-focus-key="rt-ws">` +
-      `<option value="">every project (user.yml)</option>` +
+      `<div class="rt-scope"><label for="rt-ws">${escR(L("set.ui.rt.pathsFor", "Paths for"))}</label> <select id="rt-ws" data-focus-key="rt-ws">` +
+      `<option value="">${escR(L("set.ui.rt.everyProject", "every project (user.yml)"))}</option>` +
       wss
         .map(
           (w) =>
@@ -1412,7 +1430,13 @@ function renderRuntimes(host, ctx) {
   const load = () => {
     // Under an invalid config the runtimes answer 422: say why, ask nothing.
     if (ctx.shell?.configInvalid?.() === true)
-      return draw([], "Fix the config first: the runtimes are read from it.");
+      return draw(
+        [],
+        L(
+          "set.ui.rt.fixConfig",
+          "Fix the config first: the runtimes are read from it.",
+        ),
+      );
     return ctx.shell
       .api(
         "GET",
@@ -1422,7 +1446,12 @@ function renderRuntimes(host, ctx) {
         // Only what has a CLI to find: generic is the persona's argv.
         draw((b?.runtimes || []).filter((r) => r.setting)),
       )
-      .catch((e) => draw([], e?.message || "The runtimes did not load."));
+      .catch((e) =>
+        draw(
+          [],
+          e?.message || L("set.ui.rt.noLoad", "The runtimes did not load."),
+        ),
+      );
   };
   host.addEventListener("change", (e) => {
     if (e.target.id !== "rt-ws") return;

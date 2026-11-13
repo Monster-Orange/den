@@ -104,9 +104,10 @@ export function categoryLabel(categories, id) {
 
 /** A persona's name as HTML: "Rita <role>(reviewer)</role>", else its id (role). */
 export function personaNameHtml(p) {
+  // A persona's name and role are its own words (translate="no").
   if (p.displayName)
-    return `${esc(p.displayName)} <span class="role">(${esc(p.role || p.id)})</span>`;
-  return `${esc(p.id)}${p.role && p.role !== p.id ? ` <span class="role">(${esc(p.role)})</span>` : ""}`;
+    return `<span translate="no">${esc(p.displayName)} <span class="role">(${esc(p.role || p.id)})</span></span>`;
+  return `<span translate="no">${esc(p.id)}${p.role && p.role !== p.id ? ` <span class="role">(${esc(p.role)})</span>` : ""}</span>`;
 }
 
 /** A persona's name as text. */
@@ -240,7 +241,7 @@ export function personaRowHtml(p, checked, data) {
   return (
     `<button type="button" class="pr" role="radio" data-pid="${esc(p.id)}" aria-checked="${checked}">` +
     `<span class="rd" aria-hidden="true"></span><span class="pn">${personaNameHtml(p)}${missing}</span>${originBadge(p)}` +
-    `<span class="pd">${esc(p.description || "")}</span></button>`
+    `<span class="pd" translate="no">${esc(p.description || "")}</span></button>`
   );
 }
 
@@ -366,7 +367,7 @@ export function personaDetailHtml(p, data) {
   return (
     `<div class="pdet" id="ag-det"><div class="why">${originBadge(p)} ${esc(t(`pe.src.${originOf(p)}.p`))}</div>` +
     `<div><span class="k">${esc(t("pe.instr"))}</span><pre>${p.instructions == null ? esc(t("pe.loading")) : esc(p.instructions)}</pre></div>` +
-    `<div><span class="k">${esc(t("pe.runtime"))}</span> <span class="mono">${esc(runtimeLabel(data, rt))}</span> · <span class="k">${esc(t("pe.model"))}</span> <span class="mono">${esc(p.model || t("pe.rtDefault"))} · ${esc(versionLabel(p.version))}</span>${isStale(data, rt, p.model, p.version) ? ` ${newerBadge()}` : ""}</div>` +
+    `<div><span class="k">${esc(t("pe.runtime"))}</span> <span class="mono" translate="no">${esc(runtimeLabel(data, rt))}</span> · <span class="k">${esc(t("pe.model"))}</span> <span class="mono">${esc(p.model || t("pe.rtDefault"))} · ${esc(versionLabel(p.version))}</span>${isStale(data, rt, p.model, p.version) ? ` ${newerBadge()}` : ""}</div>` +
     `<div><span class="k">${esc(t("pe.perms"))}</span> ${esc(t(`pm.${intent}`))}</div>` +
     `<div><span class="k">${esc(t("pe.preset"))}</span> ${list(preset)}</div>` +
     `<div><span class="k">${esc(t("pe.extra"))}</span> ${list(extras)}</div>` +
@@ -705,8 +706,8 @@ export function renderPersonasSettings(host, ctx) {
     const stale = isStale(data, rt, p.model, p.version);
     return (
       `<div class="prow" data-pid="${esc(p.id)}"><div class="pn">${personaNameHtml(p)} ${originBadge(p)}${stale ? ` ${newerBadge()}${mine ? ` <button type="button" class="lnk" data-x="latest">${esc(t("ver.use"))}</button>` : ""}` : ""}</div>` +
-      `<div class="pd">${esc(p.description || "")}</div>` +
-      `<div class="pm"><span class="mono">${esc(runtimeLabel(data, rt))}${p.model ? ` · ${esc(p.model)} · ${esc(versionLabel(p.version))}` : ""}</span> · ${esc(t(`pm.${p.permission || "ask"}`))}</div>` +
+      `<div class="pd" translate="no">${esc(p.description || "")}</div>` +
+      `<div class="pm"><span class="mono"><span translate="no">${esc(runtimeLabel(data, rt))}</span>${p.model ? ` · ${esc(p.model)} · ${esc(versionLabel(p.version))}` : ""}</span> · ${esc(t(`pm.${p.permission || "ask"}`))}</div>` +
       `<div class="pa"><button type="button" class="den-btn sm" data-x="${mine ? "edit" : "view"}">${esc(t(mine ? "pe.editB" : "pe.view"))}</button>` +
       `<button type="button" class="den-btn sm" data-x="dup">${esc(t("pe.dup"))}</button>` +
       (mine

@@ -558,7 +558,7 @@
     "ag.count": "{n} agentes",
     "ag.count.one": "{n} agente",
     "ag.col.agent": "Agente",
-    "ag.col.runtime": "Runtime",
+    "ag.col.runtime": "Motor",
     "ag.col.state": "Estado",
     "ag.col.cwd": "Directorio",
     "ag.col.started": "Inicio",
@@ -583,7 +583,7 @@
     "ag.resumeName": "Reanudar {id}",
     "ag.start": "+ Iniciar agente",
     "ag.persona": "Persona",
-    "ag.runtime": "Runtime",
+    "ag.runtime": "Motor",
     "ag.runtime.auto": "La de la persona",
     "ag.runtime.default": "{name} (la de la persona)",
     "ag.unavailable": "no disponible",
@@ -1243,7 +1243,7 @@
     "gr.fit": "Ajustar",
     "gr.group": "Agrupar",
     "gr.group.app": "Aplicación",
-    "gr.group.org": "Org",
+    "gr.group.org": "Empresa",
     "gr.grp.commands": "Comandos del manifiesto",
     "gr.grp.common": "Más acciones",
     "gr.grp.danger": "Con cuidado",
@@ -1424,7 +1424,7 @@
     "pj.groupBy": "Agrupar por",
     "pj.group.none": "Ninguno",
     "pj.group.app": "Aplicación",
-    "pj.group.org": "Org",
+    "pj.group.org": "Empresa",
     "pj.reposIn": "Repositorios de {ws}",
     "pj.th.repo": "Repositorio",
     "pj.th.health": "Estado",
@@ -1704,17 +1704,16 @@
     "set.graph.workspaces.o.open": "Abierta",
     "set.graph.workspaces.o.collapsed": "Contraída",
     "set.graph.groupBy.d":
-      "La tabla de repositorios de la página Proyectos: una sola lista, o agrupada por aplicación (como __DEN_CLI__ apps) o por organización.", // words-ok: the en string's own word, translated
+      "La tabla de repositorios de la página Proyectos: una sola lista, o agrupada por aplicación (como __DEN_CLI__ apps) o por empresa.",
     "set.graph.groupBy.o.none": "Ninguno",
     "set.graph.groupBy.o.app": "Aplicación",
-    "set.graph.groupBy.o.org": "Org",
+    "set.graph.groupBy.o.org": "Empresa",
     "set.graph.direction.d":
       "Dispón el grafo de arriba abajo o de izquierda a derecha.",
     "set.graph.direction.o.down": "De arriba abajo",
     "set.graph.direction.o.right": "De izquierda a derecha",
-    "set.graph.group.d":
-      "Los marcos exteriores: por organización o por aplicación.", // words-ok: the en string's own word, translated
-    "set.graph.group.o.org": "Por org", // words-ok: the en string's own word, translated
+    "set.graph.group.d": "Los marcos exteriores: por empresa o por aplicación.",
+    "set.graph.group.o.org": "Por empresa",
     "set.graph.group.o.app": "Por aplicación",
     "set.graph.density.d":
       "Las tarjetas detalladas muestran más; las compactas caben más en pantalla.",
@@ -1783,5 +1782,25 @@
       "edge.domain: los servicios se sirven en https://<service>.<domain>.",
     "set.workspace.name.d":
       "El nombre que Den muestra para este proyecto en la cabecera, las listas y las páginas. Si está vinculado a un proyecto de Hub, es el nombre de Hub. El slug nunca cambia.",
+    "set.ui.rt.toolsComing": "Herramientas de Den: próximamente",
+    "set.ui.rt.installed": "instalado",
+    "set.ui.rt.notInstalled": "No instalado",
+    "set.ui.rt.src.workspace": "proyecto",
+    "set.ui.rt.src.setting": "global",
+    "set.ui.rt.src.login-shell": "detectado · shell de inicio",
+    "set.ui.rt.src.PATH": "detectado · PATH",
+    "set.ui.rt.src.well-known": "detectado · carpeta de instalación",
+    "set.ui.rt.src.interactive-shell": "detectado · shell interactivo",
+    "set.ui.rt.setPath": "Definir ruta…",
+    "set.ui.rt.clear": "Quitar",
+    "set.ui.rt.pathToIn": "Ruta de {name} para {ws}",
+    "set.ui.rt.pathToAll": "Ruta de {name} (todos los proyectos)",
+    "set.ui.rt.save": "Guardar",
+    "set.ui.rt.cancel": "Cancelar",
+    "set.ui.rt.pathsFor": "Rutas para",
+    "set.ui.rt.everyProject": "todos los proyectos (user.yml)",
+    "set.ui.rt.fixConfig":
+      "Corrige primero la configuración: los motores se leen de ella.",
+    "set.ui.rt.noLoad": "Los motores no se cargaron.",
   };
 })((window.denMessages = window.denMessages || {}));

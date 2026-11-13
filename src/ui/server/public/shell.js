@@ -169,6 +169,26 @@
     "pname.empty": "Enter a name. It can't be empty.",
     "pname.failed": "The name wasn't saved.",
     "set.workspace.name": "Name",
+    "set.ui.rt.toolsComing": "Den tools: coming",
+    "set.ui.rt.installed": "installed",
+    "set.ui.rt.notInstalled": "Not installed",
+    "set.ui.rt.src.workspace": "project",
+    "set.ui.rt.src.setting": "global",
+    "set.ui.rt.src.login-shell": "detected · login shell",
+    "set.ui.rt.src.PATH": "detected · PATH",
+    "set.ui.rt.src.well-known": "detected · install directory",
+    "set.ui.rt.src.interactive-shell": "detected · interactive shell",
+    "set.ui.rt.setPath": "Set path…",
+    "set.ui.rt.clear": "Clear",
+    "set.ui.rt.pathToIn": "Path to {name} for {ws}",
+    "set.ui.rt.pathToAll": "Path to {name} (every project)",
+    "set.ui.rt.save": "Save",
+    "set.ui.rt.cancel": "Cancel",
+    "set.ui.rt.pathsFor": "Paths for",
+    "set.ui.rt.everyProject": "every project (user.yml)",
+    "set.ui.rt.fixConfig":
+      "Fix the config first: the runtimes are read from it.",
+    "set.ui.rt.noLoad": "The runtimes did not load.",
     "pj.expand": "Expand the project list",
     "gr.act.autostartOff": "Auto-start: off (turn on)",
     "gr.act.autostartOn": "Auto-start: on (turn off)",
@@ -217,7 +237,7 @@
     "gr.fit": "Fit",
     "gr.group": "Group",
     "gr.group.app": "Application",
-    "gr.group.org": "Org",
+    "gr.group.org": "Company",
     "gr.grp.commands": "Manifest commands",
     "gr.grp.common": "More actions",
     "gr.grp.danger": "Careful",
@@ -397,7 +417,7 @@
     "pj.groupBy": "Group by",
     "pj.group.none": "None",
     "pj.group.app": "Application",
-    "pj.group.org": "Org",
+    "pj.group.org": "Company",
     "pj.reposIn": "Repos in {ws}",
     "pj.th.repo": "Repo",
     "pj.th.health": "Health",
@@ -671,15 +691,15 @@
     "set.graph.workspaces.o.open": "Open",
     "set.graph.workspaces.o.collapsed": "Collapsed",
     "set.graph.groupBy.d":
-      "The Projects page's repo table: one list, or grouped by application (as __DEN_CLI__ apps) or by org.", // words-ok: the Settings row's text, moved word for word
+      "The Projects page's repo table: one list, or grouped by application (as __DEN_CLI__ apps) or by company.",
     "set.graph.groupBy.o.none": "None",
     "set.graph.groupBy.o.app": "Application",
-    "set.graph.groupBy.o.org": "Org",
+    "set.graph.groupBy.o.org": "Company",
     "set.graph.direction.d": "Lay the graph out top-down or left to right.",
     "set.graph.direction.o.down": "Top-down",
     "set.graph.direction.o.right": "Left to right",
-    "set.graph.group.d": "The outer frames: by org or by application.", // words-ok: the Settings row's text, moved word for word
-    "set.graph.group.o.org": "By org", // words-ok: the Settings row's text, moved word for word
+    "set.graph.group.d": "The outer frames: by company or by application.",
+    "set.graph.group.o.org": "By company",
     "set.graph.group.o.app": "By application",
     "set.graph.density.d":
       "Detailed cards show more; compact ones fit more on screen.",
@@ -2493,8 +2513,7 @@
    * that line just after the toast shows, so it looks again a moment later.
    */
   function clearOfMarked(el, again) {
-    if (!el || !el.getBoundingClientRect || !document.querySelectorAll)
-      return;
+    if (!el || !el.getBoundingClientRect || !document.querySelectorAll) return;
     if (!again)
       [120, 500].forEach(function (ms) {
         setTimeout(function () {
