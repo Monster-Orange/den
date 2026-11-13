@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   ackBody,
+  deliveryRaw,
   deliveryText,
   parseDelivery,
   SeenDeliveries,
@@ -66,6 +67,80 @@ describe("reading a delivery", () => {
       raw({ thread: { kind: "comment", id: "t", url: "javascript:alert(1)" } }),
     )!;
     expect(d.thread.url).toBe("");
+  });
+});
+
+const ID = "0193a0b0-0000-7000-8000-000000000001";
+const REPLY_WITH = [
+  {
+    tool: "hub_artifact_update",
+    args: { artifact: "pricing-page", addresses: [ID] },
+    when: "changed",
+  },
+  { tool: "hub_reply", args: { delivery_id: ID }, when: "answer" },
+];
+
+describe("0.4.44: what to answer with comes from Hub (reply_with)", () => {
+  it("an edit request names Hub's tools, with a hub_reply fallback; no dead tool name", () => {
+    const t = deliveryText(parseDelivery(raw({ reply_with: REPLY_WITH }))!, me);
+    expect(t.split("\n")[1]).toBe(
+      `This is an edit request from your person on "Pricing page". Do it, then save the new version with hub_artifact_update {"artifact":"pricing-page","addresses":["${ID}"]}. If you can't, say why with hub_reply {"delivery_id":"${ID}"}. If you don't have hub_artifact_update, reply with hub_reply {"delivery_id":"${ID}"} instead.`,
+    );
+    expect(t).not.toContain("hub_resolve_with_version");
+  });
+
+  it("no artifact (only hub_reply): do it, then answer with it", () => {
+    const t = deliveryText(
+      parseDelivery(raw({ reply_with: [REPLY_WITH[1]] }))!,
+      me,
+    );
+    expect(t.split("\n")[1]).toBe(
+      `This is an edit request from your person on "Pricing page". Do it, then say what you did with hub_reply {"delivery_id":"${ID}"}.`,
+    );
+  });
+
+  it("information: you may answer with Hub's answer tool", () => {
+    const t = deliveryText(
+      parseDelivery(
+        raw({
+          reply_with: REPLY_WITH,
+          author: { ...raw().author, id: "u_other", login: "sam", name: "Sam" },
+        }),
+      )!,
+      me,
+    );
+    expect(t.split("\n")[1]).toBe(
+      `This is information on "Pricing page", not a request: don't change anything unless your person asks. You may answer with hub_reply {"delivery_id":"${ID}"}.`,
+    );
+  });
+
+  it("an older Hub with no reply_with: today's words, without the tool Hub never had", () => {
+    const t = deliveryText(parseDelivery(raw())!, me);
+    expect(t.split("\n")[1]).toBe(
+      `This is an edit request from your person on "Pricing page". Do it, then save the new version with hub_artifact_update and addresses: ["${ID}"]. If you can't, say why with hub_reply {delivery_id: "${ID}"}.`,
+    );
+  });
+
+  it("reads reply_with defensively: only hub_ tools, plain args, known whens; kept through deliveryRaw", () => {
+    const d = parseDelivery(
+      raw({
+        reply_with: [
+          ...REPLY_WITH,
+          { tool: "rm -rf", args: {}, when: "changed" },
+          { tool: "hub_x", args: { a: { nested: 1 } }, when: "answer" },
+          { tool: "hub_y", args: { a: "line\nbreak" }, when: "answer" },
+          { tool: "hub_z", args: {}, when: "whenever" },
+          "nope",
+        ],
+      }),
+    )!;
+    expect(d.replyWith).toEqual([
+      { tool: "hub_artifact_update", args: { artifact: "pricing-page", addresses: [ID] }, when: "changed" },
+      { tool: "hub_reply", args: { delivery_id: ID }, when: "answer" },
+      { tool: "hub_y", args: { a: "line break" }, when: "answer" },
+    ]);
+    expect(parseDelivery(deliveryRaw(d))!.replyWith).toEqual(d.replyWith);
+    expect(parseDelivery(raw({ reply_with: "x" }))!.replyWith).toBeUndefined();
   });
 });
 
