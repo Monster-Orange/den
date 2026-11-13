@@ -6,6 +6,13 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.45] - unreleased
 
+### Changed
+
+- `run` (the CLI's test command) now exits with the run's result, so
+  scripts and CI that call it see it. `0` = passed, `1` = failed, `3` =
+  nothing ran (every suite was skipped, none matched, or none is
+  declared). Before, it always exited `0`, even when tests failed.
+
 ### Fixed
 
 - `agents permission <id> -w <project>` asks about that agent: an agent may
@@ -16,8 +23,7 @@ config and manifest changes a distribution must make to move to it under
   says "Nothing ran", a result of its own that is not a pass, in the CLI
   (exit 3, where it used to print "Tests completed successfully" and exit
   0), on the page, and in MCP's `run_tests` (an error with
-  `outcome: "nothing ran"`). The CLI's `run` now also exits non-zero when
-  tests fail.
+  `outcome: "nothing ran"`).
 
 ## [0.4.44] - 2026-11-13
 
