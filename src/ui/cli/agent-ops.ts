@@ -4639,10 +4639,12 @@ export async function agentInputState(
   d: AgentsResolved,
   id: string,
   waiting: ReadonlySet<string> = new Set(),
+  quietMs = 3000,
 ): Promise<"missing" | "stopped" | "busy" | "idle"> {
   try {
     const rec = readRecord(d.stateDir(), id);
     if (!rec || isServerScope(rec.workspace)) return "missing";
+    if (rec.stoppedAt) return "stopped";
     // Never starts a session host: none running means it isn't either.
     const c = await d.connectExisting();
     if (!c) return "stopped";
@@ -4655,9 +4657,33 @@ export async function agentInputState(
     }
     if (!live) return "stopped";
     if (waiting.has(id)) return "busy";
-    return (await agentBusy(d, rec)) === false ? "idle" : "busy";
+    const busy = await agentBusy(d, rec);
+    if (busy !== null) return busy ? "busy" : "idle";
+    // A runtime that can't say: quiet output for quietMs is waiting (a
+    // working TUI redraws its spinner; a waiting one is still).
+    return (await outputQuiet(d, rec.session.id, quietMs)) ? "idle" : "busy";
   } catch {
     return "busy";
+  }
+}
+
+/** Whether session `sessionId` printed nothing for `ms`. False on any doubt. */
+async function outputQuiet(
+  d: AgentsResolved,
+  sessionId: string,
+  ms: number,
+): Promise<boolean> {
+  const c = await d.connectExisting();
+  if (!c) return false;
+  try {
+    const a = (await c.scrollback(sessionId, 64 * 1024)).toString("utf-8");
+    await new Promise((r) => setTimeout(r, ms));
+    const b = (await c.scrollback(sessionId, 64 * 1024)).toString("utf-8");
+    return a.length > 0 && a === b;
+  } catch {
+    return false;
+  } finally {
+    c.close();
   }
 }
 
