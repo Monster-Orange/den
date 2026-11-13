@@ -1975,6 +1975,9 @@
   if (!host || host.dataset.mounted) return;
   host.dataset.mounted = "1";
   var page = host.dataset.page || "";
+  // 0.4.45: the rail item lit; a page may light another of its own (the
+  // Agents page lights Terminal while a shell is in front).
+  var railLit = page;
   // The page id on the body (den-page-<id>), for CSS from first paint: the
   // Graph page is the Workspaces page's file at /graph (R22, 0.3.0-dev.32).
   if (/^[a-z0-9-]+$/.test(page) && document.body)
@@ -2935,7 +2938,8 @@
       tip: "n.terminalTip",
       icon: "terminal",
       group: "develop",
-      order: 17.5,
+      // 0.4.45: below the server agent.
+      order: 18.5,
       href: "/agents?terminal=1",
       keywords: ["terminal", "shell", "console", "command line"],
     },
@@ -3520,7 +3524,7 @@
                   icon: n.icon,
                   tip: n.tip ? t(n.tip) : "",
                 },
-                n.id === page,
+                n.id === railLit,
                 b
                   ? '<span class="den-bdg' +
                       (b.bad ? " bad" : "") +
@@ -6079,6 +6083,13 @@
   })();
 
   window.denShell = {
+    /** Light rail item `id` for this page (null: the page's own). */
+    setRailLit: function (id) {
+      var next = id || page;
+      if (next === railLit) return;
+      railLit = next;
+      renderRail();
+    },
     registerGroup: registerGroup,
     registerNav: registerNav,
     addMessages: function (l, msgs) {

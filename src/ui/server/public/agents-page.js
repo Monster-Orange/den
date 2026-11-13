@@ -930,6 +930,12 @@ function paintSub() {
   if (count) count.textContent = subText(rows, waiting, st.scopeLabel);
   const url = st.root.querySelector("#ag-url");
   if (url) url.textContent = location.pathname + location.search;
+  // 0.4.45: the rail lights by the pane in front, not the address (which
+  // drops ?terminal= once used): a shell lights Terminal, else Agents.
+  const front = st.cur ? rowOf(st.cur) : null;
+  window.denShell?.setRailLit?.(
+    front && front.kind === "session" ? "terminal" : null,
+  );
 }
 
 /**
