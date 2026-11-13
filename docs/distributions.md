@@ -2673,7 +2673,7 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
 <cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] -- <argv…>
 <cli> sessions list [-w <ws>] [--json]
 <cli> sessions attach <name|id>          # ctrl-] detaches; the session keeps running
-<cli> sessions kill <name|id> [--signal INT|TERM|KILL]
+<cli> sessions kill <name|id> [--signal INT|TERM|HUP|KILL] [--grace <s>]
 <cli> sessions host [--stop]
 <cli> agents list -w <ws> [--json]
 ```
@@ -2701,6 +2701,14 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
 - Stopping the host (`sessions host --stop`, or a reboot) ends its
   sessions. They stay listed as exited, with their scrollback, until
   `sessions kill` removes them.
+- `sessions kill` with no `--signal` stops a session as closing its
+  terminal does: HUP (an interactive shell ignores TERM), then KILL if it
+  is still running after `--grace` seconds (`sessions.close_grace_seconds`,
+  default 5, 0 to 300). `--signal` sends just that one.
+- A shell's pane on the Agents page has Close shell: the same stop, then
+  the session is forgotten, so closed shells never count toward
+  `sessions.max_concurrent` (`POST /api/sessions/<id>/close`, a person's
+  only). An agent's pane has Stop instead.
 - `sessions.max_concurrent` caps the plain sessions (`sessions start`)
   running at once (default 8), and `agents.max_concurrent` the agents
   (default 4). Each counts only its own, so a few plain shells never stop
@@ -2711,6 +2719,7 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
   ```yaml
   sessions:
     max_concurrent: 8
+    close_grace_seconds: 5
   agents:
     max_concurrent: 4
   ```

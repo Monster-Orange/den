@@ -140,6 +140,57 @@ describe("D73: Terminal", () => {
     expect(s!.made.at(-1)!.opts.cwd).toBe(s!.wsDir("south"));
   }, 90_000);
 
+  it("the 0.4.39 gate: a second Terminal adds a tab; the rail's opens in the project in view", async () => {
+    if (skip()) return;
+    const p = await open("/?ws=north");
+    await p.locator("#ws-term-here").click();
+    await p.waitForFunction(() => !location.search.includes("terminal="));
+    await p.waitForSelector(".pane[data-id]");
+    const first = s!.made.length;
+    const firstId = new URL(p.url()).searchParams.get("open")!;
+    expect(firstId).toBeTruthy();
+
+    // Another project's Terminal here: the first tab stays.
+    await p.goto(signInUrl(s!.stateDir, s!.base, "/?ws=south"));
+    await p.locator("#ws-term-here").click();
+    await p.waitForFunction(() => !location.search.includes("terminal="));
+    await p.waitForFunction(
+      () =>
+        (new URLSearchParams(location.search).get("open") ?? "").split(",")
+          .length === 2,
+    );
+    expect(s!.made.length).toBe(first + 1);
+    expect(s!.made.at(-1)!.opts.cwd).toBe(s!.wsDir("south"));
+    const open2 = new URL(p.url()).searchParams.get("open")!.split(",");
+    expect(open2[0]).toBe(firstId);
+    await p.reload();
+    await p.waitForSelector(`.pane[data-id="${open2[1]}"]`, {
+      state: "attached",
+    });
+    expect(new URL(p.url()).searchParams.get("open")!.split(",")).toEqual(
+      open2,
+    );
+
+    // The rail's Terminal from /agents?ws=south: a shell in south (not the
+    // first project), a third tab.
+    await p.goto(
+      signInUrl(
+        s!.stateDir,
+        s!.base,
+        `/agents?ws=south&open=${open2.join(",")}`,
+      ),
+    );
+    await p.waitForSelector(".pane[data-id]", { state: "attached" });
+    await p.locator('#den-rail [data-nav="terminal"]').click();
+    await p.waitForFunction(() => !location.search.includes("terminal="));
+    await p.waitForFunction(
+      () =>
+        (new URLSearchParams(location.search).get("open") ?? "").split(",")
+          .length === 3,
+    );
+    expect(s!.made.at(-1)!.opts.cwd).toBe(s!.wsDir("south"));
+  }, 120_000);
+
   it("in Spanish: Terminal, with its tooltip", async () => {
     if (skip()) return;
     expect(await s!.settings({ language: "es" })).toBe(200);

@@ -358,21 +358,24 @@ export async function handleApprovalRoutes(
       decision as Decision,
       who.session,
     );
-    recordAction(
-      auditActorOf(req),
-      r.ok
-        ? {
-            verb: "approval-decide",
-            detail: `${decision} ${r.approval.action}: ${r.approval.summary} [${dec[1]}]`,
-          }
-        : {
-            verb: "approval-decide",
-            detail: `${decision} [${dec[1]}]`,
-            outcome: "refused",
-            reason: r.code,
-          },
-      principalOf(req),
-    );
+    // A repeat (a double-click, a retry) replays the first answer: the
+    // first one's audit line stands alone.
+    if (!(r.ok && r.repeat))
+      recordAction(
+        auditActorOf(req),
+        r.ok
+          ? {
+              verb: "approval-decide",
+              detail: `${decision} ${r.approval.action}: ${r.approval.summary} [${dec[1]}]`,
+            }
+          : {
+              verb: "approval-decide",
+              detail: `${decision} [${dec[1]}]`,
+              outcome: "refused",
+              reason: r.code,
+            },
+        principalOf(req),
+      );
     if (r.ok) sendJson(res, { ok: true, ...approvalView(r.approval) });
     else
       refuse(

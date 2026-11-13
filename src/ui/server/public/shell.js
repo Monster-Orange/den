@@ -583,6 +583,7 @@
     "hubp.change": "Change",
     "hubp.unlink": "Unlink",
     "hubp.none": "Your company has no Hub projects yet.",
+    "hubp.noOther": "Your company has no other Hub projects to switch to.",
     "hubp.failed": "Den couldn't reach Hub's projects.",
     "hubp.cantSee": "Den Hub can't see {repo}.",
     "hubp.giveAccess": "Give Den Hub access to {org}",
@@ -647,6 +648,9 @@
     "ag.state.exited": "exited",
     "ag.state.exitedCode": "exited ({code})",
     "ag.stop": "Stop",
+    "ag.closeShell": "Close shell",
+    "ag.closeShellTip": "End this shell and anything running in it",
+    "ag.shellClosed": "Closed {id}",
     "ag.resume": "Resume",
     "ag.stopName": "Stop {id}",
     "ag.resumeName": "Resume {id}",
@@ -2662,6 +2666,16 @@
     var repo = id.split("/")[0];
     return "/services#repo-" + encodeURIComponent(repo);
   }
+  /** D73: the rail's Terminal, in the project in view when there is one. */
+  function terminalHref() {
+    var ws = "";
+    try {
+      ws = new URLSearchParams(location.search).get("ws") || "";
+    } catch (_) {
+      ws = "";
+    }
+    return "/agents?terminal=1" + (ws ? "&ws=" + encodeURIComponent(ws) : "");
+  }
   function item(n, current, extra, attrs) {
     return (
       '<a class="den-ni" href="' +
@@ -3065,6 +3079,9 @@
   });
   nav.addEventListener("click", function (e) {
     var tgt = e.target;
+    // D73: the rail's Terminal opens in the project in view (?ws=).
+    var term = tgt && tgt.closest ? tgt.closest('[data-nav="terminal"]') : null;
+    if (term) term.setAttribute("href", terminalHref());
     var v = tgt && tgt.closest ? tgt.closest("[data-visit]") : null;
     if (v) {
       if (!visitPin(v)) e.preventDefault();

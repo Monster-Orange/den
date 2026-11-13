@@ -29,6 +29,11 @@ describe("agents: and sessions: problems are ConfigErrors", () => {
     ],
     ["sessions.cap", { sessions: { cap: 3 } }, readSessionsConfig],
     [
+      "sessions.close_grace_seconds",
+      { sessions: { close_grace_seconds: -1 } },
+      readSessionsConfig,
+    ],
+    [
       "agents.max_concurrent",
       { agents: { max_concurrent: "hunter2" } },
       readAgentsConfig,
@@ -53,5 +58,14 @@ describe("agents: and sessions: problems are ConfigErrors", () => {
       readSessionsConfig({ sessions: { max_concurrent: 3 } } as DenConfig)
         .maxConcurrent,
     ).toBe(3);
+  });
+
+  it("sessions.close_grace_seconds: 5 by default; 0 to 300", () => {
+    expect(readSessionsConfig({} as DenConfig).closeGraceSeconds).toBe(5);
+    expect(
+      readSessionsConfig({
+        sessions: { close_grace_seconds: 0.5 },
+      } as unknown as DenConfig).closeGraceSeconds,
+    ).toBe(0.5);
   });
 });

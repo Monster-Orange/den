@@ -87,7 +87,11 @@ import { sessionPaths } from "../../shared/sessions/paths.js";
 import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
 import type { HelperSettings } from "../../shared/agents/helpers.js";
-import { readAgentsConfig } from "../../shared/den-config.js";
+import {
+  readAgentsConfig,
+  readSessionsConfig,
+} from "../../shared/den-config.js";
+import { stopSession } from "../../shared/sessions/stop.js";
 import {
   agentRows,
   defaultHubNow,
@@ -103,7 +107,11 @@ import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
 import { agentHubWork } from "./hub-delivery-service.js";
-import { auditActorOf, principalOf } from "./request-guard.js";
+import {
+  agentPrincipalOf,
+  auditActorOf,
+  principalOf,
+} from "./request-guard.js";
 import {
   acceptWebSocket,
   handshakeRefusal,
@@ -138,6 +146,8 @@ export interface SessionRouteDeps {
   hubNow?: () => Promise<string | null>;
   /** AG-DROP: agents.uploads (default: the agents config's). */
   uploadSettings?: () => UploadSettings;
+  /** sessions.close_grace_seconds: Close's wait between HUP and KILL. */
+  closeGrace?: () => number;
   /** D65 v2: workspace `ws`'s repo names (null: it can't be read). */
   repoNames?: (ws: string) => ReadonlySet<string> | null;
   now?: () => Date;
@@ -157,6 +167,7 @@ interface Resolved {
   helperSettings: () => HelperSettings | undefined;
   hubNow: () => Promise<string | null>;
   uploadSettings: () => UploadSettings;
+  closeGrace: () => number;
   repoNames: (ws: string) => ReadonlySet<string> | null;
   now: () => Date;
 }
@@ -200,6 +211,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
     waitingWhy: d.waitingWhy ?? (() => new Map<string, string>()),
     hubNow: d.hubNow ?? (() => defaultHubNow()),
+    closeGrace: d.closeGrace ?? (() => readSessionsConfig().closeGraceSeconds),
     uploadSettings:
       d.uploadSettings ??
       (() => readAgentsConfig().uploads ?? { ...UPLOAD_DEFAULTS }),
@@ -229,6 +241,7 @@ export const IO_PROTOCOL = "den.io";
 
 const IO_PATH = /^\/api\/sessions\/([^/]+)\/io$/;
 const UPLOAD_PATH = /^\/api\/sessions\/([^/]+)\/uploads$/;
+const CLOSE_PATH = /^\/api\/sessions\/([^/]+)\/close$/;
 /**
  * D54: the browsers viewing each session now (by session id). Each hears
  * how many there are when that changes: one left alone sizes the PTY.
@@ -926,6 +939,79 @@ async function handleUpload(
 }
 
 /**
+ * The page's Close for a shell: `POST /api/sessions/<id>/close`. A plain
+ * session stops as closing its terminal does (HUP, then KILL after
+ * sessions.close_grace_seconds) and is forgotten, its scrollback with it,
+ * so closed tabs never count toward sessions.max_concurrent. An agent's
+ * session is refused (Stop keeps its record right); so is an agent's
+ * token: closing is the person's. Audited.
+ */
+async function handleClose(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  target: string,
+  d: Resolved,
+): Promise<void> {
+  req.resume();
+  let name = target;
+  const audit = (detail: string, refused?: string) =>
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "session-close",
+        detail: detail.slice(0, 400),
+        ...(refused ? { outcome: "refused" as const, reason: refused } : {}),
+      },
+      principalOf(req),
+    );
+  const refuse = (status: number, error: string, code: string) => {
+    audit(name, code);
+    sendJson(res, { ok: false, error, code }, status);
+  };
+  if (agentPrincipalOf(req))
+    return refuse(403, "Closing a terminal is the person's.", "person_only");
+  const found = await servedTarget(target, d);
+  if (!("s" in found)) return refuse(found.status, found.error, found.code);
+  const s = found.s;
+  name = s.name;
+  if (listRecords(d.stateDir()).some((r) => r.session.id === s.ref.id))
+    return refuse(
+      409,
+      `${s.name} is an agent's: Stop it instead (it keeps its conversation)`,
+      "agent_session",
+    );
+  let c: HostClient | null = null;
+  try {
+    c = await d.connectExisting();
+    if (!c)
+      return refuse(503, "the session host isn't running", "session_host"); // words-ok: "session host" as the other errors here
+    let grace: number;
+    try {
+      grace = d.closeGrace();
+    } catch (e) {
+      return refuse(500, (e as Error).message, "config");
+    }
+    const result = s.exited
+      ? "gone"
+      : await stopSession(c, s.ref.id, grace * 1000);
+    // KILL lands at once; give the host its moment to see the end.
+    for (let i = 0; i < 30; i++) {
+      const now = (await c.list()).find((x) => x.ref.id === s.ref.id);
+      if (!now || now.exited) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const still = (await c.list()).find((x) => x.ref.id === s.ref.id);
+    if (still?.exited) await c.forget(s.ref.id);
+    audit(`${s.name}: ${result}`);
+    sendJson(res, { ok: true, result, forgotten: !!still?.exited || !still });
+  } catch (e) {
+    refuse(503, `the session host: ${(e as Error).message}`, "session_host"); // words-ok: "session host" as the other errors here
+  } finally {
+    c?.close();
+  }
+}
+
+/**
  * A plain HTTP request to an io route: it is a WebSocket. For a GET, the
  * refusal its upgrade would get (404, 503), else 426; 404 for anything
  * else under /api/sessions/.
@@ -936,6 +1022,17 @@ export async function sendSessionHttp(
   pathname: string,
   deps: SessionRouteDeps = {},
 ): Promise<void> {
+  const close = CLOSE_PATH.exec(pathname);
+  if (close && req.method === "POST") {
+    let target = close[1];
+    try {
+      target = decodeURIComponent(target);
+    } catch {
+      /* as given */
+    }
+    await handleClose(req, res, target, resolve(deps));
+    return;
+  }
   const up = UPLOAD_PATH.exec(pathname);
   if (up && req.method === "POST") {
     let target = up[1];

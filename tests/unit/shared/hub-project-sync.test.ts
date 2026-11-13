@@ -252,6 +252,35 @@ describe("H5 sync: the loop", () => {
     expect(timers).toHaveLength(0);
   });
 
+  it("the 0.4.39 gate: the 30 s check never cuts a retry short; the wait grows to 5 min", async () => {
+    const fail = Object.assign(new Error("Hub could not be reached"), {
+      kind: "unreachable",
+    });
+    const s = mk(
+      async () => Promise.reject(fail),
+      () => [p("a")],
+    );
+    const waits: number[] = [];
+    await s.run();
+    for (let i = 0; i < 9; i++) {
+      // The periodic check runs between retries: it must not schedule.
+      const before = timers.length;
+      s.check();
+      s.check();
+      expect(timers.length).toBe(before);
+      const t = timers.at(-1)!;
+      waits.push(t.ms);
+      t.fn();
+      await new Promise((r) => setImmediate(r));
+    }
+    expect(waits).toEqual([
+      5000, 10000, 20000, 40000, 80000, 160000, 300000, 300000, 300000,
+    ]);
+    // A connect (request) still sends soon.
+    s.request();
+    expect(timers.at(-1)!.ms).toBe(1500);
+  });
+
   it("Hub not set up here: nothing recorded, no retry", async () => {
     const s = mk(
       async () => null,

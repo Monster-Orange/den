@@ -1312,6 +1312,11 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
 export interface SessionsConfig {
   /** Plain sessions that may run at once (default 8); agents never count. */
   max_concurrent?: number;
+  /**
+   * How long a shell has to end after HUP (closing it from the page, or
+   * `sessions kill` with no --signal) before it gets KILL (default 5).
+   */
+  close_grace_seconds?: number;
 }
 
 export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
@@ -1319,6 +1324,7 @@ export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
 /** `sessions:` with its defaults applied. */
 export interface ResolvedSessionsConfig {
   maxConcurrent: number;
+  closeGraceSeconds: number;
 }
 
 /**
@@ -1336,13 +1342,27 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
   if (!isMapping(raw))
     throw new Error(`sessions: must be a mapping (got ${JSON.stringify(raw)})`);
   for (const k of Object.keys(raw))
-    if (k !== "max_concurrent")
+    if (k !== "max_concurrent" && k !== "close_grace_seconds")
       throw new Error(
-        `sessions.${k}: unknown key (sessions: takes max_concurrent)`,
+        `sessions.${k}: unknown key (sessions: takes max_concurrent, close_grace_seconds)`, // words-ok: the config key is sessions:
       );
   const out: ResolvedSessionsConfig = {
     maxConcurrent: DEFAULT_SESSIONS_MAX_CONCURRENT,
+    closeGraceSeconds: 5,
   };
+  const grace = raw.close_grace_seconds;
+  if (grace !== undefined) {
+    if (
+      typeof grace !== "number" ||
+      !Number.isFinite(grace) ||
+      grace < 0 ||
+      grace > 300
+    )
+      throw new Error(
+        `sessions.close_grace_seconds: must be a number of seconds, 0 to 300 (got ${JSON.stringify(grace)})`,
+      );
+    out.closeGraceSeconds = grace;
+  }
   const max = raw.max_concurrent;
   if (max !== undefined) {
     if (typeof max !== "number" || !Number.isInteger(max) || max < 1)

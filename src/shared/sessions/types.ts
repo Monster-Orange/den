@@ -81,10 +81,11 @@ export interface Attachment {
   detach(): void;
 }
 
-export type SessionSignal = "INT" | "TERM" | "KILL";
+export type SessionSignal = "INT" | "TERM" | "HUP" | "KILL";
 export const SESSION_SIGNALS: readonly SessionSignal[] = [
   "INT",
   "TERM",
+  "HUP",
   "KILL",
 ];
 

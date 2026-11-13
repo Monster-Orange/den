@@ -230,7 +230,23 @@ export function openFromUrl(search) {
   return ids.slice(-MAX_PANES);
 }
 
+/** D73: the panes this browser has open, so a Terminal link adds a tab. */
+const OPEN_KEY = "den-agents-open";
+
+function rememberedOpen() {
+  try {
+    return openFromUrl(`?open=${localStorage.getItem(OPEN_KEY) ?? ""}`);
+  } catch {
+    return [];
+  }
+}
+
 function writeUrl() {
+  try {
+    localStorage.setItem(OPEN_KEY, st.open.join(","));
+  } catch {
+    /* none: the URL alone */
+  }
   const u = new URL(location.href);
   if (st.open.length) u.searchParams.set("open", st.open.join(","));
   else u.searchParams.delete("open");
@@ -1476,6 +1492,11 @@ function paintBar(p) {
     r?.kind === "agent" && (r.state === "running" || r.state === "stopping")
       ? `<button type="button" class="den-btn sm" data-act="stop" aria-label="${esc(t("ag.stopName", { id: r.agent }))}">${esc(t("ag.stop"))}</button>`
       : "";
+  // The 0.4.39 gate's note: a shell is closed here, not only with `exit`.
+  const closeShell =
+    r?.kind === "session" && !r.exited
+      ? `<button type="button" class="den-btn sm" data-act="close-shell" title="${esc(t("ag.closeShellTip"))}">${esc(t("ag.closeShell"))}</button>`
+      : "";
   // The mock's pane bar: Resume (primary) on an ended agent that can.
   const resume =
     r && isStopped(r) && r.resumable
@@ -1512,7 +1533,7 @@ function paintBar(p) {
     (r?.kind === "agent" && rotActionsHtml(r)
       ? `<span class="agrot" data-rot-bar title="${esc(rotMessage(r))}"><span class="tagx warn" data-rotation="${rotationOf(r)}">${esc(t(rotationOf(r) === "ready" ? "ag.rot.ready" : "ag.rot.due", { why: rotationWhy(r.rotation) }))}</span>${rotActionsHtml(r)}</span>`
       : "") +
-    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
+    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${closeShell}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
   // A refresh (a helper's update, the list's poll) redraws only what
   // changed, and never takes the keyboard off the bar: a button there that
   // had focus has it again after a redraw.
@@ -2313,6 +2334,25 @@ async function stopAgentNow(r, button) {
       }),
     );
   } catch (err) {
+    window.denShell?.errorToast?.(err);
+  }
+  await refresh();
+}
+
+/**
+ * Close a shell: the server ends it as closing its terminal does (HUP,
+ * then KILL) and forgets it; its pane closes.
+ */
+async function closeShell(p, button) {
+  const r = rowOf(p.id);
+  if (!r || r.kind !== "session") return;
+  button.disabled = true;
+  try {
+    await api("POST", `/api/sessions/${encodeURIComponent(r.id)}/close`);
+    window.denShell?.toast?.(t("ag.shellClosed", { id: r.label ?? r.name }));
+    closePane(p.id);
+  } catch (err) {
+    button.disabled = false;
     window.denShell?.errorToast?.(err);
   }
   await refresh();
@@ -4185,7 +4225,21 @@ export async function mountAgentsPage(root) {
   translateStatic(root);
   if (window.denShell?.apiOff?.()) return;
   st.open = [];
-  const wanted = openFromUrl(location.search);
+  // D73: a Terminal link (the rail's, a project's Terminal here) adds a
+  // tab: the panes this browser had open come along, and the page shows
+  // every project (?ws= names only where the shell starts), so tabs from
+  // other projects stay.
+  const q0 = new URLSearchParams(location.search);
+  const termWs = q0.get("terminal") === "1" ? q0.get("ws") || "" : null;
+  const wanted =
+    termWs !== null && !q0.get("open")
+      ? rememberedOpen()
+      : openFromUrl(location.search);
+  if (termWs !== null && termWs) {
+    const u = new URL(location.href);
+    u.searchParams.delete("ws");
+    history.replaceState(history.state, "", u.pathname + u.search);
+  }
   const linked = layoutFromUrl(location.search);
   const startAsked = new URLSearchParams(location.search).get("start") === "1";
   if (startAsked) {
@@ -4319,6 +4373,7 @@ export async function mountAgentsPage(root) {
       const r = rowOf(id);
       if (r) void openLink(r, b);
     } else if (b.dataset.act === "stop") void stopAgent(p, b);
+    else if (b.dataset.act === "close-shell") void closeShell(p, b);
     else if (b.dataset.act === "tools-restart") {
       const r = rowOf(id);
       if (r) void restartForTools(r, b);
@@ -4479,11 +4534,9 @@ export async function mountAgentsPage(root) {
   if (wanted.length && front && !isStopped(rowOf(front) ?? {}))
     focusTerm(front, false, { ifIdle: true });
   const linkedAgent = new URLSearchParams(location.search).get("agent");
-  const termAsked =
-    new URLSearchParams(location.search).get("terminal") === "1";
   writeUrl();
   if (linkedAgent) await openLinkedAgent(linkedAgent, urlWorkspace());
-  if (termAsked) await openTerminal();
+  if (termWs !== null) await openTerminal(termWs);
   if (startAsked) void openStart();
 }
 
@@ -4494,9 +4547,10 @@ export async function mountAgentsPage(root) {
  * keeps it, and the shell outlives a Den restart (the sessions host).
  * Used once: the URL drops ?terminal=.
  */
-async function openTerminal() {
+async function openTerminal(asked = "") {
   const all = st.data?.workspaces ?? [];
   const ws =
+    asked ||
     urlWorkspace() ||
     (st.scope && st.scope !== "all" && all.includes(st.scope)
       ? st.scope
