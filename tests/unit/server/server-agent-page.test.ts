@@ -14,6 +14,7 @@ import {
   modelOptionsHtml,
   runtimeOptionsHtml,
   serverAgentView,
+  nextLookMs,
 } from "../../../src/ui/server/public/server-agent-page.js";
 
 const base = {
@@ -224,5 +225,19 @@ describe("the server agent's page", () => {
       '<option value="den-claude" selected>Claude Code</option>',
     );
     expect(runtimeOptionsHtml({ ...base, runtimes: [] })).toBe("");
+  });
+});
+
+describe("SRV-1b: how often the page looks for the trust prompt (gate 0.4.44)", () => {
+  it("while a prompt shows: every check interval, with no count to run out", () => {
+    expect(nextLookMs(true, { kind: "trust" }, false, 2000)).toBe(2000);
+    expect(nextLookMs(true, { kind: "trust" }, false, 500)).toBe(500);
+  });
+  it("running, no prompt: still looks (a prompt can come later), five intervals apart", () => {
+    expect(nextLookMs(true, null, false, 2000)).toBe(10_000);
+  });
+  it("not running, or the tab hidden: no look (it looks again when shown)", () => {
+    expect(nextLookMs(false, { kind: "trust" }, false, 2000)).toBeNull();
+    expect(nextLookMs(true, { kind: "trust" }, true, 2000)).toBeNull();
   });
 });

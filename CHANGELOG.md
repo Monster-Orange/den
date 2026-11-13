@@ -52,6 +52,11 @@ config and manifest changes a distribution must make to move to it under
   `restart: true` and the error until a connect works.
 - The trust step ignores a prompt that has left the screen: only output
   after the last screen clear counts, and the prompt must end it.
+- **Trust never stays up after its prompt is gone.** The page stopped
+  checking about 90 s after it opened. It now checks for as long as a
+  prompt shows (`server_agent.prompt_check_seconds`, default 2), hides
+  Trust when a check fails or goes stale, checks again when the tab is
+  back in view and right before a click.
 - A rolled-back update names the new Den's answer, or that nothing new
   answered, never the old server's version and pid.
 - `agents.git.signing_key` in `config/local/user.yml` was ignored; it is

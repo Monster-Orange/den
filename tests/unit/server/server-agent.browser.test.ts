@@ -41,7 +41,11 @@ afterAll(async () => {
   await browser?.close();
 });
 
-async function open(s: AgentsPageServer, at: string): Promise<Page> {
+async function open(
+  s: AgentsPageServer,
+  at: string,
+  before?: (p: Page) => Promise<void>,
+): Promise<Page> {
   const latest =
     (
       (await (await fetch(`${s.base}/api/changelog`)).json()) as {
@@ -62,6 +66,7 @@ async function open(s: AgentsPageServer, at: string): Promise<Page> {
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
+  if (before) await before(p);
   await p.goto(signInUrl(s.stateDir, s.base, at));
   return p;
 }
@@ -111,6 +116,55 @@ describe("a fresh Den", () => {
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);
+
+  it("gate 0.4.44: Trust goes within a check of the prompt clearing, however long the page was open; a stale check hides it; a click checks first", async () => {
+    if (!browser) return;
+    let prompt: unknown = { kind: "trust", folder: "/dist" };
+    let hang = false;
+    const posts: string[] = [];
+    const p = await open(s!, "/server-agent", async (pg) => {
+      await pg.clock.install();
+      await pg.route("**/api/server-agent", async (route) => {
+        if (route.request().method() !== "GET") return route.continue();
+        if (hang) return; // never answered: a check that went stale
+        const r = await route.fetch();
+        const j = (await r.json()) as Record<string, unknown>;
+        await route.fulfill({ response: r, json: { ...j, prompt, promptCheckMs: 2000 } });
+      });
+      await pg.route("**/api/server-agent/trust", async (route) => {
+        posts.push(route.request().postData() ?? "");
+        await route.fulfill({ json: { ok: true, typed: true } });
+      });
+    });
+    const yes = '[data-act="trust-yes"]';
+    const shown = (state: "visible" | "detached") =>
+      p.waitForSelector(yes, { state, timeout: 8_000 });
+    await shown("visible");
+    // Open well past the old 45 looks (90 s), the prompt still there.
+    await p.clock.runFor(100_000);
+    await shown("visible");
+    // It clears (answered in the terminal): gone within a check.
+    prompt = null;
+    await p.clock.runFor(2_500);
+    await shown("detached");
+    // A prompt that comes later still shows.
+    prompt = { kind: "trust", folder: "/dist" };
+    await p.clock.runFor(10_500);
+    await shown("visible");
+    // Checks that stop answering: stale, Trust goes.
+    hang = true;
+    await p.clock.runFor(6_500);
+    await shown("detached");
+    hang = false;
+    await p.clock.runFor(2_500);
+    await shown("visible");
+    // The prompt clears between checks: the click checks first, sends nothing.
+    prompt = null;
+    await p.click(yes);
+    await shown("detached");
+    expect(posts).toEqual([]);
+    await p.context().close();
+  }, 90_000);
 });
 
 describe("a fresh Den with no runtime", () => {

@@ -2859,9 +2859,13 @@ workspace may take that name.
   makes Den look at the agent's output again and type the runtime's
   accept only if the same prompt is still there (409 when it isn't);
   Not now types nothing. Each answer is in the activity trail. An
-  agent's token is refused, as for every route here. While the agent
-  starts, the page looks again every two seconds for about a minute and a
-  half.
+  agent's token is refused, as for every route here. While Trust shows,
+  the page checks again every `server_agent.prompt_check_seconds`
+  (default 2, 0.5 to 60) for as long as it is open, and every five of
+  those while it doesn't; a check that fails, or gets no answer for three
+  intervals, takes Trust off the page. It checks again when the tab comes
+  back into view and right before a click is sent, and the server's 409
+  stays behind that.
 - **It updates Den** (0.4.44, `den_update { version, reason }`, the held
   action `den_update`). Held for the person like `den_restart`, under
   the same `server_agent.self_update`. Allowed, Den saves the version it

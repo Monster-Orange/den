@@ -36,6 +36,10 @@ import {
 import { webDeps } from "./agent-routes.js";
 import { readUpdateState } from "./den-update.js";
 import { getStateDir } from "../../shared/paths.js";
+import {
+  PROMPT_CHECK_SECONDS_DEFAULT,
+  readServerAgentConfig,
+} from "../../shared/den-config.js";
 import { recordAction } from "./audit.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import {
@@ -129,10 +133,18 @@ export async function handleServerAgentRoutes(
       const status = await serverAgentStatus(d, deps.server);
       // SRV-1b: its runtime asks to trust the folder (the page offers Trust).
       const p = await trust.detect().catch(() => null);
+      // Gate 0.4.44: how often the page checks while a prompt shows.
+      let promptCheckMs = PROMPT_CHECK_SECONDS_DEFAULT * 1000;
+      try {
+        promptCheckMs = readServerAgentConfig().promptCheckMs;
+      } catch {
+        // A bad server_agent: block is doctor's; the page keeps checking.
+      }
       sendJson(res, {
         ...status,
         update,
         prompt: p ? { kind: "trust", folder: p.folder } : null,
+        promptCheckMs,
       });
     } catch (e) {
       sendError(res, e);

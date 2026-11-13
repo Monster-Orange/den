@@ -177,23 +177,58 @@ const st = {
   rereads: 0,
   /** SRV-1b: the person chose Not now on the trust prompt. */
   trustLater: false,
-  /** Reads while running, to see the trust prompt come and go. */
-  looks: 0,
+  /** The next check for the trust prompt, and the one that hides a stale one. */
+  lookTimer: 0,
+  staleTimer: 0,
 };
 
-/** How many times, two seconds apart, a running agent is read for its prompt. */
-const LOOKS = 45;
+/** Gate 0.4.44: the check interval when the server names none (ms). */
+const CHECK_MS = 2000;
+/** Checks without an answer before a shown prompt counts as stale. */
+const STALE_CHECKS = 3;
+/** With no prompt showing, checks are this many intervals apart. */
+const QUIET_CHECKS = 5;
+
+/**
+ * Gate 0.4.44: when to check again for the runtime's trust prompt (ms), or
+ * null. While a prompt shows, every interval for as long as the page is
+ * open (no count to run out); running with none, five intervals apart (one
+ * can come later); never while the agent isn't running or the tab is
+ * hidden (it checks again when shown).
+ */
+export function nextLookMs(running, prompt, hidden, checkMs = CHECK_MS) {
+  if (!running || hidden) return null;
+  return prompt ? checkMs : checkMs * QUIET_CHECKS;
+}
 
 /** How many times, a second apart, a start is read back until it runs. */
 const REREADS = 15;
 
+function checkMs() {
+  const ms = st.status?.promptCheckMs;
+  return typeof ms === "number" && ms >= 100 ? ms : CHECK_MS;
+}
+
 async function readStatus() {
+  // A check that hangs is no answer: it ends when it would count as stale.
+  const ctl = new AbortController();
+  const tm = setTimeout(() => ctl.abort(), checkMs() * STALE_CHECKS);
   try {
-    const r = await fetch("/api/server-agent", { headers: { accept: "json" } });
+    const r = await fetch("/api/server-agent", {
+      headers: { accept: "json" },
+      signal: ctl.signal,
+    });
     return r.ok ? await r.json() : null;
   } catch {
     return null;
+  } finally {
+    clearTimeout(tm);
   }
+}
+
+/** Gate 0.4.44: Trust / Not now off the page (a stale or failed check). */
+function hideTrust() {
+  st.root?.querySelector(".sa-trust")?.remove();
 }
 
 function paint() {
@@ -226,9 +261,26 @@ function paint() {
   return v;
 }
 
+/** The next check, from what the last one saw (gate 0.4.44). */
+function schedule(v) {
+  clearTimeout(st.lookTimer);
+  const prompt = st.status?.prompt ?? null;
+  // A check that failed while the agent may run: try again soon.
+  const ms = st.status
+    ? nextLookMs(Boolean(v?.terminal), prompt, document.hidden, checkMs())
+    : document.hidden
+      ? null
+      : checkMs();
+  if (ms !== null) st.lookTimer = setTimeout(() => void refresh(), ms);
+  // A shown prompt not confirmed again in time is stale: Trust goes.
+  clearTimeout(st.staleTimer);
+  if (prompt) st.staleTimer = setTimeout(hideTrust, checkMs() * STALE_CHECKS);
+}
+
 async function refresh() {
   st.status = await readStatus();
   const v = paint();
+  schedule(v);
   if (!v) return;
   if (v.terminal) void openTerminal(v.terminal);
   else closeTerminal();
@@ -237,13 +289,6 @@ async function refresh() {
     st.autoTried = true;
     void start();
     return;
-  }
-  // SRV-1b: running: read again for a while, so its trust prompt shows
-  // (and goes once answered in the terminal).
-  if (v.terminal && st.looks < LOOKS) {
-    st.looks++;
-    clearTimeout(st.lookTimer);
-    st.lookTimer = setTimeout(() => void refresh(), 2000);
   }
   // Started, but not running yet: read again until it is.
   if (st.autoTried && !v.terminal && v.autoStart && st.rereads < REREADS) {
@@ -269,6 +314,14 @@ async function start() {
 }
 
 async function answerTrust(answer) {
+  // Gate 0.4.44: check right before sending; a prompt gone since the last
+  // check sends nothing (the server's 409 stays the guard behind this).
+  const now = await readStatus();
+  if (now?.prompt?.kind !== "trust") {
+    st.status = now;
+    schedule(paint());
+    return;
+  }
   try {
     await window.denShell.api("POST", "/api/server-agent/trust", { answer });
   } catch (err) {
@@ -448,6 +501,11 @@ export async function mountServerAgentPage(root) {
       b.disabled = true;
       void answerTrust(b.dataset.act === "trust-yes" ? "yes" : "no");
     }
+  });
+  // Gate 0.4.44: back in view, check at once; hidden, checks pause.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void refresh();
+    else clearTimeout(st.lookTimer);
   });
   root.querySelector("#sa-runtime select")?.addEventListener("change", (e) => {
     void saveRuntime(e.target.value);

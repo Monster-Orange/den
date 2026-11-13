@@ -912,6 +912,11 @@ export interface ServerAgentConfig {
    * before it rolls back (seconds, default 180).
    */
   update_wait_seconds?: number;
+  /**
+   * Gate 0.4.44: how often its page checks for the runtime's trust
+   * prompt while it shows (seconds, default 2; 0.5 to 60).
+   */
+  prompt_check_seconds?: number;
 }
 
 export interface ResolvedServerAgentConfig {
@@ -923,7 +928,12 @@ export interface ResolvedServerAgentConfig {
   git: "pr" | "push";
   /** SRV-1b: den_update's wait for the new version, in ms. */
   updateWaitMs: number;
+  /** Gate 0.4.44: the page's trust prompt check, in ms. */
+  promptCheckMs: number;
 }
+
+/** Gate 0.4.44: how often the page checks for the trust prompt (seconds). */
+export const PROMPT_CHECK_SECONDS_DEFAULT = 2;
 
 /** SRV-1b: den_update's default wait for the new version (seconds). */
 export const UPDATE_WAIT_SECONDS_DEFAULT = 180;
@@ -955,11 +965,20 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.update_wait_seconds: seconds, 10 or more (got ${JSON.stringify(w)})`,
     );
+  const pc = sa.prompt_check_seconds;
+  if (
+    pc !== undefined &&
+    (typeof pc !== "number" || !Number.isFinite(pc) || pc < 0.5 || pc > 60)
+  )
+    throw new Error(
+      `server_agent.prompt_check_seconds: seconds, 0.5 to 60 (got ${JSON.stringify(pc)})`,
+    );
   return {
     selfUpdate: v ?? "ask",
     folder,
     git: g ?? "pr",
     updateWaitMs: Math.round((w ?? UPDATE_WAIT_SECONDS_DEFAULT) * 1000),
+    promptCheckMs: Math.round((pc ?? PROMPT_CHECK_SECONDS_DEFAULT) * 1000),
   };
 }
 
