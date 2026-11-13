@@ -202,6 +202,10 @@ import { cmdDoctor } from "./doctor-command.js";
 import { cmdSessions, SESSIONS_HELP } from "./sessions-command.js";
 import { AGENTS_HELP, cmdAgents } from "./agents-command.js";
 import { USAGE_HELP, cmdUsage } from "./usage-command.js";
+import {
+  NOTIFICATIONS_HELP,
+  cmdNotifications,
+} from "./notifications-command.js";
 import { HUB_HELP, cmdHub } from "./hub-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
@@ -555,6 +559,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   agents: AGENTS_HELP,
   usage: USAGE_HELP,
   hub: HUB_HELP,
+  notifications: NOTIFICATIONS_HELP,
 };
 
 function resolveCliBaseApiUrl(explicitBaseApiUrl?: string): string | undefined {
@@ -609,6 +614,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "agents",
   "usage",
   "hub",
+  "notifications",
   "service",
   "theme",
   "plugin",
@@ -642,6 +648,8 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "usage",
   // D52: calls Den's own proxy to Hub, no org data.
   "hub",
+  // NT: the bell's own file, no org data.
+  "notifications",
 ]);
 
 function configCheckedCommand(command: string): boolean {
@@ -1123,6 +1131,10 @@ class DenCLI {
 
         case "hub":
           process.exitCode = await cmdHub(args.slice(1));
+          break;
+
+        case "notifications":
+          process.exitCode = await cmdNotifications(args.slice(1));
           break;
 
         case "mcp": {
@@ -3008,9 +3020,7 @@ class DenCLI {
     // the user is asked (default No); without one there is nobody to ask, so
     // only an explicit --reset may do it (SEED-0).
     if (willReset && !interactive && !reset) {
-      const what = multi
-        ? "the blueprint's projects"
-        : "the default project";
+      const what = multi ? "the blueprint's projects" : "the default project";
       console.error(
         chalk.red(
           `\n  ❌ Not resetting ${what}: it has entries, and a reset replaces them all\n` +

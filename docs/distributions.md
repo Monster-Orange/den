@@ -2651,6 +2651,10 @@ agent and kind.
 - `GET /api/notifications` is the bell; `POST /api/notifications/read`,
   `/clear`, `/mute` and `/looking` change it, for people only. An agent
   reads it with `notifications_list` and changes nothing in it.
+- `<cli> notifications [list|read|clear]` is the bell from a shell, with
+  no server needed: `list [--json]` (● unread, ○ read), `read [<id> | -p
+<project>]` (default all), `clear [-p <project>]` (the read ones). In an
+  agent's session only `list` runs.
 
 ## Sessions
 
