@@ -44,6 +44,26 @@ describe("trust prompt (SRV-1b)", () => {
     expect(trustPromptIn("", tp)).toBe(false);
   });
 
+  it("gate 0.4.44-dev.0: not once the screen was cleared and the runtime went on", () => {
+    // Answered in the terminal: Claude clears and draws its welcome.
+    const answered =
+      claudeOld + `${ESC}[2J${ESC}[H Welcome to Claude Code\r\n cwd: /dens/acme\r\n> `;
+    expect(trustPromptIn(answered, tp)).toBe(false);
+    for (const clear of [`${ESC}[3J`, `${ESC}c`])
+      expect(trustPromptIn(claudeNew + clear + " working…", tp)).toBe(false);
+    // A clear before the prompt (its own screen) still shows it.
+    expect(trustPromptIn(`old screen${ESC}[2J${ESC}[H${claudeNew}`, tp)).toBe(true);
+  });
+
+  it("not when more than the prompt's own lines follow it, cleared or not", () => {
+    const more = claudeNew + "\r\n" + " Welcome to Claude Code. Tips: run /init.".repeat(6);
+    expect(trustPromptIn(more, tp)).toBe(false);
+    // Redraw noise (cursor moves, colours) after it is not more text.
+    expect(trustPromptIn(claudeNew + `${ESC}[?25l${ESC}[1A${ESC}[2K${ESC}[39m`.repeat(40), tp)).toBe(true);
+    // Redrawn in place (cursor up, no clear): the last copy counts.
+    expect(trustPromptIn(claudeNew + `${ESC}[6A${ESC}[J` + claudeNew + `${ESC}[6A${ESC}[J` + claudeNew, tp)).toBe(true);
+  });
+
   it("a runtime with no trust prompt never has one", () => {
     expect(trustPromptIn(claudeOld, undefined)).toBe(false);
   });
