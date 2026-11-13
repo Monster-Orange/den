@@ -46,6 +46,32 @@ export interface Notification {
   read: boolean;
   /** NT-6, a Hub item: whether Hub has it read (what the last sync saw). */
   hubRead?: boolean;
+  /** NT-6, a Hub item: its project's name, for the bell's heading. */
+  scopeName?: string;
+  /**
+   * Den's own text as a key and its values, for the page to say in its
+   * language (`text` is the English, for the CLI and old pages).
+   */
+  msg?: NoteMsg;
+}
+
+/** A page string key (bell.m.*) and its values. */
+export interface NoteMsg {
+  key: string;
+  vars: Record<string, string | number>;
+}
+
+const MSG_KEY = /^bell\.m\.[A-Za-z]{1,24}$/;
+
+/** `msg` checked and made plain, or undefined. */
+function cleanMsg(m: NoteMsg | undefined): NoteMsg | undefined {
+  if (!m || !MSG_KEY.test(m.key)) return undefined;
+  const vars: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(m.vars ?? {}).slice(0, 8))
+    if (/^[a-z]{1,16}$/i.test(k))
+      vars[k] =
+        typeof v === "number" && Number.isFinite(v) ? v : plain(String(v));
+  return { key: m.key, vars };
 }
 
 /** NT-6: one of Hub's notifications (GET /api/notifications), checked. */
@@ -58,6 +84,8 @@ export interface HubNote {
   link?: string;
   at: string;
   readBy: string[];
+  /** Its project's name (Hub, when it sends one). */
+  scopeName?: string;
 }
 
 /** Hub's item, or null when it isn't one Den can show. */
@@ -79,6 +107,9 @@ export function parseHubNote(v: unknown): HubNote | null {
     kind,
     subject,
     scope: str(r.scope, 128).replace(/[^\w.:/-]/g, ""),
+    ...(str(r.scopeName, 120).trim()
+      ? { scopeName: plain(str(r.scopeName, 120)) }
+      : {}),
     text: str(r.text, 1000),
     // Hub's own page, https only (never a script or a file link).
     ...(/^https:\/\//.test(link) ? { link } : {}),
@@ -200,18 +231,22 @@ export class NotificationStore {
     subject: string;
     scope: string;
     text: string;
+    msg?: NoteMsg;
     link?: string;
   }): Notification | null {
     if (this.muted(n.subject, n.scope)) return null;
     const f = this.read();
     const at = this.now().toISOString();
     const text = plain(n.text);
+    const msg = cleanMsg(n.msg);
     const same = f.items.find(
       (x) => !x.read && x.subject === n.subject && x.kind === n.kind,
     );
     let out: Notification;
     if (same) {
       same.text = text;
+      if (msg) same.msg = msg;
+      else delete same.msg;
       same.at = at;
       if (n.link) same.link = n.link;
       out = same;
@@ -223,6 +258,7 @@ export class NotificationStore {
         subject: n.subject,
         scope: n.scope,
         text,
+        ...(msg ? { msg } : {}),
         ...(n.link ? { link: n.link } : {}),
         at,
         read: false,
@@ -268,6 +304,7 @@ export class NotificationStore {
           kind: n.kind,
           subject: n.subject,
           scope,
+          ...(n.scopeName ? { scopeName: n.scopeName } : {}),
           text: plain(n.text),
           ...(n.link ? { link: n.link } : {}),
           at: n.at,
@@ -280,11 +317,21 @@ export class NotificationStore {
       const text = plain(n.text);
       // Newer activity on Hub's item (another reply): it's news again.
       const newer = n.at > x.at;
-      if (x.text !== text || x.at !== n.at || x.link !== n.link) {
+      if (
+        x.text !== text ||
+        x.at !== n.at ||
+        x.link !== n.link ||
+        x.scope !== scope ||
+        x.scopeName !== n.scopeName
+      ) {
         x.text = text;
         x.at = n.at;
         if (n.link) x.link = n.link;
         else delete x.link;
+        // Hub filed it under its own project (Hub before that: the team's).
+        x.scope = scope;
+        if (n.scopeName) x.scopeName = n.scopeName;
+        else delete x.scopeName;
         changed = true;
       }
       // Whose read is it? Unknown: reads stay where they were made.

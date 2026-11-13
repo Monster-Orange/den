@@ -553,7 +553,7 @@ export function hubProjectLines(
   const unlinked = projects.filter((p) => !p.link).length;
   if (unlinked > 1)
     lines.push(
-      `  hub project  ⚠  ${unlinked} projects aren't linked. Link Hub's suggestions in one go: \`${cli} hub link --suggested\``,
+      `  hub project  ⚠  ${unlinked} projects aren't linked. See what Hub suggests for each, and link them in one go: \`${cli} hub link --suggested\``,
     );
   return { lines, checks };
 }

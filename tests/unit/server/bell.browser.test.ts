@@ -206,6 +206,38 @@ describe("NT-3: the bell", () => {
     }
   }, 60_000);
 
+  it("(k) the 0.4.41 gate: the item's own words are in the page's language", async () => {
+    if (skip()) return;
+    // As the server keeps it (attention.ts): the English, and the key.
+    new NotificationStore(s!.stateDir).add({
+      kind: "waiting",
+      subject: "agent:k-gate",
+      scope: "workspace/north",
+      text: "Kgate needs your permission",
+      msg: { key: "bell.m.permission", vars: { name: "Kgate" } },
+    });
+    for (const [lang, said] of [
+      ["es", "necesita tu permiso"],
+      ["ja", "許可を待っています"],
+    ] as const) {
+      expect(await s!.settings({ language: lang })).toBe(200);
+      try {
+        const p = await open("/services", 390);
+        await p.click("#den-bell");
+        await p.waitForSelector("#den-bell-pop:not([hidden])");
+        const row = p
+          .locator("#den-bell-pop .den-bell-row")
+          .filter({ hasText: "Kgate" });
+        expect(await row.first().innerText()).toContain(said);
+        expect(await row.first().innerText()).not.toContain("needs your");
+        await p.context().close();
+      } finally {
+        await s!.settings({ language: null });
+      }
+    }
+    new NotificationStore(s!.stateDir).withdraw("agent:k-gate");
+  }, 90_000);
+
   it("NT-6: Hub's items show under their Hub project, linked to Hub", async () => {
     if (skip()) return;
     new NotificationStore(s!.stateDir).syncHub(
@@ -220,18 +252,34 @@ describe("NT-3: the bell", () => {
           at: new Date().toISOString(),
           readBy: [],
         },
+        {
+          id: "n2",
+          kind: "mention",
+          subject: "thread:th_2",
+          scope: "hub/shop/main",
+          scopeName: "Shop site",
+          text: "Kim mentioned you on Checkout",
+          at: new Date().toISOString(),
+          readBy: [],
+        },
       ],
       "pat",
     );
     const p = await open("/services");
     await p.click("#den-bell");
-    const sec = p.locator(
-      '#den-bell-pop section[data-scope="hub/web/main"]',
-    );
+    const sec = p.locator('#den-bell-pop section[data-scope="hub/web/main"]');
     await sec.waitFor({ timeout: 15_000 });
     expect(await sec.locator(".den-bell-sc span").textContent()).toBe(
       "Hub · web",
     );
+    // Hub's name for the project, when it sends one.
+    expect(
+      await p
+        .locator(
+          '#den-bell-pop section[data-scope="hub/shop/main"] .den-bell-sc span',
+        )
+        .textContent(),
+    ).toBe("Hub · Shop site");
     const a = sec.locator('.den-bell-row[data-id="hub:n1"] a');
     expect(await a.textContent()).toBe("Kim mentioned you on Pricing page");
     expect(await a.getAttribute("href")).toBe(

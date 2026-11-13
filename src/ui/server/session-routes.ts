@@ -136,6 +136,8 @@ export interface SessionRouteDeps {
    * "permission", "input" or "asked" (its hooks, ask_human).
    */
   waitingWhy?: () => ReadonlyMap<string, string>;
+  /** The person typed into session `id` (its pane): its agent's wait ends. */
+  typed?: (id: string) => void;
   /** D28: each agent's effective rotation settings (one resolver per list). */
   rotationPolicy?: () => (rec: AgentRecord) => RotationPolicy | undefined;
   /** D59: whether each agent resumes on its own after a restart. */
@@ -162,6 +164,7 @@ interface Resolved {
   pty: () => PtyLoad;
   waitingAgents: () => ReadonlySet<string>;
   waitingWhy: () => ReadonlyMap<string, string>;
+  typed: (id: string) => void;
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
   restartResume?: SessionRouteDeps["restartResume"];
   helperSettings: () => HelperSettings | undefined;
@@ -210,6 +213,12 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     pty: d.pty ?? (() => loadPty()),
     waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
     waitingWhy: d.waitingWhy ?? (() => new Map<string, string>()),
+    typed:
+      d.typed ??
+      ((id) =>
+        void import("./notification-service.js")
+          .then((m) => m.personTyped(id))
+          .catch(() => undefined)),
     hubNow: d.hubNow ?? (() => defaultHubNow()),
     closeGrace: d.closeGrace ?? (() => readSessionsConfig().closeGraceSeconds),
     uploadSettings:
@@ -1203,7 +1212,10 @@ export async function handleSessionUpgrade(
   });
   ws.on("message", (data: Buffer, binary: boolean) => {
     if (binary) {
-      if (!exited && data.length) client.write(s.ref.id, data);
+      if (!exited && data.length) {
+        client.write(s.ref.id, data);
+        d.typed(s.ref.id);
+      }
       return;
     }
     let msg: { type?: unknown; cols?: unknown; rows?: unknown; data?: unknown };
@@ -1219,8 +1231,10 @@ export async function handleSessionUpgrade(
       if (!exited && ok(msg.cols) && ok(msg.rows))
         client.resize(s.ref.id, msg.cols, msg.rows);
     } else if (msg?.type === "input" && typeof msg.data === "string") {
-      if (!exited && msg.data)
+      if (!exited && msg.data) {
         client.write(s.ref.id, Buffer.from(msg.data, "utf-8"));
+        d.typed(s.ref.id);
+      }
     }
   });
   let done = false;

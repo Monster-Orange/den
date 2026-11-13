@@ -49,13 +49,6 @@ async function call(
   };
 }
 
-async function until(f: () => Promise<boolean>, ms = 15_000) {
-  const end = Date.now() + ms;
-  while (!(await f())) {
-    if (Date.now() > end) throw new Error("timed out");
-    await new Promise((r) => setTimeout(r, 200));
-  }
-}
 
 const planner = async () =>
   (
@@ -100,9 +93,22 @@ describe("NT: the bell on the real server", () => {
     expect((await planner())?.waitingWhy).toBe("permission");
   }, 60_000);
 
-  it("its output moves: no longer waiting, the notification withdrawn", async () => {
-    s.made.at(-1)!.emit("running the tool…\r\n");
-    await until(async () => (await planner())?.waiting !== true);
+  it("the 0.4.41 gate: its output moving doesn't clear it (Claude Code redraws its prompt); its next hook does", async () => {
+    s.made.at(-1)!.emit("\x1b[2K> Do you want to proceed?\r\n");
+    // Longer than the 2 s check and the settle time.
+    await new Promise((r) => setTimeout(r, 5000));
+    expect((await planner())?.waiting).toBe(true);
+    expect(
+      (
+        await call(
+          "POST",
+          "/api/agents/self/attention",
+          { event: "resumed", from: "tool", hooked: true },
+          "agent",
+        )
+      ).status,
+    ).toBe(200);
+    expect((await planner())?.waiting).not.toBe(true);
     expect((await call("GET", "/api/notifications")).json.unread).toBe(0);
   }, 30_000);
 

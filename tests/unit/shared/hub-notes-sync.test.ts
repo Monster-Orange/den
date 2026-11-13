@@ -153,6 +153,28 @@ describe("NT-6: Hub's notifications in the bell", () => {
     expect(hubItems(r.store)).toEqual([]);
   });
 
+  it("the 0.4.41 gate: each item under its own project, with Hub's name for it; a later list refiles it", async () => {
+    let items = [note("n1"), note("n2", { scope: "hub/docs/main" })];
+    const r = rig(() => items);
+    await r.pass();
+    expect(hubItems(r.store).map((n) => [n.scope, n.scopeName])).toEqual([
+      ["hub/web/main", undefined],
+      ["hub/docs/main", undefined],
+    ]);
+    items = [
+      note("n1", { scope: "hub/shop/main", scopeName: "Shop\u0007 site" }),
+      note("n2", { scope: "hub/docs/main", scopeName: "Docs" }),
+    ];
+    await r.pass();
+    expect(hubItems(r.store).map((n) => [n.scope, n.scopeName])).toEqual([
+      ["hub/shop/main", "Shop site"],
+      ["hub/docs/main", "Docs"],
+    ]);
+    expect(
+      parseHubNote(note("x", { scopeName: "y".repeat(500) }))?.scopeName,
+    ).toHaveLength(120);
+  });
+
   it("parseHubNote: only Hub's own kinds and subjects, an https link, a real time", () => {
     expect(parseHubNote(note("ok"))).not.toBeNull();
     expect(parseHubNote(note("k", { kind: "spam" }))).toBeNull();

@@ -31,16 +31,39 @@ export function bellAgo(iso, now = Date.now()) {
   return iso.slice(0, 10);
 }
 
-/** A scope's heading: a project's name, Server, or "Hub · <project>". */
-function scopeLabel(scope) {
+/**
+ * A scope's heading: a project's name, Server, or "Hub · <project>" (the
+ * name Hub sends, else its slug).
+ */
+function scopeLabel(scope, name) {
   if (scope === "workspace/den-server") return tr("bell.server");
   if (scope.startsWith("workspace/")) return scope.slice("workspace/".length);
   if (scope.startsWith("hub/")) {
     // NT-6: Hub's scope is "hub/<project>/<space>": the project names it.
-    const project = scope.slice("hub/".length).split("/")[0];
+    const project = name || scope.slice("hub/".length).split("/")[0];
     return project ? tr("bell.hub", { project }) : tr("bell.hubAll");
   }
   return scope;
+}
+
+/** The name Hub gave a group's project, from any of its items. */
+const groupName = (g) =>
+  g.subjects
+    ?.flatMap((s) => s.items ?? [])
+    .find((n) => typeof n.scopeName === "string" && n.scopeName)?.scopeName ??
+  "";
+
+/**
+ * What a row says: Den's own items in the page's language (their key and
+ * values), else the stored text (Hub's, or an item from before keys).
+ */
+export function noteText(n) {
+  const m = n?.msg;
+  if (m && typeof m.key === "string" && /^bell\.m\./.test(m.key)) {
+    const said = tr(m.key, m.vars ?? {});
+    if (said && said !== m.key) return said;
+  }
+  return n?.text ?? "";
 }
 
 /** Only Den's own pages, or http(s): a row's link. */
@@ -68,7 +91,7 @@ export function bellHtml(b) {
     groups
       .map(
         (g) =>
-          `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${esc(scopeLabel(g.scope))}</span>` +
+          `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
           (g.subjects.some((s) => s.items.some((n) => !n.read))
             ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}">${esc(tr("bell.read"))}</button>`
             : "") +
@@ -82,8 +105,8 @@ export function bellHtml(b) {
                     `<div class="den-bell-row${n.read ? " read" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}">` +
                     `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" ? "warn" : "ok"}" aria-hidden="true"></span>` +
                     (link
-                      ? `<a href="${esc(link)}" data-bell="open">${esc(n.text)}</a>`
-                      : `<span>${esc(n.text)}</span>`) +
+                      ? `<a href="${esc(link)}" data-bell="open">${esc(noteText(n))}</a>`
+                      : `<span>${esc(noteText(n))}</span>`) +
                     `<time datetime="${esc(n.at)}">${esc(bellAgo(n.at))}</time>` +
                     (i === 0 && s.subject.startsWith("agent:")
                       ? `<button type="button" class="den-ib" data-bell="mute" data-target="${esc(s.subject)}" title="${esc(tr("bell.mute"))}" aria-label="${esc(tr("bell.mute"))}">⊘</button>`

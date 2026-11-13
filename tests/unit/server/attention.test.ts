@@ -6,13 +6,18 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { NotificationStore } from "../../../src/shared/notifications";
-import { Attention } from "../../../src/ui/server/attention";
+import {
+  Attention,
+  RESUME_AFTER_MS,
+  SETTLE_MS,
+} from "../../../src/ui/server/attention";
 import { bellsOf } from "../../../src/ui/server/notification-service";
 import type { AgentRecord } from "../../../src/shared/agents/records";
 
 let dir = "";
 let clock = 1_000_000;
 const marks: Record<string, string | null> = {};
+const hookedIds = new Set<string>();
 
 function mk() {
   const store = new NotificationStore(dir, () => new Date(clock));
@@ -22,6 +27,7 @@ function mk() {
     nameOf: (id) => (id === "ag-1" ? "Planner" : id),
     now: () => clock,
     lookingMs: 10_000,
+    hooked: (id) => hookedIds.has(id),
   });
   return { store, a };
 }
@@ -30,6 +36,7 @@ beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-att-"));
   clock = 1_000_000;
   for (const k of Object.keys(marks)) delete marks[k];
+  hookedIds.clear();
 });
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
@@ -56,10 +63,129 @@ describe("attention", () => {
     await a.event("ag-1", "web", { event: "waiting", why: "input" });
     await a.check();
     expect(a.waitingNow().size).toBe(1);
+    // Output in the first seconds is the agent drawing its own call.
+    marks["ag-1"] = "m1b";
+    clock += 1000;
+    await a.check();
+    expect(a.waitingNow().size).toBe(1);
+    clock += SETTLE_MS;
     marks["ag-1"] = "m2";
     await a.check();
     expect(a.waitingNow().size).toBe(0);
     expect(store.list()).toEqual([]);
+  });
+
+  describe("the 0.4.41 gate: a runtime with hooks (Claude Code)", () => {
+    it("its output never clears it (it redraws the prompt); a tool run after does", async () => {
+      const { store, a } = mk();
+      hookedIds.add("ag-1");
+      marks["ag-1"] = "m1";
+      await a.event("ag-1", "web", {
+        event: "waiting",
+        why: "permission",
+        hooked: true,
+      });
+      for (let i = 0; i < 5; i++) {
+        clock += 3000;
+        marks["ag-1"] = `redraw-${i}`;
+        await a.check();
+      }
+      expect([...a.waitingNow()]).toEqual([["ag-1", "permission"]]);
+      expect(store.list()).toHaveLength(1);
+      await a.event("ag-1", "web", { event: "resumed", from: "tool" });
+      expect(a.waitingNow().size).toBe(0);
+      expect(store.list()).toEqual([]);
+    });
+
+    it("a tool that finished right as it began waiting (one run beside it) doesn't clear it", async () => {
+      const { a } = mk();
+      await a.event("ag-1", "web", {
+        event: "waiting",
+        why: "permission",
+        hooked: true,
+      });
+      clock += RESUME_AFTER_MS - 1;
+      await a.event("ag-1", "web", { event: "resumed", from: "tool" });
+      expect(a.waitingNow().size).toBe(1);
+      clock += 1;
+      await a.event("ag-1", "web", { event: "resumed", from: "prompt" });
+      expect(a.waitingNow().size).toBe(0);
+    });
+
+    it("an ask stays until the answer: not its own call's end, not the turn's end", async () => {
+      const { store, a } = mk();
+      hookedIds.add("ag-1");
+      await a.event("ag-1", "web", {
+        event: "waiting",
+        why: "asked",
+        text: "A or B?",
+      });
+      clock += 2000;
+      await a.event("ag-1", "web", { event: "resumed", from: "tool" });
+      await a.event("ag-1", "web", { event: "finished" });
+      // Claude Code's idle notice later: still the ask.
+      await a.event("ag-1", "web", {
+        event: "waiting",
+        why: "input",
+        hooked: true,
+      });
+      expect([...a.waitingNow()]).toEqual([["ag-1", "asked"]]);
+      expect(store.list().map((n) => [n.kind, n.text])).toEqual([
+        ["waiting", "Planner asked: A or B?"],
+      ]);
+      await a.event("ag-1", "web", { event: "resumed", from: "prompt" });
+      expect(a.waitingNow().size).toBe(0);
+    });
+
+    it("a second call while waiting keeps when it began", async () => {
+      const { a } = mk();
+      await a.event("ag-1", "web", {
+        event: "waiting",
+        why: "permission",
+        hooked: true,
+      });
+      clock += 900;
+      // Notification after PermissionRequest, for the same dialog.
+      await a.event("ag-1", "web", {
+        event: "waiting",
+        why: "permission",
+        hooked: true,
+      });
+      clock += 200;
+      await a.event("ag-1", "web", { event: "resumed", from: "tool" });
+      expect(a.waitingNow().size).toBe(0);
+    });
+  });
+
+  it("its person typing into its terminal answers it, whatever it waited on", async () => {
+    const { store, a } = mk();
+    hookedIds.add("ag-1");
+    await a.event("ag-1", "web", { event: "waiting", why: "asked", text: "?" });
+    a.typed("ag-1");
+    expect(a.waitingNow().size).toBe(0);
+    expect(store.list()).toEqual([]);
+    a.typed("ag-1"); // nothing waiting: nothing happens
+  });
+
+  it("(k): each item keeps its text as a key and values, for the page's language", async () => {
+    const { store, a } = mk();
+    await a.event("ag-1", "web", { event: "waiting", why: "permission" });
+    expect(store.list()[0].msg).toEqual({
+      key: "bell.m.permission",
+      vars: { name: "Planner" },
+    });
+    await a.event("ag-1", "web", { event: "finished" });
+    expect(store.list().map((n) => n.msg)).toEqual([
+      { key: "bell.m.turn", vars: { name: "Planner" } },
+    ]);
+    // Finished Hub comments update that unread finished item.
+    a.hubFinished("ag-1", "web", { count: 2, artifact: "Spec" });
+    expect(store.list().map((n) => n.msg)).toEqual([
+      {
+        key: "bell.m.hubOn",
+        vars: { name: "Planner", n: 2, artifact: "Spec" },
+      },
+    ]);
   });
 
   it("finished: a finished notification; any waiting mark goes", async () => {
@@ -106,13 +232,15 @@ describe("attention", () => {
     ]);
     expect(a.waitingNow().size).toBe(0);
     clock += 1000;
-    await a.bells([{ agent: "ag-1", workspace: "web", bellAt: at(clock) }]);
+    const rang = at(clock);
+    await a.bells([{ agent: "ag-1", workspace: "web", bellAt: rang }]);
     expect([...a.waitingNow()]).toEqual([["ag-1", "input"]]);
     expect(store.list()[0].text).toBe("Planner is waiting for you");
-    // Its output moves: cleared. The same bell again: nothing.
+    // Its output moves (after it settled): cleared. The same bell again: nothing.
+    clock += SETTLE_MS;
     marks["ag-1"] = "m2";
     await a.check();
-    await a.bells([{ agent: "ag-1", workspace: "web", bellAt: at(clock) }]);
+    await a.bells([{ agent: "ag-1", workspace: "web", bellAt: rang }]);
     expect(a.waitingNow().size).toBe(0);
   });
 
