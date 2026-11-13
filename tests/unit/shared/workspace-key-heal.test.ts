@@ -73,3 +73,13 @@ describe("a project key with a space, from before D70", () => {
     expect(m.resolveWorkspaceInput("den hub")).toBe("den-hub-2");
   });
 });
+
+describe("a project written by hand without services", () => {
+  it("reads as one with none (workspace list crashed)", () => {
+    const yml = fs.readFileSync(file(), "utf-8");
+    fs.writeFileSync(file(), yml + "  bare: { name: Bare }\n  empty:\n");
+    const f = m.readWorkspacesFile();
+    expect(f.workspaces.bare?.services).toEqual({});
+    expect(f.workspaces.empty?.services).toEqual({});
+  });
+});

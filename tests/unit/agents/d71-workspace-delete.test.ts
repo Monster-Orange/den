@@ -203,3 +203,50 @@ describe("D71: an agent whose workspace is gone", () => {
     expect(readRecord(r.stateDir, "stray")?.workspace).toBe("south");
   });
 });
+
+describe("#57: an agent whose record names its project by a pre-D70 key", () => {
+  it("follows the project to its slug, once; it isn't an orphan", async () => {
+    const r = await rig();
+    const rec = (id: string, workspace: string) =>
+      writeRecord(r.stateDir, {
+        id,
+        persona: "planner",
+        runtime: "den-claude",
+        workspace,
+        project: workspace,
+        cwd: r.wsDir("north"),
+        session: { backend: "den-pty", id: `x-${id}` },
+        sessionName: `acme-x:${id}`,
+        startedAt: "2026-11-06T09:30:00.000Z",
+        stoppedAt: "2026-11-06T10:30:00.000Z",
+      });
+    rec("designer", "den hub");
+    rec("stray", "gone");
+    const projects = {
+      north: { services: {} },
+      "den-hub": { name: "den hub", services: {} },
+    };
+    const rows = listedSessions([], {
+      stateDir: () => r.stateDir,
+      dist: () => "acme",
+      activeWorkspaces: () => ["north", "den-hub"],
+      workspaceExists: (ws: string) => ws in projects,
+      workspaces: () => projects,
+    });
+    expect(rows.find((x) => x.agent === "designer")).toMatchObject({
+      workspace: "den-hub",
+    });
+    expect(rows.find((x) => x.agent === "designer")?.orphan).toBeUndefined();
+    expect(readRecord(r.stateDir, "designer")).toMatchObject({
+      workspace: "den-hub",
+      project: "den-hub",
+      sessionName: "acme-x:designer",
+    });
+    // A project that's really gone: left as it is, an orphan.
+    expect(rows.find((x) => x.agent === "stray")).toMatchObject({
+      workspace: "gone",
+      orphan: true,
+    });
+    expect(readRecord(r.stateDir, "stray")?.workspace).toBe("gone");
+  });
+});

@@ -5847,6 +5847,22 @@ const ADDRESS = migrateWebUrl(() => {
 });
 server.listen(PORT, BIND_HOST, () => {
   printBanner(ADDRESS ?? readWebUrl());
+  // #57: agents whose record names a project by its pre-D70 key follow it.
+  void import("../../shared/agents/heal-workspace.js").then(async (m) => {
+    const { isServerScope } =
+      await import("../../shared/agents/server-agent.js");
+    try {
+      const n = m.healRecordWorkspaces(
+        getStateDir(),
+        readWorkspacesFile().workspaces,
+        isServerScope,
+      );
+      if (n.length)
+        serverLog(`  Moved ${n.length} agent(s) to their project's new key`);
+    } catch {
+      /* the file unreadable: the agents list heals them later */
+    }
+  });
 });
 
 /** The start banner: the install's address (D80), never localhost. */

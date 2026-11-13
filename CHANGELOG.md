@@ -24,7 +24,13 @@ config and manifest changes a distribution must make to move to it under
   hub"), which every page refused. 0.4.37 moved such keys to their slug
   on read; now a slug already taken gets the next free one (`den-hub-2`)
   instead of staying broken, and a folder found by the old key stays the
-  project's folder. The name people see keeps its space.
+  project's folder. The name people see keeps its space. Its agents
+  follow it too: an agent whose record named the old key showed under no
+  project ("their project was deleted"); it is now moved to the new key
+  the first time Den starts or lists agents.
+- **`workspace list` with a project written by hand without `services:`.**
+  It crashed ("Cannot convert undefined or null to object"); such a
+  project now reads as one with no services.
 
 ## [0.4.37] - 2026-11-12
 

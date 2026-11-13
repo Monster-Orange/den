@@ -68,6 +68,7 @@ import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { revokedAgentIds } from "../../shared/actor-token.js";
 import { agentFilesDir, listRecords } from "../../shared/agents/records.js";
+import { healRecordWorkspaces } from "../../shared/agents/heal-workspace.js";
 import { readClearedAt } from "../../shared/agents/helpers-cleared.js";
 import { softNewlineSeq } from "../../shared/agents/catalog.js";
 import { getRuntime } from "../../shared/agents/runtimes.js";
@@ -331,7 +332,10 @@ export function listedSessions(
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
     Partial<Pick<Resolved, "waitingAgents" | "workspaceExists">> &
     Partial<Pick<Resolved, "helperSettings" | "repoNames">> &
-    Pick<SessionRouteDeps, "rotationPolicy" | "restartResume">,
+    Pick<SessionRouteDeps, "rotationPolicy" | "restartResume"> & {
+      /** #57 (tests): the projects, by key; default the workspaces file. */
+      workspaces?: () => Record<string, { name?: unknown }>;
+    },
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
   /** D44: the Hub server URL agents get now; undefined: not checked. */
@@ -344,7 +348,26 @@ export function listedSessions(
   active.add(SERVER_SCOPE);
   // D71: an agent whose workspace was deleted is listed too (orphan), so
   // it can be moved; it never runs unseen.
-  const all = listRecords(d.stateDir());
+  let all = listRecords(d.stateDir());
+  // #57: a record naming a project by its pre-D70 key ("den hub") follows
+  // the project to its slug, once; it isn't an orphan.
+  if (
+    d.workspaceExists &&
+    all.some(
+      (r) =>
+        !active.has(r.workspace) &&
+        !isServerScope(r.workspace) &&
+        !d.workspaceExists!(r.workspace),
+    )
+  ) {
+    try {
+      const ws = (d.workspaces ?? (() => readWorkspacesFile().workspaces))();
+      if (healRecordWorkspaces(d.stateDir(), ws, isServerScope).length)
+        all = listRecords(d.stateDir());
+    } catch {
+      /* the file unreadable: listed as it is */
+    }
+  }
   const orphanWs = new Set<string>();
   if (d.workspaceExists)
     for (const r of all)

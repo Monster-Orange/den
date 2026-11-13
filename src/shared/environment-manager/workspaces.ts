@@ -216,6 +216,14 @@ export function readWorkspacesFile(): WorkspacesFile {
     if (!parsed.workspaces || typeof parsed.workspaces !== "object") {
       parsed.workspaces = {};
     }
+    // A project written by hand without `services:` (or as null) reads as
+    // one with none: every caller indexes it (`workspace list` crashed).
+    for (const [k, ws] of Object.entries(parsed.workspaces)) {
+      if (!ws || typeof ws !== "object")
+        parsed.workspaces[k] = { services: {} } as WorkspaceConfig;
+      else if (!ws.services || typeof ws.services !== "object")
+        ws.services = {};
+    }
     // Normalize old mode values ("linked"/"managed") to current names.
     for (const ws of Object.values(parsed.workspaces ?? {})) {
       for (const entry of Object.values(
