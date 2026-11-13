@@ -60,6 +60,8 @@ describe("the store", () => {
     const n = s.add(
       waiting("a", "web", `\u001b[31mred\u001b[0m\nnext ${"x".repeat(400)}`),
     )!;
+    // No control characters left. Intentional.
+    // eslint-disable-next-line no-control-regex
     expect(n.text).not.toMatch(/[\u0000-\u001f]/);
     expect(n.text.startsWith("[31mred [0m next")).toBe(true);
     expect(n.text.length).toBe(300);
