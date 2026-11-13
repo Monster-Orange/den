@@ -692,6 +692,60 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await p.context().close();
   }, 60_000);
 
+  // Review shots only (DEN_AGENTS_SHOTS): the tab in front, each in turn,
+  // at 1440 and 390 px, light and dark, in en and ja.
+  it("0.4.44: review shots of the tab in front (DEN_AGENTS_SHOTS only)", async () => {
+    if (skip() || !SHOTS) return;
+    try {
+      for (const lang of ["en", "ja"] as const) {
+        expect(await s!.settings({ language: lang === "en" ? null : lang })).toBe(200);
+        for (const scheme of ["light", "dark"] as const)
+          for (const width of [1440, 390]) {
+            const ctx = await browser!.newContext({
+              viewport: { width, height: width > 400 ? 900 : 844 },
+              colorScheme: scheme,
+              reducedMotion: "reduce",
+            });
+            await ctx.addInitScript((v) => {
+              try {
+                for (const k of ["den-changelog-seen", "acme-changelog-seen"])
+                  localStorage.setItem(k, v);
+              } catch {
+                /* none */
+              }
+            }, latest);
+            const p = await ctx.newPage();
+            await p.goto(
+              `${s!.base}/agents?layout=tabs&ws=north&open=${sid.planner},${sid.builder}`,
+            );
+            await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
+            await termsUp(p, 1);
+            for (const id of ["planner", "builder"]) {
+              await p.click(`#agr [role="tab"][data-id="${sid[id]}"]`);
+              await p.waitForSelector(
+                `#agr [role="tab"][data-id="${sid[id]}"][aria-selected="true"]`,
+              );
+              await shot(p, `front-${id}-${width}-${scheme}-${lang}`);
+              if (width < 400) {
+                // Narrow: the tabs, the bar and the To line, scrolled into sight.
+                await p.evaluate(() => {
+                  const to = [...document.querySelectorAll("#agr .pane .agto")].find(
+                    (x) => (x as HTMLElement).offsetWidth > 0,
+                  );
+                  to?.scrollIntoView({ block: "end" });
+                });
+                await shot(p, `front-${id}-${width}-${scheme}-${lang}-to`);
+                await p.evaluate(() => window.scrollTo(0, 0));
+              }
+            }
+            await ctx.close();
+          }
+      }
+    } finally {
+      await s!.settings({ language: null });
+    }
+  }, 240_000);
+
   it("0.4.44: a long tab title keeps the agent's name whole; its project goes first", async () => {
     if (skip()) return;
     const p = await page(`/agents?layout=tabs&open=${sid.planner}`, {
