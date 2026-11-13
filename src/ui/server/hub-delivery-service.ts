@@ -23,6 +23,8 @@ const PUMP_MS = 2000;
 let loop: DeliveryLoop | null = null;
 let ctl: AbortController | null = null;
 let pumpTimer: NodeJS.Timeout | null = null;
+/** NT-6: Hub's notifications into the bell, while Hub is connected. */
+let notesTimer: NodeJS.Timeout | null = null;
 let owner: DeliveryOwner = {};
 let lastOpts: Parameters<typeof startDeliveries>[0] | null = null;
 
@@ -60,6 +62,66 @@ export function stopDeliveries(): void {
   ctl = null;
   if (pumpTimer) clearInterval(pumpTimer);
   pumpTimer = null;
+  if (notesTimer) clearInterval(notesTimer);
+  notesTimer = null;
+}
+
+/** notifications.hub_poll_seconds, read each time (0: off; bad: 60). */
+async function hubPollSeconds(): Promise<number> {
+  const { readDenConfig, readUserConfig } =
+    await import("../../shared/den-config.js");
+  const { readNotificationConfig } =
+    await import("../../shared/notifications.js");
+  try {
+    return readNotificationConfig(readDenConfig(), readUserConfig())
+      .hubPollSeconds;
+  } catch {
+    return 60; // a bad value: doctor says so; the default meanwhile
+  }
+}
+
+/**
+ * NT-6: read Hub's notifications every `notifications.hub_poll_seconds`,
+ * first right away. A 10 s beat checks whether a pass is due, so a change
+ * to the setting counts without a restart.
+ */
+function startHubNotes(log: (line: string) => void): void {
+  let busy = false;
+  let lastSaid = "";
+  let last = 0;
+  const due = async (force: boolean) => {
+    if (busy) return;
+    const every = await hubPollSeconds();
+    if (!every || (!force && Date.now() - last < every * 1000)) return;
+    busy = true;
+    last = Date.now();
+    try {
+      const at = await hubAndToken().catch(() => null);
+      if (!at) return;
+      const hub = await import("../../shared/hub.js");
+      const { syncHubNotes } = await import("../../shared/hub-notes-sync.js");
+      const { notificationDeps } = await import("./notification-service.js");
+      await syncHubNotes({
+        store: notificationDeps().store,
+        owner: () => owner.ownerLogin ?? null,
+        list: () => hub.hubNotifications(at.url, at.token),
+        markRead: (ids) => hub.hubMarkNotificationsRead(at.url, at.token, ids),
+        // Once per different reason, not every pass.
+        log: (line) => {
+          if (line !== lastSaid) log(line);
+          lastSaid = line;
+        },
+      });
+    } finally {
+      busy = false;
+    }
+  };
+  void due(true).catch(() => undefined);
+  notesTimer = setInterval(
+    () => void due(false).catch(() => undefined),
+    10_000,
+  );
+  notesTimer.unref();
 }
 
 /**
@@ -142,6 +204,7 @@ export async function startDeliveries(o: {
     void l.pump().finally(() => (pumping = false));
   }, PUMP_MS);
   pumpTimer.unref();
+  startHubNotes(o.log);
   void l
     .run(c.signal)
     .catch((e) =>

@@ -530,6 +530,53 @@ export async function hubGithubCoverage(
 }
 
 /**
+ * NT-6: the install owner's Hub notifications (Hub computes them, the
+ * latest 50, newest first): GET <url>/api/notifications. Den's own call,
+ * with no agent header: Hub answers for the owner.
+ */
+export async function hubNotifications(
+  url: string,
+  token: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<{ unread?: number; items: unknown[] }> {
+  const b = await hubCall(
+    `${url}/api/notifications`,
+    {
+      method: "GET",
+      headers: { ...bearer(token), Accept: "application/json" },
+    },
+    { timeoutMs: 10_000, ...opts },
+  );
+  return {
+    ...(typeof b.unread === "number" ? { unread: b.unread } : {}),
+    items: Array.isArray(b.items) ? b.items.slice(0, 50) : [],
+  };
+}
+
+/** NT-6: mark Hub's notifications read: POST <url>/api/notifications/read. */
+export async function hubMarkNotificationsRead(
+  url: string,
+  token: string,
+  ids: readonly string[],
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<number> {
+  const b = await hubCall(
+    `${url}/api/notifications/read`,
+    {
+      method: "POST",
+      headers: {
+        ...bearer(token),
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ids: ids.slice(0, 50) }),
+    },
+    opts,
+  );
+  return typeof b.marked === "number" ? b.marked : 0;
+}
+
+/**
  * 0.4.40: deliveries after `after` (uuidv7, time-ordered), at most 50:
  * GET <url>/api/installs/self/deliveries, the stream's fallback.
  */

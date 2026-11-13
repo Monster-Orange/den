@@ -11,6 +11,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
 import { denAuth, signInUrl } from "./helpers/den-auth.js";
+import { NotificationStore } from "../../../src/shared/notifications.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -204,6 +205,40 @@ describe("NT-3: the bell", () => {
       await s!.settings({ language: null });
     }
   }, 60_000);
+
+  it("NT-6: Hub's items show under their Hub project, linked to Hub", async () => {
+    if (skip()) return;
+    new NotificationStore(s!.stateDir).syncHub(
+      [
+        {
+          id: "n1",
+          kind: "mention",
+          subject: "thread:th_1",
+          scope: "project:web",
+          text: "Kim mentioned you on Pricing page",
+          link: "https://hub.example.test/a/pricing#th_1",
+          at: new Date().toISOString(),
+          readBy: [],
+        },
+      ],
+      "pat",
+    );
+    const p = await open("/services");
+    await p.click("#den-bell");
+    const sec = p.locator(
+      '#den-bell-pop section[data-scope="hub/project:web"]',
+    );
+    await sec.waitFor({ timeout: 15_000 });
+    expect(await sec.locator(".den-bell-sc span").textContent()).toBe(
+      "Hub · web",
+    );
+    const a = sec.locator('.den-bell-row[data-id="hub:n1"] a');
+    expect(await a.textContent()).toBe("Kim mentioned you on Pricing page");
+    expect(await a.getAttribute("href")).toBe(
+      "https://hub.example.test/a/pricing#th_1",
+    );
+    await p.context().close();
+  }, 90_000);
 
   it("no page errors", () => {
     expect(errors).toEqual([]);

@@ -44,6 +44,49 @@ export interface Notification {
   /** ISO 8601. */
   at: string;
   read: boolean;
+  /** NT-6, a Hub item: whether Hub has it read (what the last sync saw). */
+  hubRead?: boolean;
+}
+
+/** NT-6: one of Hub's notifications (GET /api/notifications), checked. */
+export interface HubNote {
+  id: string;
+  kind: NotificationKind;
+  subject: string;
+  scope: string;
+  text: string;
+  link?: string;
+  at: string;
+  readBy: string[];
+}
+
+/** Hub's item, or null when it isn't one Den can show. */
+export function parseHubNote(v: unknown): HubNote | null {
+  if (!v || typeof v !== "object") return null;
+  const r = v as Record<string, unknown>;
+  const str = (x: unknown, max: number) =>
+    typeof x === "string" ? x.slice(0, max) : "";
+  const id = str(r.id, 128);
+  const kind = r.kind as NotificationKind;
+  const subject = str(r.subject, 200);
+  if (!id || !NOTIFICATION_KINDS.includes(kind)) return null;
+  if (!/^(thread|record|agent):/.test(subject)) return null;
+  const at = str(r.at, 64);
+  if (!at || Number.isNaN(Date.parse(at))) return null;
+  const link = str(r.link, 2048);
+  return {
+    id,
+    kind,
+    subject,
+    scope: str(r.scope, 128).replace(/[^\w.:/-]/g, ""),
+    text: str(r.text, 1000),
+    // Hub's own page, https only (never a script or a file link).
+    ...(/^https:\/\//.test(link) ? { link } : {}),
+    at: new Date(at).toISOString(),
+    readBy: Array.isArray(r.readBy)
+      ? r.readBy.filter((x): x is string => typeof x === "string")
+      : [],
+  };
 }
 
 export interface Mute {
@@ -193,6 +236,97 @@ export class NotificationStore {
     return { ...out };
   }
 
+  /**
+   * NT-6: Hub's list (computed by Hub, the latest 50) against Den's Hub
+   * items. New ones are added (unless muted); Hub's read marks Den's read;
+   * one read in Den but not on Hub is returned, for Den to mark on Hub;
+   * one Hub no longer lists goes. Den's own items are left alone.
+   */
+  syncHub(notes: readonly HubNote[], owner: string | null): string[] {
+    const f = this.read();
+    const me = owner?.toLowerCase() ?? null;
+    const byId = new Map(
+      f.items.filter((x) => x.source === "hub").map((x) => [x.id, x]),
+    );
+    const listed = new Set<string>();
+    const push: string[] = [];
+    let changed = false;
+    for (const n of notes) {
+      const id = `hub:${n.id}`;
+      listed.add(id);
+      const hubRead = !!me && n.readBy.some((l) => l.toLowerCase() === me);
+      const scope = `hub/${n.scope}`;
+      const x = byId.get(id);
+      if (!x) {
+        if (this.muted(n.subject, scope)) continue;
+        f.items.push({
+          id,
+          source: "hub",
+          kind: n.kind,
+          subject: n.subject,
+          scope,
+          text: plain(n.text),
+          ...(n.link ? { link: n.link } : {}),
+          at: n.at,
+          read: hubRead,
+          hubRead,
+        });
+        changed = true;
+        continue;
+      }
+      const text = plain(n.text);
+      // Newer activity on Hub's item (another reply): it's news again.
+      const newer = n.at > x.at;
+      if (x.text !== text || x.at !== n.at || x.link !== n.link) {
+        x.text = text;
+        x.at = n.at;
+        if (n.link) x.link = n.link;
+        else delete x.link;
+        changed = true;
+      }
+      // Whose read is it? Unknown: reads stay where they were made.
+      if (!me) continue;
+      if (hubRead) {
+        if (!x.read || !x.hubRead) changed = true;
+        x.read = true;
+        x.hubRead = true;
+      } else if (newer && x.read) {
+        x.read = false;
+        x.hubRead = false;
+        changed = true;
+      } else if (x.read && !x.hubRead) {
+        // Read here, not yet there.
+        push.push(n.id);
+      }
+      // Read here and told to Hub: it stays read, even while Hub's list
+      // still lags behind.
+    }
+    const before = f.items.length;
+    f.items = f.items.filter((x) => x.source !== "hub" || listed.has(x.id));
+    if (f.items.length !== before) changed = true;
+    if (changed) {
+      f.items.sort((a, b) => a.at.localeCompare(b.at));
+      if (f.items.length > MAX_NOTIFICATIONS)
+        f.items = f.items.slice(-MAX_NOTIFICATIONS);
+      this.write(f);
+    }
+    return push;
+  }
+
+  /** NT-6: Hub took Den's read for these (Hub's ids). */
+  hubMarked(ids: readonly string[]): void {
+    if (!ids.length) return;
+    const want = new Set(ids.map((i) => `hub:${i}`));
+    const f = this.read();
+    let n = 0;
+    for (const x of f.items)
+      if (want.has(x.id) && !x.hubRead) {
+        x.hubRead = true;
+        n++;
+      }
+    if (n) this.write(f);
+  }
+
   /** The agent is busy again, or was answered: its waiting item goes. */
   withdraw(subject: string, kind: NotificationKind = "waiting"): boolean {
     const f = this.read();
@@ -291,22 +425,42 @@ export function groupNotifications(
  */
 export interface NotificationConfig {
   asksPerHour: number;
+  /** NT-6: how often Den reads Hub's notifications (seconds; 0: never). */
+  hubPollSeconds: number;
 }
 
 export function readNotificationConfig(
   den: unknown,
   user: unknown,
 ): NotificationConfig {
+  type N = { asks_per_hour?: unknown; hub_poll_seconds?: unknown };
   const pick = (c: unknown) =>
-    ((c as { notifications?: { asks_per_hour?: unknown } } | null)
-      ?.notifications ?? {}) as { asks_per_hour?: unknown };
-  const v = pick(user).asks_per_hour ?? pick(den).asks_per_hour;
-  if (v === undefined || v === null) return { asksPerHour: 30 };
-  if (typeof v === "number" && Number.isInteger(v) && v >= 1)
-    return { asksPerHour: v };
-  throw new Error(
-    "notifications.asks_per_hour must be a whole number, at least 1",
-  );
+    ((c as { notifications?: N } | null)?.notifications ?? {}) as N;
+  const ask = pick(user).asks_per_hour ?? pick(den).asks_per_hour;
+  const poll = pick(user).hub_poll_seconds ?? pick(den).hub_poll_seconds;
+  let asksPerHour = 30;
+  if (ask !== undefined && ask !== null) {
+    if (!(typeof ask === "number" && Number.isInteger(ask) && ask >= 1))
+      throw new Error(
+        "notifications.asks_per_hour must be a whole number, at least 1",
+      );
+    asksPerHour = ask;
+  }
+  let hubPollSeconds = 60;
+  if (poll !== undefined && poll !== null) {
+    if (
+      !(
+        typeof poll === "number" &&
+        Number.isInteger(poll) &&
+        (poll === 0 || (poll >= 10 && poll <= 3600))
+      )
+    )
+      throw new Error(
+        "notifications.hub_poll_seconds must be 0 (never) or a whole number from 10 to 3600",
+      );
+    hubPollSeconds = poll;
+  }
+  return { asksPerHour, hubPollSeconds };
 }
 
 /** ask_human's limit: per agent, the questions of the last hour. */

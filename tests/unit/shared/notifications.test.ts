@@ -149,13 +149,13 @@ describe("the bell's groups", () => {
 
 describe("ask_human's limit", () => {
   it("notifications.asks_per_hour: 30 by default; user.yml over the org's; a bad value names its key", () => {
-    expect(readNotificationConfig({}, {})).toEqual({ asksPerHour: 30 });
+    expect(readNotificationConfig({}, {})).toMatchObject({ asksPerHour: 30 });
     expect(
       readNotificationConfig(
         { notifications: { asks_per_hour: 10 } },
         { notifications: { asks_per_hour: 4 } },
       ),
-    ).toEqual({ asksPerHour: 4 });
+    ).toMatchObject({ asksPerHour: 4 });
     expect(() =>
       readNotificationConfig({}, { notifications: { asks_per_hour: 0 } }),
     ).toThrow("notifications.asks_per_hour");

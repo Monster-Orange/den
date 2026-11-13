@@ -907,6 +907,7 @@
     "bell.muted": "1 時間ミュートしました",
     "bell.server": "__DEN_TITLE__ エージェント",
     "bell.hub": "Hub · {project}",
+    "bell.hubAll": "Hub",
     "bell.now": "たった今",
     "bell.min": "{n} 分",
     "bell.h": "{n} 時間",

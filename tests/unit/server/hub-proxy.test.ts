@@ -274,7 +274,6 @@ describe("D52: which paths", () => {
     for (const p of [
       "/hub/api/inbox",
       "/hub/api/notifications",
-      "/hub/api/notifications/3/read",
       "/hub/api/import/packs",
       "/hub/api/import/packs/p1/dry-run",
       "/hub/api/import/ds/dry-run",
@@ -288,7 +287,6 @@ describe("D52: which paths", () => {
     expect(hub.seen.map((s) => s.url)).toEqual([
       "/api/inbox",
       "/api/notifications",
-      "/api/notifications/3/read",
       "/api/import/packs",
       "/api/import/packs/p1/dry-run",
       "/api/import/ds/dry-run",
@@ -310,6 +308,10 @@ describe("D52: which paths", () => {
       "/hub/api/import/other",
       "/hub/api/import/ds",
       "/hub/api/admin/fold",
+      // NT-6: marking the person's notifications read is never an agent's.
+      "/hub/api/notifications/read",
+      "/hub/api/notifications/3/read",
+      "/hub/api/notifications/READ",
     ]) {
       const res = await fetch(`${base}${p}`, { headers: auth });
       expect([p, res.status]).toEqual([p, 404]);

@@ -931,6 +931,7 @@
     "bell.muted": "Silenciado 1 hora",
     "bell.server": "Agente de __DEN_TITLE__",
     "bell.hub": "Hub · {project}",
+    "bell.hubAll": "Hub",
     "bell.now": "ahora",
     "bell.min": "{n} min",
     "bell.h": "{n} h",

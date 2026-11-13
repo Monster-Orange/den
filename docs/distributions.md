@@ -2648,13 +2648,21 @@ agent and kind.
 - **Hub comments finished.** When an agent finishes the Hub comments it
   was given (done, not failed), the bell says "<agent> finished N Hub
   comments on <artifact>", linking to the comment in Hub.
+- **Hub's own notifications** (NT-6). While Hub is connected, Den reads
+  the install owner's Hub notifications (mentions, replies, decisions;
+  Hub works them out, the latest 50) and shows them under "Hub ·
+  <project>", each linking to Hub. Read on either side counts on both:
+  Hub's read marks Den's on the next read, and one read in Den is marked
+  on Hub. New activity on an item makes it unread again. An agent can't
+  mark them read: Den's proxy refuses Hub's read routes.
 - **Not while you look** (NT-2). The Agents page says which agents are on
   screen, in a visible, focused tab. Those don't notify; they are still
   marked waiting.
 - **Settings** (den.yml, then user.yml): `notifications.asks_per_hour`
   (default 30, at least 1): how many `ask_human` questions one agent may
   put in the bell in an hour. The next is refused (429) until the oldest
-  is an hour old.
+  is an hour old. `notifications.hub_poll_seconds` (default 60; 10 to
+  3600, or 0 for never): how often Den reads Hub's notifications.
 - `GET /api/notifications` is the bell; `POST /api/notifications/read`,
   `/clear`, `/mute` and `/looking` change it, for people only. An agent
   reads it with `notifications_list` and changes nothing in it.

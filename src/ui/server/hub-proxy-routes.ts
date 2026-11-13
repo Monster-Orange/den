@@ -91,6 +91,9 @@ export function hubProxyPath(pathname: string): string | null {
 export function hubProxyAllowed(sub: string): boolean {
   // No dot segments or encoded slashes: the path Hub sees is the one checked.
   if (/(^|\/)\.\.?(\/|$)|%2f|%5c|\\/i.test(sub)) return false;
+  // NT-6: marking the person's Hub notifications read is the person's
+  // (Den's bell does it with the install's own call); never an agent's.
+  if (/^\/api\/notifications(\/[^/]+)?\/read\/?$/i.test(sub)) return false;
   return HUB_PROXY_PATHS.some((r) => pathMatches(r, sub));
 }
 
