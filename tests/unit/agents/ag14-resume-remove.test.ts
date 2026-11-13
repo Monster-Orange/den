@@ -390,6 +390,54 @@ describe("after a restart (AG-14.3)", () => {
     expect(modeOf(r.made.at(-1)!.args)).toBe("auto");
   });
 
+  it("0.4.44: every other way back keeps its recorded mode: restart, move, start fresh", async () => {
+    const r = await rig();
+    // A stopped session ends on TERM, as a real one does.
+    r.deps.stopWaitMs = 3_000;
+    const push = r.made.push.bind(r.made);
+    r.made.push = (...ps) => {
+      for (const p of ps) {
+        const kill = p.kill.bind(p);
+        p.kill = (sig: string) => {
+          kill(sig);
+          setTimeout(() => p.exit(143), 5);
+        };
+      }
+      return push(...ps);
+    };
+    persona(r, "planner", "permission_mode: auto\nstanding: true\n");
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    await typeInto(r, "planner", "go\r");
+    const modeOf = (args: string[]) =>
+      args[args.indexOf("--permission-mode") + 1];
+    expect(record(r, "planner").permission).toBe("auto");
+    // The persona and both projects now say otherwise.
+    persona(r, "planner", "permission_mode: ask\nstanding: true\n");
+    r.wsPermission.north = "edits";
+    r.wsPermission.south = "edits";
+    const last = () => r.made.at(-1)!;
+    const ended = async () => {
+      await settle();
+    };
+    // agents restart --now: the same conversation.
+    expect(await agents(r, "restart", "planner", "--now")).toBe(0);
+    expect(last().args[0]).toBe("--resume");
+    expect(modeOf(last().args)).toBe("auto");
+    // agents move: to another project, same conversation.
+    expect(await agents(r, "move", "planner", "-w", "south", "--now")).toBe(0);
+    expect(last().args[0]).toBe("--resume");
+    expect(modeOf(last().args)).toBe("auto");
+    // Start fresh (AG-10.9); relaunch (den#4, only after a rotation)
+    // starts from the same keptChoices.
+    expect(await agents(r, "stop", "planner")).toBe(0);
+    await ended();
+    await startFresh(ops(r), "planner");
+    expect(modeOf(last().args)).toBe("auto");
+    expect(record(r, "planner").permission).toBe("auto");
+  });
+
   it("`agents resume --all-interrupted` resumes each interrupted agent that can", async () => {
     const r = await rig();
     await prompted(r);
